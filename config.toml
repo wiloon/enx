@@ -1,0 +1,18 @@
+[rssx]
+dev-mode=false
+
+[mysql]
+address="mysql.wiloon.com:3306"
+
+[sync]
+# minute
+duration=60
+
+[news]
+expire-time="-720h"
+gc-duration="24h"
+
+[log]
+level="debug"
+path="/data/rssx/logs/"
+file-name="rssx.log"
