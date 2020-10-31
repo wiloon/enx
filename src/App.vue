@@ -1,8 +1,8 @@
 <template>
   <div id="app">
     <v-app>
-      <v-toolbar>
-        <v-toolbar-title>State selection</v-toolbar-title>
+      <v-toolbar style="flex-grow: 0">
+        <v-toolbar-title>Enx</v-toolbar-title>
         <v-autocomplete
           v-model="select"
           :loading="loading"
