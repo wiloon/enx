@@ -1,41 +1,47 @@
 <template>
   <div id="app">
     <v-app>
-      <v-toolbar style="flex-grow: 0">
-        <v-toolbar-title>Enx</v-toolbar-title>
-        <v-autocomplete
-          v-model="select"
-          :loading="loading"
-          :items="items"
-          :search-input.sync="search"
-          cache-items
-          class="mx-4"
-          flat
-          hide-no-data
-          hide-details
-          label="Search"
-          solo-inverted
-        ></v-autocomplete>
-        <v-btn icon>
-          <v-icon>mdi-dots-vertical</v-icon>
-        </v-btn>
-      </v-toolbar>
+      <v-row>
+        <v-col cols="6">
+          <v-toolbar style="flex-grow: 0">
+            <v-toolbar-title>Enx</v-toolbar-title>
+            <v-autocomplete
+              v-model="select"
+              :loading="loading"
+              :items="items"
+              :search-input.sync="search"
+              cache-items
+              class="mx-4"
+              hide-no-data
+              hide-details
+              label="Search"
+              solo-inverted
+              auto-select-first
+            ></v-autocomplete>
+            <v-btn icon @click="thirdParty">
+              <v-icon>mdi-heart</v-icon>
+            </v-btn>
+          </v-toolbar>
+        </v-col>
+        <v-col>
+          <v-card
+            class="mx-auto"
+          >
+            <v-card-text>
+              <div>.</div>
+              <p class="display-1 text--primary">
+                {{ dict.English }}
+              </p>
+              <p>{{ dict.Chinese }}</p>
+              <div class="text--primary">
+                {{ dict.Pronunciation }}
+              </div>
+            </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
+
       <v-main>
-        <v-card
-          class="mx-auto"
-          max-width="344"
-        >
-          <v-card-text>
-            <div>.</div>
-            <p class="display-1 text--primary">
-              {{ dict.English }}
-            </p>
-            <p>{{ dict.Chinese }}</p>
-            <div class="text--primary">
-              {{ dict.Pronunciation }}
-            </div>
-          </v-card-text>
-        </v-card>
       </v-main>
     </v-app>
 
@@ -58,19 +64,11 @@ export default class App extends Vue {
   drawer = false
   env = ''
   dict = new Map()
+  timeout = 0
 
-  @Watch('search')
-  onChildChanged (val: string, oldVal: string) {
-    console.log('watch search')
-    console.log('val: ' + val)
-    console.log('old val: ' + oldVal)
-    this.querySelections(val)
-  }
-
-  doSearch (): void {
-    console.log(this.word)
+  thirdParty (): void {
     Axios
-      .get('/do-search')
+      .get('/third-party')
       .then(
         response => {
           console.log(response.data)
@@ -79,9 +77,18 @@ export default class App extends Vue {
       )
   }
 
+  @Watch('search')
+  onChildChanged (val: string, oldVal: string) {
+    console.log('old value: ' + oldVal + ', new value: ' + val)
+    clearTimeout(this.timeout)
+    this.timeout = setTimeout(() => {
+      this.querySelections(val)
+    }, 1000)
+  }
+
   querySelections (v: string): void {
     this.loading = true
-    // Simulated ajax query
+    console.log('search: ' + v)
     Axios
       .get('/do-search', {
         params: { key: v }
@@ -91,7 +98,7 @@ export default class App extends Vue {
           this.items = response.data.WordList
           this.dict = response.data.Dict
           this.loading = false
-          console.log('search result: ' + response.data.WordList)
+          console.log('search response: key: ' + v + ', result: ' + response.data.WordList)
         }
       )
   }
@@ -103,5 +110,4 @@ export default class App extends Vue {
 }
 </script>
 <style lang="stylus">
-
 </style>
