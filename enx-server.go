@@ -22,6 +22,7 @@ func main() {
 	router.GET("/do-search", DoSearch)
 	router.GET("/third-party", DoSearchThirdParty)
 	router.GET("/wrap", Wrap)
+	router.GET("/translate", Translate)
 
 	err := router.Run()
 	handleErr(err)
@@ -49,11 +50,8 @@ func DoSearch(c *gin.Context) {
 	result.Dict = enx.FindOne(key)
 	if result.Dict == nil || result.Dict.Chinese == "" {
 		// 从第三方查
-		chinese := youdao.Query(key)
-		result.Dict = &enx.Dictionary{
-			English: key,
-			Chinese: chinese,
-		}
+		epc := youdao.Query(key)
+		result.Dict = epc
 
 	}
 	c.JSON(200, result)
@@ -68,17 +66,57 @@ func DoSearchThirdParty(c *gin.Context) {
 	result.WordList = words
 
 	// 从第三方查
-	chinese := youdao.Query(key)
-	result.Dict = &enx.Dictionary{
-		English: key,
-		Chinese: chinese,
-	}
+	epc := youdao.Query(key)
+	result.Dict = epc
 
 	c.JSON(200, result)
 }
 
+type article struct {
+	WidthMax int `json:"-"`
+	Lines    []*line
+}
+
+func (a *article) appendWords(word string) {
+	if len(a.Lines) == 0 {
+		a.Lines = append(a.Lines, &line{})
+	}
+	tmp := a.Lines[len(a.Lines)-1]
+	lineWidth := tmp.appendWords(word)
+	if lineWidth > a.WidthMax {
+		a.Lines = append(a.Lines, &line{})
+	}
+}
+
+type line struct {
+	width int
+	Words []string
+}
+
+func (l *line) appendWords(word string) int {
+	l.Words = append(l.Words, word)
+	l.width = l.width + len(word) + 1
+	return l.width
+}
+
 func Wrap(c *gin.Context) {
 	text := c.Query("text")
+	log.Debugf(text)
+	text = strings.ReplaceAll(text, "\n", " ")
 	arr := strings.Split(text, " ")
-	c.JSON(200, arr)
+	a := article{}
+	a.WidthMax = 80
+	for _, v := range arr {
+		a.appendWords(v)
+	}
+	c.JSON(200, a.Lines)
+}
+func Translate(c *gin.Context) {
+	word := c.Query("word")
+	epc := enx.FindOne(word)
+	if epc == nil || epc.English == "" {
+		log.Debugf("find from youdao: %s", word)
+		epc = youdao.Query(word)
+	}
+	c.JSON(200, epc)
 }
