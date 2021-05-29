@@ -113,6 +113,7 @@ func Wrap(c *gin.Context) {
 }
 func Translate(c *gin.Context) {
 	word := c.Query("word")
+	word = strings.ReplaceAll(word, ".", "")
 	epc := enx.FindOne(word)
 	if epc == nil || epc.English == "" {
 		log.Debugf("find from youdao: %s", word)
