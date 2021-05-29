@@ -47,3 +47,7 @@ func FindOne(key string) *Dictionary {
 
 	return &dict
 }
+
+func Save(ecp *Dictionary) {
+
+}
