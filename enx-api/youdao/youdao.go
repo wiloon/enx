@@ -2,9 +2,10 @@ package youdao
 
 import (
 	"enx-server/enx"
+	"enx-server/utils/logger"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
-	log "github.com/wiloon/pingd-log/logconfig/zaplog"
+	"log"
 	"net/http"
 	"net/url"
 )
@@ -16,7 +17,7 @@ func Query(words string) *enx.Dictionary {
 	params.Add("#keyfrom", "dict2.index")
 	baseUrl.RawQuery = params.Encode()
 
-	log.Infof("url: %v", baseUrl.String())
+	logger.Infof("url: %v", baseUrl.String())
 	resp, err := http.Get(baseUrl.String())
 	if err != nil {
 		fmt.Println(err)
@@ -33,12 +34,12 @@ func Query(words string) *enx.Dictionary {
 	}
 
 	p := doc.Find("#phrsListTab .phonetic")
-	log.Infof("pronounce: %v", p.Text())
+	logger.Infof("pronounce: %v", p.Text())
 
 	// Find the review items
 	// .trans-container
 	s := doc.Find("#phrsListTab .trans-container ul")
-	log.Infof("chinese: %v", s.Text())
+	logger.Infof("chinese: %v", s.Text())
 	epc := &enx.Dictionary{}
 	epc.English = words
 	epc.Pronunciation = p.Text()

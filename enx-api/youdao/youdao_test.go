@@ -1,12 +1,12 @@
 package youdao
 
 import (
-	log "github.com/wiloon/pingd-log/logconfig/zaplog"
+	"enx-server/utils/logger"
 	"testing"
 )
 
 func init() {
-	log.Init()
+	logger.Init("CONSOLE", "debug", "rssx-api")
 }
 func TestQuery0(t *testing.T) {
 
