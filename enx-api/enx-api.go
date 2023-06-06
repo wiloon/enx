@@ -2,18 +2,24 @@ package main
 
 import (
 	"enx-server/enx"
+	"enx-server/utils"
+	"enx-server/utils/logger"
 	"enx-server/youdao"
 	"github.com/gin-gonic/gin"
-	log "github.com/wiloon/pingd-log/logconfig/zaplog"
-	"github.com/wiloon/pingd-utils/utils"
+
 	"strings"
 )
 
 func main() {
-	log.Init()
+	logger.Init("CONSOLE", "debug", "rssx-api")
 
 	router := gin.Default()
 	router.GET("/ping", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"message": "pong",
+		})
+	})
+	router.GET("/foo", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"message": "pong",
 		})
@@ -26,12 +32,12 @@ func main() {
 
 	err := router.Run()
 	handleErr(err)
-	log.Info("enx server started and listening default port of gin")
+	logger.Info("enx server started and listening default port of gin")
 	utils.WaitSignals()
 }
 func handleErr(e error) {
 	if e != nil {
-		log.Info(e.Error())
+		logger.Info(e.Error())
 	}
 }
 
@@ -42,7 +48,7 @@ type SearchResult struct {
 
 func DoSearch(c *gin.Context) {
 	key := c.Query("key")
-	log.Infof("key: %v", key)
+	logger.Infof("key: %v", key)
 	words := enx.Search(key)
 
 	result := SearchResult{}
@@ -59,7 +65,7 @@ func DoSearch(c *gin.Context) {
 
 func DoSearchThirdParty(c *gin.Context) {
 	key := c.Query("key")
-	log.Infof("key: %v", key)
+	logger.Infof("key: %v", key)
 	words := enx.Search(key)
 
 	result := SearchResult{}
@@ -101,7 +107,7 @@ func (l *line) appendWords(word string) int {
 
 func Wrap(c *gin.Context) {
 	text := c.Query("text")
-	log.Debugf(text)
+	logger.Debugf(text)
 	text = strings.ReplaceAll(text, "\n", " ")
 	arr := strings.Split(text, " ")
 	a := article{}
@@ -116,7 +122,7 @@ func Translate(c *gin.Context) {
 	word = strings.ReplaceAll(word, ".", "")
 	epc := enx.FindOne(word)
 	if epc == nil || epc.English == "" {
-		log.Debugf("find from youdao: %s", word)
+		logger.Debugf("find from youdao: %s", word)
 		epc = youdao.Query(word)
 	}
 	c.JSON(200, epc)

@@ -1,8 +1,8 @@
 package enx
 
 import (
-	"github.com/wiloon/pingd-config"
-	"github.com/wiloon/pingd-data/mysql"
+	"enx-server/utils/config"
+	"enx-server/utils/mysql"
 )
 
 var enxDb *mysql.Database
