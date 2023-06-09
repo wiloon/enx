@@ -8,9 +8,11 @@ import (
 	"enx-server/utils/logger"
 	"enx-server/youdao"
 	"flag"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -22,6 +24,16 @@ func main() {
 	// ReleaseMode
 	gin.SetMode(gin.DebugMode)
 	router := gin.Default()
+
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"*"},
+		AllowMethods:     []string{"GET"},
+		AllowHeaders:     []string{"Origin"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: false,
+		MaxAge:           12 * time.Hour,
+	}))
+
 	router.GET("/ping", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"message": "pong",
@@ -56,11 +68,6 @@ func main() {
 	logger.Infof("listen end")
 	<-idleConnsClosed
 
-}
-func handleErr(e error) {
-	if e != nil {
-		logger.Info(e.Error())
-	}
 }
 
 type SearchResult struct {
