@@ -1,18 +1,26 @@
 package main
 
 import (
+	"context"
 	"enx-server/enx"
 	"enx-server/utils"
+	"enx-server/utils/config"
 	"enx-server/utils/logger"
 	"enx-server/youdao"
+	"flag"
 	"github.com/gin-gonic/gin"
-
+	"net/http"
 	"strings"
 )
 
 func main() {
-	logger.Init("CONSOLE", "debug", "rssx-api")
+	configPath := flag.String("config", "config.toml", "config file full path")
+	flag.Parse()
+	config.LoadConfigByPath(*configPath)
+	logger.Init("CONSOLE", "debug", "enx-api")
 
+	// ReleaseMode
+	gin.SetMode(gin.DebugMode)
 	router := gin.Default()
 	router.GET("/ping", func(c *gin.Context) {
 		c.JSON(200, gin.H{
@@ -30,10 +38,24 @@ func main() {
 	router.GET("/wrap", Wrap)
 	router.GET("/translate", Translate)
 
-	err := router.Run()
-	handleErr(err)
-	logger.Info("enx server started and listening default port of gin")
-	utils.WaitSignals()
+	srv := &http.Server{Addr: ":8080", Handler: router}
+
+	idleConnsClosed := make(chan struct{})
+	go func() {
+		utils.WaitSignals()
+		if err := srv.Shutdown(context.Background()); err != nil {
+			logger.Errorf("http server shutdown: %v", err)
+		}
+		close(idleConnsClosed)
+	}()
+
+	logger.Infof("listen start")
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		logger.Errorf("failed to listen, %v", err)
+	}
+	logger.Infof("listen end")
+	<-idleConnsClosed
+
 }
 func handleErr(e error) {
 	if e != nil {
