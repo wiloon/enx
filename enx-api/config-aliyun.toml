@@ -1,8 +1,8 @@
 [rssx]
-dev-mode=true
+dev-mode=false
 
 [mysql]
-address="mysql.wiloon.com:3306"
+address="localhost:3306"
 
 [sync]
 # minute
