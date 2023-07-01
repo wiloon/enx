@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"enx-server/enx"
+	"enx-server/storage/sqlitex"
 	"enx-server/utils"
 	"enx-server/utils/config"
 	"enx-server/utils/logger"
@@ -20,6 +21,7 @@ func main() {
 	flag.Parse()
 	config.LoadConfigByPath(*configPath)
 	logger.Init("CONSOLE", "debug", "enx-api")
+	sqlitex.Init("/var/lib/enx-api/enx.db")
 
 	// ReleaseMode
 	gin.SetMode(gin.DebugMode)
@@ -39,9 +41,19 @@ func main() {
 			"message": "pong",
 		})
 	})
-	router.GET("/foo", func(c *gin.Context) {
+
+	router.GET("/load-count", func(c *gin.Context) {
+		key := c.Query("words")
+		words := strings.Split(key, "_")
+		response := make(map[string]int)
+		for _, word := range words {
+			ecp := enx.Word{English: word}
+			loadCount := ecp.FindLoadCount()
+			response[word] = loadCount
+		}
+
 		c.JSON(200, gin.H{
-			"message": "pong",
+			"data": response,
 		})
 	})
 
