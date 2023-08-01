@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "Enx",
+  "version": "0.0.1",
+  "description": "A tool for learning English",
+  "action": {
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://enx.wiloon.com/*",
+    "https://developer.chrome.com/*"
+  ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "content_scripts": [
+    {
+      "js": [
+        "content.js"
+      ],
+      "matches": [
+        "https://developer.chrome.com/docs/extensions/*",
+        "https://developer.chrome.com/docs/webstore/*",
+        "https://portal.gofluent.cn/*"
+      ]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [ "inject.js" ],
+      "matches": [ "https://portal.gofluent.cn/*" ]
+    }
+  ],
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+B",
+        "mac": "Command+B"
+      }
+    }
+  }
+}
