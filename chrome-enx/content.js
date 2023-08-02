@@ -15,7 +15,7 @@ function findChildNodes(rootNode) {
 
             let re = /^[0-9a-zA-Z-,.']+$/;
             let startTag = '<u style="margin-left: 2px; margin-right: 2px; text-decoration: underline; text-decoration-thickness: 2px;">'
-            let startTagRed = '<u style="margin-left: 2px; margin-right: 2px; text-decoration: #F44336 underline; text-decoration-thickness: 2px;">'
+            let startTagRed = '<u onmouseover="mouseover0(this)" style="margin-left: 2px; margin-right: 2px; text-decoration: #F44336 underline; text-decoration-thickness: 2px;">'
             let startTagOrange = '<u style="margin-left: 2px; margin-right: 2px; text-decoration: #FF9800 underline; text-decoration-thickness: 2px;">'
 
             let wordArray = [];
@@ -32,7 +32,7 @@ function findChildNodes(rootNode) {
             (async () => {
                 console.log("sending msg from content script to backend, params: ", Date.now())
                 console.log(wordArray)
-                const response = await chrome.runtime.sendMessage({words: wordArray});
+                const response = await chrome.runtime.sendMessage({msgType: "getWords", words: wordArray});
                 // do something with response here, not outside the function
                 console.log("response from backend: ", Date.now())
                 console.log(response);
@@ -129,6 +129,33 @@ function enxUnMark() {
 
 injectScript(chrome.runtime.getURL('inject.js'), 'body');
 
+function getOneWord(word) {
+    (async () => {
+        console.log("sending msg from content script to backend, params: ", Date.now())
+        console.log(word)
+        const response = await chrome.runtime.sendMessage({msgType: "getOneWord", word: word});
+        // do something with response here, not outside the function
+        console.log("response from backend: ", Date.now())
+        console.log(response);
+        console.log(response.wordProperties);
+        for (let word of words) {
+            if (word in response.wordProperties) {
+                loadCount = response.wordProperties[word]
+                if (loadCount === 0) {
+                    newSpanContent = newSpanContent + startTagRed + word + '</u>'
+                } else if (loadCount > 10) {
+                    newSpanContent = newSpanContent + startTagOrange + word + '</u>'
+                } else {
+                    newSpanContent = newSpanContent + startTag + word + '</u>'
+                }
+            } else {
+                newSpanContent = newSpanContent + ' ' + word + ' '
+            }
+        }
+        node.innerHTML = newSpanContent
+    })();
+}
+
 window.addEventListener("message", function (event) {
     console.log("content script message event received")
     console.log(event.data)
@@ -146,6 +173,11 @@ window.addEventListener("message", function (event) {
     if (event.data.type && (event.data.type === "unMark")) {
         console.log("unmark event")
         enxUnMark()
+    }
+    if (event.data.type && (event.data.type === "getOneWord")) {
+        let word = event.data.type
+        console.log("content script, get one word: ", word)
+        getOneWord(word)
     }
 }, false);
 

@@ -62,13 +62,21 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
             "from the extension");
         console.log("request: ", Date.now())
         console.log(request)
-        let words = request.words
+        let msgType = request.msgType
+        if (msgType==="getWords"){
+            console.log("backend received msg, type: ", msgType)
+            let words = request.words
 
-        enxServerFoo(words).then(result => {
-            console.log("listener response: ", Date.now())
-            console.log(result.data)
-            sendResponse({wordProperties: result.data});
-        })
+            enxServerFoo(words).then(result => {
+                console.log("listener response: ", Date.now())
+                console.log(result.data)
+                sendResponse({wordProperties: result.data});
+            })
+        }else if (msgType==="getOneWord"){
+            console.log("backend received msg, type: ", msgType)
+            // send msg to enx server and get chinese
+        }
+
         return true;
     }
 );
