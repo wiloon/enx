@@ -160,15 +160,23 @@ func Wrap(c *gin.Context) {
 }
 func Translate(c *gin.Context) {
 	key := c.Query("word")
-	logger.Infof("translate word: %s", key)
+	logger.Debugf("translate word: %s", key)
 	key = strings.ReplaceAll(key, ".", "")
 	word := enx.Word{English: key}
 	word.FindChinese()
-	if word.English == "" {
+	if word.Chinese == "" {
 		logger.Debugf("find from youdao: %s", key)
 		epc := youdao.Query(key)
 		word.Chinese = epc.Chinese
 		word.Pronunciation = epc.Pronunciation
+		word.LoadCount = 1
+		word.CreateDatetime = time.Now()
+		word.UpdateDatetime = time.Now()
+		word.Save()
+	} else {
+		word.LoadCount = word.LoadCount + 1
+		word.UpdateDatetime = time.Now()
+		word.UpdateLoadCount()
 	}
 	c.JSON(200, word)
 }
