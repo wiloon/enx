@@ -22,7 +22,8 @@ function findChildNodes(rootNode) {
 
             let newSpanContent = ""
             for (let word of words) {
-                wordType = 0
+                word = word.replace(",", "");
+                word = word.replace(".", "");
                 if (re.test(word)) {
                     wordArray.push(word)
                 }
@@ -38,6 +39,8 @@ function findChildNodes(rootNode) {
                 console.log(response);
                 console.log(response.wordProperties);
                 for (let word of words) {
+                    word = word.replace(",", "");
+                    word = word.replace(".", "");
                     if (word in response.wordProperties) {
                         loadCount = response.wordProperties[word]
                         if (loadCount === 0) {
@@ -82,14 +85,17 @@ function injectScript(file_path, tag) {
 }
 
 async function addBtn() {
-
     console.log("sleep 5s and wait for article to load")
-    await sleep(5000)
 
-    articleClassElement = document.getElementsByClassName("Article");
+
+    let articleClassElement = document.getElementsByClassName("Article");
+    while (articleClassElement.length === 0) {
+        await sleep(1000)
+        articleClassElement = document.getElementsByClassName("Article");
+    }
     console.log(articleClassElement)
     console.log(articleClassElement.length)
-    articleNode = articleClassElement.item(0);
+    let articleNode = articleClassElement.item(0);
     console.log(articleNode)
 
 
@@ -161,7 +167,7 @@ window.addEventListener("message", function (event) {
         enxUnMark()
     }
     if (event.data.type && (event.data.type === "getOneWord")) {
-        let word = event.data.type
+        let word = event.data.word
         console.log("content script, get one word: ", word)
         getOneWord(word)
     }

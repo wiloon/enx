@@ -95,7 +95,6 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
                 sendResponse({ecp: result});
             })
         }
-
         return true;
     }
 );
