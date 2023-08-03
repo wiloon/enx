@@ -55,6 +55,18 @@ async function enxServerFoo(words) {
     return json
 }
 
+async function enxServerGetOne(word) {
+    let url = 'https://enx.wiloon.com/translate?word=' + word
+    console.log("calling enx server: ", Date.now())
+    const response = await fetch(url);
+    console.log("enx server response: ", Date.now())
+    console.log(response)
+    const json = await response.json();
+    console.log("enx server response json:")
+    console.log(json)
+    return json
+}
+
 // listen msg from content script
 chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
         console.log(sender.tab ?
@@ -63,7 +75,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
         console.log("request: ", Date.now())
         console.log(request)
         let msgType = request.msgType
-        if (msgType==="getWords"){
+        if (msgType === "getWords") {
             console.log("backend received msg, type: ", msgType)
             let words = request.words
 
@@ -72,9 +84,16 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
                 console.log(result.data)
                 sendResponse({wordProperties: result.data});
             })
-        }else if (msgType==="getOneWord"){
+        } else if (msgType === "getOneWord") {
+            let word = request.word
             console.log("backend received msg, type: ", msgType)
+            console.log("word: ", word)
             // send msg to enx server and get chinese
+            enxServerGetOne(word).then(result => {
+                console.log("listener response: ", Date.now())
+                console.log(result)
+                sendResponse({ecp: result});
+            })
         }
 
         return true;
