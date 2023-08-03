@@ -5,7 +5,10 @@ GET http://localhost:8080/load-count?words=foo_bar HTTP/1.1
 GET http://localhost:8080/load-count?words=STOCKHOLM HTTP/1.1
 
 ### aliyun
-GET https://enx.wiloon.com/load-count?words=foo_bar HTTP/1.1
+GET https://enx.wiloon.com/load-count?words=foo_bar_are HTTP/1.1
 
-### translate
+### translate, local
 GET http://localhost:8080/translate?word=foo HTTP/1.1
+
+### translate, aliyun
+GET https://enx.wiloon.com/translate?word=foo HTTP/1.1
