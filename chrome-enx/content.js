@@ -137,22 +137,8 @@ function getOneWord(word) {
         // do something with response here, not outside the function
         console.log("response from backend: ", Date.now())
         console.log(response);
-        console.log(response.wordProperties);
-        for (let word of words) {
-            if (word in response.wordProperties) {
-                loadCount = response.wordProperties[word]
-                if (loadCount === 0) {
-                    newSpanContent = newSpanContent + startTagRed + word + '</u>'
-                } else if (loadCount > 10) {
-                    newSpanContent = newSpanContent + startTagOrange + word + '</u>'
-                } else {
-                    newSpanContent = newSpanContent + startTag + word + '</u>'
-                }
-            } else {
-                newSpanContent = newSpanContent + ' ' + word + ' '
-            }
-        }
-        node.innerHTML = newSpanContent
+        console.log(response.ecp);
+
     })();
 }
 
