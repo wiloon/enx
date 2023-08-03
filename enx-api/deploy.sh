@@ -6,7 +6,7 @@ GOOS=linux GOARCH=amd64 go build -o ${package_name} enx-api.go
 
 echo "before upx"
 ls -lh ${package_name}
-upx -9 enx-api
+#upx -9 enx-api
 
 echo "after upx"
 ls -lh ${package_name}

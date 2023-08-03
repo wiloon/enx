@@ -159,12 +159,16 @@ func Wrap(c *gin.Context) {
 	c.JSON(200, a.Lines)
 }
 func Translate(c *gin.Context) {
-	word := c.Query("word")
-	word = strings.ReplaceAll(word, ".", "")
-	epc := enx.FindOne(word)
-	if epc == nil || epc.English == "" {
-		logger.Debugf("find from youdao: %s", word)
-		epc = youdao.Query(word)
+
+	key := c.Query("word")
+	key = strings.ReplaceAll(key, ".", "")
+	word := enx.Word{English: key}
+	word.FindChinese()
+	if word.English == "" {
+		logger.Debugf("find from youdao: %s", key)
+		epc := youdao.Query(key)
+		word.Chinese = epc.Chinese
+		word.Pronunciation = epc.Pronunciation
 	}
-	c.JSON(200, epc)
+	c.JSON(200, word)
 }
