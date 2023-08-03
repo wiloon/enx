@@ -159,8 +159,8 @@ func Wrap(c *gin.Context) {
 	c.JSON(200, a.Lines)
 }
 func Translate(c *gin.Context) {
-
 	key := c.Query("word")
+	logger.Infof("translate word: %s", key)
 	key = strings.ReplaceAll(key, ".", "")
 	word := enx.Word{English: key}
 	word.FindChinese()
