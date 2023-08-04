@@ -47,7 +47,8 @@ func main() {
 		words := strings.Split(key, "_")
 		response := make(map[string]int)
 		for _, word := range words {
-			ecp := enx.Word{English: word}
+			ecp := enx.Word{}
+			ecp.SetEnglish(word)
 			loadCount := ecp.FindLoadCount()
 			response[word] = loadCount
 		}
@@ -162,7 +163,9 @@ func Translate(c *gin.Context) {
 	key := c.Query("word")
 	logger.Debugf("translate word: %s", key)
 	key = strings.ReplaceAll(key, ".", "")
-	word := enx.Word{English: key}
+	word := enx.Word{}
+	word.SetEnglish(key)
+
 	word.FindChinese()
 	if word.Chinese == "" {
 		logger.Debugf("find from youdao: %s", key)
