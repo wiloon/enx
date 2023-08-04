@@ -10,16 +10,39 @@ function findChildNodes(rootNode) {
         let tagName = node.tagName
         if (tagName === 'SPAN') {
             let spanContent = node.innerHTML
-            console.log('span content: ', spanContent)
-            let words = spanContent.split(' ')
+            console.log('span inner html: ', spanContent)
+            // remove <a> tag
+            let filteredContent = ""
+            let tagAppeared = false
+            let collectWord = true
+            for (i = 0; i < spanContent.length; i++) {
+                if (!tagAppeared) {
+                    collectWord = true
+                }
+                c = spanContent.charAt(i)
+                if (c === "<") {
+                    // tag start
+                    tagAppeared = true
+                } else if (c === ">") {
+                    tagAppeared = false
+                }
+                if (tagAppeared) {
+                    collectWord = false
+                }
+                if (collectWord) {
+                    filteredContent += c
+                }
+            }
+            console.log("span inner html remove tag: ", filteredContent)
+            let words = filteredContent.split(' ')
+
 
             let re = /^[0-9a-zA-Z-,.']+$/;
-            let startTag = '<u style="margin-left: 2px; margin-right: 2px; text-decoration: underline; text-decoration-thickness: 2px;">'
+            let startTag = '<u onmouseover="mouseover0(this)" style="margin-left: 2px; margin-right: 2px; text-decoration: underline; text-decoration-thickness: 2px;">'
             let startTagRed = '<u onmouseover="mouseover0(this)" style="margin-left: 2px; margin-right: 2px; text-decoration: #F44336 underline; text-decoration-thickness: 2px;">'
-            let startTagOrange = '<u style="margin-left: 2px; margin-right: 2px; text-decoration: #FF9800 underline; text-decoration-thickness: 2px;">'
+            let startTagOrange = '<u onmouseover="mouseover0(this)" style="margin-left: 2px; margin-right: 2px; text-decoration: #FF9800 underline; text-decoration-thickness: 2px;">'
 
             let wordArray = [];
-
             let newSpanContent = ""
             for (let word of words) {
                 word = word.replace(",", "");
@@ -85,11 +108,11 @@ function injectScript(file_path, tag) {
 }
 
 async function addBtn() {
-    console.log("sleep 5s and wait for article to load")
-
+    console.log("adding btn")
 
     let articleClassElement = document.getElementsByClassName("Article");
     while (articleClassElement.length === 0) {
+        console.log("article tag not found, wait 1s...")
         await sleep(1000)
         articleClassElement = document.getElementsByClassName("Article");
     }
@@ -98,11 +121,10 @@ async function addBtn() {
     let articleNode = articleClassElement.item(0);
     console.log(articleNode)
 
-
     articleNode = articleClassElement.item(0);
     console.log(articleNode)
     articleNode.insertAdjacentHTML("afterbegin", "<button id='enx-on' onclick='enxOn()'>ENX-ON</button><button id='enx-off' onclick='enxOff()'>ENX-OFF</button>")
-
+    console.log("btn added")
 }
 
 
@@ -115,9 +137,8 @@ function findChildNodesAndUnmark(rootNode) {
     for (let node of childNodes) {
         let tagName = node.tagName
         if (tagName === 'U') {
-
             let spanContent = node.innerHTML
-            node.replaceWith(spanContent)
+            node.replaceWith(spanContent + " ")
 
         } else {
             findChildNodesAndUnmark(node)
