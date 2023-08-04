@@ -62,10 +62,11 @@ function findChildNodes(rootNode) {
                 console.log(response);
                 console.log(response.wordProperties);
                 for (let word of words) {
-                    word = word.replace(",", "");
-                    word = word.replace(".", "");
-                    if (word in response.wordProperties) {
-                        loadCount = response.wordProperties[word]
+                    wordLowerCase=word.toLowerCase();
+                    wordLowerCase = wordLowerCase.replace(",", "");
+                    wordLowerCase = wordLowerCase.replace(".", "");
+                    if (wordLowerCase in response.wordProperties) {
+                        loadCount = response.wordProperties[wordLowerCase]
                         if (loadCount === 0) {
                             newSpanContent = newSpanContent + startTagRed + word + '</u>'
                         } else if (loadCount > 10) {

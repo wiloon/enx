@@ -3,6 +3,7 @@ package enx
 import (
 	"enx-server/storage/sqlitex"
 	"enx-server/utils/logger"
+	"strings"
 	"time"
 )
 
@@ -16,6 +17,9 @@ type Word struct {
 	UpdateDatetime time.Time
 }
 
+func (word *Word) SetEnglish(english string) {
+	word.English = strings.ToLower(english)
+}
 func (word *Word) FindLoadCount() int {
 	sqlitex.DB.Where("english=?", word.English).Find(word)
 	logger.Debugf("word: %v", word)
