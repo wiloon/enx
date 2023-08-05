@@ -23,6 +23,7 @@ function mouseover0(obj){
     console.log("on mouse over")
     console.log(obj)
     console.log(obj.innerText)
+    document.getElementById("enx-window").style.display = "block";
     let word = obj.innerText
     // send word to enx server and get chinese
     window.postMessage({type: "getOneWord", word: word});

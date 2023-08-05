@@ -1,5 +1,15 @@
 console.log("content js running")
 
+function getColorCodeByCount(count) {
+    if (count === 0) {
+        return "#F44336"
+    } else if (count > 0 && count <= 10) {
+        return "#2196F3"
+    } else if (count > 10) {
+        return "#9C27B0"
+    }
+}
+
 function findChildNodes(rootNode) {
     let childNodes = rootNode.childNodes
     if (childNodes.length === 0) {
@@ -38,9 +48,7 @@ function findChildNodes(rootNode) {
 
 
             let re = /^[0-9a-zA-Z-,.']+$/;
-            let startTag = '<u onmouseover="mouseover0(this)" style="margin-left: 2px; margin-right: 2px; text-decoration: underline; text-decoration-thickness: 2px;">'
-            let startTagRed = '<u onmouseover="mouseover0(this)" style="margin-left: 2px; margin-right: 2px; text-decoration: #F44336 underline; text-decoration-thickness: 2px;">'
-            let startTagOrange = '<u onmouseover="mouseover0(this)" style="margin-left: 2px; margin-right: 2px; text-decoration: #FF9800 underline; text-decoration-thickness: 2px;">'
+            let startTag = '<u onmouseover="mouseover0(this)" class="class-foo" style="margin-left: 2px; margin-right: 2px; text-decoration: #000000 underline; text-decoration-thickness: 2px;">'
 
             let wordArray = [];
             let newSpanContent = ""
@@ -62,18 +70,17 @@ function findChildNodes(rootNode) {
                 console.log(response);
                 console.log(response.wordProperties);
                 for (let word of words) {
-                    wordLowerCase=word.toLowerCase();
+                    let wordLowerCase = word.toLowerCase();
                     wordLowerCase = wordLowerCase.replace(",", "");
                     wordLowerCase = wordLowerCase.replace(".", "");
                     if (wordLowerCase in response.wordProperties) {
-                        loadCount = response.wordProperties[wordLowerCase]
-                        if (loadCount === 0) {
-                            newSpanContent = newSpanContent + startTagRed + word + '</u>'
-                        } else if (loadCount > 10) {
-                            newSpanContent = newSpanContent + startTagOrange + word + '</u>'
-                        } else {
-                            newSpanContent = newSpanContent + startTag + word + '</u>'
-                        }
+                        let loadCount = response.wordProperties[wordLowerCase]
+                        console.log("word: ", wordLowerCase, " load count: ", loadCount)
+                        let colorCode = getColorCodeByCount(loadCount)
+                        startTag = startTag.replace("#000000", colorCode);
+                        startTag = startTag.replace("class-foo", "enx-" + wordLowerCase);
+                        newSpanContent = newSpanContent + startTag + word + '</u>'
+
                     } else {
                         newSpanContent = newSpanContent + ' ' + word + ' '
                     }
@@ -107,6 +114,13 @@ function injectScript(file_path, tag) {
     script.setAttribute('src', file_path);
     node.appendChild(script);
 }
+function injectCss(file_path, tag) {
+    let node = document.getElementsByTagName(tag)[0];
+    let link = document.createElement('link');
+    link.setAttribute('type', 'text/css');
+    link.setAttribute('href', file_path);
+    node.appendChild(link);
+}
 
 async function addBtn() {
     console.log("adding btn")
@@ -124,8 +138,32 @@ async function addBtn() {
 
     articleNode = articleClassElement.item(0);
     console.log(articleNode)
-    articleNode.insertAdjacentHTML("afterbegin", "<button id='enx-on' onclick='enxOn()'>ENX-ON</button><button id='enx-off' onclick='enxOff()'>ENX-OFF</button>")
-    console.log("btn added")
+
+    dragSvgUrl=chrome.runtime.getURL('drag.svg')
+    articleNode.insertAdjacentHTML("afterbegin", "<button id='enx-on' onclick='enxOn()'>ENX-ON</button><button id='enx-off' onclick='enxOff()'>ENX-OFF</button><div class='enx-window' id='enx-window'> <a id='enx-close' href='javascript:void(0);' class='enx-close'>关闭</a>   </div>")
+
+    document.getElementById("enx-close").onclick = function () {
+        document.getElementById("enx-window").style.display = "none";
+    };
+    // 按下鼠标，移动鼠标，移动登录框
+    // document.getElementById("enx-title").onmousedown = function (e) {
+    //     // 获取此时的可视区域的横坐标，此时登陆框距离左侧页面的横坐标
+    //     var spaceX = e.clientX - document.getElementById("enx-window").offsetLeft;
+    //     var spaceY = e.clientY - document.getElementById("enx-window").offsetTop;
+    //     // 移动事件
+    //     document.onmousemove = function (e) {
+    //         // 新的可视区域的横坐标-spaceX=====新的值——》登录框的left属性
+    //         var x = e.clientX - spaceX + 250;
+    //         var y = e.clientY - spaceY - 140;
+    //         document.getElementById("enx-window").style.left = x + "px";
+    //         document.getElementById("enx-window").style.top = y + "px";
+    //     };
+    // };
+    // document.onmouseup = function () {
+    //     document.onmousemove = null;//当鼠标抬起的时候,把鼠标移动事件干掉
+    // };
+
+    console.log("html added")
 }
 
 
@@ -160,13 +198,29 @@ injectScript(chrome.runtime.getURL('inject.js'), 'body');
 function getOneWord(word) {
     (async () => {
         console.log("sending msg from content script to backend, params: ", Date.now())
+        word = word.replace(",", "");
+        word = word.replace(".", "");
         console.log(word)
         const response = await chrome.runtime.sendMessage({msgType: "getOneWord", word: word});
         // do something with response here, not outside the function
         console.log("response from backend: ", Date.now())
         console.log(response);
         console.log(response.ecp);
-
+        className = "enx-" + response.ecp.English
+        articleClassElement = document.getElementsByClassName(className);
+        console.log("get element by class name: ", className)
+        console.log(articleClassElement)
+        if (articleClassElement.length > 0) {
+            for (element in articleClassElement) {
+                // style="margin-left: 2px; margin-right: 2px; text-decoration: #FF9800 underline; text-decoration-thickness: 2px;"
+                colorCode = getColorCodeByCount(response.ecp.LoadCount)
+                if (articleClassElement[element] === undefined || articleClassElement[element].style === undefined) {
+                    continue
+                }
+                articleClassElement[element].style.textDecoration = colorCode + " underline"
+                articleClassElement[element].style.textDecorationThickness = "2px"
+            }
+        }
     })();
 }
 
@@ -174,8 +228,7 @@ window.addEventListener("message", function (event) {
     console.log("content script message event received")
     console.log(event.data)
     // only accept messages from the current tab
-    if (event.source !== window)
-        return;
+    if (event.source !== window) return;
 
     if (event.data.type && (event.data.type === "FROM_PAGE")) {
         console.log("mark event: ", Date.now())
