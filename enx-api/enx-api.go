@@ -42,21 +42,7 @@ func main() {
 		})
 	})
 
-	router.GET("/load-count", func(c *gin.Context) {
-		key := c.Query("words")
-		words := strings.Split(key, "_")
-		response := make(map[string]int)
-		for _, word := range words {
-			ecp := enx.Word{}
-			ecp.SetEnglish(word)
-			loadCount := ecp.FindLoadCount()
-			response[word] = loadCount
-		}
-
-		c.JSON(200, gin.H{
-			"data": response,
-		})
-	})
+	router.GET("/load-count", LoadCount)
 
 	router.GET("/do-search", DoSearch)
 	router.GET("/third-party", DoSearchThirdParty)
@@ -158,6 +144,21 @@ func Wrap(c *gin.Context) {
 		a.appendWords(v)
 	}
 	c.JSON(200, a.Lines)
+}
+func LoadCount(c *gin.Context) {
+	key := c.Query("words")
+	words := strings.Split(key, "_")
+	response := make(map[string]int)
+	for _, word := range words {
+		ecp := enx.Word{}
+		ecp.SetEnglish(word)
+		loadCount := ecp.FindLoadCount()
+		response[ecp.English] = loadCount
+	}
+
+	c.JSON(200, gin.H{
+		"data": response,
+	})
 }
 func Translate(c *gin.Context) {
 	key := c.Query("word")

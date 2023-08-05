@@ -29,12 +29,15 @@
         "https://developer.chrome.com/docs/extensions/*",
         "https://developer.chrome.com/docs/webstore/*",
         "https://portal.gofluent.cn/*"
+      ],
+      "css": [
+        "inject.css"
       ]
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": [ "inject.js" ],
+      "resources": [ "inject.js","inject.css","drag.svg" ],
       "matches": [ "https://portal.gofluent.cn/*" ]
     }
   ],
