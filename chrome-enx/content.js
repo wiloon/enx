@@ -114,13 +114,6 @@ function injectScript(file_path, tag) {
     script.setAttribute('src', file_path);
     node.appendChild(script);
 }
-function injectCss(file_path, tag) {
-    let node = document.getElementsByTagName(tag)[0];
-    let link = document.createElement('link');
-    link.setAttribute('type', 'text/css');
-    link.setAttribute('href', file_path);
-    node.appendChild(link);
-}
 
 async function addBtn() {
     console.log("adding btn")
