@@ -48,7 +48,7 @@ function findChildNodes(rootNode) {
 
 
             let re = /^[0-9a-zA-Z-,.']+$/;
-            let startTag = '<u onmouseover="mouseover0(this)" class="class-foo" style="margin-left: 2px; margin-right: 2px; text-decoration: #000000 underline; text-decoration-thickness: 2px;">'
+            let startTag = '<u onmouseover="mouseover0(event)" class="class-foo" style="margin-left: 2px; margin-right: 2px; text-decoration: #000000 underline; text-decoration-thickness: 2px;">'
 
             let wordArray = [];
             let newSpanContent = ""
@@ -133,7 +133,7 @@ async function addBtn() {
     console.log(articleNode)
 
     dragSvgUrl=chrome.runtime.getURL('drag.svg')
-    articleNode.insertAdjacentHTML("afterbegin", "<button id='enx-on' onclick='enxOn()'>ENX-ON</button><button id='enx-off' onclick='enxOff()'>ENX-OFF</button><div class='enx-window' id='enx-window'> <a id='enx-close' href='javascript:void(0);' class='enx-close'>关闭</a>   </div>")
+    articleNode.insertAdjacentHTML("afterbegin", "<div class='enx-window' id='enx-window'> <a id='enx-close' href='javascript:void(0);' class='enx-close'>关闭</a></div><button id='enx-on' onclick='enxOn()'>ENX-ON</button><button id='enx-off' onclick='enxOff()'>ENX-OFF</button>")
 
     document.getElementById("enx-close").onclick = function () {
         document.getElementById("enx-window").style.display = "none";
