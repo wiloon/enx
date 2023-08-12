@@ -1,10 +1,15 @@
 .enx-window {
-    width: 512px;
+    height: 200px;
+    width: 500px;
     position: absolute;
     border: #ebebeb solid 1px;
-    height: 100px;
     background-color: #fff;
-    box-shadow: 0px 0px 20px #ddd;
+        box-shadow: 0px 0px 20px #ddd;
     z-index: 9999;
     display: none;
+}
+
+.enx-ecp{
+    font-size: 10px;
+    margin: 0;
 }

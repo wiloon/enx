@@ -18,7 +18,10 @@ function findChildNodes(rootNode) {
 
     for (let node of childNodes) {
         let tagName = node.tagName
+        // find span tag
         if (tagName === 'SPAN') {
+            console.log("span node: ",node)
+            console.log("span node rect: ",node.getBoundingClientRect())
             let spanContent = node.innerHTML
             console.log('span inner html: ', spanContent)
             // remove <a> tag
@@ -133,7 +136,7 @@ async function addBtn() {
     console.log(articleNode)
 
     dragSvgUrl=chrome.runtime.getURL('drag.svg')
-    articleNode.insertAdjacentHTML("afterbegin", "<div class='enx-window' id='enx-window'> <a id='enx-close' href='javascript:void(0);' class='enx-close'>关闭</a></div><button id='enx-on' onclick='enxOn()'>ENX-ON</button><button id='enx-off' onclick='enxOff()'>ENX-OFF</button>")
+    articleNode.insertAdjacentHTML("afterbegin", "<div class='enx-window' id='enx-window'> <a id='enx-close' href='javascript:void(0);' class='enx-close'>关闭</a><p id='enx-e' class='enx-ecp'></p><p id='enx-p' class='enx-ecp'></p><p id='enx-c' class='enx-ecp'></p></div><button id='enx-on' onclick='enxOn()'>ENX-ON</button><button id='enx-off' onclick='enxOff()'>ENX-OFF</button>")
 
     document.getElementById("enx-close").onclick = function () {
         document.getElementById("enx-window").style.display = "none";
@@ -199,6 +202,17 @@ function getOneWord(word) {
         console.log("response from backend: ", Date.now())
         console.log(response);
         console.log(response.ecp);
+        let ecp = response.ecp
+        // update enx window
+        let enxE = document.getElementById("enx-e")
+        enxE.innerText=ecp.English
+        let enxP = document.getElementById("enx-p")
+        enxP.innerText=ecp.Pronunciation
+        let enxC = document.getElementById("enx-c")
+        enxC.innerText=ecp.Chinese
+
+
+        // update underline color
         className = "enx-" + response.ecp.English
         articleClassElement = document.getElementsByClassName(className);
         console.log("get element by class name: ", className)

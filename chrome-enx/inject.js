@@ -24,28 +24,30 @@ let baseY = -1;
 
 function mouseover0(event) {
     console.log("on mouse over")
-    console.log(event)
+    console.log("mouse event: ",event)
     console.log("event client x: ", event.clientX)
     console.log("event client y: ", event.clientY)
 
     let eventTarget = event.target;
     let eventTargetRect = eventTarget.getBoundingClientRect();
     console.log("event target rect: ", eventTargetRect)
-    console.log("event target style: ", eventTarget.style)
     document.getElementById("enx-window").style.display = "block";
+
     let enxWindowRect = document.getElementById("enx-window").getBoundingClientRect()
-    console.log(enxWindowRect)
+    console.log("enx rect: ",enxWindowRect)
     console.log("enx window left: ", enxWindowRect.left);
     console.log("enx window top: ", enxWindowRect.top);
+    console.log("enx window top: ", enxWindowRect.height);
+    let enxHeight=enxWindowRect.height
     if (baseX === -1 && baseY === -1) {
         console.log("set base x y")
         baseX = enxWindowRect.left
         baseY = enxWindowRect.top
     }
     let offsetX = 0;
-    let offsetY = 0;
+    let offsetY = -10;
     let newX = event.clientX - baseX + offsetX;
-    let newY = eventTargetRect.bottom - baseY + offsetY;
+    let newY = event.clientY - baseY + offsetY+(-1*enxHeight);
 
     console.log("new x: ", newX);
     console.log("new y: ", newY)
