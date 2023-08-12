@@ -19,12 +19,41 @@ function enxOff() {
     window.postMessage({type: "unMark", essential});
 }
 
-function mouseover0(obj){
+let baseX = -1;
+let baseY = -1;
+
+function mouseover0(event) {
     console.log("on mouse over")
-    console.log(obj)
-    console.log(obj.innerText)
+    console.log(event)
+    console.log("event client x: ", event.clientX)
+    console.log("event client y: ", event.clientY)
+
+    let eventTarget = event.target;
+    let eventTargetRect = eventTarget.getBoundingClientRect();
+    console.log("event target rect: ", eventTargetRect)
+    console.log("event target style: ", eventTarget.style)
     document.getElementById("enx-window").style.display = "block";
-    let word = obj.innerText
+    let enxWindowRect = document.getElementById("enx-window").getBoundingClientRect()
+    console.log(enxWindowRect)
+    console.log("enx window left: ", enxWindowRect.left);
+    console.log("enx window top: ", enxWindowRect.top);
+    if (baseX === -1 && baseY === -1) {
+        console.log("set base x y")
+        baseX = enxWindowRect.left
+        baseY = enxWindowRect.top
+    }
+    let offsetX = 0;
+    let offsetY = 0;
+    let newX = event.clientX - baseX + offsetX;
+    let newY = eventTargetRect.bottom - baseY + offsetY;
+
+    console.log("new x: ", newX);
+    console.log("new y: ", newY)
+
+    document.getElementById("enx-window").style.left = newX + "px";
+    document.getElementById("enx-window").style.top = newY + "px";
+    console.log(document.getElementById("enx-window").getBoundingClientRect())
+    let word = event.target.innerText
     // send word to enx server and get chinese
     window.postMessage({type: "getOneWord", word: word});
 }
