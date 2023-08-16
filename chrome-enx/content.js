@@ -10,6 +10,8 @@ function getColorCodeByCount(count) {
     }
 }
 
+let spanWidth = 0;
+
 function findChildNodes(rootNode) {
     let childNodes = rootNode.childNodes
     if (childNodes.length === 0) {
@@ -20,10 +22,15 @@ function findChildNodes(rootNode) {
         let tagName = node.tagName
         // find span tag
         if (tagName === 'SPAN') {
-            console.log("span node: ",node)
-            console.log("span node rect: ",node.getBoundingClientRect())
+            console.log("span node: ", node)
+            console.log("span width: ", node.getBoundingClientRect().width)
+            if (node.getBoundingClientRect().width > spanWidth) {
+                spanWidth = node.getBoundingClientRect().width
+            }
+
             let spanContent = node.innerHTML
             console.log('span inner html: ', spanContent)
+            console.log("span width: ", spanWidth)
             // remove <a> tag
             let filteredContent = ""
             let tagAppeared = false
@@ -54,7 +61,7 @@ function findChildNodes(rootNode) {
             let startTag = '<u onmouseover="mouseover0(event)" class="class-foo" style="margin-left: 2px; margin-right: 2px; text-decoration: #000000 underline; text-decoration-thickness: 2px;">'
 
             let wordArray = [];
-            let newSpanContent = ""
+
             for (let word of words) {
                 word = word.replace(",", "");
                 word = word.replace(".", "");
@@ -72,7 +79,18 @@ function findChildNodes(rootNode) {
                 console.log("response from backend: ", Date.now())
                 console.log(response);
                 console.log(response.wordProperties);
+
+                let newSpanContent = ""
+                let spanContentLength = 0
+                let wordMargin = 4;
+
                 for (let word of words) {
+                    if (spanContentLength > 0 && spanWidth > 50 && spanContentLength > (spanWidth - 50)) {
+                        newSpanContent = newSpanContent + "<br>"
+                        spanContentLength=0
+                        console.log("insert br, span width: ", spanWidth, ", span content width: ", spanContentLength)
+                    }
+
                     let wordLowerCase = word.toLowerCase();
                     wordLowerCase = wordLowerCase.replace(",", "");
                     wordLowerCase = wordLowerCase.replace(".", "");
@@ -87,6 +105,8 @@ function findChildNodes(rootNode) {
                     } else {
                         newSpanContent = newSpanContent + ' ' + word + ' '
                     }
+                    spanContentLength = spanContentLength + word.length*8 + wordMargin
+                    console.log("span content width: ", spanContentLength)
                 }
                 node.innerHTML = newSpanContent
             })();
@@ -135,7 +155,7 @@ async function addBtn() {
     articleNode = articleClassElement.item(0);
     console.log(articleNode)
 
-    dragSvgUrl=chrome.runtime.getURL('drag.svg')
+    dragSvgUrl = chrome.runtime.getURL('drag.svg')
     articleNode.insertAdjacentHTML("afterbegin", "<div class='enx-window' id='enx-window'> <a id='enx-close' href='javascript:void(0);' class='enx-close'>关闭</a><p id='enx-e' class='enx-ecp'></p><p id='enx-p' class='enx-ecp'></p><p id='enx-c' class='enx-ecp'></p></div><button id='enx-on' onclick='enxOn()'>ENX-ON</button><button id='enx-off' onclick='enxOff()'>ENX-OFF</button>")
 
     document.getElementById("enx-close").onclick = function () {
@@ -205,11 +225,11 @@ function getOneWord(word) {
         let ecp = response.ecp
         // update enx window
         let enxE = document.getElementById("enx-e")
-        enxE.innerText=ecp.English
+        enxE.innerText = ecp.English
         let enxP = document.getElementById("enx-p")
-        enxP.innerText=ecp.Pronunciation
+        enxP.innerText = ecp.Pronunciation
         let enxC = document.getElementById("enx-c")
-        enxC.innerText=ecp.Chinese
+        enxC.innerText = ecp.Chinese
 
 
         // update underline color
