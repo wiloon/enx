@@ -58,7 +58,6 @@ function findChildNodes(rootNode) {
 
 
             let re = /^[0-9a-zA-Z-,.']+$/;
-            let startTag = '<u onmouseover="mouseover0(event)" class="class-foo" style="margin-left: 2px; margin-right: 2px; text-decoration: #000000 underline; text-decoration-thickness: 2px;">'
 
             let wordArray = [];
 
@@ -87,7 +86,7 @@ function findChildNodes(rootNode) {
                 for (let word of words) {
                     if (spanContentLength > 0 && spanWidth > 50 && spanContentLength > (spanWidth - 50)) {
                         newSpanContent = newSpanContent + "<br>"
-                        spanContentLength=0
+                        spanContentLength = 0
                         console.log("insert br, span width: ", spanWidth, ", span content width: ", spanContentLength)
                     }
 
@@ -98,14 +97,16 @@ function findChildNodes(rootNode) {
                         let loadCount = response.wordProperties[wordLowerCase]
                         console.log("word: ", wordLowerCase, " load count: ", loadCount)
                         let colorCode = getColorCodeByCount(loadCount)
+                        console.log("word: ", wordLowerCase,", load count: ", loadCount, ", color code: ", colorCode)
+                        let startTag = '<u onclick="funcFoo(event)" class="class-foo" style="text-decoration: #000000 underline; text-decoration-thickness: 2px;">'
                         startTag = startTag.replace("#000000", colorCode);
                         startTag = startTag.replace("class-foo", "enx-" + wordLowerCase);
-                        newSpanContent = newSpanContent + startTag + word + '</u>'
+                        newSpanContent = newSpanContent + startTag + word + '</u> '
 
                     } else {
                         newSpanContent = newSpanContent + ' ' + word + ' '
                     }
-                    spanContentLength = spanContentLength + word.length*8 + wordMargin
+                    spanContentLength = spanContentLength + word.length * 8 + wordMargin
                     console.log("span content width: ", spanContentLength)
                 }
                 node.innerHTML = newSpanContent
@@ -217,6 +218,10 @@ function getOneWord(word) {
         word = word.replace(",", "");
         word = word.replace(".", "");
         console.log(word)
+        document.getElementById("enx-e").innerText = word
+        document.getElementById("enx-p").innerText = "Loading..."
+        document.getElementById("enx-c").innerText = ""
+
         const response = await chrome.runtime.sendMessage({msgType: "getOneWord", word: word});
         // do something with response here, not outside the function
         console.log("response from backend: ", Date.now())
@@ -224,12 +229,9 @@ function getOneWord(word) {
         console.log(response.ecp);
         let ecp = response.ecp
         // update enx window
-        let enxE = document.getElementById("enx-e")
-        enxE.innerText = ecp.English
-        let enxP = document.getElementById("enx-p")
-        enxP.innerText = ecp.Pronunciation
-        let enxC = document.getElementById("enx-c")
-        enxC.innerText = ecp.Chinese
+        document.getElementById("enx-e").innerText = ecp.English
+        document.getElementById("enx-p").innerText = ecp.Pronunciation
+        document.getElementById("enx-c").innerText = ecp.Chinese
 
 
         // update underline color
