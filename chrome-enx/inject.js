@@ -22,7 +22,7 @@ function enxOff() {
 let baseX = -1;
 let baseY = -1;
 
-function mouseover0(event) {
+function funcFoo(event) {
     console.log("on mouse over")
     console.log("mouse event: ", event)
     console.log("event client x: ", event.clientX)
