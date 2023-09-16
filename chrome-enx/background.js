@@ -43,8 +43,8 @@ chrome.action.onClicked.addListener(async (tab) => {
 
 // send http request to enx server
 async function enxServerFoo(words) {
-    let concatenatedWords = words.join("_")
-    let url = 'https://enx.wiloon.com/load-count?words=' + concatenatedWords
+    words = encodeURIComponent(words);
+    let url = 'https://enx.wiloon.com/words-count?words=' + words
     console.log("calling enx server: ", Date.now())
     const response = await fetch(url);
     console.log("enx server response: ", Date.now())

@@ -29,6 +29,8 @@ function findChildNodes(rootNode) {
             }
 
             let spanContent = node.innerHTML
+            let oneParagraph = node.innerText
+            console.log('span text: ', oneParagraph)
             console.log('span inner html: ', spanContent)
             console.log("span width: ", spanWidth)
             // remove <a> tag
@@ -72,8 +74,7 @@ function findChildNodes(rootNode) {
             // get word properties from backend
             (async () => {
                 console.log("sending msg from content script to backend, params: ", Date.now())
-                console.log(wordArray)
-                const response = await chrome.runtime.sendMessage({msgType: "getWords", words: wordArray});
+                const response = await chrome.runtime.sendMessage({msgType: "getWords", words: oneParagraph});
                 // do something with response here, not outside the function
                 console.log("response from backend: ", Date.now())
                 console.log(response);

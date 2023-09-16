@@ -1,3 +1,6 @@
+### words count, local
+GET http://localhost:8080/words-count?words=Watches%20from%20Switzerland%20are%20popular.%20Now%2C%20many%20people%20also%20buy%20secondhand%20Swiss%20watches.%20According%20to%20a%20study%2C%20the%20secondhand%20watch%20business%20is%20now%20worth%20almost%2020%20billion%20Swiss%20francs.%20It%20could%20reach%2035%20billion%20francs%20by%202030. HTTP/1.1
+
 ### load count, local
 GET http://localhost:8080/load-count?words=foo_bar HTTP/1.1
 
