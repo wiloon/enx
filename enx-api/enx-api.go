@@ -43,6 +43,7 @@ func main() {
 	})
 
 	router.GET("/load-count", LoadCount)
+	router.GET("/words-count", WordsCount)
 
 	router.GET("/do-search", DoSearch)
 	router.GET("/third-party", DoSearchThirdParty)
@@ -183,4 +184,11 @@ func Translate(c *gin.Context) {
 		word.UpdateLoadCount()
 	}
 	c.JSON(200, word)
+}
+func WordsCount(c *gin.Context) {
+	words := c.Query("words")
+	logger.Debugf("words count, words: %s", words)
+	c.JSON(200, gin.H{
+		"data": "",
+	})
 }
