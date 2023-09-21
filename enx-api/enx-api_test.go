@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"enx-server/enx"
 	"enx-server/utils/logger"
 	"fmt"
 	"github.com/go-resty/resty/v2"
+	"regexp"
 	"testing"
 )
 
@@ -14,11 +16,19 @@ var client *resty.Client
 func init() {
 	client = resty.New()
 }
-func Test0(t *testing.T) {
-	LoadCount()
+
+var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z ]+`)
+
+func TestWordsCount(t *testing.T) {
+	words := "Watches from Switzerland are popular. Now, many people also buy secondhand Swiss watches. According to a study, the secondhand watch business is now worth almost 20 billion Swiss francs. It could reach 35 billion francs by 2030."
+	enx.WordsCount0(words)
 }
 
-func LoadCount() {
+func Test0(t *testing.T) {
+	LoadCount0()
+}
+
+func LoadCount0() {
 	url := fmt.Sprintf("http://%s/load-count?words=%s", "127.0.0.1:8080", "foo_bar")
 	logger.Infof("request list, url: %s", url)
 

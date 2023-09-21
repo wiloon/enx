@@ -12,6 +12,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -162,33 +163,32 @@ func LoadCount(c *gin.Context) {
 	})
 }
 func Translate(c *gin.Context) {
-	key := c.Query("word")
-	logger.Debugf("translate word: %s", key)
-	key = strings.ReplaceAll(key, ".", "")
+	english := c.Query("word")
+	logger.Debugf("translate word: %s", english)
+	english = regexp.MustCompile(`[^a-zA-Z ]+`).ReplaceAllString(english, "")
 	word := enx.Word{}
-	word.SetEnglish(key)
+	word.SetEnglish(english)
 
 	word.FindChinese()
 	if word.Chinese == "" {
-		logger.Debugf("find from youdao: %s", key)
-		epc := youdao.Query(key)
+		logger.Debugf("find from youdao: %s", english)
+		epc := youdao.Query(english)
 		word.Chinese = epc.Chinese
 		word.Pronunciation = epc.Pronunciation
 		word.LoadCount = 1
-		word.CreateDatetime = time.Now()
-		word.UpdateDatetime = time.Now()
 		word.Save()
 	} else {
 		word.LoadCount = word.LoadCount + 1
-		word.UpdateDatetime = time.Now()
 		word.UpdateLoadCount()
 	}
 	c.JSON(200, word)
 }
+
 func WordsCount(c *gin.Context) {
 	words := c.Query("words")
 	logger.Debugf("words count, words: %s", words)
+	WordsCount0 := enx.WordsCount0(words)
 	c.JSON(200, gin.H{
-		"data": "",
+		"data": WordsCount0,
 	})
 }

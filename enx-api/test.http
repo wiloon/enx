@@ -17,4 +17,4 @@ GET http://localhost:8080/translate?word=foo HTTP/1.1
 GET https://enx.wiloon.com/translate?word=foo HTTP/1.1
 
 ### translate, local
-GET http://localhost:8080/translate?word=fruits HTTP/1.1
+GET http://localhost:8080/translate?word=Watches HTTP/1.1

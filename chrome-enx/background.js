@@ -45,9 +45,9 @@ chrome.action.onClicked.addListener(async (tab) => {
 async function enxServerFoo(words) {
     words = encodeURIComponent(words);
     let url = 'https://enx.wiloon.com/words-count?words=' + words
-    console.log("calling enx server: ", Date.now())
+    console.log("calling enx server")
     const response = await fetch(url);
-    console.log("enx server response: ", Date.now())
+    console.log("enx server response")
     console.log(response)
     const json = await response.json();
     console.log("enx server response json:")
@@ -80,7 +80,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
             let words = request.words
 
             enxServerFoo(words).then(result => {
-                console.log("listener response: ", Date.now())
+                console.log("listener response")
                 console.log(result.data)
                 sendResponse({wordProperties: result.data});
             })
