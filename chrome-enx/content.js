@@ -76,7 +76,7 @@ function findChildNodes(rootNode) {
                 console.log("sending msg from content script to backend, params: ", Date.now())
                 const response = await chrome.runtime.sendMessage({msgType: "getWords", words: oneParagraph});
                 // do something with response here, not outside the function
-                console.log("response from backend: ", Date.now())
+                console.log("response from backend")
                 console.log(response);
                 console.log(response.wordProperties);
 
@@ -84,28 +84,30 @@ function findChildNodes(rootNode) {
                 let spanContentLength = 0
                 let wordMargin = 4;
 
-                for (let word of words) {
+                wordsInParagraph = oneParagraph.split(' ')
+                for (let wordRaw of wordsInParagraph) {
                     if (spanContentLength > 0 && spanWidth > 50 && spanContentLength > (spanWidth - 50)) {
                         newSpanContent = newSpanContent + "<br>"
                         spanContentLength = 0
                         console.log("insert br, span width: ", spanWidth, ", span content width: ", spanContentLength)
                     }
 
-                    let wordLowerCase = word.toLowerCase();
-                    wordLowerCase = wordLowerCase.replace(",", "");
-                    wordLowerCase = wordLowerCase.replace(".", "");
-                    if (wordLowerCase in response.wordProperties) {
-                        let loadCount = response.wordProperties[wordLowerCase]
-                        console.log("word: ", wordLowerCase, " load count: ", loadCount)
+                    word = wordRaw.replace(/[^a-zA-Z\-]/g, '');
+                    if (word.length === 0) {
+                        continue
+                    }
+
+                    if (word in response.wordProperties) {
+                        let loadCount = response.wordProperties[word].LoadCount
+                        console.log("word: ", word, " load count: ", loadCount)
                         let colorCode = getColorCodeByCount(loadCount)
-                        console.log("word: ", wordLowerCase,", load count: ", loadCount, ", color code: ", colorCode)
+                        console.log("word: ", word, ", load count: ", loadCount, ", color code: ", colorCode)
                         let startTag = '<u onclick="funcFoo(event)" class="class-foo" style="text-decoration: #000000 underline; text-decoration-thickness: 2px;">'
                         startTag = startTag.replace("#000000", colorCode);
-                        startTag = startTag.replace("class-foo", "enx-" + wordLowerCase);
-                        newSpanContent = newSpanContent + startTag + word + '</u> '
-
+                        startTag = startTag.replace("class-foo", "enx-" + word);
+                        newSpanContent = newSpanContent + startTag + wordRaw + '</u> '
                     } else {
-                        newSpanContent = newSpanContent + ' ' + word + ' '
+                        newSpanContent = newSpanContent + ' ' + wordRaw + ' '
                     }
                     spanContentLength = spanContentLength + word.length * 8 + wordMargin
                     console.log("span content width: ", spanContentLength)
