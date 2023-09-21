@@ -22,13 +22,15 @@ function enxOff() {
 let baseX = -1;
 let baseY = -1;
 
-function funcFoo(event) {
+function funcFoo(mouseEvent) {
     console.log("on mouse over")
-    console.log("mouse event: ", event)
-    console.log("event client x: ", event.clientX)
-    console.log("event client y: ", event.clientY)
+    console.log("mouse event: ", mouseEvent)
+    let mouseEventX= mouseEvent.clientX;
+    let mouseEventY = mouseEvent.clientY;
+    console.log("mouse event client x: ", mouseEventX)
+    console.log("mouse event client y: ", mouseEventY)
 
-    let eventTarget = event.target;
+    let eventTarget = mouseEvent.target;
     let eventTargetRect = eventTarget.getBoundingClientRect();
     console.log("event target rect: ", eventTargetRect)
     document.getElementById("enx-window").style.display = "block";
@@ -37,25 +39,28 @@ function funcFoo(event) {
     console.log("enx rect: ", enxWindowRect)
     console.log("enx window left: ", enxWindowRect.left);
     console.log("enx window top: ", enxWindowRect.top);
-    console.log("enx window top: ", enxWindowRect.height);
+    console.log("enx window height: ", enxWindowRect.height);
     let enxHeight = enxWindowRect.height
-    if (baseX === -1 && baseY === -1) {
-        console.log("set base x y")
-        baseX = enxWindowRect.left
-        baseY = enxWindowRect.top
-    }
+
+    let articleElement = document.getElementsByClassName("Article");
+    let articleRect= articleElement[0].getBoundingClientRect();
+    baseX = articleRect.left
+    baseY = articleRect.top
+    console.log("base x: ", baseX)
+    console.log("base y: ", baseY)
+
     let offsetX = 0;
     let offsetY = -10;
-    let newX = event.clientX - baseX + offsetX;
-    let newY = event.clientY - baseY + offsetY + (-1 * enxHeight);
+    let newX = mouseEventX - baseX + offsetX;
+    let newY = mouseEventY - baseY + offsetY + (-1 * enxHeight);
 
     console.log("new x: ", newX);
-    console.log("new y: ", newY);
+    console.log("mouse event y:",mouseEventY,"base y:",baseY,"offset y:",offsetY,"enx height:",enxHeight,"new y: ", newY);
 
     document.getElementById("enx-window").style.left = newX + "px";
     document.getElementById("enx-window").style.top = newY + "px";
     console.log(document.getElementById("enx-window").getBoundingClientRect());
-    let word = event.target.innerText;
+    let word = mouseEvent.target.innerText;
     // send word to enx server and get chinese
     window.postMessage({type: "getOneWord", word: word});
 }
