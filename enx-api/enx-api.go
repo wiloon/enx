@@ -165,7 +165,7 @@ func LoadCount(c *gin.Context) {
 func Translate(c *gin.Context) {
 	english := c.Query("word")
 	logger.Debugf("translate word: %s", english)
-	english = regexp.MustCompile(`[^a-zA-Z ]+`).ReplaceAllString(english, "")
+	english = regexp.MustCompile(`[^a-zA-Z\- ]+`).ReplaceAllString(english, "")
 	word := enx.Word{}
 	word.SetEnglish(english)
 
