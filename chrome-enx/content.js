@@ -30,6 +30,8 @@ function findChildNodes(rootNode) {
 
             let spanContent = node.innerHTML
             let oneParagraph = node.innerText
+            // remove duplicate whitespace
+            oneParagraph = oneParagraph.replace(/\s+/g, ' ')
             console.log('span text: ', oneParagraph)
             console.log('span inner html: ', spanContent)
             console.log("span width: ", spanWidth)
@@ -76,8 +78,7 @@ function findChildNodes(rootNode) {
                 console.log("sending msg from content script to backend, params: ", Date.now())
                 const response = await chrome.runtime.sendMessage({msgType: "getWords", words: oneParagraph});
                 // do something with response here, not outside the function
-                console.log("response from backend")
-                console.log(response);
+                console.log("response from backend: ",response)
                 console.log(response.wordProperties);
 
                 let newSpanContent = ""
@@ -92,25 +93,38 @@ function findChildNodes(rootNode) {
                         console.log("insert br, span width: ", spanWidth, ", span content width: ", spanContentLength)
                     }
 
-                    word = wordRaw.replace(/[^a-zA-Z\-]/g, '');
-                    if (word.length === 0) {
-                        continue
+                    // get index of ',' for wordRaw
+                    let commaIndex = wordRaw.indexOf(',')
+                    // if comma exists and comma is not the first or the last char
+                    if (commaIndex > 0 && commaIndex < wordRaw.length - 1) {
+                        // replace comma with whitespace
+                        wordRaw = wordRaw.replace(",", ", ")
                     }
-
-                    if (word in response.wordProperties) {
-                        let loadCount = response.wordProperties[word].LoadCount
-                        console.log("word: ", word, " load count: ", loadCount)
-                        let colorCode = getColorCodeByCount(loadCount)
-                        console.log("word: ", word, ", load count: ", loadCount, ", color code: ", colorCode)
-                        let startTag = '<u onclick="funcFoo(event)" class="class-foo" style="text-decoration: #000000 underline; text-decoration-thickness: 2px;">'
-                        startTag = startTag.replace("#000000", colorCode);
-                        startTag = startTag.replace("class-foo", "enx-" + word);
-                        newSpanContent = newSpanContent + startTag + wordRaw + '</u> '
-                    } else {
-                        newSpanContent = newSpanContent + ' ' + wordRaw + ' '
+                    wordRaw = wordRaw.trim()
+                    wordArray = wordRaw.split(' ')
+                    console.log("word array: ", wordArray)
+                    for (let wordTmp of wordArray) {
+                        word = wordTmp.replace(/[^a-zA-Z\-]/g, '');
+                        if (word.length === 0) {
+                            continue
+                        }
+                        if (word in response.wordProperties) {
+                            let ecp =response.wordProperties[word]
+                            let loadCount = ecp.LoadCount
+                            console.log("word: ", word, " load count: ", loadCount)
+                            let colorCode = getColorCodeByCount(loadCount)
+                            console.log("word: ", word, ", load count: ", loadCount, ", color code: ", colorCode)
+                            let startTag = '<u alt="alt-foo" onclick="funcFoo(event)" class="class-foo" style="text-decoration: #000000 underline; text-decoration-thickness: 2px;">'
+                            startTag = startTag.replace("#000000", colorCode);
+                            startTag = startTag.replace("class-foo", "enx-" + ecp.SearchKey);
+                            startTag = startTag.replace("alt-foo", ecp.SearchKey);
+                            newSpanContent = newSpanContent + startTag + wordTmp + '</u> '
+                        } else {
+                            newSpanContent = newSpanContent + ' ' + wordTmp + ' '
+                        }
+                        spanContentLength = spanContentLength + word.length * 8 + wordMargin
+                        console.log("span content width: ", spanContentLength)
                     }
-                    spanContentLength = spanContentLength + word.length * 8 + wordMargin
-                    console.log("span content width: ", spanContentLength)
                 }
                 node.innerHTML = newSpanContent
             })();
@@ -215,17 +229,14 @@ function enxUnMark() {
 
 injectScript(chrome.runtime.getURL('inject.js'), 'body');
 
-function getOneWord(word) {
+function getOneWord(SearchKey) {
     (async () => {
-        console.log("sending msg from content script to backend, params: ", Date.now())
-        word = word.replace(",", "");
-        word = word.replace(".", "");
-        console.log(word)
-        document.getElementById("enx-e").innerText = word
+        console.log("sending msg from content script to backend, params: ",SearchKey)
+        document.getElementById("enx-e").innerText = SearchKey
         document.getElementById("enx-p").innerText = "Loading..."
         document.getElementById("enx-c").innerText = ""
 
-        const response = await chrome.runtime.sendMessage({msgType: "getOneWord", word: word});
+        const response = await chrome.runtime.sendMessage({msgType: "getOneWord", word: SearchKey});
         // do something with response here, not outside the function
         console.log("response from backend: ", Date.now())
         console.log(response);
@@ -238,7 +249,7 @@ function getOneWord(word) {
 
 
         // update underline color
-        className = "enx-" + response.ecp.English
+        className = "enx-" + response.ecp.SearchKey
         articleClassElement = document.getElementsByClassName(className);
         console.log("get element by class name: ", className)
         console.log(articleClassElement)
