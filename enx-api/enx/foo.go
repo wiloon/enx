@@ -10,7 +10,7 @@ var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z\- ]+`)
 
 func WordsCount0(words string) map[string]Word {
 	// replace non-alphanumeric with empty string
-	words = nonAlphanumericRegex.ReplaceAllString(words, "")
+	words = nonAlphanumericRegex.ReplaceAllString(words, " ")
 	fmt.Println(words)
 	// replace multiple space with one space
 	spaceRegex := regexp.MustCompile(`\s+`)

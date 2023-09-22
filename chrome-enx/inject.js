@@ -31,6 +31,10 @@ function funcFoo(mouseEvent) {
     console.log("mouse event client y: ", mouseEventY)
 
     let eventTarget = mouseEvent.target;
+    console.log("event target: ", eventTarget)
+    // get attribute value from event
+    let SearchKey = eventTarget.getAttribute("alt");
+    console.log("english: ", SearchKey)
     let eventTargetRect = eventTarget.getBoundingClientRect();
     console.log("event target rect: ", eventTargetRect)
     document.getElementById("enx-window").style.display = "block";
@@ -50,7 +54,7 @@ function funcFoo(mouseEvent) {
     console.log("base y: ", baseY)
 
     let offsetX = 0;
-    let offsetY = -10;
+    let offsetY = -50;
     let newX = mouseEventX - baseX + offsetX;
     let newY = mouseEventY - baseY + offsetY + (-1 * enxHeight);
 
@@ -62,5 +66,5 @@ function funcFoo(mouseEvent) {
     console.log(document.getElementById("enx-window").getBoundingClientRect());
     let word = mouseEvent.target.innerText;
     // send word to enx server and get chinese
-    window.postMessage({type: "getOneWord", word: word});
-}
+    window.postMessage({type: "getOneWord", word: SearchKey});
+}``
