@@ -174,7 +174,7 @@ async function addBtn() {
     console.log(articleNode)
 
     dragSvgUrl = chrome.runtime.getURL('drag.svg')
-    articleNode.insertAdjacentHTML("afterbegin", "<div class='enx-window' id='enx-window'> <a id='enx-close' href='javascript:void(0);' class='enx-close'>关闭</a><p id='enx-e' class='enx-ecp'></p><p id='enx-p' class='enx-ecp'></p><p id='enx-c' class='enx-ecp'></p></div><button id='enx-on' onclick='enxOn()'>ENX-ON</button><button id='enx-off' onclick='enxOff()'>ENX-OFF</button>")
+    articleNode.insertAdjacentHTML("afterbegin", "<div class='enx-window' id='enx-window'> <a id='youdao_link' href='https://www.youdao.com' target='_blank'>有道</a> <a id='enx-close' href='javascript:void(0);' class='enx-close'>关闭</a><p id='enx-e' class='enx-ecp'></p><p id='enx-p' class='enx-ecp'></p><p id='enx-c' class='enx-ecp'></p></div><button id='enx-on' onclick='enxOn()'>ENX-ON</button><button id='enx-off' onclick='enxOff()'>ENX-OFF</button>")
 
     document.getElementById("enx-close").onclick = function () {
         document.getElementById("enx-window").style.display = "none";
@@ -247,6 +247,8 @@ function getOneWord(SearchKey) {
         document.getElementById("enx-p").innerText = ecp.Pronunciation
         document.getElementById("enx-c").innerText = ecp.Chinese
 
+            // set youdao link
+        document.getElementById("youdao_link").href="https://www.youdao.com/result?word="+ecp.SearchKey+"&lang=en"
 
         // update underline color
         className = "enx-" + response.ecp.SearchKey
