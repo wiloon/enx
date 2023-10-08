@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z\- ]+`)
+var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z\-' ]+`)
 
 func WordsCount0(words string) map[string]Word {
 	// replace non-alphanumeric with empty string
@@ -23,6 +23,7 @@ func WordsCount0(words string) map[string]Word {
 	fmt.Println(wordsArray)
 	response := make(map[string]Word)
 	for _, word := range wordsArray {
+
 		ecp := Word{}
 		ecp.SetEnglish(word)
 		ecp.FindLoadCount()
