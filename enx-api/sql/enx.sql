@@ -33,3 +33,5 @@ create table words
     update_datetime datetime     default NULL
 );
 
+alter table user_dict
+    add already_acquainted integer;
