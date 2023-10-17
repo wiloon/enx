@@ -166,10 +166,6 @@ function enxMark() {
     findChildNodes(articleNode)
 }
 
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 function injectScript(file_path, tag) {
     let node = document.getElementsByTagName(tag)[0];
     let script = document.createElement('script');
@@ -189,12 +185,29 @@ async function injectEnxWindow() {
     let articleNode = articleClassElement.item(0);
     console.log(articleNode)
 
-    articleNode.insertAdjacentHTML("afterbegin", "<div class='enx-window' id='enx-window'> <a id='youdao_link' href='https://www.youdao.com' target='_blank'>有道</a> <a id='enx-close' href='javascript:void(0);' class='enx-close'>关闭</a><p id='enx-e' class='enx-ecp'></p><p id='enx-p' class='enx-ecp'></p><p id='enx-c' class='enx-ecp'></p></div>")
+    let enxWindow = `<div class='enx-window' id='enx-window'>
+    <a id='enx-close' href='javascript:void(0);' class='enx-close'>关闭</a>
+    <a id='youdao_link' href='https://www.youdao.com' target='_blank'>有道</a>
+    <a id='enx-mark' class='enx-mark' href='javascript:void(0);'>MARK</a>
+    <p id='enx-e' class='enx-ecp'></p>
+    <p id='enx-p' class='enx-ecp'></p>
+    <p id='enx-c' class='enx-ecp'></p>
+    <p id='enx-c' class='enx-search-key' style='display: none'></p>
+    </div>
+    `
+
+    articleNode.insertAdjacentHTML("afterbegin", enxWindow)
 
     document.getElementById("enx-close").onclick = function () {
         document.getElementById("enx-window").style.display = "none";
     };
 
+    document.getElementById("enx-mark").onclick = function () {
+        console.log("enx mark")
+        let word = document.getElementById("enx-search-key").innerText
+        console.log("mark: ", word)
+        chrome.runtime.sendMessage({msgType: "mark", word: word}).then((data) => console.log("mark response: ", data));
+    };
     console.log("html added")
 }
 
@@ -233,6 +246,7 @@ function getOneWord(SearchKey) {
         document.getElementById("enx-e").innerText = SearchKey
         document.getElementById("enx-p").innerText = "Loading..."
         document.getElementById("enx-c").innerText = ""
+        document.getElementById("enx-search-key").innerText = ""
 
         const response = await chrome.runtime.sendMessage({msgType: "getOneWord", word: SearchKey});
         // do something with response here, not outside the function
@@ -244,6 +258,7 @@ function getOneWord(SearchKey) {
         document.getElementById("enx-e").innerText = ecp.English
         document.getElementById("enx-p").innerText = ecp.Pronunciation
         document.getElementById("enx-c").innerText = ecp.Chinese
+        document.getElementById("enx-search-key").innerText = ecp.SearchKey
 
         // set youdao link
         document.getElementById("youdao_link").href = "https://www.youdao.com/result?word=" + ecp.SearchKey + "&lang=en"

@@ -192,3 +192,24 @@ func WordsCount(c *gin.Context) {
 		"data": WordsCount0,
 	})
 }
+
+func MarkWord(c *gin.Context) {
+	searchKey := c.Query("word")
+	logger.Debugf("mark word: %s", searchKey)
+	word := enx.Word{}
+	word.SearchKey = searchKey
+	
+	word.FindChinese()
+	if word.Chinese == "" {
+		logger.Debugf("find from youdao: %s", english)
+		epc := youdao.Query(english)
+		word.Chinese = epc.Chinese
+		word.Pronunciation = epc.Pronunciation
+		word.LoadCount = 1
+		word.Save()
+	} else {
+		word.LoadCount = word.LoadCount + 1
+		word.UpdateLoadCount()
+	}
+	c.JSON(200, word)
+}

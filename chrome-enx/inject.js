@@ -11,9 +11,7 @@ function getArticleNode() {
 }
 
 function parseEssentialDetails() {
-
     // main.performance = JSON.parse(JSON.stringify(window.performance)) || null;
-
     return {};
 }
 
