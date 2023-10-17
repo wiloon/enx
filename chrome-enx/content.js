@@ -12,132 +12,154 @@ function getColorCodeByCount(count) {
 
 let spanWidth = 0;
 
-function findChildNodes(rootNode) {
-    let childNodes = rootNode.childNodes
+function findChildNodes(parentNode) {
+    let childNodes = parentNode.childNodes
     if (childNodes.length === 0) {
         return
     }
 
+    // check if article context
+    let articleContent = true
     for (let node of childNodes) {
         let tagName = node.tagName
-        // find span tag
-        if (tagName === 'SPAN') {
-            console.log("span node: ", node)
-            console.log("span width: ", node.getBoundingClientRect().width)
-            if (node.getBoundingClientRect().width > spanWidth) {
-                spanWidth = node.getBoundingClientRect().width
-            }
+        if (tagName !== "A" && tagName !== undefined && tagName !== "EM" && tagName !== "CODE") {
+            articleContent = false
+            break
+        }
+    }
 
-            let spanContent = node.innerHTML
-            let oneParagraph = node.innerText
-            // remove duplicate whitespace
-            oneParagraph = oneParagraph.replace(/\s+/g, ' ')
-            console.log('span text: ', oneParagraph)
-            console.log('span inner html: ', spanContent)
-            console.log("span width: ", spanWidth)
-            // remove <a> tag
-            let filteredContent = ""
-            let tagAppeared = false
-            let collectWord = true
-            for (i = 0; i < spanContent.length; i++) {
-                if (!tagAppeared) {
-                    collectWord = true
-                }
-                c = spanContent.charAt(i)
-                if (c === "<") {
-                    // tag start
-                    tagAppeared = true
-                } else if (c === ">") {
-                    tagAppeared = false
-                }
-                if (tagAppeared) {
-                    collectWord = false
-                }
-                if (collectWord) {
-                    filteredContent += c
-                }
-            }
-            console.log("span inner html remove tag: ", filteredContent)
-            let words = filteredContent.split(' ')
-
-
-            let re = /^[0-9a-zA-Z-,.']+$/;
-
-            let wordArray = [];
-
-            for (let word of words) {
-                word = word.replace(",", "");
-                word = word.replace(".", "");
-                if (re.test(word)) {
-                    wordArray.push(word)
-                }
-            }
-            // send word array to backend
-            // get word properties from backend
-            (async () => {
-                console.log("sending msg from content script to backend, params: ", Date.now())
-                const response = await chrome.runtime.sendMessage({msgType: "getWords", words: oneParagraph});
-                // do something with response here, not outside the function
-                console.log("response from backend: ",response)
-                console.log(response.wordProperties);
-
-                let newSpanContent = ""
-                let spanContentLength = 0
-                let wordMargin = 4;
-
-                wordsInParagraph = oneParagraph.split(' ')
-                for (let wordRaw of wordsInParagraph) {
-                    if (spanContentLength > 0 && spanWidth > 50 && spanContentLength > (spanWidth - 50)) {
-                        newSpanContent = newSpanContent + "<br>"
-                        spanContentLength = 0
-                        console.log("insert br, span width: ", spanWidth, ", span content width: ", spanContentLength)
-                    }
-
-                    // get index of ',' for wordRaw
-                    let commaIndex = wordRaw.indexOf(',')
-                    // if comma exists and comma is not the first or the last char
-                    if (commaIndex > 0 && commaIndex < wordRaw.length - 1) {
-                        // replace comma with whitespace
-                        wordRaw = wordRaw.replace(",", ", ")
-                    }
-                    wordRaw = wordRaw.trim()
-                    wordArray = wordRaw.split(' ')
-                    console.log("word array: ", wordArray)
-                    for (let wordTmp of wordArray) {
-                        word = wordTmp.replace(/[^a-zA-Z\-]/g, '');
-                        if (word.length === 0) {
-                            continue
-                        }
-                        if (word in response.wordProperties) {
-                            let ecp =response.wordProperties[word]
-                            let loadCount = ecp.LoadCount
-                            console.log("word: ", word, " load count: ", loadCount)
-                            let colorCode = getColorCodeByCount(loadCount)
-                            console.log("word: ", word, ", load count: ", loadCount, ", color code: ", colorCode)
-                            let startTag = '<u alt="alt-foo" onclick="funcFoo(event)" class="class-foo" style="text-decoration: #000000 underline; text-decoration-thickness: 2px;">'
-                            startTag = startTag.replace("#000000", colorCode);
-                            startTag = startTag.replace("class-foo", "enx-" + ecp.SearchKey);
-                            startTag = startTag.replace("alt-foo", ecp.SearchKey);
-                            newSpanContent = newSpanContent + startTag + wordTmp + '</u> '
-                        } else {
-                            newSpanContent = newSpanContent + ' ' + wordTmp + ' '
-                        }
-                        spanContentLength = spanContentLength + word.length * 8 + wordMargin
-                        console.log("span content width: ", spanContentLength)
-                    }
-                }
-                node.innerHTML = newSpanContent
-            })();
-
-        } else {
+    if (articleContent === false) {
+        for (let node of childNodes) {
             findChildNodes(node)
         }
-
+        return;
     }
+
+
+    let tagName = parentNode.tagName
+    console.log("tag: ", tagName, "node: ", parentNode)
+
+    console.log("span width: ", parentNode.getBoundingClientRect().width)
+    if (parentNode.getBoundingClientRect().width > spanWidth) {
+        spanWidth = parentNode.getBoundingClientRect().width
+    }
+
+    let spanContent = parentNode.innerHTML
+    let oneParagraph = parentNode.innerText
+    // remove duplicate whitespace
+    oneParagraph = oneParagraph.replace(/\s+/g, ' ')
+    console.log('inner text: ', oneParagraph)
+    console.log('span inner html: ', spanContent)
+    console.log("span width: ", spanWidth)
+    // remove <a> tag
+    let filteredContent = ""
+    let tagAppeared = false
+    let collectWord = true
+    for (i = 0; i < spanContent.length; i++) {
+        if (!tagAppeared) {
+            collectWord = true
+        }
+        c = spanContent.charAt(i)
+        if (c === "<") {
+            // tag start
+            tagAppeared = true
+        } else if (c === ">") {
+            tagAppeared = false
+        }
+        if (tagAppeared) {
+            collectWord = false
+        }
+        if (collectWord) {
+            filteredContent += c
+        }
+    }
+    console.log("span inner html remove tag: ", filteredContent)
+    let words = filteredContent.split(' ')
+
+
+    let re = /^[0-9a-zA-Z-,.']+$/;
+
+    let wordArray = [];
+
+    for (let word of words) {
+        word = word.replace(",", "");
+        word = word.replace(".", "");
+        if (re.test(word)) {
+            wordArray.push(word)
+        }
+    }
+    // send word array to backend
+    // get word properties from backend
+    (async () => {
+        console.log("sending msg from content script to backend, params: ", Date.now())
+        const response = await chrome.runtime.sendMessage({msgType: "getWords", words: oneParagraph});
+        // do something with response here, not outside the function
+        console.log("response from backend: ", response)
+        console.log(response.wordProperties);
+
+        let newSpanContent = ""
+        let spanContentLength = 0
+        let wordMargin = 4;
+
+        wordsInParagraph = oneParagraph.split(' ')
+        for (let wordRaw of wordsInParagraph) {
+            if (spanContentLength > 0 && spanWidth > 50 && spanContentLength > (spanWidth - 50)) {
+                newSpanContent = newSpanContent + "<br>"
+                spanContentLength = 0
+                console.log("insert br, span width: ", spanWidth, ", span content width: ", spanContentLength)
+            }
+
+            // get index of ',' for wordRaw
+            let commaIndex = wordRaw.indexOf(',')
+            // if comma exists and comma is not the first or the last char
+            if (commaIndex > 0 && commaIndex < wordRaw.length - 1) {
+                // replace comma with whitespace
+                wordRaw = wordRaw.replace(",", ", ")
+            }
+            wordRaw = wordRaw.trim()
+            wordArray = wordRaw.split(' ')
+            console.log("word array: ", wordArray)
+            for (let wordTmp of wordArray) {
+                word = wordTmp.replace(/[^a-zA-Z\-]/g, '');
+                if (word.length === 0) {
+                    continue
+                }
+                if (word in response.wordProperties) {
+                    let ecp = response.wordProperties[word]
+                    let loadCount = ecp.LoadCount
+                    console.log("word: ", word, " load count: ", loadCount)
+                    let colorCode = getColorCodeByCount(loadCount)
+                    console.log("word: ", word, ", load count: ", loadCount, ", color code: ", colorCode)
+                    let startTag = '<u alt="alt-foo" onclick="funcFoo(event)" class="class-foo" style="text-decoration: #000000 underline; text-decoration-thickness: 2px;">'
+                    startTag = startTag.replace("#000000", colorCode);
+                    startTag = startTag.replace("class-foo", "enx-" + ecp.SearchKey);
+                    startTag = startTag.replace("alt-foo", ecp.SearchKey);
+                    newSpanContent = newSpanContent + startTag + wordTmp + '</u> '
+                } else {
+                    newSpanContent = newSpanContent + ' ' + wordTmp + ' '
+                }
+                spanContentLength = spanContentLength + word.length * 8 + wordMargin
+                console.log("span content width: ", spanContentLength)
+            }
+        }
+        parentNode.innerHTML = newSpanContent
+    })();
+
+
+}
+
+function getArticleNode() {
+    // gofluent
+    let articleClassElement = document.getElementsByClassName("Article");
+    if (articleClassElement.length === 0) {
+        // infoq
+        articleClassElement = document.getElementsByClassName("article__data");
+    }
+    return articleClassElement
 }
 
 function enxMark() {
-    articleClassElement = document.getElementsByClassName("Article");
+    articleClassElement = getArticleNode();
     console.log(articleClassElement)
     articleNode = articleClassElement.item(0)
     console.log(articleNode)
@@ -156,46 +178,22 @@ function injectScript(file_path, tag) {
     node.appendChild(script);
 }
 
-async function addBtn() {
+
+async function injectEnxWindow() {
     console.log("adding btn")
 
-    let articleClassElement = document.getElementsByClassName("Article");
-    while (articleClassElement.length === 0) {
-        console.log("article tag not found, wait 1s...")
-        await sleep(1000)
-        articleClassElement = document.getElementsByClassName("Article");
-    }
-    console.log(articleClassElement)
-    console.log(articleClassElement.length)
+    let articleClassElement = document.getElementsByTagName("body");
+
+    console.log("article node", articleClassElement)
+    console.log("article node length", articleClassElement.length)
     let articleNode = articleClassElement.item(0);
     console.log(articleNode)
 
-    articleNode = articleClassElement.item(0);
-    console.log(articleNode)
-
-    dragSvgUrl = chrome.runtime.getURL('drag.svg')
-    articleNode.insertAdjacentHTML("afterbegin", "<div class='enx-window' id='enx-window'> <a id='youdao_link' href='https://www.youdao.com' target='_blank'>有道</a> <a id='enx-close' href='javascript:void(0);' class='enx-close'>关闭</a><p id='enx-e' class='enx-ecp'></p><p id='enx-p' class='enx-ecp'></p><p id='enx-c' class='enx-ecp'></p></div><button id='enx-on' onclick='enxOn()'>ENX-ON</button><button id='enx-off' onclick='enxOff()'>ENX-OFF</button>")
+    articleNode.insertAdjacentHTML("afterbegin", "<div class='enx-window' id='enx-window'> <a id='youdao_link' href='https://www.youdao.com' target='_blank'>有道</a> <a id='enx-close' href='javascript:void(0);' class='enx-close'>关闭</a><p id='enx-e' class='enx-ecp'></p><p id='enx-p' class='enx-ecp'></p><p id='enx-c' class='enx-ecp'></p></div>")
 
     document.getElementById("enx-close").onclick = function () {
         document.getElementById("enx-window").style.display = "none";
     };
-    // 按下鼠标，移动鼠标，移动登录框
-    // document.getElementById("enx-title").onmousedown = function (e) {
-    //     // 获取此时的可视区域的横坐标，此时登陆框距离左侧页面的横坐标
-    //     var spaceX = e.clientX - document.getElementById("enx-window").offsetLeft;
-    //     var spaceY = e.clientY - document.getElementById("enx-window").offsetTop;
-    //     // 移动事件
-    //     document.onmousemove = function (e) {
-    //         // 新的可视区域的横坐标-spaceX=====新的值——》登录框的left属性
-    //         var x = e.clientX - spaceX + 250;
-    //         var y = e.clientY - spaceY - 140;
-    //         document.getElementById("enx-window").style.left = x + "px";
-    //         document.getElementById("enx-window").style.top = y + "px";
-    //     };
-    // };
-    // document.onmouseup = function () {
-    //     document.onmousemove = null;//当鼠标抬起的时候,把鼠标移动事件干掉
-    // };
 
     console.log("html added")
 }
@@ -231,7 +229,7 @@ injectScript(chrome.runtime.getURL('inject.js'), 'body');
 
 function getOneWord(SearchKey) {
     (async () => {
-        console.log("sending msg from content script to backend, params: ",SearchKey)
+        console.log("sending msg from content script to backend, params: ", SearchKey)
         document.getElementById("enx-e").innerText = SearchKey
         document.getElementById("enx-p").innerText = "Loading..."
         document.getElementById("enx-c").innerText = ""
@@ -247,8 +245,8 @@ function getOneWord(SearchKey) {
         document.getElementById("enx-p").innerText = ecp.Pronunciation
         document.getElementById("enx-c").innerText = ecp.Chinese
 
-            // set youdao link
-        document.getElementById("youdao_link").href="https://www.youdao.com/result?word="+ecp.SearchKey+"&lang=en"
+        // set youdao link
+        document.getElementById("youdao_link").href = "https://www.youdao.com/result?word=" + ecp.SearchKey + "&lang=en"
 
         // update underline color
         className = "enx-" + response.ecp.SearchKey
@@ -275,11 +273,10 @@ window.addEventListener("message", function (event) {
     // only accept messages from the current tab
     if (event.source !== window) return;
 
-    if (event.data.type && (event.data.type === "FROM_PAGE")) {
-        console.log("mark event: ", Date.now())
+    if (event.data.type && (event.data.type === "mark")) {
+        console.log("call enx mark")
         // msg from web page
         // collect words and send to backend
-        //enxMark()
         enxMark()
     }
     if (event.data.type && (event.data.type === "unMark")) {
@@ -293,4 +290,17 @@ window.addEventListener("message", function (event) {
     }
 }, false);
 
-addBtn()
+chrome.runtime.onMessage.addListener(
+    function (request, sender, sendResponse) {
+        console.log("on message")
+        // console.log('sender tab: ', sender.tab)
+        // console.log("sender tab url: ", sender.tab.url)
+        console.log("request: ", request)
+        if (request.greeting === "mark") {
+            enxMark()
+            sendResponse({farewell: "ok"});
+        }
+    }
+);
+
+injectEnxWindow().then()

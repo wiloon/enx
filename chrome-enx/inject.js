@@ -1,5 +1,15 @@
 console.log("injected script worked");
 
+function getArticleNode() {
+    // gofluent
+    let articleClassElement = document.getElementsByClassName("Article");
+    if (articleClassElement.length === 0) {
+        // infoq
+        articleClassElement = document.getElementsByClassName("article__data");
+    }
+    return articleClassElement
+}
+
 function parseEssentialDetails() {
 
     // main.performance = JSON.parse(JSON.stringify(window.performance)) || null;
@@ -8,9 +18,9 @@ function parseEssentialDetails() {
 }
 
 function enxOn() {
-    console.log("enx on clicked: ", Date.now())
+    console.log("enx on clicked")
     let essential = parseEssentialDetails();
-    window.postMessage({type: "FROM_PAGE", essential});
+    window.postMessage({type: "mark", essential});
 }
 
 function enxOff() {
@@ -23,9 +33,9 @@ let baseX = -1;
 let baseY = -1;
 
 function funcFoo(mouseEvent) {
-    console.log("on mouse over")
+    console.log("on mouse click")
     console.log("mouse event: ", mouseEvent)
-    let mouseEventX= mouseEvent.clientX;
+    let mouseEventX = mouseEvent.clientX;
     let mouseEventY = mouseEvent.clientY;
     console.log("mouse event client x: ", mouseEventX)
     console.log("mouse event client y: ", mouseEventY)
@@ -46,8 +56,8 @@ function funcFoo(mouseEvent) {
     console.log("enx window height: ", enxWindowRect.height);
     let enxHeight = enxWindowRect.height
 
-    let articleElement = document.getElementsByClassName("Article");
-    let articleRect= articleElement[0].getBoundingClientRect();
+    let articleElement = document.getElementsByTagName("body");
+    let articleRect = articleElement[0].getBoundingClientRect();
     baseX = articleRect.left
     baseY = articleRect.top
     console.log("base x: ", baseX)
@@ -55,11 +65,11 @@ function funcFoo(mouseEvent) {
 
     let offsetX = 0;
     let offsetY = -50;
-    let newX = mouseEventX - baseX + offsetX;
+    let newX = mouseEventX - baseX - offsetX;
     let newY = mouseEventY - baseY + offsetY + (-1 * enxHeight);
 
     console.log("new x: ", newX);
-    console.log("mouse event y:",mouseEventY,"base y:",baseY,"offset y:",offsetY,"enx height:",enxHeight,"new y: ", newY);
+    console.log("mouse event y:", mouseEventY, "base y:", baseY, "offset y:", offsetY, "enx height:", enxHeight, "new y: ", newY);
 
     document.getElementById("enx-window").style.left = newX + "px";
     document.getElementById("enx-window").style.top = newY + "px";
@@ -67,4 +77,4 @@ function funcFoo(mouseEvent) {
     let word = mouseEvent.target.innerText;
     // send word to enx server and get chinese
     window.postMessage({type: "getOneWord", word: SearchKey});
-}``
+}
