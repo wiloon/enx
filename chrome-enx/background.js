@@ -7,13 +7,12 @@ chrome.runtime.onInstalled.addListener(() => {
     });
 });
 
-const extensions = 'https://developer.chrome.com/docs/extensions';
 const webstore = 'https://portal.gofluent.cn';
-
-
+const infoq_url = 'https://www.infoq.com'
 // When the user clicks on the extension action
 chrome.action.onClicked.addListener(async (tab) => {
-    if (tab.url.startsWith(extensions) || tab.url.startsWith(webstore)) {
+    console.log("chrome action on click, url: ", tab.url)
+    if (tab.url.startsWith(webstore) || tab.url.startsWith(infoq_url)) {
         // We retrieve the action badge to check if the extension is 'ON' or 'OFF'
         const prevState = await chrome.action.getBadgeText({tabId: tab.id});
         // Next state will always be the opposite
@@ -26,7 +25,13 @@ chrome.action.onClicked.addListener(async (tab) => {
         });
 
         if (nextState === 'ON') {
-            console.log("status on")
+            console.log("status on");
+
+            const [tab] = await chrome.tabs.query({active: true, lastFocusedWindow: true});
+            const response = await chrome.tabs.sendMessage(tab.id, {greeting: "mark"});
+            // do something with response here, not outside the function
+            console.log("response: ", response);
+
             await chrome.scripting.executeScript({
                 target: {tabId: tab.id},
                 files: ["foo.js"],
