@@ -192,7 +192,7 @@ async function injectEnxWindow() {
     <p id='enx-e' class='enx-ecp'></p>
     <p id='enx-p' class='enx-ecp'></p>
     <p id='enx-c' class='enx-ecp'></p>
-    <p id='enx-c' class='enx-search-key' style='display: none'></p>
+    <p id='enx-search-key' class='enx-search-key' style='display: none'></p>
     </div>
     `
 
