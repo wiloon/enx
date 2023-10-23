@@ -35,6 +35,7 @@ func (word *Word) FindChinese() *Word {
 	sWord := storage.Word{}
 	sqlitex.DB.Where("english=?", word.SearchKey).Find(&sWord)
 	logger.Debugf("word: %v", sWord)
+	word.Id
 	word.Chinese = sWord.Chinese
 	word.LoadCount = sWord.LoadCount
 	word.Pronunciation = sWord.Pronunciation

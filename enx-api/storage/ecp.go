@@ -11,3 +11,11 @@ type Word struct {
 	CreateDatetime time.Time
 	UpdateDatetime time.Time
 }
+
+type UserDict struct {
+	WordId            int
+	QueryCount        int
+	UpdateTime        time.Time
+	UserId            int
+	AlreadyAcquainted int
+}
