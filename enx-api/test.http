@@ -1,3 +1,11 @@
+## mark
+
+### local mark
+POST http://localhost:8080/mark HTTP/1.1
+content-type: application/json
+
+{"Key": "foo"}
+
 ### aliyun
 GET https://enx.wiloon.com/load-count?words=foo_bar_are HTTP/1.1
 

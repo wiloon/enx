@@ -40,7 +40,7 @@ func LoadConfigByPath(fullPath string) {
 		fmt.Print(err)
 	}
 	str := string(b)
-	log.Printf("config file content: \n%v", str)
+	//log.Printf("config file content: \n%v", str)
 
 	conf, _ = toml.Load(str)
 }
