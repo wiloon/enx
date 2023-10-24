@@ -27,6 +27,6 @@ func Init(dbPath string) {
 		Logger: newLogger,
 	})
 	if err != nil {
-		zapLog.Error("failed to init db: %s", dbPath)
+		zapLog.Error("failed to init db: ", dbPath)
 	}
 }

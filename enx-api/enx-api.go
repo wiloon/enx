@@ -44,6 +44,7 @@ func main() {
 	})
 
 	router.GET("/load-count", LoadCount)
+	router.POST("/mark", MarkWord)
 	router.GET("/words-count", WordsCount)
 
 	router.GET("/do-search", DoSearch)
@@ -194,22 +195,18 @@ func WordsCount(c *gin.Context) {
 }
 
 func MarkWord(c *gin.Context) {
-	searchKey := c.Query("word")
-	logger.Debugf("mark word: %s", searchKey)
 	word := enx.Word{}
-	word.SearchKey = searchKey
-	
-	word.FindChinese()
-	if word.Chinese == "" {
-		logger.Debugf("find from youdao: %s", english)
-		epc := youdao.Query(english)
-		word.Chinese = epc.Chinese
-		word.Pronunciation = epc.Pronunciation
-		word.LoadCount = 1
-		word.Save()
-	} else {
-		word.LoadCount = word.LoadCount + 1
-		word.UpdateLoadCount()
+
+	err := c.BindJSON(&word)
+	if err != nil {
+		return
 	}
-	c.JSON(200, word)
+	logger.Debugf("mark word: %s", word.Key)
+	word.FindChinese()
+
+	ud := enx.UserDict{}
+	ud.WordId = word.Id
+	ud.Mark()
+
+	c.JSON(200, ud)
 }
