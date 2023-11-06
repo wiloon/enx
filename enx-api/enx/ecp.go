@@ -51,8 +51,11 @@ func (word *Word) Save() {
 	sWord.Chinese = word.Chinese
 	sWord.Pronunciation = word.Pronunciation
 	sWord.LoadCount = word.LoadCount
-	sqlitex.DB.Create(&sWord)
-	logger.Debugf("save word: %v", sWord)
+	tx := sqlitex.DB.Create(&sWord)
+	logger.Debugf("save word: %v, tx: %v", sWord, tx)
+
+	//sUserDict:=storage.UserDict{}
+	//sUserDict.WordId
 }
 
 func (word *Word) UpdateLoadCount() {
