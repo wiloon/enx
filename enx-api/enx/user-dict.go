@@ -19,9 +19,16 @@ func (ud *UserDict) Mark() {
 	ud.AlreadyAcquainted = 1
 
 	sud := storage.UserDict{}
+	sud.UserId = ud.UserId
 	sud.UpdateTime = time.Now()
 	sud.WordId = ud.WordId
 	sud.AlreadyAcquainted = ud.AlreadyAcquainted
-	sqlitex.DB.Updates(&sud)
+	tmp := storage.UserDict{}
+	sqlitex.DB.Where("word_id=? and user_id=?", sud.WordId, sud.UserId).Find(&tmp)
+	if tmp.WordId == 0 {
+		sqlitex.DB.Create(&sud)
+	} else {
+		sqlitex.DB.Updates(&sud)
+	}
 	logger.Debugf("update user dict: %v", sud)
 }
