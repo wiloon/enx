@@ -23,7 +23,6 @@ func WordsCount0(words string) map[string]Word {
 	fmt.Println(wordsArray)
 	response := make(map[string]Word)
 	for _, word := range wordsArray {
-
 		ecp := Word{}
 		ecp.SetEnglish(word)
 		ecp.FindLoadCount()

@@ -33,7 +33,7 @@ create table words
     update_datetime datetime     default NULL
 );
 
-create table user_dict
+create table user_dicts
 (
     word_id            INTEGER,
     query_count        INTEGER,
@@ -42,5 +42,5 @@ create table user_dict
     already_acquainted INTEGER
 );
 
-alter table user_dict
+alter table user_dicts
     add already_acquainted integer;
