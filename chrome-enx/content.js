@@ -1,11 +1,17 @@
 console.log("content js running")
 
-function getColorCodeByCount(count) {
-    if (count === 0) {
+function getColorCodeByCount(ecp) {
+    let loadCount = ecp.LoadCount
+    let isAcquainted = ecp.AlreadyAcquainted
+
+    if (isAcquainted === 1) {
+        return "#FFFFFF"
+    }
+    if (loadCount === 0) {
         return "#F44336"
-    } else if (count > 0 && count <= 10) {
+    } else if (loadCount > 0 && loadCount <= 10) {
         return "#2196F3"
-    } else if (count > 10) {
+    } else if (loadCount > 10) {
         return "#9C27B0"
     }
 }
@@ -128,7 +134,7 @@ function findChildNodes(parentNode) {
                     let ecp = response.wordProperties[word]
                     let loadCount = ecp.LoadCount
                     console.log("word: ", word, " load count: ", loadCount)
-                    let colorCode = getColorCodeByCount(loadCount)
+                    let colorCode = getColorCodeByCount(ecp)
                     console.log("word: ", word, ", load count: ", loadCount, ", color code: ", colorCode)
                     let startTag = '<u alt="alt-foo" onclick="funcFoo(event)" class="class-foo" style="text-decoration: #000000 underline; text-decoration-thickness: 2px;">'
                     startTag = startTag.replace("#000000", colorCode);
