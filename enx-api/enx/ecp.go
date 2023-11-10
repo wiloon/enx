@@ -15,6 +15,8 @@ type Word struct {
 	Chinese       string
 	Pronunciation string
 	Key           string
+	// 0: false, 1: true
+	AlreadyAcquainted int
 }
 
 func (word *Word) SetEnglish(english string) {
@@ -24,10 +26,8 @@ func (word *Word) SetEnglish(english string) {
 func (word *Word) FindLoadCount() int {
 	sWord := storage.Word{}
 	sWord.English = word.Key
-	sqlitex.DB.Where("english=?", sWord.English).Find(&sWord)
-	word.Chinese = sWord.Chinese
-	word.Pronunciation = sWord.Pronunciation
-	word.LoadCount = sWord.LoadCount
+	// db.Model(&User{}).Select("users.name, emails.email").Joins("left join emails on emails.user_id = users.id").Scan(&result{})
+	sqlitex.DB.Table("words").Joins("join user_dicts ud on words.id = ud.word_id and user_id=0").Where("words.english=?", word.English).Scan(&word)
 	logger.Debugf("word: %v", word)
 	return word.LoadCount
 }
