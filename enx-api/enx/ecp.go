@@ -27,7 +27,7 @@ func (word *Word) FindLoadCount() int {
 	sWord := storage.Word{}
 	sWord.English = word.Key
 	// db.Model(&User{}).Select("users.name, emails.email").Joins("left join emails on emails.user_id = users.id").Scan(&result{})
-	sqlitex.DB.Table("words").Joins("join user_dicts ud on words.id = ud.word_id and user_id=0").Where("words.english=?", word.English).Scan(&word)
+	sqlitex.DB.Table("words").Joins("left join user_dicts ud on words.id = ud.word_id and user_id=0").Where("words.english=?", word.English).Scan(&word)
 	logger.Debugf("word: %v", word)
 	return word.LoadCount
 }
