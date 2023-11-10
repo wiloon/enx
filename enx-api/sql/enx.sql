@@ -41,6 +41,3 @@ create table user_dicts
     user_id            INTEGER,
     already_acquainted INTEGER
 );
-
-alter table user_dicts
-    add already_acquainted integer;
