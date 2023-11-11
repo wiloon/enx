@@ -1,5 +1,24 @@
 console.log("content js running")
 
+function updateUnderLine(ecp) {
+    // update underline color
+    className = "enx-" + ecp.Key
+    articleClassElement = document.getElementsByClassName(className);
+    console.log("get element by class name: ", className)
+    console.log(articleClassElement)
+    if (articleClassElement.length > 0) {
+        for (element in articleClassElement) {
+            // style="margin-left: 2px; margin-right: 2px; text-decoration: #FF9800 underline; text-decoration-thickness: 2px;"
+            colorCode = getColorCodeByCount(ecp)
+            if (articleClassElement[element] === undefined || articleClassElement[element].style === undefined) {
+                continue
+            }
+            articleClassElement[element].style.textDecoration = colorCode + " underline"
+            articleClassElement[element].style.textDecorationThickness = "2px"
+        }
+    }
+}
+
 function getColorCodeByCount(ecp) {
     let loadCount = ecp.LoadCount
     let isAcquainted = ecp.AlreadyAcquainted
@@ -85,13 +104,13 @@ function findChildNodes(parentNode) {
 
     let re = /^[0-9a-zA-Z-,.']+$/;
 
-    let wordArray = [];
+    let rawParagraphWordArray = [];
 
     for (let word of words) {
         word = word.replace(",", "");
         word = word.replace(".", "");
         if (re.test(word)) {
-            wordArray.push(word)
+            rawParagraphWordArray.push(word)
         }
     }
     // send word array to backend
@@ -108,7 +127,7 @@ function findChildNodes(parentNode) {
         let wordMargin = 4;
 
         wordsInParagraph = oneParagraph.split(' ')
-        for (let wordRaw of wordsInParagraph) {
+        for (let wordInRawParagraph of wordsInParagraph) {
             if (spanContentLength > 0 && spanWidth > 50 && spanContentLength > (spanWidth - 50)) {
                 newSpanContent = newSpanContent + "<br>"
                 spanContentLength = 0
@@ -116,30 +135,31 @@ function findChildNodes(parentNode) {
             }
 
             // get index of ',' for wordRaw
-            let commaIndex = wordRaw.indexOf(',')
+            let commaIndex = wordInRawParagraph.indexOf(',')
             // if comma exists and comma is not the first or the last char
-            if (commaIndex > 0 && commaIndex < wordRaw.length - 1) {
-                // replace comma with whitespace
-                wordRaw = wordRaw.replace(",", ", ")
+            if (commaIndex > 0 && commaIndex < wordInRawParagraph.length - 1) {
+                // append space for comma
+                wordInRawParagraph = wordInRawParagraph.replace(",", ", ")
             }
-            wordRaw = wordRaw.trim()
-            wordArray = wordRaw.split(' ')
-            console.log("word array: ", wordArray)
-            for (let wordTmp of wordArray) {
-                word = wordTmp.replace(/[^a-zA-Z\-]/g, '');
+            wordInRawParagraph = wordInRawParagraph.trim()
+            rawParagraphWordArray = wordInRawParagraph.split(' ')
+            console.log("raw words: ", rawParagraphWordArray)
+            for (let wordTmp of rawParagraphWordArray) {
+                let word = wordTmp.replace(/[^a-zA-Z\-]/g, '');
                 if (word.length === 0) {
                     continue
                 }
                 if (word in response.wordProperties) {
                     let ecp = response.wordProperties[word]
+                    console.log("word: ", word, "ecp: ", ecp)
                     let loadCount = ecp.LoadCount
                     console.log("word: ", word, " load count: ", loadCount)
                     let colorCode = getColorCodeByCount(ecp)
                     console.log("word: ", word, ", load count: ", loadCount, ", color code: ", colorCode)
                     let startTag = '<u alt="alt-foo" onclick="funcFoo(event)" class="class-foo" style="text-decoration: #000000 underline; text-decoration-thickness: 2px;">'
                     startTag = startTag.replace("#000000", colorCode);
-                    startTag = startTag.replace("class-foo", "enx-" + ecp.SearchKey);
-                    startTag = startTag.replace("alt-foo", ecp.SearchKey);
+                    startTag = startTag.replace("class-foo", "enx-" + ecp.Key);
+                    startTag = startTag.replace("alt-foo", ecp.Key);
                     newSpanContent = newSpanContent + startTag + wordTmp + '</u> '
                 } else {
                     newSpanContent = newSpanContent + ' ' + wordTmp + ' '
@@ -210,9 +230,15 @@ async function injectEnxWindow() {
 
     document.getElementById("enx-mark").onclick = function () {
         console.log("enx mark")
-        let word = document.getElementById("enx-search-key").innerText
-        console.log("mark: ", word)
-        chrome.runtime.sendMessage({msgType: "mark", word: word}).then((data) => console.log("mark response: ", data));
+        let key = document.getElementById("enx-search-key").innerText
+        console.log("mark: ", key)
+        chrome.runtime.sendMessage({
+            msgType: "markAcquainted",
+            word: key
+        }).then((data) => {
+            console.log("mark response: ", data)
+            updateUnderLine(data.ecp)
+        });
     };
     console.log("html added")
 }
@@ -246,17 +272,18 @@ function enxUnMark() {
 
 injectScript(chrome.runtime.getURL('inject.js'), 'body');
 
-function getOneWord(SearchKey) {
+
+function getOneWord(key) {
     (async () => {
-        console.log("sending msg from content script to backend, params: ", SearchKey)
-        document.getElementById("enx-e").innerText = SearchKey
+        console.log("sending msg from content script to backend, params: ", key)
+        document.getElementById("enx-e").innerText = key
         document.getElementById("enx-p").innerText = "Loading..."
         document.getElementById("enx-c").innerText = ""
         document.getElementById("enx-search-key").innerText = ""
 
-        const response = await chrome.runtime.sendMessage({msgType: "getOneWord", word: SearchKey});
+        const response = await chrome.runtime.sendMessage({msgType: "getOneWord", word: key});
         // do something with response here, not outside the function
-        console.log("response from backend: ", Date.now())
+        console.log("response from backend")
         console.log(response);
         console.log(response.ecp);
         let ecp = response.ecp
@@ -264,27 +291,13 @@ function getOneWord(SearchKey) {
         document.getElementById("enx-e").innerText = ecp.English
         document.getElementById("enx-p").innerText = ecp.Pronunciation
         document.getElementById("enx-c").innerText = ecp.Chinese
-        document.getElementById("enx-search-key").innerText = ecp.SearchKey
+        document.getElementById("enx-search-key").innerText = ecp.Key
 
         // set youdao link
-        document.getElementById("youdao_link").href = "https://www.youdao.com/result?word=" + ecp.SearchKey + "&lang=en"
+        document.getElementById("youdao_link").href = "https://www.youdao.com/result?word=" + ecp.Key + "&lang=en"
 
         // update underline color
-        className = "enx-" + response.ecp.SearchKey
-        articleClassElement = document.getElementsByClassName(className);
-        console.log("get element by class name: ", className)
-        console.log(articleClassElement)
-        if (articleClassElement.length > 0) {
-            for (element in articleClassElement) {
-                // style="margin-left: 2px; margin-right: 2px; text-decoration: #FF9800 underline; text-decoration-thickness: 2px;"
-                colorCode = getColorCodeByCount(response.ecp.LoadCount)
-                if (articleClassElement[element] === undefined || articleClassElement[element].style === undefined) {
-                    continue
-                }
-                articleClassElement[element].style.textDecoration = colorCode + " underline"
-                articleClassElement[element].style.textDecorationThickness = "2px"
-            }
-        }
+        updateUnderLine(response.ecp)
     })();
 }
 
