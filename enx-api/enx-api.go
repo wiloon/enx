@@ -182,6 +182,7 @@ func Translate(c *gin.Context) {
 		word.LoadCount = word.LoadCount + 1
 		word.UpdateLoadCount()
 	}
+	word.FindLoadCount()
 	c.JSON(200, word)
 }
 
@@ -196,7 +197,7 @@ func WordsCount(c *gin.Context) {
 
 func MarkWord(c *gin.Context) {
 	word := enx.Word{}
-
+	// set key
 	err := c.BindJSON(&word)
 	if err != nil {
 		return
@@ -207,6 +208,6 @@ func MarkWord(c *gin.Context) {
 	ud := enx.UserDict{}
 	ud.WordId = word.Id
 	ud.Mark()
-
-	c.JSON(200, ud)
+	word.FindLoadCount()
+	c.JSON(200, word)
 }

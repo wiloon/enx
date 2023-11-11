@@ -71,10 +71,12 @@ async function enxServerGetOne(word) {
     console.log(json)
     return json
 }
-async function markWord(word) {
-    let url = 'https://enx.wiloon.com/mark?word=' + word
+
+async function markWord(key) {
+    let url = 'https://enx.wiloon.com/mark'
     console.log("calling enx server, url: ", url)
-    const response = await fetch(url);
+    let postBody = {"Key": key}
+    const response = await fetch(url, {method: "POST", body: JSON.stringify(postBody)});
     console.log("enx server response: ", response)
     const json = await response.json();
     console.log("enx server response json: ", json)
@@ -108,12 +110,12 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
                 console.log(result)
                 sendResponse({ecp: result});
             })
-        } else if (msgType === 'mark') {
-            let word = request.word
-            console.log("mark: ", word)
-            markWord(word).then(result => {
+        } else if (msgType === 'markAcquainted') {
+            let key = request.word
+            console.log("markAcquainted: ", key)
+            markWord(key).then(result => {
                 console.log("mark word response: ", result)
-                sendResponse({foo: result});
+                sendResponse({ecp: result});
             })
         }
         return true;

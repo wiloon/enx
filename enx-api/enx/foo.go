@@ -26,6 +26,7 @@ func WordsCount0(words string) map[string]Word {
 		ecp := Word{}
 		ecp.SetEnglish(word)
 		ecp.FindLoadCount()
+		ecp.SetEnglish(word) // since raw english will replace by dict english, re set English here temporally
 		response[ecp.English] = ecp
 	}
 	return response

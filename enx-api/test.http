@@ -30,10 +30,10 @@ content-type: application/json
 ### words-count
 
 ### local
-GET http://localhost:8080/words-count?words=foo%20a HTTP/1.1
+GET http://localhost:8080/words-count?words=foo%20On HTTP/1.1
 
 ### aliyun
-GET https://enx.wiloon.com/words-count?words=foo%20a HTTP/1.1
+GET https://enx.wiloon.com/words-count?words=foo%20On HTTP/1.1
 
 ### aliyun
 GET https://enx.wiloon.com/load-count?words=foo_bar HTTP/1.1
