@@ -16,19 +16,37 @@ type UserDict struct {
 }
 
 func (ud *UserDict) Mark() {
-	ud.AlreadyAcquainted = 1
-
 	sud := storage.UserDict{}
 	sud.UserId = ud.UserId
 	sud.UpdateTime = time.Now()
 	sud.WordId = ud.WordId
-	sud.AlreadyAcquainted = ud.AlreadyAcquainted
+
+	if ud.IsExist() {
+		if ud.AlreadyAcquainted == 1 {
+			ud.AlreadyAcquainted = 0
+		} else if ud.AlreadyAcquainted == 0 {
+			ud.AlreadyAcquainted = 1
+		}
+		sud.AlreadyAcquainted = ud.AlreadyAcquainted
+		sqlitex.DB.Updates(&sud)
+	} else {
+		ud.AlreadyAcquainted = 1
+		sud.AlreadyAcquainted = ud.AlreadyAcquainted
+		sqlitex.DB.Create(&sud)
+	}
+	logger.Debugf("update user dict: %v", sud)
+}
+
+func (ud *UserDict) IsExist() bool {
+	sud := storage.UserDict{}
+	sud.UserId = ud.UserId
+	sud.WordId = ud.WordId
 	tmp := storage.UserDict{}
 	sqlitex.DB.Where("word_id=? and user_id=?", sud.WordId, sud.UserId).Find(&tmp)
 	if tmp.WordId == 0 {
-		sqlitex.DB.Create(&sud)
+		return false
 	} else {
-		sqlitex.DB.Updates(&sud)
+		ud.AlreadyAcquainted = tmp.AlreadyAcquainted
+		return true
 	}
-	logger.Debugf("update user dict: %v", sud)
 }
