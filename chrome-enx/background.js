@@ -85,12 +85,12 @@ async function markWord(key) {
 
 // listen msg from content script
 chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
-        console.log(sender.tab ?
+    let msgType = request.msgType
+    console.log("message listener, new msg: ", request,", msg type: ", msgType)
+    console.log(sender.tab ?
             "from content script:" + sender.tab.url :
             "from the extension");
-        console.log("request: ", Date.now())
-        console.log(request)
-        let msgType = request.msgType
+
         if (msgType === "getWords") {
             console.log("backend received msg, type: ", msgType)
             let words = request.words

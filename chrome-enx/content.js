@@ -129,7 +129,7 @@ function findChildNodes(parentNode) {
         wordsInParagraph = oneParagraph.split(' ')
         for (let wordInRawParagraph of wordsInParagraph) {
             if (spanContentLength > 0 && spanWidth > 50 && spanContentLength > (spanWidth - 50)) {
-                newSpanContent = newSpanContent + "<br>"
+                // newSpanContent = newSpanContent + "<br>"
                 spanContentLength = 0
                 console.log("insert br, span width: ", spanWidth, ", span content width: ", spanContentLength)
             }
