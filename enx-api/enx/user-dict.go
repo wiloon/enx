@@ -28,7 +28,7 @@ func (ud *UserDict) Mark() {
 			ud.AlreadyAcquainted = 1
 		}
 		sud.AlreadyAcquainted = ud.AlreadyAcquainted
-		sqlitex.DB.Updates(&sud)
+		sqlitex.DB.Model(&sud).Where("user_id=? and word_id=?", sud.UserId, sud.WordId).Updates(map[string]interface{}{"already_acquainted": sud.AlreadyAcquainted})
 	} else {
 		ud.AlreadyAcquainted = 1
 		sud.AlreadyAcquainted = ud.AlreadyAcquainted
