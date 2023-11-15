@@ -5,12 +5,13 @@ import (
 	"enx-server/enx"
 	"enx-server/storage/sqlitex"
 	"enx-server/utils"
-	"enx-server/utils/config"
 	"enx-server/utils/logger"
 	"enx-server/youdao"
-	"flag"
+	"fmt"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	jww "github.com/spf13/jwalterweatherman"
+	"github.com/spf13/viper"
 	"net/http"
 	"regexp"
 	"strings"
@@ -18,11 +19,28 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", "config.toml", "config file full path")
-	flag.Parse()
-	config.LoadConfigByPath(*configPath)
-	logger.Init("CONSOLE", "debug", "enx-api")
-	sqlitex.Init("/var/lib/enx-api/enx.db")
+	fmt.Println("enx-api start...")
+
+	jww.SetLogThreshold(jww.LevelTrace)
+	jww.SetStdoutThreshold(jww.LevelTrace)
+
+	viper.SetConfigName("config")
+	viper.AddConfigPath("/etc/enx/")
+	viper.AddConfigPath("$HOME/.enx")
+	viper.AddConfigPath(".")
+	err := viper.ReadInConfig()
+	if err != nil {
+		panic(fmt.Errorf("fatal error config file: %w", err))
+	}
+	devMode := viper.GetBool("enx.dev-mode")
+	fmt.Println("devMode:", devMode)
+
+	logger.Init("CONSOLE,FILE", "debug", "enx-api")
+	logger.Debug("debug log test")
+	logger.Warn("warn log test")
+	logger.Warnf("warnf log test %s", "test")
+	logger.Sync()
+	sqlitex.Init()
 
 	// ReleaseMode
 	gin.SetMode(gin.DebugMode)
@@ -52,7 +70,9 @@ func main() {
 	router.GET("/wrap", Wrap)
 	router.GET("/translate", Translate)
 
-	srv := &http.Server{Addr: ":8080", Handler: router}
+	port := viper.GetInt("enx.port")
+	listenAddress := fmt.Sprintf(":%d", port)
+	srv := &http.Server{Addr: listenAddress, Handler: router}
 
 	idleConnsClosed := make(chan struct{})
 	go func() {
@@ -63,7 +83,7 @@ func main() {
 		close(idleConnsClosed)
 	}()
 
-	logger.Infof("listen start")
+	logger.Infof("listen start, port: %v", port)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Errorf("failed to listen, %v", err)
 	}

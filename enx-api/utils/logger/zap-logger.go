@@ -7,6 +7,7 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 	"log"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -17,6 +18,9 @@ var dLogger Logger
 func init() {
 	dLogger = &defaultLogger{}
 }
+
+// Init
+// to: "CONSOLE,FILE"
 func Init(to, level, projectName string) {
 	var cores []zapcore.Core
 
@@ -35,7 +39,13 @@ func Init(to, level, projectName string) {
 	if logTo != "" && strings.Contains(logTo, "FILE") {
 		// file
 		fileEncoder := getEncoder()
-		logFilePath = fmt.Sprintf("/var/log/%s/%s.log", projectName, level)
+
+		//goland:noinspection GoBoolExpressions
+		if runtime.GOOS == "linux" {
+			logFilePath = fmt.Sprintf("/var/log/%s/%s.log", projectName, level)
+		} else if runtime.GOOS == "windows" {
+			logFilePath = fmt.Sprintf("C:\\%s\\%s.log", projectName, level)
+		}
 		writer := zapcore.AddSync(&lumberjack.Logger{
 			Filename:   logFilePath,
 			MaxSize:    200, // megabytes
@@ -91,15 +101,8 @@ func Warnf(msg string, args ...interface{}) {
 	GetLogger().Errorf(msg, args...)
 }
 func Sync() {
-	GetLogger().Sync()
-}
-
-// Deprecated: Printf
-func Println(args ...interface{}) {
-	Info(args...)
-}
-
-// Deprecated: Printf
-func Printf(msg string, args ...interface{}) {
-	Infof(msg, args...)
+	err := GetLogger().Sync()
+	if err != nil {
+		return
+	}
 }

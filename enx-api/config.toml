@@ -1,18 +1,19 @@
-[rssx]
-dev-mode=true
+[enx]
+dev-mode = true
+port = 8080
 
 [mysql]
-address="mysql.wiloon.com:3306"
+address = "mysql.wiloon.com:3306"
 
 [sync]
 # minute
-duration=60
+duration = 60
 
 [news]
-expire-time="-720h"
-gc-duration="24h"
+expire-time = "-720h"
+gc-duration = "24h"
 
 [log]
-level="debug"
-path="/data/rssx/logs/"
-file-name="rssx.log"
+level = "debug"
+path = "/data/rssx/logs/"
+file-name = "rssx.log"
