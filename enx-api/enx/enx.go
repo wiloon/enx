@@ -1,15 +1,15 @@
 package enx
 
 import (
-	"enx-server/utils/config"
 	"enx-server/utils/mysql"
+	"github.com/spf13/viper"
 )
 
 var enxDb *mysql.Database
 
 func Search(key string) []string {
 	var result []string
-	tmp := instance().Find("select english from tbl_ecp where english like '" + key + "%' order by english limit 20")
+	tmp := instance().Find("select english from words where english like '" + key + "%' order by english limit 20")
 	for _, v := range tmp {
 		result = append(result, string(v["english"].([]uint8)))
 	}
@@ -18,9 +18,9 @@ func Search(key string) []string {
 
 func instance() *mysql.Database {
 	if enxDb == nil {
-		address := config.GetString("mysql.address", "127.0.0.1:3306")
-		user := config.GetString("mysql.user", "user0")
-		password := config.GetString("mysql.password", "password0")
+		address := viper.GetString("mysql.address")
+		user := viper.GetString("mysql.user")
+		password := viper.GetString("mysql.password")
 		mysqlConfig := mysql.Config{DatabaseName: "enx", Address: address, Username: user, Password: password}
 		enxDb = mysql.NewDatabase(mysqlConfig)
 	}
@@ -36,7 +36,7 @@ type Dictionary struct {
 
 func FindOne(key string) *Dictionary {
 	var dict Dictionary
-	tmp := instance().Find("select * from tbl_ecp where english=? order by create_datetime asc  limit 1", key)
+	tmp := instance().Find("select * from words where english=? order by create_datetime limit 1", key)
 	if tmp != nil && len(tmp) > 0 {
 		dict.English = string(tmp[0]["english"].([]uint8))
 		dict.Chinese = string(tmp[0]["chinese"].([]uint8))
@@ -46,8 +46,4 @@ func FindOne(key string) *Dictionary {
 	}
 
 	return &dict
-}
-
-func Save(ecp *Dictionary) {
-
 }
