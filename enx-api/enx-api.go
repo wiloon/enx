@@ -35,7 +35,7 @@ func main() {
 	devMode := viper.GetBool("enx.dev-mode")
 	fmt.Println("devMode:", devMode)
 
-	logger.Init("CONSOLE,FILE", "debug", "enx-api")
+	logger.Init("CONSOLE", "debug", "enx-api")
 	logger.Debug("debug log test")
 	logger.Warn("warn log test")
 	logger.Warnf("warnf log test %s", "test")
