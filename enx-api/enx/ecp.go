@@ -24,11 +24,10 @@ func (word *Word) SetEnglish(english string) {
 	word.Key = strings.ToLower(english)
 }
 func (word *Word) FindLoadCount() int {
-	sWord := storage.Word{}
-	sWord.English = word.Key
-	// db.Model(&User{}).Select("users.name, emails.email").Joins("left join emails on emails.user_id = users.id").Scan(&result{})
-	sqlitex.DB.Table("words").Joins("left join user_dicts ud on words.id = ud.word_id and user_id=0").Where("words.english=?", word.Key).Scan(&word)
-	logger.Debugf("word: %v", word)
+	sqlitex.DB.Table("words").
+		Joins("left join user_dicts ud on words.id = ud.word_id and user_id=0").
+		Where("words.english=?", word.Key).Scan(&word)
+	logger.Debugf("find load count, word: %v", word)
 	return word.LoadCount
 }
 
