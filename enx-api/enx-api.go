@@ -34,7 +34,7 @@ func main() {
 	}
 	devMode := viper.GetBool("enx.dev-mode")
 	fmt.Println("devMode:", devMode)
-
+	// deploy to docker/k8s, disable file output
 	logger.Init("CONSOLE", "debug", "enx-api")
 	logger.Debug("debug log test")
 	logger.Warn("warn log test")
@@ -175,7 +175,7 @@ func LoadCount(c *gin.Context) {
 	for _, word := range words {
 		ecp := enx.Word{}
 		ecp.SetEnglish(word)
-		loadCount := ecp.FindLoadCount()
+		loadCount := ecp.FindQueryCount()
 		response[ecp.English] = loadCount
 	}
 
@@ -190,7 +190,7 @@ func Translate(c *gin.Context) {
 	word := enx.Word{}
 	word.SetEnglish(english)
 
-	word.FindChinese()
+	word.Translate()
 	if word.Chinese == "" {
 		logger.Debugf("find from youdao: %s", english)
 		epc := youdao.Query(english)
@@ -202,7 +202,7 @@ func Translate(c *gin.Context) {
 		word.LoadCount = word.LoadCount + 1
 		word.UpdateLoadCount()
 	}
-	word.FindLoadCount()
+	word.FindQueryCount()
 	c.JSON(200, word)
 }
 
@@ -223,11 +223,11 @@ func MarkWord(c *gin.Context) {
 		return
 	}
 	logger.Debugf("mark word: %s", word.Key)
-	word.FindChinese()
+	word.Translate()
 
 	ud := enx.UserDict{}
 	ud.WordId = word.Id
 	ud.Mark()
-	word.FindLoadCount()
+	word.FindQueryCount()
 	c.JSON(200, word)
 }

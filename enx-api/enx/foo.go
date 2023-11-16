@@ -19,11 +19,13 @@ func WordsCount0(words string) map[string]Word {
 	wordsArray := strings.Split(words, " ")
 	response := make(map[string]Word)
 	for _, word := range wordsArray {
-		ecp := Word{}
-		ecp.SetEnglish(word)
-		ecp.FindLoadCount()
-		ecp.SetEnglish(word) // since raw english will replace by dict english, re set English here temporally
-		response[ecp.English] = ecp
+		wordObj := Word{}
+		wordObj.SetEnglish(word)
+		wordObj.FindId()
+		CheckAndMigrateQueryCount(wordObj.Id)
+		wordObj.FindQueryCount()
+		wordObj.Translate()
+		response[wordObj.English] = wordObj
 	}
 	logger.Debug("words count: ", response)
 	return response
