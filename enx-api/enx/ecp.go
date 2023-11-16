@@ -19,19 +19,35 @@ type Word struct {
 	AlreadyAcquainted int
 }
 
+func (word *Word) FindId() {
+	sWord := storage.Word{}
+	sqlitex.DB.Where("english=?", word.Key).Find(&sWord)
+	logger.Debugf("find word, id: %v, english: %s", sWord.Id, sWord.English)
+	word.Id = sWord.Id
+}
+
 func (word *Word) SetEnglish(english string) {
 	word.English = english
 	word.Key = strings.ToLower(english)
 }
-func (word *Word) FindLoadCount() int {
-	sqlitex.DB.Table("words").
-		Joins("left join user_dicts ud on words.id = ud.word_id and user_id=0").
-		Where("words.english=?", word.Key).Scan(&word)
-	logger.Debugf("find load count, word: %v", word)
+func (word *Word) FindQueryCount() int {
+	sud := storage.UserDict{}
+	sud.UserId = 0
+	sud.WordId = word.Id
+
+	sqlitex.DB.Table("user_dicts").
+		Where("user_dicts.word_id=? and user_dicts.user_id=?", sud.WordId, sud.UserId).Scan(&sud)
+	logger.Debugf("find query count, word id: %d, word: %s, query count: %d", sud.WordId, word.English, sud.UserId)
+	word.LoadCount = sud.QueryCount
 	return word.LoadCount
 }
 
-func (word *Word) FindChinese() *Word {
+func (word *Word) FindLoadCountById() int {
+	sqlitex.DB.Table("words").Where("words.id=?", word.Id).Scan(&word)
+	logger.Debugf("find load count, word: %+v", word)
+	return word.LoadCount
+}
+func (word *Word) Translate() *Word {
 	sWord := storage.Word{}
 	sqlitex.DB.Where("english=?", word.Key).Find(&sWord)
 	logger.Debugf("find word, id: %v, english: %s", sWord.Id, sWord.English)
