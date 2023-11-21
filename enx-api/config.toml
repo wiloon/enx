@@ -17,3 +17,8 @@ gc-duration = "24h"
 level = "debug"
 path = "/data/rssx/logs/"
 file-name = "rssx.log"
+
+[youdao]
+url = "https://openapi.youdao.com/api"
+app-key = "567b022c76fd52ec"
+app-secret = ""

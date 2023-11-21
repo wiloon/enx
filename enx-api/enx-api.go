@@ -3,17 +3,16 @@ package main
 import (
 	"context"
 	"enx-server/enx"
-	"enx-server/storage/sqlitex"
+	"enx-server/translate"
 	"enx-server/utils"
 	"enx-server/utils/logger"
+	"enx-server/utils/sqlitex"
 	"enx-server/youdao"
 	"fmt"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	jww "github.com/spf13/jwalterweatherman"
 	"github.com/spf13/viper"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -21,17 +20,7 @@ import (
 func main() {
 	fmt.Println("enx-api start...")
 
-	jww.SetLogThreshold(jww.LevelTrace)
-	jww.SetStdoutThreshold(jww.LevelTrace)
-
-	viper.SetConfigName("config")
-	viper.AddConfigPath("/etc/enx/")
-	viper.AddConfigPath("$HOME/.enx")
-	viper.AddConfigPath(".")
-	err := viper.ReadInConfig()
-	if err != nil {
-		panic(fmt.Errorf("fatal error config file: %w", err))
-	}
+	utils.ViperInit()
 	devMode := viper.GetBool("enx.dev-mode")
 	fmt.Println("devMode:", devMode)
 	// deploy to docker/k8s, disable file output
@@ -68,7 +57,7 @@ func main() {
 	router.GET("/do-search", DoSearch)
 	router.GET("/third-party", DoSearchThirdParty)
 	router.GET("/wrap", Wrap)
-	router.GET("/translate", Translate)
+	router.GET("/translate", translate.Translate)
 
 	port := viper.GetInt("enx.port")
 	listenAddress := fmt.Sprintf(":%d", port)
@@ -183,35 +172,13 @@ func LoadCount(c *gin.Context) {
 		"data": response,
 	})
 }
-func Translate(c *gin.Context) {
-	english := c.Query("word")
-	logger.Debugf("translate word: %s", english)
-	english = regexp.MustCompile(`[^a-zA-Z\- ]+`).ReplaceAllString(english, "")
-	word := enx.Word{}
-	word.SetEnglish(english)
-
-	word.Translate()
-	if word.Chinese == "" {
-		logger.Debugf("find from youdao: %s", english)
-		epc := youdao.Query(english)
-		word.Chinese = epc.Chinese
-		word.Pronunciation = epc.Pronunciation
-		word.LoadCount = 1
-		word.Save()
-	} else {
-		word.LoadCount = word.LoadCount + 1
-		word.UpdateLoadCount()
-	}
-	word.FindQueryCount()
-	c.JSON(200, word)
-}
 
 func WordsCount(c *gin.Context) {
-	words := c.Query("words")
-	logger.Debugf("words count, words: %s", words)
-	WordsCount0 := enx.WordsCount0(words)
+	text := c.Query("words")
+	logger.Debugf("words count, words: %s", text)
+	out := enx.QueryCountInText(text)
 	c.JSON(200, gin.H{
-		"data": WordsCount0,
+		"data": out,
 	})
 }
 

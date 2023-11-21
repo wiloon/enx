@@ -41,3 +41,10 @@ create table user_dicts
     user_id            INTEGER,
     already_acquainted INTEGER
 );
+
+create table youdao
+(
+    english TEXT          not null,
+    result  TEXT          not null,
+    exist   INTEGER default 0 not null
+);

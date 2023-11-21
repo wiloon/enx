@@ -1,9 +1,9 @@
 package enx
 
 import (
-	"enx-server/storage"
-	"enx-server/storage/sqlitex"
+	"enx-server/repo"
 	"enx-server/utils/logger"
+	"enx-server/utils/sqlitex"
 	"strings"
 	"time"
 )
@@ -20,9 +20,7 @@ type Word struct {
 }
 
 func (word *Word) FindId() {
-	sWord := storage.Word{}
-	sqlitex.DB.Where("english=?", word.Key).Find(&sWord)
-	logger.Debugf("find word, id: %v, english: %s", sWord.Id, sWord.English)
+	sWord := repo.GetWordByEnglish(word.Key)
 	word.Id = sWord.Id
 }
 
@@ -31,15 +29,10 @@ func (word *Word) SetEnglish(english string) {
 	word.Key = strings.ToLower(english)
 }
 func (word *Word) FindQueryCount() int {
-	sud := storage.UserDict{}
-	sud.UserId = 0
-	sud.WordId = word.Id
-
-	sqlitex.DB.Table("user_dicts").
-		Where("user_dicts.word_id=? and user_dicts.user_id=?", sud.WordId, sud.UserId).Scan(&sud)
-	logger.Debugf("find query count, word id: %d, word: %s, query count: %d", sud.WordId, word.English, sud.UserId)
-	word.LoadCount = sud.QueryCount
-	return word.LoadCount
+	qc := repo.GetUserWordQueryCount(word.Id, 0)
+	logger.Debugf("find query count, word id: %d, word: %s, query count: %d", word.Id, word.English, 0)
+	word.LoadCount = qc
+	return qc
 }
 
 func (word *Word) FindLoadCountById() int {
@@ -48,8 +41,8 @@ func (word *Word) FindLoadCountById() int {
 	return word.LoadCount
 }
 func (word *Word) Translate() *Word {
-	sWord := storage.Word{}
-	sqlitex.DB.Where("english=?", word.Key).Find(&sWord)
+
+	sWord := repo.Translate(word.Key)
 	logger.Debugf("find word, id: %v, english: %s", sWord.Id, sWord.English)
 	word.Id = sWord.Id
 	word.Chinese = sWord.Chinese
@@ -59,7 +52,7 @@ func (word *Word) Translate() *Word {
 }
 
 func (word *Word) Save() {
-	sWord := storage.Word{}
+	sWord := repo.Word{}
 	sWord.CreateDatetime = time.Now()
 	sWord.UpdateDatetime = time.Now()
 	sWord.English = word.Key
@@ -69,12 +62,12 @@ func (word *Word) Save() {
 	tx := sqlitex.DB.Create(&sWord)
 	logger.Debugf("save word: %v, tx: %v", sWord, tx)
 
-	//sUserDict:=storage.UserDict{}
+	//sUserDict:=repo.UserDict{}
 	//sUserDict.WordId
 }
 
 func (word *Word) UpdateLoadCount() {
-	sWord := storage.Word{}
+	sWord := repo.Word{}
 	sqlitex.DB.Model(&sWord).
 		Where("english=?", word.Key).
 		Updates(map[string]interface{}{

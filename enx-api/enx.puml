@@ -1,0 +1,29 @@
+@startuml
+component ENX {
+component 单词查询上下文 as query  {
+
+}
+note right of query: 传统的词典页面\n提供单词查询功能
+
+component 浏览器扩展上下文  {
+[标注上下文] as mark
+}
+
+[词库上下文] as db
+
+component 翻译上下文  as translate {
+}
+
+query -- translate
+translate -- db
+[计数上下文] as count
+translate -- count
+query -- count
+mark -right- query
+mark -- translate
+mark -- count
+
+[第三方词典上下文] as third
+translate -- third
+
+@enduml
