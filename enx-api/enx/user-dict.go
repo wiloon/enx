@@ -1,9 +1,9 @@
 package enx
 
 import (
-	"enx-server/storage"
-	"enx-server/storage/sqlitex"
+	"enx-server/repo"
 	"enx-server/utils/logger"
+	"enx-server/utils/sqlitex"
 	"time"
 )
 
@@ -16,7 +16,7 @@ type UserDict struct {
 }
 
 func (ud *UserDict) Mark() {
-	sud := storage.UserDict{}
+	sud := repo.UserDict{}
 	sud.UserId = ud.UserId
 	sud.UpdateTime = time.Now()
 	sud.WordId = ud.WordId
@@ -38,10 +38,10 @@ func (ud *UserDict) Mark() {
 }
 
 func (ud *UserDict) IsExist() bool {
-	sud := storage.UserDict{}
+	sud := repo.UserDict{}
 	sud.UserId = ud.UserId
 	sud.WordId = ud.WordId
-	tmp := storage.UserDict{}
+	tmp := repo.UserDict{}
 	sqlitex.DB.Where("word_id=? and user_id=?", sud.WordId, sud.UserId).Find(&tmp)
 	if tmp.WordId == 0 {
 		return false

@@ -1,7 +1,11 @@
 package youdao
 
 import (
+	"enx-server/utils"
 	"enx-server/utils/logger"
+	"enx-server/utils/sqlitex"
+	"fmt"
+	"github.com/spf13/viper"
 	"testing"
 )
 
@@ -16,4 +20,14 @@ func TestQuery0(t *testing.T) {
 func TestQuery1(t *testing.T) {
 
 	Query("a little")
+}
+
+func TestQuery2(t *testing.T) {
+	utils.ViperInit()
+	sqlitex.Init()
+
+	devMode := viper.GetBool("enx.dev-mode")
+	fmt.Println("devMode:", devMode)
+	r := Translate("test")
+	fmt.Printf("r: %+v", r)
 }

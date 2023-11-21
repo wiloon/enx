@@ -1,9 +1,9 @@
 package enx
 
 import (
-	"enx-server/storage"
-	"enx-server/storage/sqlitex"
+	"enx-server/repo"
 	"enx-server/utils/logger"
+	"enx-server/utils/sqlitex"
 	"time"
 )
 
@@ -19,7 +19,7 @@ func CheckAndMigrateQueryCount(wordId int) {
 		logger.Infof("one word query count found, word: %+v", word)
 
 		// insert into user dict
-		sud := storage.UserDict{}
+		sud := repo.UserDict{}
 		sud.UserId = 0
 		sud.UpdateTime = time.Now()
 		sud.WordId = ud.WordId
