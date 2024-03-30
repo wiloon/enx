@@ -11,7 +11,7 @@ import (
 )
 
 func Query(words string) *enx.Dictionary {
-	baseUrl, _ := url.Parse("http://dict.youdao.com/")
+	baseUrl, _ := url.Parse("https://dict.youdao.com/")
 	baseUrl.Path = fmt.Sprintf("w/eng/%s", words)
 	params := url.Values{}
 	params.Add("#keyfrom", "dict2.index")
