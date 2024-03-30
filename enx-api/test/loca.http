@@ -1,0 +1,29 @@
+### words-count
+
+GET http://localhost:8080/words-count?words=foo%20On HTTP/1.1
+
+### words count, multi word
+GET http://localhost:8080/words-count?words=Watches%20from%20Switzerland%20are%20popular.%20Now%2C%20many%20people%20also%20buy%20secondhand%20Swiss%20watches.%20According%20to%20a%20study%2C%20the%20secondhand%20watch%20business%20is%20now%20worth%20almost%2020%20billion%20Swiss%20francs.%20It%20could%20reach%2035%20billion%20francs%20by%202030. HTTP/1.1
+
+## translate, check and insert work
+
+### translate, local
+GET http://localhost:8080/translate?word=foo HTTP/1.1
+
+### translate, local
+GET http://localhost:8080/translate?word=reward; HTTP/1.1
+
+## mark
+
+### local mark
+POST http://localhost:8080/mark HTTP/1.1
+content-type: application/json
+
+{"Key": "foo"}
+
+### new word
+GET http://localhost:8080/load-count?words=STOCKHOLM HTTP/1.1
+
+### words count, local
+GET http://localhost:8080/words-count?words=foo%20bar HTTP/1.1
+
