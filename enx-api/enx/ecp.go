@@ -11,12 +11,13 @@ import (
 type Word struct {
 	Id            int
 	English       string
-	LoadCount     int
 	Chinese       string
 	Pronunciation string
 	Key           string
+
 	// 0: false, 1: true
 	AlreadyAcquainted int
+	LoadCount         int
 }
 
 func (word *Word) FindId() {
@@ -37,7 +38,7 @@ func (word *Word) FindQueryCount() int {
 
 func (word *Word) FindLoadCountById() int {
 	sqlitex.DB.Table("words").Where("words.id=?", word.Id).Scan(&word)
-	logger.Debugf("find load count, word: %+v", word)
+	logger.Debugf("find one load count, word: %+v", word)
 	return word.LoadCount
 }
 func (word *Word) Translate() *Word {
