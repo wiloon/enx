@@ -7,7 +7,9 @@ import (
 	"enx-server/utils"
 	"enx-server/utils/logger"
 	"enx-server/utils/sqlitex"
+	wordCount "enx-server/word"
 	"enx-server/youdao"
+	"errors"
 	"fmt"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -50,7 +52,7 @@ func main() {
 		})
 	})
 
-	router.GET("/load-count", LoadCount)
+	router.GET("/load-count", wordCount.LoadCount)
 	router.POST("/mark", MarkWord)
 	router.GET("/words-count", WordsCount)
 
@@ -63,21 +65,21 @@ func main() {
 	listenAddress := fmt.Sprintf(":%d", port)
 	srv := &http.Server{Addr: listenAddress, Handler: router}
 
-	idleConnsClosed := make(chan struct{})
+	idleConnectionsClosed := make(chan struct{})
 	go func() {
 		utils.WaitSignals()
 		if err := srv.Shutdown(context.Background()); err != nil {
 			logger.Errorf("http server shutdown: %v", err)
 		}
-		close(idleConnsClosed)
+		close(idleConnectionsClosed)
 	}()
 
 	logger.Infof("listen start, port: %v", port)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := srv.ListenAndServe(); err != nil || !errors.Is(err, http.ErrServerClosed) {
 		logger.Errorf("failed to listen, %v", err)
 	}
 	logger.Infof("listen end")
-	<-idleConnsClosed
+	<-idleConnectionsClosed
 
 }
 
@@ -156,21 +158,6 @@ func Wrap(c *gin.Context) {
 		a.appendWords(v)
 	}
 	c.JSON(200, a.Lines)
-}
-func LoadCount(c *gin.Context) {
-	key := c.Query("words")
-	words := strings.Split(key, "_")
-	response := make(map[string]int)
-	for _, word := range words {
-		ecp := enx.Word{}
-		ecp.SetEnglish(word)
-		loadCount := ecp.FindQueryCount()
-		response[ecp.English] = loadCount
-	}
-
-	c.JSON(200, gin.H{
-		"data": response,
-	})
 }
 
 func WordsCount(c *gin.Context) {

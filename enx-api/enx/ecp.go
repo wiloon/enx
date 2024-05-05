@@ -11,12 +11,12 @@ import (
 type Word struct {
 	Id            int
 	English       string
-	LoadCount     int
 	Chinese       string
 	Pronunciation string
 	Key           string
 	// 0: false, 1: true
 	AlreadyAcquainted int
+	LoadCount         int
 }
 
 func (word *Word) FindId() {
