@@ -30,9 +30,10 @@ func (word *Word) SetEnglish(english string) {
 	word.Key = strings.ToLower(english)
 }
 func (word *Word) FindQueryCount() int {
-	qc := repo.GetUserWordQueryCount(word.Id, 0)
-	logger.Debugf("find query count, word id: %d, word: %s, query count: %d", word.Id, word.English, 0)
+	qc, acquainted := repo.GetUserWordQueryCount(word.Id, 0)
+	logger.Debugf("find query count, word id: %d, word: %s, query count: %d", word.Id, word.English, qc)
 	word.LoadCount = qc
+	word.AlreadyAcquainted = acquainted
 	return qc
 }
 
@@ -42,13 +43,12 @@ func (word *Word) FindLoadCountById() int {
 	return word.LoadCount
 }
 func (word *Word) Translate() *Word {
-
 	sWord := repo.Translate(word.Key)
-	logger.Debugf("find word, id: %v, english: %s", sWord.Id, sWord.English)
 	word.Id = sWord.Id
 	word.Chinese = sWord.Chinese
 	word.LoadCount = sWord.LoadCount
 	word.Pronunciation = sWord.Pronunciation
+	logger.Debugf("translate word, id: %v, english: %s", sWord.Id, word.Key)
 	return word
 }
 
@@ -62,9 +62,6 @@ func (word *Word) Save() {
 	sWord.LoadCount = word.LoadCount
 	tx := sqlitex.DB.Create(&sWord)
 	logger.Debugf("save word: %v, tx: %v", sWord, tx)
-
-	//sUserDict:=repo.UserDict{}
-	//sUserDict.WordId
 }
 
 func (word *Word) UpdateLoadCount() {

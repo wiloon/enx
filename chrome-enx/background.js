@@ -72,6 +72,7 @@ async function enxServerGetOne(word) {
     return json
 }
 
+// mark word as acquainted
 async function markWord(key) {
     let url = 'https://enx.wiloon.com/mark'
     console.log("calling enx server, url: ", url)
@@ -111,8 +112,9 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
                 sendResponse({ecp: result});
             })
         } else if (msgType === 'markAcquainted') {
+            // mark word as acquainted
             let key = request.word
-            console.log("markAcquainted: ", key)
+            console.log("mark word as acquainted, key: ", key)
             markWord(key).then(result => {
                 console.log("mark word response: ", result)
                 sendResponse({ecp: result});

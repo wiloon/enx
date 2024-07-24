@@ -18,7 +18,7 @@ func Init() {
 	dbFileName := "enx.db"
 	// check if current system is linux or windows
 	//goland:noinspection GoBoolExpressions
-	if runtime.GOOS == "linux" {
+	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
 		dbPath = "/var/lib/enx-api/" + dbFileName
 	} else if runtime.GOOS == "windows" {
 		dbPath = "C:\\workspace\\apps\\enx\\" + dbFileName
@@ -33,6 +33,7 @@ func Init() {
 		},
 	)
 	var err error
+	zapLog.Infof("opening db: %s", dbPath)
 	DB, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{
 		Logger: newLogger,
 	})

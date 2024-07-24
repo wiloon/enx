@@ -19,9 +19,9 @@ type Word struct {
 type UserDict struct {
 	WordId            int
 	QueryCount        int
-	UpdateTime        time.Time
 	UserId            int
 	AlreadyAcquainted int
+	UpdateTime        time.Time
 }
 
 type YoudaoQueryHistory struct {
@@ -39,20 +39,20 @@ func GetWordByEnglish(english string) *Word {
 }
 
 // GetUserWordQueryCount get user word query count
-func GetUserWordQueryCount(wordId, userId int) int {
+func GetUserWordQueryCount(wordId, userId int) (int, int) {
 	sud := UserDict{}
 	sud.UserId = userId
 	sud.WordId = wordId
 
 	sqlitex.DB.Table("user_dicts").
 		Where("user_dicts.word_id=? and user_dicts.user_id=?", sud.WordId, sud.UserId).Scan(&sud)
-	return sud.QueryCount
+	return sud.QueryCount, sud.AlreadyAcquainted
 }
 
-func Translate(english string) Word {
+func Translate(key string) Word {
 	sWord := Word{}
-	sqlitex.DB.Where("english=?", english).Find(&sWord)
-	logger.Debugf("find word, id: %v, english: %s", sWord.Id, sWord.English)
+	sqlitex.DB.Where("english=?", key).Find(&sWord)
+	logger.Debugf("find word, id: %v, english: %s", sWord.Id, key)
 	return sWord
 }
 

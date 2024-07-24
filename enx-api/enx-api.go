@@ -51,10 +51,9 @@ func main() {
 			"message": "pong",
 		})
 	})
-
+	router.GET("/words-count", WordsCount)
 	router.GET("/load-count", wordCount.LoadCount)
 	router.POST("/mark", MarkWord)
-	router.GET("/words-count", WordsCount)
 
 	router.GET("/do-search", DoSearch)
 	router.GET("/third-party", DoSearchThirdParty)

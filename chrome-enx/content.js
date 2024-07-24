@@ -1,7 +1,8 @@
 console.log("content js running")
 
+// update underline color
 function updateUnderLine(ecp) {
-    // update underline color
+    console.log("update underline color, key: ", ecp.Key, "load count: ", ecp.LoadCount, "acquainted: ", ecp.AlreadyAcquainted)
     className = "enx-" + ecp.Key
     articleClassElement = document.getElementsByClassName(className);
     console.log("get element by class name: ", className)
@@ -10,6 +11,7 @@ function updateUnderLine(ecp) {
         for (element in articleClassElement) {
             // style="margin-left: 2px; margin-right: 2px; text-decoration: #FF9800 underline; text-decoration-thickness: 2px;"
             colorCode = getColorCodeByCount(ecp)
+            console.log("color code: ", colorCode)
             if (articleClassElement[element] === undefined || articleClassElement[element].style === undefined) {
                 continue
             }
@@ -232,6 +234,8 @@ async function injectEnxWindow() {
         console.log("enx mark")
         let key = document.getElementById("enx-search-key").innerText
         console.log("mark: ", key)
+
+        // mark word as acquainted
         chrome.runtime.sendMessage({
             msgType: "markAcquainted",
             word: key
