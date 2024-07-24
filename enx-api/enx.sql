@@ -35,11 +35,12 @@ create table words
 
 create table user_dicts
 (
+    user_id            INTEGER,
     word_id            INTEGER,
     query_count        INTEGER,
+    already_acquainted INTEGER,
     update_time        datetime,
-    user_id            INTEGER,
-    already_acquainted INTEGER
+    PRIMARY KEY (user_id, word_id)
 );
 
 create table youdao

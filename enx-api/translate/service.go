@@ -21,11 +21,26 @@ func Translate(c *gin.Context) {
 		epc := youdao.Query(english)
 		word.Chinese = epc.Chinese
 		word.Pronunciation = epc.Pronunciation
-		word.LoadCount = 1
 		word.Save()
+
+		userDict := enx.UserDict{}
+		userDict.UserId = 0
+		userDict.WordId = word.Id
+		userDict.AlreadyAcquainted = word.AlreadyAcquainted
+		userDict.QueryCount = 1
+		userDict.Save()
 	} else {
-		word.LoadCount = word.LoadCount + 1
-		word.UpdateLoadCount()
+		logger.Infof("word exist in local dict: %v", english)
+		userDict := enx.UserDict{}
+		userDict.UserId = 0
+		userDict.WordId = word.Id
+		userDict.AlreadyAcquainted = word.AlreadyAcquainted
+		userDict.QueryCount = word.LoadCount + 1
+		if userDict.IsExist() {
+			userDict.UpdateQueryCount()
+		} else {
+			userDict.Save()
+		}
 	}
 	word.FindQueryCount()
 	c.JSON(200, word)
