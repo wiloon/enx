@@ -35,10 +35,12 @@ func Translate(c *gin.Context) {
 		userDict.UserId = 0
 		userDict.WordId = word.Id
 		userDict.AlreadyAcquainted = word.AlreadyAcquainted
-		userDict.QueryCount = word.LoadCount + 1
+
 		if userDict.IsExist() {
+			userDict.QueryCount = userDict.QueryCount + 1
 			userDict.UpdateQueryCount()
 		} else {
+			userDict.QueryCount = word.LoadCount + 1
 			userDict.Save()
 		}
 	}

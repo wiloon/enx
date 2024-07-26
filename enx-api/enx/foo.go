@@ -23,8 +23,8 @@ func QueryCountInText(words string) map[string]Word {
 		wordObj.SetEnglish(word)
 		wordObj.FindId()
 		CheckAndMigrateQueryCount(wordObj.Id)
-		wordObj.FindQueryCount()
 		wordObj.Translate()
+		wordObj.FindQueryCount()
 		response[wordObj.English] = wordObj
 	}
 	logger.Debug("words count: ", response)
