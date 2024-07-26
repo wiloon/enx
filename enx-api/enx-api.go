@@ -51,6 +51,7 @@ func main() {
 			"message": "pong",
 		})
 	})
+	// get words query count by paragraph
 	router.GET("/words-count", WordsCount)
 	router.GET("/load-count", wordCount.LoadCount)
 	router.POST("/mark", MarkWord)
@@ -160,9 +161,9 @@ func Wrap(c *gin.Context) {
 }
 
 func WordsCount(c *gin.Context) {
-	text := c.Query("words")
-	logger.Debugf("words count, words: %s", text)
-	out := enx.QueryCountInText(text)
+	paragraph := c.Query("words")
+	logger.Debugf("words count, words: %s", paragraph)
+	out := enx.QueryCountInText(paragraph)
 	c.JSON(200, gin.H{
 		"data": out,
 	})
