@@ -1,5 +1,60 @@
 console.log("content js running")
 
+// copy to content.js, any change sync with the clone
+// todo, try to merge two func int content.js, inject.js
+function popEnxDialogBox(mouseEvent, english) {
+    console.log("on mouse click")
+    console.log("mouse event: ", mouseEvent)
+    let mouseEventX = mouseEvent.clientX;
+    let mouseEventY = mouseEvent.clientY;
+    console.log("mouse event client x: ", mouseEventX)
+    console.log("mouse event client y: ", mouseEventY)
+
+    let eventTarget = mouseEvent.target;
+    console.log("event target: ", eventTarget)
+
+    let eventTargetRect = eventTarget.getBoundingClientRect();
+    console.log("event target rect: ", eventTargetRect)
+    document.getElementById("enx-window").style.display = "block";
+
+    let enxWindowRect = document.getElementById("enx-window").getBoundingClientRect()
+    console.log("enx rect: ", enxWindowRect)
+    console.log("enx window left: ", enxWindowRect.left);
+    console.log("enx window top: ", enxWindowRect.top);
+    console.log("enx window height: ", enxWindowRect.height);
+    let enxHeight = enxWindowRect.height
+
+    let articleElement = document.getElementsByTagName("body");
+    let articleRect = articleElement[0].getBoundingClientRect();
+    baseX = articleRect.left
+    baseY = articleRect.top
+    console.log("base x: ", baseX)
+    console.log("base y: ", baseY)
+
+    let offsetX = 0;
+    let offsetY = -50;
+    let newX = mouseEventX - baseX - offsetX;
+    let newY = mouseEventY - baseY + offsetY + (-1 * enxHeight);
+
+    console.log("new x: ", newX);
+    console.log("mouse event y:", mouseEventY, "base y:", baseY, "offset y:", offsetY, "enx height:", enxHeight, "new y: ", newY);
+
+    document.getElementById("enx-window").style.left = newX + "px";
+    document.getElementById("enx-window").style.top = newY + "px";
+    console.log(document.getElementById("enx-window").getBoundingClientRect());
+    let word = mouseEvent.target.innerText;
+
+
+    if (english == undefined || english ==""){
+        // get attribute value from event
+        english = eventTarget.getAttribute("alt");
+    }
+    
+    // send word to enx server and get chinese
+    console.log("send windows msg get one word from content.js, english: ", english)
+    window.postMessage({type: "getOneWord", word: english});
+}
+
 // update underline color
 function updateUnderLine(ecp) {
     console.log("update underline color, key: ", ecp.Key, "load count: ", ecp.LoadCount, "acquainted: ", ecp.AlreadyAcquainted)
@@ -158,7 +213,7 @@ function findChildNodes(parentNode) {
                     console.log("word: ", word, " load count: ", loadCount)
                     let colorCode = getColorCodeByCount(ecp)
                     console.log("word: ", word, ", load count: ", loadCount, ", color code: ", colorCode)
-                    let startTag = '<u alt="alt-foo" onclick="funcFoo(event)" class="class-foo" style="text-decoration: #000000 underline; text-decoration-thickness: 2px;">'
+                    let startTag = '<u alt="alt-foo" onclick="popEnxDialogBox(event)" class="class-foo" style="text-decoration: #000000 underline; text-decoration-thickness: 2px;">'
                     startTag = startTag.replace("#000000", colorCode);
                     startTag = startTag.replace("class-foo", "enx-" + ecp.Key);
                     startTag = startTag.replace("alt-foo", ecp.Key);
@@ -186,11 +241,28 @@ function getArticleNode() {
     return articleClassElement
 }
 
-function enxMark() {
+// when chrome extension ENx clicked
+function enxRun() {
     articleClassElement = getArticleNode();
-    console.log(articleClassElement)
-    articleNode = articleClassElement.item(0)
-    console.log(articleNode)
+    // console.log(articleClassElement)
+    let articleNode = articleClassElement.item(0)
+
+    // for word group select
+    console.log("adding mouse up")
+    // 改变 t2 内容的函数
+    function mouseupHandler(mouseEvent) {
+        console.log("mouse up")
+        console.log("mouse event: ", mouseEvent)
+        selectedText = document.getSelection().toString()
+        console.log("mouse up", selectedText)
+        popEnxDialogBox(mouseEvent, selectedText)
+    }
+  
+    // 为 table 添加事件监听器
+    articleNode.addEventListener("mouseup", mouseupHandler, false);
+
+    
+    // console.log(articleNode)
     findChildNodes(articleNode)
 }
 
@@ -285,6 +357,7 @@ function getOneWord(key) {
         document.getElementById("enx-c").innerText = ""
         document.getElementById("enx-search-key").innerText = ""
 
+        console.log("send get one word from content js")
         const response = await chrome.runtime.sendMessage({msgType: "getOneWord", word: key});
         // do something with response here, not outside the function
         console.log("response from backend")
@@ -310,17 +383,21 @@ window.addEventListener("message", function (event) {
     console.log(event.data)
     // only accept messages from the current tab
     if (event.source !== window) return;
-
+    
+    // user clicked extension icon, ENx enable
     if (event.data.type && (event.data.type === "mark")) {
         console.log("call enx mark")
         // msg from web page
         // collect words and send to backend
-        enxMark()
+        enxRun()
     }
+
+    // user clicked extension icon, ENx disable
     if (event.data.type && (event.data.type === "unMark")) {
         console.log("unmark event")
         enxUnMark()
     }
+    // receive msg from inject js mouse click then invoke service
     if (event.data.type && (event.data.type === "getOneWord")) {
         let word = event.data.word
         console.log("content script, get one word: ", word)
@@ -335,7 +412,7 @@ chrome.runtime.onMessage.addListener(
         // console.log("sender tab url: ", sender.tab.url)
         console.log("request: ", request)
         if (request.greeting === "mark") {
-            enxMark()
+            enxRun()
             sendResponse({farewell: "ok"});
         }
     }
