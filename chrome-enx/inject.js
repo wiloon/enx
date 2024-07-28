@@ -30,7 +30,9 @@ function enxOff() {
 let baseX = -1;
 let baseY = -1;
 
-function funcFoo(mouseEvent) {
+// copy to content.js, any change sync with the clone
+// todo, try to merge two func int content.js, inject.js
+function popEnxDialogBox(mouseEvent) {
     console.log("on mouse click")
     console.log("mouse event: ", mouseEvent)
     let mouseEventX = mouseEvent.clientX;
@@ -73,6 +75,8 @@ function funcFoo(mouseEvent) {
     document.getElementById("enx-window").style.top = newY + "px";
     console.log(document.getElementById("enx-window").getBoundingClientRect());
     let word = mouseEvent.target.innerText;
+
     // send word to enx server and get chinese
+    console.log("send get one word from func foo")
     window.postMessage({type: "getOneWord", word: SearchKey});
 }
