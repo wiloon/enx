@@ -28,9 +28,15 @@ chrome.action.onClicked.addListener(async (tab) => {
             console.log("status on");
 
             const [tab] = await chrome.tabs.query({active: true, lastFocusedWindow: true});
-            const response = await chrome.tabs.sendMessage(tab.id, {greeting: "mark"});
-            // do something with response here, not outside the function
-            console.log("response: ", response);
+
+            try {
+                const response = await chrome.tabs.sendMessage(tab.id, {greeting: "mark"});
+                // do something with response here, not outside the function
+                console.log("response: ", response);
+              } catch (error) {
+                console.log('failed to send mark event')
+                console.error(error);
+              }
 
             await chrome.scripting.executeScript({
                 target: {tabId: tab.id},

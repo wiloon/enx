@@ -1,0 +1,14 @@
+[Unit]
+Description=ENx
+
+[Service]
+WorkingDirectory=/usr/local/bin
+ExecStart=/usr/local/bin/enx-api
+User=root
+Group=root
+Type=simple
+Restart=no
+LimitNOFILE=100000
+
+[Install]
+WantedBy=multi-user.target
