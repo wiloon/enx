@@ -10,7 +10,8 @@ func ViperInit() {
 	jww.SetLogThreshold(jww.LevelTrace)
 	jww.SetStdoutThreshold(jww.LevelTrace)
 
-	viper.SetConfigName("config.toml")
+	viper.SetConfigName("config")
+	viper.SetConfigType("toml")
 	viper.AddConfigPath("/usr/local/etc/enx/")
 	viper.AddConfigPath("$HOME/.enx")
 	viper.AddConfigPath("C:\\workspace\\conf")
