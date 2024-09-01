@@ -1,6 +1,6 @@
 module enx-server
 
-go 1.22.6
+go 1.23.0
 
 require (
 	github.com/PuerkitoBio/goquery v1.6.0

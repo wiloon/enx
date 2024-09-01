@@ -95,7 +95,9 @@ function getColorCodeByCount(ecp) {
 let spanWidth = 0;
 
 function findChildNodes(parentNode) {
+    console.log("find child node, parent node: ", parentNode)
     let childNodes = parentNode.childNodes
+    console.log("child node count: ", childNodes.length)
     if (childNodes.length === 0) {
         return
     }
@@ -103,7 +105,9 @@ function findChildNodes(parentNode) {
     // check if article context
     let articleContent = true
     for (let node of childNodes) {
+        console.log("child node: ", node)
         let tagName = node.tagName
+        console.log("tag name: ", tagName)
         if (tagName !== "A" && tagName !== undefined && tagName !== "EM" && tagName !== "CODE") {
             articleContent = false
             break
@@ -173,7 +177,7 @@ function findChildNodes(parentNode) {
     // send word array to backend
     // get word properties from backend
     (async () => {
-        console.log("sending msg from content script to backend, params: ", Date.now())
+        console.log("sending msg from content script to backend")
         const response = await chrome.runtime.sendMessage({msgType: "getWords", words: oneParagraph});
         // do something with response here, not outside the function
         console.log("response from backend: ", response)
@@ -233,10 +237,14 @@ function findChildNodes(parentNode) {
 
 function getArticleNode() {
     // gofluent
-    let articleClassElement = document.getElementsByClassName("Article");
+    let articleClassElement = document.getElementsByClassName("Article")
     if (articleClassElement.length === 0) {
         // infoq
-        articleClassElement = document.getElementsByClassName("article__data");
+        articleClassElement = document.getElementsByClassName("article__data")
+    }
+    if (articleClassElement.length === 0) {
+        // tingroom
+        articleClassElement = document.getElementsByClassName("text")
     }
     return articleClassElement
 }
@@ -244,6 +252,7 @@ function getArticleNode() {
 // when chrome extension ENx clicked
 function enxRun() {
     articleClassElement = getArticleNode();
+    console.log("article node: ", articleClassElement)
     // console.log(articleClassElement)
     let articleNode = articleClassElement.item(0)
 
@@ -408,7 +417,7 @@ window.addEventListener("message", function (event) {
 chrome.runtime.onMessage.addListener(
     function (request, sender, sendResponse) {
         console.log("on message")
-        // console.log('sender tab: ', sender.tab)
+        console.log('sender tab: ', sender.tab)
         // console.log("sender tab url: ", sender.tab.url)
         console.log("request: ", request)
         if (request.greeting === "mark") {
