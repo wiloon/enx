@@ -2,6 +2,7 @@ console.log("background.js is running")
 
 // set text as off when extension installed
 chrome.runtime.onInstalled.addListener(() => {
+    console.log('set text as off')
     chrome.action.setBadgeText({
         text: 'OFF'
     });
@@ -20,7 +21,7 @@ chrome.action.onClicked.addListener(async (tab) => {
         // Next state will always be the opposite
         const nextState = prevState === 'ON' ? 'OFF' : 'ON';
 
-        console.log("badge text, current: ", prevState, ", next: ", nextState)
+        console.log("enx status, current: ", prevState, ", next: ", nextState)
 
         // Set the action badge to the next state
         await chrome.action.setBadgeText({
