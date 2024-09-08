@@ -32,6 +32,7 @@ let baseY = -1;
 
 // copy to content.js, any change sync with the clone
 // todo, try to merge two func int content.js, inject.js
+// which one is in use?
 function popEnxDialogBox(mouseEvent) {
     console.log("on mouse click")
     console.log("mouse event: ", mouseEvent)

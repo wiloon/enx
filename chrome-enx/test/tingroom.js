@@ -224,6 +224,7 @@ show_task('moduleid=1025&html=zhangjie&itemid=16793');
 </html>
 `
 
-var doc = new DOMParser().parseFromString(tingroom_content, "text/xml");
-articleClassElement = doc.getElementsByClassName("text")
-findChildNodes(articleNode)
+// var doc = new DOMParser().parseFromString(tingroom_content, "text/xml");
+// articleClassElement = doc.getElementsByClassName("text")
+// findChildNodes(articleNode)
+
