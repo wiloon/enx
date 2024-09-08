@@ -43,12 +43,12 @@ chrome.action.onClicked.addListener(async (tab) => {
               }
             await chrome.scripting.executeScript({
                 target: {tabId: tab.id},
-                files: ["foo.js"],
+                files: ["background1.js"],
             }).then(() => console.log("injected foo script file"));
         } else if (nextState === 'OFF') {
             await chrome.scripting.executeScript({
                 target: {tabId: tab.id},
-                files: ["bar.js"],
+                files: ["background1.js"],
             }).then(() => console.log("injected bar script file"));
         }
     }

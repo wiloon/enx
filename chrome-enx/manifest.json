@@ -40,7 +40,8 @@
       "resources": [
         "inject.js",
         "inject.css",
-        "drag.svg"
+        "drag.svg",
+        "content_module.js"
       ],
       "matches": [
         "https://portal.gofluent.cn/*",

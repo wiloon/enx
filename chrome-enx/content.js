@@ -1,7 +1,29 @@
 console.log("content js running")
 
+try {
+    (async () => {
+        try {
+            const src = chrome.runtime.getURL("content_module.js");
+            const contentMain = await import(src);
+            contentMain.createOneArticleNode();
+            // multiple content js test
+        }catch (error) {
+            console.error('import error 0: ',error);
+            // Expected output: ReferenceError: nonExistentFunction is not defined
+            // (Note: the exact output may be browser-dependent)
+          }
+       
+
+    })();
+} catch (error) {
+    console.error('import error 1: ',error);
+    // Expected output: ReferenceError: nonExistentFunction is not defined
+    // (Note: the exact output may be browser-dependent)
+  }
+
 // copy to content.js, any change sync with the clone
 // todo, try to merge two func int content.js, inject.js
+// which one is in use?
 function popEnxDialogBox(mouseEvent, english) {
     console.log("on mouse click")
     console.log("mouse event: ", mouseEvent)
@@ -51,7 +73,7 @@ function popEnxDialogBox(mouseEvent, english) {
     }
     
     // send word to enx server and get chinese
-    console.log("send windows msg get one word from content.js, english: ", english)
+    console.log("send window msg 'getOneWord' from content.js to background.js, english: ", english)
     window.postMessage({type: "getOneWord", word: english});
 }
 
@@ -96,6 +118,7 @@ let spanWidth = 0;
 
 function findChildNodes(parentNode) {
     console.log("find child node, parent node: ", parentNode)
+
     let childNodes = parentNode.childNodes
     console.log("child node count: ", childNodes.length)
     if (childNodes.length === 0) {
