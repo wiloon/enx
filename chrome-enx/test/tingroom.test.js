@@ -1,4 +1,4 @@
-tingroom_content = `
+let tingroom_content = `
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -224,7 +224,27 @@ show_task('moduleid=1025&html=zhangjie&itemid=16793');
 </html>
 `
 
+import {JSDOM} from "jsdom"
+import {findChildNodes0} from '../content_module'
+
+
+test('test es module 0', () => {
+  // const dom = new JSDOM(`<!DOCTYPE html><p>Hello world</p>`)
+  // let foo = dom.window.document.querySelector("p").textContent;
+  // console.log(foo)
+  const dom = new JSDOM(tingroom_content)
+  let foo = dom.window.document.querySelector(".text");
+  findChildNodes0(foo)
+});
+
+
+// const jsdom = require("jsdom");
+// const dom = new jsdom.JSDOM(`<!DOCTYPE html><p>Hello world</p>`);
+// let foo = dom.window.document.querySelector("p").textContent; // 'Hello world'
+// console.log(foo)
 // var doc = new DOMParser().parseFromString(tingroom_content, "text/xml");
 // articleClassElement = doc.getElementsByClassName("text")
-// findChildNodes(articleNode)
+
+// import {findChildNodes0} from '../content_module'
+// findChildNodes0(articleNode)
 
