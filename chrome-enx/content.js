@@ -1,26 +1,5 @@
 console.log("content js running")
 
-try {
-    (async () => {
-        try {
-            const src = chrome.runtime.getURL("content_module.js");
-            const contentMain = await import(src);
-            contentMain.createOneArticleNode();
-            // multiple content js test
-        }catch (error) {
-            console.error('import error 0: ',error);
-            // Expected output: ReferenceError: nonExistentFunction is not defined
-            // (Note: the exact output may be browser-dependent)
-          }
-       
-
-    })();
-} catch (error) {
-    console.error('import error 1: ',error);
-    // Expected output: ReferenceError: nonExistentFunction is not defined
-    // (Note: the exact output may be browser-dependent)
-  }
-
 // copy to content.js, any change sync with the clone
 // todo, try to merge two func int content.js, inject.js
 // which one is in use?
@@ -67,14 +46,14 @@ function popEnxDialogBox(mouseEvent, english) {
     let word = mouseEvent.target.innerText;
 
 
-    if (english == undefined || english ==""){
+    if (english == undefined || english == "") {
         // get attribute value from event
         english = eventTarget.getAttribute("alt");
     }
-    
+
     // send word to enx server and get chinese
     console.log("send window msg 'getOneWord' from content.js to background.js, english: ", english)
-    window.postMessage({type: "getOneWord", word: english});
+    window.postMessage({ type: "getOneWord", word: english });
 }
 
 // update underline color
@@ -201,7 +180,7 @@ function findChildNodes(parentNode) {
     // get word properties from backend
     (async () => {
         console.log("sending msg from content script to backend")
-        const response = await chrome.runtime.sendMessage({msgType: "getWords", words: oneParagraph});
+        const response = await chrome.runtime.sendMessage({ msgType: "getWords", words: oneParagraph });
         // do something with response here, not outside the function
         console.log("response from backend: ", response)
         console.log(response.wordProperties);
@@ -289,11 +268,23 @@ function enxRun() {
         console.log("mouse up", selectedText)
         popEnxDialogBox(mouseEvent, selectedText)
     }
-  
+
     // 为 table 添加事件监听器
     articleNode.addEventListener("mouseup", mouseupHandler, false);
 
-    
+    (async () => {
+        try {
+            const src = chrome.runtime.getURL("content_module.js");
+            const contentMain = await import(src);
+            contentMain.createOneArticleNode();
+            // multiple content js test
+        } catch (error) {
+            console.error('import error 0: ', error);
+            // Expected output: ReferenceError: nonExistentFunction is not defined
+            // (Note: the exact output may be browser-dependent)
+        }
+    })();
+
     // console.log(articleNode)
     findChildNodes(articleNode)
 }
@@ -390,7 +381,7 @@ function getOneWord(key) {
         document.getElementById("enx-search-key").innerText = ""
 
         console.log("send get one word from content js")
-        const response = await chrome.runtime.sendMessage({msgType: "getOneWord", word: key});
+        const response = await chrome.runtime.sendMessage({ msgType: "getOneWord", word: key });
         // do something with response here, not outside the function
         console.log("response from backend")
         console.log(response);
@@ -415,7 +406,7 @@ window.addEventListener("message", function (event) {
     console.log(event.data)
     // only accept messages from the current tab
     if (event.source !== window) return;
-    
+
     // user clicked extension icon, ENx enable
     if (event.data.type && (event.data.type === "mark")) {
         console.log("call enx mark")
@@ -445,7 +436,7 @@ chrome.runtime.onMessage.addListener(
         console.log("request: ", request)
         if (request.greeting === "mark") {
             enxRun()
-            sendResponse({farewell: "ok"});
+            sendResponse({ farewell: "ok" });
         }
     }
 );
