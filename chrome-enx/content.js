@@ -95,30 +95,35 @@ function getColorCodeByCount(ecp) {
 
 let spanWidth = 0;
 
-function findChildNodes(parentNode) {
-    console.log("find child node, parent node: ", parentNode)
+function findChildNodes(parentNode){
+    let nodeList = []
 
+    console.log("find child node 0, parent node: ", parentNode)
     let childNodes = parentNode.childNodes
+
     console.log("child node count: ", childNodes.length)
     if (childNodes.length === 0) {
         return
     }
-
     // check if article context
     let articleContent = true
     for (let node of childNodes) {
-        console.log("child node: ", node)
         let tagName = node.tagName
-        console.log("tag name: ", tagName)
+        console.log("child node: ", node, ", tag name: ", tagName)
+
+        // if child node only contains A, CODE ..., this node is article content node
         if (tagName !== "A" && tagName !== undefined && tagName !== "EM" && tagName !== "CODE") {
+            // has sub article node
             articleContent = false
             break
         }
     }
 
     if (articleContent === false) {
+        console.log("article node ==false, check sub node")
         for (let node of childNodes) {
-            findChildNodes(node)
+            let tmp_list = findChildNodes(node)
+            nodeList = nodeList.concat(tmp_list)
         }
         return;
     }
@@ -133,7 +138,8 @@ function findChildNodes(parentNode) {
     }
 
     let spanContent = parentNode.innerHTML
-    let oneParagraph = parentNode.innerText
+    let oneParagraph = parentNode.textContent
+
     // remove duplicate whitespace
     oneParagraph = oneParagraph.replace(/\s+/g, ' ')
     console.log('inner text: ', oneParagraph)
@@ -233,8 +239,6 @@ function findChildNodes(parentNode) {
         }
         parentNode.innerHTML = newSpanContent
     })();
-
-
 }
 
 function getArticleNode() {
