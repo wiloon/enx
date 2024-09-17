@@ -1,15 +1,6 @@
+// https://www.infoq.com/news/2024/09/amazon-storage-browser-s3/
 let pageSource = `
 <!DOCTYPE html>
-
-
-
-
-
-
-
-
-
-
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
     <head>
         <!-- Google Optimize Anti-flicker snippet (recommended)  -->
@@ -28,13 +19,6 @@ let pageSource = `
                 var userCountryId = '47';
             }
         </script>
-        
-
-
-
-
-
-
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
@@ -70,9 +54,9 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 })(window,document,'script','dataLayer', gtmProfile);</script>
 <!-- End Google Tag Manager -->
 
-        <title>Optimizing Continuous Deployment at Uber: Automating Microservices in Large Monorepos - InfoQ</title>
-        <link rel="canonical" href="https://www.infoq.com/news/2024/09/uber-continuous-feployment/"/>
-        <link rel="alternate" href="https://www.infoq.com/news/2024/09/uber-continuous-feployment/" hreflang="en"/>
+        <title>Amazon Introduces Storage Browser for S3 - InfoQ</title>
+        <link rel="canonical" href="https://www.infoq.com/news/2024/09/amazon-storage-browser-s3/"/>
+        <link rel="alternate" href="https://www.infoq.com/news/2024/09/amazon-storage-browser-s3/" hreflang="en"/>
         
 
 
@@ -86,7 +70,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         
         
             
-            <link rel="alternate" href="https://www.infoq.com/news/2024/09/uber-continuous-feployment/" hreflang="x-default" />
+            <link rel="alternate" href="https://www.infoq.com/news/2024/09/amazon-storage-browser-s3/" hreflang="x-default" />
         
     
     
@@ -118,21 +102,21 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <meta http-equiv="X-UA-Compatible" content="IE=10, IE=edge">
 
         
-        <link rel="stylesheet" type="text/css" media="screen" href="https://cdn.infoq.com/statics_s1_20240906124302/styles/style.css"/>
-        <link rel="stylesheet" type="text/css" media="print" href="https://cdn.infoq.com/statics_s1_20240906124302/styles/print.css"/>
-        <link rel="preload" type="text/css" href="https://cdn.infoq.com/statics_s1_20240906124302/styles/style_en.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
-        <link rel="preload" href="https://cdn.infoq.com/statics_s1_20240906124302/styles/icons.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
-        <link rel="preload" type="text/css" media="screen" href="https://cdn.infoq.com/statics_s1_20240906124302/styles/style_extra.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+        <link rel="stylesheet" type="text/css" media="screen" href="https://cdn.infoq.com/statics_s2_20240917061620/styles/style.css"/>
+        <link rel="stylesheet" type="text/css" media="print" href="https://cdn.infoq.com/statics_s2_20240917061620/styles/print.css"/>
+        <link rel="preload" type="text/css" href="https://cdn.infoq.com/statics_s2_20240917061620/styles/style_en.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+        <link rel="preload" href="https://cdn.infoq.com/statics_s2_20240917061620/styles/icons.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+        <link rel="preload" type="text/css" media="screen" href="https://cdn.infoq.com/statics_s2_20240917061620/styles/style_extra.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
         <noscript>
-            <link rel="stylesheet" type="text/css" href="https://cdn.infoq.com/statics_s1_20240906124302/styles/style_en.css"/>
-            <link rel="stylesheet" href="https://cdn.infoq.com/statics_s1_20240906124302/styles/icons.css">
-            <link rel="stylesheet" type="text/css" media="screen" href="https://cdn.infoq.com/statics_s1_20240906124302/styles/style_extra.css"/>
+            <link rel="stylesheet" type="text/css" href="https://cdn.infoq.com/statics_s2_20240917061620/styles/style_en.css"/>
+            <link rel="stylesheet" href="https://cdn.infoq.com/statics_s2_20240917061620/styles/icons.css">
+            <link rel="stylesheet" type="text/css" media="screen" href="https://cdn.infoq.com/statics_s2_20240917061620/styles/style_extra.css"/>
         </noscript>
 
-        <link rel="stylesheet" type="text/css" href="https://cdn.infoq.com/statics_s1_20240906124302/styles/fonts/font.css"/>
+        <link rel="stylesheet" type="text/css" href="https://cdn.infoq.com/statics_s2_20240917061620/styles/fonts/font.css"/>
 
-        <link rel="shortcut icon" href="https://cdn.infoq.com/statics_s1_20240906124302/favicon.ico" type="image/x-icon" />
-        <link rel="apple-touch-icon" href="https://cdn.infoq.com/statics_s1_20240906124302/apple-touch-icon.png"/>
+        <link rel="shortcut icon" href="https://cdn.infoq.com/statics_s2_20240917061620/favicon.ico" type="image/x-icon" />
+        <link rel="apple-touch-icon" href="https://cdn.infoq.com/statics_s2_20240917061620/apple-touch-icon.png"/>
 
         <script type="text/javascript">
         	var device='desktop';
@@ -141,11 +125,12 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
             InfoQConstants.countryCode = '';
             
             InfoQConstants.pageUrl = (typeof window.location != 'undefined' && window.location && typeof window.location.href != 'undefined' && window.location.href) ? window.location.href : "URL_UNAVAILABLE";
-            InfoQConstants.cet='048LYAfRGGjJ4Y0l';
+            InfoQConstants.cet='3RaMYycgxx3pVLNX';
             InfoQConstants.userDetectedCountryCode = 'CN';
+            InfoQConstants.bpadb = 'PigR2RjM1IL3h6ZtNGof';
         </script>
 
-        <script type="text/javascript" src="https://cdn.infoq.com/statics_s1_20240906124302/scripts/combinedJs.min.js"></script>
+        <script type="text/javascript" src="https://cdn.infoq.com/statics_s2_20240917061620/scripts/combinedJs.min.js"></script>
         <script type="text/javascript">
             
                 var JSi18n = JSi18n || {}; // define only if not already defined
@@ -193,23 +178,19 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
                         bookmarked: "Content Bookmarked",
                         unbookmarked: "Content Unbookmarked",
                         characterLimit: "Characters Remaining"
-                    },
-                    adbStrings: [
-                        "We notice you are using an ad blocker",
-                        "We understand why you use ad blockers. However to keep InfoQ free we need your support. InfoQ will not provide your data to third parties without individual opt-in consent. We only work with advertisers relevant to our readers. Please consider whitelisting us."
-                    ]
+                    }
                 }
             
 
 
             
             
-                var usersInPage = JSON.parse('[{\"id\":\"62671158\",\"ref\":\"author-Monica-Beckwith\",\"url\":\"\/profile\/Monica-Beckwith\",\"followedByCurrentUser\":false,\"minibio\":\"\",\"name\":\"Monica Beckwith\",\"bio\":\"Java Champion, Monica Beckwith is a Java performance engineer. She currently works on improving OpenJDK&#39;s HotSpot VM at Microsoft. Her past experiences include working with Arm, Oracle\/Sun and AMD; optimizing the JVM for server class systems. Monica was voted a JavaOne Rock Star speaker and was the performance lead for Garbage First Garbage Collector (G1 GC). You can follow Monica on twitter &#64;mon_beck\",\"followers\":1687,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s1_20240906124302\/images\/profiles\/QhDv7pXEUK1sdLsYArFmnLxecH4rYhAc.jpg\"},{\"id\":\"93850416\",\"ref\":\"author-Claudio-Masolo\",\"url\":\"\/profile\/Claudio-Masolo\",\"followedByCurrentUser\":false,\"minibio\":\"Cloud Engineer\",\"name\":\"Claudio Masolo\",\"bio\":\"Claudio is a cloud engineer. In his spare time, he likes running, reading, and playing old video games. \",\"followers\":37,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s1_20240906124302\/images\/profiles\/etZJL5qwf5xbcRUA3NKv4QZMRINLUnDB.jpeg\"},{\"id\":\"45723890\",\"ref\":\"author-Rags-Srinivas\",\"url\":\"\/profile\/Rags-Srinivas\",\"followedByCurrentUser\":false,\"minibio\":\"\",\"name\":\"Rags Srinivas\",\"bio\":\"Raghavan &#34;Rags&#34; Srinivas (&#64;ragss) works as an Architect\/Developer Evangelist goaled with helping developers build highly scalable and available systems. As an OpenStack advocate and solutions architect at Rackspace he was constantly challenged from low level infrastructure to high level application issues. His general focus area is in distributed systems, with a specialization in Cloud Computing and Big Data. He worked on Hadoop, HBase and NoSQL during its early stages. He has spoken on a variety of technical topics at conferences around the world, written for developer portals, conducted and organized Hands-on Labs and taught graduate and online classes in the evening. Rags brings with him over 25 years of hands-on software development and over 15 years of architecture and technology evangelism experience. He has evangelized and influenced the architecture of a number of emerging technology areas. He is also a repeat JavaOne rock star speaker award winner. Rags holds a Masters degree in Computer Science from the Center of Advanced Computer Studies at the University of Louisiana at Lafayette. He likes to hike, run and generally be outdoors but most of all loves to eat.\",\"followers\":244,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s1_20240906124302\/images\/profiles\/t4nyfgw1THkp4wMZ9EZ59RGJx8Hf9Rk8.jpg\"},{\"id\":\"87551248\",\"ref\":\"author-Steef~Jan-Wiggers\",\"url\":\"\/profile\/Steef~Jan-Wiggers\",\"followedByCurrentUser\":false,\"minibio\":\"Cloud Queue Lead Editor\",\"name\":\"Steef-Jan Wiggers\",\"bio\":\"Steef-Jan Wiggers is one of InfoQ&#39;s senior cloud editors and works as an Integration Architect at i8c in The Netherlands. His current technical expertise focuses on integration platform implementations, Azure DevOps, and Azure Platform Solution Architectures. Steef-Jan is a regular speaker at conferences and user groups and writes for InfoQ. Furthermore, Microsoft has recognized him as Microsoft Azure MVP for the past fourteen years.\",\"followers\":648,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s1_20240906124302\/images\/profiles\/BhZx03k3Hj0pZVXmTzGqItwZxtJ06oIb.jpeg\"},{\"id\":\"80977916\",\"ref\":\"author-Thomas-Betts\",\"url\":\"\/profile\/Thomas-Betts\",\"followedByCurrentUser\":false,\"minibio\":\"Laureate Application Architect at Blackbaud\",\"name\":\"Thomas Betts\",\"bio\":\"Thomas Betts is the Lead Editor for Architecture and Design at InfoQ, a co-host of the InfoQ Podcast, and a Laureate Software Architect at Blackbaud.\\r\\n\\r\\nFor over two decades, his focus has always been on providing software solutions that delight his customers. He has worked in a variety of industries, including social good, retail, finance, health care, defense and travel.\\r\\n\\r\\nThomas lives in Denver with his wife and son, and they love hiking and otherwise exploring beautiful Colorado.\",\"followers\":921,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s1_20240906124302\/images\/profiles\/pSqI6HrU3k9rmmVjwS34OHG0bOMYiE6a.jpg\"},{\"id\":\"72028228\",\"ref\":\"author-Sergio-De-Simone\",\"url\":\"\/profile\/Sergio-De-Simone\",\"followedByCurrentUser\":false,\"minibio\":\"\",\"name\":\"Sergio De Simone\",\"bio\":\"<b>Sergio De Simone<\/b> is a software engineer. Sergio has been working as a software engineer for over twenty five years across a range of different projects and companies, including such different work environments as Siemens, HP, and small startups. For the last 10&#43; years, his focus has been on development for mobile platforms and related technologies. He is currently working for BigML, Inc., where he leads iOS and macOS development.\",\"followers\":583,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s1_20240906124302\/images\/profiles\/NovciOoQOAYWqYqRQBFo97SuMm0xbUiC.jpg\"},{\"id\":\"126467140\",\"ref\":\"author-Renato-Losio\",\"url\":\"\/profile\/Renato-Losio\",\"followedByCurrentUser\":false,\"minibio\":\"InfoQ Staff Editor | Cloud Expert | AWS Data Hero  \",\"name\":\"Renato Losio\",\"bio\":\"Renato has extensive experience as a cloud architect, tech lead, and cloud services specialist. Currently, he lives between Berlin and Trieste and works remotely as a principal cloud architect. His primary areas of interest include cloud services and relational databases. He is an editor at InfoQ and a recognized AWS Data Hero. You can connect with him on LinkedIn.\",\"followers\":570,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s1_20240906124302\/images\/profiles\/ptroF8HdI2vWXm0NDaKeS0JdiPxMOAra.jpg\"},{\"id\":\"126464202\",\"ref\":\"author-Johan-Janssen\",\"url\":\"\/profile\/Johan-Janssen\",\"followedByCurrentUser\":false,\"minibio\":\"Architect at ASML\",\"name\":\"Johan Janssen\",\"bio\":\"Architect at ASML, loves to share knowledge mainly around Java. Spoke at conferences such as Devoxx, Oracle Code One, Devnexus, and many more. Assisted conferences by participating in program committees and invented and organized JVMCON. Received the JavaOne Rock Star and Oracle Code One Star awards. Wrote various articles both for digital and printed media. Maintainer of various Java JDK\/JRE packages for Chocolatey with around 100 thousand downloads a month.\",\"followers\":364,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s1_20240906124302\/images\/profiles\/Fb4eZ0mtvMf6MhsmBIhsUVueV4xAs2FD.jpg\"},{\"id\":\"39485652\",\"ref\":\"author-Daniel-Bryant\",\"url\":\"\/profile\/Daniel-Bryant\",\"followedByCurrentUser\":false,\"minibio\":\"Product Marketing &#64; Syntasso | InfoQ News Manager \",\"name\":\"Daniel Bryant\",\"bio\":\"Daniel Bryant is a platform engineer and head of product marketing at Syntasso. He is also the News Manager at InfoQ and Emeritus Chair for QCon London. Daniel&#39;s technical expertise focuses on \u2018DevOps\u2019 tooling, cloud\/container platforms, and microservice implementations. He is a long-time coder and Java Champion who has contributed to several open source projects. Daniel also writes for InfoQ, O\u2019Reilly, and The New Stack and regularly presents at international conferences such as KubeCon, QCon, and JavaOne. In his copious amounts of free time, he enjoys running, reading, and travelling.\",\"followers\":2549,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s1_20240906124302\/images\/profiles\/tSe5dczMaSGtRUm18VkTR2tcF4W3SogA.jpg\"},{\"id\":\"63268344\",\"ref\":\"author-Chris-Swan\",\"url\":\"\/profile\/Chris-Swan\",\"followedByCurrentUser\":false,\"minibio\":\"Engineer, Atsign\",\"name\":\"Chris Swan\",\"bio\":\"Chris Swan is an Engineer at <a href=\\\"https:\/\/atsign.com\\\" rel=\\\"nofollow\\\">Atsign<\/a>, building the atPlatform, a technology that is putting people in control of their data and removing the frictions and surveillance associated with today\u2019s Internet. He was previously a Fellow at DXC Technology where he held various CTO roles. Before that he held CTO and Director of R&amp;D roles at Cohesive Networks, UBS, Capital SCF and Credit Suisse, where he worked on app servers, compute grids, security, mobile, cloud, networking and containers. Chris co-hosts the <a href=\\\"https:\/\/techdebtburndown.com\/\\\" rel=\\\"nofollow\\\">Tech Debt Burndown Podcast<\/a> and is a Dart Google Developer Expert (<a href=\\\"https:\/\/developers.google.com\/community\/experts\\\" rel=\\\"nofollow\\\">GDE<\/a>).\",\"followers\":1739,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s1_20240906124302\/images\/profiles\/8PE76nOujWAoCM8yqLn9Hfv2HqW3VlIP.jpg\"},{\"id\":\"4927376\",\"ref\":\"author-Karsten-Silz\",\"url\":\"\/profile\/Karsten-Silz\",\"followedByCurrentUser\":false,\"minibio\":\"Full-Stack Java Developer &amp; Contractor\",\"name\":\"Karsten Silz\",\"bio\":\"Karsten Silz has worked as a full-stack Java developer (Spring Boot, Angular, Flutter) for 25 years in Europe and the US. In 2004, he co-founded a software product start-up in the US. Karsten led product development for 13 years and left after the company was sold successfully. Since 2003, he has also worked as a contractor. He co-founded the SaaS start-up &#34;Your Home in Good Hands&#34; as CTO in the UK in 2020.\",\"followers\":277,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s1_20240906124302\/images\/profiles\/p6zmOdOcqXiRj09iiZNeDZap7f0IglQW.jpg\"},{\"id\":\"343314\",\"ref\":\"author-Jonathan-Allen\",\"url\":\"\/profile\/Jonathan-Allen\",\"followedByCurrentUser\":false,\"minibio\":\"Software Architect\",\"name\":\"Jonathan Allen\",\"bio\":\"Jonathan Allen got his start working on MIS projects for a health clinic in the late 90&#39;s, bringing them up from Access and Excel to an enterprise solution by degrees. After spending five years writing automated trading systems for the financial sector, he became a consultant on a variety of projects including the UI for a robotic warehouse, the middle tier for cancer research software, and the big data needs of a major real estate insurance company. In his free time he enjoys studying and writing about martial arts from the 16th century.\\r\\n\",\"followers\":1704,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s1_20240906124302\/images\/profiles\/Wk_C09_mzwK23YkTkKMXResJv3LKUN5D.jpg\"},{\"id\":\"114725059\",\"ref\":\"author-Holly-Cummins\",\"url\":\"\/profile\/Holly-Cummins\",\"followedByCurrentUser\":false,\"minibio\":\"Senior Principal Software Engineer, Red Hat\",\"name\":\"Holly Cummins\",\"bio\":\"Holly Cummins is a Senior Principal Software Engineer on the Red Hat Quarkus team. Before joining Red Hat, Holly was a long time IBMer. In her time at IBM, Holly has been a full-stack javascript developer, a WebSphere Liberty build architect, a client-facing consultant, a JVM performance engineer, and an innovation leader. During her time in the IBM Garage, Holly led projects for enormous banks, tiny startups, and everything in between. Holly has used the power of cloud to understand climate risks, count fish, help a blind athlete run ultra-marathons in the desert solo, and invent stories (although not at all the same time). Holly is also a Java Champion, author, and regular keynote speaker. You can follow her on twitter at &#64;holly_cummins or at hollycummins.com.\\r\\n\\r\\n\\r\\nBefore joining IBM, Holly completed a PhD in Quantum Computation.\\r\\n\",\"followers\":426,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s1_20240906124302\/images\/profiles\/cRsuGlFgKyGmGfEHvafpMO63CxbrEm22.jpg\"}]');
+                var usersInPage = JSON.parse('[{\"id\":\"62671158\",\"ref\":\"author-Monica-Beckwith\",\"url\":\"\/profile\/Monica-Beckwith\",\"followedByCurrentUser\":false,\"minibio\":\"\",\"name\":\"Monica Beckwith\",\"bio\":\"Java Champion, Monica Beckwith is a Java performance engineer. She currently works on improving OpenJDK&#39;s HotSpot VM at Microsoft. Her past experiences include working with Arm, Oracle\/Sun and AMD; optimizing the JVM for server class systems. Monica was voted a JavaOne Rock Star speaker and was the performance lead for Garbage First Garbage Collector (G1 GC). You can follow Monica on twitter &#64;mon_beck\",\"followers\":1688,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s2_20240917061620\/images\/profiles\/QhDv7pXEUK1sdLsYArFmnLxecH4rYhAc.jpg\"},{\"id\":\"45723890\",\"ref\":\"author-Rags-Srinivas\",\"url\":\"\/profile\/Rags-Srinivas\",\"followedByCurrentUser\":false,\"minibio\":\"\",\"name\":\"Rags Srinivas\",\"bio\":\"Raghavan &#34;Rags&#34; Srinivas (&#64;ragss) works as an Architect\/Developer Evangelist goaled with helping developers build highly scalable and available systems. As an OpenStack advocate and solutions architect at Rackspace he was constantly challenged from low level infrastructure to high level application issues. His general focus area is in distributed systems, with a specialization in Cloud Computing and Big Data. He worked on Hadoop, HBase and NoSQL during its early stages. He has spoken on a variety of technical topics at conferences around the world, written for developer portals, conducted and organized Hands-on Labs and taught graduate and online classes in the evening. Rags brings with him over 25 years of hands-on software development and over 15 years of architecture and technology evangelism experience. He has evangelized and influenced the architecture of a number of emerging technology areas. He is also a repeat JavaOne rock star speaker award winner. Rags holds a Masters degree in Computer Science from the Center of Advanced Computer Studies at the University of Louisiana at Lafayette. He likes to hike, run and generally be outdoors but most of all loves to eat.\",\"followers\":245,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s2_20240917061620\/images\/profiles\/t4nyfgw1THkp4wMZ9EZ59RGJx8Hf9Rk8.jpg\"},{\"id\":\"126464202\",\"ref\":\"author-Johan-Janssen\",\"url\":\"\/profile\/Johan-Janssen\",\"followedByCurrentUser\":false,\"minibio\":\"Architect at ASML\",\"name\":\"Johan Janssen\",\"bio\":\"Architect at ASML, loves to share knowledge mainly around Java. Spoke at conferences such as Devoxx, Oracle Code One, Devnexus, and many more. Assisted conferences by participating in program committees and invented and organized JVMCON. Received the JavaOne Rock Star and Oracle Code One Star awards. Wrote various articles both for digital and printed media. Maintainer of various Java JDK\/JRE packages for Chocolatey with around 100 thousand downloads a month.\",\"followers\":365,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s2_20240917061620\/images\/profiles\/Fb4eZ0mtvMf6MhsmBIhsUVueV4xAs2FD.jpg\"},{\"id\":\"39485652\",\"ref\":\"author-Daniel-Bryant\",\"url\":\"\/profile\/Daniel-Bryant\",\"followedByCurrentUser\":false,\"minibio\":\"InfoQ News Manager | Building Platforms at Syntasso\",\"name\":\"Daniel Bryant\",\"bio\":\"Daniel Bryant is the news manager at InfoQ and the emeritus chair of QCon London. He is also a platform engineer and head of product marketing at Syntasso. Daniel&#39;s technical expertise focuses on \u2018DevOps\u2019 tooling, cloud\/container platforms, and microservice implementations. He is a long-time coder and Java Champion who has contributed to several open source projects. Daniel also writes for InfoQ, O\u2019Reilly, and The New Stack and regularly presents at international conferences such as KubeCon, QCon, and JavaOne. In his copious amounts of free time, he enjoys running, reading, and travelling.\",\"followers\":2550,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s2_20240917061620\/images\/profiles\/tSe5dczMaSGtRUm18VkTR2tcF4W3SogA.jpg\"},{\"id\":\"63268344\",\"ref\":\"author-Chris-Swan\",\"url\":\"\/profile\/Chris-Swan\",\"followedByCurrentUser\":false,\"minibio\":\"Engineer, Atsign\",\"name\":\"Chris Swan\",\"bio\":\"Chris Swan is an Engineer at <a href=\\\"https:\/\/atsign.com\\\" rel=\\\"nofollow\\\">Atsign<\/a>, building the atPlatform, a technology that is putting people in control of their data and removing the frictions and surveillance associated with today\u2019s Internet. He was previously a Fellow at DXC Technology where he held various CTO roles. Before that he held CTO and Director of R&amp;D roles at Cohesive Networks, UBS, Capital SCF and Credit Suisse, where he worked on app servers, compute grids, security, mobile, cloud, networking and containers. Chris co-hosts the <a href=\\\"https:\/\/techdebtburndown.com\/\\\" rel=\\\"nofollow\\\">Tech Debt Burndown Podcast<\/a> and is a Dart Google Developer Expert (<a href=\\\"https:\/\/developers.google.com\/community\/experts\\\" rel=\\\"nofollow\\\">GDE<\/a>).\",\"followers\":1740,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s2_20240917061620\/images\/profiles\/8PE76nOujWAoCM8yqLn9Hfv2HqW3VlIP.jpg\"},{\"id\":\"4927376\",\"ref\":\"author-Karsten-Silz\",\"url\":\"\/profile\/Karsten-Silz\",\"followedByCurrentUser\":false,\"minibio\":\"Full-Stack Java Developer &amp; Contractor\",\"name\":\"Karsten Silz\",\"bio\":\"Karsten Silz has worked as a full-stack Java developer (Spring Boot, Angular, Flutter) for 25 years in Europe and the US. In 2004, he co-founded a software product start-up in the US. Karsten led product development for 13 years and left after the company was sold successfully. Since 2003, he has also worked as a contractor. He co-founded the SaaS start-up &#34;Your Home in Good Hands&#34; as CTO in the UK in 2020.\",\"followers\":278,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s2_20240917061620\/images\/profiles\/p6zmOdOcqXiRj09iiZNeDZap7f0IglQW.jpg\"},{\"id\":\"87551248\",\"ref\":\"author-Steef~Jan-Wiggers\",\"url\":\"\/profile\/Steef~Jan-Wiggers\",\"followedByCurrentUser\":false,\"minibio\":\"Cloud Queue Lead Editor\",\"name\":\"Steef-Jan Wiggers\",\"bio\":\"Steef-Jan Wiggers is one of InfoQ&#39;s senior cloud editors and works as an Integration Architect at i8c in The Netherlands. His current technical expertise focuses on integration platform implementations, Azure DevOps, and Azure Platform Solution Architectures. Steef-Jan is a regular speaker at conferences and user groups and writes for InfoQ. Furthermore, Microsoft has recognized him as Microsoft Azure MVP for the past fourteen years.\",\"followers\":649,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s2_20240917061620\/images\/profiles\/BhZx03k3Hj0pZVXmTzGqItwZxtJ06oIb.jpeg\"},{\"id\":\"343314\",\"ref\":\"author-Jonathan-Allen\",\"url\":\"\/profile\/Jonathan-Allen\",\"followedByCurrentUser\":false,\"minibio\":\"Software Architect\",\"name\":\"Jonathan Allen\",\"bio\":\"Jonathan Allen got his start working on MIS projects for a health clinic in the late 90&#39;s, bringing them up from Access and Excel to an enterprise solution by degrees. After spending five years writing automated trading systems for the financial sector, he became a consultant on a variety of projects including the UI for a robotic warehouse, the middle tier for cancer research software, and the big data needs of a major real estate insurance company. In his free time he enjoys studying and writing about martial arts from the 16th century.\\r\\n\",\"followers\":1705,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s2_20240917061620\/images\/profiles\/Wk_C09_mzwK23YkTkKMXResJv3LKUN5D.jpg\"},{\"id\":\"80977916\",\"ref\":\"author-Thomas-Betts\",\"url\":\"\/profile\/Thomas-Betts\",\"followedByCurrentUser\":false,\"minibio\":\"Laureate Application Architect at Blackbaud\",\"name\":\"Thomas Betts\",\"bio\":\"Thomas Betts is the Lead Editor for Architecture and Design at InfoQ, a co-host of the InfoQ Podcast, and a Laureate Software Architect at Blackbaud.\\r\\n\\r\\nFor over two decades, his focus has always been on providing software solutions that delight his customers. He has worked in a variety of industries, including social good, retail, finance, health care, defense and travel.\\r\\n\\r\\nThomas lives in Denver with his wife and son, and they love hiking and otherwise exploring beautiful Colorado.\",\"followers\":922,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s2_20240917061620\/images\/profiles\/pSqI6HrU3k9rmmVjwS34OHG0bOMYiE6a.jpg\"},{\"id\":\"126467140\",\"ref\":\"author-Renato-Losio\",\"url\":\"\/profile\/Renato-Losio\",\"followedByCurrentUser\":false,\"minibio\":\"InfoQ Staff Editor | Cloud Expert | AWS Data Hero  \",\"name\":\"Renato Losio\",\"bio\":\"Renato has extensive experience as a cloud architect, tech lead, and cloud services specialist. Currently, he lives between Berlin and Trieste and works remotely as a principal cloud architect. His primary areas of interest include cloud services and relational databases. He is an editor at InfoQ and a recognized AWS Data Hero. You can connect with him on LinkedIn.\",\"followers\":573,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s2_20240917061620\/images\/profiles\/ptroF8HdI2vWXm0NDaKeS0JdiPxMOAra.jpg\"},{\"id\":\"72028228\",\"ref\":\"author-Sergio-De-Simone\",\"url\":\"\/profile\/Sergio-De-Simone\",\"followedByCurrentUser\":false,\"minibio\":\"\",\"name\":\"Sergio De Simone\",\"bio\":\"<b>Sergio De Simone<\/b> is a software engineer. Sergio has been working as a software engineer for over twenty five years across a range of different projects and companies, including such different work environments as Siemens, HP, and small startups. For the last 10&#43; years, his focus has been on development for mobile platforms and related technologies. He is currently working for BigML, Inc., where he leads iOS and macOS development.\",\"followers\":584,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s2_20240917061620\/images\/profiles\/NovciOoQOAYWqYqRQBFo97SuMm0xbUiC.jpg\"},{\"id\":\"114725059\",\"ref\":\"author-Holly-Cummins\",\"url\":\"\/profile\/Holly-Cummins\",\"followedByCurrentUser\":false,\"minibio\":\"Senior Principal Software Engineer, Red Hat\",\"name\":\"Holly Cummins\",\"bio\":\"Holly Cummins is a Senior Principal Software Engineer on the Red Hat Quarkus team. Before joining Red Hat, Holly was a long time IBMer. In her time at IBM, Holly has been a full-stack javascript developer, a WebSphere Liberty build architect, a client-facing consultant, a JVM performance engineer, and an innovation leader. During her time in the IBM Garage, Holly led projects for enormous banks, tiny startups, and everything in between. Holly has used the power of cloud to understand climate risks, count fish, help a blind athlete run ultra-marathons in the desert solo, and invent stories (although not at all the same time). Holly is also a Java Champion, author, and regular keynote speaker. You can follow her on twitter at &#64;holly_cummins or at hollycummins.com.\\r\\n\\r\\n\\r\\nBefore joining IBM, Holly completed a PhD in Quantum Computation.\\r\\n\",\"followers\":427,\"imgSrc\":\"https:\/\/cdn.infoq.com\/statics_s2_20240917061620\/images\/profiles\/cRsuGlFgKyGmGfEHvafpMO63CxbrEm22.jpg\"}]');
             
 
             
             
-                var topicsInPage = JSON.parse('[{\"name\":\"Architecture & Design\",\"id\":\"6816\",\"followers\":9222,\"url\":\"\/architecture-design\",\"followedByCurrentUser\":false},{\"name\":\"Culture & Methods\",\"id\":\"6817\",\"followers\":3613,\"url\":\"\/culture-methods\",\"followedByCurrentUser\":false},{\"name\":\"AI, ML & Data Engineering\",\"id\":\"16690\",\"followers\":4900,\"url\":\"\/ai-ml-data-eng\",\"followedByCurrentUser\":false},{\"name\":\".NET Core\",\"id\":\"15683\",\"followers\":7118,\"url\":\"\/Net-Core\",\"followedByCurrentUser\":false},{\"name\":\"Continuous Deployment\",\"id\":\"5956\",\"followers\":43,\"url\":\"\/Continuous_Deployment\",\"followedByCurrentUser\":false},{\"name\":\"Java9\",\"id\":\"7097\",\"followers\":4857,\"url\":\"\/Java9\",\"followedByCurrentUser\":false},{\"name\":\"Machine Learning\",\"id\":\"5449\",\"followers\":13014,\"url\":\"\/MachineLearning\",\"followedByCurrentUser\":false},{\"name\":\"Microservices\",\"id\":\"15274\",\"followers\":20177,\"url\":\"\/microservices\",\"followedByCurrentUser\":false},{\"name\":\"DevOps\",\"id\":\"6043\",\"followers\":4590,\"url\":\"\/Devops\",\"followedByCurrentUser\":false},{\"name\":\"Reactive Programming\",\"id\":\"15453\",\"followers\":11304,\"url\":\"\/reactive-programming\",\"followedByCurrentUser\":false},{\"name\":\"Development\",\"id\":\"6815\",\"followers\":3684,\"url\":\"\/development\",\"followedByCurrentUser\":false}]');
+                var topicsInPage = JSON.parse('[{\"name\":\"Architecture & Design\",\"id\":\"6816\",\"followers\":9236,\"url\":\"\/architecture-design\",\"followedByCurrentUser\":false},{\"name\":\"Culture & Methods\",\"id\":\"6817\",\"followers\":3616,\"url\":\"\/culture-methods\",\"followedByCurrentUser\":false},{\"name\":\".NET Core\",\"id\":\"15683\",\"followers\":7125,\"url\":\"\/Net-Core\",\"followedByCurrentUser\":false},{\"name\":\"React\",\"id\":\"15624\",\"followers\":227,\"url\":\"\/React\",\"followedByCurrentUser\":false},{\"name\":\"Machine Learning\",\"id\":\"5449\",\"followers\":13034,\"url\":\"\/MachineLearning\",\"followedByCurrentUser\":false},{\"name\":\"Microservices\",\"id\":\"15274\",\"followers\":20198,\"url\":\"\/microservices\",\"followedByCurrentUser\":false},{\"name\":\"S3\",\"id\":\"3601\",\"followers\":10,\"url\":\"\/S3\",\"followedByCurrentUser\":false},{\"name\":\"AI, ML & Data Engineering\",\"id\":\"16690\",\"followers\":4912,\"url\":\"\/ai-ml-data-eng\",\"followedByCurrentUser\":false},{\"name\":\"AWS\",\"id\":\"3737\",\"followers\":304,\"url\":\"\/AWS\",\"followedByCurrentUser\":false},{\"name\":\"Java9\",\"id\":\"7097\",\"followers\":4865,\"url\":\"\/Java9\",\"followedByCurrentUser\":false},{\"name\":\"Cloud\",\"id\":\"7451\",\"followers\":1913,\"url\":\"\/Cloud\",\"followedByCurrentUser\":false},{\"name\":\"DevOps\",\"id\":\"6043\",\"followers\":4599,\"url\":\"\/Devops\",\"followedByCurrentUser\":false},{\"name\":\"Reactive Programming\",\"id\":\"15453\",\"followers\":11317,\"url\":\"\/reactive-programming\",\"followedByCurrentUser\":false},{\"name\":\"Development\",\"id\":\"6815\",\"followers\":3690,\"url\":\"\/development\",\"followedByCurrentUser\":false}]');
             
 
             var userContentLikesInPage = [];
@@ -259,17 +240,17 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   "@type": "NewsArticle",
   "mainEntityOfPage": {
     "@type": "WebPage",
-    "@id": "https://www.infoq.com/news/2024/09/uber-continuous-feployment/"
+    "@id": "https://www.infoq.com/news/2024/09/amazon-storage-browser-s3/"
     },
-  "headline": "Optimizing Continuous Deployment at Uber: Automating Microservices in Large Monorepos",
-  "image": ["https://res.infoq.com/news/2024/09/uber-continuous-feployment/en/headerimage/generatedHeaderImage-1725633811643.jpg"
+  "headline": "Amazon Introduces Storage Browser for S3",
+  "image": ["https://res.infoq.com/news/2024/09/amazon-storage-browser-s3/en/headerimage/generatedHeaderImage-1726147307725.jpg"
    ],
-  "datePublished": "2024-09-07",
-  "dateModified": "2024-09-07",
+  "datePublished": "2024-09-14",
+  "dateModified": "2024-09-14",
   "author": [
     {
     "@type": "Person",
-    "name": "Claudio Masolo"
+    "name": "Renato Losio"
     }
   ],
    "publisher": {
@@ -281,7 +262,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     }
   },
 
-  "description": "Uber's microservices architecture, consisting of thousands of services, requires a reliable and efficient system for deploying updates, security patches, and new features. To ensure this process is sa"
+  "description": "Amazon has recently announced the alpha release of Storage Browser for Amazon S3, providing end users with a simple interface for accessing data stored in S3. The project is available in the AWS Ampli"
 }
 </script>
 
@@ -291,10 +272,10 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 	</script>
 	
 		
-		<link rel="stylesheet" href="https://cdn.infoq.com/statics_s1_20240906124302/styles/prism.css"/>
-		<meta name="keywords" content="uber continuous feployment,DevOps,Continuous Deployment,"/>
-		<meta name="description" content="Uber's microservices architecture, consisting of thousands of services, requires a reliable and efficient system for deploying updates, security patches, and new features. To ensure this process is sa"/>
-		<meta name="tprox" content="1725692400000" />
+		<link rel="stylesheet" href="https://cdn.infoq.com/statics_s2_20240917061620/styles/prism.css"/>
+		<meta name="keywords" content="amazon storage browser s3,Development,Architecture &amp; Design,AWS,React,S3,Cloud,"/>
+		<meta name="description" content="Amazon has recently announced the alpha release of Storage Browser for Amazon S3, providing end users with a simple interface for accessing data stored in S3. The project is available in the AWS Ampli"/>
+		<meta name="tprox" content="1726294620000" />
 		
     	
 
@@ -316,7 +297,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 
 
     
-        <meta property="og:image" content="https://res.infoq.com/news/2024/09/uber-continuous-feployment/en/headerimage/generatedHeaderImage-1725633811643.jpg"/>
+        <meta property="og:image" content="https://res.infoq.com/news/2024/09/amazon-storage-browser-s3/en/headerimage/generatedHeaderImage-1726147307725.jpg"/>
     
     
     
@@ -326,7 +307,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 
 
     
-        <meta property="twitter:image" content="https://res.infoq.com/news/2024/09/uber-continuous-feployment/en/card_header_image/generatedCard-1725633811643.jpg"/>
+        <meta property="twitter:image" content="https://res.infoq.com/news/2024/09/amazon-storage-browser-s3/en/card_header_image/generatedCard-1726147307725.jpg"/>
     
     
     
@@ -335,32 +316,32 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     
 
 
-<meta property="og:title" content="Optimizing Continuous Deployment at Uber: Automating Microservices in Large Monorepos "/>
-<meta property="og:description" content="Uber's microservices architecture, consisting of thousands of services, requires a reliable and efficient system for deploying updates, security patches, and new features. To ensure this process is safe and timely, Uber embraced continuous deployment (CD), automating deployments to production. This has been essential for maintaining code quality and minimizing delays in delivering changes." />
+<meta property="og:title" content="Amazon Introduces Storage Browser for S3 "/>
+<meta property="og:description" content="Amazon has recently announced the alpha release of Storage Browser for Amazon S3, providing end users with a simple interface for accessing data stored in S3. The project is available in the AWS Amplify JavaScript and React client libraries." />
 <meta property="og:site_name" content="InfoQ"/>
-<meta property="og:url" content="https://www.infoq.com/news/2024/09/uber-continuous-feployment/"/>
+<meta property="og:url" content="https://www.infoq.com/news/2024/09/amazon-storage-browser-s3/"/>
 
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Optimizing Continuous Deployment at Uber: Automating Microservices in Large Monorepos "/>
-<meta name="twitter:description" content="Uber's microservices architecture, consisting of thousands of services, requires a reliable and efficient system for deploying updates, security patches, and new features. To ensure this process is safe and timely, Uber embraced continuous deployment (CD), automating deployments to production. This has been essential for maintaining code quality and minimizing delays in delivering changes." />
+<meta name="twitter:title" content="Amazon Introduces Storage Browser for S3 "/>
+<meta name="twitter:description" content="Amazon has recently announced the alpha release of Storage Browser for Amazon S3, providing end users with a simple interface for accessing data stored in S3. The project is available in the AWS Amplify JavaScript and React client libraries." />
 
 		
-			<link rel="image_src" href="https://res.infoq.com/news/2024/09/uber-continuous-feployment/en/headerimage/generatedHeaderImage-1725633811643.jpg"/>
+			<link rel="image_src" href="https://res.infoq.com/news/2024/09/amazon-storage-browser-s3/en/headerimage/generatedHeaderImage-1726147307725.jpg"/>
 		
 		
 		
 	
-	<script type="text/javascript" src="https://cdn.infoq.com/statics_s1_20240906124302/scripts/relatedVcr.min.js"></script>
+	<script type="text/javascript" src="https://cdn.infoq.com/statics_s2_20240917061620/scripts/relatedVcr.min.js"></script>
 	<script type="application/javascript">
-		var communityIds = "1893";
-		var topicIds = "1823";
+		var communityIds = "2497,2498";
+		var topicIds = "1024,4278,951,2961";
 		VCR.loadAllVcrs(communityIds, topicIds);
 	</script>
 
         
         
         
-        <script type="text/javascript" src="https://cdn.infoq.com/statics_s1_20240906124302/scripts/infoq.js"></script>
+        <script type="text/javascript" src="https://cdn.infoq.com/statics_s2_20240917061620/scripts/infoq.js"></script>
 
         <script type="text/javascript">
            document.addEventListener('DOMContentLoaded', function() {
@@ -424,7 +405,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
                                 <label for="email-dataCollectnewsletter-infoq" class="label field__label">Enter your e-mail address</label>
                                 <input id="email-dataCollectnewsletter-infoq" name="footerNewsletterEmail" placeholder="Enter your e-mail address" class="input field__input" type="text"/>
                                 <input type="text" name="emailH" id="input_email_h_d" aria-required="false" style="display:none !important" tabindex="-1" autocomplete="off"/>
-                                <input type="hidden" id="fnt_d" name="fnt_d" value="048LYAfRGGjJ4Y0l"/>
+                                <input type="hidden" id="fnt_d" name="fnt_d" value="3RaMYycgxx3pVLNX"/>
                                 <input type="hidden" id="dataCollectNewsletterType" name="dataCollectNewsletterType" value="regular"/>
                                 <input type="hidden" id="cmpi_d" name="cmpi_d" value="4"/>
                             </div>
@@ -503,9 +484,9 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
             <div class="actions">
                 <div class="actions__left">
                     <p>
-                        <span>InfoQ Dev Summit Munich (Sep 26-27): Learn practical strategies to clarify critical development priorities. </span>
-                        <a class="btn" href="/url/pb/e6dd2a23-e580-48b9-aea4-fa83183d63ed/" target="_blank" rel="nofollow">
-                            Summer Sale Now On
+                        <span>Live Webinar and Q&amp;A: The Architect’s Guide to Elasticity (Sept 26, 2024)</span>
+                        <a class="btn" href="/url/pb/542db33f-6be6-4361-94fa-6ae49f593e12/" target="_blank" rel="nofollow">
+                            Save Your Seat
                         </a>
                     </p>
                 </div>
@@ -725,14 +706,14 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
         <div class="card__content">
             <div class="card__data">
                 <h4 class="card__title">
-                    <a href="/presentations/bbc-micro">The Home Computer That Roared: How the BBC Micro Shaped Our World</a>
+                    <a href="/presentations/rust-efficient-software">Not Just Memory Safety: How Rust Helps Maintain Efficient Software</a>
                 </h4>
-                <p class="card__excerpt">Jeremy Ruston explores what made the BBC Micro attractive and what can be learned from it today.</p>
+                <p class="card__excerpt">Pietro Albini discusses how Rust's type system can be used to ensure correctness and ease refactorings, leveraging procedural macros to reduce code duplication, introducing parallelism, and tooling.</p>
                 <div class="card__footer"></div>
             </div>
             
-                <a href="/presentations/bbc-micro" class="card__header">
-                    <img loading="lazy" alt="The Home Computer That Roared: How the BBC Micro Shaped Our World" src="https://imgopt.infoq.com/fit-in/100x100/filters:quality(80)/presentations/bbc-micro/en/smallimage/JeremyRuston-small-1719922442759.jpg" class="card__image"/>
+                <a href="/presentations/rust-efficient-software" class="card__header">
+                    <img loading="lazy" alt="Not Just Memory Safety: How Rust Helps Maintain Efficient Software" src="https://imgopt.infoq.com/fit-in/100x100/filters:quality(80)/presentations/rust-efficient-software/en/smallimage/PietroAlbini-small-1720791618626.jpg" class="card__image"/>
                 </a>
             
         </div>
@@ -783,14 +764,14 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
         <div class="card__content">
             <div class="card__data">
                 <h4 class="card__title">
-                    <a href="/presentations/backstage-plugin">Everything is a Plugin: How the Backstage Architecture Helps Platform Teams at Spotify and beyond Spread Ownership and Deliver Value</a>
+                    <a href="/articles/technical-debt-your-friend">How to Make Technical Debt Your Friend</a>
                 </h4>
-                <p class="card__excerpt">Pia Nilsson and Mike Lewis explain how the Backstage plugin system brings disparate pieces of functionality together, and walk through examples of how Backstage can be extended and interconnected.</p>
+                <p class="card__excerpt">Technical debt is a popular metaphor for communicating the long-term implications of architectural decisions and trade-offs to stakeholders. By exploiting the feedback mechanism of the Minimum Viable Architecture (MVA) approach, we have concluded that the technical debt metaphor is misleading because much of the so-called debt never needs to be, and in fact isn’t, repaid.</p>
                 <div class="card__footer"></div>
             </div>
             
-                <a href="/presentations/backstage-plugin" class="card__header">
-                    <img loading="lazy" alt="Everything is a Plugin: How the Backstage Architecture Helps Platform Teams at Spotify and beyond Spread Ownership and Deliver Value" src="https://imgopt.infoq.com/fit-in/100x100/filters:quality(80)/presentations/backstage-plugin/en/smallimage/PiaNilsson-MikeLewis-small-1721474709600.jpg" class="card__image"/>
+                <a href="/articles/technical-debt-your-friend" class="card__header">
+                    <img loading="lazy" alt="How to Make Technical Debt Your Friend" src="https://imgopt.infoq.com/fit-in/100x100/filters:quality(80)/articles/technical-debt-your-friend/en/smallimage/how-to-make-tehnical-debt-small-logo-1725015085842.jpg" class="card__image"/>
                 </a>
             
         </div>
@@ -837,14 +818,14 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
         <div class="card__content">
             <div class="card__data">
                 <h4 class="card__title">
-                    <a href="/articles/ai-ml-data-engineering-trends-2024">InfoQ AI, ML and Data Engineering Trends Report - September 2024</a>
+                    <a href="/podcasts/primer-ai-for-architects">A Primer on AI for Architects with Anthony Alford</a>
                 </h4>
-                <p class="card__excerpt">InfoQ editorial staff and friends of InfoQ are discussing the current trends in the domain of AI, ML and Data Engineering as part of the process of creating our annual trends report.</p>
+                <p class="card__excerpt">This episode provides an overview of the real-world technologies involved in the umbrella phrase Artificial Intelligence. Anthony Alford explains just enough about machine learning, large language models, retrieval-augmented generation, and other AI terms which today’s software architects need to be able to discuss.</p>
                 <div class="card__footer"></div>
             </div>
             
-                <a href="/articles/ai-ml-data-engineering-trends-2024" class="card__header">
-                    <img loading="lazy" alt="InfoQ AI, ML and Data Engineering Trends Report - September 2024" src="https://imgopt.infoq.com/fit-in/100x100/filters:quality(80)/articles/ai-ml-data-engineering-trends-2024/en/smallimage/InfoQ-Trend-Report-logo-image-small-1725350877013.jpg" class="card__image"/>
+                <a href="/podcasts/primer-ai-for-architects" class="card__header">
+                    <img loading="lazy" alt="A Primer on AI for Architects with Anthony Alford" src="https://imgopt.infoq.com/fit-in/100x100/filters:quality(80)/podcasts/primer-ai-for-architects/en/smallimage/InfoQ-Podcast-logo-small-1725962132902.jpg" class="card__image"/>
                 </a>
             
         </div>
@@ -896,14 +877,14 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
         <div class="card__content">
             <div class="card__data">
                 <h4 class="card__title">
-                    <a href="/podcasts/leadership-autonomy-growth">Engineering Leadership: Balancing Autonomy, Growth, and Culture with Michael Gray</a>
+                    <a href="/podcasts/technical-health-team-culture">Engineering Excellence: Declan Whelan on Technical Health, Agile Practices, and Team Culture</a>
                 </h4>
-                <p class="card__excerpt">In this podcast Shane Hastie, Lead Editor for Culture &amp; Methods spoke to Michael Gray of ClearBank about engineering culture and leadership.</p>
+                <p class="card__excerpt">In this podcast Shane Hastie, Lead Editor for Culture &amp; Methods spoke to Declan Whelan about technical health, useful metrics, modern technical practices, code stewardship and cultural aspects of good engineering teams.</p>
                 <div class="card__footer"></div>
             </div>
             
-                <a href="/podcasts/leadership-autonomy-growth" class="card__header">
-                    <img loading="lazy" alt="Engineering Leadership: Balancing Autonomy, Growth, and Culture with Michael Gray" src="https://imgopt.infoq.com/fit-in/100x100/filters:quality(80)/podcasts/leadership-autonomy-growth/en/smallimage/engineering-culture-podcast-logo-1725290320349.jpeg" class="card__image"/>
+                <a href="/podcasts/technical-health-team-culture" class="card__header">
+                    <img loading="lazy" alt="Engineering Excellence: Declan Whelan on Technical Health, Agile Practices, and Team Culture" src="https://imgopt.infoq.com/fit-in/100x100/filters:quality(80)/podcasts/technical-health-team-culture/en/smallimage/engineering-culture-podcast-logo-1725866986265.jpeg" class="card__image"/>
                 </a>
             
         </div>
@@ -951,14 +932,14 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
         <div class="card__content">
             <div class="card__data">
                 <h4 class="card__title">
-                    <a href="/articles/efficient-devsecops-workflows">Efficient DevSecOps Workflows with a Little Help from AI</a>
+                    <a href="/articles/analysis-optimization-change-release-process">Mastering Impact Analysis and Optimizing Change Release Processes</a>
                 </h4>
-                <p class="card__excerpt">Michael Friedrich is exploring how teams face varying levels of inefficiency in their DevSecOps processes, hindering progress and innovation. He highlights common issues like excessive debugging time and inefficient workflows, while also demonstrating how Artificial Intelligence (AI) can be a powerful tool to streamline these processes and boost efficiency.</p>
+                <p class="card__excerpt">Dynamic IT professional with a proven track record in optimizing production processes and analyzing outages in complex systems handling millions of TPS. The recent CrowdStrike outage highlights the importance of continuous improvement and adherence to best practices. Passionate about elevating operational excellence through strategic reviews and effective process enhancements.</p>
                 <div class="card__footer"></div>
             </div>
             
-                <a href="/articles/efficient-devsecops-workflows" class="card__header">
-                    <img loading="lazy" alt="Efficient DevSecOps Workflows with a Little Help from AI" src="https://imgopt.infoq.com/fit-in/100x100/filters:quality(80)/articles/efficient-devsecops-workflows/en/smallimage/Efficient-DevSecOps-Worklows-logo-small-1725282420818.jpg" class="card__image"/>
+                <a href="/articles/analysis-optimization-change-release-process" class="card__header">
+                    <img loading="lazy" alt="Mastering Impact Analysis and Optimizing Change Release Processes" src="https://imgopt.infoq.com/fit-in/100x100/filters:quality(80)/articles/analysis-optimization-change-release-process/en/smallimage/Mastering-Impact-Analysis-Optimizing-Change-logo-small-1724927868071.jpg" class="card__image"/>
                 </a>
             
         </div>
@@ -1117,7 +1098,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
                 <span data-nosnippet><a href="/news" title="News">News</a></span>
             
 		
-		<span data-nosnippet class="active">Optimizing Continuous Deployment at Uber: Automating Microservices in Large Monorepos</span>
+		<span data-nosnippet class="active">Amazon Introduces Storage Browser for S3</span>
 	
 	
     
@@ -1135,15 +1116,15 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
 
 
-    <div class="article__category devops">
+    <div class="article__category cloud">
         
         <a
 	
-	href="/Devops/"
+	href="/Cloud/"
 
- class="article__tag box--info" title="DevOps">
+ class="article__tag box--info" title="Cloud">
 
-            DevOps
+            Cloud
         </a>
 
     </div>
@@ -1163,7 +1144,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
 	<div data-nosnippet class="notice">
 		<div class="box--warning">
-			<a target="_blank" rel="nofollow" href="https://qconlondon.com/?utm_source=infoq&amp;utm_medium=referral&amp;utm_campaign=infoqyellowbox_qlondon25 ">QCon London (April 7-9, 2025):  Learn the emerging trends. Implement best practices. </a>
+			<a target="_blank" rel="nofollow" href="https://www.infoq.com/url/t/d8a79bcd-f6ab-4226-ab0a-52ff6eccc6f0/?label=Retool-Event-Promotion-Box ">Enhancing Internal Tools with AI: A Hands-On Guide for Developers and Architects (Webinar Oct 22nd) </a>
 		</div>
 	</div>
 
@@ -1172,7 +1153,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 				<div class="actions heading__container article__heading">
 					<div class="actions__left">
 						<h1 class="heading">
-							Optimizing Continuous Deployment at Uber: Automating Microservices in Large Monorepos
+							Amazon Introduces Storage Browser for S3
 						</h1>
 					</div>
 				</div>
@@ -1225,11 +1206,11 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
                 }
                 
                 function performBookmark() {
-                        Bookmarks.toggleBookmark('news', '2024/09/uber-continuous-feployment');
+                        Bookmarks.toggleBookmark('news', '2024/09/amazon-storage-browser-s3');
                 }
                 
                 infoq.event.on('bookmarkRequested', function(e) {
-                        Bookmarks.toggleBookmark('news', '2024/09/uber-continuous-feployment');
+                        Bookmarks.toggleBookmark('news', '2024/09/amazon-storage-browser-s3');
                 });
                 
                 infoq.event.on("loaded", function(){
@@ -1254,12 +1235,12 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 </script>
 
 							</div>
-							<p class="article__readTime date">Sep 07, 2024<span class="dot"></span>
+							<p class="article__readTime date">Sep 14, 2024<span class="dot"></span>
 								
 								
 								
 									
-									3
+									2
 									min read
 								
 							</p>
@@ -1286,12 +1267,12 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
         
             
         
-        <li data-id="author-Claudio-Masolo">
+        <li data-id="author-Renato-Losio">
             <p class="meta author__bio">
                 
-                <a href="/profile/Claudio-Masolo/" class="avatar author__avatar"></a>
+                <a href="/profile/Renato-Losio/" class="avatar author__avatar"></a>
                 <span class="author__name">
-                    <a href="/profile/Claudio-Masolo/" class="author__link">Claudio Masolo</a>
+                    <a href="/profile/Renato-Losio/" class="author__link">Renato Losio</a>
                 </span>
             </p>
             
@@ -1335,32 +1316,48 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     
 </div>
                                                         
-							<div class="article__data">
-								<p>In a recent <a href="https://www.uber.com/en-AU/blog/continuous-deployment/">post</a>, Uber shared how the development team manage the continuous deployment of the microservices, tackling challenges of working with large monorepos.</p>
+<div class="article__data">
+<p>Amazon has recently announced the alpha release of <a href="https://aws.amazon.com/about-aws/whats-new/2024/09/storage-browser-amazon-s3-alpha-release/">Storage Browser for Amazon S3</a>, providing end users with a simple interface for accessing data stored in S3. The project is available in the AWS Amplify JavaScript and React client libraries.</p>
 
-<p>Uber&#39;s microservices architecture, consisting of thousands of services, requires a reliable and efficient system for deploying updates, security patches, and new features. To ensure this process is safe and timely, Uber embraced continuous deployment (CD), automating deployments to production. This has been essential for maintaining code quality and minimizing delays in delivering changes. However, as Uber&rsquo;s codebase and service demands grew, the existing deployment system faced challenges related to scale, standardization, and safety, particularly within large monorepos that housed multiple microservices.</p>
+<p><a href="https://github.com/aws-amplify/amplify-ui/issues/5731">Storage Browser</a> is an open-source <a href="https://ui.docs.amplify.aws/">Amplify UI React</a> component that customers can add to their web applications to provide end-users with a simple interface to access data stored in S3. Using the new interface, developers can grant authorized end-users the ability to browse, download, and upload data in the bucket from their applications.</p>
 
-<p>Uber recognized the need for a more streamlined and automated continuous deployment system. In 2022, the company undertook a project to redesign its CD process, aiming to create a more uniform and automated solution for deploying microservices. At the time, Uber was managing around 4,500 microservices across three monorepos, processing 5,600 commits and 7,000 deployments weekly. Yet, only 7% of these services were automatically deployed using CD, with many deployments requiring manual intervention. This decentralized and highly flexible system led to inefficiencies and safety risks, particularly as there were over 100 unique deployment templates with no company-wide standards.</p>
+<p><img alt="" data-src="news/2024/09/amazon-storage-browser-s3/en/resources/1Screenshot 2024-09-11 at 20-44-25 364885226-eb83133e-89f9-40bc-9b4e-4a26e4a89c2b.gif (GIF Image 800 × 494 pixels)-1726147623310.png"  style="width: 800px; height: 494px;" src="https://imgopt.infoq.com/fit-in/3000x4000/filters:quality(85)/filters:no_upscale()/news/2024/09/amazon-storage-browser-s3/en/resources/1Screenshot 2024-09-11 at 20-44-25 364885226-eb83133e-89f9-40bc-9b4e-4a26e4a89c2b.gif (GIF Image 800 × 494 pixels)-1726147623310.png" rel="share"></p>
 
-<p>The newly designed system, named <a href="https://www.uber.com/en-DK/blog/up-portable-microservices-ready-for-the-cloud/?uclick_id=b48fb9dd-f643-4544-8fed-a7424254b2f8">Up</a> CD, was designed to improve automation and safety. It is tightly integrated with Uber&#39;s internal cloud platform and observability tools, ensuring that deployments follow a standardized and repeatable process by default. The new system prioritized simplicity and transparency, especially in managing monorepos. One key improvement was optimizing deployments by looking at which services were affected by each commit, rather than deploying every service with every code change. This reduced unnecessary builds and gave engineers more clarity over the changes impacting their services.</p>
+<p><em>Source: Project GitHub page</em></p>
+
+<p>Danilo Poccia, chief evangelist of EMEA at AWS, <a href="https://aws.amazon.com/blogs/aws/aws-weekly-roundup-amazon-dynamodb-aws-appsync-storage-browser-for-amazon-s3-and-more-september-9-2024/">summarizes</a> the features of the new project:</p>
+
+<blockquote>
+<p>An open source Amplify UI React component that you can add to your web applications to provide your end users with a simple interface for data stored in S3. The component uses the new ListCallerAccessGrants API to list all S3 buckets, prefixes, and objects they can access, as defined by their S3 Access Grants.</p>
+</blockquote>
+
+<p>According to the documentation on GitHub, Storage Browser for S3 can be installed via npm or by using the tagged versions of the <em>@aws-amplify/ui-react-storage</em> and <em>aws-amplify </em>packages. The following dependencies should be added to the package.json file:<br />
+&nbsp;</p>
+
+<pre>
+<code>"dependencies": {
+	"@aws-amplify/ui-react-storage": "storage-browser",
+	"aws-amplify": "storage-browser",
+  }</code></pre>
+
+<p>The Amplify project has three main views, starting with the locations view, which is the initial view that shows the root-level S3 resources the user has access to, along with their associated permissions (READ/READWRITE). The location detail view is a file-browser-like interface where users can browse files and folders in S3, as well as upload or download files. The location action view appears when users select an action, such as uploading files.</p>
+
+<p>While the general feedback has been mostly positive, several users have <a href="https://github.com/aws-amplify/amplify-ui/issues/5731#issuecomment-2336979220">requested search support</a>, which is currently lacking. Jason Butz, principal architect and practice lead at DMI, instead <a href="https://www.linkedin.com/posts/jasonbutz_announcing-storage-browser-for-amazon-s3-activity-7238924157248225280-p0q0">highlights</a> a potential use case:</p>
+
+<blockquote>
+<p>Have you ever been in a situation where you needed a way for business users to have administrative access to files uploaded to your application? I have, and then we have to talk about how we can provide access to objects in an S3 Bucket in the application and whether the effort is worth it. That may be getting a little easier.</p>
+</blockquote>
+
+<p>There are currently three ways to set up authentication and authorization with the storage browser component: AWS IAM Identity Center and S3 Access Grants, which are recommended for granting access on a per-S3-prefix basis; Amplify Auth, the fastest setup option for developers already using Amplify; or Custom Auth. The last option is suggested for applications that have their own identity and authorization services for authenticating and authorizing users. Eduardo Rabelo, senior ccoud Consultant at Serverless Guru, <a href="https://www.linkedin.com/posts/oieduardorabelo_storage-browser-for-amazon-s3-for-web-activity-7238106091799134208-99bi?utm_source=share&amp;utm_medium=member_desktop">comments</a>:</p>
+
+<blockquote>
+<p>It is great to see AWS providing opinionated components for developers!</p>
+</blockquote>
+
+<p><br />
+The AWS team behind the project is seeking feedback from developers, including suggestions for improving APIs, as well as additional features.</p>
 
 <p>&nbsp;</p>
-
-<center><img alt="" data-src="news/2024/09/uber-continuous-feployment/en/resources/2unnamed-1725634186219.png"  style="width: 1000px; height: 813px;" src="https://imgopt.infoq.com/fit-in/3000x4000/filters:quality(85)/filters:no_upscale()/news/2024/09/uber-continuous-feployment/en/resources/2unnamed-1725634186219.png" rel="share"></center>
-
-<center><a href="https://www.uber.com/en-AU/blog/continuous-deployment/"><small>The architecture of the CD system.</small></a></center>
-
-<p>Up introduced a unified commit flow for all services, ensuring that each service progressed through a series of deployment stages, each with its own safety checks. These conditions included time delays, deployment windows, and service alerts, ensuring deployments were triggered only when safe. Each stage operated independently, allowing flexibility in customizing deployment flows while maintaining safety. This new approach reduced manual errors and provided a more structured deployment experience.</p>
-
-<p>A critical part of Up CD&rsquo;s success was its user-friendly interface, which gave engineers an intuitive view of their service&rsquo;s commit history and deployment state. The interface collapsed non-essential commits, making tracking changes and identifying potential issues easier. Engineers could also see real-time updates on the status of deployments, allowing them to quickly identify which commits had been deployed and to which environments.<img alt="" data-src="news/2024/09/uber-continuous-feployment/en/resources/1unnamed (1)-1725634186219.png"  style="width: 1000px; height: 709px;" src="https://imgopt.infoq.com/fit-in/3000x4000/filters:quality(85)/filters:no_upscale()/news/2024/09/uber-continuous-feployment/en/resources/1unnamed (1)-1725634186219.png" rel="share"></p>
-
-<center><a href="https://www.uber.com/en-AU/blog/continuous-deployment/"><small>Collapsed view of commit history</small></a></center>
-
-<p>Since launching Up CD, Uber has seen a dramatic increase in the automation of service deployments. The percentage of services deployed automatically rose from under 10% to nearly 70% within a year. Despite the increased frequency of deployments, the rate of production incidents dropped by over 50% per 1,000 code changes, highlighting the system&rsquo;s ability to safely manage more frequent deployments. However, the increased speed of deploying changes, especially those affecting shared code in monorepos, introduced new risks. Uber addressed these by staggering the deployment of such changes across service tiers, halting deployments if issues arose in the lower-priority services.</p>
-
-<p>Working with monorepos is challenging, also other tech companies developed their own internal tools to improve the development process, like <a href="https://www.infoq.com/news/2024/09/tiktok-monorepo-sparo/">TikTok that releases</a> <a href="https://tiktok.github.io/sparo/">Sparo</a> a tool to optimize the performances of git operations for large monorepos.</p>
-
-<p>In conclusion, Uber&#39;s revamped continuous deployment system has successfully automated and standardized deployments at scale, significantly increasing the safety, efficiency, and transparency of deploying microservices. By integrating tightly with existing tools and prioritizing automation, Up CD has enabled Uber to handle rapid growth while minimizing production incidents.</p>
 
 								
 
@@ -1380,10 +1377,10 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
             
                 
             
-            <div class="author" data-id="author-Claudio-Masolo"> <!-- main wrapper for each author -->
-                <a href="/profile/Claudio-Masolo/" class="avatar author__avatar"> </a>
+            <div class="author" data-id="author-Renato-Losio"> <!-- main wrapper for each author -->
+                <a href="/profile/Renato-Losio/" class="avatar author__avatar"> </a>
                 <div class="content-author">
-                    <h4><strong>Claudio Masolo</strong></h4>
+                    <h4><strong>Renato Losio</strong></h4>
                     <div class="show-author-bio">
                         <p>
                             <!-- author bio will be inserted by frontend -->
@@ -1430,19 +1427,19 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
 <input type="hidden" name="" value="Rating is required" id="cr_messages_ratingRequired"/>
 
-<input type="hidden" name="" value="Optimizing Continuous Deployment at Uber: Automating Microservices in Large Monorepos" id="cr_item_title"/>
+<input type="hidden" name="" value="Amazon Introduces Storage Browser for S3" id="cr_item_title"/>
 
-<input type="hidden" name="" value="Claudio Masolo" id="cr_item_author"/>
+<input type="hidden" name="" value="Renato Losio" id="cr_item_author"/>
 
-<input type="hidden" name="" value="http://www.infoq.com/news/2024/09/uber-continuous-feployment/" id="cr_item_url"/>
+<input type="hidden" name="" value="http://www.infoq.com/news/2024/09/amazon-storage-browser-s3/" id="cr_item_url"/>
 
 <input type="hidden" name="" value="news" id="cr_item_ctype"/>
 
 <input type="hidden" name="" value="en" id="cr_item_lang"/>
 
-<input type="hidden" name="" value="1725692400000" id="cr_item_published_time"/>
+<input type="hidden" name="" value="1726294620000" id="cr_item_published_time"/>
 
-<input type="hidden" name="" value="1893" id="cr_item_primary_topic"/>
+<input type="hidden" name="" value="2961" id="cr_item_primary_topic"/>
 
 <script type="text/javascript">
     ContentRating.readMessages();
@@ -1530,12 +1527,12 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
 <div class="widget article__fromTopic topics">
     
-        <div class="widget__head related__for-topic" data-id="6043" data-trk-ref="content_primary_topic">
+        <div class="widget__head related__for-topic" data-id="7451" data-trk-ref="content_primary_topic">
             <h4 class="heading related__heading">
                 
                 
                     
-                This content is in the <a href='/Devops/'>DevOps</a> topic
+                This content is in the <a href='/Cloud/'>Cloud</a> topic
             </h4>
         </div>
     
@@ -1547,8 +1544,16 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
                     
                 
                 
-                <li data-id="6043">
-                    <a href="/Devops/" class="button related__topic button__small button__black">DevOps</a>
+                <li data-id="6815">
+                    <a href="/development/" class="button related__topic button__small button__black">Development</a>
+                </li>
+            
+                
+                    
+                
+                
+                <li data-id="6816">
+                    <a href="/architecture-design/" class="button related__topic button__small button__black">Architecture &amp; Design</a>
                 </li>
             
         
@@ -1558,8 +1563,32 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
                     
                 
                 
-                <li data-id="5956">
-                    <a href="/Continuous_Deployment/" class="button related__topic button__small button__black">Continuous Deployment</a>
+                <li data-id="3737">
+                    <a href="/AWS/" class="button related__topic button__small button__black">AWS</a>
+                </li>
+            
+                
+                    
+                
+                
+                <li data-id="15624">
+                    <a href="/React/" class="button related__topic button__small button__black">React</a>
+                </li>
+            
+                
+                    
+                
+                
+                <li data-id="3601">
+                    <a href="/S3/" class="button related__topic button__small button__black">S3</a>
+                </li>
+            
+                
+                    
+                
+                
+                <li data-id="7451">
+                    <a href="/Cloud/" class="button related__topic button__small button__black">Cloud</a>
                 </li>
             
         
@@ -1583,7 +1612,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     var uriMapping = "news";
     var showVcr = "false";
     var fillWithVcr = "true";
-    var sponsorshipsJson = "{&quot;links&quot;:[{&quot;styleName&quot;:&quot;pdf&quot;,&quot;style&quot;:&quot;PDF&quot;,&quot;text&quot;:&quot;[eBook] API Security for the Modern Enterprise&quot;,&quot;id&quot;:&quot;e8160230-d2eb-4949-8a22-7c3cecc77484&quot;,&quot;target&quot;:&quot;https://www.infoq.com/vendorcontent/show.action?vcr=af26393d-63de-4c39-99fa-4c0890751fe7&amp;utm_source=infoq&amp;utm_medium=VCR&amp;utm_campaign=vcr_fixed_link&quot;,&quot;active&quot;:true}]}";
+    var sponsorshipsJson = "{&quot;links&quot;:[{&quot;styleName&quot;:&quot;article&quot;,&quot;style&quot;:&quot;ARTICLE&quot;,&quot;text&quot;:&quot;Evolving the Agile Organization with Evidence-Based Management&quot;,&quot;id&quot;:&quot;b025ea9d-c898-4a90-afda-b9a79b235e11&quot;,&quot;target&quot;:&quot;https://www.infoq.com/vendorcontent/show.action?vcr=0ce62b6c-ed5d-471b-be3f-631b28087232&amp;utm_source=infoq&amp;utm_medium=RSC&amp;utm_campaign=vcr_fixed_link&quot;,&quot;active&quot;:true}]}";
     var sponsoredLinks = $.parseJSON($("<div/>").html(sponsorshipsJson).text()).links;
     var numberOfSponsoredVcrIds = sponsoredLinks != null ? sponsoredLinks.length : 0;
 
@@ -1616,7 +1645,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
         }
     }, 200);
 </script>
-<input type="hidden" name="" value="1893" id="cont_item_primary_topic"/>
+<input type="hidden" name="" value="2961" id="cont_item_primary_topic"/>
 
 
 
@@ -1628,10 +1657,10 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
             contentType: "application/x-www-form-urlencoded; charset=utf-8",
             type: 'POST',
             data: {
-                "primaryTopicAlias": "Devops",
-                "topicIds": "1823",
-                "title": "Optimizing Continuous Deployment at Uber: Automating Microservices in Large Monorepos",
-                "contentPath": "/news/2024/09/uber-continuous-feployment",
+                "primaryTopicAlias": "Cloud",
+                "topicIds": "1024,4278,951,2961",
+                "title": "Amazon Introduces Storage Browser for S3",
+                "contentPath": "/news/2024/09/amazon-storage-browser-s3",
                 "language": "en"
             },
             success: displayRelatedEditorial,
@@ -1644,7 +1673,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
         if (data && data.length > 0) {
             if(data[0].fromEs) {
                 //change title and tracking params
-                var box_title="DevOps";
+                var box_title="Cloud";
                 //replace html entity since it conflicts with style
                 box_title=box_title.replace("&amp;","&");
                 $('.related__editorial h4').text("Popular in " + box_title);
@@ -1653,7 +1682,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
                 if (i === 5) {
                     break;
                 }
-                if (data[i].url.indexOf("/news/2024/09/uber-continuous-feployment") !== -1) {
+                if (data[i].url.indexOf("/news/2024/09/amazon-storage-browser-s3") !== -1) {
                     console.log("Removing the current item from list...");
                     continue;
                 }
@@ -1693,35 +1722,35 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
         >
             <h4 class="heading">Related Sponsored Content</h4>
             
+            <div class="f_rvcList"></div>
+            
                 
                     <li>
-                        <span class="icon rvc__icon icon__small icon__pdf"></span>
+                        <span class="icon rvc__icon icon__small icon__article"></span>
                         <h5 class="rvc__title">
                             
-                            <a href="/url/f/e8160230-d2eb-4949-8a22-7c3cecc77484/" class="rvc__link" rel="nofollow">
-                                [eBook] API Security for the Modern Enterprise
+                            <a href="/url/f/b025ea9d-c898-4a90-afda-b9a79b235e11/" class="rvc__link" rel="nofollow">
+                                Evolving the Agile Organization with Evidence-Based Management
                             </a>
                         </h5>
                     </li>
                 
             
-            <div class="f_rvcList"></div>
-            
         </ul>
     </li>
     
         <li>
-           <div class="related__prmsp f_sponsorship" data-place="BOTTOM" data-trk-view="true" data-trk-impr="true" jsh="{&quot;topic&quot;:&quot;DevOps&quot;,&quot;id&quot;:&quot;ab4e0ce7-864a-4131-b009-638fe135de28&quot;,&quot;title&quot;:&quot;Curity TS Emerging 04/08/2024 - 10/08/2024&quot;}">
+           <div class="related__prmsp f_sponsorship" data-place="BOTTOM" data-trk-view="true" data-trk-impr="true" jsh="{&quot;topic&quot;:&quot;Development&quot;,&quot;id&quot;:&quot;cebad54e-98bc-4f4b-9b1d-9f0d4b1aaee5&quot;,&quot;title&quot;:&quot;Scrum.org TS Spotlight 02/01/2024 - 01/31/2025&quot;}">
                 <h4 class="heading">Related Sponsor</h4>
                 
                     
-                    <a href="/url/f/34b0d889-fa97-477b-bb69-ff78d15644c3/" target="_blank" rel="nofollow">
-                        <img loading="lazy" src="https://imgopt.infoq.com//fit-in/218x500/filters:quality(100)/filters:no_upscale()/sponsorship/topic/ab4e0ce7-864a-4131-b009-638fe135de28/CurityLogoRSB-1712304212846.png" class="related__img"/>
+                    <a href="/url/f/412f4b88-ed17-4fee-b90c-a6bb446a1cd0/" target="_blank" rel="nofollow">
+                        <img loading="lazy" src="https://imgopt.infoq.com//fit-in/218x500/filters:quality(100)/filters:no_upscale()/sponsorship/topic/cebad54e-98bc-4f4b-9b1d-9f0d4b1aaee5/ScrumLogoRSB-1706173049477.jpg" class="related__img"/>
                     </a>
                 
                
                 <div class="related__desc">
-                    <p style="clear: both; padding: 10px 0 0 0;"><b>Protect Identities. Secure Digital Services. Enable scalable and secure user access to web and mobile applications. <a href="/url/f/cb65dafa-49a3-407f-9073-6c4a49161bd3/" target="_blank" rel="nofollow">Start free trial</a>.</b></p>
+                    <p style="clear: both; padding: 10px 0 0 0;">Scrum.org exists to help people and teams use Professional Scrum to solve complex problems through training, certification, and ongoing learning experiences. <b><a href="/url/f/fc3caa49-bc60-4274-9784-75b41f68a0e8/" target="_blank" rel="nofollow">Learn more</a></b>.</p>
 
                 </div>
            </div>
@@ -1751,9 +1780,9 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     window.finishedRightbarVcr = false;
 
     var _gaq = _gaq || [];
-	var recomJson ="[{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/presentations/ci-cd-yaml/en/smallimage/ConorBarber-small-1720691038128.jpeg&quot;,&quot;contentType&quot;:&quot;presentations&quot;,&quot;date&quot;:1722428580000,&quot;title&quot;:&quot;CI/CD beyond YAML: The Evolution Towards Pipelines-as-Code&quot;,&quot;authorsList&quot;:[&quot;Conor Barber&quot;],&quot;url&quot;:&quot;https://www.infoq.com/presentations/ci-cd-yaml&quot;,&quot;itemPath&quot;:&quot;/presentations/ci-cd-yaml&quot;,&quot;score&quot;:1360000},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/articles/secure-resilient-delivery-pipelines/en/smallimage/GettyImages-1281740358-small-1715175157819.jpg&quot;,&quot;contentType&quot;:&quot;articles&quot;,&quot;date&quot;:1715598000000,&quot;title&quot;:&quot;Delivering Software Securely: Techniques for Building a Resilient and Secure Code Pipeline&quot;,&quot;authorsList&quot;:[&quot;Satrajit Basu&quot;],&quot;url&quot;:&quot;https://www.infoq.com/articles/secure-resilient-delivery-pipelines&quot;,&quot;itemPath&quot;:&quot;/articles/secure-resilient-delivery-pipelines&quot;,&quot;score&quot;:1000000},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/articles/webassembly-containers-dotnet-aspire/en/smallimage/WebAssembly-Containers-logo-small-1725518087283.jpg&quot;,&quot;contentType&quot;:&quot;articles&quot;,&quot;date&quot;:1725879600000,&quot;title&quot;:&quot;WebAssembly and Containers: Orchestrating Distributed Architectures with .NET Aspire&quot;,&quot;authorsList&quot;:[&quot;Thorsten Hans&quot;],&quot;url&quot;:&quot;https://www.infoq.com/articles/webassembly-containers-dotnet-aspire&quot;,&quot;itemPath&quot;:&quot;/articles/webassembly-containers-dotnet-aspire&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725872400000,&quot;title&quot;:&quot;HelixML Announces Helix 1.0 Release&quot;,&quot;authorsList&quot;:[&quot;Chris Swan&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/helix-production-ready&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/helix-production-ready&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725865200000,&quot;title&quot;:&quot;Microsoft .NET Conf: Focus on AI&quot;,&quot;authorsList&quot;:[&quot;Arthur Casals&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/dotnet-conf-focus-ai&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/dotnet-conf-focus-ai&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725849000000,&quot;title&quot;:&quot;Java News Roundup: Stream Gatherers, Project Loom, Hibernate Validator, LangChain4j, Clojure&quot;,&quot;authorsList&quot;:[&quot;Michael Redlich&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/java-news-roundup-sep02-2024&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/java-news-roundup-sep02-2024&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725698940000,&quot;title&quot;:&quot;AWS CodeBuild Now Supports Mac Builds&quot;,&quot;authorsList&quot;:[&quot;Renato Losio&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/aws-codebuild-mac&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/aws-codebuild-mac&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/articles/ai-ml-data-engineering-trends-2024/en/smallimage/InfoQ-Trend-Report-logo-image-small-1725350877013.jpg&quot;,&quot;contentType&quot;:&quot;articles&quot;,&quot;date&quot;:1725616800000,&quot;title&quot;:&quot;InfoQ AI, ML and Data Engineering Trends Report - September 2024&quot;,&quot;authorsList&quot;:[&quot;Srini Penchikala&quot;,&quot;Mandy Gu&quot;,&quot;Namee Oberst&quot;,&quot;Roland Meertens&quot;,&quot;Anthony Alford&quot;,&quot;Daniel Dominguez&quot;],&quot;url&quot;:&quot;https://www.infoq.com/articles/ai-ml-data-engineering-trends-2024&quot;,&quot;itemPath&quot;:&quot;/articles/ai-ml-data-engineering-trends-2024&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725613200000,&quot;title&quot;:&quot;Leveraging the Transformer Architecture for Music Recommendation on YouTube&quot;,&quot;authorsList&quot;:[&quot;Sergio De Simone&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/transofrmer-based-recommender&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/transofrmer-based-recommender&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725598800000,&quot;title&quot;:&quot;How AWS Well-Architected Framework Supports Frugal Architecture&quot;,&quot;authorsList&quot;:[&quot;Rafal Gancarz&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/aws-well-architected-frugal&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/aws-well-architected-frugal&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/presentations/backstage-plugin/en/smallimage/PiaNilsson-MikeLewis-small-1721474709600.jpg&quot;,&quot;contentType&quot;:&quot;presentations&quot;,&quot;date&quot;:1725550920000,&quot;title&quot;:&quot;Everything is a Plugin: How the Backstage Architecture Helps Platform Teams at Spotify and beyond Spread Ownership and Deliver Value&quot;,&quot;authorsList&quot;:[&quot;Pia Nilsson&quot;,&quot;Mike Lewis&quot;],&quot;url&quot;:&quot;https://www.infoq.com/presentations/backstage-plugin&quot;,&quot;itemPath&quot;:&quot;/presentations/backstage-plugin&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725535500000,&quot;title&quot;:&quot;The Value of Using Timeless Testing Tools&quot;,&quot;authorsList&quot;:[&quot;Ben Linders&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/value-timeless-testing-tools&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/value-timeless-testing-tools&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725521460000,&quot;title&quot;:&quot;Elastic Returns to Open Source: Will the Community Follow?&quot;,&quot;authorsList&quot;:[&quot;Renato Losio&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/elastic-open-source-agpl&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/elastic-open-source-agpl&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725440400000,&quot;title&quot;:&quot;TikTok Releases Tool to Improve Monorepo Performance&quot;,&quot;authorsList&quot;:[&quot;Matt Saunders&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/tiktok-monorepo-sparo&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/tiktok-monorepo-sparo&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/articles/efficient-devsecops-workflows/en/smallimage/Efficient-DevSecOps-Worklows-logo-small-1725282420818.jpg&quot;,&quot;contentType&quot;:&quot;articles&quot;,&quot;date&quot;:1725440400000,&quot;title&quot;:&quot;Efficient DevSecOps Workflows with a Little Help from AI&quot;,&quot;authorsList&quot;:[&quot;Michael Friedrich&quot;],&quot;url&quot;:&quot;https://www.infoq.com/articles/efficient-devsecops-workflows&quot;,&quot;itemPath&quot;:&quot;/articles/efficient-devsecops-workflows&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725433200000,&quot;title&quot;:&quot;Uno Platform 5.3 Released, Including JetBrains Rider Official Support&quot;,&quot;authorsList&quot;:[&quot;Arthur Casals&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/uno-plaftorm-5-3-released&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/uno-plaftorm-5-3-released&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/presentations/dichotomy-people-management/en/smallimage/HannahFoxwell-small-1721465717339.jpg&quot;,&quot;contentType&quot;:&quot;presentations&quot;,&quot;date&quot;:1725370200000,&quot;title&quot;:&quot;Being a Bad Influence – the Dangerous Dichotomies of People Management&quot;,&quot;authorsList&quot;:[&quot;Hannah Foxwell&quot;],&quot;url&quot;:&quot;https://www.infoq.com/presentations/dichotomy-people-management&quot;,&quot;itemPath&quot;:&quot;/presentations/dichotomy-people-management&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725368400000,&quot;title&quot;:&quot;Alibaba Releases Two Open-Weight Language Models for Math and Voice Chat&quot;,&quot;authorsList&quot;:[&quot;Anthony Alford&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/alibaba-qwen2-models&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/alibaba-qwen2-models&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725360000000,&quot;title&quot;:&quot;.NET Aspire 8.2: Components Renamed to Integrations, Enhanced Testing, and More Improvements&quot;,&quot;authorsList&quot;:[&quot;Almir Vuk&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/dotnet-aspire-8-2&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/dotnet-aspire-8-2&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725357600000,&quot;title&quot;:&quot;Workspaces in Azure API Management GA: Runtime Isolation and Federated Model of Managing APIs&quot;,&quot;authorsList&quot;:[&quot;Steef-Jan Wiggers&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/workspaces-azure-apim-ga&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/workspaces-azure-apim-ga&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725281100000,&quot;title&quot;:&quot;Figma Moves from ECS to Kubernetes to Benefit from the CNCF Ecosystem and Reduce Costs&quot;,&quot;authorsList&quot;:[&quot;Rafal Gancarz&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/figma-ecs-kubernetes-eks&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/figma-ecs-kubernetes-eks&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725266100000,&quot;title&quot;:&quot;Java News Roundup: Class-File API, GlassFish, JHipster, JReleaser, Hibernate Search, Micronaut&quot;,&quot;authorsList&quot;:[&quot;Michael Redlich&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/java-news-roundup-aug26-2024&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/java-news-roundup-aug26-2024&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725188160000,&quot;title&quot;:&quot;Grok-2 Beta Version Released on X Platform&quot;,&quot;authorsList&quot;:[&quot;Daniel Dominguez&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/grok-x-llm&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/grok-x-llm&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725167520000,&quot;title&quot;:&quot;Concerns Rise in Open-Source Community as CockroachDB Ends Core Free Edition&quot;,&quot;authorsList&quot;:[&quot;Renato Losio&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/cockroachdb-license-concerns&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/cockroachdb-license-concerns&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725110100000,&quot;title&quot;:&quot;Microsoft Launches Open-Source Phi-3.5 Models for Advanced AI Development&quot;,&quot;authorsList&quot;:[&quot;Robert Krzaczyński&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/microsoft-phi-3-5&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/microsoft-phi-3-5&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725082860000,&quot;title&quot;:&quot;Cloudflare Introduces Automatic SSL/TLS to Secure and Simplify Origin Server Connectivity&quot;,&quot;authorsList&quot;:[&quot;Renato Losio&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/cloudflare-automatic-ssl-origin&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/cloudflare-automatic-ssl-origin&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/presentations/framework-defined-infrastructure/en/smallimage/MalteUbl-small-1723044034241.jpg&quot;,&quot;contentType&quot;:&quot;presentations&quot;,&quot;date&quot;:1725032280000,&quot;title&quot;:&quot;Framework Defined Infrastructure (FdI) – an Evolution of Infrastructure as Code (IaC)&quot;,&quot;authorsList&quot;:[&quot;Malte Ubl&quot;],&quot;url&quot;:&quot;https://www.infoq.com/presentations/framework-defined-infrastructure&quot;,&quot;itemPath&quot;:&quot;/presentations/framework-defined-infrastructure&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725015600000,&quot;title&quot;:&quot;.NET MAUI 9 Preview 7: Introduction of HybridWebView and Other Improvements&quot;,&quot;authorsList&quot;:[&quot;Almir Vuk&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/dotnet-maui-9-preview7&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/dotnet-maui-9-preview7&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1724997600000,&quot;title&quot;:&quot;.NET Community Toolkit 8.3 Released with .NET 8 and NativeAOT Support&quot;,&quot;authorsList&quot;:[&quot;Robert Krzaczyński&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/dotnet-community-toolkit&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/dotnet-community-toolkit&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/presentations/languages-packets/en/smallimage/AlanElder-small-1721421020665.jpg&quot;,&quot;contentType&quot;:&quot;presentations&quot;,&quot;date&quot;:1724943900000,&quot;title&quot;:&quot;What Can You Learn from the Fastest Code in the World?&quot;,&quot;authorsList&quot;:[&quot;Alan Elder&quot;],&quot;url&quot;:&quot;https://www.infoq.com/presentations/languages-packets&quot;,&quot;itemPath&quot;:&quot;/presentations/languages-packets&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1724943660000,&quot;title&quot;:&quot;First European InfoQ Dev Summit to Take Place Next Month in Munich&quot;,&quot;authorsList&quot;:[&quot;Renato Losio&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/infoq-dev-summit-munich&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/infoq-dev-summit-munich&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1724930040000,&quot;title&quot;:&quot;Fostering High-performing Work Environments for Software Development&quot;,&quot;authorsList&quot;:[&quot;Ben Linders&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/high-performing-SW-teams&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/high-performing-SW-teams&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1724925600000,&quot;title&quot;:&quot;Azure Advisor Well-Architected Assessment in Public Preview to Optimize Cloud Infrastructure&quot;,&quot;authorsList&quot;:[&quot;Steef-Jan Wiggers&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/azure-advisor-waf-assessments&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/azure-advisor-waf-assessments&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1724869800000,&quot;title&quot;:&quot;Microsoft Releases Prompty: New VS Code Extension for Integrating LLMs into .NET Development&quot;,&quot;authorsList&quot;:[&quot;Robert Krzaczyński&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/prompty-vs-code&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/prompty-vs-code&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/presentations/java-developer-productivity/en/smallimage/HeatherVanCura-small-1723043390655.jpg&quot;,&quot;contentType&quot;:&quot;presentations&quot;,&quot;date&quot;:1724858700000,&quot;title&quot;:&quot;The Keys to Developer Productivity: Collaborate and Innovate&quot;,&quot;authorsList&quot;:[&quot;Heather VanCura&quot;],&quot;url&quot;:&quot;https://www.infoq.com/presentations/java-developer-productivity&quot;,&quot;itemPath&quot;:&quot;/presentations/java-developer-productivity&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1724839200000,&quot;title&quot;:&quot;Improving Distributed System Data Integrity with Amazon S3 Conditional Writes&quot;,&quot;authorsList&quot;:[&quot;Steef-Jan Wiggers&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/amazon-s3-conditional-writes&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/amazon-s3-conditional-writes&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/presentations/ai-sdlc/en/smallimage/TracyBannon-small-1720690485520.jpg&quot;,&quot;contentType&quot;:&quot;presentations&quot;,&quot;date&quot;:1724775240000,&quot;title&quot;:&quot;Applying AI to the SDLC: New Ideas and Gotchas! - Leveraging AI to Improve Software Engineering&quot;,&quot;authorsList&quot;:[&quot;Tracy Bannon&quot;],&quot;url&quot;:&quot;https://www.infoq.com/presentations/ai-sdlc&quot;,&quot;itemPath&quot;:&quot;/presentations/ai-sdlc&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1724763600000,&quot;title&quot;:&quot;Apple Unveils Apple Foundation Models Powering Apple Intelligence&quot;,&quot;authorsList&quot;:[&quot;Anthony Alford&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/apple-foundation-models&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/apple-foundation-models&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1724756400000,&quot;title&quot;:&quot;Meta Open-Sources DCPerf, a Benchmark Suite for Hyperscale Cloud Workloads&quot;,&quot;authorsList&quot;:[&quot;Aditya Kulkarni&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/meta-dcperf-benchmark-suite&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/meta-dcperf-benchmark-suite&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1724752800000,&quot;title&quot;:&quot;Google Cloud Launches C4 Machine Series: High-Performance Computing and Data Analytics&quot;,&quot;authorsList&quot;:[&quot;Steef-Jan Wiggers&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/google-cloud-c4-machines-ai&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/google-cloud-c4-machines-ai&quot;,&quot;score&quot;:0}]";
+	var recomJson ="[{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1724839200000,&quot;title&quot;:&quot;Improving Distributed System Data Integrity with Amazon S3 Conditional Writes&quot;,&quot;authorsList&quot;:[&quot;Steef-Jan Wiggers&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/amazon-s3-conditional-writes&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/amazon-s3-conditional-writes&quot;,&quot;score&quot;:83930},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1726480800000,&quot;title&quot;:&quot;AWS Unveils Parallel Computing Service to Accelerate Scientific Discovery&quot;,&quot;authorsList&quot;:[&quot;Steef-Jan Wiggers&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/aws-parallel-computing-service&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/aws-parallel-computing-service&quot;,&quot;score&quot;:202},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725698940000,&quot;title&quot;:&quot;AWS CodeBuild Now Supports Mac Builds&quot;,&quot;authorsList&quot;:[&quot;Renato Losio&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/aws-codebuild-mac&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/aws-codebuild-mac&quot;,&quot;score&quot;:181},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725598800000,&quot;title&quot;:&quot;How AWS Well-Architected Framework Supports Frugal Architecture&quot;,&quot;authorsList&quot;:[&quot;Rafal Gancarz&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/aws-well-architected-frugal&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/aws-well-architected-frugal&quot;,&quot;score&quot;:177},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725521460000,&quot;title&quot;:&quot;Elastic Returns to Open Source: Will the Community Follow?&quot;,&quot;authorsList&quot;:[&quot;Renato Losio&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/elastic-open-source-agpl&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/elastic-open-source-agpl&quot;,&quot;score&quot;:177},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1724407500000,&quot;title&quot;:&quot;How Amazon Aurora Serverless Manages Resources and Scaling for Fleets of 10K+ Instances&quot;,&quot;authorsList&quot;:[&quot;Rafal Gancarz&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/aurora-serverless-scale-resource&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/aurora-serverless-scale-resource&quot;,&quot;score&quot;:157},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1724317200000,&quot;title&quot;:&quot;LLM-Powered DevOps Assistant Clio Launches to Help Engineers Manage Cloud Infrastructure&quot;,&quot;authorsList&quot;:[&quot;Matt Saunders&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/ai-devops-clio&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/ai-devops-clio&quot;,&quot;score&quot;:157},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1724234400000,&quot;title&quot;:&quot;AWS Introduces Logically Air-Gapped Vault for Enhanced Data Security&quot;,&quot;authorsList&quot;:[&quot;Steef-Jan Wiggers&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/aws-backup-logically-air-gapped&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/aws-backup-logically-air-gapped&quot;,&quot;score&quot;:156},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/articles/architect-software-for-greener-future/en/smallimage/How to Architect Software for a Greener Future by Sara Bergman-small-1720088398191.jpg&quot;,&quot;contentType&quot;:&quot;articles&quot;,&quot;date&quot;:1720429200000,&quot;title&quot;:&quot;How to Architect Software for a Greener Future&quot;,&quot;authorsList&quot;:[&quot;Sara Bergman&quot;],&quot;url&quot;:&quot;https://www.infoq.com/articles/architect-software-for-greener-future&quot;,&quot;itemPath&quot;:&quot;/articles/architect-software-for-greener-future&quot;,&quot;score&quot;:119},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/articles/set-piece-strategy-sheen-brisals/en/smallimage/TheSetPieceStrategyTacklingComplexityinServerlessApplications-small-1719579748745.jpg&quot;,&quot;contentType&quot;:&quot;articles&quot;,&quot;date&quot;:1719910800000,&quot;title&quot;:&quot;The Set Piece Strategy: Tackling Complexity in Serverless Applications&quot;,&quot;authorsList&quot;:[&quot;Sheen Brisals&quot;],&quot;url&quot;:&quot;https://www.infoq.com/articles/set-piece-strategy-sheen-brisals&quot;,&quot;itemPath&quot;:&quot;/articles/set-piece-strategy-sheen-brisals&quot;,&quot;score&quot;:115},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/articles/netflix-highly-reliable-stateful-systems/en/smallimage/GettyImages-1208363215-small-1715333971540.jpg&quot;,&quot;contentType&quot;:&quot;articles&quot;,&quot;date&quot;:1715677200000,&quot;title&quot;:&quot;How Netflix Ensures Highly-Reliable Online Stateful Systems&quot;,&quot;authorsList&quot;:[&quot;Joseph Lynch&quot;],&quot;url&quot;:&quot;https://www.infoq.com/articles/netflix-highly-reliable-stateful-systems&quot;,&quot;itemPath&quot;:&quot;/articles/netflix-highly-reliable-stateful-systems&quot;,&quot;score&quot;:101},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/articles/aws-lambda-cold-starts-myths/en/smallimage/GettyImages-1459760313-small-1715082888540.jpg&quot;,&quot;contentType&quot;:&quot;articles&quot;,&quot;date&quot;:1715245200000,&quot;title&quot;:&quot;Unraveling the Enigma: Debunking Myths Surrounding Lambda Cold Starts&quot;,&quot;authorsList&quot;:[&quot;Mohit Palriwal&quot;],&quot;url&quot;:&quot;https://www.infoq.com/articles/aws-lambda-cold-starts-myths&quot;,&quot;itemPath&quot;:&quot;/articles/aws-lambda-cold-starts-myths&quot;,&quot;score&quot;:101},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/presentations/cellular-architecture/en/smallimage/ChrisPrice-small-1712137530934.jpg&quot;,&quot;contentType&quot;:&quot;presentations&quot;,&quot;date&quot;:1712737500000,&quot;title&quot;:&quot;Architecting for High Availability in the Cloud with Cellular Architecture&quot;,&quot;authorsList&quot;:[&quot;Chris Price&quot;],&quot;url&quot;:&quot;https://www.infoq.com/presentations/cellular-architecture&quot;,&quot;itemPath&quot;:&quot;/presentations/cellular-architecture&quot;,&quot;score&quot;:101},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/articles/high-availability-in-the-cloud-with-cellular-architecture/en/smallimage/ArchitectingChrisPrice-1710862402588.jpg&quot;,&quot;contentType&quot;:&quot;articles&quot;,&quot;date&quot;:1711098000000,&quot;title&quot;:&quot;Architecting for High Availability in the Cloud with Cellular Architecture&quot;,&quot;authorsList&quot;:[&quot;Chris Price&quot;],&quot;url&quot;:&quot;https://www.infoq.com/articles/high-availability-in-the-cloud-with-cellular-architecture&quot;,&quot;itemPath&quot;:&quot;/articles/high-availability-in-the-cloud-with-cellular-architecture&quot;,&quot;score&quot;:101},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/presentations/saas-diagrid/en/smallimage/Joni-Collinge-small-1723545239180.jpg&quot;,&quot;contentType&quot;:&quot;presentations&quot;,&quot;date&quot;:1726144740000,&quot;title&quot;:&quot;Building SaaS from Scratch Using Cloud-Native Patterns: a Deep Dive Into a Cloud Startup&quot;,&quot;authorsList&quot;:[&quot;Joni Collinge&quot;],&quot;url&quot;:&quot;https://www.infoq.com/presentations/saas-diagrid&quot;,&quot;itemPath&quot;:&quot;/presentations/saas-diagrid&quot;,&quot;score&quot;:1},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725357600000,&quot;title&quot;:&quot;Workspaces in Azure API Management GA: Runtime Isolation and Federated Model of Managing APIs&quot;,&quot;authorsList&quot;:[&quot;Steef-Jan Wiggers&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/workspaces-azure-apim-ga&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/workspaces-azure-apim-ga&quot;,&quot;score&quot;:1},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1725082860000,&quot;title&quot;:&quot;Cloudflare Introduces Automatic SSL/TLS to Secure and Simplify Origin Server Connectivity&quot;,&quot;authorsList&quot;:[&quot;Renato Losio&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/cloudflare-automatic-ssl-origin&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/cloudflare-automatic-ssl-origin&quot;,&quot;score&quot;:1},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1724925600000,&quot;title&quot;:&quot;Azure Advisor Well-Architected Assessment in Public Preview to Optimize Cloud Infrastructure&quot;,&quot;authorsList&quot;:[&quot;Steef-Jan Wiggers&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/azure-advisor-waf-assessments&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/azure-advisor-waf-assessments&quot;,&quot;score&quot;:1},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1724752800000,&quot;title&quot;:&quot;Google Cloud Launches C4 Machine Series: High-Performance Computing and Data Analytics&quot;,&quot;authorsList&quot;:[&quot;Steef-Jan Wiggers&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/google-cloud-c4-machines-ai&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/google-cloud-c4-machines-ai&quot;,&quot;score&quot;:1},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1724478060000,&quot;title&quot;:&quot;Spanner Graph: Google Introduces Graph Database on Spanner&quot;,&quot;authorsList&quot;:[&quot;Renato Losio&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/google-spanner-graph&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/google-spanner-graph&quot;,&quot;score&quot;:1},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1724407200000,&quot;title&quot;:&quot;Microsoft Expands Azure Data Box Capabilities for Enhanced Offline Data Migration&quot;,&quot;authorsList&quot;:[&quot;Steef-Jan Wiggers&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/08/azure-data-box-new-capabilities&quot;,&quot;itemPath&quot;:&quot;/news/2024/08/azure-data-box-new-capabilities&quot;,&quot;score&quot;:1},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/articles/cloud-waste-management/en/smallimage/Cloud-Waste-Management-logo-small-1723458480367.jpg&quot;,&quot;contentType&quot;:&quot;articles&quot;,&quot;date&quot;:1723712400000,&quot;title&quot;:&quot;Cloud Waste Management: How to Optimize Your Cloud Resources&quot;,&quot;authorsList&quot;:[&quot;Abhishek Jain&quot;],&quot;url&quot;:&quot;https://www.infoq.com/articles/cloud-waste-management&quot;,&quot;itemPath&quot;:&quot;/articles/cloud-waste-management&quot;,&quot;score&quot;:1},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/articles/uber-migration-hybrid-cloud/en/smallimage/Onprem-NoSQL-to-NewSQL-Based-Hybrid-Cloud-Architecture-logo-small-1722411887733.jpg&quot;,&quot;contentType&quot;:&quot;articles&quot;,&quot;date&quot;:1723021200000,&quot;title&quot;:&quot;Uber's Blueprint for Zero-Downtime Migration of Complex Trip Fulfillment Platform&quot;,&quot;authorsList&quot;:[&quot;Madan Thangavelu&quot;],&quot;url&quot;:&quot;https://www.infoq.com/articles/uber-migration-hybrid-cloud&quot;,&quot;itemPath&quot;:&quot;/articles/uber-migration-hybrid-cloud&quot;,&quot;score&quot;:1},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/presentations/pulumi-devops/en/smallimage/AdoraNwodo-small-1719482044287.jpg&quot;,&quot;contentType&quot;:&quot;presentations&quot;,&quot;date&quot;:1720785660000,&quot;title&quot;:&quot;Pulumi Adventures: How Python Empowered My Infrastructure beyond YAML&quot;,&quot;authorsList&quot;:[&quot;Adora Nwodo&quot;],&quot;url&quot;:&quot;https://www.infoq.com/presentations/pulumi-devops&quot;,&quot;itemPath&quot;:&quot;/presentations/pulumi-devops&quot;,&quot;score&quot;:1},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/articles/platform-runtime-engineering/en/smallimage/WhenDevOpsRunsItsCourseWeNeedPlatformasaRuntime-small-1719237072642.jpg&quot;,&quot;contentType&quot;:&quot;articles&quot;,&quot;date&quot;:1719565200000,&quot;title&quot;:&quot;Platform as a Runtime - the Next Step in Platform Engineering&quot;,&quot;authorsList&quot;:[&quot;Aviran Mordo&quot;],&quot;url&quot;:&quot;https://www.infoq.com/articles/platform-runtime-engineering&quot;,&quot;itemPath&quot;:&quot;/articles/platform-runtime-engineering&quot;,&quot;score&quot;:1},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/articles/cost-optimization-engineering-perspective/en/smallimage/GettyImages-1315542450-small-1715347078454.jpg&quot;,&quot;contentType&quot;:&quot;articles&quot;,&quot;date&quot;:1717578300000,&quot;title&quot;:&quot;Million Dollar Lines of Code - an Engineering Perspective on Cloud Cost Optimization&quot;,&quot;authorsList&quot;:[&quot;Erik Peterson&quot;],&quot;url&quot;:&quot;https://www.infoq.com/articles/cost-optimization-engineering-perspective&quot;,&quot;itemPath&quot;:&quot;/articles/cost-optimization-engineering-perspective&quot;,&quot;score&quot;:1},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/articles/three-as-building-successful-platforms/en/smallimage/GettyImages-636032898-small-1715925480228.jpg&quot;,&quot;contentType&quot;:&quot;articles&quot;,&quot;date&quot;:1716204600000,&quot;title&quot;:&quot;The Three As of Building A+ Platforms: Acceleration, Autonomy, and Accountability&quot;,&quot;authorsList&quot;:[&quot;Smruti Patel&quot;],&quot;url&quot;:&quot;https://www.infoq.com/articles/three-as-building-successful-platforms&quot;,&quot;itemPath&quot;:&quot;/articles/three-as-building-successful-platforms&quot;,&quot;score&quot;:1},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/presentations/jvm-optimization-cloud/en/smallimage/TobiAjila-small-1714145930325.jpg&quot;,&quot;contentType&quot;:&quot;presentations&quot;,&quot;date&quot;:1715352420000,&quot;title&quot;:&quot;Optimizing JVM for the Cloud: Strategies for Success&quot;,&quot;authorsList&quot;:[&quot;Tobi Ajila&quot;],&quot;url&quot;:&quot;https://www.infoq.com/presentations/jvm-optimization-cloud&quot;,&quot;itemPath&quot;:&quot;/presentations/jvm-optimization-cloud&quot;,&quot;score&quot;:1},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/articles/multi-cloud-observability-fluent-bit/en/smallimage/GettyImages-1343168524-small-1713532833350.jpg&quot;,&quot;contentType&quot;:&quot;articles&quot;,&quot;date&quot;:1713862800000,&quot;title&quot;:&quot;Multi-Cloud Observability Using Fluent Bit&quot;,&quot;authorsList&quot;:[&quot;Phil Wilkins&quot;],&quot;url&quot;:&quot;https://www.infoq.com/articles/multi-cloud-observability-fluent-bit&quot;,&quot;itemPath&quot;:&quot;/articles/multi-cloud-observability-fluent-bit&quot;,&quot;score&quot;:1},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/presentations/durable-execution-control-plane/en/smallimage/SergeyBykov-small-1712657221280.jpg&quot;,&quot;contentType&quot;:&quot;presentations&quot;,&quot;date&quot;:1713519660000,&quot;title&quot;:&quot;Durable Execution for Control Planes: Building Temporal Cloud on Temporal&quot;,&quot;authorsList&quot;:[&quot;Sergey Bykov&quot;],&quot;url&quot;:&quot;https://www.infoq.com/presentations/durable-execution-control-plane&quot;,&quot;itemPath&quot;:&quot;/presentations/durable-execution-control-plane&quot;,&quot;score&quot;:1},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/presentations/durable-execution/en/smallimage/SergeyBykov-small-1711532183751.jpg&quot;,&quot;contentType&quot;:&quot;presentations&quot;,&quot;date&quot;:1712232780000,&quot;title&quot;:&quot;From Smoothie Architecture to Layer Cake with Durable Execution&quot;,&quot;authorsList&quot;:[&quot;Sergey Bykov&quot;],&quot;url&quot;:&quot;https://www.infoq.com/presentations/durable-execution&quot;,&quot;itemPath&quot;:&quot;/presentations/durable-execution&quot;,&quot;score&quot;:1},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1726490100000,&quot;title&quot;:&quot;Java News Roundup: Payara Platform, Piranha Cloud, Spring Milestones, JBang, Micrometer, Groovy&quot;,&quot;authorsList&quot;:[&quot;Michael Redlich&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/java-news-roundup-sep09-2024&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/java-news-roundup-sep09-2024&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1726477200000,&quot;title&quot;:&quot;Kubernetes Autoscaler Karpenter Reaches 1.0 Milestone&quot;,&quot;authorsList&quot;:[&quot;Matt Saunders&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/karpenter-10&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/karpenter-10&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1726214400000,&quot;title&quot;:&quot;CoreWCF Gets Azure Storage Queue Bindings&quot;,&quot;authorsList&quot;:[&quot;Edin Kapić&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/corewcf-azure-storage-queues&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/corewcf-azure-storage-queues&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1726141500000,&quot;title&quot;:&quot;Enabling Fast Flow in Software Organizations&quot;,&quot;authorsList&quot;:[&quot;Ben Linders&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/fast-flow-software-organizations&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/fast-flow-software-organizations&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1726120800000,&quot;title&quot;:&quot;Lyft Promotes Best Practices for Collaborative Protocol Buffers Design&quot;,&quot;authorsList&quot;:[&quot;Rafal Gancarz&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/lyft-protocol-buffers-design&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/lyft-protocol-buffers-design&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1726066800000,&quot;title&quot;:&quot;Vapor 5 Materializes the Future of Server-Side Development in Swift&quot;,&quot;authorsList&quot;:[&quot;Sergio De Simone&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/swift-vapor-5-roadmap&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/swift-vapor-5-roadmap&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/articles/analysis-optimization-change-release-process/en/smallimage/Mastering-Impact-Analysis-Optimizing-Change-logo-small-1724927868071.jpg&quot;,&quot;contentType&quot;:&quot;articles&quot;,&quot;date&quot;:1726045200000,&quot;title&quot;:&quot;Mastering Impact Analysis and Optimizing Change Release Processes&quot;,&quot;authorsList&quot;:[&quot;Tejas Ghadge&quot;],&quot;url&quot;:&quot;https://www.infoq.com/articles/analysis-optimization-change-release-process&quot;,&quot;itemPath&quot;:&quot;/articles/analysis-optimization-change-release-process&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:null,&quot;contentType&quot;:&quot;news&quot;,&quot;date&quot;:1726033740000,&quot;title&quot;:&quot;Security Experts Exploit Airport Security Loophole with SQL Injection&quot;,&quot;authorsList&quot;:[&quot;Renato Losio&quot;],&quot;url&quot;:&quot;https://www.infoq.com/news/2024/09/sql-injection-airport-security&quot;,&quot;itemPath&quot;:&quot;/news/2024/09/sql-injection-airport-security&quot;,&quot;score&quot;:0},{&quot;topicsIds&quot;:null,&quot;imageStoragePath&quot;:&quot;https://imgopt.infoq.com/fit-in/50x50/filters:quality(80)/presentations/rust-efficient-software/en/smallimage/PietroAlbini-small-1720791618626.jpg&quot;,&quot;contentType&quot;:&quot;presentations&quot;,&quot;date&quot;:1725978180000,&quot;title&quot;:&quot;Not Just Memory Safety: How Rust Helps Maintain Efficient Software&quot;,&quot;authorsList&quot;:[&quot;Pietro Albini&quot;],&quot;url&quot;:&quot;https://www.infoq.com/presentations/rust-efficient-software&quot;,&quot;itemPath&quot;:&quot;/presentations/rust-efficient-software&quot;,&quot;score&quot;:0}]";
 	var whitepaperVcrsJson = null;
-	var topicSponsorshipJson = "{&quot;iconLink&quot;:&quot;/url/f/34b0d889-fa97-477b-bb69-ff78d15644c3/&quot;,&quot;iconHref&quot;:&quot;https://imgopt.infoq.com//fit-in/275x500/filters:quality(100)/filters:no_upscale()/sponsorship/topic/ab4e0ce7-864a-4131-b009-638fe135de28/CurityLogoRSB-1712304212846.png&quot;,&quot;id&quot;:&quot;c3f1f727-a657-41da-9429-f74f486078bc&quot;}";
+	var topicSponsorshipJson = "{&quot;iconLink&quot;:&quot;/url/f/412f4b88-ed17-4fee-b90c-a6bb446a1cd0/&quot;,&quot;iconHref&quot;:&quot;https://imgopt.infoq.com//fit-in/275x500/filters:quality(100)/filters:no_upscale()/sponsorship/topic/cebad54e-98bc-4f4b-9b1d-9f0d4b1aaee5/ScrumLogoRSB-1706173049477.jpg&quot;,&quot;id&quot;:&quot;5933116a-a560-4d45-93f1-0e7681a5cb67&quot;}";
 	var vcrOptionalListJson = null;
 	/* do not delete these two, as they are used further in the code */
 	var contentDatetimeFormat='MMM dd, yyyy';
@@ -1762,9 +1791,9 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 	JSi18n.relatedRightbar_sponsoredContent='Related Sponsored Content';
 	JSi18n.relatedRightbar_sponsoredBy='Sponsored by';
 
-	var topicIds = "1823";
-	var communityIds = "1893";
-	var company = "Curity";
+	var topicIds = "1024,4278,951,2961";
+	var communityIds = "2497,2498";
+	var company = "Scrum.org";
 
 
     // this event is fired by frontend once all the necessary things have been done(mobile display, moving vcr boxes around when needed...)
@@ -1833,7 +1862,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 				<label class="field__label label" for="email-newsletter-infoq-guide">Enter your e-mail address</label>
 				<input class="field__input input" id="email-newsletter-infoq-guide" placeholder="Enter your e-mail address" type="text">
 				<input type="text" name="emailH" id="input_floating_email_h" aria-required="false" style="display:none !important" tabindex="-1" autocomplete="off">
-				<input type="hidden" id="floating_fnt" name="fnt" value="048LYAfRGGjJ4Y0l"/>
+				<input type="hidden" id="floating_fnt" name="fnt" value="3RaMYycgxx3pVLNX"/>
 				<input type="hidden" id="floatingNewsletterType" name="footerNewsletterType" value="regular"/>
 				<input type="hidden" id="cmpi_f" name="cmpi" value="1"/>
 			</div>
@@ -1872,13 +1901,13 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
 <script type="text/javascript">
 	// global vars that can be used for this page, us ethis section to add more.
-	var contentTitle = "Optimizing Continuous Deployment at Uber: Automating Microservices in Large Monorepos",
-		contentPath = "/news/2024/09/uber-continuous-feployment",
-		contentUUID = "0bc5a29a-41dc-4735-aeed-f72e781cd404",
-		authorUserCSVIds = "93850416";
+	var contentTitle = "Amazon Introduces Storage Browser for S3",
+		contentPath = "/news/2024/09/amazon-storage-browser-s3",
+		contentUUID = "57de252f-ccea-4f89-80cc-44ac3c5639ea",
+		authorUserCSVIds = "126467140";
 </script>
-<script src="https://cdn.infoq.com/statics_s1_20240906124302/scripts/prism-build.js"></script>
-<script src="https://cdn.infoq.com/statics_s1_20240906124302/scripts/lib/MathJax/MathJax.js?config=TeX-AMS_HTML"></script>
+<script src="https://cdn.infoq.com/statics_s2_20240917061620/scripts/prism-build.js"></script>
+<script src="https://cdn.infoq.com/statics_s2_20240917061620/scripts/lib/MathJax/MathJax.js?config=TeX-AMS_HTML"></script>
 
                 </main>
 
@@ -1917,17 +1946,17 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
                     
                         <li>
                             
+                            <h5><a class="t_all_footer_more-boxes-item" href="/news/2024/09/sql-injection-airport-security/" title="Security Experts Exploit Airport Security Loophole with SQL Injection">Security Experts Exploit Airport Security Loophole with SQL Injection</a></h5>
+                        </li>
+                    
+                        <li>
+                            
+                            <h5><a class="t_all_footer_more-boxes-item" href="/presentations/rust-efficient-software/" title="Not Just Memory Safety: How Rust Helps Maintain Efficient Software">Not Just Memory Safety: How Rust Helps Maintain Efficient Software</a></h5>
+                        </li>
+                    
+                        <li>
+                            
                             <h5><a class="t_all_footer_more-boxes-item" href="/news/2024/09/elastic-open-source-agpl/" title="Elastic Returns to Open Source: Will the Community Follow?">Elastic Returns to Open Source: Will the Community Follow?</a></h5>
-                        </li>
-                    
-                        <li>
-                            
-                            <h5><a class="t_all_footer_more-boxes-item" href="/news/2024/09/cockroachdb-license-concerns/" title="Concerns Rise in Open-Source Community as CockroachDB Ends Core Free Edition">Concerns Rise in Open-Source Community as CockroachDB Ends Core Free Edition</a></h5>
-                        </li>
-                    
-                        <li>
-                            
-                            <h5><a class="t_all_footer_more-boxes-item" href="/news/2024/08/cloudflare-automatic-ssl-origin/" title="Cloudflare Introduces Automatic SSL/TLS to Secure and Simplify Origin Server Connectivity">Cloudflare Introduces Automatic SSL/TLS to Secure and Simplify Origin Server Connectivity</a></h5>
                         </li>
                     
                 </ul>
@@ -1944,17 +1973,17 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
                     
                         <li>
                             
+                            <h5><a class="t_all_footer_more-boxes-item" href="/news/2024/09/lyft-protocol-buffers-design/" title="Lyft Promotes Best Practices for Collaborative Protocol Buffers Design">Lyft Promotes Best Practices for Collaborative Protocol Buffers Design</a></h5>
+                        </li>
+                    
+                        <li>
+                            
+                            <h5><a class="t_all_footer_more-boxes-item" href="/articles/technical-debt-your-friend/" title="How to Make Technical Debt Your Friend">How to Make Technical Debt Your Friend</a></h5>
+                        </li>
+                    
+                        <li>
+                            
                             <h5><a class="t_all_footer_more-boxes-item" href="/news/2024/09/aws-well-architected-frugal/" title="How AWS Well-Architected Framework Supports Frugal Architecture">How AWS Well-Architected Framework Supports Frugal Architecture</a></h5>
-                        </li>
-                    
-                        <li>
-                            
-                            <h5><a class="t_all_footer_more-boxes-item" href="/presentations/backstage-plugin/" title="Everything is a Plugin: How the Backstage Architecture Helps Platform Teams at Spotify and beyond Spread Ownership and Deliver Value">Everything is a Plugin: How the Backstage Architecture Helps Platform Teams at Spotify and beyond Spread Ownership and Deliver Value</a></h5>
-                        </li>
-                    
-                        <li>
-                            
-                            <h5><a class="t_all_footer_more-boxes-item" href="/news/2024/09/figma-ecs-kubernetes-eks/" title="Figma Moves from ECS to Kubernetes to Benefit from the CNCF Ecosystem and Reduce Costs">Figma Moves from ECS to Kubernetes to Benefit from the CNCF Ecosystem and Reduce Costs</a></h5>
                         </li>
                     
                 </ul>
@@ -1971,17 +2000,17 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
                     
                         <li>
                             
+                            <h5><a class="t_all_footer_more-boxes-item" href="/podcasts/technical-health-team-culture/" title="Engineering Excellence: Declan Whelan on Technical Health, Agile Practices, and Team Culture">Engineering Excellence: Declan Whelan on Technical Health, Agile Practices, and Team Culture</a></h5>
+                        </li>
+                    
+                        <li>
+                            
+                            <h5><a class="t_all_footer_more-boxes-item" href="/news/2024/09/fast-flow-software-organizations/" title="Enabling Fast Flow in Software Organizations">Enabling Fast Flow in Software Organizations</a></h5>
+                        </li>
+                    
+                        <li>
+                            
                             <h5><a class="t_all_footer_more-boxes-item" href="/podcasts/leadership-autonomy-growth/" title="Engineering Leadership: Balancing Autonomy, Growth, and Culture with Michael Gray">Engineering Leadership: Balancing Autonomy, Growth, and Culture with Michael Gray</a></h5>
-                        </li>
-                    
-                        <li>
-                            
-                            <h5><a class="t_all_footer_more-boxes-item" href="/news/2024/09/value-timeless-testing-tools/" title="The Value of Using Timeless Testing Tools">The Value of Using Timeless Testing Tools</a></h5>
-                        </li>
-                    
-                        <li>
-                            
-                            <h5><a class="t_all_footer_more-boxes-item" href="/presentations/dichotomy-people-management/" title="Being a Bad Influence &amp;ndash; the Dangerous Dichotomies of People Management">Being a Bad Influence &ndash; the Dangerous Dichotomies of People Management</a></h5>
                         </li>
                     
                 </ul>
@@ -1998,17 +2027,17 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
                     
                         <li>
                             
+                            <h5><a class="t_all_footer_more-boxes-item" href="/podcasts/primer-ai-for-architects/" title="A Primer on AI for Architects with Anthony Alford">A Primer on AI for Architects with Anthony Alford</a></h5>
+                        </li>
+                    
+                        <li>
+                            
+                            <h5><a class="t_all_footer_more-boxes-item" href="/news/2024/09/google-gamengen/" title="Google Announces Game Simulation AI GameNGen">Google Announces Game Simulation AI GameNGen</a></h5>
+                        </li>
+                    
+                        <li>
+                            
                             <h5><a class="t_all_footer_more-boxes-item" href="/news/2024/09/helix-production-ready/" title="HelixML Announces Helix 1.0 Release">HelixML Announces Helix 1.0 Release</a></h5>
-                        </li>
-                    
-                        <li>
-                            
-                            <h5><a class="t_all_footer_more-boxes-item" href="/articles/ai-ml-data-engineering-trends-2024/" title="InfoQ AI, ML and Data Engineering Trends Report - September 2024">InfoQ AI, ML and Data Engineering Trends Report - September 2024</a></h5>
-                        </li>
-                    
-                        <li>
-                            
-                            <h5><a class="t_all_footer_more-boxes-item" href="/news/2024/09/transofrmer-based-recommender/" title="Leveraging the Transformer Architecture for Music Recommendation on YouTube">Leveraging the Transformer Architecture for Music Recommendation on YouTube</a></h5>
                         </li>
                     
                 </ul>
@@ -2025,17 +2054,17 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
                     
                         <li>
                             
+                            <h5><a class="t_all_footer_more-boxes-item" href="/news/2024/09/karpenter-10/" title="Kubernetes Autoscaler Karpenter Reaches 1.0 Milestone">Kubernetes Autoscaler Karpenter Reaches 1.0 Milestone</a></h5>
+                        </li>
+                    
+                        <li>
+                            
+                            <h5><a class="t_all_footer_more-boxes-item" href="/articles/analysis-optimization-change-release-process/" title="Mastering Impact Analysis and Optimizing Change Release Processes">Mastering Impact Analysis and Optimizing Change Release Processes</a></h5>
+                        </li>
+                    
+                        <li>
+                            
                             <h5><a class="t_all_footer_more-boxes-item" href="/news/2024/09/aws-codebuild-mac/" title="AWS CodeBuild Now Supports Mac Builds">AWS CodeBuild Now Supports Mac Builds</a></h5>
-                        </li>
-                    
-                        <li>
-                            
-                            <h5><a class="t_all_footer_more-boxes-item" href="/news/2024/09/uber-continuous-feployment/" title="Optimizing Continuous Deployment at Uber: Automating Microservices in Large Monorepos">Optimizing Continuous Deployment at Uber: Automating Microservices in Large Monorepos</a></h5>
-                        </li>
-                    
-                        <li>
-                            
-                            <h5><a class="t_all_footer_more-boxes-item" href="/news/2024/09/tiktok-monorepo-sparo/" title="TikTok Releases Tool to Improve Monorepo Performance">TikTok Releases Tool to Improve Monorepo Performance</a></h5>
                         </li>
                     
                 </ul>
@@ -2098,7 +2127,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 				<label for="email-newsletter-infoq" class="label field__label">Enter your e-mail address</label>
 				<input id="email-newsletter-infoq" name="footerNewsletterEmail" placeholder="Enter your e-mail address" class="input field__input" type="text"/>
 				<input type="text" name="emailH" id="input_email_h" aria-required="false" style="display:none !important" tabindex="-1" autocomplete="off"/>
-				<input type="hidden" id="fnt" name="fnt" value="048LYAfRGGjJ4Y0l"/>
+				<input type="hidden" id="fnt" name="fnt" value="3RaMYycgxx3pVLNX"/>
 				<input type="hidden" id="footerNewsletterType" name="footerNewsletterType" value="regular"/>
 				<input type="hidden" id="cmpi" name="cmpi" value="1"/>
 			</div>
@@ -2272,9 +2301,9 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
             <div data-col="1/4" class="footer__stayin-wrap">
                 <h4 class="heading text-left footer__heading">Stay in the know</h4>
                 <div class="stayIn_panel_container">
-                    <a href="/podcasts/" class="stayIn_panel" target="_blank" rel="noreferrer noopener"><span>The InfoQ Podcast</span><img loading="lazy" width="65px" height="64px" src="https://cdn.infoq.com/statics_s1_20240906124302/styles/static/images/ui/footer/infoq-podcast-small.jpg" alt="The InfoQ Podcast"></a>
-                    <a href="/podcasts/#engineering_culture" class="stayIn_panel" target="_blank" rel="noreferrer noopener"><span>Engineering Culture Podcast</span><img loading="lazy" width="65px" height="64px" alt="Engineering Culture Podcast" src="https://cdn.infoq.com/statics_s1_20240906124302/styles/static/images/ui/footer/engineering-culture-podcast-small.jpg"></a>
-                    <a href="/software-architects-newsletter/" class="stayIn_panel" target="_blank" rel="noreferrer noopener"><span>The Software Architects' Newsletter</span><img loading="lazy" width="65px" height="64px" alt="The Software Architects' Newsletter" src="https://cdn.infoq.com/statics_s1_20240906124302/styles/static/images/ui/footer/architects-newsletter-small.jpg"></a>
+                    <a href="/podcasts/" class="stayIn_panel" target="_blank" rel="noreferrer noopener"><span>The InfoQ Podcast</span><img loading="lazy" width="65px" height="64px" src="https://cdn.infoq.com/statics_s2_20240917061620/styles/static/images/ui/footer/infoq-podcast-small.jpg" alt="The InfoQ Podcast"></a>
+                    <a href="/podcasts/#engineering_culture" class="stayIn_panel" target="_blank" rel="noreferrer noopener"><span>Engineering Culture Podcast</span><img loading="lazy" width="65px" height="64px" alt="Engineering Culture Podcast" src="https://cdn.infoq.com/statics_s2_20240917061620/styles/static/images/ui/footer/engineering-culture-podcast-small.jpg"></a>
+                    <a href="/software-architects-newsletter/" class="stayIn_panel" target="_blank" rel="noreferrer noopener"><span>The Software Architects' Newsletter</span><img loading="lazy" width="65px" height="64px" alt="The Software Architects' Newsletter" src="https://cdn.infoq.com/statics_s2_20240917061620/styles/static/images/ui/footer/architects-newsletter-small.jpg"></a>
                 </div>
             </div>
 			
@@ -2337,7 +2366,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 <script type="text/javascript">
   $.when(humanDetectionAsync()).then(
       function(status) {
-          $.getScript("/scripts/__hd.ifq?hdt=048LYAfRGGjJ4Y0l&ha=" + status);
+          $.getScript("/scripts/__hd.ifq?hdt=3RaMYycgxx3pVLNX&ha=" + status);
       }
   );
 </script>
@@ -2453,7 +2482,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 	});
 	
 	
-	Bookmarks.contentTitle = "Optimizing Continuous Deployment at Uber: Automating Microservices in Large Monorepos";
+	Bookmarks.contentTitle = "Amazon Introduces Storage Browser for S3";
 	Bookmarks.apiUrl = '/widgets/bookmark.action';
     Bookmarks.isContentBookmarked = "false";
 </script>
@@ -2464,7 +2493,7 @@ $(document).ready(function() {
 	 try {if ($buoop.ol) $buoop.ol();}catch (e) {} 
 	 var e = document.createElement("script"); 
 	 e.setAttribute("type", "text/javascript"); 
-	 e.setAttribute("src", "https://cdn.infoq.com/statics_s1_20240906124302/scripts/lib/browser-update-org/update.js");
+	 e.setAttribute("src", "https://cdn.infoq.com/statics_s2_20240917061620/scripts/lib/browser-update-org/update.js");
 	 document.body.appendChild(e); 
 });
 </script>
@@ -2623,7 +2652,7 @@ $(document).ready(function() {
         
     </body>
 </html>
-<!-- s1 -->
+<!-- s2 -->
 `
 
 import {JSDOM} from "jsdom"
@@ -2631,7 +2660,7 @@ import {findChildNodes0} from '../content_module'
 
 
 test('infoQ test', () => {
-  const dom = new JSDOM(tingroom_content)
-  let foo = dom.window.document.querySelector(".article__data");
-  findChildNodes0(foo)
+  const dom = new JSDOM(pageSource)
+  let articleNode = dom.window.document.querySelector(".article__data")
+  findChildNodes0(articleNode)
 });
