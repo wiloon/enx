@@ -41,7 +41,7 @@ export function findChildNodes0(parentNode){
             let tmp_list = findChildNodes0(node)
             nodeList = nodeList.concat(tmp_list)
         }
-        return;
+        return nodeList
     }
 
 
@@ -105,4 +105,6 @@ export function findChildNodes0(parentNode){
 
     let tmp_node = new ArticleNode(parentNode, oneParagraph)
     nodeList.push(tmp_node)
+
+    return nodeList
 }

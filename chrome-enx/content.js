@@ -280,7 +280,66 @@ function enxRun() {
         try {
             const src = chrome.runtime.getURL("content_module.js");
             const contentMain = await import(src);
-            contentMain.createOneArticleNode();
+            let nodeList = contentMain.findChildNodes0(articleNode);
+            console.log("node list: ", nodeList)
+            for (let articleNode of nodeList){
+                (async () => {
+                    console.log("sending msg from content script to backend")
+                    let oneParagraph = articleNode.paragraph
+                    const response = await chrome.runtime.sendMessage({ msgType: "getWords", words: oneParagraph });
+                    // do something with response here, not outside the function
+                    console.log("response from backend: ", response)
+                    console.log(response.wordProperties);
+            
+                    let newSpanContent = ""
+                    let spanContentLength = 0
+                    let wordMargin = 4;
+            
+                    wordsInParagraph = oneParagraph.split(' ')
+                    for (let wordInRawParagraph of wordsInParagraph) {
+                        if (spanContentLength > 0 && spanWidth > 50 && spanContentLength > (spanWidth - 50)) {
+                            // newSpanContent = newSpanContent + "<br>"
+                            spanContentLength = 0
+                            console.log("insert br, span width: ", spanWidth, ", span content width: ", spanContentLength)
+                        }
+            
+                        // get index of ',' for wordRaw
+                        let commaIndex = wordInRawParagraph.indexOf(',')
+                        // if comma exists and comma is not the first or the last char
+                        if (commaIndex > 0 && commaIndex < wordInRawParagraph.length - 1) {
+                            // append space for comma
+                            wordInRawParagraph = wordInRawParagraph.replace(",", ", ")
+                        }
+                        wordInRawParagraph = wordInRawParagraph.trim()
+                        rawParagraphWordArray = wordInRawParagraph.split(' ')
+                        console.log("raw words: ", rawParagraphWordArray)
+                        for (let wordTmp of rawParagraphWordArray) {
+                            let word = wordTmp.replace(/[^a-zA-Z\-]/g, '');
+                            if (word.length === 0) {
+                                continue
+                            }
+                            if (word in response.wordProperties) {
+                                let ecp = response.wordProperties[word]
+                                console.log("word: ", word, "ecp: ", ecp)
+                                let loadCount = ecp.LoadCount
+                                console.log("word: ", word, " load count: ", loadCount)
+                                let colorCode = getColorCodeByCount(ecp)
+                                console.log("word: ", word, ", load count: ", loadCount, ", color code: ", colorCode)
+                                let startTag = '<u alt="alt-foo" onclick="popEnxDialogBox(event)" class="class-foo" style="text-decoration: #000000 underline; text-decoration-thickness: 2px;">'
+                                startTag = startTag.replace("#000000", colorCode);
+                                startTag = startTag.replace("class-foo", "enx-" + ecp.Key);
+                                startTag = startTag.replace("alt-foo", ecp.Key);
+                                newSpanContent = newSpanContent + startTag + wordTmp + '</u> '
+                            } else {
+                                newSpanContent = newSpanContent + ' ' + wordTmp + ' '
+                            }
+                            spanContentLength = spanContentLength + word.length * 8 + wordMargin
+                            console.log("span content width: ", spanContentLength)
+                        }
+                    }
+                    articleNode.node.innerHTML = newSpanContent
+                })();
+            }
             // multiple content js test
         } catch (error) {
             console.error('import error 0: ', error);
@@ -290,7 +349,9 @@ function enxRun() {
     })();
 
     // console.log(articleNode)
-    findChildNodes(articleNode)
+    //findChildNodes(articleNode)
+
+
 }
 
 function injectScript(file_path, tag) {
