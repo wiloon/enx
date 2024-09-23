@@ -2662,5 +2662,7 @@ import {findChildNodes0} from '../content_module'
 test('infoQ test', () => {
   const dom = new JSDOM(pageSource)
   let articleNode = dom.window.document.querySelector(".article__data")
-  findChildNodes0(articleNode)
+  let nodeList = findChildNodes0(articleNode)
+  console.log(nodeList.length)
+  expect(nodeList.length).toBe(72);
 });
