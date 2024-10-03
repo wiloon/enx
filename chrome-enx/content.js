@@ -4,6 +4,11 @@ console.log("content js running")
 // todo, try to merge two func int content.js, inject.js
 // which one is in use?
 function popEnxDialogBox(mouseEvent, english) {
+    console.log("pop enx dialog box, english: ", english)
+    if (english == "null" || english == "") {
+        console.log("english is empty")
+        return
+    }
     console.log("on mouse click")
     console.log("mouse event: ", mouseEvent)
     let mouseEventX = mouseEvent.clientX;
