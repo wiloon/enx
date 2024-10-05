@@ -7,5 +7,6 @@ chrome extension for enx
 ```bash
 cd /Users/wiloon/workspace/projects/enx/chrome-enx
 npm run test
+npm run test -- infoq.test.js
 npm run test -- tingroom.test.js
 ```

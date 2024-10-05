@@ -2656,13 +2656,18 @@ $(document).ready(function() {
 `
 
 import {JSDOM} from "jsdom"
-import {findChildNodes0} from '../content_module'
+import {findChildNodes} from '../content_module'
 
 
 test('infoQ test', () => {
   const dom = new JSDOM(pageSource)
   let articleNode = dom.window.document.querySelector(".article__data")
-  let nodeList = findChildNodes0(articleNode)
+  let nodeList = findChildNodes(articleNode)
+
+  console.log("*** print node list ***")
+  for (let node of nodeList){
+    console.log("node: ", node)
+  }
   console.log(nodeList.length)
-  expect(nodeList.length).toBe(72);
+  expect(nodeList.length).toBe(11);
 });
