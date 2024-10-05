@@ -32,6 +32,14 @@ export function findChildNodes(parentNode){
         }
     });
 
+    const chineseCharRegex = /[\u4e00-\u9fa5]/
+    const match = textContent.match(chineseCharRegex)
+    var index_chinese =-1
+    if (match){
+        index_chinese = match.index
+    }
+    console.log("chinese index:", index_chinese)
+    textContent = textContent.slice(0,index_chinese)
     console.log("outer div content: ", textContent, ", length: ", textContent.length);
 
     if (textContent === ""){
