@@ -1,5 +1,5 @@
 #!/bin/bash
-
+whoami
 go version
 
 # source dir
@@ -16,6 +16,7 @@ ls -lh ${package_name}
 echo "stop service"
 
 # copy systemd unit file to local server
+ls -l /root/.ssh/id_ed25519
 ansible -i '192.168.50.36,' all -m copy -a 'src=/var/lib/jenkins/workspace/enx-api/enx-api/deploy/enx-api.service dest=/etc/systemd/system/enx-api.service' -u root --key-file /root/.ssh/id_ed25519
 ansible -i '192.168.50.36,' all -m shell -a 'systemctl daemon-reload' -u root --key-file /root/.ssh/id_ed25519
 ansible -i '192.168.50.36,' all -m shell -a 'systemctl stop enx-api' -u root --key-file /root/.ssh/id_ed25519
