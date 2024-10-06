@@ -11,7 +11,7 @@ GET http://localhost:8080/words-count?words=Watches%20from%20Switzerland%20are%2
 GET http://localhost:8080/translate?word=foo HTTP/1.1
 
 ### translate, local
-GET http://localhost:8080/translate?word=reward; HTTP/1.1
+GET http://192.168.50.36:8080/translate?word=reward; HTTP/1.1
 
 ## mark
 
