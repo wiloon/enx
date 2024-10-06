@@ -9,9 +9,8 @@ package_name="enx-api"
 echo "building"
 
 # sqlite requires the cgo
-CGO_ENABLED=1 GOOS=linux GOARCH=amd64 CC=x86_64-linux-musl-gcc  CXX=x86_64-linux-musl-g++  go build -o ${package_name} enx-api.go
+CGO_ENABLED=1 GOARCH=amd64 GOHOSTARCH=arm64 GOHOSTOS=darwin GOOS=linux CC=x86_64-linux-musl-gcc  CXX=x86_64-linux-musl-g++  go build -v -o ${package_name} enx-api.go
 
-#echo "after upx"
 ls -lh ${package_name}
 
 echo "stop service"

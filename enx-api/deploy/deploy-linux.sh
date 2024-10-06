@@ -2,7 +2,7 @@
 
 go version
 
-# macos source dir
+# source dir
 cd /Users/wiloon/workspace/projects/enx/enx-api || exit
 
 # linux source dir
