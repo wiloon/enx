@@ -1,7 +1,9 @@
 #!/bin/bash
 
+# print go version
 go version
 
+# cd to source dir
 # macos source dir
 cd /Users/wiloon/workspace/projects/enx/enx-api || exit
 
@@ -36,3 +38,4 @@ echo "start service"
 # local server
 ansible -i '192.168.50.36,' all  -m shell -a 'systemctl enable enx-api' -u root --key-file ~/.ssh/id_ed25519_w10n
 ansible -i '192.168.50.36,' all  -m shell -a 'systemctl restart enx-api' -u root --key-file ~/.ssh/id_ed25519_w10n
+echo "done"
