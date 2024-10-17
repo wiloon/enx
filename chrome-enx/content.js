@@ -58,7 +58,7 @@ function popEnxDialogBox(mouseEvent, english) {
 
     // send word to enx server and get chinese
     console.log("send window msg 'getOneWord' from content.js to background.js, english: ", english)
-    window.postMessage({ type: "getOneWord", word: english });
+    window.postMessage({type: "getOneWord", word: english});
 }
 
 // update underline color
@@ -98,19 +98,29 @@ function getColorCodeByCount(ecp) {
     }
 }
 
-let spanWidth = 0;
-
 function getArticleNode() {
     // gofluent
     let articleClassElement = document.getElementsByClassName("Article")
     if (articleClassElement.length === 0) {
         // infoq
+        console.log("try to find infoq article node")
         articleClassElement = document.getElementsByClassName("article__data")
     }
     if (articleClassElement.length === 0) {
         // tingroom
+        console.log("tingroom article node")
         articleClassElement = document.getElementsByClassName("text")
+
     }
+    if (articleClassElement.length === 0) {
+        // bbc
+        console.log("bbc article node")
+        articleClassElement = document.querySelector("article")
+        return articleClassElement
+    } else {
+        return articleClassElement.item(0)
+    }
+    console.log("article element length:", articleClassElement.length)
     return articleClassElement
 }
 
@@ -119,44 +129,64 @@ function enxRun() {
     articleClassElement = getArticleNode();
     console.log("article node: ", articleClassElement)
     // console.log(articleClassElement)
-    let articleNode = articleClassElement.item(0)
+    let articleNode = articleClassElement
 
     // for word group select
-    console.log("adding mouse up")
+    console.log("define mouse up func")
+
     // 改变 t2 内容的函数
     function mouseupHandler(mouseEvent) {
-        console.log("mouse up")
-        console.log("mouse event: ", mouseEvent)
-        selectedText = document.getSelection().toString()
-        console.log("mouse up", selectedText)
+        console.log("mouse up event: ", mouseEvent)
+        let selectedText = document.getSelection().toString()
+        console.log("mouse up selected text:", selectedText)
         popEnxDialogBox(mouseEvent, selectedText)
     }
 
+    console.log("adding mouse up event")
     // 为 table 添加事件监听器
     articleNode.addEventListener("mouseup", mouseupHandler, false);
 
     (async () => {
         try {
+            console.log("get content module js src")
             const src = chrome.runtime.getURL("content_module.js");
+            console.log("content module js src: ", src);
             const contentMain = await import(src);
+            console.log("content module main:", contentMain)
             let nodeList = contentMain.findChildNodes(articleNode);
             console.log("node list: ", nodeList)
-            for (let tmpNode of nodeList){
+            for (let tmpNode of nodeList) {
                 (async () => {
-                    console.log("sending msg from content script to backend")
                     let oneParagraph = tmpNode.paragraph
-                    const response = await chrome.runtime.sendMessage({ msgType: "getWords", words: oneParagraph });
-                    // do something with response here, not outside the function
-                    console.log("response from backend: ", response)
-                    console.log(response.wordProperties);
+                    let tmpArray = oneParagraph.split(' ');
+                    console.log("tmp array length:", tmpArray.length)
+                    let tmpParagraph = ""
+                    let wordDict = {}
+                    for (let tmpWord of tmpArray) {
+                        tmpParagraph += tmpWord + ' '
+                        if (tmpParagraph.length > 5000) {
+                            console.log("sending msg from content script to backend, paragraph length, length>5000:", tmpParagraph.length, "paragraph:", tmpParagraph)
+                            let response = await chrome.runtime.sendMessage({msgType: "getWords", words: tmpParagraph});
+                            console.log("response from backend: ", response)
+                            console.log(response.wordProperties)
+                            wordDict = Object.assign({}, wordDict, response.wordProperties);
+                            console.log("word dict size:", Object.keys(wordDict).length)
+                            tmpParagraph = ""
+                        }
+                    }
+
+                    if (tmpParagraph.length > 0) {
+                        console.log("sending msg from content script to backend, node id:",tmpNode.id,"paragraph length<=5000:", tmpParagraph.length, "paragraph:", tmpParagraph)
+                        let response = await chrome.runtime.sendMessage({msgType: "getWords", words: tmpParagraph});
+                        wordDict = Object.assign({}, wordDict, response.wordProperties);
+                        console.log("word dict, node id:",tmpNode.id," size:", Object.keys(wordDict).length)
+                    }
 
                     tmpInnerHtml = tmpNode.node.innerHTML
-                    if (tmpInnerHtml === undefined){
+                    if (tmpInnerHtml === undefined) {
                         return
                     }
                     newInnerHtml = ""
-                    
-
                     htmlTag = false
                     tagIndexStart = undefined
                     tagIndexStop = undefined
@@ -168,77 +198,78 @@ function enxRun() {
                     stringIndexStart = 0
                     stringIndexEnd = 1
 
-                    index =0
-                    while (index<tmpInnerHtml.length){
+                    index = 0
+                    while (index < tmpInnerHtml.length) {
                         let oneCharacter = tmpInnerHtml.charAt(index)
+                        console.log("index: ", index, "one character:", oneCharacter,", start: ", wordIndexStart, ", end: ", wordIndexEnd, "html tag:", htmlTag, "tag name:", tagName)
+
                         var oneCharacterCode = oneCharacter.charCodeAt();
-                        //tmpString = tmpInnerHtml.slice(stringIndexStart,stringIndexEnd)
-
-
-                        if((oneCharacterCode >= 65 && oneCharacterCode <= 90)||(oneCharacterCode >= 97 && oneCharacterCode <= 122)){
+                        if ((oneCharacterCode >= 65 && oneCharacterCode <= 90) || (oneCharacterCode >= 97 && oneCharacterCode <= 122)) {
                             // english character
-                            if (htmlTag === false && wordIndexStart === undefined){
+                            if (htmlTag === false && wordIndexStart === undefined) {
                                 wordIndexStart = index
+                                console.log("word start index:", wordIndexStart)
                             }
-                        }else if (oneCharacter==="-" || oneCharacter==="'"){
+                        } else if (oneCharacter === "-" || oneCharacter === "'") {
                             // do nothing
-                        }else{
-                            if (htmlTag === false &&  wordIndexStart !== undefined && wordIndexEnd === undefined ){
+                        } else {
+                            // none english character
+                            if (htmlTag === false && wordIndexStart !== undefined && wordIndexEnd === undefined) {
                                 wordIndexEnd = index
+                                console.log("word end index:", wordIndexEnd)
                             }
-                            
-                            if (tagName===undefined){
-                                //if (oneCharacter==="<" && tmpInnerHtml.slice(index,index+2) === "<a"){
-                                if (oneCharacter==="<"){
+
+                            if (tagName === undefined) {
+                                if (oneCharacter === "<") {
                                     htmlTag = true
-                                    tagIndexStart = index+1
+                                    tagIndexStart = index + 1
+                                    console.log("html tag:", htmlTag)
                                 }
-                                //if (htmlTag === true && oneCharacter === ">" && tmpInnerHtml.slice(index-1,index+1)==="a>"){
-                                if (htmlTag === true && (oneCharacter === " "|| oneCharacter===">")){
-                                    //htmlTag = false
-                                    tagName = tmpInnerHtml.slice(tagIndexStart,index)
-                                    console.log("tag name:", tagName)
+                                if (htmlTag === true && (oneCharacter === " " || oneCharacter === ">")) {
+                                    tagName = tmpInnerHtml.slice(tagIndexStart, index)
+
+                                    // comment tag has special close rule
+                                    if (tagName === "!--"){
+                                        tagName = "--"
+                                    }
+                                    console.log("html tag name:", tagName)
                                 }
-                            }else{
-                                console.log("check html tag close:", tmpInnerHtml.slice(index-tagName.length,index+1))
-                                if (oneCharacter === ">" && tmpInnerHtml.slice(index-tagName.length,index+1)===tagName+">"){
+                            } else {
+                                console.log("check if html tag close:", tmpInnerHtml.slice(index - tagName.length, index + 1))
+                                if (oneCharacter === ">" && tmpInnerHtml.slice(index - tagName.length, index + 1) === tagName + ">") {
                                     htmlTag = false
                                     tagName = undefined
                                 }
                             }
                         }
-                        console.log("index: ",index,"one character:", oneCharacter, "slice 0:",  tmpInnerHtml.slice(index,index+2), "slice 1:",tmpInnerHtml.slice(index-1,index+1),", html tag:", htmlTag, ", start: ", wordIndexStart,", end: ", wordIndexEnd)
                         index = index + 1
-                        
-                        if (wordIndexStart===undefined || wordIndexEnd===undefined){
+
+                        if (wordIndexStart === undefined || wordIndexEnd === undefined) {
                             continue
                         }
 
                         // found one word
-                        tmpWord = tmpInnerHtml.slice(wordIndexStart,wordIndexEnd)
-                        if (tmpWord in response.wordProperties) {
-                            let ecp = response.wordProperties[tmpWord]
+                        tmpWord = tmpInnerHtml.slice(wordIndexStart, wordIndexEnd)
+                        if (tmpWord in wordDict) {
+                            let ecp = wordDict[tmpWord]
                             console.log("word: ", tmpWord, "ecp: ", ecp)
-                            let loadCount = ecp.LoadCount
                             let colorCode = getColorCodeByCount(ecp)
                             let startTag = '<u alt="alt-foo" onclick="popEnxDialogBox(event)" class="class-foo" style="text-decoration: #000000 underline; text-decoration-thickness: 2px;">'
                             startTag = startTag.replace("#000000", colorCode);
                             startTag = startTag.replace("class-foo", "enx-" + ecp.Key);
-                            startTag = startTag.replace("alt-foo", ecp.Key);
+                            startTag = startTag.replace("alt-foo", ecp.English);
                             newInnerHtml = newInnerHtml + tmpInnerHtml.slice(copyIndex, wordIndexStart)
                             newInnerHtml = newInnerHtml + startTag + tmpWord + '</u> '
                             copyIndex = wordIndexEnd
                             wordIndexStart = undefined
                             wordIndexEnd = undefined
-                        }else{
+                        } else {
                             console.log("word not found: ", tmpWord)
                             newInnerHtml = newInnerHtml + tmpInnerHtml.slice(copyIndex, wordIndexStart)
                             newInnerHtml = newInnerHtml + ' ' + tmpWord + ' '
                             wordIndexStart = undefined
                             wordIndexEnd = undefined
                         }
-                  
-                    
                     }
                     newInnerHtml = newInnerHtml + tmpInnerHtml.slice(copyIndex)
                     tmpNode.node.innerHTML = newInnerHtml
@@ -249,15 +280,8 @@ function enxRun() {
             // multiple content js test
         } catch (error) {
             console.error('import error 0: ', error);
-            // Expected output: ReferenceError: nonExistentFunction is not defined
-            // (Note: the exact output may be browser-dependent)
         }
     })();
-
-    // console.log(articleNode)
-    //findChildNodes(articleNode)
-
-
 }
 
 function injectScript(file_path, tag) {
@@ -303,8 +327,7 @@ async function injectEnxWindow() {
 
         // mark word as acquainted
         chrome.runtime.sendMessage({
-            msgType: "markAcquainted",
-            word: key
+            msgType: "markAcquainted", word: key
         }).then((data) => {
             console.log("mark response: ", data)
             updateUnderLine(data.ecp)
@@ -345,14 +368,14 @@ injectScript(chrome.runtime.getURL('inject.js'), 'body');
 
 function getOneWord(key) {
     (async () => {
-        console.log("sending msg from content script to backend, params: ", key)
+        console.log("sending msg from content script to backend, key: ", key)
         document.getElementById("enx-e").innerText = key
         document.getElementById("enx-p").innerText = "Loading..."
         document.getElementById("enx-c").innerText = ""
         document.getElementById("enx-search-key").innerText = ""
 
         console.log("send get one word from content js")
-        const response = await chrome.runtime.sendMessage({ msgType: "getOneWord", word: key });
+        const response = await chrome.runtime.sendMessage({msgType: "getOneWord", word: key});
         // do something with response here, not outside the function
         console.log("response from backend")
         console.log(response);
@@ -399,6 +422,8 @@ window.addEventListener("message", function (event) {
     }
 }, false);
 
+// extension icon click event listener
+// noinspection JSUnresolvedReference
 chrome.runtime.onMessage.addListener(
     function (request, sender, sendResponse) {
         console.log("on message")
@@ -407,9 +432,8 @@ chrome.runtime.onMessage.addListener(
         console.log("request: ", request)
         if (request.greeting === "mark") {
             enxRun()
-            sendResponse({ farewell: "ok" });
+            sendResponse({farewell: "ok"});
         }
-    }
-);
+    });
 
 injectEnxWindow().then()

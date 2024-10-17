@@ -53,9 +53,6 @@ func LoadCount0() {
 	return
 }
 
-var pattern = `^('){1}.+`
-var regex0 = regexp.MustCompile(pattern)
-
 func Test01(*testing.T) {
 	fmt.Println(nonAlphanumericRegex.ReplaceAllString("abc'def", ""))
 	fmt.Println(nonAlphanumericRegex.ReplaceAllString("'abcdef", ""))

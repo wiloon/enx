@@ -27,7 +27,12 @@ func (word *Word) FindId() {
 
 func (word *Word) SetEnglish(english string) {
 	word.English = english
-	word.Key = strings.ToLower(english)
+	if (strings.Contains(english,"'s")){
+		tmpKey := strings.Replace(english,"'s", "", -1)
+		word.Key = strings.ToLower(tmpKey)
+	}else{
+		word.Key = strings.ToLower(english)
+	}
 }
 func (word *Word) FindQueryCount() int {
 	qc, acquainted := repo.GetUserWordQueryCount(word.Id, 0)
@@ -43,7 +48,9 @@ func (word *Word) FindLoadCountById() int {
 	return word.LoadCount
 }
 func (word *Word) Translate() *Word {
-	sWord := repo.Translate(word.Key)
+	// search word in db by English, e.g. French
+	// do not search db with lower case, since youdao api is case sensitive
+	sWord := repo.Translate(word.English)
 	word.Id = sWord.Id
 	word.Chinese = sWord.Chinese
 	word.LoadCount = sWord.LoadCount

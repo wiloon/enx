@@ -1,4 +1,5 @@
 #!/bin/bash
+# deploy script run on jenkins: 192.168.50.37
 whoami
 go version
 
