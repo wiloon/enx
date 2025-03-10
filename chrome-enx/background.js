@@ -8,14 +8,16 @@ chrome.runtime.onInstalled.addListener(() => {
     });
 });
 
-const webstore = 'https://portal.gofluent.cn';
 const infoq_url = 'https://www.infoq.com'
 const novel_ting_room = 'https://novel.tingroom.com'
+const site_bbc = 'https://www.bbc.com'
 
 // When the user clicks on the extension action
 chrome.action.onClicked.addListener(async (tab) => {
     console.log("chrome action on click, url: ", tab.url)
-    if (tab.url.startsWith(webstore) || tab.url.startsWith(infoq_url) || tab.url.startsWith(novel_ting_room)) {
+    if (tab.url.startsWith(infoq_url) ||
+        tab.url.startsWith(novel_ting_room) ||
+        tab.url.startsWith(site_bbc)) {
         // We retrieve the action badge to check if the extension is 'ON' or 'OFF'
         const prevState = await chrome.action.getBadgeText({tabId: tab.id});
         // Next state will always be the opposite
@@ -33,14 +35,15 @@ chrome.action.onClicked.addListener(async (tab) => {
             const [tab] = await chrome.tabs.query({active: true, lastFocusedWindow: true});
 
             try {
+                console.log("sending mark msg to tab, id:", tab.id);
                 const response = await chrome.tabs.sendMessage(tab.id, {greeting: "mark"});
-                
+
                 // do something with response here, not outside the function
                 console.log("response: ", response);
-              } catch (error) {
+            } catch (error) {
                 console.log('failed to send mark event')
                 console.error(error);
-              }
+            }
             await chrome.scripting.executeScript({
                 target: {tabId: tab.id},
                 files: ["background1.js"],
@@ -94,9 +97,9 @@ async function markWord(key) {
 
 // listen msg from content script
 chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
-    let msgType = request.msgType
-    console.log("message listener, new msg: ", request,", msg type: ", msgType)
-    console.log(sender.tab ?
+        let msgType = request.msgType
+        console.log("message listener, new msg: ", request, ", msg type: ", msgType)
+        console.log(sender.tab ?
             "from content script:" + sender.tab.url :
             "from the extension");
 
