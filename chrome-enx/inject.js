@@ -30,22 +30,21 @@ function enxOff() {
 let baseX = -1;
 let baseY = -1;
 
-// copy to content.js, any change sync with the clone
+// copied to content.js, any change sync with the content.js
 // todo, try to merge two func int content.js, inject.js
 // which one is in use?
 function popEnxDialogBox(mouseEvent) {
-    console.log("on mouse click")
+    let eventTarget = mouseEvent.target;
+    console.log("english word, on mouse click, target:",eventTarget)
     console.log("mouse event: ", mouseEvent)
     let mouseEventX = mouseEvent.clientX;
     let mouseEventY = mouseEvent.clientY;
-    console.log("mouse event client x: ", mouseEventX)
-    console.log("mouse event client y: ", mouseEventY)
+    console.log("mouse event client x:", mouseEventX, "y:",mouseEventY)
 
-    let eventTarget = mouseEvent.target;
-    console.log("event target: ", eventTarget)
     // get attribute value from event
     let SearchKey = eventTarget.getAttribute("alt");
-    console.log("english: ", SearchKey)
+    console.log("english word alt: ", SearchKey)
+
     let eventTargetRect = eventTarget.getBoundingClientRect();
     console.log("event target rect: ", eventTargetRect)
     document.getElementById("enx-window").style.display = "block";

@@ -1,3 +1,10 @@
+### ping LAN
+
+GET http://192.168.50.36:8080/ping
+
+
+
+
 ### words-count
 
 GET https://enx.wiloon.com/words-count?words=foo%20On HTTP/1.1
@@ -26,4 +33,3 @@ GET http://localhost:8080/load-count?words=STOCKHOLM HTTP/1.1
 
 ### words count, local
 GET http://localhost:8080/words-count?words=foo%20bar HTTP/1.1
-

@@ -25,6 +25,7 @@ func main() {
 	utils.ViperInit()
 	devMode := viper.GetBool("enx.dev-mode")
 	fmt.Println("devMode:", devMode)
+	
 	// deploy to docker/k8s, disable file output
 	logger.Init("CONSOLE", "debug", "enx-api")
 	logger.Debug("debug log test")
@@ -51,6 +52,7 @@ func main() {
 			"message": "pong",
 		})
 	})
+	
 	// get words query count by paragraph
 	router.GET("/words-count", WordsCount)
 	router.GET("/load-count", wordCount.LoadCount)
@@ -97,10 +99,9 @@ func DoSearch(c *gin.Context) {
 	result.WordList = words
 	result.Dict = enx.FindOne(key)
 	if result.Dict == nil || result.Dict.Chinese == "" {
-		// 从第三方查
+		// query from third party
 		epc := youdao.Query(key)
 		result.Dict = epc
-
 	}
 	c.JSON(200, result)
 }
@@ -113,7 +114,7 @@ func DoSearchThirdParty(c *gin.Context) {
 	result := SearchResult{}
 	result.WordList = words
 
-	// 从第三方查
+	// query from third party
 	epc := youdao.Query(key)
 	result.Dict = epc
 
@@ -162,7 +163,7 @@ func Wrap(c *gin.Context) {
 
 func WordsCount(c *gin.Context) {
 	paragraph := c.Query("words")
-	logger.Debugf("words count, words: %s", paragraph)
+	logger.Debugf("words count, paragraph: %s", paragraph)
 	out := enx.QueryCountInText(paragraph)
 	c.JSON(200, gin.H{
 		"data": out,
