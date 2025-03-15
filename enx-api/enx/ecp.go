@@ -4,40 +4,99 @@ import (
 	"enx-server/repo"
 	"enx-server/utils/logger"
 	"enx-server/utils/sqlitex"
+	"regexp"
 	"strings"
 	"time"
 )
 
 type Word struct {
-	Id            int
-	Raw           string
+	// id in DB
+	Id int
+	// raw paragraph item, e.g. `morning.`
+	Raw string
+	// english word, e.g. `morning`
 	English       string
 	Chinese       string
 	Pronunciation string
-	Key           string
+	// key is lower case of english word, e.g. `morning`
+	Key string
 
 	// 0: false, 1: true
 	AlreadyAcquainted int
 	LoadCount         int
+	// 0: default: normal type
+	// 1: raw: this word would not be translated
+	WordType int
 }
 
+func (word *Word) SetEnglish(raw string) {
+	raw = regexp.MustCompile(`[^a-zA-Z\-'’ ]+`).ReplaceAllString(raw, "")
+
+	english := ""
+	if strings.Contains(raw, "'s") ||
+		strings.Contains(raw, "’s") ||
+		strings.Contains(raw, "'t") ||
+		strings.Contains(raw, "'ve") ||
+		strings.Contains(raw, "'m") ||
+		strings.Contains(raw, "'re") {
+		// do nothing
+		english = raw
+		logger.Infof("set english no replace, raw: %s, english: %s", raw, english)
+	} else {
+		english = raw
+		english = strings.TrimSuffix(english, "-")
+		english = strings.TrimSuffix(english, "’")
+		english = strings.TrimSuffix(english, ".")
+		english = strings.TrimSuffix(english, ",")
+		english = strings.TrimPrefix(english, "(")
+		english = strings.TrimSuffix(english, ")")
+		english = regexp.MustCompile(`[^a-zA-Z\-’ ]+`).ReplaceAllString(english, "")
+		logger.Debugf("replace non english char, raw: %s, english: %s", raw, english)
+	}
+
+	// if english end with - or space, remove it
+	if strings.HasSuffix(english, "-") || strings.HasSuffix(english, " ") {
+		english = english[:len(english)-1]
+	}
+	word.Raw = raw
+	word.SetEnglishField(english)
+}
+
+// count by english
+func (word *Word) CountByEnglish() int {
+	count := repo.CountByEnglish(word.English)
+	logger.Debugf("count by english, word: %s, count: %d", word.English, count)
+	return count
+}
 func (word *Word) FindId() {
-	sWord := repo.GetWordByEnglish(word.Key)
+	sWord := repo.GetWordByEnglish(word.English)
 	word.Id = sWord.Id
 }
 
-func (word *Word) SetEnglish(english string) {
-	word.Raw = english
-	
+func (word *Word) LoadByEnglish() {
+	sWord := repo.GetWordByEnglish(word.English)
+	word.Id = sWord.Id
+	word.English = sWord.English
+	word.Chinese = sWord.Chinese
+	word.Pronunciation = sWord.Pronunciation
+	word.LoadCount = sWord.LoadCount
+	logger.Debugf("load by english, word: %s, id: %d", word.English, word.Id)
+}
+
+func (word *Word) SetEnglishField(english string) {
 	if strings.Contains(english, "'s") {
 		tmpKey := strings.Replace(english, "'s", "", -1)
+		word.English = tmpKey
+		word.Key = strings.ToLower(tmpKey)
+	} else if strings.Contains(english, "’s") {
+		tmpKey := strings.Replace(english, "’s", "", -1)
 		word.English = tmpKey
 		word.Key = strings.ToLower(tmpKey)
 	} else {
 		word.English = english
 		word.Key = strings.ToLower(english)
 	}
-	logger.Info("set english, raw: %s, english: %s, key: %s", word.Raw, word.English, word.Key)
+	logger.Infof("set english, raw: %s, english: %s, key: %s", word.Raw, word.English, word.Key)
 }
 func (word *Word) FindQueryCount() int {
 	qc, acquainted := repo.GetUserWordQueryCount(word.Id, 0)
@@ -53,6 +112,8 @@ func (word *Word) FindLoadCountById() int {
 	return word.LoadCount
 }
 func (word *Word) Translate() *Word {
+	// tmp function, remove duplicate word
+	word.RemoveDuplicateWord()
 	// search word in db by English, e.g. French
 	// do not search db with lower case, since youdao api is case sensitive
 	sWord := repo.Translate(word.English)
@@ -60,20 +121,32 @@ func (word *Word) Translate() *Word {
 	word.Chinese = sWord.Chinese
 	word.LoadCount = sWord.LoadCount
 	word.Pronunciation = sWord.Pronunciation
-	logger.Debugf("translate word, id: %v, english: %s", sWord.Id, word.Key)
+	logger.Infof("word translate result, id: %v, english: %s", sWord.Id, word.Key)
 	return word
+}
+
+func (word *Word) RemoveDuplicateWord() {
+	// count by english field
+	count := repo.CountByEnglish(word.English)
+	logger.Debugf("count by english, word: %s, count: %d", word.English, count)
+	if count > 1 {
+		// delete duplicate word
+		tmp_word := repo.GetWordByEnglishCaseSensitive(word.English)
+		repo.DeleteDuplicateWord(word.English, tmp_word.Id)
+	}
 }
 
 func (word *Word) Save() {
 	sWord := repo.Word{}
 	sWord.CreateDatetime = time.Now()
 	sWord.UpdateDatetime = time.Now()
-	sWord.English = word.Key
+	sWord.English = word.English
 	sWord.Chinese = word.Chinese
 	sWord.Pronunciation = word.Pronunciation
 	sWord.LoadCount = word.LoadCount
 	tx := sqlitex.DB.Create(&sWord)
 	logger.Debugf("save word: %v, tx: %v", sWord, tx)
+	word.Id = sWord.Id
 }
 
 func (word *Word) UpdateLoadCount() {

@@ -58,7 +58,7 @@ function popEnxDialogBox(mouseEvent, english) {
 
     // send word to enx server and get chinese
     console.log("send window msg 'getOneWord' from content.js to background.js, english: ", english)
-    window.postMessage({type: "getOneWord", word: english});
+    window.postMessage({ type: "getOneWord", word: english });
 }
 
 // update underline color
@@ -67,34 +67,23 @@ function updateUnderLine(ecp) {
     className = "enx-" + ecp.Key
     articleClassElement = document.getElementsByClassName(className);
     console.log("get element by class name: ", className)
-    console.log(articleClassElement)
+    console.log("elements:", articleClassElement)
     if (articleClassElement.length > 0) {
-        for (element in articleClassElement) {
-            // style="margin-left: 2px; margin-right: 2px; text-decoration: #FF9800 underline; text-decoration-thickness: 2px;"
-            colorCode = getColorCodeByCount(ecp)
-            console.log("color code: ", colorCode)
-            if (articleClassElement[element] === undefined || articleClassElement[element].style === undefined) {
-                continue
+        (async () => {
+            for (element in articleClassElement) {
+                console.log("mark element: ", element)
+                const content_module_url = chrome.runtime.getURL("content_module.js");
+                const contentModule = await import(content_module_url);
+                // style="margin-left: 2px; margin-right: 2px; text-decoration: #FF9800 underline; text-decoration-thickness: 2px;"
+                colorCode = contentModule.getColorCodeByCount(ecp)
+                console.log("color code: ", colorCode)
+                if (articleClassElement[element] === undefined || articleClassElement[element].style === undefined) {
+                    continue
+                }
+                articleClassElement[element].style.textDecoration = colorCode + " underline"
+                articleClassElement[element].style.textDecorationThickness = "2px"
             }
-            articleClassElement[element].style.textDecoration = colorCode + " underline"
-            articleClassElement[element].style.textDecorationThickness = "2px"
-        }
-    }
-}
-
-function getColorCodeByCount(ecp) {
-    let loadCount = ecp.LoadCount
-    let isAcquainted = ecp.AlreadyAcquainted
-
-    if (isAcquainted === 1) {
-        return "#FFFFFF"
-    }
-    if (loadCount === 0) {
-        return "#F44336"
-    } else if (loadCount > 0 && loadCount <= 10) {
-        return "#2196F3"
-    } else if (loadCount > 10) {
-        return "#9C27B0"
+        })();
     }
 }
 
@@ -105,8 +94,18 @@ function getArticleNode() {
         // infoq
         console.log("try to find infoq article node")
         articleClassElement = document.getElementsByClassName("article__data")
+        console.log("infoq article node:", articleClassElement)
     }
     if (articleClassElement.length === 0) {
+        // nytimes
+        console.log("try to find nytimes article node")
+        articleClassElement = document.getElementById("EMAIL_CONTAINER")
+        console.log("nytimes article node:", articleClassElement)
+        if (articleClassElement !== null) {
+            return articleClassElement
+        }
+    }
+    if (articleClassElement == null || articleClassElement.length === 0) {
         // tingroom
         console.log("tingroom article node")
         articleClassElement = document.getElementsByClassName("text")
@@ -148,16 +147,18 @@ function enxRun() {
 
     (async () => {
         try {
-            console.log("get content module js src")
-            const src = chrome.runtime.getURL("content_module.js");
-            console.log("content module js src: ", src);
+            console.log("get content module js url")
+            const content_module_url = chrome.runtime.getURL("content_module.js");
+            const contentModule = await import(content_module_url);
+            let nodeList = contentModule.findChildNodes(articleNode);
+            console.log("node list size: ", nodeList.length)
 
-            const contentMain = await import(src);
-            console.log("content module main:", contentMain)
-
-            let nodeList = contentMain.findChildNodes(articleNode);
-            console.log("node list: ", nodeList)
             for (let tmpNode of nodeList) {
+                let tmpInnerHtml = tmpNode.node.innerHTML
+                if (tmpInnerHtml === undefined) {
+                    return
+                }
+
                 (async () => {
                     let oneParagraph = tmpNode.paragraph
                     let tmpArray = oneParagraph.split(' ');
@@ -169,7 +170,7 @@ function enxRun() {
                         tmpParagraph += tmpWord + ' '
                         if (tmpParagraph.length > 5000) {
                             console.log("sending msg from content script to backend, paragraph length, length>5000:", tmpParagraph.length, "paragraph:", tmpParagraph)
-                            let response = await chrome.runtime.sendMessage({msgType: "getWords", words: tmpParagraph});
+                            let response = await chrome.runtime.sendMessage({ msgType: "getWords", words: tmpParagraph });
                             console.log("response from backend: ", response)
                             console.log(response.wordProperties)
                             wordDict = Object.assign({}, wordDict, response.wordProperties);
@@ -179,102 +180,14 @@ function enxRun() {
                     }
 
                     if (tmpParagraph.length > 0) {
+                        // call enx api
                         console.log("sending msg from content script to backend, node id:", tmpNode.id, "paragraph length<=5000:", tmpParagraph.length, "paragraph:", tmpParagraph)
-                        let response = await chrome.runtime.sendMessage({msgType: "getWords", words: tmpParagraph});
+                        let response = await chrome.runtime.sendMessage({ msgType: "getWords", words: tmpParagraph });
                         wordDict = Object.assign({}, wordDict, response.wordProperties);
-                        console.log("word dict, node id:",tmpNode.id," size:", Object.keys(wordDict).length)
+                        console.log("word dict, node id:", tmpNode.id, " size:", Object.keys(wordDict).length)
                     }
 
-                    let tmpInnerHtml = tmpNode.node.innerHTML
-                    if (tmpInnerHtml === undefined) {
-                        return
-                    }
-                    let newInnerHtml = ""
-                    htmlTag = false
-                    tagIndexStart = undefined
-                    tagIndexStop = undefined
-                    tagName = undefined
-
-                    copyIndex = 0
-                    wordIndexStart = undefined
-                    wordIndexEnd = undefined
-                    stringIndexStart = 0
-                    stringIndexEnd = 1
-
-                    index = 0
-                    while (index < tmpInnerHtml.length) {
-                        let oneCharacter = tmpInnerHtml.charAt(index)
-                        console.log("index: ", index, "one character:", oneCharacter,", start: ", wordIndexStart, ", end: ", wordIndexEnd, "html tag:", htmlTag, "tag name:", tagName)
-
-                        var oneCharacterCode = oneCharacter.charCodeAt();
-                        if ((oneCharacterCode >= 65 && oneCharacterCode <= 90) || (oneCharacterCode >= 97 && oneCharacterCode <= 122)) {
-                            // english character
-                            if (htmlTag === false && wordIndexStart === undefined) {
-                                wordIndexStart = index
-                                console.log("word start index:", wordIndexStart)
-                            }
-                        } else if (oneCharacter === "-" || oneCharacter === "'") {
-                            // do nothing
-                        } else {
-                            // none english character
-                            if (htmlTag === false && wordIndexStart !== undefined && wordIndexEnd === undefined) {
-                                wordIndexEnd = index
-                                console.log("word end index:", wordIndexEnd)
-                            }
-
-                            if (tagName === undefined) {
-                                if (oneCharacter === "<") {
-                                    htmlTag = true
-                                    tagIndexStart = index + 1
-                                    console.log("html tag:", htmlTag)
-                                }
-                                if (htmlTag === true && (oneCharacter === " " || oneCharacter === ">")) {
-                                    tagName = tmpInnerHtml.slice(tagIndexStart, index)
-
-                                    // comment tag has special close rule
-                                    if (tagName === "!--"){
-                                        tagName = "--"
-                                    }
-                                    console.log("html tag name:", tagName)
-                                }
-                            } else {
-                                console.log("check if html tag close:", tmpInnerHtml.slice(index - tagName.length, index + 1))
-                                if (oneCharacter === ">" && tmpInnerHtml.slice(index - tagName.length, index + 1) === tagName + ">") {
-                                    htmlTag = false
-                                    tagName = undefined
-                                }
-                            }
-                        }
-                        index = index + 1
-
-                        if (wordIndexStart === undefined || wordIndexEnd === undefined) {
-                            continue
-                        }
-
-                        // found one word
-                        let tmpWord = tmpInnerHtml.slice(wordIndexStart, wordIndexEnd)
-                        if (tmpWord in wordDict) {
-                            let ecp = wordDict[tmpWord]
-                            console.log("word: ", tmpWord, "ecp: ", ecp)
-                            let colorCode = getColorCodeByCount(ecp)
-                            let startTag = '<u alt="alt-foo" onclick="popEnxDialogBox(event)" class="class-foo" style="text-decoration: #000000 underline; text-decoration-thickness: 2px;">'
-                            startTag = startTag.replace("#000000", colorCode);
-                            startTag = startTag.replace("class-foo", "enx-" + ecp.Key);
-                            startTag = startTag.replace("alt-foo", ecp.English);
-                            newInnerHtml = newInnerHtml + tmpInnerHtml.slice(copyIndex, wordIndexStart)
-                            newInnerHtml = newInnerHtml + startTag + tmpWord + '</u> '
-                            copyIndex = wordIndexEnd
-                            wordIndexStart = undefined
-                            wordIndexEnd = undefined
-                        } else {
-                            console.log("word not found: ", tmpWord)
-                            newInnerHtml = newInnerHtml + tmpInnerHtml.slice(copyIndex, wordIndexStart)
-                            newInnerHtml = newInnerHtml + ' ' + tmpWord + ' '
-                            wordIndexStart = undefined
-                            wordIndexEnd = undefined
-                        }
-                    }
-                    newInnerHtml = newInnerHtml + tmpInnerHtml.slice(copyIndex)
+                    let newInnerHtml = contentModule.renderInnerHtml(tmpInnerHtml, wordDict)
                     tmpNode.node.innerHTML = newInnerHtml
                     console.log("original html: ", tmpInnerHtml)
                     console.log("new html: ", newInnerHtml)
@@ -325,7 +238,7 @@ async function injectEnxWindow() {
 
     document.getElementById("enx-mark").onclick = function () {
         console.log("enx mark")
-        let key = document.getElementById("enx-search-key").innerText
+        let key = document.getElementById("enx-e").innerText
         console.log("mark: ", key)
 
         // mark word as acquainted
@@ -378,7 +291,7 @@ function getOneWord(key) {
         document.getElementById("enx-search-key").innerText = ""
 
         console.log("send get one word from content js")
-        const response = await chrome.runtime.sendMessage({msgType: "getOneWord", word: key});
+        const response = await chrome.runtime.sendMessage({ msgType: "getOneWord", word: key });
         // do something with response here, not outside the function
         console.log("response from backend")
         console.log(response);
@@ -388,10 +301,10 @@ function getOneWord(key) {
         document.getElementById("enx-e").innerText = ecp.English
         document.getElementById("enx-p").innerText = ecp.Pronunciation
         document.getElementById("enx-c").innerText = ecp.Chinese
-        document.getElementById("enx-search-key").innerText = ecp.Key
+        document.getElementById("enx-search-key").innerText = ecp.English
 
         // set youdao link
-        document.getElementById("youdao_link").href = "https://www.youdao.com/result?word=" + ecp.Key + "&lang=en"
+        document.getElementById("youdao_link").href = "https://www.youdao.com/result?word=" + ecp.English + "&lang=en"
 
         // update underline color
         updateUnderLine(response.ecp)
@@ -435,7 +348,7 @@ chrome.runtime.onMessage.addListener(
         console.log("request: ", request)
         if (request.greeting === "mark") {
             enxRun()
-            sendResponse({farewell: "ok"});
+            sendResponse({ farewell: "ok" });
         }
     });
 
