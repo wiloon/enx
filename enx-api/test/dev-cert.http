@@ -1,3 +1,6 @@
 
 ### ping LAN with cert
 GET https://enx.wiloon.com/ping
+### words-count
+
+GET https://enx.wiloon.com/words-count?words=A%20female%20bystander%20told%20the%20police HTTP/1.1

@@ -65,14 +65,14 @@ func (ud *UserDict) IsExist() bool {
 	sud := repo.UserDict{}
 	sud.UserId = ud.UserId
 	sud.WordId = ud.WordId
-	tmp := repo.UserDict{}
-	sqlitex.DB.Where("word_id=? and user_id=?", sud.WordId, sud.UserId).Find(&tmp)
-	if tmp.WordId == 0 {
+	userDictTmp := repo.UserDict{}
+	sqlitex.DB.Where("word_id=? and user_id=?", sud.WordId, sud.UserId).Find(&userDictTmp)
+	if userDictTmp.WordId == 0 {
 		logger.Infof("user dict record not exist, word id: %v", sud.WordId)
 		return false
 	} else {
-		ud.AlreadyAcquainted = tmp.AlreadyAcquainted
-		ud.QueryCount = tmp.QueryCount
+		ud.AlreadyAcquainted = userDictTmp.AlreadyAcquainted
+		ud.QueryCount = userDictTmp.QueryCount
 		logger.Infof("user dict record exist, word id: %v, query count: %v, acquainted: %v", sud.WordId, ud.QueryCount, ud.AlreadyAcquainted)
 		return true
 	}
