@@ -1,7 +1,7 @@
 console.log("content js running")
 
 // copy to content.js, any change sync with the clone
-// todo, try to merge two func int content.js, inject.js
+// TODO, try to merge two func int content.js, inject.js
 // which one is in use?
 function popEnxDialogBox(mouseEvent, english) {
     console.log("pop enx dialog box, english: ", english)
@@ -151,8 +151,10 @@ function enxRun() {
             console.log("get content module js src")
             const src = chrome.runtime.getURL("content_module.js");
             console.log("content module js src: ", src);
+
             const contentMain = await import(src);
             console.log("content module main:", contentMain)
+
             let nodeList = contentMain.findChildNodes(articleNode);
             console.log("node list: ", nodeList)
             for (let tmpNode of nodeList) {
@@ -160,6 +162,7 @@ function enxRun() {
                     let oneParagraph = tmpNode.paragraph
                     let tmpArray = oneParagraph.split(' ');
                     console.log("tmp array length:", tmpArray.length)
+
                     let tmpParagraph = ""
                     let wordDict = {}
                     for (let tmpWord of tmpArray) {
@@ -176,17 +179,17 @@ function enxRun() {
                     }
 
                     if (tmpParagraph.length > 0) {
-                        console.log("sending msg from content script to backend, node id:",tmpNode.id,"paragraph length<=5000:", tmpParagraph.length, "paragraph:", tmpParagraph)
+                        console.log("sending msg from content script to backend, node id:", tmpNode.id, "paragraph length<=5000:", tmpParagraph.length, "paragraph:", tmpParagraph)
                         let response = await chrome.runtime.sendMessage({msgType: "getWords", words: tmpParagraph});
                         wordDict = Object.assign({}, wordDict, response.wordProperties);
                         console.log("word dict, node id:",tmpNode.id," size:", Object.keys(wordDict).length)
                     }
 
-                    tmpInnerHtml = tmpNode.node.innerHTML
+                    let tmpInnerHtml = tmpNode.node.innerHTML
                     if (tmpInnerHtml === undefined) {
                         return
                     }
-                    newInnerHtml = ""
+                    let newInnerHtml = ""
                     htmlTag = false
                     tagIndexStart = undefined
                     tagIndexStop = undefined
@@ -249,7 +252,7 @@ function enxRun() {
                         }
 
                         // found one word
-                        tmpWord = tmpInnerHtml.slice(wordIndexStart, wordIndexEnd)
+                        let tmpWord = tmpInnerHtml.slice(wordIndexStart, wordIndexEnd)
                         if (tmpWord in wordDict) {
                             let ecp = wordDict[tmpWord]
                             console.log("word: ", tmpWord, "ecp: ", ecp)
