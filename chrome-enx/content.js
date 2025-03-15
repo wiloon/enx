@@ -389,7 +389,7 @@ function getOneWord(key) {
         document.getElementById("enx-e").innerText = ecp.English
         document.getElementById("enx-p").innerText = ecp.Pronunciation
         document.getElementById("enx-c").innerText = ecp.Chinese
-        document.getElementById("enx-search-key").innerText = ecp.Key
+        document.getElementById("enx-search-key").innerText = ecp.English
 
         // set youdao link
         document.getElementById("youdao_link").href = "https://www.youdao.com/result?word=" + ecp.Key + "&lang=en"

@@ -87,7 +87,7 @@ async function enxServerGetOne(word) {
 async function markWord(key) {
     let url = 'https://enx.wiloon.com/mark'
     console.log("calling enx server, url: ", url)
-    let postBody = {"Key": key}
+    let postBody = {"English": key}
     const response = await fetch(url, {method: "POST", body: JSON.stringify(postBody)});
     console.log("enx server response: ", response)
     const json = await response.json();
