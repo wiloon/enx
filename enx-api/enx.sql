@@ -33,6 +33,8 @@ create table words
     update_datetime datetime     default NULL
 );
 
+CREATE UNIQUE INDEX idx_english ON words(english);
+
 create table user_dicts
 (
     user_id            INTEGER,

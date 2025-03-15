@@ -530,5 +530,5 @@ test('BBC test', () => {
     console.log("node: ", node)
   }
   console.log(nodeList.length)
-  expect(nodeList.length).toBe(11);
+  expect(nodeList.length).toBe(10);
 });

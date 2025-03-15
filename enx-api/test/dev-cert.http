@@ -1,3 +1,6 @@
 
 ### ping LAN with cert
 GET https://enx.wiloon.com/ping
+### words-count
+
+GET https://enx.wiloon.com/words-count?words=isn’t HTTP/1.1
