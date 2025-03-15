@@ -8,7 +8,8 @@ cd /var/lib/jenkins/workspace/enx-api/enx-api || exit
 
 package_name="enx-api"
 
-git rev-parse --abbrev-ref HEAD
+echo "git branch:"
+git branch --show-current
 
 echo "building"
 
