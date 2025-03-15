@@ -45,7 +45,7 @@ ansible -i '192.168.50.36,' all  -m shell -a 'systemctl enable enx-api' -u=root
 ansible -i '192.168.50.36,' all  -m shell -a 'systemctl start enx-api' -u=root
 
 # test api
-curl https://enx.wiloon.com/ping
+curl http://192.168.50.36:8080/ping
 
 echo ""
 echo "done"
