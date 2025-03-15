@@ -10,6 +10,7 @@ import (
 
 type Word struct {
 	Id            int
+	Raw           string
 	English       string
 	Chinese       string
 	Pronunciation string
@@ -26,13 +27,17 @@ func (word *Word) FindId() {
 }
 
 func (word *Word) SetEnglish(english string) {
-	word.English = english
-	if (strings.Contains(english,"'s")){
-		tmpKey := strings.Replace(english,"'s", "", -1)
+	word.Raw = english
+	
+	if strings.Contains(english, "'s") {
+		tmpKey := strings.Replace(english, "'s", "", -1)
+		word.English = tmpKey
 		word.Key = strings.ToLower(tmpKey)
-	}else{
+	} else {
+		word.English = english
 		word.Key = strings.ToLower(english)
 	}
+	logger.Info("set english, raw: %s, english: %s, key: %s", word.Raw, word.English, word.Key)
 }
 func (word *Word) FindQueryCount() int {
 	qc, acquainted := repo.GetUserWordQueryCount(word.Id, 0)
