@@ -37,7 +37,7 @@ func (word *Word) SetEnglish(english string) {
 		word.English = english
 		word.Key = strings.ToLower(english)
 	}
-	logger.Info("set english, raw: %s, english: %s, key: %s", word.Raw, word.English, word.Key)
+	logger.Infof("set english, raw: %s, english: %s, key: %s", word.Raw, word.English, word.Key)
 }
 func (word *Word) FindQueryCount() int {
 	qc, acquainted := repo.GetUserWordQueryCount(word.Id, 0)
