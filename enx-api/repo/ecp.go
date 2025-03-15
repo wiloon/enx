@@ -52,7 +52,7 @@ func GetUserWordQueryCount(wordId, userId int) (int, int) {
 func Translate(key string) Word {
 	sWord := Word{}
 	sqlitex.DB.Where("english COLLATE NOCASE = ?", key).Find(&sWord)
-	logger.Debugf("find word, id: %v, english: %s", sWord.Id, key)
+	logger.Debugf("find in local db, result, id: %v, english: %s", sWord.Id, key)
 	return sWord
 }
 

@@ -14,9 +14,9 @@ func Translate(c *gin.Context) {
 	english := c.Query("word")
 	logger.Debugf("translate word: %s", english)
 
-	if strings.Contains(english, "'s") {
+	if strings.Contains(english, "'s") || strings.Contains(english, "'t") {
 		// do nothing
-	}else{
+	} else {
 		english = regexp.MustCompile(`[^a-zA-Z\- ]+`).ReplaceAllString(english, "")
 	}
 
@@ -24,7 +24,7 @@ func Translate(c *gin.Context) {
 	word.SetEnglish(english)
 
 	word.Translate()
-	
+
 	if word.Chinese == "" {
 		logger.Debugf("find from youdao: %s", english)
 		epc := youdao.Query(english)

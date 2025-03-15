@@ -114,8 +114,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
             })
         } else if (msgType === "getOneWord") {
             let word = request.word
-            console.log("backend received msg, type: ", msgType)
-            console.log("word: ", word)
+            console.log("backend received msg, type: ", msgType, ", word: ", word)
             // send msg to enx server and get chinese
             enxServerGetOne(word).then(result => {
                 console.log("listener response: ", Date.now())

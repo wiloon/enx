@@ -392,7 +392,7 @@ function getOneWord(key) {
         document.getElementById("enx-search-key").innerText = ecp.English
 
         // set youdao link
-        document.getElementById("youdao_link").href = "https://www.youdao.com/result?word=" + ecp.Key + "&lang=en"
+        document.getElementById("youdao_link").href = "https://www.youdao.com/result?word=" + ecp.English + "&lang=en"
 
         // update underline color
         updateUnderLine(response.ecp)
