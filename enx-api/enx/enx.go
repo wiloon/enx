@@ -37,7 +37,7 @@ type Dictionary struct {
 func FindOne(key string) *Dictionary {
 	var dict Dictionary
 	tmp := instance().Find("select * from words where english=? order by create_datetime limit 1", key)
-	if tmp != nil && len(tmp) > 0 {
+	if len(tmp) > 0 {
 		dict.English = string(tmp[0]["english"].([]uint8))
 		dict.Chinese = string(tmp[0]["chinese"].([]uint8))
 		if tmp[0]["pronunciation"] != nil {

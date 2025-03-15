@@ -47,7 +47,7 @@ ansible -i '192.168.50.36,' all  -m shell -a 'systemctl start enx-api' -u=root
 # test api
 curl http://192.168.50.36:8080/ping
 
-ls /var/lib/jenkins/.cache
+ls -l /var/lib/jenkins/.cache/go-build
 
 echo ""
 echo "done"

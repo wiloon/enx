@@ -4,14 +4,22 @@ import (
 	"enx-server/enx"
 	"enx-server/utils/logger"
 	"enx-server/youdao"
-	"github.com/gin-gonic/gin"
 	"regexp"
+	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
 func Translate(c *gin.Context) {
 	english := c.Query("word")
 	logger.Debugf("translate word: %s", english)
-	english = regexp.MustCompile(`[^a-zA-Z\- ]+`).ReplaceAllString(english, "")
+
+	if strings.Contains(english, "'s") {
+		// do nothing
+	}else{
+		english = regexp.MustCompile(`[^a-zA-Z\- ]+`).ReplaceAllString(english, "")
+	}
+
 	word := enx.Word{}
 	word.SetEnglish(english)
 
