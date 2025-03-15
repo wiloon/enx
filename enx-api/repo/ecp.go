@@ -33,7 +33,7 @@ type YoudaoQueryHistory struct {
 // GetWordByEnglish get word id by english
 func GetWordByEnglish(english string) *Word {
 	word := Word{}
-	sqlitex.DB.Where("english=?", english).Find(&word)
+	sqlitex.DB.Where("english COLLATE NOCASE =?", english).Find(&word)
 	logger.Debugf("find word, id: %v, english: %s", word.Id, word.English)
 	return &word
 }

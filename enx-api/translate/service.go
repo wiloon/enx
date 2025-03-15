@@ -46,8 +46,6 @@ func Translate(c *gin.Context) {
 		userDict := enx.UserDict{}
 		userDict.UserId = 0
 		userDict.WordId = word.Id
-		userDict.AlreadyAcquainted = word.AlreadyAcquainted
-
 		if userDict.IsExist() {
 			userDict.QueryCount = userDict.QueryCount + 1
 			userDict.UpdateQueryCount()
