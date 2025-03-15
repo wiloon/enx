@@ -177,8 +177,8 @@ func MarkWord(c *gin.Context) {
 	if err != nil {
 		return
 	}
+	logger.Debugf("mark word: %s", word.English)
 	word.Key = strings.ToLower(word.English)
-	logger.Debugf("mark word: %s", word.Key)
 	word.Translate()
 
 	ud := enx.UserDict{}

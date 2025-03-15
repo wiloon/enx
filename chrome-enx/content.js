@@ -326,7 +326,7 @@ async function injectEnxWindow() {
 
     document.getElementById("enx-mark").onclick = function () {
         console.log("enx mark")
-        let key = document.getElementById("enx-search-key").innerText
+        let key = document.getElementById("enx-e").innerText
         console.log("mark: ", key)
 
         // mark word as acquainted

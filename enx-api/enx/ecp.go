@@ -22,7 +22,7 @@ type Word struct {
 }
 
 func (word *Word) FindId() {
-	sWord := repo.GetWordByEnglish(word.Key)
+	sWord := repo.GetWordByEnglish(word.English)
 	word.Id = sWord.Id
 }
 
