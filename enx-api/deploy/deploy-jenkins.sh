@@ -26,7 +26,8 @@ ls -l ~/.ssh/id_ed25519
 ansible -i '192.168.50.36,' all -m copy -a 'src=/var/lib/jenkins/workspace/enx-api/enx-api/deploy/enx-api.service dest=/etc/systemd/system/enx-api.service' -u=root
 ansible -i '192.168.50.36,' all -m shell -a 'systemctl daemon-reload' -u=root
 ansible -i '192.168.50.36,' all -m shell -a 'systemctl stop enx-api' -u=root
-scp -i ${package_name} root@192.168.50.36:/usr/local/bin
+ansible -i '192.168.50.36,' all -m copy -a "src=${package_name} dest=/usr/local/bin" -u=root
+
 ansible -i '192.168.50.36,' all -m shell -a 'md5sum /usr/local/bin/enx-api' -u=root
 
 ansible -i '192.168.50.36,' all -m file -a 'path=/usr/local/etc/enx/ state=directory mode=0755' -u=root
