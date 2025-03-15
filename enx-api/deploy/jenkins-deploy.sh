@@ -50,7 +50,7 @@ curl http://192.168.50.36:8080/ping
 echo "ls"
 ls -l /var/lib/jenkins/.cache/go-build
 echo "find"
-find /var/lib/jenkins/.cache/go-build -mtime +7 -type f -name "*.*"
+find /var/lib/jenkins/.cache/go-build -mtime +7 -type d -name "*.*"
 
 echo ""
 echo "done"
