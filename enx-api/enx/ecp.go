@@ -68,7 +68,7 @@ func (word *Word) Save() {
 	sWord := repo.Word{}
 	sWord.CreateDatetime = time.Now()
 	sWord.UpdateDatetime = time.Now()
-	sWord.English = word.Key
+	sWord.English = word.English
 	sWord.Chinese = word.Chinese
 	sWord.Pronunciation = word.Pronunciation
 	sWord.LoadCount = word.LoadCount

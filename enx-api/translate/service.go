@@ -24,9 +24,13 @@ func Translate(c *gin.Context) {
 	word.SetEnglish(english)
 
 	word.Translate()
+	
 	if word.Chinese == "" {
 		logger.Debugf("find from youdao: %s", english)
 		epc := youdao.Query(english)
+		word.Raw = english
+		word.English = epc.English
+		word.Key = strings.ToLower(english)
 		word.Chinese = epc.Chinese
 		word.Pronunciation = epc.Pronunciation
 		word.Save()
