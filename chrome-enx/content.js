@@ -253,6 +253,7 @@ function enxRun() {
 
                         // found one word
                         let tmpWord = tmpInnerHtml.slice(wordIndexStart, wordIndexEnd)
+                        console.log("found one word: ", tmpWord)
                         if (tmpWord in wordDict) {
                             let ecp = wordDict[tmpWord]
                             console.log("word: ", tmpWord, "ecp: ", ecp)
