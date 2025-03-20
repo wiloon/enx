@@ -22,7 +22,6 @@ func Translate(c *gin.Context) {
 
 	word := enx.Word{}
 	word.SetEnglish(english)
-
 	word.Translate()
 
 	if word.Chinese == "" {
@@ -50,7 +49,11 @@ func Translate(c *gin.Context) {
 			userDict.QueryCount = userDict.QueryCount + 1
 			userDict.UpdateQueryCount()
 		} else {
-			userDict.QueryCount = word.LoadCount + 1
+			if word.LoadCount>=0{
+				userDict.QueryCount = word.LoadCount + 1
+			}else{
+				userDict.QueryCount = 1
+			}
 			userDict.Save()
 		}
 	}

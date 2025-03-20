@@ -22,13 +22,19 @@ func QueryCountInText(words string) map[string]Word {
 		wordObj := Word{}
 		wordObj.SetEnglish(word)
 		wordObj.FindId()
-
-		if wordObj.Id > 0 {
-			CheckAndMigrateQueryCount(wordObj.Id)
-			wordObj.Translate()
+		if wordObj.Id ==0{
+			wordObj.LoadCount = 0
+			wordObj.AlreadyAcquainted = 0
+		}else{
+			ud := UserDict{}
+			ud.WordId = wordObj.Id
+			if ud.IsExist() {
+				wordObj.LoadCount = ud.QueryCount
+				wordObj.AlreadyAcquainted = ud.AlreadyAcquainted
+			}else{
+				wordObj.FindQueryCount()
+			}
 		}
-		
-		wordObj.FindQueryCount()
 		response[wordObj.Raw] = wordObj
 	}
 	logger.Debug("words count: ", response)
