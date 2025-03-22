@@ -32,6 +32,17 @@ func (word *Word) FindId() {
 	word.Id = sWord.Id
 }
 
+func (word *Word) LoadByEnglish() {
+	sWord := repo.GetWordByEnglish(word.English)
+	word.Id = sWord.Id
+	word.English = sWord.English
+	word.Chinese = sWord.Chinese
+	word.Pronunciation = sWord.Pronunciation
+	word.LoadCount = sWord.LoadCount
+	logger.Debugf("load by english, word: %s, id: %d", word.English, word.Id)
+}
+
+
 func (word *Word) SetEnglish(raw string) {
 	english:=""
 	if strings.Contains(raw, "'s") || strings.Contains(raw, "'t")|| strings.Contains(raw, "'m") || strings.Contains(raw, "'re") {

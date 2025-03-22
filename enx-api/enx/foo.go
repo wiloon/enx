@@ -32,7 +32,7 @@ func QueryCountInText(words string) map[string]Word {
 				wordObj.LoadCount = ud.QueryCount
 				wordObj.AlreadyAcquainted = ud.AlreadyAcquainted
 			}else{
-				wordObj.FindQueryCount()
+				wordObj.LoadByEnglish()
 			}
 		}
 		response[wordObj.Raw] = wordObj
