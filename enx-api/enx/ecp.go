@@ -25,7 +25,7 @@ type Word struct {
 func (word *Word) SetEnglish(raw string) {
 	english := ""
 	if strings.Contains(raw, "'s") ||
-		strings.Contains(raw, "’t") ||
+		strings.Contains(raw, "’s") ||
 		strings.Contains(raw, "'t") ||
 		strings.Contains(raw, "'ve") ||
 		strings.Contains(raw, "'m") ||
