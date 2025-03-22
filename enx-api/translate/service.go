@@ -11,23 +11,24 @@ import (
 
 // search db by english, return chinese and pronunciation
 func Translate(c *gin.Context) {
-	english := c.Query("word")
-	logger.Debugf("translate word: %s", english)
+	raw := c.Query("word")
+	logger.Debugf("translate word: %s", raw)
 
-	if strings.Contains(english, "'s") || strings.Contains(english, "'t")|| strings.Contains(english, "'m") || strings.Contains(english, "'re") {
-		// do nothing
+	english :=""
+	if strings.Contains(raw, "'s") || strings.Contains(raw, "'t")|| strings.Contains(raw, "'m") || strings.Contains(raw, "'re") {
+		english = raw
 	} else {
-		english = regexp.MustCompile(`[^a-zA-Z\- ]+`).ReplaceAllString(english, "")
+		english = regexp.MustCompile(`[^a-zA-Z\- ]+`).ReplaceAllString(raw, "")
 	}
 
 	word := enx.Word{}
-	word.SetEnglish(english)
+	word.Raw = raw
+	word.SetEnglishField(english)
 	word.Translate()
 
 	if word.Id == 0 {
 		logger.Debugf("find from youdao: %s", english)
 		epc := youdao.Query(english)
-		word.Raw = english
 		word.English = epc.English
 		word.Key = strings.ToLower(english)
 		word.Chinese = epc.Chinese

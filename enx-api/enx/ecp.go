@@ -33,7 +33,10 @@ func (word *Word) FindId() {
 
 func (word *Word) SetEnglish(english string) {
 	word.Raw = english
+	word.SetEnglishField(english)
+}
 
+func (word *Word) SetEnglishField(english string) {
 	if strings.Contains(english, "'s") {
 		tmpKey := strings.Replace(english, "'s", "", -1)
 		word.English = tmpKey
