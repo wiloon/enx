@@ -51,6 +51,6 @@ func Translate(c *gin.Context) {
 		}
 	}
 	word.FindQueryCount()
-	logger.Debugf("translate result: %v", word)
+	logger.Debugf("translate result: %+v", word)
 	c.JSON(200, word)
 }

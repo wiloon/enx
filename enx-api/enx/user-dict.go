@@ -35,7 +35,7 @@ func (ud *UserDict) Save() {
 	sud.AlreadyAcquainted = ud.AlreadyAcquainted
 	sud.UpdateTime = time.Now()
 	sqlitex.DB.Create(&sud)
-	logger.Debugf("save user dict, word id: %v, query count: %v", sud.WordId, sud.QueryCount)
+	logger.Debugf("create user dict, word id: %v, query count: %v", sud.WordId, sud.QueryCount)
 }
 
 func (ud *UserDict) Mark() {

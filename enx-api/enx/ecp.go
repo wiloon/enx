@@ -104,6 +104,7 @@ func (word *Word) Save() {
 	sWord.LoadCount = word.LoadCount
 	tx := sqlitex.DB.Create(&sWord)
 	logger.Debugf("save word: %v, tx: %v", sWord, tx)
+	word.Id = sWord.Id
 }
 
 func (word *Word) UpdateLoadCount() {
