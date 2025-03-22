@@ -13,6 +13,18 @@ import (
 func Translate(c *gin.Context) {
 	raw := c.Query("word")
 	logger.Debugf("translate word: %s", raw)
+	if strings.Contains(raw, " ") {
+		logger.Debugf("find from youdao: %s", raw)
+		epc := youdao.Query(raw)
+		word := enx.Word{}
+		word.English = epc.English
+		word.Key = strings.ToLower(epc.English)
+		word.Chinese = epc.Chinese
+		word.Pronunciation = epc.Pronunciation
+		logger.Debugf("translate result: %+v", word)
+		c.JSON(200, word)
+		return
+	}
 
 	word := enx.Word{}
 	word.SetEnglish(raw)
