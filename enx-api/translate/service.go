@@ -4,7 +4,7 @@ import (
 	"enx-server/enx"
 	"enx-server/utils/logger"
 	"enx-server/youdao"
-	"regexp"
+
 	"strings"
 	"github.com/gin-gonic/gin"
 )
@@ -14,23 +14,15 @@ func Translate(c *gin.Context) {
 	raw := c.Query("word")
 	logger.Debugf("translate word: %s", raw)
 
-	english :=""
-	if strings.Contains(raw, "'s") || strings.Contains(raw, "'t")|| strings.Contains(raw, "'m") || strings.Contains(raw, "'re") {
-		english = raw
-	} else {
-		english = regexp.MustCompile(`[^a-zA-Z\- ]+`).ReplaceAllString(raw, "")
-	}
-
 	word := enx.Word{}
-	word.Raw = raw
-	word.SetEnglishField(english)
+	word.SetEnglish(raw)
 	word.Translate()
 
 	if word.Id == 0 {
-		logger.Debugf("find from youdao: %s", english)
-		epc := youdao.Query(english)
+		logger.Debugf("find from youdao: %s", raw)
+		epc := youdao.Query(word.English)
 		word.English = epc.English
-		word.Key = strings.ToLower(english)
+		word.Key = strings.ToLower(epc.English)
 		word.Chinese = epc.Chinese
 		word.Pronunciation = epc.Pronunciation
 		word.Save()
@@ -42,7 +34,7 @@ func Translate(c *gin.Context) {
 		userDict.QueryCount = 1
 		userDict.Save()
 	} else {
-		logger.Infof("word exist in local dict: %v", english)
+		logger.Infof("word exist in local dict: %v", raw)
 		userDict := enx.UserDict{}
 		userDict.UserId = 0
 		userDict.WordId = word.Id
@@ -59,5 +51,6 @@ func Translate(c *gin.Context) {
 		}
 	}
 	word.FindQueryCount()
+	logger.Debugf("translate result: %v", word)
 	c.JSON(200, word)
 }

@@ -6,6 +6,7 @@ import (
 	"enx-server/utils/sqlitex"
 	"strings"
 	"time"
+		"regexp"
 )
 
 type Word struct {
@@ -31,8 +32,15 @@ func (word *Word) FindId() {
 	word.Id = sWord.Id
 }
 
-func (word *Word) SetEnglish(english string) {
-	word.Raw = english
+func (word *Word) SetEnglish(raw string) {
+	english:=""
+	if strings.Contains(raw, "'s") || strings.Contains(raw, "'t")|| strings.Contains(raw, "'m") || strings.Contains(raw, "'re") {
+		// do nothing
+	} else {
+		english = regexp.MustCompile(`[^a-zA-Z\- ]+`).ReplaceAllString(raw, "")
+	}
+
+	word.Raw = raw
 	word.SetEnglishField(english)
 }
 
