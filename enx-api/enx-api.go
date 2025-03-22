@@ -47,14 +47,13 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	router.GET("/ping", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"message": "pong",
-		})
-	})
+	router.GET("/ping", Ping)
 	
 	// get words query count by paragraph
 	router.GET("/words-count", WordsCount)
+	// translate
+	router.GET("/translate", translate.Translate)
+	
 	router.GET("/load-count", wordCount.LoadCount)
 	router.POST("/mark", MarkWord)
 
@@ -62,8 +61,7 @@ func main() {
 	router.GET("/third-party", DoSearchThirdParty)
 	router.GET("/wrap", Wrap)
 
-	// translate
-	router.GET("/translate", translate.Translate)
+	
 
 	port := viper.GetInt("enx.port")
 	listenAddress := fmt.Sprintf(":%d", port)
@@ -188,4 +186,10 @@ func MarkWord(c *gin.Context) {
 	ud.Mark()
 	word.FindQueryCount()
 	c.JSON(200, word)
+}
+
+func Ping(c *gin.Context) {
+	c.JSON(200, gin.H{
+		"message": "pong",
+	})
 }

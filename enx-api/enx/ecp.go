@@ -67,7 +67,7 @@ func (word *Word) Translate() *Word {
 	word.Chinese = sWord.Chinese
 	word.LoadCount = sWord.LoadCount
 	word.Pronunciation = sWord.Pronunciation
-	logger.Debugf("translate word, id: %v, english: %s", sWord.Id, word.Key)
+	logger.Infof("word translate result, id: %v, english: %s", sWord.Id, word.Key)
 	return word
 }
 

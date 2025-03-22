@@ -24,7 +24,7 @@ func Translate(c *gin.Context) {
 	word.SetEnglish(english)
 	word.Translate()
 
-	if word.Chinese == "" {
+	if word.Id == 0 {
 		logger.Debugf("find from youdao: %s", english)
 		epc := youdao.Query(english)
 		word.Raw = english
