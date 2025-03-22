@@ -32,7 +32,7 @@ func (word *Word) SetEnglish(raw string) {
 		// do nothing
 		english = raw
 	} else {
-		english = regexp.MustCompile(`[^a-zA-Z\- ]+`).ReplaceAllString(raw, "")
+		english = regexp.MustCompile(`[^a-zA-Z\-’ ]+`).ReplaceAllString(raw, "")
 	}
 
 	// if english end with - or space, remove it
