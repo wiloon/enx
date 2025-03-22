@@ -36,6 +36,7 @@ func (word *Word) SetEnglish(raw string) {
 	english:=""
 	if strings.Contains(raw, "'s") || strings.Contains(raw, "'t")|| strings.Contains(raw, "'m") || strings.Contains(raw, "'re") {
 		// do nothing
+		english = raw
 	} else {
 		english = regexp.MustCompile(`[^a-zA-Z\- ]+`).ReplaceAllString(raw, "")
 	}

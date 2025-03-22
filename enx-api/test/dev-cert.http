@@ -3,4 +3,4 @@
 GET https://enx.wiloon.com/ping
 ### words-count
 
-GET https://enx.wiloon.com/words-count?words=activism HTTP/1.1
+GET https://enx.wiloon.com/words-count?words=Newsbeat%27s HTTP/1.1
