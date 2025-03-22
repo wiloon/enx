@@ -20,7 +20,12 @@ type Word struct {
 	AlreadyAcquainted int
 	LoadCount         int
 }
-
+// count by english
+func (word *Word) CountByEnglish() int {
+	count := repo.CountByEnglish(word.English)
+	logger.Debugf("count by english, word: %s, count: %d", word.English, count)
+	return count
+}
 func (word *Word) FindId() {
 	sWord := repo.GetWordByEnglish(word.English)
 	word.Id = sWord.Id
@@ -28,7 +33,7 @@ func (word *Word) FindId() {
 
 func (word *Word) SetEnglish(english string) {
 	word.Raw = english
-	
+
 	if strings.Contains(english, "'s") {
 		tmpKey := strings.Replace(english, "'s", "", -1)
 		word.English = tmpKey
@@ -53,6 +58,8 @@ func (word *Word) FindLoadCountById() int {
 	return word.LoadCount
 }
 func (word *Word) Translate() *Word {
+	// tmp function, remove duplicate word
+	word.RemoveDuplicateWord()
 	// search word in db by English, e.g. French
 	// do not search db with lower case, since youdao api is case sensitive
 	sWord := repo.Translate(word.English)
@@ -62,6 +69,17 @@ func (word *Word) Translate() *Word {
 	word.Pronunciation = sWord.Pronunciation
 	logger.Debugf("translate word, id: %v, english: %s", sWord.Id, word.Key)
 	return word
+}
+
+func (word *Word) RemoveDuplicateWord() {
+	// count by english field
+	count := repo.CountByEnglish(word.English)
+	logger.Debugf("count by english, word: %s, count: %d", word.English, count)
+	if count > 1 {	
+		// delete duplicate word
+		tmp_word:=repo.GetWordByEnglishCaseSensitive(word.English)
+		repo.DeleteDuplicateWord(word.English,tmp_word.Id)
+	}
 }
 
 func (word *Word) Save() {

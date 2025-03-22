@@ -61,6 +61,8 @@ func main() {
 	router.GET("/do-search", DoSearch)
 	router.GET("/third-party", DoSearchThirdParty)
 	router.GET("/wrap", Wrap)
+
+	// translate
 	router.GET("/translate", translate.Translate)
 
 	port := viper.GetInt("enx.port")

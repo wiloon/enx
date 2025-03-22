@@ -6,10 +6,10 @@ import (
 	"enx-server/youdao"
 	"regexp"
 	"strings"
-
 	"github.com/gin-gonic/gin"
 )
 
+// search db by english, return chinese and pronunciation
 func Translate(c *gin.Context) {
 	english := c.Query("word")
 	logger.Debugf("translate word: %s", english)
