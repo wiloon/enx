@@ -48,3 +48,13 @@ func TestWordSuffix(t *testing.T) {
         t.Errorf("test failed")
     }
 }
+
+func TestWordVe(t *testing.T) {
+	fmt.Print("Test00")
+	// test data
+	word:=Word{}
+	word.SetEnglish("we've")
+	if word.English != "we've" {
+        t.Errorf("test failed")
+    }
+}
