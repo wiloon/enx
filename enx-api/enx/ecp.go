@@ -70,7 +70,11 @@ func (word *Word) SetEnglishField(english string) {
 		tmpKey := strings.Replace(english, "'s", "", -1)
 		word.English = tmpKey
 		word.Key = strings.ToLower(tmpKey)
-	} else {
+	} else if strings.Contains(english, "’s") {
+		tmpKey := strings.Replace(english, "’s", "", -1)
+		word.English = tmpKey
+		word.Key = strings.ToLower(tmpKey)
+	}else {
 		word.English = english
 		word.Key = strings.ToLower(english)
 	}
