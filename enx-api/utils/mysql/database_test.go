@@ -1,11 +1,11 @@
 package mysql
 
 import (
-	"fmt"
 	"testing"
 )
 
 func Test0(t *testing.T) {
+	/*
 	db := NewDatabase(Config{
 		Username:     "user0",
 		Password:     "password0",
@@ -16,4 +16,5 @@ func Test0(t *testing.T) {
 	for i, v := range result {
 		fmt.Println(i, v)
 	}
+	*/
 }

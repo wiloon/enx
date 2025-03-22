@@ -4,9 +4,9 @@ import (
 	"enx-server/repo"
 	"enx-server/utils/logger"
 	"enx-server/utils/sqlitex"
+	"regexp"
 	"strings"
 	"time"
-		"regexp"
 )
 
 type Word struct {
@@ -21,6 +21,27 @@ type Word struct {
 	AlreadyAcquainted int
 	LoadCount         int
 }
+
+func (word *Word) SetEnglish(raw string) {
+	english := ""
+	if strings.Contains(raw, "'s") ||
+		strings.Contains(raw, "'t") ||
+		strings.Contains(raw, "'m") ||
+		strings.Contains(raw, "'re") {
+		// do nothing
+		english = raw
+	} else {
+		english = regexp.MustCompile(`[^a-zA-Z\- ]+`).ReplaceAllString(raw, "")
+	}
+
+	// if english end with - or space, remove it
+	if strings.HasSuffix(english, "-") || strings.HasSuffix(english, " ") {
+		english = english[:len(english)-1]
+	}
+	word.Raw = raw
+	word.SetEnglishField(english)
+}
+
 // count by english
 func (word *Word) CountByEnglish() int {
 	count := repo.CountByEnglish(word.English)
@@ -40,20 +61,6 @@ func (word *Word) LoadByEnglish() {
 	word.Pronunciation = sWord.Pronunciation
 	word.LoadCount = sWord.LoadCount
 	logger.Debugf("load by english, word: %s, id: %d", word.English, word.Id)
-}
-
-
-func (word *Word) SetEnglish(raw string) {
-	english:=""
-	if strings.Contains(raw, "'s") || strings.Contains(raw, "'t")|| strings.Contains(raw, "'m") || strings.Contains(raw, "'re") {
-		// do nothing
-		english = raw
-	} else {
-		english = regexp.MustCompile(`[^a-zA-Z\- ]+`).ReplaceAllString(raw, "")
-	}
-
-	word.Raw = raw
-	word.SetEnglishField(english)
 }
 
 func (word *Word) SetEnglishField(english string) {
@@ -98,10 +105,10 @@ func (word *Word) RemoveDuplicateWord() {
 	// count by english field
 	count := repo.CountByEnglish(word.English)
 	logger.Debugf("count by english, word: %s, count: %d", word.English, count)
-	if count > 1 {	
+	if count > 1 {
 		// delete duplicate word
-		tmp_word:=repo.GetWordByEnglishCaseSensitive(word.English)
-		repo.DeleteDuplicateWord(word.English,tmp_word.Id)
+		tmp_word := repo.GetWordByEnglishCaseSensitive(word.English)
+		repo.DeleteDuplicateWord(word.English, tmp_word.Id)
 	}
 }
 

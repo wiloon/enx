@@ -9,12 +9,14 @@ import (
 	"github.com/go-resty/resty/v2"
 	"regexp"
 	"testing"
+		"enx-server/utils/sqlitex"
 )
 
 var client *resty.Client
 
 func init() {
 	client = resty.New()
+	sqlitex.Init()
 }
 
 var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z ]+`)

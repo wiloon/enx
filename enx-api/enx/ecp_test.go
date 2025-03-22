@@ -4,11 +4,16 @@ import (
 	"fmt"
 	"testing"
 	"enx-server/utils/sqlitex"
+	"enx-server/utils/logger"
 )
+
+func init() {
+	logger.Init("CONSOLE", "debug", "rssx-api")
+	sqlitex.Init()
+}
 
 func TestRemoveDuplcateWord(t *testing.T) {
 	fmt.Print("Test00")
-	sqlitex.Init()
 	// test data
 	word:=Word{}
 	word.SetEnglish("Kehinde")
@@ -24,7 +29,6 @@ func TestRemoveDuplcateWord(t *testing.T) {
 
 func TestWordNotExist(t *testing.T) {
 	fmt.Print("Test00")
-	sqlitex.Init()
 	// test data
 	word:=Word{}
 	word.SetEnglish("wordddd")
@@ -32,5 +36,15 @@ func TestWordNotExist(t *testing.T) {
 	word.Translate()
 	if word.Id != 0 {
         t.Errorf("inalid word id")
+    }
+}
+
+func TestWordSuffix(t *testing.T) {
+	fmt.Print("Test00")
+	// test data
+	word:=Word{}
+	word.SetEnglish("DHC-")
+	if word.English != "DHC" {
+        t.Errorf("test failed")
     }
 }
