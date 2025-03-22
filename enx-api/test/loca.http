@@ -1,6 +1,6 @@
 ### words-count
 
-GET http://localhost:8080/words-count?words=down%27 HTTP/1.1
+GET http://localhost:8080/words-count?words=We’ve HTTP/1.1
 
 ### translate, local
 GET http://localhost:8080/translate?word=Newsbeat%27s HTTP/1.1
