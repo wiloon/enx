@@ -6,11 +6,9 @@ import (
 	"strings"
 )
 
-var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z\-' ]+`)
+var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z\-'’ ]+`)
 
 func QueryCountInText(words string) map[string]Word {
-	// replace utf-8 \xe2\x80\x99 with '
-	words = strings.ReplaceAll(words, "\xe2\x80\x99", "'")
 	logger.Debug("query count, words: ", words)
 	// replace non-alphanumeric with empty string
 	words = nonAlphanumericRegex.ReplaceAllString(words, " ")

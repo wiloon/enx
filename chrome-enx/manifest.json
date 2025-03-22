@@ -28,7 +28,8 @@
       "matches": [
         "https://www.bbc.com/*",
         "https://www.infoq.com/*",
-        "https://novel.tingroom.com/*"
+        "https://novel.tingroom.com/*",
+        "https://messaging-custom-newsletters.nytimes.com/*"
       ],
       "css": [
         "inject.css"
@@ -46,7 +47,8 @@
       "matches": [
         "https://www.bbc.com/*",
         "https://www.infoq.com/*",
-        "https://novel.tingroom.com/*"
+        "https://novel.tingroom.com/*",
+        "https://messaging-custom-newsletters.nytimes.com/*"
       ]
     }
   ],

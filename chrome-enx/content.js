@@ -105,8 +105,18 @@ function getArticleNode() {
         // infoq
         console.log("try to find infoq article node")
         articleClassElement = document.getElementsByClassName("article__data")
+        console.log("infoq article node:", articleClassElement)
     }
     if (articleClassElement.length === 0) {
+        // nytimes
+        console.log("try to find nytimes article node")
+        articleClassElement = document.getElementById("EMAIL_CONTAINER")
+        console.log("nytimes article node:", articleClassElement)
+        if (articleClassElement !== null) {
+            return articleClassElement
+        }
+    }
+    if (articleClassElement == null || articleClassElement.length === 0) {
         // tingroom
         console.log("tingroom article node")
         articleClassElement = document.getElementsByClassName("text")
@@ -179,6 +189,7 @@ function enxRun() {
                     }
 
                     if (tmpParagraph.length > 0) {
+                        // call enx api
                         console.log("sending msg from content script to backend, node id:", tmpNode.id, "paragraph length<=5000:", tmpParagraph.length, "paragraph:", tmpParagraph)
                         let response = await chrome.runtime.sendMessage({msgType: "getWords", words: tmpParagraph});
                         wordDict = Object.assign({}, wordDict, response.wordProperties);
@@ -213,7 +224,7 @@ function enxRun() {
                                 wordIndexStart = index
                                 console.log("word start index:", wordIndexStart)
                             }
-                        } else if (oneCharacter === "-" || oneCharacter === "'") {
+                        } else if (oneCharacter === "-" || oneCharacter === "'" || oneCharacter === "\u2019") {
                             // do nothing
                         } else {
                             // none english character

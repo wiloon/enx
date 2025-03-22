@@ -20,7 +20,7 @@ export function createOneArticleNode() {
 
 export function findChildNodes(parentNode) {
     let nodeList = []
-    console.log("find child node, parent node: ", parentNode)
+    console.log("find child node, root node, tag:",parentNode.tagName,"id:", parentNode.id);
     let childNodes = parentNode.childNodes
     console.log("child node count: ", childNodes.length)
     if (childNodes.length === 0) {
@@ -52,7 +52,7 @@ export function findChildNodes(parentNode) {
     }
 
     if (textContent.length>0){
-        console.log("text:",textContent)
+        console.log("found one paragraph:",textContent)
     }
 
     if (textContent === undefined || textContent === "") {
@@ -60,10 +60,12 @@ export function findChildNodes(parentNode) {
         childNodes.forEach(function (tmpNode) {
             let tmpNodeType = tmpNode.nodeType
             let tmpNodeTagName = tmpNode.tagName
-            console.log("node:", tmpNode, ", tag:", tmpNodeTagName, ", type:", tmpNodeType)
+            let tmpNodeId = tmpNode.id
+            console.log("node, tag:", tmpNodeTagName, "id:",tmpNodeId,", type:", tmpNodeType)
             if (tmpNodeType === 1) {
                 if (tmpNodeTagName.toUpperCase() === "P" ||
                     tmpNodeTagName.toUpperCase() === "BLOCKQUOTE" ||
+                    tmpNodeTagName.toUpperCase() === "SPAN" ||
                     tmpNodeTagName.toUpperCase() === "DIV") {
                     let tmp_list = findChildNodes(tmpNode)
                     nodeList = nodeList.concat(tmp_list)
@@ -71,7 +73,7 @@ export function findChildNodes(parentNode) {
                     console.log("ignore tag:", tmpNodeTagName)
                 }
             }else {
-                console.log("node type not 1, node type:", tmpNodeType)
+                console.log("node type not Node.ELEMENT_NODE===1, node type:", tmpNodeType)
             }
         });
     } else {
