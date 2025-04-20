@@ -1,0 +1,11 @@
+FROM golang:1.24.2 AS build
+ENV GO111MODULE on
+WORKDIR /workdir
+COPY .. .
+RUN CGO_ENABLED=1 GOOS=linux go build -a enx-api.go
+
+FROM alpine:3.21.3 AS prod
+COPY --from=build /workdir/enx-api /usr/local/bin/
+COPY ../config.toml config.toml
+COPY ../config.toml /usr/local/etc/enx/
+CMD ["/usr/local/bin/enx-api"]

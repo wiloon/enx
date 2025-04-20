@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"enx-server/enx"
+	"enx-server/paragraph"
 	"enx-server/translate"
 	"enx-server/utils"
 	"enx-server/utils/logger"
@@ -25,7 +26,7 @@ func main() {
 	utils.ViperInit()
 	devMode := viper.GetBool("enx.dev-mode")
 	fmt.Println("devMode:", devMode)
-	
+
 	// deploy to docker/k8s, disable file output
 	logger.Init("CONSOLE", "debug", "enx-api")
 	logger.Debug("debug log test")
@@ -47,21 +48,20 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	router.GET("/ping", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"message": "pong",
-		})
-	})
-	
+	router.GET("/ping", Ping)
+
 	// get words query count by paragraph
-	router.GET("/words-count", WordsCount)
+	router.GET("/paragraph-init", paragraph.ParagraphInit)
+
+	// translate
+	router.GET("/translate", translate.Translate)
+
 	router.GET("/load-count", wordCount.LoadCount)
 	router.POST("/mark", MarkWord)
 
 	router.GET("/do-search", DoSearch)
 	router.GET("/third-party", DoSearchThirdParty)
 	router.GET("/wrap", Wrap)
-	router.GET("/translate", translate.Translate)
 
 	port := viper.GetInt("enx.port")
 	listenAddress := fmt.Sprintf(":%d", port)
@@ -161,15 +161,6 @@ func Wrap(c *gin.Context) {
 	c.JSON(200, a.Lines)
 }
 
-func WordsCount(c *gin.Context) {
-	paragraph := c.Query("words")
-	logger.Debugf("words count, paragraph: %s", paragraph)
-	out := enx.QueryCountInText(paragraph)
-	c.JSON(200, gin.H{
-		"data": out,
-	})
-}
-
 func MarkWord(c *gin.Context) {
 	word := enx.Word{}
 	// set key
@@ -177,7 +168,8 @@ func MarkWord(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	logger.Debugf("mark word: %s", word.Key)
+	logger.Debugf("mark word: %s", word.English)
+	word.Key = strings.ToLower(word.English)
 	word.Translate()
 
 	ud := enx.UserDict{}
@@ -185,4 +177,10 @@ func MarkWord(c *gin.Context) {
 	ud.Mark()
 	word.FindQueryCount()
 	c.JSON(200, word)
+}
+
+func Ping(c *gin.Context) {
+	c.JSON(200, gin.H{
+		"message": "pong",
+	})
 }

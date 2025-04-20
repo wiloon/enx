@@ -3,17 +3,11 @@ package redisx
 import (
 	"crypto/md5"
 	"crypto/sha256"
-	"enx-server/utils"
-	"enx-server/utils/logger"
 	"fmt"
 	"github.com/satori/go.uuid"
-	"os"
 	"testing"
 )
 
-func Test00(t *testing.T) {
-	GetScoreByRank("read_index:0:5", 0)
-}
 func TestUUID(t *testing.T) {
 	rootUUID, _ := uuid.FromString("5e4a8cfe-73df-4ca6-8089-18c189cc1aa3")
 
@@ -43,39 +37,6 @@ func TestMd5(t *testing.T) {
 
 	fmt.Println(md5str1)
 
-}
-
-func Test0(t *testing.T) {
-	logger.Infof("start...")
-	_ = os.Setenv("app_config", "/tmp/rssx-config-toml")
-
-	key := "k0"
-	score0 := utils.TimeNowMicrosecond()
-	logger.Infof("score0: %v", score0)
-	ZADD("k0", score0, "news0")
-	score1 := utils.TimeNowMicrosecond()
-	logger.Infof("score1: %v", score1)
-	ZADD("k0", score1, "news1")
-	score2 := utils.TimeNowMicrosecond()
-	logger.Infof("score2: %v", score2)
-	ZADD("k0", score2, "news2")
-
-	r, _ := GetConn().Do("ZRANGEBYSCORE", "k0", score1, score1)
-	foo := r.([]interface{})
-	s := string(foo[0].([]byte))
-	logger.Info("get member by score, member: " + s)
-
-	r = GetRankByScore("k0", score1)
-	logger.Infof("get index by score, score: %v, index: %v", score1, r)
-
-	score := GetScoreByRank(key, 0)
-	logger.Infof("get score by rank, rank:%v, score: %v", 0, score)
-
-	score = GetScoreByRank(key, 1)
-	logger.Infof("get score by rank, rank:%v, score: %v", 1, score)
-
-	score = GetScoreByRank(key, 2)
-	logger.Infof("get score by rank, rank:%v, score: %v", 2, score)
 }
 
 func TestRemove(t *testing.T) {

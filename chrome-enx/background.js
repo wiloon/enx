@@ -11,12 +11,14 @@ chrome.runtime.onInstalled.addListener(() => {
 const infoq_url = 'https://www.infoq.com'
 const novel_ting_room = 'https://novel.tingroom.com'
 const site_bbc = 'https://www.bbc.com'
+const site_nytimes = 'https://messaging-custom-newsletters.nytimes.com'
 
 // When the user clicks on the extension action
 chrome.action.onClicked.addListener(async (tab) => {
     console.log("chrome action on click, url: ", tab.url)
     if (tab.url.startsWith(infoq_url) ||
         tab.url.startsWith(novel_ting_room) ||
+        tab.url.startsWith(site_nytimes) ||
         tab.url.startsWith(site_bbc)) {
         // We retrieve the action badge to check if the extension is 'ON' or 'OFF'
         const prevState = await chrome.action.getBadgeText({tabId: tab.id});
@@ -51,7 +53,7 @@ chrome.action.onClicked.addListener(async (tab) => {
         } else if (nextState === 'OFF') {
             await chrome.scripting.executeScript({
                 target: {tabId: tab.id},
-                files: ["background1.js"],
+                files: ["backgroud2.js"],
             }).then(() => console.log("injected bar script file"));
         }
     }
@@ -60,7 +62,7 @@ chrome.action.onClicked.addListener(async (tab) => {
 // send http request to enx server
 async function enxServerFoo(words) {
     words = encodeURIComponent(words);
-    let url = 'https://enx.wiloon.com/words-count?words=' + words
+    let url = 'https://enx.wiloon.com/paragraph-init?paragraph=' + words
     console.log("calling enx server")
     const response = await fetch(url);
     console.log("enx server response")
@@ -87,7 +89,7 @@ async function enxServerGetOne(word) {
 async function markWord(key) {
     let url = 'https://enx.wiloon.com/mark'
     console.log("calling enx server, url: ", url)
-    let postBody = {"Key": key}
+    let postBody = {"English": key}
     const response = await fetch(url, {method: "POST", body: JSON.stringify(postBody)});
     console.log("enx server response: ", response)
     const json = await response.json();
@@ -114,8 +116,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
             })
         } else if (msgType === "getOneWord") {
             let word = request.word
-            console.log("backend received msg, type: ", msgType)
-            console.log("word: ", word)
+            console.log("backend received msg, type: ", msgType, ", word: ", word)
             // send msg to enx server and get chinese
             enxServerGetOne(word).then(result => {
                 console.log("listener response: ", Date.now())
