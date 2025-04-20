@@ -12,7 +12,8 @@ func CheckAndMigrateQueryCount(wordId int) {
 	ud := UserDict{}
 	ud.WordId = wordId
 	if !ud.IsExist() {
-		// if not exit select words table and insert into user dict
+		// word exist but ud not found
+		// if word not exit in user dict, select words table and insert into user dict
 		word := Word{}
 		word.Id = wordId
 		word.FindLoadCountById()

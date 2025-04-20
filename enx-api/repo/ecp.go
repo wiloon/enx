@@ -33,7 +33,14 @@ type YoudaoQueryHistory struct {
 // GetWordByEnglish get word id by english
 func GetWordByEnglish(english string) *Word {
 	word := Word{}
-	sqlitex.DB.Where("english=?", english).Find(&word)
+	sqlitex.DB.Where("english COLLATE NOCASE =?", english).Find(&word)
+	logger.Debugf("find word, id: %v, english: %s", word.Id, word.English)
+	return &word
+}
+
+func GetWordByEnglishCaseSensitive(english string) *Word {
+	word := Word{}
+	sqlitex.DB.Where("english =?", english).Order("id desc").Find(&word)
 	logger.Debugf("find word, id: %v, english: %s", word.Id, word.English)
 	return &word
 }
@@ -51,8 +58,8 @@ func GetUserWordQueryCount(wordId, userId int) (int, int) {
 
 func Translate(key string) Word {
 	sWord := Word{}
-	sqlitex.DB.Where("english=?", key).Find(&sWord)
-	logger.Debugf("find word, id: %v, english: %s", sWord.Id, key)
+	sqlitex.DB.Where("english COLLATE NOCASE = ?", key).Find(&sWord)
+	logger.Debugf("find in local db, result, id: %v, english: %s", sWord.Id, key)
 	return sWord
 }
 
@@ -80,4 +87,18 @@ func SaveYouDaoDictResponse(word, response string, exist int) {
 	yqh.Result = response
 	yqh.Exist = exist
 	sqlitex.DB.Create(&yqh)
+}
+
+func CountByEnglish(english string) int {
+    // Implement the function logic here
+    // For example, count the number of words with the given English word
+    var count int64
+    sqlitex.DB.Table("words").Where("english = ?", english).Count(&count)
+    return int(count)
+}
+
+func DeleteDuplicateWord(english string, excludeId int) {
+	// Delete duplicate words with the given English word, excluding the word with excludeId
+	sqlitex.DB.Where("english = ? AND id != ?", english, excludeId).Delete(&Word{})
+	logger.Debugf("deleted duplicate words with english: %s, excluding id: %d", english, excludeId)
 }
