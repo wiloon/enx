@@ -65,3 +65,10 @@ func TestPrefixNonEnglishChar(t *testing.T) {
         t.Errorf("test failed")
     }
 }
+func TestTheyd(t *testing.T) {
+	word:=Word{}
+	word.SetEnglish("They'd")
+	if word.English != "They'd" {
+        t.Errorf("test failed")
+    }
+}
