@@ -38,6 +38,7 @@ func (word *Word) SetEnglish(raw string) {
 		strings.Contains(raw, "'t") ||
 		strings.Contains(raw, "'ve") ||
 		strings.Contains(raw, "'m") ||
+		strings.Contains(raw, "'d") ||
 		strings.Contains(raw, "'re") {
 		// do nothing
 		english = raw
