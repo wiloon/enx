@@ -21,7 +21,7 @@ func CheckAndMigrateQueryCount(wordId int) {
 
 		// insert into user dict
 		sud := repo.UserDict{}
-		sud.UserId = 0
+		sud.UserId = 1
 		sud.UpdateTime = time.Now()
 		sud.WordId = ud.WordId
 		sud.AlreadyAcquainted = 0

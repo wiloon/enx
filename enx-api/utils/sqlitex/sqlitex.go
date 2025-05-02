@@ -41,3 +41,7 @@ func Init() {
 		zapLog.Error("failed to init db: ", dbPath)
 	}
 }
+
+func GetDB() *gorm.DB {
+	return DB
+}

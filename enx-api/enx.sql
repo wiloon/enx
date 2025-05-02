@@ -15,11 +15,18 @@ CREATE TABLE `tbl_log` (
   `message` varchar(256) DEFAULT NULL,
   `create_datetime` datetime DEFAULT NULL
 );
-CREATE TABLE `tbl_user` (
+
+CREATE TABLE users (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
-  `username` varchar(256) NOT NULL,
-  `password` varchar(256) NOT NULL
+  `name` varchar(256) NOT NULL,
+  `password` varchar(256) NOT NULL,
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `update_time` datetime DEFAULT NULL,
+  `last_login_time` datetime DEFAULT NULL
 );
+
+INSERT INTO users VALUES(1,'wiloon','password_1','2025-05-02 13:14:32',NULL,NULL);
+INSERT INTO users VALUES(2,'user_2','password_2','2025-05-02 13:15:32',NULL,NULL);
 
 create table words
 (
