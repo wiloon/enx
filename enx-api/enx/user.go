@@ -16,11 +16,17 @@ type User struct {
 }
 
 func (u *User) Login() bool {
-	sqlitex.DB.Where("name COLLATE NOCASE = ?", u.Name).Find(&u)
-	logger.Infof("get user by name: %+v", u)
-	if u.Id == 0 {
-		logger.Errorf("user not exist: %s", u.Name)
+	tmpUser := User{}
+	tmpUser.Name = u.Name
+	sqlitex.DB.Where("name COLLATE NOCASE = ?", u.Name).Find(&tmpUser)
+	
+	if tmpUser.Id == 0 {
+		logger.Errorf("user login, user not exist: %s", tmpUser.Name)
 		return false
+	}else{
+		u.Id = tmpUser.Id
+		u.LastLoginTime = tmpUser.LastLoginTime
 	}
+	logger.Infof("user login, user: %s, login success, user: %+v", u.Name, tmpUser)
 	return true
 } 

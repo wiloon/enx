@@ -215,12 +215,14 @@ func Login(c *gin.Context) {
 	}
 
 	if user.Login() {
+		logger.Infof("user login success, user: %+v", user)
 		c.JSON(http.StatusOK, LoginResponse{
 			Success: true,
 			Message: "登录成功",
 			User:    user,
 		})
 	} else {
+		logger.Errorf("user login failed, user: %+v", user)
 		c.JSON(http.StatusUnauthorized, LoginResponse{
 			Success: false,
 			Message: "用户名或密码错误",
