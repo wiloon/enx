@@ -1,5 +1,4 @@
 document.addEventListener('DOMContentLoaded', function() {
-    alert('popup.js loaded');
     const loginForm = document.getElementById('loginForm');
     const errorDiv = document.getElementById('error');
 
@@ -25,7 +24,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function login(username, password) {
     console.log('Attempting to log in with username:', username);
-    alert('login function called with username: ' + username);
     // 这里替换为您的实际登录 API 调用
     fetch('https://enx.wiloon.com/login', {
         method: 'POST',
@@ -58,8 +56,8 @@ function login(username, password) {
 function showLoggedInState() {
     const loginForm = document.getElementById('loginForm');
     loginForm.innerHTML = `
-        <p>已登录</p>
-        <button id="logoutBtn">退出登录</button>
+        <p>logged in</p>
+        <button id="logoutBtn">Logout</button>
     `;
     
     document.getElementById('logoutBtn').addEventListener('click', function() {
