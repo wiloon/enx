@@ -4,6 +4,7 @@
   "version": "0.0.1",
   "description": "A tool for learning English",
   "action": {
+    "default_popup": "popup.html"
   },
   "permissions": [
     "activeTab",

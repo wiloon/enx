@@ -30,3 +30,8 @@ GET http://localhost:8080/load-count?words=STOCKHOLM HTTP/1.1
 ### words count, local
 GET http://localhost:8080/words-count?words=foo%20bar HTTP/1.1
 
+### login
+POST http://localhost:8080/login HTTP/1.1
+content-type: application/json
+
+{"username": "user_2", "password": "password_2"}

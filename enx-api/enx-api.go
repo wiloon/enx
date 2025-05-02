@@ -63,6 +63,9 @@ func main() {
 	router.GET("/third-party", DoSearchThirdParty)
 	router.GET("/wrap", Wrap)
 
+	// login
+	router.POST("/login", Login)
+
 	port := viper.GetInt("enx.port")
 	listenAddress := fmt.Sprintf(":%d", port)
 	srv := &http.Server{Addr: listenAddress, Handler: router}
@@ -183,4 +186,44 @@ func Ping(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"message": "pong",
 	})
+}
+
+type LoginRequest struct {
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
+
+type LoginResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+	User    *enx.User `json:"user,omitempty"`
+}
+
+func Login(c *gin.Context) {
+	var req LoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, LoginResponse{
+			Success: false,
+			Message: "无效的请求参数",
+		})
+		return
+	}
+
+	user := &enx.User{
+		Name:     req.Username,
+		Password: req.Password,
+	}
+
+	if user.Login() {
+		c.JSON(http.StatusOK, LoginResponse{
+			Success: true,
+			Message: "登录成功",
+			User:    user,
+		})
+	} else {
+		c.JSON(http.StatusUnauthorized, LoginResponse{
+			Success: false,
+			Message: "用户名或密码错误",
+		})
+	}
 }

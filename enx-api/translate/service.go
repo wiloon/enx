@@ -42,7 +42,7 @@ func Translate(c *gin.Context) {
 		word.Save()
 
 		userDict := enx.UserDict{}
-		userDict.UserId = 0
+		userDict.UserId = 1
 		userDict.WordId = word.Id
 		userDict.AlreadyAcquainted = word.AlreadyAcquainted
 		userDict.QueryCount = 1
@@ -50,7 +50,7 @@ func Translate(c *gin.Context) {
 	} else {
 		logger.Infof("word exist in local dict: %v", raw)
 		userDict := enx.UserDict{}
-		userDict.UserId = 0
+		userDict.UserId = 1
 		userDict.WordId = word.Id
 		if userDict.IsExist() {
 			userDict.QueryCount = userDict.QueryCount + 1
