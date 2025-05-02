@@ -19,6 +19,7 @@ func (u *User) Login() bool {
 	tmpUser := User{}
 	tmpUser.Name = u.Name
 	sqlitex.DB.Where("name COLLATE NOCASE = ?", u.Name).Find(&tmpUser)
+	logger.Infof("user login, tmp user: %+v", tmpUser)
 	
 	if tmpUser.Id == 0 {
 		logger.Errorf("user login, user not exist: %s", tmpUser.Name)
