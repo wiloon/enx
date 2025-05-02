@@ -16,11 +16,7 @@ type User struct {
 }
 
 func (u *User) Login() bool {
-	tmpUser := User{}
-	tmpUser.Name = u.Name
-	sqlitex.DB.Where("name COLLATE NOCASE = ?", u.Name).Find(&tmpUser)
-	logger.Infof("user login, tmp user: %+v", tmpUser)
-	
+	tmpUser := GeUserByName(u.Name)
 	if tmpUser.Id == 0 {
 		logger.Errorf("user login, user not exist: %s", tmpUser.Name)
 		return false
@@ -30,4 +26,11 @@ func (u *User) Login() bool {
 	}
 	logger.Infof("user login, user: %s, login success, user: %+v", u.Name, tmpUser)
 	return true
-} 
+}
+
+func GeUserByName(name string) *User {
+	user := User{}
+	sqlitex.DB.Where("name=?", name).Find(&user)
+	logger.Debugf("find user, name: %s, obj: %+v", name, user)
+	return &user
+}
