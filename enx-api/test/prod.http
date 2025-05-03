@@ -1,5 +1,8 @@
+
+@address=enx.wiloon.com
+
 ### ping
-GET https://enx.wiloon.com/ping HTTP/1.1
+GET https://{{address}}/ping HTTP/1.1
 
 
 ### words-count
@@ -56,3 +59,6 @@ GET http://localhost:8080/words-count?words=foo%20bar HTTP/1.1
 
 ### paragraph init
 GET https://enx.wiloon.com/paragraph-init?paragraph=foo%20On HTTP/1.1
+
+### words-count
+GET https://enx.wiloon.com/paragraph-init?paragraph=Google HTTP/1.1

@@ -241,12 +241,19 @@ async function injectEnxWindow() {
         let key = document.getElementById("enx-e").innerText
         console.log("mark: ", key)
 
-        // mark word as acquainted
-        chrome.runtime.sendMessage({
-            msgType: "markAcquainted", word: key
-        }).then((data) => {
-            console.log("mark response: ", data)
-            updateUnderLine(data.ecp)
+        // 获取用户 ID
+        chrome.storage.local.get(['userId'], function(result) {
+            const userId = result.userId || 1;
+
+            // mark word as acquainted
+            chrome.runtime.sendMessage({
+                msgType: "markAcquainted", 
+                word: key,
+                userId: userId
+            }).then((data) => {
+                console.log("mark response: ", data)
+                updateUnderLine(data.ecp)
+            });
         });
     };
     console.log("html added")
@@ -342,14 +349,23 @@ window.addEventListener("message", function (event) {
 // noinspection JSUnresolvedReference
 chrome.runtime.onMessage.addListener(
     function (request, sender, sendResponse) {
-        console.log("on message")
+        console.log("extension click listener, on message, greeting: ", request.greeting)
         console.log('sender tab: ', sender.tab)
         // console.log("sender tab url: ", sender.tab.url)
-        console.log("request: ", request)
         if (request.greeting === "mark") {
             enxRun()
             sendResponse({ farewell: "ok" });
         }
     });
+
+// 添加消息监听器
+chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+    console.log("content script received message:", request);
+    if (request.action === "enxRun") {
+        enxRun();
+        sendResponse({success: true});
+    }
+    return true;
+});
 
 injectEnxWindow().then()

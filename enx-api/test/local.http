@@ -1,3 +1,6 @@
+
+@address=localhost:8080
+
 ### words-count
 
 GET http://localhost:8080/words-count?words=We’ HTTP/1.1
@@ -35,3 +38,6 @@ POST http://localhost:8080/login HTTP/1.1
 content-type: application/json
 
 {"username": "user_2", "password": "password_2"}
+
+### paragraph init: Google
+GET http://{{address}}/paragraph-init?paragraph=Google HTTP/1.1

@@ -19,7 +19,7 @@ type Word struct {
 type UserDict struct {
 	WordId            int
 	QueryCount        int
-	UserId            int
+	UserId            int `json:"user_id" gorm:"default:1"`
 	AlreadyAcquainted int
 	UpdateTime        time.Time
 }

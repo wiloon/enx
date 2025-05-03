@@ -2,10 +2,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const loginForm = document.getElementById('loginForm');
     const errorDiv = document.getElementById('error');
 
-    // 检查是否已经登录
+    // Check if already logged in
     chrome.storage.local.get(['isLoggedIn'], function(result) {
         if (result.isLoggedIn) {
-            // 如果已登录，显示已登录状态
+            // If logged in, show logged in state
             showLoggedInState();
         }
     });
@@ -16,15 +16,13 @@ document.addEventListener('DOMContentLoaded', function() {
         const username = document.getElementById('username').value;
         const password = document.getElementById('password').value;
 
-        // 这里添加实际的登录逻辑
-        // 示例：调用您的登录 API
+        // Add actual login logic here
         login(username, password);
     });
 });
 
 function login(username, password) {
-    console.log('Attempting to log in with username:', username);
-    // 这里替换为您的实际登录 API 调用
+    // Replace with your actual login API call
     fetch('https://enx.wiloon.com/login', {
         method: 'POST',
         headers: {
@@ -38,17 +36,17 @@ function login(username, password) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            // 登录成功
+            // Login successful
             chrome.storage.local.set({isLoggedIn: true, username: username}, function() {
                 showLoggedInState();
             });
         } else {
-            // 登录失败
-            showError(data.message || '登录失败，请重试');
+            // Login failed
+            showError(data.message || 'Login failed, please try again');
         }
     })
     .catch(error => {
-        showError('登录过程中发生错误');
+        showError('An error occurred during login');
         console.error('Error:', error);
     });
 }
@@ -56,8 +54,11 @@ function login(username, password) {
 function showLoggedInState() {
     const loginForm = document.getElementById('loginForm');
     loginForm.innerHTML = `
-        <p>logged in</p>
-        <button id="logoutBtn">Logout</button>
+        <div class="logged-in-container">
+            <p>Logged In</p>
+            <button id="enxRunBtn" class="enx-run-btn">Run Enx</button>
+            <button id="logoutBtn">Logout</button>
+        </div>
     `;
     
     document.getElementById('logoutBtn').addEventListener('click', function() {
@@ -65,10 +66,45 @@ function showLoggedInState() {
             location.reload();
         });
     });
+
+    document.getElementById('enxRunBtn').addEventListener('click', function() {
+        enxRun();
+    });
+}
+
+function enxRun() {
+    // Get current tab
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+        const currentTab = tabs[0];
+        
+        // Check if current page is in supported sites list
+        const supportedSites = [
+            'https://www.bbc.com',
+            'https://www.infoq.com',
+            'https://novel.tingroom.com',
+            'https://messaging-custom-newsletters.nytimes.com'
+        ];
+        
+        const isSupported = supportedSites.some(site => currentTab.url.startsWith(site));
+        
+        if (isSupported) {
+            // Send message to content script
+            chrome.tabs.sendMessage(currentTab.id, {action: "enxRun"}, function(response) {
+                if (chrome.runtime.lastError) {
+                    console.error(chrome.runtime.lastError);
+                    showError('Failed to run: ' + chrome.runtime.lastError.message);
+                } else {
+                    console.log('Enx running successfully');
+                }
+            });
+        } else {
+            showError('Enx is not supported on this page');
+        }
+    });
 }
 
 function showError(message) {
     const errorDiv = document.getElementById('error');
     errorDiv.textContent = message;
     errorDiv.style.display = 'block';
-} 
+}
