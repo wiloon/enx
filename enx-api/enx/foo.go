@@ -6,9 +6,9 @@ import (
 	"strings"
 )
 
-func QueryCountInText(paragraph string) map[string]Word {
+func QueryCountInText(paragraph string, userId int) map[string]Word {
 	words := paragraph
-	logger.Debug("query count, paragraph: ", words)
+	logger.Debugf("query count, paragraph: %s, user_id: %d", words, userId)
 
 	// replace multiple space with one space
 	spaceRegex := regexp.MustCompile(`\s+`)
@@ -41,6 +41,7 @@ func QueryCountInText(paragraph string) map[string]Word {
 		} else {
 			ud := UserDict{}
 			ud.WordId = wordObj.Id
+			ud.UserId = userId  // 设置用户 ID
 			if ud.IsExist() {
 				wordObj.LoadCount = ud.QueryCount
 				wordObj.AlreadyAcquainted = ud.AlreadyAcquainted

@@ -86,11 +86,21 @@ async function enxServerGetOne(word) {
 }
 
 // mark word as acquainted
-async function markWord(key) {
+async function markWord(key, userId) {
     let url = 'https://enx.wiloon.com/mark'
     console.log("calling enx server, url: ", url)
-    let postBody = {"English": key}
-    const response = await fetch(url, {method: "POST", body: JSON.stringify(postBody)});
+    let postBody = {
+        "English": key,
+        "userId": userId
+    }
+    const response = await fetch(url, {
+        method: "POST", 
+        headers: {
+            "Content-Type": "application/json",
+            "X-User-ID": userId.toString()
+        },
+        body: JSON.stringify(postBody)
+    });
     console.log("enx server response: ", response)
     const json = await response.json();
     console.log("enx server response json: ", json)
@@ -99,39 +109,42 @@ async function markWord(key) {
 
 // listen msg from content script
 chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
-        let msgType = request.msgType
-        console.log("message listener, new msg: ", request, ", msg type: ", msgType)
-        console.log(sender.tab ?
-            "from content script:" + sender.tab.url :
-            "from the extension");
+    let msgType = request.msgType
+    console.log("message listener, new msg: ", request, ", msg type: ", msgType)
+    console.log(sender.tab ?
+        "from content script:" + sender.tab.url :
+        "from the extension");
 
-        if (msgType === "getWords") {
-            console.log("backend received msg, type: ", msgType)
-            let words = request.words
+    if (msgType === "getWords") {
+        console.log("backend received msg, type: ", msgType)
+        let words = request.words
 
-            enxServerFoo(words).then(result => {
-                console.log("listener response")
-                console.log(result.data)
-                sendResponse({wordProperties: result.data});
-            })
-        } else if (msgType === "getOneWord") {
-            let word = request.word
-            console.log("backend received msg, type: ", msgType, ", word: ", word)
-            // send msg to enx server and get chinese
-            enxServerGetOne(word).then(result => {
-                console.log("listener response: ", Date.now())
-                console.log(result)
-                sendResponse({ecp: result});
-            })
-        } else if (msgType === 'markAcquainted') {
-            // mark word as acquainted
-            let key = request.word
-            console.log("mark word as acquainted, key: ", key)
-            markWord(key).then(result => {
-                console.log("mark word response: ", result)
-                sendResponse({ecp: result});
-            })
-        }
-        return true;
+        enxServerFoo(words).then(result => {
+            console.log("listener response")
+            console.log(result.data)
+            sendResponse({wordProperties: result.data});
+        })
+    } else if (msgType === "getOneWord") {
+        let word = request.word
+        console.log("backend received msg, type: ", msgType, ", word: ", word)
+        // send msg to enx server and get chinese
+        enxServerGetOne(word).then(result => {
+            console.log("listener response: ", Date.now())
+            console.log(result)
+            sendResponse({ecp: result});
+        })
+    } else if (msgType === 'markAcquainted') {
+        // mark word as acquainted
+        let key = request.word
+
+        // default user id is 1
+        let userId = request.userId || 1
+        console.log("mark word as acquainted, key: ", key, ", userId: ", userId)
+        
+        markWord(key, userId).then(result => {
+            console.log("mark word response: ", result)
+            sendResponse({ecp: result});
+        })
     }
-);
+    return true;
+});

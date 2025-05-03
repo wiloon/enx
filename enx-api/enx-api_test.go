@@ -23,7 +23,7 @@ var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z ]+`)
 
 func TestWordsCount(t *testing.T) {
 	words := "Watches from Switzerland are popular. Now, many people also buy secondhand Swiss watches. According to a study, the secondhand watch business is now worth almost 20 billion Swiss francs. It could reach 35 billion francs by 2030."
-	enx.QueryCountInText(words)
+	enx.QueryCountInText(words,1)
 }
 
 func Test0(t *testing.T) {

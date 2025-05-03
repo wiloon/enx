@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -55,10 +56,8 @@ func main() {
 
 	// translate
 	router.GET("/translate", translate.Translate)
-
 	router.GET("/load-count", wordCount.LoadCount)
 	router.POST("/mark", MarkWord)
-
 	router.GET("/do-search", DoSearch)
 	router.GET("/third-party", DoSearchThirdParty)
 	router.GET("/wrap", Wrap)
@@ -175,8 +174,17 @@ func MarkWord(c *gin.Context) {
 	word.Key = strings.ToLower(word.English)
 	word.Translate()
 
+	// 从请求头或 cookie 中获取用户 ID
+	userId := 1 // 默认值
+	if userIdStr := c.GetHeader("X-User-ID"); userIdStr != "" {
+		if id, err := strconv.Atoi(userIdStr); err == nil {
+			userId = id
+		}
+	}
+
 	ud := enx.UserDict{}
 	ud.WordId = word.Id
+	ud.UserId = userId // 设置用户 ID
 	ud.Mark()
 	word.FindQueryCount()
 	c.JSON(200, word)

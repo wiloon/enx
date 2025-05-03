@@ -8,7 +8,7 @@ import (
 )
 
 type UserDict struct {
-	UserId     int
+	UserId     int `json:"user_id" gorm:"default:1"`
 	WordId     int
 	QueryCount int
 	// 0: false, 1: true
