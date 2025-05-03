@@ -66,7 +66,6 @@ func (word *Word) SetEnglish(raw string) {
 // count by english
 func (word *Word) CountByEnglish() int {
 	count := repo.CountByEnglish(word.English)
-	logger.Debugf("count by english, word: %s, count: %d", word.English, count)
 	return count
 }
 func (word *Word) FindId() {
@@ -127,9 +126,9 @@ func (word *Word) Translate() *Word {
 }
 
 func (word *Word) RemoveDuplicateWord() {
-	// count by english field
+	// count by english
 	count := repo.CountByEnglish(word.English)
-	logger.Debugf("count by english, word: %s, count: %d", word.English, count)
+	
 	if count > 1 {
 		// delete duplicate word
 		tmp_word := repo.GetWordByEnglishCaseSensitive(word.English)
