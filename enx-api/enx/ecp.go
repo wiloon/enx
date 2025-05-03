@@ -98,9 +98,10 @@ func (word *Word) SetEnglishField(english string) {
 	}
 	logger.Infof("set english, raw: %s, english: %s, key: %s", word.Raw, word.English, word.Key)
 }
-func (word *Word) FindQueryCount() int {
-	qc, acquainted := repo.GetUserWordQueryCount(word.Id, 0)
-	logger.Debugf("find query count, word id: %d, word: %s, query count: %d", word.Id, word.English, qc)
+func (word *Word) FindQueryCount(userId int) int {
+	qc, acquainted := repo.GetUserWordQueryCount(word.Id, userId)
+	logger.Debugf("find query count, word id: %d, word: %s, user_id: %d, query count: %d", 
+		word.Id, word.English, userId, qc)
 	word.LoadCount = qc
 	word.AlreadyAcquainted = acquainted
 	return qc
