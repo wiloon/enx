@@ -1,16 +1,25 @@
 function generateUUID() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-        const r = (Math.random() * 16) | 0;
-        const v = c === 'x' ? r : (r & 0x3) | 0x8;
-        return v.toString(16);
-    });
+    // Use crypto.getRandomValues to generate more secure random numbers
+    const array = new Uint8Array(16);
+    crypto.getRandomValues(array);
+    
+    // Set version number (4)
+    array[6] = (array[6] & 0x0f) | 0x40;
+    // Set variant (RFC4122)
+    array[8] = (array[8] & 0x3f) | 0x80;
+    
+    // Convert to UUID format
+    return Array.from(array)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('')
+        .replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5');
 }
 
 class ArticleNode {
     constructor(node, paragraph) {
-        this.node = node
-        this.paragraph = paragraph
         this.id = generateUUID()
+        this.node = node
+        this.paragraph = paragraph.trim()
     }
 }
 
@@ -36,16 +45,25 @@ export function findChildNodes(parentNode) {
     let index = 1
     let textContent = '';
     
+
+    let isParagraph = false
+    if (parentNode.tagName.toUpperCase() === "P") {
+        isParagraph = true
+    }
+
+    let childNodeTextContent = ""
     childNodes.forEach(function (tmpNode) {
+        textContent = textContent + childNodeTextContent
+        childNodeTextContent = ""
+
         let tmpNodeType = tmpNode.nodeType
         let tmpNodeTagName = tmpNode.tagName
         let tmpNodeId = tmpNode.id
         // index string x/y
         let indexString = index + "/" + childNodeCount
         console.log("child node:", indexString, ", type:", tmpNodeType, ", tag:", tmpNodeTagName, "id:", tmpNodeId)
-        
-        
 
+        
         if (tmpNodeType === 1) {
             if (tmpNodeTagName.toUpperCase() === "P" ||
                 tmpNodeTagName.toUpperCase() === "H2" ||
@@ -60,26 +78,33 @@ export function findChildNodes(parentNode) {
                 tmpNodeTagName.toUpperCase() === "EM" ||
                 tmpNodeTagName.toUpperCase() === "DIV") {
                 let tmp_node_list = findChildNodes(tmpNode)
+                console.log("child node list length: ", tmp_node_list.length, "is paragraph: ", isParagraph)
                 if (tmp_node_list.length > 0) {
-                    nodeList = nodeList.concat(tmp_node_list)
+                    // Special handling for P tag
+                    if (isParagraph) {
+                        tmp_node_list.forEach(node => {
+                            childNodeTextContent += node.paragraph + ' '
+                        })
+                    } else {
+                        nodeList = nodeList.concat(tmp_node_list)
+                    }
                     console.log("merged node list length: ", nodeList.length)
                 }
             } else {
                 console.log("ignore tag:", tmpNodeTagName)
             }
         } else if (tmpNodeType === 3) {
-            if (tmpNode.textContent.trim() === "") {
+            let trimmedText = tmpNode.textContent.trim()
+            if (trimmedText === "" || !/[a-zA-Z]/.test(trimmedText)) {
                 console.log("text node empty, ignore")
-
             } else {
-                
-                textContent += tmpNode.textContent.trim() + ' ';
+                textContent += trimmedText + ' ';
                 const match = textContent.match(chineseCharRegex)
                 let index_chinese = -1
                 if (match) {
                     index_chinese = match.index
                 }
-                console.log("text node content length:", textContent.length, "chinese index:", index_chinese)
+                console.log("text node content length:", textContent.length, "content:", textContent, "chinese index:", index_chinese)
             
                 if (index_chinese > 0) {
                     textContent = textContent.slice(0, index_chinese)
@@ -89,14 +114,12 @@ export function findChildNodes(parentNode) {
         } else {
             console.log("node type not Node.ELEMENT_NODE===1, node type:", tmpNodeType)
         }
-
-        
         index++
     });
-
+    textContent += childNodeTextContent
     if (textContent.length > 0) {
-        console.log("found one paragraph:", textContent)
         let tmp_node = new ArticleNode(parentNode, textContent)
+        console.log("found one paragraph id:", tmp_node.id, "content:", textContent)
         nodeList.push(tmp_node)
     }
     console.log("return node count: ", nodeList.length)
@@ -122,47 +145,75 @@ export function renderInnerHtml(tmpInnerHtml, wordDict) {
         let oneCharacter = tmpInnerHtml.charAt(index)
         console.log("index:", index, "one character:", oneCharacter, "start:", wordIndexStart, "end ", wordIndexEnd, "html tag:", htmlTag, "tag name:", tagName)
 
+        // Check for HTML entity
+        if (oneCharacter === "&") {
+            if (wordIndexStart !== undefined && wordIndexEnd === undefined) {
+                wordIndexEnd = index
+                console.log("word end index:", wordIndexEnd)
+                let result = collectEnglishWord(tmpInnerHtml, wordIndexStart, wordIndexEnd, copyIndex, newInnerHtml, wordDict)
+                newInnerHtml = result.newInnerHtml
+                copyIndex = result.copyIndex
+                wordIndexStart = result.wordIndexStart
+                wordIndexEnd = result.wordIndexEnd
+            }
+            
+            let entityEnd = tmpInnerHtml.indexOf(";", index)
+            if (entityEnd !== -1) {
+                // Found a complete HTML entity, copy it as is
+                newInnerHtml = newInnerHtml + tmpInnerHtml.slice(copyIndex, entityEnd + 1)
+                copyIndex = entityEnd + 1
+                index = entityEnd
+                wordIndexStart = undefined
+                wordIndexEnd = undefined
+                index++
+                continue
+            }
+        }
+
+        // Handle HTML tags
+        if (oneCharacter === "<") {
+            if (wordIndexStart !== undefined && wordIndexEnd === undefined) {
+                wordIndexEnd = index
+                console.log("word end index:", wordIndexEnd)
+                let result = collectEnglishWord(tmpInnerHtml, wordIndexStart, wordIndexEnd, copyIndex, newInnerHtml, wordDict)
+                newInnerHtml = result.newInnerHtml
+                copyIndex = result.copyIndex
+                wordIndexStart = result.wordIndexStart
+                wordIndexEnd = result.wordIndexEnd
+            }
+            
+            let htmlTagEnd = tmpInnerHtml.indexOf(">", index)
+            if (htmlTagEnd !== -1) {
+                // Preserve spaces before HTML tags
+                newInnerHtml = newInnerHtml + tmpInnerHtml.slice(copyIndex, htmlTagEnd + 1)
+                index = htmlTagEnd + 1
+                copyIndex = htmlTagEnd + 1
+                wordIndexStart = undefined
+                wordIndexEnd = undefined
+                continue
+            }
+        }
+
+        // Only process word characters when not in an HTML tag
         var oneCharacterCode = oneCharacter.charCodeAt();
         // 0-9, A-Z, a-z
         // 48-57, 65-90, 97-122
         if ((oneCharacterCode >= 48 && oneCharacterCode <= 57) || (oneCharacterCode >= 65 && oneCharacterCode <= 90) || (oneCharacterCode >= 97 && oneCharacterCode <= 122)) {
             // check if word start
-            if (htmlTag === false && wordIndexStart === undefined) {
+            if (wordIndexStart === undefined) {
                 wordIndexStart = index
                 console.log("word start index:", wordIndexStart)
             }
         } else if (oneCharacter === "-" || oneCharacter === "'" || oneCharacter === "\u2019") {
-            // do nothing
+            // do nothing, allow these characters within words
         } else {
-            // none english character
-            if (htmlTag === false && wordIndexStart !== undefined && wordIndexEnd === undefined) {
+            // non-english character
+            if (wordIndexStart !== undefined && wordIndexEnd === undefined) {
                 wordIndexEnd = index
                 console.log("word end index:", wordIndexEnd)
             }
-
-            if (tagName === undefined) {
-                if (oneCharacter === "<") {
-                    htmlTag = true
-                    tagIndexStart = index + 1
-                    console.log("html tag:", htmlTag)
-                }
-                if (htmlTag === true && (oneCharacter === " " || oneCharacter === ">")) {
-                    tagName = tmpInnerHtml.slice(tagIndexStart, index)
-
-                    // comment tag has special close rule
-                    if (tagName === "!--") {
-                        tagName = "--"
-                    }
-                    console.log("html tag name:", tagName)
-                }
-            } else {
-                console.log("check if html tag close:", tmpInnerHtml.slice(index - tagName.length, index + 1))
-                if (oneCharacter === ">" && tmpInnerHtml.slice(index - tagName.length, index + 1) === tagName + ">") {
-                    htmlTag = false
-                    tagName = undefined
-                }
-            }
         }
+
         index = index + 1
 
         if (wordIndexStart === undefined || wordIndexEnd === undefined) {
@@ -170,42 +221,52 @@ export function renderInnerHtml(tmpInnerHtml, wordDict) {
         }
 
         // found one word
-        let tmpWord = tmpInnerHtml.slice(wordIndexStart, wordIndexEnd)
-
-        console.log("found one word:", tmpWord)
-        if (tmpWord in wordDict) {
-            let ecp = wordDict[tmpWord]
-            console.log("word: ", tmpWord, "ecp: ", ecp)
-
-            let startTag = ''
-            if (ecp.WordType ===1) {
-                startTag = '<u alt="alt-foo" class="class-foo" style="text-decoration: #000000 underline; text-decoration-thickness: 2px;">'
-            }else{
-                startTag = '<u alt="alt-foo" onclick="popEnxDialogBox(event)" class="class-foo" style="text-decoration: #000000 underline; text-decoration-thickness: 2px;">'
-            }
-
-            let colorCode = getColorCodeByCount(ecp)
-            startTag = startTag.replace("#000000", colorCode);
-            startTag = startTag.replace("class-foo", "enx-" + ecp.Key);
-            startTag = startTag.replace("alt-foo", ecp.English);
-            newInnerHtml = newInnerHtml + tmpInnerHtml.slice(copyIndex, wordIndexStart)
-            newInnerHtml = newInnerHtml + startTag + tmpWord + '</u>'
-            console.log("new inner html 0:", newInnerHtml)
-            copyIndex = wordIndexEnd
-            wordIndexStart = undefined
-            wordIndexEnd = undefined
-        } else {
-            console.log("word no translation:", tmpWord)
-            newInnerHtml = newInnerHtml + tmpInnerHtml.slice(copyIndex, wordIndexStart)
-            newInnerHtml = newInnerHtml + tmpWord
-            console.log("new inner html 1:", newInnerHtml)
-            copyIndex = wordIndexEnd
-            wordIndexStart = undefined
-            wordIndexEnd = undefined
-        }
+        let result = collectEnglishWord(tmpInnerHtml, wordIndexStart, wordIndexEnd, copyIndex, newInnerHtml, wordDict)
+        newInnerHtml = result.newInnerHtml
+        copyIndex = result.copyIndex
+        wordIndexStart = result.wordIndexStart
+        wordIndexEnd = result.wordIndexEnd
+        console.log("new inner html:", newInnerHtml, "copy index:", copyIndex, "word index start:", wordIndexStart, "word index end:", wordIndexEnd)
     }
     newInnerHtml = newInnerHtml + tmpInnerHtml.slice(copyIndex)
     return newInnerHtml
+}
+
+function collectEnglishWord(tmpInnerHtml, wordIndexStart, wordIndexEnd, copyIndex, newInnerHtml, wordDict) {
+    let tmpWord = tmpInnerHtml.slice(wordIndexStart, wordIndexEnd);
+
+    console.log("found one word:", tmpWord);
+    if (tmpWord in wordDict) {
+        let ecp = wordDict[tmpWord];
+        console.log("word: ", tmpWord, "ecp: ", ecp);
+
+        let startTag = '';
+        if (ecp.WordType === 1) {
+            startTag = '<u alt="alt-foo" class="class-foo" style="text-decoration: #000000 underline; text-decoration-thickness: 2px;">';
+        } else {
+            startTag = '<u alt="alt-foo" onclick="popEnxDialogBox(event)" class="class-foo" style="text-decoration: #000000 underline; text-decoration-thickness: 2px;">';
+        }
+
+        let colorCode = getColorCodeByCount(ecp);
+        startTag = startTag.replace("#000000", colorCode);
+        startTag = startTag.replace("class-foo", "enx-" + ecp.Key);
+        startTag = startTag.replace("alt-foo", ecp.English);
+        newInnerHtml = newInnerHtml + tmpInnerHtml.slice(copyIndex, wordIndexStart);
+        newInnerHtml = newInnerHtml + startTag + tmpWord + '</u>';
+        console.log("new inner html 0:", newInnerHtml);
+        copyIndex = wordIndexEnd;
+        wordIndexStart = undefined;
+        wordIndexEnd = undefined;
+    } else {
+        console.log("word no translation:", tmpWord);
+        newInnerHtml = newInnerHtml + tmpInnerHtml.slice(copyIndex, wordIndexStart);
+        newInnerHtml = newInnerHtml + tmpWord;
+        console.log("new inner html 1:", newInnerHtml);
+        copyIndex = wordIndexEnd;
+        wordIndexStart = undefined;
+        wordIndexEnd = undefined;
+    }
+    return {"newInnerHtml": newInnerHtml, "copyIndex": copyIndex, "wordIndexStart": wordIndexStart, "wordIndexEnd": wordIndexEnd}
 }
 
 export function getColorCodeByCount(ecp) {
@@ -223,3 +284,4 @@ export function getColorCodeByCount(ecp) {
         return "#9C27B0"
     }
 }
+

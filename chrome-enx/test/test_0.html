@@ -1,77 +1,22 @@
-<!DOCTYPE html>
-<html>
-
-<head>
-    <meta charset="utf-8">
-    <!--css-->
-    <style>
-        body {
-            background-color: powderblue;
-        }
-    </style>
-    <!--javascript-->
-    <script src="path/to/foo.js"></script>
-    <script type="text/javascript">
-        var myVar = "hello";
-        function showAlert() { alert('You triggered an alert!'); }
-
-        function func0() {
-            console.log('func0')
-            var outerDiv = document.getElementById('div_0');
-
-            // 获取最外层 div 元素的内容
-            var outerDivContent = outerDiv.childNodes;
-
-            // 过滤出文本节点
-            var textContent = '';
-            outerDivContent.forEach(function (node) {
-                if (node.nodeType === Node.TEXT_NODE) {
-                    textContent += node.textContent.trim() + '\n';
-                }
-            });
-
-            // 输出结果
-            console.log(textContent.trim());
-        }
-        window.onload = function () {
-            console.log('window.onload')
-        }
-    </script>
-    <!--css-->
-    <link rel="stylesheet" type="text/css" href="foo.css">
-</head>
-
-<body>
-    body0
-    <button>button0</button>
-    <div>
-        text_0
-        <div>
-            text_1
-        </div>
-        text_2
+<article>
+    <p id="p_Vector">vector databases are critical for applications <a href="https://foo.com/bar">link0 link1</a>. Ortensi writes:</p>
+    <p id="p_0">
+        <span>Musk has also developed an artificial intelligence tool to comb through the 100,000-plus pages of the
+            Code of Federal Regulations and identify rules that are either outdated or legally vulnerable.</span>
+    </p>
+    <div id="div_0">
+        <table>
+            <tbody>
+                <tr>
+                    <td>
+                        <ul>
+                            <li><span>Dozens of Environmental Protection Agency rules designed to curb climate
+                                    change and chemical pollution in air, water and wetlands.</span></li>
+                        </ul>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
     </div>
-    <article>
-        <p id="p_Vector">vector databases are critical for applications <a href="https://foo.com/bar">link0 link1</a>. Ortensi writes:</p>
-        <p id="p_0">
-            <span>Musk has also developed an artificial intelligence tool to comb through the 100,000-plus pages of the
-                Code of Federal Regulations and identify rules that are either outdated or legally vulnerable.</span>
-        </p>
-        <div id="div_0">
-            <table>
-                <tbody>
-                    <tr>
-                        <td>
-                            <ul>
-                                <li><span>Dozens of Environmental Protection Agency rules designed to curb climate
-                                        change and chemical pollution in air, water and wetlands.</span></li>
-                            </ul>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </article>
-</body>
-
-</html>
+    <p id="em-test">Google emphasizes that Ironwood is designed to power what they call the &quot;<em>age of inference</em>,&quot; marking a shift from responsive AI models to proactive models that generate insights and interpretations. The company states that AI agents will use Ironwood to retrieve and generate data, delivering insights and answers.</p>
+</article>
