@@ -186,7 +186,7 @@ func MarkWord(c *gin.Context) {
 	ud.WordId = word.Id
 	ud.UserId = userId // 设置用户 ID
 	ud.Mark()
-	word.FindQueryCount()
+	word.FindQueryCount(userId) // 传递 user_id
 	c.JSON(200, word)
 }
 

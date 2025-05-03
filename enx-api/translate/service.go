@@ -71,7 +71,7 @@ func Translate(c *gin.Context) {
 			userDict.Save()
 		}
 	}
-	word.FindQueryCount()
+	word.FindQueryCount(userIdInt)
 	logger.Debugf("translate result: %+v", word)
 	c.JSON(200, word)
 }
