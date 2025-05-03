@@ -7,12 +7,19 @@ import (
 
 	"strings"
 	"github.com/gin-gonic/gin"
+	"strconv"
 )
 
 // search db by english, return chinese and pronunciation
 func Translate(c *gin.Context) {
 	raw := c.Query("word")
-	logger.Debugf("translate word: %s", raw)
+	userId := c.GetHeader("X-User-ID")
+	if userId == "" {
+		userId = "1" // 默认使用用户 ID 1
+	}
+	userIdInt, _ := strconv.Atoi(userId)
+	
+	logger.Debugf("translate word: %s, user_id: %d", raw, userIdInt)
 
 	// do not save sentence into DB
 	if strings.Contains(raw, " ") {
@@ -42,7 +49,7 @@ func Translate(c *gin.Context) {
 		word.Save()
 
 		userDict := enx.UserDict{}
-		userDict.UserId = 1
+		userDict.UserId = userIdInt
 		userDict.WordId = word.Id
 		userDict.AlreadyAcquainted = word.AlreadyAcquainted
 		userDict.QueryCount = 1
@@ -50,7 +57,7 @@ func Translate(c *gin.Context) {
 	} else {
 		logger.Infof("word exist in local dict: %v", raw)
 		userDict := enx.UserDict{}
-		userDict.UserId = 1
+		userDict.UserId = userIdInt
 		userDict.WordId = word.Id
 		if userDict.IsExist() {
 			userDict.QueryCount = userDict.QueryCount + 1

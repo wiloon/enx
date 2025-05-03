@@ -111,16 +111,36 @@ func (word *Word) FindLoadCountById() int {
 	logger.Debugf("find one load count, word: %+v", word)
 	return word.LoadCount
 }
+
 func (word *Word) Translate() *Word {
 	// tmp function, remove duplicate word
 	word.RemoveDuplicateWord()
 	// search word in db by English, e.g. French
 	// do not search db with lower case, since youdao api is case sensitive
-	sWord := repo.Translate(word.English)
+
+	// default user id 1
+	defaultUserId := 1
+	sWord := repo.Translate(word.English, defaultUserId)
 	word.Id = sWord.Id
 	word.Chinese = sWord.Chinese
-	word.LoadCount = sWord.LoadCount
 	word.Pronunciation = sWord.Pronunciation
+
+	word.LoadCount = sWord.LoadCount
+	if sWord.Id != 0 {
+		// 查询 user_dicts 表
+		sud := UserDict{}
+		sqlitex.DB.Table("user_dicts").
+			Where("word_id=? and user_id=?", sWord.Id, defaultUserId).Scan(&sud)
+		if sud.WordId != 0 {
+			word.LoadCount = sud.QueryCount
+			if sud.UserId ==1{
+				if sWord.LoadCount > 0 && sWord.LoadCount>sud.QueryCount{
+					word.LoadCount = sud.QueryCount
+				}
+			}
+		}
+	}
+
 	logger.Infof("word translate result, id: %v, english: %s", sWord.Id, word.Key)
 	return word
 }
