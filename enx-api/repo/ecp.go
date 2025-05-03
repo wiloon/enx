@@ -19,6 +19,7 @@ type Word struct {
 type UserDict struct {
 	WordId            int
 	QueryCount        int
+	// default user id is 1
 	UserId            int `json:"user_id" gorm:"default:1"`
 	AlreadyAcquainted int
 	UpdateTime        time.Time
@@ -56,10 +57,10 @@ func GetUserWordQueryCount(wordId, userId int) (int, int) {
 	return sud.QueryCount, sud.AlreadyAcquainted
 }
 
-func Translate(key string) Word {
+func Translate(key string, userId int) Word {
 	sWord := Word{}
-	sqlitex.DB.Where("english COLLATE NOCASE = ?", key).Find(&sWord)
-	logger.Debugf("find in local db, result, id: %v, english: %s", sWord.Id, key)
+	sqlitex.DB.Where("english COLLATE NOCASE = ?", key).Find(&sWord)	
+	logger.Debugf("find in local db, result, id: %v, english: %s, user_id: %d", sWord.Id, key, userId)
 	return sWord
 }
 
