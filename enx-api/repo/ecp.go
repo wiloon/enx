@@ -90,11 +90,11 @@ func SaveYouDaoDictResponse(word, response string, exist int) {
 }
 
 func CountByEnglish(english string) int {
-    // Implement the function logic here
-    // For example, count the number of words with the given English word
-    var count int64
-    sqlitex.DB.Table("words").Where("english = ?", english).Count(&count)
-    return int(count)
+	// Count the number of words with the given English word, case insensitive
+	var count int64
+	sqlitex.DB.Table("words").Where("english COLLATE NOCASE = ?", english).Count(&count)
+	logger.Debugf("count by english, word: %s, count: %v", english, count)
+	return int(count)
 }
 
 func DeleteDuplicateWord(english string, excludeId int) {
