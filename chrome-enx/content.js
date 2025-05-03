@@ -184,7 +184,7 @@ function enxRun() {
                         console.log("sending msg from content script to backend, node id:", tmpNode.id, "paragraph length<=5000:", tmpParagraph.length, "paragraph:", tmpParagraph)
                         let response = await chrome.runtime.sendMessage({ msgType: "getWords", words: tmpParagraph });
                         wordDict = Object.assign({}, wordDict, response.wordProperties);
-                        console.log("word dict, node id:", tmpNode.id, " size:", Object.keys(wordDict).length)
+                        console.log("paragraph init response, node id:", tmpNode.id, " size:", Object.keys(wordDict).length, "word dict", wordDict)
                     }
 
                     let newInnerHtml = contentModule.renderInnerHtml(tmpInnerHtml, wordDict)
