@@ -12,6 +12,7 @@ const infoq_url = 'https://www.infoq.com'
 const novel_ting_room = 'https://novel.tingroom.com'
 const site_bbc = 'https://www.bbc.com'
 const site_nytimes = 'https://messaging-custom-newsletters.nytimes.com'
+const blog_url = 'https://blog.wiloon.com'
 
 // When the user clicks on the extension action
 chrome.action.onClicked.addListener(async (tab) => {
@@ -19,6 +20,7 @@ chrome.action.onClicked.addListener(async (tab) => {
     if (tab.url.startsWith(infoq_url) ||
         tab.url.startsWith(novel_ting_room) ||
         tab.url.startsWith(site_nytimes) ||
+        tab.url.startsWith(blog_url) ||
         tab.url.startsWith(site_bbc)) {
         // We retrieve the action badge to check if the extension is 'ON' or 'OFF'
         const prevState = await chrome.action.getBadgeText({tabId: tab.id});

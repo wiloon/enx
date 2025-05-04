@@ -30,7 +30,8 @@
         "https://www.bbc.com/*",
         "https://www.infoq.com/*",
         "https://novel.tingroom.com/*",
-        "https://messaging-custom-newsletters.nytimes.com/*"
+        "https://messaging-custom-newsletters.nytimes.com/*",
+        "https://wiloon.com/*"
       ],
       "css": [
         "inject.css"
@@ -49,7 +50,8 @@
         "https://www.bbc.com/*",
         "https://www.infoq.com/*",
         "https://novel.tingroom.com/*",
-        "https://messaging-custom-newsletters.nytimes.com/*"
+        "https://messaging-custom-newsletters.nytimes.com/*",
+        "https://wiloon.com/*"
       ]
     }
   ],

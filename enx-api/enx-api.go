@@ -12,13 +12,14 @@ import (
 	"enx-server/youdao"
 	"errors"
 	"fmt"
-	"github.com/gin-contrib/cors"
-	"github.com/gin-gonic/gin"
-	"github.com/spf13/viper"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
+	"github.com/spf13/viper"
 )
 
 func main() {
@@ -78,7 +79,7 @@ func main() {
 		close(idleConnectionsClosed)
 	}()
 
-	logger.Infof("listen start, port: %v", port)
+	logger.Infof("enx api listening port: %v", port)
 	if err := srv.ListenAndServe(); err != nil || !errors.Is(err, http.ErrServerClosed) {
 		logger.Errorf("failed to listen, %v", err)
 	}
@@ -202,8 +203,8 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
+	Success bool      `json:"success"`
+	Message string    `json:"message"`
 	User    *enx.User `json:"user,omitempty"`
 }
 
@@ -212,7 +213,7 @@ func Login(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, LoginResponse{
 			Success: false,
-			Message: "无效的请求参数",
+			Message: "Invalid request parameters",
 		})
 		return
 	}
@@ -226,14 +227,14 @@ func Login(c *gin.Context) {
 		logger.Infof("user login success, user: %+v", user)
 		c.JSON(http.StatusOK, LoginResponse{
 			Success: true,
-			Message: "登录成功",
+			Message: "Login successful",
 			User:    user,
 		})
 	} else {
 		logger.Errorf("user login failed, user: %+v", user)
 		c.JSON(http.StatusUnauthorized, LoginResponse{
 			Success: false,
-			Message: "用户名或密码错误",
+			Message: "Invalid username or password",
 		})
 	}
 }
