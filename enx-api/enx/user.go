@@ -2,6 +2,7 @@ package enx
 
 import (
 	"enx-server/utils/logger"
+	"enx-server/utils/password"
 	"enx-server/utils/sqlitex"
 	"time"
 )
@@ -18,12 +19,23 @@ type User struct {
 func (u *User) Login() bool {
 	tmpUser := GeUserByName(u.Name)
 	if tmpUser.Id == 0 {
-		logger.Errorf("user login, user not exist: %s", tmpUser.Name)
+		logger.Errorf("user login, user not exist: %s", u.Name)
 		return false
-	}else{
-		u.Id = tmpUser.Id
-		u.LastLoginTime = tmpUser.LastLoginTime
 	}
+
+	// Verify password
+	match, err := password.VerifyPassword(u.Password, tmpUser.Password)
+	if err != nil {
+		logger.Errorf("password verification failed: %v", err)
+		return false
+	}
+	if !match {
+		logger.Errorf("password mismatch for user: %s", u.Name)
+		return false
+	}
+
+	u.Id = tmpUser.Id
+	u.LastLoginTime = tmpUser.LastLoginTime
 	logger.Infof("user login, user: %s, login success, user: %+v", u.Name, tmpUser)
 	return true
 }

@@ -53,22 +53,24 @@ function login(username, password) {
 
 function showLoggedInState() {
     const loginForm = document.getElementById('loginForm');
-    loginForm.innerHTML = `
-        <div class="logged-in-container">
-            <p>Logged In</p>
-            <button id="enxRunBtn" class="enx-run-btn">Run Enx</button>
-            <button id="logoutBtn">Logout</button>
-        </div>
-    `;
-    
-    document.getElementById('logoutBtn').addEventListener('click', function() {
-        chrome.storage.local.remove(['isLoggedIn', 'username'], function() {
-            location.reload();
+    chrome.storage.local.get(['username'], function(result) {
+        loginForm.innerHTML = `
+            <div class="logged-in-container">
+                <p>Logged in as: ${result.username}</p>
+                <button id="enxRunBtn" class="enx-run-btn">Run Enx</button>
+                <button id="logoutBtn">Logout</button>
+            </div>
+        `;
+        
+        document.getElementById('logoutBtn').addEventListener('click', function() {
+            chrome.storage.local.remove(['isLoggedIn', 'username'], function() {
+                location.reload();
+            });
         });
-    });
 
-    document.getElementById('enxRunBtn').addEventListener('click', function() {
-        enxRun();
+        document.getElementById('enxRunBtn').addEventListener('click', function() {
+            enxRun();
+        });
     });
 }
 

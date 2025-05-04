@@ -88,14 +88,25 @@ function updateUnderLine(ecp) {
 }
 
 function getArticleNode() {
+    console.log('get article node start')
     // gofluent
     let articleClassElement = document.getElementsByClassName("Article")
+    console.log('class: Article element: ', articleClassElement)
+
     if (articleClassElement.length === 0) {
         // infoq
         console.log("try to find infoq article node")
         articleClassElement = document.getElementsByClassName("article__data")
         console.log("infoq article node:", articleClassElement)
     }
+
+    if (articleClassElement.length === 0) {
+        // infoq
+        console.log("try to find wiloon blog article node")
+        articleClassElement = document.getElementsByClassName("post-content")
+        console.log("blog article node:", articleClassElement)
+    }
+
     if (articleClassElement.length === 0) {
         // nytimes
         console.log("try to find nytimes article node")
@@ -210,14 +221,14 @@ function injectScript(file_path, tag) {
 
 
 async function injectEnxWindow() {
-    console.log("adding btn")
+    console.log("inject enx window")
 
     let articleClassElement = document.getElementsByTagName("body");
 
-    console.log("article node", articleClassElement)
-    console.log("article node length", articleClassElement.length)
-    let articleNode = articleClassElement.item(0);
-    console.log(articleNode)
+    console.log("body list", articleClassElement)
+    console.log("body list length", articleClassElement.length)
+    let bodyNode = articleClassElement.item(0);
+    console.log("body node: ", bodyNode)
 
     let enxWindow = `<div class='enx-window' id='enx-window'>
     <a id='enx-close' href='javascript:void(0);' class='enx-close'>关闭</a>
@@ -230,7 +241,8 @@ async function injectEnxWindow() {
     </div>
     `
 
-    articleNode.insertAdjacentHTML("afterbegin", enxWindow)
+    bodyNode.insertAdjacentHTML("afterbegin", enxWindow)
+    console.log("enx window inserted")
 
     document.getElementById("enx-close").onclick = function () {
         document.getElementById("enx-window").style.display = "none";
@@ -349,8 +361,7 @@ window.addEventListener("message", function (event) {
 // noinspection JSUnresolvedReference
 chrome.runtime.onMessage.addListener(
     function (request, sender, sendResponse) {
-        console.log("extension click listener, on message, greeting: ", request.greeting)
-        console.log('sender tab: ', sender.tab)
+        console.log("extension click listener, on message, request: ", request, "sender: ", sender)
         // console.log("sender tab url: ", sender.tab.url)
         if (request.greeting === "mark") {
             enxRun()
@@ -358,8 +369,8 @@ chrome.runtime.onMessage.addListener(
         }
     });
 
-// 添加消息监听器
-chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+chrome.runtime.onMessage.addListener(
+    function(request, sender, sendResponse) {
     console.log("content script received message:", request);
     if (request.action === "enxRun") {
         enxRun();

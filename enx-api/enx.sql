@@ -19,14 +19,20 @@ CREATE TABLE `tbl_log` (
 CREATE TABLE users (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
   `name` varchar(256) NOT NULL,
+  `email` varchar(256) NOT NULL,
   `password` varchar(256) NOT NULL,
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `update_time` datetime DEFAULT NULL,
-  `last_login_time` datetime DEFAULT NULL
+  `last_login_time` datetime DEFAULT NULL,
+  UNIQUE (`name`),
+  UNIQUE (`email`)
 );
 
-INSERT INTO users VALUES(1,'wiloon','password_1','2025-05-02 13:14:32',NULL,NULL);
-INSERT INTO users VALUES(2,'user_2','password_2','2025-05-02 13:15:32',NULL,NULL);
+INSERT INTO users (id, name, email, password, create_time, update_time, last_login_time) 
+VALUES (1, 'wiloon','wangyue@wiloon.com', 'password_1', '2025-05-02 13:14:32', NULL, NULL);
+
+INSERT INTO users (id, name, email, password, create_time, update_time, last_login_time) 
+VALUES (2, 'user_2','user_2@wiloon.com', 'password_2', '2025-05-02 13:15:32', NULL, NULL);
 
 create table words
 (
