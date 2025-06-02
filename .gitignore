@@ -15,4 +15,5 @@
 # vendor/
 .idea/
 chrome-enx/node_modules
+chrome-enx/public
 .vscode

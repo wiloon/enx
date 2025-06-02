@@ -21,6 +21,22 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+function logEvent(event, message) {
+    fetch('https://enx.wiloon.com/api/log', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            event: event,
+            message: message,
+            timestamp: new Date().toISOString()
+        })
+    }).catch(err => {
+        console.error('Log send error:', err);
+    });
+}
+
 function login(username, password) {
     // Replace with your actual login API call
     fetch('https://enx.wiloon.com/login', {
@@ -35,6 +51,7 @@ function login(username, password) {
     })
     .then(response => response.json())
     .then(data => {
+        logEvent('login', `username: ${username}, success: ${data.success}`);
         if (data.success) {
             // Login successful
             chrome.storage.local.set({isLoggedIn: true, username: username}, function() {
@@ -46,6 +63,7 @@ function login(username, password) {
         }
     })
     .catch(error => {
+        logEvent('login', `username: ${username}, success: false, error: ${error}`);
         showError('An error occurred during login');
         console.error('Error:', error);
     });

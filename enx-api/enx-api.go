@@ -65,6 +65,7 @@ func main() {
 
 	// login
 	router.POST("/login", Login)
+	router.POST("/api/log", LogHandler)
 
 	port := viper.GetInt("enx.port")
 	listenAddress := fmt.Sprintf(":%d", port)
@@ -237,4 +238,20 @@ func Login(c *gin.Context) {
 			Message: "Invalid username or password",
 		})
 	}
+}
+
+type LogRequest struct {
+	Event     string `json:"event"`
+	Message   string `json:"message"`
+	Timestamp string `json:"timestamp"`
+}
+
+func LogHandler(c *gin.Context) {
+	var req LogRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid log request"})
+		return
+	}
+	logger.Infof("[FE-LOG] event: %s, message: %s, timestamp: %s", req.Event, req.Message, req.Timestamp)
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }

@@ -9,6 +9,7 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
+// user migration: cmd/migrate/main.go
 const (
 	// Argon2 parameters
 	memory      = 64 * 1024 // 64MB
