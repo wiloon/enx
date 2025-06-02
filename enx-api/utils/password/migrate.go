@@ -17,7 +17,7 @@ func MigratePasswords() error {
 	users = append(users, User{
 		Id:       1,
 		Name:     "wiloon",
-		Password: "password_1",
+		Password: "password_0",
 	})
 
 	for _, user := range users {
