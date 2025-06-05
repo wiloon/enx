@@ -61,12 +61,27 @@ chrome.action.onClicked.addListener(async (tab) => {
     }
 });
 
+// 从 storage 获取 session id
+async function getSessionId() {
+    const result = await chrome.storage.local.get(['sessionId']);
+    return result.sessionId;
+}
+
 // send http request to enx server
 async function enxServerFoo(words) {
     words = encodeURIComponent(words);
     let url = 'https://enx-dev.wiloon.com/paragraph-init?paragraph=' + words
     console.log("calling enx server")
-    const response = await fetch(url);
+    const sessionId = await getSessionId();
+    if (!sessionId) {
+        console.log("no session id found");
+        return;
+    }
+    const response = await fetch(url, {
+        headers: {
+            "X-Session-ID": sessionId
+        }
+    });
     console.log("enx server response")
     console.log(response)
     const json = await response.json();
@@ -78,7 +93,16 @@ async function enxServerFoo(words) {
 async function enxServerGetOne(word) {
     let url = 'https://enx-dev.wiloon.com/translate?word=' + word
     console.log("calling enx server: ", Date.now())
-    const response = await fetch(url);
+    const sessionId = await getSessionId();
+    if (!sessionId) {
+        console.log("no session id found");
+        return;
+    }
+    const response = await fetch(url, {
+        headers: {
+            "X-Session-ID": sessionId
+        }
+    });
     console.log("enx server response: ", Date.now())
     console.log(response)
     const json = await response.json();
@@ -91,6 +115,11 @@ async function enxServerGetOne(word) {
 async function markWord(key, userId) {
     let url = 'https://enx-dev.wiloon.com/mark'
     console.log("calling enx server, url: ", url)
+    const sessionId = await getSessionId();
+    if (!sessionId) {
+        console.log("no session id found");
+        return;
+    }
     let postBody = {
         "English": key,
         "userId": userId
@@ -99,7 +128,8 @@ async function markWord(key, userId) {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            "X-User-ID": userId.toString()
+            "X-User-ID": userId.toString(),
+            "X-Session-ID": sessionId
         },
         body: JSON.stringify(postBody)
     });

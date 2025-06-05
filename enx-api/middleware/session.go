@@ -17,6 +17,15 @@ type Session struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
+// GetUserIDFromContext gets user id from gin context
+func GetUserIDFromContext(c *gin.Context) int64 {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		return 0
+	}
+	return userID.(int64)
+}
+
 // SessionMiddleware handles session authentication
 func SessionMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
