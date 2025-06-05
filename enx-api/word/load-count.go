@@ -2,25 +2,29 @@ package word
 
 import (
 	"enx-server/enx"
-	"github.com/gin-gonic/gin"
+	"enx-server/middleware"
 	"strings"
-	"strconv"
+
+	"github.com/gin-gonic/gin"
 )
 
 func LoadCount(c *gin.Context) {
 	key := c.Query("words")
-	userId := c.GetHeader("X-User-ID")
-	if userId == "" {
-		userId = "1" // 默认使用用户 ID 1
+	userId := middleware.GetUserIDFromContext(c)
+	if userId == 0 {
+		c.JSON(401, gin.H{
+			"success": false,
+			"message": "Invalid session",
+		})
+		return
 	}
-	userIdInt, _ := strconv.Atoi(userId)
-	
+
 	words := strings.Split(key, "_")
 	response := make(map[string]int)
 	for _, word := range words {
 		ecp := enx.Word{}
 		ecp.SetEnglish(word)
-		loadCount := ecp.FindQueryCount(userIdInt)
+		loadCount := ecp.FindQueryCount(int(userId))
 		response[ecp.English] = loadCount
 	}
 

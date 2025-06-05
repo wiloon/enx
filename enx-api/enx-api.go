@@ -45,8 +45,8 @@ func main() {
 
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"GET"},
-		AllowHeaders:     []string{"Origin"},
+		AllowMethods:     []string{"GET", "POST"},
+		AllowHeaders:     []string{"Origin", "X-Session-ID", "X-User-ID", "Content-Type"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: false,
 		MaxAge:           12 * time.Hour,
@@ -54,22 +54,25 @@ func main() {
 
 	router.GET("/ping", Ping)
 
-	// get words query count by paragraph
-	router.GET("/paragraph-init", paragraph.ParagraphInit)
+	// 需要验证的 API
+	authGroup := router.Group("/")
+	authGroup.Use(middleware.SessionMiddleware())
+	{
+		// get words query count by paragraph
+		authGroup.GET("/paragraph-init", paragraph.ParagraphInit)
 
-	// translate
-	router.GET("/translate", translate.Translate)
-	router.GET("/load-count", wordCount.LoadCount)
-	router.POST("/mark", MarkWord)
-	router.GET("/do-search", DoSearch)
-	router.GET("/third-party", DoSearchThirdParty)
-	router.GET("/wrap", Wrap)
+		// translate
+		authGroup.GET("/translate", translate.Translate)
+		authGroup.GET("/load-count", wordCount.LoadCount)
+		authGroup.POST("/mark", MarkWord)
+		authGroup.GET("/do-search", DoSearch)
+		authGroup.GET("/third-party", DoSearchThirdParty)
+		authGroup.GET("/wrap", Wrap)
+		authGroup.POST("/log", LogHandler)
+	}
 
-	// login
+	// 不需要验证的 API
 	router.POST("/login", Login)
-	router.POST("/log", LogHandler)
-
-	// Add logout route
 	router.POST("/logout", Logout)
 
 	port := viper.GetInt("enx.port")

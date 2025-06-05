@@ -22,18 +22,21 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function logEvent(event, message) {
-    fetch('https://enx-dev.wiloon.com/api/log', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            event: event,
-            message: message,
-            timestamp: new Date().toISOString()
-        })
-    }).catch(err => {
-        console.error('Log send error:', err);
+    chrome.storage.local.get(['sessionId'], function(result) {
+        fetch('https://enx-dev.wiloon.com/api/log', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Session-ID': result.sessionId || ''
+            },
+            body: JSON.stringify({
+                event: event,
+                message: message,
+                timestamp: new Date().toISOString()
+            })
+        }).catch(err => {
+            console.error('Log send error:', err);
+        });
     });
 }
 
