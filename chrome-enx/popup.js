@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     loginForm.addEventListener('submit', function(e) {
         e.preventDefault();
-        
+
         const username = document.getElementById('username').value;
         const password = document.getElementById('password').value;
 
@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function logEvent(event, message) {
-    fetch('https://enx.wiloon.com/api/log', {
+    fetch('https://enx-dev.wiloon.com/api/log', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -38,8 +38,7 @@ function logEvent(event, message) {
 }
 
 function login(username, password) {
-    // Replace with your actual login API call
-    fetch('https://enx.wiloon.com/login', {
+    fetch('https://enx-dev.wiloon.com/login', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -53,12 +52,15 @@ function login(username, password) {
     .then(data => {
         logEvent('login', `username: ${username}, success: ${data.success}`);
         if (data.success) {
-            // Login successful
-            chrome.storage.local.set({isLoggedIn: true, username: username}, function() {
+            // Save session information
+            chrome.storage.local.set({
+                isLoggedIn: true,
+                username: username,
+                sessionId: data.session_id
+            }, function() {
                 showLoggedInState();
             });
         } else {
-            // Login failed
             showError(data.message || 'Login failed, please try again');
         }
     })
@@ -66,6 +68,40 @@ function login(username, password) {
         logEvent('login', `username: ${username}, success: false, error: ${error}`);
         showError('An error occurred during login');
         console.error('Error:', error);
+    });
+}
+
+function logout() {
+    const sessionId = chrome.storage.local.get(['sessionId'], function(result) {
+        if (result.sessionId) {
+            fetch('https://enx-dev.wiloon.com/logout', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Session-ID': result.sessionId
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    chrome.storage.local.remove(['isLoggedIn', 'username', 'sessionId'], function() {
+                        location.reload();
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Logout error:', error);
+                // Clear local storage even if request fails
+                chrome.storage.local.remove(['isLoggedIn', 'username', 'sessionId'], function() {
+                    location.reload();
+                });
+            });
+        } else {
+            // If no session ID, just clear local storage
+            chrome.storage.local.remove(['isLoggedIn', 'username', 'sessionId'], function() {
+                location.reload();
+            });
+        }
     });
 }
 
@@ -79,11 +115,9 @@ function showLoggedInState() {
             <button id="logoutBtn">Logout</button>
         </div>
     `;
-    
+
     document.getElementById('logoutBtn').addEventListener('click', function() {
-        chrome.storage.local.remove(['isLoggedIn', 'username'], function() {
-            location.reload();
-        });
+        logout();
     });
 
     document.getElementById('enxRunBtn').addEventListener('click', function() {
@@ -96,7 +130,7 @@ function enxRun() {
     // Get current tab
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
         const currentTab = tabs[0];
-        
+
         // Check if current page is in supported sites list
         const supportedSites = [
             'https://www.bbc.com',
@@ -104,9 +138,9 @@ function enxRun() {
             'https://novel.tingroom.com',
             'https://messaging-custom-newsletters.nytimes.com'
         ];
-        
+
         const isSupported = supportedSites.some(site => currentTab.url.startsWith(site));
-        
+
         if (isSupported) {
             // Send message to content script
             chrome.tabs.sendMessage(currentTab.id, {action: "enxRun"}, function(response) {

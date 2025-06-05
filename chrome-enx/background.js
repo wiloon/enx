@@ -64,7 +64,7 @@ chrome.action.onClicked.addListener(async (tab) => {
 // send http request to enx server
 async function enxServerFoo(words) {
     words = encodeURIComponent(words);
-    let url = 'https://enx.wiloon.com/paragraph-init?paragraph=' + words
+    let url = 'https://enx-dev.wiloon.com/paragraph-init?paragraph=' + words
     console.log("calling enx server")
     const response = await fetch(url);
     console.log("enx server response")
@@ -76,7 +76,7 @@ async function enxServerFoo(words) {
 }
 
 async function enxServerGetOne(word) {
-    let url = 'https://enx.wiloon.com/translate?word=' + word
+    let url = 'https://enx-dev.wiloon.com/translate?word=' + word
     console.log("calling enx server: ", Date.now())
     const response = await fetch(url);
     console.log("enx server response: ", Date.now())
@@ -89,14 +89,14 @@ async function enxServerGetOne(word) {
 
 // mark word as acquainted
 async function markWord(key, userId) {
-    let url = 'https://enx.wiloon.com/mark'
+    let url = 'https://enx-dev.wiloon.com/mark'
     console.log("calling enx server, url: ", url)
     let postBody = {
         "English": key,
         "userId": userId
     }
     const response = await fetch(url, {
-        method: "POST", 
+        method: "POST",
         headers: {
             "Content-Type": "application/json",
             "X-User-ID": userId.toString()
@@ -142,7 +142,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
         // default user id is 1
         let userId = request.userId || 1
         console.log("mark word as acquainted, key: ", key, ", userId: ", userId)
-        
+
         markWord(key, userId).then(result => {
             console.log("mark word response: ", result)
             sendResponse({ecp: result});
