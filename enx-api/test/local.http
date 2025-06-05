@@ -1,6 +1,10 @@
 
 @address=localhost:8080
 
+### ping
+
+GET http://{{address}}/ping
+
 ### words-count
 
 GET http://localhost:8080/words-count?words=We’ HTTP/1.1

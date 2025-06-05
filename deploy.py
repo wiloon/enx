@@ -29,7 +29,7 @@ for root, dirs, files in os.walk(src_dir):
             # Try to open as text file
             with open(src_file, "r", encoding="utf-8") as f:
                 content = f.read()
-            content = content.replace("enx.wiloon.com", "enx-dev.wiloon.com")
+            content = content.replace("enx-dev.wiloon.com", "enx.wiloon.com")
             with open(dst_file, "w", encoding="utf-8") as f:
                 f.write(content)
             file_size = os.path.getsize(dst_file)

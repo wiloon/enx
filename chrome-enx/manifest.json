@@ -12,7 +12,7 @@
     "storage"
   ],
   "host_permissions": [
-    "https://enx.wiloon.com/*",
+    "https://enx-dev.wiloon.com/*",
     "https://developer.chrome.com/*"
   ],
   "icons": {

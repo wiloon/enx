@@ -4,4 +4,4 @@
 GET https://{{address}}/ping
 ### words-count
 
-GET https://enx.wiloon.com/words-count?words=isn’t HTTP/1.1
+GET https://enx-dev.wiloon.com/words-count?words=isn’t HTTP/1.1

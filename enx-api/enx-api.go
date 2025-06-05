@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"enx-server/middleware"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
@@ -65,7 +67,10 @@ func main() {
 
 	// login
 	router.POST("/login", Login)
-	router.POST("/api/log", LogHandler)
+	router.POST("/log", LogHandler)
+
+	// Add logout route
+	router.POST("/logout", Logout)
 
 	port := viper.GetInt("enx.port")
 	listenAddress := fmt.Sprintf(":%d", port)
@@ -176,8 +181,8 @@ func MarkWord(c *gin.Context) {
 	word.Key = strings.ToLower(word.English)
 	word.Translate()
 
-	// 从请求头或 cookie 中获取用户 ID
-	userId := 1 // 默认值
+	// Get user ID from request header or cookie
+	userId := 1 // default value
 	if userIdStr := c.GetHeader("X-User-ID"); userIdStr != "" {
 		if id, err := strconv.Atoi(userIdStr); err == nil {
 			userId = id
@@ -186,9 +191,9 @@ func MarkWord(c *gin.Context) {
 
 	ud := enx.UserDict{}
 	ud.WordId = word.Id
-	ud.UserId = userId // 设置用户 ID
+	ud.UserId = userId // Set user ID
 	ud.Mark()
-	word.FindQueryCount(userId) // 传递 user_id
+	word.FindQueryCount(userId) // Pass user_id
 	c.JSON(200, word)
 }
 
@@ -204,9 +209,10 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	Success bool      `json:"success"`
-	Message string    `json:"message"`
-	User    *enx.User `json:"user,omitempty"`
+	Success   bool      `json:"success"`
+	Message   string    `json:"message"`
+	User      *enx.User `json:"user,omitempty"`
+	SessionID string    `json:"session_id,omitempty"`
 }
 
 func Login(c *gin.Context) {
@@ -225,11 +231,26 @@ func Login(c *gin.Context) {
 	}
 
 	if user.Login() {
+		// Create new session
+		session, err := middleware.CreateSession(user.Id)
+		if err != nil {
+			logger.Errorf("failed to create session for user %s: %v", user.Name, err)
+			c.JSON(http.StatusInternalServerError, LoginResponse{
+				Success: false,
+				Message: "Failed to create session",
+			})
+			return
+		}
+
+		// Set cookie
+		c.SetCookie("session_id", session.ID, 24*3600, "/", "", false, true)
+
 		logger.Infof("user login success, user: %+v", user)
 		c.JSON(http.StatusOK, LoginResponse{
-			Success: true,
-			Message: "Login successful",
-			User:    user,
+			Success:   true,
+			Message:   "Login successful",
+			User:      user,
+			SessionID: session.ID,
 		})
 	} else {
 		logger.Errorf("user login failed, user: %+v", user)
@@ -254,4 +275,29 @@ func LogHandler(c *gin.Context) {
 	}
 	logger.Infof("[FE-LOG] event: %s, message: %s, timestamp: %s", req.Event, req.Message, req.Timestamp)
 	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func Logout(c *gin.Context) {
+	sessionID := c.GetHeader("X-Session-ID")
+	if sessionID == "" {
+		// Try to get from cookie
+		cookie, err := c.Cookie("session_id")
+		if err == nil {
+			sessionID = cookie
+		}
+	}
+
+	if sessionID != "" {
+		if err := middleware.DeleteSession(sessionID); err != nil {
+			logger.Errorf("failed to delete session: %v", err)
+		}
+	}
+
+	// Clear cookie
+	c.SetCookie("session_id", "", -1, "/", "", false, true)
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Logged out successfully",
+	})
 }
