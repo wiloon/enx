@@ -518,7 +518,7 @@ data-styled.g611[id="sc-227eb15e-2"]{content:"harZpM,"}/*!sc*/
 `
 
 import {JSDOM} from "jsdom"
-import {findChildNodes} from '../content_module'
+import {findChildNodes} from '../../content_module'
 
 test('BBC test', () => {
   const tmp_dom = new JSDOM(pageSource)

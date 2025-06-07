@@ -10,6 +10,7 @@ import (
 type User struct {
 	Id            int64     `json:"id"`
 	Name          string    `json:"name"`
+	Email         string    `json:"email"`
 	Password      string    `json:"-"`
 	CreateTime    time.Time `json:"create_time"`
 	UpdateTime    time.Time `json:"update_time"`
@@ -45,4 +46,11 @@ func GeUserByName(name string) *User {
 	sqlitex.DB.Where("name=?", name).Find(&user)
 	logger.Debugf("find user, name: %s, obj: %+v", name, user)
 	return &user
+}
+
+// Create creates a new user
+func (u *User) Create() error {
+	u.CreateTime = time.Now()
+	u.UpdateTime = time.Now()
+	return sqlitex.DB.Create(u).Error
 }

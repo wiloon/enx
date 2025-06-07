@@ -7,6 +7,7 @@ import (
 	"enx-server/translate"
 	"enx-server/utils"
 	"enx-server/utils/logger"
+	"enx-server/utils/password"
 	"enx-server/utils/sqlitex"
 	wordCount "enx-server/word"
 	"enx-server/youdao"
@@ -74,6 +75,7 @@ func main() {
 	// 不需要验证的 API
 	router.POST("/login", Login)
 	router.POST("/logout", Logout)
+	router.POST("/register", Register)
 
 	port := viper.GetInt("enx.port")
 	listenAddress := fmt.Sprintf(":%d", port)
@@ -302,5 +304,70 @@ func Logout(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Logged out successfully",
+	})
+}
+
+type RegisterRequest struct {
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+	Email    string `json:"email" binding:"required,email"`
+}
+
+type RegisterResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+func Register(c *gin.Context) {
+	var req RegisterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, RegisterResponse{
+			Success: false,
+			Message: "Invalid request parameters",
+		})
+		return
+	}
+
+	// Check if username already exists
+	existingUser := enx.GeUserByName(req.Username)
+	if existingUser.Id != 0 {
+		c.JSON(http.StatusBadRequest, RegisterResponse{
+			Success: false,
+			Message: "Username already exists",
+		})
+		return
+	}
+
+	// Hash password
+	hashedPassword, err := password.HashPassword(req.Password)
+	if err != nil {
+		logger.Errorf("failed to hash password for user %s: %v", req.Username, err)
+		c.JSON(http.StatusInternalServerError, RegisterResponse{
+			Success: false,
+			Message: "Failed to process registration",
+		})
+		return
+	}
+
+	// Create new user
+	user := &enx.User{
+		Name:     req.Username,
+		Password: hashedPassword,
+		Email:    req.Email,
+	}
+
+	if err := user.Create(); err != nil {
+		logger.Errorf("failed to create user %s: %v", req.Username, err)
+		c.JSON(http.StatusInternalServerError, RegisterResponse{
+			Success: false,
+			Message: "Failed to create user",
+		})
+		return
+	}
+
+	logger.Infof("user registration success, user: %+v", user)
+	c.JSON(http.StatusOK, RegisterResponse{
+		Success: true,
+		Message: "Registration successful",
 	})
 }

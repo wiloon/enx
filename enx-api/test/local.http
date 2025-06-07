@@ -1,4 +1,3 @@
-
 @address=localhost:8080
 
 ### ping
@@ -45,3 +44,92 @@ content-type: application/json
 
 ### paragraph init: Google
 GET http://{{address}}/paragraph-init?paragraph=Google HTTP/1.1
+
+### register - success
+POST http://{{address}}/register HTTP/1.1
+content-type: application/json
+
+{
+    "username": "testuser1",
+    "password": "testpass123",
+    "email": "test1@example.com"
+}
+
+### register - duplicate username
+POST http://{{address}}/register HTTP/1.1
+content-type: application/json
+
+{
+    "username": "wiloon",
+    "password": "testpass123",
+    "email": "test2@example.com"
+}
+
+### register - invalid email
+POST http://{{address}}/register HTTP/1.1
+content-type: application/json
+
+{
+    "username": "testuser2",
+    "password": "testpass123",
+    "email": "invalid-email"
+}
+
+### register - missing required fields
+POST http://{{address}}/register HTTP/1.1
+content-type: application/json
+
+{
+    "username": "testuser3",
+    "password": "testpass123"
+}
+
+### register - empty fields
+POST http://{{address}}/register HTTP/1.1
+content-type: application/json
+
+{
+    "username": "",
+    "password": "",
+    "email": ""
+}
+
+### register - very long username
+POST http://{{address}}/register HTTP/1.1
+content-type: application/json
+
+{
+    "username": "thisisaverylongusernameexceedingthemaximumlengthallowedbythesystem",
+    "password": "testpass123",
+    "email": "test3@example.com"
+}
+
+### register - special characters in username
+POST http://{{address}}/register HTTP/1.1
+content-type: application/json
+
+{
+    "username": "test@user#4",
+    "password": "testpass123",
+    "email": "test4@example.com"
+}
+
+### register - password with special characters
+POST http://{{address}}/register HTTP/1.1
+content-type: application/json
+
+{
+    "username": "testuser5",
+    "password": "Test@123#Pass",
+    "email": "test5@example.com"
+}
+
+### register - email with special characters
+POST http://{{address}}/register HTTP/1.1
+content-type: application/json
+
+{
+    "username": "testuser6",
+    "password": "testpass123",
+    "email": "test.user+label@example.com"
+}
