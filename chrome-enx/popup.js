@@ -1,6 +1,9 @@
 document.addEventListener('DOMContentLoaded', function() {
     const loginForm = document.getElementById('loginForm');
-    const errorDiv = document.getElementById('error');
+    const registerForm = document.getElementById('registerForm');
+    const toggleFormBtn = document.getElementById('toggleForm');
+    const loginErrorDiv = document.getElementById('loginError');
+    const registerErrorDiv = document.getElementById('registerError');
 
     // Check if already logged in
     chrome.storage.local.get(['isLoggedIn'], function(result) {
@@ -10,14 +13,36 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    loginForm.addEventListener('submit', function(e) {
-        e.preventDefault();
+    // Toggle between login and register forms
+    toggleFormBtn.addEventListener('click', function() {
+        const isLoginVisible = loginForm.style.display !== 'none';
+        loginForm.style.display = isLoginVisible ? 'none' : 'flex';
+        registerForm.style.display = isLoginVisible ? 'flex' : 'none';
+        toggleFormBtn.textContent = isLoginVisible ? 'Switch to Login' : 'Switch to Register';
+        loginErrorDiv.style.display = 'none';
+        registerErrorDiv.style.display = 'none';
+    });
 
+    loginForm.addEventListener('submit', function(e) {
+        console.log("Login form submitted - Form ID:", loginForm.id);
+        e.preventDefault();
         const username = document.getElementById('username').value;
         const password = document.getElementById('password').value;
-
-        // Add actual login logic here
         login(username, password);
+    });
+
+    registerForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const username = document.getElementById('regUsername').value;
+        const password = document.getElementById('regPassword').value;
+        const confirmPassword = document.getElementById('confirmPassword').value;
+
+        if (password !== confirmPassword) {
+            showRegisterError('Passwords do not match');
+            return;
+        }
+
+        register(username, password);
     });
 });
 
@@ -114,8 +139,8 @@ function showLoggedInState() {
     loginForm.innerHTML = `
         <div class="logged-in-container">
                 <p>Logged in as: ${result.username}</p>
-            <button id="enxRunBtn" class="enx-run-btn">Run Enx</button>
-            <button id="logoutBtn">Logout</button>
+            <button type="button" id="enxRunBtn" class="enx-run-btn">Run Enx</button>
+            <button type="button" id="logoutBtn">Logout</button>
         </div>
     `;
 
@@ -162,6 +187,40 @@ function enxRun() {
 
 function showError(message) {
     const errorDiv = document.getElementById('error');
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+}
+
+function register(username, password) {
+    fetch('https://enx-dev.wiloon.com/register', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            username: username,
+            password: password
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        logEvent('register', `username: ${username}, success: ${data.success}`);
+        if (data.success) {
+            // Automatically log in after successful registration
+            login(username, password);
+        } else {
+            showRegisterError(data.message || 'Registration failed, please try again');
+        }
+    })
+    .catch(error => {
+        logEvent('register', `username: ${username}, success: false, error: ${error}`);
+        showRegisterError('An error occurred during registration');
+        console.error('Error:', error);
+    });
+}
+
+function showRegisterError(message) {
+    const errorDiv = document.getElementById('registerError');
     errorDiv.textContent = message;
     errorDiv.style.display = 'block';
 }
