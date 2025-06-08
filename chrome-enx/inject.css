@@ -1,7 +1,7 @@
 .enx-window {
     height: auto;
-    min-height: 200px;
-    max-height: 400px;
+    min-height: 100px;
+    max-height: 300px;
     width: 400px;
     position: absolute;
     border: none;
@@ -13,7 +13,27 @@
     opacity: 0;
     transform: translateY(10px);
     transition: opacity 0.2s ease, transform 0.2s ease;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* 自定义滚动条样式 */
+.enx-window::-webkit-scrollbar {
+    width: 6px;
+}
+
+.enx-window::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.enx-window::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
+.enx-window::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
 }
 
 .enx-window.visible {
