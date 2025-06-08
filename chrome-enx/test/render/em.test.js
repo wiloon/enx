@@ -21,5 +21,5 @@ test('render test', () => {
   let renderedInnerHtml = renderInnerHtml(innerHtmlTest, wordDict)
 
   console.log("rendered inner html: ", renderedInnerHtml)
-  expect(renderedInnerHtml).toBe(`he &quot;<em>age of <u alt="inference" onclick="popEnxDialogBox(event)" class="enx-inference" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px;">inference</u></em>,&quot; marking`);
+  expect(renderedInnerHtml).toBe(`the &quot;<em>age of <u alt="inference" onclick="popEnxDialogBox(event)" class="enx-inference" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px;">inference</u></em>,&quot; marking`);
 });

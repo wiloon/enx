@@ -27,15 +27,15 @@ let pageSource = `
 <body>
 <script>
 function AddFavorite(sURL, sTitle) {
- sURL = encodeURI(sURL); 
- try{ 
- window.external.addFavorite(sURL, sTitle); 
- }catch(e) { 
- try{ 
- window.sidebar.addPanel(sTitle, sURL, ""); 
- }catch (e) { 
+ sURL = encodeURI(sURL);
+ try{
+ window.external.addFavorite(sURL, sTitle);
+ }catch(e) {
+ try{
+ window.sidebar.addPanel(sTitle, sURL, "");
+ }catch (e) {
  alert("加入收藏失败，请使用Ctrl+D进行添加,或手动在浏览器里进行设置.");
- } 
+ }
  }
  }
  //设为首页
@@ -111,7 +111,7 @@ document.formsearch.action="/search.php"
 }
 </script>
 <div class="gundong">
-  <div class="gundong1"> 
+  <div class="gundong1">
 <div style="float:left;width:100%;overflow:hidden;">
 <a href="https://novel.tingroom.com/">首页</a> &raquo; <a href="/ertong">儿童英文小说</a> &raquo; <a href="/ertong/36">Harry Potter and the Sorcerer‘s Stone哈利波特与魔法石</a> &raquo; <font color="#000000">Chapter 1 The Boy Who Lived</font>
 </div>
@@ -135,7 +135,7 @@ document.formsearch.action="/search.php"
 <span>Chapter 1 The Boy Who Lived</span>
 </div>
 <div class="shouc"><script type="text/javascript" src="/template/default/tingnovel/images/fx.js"></script></div>
-<div class="text" id="tt_text">  
+<div class="text" id="tt_text">
   <div id="play_ggr" style="float:right;">
     <script type="text/javascript">
       <!--
@@ -184,16 +184,16 @@ document.getElementById("tt_text").style.fontSize = "12px";
 }
 if(!document.getElementById("zhang_top")){
 var zhang_top=document.getElementById("zhang_menu").href;
-var zhang_down=document.getElementById("zhang_down").href;  
-var zhang_menu=document.getElementById("zhang_menu").href; 
+var zhang_down=document.getElementById("zhang_down").href;
+var zhang_menu=document.getElementById("zhang_menu").href;
 }else if(!document.getElementById("zhang_down")){
-var zhang_top=document.getElementById("zhang_top").href;  
-var zhang_down=document.getElementById("zhang_menu").href; 
-var zhang_menu=document.getElementById("zhang_menu").href; 
+var zhang_top=document.getElementById("zhang_top").href;
+var zhang_down=document.getElementById("zhang_menu").href;
+var zhang_menu=document.getElementById("zhang_menu").href;
 }else{
-var zhang_top=document.getElementById("zhang_top").href;  
-var zhang_down=document.getElementById("zhang_down").href;  
-var zhang_menu=document.getElementById("zhang_menu").href;  
+var zhang_top=document.getElementById("zhang_top").href;
+var zhang_down=document.getElementById("zhang_down").href;
+var zhang_menu=document.getElementById("zhang_menu").href;
 }
 function jumpPage() {
   var event = document.all ? window.event : arguments[0];
@@ -224,7 +224,7 @@ show_task('moduleid=1025&html=zhangjie&itemid=16793');
 `
 
 import {JSDOM} from "jsdom"
-import {findChildNodes} from '../content_module'
+import {findChildNodes} from '../../content_module'
 
 
 test('test es module 0', () => {
