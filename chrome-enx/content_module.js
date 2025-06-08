@@ -287,18 +287,25 @@ function collectEnglishWord(tmpInnerHtml, wordIndexStart, wordIndexEnd, copyInde
 }
 
 export function getColorCodeByCount(ecp) {
+    const MAX_COUNT = 30;  // Maximum count value for color calculation
     let loadCount = ecp.LoadCount
     let isAcquainted = ecp.AlreadyAcquainted
 
-    if (isAcquainted === 1 || ecp.WordType ===1) {
+    if (isAcquainted === 1 || ecp.WordType === 1) {
         return "#FFFFFF"
     }
     if (loadCount === 0) {
-        return "#F44336"
-    } else if (loadCount > 0 && loadCount <= 10) {
-        return "#2196F3"
-    } else if (loadCount > 10) {
-        return "#9C27B0"
+        return "#FFFFFF"
+    } else if (loadCount > 0) {
+        // Normalize count value between 0 and 1
+        let normalizedCount = Math.min(loadCount, MAX_COUNT) / MAX_COUNT;
+
+        // Using HSL color model
+        // Hue range: 0 (red) to 300 (purple)
+        // Saturation: 100%
+        // Lightness: 40% for better visibility on white background
+        let hue = 300 * normalizedCount;  // Calculate hue proportionally
+        return `hsl(${hue}, 100%, 40%)`;  // Reduced lightness for better contrast
     }
 }
 
