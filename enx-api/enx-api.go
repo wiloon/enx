@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -184,21 +183,25 @@ func MarkWord(c *gin.Context) {
 	}
 	logger.Debugf("mark word: %s", word.English)
 	word.Key = strings.ToLower(word.English)
-	word.Translate()
 
-	// Get user ID from request header or cookie
-	userId := 1 // default value
-	if userIdStr := c.GetHeader("X-User-ID"); userIdStr != "" {
-		if id, err := strconv.Atoi(userIdStr); err == nil {
-			userId = id
-		}
+	// Get user ID from session context
+	userId := middleware.GetUserIDFromContext(c)
+	if userId == 0 {
+		logger.Errorf("no valid user id found in session")
+		c.JSON(401, gin.H{
+			"success": false,
+			"message": "Invalid session",
+		})
+		return
 	}
+
+	word.Translate(userId)
 
 	ud := enx.UserDict{}
 	ud.WordId = word.Id
-	ud.UserId = userId // Set user ID
+	ud.UserId = int(userId) // Convert int64 to int
 	ud.Mark()
-	word.FindQueryCount(userId) // Pass user_id
+	word.FindQueryCount(int(userId)) // Pass user_id
 	c.JSON(200, word)
 }
 
@@ -321,6 +324,7 @@ type RegisterResponse struct {
 func Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Errorf("failed to bind register request: %+v", err)
 		c.JSON(http.StatusBadRequest, RegisterResponse{
 			Success: false,
 			Message: "Invalid request parameters",

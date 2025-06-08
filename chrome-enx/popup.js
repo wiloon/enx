@@ -1,7 +1,8 @@
 document.addEventListener('DOMContentLoaded', function() {
     const loginForm = document.getElementById('loginForm');
     const registerForm = document.getElementById('registerForm');
-    const toggleFormBtn = document.getElementById('toggleForm');
+    const toggleFormLink = document.getElementById('toggleForm');
+    const backToLoginLink = document.getElementById('backToLogin');
     const loginErrorDiv = document.getElementById('loginError');
     const registerErrorDiv = document.getElementById('registerError');
 
@@ -14,11 +15,18 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Toggle between login and register forms
-    toggleFormBtn.addEventListener('click', function() {
-        const isLoginVisible = loginForm.style.display !== 'none';
-        loginForm.style.display = isLoginVisible ? 'none' : 'flex';
-        registerForm.style.display = isLoginVisible ? 'flex' : 'none';
-        toggleFormBtn.textContent = isLoginVisible ? 'Switch to Login' : 'Switch to Register';
+    toggleFormLink.addEventListener('click', function(e) {
+        e.preventDefault();
+        loginForm.style.display = 'none';
+        registerForm.style.display = 'flex';
+        loginErrorDiv.style.display = 'none';
+        registerErrorDiv.style.display = 'none';
+    });
+
+    backToLoginLink.addEventListener('click', function(e) {
+        e.preventDefault();
+        registerForm.style.display = 'none';
+        loginForm.style.display = 'flex';
         loginErrorDiv.style.display = 'none';
         registerErrorDiv.style.display = 'none';
     });
@@ -34,6 +42,7 @@ document.addEventListener('DOMContentLoaded', function() {
     registerForm.addEventListener('submit', function(e) {
         e.preventDefault();
         const username = document.getElementById('regUsername').value;
+        const email = document.getElementById('regEmail').value;
         const password = document.getElementById('regPassword').value;
         const confirmPassword = document.getElementById('confirmPassword').value;
 
@@ -42,7 +51,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        register(username, password);
+        register(username, email, password);
     });
 });
 
@@ -66,7 +75,7 @@ function logEvent(event, message) {
 }
 
 function login(username, password) {
-    fetch('https://enx-dev.wiloon.com/login', {
+    fetch('https://enx-dev.wiloon.com/api/login', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -102,7 +111,7 @@ function login(username, password) {
 function logout() {
     const sessionId = chrome.storage.local.get(['sessionId'], function(result) {
         if (result.sessionId) {
-            fetch('https://enx-dev.wiloon.com/logout', {
+            fetch('https://enx-dev.wiloon.com/api/logout', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -191,14 +200,22 @@ function showError(message) {
     errorDiv.style.display = 'block';
 }
 
-function register(username, password) {
-    fetch('https://enx-dev.wiloon.com/register', {
+function showRegisterSuccess(message) {
+    const errorDiv = document.getElementById('loginError');
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+    errorDiv.style.color = 'green';
+}
+
+function register(username, email, password) {
+    fetch('https://enx-dev.wiloon.com/api/register', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({
             username: username,
+            email: email,
             password: password
         })
     })
@@ -206,8 +223,10 @@ function register(username, password) {
     .then(data => {
         logEvent('register', `username: ${username}, success: ${data.success}`);
         if (data.success) {
-            // Automatically log in after successful registration
-            login(username, password);
+            // Show success message and switch to login form
+            showRegisterSuccess('Registration successful! Please login.');
+            document.getElementById('registerForm').style.display = 'none';
+            document.getElementById('loginForm').style.display = 'flex';
         } else {
             showRegisterError(data.message || 'Registration failed, please try again');
         }

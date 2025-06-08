@@ -45,7 +45,7 @@ func Translate(c *gin.Context) {
 
 	word := enx.Word{}
 	word.SetEnglish(raw)
-	word.Translate()
+	word.Translate(userId)
 
 	if word.Id == 0 {
 		logger.Debugf("find from youdao: %s", raw)
