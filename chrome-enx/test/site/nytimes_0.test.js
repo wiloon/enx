@@ -1,5 +1,5 @@
 import { JSDOM } from "jsdom";
-import { findChildNodes } from '../content_module';
+import { findChildNodes } from '../../content_module';
 
 let pageSource = `
 <table border="0" cellpadding="0" cellspacing="0" style="margin-right: auto; margin-left: auto" width="600" align="center"><tr><td><![endif]--><table width="100%" align="left" border="0" style="margin:0" bgcolor="#FFFFFF"><tbody><tr><td id="EMAIL_CONTAINER" align="left" width="100%"><div style="margin:0 auto;max-width:600px;width:100%"><table border="0" cellpadding="0" cellspacing="0" style="width:100%"><tbody><tr><td style="padding:15px 0 5px;text-align:center;width:100%"><div style="font-family:arial,sans-serif;font-size:12px;text-align:center;width:100%;padding-bottom:10px"><a title="View in browser" href="https://messaging-custom-newsletters.nytimes.com/dynamic/render?isViewInBrowser=true&paid_regi=0&productCode=NN&sendId=192164&uri=nyt%3A%2F%2Fnewsletter%2F1ce50632-0df0-5edc-9ac3-e133f9578ad7" class="css-sdwaa1" style="color:#666;-webkit-text-decoration:none;text-decoration:none;line-height:18px">View in browser</a>

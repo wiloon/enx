@@ -2,12 +2,12 @@ function generateUUID() {
     // Use crypto.getRandomValues to generate more secure random numbers
     const array = new Uint8Array(16);
     crypto.getRandomValues(array);
-    
+
     // Set version number (4)
     array[6] = (array[6] & 0x0f) | 0x40;
     // Set variant (RFC4122)
     array[8] = (array[8] & 0x3f) | 0x80;
-    
+
     // Convert to UUID format
     return Array.from(array)
         .map(b => b.toString(16).padStart(2, '0'))
@@ -33,7 +33,7 @@ export function findChildNodes(parentNode) {
     let nodeList = []
     let childNodes = parentNode.childNodes
     let childNodeCount = childNodes.length
-    console.log("find article node, root node, tag:", parentNode.tagName, "id:", parentNode.id, 
+    console.log("find article node, root node, tag:", parentNode.tagName, "id:", parentNode.id,
         "class:", parentNode.className, "child node count:", childNodeCount);
 
     if (childNodes.length === 0) {
@@ -44,7 +44,7 @@ export function findChildNodes(parentNode) {
     // try to find in child node
     let index = 1
     let textContent = '';
-    
+
 
     let isParagraph = false
     if (parentNode.tagName.toUpperCase() === "P") {
@@ -63,7 +63,7 @@ export function findChildNodes(parentNode) {
         let indexString = index + "/" + childNodeCount
         console.log("child node:", indexString, ", type:", tmpNodeType, ", tag:", tmpNodeTagName, "id:", tmpNodeId)
 
-        
+
         if (tmpNodeType === 1) {
             if (tmpNodeTagName.toUpperCase() === "P" ||
                 tmpNodeTagName.toUpperCase() === "H2" ||
@@ -105,7 +105,7 @@ export function findChildNodes(parentNode) {
                     index_chinese = match.index
                 }
                 console.log("text node content length:", textContent.length, "content:", textContent, "chinese index:", index_chinese)
-            
+
                 if (index_chinese > 0) {
                     textContent = textContent.slice(0, index_chinese)
                     console.log("outer div content: ", textContent, ", length: ", textContent.length);
@@ -143,7 +143,7 @@ export function renderInnerHtml(tmpInnerHtml, wordDict) {
     let index = 0
     while (index < tmpInnerHtml.length) {
         let oneCharacter = tmpInnerHtml.charAt(index)
-        console.log("index:", index, "one character:", oneCharacter, "start:", wordIndexStart, "end ", wordIndexEnd, "html tag:", htmlTag, "tag name:", tagName)
+        console.log("index:", index, "one character:", oneCharacter, "start:", wordIndexStart, "end ", wordIndexEnd, "html tag:", htmlTag)
 
         // Check for HTML entity
         if (oneCharacter === "&") {
@@ -156,7 +156,7 @@ export function renderInnerHtml(tmpInnerHtml, wordDict) {
                 wordIndexStart = result.wordIndexStart
                 wordIndexEnd = result.wordIndexEnd
             }
-            
+
             let entityEnd = tmpInnerHtml.indexOf(";", index)
             if (entityEnd !== -1) {
                 // Found a complete HTML entity, copy it as is
@@ -181,10 +181,27 @@ export function renderInnerHtml(tmpInnerHtml, wordDict) {
                 wordIndexStart = result.wordIndexStart
                 wordIndexEnd = result.wordIndexEnd
             }
-            
+
             let htmlTagEnd = tmpInnerHtml.indexOf(">", index)
             if (htmlTagEnd !== -1) {
-                // Preserve spaces before HTML tags
+                // Check if this is an <a> tag
+                let tagContent = tmpInnerHtml.slice(index, htmlTagEnd + 1)
+                console.log("tag content:", tagContent)
+                if (tagContent.toLowerCase().startsWith("<a ")) {
+                    // Find the closing </a> tag
+                    let closingTagStart = tmpInnerHtml.indexOf("</a>", htmlTagEnd)
+                    if (closingTagStart !== -1) {
+                        // Copy the entire <a> tag and its content
+                        newInnerHtml = newInnerHtml + tmpInnerHtml.slice(copyIndex, closingTagStart + 4)
+                        index = closingTagStart + 3
+                        copyIndex = closingTagStart + 4
+                        wordIndexStart = undefined
+                        wordIndexEnd = undefined
+                        continue
+                    }
+                }
+
+                // For other tags, preserve spaces before HTML tags
                 newInnerHtml = newInnerHtml + tmpInnerHtml.slice(copyIndex, htmlTagEnd + 1)
                 index = htmlTagEnd + 1
                 copyIndex = htmlTagEnd + 1
