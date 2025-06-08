@@ -100,7 +100,7 @@ func (word *Word) SetEnglishField(english string) {
 }
 func (word *Word) FindQueryCount(userId int) int {
 	qc, acquainted := repo.GetUserWordQueryCount(word.Id, userId)
-	logger.Debugf("find query count, word id: %d, word: %s, user_id: %d, query count: %d", 
+	logger.Debugf("find query count, word id: %d, word: %s, user_id: %d, query count: %d",
 		word.Id, word.English, userId, qc)
 	word.LoadCount = qc
 	word.AlreadyAcquainted = acquainted
@@ -113,15 +113,18 @@ func (word *Word) FindLoadCountById() int {
 	return word.LoadCount
 }
 
-func (word *Word) Translate() *Word {
+func (word *Word) Translate(userId int64) *Word {
 	// tmp function, remove duplicate word
 	word.RemoveDuplicateWord()
 	// search word in db by English, e.g. French
 	// do not search db with lower case, since youdao api is case sensitive
 
-	// default user id 1
-	defaultUserId := 1
-	sWord := repo.Translate(word.English, defaultUserId)
+	if userId == 0 {
+		logger.Errorf("no valid user id provided")
+		return word
+	}
+
+	sWord := repo.Translate(word.English, int(userId))
 	word.Id = sWord.Id
 	word.Chinese = sWord.Chinese
 	word.Pronunciation = sWord.Pronunciation
@@ -131,14 +134,9 @@ func (word *Word) Translate() *Word {
 		// 查询 user_dicts 表
 		sud := UserDict{}
 		sqlitex.DB.Table("user_dicts").
-			Where("word_id=? and user_id=?", sWord.Id, defaultUserId).Scan(&sud)
+			Where("word_id=? and user_id=?", sWord.Id, userId).Scan(&sud)
 		if sud.WordId != 0 {
 			word.LoadCount = sud.QueryCount
-			if sud.UserId ==1{
-				if sWord.LoadCount > 0 && sWord.LoadCount>sud.QueryCount{
-					word.LoadCount = sud.QueryCount
-				}
-			}
 		}
 	}
 
@@ -149,7 +147,7 @@ func (word *Word) Translate() *Word {
 func (word *Word) RemoveDuplicateWord() {
 	// count by english
 	count := repo.CountByEnglish(word.English)
-	
+
 	if count > 1 {
 		// delete duplicate word
 		tmp_word := repo.GetWordByEnglishCaseSensitive(word.English)

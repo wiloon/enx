@@ -45,15 +45,33 @@
         .enx-run-btn:hover {
             background-color: #1976D2;
         }
-        .toggle-form {
-            background-color: #666;
+        .form-footer {
+            text-align: center;
             margin-top: 10px;
+            font-size: 14px;
         }
-        .toggle-form:hover {
-            background-color: #555;
+        .register-link {
+            color: #2196F3;
+            text-decoration: none;
+            margin-left: 5px;
+            cursor: pointer;
+        }
+        .register-link:hover {
+            text-decoration: underline;
         }
         .register-form {
             display: none;
+        }
+        .back-to-login {
+            color: #666;
+            text-decoration: none;
+            font-size: 14px;
+            margin-top: 10px;
+            text-align: center;
+            cursor: pointer;
+        }
+        .back-to-login:hover {
+            color: #333;
         }
     </style>
 </head>
@@ -64,17 +82,22 @@
         <input type="password" id="password" placeholder="Password" required>
         <button type="submit">Login</button>
         <div id="loginError" class="error"></div>
+        <div class="form-footer">
+            <span>Don't have an account?</span>
+            <a href="#" id="toggleForm" class="register-link">Register now</a>
+        </div>
     </form>
 
     <form class="register-form" id="registerForm">
         <input type="text" id="regUsername" placeholder="Username" required>
+        <input type="email" id="regEmail" placeholder="Email" required>
         <input type="password" id="regPassword" placeholder="Password" required>
         <input type="password" id="confirmPassword" placeholder="Confirm Password" required>
         <button type="submit">Register</button>
         <div id="registerError" class="error"></div>
+        <a href="#" id="backToLogin" class="back-to-login">Back to Login</a>
     </form>
 
-    <button class="toggle-form" id="toggleForm">Switch to Register</button>
     <script src="popup.js"></script>
 </body>
 </html>

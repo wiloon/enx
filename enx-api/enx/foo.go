@@ -8,7 +8,7 @@ import (
 
 func QueryCountInText(paragraph string, userId int) map[string]Word {
 	words := paragraph
-	logger.Debugf("query count, paragraph: %s, user_id: %d", words, userId)
+	logger.Infof("query count, paragraph: %s, user_id: %d", words, userId)
 
 	// replace multiple space with one space
 	spaceRegex := regexp.MustCompile(`\s+`)
@@ -45,8 +45,11 @@ func QueryCountInText(paragraph string, userId int) map[string]Word {
 			if ud.IsExist() {
 				wordObj.LoadCount = ud.QueryCount
 				wordObj.AlreadyAcquainted = ud.AlreadyAcquainted
-			} else {
+			} else if userId==1{
 				wordObj.LoadByEnglish()
+			}else{
+				wordObj.LoadCount = 0
+				wordObj.AlreadyAcquainted = 0
 			}
 		}
 		response[wordObj.Raw] = wordObj
