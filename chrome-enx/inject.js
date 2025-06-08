@@ -34,49 +34,44 @@ let baseY = -1;
 // todo, try to merge two func int content.js, inject.js
 // which one is in use?
 function popEnxDialogBox(mouseEvent) {
-    let eventTarget = mouseEvent.target;
-    console.log("english word, on mouse click, target:",eventTarget)
-    console.log("mouse event: ", mouseEvent)
-    let mouseEventX = mouseEvent.clientX;
-    let mouseEventY = mouseEvent.clientY;
-    console.log("mouse event client x:", mouseEventX, "y:",mouseEventY)
+    const eventTarget = mouseEvent.target;
+    const SearchKey = eventTarget.getAttribute("alt");
+    const enxWindow = document.getElementById("enx-window");
 
-    // get attribute value from event
-    let SearchKey = eventTarget.getAttribute("alt");
-    console.log("english word alt: ", SearchKey)
+    // 显示弹窗并添加动画类
+    enxWindow.style.display = "block";
+    // 强制重绘以确保过渡效果生效
+    enxWindow.offsetHeight;
+    enxWindow.classList.add("visible");
 
-    let eventTargetRect = eventTarget.getBoundingClientRect();
-    console.log("event target rect: ", eventTargetRect)
-    document.getElementById("enx-window").style.display = "block";
+    // 获取文档滚动位置
+    const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+    const scrollY = window.pageYOffset || document.documentElement.scrollTop;
 
-    let enxWindowRect = document.getElementById("enx-window").getBoundingClientRect()
-    console.log("enx rect: ", enxWindowRect)
-    console.log("enx window left: ", enxWindowRect.left);
-    console.log("enx window top: ", enxWindowRect.top);
-    console.log("enx window height: ", enxWindowRect.height);
-    let enxHeight = enxWindowRect.height
+    // 获取弹窗尺寸
+    const enxRect = enxWindow.getBoundingClientRect();
+    const enxWidth = enxRect.width;
+    const enxHeight = enxRect.height;
 
-    let articleElement = document.getElementsByTagName("body");
-    let articleRect = articleElement[0].getBoundingClientRect();
-    baseX = articleRect.left
-    baseY = articleRect.top
-    console.log("base x: ", baseX)
-    console.log("base y: ", baseY)
+    // 获取目标元素的位置
+    const targetRect = eventTarget.getBoundingClientRect();
 
-    let offsetX = 0;
-    let offsetY = -50;
-    let newX = mouseEventX - baseX - offsetX;
-    let newY = mouseEventY - baseY + offsetY + (-1 * enxHeight);
+    // 计算相对于文档的位置
+    let posX = targetRect.left + scrollX + (targetRect.width / 2) - (enxWidth / 2);
+    let posY = targetRect.top + scrollY - enxHeight - 20; // 20px 的间距
 
-    console.log("new x: ", newX);
-    console.log("mouse event y:", mouseEventY, "base y:", baseY, "offset y:", offsetY, "enx height:", enxHeight, "new y: ", newY);
+    // 如果上方空间不足，则显示在目标元素下方
+    if (posY < scrollY) {
+        posY = targetRect.top + scrollY + targetRect.height + 20;
+    }
 
-    document.getElementById("enx-window").style.left = newX + "px";
-    document.getElementById("enx-window").style.top = newY + "px";
-    console.log(document.getElementById("enx-window").getBoundingClientRect());
-    let word = mouseEvent.target.innerText;
+    // 确保弹窗不会超出文档左右边界
+    posX = Math.max(10, Math.min(posX, document.documentElement.scrollWidth - enxWidth - 10));
 
-    // send word to enx server and get chinese
-    console.log("send get one word from func foo")
+    // 设置位置
+    enxWindow.style.left = `${posX}px`;
+    enxWindow.style.top = `${posY}px`;
+
+    // 发送消息获取翻译
     window.postMessage({type: "getOneWord", word: SearchKey});
 }

@@ -1,15 +1,66 @@
 .enx-window {
-    height: 200px;
-    width: 500px;
+    height: auto;
+    min-height: 200px;
+    max-height: 400px;
+    width: 400px;
     position: absolute;
-    border: #ebebeb solid 1px;
+    border: none;
     background-color: #fff;
-        box-shadow: 0px 0px 20px #ddd;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border-radius: 8px;
     z-index: 9999;
     display: none;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    overflow: hidden;
 }
 
-.enx-ecp{
-    font-size: 13px;
+.enx-window.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.enx-ecp {
+    font-size: 14px;
+    line-height: 1.2;
     margin: 0;
+    padding: 10px 16px;
+    color: #333;
+}
+
+.enx-ecp p {
+    margin: 0 0 4px 0;
+}
+
+.enx-ecp p:last-child {
+    margin-bottom: 0;
+}
+
+.enx-ecp a {
+    color: #2563eb;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: all 0.2s ease;
+    padding: 0 2px;
+}
+
+.enx-ecp a:hover {
+    color: #1d4ed8;
+    border-bottom-color: #1d4ed8;
+}
+
+.enx-ecp a:active {
+    color: #1e40af;
+}
+
+.enx-window::before {
+    content: '';
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-bottom: 8px solid #fff;
 }

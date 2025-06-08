@@ -130,8 +130,6 @@ function getArticleNode() {
     } else {
         return articleClassElement.item(0)
     }
-    console.log("article element length:", articleClassElement.length)
-    return articleClassElement
 }
 
 // when chrome extension ENx clicked
@@ -231,12 +229,13 @@ async function injectEnxWindow() {
     console.log("body node: ", bodyNode)
 
     let enxWindow = `<div class='enx-window' id='enx-window'>
-    <a id='enx-close' href='javascript:void(0);' class='enx-close'>关闭</a>
-    <a id='youdao_link' href='https://www.youdao.com' target='_blank'>有道</a>
+    <a id='enx-close' href='javascript:void(0);' class='enx-close'>Close</a>
+    <a id='youdao_link' href='https://www.youdao.com' target='_blank'>Youdao</a>
     <a id='enx-mark' class='enx-mark' href='javascript:void(0);'>MARK</a>
     <p id='enx-e' class='enx-ecp'></p>
     <p id='enx-p' class='enx-ecp'></p>
     <p id='enx-c' class='enx-ecp'></p>
+    <p id='enx-query-count' class='enx-ecp' style='color: #666; font-size: 0.9em;'></p>
     <p id='enx-search-key' class='enx-search-key' style='display: none'></p>
     </div>
     `
@@ -259,7 +258,7 @@ async function injectEnxWindow() {
 
             // mark word as acquainted
             chrome.runtime.sendMessage({
-                msgType: "markAcquainted", 
+                msgType: "markAcquainted",
                 word: key,
                 userId: userId
             }).then((data) => {
@@ -307,6 +306,7 @@ function getOneWord(key) {
         document.getElementById("enx-e").innerText = key
         document.getElementById("enx-p").innerText = "Loading..."
         document.getElementById("enx-c").innerText = ""
+        document.getElementById("enx-query-count").innerText = ""
         document.getElementById("enx-search-key").innerText = ""
 
         console.log("send get one word from content js")
@@ -320,6 +320,7 @@ function getOneWord(key) {
         document.getElementById("enx-e").innerText = ecp.English
         document.getElementById("enx-p").innerText = ecp.Pronunciation
         document.getElementById("enx-c").innerText = ecp.Chinese
+        document.getElementById("enx-query-count").innerText = `Query Count: ${ecp.LoadCount || 0}`
         document.getElementById("enx-search-key").innerText = ecp.English
 
         // set youdao link
