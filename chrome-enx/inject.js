@@ -48,25 +48,24 @@ function popEnxDialogBox(mouseEvent) {
     const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
     const scrollY = window.pageYOffset || document.documentElement.scrollTop;
 
-    // 获取弹窗尺寸
-    const enxRect = enxWindow.getBoundingClientRect();
-    const enxWidth = enxRect.width;
-    const enxHeight = enxRect.height;
-
     // 获取目标元素的位置
     const targetRect = eventTarget.getBoundingClientRect();
 
     // 计算相对于文档的位置
-    let posX = targetRect.left + scrollX + (targetRect.width / 2) - (enxWidth / 2);
-    let posY = targetRect.top + scrollY - enxHeight - 20; // 20px 的间距
+    let posX = targetRect.left + scrollX + (targetRect.width / 2) - (enxWindow.offsetWidth / 2);
 
-    // 如果上方空间不足，则显示在目标元素下方
-    if (posY < scrollY) {
-        posY = targetRect.top + scrollY + targetRect.height + 20;
-    }
+    // 计算可用的上方空间（从页面顶部到目标元素）
+    const availableSpace = targetRect.top + scrollY - 20; // 20px 的顶部边距
+
+    // 设置最大高度为可用空间减去一些边距
+    const maxHeight = Math.max(100, availableSpace - 40); // 最小高度100px，上下各留20px边距
+    enxWindow.style.maxHeight = `${maxHeight}px`;
+
+    // 计算弹窗位置（始终在目标元素上方）
+    const posY = targetRect.top + scrollY - enxWindow.offsetHeight - 20; // 20px 的间距
 
     // 确保弹窗不会超出文档左右边界
-    posX = Math.max(10, Math.min(posX, document.documentElement.scrollWidth - enxWidth - 10));
+    posX = Math.max(10, Math.min(posX, document.documentElement.scrollWidth - enxWindow.offsetWidth - 10));
 
     // 设置位置
     enxWindow.style.left = `${posX}px`;
