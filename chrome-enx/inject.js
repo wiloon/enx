@@ -32,8 +32,9 @@ let baseY = -1;
 
 // copied to content.js, any change sync with the content.js
 // todo, try to merge two func int content.js, inject.js
-// which one is in use?
+// click on one word
 function popEnxDialogBox(mouseEvent) {
+    console.log("pop enx dialog box, inject js")
     const eventTarget = mouseEvent.target;
     const SearchKey = eventTarget.getAttribute("alt");
     const enxWindow = document.getElementById("enx-window");
