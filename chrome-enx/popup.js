@@ -195,7 +195,7 @@ function enxRun() {
 }
 
 function showError(message) {
-    const errorDiv = document.getElementById('error');
+    const errorDiv = document.getElementById('loginError');
     errorDiv.textContent = message;
     errorDiv.style.display = 'block';
 }

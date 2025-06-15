@@ -2,9 +2,9 @@ console.log("content js running")
 
 // copy to content.js, any change sync with the clone
 // TODO, try to merge two func int content.js, inject.js
-// which one is in use?
+// select multi-word
 function popEnxDialogBox(mouseEvent, english) {
-    console.log("pop enx dialog box, english: ", english)
+    console.log("pop enx dialog box, content js, english: ", english)
     if (english == "null" || english == "") {
         console.log("english is empty")
         return
