@@ -216,15 +216,48 @@ async function injectEnxWindow() {
     let bodyNode = articleClassElement.item(0);
     console.log("body node: ", bodyNode)
 
-    let enxWindow = `<div class='enx-window' id='enx-window' style='height: 260px; overflow-y: auto; width: 320px; overflow-x: hidden; position: absolute; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.15); border-radius: 8px; z-index: 9999;'>
-    <a id='enx-close' href='javascript:void(0);' class='enx-close' style='position: absolute; right: 8px; top: 8px;'>Close</a>
-    <a id='youdao_link' href='https://www.youdao.com' target='_blank'>Youdao</a>
-    <a id='enx-mark' class='enx-mark' href='javascript:void(0);'>MARK</a>
-    <p id='enx-e' class='enx-ecp'></p>
-    <p id='enx-p' class='enx-ecp'></p>
-    <p id='enx-c' class='enx-ecp'></p>
-    <p id='enx-query-count' class='enx-ecp' style='color: #666; font-size: 0.9em;'></p>
-    <p id='enx-search-key' class='enx-search-key' style='display: none'></p>
+    let enxWindow = `
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <style>
+      .enx-close { color: #888 !important; position: static !important; }
+      .enx-close:hover { color: #f44336 !important; }
+      .enx-icon { color: #888 !important; font-size: 1.2em; }
+      .enx-icon:hover { color: #1976d2 !important; }
+      .enx-mark.enx-icon:hover { color: #fbc02d !important; }
+      .enx-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+        margin-left: 16px;
+        margin-right: 8px;
+        justify-content: space-between;
+      }
+      .enx-toolbar-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+    </style>
+    <div class='enx-window' id='enx-window' style='height: 260px; overflow-y: auto; width: 320px; overflow-x: hidden; position: absolute; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.15); border-radius: 8px; z-index: 9999;'>
+      <div class='enx-toolbar'>
+        <div class='enx-toolbar-left'>
+          <a id='youdao_link' href='https://www.youdao.com' target='_blank' class='enx-icon' title='Youdao'>
+            <i class="fa-solid fa-language"></i>
+          </a>
+          <a id='enx-mark' class='enx-mark enx-icon' href='javascript:void(0);' title='Mark as Acquainted'>
+            <i class="fa-solid fa-circle-check"></i>
+          </a>
+        </div>
+        <a id='enx-close' href='javascript:void(0);' class='enx-close' title='Close'>
+          <i class="fa-solid fa-xmark"></i>
+        </a>
+      </div>
+      <p id='enx-e' class='enx-ecp'></p>
+      <p id='enx-p' class='enx-ecp'></p>
+      <p id='enx-c' class='enx-ecp'></p>
+      <p id='enx-query-count' class='enx-ecp' style='color: #666; font-size: 0.9em;'></p>
+      <p id='enx-search-key' class='enx-search-key' style='display: none'></p>
     </div>
     `
 
