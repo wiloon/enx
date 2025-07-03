@@ -11,44 +11,32 @@ function popEnxDialogBox(mouseEvent, english) {
     }
     console.log("on mouse click")
     console.log("mouse event: ", mouseEvent)
-    let mouseEventX = mouseEvent.clientX;
-    let mouseEventY = mouseEvent.clientY;
-    console.log("mouse event client x: ", mouseEventX)
-    console.log("mouse event client y: ", mouseEventY)
-
     let eventTarget = mouseEvent.target;
-    console.log("event target: ", eventTarget)
-
     let eventTargetRect = eventTarget.getBoundingClientRect();
+    console.log("event target: ", eventTarget)
     console.log("event target rect: ", eventTargetRect)
-    document.getElementById("enx-window").style.display = "block";
 
-    let enxWindowRect = document.getElementById("enx-window").getBoundingClientRect()
-    console.log("enx rect: ", enxWindowRect)
-    console.log("enx window left: ", enxWindowRect.left);
-    console.log("enx window top: ", enxWindowRect.top);
-    console.log("enx window height: ", enxWindowRect.height);
-    let enxHeight = enxWindowRect.height
+    // Show the popup first to get its height
+    let enxWindow = document.getElementById("enx-window");
+    enxWindow.style.display = "block";
+    let enxWindowRect = enxWindow.getBoundingClientRect();
+    let enxHeight = enxWindowRect.height;
+    let enxWidth = enxWindowRect.width;
 
-    let articleElement = document.getElementsByTagName("body");
-    let articleRect = articleElement[0].getBoundingClientRect();
-    baseX = articleRect.left
-    baseY = articleRect.top
-    console.log("base x: ", baseX)
-    console.log("base y: ", baseY)
+    // Calculate position: popup bottom is above the word, with a margin
+    let margin = 12; // px, distance between popup bottom and word top
+    let newX = eventTargetRect.left + (eventTargetRect.width - enxWidth) / 2;
+    let newY = eventTargetRect.top - enxHeight - margin;
+    // Prevent popup from going off the top of the viewport
+    if (newY < 0) newY = margin;
+    // Prevent popup from going off the left/right
+    if (newX < 0) newX = margin;
+    if (newX + enxWidth > window.innerWidth) newX = window.innerWidth - enxWidth - margin;
 
-    let offsetX = 0;
-    let offsetY = -50;
-    let newX = mouseEventX - baseX - offsetX;
-    let newY = mouseEventY - baseY + offsetY + (-1 * enxHeight);
-
-    console.log("new x: ", newX);
-    console.log("mouse event y:", mouseEventY, "base y:", baseY, "offset y:", offsetY, "enx height:", enxHeight, "new y: ", newY);
-
-    document.getElementById("enx-window").style.left = newX + "px";
-    document.getElementById("enx-window").style.top = newY + "px";
-    console.log(document.getElementById("enx-window").getBoundingClientRect());
-    let word = mouseEvent.target.innerText;
+    enxWindow.style.left = newX + "px";
+    enxWindow.style.top = newY + "px";
+    console.log("popup new position:", newX, newY);
+    let word = eventTarget.innerText;
 
 
     if (english == undefined || english == "") {
@@ -228,8 +216,8 @@ async function injectEnxWindow() {
     let bodyNode = articleClassElement.item(0);
     console.log("body node: ", bodyNode)
 
-    let enxWindow = `<div class='enx-window' id='enx-window'>
-    <a id='enx-close' href='javascript:void(0);' class='enx-close'>Close</a>
+    let enxWindow = `<div class='enx-window' id='enx-window' style='height: 260px; overflow-y: auto; width: 320px; overflow-x: hidden; position: absolute; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.15); border-radius: 8px; z-index: 9999;'>
+    <a id='enx-close' href='javascript:void(0);' class='enx-close' style='position: absolute; right: 8px; top: 8px;'>Close</a>
     <a id='youdao_link' href='https://www.youdao.com' target='_blank'>Youdao</a>
     <a id='enx-mark' class='enx-mark' href='javascript:void(0);'>MARK</a>
     <p id='enx-e' class='enx-ecp'></p>

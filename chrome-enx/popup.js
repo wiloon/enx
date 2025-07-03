@@ -68,9 +68,32 @@ function logEvent(event, message) {
                 message: message,
                 timestamp: new Date().toISOString()
             })
+        }).then(response => {
+            if (response.status === 401) {
+                handleSessionExpired();
+                throw new Error('Session expired');
+            }
+            // Optionally handle other status codes
         }).catch(err => {
-            console.error('Log send error:', err);
+            if (err.message !== 'Session expired') {
+                console.error('Log send error:', err);
+            }
         });
+    });
+}
+
+function handleSessionExpired() {
+    chrome.storage.local.remove(['isLoggedIn', 'username', 'sessionId'], function() {
+        // Show login form and display session expired message
+        const loginForm = document.getElementById('loginForm');
+        const registerForm = document.getElementById('registerForm');
+        if (loginForm && registerForm) {
+            loginForm.style.display = 'flex';
+            registerForm.style.display = 'none';
+            showError('Session expired, please log in again');
+        } else {
+            location.reload(); // fallback
+        }
     });
 }
 
@@ -85,7 +108,13 @@ function login(username, password) {
             password: password
         })
     })
-    .then(response => response.json())
+    .then(response => {
+        if (response.status === 401) {
+            handleSessionExpired();
+            throw new Error('Session expired');
+        }
+        return response.json();
+    })
     .then(data => {
         logEvent('login', `username: ${username}, success: ${data.success}`);
         if (data.success) {
@@ -102,14 +131,16 @@ function login(username, password) {
         }
     })
     .catch(error => {
-        logEvent('login', `username: ${username}, success: false, error: ${error}`);
-        showError('An error occurred during login');
-        console.error('Error:', error);
+        if (error.message !== 'Session expired') {
+            logEvent('login', `username: ${username}, success: false, error: ${error}`);
+            showError('An error occurred during login');
+            console.error('Error:', error);
+        }
     });
 }
 
 function logout() {
-    const sessionId = chrome.storage.local.get(['sessionId'], function(result) {
+    chrome.storage.local.get(['sessionId'], function(result) {
         if (result.sessionId) {
             fetch('https://enx-dev.wiloon.com/api/logout', {
                 method: 'POST',
@@ -118,7 +149,13 @@ function logout() {
                     'X-Session-ID': result.sessionId
                 }
             })
-            .then(response => response.json())
+            .then(response => {
+                if (response.status === 401) {
+                    handleSessionExpired();
+                    throw new Error('Session expired');
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.success) {
                     chrome.storage.local.remove(['isLoggedIn', 'username', 'sessionId'], function() {
@@ -127,11 +164,13 @@ function logout() {
                 }
             })
             .catch(error => {
-                console.error('Logout error:', error);
-                // Clear local storage even if request fails
-                chrome.storage.local.remove(['isLoggedIn', 'username', 'sessionId'], function() {
-                    location.reload();
-                });
+                if (error.message !== 'Session expired') {
+                    console.error('Logout error:', error);
+                    // Clear local storage even if request fails
+                    chrome.storage.local.remove(['isLoggedIn', 'username', 'sessionId'], function() {
+                        location.reload();
+                    });
+                }
             });
         } else {
             // If no session ID, just clear local storage
@@ -179,14 +218,21 @@ function enxRun() {
         const isSupported = supportedSites.some(site => currentTab.url.startsWith(site));
 
         if (isSupported) {
-            // Send message to content script
-            chrome.tabs.sendMessage(currentTab.id, {action: "enxRun"}, function(response) {
-                if (chrome.runtime.lastError) {
-                    console.error(chrome.runtime.lastError);
-                    showError('Failed to run: ' + chrome.runtime.lastError.message);
-                } else {
-                    console.log('Enx running successfully');
-                }
+            chrome.storage.local.get(['sessionId'], function(result) {
+                // Example: If you have an API call here, check for 401
+                // fetch('YOUR_API', { headers: { 'X-Session-ID': result.sessionId } })
+                //   .then(response => { if (response.status === 401) handleSessionExpired(); ... })
+                // For now, just send message to content script
+                chrome.tabs.sendMessage(currentTab.id, {action: "enxRun"}, function(response) {
+                    if (chrome.runtime.lastError) {
+                        console.error(chrome.runtime.lastError);
+                        showError('Failed to run: ' + chrome.runtime.lastError.message);
+                    } else if (response && response.sessionExpired) {
+                        handleSessionExpired();
+                    } else {
+                        console.log('Enx running successfully');
+                    }
+                });
             });
         } else {
             showError('Enx is not supported on this page');
@@ -219,7 +265,13 @@ function register(username, email, password) {
             password: password
         })
     })
-    .then(response => response.json())
+    .then(response => {
+        if (response.status === 401) {
+            handleSessionExpired();
+            throw new Error('Session expired');
+        }
+        return response.json();
+    })
     .then(data => {
         logEvent('register', `username: ${username}, success: ${data.success}`);
         if (data.success) {
@@ -232,9 +284,11 @@ function register(username, email, password) {
         }
     })
     .catch(error => {
-        logEvent('register', `username: ${username}, success: false, error: ${error}`);
-        showRegisterError('An error occurred during registration');
-        console.error('Error:', error);
+        if (error.message !== 'Session expired') {
+            logEvent('register', `username: ${username}, success: false, error: ${error}`);
+            showRegisterError('An error occurred during registration');
+            console.error('Error:', error);
+        }
     });
 }
 
