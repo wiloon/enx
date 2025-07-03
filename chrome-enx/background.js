@@ -70,7 +70,7 @@ async function getSessionId() {
 // send http request to enx server
 async function enxServerFoo(words) {
     words = encodeURIComponent(words);
-    let url = 'https://enx-dev.wiloon.com/paragraph-init?paragraph=' + words
+    let url = 'https://enx-dev.wiloon.com/api/paragraph-init?paragraph=' + words
     console.log("calling enx server")
     const sessionId = await getSessionId();
     if (!sessionId) {
@@ -91,7 +91,7 @@ async function enxServerFoo(words) {
 }
 
 async function enxServerGetOne(word) {
-    let url = 'https://enx-dev.wiloon.com/translate?word=' + word
+    let url = 'https://enx-dev.wiloon.com/api/translate?word=' + word
     console.log("calling enx server: ", Date.now())
     const sessionId = await getSessionId();
     if (!sessionId) {
@@ -113,7 +113,7 @@ async function enxServerGetOne(word) {
 
 // mark word as acquainted
 async function markWord(key, userId) {
-    let url = 'https://enx-dev.wiloon.com/mark'
+    let url = 'https://enx-dev.wiloon.com/api/mark'
     console.log("calling enx server, url: ", url)
     const sessionId = await getSessionId();
     if (!sessionId) {
