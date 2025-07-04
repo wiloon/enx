@@ -4,13 +4,15 @@ console.log("content js running")
 // TODO, try to merge two func int content.js, inject.js
 // select multi-word
 function popEnxDialogBox(mouseEvent, english) {
-    console.log("pop enx dialog box, content js, english: ", english)
+    console.log("pop enx dialog box, content js, english:", english)
     if (english == "null" || english == "") {
+        // mouse click, but no text selected
         console.log("english is empty")
         return
     }
-    console.log("on mouse click")
-    console.log("mouse event: ", mouseEvent)
+
+    // mouse click on single word
+    console.log("on mouse click, event:", mouseEvent)
     let eventTarget = mouseEvent.target;
     let eventTargetRect = eventTarget.getBoundingClientRect();
     console.log("event target: ", eventTarget)
@@ -19,6 +21,7 @@ function popEnxDialogBox(mouseEvent, english) {
     // Show the popup first to get its height
     let enxWindow = document.getElementById("enx-window");
     enxWindow.style.display = "block";
+    enxWindow.classList.add("visible");
     let enxWindowRect = enxWindow.getBoundingClientRect();
     let enxHeight = enxWindowRect.height;
     let enxWidth = enxWindowRect.width;
@@ -124,21 +127,16 @@ function getArticleNode() {
 function enxRun() {
     articleClassElement = getArticleNode();
     console.log("article node: ", articleClassElement)
-    // console.log(articleClassElement)
     let articleNode = articleClassElement
 
-    // for word group select
-    console.log("define mouse up func")
-
-    // 改变 t2 内容的函数
     function mouseupHandler(mouseEvent) {
-        console.log("mouse up event: ", mouseEvent)
         let selectedText = document.getSelection().toString()
-        console.log("mouse up selected text:", selectedText)
+        console.log("mouse up event:",mouseEvent, "selected text:", selectedText)
         popEnxDialogBox(mouseEvent, selectedText)
     }
 
     console.log("adding mouse up event")
+
     // 为 table 添加事件监听器
     articleNode.addEventListener("mouseup", mouseupHandler, false);
 
@@ -168,7 +166,7 @@ function enxRun() {
                         if (tmpParagraph.length > 5000) {
                             console.log("sending msg from content script to backend, paragraph length, length>5000:", tmpParagraph.length, "paragraph:", tmpParagraph)
                             let response = await chrome.runtime.sendMessage({ msgType: "getWords", words: tmpParagraph });
-                            console.log("response from backend: ", response)
+                            console.log("enx run, response from backend: ", response)
                             console.log(response.wordProperties)
                             wordDict = Object.assign({}, wordDict, response.wordProperties);
                             console.log("word dict size:", Object.keys(wordDict).length)
@@ -289,7 +287,9 @@ async function injectEnxWindow() {
     console.log("enx window inserted")
 
     document.getElementById("enx-close").onclick = function () {
-        document.getElementById("enx-window").style.display = "none";
+        let enxWindow = document.getElementById("enx-window");
+        enxWindow.style.display = "none";
+        enxWindow.classList.remove("visible");
     };
 
     document.getElementById("enx-mark").onclick = function () {
@@ -357,9 +357,7 @@ function getOneWord(key) {
         console.log("send get one word from content js")
         const response = await chrome.runtime.sendMessage({ msgType: "getOneWord", word: key });
         // do something with response here, not outside the function
-        console.log("response from backend")
-        console.log(response);
-        console.log(response.ecp);
+        console.log("get one word, response from backend: ", response)
         let ecp = response.ecp
         // update enx window
         document.getElementById("enx-e").innerText = ecp.English
@@ -372,7 +370,12 @@ function getOneWord(key) {
         document.getElementById("youdao_link").href = "https://www.youdao.com/result?word=" + ecp.English + "&lang=en"
 
         // update underline color
-        updateUnderLine(response.ecp)
+        // if key is multi-word, if multi-word do not update underline color
+        if (key.includes(" ")) {
+            console.log("key is multi-word, do not update underline color")
+        } else {
+            updateUnderLine(response.ecp)
+        }
     })();
 }
 
