@@ -3,15 +3,14 @@ console.log("content js running")
 // copy to content.js, any change sync with the clone
 // TODO, try to merge two func int content.js, inject.js
 // select multi-word
-function popEnxDialogBox(mouseEvent, english) {
-    console.log("pop enx dialog box, content js, english:", english)
-    if (english == "null" || english == "") {
-        // mouse click, but no text selected
-        console.log("english is empty")
-        return
+// Keep the original implementation for window.popEnxDialogBox to call
+function popEnxDialogBoxImpl(mouseEvent, english) {
+    if (english == null || english == "null" || english == "") {
+        // Do not show popup or translate if english is null
+        return;
     }
-
-    // mouse click on single word
+    console.log("pop enx dialog box, content js, english:", english)
+    // mouse click on single word or selection
     console.log("on mouse click, event:", mouseEvent)
     let eventTarget = mouseEvent.target;
     let eventTargetRect = eventTarget.getBoundingClientRect();
@@ -28,29 +27,32 @@ function popEnxDialogBox(mouseEvent, english) {
 
     // Calculate position: popup bottom is above the word, with a margin
     let margin = 12; // px, distance between popup bottom and word top
-    let newX = eventTargetRect.left + (eventTargetRect.width - enxWidth) / 2;
-    let newY = eventTargetRect.top - enxHeight - margin;
+    let newX = eventTargetRect.left + (eventTargetRect.width - enxWidth) / 2 + window.scrollX;
+    let newY = eventTargetRect.top - enxHeight - margin + window.scrollY;
     // Prevent popup from going off the top of the viewport
-    if (newY < 0) newY = margin;
+    if (newY < window.scrollY + margin) newY = window.scrollY + margin;
     // Prevent popup from going off the left/right
-    if (newX < 0) newX = margin;
-    if (newX + enxWidth > window.innerWidth) newX = window.innerWidth - enxWidth - margin;
+    if (newX < window.scrollX + margin) newX = window.scrollX + margin;
+    if (newX + enxWidth > window.scrollX + window.innerWidth)
+        newX = window.scrollX + window.innerWidth - enxWidth - margin;
 
     enxWindow.style.left = newX + "px";
     enxWindow.style.top = newY + "px";
     console.log("popup new position:", newX, newY);
-    let word = eventTarget.innerText;
-
-
-    if (english == undefined || english == "") {
-        // get attribute value from event
-        english = eventTarget.getAttribute("alt");
-    }
 
     // send word to enx server and get chinese
     console.log("send window msg 'getOneWord' from content.js to background.js, english: ", english)
     window.postMessage({ type: "getOneWord", word: english });
 }
+
+window.popEnxDialogBox = function(mouseEvent) {
+    let english = undefined;
+    if (mouseEvent && mouseEvent.target) {
+        english = mouseEvent.target.getAttribute("alt");
+    }
+    console.log("window pop enx dialog box, english:", english)
+    return popEnxDialogBoxImpl(mouseEvent, english);
+};
 
 // update underline color
 function updateUnderLine(ecp) {
@@ -130,14 +132,14 @@ function enxRun() {
     let articleNode = articleClassElement
 
     function mouseupHandler(mouseEvent) {
-        let selectedText = document.getSelection().toString()
-        console.log("mouse up event:",mouseEvent, "selected text:", selectedText)
-        popEnxDialogBox(mouseEvent, selectedText)
+        let selectedText = document.getSelection().toString();
+        console.log("mouse up event:", mouseEvent, "selected text:", selectedText);
+        popEnxDialogBoxImpl(mouseEvent, selectedText);
     }
 
     console.log("adding mouse up event")
 
-    // 为 table 添加事件监听器
+    // add mouse up event listener to article node
     articleNode.addEventListener("mouseup", mouseupHandler, false);
 
     (async () => {
@@ -429,3 +431,21 @@ chrome.runtime.onMessage.addListener(
 });
 
 injectEnxWindow().then()
+
+// Add event delegation for all <u alt=...> elements
+// This allows popEnxDialogBox to be called from user clicks, even if not in global window
+
+document.body.addEventListener('click', function(e) {
+    if (
+        e.target &&
+        e.target.tagName === 'U' &&
+        e.target.hasAttribute('alt') &&
+        e.target.getAttribute('alt') &&
+        e.target.innerText &&
+        e.target.getAttribute('alt') !== 'null' &&
+        e.target.innerText.trim() !== '' &&
+        !window.getSelection().toString().includes(' ')
+    ) {
+        window.popEnxDialogBox(e);
+    }
+});

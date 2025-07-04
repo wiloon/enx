@@ -261,7 +261,7 @@ function collectEnglishWord(tmpInnerHtml, wordIndexStart, wordIndexEnd, copyInde
         if (ecp.WordType === 1) {
             startTag = '<u alt="alt-foo" class="class-foo" style="text-decoration: #000000 underline; text-decoration-thickness: 2px;">';
         } else {
-            startTag = '<u alt="alt-foo" onclick="popEnxDialogBox(event)" class="class-foo" style="text-decoration: #000000 underline; text-decoration-thickness: 2px;">';
+            startTag = '<u alt="alt-foo" class="class-foo" style="text-decoration: #000000 underline; text-decoration-thickness: 2px;">';
         }
 
         let colorCode = getColorCodeByCount(ecp);
