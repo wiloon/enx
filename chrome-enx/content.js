@@ -223,7 +223,8 @@ async function injectEnxWindow() {
       .enx-close:hover { color: #f44336 !important; }
       .enx-icon { color: #888 !important; font-size: 1.2em; }
       .enx-icon:hover { color: #1976d2 !important; }
-      .enx-mark.enx-icon:hover { color: #fbc02d !important; }
+      .enx-mark.enx-icon { color: #888 !important; } /* 默认灰色，与其他按钮一致 */
+      .enx-mark.enx-icon:hover { color: #43a047 !important; } /* 悬停时绿色，代表已熟悉 */
       .enx-toolbar {
         display: flex;
         align-items: center;
@@ -237,6 +238,27 @@ async function injectEnxWindow() {
         display: flex;
         align-items: center;
         gap: 8px;
+      }
+      .enx-word-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-right: 16px;
+        margin-left: 16px;
+        margin-top: 8px;
+      }
+      .enx-word-row .enx-e {
+        flex: 1;
+        text-align: left;
+        font-size: 1.2em;
+        font-weight: bold;
+      }
+      .enx-word-row .enx-query-count {
+        flex-shrink: 0;
+        text-align: right;
+        color: #666;
+        font-size: 0.85em;
+        min-width: 70px;
       }
     </style>
     <div class='enx-window' id='enx-window' style='height: 260px; overflow-y: auto; width: 320px; overflow-x: hidden; position: absolute; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.15); border-radius: 8px; z-index: 9999;'>
@@ -253,10 +275,12 @@ async function injectEnxWindow() {
           <i class="fa-solid fa-xmark"></i>
         </a>
       </div>
-      <p id='enx-e' class='enx-ecp'></p>
+      <div class='enx-word-row'>
+        <span id='enx-e' class='enx-e'></span>
+        <span id='enx-query-count' class='enx-query-count'></span>
+      </div>
       <p id='enx-p' class='enx-ecp'></p>
       <p id='enx-c' class='enx-ecp'></p>
-      <p id='enx-query-count' class='enx-ecp' style='color: #666; font-size: 0.9em;'></p>
       <p id='enx-search-key' class='enx-search-key' style='display: none'></p>
     </div>
     `
