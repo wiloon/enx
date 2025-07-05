@@ -3,6 +3,144 @@ console.log("content js running")
 // copy to content.js, any change sync with the clone
 // TODO, try to merge two func int content.js, inject.js
 // select multi-word
+// Get popup dimensions
+function getPopupDimensions() {
+    const enxWindow = document.getElementById("enx-window");
+    if (!enxWindow) {
+        console.log("Popup does not exist");
+        return null;
+    }
+
+    const popupRect = enxWindow.getBoundingClientRect();
+    const computedStyle = window.getComputedStyle(enxWindow);
+
+    return {
+        width: popupRect.width,
+        height: popupRect.height,
+        offsetHeight: enxWindow.offsetHeight,
+        scrollHeight: enxWindow.scrollHeight,
+        maxHeight: computedStyle.maxHeight,
+        isVisible: enxWindow.style.display !== "none"
+    };
+}
+
+// Improved popup positioning algorithm
+function calculateOptimalPosition(eventTarget) {
+    const margin = 12;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+
+    // Default spacing - approximately two lines of text height
+    const defaultSpacing = 48; // Approximately two lines of text height (24px * 2)
+
+    // Get actual popup dimensions (if popup exists) or use default values
+    let popupWidth = 320;
+    let popupHeight = 260; // default max-height from CSS
+
+    const enxWindow = document.getElementById("enx-window");
+    if (enxWindow && enxWindow.style.display !== "none") {
+        const dimensions = getPopupDimensions();
+        if (dimensions) {
+            popupWidth = dimensions.width;
+            popupHeight = dimensions.height;
+            console.log(`Using actual popup dimensions: ${popupWidth}x${popupHeight}`);
+        }
+    } else {
+        console.log("Using default popup dimensions: 320x260");
+    }
+
+    // Get target element position
+    const targetRect = eventTarget.getBoundingClientRect();
+
+    // Calculate horizontal position (center aligned)
+    let newX = targetRect.left + (targetRect.width - popupWidth) / 2 + scrollX;
+
+        // Smart vertical positioning - prioritize above for better reading experience
+    let newY;
+
+    // Handle case where target is below current viewport (negative space above)
+    let spaceAbove, spaceBelow;
+    if (targetRect.top < scrollY) {
+        // Target is below current viewport - calculate space relative to viewport
+        spaceAbove = 0;
+        spaceBelow = viewportHeight - (targetRect.bottom - scrollY);
+        console.log("Target is below current viewport - adjusting calculations");
+    } else {
+        // Normal case - target is within or above current viewport
+        spaceAbove = targetRect.top - scrollY;
+        spaceBelow = viewportHeight - (targetRect.bottom - scrollY);
+    }
+
+    console.log(`Default spacing setting: ${defaultSpacing}px`);
+
+    console.log("Positioning analysis:");
+    console.log(`- Target rect: top=${targetRect.top}, bottom=${targetRect.bottom}, height=${targetRect.height}`);
+    console.log(`- Viewport: height=${viewportHeight}, scrollY=${scrollY}`);
+    console.log(`- Space above: ${spaceAbove}px`);
+    console.log(`- Space below: ${spaceBelow}px`);
+    console.log(`- Popup height needed: ${popupHeight + margin}px`);
+    console.log(`- Required space above: ${popupHeight + margin}px`);
+    console.log(`- Required space above (70%): ${popupHeight * 0.7 + margin}px`);
+
+        // Prioritize showing above the word for better reading flow (top to bottom)
+    console.log("Checking positioning conditions:");
+    console.log(`- spaceAbove (${spaceAbove}) >= popupHeight + margin (${popupHeight + margin}): ${spaceAbove >= popupHeight + margin}`);
+    console.log(`- spaceAbove (${spaceAbove}) >= popupHeight * 0.7 + margin (${popupHeight * 0.7 + margin}): ${spaceAbove >= popupHeight * 0.7 + margin}`);
+    console.log(`- spaceBelow (${spaceBelow}) >= popupHeight + margin (${popupHeight + margin}): ${spaceBelow >= popupHeight + margin}`);
+
+    // Calculate position using default spacing
+    if (targetRect.top < scrollY) {
+        // Target is below current viewport - show popup above the word with default spacing
+        newY = targetRect.top - popupHeight - defaultSpacing + scrollY;
+        console.log("Positioning: ABOVE the word (target below viewport, using default spacing)");
+    } else if (spaceAbove >= popupHeight + defaultSpacing) {
+        // Enough space above, show above the word with default spacing (preferred)
+        newY = targetRect.top - popupHeight - defaultSpacing + scrollY;
+        console.log("Positioning: ABOVE the word (preferred reading flow, default spacing)");
+    } else if (spaceAbove >= popupHeight + margin) {
+        // Reduced space above - use minimum margin
+        newY = targetRect.top - popupHeight - margin + scrollY;
+        console.log("Positioning: ABOVE the word (reduced spacing, minimum margin)");
+    } else if (spaceBelow >= popupHeight + defaultSpacing) {
+        // No space above, but enough space below with default spacing
+        newY = targetRect.bottom + defaultSpacing + scrollY;
+        console.log("Positioning: BELOW the word (default spacing)");
+    } else if (spaceBelow >= popupHeight + margin) {
+        // Reduced space below - use minimum margin
+        newY = targetRect.bottom + margin + scrollY;
+        console.log("Positioning: BELOW the word (reduced spacing, minimum margin)");
+    } else {
+        // Not enough space in either direction, choose the one with more space
+        if (spaceAbove > spaceBelow) {
+            newY = scrollY + margin;
+            console.log("Positioning: TOP of viewport (insufficient space, above preferred)");
+        } else {
+            newY = scrollY + viewportHeight - popupHeight - margin;
+            console.log("Positioning: BOTTOM of viewport (insufficient space, below preferred)");
+        }
+    }
+
+    // Boundary adjustments
+    if (newX < scrollX + margin) {
+        newX = scrollX + margin;
+        console.log("Adjusted: Left boundary");
+    }
+    if (newX + popupWidth > scrollX + viewportWidth) {
+        newX = scrollX + viewportWidth - popupWidth - margin;
+        console.log("Adjusted: Right boundary");
+    }
+
+    // Ensure popup is at least partially visible in viewport
+    if (newY < scrollY) {
+        newY = scrollY + margin;
+        console.log("Adjusted: Popup was above viewport, moved to top of viewport");
+    }
+
+    return { x: newX, y: newY };
+}
+
 // Keep the original implementation for window.popEnxDialogBox to call
 function popEnxDialogBoxImpl(mouseEvent, english) {
     if (english == null || english == "null" || english == "") {
@@ -17,28 +155,66 @@ function popEnxDialogBoxImpl(mouseEvent, english) {
     console.log("event target: ", eventTarget)
     console.log("event target rect: ", eventTargetRect)
 
-    // Show the popup first to get its height
+    // Calculate optimal position before showing popup
+    const position = calculateOptimalPosition(eventTarget);
+
+            // Show the popup at the calculated position (no flickering)
     let enxWindow = document.getElementById("enx-window");
+    enxWindow.style.left = position.x + "px";
+    enxWindow.style.top = position.y + "px";
     enxWindow.style.display = "block";
     enxWindow.classList.add("visible");
-    let enxWindowRect = enxWindow.getBoundingClientRect();
-    let enxHeight = enxWindowRect.height;
-    let enxWidth = enxWindowRect.width;
 
-    // Calculate position: popup bottom is above the word, with a margin
-    let margin = 12; // px, distance between popup bottom and word top
-    let newX = eventTargetRect.left + (eventTargetRect.width - enxWidth) / 2 + window.scrollX;
-    let newY = eventTargetRect.top - enxHeight - margin + window.scrollY;
-    // Prevent popup from going off the top of the viewport
-    if (newY < window.scrollY + margin) newY = window.scrollY + margin;
-    // Prevent popup from going off the left/right
-    if (newX < window.scrollX + margin) newX = window.scrollX + margin;
-    if (newX + enxWidth > window.scrollX + window.innerWidth)
-        newX = window.scrollX + window.innerWidth - enxWidth - margin;
+    // Get popup dimensions after it's displayed and recalculate position if needed
+    setTimeout(() => {
+        const popupRect = enxWindow.getBoundingClientRect();
+        const actualPopupHeight = popupRect.height;
+        const actualPopupWidth = popupRect.width;
+        const computedStyle = window.getComputedStyle(enxWindow);
+        const maxHeight = computedStyle.maxHeight;
+        const actualHeight = enxWindow.offsetHeight;
+        const scrollHeight = enxWindow.scrollHeight;
 
-    enxWindow.style.left = newX + "px";
-    enxWindow.style.top = newY + "px";
-    console.log("popup new position:", newX, newY);
+                console.log("Popup dimension information:");
+        console.log(`- getBoundingClientRect().height: ${actualPopupHeight}px`);
+        console.log(`- offsetHeight: ${actualHeight}px`);
+        console.log(`- scrollHeight: ${scrollHeight}px`);
+        console.log(`- CSS max-height: ${maxHeight}`);
+        console.log(`- Width: ${actualPopupWidth}px`);
+
+        // Recalculate position if actual height differs significantly from estimated height
+        const heightDifference = Math.abs(actualPopupHeight - 260); // 260 is our default estimate
+        if (heightDifference > 20) { // If difference is more than 20px
+            console.log(`Popup height difference is significant (${heightDifference}px), recalculating position`);
+            const newPosition = calculateOptimalPosition(eventTarget);
+            enxWindow.style.left = newPosition.x + "px";
+            enxWindow.style.top = newPosition.y + "px";
+            console.log("Position adjusted:", newPosition.x, newPosition.y);
+        }
+    }, 10);
+
+    console.log("popup new position:", position.x, position.y);
+
+            // Immediately display the clicked word in the popup
+    if (english && english.trim() !== "") {
+        document.getElementById("enx-e").innerText = english;
+        document.getElementById("enx-p").innerText = "";
+        document.getElementById("enx-c").innerText = "";
+        document.getElementById("enx-query-count").innerText = "";
+        document.getElementById("enx-search-key").innerText = english;
+
+        // Hide empty content areas during loading
+        document.getElementById("enx-p").style.display = "none";
+        document.getElementById("enx-c").style.display = "none";
+
+        // Show loading indicator
+        document.getElementById("enx-loading").style.display = "block";
+
+        // Set youdao link immediately
+        document.getElementById("youdao_link").href = "https://www.youdao.com/result?word=" + english + "&lang=en";
+
+        console.log("Immediately displayed word in popup:", english);
+    }
 
     // send word to enx server and get chinese
     console.log("send window msg 'getOneWord' from content.js to background.js, english: ", english)
@@ -205,6 +381,39 @@ function injectScript(file_path, tag) {
     node.appendChild(script);
 }
 
+// Calculate popup content line count
+function calculateContentLines() {
+    const contentElement = document.querySelector('.enx-content');
+    if (!contentElement) return 0;
+
+    // Get computed styles
+    const computedStyle = window.getComputedStyle(contentElement);
+    const lineHeight = parseInt(computedStyle.lineHeight) || 20; // Default line height 20px
+    const contentHeight = contentElement.scrollHeight;
+
+    // Calculate line count
+    const lineCount = Math.ceil(contentHeight / lineHeight);
+
+    console.log(`Popup content statistics:`);
+    console.log(`- Content height: ${contentHeight}px`);
+    console.log(`- Line height: ${lineHeight}px`);
+    console.log(`- Total lines: ${lineCount}`);
+
+    // Calculate line count for each element separately
+    const elements = contentElement.children;
+    let totalLines = 0;
+    for (let element of elements) {
+        if (element.style.display !== 'none') {
+            const elementHeight = element.scrollHeight;
+            const elementLines = Math.ceil(elementHeight / lineHeight);
+            totalLines += elementLines;
+            console.log(`- ${element.tagName} (${element.id || element.className}): ${elementLines} lines`);
+        }
+    }
+
+    return { totalLines: lineCount, elementLines: totalLines };
+}
+
 
 async function injectEnxWindow() {
     console.log("inject enx window")
@@ -229,10 +438,15 @@ async function injectEnxWindow() {
         display: flex;
         align-items: center;
         gap: 8px;
-        margin-top: 8px;
-        margin-left: 16px;
-        margin-right: 8px;
+        margin-top: auto;
+        margin-left: 0;
+        margin-right: 0;
+        margin-bottom: 0;
+        padding: 8px 16px 8px 16px;
         justify-content: space-between;
+        flex-shrink: 0;
+        border-top: 1px solid #eee;
+        background: #fafafa;
       }
       .enx-toolbar-left {
         display: flex;
@@ -243,8 +457,6 @@ async function injectEnxWindow() {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-right: 16px;
-        margin-left: 16px;
         margin-top: 8px;
       }
       .enx-word-row .enx-e {
@@ -261,8 +473,22 @@ async function injectEnxWindow() {
         min-width: 70px;
       }
     </style>
-    <div class='enx-window' id='enx-window' style='height: 260px; overflow-y: auto; width: 320px; overflow-x: hidden; position: absolute; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.15); border-radius: 8px; z-index: 9999;'>
-      <div class='enx-toolbar'>
+    <div class='enx-window' id='enx-window' style='max-height: 260px; width: 320px; overflow: hidden; position: absolute; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.15); border-radius: 8px; z-index: 9999; display: flex; flex-direction: column;'>
+      <div class='enx-content' style='flex: 1; overflow-y: auto; padding: 8px 16px 0 0; display: flex; flex-direction: column;'>
+        <div class='enx-word-row'>
+          <span id='enx-e' class='enx-e'></span>
+          <span id='enx-query-count' class='enx-query-count'></span>
+        </div>
+        <div id='enx-loading' class='enx-loading' style='display: none; color: #666; font-style: italic; margin: 8px 0;'>
+          <i class="fa-solid fa-spinner fa-spin"></i> Loading translation...
+        </div>
+        <div class='enx-content-fields' style='flex: 1; display: flex; flex-direction: column;'>
+          <p id='enx-p' class='enx-ecp'></p>
+          <p id='enx-c' class='enx-ecp'></p>
+          <p id='enx-search-key' class='enx-search-key' style='display: none'></p>
+        </div>
+      </div>
+      <div class='enx-toolbar' style='flex-shrink: 0; margin: 0;'>
         <div class='enx-toolbar-left'>
           <a id='youdao_link' href='https://www.youdao.com' target='_blank' class='enx-icon' title='Youdao'>
             <i class="fa-solid fa-language"></i>
@@ -275,13 +501,6 @@ async function injectEnxWindow() {
           <i class="fa-solid fa-xmark"></i>
         </a>
       </div>
-      <div class='enx-word-row'>
-        <span id='enx-e' class='enx-e'></span>
-        <span id='enx-query-count' class='enx-query-count'></span>
-      </div>
-      <p id='enx-p' class='enx-ecp'></p>
-      <p id='enx-c' class='enx-ecp'></p>
-      <p id='enx-search-key' class='enx-search-key' style='display: none'></p>
     </div>
     `
 
@@ -299,7 +518,7 @@ async function injectEnxWindow() {
         let key = document.getElementById("enx-e").innerText
         console.log("mark: ", key)
 
-        // 获取用户 ID
+        // Get user ID
         chrome.storage.local.get(['userId'], function(result) {
             const userId = result.userId || 1;
 
@@ -351,22 +570,68 @@ function getOneWord(key) {
     (async () => {
         console.log("sending msg from content script to backend, key: ", key)
         document.getElementById("enx-e").innerText = key
-        document.getElementById("enx-p").innerText = "Loading..."
+        document.getElementById("enx-p").innerText = ""
         document.getElementById("enx-c").innerText = ""
         document.getElementById("enx-query-count").innerText = ""
         document.getElementById("enx-search-key").innerText = ""
+
+        // Hide empty content areas during loading
+        document.getElementById("enx-p").style.display = "none";
+        document.getElementById("enx-c").style.display = "none";
+
+        // Show loading indicator
+        document.getElementById("enx-loading").style.display = "block";
 
         console.log("send get one word from content js")
         const response = await chrome.runtime.sendMessage({ msgType: "getOneWord", word: key });
         // do something with response here, not outside the function
         console.log("get one word, response from backend: ", response)
         let ecp = response.ecp
-        // update enx window
+
+        // Hide loading indicator
+        document.getElementById("enx-loading").style.display = "none";
+
+        // Show content areas and update enx window
+        document.getElementById("enx-p").style.display = "block";
+        document.getElementById("enx-c").style.display = "block";
         document.getElementById("enx-e").innerText = ecp.English
         document.getElementById("enx-p").innerText = ecp.Pronunciation
         document.getElementById("enx-c").innerText = ecp.Chinese
         document.getElementById("enx-query-count").innerText = `Query Count: ${ecp.LoadCount || 0}`
         document.getElementById("enx-search-key").innerText = ecp.English
+
+                // Calculate content lines and reposition popup
+        setTimeout(() => {
+            const lineInfo = calculateContentLines();
+            console.log(`Popup content line count completed: Total lines=${lineInfo.totalLines}`);
+
+            // Get popup dimensions after loading is complete
+            const dimensions = getPopupDimensions();
+            if (dimensions) {
+                console.log("Popup dimensions after loading:");
+                console.log(`- Height: ${dimensions.height}px`);
+                console.log(`- Width: ${dimensions.width}px`);
+                console.log(`- Is visible: ${dimensions.isVisible}`);
+            }
+
+            // Recalculate popup position
+            const enxWindow = document.getElementById("enx-window");
+            if (enxWindow && enxWindow.style.display !== "none") {
+                // Try to find the original clicked target element
+                const wordElements = document.querySelectorAll(`[alt="${key}"]`);
+                if (wordElements.length > 0) {
+                    const targetElement = wordElements[0]; // Use the first matching element
+                    console.log("Found target element, recalculating popup position");
+
+                    const newPosition = calculateOptimalPosition(targetElement);
+                    enxWindow.style.left = newPosition.x + "px";
+                    enxWindow.style.top = newPosition.y + "px";
+                    console.log("Repositioned popup after API response:", newPosition.x, newPosition.y);
+                } else {
+                    console.log("Target element not found, cannot reposition");
+                }
+            }
+        }, 100);
 
         // set youdao link
         document.getElementById("youdao_link").href = "https://www.youdao.com/result?word=" + ecp.English + "&lang=en"
