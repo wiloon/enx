@@ -158,7 +158,7 @@ function popEnxDialogBoxImpl(mouseEvent, english) {
     // Calculate optimal position before showing popup
     const position = calculateOptimalPosition(eventTarget);
 
-            // Show the popup at the calculated position (no flickering)
+    // Show the popup at the calculated position (no flickering)
     let enxWindow = document.getElementById("enx-window");
     enxWindow.style.left = position.x + "px";
     enxWindow.style.top = position.y + "px";
@@ -195,8 +195,10 @@ function popEnxDialogBoxImpl(mouseEvent, english) {
 
     console.log("popup new position:", position.x, position.y);
 
-            // Immediately display the clicked word in the popup
+    // Immediately display the clicked word in the popup
     if (english && english.trim() !== "") {
+        // Ensure enxWindow is defined for skeleton/loading toggling
+        let enxWindow = document.getElementById("enx-window");
         document.getElementById("enx-e").innerText = english;
         document.getElementById("enx-p").innerText = "";
         document.getElementById("enx-c").innerText = "";
@@ -206,13 +208,16 @@ function popEnxDialogBoxImpl(mouseEvent, english) {
         // Hide empty content areas during loading
         document.getElementById("enx-p").style.display = "none";
         document.getElementById("enx-c").style.display = "none";
-
+        // Show skeletons
+        document.getElementById("enx-skeleton").style.display = "block";
+        document.getElementById("enx-skeleton2").style.display = "block";
         // Show loading indicator
         document.getElementById("enx-loading").style.display = "block";
-
+        // Add loading class
+        enxWindow.classList.add("loading");
+        enxWindow.classList.remove("loaded");
         // Set youdao link immediately
         document.getElementById("youdao_link").href = "https://www.youdao.com/result?word=" + english + "&lang=en";
-
         console.log("Immediately displayed word in popup:", english);
     }
 
@@ -432,8 +437,8 @@ async function injectEnxWindow() {
       .enx-close:hover { color: #f44336 !important; }
       .enx-icon { color: #888 !important; font-size: 1.2em; }
       .enx-icon:hover { color: #1976d2 !important; }
-      .enx-mark.enx-icon { color: #888 !important; } /* 默认灰色，与其他按钮一致 */
-      .enx-mark.enx-icon:hover { color: #43a047 !important; } /* 悬停时绿色，代表已熟悉 */
+      .enx-mark.enx-icon { color: #888 !important; }
+      .enx-mark.enx-icon:hover { color: #43a047 !important; }
       .enx-toolbar {
         display: flex;
         align-items: center;
@@ -448,10 +453,29 @@ async function injectEnxWindow() {
         border-top: 1px solid #eee;
         background: #fafafa;
       }
-      .enx-toolbar-left {
-        display: flex;
-        align-items: center;
-        gap: 8px;
+      .enx-window {
+        transition: top 0.2s, left 0.2s;
+      }
+      .enx-window.loading {
+        opacity: 0.7;
+        pointer-events: none;
+      }
+      .enx-window.loaded {
+        opacity: 1;
+        pointer-events: auto;
+        transition: opacity 0.2s;
+      }
+      .enx-skeleton {
+        background: linear-gradient(90deg, #eee 25%, #f5f5f5 50%, #eee 75%);
+        background-size: 200% 100%;
+        animation: enx-skeleton-loading 1.2s infinite linear;
+        border-radius: 4px;
+        min-height: 18px;
+        margin: 4px 0;
+      }
+      @keyframes enx-skeleton-loading {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
       }
       .enx-word-row {
         display: flex;
@@ -471,9 +495,11 @@ async function injectEnxWindow() {
         color: #666;
         font-size: 0.85em;
         min-width: 70px;
+        margin-left: 8px;
+        font-size: 12px;
       }
     </style>
-    <div class='enx-window' id='enx-window' style='max-height: 260px; width: 320px; overflow: hidden; position: absolute; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.15); border-radius: 8px; z-index: 9999; display: flex; flex-direction: column;'>
+    <div class='enx-window' id='enx-window' style='max-height: 260px; width: 320px; overflow: hidden; position: absolute; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.15); border-radius: 8px; z-index: 9999; display: flex; flex-direction: column; display: none;'>
       <div class='enx-content' style='flex: 1; overflow-y: auto; padding: 8px 16px 0 0; display: flex; flex-direction: column;'>
         <div class='enx-word-row'>
           <span id='enx-e' class='enx-e'></span>
@@ -483,6 +509,8 @@ async function injectEnxWindow() {
           <i class="fa-solid fa-spinner fa-spin"></i> Loading translation...
         </div>
         <div class='enx-content-fields' style='flex: 1; display: flex; flex-direction: column;'>
+          <div id='enx-skeleton' class='enx-skeleton' style='display: none; width: 80%; height: 18px;'></div>
+          <div id='enx-skeleton2' class='enx-skeleton' style='display: none; width: 60%; height: 18px;'></div>
           <p id='enx-p' class='enx-ecp'></p>
           <p id='enx-c' class='enx-ecp'></p>
           <p id='enx-search-key' class='enx-search-key' style='display: none'></p>
@@ -578,9 +606,15 @@ function getOneWord(key) {
         // Hide empty content areas during loading
         document.getElementById("enx-p").style.display = "none";
         document.getElementById("enx-c").style.display = "none";
-
+        // Show skeletons
+        document.getElementById("enx-skeleton").style.display = "block";
+        document.getElementById("enx-skeleton2").style.display = "block";
         // Show loading indicator
         document.getElementById("enx-loading").style.display = "block";
+        // Add loading class
+        let enxWindow = document.getElementById("enx-window");
+        enxWindow.classList.add("loading");
+        enxWindow.classList.remove("loaded");
 
         console.log("send get one word from content js")
         const response = await chrome.runtime.sendMessage({ msgType: "getOneWord", word: key });
@@ -590,7 +624,9 @@ function getOneWord(key) {
 
         // Hide loading indicator
         document.getElementById("enx-loading").style.display = "none";
-
+        // Hide skeletons
+        document.getElementById("enx-skeleton").style.display = "none";
+        document.getElementById("enx-skeleton2").style.display = "none";
         // Show content areas and update enx window
         document.getElementById("enx-p").style.display = "block";
         document.getElementById("enx-c").style.display = "block";
@@ -599,6 +635,9 @@ function getOneWord(key) {
         document.getElementById("enx-c").innerText = ecp.Chinese
         document.getElementById("enx-query-count").innerText = `Query Count: ${ecp.LoadCount || 0}`
         document.getElementById("enx-search-key").innerText = ecp.English
+        // Add loaded class
+        enxWindow.classList.remove("loading");
+        enxWindow.classList.add("loaded");
 
                 // Calculate content lines and reposition popup
         setTimeout(() => {
