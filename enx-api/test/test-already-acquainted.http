@@ -1,0 +1,31 @@
+@address=localhost:8080
+
+### 测试 AlreadyAcquainted 状态重置功能
+
+### 1. 首先登录获取session
+POST http://{{address}}/login HTTP/1.1
+content-type: application/json
+
+{
+    "username": "wiloon",
+    "password": "password_1"
+}
+
+### 2. 查询一个词，应该返回 AlreadyAcquainted = 0
+GET http://{{address}}/translate?word=test HTTP/1.1
+X-Session-ID: {{session_id}}
+
+### 3. 标记这个词为已熟悉
+POST http://{{address}}/mark HTTP/1.1
+content-type: application/json
+X-Session-ID: {{session_id}}
+
+{"English": "test"}
+
+### 4. 再次查询同一个词，应该返回 AlreadyAcquainted = 0（已重置）
+GET http://{{address}}/translate?word=test HTTP/1.1
+X-Session-ID: {{session_id}}
+
+### 5. 验证状态确实被重置了
+GET http://{{address}}/translate?word=test HTTP/1.1
+X-Session-ID: {{session_id}} 

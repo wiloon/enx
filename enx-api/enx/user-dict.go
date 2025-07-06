@@ -23,8 +23,9 @@ func (ud *UserDict) UpdateQueryCount() {
 	sqlitex.DB.Model(&sud).
 		Where("word_id=? and user_id=?", sud.WordId, sud.UserId).
 		Updates(map[string]interface{}{
-			"query_count": ud.QueryCount,
-			"update_time": time.Now()})
+			"query_count":        ud.QueryCount,
+			"already_acquainted": ud.AlreadyAcquainted,
+			"update_time":        time.Now()})
 	logger.Debugf("update user dict: %v", ud)
 }
 
@@ -41,8 +42,8 @@ func (ud *UserDict) Save() {
 
 func (ud *UserDict) Mark() {
 	sud := repo.UserDict{
-		UserId: ud.UserId,
-		WordId: ud.WordId,
+		UserId:     ud.UserId,
+		WordId:     ud.WordId,
 		UpdateTime: time.Now(),
 	}
 
@@ -76,7 +77,7 @@ func (ud *UserDict) IsExist() bool {
 	} else {
 		ud.AlreadyAcquainted = userDictTmp.AlreadyAcquainted
 		ud.QueryCount = userDictTmp.QueryCount
-		logger.Infof("user dict record exist, word id: %v, user_id: %v, query count: %v, acquainted: %v", 
+		logger.Infof("user dict record exist, word id: %v, user_id: %v, query count: %v, acquainted: %v",
 			sud.WordId, sud.UserId, ud.QueryCount, ud.AlreadyAcquainted)
 		return true
 	}

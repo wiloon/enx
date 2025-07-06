@@ -558,6 +558,11 @@ async function injectEnxWindow() {
             }).then((data) => {
                 console.log("mark response: ", data)
                 updateUnderLine(data.ecp)
+                
+                // Close the popup after marking
+                let enxWindow = document.getElementById("enx-window");
+                enxWindow.style.display = "none";
+                enxWindow.classList.remove("visible");
             });
         });
     };
