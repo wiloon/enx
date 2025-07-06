@@ -51,7 +51,7 @@ func (word *Word) SetEnglish(raw string) {
 		english = strings.TrimSuffix(english, ",")
 		english = strings.TrimPrefix(english, "(")
 		english = strings.TrimSuffix(english, ")")
-		english = regexp.MustCompile(`[^a-zA-Z\-’ ]+`).ReplaceAllString(english, "")
+		english = regexp.MustCompile(`[^a-zA-Z\-'’ ]+`).ReplaceAllString(english, "")
 		logger.Debugf("replace non english char, raw: %s, english: %s", raw, english)
 	}
 
@@ -131,7 +131,7 @@ func (word *Word) Translate(userId int64) *Word {
 
 	word.LoadCount = sWord.LoadCount
 	if sWord.Id != 0 {
-		// 查询 user_dicts 表
+		// Query user_dicts table
 		sud := UserDict{}
 		sqlitex.DB.Table("user_dicts").
 			Where("word_id=? and user_id=?", sWord.Id, userId).Scan(&sud)

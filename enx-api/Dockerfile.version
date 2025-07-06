@@ -1,0 +1,65 @@
+# Multi-stage build for enx-api with version information
+FROM golang:1.23-alpine AS builder
+
+# Install git for version detection
+RUN apk add --no-cache git
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build arguments for version information
+ARG VERSION=dev
+ARG GIT_COMMIT=unknown
+ARG GIT_BRANCH=unknown
+ARG BUILD_TIME=unknown
+
+# Build the application with version information
+RUN go build -ldflags "-X enx-server/version.Version=$VERSION \
+                       -X enx-server/version.GitCommit=$GIT_COMMIT \
+                       -X enx-server/version.GitBranch=$GIT_BRANCH \
+                       -X enx-server/version.BuildTime=$BUILD_TIME" \
+             -o enx-api .
+
+# Final stage
+FROM alpine:latest
+
+# Install ca-certificates for HTTPS requests
+RUN apk --no-cache add ca-certificates
+
+# Create non-root user
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -u 1001 -S appuser -G appgroup
+
+# Set working directory
+WORKDIR /app
+
+# Copy binary from builder stage
+COPY --from=builder /app/enx-api .
+
+# Copy configuration files if needed
+COPY --from=builder /app/config.toml ./config.toml
+
+# Change ownership to non-root user
+RUN chown -R appuser:appgroup /app
+
+# Switch to non-root user
+USER appuser
+
+# Expose port
+EXPOSE 8080
+
+# Health check using version API
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/version || exit 1
+
+# Run the application
+CMD ["./enx-api"] 

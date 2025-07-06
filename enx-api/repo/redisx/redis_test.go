@@ -4,8 +4,9 @@ import (
 	"crypto/md5"
 	"crypto/sha256"
 	"fmt"
-	"github.com/satori/go.uuid"
 	"testing"
+
+	uuid "github.com/satori/go.uuid"
 )
 
 func TestUUID(t *testing.T) {
@@ -19,7 +20,7 @@ func TestUUID(t *testing.T) {
 }
 
 func TestShar(t *testing.T) {
-	s := "sha256 芳华"
+	s := "sha256 test"
 
 	h := sha256.New()
 	h.Write([]byte(s))
@@ -33,7 +34,7 @@ func TestMd5(t *testing.T) {
 	s := "test str"
 	data := []byte(s)
 	has := md5.Sum(data)
-	md5str1 := fmt.Sprintf("%x", has) //将[]byte转成16进制
+	md5str1 := fmt.Sprintf("%x", has) // Convert []byte to hex string
 
 	fmt.Println(md5str1)
 

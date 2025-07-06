@@ -23,7 +23,7 @@ func QueryCountInText(paragraph string, userId int) map[string]Word {
 		if len(word_raw) == 0 {
 			continue
 		}
-		
+
 		if word_raw[0] >= '0' && word_raw[0] <= '9' {
 			wordObj := Word{}
 			wordObj.Raw = word_raw
@@ -41,13 +41,13 @@ func QueryCountInText(paragraph string, userId int) map[string]Word {
 		} else {
 			ud := UserDict{}
 			ud.WordId = wordObj.Id
-			ud.UserId = userId  // 设置用户 ID
+			ud.UserId = userId // Set user ID
 			if ud.IsExist() {
 				wordObj.LoadCount = ud.QueryCount
 				wordObj.AlreadyAcquainted = ud.AlreadyAcquainted
-			} else if userId==1{
+			} else if userId == 1 {
 				wordObj.LoadByEnglish()
-			}else{
+			} else {
 				wordObj.LoadCount = 0
 				wordObj.AlreadyAcquainted = 0
 			}
