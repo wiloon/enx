@@ -69,7 +69,7 @@ func Translate(c *gin.Context) {
 		userDict.WordId = word.Id
 		if userDict.IsExist() {
 			userDict.QueryCount = userDict.QueryCount + 1
-			// 如果词已经被标记为已熟悉，用户再次查询时重置为未熟悉
+			// If the word was marked as acquainted, reset to unacquainted when user queries again
 			if userDict.AlreadyAcquainted == 1 {
 				logger.Infof("word was marked as acquainted, resetting to unacquainted: %s", raw)
 				userDict.AlreadyAcquainted = 0

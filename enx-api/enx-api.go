@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"enx-server/enx"
+	"enx-server/handlers"
 	"enx-server/paragraph"
 	"enx-server/translate"
 	"enx-server/utils"
@@ -54,7 +55,11 @@ func main() {
 
 	router.GET("/ping", Ping)
 
-	// 需要验证的 API
+	// Version information API - no authentication required
+	router.GET("/version", handlers.GetVersion)
+	router.GET("/api/version", handlers.GetVersionSimple)
+
+	// APIs requiring authentication
 	authGroup := router.Group("/")
 	authGroup.Use(middleware.SessionMiddleware())
 	{
@@ -71,7 +76,7 @@ func main() {
 		authGroup.POST("/log", LogHandler)
 	}
 
-	// 不需要验证的 API
+	// APIs not requiring authentication
 	router.POST("/login", Login)
 	router.POST("/logout", Logout)
 	router.POST("/register", Register)

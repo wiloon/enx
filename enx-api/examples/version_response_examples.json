@@ -1,0 +1,40 @@
+{
+  "version_api_examples": {
+    "detailed_version_response": {
+      "description": "GET /version - Detailed version information",
+      "response": {
+        "success": true,
+        "data": {
+          "version": "1.0.0",
+          "build_time": "2024-01-15_10:30:45_UTC",
+          "git_commit": "a1b2c3d4e5f6",
+          "git_branch": "main",
+          "go_version": "go1.23.0"
+        },
+        "message": "Version information retrieved successfully"
+      }
+    },
+    "simple_version_response": {
+      "description": "GET /api/version - Simple version information",
+      "response": {
+        "version": "1.0.0",
+        "commit": "a1b2c3d4e5f6",
+        "build_time": "2024-01-15_10:30:45_UTC"
+      }
+    },
+    "development_version_response": {
+      "description": "Development build response",
+      "response": {
+        "success": true,
+        "data": {
+          "version": "dev",
+          "build_time": "unknown",
+          "git_commit": "unknown",
+          "git_branch": "unknown",
+          "go_version": "go1.23.0"
+        },
+        "message": "Version information retrieved successfully"
+      }
+    }
+  }
+} 
