@@ -37,7 +37,7 @@ function calculateOptimalPosition(eventTarget) {
 
     // Get actual popup dimensions (if popup exists) or use default values
     let popupWidth = 320;
-    let popupHeight = 260; // default max-height from CSS
+    let popupHeight = 300; // default max-height from CSS
 
     const enxWindow = document.getElementById("enx-window");
     if (enxWindow && enxWindow.style.display !== "none") {
@@ -183,7 +183,7 @@ function popEnxDialogBoxImpl(mouseEvent, english) {
         console.log(`- Width: ${actualPopupWidth}px`);
 
         // Recalculate position if actual height differs significantly from estimated height
-        const heightDifference = Math.abs(actualPopupHeight - 260); // 260 is our default estimate
+        const heightDifference = Math.abs(actualPopupHeight - 300); // 300 is our default estimate
         if (heightDifference > 20) { // If difference is more than 20px
             console.log(`Popup height difference is significant (${heightDifference}px), recalculating position`);
             const newPosition = calculateOptimalPosition(eventTarget);
@@ -350,6 +350,18 @@ function enxRun() {
                             console.log("sending msg from content script to backend, paragraph length, length>5000:", tmpParagraph.length, "paragraph:", tmpParagraph)
                             let response = await chrome.runtime.sendMessage({ msgType: "getWords", words: tmpParagraph });
                             console.log("enx run, response from backend: ", response)
+                            
+                            // Check for error response
+                            if (response.error) {
+                                console.log("Error received:", response.error);
+                                if (response.error === "Session expired") {
+                                    console.log("Session expired, stopping further requests");
+                                    return; // Stop processing this paragraph
+                                }
+                                // For other errors, continue with empty wordDict
+                                continue;
+                            }
+                            
                             console.log(response.wordProperties)
                             wordDict = Object.assign({}, wordDict, response.wordProperties);
                             console.log("word dict size:", Object.keys(wordDict).length)
@@ -361,8 +373,19 @@ function enxRun() {
                         // call enx api
                         console.log("sending msg from content script to backend, node id:", tmpNode.id, "paragraph length<=5000:", tmpParagraph.length, "paragraph:", tmpParagraph)
                         let response = await chrome.runtime.sendMessage({ msgType: "getWords", words: tmpParagraph });
-                        wordDict = Object.assign({}, wordDict, response.wordProperties);
-                        console.log("paragraph init response, node id:", tmpNode.id, " size:", Object.keys(wordDict).length, "word dict", wordDict)
+                        
+                        // Check for error response
+                        if (response.error) {
+                            console.log("Error received:", response.error);
+                            if (response.error === "Session expired") {
+                                console.log("Session expired, stopping further requests");
+                                return; // Stop processing this paragraph
+                            }
+                            // For other errors, continue with empty wordDict
+                        } else {
+                            wordDict = Object.assign({}, wordDict, response.wordProperties);
+                            console.log("paragraph init response, node id:", tmpNode.id, " size:", Object.keys(wordDict).length, "word dict", wordDict)
+                        }
                     }
 
                     let newInnerHtml = contentModule.renderInnerHtml(tmpInnerHtml, wordDict)
@@ -465,6 +488,12 @@ async function injectEnxWindow() {
         pointer-events: auto;
         transition: opacity 0.2s;
       }
+      .enx-window.error {
+        border: 1px solid #f44336;
+      }
+      .enx-window.error .enx-ecp {
+        color: #f44336;
+      }
       .enx-skeleton {
         background: linear-gradient(90deg, #eee 25%, #f5f5f5 50%, #eee 75%);
         background-size: 200% 100%;
@@ -499,8 +528,8 @@ async function injectEnxWindow() {
         font-size: 12px;
       }
     </style>
-    <div class='enx-window' id='enx-window' style='max-height: 260px; width: 320px; overflow: hidden; position: absolute; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.15); border-radius: 8px; z-index: 9999; display: flex; flex-direction: column; display: none;'>
-      <div class='enx-content' style='flex: 1; overflow-y: auto; padding: 8px 16px 0 0; display: flex; flex-direction: column;'>
+    <div class='enx-window' id='enx-window' style='max-height: 300px; width: 320px; position: absolute; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.15); border-radius: 8px; z-index: 9999; display: flex; flex-direction: column; display: none;'>
+      <div class='enx-content' style='flex: 1; overflow-y: auto; padding: 8px 16px 0 0; display: flex; flex-direction: column; min-height: 0;'>
         <div class='enx-word-row'>
           <span id='enx-e' class='enx-e'></span>
           <span id='enx-query-count' class='enx-query-count'></span>
@@ -508,7 +537,7 @@ async function injectEnxWindow() {
         <div id='enx-loading' class='enx-loading' style='display: none; color: #666; font-style: italic; margin: 8px 0;'>
           <i class="fa-solid fa-spinner fa-spin"></i> Loading translation...
         </div>
-        <div class='enx-content-fields' style='flex: 1; display: flex; flex-direction: column;'>
+        <div class='enx-content-fields' style='flex: 1; display: flex; flex-direction: column; min-height: 0;'>
           <div id='enx-skeleton' class='enx-skeleton' style='display: none; width: 80%; height: 18px;'></div>
           <div id='enx-skeleton2' class='enx-skeleton' style='display: none; width: 60%; height: 18px;'></div>
           <p id='enx-p' class='enx-ecp'></p>
@@ -625,13 +654,34 @@ function getOneWord(key) {
         const response = await chrome.runtime.sendMessage({ msgType: "getOneWord", word: key });
         // do something with response here, not outside the function
         console.log("get one word, response from backend: ", response)
-        let ecp = response.ecp
-
+        
         // Hide loading indicator
         document.getElementById("enx-loading").style.display = "none";
         // Hide skeletons
         document.getElementById("enx-skeleton").style.display = "none";
         document.getElementById("enx-skeleton2").style.display = "none";
+        
+        // Check for error response
+        if (response.error) {
+            console.log("Error received:", response.error);
+            // Show error message to user
+            document.getElementById("enx-p").style.display = "block";
+            document.getElementById("enx-c").style.display = "block";
+            document.getElementById("enx-p").innerText = "Error";
+            document.getElementById("enx-c").innerText = response.error === "Session expired" ? 
+                "Session expired. Please log in again." : 
+                "Failed to load translation. Please try again.";
+            document.getElementById("enx-query-count").innerText = "";
+            document.getElementById("enx-search-key").innerText = "";
+            
+            // Add error styling
+            enxWindow.classList.remove("loading");
+            enxWindow.classList.add("loaded", "error");
+            return;
+        }
+        
+        let ecp = response.ecp
+
         // Show content areas and update enx window
         document.getElementById("enx-p").style.display = "block";
         document.getElementById("enx-c").style.display = "block";
