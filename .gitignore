@@ -17,3 +17,5 @@
 chrome-enx/node_modules
 chrome-enx/public
 .vscode
+enx-chrome/node_modules
+enx-chrome/dist

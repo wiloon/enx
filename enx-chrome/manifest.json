@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "ENX - English Learning Extension",
+  "version": "1.0.0",
+  "description": "AI-powered English learning assistant that helps you learn vocabulary while browsing the web",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://enx-dev.wiloon.com/*",
+    "https://www.youdao.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ENX English Learning"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.bbc.com/*",
+        "https://www.infoq.com/*",
+        "https://novel.tingroom.com/*",
+        "https://messaging-custom-newsletters.nytimes.com/*",
+        "https://wiloon.com/*",
+        "file://*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon-16.svg",
+    "32": "icons/icon-32.svg",
+    "48": "icons/icon-48.svg",
+    "128": "icons/icon-128.svg"
+  },
+  "options_page": "options.html",
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+E",
+        "mac": "Command+Shift+E"
+      },
+      "description": "Toggle ENX learning mode"
+    }
+  }
+}
