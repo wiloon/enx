@@ -9,7 +9,8 @@
   "permissions": [
     "activeTab",
     "scripting",
-    "storage"
+    "storage",
+    "notifications"
   ],
   "host_permissions": [
     "https://enx-dev.wiloon.com/*",
@@ -31,7 +32,8 @@
         "https://www.infoq.com/*",
         "https://novel.tingroom.com/*",
         "https://messaging-custom-newsletters.nytimes.com/*",
-        "https://wiloon.com/*"
+        "https://wiloon.com/*",
+        "file://*"
       ],
       "css": [
         "inject.css"
@@ -51,7 +53,8 @@
         "https://www.infoq.com/*",
         "https://novel.tingroom.com/*",
         "https://messaging-custom-newsletters.nytimes.com/*",
-        "https://wiloon.com/*"
+        "https://wiloon.com/*",
+        "file://*"
       ]
     }
   ],
