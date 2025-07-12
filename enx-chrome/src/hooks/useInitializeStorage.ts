@@ -32,6 +32,14 @@ export const useInitializeStorage = () => {
         if (userData && userData.isLoggedIn) {
           console.log('Restoring user from storage:', userData)
           setUser(userData)
+        } else {
+          // No valid user data, reset to logged out state
+          setUser({
+            id: 0,
+            username: '',
+            email: '',
+            isLoggedIn: false,
+          })
         }
 
         // Initialize session state
@@ -50,6 +58,13 @@ export const useInitializeStorage = () => {
           
           // Initialize API service with session
           apiService.setSessionId(sessionData.sessionId)
+        } else {
+          // No valid session data, reset session state
+          setSession({
+            sessionId: '',
+            token: '',
+          })
+          apiService.setSessionId('')
         }
         
       } catch (error) {
@@ -57,6 +72,57 @@ export const useInitializeStorage = () => {
       }
     }
 
+    // Listen for storage changes to handle session expiry
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      console.log('Storage changes detected:', changes)
+
+      // Handle user data changes
+      if (changes.user || changes['enx-user']) {
+        const userChange = changes.user || changes['enx-user']
+        if (userChange.newValue && userChange.newValue.isLoggedIn) {
+          console.log('User logged in via storage change:', userChange.newValue)
+          setUser(userChange.newValue)
+        } else if (!userChange.newValue) {
+          console.log('User logged out via storage change')
+          setUser({
+            id: 0,
+            username: '',
+            email: '',
+            isLoggedIn: false,
+          })
+        }
+      }
+
+      // Handle session data changes
+      if (changes.sessionId || changes['enx-session']) {
+        const sessionChange = changes.sessionId || changes['enx-session']
+        if (sessionChange.newValue) {
+          const sessionData = typeof sessionChange.newValue === 'string' 
+            ? { sessionId: sessionChange.newValue, token: sessionChange.newValue }
+            : sessionChange.newValue
+          
+          console.log('Session updated via storage change:', sessionData)
+          setSession(sessionData)
+          apiService.setSessionId(sessionData.sessionId)
+        } else if (!sessionChange.newValue) {
+          console.log('Session cleared via storage change')
+          setSession({
+            sessionId: '',
+            token: '',
+          })
+          apiService.setSessionId('')
+        }
+      }
+    }
+
     initializeFromStorage()
+    
+    // Listen for storage changes
+    chrome.storage.local.onChanged.addListener(handleStorageChange)
+
+    // Cleanup listener on unmount
+    return () => {
+      chrome.storage.local.onChanged.removeListener(handleStorageChange)
+    }
   }, [setUser, setSession])
 }

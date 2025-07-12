@@ -60,4 +60,5 @@ export interface BackgroundResponse {
   error?: string
   ecp?: WordData
   wordProperties?: Record<string, WordData>
+  sessionExpired?: boolean
 }

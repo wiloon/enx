@@ -52,23 +52,60 @@ class ContentWordProcessor {
   }
 
   static renderWithHighlights(originalHtml: string, wordDict: Record<string, WordData>): string {
-    let processedHtml = originalHtml
+    console.log('Starting renderWithHighlights with', Object.keys(wordDict).length, 'words')
+    
+    // Create a temporary DOM element to work with
+    const tempDiv = document.createElement('div')
+    tempDiv.innerHTML = originalHtml
+    
+    let totalReplacements = 0
 
+    // Process each word in the dictionary
     Object.keys(wordDict).forEach(word => {
       const wordData = wordDict[word]
       const colorCode = this.getColorCode(wordData)
+      
+      // Find all text nodes that contain this word
+      const walker = document.createTreeWalker(
+        tempDiv,
+        NodeFilter.SHOW_TEXT,
+        null
+      )
+      
+      const textNodes: Text[] = []
+      let node
+      while (node = walker.nextNode()) {
+        textNodes.push(node as Text)
+      }
       
       const wordRegex = new RegExp(
         `\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
         'gi'
       )
-
-      processedHtml = processedHtml.replace(wordRegex, (match) => {
-        return `<u class="enx-word enx-${word}" data-word="${match}" style="margin-left: 2px; margin-right: 2px; text-decoration: ${colorCode} underline; text-decoration-thickness: 2px; cursor: pointer;">${match}</u>`
+      
+      textNodes.forEach(textNode => {
+        const text = textNode.textContent || ''
+        if (wordRegex.test(text)) {
+          const highlightedText = text.replace(wordRegex, (match) => {
+            totalReplacements++
+            return `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="margin-left: 2px; margin-right: 2px; text-decoration: ${colorCode} underline; text-decoration-thickness: 2px; cursor: pointer;">${match}</u>`
+          })
+          
+          // Create a temporary container and replace the text node
+          const tempContainer = document.createElement('span')
+          tempContainer.innerHTML = highlightedText
+          
+          // Replace the text node with the highlighted content
+          while (tempContainer.firstChild) {
+            textNode.parentNode!.insertBefore(tempContainer.firstChild, textNode)
+          }
+          textNode.parentNode!.removeChild(textNode)
+        }
       })
     })
 
-    return processedHtml
+    console.log('Total word replacements made:', totalReplacements)
+    return tempDiv.innerHTML
   }
 
   static getArticleNode(): Element | null {
@@ -216,6 +253,9 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
     if (response.success && response.ecp) {
       updatePopupContent(popup, response.ecp)
       wordCache[word.toLowerCase()] = response.ecp
+    } else if (response.sessionExpired) {
+      hideWordPopup()
+      showSessionExpiredMessage()
     } else {
       updatePopupError(popup, response.error || 'Translation failed')
     }
@@ -298,6 +338,72 @@ const updateWordHighlighting = (word: string, wordData: WordData) => {
   })
 }
 
+// Show session expired message
+const showSessionExpiredMessage = () => {
+  // Remove any existing session message
+  const existingMessage = document.getElementById('enx-session-expired')
+  if (existingMessage) {
+    existingMessage.remove()
+  }
+
+  // Create session expired notification
+  const notification = document.createElement('div')
+  notification.id = 'enx-session-expired'
+  notification.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #ff5722;
+    color: white;
+    padding: 16px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 10001;
+    max-width: 320px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.4;
+    animation: slideIn 0.3s ease-out;
+  `
+
+  notification.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+      <div>
+        <div style="font-weight: bold; margin-bottom: 4px;">Session Expired</div>
+        <div style="font-size: 13px; opacity: 0.9;">Please click the ENX extension icon to login again.</div>
+      </div>
+      <button id="enx-close-session-msg" style="background: none; border: none; color: white; font-size: 18px; cursor: pointer; padding: 0; margin-left: 12px;">×</button>
+    </div>
+  `
+
+  // Add CSS animation
+  const style = document.createElement('style')
+  style.textContent = `
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+  `
+  document.head.appendChild(style)
+
+  document.body.appendChild(notification)
+
+  // Add close button event
+  const closeBtn = notification.querySelector('#enx-close-session-msg')
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      notification.remove()
+    })
+  }
+
+  // Auto remove after 10 seconds
+  setTimeout(() => {
+    if (notification.parentNode) {
+      notification.remove()
+    }
+  }, 10000)
+}
+
 // Process article content and add word highlighting
 const processArticleContent = async () => {
   if (isProcessing) return
@@ -338,8 +444,20 @@ const processArticleContent = async () => {
         })
 
         if (response.success && response.wordProperties) {
-          Object.assign(wordCache, response.wordProperties)
-          console.log(`Processed ${Object.keys(response.wordProperties).length} words in chunk`)
+          console.log('Raw response.wordProperties:', response.wordProperties)
+          
+          // Check if wordProperties is wrapped in a 'data' field
+          const actualWordData = response.wordProperties.data || response.wordProperties
+          console.log('Actual word data to process:', actualWordData)
+          console.log('Word data keys:', Object.keys(actualWordData))
+          
+          Object.assign(wordCache, actualWordData)
+          console.log(`Processed ${Object.keys(actualWordData).length} words in chunk`)
+          console.log('Current word cache size:', Object.keys(wordCache).length)
+        } else if (response.sessionExpired) {
+          console.log('Session expired during word processing')
+          showSessionExpiredMessage()
+          break // Stop processing if session expired
         }
       } catch (error) {
         console.error('Error processing word chunk:', error)
@@ -348,13 +466,24 @@ const processArticleContent = async () => {
 
     // Apply highlighting to the article
     if (Object.keys(wordCache).length > 0) {
+      console.log('Applying highlighting for', Object.keys(wordCache).length, 'words')
+      console.log('Sample words from cache:', Object.keys(wordCache).slice(0, 5))
+      console.log('Sample word data:', Object.values(wordCache)[0])
+      
       const originalHtml = articleNode.innerHTML
       const highlightedHtml = ContentWordProcessor.renderWithHighlights(originalHtml, wordCache)
+      
+      console.log('Original HTML length:', originalHtml.length)
+      console.log('Highlighted HTML length:', highlightedHtml.length)
+      console.log('HTML changed:', originalHtml !== highlightedHtml)
+      
       articleNode.innerHTML = highlightedHtml
 
       // Add click listeners to highlighted words
       addWordClickListeners(articleNode)
       console.log('Word highlighting applied')
+    } else {
+      console.log('No words in cache, skipping highlighting')
     }
 
   } catch (error) {
@@ -448,6 +577,16 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
         url: window.location.href,
         isEnxEnabled
       })
+      break
+
+    case 'sessionExpired':
+      console.log('Session expired notification received')
+      showSessionExpiredMessage()
+      // Disable ENX functionality if it's currently enabled
+      if (isEnxEnabled) {
+        disableEnx()
+      }
+      sendResponse({ success: true })
       break
       
     default:
