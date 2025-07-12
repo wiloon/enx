@@ -20,6 +20,33 @@ const loadSession = async () => {
   }
 }
 
+// Handle session expiry
+const handleSessionExpiry = async () => {
+  console.log('Session expired, clearing stored data and opening popup')
+  
+  // Clear session data
+  sessionId = ''
+  await chrome.storage.local.remove(['user', 'sessionId'])
+  
+  // Try to open the extension popup to show login form
+  try {
+    // Get current active tab
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (tab?.id) {
+      // Send message to content script to show a notification about session expiry
+      chrome.tabs.sendMessage(tab.id, { 
+        action: 'sessionExpired',
+        message: 'Your session has expired. Please click the extension icon to login again.'
+      }).catch(() => {
+        // Ignore errors if content script is not available
+        console.log('Could not notify content script about session expiry')
+      })
+    }
+  } catch (error) {
+    console.error('Error handling session expiry:', error)
+  }
+}
+
 // API request helper
 const makeApiRequest = async (endpoint: string, options: RequestInit = {}) => {
   try {
@@ -41,6 +68,8 @@ const makeApiRequest = async (endpoint: string, options: RequestInit = {}) => {
 
     if (!response.ok) {
       if (response.status === 401) {
+        // Handle session expiry
+        await handleSessionExpiry()
         throw new Error('Session expired')
       }
       throw new Error(`HTTP ${response.status}: ${response.statusText}`)
@@ -50,6 +79,16 @@ const makeApiRequest = async (endpoint: string, options: RequestInit = {}) => {
     return { success: true, data }
   } catch (error) {
     console.error('API request failed:', error)
+    
+    // Check if this is a session expiry error
+    if (error instanceof Error && error.message === 'Session expired') {
+      return {
+        success: false,
+        error: error.message,
+        sessionExpired: true
+      }
+    }
+    
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -153,7 +192,12 @@ const handleGetOneWord = async (word: string) => {
       ecp: response.data.ecp
     }
   } else {
-    return response
+    // Pass through session expiry flag
+    return {
+      success: false,
+      error: response.error,
+      sessionExpired: response.sessionExpired
+    }
   }
 }
 
@@ -166,13 +210,26 @@ const handleGetWords = async (paragraph: string) => {
   const encodedParagraph = encodeURIComponent(paragraph)
   const response = await makeApiRequest(`/api/paragraph-init?paragraph=${encodedParagraph}`)
   
+  console.log('paragraph-init API response:', response)
+  
   if (response.success) {
+    const wordCount = Object.keys(response.data || {}).length
+    console.log('Word properties received:', wordCount, 'words')
+    if (wordCount > 0) {
+      console.log('Sample words:', Object.keys(response.data).slice(0, 5))
+      console.log('Sample word data:', Object.values(response.data)[0])
+    }
     return {
       success: true,
-      wordProperties: response.data.wordProperties
+      wordProperties: response.data
     }
   } else {
-    return response
+    // Pass through session expiry flag
+    return {
+      success: false,
+      error: response.error,
+      sessionExpired: response.sessionExpired
+    }
   }
 }
 
@@ -196,7 +253,12 @@ const handleMarkAcquainted = async (word: string, userId: number) => {
       ecp: response.data.ecp
     }
   } else {
-    return response
+    // Pass through session expiry flag
+    return {
+      success: false,
+      error: response.error,
+      sessionExpired: response.sessionExpired
+    }
   }
 }
 
