@@ -60,11 +60,14 @@ const makeApiRequest = async (endpoint: string, options: RequestInit = {}) => {
     }
 
     console.log(`Making API request to: ${API_BASE_URL}${endpoint}`)
+    console.log('Request headers:', headers)
     
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers,
     })
+
+    console.log(`API response status: ${response.status} ${response.statusText}`)
 
     if (!response.ok) {
       if (response.status === 401) {
@@ -72,10 +75,23 @@ const makeApiRequest = async (endpoint: string, options: RequestInit = {}) => {
         await handleSessionExpiry()
         throw new Error('Session expired')
       }
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      
+      // Try to get error details from response body
+      let errorMessage = `HTTP ${response.status}: ${response.statusText}`
+      try {
+        const errorData = await response.json()
+        if (errorData.error || errorData.message) {
+          errorMessage = errorData.error || errorData.message
+        }
+      } catch (e) {
+        // Ignore JSON parsing errors, use default message
+      }
+      
+      throw new Error(errorMessage)
     }
 
     const data = await response.json()
+    console.log('API response data:', data)
     return { success: true, data }
   } catch (error) {
     console.error('API request failed:', error)
@@ -84,14 +100,22 @@ const makeApiRequest = async (endpoint: string, options: RequestInit = {}) => {
     if (error instanceof Error && error.message === 'Session expired') {
       return {
         success: false,
-        error: error.message,
+        error: 'Your session has expired. Please login again.',
         sessionExpired: true
+      }
+    }
+    
+    // Network errors
+    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+      return {
+        success: false,
+        error: 'Unable to connect to translation service. Please check your internet connection.',
       }
     }
     
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : 'Translation service temporarily unavailable',
     }
   }
 }
@@ -183,19 +207,49 @@ const handleGetOneWord = async (word: string) => {
     return { success: false, error: 'No word provided' }
   }
 
+  console.log('Handling getOneWord request for:', word)
   const encodedWord = encodeURIComponent(word.trim())
   const response = await makeApiRequest(`/api/translate?word=${encodedWord}`)
   
+  console.log('API response for word translation:', response)
+  
   if (response.success) {
+    console.log('API response data structure:', JSON.stringify(response.data, null, 2))
+    
+    // Check multiple possible response formats
+    if (response.data) {
+      // Try different possible data structures
+      const ecp = response.data.ecp || response.data.word || response.data
+      
+      if (ecp && (ecp.English || ecp.Chinese || ecp.Pronunciation)) {
+        console.log('Found word data:', ecp)
+        return {
+          success: true,
+          ecp: ecp
+        }
+      }
+      
+      // If we have any data at all, try to use it
+      if (response.data.English || response.data.Chinese) {
+        console.log('Using direct response data as word data')
+        return {
+          success: true,
+          ecp: response.data
+        }
+      }
+    }
+    
+    console.error('API returned success but unexpected data format:', response.data)
     return {
-      success: true,
-      ecp: response.data.ecp
+      success: false,
+      error: 'Unexpected response format from translation service'
     }
   } else {
+    console.error('API request failed:', response.error)
     // Pass through session expiry flag
     return {
       success: false,
-      error: response.error,
+      error: response.error || 'Translation service error',
       sessionExpired: response.sessionExpired
     }
   }
@@ -236,8 +290,11 @@ const handleGetWords = async (paragraph: string) => {
 // Handle mark word as acquainted
 const handleMarkAcquainted = async (word: string, userId: number) => {
   if (!word || !userId) {
+    console.error('handleMarkAcquainted: Missing word or userId', { word, userId })
     return { success: false, error: 'Missing word or userId' }
   }
+
+  console.log('handleMarkAcquainted: Marking word as acquainted', { word: word.trim(), userId })
 
   const response = await makeApiRequest('/api/mark', {
     method: 'POST',
@@ -247,12 +304,18 @@ const handleMarkAcquainted = async (word: string, userId: number) => {
     })
   })
   
+  console.log('handleMarkAcquainted: API response', response)
+  console.log('handleMarkAcquainted: API response data structure:', JSON.stringify(response.data, null, 2))
+  
   if (response.success) {
+    console.log('handleMarkAcquainted: Word marked successfully')
+    console.log('handleMarkAcquainted: Returning ecp data:', response.data?.ecp || response.data)
     return {
       success: true,
-      ecp: response.data.ecp
+      ecp: response.data?.ecp || response.data
     }
   } else {
+    console.error('handleMarkAcquainted: Failed to mark word', response.error)
     // Pass through session expiry flag
     return {
       success: false,
