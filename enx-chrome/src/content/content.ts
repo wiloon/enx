@@ -40,7 +40,8 @@ class ContentWordProcessor {
   }
 
   static getColorCode(wordData: WordData): string {
-    if (wordData.AlreadyAcquainted === 1 || wordData.WordType === 1) {
+    // If word is already acquainted, known word type, or not in database, don't highlight
+    if (wordData.AlreadyAcquainted === 1 || wordData.WordType === 1 || !wordData.English || !wordData.Chinese) {
       return '#FFFFFF'
     }
 
@@ -245,23 +246,29 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
 
   // Fetch word translation
   try {
+    console.log('Fetching translation for word:', word)
     const response = await sendToBackground({
       type: 'getOneWord',
       word: word.trim()
     })
 
+    console.log('Translation response:', response)
+
     if (response.success && response.ecp) {
       updatePopupContent(popup, response.ecp)
       wordCache[word.toLowerCase()] = response.ecp
     } else if (response.sessionExpired) {
+      console.log('Session expired, showing session expired message')
       hideWordPopup()
       showSessionExpiredMessage()
     } else {
-      updatePopupError(popup, response.error || 'Translation failed')
+      const errorMessage = response.error || 'Translation service unavailable'
+      console.error('Translation failed:', errorMessage)
+      updatePopupError(popup, errorMessage)
     }
   } catch (error) {
     console.error('Error fetching word translation:', error)
-    updatePopupError(popup, 'Network error')
+    updatePopupError(popup, 'Connection failed. Please check your internet connection.')
   }
 }
 
@@ -288,19 +295,43 @@ const updatePopupContent = (popup: HTMLElement, wordData: WordData) => {
   if (markBtn) {
     markBtn.addEventListener('click', async () => {
       try {
+        // Get current user from Chrome storage
+        const result = await chrome.storage.local.get(['user', 'enx-user'])
+        console.log('Storage result:', result)
+        console.log('User data from storage:', result.user)
+        console.log('ENX User data from storage:', result['enx-user'])
+        
+        const userId = result.user?.id || result.user?.userId || result['enx-user']?.id
+        console.log('Extracted user ID:', userId)
+        
+        if (!userId) {
+          console.error('No user ID found, user may not be logged in')
+          alert('Please login first')
+          return
+        }
+        
+        console.log('Marking word as acquainted:', wordData.English, 'for user:', userId)
+        
         const response = await sendToBackground({
           type: 'markAcquainted',
           word: wordData.English,
-          userId: 1 // TODO: Get from stored user data
+          userId: userId
         })
+        
+        console.log('Mark acquainted response:', response)
         
         if (response.success) {
           hideWordPopup()
           // Update word highlighting
           updateWordHighlighting(wordData.English, response.ecp || wordData)
+          console.log('Word marked as acquainted successfully')
+        } else {
+          console.error('Failed to mark word as acquainted:', response.error)
+          alert('Failed to mark word as known: ' + (response.error || 'Unknown error'))
         }
       } catch (error) {
         console.error('Error marking word:', error)
+        alert('Error marking word as known')
       }
     })
   }
