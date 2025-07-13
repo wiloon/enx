@@ -244,18 +244,19 @@ function updateUnderLine(ecp) {
     console.log("elements:", articleClassElement)
     if (articleClassElement.length > 0) {
         (async () => {
-            for (element in articleClassElement) {
-                console.log("mark element: ", element)
-                const content_module_url = chrome.runtime.getURL("content_module.js");
-                const contentModule = await import(content_module_url);
-                // style="margin-left: 2px; margin-right: 2px; text-decoration: #FF9800 underline; text-decoration-thickness: 2px;"
-                colorCode = contentModule.getColorCodeByCount(ecp)
-                console.log("color code: ", colorCode)
-                if (articleClassElement[element] === undefined || articleClassElement[element].style === undefined) {
+            const content_module_url = chrome.runtime.getURL("content_module.js");
+            const contentModule = await import(content_module_url);
+            colorCode = contentModule.getColorCodeByCount(ecp)
+            console.log("color code: ", colorCode)
+            
+            for (let i = 0; i < articleClassElement.length; i++) {
+                const element = articleClassElement[i];
+                console.log("mark element: ", i, element)
+                if (element === undefined || element.style === undefined) {
                     continue
                 }
-                articleClassElement[element].style.textDecoration = colorCode + " underline"
-                articleClassElement[element].style.textDecorationThickness = "2px"
+                element.style.textDecoration = colorCode + " underline"
+                element.style.textDecorationThickness = "2px"
             }
         })();
     }
