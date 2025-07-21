@@ -89,6 +89,8 @@ class ContentWordProcessor {
         if (wordRegex.test(text)) {
           const highlightedText = text.replace(wordRegex, (match) => {
             totalReplacements++
+            // add console log for debugging, print word and colorCode
+            console.log('Highlighting word:', match, 'with color:', colorCode)
             return `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="margin-left: 2px; margin-right: 2px; text-decoration: ${colorCode} underline; text-decoration-thickness: 2px; cursor: pointer;">${match}</u>`
           })
           
@@ -512,7 +514,7 @@ const processArticleContent = async () => {
 
       // Add click listeners to highlighted words
       addWordClickListeners(articleNode)
-      console.log('Word highlighting applied')
+      console.log('Word highlighting applied.')
     } else {
       console.log('No words in cache, skipping highlighting')
     }
