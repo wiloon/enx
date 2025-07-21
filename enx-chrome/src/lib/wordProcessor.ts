@@ -83,14 +83,18 @@ export class WordProcessor {
    */
   static getColorCode(wordData: WordData): string {
     if (wordData.AlreadyAcquainted === 1 || wordData.WordType === 1) {
+      // add console log for debugging
+      console.log(`Word "${wordData.Key}" is already acquainted or a special type.`)
       return this.COLOR_CONFIG.acquaintedColor
     }
 
     const { LoadCount = 0 } = wordData
     const normalizedCount = Math.min(LoadCount, this.COLOR_CONFIG.maxCount) / this.COLOR_CONFIG.maxCount
     const hue = Math.round(this.COLOR_CONFIG.defaultHue * normalizedCount)
-    
-    return `hsl(${hue}, 100%, 40%)`
+    // add console log for debugging
+    let colorCode = `hsl(${hue}, 100%, 40%)`
+    console.log(`Word "${wordData.Key}" has LoadCount ${LoadCount}, color code ${colorCode}`)
+    return colorCode
   }
 
   /**
@@ -112,7 +116,8 @@ export class WordProcessor {
         `\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
         'gi'
       )
-
+      // add console log for debugging
+      console.log('highlight word:', word, 'colorCode:', colorCode)
       // Replace with highlighted version
       processedHtml = processedHtml.replace(wordRegex, (match) => {
         return `<u class="enx-${word}" alt="${match}" style="margin-left: 2px; margin-right: 2px; text-decoration: ${colorCode} underline; text-decoration-thickness: 2px; cursor: pointer;">${match}</u>`
