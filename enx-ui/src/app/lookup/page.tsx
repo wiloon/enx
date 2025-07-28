@@ -42,12 +42,6 @@ export default function WordLookupPage() {
 
   return (
     <div className="container mx-auto p-6 max-w-2xl">
-      <div className="mb-4">
-        <Link href="/">
-          <Button variant="outline">← Back to Home</Button>
-        </Link>
-      </div>
-      
       <Card>
         <CardHeader>
           <CardTitle>Word Lookup</CardTitle>
