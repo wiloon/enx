@@ -45,11 +45,11 @@ func main() {
 	router := gin.Default()
 
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
+		AllowOrigins:     []string{"http://localhost:3000", "https://enx-ui.wiloon.com", "https://enx-dev.wiloon.com"},
 		AllowMethods:     []string{"GET", "POST"},
 		AllowHeaders:     []string{"Origin", "X-Session-ID", "X-User-ID", "Content-Type"},
 		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: false,
+		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
 
@@ -68,7 +68,7 @@ func main() {
 
 		// translate
 		authGroup.GET("/translate", translate.Translate)
-		authGroup.GET("/api/word/:word", translate.TranslateByWord)
+		authGroup.GET("/word/:word", translate.TranslateByWord)
 		authGroup.GET("/load-count", wordCount.LoadCount)
 		authGroup.POST("/mark", MarkWord)
 		authGroup.GET("/do-search", DoSearch)
@@ -256,7 +256,7 @@ func Login(c *gin.Context) {
 			return
 		}
 
-		// Set cookie
+		// Set cookie - use empty domain for cross-origin requests
 		c.SetCookie("session_id", session.ID, 24*3600, "/", "", false, true)
 
 		logger.Infof("user login success, user: %+v", user)
