@@ -68,6 +68,7 @@ func main() {
 
 		// translate
 		authGroup.GET("/translate", translate.Translate)
+		authGroup.GET("/api/word/:word", translate.TranslateByWord)
 		authGroup.GET("/load-count", wordCount.LoadCount)
 		authGroup.POST("/mark", MarkWord)
 		authGroup.GET("/do-search", DoSearch)
