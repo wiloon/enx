@@ -67,7 +67,8 @@ export class ApiService {
     })
 
     if (response.success && response.data) {
-      this.sessionId = response.data.sessionId
+      // API returns session_id, not sessionId
+      this.sessionId = response.data.session_id || response.data.sessionId || ''
     }
 
     return response
@@ -103,12 +104,11 @@ export class ApiService {
     return this.makeRequest<ParagraphResponse>(`/api/paragraph-init?paragraph=${encodedParagraph}`)
   }
 
-  async markAcquainted(word: string, userId: number): Promise<ApiResponse<{ ecp: WordData }>> {
+  async markAcquainted(word: string): Promise<ApiResponse<{ ecp: WordData }>> {
     return this.makeRequest<{ ecp: WordData }>('/api/mark', {
       method: 'POST',
       body: JSON.stringify({
-        word,
-        userId,
+        English: word,
       }),
     })
   }

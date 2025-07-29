@@ -16,11 +16,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
-
 	"enx-server/middleware"
-
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
 )
@@ -44,14 +40,82 @@ func main() {
 	gin.SetMode(gin.DebugMode)
 	router := gin.Default()
 
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "https://enx-ui.wiloon.com", "https://enx-dev.wiloon.com"},
-		AllowMethods:     []string{"GET", "POST"},
-		AllowHeaders:     []string{"Origin", "X-Session-ID", "X-User-ID", "Content-Type"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
+	// Add detailed CORS and request logging middleware BEFORE CORS
+	router.Use(func(c *gin.Context) {
+		logger.Infof("=== PRE-CORS Request Start ===")
+		logger.Infof("Request: %s %s from %s", c.Request.Method, c.Request.URL.Path, c.ClientIP())
+		logger.Infof("Headers: X-Session-ID='%s', Content-Type='%s', Origin='%s', Cookie='%s'",
+			c.GetHeader("X-Session-ID"), c.GetHeader("Content-Type"), c.GetHeader("Origin"), c.GetHeader("Cookie"))
+		logger.Infof("User-Agent: %s", c.GetHeader("User-Agent"))
+
+		c.Next()
+
+		logger.Infof("PRE-CORS Response: %d for %s %s", c.Writer.Status(), c.Request.Method, c.Request.URL.Path)
+		logger.Infof("=== PRE-CORS Request End ===")
+	})
+
+	// Custom CORS middleware to support chrome-extension origins
+	router.Use(func(c *gin.Context) {
+		origin := c.GetHeader("Origin")
+
+		// List of allowed origins
+		allowedOrigins := []string{
+			"http://localhost:3000",
+			"https://enx-ui.wiloon.com",
+			"https://enx-dev.wiloon.com",
+		}
+
+		// Check if origin is allowed or is a chrome extension
+		isAllowed := false
+		for _, allowedOrigin := range allowedOrigins {
+			if origin == allowedOrigin {
+				isAllowed = true
+				break
+			}
+		}
+
+		// Also allow chrome extensions
+		if !isAllowed && len(origin) > 0 && (origin[:17] == "chrome-extension:" || origin[:16] == "moz-extension:") {
+			isAllowed = true
+		}
+
+		if isAllowed {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Access-Control-Allow-Credentials", "true")
+			c.Header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
+			c.Header("Access-Control-Allow-Headers", "Origin, X-Session-ID, X-User-ID, Content-Type, Cookie")
+			c.Header("Access-Control-Expose-Headers", "Content-Length")
+			c.Header("Access-Control-Max-Age", "43200") // 12 hours
+		}
+
+		// Handle preflight requests
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	})
+
+	// Add detailed CORS and request logging middleware AFTER CORS
+	router.Use(func(c *gin.Context) {
+		logger.Infof("=== Request Start ===")
+		logger.Infof("Request: %s %s from %s", c.Request.Method, c.Request.URL.Path, c.ClientIP())
+		logger.Infof("Headers: X-Session-ID='%s', Content-Type='%s', Origin='%s', Cookie='%s'",
+			c.GetHeader("X-Session-ID"), c.GetHeader("Content-Type"), c.GetHeader("Origin"), c.GetHeader("Cookie"))
+		logger.Infof("User-Agent: %s", c.GetHeader("User-Agent"))
+
+		// Check if this is a preflight request
+		if c.Request.Method == "OPTIONS" {
+			logger.Infof("CORS Preflight request detected")
+		}
+
+		c.Next()
+
+		logger.Infof("Response: %d for %s %s", c.Writer.Status(), c.Request.Method, c.Request.URL.Path)
+		logger.Infof("Response Headers: %+v", c.Writer.Header())
+		logger.Infof("=== Request End ===")
+	})
 
 	router.GET("/ping", Ping)
 
@@ -77,10 +141,31 @@ func main() {
 		authGroup.POST("/log", LogHandler)
 	}
 
+	// API group for Kong gateway (with /api prefix)
+	apiGroup := router.Group("/api")
+	apiGroup.Use(middleware.SessionMiddleware())
+	{
+		// get words query count by paragraph
+		apiGroup.GET("/paragraph-init", paragraph.ParagraphInit)
+
+		// translate
+		apiGroup.GET("/translate", translate.Translate)
+		apiGroup.GET("/word/:word", translate.TranslateByWord)
+		apiGroup.GET("/load-count", wordCount.LoadCount)
+		apiGroup.POST("/mark", MarkWord)
+		apiGroup.GET("/do-search", DoSearch)
+		apiGroup.GET("/third-party", DoSearchThirdParty)
+		apiGroup.GET("/wrap", Wrap)
+		apiGroup.POST("/log", LogHandler)
+	}
+
 	// APIs not requiring authentication
 	router.POST("/login", Login)
 	router.POST("/logout", Logout)
 	router.POST("/register", Register)
+
+	// 临时测试路由 - 不需要认证
+	router.POST("/mark-test", MarkWord)
 
 	port := viper.GetInt("enx.port")
 	listenAddress := fmt.Sprintf(":%d", port)
@@ -181,19 +266,27 @@ func Wrap(c *gin.Context) {
 }
 
 func MarkWord(c *gin.Context) {
+	logger.Infof("MarkWord: Starting mark word request")
+
 	word := enx.Word{}
 	// set key
 	err := c.BindJSON(&word)
 	if err != nil {
+		logger.Errorf("MarkWord: Failed to bind JSON: %v", err)
+		c.JSON(400, gin.H{
+			"success": false,
+			"message": "Invalid request body",
+		})
 		return
 	}
-	logger.Debugf("mark word: %s", word.English)
+	logger.Infof("MarkWord: Successfully parsed word: %s", word.English)
 	word.Key = strings.ToLower(word.English)
 
 	// Get user ID from session context
 	userId := middleware.GetUserIDFromContext(c)
+	logger.Infof("MarkWord: Retrieved user ID from context: %d", userId)
 	if userId == 0 {
-		logger.Errorf("no valid user id found in session")
+		logger.Errorf("MarkWord: No valid user id found in session context")
 		c.JSON(401, gin.H{
 			"success": false,
 			"message": "Invalid session",
@@ -206,8 +299,18 @@ func MarkWord(c *gin.Context) {
 	ud := enx.UserDict{}
 	ud.WordId = word.Id
 	ud.UserId = int(userId) // Convert int64 to int
-	ud.Mark()
-	word.FindQueryCount(int(userId)) // Pass user_id
+
+	// Load current state first (this is crucial!)
+	ud.IsExist()
+	logger.Infof("MarkWord: Before marking - AlreadyAcquainted: %d", ud.AlreadyAcquainted)
+
+	ud.Mark() // This will toggle the state
+
+	// Use the state after marking (no need to query again)
+	word.LoadCount = ud.QueryCount
+	word.AlreadyAcquainted = ud.AlreadyAcquainted
+
+	logger.Infof("MarkWord: Word marked, new state AlreadyAcquainted: %d", ud.AlreadyAcquainted)
 	c.JSON(200, word)
 }
 

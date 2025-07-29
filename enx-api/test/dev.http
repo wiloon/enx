@@ -3,7 +3,6 @@
 GET http://192.168.50.36:8080/ping
 
 ### words-count
-
 GET https://enx-dev.wiloon.com/paragraph-init?paragraph=foo%20On HTTP/1.1
 
 ### words count, multi word
@@ -39,3 +38,18 @@ GET http://localhost:8080/translate?word=It HTTP/1.1
 
 ### foo
 https://enx-dev.wiloon.com/paragraph-init?paragraph=Notre%20Dame%E2%80%99s%20past%20three%20seasons%20have%20ended%20in%20the%20Sweet%20Sixteen%20round.%20Can%20it%20avoid%20the%20same%20fate%20this%20year%3F%20The%20Irish%20defense%20has%20been%20great%2C%20thanks%20in%20large%20part%20to%20Hannah%20Hidalgo%2C%20the%20ACC%E2%80%99s%20defensive%20player%20of%20the%20year.%20But%20TCU%E2%80%99s%20offense%20can%20be%20tough%20to%20stop%20when%20Hailey%20Van%20Lith%20gets%20her%20pick-and-roll%20game%20going%20with%20Sedona%20Prince.%20%20
+
+### paragraph-init, city
+GET https://enx-dev.wiloon.com/api/paragraph-init?paragraph=city HTTP/1.1
+Cookie: session_id=6aa90da0-0bac-4461-a1f4-2b8edf1fdabe; theme=dark
+
+### paragraph-init, claiming
+GET https://enx-dev.wiloon.com/api/paragraph-init?paragraph=claiming HTTP/1.1
+Cookie: session_id=6aa90da0-0bac-4461-a1f4-2b8edf1fdabe; theme=dark
+
+### mark
+post https://enx-dev.wiloon.com/api/mark
+Cookie: session_id=6aa90da0-0bac-4461-a1f4-2b8edf1fdabe; theme=dark
+content-type: application/json
+
+{"English":"in"}

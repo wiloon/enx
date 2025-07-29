@@ -19,7 +19,8 @@ export interface User {
 
 export interface AuthResponse {
   user: User
-  sessionId: string
+  sessionId?: string
+  session_id?: string  // API actually returns this field name
   token?: string
 }
 

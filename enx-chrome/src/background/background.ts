@@ -10,10 +10,14 @@ let sessionId = ''
 // Load session from storage
 const loadSession = async () => {
   try {
+    console.log('Loading session from storage...')
     const result = await chrome.storage.local.get(['sessionId'])
+    console.log('Storage result:', result)
     if (result.sessionId) {
       sessionId = result.sessionId
-      console.log('Session loaded from storage')
+      console.log('Session loaded from storage:', sessionId)
+    } else {
+      console.log('No sessionId found in storage')
     }
   } catch (error) {
     console.error('Error loading session:', error)
@@ -61,6 +65,8 @@ const makeApiRequest = async (endpoint: string, options: RequestInit = {}) => {
 
     console.log(`Making API request to: ${API_BASE_URL}${endpoint}`)
     console.log('Request headers:', headers)
+    console.log('Request body:', options.body)
+    console.log('Current sessionId:', sessionId)
     
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
@@ -183,6 +189,13 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
         case 'logout':
           return await handleLogout()
           
+        case 'debugStorage':
+          // Debug command to check storage
+          const storageData = await chrome.storage.local.get(null)
+          console.log('All Chrome storage data:', storageData)
+          console.log('Current sessionId in memory:', sessionId)
+          return { success: true, storage: storageData, sessionId }
+          
         case 'hello':
           return { success: true, message: 'Hello from ENX background!' }
           
@@ -289,18 +302,37 @@ const handleGetWords = async (paragraph: string) => {
 
 // Handle mark word as acquainted
 const handleMarkAcquainted = async (word: string, userId: number) => {
-  if (!word || !userId) {
-    console.error('handleMarkAcquainted: Missing word or userId', { word, userId })
-    return { success: false, error: 'Missing word or userId' }
+  if (!word) {
+    console.error('handleMarkAcquainted: Missing word', { word })
+    return { success: false, error: 'Missing word' }
   }
 
   console.log('handleMarkAcquainted: Marking word as acquainted', { word: word.trim(), userId })
+  console.log('handleMarkAcquainted: Current sessionId available:', !!sessionId)
+  
+  // If no sessionId in memory, try to reload from storage
+  if (!sessionId) {
+    console.log('handleMarkAcquainted: No sessionId in memory, trying to reload from storage...')
+    await loadSession()
+    console.log('handleMarkAcquainted: After reload attempt, sessionId available:', !!sessionId)
+  }
+  
+  // Check if we have a session
+  if (!sessionId) {
+    console.error('handleMarkAcquainted: No session ID available')
+    // Clear user data since session is invalid
+    await chrome.storage.local.remove(['user', 'sessionId'])
+    return { 
+      success: false, 
+      error: 'Session expired. Please click the extension icon to login again.',
+      sessionExpired: true 
+    }
+  }
 
   const response = await makeApiRequest('/api/mark', {
     method: 'POST',
     body: JSON.stringify({
-      word: word.trim(),
-      userId
+      English: word.trim()
     })
   })
   
@@ -327,26 +359,39 @@ const handleMarkAcquainted = async (word: string, userId: number) => {
 
 // Handle user login
 const handleLogin = async (username: string, password: string) => {
+  console.log('handleLogin: Starting login process for user:', username)
   const response = await makeApiRequest('/api/login', {
     method: 'POST',
     body: JSON.stringify({ username, password })
   })
   
+  console.log('handleLogin: Login API response:', response)
+  
   if (response.success && response.data) {
-    sessionId = response.data.sessionId
+    console.log('handleLogin: Login successful, response.data:', response.data)
+    
+    // API returns session_id, not sessionId
+    const sessionIdFromResponse = response.data.session_id || response.data.sessionId
+    console.log('handleLogin: Extracted session ID:', sessionIdFromResponse)
+    
+    sessionId = sessionIdFromResponse
     
     // Store session in Chrome storage
-    await chrome.storage.local.set({
+    const storageData = {
       user: response.data.user,
-      sessionId: response.data.sessionId
-    })
+      sessionId: sessionIdFromResponse
+    }
+    console.log('handleLogin: Storing to Chrome storage:', storageData)
     
-    console.log('User logged in successfully')
+    await chrome.storage.local.set(storageData)
+    
+    console.log('handleLogin: User logged in successfully, sessionId set to:', sessionId)
     return {
       success: true,
       data: response.data
     }
   } else {
+    console.error('handleLogin: Login failed:', response)
     return response
   }
 }
@@ -373,6 +418,22 @@ self.addEventListener('error', (event) => {
 // Handle unhandled promise rejections
 self.addEventListener('unhandledrejection', (event) => {
   console.error('ENX Unhandled promise rejection:', event.reason)
+})
+
+// Listen for storage changes
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  if (namespace === 'local') {
+    console.log('Storage changes detected:', changes)
+    
+    // If sessionId changed, update our memory
+    if (changes.sessionId) {
+      const newSessionId = changes.sessionId.newValue
+      if (newSessionId && newSessionId !== sessionId) {
+        sessionId = newSessionId
+        console.log('Background script updated sessionId from storage:', sessionId)
+      }
+    }
+  }
 })
 
 // Initialize background script

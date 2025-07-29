@@ -45,13 +45,15 @@ func QueryCountInText(paragraph string, userId int) map[string]Word {
 			if ud.IsExist() {
 				wordObj.LoadCount = ud.QueryCount
 				wordObj.AlreadyAcquainted = ud.AlreadyAcquainted
-			} else if userId == 1 {
-				wordObj.LoadByEnglish()
 			} else {
 				wordObj.LoadCount = 0
 				wordObj.AlreadyAcquainted = 0
 			}
 		}
+		// add log, print word id, english, chinese, load count
+		logger.Infof("word: %s, id: %d, chinese: %s, load count: %d, already acquainted: %d",
+			wordObj.English, wordObj.Id, wordObj.Chinese, wordObj.LoadCount, wordObj.AlreadyAcquainted)
+
 		response[wordObj.Raw] = wordObj
 	}
 	logger.Debug("words count: ", response)
