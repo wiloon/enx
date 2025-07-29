@@ -29,16 +29,31 @@ func GetUserIDFromContext(c *gin.Context) int64 {
 // SessionMiddleware handles session authentication
 func SessionMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		logger.Infof("SessionMiddleware: Processing request %s %s", c.Request.Method, c.Request.URL.Path)
+		
+		// Skip authentication for OPTIONS requests (CORS preflight)
+		if c.Request.Method == "OPTIONS" {
+			logger.Infof("SessionMiddleware: Skipping auth for OPTIONS request")
+			c.Next()
+			return
+		}
+		
 		sessionID := c.GetHeader("X-Session-ID")
+		logger.Infof("SessionMiddleware: X-Session-ID header: '%s'", sessionID)
+		
 		if sessionID == "" {
 			// Try to get from cookie
 			cookie, err := c.Cookie("session_id")
 			if err == nil {
 				sessionID = cookie
+				logger.Infof("SessionMiddleware: Session ID from cookie: '%s'", sessionID)
+			} else {
+				logger.Infof("SessionMiddleware: No session_id cookie found, error: %v", err)
 			}
 		}
 
 		if sessionID == "" {
+			logger.Errorf("SessionMiddleware: No session ID found in header or cookie")
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
 				"message": "No session found",
@@ -47,9 +62,11 @@ func SessionMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		logger.Infof("SessionMiddleware: Looking up session ID: '%s'", sessionID)
 		var session Session
 		result := sqlitex.DB.Where("id = ? AND expires_at > ?", sessionID, time.Now()).First(&session)
 		if result.Error != nil {
+			logger.Errorf("SessionMiddleware: Session lookup failed for ID '%s', error: %v", sessionID, result.Error)
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
 				"message": "Invalid or expired session",
@@ -57,6 +74,8 @@ func SessionMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+
+		logger.Infof("SessionMiddleware: Session found for user ID: %d", session.UserID)
 
 		// Store session info in context
 		c.Set("user_id", session.UserID)

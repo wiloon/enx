@@ -31,8 +31,8 @@ class ContentWordProcessor {
     return words
       .map(word => word.trim())
       .filter(word => {
-        return word.length > 0 && 
-               word.length <= 50 && 
+        return word.length > 0 &&
+               word.length <= 50 &&
                !/^\d+$/.test(word) &&
                /[a-zA-Z]/.test(word)
       })
@@ -41,49 +41,49 @@ class ContentWordProcessor {
 
   static getColorCode(wordData: WordData): string {
     // If word is already acquainted, known word type, or not in database, don't highlight
-    if (wordData.AlreadyAcquainted === 1 || wordData.WordType === 1 || !wordData.English || !wordData.Chinese) {
+    if (wordData.AlreadyAcquainted === 1 || wordData.WordType === 1 || wordData.LoadCount === 0) {
       return '#FFFFFF'
     }
 
     const loadCount = wordData.LoadCount || 0
     const normalizedCount = Math.min(loadCount, 30) / 30
     const hue = Math.round(300 * normalizedCount)
-    
+
     return `hsl(${hue}, 100%, 40%)`
   }
 
   static renderWithHighlights(originalHtml: string, wordDict: Record<string, WordData>): string {
     console.log('Starting renderWithHighlights with', Object.keys(wordDict).length, 'words')
-    
+
     // Create a temporary DOM element to work with
     const tempDiv = document.createElement('div')
     tempDiv.innerHTML = originalHtml
-    
+
     let totalReplacements = 0
 
     // Process each word in the dictionary
     Object.keys(wordDict).forEach(word => {
       const wordData = wordDict[word]
       const colorCode = this.getColorCode(wordData)
-      
+
       // Find all text nodes that contain this word
       const walker = document.createTreeWalker(
         tempDiv,
         NodeFilter.SHOW_TEXT,
         null
       )
-      
+
       const textNodes: Text[] = []
       let node
       while (node = walker.nextNode()) {
         textNodes.push(node as Text)
       }
-      
+
       const wordRegex = new RegExp(
         `\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
         'gi'
       )
-      
+
       textNodes.forEach(textNode => {
         const text = textNode.textContent || ''
         if (wordRegex.test(text)) {
@@ -93,11 +93,11 @@ class ContentWordProcessor {
             console.log('Highlighting word:', match, 'with color:', colorCode)
             return `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="margin-left: 2px; margin-right: 2px; text-decoration: ${colorCode} underline; text-decoration-thickness: 2px; cursor: pointer;">${match}</u>`
           })
-          
+
           // Create a temporary container and replace the text node
           const tempContainer = document.createElement('span')
           tempContainer.innerHTML = highlightedText
-          
+
           // Replace the text node with the highlighted content
           while (tempContainer.firstChild) {
             textNode.parentNode!.insertBefore(tempContainer.firstChild, textNode)
@@ -259,6 +259,8 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
     if (response.success && response.ecp) {
       updatePopupContent(popup, response.ecp)
       wordCache[word.toLowerCase()] = response.ecp
+      // Update word highlighting in case AlreadyAcquainted status changed
+      updateWordHighlighting(word, response.ecp)
     } else if (response.sessionExpired) {
       console.log('Session expired, showing session expired message')
       hideWordPopup()
@@ -302,31 +304,35 @@ const updatePopupContent = (popup: HTMLElement, wordData: WordData) => {
         console.log('Storage result:', result)
         console.log('User data from storage:', result.user)
         console.log('ENX User data from storage:', result['enx-user'])
-        
+
         const userId = result.user?.id || result.user?.userId || result['enx-user']?.id
         console.log('Extracted user ID:', userId)
-        
+
         if (!userId) {
           console.error('No user ID found, user may not be logged in')
           alert('Please login first')
           return
         }
-        
+
         console.log('Marking word as acquainted:', wordData.English, 'for user:', userId)
-        
+
         const response = await sendToBackground({
           type: 'markAcquainted',
           word: wordData.English,
           userId: userId
         })
-        
+
         console.log('Mark acquainted response:', response)
-        
+
         if (response.success) {
           hideWordPopup()
           // Update word highlighting
           updateWordHighlighting(wordData.English, response.ecp || wordData)
           console.log('Word marked as acquainted successfully')
+        } else if (response.sessionExpired) {
+          console.log('Session expired while marking word')
+          hideWordPopup()
+          showSessionExpiredMessage()
         } else {
           console.error('Failed to mark word as acquainted:', response.error)
           alert('Failed to mark word as known: ' + (response.error || 'Unknown error'))
@@ -363,7 +369,7 @@ const hideWordPopup = () => {
 const updateWordHighlighting = (word: string, wordData: WordData) => {
   const elements = document.querySelectorAll(`.enx-${word.toLowerCase()}`)
   const colorCode = ContentWordProcessor.getColorCode(wordData)
-  
+
   elements.forEach(element => {
     if (element instanceof HTMLElement) {
       element.style.textDecoration = `${colorCode} underline`
@@ -444,7 +450,7 @@ const processArticleContent = async () => {
 
   try {
     console.log('Processing article content...')
-    
+
     const articleNode = ContentWordProcessor.getArticleNode()
     if (!articleNode) {
       console.log('No article node found')
@@ -456,7 +462,7 @@ const processArticleContent = async () => {
     // Get text content and extract words
     const textContent = articleNode.textContent || ''
     const words = ContentWordProcessor.extractWords(textContent)
-    
+
     if (words.length === 0) {
       console.log('No words found to process')
       return
@@ -478,12 +484,12 @@ const processArticleContent = async () => {
 
         if (response.success && response.wordProperties) {
           console.log('Raw response.wordProperties:', response.wordProperties)
-          
+
           // Check if wordProperties is wrapped in a 'data' field
           const actualWordData = response.wordProperties.data || response.wordProperties
           console.log('Actual word data to process:', actualWordData)
           console.log('Word data keys:', Object.keys(actualWordData))
-          
+
           Object.assign(wordCache, actualWordData)
           console.log(`Processed ${Object.keys(actualWordData).length} words in chunk`)
           console.log('Current word cache size:', Object.keys(wordCache).length)
@@ -502,14 +508,14 @@ const processArticleContent = async () => {
       console.log('Applying highlighting for', Object.keys(wordCache).length, 'words')
       console.log('Sample words from cache:', Object.keys(wordCache).slice(0, 5))
       console.log('Sample word data:', Object.values(wordCache)[0])
-      
+
       const originalHtml = articleNode.innerHTML
       const highlightedHtml = ContentWordProcessor.renderWithHighlights(originalHtml, wordCache)
-      
+
       console.log('Original HTML length:', originalHtml.length)
       console.log('Highlighted HTML length:', highlightedHtml.length)
       console.log('HTML changed:', originalHtml !== highlightedHtml)
-      
+
       articleNode.innerHTML = highlightedHtml
 
       // Add click listeners to highlighted words
@@ -529,12 +535,12 @@ const processArticleContent = async () => {
 // Add click listeners to highlighted words
 const addWordClickListeners = (container: Element) => {
   const wordElements = container.querySelectorAll('.enx-word')
-  
+
   wordElements.forEach(element => {
     element.addEventListener('click', (event) => {
       event.preventDefault()
       event.stopPropagation()
-      
+
       const word = (element as HTMLElement).dataset.word || element.textContent || ''
       if (word) {
         showWordPopup(word, event as MouseEvent)
@@ -547,7 +553,7 @@ const addWordClickListeners = (container: Element) => {
 const handleTextSelection = (event: MouseEvent) => {
   const selection = window.getSelection()
   const selectedText = selection?.toString().trim()
-  
+
   if (selectedText && selectedText.split(' ').length <= 5) {
     // Handle multi-word selection
     showWordPopup(selectedText, event)
@@ -557,13 +563,13 @@ const handleTextSelection = (event: MouseEvent) => {
 // Enable ENX functionality
 const enableEnx = () => {
   if (isEnxEnabled) return
-  
+
   console.log('Enabling ENX functionality')
   isEnxEnabled = true
-  
+
   // Add mouseup listener for text selection
   document.addEventListener('mouseup', handleTextSelection)
-  
+
   // Process article content
   processArticleContent()
 }
@@ -571,16 +577,16 @@ const enableEnx = () => {
 // Disable ENX functionality
 const disableEnx = () => {
   if (!isEnxEnabled) return
-  
+
   console.log('Disabling ENX functionality')
   isEnxEnabled = false
-  
+
   // Remove event listeners
   document.removeEventListener('mouseup', handleTextSelection)
-  
+
   // Hide popup
   hideWordPopup()
-  
+
   // Remove word highlighting
   const wordElements = document.querySelectorAll('.enx-word')
   wordElements.forEach(element => {
@@ -592,18 +598,18 @@ const disableEnx = () => {
 // Listen for messages from popup or background
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   console.log('Content script received message:', request)
-  
+
   switch (request.action) {
     case 'enxRun':
       enableEnx()
       sendResponse({ success: true })
       break
-      
+
     case 'enxStop':
       disableEnx()
       sendResponse({ success: true })
       break
-      
+
     case 'getPageInfo':
       sendResponse({
         title: document.title,
@@ -621,11 +627,11 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       }
       sendResponse({ success: true })
       break
-      
+
     default:
       sendResponse({ success: false, error: 'Unknown action' })
   }
-  
+
   return true
 })
 

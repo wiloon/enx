@@ -37,7 +37,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       const response = await apiService.login(formData.username, formData.password)
       
       if (response.success && response.data) {
-        const { user: userData, sessionId } = response.data
+        const userData = response.data.user
+        const sessionId = response.data.session_id || response.data.sessionId || ''
         
         setUser({
           ...userData,
