@@ -15,23 +15,27 @@ A modern Chrome extension built with React, TypeScript, and Jotai for state mana
 
 ## Getting Started
 
-1. Install dependencies:
+Install dependencies:
+
 ```bash
 npm install
 ```
 
-2. Set up environment variables:
+Set up environment variables:
+
 ```bash
 cp .env.example .env
 # Edit .env and add your Sentry DSN
 ```
 
-3. Start development:
+Start development:
+
 ```bash
 npm run dev
 ```
 
-4. Build for production:
+Build for production:
+
 ```bash
 npm run build
 ```
@@ -68,11 +72,13 @@ npm run build
 ## Testing
 
 Run tests with:
+
 ```bash
 npm run test
 ```
 
 The test setup includes:
+
 - Jest configuration for TypeScript
 - Testing Library for React components
 - Mock Chrome APIs for extension testing

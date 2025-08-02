@@ -1,5 +1,6 @@
 import { Provider, useAtom } from 'jotai'
-import { apiBaseUrlAtom } from '@/store/atoms'
+import { useEffect } from 'react'
+import { apiBaseUrlAtom, userAtom, sessionAtom } from '@/store/atoms'
 import Login from '@/components/Login'
 import DebugPanel from '@/components/DebugPanel'
 import { initSentry } from '@/lib/sentry'
@@ -11,12 +12,52 @@ initSentry()
 
 function PopupContent() {
   const [apiBaseUrl] = useAtom(apiBaseUrlAtom)
+  const [user, setUser] = useAtom(userAtom)
+  const [session, setSession] = useAtom(sessionAtom)
   
   // Initialize state from Chrome storage
   useInitializeStorage()
 
   // Initialize API service with base URL
   apiService.setBaseUrl(apiBaseUrl)
+
+  // Validate session on popup open
+  useEffect(() => {
+    const validateSession = async () => {
+      if (user.isLoggedIn && session.sessionId) {
+        try {
+          apiService.setSessionId(session.sessionId)
+          const response = await apiService.validateSession()
+          
+          if (!response.success) {
+            console.log('Session validation failed, logging out user')
+            
+            // Clear user and session state
+            setUser({
+              id: 0,
+              username: '',
+              email: '',
+              isLoggedIn: false,
+            })
+            
+            setSession({
+              sessionId: '',
+              token: '',
+            })
+
+            // Clear Chrome storage
+            await chrome.storage.local.remove(['user', 'sessionId', 'enx-user', 'enx-session'])
+            
+            apiService.setSessionId('')
+          }
+        } catch (error) {
+          console.error('Session validation error:', error)
+        }
+      }
+    }
+
+    validateSession()
+  }, [user.isLoggedIn, session.sessionId, setUser, setSession])
 
   const handleLoginSuccess = () => {
     console.log('Login successful, ready to use ENX')
@@ -38,7 +79,10 @@ function PopupContent() {
       {/* Footer */}
       <div className="p-3 text-center text-xs text-gray-500 border-t border-gray-200">
         <p>Click on any English word to see translation</p>
-        <DebugPanel />
+        <div className="flex justify-between items-center mt-2">
+          <span className="text-gray-400">v{__APP_VERSION__}</span>
+          <DebugPanel />
+        </div>
       </div>
     </div>
   )

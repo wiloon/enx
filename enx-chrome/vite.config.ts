@@ -1,14 +1,28 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
-import { copyFileSync, mkdirSync, readdirSync } from 'fs'
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs'
 
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(process.env.npm_package_version || JSON.parse(readFileSync('package.json', 'utf-8')).version),
+  },
   plugins: [
     react(),
     {
       name: 'copy-manifest',
       writeBundle() {
+        // Read version from package.json and sync to manifest.json
+        const packageJson = JSON.parse(readFileSync('package.json', 'utf-8'))
+        const manifest = JSON.parse(readFileSync('manifest.json', 'utf-8'))
+        
+        // Update manifest version to match package.json
+        if (manifest.version !== packageJson.version) {
+          manifest.version = packageJson.version
+          writeFileSync('manifest.json', JSON.stringify(manifest, null, 2) + '\n')
+          console.log(`✓ Synced manifest.json version to ${packageJson.version}`)
+        }
+        
         copyFileSync('manifest.json', 'dist/manifest.json')
         // Create icons directory and copy icons
         mkdirSync('dist/icons', { recursive: true })
