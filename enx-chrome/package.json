@@ -1,6 +1,6 @@
 {
   "name": "enx-chrome-extension",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Chrome extension for English learning with React, TypeScript, and Jotai",
   "type": "module",
   "scripts": {

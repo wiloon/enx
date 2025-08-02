@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ENX - English Learning Extension",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "AI-powered English learning assistant that helps you learn vocabulary while browsing the web",
   "permissions": [
     "storage",
@@ -30,7 +30,9 @@
         "https://wiloon.com/*",
         "file://*"
       ],
-      "js": ["content.js"],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_end"
     }
   ],

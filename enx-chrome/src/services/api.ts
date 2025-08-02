@@ -113,9 +113,10 @@ export class ApiService {
     })
   }
 
-  // Health check
-  async healthCheck(): Promise<ApiResponse<{ status: string }>> {
-    return this.makeRequest<{ status: string }>('/api/health')
+  // Session validation using a lightweight endpoint
+  async validateSession(): Promise<ApiResponse<any>> {
+    // Use the translate endpoint with a simple word to validate session
+    return this.makeRequest<WordResponse>('/api/translate?word=test')
   }
 }
 
