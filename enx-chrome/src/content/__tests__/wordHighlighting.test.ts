@@ -1,14 +1,17 @@
 import { WordData } from '../../types'
 
 // Mock DOM for testing
-Object.defineProperty(global, 'NodeFilter', {
-  value: {
-    SHOW_TEXT: 4,
-    FILTER_ACCEPT: 1,
-    FILTER_REJECT: 2,
-    FILTER_SKIP: 3,
-  }
-})
+Object.defineProperty(
+  global,
+  'NodeFilter',
+  {
+    value: {
+      SHOW_TEXT: 4,
+      FILTER_ACCEPT: 1,
+      FILTER_REJECT: 2,
+      FILTER_SKIP: 3,
+    }
+  })
 
 // Extract the ContentWordProcessor class from content script
 class ContentWordProcessor {
@@ -31,9 +34,9 @@ class ContentWordProcessor {
       .map(word => word.trim())
       .filter(word => {
         return word.length > 0 &&
-               word.length <= 50 &&
-               !/^\d+$/.test(word) &&
-               /[a-zA-Z]/.test(word)
+          word.length <= 50 &&
+          !/^\d+$/.test(word) &&
+          /[a-zA-Z]/.test(word)
       })
       .map(word => word.toLowerCase())
   }
@@ -125,7 +128,7 @@ describe('ContentWordProcessor', () => {
   beforeEach(() => {
     // Setup DOM mocks
     global.console.log = jest.fn()
-    
+
     // Mock document.createElement
     global.document.createElement = jest.fn((tagName: string) => {
       const element = {
@@ -145,28 +148,28 @@ describe('ContentWordProcessor', () => {
     it('should extract words from a simple sentence', () => {
       const text = 'Hello world this is a test'
       const words = ContentWordProcessor.extractWords(text)
-      
+
       expect(words).toEqual(['hello', 'world', 'this', 'is', 'a', 'test'])
     })
 
     it('should handle contractions and apostrophes', () => {
       const text = "I can't believe it's working"
       const words = ContentWordProcessor.extractWords(text)
-      
+
       expect(words).toEqual(['i', "can't", 'believe', "it's", 'working'])
     })
 
     it('should filter out numbers and very short words', () => {
       const text = 'Test 123 a word'
       const words = ContentWordProcessor.extractWords(text)
-      
+
       expect(words).toEqual(['test', 'a', 'word'])
     })
 
     it('should handle HTML tags and entities', () => {
       const text = 'Hello <strong>world</strong> &amp; test'
       const words = ContentWordProcessor.extractWords(text)
-      
+
       expect(words).toEqual(['hello', 'world', 'test'])
     })
 
@@ -187,7 +190,7 @@ describe('ContentWordProcessor', () => {
         WordType: 0,
         Pronunciation: ''
       }
-      
+
       expect(ContentWordProcessor.getColorCode(wordData)).toBe('#FFFFFF')
     })
 
@@ -201,7 +204,7 @@ describe('ContentWordProcessor', () => {
         WordType: 1,
         Pronunciation: ''
       }
-      
+
       expect(ContentWordProcessor.getColorCode(wordData)).toBe('#FFFFFF')
     })
 
@@ -215,7 +218,7 @@ describe('ContentWordProcessor', () => {
         WordType: 0,
         Pronunciation: ''
       }
-      
+
       expect(ContentWordProcessor.getColorCode(wordData)).toBe('#FFFFFF')
     })
 
@@ -229,7 +232,7 @@ describe('ContentWordProcessor', () => {
         WordType: 0,
         Pronunciation: ''
       }
-      
+
       const color = ContentWordProcessor.getColorCode(wordData)
       expect(color).toMatch(/^hsl\(\d+, 100%, 40%\)$/)
     })
@@ -267,17 +270,17 @@ describe('ContentWordProcessor', () => {
       }
 
       global.document.createElement = jest.fn(() => mockDiv as any)
-      
+
       // Mock TreeWalker with no text nodes (simplified test)
       const mockTreeWalker = {
         nextNode: jest.fn().mockReturnValue(null)
       }
-      
+
       global.document.createTreeWalker = jest.fn(() => mockTreeWalker as any)
 
       // Call the function
       ContentWordProcessor.renderWithHighlights(originalHtml, wordDict)
-      
+
       // Verify the function was called and attempted to process words
       expect(console.log).toHaveBeenCalledWith('Starting renderWithHighlights with', 2, 'words')
       expect(global.document.createElement).toHaveBeenCalledWith('div')
@@ -289,7 +292,7 @@ describe('ContentWordProcessor', () => {
       const wordDict: Record<string, WordData> = {}
 
       ContentWordProcessor.renderWithHighlights(originalHtml, wordDict)
-      
+
       expect(console.log).toHaveBeenCalledWith('Starting renderWithHighlights with', 0, 'words')
     })
 
@@ -298,9 +301,9 @@ describe('ContentWordProcessor', () => {
       const word = 'hello'
       const colorCode = 'hsl(150, 100%, 40%)'
       const match = 'Hello'
-      
+
       const expectedHtml = `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="text-decoration: ${colorCode} underline; text-decoration-thickness: 2px; cursor: pointer;">${match}</u>`
-      
+
       // This tests the HTML structure that would be generated
       expect(expectedHtml).toContain('class="enx-word enx-hello"')
       expect(expectedHtml).toContain('data-word="Hello"')
