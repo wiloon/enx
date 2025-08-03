@@ -66,11 +66,23 @@ class ContentWordProcessor {
       const wordData = wordDict[word]
       const colorCode = this.getColorCode(wordData)
 
-      // Find all text nodes that contain this word
+      // Find all text nodes that contain this word, excluding those inside links
       const walker = document.createTreeWalker(
         tempDiv,
         NodeFilter.SHOW_TEXT,
-        null
+        {
+          acceptNode: (node) => {
+            // Check if the text node is inside a link
+            let parent = node.parentNode
+            while (parent && parent !== tempDiv) {
+              if (parent.nodeName.toLowerCase() === 'a') {
+                return NodeFilter.FILTER_REJECT
+              }
+              parent = parent.parentNode
+            }
+            return NodeFilter.FILTER_ACCEPT
+          }
+        }
       )
 
       const textNodes: Text[] = []
@@ -91,7 +103,7 @@ class ContentWordProcessor {
             totalReplacements++
             // add console log for debugging, print word and colorCode
             console.log('Highlighting word:', match, 'with color:', colorCode)
-            return `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="margin-left: 2px; margin-right: 2px; text-decoration: ${colorCode} underline; text-decoration-thickness: 2px; cursor: pointer;">${match}</u>`
+            return `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="text-decoration: ${colorCode} underline; text-decoration-thickness: 2px; cursor: pointer;">${match}</u>`
           })
 
           // Create a temporary container and replace the text node
@@ -185,21 +197,41 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
     line-height: 1.4;
   `
 
-  // Position popup
+  // Position popup to avoid covering the sentence context
   const viewportWidth = window.innerWidth
+  const viewportHeight = window.innerHeight
   const scrollX = window.scrollX
   const scrollY = window.scrollY
+  const popupWidth = 320
+  const popupHeight = 200 // Approximate popup height
+  const margin = 15
+  const lineHeight = 24 // Approximate line height in articles
+  const contextLines = 2 // Lines above to keep visible
 
-  let x = event.clientX + scrollX
-  let y = event.clientY + scrollY - 50
+  // Calculate safe zones to avoid covering
+  const clickX = event.clientX + scrollX
+  const clickY = event.clientY + scrollY
+  
+  // Define exclusion zones (areas to avoid covering)
+  const sentenceExclusionHeight = lineHeight * (contextLines + 1) // Height above to keep clear
+  
+  // X-coordinate: Center popup directly above the clicked word
+  let x = clickX - (popupWidth / 2)
+  
+  // Y-coordinate: Keep the existing vertical positioning logic
+  let y = Math.max(
+    clickY - sentenceExclusionHeight - popupHeight - margin, // Above the context
+    scrollY + margin // But not above viewport
+  )
+  
+  // If positioning above would put it too high, place below
+  if (y < scrollY + margin) {
+    y = clickY + margin * 2 // Below the word with extra margin
+  }
 
-  // Adjust position to stay in viewport
-  if (x + 320 > scrollX + viewportWidth) {
-    x = scrollX + viewportWidth - 320 - 10
-  }
-  if (y < scrollY) {
-    y = event.clientY + scrollY + 20
-  }
+  // Final boundary checks
+  x = Math.max(scrollX + margin, Math.min(x, scrollX + viewportWidth - popupWidth - margin))
+  y = Math.max(scrollY + margin, Math.min(y, scrollY + viewportHeight - popupHeight - margin))
 
   popup.style.left = `${x}px`
   popup.style.top = `${y}px`
@@ -521,6 +553,9 @@ const processArticleContent = async () => {
       // Add click listeners to highlighted words
       addWordClickListeners(articleNode)
       console.log('Word highlighting applied.')
+      
+      // Add processing complete indicator
+      addProcessingCompleteIndicator(articleNode)
     } else {
       console.log('No words in cache, skipping highlighting')
     }
@@ -549,6 +584,64 @@ const addWordClickListeners = (container: Element) => {
   })
 }
 
+// Add processing complete indicator to the article
+const addProcessingCompleteIndicator = (articleNode: Element) => {
+  // Remove any existing indicator
+  const existingIndicator = document.getElementById('enx-processing-complete')
+  if (existingIndicator) {
+    existingIndicator.remove()
+  }
+
+  // Create the indicator element
+  const indicator = document.createElement('div')
+  indicator.id = 'enx-processing-complete'
+  indicator.style.cssText = `
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    background: linear-gradient(90deg, #4CAF50, #45a049);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+    animation: slideInFromTop 0.5s ease-out;
+    z-index: 1000;
+  `
+
+  indicator.innerHTML = `
+    <svg style="width: 14px; height: 14px; margin-right: 6px;" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    Article processed • Click words for translation
+  `
+
+  // Add CSS animation
+  const style = document.createElement('style')
+  style.textContent = `
+    @keyframes slideInFromTop {
+      from { 
+        transform: translateY(-20px); 
+        opacity: 0; 
+      }
+      to { 
+        transform: translateY(0); 
+        opacity: 1; 
+      }
+    }
+  `
+  if (!document.head.querySelector('style[data-enx-animations]')) {
+    style.setAttribute('data-enx-animations', 'true')
+    document.head.appendChild(style)
+  }
+
+  // Insert at the beginning of the article
+  articleNode.insertBefore(indicator, articleNode.firstChild)
+}
+
 // Handle text selection for multi-word translation
 const handleTextSelection = (event: MouseEvent) => {
   const selection = window.getSelection()
@@ -561,7 +654,7 @@ const handleTextSelection = (event: MouseEvent) => {
 }
 
 // Enable ENX functionality
-const enableEnx = () => {
+const enableEnx = async () => {
   if (isEnxEnabled) return
 
   console.log('Enabling ENX functionality')
@@ -570,8 +663,10 @@ const enableEnx = () => {
   // Add mouseup listener for text selection
   document.addEventListener('mouseup', handleTextSelection)
 
-  // Process article content
-  processArticleContent()
+  // Process article content and wait for completion
+  await processArticleContent()
+  
+  return true
 }
 
 // Disable ENX functionality
@@ -587,6 +682,12 @@ const disableEnx = () => {
   // Hide popup
   hideWordPopup()
 
+  // Remove processing complete indicator
+  const indicator = document.getElementById('enx-processing-complete')
+  if (indicator) {
+    indicator.remove()
+  }
+
   // Remove word highlighting
   const wordElements = document.querySelectorAll('.enx-word')
   wordElements.forEach(element => {
@@ -601,9 +702,13 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
   switch (request.action) {
     case 'enxRun':
-      enableEnx()
-      sendResponse({ success: true })
-      break
+      enableEnx().then((result) => {
+        sendResponse({ success: true, completed: result })
+      }).catch((error) => {
+        console.error('Error enabling ENX:', error)
+        sendResponse({ success: false, error: error.message })
+      })
+      return true // Keep message channel open for async response
 
     case 'enxStop':
       disableEnx()
