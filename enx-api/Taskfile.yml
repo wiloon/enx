@@ -1,0 +1,187 @@
+version: '3'
+
+vars:
+  APP_NAME: enx-api
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
+  GIT_COMMIT:
+    sh: git rev-parse HEAD 2>/dev/null || echo "unknown"
+  GIT_BRANCH:
+    sh: git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown"
+  BUILD_TIME:
+    sh: date -u '+%Y-%m-%d_%H:%M:%S_UTC'
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  # 安装依赖
+  deps:
+    desc: Download Go module dependencies
+    cmds:
+      - go mod download
+      - go mod verify
+
+  # 整理依赖
+  tidy:
+    desc: Tidy Go module dependencies
+    cmds:
+      - go mod tidy
+
+  build-dev:
+    desc: Build for development (without version injection)
+    cmds:
+      - echo "Building {{.APP_NAME}} for development..."
+      - go build -o {{.APP_NAME}} .
+      - echo "Build completed! Binary{{.APP_NAME}}"
+
+  build:
+    desc: Build with version information
+    cmds:
+      - echo "Building {{.APP_NAME}} with version information..."
+      - echo "Version{{.VERSION}}"
+      - echo "Git Commit{{.GIT_COMMIT}}"
+      - echo "Git Branch{{.GIT_BRANCH}}"
+      - echo "Build Time{{.BUILD_TIME}}"
+      - go build -ldflags "-X enx-server/version.Version={{.VERSION}} -X enx-server/version.GitCommit={{.GIT_COMMIT}} -X enx-server/version.GitBranch={{.GIT_BRANCH}} -X enx-server/version.BuildTime={{.BUILD_TIME}}" -o {{.APP_NAME}} .
+      - echo "Build completed successfully!"
+
+  run:
+    desc: Run the application locally using go run
+    cmds:
+      - echo "Starting {{.APP_NAME}} in development mode..."
+      - go run .
+
+  run-binary:
+    desc: Run the built binary
+    deps:
+      - build-dev
+    cmds:
+      - echo "Starting {{.APP_NAME}} from binary..."
+      - ./{{.APP_NAME}}
+
+  dev:
+    desc: Run with hot reload (requires air to be installed)
+    cmds:
+      - |
+        if ! command -v air &> /dev/null; then
+          echo "air is not installed. Installing..."
+          go install github.com/cosmtrek/air@latest
+        fi
+      - air
+
+  test:
+    desc: Run all tests
+    cmds:
+      - echo "Running tests..."
+      - go test ./...
+
+  test-coverage:
+    desc: Run tests with coverage
+    cmds:
+      - echo "Running tests with coverage..."
+      - go test -cover -coverprofile=coverage.out ./...
+      - go tool cover -html=coverage.out -o coverage.html
+      - echo "Coverage report generated coverage.html"
+
+  test-pkg:
+    desc: Run tests for a specific package (usage - task test-pkg PKG=./enx)
+    cmds:
+      - go test -v {{.PKG}}
+
+  lint:
+    desc: Run linters (requires golangci-lint)
+    cmds:
+      - |
+        if ! command -v golangci-lint &> /dev/null; then
+          echo "golangci-lint is not installed. Please install it first."
+          echo "Install brew install golangci-lint"
+          exit 1
+        fi
+      - golangci-lint run
+
+  fmt:
+    desc: Format code
+    cmds:
+      - go fmt ./...
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - echo "Cleaning build artifacts..."
+      - rm -f {{.APP_NAME}}
+      - rm -f *.exe
+      - rm -f coverage.out coverage.html
+      - echo "Clean completed!"
+
+  version:
+    desc: Show version information
+    cmds:
+      - echo "Current version information"
+      - echo "Version{{.VERSION}}"
+      - echo "Git Commit{{.GIT_COMMIT}}"
+      - echo "Git Branch{{.GIT_BRANCH}}"
+      - echo "Build Time{{.BUILD_TIME}}"
+
+  check-env:
+    desc: Check development environment
+    cmds:
+      - echo "Checking development environment..."
+      - echo "Go version"
+      - go version
+      - echo ""
+      - echo "Go environment"
+      - go env GOPATH GOROOT
+      - echo ""
+      - echo "Configuration file"
+      - test -f config.toml && echo "config.toml exists" || echo "config.toml missing"
+      - echo ""
+      - echo "Dependencies status"
+      - go mod verify
+
+  migrate:
+    desc: Run database migrations
+    cmds:
+      - echo "Running database migrations..."
+      - go run ./cmd/migrate/main.go
+
+  run-local:
+    desc: Complete local setup and run (deps + build + run)
+    deps:
+      - deps
+      - build-dev
+    cmds:
+      - echo "Starting {{.APP_NAME}}..."
+      - ./{{.APP_NAME}}
+
+  dev-setup:
+    desc: Setup development environment
+    cmds:
+      - task deps
+      - task check-env
+      - echo ""
+      - echo "Development environment ready!"
+      - echo "Run 'task run' to start the application"
+      - echo "Run 'task dev' for hot reload mode"
+
+  ci-build:
+    desc: Build for CI/CD
+    cmds:
+      - task deps
+      - task test
+      - task build
+
+  check:
+    desc: Run all checks (fmt, vet, lint, test)
+    cmds:
+      - task fmt
+      - task vet
+      - task test
+      - echo "All checks passed!"
