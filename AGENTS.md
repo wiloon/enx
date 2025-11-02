@@ -8,6 +8,61 @@ This project uses AI assistance for development tasks including code generation,
 
 ## Recent Contributions
 
+### 2025-11-02: Auto-reload Setup with @crxjs/vite-plugin
+
+**Agent**: GitHub Copilot  
+**Task**: Add automatic extension reloading for Chrome extension development
+
+**Changes**:
+- Installed `@crxjs/vite-plugin` for automatic hot reload
+- Simplified `vite.config.ts` by removing custom manifest handling
+- Updated `manifest.json` to use source file paths (TypeScript)
+- Updated `TASKFILE_README.md` with auto-reload documentation
+
+**Key Improvements**:
+- ✅ **True hot reload** - Extension auto-reloads in Chrome when code changes
+- ✅ **Simplified config** - Removed 50+ lines of custom build logic
+- ✅ **Better DX** - No more manual extension refresh in most cases
+- ✅ **Automatic handling** - Icons, manifest, and assets automatically processed
+
+**Benefits**:
+- Significantly faster development iteration
+- No need to manually click reload button in chrome://extensions
+- Automatic manifest.json synchronization
+- Better error messages during development
+
+---
+
+### 2025-11-02: Taskfile Setup for enx-chrome
+
+**Agent**: GitHub Copilot  
+**Task**: Add Taskfile for Chrome extension development
+
+**Changes**:
+- Created `enx-chrome/Taskfile.yml` with comprehensive task definitions
+- Created `enx-chrome/TASKFILE_README.md` with usage documentation
+
+**Key Features Added**:
+- `task dev` - Start development server with hot reload
+- `task build` - Build extension for production
+- `task pack` - Create distributable zip for Chrome Web Store
+- `task test` - Run tests
+- `task lint` - Lint code
+- `task format` - Format code with Prettier
+- `task check` - Run all checks (lint, format, test)
+- `task setup` - Complete setup (install + build)
+- `task reload` - Rebuild and remind to reload extension
+- `task open-chrome` - Open Chrome extensions page
+- `task ci` - Complete CI/CD workflow
+
+**Benefits**:
+- Consistent task interface across all projects (enx-api, enx-chrome)
+- Simplified development workflow for Chrome extension
+- Easy packaging for Chrome Web Store distribution
+- Better development experience with hot reload
+
+---
+
 ### 2025-11-02: Taskfile Setup for enx-api
 
 **Agent**: GitHub Copilot  

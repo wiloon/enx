@@ -1,6 +1,7 @@
 import { atom } from 'jotai'
 import { WordData } from '@/types'
 import { createUserAtom, createSessionAtom } from '@/lib/storageAtoms'
+import { config } from '@/config/env'
 
 // Demo counter (keeping for hello world demo)
 export const countAtom = atom(0)
@@ -25,7 +26,7 @@ export const errorAtom = atom<string | null>(null)
 export const extensionEnabledAtom = atom(false)
 
 // API base URL (can be configured)
-export const apiBaseUrlAtom = atom<string>('https://enx-dev.wiloon.com')
+export const apiBaseUrlAtom = atom<string>(config.apiBaseUrl)
 
 // Word cache for better performance
 export const wordCacheAtom = atom<Record<string, WordData>>({})

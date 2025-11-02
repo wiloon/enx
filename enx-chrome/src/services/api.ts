@@ -1,8 +1,9 @@
 import { ApiResponse, AuthResponse, WordResponse, ParagraphResponse, WordData } from '@/types'
+import { config } from '@/config/env'
 
 // API Service for ENX extension
 export class ApiService {
-  private baseUrl: string = 'https://enx-dev.wiloon.com'
+  private baseUrl: string = config.apiBaseUrl
   private sessionId: string = ''
 
   constructor(baseUrl?: string) {
