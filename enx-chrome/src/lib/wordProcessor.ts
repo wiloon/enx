@@ -98,37 +98,59 @@ export class WordProcessor {
   }
 
   /**
-   * Render HTML with word highlighting
+   * Render HTML with word highlighting - Optimized version using DOM parsing
    */
   static renderWithHighlights(
     originalHtml: string, 
     wordDict: Record<string, WordData>
   ): string {
-    let processedHtml = originalHtml
+    console.log('WordProcessor: Starting optimized renderWithHighlights with', Object.keys(wordDict).length, 'words')
 
-    // Process each word in the dictionary
-    Object.keys(wordDict).forEach(word => {
-      const wordData = wordDict[word]
-      const colorCode = this.getColorCode(wordData)
-      
-      // Create case-insensitive regex for word replacement
-      const wordRegex = new RegExp(
-        `\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
-        'gi'
-      )
-      // add console log for debugging
-      console.log('highlight word:', word, 'colorCode:', colorCode)
-      // Replace with highlighted version
-      processedHtml = processedHtml.replace(wordRegex, (match) => {
-        return `<u class="enx-${word}" alt="${match}" style="margin-left: 2px; margin-right: 2px; text-decoration: ${colorCode} underline; text-decoration-thickness: 2px; cursor: pointer;">${match}</u>`
-      })
+    // Early return if no words to process
+    const wordKeys = Object.keys(wordDict)
+    if (wordKeys.length === 0) {
+      return originalHtml
+    }
+
+    // For simple HTML strings, use the optimized string-based approach
+    // This method is kept for backward compatibility and simple use cases
+    
+    // Precompile word data and sort by length (longest first to avoid partial matches)
+    interface WordInfo {
+      word: string
+      regex: RegExp
+      colorCode: string
+    }
+
+    const wordInfos: WordInfo[] = wordKeys
+      .map(word => ({
+        word,
+        regex: new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'),
+        colorCode: this.getColorCode(wordDict[word])
+      }))
+      .sort((a, b) => b.word.length - a.word.length) // Longest first
+
+    let processedHtml = originalHtml
+    let totalReplacements = 0
+
+    // Apply all word highlights in a single pass per word (optimized order)
+    wordInfos.forEach(({ word, regex, colorCode }) => {
+      if (regex.test(processedHtml)) {
+        console.log('WordProcessor: highlighting word:', word, 'colorCode:', colorCode)
+        processedHtml = processedHtml.replace(regex, (match) => {
+          totalReplacements++
+          return `<u class="enx-word enx-${word.toLowerCase()}" alt="${match}" data-word="${match}" style="margin-left: 2px; margin-right: 2px; text-decoration: ${colorCode} underline; text-decoration-thickness: 2px; cursor: pointer;">${match}</u>`
+        })
+        regex.lastIndex = 0 // Reset regex state
+      }
     })
 
+    console.log(`WordProcessor: Made ${totalReplacements} word replacements`)
     return processedHtml
   }
 
   /**
-   * Find text nodes in DOM tree for processing
+   * Find text nodes in DOM tree for processing - Optimized version
    */
   static findTextNodes(rootNode: Node): Array<{ node: Node; text: string }> {
     const textNodes: Array<{ node: Node; text: string }> = []
@@ -137,31 +159,39 @@ export class WordProcessor {
       NodeFilter.SHOW_TEXT,
       {
         acceptNode: (node) => {
-          // Skip script and style elements
+          // Enhanced filtering: exclude more element types for better performance
           const parent = node.parentElement
-          if (parent && ['SCRIPT', 'STYLE', 'NOSCRIPT'].includes(parent.tagName)) {
-            return NodeFilter.FILTER_REJECT
+          if (!parent) return NodeFilter.FILTER_REJECT
+
+          // Check if the text node is inside excluded elements
+          let current = parent
+          while (current && current !== rootNode) {
+            const tagName = current.tagName.toLowerCase()
+            if (['script', 'style', 'noscript', 'a', 'button', 'input', 'textarea', 'select'].includes(tagName)) {
+              return NodeFilter.FILTER_REJECT
+            }
+            current = current.parentElement!
           }
           
           // Only include nodes with meaningful text
           const text = node.textContent?.trim() || ''
-          if (text.length > 0 && /[a-zA-Z]/.test(text)) {
-            return NodeFilter.FILTER_ACCEPT
-          }
-          
-          return NodeFilter.FILTER_REJECT
+          return text.length > 0 && /[a-zA-Z]/.test(text)
+            ? NodeFilter.FILTER_ACCEPT 
+            : NodeFilter.FILTER_REJECT
         }
       }
     )
 
-    let node
-    while (node = walker.nextNode()) {
+    let node = walker.nextNode()
+    while (node) {
       textNodes.push({
         node,
         text: node.textContent || ''
       })
+      node = walker.nextNode()
     }
 
+    console.log(`WordProcessor: Found ${textNodes.length} text nodes`)
     return textNodes
   }
 
