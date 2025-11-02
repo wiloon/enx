@@ -11,6 +11,11 @@
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
+# Go build outputs
+enx-api/enx-api
+enx-api/enx-server
+enx-api/migrate
+
 # Dependency directories (remove the comment below to include it)
 # vendor/
 .idea/
@@ -20,3 +25,11 @@ chrome-enx/public
 enx-chrome/node_modules
 enx-chrome/dist
 enx-api/build
+
+# Air live reload temporary files
+tmp/
+build-errors.log
+
+# Coverage reports
+coverage.out
+coverage.html

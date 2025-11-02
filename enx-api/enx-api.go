@@ -4,6 +4,7 @@ import (
 	"context"
 	"enx-server/enx"
 	"enx-server/handlers"
+	"enx-server/middleware"
 	"enx-server/paragraph"
 	"enx-server/translate"
 	"enx-server/utils"
@@ -15,8 +16,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
-	"enx-server/middleware"
+
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
 )
@@ -181,8 +183,10 @@ func main() {
 	}()
 
 	logger.Infof("enx api listening port: %v", port)
-	if err := srv.ListenAndServe(); err != nil || !errors.Is(err, http.ErrServerClosed) {
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Errorf("failed to listen, %v", err)
+		logger.Error("server failed to start, exiting...")
+		os.Exit(1)
 	}
 	logger.Infof("listen end")
 	<-idleConnectionsClosed
