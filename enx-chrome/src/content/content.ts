@@ -53,73 +53,129 @@ class ContentWordProcessor {
   }
 
   static renderWithHighlights(originalHtml: string, wordDict: Record<string, WordData>): string {
-    console.log('Starting renderWithHighlights with', Object.keys(wordDict).length, 'words')
+    console.log('Starting optimized renderWithHighlights with', Object.keys(wordDict).length, 'words')
 
     // Create a temporary DOM element to work with
     const tempDiv = document.createElement('div')
     tempDiv.innerHTML = originalHtml
 
+    // Early return if no words to process
+    const wordKeys = Object.keys(wordDict)
+    if (wordKeys.length === 0) {
+      return originalHtml
+    }
+
+    // Precompile word data and sort by length (longest first to avoid partial matches)
+    interface WordInfo {
+      word: string
+      regex: RegExp
+      colorCode: string
+      wordData: WordData
+    }
+
+    const wordInfos: WordInfo[] = wordKeys
+      .map(word => ({
+        word,
+        regex: new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'),
+        colorCode: this.getColorCode(wordDict[word]),
+        wordData: wordDict[word]
+      }))
+      .sort((a, b) => b.word.length - a.word.length) // Longest first
+
+    // Single TreeWalker traversal to collect all text nodes
+    const walker = document.createTreeWalker(
+      tempDiv,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode: (node) => {
+          // Enhanced filtering: exclude more element types for better performance
+          const parent = node.parentElement
+          if (!parent) return NodeFilter.FILTER_REJECT
+
+          // Check if the text node is inside excluded elements
+          let current = parent
+          while (current && current !== tempDiv) {
+            const tagName = current.tagName.toLowerCase()
+            if (['a', 'script', 'style', 'noscript', 'button', 'input', 'textarea', 'select'].includes(tagName)) {
+              return NodeFilter.FILTER_REJECT
+            }
+            current = current.parentElement!
+          }
+
+          // Only accept nodes with meaningful text content
+          const text = node.textContent?.trim() || ''
+          return text.length > 0 && /[a-zA-Z]/.test(text) 
+            ? NodeFilter.FILTER_ACCEPT 
+            : NodeFilter.FILTER_REJECT
+        }
+      }
+    )
+
+    // Collect all text nodes in one pass
+    const textNodes: Text[] = []
+    let node = walker.nextNode()
+    while (node) {
+      textNodes.push(node as Text)
+      node = walker.nextNode()
+    }
+
+    console.log(`Collected ${textNodes.length} text nodes for processing`)
+
+    // Process nodes with word highlighting
+    interface NodeReplacement {
+      node: Text
+      newContent: string
+    }
+
+    const replacements: NodeReplacement[] = []
     let totalReplacements = 0
 
-    // Process each word in the dictionary
-    Object.keys(wordDict).forEach(word => {
-      const wordData = wordDict[word]
-      const colorCode = this.getColorCode(wordData)
+    // Process each text node once, checking all words
+    textNodes.forEach(textNode => {
+      let text = textNode.textContent || ''
+      let hasChanges = false
 
-      // Find all text nodes that contain this word, excluding those inside links
-      const walker = document.createTreeWalker(
-        tempDiv,
-        NodeFilter.SHOW_TEXT,
-        {
-          acceptNode: (node) => {
-            // Check if the text node is inside a link
-            let parent = node.parentNode
-            while (parent && parent !== tempDiv) {
-              if (parent.nodeName.toLowerCase() === 'a') {
-                return NodeFilter.FILTER_REJECT
-              }
-              parent = parent.parentNode
-            }
-            return NodeFilter.FILTER_ACCEPT
-          }
-        }
-      )
-
-      const textNodes: Text[] = []
-      let node
-      while (node = walker.nextNode()) {
-        textNodes.push(node as Text)
-      }
-
-      const wordRegex = new RegExp(
-        `\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
-        'gi'
-      )
-
-      textNodes.forEach(textNode => {
-        const text = textNode.textContent || ''
-        if (wordRegex.test(text)) {
-          const highlightedText = text.replace(wordRegex, (match) => {
+      // Apply all word highlights to this text node
+      wordInfos.forEach(({ word, regex, colorCode }) => {
+        if (regex.test(text)) {
+          text = text.replace(regex, (match) => {
             totalReplacements++
-            // add console log for debugging, print word and colorCode
+            hasChanges = true
             console.log('Highlighting word:', match, 'with color:', colorCode)
             return `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="text-decoration: ${colorCode} underline; text-decoration-thickness: 2px; cursor: pointer;">${match}</u>`
           })
-
-          // Create a temporary container and replace the text node
-          const tempContainer = document.createElement('span')
-          tempContainer.innerHTML = highlightedText
-
-          // Replace the text node with the highlighted content
-          while (tempContainer.firstChild) {
-            textNode.parentNode!.insertBefore(tempContainer.firstChild, textNode)
-          }
-          textNode.parentNode!.removeChild(textNode)
+          regex.lastIndex = 0 // Reset regex state
         }
       })
+
+      if (hasChanges) {
+        replacements.push({ node: textNode, newContent: text })
+      }
     })
 
-    console.log('Total word replacements made:', totalReplacements)
+    console.log(`Found ${replacements.length} nodes to replace with ${totalReplacements} total word matches`)
+
+    // Batch DOM updates using DocumentFragment for better performance
+    replacements.forEach(({ node, newContent }) => {
+      // Create a document fragment for efficient DOM manipulation
+      const fragment = document.createDocumentFragment()
+      const tempContainer = document.createElement('span')
+      tempContainer.innerHTML = newContent
+
+      // Move all children to fragment
+      while (tempContainer.firstChild) {
+        fragment.appendChild(tempContainer.firstChild)
+      }
+
+      // Replace the original text node with the fragment content
+      const parent = node.parentNode
+      if (parent) {
+        parent.insertBefore(fragment, node)
+        parent.removeChild(node)
+      }
+    })
+
+    console.log('Word highlighting optimization completed')
     return tempDiv.innerHTML
   }
 
