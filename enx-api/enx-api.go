@@ -166,6 +166,11 @@ func main() {
 	router.POST("/logout", Logout)
 	router.POST("/register", Register)
 
+	// APIs not requiring authentication (with /api prefix for Kong gateway)
+	router.POST("/api/login", Login)
+	router.POST("/api/logout", Logout)
+	router.POST("/api/register", Register)
+
 	// 临时测试路由 - 不需要认证
 	router.POST("/mark-test", MarkWord)
 

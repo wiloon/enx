@@ -1,0 +1,191 @@
+version: '3'
+
+vars:
+  EXT_NAME: enx-chrome-extension
+  VERSION:
+    sh: node -p "require('./package.json').version"
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  install:
+    desc: Install dependencies
+    cmds:
+      - echo "Installing dependencies for {{.EXT_NAME}}..."
+      - npm install
+      - echo "Dependencies installed successfully!"
+
+  dev:
+    desc: Start development server with hot reload
+    cmds:
+      - echo "Starting development server..."
+      - npm run dev
+
+  build:
+    desc: Build extension for production
+    cmds:
+      - echo "Building {{.EXT_NAME}} v{{.VERSION}}..."
+      - npm run build
+      - echo "Build completed! Output in dist/"
+
+  build-watch:
+    desc: Build extension in watch mode
+    cmds:
+      - echo "Building in watch mode..."
+      - npm run build -- --watch
+
+  preview:
+    desc: Preview production build
+    cmds:
+      - npm run preview
+
+  test:
+    desc: Run tests
+    cmds:
+      - echo "Running tests..."
+      - npm test
+
+  test-watch:
+    desc: Run tests in watch mode
+    cmds:
+      - echo "Running tests in watch mode..."
+      - npm run test:watch
+
+  test-coverage:
+    desc: Run tests with coverage
+    cmds:
+      - echo "Running tests with coverage..."
+      - npm test -- --coverage
+
+  lint:
+    desc: Lint code
+    cmds:
+      - echo "Linting code..."
+      - npm run lint
+
+  lint-fix:
+    desc: Fix linting issues
+    cmds:
+      - echo "Fixing linting issues..."
+      - npm run lint:fix
+
+  format:
+    desc: Format code with Prettier
+    cmds:
+      - echo "Formatting code..."
+      - npm run format
+
+  format-check:
+    desc: Check code formatting
+    cmds:
+      - echo "Checking code formatting..."
+      - npm run format:check
+
+  clean:
+    desc: Clean build artifacts and dependencies
+    cmds:
+      - echo "Cleaning build artifacts..."
+      - rm -rf dist
+      - rm -rf node_modules
+      - echo "Clean completed!"
+
+  clean-dist:
+    desc: Clean only build output
+    cmds:
+      - echo "Cleaning dist directory..."
+      - rm -rf dist
+      - echo "Dist cleaned!"
+
+  check:
+    desc: Run all checks (lint, format-check, test)
+    cmds:
+      - task lint
+      - task format-check
+      - task test
+      - echo "All checks passed!"
+
+  pack:
+    desc: Build and create zip for Chrome Web Store
+    deps:
+      - build
+    cmds:
+      - echo "Creating extension package..."
+      - cd dist && zip -r ../{{.EXT_NAME}}-v{{.VERSION}}.zip .
+      - echo "Package created {{.EXT_NAME}}-v{{.VERSION}}.zip"
+
+  version:
+    desc: Show extension version
+    cmds:
+      - echo "Extension {{.EXT_NAME}}"
+      - echo "Version {{.VERSION}}"
+
+  deps-update:
+    desc: Update dependencies
+    cmds:
+      - echo "Checking for outdated dependencies..."
+      - npm outdated || true
+      - echo ""
+      - echo "To update, run npm update"
+
+  deps-audit:
+    desc: Check for security vulnerabilities
+    cmds:
+      - echo "Auditing dependencies..."
+      - npm audit
+
+  deps-audit-fix:
+    desc: Fix security vulnerabilities
+    cmds:
+      - echo "Fixing vulnerabilities..."
+      - npm audit fix
+
+  setup:
+    desc: Complete setup (install + build)
+    cmds:
+      - task install
+      - task build
+      - echo ""
+      - echo "Setup complete! Extension is ready."
+      - echo "Load the 'dist' directory in Chrome as an unpacked extension."
+
+  reload:
+    desc: Rebuild and remind to reload extension
+    deps:
+      - build
+    cmds:
+      - echo ""
+      - echo "Build complete! Remember to:"
+      - echo "1. Go to chrome://extensions"
+      - echo "2. Click the reload button on {{.EXT_NAME}}"
+
+  ci:
+    desc: CI/CD workflow (install, lint, test, build)
+    cmds:
+      - task install
+      - task lint
+      - task test
+      - task build
+      - echo "CI workflow completed successfully!"
+
+  open-chrome:
+    desc: Open Chrome extensions page
+    cmds:
+      - echo "Opening Chrome extensions page..."
+      - open -a "Google Chrome" "chrome://extensions"
+
+  info:
+    desc: Show project information
+    cmds:
+      - echo "Project {{.EXT_NAME}}"
+      - echo "Version {{.VERSION}}"
+      - echo ""
+      - echo "Quick commands"
+      - echo "  task dev      - Start development server"
+      - echo "  task build    - Build for production"
+      - echo "  task test     - Run tests"
+      - echo "  task pack     - Create distributable zip"
+      - echo ""
+      - echo "For all commands, run task --list"

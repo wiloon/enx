@@ -1,10 +1,12 @@
 // ENX Background Script - Handles API communication and message routing
 // Note: Sentry initialization is skipped in service worker context to avoid import issues
 
+import { config } from '@/config/env'
+
 console.log('ENX Background script loaded')
 
 // API configuration
-const API_BASE_URL = 'https://enx-dev.wiloon.com'
+const API_BASE_URL = config.apiBaseUrl
 let sessionId = ''
 
 // Load session from storage

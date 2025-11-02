@@ -68,9 +68,12 @@ tasks:
       - |
         if ! command -v air &> /dev/null; then
           echo "air is not installed. Installing..."
-          go install github.com/cosmtrek/air@latest
+          go install github.com/air-verse/air@latest
         fi
-      - air
+      - |
+        GOPATH=$(go env GOPATH)
+        export PATH="$GOPATH/bin:$PATH"
+        air
 
   test:
     desc: Run all tests

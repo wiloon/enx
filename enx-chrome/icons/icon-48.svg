@@ -1,4 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
-  <rect width="48" height="48" fill="#4CAF50" rx="8"/>
-  <text x="50%" y="50%" text-anchor="middle" dy="0.35em" fill="white" font-family="Arial, sans-serif" font-size="28.799999999999997" font-weight="bold">E</text>
+  <defs>
+    <linearGradient id="grad48" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="48" height="48" fill="url(#grad48)" rx="10"/>
+  <path d="M12 15h24M12 24h18M12 33h24" stroke="white" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="34.5" cy="13.5" r="4.5" fill="#ffd700"/>
 </svg>
