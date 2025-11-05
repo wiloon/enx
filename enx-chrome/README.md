@@ -12,13 +12,14 @@ A modern Chrome extension built with React, TypeScript, and Jotai for state mana
 - **Jest + Testing Library** - Testing
 - **ESLint + Prettier** - Code quality
 - **Sentry** - Error monitoring
+- **pnpm** - Fast, disk space efficient package manager
 
 ## Getting Started
 
 Install dependencies:
 
 ```bash
-npm install
+pnpm install
 ```
 
 Set up environment variables:
@@ -31,26 +32,26 @@ cp .env.example .env
 Start development:
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 Build for production:
 
 ```bash
-npm run build
+pnpm run build
 ```
 
 ## Scripts
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
-- `npm run test` - Run tests
-- `npm run test:watch` - Run tests in watch mode
-- `npm run lint` - Lint code
-- `npm run lint:fix` - Fix linting issues
-- `npm run format` - Format code
-- `npm run format:check` - Check code formatting
+- `pnpm run dev` - Start development server
+- `pnpm run build` - Build for production
+- `pnpm run preview` - Preview production build
+- `pnpm run test` - Run tests
+- `pnpm run test:watch` - Run tests in watch mode
+- `pnpm run lint` - Lint code
+- `pnpm run lint:fix` - Fix linting issues
+- `pnpm run format` - Format code
+- `pnpm run format:check` - Check code formatting
 
 ## Extension Structure
 
@@ -64,7 +65,7 @@ npm run build
 
 ## Loading the Extension
 
-1. Build the extension: `npm run build`
+1. Build the extension: `pnpm run build`
 2. Open Chrome and go to `chrome://extensions/`
 3. Enable "Developer mode"
 4. Click "Load unpacked" and select the `dist` folder
@@ -74,7 +75,7 @@ npm run build
 Run tests with:
 
 ```bash
-npm run test
+pnpm run test
 ```
 
 The test setup includes:

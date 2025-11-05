@@ -175,7 +175,7 @@ The extension uses different API endpoints based on the environment:
 
 ### Default Environments
 
-- **Development** (`task dev`): `http://localhost:8080` - connects to local API server
+- **Development** (`task dev`): `http://localhost:8090` - connects to local API server
 - **Staging** (`VITE_ENV=staging`): `https://enx-dev.wiloon.com` - dev server
 - **Production** (`task build`): `https://enx.wiloon.com` - production server
 
@@ -200,7 +200,7 @@ Users can also override the API URL at runtime through Chrome storage:
 
 ```javascript
 // In console of extension background page
-chrome.storage.local.set({ apiBaseUrl: 'http://custom-server:8080' })
+chrome.storage.local.set({ apiBaseUrl: 'http://custom-server:8090' })
 
 // Reset to default
 chrome.storage.local.remove('apiBaseUrl')
@@ -276,18 +276,30 @@ enx-chrome/
 ## Requirements
 
 - Node.js 20+
-- npm or yarn
+- pnpm (Fast, disk space efficient package manager)
 - Task runner
 - Google Chrome
 
+## Package Manager
+
+This project uses **pnpm** instead of npm for faster installs and better disk space efficiency.
+
+Install pnpm:
+
+```bash
+npm install -g pnpm
+# or
+curl -fsSL https://get.pnpm.io/install.sh | sh -
+```
+
 ## Available Scripts (via Task)
 
-All npm scripts are wrapped in Task commands for consistency with the rest of the project.
+All pnpm scripts are wrapped in Task commands for consistency with the rest of the project.
 
-| Task Command | npm Script | Description |
-|--------------|------------|-------------|
-| `task dev` | `npm run dev` | Development server |
-| `task build` | `npm run build` | Production build |
-| `task test` | `npm test` | Run tests |
-| `task lint` | `npm run lint` | Lint code |
-| `task format` | `npm run format` | Format code |
+| Task Command | pnpm Script | Description |
+|--------------|-------------|-------------|
+| `task dev` | `pnpm run dev` | Development server |
+| `task build` | `pnpm run build` | Production build |
+| `task test` | `pnpm test` | Run tests |
+| `task lint` | `pnpm run lint` | Lint code |
+| `task format` | `pnpm run format` | Format code |

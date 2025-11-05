@@ -2,13 +2,14 @@ package sqlitex
 
 import (
 	zapLog "enx-server/utils/logger"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 	"log"
 	"os"
 	"runtime"
 	"time"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var DB *gorm.DB
@@ -19,7 +20,14 @@ func Init() {
 	// check if current system is linux or windows
 	//goland:noinspection GoBoolExpressions
 	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
-		dbPath = "/var/lib/enx-api/" + dbFileName
+		// Use local path for development, or /var/lib for production
+		if _, err := os.Stat("/var/lib/enx-api"); os.IsNotExist(err) {
+			// Development: use local path
+			dbPath = "./" + dbFileName
+		} else {
+			// Production: use /var/lib
+			dbPath = "/var/lib/enx-api/" + dbFileName
+		}
 	} else if runtime.GOOS == "windows" {
 		dbPath = "C:\\workspace\\apps\\enx\\" + dbFileName
 	}

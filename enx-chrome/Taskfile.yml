@@ -11,78 +11,83 @@ tasks:
     cmds:
       - task --list
 
+  help:
+    desc: Show available tasks (alias for default)
+    cmds:
+      - task --list
+
   install:
     desc: Install dependencies
     cmds:
       - echo "Installing dependencies for {{.EXT_NAME}}..."
-      - npm install
+      - pnpm install
       - echo "Dependencies installed successfully!"
 
   dev:
     desc: Start development server with hot reload
     cmds:
       - echo "Starting development server..."
-      - npm run dev
+      - pnpm run dev
 
   build:
     desc: Build extension for production
     cmds:
       - echo "Building {{.EXT_NAME}} v{{.VERSION}}..."
-      - npm run build
+      - pnpm run build
       - echo "Build completed! Output in dist/"
 
   build-watch:
     desc: Build extension in watch mode
     cmds:
       - echo "Building in watch mode..."
-      - npm run build -- --watch
+      - pnpm run build -- --watch
 
   preview:
     desc: Preview production build
     cmds:
-      - npm run preview
+      - pnpm run preview
 
   test:
     desc: Run tests
     cmds:
       - echo "Running tests..."
-      - npm test
+      - pnpm test
 
   test-watch:
     desc: Run tests in watch mode
     cmds:
       - echo "Running tests in watch mode..."
-      - npm run test:watch
+      - pnpm run test:watch
 
   test-coverage:
     desc: Run tests with coverage
     cmds:
       - echo "Running tests with coverage..."
-      - npm test -- --coverage
+      - pnpm test -- --coverage
 
   lint:
     desc: Lint code
     cmds:
       - echo "Linting code..."
-      - npm run lint
+      - pnpm run lint
 
   lint-fix:
     desc: Fix linting issues
     cmds:
       - echo "Fixing linting issues..."
-      - npm run lint:fix
+      - pnpm run lint:fix
 
   format:
     desc: Format code with Prettier
     cmds:
       - echo "Formatting code..."
-      - npm run format
+      - pnpm run format
 
   format-check:
     desc: Check code formatting
     cmds:
       - echo "Checking code formatting..."
-      - npm run format:check
+      - pnpm run format:check
 
   clean:
     desc: Clean build artifacts and dependencies
@@ -126,21 +131,21 @@ tasks:
     desc: Update dependencies
     cmds:
       - echo "Checking for outdated dependencies..."
-      - npm outdated || true
+      - pnpm outdated || true
       - echo ""
-      - echo "To update, run npm update"
+      - echo "To update, run pnpm update"
 
   deps-audit:
     desc: Check for security vulnerabilities
     cmds:
       - echo "Auditing dependencies..."
-      - npm audit
+      - pnpm audit
 
   deps-audit-fix:
     desc: Fix security vulnerabilities
     cmds:
       - echo "Fixing vulnerabilities..."
-      - npm audit fix
+      - pnpm audit --fix
 
   setup:
     desc: Complete setup (install + build)
