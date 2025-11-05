@@ -12,7 +12,7 @@ const isProduction = import.meta.env.PROD
 // Environment-specific defaults
 const ENV_CONFIG: Record<string, EnvConfig> = {
   development: {
-    apiBaseUrl: 'http://localhost:8080',
+    apiBaseUrl: 'http://localhost:8090',
     environment: 'development',
   },
   production: {

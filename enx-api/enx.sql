@@ -64,3 +64,10 @@ create table youdao
     result  TEXT          not null,
     exist   INTEGER default 0 not null
 );
+
+CREATE TABLE sessions (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    created_at DATETIME NOT NULL,
+    expires_at DATETIME NOT NULL
+);

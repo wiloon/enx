@@ -1,6 +1,6 @@
 [enx]
 dev-mode = true
-port = 8080
+port = 8090
 
 [mysql]
 address = "mysql.wiloon.com:3306"
