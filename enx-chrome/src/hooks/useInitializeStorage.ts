@@ -1,25 +1,33 @@
-import { useEffect } from 'react'
-import { useSetAtom } from 'jotai'
-import { userAtom, sessionAtom } from '@/store/atoms'
+import { getApiBaseUrl } from '@/config/env'
 import { apiService } from '@/services/api'
+import { apiBaseUrlAtom, sessionAtom, userAtom } from '@/store/atoms'
+import { useSetAtom } from 'jotai'
+import { useEffect } from 'react'
 
 export const useInitializeStorage = () => {
   const setUser = useSetAtom(userAtom)
   const setSession = useSetAtom(sessionAtom)
+  const setApiBaseUrl = useSetAtom(apiBaseUrlAtom)
 
   useEffect(() => {
     const initializeFromStorage = async () => {
       try {
         console.log('Initializing from Chrome storage...')
-        
+
+        // Initialize API base URL first
+        const apiUrl = await getApiBaseUrl()
+        console.log('Loaded API URL:', apiUrl)
+        setApiBaseUrl(apiUrl)
+        apiService.setBaseUrl(apiUrl)
+
         // Load user and session data from Chrome storage
         const result = await chrome.storage.local.get([
-          'enx-user', 
+          'enx-user',
           'enx-session',
-          'user',        // Fallback for background script compatibility
-          'sessionId'    // Fallback for background script compatibility
+          'user', // Fallback for background script compatibility
+          'sessionId', // Fallback for background script compatibility
         ])
-        
+
         console.log('Storage result:', result)
 
         // Initialize user state
@@ -28,7 +36,7 @@ export const useInitializeStorage = () => {
           // Fallback to old format
           userData = result.user
         }
-        
+
         if (userData && userData.isLoggedIn) {
           console.log('Restoring user from storage:', userData)
           setUser(userData)
@@ -48,14 +56,14 @@ export const useInitializeStorage = () => {
           // Fallback to old format
           sessionData = {
             sessionId: result.sessionId,
-            token: result.sessionId
+            token: result.sessionId,
           }
         }
-        
+
         if (sessionData && sessionData.sessionId) {
           console.log('Restoring session from storage:', sessionData)
           setSession(sessionData)
-          
+
           // Initialize API service with session
           apiService.setSessionId(sessionData.sessionId)
         } else {
@@ -66,14 +74,15 @@ export const useInitializeStorage = () => {
           })
           apiService.setSessionId('')
         }
-        
       } catch (error) {
         console.error('Error initializing from storage:', error)
       }
     }
 
     // Listen for storage changes to handle session expiry
-    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+    const handleStorageChange = (changes: {
+      [key: string]: chrome.storage.StorageChange
+    }) => {
       console.log('Storage changes detected:', changes)
 
       // Handle user data changes
@@ -97,10 +106,14 @@ export const useInitializeStorage = () => {
       if (changes.sessionId || changes['enx-session']) {
         const sessionChange = changes.sessionId || changes['enx-session']
         if (sessionChange.newValue) {
-          const sessionData = typeof sessionChange.newValue === 'string' 
-            ? { sessionId: sessionChange.newValue, token: sessionChange.newValue }
-            : sessionChange.newValue
-          
+          const sessionData =
+            typeof sessionChange.newValue === 'string'
+              ? {
+                  sessionId: sessionChange.newValue,
+                  token: sessionChange.newValue,
+                }
+              : sessionChange.newValue
+
           console.log('Session updated via storage change:', sessionData)
           setSession(sessionData)
           apiService.setSessionId(sessionData.sessionId)
@@ -116,7 +129,7 @@ export const useInitializeStorage = () => {
     }
 
     initializeFromStorage()
-    
+
     // Listen for storage changes
     chrome.storage.local.onChanged.addListener(handleStorageChange)
 

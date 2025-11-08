@@ -1,17 +1,14 @@
 import { WordData } from '../../types'
 
 // Mock DOM for testing
-Object.defineProperty(
-  global,
-  'NodeFilter',
-  {
-    value: {
-      SHOW_TEXT: 4,
-      FILTER_ACCEPT: 1,
-      FILTER_REJECT: 2,
-      FILTER_SKIP: 3,
-    }
-  })
+Object.defineProperty(global, 'NodeFilter', {
+  value: {
+    SHOW_TEXT: 4,
+    FILTER_ACCEPT: 1,
+    FILTER_REJECT: 2,
+    FILTER_SKIP: 3,
+  },
+})
 
 // Extract the ContentWordProcessor class from content script
 class ContentWordProcessor {
@@ -33,17 +30,23 @@ class ContentWordProcessor {
     return words
       .map(word => word.trim())
       .filter(word => {
-        return word.length > 0 &&
+        return (
+          word.length > 0 &&
           word.length <= 50 &&
           !/^\d+$/.test(word) &&
           /[a-zA-Z]/.test(word)
+        )
       })
       .map(word => word.toLowerCase())
   }
 
   static getColorCode(wordData: WordData): string {
     // If word is already acquainted, known word type, or not in database, don't highlight
-    if (wordData.AlreadyAcquainted === 1 || wordData.WordType === 1 || wordData.LoadCount === 0) {
+    if (
+      wordData.AlreadyAcquainted === 1 ||
+      wordData.WordType === 1 ||
+      wordData.LoadCount === 0
+    ) {
       return '#FFFFFF'
     }
 
@@ -54,8 +57,15 @@ class ContentWordProcessor {
     return `hsl(${hue}, 100%, 40%)`
   }
 
-  static renderWithHighlights(originalHtml: string, wordDict: Record<string, WordData>): string {
-    console.log('Starting renderWithHighlights with', Object.keys(wordDict).length, 'words')
+  static renderWithHighlights(
+    originalHtml: string,
+    wordDict: Record<string, WordData>
+  ): string {
+    console.log(
+      'Starting renderWithHighlights with',
+      Object.keys(wordDict).length,
+      'words'
+    )
 
     // Create a temporary DOM element to work with
     const tempDiv = document.createElement('div')
@@ -69,27 +79,23 @@ class ContentWordProcessor {
       const colorCode = this.getColorCode(wordData)
 
       // Find all text nodes that contain this word, excluding those inside links
-      const walker = document.createTreeWalker(
-        tempDiv,
-        NodeFilter.SHOW_TEXT,
-        {
-          acceptNode: (node) => {
-            // Check if the text node is inside a link
-            let parent = node.parentNode
-            while (parent && parent !== tempDiv) {
-              if (parent.nodeName.toLowerCase() === 'a') {
-                return NodeFilter.FILTER_REJECT
-              }
-              parent = parent.parentNode
+      const walker = document.createTreeWalker(tempDiv, NodeFilter.SHOW_TEXT, {
+        acceptNode: node => {
+          // Check if the text node is inside a link
+          let parent = node.parentNode
+          while (parent && parent !== tempDiv) {
+            if (parent.nodeName.toLowerCase() === 'a') {
+              return NodeFilter.FILTER_REJECT
             }
-            return NodeFilter.FILTER_ACCEPT
+            parent = parent.parentNode
           }
-        }
-      )
+          return NodeFilter.FILTER_ACCEPT
+        },
+      })
 
       const textNodes: Text[] = []
       let node
-      while (node = walker.nextNode()) {
+      while ((node = walker.nextNode())) {
         textNodes.push(node as Text)
       }
 
@@ -101,7 +107,7 @@ class ContentWordProcessor {
       textNodes.forEach(textNode => {
         const text = textNode.textContent || ''
         if (wordRegex.test(text)) {
-          const highlightedText = text.replace(wordRegex, (match) => {
+          const highlightedText = text.replace(wordRegex, match => {
             totalReplacements++
             return `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="text-decoration: ${colorCode} underline; text-decoration-thickness: 2px; cursor: pointer;">${match}</u>`
           })
@@ -112,7 +118,10 @@ class ContentWordProcessor {
 
           // Replace the text node with the highlighted content
           while (tempContainer.firstChild) {
-            textNode.parentNode!.insertBefore(tempContainer.firstChild, textNode)
+            textNode.parentNode!.insertBefore(
+              tempContainer.firstChild,
+              textNode
+            )
           }
           textNode.parentNode!.removeChild(textNode)
         }
@@ -188,7 +197,7 @@ describe('ContentWordProcessor', () => {
         AlreadyAcquainted: 1,
         LoadCount: 5,
         WordType: 0,
-        Pronunciation: ''
+        Pronunciation: '',
       }
 
       expect(ContentWordProcessor.getColorCode(wordData)).toBe('#FFFFFF')
@@ -202,7 +211,7 @@ describe('ContentWordProcessor', () => {
         AlreadyAcquainted: 0,
         LoadCount: 5,
         WordType: 1,
-        Pronunciation: ''
+        Pronunciation: '',
       }
 
       expect(ContentWordProcessor.getColorCode(wordData)).toBe('#FFFFFF')
@@ -216,7 +225,7 @@ describe('ContentWordProcessor', () => {
         AlreadyAcquainted: 0,
         LoadCount: 0,
         WordType: 0,
-        Pronunciation: ''
+        Pronunciation: '',
       }
 
       expect(ContentWordProcessor.getColorCode(wordData)).toBe('#FFFFFF')
@@ -230,7 +239,7 @@ describe('ContentWordProcessor', () => {
         AlreadyAcquainted: 0,
         LoadCount: 15,
         WordType: 0,
-        Pronunciation: ''
+        Pronunciation: '',
       }
 
       const color = ContentWordProcessor.getColorCode(wordData)
@@ -242,38 +251,38 @@ describe('ContentWordProcessor', () => {
     it('should handle basic highlighting setup', () => {
       const originalHtml = 'Hello world test'
       const wordDict: Record<string, WordData> = {
-        'hello': {
+        hello: {
           Key: 'hello',
           English: 'hello',
           Chinese: '你好',
           AlreadyAcquainted: 0,
           LoadCount: 5,
           WordType: 0,
-          Pronunciation: ''
+          Pronunciation: '',
         },
-        'world': {
+        world: {
           Key: 'world',
           English: 'world',
           Chinese: '世界',
           AlreadyAcquainted: 0,
           LoadCount: 10,
           WordType: 0,
-          Pronunciation: ''
-        }
+          Pronunciation: '',
+        },
       }
 
       // Mock basic DOM elements
       const mockDiv = {
         innerHTML: originalHtml,
         insertBefore: jest.fn(),
-        removeChild: jest.fn()
+        removeChild: jest.fn(),
       }
 
       global.document.createElement = jest.fn(() => mockDiv as any)
 
       // Mock TreeWalker with no text nodes (simplified test)
       const mockTreeWalker = {
-        nextNode: jest.fn().mockReturnValue(null)
+        nextNode: jest.fn().mockReturnValue(null),
       }
 
       global.document.createTreeWalker = jest.fn(() => mockTreeWalker as any)
@@ -282,7 +291,11 @@ describe('ContentWordProcessor', () => {
       ContentWordProcessor.renderWithHighlights(originalHtml, wordDict)
 
       // Verify the function was called and attempted to process words
-      expect(console.log).toHaveBeenCalledWith('Starting renderWithHighlights with', 2, 'words')
+      expect(console.log).toHaveBeenCalledWith(
+        'Starting renderWithHighlights with',
+        2,
+        'words'
+      )
       expect(global.document.createElement).toHaveBeenCalledWith('div')
       expect(global.document.createTreeWalker).toHaveBeenCalled()
     })
@@ -293,7 +306,11 @@ describe('ContentWordProcessor', () => {
 
       ContentWordProcessor.renderWithHighlights(originalHtml, wordDict)
 
-      expect(console.log).toHaveBeenCalledWith('Starting renderWithHighlights with', 0, 'words')
+      expect(console.log).toHaveBeenCalledWith(
+        'Starting renderWithHighlights with',
+        0,
+        'words'
+      )
     })
 
     it('should generate correct highlight HTML structure', () => {
@@ -307,7 +324,9 @@ describe('ContentWordProcessor', () => {
       // This tests the HTML structure that would be generated
       expect(expectedHtml).toContain('class="enx-word enx-hello"')
       expect(expectedHtml).toContain('data-word="Hello"')
-      expect(expectedHtml).toContain('text-decoration: hsl(150, 100%, 40%) underline')
+      expect(expectedHtml).toContain(
+        'text-decoration: hsl(150, 100%, 40%) underline'
+      )
       expect(expectedHtml).toContain('cursor: pointer')
     })
   })

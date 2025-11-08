@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom'
 
 // Mock Chrome APIs
-(global as any).chrome = {
+;(global as any).chrome = {
   runtime: {
     sendMessage: jest.fn(),
     onMessage: {

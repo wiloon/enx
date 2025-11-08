@@ -17,14 +17,12 @@ tasks:
     cmds:
       - task --list
 
-  # 安装依赖
   deps:
     desc: Download Go module dependencies
     cmds:
       - go mod download
       - go mod verify
 
-  # 整理依赖
   tidy:
     desc: Tidy Go module dependencies
     cmds:
@@ -47,6 +45,22 @@ tasks:
       - echo "Build Time{{.BUILD_TIME}}"
       - go build -ldflags "-X enx-server/version.Version={{.VERSION}} -X enx-server/version.GitCommit={{.GIT_COMMIT}} -X enx-server/version.GitBranch={{.GIT_BRANCH}} -X enx-server/version.BuildTime={{.BUILD_TIME}}" -o {{.APP_NAME}} .
       - echo "Build completed successfully!"
+
+  build-version:
+    desc: Build with specific version (usage - task build-version VERSION=1.0.0)
+    cmds:
+      - |
+        if [ -z "{{.VERSION}}" ]; then
+          echo "Error: VERSION is required"
+          echo "Usage: task build-version VERSION=1.0.0"
+          exit 1
+        fi
+      - echo "Building {{.APP_NAME}} with version {{.VERSION}}..."
+      - echo "Git Commit{{.GIT_COMMIT}}"
+      - echo "Git Branch{{.GIT_BRANCH}}"
+      - echo "Build Time{{.BUILD_TIME}}"
+      - go build -ldflags "-X enx-server/version.Version={{.VERSION}} -X enx-server/version.GitCommit={{.GIT_COMMIT}} -X enx-server/version.GitBranch={{.GIT_BRANCH}} -X enx-server/version.BuildTime={{.BUILD_TIME}}" -o {{.APP_NAME}} .
+      - echo "Build completed with version {{.VERSION}}!"
 
   run:
     desc: Run the application locally using go run

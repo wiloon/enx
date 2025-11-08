@@ -1,6 +1,11 @@
 import { useEffect } from 'react'
 import { useAtom } from 'jotai'
-import { currentWordAtom, userAtom, isTranslatingAtom, errorAtom } from '@/store/atoms'
+import {
+  currentWordAtom,
+  userAtom,
+  isTranslatingAtom,
+  errorAtom,
+} from '@/store/atoms'
 
 interface WordPopupProps {
   word: string
@@ -9,7 +14,12 @@ interface WordPopupProps {
   onMarkAcquainted: (word: string) => void
 }
 
-export default function WordPopup({ word, position, onClose, onMarkAcquainted }: WordPopupProps) {
+export default function WordPopup({
+  word,
+  position,
+  onClose,
+  onMarkAcquainted,
+}: WordPopupProps) {
   const [currentWord] = useAtom(currentWordAtom)
   const [user] = useAtom(userAtom)
   const [isTranslating] = useAtom(isTranslatingAtom)
@@ -131,15 +141,17 @@ export default function WordPopup({ word, position, onClose, onMarkAcquainted }:
           </a>
         </div>
 
-        {user.isLoggedIn && currentWord && currentWord.AlreadyAcquainted !== 1 && (
-          <button
-            onClick={() => onMarkAcquainted(currentWord.English)}
-            className="bg-green-500 hover:bg-green-600 text-white text-sm px-3 py-1 rounded transition-colors"
-            title="Mark as acquainted"
-          >
-            ✓ Mark Known
-          </button>
-        )}
+        {user.isLoggedIn &&
+          currentWord &&
+          currentWord.AlreadyAcquainted !== 1 && (
+            <button
+              onClick={() => onMarkAcquainted(currentWord.English)}
+              className="bg-green-500 hover:bg-green-600 text-white text-sm px-3 py-1 rounded transition-colors"
+              title="Mark as acquainted"
+            >
+              ✓ Mark Known
+            </button>
+          )}
       </div>
     </div>
   )

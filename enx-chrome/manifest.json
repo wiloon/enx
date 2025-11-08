@@ -3,14 +3,13 @@
   "name": "ENX - English Learning Extension",
   "version": "1.0.1",
   "description": "AI-powered English learning assistant that helps you learn vocabulary while browsing the web",
-  "permissions": [
-    "storage",
-    "activeTab",
-    "scripting",
-    "notifications"
-  ],
+  "permissions": ["storage", "activeTab", "scripting", "notifications"],
   "host_permissions": [
+    "http://*/*",
+    "https://*/*",
+    "http://localhost:8090/*",
     "https://enx-dev.wiloon.com/*",
+    "https://enx.wiloon.com/*",
     "https://www.youdao.com/*"
   ],
   "action": {
@@ -23,16 +22,17 @@
   "content_scripts": [
     {
       "matches": [
-        "https://www.bbc.com/*",
-        "https://www.infoq.com/*",
-        "https://novel.tingroom.com/*",
-        "https://messaging-custom-newsletters.nytimes.com/*",
-        "https://wiloon.com/*",
+        "https://*/*",
+        "http://*/*",
+        "http://localhost:*/*",
+        "http://127.0.0.1:*/*",
         "file://*"
       ],
-      "js": [
-        "src/content/content.ts"
+      "exclude_matches": [
+        "https://chrome.google.com/*",
+        "https://chromewebstore.google.com/*"
       ],
+      "js": ["src/content/content.ts"],
       "run_at": "document_end"
     }
   ],

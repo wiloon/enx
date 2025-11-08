@@ -1,4 +1,15 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+// Mock env config before any imports
+jest.mock('@/config/env', () => ({
+  config: {
+    apiBaseUrl: 'http://localhost:8090',
+    environment: 'test',
+  },
+  getApiBaseUrl: jest.fn().mockResolvedValue('http://localhost:8090'),
+  setApiBaseUrl: jest.fn().mockResolvedValue(undefined),
+  resetApiBaseUrl: jest.fn().mockResolvedValue(undefined),
+}))
+
+import { fireEvent, render, screen } from '@testing-library/react'
 import { Provider } from 'jotai'
 import HelloWorld from '../HelloWorld'
 
@@ -14,23 +25,23 @@ describe('HelloWorld', () => {
 
   it('increments count when button is clicked', () => {
     renderWithProvider(<HelloWorld />)
-    
+
     const button = screen.getByRole('button')
     expect(button).toHaveTextContent('Click me! (0)')
-    
+
     fireEvent.click(button)
     expect(button).toHaveTextContent('Click me! (1)')
-    
+
     fireEvent.click(button)
     expect(button).toHaveTextContent('Click me! (2)')
   })
 
   it('updates message when button is clicked', () => {
     renderWithProvider(<HelloWorld />)
-    
+
     const button = screen.getByRole('button')
     fireEvent.click(button)
-    
+
     expect(screen.getByText('Clicked 1 times!')).toBeInTheDocument()
   })
 })

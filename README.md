@@ -1,19 +1,19 @@
 # enx
 
-- 这是一个学习英文的工具
-- 一个训练人类大脑使用英文的工具
-- 虽然现在已经有 AI 翻译了, 但是在某些场景下人类大脑如果能直接识别英文还是会更方便一些
+- This is an English learning tool
+- A tool to train the human brain to use English
+- Although AI translation is now available, in some scenarios it's more convenient if the human brain can directly recognize English
 
-## 开发环境
+## Development Environment
 
-### 加载未打包插件
+### Load Unpacked Extension
 
-点击 chrome 地址栏最右侧的三个点儿> Extensions> Manage Extensions
+Click the three dots at the far right of the Chrome address bar > Extensions > Manage Extensions
 
-Load unpacked> 选择 manifest.json 所在的目录
+Load unpacked > Select the directory containing manifest.json
 
-pin the ENx extension
+Pin the ENX extension
 
-### Enx Chrome 扩展的使用
+### Using the ENX Chrome Extension
 
-扩展的图标上 Badge 默认显示 OFF, 点击图标, Badge 变成 ON 同时触发标注英文词, 目前只支持 InfoQ 英文版
+The extension icon's badge displays OFF by default. Click the icon, the badge turns ON and triggers word highlighting. Currently supports InfoQ English version.
