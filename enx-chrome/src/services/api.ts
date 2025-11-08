@@ -1,4 +1,10 @@
-import { ApiResponse, AuthResponse, WordResponse, ParagraphResponse, WordData } from '@/types'
+import {
+  ApiResponse,
+  AuthResponse,
+  WordResponse,
+  ParagraphResponse,
+  WordData,
+} from '@/types'
 import { config } from '@/config/env'
 
 // API Service for ENX extension
@@ -27,7 +33,7 @@ export class ApiService {
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-        ...(options.headers as Record<string, string> || {}),
+        ...((options.headers as Record<string, string>) || {}),
       }
 
       if (this.sessionId) {
@@ -61,7 +67,10 @@ export class ApiService {
   }
 
   // Authentication APIs
-  async login(username: string, password: string): Promise<ApiResponse<AuthResponse>> {
+  async login(
+    username: string,
+    password: string
+  ): Promise<ApiResponse<AuthResponse>> {
     const response = await this.makeRequest<AuthResponse>('/api/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
@@ -87,7 +96,11 @@ export class ApiService {
     return response
   }
 
-  async register(username: string, email: string, password: string): Promise<ApiResponse<AuthResponse>> {
+  async register(
+    username: string,
+    email: string,
+    password: string
+  ): Promise<ApiResponse<AuthResponse>> {
     return this.makeRequest<AuthResponse>('/api/register', {
       method: 'POST',
       body: JSON.stringify({ username, email, password }),
@@ -102,7 +115,9 @@ export class ApiService {
 
   async getWords(paragraph: string): Promise<ApiResponse<ParagraphResponse>> {
     const encodedParagraph = encodeURIComponent(paragraph)
-    return this.makeRequest<ParagraphResponse>(`/api/paragraph-init?paragraph=${encodedParagraph}`)
+    return this.makeRequest<ParagraphResponse>(
+      `/api/paragraph-init?paragraph=${encodedParagraph}`
+    )
   }
 
   async markAcquainted(word: string): Promise<ApiResponse<{ ecp: WordData }>> {
@@ -127,7 +142,7 @@ export const apiService = new ApiService()
 // Helper functions for chrome extension messaging
 export const sendMessageToBackground = <T = any>(message: any): Promise<T> => {
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(message, (response) => {
+    chrome.runtime.sendMessage(message, response => {
       if (chrome.runtime.lastError) {
         reject(new Error(chrome.runtime.lastError.message))
       } else {
@@ -137,9 +152,12 @@ export const sendMessageToBackground = <T = any>(message: any): Promise<T> => {
   })
 }
 
-export const sendMessageToTab = <T = any>(tabId: number, message: any): Promise<T> => {
+export const sendMessageToTab = <T = any>(
+  tabId: number,
+  message: any
+): Promise<T> => {
   return new Promise((resolve, reject) => {
-    chrome.tabs.sendMessage(tabId, message, (response) => {
+    chrome.tabs.sendMessage(tabId, message, response => {
       if (chrome.runtime.lastError) {
         reject(new Error(chrome.runtime.lastError.message))
       } else {

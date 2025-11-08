@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ENX Extension Test Page</title>
+    <style>
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        max-width: 900px;
+        margin: 50px auto;
+        padding: 20px;
+        line-height: 1.8;
+        background: #f5f5f5;
+      }
+      .container {
+        background: white;
+        padding: 40px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        color: #2c3e50;
+        border-bottom: 3px solid #3498db;
+        padding-bottom: 10px;
+      }
+      h2 {
+        color: #34495e;
+        margin-top: 30px;
+      }
+      .test-paragraph {
+        background: #ecf0f1;
+        padding: 20px;
+        border-radius: 5px;
+        margin: 20px 0;
+      }
+      .instructions {
+        background: #e8f4f8;
+        border-left: 4px solid #3498db;
+        padding: 15px;
+        margin: 20px 0;
+      }
+      .warning {
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 15px;
+        margin: 20px 0;
+      }
+      .success {
+        background: #d4edda;
+        border-left: 4px solid #28a745;
+        padding: 15px;
+        margin: 20px 0;
+      }
+      code {
+        background: #f4f4f4;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-family: 'Courier New', monospace;
+        color: #e74c3c;
+      }
+      ul {
+        margin: 10px 0;
+      }
+      li {
+        margin: 8px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🎓 ENX English Learning Extension - Test Page</h1>
+
+      <div class="instructions">
+        <h3>📝 使用说明</h3>
+        <ol>
+          <li>确保你已经登录 ENX 扩展</li>
+          <li>点击扩展图标,打开 Popup 页面</li>
+          <li>点击 <strong>"Enable Learning Mode"</strong> 按钮</li>
+          <li>
+            等待页面处理完成(按钮会显示 "Processing..." 然后变为 "Completed!")
+          </li>
+          <li>下面的单词会被标记上颜色下划线</li>
+          <li>点击任何高亮的单词查看翻译</li>
+        </ol>
+      </div>
+
+      <div class="warning">
+        <h3>⚠️ 注意事项</h3>
+        <ul>
+          <li>首次使用需要重新加载扩展 (在 chrome://extensions 页面)</li>
+          <li>如果按钮点击后没反应,请打开浏览器控制台查看错误信息</li>
+          <li>现在支持所有 HTTP/HTTPS 网站 (除了 Chrome 内部页面)</li>
+          <li>单词颜色越深,表示你看过的次数越多</li>
+        </ul>
+      </div>
+
+      <h2>📚 Test Paragraphs</h2>
+
+      <div class="test-paragraph">
+        <h3>Paragraph 1: Simple Text</h3>
+        <p>
+          The quick brown fox jumps over the lazy dog. This sentence contains
+          several common English words that you might already know. Try clicking
+          on different words to see their translations and definitions.
+        </p>
+      </div>
+
+      <div class="test-paragraph">
+        <h3>Paragraph 2: Technology</h3>
+        <p>
+          Modern software development requires understanding various programming
+          paradigms, including object-oriented programming, functional
+          programming, and reactive programming. Developers must continuously
+          learn new technologies and frameworks to stay competitive in the
+          industry.
+        </p>
+      </div>
+
+      <div class="test-paragraph">
+        <h3>Paragraph 3: Science</h3>
+        <p>
+          Scientific research has demonstrated that consistent practice and
+          repetition are essential for language acquisition. The cognitive
+          processes involved in learning vocabulary include encoding, storage,
+          and retrieval of information from long-term memory.
+        </p>
+      </div>
+
+      <div class="test-paragraph">
+        <h3>Paragraph 4: Daily Life</h3>
+        <p>
+          Yesterday, I visited the museum with my colleagues. We explored
+          various exhibitions including ancient artifacts, contemporary art, and
+          interactive displays. The experience was both educational and
+          entertaining, providing insights into different cultures and
+          historical periods.
+        </p>
+      </div>
+
+      <h2>🔍 Debugging Tips</h2>
+
+      <div class="success">
+        <h3>✅ 如何确认 Content Script 已加载</h3>
+        <ol>
+          <li>打开浏览器开发者工具 (F12)</li>
+          <li>切换到 Console 标签</li>
+          <li>刷新此页面</li>
+          <li>应该看到: <code>ENX Content script loaded</code></li>
+          <li>页面右上角应该有一个绿色小圆点指示器</li>
+        </ol>
+      </div>
+
+      <div class="instructions">
+        <h3>🐛 常见问题排查</h3>
+        <ul>
+          <li>
+            <strong>按钮点击无反应:</strong>
+            <ol>
+              <li>打开 Popup 的控制台 (右键 Popup → 检查)</li>
+              <li>查看是否有错误信息</li>
+              <li>确认当前标签页 URL 不是 chrome:// 开头</li>
+            </ol>
+          </li>
+          <li>
+            <strong>单词没有被标记:</strong>
+            <ol>
+              <li>检查控制台是否显示 "Processing..." 日志</li>
+              <li>确认 API 请求成功 (Network 标签)</li>
+              <li>检查是否有词库数据返回</li>
+            </ol>
+          </li>
+          <li>
+            <strong>点击单词无反应:</strong>
+            <ol>
+              <li>确认单词已被标记 (有下划线)</li>
+              <li>查看控制台是否有点击事件日志</li>
+              <li>检查翻译 API 是否正常</li>
+            </ol>
+          </li>
+        </ul>
+      </div>
+
+      <h2>📊 Expected Behavior</h2>
+
+      <div class="test-paragraph">
+        <p><strong>After enabling learning mode, you should see:</strong></p>
+        <ul>
+          <li>🟢 Green indicator dot in top-right corner</li>
+          <li>🎨 Words highlighted with colored underlines</li>
+          <li>💬 Popup showing translation when clicking highlighted words</li>
+          <li>📝 Console logs showing processing status</li>
+        </ul>
+      </div>
+
+      <footer
+        style="
+          margin-top: 40px;
+          padding-top: 20px;
+          border-top: 1px solid #ddd;
+          color: #666;
+          text-align: center;
+        "
+      >
+        <p>ENX - English Learning Extension | Test Page v1.0</p>
+        <p>Current URL: <code id="current-url"></code></p>
+      </footer>
+    </div>
+
+    <script>
+      // Display current URL
+      document.getElementById('current-url').textContent = window.location.href
+
+      // Check if content script is loaded
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const indicator = document.getElementById('enx-extension-indicator')
+          if (indicator) {
+            console.log('✅ ENX Extension indicator found!')
+          } else {
+            console.warn(
+              '⚠️ ENX Extension indicator NOT found. Content script may not be loaded.'
+            )
+          }
+        }, 1000)
+      })
+    </script>
+  </body>
+</html>

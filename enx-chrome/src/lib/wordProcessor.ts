@@ -44,10 +44,12 @@ export class WordProcessor {
       .map(word => word.trim())
       .filter(word => {
         // Filter out empty words, numbers, and very short words
-        return word.length > 0 && 
-               word.length <= 50 && 
-               !/^\d+$/.test(word) &&
-               /[a-zA-Z]/.test(word)
+        return (
+          word.length > 0 &&
+          word.length <= 50 &&
+          !/^\d+$/.test(word) &&
+          /[a-zA-Z]/.test(word)
+        )
       })
       .map(word => word.toLowerCase())
   }
@@ -55,14 +57,17 @@ export class WordProcessor {
   /**
    * Process paragraph and split into chunks for API calls
    */
-  static processIntoChunks(text: string, maxChunkSize: number = 5000): string[] {
+  static processIntoChunks(
+    text: string,
+    maxChunkSize: number = 5000
+  ): string[] {
     const words = this.extractWords(text)
     const chunks: string[] = []
     let currentChunk = ''
 
     for (const word of words) {
       const testChunk = currentChunk ? `${currentChunk} ${word}` : word
-      
+
       if (testChunk.length > maxChunkSize && currentChunk) {
         chunks.push(currentChunk)
         currentChunk = word
@@ -84,16 +89,22 @@ export class WordProcessor {
   static getColorCode(wordData: WordData): string {
     if (wordData.AlreadyAcquainted === 1 || wordData.WordType === 1) {
       // add console log for debugging
-      console.log(`Word "${wordData.Key}" is already acquainted or a special type.`)
+      console.log(
+        `Word "${wordData.Key}" is already acquainted or a special type.`
+      )
       return this.COLOR_CONFIG.acquaintedColor
     }
 
     const { LoadCount = 0 } = wordData
-    const normalizedCount = Math.min(LoadCount, this.COLOR_CONFIG.maxCount) / this.COLOR_CONFIG.maxCount
+    const normalizedCount =
+      Math.min(LoadCount, this.COLOR_CONFIG.maxCount) /
+      this.COLOR_CONFIG.maxCount
     const hue = Math.round(this.COLOR_CONFIG.defaultHue * normalizedCount)
     // add console log for debugging
     let colorCode = `hsl(${hue}, 100%, 40%)`
-    console.log(`Word "${wordData.Key}" has LoadCount ${LoadCount}, color code ${colorCode}`)
+    console.log(
+      `Word "${wordData.Key}" has LoadCount ${LoadCount}, color code ${colorCode}`
+    )
     return colorCode
   }
 
@@ -101,10 +112,14 @@ export class WordProcessor {
    * Render HTML with word highlighting - Optimized version using DOM parsing
    */
   static renderWithHighlights(
-    originalHtml: string, 
+    originalHtml: string,
     wordDict: Record<string, WordData>
   ): string {
-    console.log('WordProcessor: Starting optimized renderWithHighlights with', Object.keys(wordDict).length, 'words')
+    console.log(
+      'WordProcessor: Starting optimized renderWithHighlights with',
+      Object.keys(wordDict).length,
+      'words'
+    )
 
     // Early return if no words to process
     const wordKeys = Object.keys(wordDict)
@@ -114,7 +129,7 @@ export class WordProcessor {
 
     // For simple HTML strings, use the optimized string-based approach
     // This method is kept for backward compatibility and simple use cases
-    
+
     // Precompile word data and sort by length (longest first to avoid partial matches)
     interface WordInfo {
       word: string
@@ -125,8 +140,11 @@ export class WordProcessor {
     const wordInfos: WordInfo[] = wordKeys
       .map(word => ({
         word,
-        regex: new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'),
-        colorCode: this.getColorCode(wordDict[word])
+        regex: new RegExp(
+          `\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
+          'gi'
+        ),
+        colorCode: this.getColorCode(wordDict[word]),
       }))
       .sort((a, b) => b.word.length - a.word.length) // Longest first
 
@@ -136,8 +154,13 @@ export class WordProcessor {
     // Apply all word highlights in a single pass per word (optimized order)
     wordInfos.forEach(({ word, regex, colorCode }) => {
       if (regex.test(processedHtml)) {
-        console.log('WordProcessor: highlighting word:', word, 'colorCode:', colorCode)
-        processedHtml = processedHtml.replace(regex, (match) => {
+        console.log(
+          'WordProcessor: highlighting word:',
+          word,
+          'colorCode:',
+          colorCode
+        )
+        processedHtml = processedHtml.replace(regex, match => {
           totalReplacements++
           return `<u class="enx-word enx-${word.toLowerCase()}" alt="${match}" data-word="${match}" style="margin-left: 2px; margin-right: 2px; text-decoration: ${colorCode} underline; text-decoration-thickness: 2px; cursor: pointer;">${match}</u>`
         })
@@ -154,39 +177,46 @@ export class WordProcessor {
    */
   static findTextNodes(rootNode: Node): Array<{ node: Node; text: string }> {
     const textNodes: Array<{ node: Node; text: string }> = []
-    const walker = document.createTreeWalker(
-      rootNode,
-      NodeFilter.SHOW_TEXT,
-      {
-        acceptNode: (node) => {
-          // Enhanced filtering: exclude more element types for better performance
-          const parent = node.parentElement
-          if (!parent) return NodeFilter.FILTER_REJECT
+    const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT, {
+      acceptNode: node => {
+        // Enhanced filtering: exclude more element types for better performance
+        const parent = node.parentElement
+        if (!parent) return NodeFilter.FILTER_REJECT
 
-          // Check if the text node is inside excluded elements
-          let current = parent
-          while (current && current !== rootNode) {
-            const tagName = current.tagName.toLowerCase()
-            if (['script', 'style', 'noscript', 'a', 'button', 'input', 'textarea', 'select'].includes(tagName)) {
-              return NodeFilter.FILTER_REJECT
-            }
-            current = current.parentElement!
+        // Check if the text node is inside excluded elements
+        let current = parent
+        while (current && current !== rootNode) {
+          const tagName = current.tagName.toLowerCase()
+          if (
+            [
+              'script',
+              'style',
+              'noscript',
+              'a',
+              'button',
+              'input',
+              'textarea',
+              'select',
+            ].includes(tagName)
+          ) {
+            return NodeFilter.FILTER_REJECT
           }
-          
-          // Only include nodes with meaningful text
-          const text = node.textContent?.trim() || ''
-          return text.length > 0 && /[a-zA-Z]/.test(text)
-            ? NodeFilter.FILTER_ACCEPT 
-            : NodeFilter.FILTER_REJECT
+          current = current.parentElement!
         }
-      }
-    )
+
+        // Only include nodes with meaningful text
+        const text = node.textContent?.trim() || ''
+        return text.length > 0 && /[a-zA-Z]/.test(text)
+          ? NodeFilter.FILTER_ACCEPT
+          : NodeFilter.FILTER_REJECT
+      },
+    })
 
     let node = walker.nextNode()
     while (node) {
       textNodes.push({
         node,
-        text: node.textContent || ''
+        text: node.textContent || '',
       })
       node = walker.nextNode()
     }
@@ -201,20 +231,24 @@ export class WordProcessor {
   static getArticleNode(): Element | null {
     // Try different selectors based on popular websites
     const selectors = [
-      '.Article',           // BBC, general articles
-      '.article__data',     // InfoQ
-      '.post-content',      // Blog posts
-      '#EMAIL_CONTAINER',   // NY Times newsletters
-      '.text',              // TingRoom
-      'article',            // Semantic HTML5
-      '.content',           // Generic content
-      '.entry-content',     // WordPress
-      '.post-body',         // Blogger
+      '.Article', // BBC, general articles
+      '.article__data', // InfoQ
+      '.post-content', // Blog posts
+      '#EMAIL_CONTAINER', // NY Times newsletters
+      '.text', // TingRoom
+      'article', // Semantic HTML5
+      '.content', // Generic content
+      '.entry-content', // WordPress
+      '.post-body', // Blogger
     ]
 
     for (const selector of selectors) {
       const element = document.querySelector(selector)
-      if (element && element.textContent && element.textContent.trim().length > 100) {
+      if (
+        element &&
+        element.textContent &&
+        element.textContent.trim().length > 100
+      ) {
         return element
       }
     }
@@ -251,21 +285,56 @@ export class WordProcessor {
    */
   static isValidWord(word: string): boolean {
     if (!word || typeof word !== 'string') return false
-    
+
     // Basic validation
     const trimmed = word.trim()
     if (trimmed.length === 0 || trimmed.length > 50) return false
-    
+
     // Must contain at least one letter
     if (!/[a-zA-Z]/.test(trimmed)) return false
-    
+
     // Skip pure numbers
     if (/^\d+$/.test(trimmed)) return false
-    
+
     // Skip common stop words that don't need translation
-    const stopWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'must']
+    const stopWords = [
+      'the',
+      'a',
+      'an',
+      'and',
+      'or',
+      'but',
+      'in',
+      'on',
+      'at',
+      'to',
+      'for',
+      'of',
+      'with',
+      'by',
+      'is',
+      'are',
+      'was',
+      'were',
+      'be',
+      'been',
+      'have',
+      'has',
+      'had',
+      'do',
+      'does',
+      'did',
+      'will',
+      'would',
+      'could',
+      'should',
+      'may',
+      'might',
+      'can',
+      'must',
+    ]
     if (stopWords.includes(trimmed.toLowerCase())) return false
-    
+
     return true
   }
 }

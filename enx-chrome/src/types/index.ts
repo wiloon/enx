@@ -20,7 +20,7 @@ export interface User {
 export interface AuthResponse {
   user: User
   sessionId?: string
-  session_id?: string  // API actually returns this field name
+  session_id?: string // API actually returns this field name
   token?: string
 }
 
@@ -45,7 +45,13 @@ export interface PopupPosition {
 }
 
 export interface ContentMessage {
-  type: 'getOneWord' | 'getWords' | 'markAcquainted' | 'enxRun' | 'login' | 'logout'
+  type:
+    | 'getOneWord'
+    | 'getWords'
+    | 'markAcquainted'
+    | 'enxRun'
+    | 'login'
+    | 'logout'
   word?: string
   words?: string
   paragraph?: string

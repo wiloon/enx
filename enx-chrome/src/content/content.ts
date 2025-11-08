@@ -1,7 +1,7 @@
 // ENX Content Script for word identification and translation
 // Note: Sentry initialization is skipped to avoid import issues in content script context
 
-import { WordData, ContentMessage, BackgroundResponse } from '../types'
+import { BackgroundResponse, ContentMessage, WordData } from '../types'
 
 console.log('ENX Content script loaded')
 
@@ -10,6 +10,7 @@ let isEnxEnabled = false
 let currentPopup: HTMLElement | null = null
 let wordCache: Record<string, WordData> = {}
 let isProcessing = false
+let popupEventCleanup: (() => void) | null = null
 
 // Word processing utilities (inline to avoid import issues)
 class ContentWordProcessor {
@@ -31,17 +32,23 @@ class ContentWordProcessor {
     return words
       .map(word => word.trim())
       .filter(word => {
-        return word.length > 0 &&
-               word.length <= 50 &&
-               !/^\d+$/.test(word) &&
-               /[a-zA-Z]/.test(word)
+        return (
+          word.length > 0 &&
+          word.length <= 50 &&
+          !/^\d+$/.test(word) &&
+          /[a-zA-Z]/.test(word)
+        )
       })
       .map(word => word.toLowerCase())
   }
 
   static getColorCode(wordData: WordData): string {
     // If word is already acquainted, known word type, or not in database, don't highlight
-    if (wordData.AlreadyAcquainted === 1 || wordData.WordType === 1 || wordData.LoadCount === 0) {
+    if (
+      wordData.AlreadyAcquainted === 1 ||
+      wordData.WordType === 1 ||
+      wordData.LoadCount === 0
+    ) {
       return '#FFFFFF'
     }
 
@@ -52,8 +59,15 @@ class ContentWordProcessor {
     return `hsl(${hue}, 100%, 40%)`
   }
 
-  static renderWithHighlights(originalHtml: string, wordDict: Record<string, WordData>): string {
-    console.log('Starting optimized renderWithHighlights with', Object.keys(wordDict).length, 'words')
+  static renderWithHighlights(
+    originalHtml: string,
+    wordDict: Record<string, WordData>
+  ): string {
+    console.log(
+      'Starting optimized renderWithHighlights with',
+      Object.keys(wordDict).length,
+      'words'
+    )
 
     // Create a temporary DOM element to work with
     const tempDiv = document.createElement('div')
@@ -76,40 +90,50 @@ class ContentWordProcessor {
     const wordInfos: WordInfo[] = wordKeys
       .map(word => ({
         word,
-        regex: new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'),
+        regex: new RegExp(
+          `\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
+          'gi'
+        ),
         colorCode: this.getColorCode(wordDict[word]),
-        wordData: wordDict[word]
+        wordData: wordDict[word],
       }))
       .sort((a, b) => b.word.length - a.word.length) // Longest first
 
     // Single TreeWalker traversal to collect all text nodes
-    const walker = document.createTreeWalker(
-      tempDiv,
-      NodeFilter.SHOW_TEXT,
-      {
-        acceptNode: (node) => {
-          // Enhanced filtering: exclude more element types for better performance
-          const parent = node.parentElement
-          if (!parent) return NodeFilter.FILTER_REJECT
+    const walker = document.createTreeWalker(tempDiv, NodeFilter.SHOW_TEXT, {
+      acceptNode: node => {
+        // Enhanced filtering: exclude more element types for better performance
+        const parent = node.parentElement
+        if (!parent) return NodeFilter.FILTER_REJECT
 
-          // Check if the text node is inside excluded elements
-          let current = parent
-          while (current && current !== tempDiv) {
-            const tagName = current.tagName.toLowerCase()
-            if (['a', 'script', 'style', 'noscript', 'button', 'input', 'textarea', 'select'].includes(tagName)) {
-              return NodeFilter.FILTER_REJECT
-            }
-            current = current.parentElement!
+        // Check if the text node is inside excluded elements
+        let current = parent
+        while (current && current !== tempDiv) {
+          const tagName = current.tagName.toLowerCase()
+          if (
+            [
+              'a',
+              'script',
+              'style',
+              'noscript',
+              'button',
+              'input',
+              'textarea',
+              'select',
+            ].includes(tagName)
+          ) {
+            return NodeFilter.FILTER_REJECT
           }
-
-          // Only accept nodes with meaningful text content
-          const text = node.textContent?.trim() || ''
-          return text.length > 0 && /[a-zA-Z]/.test(text) 
-            ? NodeFilter.FILTER_ACCEPT 
-            : NodeFilter.FILTER_REJECT
+          current = current.parentElement!
         }
-      }
-    )
+
+        // Only accept nodes with meaningful text content
+        const text = node.textContent?.trim() || ''
+        return text.length > 0 && /[a-zA-Z]/.test(text)
+          ? NodeFilter.FILTER_ACCEPT
+          : NodeFilter.FILTER_REJECT
+      },
+    })
 
     // Collect all text nodes in one pass
     const textNodes: Text[] = []
@@ -135,31 +159,59 @@ class ContentWordProcessor {
       let text = textNode.textContent || ''
       let hasChanges = false
 
+      // Use placeholders to avoid nested replacements
+      const placeholders: { placeholder: string; html: string }[] = []
+      let placeholderIndex = 0
+
       // Apply all word highlights to this text node
       wordInfos.forEach(({ word, regex, colorCode }) => {
         if (regex.test(text)) {
-          text = text.replace(regex, (match) => {
+          text = text.replace(regex, match => {
             totalReplacements++
             hasChanges = true
             console.log('Highlighting word:', match, 'with color:', colorCode)
-            return `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="text-decoration: ${colorCode} underline; text-decoration-thickness: 2px; cursor: pointer;">${match}</u>`
+
+            // Create a unique placeholder that won't match any word pattern
+            const placeholder = `___ENX_PLACEHOLDER_${placeholderIndex++}___`
+            const html = `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="text-decoration: ${colorCode} underline; text-decoration-thickness: 2px; cursor: pointer;">${match}</u>`
+
+            placeholders.push({ placeholder, html })
+            return placeholder
           })
           regex.lastIndex = 0 // Reset regex state
         }
       })
+
+      // Replace all placeholders with actual HTML
+      if (hasChanges) {
+        placeholders.forEach(({ placeholder, html }) => {
+          text = text.replace(placeholder, html)
+        })
+      }
 
       if (hasChanges) {
         replacements.push({ node: textNode, newContent: text })
       }
     })
 
-    console.log(`Found ${replacements.length} nodes to replace with ${totalReplacements} total word matches`)
+    console.log(
+      `Found ${replacements.length} nodes to replace with ${totalReplacements} total word matches`
+    )
 
     // Batch DOM updates using DocumentFragment for better performance
     replacements.forEach(({ node, newContent }) => {
       // Create a document fragment for efficient DOM manipulation
       const fragment = document.createDocumentFragment()
       const tempContainer = document.createElement('span')
+
+      // Debug: log the newContent to see if HTML is properly formatted
+      if (newContent.includes('enx-word')) {
+        console.log(
+          'Setting innerHTML with content:',
+          newContent.substring(0, 200)
+        )
+      }
+
       tempContainer.innerHTML = newContent
 
       // Move all children to fragment
@@ -176,30 +228,57 @@ class ContentWordProcessor {
     })
 
     console.log('Word highlighting optimization completed')
+
+    // Debug: Check final HTML structure
+    const finalHtml = tempDiv.innerHTML
+    if (finalHtml.includes('enx-word')) {
+      console.log('Final HTML sample:', finalHtml.substring(0, 500))
+      // Check if HTML tags are properly formed
+      const uTagsCount = (finalHtml.match(/<u class="enx-word"/g) || []).length
+      const closingTagsCount = (finalHtml.match(/<\/u>/g) || []).length
+      console.log(
+        `Found ${uTagsCount} opening <u> tags and ${closingTagsCount} closing </u> tags`
+      )
+    }
+
     return tempDiv.innerHTML
   }
 
   static getArticleNode(): Element | null {
     const selectors = [
-      '.Article',           // BBC
-      '.article__data',     // InfoQ
-      '.post-content',      // Blog posts
-      '#EMAIL_CONTAINER',   // NY Times
-      '.text',              // TingRoom
-      'article',            // Semantic HTML5
+      '.Article', // BBC
+      '.article__data', // InfoQ
+      '.post-content', // Blog posts
+      '#EMAIL_CONTAINER', // NY Times
+      '.text', // TingRoom
+      'article', // Semantic HTML5
       '.content',
       '.entry-content',
       '.post-body',
     ]
 
+    console.log('🔍 Searching for article node...')
+    console.log('Current URL:', window.location.href)
+
     for (const selector of selectors) {
       const element = document.querySelector(selector)
-      if (element && element.textContent && element.textContent.trim().length > 100) {
-        return element
+      console.log(`Trying selector "${selector}":`, element ? 'Found' : 'Not found')
+
+      if (element) {
+        const textLength = element.textContent?.trim().length || 0
+        console.log(`  → Text length: ${textLength}`)
+
+        if (textLength > 100) {
+          console.log(`✅ Using article node with selector: ${selector}`)
+          return element
+        } else {
+          console.log(`  → Skipped (text too short: ${textLength} < 100)`)
+        }
       }
     }
 
     // Fallback: find largest text container
+    console.log('🔍 Fallback: Finding largest text container...')
     const allElements = document.querySelectorAll('div, main, section, article')
     let largestElement: Element | null = null
     let maxTextLength = 0
@@ -212,14 +291,22 @@ class ContentWordProcessor {
       }
     })
 
+    if (largestElement) {
+      console.log(`✅ Fallback: Using largest element with ${maxTextLength} characters`)
+    } else {
+      console.log(`❌ No suitable article node found (searched ${allElements.length} elements)`)
+    }
+
     return largestElement
   }
 }
 
 // Send message to background script
-const sendToBackground = (message: ContentMessage): Promise<BackgroundResponse> => {
-  return new Promise((resolve) => {
-    chrome.runtime.sendMessage(message, (response) => {
+const sendToBackground = (
+  message: ContentMessage
+): Promise<BackgroundResponse> => {
+  return new Promise(resolve => {
+    chrome.runtime.sendMessage(message, response => {
       resolve(response || { success: false, error: 'No response' })
     })
   })
@@ -267,27 +354,33 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
   // Calculate safe zones to avoid covering
   const clickX = event.clientX + scrollX
   const clickY = event.clientY + scrollY
-  
+
   // Define exclusion zones (areas to avoid covering)
   const sentenceExclusionHeight = lineHeight * (contextLines + 1) // Height above to keep clear
-  
+
   // X-coordinate: Center popup directly above the clicked word
-  let x = clickX - (popupWidth / 2)
-  
+  let x = clickX - popupWidth / 2
+
   // Y-coordinate: Keep the existing vertical positioning logic
   let y = Math.max(
     clickY - sentenceExclusionHeight - popupHeight - margin, // Above the context
     scrollY + margin // But not above viewport
   )
-  
+
   // If positioning above would put it too high, place below
   if (y < scrollY + margin) {
     y = clickY + margin * 2 // Below the word with extra margin
   }
 
   // Final boundary checks
-  x = Math.max(scrollX + margin, Math.min(x, scrollX + viewportWidth - popupWidth - margin))
-  y = Math.max(scrollY + margin, Math.min(y, scrollY + viewportHeight - popupHeight - margin))
+  x = Math.max(
+    scrollX + margin,
+    Math.min(x, scrollX + viewportWidth - popupWidth - margin)
+  )
+  y = Math.max(
+    scrollY + margin,
+    Math.min(y, scrollY + viewportHeight - popupHeight - margin)
+  )
 
   popup.style.left = `${x}px`
   popup.style.top = `${y}px`
@@ -319,27 +412,47 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
   document.body.appendChild(popup)
   currentPopup = popup
 
+  // Event handlers for popup
+  const handleKeydown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      hideWordPopup()
+    }
+  }
+
+  const handleClickOutside = (e: MouseEvent) => {
+    const target = e.target as HTMLElement
+    // Check if click is outside the popup and not on a word
+    if (!popup.contains(target) && !target.classList.contains('enx-word')) {
+      hideWordPopup()
+    }
+  }
+
+  // Store cleanup function
+  popupEventCleanup = () => {
+    document.removeEventListener('keydown', handleKeydown)
+    document.removeEventListener('click', handleClickOutside)
+  }
+
   // Add close button event
   const closeBtn = popup.querySelector('.enx-close-btn')
   if (closeBtn) {
     closeBtn.addEventListener('click', hideWordPopup)
   }
 
-  // Close on escape key
-  const handleKeydown = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      hideWordPopup()
-      document.removeEventListener('keydown', handleKeydown)
-    }
-  }
+  // Add event listeners
   document.addEventListener('keydown', handleKeydown)
+
+  // Use setTimeout to avoid closing immediately from the same click that opened it
+  setTimeout(() => {
+    document.addEventListener('click', handleClickOutside)
+  }, 100)
 
   // Fetch word translation
   try {
     console.log('Fetching translation for word:', word)
     const response = await sendToBackground({
       type: 'getOneWord',
-      word: word.trim()
+      word: word.trim(),
     })
 
     console.log('Translation response:', response)
@@ -360,7 +473,10 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
     }
   } catch (error) {
     console.error('Error fetching word translation:', error)
-    updatePopupError(popup, 'Connection failed. Please check your internet connection.')
+    updatePopupError(
+      popup,
+      'Connection failed. Please check your internet connection.'
+    )
   }
 }
 
@@ -393,7 +509,8 @@ const updatePopupContent = (popup: HTMLElement, wordData: WordData) => {
         console.log('User data from storage:', result.user)
         console.log('ENX User data from storage:', result['enx-user'])
 
-        const userId = result.user?.id || result.user?.userId || result['enx-user']?.id
+        const userId =
+          result.user?.id || result.user?.userId || result['enx-user']?.id
         console.log('Extracted user ID:', userId)
 
         if (!userId) {
@@ -402,12 +519,17 @@ const updatePopupContent = (popup: HTMLElement, wordData: WordData) => {
           return
         }
 
-        console.log('Marking word as acquainted:', wordData.English, 'for user:', userId)
+        console.log(
+          'Marking word as acquainted:',
+          wordData.English,
+          'for user:',
+          userId
+        )
 
         const response = await sendToBackground({
           type: 'markAcquainted',
           word: wordData.English,
-          userId: userId
+          userId: userId,
         })
 
         console.log('Mark acquainted response:', response)
@@ -423,7 +545,10 @@ const updatePopupContent = (popup: HTMLElement, wordData: WordData) => {
           showSessionExpiredMessage()
         } else {
           console.error('Failed to mark word as acquainted:', response.error)
-          alert('Failed to mark word as known: ' + (response.error || 'Unknown error'))
+          alert(
+            'Failed to mark word as known: ' +
+              (response.error || 'Unknown error')
+          )
         }
       } catch (error) {
         console.error('Error marking word:', error)
@@ -450,6 +575,12 @@ const hideWordPopup = () => {
   if (currentPopup) {
     currentPopup.remove()
     currentPopup = null
+  }
+
+  // Clean up event listeners
+  if (popupEventCleanup) {
+    popupEventCleanup()
+    popupEventCleanup = null
   }
 }
 
@@ -532,8 +663,11 @@ const showSessionExpiredMessage = () => {
 }
 
 // Process article content and add word highlighting
-const processArticleContent = async () => {
-  if (isProcessing) return
+const processArticleContent = async (): Promise<boolean> => {
+  if (isProcessing) {
+    console.log('Already processing, skipping...')
+    return false
+  }
   isProcessing = true
 
   try {
@@ -542,7 +676,7 @@ const processArticleContent = async () => {
     const articleNode = ContentWordProcessor.getArticleNode()
     if (!articleNode) {
       console.log('No article node found')
-      return
+      return false
     }
 
     console.log('Article node found:', articleNode)
@@ -553,71 +687,118 @@ const processArticleContent = async () => {
 
     if (words.length === 0) {
       console.log('No words found to process')
-      return
+      return false
     }
 
     console.log(`Found ${words.length} words to process`)
 
     // Process words in chunks
     const chunkSize = 200 // Process in smaller chunks for better performance
+    let processedChunks = 0
+
     for (let i = 0; i < words.length; i += chunkSize) {
       const chunk = words.slice(i, i + chunkSize)
       const paragraph = chunk.join(' ')
 
+      console.log(`📦 Processing chunk ${processedChunks + 1}: ${chunk.length} words`)
+      console.log(`  First 5 words: ${chunk.slice(0, 5).join(', ')}`)
+
       try {
         const response = await sendToBackground({
           type: 'getWords',
-          paragraph
+          paragraph,
+        })
+
+        console.log(`📨 Response for chunk ${processedChunks + 1}:`, {
+          success: response.success,
+          hasWordProperties: !!response.wordProperties,
+          sessionExpired: response.sessionExpired,
+          error: response.error,
         })
 
         if (response.success && response.wordProperties) {
           console.log('Raw response.wordProperties:', response.wordProperties)
 
           // Check if wordProperties is wrapped in a 'data' field
-          const actualWordData = response.wordProperties.data || response.wordProperties
+          const actualWordData =
+            response.wordProperties.data || response.wordProperties
           console.log('Actual word data to process:', actualWordData)
           console.log('Word data keys:', Object.keys(actualWordData))
 
           Object.assign(wordCache, actualWordData)
-          console.log(`Processed ${Object.keys(actualWordData).length} words in chunk`)
+          processedChunks++
+          console.log(
+            `Processed ${Object.keys(actualWordData).length} words in chunk ${processedChunks}`
+          )
           console.log('Current word cache size:', Object.keys(wordCache).length)
         } else if (response.sessionExpired) {
           console.log('Session expired during word processing')
           showSessionExpiredMessage()
-          break // Stop processing if session expired
+          return false // Processing failed due to session expiry
         }
       } catch (error) {
         console.error('Error processing word chunk:', error)
+        // Continue processing other chunks
       }
     }
 
     // Apply highlighting to the article
     if (Object.keys(wordCache).length > 0) {
-      console.log('Applying highlighting for', Object.keys(wordCache).length, 'words')
-      console.log('Sample words from cache:', Object.keys(wordCache).slice(0, 5))
+      console.log(
+        'Applying highlighting for',
+        Object.keys(wordCache).length,
+        'words'
+      )
+      console.log(
+        'Sample words from cache:',
+        Object.keys(wordCache).slice(0, 5)
+      )
       console.log('Sample word data:', Object.values(wordCache)[0])
 
       const originalHtml = articleNode.innerHTML
-      const highlightedHtml = ContentWordProcessor.renderWithHighlights(originalHtml, wordCache)
+      const highlightedHtml = ContentWordProcessor.renderWithHighlights(
+        originalHtml,
+        wordCache
+      )
 
       console.log('Original HTML length:', originalHtml.length)
       console.log('Highlighted HTML length:', highlightedHtml.length)
       console.log('HTML changed:', originalHtml !== highlightedHtml)
 
+      // Debug: Check if HTML contains properly formatted tags
+      if (highlightedHtml.includes('enx-word')) {
+        const sampleMatch = highlightedHtml.match(
+          /<u class="enx-word[^>]*>.*?<\/u>/
+        )?.[0]
+        console.log('Sample highlighted word HTML:', sampleMatch)
+      }
+
       articleNode.innerHTML = highlightedHtml
+
+      // Debug: Verify the HTML was set correctly
+      const verifyHtml = articleNode.innerHTML
+      if (verifyHtml !== highlightedHtml) {
+        console.warn('HTML mismatch! Set value differs from retrieved value')
+        console.log('Set:', highlightedHtml.substring(0, 200))
+        console.log('Got:', verifyHtml.substring(0, 200))
+      }
 
       // Add click listeners to highlighted words
       addWordClickListeners(articleNode)
       console.log('Word highlighting applied.')
-      
+
       // Add processing complete indicator
       addProcessingCompleteIndicator(articleNode)
+
+      console.log('✅ Article processing completed successfully')
+      return true // Successfully processed and highlighted
     } else {
       console.log('No words in cache, skipping highlighting')
+      return false // No words to highlight
     }
-
   } catch (error) {
     console.error('Error processing article:', error)
+    return false // Processing failed
   } finally {
     isProcessing = false
   }
@@ -628,11 +809,12 @@ const addWordClickListeners = (container: Element) => {
   const wordElements = container.querySelectorAll('.enx-word')
 
   wordElements.forEach(element => {
-    element.addEventListener('click', (event) => {
+    element.addEventListener('click', event => {
       event.preventDefault()
       event.stopPropagation()
 
-      const word = (element as HTMLElement).dataset.word || element.textContent || ''
+      const word =
+        (element as HTMLElement).dataset.word || element.textContent || ''
       if (word) {
         showWordPopup(word, event as MouseEvent)
       }
@@ -679,13 +861,13 @@ const addProcessingCompleteIndicator = (articleNode: Element) => {
   const style = document.createElement('style')
   style.textContent = `
     @keyframes slideInFromTop {
-      from { 
-        transform: translateY(-20px); 
-        opacity: 0; 
+      from {
+        transform: translateY(-20px);
+        opacity: 0;
       }
-      to { 
-        transform: translateY(0); 
-        opacity: 1; 
+      to {
+        transform: translateY(0);
+        opacity: 1;
       }
     }
   `
@@ -710,8 +892,11 @@ const handleTextSelection = (event: MouseEvent) => {
 }
 
 // Enable ENX functionality
-const enableEnx = async () => {
-  if (isEnxEnabled) return
+const enableEnx = async (): Promise<boolean> => {
+  if (isEnxEnabled) {
+    console.log('ENX already enabled')
+    return false
+  }
 
   console.log('Enabling ENX functionality')
   isEnxEnabled = true
@@ -720,9 +905,15 @@ const enableEnx = async () => {
   document.addEventListener('mouseup', handleTextSelection)
 
   // Process article content and wait for completion
-  await processArticleContent()
-  
-  return true
+  const success = await processArticleContent()
+
+  if (success) {
+    console.log('✅ ENX enabled successfully with article processing')
+  } else {
+    console.warn('⚠️ ENX enabled but article processing had issues')
+  }
+
+  return success
 }
 
 // Disable ENX functionality
@@ -758,12 +949,14 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
   switch (request.action) {
     case 'enxRun':
-      enableEnx().then((result) => {
-        sendResponse({ success: true, completed: result })
-      }).catch((error) => {
-        console.error('Error enabling ENX:', error)
-        sendResponse({ success: false, error: error.message })
-      })
+      enableEnx()
+        .then(result => {
+          sendResponse({ success: true, completed: result })
+        })
+        .catch(error => {
+          console.error('Error enabling ENX:', error)
+          sendResponse({ success: false, error: error.message })
+        })
       return true // Keep message channel open for async response
 
     case 'enxStop':
@@ -775,7 +968,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       sendResponse({
         title: document.title,
         url: window.location.href,
-        isEnxEnabled
+        isEnxEnabled,
       })
       break
 

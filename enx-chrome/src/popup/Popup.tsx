@@ -1,12 +1,12 @@
-import { Provider, useAtom } from 'jotai'
-import { useEffect } from 'react'
-import { apiBaseUrlAtom, userAtom, sessionAtom } from '@/store/atoms'
-import Login from '@/components/Login'
 import DebugPanel from '@/components/DebugPanel'
-import { initSentry } from '@/lib/sentry'
-import { apiService } from '@/services/api'
+import Login from '@/components/Login'
 import { useInitializeStorage } from '@/hooks/useInitializeStorage'
 import '@/index.css'
+import { initSentry } from '@/lib/sentry'
+import { apiService } from '@/services/api'
+import { apiBaseUrlAtom, sessionAtom, userAtom } from '@/store/atoms'
+import { Provider, useAtom } from 'jotai'
+import { useEffect } from 'react'
 
 initSentry()
 
@@ -14,12 +14,15 @@ function PopupContent() {
   const [apiBaseUrl] = useAtom(apiBaseUrlAtom)
   const [user, setUser] = useAtom(userAtom)
   const [session, setSession] = useAtom(sessionAtom)
-  
-  // Initialize state from Chrome storage
+
+  // Initialize state from Chrome storage (this will also load API URL)
   useInitializeStorage()
 
-  // Initialize API service with base URL
-  apiService.setBaseUrl(apiBaseUrl)
+  // Update API service when base URL changes
+  useEffect(() => {
+    console.log('Setting API base URL to:', apiBaseUrl)
+    apiService.setBaseUrl(apiBaseUrl)
+  }, [apiBaseUrl])
 
   // Validate session on popup open
   useEffect(() => {
@@ -28,10 +31,10 @@ function PopupContent() {
         try {
           apiService.setSessionId(session.sessionId)
           const response = await apiService.validateSession()
-          
+
           if (!response.success) {
             console.log('Session validation failed, logging out user')
-            
+
             // Clear user and session state
             setUser({
               id: 0,
@@ -39,15 +42,20 @@ function PopupContent() {
               email: '',
               isLoggedIn: false,
             })
-            
+
             setSession({
               sessionId: '',
               token: '',
             })
 
             // Clear Chrome storage
-            await chrome.storage.local.remove(['user', 'sessionId', 'enx-user', 'enx-session'])
-            
+            await chrome.storage.local.remove([
+              'user',
+              'sessionId',
+              'enx-user',
+              'enx-session',
+            ])
+
             apiService.setSessionId('')
           }
         } catch (error) {

@@ -15,9 +15,26 @@ export default {
     '!src/test/**/*',
   ],
   transform: {
-    '^.+\\.(ts|tsx)$': ['ts-jest', {
-      useESM: true,
-    }],
+    '^.+\\.(ts|tsx)$': [
+      'ts-jest',
+      {
+        useESM: true,
+        tsconfig: {
+          jsx: 'react-jsx',
+          esModuleInterop: true,
+          allowSyntheticDefaultImports: true,
+        },
+      },
+    ],
   },
   extensionsToTreatAsEsm: ['.ts', '.tsx'],
+  globals: {
+    'import.meta': {
+      env: {
+        DEV: false,
+        PROD: false,
+        MODE: 'test',
+      },
+    },
+  },
 }

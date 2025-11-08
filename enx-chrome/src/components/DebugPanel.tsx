@@ -15,9 +15,14 @@ export default function DebugPanel() {
       <div className="space-y-1">
         <div>User: {JSON.stringify(user, null, 2)}</div>
         <div>Session: {JSON.stringify(session, null, 2)}</div>
-        <button 
+        <button
           onClick={async () => {
-            const result = await chrome.storage.local.get(['enx-user', 'enx-session', 'user', 'sessionId'])
+            const result = await chrome.storage.local.get([
+              'enx-user',
+              'enx-session',
+              'user',
+              'sessionId',
+            ])
             console.log('Chrome Storage:', result)
             alert('Check console for storage data')
           }}

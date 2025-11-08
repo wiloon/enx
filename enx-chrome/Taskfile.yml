@@ -65,6 +65,44 @@ tasks:
       - echo "Running tests with coverage..."
       - pnpm test -- --coverage
 
+  test-e2e:
+    desc: Run E2E tests with Playwright
+    cmds:
+      - echo "Running E2E tests..."
+      - echo "⚠️  Make sure extension is built first (task build)"
+      - pnpm run test:e2e
+
+  test-e2e-ui:
+    desc: Run E2E tests with Playwright UI
+    cmds:
+      - echo "Opening Playwright UI..."
+      - echo "⚠️  Make sure extension is built first (task build)"
+      - pnpm run test:e2e:ui
+
+  test-e2e-debug:
+    desc: Run E2E tests in debug mode
+    cmds:
+      - echo "Running E2E tests in debug mode..."
+      - echo "⚠️  Make sure extension is built first (task build)"
+      - pnpm run test:e2e:debug
+
+  test-e2e-headed:
+    desc: Run E2E tests with visible browser
+    cmds:
+      - echo "Running E2E tests with visible browser..."
+      - echo "⚠️  Make sure extension is built first (task build)"
+      - pnpm run test:e2e:headed
+
+  test-all:
+    desc: Run all tests (unit + E2E)
+    cmds:
+      - echo "Running all tests..."
+      - task test
+      - echo ""
+      - task test-e2e
+      - echo ""
+      - echo "All tests completed!"
+
   lint:
     desc: Lint code
     cmds:

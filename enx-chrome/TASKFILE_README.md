@@ -153,6 +153,7 @@ task dev
 ```
 
 **What happens:**
+
 1. ✅ Code changes are automatically detected
 2. ✅ Extension is automatically rebuilt
 3. ✅ **Chrome extension is automatically reloaded** (no manual refresh needed!)
@@ -160,6 +161,7 @@ task dev
 **Note:** Some changes (like manifest.json modifications) may still require a manual reload.
 
 **Manual reload (if needed):**
+
 ```bash
 # In rare cases, manually reload:
 task reload
@@ -242,6 +244,7 @@ Runs the complete CI workflow: install → lint → test → build
 ### Extension not updating
 
 After `task build`, you need to:
+
 1. Go to `chrome://extensions`
 2. Click the reload button on the extension
 
@@ -296,10 +299,10 @@ curl -fsSL https://get.pnpm.io/install.sh | sh -
 
 All pnpm scripts are wrapped in Task commands for consistency with the rest of the project.
 
-| Task Command | pnpm Script | Description |
-|--------------|-------------|-------------|
-| `task dev` | `pnpm run dev` | Development server |
-| `task build` | `pnpm run build` | Production build |
-| `task test` | `pnpm test` | Run tests |
-| `task lint` | `pnpm run lint` | Lint code |
-| `task format` | `pnpm run format` | Format code |
+| Task Command  | pnpm Script       | Description        |
+| ------------- | ----------------- | ------------------ |
+| `task dev`    | `pnpm run dev`    | Development server |
+| `task build`  | `pnpm run build`  | Production build   |
+| `task test`   | `pnpm test`       | Run tests          |
+| `task lint`   | `pnpm run lint`   | Lint code          |
+| `task format` | `pnpm run format` | Format code        |

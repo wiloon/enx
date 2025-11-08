@@ -40,7 +40,10 @@ func main() {
 
 	// ReleaseMode
 	gin.SetMode(gin.DebugMode)
-	router := gin.Default()
+	router := gin.New()
+
+	// Add Recovery middleware to recover from panics
+	router.Use(gin.Recovery())
 
 	// Add detailed CORS and request logging middleware BEFORE CORS
 	router.Use(func(c *gin.Context) {
@@ -171,7 +174,7 @@ func main() {
 	router.POST("/api/logout", Logout)
 	router.POST("/api/register", Register)
 
-	// 临时测试路由 - 不需要认证
+	// Temporary test route - no authentication required
 	router.POST("/mark-test", MarkWord)
 
 	port := viper.GetInt("enx.port")

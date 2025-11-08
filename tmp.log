@@ -1,0 +1,664 @@
+Content script received message: {action: 'enxRun'}
+content.ts-D2mHNEN1.js:102 Enabling ENX functionality
+content.ts-D2mHNEN1.js:71 Processing article content...
+content.ts-D2mHNEN1.js:1 🔍 Searching for article node...
+content.ts-D2mHNEN1.js:1 Current URL: https://www.infoq.com/news/2025/11/github-copilot-agenthq/
+content.ts-D2mHNEN1.js:1 Trying selector ".Article": Not found
+content.ts-D2mHNEN1.js:1 Trying selector ".article__data": Found
+content.ts-D2mHNEN1.js:1   → Text length: 4545
+content.ts-D2mHNEN1.js:1 ✅ Using article node with selector: .article__data
+content.ts-D2mHNEN1.js:71 Article node found: <div class=​"article__data">​…​</div>​
+content.ts-D2mHNEN1.js:71 Found 603 words to process
+content.ts-D2mHNEN1.js:71 📦 Processing chunk 1: 200 words
+content.ts-D2mHNEN1.js:71   First 5 words: github, announced, during, its, annual
+content.ts-D2mHNEN1.js:71 📨 Response for chunk 1: {success: true, hasWordProperties: true, sessionExpired: undefined, error: undefined}
+content.ts-D2mHNEN1.js:71 Raw response.wordProperties: {data: {…}}
+content.ts-D2mHNEN1.js:71 Actual word data to process: {a: {…}, access: {…}, according: {…}, actions: {…}, addition: {…}, …}
+content.ts-D2mHNEN1.js:71 Word data keys: (140) ['a', 'access', 'according', 'actions', 'addition', 'agent', 'agenthq', 'agents', 'ai', 'allows', 'also', 'and', 'announced', 'annual', 'api', 'architecture', 'are', 'as', 'aspects', 'assistants', 'at', 'automated', 'automation', 'available', 'broader', 'build', 'building', 'called', 'can', 'cd', 'ci', 'code', 'coding', 'combine', 'company', 'completion', 'contextual', 'control', 'copilot', 'create', 'customizable', 'data', 'defined', 'deploy', 'deployment', 'designed', 'developers', 'development', 'directly', 'documentation', 'during', 'each', 'efforts', 'enabling', 'ensuring', 'environment', 'environments', 'event', 'events', 'expands', 'experiment', 'feature', 'focuses', 'from', 'full', 'generation', 'github', 'handle', 'in', 'in-editor', 'information', 'integrate', 'integrates', 'interact', 'into', 'isolated', 'issue', 'its', 'let', 'level', 'lifecycle', 'maintaining', 'modular', 'monitor', 'new', 'of', 'on', 'ongoing', 'operates', 'or', 'over', 'own', 'perform', 'permissions', 'pipelines', 'platform', 'previous', 'primarily', 'project', 'protected', …]
+content.ts-D2mHNEN1.js:71 Processed 140 words in chunk 1
+content.ts-D2mHNEN1.js:71 Current word cache size: 140
+content.ts-D2mHNEN1.js:71 📦 Processing chunk 2: 200 words
+content.ts-D2mHNEN1.js:71   First 5 words: tasks, with, ai-driven, reasoning, for
+content.ts-D2mHNEN1.js:71 📨 Response for chunk 2: {success: true, hasWordProperties: true, sessionExpired: undefined, error: undefined}
+content.ts-D2mHNEN1.js:71 Raw response.wordProperties: {data: {…}}
+content.ts-D2mHNEN1.js:71 Actual word data to process: {a: {…}, about: {…}, act: {…}, actions: {…}, agent: {…}, …}
+content.ts-D2mHNEN1.js:71 Word data keys: (148) ['a', 'about', 'act', 'actions', 'agent', 'agent-based', 'agenthq', 'agentic', 'agents', 'ai-driven', 'alongside', 'already', 'an', 'and', 'announcement', 'another', 'anthropic', 'approach', 'are', 'as', 'ask', 'automate', 'automation', 'become', 'brings', 'broader', 'but', 'can', 'capabilities', 'changes', 'claude', 'code', 'coding', 'commented', 'commits', 'communicate', 'community', 'concerns', 'conditions', 'context', 'context-aware', 'control', 'conversational', 'could', 'curious', 'cursor', 'dependency', 'details', 'developer', 'developers', 'development', 'directly', 'documentation', 'early', 'ecosystem', 'environments', 'excitement', 'existing', 'exploring', 'expressed', 'extending', 'feature', 'focus', 'for', 'generally', 'github', 'handle', 'if', 'implementation', 'improvements', 'in', 'instance', 'interface', 'into', 'introduction', 'is', 'issues', 'its', 'jintao', 'language', 'leaving', 'maintenance', 'major', 'make', 'met', 'might', 'millions', 'mixed', 'model', 'more', 'move', 'multi-agent', 'natural', 'new', 'next', 'of', 'on', 'operate', 'or', 'other', …]
+content.ts-D2mHNEN1.js:71 Processed 148 words in chunk 2
+content.ts-D2mHNEN1.js:71 Current word cache size: 247
+content.ts-D2mHNEN1.js:71 📦 Processing chunk 3: 200 words
+content.ts-D2mHNEN1.js:71   First 5 words: aws, marketplace, meanwhile, engineer, anthonio
+content.ts-D2mHNEN1.js:71 📨 Response for chunk 3: {success: true, hasWordProperties: true, sessionExpired: undefined, error: undefined}
+content.ts-D2mHNEN1.js:71 Raw response.wordProperties: {data: {…}}
+content.ts-D2mHNEN1.js:71 Actual word data to process: {a: {…}, about: {…}, absolutely: {…}, accessible: {…}, agenthq: {…}, …}
+content.ts-D2mHNEN1.js:71 Word data keys: (141) ['a', 'about', 'absolutely', 'accessible', 'agenthq', 'agentic', 'agents', 'ai', 'allowing', 'along', 'alongside', 'an', 'and', 'anthonio', 'apis', 'as', 'assign', 'at', 'author', 'available', 'aws', 'builder', 'by', 'cloud', 'code', 'codeql', 'coding', 'committed', 'community', 'companies', 'company', 'computing', 'copilot', 'coverage', 'create', 'custom', 'daniel', 'dashboard', 'defined', 'degree', 'dela', 'developers', 'development', 'directly', 'dominguez', 'driving', 'enabling', 'engineer', 'engineering', 'enterprise', 'exciting', 'experience', 'feature', 'features', 'file', 'for', 'fortune', 'from', 'generally', 'github', 'has', 'he', 'holds', 'in', 'innovation', 'innovative', 'integrate', 'into', 'introduced', 'is', 'knowledge', 'launch', 'learning', 'leveraging', 'linear', 'machine', 'made', 'maintainability', 'make', 'manage', 'managing', 'marketplace', 'md', 'meanwhile', 'measure', 'microsoft', 'mode', 'more', 'much', 'network', 'new', 'news', 'of', 'offering', 'on', 'organization-wide', 'over', 'partner', 'passionate', 'plan', …]
+content.ts-D2mHNEN1.js:71 Processed 141 words in chunk 3
+content.ts-D2mHNEN1.js:71 Current word cache size: 336
+content.ts-D2mHNEN1.js:71 📦 Processing chunk 4: 3 words
+content.ts-D2mHNEN1.js:71   First 5 words: show, moreshow, less
+content.ts-D2mHNEN1.js:71 📨 Response for chunk 4: {success: true, hasWordProperties: true, sessionExpired: undefined, error: undefined}
+content.ts-D2mHNEN1.js:71 Raw response.wordProperties: {data: {…}}
+content.ts-D2mHNEN1.js:71 Actual word data to process: {less: {…}, moreshow: {…}, show: {…}}
+content.ts-D2mHNEN1.js:71 Word data keys: (3) ['less', 'moreshow', 'show']
+content.ts-D2mHNEN1.js:71 Processed 3 words in chunk 4
+content.ts-D2mHNEN1.js:71 Current word cache size: 339
+content.ts-D2mHNEN1.js:71 Applying highlighting for 339 words
+content.ts-D2mHNEN1.js:71 Sample words from cache: (5) ['a', 'access', 'according', 'actions', 'addition']
+content.ts-D2mHNEN1.js:71 Sample word data: {Id: 74, Raw: 'a', English: 'a', Chinese: '', Pronunciation: '', …}
+content.ts-D2mHNEN1.js:1 Starting optimized renderWithHighlights with 339 words
+content.ts-D2mHNEN1.js:1 Collected 30 text nodes for processing
+content.ts-D2mHNEN1.js:1 Highlighting word: announced with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: annual with color: hsl(10, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: during with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: GitHub with color: #FFFFFF
+4content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+8content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: its with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: addition with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: platform with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: called with color: #FFFFFF
+3content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: event with color: #FFFFFF
+7content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: its with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: new with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: to with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: a with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: development with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: environment with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: developers with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: integrate with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: lifecycle with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: building with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: designed with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: directly with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: previous with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: releases with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: software with color: hsl(60, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: company with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Copilot with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: efforts with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: expands with color: hsl(10, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: feature with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: ongoing with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: agents with color: hsl(60, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: create with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: deploy with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: GitHub with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: within with color: #FFFFFF
+23content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+46content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: into with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: that with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: work with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: and with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: let with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: The with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: the with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: AI with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: on with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: to with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: s with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: documentation with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: task-specific with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: customizable with color: hsl(70, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: information with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: assistants with color: hsl(20, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: completion with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: contextual with color: hsl(20, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: deployment with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: generation with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: repository with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: available with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: in-editor with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: primarily with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: designed with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: operates with color: hsl(10, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: requests with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: workflow with color: #FFFFFF
+3content.ts-D2mHNEN1.js:1 Highlighting word: specific with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: AgentHQ with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: aspects with color: hsl(10, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: broader with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Copilot with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: focuses with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: monitor with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: perform with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: project with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: respond with color: hsl(50, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: reviews with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: testing with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: various with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Agents with color: hsl(60, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: coding with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: events with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: GitHub with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: handle with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: triage with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Unlike with color: #FFFFFF
+39content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: issue with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: level with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: using with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: which with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: code with color: #FFFFFF
+84content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: from with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: pull with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: that with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: they with color: #FFFFFF
+3content.ts-D2mHNEN1.js:1 Highlighting word: and with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: are with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: can with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: the with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: AI with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: as with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: at with color: #FFFFFF
+4content.ts-D2mHNEN1.js:1 Highlighting word: in with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: of with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: on with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: or with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: to with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: a with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: architecture with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: environments with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: environment with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: maintaining with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: permissions with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: automation with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Developers with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: experiment with color: hsl(170, 100%, 40%)
+2content.ts-D2mHNEN1.js:1 Highlighting word: repository with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: According with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: protected with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: sensitive with color: hsl(120, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: workflows with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: ensuring with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: interact with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: isolated with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: requests with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: security with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: actions with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: control with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: defined with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: modular with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: respect with color: hsl(130, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: runtime with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: through with color: hsl(280, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: trigger with color: hsl(70, 100%, 40%)
+2content.ts-D2mHNEN1.js:1 Highlighting word: access with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: agents with color: hsl(60, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: allows with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: GitHub with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: scopes with color: #FFFFFF
+35content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: agent with color: hsl(30, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: build with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: stays with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: teams with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: their with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: these with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: using with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: while with color: #FFFFFF
+80content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Each with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: full with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: over with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: pull with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: that with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: This with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: with with color: #FFFFFF
+4content.ts-D2mHNEN1.js:1 Highlighting word: and with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: API with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: can with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: own with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: run with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: the with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: in with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: to with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: s with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: integrates with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: AgentHQ with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: also with color: #FFFFFF
+5content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: with with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: improvements with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: traditional with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: maintenance with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: conditions with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: dependency with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: repetitive with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: automated with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: pipelines with color: hsl(10, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: AI-driven with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: reasoning with color: hsl(10, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: enabling with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: security with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: instance with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: scanning with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: specific with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: combine with color: hsl(60, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: trigger with color: hsl(70, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: Another with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: changes with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: suggest with color: hsl(70, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: updates with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: handle with color: #FFFFFF
+22content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: review with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: agent with color: hsl(30, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: could with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: might with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: suite with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: tasks with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: code with color: #FFFFFF
+53content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: that with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: with with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: such with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: test with color: hsl(300, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: and with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: are with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: For with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: met with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: ai with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: AI with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: as with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: CD with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: CI with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: or with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: an with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: if with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: a with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: conversational with color: hsl(10, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: implementation with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: documentation with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: context-aware with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: repositories with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: development with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: communicate with color: hsl(30, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: developers with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: interface with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: questions with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: reference with color: hsl(90, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: directly with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: language with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: actions with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: AgentHQ with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: broader with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: feature with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: commits with color: #FFFFFF
+4content.ts-D2mHNEN1.js:1 Highlighting word: context with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: details with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: leaving with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: natural with color: hsl(60, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: request with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: without with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: agents with color: hsl(60, 100%, 40%)
+2content.ts-D2mHNEN1.js:1 Highlighting word: GitHub with color: #FFFFFF
+30content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: issues with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: their with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: using with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: about with color: #FFFFFF
+64content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: that with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: With with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: with with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: make with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: more with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: part with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: plan with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: says with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: and with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: can with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: its with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: new with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: the with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: The with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: act with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: ask with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: of with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: on with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: or with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: to with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: is with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: introduction with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: development with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: alongside with color: hsl(160, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: exploring with color: hsl(20, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: platforms with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: positions with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: AgentHQ with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: agentic with color: hsl(40, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: GitHub with color: #FFFFFF
+9content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: major with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: other with color: #FFFFFF
+20content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: such with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: The with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: as with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: of with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: and with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: capabilities with color: hsl(30, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: repositories with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: automation with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: developer with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: ecosystem with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: extending with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: directly with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: approach with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: existing with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: millions with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: already with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: operate with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: systems with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: GitHub with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: brings with color: #FFFFFF
+15content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: While with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: focus with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: model with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: those with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: where with color: #FFFFFF
+35content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: into with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: its with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: of with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: on with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: s with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: announcement with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: agent-based with color: hsl(10, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: workflows with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: community with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: generally with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: reactions with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: curious with color: hsl(60, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: GitHub with color: #FFFFFF
+8content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: toward with color: hsl(70, 100%, 40%)
+3content.ts-D2mHNEN1.js:1 Highlighting word: agent with color: hsl(30, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: about with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Early with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: mixed with color: hsl(10, 100%, 40%)
+23content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: move with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: were with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: the with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: but with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: On with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: to with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: s with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: environments with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: transparency with color: hsl(10, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: multi-agent with color: hsl(10, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: developers with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: excitement with color: hsl(70, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: repetitive with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: expressed with color: hsl(30, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: potential with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: automate with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: concerns with color: hsl(40, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: AgentHQ with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: control with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: coding with color: #FFFFFF
+13content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: others with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: raised with color: hsl(20, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: review with color: #FFFFFF
+3content.ts-D2mHNEN1.js:1 Highlighting word: agent with color: hsl(30, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: while with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: about with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: tasks with color: #FFFFFF
+36content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: some with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: and with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: the with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: for with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: in with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: to with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: developer with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Software with color: hsl(60, 100%, 40%)
+2content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+4content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: commented with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Marketplace with color: hsl(30, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: AgentHQ with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: become with color: #FFFFFF
+3content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+6content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: next with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Will with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: the with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: AWS with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Meanwhile with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: engineer with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+4content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: shared with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Absolutely with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: accessible with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: exciting with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: agents with color: hsl(60, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: coding with color: #FFFFFF
+5content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+10content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: This with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: make with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: more with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: will with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: much with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: news with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: so with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: introduced with color: hsl(80, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: Alongside with color: hsl(160, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: features with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: AgentHQ with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: GitHub with color: #FFFFFF
+5content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: launch with color: #FFFFFF
+11content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: new with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: the with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: for with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: of with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: developers with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Microsoft with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: directly with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: enabling with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Copilot with color: #FFFFFF
+5content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: assign with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Linear with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Teams with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: tasks with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Slack with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: tools with color: #FFFFFF
+16content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: from with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: such with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: well with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: and with color: #FFFFFF
+3content.ts-D2mHNEN1.js:1 Highlighting word: as with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: to with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: an with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: feature with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: powered with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: review with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: CodeQL with color: #FFFFFF
+6content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: by with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: developers with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: available with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: integrate with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: generally with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: structure with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: allowing with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: defined with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: agents with color: hsl(60, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: coding with color: #FFFFFF
+9content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: custom with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: their with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: plans with color: #FFFFFF
+21content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: made with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: and with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: was with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: in with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: to with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: an with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: enterprise with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: unveiled with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: GitHub with color: #FFFFFF
+3content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+6content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: file with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: side with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: the with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: On with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: organization-wide with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: maintainability with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: reliability with color: hsl(40, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: visibility with color: hsl(10, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: dashboard with color: hsl(10, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: coverage with color: hsl(90, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: offering with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Copilot with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: measure with color: hsl(120, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: agents with color: hsl(60, 100%, 40%)
+10content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: manage with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: along with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: scale with color: hsl(210, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: usage with color: #FFFFFF
+24content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: into with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: with with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: test with color: hsl(300, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: APIs with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: and with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: new with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: AI with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: at with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: to with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: a with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Author with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: About with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: the with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Dominguez with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Daniel with color: hsl(60, 100%, 40%)
+3content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: specialization with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: development with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Engineering with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: experience with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: innovation with color: hsl(220, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: innovative with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: leveraging with color: hsl(50, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: passionate with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: University with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Washington with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Community with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: committed with color: hsl(10, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: companies with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: computing with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: knowledge with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: solutions with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: software with color: hsl(60, 100%, 40%)
+2content.ts-D2mHNEN1.js:1 Highlighting word: Learning with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Managing with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: products with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: SamXLabs with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: startups with color: hsl(10, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: company with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Builder with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: driving with color: hsl(10, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: Fortune with color: hsl(50, 100%, 40%)
+2content.ts-D2mHNEN1.js:1 Highlighting word: Machine with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Network with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: Partner with color: hsl(80, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: product with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: sharing with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: create with color: #FFFFFF
+36content.ts-D2mHNEN1.js:1 Highlighting word: cursor with color: #FFFFFF
+3content.ts-D2mHNEN1.js:1 Highlighting word: Daniel with color: hsl(60, 100%, 40%)
+content.ts-D2mHNEN1.js:1 Highlighting word: degree with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: about with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: cloud with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: holds with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: years with color: #FFFFFF
+80content.ts-D2mHNEN1.js:1 Highlighting word: data with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: from with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: over with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: tier with color: hsl(10, 100%, 40%)
+4content.ts-D2mHNEN1.js:1 Highlighting word: and with color: #FFFFFF
+3content.ts-D2mHNEN1.js:1 Highlighting word: the with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: for with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: AWS with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: has with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: AI with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: As with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: at with color: #FFFFFF
+4content.ts-D2mHNEN1.js:1 Highlighting word: in with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: of with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: to with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: an with color: #FFFFFF
+3content.ts-D2mHNEN1.js:1 Highlighting word: is with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: He with color: #FFFFFF
+2content.ts-D2mHNEN1.js:1 Highlighting word: a with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: more with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Show with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: less with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Highlighting word: Show with color: #FFFFFF
+content.ts-D2mHNEN1.js:1 Found 30 nodes to replace with 1534 total word matches
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: <u class="enx-word enx-github" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="GitHub" style="
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content:  <u class="enx-word enx-event" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="event" style="t
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: , <u class="enx-word enx-designed" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="designed" s
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: <u class="enx-word enx-agents" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="Agents" style="
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: <u class="enx-word enx-developers" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="Developers"
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: <u class="enx-word enx-agenthq" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="AgentHQ" style
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: , <u class="enx-word enx-enabling" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="enabling" s
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: <u class="enx-word enx-github" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="GitHub" style="
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: <u class="enx-word enx-the" data-word="The" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">The</u> <u class="enx-word enx-introduction" <u class="enx-word
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content:  <u class="enx-word enx-and" data-word="and" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">and</u>
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: . <u class="enx-word enx-while" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="While" style="
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: <u class="enx-word enx-early" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="Early" style="te
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: , <u class="enx-word enx-some" data-word="some" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">some</u> <u class="enx-word enx-developers" <u class="enx-w
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content:
+<u class="enx-word enx-software" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="Software" st
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content:  <u class="enx-word enx-commented" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="commented"
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: <u class="enx-word enx-will" data-word="Will" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">Will</u> <u class="enx-word enx-agenthq" <u class="enx-word e
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: <u class="enx-word enx-meanwhile" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="Meanwhile" s
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content:  <u class="enx-word enx-shared" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="shared" style=
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: <u class="enx-word enx-absolutely" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="Absolutely"
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: <u class="enx-word enx-alongside" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="Alongside" s
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: , <u class="enx-word enx-enabling" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="enabling" s
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content:  <u class="enx-word enx-review" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="review" style=
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content:  <u class="enx-word enx-was" data-word="was" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">was</u> <u class="enx-word enx-made" data-word="made" style="t
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content:  <u class="enx-word enx-file" data-word="file" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">file</u>. <u class="enx-word enx-on" data-word="On" style="t
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: , <u class="enx-word enx-a" data-word="a" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">a</u> <u class="enx-word enx-new" data-word="new" style="text-dec
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: <u class="enx-word enx-about" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="About" style="te
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: <u class="enx-word enx-daniel" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="Daniel" style="
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content:
+                        <u class="enx-word enx-daniel" <u class="enx-word enx-data" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data<
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: <u class="enx-word enx-show" data-word="Show" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">Show</u> <u class="enx-word enx-more" data-word="more" style=
+content.ts-D2mHNEN1.js:1 Setting innerHTML with content: <u class="enx-word enx-show" data-word="Show" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">Show</u> <u class="enx-word enx-less" data-word="less" style=
+content.ts-D2mHNEN1.js:1 Word highlighting optimization completed
+content.ts-D2mHNEN1.js:1 Final HTML sample:
+								<p><u class="enx-word enx-github" <u="" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="GitHub" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; <u class="enx-word enx-cursor" <u="" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>-word="cursor" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px
+content.ts-D2mHNEN1.js:1 Found 0 opening <u> tags and 879 closing </u> tags
+content.ts-D2mHNEN1.js:71 Original HTML length: 6815
+content.ts-D2mHNEN1.js:71 Highlighted HTML length: 214881
+content.ts-D2mHNEN1.js:71 HTML changed: true
+content.ts-D2mHNEN1.js:71 Sample highlighted word HTML: <u class="enx-word enx-github" <u="" data-word="data" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">data</u>
+content.ts-D2mHNEN1.js:71 Word highlighting applied.
+content.ts-D2mHNEN1.js:71 ✅ Article processing completed successfully
+content.ts-D2mHNEN1.js:102 ✅ ENX enabled successfully with article processing
