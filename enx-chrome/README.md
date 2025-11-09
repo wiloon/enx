@@ -70,17 +70,50 @@ cp .env.example .env
 
 ### Development
 
-Start development server with hot reload:
+**Option 1: Watch mode with auto-reload Chrome** (recommended):
 
 ```bash
-pnpm run dev
-# or use Taskfile
-task dev
+# Terminal 1: Auto-rebuild on file changes
+task watch
+
+# Terminal 2: Start Chrome with extension loaded
+task dev-chrome
+
+# Or open a specific URL:
+task dev-chrome URL=https://www.infoq.com/
+
+# The extension will auto-reload in Chrome when files change!
 ```
 
-The development server will start on `http://localhost:5173` and automatically reload the extension when you make changes.
+**Option 2: Watch mode + manual Chrome reload**:
+
+```bash
+# Auto-rebuild on file changes
+task watch
+
+# Then reload extension in chrome://extensions/ after each rebuild
+```
+
+**Option 3: Vite dev server** (may have issues):
+
+```bash
+# Vite dev server with hot reload
+task dev
+# ⚠️  Note: May show "cannot connect to vite server" and flashing popup
+# If this happens, use one of the options above
+```
+
+The `task dev-chrome` command starts a Chrome instance with the extension pre-loaded. When you rebuild (with `task watch`), the extension automatically reloads in that Chrome window. This is similar to how E2E tests work, but for manual testing.
 
 ### Building
+
+Build for local development (uses `localhost:8090` API):
+
+```bash
+task build-dev
+# or
+task build
+```
 
 Build for production:
 
@@ -337,12 +370,21 @@ Or save this as an HTML file and open it in Chrome.
 ## Development Notes
 
 - **Manifest V3**: Uses the latest Chrome extension manifest version
-- **Hot Reload**: Development server with @crxjs/vite-plugin provides true hot reload
+- **Watch Mode Recommended**: Use `task watch` for local development instead of `task dev`
+  - `task dev` starts Vite dev server but may cause "cannot connect to vite server" errors
+  - `task watch` auto-rebuilds to `dist/` on file changes (requires manual extension reload)
 - **Sentry Integration**: Error monitoring (configure DSN in `.env`)
 - **Tailwind CSS**: Utility-first CSS framework with modern design system
 - **Jotai**: Lightweight state management with Chrome Storage persistence
 - **TypeScript**: Full type safety across the codebase
 - **Content Script**: Automatically injected on all HTTP/HTTPS websites (excluding Chrome internal pages)
+
+### Known Issues
+
+**Vite Dev Server with Chrome Extensions**:
+- Symptom: Popup shows "cannot connect to vite server" and keeps flashing
+- Cause: `@crxjs/vite-plugin` dev server connection issues with Chrome extension security policies
+- Solution: Use `task watch` instead of `task dev` for local development
 
 ## Project Documentation
 

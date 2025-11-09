@@ -319,7 +319,7 @@ describe('ContentWordProcessor', () => {
       const colorCode = 'hsl(150, 100%, 40%)'
       const match = 'Hello'
 
-      const expectedHtml = `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="text-decoration: ${colorCode} underline; text-decoration-thickness: 2px; cursor: pointer;">${match}</u>`
+      const expectedHtml = `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="text-decoration: ${colorCode} underline; text-decoration-thickness: 2px;">${match}</u>`
 
       // This tests the HTML structure that would be generated
       expect(expectedHtml).toContain('class="enx-word enx-hello"')
@@ -327,7 +327,8 @@ describe('ContentWordProcessor', () => {
       expect(expectedHtml).toContain(
         'text-decoration: hsl(150, 100%, 40%) underline'
       )
-      expect(expectedHtml).toContain('cursor: pointer')
+      // Cursor is now controlled by CSS :hover, not inline style
+      expect(expectedHtml).not.toContain('cursor: pointer')
     })
   })
 })
