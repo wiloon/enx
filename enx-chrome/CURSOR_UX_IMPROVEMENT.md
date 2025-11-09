@@ -104,7 +104,7 @@ wordStyles.textContent = `
     cursor: text;
     transition: all 0.15s ease;
   }
-  
+
   .enx-word:hover {
     cursor: pointer;
     opacity: 0.8;
