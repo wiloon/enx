@@ -8,6 +8,125 @@ This project uses AI assistance for development tasks including code generation,
 
 ## Recent Contributions
 
+### 2025-11-09: Cursor UX Improvement for Word Highlighting
+
+**Agent**: GitHub Copilot
+**Task**: Improve cursor styling UX for highlighted words in learning mode
+
+**Problem**: All highlighted words showed `cursor: pointer` (hand cursor) at all times, making the entire page feel overly clickable and reducing readability:
+
+- Every highlighted word looked like a clickable button
+- Hand cursor everywhere disrupted natural reading flow
+- No visual distinction between hovering and not hovering
+- Felt like "too much interactivity" on every word
+
+**Solution**: Implemented hover-based cursor styling with smooth transitions:
+
+- Default: Normal text cursor (`cursor: text`) for natural reading flow
+- On hover: Hand cursor (`cursor: pointer`) + opacity change for clear feedback
+- Smooth 0.15s transition for polished UX
+- Removed inline cursor styles, added global CSS with `:hover` selector
+
+**Changes**:
+
+- Modified `src/content/content.ts`:
+  - Removed `cursor: pointer;` from inline word highlighting styles (line 181)
+  - Added global CSS for `.enx-word` with hover-based cursor behavior
+  - CSS includes smooth transition and opacity feedback on hover
+- Updated tests to match new behavior:
+  - `src/content/__tests__/wordHighlighting.test.ts`
+  - `src/content/__tests__/highlightingIntegration.test.ts`
+  - Changed assertions from `.toContain('cursor: pointer')` to `.not.toContain('cursor: pointer')`
+- Created `CURSOR_UX_IMPROVEMENT.md` documentation with detailed comparison diagrams
+
+**Benefits**:
+
+- ✅ **Better reading experience** - Text cursor by default maintains natural flow
+- ✅ **Clear hover feedback** - Hand cursor only appears when hovering over words
+- ✅ **Reduced visual noise** - Page feels less cluttered and more professional
+- ✅ **Smooth transitions** - Polished interaction with opacity and cursor changes
+- ✅ **All tests passing** - 26/26 unit tests pass with updated behavior
+
+**Technical Details**:
+
+```css
+.enx-word {
+  cursor: text;              /* Default: Normal text cursor */
+  transition: all 0.15s ease; /* Smooth transition */
+}
+
+.enx-word:hover {
+  cursor: pointer;            /* Only show hand cursor on hover */
+  opacity: 0.8;              /* Visual feedback */
+}
+```
+
+---
+
+### 2025-11-09: Chrome Auto-Reload Development Mode
+
+**Agent**: GitHub Copilot
+**Task**: Add `task dev-chrome` command for automatic extension reloading during development
+
+**Problem**: Manual Chrome extension reload workflow was slow and repetitive:
+
+- `task watch` auto-rebuilds code, but doesn't reload extension
+- User must manually click reload in `chrome://extensions/` after each rebuild
+- Chrome security policy prevents external processes from reloading extensions in user's personal Chrome
+
+**Solution**: Launch dedicated Chrome instance with extension pre-loaded (similar to E2E tests):
+
+- Chrome instance automatically detects changes in `dist/` and reloads extension
+- Uses separate user data directory (`/tmp/chrome-dev-enx`)
+- Supports custom URL parameter for testing different websites
+- Same technique as Playwright E2E tests (Chrome launched with `--load-extension` flag)
+
+**Changes**:
+
+- Added `task dev-chrome` command to `Taskfile.yml`:
+  - Launches Chrome with extension pre-loaded from `dist/`
+  - Accepts optional `URL` parameter (defaults to InfoQ)
+  - Uses isolated Chrome profile for development
+- Created `DEV_CHROME_AUTO_RELOAD.md` documentation:
+  - Explains why auto-reload works with dedicated Chrome instance
+  - Complete workflow guide for combined `task watch` + `task dev-chrome`
+  - Troubleshooting tips for different operating systems
+  - Comparison with other development methods
+- Updated `README.md` with new development workflow option
+
+**Usage**:
+
+```bash
+# Terminal 1: Auto-rebuild on file changes
+task watch
+
+# Terminal 2: Launch Chrome with extension loaded
+task dev-chrome
+
+# Or with custom URL:
+task dev-chrome URL=https://www.bbc.com/news
+```
+
+**Benefits**:
+
+- ✅ **Zero manual reloads** - Extension auto-reloads on code changes
+- ✅ **Fast iteration** - Edit code and see changes immediately
+- ✅ **Multiple instances** - Test on different URLs simultaneously
+- ✅ **Isolated environment** - Won't interfere with personal Chrome browsing
+- ✅ **Same as E2E** - Uses proven technique from Playwright tests
+
+**Technical Details**:
+
+```bash
+google-chrome \
+  --load-extension=$(pwd)/dist \
+  --disable-extensions-except=$(pwd)/dist \
+  --user-data-dir=/tmp/chrome-dev-enx \
+  "https://www.infoq.com/"
+```
+
+---
+
 ### 2025-11-08: Automatic Backend Management for E2E Tests
 
 **Agent**: GitHub Copilot

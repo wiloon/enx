@@ -24,10 +24,85 @@ tasks:
       - echo "Dependencies installed successfully!"
 
   dev:
-    desc: Start development server with hot reload
+    desc: Start development server with hot reload (may have issues with Chrome extensions)
     cmds:
+      - echo "WARNING - Vite dev server may not work properly with Chrome extensions"
+      - echo "If you see cannot connect to vite server or flashing popup, use task watch instead"
       - echo "Starting development server..."
       - pnpm run dev
+
+
+  watch:
+    desc: Watch mode for local development (recommended for Chrome extensions)
+    cmds:
+      - echo "Starting watch mode for local development..."
+      - echo "Changes will auto-rebuild to dist/"
+      - echo "Extension will auto-reload in Chromium when files change"
+      - echo ""
+      - pnpm exec vite build --watch
+
+
+  dev-chrome:
+    desc: Start Chrome with extension and auto-rebuild (all-in-one development mode)
+    cmds:
+      - echo "🚀 Starting development environment..."
+      - echo "  1. Building extension..."
+      - pnpm exec vite build
+      - echo "  2. Starting watch mode in background..."
+      - echo "  3. Launching Chromium with extension..."
+      - echo ""
+      - |
+        # Start watch mode in background
+        pnpm exec vite build --watch > /tmp/enx-watch.log 2>&1 &
+        WATCH_PID=$!
+        echo "📝 Watch mode running (PID: $WATCH_PID)"
+        echo "📝 Watch logs: /tmp/enx-watch.log"
+        echo ""
+        
+        # Start Chromium (this blocks until Chrome closes)
+        node dev-chrome.mjs "{{.URL | default "https://www.infoq.com/"}}"
+        
+        # Cleanup after Chrome closes
+        echo ""
+        echo "🛑 Stopping watch mode..."
+        kill $WATCH_PID 2>/dev/null || true
+        echo "✅ Development environment stopped"
+
+  dev-chrome-only:
+    desc: Start Chrome only (without watch mode)
+    cmds:
+      - |
+        node dev-chrome.mjs "{{.URL | default "https://www.infoq.com/"}}"
+
+  dev-chrome-manual:
+    desc: Start Chrome manually (requires manual extension loading)
+    cmds:
+      - echo "Starting Chrome with ENX extension..."
+      - echo ""
+      - echo "📝 FIRST TIME SETUP (only needed once){{":"}}"
+      - echo "  1. Chrome will open to chrome{{":"}}//extensions/"
+      - echo "  2. Enable 'Developer mode' (top-right toggle)"
+      - echo "  3. Click 'Load unpacked'"
+      - echo "  4. Select{{":"}} $(pwd)/dist"
+      - echo ""
+      - echo "After first setup, the extension will be remembered and auto-reload with 'task watch'"
+      - echo ""
+      - |
+        URL="{{.URL | default "chrome://extensions/"}}"
+        google-chrome-stable \
+          --user-data-dir=/tmp/chrome-dev-enx \
+          --no-default-browser-check \
+          --no-first-run \
+          "$URL"
+
+
+
+
+
+
+
+
+
 
   build:
     desc: Build extension for production
@@ -35,6 +110,15 @@ tasks:
       - echo "Building {{.EXT_NAME}} v{{.VERSION}}..."
       - pnpm run build
       - echo "Build completed! Output in dist/"
+
+  build-dev:
+    desc: Build extension for local development (uses local API)
+    cmds:
+      - echo "Building {{.EXT_NAME}} for local development..."
+      - echo "API URL{{":"}} http{{":"}}//localhost{{":"}}8090"
+      - pnpm run build
+      - echo "Build completed! Load dist/ in chrome{{":"}}//extensions/"
+
 
   build-watch:
     desc: Build extension in watch mode
@@ -200,9 +284,10 @@ tasks:
       - build
     cmds:
       - echo ""
-      - echo "Build complete! Remember to:"
-      - echo "1. Go to chrome://extensions"
+      - echo "Build complete! Remember to{{":"}}"
+      - echo "1. Go to chrome{{":"}}//extensions"
       - echo "2. Click the reload button on {{.EXT_NAME}}"
+
 
   ci:
     desc: CI/CD workflow (install, lint, test, build)

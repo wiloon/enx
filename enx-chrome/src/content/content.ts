@@ -173,7 +173,7 @@ class ContentWordProcessor {
 
             // Create a unique placeholder that won't match any word pattern
             const placeholder = `___ENX_PLACEHOLDER_${placeholderIndex++}___`
-            const html = `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="text-decoration: ${colorCode} underline; text-decoration-thickness: 2px; cursor: pointer;">${match}</u>`
+            const html = `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="text-decoration: ${colorCode} underline; text-decoration-thickness: 2px;">${match}</u>`
 
             placeholders.push({ placeholder, html })
             return placeholder
@@ -1007,6 +1007,24 @@ indicator.style.cssText = `
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 `
 document.body.appendChild(indicator)
+
+// Add global CSS for hover-based cursor on highlighted words
+const wordStyles = document.createElement('style')
+wordStyles.setAttribute('data-enx-word-styles', 'true')
+wordStyles.textContent = `
+  .enx-word {
+    cursor: text;
+    transition: all 0.15s ease;
+  }
+  
+  .enx-word:hover {
+    cursor: pointer;
+    opacity: 0.8;
+  }
+`
+if (!document.head.querySelector('style[data-enx-word-styles]')) {
+  document.head.appendChild(wordStyles)
+}
 
 // Clean up on page unload
 window.addEventListener('beforeunload', () => {

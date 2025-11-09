@@ -23,15 +23,26 @@ This will install dependencies and build the extension.
 ### Development workflow
 
 ```bash
-# Start development server with hot reload
+# ⚠️  Recommended: Use watch mode for local development
+task watch
+
+# Alternative: Use task dev (may have issues with popup)
 task dev
 
-# Build extension
+# Build once for development
+task build-dev
+
+# Build for production
 task build
 
 # Rebuild and get reminder to reload in Chrome
 task reload
 ```
+
+**Important Notes**:
+- **`task watch`** is recommended for local development. It automatically rebuilds to `dist/` when files change.
+- **`task dev`** starts Vite dev server but may cause "cannot connect to vite server" errors and flashing popup in Chrome extensions.
+- After rebuilding, **manually reload the extension** in `chrome://extensions/`.
 
 ## Common Tasks
 
@@ -41,13 +52,20 @@ task reload
 # Install dependencies
 task install
 
-# Start dev server (hot reload)
+# 🔄 Watch mode (RECOMMENDED for local development)
+# Auto-rebuilds on file changes
+task watch
+
+# Start dev server (⚠️  May have issues with Chrome extensions)
 task dev
 
-# Build for production
+# Build for local development (uses localhost:8090 API)
+task build-dev
+
+# Build for production (uses production API)
 task build
 
-# Build in watch mode
+# Build in watch mode (alias for task watch)
 task build-watch
 
 # Preview production build
