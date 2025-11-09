@@ -1,8 +1,8 @@
 package middleware
 
 import (
-	"enx-server/utils/logger"
-	"enx-server/utils/sqlitex"
+	"enx-api/utils/logger"
+	"enx-api/utils/sqlitex"
 	"net/http"
 	"time"
 

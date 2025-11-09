@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"enx-server/version"
+	"enx-api/version"
 	"net/http"
 
 	"github.com/gin-gonic/gin"

@@ -1,8 +1,8 @@
 package word
 
 import (
-	"enx-server/enx"
-	"enx-server/middleware"
+	"enx-api/enx"
+	"enx-api/middleware"
 	"strings"
 
 	"github.com/gin-gonic/gin"

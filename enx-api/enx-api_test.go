@@ -3,13 +3,13 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"enx-server/enx"
-	"enx-server/utils/logger"
+	"enx-api/enx"
+	"enx-api/utils/logger"
 	"fmt"
 	"github.com/go-resty/resty/v2"
 	"regexp"
 	"testing"
-		"enx-server/utils/sqlitex"
+		"enx-api/utils/sqlitex"
 )
 
 var client *resty.Client

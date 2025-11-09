@@ -1,9 +1,9 @@
 package paragraph
 
 import (
-	"enx-server/enx"
-	"enx-server/middleware"
-	"enx-server/utils/logger"
+	"enx-api/enx"
+	"enx-api/middleware"
+	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
 )

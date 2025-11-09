@@ -1,7 +1,7 @@
 package sqlitex
 
 import (
-	zapLog "enx-server/utils/logger"
+	zapLog "enx-api/utils/logger"
 	"log"
 	"os"
 	"runtime"

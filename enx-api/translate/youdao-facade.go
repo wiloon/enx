@@ -1,6 +1,6 @@
 package translate
 
-import "enx-server/youdao"
+import "enx-api/youdao"
 
 func YouDaoTranslate(word string) {
 	youdaoResult := youdao.Translate(word)

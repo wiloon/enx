@@ -1,9 +1,9 @@
 package enx
 
 import (
-	"enx-server/repo"
-	"enx-server/utils/logger"
-	"enx-server/utils/sqlitex"
+	"enx-api/repo"
+	"enx-api/utils/logger"
+	"enx-api/utils/sqlitex"
 	"regexp"
 	"strings"
 	"time"

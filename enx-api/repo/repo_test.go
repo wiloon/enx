@@ -1,8 +1,8 @@
 package repo
 
 import (
-	"enx-server/utils"
-	"enx-server/utils/sqlitex"
+	"enx-api/utils"
+	"enx-api/utils/sqlitex"
 	"fmt"
 	"testing"
 )

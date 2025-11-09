@@ -1,7 +1,7 @@
 package enx
 
 import (
-	"enx-server/utils/mysql"
+	"enx-api/utils/mysql"
 	"github.com/spf13/viper"
 )
 
