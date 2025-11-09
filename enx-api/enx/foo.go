@@ -1,7 +1,7 @@
 package enx
 
 import (
-	"enx-server/utils/logger"
+	"enx-api/utils/logger"
 	"regexp"
 	"strings"
 )

@@ -1,9 +1,9 @@
 package youdao
 
 import (
-	"enx-server/utils"
-	"enx-server/utils/logger"
-	"enx-server/utils/sqlitex"
+	"enx-api/utils"
+	"enx-api/utils/logger"
+	"enx-api/utils/sqlitex"
 	"fmt"
 	"github.com/spf13/viper"
 	"testing"

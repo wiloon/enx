@@ -2,8 +2,8 @@ package youdao
 
 import (
 	"crypto/sha256"
-	"enx-server/repo"
-	"enx-server/utils/logger"
+	"enx-api/repo"
+	"enx-api/utils/logger"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/spf13/viper"

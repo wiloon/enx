@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"enx-server/utils/logger"
+	"enx-api/utils/logger"
 	"flag"
 	"fmt"
 

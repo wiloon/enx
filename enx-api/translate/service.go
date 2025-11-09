@@ -1,10 +1,10 @@
 package translate
 
 import (
-	"enx-server/enx"
-	"enx-server/middleware"
-	"enx-server/utils/logger"
-	"enx-server/youdao"
+	"enx-api/enx"
+	"enx-api/middleware"
+	"enx-api/utils/logger"
+	"enx-api/youdao"
 
 	"strings"
 

@@ -3,8 +3,8 @@ package enx
 import (
 	"fmt"
 	"testing"
-	"enx-server/utils/sqlitex"
-	"enx-server/utils/logger"
+	"enx-api/utils/sqlitex"
+	"enx-api/utils/logger"
 )
 
 func init() {

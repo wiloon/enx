@@ -1,9 +1,9 @@
 package enx
 
 import (
-	"enx-server/utils/logger"
-	"enx-server/utils/password"
-	"enx-server/utils/sqlitex"
+	"enx-api/utils/logger"
+	"enx-api/utils/password"
+	"enx-api/utils/sqlitex"
 	"time"
 )
 

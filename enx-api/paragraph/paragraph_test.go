@@ -1,9 +1,9 @@
 package paragraph
 
 import (
-	"enx-server/enx"
-	"enx-server/utils"
-	"enx-server/utils/sqlitex"
+	"enx-api/enx"
+	"enx-api/utils"
+	"enx-api/utils/sqlitex"
 	"fmt"
 	"testing"
 )

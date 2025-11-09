@@ -2,7 +2,7 @@ package mysql
 
 import (
 	"database/sql"
-	"enx-server/utils/logger"
+	"enx-api/utils/logger"
 )
 
 type Database struct {

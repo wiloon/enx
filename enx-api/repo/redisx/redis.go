@@ -1,7 +1,7 @@
 package redisx
 
 import (
-	"enx-server/utils/logger"
+	"enx-api/utils/logger"
 	"github.com/gomodule/redigo/redis"
 	"github.com/spf13/viper"
 	"strconv"

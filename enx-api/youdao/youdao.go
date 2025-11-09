@@ -1,8 +1,8 @@
 package youdao
 
 import (
-	"enx-server/enx"
-	"enx-server/utils/logger"
+	"enx-api/enx"
+	"enx-api/utils/logger"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
 	"log"
