@@ -58,10 +58,10 @@ tasks:
         echo "📝 Watch mode running (PID: $WATCH_PID)"
         echo "📝 Watch logs: /tmp/enx-watch.log"
         echo ""
-        
+
         # Start Chromium (this blocks until Chrome closes)
         node dev-chrome.mjs "{{.URL | default "https://www.infoq.com/"}}"
-        
+
         # Cleanup after Chrome closes
         echo ""
         echo "🛑 Stopping watch mode..."
