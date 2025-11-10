@@ -8,6 +8,91 @@ This project uses AI assistance for development tasks including code generation,
 
 ## Recent Contributions
 
+### 2025-11-10: Development Environment Setup with Root Taskfile
+
+**Agent**: GitHub Copilot
+**Task**: Create unified development environment with one-command startup
+
+**Changes**:
+
+1. **Root-level Taskfile** (`Taskfile.yml`)
+   - Created unified task interface for entire monorepo
+   - Delegates to sub-project Taskfiles (enx-api, enx-chrome, enx-ui)
+   - Provides `task dev-all` for one-command development startup
+
+2. **One-Command Development Mode** (`task dev-all`)
+   - Automatically creates log directories (`enx-api/logs`, `enx-chrome/logs`)
+   - Builds Chrome extension on first run
+   - Starts enx-api in background with hot reload
+   - Starts Chrome extension watch mode in background
+   - Installs Playwright browsers if needed
+   - Opens Chrome with extension pre-loaded
+   - Navigates to target URL (default: InfoQ)
+
+3. **Environment Configuration** (`enx-chrome/.env`)
+   - Created `.env` file with `VITE_ENV=development`
+   - Configures extension to use local API (`http://localhost:8090`)
+   - Documented alternative configurations (staging, production)
+
+4. **Chrome Extension Auto-Loading** (`enx-chrome/dev-chrome.mjs`)
+   - Fixed service worker timeout issues
+   - Pre-configures Chrome preferences to enable developer mode
+   - Automatically pins extension to toolbar
+   - Opens `chrome://extensions` first to ensure proper loading
+   - Improved error handling and user feedback
+
+5. **Password Reset Tool** (`enx-api/reset_pw.go`)
+   - Documented usage for resetting user passwords
+   - Generates Argon2id password hash
+   - Outputs SQL UPDATE statement for database
+
+**Database Information**:
+- **Type**: SQLite3
+- **Location**: `enx-api/enx.db`
+- **Password Reset**: 
+  ```bash
+  cd enx-api
+  go run reset_pw.go  # Generates hash for 'haCahpro'
+  sqlite3 enx.db "UPDATE users SET password = '<hash>' WHERE name = 'wiloon';"
+  ```
+
+**Log Directory Structure**:
+```
+enx/
+├── enx-api/
+│   └── logs/
+│       └── dev.log          # API development logs
+├── enx-chrome/
+│   └── logs/
+│       └── watch.log        # Chrome watch mode logs
+```
+
+**Key Commands**:
+```bash
+# Start complete development environment
+task dev-all
+
+# With custom URL
+task dev-all URL=https://www.bbc.com/news
+
+# Stop all services
+task stop-dev
+
+# View logs
+task dev-logs
+tail -f enx-api/logs/dev.log
+tail -f enx-chrome/logs/watch.log
+```
+
+**Benefits**:
+- ✅ **Zero-config startup** - Single command starts everything
+- ✅ **Auto-reload** - API and extension auto-reload on code changes
+- ✅ **Proper logging** - All logs organized in project directories
+- ✅ **Developer mode** - Chrome extension automatically configured
+- ✅ **Correct API URL** - Extension uses local API by default
+
+---
+
 ### 2025-11-09: Cursor UX Improvement for Word Highlighting
 
 **Agent**: GitHub Copilot
@@ -437,6 +522,11 @@ When working with AI agents on this project:
 4. **Update Documentation**: Keep README and other docs in sync
 5. **Version Control**: Ensure proper .gitignore rules for generated files
 6. **Language Requirements**: Use English for all code, comments, documentation, and configuration files to maintain consistency across the project
+7. **Documentation Location**: When creating new markdown documentation files, place them in the appropriate `docs/` directory within each project:
+   - `enx-api/docs/` - API documentation, deployment guides, architecture docs
+   - `enx-chrome/docs/` - Extension documentation, user guides, development docs
+   - `enx-ui/docs/` - UI documentation, component guides, design docs
+   - Root-level markdown files should only be used for project-wide documentation (README.md, AGENTS.md, LICENSE, etc.)
 
 ## Agent Workflow
 
