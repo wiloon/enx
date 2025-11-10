@@ -4,7 +4,7 @@ tasks:
   # ===========================================
   # Setup & Installation
   # ===========================================
-  
+
   setup:
     desc: Setup all projects (install dependencies)
     cmds:
@@ -67,8 +67,8 @@ tasks:
     cmds:
       - mkdir -p enx-api/logs enx-chrome/logs
       - echo "🚀 Starting ENX development environment..."
-      - echo "� Building extension (first time)..."
-      - cd enx-chrome && pnpm run build
+      - echo "🔧 Building extension for development (first time)..."
+      - cd enx-chrome && VITE_ENV=development pnpm run build
       - echo "�📦 Starting enx-api in background..."
       - cd enx-api && air > logs/dev.log 2>&1 &
       - echo "   API logs in enx-api/logs/dev.log"
@@ -98,7 +98,24 @@ tasks:
       - pkill -f "air" || true
       - pkill -f "vite.*enx-chrome" || true
       - pkill -f "dev-chrome.mjs" || true
+      - pkill -f "chromium.*playwright" || true
       - echo "✅ All services stopped"
+
+  restart-dev:
+    desc: Restart all development services (clean restart)
+    cmds:
+      - echo "🔄 Restarting ENX development environment..."
+      - echo "🛑 Stopping all processes..."
+      - pkill -9 -f "air.*enx-api" 2>/dev/null || true
+      - pkill -9 -f "vite.*enx-chrome" 2>/dev/null || true
+      - pkill -9 -f "dev-chrome.mjs" 2>/dev/null || true
+      - pkill -9 -f "chromium.*playwright" 2>/dev/null || true
+      - bash -c 'lsof -ti:5173 2>/dev/null | xargs kill -9 2>/dev/null' || true
+      - bash -c 'lsof -ti:8090 2>/dev/null | xargs kill -9 2>/dev/null' || true
+      - echo "⏳ Waiting for ports to be freed..."
+      - sleep 3
+      - echo "🚀 Starting development environment..."
+      - task: dev-all
 
   dev-logs:
     desc: Show development logs (API and Chrome watch)

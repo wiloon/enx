@@ -66,8 +66,9 @@ const getEnvironment = (): string => {
   }
 
   // Auto-detect based on build mode
-  if (isDevelopment) {
-    console.log('  → Auto-detected: development')
+  // In Vite dev mode, mode is 'development' even if DEV/PROD are undefined
+  if (mode === 'development' || isDevelopment) {
+    console.log('  → Auto-detected: development (mode or DEV flag)')
     return 'development'
   }
   if (isProduction) {

@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html><head><title>Env Test</title></head><body>
+<h1>Environment Test</h1>
+<div id="result">Loading...</div>
+<script>
+document.getElementById('result').innerHTML = `
+VITE_ENV: ${import.meta.env.VITE_ENV || 'undefined'}<br>
+DEV: ${import.meta.env.DEV}<br>
+MODE: ${import.meta.env.MODE}
+`;
+</script>
+</body></html>
