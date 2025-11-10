@@ -34,6 +34,9 @@ package-lock.json
 tmp/
 build-errors.log
 
+# Development logs (all logs directories in subdirectories)
+**/logs/
+
 # Coverage reports
 coverage.out
 coverage.html

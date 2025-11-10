@@ -1,0 +1,409 @@
+version: '3'
+
+tasks:
+  # ===========================================
+  # Setup & Installation
+  # ===========================================
+  
+  setup:
+    desc: Setup all projects (install dependencies)
+    cmds:
+      - task: setup-api
+      - task: setup-chrome
+      - task: setup-ui
+
+  setup-api:
+    desc: Setup enx-api
+    dir: enx-api
+    cmds:
+      - task: deps
+
+  setup-chrome:
+    desc: Setup enx-chrome
+    dir: enx-chrome
+    cmds:
+      - task: setup
+
+  setup-ui:
+    desc: Setup enx-ui
+    dir: enx-ui
+    cmds:
+      - pnpm install
+
+  # ===========================================
+  # Development
+  # ===========================================
+
+  dev-api:
+    desc: Start enx-api in development mode (hot reload)
+    dir: enx-api
+    cmds:
+      - task: dev
+
+  dev-chrome:
+    desc: Start enx-chrome in development mode
+    dir: enx-chrome
+    cmds:
+      - task: dev
+
+  dev-chrome-browser:
+    desc: Start Chrome with extension loaded (auto-reload)
+    dir: enx-chrome
+    cmds:
+      - task: dev-chrome
+        vars:
+          URL: '{{.URL | default "https://www.infoq.com/"}}'
+
+  dev-ui:
+    desc: Start enx-ui in development mode
+    dir: enx-ui
+    cmds:
+      - pnpm dev
+
+  dev-all:
+    desc: Start all development services (API + Chrome watch + Chrome browser)
+    vars:
+      TARGET_URL: '{{.URL | default "https://www.infoq.com/"}}'
+    cmds:
+      - mkdir -p enx-api/logs enx-chrome/logs
+      - echo "🚀 Starting ENX development environment..."
+      - echo "� Building extension (first time)..."
+      - cd enx-chrome && pnpm run build
+      - echo "�📦 Starting enx-api in background..."
+      - cd enx-api && air > logs/dev.log 2>&1 &
+      - echo "   API logs in enx-api/logs/dev.log"
+      - sleep 2
+      - echo "👀 Starting enx-chrome watch mode in background..."
+      - cd enx-chrome && pnpm run dev </dev/null > logs/watch.log 2>&1 &
+      - echo "   Chrome watch logs in enx-chrome/logs/watch.log"
+      - sleep 5
+      - echo "🌐 Checking Playwright browsers..."
+      - cd enx-chrome && npx playwright install chromium --quiet 2>/dev/null || true
+      - echo "🌐 Opening Chrome with extension loaded..."
+      - cd enx-chrome && node dev-chrome.mjs "{{.TARGET_URL}}"
+      - echo ""
+      - echo "✅ Development environment started!"
+      - echo ""
+      - echo "📋 Services running"
+      - echo "   - API at http://localhost:8090 (logs in enx-api/logs/dev.log)"
+      - echo "   - Chrome watch building on file changes (logs in enx-chrome/logs/watch.log)"
+      - echo "   - Chrome browser opened with extension"
+      - echo ""
+      - echo "🛑 To stop all services run task stop-dev"
+
+  stop-dev:
+    desc: Stop all development services
+    cmds:
+      - echo "🛑 Stopping development services..."
+      - pkill -f "air" || true
+      - pkill -f "vite.*enx-chrome" || true
+      - pkill -f "dev-chrome.mjs" || true
+      - echo "✅ All services stopped"
+
+  dev-logs:
+    desc: Show development logs (API and Chrome watch)
+    cmds:
+      - echo "=== ENX Development Logs ==="
+      - echo ""
+      - echo "--- API Log (enx-api/logs/dev.log) ---"
+      - tail -n 20 enx-api/logs/dev.log || echo "No API logs yet"
+      - echo ""
+      - echo "--- Chrome Watch Log (enx-chrome/logs/watch.log) ---"
+      - tail -n 20 enx-chrome/logs/watch.log || echo "No Chrome watch logs yet"
+      - echo ""
+      - echo "💡 Tip - Use 'tail -f enx-api/logs/dev.log' to follow logs in real-time"
+
+  # ===========================================
+  # Building
+  # ===========================================
+
+  build:
+    desc: Build all projects
+    cmds:
+      - task: build-api
+      - task: build-chrome
+      - task: build-ui
+
+  build-api:
+    desc: Build enx-api
+    dir: enx-api
+    cmds:
+      - task: build
+
+  build-chrome:
+    desc: Build enx-chrome
+    dir: enx-chrome
+    cmds:
+      - task: build
+
+  build-ui:
+    desc: Build enx-ui
+    dir: enx-ui
+    cmds:
+      - pnpm build
+
+  # ===========================================
+  # Testing
+  # ===========================================
+
+  test:
+    desc: Run tests for all projects
+    cmds:
+      - task: test-api
+      - task: test-chrome
+      - task: test-ui
+
+  test-api:
+    desc: Run enx-api tests
+    dir: enx-api
+    cmds:
+      - task: test
+
+  test-chrome:
+    desc: Run enx-chrome tests (unit tests)
+    dir: enx-chrome
+    cmds:
+      - task: test
+
+  test-chrome-e2e:
+    desc: Run enx-chrome E2E tests
+    dir: enx-chrome
+    cmds:
+      - task: test-e2e
+
+  test-ui:
+    desc: Run enx-ui tests
+    dir: enx-ui
+    cmds:
+      - pnpm test
+
+  test-coverage:
+    desc: Run tests with coverage for all projects
+    cmds:
+      - task: test-coverage-api
+      - task: test-coverage-chrome
+
+  test-coverage-api:
+    desc: Run enx-api tests with coverage
+    dir: enx-api
+    cmds:
+      - task: test-coverage
+
+  test-coverage-chrome:
+    desc: Run enx-chrome tests with coverage
+    dir: enx-chrome
+    cmds:
+      - task: test-coverage
+
+  # ===========================================
+  # Code Quality
+  # ===========================================
+
+  lint:
+    desc: Lint all projects
+    cmds:
+      - task: lint-api
+      - task: lint-chrome
+      - task: lint-ui
+
+  lint-api:
+    desc: Lint enx-api
+    dir: enx-api
+    cmds:
+      - task: lint
+
+  lint-chrome:
+    desc: Lint enx-chrome
+    dir: enx-chrome
+    cmds:
+      - task: lint
+
+  lint-ui:
+    desc: Lint enx-ui
+    dir: enx-ui
+    cmds:
+      - pnpm lint
+
+  format:
+    desc: Format code for all projects
+    cmds:
+      - task: format-api
+      - task: format-chrome
+      - task: format-ui
+
+  format-api:
+    desc: Format enx-api code
+    dir: enx-api
+    cmds:
+      - task: fmt
+
+  format-chrome:
+    desc: Format enx-chrome code
+    dir: enx-chrome
+    cmds:
+      - task: format
+
+  format-ui:
+    desc: Format enx-ui code
+    dir: enx-ui
+    cmds:
+      - pnpm format
+
+  check:
+    desc: Run all checks (lint, format, test) for all projects
+    cmds:
+      - task: check-api
+      - task: check-chrome
+      - task: check-ui
+
+  check-api:
+    desc: Run all checks for enx-api
+    dir: enx-api
+    cmds:
+      - task: check
+
+  check-chrome:
+    desc: Run all checks for enx-chrome
+    dir: enx-chrome
+    cmds:
+      - task: check
+
+  check-ui:
+    desc: Run all checks for enx-ui
+    dir: enx-ui
+    cmds:
+      - pnpm lint
+      - pnpm test
+
+  # ===========================================
+  # Cleaning
+  # ===========================================
+
+  clean:
+    desc: Clean all build artifacts and dependencies
+    cmds:
+      - task: clean-api
+      - task: clean-chrome
+      - task: clean-ui
+
+  clean-api:
+    desc: Clean enx-api build artifacts
+    dir: enx-api
+    cmds:
+      - task: clean
+
+  clean-chrome:
+    desc: Clean enx-chrome build artifacts
+    dir: enx-chrome
+    cmds:
+      - task: clean
+
+  clean-ui:
+    desc: Clean enx-ui build artifacts
+    dir: enx-ui
+    cmds:
+      - rm -rf .next
+      - rm -rf node_modules
+      - rm -rf build
+
+  # ===========================================
+  # Packaging & Distribution
+  # ===========================================
+
+  pack-chrome:
+    desc: Pack enx-chrome extension for distribution
+    dir: enx-chrome
+    cmds:
+      - task: pack
+
+  # ===========================================
+  # Utilities
+  # ===========================================
+
+  version:
+    desc: Show version information for all projects
+    cmds:
+      - echo "=== ENX Version Information ==="
+      - echo ""
+      - echo "--- enx-api ---"
+      - task: version-api
+      - echo ""
+      - echo "--- enx-chrome ---"
+      - task: version-chrome
+      - echo ""
+      - echo "--- enx-ui ---"
+      - task: version-ui
+
+  version-api:
+    desc: Show enx-api version
+    dir: enx-api
+    cmds:
+      - task: version
+
+  version-chrome:
+    desc: Show enx-chrome version
+    dir: enx-chrome
+    cmds:
+      - cat manifest.json | grep -A 1 '"version"' | head -1
+
+  version-ui:
+    desc: Show enx-ui version
+    dir: enx-ui
+    cmds:
+      - cat package.json | grep '"version"' | head -1
+
+  info:
+    desc: Show project information
+    cmds:
+      - echo "ENX Project Structure"
+      - echo "  - enx-api (Go backend API)"
+      - echo "  - enx-chrome (Chrome extension)"
+      - echo "  - enx-ui (Next.js frontend)"
+      - echo "  - mock-api (Mock API server)"
+      - echo ""
+      - echo "Available tasks - run task --list"
+
+  # ===========================================
+  # CI/CD
+  # ===========================================
+
+  ci:
+    desc: Complete CI workflow (install, lint, test, build)
+    cmds:
+      - task: setup
+      - task: lint
+      - task: test
+      - task: build
+
+  ci-api:
+    desc: CI workflow for enx-api
+    dir: enx-api
+    cmds:
+      - task: ci
+
+  ci-chrome:
+    desc: CI workflow for enx-chrome
+    dir: enx-chrome
+    cmds:
+      - task: ci
+
+  # ===========================================
+  # Database
+  # ===========================================
+
+  migrate:
+    desc: Run database migrations for enx-api
+    dir: enx-api
+    cmds:
+      - task: migrate
+
+  # ===========================================
+  # Mock API
+  # ===========================================
+
+  mock-api:
+    desc: Start mock API server
+    dir: mock-api
+    cmds:
+      - pnpm install
+      - node server.js
