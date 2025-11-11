@@ -94,12 +94,12 @@ tasks:
       - echo "   - Chrome watch building on file changes (logs in enx-chrome/logs/watch.log)"
       - echo "   - Chrome browser opened with extension"
       - echo ""
-      - echo "🛑 To stop all services: task stop-dev"
+      - echo "To stop all services run task stop-dev"
 
   stop-dev:
     desc: Stop all development services
     cmds:
-      - echo "🛑 Stopping development services..."
+      - echo "Stopping development services..."
       - pkill -f "air" || true
       - pkill -f "vite.*enx-chrome" || true
       - pkill -f "dev-chrome.mjs" || true
