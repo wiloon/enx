@@ -1,6 +1,11 @@
 version: '3'
 
 tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
   # ===========================================
   # Setup & Installation
   # ===========================================
@@ -69,7 +74,7 @@ tasks:
       - echo "🚀 Starting ENX development environment..."
       - echo "🔧 Building extension for development (first time)..."
       - cd enx-chrome && VITE_ENV=development pnpm run build
-      - echo "�📦 Starting enx-api in background..."
+      - echo "📦 Starting enx-api in background..."
       - cd enx-api && air > logs/dev.log 2>&1 &
       - echo "   API logs in enx-api/logs/dev.log"
       - sleep 2
@@ -84,12 +89,12 @@ tasks:
       - echo ""
       - echo "✅ Development environment started!"
       - echo ""
-      - echo "📋 Services running"
+      - echo "📋 Services running:"
       - echo "   - API at http://localhost:8090 (logs in enx-api/logs/dev.log)"
       - echo "   - Chrome watch building on file changes (logs in enx-chrome/logs/watch.log)"
       - echo "   - Chrome browser opened with extension"
       - echo ""
-      - echo "🛑 To stop all services run task stop-dev"
+      - echo "🛑 To stop all services: task stop-dev"
 
   stop-dev:
     desc: Stop all development services

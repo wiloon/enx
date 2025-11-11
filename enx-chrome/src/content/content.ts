@@ -173,7 +173,7 @@ class ContentWordProcessor {
 
             // Create a unique placeholder that won't match any word pattern
             const placeholder = `___ENX_PLACEHOLDER_${placeholderIndex++}___`
-            const html = `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="text-decoration: ${colorCode} underline; text-decoration-thickness: 2px;">${match}</u>`
+            const html = `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="text-decoration: ${colorCode} underline; text-decoration-thickness: 1px;">${match}</u>`
 
             placeholders.push({ placeholder, html })
             return placeholder
@@ -592,6 +592,7 @@ const updateWordHighlighting = (word: string, wordData: WordData) => {
   elements.forEach(element => {
     if (element instanceof HTMLElement) {
       element.style.textDecoration = `${colorCode} underline`
+      element.style.textDecorationThickness = '1px'
     }
   })
 }

@@ -162,7 +162,7 @@ export class WordProcessor {
         )
         processedHtml = processedHtml.replace(regex, match => {
           totalReplacements++
-          return `<u class="enx-word enx-${word.toLowerCase()}" alt="${match}" data-word="${match}" style="margin-left: 2px; margin-right: 2px; text-decoration: ${colorCode} underline; text-decoration-thickness: 2px; cursor: pointer;">${match}</u>`
+          return `<u class="enx-word enx-${word.toLowerCase()}" alt="${match}" data-word="${match}" style="margin-left: 2px; margin-right: 2px; text-decoration: ${colorCode} underline; text-decoration-thickness: 1px; cursor: pointer;">${match}</u>`
         })
         regex.lastIndex = 0 // Reset regex state
       }
