@@ -20,7 +20,7 @@ describe('HTML Tag Rendering - Bug Reproduction', () => {
     // Simulate word highlighting - generate HTML string with <u> tags
     const word1 = 'Good'
     const word2 = 'morning'
-    const highlightedText = `<u class="enx-word enx-good" data-word="${word1}" style="text-decoration: #FF0000 underline; text-decoration-thickness: 2px; cursor: pointer;">${word1}</u> <u class="enx-word enx-morning" data-word="${word2}" style="text-decoration: #FF0000 underline; text-decoration-thickness: 2px; cursor: pointer;">${word2}</u>. Hundreds of people.`
+    const highlightedText = `<u class="enx-word enx-good" data-word="${word1}" style="text-decoration: #FF0000 underline; text-decoration-thickness: 1px; cursor: pointer;">${word1}</u> <u class="enx-word enx-morning" data-word="${word2}" style="text-decoration: #FF0000 underline; text-decoration-thickness: 1px; cursor: pointer;">${word2}</u>. Hundreds of people.`
 
     // Replace innerHTML (this is what happens in processArticleContent)
     const p = container.querySelector('p')!
@@ -169,7 +169,7 @@ describe('HTML Tag Rendering - Bug Reproduction', () => {
 
     // Our correct pattern should be:
     const correctPattern =
-      '<u class="enx-word enx-good" data-word="Good" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 2px; cursor: pointer;">Good</u>'
+      '<u class="enx-word enx-good" data-word="Good" style="text-decoration: #FFFFFF underline; text-decoration-thickness: 1px; cursor: pointer;">Good</u>'
 
     // Generate correct HTML
     container.innerHTML = correctPattern
@@ -422,7 +422,7 @@ describe('Nested Word Replacement - Bug Fix', () => {
 
       text = text.replace(regex, match => {
         const placeholder = `___ENX_PLACEHOLDER_${placeholderIndex++}___`
-        const html = `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="text-decoration: ${colorCode} underline; text-decoration-thickness: 2px; cursor: pointer;">${match}</u>`
+        const html = `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="text-decoration: ${colorCode} underline; text-decoration-thickness: 1px; cursor: pointer;">${match}</u>`
         placeholders.push({ placeholder, html })
         return placeholder
       })

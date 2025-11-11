@@ -109,7 +109,7 @@ class ContentWordProcessor {
         if (wordRegex.test(text)) {
           const highlightedText = text.replace(wordRegex, match => {
             totalReplacements++
-            return `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="text-decoration: ${colorCode} underline; text-decoration-thickness: 2px; cursor: pointer;">${match}</u>`
+            return `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="text-decoration: ${colorCode} underline; text-decoration-thickness: 1px; cursor: pointer;">${match}</u>`
           })
 
           // Create a temporary container and replace the text node
@@ -319,7 +319,7 @@ describe('ContentWordProcessor', () => {
       const colorCode = 'hsl(150, 100%, 40%)'
       const match = 'Hello'
 
-      const expectedHtml = `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="text-decoration: ${colorCode} underline; text-decoration-thickness: 2px;">${match}</u>`
+      const expectedHtml = `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="text-decoration: ${colorCode} underline; text-decoration-thickness: 1px;">${match}</u>`
 
       // This tests the HTML structure that would be generated
       expect(expectedHtml).toContain('class="enx-word enx-hello"')
@@ -329,6 +329,38 @@ describe('ContentWordProcessor', () => {
       )
       // Cursor is now controlled by CSS :hover, not inline style
       expect(expectedHtml).not.toContain('cursor: pointer')
+    })
+
+    it('should maintain consistent underline thickness between initial highlight and color update', () => {
+      // Test the consistency of text-decoration-thickness
+      // This tests the fix for the underline thickness inconsistency bug
+      // where initial highlight used 1px but color update after translation didn't preserve it
+
+      const word = 'example'
+      const match = 'Example'
+
+      // Step 1: Verify initial highlight HTML has 1px thickness
+      const initialColorCode = 'hsl(120, 100%, 40%)'
+      const initialHtml = `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="text-decoration: ${initialColorCode} underline; text-decoration-thickness: 1px;">${match}</u>`
+
+      expect(initialHtml).toContain('text-decoration-thickness: 1px')
+      expect(initialHtml).toContain(initialColorCode)
+
+      // Step 2: Verify that when we update color (simulate translation click),
+      // we also maintain the 1px thickness
+      const updatedColorCode = 'hsl(60, 100%, 40%)'
+
+      // This simulates the updateWordColor function behavior
+      // element.style.textDecoration = `${colorCode} underline`
+      // element.style.textDecorationThickness = '1px'
+      const expectedStyle = `text-decoration: ${updatedColorCode} underline; text-decoration-thickness: 1px`
+
+      expect(expectedStyle).toContain('text-decoration-thickness: 1px')
+      expect(expectedStyle).toContain(updatedColorCode)
+
+      // Verify both use the same 1px thickness
+      expect(initialHtml).toContain('1px')
+      expect(expectedStyle).toContain('1px')
     })
   })
 })

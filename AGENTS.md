@@ -49,7 +49,7 @@ This project uses AI assistance for development tasks including code generation,
 **Database Information**:
 - **Type**: SQLite3
 - **Location**: `enx-api/enx.db`
-- **Password Reset**: 
+- **Password Reset**:
   ```bash
   cd enx-api
   go run reset_pw.go  # Generates hash for 'haCahpro'

@@ -110,7 +110,7 @@ describe('Word Highlighting Integration Test', () => {
       if (color !== '#FFFFFF') {
         const regex = new RegExp(`\\b${word}\\b`, 'gi')
         processedSentence = processedSentence.replace(regex, match => {
-          return `<u class="enx-word enx-${word}" data-word="${match}" style="text-decoration: ${color} underline; text-decoration-thickness: 2px;">${match}</u>`
+          return `<u class="enx-word enx-${word}" data-word="${match}" style="text-decoration: ${color} underline; text-decoration-thickness: 1px;">${match}</u>`
         })
       }
     })
@@ -141,7 +141,7 @@ describe('Word Highlighting Integration Test', () => {
     expect(processedSentence).toContain('data-word="quick"')
     // Cursor is now controlled by CSS :hover, not inline style
     expect(processedSentence).not.toContain('cursor: pointer')
-    expect(processedSentence).toContain('text-decoration-thickness: 2px')
+    expect(processedSentence).toContain('text-decoration-thickness: 1px')
 
     console.log('✅ Integration test completed successfully!')
     console.log(

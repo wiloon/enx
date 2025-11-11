@@ -1,10 +1,10 @@
 import { expect, test } from './fixtures'
 import {
-    clickWordAndWaitForPopup,
-    enableLearningMode,
-    login,
-    openPopup,
-    waitForContentScript,
+  clickWordAndWaitForPopup,
+  enableLearningMode,
+  login,
+  openPopup,
+  waitForContentScript,
 } from './helpers'
 
 test.describe('Content Script - Translation Popup', () => {
@@ -93,5 +93,32 @@ test.describe('Content Script - Translation Popup', () => {
 
     // Words should be different
     expect(firstWord).not.toBe(secondWord)
+  })
+
+  test('should maintain consistent underline thickness after translation', async ({
+    page,
+  }) => {
+    // Get initial underline thickness of first highlighted word
+    const firstWord = page.locator('.enx-word').first()
+    await expect(firstWord).toBeVisible()
+
+    const initialThickness = await firstWord.evaluate((el: HTMLElement) => {
+      return window.getComputedStyle(el).textDecorationThickness
+    })
+
+    // Click word to trigger translation (which updates color)
+    await clickWordAndWaitForPopup(page, 0)
+
+    // Wait for potential color update
+    await page.waitForTimeout(500)
+
+    // Get underline thickness after translation/color update
+    const updatedThickness = await firstWord.evaluate((el: HTMLElement) => {
+      return window.getComputedStyle(el).textDecorationThickness
+    })
+
+    // Verify thickness remains consistent
+    expect(updatedThickness).toBe(initialThickness)
+    expect(updatedThickness).toBe('1px')
   })
 })
