@@ -202,3 +202,108 @@ tasks:
       - task vet
       - task test
       - echo "All checks passed!"
+
+  # ===========================================
+  # Container Image Build Tasks
+  # ===========================================
+
+  container-build:
+    desc: Build container image with nerdctl (auto-detected version)
+    vars:
+      IMAGE_NAME: '{{.IMAGE_NAME | default .APP_NAME}}'
+      IMAGE_TAG: '{{.IMAGE_TAG | default .VERSION}}'
+    cmds:
+      - echo "Building container image with version information"
+      - echo "  Version {{.VERSION}}"
+      - echo "  Git Commit {{.GIT_COMMIT}}"
+      - echo "  Git Branch {{.GIT_BRANCH}}"
+      - echo "  Build Time {{.BUILD_TIME}}"
+      - echo "  Image {{.IMAGE_NAME}}:{{.IMAGE_TAG}}"
+      - |
+        nerdctl build \
+          --build-arg VERSION="{{.VERSION}}" \
+          --build-arg GIT_COMMIT="{{.GIT_COMMIT}}" \
+          --build-arg GIT_BRANCH="{{.GIT_BRANCH}}" \
+          --build-arg BUILD_TIME="{{.BUILD_TIME}}" \
+          -f Dockerfile.version \
+          -t "{{.IMAGE_NAME}}:{{.IMAGE_TAG}}" \
+          .
+      - echo "Container build completed successfully!"
+      - echo "Run with nerdctl run -p 8090:8090 {{.IMAGE_NAME}}:{{.IMAGE_TAG}}"
+
+  container-build-version:
+    desc: Build container image with specific version (usage - task container-build-version VERSION=1.0.0)
+    vars:
+      IMAGE_NAME: '{{.IMAGE_NAME | default .APP_NAME}}'
+      CUSTOM_VERSION: '{{.VERSION}}'
+    cmds:
+      - echo "Building container image with version {{.CUSTOM_VERSION}}"
+      - echo "  Git Commit {{.GIT_COMMIT}}"
+      - echo "  Git Branch {{.GIT_BRANCH}}"
+      - echo "  Build Time {{.BUILD_TIME}}"
+      - echo "  Image {{.IMAGE_NAME}}:{{.CUSTOM_VERSION}}"
+      - |
+        nerdctl build \
+          --build-arg VERSION="{{.CUSTOM_VERSION}}" \
+          --build-arg GIT_COMMIT="{{.GIT_COMMIT}}" \
+          --build-arg GIT_BRANCH="{{.GIT_BRANCH}}" \
+          --build-arg BUILD_TIME="{{.BUILD_TIME}}" \
+          -f Dockerfile.version \
+          -t "{{.IMAGE_NAME}}:{{.CUSTOM_VERSION}}" \
+          .
+      - |
+        if [ "{{.CUSTOM_VERSION}}" != "dev" ]; then
+          echo "Tagging as latest..."
+          nerdctl tag "{{.IMAGE_NAME}}:{{.CUSTOM_VERSION}}" "{{.IMAGE_NAME}}:latest"
+        fi
+      - echo "Container build completed!"
+
+  container-build-latest:
+    desc: Build container image and tag as latest
+    vars:
+      IMAGE_NAME: '{{.IMAGE_NAME | default .APP_NAME}}'
+      IMAGE_TAG: '{{.IMAGE_TAG | default .VERSION}}'
+    cmds:
+      - task: container-build
+      - echo "Tagging as latest..."
+      - nerdctl tag "{{.IMAGE_NAME}}:{{.IMAGE_TAG}}" "{{.IMAGE_NAME}}:latest"
+      - echo "Tagged {{.IMAGE_NAME}}:latest"
+
+  container-run:
+    desc: Run container with nerdctl
+    vars:
+      IMAGE_NAME: '{{.IMAGE_NAME | default .APP_NAME}}'
+      IMAGE_TAG: '{{.IMAGE_TAG | default .VERSION}}'
+      PORT: '{{.PORT | default "8090"}}'
+    cmds:
+      - echo "Starting container {{.IMAGE_NAME}}:{{.IMAGE_TAG}}..."
+      - nerdctl run -p {{.PORT}}:8090 "{{.IMAGE_NAME}}:{{.IMAGE_TAG}}"
+
+  container-push:
+    desc: Push container image to registry (usage - task container-push REGISTRY=your-registry.com)
+    vars:
+      IMAGE_NAME: '{{.IMAGE_NAME | default .APP_NAME}}'
+      IMAGE_TAG: '{{.IMAGE_TAG | default .VERSION}}'
+      REGISTRY: '{{.REGISTRY}}'
+    cmds:
+      - |
+        if [ -z "{{.REGISTRY}}" ]; then
+          echo "Error: REGISTRY is required"
+          echo "Usage: task container-push REGISTRY=your-registry.com"
+          exit 1
+        fi
+      - echo "Tagging for registry {{.REGISTRY}}..."
+      - nerdctl tag "{{.IMAGE_NAME}}:{{.IMAGE_TAG}}" "{{.REGISTRY}}/{{.IMAGE_NAME}}:{{.IMAGE_TAG}}"
+      - echo "Pushing to {{.REGISTRY}}/{{.IMAGE_NAME}}:{{.IMAGE_TAG}}..."
+      - nerdctl push "{{.REGISTRY}}/{{.IMAGE_NAME}}:{{.IMAGE_TAG}}"
+      - echo "Push completed!"
+
+  container-clean:
+    desc: Remove container image
+    vars:
+      IMAGE_NAME: '{{.IMAGE_NAME | default .APP_NAME}}'
+      IMAGE_TAG: '{{.IMAGE_TAG | default .VERSION}}'
+    cmds:
+      - echo "Removing container image {{.IMAGE_NAME}}:{{.IMAGE_TAG}}..."
+      - nerdctl rmi "{{.IMAGE_NAME}}:{{.IMAGE_TAG}}" || true
+      - echo "Cleanup completed!"
