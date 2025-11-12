@@ -90,10 +90,35 @@ tasks:
         air
 
   test:
-    desc: Run all tests
+    desc: Run unit tests only (fast, no database)
     cmds:
-      - echo "Running tests..."
-      - go test ./...
+      - echo "Running unit tests..."
+      - go test -short ./...
+
+  test-integration:
+    desc: Run integration tests (requires database and config)
+    cmds:
+      - echo "Setting up integration test environment..."
+      - |
+        # Create test database if not exists
+        if [ ! -f enx.db ]; then
+          echo "Creating test database..."
+          sqlite3 enx.db < enx.sql
+        fi
+      - |
+        # Create test config if not exists
+        if [ ! -f config.toml ]; then
+          echo "Using test config..."
+          cp config-e2e.toml config.toml
+        fi
+      - echo "Running integration tests..."
+      - go test -tags=integration ./...
+
+  test-all:
+    desc: Run all tests (unit + integration)
+    cmds:
+      - task: test
+      - task: test-integration
 
   test-coverage:
     desc: Run tests with coverage

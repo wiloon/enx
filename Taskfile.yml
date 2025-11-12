@@ -169,23 +169,69 @@ tasks:
   # ===========================================
 
   test:
-    desc: Run tests for all projects
+    desc: Run unit tests for all projects (fast, no database)
     cmds:
-      - task: test-api
+      - task: test-unit-api
       - task: test-chrome
       - task: test-ui
 
-  test-api:
-    desc: Run enx-api tests
+  test-unit:
+    desc: Run unit tests only (no database, fast)
+    cmds:
+      - task: test-unit-api
+      - task: test-chrome
+      - task: test-ui
+
+  test-integration:
+    desc: Run integration tests (requires database and config)
+    cmds:
+      - task: test-integration-api
+
+  test-all:
+    desc: Run all tests (unit + integration)
+    cmds:
+      - task: test-unit
+      - task: test-integration
+
+  test-unit-api:
+    desc: Run enx-api unit tests (no database required)
     dir: enx-api
     cmds:
-      - task: test
+      - echo "Running unit tests (no database)..."
+      - go test -short ./...
+
+  test-integration-api:
+    desc: Run enx-api integration tests (requires database and config)
+    dir: enx-api
+    cmds:
+      - echo "Setting up integration test environment..."
+      - |
+        # Create test database if not exists
+        if [ ! -f enx.db ]; then
+          echo "Creating test database..."
+          sqlite3 enx.db < enx.sql
+        fi
+      - |
+        # Create test config if not exists
+        if [ ! -f config.toml ]; then
+          echo "Using test config..."
+          cp config-e2e.toml config.toml
+        fi
+      - echo "Running integration tests..."
+      - go test -tags=integration ./...
+
+  test-api:
+    desc: Run all enx-api tests (unit + integration)
+    dir: enx-api
+    cmds:
+      - task: test-unit-api
+      - task: test-integration-api
 
   test-chrome:
     desc: Run enx-chrome tests (unit tests)
     dir: enx-chrome
     cmds:
-      - task: test
+      - pnpm test
 
   test-chrome-e2e:
     desc: Run enx-chrome E2E tests
@@ -197,7 +243,13 @@ tasks:
     desc: Run enx-ui tests
     dir: enx-ui
     cmds:
-      - pnpm test
+      - |
+        if [ ! -d "node_modules" ]; then
+          echo "⚠️  enx-ui: node_modules not found, skipping tests"
+          echo "   Run 'task setup-ui' to install dependencies"
+        else
+          pnpm test
+        fi
 
   test-coverage:
     desc: Run tests with coverage for all projects
@@ -209,13 +261,14 @@ tasks:
     desc: Run enx-api tests with coverage
     dir: enx-api
     cmds:
-      - task: test-coverage
+      - go test -cover -coverprofile=coverage.out ./...
+      - go tool cover -html=coverage.out -o coverage.html
 
   test-coverage-chrome:
     desc: Run enx-chrome tests with coverage
     dir: enx-chrome
     cmds:
-      - task: test-coverage
+      - pnpm test -- --coverage
 
   # ===========================================
   # Code Quality
