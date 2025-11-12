@@ -413,7 +413,11 @@ tasks:
     desc: Show enx-api version
     dir: enx-api
     cmds:
-      - task: version
+      - echo "=== ENX Version Information ==="
+      - echo "Version{{.VERSION}}"
+      - echo "Git Commit{{.GIT_COMMIT}}"
+      - echo "Git Branch{{.GIT_BRANCH}}"
+      - echo "Build Time{{.BUILD_TIME}}"
 
   version-chrome:
     desc: Show enx-chrome version
