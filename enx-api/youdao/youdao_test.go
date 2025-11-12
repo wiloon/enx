@@ -1,3 +1,6 @@
+//go:build integration
+// +build integration
+
 package youdao
 
 import (
@@ -5,8 +8,9 @@ import (
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
 	"fmt"
-	"github.com/spf13/viper"
 	"testing"
+
+	"github.com/spf13/viper"
 )
 
 func init() {

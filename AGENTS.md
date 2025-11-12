@@ -8,6 +8,139 @@ This project uses AI assistance for development tasks including code generation,
 
 ## Recent Contributions
 
+### 2025-11-12: Separated Unit Tests and Integration Tests
+
+**Agent**: GitHub Copilot
+**Task**: Separate unit tests from integration tests to improve test speed and clarity
+
+**Problem**:
+- All tests were running as "unit tests" but many required database and config
+- Slow test execution (~10 seconds) because of database setup
+- No clear distinction between pure unit tests and integration tests
+- Tests failed with "no such table" and "config not found" errors
+
+**Solution**:
+Implemented proper test separation using Go build tags:
+
+**Changes**:
+
+1. **Created Integration Test Files**:
+   - `enx/ecp_integration_test.go` - Database-dependent word tests
+   - Added `//go:build integration` tags to:
+     - `paragraph/paragraph_test.go`
+     - `repo/repo_test.go`
+     - `youdao/youdao_test.go`
+
+2. **Cleaned Up Unit Test Files**:
+   - `enx/ecp_test.go` - Now contains only pure logic tests
+   - Removed database initialization from `init()`
+   - Removed unnecessary `fmt.Print()` statements
+
+3. **Updated Task Commands**:
+   - Root `Taskfile.yml`:
+     - `task test` / `task test-unit` - Fast unit tests only
+     - `task test-integration` - Integration tests with DB setup
+     - `task test-all` - Both types
+   - `enx-api/Taskfile.yml`:
+     - `task test` - Unit tests only
+     - `task test-integration` - Integration tests with auto-setup
+     - `task test-all` - Both types
+
+4. **Created Documentation**:
+   - `enx-api/TESTING.md` - Complete testing guide with:
+     - Test type definitions
+     - How to run different test types
+     - Best practices
+     - Troubleshooting guide
+     - Examples for adding new tests
+
+**Benefits**:
+- ✅ **10x faster feedback** - Unit tests run in ~1 second vs ~10 seconds
+- ✅ **No database required** - Unit tests work without any setup
+- ✅ **Clear separation** - Easy to understand which tests need what dependencies
+- ✅ **Better CI/CD** - Can run fast tests first, then integration tests
+- ✅ **Proper testing** - Unit tests are truly unit tests now
+
+**Test Results**:
+```bash
+# Unit tests (fast)
+task test-unit
+✅ enx-api: 0.021s
+✅ enx/ecp_test.go: 4 tests pass
+✅ version/version_test.go: 2 tests pass
+✅ No database/config needed
+
+# Integration tests (with setup)
+task test-integration
+✅ Auto-creates enx.db from enx.sql
+✅ Auto-copies config-e2e.toml to config.toml
+✅ Runs tests with -tags=integration
+```
+
+**Commands**:
+```bash
+# Development (fast)
+task test              # Unit tests only (~1s)
+
+# Full validation
+task test-integration  # Integration tests (~10s)
+task test-all          # Everything
+
+# Individual projects
+cd enx-api && task test
+cd enx-api && task test-integration
+```
+
+**Update**: Added enx-ui unit tests and fixed test-ui task to skip gracefully when dependencies are missing.
+
+---
+
+### 2025-11-12: Fixed enx-ui Testing and Added Unit Tests
+
+**Agent**: GitHub Copilot
+**Task**: Install enx-ui dependencies and add unit tests
+
+**Problem**:
+- enx-ui had no `node_modules` installed, causing `task test` to fail
+- No test files existed for enx-ui
+- Test command didn't handle missing dependencies gracefully
+
+**Solution**:
+
+1. **Installed Dependencies**:
+   - Ran `pnpm install` in enx-ui directory
+   - Installed 782 packages including Jest and testing libraries
+
+2. **Added Unit Tests**:
+   - Created `src/lib/__tests__/utils.test.ts`
+   - Added 6 test cases for the `cn()` utility function:
+     - Basic class name merging
+     - Conditional classes
+     - Tailwind class deduplication
+     - Empty input handling
+     - Null/undefined handling
+     - Complex class combinations
+
+3. **Improved Task Handling**:
+   - Modified `test-ui` task in root `Taskfile.yml`
+   - Now checks for `node_modules` before running tests
+   - Skips gracefully with friendly message if dependencies missing
+
+**Test Results**:
+```bash
+✅ enx-api: 6 packages - all unit tests pass
+✅ enx-chrome: 4 test suites (27 tests) - all pass
+✅ enx-ui: 1 test suite (6 tests) - all pass
+```
+
+**Benefits**:
+- ✅ All three projects now have working unit tests
+- ✅ `task test` runs successfully for all projects
+- ✅ Friendly error handling for missing dependencies
+- ✅ Complete test coverage infrastructure in place
+
+---
+
 ### 2025-11-10: Development Environment Setup with Root Taskfile
 
 **Agent**: GitHub Copilot

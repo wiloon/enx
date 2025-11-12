@@ -1,3 +1,6 @@
+//go:build integration
+// +build integration
+
 package paragraph
 
 import (
@@ -9,7 +12,7 @@ import (
 )
 
 func TestParagraph0(t *testing.T) {
-	paragraph:= "their 6-year-old to"
+	paragraph := "their 6-year-old to"
 	utils.ViperInit()
 	sqlitex.Init()
 	out := enx.QueryCountInText(paragraph, 1)
@@ -20,12 +23,12 @@ func TestParagraph0(t *testing.T) {
 	}
 
 	if out["6-year-old"].WordType != 1 {
-        t.Errorf("invalid word type: %v", out["6-year-old"].WordType)
-    }
+		t.Errorf("invalid word type: %v", out["6-year-old"].WordType)
+	}
 }
 
 func TestParagraphEndingChar(t *testing.T) {
-	paragraph:= "Good morning."
+	paragraph := "Good morning."
 	utils.ViperInit()
 	sqlitex.Init()
 	out := enx.QueryCountInText(paragraph, 1)
@@ -40,7 +43,7 @@ func TestParagraphEndingChar(t *testing.T) {
 }
 
 func TestParagraphBarcket(t *testing.T) {
-	paragraph:= "scientists. (Assassins wove through traffic to attach “sticky bombs” to their car doors.) The"
+	paragraph := "scientists. (Assassins wove through traffic to attach “sticky bombs” to their car doors.) The"
 	utils.ViperInit()
 	sqlitex.Init()
 	out := enx.QueryCountInText(paragraph, 1)
