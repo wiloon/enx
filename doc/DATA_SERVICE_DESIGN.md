@@ -19,16 +19,17 @@ This document describes the architecture design for separating ENX into two serv
 
 ### The Challenge
 
-ENX is a **side project** with unique development and usage patterns:
+ENX is a **side project** with specific multi-environment development challenges:
 
 1. **Long Development Cycle**: Development will continue over an extended period (months to years)
 2. **Multiple Development Environments**: 
    - **Desktop Linux**: Primary development environment
    - **MacBook**: Development + usage while traveling with kids
    - **Ubuntu Laptop (Network Isolated)**: Development + usage in restricted network environment
-3. **Simultaneous Development and Usage**: The application is actively used while being developed
-4. **Data Fragmentation**: Different environments accumulate different data over time
-5. **No Concurrent Access (Currently)**: Only one environment is used at any given time
+3. **Active Usage During Development**: The application is actively used while being developed (common for side projects)
+4. **Data Fragmentation Across Environments**: Different environments accumulate different data over time, requiring intelligent merging
+5. **Offline-First Requirement**: Network-isolated environment must work without internet connection
+6. **No Concurrent Access (Currently)**: Only one environment is used at any given time
    - **Current state**: No production environment yet, so no concurrent writes
    - **Future consideration**: If production environment is added, concurrent access may become a requirement
    - **Design implication**: Current design focuses on eventual consistency, not real-time multi-master sync
@@ -106,6 +107,29 @@ Benefits:
 - ✅ **Clean architecture**: Business logic completely separated from data management
 - ✅ **Future-proof**: Easy to migrate from SQLite to PostgreSQL without touching enx-api
 - ✅ **Service isolation**: enx-data-service can be restarted/upgraded independently
+
+## Sync Requirements (New)
+
+To support the P2P sync architecture, all synced tables must adhere to the following rules:
+
+1.  **Primary Key**: Must be a **UUID** (String).
+    *   *Reason*: Avoids ID conflicts between nodes (e.g., Node A and Node B both creating ID=100).
+2.  **Timestamp Field**: Must have an `update_datetime` (or similar) field.
+    *   *Reason*: Used to identify changed records since the last sync.
+    *   *Note*: Clock skew is accepted as a risk for this project (single-user, OS time sync enabled).
+3.  **Soft Delete**: Must have an `is_deleted` (boolean) or `deleted_at` (timestamp) field.
+    *   *Reason*: Physical deletions cannot be synced. Soft deletes allow "deletion" events to propagate to other nodes.
+
+## Implementation Strategy (Phase 1)
+
+1.  **Scope**:
+    *   Create `enx-data-service` in a new directory.
+    *   Implement only the **"words"** table initially.
+    *   Do NOT modify `enx-api` yet.
+2.  **Integration**:
+    *   Develop and test `enx-data-service` independently.
+    *   Once `enx-data-service` is stable, refactor `enx-api` to connect to it.
+
 
 ## Architecture Goals
 

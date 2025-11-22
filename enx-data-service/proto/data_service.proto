@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package enx.data.v1;
+
+option go_package = "enx-data-service/proto";
+
+service DataService {
+  // Word operations
+  rpc GetWord(GetWordRequest) returns (GetWordResponse);
+  rpc CreateWord(CreateWordRequest) returns (CreateWordResponse);
+  rpc UpdateWord(UpdateWordRequest) returns (UpdateWordResponse);
+  rpc DeleteWord(DeleteWordRequest) returns (DeleteWordResponse);
+  
+  // Sync operations
+  rpc SyncWords(SyncWordsRequest) returns (stream SyncWordsResponse);
+}
+
+message Word {
+  string id = 1;
+  string english = 2;
+  string chinese = 3;
+  string phonetic = 4;
+  string definition = 5;
+  string update_datetime = 6;
+  bool is_deleted = 7;
+}
+
+message GetWordRequest {
+  string id = 1;
+}
+
+message GetWordResponse {
+  Word word = 1;
+}
+
+message CreateWordRequest {
+  string english = 1;
+  string chinese = 2;
+  string phonetic = 3;
+  string definition = 4;
+}
+
+message CreateWordResponse {
+  Word word = 1;
+}
+
+message UpdateWordRequest {
+  Word word = 1;
+}
+
+message UpdateWordResponse {
+  Word word = 1;
+}
+
+message DeleteWordRequest {
+  string id = 1;
+}
+
+message DeleteWordResponse {
+  string id = 1;
+}
+
+message SyncWordsRequest {
+  string since_datetime = 1;
+}
+
+message SyncWordsResponse {
+  Word word = 1;
+}
