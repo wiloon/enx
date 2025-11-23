@@ -1,0 +1,28 @@
+version: '3'
+
+tasks:
+  default:
+    desc: Run proto generation and build
+    cmds:
+      - task: proto
+      - task: build
+
+  proto:
+    desc: Generate protobuf code
+    cmds:
+      - protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative proto/data_service.proto
+
+  build:
+    desc: Build the server binary
+    cmds:
+      - go build -o bin/server cmd/server/main.go
+
+  run:
+    desc: Run the server
+    cmds:
+      - go run cmd/server/main.go
+
+  clean:
+    desc: Clean up build artifacts
+    cmds:
+      - rm -rf bin/
