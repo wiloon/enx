@@ -22,9 +22,9 @@ This document describes the architecture design for separating ENX into two serv
 ENX is a **side project** with specific multi-environment development challenges:
 
 1. **Long Development Cycle**: Development will continue over an extended period (months to years)
-2. **Multiple Development Environments**: 
+2. **Multiple Development Environments**:
    - **Desktop Linux**: Primary development environment
-   - **MacBook**: Development + usage while traveling with kids
+   - **MacBook**: Development + usage while traveling
    - **Ubuntu Laptop (Network Isolated)**: Development + usage in restricted network environment
 3. **Active Usage During Development**: The application is actively used while being developed (common for side projects)
 4. **Data Fragmentation Across Environments**: Different environments accumulate different data over time, requiring intelligent merging
@@ -40,8 +40,8 @@ ENX is a **side project** with specific multi-environment development challenges
 ```
 Monday: Working on desktop Linux
   - Added 50 new words while reading technical articles
-  
-Friday: Taking kids on a trip, using MacBook
+
+Friday: Taking a trip, using MacBook
   - Added 20 words while reading on the plane
   - Need access to Monday's 50 words ❌ (not synced)
 ```
@@ -52,7 +52,7 @@ Weekend: Working in network-isolated Ubuntu environment
   - Cannot access cloud services
   - Added 30 words while working on isolated project
   - Modified learning progress on 15 words
-  
+
 Next week: Back on desktop Linux
   - Need to merge weekend's 30 words ❌ (isolated environment)
   - Need to sync progress updates ❌ (no connection)
@@ -64,8 +64,8 @@ Current state:
   - Desktop Linux: 1000 words, 500 marked as learned
   - MacBook: 950 words, 480 marked as learned
   - Ubuntu laptop (isolated): 920 words, 450 marked as learned
-  
-Problem: Which is the "correct" version? 
+
+Problem: Which is the "correct" version?
 Answer: All of them! Each has unique data that should be merged.
 ```
 
@@ -73,7 +73,7 @@ Answer: All of them! Each has unique data that should be merged.
 
 Given these challenges, the traditional solutions don't work:
 
-❌ **Centralized Server**: 
+❌ **Centralized Server**:
 - Doesn't work in network-isolated environment
 - Requires constant internet connection
 - Single point of failure
@@ -190,19 +190,19 @@ package "Application Layer" as AppLayer {
 }
 
 package "Data Layer" as DataLayer {
-    
+
     package "Host A" as HostA <<data>> {
         component "Data Service\nPort: 8091" as DS_A <<service>>
         database "enx.db\n(SQLite)" as DB_A <<database>>
         DS_A -down-> DB_A : SQL
     }
-    
+
     package "Host B" as HostB <<data>> {
         component "Data Service\nPort: 8091" as DS_B <<service>>
         database "enx.db\n(SQLite)" as DB_B <<database>>
         DS_B -down-> DB_B : SQL
     }
-    
+
     package "Host C" as HostC <<data>> {
         component "Data Service\nPort: 8091" as DS_C <<service>>
         database "enx.db\n(SQLite)" as DB_C <<database>>
@@ -381,7 +381,7 @@ package handlers
 import (
     "encoding/json"
     "net/http"
-    
+
     "github.com/gin-gonic/gin"
     pb "enx/proto"  // Generic data service proto
 )
@@ -394,11 +394,11 @@ type WordHandler struct {
 func (h *WordHandler) GetWord(c *gin.Context) {
     english := c.Param("english")
     userID := c.GetInt64("user_id")  // From JWT token
-    
+
     // Query word with user's learning progress (Method 3)
     resp, err := h.dataClient.Query(c.Request.Context(), &pb.QueryRequest{
         Sql: `
-            SELECT 
+            SELECT
                 w.english, w.chinese, w.phonetic, w.definition,
                 w.update_datetime,
                 COALESCE(ud.learned, 0) as learned,
@@ -412,17 +412,17 @@ func (h *WordHandler) GetWord(c *gin.Context) {
             {Value: &pb.QueryParam_StringValue{StringValue: english}},
         },
     })
-    
+
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
-    
+
     if len(resp.Rows) == 0 {
         c.JSON(http.StatusNotFound, gin.H{"error": "word not found"})
         return
     }
-    
+
     // Parse result row into Word struct
     row := resp.Rows[0]
     word := map[string]interface{}{
@@ -434,7 +434,7 @@ func (h *WordHandler) GetWord(c *gin.Context) {
         "learned":      row.Cells[5].GetIntValue() == 1,
         "user_update_time": row.Cells[6].GetStringValue(),
     }
-    
+
     c.JSON(http.StatusOK, word)
 }
 
@@ -445,12 +445,12 @@ func (h *WordHandler) SearchWords(c *gin.Context) {
         Limit  int32  `json:"limit"`
         Offset int32  `json:"offset"`
     }
-    
+
     if err := c.BindJSON(&req); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
     }
-    
+
     // Use Find() API for simple search (Method 1)
     filter := map[string]interface{}{
         "english": map[string]interface{}{
@@ -458,7 +458,7 @@ func (h *WordHandler) SearchWords(c *gin.Context) {
         },
     }
     filterJSON, _ := json.Marshal(filter)
-    
+
     resp, err := h.dataClient.Find(c.Request.Context(), &pb.FindRequest{
         Table:  "words",
         Filter: string(filterJSON),
@@ -466,12 +466,12 @@ func (h *WordHandler) SearchWords(c *gin.Context) {
         Limit:  req.Limit,
         Offset: req.Offset,
     })
-    
+
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
-    
+
     // Convert rows to words array
     words := make([]map[string]interface{}, 0, len(resp.Rows))
     for _, row := range resp.Rows {
@@ -481,7 +481,7 @@ func (h *WordHandler) SearchWords(c *gin.Context) {
             // ... other fields
         })
     }
-    
+
     c.JSON(http.StatusOK, gin.H{
         "words": words,
         "total": len(words),
@@ -619,12 +619,12 @@ service DataService {
   rpc UpdateWord(UpdateWordRequest) returns (Word);
   rpc DeleteWord(DeleteWordRequest) returns (Empty);
   rpc SearchWords(SearchWordsRequest) returns (SearchWordsResponse);
-  
+
   // User Dicts
   rpc GetUserWords(GetUserWordsRequest) returns (GetUserWordsResponse);
   rpc MarkWord(MarkWordRequest) returns (MarkWordResponse);
   rpc GetUserStats(GetUserStatsRequest) returns (UserStats);
-  
+
   // Users
   rpc GetUser(GetUserRequest) returns (User);
   rpc CreateUser(CreateUserRequest) returns (User);
@@ -640,12 +640,12 @@ service SyncService {
   rpc RegisterNode(RegisterNodeRequest) returns (Node);
   rpc GetNodes(GetNodesRequest) returns (GetNodesResponse);
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
-  
+
   // Data sync
   rpc GetChanges(GetChangesRequest) returns (stream Change);
   rpc PushChanges(stream Change) returns (PushChangesResponse);
   rpc GetSnapshot(GetSnapshotRequest) returns (stream SnapshotChunk);
-  
+
   // Conflict resolution
   rpc ResolveConflict(ResolveConflictRequest) returns (ResolveConflictResponse);
 }
@@ -761,22 +761,22 @@ GET  /sync/conflicts
 func (c *DataClient) GetWordWithRetry(word string) (*Word, error) {
     backoff := time.Second
     maxRetries := 3
-    
+
     for i := 0; i < maxRetries; i++ {
         word, err := c.GetWord(word)
         if err == nil {
             return word, nil
         }
-        
+
         if isNetworkError(err) {
             time.Sleep(backoff)
             backoff *= 2
             continue
         }
-        
+
         return nil, err
     }
-    
+
     return nil, ErrMaxRetriesExceeded
 }
 ```
@@ -816,7 +816,7 @@ func (cb *CircuitBreaker) Call(fn func() error) error {
             return ErrCircuitOpen
         }
     }
-    
+
     err := fn()
     if err != nil {
         cb.failures++
@@ -826,7 +826,7 @@ func (cb *CircuitBreaker) Call(fn func() error) error {
         }
         return err
     }
-    
+
     cb.failures = 0
     cb.state = Closed
     return nil
@@ -851,15 +851,15 @@ func GetConnection(addr string) (*grpc.ClientConn, error) {
         return conn, nil
     }
     poolMux.RUnlock()
-    
+
     poolMux.Lock()
     defer poolMux.Unlock()
-    
+
     conn, err := grpc.Dial(addr, grpc.WithInsecure())
     if err != nil {
         return nil, err
     }
-    
+
     connPool[addr] = conn
     return conn, nil
 }
@@ -876,18 +876,18 @@ type BatchRequest struct {
 func (c *DataClient) BatchExecute(ops []Operation) error {
     ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
     defer cancel()
-    
+
     stream, err := c.client.BatchExecute(ctx)
     if err != nil {
         return err
     }
-    
+
     for _, op := range ops {
         if err := stream.Send(op); err != nil {
             return err
         }
     }
-    
+
     resp, err := stream.CloseAndRecv()
     return err
 }
@@ -910,7 +910,7 @@ func (c *CachedDataClient) GetWord(word string) (*Word, error) {
             return entry.Word, nil
         }
     }
-    
+
     // Cache miss, fetch from service
     result, err := c.client.GetWord(context.Background(), &pb.GetWordRequest{
         English: word,
@@ -918,13 +918,13 @@ func (c *CachedDataClient) GetWord(word string) (*Word, error) {
     if err != nil {
         return nil, err
     }
-    
+
     // Update cache
     c.cache.Add(word, &CacheEntry{
         Word: result,
         Time: time.Now(),
     })
-    
+
     return result, nil
 }
 ```
@@ -950,7 +950,7 @@ import (
     "context"
     "fmt"
     "time"
-    
+
     "github.com/golang-jwt/jwt/v4"
     "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
@@ -972,36 +972,36 @@ type AuthInterceptor struct {
 
 // Unary interceptor for JWT validation
 func (a *AuthInterceptor) Unary() grpc.UnaryServerInterceptor {
-    return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, 
+    return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo,
                 handler grpc.UnaryHandler) (interface{}, error) {
-        
+
         // Skip authentication for public endpoints
         if isPublicMethod(info.FullMethod) {
             return handler(ctx, req)
         }
-        
+
         // Extract metadata
         md, ok := metadata.FromIncomingContext(ctx)
         if !ok {
             return nil, status.Error(codes.Unauthenticated, "missing metadata")
         }
-        
+
         // Get authorization token
         tokens := md.Get("authorization")
         if len(tokens) == 0 {
             return nil, status.Error(codes.Unauthenticated, "missing authorization token")
         }
-        
+
         // Validate token
         claims, err := a.validateToken(tokens[0])
         if err != nil {
             return nil, status.Error(codes.Unauthenticated, fmt.Sprintf("invalid token: %v", err))
         }
-        
+
         // Add user info to context
         ctx = context.WithValue(ctx, "user_id", claims.UserID)
         ctx = context.WithValue(ctx, "username", claims.Username)
-        
+
         return handler(ctx, req)
     }
 }
@@ -1014,15 +1014,15 @@ func (a *AuthInterceptor) validateToken(tokenString string) (*Claims, error) {
         }
         return a.jwtSecret, nil
     })
-    
+
     if err != nil {
         return nil, err
     }
-    
+
     if claims, ok := token.Claims.(*Claims); ok && token.Valid {
         return claims, nil
     }
-    
+
     return nil, fmt.Errorf("invalid token")
 }
 
@@ -1041,11 +1041,11 @@ func NewAuthenticatedServer(jwtSecret string) *grpc.Server {
     authInterceptor := &AuthInterceptor{
         jwtSecret: []byte(jwtSecret),
     }
-    
+
     server := grpc.NewServer(
         grpc.UnaryInterceptor(authInterceptor.Unary()),
     )
-    
+
     return server
 }
 
@@ -1059,14 +1059,14 @@ type AuthClient struct {
 
 // Create authenticated client
 func NewAuthClient(addr, token string) (*AuthClient, error) {
-    conn, err := grpc.Dial(addr, 
+    conn, err := grpc.Dial(addr,
         grpc.WithInsecure(),
         grpc.WithUnaryInterceptor(tokenInterceptor(token)),
     )
     if err != nil {
         return nil, err
     }
-    
+
     return &AuthClient{
         conn:  conn,
         token: token,
@@ -1077,10 +1077,10 @@ func NewAuthClient(addr, token string) (*AuthClient, error) {
 func tokenInterceptor(token string) grpc.UnaryClientInterceptor {
     return func(ctx context.Context, method string, req, reply interface{},
                 cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-        
+
         // Add token to metadata
         ctx = metadata.AppendToOutgoingContext(ctx, "authorization", token)
-        
+
         return invoker(ctx, method, req, reply, cc, opts...)
     }
 }
@@ -1088,7 +1088,7 @@ func tokenInterceptor(token string) grpc.UnaryClientInterceptor {
 // Example: Login to get token
 func Login(client AuthServiceClient, username, password string) (string, error) {
     ctx := context.Background()
-    
+
     resp, err := client.Login(ctx, &LoginRequest{
         Username: username,
         Password: password,
@@ -1096,7 +1096,7 @@ func Login(client AuthServiceClient, username, password string) (string, error) 
     if err != nil {
         return "", err
     }
-    
+
     return resp.Token, nil
 }
 
@@ -1110,7 +1110,7 @@ func GenerateToken(userID int64, username string, secret []byte, duration time.D
             IssuedAt:  time.Now().Unix(),
         },
     }
-    
+
     token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
     return token.SignedString(secret)
 }
@@ -1130,25 +1130,25 @@ type BasicAuthInterceptor struct {
 func (b *BasicAuthInterceptor) Unary() grpc.UnaryServerInterceptor {
     return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo,
                 handler grpc.UnaryHandler) (interface{}, error) {
-        
+
         md, ok := metadata.FromIncomingContext(ctx)
         if !ok {
             return nil, status.Error(codes.Unauthenticated, "missing credentials")
         }
-        
+
         // Get username and password
         usernames := md.Get("username")
         passwords := md.Get("password")
-        
+
         if len(usernames) == 0 || len(passwords) == 0 {
             return nil, status.Error(codes.Unauthenticated, "missing username or password")
         }
-        
+
         // Validate credentials
         if !b.validateCredentials(usernames[0], passwords[0]) {
             return nil, status.Error(codes.Unauthenticated, "invalid credentials")
         }
-        
+
         ctx = context.WithValue(ctx, "username", usernames[0])
         return handler(ctx, req)
     }
@@ -1159,7 +1159,7 @@ func (b *BasicAuthInterceptor) validateCredentials(username, password string) bo
     if !exists {
         return false
     }
-    
+
     // Compare password hash (use bcrypt in production)
     return comparePasswordHash(password, expectedHash)
 }
@@ -1175,13 +1175,13 @@ type BasicAuthClient struct {
 func basicAuthInterceptor(username, password string) grpc.UnaryClientInterceptor {
     return func(ctx context.Context, method string, req, reply interface{},
                 cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-        
+
         // Add credentials to metadata
-        ctx = metadata.AppendToOutgoingContext(ctx, 
+        ctx = metadata.AppendToOutgoingContext(ctx,
             "username", username,
             "password", password,
         )
-        
+
         return invoker(ctx, method, req, reply, cc, opts...)
     }
 }
@@ -1194,7 +1194,7 @@ func NewBasicAuthClient(addr, username, password string) (*BasicAuthClient, erro
     if err != nil {
         return nil, err
     }
-    
+
     return &BasicAuthClient{
         conn:     conn,
         username: username,
@@ -1217,24 +1217,24 @@ type APIKeyInterceptor struct {
 func (a *APIKeyInterceptor) Unary() grpc.UnaryServerInterceptor {
     return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo,
                 handler grpc.UnaryHandler) (interface{}, error) {
-        
+
         md, ok := metadata.FromIncomingContext(ctx)
         if !ok {
             return nil, status.Error(codes.Unauthenticated, "missing metadata")
         }
-        
+
         // Get API key
         keys := md.Get("x-api-key")
         if len(keys) == 0 {
             return nil, status.Error(codes.Unauthenticated, "missing API key")
         }
-        
+
         // Validate API key
         userID, valid := a.validKeys[keys[0]]
         if !valid {
             return nil, status.Error(codes.Unauthenticated, "invalid API key")
         }
-        
+
         ctx = context.WithValue(ctx, "user_id", userID)
         return handler(ctx, req)
     }
@@ -1245,7 +1245,7 @@ func (a *APIKeyInterceptor) Unary() grpc.UnaryServerInterceptor {
 func apiKeyInterceptor(apiKey string) grpc.UnaryClientInterceptor {
     return func(ctx context.Context, method string, req, reply interface{},
                 cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-        
+
         ctx = metadata.AppendToOutgoingContext(ctx, "x-api-key", apiKey)
         return invoker(ctx, method, req, reply, cc, opts...)
     }
@@ -1267,7 +1267,7 @@ func NewOAuth2Client(addr, accessToken string) (*grpc.ClientConn, error) {
     perRPC := oauth.NewOauthAccess(&oauth2.Token{
         AccessToken: accessToken,
     })
-    
+
     return grpc.Dial(addr,
         grpc.WithPerRPCCredentials(perRPC),
         grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -1286,7 +1286,7 @@ import (
     "crypto/tls"
     "crypto/x509"
     "io/ioutil"
-    
+
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials"
 )
@@ -1297,26 +1297,26 @@ func NewMTLSServer(certFile, keyFile, caFile string) (*grpc.Server, error) {
     if err != nil {
         return nil, err
     }
-    
+
     // Load CA certificate
     caCert, err := ioutil.ReadFile(caFile)
     if err != nil {
         return nil, err
     }
-    
+
     caPool := x509.NewCertPool()
     caPool.AppendCertsFromPEM(caCert)
-    
+
     // Configure TLS
     tlsConfig := &tls.Config{
         Certificates: []tls.Certificate{cert},
         ClientAuth:   tls.RequireAndVerifyClientCert,
         ClientCAs:    caPool,
     }
-    
+
     creds := credentials.NewTLS(tlsConfig)
     server := grpc.NewServer(grpc.Creds(creds))
-    
+
     return server, nil
 }
 
@@ -1328,21 +1328,21 @@ func NewMTLSClient(addr, certFile, keyFile, caFile string) (*grpc.ClientConn, er
     if err != nil {
         return nil, err
     }
-    
+
     // Load CA certificate
     caCert, err := ioutil.ReadFile(caFile)
     if err != nil {
         return nil, err
     }
-    
+
     caPool := x509.NewCertPool()
     caPool.AppendCertsFromPEM(caCert)
-    
+
     tlsConfig := &tls.Config{
         Certificates: []tls.Certificate{cert},
         RootCAs:      caPool,
     }
-    
+
     creds := credentials.NewTLS(tlsConfig)
     return grpc.Dial(addr, grpc.WithTransportCredentials(creds))
 }
@@ -1359,7 +1359,7 @@ import (
     "context"
     "log"
     "time"
-    
+
     "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/metadata"
@@ -1371,12 +1371,12 @@ import (
 func main() {
     // JWT secret (should be in config)
     jwtSecret := "your-secret-key-here"
-    
+
     // Create authenticated server
     authInterceptor := &AuthInterceptor{
         jwtSecret: []byte(jwtSecret),
     }
-    
+
     server := grpc.NewServer(
         grpc.ChainUnaryInterceptor(
             authInterceptor.Unary(),        // Authentication
@@ -1384,13 +1384,13 @@ func main() {
             rateLimitInterceptor(),         // Rate limiting
         ),
     )
-    
+
     // Register services
     pb.RegisterDataServiceServer(server, &dataServiceImpl{})
     pb.RegisterAuthServiceServer(server, &authServiceImpl{
         jwtSecret: []byte(jwtSecret),
     })
-    
+
     // Start server
     lis, _ := net.Listen("tcp", ":8091")
     log.Println("🚀 Data Service running on :8091 with authentication")
@@ -1410,13 +1410,13 @@ func (s *authServiceImpl) Login(ctx context.Context, req *pb.LoginRequest) (*pb.
     if err != nil {
         return nil, status.Error(codes.Unauthenticated, "invalid credentials")
     }
-    
+
     // Generate JWT token
     token, err := GenerateToken(user.ID, user.Username, s.jwtSecret, 24*time.Hour)
     if err != nil {
         return nil, status.Error(codes.Internal, "failed to generate token")
     }
-    
+
     return &pb.LoginResponse{
         Token:  token,
         UserID: user.ID,
@@ -1429,7 +1429,7 @@ func ExampleAuthenticatedClient() {
     // Step 1: Login to get token
     conn, _ := grpc.Dial("localhost:8091", grpc.WithInsecure())
     authClient := pb.NewAuthServiceClient(conn)
-    
+
     loginResp, err := authClient.Login(context.Background(), &pb.LoginRequest{
         Username: "wiloon",
         Password: "haCahpro",
@@ -1437,18 +1437,18 @@ func ExampleAuthenticatedClient() {
     if err != nil {
         log.Fatal("Login failed:", err)
     }
-    
+
     token := loginResp.Token
     log.Println("✅ Logged in, token:", token)
-    
+
     // Step 2: Use token for authenticated requests
     authConn, _ := grpc.Dial("localhost:8091",
         grpc.WithInsecure(),
         grpc.WithUnaryInterceptor(tokenInterceptor(token)),
     )
-    
+
     dataClient := pb.NewDataServiceClient(authConn)
-    
+
     // Now all requests include authentication token
     word, err := dataClient.GetWord(context.Background(), &pb.GetWordRequest{
         English: "hello",
@@ -1456,7 +1456,7 @@ func ExampleAuthenticatedClient() {
     if err != nil {
         log.Fatal("GetWord failed:", err)
     }
-    
+
     log.Println("✅ Got word:", word)
 }
 ```
@@ -1514,8 +1514,8 @@ type RateLimiter struct {
     limiter *rate.Limiter
 }
 
-func (r *RateLimiter) Intercept(ctx context.Context, req interface{}, 
-                                 info *grpc.UnaryServerInfo, 
+func (r *RateLimiter) Intercept(ctx context.Context, req interface{},
+                                 info *grpc.UnaryServerInfo,
                                  handler grpc.UnaryHandler) (interface{}, error) {
     if !r.limiter.Allow() {
         return nil, status.Error(codes.ResourceExhausted, "rate limit exceeded")
@@ -1538,7 +1538,7 @@ var (
         },
         []string{"method", "status"},
     )
-    
+
     syncOperations = promauto.NewCounterVec(
         prometheus.CounterOpts{
             Name: "enx_data_service_sync_operations_total",
@@ -1553,12 +1553,12 @@ func instrumentedHandler(ctx context.Context, req interface{}) (interface{}, err
     start := time.Now()
     resp, err := originalHandler(ctx, req)
     duration := time.Since(start).Seconds()
-    
+
     status := "success"
     if err != nil {
         status = "error"
     }
-    
+
     requestDuration.WithLabelValues(method, status).Observe(duration)
     return resp, err
 }
@@ -1572,20 +1572,20 @@ func LoggingInterceptor() grpc.UnaryServerInterceptor {
     return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo,
                 handler grpc.UnaryHandler) (interface{}, error) {
         start := time.Now()
-        
+
         log.WithFields(log.Fields{
             "method": info.FullMethod,
             "request": req,
         }).Info("RPC started")
-        
+
         resp, err := handler(ctx, req)
-        
+
         log.WithFields(log.Fields{
             "method": info.FullMethod,
             "duration": time.Since(start),
             "error": err,
         }).Info("RPC completed")
-        
+
         return resp, err
     }
 }
@@ -1603,12 +1603,12 @@ func TracingInterceptor() grpc.UnaryServerInterceptor {
         tracer := otel.Tracer("enx-data-service")
         ctx, span := tracer.Start(ctx, info.FullMethod)
         defer span.End()
-        
+
         resp, err := handler(ctx, req)
         if err != nil {
             span.RecordError(err)
         }
-        
+
         return resp, err
     }
 }
@@ -1678,7 +1678,7 @@ Traditional Mode:
 ─────────────────────────────────────────────────
 Reader: SELECT * FROM words
         Must wait if writer is active ❌
-        
+
 WAL Mode:
 ─────────────────────────────────────────────────
 Reader: SELECT * FROM words
@@ -1700,7 +1700,7 @@ enx.db:
   id | english | chinese
   ---|---------|--------
   1  | hello   | 你好
-  
+
 enx.db-wal: (empty)
 
 10:00:01 - Writer: UPDATE chinese
@@ -1724,10 +1724,10 @@ SELECT * FROM words WHERE english = 'hello';
 SQLite reads:
   Step 1: Check enx.db-shm (shared memory index)
           → Finds: "WAL has data for page containing id=1"
-  
+
   Step 2: Read from WAL (priority over main DB)
           → Gets: chinese = '您好' (from WAL)
-  
+
   Step 3: Returns merged result
           → Result: (1, 'hello', '您好') ✅ NEW DATA!
 
@@ -1826,7 +1826,7 @@ Scenario: Writer in middle of transaction
 10:00:02 - Reader: SELECT ... WHERE id=1
            → Sees OLD data ('你好') ✅ Correct!
            → Uncommitted changes not visible
-           
+
 10:00:03 - UPDATE words SET chinese='您好' WHERE id=2  ← In WAL, uncommitted
 10:00:04 - COMMIT ✅
 10:00:05 - Reader: SELECT ... WHERE id=1
@@ -1862,11 +1862,11 @@ Why reading from WAL is fast:
 Example:
   Database: 1000 pages
   Recent changes: 10 pages in WAL
-  
+
   Query touching 50 pages:
     40 pages from enx.db (fast, no WAL overhead)
     10 pages from WAL (check index + read WAL)
-  
+
   Total overhead: 10/50 = 20% of reads check WAL
   Performance impact: ~2% slower (negligible)
 ```
@@ -2059,7 +2059,7 @@ import (
     "database/sql"
     "fmt"
     "log"
-    
+
     _ "github.com/mattn/go-sqlite3"
 )
 
@@ -2080,25 +2080,25 @@ func checkpointWithResult(db *sql.DB, mode string) (busy, logPages, checkpointed
 func main() {
     db, _ := sql.Open("sqlite3", "enx.db")
     defer db.Close()
-    
+
     // Enable WAL
     db.Exec("PRAGMA journal_mode=WAL")
-    
+
     // ... perform writes ...
     db.Exec("INSERT INTO words VALUES (...)")
     db.Exec("UPDATE user_dicts SET ...")
-    
+
     // Manual checkpoint
     busy, log, ckpt, err := checkpointWithResult(db, "PASSIVE")
     if err != nil {
         log.Fatal(err)
     }
-    
+
     fmt.Printf("Checkpoint result:\n")
     fmt.Printf("  Busy: %d\n", busy)
     fmt.Printf("  WAL pages: %d\n", log)
     fmt.Printf("  Checkpointed: %d\n", ckpt)
-    
+
     if busy == 1 {
         fmt.Println("⚠️ Some pages couldn't be checkpointed (active readers)")
     } else {
@@ -2113,16 +2113,16 @@ func checkpointWithRetry(db *sql.DB, maxRetries int) error {
         if err != nil {
             return err
         }
-        
+
         if busy == 0 {
             log.Printf("✅ Checkpoint successful on attempt %d", i+1)
             return nil
         }
-        
+
         log.Printf("⚠️ Checkpoint busy, retrying (%d/%d)", i+1, maxRetries)
         time.Sleep(100 * time.Millisecond)
     }
-    
+
     return fmt.Errorf("checkpoint failed after %d retries", maxRetries)
 }
 
@@ -2130,18 +2130,18 @@ func checkpointWithRetry(db *sql.DB, maxRetries int) error {
 func startCheckpointWorker(db *sql.DB, interval time.Duration) {
     ticker := time.NewTicker(interval)
     defer ticker.Stop()
-    
+
     for range ticker.C {
         busy, log, ckpt, err := checkpointWithResult(db, "PASSIVE")
         if err != nil {
             log.Printf("❌ Checkpoint error: %v", err)
             continue
         }
-        
+
         walSizeMB := float64(log * 4096) / 1024 / 1024
         log.Printf("📊 Checkpoint: WAL %.2fMB (%d pages), checkpointed %d pages, busy: %d",
             walSizeMB, log, ckpt, busy)
-        
+
         // Force RESTART if WAL too large and not busy
         if walSizeMB > 50 && busy == 0 {
             log.Println("⚠️ WAL > 50MB, forcing RESTART checkpoint")
@@ -2153,7 +2153,7 @@ func startCheckpointWorker(db *sql.DB, interval time.Duration) {
 // Checkpoint on shutdown
 func gracefulShutdown(db *sql.DB) {
     log.Println("🛑 Shutting down, performing final checkpoint...")
-    
+
     // Use TRUNCATE to clean up WAL file
     busy, log, ckpt, err := checkpointWithResult(db, "TRUNCATE")
     if err != nil {
@@ -2161,7 +2161,7 @@ func gracefulShutdown(db *sql.DB) {
     } else {
         log.Printf("✅ Final checkpoint: %d/%d pages, WAL truncated", ckpt, log)
     }
-    
+
     db.Close()
     log.Println("✅ Database closed cleanly")
 }
@@ -2182,7 +2182,7 @@ int checkpoint_basic(sqlite3 *db) {
 // Checkpoint with mode (v2 API, recommended)
 int checkpoint_with_mode(sqlite3 *db, int mode) {
     int nLog, nCkpt;  // Output parameters
-    
+
     int rc = sqlite3_wal_checkpoint_v2(
         db,              // Database connection
         NULL,            // Database name (NULL = all attached DBs)
@@ -2190,9 +2190,9 @@ int checkpoint_with_mode(sqlite3 *db, int mode) {
         &nLog,           // OUT: Pages in WAL
         &nCkpt           // OUT: Pages checkpointed
     );
-    
+
     printf("Checkpoint: WAL=%d pages, checkpointed=%d pages\n", nLog, nCkpt);
-    
+
     return rc;
 }
 
@@ -2206,24 +2206,24 @@ int checkpoint_with_mode(sqlite3 *db, int mode) {
 void example() {
     sqlite3 *db;
     sqlite3_open("enx.db", &db);
-    
+
     // Enable WAL
     sqlite3_exec(db, "PRAGMA journal_mode=WAL", NULL, NULL, NULL);
-    
+
     // ... perform operations ...
-    
+
     // Checkpoint
     int nLog, nCkpt;
     int rc = sqlite3_wal_checkpoint_v2(
         db, NULL, SQLITE_CHECKPOINT_PASSIVE, &nLog, &nCkpt
     );
-    
+
     if (rc == SQLITE_OK) {
         printf("✅ Checkpoint successful: %d/%d pages\n", nCkpt, nLog);
     } else {
         printf("❌ Checkpoint failed: %s\n", sqlite3_errmsg(db));
     }
-    
+
     sqlite3_close(db);
 }
 ```
@@ -2265,7 +2265,7 @@ func main() {
         db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
         db.Close()
     }()
-    
+
     // ... application logic ...
 }
 
@@ -2280,7 +2280,7 @@ func backupDatabase(db *sql.DB) error {
     if err != nil {
         return err
     }
-    
+
     // Now safe to copy enx.db (contains all data)
     return copyFile("enx.db", "backup/enx.db")
 }
@@ -2309,7 +2309,7 @@ Scenario 4: Performance maintenance
 func performanceMaintenance(db *sql.DB) {
     var logPages int
     db.QueryRow("PRAGMA wal_checkpoint(PASSIVE)").Scan(&_, &logPages, &_)
-    
+
     walSizeMB := float64(logPages * 4096) / 1024 / 1024
     if walSizeMB > 50 {
         log.Warn("WAL > 50MB, forcing checkpoint")
@@ -2404,7 +2404,7 @@ import (
     "os/signal"
     "syscall"
     "time"
-    
+
     _ "github.com/mattn/go-sqlite3"
 )
 
@@ -2417,25 +2417,25 @@ func NewDatabase(path string) (*Database, error) {
     if err != nil {
         return nil, err
     }
-    
+
     // Enable WAL
     if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
         return nil, err
     }
-    
+
     // Configure auto-checkpoint
     if _, err := db.Exec("PRAGMA wal_autocheckpoint=1000"); err != nil {
         return nil, err
     }
-    
+
     d := &Database{db: db}
-    
+
     // Start background checkpoint worker
     go d.checkpointWorker()
-    
+
     // Setup graceful shutdown
     d.setupGracefulShutdown()
-    
+
     return d, nil
 }
 
@@ -2443,7 +2443,7 @@ func NewDatabase(path string) (*Database, error) {
 func (d *Database) checkpointWorker() {
     ticker := time.NewTicker(5 * time.Minute)
     defer ticker.Stop()
-    
+
     for range ticker.C {
         d.periodicCheckpoint()
     }
@@ -2459,11 +2459,11 @@ func (d *Database) periodicCheckpoint() {
         log.Printf("❌ Checkpoint error: %v", err)
         return
     }
-    
+
     walSizeMB := float64(logPages * 4096) / 1024 / 1024
     log.Printf("📊 WAL: %.2fMB (%d pages), checkpointed: %d, busy: %d",
         walSizeMB, logPages, checkpointed, busy)
-    
+
     // Force RESTART if WAL > 50MB and not busy
     if walSizeMB > 50 && busy == 0 {
         log.Println("⚠️ WAL > 50MB, forcing RESTART checkpoint")
@@ -2474,7 +2474,7 @@ func (d *Database) periodicCheckpoint() {
 // Manual checkpoint (for backup, etc.)
 func (d *Database) Checkpoint() error {
     log.Println("🔄 Manual checkpoint requested")
-    
+
     var busy, logPages, checkpointed int
     err := d.db.QueryRow("PRAGMA wal_checkpoint(TRUNCATE)").Scan(
         &busy, &logPages, &checkpointed,
@@ -2482,14 +2482,14 @@ func (d *Database) Checkpoint() error {
     if err != nil {
         return err
     }
-    
+
     if busy == 1 {
-        log.Printf("⚠️ Partial checkpoint: %d/%d pages (readers active)", 
+        log.Printf("⚠️ Partial checkpoint: %d/%d pages (readers active)",
             checkpointed, logPages)
     } else {
         log.Printf("✅ Checkpoint complete: %d pages, WAL truncated", logPages)
     }
-    
+
     return nil
 }
 
@@ -2497,7 +2497,7 @@ func (d *Database) Checkpoint() error {
 func (d *Database) setupGracefulShutdown() {
     sigChan := make(chan os.Signal, 1)
     signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-    
+
     go func() {
         <-sigChan
         log.Println("🛑 Shutdown signal received")
@@ -2509,7 +2509,7 @@ func (d *Database) setupGracefulShutdown() {
 // Close with final checkpoint
 func (d *Database) Close() error {
     log.Println("🔄 Performing final checkpoint...")
-    
+
     // TRUNCATE checkpoint on shutdown
     var busy, logPages, checkpointed int
     err := d.db.QueryRow("PRAGMA wal_checkpoint(TRUNCATE)").Scan(
@@ -2520,12 +2520,12 @@ func (d *Database) Close() error {
     } else {
         log.Printf("✅ Final checkpoint: %d/%d pages", checkpointed, logPages)
     }
-    
+
     // Close database
     if err := d.db.Close(); err != nil {
         return err
     }
-    
+
     log.Println("✅ Database closed cleanly")
     return nil
 }
@@ -2536,9 +2536,9 @@ func main() {
         log.Fatal(err)
     }
     defer db.Close()
-    
+
     // Your application logic...
-    
+
     // Manual checkpoint when needed
     db.Checkpoint()
 }
@@ -2647,14 +2647,14 @@ func main() {
     // Open database
     db, _ := sql.Open("sqlite3", "enx.db")
     db.Exec("PRAGMA journal_mode=WAL")
-    
+
     // Perform writes
     db.Exec("INSERT INTO words VALUES (...)")
     db.Exec("UPDATE user_dicts SET ...")
-    
+
     // Close database (last connection)
     db.Close()  // ← Triggers checkpoint here!
-    
+
     // After close:
     // - WAL merged to enx.db
     // - WAL file may be truncated (depending on config)
@@ -2732,15 +2732,15 @@ Trigger Conditions:
 1. Memory Pressure
    - System running low on memory
    - SQLite may checkpoint to free cache
-   
+
 2. Disk Sync Events
    - fsync() or similar system calls
    - Database pages being flushed to disk
-   
+
 3. Lock Contention
    - Many readers waiting
    - Checkpoint to improve read performance
-   
+
 4. Process Termination
    - SIGTERM, SIGINT signals
    - Graceful shutdown attempts checkpoint
@@ -2761,17 +2761,17 @@ T0: App starts
     ├─ Open database
     ├─ Enable WAL: PRAGMA journal_mode=WAL
     └─ Set threshold: PRAGMA wal_autocheckpoint=1000
-    
+
 T1-T999: Normal writes (WAL grows)
     ├─ Write 1: INSERT INTO words ... → WAL: 1 page
     ├─ Write 2: UPDATE user_dicts ... → WAL: 2 pages
     ├─ ...
     └─ Write 999: INSERT INTO words ... → WAL: 999 pages
-    
+
 T1000: Threshold reached
     ├─ Write 1000: INSERT INTO words ... → WAL: 1000 pages
     └─ ⚠️ Threshold reached! Checkpoint scheduled
-    
+
 T1001: Next write commits
     ├─ BEGIN TRANSACTION
     ├─ INSERT INTO words ...
@@ -2780,11 +2780,11 @@ T1001: Next write commits
     │   ├─ Merge WAL → enx.db (non-blocking)
     │   └─ Reset WAL write position
     └─ ✅ Transaction committed, checkpoint complete
-    
+
 T1002+: Continue normally
     ├─ WAL restarted from beginning
     └─ Cycle repeats
-    
+
 T_end: App exits
     ├─ db.Close() called
     ├─ 🔄 Final checkpoint (last connection)
@@ -2908,16 +2908,16 @@ WAL 可以无限增长：
 
 Small database (<10MB):
   PRAGMA wal_autocheckpoint=1000;    // 4MB WAL
-  
+
 Medium database (10MB-100MB):
   PRAGMA wal_autocheckpoint=2000;    // 8MB WAL
-  
+
 Large database (>100MB):
   PRAGMA wal_autocheckpoint=5000;    // 20MB WAL
-  
+
 Your case (enx.db ~500KB):
   PRAGMA wal_autocheckpoint=1000;    // 4MB WAL ✅ Perfect!
-  
+
 Reason: 4MB WAL = 8x your entire database
         More than enough for typical usage
 ```
@@ -2966,7 +2966,7 @@ Rows per page: 4096 / 150 = ~27 rows per page
 
 With default wal_autocheckpoint=1000:
   1000 pages × 27 rows/page = ~27,000 word records
-  
+
 Your current database: ~1000 words
 WAL capacity: 27x your entire database ✅ More than enough!
 
@@ -2992,19 +2992,19 @@ Operation patterns and WAL growth:
 
 1. INSERT (新增)
    Each INSERT: 1 page per ~27 rows
-   
+
    Example: INSERT 1000 new words
    WAL size: 1000 / 27 = ~37 pages (~150KB)
-   
+
 2. UPDATE (更新)
    Each UPDATE: 1 page per modified row
-   
+
    Example: UPDATE 1000 existing words
    WAL size: ~37 pages (~150KB)
-   
+
 3. DELETE (删除)
    Each DELETE: 1 page per deleted row
-   
+
    Example: DELETE 1000 words
    WAL size: ~37 pages (~150KB)
 
@@ -3012,10 +3012,10 @@ Operation patterns and WAL growth:
    ─────────────────────────────────────────────────────────
    Small transactions (< 100 rows):
      WAL grows slowly, checkpoint rarely needed
-     
+
    Large transactions (> 10,000 rows):
      WAL grows fast, checkpoint frequently
-     
+
    Your typical usage (add 10-50 words/day):
      WAL: < 2 pages/day
      Checkpoint: Every few months at current pace
@@ -3060,7 +3060,7 @@ PRAGMA wal_checkpoint(PASSIVE);
 -- WAL size: 237 × 4KB = 948KB
 
 -- Get detailed WAL stats
-SELECT 
+SELECT
     page_count,
     page_size,
     page_count * page_size / 1024 / 1024 as wal_size_mb
@@ -3074,11 +3074,11 @@ func monitorWALSize(db *sql.DB) {
     err := db.QueryRow("PRAGMA wal_checkpoint(PASSIVE)").Scan(
         &busy, &logPages, &checkpointedPages,
     )
-    
+
     walSizeMB := float64(logPages * 4096) / 1024 / 1024
-    
+
     log.Printf("WAL: %.2f MB (%d pages)", walSizeMB, logPages)
-    
+
     if walSizeMB > 10 {
         log.Warn("WAL size exceeds 10MB, consider checkpoint")
         db.Exec("PRAGMA wal_checkpoint(RESTART)")
@@ -3131,7 +3131,7 @@ WAL capacity:       4MB (27,000 words)
 
 Recommendation:
   PRAGMA wal_autocheckpoint=1000;  ✅ Default is perfect!
-  
+
 Reasons:
 1. 4MB WAL = 50x your typical daily changes
 2. Auto-checkpoint rarely triggers (low frequency)
@@ -3139,13 +3139,13 @@ Reasons:
 4. No manual management needed
 
 Alternative scenarios:
-  
+
 If you do bulk imports (1000+ words at once):
   PRAGMA wal_autocheckpoint=2000;  // 8MB, more headroom
-  
+
 If you want checkpoint more often:
   PRAGMA wal_autocheckpoint=500;   // 2MB, checkpoint sooner
-  
+
 If using on low-storage device:
   PRAGMA wal_autocheckpoint=250;   // 1MB, save disk space
 ```
@@ -3185,7 +3185,7 @@ Timeline of WAL writes:
 
 10:00:03 - db.Exec("INSERT INTO words VALUES ('world', '世界')")
            → enx.db-wal: Append [Frame 3: INSERT world]
-           
+
 Current state:
 enx.db-wal: [Frame 1, Frame 2, Commit, Frame 3] (growing)
 enx.db:     Old state (no new changes yet)
@@ -3201,7 +3201,7 @@ Checkpoint triggers (WAL → enx.db):
 
 1. Auto-checkpoint (most common)
    Trigger: WAL reaches 1000 pages (~4MB by default)
-   
+
    10:05:00 - WAL size: 900 pages
    10:05:30 - WAL size: 1000 pages (threshold reached)
               → SQLite: AUTO CHECKPOINT
@@ -3211,11 +3211,11 @@ Checkpoint triggers (WAL → enx.db):
 
 2. Manual checkpoint
    db.Exec("PRAGMA wal_checkpoint(PASSIVE)")
-   
+
 3. Database close
    db.Close()
    → Final checkpoint before closing
-   
+
 4. Read after long time
    If no recent checkpoint and readers need consistent view
 ```
@@ -3246,15 +3246,15 @@ Phase 3: Auto-checkpoint triggers
              1. Copy 4MB from enx.db-wal to enx.db
              2. Mark frames as "checkpointed" in WAL
              3. Reset WAL write position to beginning
-             
+
   $ ls -lh enx.db*
   enx.db          504K  ← Grew by 4MB of data
   enx.db-wal      4MB   ← File still exists (not deleted)
-  
+
 Phase 4: WAL reused (not deleted)
   10:31 - INSERT new       → enx.db-wal: Overwrites from beginning
   10:32 - INSERT another   → enx.db-wal: Continues overwriting
-  
+
   File size may stay same, but content is reused
 ```
 
@@ -3266,17 +3266,17 @@ PASSIVE Checkpoint (default auto-checkpoint):
 Before:
   enx.db-wal: [1000 frames, 4MB]
   Active readers: 2 connections reading frames 1-500
-  
+
 Checkpoint process:
   1. Check for active readers on each frame
   2. Frame 1-500:   Skip (readers still using) ✋
   3. Frame 501-1000: Copy to enx.db ✅
   4. Reset write position to frame 501
-  
+
 After:
   enx.db-wal: [Frames 1-500 still present, new writes at 501]
   File not truncated, partially checkpointed
-  
+
 Next writes:
   New frames written starting at position 501
   WAL grows: 501, 502, 503...
@@ -3287,30 +3287,30 @@ FULL Checkpoint:
 Before:
   enx.db-wal: [1000 frames, 4MB]
   Active readers: 2 connections
-  
+
 Checkpoint process:
   1. WAIT for all readers to finish ⏳
   2. Once no readers, copy ALL frames to enx.db ✅
   3. Reset write position to 0
-  
+
 After:
   enx.db-wal: [File size 4MB, but all frames checkpointed]
   Write position at 0, ready for reuse
-  
+
 ─────────────────────────────────────────────────────────────
 TRUNCATE Checkpoint:
 ─────────────────────────────────────────────────────────────
 Before:
   enx.db-wal: [1000 frames, 4MB]
-  
+
 Checkpoint process:
   1. WAIT for all readers to finish
   2. Copy ALL frames to enx.db
   3. ftruncate(wal_fd, 0) → Physically shrink file to 0 bytes ✂️
-  
+
 After:
   enx.db-wal: [File size 0 bytes] ← Actually deleted content
-  
+
 This is the ONLY mode that "deletes" WAL content
 ```
 
@@ -3326,11 +3326,11 @@ WAL file deletion scenarios:
 ✅ Deleted when:
    1. Switch journal mode:
       PRAGMA journal_mode=DELETE;  → enx.db-wal deleted
-      
+
    2. Last connection closes + no writes:
       All connections: db.Close()
       If WAL is empty → enx.db-wal may be removed
-      
+
    3. Manual deletion (dangerous!):
       rm enx.db-wal  ← DON'T do this while DB is open!
 ```
@@ -3343,14 +3343,14 @@ func demonstrateWALLifecycle() {
     db, _ := sql.Open("sqlite3", "enx.db")
     db.Exec("PRAGMA journal_mode=WAL")
     db.Exec("PRAGMA wal_autocheckpoint=1000")
-    
+
     // Phase 1: Initial writes
     for i := 0; i < 500; i++ {
         db.Exec("INSERT INTO words ...")
         // WAL size: ~2MB
     }
     fmt.Println("WAL size: ~2MB, NOT checkpointed yet")
-    
+
     // Phase 2: Trigger auto-checkpoint
     for i := 0; i < 600; i++ {
         db.Exec("INSERT INTO words ...")
@@ -3358,18 +3358,18 @@ func demonstrateWALLifecycle() {
     }
     fmt.Println("WAL auto-checkpointed, content merged to enx.db")
     fmt.Println("WAL file still exists, but write position reset")
-    
+
     // Phase 3: More writes (reuses WAL)
     for i := 0; i < 100; i++ {
         db.Exec("INSERT INTO words ...")
         // Writes to WAL starting from position 0 (reused)
     }
     fmt.Println("WAL reused, size: ~400KB")
-    
+
     // Phase 4: Manual checkpoint with truncate
     db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
     fmt.Println("WAL truncated to 0 bytes")
-    
+
     // Phase 5: Close database
     db.Close()
     // WAL file may be deleted if empty, or kept for next open
@@ -3389,9 +3389,9 @@ func demonstrateWALLifecycle() {
 
 **Key Points**:
 
-✅ **写入时机**: 每次 INSERT/UPDATE/DELETE 都立即写入 WAL  
-✅ **回收时机**: WAL 达到阈值时自动 checkpoint（定期回收）  
-✅ **文件处理**: WAL 文件不删除，而是**重用**（覆盖写）  
+✅ **写入时机**: 每次 INSERT/UPDATE/DELETE 都立即写入 WAL
+✅ **回收时机**: WAL 达到阈值时自动 checkpoint（定期回收）
+✅ **文件处理**: WAL 文件不删除，而是**重用**（覆盖写）
 ✅ **真正删除**: 只有 TRUNCATE checkpoint 或切换 journal mode 才物理删除内容
 
 ### Configuration Options
@@ -3425,7 +3425,7 @@ PRAGMA cache_size=-2000;      -- 2MB cache
 | **Read latency** | Low | Slightly higher* | 5-10% slower |
 | **Storage** | 1x | 1.3x** | +30% during peak |
 
-*Readers must check both database and WAL  
+*Readers must check both database and WAL
 **WAL file size before checkpoint
 
 ### Limitations and Considerations
@@ -3455,7 +3455,7 @@ Solution: Enable WAL once, all connections inherit
 ```
 Scenario: Large WAL file + many readers
           Checkpoint must wait for all readers to finish
-          
+
 Mitigation: Use PASSIVE checkpoint (doesn't block)
             Acceptable WAL size (a few MB is fine)
 ```
@@ -3465,7 +3465,7 @@ Mitigation: Use PASSIVE checkpoint (doesn't block)
 ```
 Readers must check: enx.db + enx.db-wal
                     Slightly slower than single file
-                    
+
 Impact: ~5-10% slower reads (negligible for your use case)
 ```
 
@@ -3486,7 +3486,7 @@ db.Exec("PRAGMA busy_timeout=5000")
 func checkWALSize(db *sql.DB) {
     var walPages int
     db.QueryRow("PRAGMA wal_checkpoint(PASSIVE)").Scan(&walPages)
-    
+
     if walPages > 10000 {  // > 40MB
         log.Warn("WAL file too large, forcing checkpoint")
         db.Exec("PRAGMA wal_checkpoint(RESTART)")
@@ -3826,20 +3826,20 @@ func InitDatabase(dbPath string) (*sql.DB, error) {
     if err != nil {
         return nil, err
     }
-    
+
     // ✅ Enable WAL mode
     _, err = db.Exec("PRAGMA journal_mode=WAL")
     if err != nil {
         return nil, fmt.Errorf("failed to enable WAL: %w", err)
     }
-    
+
     // ✅ Configure WAL checkpoint interval
     // Auto-checkpoint when WAL reaches 1000 pages (~4MB)
     _, err = db.Exec("PRAGMA wal_autocheckpoint=1000")
     if err != nil {
         return nil, err
     }
-    
+
     // ✅ Set synchronous mode for durability/performance balance
     // NORMAL mode: Fast, safe for most use cases
     // FULL mode: Slower but maximum durability
@@ -3847,13 +3847,13 @@ func InitDatabase(dbPath string) (*sql.DB, error) {
     if err != nil {
         return nil, err
     }
-    
+
     // ✅ Set busy timeout for better concurrency handling
     _, err = db.Exec("PRAGMA busy_timeout=5000")  // 5 seconds
     if err != nil {
         return nil, err
     }
-    
+
     log.Info("SQLite WAL mode enabled successfully")
     return db, nil
 }
@@ -3870,7 +3870,7 @@ func (s *SyncService) ApplyChanges(changes []Change) error {
         return err
     }
     defer tx.Rollback()
-    
+
     // ✅ Batch apply changes
     for _, change := range changes {
         switch change.Action {
@@ -3889,12 +3889,12 @@ func (s *SyncService) ApplyChanges(changes []Change) error {
             }
         }
     }
-    
+
     // ✅ Atomic commit (all or nothing)
     if err := tx.Commit(); err != nil {
         return err
     }
-    
+
     log.Infof("Applied %d changes atomically", len(changes))
     return nil
 }
@@ -3910,12 +3910,12 @@ func (s *SyncService) CheckpointWAL() error {
     // FULL: Wait for readers to finish, checkpoint everything
     // RESTART: FULL + start new WAL file
     // TRUNCATE: RESTART + truncate old WAL file to 0 bytes
-    
+
     _, err := s.db.Exec("PRAGMA wal_checkpoint(PASSIVE)")
     if err != nil {
         return fmt.Errorf("WAL checkpoint failed: %w", err)
     }
-    
+
     log.Info("WAL checkpoint completed")
     return nil
 }
@@ -3924,7 +3924,7 @@ func (s *SyncService) CheckpointWAL() error {
 func (s *SyncService) StartWALCheckpointWorker() {
     ticker := time.NewTicker(5 * time.Minute)
     defer ticker.Stop()
-    
+
     for range ticker.C {
         if err := s.CheckpointWAL(); err != nil {
             log.Warnf("Background checkpoint failed: %v", err)
@@ -4030,11 +4030,11 @@ environment:
   - DB_WAL_AUTOCHECKPOINT=1000          # Pages before auto-checkpoint
   - DB_SYNCHRONOUS=NORMAL               # Balance durability/performance
   - DB_BUSY_TIMEOUT=5000                # Wait 5s on busy
-  
+
   # Sync
   - SYNC_INTERVAL=300                   # 5 minutes
   - SYNC_BATCH_SIZE=100                 # Records per transaction
-  
+
   # Checkpoint
   - WAL_CHECKPOINT_INTERVAL=300         # 5 minutes
   - WAL_CHECKPOINT_TYPE=PASSIVE         # Non-blocking
@@ -4046,20 +4046,20 @@ environment:
 // Check WAL statistics
 func (s *SyncService) GetWALStats() (*WALStats, error) {
     var stats WALStats
-    
+
     // Get WAL file size
     row := s.db.QueryRow(`
-        SELECT 
+        SELECT
             page_count * page_size / 1024 / 1024 as wal_size_mb,
             (SELECT page_count FROM pragma_page_count()) as db_pages
         FROM pragma_wal_checkpoint('PASSIVE')
     `)
-    
+
     err := row.Scan(&stats.WALSizeMB, &stats.DBPages)
     if err != nil {
         return nil, err
     }
-    
+
     return &stats, nil
 }
 
@@ -4067,14 +4067,14 @@ func (s *SyncService) GetWALStats() (*WALStats, error) {
 func (s *SyncService) MonitorWALSize() {
     ticker := time.NewTicker(1 * time.Minute)
     defer ticker.Stop()
-    
+
     for range ticker.C {
         stats, err := s.GetWALStats()
         if err != nil {
             log.Errorf("Failed to get WAL stats: %v", err)
             continue
         }
-        
+
         // Alert if WAL exceeds 100MB (adjust based on workload)
         if stats.WALSizeMB > 100 {
             log.Warnf("WAL file too large: %.2f MB", stats.WALSizeMB)
@@ -4101,7 +4101,7 @@ func (s *SyncService) MonitorWALSize() {
 #### Issue 1: WAL File Growth
 
 **Problem**: WAL file grows indefinitely if checkpoint fails
-**Solution**: 
+**Solution**:
 ```go
 // Monitor and force checkpoint if needed
 if walSize > 100*1024*1024 {  // 100MB
@@ -4112,7 +4112,7 @@ if walSize > 100*1024*1024 {  // 100MB
 #### Issue 2: NFS/Network Drives
 
 **Problem**: WAL mode not recommended on NFS
-**Solution**: 
+**Solution**:
 - Use local disk for each node's enx.db
 - Sync via gRPC API, not file copying
 - This design already does this ✅
@@ -4120,7 +4120,7 @@ if walSize > 100*1024*1024 {  // 100MB
 #### Issue 3: Checkpoint Blocking
 
 **Problem**: FULL/RESTART checkpoints wait for readers
-**Solution**: 
+**Solution**:
 - Use PASSIVE checkpoint (default)
 - Checkpoint during low-activity periods
 - Acceptable WAL size is fine (auto-managed)
@@ -4236,7 +4236,7 @@ package main
 import (
     "database/sql"
     "unsafe"
-    
+
     "github.com/mattn/go-sqlite3"
 )
 
@@ -4259,28 +4259,28 @@ func NewSession(db *sql.DB) (*SessionManager, error) {
     if err != nil {
         return nil, err
     }
-    
+
     var session *C.sqlite3_session
     var sqliteDB *C.sqlite3
-    
+
     // Extract native handle (using go-sqlite3 internal API)
     conn.Raw(func(driverConn interface{}) error {
         sqliteConn := driverConn.(*sqlite3.SQLiteConn)
         // ... extract native handle ...
         return nil
     })
-    
+
     // Create session
     rc := C.sqlite3_session_create(sqliteDB, C.CString("main"), &session)
     if rc != C.SQLITE_OK {
         return nil, fmt.Errorf("failed to create session: %d", rc)
     }
-    
+
     // Attach tables
     C.sqlite3_session_attach(session, C.CString("words"))
     C.sqlite3_session_attach(session, C.CString("user_dicts"))
     C.sqlite3_session_attach(session, C.CString("users"))
-    
+
     return &SessionManager{db: db, session: session}, nil
 }
 
@@ -4288,13 +4288,13 @@ func NewSession(db *sql.DB) (*SessionManager, error) {
 func (sm *SessionManager) GetChangeset() ([]byte, error) {
     var nChangeset C.int
     var pChangeset *C.void
-    
+
     rc := C.sqlite3_session_changeset(sm.session, &nChangeset, &pChangeset)
     if rc != C.SQLITE_OK {
         return nil, fmt.Errorf("failed to get changeset: %d", rc)
     }
     defer C.sqlite3_free(pChangeset)
-    
+
     // Convert to Go bytes
     changeset := C.GoBytes(pChangeset, nChangeset)
     return changeset, nil
@@ -4304,7 +4304,7 @@ func (sm *SessionManager) GetChangeset() ([]byte, error) {
 func ApplyChangeset(db *sql.DB, changeset []byte) error {
     var sqliteDB *C.sqlite3
     // ... get native handle ...
-    
+
     rc := C.sqlite3_changeset_apply(
         sqliteDB,
         C.int(len(changeset)),
@@ -4313,11 +4313,11 @@ func ApplyChangeset(db *sql.DB, changeset []byte) error {
         (*[0]byte)(C.conflictCallback),  // conflict handler
         nil,  // user data
     )
-    
+
     if rc != C.SQLITE_OK {
         return fmt.Errorf("failed to apply changeset: %d", rc)
     }
-    
+
     return nil
 }
 
@@ -4329,15 +4329,15 @@ func conflictCallback(pCtx unsafe.Pointer, eConflict C.int, pIter *C.sqlite3_cha
         // Data conflict: remote and local both modified
         // Strategy: Keep newer version based on timestamp
         return C.SQLITE_CHANGESET_REPLACE
-        
+
     case C.SQLITE_CHANGESET_NOTFOUND:
         // Record not found: remote deleted, local modified
         return C.SQLITE_CHANGESET_OMIT
-        
+
     case C.SQLITE_CHANGESET_CONFLICT:
         // Primary key conflict
         return C.SQLITE_CHANGESET_REPLACE
-        
+
     default:
         return C.SQLITE_CHANGESET_ABORT
     }
@@ -4469,23 +4469,23 @@ Scenario: Development on Desktop
 ─────────────────────────────────────────────────────────
 10:00 AM - Start enx-data-service
            session = sqlite3_session_create()  ← Session in memory
-           
+
 10:30 AM - Add 50 words
            session tracks changes              ← 50 changes in memory
-           
+
 11:00 AM - Reboot computer for kernel update
            ❌ Process killed
            ❌ Session destroyed
            ❌ 50 word changes LOST
-           
+
 11:30 AM - Start enx-data-service again
            session = sqlite3_session_create()  ← NEW empty session
            session has no history              ← Cannot get 10:30 changes
-           
+
 Result: MacBook will NEVER receive those 50 words!
 ```
 
-**Root cause**: 
+**Root cause**:
 - Session lives in **process memory**
 - Not persisted to disk
 - Restart = complete loss of tracking state
@@ -4743,7 +4743,7 @@ Result: Data loss if both nodes write
    - Primary fails → Standby takes over
    - New primary replicates to S3
    - Old primary is DISCARDED
-   
+
    Your use case:
    - All nodes are active writers
    - Need to merge changes from all nodes
@@ -4849,7 +4849,7 @@ Both Session Extension and Litestream would add complexity without benefits for 
 
 **cr-sqlite** is a SQLite extension that adds **CRDT (Conflict-free Replicated Data Type)** capabilities to SQLite, enabling true multi-master replication with automatic conflict resolution.
 
-**GitHub**: https://github.com/vlcn-io/cr-sqlite  
+**GitHub**: https://github.com/vlcn-io/cr-sqlite
 **Organization**: vlcn.io (Voltron Data)
 
 ### Core Concept: CRDTs
@@ -4970,7 +4970,7 @@ package main
 import (
     "database/sql"
     "log"
-    
+
     _ "github.com/mattn/go-sqlite3"
 )
 
@@ -4981,35 +4981,35 @@ func main() {
         log.Fatal(err)
     }
     defer db.Close()
-    
+
     // Create table
     db.Exec(`CREATE TABLE IF NOT EXISTS words (
         id INTEGER PRIMARY KEY,
         english TEXT NOT NULL,
         chinese TEXT
     )`)
-    
+
     // Enable CRDT tracking
     db.Exec(`SELECT crsql_as_crr('words')`)
-    
+
     // Get current database version
     var dbVersion int64
     db.QueryRow(`SELECT crsql_db_version()`).Scan(&dbVersion)
     log.Printf("Current DB version: %d", dbVersion)
-    
+
     // Insert data (automatically tracked)
-    db.Exec(`INSERT INTO words (english, chinese) VALUES (?, ?)`, 
+    db.Exec(`INSERT INTO words (english, chinese) VALUES (?, ?)`,
         "hello", "你好")
-    
+
     // Query changes since version 0 (all changes)
     rows, _ := db.Query(`SELECT * FROM crsql_changes WHERE db_version > 0`)
     defer rows.Close()
-    
+
     for rows.Next() {
         var table, pk, cid, val string
         var colVer, dbVer int64
         var siteId string
-        
+
         rows.Scan(&table, &pk, &cid, &val, &colVer, &dbVer, &siteId)
         log.Printf("Change: %s.%s = %s (version %d)", table, cid, val, dbVer)
     }
@@ -5019,30 +5019,30 @@ func main() {
 func syncFromRemote(db *sql.DB, remoteDB *sql.DB, lastSyncVersion int64) error {
     // Get changes from remote since last sync
     rows, err := remoteDB.Query(`
-        SELECT "table", pk, cid, val, col_version, db_version, site_id 
-        FROM crsql_changes 
+        SELECT "table", pk, cid, val, col_version, db_version, site_id
+        FROM crsql_changes
         WHERE db_version > ?
     `, lastSyncVersion)
     if err != nil {
         return err
     }
     defer rows.Close()
-    
+
     // Apply changes to local database
     stmt, _ := db.Prepare(`INSERT INTO crsql_changes VALUES (?, ?, ?, ?, ?, ?, ?)`)
     defer stmt.Close()
-    
+
     for rows.Next() {
         var table, pk, cid, val string
         var colVer, dbVer int64
         var siteId string
-        
+
         rows.Scan(&table, &pk, &cid, &val, &colVer, &dbVer, &siteId)
-        
+
         // cr-sqlite automatically handles conflicts
         stmt.Exec(table, pk, cid, val, colVer, dbVer, siteId)
     }
-    
+
     return nil
 }
 ```
@@ -5070,7 +5070,7 @@ Node A                           Node B
 
 5. Apply changes
    INSERT INTO crsql_changes     → Automatic merge
-   
+
 6. Push local changes to Node B
    SELECT * FROM crsql_changes
    WHERE db_version > last_sync  → Changes: version 21-25
@@ -5136,7 +5136,7 @@ cr-sqlite:
    - 10 users typing simultaneously
    - Character-level CRDTs
    - Real-time sync
-   
+
    Your case: Single user at a time ❌
    ```
 
@@ -5146,7 +5146,7 @@ cr-sqlite:
    - Multiple warehouses updating stock
    - Need to preserve all updates
    - Complex merge logic
-   
+
    Your case: Simple timestamp comparison works ❌
    ```
 
@@ -5156,7 +5156,7 @@ cr-sqlite:
    - Technicians work offline all day
    - Sync when back to office
    - Many concurrent offline users
-   
+
    Your case: Only you, predictable schedule ❌
    ```
 
@@ -5264,7 +5264,7 @@ Timestamp: ✅ Perfect fit
 **Do NOT use cr-sqlite for your project** because:
 
 1. ❌ **No concurrent writes**: Single user, sequential access
-2. ❌ **Simple conflicts**: Timestamp comparison is sufficient  
+2. ❌ **Simple conflicts**: Timestamp comparison is sufficient
 3. ❌ **CGo complexity**: Build issues, platform dependencies
 4. ❌ **Storage waste**: 30% overhead for unused metadata
 5. ❌ **Learning curve**: CRDT concepts add no value
@@ -5316,7 +5316,7 @@ services:
       - PORT=8091
       - DB_PATH=/data/enx.db
       - LOG_LEVEL=debug
-  
+
   api:
     image: enx-api:latest
     ports:
@@ -5445,16 +5445,16 @@ A **generic SQLite synchronization service** that can sync any SQLite database a
 # sync-config.yaml
 database:
   path: "./my-app.db"
-  
+
 tables:
   - name: "users"
     timestamp_column: "updated_at"
     primary_key: "id"
-    
+
   - name: "posts"
     timestamp_column: "modified_time"
     primary_key: "post_id"
-    
+
   - name: "comments"
     timestamp_column: "update_datetime"
     primary_key: ["post_id", "comment_id"]  # Composite key
@@ -5462,7 +5462,7 @@ tables:
 sync:
   interval: "5m"
   conflict_resolution: "latest_wins"  # or: manual, custom
-  
+
 nodes:
   - name: "desktop"
     address: "192.168.1.100:8091"
@@ -5485,17 +5485,17 @@ Why Hybrid?
 • Structured APIs (Find/Insert/Update/Delete) for 80% of use cases
   → Type-safe, secure, easy to use
   → Automatic query building from JSON filters
-  
+
 • Raw SQL (Query/Execute) for remaining 20% complex cases
   → JOINs, aggregations, subqueries, CTEs
   → Full SQL power when needed
-  
+
 • Best of both worlds:
   ✅ Security: Structured APIs prevent most SQL injection
   ✅ Flexibility: Raw SQL handles edge cases
   ✅ Performance: Both approaches equally fast
   ✅ Developer experience: Easy for simple, powerful for complex
-  
+
 Implementation:
   1. Start with structured APIs (safer)
   2. Fall back to raw SQL only when necessary
@@ -5513,7 +5513,7 @@ Direct SQL query execution with parameter binding:
 service GenericDataService {
   // Execute arbitrary SQL query
   rpc Query(QueryRequest) returns (QueryResponse);
-  
+
   // Execute write operations (INSERT/UPDATE/DELETE)
   rpc Execute(ExecuteRequest) returns (ExecuteResponse);
 }
@@ -5674,11 +5674,11 @@ service GenericDataService {
   rpc Insert(InsertRequest) returns (InsertResponse);
   rpc Update(UpdateRequest) returns (UpdateResponse);
   rpc Delete(DeleteRequest) returns (DeleteResponse);
-  
+
   // Raw SQL (flexible, for complex queries)
   rpc Query(QueryRequest) returns (QueryResponse);
   rpc Execute(ExecuteRequest) returns (ExecuteResponse);
-  
+
   // Batch operations
   rpc BatchExecute(stream BatchRequest) returns (BatchResponse);
 }
@@ -5705,10 +5705,10 @@ INSERT INTO users VALUES (...)       → Insert()
 UPDATE users SET age = 26 WHERE ...  → Update()
 DELETE FROM users WHERE ...          → Delete()
 
-SELECT u.*, p.title FROM users u 
+SELECT u.*, p.title FROM users u
   JOIN posts p ON u.id = p.user_id   → Query() (complex JOIN)
 
-SELECT COUNT(*), AVG(age) 
+SELECT COUNT(*), AVG(age)
   FROM users GROUP BY city           → Query() (aggregation)
 
 WITH RECURSIVE ... (CTE query)       → Query() (advanced SQL)
@@ -5724,7 +5724,7 @@ import (
     "database/sql"
     "encoding/json"
     "fmt"
-    
+
     _ "github.com/mattn/go-sqlite3"
 )
 
@@ -5741,17 +5741,17 @@ func (s *GenericDataService) Find(ctx context.Context, req *pb.FindRequest) (*pb
     if err := json.Unmarshal([]byte(req.Filter), &filter); err != nil {
         return nil, fmt.Errorf("invalid filter: %w", err)
     }
-    
+
     // Build SQL query
     query, args := buildSelectQuery(req.Table, filter, req.Projection, req.Sort, req.Limit, req.Offset)
-    
+
     // Execute query
     rows, err := s.db.QueryContext(ctx, query, args...)
     if err != nil {
         return nil, err
     }
     defer rows.Close()
-    
+
     // Convert rows to response
     return rowsToResponse(rows)
 }
@@ -5762,44 +5762,44 @@ func (s *GenericDataService) Query(ctx context.Context, req *pb.QueryRequest) (*
     if err := validateSQL(req.Sql); err != nil {
         return nil, err
     }
-    
+
     // Convert protobuf params to []interface{}
     args := make([]interface{}, len(req.Params))
     for i, param := range req.Params {
         args[i] = extractParamValue(param)
     }
-    
+
     // Execute query
     rows, err := s.db.QueryContext(ctx, req.Sql, args...)
     if err != nil {
         return nil, err
     }
     defer rows.Close()
-    
+
     return rowsToResponse(rows)
 }
 
 // Helper: Build SELECT query from JSON filter
-func buildSelectQuery(table string, filter map[string]interface{}, 
+func buildSelectQuery(table string, filter map[string]interface{},
                       projection, sort string, limit, offset int32) (string, []interface{}) {
-    
+
     query := fmt.Sprintf("SELECT * FROM %s", sanitizeIdentifier(table))
     args := []interface{}{}
-    
+
     // Add WHERE clause
     if len(filter) > 0 {
         where, whereArgs := buildWhereClause(filter)
         query += " WHERE " + where
         args = append(args, whereArgs...)
     }
-    
+
     // Add ORDER BY
     if sort != "" {
         var sortMap map[string]int
         json.Unmarshal([]byte(sort), &sortMap)
         query += buildOrderBy(sortMap)
     }
-    
+
     // Add LIMIT/OFFSET
     if limit > 0 {
         query += fmt.Sprintf(" LIMIT %d", limit)
@@ -5807,7 +5807,7 @@ func buildSelectQuery(table string, filter map[string]interface{},
             query += fmt.Sprintf(" OFFSET %d", offset)
         }
     }
-    
+
     return query, args
 }
 
@@ -5815,7 +5815,7 @@ func buildSelectQuery(table string, filter map[string]interface{},
 func buildWhereClause(filter map[string]interface{}) (string, []interface{}) {
     var conditions []string
     var args []interface{}
-    
+
     for field, value := range filter {
         switch v := value.(type) {
         case map[string]interface{}:
@@ -5853,7 +5853,7 @@ func buildWhereClause(filter map[string]interface{}) (string, []interface{}) {
             args = append(args, value)
         }
     }
-    
+
     return strings.Join(conditions, " AND "), args
 }
 
@@ -5870,7 +5870,7 @@ func sanitizeIdentifier(name string) string {
 // Helper: Validate SQL (prevent dangerous operations)
 func validateSQL(sql string) error {
     sql = strings.ToUpper(strings.TrimSpace(sql))
-    
+
     // Allow only SELECT, INSERT, UPDATE, DELETE
     allowedPrefixes := []string{"SELECT", "INSERT", "UPDATE", "DELETE"}
     allowed := false
@@ -5880,11 +5880,11 @@ func validateSQL(sql string) error {
             break
         }
     }
-    
+
     if !allowed {
         return fmt.Errorf("SQL statement not allowed: must start with SELECT/INSERT/UPDATE/DELETE")
     }
-    
+
     // Block dangerous keywords
     dangerousKeywords := []string{"DROP", "TRUNCATE", "ALTER", "CREATE", "PRAGMA"}
     for _, keyword := range dangerousKeywords {
@@ -5892,7 +5892,7 @@ func validateSQL(sql string) error {
             return fmt.Errorf("SQL contains forbidden keyword: %s", keyword)
         }
     }
-    
+
     return nil
 }
 
@@ -5901,14 +5901,14 @@ func validateSQL(sql string) error {
 func ExampleClientUsage() {
     conn, _ := grpc.Dial("localhost:8091", grpc.WithInsecure())
     client := pb.NewGenericDataServiceClient(conn)
-    
+
     // Example 1: Simple structured query
     resp, err := client.Find(context.Background(), &pb.FindRequest{
         Table: "users",
         Filter: `{"age": {"$gt": 18}, "city": "Beijing"}`,
         Limit: 100,
     })
-    
+
     // Example 2: Complex JOIN with raw SQL
     resp, err = client.Query(context.Background(), &pb.QueryRequest{
         Sql: `
@@ -5927,7 +5927,7 @@ func ExampleClientUsage() {
             {Value: &pb.QueryParam_IntValue{IntValue: 10}},
         },
     })
-    
+
     // Example 3: Insert with structured API
     resp, err = client.Insert(context.Background(), &pb.InsertRequest{
         Table: "users",
@@ -5961,13 +5961,13 @@ func validateQueryComplexity(sql string) error {
     if joinCount > 5 {
         return fmt.Errorf("too many JOINs: %d (max: 5)", joinCount)
     }
-    
+
     // Limit subquery depth
     subqueryDepth := strings.Count(sql, "(SELECT")
     if subqueryDepth > 3 {
         return fmt.Errorf("subquery too deep: %d (max: 3)", subqueryDepth)
     }
-    
+
     return nil
 }
 
@@ -5981,14 +5981,14 @@ func (r *QueryRateLimiter) Allow(clientID string) bool {
     r.mu.RLock()
     limiter, exists := r.limiters[clientID]
     r.mu.RUnlock()
-    
+
     if !exists {
         r.mu.Lock()
         limiter = rate.NewLimiter(rate.Limit(100), 10) // 100 req/sec, burst 10
         r.limiters[clientID] = limiter
         r.mu.Unlock()
     }
-    
+
     return limiter.Allow()
 }
 
@@ -5996,7 +5996,7 @@ func (r *QueryRateLimiter) Allow(clientID string) bool {
 func executeWithTimeout(ctx context.Context, db *sql.DB, query string, args ...interface{}) (*sql.Rows, error) {
     ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
     defer cancel()
-    
+
     return db.QueryContext(ctx, query, args...)
 }
 
@@ -6020,17 +6020,17 @@ security:
     - "users"
     - "posts"
     - "comments"
-  
+
   # Query limits
   max_query_complexity: 5        # Max JOINs
   max_subquery_depth: 3
   max_rows_per_query: 10000
   query_timeout_seconds: 30
-  
+
   # Rate limiting
   rate_limit_per_client: 100     # Requests per second
   rate_limit_burst: 10
-  
+
   # SQL restrictions
   allow_raw_sql: true            # Enable/disable Query() API
   forbidden_keywords:
@@ -6078,7 +6078,7 @@ timestamp_column_patterns:
   - "update_time"
   - "update_datetime"
   - "last_modified"
-  
+
 # Or custom per table
 tables:
   - name: "legacy_table"
@@ -6180,11 +6180,11 @@ import (
 func main() {
     // Option 1: Direct database access (local only)
     db, _ := sql.Open("sqlite3", "./enx.db")
-    
+
     // Option 2: Use sync service (for sync-enabled access)
     conn, _ := grpc.Dial("localhost:8091", grpc.WithInsecure())
     syncClient := syncpb.NewSyncServiceClient(conn)
-    
+
     // Your app code remains unchanged!
     // Sync happens in background automatically
 }
@@ -6212,7 +6212,7 @@ CREATE TABLE _sync_changes (
 );
 
 -- Populate with triggers
-CREATE TRIGGER track_user_changes 
+CREATE TRIGGER track_user_changes
 AFTER INSERT OR UPDATE OR DELETE ON users
 BEGIN
     INSERT INTO _sync_changes (table_name, record_id, operation, timestamp)
@@ -6266,7 +6266,7 @@ type RecordDelta struct {
 // Compress sync payload
 func (s *SyncService) GetChanges(req *SyncRequest) (*SyncResponse, error) {
     changes := s.fetchChanges(req.Since)
-    
+
     // Compress if large
     if len(changes) > 1000 {
         compressed := gzip.Compress(changes)
@@ -6275,7 +6275,7 @@ func (s *SyncService) GetChanges(req *SyncRequest) (*SyncResponse, error) {
             Compressed: true,
         }
     }
-    
+
     return &SyncResponse{Data: changes}
 }
 ```
@@ -6441,7 +6441,7 @@ Structured APIs (Find/Insert/Update/Delete):
   ✅ Automatic SQL generation
   ✅ Built-in security (no SQL injection)
   ✅ Easy to use for common cases
-  
+
 Raw SQL APIs (Query/Execute):
   ✅ Full SQL power (JOINs, CTEs, aggregations)
   ✅ Handle 20% edge cases
@@ -6715,11 +6715,11 @@ service DataService {
   rpc CreateWord(CreateWordRequest) returns (Word);
   rpc UpdateWord(UpdateWordRequest) returns (Word);
   rpc SearchWords(SearchWordsRequest) returns (SearchWordsResponse);
-  
+
   // User dict operations
   rpc GetUserWords(GetUserWordsRequest) returns (GetUserWordsResponse);
   rpc MarkWord(MarkWordRequest) returns (Word);
-  
+
   // Sync operations
   rpc GetChanges(GetChangesRequest) returns (stream Change);
   rpc PushChanges(stream Change) returns (PushChangesResponse);
