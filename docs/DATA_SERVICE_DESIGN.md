@@ -1,19 +1,76 @@
-# ENX Data Service Architecture Design
+# Generic SQLite P2P Sync Service (ENX Data Service)
+
+**📌 Quick Summary**: This document designs a **universal, reusable SQLite synchronization service** with P2P capabilities. While originally designed for the ENX vocabulary learning app, the service is completely **generic and table-agnostic**, making it suitable for any SQLite-based application that needs multi-device data synchronization.
+
+**🎯 Design Philosophy**:
+- ✅ **Generic First**: Table-agnostic APIs (no hardcoded schemas)
+- ✅ **Configuration-Driven**: YAML config instead of code changes
+- ✅ **ENX as User**: ENX is the first application using this generic service
+- ✅ **Open-Source Goal**: Build for the broader SQLite community
 
 ## Document Information
 
 | Field | Value |
 |-------|-------|
 | **Created** | 2025-11-12 |
-| **Last Updated** | 2025-11-12 (Added critical WAL sync warning) |
+| **Last Updated** | 2025-12-13 (Finalized generic data service design) |
 | **Author** | wiloon |
 | **AI Assisted** | Yes (GitHub Copilot) |
 | **AI Model** | Claude Sonnet 4.5 |
-| **Version** | 1.1.0 |
+| **Version** | 2.0.0 |
+
+## ⚡ Critical Design Decision
+
+**This data service is designed as a GENERIC, reusable tool, not ENX-specific.**
+
+| Aspect | Decision |
+|--------|----------|
+| **Service Type** | ✅ Generic SQLite P2P sync service (universal) |
+| **API Design** | ✅ Table-agnostic (Find/Query/Insert/Update/Delete) |
+| **Configuration** | ✅ YAML-driven (no hardcoded schemas) |
+| **Business Logic** | ❌ None in data service (stays in enx-api) |
+| **Target Users** | ✅ Any SQLite-based application needing P2P sync |
+| **ENX Role** | First real-world user & validation case |
+
+**What this means:**
+- **enx-data-service**: Generic CRUD + P2P sync for ANY SQLite database
+- **enx-api**: ENX-specific business logic (word learning, user management, etc.)
+- **Future**: Open-source the data service for broader community benefit
+
+**Quick Comparison:**
+
+```
+❌ ENX-Specific Approach (Rejected):
+──────────────────────────────────────
+service ENXDataService {
+  rpc GetWord(...)           // Only works with words table
+  rpc MarkWordLearned(...)   // ENX business logic in data layer
+  rpc GetUserStats(...)      // Hardcoded for ENX schema
+}
+→ Problem: Not reusable, tightly coupled to ENX
+
+✅ Generic Approach (Chosen):
+──────────────────────────────────────
+service GenericDataService {
+  rpc Find(...)              // Works with ANY table
+  rpc Query(...)             // Raw SQL for flexibility
+  rpc Update(...)            // Generic CRUD operations
+}
+→ Benefit: Reusable for blogs, tasks, notes, any SQLite app
+→ ENX uses: client.Find(table="words", filter={...})
+```
 
 ## Overview
 
-This document describes the architecture design for separating ENX into two services: **enx-api** (application layer) and **enx-data-service** (data layer with P2P sync capabilities).
+This document describes the architecture design for separating ENX into two services: **enx-api** (application layer) and **enx-data-service** (generic data layer with P2P sync capabilities).
+
+**🎯 Key Design Decision**: enx-data-service is designed as a **generic, reusable SQLite synchronization service** that works with any SQLite database, not just ENX. This allows us to:
+- Build a universal tool for the SQLite community
+- Benefit from broader testing and community contributions
+- Use ENX as the first real-world validation case
+- Potentially open-source the tool to help other developers
+
+**ENX-specific business logic** (word learning, user preferences, etc.) remains in **enx-api**, while **generic data operations** (CRUD, sync, storage) are handled by **enx-data-service**.
 
 ## Problem Statement
 
@@ -23,13 +80,18 @@ ENX is a **side project** with specific multi-environment development challenges
 
 1. **Long Development Cycle**: Development will continue over an extended period (months to years)
 2. **Multiple Development Environments**:
-   - **Desktop Linux**: Primary development environment
-   - **MacBook**: Development + usage while traveling
-   - **Ubuntu Laptop (Network Isolated)**: Development + usage in restricted network environment
+   - **Desktop Linux**: Primary development environment (always connected to home LAN)
+   - **MacBook**: Development + usage while traveling (intermittent connection)
+   - **Ubuntu Laptop (Intermittent Isolation)**: Used in restricted network environment for hours, then connects to home LAN for sync
 3. **Active Usage During Development**: The application is actively used while being developed (common for side projects)
 4. **Data Fragmentation Across Environments**: Different environments accumulate different data over time, requiring intelligent merging
 5. **Offline-First Requirement**: Network-isolated environment must work without internet connection
-6. **No Concurrent Access (Currently)**: Only one environment is used at any given time
+6. **Intermittent Connectivity** (Key Scenario): Ubuntu laptop usage pattern
+   - **Typical usage**: Work offline for hours (e.g., 9 AM - 3 PM)
+   - **Environment**: Isolated network with no external access
+   - **Reconnection**: Join home LAN later, automatic sync triggers
+   - **Implementation**: Network monitoring + opportunistic sync
+7. **No Concurrent Access (Currently)**: Only one environment is used at any given time
    - **Current state**: No production environment yet, so no concurrent writes
    - **Future consideration**: If production environment is added, concurrent access may become a requirement
    - **Design implication**: Current design focuses on eventual consistency, not real-time multi-master sync
@@ -46,28 +108,89 @@ Friday: Taking a trip, using MacBook
   - Need access to Monday's 50 words ❌ (not synced)
 ```
 
-**Scenario 2: Offline Development**
+**Scenario 2: Intermittent Network Access**
 ```
-Weekend: Working in network-isolated Ubuntu environment
-  - Cannot access cloud services
-  - Added 30 words while working on isolated project
+Saturday 9:00 AM: Working in network-isolated Ubuntu environment
+  - Disconnect from home LAN, work on isolated project
+  - Cannot access cloud services (security requirement)
+  - Added 30 words while working
   - Modified learning progress on 15 words
 
-Next week: Back on desktop Linux
-  - Need to merge weekend's 30 words ❌ (isolated environment)
-  - Need to sync progress updates ❌ (no connection)
+Saturday 3:00 PM: Project work finished, back home
+  - Ubuntu reconnects to home LAN ✅
+  - Automatic P2P sync triggers
+  - 30 words + progress sync to Desktop/MacBook ✅
+  - Receive changes from other nodes ✅
+
+Result: All nodes synchronized after reconnection
 ```
 
-**Scenario 3: Data Inconsistency**
+**Scenario 3: Intermittent Network (Ubuntu Laptop)**
+```
+Saturday Morning (Ubuntu disconnected from LAN):
+  - Working on isolated project for 4 hours
+  - Added 30 new words
+  - Marked 15 words as learned
+  - All changes stored locally in SQLite ✅
+
+Saturday Afternoon (Ubuntu reconnects to home LAN):
+  - enx-data-service detects network available
+  - Connects to Desktop/MacBook on LAN
+  - Pulls changes since last sync (Desktop added 20 words)
+  - Pushes local changes (30 words + learning progress)
+  - Merges using timestamps ✅
+  
+Result: All 3 nodes have 50 new words total, fully synchronized
+```
+
+**Scenario 4: Data Inconsistency**
 ```
 Current state:
   - Desktop Linux: 1000 words, 500 marked as learned
   - MacBook: 950 words, 480 marked as learned
-  - Ubuntu laptop (isolated): 920 words, 450 marked as learned
+  - Ubuntu laptop: 920 words, 450 marked as learned (was offline)
 
 Problem: Which is the "correct" version?
 Answer: All of them! Each has unique data that should be merged.
 ```
+
+### 🔑 Key Use Case: Intermittent Network Connectivity
+
+**The Ubuntu Laptop Scenario** (Primary design driver):
+
+```
+Real-world usage pattern:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Saturday Morning (9:00 AM):
+  ✅ Ubuntu laptop connected to home LAN (192.168.1.x)
+  ✅ All nodes synced (Desktop, MacBook, Ubuntu all at 1000 words)
+  
+  📴 Disconnect laptop, go to isolated work environment
+  
+During Isolated Work (9:15 AM - 3:00 PM):
+  🔒 No external network access (security requirement)
+  ✍️  Continue using ENX: add words, mark learning progress
+  💾 All changes stored locally in SQLite
+  ⏳ Cannot sync with other nodes (offline)
+  
+Back Home (3:00 PM):
+  🔌 Reconnect to home LAN
+  🔍 Network monitor detects connection restored
+  🔄 Automatic sync triggers:
+      • Pull changes from Desktop (4 words added during day)
+      • Push changes to Desktop/MacBook (5 words added offline)
+      • Merge using timestamps (conflict-free)
+  ✅ All 3 nodes now synchronized (1009 words each)
+  
+Key Point: Works offline for 6 hours, syncs in seconds when reconnected!
+```
+
+**Why this pattern matters:**
+- ✅ **Realistic**: Many developers work in isolated environments (secure labs, air-gapped systems)
+- ✅ **Flexible**: Offline duration can be hours, days, or weeks - design handles all cases
+- ✅ **Automatic**: No manual export/import, no cloud dependencies
+- ✅ **Reliable**: Timestamp-based merge ensures data integrity
 
 ### Why This Design?
 
@@ -103,6 +226,8 @@ Benefits:
 
 - ✅ **Development flexibility**: Develop on any environment, data stays in sync
 - ✅ **Offline-first**: Work without network, sync when available
+- ✅ **Intermittent connectivity**: Supports nodes that connect/disconnect periodically (like Ubuntu in isolated environment)
+- ✅ **Opportunistic sync**: Automatically syncs when network becomes available
 - ✅ **Data integrity**: Intelligent merge based on timestamps
 - ✅ **Clean architecture**: Business logic completely separated from data management
 - ✅ **Future-proof**: Easy to migrate from SQLite to PostgreSQL without touching enx-api
@@ -110,17 +235,48 @@ Benefits:
 
 ## Sync Requirements (New)
 
-To support the P2P sync architecture, all synced tables must adhere to the following rules:
+To support the P2P sync architecture, **ALL tables that need to be synced** must adhere to the following rules:
 
-1.  **Primary Key**: Must be a **UUID** (String).
-    *   *Reason*: Avoids ID conflicts between nodes (e.g., Node A and Node B both creating ID=100).
+1.  **Primary Key**: Must be a **UUID** (String). ⚠️ **MANDATORY for all sync tables**
+    *   *Reason*: Avoids ID conflicts between nodes (e.g., Node A and Node B both creating ID=100 with auto-increment).
+    *   *Migration*: Existing tables with auto-increment IDs MUST be migrated to UUID before enabling sync.
+    *   *Non-sync tables*: Tables that don't need P2P sync can keep auto-increment IDs.
 2.  **Timestamp Field**: Must have an `update_datetime` (or similar) field.
     *   *Reason*: Used to identify changed records since the last sync.
-    *   *Note*: Clock skew is accepted as a risk for this project (single-user, OS time sync enabled).
+    *   *Note*: **Clock synchronization is required** - nodes must sync system clocks (via NTP or manual) before starting sync process.
+    *   *Implementation strategy*: Use system clock (simple approach), defer complex solutions (HLC, Vector Clock) until proven necessary.
 3.  **Soft Delete**: Must have an `is_deleted` (boolean) or `deleted_at` (timestamp) field.
     *   *Reason*: Physical deletions cannot be synced. Soft deletes allow "deletion" events to propagate to other nodes.
 
 ## Implementation Strategy (Phase 1)
+
+### Prerequisites
+
+**⏰ Clock Synchronization (Critical Requirement)**:
+- All nodes must have synchronized system clocks before enabling P2P sync
+- Recommended: Enable NTP (Network Time Protocol) on all nodes
+  ```bash
+  # Ubuntu/Debian
+  sudo timedatectl set-ntp true
+  
+  # macOS (usually enabled by default)
+  sudo systemsetup -setusingnetworktime on
+  
+  # Verify clock sync status
+  timedatectl status  # Linux
+  ```
+- Alternative: Manual clock sync if NTP not available (less reliable)
+- **Why**: Timestamp-based conflict resolution requires consistent time across nodes
+- **Risk if skipped**: Wrong merge order, data overwritten incorrectly
+
+**📋 Implementation Philosophy**:
+- ✅ **Phase 1 (MVP)**: Use system clock (simple, works if clocks synced)
+- ⏳ **Phase 2 (If needed)**: Consider Hybrid Logical Clock (HLC) if clock skew becomes a real problem
+- ⏳ **Phase 3 (Advanced)**: Vector clocks for true causality tracking (only if absolutely necessary)
+
+**Decision**: Start simple, add complexity only when proven necessary through real-world usage.
+
+### Development Scope
 
 1.  **Scope**:
     *   Create `enx-data-service` in a new directory.
@@ -145,7 +301,9 @@ To support the P2P sync architecture, all synced tables must adhere to the follo
 3. **Offline Support**: Continue working when disconnected, sync when online
    - enx-data-service works locally even without network
    - Changes are queued and synced when connection is restored
+   - **Intermittent connectivity supported**: Nodes can go offline for hours/days, sync when reconnected
    - No data loss in offline scenarios
+   - Timestamps ensure correct merge order
 
 4. **Scalability**: Easy to upgrade storage backend (SQLite → PostgreSQL) without changing enx-api
    - enx-api uses abstract data service API
@@ -264,36 +422,42 @@ data-service → gRPC → data-service  (Efficient sync)
 
 **Use Case**: CRUD operations, immediate response needed
 
-#### ❌ **ENX-Specific API (Old Design - Not for generic service)**
+#### ❌ **ENX-Specific API (NOT USED - This service is generic)**
 
 ```go
-// ❌ This won't work with generic data service
-// Reason: GetWord() is ENX-specific, not generic
+// ❌ This approach was rejected
+// Reason: GetWord() is ENX-specific, not reusable for other projects
 word, err := dataClient.GetWord(ctx, &pb.GetWordRequest{
     English: "hello",
 })
+
+// Problems:
+// - Hardcoded "GetWord" method only works with words table
+// - Not reusable for blogs, task managers, or other apps
+// - Tightly coupled to ENX domain
+// - Cannot open-source as universal tool
 ```
 
 #### ✅ **Generic Data Service API (New Design - Recommended)**
 
-**Scenario: Query a single word by English**
+**Scenario: Query a single word by English (ENX example)**
 
 **Method 1: Structured API (Find) - ⭐ Recommended for simple queries**
 
 ```go
-// enx-api queries word using generic Find() API
+// Generic Find() API - works with any table
 resp, err := dataClient.Find(ctx, &pb.FindRequest{
-    Table: "words",
-    Filter: `{"english": "hello"}`,  // JSON filter
+    Table: "words",                   // Table name (configurable)
+    Filter: `{"english": "hello"}`,  // JSON filter (flexible)
     Limit: 1,                         // Only need one result
 })
 
 if err != nil {
-    return nil, fmt.Errorf("failed to query word: %w", err)
+    return nil, fmt.Errorf("failed to query record: %w", err)
 }
 
 if len(resp.Rows) == 0 {
-    return nil, ErrWordNotFound
+    return nil, ErrRecordNotFound
 }
 
 // Parse result row
@@ -308,7 +472,7 @@ word := &Word{
 **Method 2: Raw SQL (Query) - For complex queries**
 
 ```go
-// Using parameterized SQL query
+// Using parameterized SQL query - works with any table/columns
 resp, err := dataClient.Query(ctx, &pb.QueryRequest{
     Sql: "SELECT english, chinese, phonetic, definition FROM words WHERE english = ?",
     Params: []*pb.QueryParam{
@@ -317,10 +481,11 @@ resp, err := dataClient.Query(ctx, &pb.QueryRequest{
 })
 
 if err != nil {
-    return nil, fmt.Errorf("failed to query word: %w", err)
+    return nil, fmt.Errorf("failed to query records: %w", err)
 }
 
 // Parse result (same as Method 1)
+// Note: Column names and types determined by your SQL query
 ```
 
 **Method 3: Complex query with JOIN (user's learning progress)**
@@ -371,10 +536,11 @@ Recommendation for ENX:
 • Search/filter words:       Use Find() with complex JSON filter
 ```
 
-**Real-World Example: ENX API Handler**
+**Real-World Example: ENX API Handler Using Generic Service**
 
 ```go
-// enx-api/handlers/word.go
+// Example: enx-api/handlers/word.go
+// This shows how ENX-specific business logic uses the generic data service
 
 package handlers
 
@@ -383,11 +549,11 @@ import (
     "net/http"
 
     "github.com/gin-gonic/gin"
-    pb "enx/proto"  // Generic data service proto
+    pb "enx-data-service/proto"  // Generic data service proto
 )
 
 type WordHandler struct {
-    dataClient pb.GenericDataServiceClient
+    dataClient pb.GenericDataServiceClient  // Generic client
 }
 
 // GET /api/words/:english
@@ -493,35 +659,45 @@ func (h *WordHandler) SearchWords(c *gin.Context) {
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Migration from ENX-specific to Generic Data Service:
+Generic Data Service Design Philosophy:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Before (ENX-specific):
+❌ ENX-Specific Approach (NOT USED):
   dataClient.GetWord(ctx, &pb.GetWordRequest{English: "hello"})
   ↓
   • Hardcoded GetWord() method
   • Only works with words table
   • Not reusable for other projects
+  • Tightly coupled to ENX domain
 
-After (Generic):
+✅ Generic Approach (CHOSEN):
   dataClient.Find(ctx, &pb.FindRequest{
-      Table: "words",
-      Filter: `{"english": "hello"}`,
+      Table: "words",                    // Configurable
+      Filter: `{"english": "hello"}`,   // Flexible
   })
   ↓
   • Generic Find() method
-  • Works with ANY table (words, users, posts, etc.)
-  • Configuration-driven
-  • Reusable across projects
+  • Works with ANY table (words, users, posts, products, etc.)
+  • Configuration-driven (no code changes for new tables)
+  • Reusable across any SQLite-based project
+  • Open-source potential
+
+Design Decision:
+  ✅ Build: Generic data service (universal SQLite sync tool)
+  ✅ Use: ENX as first real-world user case
+  ✅ Goal: Open source for broader community
+  ✅ Benefit: Helps thousands of developers with same problem
 
 Trade-offs:
-  ✅ Gain: Flexibility, reusability, open-source potential
-  ⚠️ Lose: Compile-time type safety for specific tables
-  ⚠️ Need: Runtime JSON parsing, manual column mapping
+  ✅ Gain: Flexibility, reusability, community support
+  ⚠️ Cost: Runtime JSON parsing, manual column mapping
+  ⚠️ Cost: Lose compile-time type safety for specific schemas
+  ✅ Benefit: Configuration > Code (easier maintenance)
 
-Worth it?
-  ✅ YES - If goal is generic open-source tool
-  ❌ NO  - If only need ENX-specific service
+Conclusion:
+  ✅ Worth it - Building universal tool serves broader purpose
+  ✅ ENX benefits from battle-tested generic service
+  ✅ Community benefits from open-source sync solution
 ```
 
 **Characteristics**:
@@ -609,26 +785,47 @@ for msg := range pubsub.Channel() {
 
 ### enx-data-service API
 
-#### Data API (gRPC)
+#### Data API (gRPC) - Generic Interface
 
 ```protobuf
-service DataService {
-  // Words
-  rpc GetWord(GetWordRequest) returns (Word);
-  rpc CreateWord(CreateWordRequest) returns (Word);
-  rpc UpdateWord(UpdateWordRequest) returns (Word);
-  rpc DeleteWord(DeleteWordRequest) returns (Empty);
-  rpc SearchWords(SearchWordsRequest) returns (SearchWordsResponse);
-
-  // User Dicts
-  rpc GetUserWords(GetUserWordsRequest) returns (GetUserWordsResponse);
-  rpc MarkWord(MarkWordRequest) returns (MarkWordResponse);
-  rpc GetUserStats(GetUserStatsRequest) returns (UserStats);
-
-  // Users
-  rpc GetUser(GetUserRequest) returns (User);
-  rpc CreateUser(CreateUserRequest) returns (User);
-  rpc ValidateUser(ValidateUserRequest) returns (ValidateUserResponse);
+service GenericDataService {
+  // ==================== Structured CRUD APIs ====================
+  // Recommended for common operations (80% use cases)
+  // Type-safe, SQL injection protected
+  
+  // Find records with JSON filter
+  rpc Find(FindRequest) returns (FindResponse);
+  
+  // Insert new records
+  rpc Insert(InsertRequest) returns (InsertResponse);
+  
+  // Update existing records
+  rpc Update(UpdateRequest) returns (UpdateResponse);
+  
+  // Delete records
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  
+  // ==================== Raw SQL APIs ====================
+  // For complex queries (20% use cases: JOINs, aggregations, etc.)
+  
+  // Execute SELECT query
+  rpc Query(QueryRequest) returns (QueryResponse);
+  
+  // Execute INSERT/UPDATE/DELETE
+  rpc Execute(ExecuteRequest) returns (ExecuteResponse);
+  
+  // ==================== Batch Operations ====================
+  
+  // Batch execute multiple operations
+  rpc BatchExecute(stream BatchRequest) returns (BatchResponse);
+  
+  // ==================== Health & Info ====================
+  
+  // Health check
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+  
+  // Get table schema information
+  rpc GetTableSchema(GetTableSchemaRequest) returns (GetTableSchemaResponse);
 }
 ```
 
@@ -668,26 +865,33 @@ GET  /sync/conflicts
 
 ## Data Flow Examples
 
-### Example 1: User Marks a Word
+**Note**: The following examples show how the ENX application (enx-api) uses the generic data service. 
+The data service itself is completely generic and can work with any SQLite database - ENX just happens 
+to be the first application using it. The same service could be used by a blog platform, task manager, 
+or any other application that needs P2P SQLite synchronization.
+
+### Example 1: User Marks a Word (ENX Application Using Generic Service)
 
 ```
-┌─────────┐         ┌─────────┐         ┌──────────────┐
-│ Browser │         │ enx-api │         │ data-service │
-└────┬────┘         └────┬────┘         └──────┬───────┘
-     │                   │                      │
-     │ POST /mark        │                      │
-     ├──────────────────>│                      │
-     │                   │ MarkWord(gRPC)       │
-     │                   ├─────────────────────>│
-     │                   │                      │
-     │                   │                      │ Update DB
-     │                   │                      │ Record Change
-     │                   │                      │
-     │                   │ Response             │
-     │                   │<─────────────────────┤
-     │ 200 OK            │                      │
-     │<──────────────────┤                      │
-     │                   │                      │
+┌─────────┐         ┌─────────┐         ┌──────────────────────┐
+│ Browser │         │ enx-api │         │ generic-data-service │
+└────┬────┘         └────┬────┘         └─────────┬────────────┘
+     │                   │                         │
+     │ POST /mark        │                         │
+     ├──────────────────>│                         │
+     │                   │ Update(gRPC)            │
+     │                   │ Table: "user_dicts"     │
+     │                   │ Filter: {"user_id":123} │
+     │                   ├────────────────────────>│
+     │                   │                         │
+     │                   │                         │ Execute UPDATE
+     │                   │                         │ Track Change
+     │                   │                         │
+     │                   │ Response                │
+     │                   │<────────────────────────┤
+     │ 200 OK            │                         │
+     │<──────────────────┤                         │
+     │                   │                         │
 ```
 
 ### Example 2: Automatic P2P Sync
@@ -750,6 +954,421 @@ GET  /sync/conflicts
         │<─────────────────────────┤
         │                          │
         │ ✅ Fully synced          │
+```
+
+### Example 4: Intermittent Network Connection (Ubuntu Laptop Scenario)
+
+**Real-world use case**: Ubuntu laptop works in isolated network for hours, then reconnects to home LAN.
+
+```
+Timeline: Saturday 9:00 AM - 3:00 PM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+09:00 - Ubuntu Laptop (Before Disconnect)
+────────────────────────────────────────────────────────
+┌─────────────────┐     Home LAN      ┌─────────────────┐
+│ Ubuntu Laptop   │◄────────────────►│ Desktop Linux   │
+│ enx.db: 1000    │    Connected     │ enx.db: 1000    │
+│ Last sync: 9:00 │                  │ Last sync: 9:00 │
+└─────────────────┘                  └─────────────────┘
+✅ Both nodes synchronized at 1000 words
+
+09:15 - Ubuntu Disconnects (Enter Isolated Network)
+────────────────────────────────────────────────────────
+┌─────────────────┐                  ┌─────────────────┐
+│ Ubuntu Laptop   │    ╳╳╳╳╳╳╳╳     │ Desktop Linux   │
+│ (OFFLINE)       │    Disconnected  │ (online)        │
+│                 │                  │                 │
+│ Working locally │                  │ Working locally │
+└─────────────────┘                  └─────────────────┘
+
+09:30 - 13:00 (Both nodes work independently)
+────────────────────────────────────────────────────────
+Ubuntu (offline):                Desktop (online):
+  ├─ 09:45: Add "algorithm" (1)     ├─ 10:00: Add "database" (1)
+  ├─ 10:30: Add "network" (2)       ├─ 10:30: Add "server" (2)
+  ├─ 11:00: Add "protocol" (3)      ├─ 11:30: Mark 10 words learned
+  ├─ 11:45: Add "security" (4)      ├─ 12:00: Add "cluster" (3)
+  └─ 12:30: Add "encryption" (5)    └─ 13:00: Add "replica" (4)
+
+Ubuntu: 1005 words (5 new)          Desktop: 1004 words (4 new)
+All changes stored locally ✅        All changes stored locally ✅
+
+15:00 - Ubuntu Reconnects to Home LAN
+────────────────────────────────────────────────────────
+┌─────────────────┐                  ┌─────────────────┐
+│ Ubuntu Laptop   │                  │ Desktop Linux   │
+│ enx.db: 1005    │◄────Connected───►│ enx.db: 1004    │
+│ Last sync: 9:00 │    (Home LAN)    │ Last sync: 9:00 │
+└────────┬────────┘                  └────────┬────────┘
+         │                                    │
+         │ 1. Detect network available        │
+         │ 2. Query: "Any peers online?"      │
+         │───────────────────────────────────>│
+         │                                    │
+         │ 3. Response: "Desktop at 192.168.1.10:8091"
+         │<───────────────────────────────────│
+         │                                    │
+         │ 4. Request changes since 9:00 AM   │
+         │───────────────────────────────────>│
+         │                                    │
+         │ 5. Desktop sends 4 words + metadata│
+         │    (database, server, cluster,     │
+         │     replica + learning progress)   │
+         │<═══════════════════════════════════│
+         │                                    │
+         │ 6. Ubuntu applies changes          │
+         │    Merge check: timestamps OK ✅   │
+         │    Ubuntu now: 1009 words          │
+         │                                    │
+         │ 7. Push local changes to Desktop   │
+         │    (algorithm, network, protocol,  │
+         │     security, encryption)          │
+         │═══════════════════════════════════>│
+         │                                    │
+         │                                    │ 8. Desktop applies changes
+         │                                    │    Desktop now: 1009 words
+         │                                    │
+         │ 9. Sync complete acknowledgment    │
+         │<───────────────────────────────────│
+         │                                    │
+         │ ✅ Ubuntu: 1009 words, synced      │
+         │ ✅ Desktop: 1009 words, synced     │
+         │ Last sync: 15:00 (both nodes)      │
+         └────────────────────────────────────┘
+
+Result: Full synchronization achieved
+  • Ubuntu got: 4 words from Desktop
+  • Desktop got: 5 words from Ubuntu
+  • Total: 1009 words on both nodes
+  • Conflict resolution: Timestamp-based (all timestamps different)
+  • Offline duration: 6 hours (no problem!)
+```
+
+**Key Features Demonstrated:**
+
+```
+1. Local Persistence ✅
+   - Both nodes work independently offline
+   - All changes saved to local SQLite
+   - No data loss during offline period
+
+2. Automatic Reconnection ✅
+   - Ubuntu detects network availability
+   - Automatically discovers peers on LAN
+   - Initiates sync without user intervention
+
+3. Bidirectional Sync ✅
+   - Ubuntu pulls changes from Desktop
+   - Ubuntu pushes changes to Desktop
+   - Both nodes reach same state
+
+4. Timestamp-based Merge ✅
+   - Each change has update_datetime
+   - Compare timestamps to resolve conflicts
+   - No manual conflict resolution needed
+
+5. Offline Duration Tolerance ✅
+   - 6 hours offline: No problem
+   - Could be days/weeks: Still works
+   - Only limitation: Storage space for changes
+```
+
+**Sync Configuration for Intermittent Nodes:**
+
+```yaml
+# sync-config.yaml (Ubuntu laptop)
+node:
+  id: "ubuntu-laptop"
+  name: "Ubuntu Work Laptop"
+  
+network:
+  mode: "opportunistic"        # Sync when network available
+  reconnect_interval: "30s"    # Check for network every 30 seconds
+  sync_on_reconnect: true      # Auto-sync when reconnected
+  
+peers:
+  - address: "192.168.1.10:8091"  # Desktop Linux (home LAN)
+    name: "desktop"
+    auto_discover: true            # Auto-find on LAN
+  
+  - address: "192.168.1.20:8091"  # MacBook (if online)
+    name: "macbook"
+    auto_discover: true
+    
+sync:
+  interval: "5m"               # Sync every 5 min when connected
+  retry_on_failure: true
+  max_offline_changes: 10000   # Store up to 10k changes offline
+  
+  # Clock synchronization check
+  check_clock_sync: true       # Verify NTP sync before starting
+  max_clock_skew: "5s"         # Warn if clock differs by more than 5 seconds
+  
+storage:
+  path: "./enx.db"
+  wal_enabled: true            # Enable WAL for concurrent access
+```
+
+**Implementation Notes:**
+
+1. **Clock Sync Check**: Verify NTP sync status before starting service
+2. **Network Detection**: Service periodically checks network availability
+3. **Peer Discovery**: mDNS or broadcast to find peers on LAN
+4. **Change Tracking**: All operations record `update_datetime` using system clock
+5. **Conflict Resolution**: Last-Write-Wins (LWW) strategy - latest timestamp always wins
+6. **Efficient Transfer**: Only send changes since `last_sync_time`
+
+### Concurrent Write Conflict Resolution
+
+**Strategy: Last-Write-Wins (LWW)** ⭐
+
+**Scenario**: Two nodes modify the same record while disconnected
+
+```
+Node A (Desktop):
+  10:00:00 AM - Update word "hello" → translation="你好", timestamp: 10:00:00
+  
+Node B (MacBook, offline):
+  10:00:05 AM - Update word "hello" → translation="哈喽", timestamp: 10:00:05
+  
+Sync happens at 10:30 AM:
+  Compare timestamps: 10:00:05 > 10:00:00
+  → Node B's update wins ✅
+  → Node A's update is overwritten (lost) ⚠️
+```
+
+**LWW Properties**:
+- ✅ **Simple**: Just compare timestamps, no complex merge logic
+- ✅ **Fast**: O(1) comparison, no computation overhead
+- ✅ **Predictable**: Always the latest write wins (based on system clock)
+- ⚠️ **Data Loss Possible**: Earlier writes are discarded without warning
+- ⚠️ **Requires Clock Sync**: Inaccurate if clocks are skewed
+
+**When LWW Works Well**:
+- ✅ Single user accessing different devices (unlikely to edit same record simultaneously)
+- ✅ Infrequent concurrent edits (rare conflicts)
+- ✅ Simple data (text, numbers) where last version is acceptable
+
+**When LWW Fails** (Future Consideration):
+- ❌ Multiple users editing same record simultaneously (requires CRDT or OT)
+- ❌ Complex data structures needing field-level merge (e.g., nested JSON)
+- ❌ High-value data where no loss is acceptable (requires conflict detection + user resolution)
+
+**Current Decision**: Use LWW for MVP, revisit if users report data loss issues.
+
+### Soft Delete and Sync Strategy (Simplified Approach)
+
+**🎯 Design Philosophy: Timestamp-first, handle complexity later**
+
+#### Phase 1: Timestamp-Based Undelete (MVP) ⭐ **CHOSEN for Initial Version**
+
+**Core Principle**: Delete and Update operations both use timestamp comparison - if an update happens after a delete, it effectively "undeletes" the record.
+
+```
+Scenario: Delete followed by Update
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Node A:
+  10:00 AM - Delete record (id="abc-123") → deleted_at: 10:00, update_datetime: 10:00
+  
+Node B (offline):
+  10:05 AM - Update record (id="abc-123", content="new") → update_datetime: 10:05
+  
+Sync happens at 10:10 AM:
+  Node A receives update with timestamp 10:05
+  10:05 > 10:00 → Node B's update wins
+  
+Result: Record is "undeleted" with new content ✅
+         (Equivalent to: delete, then recreate with same ID)
+```
+
+**Why This Works**:
+1. ✅ **Simple**: No special delete handling, just timestamp comparison
+2. ✅ **Intuitive**: Later operations override earlier ones (consistent with update behavior)
+3. ✅ **No extra complexity**: Reuses existing conflict resolution logic
+4. ✅ **Practical**: If user wants to update after deleting, they probably want to restore it
+
+**Schema Requirements**:
+```sql
+CREATE TABLE example_table (
+    id TEXT PRIMARY KEY,           -- UUID
+    content TEXT,
+    deleted_at INTEGER,             -- Unix timestamp (milliseconds), NULL if not deleted
+    update_datetime INTEGER NOT NULL,  -- Unix timestamp (milliseconds)
+    -- Other fields...
+);
+
+-- Soft delete: Set deleted_at and update_datetime
+UPDATE example_table 
+SET deleted_at = strftime('%s', 'now') * 1000,
+    update_datetime = strftime('%s', 'now') * 1000
+WHERE id = 'abc-123';
+
+-- Update after delete: Sets deleted_at = NULL, updates content
+UPDATE example_table 
+SET content = 'new content',
+    deleted_at = NULL,                    -- Clear deletion flag
+    update_datetime = strftime('%s', 'now') * 1000
+WHERE id = 'abc-123';
+```
+
+**Sync Logic**:
+```go
+// Merge logic applies to both updates and deletes
+func mergeRecord(local, remote Record) Record {
+    // Timestamp comparison (works for both delete and update)
+    if remote.UpdateDateTime > local.UpdateDateTime {
+        return remote  // Remote wins (could be delete or update)
+    }
+    return local      // Local wins
+}
+
+// No special handling needed - deleted_at is just another field
+```
+
+**Edge Cases Handled**:
+
+| Scenario | Node A Action | Node B Action | Merge Result | Explanation |
+|----------|---------------|---------------|--------------|-------------|
+| **Delete → Update** | 10:00 Delete | 10:05 Update | **Undeleted** (B wins) | Update timestamp > Delete timestamp |
+| **Update → Delete** | 10:00 Update | 10:05 Delete | **Deleted** (B wins) | Delete timestamp > Update timestamp |
+| **Concurrent Delete** | 10:00 Delete | 10:00:05 Delete | **Deleted** (B wins) | Both deleted, timestamps close (5ms skew) |
+| **Delete → Delete** | 10:00 Delete | 10:05 Delete | **Deleted** (B wins) | Later delete wins (both result in deleted state) |
+
+**What We're NOT Handling (Yet)**:
+
+❌ **Tombstone Expiration**: Deleted records stay forever (no automatic cleanup)
+  - **Why defer**: Need to establish retention policy first
+  - **When to add**: If database size becomes a problem
+
+❌ **Hard Delete**: No way to permanently remove records
+  - **Why defer**: Soft delete is sufficient for most use cases
+  - **When to add**: If privacy regulations require permanent deletion (GDPR "right to be forgotten")
+
+❌ **Delete Conflict Resolution**: No special handling for "delete vs update" conflicts
+  - **Why defer**: Timestamp-first is simple and predictable
+  - **When to add**: If users complain about unexpected undeletes
+
+❌ **Multi-field Conflict Detection**: No field-level merge (e.g., merge content but keep delete flag)
+  - **Why defer**: Adds significant complexity with unclear benefit
+  - **When to add**: If users need fine-grained control (probably never for this project)
+
+#### Phase 2: Tombstone Management (If Storage Becomes a Problem)
+
+**Trigger**: Database grows too large from accumulated deleted records
+
+**Approach**: Add tombstone expiration policy
+
+```go
+// Periodically clean up old tombstones
+func cleanupTombstones(db *sql.DB, retentionDays int) {
+    cutoff := time.Now().AddDate(0, 0, -retentionDays).UnixMilli()
+    
+    _, err := db.Exec(`
+        DELETE FROM example_table 
+        WHERE deleted_at IS NOT NULL 
+        AND deleted_at < ?
+    `, cutoff)
+    
+    // Log cleanup results...
+}
+```
+
+**Decision**: Only implement if database size becomes a real problem
+
+#### Phase 3: Advanced Conflict Strategies (If Users Complain)
+
+**Trigger**: Users report unexpected behavior from delete/update conflicts
+
+**Possible Approaches**:
+1. **Last-Writer-Wins with Delete Priority**: Deletes always win over updates (regardless of timestamp)
+2. **User Confirmation**: Prompt user when update conflicts with delete
+3. **Field-Level Merge**: Merge content changes but preserve delete flag
+
+**Decision**: Defer until specific use cases emerge from real-world usage
+
+#### Recommended Decision Tree
+
+```
+Does storage grow too large from deleted records?
+├─ No → Keep Phase 1 (timestamp-based) ✅
+│       95% of use cases
+│
+└─ Yes → Implement tombstone cleanup (Phase 2) 🧹
+   
+Are users confused by undelete behavior?
+├─ No → Keep Phase 1 ✅
+│
+└─ Yes → Consider Phase 3 (advanced conflict rules) 🤔
+         (only if proven necessary through user feedback)
+```
+
+**Summary**: Start with simple timestamp comparison, treat delete as just another update. Add complexity only when proven necessary. 🚀
+
+**Clock Sync Verification (Startup Check):**
+
+```go
+// Check clock synchronization at service startup
+func verifyClockSync() error {
+    // Method 1: Check NTP sync status (Linux)
+    cmd := exec.Command("timedatectl", "status")
+    output, err := cmd.Output()
+    if err != nil {
+        return fmt.Errorf("failed to check NTP status: %w", err)
+    }
+    
+    if !strings.Contains(string(output), "NTP service: active") {
+        return fmt.Errorf("⚠️  NTP is not active. Please enable with: sudo timedatectl set-ntp true")
+    }
+    
+    log.Println("✅ NTP synchronization active")
+    return nil
+}
+
+// Check clock skew between peers during sync
+func (s *SyncService) checkClockSkew(peer Peer) error {
+    // Get peer's current time
+    peerTime, err := s.getPeerTime(peer)
+    if err != nil {
+        return err
+    }
+    
+    localTime := time.Now()
+    skew := localTime.Sub(peerTime).Abs()
+    
+    maxSkew := s.config.MaxClockSkew // e.g., 5 seconds
+    
+    if skew > maxSkew {
+        log.Warnf("⚠️  Clock skew with %s: %v (local: %v, peer: %v)", 
+            peer.Name, skew, localTime, peerTime)
+        
+        if skew > 1*time.Minute {
+            return fmt.Errorf("clock skew too large (%v), sync aborted. Please sync system clocks", skew)
+        }
+    }
+    
+    return nil
+}
+
+// Service initialization with clock check
+func main() {
+    log.Println("🚀 Starting enx-data-service...")
+    
+    // STEP 1: Verify clock synchronization
+    if err := verifyClockSync(); err != nil {
+        log.Fatalf("❌ Clock sync check failed: %v", err)
+        log.Fatal("   Please enable NTP: sudo timedatectl set-ntp true")
+    }
+    
+    // STEP 2: Initialize database
+    db := initDatabase("./enx.db")
+    
+    // STEP 3: Start sync service
+    syncService := NewSyncService(db, loadConfig())
+    
+    // ... rest of initialization
+}
 ```
 
 ## Error Handling
@@ -833,6 +1452,297 @@ func (cb *CircuitBreaker) Call(fn func() error) error {
 }
 ```
 
+### Network Detection and Auto-Sync (for Intermittent Connectivity)
+
+**Implementation for Ubuntu laptop scenario: Detect when network becomes available and trigger sync**
+
+```go
+package sync
+
+import (
+    "context"
+    "log"
+    "net"
+    "time"
+)
+
+// NetworkMonitor detects network availability changes
+type NetworkMonitor struct {
+    isOnline     bool
+    lastCheck    time.Time
+    checkInterval time.Duration
+    syncService  *SyncService
+}
+
+// NewNetworkMonitor creates a network monitor for intermittent connectivity
+func NewNetworkMonitor(syncService *SyncService, checkInterval time.Duration) *NetworkMonitor {
+    return &NetworkMonitor{
+        isOnline:      false,
+        checkInterval: checkInterval,
+        syncService:   syncService,
+    }
+}
+
+// Start begins monitoring network availability
+func (nm *NetworkMonitor) Start(ctx context.Context) {
+    log.Println("🔍 Starting network monitor for opportunistic sync...")
+    
+    ticker := time.NewTicker(nm.checkInterval)
+    defer ticker.Stop()
+
+    for {
+        select {
+        case <-ctx.Done():
+            log.Println("Network monitor stopped")
+            return
+            
+        case <-ticker.C:
+            nm.checkAndSync()
+        }
+    }
+}
+
+// checkAndSync checks network and triggers sync if newly online
+func (nm *NetworkMonitor) checkAndSync() {
+    online := nm.isNetworkAvailable()
+    
+    // Detect state transition: offline → online
+    if online && !nm.isOnline {
+        log.Println("🌐 Network detected! Starting opportunistic sync...")
+        nm.onNetworkReconnect()
+    } else if !online && nm.isOnline {
+        log.Println("📡 Network lost. Working offline...")
+    }
+    
+    nm.isOnline = online
+    nm.lastCheck = time.Now()
+}
+
+// isNetworkAvailable checks if network is reachable
+func (nm *NetworkMonitor) isNetworkAvailable() bool {
+    // Method 1: Try to resolve a known host
+    _, err := net.LookupHost("google.com")
+    if err == nil {
+        return true
+    }
+    
+    // Method 2: Check if we can reach peers on LAN
+    peers := nm.syncService.GetConfiguredPeers()
+    for _, peer := range peers {
+        if nm.canReachPeer(peer.Address) {
+            return true
+        }
+    }
+    
+    return false
+}
+
+// canReachPeer checks if a peer is reachable on LAN
+func (nm *NetworkMonitor) canReachPeer(address string) bool {
+    conn, err := net.DialTimeout("tcp", address, 2*time.Second)
+    if err != nil {
+        return false
+    }
+    conn.Close()
+    return true
+}
+
+// onNetworkReconnect handles network reconnection event
+func (nm *NetworkMonitor) onNetworkReconnect() {
+    ctx := context.Background()
+    
+    log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    log.Println("🔄 Network Reconnected - Starting Sync")
+    log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    
+    // Discover peers on LAN
+    peers, err := nm.syncService.DiscoverPeers(ctx)
+    if err != nil {
+        log.Printf("⚠️  Peer discovery failed: %v", err)
+        return
+    }
+    
+    if len(peers) == 0 {
+        log.Println("ℹ️  No peers found on network")
+        return
+    }
+    
+    log.Printf("✅ Found %d peer(s): %v", len(peers), peers)
+    
+    // Sync with each discovered peer
+    for _, peer := range peers {
+        log.Printf("🔄 Syncing with %s...", peer.Name)
+        
+        if err := nm.syncService.SyncWithPeer(ctx, peer); err != nil {
+            log.Printf("❌ Sync with %s failed: %v", peer.Name, err)
+            continue
+        }
+        
+        log.Printf("✅ Sync with %s completed", peer.Name)
+    }
+    
+    log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    log.Println("✅ Opportunistic sync completed")
+    log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+}
+
+// SyncService methods for peer discovery and sync
+func (s *SyncService) DiscoverPeers(ctx context.Context) ([]Peer, error) {
+    var peers []Peer
+    
+    // Try configured peers first
+    for _, peerAddr := range s.config.Peers {
+        if s.isPeerReachable(peerAddr) {
+            peer := Peer{
+                Address: peerAddr,
+                Name:    s.getPeerName(peerAddr),
+            }
+            peers = append(peers, peer)
+        }
+    }
+    
+    // Optional: mDNS discovery for auto-discovery on LAN
+    if s.config.AutoDiscover {
+        discovered := s.discoverViaMDNS(ctx)
+        peers = append(peers, discovered...)
+    }
+    
+    return peers, nil
+}
+
+func (s *SyncService) SyncWithPeer(ctx context.Context, peer Peer) error {
+    // 1. Get changes from peer since last sync
+    lastSyncTime := s.getLastSyncTime(peer.Address)
+    
+    remoteChanges, err := s.fetchChangesFromPeer(ctx, peer, lastSyncTime)
+    if err != nil {
+        return fmt.Errorf("failed to fetch changes: %w", err)
+    }
+    
+    log.Printf("📥 Received %d changes from %s", len(remoteChanges), peer.Name)
+    
+    // 2. Apply remote changes locally
+    if err := s.applyChanges(ctx, remoteChanges); err != nil {
+        return fmt.Errorf("failed to apply changes: %w", err)
+    }
+    
+    // 3. Push local changes to peer
+    localChanges := s.getLocalChanges(lastSyncTime)
+    
+    log.Printf("📤 Sending %d changes to %s", len(localChanges), peer.Name)
+    
+    if err := s.pushChangesToPeer(ctx, peer, localChanges); err != nil {
+        return fmt.Errorf("failed to push changes: %w", err)
+    }
+    
+    // 4. Update last sync time
+    s.updateLastSyncTime(peer.Address, time.Now())
+    
+    return nil
+}
+
+// Main service initialization
+func main() {
+    // Initialize data service
+    db := initDatabase("./enx.db")
+    syncService := NewSyncService(db, loadConfig())
+    
+    // Start network monitor for opportunistic sync
+    networkMonitor := NewNetworkMonitor(syncService, 30*time.Second)
+    
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+    
+    // Start monitoring in background
+    go networkMonitor.Start(ctx)
+    
+    // Also run periodic sync when online (every 5 minutes)
+    go func() {
+        ticker := time.NewTicker(5 * time.Minute)
+        defer ticker.Stop()
+        
+        for range ticker.C {
+            if networkMonitor.isOnline {
+                log.Println("⏰ Periodic sync triggered")
+                networkMonitor.onNetworkReconnect()
+            }
+        }
+    }()
+    
+    // Start gRPC server
+    startGRPCServer(syncService)
+}
+```
+
+**Configuration for Intermittent Connectivity:**
+
+```yaml
+# config.yaml (Ubuntu laptop)
+network:
+  # Check network every 30 seconds
+  monitor_interval: "30s"
+  
+  # Auto-sync when network detected
+  sync_on_reconnect: true
+  
+  # Also do periodic sync when online
+  periodic_sync_interval: "5m"
+  
+peers:
+  # Home LAN peers (auto-discover)
+  - address: "192.168.1.10:8091"
+    name: "desktop"
+    
+  - address: "192.168.1.20:8091"
+    name: "macbook"
+    
+auto_discover:
+  enabled: true              # Use mDNS to find peers on LAN
+  service_name: "_enx-sync._tcp"
+  
+sync:
+  # Store changes offline
+  offline_buffer_size: 10000
+  
+  # Retry failed syncs
+  retry_on_failure: true
+  max_retries: 3
+  retry_backoff: "1m"
+```
+
+**Log Output Example (Ubuntu reconnecting):**
+
+```
+2025-12-13 15:00:01 🔍 Starting network monitor for opportunistic sync...
+2025-12-13 15:00:31 📡 Network lost. Working offline...
+2025-12-13 15:05:01 📡 Working offline... (check interval)
+2025-12-13 15:10:01 📡 Working offline... (check interval)
+2025-12-13 15:15:01 🌐 Network detected! Starting opportunistic sync...
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔄 Network Reconnected - Starting Sync
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Found 2 peer(s): [desktop macbook]
+🔄 Syncing with desktop...
+📥 Received 4 changes from desktop
+📤 Sending 5 changes to desktop
+✅ Sync with desktop completed
+🔄 Syncing with macbook...
+📥 Received 2 changes from macbook
+📤 Sending 5 changes to macbook
+✅ Sync with macbook completed
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Opportunistic sync completed
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+**Key Benefits:**
+
+1. ✅ **Automatic**: No manual intervention required
+2. ✅ **Resilient**: Works offline, syncs when possible
+3. ✅ **Efficient**: Only checks network periodically (low CPU)
+4. ✅ **Robust**: Handles peer discovery and connection failures
+5. ✅ **Flexible**: Configurable check interval and retry logic
+
 ## Performance Considerations
 
 ### Connection Pooling
@@ -896,46 +1806,282 @@ func (c *DataClient) BatchExecute(ops []Operation) error {
 ### Caching Strategy
 
 ```go
-// Cache frequently accessed data
+// Cache frequently accessed data (generic approach)
 type CachedDataClient struct {
-    client DataServiceClient
+    client GenericDataServiceClient
     cache  *lru.Cache
     ttl    time.Duration
 }
 
-func (c *CachedDataClient) GetWord(word string) (*Word, error) {
+func (c *CachedDataClient) FindWithCache(table, filter string) (*pb.FindResponse, error) {
+    cacheKey := fmt.Sprintf("%s:%s", table, filter)
+    
     // Check cache first
-    if val, ok := c.cache.Get(word); ok {
+    if val, ok := c.cache.Get(cacheKey); ok {
         if entry := val.(*CacheEntry); time.Since(entry.Time) < c.ttl {
-            return entry.Word, nil
+            return entry.Response, nil
         }
     }
 
     // Cache miss, fetch from service
-    result, err := c.client.GetWord(context.Background(), &pb.GetWordRequest{
-        English: word,
+    result, err := c.client.Find(context.Background(), &pb.FindRequest{
+        Table:  table,
+        Filter: filter,
     })
     if err != nil {
         return nil, err
     }
 
     // Update cache
-    c.cache.Add(word, &CacheEntry{
-        Word: result,
-        Time: time.Now(),
+    c.cache.Add(cacheKey, &CacheEntry{
+        Response: result,
+        Time:     time.Now(),
     })
 
     return result, nil
 }
+
+// Example: ENX-specific wrapper for word lookup
+func (c *CachedDataClient) GetWord(word string) (*Word, error) {
+    resp, err := c.FindWithCache("words", fmt.Sprintf(`{"english": "%s"}`, word))
+    if err != nil {
+        return nil, err
+    }
+    // Parse response to Word struct (ENX-specific business logic)
+    return parseWord(resp.Rows[0]), nil
+}
 ```
+
+## Clock Synchronization Strategy
+
+### Why Clock Sync Matters
+
+Timestamp-based conflict resolution requires consistent time across all nodes:
+
+```
+❌ Without Clock Sync:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Desktop (clock fast +10 min):
+  10:10 AM - Update word "hello" → timestamp: 10:10
+  
+Ubuntu (clock correct):
+  10:05 AM - Update word "hello" → timestamp: 10:05
+  
+Sync happens:
+  Desktop's 10:10 > Ubuntu's 10:05 → Desktop wins ✅
+  BUT Desktop's change actually happened BEFORE Ubuntu's! ❌
+  
+Result: Wrong merge order, data loss
+
+
+✅ With Clock Sync (NTP enabled):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Desktop (NTP synced):
+  10:05:30 AM - Update word "hello" → timestamp: 10:05:30
+  
+Ubuntu (NTP synced):
+  10:06:15 AM - Update word "hello" → timestamp: 10:06:15
+  
+Sync happens:
+  Ubuntu's 10:06:15 > Desktop's 10:05:30 → Ubuntu wins ✅
+  
+Result: Correct merge order, no data loss
+```
+
+### Implementation Strategy (Phased Approach)
+
+**🎯 Design Philosophy: Start simple, add complexity only when needed**
+
+#### Phase 1: System Clock (MVP) ⭐ **CHOSEN for Initial Version**
+
+**Approach**: Require nodes to sync system clocks before using P2P sync
+
+**Prerequisites**:
+```bash
+# Enable NTP on all nodes (one-time setup)
+
+# Linux (Ubuntu/Debian)
+sudo timedatectl set-ntp true
+timedatectl status  # Verify: "NTP service: active"
+
+# macOS (usually auto-enabled)
+sudo systemsetup -setusingnetworktime on
+systemsetup -getusingnetworktime
+
+# Verify time sync
+date  # Check if times match across nodes
+```
+
+**Pros**:
+- ✅ **Simple**: No extra code, uses OS features
+- ✅ **Reliable**: NTP is battle-tested (accuracy: ~10-50ms)
+- ✅ **No overhead**: Zero performance cost
+- ✅ **Standard practice**: Most servers already use NTP
+
+**Cons**:
+- ⚠️ **Requires NTP**: Needs internet connection for NTP servers
+- ⚠️ **Manual setup**: Users must enable NTP on all nodes
+- ⚠️ **Trust OS**: Assumes OS time management works correctly
+
+**When this works**:
+- ✅ Development environment (can ensure NTP is enabled)
+- ✅ Home LAN with internet access
+- ✅ Single user controlling all nodes
+- ✅ Infrequent clock adjustments
+
+**When this fails**:
+- ❌ VMs with time drift (paused/resumed VMs)
+- ❌ Containers with isolated clocks
+- ❌ Networks without NTP access
+- ❌ Frequently hibernated laptops
+
+**Implementation**: Add startup check
+
+```go
+func main() {
+    // Fail fast if NTP not enabled
+    if err := verifyNTPEnabled(); err != nil {
+        log.Fatal("Clock sync required. Enable NTP: sudo timedatectl set-ntp true")
+    }
+    
+    // Continue with normal startup
+    startService()
+}
+```
+
+#### Phase 2: Hybrid Logical Clock (HLC) - If Clock Skew Becomes a Problem
+
+**Trigger**: If users report incorrect merge order due to clock skew
+
+**Approach**: Implement HLC (combines physical time + logical counter)
+
+```go
+type HLC struct {
+    PhysicalTime int64  // Milliseconds since epoch
+    Logical      int64  // Counter for same physical time
+}
+
+// Update HLC when receiving remote event
+func (h *HLC) Update(remoteHLC HLC) {
+    h.PhysicalTime = max(h.PhysicalTime, remoteHLC.PhysicalTime, time.Now().UnixMilli())
+    if h.PhysicalTime == remoteHLC.PhysicalTime {
+        h.Logical = max(h.Logical, remoteHLC.Logical) + 1
+    } else {
+        h.Logical = 0
+    }
+}
+```
+
+**Pros**:
+- ✅ Tolerates clock skew up to ~10 minutes
+- ✅ Maintains causality (happened-before relationships)
+- ✅ Gradually corrects clock differences
+
+**Cons**:
+- ⚠️ More complex implementation
+- ⚠️ Need to store HLC in every record (extra storage)
+- ⚠️ Requires schema migration
+
+**Decision point**: Only implement if Phase 1 proves insufficient in real-world usage
+
+#### Phase 3: Vector Clocks - Only if Causality Tracking Required
+
+**Trigger**: If HLC still insufficient (very unlikely for this project)
+
+**Approach**: Full vector clock per node
+
+```go
+type VectorClock map[string]int64  // node_id -> counter
+
+func (vc VectorClock) Merge(other VectorClock) {
+    for node, count := range other {
+        vc[node] = max(vc[node], count)
+    }
+}
+```
+
+**Pros**:
+- ✅ Perfect causality tracking
+- ✅ Works with arbitrary clock differences
+
+**Cons**:
+- ❌ Much more complex
+- ❌ O(N) storage per record (N = number of nodes)
+- ❌ Difficult conflict detection
+
+**Decision**: Defer until absolutely necessary (likely never for 3-node setup)
+
+### Recommended Decision Tree
+
+```
+Is NTP available on all nodes?
+├─ Yes → Use Phase 1 (System Clock) ✅
+│        95% of use cases
+│
+└─ No → Can you enable NTP?
+   ├─ Yes → Enable NTP, use Phase 1 ✅
+   │
+   └─ No → Is clock skew causing problems?
+      ├─ No → Keep using Phase 1, document requirement 📝
+      │
+      └─ Yes → Implement Phase 2 (HLC) 🔧
+                (only if proven necessary through bug reports)
+```
+
+### Deployment Checklist
+
+**Before enabling P2P sync, verify:**
+
+```bash
+# 1. Check NTP status on each node
+timedatectl status
+
+# Expected output:
+#   System clock synchronized: yes
+#   NTP service: active
+
+# 2. Compare times across nodes (should differ by < 1 second)
+# Run on each node:
+date +"%Y-%m-%d %H:%M:%S.%3N"
+
+# Example output:
+# Desktop: 2025-12-13 15:30:45.123
+# MacBook: 2025-12-13 15:30:45.234  (diff: 111ms ✅)
+# Ubuntu:  2025-12-13 15:30:45.089  (diff: 34ms ✅)
+
+# 3. If times differ by > 5 seconds, force sync:
+sudo systemctl restart systemd-timesyncd  # Linux
+sudo sntp -sS time.apple.com             # macOS
+```
+
+### Future Considerations
+
+**When to upgrade from Phase 1**:
+- ⚠️ Users report data loss from incorrect merge order
+- ⚠️ Clock skew > 5 seconds frequently occurs
+- ⚠️ Nodes often run in VMs that pause/resume
+- ⚠️ Network doesn't have NTP access
+
+**Until then**: Keep it simple, use system clock with NTP ✅
 
 ## Security Considerations
 
-### gRPC Authentication Methods
+### Peer-to-Peer Sync Authentication
 
-**✅ Yes! gRPC fully supports authentication, just like RESTful APIs**
+**⚠️ IMPORTANT: This section discusses authentication BETWEEN sync nodes (peer-to-peer), not end-user authentication**
 
-gRPC supports multiple authentication methods:
+**Context**: When Node A (Desktop) connects to Node B (MacBook) for P2P sync, we need to ensure:
+- ✅ Only trusted nodes can connect (not any random device on LAN)
+- ✅ Prevent unauthorized access to database sync API
+- ✅ Ensure data is not exposed to untrusted peers
+
+**End-user authentication** (user login to enx-api) is a separate concern handled by the application layer.
+
+### Peer Authentication Methods for P2P Sync
+
+gRPC supports multiple authentication methods for securing node-to-node connections:
 
 #### 1. **Token-Based Authentication (JWT)** ⭐ Recommended
 
@@ -1461,26 +2607,54 @@ func ExampleAuthenticatedClient() {
 }
 ```
 
-### Authentication Comparison
+### Authentication Comparison for P2P Sync
 
-| Method | Complexity | Security | Use Case |
-|--------|-----------|----------|----------|
-| **JWT Token** | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | **Recommended** - Modern APIs, stateless |
-| **Basic Auth** | ⭐ | ⭐⭐⭐ | Simple internal services |
-| **API Key** | ⭐⭐ | ⭐⭐⭐⭐ | Service-to-service |
-| **OAuth2** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | Enterprise, third-party |
-| **mTLS** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | High security, internal |
+| Method | Complexity | Security | Use Case for P2P Sync |
+|--------|-----------|----------|-----------------------|
+| **API Key** | ⭐ | ⭐⭐⭐⭐ | **Simplest** - Static key per node, easy setup |
+| **mTLS** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | **Most Secure** - Certificate-based, mutual verification |
+| **JWT Token** | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | Stateless, good for dynamic peer discovery |
+| **Basic Auth** | ⭐ | ⭐⭐⭐ | Too simple for P2P, no encryption |
+| **OAuth2** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | Overkill for home LAN P2P |
 
-### Recommended for ENX Project
+### Recommended for P2P Sync (Home LAN Environment)
 
-**Recommended approach: JWT Token Authentication**
+**Two practical options:**
+
+#### Option 1: API Key (Simple, Good Enough for Home LAN) ⭐ **Recommended for MVP**
 
 ```
-Why JWT for ENX:
+Why API Key for P2P Sync:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-✅ Stateless: No session storage needed
-✅ Self-contained: Token includes user info
+✅ Simple Setup: Generate one key per node, configure once
+✅ No Expiration: Keys don't expire (suitable for home devices)
+✅ Easy Troubleshooting: Easy to verify if key matches
+✅ Sufficient Security: Combined with LAN-only access
+
+Example Configuration:
+# sync-config.yaml
+peer_auth:
+  method: "api_key"
+  api_key: "enx-desktop-abc123def456"  # Unique per node
+  
+trusted_peers:
+  - name: "macbook"
+    api_key: "enx-macbook-xyz789ghi012"
+  - name: "ubuntu"
+    api_key: "enx-ubuntu-jkl345mno678"
+```
+
+#### Option 2: mTLS (Maximum Security, More Setup) ⭐ **For Production/Enterprise**
+
+```
+Why mTLS for P2P Sync:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ Certificate-Based: Each node has unique certificate
+✅ Mutual Verification: Both sides verify each other
+✅ Built-in Encryption: TLS handles all encryption
+✅ Industry Standard: Used by Kubernetes, microservices
 ✅ Expiration: Built-in token expiry
 ✅ Familiar: Same as HTTP REST APIs
 ✅ Easy to implement: Standard JWT libraries
@@ -1614,7 +2788,15 @@ func TracingInterceptor() grpc.UnaryServerInterceptor {
 }
 ```
 
-## SQLite WAL (Write-Ahead Logging) Deep Dive
+## SQLite WAL (Write-Ahead Logging) - Performance Optimization
+
+**⚠️ IMPORTANT: WAL is a SQLite configuration for better performance, NOT a requirement for P2P sync**
+
+**Clarification**:
+- ❌ WAL does NOT affect sync logic (sync is based on timestamps, not WAL)
+- ✅ WAL improves concurrent read/write performance on local SQLite
+- ✅ WAL is optional - sync works with or without WAL mode
+- 💡 Recommendation: Enable WAL for better local performance, but it's independent of sync
 
 ### What is WAL?
 
@@ -4768,8 +5950,7 @@ Ubuntu:   litestream replicate enx.db s3://bucket/ubuntu/enx.db
 # Then manually merge (every sync):
 litestream restore s3://bucket/macbook/enx.db -o /tmp/macbook.db
 litestream restore s3://bucket/ubuntu/enx.db -o /tmp/ubuntu.db
-./sync-db enx.db /tmp/macbook.db  # Your existing merge tool
-./sync-db enx.db /tmp/ubuntu.db
+# Manual merge of databases (requires custom merge tool)
 litestream replicate enx.db s3://bucket/desktop/enx.db
 ```
 
@@ -4778,18 +5959,18 @@ litestream replicate enx.db s3://bucket/desktop/enx.db
 - ❌ **Cost**: 3x storage (full database copy per node)
 - ❌ **Bandwidth**: Downloading full databases every sync
 - ❌ **Conflict window**: Race conditions between restore and replicate
-- ❌ **No benefit**: Current solution (cloud folder + sync-db) is simpler
+- ❌ **No benefit**: Too complex for simple use case
 
-### Comparison: Litestream vs Current Solution
+### Comparison: Litestream vs Timestamp-based Sync
 
-| Feature | Litestream | Current (Cloud Folder + sync-db) |
-|---------|------------|----------------------------------|
+| Feature | Litestream | Timestamp-based Approach |
+|---------|------------|-------------------------|
 | **P2P sync** | ❌ Single-writer only | ✅ Multi-node merge |
 | **Bidirectional** | ❌ One-way only | ✅ Bidirectional |
 | **Conflict resolution** | ❌ None (last write wins) | ✅ Timestamp-based merge |
 | **Offline support** | ⚠️ Manual restore | ✅ Automatic on reconnect |
-| **Setup complexity** | ⚠️ S3 + credentials | ✅ Just cloud folder |
-| **Cost** | 💰 S3 storage + API calls | 💰 Included in Dropbox/Drive |
+| **Setup complexity** | ⚠️ S3 + credentials | ✅ Minimal setup |
+| **Cost** | 💰 S3 storage + API calls | 💰 No additional cost |
 | **Data safety** | ⚠️ Data loss risk | ✅ Merge preserves all data |
 
 ### When to Use Litestream
