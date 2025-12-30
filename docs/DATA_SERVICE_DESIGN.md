@@ -410,29 +410,54 @@ To support the P2P sync architecture, **ALL tables that need to be synced** must
 
 ### Prerequisites
 
-**⏰ Clock Synchronization (Critical Requirement)**:
-- All nodes must have synchronized system clocks before enabling P2P sync
-- Recommended: Enable NTP (Network Time Protocol) on all nodes
-  ```bash
-  # Ubuntu/Debian
-  sudo timedatectl set-ntp true
-  
-  # macOS (usually enabled by default)
-  sudo systemsetup -setusingnetworktime on
-  
-  # Verify clock sync status
-  timedatectl status  # Linux
-  ```
-- Alternative: Manual clock sync if NTP not available (less reliable)
-- **Why**: Timestamp-based conflict resolution requires consistent time across nodes
-- **Risk if skipped**: Wrong merge order, data overwritten incorrectly
+**⏰ Clock Synchronization Strategy**:
 
-**📋 Implementation Philosophy**:
-- ✅ **Phase 1 (MVP)**: Use system clock (simple, works if clocks synced)
-- ⏳ **Phase 2 (If needed)**: Consider Hybrid Logical Clock (HLC) if clock skew becomes a real problem
-- ⏳ **Phase 3 (Advanced)**: Vector clocks for true causality tracking (only if absolutely necessary)
+#### Phase 1 (MVP) - NTP Configuration Only ⭐ **CURRENT FOCUS**
 
-**Decision**: Start simple, add complexity only when proven necessary through real-world usage.
+**Requirements**:
+- ✅ All nodes must enable NTP (Network Time Protocol)
+- ✅ Document NTP setup instructions for users
+- ✅ Rely on user to verify NTP is working
+
+**Setup Commands**:
+```bash
+# Ubuntu/Debian
+sudo timedatectl set-ntp true
+timedatectl status  # Verify: "System clock synchronized: yes"
+
+# macOS (usually enabled by default)
+sudo systemsetup -setusingnetworktime on
+systemsetup -getusingnetworktime  # Verify
+
+# Verify all nodes have similar time (manual check)
+date +%s  # Check Unix timestamp on each node
+```
+
+**Why This Is Enough for Phase 1**:
+- ✅ Single user, low conflict probability
+- ✅ Modern NTP accuracy: ±10-100ms (sufficient for word learning data)
+- ✅ Operations typically minutes/hours apart (not milliseconds)
+- ✅ Non-critical data (word learning progress)
+- ✅ Keep MVP simple - add complexity only when needed
+
+**Risk if NTP not configured**: Timestamp-based merge may choose wrong version, causing data to be overwritten.
+
+#### Phase 2 - Automatic Detection & Protection (Future)
+
+**Deferred features** (implement only if Phase 1 shows problems):
+- ⏳ Startup clock sync verification
+- ⏳ Peer-to-peer clock skew detection
+- ⏳ Automatic warnings when clocks diverge > 5 seconds
+- ⏳ Sync rejection if clock skew too large
+
+#### Phase 3 - Advanced Solutions (If Necessary)
+
+**Only if real-world issues emerge**:
+- ⏳ Hybrid Logical Clock (HLC) for clock-skew tolerance
+- ⏳ Vector clocks for true causality tracking
+- ⏳ Conflict detection UI for user resolution
+
+**Decision**: Start with documented NTP requirement, add automation only when proven necessary through real-world usage.
 
 ### Development Scope
 
@@ -440,7 +465,12 @@ To support the P2P sync architecture, **ALL tables that need to be synced** must
     *   Create `enx-data-service` in a new directory.
     *   Implement only the **"words"** table initially.
     *   Do NOT modify `enx-api` yet.
-2.  **Integration**:
+2.  **Clock Synchronization** (Phase 1):
+    *   ✅ Document NTP configuration requirement in README
+    *   ✅ Add NTP setup verification steps
+    *   ❌ No automatic clock checking in Phase 1 (keep it simple)
+    *   ⏳ Defer automatic detection to Phase 2
+3.  **Integration**:
     *   Develop and test `enx-data-service` independently.
     *   Once `enx-data-service` is stable, refactor `enx-api` to connect to it.
 
@@ -1259,9 +1289,9 @@ sync:
   retry_on_failure: true
   max_offline_changes: 10000   # Store up to 10k changes offline
   
-  # Clock synchronization check
-  check_clock_sync: true       # Verify NTP sync before starting
-  max_clock_skew: "5s"         # Warn if clock differs by more than 5 seconds
+  # Clock synchronization (Phase 1: Manual NTP configuration)
+  # Note: Ensure NTP is enabled on all nodes before running sync
+  # Automatic clock checking deferred to Phase 2
   
 storage:
   path: "./enx.db"
@@ -1270,7 +1300,10 @@ storage:
 
 **Implementation Notes:**
 
-1. **Clock Sync Check**: Verify NTP sync status before starting service
+1. **Clock Sync** (Phase 1): 
+   - ✅ User manually configures NTP on all nodes
+   - ✅ README documents verification steps
+   - ⏳ Automatic checking deferred to Phase 2
 2. **Network Detection**: Service periodically checks network availability
 3. **Peer Discovery**: mDNS or broadcast to find peers on LAN
 4. **Change Tracking**: All operations record `update_datetime` using system clock
@@ -1308,12 +1341,17 @@ Sync happens at 10:30 AM:
 - ✅ Infrequent concurrent edits (rare conflicts)
 - ✅ Simple data (text, numbers) where last version is acceptable
 
-**When LWW Fails** (Future Consideration):
-- ❌ Multiple users editing same record simultaneously (requires CRDT or OT)
+**When LWW Fails** (Not Your Scenario):
+- ❌ Multiple users editing same record simultaneously (would need CRDT)
 - ❌ Complex data structures needing field-level merge (e.g., nested JSON)
-- ❌ High-value data where no loss is acceptable (requires conflict detection + user resolution)
+- ❌ High-value data where no loss is acceptable
 
-**Current Decision**: Use LWW for MVP, revisit if users report data loss issues.
+**✅ ENX Decision: LWW is Perfect**
+- ✅ Single user (developer only)
+- ✅ Development-phase sync only
+- ✅ Low conflict probability
+- ✅ Simple and maintainable
+- ❌ **CRDT NOT needed** - too complex for this use case
 
 ### Soft Delete and Sync Strategy (Simplified Approach)
 
@@ -6226,35 +6264,63 @@ This is **completely different** from your multi-node development scenario.
 
 Both Session Extension and Litestream would add complexity without benefits for your use case.
 
-## cr-sqlite (CRDT-based SQLite) Analysis
+## cr-sqlite / CRDT Analysis - NOT USED ❌
 
-### What is cr-sqlite?
+### ⚠️ Decision: ENX Does NOT Use CRDT
 
-**cr-sqlite** is a SQLite extension that adds **CRDT (Conflict-free Replicated Data Type)** capabilities to SQLite, enabling true multi-master replication with automatic conflict resolution.
+**CRDT is explicitly rejected for ENX** for the following reasons:
 
-**GitHub**: https://github.com/vlcn-io/cr-sqlite
-**Organization**: vlcn.io (Voltron Data)
+1. **❌ Too complex for development-phase sync**
+   - ENX only needs sync during development
+   - Not a production multi-user system
+   - CRDT adds unnecessary complexity
 
-### Core Concept: CRDTs
+2. **❌ Overkill for single-user scenario**
+   - Only one person (developer) using the system
+   - No concurrent writes from multiple users
+   - Simple timestamp comparison is sufficient
 
-**CRDT (Conflict-free Replicated Data Type)** is a mathematical approach to distributed data that guarantees:
+3. **❌ Build complexity (CGo requirements)**
+   - cr-sqlite requires C extension compilation
+   - Cross-platform build issues
+   - Pure Go solution preferred
 
-- ✅ **Eventually consistent**: All nodes converge to same state
-- ✅ **Conflict-free**: Mathematical properties ensure automatic merge
-- ✅ **No coordination**: Nodes can work independently
-- ✅ **Order independent**: Changes can be applied in any order
+4. **❌ Storage overhead (~30%)**
+   - CRDT metadata increases database size
+   - Wasted space for unused features
+   - Simple timestamps have zero overhead
+
+5. **✅ Current solution is adequate**
+   - Timestamp-based Last-Write-Wins works perfectly
+   - Conflicts are rare (single user)
+   - Simple and maintainable
+
+### What is CRDT? (Background Only)
+
+**CRDT (Conflict-free Replicated Data Type)** is a mathematical approach for multi-master replication:
 
 ```
-Traditional approach (your current):
-Node A: update_datetime = 10:30 → Compare timestamps → Keep newer
-Node B: update_datetime = 10:25 → Lost
+Use case: Multiple users editing same document simultaneously
+Example: Google Docs, Figma, Notion
 
-CRDT approach:
-Node A: version_vector = {A:5, B:3} → Merge vectors → Keep both
-Node B: version_vector = {A:3, B:7} → Result: {A:5, B:7}
+ENX reality: Single developer, sequential access ❌
 ```
 
-### How cr-sqlite Works
+### When CRDT Would Be Needed
+
+**CRDT is designed for**:
+- Real-time collaboration (5+ users typing simultaneously)
+- Character-level conflict resolution
+- Complex multi-master scenarios
+
+**ENX scenario** (single user):
+- Monday: Add words on Desktop
+- Tuesday: Add words on MacBook
+- Only ONE active device at a time
+
+**Conclusion**: Timestamp comparison is sufficient, CRDT is not needed.
+
+### cr-sqlite Reference (Not Implemented)
 
 #### 1. **CRR Tables (Conflict-free Replicated Relations)**
 
@@ -6642,24 +6708,36 @@ cr-sqlite: Overkill (CRDT for single user?)
 Timestamp: ✅ Perfect fit
 ```
 
-### Recommendation
+### Final Decision: Timestamp-Based LWW ✅
 
-**Do NOT use cr-sqlite for your project** because:
+**ENX uses simple timestamp-based Last-Write-Wins (LWW)**:
 
-1. ❌ **No concurrent writes**: Single user, sequential access
-2. ❌ **Simple conflicts**: Timestamp comparison is sufficient
-3. ❌ **CGo complexity**: Build issues, platform dependencies
-4. ❌ **Storage waste**: 30% overhead for unused metadata
-5. ❌ **Learning curve**: CRDT concepts add no value
-6. ❌ **Maturity risk**: Newer project, fewer users
-7. ✅ **Current solution works**: Timestamp-based is simpler and sufficient
+```
+Why this is the right choice:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Development-phase sync only (not production)
+✅ Single user (developer), no concurrent writes
+✅ Simple and maintainable
+✅ Pure Go, no CGo complexity
+✅ Zero storage overhead
+✅ Easy to debug and understand
+✅ NTP synchronization handles clock accuracy
 
-**When to reconsider**:
-- If you add real-time collaboration (multiple users editing simultaneously)
-- If you need character-level merging (like Google Docs)
-- If conflict resolution becomes complex (not just "keep newer")
+CRDT is NOT needed:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ Too complex for single-user scenario
+❌ Designed for real-time multi-user collaboration
+❌ Adds 30% storage overhead for unused features
+❌ Requires CGo (complex builds)
+❌ Overkill for development sync
 
-For your use case (single-user, offline-capable, simple sync), **timestamp-based approach is ideal**.
+Bottom line:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Keep it simple. Timestamp comparison works perfectly
+for the ENX development workflow.
+```
+
+**If requirements change** (e.g., adding multi-user collaboration), revisit CRDT then. Don't over-engineer now.
 
 ### If You Still Want to Try
 
@@ -7715,11 +7793,12 @@ Phase 1: Build sqlite-p2p-sync (Generic) - 4-6 weeks
 │       └── SQL keyword blocking
 │       └── Rate limiting
 │
-└── Week 5-6: Sync Engine
+└── Week 5-6: Sync Engine (Basic)
     ├── P2P node discovery
-    ├── Timestamp-based conflict resolution
+    ├── Timestamp-based conflict resolution (assumes NTP configured)
     ├── Change tracking (trigger-based)
-    └── gRPC streaming for sync
+    ├── gRPC streaming for sync
+    └── ❌ No automatic clock checking (Phase 2)
 
 Phase 2: Use in ENX - 1-2 weeks
 ├── Create enx-sync-config.yaml
