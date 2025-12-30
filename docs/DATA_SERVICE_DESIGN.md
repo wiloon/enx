@@ -371,7 +371,360 @@ Given these challenges, the traditional solutions don't work:
 - No automatic conflict resolution
 - Easy to forget
 
-### The Solution: ENX Data Service
+### Alternative Solutions Analysis
+
+**Before committing to the custom P2P sync solution, let's evaluate other viable options for your specific use case:**
+
+#### Option 1: Syncthing (File-Based P2P Sync) ⭐⭐⭐⭐
+
+**What is it**: Open-source continuous file synchronization tool that works on a P2P basis.
+
+**How it works**:
+```
+Desktop Linux (192.168.1.10)
+├── ~/.local/share/enx/enx.db  ←→ Syncthing ←→ MacBook (192.168.1.20)
+                                              └── ~/.local/share/enx/enx.db
+                                              
+                                    ↓↑ P2P sync when available
+                                    
+Ubuntu Laptop (192.168.1.30)
+└── ~/.local/share/enx/enx.db
+```
+
+**Pros**:
+- ✅ **Zero code required**: Just install Syncthing and configure folder
+- ✅ **Battle-tested**: Used by millions, mature project
+- ✅ **True P2P**: No central server needed
+- ✅ **Offline support**: Works perfectly with intermittent connectivity
+- ✅ **Cross-platform**: Works on Linux, macOS, Windows
+- ✅ **Versioning**: Can keep old file versions for recovery
+- ✅ **Ignore patterns**: Can exclude temporary files
+- ✅ **Conflict handling**: Creates `.sync-conflict` files when needed
+
+**Cons**:
+- ⚠️ **SQLite corruption risk**: If two nodes modify database simultaneously (rare in your case)
+- ⚠️ **Conflict files**: Manual merge needed if conflicts occur
+- ⚠️ **No schema awareness**: Syncs entire file, not record-level
+- ⚠️ **Extra daemon**: Need to run Syncthing on each device
+
+**Setup complexity**: Low (30 minutes)
+
+**Recommendation for your use case**: 
+```
+✅ EXCELLENT FIT because:
+  • You never use multiple devices simultaneously (no concurrent writes)
+  • Intermittent connectivity is perfectly supported
+  • Home LAN environment (Syncthing excels here)
+  • SQLite is a single file (easy to sync)
+  
+⚠️ Risk mitigation:
+  • Add "last_modified_node" field to track which device made changes
+  • Use WAL mode for better concurrent access safety
+  • Enable Syncthing versioning to recover from any issues
+```
+
+**Quick Start**:
+```bash
+# Install Syncthing on all devices
+sudo apt install syncthing  # Ubuntu/Debian
+brew install syncthing      # macOS
+
+# Start Syncthing
+syncthing
+
+# Open web UI: http://localhost:8384
+# Add folder: ~/.local/share/enx/
+# Add devices: Desktop, MacBook, Ubuntu laptop
+# Enable "Ignore Delete" on all devices (safer for databases)
+```
+
+---
+
+#### Option 2: Git-Based Sync (Version Control) ⭐⭐⭐
+
+**What is it**: Use Git to version and sync SQLite database file.
+
+**How it works**:
+```bash
+# On each device
+cd ~/.local/share/enx/
+git init
+git add enx.db
+git commit -m "Update from Desktop"
+
+# When switching devices
+git pull origin main --rebase
+git push origin main
+```
+
+**Pros**:
+- ✅ **Developer-friendly**: You already know Git
+- ✅ **Full history**: Every change is versioned
+- ✅ **Conflict detection**: Git will warn about conflicts
+- ✅ **Works offline**: Commit locally, push when online
+- ✅ **Free hosting**: GitHub/GitLab for backup
+
+**Cons**:
+- ❌ **Binary file**: Git isn't optimized for SQLite (large repo over time)
+- ❌ **Manual process**: Must remember to commit/push/pull
+- ❌ **Conflict resolution**: Manual merge of binary files is impossible
+- ❌ **Repo bloat**: Every change adds to repo size
+
+**Setup complexity**: Medium (need to establish workflow)
+
+**Recommendation for your use case**:
+```
+⚠️ NOT IDEAL because:
+  • Binary file makes Git inefficient
+  • Merge conflicts are impossible to resolve
+  • Requires manual discipline (easy to forget)
+  
+Could work with:
+  • Export/import scripts (SQL dumps instead of binary)
+  • Strict single-device-at-a-time rule
+  • Regular repo cleanup (git gc --aggressive)
+```
+
+---
+
+#### Option 3: Centralized Server + Offline Queue ⭐⭐⭐⭐
+
+**What is it**: Central PostgreSQL server, with local SQLite cache and sync queue.
+
+**Architecture**:
+```
+Desktop/MacBook/Ubuntu (when online):
+├── enx-api (HTTP REST)
+└── PostgreSQL (central server at home)
+
+Ubuntu Laptop (offline):
+├── enx-api (HTTP REST)
+├── SQLite (local cache)
+└── Sync queue (pending operations)
+    └── On reconnect → replay to PostgreSQL
+```
+
+**Pros**:
+- ✅ **Single source of truth**: PostgreSQL is always correct
+- ✅ **Offline capable**: SQLite cache works offline
+- ✅ **Scalable**: Can add more clients easily
+- ✅ **Query power**: PostgreSQL for complex queries
+
+**Cons**:
+- ⚠️ **Requires server**: Must run PostgreSQL at home (can be Desktop)
+- ⚠️ **Complex sync logic**: Need to implement queue replay
+- ⚠️ **Network dependency**: Ubuntu laptop must connect to home network
+- ⚠️ **More moving parts**: PostgreSQL + sync service + queue
+
+**Setup complexity**: High (need to build sync queue logic)
+
+**Recommendation for your use case**:
+```
+✅ VIABLE if you want:
+  • Production-ready database (PostgreSQL)
+  • Single source of truth
+  • Future scalability
+  
+⚠️ Overhead:
+  • Must implement offline queue yourself
+  • Need to run PostgreSQL server (though can be on Desktop)
+  • More complex than P2P or Syncthing
+```
+
+---
+
+#### Option 4: Cloud Backend + Local Sync (PocketBase) ⭐⭐⭐⭐⭐
+
+**What is it**: PocketBase (or similar) provides built-in real-time sync.
+
+**How it works**:
+```
+PocketBase Server (on Desktop Linux):
+├── SQLite database
+├── Real-time subscriptions
+└── REST + WebSocket API
+
+All clients:
+├── PocketBase SDK
+├── Local cache
+└── Auto-sync when online
+```
+
+**Pros**:
+- ✅ **Built-in sync**: PocketBase handles sync logic
+- ✅ **Real-time**: WebSocket updates
+- ✅ **Offline support**: SDK caches data locally
+- ✅ **Admin UI**: Built-in dashboard
+- ✅ **Authentication**: Built-in user auth
+- ✅ **Fast development**: REST API auto-generated
+
+**Cons**:
+- ⚠️ **Central server**: Must run PocketBase (can be on Desktop)
+- ⚠️ **Technology switch**: Different from current SQLite approach
+- ⚠️ **Learning curve**: New framework to learn
+- ⚠️ **Lock-in**: Tied to PocketBase ecosystem
+
+**Setup complexity**: Medium (new technology, but well documented)
+
+**Recommendation for your use case**:
+```
+✅ EXCELLENT if starting fresh:
+  • Modern, batteries-included solution
+  • Handles sync, auth, admin UI out of box
+  • Active development, good community
+  
+⚠️ Consider if:
+  • Willing to migrate from current architecture
+  • Want real-time sync features
+  • Okay with running a server (can be local)
+```
+
+---
+
+#### Option 5: Custom P2P Data Service (Current Design) ⭐⭐⭐⭐⭐
+
+**What it is**: Your proposed enx-data-service with gRPC and timestamp-based sync.
+
+**Pros**:
+- ✅ **Full control**: Exactly what you need, no compromises
+- ✅ **Learning opportunity**: Build distributed sync system
+- ✅ **Open source potential**: Generic tool for community
+- ✅ **No dependencies**: Pure Go, minimal external services
+- ✅ **Record-level sync**: Efficient, precise merging
+- ✅ **Clean architecture**: Separation of concerns
+
+**Cons**:
+- ⚠️ **Development time**: Need to build and test sync logic
+- ⚠️ **Complexity**: Distributed systems are hard
+- ⚠️ **Maintenance**: You're responsible for bugs
+- ⚠️ **Clock sync dependency**: NTP requirement adds setup step
+
+**Setup complexity**: High (custom development required)
+
+**Recommendation for your use case**:
+```
+✅ BEST if:
+  • Want to learn distributed systems
+  • Plan to open source the tool
+  • Need full customization
+  • Enjoy building infrastructure
+  
+⚠️ Requires:
+  • 4-8 weeks development time (MVP)
+  • Testing across multiple scenarios
+  • Ongoing maintenance
+```
+
+---
+
+### Comparison Matrix
+
+| Solution | Offline Support | Setup Time | Development Effort | Reliability | Best For |
+|----------|----------------|------------|-------------------|-------------|----------|
+| **Syncthing** | ✅✅✅ Excellent | 30 min | None | ✅✅✅✅ Battle-tested | **Pragmatic choice** |
+| **Git-based** | ✅✅ Good | 1 hour | Low | ⚠️⚠️ Risk of conflicts | Learning/experimentation |
+| **Central Server + Queue** | ✅✅✅ Excellent | 2 weeks | High | ✅✅✅ Good | Enterprise requirements |
+| **PocketBase** | ✅✅✅ Excellent | 3 days | Medium | ✅✅✅✅ Production-ready | Modern web apps |
+| **Custom P2P (Your design)** | ✅✅✅ Excellent | 6-8 weeks | Very High | ⚠️⚠️⚠️ Need to prove | **Learning project** |
+
+---
+
+### My Recommendation 💡
+
+**For your specific use case, I recommend:**
+
+#### 🥇 **First Choice: Syncthing (Pragmatic)**
+
+**Why**: 
+- ✅ Solves your problem in 30 minutes instead of 8 weeks
+- ✅ Proven reliable with millions of users
+- ✅ Perfect for your single-user, intermittent connectivity scenario
+- ✅ Zero development/maintenance burden
+- ✅ Can always migrate to custom solution later if needed
+
+**Implementation**:
+```bash
+# One-time setup (30 minutes total)
+1. Install Syncthing on all 3 devices
+2. Configure sync folder: ~/.local/share/enx/
+3. Add devices to each other
+4. Enable versioning for safety
+5. Done! 🎉
+
+# Risk mitigation
+- Enable SQLite WAL mode (reduces corruption risk)
+- Never use two devices simultaneously (you already don't)
+- Syncthing versioning recovers from any issues
+```
+
+**Cost-benefit analysis**:
+```
+Custom P2P Sync:
+  Development: 6-8 weeks ❌
+  Learning value: High ✅
+  Maintenance: Ongoing ⚠️
+  Risk: Untested ❌
+
+Syncthing:
+  Setup: 30 minutes ✅
+  Learning value: Medium ✅
+  Maintenance: None (community maintained) ✅
+  Risk: Minimal (battle-tested) ✅
+```
+
+---
+
+#### 🥈 **Second Choice: Custom P2P (If learning is priority)**
+
+**Why build custom**:
+- ✅ Learn distributed systems concepts
+- ✅ Create generic open-source tool
+- ✅ Full control over sync logic
+- ✅ Portfolio/resume project
+
+**When to choose**:
+- Want to deeply understand sync challenges
+- Have 6-8 weeks for MVP development
+- Enjoy building infrastructure
+- Plan to open source the result
+
+**Hybrid approach** (Best of both worlds):
+```
+Phase 1 (Now): Use Syncthing
+  ✅ Solve immediate problem
+  ✅ Start using ENX productively
+  ✅ Understand real-world sync patterns
+
+Phase 2 (3-6 months later): Build custom sync
+  ✅ Real usage data informs design
+  ✅ Can compare with Syncthing behavior
+  ✅ Migrate gradually with fallback
+  ✅ Syncthing validates your implementation
+```
+
+---
+
+### Decision Framework
+
+**Choose Syncthing if**:
+- ❓ Do you need ENX working THIS WEEK? → Yes ✅
+- ❓ Is learning distributed systems your PRIMARY goal? → No
+- ❓ Want to focus on ENX features (not infrastructure)? → Yes ✅
+
+**Choose Custom P2P if**:
+- ❓ Is building sync systems your LEARNING goal? → Yes ✅
+- ❓ Have 6-8 weeks for infrastructure work? → Yes ✅
+- ❓ Plan to open source generic sync tool? → Yes ✅
+- ❓ Okay with being blocked if bugs occur? → Yes ✅
+
+**Choose PocketBase if**:
+- ❓ Starting from scratch? → Yes ✅
+- ❓ Want modern web framework? → Yes ✅
+- ❓ Need real-time features? → Yes ✅
+
+---
+
+### The Solution: ENX Data Service (Custom P2P)
 
 Since we need to solve the data synchronization problem anyway, why not:
 
@@ -405,6 +758,586 @@ To support the P2P sync architecture, **ALL tables that need to be synced** must
     *   *Implementation strategy*: Use system clock (simple approach), defer complex solutions (HLC, Vector Clock) until proven necessary.
 3.  **Soft Delete**: Must have an `is_deleted` (boolean) or `deleted_at` (timestamp) field.
     *   *Reason*: Physical deletions cannot be synced. Soft deletes allow "deletion" events to propagate to other nodes.
+
+## MVP Implementation Roadmap - Minimal P2P Sync
+
+**🎯 Goal**: Implement record-level P2P sync with minimum code and maximum practicality.
+
+**Key Principle**: Build the simplest thing that works, test with real usage, add complexity only when proven necessary.
+
+---
+
+### Phase 0: Database Schema Preparation (Week 1)
+
+**What to do**: Prepare existing `enx.db` for sync capability.
+
+**Required Changes**:
+
+```sql
+-- 1. Migrate primary keys from auto-increment to UUID
+ALTER TABLE words RENAME TO words_old;
+
+CREATE TABLE words (
+    id TEXT PRIMARY KEY,              -- UUID instead of INTEGER
+    english TEXT NOT NULL,
+    chinese TEXT,
+    pronunciation TEXT,
+    update_datetime INTEGER NOT NULL, -- Unix timestamp (milliseconds)
+    deleted_at INTEGER,               -- NULL = not deleted
+    -- ... other existing fields
+);
+
+-- 2. Migrate data with UUID generation
+INSERT INTO words 
+SELECT 
+    lower(hex(randomblob(16))) as id,  -- Generate UUID v4
+    english,
+    chinese,
+    pronunciation,
+    strftime('%s', 'now') * 1000 as update_datetime,
+    NULL as deleted_at,
+    -- ... other fields
+FROM words_old;
+
+DROP TABLE words_old;
+
+-- 3. Create index for sync queries
+CREATE INDEX idx_words_update_datetime ON words(update_datetime);
+CREATE INDEX idx_words_deleted_at ON words(deleted_at);
+
+-- 4. Do the same for user_dicts and other sync tables
+```
+
+**Migration Files Location**:
+```
+enx-api/
+├── migrations/
+│   ├── README.md                              # Migration documentation
+│   ├── 20251230_migrate_words_to_p2p.sql     # Main migration script
+│   ├── 20251230_migrate_words_to_p2p_down.sql # Rollback script
+│   └── test_migration.sh                      # Test script
+└── enx.db                                     # Your database
+```
+
+**How to Apply**:
+```bash
+cd /Users/wiloon/workspace/projects/enx/enx-api
+
+# Step 1: Test migration on a copy (recommended)
+./migrations/test_migration.sh
+
+# Step 2: If test passes, apply to real database
+cp enx.db enx.db.backup-$(date +%Y%m%d)
+sqlite3 enx.db < migrations/20251230_migrate_words_to_p2p.sql
+
+# Step 3: Verify migration
+sqlite3 enx.db ".schema words"
+sqlite3 enx.db "SELECT COUNT(*) FROM words;"
+```
+
+**Validation**:
+```bash
+# Verify schema has UUID primary key and timestamp fields
+sqlite3 enx.db ".schema words"
+
+# Verify all data migrated (should be 3 records)
+sqlite3 enx.db "SELECT COUNT(*) FROM words;"
+
+# Check sample migrated data
+sqlite3 enx.db "SELECT substr(id, 1, 8) as id, english, update_datetime FROM words;"
+```
+
+**Time estimate**: 2-3 hours (including testing)
+
+---
+
+### Phase 1: Basic Data Service (Week 2-3)
+
+**What to build**: Standalone data service that wraps SQLite with gRPC API.
+
+**Scope**:
+- ✅ Single table: `words` only (validate concept)
+- ✅ Basic CRUD: Find, Insert, Update, Delete
+- ✅ Local operation only (NO sync yet)
+- ❌ Skip: Authentication, monitoring, REST API
+
+**Project structure**:
+```
+enx-data-service/
+├── main.go              # Service entry point
+├── proto/
+│   └── data.proto       # gRPC definitions
+├── service/
+│   └── data_service.go  # CRUD implementation
+└── db/
+    └── sqlite.go        # SQLite wrapper
+```
+
+**Minimal proto definition**:
+```protobuf
+syntax = "proto3";
+package enx.data;
+
+// Generic CRUD service
+service DataService {
+  rpc Find(FindRequest) returns (FindResponse);
+  rpc Insert(InsertRequest) returns (InsertResponse);
+  rpc Update(UpdateRequest) returns (UpdateResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+}
+
+message FindRequest {
+  string table = 1;              // "words"
+  string filter_json = 2;        // {"english": "hello"}
+  int32 limit = 3;
+}
+
+message FindResponse {
+  repeated string records = 1;    // JSON array
+}
+
+// Similar for Insert/Update/Delete...
+```
+
+**Implementation priorities**:
+```go
+// 1. Core: SQLite wrapper (2 days)
+type SQLiteDB struct {
+    db *sql.DB
+}
+
+func (s *SQLiteDB) Find(table, filter string, limit int) ([]string, error)
+func (s *SQLiteDB) Insert(table, data string) error
+func (s *SQLiteDB) Update(table, filter, data string) error
+func (s *SQLiteDB) Delete(table, filter string) error
+
+// 2. gRPC service (1 day)
+type DataService struct {
+    db *SQLiteDB
+}
+
+// Implement Find/Insert/Update/Delete handlers
+
+// 3. Main (1 day)
+func main() {
+    db := NewSQLiteDB("./enx.db")
+    grpcServer := grpc.NewServer()
+    pb.RegisterDataServiceServer(grpcServer, NewDataService(db))
+    grpcServer.Serve(lis)
+}
+```
+
+**Testing**:
+```bash
+# Start service
+go run main.go
+
+# Test with grpcurl
+grpcurl -d '{"table":"words","filter_json":"{}","limit":10}' \
+  localhost:8091 enx.data.DataService/Find
+```
+
+**Success criteria**:
+- ✅ Can query words via gRPC
+- ✅ Can insert/update/delete words
+- ✅ All changes reflected in SQLite
+- ✅ update_datetime automatically set
+
+**Time estimate**: 1-1.5 weeks
+
+---
+
+### Phase 2: Basic Sync Logic (Week 4-5)
+
+**What to build**: Add change tracking and sync between 2 nodes.
+
+**Scope**:
+- ✅ Track changes since last sync (using `update_datetime`)
+- ✅ Pull changes from peer
+- ✅ Merge with timestamp comparison
+- ❌ Skip: Authentication, encryption, conflict UI
+
+**Add to proto**:
+```protobuf
+service SyncService {
+  rpc GetChanges(GetChangesRequest) returns (stream Change);
+  rpc ApplyChanges(stream Change) returns (ApplyChangesResponse);
+}
+
+message GetChangesRequest {
+  string table = 1;               // "words"
+  int64 since_timestamp = 2;      // Unix milliseconds
+}
+
+message Change {
+  string table = 1;
+  string operation = 2;           // "insert", "update", "delete"
+  string record_json = 3;         // Full record as JSON
+  int64 timestamp = 4;
+}
+```
+
+**Implementation**:
+```go
+// 1. Change tracking (1 day)
+func (s *SQLiteDB) GetChanges(table string, since int64) ([]Change, error) {
+    rows, err := s.db.Query(`
+        SELECT * FROM ? 
+        WHERE update_datetime > ? 
+        ORDER BY update_datetime ASC
+    `, table, since)
+    // Convert to Change objects
+}
+
+// 2. Merge logic (2 days)
+func (s *SyncService) ApplyChanges(stream pb.SyncService_ApplyChangesServer) error {
+    for {
+        change, _ := stream.Recv()
+        
+        // Check if local has newer version
+        local := s.db.FindByID(change.Table, change.RecordID)
+        
+        if local.UpdateDatetime > change.Timestamp {
+            // Local is newer, skip remote change
+            continue
+        }
+        
+        // Apply remote change
+        switch change.Operation {
+        case "insert", "update":
+            s.db.Upsert(change.Table, change.RecordJSON)
+        case "delete":
+            s.db.SoftDelete(change.Table, change.RecordID)
+        }
+    }
+}
+
+// 3. Sync coordinator (2 days)
+func (s *SyncService) SyncWithPeer(peerAddr string) error {
+    // 1. Get last sync timestamp from local state
+    lastSync := s.getLastSyncTime(peerAddr)
+    
+    // 2. Pull changes from peer
+    conn, _ := grpc.Dial(peerAddr)
+    client := pb.NewSyncServiceClient(conn)
+    
+    stream, _ := client.GetChanges(ctx, &pb.GetChangesRequest{
+        Table: "words",
+        SinceTimestamp: lastSync,
+    })
+    
+    // 3. Apply each change
+    for {
+        change, err := stream.Recv()
+        if err == io.EOF { break }
+        s.ApplyChanges(change)
+    }
+    
+    // 4. Push local changes to peer
+    localChanges := s.db.GetChanges("words", lastSync)
+    s.pushChangesToPeer(client, localChanges)
+    
+    // 5. Update last sync timestamp
+    s.setLastSyncTime(peerAddr, time.Now().UnixMilli())
+}
+```
+
+**Manual testing**:
+```bash
+# Terminal 1: Start Desktop node
+./enx-data-service --port 8091 --db ~/desktop/enx.db
+
+# Terminal 2: Start MacBook node  
+./enx-data-service --port 8092 --db ~/macbook/enx.db
+
+# Terminal 3: Trigger sync
+grpcurl -d '{"peer_addr":"localhost:8091"}' \
+  localhost:8092 enx.data.SyncService/SyncWithPeer
+
+# Verify: Check both databases have same records
+sqlite3 ~/desktop/enx.db "SELECT COUNT(*) FROM words;"
+sqlite3 ~/macbook/enx.db "SELECT COUNT(*) FROM words;"
+```
+
+**Success criteria**:
+- ✅ Can sync 2 nodes manually
+- ✅ Changes from Node A appear on Node B
+- ✅ Timestamp-based merge works correctly
+- ✅ No data loss in basic scenarios
+
+**Time estimate**: 1.5-2 weeks
+
+---
+
+### Phase 3: Automatic Sync (Week 6)
+
+**What to build**: Auto-trigger sync when network available.
+
+**Scope**:
+- ✅ Periodic sync (every 5 minutes when online)
+- ✅ Network detection (basic)
+- ❌ Skip: Smart sync triggers, battery optimization
+
+**Implementation**:
+```go
+// Simple periodic sync
+func (s *SyncService) StartAutoSync(peers []string, interval time.Duration) {
+    ticker := time.NewTicker(interval)
+    defer ticker.Stop()
+    
+    for range ticker.C {
+        for _, peer := range peers {
+            if s.isPeerReachable(peer) {
+                log.Printf("Auto-sync with %s", peer)
+                s.SyncWithPeer(peer)
+            }
+        }
+    }
+}
+
+// Basic reachability check
+func (s *SyncService) isPeerReachable(addr string) bool {
+    conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+    if err != nil {
+        return false
+    }
+    conn.Close()
+    return true
+}
+```
+
+**Configuration**:
+```yaml
+# config.yaml
+node:
+  id: "desktop-001"
+  port: 8091
+
+peers:
+  - addr: "192.168.1.10:8091"  # MacBook
+  - addr: "192.168.1.20:8091"  # Ubuntu laptop
+
+sync:
+  interval: 5m
+  auto_start: true
+```
+
+**Success criteria**:
+- ✅ Nodes sync automatically every 5 minutes
+- ✅ Works when peer is offline (skips gracefully)
+- ✅ Ubuntu laptop syncs when reconnecting to LAN
+
+**Time estimate**: 3-4 days
+
+---
+
+### Phase 4: Production Readiness (Week 7-8)
+
+**What to add**: Minimum production essentials.
+
+**Critical additions**:
+
+1. **Simple Authentication** (2 days)
+```go
+// Pre-shared key from environment variable
+apiKey := os.Getenv("ENX_SYNC_API_KEY")
+
+// Add to gRPC interceptor
+if md.Get("x-api-key")[0] != apiKey {
+    return status.Error(codes.Unauthenticated, "invalid key")
+}
+```
+
+2. **Basic Logging** (1 day)
+```go
+log.Printf("Sync started with %s", peer)
+log.Printf("Applied %d changes", count)
+log.Printf("Sync completed in %v", duration)
+```
+
+3. **Error Handling** (2 days)
+```go
+// Retry with backoff
+func (s *SyncService) SyncWithRetry(peer string, maxRetries int) error {
+    backoff := time.Second
+    for i := 0; i < maxRetries; i++ {
+        err := s.SyncWithPeer(peer)
+        if err == nil { return nil }
+        
+        time.Sleep(backoff)
+        backoff *= 2
+    }
+    return fmt.Errorf("sync failed after %d retries", maxRetries)
+}
+```
+
+4. **Sync State Persistence** (1 day)
+```go
+// Store last sync timestamp in SQLite
+CREATE TABLE sync_state (
+    peer_id TEXT PRIMARY KEY,
+    last_sync_timestamp INTEGER NOT NULL
+);
+```
+
+**Time estimate**: 1 week
+
+---
+
+### What to SKIP (Not Needed for MVP)
+
+❌ **Authentication beyond pre-shared key**
+- No JWT, no mTLS
+- Reason: All nodes are your devices on home LAN
+- Add later if: Expose to internet or multi-user
+
+❌ **Conflict resolution UI**
+- No interactive conflict resolution
+- Reason: Single-user, timestamp wins
+- Add later if: Users report data loss
+
+❌ **Compression**
+- No protobuf compression
+- Reason: Word records are tiny (< 1KB each)
+- Add later if: Syncing large datasets
+
+❌ **Incremental sync optimization**
+- No delta encoding
+- Reason: Full record sync is fast enough (< 10KB per word)
+- Add later if: Performance issues
+
+❌ **Schema versioning**
+- No migration framework
+- Reason: Schema is stable, manual migration okay
+- Add later if: Frequent schema changes
+
+❌ **Monitoring dashboard**
+- No metrics, no UI
+- Reason: Logs are sufficient for debugging
+- Add later if: Need production visibility
+
+❌ **Multi-table sync**
+- Only sync `words` initially
+- Reason: Validate concept first
+- Add later: Copy logic for `user_dicts`, etc.
+
+---
+
+### Simplified Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Desktop Linux (192.168.1.10)                               │
+│  ┌──────────────┐         ┌──────────────┐                 │
+│  │  enx-api     │────────▶│ data-service │                 │
+│  │  (existing)  │  gRPC   │  Port: 8091  │                 │
+│  └──────────────┘         └──────┬───────┘                 │
+│                                   │                          │
+│                            ┌──────▼───────┐                 │
+│                            │   enx.db     │                 │
+│                            │  (SQLite)    │                 │
+│                            └──────────────┘                 │
+└─────────────────────────────────────────────────────────────┘
+                                   ▲
+                                   │ P2P Sync
+                                   │ (gRPC, 5min interval)
+                                   ▼
+┌─────────────────────────────────────────────────────────────┐
+│  MacBook (192.168.1.20)                                     │
+│  ┌──────────────┐         ┌──────────────┐                 │
+│  │  enx-api     │────────▶│ data-service │                 │
+│  │  (existing)  │  gRPC   │  Port: 8091  │                 │
+│  └──────────────┘         └──────┬───────┘                 │
+│                                   │                          │
+│                            ┌──────▼───────┐                 │
+│                            │   enx.db     │                 │
+│                            │  (SQLite)    │                 │
+│                            └──────────────┘                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Points**:
+- Each node runs independently
+- Sync happens via direct gRPC calls
+- No central coordination
+- Simple timestamp-based merge
+
+---
+
+### Total Time Estimate
+
+| Phase | Task | Time | Cumulative |
+|-------|------|------|------------|
+| 0 | Schema migration | 3 hours | 3 hours |
+| 1 | Basic data service | 1.5 weeks | 2.5 weeks |
+| 2 | Basic sync logic | 2 weeks | 4.5 weeks |
+| 3 | Auto sync | 4 days | 5.5 weeks |
+| 4 | Production readiness | 1 week | **6.5 weeks** |
+
+**Realistic estimate with buffer**: **8 weeks** (accounting for debugging, testing, edge cases)
+
+---
+
+### Success Criteria for MVP
+
+**Must have** (non-negotiable):
+- ✅ Desktop ↔ MacBook sync works reliably
+- ✅ Ubuntu laptop syncs when reconnecting to home LAN
+- ✅ No data loss in normal usage
+- ✅ Timestamp-based merge handles conflicts
+
+**Nice to have** (can defer):
+- ⚠️ Sync completes in < 5 seconds for 1000 words
+- ⚠️ Works with flaky network
+- ⚠️ Logs are useful for debugging
+
+**Explicitly out of scope for MVP**:
+- ❌ Real-time sync (5min interval is fine)
+- ❌ Concurrent writes (single user)
+- ❌ Complex conflict resolution
+- ❌ Production monitoring
+
+---
+
+### Risk Mitigation
+
+**Top risks and mitigation**:
+
+1. **Clock skew → wrong merge order**
+   - Mitigation: Document NTP requirement, verify at startup
+   - Fallback: Manual conflict resolution if reported
+
+2. **Network issues during sync**
+   - Mitigation: Retry with exponential backoff
+   - Fallback: Next sync cycle will catch up
+
+3. **SQLite corruption**
+   - Mitigation: Enable WAL mode, backup before first sync
+   - Fallback: Restore from backup, re-sync
+
+4. **Development taking longer than expected**
+   - Mitigation: Time-box each phase, cut scope if needed
+   - Fallback: Use Syncthing temporarily while building
+
+---
+
+### Next Steps
+
+**Week 1 Action Items**:
+1. ✅ Backup existing enx.db on all devices
+2. ✅ Migrate schema to UUID + update_datetime
+3. ✅ Verify migration with test queries
+4. ✅ Set up new Go project: `enx-data-service/`
+5. ✅ Define minimal `.proto` file
+
+**Decision point after Week 3**:
+- If basic CRUD works: Continue to Phase 2
+- If hitting blockers: Reassess scope or switch to Syncthing
+
+**Ready to start?** Let me know if you want me to help with:
+- Detailed migration script for schema changes
+- Minimal proto definitions
+- Initial project structure setup
 
 ## Implementation Strategy (Phase 1)
 
