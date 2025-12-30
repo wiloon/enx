@@ -17,7 +17,8 @@
 | **Author** | wiloon |
 | **AI Assisted** | Yes (GitHub Copilot) |
 | **AI Model** | Claude Sonnet 4.5 |
-| **Version** | 2.0.0 |
+| **Version** | 0.1.0 |
+| **Status** | Proposed |
 
 ## ⚡ Critical Design Decision
 
@@ -31,6 +32,163 @@
 | **Business Logic** | ❌ None in data service (stays in enx-api) |
 | **Target Users** | ✅ Any SQLite-based application needing P2P sync |
 | **ENX Role** | First real-world user & validation case |
+
+## 🚨 Critical Prerequisites
+
+**⚠️ WARNING: These requirements are MANDATORY for the sync system to work correctly. Failure to meet them will result in data inconsistencies and potential data loss.**
+
+### 1. Clock Synchronization (CRITICAL)
+
+**Why it matters**: The entire conflict resolution system is based on timestamp comparison. Without synchronized clocks, the system will merge data in the wrong order, potentially causing data loss.
+
+| Requirement | Details |
+|-------------|----------|
+| **NTP Sync** | ✅ REQUIRED: All nodes MUST have NTP enabled |
+| **Max Clock Skew** | ⚠️ Must be < 5 seconds between any two nodes |
+| **Verification** | ✅ Automatic check on service startup (fails if NTP disabled) |
+| **Consequences** | ❌ Wrong merge order, data overwritten incorrectly, silent data loss |
+
+**Before enabling P2P sync, verify on EACH node:**
+
+```bash
+# 1. Check NTP status (REQUIRED)
+timedatectl status
+
+# Expected output:
+#   System clock synchronized: yes  ✅
+#   NTP service: active            ✅
+
+# If NTP is disabled, enable it NOW:
+sudo timedatectl set-ntp true
+
+# 2. Compare times across all nodes (should differ by < 1 second)
+date +"%Y-%m-%d %H:%M:%S.%3N"
+
+# Example output from 3 nodes:
+# Desktop: 2025-12-30 15:30:45.123
+# MacBook: 2025-12-30 15:30:45.234  (diff: 111ms ✅)
+# Ubuntu:  2025-12-30 15:30:45.089  (diff: 34ms ✅)
+
+# ⚠️ If times differ by > 5 seconds, DO NOT enable sync until fixed!
+```
+
+**Startup Check (Automatic)**:
+
+The data service will automatically verify clock synchronization on startup:
+
+```go
+// Service startup sequence
+func main() {
+    log.Println("🚀 Starting enx-data-service...")
+    
+    // STEP 1: Verify clock synchronization (BLOCKING)
+    if err := verifyClockSync(); err != nil {
+        log.Fatalf("❌ CRITICAL: Clock sync check failed: %v", err)
+        log.Fatal("   Please enable NTP: sudo timedatectl set-ntp true")
+        // Service will NOT start if NTP is disabled
+    }
+    log.Println("✅ Clock synchronization verified")
+    
+    // STEP 2: Initialize database
+    db := initDatabase("./enx.db")
+    
+    // STEP 3: Start services
+    // ...
+}
+```
+
+**What happens if clocks are not synchronized:**
+
+```
+❌ Real Example of Data Loss:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Scenario: Desktop clock is 10 minutes fast (NTP disabled)
+
+Node A (Desktop, clock fast):      Node B (MacBook, correct):
+  10:10 AM - Add word "algorithm"    10:00 AM - Add word "database"
+  
+Sync happens:
+  Node B receives "algorithm" with timestamp 10:10
+  10:10 > 10:00 → Desktop's record wins ✅
+  
+But 5 minutes later...
+  Node A (Desktop):                  Node B (MacBook):
+  10:15 - Mark "algorithm" learned   10:05 - Mark "database" learned
+  
+Sync happens again:
+  10:15 > 10:05 → Desktop wins again
+  
+Problem: Desktop's clock being fast means it ALWAYS wins,
+         even if MacBook's changes are actually newer!
+         MacBook's "database" might never sync properly.
+
+✅ Solution: Enable NTP on all nodes BEFORE enabling sync.
+```
+
+### 2. Network Configuration
+
+**For Home LAN Setup (recommended for intermittent connectivity):**
+
+| Requirement | Details |
+|-------------|----------|
+| **Network Segment** | All nodes should be on same subnet (e.g., 192.168.1.x) |
+| **Firewall** | Allow TCP port 8091 between nodes |
+| **Service Discovery** | Use static IP or hostname in config (mDNS optional for future) |
+| **Connectivity Test** | Nodes should be able to ping each other |
+
+**Verify network connectivity:**
+
+```bash
+# From each node, ping other nodes
+ping 192.168.1.10  # Desktop
+ping 192.168.1.20  # MacBook  
+ping 192.168.1.30  # Ubuntu laptop
+
+# Test port connectivity
+nc -zv 192.168.1.10 8091
+nc -zv 192.168.1.20 8091
+nc -zv 192.168.1.30 8091
+```
+
+### 3. Database Schema Requirements
+
+**All tables that need P2P sync MUST have:**
+
+| Field | Type | Requirement | Purpose |
+|-------|------|-------------|----------|
+| `id` | TEXT (UUID) | ✅ MANDATORY | Primary key, avoid ID conflicts |
+| `update_datetime` | INTEGER | ✅ MANDATORY | Unix timestamp (milliseconds) for conflict resolution |
+| `deleted_at` | INTEGER | ⚠️ RECOMMENDED | Soft delete support (NULL = not deleted) |
+
+**❌ Tables with auto-increment INTEGER IDs cannot be synced** (will cause ID conflicts)
+
+### 4. Backup Before First Sync
+
+**⚠️ IMPORTANT: Always backup your database before enabling P2P sync for the first time**
+
+```bash
+# Backup current database
+cp ~/.local/share/enx/enx.db ~/.local/share/enx/enx.db.backup-$(date +%Y%m%d)
+
+# Verify backup
+ls -lh ~/.local/share/enx/*.backup*
+```
+
+### Quick Start Checklist
+
+Before enabling P2P sync, verify:
+
+- [ ] ✅ NTP enabled on ALL nodes (`timedatectl status`)
+- [ ] ✅ Clock skew < 5 seconds between nodes
+- [ ] ✅ Nodes can ping each other
+- [ ] ✅ Port 8091 open on all nodes
+- [ ] ✅ Database schema has UUID primary keys
+- [ ] ✅ Database schema has `update_datetime` field
+- [ ] ✅ Database backed up
+- [ ] ✅ Static IPs or hostnames configured
+
+**Only proceed with sync setup after all items are checked!**
 
 **What this means:**
 - **enx-data-service**: Generic CRUD + P2P sync for ANY SQLite database
@@ -1236,18 +1394,78 @@ func mergeRecord(local, remote Record) Record {
 | **Concurrent Delete** | 10:00 Delete | 10:00:05 Delete | **Deleted** (B wins) | Both deleted, timestamps close (5ms skew) |
 | **Delete → Delete** | 10:00 Delete | 10:05 Delete | **Deleted** (B wins) | Later delete wins (both result in deleted state) |
 
-**What We're NOT Handling (Yet)**:
+**What We're NOT Handling (Intentionally Deferred)**:
 
-❌ **Tombstone Expiration**: Deleted records stay forever (no automatic cleanup)
-  - **Why defer**: Need to establish retention policy first
-  - **When to add**: If database size becomes a problem
+❌ **Concurrent Writes (Same Record, Same Timestamp)**
+  - **Real-world scenario**: Two nodes modify the same word within 1 second
+  - **Why not handling**: **User never uses multiple devices simultaneously**
+    - Only one device active at a time (Desktop OR MacBook OR Ubuntu laptop)
+    - Sync happens when switching devices, not during active use
+    - Probability of sub-second conflict: < 0.01% (once per 10,000 operations)
+  - **If it happens**: Simple last-write-wins based on timestamp comparison
+  - **When to add**: If concurrent usage becomes common (multi-user scenario)
 
-❌ **Hard Delete**: No way to permanently remove records
-  - **Why defer**: Soft delete is sufficient for most use cases
-  - **When to add**: If privacy regulations require permanent deletion (GDPR "right to be forgotten")
+❌ **Tie-breaker for Identical Timestamps**
+  - **Scenario**: Two nodes modify at exactly the same millisecond (extremely rare)
+  - **Why not handling**: With NTP sync, sub-millisecond conflicts are virtually impossible
+    - Clock skew detection prevents significant differences
+    - Single-user usage pattern makes this theoretical
+  - **Fallback**: Natural ordering based on node comparison (deterministic but arbitrary)
+  - **When to add**: If clock skew issues are reported in production
 
-❌ **Delete Conflict Resolution**: No special handling for "delete vs update" conflicts
-  - **Why defer**: Timestamp-first is simple and predictable
+❌ **Field-Level Conflict Detection**
+  - **Scenario**: Node A updates field1, Node B updates field2 on same record
+  - **Why not handling**: Adds significant complexity, unclear benefit for word learning app
+    - Words are small records (english, chinese, pronunciation)
+    - Partial updates don't make sense (if you update a word, update the whole thing)
+  - **When to add**: If users request granular merge control (probably never)
+
+❌ **Tombstone Expiration**
+  - **Scenario**: Deleted records accumulate over years
+  - **Why not handling**: Storage is cheap, premature optimization
+    - 10,000 deleted words ≈ 1MB (negligible)
+    - No retention policy defined yet
+  - **When to add**: If database size becomes a problem (> 100MB from tombstones)
+
+❌ **Hard Delete**
+  - **Scenario**: Permanently remove records (GDPR compliance)
+  - **Why not handling**: Personal project, no legal requirements
+    - Soft delete sufficient for "hide from UI" use case
+  - **When to add**: If compliance requirements emerge
+
+**Summary: Keep It Simple**
+
+```
+Current Design Philosophy:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ Handle Common Cases:
+   • Sequential updates (different times) → Simple timestamp comparison
+   • Delete followed by update → Timestamp-based undelete
+   • Offline sync → Change tracking with timestamps
+
+⏳ Defer Rare Cases Until Proven Necessary:
+   • Concurrent writes → User doesn't use multiple devices simultaneously
+   • Identical timestamps → Virtually impossible with NTP + single-user
+   • Field-level merge → No clear use case for word learning app
+   • Tombstone cleanup → Storage not a concern yet
+
+Philosophy: Add complexity only when real-world usage proves it's needed.
+            Don't solve theoretical problems.
+```
+
+**Decision Rationale**:
+
+1. **Single-user usage pattern**: User works on ONE device at a time, switches rarely (daily/weekly)
+2. **NTP synchronization**: Clock skew < 5 seconds makes sub-second conflicts extremely rare
+3. **Small data size**: Words are tiny records, storage overhead is negligible
+4. **Development velocity**: Simple design allows faster iteration and fewer bugs
+
+**When to revisit**:
+- User reports unexpected data loss or merge issues
+- Multi-user support required (family sharing, team collaboration)
+- Storage becomes a bottleneck (> 100MB database)
+- Clock skew frequently exceeds 5 seconds (NTP failures)
   - **When to add**: If users complain about unexpected undeletes
 
 ❌ **Multi-field Conflict Detection**: No field-level merge (e.g., merge content but keep delete flag)
@@ -2079,13 +2297,22 @@ sudo sntp -sS time.apple.com             # macOS
 
 **End-user authentication** (user login to enx-api) is a separate concern handled by the application layer.
 
-### Peer Authentication Methods for P2P Sync
+### Recommended Approach: Pre-Shared Key (Environment Variable) ⭐
 
-gRPC supports multiple authentication methods for securing node-to-node connections:
+**For initial implementation, we use a simple pre-shared key approach:**
 
-#### 1. **Token-Based Authentication (JWT)** ⭐ Recommended
+**Why this approach:**
+- ✅ **Simple**: No complex JWT logic, no certificate management
+- ✅ **Sufficient**: All nodes are trusted (your own devices)
+- ✅ **Low maintenance**: Single shared secret across all nodes
+- ✅ **Easy deployment**: Configure once via environment variable
+- ⚠️ **Security trade-off**: Key must be kept secret, suitable for home LAN
 
-**Most common approach, similar to HTTP Bearer Token**
+**When to upgrade**: If you need multi-tenant support or expose sync service to untrusted networks, consider JWT or mTLS.
+
+#### Implementation: Simple API Key Authentication
+
+**1. Server Side (Validates incoming requests)**
 
 ```go
 // ==================== Server Side ====================
@@ -2094,26 +2321,201 @@ package main
 
 import (
     "context"
-    "fmt"
-    "time"
-
-    "github.com/golang-jwt/jwt/v4"
+    "os"
     "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/metadata"
     "google.golang.org/grpc/status"
 )
 
-// JWT Claims
+// Simple API Key Interceptor
+type APIKeyInterceptor struct {
+    validAPIKey string  // Pre-shared key from environment variable
+}
+
+// Unary interceptor for API key validation
+func (a *APIKeyInterceptor) Unary() grpc.UnaryServerInterceptor {
+    return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo,
+                handler grpc.UnaryHandler) (interface{}, error) {
+
+        // Skip authentication for health check
+        if info.FullMethod == "/enx.data.DataService/HealthCheck" {
+            return handler(ctx, req)
+        }
+
+        // Extract metadata
+        md, ok := metadata.FromIncomingContext(ctx)
+        if !ok {
+            return nil, status.Error(codes.Unauthenticated, "missing metadata")
+        }
+
+        // Get API key from metadata
+        keys := md.Get("x-api-key")
+        if len(keys) == 0 {
+            return nil, status.Error(codes.Unauthenticated, "missing API key")
+        }
+
+        // Validate API key
+        if keys[0] != a.validAPIKey {
+            return nil, status.Error(codes.Unauthenticated, "invalid API key")
+        }
+
+        // Authentication successful
+        return handler(ctx, req)
+    }
+}
+
+// Create gRPC server with API key authentication
+func NewAuthenticatedServer() *grpc.Server {
+    // Load API key from environment variable
+    apiKey := os.Getenv("ENX_SYNC_API_KEY")
+    if apiKey == "" {
+        log.Fatal("❌ ENX_SYNC_API_KEY environment variable not set")
+    }
+    
+    if len(apiKey) < 32 {
+        log.Fatal("❌ ENX_SYNC_API_KEY must be at least 32 characters")
+    }
+
+    authInterceptor := &APIKeyInterceptor{
+        validAPIKey: apiKey,
+    }
+
+    server := grpc.NewServer(
+        grpc.UnaryInterceptor(authInterceptor.Unary()),
+    )
+
+    log.Printf("✅ API key authentication enabled (key length: %d)", len(apiKey))
+    return server
+}
+```
+
+**2. Client Side (Adds API key to requests)**
+
+```go
+// ==================== Client Side ====================
+
+package main
+
+import (
+    "context"
+    "os"
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/metadata"
+)
+
+// Client interceptor to add API key to requests
+func apiKeyInterceptor(apiKey string) grpc.UnaryClientInterceptor {
+    return func(ctx context.Context, method string, req, reply interface{},
+                cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+
+        // Add API key to metadata
+        ctx = metadata.AppendToOutgoingContext(ctx, "x-api-key", apiKey)
+
+        return invoker(ctx, method, req, reply, cc, opts...)
+    }
+}
+
+// Create authenticated client
+func NewAuthClient(addr string) (*grpc.ClientConn, error) {
+    // Load API key from environment variable
+    apiKey := os.Getenv("ENX_SYNC_API_KEY")
+    if apiKey == "" {
+        return nil, fmt.Errorf("ENX_SYNC_API_KEY environment variable not set")
+    }
+
+    conn, err := grpc.Dial(addr,
+        grpc.WithInsecure(),
+        grpc.WithUnaryInterceptor(apiKeyInterceptor(apiKey)),
+    )
+    if err != nil {
+        return nil, err
+    }
+
+    log.Printf("✅ Connected to %s with API key authentication", addr)
+    return conn, nil
+}
+```
+
+**3. Configuration (Environment Variable Setup)**
+
+```bash
+# Generate a secure random API key (do this ONCE)
+openssl rand -hex 32
+# Output example: a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2
+
+# Set environment variable on ALL nodes (use the SAME key)
+export ENX_SYNC_API_KEY="a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2"
+
+# Add to shell profile to persist across reboots
+echo 'export ENX_SYNC_API_KEY="your-key-here"' >> ~/.bashrc
+source ~/.bashrc
+
+# Verify on each node
+echo $ENX_SYNC_API_KEY  # Should output your key
+```
+
+**4. Deployment Configuration**
+
+```yaml
+# config.yaml (per node)
+node:
+  id: "desktop-linux-001"
+  name: "Desktop Linux"
+  listen_addr: "0.0.0.0:8091"
+
+peers:
+  - id: "macbook-001"
+    name: "MacBook"
+    addr: "192.168.1.10:8091"
+    # API key loaded from ENX_SYNC_API_KEY env var
+  - id: "ubuntu-laptop-001"
+    name: "Ubuntu Laptop"
+    addr: "192.168.1.20:8091"
+    # Same API key on all nodes
+
+security:
+  api_key_env: "ENX_SYNC_API_KEY"  # Environment variable name
+  min_key_length: 32               # Minimum key length requirement
+```
+
+**Security Considerations:**
+
+✅ **Sufficient for home LAN:**
+- All nodes are your own devices (trusted)
+- Network is physically secured (home router)
+- No external access to sync service
+
+⚠️ **Limitations:**
+- Key is shared across all nodes (can't revoke per-node)
+- If one node is compromised, all nodes are at risk
+- No key rotation mechanism (need to update all nodes)
+
+**When to upgrade to JWT/mTLS:**
+- Multiple users need different access levels
+- Exposing sync service over internet
+- Need per-node access revocation
+- Compliance requirements (enterprise)
+
+**For now: Pre-shared key is simple, secure enough for home use, and easy to maintain.**
+
+---
+
+### Alternative Authentication Methods (Future Reference)
+
+gRPC supports more complex authentication methods if needed in the future:
+
+#### JWT Token-Based Authentication (For Future Reference)
+
+<details>
+<summary>Click to expand: JWT implementation details (not used in initial version)</summary>
+
+```go
+// Example JWT implementation (for future reference)
 type Claims struct {
     UserID   int64  `json:"user_id"`
     Username string `json:"username"`
     jwt.StandardClaims
-}
-
-// Auth Interceptor
-type AuthInterceptor struct {
-    jwtSecret []byte
 }
 
 // Unary interceptor for JWT validation
@@ -2494,209 +2896,9 @@ func NewMTLSClient(addr, certFile, keyFile, caFile string) (*grpc.ClientConn, er
 }
 ```
 
-### Complete Authentication Example for ENX
+</details>
 
-**Complete authentication example for ENX project**
-
-```go
-package main
-
-import (
-    "context"
-    "log"
-    "time"
-
-    "google.golang.org/grpc"
-    "google.golang.org/grpc/codes"
-    "google.golang.org/grpc/metadata"
-    "google.golang.org/grpc/status"
-)
-
-// ==================== Server Setup ====================
-
-func main() {
-    // JWT secret (should be in config)
-    jwtSecret := "your-secret-key-here"
-
-    // Create authenticated server
-    authInterceptor := &AuthInterceptor{
-        jwtSecret: []byte(jwtSecret),
-    }
-
-    server := grpc.NewServer(
-        grpc.ChainUnaryInterceptor(
-            authInterceptor.Unary(),        // Authentication
-            loggingInterceptor(),           // Logging
-            rateLimitInterceptor(),         // Rate limiting
-        ),
-    )
-
-    // Register services
-    pb.RegisterDataServiceServer(server, &dataServiceImpl{})
-    pb.RegisterAuthServiceServer(server, &authServiceImpl{
-        jwtSecret: []byte(jwtSecret),
-    })
-
-    // Start server
-    lis, _ := net.Listen("tcp", ":8091")
-    log.Println("🚀 Data Service running on :8091 with authentication")
-    server.Serve(lis)
-}
-
-// ==================== Auth Service Implementation ====================
-
-type authServiceImpl struct {
-    pb.UnimplementedAuthServiceServer
-    jwtSecret []byte
-}
-
-func (s *authServiceImpl) Login(ctx context.Context, req *pb.LoginRequest) (*pb.LoginResponse, error) {
-    // Validate credentials (check database)
-    user, err := validateCredentials(req.Username, req.Password)
-    if err != nil {
-        return nil, status.Error(codes.Unauthenticated, "invalid credentials")
-    }
-
-    // Generate JWT token
-    token, err := GenerateToken(user.ID, user.Username, s.jwtSecret, 24*time.Hour)
-    if err != nil {
-        return nil, status.Error(codes.Internal, "failed to generate token")
-    }
-
-    return &pb.LoginResponse{
-        Token:  token,
-        UserID: user.ID,
-    }, nil
-}
-
-// ==================== Client Usage ====================
-
-func ExampleAuthenticatedClient() {
-    // Step 1: Login to get token
-    conn, _ := grpc.Dial("localhost:8091", grpc.WithInsecure())
-    authClient := pb.NewAuthServiceClient(conn)
-
-    loginResp, err := authClient.Login(context.Background(), &pb.LoginRequest{
-        Username: "wiloon",
-        Password: "haCahpro",
-    })
-    if err != nil {
-        log.Fatal("Login failed:", err)
-    }
-
-    token := loginResp.Token
-    log.Println("✅ Logged in, token:", token)
-
-    // Step 2: Use token for authenticated requests
-    authConn, _ := grpc.Dial("localhost:8091",
-        grpc.WithInsecure(),
-        grpc.WithUnaryInterceptor(tokenInterceptor(token)),
-    )
-
-    dataClient := pb.NewDataServiceClient(authConn)
-
-    // Now all requests include authentication token
-    word, err := dataClient.GetWord(context.Background(), &pb.GetWordRequest{
-        English: "hello",
-    })
-    if err != nil {
-        log.Fatal("GetWord failed:", err)
-    }
-
-    log.Println("✅ Got word:", word)
-}
-```
-
-### Authentication Comparison for P2P Sync
-
-| Method | Complexity | Security | Use Case for P2P Sync |
-|--------|-----------|----------|-----------------------|
-| **API Key** | ⭐ | ⭐⭐⭐⭐ | **Simplest** - Static key per node, easy setup |
-| **mTLS** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | **Most Secure** - Certificate-based, mutual verification |
-| **JWT Token** | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | Stateless, good for dynamic peer discovery |
-| **Basic Auth** | ⭐ | ⭐⭐⭐ | Too simple for P2P, no encryption |
-| **OAuth2** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | Overkill for home LAN P2P |
-
-### Recommended for P2P Sync (Home LAN Environment)
-
-**Two practical options:**
-
-#### Option 1: API Key (Simple, Good Enough for Home LAN) ⭐ **Recommended for MVP**
-
-```
-Why API Key for P2P Sync:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✅ Simple Setup: Generate one key per node, configure once
-✅ No Expiration: Keys don't expire (suitable for home devices)
-✅ Easy Troubleshooting: Easy to verify if key matches
-✅ Sufficient Security: Combined with LAN-only access
-
-Example Configuration:
-# sync-config.yaml
-peer_auth:
-  method: "api_key"
-  api_key: "enx-desktop-abc123def456"  # Unique per node
-  
-trusted_peers:
-  - name: "macbook"
-    api_key: "enx-macbook-xyz789ghi012"
-  - name: "ubuntu"
-    api_key: "enx-ubuntu-jkl345mno678"
-```
-
-#### Option 2: mTLS (Maximum Security, More Setup) ⭐ **For Production/Enterprise**
-
-```
-Why mTLS for P2P Sync:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✅ Certificate-Based: Each node has unique certificate
-✅ Mutual Verification: Both sides verify each other
-✅ Built-in Encryption: TLS handles all encryption
-✅ Industry Standard: Used by Kubernetes, microservices
-✅ Expiration: Built-in token expiry
-✅ Familiar: Same as HTTP REST APIs
-✅ Easy to implement: Standard JWT libraries
-✅ Secure: HMAC-SHA256 signature
-
-Workflow:
-1. User logs in → Get JWT token
-2. Include token in gRPC metadata
-3. Server validates token on each request
-4. Token expires after 24 hours
-5. Refresh token when needed
-```
-
-### TLS/SSL
-
-```go
-// Enable TLS for production
-creds, err := credentials.NewServerTLSFromFile("server.crt", "server.key")
-if err != nil {
-    log.Fatal(err)
-}
-
-server := grpc.NewServer(grpc.Creds(creds))
-```
-
-### Rate Limiting
-
-```go
-// Prevent abuse
-type RateLimiter struct {
-    limiter *rate.Limiter
-}
-
-func (r *RateLimiter) Intercept(ctx context.Context, req interface{},
-                                 info *grpc.UnaryServerInfo,
-                                 handler grpc.UnaryHandler) (interface{}, error) {
-    if !r.limiter.Allow() {
-        return nil, status.Error(codes.ResourceExhausted, "rate limit exceeded")
-    }
-    return handler(ctx, req)
-}
-```
+---
 
 ## Monitoring and Observability
 
