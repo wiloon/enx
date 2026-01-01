@@ -1,6 +1,6 @@
 [enx]
 dev-mode = true
-port = 8090
+port = 8091
 
 [data-service]
 address = "localhost:50051"

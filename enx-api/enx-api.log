@@ -1,0 +1,48 @@
+nohup: ignoring input
+enx-api start...
+2026/01/01 23:06:24 viper config paths: /usr/local/etc/enx/, $HOME/.enx, C:\workspace\conf, .
+2026/01/01 23:06:24 viper config name: config.toml
+2026/01/01 23:06:24 read config file success, used: /home/wiloon/workspace/enx/enx-api/config.toml
+devMode: true
+2026-01-01 23:06:24.933	info	zap logger init, level: debug, to: CONSOLE, path: N/A
+2026-01-01 23:06:24.933	debug	debug log test
+2026-01-01 23:06:24.933	warn	warn log test
+2026-01-01 23:06:24.933	error	warnf log test test
+2026-01-01 23:06:24.935	info	opening db: /var/lib/enx-api/enx.db
+2026-01-01 23:06:24.936	info	Connecting to data-service at localhost:50051
+2026/01/01 23:06:24 ✅ Connected to data-service at localhost:50051
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] GET    /ping                     --> main.Ping (5 handlers)
+[GIN-debug] GET    /version                  --> enx-api/handlers.GetVersion (5 handlers)
+[GIN-debug] GET    /api/version              --> enx-api/handlers.GetVersionSimple (5 handlers)
+[GIN-debug] GET    /paragraph-init           --> enx-api/paragraph.ParagraphInit (6 handlers)
+[GIN-debug] GET    /translate                --> enx-api/translate.Translate (6 handlers)
+[GIN-debug] GET    /word/:word               --> enx-api/translate.TranslateByWord (6 handlers)
+[GIN-debug] GET    /load-count               --> enx-api/word.LoadCount (6 handlers)
+[GIN-debug] POST   /mark                     --> main.MarkWord (6 handlers)
+[GIN-debug] GET    /do-search                --> main.DoSearch (6 handlers)
+[GIN-debug] GET    /third-party              --> main.DoSearchThirdParty (6 handlers)
+[GIN-debug] GET    /wrap                     --> main.Wrap (6 handlers)
+[GIN-debug] POST   /log                      --> main.LogHandler (6 handlers)
+[GIN-debug] GET    /api/paragraph-init       --> enx-api/paragraph.ParagraphInit (6 handlers)
+[GIN-debug] GET    /api/translate            --> enx-api/translate.Translate (6 handlers)
+[GIN-debug] GET    /api/word/:word           --> enx-api/translate.TranslateByWord (6 handlers)
+[GIN-debug] GET    /api/load-count           --> enx-api/word.LoadCount (6 handlers)
+[GIN-debug] POST   /api/mark                 --> main.MarkWord (6 handlers)
+[GIN-debug] GET    /api/do-search            --> main.DoSearch (6 handlers)
+[GIN-debug] GET    /api/third-party          --> main.DoSearchThirdParty (6 handlers)
+[GIN-debug] GET    /api/wrap                 --> main.Wrap (6 handlers)
+[GIN-debug] POST   /api/log                  --> main.LogHandler (6 handlers)
+[GIN-debug] POST   /login                    --> main.Login (5 handlers)
+[GIN-debug] POST   /logout                   --> main.Logout (5 handlers)
+[GIN-debug] POST   /register                 --> main.Register (5 handlers)
+[GIN-debug] POST   /api/login                --> main.Login (5 handlers)
+[GIN-debug] POST   /api/logout               --> main.Logout (5 handlers)
+[GIN-debug] POST   /api/register             --> main.Register (5 handlers)
+[GIN-debug] POST   /mark-test                --> main.MarkWord (5 handlers)
+2026-01-01 23:06:24.936	info	enx api listening port: 8090
+2026-01-01 23:06:24.936	error	failed to listen, listen tcp :8090: bind: address already in use
+2026-01-01 23:06:24.936	error	server failed to start, exiting...

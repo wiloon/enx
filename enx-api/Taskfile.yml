@@ -203,6 +203,85 @@ tasks:
       - echo "Starting {{.APP_NAME}}..."
       - ./{{.APP_NAME}}
 
+  start:
+    desc: Start API server (usage - task start [MODE=fg|bg] - default is fg)
+    deps:
+      - build-dev
+    vars:
+      MODE: '{{.MODE | default "fg"}}'
+      PID_FILE: '{{.APP_NAME}}.pid'
+      LOG_FILE: '{{.APP_NAME}}.log'
+    cmds:
+      - |
+        MODE="{{.MODE}}"
+        if [ "$MODE" = "bg" ]; then
+          echo "Starting {{.APP_NAME}} in background mode..."
+          nohup ./{{.APP_NAME}} > {{.LOG_FILE}} 2>&1 &
+          echo $! > {{.PID_FILE}}
+          echo "{{.APP_NAME}} started in background (PID: $(cat {{.PID_FILE}}))"
+          echo "Log file: {{.LOG_FILE}}"
+          echo "Stop with: task stop"
+        elif [ "$MODE" = "fg" ]; then
+          echo "Starting {{.APP_NAME}} in foreground mode..."
+          ./{{.APP_NAME}}
+        else
+          echo "Error: Invalid MODE '${MODE}'. Use 'fg' or 'bg'"
+          exit 1
+        fi
+
+  stop:
+    desc: Stop background API server
+    vars:
+      PID_FILE: '{{.APP_NAME}}.pid'
+    cmds:
+      - |
+        if [ ! -f {{.PID_FILE}} ]; then
+          echo "PID file not found. Server may not be running in background."
+          exit 1
+        fi
+        PID=$(cat {{.PID_FILE}})
+        if kill -0 $PID 2>/dev/null; then
+          echo "Stopping {{.APP_NAME}} (PID: $PID)..."
+          kill $PID
+          rm -f {{.PID_FILE}}
+          echo "{{.APP_NAME}} stopped"
+        else
+          echo "Process $PID not found. Cleaning up PID file..."
+          rm -f {{.PID_FILE}}
+        fi
+
+  status:
+    desc: Check API server status
+    vars:
+      PID_FILE: '{{.APP_NAME}}.pid'
+      LOG_FILE: '{{.APP_NAME}}.log'
+    cmds:
+      - |
+        if [ ! -f {{.PID_FILE}} ]; then
+          echo "{{.APP_NAME}} is not running in background"
+          exit 0
+        fi
+        PID=$(cat {{.PID_FILE}})
+        if kill -0 $PID 2>/dev/null; then
+          echo "{{.APP_NAME}} is running (PID: $PID)"
+          if [ -f {{.LOG_FILE}} ]; then
+            echo ""
+            echo "Last 10 lines of log:"
+            tail -n 10 {{.LOG_FILE}}
+          fi
+        else
+          echo "{{.APP_NAME}} is not running (stale PID file)"
+          rm -f {{.PID_FILE}}
+        fi
+
+  restart:
+    desc: Restart API server (works only for background mode)
+    cmds:
+      - task: stop
+      - task: start
+        vars:
+          MODE: bg
+
   dev-setup:
     desc: Setup development environment
     cmds:

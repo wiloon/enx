@@ -32,7 +32,7 @@ tasks:
   # ===========================================
 
   # Data Service
-  start-data-service:
+  data:start:
     desc: Start enx-data-service in background
     cmds:
       - |
@@ -54,7 +54,7 @@ tasks:
           exit 1
         fi
 
-  stop-data-service:
+  data:stop:
     desc: Stop enx-data-service
     cmds:
       - |
@@ -72,90 +72,88 @@ tasks:
           echo "✅ data-service stopped"
         fi
 
-  restart-data-service:
+  data:restart:
     desc: Restart enx-data-service
     cmds:
-      - task: stop-data-service
+      - task: data:stop
       - sleep 1
-      - task: start-data-service
+      - task: data:start
 
-  logs-data-service:
+  data:logs:
     desc: Show enx-data-service logs
     cmds:
       - tail -f /tmp/enx-data-service.log
 
   # API Service
-  start-api:
-    desc: Start enx-api in background
+  api:start:
+    desc: Start enx-api using taskfile (usage - task api:start [MODE=fg|bg] - default is fg)
+    dir: enx-api
+    vars:
+      MODE: '{{.MODE | default "fg"}}'
     cmds:
-      - |
-        if pgrep -f "enx-api/enx-api$" > /dev/null; then
-          echo "⚠️  enx-api is already running"
-          exit 1
-        fi
-        echo "🚀 Starting enx-api..."
-        cd enx-api && ./enx-api > /tmp/enx-api.log 2>&1 &
-        sleep 2
-        if pgrep -f "enx-api/enx-api$" > /dev/null; then
-          echo "✅ enx-api started (PID: $(pgrep -f 'enx-api/enx-api$'))"
-          echo "   Logs: /tmp/enx-api.log"
-          echo "   HTTP: localhost:8080"
-        else
-          echo "❌ Failed to start enx-api"
-          tail -20 /tmp/enx-api.log
-          exit 1
-        fi
+      - task start MODE={{.MODE}}
 
-  stop-api:
-    desc: Stop enx-api
+  api:start:fg:
+    desc: Start enx-api in foreground (calls enx-api taskfile)
+    dir: enx-api
     cmds:
-      - |
-        PID=$(pgrep -f "enx-api/enx-api$" || echo "")
-        if [ -z "$PID" ]; then
-          echo "⚠️  enx-api is not running"
-        else
-          echo "🛑 Stopping enx-api (PID: $PID)..."
-          kill $PID
-          sleep 1
-          if pgrep -f "enx-api/enx-api$" > /dev/null; then
-            echo "⚠️  Forcing stop..."
-            kill -9 $PID
-          fi
-          echo "✅ enx-api stopped"
-        fi
+      - task start MODE=fg
 
-  restart-api:
-    desc: Restart enx-api
+  api:start:bg:
+    desc: Start enx-api in background (calls enx-api taskfile)
+    dir: enx-api
     cmds:
-      - task: stop-api
-      - sleep 1
-      - task: start-api
+      - task start MODE=bg
 
-  logs-api:
+  api:stop:
+    desc: Stop enx-api (calls enx-api taskfile)
+    dir: enx-api
+    cmds:
+      - task stop
+
+  api:restart:
+    desc: Restart enx-api (calls enx-api taskfile)
+    dir: enx-api
+    cmds:
+      - task restart
+
+  api:status:
+    desc: Show enx-api status (calls enx-api taskfile)
+    dir: enx-api
+    cmds:
+      - task status
+
+  api:logs:
     desc: Show enx-api logs
+    dir: enx-api
     cmds:
-      - tail -f /tmp/enx-api.log
+      - |
+        if [ -f enx-api.log ]; then
+          tail -f enx-api.log
+        else
+          echo "⚠️  No log file found (enx-api.log)"
+        fi
 
   # All Services
-  start-all:
+  services:start:
     desc: Start all backend services (data-service + api)
     cmds:
-      - task: start-data-service
+      - task: data:start
       - sleep 2
-      - task: start-api
+      - task: api:start
 
-  stop-all:
+  services:stop:
     desc: Stop all backend services
     cmds:
-      - task: stop-api
-      - task: stop-data-service
+      - task: api:stop
+      - task: data:stop
 
-  restart-all:
+  services:restart:
     desc: Restart all backend services
     cmds:
-      - task: stop-all
+      - task: services:stop
       - sleep 1
-      - task: start-all
+      - task: services:start
 
   status:
     desc: Show status of all services
@@ -181,14 +179,14 @@ tasks:
         fi
 
   # Build before starting
-  build-and-start:
+  services:build-start:
     desc: Build and start all services
     cmds:
       - echo "🔨 Building data-service..."
       - cd enx-data-service && go build -o bin/server ./cmd/server
       - echo "🔨 Building enx-api..."
       - cd enx-api && go build -o enx-api .
-      - task: start-all
+      - task: services:start
 
   # ===========================================
   # Setup & Installation
