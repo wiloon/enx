@@ -35,6 +35,18 @@ func NewWordRepository(dbPath string) (*WordRepository, error) {
 		return nil, fmt.Errorf("failed to create table: %w", err)
 	}
 
+	// Create sync_state table
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS sync_state (
+			peer_addr TEXT PRIMARY KEY,
+			last_sync_time INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL
+		)
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sync_state table: %w", err)
+	}
+
 	return &WordRepository{db: db}, nil
 }
 
@@ -149,6 +161,41 @@ func (r *WordRepository) FindAll() ([]*model.Word, error) {
 	}
 
 	return words, nil
+}
+
+// GetLastSyncTime retrieves the last sync timestamp for a peer
+func (r *WordRepository) GetLastSyncTime(peerAddr string) (int64, error) {
+	var lastSyncTime int64
+	err := r.db.QueryRow(`
+		SELECT last_sync_time FROM sync_state WHERE peer_addr = ?
+	`, peerAddr).Scan(&lastSyncTime)
+
+	if err == sql.ErrNoRows {
+		return 0, nil // No previous sync
+	}
+	if err != nil {
+		return 0, fmt.Errorf("failed to get last sync time: %w", err)
+	}
+
+	return lastSyncTime, nil
+}
+
+// UpdateLastSyncTime updates the last sync timestamp for a peer
+func (r *WordRepository) UpdateLastSyncTime(peerAddr string, timestamp int64) error {
+	now := timestamp
+	_, err := r.db.Exec(`
+		INSERT INTO sync_state (peer_addr, last_sync_time, updated_at)
+		VALUES (?, ?, ?)
+		ON CONFLICT(peer_addr) DO UPDATE SET
+			last_sync_time = excluded.last_sync_time,
+			updated_at = excluded.updated_at
+	`, peerAddr, timestamp, now)
+
+	if err != nil {
+		return fmt.Errorf("failed to update last sync time: %w", err)
+	}
+
+	return nil
 }
 
 func (r *WordRepository) FindByEnglish(english string) (*model.Word, error) {
