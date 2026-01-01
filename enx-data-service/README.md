@@ -1,4 +1,7 @@
-# ENX Data Service - Phase 3: Manual Sync Trigger
+````markdown
+# ENX Data Service
+
+Phase 3: Manual Sync Trigger
 
 ## Overview
 
@@ -312,3 +315,5 @@ nc -zv 192.168.1.10 50051
 - ✅ Trigger sync endpoints (single/all)
 - ✅ Integration examples (cron, launchd, systemd)
 - ✅ Documentation and usage guide
+
+````
