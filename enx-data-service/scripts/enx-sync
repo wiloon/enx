@@ -1,0 +1,107 @@
+#!/bin/bash
+# ENX Sync CLI - Simple wrapper for sync operations
+
+API_BASE="http://localhost:8090/api/sync"
+
+# Colors for output
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Check if jq is available
+if ! command -v jq &> /dev/null; then
+    JQ_AVAILABLE=false
+else
+    JQ_AVAILABLE=true
+fi
+
+format_output() {
+    if [ "$JQ_AVAILABLE" = true ]; then
+        jq '.'
+    else
+        cat
+    fi
+}
+
+case "$1" in
+  trigger)
+    if [ -z "$2" ]; then
+      echo -e "${RED}Error: peer address required${NC}"
+      echo "Usage: enx-sync trigger <peer-address>"
+      echo "Example: enx-sync trigger 192.168.1.10:50051"
+      exit 1
+    fi
+    
+    echo -e "${YELLOW}Triggering sync with $2...${NC}"
+    response=$(curl -s -X POST "$API_BASE/trigger" \
+      -H "Content-Type: application/json" \
+      -d "{\"peer\": \"$2\"}")
+    
+    echo "$response" | format_output
+    
+    if echo "$response" | grep -q "triggered"; then
+      echo -e "${GREEN}✓ Sync triggered successfully${NC}"
+    else
+      echo -e "${RED}✗ Sync trigger failed${NC}"
+      exit 1
+    fi
+    ;;
+    
+  trigger-all)
+    echo -e "${YELLOW}Triggering sync with all peers...${NC}"
+    response=$(curl -s -X POST "$API_BASE/trigger-all")
+    
+    echo "$response" | format_output
+    
+    if echo "$response" | grep -q "triggered"; then
+      echo -e "${GREEN}✓ Sync triggered for all peers${NC}"
+    else
+      echo -e "${RED}✗ Sync trigger failed${NC}"
+      exit 1
+    fi
+    ;;
+    
+  status)
+    echo -e "${YELLOW}Fetching sync status...${NC}"
+    curl -s "$API_BASE/status" | format_output
+    ;;
+    
+  health)
+    response=$(curl -s "http://localhost:8090/health")
+    echo "$response" | format_output
+    
+    if echo "$response" | grep -q "healthy"; then
+      echo -e "${GREEN}✓ Service is healthy${NC}"
+    else
+      echo -e "${RED}✗ Service is unhealthy${NC}"
+      exit 1
+    fi
+    ;;
+    
+  help|--help|-h)
+    echo "ENX Sync CLI - Manual sync trigger tool"
+    echo ""
+    echo "Usage: enx-sync <command> [arguments]"
+    echo ""
+    echo "Commands:"
+    echo "  trigger <peer>   Trigger sync with specific peer"
+    echo "                   Example: enx-sync trigger 192.168.1.10:50051"
+    echo ""
+    echo "  trigger-all      Trigger sync with all configured peers"
+    echo ""
+    echo "  status           Show sync status (last sync times)"
+    echo ""
+    echo "  health           Check service health"
+    echo ""
+    echo "  help             Show this help message"
+    echo ""
+    echo "Note: jq is recommended for better output formatting"
+    ;;
+    
+  *)
+    echo -e "${RED}Error: unknown command '$1'${NC}"
+    echo "Run 'enx-sync help' for usage information"
+    exit 1
+    ;;
+esac

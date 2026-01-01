@@ -2,6 +2,9 @@
 dev-mode = true
 port = 8090
 
+[data-service]
+address = "localhost:50051"
+
 [mysql]
 address = "mysql.wiloon.com:3306"
 

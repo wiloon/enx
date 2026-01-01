@@ -1069,65 +1069,155 @@ sqlite3 ~/macbook/enx.db "SELECT COUNT(*) FROM words;"
 
 ---
 
-### Phase 3: Automatic Sync (Week 6)
+### Phase 3: Manual Sync Trigger (Week 6)
 
-**What to build**: Auto-trigger sync when network available.
+**What to build**: HTTP API and CLI for manual sync triggering.
 
 **Scope**:
-- ✅ Periodic sync (every 5 minutes when online)
-- ✅ Network detection (basic)
-- ❌ Skip: Smart sync triggers, battery optimization
+- ✅ HTTP REST API for sync control
+- ✅ Simple CLI wrapper script
+- ✅ Sync status endpoint
+- ❌ Skip: Auto-sync (defer to Phase 4+), Web UI
 
 **Implementation**:
+
+**1. HTTP API Server** (alongside gRPC server):
 ```go
-// Simple periodic sync
-func (s *SyncService) StartAutoSync(peers []string, interval time.Duration) {
-    ticker := time.NewTicker(interval)
-    defer ticker.Stop()
-    
-    for range ticker.C {
-        for _, peer := range peers {
-            if s.isPeerReachable(peer) {
-                log.Printf("Auto-sync with %s", peer)
-                s.SyncWithPeer(peer)
-            }
-        }
-    }
+// internal/api/http_server.go
+type HTTPServer struct {
+    coordinator *sync.Coordinator
+    config      *Config
 }
 
-// Basic reachability check
-func (s *SyncService) isPeerReachable(addr string) bool {
-    conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
-    if err != nil {
-        return false
+func (h *HTTPServer) Start(addr string) error {
+    mux := http.NewServeMux()
+    
+    // Trigger sync with specific peer
+    mux.HandleFunc("POST /api/sync/trigger", h.handleTriggerSync)
+    
+    // Trigger sync with all configured peers
+    mux.HandleFunc("POST /api/sync/trigger-all", h.handleTriggerSyncAll)
+    
+    // Get sync status
+    mux.HandleFunc("GET /api/sync/status", h.handleSyncStatus)
+    
+    log.Printf("HTTP API listening on %s", addr)
+    return http.ListenAndServe(addr, mux)
+}
+
+func (h *HTTPServer) handleTriggerSync(w http.ResponseWriter, r *http.Request) {
+    var req struct {
+        Peer string `json:"peer"`
     }
-    conn.Close()
-    return true
+    
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        http.Error(w, "invalid request", http.StatusBadRequest)
+        return
+    }
+    
+    if req.Peer == "" {
+        http.Error(w, "peer address required", http.StatusBadRequest)
+        return
+    }
+    
+    go func() {
+        if err := h.coordinator.SyncWithPeer(context.Background(), req.Peer); err != nil {
+            log.Printf("Sync failed: %v", err)
+        }
+    }()
+    
+    json.NewEncoder(w).Encode(map[string]string{
+        "status": "triggered",
+        "peer":   req.Peer,
+    })
+}
+
+func (h *HTTPServer) handleSyncStatus(w http.ResponseWriter, r *http.Request) {
+    status := h.coordinator.GetSyncStatus()
+    json.NewEncoder(w).Encode(status)
 }
 ```
 
-**Configuration**:
+**2. Configuration**:
 ```yaml
 # config.yaml
 node:
   id: "desktop-001"
-  port: 8091
+  grpc_port: 50051
+  http_port: 8090  # HTTP API port
 
 peers:
-  - addr: "192.168.1.10:8091"  # MacBook
-  - addr: "192.168.1.20:8091"  # Ubuntu laptop
+  - addr: "192.168.1.10:50051"  # MacBook
+    name: "macbook"
+  - addr: "192.168.1.20:50051"  # Ubuntu laptop
+    name: "ubuntu-laptop"
+```
 
-sync:
-  interval: 5m
-  auto_start: true
+**3. CLI Wrapper Script** (`scripts/enx-sync`):
+```bash
+#!/bin/bash
+# Simple CLI wrapper for sync operations
+
+API_BASE="http://localhost:8090/api/sync"
+
+case "$1" in
+  trigger)
+    if [ -z "$2" ]; then
+      echo "Usage: enx-sync trigger <peer-address>"
+      exit 1
+    fi
+    curl -s -X POST "$API_BASE/trigger" \
+      -H "Content-Type: application/json" \
+      -d "{\"peer\": \"$2\"}" | jq
+    ;;
+    
+  trigger-all)
+    curl -s -X POST "$API_BASE/trigger-all" | jq
+    ;;
+    
+  status)
+    curl -s "$API_BASE/status" | jq
+    ;;
+    
+  *)
+    echo "Usage: enx-sync {trigger|trigger-all|status}"
+    echo ""
+    echo "Commands:"
+    echo "  trigger <peer>   Trigger sync with specific peer"
+    echo "  trigger-all      Trigger sync with all configured peers"
+    echo "  status           Show sync status"
+    exit 1
+    ;;
+esac
+```
+
+**Usage Examples**:
+```bash
+# 触发与特定 peer 的同步
+enx-sync trigger 192.168.1.10:50051
+
+# 或使用 curl 直接调用
+curl -X POST http://localhost:8090/api/sync/trigger \
+  -H "Content-Type: application/json" \
+  -d '{"peer": "192.168.1.10:50051"}'
+
+# 与所有 peer 同步
+enx-sync trigger-all
+
+# 查看同步状态
+enx-sync status
+
+# 集成到 cron 或 launchd
+# crontab: */10 * * * * /usr/local/bin/enx-sync trigger-all
 ```
 
 **Success criteria**:
-- ✅ Nodes sync automatically every 5 minutes
-- ✅ Works when peer is offline (skips gracefully)
-- ✅ Ubuntu laptop syncs when reconnecting to LAN
+- ✅ Can trigger sync via HTTP API
+- ✅ CLI script works for common operations
+- ✅ Returns sync status (last sync time, success/failure)
+- ✅ Can be integrated into automation scripts
 
-**Time estimate**: 3-4 days
+**Time estimate**: 2-3 days
 
 ---
 
