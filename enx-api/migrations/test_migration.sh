@@ -3,7 +3,7 @@
 
 set -e  # Exit on error
 
-DB_PATH="/Users/wiloon/workspace/projects/enx/enx-api/enx.db"
+DB_PATH="/var/lib/enx-api/enx.db"
 TEST_DB="/tmp/enx_test.db"
 MIGRATION_FILE="/Users/wiloon/workspace/projects/enx/enx-api/migrations/20251230_migrate_words_to_p2p.sql"
 

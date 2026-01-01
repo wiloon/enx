@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.10
 // 	protoc        v6.33.1
-// source: proto/data_service.proto
+// source: data_service.proto
 
 package proto
 
@@ -21,22 +21,24 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Word message aligned with migrated database schema
 type Word struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Id             string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	English        string                 `protobuf:"bytes,2,opt,name=english,proto3" json:"english,omitempty"`
-	Chinese        string                 `protobuf:"bytes,3,opt,name=chinese,proto3" json:"chinese,omitempty"`
-	Phonetic       string                 `protobuf:"bytes,4,opt,name=phonetic,proto3" json:"phonetic,omitempty"`
-	Definition     string                 `protobuf:"bytes,5,opt,name=definition,proto3" json:"definition,omitempty"`
-	UpdateDatetime string                 `protobuf:"bytes,6,opt,name=update_datetime,json=updateDatetime,proto3" json:"update_datetime,omitempty"`
-	IsDeleted      bool                   `protobuf:"varint,7,opt,name=is_deleted,json=isDeleted,proto3" json:"is_deleted,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                 // UUID v4
+	English       string                 `protobuf:"bytes,2,opt,name=english,proto3" json:"english,omitempty"`                       // English word (required, unique)
+	Chinese       string                 `protobuf:"bytes,3,opt,name=chinese,proto3" json:"chinese,omitempty"`                       // Chinese translation (optional)
+	Pronunciation string                 `protobuf:"bytes,4,opt,name=pronunciation,proto3" json:"pronunciation,omitempty"`           // Pronunciation guide (optional)
+	CreatedAt     int64                  `protobuf:"varint,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"` // Unix timestamp in milliseconds
+	LoadCount     int32                  `protobuf:"varint,6,opt,name=load_count,json=loadCount,proto3" json:"load_count,omitempty"` // Usage counter
+	UpdatedAt     int64                  `protobuf:"varint,7,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"` // Unix timestamp in milliseconds (required)
+	DeletedAt     int64                  `protobuf:"varint,8,opt,name=deleted_at,json=deletedAt,proto3" json:"deleted_at,omitempty"` // Soft delete timestamp (0 = not deleted)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Word) Reset() {
 	*x = Word{}
-	mi := &file_proto_data_service_proto_msgTypes[0]
+	mi := &file_data_service_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48,7 +50,7 @@ func (x *Word) String() string {
 func (*Word) ProtoMessage() {}
 
 func (x *Word) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_data_service_proto_msgTypes[0]
+	mi := &file_data_service_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -61,7 +63,7 @@ func (x *Word) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Word.ProtoReflect.Descriptor instead.
 func (*Word) Descriptor() ([]byte, []int) {
-	return file_proto_data_service_proto_rawDescGZIP(), []int{0}
+	return file_data_service_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Word) GetId() string {
@@ -85,32 +87,39 @@ func (x *Word) GetChinese() string {
 	return ""
 }
 
-func (x *Word) GetPhonetic() string {
+func (x *Word) GetPronunciation() string {
 	if x != nil {
-		return x.Phonetic
+		return x.Pronunciation
 	}
 	return ""
 }
 
-func (x *Word) GetDefinition() string {
+func (x *Word) GetCreatedAt() int64 {
 	if x != nil {
-		return x.Definition
+		return x.CreatedAt
 	}
-	return ""
+	return 0
 }
 
-func (x *Word) GetUpdateDatetime() string {
+func (x *Word) GetLoadCount() int32 {
 	if x != nil {
-		return x.UpdateDatetime
+		return x.LoadCount
 	}
-	return ""
+	return 0
 }
 
-func (x *Word) GetIsDeleted() bool {
+func (x *Word) GetUpdatedAt() int64 {
 	if x != nil {
-		return x.IsDeleted
+		return x.UpdatedAt
 	}
-	return false
+	return 0
+}
+
+func (x *Word) GetDeletedAt() int64 {
+	if x != nil {
+		return x.DeletedAt
+	}
+	return 0
 }
 
 type GetWordRequest struct {
@@ -122,7 +131,7 @@ type GetWordRequest struct {
 
 func (x *GetWordRequest) Reset() {
 	*x = GetWordRequest{}
-	mi := &file_proto_data_service_proto_msgTypes[1]
+	mi := &file_data_service_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -134,7 +143,7 @@ func (x *GetWordRequest) String() string {
 func (*GetWordRequest) ProtoMessage() {}
 
 func (x *GetWordRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_data_service_proto_msgTypes[1]
+	mi := &file_data_service_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -147,7 +156,7 @@ func (x *GetWordRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWordRequest.ProtoReflect.Descriptor instead.
 func (*GetWordRequest) Descriptor() ([]byte, []int) {
-	return file_proto_data_service_proto_rawDescGZIP(), []int{1}
+	return file_data_service_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *GetWordRequest) GetId() string {
@@ -166,7 +175,7 @@ type GetWordResponse struct {
 
 func (x *GetWordResponse) Reset() {
 	*x = GetWordResponse{}
-	mi := &file_proto_data_service_proto_msgTypes[2]
+	mi := &file_data_service_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -178,7 +187,7 @@ func (x *GetWordResponse) String() string {
 func (*GetWordResponse) ProtoMessage() {}
 
 func (x *GetWordResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_data_service_proto_msgTypes[2]
+	mi := &file_data_service_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -191,7 +200,7 @@ func (x *GetWordResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWordResponse.ProtoReflect.Descriptor instead.
 func (*GetWordResponse) Descriptor() ([]byte, []int) {
-	return file_proto_data_service_proto_rawDescGZIP(), []int{2}
+	return file_data_service_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *GetWordResponse) GetWord() *Word {
@@ -205,15 +214,14 @@ type CreateWordRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	English       string                 `protobuf:"bytes,1,opt,name=english,proto3" json:"english,omitempty"`
 	Chinese       string                 `protobuf:"bytes,2,opt,name=chinese,proto3" json:"chinese,omitempty"`
-	Phonetic      string                 `protobuf:"bytes,3,opt,name=phonetic,proto3" json:"phonetic,omitempty"`
-	Definition    string                 `protobuf:"bytes,4,opt,name=definition,proto3" json:"definition,omitempty"`
+	Pronunciation string                 `protobuf:"bytes,3,opt,name=pronunciation,proto3" json:"pronunciation,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateWordRequest) Reset() {
 	*x = CreateWordRequest{}
-	mi := &file_proto_data_service_proto_msgTypes[3]
+	mi := &file_data_service_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -225,7 +233,7 @@ func (x *CreateWordRequest) String() string {
 func (*CreateWordRequest) ProtoMessage() {}
 
 func (x *CreateWordRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_data_service_proto_msgTypes[3]
+	mi := &file_data_service_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -238,7 +246,7 @@ func (x *CreateWordRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateWordRequest.ProtoReflect.Descriptor instead.
 func (*CreateWordRequest) Descriptor() ([]byte, []int) {
-	return file_proto_data_service_proto_rawDescGZIP(), []int{3}
+	return file_data_service_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *CreateWordRequest) GetEnglish() string {
@@ -255,16 +263,9 @@ func (x *CreateWordRequest) GetChinese() string {
 	return ""
 }
 
-func (x *CreateWordRequest) GetPhonetic() string {
+func (x *CreateWordRequest) GetPronunciation() string {
 	if x != nil {
-		return x.Phonetic
-	}
-	return ""
-}
-
-func (x *CreateWordRequest) GetDefinition() string {
-	if x != nil {
-		return x.Definition
+		return x.Pronunciation
 	}
 	return ""
 }
@@ -278,7 +279,7 @@ type CreateWordResponse struct {
 
 func (x *CreateWordResponse) Reset() {
 	*x = CreateWordResponse{}
-	mi := &file_proto_data_service_proto_msgTypes[4]
+	mi := &file_data_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -290,7 +291,7 @@ func (x *CreateWordResponse) String() string {
 func (*CreateWordResponse) ProtoMessage() {}
 
 func (x *CreateWordResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_data_service_proto_msgTypes[4]
+	mi := &file_data_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -303,7 +304,7 @@ func (x *CreateWordResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateWordResponse.ProtoReflect.Descriptor instead.
 func (*CreateWordResponse) Descriptor() ([]byte, []int) {
-	return file_proto_data_service_proto_rawDescGZIP(), []int{4}
+	return file_data_service_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *CreateWordResponse) GetWord() *Word {
@@ -322,7 +323,7 @@ type UpdateWordRequest struct {
 
 func (x *UpdateWordRequest) Reset() {
 	*x = UpdateWordRequest{}
-	mi := &file_proto_data_service_proto_msgTypes[5]
+	mi := &file_data_service_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -334,7 +335,7 @@ func (x *UpdateWordRequest) String() string {
 func (*UpdateWordRequest) ProtoMessage() {}
 
 func (x *UpdateWordRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_data_service_proto_msgTypes[5]
+	mi := &file_data_service_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -347,7 +348,7 @@ func (x *UpdateWordRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateWordRequest.ProtoReflect.Descriptor instead.
 func (*UpdateWordRequest) Descriptor() ([]byte, []int) {
-	return file_proto_data_service_proto_rawDescGZIP(), []int{5}
+	return file_data_service_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *UpdateWordRequest) GetWord() *Word {
@@ -366,7 +367,7 @@ type UpdateWordResponse struct {
 
 func (x *UpdateWordResponse) Reset() {
 	*x = UpdateWordResponse{}
-	mi := &file_proto_data_service_proto_msgTypes[6]
+	mi := &file_data_service_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -378,7 +379,7 @@ func (x *UpdateWordResponse) String() string {
 func (*UpdateWordResponse) ProtoMessage() {}
 
 func (x *UpdateWordResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_data_service_proto_msgTypes[6]
+	mi := &file_data_service_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -391,7 +392,7 @@ func (x *UpdateWordResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateWordResponse.ProtoReflect.Descriptor instead.
 func (*UpdateWordResponse) Descriptor() ([]byte, []int) {
-	return file_proto_data_service_proto_rawDescGZIP(), []int{6}
+	return file_data_service_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *UpdateWordResponse) GetWord() *Word {
@@ -410,7 +411,7 @@ type DeleteWordRequest struct {
 
 func (x *DeleteWordRequest) Reset() {
 	*x = DeleteWordRequest{}
-	mi := &file_proto_data_service_proto_msgTypes[7]
+	mi := &file_data_service_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -422,7 +423,7 @@ func (x *DeleteWordRequest) String() string {
 func (*DeleteWordRequest) ProtoMessage() {}
 
 func (x *DeleteWordRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_data_service_proto_msgTypes[7]
+	mi := &file_data_service_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -435,7 +436,7 @@ func (x *DeleteWordRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteWordRequest.ProtoReflect.Descriptor instead.
 func (*DeleteWordRequest) Descriptor() ([]byte, []int) {
-	return file_proto_data_service_proto_rawDescGZIP(), []int{7}
+	return file_data_service_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *DeleteWordRequest) GetId() string {
@@ -454,7 +455,7 @@ type DeleteWordResponse struct {
 
 func (x *DeleteWordResponse) Reset() {
 	*x = DeleteWordResponse{}
-	mi := &file_proto_data_service_proto_msgTypes[8]
+	mi := &file_data_service_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -466,7 +467,7 @@ func (x *DeleteWordResponse) String() string {
 func (*DeleteWordResponse) ProtoMessage() {}
 
 func (x *DeleteWordResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_data_service_proto_msgTypes[8]
+	mi := &file_data_service_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -479,7 +480,7 @@ func (x *DeleteWordResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteWordResponse.ProtoReflect.Descriptor instead.
 func (*DeleteWordResponse) Descriptor() ([]byte, []int) {
-	return file_proto_data_service_proto_rawDescGZIP(), []int{8}
+	return file_data_service_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *DeleteWordResponse) GetId() string {
@@ -489,16 +490,120 @@ func (x *DeleteWordResponse) GetId() string {
 	return ""
 }
 
-type SyncWordsRequest struct {
+type ListWordsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	SinceDatetime string                 `protobuf:"bytes,1,opt,name=since_datetime,json=sinceDatetime,proto3" json:"since_datetime,omitempty"`
+	Limit         int32                  `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset        int32                  `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
+func (x *ListWordsRequest) Reset() {
+	*x = ListWordsRequest{}
+	mi := &file_data_service_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListWordsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListWordsRequest) ProtoMessage() {}
+
+func (x *ListWordsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_data_service_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListWordsRequest.ProtoReflect.Descriptor instead.
+func (*ListWordsRequest) Descriptor() ([]byte, []int) {
+	return file_data_service_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ListWordsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *ListWordsRequest) GetOffset() int32 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+type ListWordsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Words         []*Word                `protobuf:"bytes,1,rep,name=words,proto3" json:"words,omitempty"`
+	Total         int32                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListWordsResponse) Reset() {
+	*x = ListWordsResponse{}
+	mi := &file_data_service_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListWordsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListWordsResponse) ProtoMessage() {}
+
+func (x *ListWordsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_data_service_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListWordsResponse.ProtoReflect.Descriptor instead.
+func (*ListWordsResponse) Descriptor() ([]byte, []int) {
+	return file_data_service_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ListWordsResponse) GetWords() []*Word {
+	if x != nil {
+		return x.Words
+	}
+	return nil
+}
+
+func (x *ListWordsResponse) GetTotal() int32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+type SyncWordsRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	SinceTimestamp int64                  `protobuf:"varint,1,opt,name=since_timestamp,json=sinceTimestamp,proto3" json:"since_timestamp,omitempty"` // Unix timestamp in milliseconds
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
 func (x *SyncWordsRequest) Reset() {
 	*x = SyncWordsRequest{}
-	mi := &file_proto_data_service_proto_msgTypes[9]
+	mi := &file_data_service_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -510,7 +615,7 @@ func (x *SyncWordsRequest) String() string {
 func (*SyncWordsRequest) ProtoMessage() {}
 
 func (x *SyncWordsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_data_service_proto_msgTypes[9]
+	mi := &file_data_service_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -523,14 +628,14 @@ func (x *SyncWordsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncWordsRequest.ProtoReflect.Descriptor instead.
 func (*SyncWordsRequest) Descriptor() ([]byte, []int) {
-	return file_proto_data_service_proto_rawDescGZIP(), []int{9}
+	return file_data_service_proto_rawDescGZIP(), []int{11}
 }
 
-func (x *SyncWordsRequest) GetSinceDatetime() string {
+func (x *SyncWordsRequest) GetSinceTimestamp() int64 {
 	if x != nil {
-		return x.SinceDatetime
+		return x.SinceTimestamp
 	}
-	return ""
+	return 0
 }
 
 type SyncWordsResponse struct {
@@ -542,7 +647,7 @@ type SyncWordsResponse struct {
 
 func (x *SyncWordsResponse) Reset() {
 	*x = SyncWordsResponse{}
-	mi := &file_proto_data_service_proto_msgTypes[10]
+	mi := &file_data_service_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -554,7 +659,7 @@ func (x *SyncWordsResponse) String() string {
 func (*SyncWordsResponse) ProtoMessage() {}
 
 func (x *SyncWordsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_data_service_proto_msgTypes[10]
+	mi := &file_data_service_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -567,7 +672,7 @@ func (x *SyncWordsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncWordsResponse.ProtoReflect.Descriptor instead.
 func (*SyncWordsResponse) Descriptor() ([]byte, []int) {
-	return file_proto_data_service_proto_rawDescGZIP(), []int{10}
+	return file_data_service_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *SyncWordsResponse) GetWord() *Word {
@@ -577,33 +682,32 @@ func (x *SyncWordsResponse) GetWord() *Word {
 	return nil
 }
 
-var File_proto_data_service_proto protoreflect.FileDescriptor
+var File_data_service_proto protoreflect.FileDescriptor
 
-const file_proto_data_service_proto_rawDesc = "" +
+const file_data_service_proto_rawDesc = "" +
 	"\n" +
-	"\x18proto/data_service.proto\x12\venx.data.v1\"\xce\x01\n" +
+	"\x12data_service.proto\x12\venx.data.v1\"\xec\x01\n" +
 	"\x04Word\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
 	"\aenglish\x18\x02 \x01(\tR\aenglish\x12\x18\n" +
-	"\achinese\x18\x03 \x01(\tR\achinese\x12\x1a\n" +
-	"\bphonetic\x18\x04 \x01(\tR\bphonetic\x12\x1e\n" +
+	"\achinese\x18\x03 \x01(\tR\achinese\x12$\n" +
+	"\rpronunciation\x18\x04 \x01(\tR\rpronunciation\x12\x1d\n" +
 	"\n" +
-	"definition\x18\x05 \x01(\tR\n" +
-	"definition\x12'\n" +
-	"\x0fupdate_datetime\x18\x06 \x01(\tR\x0eupdateDatetime\x12\x1d\n" +
+	"created_at\x18\x05 \x01(\x03R\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"is_deleted\x18\a \x01(\bR\tisDeleted\" \n" +
+	"load_count\x18\x06 \x01(\x05R\tloadCount\x12\x1d\n" +
+	"\n" +
+	"updated_at\x18\a \x01(\x03R\tupdatedAt\x12\x1d\n" +
+	"\n" +
+	"deleted_at\x18\b \x01(\x03R\tdeletedAt\" \n" +
 	"\x0eGetWordRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"8\n" +
 	"\x0fGetWordResponse\x12%\n" +
-	"\x04word\x18\x01 \x01(\v2\x11.enx.data.v1.WordR\x04word\"\x83\x01\n" +
+	"\x04word\x18\x01 \x01(\v2\x11.enx.data.v1.WordR\x04word\"m\n" +
 	"\x11CreateWordRequest\x12\x18\n" +
 	"\aenglish\x18\x01 \x01(\tR\aenglish\x12\x18\n" +
-	"\achinese\x18\x02 \x01(\tR\achinese\x12\x1a\n" +
-	"\bphonetic\x18\x03 \x01(\tR\bphonetic\x12\x1e\n" +
-	"\n" +
-	"definition\x18\x04 \x01(\tR\n" +
-	"definition\";\n" +
+	"\achinese\x18\x02 \x01(\tR\achinese\x12$\n" +
+	"\rpronunciation\x18\x03 \x01(\tR\rpronunciation\";\n" +
 	"\x12CreateWordResponse\x12%\n" +
 	"\x04word\x18\x01 \x01(\v2\x11.enx.data.v1.WordR\x04word\":\n" +
 	"\x11UpdateWordRequest\x12%\n" +
@@ -613,11 +717,17 @@ const file_proto_data_service_proto_rawDesc = "" +
 	"\x11DeleteWordRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"$\n" +
 	"\x12DeleteWordResponse\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"9\n" +
-	"\x10SyncWordsRequest\x12%\n" +
-	"\x0esince_datetime\x18\x01 \x01(\tR\rsinceDatetime\":\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"@\n" +
+	"\x10ListWordsRequest\x12\x14\n" +
+	"\x05limit\x18\x01 \x01(\x05R\x05limit\x12\x16\n" +
+	"\x06offset\x18\x02 \x01(\x05R\x06offset\"R\n" +
+	"\x11ListWordsResponse\x12'\n" +
+	"\x05words\x18\x01 \x03(\v2\x11.enx.data.v1.WordR\x05words\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total\";\n" +
+	"\x10SyncWordsRequest\x12'\n" +
+	"\x0fsince_timestamp\x18\x01 \x01(\x03R\x0esinceTimestamp\":\n" +
 	"\x11SyncWordsResponse\x12%\n" +
-	"\x04word\x18\x01 \x01(\v2\x11.enx.data.v1.WordR\x04word2\x8e\x03\n" +
+	"\x04word\x18\x01 \x01(\v2\x11.enx.data.v1.WordR\x04word2\xda\x03\n" +
 	"\vDataService\x12D\n" +
 	"\aGetWord\x12\x1b.enx.data.v1.GetWordRequest\x1a\x1c.enx.data.v1.GetWordResponse\x12M\n" +
 	"\n" +
@@ -625,23 +735,24 @@ const file_proto_data_service_proto_rawDesc = "" +
 	"\n" +
 	"UpdateWord\x12\x1e.enx.data.v1.UpdateWordRequest\x1a\x1f.enx.data.v1.UpdateWordResponse\x12M\n" +
 	"\n" +
-	"DeleteWord\x12\x1e.enx.data.v1.DeleteWordRequest\x1a\x1f.enx.data.v1.DeleteWordResponse\x12L\n" +
-	"\tSyncWords\x12\x1d.enx.data.v1.SyncWordsRequest\x1a\x1e.enx.data.v1.SyncWordsResponse0\x01B\x18Z\x16enx-data-service/protob\x06proto3"
+	"DeleteWord\x12\x1e.enx.data.v1.DeleteWordRequest\x1a\x1f.enx.data.v1.DeleteWordResponse\x12J\n" +
+	"\tListWords\x12\x1d.enx.data.v1.ListWordsRequest\x1a\x1e.enx.data.v1.ListWordsResponse\x12L\n" +
+	"\tSyncWords\x12\x1d.enx.data.v1.SyncWordsRequest\x1a\x1e.enx.data.v1.SyncWordsResponse0\x01B\vZ\tenx/protob\x06proto3"
 
 var (
-	file_proto_data_service_proto_rawDescOnce sync.Once
-	file_proto_data_service_proto_rawDescData []byte
+	file_data_service_proto_rawDescOnce sync.Once
+	file_data_service_proto_rawDescData []byte
 )
 
-func file_proto_data_service_proto_rawDescGZIP() []byte {
-	file_proto_data_service_proto_rawDescOnce.Do(func() {
-		file_proto_data_service_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_data_service_proto_rawDesc), len(file_proto_data_service_proto_rawDesc)))
+func file_data_service_proto_rawDescGZIP() []byte {
+	file_data_service_proto_rawDescOnce.Do(func() {
+		file_data_service_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_data_service_proto_rawDesc), len(file_data_service_proto_rawDesc)))
 	})
-	return file_proto_data_service_proto_rawDescData
+	return file_data_service_proto_rawDescData
 }
 
-var file_proto_data_service_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
-var file_proto_data_service_proto_goTypes = []any{
+var file_data_service_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_data_service_proto_goTypes = []any{
 	(*Word)(nil),               // 0: enx.data.v1.Word
 	(*GetWordRequest)(nil),     // 1: enx.data.v1.GetWordRequest
 	(*GetWordResponse)(nil),    // 2: enx.data.v1.GetWordResponse
@@ -651,52 +762,57 @@ var file_proto_data_service_proto_goTypes = []any{
 	(*UpdateWordResponse)(nil), // 6: enx.data.v1.UpdateWordResponse
 	(*DeleteWordRequest)(nil),  // 7: enx.data.v1.DeleteWordRequest
 	(*DeleteWordResponse)(nil), // 8: enx.data.v1.DeleteWordResponse
-	(*SyncWordsRequest)(nil),   // 9: enx.data.v1.SyncWordsRequest
-	(*SyncWordsResponse)(nil),  // 10: enx.data.v1.SyncWordsResponse
+	(*ListWordsRequest)(nil),   // 9: enx.data.v1.ListWordsRequest
+	(*ListWordsResponse)(nil),  // 10: enx.data.v1.ListWordsResponse
+	(*SyncWordsRequest)(nil),   // 11: enx.data.v1.SyncWordsRequest
+	(*SyncWordsResponse)(nil),  // 12: enx.data.v1.SyncWordsResponse
 }
-var file_proto_data_service_proto_depIdxs = []int32{
+var file_data_service_proto_depIdxs = []int32{
 	0,  // 0: enx.data.v1.GetWordResponse.word:type_name -> enx.data.v1.Word
 	0,  // 1: enx.data.v1.CreateWordResponse.word:type_name -> enx.data.v1.Word
 	0,  // 2: enx.data.v1.UpdateWordRequest.word:type_name -> enx.data.v1.Word
 	0,  // 3: enx.data.v1.UpdateWordResponse.word:type_name -> enx.data.v1.Word
-	0,  // 4: enx.data.v1.SyncWordsResponse.word:type_name -> enx.data.v1.Word
-	1,  // 5: enx.data.v1.DataService.GetWord:input_type -> enx.data.v1.GetWordRequest
-	3,  // 6: enx.data.v1.DataService.CreateWord:input_type -> enx.data.v1.CreateWordRequest
-	5,  // 7: enx.data.v1.DataService.UpdateWord:input_type -> enx.data.v1.UpdateWordRequest
-	7,  // 8: enx.data.v1.DataService.DeleteWord:input_type -> enx.data.v1.DeleteWordRequest
-	9,  // 9: enx.data.v1.DataService.SyncWords:input_type -> enx.data.v1.SyncWordsRequest
-	2,  // 10: enx.data.v1.DataService.GetWord:output_type -> enx.data.v1.GetWordResponse
-	4,  // 11: enx.data.v1.DataService.CreateWord:output_type -> enx.data.v1.CreateWordResponse
-	6,  // 12: enx.data.v1.DataService.UpdateWord:output_type -> enx.data.v1.UpdateWordResponse
-	8,  // 13: enx.data.v1.DataService.DeleteWord:output_type -> enx.data.v1.DeleteWordResponse
-	10, // 14: enx.data.v1.DataService.SyncWords:output_type -> enx.data.v1.SyncWordsResponse
-	10, // [10:15] is the sub-list for method output_type
-	5,  // [5:10] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	0,  // 4: enx.data.v1.ListWordsResponse.words:type_name -> enx.data.v1.Word
+	0,  // 5: enx.data.v1.SyncWordsResponse.word:type_name -> enx.data.v1.Word
+	1,  // 6: enx.data.v1.DataService.GetWord:input_type -> enx.data.v1.GetWordRequest
+	3,  // 7: enx.data.v1.DataService.CreateWord:input_type -> enx.data.v1.CreateWordRequest
+	5,  // 8: enx.data.v1.DataService.UpdateWord:input_type -> enx.data.v1.UpdateWordRequest
+	7,  // 9: enx.data.v1.DataService.DeleteWord:input_type -> enx.data.v1.DeleteWordRequest
+	9,  // 10: enx.data.v1.DataService.ListWords:input_type -> enx.data.v1.ListWordsRequest
+	11, // 11: enx.data.v1.DataService.SyncWords:input_type -> enx.data.v1.SyncWordsRequest
+	2,  // 12: enx.data.v1.DataService.GetWord:output_type -> enx.data.v1.GetWordResponse
+	4,  // 13: enx.data.v1.DataService.CreateWord:output_type -> enx.data.v1.CreateWordResponse
+	6,  // 14: enx.data.v1.DataService.UpdateWord:output_type -> enx.data.v1.UpdateWordResponse
+	8,  // 15: enx.data.v1.DataService.DeleteWord:output_type -> enx.data.v1.DeleteWordResponse
+	10, // 16: enx.data.v1.DataService.ListWords:output_type -> enx.data.v1.ListWordsResponse
+	12, // 17: enx.data.v1.DataService.SyncWords:output_type -> enx.data.v1.SyncWordsResponse
+	12, // [12:18] is the sub-list for method output_type
+	6,  // [6:12] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
-func init() { file_proto_data_service_proto_init() }
-func file_proto_data_service_proto_init() {
-	if File_proto_data_service_proto != nil {
+func init() { file_data_service_proto_init() }
+func file_data_service_proto_init() {
+	if File_data_service_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_data_service_proto_rawDesc), len(file_proto_data_service_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_data_service_proto_rawDesc), len(file_data_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_proto_data_service_proto_goTypes,
-		DependencyIndexes: file_proto_data_service_proto_depIdxs,
-		MessageInfos:      file_proto_data_service_proto_msgTypes,
+		GoTypes:           file_data_service_proto_goTypes,
+		DependencyIndexes: file_data_service_proto_depIdxs,
+		MessageInfos:      file_data_service_proto_msgTypes,
 	}.Build()
-	File_proto_data_service_proto = out.File
-	file_proto_data_service_proto_goTypes = nil
-	file_proto_data_service_proto_depIdxs = nil
+	File_data_service_proto = out.File
+	file_data_service_proto_goTypes = nil
+	file_data_service_proto_depIdxs = nil
 }

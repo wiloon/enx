@@ -27,6 +27,7 @@ CREATE TABLE words_new (
 
 -- Step 2: Migrate existing data from old table to new table
 -- Generate UUIDs and convert timestamps
+-- Note: If duplicate english values exist, keep only the one with latest update_datetime (or highest id if timestamps are equal)
 INSERT INTO words_new (
     id,
     english,
@@ -53,7 +54,7 @@ SELECT
     
     -- Convert create_datetime string to Unix timestamp (milliseconds)
     CASE 
-        WHEN create_datetime IS NOT NULL 
+        WHEN create_datetime IS NOT NULL AND create_datetime != ''
         THEN CAST((julianday(create_datetime) - 2440587.5) * 86400.0 * 1000 AS INTEGER)
         ELSE CAST((julianday('now') - 2440587.5) * 86400.0 * 1000 AS INTEGER)
     END as created_at,
@@ -62,13 +63,28 @@ SELECT
     
     -- Convert update_datetime (required field, cannot be NULL)
     CASE 
-        WHEN update_datetime IS NOT NULL 
+        WHEN update_datetime IS NOT NULL AND update_datetime != ''
         THEN CAST((julianday(update_datetime) - 2440587.5) * 86400.0 * 1000 AS INTEGER)
         ELSE CAST((julianday('now') - 2440587.5) * 86400.0 * 1000 AS INTEGER)
     END as updated_at,
     
     NULL as deleted_at  -- Initially all records are not deleted
-FROM words;
+FROM words
+WHERE id IN (
+    -- For duplicate english values, keep only the record with:
+    -- 1. Latest update_datetime (treat NULL as '1970-01-01' for comparison)
+    -- 2. If timestamps are equal, keep the one with highest id
+    SELECT id FROM words w1
+    WHERE w1.id = (
+        SELECT w2.id
+        FROM words w2
+        WHERE w2.english = w1.english
+        ORDER BY 
+            COALESCE(w2.update_datetime, '1970-01-01') DESC,
+            w2.id DESC
+        LIMIT 1
+    )
+);
 
 -- Step 3: Drop old table
 DROP TABLE words;

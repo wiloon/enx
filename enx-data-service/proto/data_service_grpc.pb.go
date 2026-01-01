@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v6.33.1
-// source: proto/data_service.proto
+// source: data_service.proto
 
 package proto
 
@@ -23,6 +23,7 @@ const (
 	DataService_CreateWord_FullMethodName = "/enx.data.v1.DataService/CreateWord"
 	DataService_UpdateWord_FullMethodName = "/enx.data.v1.DataService/UpdateWord"
 	DataService_DeleteWord_FullMethodName = "/enx.data.v1.DataService/DeleteWord"
+	DataService_ListWords_FullMethodName  = "/enx.data.v1.DataService/ListWords"
 	DataService_SyncWords_FullMethodName  = "/enx.data.v1.DataService/SyncWords"
 )
 
@@ -35,6 +36,7 @@ type DataServiceClient interface {
 	CreateWord(ctx context.Context, in *CreateWordRequest, opts ...grpc.CallOption) (*CreateWordResponse, error)
 	UpdateWord(ctx context.Context, in *UpdateWordRequest, opts ...grpc.CallOption) (*UpdateWordResponse, error)
 	DeleteWord(ctx context.Context, in *DeleteWordRequest, opts ...grpc.CallOption) (*DeleteWordResponse, error)
+	ListWords(ctx context.Context, in *ListWordsRequest, opts ...grpc.CallOption) (*ListWordsResponse, error)
 	// Sync operations
 	SyncWords(ctx context.Context, in *SyncWordsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SyncWordsResponse], error)
 }
@@ -87,6 +89,16 @@ func (c *dataServiceClient) DeleteWord(ctx context.Context, in *DeleteWordReques
 	return out, nil
 }
 
+func (c *dataServiceClient) ListWords(ctx context.Context, in *ListWordsRequest, opts ...grpc.CallOption) (*ListWordsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListWordsResponse)
+	err := c.cc.Invoke(ctx, DataService_ListWords_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataServiceClient) SyncWords(ctx context.Context, in *SyncWordsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SyncWordsResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &DataService_ServiceDesc.Streams[0], DataService_SyncWords_FullMethodName, cOpts...)
@@ -115,6 +127,7 @@ type DataServiceServer interface {
 	CreateWord(context.Context, *CreateWordRequest) (*CreateWordResponse, error)
 	UpdateWord(context.Context, *UpdateWordRequest) (*UpdateWordResponse, error)
 	DeleteWord(context.Context, *DeleteWordRequest) (*DeleteWordResponse, error)
+	ListWords(context.Context, *ListWordsRequest) (*ListWordsResponse, error)
 	// Sync operations
 	SyncWords(*SyncWordsRequest, grpc.ServerStreamingServer[SyncWordsResponse]) error
 	mustEmbedUnimplementedDataServiceServer()
@@ -138,6 +151,9 @@ func (UnimplementedDataServiceServer) UpdateWord(context.Context, *UpdateWordReq
 }
 func (UnimplementedDataServiceServer) DeleteWord(context.Context, *DeleteWordRequest) (*DeleteWordResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteWord not implemented")
+}
+func (UnimplementedDataServiceServer) ListWords(context.Context, *ListWordsRequest) (*ListWordsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListWords not implemented")
 }
 func (UnimplementedDataServiceServer) SyncWords(*SyncWordsRequest, grpc.ServerStreamingServer[SyncWordsResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method SyncWords not implemented")
@@ -235,6 +251,24 @@ func _DataService_DeleteWord_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataService_ListWords_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListWordsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataServiceServer).ListWords(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataService_ListWords_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataServiceServer).ListWords(ctx, req.(*ListWordsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataService_SyncWords_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(SyncWordsRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -269,6 +303,10 @@ var DataService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "DeleteWord",
 			Handler:    _DataService_DeleteWord_Handler,
 		},
+		{
+			MethodName: "ListWords",
+			Handler:    _DataService_ListWords_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -277,5 +315,5 @@ var DataService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "proto/data_service.proto",
+	Metadata: "data_service.proto",
 }

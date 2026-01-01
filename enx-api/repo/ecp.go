@@ -1,6 +1,9 @@
 package repo
 
 import (
+	"context"
+	"enx-api/dataservice"
+	pb "enx-api/proto"
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
 	"time"
@@ -17,8 +20,8 @@ type Word struct {
 }
 
 type UserDict struct {
-	WordId            int
-	QueryCount        int
+	WordId     int
+	QueryCount int
 	// default user id is 1
 	UserId            int `json:"user_id" gorm:"default:1"`
 	AlreadyAcquainted int
@@ -33,17 +36,26 @@ type YoudaoQueryHistory struct {
 
 // GetWordByEnglish get word id by english
 func GetWordByEnglish(english string) *Word {
-	word := Word{}
-	sqlitex.DB.Where("english COLLATE NOCASE =?", english).Find(&word)
-	logger.Debugf("find word, id: %v, english: %s", word.Id, word.English)
-	return &word
+	client := dataservice.GetGlobalClient()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pbWord, err := client.GetWordByEnglish(ctx, english)
+	if err != nil {
+		logger.Debugf("word not found: %s, error: %v", english, err)
+		return &Word{} // Return empty word for compatibility
+	}
+
+	word := pbWordToRepoWord(pbWord)
+	logger.Debugf("find word via gRPC, id: %s, english: %s", pbWord.Id, pbWord.English)
+	return word
 }
 
 func GetWordByEnglishCaseSensitive(english string) *Word {
-	word := Word{}
-	sqlitex.DB.Where("english =?", english).Order("id desc").Find(&word)
-	logger.Debugf("find word, id: %v, english: %s", word.Id, word.English)
-	return &word
+	// gRPC GetWordByEnglish already does case-insensitive matching
+	// For case-sensitive, we'll use the same method for now
+	// TODO: Add case-sensitive RPC if needed
+	return GetWordByEnglish(english)
 }
 
 // GetUserWordQueryCount get user word query count
@@ -58,10 +70,19 @@ func GetUserWordQueryCount(wordId, userId int) (int, int) {
 }
 
 func Translate(key string, userId int) Word {
-	sWord := Word{}
-	sqlitex.DB.Where("english COLLATE NOCASE = ?", key).Find(&sWord)	
-	logger.Debugf("find in local db, result, id: %v, english: %s, user_id: %d", sWord.Id, key, userId)
-	return sWord
+	client := dataservice.GetGlobalClient()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pbWord, err := client.GetWordByEnglish(ctx, key)
+	if err != nil {
+		logger.Debugf("word not found via gRPC: %s, error: %v", key, err)
+		return Word{} // Return empty word
+	}
+
+	word := pbWordToRepoWord(pbWord)
+	logger.Debugf("find in data-service via gRPC, id: %s, english: %s, user_id: %d", pbWord.Id, key, userId)
+	return *word
 }
 
 // IsYouDaoRecordExist check if youdao dict response exist in db
@@ -91,15 +112,48 @@ func SaveYouDaoDictResponse(word, response string, exist int) {
 }
 
 func CountByEnglish(english string) int {
-	// Count the number of words with the given English word, case insensitive
-	var count int64
-	sqlitex.DB.Table("words").Where("english COLLATE NOCASE = ?", english).Count(&count)
-	logger.Debugf("count by english, word: %s, count: %v", english, count)
-	return int(count)
+	client := dataservice.GetGlobalClient()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Use GetWordByEnglish to check if word exists
+	_, err := client.GetWordByEnglish(ctx, english)
+	if err != nil {
+		logger.Debugf("count by english via gRPC, word: %s, count: 0", english)
+		return 0
+	}
+
+	logger.Debugf("count by english via gRPC, word: %s, count: 1", english)
+	return 1
 }
 
 func DeleteDuplicateWord(english string, excludeId int) {
-	// Delete duplicate words with the given English word, excluding the word with excludeId
-	sqlitex.DB.Where("english = ? AND id != ?", english, excludeId).Delete(&Word{})
-	logger.Debugf("deleted duplicate words with english: %s, excluding id: %d", english, excludeId)
+	// This function is no longer needed with UUID-based P2P system
+	// Duplicates are prevented by unique constraint on english field
+	logger.Debugf("DeleteDuplicateWord called but skipped (P2P system prevents duplicates), english: %s, excluding id: %d", english, excludeId)
+}
+
+// pbWordToRepoWord converts protobuf Word to repo Word
+func pbWordToRepoWord(pbWord *pb.Word) *Word {
+	if pbWord == nil {
+		return &Word{}
+	}
+
+	word := &Word{
+		Id:            0, // TODO: Handle UUID to int conversion if needed
+		English:       pbWord.English,
+		Chinese:       pbWord.Chinese,
+		Pronunciation: pbWord.Pronunciation,
+		LoadCount:     0, // Not in protobuf, keep as 0
+	}
+
+	// Convert Unix milliseconds to time.Time
+	if pbWord.CreatedAt > 0 {
+		word.CreateDatetime = time.Unix(pbWord.CreatedAt/1000, (pbWord.CreatedAt%1000)*int64(time.Millisecond))
+	}
+	if pbWord.UpdatedAt > 0 {
+		word.UpdateDatetime = time.Unix(pbWord.UpdatedAt/1000, (pbWord.UpdatedAt%1000)*int64(time.Millisecond))
+	}
+
+	return word
 }

@@ -5,7 +5,6 @@ import (
 	"enx-data-service/internal/db"
 	"enx-data-service/internal/model"
 	pb "enx-data-service/proto"
-	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -30,10 +29,13 @@ func (s *DataService) GetWord(ctx context.Context, req *pb.GetWordRequest) (*pb.
 
 func (s *DataService) CreateWord(ctx context.Context, req *pb.CreateWordRequest) (*pb.CreateWordResponse, error) {
 	word := &model.Word{
-		English:    req.English,
-		Chinese:    req.Chinese,
-		Phonetic:   req.Phonetic,
-		Definition: req.Definition,
+		English: req.English,
+	}
+	if req.Chinese != "" {
+		word.Chinese = &req.Chinese
+	}
+	if req.Pronunciation != "" {
+		word.Pronunciation = &req.Pronunciation
 	}
 
 	if err := s.db.CreateWord(word); err != nil {
@@ -58,13 +60,31 @@ func (s *DataService) DeleteWord(ctx context.Context, req *pb.DeleteWordRequest)
 	return &pb.DeleteWordResponse{Id: req.Id}, nil
 }
 
-func (s *DataService) SyncWords(req *pb.SyncWordsRequest, stream pb.DataService_SyncWordsServer) error {
-	since, err := time.Parse(time.RFC3339, req.SinceDatetime)
+func (s *DataService) ListWords(ctx context.Context, req *pb.ListWordsRequest) (*pb.ListWordsResponse, error) {
+	limit := int(req.Limit)
+	if limit == 0 {
+		limit = 100 // Default limit
+	}
+	offset := int(req.Offset)
+
+	words, total, err := s.db.ListWords(limit, offset)
 	if err != nil {
-		return status.Errorf(codes.InvalidArgument, "invalid datetime format: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to list words: %v", err)
 	}
 
-	words, err := s.db.SyncWords(since)
+	pbWords := make([]*pb.Word, len(words))
+	for i, word := range words {
+		pbWords[i] = convertModelToProto(word)
+	}
+
+	return &pb.ListWordsResponse{
+		Words: pbWords,
+		Total: int32(total),
+	}, nil
+}
+
+func (s *DataService) SyncWords(req *pb.SyncWordsRequest, stream pb.DataService_SyncWordsServer) error {
+	words, err := s.db.SyncWords(req.SinceTimestamp)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to fetch changes: %v", err)
 	}
@@ -78,27 +98,24 @@ func (s *DataService) SyncWords(req *pb.SyncWordsRequest, stream pb.DataService_
 	return nil
 }
 
-func convertModelToProto(w *model.Word) *pb.Word {
-	return &pb.Word{
-		Id:             w.ID,
-		English:        w.English,
-		Chinese:        w.Chinese,
-		Phonetic:       w.Phonetic,
-		Definition:     w.Definition,
-		UpdateDatetime: w.UpdateDatetime.Format(time.RFC3339),
-		IsDeleted:      w.IsDeleted,
-	}
-}
-
 func convertProtoToModel(p *pb.Word) *model.Word {
-	t, _ := time.Parse(time.RFC3339, p.UpdateDatetime)
-	return &model.Word{
-		ID:             p.Id,
-		English:        p.English,
-		Chinese:        p.Chinese,
-		Phonetic:       p.Phonetic,
-		Definition:     p.Definition,
-		UpdateDatetime: t,
-		IsDeleted:      p.IsDeleted,
+	word := &model.Word{
+		ID:        p.Id,
+		English:   p.English,
+		CreatedAt: p.CreatedAt,
+		LoadCount: int(p.LoadCount),
+		UpdatedAt: p.UpdatedAt,
 	}
+
+	if p.Chinese != "" {
+		word.Chinese = &p.Chinese
+	}
+	if p.Pronunciation != "" {
+		word.Pronunciation = &p.Pronunciation
+	}
+	if p.DeletedAt != 0 {
+		word.DeletedAt = &p.DeletedAt
+	}
+
+	return word
 }

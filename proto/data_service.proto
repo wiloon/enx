@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package enx.data.v1;
+
+option go_package = "enx/proto";
+
+service DataService {
+  // Word operations
+  rpc GetWord(GetWordRequest) returns (GetWordResponse);
+  rpc CreateWord(CreateWordRequest) returns (CreateWordResponse);
+  rpc UpdateWord(UpdateWordRequest) returns (UpdateWordResponse);
+  rpc DeleteWord(DeleteWordRequest) returns (DeleteWordResponse);
+  rpc ListWords(ListWordsRequest) returns (ListWordsResponse);
+  
+  // Sync operations
+  rpc SyncWords(SyncWordsRequest) returns (stream SyncWordsResponse);
+}
+
+// Word message aligned with migrated database schema
+message Word {
+  string id = 1;              // UUID v4
+  string english = 2;         // English word (required, unique)
+  string chinese = 3;         // Chinese translation (optional)
+  string pronunciation = 4;   // Pronunciation guide (optional)
+  int64 created_at = 5;       // Unix timestamp in milliseconds
+  int32 load_count = 6;       // Usage counter
+  int64 updated_at = 7;       // Unix timestamp in milliseconds (required)
+  int64 deleted_at = 8;       // Soft delete timestamp (0 = not deleted)
+}
+
+message GetWordRequest {
+  string id = 1;
+}
+
+message GetWordResponse {
+  Word word = 1;
+}
+
+message CreateWordRequest {
+  string english = 1;
+  string chinese = 2;
+  string pronunciation = 3;
+}
+
+message CreateWordResponse {
+  Word word = 1;
+}
+
+message UpdateWordRequest {
+  Word word = 1;
+}
+
+message UpdateWordResponse {
+  Word word = 1;
+}
+
+message DeleteWordRequest {
+  string id = 1;
+}
+
+message DeleteWordResponse {
+  string id = 1;
+}
+
+message ListWordsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+}
+
+message ListWordsResponse {
+  repeated Word words = 1;
+  int32 total = 2;
+}
+
+message SyncWordsRequest {
+  int64 since_timestamp = 1;  // Unix timestamp in milliseconds
+}
+
+message SyncWordsResponse {
+  Word word = 1;
+}

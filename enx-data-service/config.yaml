@@ -1,0 +1,13 @@
+# ENX Data Service Configuration
+
+node:
+  id: "desktop-001"
+  grpc_port: 50051  # gRPC service port
+  http_port: 8090   # HTTP API port
+
+# Peer nodes to sync with
+peers:
+  - addr: "192.168.1.10:50051"
+    name: "macbook"
+  - addr: "192.168.1.20:50051"
+    name: "ubuntu-laptop"
