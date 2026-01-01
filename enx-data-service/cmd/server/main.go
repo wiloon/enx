@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"enx-data-service/internal/api"
 	"enx-data-service/internal/config"
@@ -79,6 +82,35 @@ func main() {
 	log.Printf("   - gRPC: %s", grpcAddr)
 	log.Printf("   - HTTP API: %s", httpAddr)
 	log.Printf("   - Peers configured: %d", len(cfg.Peers))
+
+	// Auto-sync with all peers on startup
+	if len(cfg.Peers) > 0 {
+		go func() {
+			// Wait a bit for services to fully start
+			time.Sleep(2 * time.Second)
+
+			log.Println("🔄 Starting initial sync with peers...")
+			for _, peer := range cfg.Peers {
+				peerAddr := peer.Addr
+				// Add default port if not specified
+				if !strings.Contains(peerAddr, ":") {
+					peerAddr = fmt.Sprintf("%s:50051", peerAddr)
+				}
+
+				log.Printf("   - Syncing with %s (%s)...", peer.Name, peerAddr)
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				err := coordinator.SyncWithPeer(ctx, peerAddr)
+				cancel()
+
+				if err != nil {
+					log.Printf("   ⚠️  Failed to sync with %s: %v", peerAddr, err)
+				} else {
+					log.Printf("   ✅ Sync completed with %s", peerAddr)
+				}
+			}
+			log.Println("✅ Initial sync completed")
+		}()
+	}
 
 	// Start gRPC server (blocking)
 	if err := grpcServer.Serve(lis); err != nil {

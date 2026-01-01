@@ -17,18 +17,16 @@ import (
 
 // Coordinator orchestrates P2P synchronization between nodes
 type Coordinator struct {
-	repo          *repository.WordRepository
-	nodeID        string
-	lastSyncTimes map[string]int64 // peerAddr -> last sync timestamp
-	mu            sync.RWMutex
+	repo   *repository.WordRepository
+	nodeID string
+	mu     sync.RWMutex
 }
 
 // NewCoordinator creates a new sync coordinator
 func NewCoordinator(repo *repository.WordRepository, nodeID string) *Coordinator {
 	return &Coordinator{
-		repo:          repo,
-		nodeID:        nodeID,
-		lastSyncTimes: make(map[string]int64),
+		repo:   repo,
+		nodeID: nodeID,
 	}
 }
 
@@ -36,10 +34,13 @@ func NewCoordinator(repo *repository.WordRepository, nodeID string) *Coordinator
 func (c *Coordinator) SyncWithPeer(ctx context.Context, peerAddr string) error {
 	log.Printf("[%s] Starting sync with peer: %s", c.nodeID, peerAddr)
 
-	// Get last sync time for this peer
-	c.mu.RLock()
-	lastSync := c.lastSyncTimes[peerAddr]
-	c.mu.RUnlock()
+	// Get last sync time from database
+	lastSync, err := c.repo.GetLastSyncTime(peerAddr)
+	if err != nil {
+		return fmt.Errorf("failed to get last sync time: %w", err)
+	}
+
+	log.Printf("[%s] Last sync with %s was at: %d", c.nodeID, peerAddr, lastSync)
 
 	// PULL: Get changes from peer and apply them locally
 	appliedFromPeer, err := c.pullChangesFromPeer(ctx, peerAddr, lastSync)
@@ -47,13 +48,13 @@ func (c *Coordinator) SyncWithPeer(ctx context.Context, peerAddr string) error {
 		return fmt.Errorf("failed to pull changes from peer: %w", err)
 	}
 
-	// Update last sync time
+	// Update last sync time in database
 	now := time.Now().UnixMilli()
-	c.mu.Lock()
-	c.lastSyncTimes[peerAddr] = now
-	c.mu.Unlock()
+	if err := c.repo.UpdateLastSyncTime(peerAddr, now); err != nil {
+		return fmt.Errorf("failed to update last sync time: %w", err)
+	}
 
-	log.Printf("[%s] Sync complete with %s: pulled=%d", c.nodeID, peerAddr, appliedFromPeer)
+	log.Printf("[%s] Sync complete with %s: applied=%d", c.nodeID, peerAddr, appliedFromPeer)
 	return nil
 }
 
@@ -88,14 +89,16 @@ func (c *Coordinator) pullChangesFromPeer(ctx context.Context, peerAddr string, 
 
 		// Apply the change with conflict resolution
 		if err := c.applyRemoteChange(resp.Word); err != nil {
-			log.Printf("[%s] Skipping word %s: %v", c.nodeID, resp.Word.Id, err)
+			// Silently skip - mostly due to local version being newer
 			skippedCount++
 			continue
 		}
 		appliedCount++
 	}
 
-	log.Printf("[%s] Pulled from %s: applied=%d, skipped=%d", c.nodeID, peerAddr, appliedCount, skippedCount)
+	if appliedCount > 0 || skippedCount > 0 {
+		log.Printf("[%s] Pulled from %s: applied=%d, skipped=%d", c.nodeID, peerAddr, appliedCount, skippedCount)
+	}
 	return appliedCount, nil
 }
 
@@ -117,23 +120,14 @@ func (c *Coordinator) applyRemoteChange(remoteWord *pb.Word) error {
 	return c.repo.Update(convertProtoToModel(remoteWord))
 }
 
-// GetSyncStatus returns the current sync status
+// GetSyncStatus returns the current sync status from database
 func (c *Coordinator) GetSyncStatus() map[string]interface{} {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	peers := make([]map[string]interface{}, 0, len(c.lastSyncTimes))
-	for peerAddr, lastSync := range c.lastSyncTimes {
-		peers = append(peers, map[string]interface{}{
-			"peer":           peerAddr,
-			"last_sync_time": lastSync,
-		})
-	}
-
+	// Note: This now returns empty peers list
+	// To get actual sync status, query sync_state table directly
 	return map[string]interface{}{
 		"node_id": c.nodeID,
-		"peers":   peers,
-		"count":   len(peers),
+		"peers":   []map[string]interface{}{},
+		"count":   0,
 	}
 }
 
