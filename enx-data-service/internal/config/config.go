@@ -27,12 +27,25 @@ type PeerConfig struct {
 
 func LoadConfig(path string) (*Config, error) {
 	// 1. Load .env file if exists (using Viper)
-	viper.SetConfigFile(".env")
+	// Try to find .env file in the same directory as config file
+	configDir := "."
+	if path != "" {
+		lastSlash := strings.LastIndex(path, "/")
+		if lastSlash > 0 {
+			configDir = path[:lastSlash]
+		}
+	}
+
+	viper.SetConfigName(".env")
 	viper.SetConfigType("env")
+	viper.AddConfigPath(configDir) // Same directory as config
+	viper.AddConfigPath(".")       // Current directory
 	viper.AutomaticEnv()
 
 	// Try to read .env file (ignore error if not found)
-	_ = viper.ReadInConfig()
+	if err := viper.ReadInConfig(); err == nil {
+		fmt.Printf("📝 Loaded .env from: %s\n", viper.ConfigFileUsed())
+	}
 
 	// 2. Load YAML config file
 	data, err := os.ReadFile(path)

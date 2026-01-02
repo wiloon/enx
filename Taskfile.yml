@@ -33,18 +33,45 @@ tasks:
 
   # Data Service
   data:start:
+    desc: Start enx-data-service (usage - task data:start [MODE=fg|bg] - default is fg)
+    vars:
+      MODE: '{{.MODE | default "fg"}}'
+    cmds:
+      - |
+        if [ "{{.MODE}}" = "bg" ]; then
+          task data:start:bg
+        else
+          task data:start:fg
+        fi
+
+  data:start:fg:
+    desc: Start enx-data-service in foreground
+    cmds:
+      - |
+        if pgrep -f "bin/server.*enx.db" > /dev/null; then
+          echo "⚠️  data-service is already running (PID: $(pgrep -f 'bin/server.*enx.db'))"
+          exit 1
+        fi
+        echo "🚀 Starting enx-data-service in foreground..."
+        echo "   gRPC: localhost:50051"
+        echo "   HTTP: localhost:8090"
+        echo "   Press Ctrl+C to stop"
+        echo ""
+        cd enx-data-service && ./bin/server --db=/var/lib/enx-api/enx.db
+
+  data:start:bg:
     desc: Start enx-data-service in background
     cmds:
       - |
-        if pgrep -f "enx-data-service.*server" > /dev/null; then
+        if pgrep -f "bin/server.*enx.db" > /dev/null; then
           echo "⚠️  data-service is already running"
           exit 1
         fi
         echo "🚀 Starting enx-data-service..."
         cd enx-data-service && ./bin/server --db=/var/lib/enx-api/enx.db > /tmp/enx-data-service.log 2>&1 &
         sleep 2
-        if pgrep -f "enx-data-service.*server" > /dev/null; then
-          echo "✅ data-service started (PID: $(pgrep -f 'enx-data-service.*server'))"
+        if pgrep -f "bin/server.*enx.db" > /dev/null; then
+          echo "✅ data-service started (PID: $(pgrep -f 'bin/server.*enx.db'))"
           echo "   Logs: /tmp/enx-data-service.log"
           echo "   gRPC: localhost:50051"
           echo "   HTTP: localhost:8090"
@@ -58,14 +85,14 @@ tasks:
     desc: Stop enx-data-service
     cmds:
       - |
-        PID=$(pgrep -f "enx-data-service.*server" || echo "")
+        PID=$(pgrep -f "bin/server.*enx.db" || echo "")
         if [ -z "$PID" ]; then
           echo "⚠️  data-service is not running"
         else
           echo "🛑 Stopping data-service (PID: $PID)..."
           kill $PID
           sleep 1
-          if pgrep -f "enx-data-service.*server" > /dev/null; then
+          if pgrep -f "bin/server.*enx.db" > /dev/null; then
             echo "⚠️  Forcing stop..."
             kill -9 $PID
           fi
@@ -139,6 +166,8 @@ tasks:
     desc: Start all backend services (data-service + api)
     cmds:
       - task: data:start
+        vars:
+          MODE: bg
       - sleep 2
       - task: api:start
 
@@ -162,8 +191,8 @@ tasks:
         echo "=== ENX Services Status ==="
         echo ""
         echo "📊 Data Service:"
-        if pgrep -f "enx-data-service.*server" > /dev/null; then
-          echo "   ✅ Running (PID: $(pgrep -f 'enx-data-service.*server'))"
+        if pgrep -f "bin/server.*enx.db" > /dev/null; then
+          echo "   ✅ Running (PID: $(pgrep -f 'bin/server.*enx.db'))"
           echo "   🔗 gRPC: localhost:50051"
           echo "   🔗 HTTP: localhost:8090"
         else
@@ -186,7 +215,13 @@ tasks:
       - cd enx-data-service && go build -o bin/server ./cmd/server
       - echo "🔨 Building enx-api..."
       - cd enx-api && go build -o enx-api .
-      - task: services:start
+      - task: data:start
+        vars:
+          MODE: bg
+      - sleep 2
+      - task: api:start
+        vars:
+          MODE: bg
 
   # ===========================================
   # Setup & Installation
