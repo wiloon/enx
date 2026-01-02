@@ -12,6 +12,10 @@ service DataService {
   rpc DeleteWord(DeleteWordRequest) returns (DeleteWordResponse);
   rpc ListWords(ListWordsRequest) returns (ListWordsResponse);
   
+  // User dictionary operations
+  rpc GetUserDict(GetUserDictRequest) returns (GetUserDictResponse);
+  rpc UpsertUserDict(UpsertUserDictRequest) returns (UpsertUserDictResponse);
+  
   // Sync operations
   rpc SyncWords(SyncWordsRequest) returns (stream SyncWordsResponse);
 }
@@ -78,4 +82,31 @@ message SyncWordsRequest {
 
 message SyncWordsResponse {
   Word word = 1;
+}
+
+// UserDict message for user-specific word data
+message UserDict {
+  string user_id = 1;           // User UUID
+  string word_id = 2;           // Word UUID (foreign key to words.id)
+  int32 query_count = 3;        // Number of times user queried this word
+  int32 already_acquainted = 4; // 0 = learning, 1 = already knows
+  int64 created_at = 5;         // Unix timestamp in milliseconds
+  int64 updated_at = 6;         // Unix timestamp in milliseconds
+}
+
+message GetUserDictRequest {
+  string user_id = 1;
+  string word_id = 2;
+}
+
+message GetUserDictResponse {
+  UserDict user_dict = 1;
+}
+
+message UpsertUserDictRequest {
+  UserDict user_dict = 1;
+}
+
+message UpsertUserDictResponse {
+  UserDict user_dict = 1;
 }

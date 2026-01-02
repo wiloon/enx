@@ -10,7 +10,7 @@ import (
 )
 
 type Word struct {
-	Id             int
+	Id             string // UUID
 	English        string
 	LoadCount      int
 	Chinese        string
@@ -58,15 +58,44 @@ func GetWordByEnglishCaseSensitive(english string) *Word {
 	return GetWordByEnglish(english)
 }
 
-// GetUserWordQueryCount get user word query count
-func GetUserWordQueryCount(wordId, userId int) (int, int) {
-	sud := UserDict{}
-	sud.UserId = userId
-	sud.WordId = wordId
+// GetUserWordQueryCount get user word query count via gRPC
+func GetUserWordQueryCount(wordId, userId string) (int, int) {
+	client := dataservice.GetGlobalClient()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	sqlitex.DB.Table("user_dicts").
-		Where("user_dicts.word_id=? and user_dicts.user_id=?", sud.WordId, sud.UserId).Scan(&sud)
-	return sud.QueryCount, sud.AlreadyAcquainted
+	resp, err := client.GetUserDict(ctx, &pb.GetUserDictRequest{
+		UserId: userId,
+		WordId: wordId,
+	})
+	if err != nil {
+		logger.Debugf("user dict not found: user_id=%s, word_id=%s, error: %v", userId, wordId, err)
+		return 0, 0
+	}
+
+	return int(resp.UserDict.QueryCount), int(resp.UserDict.AlreadyAcquainted)
+}
+
+// UpsertUserDict creates or updates user dictionary entry via gRPC
+func UpsertUserDict(userId, wordId string, queryCount, alreadyAcquainted int) error {
+	client := dataservice.GetGlobalClient()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := client.UpsertUserDict(ctx, &pb.UpsertUserDictRequest{
+		UserDict: &pb.UserDict{
+			UserId:            userId,
+			WordId:            wordId,
+			QueryCount:        int32(queryCount),
+			AlreadyAcquainted: int32(alreadyAcquainted),
+		},
+	})
+	if err != nil {
+		logger.Errorf("failed to upsert user dict: %v", err)
+		return err
+	}
+
+	return nil
 }
 
 func Translate(key string, userId int) Word {
@@ -127,10 +156,10 @@ func CountByEnglish(english string) int {
 	return 1
 }
 
-func DeleteDuplicateWord(english string, excludeId int) {
+func DeleteDuplicateWord(english string, excludeId string) {
 	// This function is no longer needed with UUID-based P2P system
 	// Duplicates are prevented by unique constraint on english field
-	logger.Debugf("DeleteDuplicateWord called but skipped (P2P system prevents duplicates), english: %s, excluding id: %d", english, excludeId)
+	logger.Debugf("DeleteDuplicateWord called but skipped (P2P system prevents duplicates), english: %s, excluding id: %s", english, excludeId)
 }
 
 // pbWordToRepoWord converts protobuf Word to repo Word
@@ -140,11 +169,11 @@ func pbWordToRepoWord(pbWord *pb.Word) *Word {
 	}
 
 	word := &Word{
-		Id:            0, // TODO: Handle UUID to int conversion if needed
+		Id:            pbWord.Id, // UUID string
 		English:       pbWord.English,
 		Chinese:       pbWord.Chinese,
 		Pronunciation: pbWord.Pronunciation,
-		LoadCount:     0, // Not in protobuf, keep as 0
+		LoadCount:     int(pbWord.LoadCount),
 	}
 
 	// Convert Unix milliseconds to time.Time

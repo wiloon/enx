@@ -4,14 +4,15 @@ import (
 	"enx-api/repo"
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
 )
 
 type Word struct {
-	// id in DB
-	Id int
+	// id in DB (UUID)
+	Id string
 	// raw paragraph item, e.g. `morning.`
 	Raw string
 	// english word, e.g. `morning`
@@ -99,8 +100,10 @@ func (word *Word) SetEnglishField(english string) {
 	logger.Infof("set english, raw: %s, english: %s, key: %s", word.Raw, word.English, word.Key)
 }
 func (word *Word) FindQueryCount(userId int) int {
-	qc, acquainted := repo.GetUserWordQueryCount(word.Id, userId)
-	logger.Debugf("find query count, word id: %d, word: %s, user_id: %d, query count: %d",
+	// Convert int userId to string format for UUID-based user_dicts
+	userIdStr := fmt.Sprintf("user-%d", userId)
+	qc, acquainted := repo.GetUserWordQueryCount(word.Id, userIdStr)
+	logger.Debugf("find query count, word id: %s, word: %s, user_id: %d, query count: %d",
 		word.Id, word.English, userId, qc)
 	word.LoadCount = qc
 	word.AlreadyAcquainted = acquainted
@@ -130,13 +133,13 @@ func (word *Word) Translate(userId int64) *Word {
 	word.Pronunciation = sWord.Pronunciation
 
 	word.LoadCount = sWord.LoadCount
-	if sWord.Id != 0 {
-		// Query user_dicts table
-		sud := UserDict{}
-		sqlitex.DB.Table("user_dicts").
-			Where("word_id=? and user_id=?", sWord.Id, userId).Scan(&sud)
-		if sud.WordId != 0 {
-			word.LoadCount = sud.QueryCount
+	if sWord.Id != "" {
+		// Query user_dicts via gRPC using UUID
+		// userId needs to be converted to UUID string format
+		userIdStr := fmt.Sprintf("user-%d", userId) // Temporary: convert int userId to string
+		queryCount, _ := repo.GetUserWordQueryCount(sWord.Id, userIdStr)
+		if queryCount > 0 {
+			word.LoadCount = queryCount
 		}
 	}
 
@@ -151,6 +154,7 @@ func (word *Word) RemoveDuplicateWord() {
 	if count > 1 {
 		// delete duplicate word
 		tmp_word := repo.GetWordByEnglishCaseSensitive(word.English)
+		// Note: DeleteDuplicateWord might need to be updated to accept string ID
 		repo.DeleteDuplicateWord(word.English, tmp_word.Id)
 	}
 }

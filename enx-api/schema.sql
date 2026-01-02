@@ -1,21 +1,3 @@
-CREATE TABLE `tbl_ecp` (
-  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
-  `english` varchar(256) NOT NULL,
-  `chinese` varchar(512) DEFAULT NULL,
-  `pronunciation` varchar(256) DEFAULT NULL,
-  `create_datetime` datetime DEFAULT NULL,
-  `load_count` int(11) NOT NULL DEFAULT '0',
-  `update_datetime` datetime DEFAULT NULL
-);
-
-CREATE TABLE `tbl_log` (
-  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
-  `id_word` int(11) DEFAULT NULL,
-  `log_type` varchar(128) DEFAULT NULL,
-  `message` varchar(256) DEFAULT NULL,
-  `create_datetime` datetime DEFAULT NULL
-);
-
 CREATE TABLE users (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
   `name` varchar(256) NOT NULL,
@@ -70,15 +52,8 @@ ON words(updated_at);
 CREATE INDEX IF NOT EXISTS idx_words_english 
 ON words(english COLLATE NOCASE);
 
-create table user_dicts
-(
-    user_id            INTEGER,
-    word_id            INTEGER,
-    query_count        INTEGER,
-    already_acquainted INTEGER,
-    update_time        datetime,
-    PRIMARY KEY (user_id, word_id)
-);
+-- user_dicts table moved to enx-data-service for P2P sync
+-- See enx-data-service/schema/schema.sql
 
 create table youdao
 (

@@ -35,7 +35,7 @@ func QueryCountInText(paragraph string, userId int) map[string]Word {
 		wordObj := Word{}
 		wordObj.SetEnglish(word_raw)
 		wordObj.FindId()
-		if wordObj.Id == 0 {
+		if wordObj.Id == "" {
 			wordObj.LoadCount = 0
 			wordObj.AlreadyAcquainted = 0
 		} else {

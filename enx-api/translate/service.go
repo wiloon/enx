@@ -47,7 +47,7 @@ func Translate(c *gin.Context) {
 	word.SetEnglish(raw)
 	word.Translate(userId)
 
-	if word.Id == 0 {
+	if word.Id == "" {
 		logger.Debugf("find from youdao: %s", raw)
 		epc := youdao.Query(word.English)
 		word.English = epc.English
@@ -125,7 +125,7 @@ func TranslateByWord(c *gin.Context) {
 	word.SetEnglish(raw)
 	word.Translate(userId)
 
-	if word.Id == 0 {
+	if word.Id == "" {
 		logger.Debugf("find from youdao: %s", raw)
 		epc := youdao.Query(word.English)
 		word.English = epc.English

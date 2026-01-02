@@ -387,9 +387,9 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
 
   // Add loading content
   popup.innerHTML = `
-    <div class="enx-popup-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-      <h3 style="margin: 0; font-size: 16px; font-weight: bold; color: #333;">${word}</h3>
-      <button class="enx-close-btn" style="background: none; border: none; font-size: 18px; cursor: pointer; color: #999;">×</button>
+    <div class="enx-popup-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+      <h3 style="margin: 0; font-size: 16px; font-weight: bold; color: #333; flex: 1;">${word}</h3>
+      <button class="enx-close-btn" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #999; padding: 0; margin: 0; line-height: 1; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-left: 8px;">×</button>
     </div>
     <div class="enx-popup-content">
       <div style="color: #666; font-style: italic;">

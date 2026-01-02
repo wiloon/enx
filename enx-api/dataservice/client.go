@@ -182,3 +182,13 @@ func GetGlobalClient() *Client {
 	}
 	return globalClient
 }
+
+// GetUserDict retrieves user dictionary entry
+func (c *Client) GetUserDict(ctx context.Context, req *pb.GetUserDictRequest) (*pb.GetUserDictResponse, error) {
+	return c.client.GetUserDict(ctx, req)
+}
+
+// UpsertUserDict creates or updates user dictionary entry
+func (c *Client) UpsertUserDict(ctx context.Context, req *pb.UpsertUserDictRequest) (*pb.UpsertUserDictResponse, error) {
+	return c.client.UpsertUserDict(ctx, req)
+}
