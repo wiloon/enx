@@ -119,3 +119,43 @@ func convertProtoToModel(p *pb.Word) *model.Word {
 
 	return word
 }
+
+// GetUserDict retrieves user dictionary entry
+func (s *DataService) GetUserDict(ctx context.Context, req *pb.GetUserDictRequest) (*pb.GetUserDictResponse, error) {
+	userDict, err := s.db.GetUserDict(req.UserId, req.WordId)
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "user dict not found: %v", err)
+	}
+	return &pb.GetUserDictResponse{UserDict: convertUserDictModelToProto(userDict)}, nil
+}
+
+// UpsertUserDict creates or updates user dictionary entry
+func (s *DataService) UpsertUserDict(ctx context.Context, req *pb.UpsertUserDictRequest) (*pb.UpsertUserDictResponse, error) {
+	userDict := convertUserDictProtoToModel(req.UserDict)
+	if err := s.db.UpsertUserDict(userDict); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to upsert user dict: %v", err)
+	}
+	return &pb.UpsertUserDictResponse{UserDict: convertUserDictModelToProto(userDict)}, nil
+}
+
+func convertUserDictModelToProto(m *model.UserDict) *pb.UserDict {
+	return &pb.UserDict{
+		UserId:            m.UserId,
+		WordId:            m.WordId,
+		QueryCount:        int32(m.QueryCount),
+		AlreadyAcquainted: int32(m.AlreadyAcquainted),
+		CreatedAt:         m.CreatedAt,
+		UpdatedAt:         m.UpdatedAt,
+	}
+}
+
+func convertUserDictProtoToModel(p *pb.UserDict) *model.UserDict {
+	return &model.UserDict{
+		UserId:            p.UserId,
+		WordId:            p.WordId,
+		QueryCount:        int(p.QueryCount),
+		AlreadyAcquainted: int(p.AlreadyAcquainted),
+		CreatedAt:         p.CreatedAt,
+		UpdatedAt:         p.UpdatedAt,
+	}
+}

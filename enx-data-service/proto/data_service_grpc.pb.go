@@ -19,12 +19,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DataService_GetWord_FullMethodName    = "/enx.data.v1.DataService/GetWord"
-	DataService_CreateWord_FullMethodName = "/enx.data.v1.DataService/CreateWord"
-	DataService_UpdateWord_FullMethodName = "/enx.data.v1.DataService/UpdateWord"
-	DataService_DeleteWord_FullMethodName = "/enx.data.v1.DataService/DeleteWord"
-	DataService_ListWords_FullMethodName  = "/enx.data.v1.DataService/ListWords"
-	DataService_SyncWords_FullMethodName  = "/enx.data.v1.DataService/SyncWords"
+	DataService_GetWord_FullMethodName        = "/enx.data.v1.DataService/GetWord"
+	DataService_CreateWord_FullMethodName     = "/enx.data.v1.DataService/CreateWord"
+	DataService_UpdateWord_FullMethodName     = "/enx.data.v1.DataService/UpdateWord"
+	DataService_DeleteWord_FullMethodName     = "/enx.data.v1.DataService/DeleteWord"
+	DataService_ListWords_FullMethodName      = "/enx.data.v1.DataService/ListWords"
+	DataService_GetUserDict_FullMethodName    = "/enx.data.v1.DataService/GetUserDict"
+	DataService_UpsertUserDict_FullMethodName = "/enx.data.v1.DataService/UpsertUserDict"
+	DataService_SyncWords_FullMethodName      = "/enx.data.v1.DataService/SyncWords"
 )
 
 // DataServiceClient is the client API for DataService service.
@@ -37,6 +39,9 @@ type DataServiceClient interface {
 	UpdateWord(ctx context.Context, in *UpdateWordRequest, opts ...grpc.CallOption) (*UpdateWordResponse, error)
 	DeleteWord(ctx context.Context, in *DeleteWordRequest, opts ...grpc.CallOption) (*DeleteWordResponse, error)
 	ListWords(ctx context.Context, in *ListWordsRequest, opts ...grpc.CallOption) (*ListWordsResponse, error)
+	// User dictionary operations
+	GetUserDict(ctx context.Context, in *GetUserDictRequest, opts ...grpc.CallOption) (*GetUserDictResponse, error)
+	UpsertUserDict(ctx context.Context, in *UpsertUserDictRequest, opts ...grpc.CallOption) (*UpsertUserDictResponse, error)
 	// Sync operations
 	SyncWords(ctx context.Context, in *SyncWordsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SyncWordsResponse], error)
 }
@@ -99,6 +104,26 @@ func (c *dataServiceClient) ListWords(ctx context.Context, in *ListWordsRequest,
 	return out, nil
 }
 
+func (c *dataServiceClient) GetUserDict(ctx context.Context, in *GetUserDictRequest, opts ...grpc.CallOption) (*GetUserDictResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetUserDictResponse)
+	err := c.cc.Invoke(ctx, DataService_GetUserDict_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataServiceClient) UpsertUserDict(ctx context.Context, in *UpsertUserDictRequest, opts ...grpc.CallOption) (*UpsertUserDictResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpsertUserDictResponse)
+	err := c.cc.Invoke(ctx, DataService_UpsertUserDict_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataServiceClient) SyncWords(ctx context.Context, in *SyncWordsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SyncWordsResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &DataService_ServiceDesc.Streams[0], DataService_SyncWords_FullMethodName, cOpts...)
@@ -128,6 +153,9 @@ type DataServiceServer interface {
 	UpdateWord(context.Context, *UpdateWordRequest) (*UpdateWordResponse, error)
 	DeleteWord(context.Context, *DeleteWordRequest) (*DeleteWordResponse, error)
 	ListWords(context.Context, *ListWordsRequest) (*ListWordsResponse, error)
+	// User dictionary operations
+	GetUserDict(context.Context, *GetUserDictRequest) (*GetUserDictResponse, error)
+	UpsertUserDict(context.Context, *UpsertUserDictRequest) (*UpsertUserDictResponse, error)
 	// Sync operations
 	SyncWords(*SyncWordsRequest, grpc.ServerStreamingServer[SyncWordsResponse]) error
 	mustEmbedUnimplementedDataServiceServer()
@@ -154,6 +182,12 @@ func (UnimplementedDataServiceServer) DeleteWord(context.Context, *DeleteWordReq
 }
 func (UnimplementedDataServiceServer) ListWords(context.Context, *ListWordsRequest) (*ListWordsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListWords not implemented")
+}
+func (UnimplementedDataServiceServer) GetUserDict(context.Context, *GetUserDictRequest) (*GetUserDictResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetUserDict not implemented")
+}
+func (UnimplementedDataServiceServer) UpsertUserDict(context.Context, *UpsertUserDictRequest) (*UpsertUserDictResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpsertUserDict not implemented")
 }
 func (UnimplementedDataServiceServer) SyncWords(*SyncWordsRequest, grpc.ServerStreamingServer[SyncWordsResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method SyncWords not implemented")
@@ -269,6 +303,42 @@ func _DataService_ListWords_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataService_GetUserDict_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetUserDictRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataServiceServer).GetUserDict(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataService_GetUserDict_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataServiceServer).GetUserDict(ctx, req.(*GetUserDictRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataService_UpsertUserDict_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpsertUserDictRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataServiceServer).UpsertUserDict(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataService_UpsertUserDict_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataServiceServer).UpsertUserDict(ctx, req.(*UpsertUserDictRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataService_SyncWords_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(SyncWordsRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -306,6 +376,14 @@ var DataService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListWords",
 			Handler:    _DataService_ListWords_Handler,
+		},
+		{
+			MethodName: "GetUserDict",
+			Handler:    _DataService_GetUserDict_Handler,
+		},
+		{
+			MethodName: "UpsertUserDict",
+			Handler:    _DataService_UpsertUserDict_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

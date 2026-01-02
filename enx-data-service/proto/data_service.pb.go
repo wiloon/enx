@@ -682,6 +682,275 @@ func (x *SyncWordsResponse) GetWord() *Word {
 	return nil
 }
 
+// UserDict message for user-specific word data
+type UserDict struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	UserId            string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`                                   // User UUID
+	WordId            string                 `protobuf:"bytes,2,opt,name=word_id,json=wordId,proto3" json:"word_id,omitempty"`                                   // Word UUID (foreign key to words.id)
+	QueryCount        int32                  `protobuf:"varint,3,opt,name=query_count,json=queryCount,proto3" json:"query_count,omitempty"`                      // Number of times user queried this word
+	AlreadyAcquainted int32                  `protobuf:"varint,4,opt,name=already_acquainted,json=alreadyAcquainted,proto3" json:"already_acquainted,omitempty"` // 0 = learning, 1 = already knows
+	CreatedAt         int64                  `protobuf:"varint,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`                         // Unix timestamp in milliseconds
+	UpdatedAt         int64                  `protobuf:"varint,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`                         // Unix timestamp in milliseconds
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *UserDict) Reset() {
+	*x = UserDict{}
+	mi := &file_data_service_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UserDict) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UserDict) ProtoMessage() {}
+
+func (x *UserDict) ProtoReflect() protoreflect.Message {
+	mi := &file_data_service_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UserDict.ProtoReflect.Descriptor instead.
+func (*UserDict) Descriptor() ([]byte, []int) {
+	return file_data_service_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *UserDict) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *UserDict) GetWordId() string {
+	if x != nil {
+		return x.WordId
+	}
+	return ""
+}
+
+func (x *UserDict) GetQueryCount() int32 {
+	if x != nil {
+		return x.QueryCount
+	}
+	return 0
+}
+
+func (x *UserDict) GetAlreadyAcquainted() int32 {
+	if x != nil {
+		return x.AlreadyAcquainted
+	}
+	return 0
+}
+
+func (x *UserDict) GetCreatedAt() int64 {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return 0
+}
+
+func (x *UserDict) GetUpdatedAt() int64 {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return 0
+}
+
+type GetUserDictRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	WordId        string                 `protobuf:"bytes,2,opt,name=word_id,json=wordId,proto3" json:"word_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetUserDictRequest) Reset() {
+	*x = GetUserDictRequest{}
+	mi := &file_data_service_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetUserDictRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetUserDictRequest) ProtoMessage() {}
+
+func (x *GetUserDictRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_data_service_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetUserDictRequest.ProtoReflect.Descriptor instead.
+func (*GetUserDictRequest) Descriptor() ([]byte, []int) {
+	return file_data_service_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *GetUserDictRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *GetUserDictRequest) GetWordId() string {
+	if x != nil {
+		return x.WordId
+	}
+	return ""
+}
+
+type GetUserDictResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserDict      *UserDict              `protobuf:"bytes,1,opt,name=user_dict,json=userDict,proto3" json:"user_dict,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetUserDictResponse) Reset() {
+	*x = GetUserDictResponse{}
+	mi := &file_data_service_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetUserDictResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetUserDictResponse) ProtoMessage() {}
+
+func (x *GetUserDictResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_data_service_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetUserDictResponse.ProtoReflect.Descriptor instead.
+func (*GetUserDictResponse) Descriptor() ([]byte, []int) {
+	return file_data_service_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *GetUserDictResponse) GetUserDict() *UserDict {
+	if x != nil {
+		return x.UserDict
+	}
+	return nil
+}
+
+type UpsertUserDictRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserDict      *UserDict              `protobuf:"bytes,1,opt,name=user_dict,json=userDict,proto3" json:"user_dict,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpsertUserDictRequest) Reset() {
+	*x = UpsertUserDictRequest{}
+	mi := &file_data_service_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpsertUserDictRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpsertUserDictRequest) ProtoMessage() {}
+
+func (x *UpsertUserDictRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_data_service_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpsertUserDictRequest.ProtoReflect.Descriptor instead.
+func (*UpsertUserDictRequest) Descriptor() ([]byte, []int) {
+	return file_data_service_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *UpsertUserDictRequest) GetUserDict() *UserDict {
+	if x != nil {
+		return x.UserDict
+	}
+	return nil
+}
+
+type UpsertUserDictResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserDict      *UserDict              `protobuf:"bytes,1,opt,name=user_dict,json=userDict,proto3" json:"user_dict,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpsertUserDictResponse) Reset() {
+	*x = UpsertUserDictResponse{}
+	mi := &file_data_service_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpsertUserDictResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpsertUserDictResponse) ProtoMessage() {}
+
+func (x *UpsertUserDictResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_data_service_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpsertUserDictResponse.ProtoReflect.Descriptor instead.
+func (*UpsertUserDictResponse) Descriptor() ([]byte, []int) {
+	return file_data_service_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *UpsertUserDictResponse) GetUserDict() *UserDict {
+	if x != nil {
+		return x.UserDict
+	}
+	return nil
+}
+
 var File_data_service_proto protoreflect.FileDescriptor
 
 const file_data_service_proto_rawDesc = "" +
@@ -727,7 +996,26 @@ const file_data_service_proto_rawDesc = "" +
 	"\x10SyncWordsRequest\x12'\n" +
 	"\x0fsince_timestamp\x18\x01 \x01(\x03R\x0esinceTimestamp\":\n" +
 	"\x11SyncWordsResponse\x12%\n" +
-	"\x04word\x18\x01 \x01(\v2\x11.enx.data.v1.WordR\x04word2\xda\x03\n" +
+	"\x04word\x18\x01 \x01(\v2\x11.enx.data.v1.WordR\x04word\"\xca\x01\n" +
+	"\bUserDict\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x17\n" +
+	"\aword_id\x18\x02 \x01(\tR\x06wordId\x12\x1f\n" +
+	"\vquery_count\x18\x03 \x01(\x05R\n" +
+	"queryCount\x12-\n" +
+	"\x12already_acquainted\x18\x04 \x01(\x05R\x11alreadyAcquainted\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x05 \x01(\x03R\tcreatedAt\x12\x1d\n" +
+	"\n" +
+	"updated_at\x18\x06 \x01(\x03R\tupdatedAt\"F\n" +
+	"\x12GetUserDictRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x17\n" +
+	"\aword_id\x18\x02 \x01(\tR\x06wordId\"I\n" +
+	"\x13GetUserDictResponse\x122\n" +
+	"\tuser_dict\x18\x01 \x01(\v2\x15.enx.data.v1.UserDictR\buserDict\"K\n" +
+	"\x15UpsertUserDictRequest\x122\n" +
+	"\tuser_dict\x18\x01 \x01(\v2\x15.enx.data.v1.UserDictR\buserDict\"L\n" +
+	"\x16UpsertUserDictResponse\x122\n" +
+	"\tuser_dict\x18\x01 \x01(\v2\x15.enx.data.v1.UserDictR\buserDict2\x87\x05\n" +
 	"\vDataService\x12D\n" +
 	"\aGetWord\x12\x1b.enx.data.v1.GetWordRequest\x1a\x1c.enx.data.v1.GetWordResponse\x12M\n" +
 	"\n" +
@@ -736,7 +1024,9 @@ const file_data_service_proto_rawDesc = "" +
 	"UpdateWord\x12\x1e.enx.data.v1.UpdateWordRequest\x1a\x1f.enx.data.v1.UpdateWordResponse\x12M\n" +
 	"\n" +
 	"DeleteWord\x12\x1e.enx.data.v1.DeleteWordRequest\x1a\x1f.enx.data.v1.DeleteWordResponse\x12J\n" +
-	"\tListWords\x12\x1d.enx.data.v1.ListWordsRequest\x1a\x1e.enx.data.v1.ListWordsResponse\x12L\n" +
+	"\tListWords\x12\x1d.enx.data.v1.ListWordsRequest\x1a\x1e.enx.data.v1.ListWordsResponse\x12P\n" +
+	"\vGetUserDict\x12\x1f.enx.data.v1.GetUserDictRequest\x1a .enx.data.v1.GetUserDictResponse\x12Y\n" +
+	"\x0eUpsertUserDict\x12\".enx.data.v1.UpsertUserDictRequest\x1a#.enx.data.v1.UpsertUserDictResponse\x12L\n" +
 	"\tSyncWords\x12\x1d.enx.data.v1.SyncWordsRequest\x1a\x1e.enx.data.v1.SyncWordsResponse0\x01B\vZ\tenx/protob\x06proto3"
 
 var (
@@ -751,21 +1041,26 @@ func file_data_service_proto_rawDescGZIP() []byte {
 	return file_data_service_proto_rawDescData
 }
 
-var file_data_service_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_data_service_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_data_service_proto_goTypes = []any{
-	(*Word)(nil),               // 0: enx.data.v1.Word
-	(*GetWordRequest)(nil),     // 1: enx.data.v1.GetWordRequest
-	(*GetWordResponse)(nil),    // 2: enx.data.v1.GetWordResponse
-	(*CreateWordRequest)(nil),  // 3: enx.data.v1.CreateWordRequest
-	(*CreateWordResponse)(nil), // 4: enx.data.v1.CreateWordResponse
-	(*UpdateWordRequest)(nil),  // 5: enx.data.v1.UpdateWordRequest
-	(*UpdateWordResponse)(nil), // 6: enx.data.v1.UpdateWordResponse
-	(*DeleteWordRequest)(nil),  // 7: enx.data.v1.DeleteWordRequest
-	(*DeleteWordResponse)(nil), // 8: enx.data.v1.DeleteWordResponse
-	(*ListWordsRequest)(nil),   // 9: enx.data.v1.ListWordsRequest
-	(*ListWordsResponse)(nil),  // 10: enx.data.v1.ListWordsResponse
-	(*SyncWordsRequest)(nil),   // 11: enx.data.v1.SyncWordsRequest
-	(*SyncWordsResponse)(nil),  // 12: enx.data.v1.SyncWordsResponse
+	(*Word)(nil),                   // 0: enx.data.v1.Word
+	(*GetWordRequest)(nil),         // 1: enx.data.v1.GetWordRequest
+	(*GetWordResponse)(nil),        // 2: enx.data.v1.GetWordResponse
+	(*CreateWordRequest)(nil),      // 3: enx.data.v1.CreateWordRequest
+	(*CreateWordResponse)(nil),     // 4: enx.data.v1.CreateWordResponse
+	(*UpdateWordRequest)(nil),      // 5: enx.data.v1.UpdateWordRequest
+	(*UpdateWordResponse)(nil),     // 6: enx.data.v1.UpdateWordResponse
+	(*DeleteWordRequest)(nil),      // 7: enx.data.v1.DeleteWordRequest
+	(*DeleteWordResponse)(nil),     // 8: enx.data.v1.DeleteWordResponse
+	(*ListWordsRequest)(nil),       // 9: enx.data.v1.ListWordsRequest
+	(*ListWordsResponse)(nil),      // 10: enx.data.v1.ListWordsResponse
+	(*SyncWordsRequest)(nil),       // 11: enx.data.v1.SyncWordsRequest
+	(*SyncWordsResponse)(nil),      // 12: enx.data.v1.SyncWordsResponse
+	(*UserDict)(nil),               // 13: enx.data.v1.UserDict
+	(*GetUserDictRequest)(nil),     // 14: enx.data.v1.GetUserDictRequest
+	(*GetUserDictResponse)(nil),    // 15: enx.data.v1.GetUserDictResponse
+	(*UpsertUserDictRequest)(nil),  // 16: enx.data.v1.UpsertUserDictRequest
+	(*UpsertUserDictResponse)(nil), // 17: enx.data.v1.UpsertUserDictResponse
 }
 var file_data_service_proto_depIdxs = []int32{
 	0,  // 0: enx.data.v1.GetWordResponse.word:type_name -> enx.data.v1.Word
@@ -774,23 +1069,30 @@ var file_data_service_proto_depIdxs = []int32{
 	0,  // 3: enx.data.v1.UpdateWordResponse.word:type_name -> enx.data.v1.Word
 	0,  // 4: enx.data.v1.ListWordsResponse.words:type_name -> enx.data.v1.Word
 	0,  // 5: enx.data.v1.SyncWordsResponse.word:type_name -> enx.data.v1.Word
-	1,  // 6: enx.data.v1.DataService.GetWord:input_type -> enx.data.v1.GetWordRequest
-	3,  // 7: enx.data.v1.DataService.CreateWord:input_type -> enx.data.v1.CreateWordRequest
-	5,  // 8: enx.data.v1.DataService.UpdateWord:input_type -> enx.data.v1.UpdateWordRequest
-	7,  // 9: enx.data.v1.DataService.DeleteWord:input_type -> enx.data.v1.DeleteWordRequest
-	9,  // 10: enx.data.v1.DataService.ListWords:input_type -> enx.data.v1.ListWordsRequest
-	11, // 11: enx.data.v1.DataService.SyncWords:input_type -> enx.data.v1.SyncWordsRequest
-	2,  // 12: enx.data.v1.DataService.GetWord:output_type -> enx.data.v1.GetWordResponse
-	4,  // 13: enx.data.v1.DataService.CreateWord:output_type -> enx.data.v1.CreateWordResponse
-	6,  // 14: enx.data.v1.DataService.UpdateWord:output_type -> enx.data.v1.UpdateWordResponse
-	8,  // 15: enx.data.v1.DataService.DeleteWord:output_type -> enx.data.v1.DeleteWordResponse
-	10, // 16: enx.data.v1.DataService.ListWords:output_type -> enx.data.v1.ListWordsResponse
-	12, // 17: enx.data.v1.DataService.SyncWords:output_type -> enx.data.v1.SyncWordsResponse
-	12, // [12:18] is the sub-list for method output_type
-	6,  // [6:12] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	13, // 6: enx.data.v1.GetUserDictResponse.user_dict:type_name -> enx.data.v1.UserDict
+	13, // 7: enx.data.v1.UpsertUserDictRequest.user_dict:type_name -> enx.data.v1.UserDict
+	13, // 8: enx.data.v1.UpsertUserDictResponse.user_dict:type_name -> enx.data.v1.UserDict
+	1,  // 9: enx.data.v1.DataService.GetWord:input_type -> enx.data.v1.GetWordRequest
+	3,  // 10: enx.data.v1.DataService.CreateWord:input_type -> enx.data.v1.CreateWordRequest
+	5,  // 11: enx.data.v1.DataService.UpdateWord:input_type -> enx.data.v1.UpdateWordRequest
+	7,  // 12: enx.data.v1.DataService.DeleteWord:input_type -> enx.data.v1.DeleteWordRequest
+	9,  // 13: enx.data.v1.DataService.ListWords:input_type -> enx.data.v1.ListWordsRequest
+	14, // 14: enx.data.v1.DataService.GetUserDict:input_type -> enx.data.v1.GetUserDictRequest
+	16, // 15: enx.data.v1.DataService.UpsertUserDict:input_type -> enx.data.v1.UpsertUserDictRequest
+	11, // 16: enx.data.v1.DataService.SyncWords:input_type -> enx.data.v1.SyncWordsRequest
+	2,  // 17: enx.data.v1.DataService.GetWord:output_type -> enx.data.v1.GetWordResponse
+	4,  // 18: enx.data.v1.DataService.CreateWord:output_type -> enx.data.v1.CreateWordResponse
+	6,  // 19: enx.data.v1.DataService.UpdateWord:output_type -> enx.data.v1.UpdateWordResponse
+	8,  // 20: enx.data.v1.DataService.DeleteWord:output_type -> enx.data.v1.DeleteWordResponse
+	10, // 21: enx.data.v1.DataService.ListWords:output_type -> enx.data.v1.ListWordsResponse
+	15, // 22: enx.data.v1.DataService.GetUserDict:output_type -> enx.data.v1.GetUserDictResponse
+	17, // 23: enx.data.v1.DataService.UpsertUserDict:output_type -> enx.data.v1.UpsertUserDictResponse
+	12, // 24: enx.data.v1.DataService.SyncWords:output_type -> enx.data.v1.SyncWordsResponse
+	17, // [17:25] is the sub-list for method output_type
+	9,  // [9:17] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_data_service_proto_init() }
@@ -804,7 +1106,7 @@ func file_data_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_data_service_proto_rawDesc), len(file_data_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

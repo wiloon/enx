@@ -236,3 +236,76 @@ func (d *Database) SyncWords(sinceTimestamp int64) ([]*model.Word, error) {
 
 	return words, nil
 }
+
+// GetUserDict retrieves user dictionary entry
+func (d *Database) GetUserDict(userId, wordId string) (*model.UserDict, error) {
+	query := `
+		SELECT user_id, word_id, query_count, already_acquainted, created_at, updated_at
+		FROM user_dicts WHERE user_id = ? AND word_id = ?
+	`
+	row := d.conn.QueryRow(query, userId, wordId)
+
+	var userDict model.UserDict
+	err := row.Scan(
+		&userDict.UserId,
+		&userDict.WordId,
+		&userDict.QueryCount,
+		&userDict.AlreadyAcquainted,
+		&userDict.CreatedAt,
+		&userDict.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("user dict not found for user_id=%s, word_id=%s", userId, wordId)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &userDict, nil
+}
+
+// UpsertUserDict creates or updates user dictionary entry
+func (d *Database) UpsertUserDict(userDict *model.UserDict) error {
+	now := time.Now().UnixMilli()
+
+	// Check if entry exists
+	existing, err := d.GetUserDict(userDict.UserId, userDict.WordId)
+	if err != nil && err.Error() != fmt.Sprintf("user dict not found for user_id=%s, word_id=%s", userDict.UserId, userDict.WordId) {
+		return err
+	}
+
+	if existing != nil {
+		// Update existing entry
+		userDict.UpdatedAt = now
+		query := `
+			UPDATE user_dicts 
+			SET query_count = ?, already_acquainted = ?, updated_at = ?
+			WHERE user_id = ? AND word_id = ?
+		`
+		_, err := d.conn.Exec(query,
+			userDict.QueryCount,
+			userDict.AlreadyAcquainted,
+			userDict.UpdatedAt,
+			userDict.UserId,
+			userDict.WordId,
+		)
+		return err
+	}
+
+	// Insert new entry
+	userDict.CreatedAt = now
+	userDict.UpdatedAt = now
+	query := `
+		INSERT INTO user_dicts (user_id, word_id, query_count, already_acquainted, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`
+	_, err = d.conn.Exec(query,
+		userDict.UserId,
+		userDict.WordId,
+		userDict.QueryCount,
+		userDict.AlreadyAcquainted,
+		userDict.CreatedAt,
+		userDict.UpdatedAt,
+	)
+	return err
+}

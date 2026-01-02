@@ -3,95 +3,89 @@ package enx
 import (
 	"enx-api/repo"
 	"enx-api/utils/logger"
-	"enx-api/utils/sqlitex"
-	"time"
+	"fmt"
 )
 
 type UserDict struct {
 	// default user id is 1
-	UserId     int `json:"user_id" gorm:"default:1"`
-	WordId     int
+	UserId     int    `json:"user_id" gorm:"default:1"`
+	WordId     string // UUID
 	QueryCount int
 	// 0: false, 1: true
 	AlreadyAcquainted int
 }
 
+// UpdateQueryCount updates the query count and acquainted status via gRPC
 func (ud *UserDict) UpdateQueryCount() {
-	sud := repo.UserDict{}
-	sud.UserId = ud.UserId
-	sud.WordId = ud.WordId
-	sqlitex.DB.Model(&sud).
-		Where("word_id=? and user_id=?", sud.WordId, sud.UserId).
-		Updates(map[string]interface{}{
-			"query_count":        ud.QueryCount,
-			"already_acquainted": ud.AlreadyAcquainted,
-			"update_time":        time.Now()})
-	logger.Debugf("update user dict: %v", ud)
-}
-
-func (ud *UserDict) Save() {
-	sud := repo.UserDict{}
-	sud.UserId = ud.UserId
-	sud.WordId = ud.WordId
-	sud.QueryCount = ud.QueryCount
-	sud.AlreadyAcquainted = ud.AlreadyAcquainted
-	sud.UpdateTime = time.Now()
-	sqlitex.DB.Create(&sud)
-	logger.Debugf("create user dict, word id: %v, query count: %v", sud.WordId, sud.QueryCount)
-}
-
-func (ud *UserDict) Mark() {
-	logger.Infof("Mark: Starting mark operation for word_id: %d, user_id: %d", ud.WordId, ud.UserId)
-	
-	sud := repo.UserDict{
-		UserId:     ud.UserId,
-		WordId:     ud.WordId,
-		UpdateTime: time.Now(),
+	userIdStr := fmt.Sprintf("user-%d", ud.UserId)
+	err := repo.UpsertUserDict(userIdStr, ud.WordId, ud.QueryCount, ud.AlreadyAcquainted)
+	if err != nil {
+		logger.Errorf("failed to update query count via gRPC: %v", err)
+		return
 	}
+	logger.Debugf("update user dict via gRPC, user_id: %s, word_id: %s, query_count: %d",
+		userIdStr, ud.WordId, ud.QueryCount)
+}
+
+// Save creates or updates user dict record via gRPC
+func (ud *UserDict) Save() {
+	userIdStr := fmt.Sprintf("user-%d", ud.UserId)
+	err := repo.UpsertUserDict(userIdStr, ud.WordId, ud.QueryCount, ud.AlreadyAcquainted)
+	if err != nil {
+		logger.Errorf("failed to save user dict via gRPC: %v", err)
+		return
+	}
+	logger.Debugf("save user dict via gRPC, user_id: %s, word_id: %s, query_count: %d",
+		userIdStr, ud.WordId, ud.QueryCount)
+}
+
+// Mark toggles the already_acquainted flag via gRPC
+func (ud *UserDict) Mark() {
+	logger.Infof("Mark: Starting mark operation for word_id: %s, user_id: %d", ud.WordId, ud.UserId)
+
+	userIdStr := fmt.Sprintf("user-%d", ud.UserId)
 
 	if ud.IsExist() {
 		logger.Infof("Mark: Record exists, current AlreadyAcquainted: %d", ud.AlreadyAcquainted)
+		// Toggle the acquainted status
 		if ud.AlreadyAcquainted == 1 {
 			ud.AlreadyAcquainted = 0
 			logger.Infof("Mark: Changed from 1 to 0")
-		} else if ud.AlreadyAcquainted == 0 {
+		} else {
 			ud.AlreadyAcquainted = 1
 			logger.Infof("Mark: Changed from 0 to 1")
 		}
-		sud.AlreadyAcquainted = ud.AlreadyAcquainted
-		logger.Infof("Mark: Updating existing record with AlreadyAcquainted: %d", sud.AlreadyAcquainted)
-		result := sqlitex.DB.Model(&sud).Where("user_id=? and word_id=?", sud.UserId, sud.WordId).
-			Updates(map[string]interface{}{"already_acquainted": sud.AlreadyAcquainted})
-		logger.Infof("Mark: Update result - RowsAffected: %d, Error: %v", result.RowsAffected, result.Error)
-		
-		// Verify the update by reading back
-		var verifyRecord repo.UserDict
-		sqlitex.DB.Where("word_id=? and user_id=?", sud.WordId, sud.UserId).First(&verifyRecord)
-		logger.Infof("Mark: Verification query - AlreadyAcquainted: %d", verifyRecord.AlreadyAcquainted)
 	} else {
 		logger.Infof("Mark: Record does not exist, creating new record with AlreadyAcquainted: 1")
 		ud.AlreadyAcquainted = 1
-		sud.AlreadyAcquainted = ud.AlreadyAcquainted
-		sqlitex.DB.Create(&sud)
+		ud.QueryCount = 0
+	}
+
+	err := repo.UpsertUserDict(userIdStr, ud.WordId, ud.QueryCount, ud.AlreadyAcquainted)
+	if err != nil {
+		logger.Errorf("Mark: failed to mark via gRPC: %v", err)
+		return
 	}
 	logger.Infof("Mark: Final AlreadyAcquainted state: %d", ud.AlreadyAcquainted)
 }
 
+// IsExist checks if user dict record exists via gRPC
 func (ud *UserDict) IsExist() bool {
-	sud := repo.UserDict{
-		UserId: ud.UserId,
-		WordId: ud.WordId,
-	}
-	userDictTmp := repo.UserDict{}
-	sqlitex.DB.Where("word_id=? and user_id=?", sud.WordId, sud.UserId).Find(&userDictTmp)
-	if userDictTmp.WordId == 0 {
-		logger.Infof("user dict record not exist, word id: %v, user_id: %v", sud.WordId, sud.UserId)
+	userIdStr := fmt.Sprintf("user-%d", ud.UserId)
+	queryCount, alreadyAcquainted := repo.GetUserWordQueryCount(ud.WordId, userIdStr)
+
+	// If both are 0, record might not exist (or both fields are actually 0)
+	// We rely on the gRPC implementation returning 0,0 for non-existent records
+	if queryCount == 0 && alreadyAcquainted == 0 {
+		logger.Debugf("user dict record not found via gRPC, word_id: %s, user_id: %s",
+			ud.WordId, userIdStr)
 		return false
-	} else {
-		ud.AlreadyAcquainted = userDictTmp.AlreadyAcquainted
-		ud.QueryCount = userDictTmp.QueryCount
-		logger.Infof("user dict record exist, word id: %v, user_id: %v, query count: %v, acquainted: %v",
-			sud.WordId, sud.UserId, ud.QueryCount, ud.AlreadyAcquainted)
-		return true
 	}
+
+	// Update the struct with fetched values
+	ud.QueryCount = queryCount
+	ud.AlreadyAcquainted = alreadyAcquainted
+	logger.Debugf("user dict record found via gRPC, word_id: %s, user_id: %s, query_count: %d, acquainted: %d",
+		ud.WordId, userIdStr, ud.QueryCount, ud.AlreadyAcquainted)
+	return true
 }
