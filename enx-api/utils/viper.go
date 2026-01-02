@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/joho/godotenv"
 	jww "github.com/spf13/jwalterweatherman"
 	"github.com/spf13/viper"
 )
@@ -12,6 +13,11 @@ import (
 func ViperInit() {
 	jww.SetLogThreshold(jww.LevelTrace)
 	jww.SetStdoutThreshold(jww.LevelTrace)
+
+	// Load .env file if exists (before flag parsing)
+	if err := godotenv.Load(); err == nil {
+		logger.Infof("📝 Loaded .env file")
+	}
 
 	// Add command-line flag for config file
 	configFile := flag.String("c", "", "config file path (e.g., config-e2e.toml)")
@@ -40,5 +46,15 @@ func ViperInit() {
 		panic(fmt.Errorf("fatal error config file: %w", err))
 	} else {
 		logger.Infof("read config file success, used: %s", viper.ConfigFileUsed())
+	}
+
+	// Enable automatic environment variable reading
+	viper.AutomaticEnv()
+
+	// Override with environment variables if set
+	// ENX_PORT will override enx.port from config.toml
+	if port := viper.GetInt("ENX_PORT"); port > 0 {
+		viper.Set("enx.port", port)
+		logger.Infof("✅ Port overridden by environment variable ENX_PORT: %d", port)
 	}
 }
