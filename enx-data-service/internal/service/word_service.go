@@ -167,3 +167,14 @@ func convertModelToProto(word *model.Word) *pb.Word {
 
 	return pbWord
 }
+
+func convertUserDictModelToProto(userDict *model.UserDict) *pb.UserDict {
+	return &pb.UserDict{
+		UserId:            userDict.UserId,
+		WordId:            userDict.WordId,
+		QueryCount:        int32(userDict.QueryCount),
+		AlreadyAcquainted: int32(userDict.AlreadyAcquainted),
+		CreatedAt:         userDict.CreatedAt,
+		UpdatedAt:         userDict.UpdatedAt,
+	}
+}
