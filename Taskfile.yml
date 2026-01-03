@@ -33,16 +33,12 @@ tasks:
 
   # Data Service
   data:start:
-    desc: Start enx-data-service (usage - task data:start [MODE=fg|bg] - default is fg)
+    desc: Start enx-data-service using taskfile (usage - task data:start [MODE=fg|bg] - default is fg)
+    dir: enx-data-service
     vars:
       MODE: '{{.MODE | default "fg"}}'
     cmds:
-      - |
-        if [ "{{.MODE}}" = "bg" ]; then
-          task data:start:bg
-        else
-          task data:start:fg
-        fi
+      - task run MODE={{.MODE}}
 
   data:start:fg:
     desc: Start enx-data-service in foreground
