@@ -27,6 +27,7 @@ const (
 	DataService_GetUserDict_FullMethodName    = "/enx.data.v1.DataService/GetUserDict"
 	DataService_UpsertUserDict_FullMethodName = "/enx.data.v1.DataService/UpsertUserDict"
 	DataService_SyncWords_FullMethodName      = "/enx.data.v1.DataService/SyncWords"
+	DataService_SyncUserDicts_FullMethodName  = "/enx.data.v1.DataService/SyncUserDicts"
 )
 
 // DataServiceClient is the client API for DataService service.
@@ -44,6 +45,7 @@ type DataServiceClient interface {
 	UpsertUserDict(ctx context.Context, in *UpsertUserDictRequest, opts ...grpc.CallOption) (*UpsertUserDictResponse, error)
 	// Sync operations
 	SyncWords(ctx context.Context, in *SyncWordsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SyncWordsResponse], error)
+	SyncUserDicts(ctx context.Context, in *SyncUserDictsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SyncUserDictsResponse], error)
 }
 
 type dataServiceClient struct {
@@ -143,6 +145,25 @@ func (c *dataServiceClient) SyncWords(ctx context.Context, in *SyncWordsRequest,
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type DataService_SyncWordsClient = grpc.ServerStreamingClient[SyncWordsResponse]
 
+func (c *dataServiceClient) SyncUserDicts(ctx context.Context, in *SyncUserDictsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SyncUserDictsResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &DataService_ServiceDesc.Streams[1], DataService_SyncUserDicts_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[SyncUserDictsRequest, SyncUserDictsResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type DataService_SyncUserDictsClient = grpc.ServerStreamingClient[SyncUserDictsResponse]
+
 // DataServiceServer is the server API for DataService service.
 // All implementations must embed UnimplementedDataServiceServer
 // for forward compatibility.
@@ -158,6 +179,7 @@ type DataServiceServer interface {
 	UpsertUserDict(context.Context, *UpsertUserDictRequest) (*UpsertUserDictResponse, error)
 	// Sync operations
 	SyncWords(*SyncWordsRequest, grpc.ServerStreamingServer[SyncWordsResponse]) error
+	SyncUserDicts(*SyncUserDictsRequest, grpc.ServerStreamingServer[SyncUserDictsResponse]) error
 	mustEmbedUnimplementedDataServiceServer()
 }
 
@@ -191,6 +213,9 @@ func (UnimplementedDataServiceServer) UpsertUserDict(context.Context, *UpsertUse
 }
 func (UnimplementedDataServiceServer) SyncWords(*SyncWordsRequest, grpc.ServerStreamingServer[SyncWordsResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method SyncWords not implemented")
+}
+func (UnimplementedDataServiceServer) SyncUserDicts(*SyncUserDictsRequest, grpc.ServerStreamingServer[SyncUserDictsResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method SyncUserDicts not implemented")
 }
 func (UnimplementedDataServiceServer) mustEmbedUnimplementedDataServiceServer() {}
 func (UnimplementedDataServiceServer) testEmbeddedByValue()                     {}
@@ -350,6 +375,17 @@ func _DataService_SyncWords_Handler(srv interface{}, stream grpc.ServerStream) e
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type DataService_SyncWordsServer = grpc.ServerStreamingServer[SyncWordsResponse]
 
+func _DataService_SyncUserDicts_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(SyncUserDictsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(DataServiceServer).SyncUserDicts(m, &grpc.GenericServerStream[SyncUserDictsRequest, SyncUserDictsResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type DataService_SyncUserDictsServer = grpc.ServerStreamingServer[SyncUserDictsResponse]
+
 // DataService_ServiceDesc is the grpc.ServiceDesc for DataService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -390,6 +426,11 @@ var DataService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "SyncWords",
 			Handler:       _DataService_SyncWords_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "SyncUserDicts",
+			Handler:       _DataService_SyncUserDicts_Handler,
 			ServerStreams: true,
 		},
 	},

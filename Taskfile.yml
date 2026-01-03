@@ -256,11 +256,11 @@ tasks:
   # Development
   # ===========================================
 
-  dev-api:
+  api:dev:
     desc: Start enx-api in development mode (hot reload)
     dir: enx-api
     cmds:
-      - task: dev
+      - task dev
 
   dev-chrome:
     desc: Start enx-chrome in development mode

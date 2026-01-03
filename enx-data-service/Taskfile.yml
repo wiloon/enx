@@ -9,7 +9,7 @@ tasks:
   proto:
     desc: Generate protobuf code
     cmds:
-      - protoc --go_out=proto --go_opt=paths=source_relative --go-grpc_out=proto --go-grpc_opt=paths=source_relative --proto_path=../proto data_service.proto
+      - protoc --go_out=proto --go_opt=paths=source_relative --go-grpc_out=proto --go-grpc_opt=paths=source_relative --proto_path=proto proto/data_service.proto
 
   build:
     desc: Build the server binary

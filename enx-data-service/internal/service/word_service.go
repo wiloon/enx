@@ -127,6 +127,25 @@ func (s *WordService) SyncWords(req *pb.SyncWordsRequest, stream pb.DataService_
 	return nil
 }
 
+func (s *WordService) SyncUserDicts(req *pb.SyncUserDictsRequest, stream pb.DataService_SyncUserDictsServer) error {
+	// Get all user_dicts modified since the given timestamp
+	userDicts, err := s.repo.FindUserDictsModifiedSince(req.SinceTimestamp)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to get modified user_dicts: %v", err)
+	}
+
+	// Stream each modified user_dict to the client
+	for _, userDict := range userDicts {
+		if err := stream.Send(&pb.SyncUserDictsResponse{
+			UserDict: convertUserDictModelToProto(userDict),
+		}); err != nil {
+			return status.Errorf(codes.Internal, "failed to send user_dict: %v", err)
+		}
+	}
+
+	return nil
+}
+
 func convertModelToProto(word *model.Word) *pb.Word {
 	pbWord := &pb.Word{
 		Id:        word.ID,
