@@ -296,8 +296,8 @@ func MarkWord(c *gin.Context) {
 
 	// Get user ID from session context
 	userId := middleware.GetUserIDFromContext(c)
-	logger.Infof("MarkWord: Retrieved user ID from context: %d", userId)
-	if userId == 0 {
+	logger.Infof("MarkWord: Retrieved user ID from context: %s", userId)
+	if userId == "" {
 		logger.Errorf("MarkWord: No valid user id found in session context")
 		c.JSON(401, gin.H{
 			"success": false,
@@ -310,7 +310,7 @@ func MarkWord(c *gin.Context) {
 
 	ud := enx.UserDict{}
 	ud.WordId = word.Id
-	ud.UserId = int(userId) // Convert int64 to int
+	ud.UserId = userId
 
 	// Load current state first (this is crucial!)
 	ud.IsExist()
@@ -455,7 +455,7 @@ func Register(c *gin.Context) {
 
 	// Check if username already exists
 	existingUser := enx.GeUserByName(req.Username)
-	if existingUser.Id != 0 {
+	if existingUser.Id != "" {
 		c.JSON(http.StatusBadRequest, RegisterResponse{
 			Success: false,
 			Message: "Username already exists",

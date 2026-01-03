@@ -11,7 +11,7 @@ import (
 func LoadCount(c *gin.Context) {
 	key := c.Query("words")
 	userId := middleware.GetUserIDFromContext(c)
-	if userId == 0 {
+	if userId == "" {
 		c.JSON(401, gin.H{
 			"success": false,
 			"message": "Invalid session",
@@ -24,7 +24,7 @@ func LoadCount(c *gin.Context) {
 	for _, word := range words {
 		ecp := enx.Word{}
 		ecp.SetEnglish(word)
-		loadCount := ecp.FindQueryCount(int(userId))
+		loadCount := ecp.FindQueryCount(userId)
 		response[ecp.English] = loadCount
 	}
 

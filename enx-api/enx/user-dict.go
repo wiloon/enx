@@ -3,47 +3,42 @@ package enx
 import (
 	"enx-api/repo"
 	"enx-api/utils/logger"
-	"fmt"
 )
 
 type UserDict struct {
-	// default user id is 1
-	UserId     int    `json:"user_id" gorm:"default:1"`
-	WordId     string // UUID
-	QueryCount int
+	// User ID (UUID)
+	UserId     string `json:"user_id"`
+	WordId     string `json:"word_id"` // UUID
+	QueryCount int    `json:"query_count"`
 	// 0: false, 1: true
-	AlreadyAcquainted int
+	AlreadyAcquainted int `json:"already_acquainted"`
 }
 
 // UpdateQueryCount updates the query count and acquainted status via gRPC
 func (ud *UserDict) UpdateQueryCount() {
-	userIdStr := fmt.Sprintf("user-%d", ud.UserId)
-	err := repo.UpsertUserDict(userIdStr, ud.WordId, ud.QueryCount, ud.AlreadyAcquainted)
+	err := repo.UpsertUserDict(ud.UserId, ud.WordId, ud.QueryCount, ud.AlreadyAcquainted)
 	if err != nil {
 		logger.Errorf("failed to update query count via gRPC: %v", err)
 		return
 	}
 	logger.Debugf("update user dict via gRPC, user_id: %s, word_id: %s, query_count: %d",
-		userIdStr, ud.WordId, ud.QueryCount)
+		ud.UserId, ud.WordId, ud.QueryCount)
 }
 
 // Save creates or updates user dict record via gRPC
 func (ud *UserDict) Save() {
-	userIdStr := fmt.Sprintf("user-%d", ud.UserId)
-	err := repo.UpsertUserDict(userIdStr, ud.WordId, ud.QueryCount, ud.AlreadyAcquainted)
+	err := repo.UpsertUserDict(ud.UserId, ud.WordId, ud.QueryCount, ud.AlreadyAcquainted)
 	if err != nil {
 		logger.Errorf("failed to save user dict via gRPC: %v", err)
 		return
 	}
 	logger.Debugf("save user dict via gRPC, user_id: %s, word_id: %s, query_count: %d",
-		userIdStr, ud.WordId, ud.QueryCount)
+		ud.UserId, ud.WordId, ud.QueryCount)
 }
 
 // Mark toggles the already_acquainted flag via gRPC
 func (ud *UserDict) Mark() {
-	logger.Infof("Mark: Starting mark operation for word_id: %s, user_id: %d", ud.WordId, ud.UserId)
-
-	userIdStr := fmt.Sprintf("user-%d", ud.UserId)
+	logger.Infof("Mark: Starting mark operation for word_id: %s, user_id: %s", ud.WordId, ud.UserId)
 
 	if ud.IsExist() {
 		logger.Infof("Mark: Record exists, current AlreadyAcquainted: %d", ud.AlreadyAcquainted)
@@ -61,7 +56,7 @@ func (ud *UserDict) Mark() {
 		ud.QueryCount = 0
 	}
 
-	err := repo.UpsertUserDict(userIdStr, ud.WordId, ud.QueryCount, ud.AlreadyAcquainted)
+	err := repo.UpsertUserDict(ud.UserId, ud.WordId, ud.QueryCount, ud.AlreadyAcquainted)
 	if err != nil {
 		logger.Errorf("Mark: failed to mark via gRPC: %v", err)
 		return
@@ -71,14 +66,13 @@ func (ud *UserDict) Mark() {
 
 // IsExist checks if user dict record exists via gRPC
 func (ud *UserDict) IsExist() bool {
-	userIdStr := fmt.Sprintf("user-%d", ud.UserId)
-	queryCount, alreadyAcquainted := repo.GetUserWordQueryCount(ud.WordId, userIdStr)
+	queryCount, alreadyAcquainted := repo.GetUserWordQueryCount(ud.WordId, ud.UserId)
 
 	// If both are 0, record might not exist (or both fields are actually 0)
 	// We rely on the gRPC implementation returning 0,0 for non-existent records
 	if queryCount == 0 && alreadyAcquainted == 0 {
 		logger.Debugf("user dict record not found via gRPC, word_id: %s, user_id: %s",
-			ud.WordId, userIdStr)
+			ud.WordId, ud.UserId)
 		return false
 	}
 
@@ -86,6 +80,6 @@ func (ud *UserDict) IsExist() bool {
 	ud.QueryCount = queryCount
 	ud.AlreadyAcquainted = alreadyAcquainted
 	logger.Debugf("user dict record found via gRPC, word_id: %s, user_id: %s, query_count: %d, acquainted: %d",
-		ud.WordId, userIdStr, ud.QueryCount, ud.AlreadyAcquainted)
+		ud.WordId, ud.UserId, ud.QueryCount, ud.AlreadyAcquainted)
 	return true
 }

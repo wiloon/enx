@@ -123,14 +123,14 @@ func UpsertUserDict(userId, wordId string, queryCount, alreadyAcquainted int) er
 	}).Error
 }
 
-func Translate(key string, userId int) Word {
+func Translate(key string, userId string) Word {
 	word := GetWordByEnglish(key)
 	if word.Id != "" {
-		logger.Debugf("find word via GORM, id: %s, english: %s, user_id: %d", word.Id, key, userId)
+		logger.Debugf("find word via GORM, id: %s, english: %s, user_id: %s", word.Id, key, userId)
 		return *word
 	}
 
-	logger.Debugf("word not found via GORM: %s, user_id: %d", key, userId)
+	logger.Debugf("word not found via GORM: %s, user_id: %s", key, userId)
 	return Word{} // Return empty word
 }
 

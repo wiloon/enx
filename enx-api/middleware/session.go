@@ -11,36 +11,36 @@ import (
 )
 
 type Session struct {
-	ID        string    `json:"id" gorm:"primaryKey"`
-	UserID    int64     `json:"user_id"`
-	CreatedAt time.Time `json:"created_at"`
-	ExpiresAt time.Time `json:"expires_at"`
+	ID        string `json:"id" gorm:"primaryKey"`
+	UserID    string `json:"user_id" gorm:"column:user_id"`
+	CreatedAt int64  `json:"created_at" gorm:"column:created_at"` // Unix milliseconds
+	ExpiresAt int64  `json:"expires_at" gorm:"column:expires_at"` // Unix milliseconds
 }
 
 // GetUserIDFromContext gets user id from gin context
-func GetUserIDFromContext(c *gin.Context) int64 {
+func GetUserIDFromContext(c *gin.Context) string {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		return 0
+		return ""
 	}
-	return userID.(int64)
+	return userID.(string)
 }
 
 // SessionMiddleware handles session authentication
 func SessionMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger.Infof("SessionMiddleware: Processing request %s %s", c.Request.Method, c.Request.URL.Path)
-		
+
 		// Skip authentication for OPTIONS requests (CORS preflight)
 		if c.Request.Method == "OPTIONS" {
 			logger.Infof("SessionMiddleware: Skipping auth for OPTIONS request")
 			c.Next()
 			return
 		}
-		
+
 		sessionID := c.GetHeader("X-Session-ID")
 		logger.Infof("SessionMiddleware: X-Session-ID header: '%s'", sessionID)
-		
+
 		if sessionID == "" {
 			// Try to get from cookie
 			cookie, err := c.Cookie("session_id")
@@ -64,7 +64,8 @@ func SessionMiddleware() gin.HandlerFunc {
 
 		logger.Infof("SessionMiddleware: Looking up session ID: '%s'", sessionID)
 		var session Session
-		result := sqlitex.DB.Where("id = ? AND expires_at > ?", sessionID, time.Now()).First(&session)
+	now := time.Now().UnixMilli()
+	result := sqlitex.DB.Where("id = ? AND expires_at > ?", sessionID, now).First(&session)
 		if result.Error != nil {
 			logger.Errorf("SessionMiddleware: Session lookup failed for ID '%s', error: %v", sessionID, result.Error)
 			c.JSON(http.StatusUnauthorized, gin.H{
@@ -75,27 +76,27 @@ func SessionMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		logger.Infof("SessionMiddleware: Session found for user ID: %d", session.UserID)
+		logger.Infof("SessionMiddleware: Session found for user ID: %s", session.UserID)
 
 		// Store session info in context
 		c.Set("user_id", session.UserID)
 		c.Set("session_id", sessionID)
 
 		// Update session expiration time
-		session.ExpiresAt = time.Now().Add(24 * time.Hour)
-		sqlitex.DB.Save(&session)
+	session.ExpiresAt = time.Now().Add(24 * time.Hour).UnixMilli()
 
 		c.Next()
 	}
 }
 
 // CreateSession creates a new session
-func CreateSession(userID int64) (*Session, error) {
+func CreateSession(userID string) (*Session, error) {
+	now := time.Now()
 	session := &Session{
 		ID:        generateSessionID(),
 		UserID:    userID,
-		CreatedAt: time.Now(),
-		ExpiresAt: time.Now().Add(24 * time.Hour),
+		CreatedAt: now.UnixMilli(),
+		ExpiresAt: now.Add(24 * time.Hour).UnixMilli(),
 	}
 	logger.Infof("creating session, user id: %v, session: %+v", userID, session)
 	if err := sqlitex.DB.Create(session).Error; err != nil {
