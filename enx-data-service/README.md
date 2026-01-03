@@ -1,4 +1,3 @@
-````markdown
 # ENX Data Service
 
 Phase 3: Manual Sync Trigger
