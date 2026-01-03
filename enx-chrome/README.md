@@ -12,24 +12,41 @@ A modern Chrome extension for English learning that helps you learn vocabulary w
 
 ## Supported Websites
 
-### ✅ Fully Tested & Optimized
+### 🎯 Currently Active
 
-The following websites have been thoroughly tested and provide excellent learning experience:
+The extension is currently configured to work **only on the following websites**:
 
-- **[BBC News](https://www.bbc.com)** - High-quality English news articles
 - **[InfoQ](https://www.infoq.com)** - Technology and software development content
 - **[NY Times Newsletters](https://messaging-custom-newsletters.nytimes.com/)** - Premium news content
-- **[Tingroom Novels](https://novel.tingroom.com)** - English literature and novels
-- **[Wiloon.com](https://wiloon.com)** - Personal blog and articles
 
-### 🌍 General Support
+To add more websites, edit the `content_scripts.matches` array in `manifest.json`:
 
-The extension now supports **all HTTP/HTTPS websites** with the following exceptions:
+```json
+"content_scripts": [
+  {
+    "matches": [
+      "https://www.infoq.com/*",
+      "https://messaging-custom-newsletters.nytimes.com/*",
+      "https://your-website.com/*"  // Add your site here
+    ],
+    "js": ["src/content/content.ts"],
+    "run_at": "document_end"
+  }
+]
+```
 
-- ❌ Chrome internal pages (`chrome://`, `chrome-extension://`)
-- ❌ Chrome Web Store pages
+### 🌍 General Support (Optional)
 
-**Note**: While the extension works on most websites, some sites with dynamic content or special security policies may have limited functionality.
+If you want the extension to work on **all websites**, change the `matches` pattern to:
+
+```json
+"matches": [
+  "https://*/*",
+  "http://*/*"
+]
+```
+
+**Note**: Chrome internal pages and the Chrome Web Store are never accessible to extensions for security reasons.
 
 ## Tech Stack
 
