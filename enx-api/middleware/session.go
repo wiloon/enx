@@ -64,8 +64,8 @@ func SessionMiddleware() gin.HandlerFunc {
 
 		logger.Infof("SessionMiddleware: Looking up session ID: '%s'", sessionID)
 		var session Session
-	now := time.Now().UnixMilli()
-	result := sqlitex.DB.Where("id = ? AND expires_at > ?", sessionID, now).First(&session)
+		now := time.Now().UnixMilli()
+		result := sqlitex.DB.Where("id = ? AND expires_at > ?", sessionID, now).First(&session)
 		if result.Error != nil {
 			logger.Errorf("SessionMiddleware: Session lookup failed for ID '%s', error: %v", sessionID, result.Error)
 			c.JSON(http.StatusUnauthorized, gin.H{
@@ -83,7 +83,7 @@ func SessionMiddleware() gin.HandlerFunc {
 		c.Set("session_id", sessionID)
 
 		// Update session expiration time
-	session.ExpiresAt = time.Now().Add(24 * time.Hour).UnixMilli()
+		session.ExpiresAt = time.Now().Add(24 * time.Hour).UnixMilli()
 
 		c.Next()
 	}
