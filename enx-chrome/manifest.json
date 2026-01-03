@@ -22,15 +22,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://*/*",
-        "http://*/*",
-        "http://localhost:*/*",
-        "http://127.0.0.1:*/*",
-        "file://*"
-      ],
-      "exclude_matches": [
-        "https://chrome.google.com/*",
-        "https://chromewebstore.google.com/*"
+        "https://www.infoq.com/*",
+        "https://messaging-custom-newsletters.nytimes.com/*"
       ],
       "js": ["src/content/content.ts"],
       "run_at": "document_end"
