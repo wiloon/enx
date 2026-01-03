@@ -3,7 +3,9 @@
 **📌 Quick Summary**: This document designs a **universal, reusable SQLite synchronization service** with P2P capabilities. While originally designed for the ENX vocabulary learning app, the service is completely **generic and table-agnostic**, making it suitable for any SQLite-based application that needs multi-device data synchronization.
 
 **🎯 Design Philosophy**:
-- ✅ **Generic First**: Table-agnostic APIs (no hardcoded schemas)
+- ✅ **Sync-Only Architecture**: data-service is a background sync daemon, not a data access layer
+- ✅ **Pull-Based Sync**: Periodic polling for changes (simple, reliable, fault-tolerant)
+- ✅ **Direct Database Access**: enx-api accesses local SQLite directly (optimal performance)
 - ✅ **Configuration-Driven**: YAML config instead of code changes
 - ✅ **ENX as User**: ENX is the first application using this generic service
 - ✅ **Open-Source Goal**: Build for the broader SQLite community
@@ -13,12 +15,124 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2025-11-12 |
-| **Last Updated** | 2025-12-13 (Finalized generic data service design) |
+| **Last Updated** | 2026-01-03 (Architecture redesign: sync-only service) |
 | **Author** | wiloon |
 | **AI Assisted** | Yes (GitHub Copilot) |
 | **AI Model** | Claude Sonnet 4.5 |
-| **Version** | 0.1.0 |
+| **Version** | 0.2.0 |
 | **Status** | Proposed |
+
+## 🚨 Architecture Update (2026-01-03)
+
+**Critical Design Change**: data-service is now a **sync-only background daemon**, not a data access gateway.
+
+### Previous Architecture (❌ Rejected)
+```
+enx-api → gRPC → data-service → SQLite
+         (overhead)
+```
+- **Problems**: 
+  - Every CRUD operation requires gRPC call (network overhead)
+  - High-frequency queries (translations) suffer from serialization cost
+  - Over-engineered for single-user multi-device scenario
+
+### New Architecture (✅ Adopted)
+```
+enx-api → Direct SQLite access (local)
+          ↓ Writes update `updated_at`
+          
+data-service → Monitors changes → Pull from peers → Merge
+              (background daemon)
+```
+- **Benefits**:
+  - ✅ Optimal performance: Local database access (microseconds)
+  - ✅ Simple architecture: API handles business logic, data-service handles sync
+  - ✅ Clear separation: CRUD vs synchronization
+  - ✅ Pull-based sync: Simple, reliable, fault-tolerant
+
+### Sync Strategy: Pull-Based (Polling)
+
+**Why Pull over Push:**
+- ✅ **Simplicity**: Each node independently polls peers (no coordination needed)
+- ✅ **Fault Tolerance**: Node offline? No problem, resumes when back online
+- ✅ **Batch Efficiency**: Pull multiple changes in one request
+- ✅ **No Push Queue**: No need for retry logic, persistent queues, or failure handling
+
+**Implementation:**
+```go
+// Each node runs this periodically (every 30 seconds)
+func SyncWithPeers() {
+    for _, peer := range config.Peers {
+        lastSync := getLastSyncTime(peer)
+        
+        // HTTP GET: /sync/changes?since=<timestamp>
+        changes := pullChangesFrom(peer, lastSync)
+        
+        // Merge using timestamp-based conflict resolution
+        applyChangesToLocalDB(changes)
+        
+        // Update last sync timestamp
+        updateLastSyncTime(peer, now())
+    }
+}
+```
+
+**Trade-offs:**
+- ⚠️ Sync delay: 30 seconds (acceptable for this use case)
+- ⚠️ Polling overhead: Minimal (one HTTP request per peer per 30s)
+- ✅ Reliability: Simple, proven pattern
+- ✅ Scalability: 2-3 nodes (perfect for personal use)
+
+### Table Management: Which Service Owns What?
+
+**Current Table Assignment:**
+
+| Table | Managed By | Schema Location | Sync Support | Rationale |
+|-------|-----------|----------------|--------------|-----------|
+| `users` | enx-api | enx-api/schema.sql | ❌ No | User accounts are environment-specific (no need to sync) |
+| `sessions` | enx-api | enx-api/schema.sql | ❌ No | Sessions are temporary, local only |
+| `words` | data-service | data-service/schema/schema.sql | ✅ Yes | Core vocabulary data, needs P2P sync across devices |
+| `user_dicts` | data-service | data-service/schema/schema.sql | ✅ Yes | User learning progress, needs P2P sync across devices |
+| `sync_state` | data-service | data-service/schema/schema.sql | ✅ Internal | Tracks sync timestamps for P2P coordination |
+
+**Migration History:**
+- **2026-01-03**: Migrated `user_dicts` from enx-api to data-service
+  - **Reason**: Enable P2P sync of user learning progress across devices
+  - **Changed**: `word_id` from `INTEGER` to `TEXT` (UUID) to avoid ID conflicts
+  - **Impact**: Discarded historical data (acceptable for side project)
+
+**Design Principles:**
+1. ✅ **Data that needs cross-device sync** → data-service manages it
+2. ✅ **Environment-specific data** (users, sessions) → enx-api manages it
+3. ✅ **UUID primary keys required** for synced tables (avoid ID conflicts)
+4. ✅ **timestamp-based conflict resolution** (updated_at field required)
+
+**Access Pattern:**
+```
+enx-api behavior:
+├─ Direct SQLite access (GORM) for:
+│  ├─ users (authentication, local accounts)
+│  └─ sessions (temporary login state)
+│
+└─ Direct SQLite access for:
+   ├─ words (read/write via GORM)
+   └─ user_dicts (read/write via GORM)
+
+data-service behavior (background daemon):
+├─ Pull sync every 30 seconds:
+│  ├─ Fetch changes from peer nodes
+│  └─ Merge using timestamp conflict resolution
+│
+└─ Manage schema for:
+   ├─ words (vocabulary entries)
+   ├─ user_dicts (learning progress)
+   └─ sync_state (sync coordination)
+```
+
+**Why user_dicts moved to data-service:**
+- **Before**: INTEGER word_id incompatible with UUID-based words table
+- **After**: TEXT word_id (UUID), consistent with words table
+- **Benefit**: Learning progress (`query_count`, `already_acquainted`) syncs across all devices
 
 ## ⚡ Critical Design Decision
 
@@ -1500,31 +1614,34 @@ date +%s  # Check Unix timestamp on each node
 
 ## Architecture Goals
 
-1. **Decoupling**: Separate business logic from data management
-   - enx-api focuses on HTTP routing, authentication, business rules
-   - enx-data-service focuses on data CRUD, sync, storage
+1. **Decoupling**: Separate business logic from data synchronization
+   - **enx-api**: HTTP routing, authentication, business rules, **direct local database access**
+   - **enx-data-service**: **P2P sync only** (not a data access layer)
 
 2. **P2P Sync**: Enable data synchronization across multiple nodes without central server
    - Each node (Linux desktop, MacBook, Ubuntu laptop) runs its own enx-data-service
-   - Nodes sync directly with each other (peer-to-peer)
+   - **Pull-based sync model**: Each node periodically pulls changes from peers (every 30s)
    - No central server required (works in isolated environments)
+   - **data-service acts as a background sync daemon**, not a data access gateway
 
 3. **Offline Support**: Continue working when disconnected, sync when online
-   - enx-data-service works locally even without network
-   - Changes are queued and synced when connection is restored
+   - enx-api works with local SQLite even without network
+   - Changes are written to local database with updated `updated_at` timestamps
+   - **data-service detects changes** and syncs when connection is restored
    - **Intermittent connectivity supported**: Nodes can go offline for hours/days, sync when reconnected
    - No data loss in offline scenarios
    - Timestamps ensure correct merge order
 
-4. **Scalability**: Easy to upgrade storage backend (SQLite → PostgreSQL) without changing enx-api
-   - enx-api uses abstract data service API
-   - Backend can be swapped without API changes
-   - Future support for Redis caching, read replicas, etc.
+4. **Performance**: Direct database access for optimal performance
+   - **enx-api accesses local SQLite directly** (no gRPC overhead)
+   - **No remote calls for CRUD operations** (fast response times)
+   - data-service only involved in background sync operations
+   - Best suited for single-user, multi-device scenarios
 
 5. **Flexibility**: Each service can be deployed, scaled, and upgraded independently
    - Update enx-api without touching data service
-   - Upgrade database schema without restarting API
-   - Run multiple enx-api instances against one data service
+   - Upgrade database schema without restarting sync
+   - Simple architecture: api ↔ local db, data-service ↔ P2P sync
 
 ## System Architecture
 
@@ -1561,21 +1678,24 @@ package "Application Layer" as AppLayer {
 package "Data Layer" as DataLayer {
 
     package "Host A" as HostA <<data>> {
-        component "Data Service\nPort: 8091" as DS_A <<service>>
+        component "Data Service\nPort: 8091\n(Sync Daemon)" as DS_A <<service>>
         database "enx.db\n(SQLite)" as DB_A <<database>>
-        DS_A -down-> DB_A : SQL
+        DS_A -down-> DB_A : "Monitor Changes\n& Sync"
+        API_A -down-> DB_A : "Direct SQL\n(CRUD)"
     }
 
     package "Host B" as HostB <<data>> {
-        component "Data Service\nPort: 8091" as DS_B <<service>>
+        component "Data Service\nPort: 8091\n(Sync Daemon)" as DS_B <<service>>
         database "enx.db\n(SQLite)" as DB_B <<database>>
-        DS_B -down-> DB_B : SQL
+        DS_B -down-> DB_B : "Monitor Changes\n& Sync"
+        API_B -down-> DB_B : "Direct SQL\n(CRUD)"
     }
 
     package "Host C" as HostC <<data>> {
-        component "Data Service\nPort: 8091" as DS_C <<service>>
+        component "Data Service\nPort: 8091\n(Sync Daemon)" as DS_C <<service>>
         database "enx.db\n(SQLite)" as DB_C <<database>>
-        DS_C -down-> DB_C : SQL
+        DS_C -down-> DB_C : "Monitor Changes\n& Sync"
+        API_C -down-> DB_C : "Direct SQL\n(CRUD)"
     }
 }
 
@@ -1584,20 +1704,36 @@ Browser1 -down-> API_A : HTTP/HTTPS
 Browser2 -down-> API_B : HTTP/HTTPS
 Browser3 -down-> API_C : HTTP/HTTPS
 
-' API to Data Service connections
-API_A -down-> DS_A : gRPC/HTTP
-API_B -down-> DS_B : gRPC/HTTP
-API_C -down-> DS_C : gRPC/HTTP
-
-' P2P Sync connections between Data Services
-DS_A <-right-> DS_B : P2P Sync\n(gRPC/HTTP)
-DS_B <-right-> DS_C : P2P Sync\n(gRPC/HTTP)
-DS_A <.down.> DS_C : P2P Sync\n(gRPC/HTTP)
+' P2P Sync connections between Data Services (Pull-based)
+DS_A -right-> DS_B : "Pull Changes\n(every 30s)"
+DS_B -right-> DS_C : "Pull Changes\n(every 30s)"
+DS_A .down.> DS_C : "Pull Changes\n(every 30s)"
 
 note right of DataLayer
-  **Key Points:**
-  • Each Data Service directly accesses its local enx.db
-  • Data Services sync with each other via gRPC/HTTP (P2P)
+  **Key Architecture Points:**
+  • Each enx-api directly accesses its local enx.db (no gRPC layer)
+  • Data Services run as background sync daemons
+  • **Pull-based sync**: Each node periodically queries peers for changes
+  • No central server, fully P2P architecture
+  • API performance: Local SQLite access (microseconds)
+  • Sync happens in background (30-second intervals)
+end note
+
+note bottom of API_A
+  **API Responsibilities:**
+  • HTTP routing & business logic
+  • Direct SQLite CRUD operations
+  • Authentication & authorization
+  • No dependency on data-service for reads/writes
+end note
+
+note bottom of DS_A
+  **Data Service Responsibilities:**
+  • Monitor local database for changes (updated_at)
+  • Pull changes from peer nodes (HTTP/gRPC)
+  • Merge changes using timestamp-based conflict resolution
+  • Runs as background daemon (no API dependencies)
+end note
   • enx.db is embedded with Data Service (same process/host)
   • No central server required
 end note
@@ -1996,68 +2132,108 @@ for msg := range pubsub.Channel() {
 
 ### enx-data-service API
 
-#### Data API (gRPC) - Generic Interface
+**🚨 Architecture Change**: data-service NO LONGER provides CRUD APIs. It's a background sync daemon only.
 
+#### ~~Data API (gRPC) - Generic Interface~~ **REMOVED**
+
+**❌ Previous Design (Rejected)**:
 ```protobuf
+// This was removed - data-service no longer provides CRUD operations
 service GenericDataService {
-  // ==================== Structured CRUD APIs ====================
-  // Recommended for common operations (80% use cases)
-  // Type-safe, SQL injection protected
-  
-  // Find records with JSON filter
-  rpc Find(FindRequest) returns (FindResponse);
-  
-  // Insert new records
-  rpc Insert(InsertRequest) returns (InsertResponse);
-  
-  // Update existing records
-  rpc Update(UpdateRequest) returns (UpdateResponse);
-  
-  // Delete records
-  rpc Delete(DeleteRequest) returns (DeleteResponse);
-  
-  // ==================== Raw SQL APIs ====================
-  // For complex queries (20% use cases: JOINs, aggregations, etc.)
-  
-  // Execute SELECT query
-  rpc Query(QueryRequest) returns (QueryResponse);
-  
-  // Execute INSERT/UPDATE/DELETE
-  rpc Execute(ExecuteRequest) returns (ExecuteResponse);
-  
-  // ==================== Batch Operations ====================
-  
-  // Batch execute multiple operations
-  rpc BatchExecute(stream BatchRequest) returns (BatchResponse);
-  
-  // ==================== Health & Info ====================
-  
-  // Health check
-  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
-  
-  // Get table schema information
-  rpc GetTableSchema(GetTableSchemaRequest) returns (GetTableSchemaResponse);
+  rpc Find(...);    // ❌ Removed - enx-api uses GORM directly
+  rpc Insert(...);  // ❌ Removed - enx-api uses GORM directly
+  rpc Update(...);  // ❌ Removed - enx-api uses GORM directly
+  rpc Delete(...);  // ❌ Removed - enx-api uses GORM directly
 }
 ```
 
-#### Sync API (gRPC)
+**Why removed:**
+- Performance overhead: Every CRUD operation went through gRPC
+- Unnecessary complexity: Local database doesn't need RPC
+- Architecture decision: Sync should be separate from data access
 
-```protobuf
-service SyncService {
-  // Node management
-  rpc RegisterNode(RegisterNodeRequest) returns (Node);
-  rpc GetNodes(GetNodesRequest) returns (GetNodesResponse);
-  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+**✅ New Pattern**:
+```go
+// enx-api accesses database directly using GORM
+db, _ := gorm.Open(sqlite.Open("/var/lib/enx-api/enx.db"))
 
-  // Data sync
-  rpc GetChanges(GetChangesRequest) returns (stream Change);
-  rpc PushChanges(stream Change) returns (PushChangesResponse);
-  rpc GetSnapshot(GetSnapshotRequest) returns (stream SnapshotChunk);
+// Example: Mark word as learned
+db.Model(&UserDict{}).
+   Where("user_id = ? AND word_id = ?", userId, wordId).
+   Update("already_acquainted", 1)
 
-  // Conflict resolution
-  rpc ResolveConflict(ResolveConflictRequest) returns (ResolveConflictResponse);
+// data-service runs in background, periodically syncs changes
+// No interaction needed from enx-api for sync
+```
+
+#### Sync API (HTTP REST) - Pull-Based
+
+**✅ Current Design**: Simple HTTP REST API for pull-based synchronization
+
+```http
+# Sync endpoint (called by peers)
+GET /sync/changes?since=<unix_timestamp_ms>
+
+Response:
+{
+  "changes": [
+    {
+      "table": "words",
+      "operation": "upsert",
+      "record": {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "english": "algorithm",
+        "updated_at": 1704326400000
+      }
+    },
+    {
+      "table": "user_dicts", 
+      "operation": "upsert",
+      "record": {
+        "user_id": "user-123",
+        "word_id": "550e8400-e29b-41d4-a716-446655440000",
+        "query_count": 5,
+        "updated_at": 1704326400000
+      }
+    }
+  ],
+  "last_update": 1704326400000
+}
+
+# Health check
+GET /health
+
+# Sync status (for debugging)
+GET /sync/status
+```
+
+**Pull-Based Sync Flow**:
+```
+data-service runs background goroutine:
+
+func syncLoop() {
+    for {
+        time.Sleep(30 * time.Second)  // Poll every 30 seconds
+        
+        for _, peer := range config.Peers {
+            lastSync := getLastSyncTime(peer)
+            
+            // Pull changes from peer
+            resp := http.Get(peer + "/sync/changes?since=" + lastSync)
+            
+            // Apply changes to local database
+            for _, change := range resp.Changes {
+                upsertRecord(change.Table, change.Record)
+            }
+            
+            // Update sync timestamp
+            setLastSyncTime(peer, resp.LastUpdate)
+        }
+    }
 }
 ```
+
+**No Push API**: Each node pulls from others, no need for push coordination
 
 #### Admin API (REST)
 
@@ -2076,52 +2252,73 @@ GET  /sync/conflicts
 
 ## Data Flow Examples
 
-**Note**: The following examples show how the ENX application (enx-api) uses the generic data service. 
-The data service itself is completely generic and can work with any SQLite database - ENX just happens 
-to be the first application using it. The same service could be used by a blog platform, task manager, 
-or any other application that needs P2P SQLite synchronization.
+**🚨 Architecture Note**: The following examples reflect the NEW architecture where enx-api accesses 
+the database directly, and data-service only handles background synchronization.
 
-### Example 1: User Marks a Word (ENX Application Using Generic Service)
+### Example 1: User Marks a Word (Direct Database Access)
 
 ```
-┌─────────┐         ┌─────────┐         ┌──────────────────────┐
-│ Browser │         │ enx-api │         │ generic-data-service │
-└────┬────┘         └────┬────┘         └─────────┬────────────┘
-     │                   │                         │
-     │ POST /mark        │                         │
-     ├──────────────────>│                         │
-     │                   │ Update(gRPC)            │
-     │                   │ Table: "user_dicts"     │
-     │                   │ Filter: {"user_id":123} │
-     │                   ├────────────────────────>│
-     │                   │                         │
-     │                   │                         │ Execute UPDATE
-     │                   │                         │ Track Change
-     │                   │                         │
-     │                   │ Response                │
-     │                   │<────────────────────────┤
-     │ 200 OK            │                         │
-     │<──────────────────┤                         │
-     │                   │                         │
+┌─────────┐         ┌─────────┐         ┌────────────┐
+│ Browser │         │ enx-api │         │ SQLite DB  │
+└────┬────┘         └────┬────┘         └─────┬──────┘
+     │                   │                     │
+     │ POST /mark        │                     │
+     ├──────────────────>│                     │
+     │                   │ UPDATE user_dicts   │
+     │                   │ (via GORM)          │
+     │                   ├────────────────────>│
+     │                   │                     │
+     │                   │ UPDATE updated_at   │
+     │                   │ (for sync tracking) │
+     │                   ├────────────────────>│
+     │                   │                     │
+     │                   │ Success             │
+     │                   │<────────────────────┤
+     │ 200 OK            │                     │
+     │<──────────────────┤                     │
+     │                   │                     │
+
+Background (data-service, independent process):
+     ┌──────────────┐                    ┌──────────────┐
+     │ data-service │                    │ peer node    │
+     └──────┬───────┘                    └──────┬───────┘
+            │                                   │
+            │ [30 seconds later]                │
+            │                                   │
+            │ GET /sync/changes?since=...       │
+            ├──────────────────────────────────>│
+            │                                   │
+            │ Return changes (including mark)   │
+            │<──────────────────────────────────┤
+            │                                   │
+            │ Apply to local DB                 │
+            │                                   │
 ```
 
-### Example 2: Automatic P2P Sync
+**Key Points**:
+- ✅ enx-api uses GORM directly (no gRPC overhead)
+- ✅ data-service syncs in background (no latency impact)
+- ✅ 30-second sync delay is acceptable for this use case
+
+### Example 2: Automatic P2P Sync (Pull-Based)
 
 ```
 ┌────────────────┐         ┌────────────────┐         ┌────────────────┐
 │ data-service A │         │ data-service B │         │ data-service C │
+│  (Desktop)     │         │   (MacBook)    │         │    (Ubuntu)    │
 └───────┬────────┘         └───────┬────────┘         └───────┬────────┘
         │                          │                          │
-        │ [5 min timer]            │                          │
+        │ [Every 30 seconds]       │                          │
         │                          │                          │
-        │ GetChanges(since=10:00)  │                          │
+        │ GET /sync/changes?       │                          │
+        │     since=1704326370000  │                          │
         ├─────────────────────────>│                          │
         │                          │                          │
-        │ Stream changes           │                          │
+        │ {"changes": [...]}       │                          │
         │<─────────────────────────┤                          │
-        │ Apply changes            │                          │
         │                          │                          │
-        │ PushChanges              │                          │
+        │ Apply to local DB        │                          │
+        │                          │                          │
         ├─────────────────────────>│                          │
         │                          │ Apply changes            │
         │                          │                          │

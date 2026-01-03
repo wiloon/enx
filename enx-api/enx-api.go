@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"enx-api/dataservice"
 	"enx-api/enx"
 	"enx-api/handlers"
 	"enx-api/middleware"
@@ -38,17 +37,6 @@ func main() {
 	logger.Warnf("warnf log test %s", "test")
 	logger.Sync()
 	sqlitex.Init()
-
-	// Initialize data-service gRPC client
-	dataServiceAddr := viper.GetString("data-service.address")
-	if dataServiceAddr == "" {
-		dataServiceAddr = "localhost:50051" // Default
-	}
-	logger.Infof("Connecting to data-service at %s", dataServiceAddr)
-	if err := dataservice.InitGlobalClient(dataServiceAddr); err != nil {
-		logger.Errorf("Failed to connect to data-service: %v", err)
-		logger.Error("Continuing without data-service connection...")
-	}
 
 	// ReleaseMode
 	gin.SetMode(gin.DebugMode)

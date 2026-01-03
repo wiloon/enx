@@ -47,6 +47,30 @@ func NewWordRepository(dbPath string) (*WordRepository, error) {
 		return nil, fmt.Errorf("failed to create sync_state table: %w", err)
 	}
 
+	// Create user_dicts table
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS user_dicts (
+			user_id TEXT NOT NULL,
+			word_id TEXT NOT NULL,
+			query_count INTEGER DEFAULT 0,
+			already_acquainted INTEGER DEFAULT 0,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			PRIMARY KEY (user_id, word_id)
+		)
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create user_dicts table: %w", err)
+	}
+
+	// Create indexes for user_dicts
+	_, err = db.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_user_dicts_updated_at ON user_dicts(updated_at)
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create index on user_dicts: %w", err)
+	}
+
 	return &WordRepository{db: db}, nil
 }
 
@@ -261,4 +285,58 @@ func (r *WordRepository) FindModifiedSince(timestamp int64) ([]*model.Word, erro
 	}
 
 	return words, nil
+}
+
+// FindUserDictsModifiedSince retrieves all user_dicts records modified after a given timestamp
+func (r *WordRepository) FindUserDictsModifiedSince(timestamp int64) ([]*model.UserDict, error) {
+	rows, err := r.db.Query(`
+		SELECT user_id, word_id, query_count, already_acquainted, created_at, updated_at
+		FROM user_dicts WHERE updated_at > ?
+		ORDER BY updated_at DESC
+	`, timestamp)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var userDicts []*model.UserDict
+	for rows.Next() {
+		userDict := &model.UserDict{}
+		err := rows.Scan(&userDict.UserId, &userDict.WordId, &userDict.QueryCount, &userDict.AlreadyAcquainted, &userDict.CreatedAt, &userDict.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		userDicts = append(userDicts, userDict)
+	}
+
+	return userDicts, nil
+}
+
+// UpsertUserDict inserts or updates a user_dict record
+func (r *WordRepository) UpsertUserDict(userDict *model.UserDict) error {
+	_, err := r.db.Exec(`
+		INSERT INTO user_dicts (user_id, word_id, query_count, already_acquainted, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_id, word_id) DO UPDATE SET
+			query_count = excluded.query_count,
+			already_acquainted = excluded.already_acquainted,
+			updated_at = excluded.updated_at
+	`, userDict.UserId, userDict.WordId, userDict.QueryCount, userDict.AlreadyAcquainted, userDict.CreatedAt, userDict.UpdatedAt)
+
+	return err
+}
+
+// FindUserDict finds a specific user_dict record
+func (r *WordRepository) FindUserDict(userId, wordId string) (*model.UserDict, error) {
+	userDict := &model.UserDict{}
+	err := r.db.QueryRow(`
+		SELECT user_id, word_id, query_count, already_acquainted, created_at, updated_at
+		FROM user_dicts WHERE user_id = ? AND word_id = ?
+	`, userId, wordId).Scan(&userDict.UserId, &userDict.WordId, &userDict.QueryCount, &userDict.AlreadyAcquainted, &userDict.CreatedAt, &userDict.UpdatedAt)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return userDict, nil
 }

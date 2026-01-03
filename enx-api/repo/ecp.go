@@ -1,31 +1,40 @@
 package repo
 
 import (
-	"context"
-	"enx-api/dataservice"
-	pb "enx-api/proto"
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
 	"time"
 )
 
 type Word struct {
-	Id             string // UUID
-	English        string
-	LoadCount      int
-	Chinese        string
-	Pronunciation  string
-	CreateDatetime time.Time
-	UpdateDatetime time.Time
+	Id             string    `gorm:"column:id;primaryKey"` // UUID
+	English        string    `gorm:"column:english"`
+	LoadCount      int       `gorm:"column:load_count;default:0"`
+	Chinese        string    `gorm:"column:chinese"`
+	Pronunciation  string    `gorm:"column:pronunciation"`
+	CreatedAt      int64     `gorm:"column:created_at"` // Unix milliseconds
+	UpdatedAt      int64     `gorm:"column:updated_at"` // Unix milliseconds
+	DeletedAt      *int64    `gorm:"column:deleted_at"` // NULL or Unix milliseconds
+	CreateDatetime time.Time `gorm:"-"`                 // For compatibility
+	UpdateDatetime time.Time `gorm:"-"`                 // For compatibility
+}
+
+func (Word) TableName() string {
+	return "words"
 }
 
 type UserDict struct {
-	WordId     int
-	QueryCount int
-	// default user id is 1
-	UserId            int `json:"user_id" gorm:"default:1"`
-	AlreadyAcquainted int
-	UpdateTime        time.Time
+	UserId            string    `gorm:"column:user_id;primaryKey"`
+	WordId            string    `gorm:"column:word_id;primaryKey"`
+	QueryCount        int       `gorm:"column:query_count;default:0"`
+	AlreadyAcquainted int       `gorm:"column:already_acquainted;default:0"`
+	CreatedAt         int64     `gorm:"column:created_at"`
+	UpdatedAt         int64     `gorm:"column:updated_at"`
+	UpdateTime        time.Time `gorm:"-"` // For compatibility
+}
+
+func (UserDict) TableName() string {
+	return "user_dicts"
 }
 
 type YoudaoQueryHistory struct {
@@ -36,82 +45,93 @@ type YoudaoQueryHistory struct {
 
 // GetWordByEnglish get word id by english
 func GetWordByEnglish(english string) *Word {
-	client := dataservice.GetGlobalClient()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	pbWord, err := client.GetWordByEnglish(ctx, english)
+	word := &Word{}
+	err := sqlitex.DB.Where("LOWER(english) = LOWER(?) AND deleted_at IS NULL", english).First(word).Error
 	if err != nil {
 		logger.Debugf("word not found: %s, error: %v", english, err)
 		return &Word{} // Return empty word for compatibility
 	}
 
-	word := pbWordToRepoWord(pbWord)
-	logger.Debugf("find word via gRPC, id: %s, english: %s", pbWord.Id, pbWord.English)
+	// Convert timestamps for compatibility
+	if word.CreatedAt > 0 {
+		word.CreateDatetime = time.UnixMilli(word.CreatedAt)
+	}
+	if word.UpdatedAt > 0 {
+		word.UpdateDatetime = time.UnixMilli(word.UpdatedAt)
+	}
+
+	logger.Debugf("find word via GORM, id: %s, english: %s", word.Id, word.English)
 	return word
 }
 
 func GetWordByEnglishCaseSensitive(english string) *Word {
-	// gRPC GetWordByEnglish already does case-insensitive matching
-	// For case-sensitive, we'll use the same method for now
-	// TODO: Add case-sensitive RPC if needed
-	return GetWordByEnglish(english)
+	word := &Word{}
+	err := sqlitex.DB.Where("english = ? AND deleted_at IS NULL", english).First(word).Error
+	if err != nil {
+		logger.Debugf("word not found (case sensitive): %s, error: %v", english, err)
+		return &Word{}
+	}
+
+	// Convert timestamps for compatibility
+	if word.CreatedAt > 0 {
+		word.CreateDatetime = time.UnixMilli(word.CreatedAt)
+	}
+	if word.UpdatedAt > 0 {
+		word.UpdateDatetime = time.UnixMilli(word.UpdatedAt)
+	}
+
+	return word
 }
 
-// GetUserWordQueryCount get user word query count via gRPC
+// GetUserWordQueryCount get user word query count via GORM
 func GetUserWordQueryCount(wordId, userId string) (int, int) {
-	client := dataservice.GetGlobalClient()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	resp, err := client.GetUserDict(ctx, &pb.GetUserDictRequest{
-		UserId: userId,
-		WordId: wordId,
-	})
+	userDict := &UserDict{}
+	err := sqlitex.DB.Where("user_id = ? AND word_id = ?", userId, wordId).First(userDict).Error
 	if err != nil {
 		logger.Debugf("user dict not found: user_id=%s, word_id=%s, error: %v", userId, wordId, err)
 		return 0, 0
 	}
 
-	return int(resp.UserDict.QueryCount), int(resp.UserDict.AlreadyAcquainted)
+	return userDict.QueryCount, userDict.AlreadyAcquainted
 }
 
-// UpsertUserDict creates or updates user dictionary entry via gRPC
+// UpsertUserDict creates or updates user dictionary entry via GORM
 func UpsertUserDict(userId, wordId string, queryCount, alreadyAcquainted int) error {
-	client := dataservice.GetGlobalClient()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	_, err := client.UpsertUserDict(ctx, &pb.UpsertUserDictRequest{
-		UserDict: &pb.UserDict{
-			UserId:            userId,
-			WordId:            wordId,
-			QueryCount:        int32(queryCount),
-			AlreadyAcquainted: int32(alreadyAcquainted),
-		},
-	})
-	if err != nil {
-		logger.Errorf("failed to upsert user dict: %v", err)
-		return err
+	now := time.Now().UnixMilli()
+	userDict := &UserDict{
+		UserId:            userId,
+		WordId:            wordId,
+		QueryCount:        queryCount,
+		AlreadyAcquainted: alreadyAcquainted,
+		UpdatedAt:         now,
 	}
 
-	return nil
+	// Check if record exists
+	var existing UserDict
+	err := sqlitex.DB.Where("user_id = ? AND word_id = ?", userId, wordId).First(&existing).Error
+	if err != nil {
+		// Record doesn't exist, create it
+		userDict.CreatedAt = now
+		return sqlitex.DB.Create(userDict).Error
+	}
+
+	// Record exists, update it
+	return sqlitex.DB.Model(&UserDict{}).Where("user_id = ? AND word_id = ?", userId, wordId).Updates(map[string]interface{}{
+		"query_count":        queryCount,
+		"already_acquainted": alreadyAcquainted,
+		"updated_at":         now,
+	}).Error
 }
 
 func Translate(key string, userId int) Word {
-	client := dataservice.GetGlobalClient()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	pbWord, err := client.GetWordByEnglish(ctx, key)
-	if err != nil {
-		logger.Debugf("word not found via gRPC: %s, error: %v", key, err)
-		return Word{} // Return empty word
+	word := GetWordByEnglish(key)
+	if word.Id != "" {
+		logger.Debugf("find word via GORM, id: %s, english: %s, user_id: %d", word.Id, key, userId)
+		return *word
 	}
 
-	word := pbWordToRepoWord(pbWord)
-	logger.Debugf("find in data-service via gRPC, id: %s, english: %s, user_id: %d", pbWord.Id, key, userId)
-	return *word
+	logger.Debugf("word not found via GORM: %s, user_id: %d", key, userId)
+	return Word{} // Return empty word
 }
 
 // IsYouDaoRecordExist check if youdao dict response exist in db
@@ -141,48 +161,14 @@ func SaveYouDaoDictResponse(word, response string, exist int) {
 }
 
 func CountByEnglish(english string) int {
-	client := dataservice.GetGlobalClient()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// Use GetWordByEnglish to check if word exists
-	_, err := client.GetWordByEnglish(ctx, english)
-	if err != nil {
-		logger.Debugf("count by english via gRPC, word: %s, count: 0", english)
-		return 0
-	}
-
-	logger.Debugf("count by english via gRPC, word: %s, count: 1", english)
-	return 1
+	var count int64
+	sqlitex.DB.Model(&Word{}).Where("LOWER(english) = LOWER(?) AND deleted_at IS NULL", english).Count(&count)
+	logger.Debugf("count by english via GORM, word: %s, count: %d", english, count)
+	return int(count)
 }
 
 func DeleteDuplicateWord(english string, excludeId string) {
 	// This function is no longer needed with UUID-based P2P system
 	// Duplicates are prevented by unique constraint on english field
 	logger.Debugf("DeleteDuplicateWord called but skipped (P2P system prevents duplicates), english: %s, excluding id: %s", english, excludeId)
-}
-
-// pbWordToRepoWord converts protobuf Word to repo Word
-func pbWordToRepoWord(pbWord *pb.Word) *Word {
-	if pbWord == nil {
-		return &Word{}
-	}
-
-	word := &Word{
-		Id:            pbWord.Id, // UUID string
-		English:       pbWord.English,
-		Chinese:       pbWord.Chinese,
-		Pronunciation: pbWord.Pronunciation,
-		LoadCount:     int(pbWord.LoadCount),
-	}
-
-	// Convert Unix milliseconds to time.Time
-	if pbWord.CreatedAt > 0 {
-		word.CreateDatetime = time.Unix(pbWord.CreatedAt/1000, (pbWord.CreatedAt%1000)*int64(time.Millisecond))
-	}
-	if pbWord.UpdatedAt > 0 {
-		word.UpdateDatetime = time.Unix(pbWord.UpdatedAt/1000, (pbWord.UpdatedAt%1000)*int64(time.Millisecond))
-	}
-
-	return word
 }

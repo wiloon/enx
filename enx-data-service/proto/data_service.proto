@@ -18,6 +18,7 @@ service DataService {
   
   // Sync operations
   rpc SyncWords(SyncWordsRequest) returns (stream SyncWordsResponse);
+  rpc SyncUserDicts(SyncUserDictsRequest) returns (stream SyncUserDictsResponse);
 }
 
 // Word message aligned with migrated database schema
@@ -83,6 +84,14 @@ message SyncWordsRequest {
 message SyncWordsResponse {
   Word word = 1;
 }
+message SyncUserDictsRequest {
+  int64 since_timestamp = 1;  // Unix timestamp in milliseconds
+}
+
+message SyncUserDictsResponse {
+  UserDict user_dict = 1;
+}
+
 
 // UserDict message for user-specific word data
 message UserDict {
