@@ -5,21 +5,23 @@ import (
 	"enx-api/utils/password"
 	"enx-api/utils/sqlitex"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type User struct {
-	Id            int64     `json:"id"`
-	Name          string    `json:"name"`
-	Email         string    `json:"email"`
-	Password      string    `json:"-"`
-	CreateTime    time.Time `json:"create_time"`
-	UpdateTime    time.Time `json:"update_time"`
-	LastLoginTime time.Time `json:"last_login_time"`
+	Id            string    `json:"id" gorm:"column:id;primaryKey"`
+	Name          string    `json:"name" gorm:"column:name"`
+	Email         string    `json:"email" gorm:"column:email"`
+	Password      string    `json:"-" gorm:"column:password"`
+	CreateTime    time.Time `json:"create_time" gorm:"column:created_at"`
+	UpdateTime    time.Time `json:"update_time" gorm:"column:updated_at"`
+	LastLoginTime time.Time `json:"last_login_time" gorm:"column:last_login_time"`
 }
 
 func (u *User) Login() bool {
 	tmpUser := GeUserByName(u.Name)
-	if tmpUser.Id == 0 {
+	if tmpUser.Id == "" {
 		logger.Errorf("user login, user not exist: %s", u.Name)
 		return false
 	}
@@ -50,6 +52,9 @@ func GeUserByName(name string) *User {
 
 // Create creates a new user
 func (u *User) Create() error {
+	if u.Id == "" {
+		u.Id = uuid.New().String()
+	}
 	u.CreateTime = time.Now()
 	u.UpdateTime = time.Now()
 	return sqlitex.DB.Create(u).Error

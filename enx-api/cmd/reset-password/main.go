@@ -1,15 +1,18 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
+
+	"enx-api/utils/password"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
 type User struct {
-	ID       int    `gorm:"column:id;primaryKey"`
+	ID       string `gorm:"column:id;primaryKey"`
 	Name     string `gorm:"column:name"`
 	Password string `gorm:"column:password"`
 }
@@ -19,6 +22,16 @@ func (User) TableName() string {
 }
 
 func main() {
+	// Command line flags
+	var username, newPassword string
+	flag.StringVar(&username, "username", "", "Username to reset password for")
+	flag.StringVar(&newPassword, "password", "", "New password")
+	flag.Parse()
+
+	if username == "" || newPassword == "" {
+		log.Fatal("Usage: reset-password -username=<username> -password=<password>")
+	}
+
 	// Database path
 	dbPath := "/var/lib/enx-api/enx.db"
 
@@ -28,9 +41,11 @@ func main() {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 
-	// New password hash (already generated using Argon2id)
-	newPasswordHash := "$argon2id$v=19$m=65536,t=3,p=2$/zKJEMaCyzu7tTgbec3L2g$RIORjmDO9ZLl+qsTpOxx5KbRnwo+7uRJbTxnDt6Z5Hg"
-	username := "wiloon"
+	// Generate new password hash
+	newPasswordHash, err := password.HashPassword(newPassword)
+	if err != nil {
+		log.Fatalf("Failed to hash password: %v", err)
+	}
 
 	// First, check if user exists
 	var user User
@@ -39,7 +54,7 @@ func main() {
 		log.Fatalf("User not found: %v", result.Error)
 	}
 
-	fmt.Printf("Found user: %s (ID: %d)\n", user.Name, user.ID)
+	fmt.Printf("Found user: %s (ID: %s)\n", user.Name, user.ID)
 	fmt.Printf("Current password hash: %s\n", user.Password)
 
 	// Update password

@@ -99,11 +99,9 @@ func (word *Word) SetEnglishField(english string) {
 	}
 	logger.Infof("set english, raw: %s, english: %s, key: %s", word.Raw, word.English, word.Key)
 }
-func (word *Word) FindQueryCount(userId int) int {
-	// Convert int userId to string format for UUID-based user_dicts
-	userIdStr := fmt.Sprintf("user-%d", userId)
-	qc, acquainted := repo.GetUserWordQueryCount(word.Id, userIdStr)
-	logger.Debugf("find query count, word id: %s, word: %s, user_id: %d, query count: %d",
+func (word *Word) FindQueryCount(userId string) int {
+	qc, acquainted := repo.GetUserWordQueryCount(word.Id, userId)
+	logger.Debugf("find query count, word id: %s, word: %s, user_id: %s, query count: %d",
 		word.Id, word.English, userId, qc)
 	word.LoadCount = qc
 	word.AlreadyAcquainted = acquainted
@@ -116,18 +114,18 @@ func (word *Word) FindLoadCountById() int {
 	return word.LoadCount
 }
 
-func (word *Word) Translate(userId int64) *Word {
+func (word *Word) Translate(userId string) *Word {
 	// tmp function, remove duplicate word
 	word.RemoveDuplicateWord()
 	// search word in db by English, e.g. French
 	// do not search db with lower case, since youdao api is case sensitive
 
-	if userId == 0 {
+	if userId == "" {
 		logger.Errorf("no valid user id provided")
 		return word
 	}
 
-	sWord := repo.Translate(word.English, int(userId))
+	sWord := repo.Translate(word.English, userId)
 	word.Id = sWord.Id
 	word.Chinese = sWord.Chinese
 	word.Pronunciation = sWord.Pronunciation

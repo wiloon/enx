@@ -18,7 +18,7 @@ func Translate(c *gin.Context) {
 
 	raw := c.Query("word")
 	userId := middleware.GetUserIDFromContext(c)
-	if userId == 0 {
+	if userId == "" {
 		logger.Errorf("no valid user id found in session")
 		c.JSON(401, gin.H{
 			"success": false,
@@ -27,7 +27,7 @@ func Translate(c *gin.Context) {
 		return
 	}
 
-	logger.Debugf("translate word: %s, user_id: %d", raw, userId)
+	logger.Debugf("translate word: %s, user_id: %s", raw, userId)
 
 	// do not save sentence into DB
 	if strings.Contains(raw, " ") {
@@ -57,7 +57,7 @@ func Translate(c *gin.Context) {
 		word.Save()
 
 		userDict := enx.UserDict{}
-		userDict.UserId = int(userId)
+		userDict.UserId = userId
 		userDict.WordId = word.Id
 		userDict.AlreadyAcquainted = word.AlreadyAcquainted
 		userDict.QueryCount = 1
@@ -65,7 +65,7 @@ func Translate(c *gin.Context) {
 	} else {
 		logger.Infof("word exist in local dict: %v", raw)
 		userDict := enx.UserDict{}
-		userDict.UserId = int(userId)
+		userDict.UserId = userId
 		userDict.WordId = word.Id
 		if userDict.IsExist() {
 			userDict.QueryCount = userDict.QueryCount + 1
@@ -84,7 +84,7 @@ func Translate(c *gin.Context) {
 			userDict.Save()
 		}
 	}
-	word.FindQueryCount(int(userId))
+	word.FindQueryCount(userId)
 	logger.Debugf("translate result: %+v", word)
 	c.JSON(200, word)
 }
@@ -96,7 +96,7 @@ func TranslateByWord(c *gin.Context) {
 
 	raw := c.Param("word")
 	userId := middleware.GetUserIDFromContext(c)
-	if userId == 0 {
+	if userId == "" {
 		logger.Errorf("no valid user id found in session")
 		c.JSON(401, gin.H{
 			"success": false,
@@ -105,7 +105,7 @@ func TranslateByWord(c *gin.Context) {
 		return
 	}
 
-	logger.Debugf("translate word: %s, user_id: %d", raw, userId)
+	logger.Debugf("translate word: %s, user_id: %s", raw, userId)
 
 	// do not save sentence into DB
 	if strings.Contains(raw, " ") {
@@ -135,7 +135,7 @@ func TranslateByWord(c *gin.Context) {
 		word.Save()
 
 		userDict := enx.UserDict{}
-		userDict.UserId = int(userId)
+		userDict.UserId = userId
 		userDict.WordId = word.Id
 		userDict.AlreadyAcquainted = word.AlreadyAcquainted
 		userDict.QueryCount = 1
@@ -143,7 +143,7 @@ func TranslateByWord(c *gin.Context) {
 	} else {
 		logger.Infof("word exist in local dict: %v", raw)
 		userDict := enx.UserDict{}
-		userDict.UserId = int(userId)
+		userDict.UserId = userId
 		userDict.WordId = word.Id
 		if userDict.IsExist() {
 			userDict.QueryCount = userDict.QueryCount + 1
@@ -162,7 +162,7 @@ func TranslateByWord(c *gin.Context) {
 			userDict.Save()
 		}
 	}
-	word.FindQueryCount(int(userId))
+	word.FindQueryCount(userId)
 	logger.Debugf("translate result: %+v", word)
 	c.JSON(200, word)
 }

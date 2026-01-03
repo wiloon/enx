@@ -12,7 +12,7 @@ import (
 func ParagraphInit(c *gin.Context) {
 	paragraph := c.Query("paragraph")
 	userId := middleware.GetUserIDFromContext(c)
-	if userId == 0 {
+	if userId == "" {
 		logger.Errorf("no valid user id found in session")
 		c.JSON(401, gin.H{
 			"success": false,
@@ -21,8 +21,8 @@ func ParagraphInit(c *gin.Context) {
 		return
 	}
 
-	logger.Debugf("words count, paragraph: %s, user_id: %d", paragraph, userId)
-	out := enx.QueryCountInText(paragraph, int(userId))
+	logger.Debugf("words count, paragraph: %s, user_id: %s", paragraph, userId)
+	out := enx.QueryCountInText(paragraph, userId)
 	c.JSON(200, gin.H{
 		"data": out,
 	})

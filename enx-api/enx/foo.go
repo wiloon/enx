@@ -6,9 +6,9 @@ import (
 	"strings"
 )
 
-func QueryCountInText(paragraph string, userId int) map[string]Word {
+func QueryCountInText(paragraph string, userId string) map[string]Word {
 	words := paragraph
-	logger.Infof("query count, paragraph: %s, user_id: %d", words, userId)
+	logger.Infof("query count, paragraph: %s, user_id: %s", words, userId)
 
 	// replace multiple space with one space
 	spaceRegex := regexp.MustCompile(`\s+`)
