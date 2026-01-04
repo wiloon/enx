@@ -29,7 +29,7 @@ tasks:
       - echo "WARNING - Vite dev server may not work properly with Chrome extensions"
       - echo "If you see cannot connect to vite server or flashing popup, use task watch instead"
       - echo "Starting development server..."
-      - pnpm run dev
+      - fnm use && pnpm run dev
 
 
   watch:

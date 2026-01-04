@@ -77,7 +77,10 @@ tasks:
       - ./{{.APP_NAME}}
 
   dev:
-    desc: Run with hot reload (requires air to be installed)
+    desc: Run with hot reload (usage - task dev [MODE=fg|bg] - default is fg)
+    vars:
+      MODE: '{{.MODE | default "fg"}}'
+      LOG_FILE: 'logs/dev.log'
     cmds:
       - |
         GOPATH=$(go env GOPATH)
@@ -86,7 +89,30 @@ tasks:
           echo "air is not installed. Installing..."
           go install github.com/air-verse/air@latest
         fi
-        air
+        
+        MODE="{{.MODE}}"
+        if [ "$MODE" = "bg" ]; then
+          echo "🚀 Starting {{.APP_NAME}} in development mode (background)..."
+          mkdir -p logs
+          nohup air > {{.LOG_FILE}} 2>&1 &
+          echo $! > air.pid
+          sleep 2
+          if ps -p $(cat air.pid) > /dev/null 2>&1; then
+            echo "✅ Development server started (PID: $(cat air.pid))"
+            echo "   Logs: {{.LOG_FILE}}"
+            echo "   Stop with: task stop or pkill -f air"
+          else
+            echo "❌ Failed to start development server"
+            tail -20 {{.LOG_FILE}}
+            exit 1
+          fi
+        elif [ "$MODE" = "fg" ]; then
+          echo "🚀 Starting {{.APP_NAME}} in development mode (foreground)..."
+          air
+        else
+          echo "Error: Invalid MODE '${MODE}'. Use 'fg' or 'bg'"
+          exit 1
+        fi
 
   test:
     desc: Run unit tests only (fast, no database)
@@ -229,25 +255,50 @@ tasks:
         fi
 
   stop:
-    desc: Stop background API server
-    vars:
-      PID_FILE: '{{.APP_NAME}}.pid'
+    desc: Stop background API server (supports both air and binary modes)
     cmds:
       - |
-        if [ ! -f {{.PID_FILE}} ]; then
-          echo "PID file not found. Server may not be running in background."
-          exit 1
+        STOPPED=0
+        
+        # Try to stop air process first
+        if [ -f air.pid ]; then
+          PID=$(cat air.pid)
+          if kill -0 $PID 2>/dev/null; then
+            echo "🛑 Stopping air development server (PID: $PID)..."
+            kill $PID
+            rm -f air.pid
+            echo "✅ air stopped"
+            STOPPED=1
+          else
+            echo "⚠️  air process $PID not found. Cleaning up PID file..."
+            rm -f air.pid
+          fi
         fi
-        PID=$(cat {{.PID_FILE}})
-        if kill -0 $PID 2>/dev/null; then
-          echo "Stopping {{.APP_NAME}} (PID: $PID)..."
-          kill $PID
-          rm -f {{.PID_FILE}}
-          echo "{{.APP_NAME}} stopped"
-        else
-          echo "Process $PID not found. Cleaning up PID file..."
-          rm -f {{.PID_FILE}}
+        
+        # Try to stop binary process
+        if [ -f {{.APP_NAME}}.pid ]; then
+          PID=$(cat {{.APP_NAME}}.pid)
+          if kill -0 $PID 2>/dev/null; then
+            echo "🛑 Stopping {{.APP_NAME}} (PID: $PID)..."
+            kill $PID
+            rm -f {{.APP_NAME}}.pid
+            echo "✅ {{.APP_NAME}} stopped"
+            STOPPED=1
+          else
+            echo "⚠️  Process $PID not found. Cleaning up PID file..."
+            rm -f {{.APP_NAME}}.pid
+          fi
         fi
+        
+        # Also try to kill any remaining air or enx-api processes
+        pkill -f "air.*enx-api" && echo "✅ Killed remaining air processes" || true
+        pkill -f "enx-api/tmp/enx-api" && echo "✅ Killed remaining enx-api processes" || true
+        
+        if [ $STOPPED -eq 0 ]; then
+          echo "⚠️  No PID files found. Server may not be running in background."
+        fi
+
+  restart:
 
   status:
     desc: Check API server status
