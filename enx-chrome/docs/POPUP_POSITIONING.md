@@ -87,12 +87,6 @@ popup.popover = 'auto'
 - ✅ **主流浏览器支持**：Chrome、Firefox、Safari、Edge 均已支持
 - ✅ **生产就绪**：自 2023年5月起可在生产环境使用（Chrome 114+）
 
-**Chrome 版本历史**：
-```
-Chrome 110-113: 🧪 实验性支持（需启用 chrome://flags）
-Chrome 114+:   ✅ 正式支持（默认启用）
-```
-
 **为什么使用 Popover API**：
 - ✅ 替代传统的 `position: fixed` + 高 z-index 方案
 - ✅ 浏览器原生管理弹窗层级，避免 z-index 冲突
@@ -111,16 +105,6 @@ Chrome 114+:   ✅ 正式支持（默认启用）
 4. 📖 **不阻断阅读**：显示翻译时，用户应该能继续浏览页面
 5. ❌ **轻松关闭**：点击外部、按 ESC 键应该关闭弹窗
 6. 🔄 **频繁使用**：用户可能连续查询多个单词
-
-#### Popover API 的优势
-
-| 优势 | 在翻译场景中的价值 | 评分 |
-|------|-------------------|------|
-| **Top Layer 渲染** | ✅ 确保弹窗不被页面其他元素遮挡，避免 z-index 冲突 | ⭐⭐⭐⭐⭐ |
-| **事件系统** | ✅ `toggle` 事件便于管理弹窗生命周期，清理资源 | ⭐⭐⭐⭐⭐ |
-| **轻量级关闭** | ✅ `popover="auto"` 模式支持点击外部自动关闭 | ⭐⭐⭐⭐ |
-| **无障碍支持** | ✅ 自动添加 ARIA 属性，屏幕阅读器友好 | ⭐⭐⭐⭐⭐ |
-| **零依赖** | ✅ 浏览器原生 API，无需第三方库 | ⭐⭐⭐⭐⭐ |
 
 #### 潜在问题与解决方案
 
@@ -160,54 +144,23 @@ popup.showPopover()
 // ❌ 按 / 键 → 无法触发网站的快捷键（焦点在弹窗）
 ```
 
-**解决方案**：使用 `manual` 模式 + 手动事件处理
-
-```typescript
-// ✅ 使用 manual 模式，保持灵活性
-popup.popover = 'manual'
-popup.showPopover()
-
-// 手动处理关闭逻辑
-document.addEventListener('click', (e) => {
-  if (!popup.contains(e.target)) {
-    popup.hidePopover()
-  }
-})
-
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    popup.hidePopover()
-  }
-})
-```
-
-**`manual` 模式的优势**：
-
-| 操作类型 | 能否正常使用？ | 说明 |
-|---------|--------------|------|
-| 🖱️ **鼠标滚轮** | ✅ **可以** | 正常滚动页面 |
-| ⌨️ **键盘滚动** | ✅ **可以** | Space、PageDown、↑↓ 正常工作 |
-| 🔤 **快捷键** | ✅ **可以** | Ctrl+F、网站快捷键正常工作 |
-| 📝 **选择文本** | ✅ **可以** | 完全不受影响 |
-| ⌨️ **ESC 关闭** | ⚠️ **需手动实现** | 需要监听 keydown 事件 |
-| 🖱️ **点击外部关闭** | ⚠️ **需手动实现** | 需要监听 click 事件 |
-
 **权衡分析**：
 
 | 维度 | `auto` 模式 | `manual` 模式 | 推荐 |
 |------|-----------|--------------|------|
 | **鼠标滚动** | ✅ 可用 | ✅ 可用 | 平手 |
-| **键盘滚动** | ❌ 不可用 | ✅ 可用 | ⭐ manual |
-| **快捷键** | ❌ 可能失效 | ✅ 正常 | ⭐ manual |
-| **自动关闭** | ✅ 内置 | ⚠️ 需手动实现 | auto |
-| **代码量** | 简单 | 稍多（+10行） | auto |
-| **用户体验** | ⚠️ 键盘用户受阻 | ✅ 所有用户流畅 | ⭐ manual |
+| **键盘滚动** | ❌ 不可用 | ✅ 可用 | manual |
+| **快捷键** | ❌ 可能失效 | ✅ 正常 | manual |
+| **自动关闭** | ✅ 内置 | ⚠️ 需手动实现 | ⭐ auto |
+| **代码量** | 简单 | 稍多（+10行） | ⭐ auto |
+| **用户体验** | ✅ 大多数用户流畅 | ✅ 所有用户流畅 | auto |
 
-**结论**：对于单词翻译场景，推荐使用 `manual` 模式
-- ✅ **优势**：不干扰键盘滚动、快捷键、文本选择
-- ✅ **优势**：用户可以自然地继续阅读和浏览
-- ✅ **优势**：弹窗只是"辅助工具"，不会"霸占"页面控制权
-- ⚠️ **代价**：需要手动实现关闭逻辑（约 10-15 行代码）
+**结论**：对于单词翻译场景，推荐使用 `auto` 模式
+- ✅ **优势**：自动关闭，无需手动实现事件监听
+- ✅ **优势**：鼠标滚轮正常工作，满足大多数用户需求
+- ✅ **优势**：代码简洁，维护成本低
+- ✅ **优势**：点击外部、按 ESC 自动关闭，用户体验好
+- ⚠️ **注意**：键盘用户（Space/PageDown）滚动受限，但这是少数使用场景
 
 ##### 2. 频繁创建/销毁性能
 
@@ -226,7 +179,7 @@ function showWordPopup(word: string) {
   }
   
   const popup = document.createElement('div')
-  popup.popover = 'manual'
+  popup.popover = 'auto'  // 自动关闭模式
   // ...配置弹窗
   currentPopup = popup
 }
@@ -240,7 +193,7 @@ function showWordPopup(word: string) {
 
 ```typescript
 // ✅ 完美组合
-popup.popover = 'manual'  // Popover 管理层级和生命周期
+popup.popover = 'auto'  // Popover 管理层级、生命周期和自动关闭
 popup.style.setProperty('position-anchor', '--word')  // CSS Anchor 管理定位
 popup.style.positionArea = 'top'
 ```
@@ -254,8 +207,7 @@ popup.style.positionArea = 'top'
 
 | 方案 | 适合单词翻译场景？ | 原因 |
 |------|------------------|------|
-| **Popover API (manual)** | ✅ **非常适合** | 层级管理自动化，配合 CSS Anchor 完美定位 |
-| **Popover API (auto)** | ⚠️ **部分适合** | 焦点管理过于侵入，可能影响阅读体验 |
+| **Popover API (auto)** | ✅ **非常适合** | 层级管理自动化，自动关闭，鼠标滚轮可用 |
 | **Dialog 元素** | ❌ **不适合** | 模态对话框会阻断页面交互，过于重量级 |
 | **Tooltip 库** | ⚠️ **部分适合** | 通常用于悬停触发，不太适合点击 + 复杂交互 |
 | **自定义 div + z-index** | ⚠️ **传统方案** | 需要手动管理层级，容易出现 z-index 冲突 |
@@ -263,12 +215,12 @@ popup.style.positionArea = 'top'
 
 #### 最佳实践建议
 
-**推荐方案**：`popover="manual"` + CSS Anchor Positioning
+**推荐方案**：`popover="auto"` + CSS Anchor Positioning
 
 ```typescript
 // ✅ 最佳实践
 const popup = document.createElement('div')
-popup.popover = 'manual'  // 手动控制，避免焦点问题
+popup.popover = 'auto'  // 自动关闭，无需手动处理
 
 // 配置定位
 anchor.style.setProperty('anchor-name', '--word-anchor')
@@ -281,7 +233,7 @@ popup.style.cssText = `
 // 显示弹窗
 popup.showPopover()
 
-// 手动事件处理
+// 监听 toggle 事件清理资源
 popup.addEventListener('toggle', (e) => {
   if (e.newState === 'closed') {
     anchor.style.removeProperty('anchor-name')
@@ -291,23 +243,23 @@ popup.addEventListener('toggle', (e) => {
 ```
 
 **关键要点**：
-1. ✅ **使用 manual 模式** - 避免自动焦点管理干扰用户
+1. ✅ **使用 auto 模式** - 自动处理点击外部和 ESC 关闭，代码简洁
 2. ✅ **配合 CSS Anchor** - 自动定位，无需手动计算坐标
 3. ✅ **监听 toggle 事件** - 及时清理资源（移除锚点、删除元素）
-4. ✅ **手动实现关闭逻辑** - 点击外部、ESC 键关闭
+4. ✅ **鼠标滚轮可用** - auto 模式不影响鼠标滚轮滚动页面
 5. ✅ **考虑性能** - 频繁查询时复用弹窗元素
 
 #### 结论
 
-**Popover API 非常适合单词翻译场景**，尤其是使用 `manual` 模式时：
+**Popover API 非常适合单词翻译场景**，使用 `auto` 模式可获得最佳体验：
 
 | 评估维度 | 评分 | 说明 |
 |---------|------|------|
 | **技术匹配度** | ⭐⭐⭐⭐⭐ | Top layer 和事件系统完美匹配需求 |
-| **用户体验** | ⭐⭐⭐⭐⭐ | manual 模式不干扰阅读，体验自然 |
-| **开发成本** | ⭐⭐⭐⭐ | 比传统方案简单，需要一些手动事件处理 |
+| **用户体验** | ⭐⭐⭐⭐⭐ | auto 模式自动关闭，鼠标滚轮可用，体验流畅 |
+| **开发成本** | ⭐⭐⭐⭐⭐ | 比传统方案简单，无需手动事件处理 |
 | **性能表现** | ⭐⭐⭐⭐⭐ | 浏览器原生 API，性能最优 |
-| **可维护性** | ⭐⭐⭐⭐⭐ | 声明式 + 标准 API，长期可维护 |
+| **可维护性** | ⭐⭐⭐⭐⭐ | 声明式 + 标准 API，代码最简洁 |
 | **兼容性** | ⭐⭐⭐⭐ | Chrome 114+，现代浏览器支持良好 |
 
 **总体评分：⭐⭐⭐⭐⭐（强烈推荐）**
@@ -408,7 +360,7 @@ popup.addEventListener('toggle', (e) => {
 
 ```typescript
 // Popover API 提供弹窗管理
-popup.popover = 'manual'
+popup.popover = 'auto'  // 自动关闭模式
 popup.showPopover()  // 自动显示在 top layer
 
 // CSS Anchor Positioning 提供定位能力
@@ -591,7 +543,7 @@ async function showPopup(word: string, event: MouseEvent) {
   anchor.style.anchorName = '--word-anchor'
   
   const popup = document.createElement('div')
-  popup.popover = 'manual'
+  popup.popover = 'auto'  // 自动关闭模式
   popup.style.cssText = `
     position-anchor: --word-anchor;
     position-area: top;
@@ -602,7 +554,7 @@ async function showPopup(word: string, event: MouseEvent) {
   
   document.body.appendChild(popup)
   popup.showPopover()
-  // 浏览器自动处理滚动跟随和边界检测
+  // 浏览器自动处理滚动跟随、边界检测和点击外部关闭
 }
 ```
 
@@ -749,14 +701,15 @@ const lineHeight = 24         // 默认行高后备值（实际使用时应动�
 提供原生弹窗管理能力：
 
 ```typescript
-popup.popover = 'manual'  // 手动控制显示/隐藏
-popup.showPopover()       // 显示弹窗
-popup.hidePopover()       // 隐藏弹窗
+popup.popover = 'auto'   // 自动关闭模式
+popup.showPopover()      // 显示弹窗
+popup.hidePopover()      // 隐藏弹窗（通常自动触发）
 ```
 
 **核心优势**：
 - ✅ **自动层级管理**：弹窗显示在 top layer，无需手动设置 z-index
-- ✅ **焦点管理**：自动处理键盘导航和焦点捕获
+- ✅ **自动关闭**：点击外部或按 ESC 键自动关闭
+- ✅ **鼠标滚轮可用**：不影响页面滚动
 - ✅ **事件支持**：提供 `toggle` 事件监听显示/隐藏状态变化
 - ✅ **无障碍支持**：内置 ARIA 属性，改善屏幕阅读器体验
 
@@ -933,7 +886,7 @@ async function showWordPopup(word: string, event: MouseEvent) {
   
   // 2. 创建 Popover 弹窗
   const popup = document.createElement('div')
-  popup.popover = 'manual'  // 手动控制
+  popup.popover = 'auto'  // 自动关闭模式
   popup.className = 'enx-word-popup'
   popup.id = `popup-${anchorId}`
   
@@ -1052,6 +1005,7 @@ async function showWordPopup(word: string, event: MouseEvent) {
 - ✅ **自动响应**：内容变化时，浏览器自动重新计算位置
 - ✅ **性能优异**：浏览器原生优化，GPU 加速
 - ✅ **易于维护**：逻辑清晰，调试简单
+- ✅ **自动关闭**：auto 模式提供轻触消失功能，用户体验好
 
 ## 定位策略详解
 
@@ -1156,13 +1110,13 @@ newY = Math.max(
 #### 1. Popover API 优势
 
 ```typescript
-popup.popover = 'manual'
+popup.popover = 'auto'  // 自动关闭模式
 popup.showPopover()  // 自动显示在 top layer
 ```
 
 - ✅ **自动层级管理**：无需设置 z-index，自动在最上层
-- ✅ **焦点管理**：自动捕获焦点，支持 Tab 键导航
-- ✅ **ESC 关闭**：自动支持 ESC 键关闭（可选）
+- ✅ **自动关闭**：点击外部或按 ESC 键自动关闭，无需手动代码
+- ✅ **鼠标滚轮可用**：不影响鼠标滚轮滚动页面
 - ✅ **事件支持**：`toggle` 事件监听显示/隐藏状态
 - ✅ **无障碍支持**：内置 ARIA 属性，改善屏幕阅读器体验
 
