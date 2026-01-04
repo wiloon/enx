@@ -990,25 +990,6 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   return true
 })
 
-// Add extension indicator
-const indicator = document.createElement('div')
-indicator.id = 'enx-extension-indicator'
-indicator.title = 'ENX Extension Active'
-indicator.style.cssText = `
-  position: fixed;
-  top: 10px;
-  right: 10px;
-  width: 12px;
-  height: 12px;
-  background: #4CAF50;
-  border: 2px solid white;
-  border-radius: 50%;
-  z-index: 9999;
-  pointer-events: none;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-`
-document.body.appendChild(indicator)
-
 // Add global CSS for hover-based cursor on highlighted words
 const wordStyles = document.createElement('style')
 wordStyles.setAttribute('data-enx-word-styles', 'true')
