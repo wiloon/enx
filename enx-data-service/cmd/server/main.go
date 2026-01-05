@@ -78,10 +78,26 @@ func main() {
 		}
 	}()
 
+	// Get local IP addresses
+	localIPs := getLocalIPs()
+
 	log.Println("🎉 All services started successfully")
-	log.Printf("   - gRPC: %s", grpcAddr)
-	log.Printf("   - HTTP API: %s", httpAddr)
-	log.Printf("   - Peers configured: %d", len(cfg.Peers))
+	log.Printf("   Node ID: %s", cfg.Node.ID)
+	log.Printf("   Local IPs:")
+	for _, ip := range localIPs {
+		log.Printf("      - %s", ip)
+	}
+	log.Printf("   gRPC endpoints:")
+	log.Printf("      - localhost:%d", cfg.Node.GRPCPort)
+	for _, ip := range localIPs {
+		log.Printf("      - %s:%d", ip, cfg.Node.GRPCPort)
+	}
+	log.Printf("   HTTP API endpoints:")
+	log.Printf("      - localhost:%d", cfg.Node.HTTPPort)
+	for _, ip := range localIPs {
+		log.Printf("      - %s:%d", ip, cfg.Node.HTTPPort)
+	}
+	log.Printf("   Peers configured: %d", len(cfg.Peers))
 
 	// Auto-sync with all peers on startup
 	if len(cfg.Peers) > 0 {
@@ -145,4 +161,45 @@ func getDefaultConfig() *config.Config {
 		},
 		Peers: []config.PeerConfig{},
 	}
+}
+
+func getLocalIPs() []string {
+	var ips []string
+
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		log.Printf("⚠️  Failed to get network interfaces: %v", err)
+		return ips
+	}
+
+	for _, iface := range interfaces {
+		// Skip loopback and down interfaces
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+
+			// Skip loopback and IPv6 addresses for simplicity
+			if ip == nil || ip.IsLoopback() || ip.To4() == nil {
+				continue
+			}
+
+			ips = append(ips, ip.String())
+		}
+	}
+
+	return ips
 }
