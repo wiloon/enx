@@ -17,9 +17,19 @@ tasks:
       - go build -o bin/server cmd/server/main.go
 
   run:
-    desc: Run the server
+    desc: Run the server (builds if needed)
+    vars:
+      MODE: '{{.MODE | default "fg"}}'
+      DB_PATH: '{{.DB_PATH | default "/var/lib/enx-api/enx.db"}}'
     cmds:
-      - go run cmd/server/main.go
+      - task: build
+      - |
+        if [ "{{.MODE}}" = "bg" ]; then
+          ./bin/server --db={{.DB_PATH}} > /tmp/enx-data-service.log 2>&1 &
+          echo "✅ Started in background (logs: /tmp/enx-data-service.log)"
+        else
+          ./bin/server --db={{.DB_PATH}}
+        fi
 
   clean:
     desc: Clean up build artifacts
