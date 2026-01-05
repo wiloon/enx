@@ -287,6 +287,72 @@ func (r *WordRepository) FindModifiedSince(timestamp int64) ([]*model.Word, erro
 	return words, nil
 }
 
+// FindModifiedSinceBatch retrieves words modified after a timestamp in batches
+// Callback function receives each batch and should return true to continue, false to stop
+func (r *WordRepository) FindModifiedSinceBatch(timestamp int64, batchSize int, callback func([]*model.Word) (bool, error)) error {
+	offset := 0
+	for {
+		rows, err := r.db.Query(`
+			SELECT id, english, chinese, pronunciation, created_at, load_count, updated_at, deleted_at
+			FROM words WHERE updated_at > ?
+			ORDER BY updated_at ASC
+			LIMIT ? OFFSET ?
+		`, timestamp, batchSize, offset)
+		if err != nil {
+			return err
+		}
+
+		var batch []*model.Word
+		for rows.Next() {
+			word := &model.Word{}
+			var chinese, pronunciation sql.NullString
+			var deletedAt sql.NullInt64
+
+			err := rows.Scan(&word.ID, &word.English, &chinese, &pronunciation, &word.CreatedAt, &word.LoadCount, &word.UpdatedAt, &deletedAt)
+			if err != nil {
+				rows.Close()
+				return err
+			}
+
+			if chinese.Valid {
+				word.Chinese = &chinese.String
+			}
+			if pronunciation.Valid {
+				word.Pronunciation = &pronunciation.String
+			}
+			if deletedAt.Valid {
+				word.DeletedAt = &deletedAt.Int64
+			}
+
+			batch = append(batch, word)
+		}
+		rows.Close()
+
+		// If no more results, stop
+		if len(batch) == 0 {
+			break
+		}
+
+		// Call callback with this batch
+		shouldContinue, err := callback(batch)
+		if err != nil {
+			return err
+		}
+		if !shouldContinue {
+			break
+		}
+
+		// If we got fewer results than batch size, we're done
+		if len(batch) < batchSize {
+			break
+		}
+
+		offset += batchSize
+	}
+
+	return nil
+}
+
 // FindUserDictsModifiedSince retrieves all user_dicts records modified after a given timestamp
 func (r *WordRepository) FindUserDictsModifiedSince(timestamp int64) ([]*model.UserDict, error) {
 	rows, err := r.db.Query(`
@@ -310,6 +376,58 @@ func (r *WordRepository) FindUserDictsModifiedSince(timestamp int64) ([]*model.U
 	}
 
 	return userDicts, nil
+}
+
+// FindUserDictsModifiedSinceBatch retrieves user_dicts modified after a timestamp in batches
+// Callback function receives each batch and should return true to continue, false to stop
+func (r *WordRepository) FindUserDictsModifiedSinceBatch(timestamp int64, batchSize int, callback func([]*model.UserDict) (bool, error)) error {
+	offset := 0
+	for {
+		rows, err := r.db.Query(`
+			SELECT user_id, word_id, query_count, already_acquainted, created_at, updated_at
+			FROM user_dicts WHERE updated_at > ?
+			ORDER BY updated_at ASC
+			LIMIT ? OFFSET ?
+		`, timestamp, batchSize, offset)
+		if err != nil {
+			return err
+		}
+
+		var batch []*model.UserDict
+		for rows.Next() {
+			userDict := &model.UserDict{}
+			err := rows.Scan(&userDict.UserId, &userDict.WordId, &userDict.QueryCount, &userDict.AlreadyAcquainted, &userDict.CreatedAt, &userDict.UpdatedAt)
+			if err != nil {
+				rows.Close()
+				return err
+			}
+			batch = append(batch, userDict)
+		}
+		rows.Close()
+
+		// If no more results, stop
+		if len(batch) == 0 {
+			break
+		}
+
+		// Call callback with this batch
+		shouldContinue, err := callback(batch)
+		if err != nil {
+			return err
+		}
+		if !shouldContinue {
+			break
+		}
+
+		// If we got fewer results than batch size, we're done
+		if len(batch) < batchSize {
+			break
+		}
+
+		offset += batchSize
+	}
+
+	return nil
 }
 
 // UpsertUserDict inserts or updates a user_dict record
