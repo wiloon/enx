@@ -86,21 +86,16 @@ func (Youdao) TableName() string {
 }
 
 func Init() {
-	var dbPath string
-	dbFileName := "enx.db"
-	// check if current system is linux or windows
-	//goland:noinspection GoBoolExpressions
-	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
-		// Use local path for development, or /var/lib for production
-		if _, err := os.Stat("/var/lib/enx-api"); os.IsNotExist(err) {
-			// Development: use local path
-			dbPath = "./" + dbFileName
-		} else {
-			// Production: use /var/lib
-			dbPath = "/var/lib/enx-api/" + dbFileName
+	// Read database path from environment variable or use default
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		// Default path based on OS
+		//goland:noinspection GoBoolExpressions
+		if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
+			dbPath = "/var/lib/enx-api/enx.db"
+		} else if runtime.GOOS == "windows" {
+			dbPath = "C:\\workspace\\apps\\enx\\enx.db"
 		}
-	} else if runtime.GOOS == "windows" {
-		dbPath = "C:\\workspace\\apps\\enx\\" + dbFileName
 	}
 	newLogger := logger.New(
 		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
