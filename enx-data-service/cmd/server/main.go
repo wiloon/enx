@@ -113,6 +113,13 @@ func main() {
 					peerAddr = fmt.Sprintf("%s:50051", peerAddr)
 				}
 
+				// Check if peer is reachable first
+				log.Printf("   - Checking %s (%s)...", peer.Name, peerAddr)
+				if !isPeerReachable(peerAddr, 3*time.Second) {
+					log.Printf("   ⚠️  Peer %s is not reachable, skipping sync", peer.Name)
+					continue
+				}
+
 				log.Printf("   - Syncing with %s (%s)...", peer.Name, peerAddr)
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				err := coordinator.SyncWithPeer(ctx, peerAddr)
@@ -202,4 +209,14 @@ func getLocalIPs() []string {
 	}
 
 	return ips
+}
+
+// isPeerReachable checks if a peer is reachable by attempting a TCP connection
+func isPeerReachable(peerAddr string, timeout time.Duration) bool {
+	conn, err := net.DialTimeout("tcp", peerAddr, timeout)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
 }

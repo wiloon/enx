@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"enx-data-service/internal/model"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
@@ -109,40 +111,80 @@ func (s *WordService) ListWords(ctx context.Context, req *pb.ListWordsRequest) (
 }
 
 func (s *WordService) SyncWords(req *pb.SyncWordsRequest, stream pb.DataService_SyncWordsServer) error {
-	// Get all words modified since the given timestamp
-	words, err := s.repo.FindModifiedSince(req.SinceTimestamp)
-	if err != nil {
-		return status.Errorf(codes.Internal, "failed to get modified words: %v", err)
+	// Get client address from context
+	clientAddr := "unknown"
+	if p, ok := peer.FromContext(stream.Context()); ok {
+		clientAddr = p.Addr.String()
 	}
 
-	// Stream each modified word to the client
-	for _, word := range words {
-		if err := stream.Send(&pb.SyncWordsResponse{
-			Word: convertModelToProto(word),
-		}); err != nil {
-			return status.Errorf(codes.Internal, "failed to send word: %v", err)
+	log.Printf("📥 SyncWords request from %s (since: %d)", clientAddr, req.SinceTimestamp)
+
+	const batchSize = 1000 // Process 1000 words at a time
+	totalSent := 0
+
+	// Process words in batches to avoid loading everything into memory
+	err := s.repo.FindModifiedSinceBatch(req.SinceTimestamp, batchSize, func(batch []*model.Word) (bool, error) {
+		log.Printf("📤 Sending batch of %d words to %s (total so far: %d)", len(batch), clientAddr, totalSent)
+
+		for _, word := range batch {
+			if err := stream.Send(&pb.SyncWordsResponse{
+				Word: convertModelToProto(word),
+			}); err != nil {
+				log.Printf("❌ Failed to send word to %s: %v", clientAddr, err)
+				return false, status.Errorf(codes.Internal, "failed to send word: %v", err)
+			}
+			totalSent++
 		}
+
+		// Continue processing next batch
+		return true, nil
+	})
+
+	if err != nil {
+		log.Printf("❌ SyncWords failed for %s: %v", clientAddr, err)
+		return err
 	}
 
+	log.Printf("✅ SyncWords completed for %s (%d words sent)", clientAddr, totalSent)
 	return nil
 }
 
 func (s *WordService) SyncUserDicts(req *pb.SyncUserDictsRequest, stream pb.DataService_SyncUserDictsServer) error {
-	// Get all user_dicts modified since the given timestamp
-	userDicts, err := s.repo.FindUserDictsModifiedSince(req.SinceTimestamp)
-	if err != nil {
-		return status.Errorf(codes.Internal, "failed to get modified user_dicts: %v", err)
+	// Get client address from context
+	clientAddr := "unknown"
+	if p, ok := peer.FromContext(stream.Context()); ok {
+		clientAddr = p.Addr.String()
 	}
 
-	// Stream each modified user_dict to the client
-	for _, userDict := range userDicts {
-		if err := stream.Send(&pb.SyncUserDictsResponse{
-			UserDict: convertUserDictModelToProto(userDict),
-		}); err != nil {
-			return status.Errorf(codes.Internal, "failed to send user_dict: %v", err)
+	log.Printf("📥 SyncUserDicts request from %s (since: %d)", clientAddr, req.SinceTimestamp)
+
+	const batchSize = 1000 // Process 1000 user_dicts at a time
+	totalSent := 0
+
+	// Process user_dicts in batches to avoid loading everything into memory
+	err := s.repo.FindUserDictsModifiedSinceBatch(req.SinceTimestamp, batchSize, func(batch []*model.UserDict) (bool, error) {
+		log.Printf("📤 Sending batch of %d user_dicts to %s (total so far: %d)", len(batch), clientAddr, totalSent)
+
+		for _, userDict := range batch {
+			if err := stream.Send(&pb.SyncUserDictsResponse{
+				UserDict: convertUserDictModelToProto(userDict),
+			}); err != nil {
+				log.Printf("❌ Failed to send user_dict to %s: %v", clientAddr, err)
+				return false, status.Errorf(codes.Internal, "failed to send user_dict: %v", err)
+			}
+			totalSent++
 		}
+
+		// Continue processing next batch
+		return true, nil
+	})
+
+	if err != nil {
+		log.Printf("❌ SyncUserDicts failed for %s: %v", clientAddr, err)
+		return err
 	}
 
+	log.Printf("✅ SyncUserDicts completed for %s (%d user_dicts sent)", clientAddr, totalSent)
 	return nil
 }
 
