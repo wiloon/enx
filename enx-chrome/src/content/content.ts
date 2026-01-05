@@ -312,7 +312,8 @@ const sendToBackground = (
   })
 }
 
-// Create and show word popup
+// Create and show word popup using Popover API + CSS Anchor Positioning
+// Requires Chrome 125+ for full support (CSS Anchor Positioning)
 const showWordPopup = async (word: string, event: MouseEvent) => {
   if (!word || word.trim() === '') return
 
@@ -321,133 +322,63 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
   // Remove existing popup
   hideWordPopup()
 
-  // Create popup container
-  const popup = document.createElement('div')
+  // 1. Mark the clicked element as anchor
+  const anchor = event.target as HTMLElement
+  const anchorId = `enx-word-anchor-${Date.now()}`
+  anchor.style.setProperty('anchor-name', `--${anchorId}`)
+
+  // 2. Create Popover popup
+  const popup = document.createElement('div') as HTMLElement & { popover: string; showPopover: () => void; hidePopover: () => void }
+  popup.popover = 'manual'  // Manual control
+  popup.className = 'enx-word-popup'
   popup.id = 'enx-word-popup'
-  popup.className = 'enx-popup'
+
+  // Add CSS animation if not already present
+  if (!document.getElementById('enx-spin-animation')) {
+    const style = document.createElement('style')
+    style.id = 'enx-spin-animation'
+    style.textContent = `
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+    `
+    document.head.appendChild(style)
+  }
+
+  // 3. Apply CSS Anchor Positioning styles
   popup.style.cssText = `
-    position: absolute;
+    position-anchor: --${anchorId};
+    position-area: top;
+    position-try-fallbacks: flip-block, flip-inline;
+    min-width: 400px;
+    max-width: 480px;
+    max-height: 60vh;
+    overflow-y: auto;
+    margin: 16px;
     background: white;
-    border: 1px solid #ccc;
+    border: 1px solid #e0e0e0;
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     padding: 16px;
-    z-index: 10000;
-    max-width: 320px;
-    min-width: 280px;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 14px;
     line-height: 1.4;
   `
 
-  // Position popup to avoid covering the sentence context
-  const viewportWidth = window.innerWidth
-  const viewportHeight = window.innerHeight
-  const scrollX = window.scrollX
-  const scrollY = window.scrollY
-  const popupWidth = 320
-  const popupHeight = 200 // Approximate popup height
-  const margin = 15
-  const lineHeight = 24 // Approximate line height in articles
-  const contextLines = 2 // Lines above to keep visible
-
-  // Calculate safe zones to avoid covering
-  const clickX = event.clientX + scrollX
-  const clickY = event.clientY + scrollY
-
-  // Define exclusion zones (areas to avoid covering)
-  const sentenceExclusionHeight = lineHeight * (contextLines + 1) // Height above to keep clear
-
-  // X-coordinate: Center popup directly above the clicked word
-  let x = clickX - popupWidth / 2
-
-  // Y-coordinate: Keep the existing vertical positioning logic
-  let y = Math.max(
-    clickY - sentenceExclusionHeight - popupHeight - margin, // Above the context
-    scrollY + margin // But not above viewport
-  )
-
-  // If positioning above would put it too high, place below
-  if (y < scrollY + margin) {
-    y = clickY + margin * 2 // Below the word with extra margin
-  }
-
-  // Final boundary checks
-  x = Math.max(
-    scrollX + margin,
-    Math.min(x, scrollX + viewportWidth - popupWidth - margin)
-  )
-  y = Math.max(
-    scrollY + margin,
-    Math.min(y, scrollY + viewportHeight - popupHeight - margin)
-  )
-
-  popup.style.left = `${x}px`
-  popup.style.top = `${y}px`
-
-  // Add loading content
+  // 4. Show loading state
   popup.innerHTML = `
-    <div class="enx-popup-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
-      <h3 style="margin: 0; font-size: 16px; font-weight: bold; color: #333; flex: 1;">${word}</h3>
-      <button class="enx-close-btn" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #999; padding: 0; margin: 0; line-height: 1; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-left: 8px;">×</button>
-    </div>
-    <div class="enx-popup-content">
-      <div style="color: #666; font-style: italic;">
-        <span style="display: inline-block; animation: spin 1s linear infinite; margin-right: 8px;">⏳</span>
-        Loading translation...
-      </div>
+    <div style="display: flex; align-items: center; justify-content: center; min-height: 60px;">
+      <span style="animation: spin 1s linear infinite; font-size: 24px;">⏳</span>
     </div>
   `
 
-  // Add CSS animation
-  const style = document.createElement('style')
-  style.textContent = `
-    @keyframes spin {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
-    }
-  `
-  document.head.appendChild(style)
-
+  // 5. Add to DOM and show Popover
   document.body.appendChild(popup)
+  popup.showPopover()
   currentPopup = popup
 
-  // Event handlers for popup
-  const handleKeydown = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      hideWordPopup()
-    }
-  }
-
-  const handleClickOutside = (e: MouseEvent) => {
-    const target = e.target as HTMLElement
-    // Check if click is outside the popup and not on a word
-    if (!popup.contains(target) && !target.classList.contains('enx-word')) {
-      hideWordPopup()
-    }
-  }
-
-  // Store cleanup function
-  popupEventCleanup = () => {
-    document.removeEventListener('keydown', handleKeydown)
-    document.removeEventListener('click', handleClickOutside)
-  }
-
-  // Add close button event
-  const closeBtn = popup.querySelector('.enx-close-btn')
-  if (closeBtn) {
-    closeBtn.addEventListener('click', hideWordPopup)
-  }
-
-  // Add event listeners
-  document.addEventListener('keydown', handleKeydown)
-
-  // Use setTimeout to avoid closing immediately from the same click that opened it
-  setTimeout(() => {
-    document.addEventListener('click', handleClickOutside)
-  }, 100)
-
-  // Fetch word translation
+  // 6. Fetch word translation
   try {
     console.log('Fetching translation for word:', word)
     const response = await sendToBackground({
@@ -458,116 +389,139 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
     console.log('Translation response:', response)
 
     if (response.success && response.ecp) {
-      updatePopupContent(popup, response.ecp)
-      wordCache[word.toLowerCase()] = response.ecp
-      // Update word highlighting in case AlreadyAcquainted status changed
-      updateWordHighlighting(word, response.ecp)
+      // 7. Fill actual content
+      const wordData = response.ecp
+      const youdaoUrl = `https://www.youdao.com/result?word=${encodeURIComponent(wordData.English)}&lang=en`
+
+      const pronunciationHtml = wordData.Pronunciation
+        ? `<span style="font-size: 14px; color: #666;">${wordData.Pronunciation}</span>`
+        : ''
+
+      popup.innerHTML = `
+        <div class="enx-popup-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h3 style="margin: 0; font-size: 16px; font-weight: bold; color: #333;">
+            <div style="display: flex; align-items: baseline; gap: 8px;">
+              <span>${wordData.English}</span>
+              ${pronunciationHtml}
+            </div>
+          </h3>
+          <button class="enx-close-btn" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #999; padding: 0; margin: 0; line-height: 1; width: 20px; height: 20px;">×</button>
+        </div>
+        <div class="enx-popup-content">
+          ${wordData.Chinese ? `<div style="margin-bottom: 12px; color: #333;">${wordData.Chinese}</div>` : ''}
+          ${wordData.LoadCount !== undefined ? `<div style="margin-bottom: 12px; font-size: 12px; color: #888;">Query Count: ${wordData.LoadCount}</div>` : ''}
+          ${wordData.AlreadyAcquainted === 1 ? `<div style="color: #4CAF50; font-size: 12px; margin-bottom: 12px;">✓ Already acquainted</div>` : ''}
+          <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 12px; border-top: 1px solid #eee;">
+            <a href="${youdaoUrl}" target="_blank" style="color: #1976d2; text-decoration: none; font-size: 12px;">📚 Youdao</a>
+            ${wordData.AlreadyAcquainted !== 1 ? `<button class="enx-mark-btn" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer;">✓ Mark Known</button>` : ''}
+          </div>
+        </div>
+      `
+
+      // 8. Browser automatically adjusts position (based on new content)
+      // No manual code needed, CSS Anchor Positioning handles it
+
+      // Setup event handlers
+      setupPopupEventHandlers(popup, anchor, anchorId, wordData)
+
+      wordCache[word.toLowerCase()] = wordData
+      updateWordHighlighting(word, wordData)
     } else if (response.sessionExpired) {
       console.log('Session expired, showing session expired message')
-      hideWordPopup()
+      popup.hidePopover()
+      popup.remove()
+      anchor.style.removeProperty('anchor-name')
+      currentPopup = null
       showSessionExpiredMessage()
     } else {
       const errorMessage = response.error || 'Translation service unavailable'
       console.error('Translation failed:', errorMessage)
-      updatePopupError(popup, errorMessage)
+      popup.innerHTML = `<p style="color: #d32f2f; margin: 0;">❌ ${errorMessage}</p>`
+      setupPopupEventHandlers(popup, anchor, anchorId)
     }
   } catch (error) {
     console.error('Error fetching word translation:', error)
-    updatePopupError(
-      popup,
-      'Connection failed. Please check your internet connection.'
-    )
+    popup.innerHTML = `<p style="color: #d32f2f; margin: 0;">❌ Connection failed. Please check your internet connection.</p>`
+    setupPopupEventHandlers(popup, anchor, anchorId)
   }
 }
 
-// Update popup with word data
-const updatePopupContent = (popup: HTMLElement, wordData: WordData) => {
-  const content = popup.querySelector('.enx-popup-content')
-  if (!content) return
-
-  const youdaoUrl = `https://www.youdao.com/result?word=${encodeURIComponent(wordData.English)}&lang=en`
-
-  content.innerHTML = `
-    ${wordData.Pronunciation ? `<div style="margin-bottom: 8px; color: #666; font-weight: 500;">${wordData.Pronunciation}</div>` : ''}
-    ${wordData.Chinese ? `<div style="margin-bottom: 12px; color: #333;">${wordData.Chinese}</div>` : ''}
-    ${wordData.LoadCount !== undefined ? `<div style="margin-bottom: 12px; font-size: 12px; color: #888;">Query Count: ${wordData.LoadCount}</div>` : ''}
-    ${wordData.AlreadyAcquainted === 1 ? `<div style="color: #4CAF50; font-size: 12px; margin-bottom: 12px;">✓ Already acquainted</div>` : ''}
-    <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 12px; border-top: 1px solid #eee;">
-      <a href="${youdaoUrl}" target="_blank" style="color: #1976d2; text-decoration: none; font-size: 12px;">📚 Youdao</a>
-      ${wordData.AlreadyAcquainted !== 1 ? `<button class="enx-mark-btn" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer;">✓ Mark Known</button>` : ''}
-    </div>
-  `
-
-  // Add mark button event
-  const markBtn = content.querySelector('.enx-mark-btn')
-  if (markBtn) {
-    markBtn.addEventListener('click', async () => {
-      try {
-        // Get current user from Chrome storage
-        const result = await chrome.storage.local.get(['user', 'enx-user'])
-        console.log('Storage result:', result)
-        console.log('User data from storage:', result.user)
-        console.log('ENX User data from storage:', result['enx-user'])
-
-        const userId =
-          result.user?.id || result.user?.userId || result['enx-user']?.id
-        console.log('Extracted user ID:', userId)
-
-        if (!userId) {
-          console.error('No user ID found, user may not be logged in')
-          alert('Please login first')
-          return
-        }
-
-        console.log(
-          'Marking word as acquainted:',
-          wordData.English,
-          'for user:',
-          userId
-        )
-
-        const response = await sendToBackground({
-          type: 'markAcquainted',
-          word: wordData.English,
-          userId: userId,
-        })
-
-        console.log('Mark acquainted response:', response)
-
-        if (response.success) {
-          hideWordPopup()
-          // Update word highlighting
-          updateWordHighlighting(wordData.English, response.ecp || wordData)
-          console.log('Word marked as acquainted successfully')
-        } else if (response.sessionExpired) {
-          console.log('Session expired while marking word')
-          hideWordPopup()
-          showSessionExpiredMessage()
-        } else {
-          console.error('Failed to mark word as acquainted:', response.error)
-          alert(
-            'Failed to mark word as known: ' +
-              (response.error || 'Unknown error')
-          )
-        }
-      } catch (error) {
-        console.error('Error marking word:', error)
-        alert('Error marking word as known')
-      }
+// Setup event handlers for Popover popup
+const setupPopupEventHandlers = (
+  popup: HTMLElement & { hidePopover: () => void },
+  anchor: HTMLElement,
+  _anchorId: string,
+  wordData?: WordData
+) => {
+  // Close button handler
+  const closeBtn = popup.querySelector('.enx-close-btn')
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      popup.hidePopover()
     })
   }
-}
 
-// Update popup with error
-const updatePopupError = (popup: HTMLElement, error: string) => {
-  const content = popup.querySelector('.enx-popup-content')
-  if (!content) return
+  // Mark Known button handler
+  if (wordData && wordData.AlreadyAcquainted !== 1) {
+    const markBtn = popup.querySelector('.enx-mark-btn')
+    if (markBtn) {
+      markBtn.addEventListener('click', async () => {
+        try {
+          const response = await sendToBackground({
+            type: 'markAcquainted',
+            word: wordData.English,
+          })
+          if (response.success) {
+            wordData.AlreadyAcquainted = 1
+            wordCache[wordData.English.toLowerCase()] = wordData
+            updateWordHighlighting(wordData.English, wordData)
+            popup.hidePopover()
+          }
+        } catch (error) {
+          console.error('Error marking word as acquainted:', error)
+        }
+      })
+    }
+  }
 
-  content.innerHTML = `
-    <div style="color: #f44336; padding: 8px; background: #ffebee; border: 1px solid #ffcdd2; border-radius: 4px;">
-      ${error}
-    </div>
-  `
+  // Cleanup when popup is closed
+  popup.addEventListener('toggle', (e: Event) => {
+    const toggleEvent = e as ToggleEvent
+    if (toggleEvent.newState === 'closed') {
+      popup.remove()
+      anchor.style.removeProperty('anchor-name')  // Cleanup anchor
+      if (currentPopup === popup) {
+        currentPopup = null
+      }
+      if (popupEventCleanup) {
+        popupEventCleanup()
+        popupEventCleanup = null
+      }
+    }
+  })
+
+  // ESC key handler
+  const handleKeydown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      popup.hidePopover()
+    }
+  }
+
+  // Click outside handler (optional, Popover API can handle this)
+  const handleClickOutside = (e: MouseEvent) => {
+    const target = e.target as HTMLElement
+    if (!popup.contains(target) && !anchor.contains(target)) {
+      popup.hidePopover()
+    }
+  }
+
+  document.addEventListener('keydown', handleKeydown)
+  document.addEventListener('click', handleClickOutside)
+
+  popupEventCleanup = () => {
+    document.removeEventListener('keydown', handleKeydown)
+    document.removeEventListener('click', handleClickOutside)
+  }
 }
 
 // Hide word popup
@@ -1010,7 +964,6 @@ if (!document.head.querySelector('style[data-enx-word-styles]')) {
 
 // Clean up on page unload
 window.addEventListener('beforeunload', () => {
-  indicator.remove()
   hideWordPopup()
 })
 
