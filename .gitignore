@@ -40,3 +40,8 @@ build-errors.log
 # Coverage reports
 coverage.out
 coverage.html
+
+# Environment files
+.env
+*.env
+!.env.example

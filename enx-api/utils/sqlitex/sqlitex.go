@@ -4,6 +4,7 @@ import (
 	zapLog "enx-api/utils/logger"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -106,13 +107,21 @@ func Init() {
 			Colorful:                  true,        // Disable color
 		},
 	)
+
+	// Ensure database directory exists
+	dbDir := filepath.Dir(dbPath)
+	if err := os.MkdirAll(dbDir, 0755); err != nil {
+		zapLog.Errorf("failed to create database directory %s: %v", dbDir, err)
+		return
+	}
+
 	var err error
 	zapLog.Infof("opening db: %s", dbPath)
 	DB, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{
 		Logger: newLogger,
 	})
 	if err != nil {
-		zapLog.Error("failed to init db: ", dbPath)
+		zapLog.Errorf("failed to init db: %s, error: %v", dbPath, err)
 		return
 	}
 
