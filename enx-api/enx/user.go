@@ -22,7 +22,8 @@ type User struct {
 func (u *User) Login() bool {
 	tmpUser := GeUserByName(u.Name)
 	if tmpUser.Id == "" {
-		logger.Errorf("user login, user not exist: %s", u.Name)
+		logger.Errorf("login failed: user does not exist, username: %s", u.Name)
+		logger.Infof("user not found in database, username: %s", u.Name)
 		return false
 	}
 

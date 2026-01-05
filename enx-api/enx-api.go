@@ -47,16 +47,12 @@ func main() {
 
 	// Add detailed CORS and request logging middleware BEFORE CORS
 	router.Use(func(c *gin.Context) {
-		logger.Infof("=== PRE-CORS Request Start ===")
-		logger.Infof("Request: %s %s from %s", c.Request.Method, c.Request.URL.Path, c.ClientIP())
-		logger.Infof("Headers: X-Session-ID='%s', Content-Type='%s', Origin='%s', Cookie='%s'",
-			c.GetHeader("X-Session-ID"), c.GetHeader("Content-Type"), c.GetHeader("Origin"), c.GetHeader("Cookie"))
-		logger.Infof("User-Agent: %s", c.GetHeader("User-Agent"))
+		logger.Debugf("🔵 [PRE-CORS] %s %s from %s", c.Request.Method, c.Request.URL.Path, c.ClientIP())
+		logger.Debugf("📋 Origin='%s'", c.GetHeader("Origin"))
 
 		c.Next()
 
-		logger.Infof("PRE-CORS Response: %d for %s %s", c.Writer.Status(), c.Request.Method, c.Request.URL.Path)
-		logger.Infof("=== PRE-CORS Request End ===")
+		logger.Debugf("✅ [PRE-CORS] %d %s %s", c.Writer.Status(), c.Request.Method, c.Request.URL.Path)
 	})
 
 	// Custom CORS middleware to support chrome-extension origins
@@ -104,22 +100,20 @@ func main() {
 
 	// Add detailed CORS and request logging middleware AFTER CORS
 	router.Use(func(c *gin.Context) {
-		logger.Infof("=== Request Start ===")
-		logger.Infof("Request: %s %s from %s", c.Request.Method, c.Request.URL.Path, c.ClientIP())
-		logger.Infof("Headers: X-Session-ID='%s', Content-Type='%s', Origin='%s', Cookie='%s'",
-			c.GetHeader("X-Session-ID"), c.GetHeader("Content-Type"), c.GetHeader("Origin"), c.GetHeader("Cookie"))
-		logger.Infof("User-Agent: %s", c.GetHeader("User-Agent"))
+		logger.Infof("🔵 %s %s from %s", c.Request.Method, c.Request.URL.Path, c.ClientIP())
+		logger.Infof("📋 Headers: X-Session-ID='%s', Content-Type='%s', Origin='%s'",
+			c.GetHeader("X-Session-ID"), c.GetHeader("Content-Type"), c.GetHeader("Origin"))
+		logger.Debugf("🌐 User-Agent: %s", c.GetHeader("User-Agent"))
 
 		// Check if this is a preflight request
 		if c.Request.Method == "OPTIONS" {
-			logger.Infof("CORS Preflight request detected")
+			logger.Infof("✈️  CORS Preflight request")
 		}
 
 		c.Next()
 
-		logger.Infof("Response: %d for %s %s", c.Writer.Status(), c.Request.Method, c.Request.URL.Path)
-		logger.Infof("Response Headers: %+v", c.Writer.Header())
-		logger.Infof("=== Request End ===")
+		logger.Infof("✅ %d %s %s", c.Writer.Status(), c.Request.Method, c.Request.URL.Path)
+		logger.Debugf("📤 Response Headers: %+v", c.Writer.Header())
 	})
 
 	router.GET("/ping", Ping)
@@ -382,10 +376,11 @@ func Login(c *gin.Context) {
 			SessionID: session.ID,
 		})
 	} else {
-		logger.Errorf("user login failed, user: %+v", user)
-		c.JSON(http.StatusUnauthorized, LoginResponse{
-			Success: false,
-			Message: "Invalid username or password",
+		logger.Errorf("user login failed, username: %s", req.Username)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"error":   "invalid_credentials",
+			"message": "Invalid username or password",
 		})
 	}
 }

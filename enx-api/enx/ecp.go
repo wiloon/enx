@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type Word struct {
@@ -159,6 +161,7 @@ func (word *Word) RemoveDuplicateWord() {
 
 func (word *Word) Save() {
 	sWord := repo.Word{}
+	sWord.Id = uuid.NewString() // Generate UUID for new word
 	sWord.CreateDatetime = time.Now()
 	sWord.UpdateDatetime = time.Now()
 	sWord.English = word.English

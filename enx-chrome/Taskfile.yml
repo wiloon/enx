@@ -47,13 +47,18 @@ tasks:
     cmds:
       - echo "🚀 Starting development environment..."
       - echo "  1. Building extension..."
-      - pnpm exec vite build
+      - fnm exec --using=.node-version pnpm exec vite build
       - echo "  2. Starting watch mode in background..."
       - echo "  3. Launching Chromium with extension..."
       - echo ""
+      - echo "📝 After code changes:"
+      - echo "   - Watch mode will auto-rebuild to dist/"
+      - echo "   - Manually reload extension in chrome://extensions/"
+      - echo "   - Or use Extensions Reloader extension for auto-reload"
+      - echo ""
       - |
         # Start watch mode in background
-        pnpm exec vite build --watch > /tmp/enx-watch.log 2>&1 &
+        fnm exec --using=.node-version pnpm exec vite build --watch > /tmp/enx-watch.log 2>&1 &
         WATCH_PID=$!
         echo "📝 Watch mode running (PID: $WATCH_PID)"
         echo "📝 Watch logs: /tmp/enx-watch.log"
