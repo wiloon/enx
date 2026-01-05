@@ -5,6 +5,9 @@ node_modules/
 dist/
 build/
 
+# Chrome dev profile (user data)
+.chrome-dev-profile/
+
 # Environment variables
 .env
 .env.local

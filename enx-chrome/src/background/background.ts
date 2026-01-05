@@ -86,7 +86,20 @@ const makeApiRequest = async (endpoint: string, options: RequestInit = {}) => {
 
     if (!response.ok) {
       if (response.status === 401) {
-        // Handle session expiry
+        // Try to get error details to distinguish login failure from session expiry
+        let errorData: any = null
+        try {
+          errorData = await response.json()
+        } catch (e) {
+          // Ignore JSON parsing errors
+        }
+
+        // Check if this is a login credentials error
+        if (errorData?.error === 'invalid_credentials') {
+          throw new Error(errorData.message || 'Invalid username or password')
+        }
+
+        // Otherwise treat as session expiry
         await handleSessionExpiry()
         throw new Error('Session expired')
       }

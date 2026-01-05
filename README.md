@@ -1,8 +1,44 @@
-# enx
+# ENX - English Learning Tool
 
-- This is an English learning tool
-- A tool to train the human brain to use English
-- Although AI translation is now available, in some scenarios it's more convenient if the human brain can directly recognize English
+An English learning tool designed to train the human brain to recognize and understand English directly, without relying on translation.
+
+## 🎯 Purpose
+
+While AI translation is now widely available, there are scenarios where it's more effective and convenient if the human brain can directly recognize English without the intermediate translation step.
+
+## 📦 Project Structure
+
+This is a monorepo containing multiple sub-projects:
+
+| Project | Description | Technology |
+|---------|-------------|------------|
+| **[enx-api](enx-api/)** | Backend API server | Go, Gin, SQLite |
+| **[enx-chrome](enx-chrome/)** | Chrome browser extension | TypeScript, React, Vite |
+| **[enx-ui](enx-ui/)** | Web UI (future) | Next.js, React |
+| **[enx-data-service](enx-data-service/)** | P2P data sync service | Go, gRPC |
+| **[mock-api](mock-api/)** | Mock API server for testing | Node.js |
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Go 1.21+
+- Node.js 25+ (managed by fnm)
+- pnpm
+- SQLite 3
+
+### Setup
+
+```bash
+# Install dependencies for all projects
+task setup
+
+# Start API server
+task api:start
+
+# Start Chrome extension development
+task dev-chrome
+```
 
 ## Development Environment
 

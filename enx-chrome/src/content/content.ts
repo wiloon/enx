@@ -249,6 +249,7 @@ class ContentWordProcessor {
       '.Article', // BBC
       '.article__data', // InfoQ
       '.post-content', // Blog posts
+      '.single-post__container', // Microsoft Research
       '#EMAIL_CONTAINER', // NY Times
       '.text', // TingRoom
       'article', // Semantic HTML5
@@ -411,9 +412,11 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
           ${wordData.Chinese ? `<div style="margin-bottom: 12px; color: #333;">${wordData.Chinese}</div>` : ''}
           ${wordData.LoadCount !== undefined ? `<div style="margin-bottom: 12px; font-size: 12px; color: #888;">Query Count: ${wordData.LoadCount}</div>` : ''}
           ${wordData.AlreadyAcquainted === 1 ? `<div style="color: #4CAF50; font-size: 12px; margin-bottom: 12px;">✓ Already acquainted</div>` : ''}
-          <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 12px; border-top: 1px solid #eee;">
-            <a href="${youdaoUrl}" target="_blank" style="color: #1976d2; text-decoration: none; font-size: 12px;">📚 Youdao</a>
-            ${wordData.AlreadyAcquainted !== 1 ? `<button class="enx-mark-btn" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer;">✓ Mark Known</button>` : ''}
+          <div style="padding-top: 12px; border-top: 1px solid #eee;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <a href="${youdaoUrl}" target="_blank" style="color: #1976d2; text-decoration: none; font-size: 12px;">📚 Youdao</a>
+              ${wordData.AlreadyAcquainted !== 1 ? `<button class="enx-mark-btn" style="background: #4CAF50; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.2); margin-left: auto !important; margin-right: 0 !important;">✓ Mark Known</button>` : ''}
+            </div>
           </div>
         </div>
       `
@@ -551,15 +554,20 @@ const updateWordHighlighting = (word: string, wordData: WordData) => {
   })
 }
 
-// Show session expired message
-const showSessionExpiredMessage = () => {
+// Show authentication error message
+const showSessionExpiredMessage = (isLoginError = false) => {
   // Remove any existing session message
   const existingMessage = document.getElementById('enx-session-expired')
   if (existingMessage) {
     existingMessage.remove()
   }
 
-  // Create session expired notification
+  const title = isLoginError ? 'Login Required' : 'Session Expired'
+  const message = isLoginError 
+    ? 'Please click the ENX extension icon to login.'
+    : 'Your session has expired. Please click the ENX extension icon to login again.'
+
+  // Create notification
   const notification = document.createElement('div')
   notification.id = 'enx-session-expired'
   notification.style.cssText = `
@@ -582,8 +590,8 @@ const showSessionExpiredMessage = () => {
   notification.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: flex-start;">
       <div>
-        <div style="font-weight: bold; margin-bottom: 4px;">Session Expired</div>
-        <div style="font-size: 13px; opacity: 0.9;">Please click the ENX extension icon to login again.</div>
+        <div style="font-weight: bold; margin-bottom: 4px;">${title}</div>
+        <div style="font-size: 13px; opacity: 0.9;">${message}</div>
       </div>
       <button id="enx-close-session-msg" style="background: none; border: none; color: white; font-size: 18px; cursor: pointer; padding: 0; margin-left: 12px;">×</button>
     </div>

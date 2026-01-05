@@ -193,37 +193,6 @@ tasks:
     cmds:
       - pnpm dev
 
-  dev-all:
-    desc: Start all development services (API + Chrome watch + Chrome browser)
-    vars:
-      TARGET_URL: '{{.URL | default "https://www.infoq.com/"}}'
-    cmds:
-      - mkdir -p enx-api/logs enx-chrome/logs
-      - echo "🚀 Starting ENX development environment..."
-      - echo "🔧 Building extension for development (first time)..."
-      - cd enx-chrome && VITE_ENV=development pnpm run build
-      - echo "📦 Starting enx-api in background..."
-      - cd enx-api && air > logs/dev.log 2>&1 &
-      - echo "   API logs in enx-api/logs/dev.log"
-      - sleep 2
-      - echo "👀 Starting enx-chrome watch mode in background..."
-      - cd enx-chrome && pnpm run dev </dev/null > logs/watch.log 2>&1 &
-      - echo "   Chrome watch logs in enx-chrome/logs/watch.log"
-      - sleep 5
-      - echo "🌐 Checking Playwright browsers..."
-      - cd enx-chrome && npx playwright install chromium --quiet 2>/dev/null || true
-      - echo "🌐 Opening Chrome with extension loaded..."
-      - cd enx-chrome && node dev-chrome.mjs "{{.TARGET_URL}}"
-      - echo ""
-      - echo "✅ Development environment started!"
-      - echo ""
-      - echo "📋 Services running:"
-      - echo "   - API at http://localhost:8090 (logs in enx-api/logs/dev.log)"
-      - echo "   - Chrome watch building on file changes (logs in enx-chrome/logs/watch.log)"
-      - echo "   - Chrome browser opened with extension"
-      - echo ""
-      - echo "To stop all services run task stop-dev"
-
   stop-dev:
     desc: Stop all development services
     cmds:
@@ -427,31 +396,6 @@ tasks:
     cmds:
       - pnpm lint
 
-  format:
-    desc: Format code for all projects
-    cmds:
-      - task: format-api
-      - task: format-chrome
-      - task: format-ui
-
-  format-api:
-    desc: Format enx-api code
-    dir: enx-api
-    cmds:
-      - task: fmt
-
-  format-chrome:
-    desc: Format enx-chrome code
-    dir: enx-chrome
-    cmds:
-      - task: format
-
-  format-ui:
-    desc: Format enx-ui code
-    dir: enx-ui
-    cmds:
-      - pnpm format
-
   check:
     desc: Run all checks (lint, format, test) for all projects
     cmds:
@@ -522,42 +466,6 @@ tasks:
   # ===========================================
   # Utilities
   # ===========================================
-
-  version:
-    desc: Show version information for all projects
-    cmds:
-      - echo "=== ENX Version Information ==="
-      - echo ""
-      - echo "--- enx-api ---"
-      - task: version-api
-      - echo ""
-      - echo "--- enx-chrome ---"
-      - task: version-chrome
-      - echo ""
-      - echo "--- enx-ui ---"
-      - task: version-ui
-
-  version-api:
-    desc: Show enx-api version
-    dir: enx-api
-    cmds:
-      - echo "=== ENX Version Information ==="
-      - echo "Version{{.VERSION}}"
-      - echo "Git Commit{{.GIT_COMMIT}}"
-      - echo "Git Branch{{.GIT_BRANCH}}"
-      - echo "Build Time{{.BUILD_TIME}}"
-
-  version-chrome:
-    desc: Show enx-chrome version
-    dir: enx-chrome
-    cmds:
-      - cat manifest.json | grep -A 1 '"version"' | head -1
-
-  version-ui:
-    desc: Show enx-ui version
-    dir: enx-ui
-    cmds:
-      - cat package.json | grep '"version"' | head -1
 
   info:
     desc: Show project information
