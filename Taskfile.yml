@@ -7,27 +7,6 @@ tasks:
       - task --list
 
   # ===========================================
-  # Proto Generation
-  # ===========================================
-
-  proto:gen:
-    desc: Generate gRPC code from shared proto files
-    dir: proto
-    cmds:
-      - ./generate.sh
-    sources:
-      - proto/*.proto
-    generates:
-      - ../enx-api/proto/*.pb.go
-      - ../enx-data-service/proto/*.pb.go
-
-  proto:clean:
-    desc: Clean generated proto files
-    cmds:
-      - rm -f enx-api/proto/*.pb.go
-      - rm -f enx-data-service/proto/*.pb.go
-
-  # ===========================================
   # Service Management
   # ===========================================
 

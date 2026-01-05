@@ -14,29 +14,29 @@ type UserDict struct {
 	AlreadyAcquainted int `json:"already_acquainted"`
 }
 
-// UpdateQueryCount updates the query count and acquainted status via gRPC
+// UpdateQueryCount updates the query count and acquainted status in database
 func (ud *UserDict) UpdateQueryCount() {
 	err := repo.UpsertUserDict(ud.UserId, ud.WordId, ud.QueryCount, ud.AlreadyAcquainted)
 	if err != nil {
-		logger.Errorf("failed to update query count via gRPC: %v", err)
+		logger.Errorf("failed to update query count: %v", err)
 		return
 	}
-	logger.Debugf("update user dict via gRPC, user_id: %s, word_id: %s, query_count: %d",
+	logger.Debugf("update user dict, user_id: %s, word_id: %s, query_count: %d",
 		ud.UserId, ud.WordId, ud.QueryCount)
 }
 
-// Save creates or updates user dict record via gRPC
+// Save creates or updates user dict record in database
 func (ud *UserDict) Save() {
 	err := repo.UpsertUserDict(ud.UserId, ud.WordId, ud.QueryCount, ud.AlreadyAcquainted)
 	if err != nil {
-		logger.Errorf("failed to save user dict via gRPC: %v", err)
+		logger.Errorf("failed to save user dict: %v", err)
 		return
 	}
-	logger.Debugf("save user dict via gRPC, user_id: %s, word_id: %s, query_count: %d",
+	logger.Debugf("save user dict, user_id: %s, word_id: %s, query_count: %d",
 		ud.UserId, ud.WordId, ud.QueryCount)
 }
 
-// Mark toggles the already_acquainted flag via gRPC
+// Mark toggles the already_acquainted flag in database
 func (ud *UserDict) Mark() {
 	logger.Infof("Mark: Starting mark operation for word_id: %s, user_id: %s", ud.WordId, ud.UserId)
 
@@ -58,20 +58,20 @@ func (ud *UserDict) Mark() {
 
 	err := repo.UpsertUserDict(ud.UserId, ud.WordId, ud.QueryCount, ud.AlreadyAcquainted)
 	if err != nil {
-		logger.Errorf("Mark: failed to mark via gRPC: %v", err)
+		logger.Errorf("Mark: failed to mark user dict: %v", err)
 		return
 	}
 	logger.Infof("Mark: Final AlreadyAcquainted state: %d", ud.AlreadyAcquainted)
 }
 
-// IsExist checks if user dict record exists via gRPC
+// IsExist checks if user dict record exists in database
 func (ud *UserDict) IsExist() bool {
 	queryCount, alreadyAcquainted := repo.GetUserWordQueryCount(ud.WordId, ud.UserId)
 
 	// If both are 0, record might not exist (or both fields are actually 0)
-	// We rely on the gRPC implementation returning 0,0 for non-existent records
+	// Repository returns 0,0 for non-existent records
 	if queryCount == 0 && alreadyAcquainted == 0 {
-		logger.Debugf("user dict record not found via gRPC, word_id: %s, user_id: %s",
+		logger.Debugf("user dict record not found, word_id: %s, user_id: %s",
 			ud.WordId, ud.UserId)
 		return false
 	}
@@ -79,7 +79,7 @@ func (ud *UserDict) IsExist() bool {
 	// Update the struct with fetched values
 	ud.QueryCount = queryCount
 	ud.AlreadyAcquainted = alreadyAcquainted
-	logger.Debugf("user dict record found via gRPC, word_id: %s, user_id: %s, query_count: %d, acquainted: %d",
+	logger.Debugf("user dict record found, word_id: %s, user_id: %s, query_count: %d, acquainted: %d",
 		ud.WordId, ud.UserId, ud.QueryCount, ud.AlreadyAcquainted)
 	return true
 }

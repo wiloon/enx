@@ -6,10 +6,19 @@ tasks:
     cmds:
       - task --list
 
-  proto:
-    desc: Generate protobuf code
+  proto:gen:
+    desc: Generate gRPC protobuf code
     cmds:
       - protoc --go_out=proto --go_opt=paths=source_relative --go-grpc_out=proto --go-grpc_opt=paths=source_relative --proto_path=proto proto/data_service.proto
+    sources:
+      - proto/*.proto
+    generates:
+      - proto/*.pb.go
+
+  proto:clean:
+    desc: Clean generated proto files
+    cmds:
+      - rm -f proto/*.pb.go
 
   build:
     desc: Build the server binary

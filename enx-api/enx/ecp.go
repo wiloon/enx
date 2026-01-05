@@ -132,7 +132,7 @@ func (word *Word) Translate(userId string) *Word {
 
 	word.LoadCount = sWord.LoadCount
 	if sWord.Id != "" {
-		// Query user_dicts via gRPC using UUID
+		// Query user_dicts from database using UUID
 		// userId needs to be converted to UUID string format
 		userIdStr := fmt.Sprintf("user-%d", userId) // Temporary: convert int userId to string
 		queryCount, _ := repo.GetUserWordQueryCount(sWord.Id, userIdStr)
