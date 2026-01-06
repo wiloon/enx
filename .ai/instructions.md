@@ -425,3 +425,15 @@ When making significant contributions, update `AGENTS.md` with:
 3. Solution overview
 4. Files created/modified
 5. Key benefits
+
+## ENX Chrome Extension: Adding New Website Support
+
+For detailed workflow instructions, see:
+
+**📖 [.ai/workflows/adding-website-support.md](.ai/workflows/adding-website-support.md)**
+
+Quick summary:
+1. Add domain to `manifest.json` → `content_scripts.matches`
+2. Inspect website to identify article container CSS selector
+3. Add selector to `content.ts` → `getArticleNode()` method
+4. Test: rebuild, reload extension, verify on target website
