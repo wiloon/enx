@@ -12,12 +12,12 @@ echo "   Proto dir: $PROTO_DIR"
 echo "   Root dir: $ROOT_DIR"
 echo ""
 
-# Generate for enx-data-service
-echo "📦 Generating for enx-data-service..."
-mkdir -p "$ROOT_DIR/enx-data-service/proto"
-protoc --go_out="$ROOT_DIR/enx-data-service/proto" \
+# Generate for enx-sync
+echo "📦 Generating for enx-sync..."
+mkdir -p "$ROOT_DIR/enx-sync/proto"
+protoc --go_out="$ROOT_DIR/enx-sync/proto" \
   --go_opt=paths=source_relative \
-  --go-grpc_out="$ROOT_DIR/enx-data-service/proto" \
+  --go-grpc_out="$ROOT_DIR/enx-sync/proto" \
   --go-grpc_opt=paths=source_relative \
   --proto_path="$PROTO_DIR" \
   data_service.proto
@@ -36,4 +36,4 @@ echo ""
 echo "✅ gRPC code generation completed!"
 echo ""
 echo "Generated files:"
-find "$ROOT_DIR/enx-data-service/proto" "$ROOT_DIR/enx-api/proto" -name "*.pb.go" 2>/dev/null | sed 's|^|  - |'
+find "$ROOT_DIR/enx-sync/proto" "$ROOT_DIR/enx-api/proto" -name "*.pb.go" 2>/dev/null | sed 's|^|  - |'

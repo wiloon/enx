@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	pb "enx-data-service/proto"
+	pb "enx-sync/proto"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
