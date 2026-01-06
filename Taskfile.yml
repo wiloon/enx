@@ -12,52 +12,52 @@ tasks:
 
   # Data Service
   data:start:
-    desc: Start enx-data-service using taskfile (usage - task data:start [MODE=fg|bg] - default is fg)
-    dir: enx-data-service
+    desc: Start enx-sync using taskfile (usage - task data:start [MODE=fg|bg] - default is fg)
+    dir: enx-sync
     vars:
       MODE: '{{.MODE | default "fg"}}'
     cmds:
       - task run MODE={{.MODE}}
 
   data:start:fg:
-    desc: Start enx-data-service in foreground
+    desc: Start enx-sync in foreground
     cmds:
       - |
         if pgrep -f "bin/server.*enx.db" > /dev/null; then
           echo "⚠️  data-service is already running (PID: $(pgrep -f 'bin/server.*enx.db'))"
           exit 1
         fi
-        echo "🚀 Starting enx-data-service in foreground..."
+        echo "🚀 Starting enx-sync in foreground..."
         echo "   gRPC: localhost:50051"
         echo "   HTTP: localhost:8090"
         echo "   Press Ctrl+C to stop"
         echo ""
-        cd enx-data-service && ./bin/server --db=/var/lib/enx-api/enx.db
+        cd enx-sync && ./bin/server --db=/var/lib/enx-api/enx.db
 
   data:start:bg:
-    desc: Start enx-data-service in background
+    desc: Start enx-sync in background
     cmds:
       - |
         if pgrep -f "bin/server.*enx.db" > /dev/null; then
           echo "⚠️  data-service is already running"
           exit 1
         fi
-        echo "🚀 Starting enx-data-service..."
-        cd enx-data-service && ./bin/server --db=/var/lib/enx-api/enx.db > /tmp/enx-data-service.log 2>&1 &
+        echo "🚀 Starting enx-sync..."
+        cd enx-sync && ./bin/server --db=/var/lib/enx-api/enx.db > /tmp/enx-sync.log 2>&1 &
         sleep 2
         if pgrep -f "bin/server.*enx.db" > /dev/null; then
           echo "✅ data-service started (PID: $(pgrep -f 'bin/server.*enx.db'))"
-          echo "   Logs: /tmp/enx-data-service.log"
+          echo "   Logs: /tmp/enx-sync.log"
           echo "   gRPC: localhost:50051"
           echo "   HTTP: localhost:8090"
         else
           echo "❌ Failed to start data-service"
-          tail -20 /tmp/enx-data-service.log
+          tail -20 /tmp/enx-sync.log
           exit 1
         fi
 
   data:stop:
-    desc: Stop enx-data-service
+    desc: Stop enx-sync
     cmds:
       - |
         PID=$(pgrep -f "bin/server.*enx.db" || echo "")
@@ -75,16 +75,16 @@ tasks:
         fi
 
   data:restart:
-    desc: Restart enx-data-service
+    desc: Restart enx-sync
     cmds:
       - task: data:stop
       - sleep 1
       - task: data:start
 
   data:logs:
-    desc: Show enx-data-service logs
+    desc: Show enx-sync logs
     cmds:
-      - tail -f /tmp/enx-data-service.log
+      - tail -f /tmp/enx-sync.log
 
   # API Service
   api:stop:

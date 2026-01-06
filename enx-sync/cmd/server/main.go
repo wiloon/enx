@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"enx-data-service/internal/api"
-	"enx-data-service/internal/config"
-	"enx-data-service/internal/repository"
-	"enx-data-service/internal/service"
-	"enx-data-service/internal/sync"
-	pb "enx-data-service/proto"
+	"enx-sync/internal/api"
+	"enx-sync/internal/config"
+	"enx-sync/internal/repository"
+	"enx-sync/internal/service"
+	"enx-sync/internal/sync"
+	pb "enx-sync/proto"
 
 	"google.golang.org/grpc"
 )

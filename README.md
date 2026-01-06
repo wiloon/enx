@@ -15,7 +15,7 @@ This is a monorepo containing multiple sub-projects:
 | **[enx-api](enx-api/)** | Backend API server | Go, Gin, SQLite |
 | **[enx-chrome](enx-chrome/)** | Chrome browser extension | TypeScript, React, Vite |
 | **[enx-ui](enx-ui/)** | Web UI (future) | Next.js, React |
-| **[enx-data-service](enx-data-service/)** | P2P data sync service | Go, gRPC |
+| **[enx-sync](enx-sync/)** | P2P data sync service | Go, gRPC |
 | **[mock-api](mock-api/)** | Mock API server for testing | Node.js |
 
 ## 🚀 Quick Start

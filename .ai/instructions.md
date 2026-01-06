@@ -397,7 +397,7 @@ This is a monorepo with the following sub-projects:
 - **enx-api** - Go backend API server (SQLite database)
 - **enx-chrome** - Chrome extension (TypeScript, Vite)
 - **enx-ui** - Next.js web UI
-- **enx-data-service** - gRPC data service (Go)
+- **enx-sync** - P2P data sync service (Go)
 - **mock-api** - Mock API server for testing
 
 ## Development Commands

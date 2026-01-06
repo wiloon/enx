@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"enx-data-service/internal/repository"
-	pb "enx-data-service/proto"
+	"enx-sync/internal/repository"
+	pb "enx-sync/proto"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"

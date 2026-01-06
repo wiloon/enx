@@ -5,9 +5,9 @@ import (
 	"log"
 	"time"
 
-	"enx-data-service/internal/model"
-	"enx-data-service/internal/repository"
-	pb "enx-data-service/proto"
+	"enx-sync/internal/model"
+	"enx-sync/internal/repository"
+	pb "enx-sync/proto"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"

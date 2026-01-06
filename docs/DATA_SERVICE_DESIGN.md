@@ -1,9 +1,9 @@
-# Generic SQLite P2P Sync Service (ENX Data Service)
+# Generic SQLite P2P Sync Service (ENX Sync)
 
 **📌 Quick Summary**: This document designs a **universal, reusable SQLite synchronization service** with P2P capabilities. While originally designed for the ENX vocabulary learning app, the service is completely **generic and table-agnostic**, making it suitable for any SQLite-based application that needs multi-device data synchronization.
 
 **🎯 Design Philosophy**:
-- ✅ **Sync-Only Architecture**: data-service is a background sync daemon, not a data access layer
+- ✅ **Sync-Only Architecture**: enx-sync is a background sync daemon, not a data access layer
 - ✅ **Pull-Based Sync**: Periodic polling for changes (simple, reliable, fault-tolerant)
 - ✅ **Direct Database Access**: enx-api accesses local SQLite directly (optimal performance)
 - ✅ **Configuration-Driven**: YAML config instead of code changes
@@ -24,7 +24,7 @@
 
 ## 🚨 Architecture Update (2026-01-03)
 
-**Critical Design Change**: data-service is now a **sync-only background daemon**, not a data access gateway.
+**Critical Design Change**: enx-sync is now a **sync-only background daemon**, not a data access gateway.
 
 ### Previous Architecture (❌ Rejected)
 ```
@@ -41,7 +41,7 @@ enx-api → gRPC → data-service → SQLite
 enx-api → Direct SQLite access (local)
           ↓ Writes update `updated_at`
           
-data-service → Monitors changes → Pull from peers → Merge
+data-sync → Monitors changes → Pull from peers → Merge
               (background daemon)
 ```
 - **Benefits**:
@@ -91,12 +91,12 @@ func SyncWithPeers() {
 |-------|-----------|----------------|--------------|-----------|
 | `users` | enx-api | enx-api/schema.sql | ❌ No | User accounts are environment-specific (no need to sync) |
 | `sessions` | enx-api | enx-api/schema.sql | ❌ No | Sessions are temporary, local only |
-| `words` | data-service | data-service/schema/schema.sql | ✅ Yes | Core vocabulary data, needs P2P sync across devices |
-| `user_dicts` | data-service | data-service/schema/schema.sql | ✅ Yes | User learning progress, needs P2P sync across devices |
-| `sync_state` | data-service | data-service/schema/schema.sql | ✅ Internal | Tracks sync timestamps for P2P coordination |
+| `words` | enx-sync | enx-sync/schema/schema.sql | ✅ Yes | Core vocabulary data, needs P2P sync across devices |
+| `user_dicts` | enx-sync | enx-sync/schema/schema.sql | ✅ Yes | User learning progress, needs P2P sync across devices |
+| `sync_state` | enx-sync | enx-sync/schema/schema.sql | ✅ Internal | Tracks sync timestamps for P2P coordination |
 
 **Migration History:**
-- **2026-01-03**: Migrated `user_dicts` from enx-api to data-service
+- **2026-01-03**: Migrated `user_dicts` from enx-api to enx-sync
   - **Reason**: Enable P2P sync of user learning progress across devices
   - **Changed**: `word_id` from `INTEGER` to `TEXT` (UUID) to avoid ID conflicts
   - **Impact**: Discarded historical data (acceptable for side project)
@@ -193,7 +193,7 @@ The data service will automatically verify clock synchronization on startup:
 ```go
 // Service startup sequence
 func main() {
-    log.Println("🚀 Starting enx-data-service...")
+    log.Println("🚀 Starting enx-sync...")
     
     // STEP 1: Verify clock synchronization (BLOCKING)
     if err := verifyClockSync(); err != nil {
@@ -305,7 +305,7 @@ Before enabling P2P sync, verify:
 **Only proceed with sync setup after all items are checked!**
 
 **What this means:**
-- **enx-data-service**: Generic CRUD + P2P sync for ANY SQLite database
+- **enx-sync**: Generic CRUD + P2P sync for ANY SQLite database
 - **enx-api**: ENX-specific business logic (word learning, user management, etc.)
 - **Future**: Open-source the data service for broader community benefit
 
@@ -334,15 +334,15 @@ service GenericDataService {
 
 ## Overview
 
-This document describes the architecture design for separating ENX into two services: **enx-api** (application layer) and **enx-data-service** (generic data layer with P2P sync capabilities).
+This document describes the architecture design for separating ENX into two services: **enx-api** (application layer) and **enx-sync** (generic data layer with P2P sync capabilities).
 
-**🎯 Key Design Decision**: enx-data-service is designed as a **generic, reusable SQLite synchronization service** that works with any SQLite database, not just ENX. This allows us to:
+**🎯 Key Design Decision**: enx-sync is designed as a **generic, reusable SQLite synchronization service** that works with any SQLite database, not just ENX. This allows us to:
 - Build a universal tool for the SQLite community
 - Benefit from broader testing and community contributions
 - Use ENX as the first real-world validation case
 - Potentially open-source the tool to help other developers
 
-**ENX-specific business logic** (word learning, user preferences, etc.) remains in **enx-api**, while **generic data operations** (CRUD, sync, storage) are handled by **enx-data-service**.
+**ENX-specific business logic** (word learning, user preferences, etc.) remains in **enx-api**, while **generic data operations** (CRUD, sync, storage) are handled by **enx-sync**.
 
 ## Problem Statement
 
@@ -406,7 +406,7 @@ Saturday Morning (Ubuntu disconnected from LAN):
   - All changes stored locally in SQLite ✅
 
 Saturday Afternoon (Ubuntu reconnects to home LAN):
-  - enx-data-service detects network available
+  - enx-sync detects network available
   - Connects to Desktop/MacBook on LAN
   - Pulls changes since last sync (Desktop added 20 words)
   - Pushes local changes (30 words + learning progress)
@@ -697,7 +697,7 @@ All clients:
 
 #### Option 5: Custom P2P Data Service (Current Design) ⭐⭐⭐⭐⭐
 
-**What it is**: Your proposed enx-data-service with gRPC and timestamp-based sync.
+**What it is**: Your proposed enx-sync with gRPC and timestamp-based sync.
 
 **Pros**:
 - ✅ **Full control**: Exactly what you need, no compromises
@@ -842,10 +842,10 @@ Phase 2 (3-6 months later): Build custom sync
 
 Since we need to solve the data synchronization problem anyway, why not:
 
-1. **Wrap enx.db in a service** → enx-data-service
+1. **Wrap enx.db in a service** → enx-sync
 2. **Complete decoupling** → enx-api never touches the database directly
-3. **Unified data access** → All database operations go through enx-data-service API
-4. **Built-in synchronization** → enx-data-service handles node-to-node sync automatically
+3. **Unified data access** → All database operations go through enx-sync API
+4. **Built-in synchronization** → enx-sync handles node-to-node sync automatically
 
 Benefits:
 
@@ -856,7 +856,7 @@ Benefits:
 - ✅ **Data integrity**: Intelligent merge based on timestamps
 - ✅ **Clean architecture**: Business logic completely separated from data management
 - ✅ **Future-proof**: Easy to migrate from SQLite to PostgreSQL without touching enx-api
-- ✅ **Service isolation**: enx-data-service can be restarted/upgraded independently
+- ✅ **Service isolation**: enx-sync can be restarted/upgraded independently
 
 ## Sync Requirements (New)
 
@@ -977,7 +977,7 @@ sqlite3 enx.db "SELECT substr(id, 1, 8) as id, english, update_datetime FROM wor
 
 **Project structure**:
 ```
-enx-data-service/
+enx-sync/
 ├── main.go              # Service entry point
 ├── proto/
 │   └── data.proto       # gRPC definitions
@@ -1159,10 +1159,10 @@ func (s *SyncService) SyncWithPeer(peerAddr string) error {
 **Manual testing**:
 ```bash
 # Terminal 1: Start Desktop node
-./enx-data-service --port 8091 --db ~/desktop/enx.db
+./enx-sync --port 8091 --db ~/desktop/enx.db
 
 # Terminal 2: Start MacBook node  
-./enx-data-service --port 8092 --db ~/macbook/enx.db
+./enx-sync --port 8092 --db ~/macbook/enx.db
 
 # Terminal 3: Trigger sync
 grpcurl -d '{"peer_addr":"localhost:8091"}' \
@@ -1531,7 +1531,7 @@ CREATE TABLE sync_state (
 1. ✅ Backup existing enx.db on all devices
 2. ✅ Migrate schema to UUID + update_datetime
 3. ✅ Verify migration with test queries
-4. ✅ Set up new Go project: `enx-data-service/`
+4. ✅ Set up new Go project: `enx-sync/`
 5. ✅ Define minimal `.proto` file
 
 **Decision point after Week 3**:
@@ -1599,7 +1599,7 @@ date +%s  # Check Unix timestamp on each node
 ### Development Scope
 
 1.  **Scope**:
-    *   Create `enx-data-service` in a new directory.
+    *   Create `enx-sync` in a new directory.
     *   Implement only the **"words"** table initially.
     *   Do NOT modify `enx-api` yet.
 2.  **Clock Synchronization** (Phase 1):
@@ -1608,18 +1608,18 @@ date +%s  # Check Unix timestamp on each node
     *   ❌ No automatic clock checking in Phase 1 (keep it simple)
     *   ⏳ Defer automatic detection to Phase 2
 3.  **Integration**:
-    *   Develop and test `enx-data-service` independently.
-    *   Once `enx-data-service` is stable, refactor `enx-api` to connect to it.
+    *   Develop and test `enx-sync` independently.
+    *   Once `enx-sync` is stable, refactor `enx-api` to connect to it.
 
 
 ## Architecture Goals
 
 1. **Decoupling**: Separate business logic from data synchronization
    - **enx-api**: HTTP routing, authentication, business rules, **direct local database access**
-   - **enx-data-service**: **P2P sync only** (not a data access layer)
+   - **enx-sync**: **P2P sync only** (not a data access layer)
 
 2. **P2P Sync**: Enable data synchronization across multiple nodes without central server
-   - Each node (Linux desktop, MacBook, Ubuntu laptop) runs its own enx-data-service
+   - Each node (Linux desktop, MacBook, Ubuntu laptop) runs its own enx-sync
    - **Pull-based sync model**: Each node periodically pulls changes from peers (every 30s)
    - No central server required (works in isolated environments)
    - **data-service acts as a background sync daemon**, not a data access gateway
@@ -1756,7 +1756,7 @@ end note
 - Flexibility for different use cases
 
 ```
-enx-api → gRPC → enx-data-service  (Fast, typed)
+enx-api → gRPC → enx-sync  (Fast, typed)
     ↓
 User/Admin → REST → enx-api       (Easy debugging)
 
@@ -1896,7 +1896,7 @@ import (
     "net/http"
 
     "github.com/gin-gonic/gin"
-    pb "enx-data-service/proto"  // Generic data service proto
+    pb "enx-sync/proto"  // Generic data service proto
 )
 
 type WordHandler struct {
@@ -2130,7 +2130,7 @@ for msg := range pubsub.Channel() {
 
 ## Service Interfaces
 
-### enx-data-service API
+### enx-sync API
 
 **🚨 Architecture Change**: data-service NO LONGER provides CRUD APIs. It's a background sync daemon only.
 
@@ -2829,7 +2829,7 @@ func (s *SyncService) checkClockSkew(peer Peer) error {
 
 // Service initialization with clock check
 func main() {
-    log.Println("🚀 Starting enx-data-service...")
+    log.Println("🚀 Starting enx-sync...")
     
     // STEP 1: Verify clock synchronization
     if err := verifyClockSync(); err != nil {
@@ -4234,7 +4234,7 @@ import "go.opentelemetry.io/otel"
 func TracingInterceptor() grpc.UnaryServerInterceptor {
     return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo,
                 handler grpc.UnaryHandler) (interface{}, error) {
-        tracer := otel.Tracer("enx-data-service")
+        tracer := otel.Tracer("enx-sync")
         ctx, span := tracer.Start(ctx, info.FullMethod)
         defer span.End()
 
@@ -6462,7 +6462,7 @@ tx.Commit()  // ✅ All 100 changes commit atomically
 #### 1. Enable WAL Mode
 
 ```go
-// enx-data-service database initialization
+// enx-sync database initialization
 func InitDatabase(dbPath string) (*sql.DB, error) {
     db, err := sql.Open("sqlite3", dbPath)
     if err != nil {
@@ -6607,9 +6607,9 @@ func (s *SyncService) PrepareForSync() error {
     return err
 }
 
-// Option B: Use enx-data-service API (recommended)
+// Option B: Use enx-sync API (recommended)
 // Don't sync files directly, sync through gRPC API
-// enx-data-service handles WAL internally
+// enx-sync handles WAL internally
 ```
 
 **3. Multi-Process Access**:
@@ -6664,7 +6664,7 @@ Step 3: Background checkpoint (automatic)
 ### Configuration Best Practices
 
 ```yaml
-# Environment variables for enx-data-service
+# Environment variables for enx-sync
 environment:
   # Database
   - DB_PATH=/data/enx.db
@@ -7109,7 +7109,7 @@ Full records vs binary diffs
 ```
 Scenario: Development on Desktop
 ─────────────────────────────────────────────────────────
-10:00 AM - Start enx-data-service
+10:00 AM - Start enx-sync
            session = sqlite3_session_create()  ← Session in memory
 
 10:30 AM - Add 50 words
@@ -7120,7 +7120,7 @@ Scenario: Development on Desktop
            ❌ Session destroyed
            ❌ 50 word changes LOST
 
-11:30 AM - Start enx-data-service again
+11:30 AM - Start enx-sync again
            session = sqlite3_session_create()  ← NEW empty session
            session has no history              ← Cannot get 10:30 changes
 
@@ -7153,7 +7153,7 @@ rows := db.Query("SELECT * FROM changesets WHERE not_synced = 1")
 ```
 Friday - Ubuntu (offline):
 ─────────────────────────────────────────────────────────
-Start enx-data-service → session.create()
+Start enx-sync → session.create()
 Add 30 words           → session tracks (in memory)
                        → ❌ Cannot sync (no network)
 Shutdown for weekend   → ❌ Session destroyed
@@ -7161,7 +7161,7 @@ Shutdown for weekend   → ❌ Session destroyed
 
 Monday - Ubuntu (back online):
 ─────────────────────────────────────────────────────────
-Start enx-data-service → NEW session.create()
+Start enx-sync → NEW session.create()
 Try to sync            → ❌ No changeset available
                        → ❌ 30 words never sync to Desktop/MacBook
 
@@ -7964,7 +7964,7 @@ for the ENX development workflow.
 Here's a minimal example repo structure:
 
 ```
-enx-data-service/
+enx-sync/
 ├── go.mod
 ├── session/
 │   ├── manager.go         # CGo wrapper for Session API
@@ -7988,7 +7988,7 @@ version: '3.8'
 
 services:
   data-service:
-    image: enx-data-service:latest
+    image: enx-sync:latest
     ports:
       - "8091:8091"
     volumes:
@@ -8014,7 +8014,7 @@ services:
 # Host A
 services:
   data-service-a:
-    image: enx-data-service:latest
+    image: enx-sync:latest
     ports:
       - "8091:8091"
     environment:
@@ -8025,7 +8025,7 @@ services:
 # Host B
 services:
   data-service-b:
-    image: enx-data-service:latest
+    image: enx-sync:latest
     ports:
       - "8091:8091"
     environment:
@@ -8036,7 +8036,7 @@ services:
 # Host C
 services:
   data-service-c:
-    image: enx-data-service:latest
+    image: enx-sync:latest
     ports:
       - "8091:8091"
     environment:
@@ -8049,7 +8049,7 @@ services:
 
 ### Phase 1: Foundation (Week 1-2)
 
-- [ ] Create enx-data-service project structure
+- [ ] Create enx-sync project structure
 - [ ] Define Protocol Buffers / REST API
 - [ ] Implement basic CRUD operations
 - [ ] Create client library for enx-api
@@ -9380,7 +9380,7 @@ Our niche:
 - ⚠️ More difficult to debug (binary protocol)
 
 **Use Cases**:
-- **Inter-service communication** (enx-api ↔ enx-data-service)
+- **Inter-service communication** (enx-api ↔ enx-sync)
 - **Node-to-node sync** (data-service ↔ data-service)
 - High-frequency, low-latency operations
 

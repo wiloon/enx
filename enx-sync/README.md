@@ -1,4 +1,4 @@
-# ENX Data Service
+# ENX Sync
 
 Phase 3: Manual Sync Trigger
 
