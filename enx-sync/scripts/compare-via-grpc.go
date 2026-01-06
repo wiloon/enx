@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	pb "enx-data-service/proto"
+	pb "enx-sync/proto"
 
 	_ "github.com/mattn/go-sqlite3"
 	"google.golang.org/grpc"

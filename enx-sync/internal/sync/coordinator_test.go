@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"enx-data-service/internal/model"
-	"enx-data-service/internal/repository"
-	"enx-data-service/internal/service"
-	pb "enx-data-service/proto"
+	"enx-sync/internal/model"
+	"enx-sync/internal/repository"
+	"enx-sync/internal/service"
+	pb "enx-sync/proto"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
