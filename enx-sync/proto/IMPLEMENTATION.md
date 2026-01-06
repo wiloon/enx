@@ -14,7 +14,7 @@ enx/
 │   └── proto/                       # 生成的客户端代码
 │       ├── data_service.pb.go
 │       └── data_service_grpc.pb.go
-├── enx-data-service/
+├── enx-sync/
 │   └── proto/                       # 生成的服务端代码
 │       ├── data_service.pb.go
 │       └── data_service_grpc.pb.go
@@ -30,7 +30,7 @@ enx/
 
 **proto/generate.sh**
 - 自动化代码生成脚本
-- 同时为 enx-api 和 enx-data-service 生成代码
+- 同时为 enx-api 和 enx-sync 生成代码
 - 包含路径验证和错误处理
 
 **proto/README.md**
@@ -82,7 +82,7 @@ task proto:clean
    - 避免了文件重复和版本不一致
 
 2. **代码复用**
-   - enx-api 和 enx-data-service 共享相同的接口定义
+   - enx-api 和 enx-sync 共享相同的接口定义
    - 减少维护成本
 
 3. **版本管理**
@@ -118,7 +118,7 @@ option go_package = "enx/proto";  // 关键：相对路径
 
 ```bash
 # 输出到各服务的 proto/ 子目录
-protoc --go_out=../enx-data-service/proto \
+protoc --go_out=../enx-sync/proto \
        --go_opt=paths=source_relative \
        --proto_path=. \
        data_service.proto
@@ -132,7 +132,7 @@ protoc --go_out=../enx-data-service/proto \
 - [x] 编写 proto README 文档
 - [x] 集成到根 Taskfile
 - [x] 生成两个服务的代码
-- [x] 验证 enx-data-service 编译通过
+- [x] 验证 enx-sync 编译通过
 - [ ] 验证 enx-api 编译通过（待实现客户端）
 - [ ] 更新 enx-api 使用 gRPC 客户端
 

@@ -6,8 +6,8 @@ import (
 	"log"
 	"net/http"
 
-	"enx-data-service/internal/config"
-	"enx-data-service/internal/sync"
+	"enx-sync/internal/config"
+	"enx-sync/internal/sync"
 )
 
 type HTTPServer struct {

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"enx-data-service/internal/model"
+	"enx-sync/internal/model"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"

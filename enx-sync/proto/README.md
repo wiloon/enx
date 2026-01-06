@@ -23,7 +23,7 @@ cd proto
 ```
 
 This will generate:
-- `enx-data-service/proto/*.pb.go` - Server and client stubs
+- `enx-sync/proto/*.pb.go` - Server and client stubs
 - `enx-api/proto/*.pb.go` - Client stubs
 
 ### Prerequisites

@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"enx-data-service/internal/model"
-	"enx-data-service/internal/repository"
-	pb "enx-data-service/proto"
+	"enx-sync/internal/model"
+	"enx-sync/internal/repository"
+	pb "enx-sync/proto"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"

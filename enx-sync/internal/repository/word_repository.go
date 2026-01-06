@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"enx-data-service/internal/model"
+	"enx-sync/internal/model"
 
 	_ "github.com/mattn/go-sqlite3"
 )

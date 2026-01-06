@@ -34,8 +34,8 @@ tasks:
       - task: build
       - |
         if [ "{{.MODE}}" = "bg" ]; then
-          ./bin/server --db={{.DB_PATH}} > /tmp/enx-data-service.log 2>&1 &
-          echo "✅ Started in background (logs: /tmp/enx-data-service.log)"
+          ./bin/server --db={{.DB_PATH}} > /tmp/enx-sync.log 2>&1 &
+          echo "✅ Started in background (logs: /tmp/enx-sync.log)"
         else
           ./bin/server --db={{.DB_PATH}}
         fi

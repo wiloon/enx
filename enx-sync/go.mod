@@ -1,4 +1,4 @@
-module enx-data-service
+module enx-sync
 
 go 1.24.0
 
