@@ -159,6 +159,14 @@ class ContentWordProcessor {
       let text = textNode.textContent || ''
       let hasChanges = false
 
+      // Debug: Log text nodes that will be processed
+      if (text.includes('Claude') || text.includes('creator') || text.includes('Boris')) {
+        console.log('Processing text node:', text.substring(0, 100))
+        console.log('  Parent element:', textNode.parentElement?.tagName)
+        console.log('  Previous sibling:', textNode.previousSibling?.nodeName)
+        console.log('  Next sibling:', textNode.nextSibling?.nodeName)
+      }
+
       // Use placeholders to avoid nested replacements
       const placeholders: { placeholder: string; html: string }[] = []
       let placeholderIndex = 0
@@ -173,7 +181,7 @@ class ContentWordProcessor {
 
             // Create a unique placeholder that won't match any word pattern
             const placeholder = `___ENX_PLACEHOLDER_${placeholderIndex++}___`
-            const html = `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="text-decoration: ${colorCode} underline; text-decoration-thickness: 1px;">${match}</u>`
+            const html = `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="display: inline !important; text-decoration: ${colorCode} underline; text-decoration-thickness: 1px;">${match}</u>`
 
             placeholders.push({ placeholder, html })
             return placeholder
@@ -200,30 +208,42 @@ class ContentWordProcessor {
 
     // Batch DOM updates using DocumentFragment for better performance
     replacements.forEach(({ node, newContent }) => {
-      // Create a document fragment for efficient DOM manipulation
-      const fragment = document.createDocumentFragment()
-      const tempContainer = document.createElement('span')
-
-      // Debug: log the newContent to see if HTML is properly formatted
-      if (newContent.includes('enx-word')) {
-        console.log(
-          'Setting innerHTML with content:',
-          newContent.substring(0, 200)
-        )
+      // Debug: Check if the problem text node is being processed
+      const isProblematic = newContent.includes('Claude') && newContent.includes('creator')
+      
+      if (isProblematic) {
+        console.log('🔍 Processing problematic node')
+        console.log('Original text:', node.textContent)
+        console.log('New content:', newContent.substring(0, 300))
       }
 
+      // Create a temporary container to parse HTML
+      const tempContainer = document.createElement('span')
       tempContainer.innerHTML = newContent
 
-      // Move all children to fragment
+      if (isProblematic) {
+        console.log('TempContainer children count:', tempContainer.childNodes.length)
+        console.log('TempContainer innerHTML:', tempContainer.innerHTML.substring(0, 300))
+        // Log each child node
+        Array.from(tempContainer.childNodes).forEach((child, index) => {
+          console.log(`  Child ${index}:`, child.nodeName, child.nodeType, child.textContent?.substring(0, 50))
+        })
+      }
+
+      // Create a document fragment and move all parsed nodes to it
+      const fragment = document.createDocumentFragment()
       while (tempContainer.firstChild) {
         fragment.appendChild(tempContainer.firstChild)
       }
 
-      // Replace the original text node with the fragment content
+      // Replace the original text node with the fragment
       const parent = node.parentNode
       if (parent) {
-        parent.insertBefore(fragment, node)
-        parent.removeChild(node)
+        parent.replaceChild(fragment, node)
+      }
+      
+      if (isProblematic) {
+        console.log('✅ Replacement complete')
       }
     })
 
@@ -234,11 +254,14 @@ class ContentWordProcessor {
     if (finalHtml.includes('enx-word')) {
       console.log('Final HTML sample:', finalHtml.substring(0, 500))
       // Check if HTML tags are properly formed
-      const uTagsCount = (finalHtml.match(/<u class="enx-word"/g) || []).length
+      const uTagsCount = (finalHtml.match(/<u[^>]*class="enx-word"/g) || []).length
       const closingTagsCount = (finalHtml.match(/<\/u>/g) || []).length
       console.log(
         `Found ${uTagsCount} opening <u> tags and ${closingTagsCount} closing </u> tags`
       )
+      if (uTagsCount !== closingTagsCount) {
+        console.error('⚠️ Tag mismatch! HTML structure may be broken')
+      }
     }
 
     return tempDiv.innerHTML
@@ -737,6 +760,25 @@ const processArticleContent = async (): Promise<boolean> => {
       }
 
       articleNode.innerHTML = highlightedHtml
+
+      // Fix flex container issue: Find all span elements containing <u> elements
+      // and force them to use display: inline instead of inline-flex or -webkit-inline-box
+      const allSpans = articleNode.querySelectorAll('span')
+      let fixedSpanCount = 0
+      allSpans.forEach(span => {
+        // Check if this span has <u.enx-word> children
+        const hasUChildren = span.querySelector('u.enx-word')
+        if (hasUChildren) {
+          const computedStyle = window.getComputedStyle(span)
+          if (computedStyle.display === 'inline-flex' || computedStyle.display === '-webkit-inline-box') {
+            (span as HTMLElement).style.setProperty('display', 'inline', 'important')
+            fixedSpanCount++
+          }
+        }
+      })
+      if (fixedSpanCount > 0) {
+        console.log(`Fixed ${fixedSpanCount} flex container spans to preserve whitespace`)
+      }
 
       // Debug: Verify the HTML was set correctly
       const verifyHtml = articleNode.innerHTML

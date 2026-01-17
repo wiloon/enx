@@ -11,15 +11,15 @@ tasks:
   # ===========================================
 
   # Data Service
-  data:start:
-    desc: Start enx-sync using taskfile (usage - task data:start [MODE=fg|bg] - default is fg)
+  sync:start:
+    desc: Start enx-sync using taskfile (usage - task sync:start [MODE=fg|bg] - default is fg)
     dir: enx-sync
     vars:
       MODE: '{{.MODE | default "fg"}}'
     cmds:
       - task run MODE={{.MODE}}
 
-  data:start:fg:
+  sync:start:fg:
     desc: Start enx-sync in foreground
     cmds:
       - |
@@ -34,7 +34,7 @@ tasks:
         echo ""
         cd enx-sync && ./bin/server --db=/var/lib/enx-api/enx.db
 
-  data:start:bg:
+  sync:start:bg:
     desc: Start enx-sync in background
     cmds:
       - |
@@ -56,7 +56,7 @@ tasks:
           exit 1
         fi
 
-  data:stop:
+  sync:stop:
     desc: Stop enx-sync
     cmds:
       - |
@@ -74,14 +74,14 @@ tasks:
           echo "✅ data-service stopped"
         fi
 
-  data:restart:
+  sync:restart:
     desc: Restart enx-sync
     cmds:
-      - task: data:stop
+      - task: sync:stop
       - sleep 1
-      - task: data:start
+      - task: sync:start
 
-  data:logs:
+  sync:logs:
     desc: Show enx-sync logs
     cmds:
       - tail -f /tmp/enx-sync.log
@@ -173,8 +173,8 @@ tasks:
   # Development
   # ===========================================
 
-  api:start:
-    desc: Start enx-api in development mode (usage - task api:start [MODE=fg|bg] - default is fg)
+  api:run:
+    desc: Start enx-api in development mode (usage - task api:run [MODE=fg|bg] - default is fg)
     dir: enx-api
     vars:
       MODE: '{{.MODE | default "fg"}}'
@@ -240,7 +240,7 @@ tasks:
     desc: Build all projects
     cmds:
       - task: build-api
-      - task: build-chrome
+      - task: chrome:build
       - task: build-ui
 
   build-api:
@@ -249,11 +249,11 @@ tasks:
     cmds:
       - task: build
 
-  build-chrome:
-    desc: Build enx-chrome
+  chrome:build:
+    desc: Build enx-chrome extension
     dir: enx-chrome
     cmds:
-      - task: build
+      - pnpm run build
 
   build-ui:
     desc: Build enx-ui
