@@ -10,7 +10,7 @@ tasks:
   # Service Management
   # ===========================================
 
-  # Data Service
+  # Sync Service
   sync:start:
     desc: Start enx-sync using taskfile (usage - task sync:start [MODE=fg|bg] - default is fg)
     dir: enx-sync
@@ -19,12 +19,12 @@ tasks:
     cmds:
       - task run MODE={{.MODE}}
 
-  sync:start:fg:
+  data:start:fg:
     desc: Start enx-sync in foreground
     cmds:
       - |
         if pgrep -f "bin/server.*enx.db" > /dev/null; then
-          echo "⚠️  data-service is already running (PID: $(pgrep -f 'bin/server.*enx.db'))"
+          echo "⚠️  sync-service is already running (PID: $(pgrep -f 'bin/server.*enx.db'))"
           exit 1
         fi
         echo "🚀 Starting enx-sync in foreground..."
@@ -39,49 +39,49 @@ tasks:
     cmds:
       - |
         if pgrep -f "bin/server.*enx.db" > /dev/null; then
-          echo "⚠️  data-service is already running"
+          echo "⚠️  sync-service is already running"
           exit 1
         fi
         echo "🚀 Starting enx-sync..."
         cd enx-sync && ./bin/server --db=/var/lib/enx-api/enx.db > /tmp/enx-sync.log 2>&1 &
         sleep 2
         if pgrep -f "bin/server.*enx.db" > /dev/null; then
-          echo "✅ data-service started (PID: $(pgrep -f 'bin/server.*enx.db'))"
+          echo "✅ sync-service started (PID: $(pgrep -f 'bin/server.*enx.db'))"
           echo "   Logs: /tmp/enx-sync.log"
           echo "   gRPC: localhost:50051"
           echo "   HTTP: localhost:8090"
         else
-          echo "❌ Failed to start data-service"
+          echo "❌ Failed to start sync-service"
           tail -20 /tmp/enx-sync.log
           exit 1
         fi
 
-  sync:stop:
+  data:stop:
     desc: Stop enx-sync
     cmds:
       - |
         PID=$(pgrep -f "bin/server.*enx.db" || echo "")
         if [ -z "$PID" ]; then
-          echo "⚠️  data-service is not running"
+          echo "⚠️  sync-service is not running"
         else
-          echo "🛑 Stopping data-service (PID: $PID)..."
+          echo "🛑 Stopping sync-service (PID: $PID)..."
           kill $PID
           sleep 1
           if pgrep -f "bin/server.*enx.db" > /dev/null; then
             echo "⚠️  Forcing stop..."
             kill -9 $PID
           fi
-          echo "✅ data-service stopped"
+          echo "✅ sync-service stopped"
         fi
 
-  sync:restart:
+  data:restart:
     desc: Restart enx-sync
     cmds:
-      - task: sync:stop
+      - task: data:stop
       - sleep 1
-      - task: sync:start
+      - task: data:start
 
-  sync:logs:
+  data:logs:
     desc: Show enx-sync logs
     cmds:
       - tail -f /tmp/enx-sync.log
@@ -123,7 +123,7 @@ tasks:
       - |
         echo "=== ENX Services Status ==="
         echo ""
-        echo "📊 Data Service:"
+        echo "📊 Sync Service:"
         if pgrep -f "bin/server.*enx.db" > /dev/null; then
           echo "   ✅ Running (PID: $(pgrep -f 'bin/server.*enx.db'))"
           echo "   🔗 gRPC: localhost:50051"
@@ -173,8 +173,8 @@ tasks:
   # Development
   # ===========================================
 
-  api:run:
-    desc: Start enx-api in development mode (usage - task api:run [MODE=fg|bg] - default is fg)
+  api:start:
+    desc: Start enx-api in development mode (usage - task api:start [MODE=fg|bg] - default is fg)
     dir: enx-api
     vars:
       MODE: '{{.MODE | default "fg"}}'
@@ -371,57 +371,6 @@ tasks:
   # Code Quality
   # ===========================================
 
-  lint:
-    desc: Lint all projects
-    cmds:
-      - task: lint-api
-      - task: lint-chrome
-      - task: lint-ui
-
-  lint-api:
-    desc: Lint enx-api
-    dir: enx-api
-    cmds:
-      - task: lint
-
-  lint-chrome:
-    desc: Lint enx-chrome
-    dir: enx-chrome
-    cmds:
-      - task: lint
-
-  lint-ui:
-    desc: Lint enx-ui
-    dir: enx-ui
-    cmds:
-      - pnpm lint
-
-  check:
-    desc: Run all checks (lint, format, test) for all projects
-    cmds:
-      - task: check-api
-      - task: check-chrome
-      - task: check-ui
-
-  check-api:
-    desc: Run all checks for enx-api
-    dir: enx-api
-    cmds:
-      - task: check
-
-  check-chrome:
-    desc: Run all checks for enx-chrome
-    dir: enx-chrome
-    cmds:
-      - task: check
-
-  check-ui:
-    desc: Run all checks for enx-ui
-    dir: enx-ui
-    cmds:
-      - pnpm lint
-      - pnpm test
-
   # ===========================================
   # Cleaning
   # ===========================================
@@ -464,43 +413,8 @@ tasks:
       - task: pack
 
   # ===========================================
-  # Utilities
-  # ===========================================
-
-  info:
-    desc: Show project information
-    cmds:
-      - echo "ENX Project Structure"
-      - echo "  - enx-api (Go backend API)"
-      - echo "  - enx-chrome (Chrome extension)"
-      - echo "  - enx-ui (Next.js frontend)"
-      - echo "  - mock-api (Mock API server)"
-      - echo ""
-      - echo "Available tasks - run task --list"
-
-  # ===========================================
   # CI/CD
   # ===========================================
-
-  ci:
-    desc: Complete CI workflow (install, lint, test, build)
-    cmds:
-      - task: setup
-      - task: lint
-      - task: test
-      - task: build
-
-  ci-api:
-    desc: CI workflow for enx-api
-    dir: enx-api
-    cmds:
-      - task: ci
-
-  ci-chrome:
-    desc: CI workflow for enx-chrome
-    dir: enx-chrome
-    cmds:
-      - task: ci
 
   # ===========================================
   # Database
