@@ -26,7 +26,8 @@
         "https://messaging-custom-newsletters.nytimes.com/*",
         "https://developers.googleblog.com/*",
         "https://www.microsoft.com/en-us/research/*",
-        "https://www.reuters.com/*"
+        "https://www.reuters.com/*",
+        "https://www.anthropic.com/*"
       ],
       "js": ["src/content/content.ts"],
       "run_at": "document_end"
