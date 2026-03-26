@@ -45,6 +45,8 @@ console.log('')
 
 // Try different Chrome executable paths
 const chromePaths = [
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/Applications/Chromium.app/Contents/MacOS/Chromium',
   '/usr/bin/google-chrome',
   '/usr/bin/google-chrome-stable',
   '/usr/bin/chromium',
@@ -86,9 +88,9 @@ const chromeArgs = [
   '--no-default-browser-check',
   '--no-first-run',
   url
-].join(' ')
+]
 
-const chromeCmd = `${chromePath} ${chromeArgs}`
+const chromeCmd = `"${chromePath}" ${chromeArgs.map(a => `"${a}"`).join(' ')}`
 
 console.log('🚀 Launching Chrome...')
 console.log('')

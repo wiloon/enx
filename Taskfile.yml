@@ -181,6 +181,12 @@ tasks:
     cmds:
       - task dev MODE={{.MODE}}
 
+  chrome:build:
+    desc: Build enx-chrome extension to dist/ (connects to enx-lab.wiloon.com)
+    dir: enx-chrome
+    cmds:
+      - task build
+
   dev-chrome:
     desc: Start Chrome browser with extension (auto-reload)
     dir: enx-chrome

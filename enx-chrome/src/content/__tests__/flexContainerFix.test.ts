@@ -1,12 +1,12 @@
 /**
  * Tests for flex container fix that preserves whitespace
- * 
+ *
  * Problem: When parent elements use display: inline-flex or -webkit-inline-box,
  * text nodes (spaces) between child elements are ignored by the flex layout.
- * 
+ *
  * Solution: Force parent elements containing <u.enx-word> elements to use
  * display: inline instead of flex layouts.
- * 
+ *
  * @jest-environment jsdom
  */
 
@@ -24,7 +24,7 @@ describe('Flex Container Fix', () => {
   function fixFlexContainers(root: HTMLElement) {
     const allSpans = root.querySelectorAll('span')
     let fixedCount = 0
-    
+
     allSpans.forEach(span => {
       const hasUChildren = span.querySelector('u.enx-word')
       if (hasUChildren) {
@@ -35,7 +35,7 @@ describe('Flex Container Fix', () => {
         }
       }
     })
-    
+
     return fixedCount
   }
 
@@ -88,11 +88,11 @@ describe('Flex Container Fix', () => {
     `
 
     const span = container.querySelector('span') as HTMLElement
-    
+
     // Verify text nodes exist before fix
     const childNodes = span.childNodes
     expect(childNodes.length).toBeGreaterThan(3) // Should have both U elements and text nodes
-    
+
     // Count text nodes with spaces
     let spaceNodes = 0
     childNodes.forEach(node => {
@@ -107,7 +107,7 @@ describe('Flex Container Fix', () => {
 
     // Verify display is now inline
     expect(span.style.display).toBe('inline')
-    
+
     // Verify text nodes still exist
     const afterNodes = span.childNodes
     expect(afterNodes.length).toBe(childNodes.length)
@@ -135,8 +135,7 @@ describe('Flex Container Fix', () => {
     `
 
     const span = container.querySelector('span') as HTMLElement
-    const initialDisplay = span.style.display
-    
+
     fixFlexContainers(container)
 
     // Should not add !important to already inline spans
@@ -171,13 +170,13 @@ describe('Flex Container Fix', () => {
     `
 
     const fixedCount = fixFlexContainers(container)
-    
+
     // Both spans contain <u> elements (directly or indirectly), so both should be fixed
     expect(fixedCount).toBe(2)
-    
+
     const outerSpan = container.querySelector('span') as HTMLElement
     const innerSpan = container.querySelector('span span') as HTMLElement
-    
+
     expect(outerSpan.style.display).toBe('inline')
     expect(innerSpan.style.display).toBe('inline')
   })
@@ -189,14 +188,14 @@ describe('Flex Container Fix', () => {
         <span style="box-sizing: border-box; margin: 0px; padding: 0px; display: inline-flex;">
           <u class="enx-word enx-claude" data-word="Claude" style="display: inline !important; text-decoration: #FFFFFF underline; text-decoration-thickness: 1px;">Claude</u>
           <u class="enx-word enx-code's" data-word="Code's" style="display: inline !important; text-decoration: #FFFFFF underline; text-decoration-thickness: 1px;">Code's</u>
-          <u class="enx-word enx-creator" data-word="creator" style="display: inline !important; text-decoration: #FFFFFF underline; text-decoration-thickness: 1px;">creator</u>, 
+          <u class="enx-word enx-creator" data-word="creator" style="display: inline !important; text-decoration: #FFFFFF underline; text-decoration-thickness: 1px;">creator</u>,
           <a href="#">Boris Cherny</a>
         </span>
       </p>
     `
 
     const span = container.querySelector('span') as HTMLElement
-    
+
     // Before fix: inline-flex causes spaces to be ignored
     const beforeDisplay = window.getComputedStyle(span).display
     expect(beforeDisplay).toBe('inline-flex')
@@ -214,7 +213,7 @@ describe('Flex Container Fix', () => {
     expect(text).toContain('Claude')
     expect(text).toContain("Code's")
     expect(text).toContain('creator')
-    
+
     // Verify spaces exist in the text
     expect(text).toMatch(/Claude\s+Code's\s+creator/)
   })
