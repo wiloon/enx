@@ -308,14 +308,8 @@ tasks:
           echo "Creating test database..."
           sqlite3 enx.db < enx.sql
         fi
-      - |
-        # Create test config if not exists
-        if [ ! -f config.toml ]; then
-          echo "Using test config..."
-          cp config-e2e.toml config.toml
-        fi
       - echo "Running integration tests..."
-      - go test -tags=integration ./...
+      - ENX_PORT=8090 ENX_DEV_MODE=true YOUDAO_URL=http://localhost:3000/api YOUDAO_APP_KEY=mock-app-key YOUDAO_APP_SECRET=mock-app-secret go test -tags=integration ./...
 
   test-api:
     desc: Run all enx-api tests (unit + integration)

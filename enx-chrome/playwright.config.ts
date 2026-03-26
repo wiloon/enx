@@ -66,9 +66,8 @@ export default defineConfig({
       stderr: 'pipe',
     },
     {
-      // Backend API server (enx-api) with E2E config
-      // Uses config-e2e.toml which points to mock translation API
-      command: 'cd ../enx-api && go run . -c config-e2e.toml',
+      // Backend API server (enx-api) with E2E environment variables
+      command: 'cd ../enx-api && ENX_PORT=8090 ENX_DEV_MODE=true YOUDAO_URL=http://localhost:3000/api YOUDAO_APP_KEY=mock-app-key YOUDAO_APP_SECRET=mock-app-secret go run .',
       url: 'http://localhost:8090/api/version',
       reuseExistingServer: !process.env.CI,
       timeout: 30000, // API might take longer to start

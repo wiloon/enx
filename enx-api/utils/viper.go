@@ -3,7 +3,7 @@ package utils
 import (
 	"enx-api/utils/logger"
 	"flag"
-	"fmt"
+	"strings"
 
 	"github.com/joho/godotenv"
 	jww "github.com/spf13/jwalterweatherman"
@@ -14,47 +14,53 @@ func ViperInit() {
 	jww.SetLogThreshold(jww.LevelTrace)
 	jww.SetStdoutThreshold(jww.LevelTrace)
 
-	// Load .env file if exists (before flag parsing)
+	// Set defaults so the app works without any config file
+	viper.SetDefault("enx.port", 8091)
+	viper.SetDefault("enx.dev-mode", false)
+	viper.SetDefault("youdao.url", "https://openapi.youdao.com/api")
+
+	// Bind each config key to an explicit environment variable
+	_ = viper.BindEnv("enx.port", "ENX_PORT")
+	_ = viper.BindEnv("enx.dev-mode", "ENX_DEV_MODE")
+	_ = viper.BindEnv("mysql.address", "MYSQL_ADDRESS")
+	_ = viper.BindEnv("mysql.user", "MYSQL_USER")
+	_ = viper.BindEnv("mysql.password", "MYSQL_PASSWORD")
+	_ = viper.BindEnv("redis.address", "REDIS_ADDRESS")
+	_ = viper.BindEnv("youdao.url", "YOUDAO_URL")
+	_ = viper.BindEnv("youdao.app-key", "YOUDAO_APP_KEY")
+	_ = viper.BindEnv("youdao.app-secret", "YOUDAO_APP_SECRET")
+
+	// Also support automatic env var lookup (e.g. ENX_PORT for enx.port)
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
+	viper.AutomaticEnv()
+
+	// Load .env file if present (useful for local development)
 	if err := godotenv.Load(); err == nil {
-		logger.Infof("📝 Loaded .env file")
+		logger.Infof("loaded .env file")
 	}
 
-	// Add command-line flag for config file
+	// Optionally load a TOML config file — not required in k8s
 	configFile := flag.String("c", "", "config file path (e.g., config-e2e.toml)")
 	flag.Parse()
 
 	if *configFile != "" {
-		// Use specified config file
 		viper.SetConfigFile(*configFile)
-		logger.Infof("using specified config file: %s", *configFile)
+		if err := viper.ReadInConfig(); err != nil {
+			logger.Errorf("failed to read config file %s: %v", *configFile, err)
+		} else {
+			logger.Infof("loaded config file: %s", viper.ConfigFileUsed())
+		}
 	} else {
-		// Use default config search paths
 		viper.SetConfigName("config")
 		viper.SetConfigType("toml")
 		viper.AddConfigPath("/usr/local/etc/enx/")
 		viper.AddConfigPath("$HOME/.enx")
-		viper.AddConfigPath("C:\\workspace\\conf")
 		viper.AddConfigPath(".")
 
-		logger.Infof("viper config paths: /usr/local/etc/enx/, $HOME/.enx, C:\\workspace\\conf, .")
-		logger.Infof("viper config name: config.toml")
-	}
-
-	err := viper.ReadInConfig()
-	if err != nil {
-		logger.Errorf("failed to read config file: %v", err)
-		panic(fmt.Errorf("fatal error config file: %w", err))
-	} else {
-		logger.Infof("read config file success, used: %s", viper.ConfigFileUsed())
-	}
-
-	// Enable automatic environment variable reading
-	viper.AutomaticEnv()
-
-	// Override with environment variables if set
-	// ENX_PORT will override enx.port from config.toml
-	if port := viper.GetInt("ENX_PORT"); port > 0 {
-		viper.Set("enx.port", port)
-		logger.Infof("✅ Port overridden by environment variable ENX_PORT: %d", port)
+		if err := viper.ReadInConfig(); err != nil {
+			logger.Infof("no config file found, using environment variables and defaults")
+		} else {
+			logger.Infof("loaded config file: %s", viper.ConfigFileUsed())
+		}
 	}
 }
