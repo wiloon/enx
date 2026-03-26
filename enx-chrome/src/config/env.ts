@@ -33,7 +33,7 @@ const ENV_CONFIG: Record<string, EnvConfig> = {
     environment: 'production',
   },
   staging: {
-    apiBaseUrl: 'https://enx-dev.wiloon.com',
+    apiBaseUrl: 'https://enx-lab.wiloon.com',
     environment: 'staging',
   },
   test: {
