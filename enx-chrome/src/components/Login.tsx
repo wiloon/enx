@@ -1,7 +1,8 @@
 import { apiService } from '@/services/api'
 import { errorAtom, isLoadingAtom, sessionAtom, userAtom } from '@/store/atoms'
+import { config } from '@/config/env'
 import { useAtom } from 'jotai'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 interface LoginProps {
   onLoginSuccess?: () => void
@@ -23,6 +24,20 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [underliningStatus, setUnderliningStatus] = useState<
     'idle' | 'processing' | 'completed'
   >('idle')
+  const [resendBannerStatus, setResendBannerStatus] = useState<'idle' | 'sending' | 'sent'>('idle')
+
+  // On mount, call /api/me to refresh status if already logged in
+  useEffect(() => {
+    if (user.isLoggedIn) {
+      apiService.getMe().then((resp) => {
+        if (resp.success && resp.data) {
+          const status = resp.data.status
+          setUser(prev => ({ ...prev, status }))
+          chrome.storage.local.set({ userStatus: status })
+        }
+      }).catch(() => {/* non-fatal */})
+    }
+  }, [])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -46,9 +61,11 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         const userData = response.data.user
         const sessionId =
           response.data.session_id || response.data.sessionId || ''
+        const status = response.data.status ?? userData.status ?? 'active'
 
         setUser({
           ...userData,
+          status,
           isLoggedIn: true,
         })
 
@@ -59,8 +76,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
         // Store in Chrome storage for background script access
         await chrome.storage.local.set({
-          user: userData,
+          user: { ...userData, status },
           sessionId,
+          userStatus: status,
         })
 
         console.log('Login successful, user and session stored:', {
@@ -265,8 +283,32 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
   // If user is logged in, show user info
   if (user.isLoggedIn) {
+    const handleResendBanner = async () => {
+      if (!user.email || resendBannerStatus !== 'idle') return
+      setResendBannerStatus('sending')
+      try {
+        await apiService.resendVerification(user.email)
+      } catch {
+        // non-fatal
+      } finally {
+        setResendBannerStatus('sent')
+      }
+    }
+
     return (
       <div className="p-6 bg-white rounded-lg shadow-lg min-w-[300px]">
+        {user.status === 'pending' && (
+          <div className="mb-3 flex items-start justify-between rounded-md border border-yellow-300 bg-yellow-50 p-3 text-xs text-yellow-800">
+            <span>Your email is not verified. Verify now to enable password reset.</span>
+            <button
+              onClick={handleResendBanner}
+              disabled={resendBannerStatus !== 'idle'}
+              className="ml-2 shrink-0 rounded bg-yellow-600 px-2 py-1 text-white disabled:opacity-50"
+            >
+              {resendBannerStatus === 'sending' ? '…' : resendBannerStatus === 'sent' ? 'Sent!' : 'Resend'}
+            </button>
+          </div>
+        )}
         <div className="text-center mb-4">
           <h2 className="text-xl font-bold text-gray-800">
             Welcome, {user.username}!
@@ -401,6 +443,17 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-500"
             disabled={isLoading}
           />
+          {!showRegister && (
+            <div className="text-right mt-1">
+              <button
+                type="button"
+                onClick={() => chrome.tabs.create({ url: `${config.frontendBaseUrl}/forgot-password` })}
+                className="text-xs text-blue-500 hover:text-blue-600"
+              >
+                Forgot password?
+              </button>
+            </div>
+          )}
         </div>
 
         {showRegister && (

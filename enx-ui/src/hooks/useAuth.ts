@@ -22,9 +22,10 @@ export const useAuth = () => {
       return response.data!
     },
     onSuccess: (data: AuthResponse) => {
-      setUser({ ...data.user, isLoggedIn: true })
-      setSessionId(data.sessionId)
-      apiService.setSessionId(data.sessionId)
+      const status = data.status ?? data.user?.status ?? 'active'
+      setUser({ ...data.user, isLoggedIn: true, status })
+      setSessionId(data.sessionId || data.session_id || '')
+      apiService.setSessionId(data.sessionId || data.session_id || '')
       setIsLoading(false)
       router.push('/lookup')
     },
@@ -65,9 +66,10 @@ export const useAuth = () => {
       return response.data!
     },
     onSuccess: (data: AuthResponse) => {
-      setUser({ ...data.user, isLoggedIn: true })
-      setSessionId(data.sessionId)
-      apiService.setSessionId(data.sessionId)
+      const status = data.status ?? data.user?.status ?? 'pending'
+      setUser({ ...data.user, isLoggedIn: true, status })
+      setSessionId(data.sessionId || data.session_id || '')
+      apiService.setSessionId(data.sessionId || data.session_id || '')
       setIsLoading(false)
       router.push('/lookup')
     },
@@ -77,10 +79,19 @@ export const useAuth = () => {
     },
   })
 
-  // Initialize session on mount if we have stored session data
-  const initializeSession = () => {
+  // Initialize session on mount if we have stored session data.
+  // Calls /api/me to refresh the user's status (e.g. pending → active).
+  const initializeSession = async () => {
     if (sessionId) {
       apiService.setSessionId(sessionId)
+      try {
+        const resp = await apiService.getMe()
+        if (resp.success && resp.data) {
+          setUser(prev => prev ? { ...prev, status: resp.data!.status } : prev)
+        }
+      } catch {
+        // Non-fatal: keep existing user state
+      }
     }
   }
 

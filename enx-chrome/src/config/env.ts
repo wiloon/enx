@@ -2,6 +2,7 @@
 
 export interface EnvConfig {
   apiBaseUrl: string
+  frontendBaseUrl: string
   environment: 'development' | 'production' | 'staging' | 'test'
 }
 
@@ -26,18 +27,22 @@ const mode = getEnvValue('MODE', isTestEnv ? 'test' : 'development')
 const ENV_CONFIG: Record<string, EnvConfig> = {
   development: {
     apiBaseUrl: 'http://localhost:8090',
+    frontendBaseUrl: 'http://localhost:3000',
     environment: 'development',
   },
   production: {
     apiBaseUrl: 'https://enx.wiloon.com',
+    frontendBaseUrl: 'https://enx-ui.wiloon.com',
     environment: 'production',
   },
   staging: {
     apiBaseUrl: 'https://enx-lab.wiloon.com',
+    frontendBaseUrl: 'https://enx-ui-lab.wiloon.com',
     environment: 'staging',
   },
   test: {
     apiBaseUrl: 'http://localhost:8090',
+    frontendBaseUrl: 'http://localhost:3000',
     environment: 'test',
   },
 }

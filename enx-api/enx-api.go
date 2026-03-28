@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"enx-api/email"
 	"enx-api/enx"
 	"enx-api/handlers"
 	"enx-api/middleware"
@@ -18,6 +19,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
@@ -167,6 +170,13 @@ func main() {
 	router.POST("/api/login", Login)
 	router.POST("/api/logout", Logout)
 	router.POST("/api/register", Register)
+	router.GET("/api/verify-email", VerifyEmail)
+	router.POST("/api/resend-verification", ResendVerification)
+	router.POST("/api/forgot-password", ForgotPassword)
+	router.POST("/api/reset-password", ResetPassword)
+
+	// /api/me — requires authentication
+	apiGroup.GET("/me", GetMe)
 
 	// Temporary test route - no authentication required
 	router.POST("/mark-test", MarkWord)
@@ -326,6 +336,205 @@ func Ping(c *gin.Context) {
 	})
 }
 
+// rateLimitStore tracks last-sent timestamps for email rate limiting (60s).
+var (
+	rateLimitMu    sync.Mutex
+	rateLimitStore = make(map[string]time.Time)
+)
+
+// checkRateLimit returns true if the email address is allowed (not rate-limited).
+func checkRateLimit(email string) bool {
+	rateLimitMu.Lock()
+	defer rateLimitMu.Unlock()
+	if last, ok := rateLimitStore[email]; ok {
+		if time.Since(last) < 60*time.Second {
+			return false
+		}
+	}
+	rateLimitStore[email] = time.Now()
+	return true
+}
+
+// GetMe returns the current user's public fields including status.
+func GetMe(c *gin.Context) {
+	userID := middleware.GetUserIDFromContext(c)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Unauthorized"})
+		return
+	}
+	user := enx.GetUserByID(userID)
+	if user.Id == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "User not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"id":     user.Id,
+		"name":   user.Name,
+		"email":  user.Email,
+		"status": user.Status,
+	})
+}
+
+// VerifyEmail handles GET /api/verify-email?token=xxx
+func VerifyEmail(c *gin.Context) {
+	token := c.Query("token")
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid activation link."})
+		return
+	}
+
+	user := enx.GetUserByVerificationToken(token)
+	if user.Id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid activation link."})
+		return
+	}
+
+	if user.Status == "active" {
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "Account already activated."})
+		return
+	}
+
+	if time.Now().After(user.TokenExpiresAt) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Activation link has expired. Please request a new one."})
+		return
+	}
+
+	if err := user.Activate(); err != nil {
+		logger.Errorf("failed to activate user %s: %v", user.Id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to activate account"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+type ResendVerificationRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+// ResendVerification handles POST /api/resend-verification
+func ResendVerification(c *gin.Context) {
+	var req ResendVerificationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// Always return success to prevent user enumeration
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+
+	// Rate limiting
+	if !checkRateLimit(req.Email) {
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+
+	user := enx.GetUserByEmail(req.Email)
+	if user.Id == "" {
+		// Always return success to prevent user enumeration
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+
+	token, err := enx.GenerateToken()
+	if err != nil {
+		logger.Errorf("failed to generate verification token for %s: %v", req.Email, err)
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+
+	if err := user.SetVerificationToken(token, time.Now().Add(48*time.Hour)); err != nil {
+		logger.Errorf("failed to save verification token for %s: %v", req.Email, err)
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+
+	if err := email.SendVerificationEmail(req.Email, user.Name, token); err != nil {
+		logger.Errorf("failed to resend verification email to %s: %v", req.Email, err)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+// ForgotPassword handles POST /api/forgot-password
+func ForgotPassword(c *gin.Context) {
+	var req ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+
+	// Rate limiting
+	if !checkRateLimit("reset:" + req.Email) {
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+
+	user := enx.GetUserByEmail(req.Email)
+	if user.Id == "" {
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+
+	token, err := enx.GenerateToken()
+	if err != nil {
+		logger.Errorf("failed to generate reset token for %s: %v", req.Email, err)
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+
+	if err := user.SetResetToken(token, time.Now().Add(time.Hour)); err != nil {
+		logger.Errorf("failed to save reset token for %s: %v", req.Email, err)
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+
+	if err := email.SendPasswordResetEmail(req.Email, user.Name, token); err != nil {
+		logger.Errorf("failed to send reset email to %s: %v", req.Email, err)
+	}
+
+	response := gin.H{"success": true}
+	if user.Status == "pending" {
+		response["warning"] = "Your email address has not been verified. The reset email may not be delivered if the address is incorrect."
+	}
+	c.JSON(http.StatusOK, response)
+}
+
+type ResetPasswordRequest struct {
+	Token    string `json:"token" binding:"required"`
+	Password string `json:"password" binding:"required,min=6"`
+}
+
+// ResetPassword handles POST /api/reset-password
+func ResetPassword(c *gin.Context) {
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid request parameters"})
+		return
+	}
+
+	user := enx.GetUserByResetToken(req.Token)
+	if user.Id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid reset link."})
+		return
+	}
+
+	if time.Now().After(user.ResetTokenExpiresAt) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Reset link has expired. Please request a new one."})
+		return
+	}
+
+	if err := user.UpdatePassword(req.Password); err != nil {
+		logger.Errorf("failed to update password for user %s: %v", user.Id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to update password"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
 type LoginRequest struct {
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
@@ -336,6 +545,7 @@ type LoginResponse struct {
 	Message   string    `json:"message"`
 	User      *enx.User `json:"user,omitempty"`
 	SessionID string    `json:"session_id,omitempty"`
+	Status    string    `json:"status,omitempty"`
 }
 
 func Login(c *gin.Context) {
@@ -374,6 +584,7 @@ func Login(c *gin.Context) {
 			Message:   "Login successful",
 			User:      user,
 			SessionID: session.ID,
+			Status:    user.Status,
 		})
 	} else {
 		logger.Errorf("user login failed, username: %s", req.Username)
@@ -433,8 +644,11 @@ type RegisterRequest struct {
 }
 
 type RegisterResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
+	Success   bool      `json:"success"`
+	Message   string    `json:"message"`
+	User      *enx.User `json:"user,omitempty"`
+	SessionID string    `json:"session_id,omitempty"`
+	Status    string    `json:"status,omitempty"`
 }
 
 func Register(c *gin.Context) {
@@ -469,11 +683,24 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	// Create new user
+	// Create new user with pending status and verification token
+	verifyToken, err := enx.GenerateToken()
+	if err != nil {
+		logger.Errorf("failed to generate verification token: %v", err)
+		c.JSON(http.StatusInternalServerError, RegisterResponse{
+			Success: false,
+			Message: "Failed to process registration",
+		})
+		return
+	}
+
 	user := &enx.User{
-		Name:     req.Username,
-		Password: hashedPassword,
-		Email:    req.Email,
+		Name:              req.Username,
+		Password:          hashedPassword,
+		Email:             req.Email,
+		Status:            "pending",
+		VerificationToken: verifyToken,
+		TokenExpiresAt:    time.Now().Add(48 * time.Hour),
 	}
 
 	if err := user.Create(); err != nil {
@@ -485,9 +712,33 @@ func Register(c *gin.Context) {
 		return
 	}
 
+	// Send verification email; failure is non-fatal
+	if err := email.SendVerificationEmail(req.Email, req.Username, verifyToken); err != nil {
+		logger.Errorf("failed to send verification email to %s: %v", req.Email, err)
+	}
+
+	// Auto-login: create session immediately
+	session, err := middleware.CreateSession(user.Id)
+	if err != nil {
+		logger.Errorf("failed to create session after registration for user %s: %v", user.Name, err)
+		// Registration succeeded, just skip auto-login
+		logger.Infof("user registration success (no session), user: %+v", user)
+		c.JSON(http.StatusOK, RegisterResponse{
+			Success: true,
+			Message: "Registration successful. Please check your email to verify your account.",
+			Status:  "pending",
+		})
+		return
+	}
+
+	c.SetCookie("session_id", session.ID, 24*3600, "/", "", false, true)
+
 	logger.Infof("user registration success, user: %+v", user)
 	c.JSON(http.StatusOK, RegisterResponse{
-		Success: true,
-		Message: "Registration successful",
+		Success:   true,
+		Message:   "Registration successful. Please check your email to verify your account.",
+		User:      user,
+		SessionID: session.ID,
+		Status:    "pending",
 	})
 }

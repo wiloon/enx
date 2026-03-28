@@ -107,6 +107,17 @@ export class ApiService {
     })
   }
 
+  async getMe(): Promise<ApiResponse<{ id: string; name: string; email: string; status: string }>> {
+    return this.makeRequest('/api/me')
+  }
+
+  async resendVerification(email: string): Promise<ApiResponse<{ success: boolean }>> {
+    return this.makeRequest('/api/resend-verification', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    })
+  }
+
   // Word translation APIs
   async getOneWord(word: string): Promise<ApiResponse<WordResponse>> {
     const encodedWord = encodeURIComponent(word)

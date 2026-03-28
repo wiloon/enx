@@ -91,6 +91,35 @@ export class ApiService {
     })
   }
 
+  async getMe(): Promise<ApiResponse<{ id: string; name: string; email: string; status: string }>> {
+    return this.makeRequest('/api/me')
+  }
+
+  async verifyEmail(token: string): Promise<ApiResponse<{ success: boolean; message?: string }>> {
+    return this.makeRequest(`/api/verify-email?token=${encodeURIComponent(token)}`)
+  }
+
+  async resendVerification(email: string): Promise<ApiResponse<{ success: boolean }>> {
+    return this.makeRequest('/api/resend-verification', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    })
+  }
+
+  async forgotPassword(email: string): Promise<ApiResponse<{ success: boolean; warning?: string }>> {
+    return this.makeRequest('/api/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    })
+  }
+
+  async resetPassword(token: string, password: string): Promise<ApiResponse<{ success: boolean; message?: string }>> {
+    return this.makeRequest('/api/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    })
+  }
+
   async healthCheck(): Promise<ApiResponse<{ status: string }>> {
     return this.makeRequest<{ status: string }>('/api/health')
   }

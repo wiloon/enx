@@ -29,6 +29,13 @@ func ViperInit() {
 	_ = viper.BindEnv("youdao.url", "YOUDAO_URL")
 	_ = viper.BindEnv("youdao.app-key", "YOUDAO_APP_KEY")
 	_ = viper.BindEnv("youdao.app-secret", "YOUDAO_APP_SECRET")
+	_ = viper.BindEnv("resend.api-key", "RESEND_API_KEY")
+	_ = viper.BindEnv("resend.from", "RESEND_FROM")
+	_ = viper.BindEnv("app.frontend-base-url", "APP_FRONTEND_BASE_URL")
+
+	viper.SetDefault("resend.api-key", "")
+	viper.SetDefault("resend.from", "ENX <no-reply@wiloon.com>")
+	viper.SetDefault("app.frontend-base-url", "https://enx-ui-lab.wiloon.com")
 
 	// Also support automatic env var lookup (e.g. ENX_PORT for enx.port)
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))

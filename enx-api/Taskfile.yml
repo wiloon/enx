@@ -17,6 +17,15 @@ tasks:
     cmds:
       - task --list
 
+  send-test-email:
+    desc: "Send a test email via Resend API (usage: task send-test-email TO=you@example.com KIND=verification)"
+    vars:
+      KIND: '{{.KIND | default "verification"}}'
+    requires:
+      vars: [TO]
+    cmds:
+      - go run ./cmd/send-test-email/main.go -to={{.TO}} -kind={{.KIND}}
+
   deps:
     desc: Download Go module dependencies
     cmds:

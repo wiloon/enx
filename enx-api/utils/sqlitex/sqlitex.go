@@ -18,13 +18,18 @@ var DB *gorm.DB
 // Define models for AutoMigrate
 // These are minimal struct definitions for table creation
 type User struct {
-	Id            string    `gorm:"column:id;primaryKey"`
-	Name          string    `gorm:"column:name;unique"`
-	Email         string    `gorm:"column:email;unique"`
-	Password      string    `gorm:"column:password"`
-	CreatedAt     time.Time `gorm:"column:created_at"`
-	UpdatedAt     time.Time `gorm:"column:updated_at"`
-	LastLoginTime time.Time `gorm:"column:last_login_time"`
+	Id                  string    `gorm:"column:id;primaryKey"`
+	Name                string    `gorm:"column:name;unique"`
+	Email               string    `gorm:"column:email;unique"`
+	Password            string    `gorm:"column:password"`
+	Status              string    `gorm:"column:status;default:pending"`
+	VerificationToken   string    `gorm:"column:verification_token"`
+	TokenExpiresAt      time.Time `gorm:"column:token_expires_at"`
+	ResetToken          string    `gorm:"column:reset_token"`
+	ResetTokenExpiresAt time.Time `gorm:"column:reset_token_expires_at"`
+	CreatedAt           time.Time `gorm:"column:created_at"`
+	UpdatedAt           time.Time `gorm:"column:updated_at"`
+	LastLoginTime       time.Time `gorm:"column:last_login_time"`
 }
 
 type Word struct {
@@ -133,6 +138,14 @@ func Init() {
 		return
 	}
 	zapLog.Info("database auto-migration completed successfully")
+
+	// One-time data migration: existing users (created before email verification was added)
+	// should be treated as already verified, so set their status to 'active'.
+	if result := DB.Model(&User{}).Where("status = ''").Update("status", "active"); result.Error != nil {
+		zapLog.Errorf("failed to migrate existing user status: %v", result.Error)
+	} else if result.RowsAffected > 0 {
+		zapLog.Infof("migrated %d existing users to active status", result.RowsAffected)
+	}
 }
 
 func GetDB() *gorm.DB {
