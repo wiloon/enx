@@ -1,13 +1,9 @@
 // ENX Background Script - Handles API communication and message routing
 // Note: Sentry initialization is skipped in service worker context to avoid import issues
 
-import { config } from '@/config/env'
+import { config, getApiBaseUrl } from '@/config/env'
 
 console.log('ENX Background script loaded')
-
-// API configuration
-const API_BASE_URL = config.apiBaseUrl
-console.log('🌐 Background script API_BASE_URL:', API_BASE_URL)
 console.log('🌐 Config environment:', config.environment)
 let sessionId = ''
 
@@ -61,6 +57,7 @@ const handleSessionExpiry = async () => {
 // API request helper
 const makeApiRequest = async (endpoint: string, options: RequestInit = {}) => {
   try {
+    const API_BASE_URL = await getApiBaseUrl()
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...((options.headers as Record<string, string>) || {}),

@@ -120,6 +120,8 @@ class ContentWordProcessor {
               'input',
               'textarea',
               'select',
+              'code',
+              'pre',
             ].includes(tagName)
           ) {
             return NodeFilter.FILTER_REJECT

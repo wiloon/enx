@@ -209,6 +209,112 @@ func TestUserRepository_Create(t *testing.T) {
 - ⚠️ **Keep simple things simple:** Don't over-engineer trivial CRUD operations
 - ⚠️ **Pragmatic approach:** Adapt patterns to project needs, not dogma
 
+## Testing Requirements
+
+### Core Rule
+
+**Any code change that modifies functional behavior MUST include or update automated tests.**
+
+This is a non-negotiable requirement. Manual testing is acceptable as a supplement for exploratory or UI-visual checks, but it cannot substitute for automated tests. Automated tests:
+
+- Run repeatedly without human effort
+- Catch regressions automatically in future changes
+- Serve as living documentation of expected behavior
+- Enforce correctness continuously, not just at the moment of writing
+
+### What Counts as a "Functional Change"
+
+These changes **require** test coverage:
+
+| Change Type | Requires Tests |
+|---|---|
+| New feature or behavior | ✅ Yes |
+| Bug fix | ✅ Yes — add a test that would have caught the bug |
+| Refactoring with behavior change | ✅ Yes |
+| New DOM filter / exclusion rule (e.g. `content.ts`) | ✅ Yes — add unit test in `__tests__/` |
+| New API endpoint or handler | ✅ Yes |
+| New business logic in service/domain layer | ✅ Yes |
+| Pure refactoring with no behavior change | ⚠️ Optional, but recommended |
+| Config or build file changes | ❌ Not required |
+| Documentation-only changes | ❌ Not required |
+
+### Test Type Selection Guide
+
+Choose the appropriate test type based on what is being changed:
+
+| Scenario | Test Type | Rationale |
+|---|---|---|
+| Pure logic function (no I/O, no DOM) | Unit test | Fast, isolated, easiest to write |
+| DOM manipulation / HTML rendering | Unit test (jsdom) | JSDOM simulates browser environment |
+| Repository / database query | Integration test | Must test against a real DB schema |
+| Full HTTP request/response flow | Integration test | Validates handler + service + repo together |
+| Chrome extension end-to-end behavior | E2E test (Playwright) | Requires real browser extension context |
+| UI component interaction | E2E test (Playwright) or unit | Depends on complexity |
+
+**When in doubt: start with a unit test.** Add integration or E2E tests when the unit test cannot adequately verify the behavior.
+
+### Test Commands by Sub-Project
+
+#### enx-api (Go)
+
+```bash
+task test              # Unit tests only (fast, no database required)
+task test-integration  # Integration tests (requires database + config)
+task test-all          # Unit + integration tests
+task test-coverage     # Generate HTML coverage report
+task test-pkg PKG=./enx  # Test a specific package
+```
+
+Use `//go:build integration` tag for integration test files.
+See [enx-api/TESTING.md](../enx-api/TESTING.md) for full details.
+
+#### enx-chrome (TypeScript)
+
+```bash
+task test          # Jest unit tests (jsdom environment)
+task test-watch    # Jest in watch mode during development
+task test-coverage # Coverage report
+task test-e2e      # Playwright E2E tests (real Chrome + extension)
+task test-all      # Unit + E2E tests
+```
+
+Unit tests live in `src/content/__tests__/`. Add new test files there.
+See [enx-chrome/E2E_TESTING.md](../enx-chrome/E2E_TESTING.md) for E2E setup.
+
+#### enx-ui (TypeScript / Next.js)
+
+```bash
+pnpm test        # Jest unit tests
+pnpm test:watch  # Jest in watch mode
+```
+
+Unit tests live in `src/lib/__tests__/`.
+
+#### enx-sync (Go)
+
+```bash
+go test ./...          # All tests
+go test ./internal/... # Specific package tree
+```
+
+### Writing Tests: Key Principles
+
+1. **Test the behavior, not the implementation.** Assert on outputs and side effects, not internal state.
+2. **One test per scenario.** Each `it()` / `Test*` function should verify exactly one behavior.
+3. **Name tests descriptively.** The test name should explain what is being tested and what the expected outcome is.
+   - ✅ `should NOT highlight words inside <code>`
+   - ❌ `test1` or `highlightTest`
+4. **Reproduce bugs as tests first.** Before fixing a bug, write a failing test that demonstrates it. Fix the code until the test passes.
+5. **Use table-driven tests for multiple scenarios** (Go) or `describe`/`it` blocks (TypeScript).
+
+### Verification Step
+
+Before marking any task as complete:
+
+1. Run the relevant test command for the sub-project.
+2. Confirm all tests pass.
+3. If a new test was added, confirm it actually fails without the implementation change (i.e., the test is not vacuously passing).
+
 ## Logging Guidelines
 
 ### Logging Principles
