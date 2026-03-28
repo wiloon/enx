@@ -4,7 +4,13 @@ An English learning tool designed to train the human brain to recognize and unde
 
 ## 🎯 Purpose
 
-While AI translation is now widely available, there are scenarios where it's more effective and convenient if the human brain can directly recognize English without the intermediate translation step.
+**The problem:** You're reading an English article in Chrome and encounter an unfamiliar word. The traditional workflow is tedious — copy the word, switch to a dictionary app, paste, look up the translation, then switch back to the article. Repeat dozens of times per article.
+
+**ENX solves this** with a Chrome extension that shows an inline popup translation the moment you click any word on the page, without leaving the article.
+
+Beyond instant lookup, ENX tracks how many times you've looked up each word, so you can see your vocabulary progress over time. Once you're confident about a word, you can mark it as learned. ENX also provides reading statistics to give you a picture of how your English reading ability is growing.
+
+The longer-term goal: while AI translation is now widely available, ENX is built on the belief that it's still more effective for the human brain to recognize English directly — without the intermediate translation step. The lookup history and progress tracking are designed to help get you there.
 
 ## 📦 Project Structure
 
@@ -22,7 +28,7 @@ This is a monorepo containing multiple sub-projects:
 
 ### Prerequisites
 
-- Go 1.21+
+- Go (see [enx-api/go.mod](enx-api/go.mod))
 - Node.js 25+ (managed by fnm)
 - pnpm
 - SQLite 3

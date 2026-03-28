@@ -1,0 +1,29 @@
+FROM node:22-alpine AS builder
+WORKDIR /app
+COPY .npmrc ./
+RUN npm install -g pnpm@9.15.9
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN for i in 1 2 3 4 5; do \
+      pnpm fetch --frozen-lockfile || true; \
+      pnpm install --frozen-lockfile --prefer-offline && break; \
+      echo "pnpm install attempt $i failed, retrying in 60s..."; sleep 60; \
+    done
+COPY . .
+ARG NEXT_PUBLIC_API_BASE_URL=https://enx-lab.wiloon.com
+ARG NEXT_PUBLIC_COGNITO_DOMAIN=https://enx-auth.auth.us-east-1.amazoncognito.com
+ARG NEXT_PUBLIC_COGNITO_CLIENT_ID=1il7v7q7jn17150jq4lou6m7b0
+ARG NEXT_PUBLIC_COGNITO_REDIRECT_URI=https://enx-ui-lab.wiloon.com/auth/callback
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+ENV NEXT_PUBLIC_COGNITO_DOMAIN=$NEXT_PUBLIC_COGNITO_DOMAIN
+ENV NEXT_PUBLIC_COGNITO_CLIENT_ID=$NEXT_PUBLIC_COGNITO_CLIENT_ID
+ENV NEXT_PUBLIC_COGNITO_REDIRECT_URI=$NEXT_PUBLIC_COGNITO_REDIRECT_URI
+RUN pnpm build
+
+FROM node:22-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
+EXPOSE 3000
+CMD ["node", "server.js"]

@@ -2,8 +2,10 @@ version: '3'
 
 vars:
   EXT_NAME: enx-chrome-extension
+  # Use project Node from .node-version (see README: Node.js 25+ via fnm)
+  FNM_EXEC: fnm exec --using=.node-version --
   VERSION:
-    sh: node -p "require('./package.json').version"
+    sh: fnm exec --using=.node-version -- node -p "require('./package.json').version"
 
 tasks:
   default:
@@ -19,8 +21,9 @@ tasks:
   install:
     desc: Install dependencies
     cmds:
+      - fnm install
       - echo "Installing dependencies for {{.EXT_NAME}}..."
-      - pnpm install
+      - '{{.FNM_EXEC}} pnpm install'
       - echo "Dependencies installed successfully!"
 
   dev:
@@ -29,7 +32,8 @@ tasks:
       - echo "WARNING - Vite dev server may not work properly with Chrome extensions"
       - echo "If you see cannot connect to vite server or flashing popup, use task watch instead"
       - echo "Starting development server..."
-      - fnm use && pnpm run dev
+      - fnm install
+      - '{{.FNM_EXEC}} pnpm run dev'
 
 
   watch:
@@ -39,7 +43,8 @@ tasks:
       - echo "Changes will auto-rebuild to dist/"
       - echo "Extension will auto-reload in Chromium when files change"
       - echo ""
-      - pnpm exec vite build --watch
+      - fnm install
+      - '{{.FNM_EXEC}} pnpm exec vite build --watch'
 
 
   dev-chrome:
@@ -47,7 +52,8 @@ tasks:
     cmds:
       - echo "🚀 Starting development environment..."
       - echo "  1. Building extension..."
-      - fnm exec --using=.node-version pnpm exec vite build
+      - fnm install
+      - '{{.FNM_EXEC}} pnpm exec vite build'
       - echo "  2. Starting watch mode in background..."
       - echo "  3. Launching Chromium with extension..."
       - echo ""
@@ -58,7 +64,7 @@ tasks:
       - echo ""
       - |
         # Start watch mode in background
-        fnm exec --using=.node-version pnpm exec vite build --watch > /tmp/enx-watch.log 2>&1 &
+        fnm exec --using=.node-version -- pnpm exec vite build --watch > /tmp/enx-watch.log 2>&1 &
         WATCH_PID=$!
         echo "📝 Watch mode running (PID: $WATCH_PID)"
         echo "📝 Watch logs: /tmp/enx-watch.log"
@@ -112,75 +118,86 @@ tasks:
   build:
     desc: Build extension for production
     cmds:
+      - fnm install
       - echo "Building {{.EXT_NAME}} v{{.VERSION}}..."
-      - pnpm run build
+      - '{{.FNM_EXEC}} pnpm run build'
       - echo "Build completed! Output in dist/"
 
   build-dev:
     desc: Build extension for local development (uses local API)
     cmds:
+      - fnm install
       - echo "Building {{.EXT_NAME}} for local development..."
       - echo "API URL{{":"}} http{{":"}}//localhost{{":"}}8090"
-      - pnpm run build
+      - '{{.FNM_EXEC}} pnpm run build'
       - echo "Build completed! Load dist/ in chrome{{":"}}//extensions/"
 
 
   build-watch:
     desc: Build extension in watch mode
     cmds:
+      - fnm install
       - echo "Building in watch mode..."
-      - pnpm run build -- --watch
+      - '{{.FNM_EXEC}} pnpm run build -- --watch'
 
   preview:
     desc: Preview production build
     cmds:
-      - pnpm run preview
+      - fnm install
+      - '{{.FNM_EXEC}} pnpm run preview'
 
   test:
     desc: Run tests
     cmds:
+      - fnm install
       - echo "Running tests..."
-      - pnpm test
+      - '{{.FNM_EXEC}} pnpm test'
 
   test-watch:
     desc: Run tests in watch mode
     cmds:
+      - fnm install
       - echo "Running tests in watch mode..."
-      - pnpm run test:watch
+      - '{{.FNM_EXEC}} pnpm run test:watch'
 
   test-coverage:
     desc: Run tests with coverage
     cmds:
+      - fnm install
       - echo "Running tests with coverage..."
-      - pnpm test -- --coverage
+      - '{{.FNM_EXEC}} pnpm test -- --coverage'
 
   test-e2e:
     desc: Run E2E tests with Playwright
     cmds:
+      - fnm install
       - echo "Running E2E tests..."
       - echo "⚠️  Make sure extension is built first (task build)"
-      - pnpm run test:e2e
+      - '{{.FNM_EXEC}} pnpm run test:e2e'
 
   test-e2e-ui:
     desc: Run E2E tests with Playwright UI
     cmds:
+      - fnm install
       - echo "Opening Playwright UI..."
       - echo "⚠️  Make sure extension is built first (task build)"
-      - pnpm run test:e2e:ui
+      - '{{.FNM_EXEC}} pnpm run test:e2e:ui'
 
   test-e2e-debug:
     desc: Run E2E tests in debug mode
     cmds:
+      - fnm install
       - echo "Running E2E tests in debug mode..."
       - echo "⚠️  Make sure extension is built first (task build)"
-      - pnpm run test:e2e:debug
+      - '{{.FNM_EXEC}} pnpm run test:e2e:debug'
 
   test-e2e-headed:
     desc: Run E2E tests with visible browser
     cmds:
+      - fnm install
       - echo "Running E2E tests with visible browser..."
       - echo "⚠️  Make sure extension is built first (task build)"
-      - pnpm run test:e2e:headed
+      - '{{.FNM_EXEC}} pnpm run test:e2e:headed'
 
   test-all:
     desc: Run all tests (unit + E2E)
@@ -195,26 +212,30 @@ tasks:
   lint:
     desc: Lint code
     cmds:
+      - fnm install
       - echo "Linting code..."
-      - pnpm run lint
+      - '{{.FNM_EXEC}} pnpm run lint'
 
   lint-fix:
     desc: Fix linting issues
     cmds:
+      - fnm install
       - echo "Fixing linting issues..."
-      - pnpm run lint:fix
+      - '{{.FNM_EXEC}} pnpm run lint:fix'
 
   format:
     desc: Format code with Prettier
     cmds:
+      - fnm install
       - echo "Formatting code..."
-      - pnpm run format
+      - '{{.FNM_EXEC}} pnpm run format'
 
   format-check:
     desc: Check code formatting
     cmds:
+      - fnm install
       - echo "Checking code formatting..."
-      - pnpm run format:check
+      - '{{.FNM_EXEC}} pnpm run format:check'
 
   clean:
     desc: Clean build artifacts and dependencies
@@ -257,22 +278,25 @@ tasks:
   deps-update:
     desc: Update dependencies
     cmds:
+      - fnm install
       - echo "Checking for outdated dependencies..."
-      - pnpm outdated || true
+      - '{{.FNM_EXEC}} pnpm outdated || true'
       - echo ""
       - echo "To update, run pnpm update"
 
   deps-audit:
     desc: Check for security vulnerabilities
     cmds:
+      - fnm install
       - echo "Auditing dependencies..."
-      - pnpm audit
+      - '{{.FNM_EXEC}} pnpm audit'
 
   deps-audit-fix:
     desc: Fix security vulnerabilities
     cmds:
+      - fnm install
       - echo "Fixing vulnerabilities..."
-      - pnpm audit --fix
+      - '{{.FNM_EXEC}} pnpm audit --fix'
 
   setup:
     desc: Complete setup (install + build)

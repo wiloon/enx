@@ -1,9 +1,10 @@
 {
   "manifest_version": 3,
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiBY2NMV58HKw1g13kUFY6pyH2dzEuhZ8r+rR3Lw8N0Z3B4qxIou3gxVv/6wKJUuD5Aky6ZqXdCuBNCG1GTukRp5R0o8ulRFmLSSz/uWcxdgynA9s5Sr3hgkaIsECmyt9U84Y3Rob/6GB1hYk9hp6qsd8+GLK+82/xFCJoSck1piDeJNJQY+XQQgwn/+bORpD/m1KpQaEUya7ZnKAJYNbQ44/3sTsgWwZuevGW0ShETaqCIOb7K2dIbwWwDesceWjIbu6G9OjRuuup74jWkTbiQVLvMKONhv1/oI72+sgsP1c9ru1jEKZnNE46zlfLaSaLL5bNMSODrLnq1u9Ynh1twIDAQAB",
   "name": "ENX - English Learning Extension",
   "version": "1.0.1",
   "description": "AI-powered English learning assistant that helps you learn vocabulary while browsing the web",
-  "permissions": ["storage", "activeTab", "scripting", "notifications"],
+  "permissions": ["storage", "activeTab", "scripting", "notifications", "identity"],
   "host_permissions": [
     "http://*/*",
     "https://*/*",
@@ -11,6 +12,7 @@
     "https://enx-lab.wiloon.com/*",
     "https://enx-dev.wiloon.com/*",
     "https://enx.wiloon.com/*",
+    "https://enx-auth.auth.us-east-1.amazoncognito.com/*",
     "https://www.youdao.com/*"
   ],
   "action": {
@@ -29,7 +31,8 @@
         "https://developers.googleblog.com/*",
         "https://www.microsoft.com/en-us/research/*",
         "https://www.reuters.com/*",
-        "https://www.anthropic.com/*"
+        "https://www.anthropic.com/*",
+        "https://anthropic.skilljar.com/*"
       ],
       "js": ["src/content/content.ts"],
       "run_at": "document_end"

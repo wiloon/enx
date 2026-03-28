@@ -33,11 +33,11 @@ export const createUserAtom = () => {
   return userAtom
 }
 
-// Session atom with Chrome storage persistence
+// Cognito tokens with Chrome storage persistence
 export const createSessionAtom = () => {
   const defaultSession = {
-    sessionId: '',
-    token: '',
+    accessToken: '',
+    refreshToken: '',
   }
 
   const baseAtom = atom(defaultSession)
@@ -47,13 +47,12 @@ export const createSessionAtom = () => {
     async (_get, set, newValue: typeof defaultSession) => {
       set(baseAtom, newValue)
 
-      // Save to Chrome storage
       try {
         await chrome.storage.local.set({
           'enx-session': newValue,
-          sessionId: newValue.sessionId, // Keep compatibility with background script
+          accessToken: newValue.accessToken,
+          refreshToken: newValue.refreshToken,
         })
-        console.log('Session state saved to storage:', newValue)
       } catch (error) {
         console.error('Failed to save session to storage:', error)
       }

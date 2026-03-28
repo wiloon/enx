@@ -11,11 +11,14 @@ import (
 	"testing"
 )
 
-func TestParagraph0(t *testing.T) {
-	paragraph := "their 6-year-old to"
+func init() {
 	utils.ViperInit()
 	sqlitex.Init()
-	out := enx.QueryCountInText(paragraph, 1)
+}
+
+func TestParagraph0(t *testing.T) {
+	paragraph := "their 6-year-old to"
+	out := enx.QueryCountInText(paragraph, "1")
 	fmt.Printf("out: %+v\n", out)
 	// check if key "6-year-old" exist
 	if _, ok := out["6-year-old"]; !ok {
@@ -29,9 +32,7 @@ func TestParagraph0(t *testing.T) {
 
 func TestParagraphEndingChar(t *testing.T) {
 	paragraph := "Good morning."
-	utils.ViperInit()
-	sqlitex.Init()
-	out := enx.QueryCountInText(paragraph, 1)
+	out := enx.QueryCountInText(paragraph, "1")
 	fmt.Printf("out: %+v\n", out)
 	for key, word := range out {
 		fmt.Printf("key: %s, word: %+v\n", key, word)
@@ -44,9 +45,8 @@ func TestParagraphEndingChar(t *testing.T) {
 
 func TestParagraphBarcket(t *testing.T) {
 	paragraph := "scientists. (Assassins wove through traffic to attach “sticky bombs” to their car doors.) The"
-	utils.ViperInit()
-	sqlitex.Init()
-	out := enx.QueryCountInText(paragraph, 1)
+
+	out := enx.QueryCountInText(paragraph, "1")
 	fmt.Printf("out: %+v\n", out)
 	for key, word := range out {
 		fmt.Printf("key: %s, word: %+v\n", key, word)

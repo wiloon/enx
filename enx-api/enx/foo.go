@@ -51,7 +51,7 @@ func QueryCountInText(paragraph string, userId string) map[string]Word {
 			}
 		}
 		// add log, print word id, english, chinese, load count
-		logger.Infof("word: %s, id: %d, chinese: %s, load count: %d, already acquainted: %d",
+		logger.Infof("word: %s, id: %s, chinese: %s, load count: %d, already acquainted: %d",
 			wordObj.English, wordObj.Id, wordObj.Chinese, wordObj.LoadCount, wordObj.AlreadyAcquainted)
 
 		response[wordObj.Raw] = wordObj

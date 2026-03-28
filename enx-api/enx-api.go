@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"enx-api/email"
 	"enx-api/enx"
 	"enx-api/handlers"
 	"enx-api/middleware"
@@ -18,6 +19,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
@@ -38,6 +41,32 @@ func main() {
 	logger.Sync()
 	sqlitex.Init()
 
+	router := setupRouter()
+
+	port := viper.GetInt("enx.port")
+	listenAddress := fmt.Sprintf(":%d", port)
+	srv := &http.Server{Addr: listenAddress, Handler: router}
+
+	idleConnectionsClosed := make(chan struct{})
+	go func() {
+		utils.WaitSignals()
+		if err := srv.Shutdown(context.Background()); err != nil {
+			logger.Errorf("http server shutdown: %v", err)
+		}
+		close(idleConnectionsClosed)
+	}()
+
+	logger.Infof("enx api listening port: %v", port)
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		logger.Errorf("failed to listen, %v", err)
+		logger.Error("server failed to start, exiting...")
+		os.Exit(1)
+	}
+	logger.Infof("listen end")
+	<-idleConnectionsClosed
+}
+
+func setupRouter() *gin.Engine {
 	// ReleaseMode
 	gin.SetMode(gin.DebugMode)
 	router := gin.New()
@@ -63,6 +92,7 @@ func main() {
 		allowedOrigins := []string{
 			"http://localhost:3000",
 			"https://enx-ui.wiloon.com",
+			"https://enx-ui-lab.wiloon.com",
 			"https://enx-dev.wiloon.com",
 		}
 
@@ -84,7 +114,7 @@ func main() {
 			c.Header("Access-Control-Allow-Origin", origin)
 			c.Header("Access-Control-Allow-Credentials", "true")
 			c.Header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
-			c.Header("Access-Control-Allow-Headers", "Origin, X-Session-ID, X-User-ID, Content-Type, Cookie")
+			c.Header("Access-Control-Allow-Headers", "Origin, Authorization, X-Session-ID, X-User-ID, Content-Type, Cookie")
 			c.Header("Access-Control-Expose-Headers", "Content-Length")
 			c.Header("Access-Control-Max-Age", "43200") // 12 hours
 		}
@@ -122,9 +152,12 @@ func main() {
 	router.GET("/version", handlers.GetVersion)
 	router.GET("/api/version", handlers.GetVersionSimple)
 
-	// APIs requiring authentication
+	cognitoCfg := middleware.CognitoConfigFromViper()
+	cognitoAuth := middleware.CognitoAuth(cognitoCfg)
+
+	// APIs requiring authentication (Cognito JWT)
 	authGroup := router.Group("/")
-	authGroup.Use(middleware.SessionMiddleware())
+	authGroup.Use(cognitoAuth)
 	{
 		// get words query count by paragraph
 		authGroup.GET("/paragraph-init", paragraph.ParagraphInit)
@@ -142,7 +175,7 @@ func main() {
 
 	// API group for Kong gateway (with /api prefix)
 	apiGroup := router.Group("/api")
-	apiGroup.Use(middleware.SessionMiddleware())
+	apiGroup.Use(cognitoAuth)
 	{
 		// get words query count by paragraph
 		apiGroup.GET("/paragraph-init", paragraph.ParagraphInit)
@@ -150,6 +183,7 @@ func main() {
 		// translate
 		apiGroup.GET("/translate", translate.Translate)
 		apiGroup.GET("/word/:word", translate.TranslateByWord)
+		apiGroup.DELETE("/word/:word", DeleteWord)
 		apiGroup.GET("/load-count", wordCount.LoadCount)
 		apiGroup.POST("/mark", MarkWord)
 		apiGroup.GET("/do-search", DoSearch)
@@ -158,41 +192,13 @@ func main() {
 		apiGroup.POST("/log", LogHandler)
 	}
 
-	// APIs not requiring authentication
-	router.POST("/login", Login)
-	router.POST("/logout", Logout)
-	router.POST("/register", Register)
-
-	// APIs not requiring authentication (with /api prefix for Kong gateway)
-	router.POST("/api/login", Login)
-	router.POST("/api/logout", Logout)
-	router.POST("/api/register", Register)
+	// /api/me — requires authentication (Cognito JWT)
+	apiGroup.GET("/me", GetMe)
 
 	// Temporary test route - no authentication required
 	router.POST("/mark-test", MarkWord)
 
-	port := viper.GetInt("enx.port")
-	listenAddress := fmt.Sprintf(":%d", port)
-	srv := &http.Server{Addr: listenAddress, Handler: router}
-
-	idleConnectionsClosed := make(chan struct{})
-	go func() {
-		utils.WaitSignals()
-		if err := srv.Shutdown(context.Background()); err != nil {
-			logger.Errorf("http server shutdown: %v", err)
-		}
-		close(idleConnectionsClosed)
-	}()
-
-	logger.Infof("enx api listening port: %v", port)
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		logger.Errorf("failed to listen, %v", err)
-		logger.Error("server failed to start, exiting...")
-		os.Exit(1)
-	}
-	logger.Infof("listen end")
-	<-idleConnectionsClosed
-
+	return router
 }
 
 type SearchResult struct {
@@ -209,9 +215,10 @@ func DoSearch(c *gin.Context) {
 	result.WordList = words
 	result.Dict = enx.FindOne(key)
 	if result.Dict == nil || result.Dict.Chinese == "" {
-		// query from third party
-		epc := youdao.Query(key)
-		result.Dict = epc
+		epc := youdao.QueryAPI(key)
+		if epc != nil {
+			result.Dict = epc
+		}
 	}
 	c.JSON(200, result)
 }
@@ -224,9 +231,10 @@ func DoSearchThirdParty(c *gin.Context) {
 	result := SearchResult{}
 	result.WordList = words
 
-	// query from third party
-	epc := youdao.Query(key)
-	result.Dict = epc
+	epc := youdao.QueryAPI(key)
+	if epc != nil {
+		result.Dict = epc
+	}
 
 	c.JSON(200, result)
 }
@@ -260,7 +268,7 @@ func (l *line) appendWords(word string) int {
 
 func Wrap(c *gin.Context) {
 	text := c.Query("text")
-	logger.Debugf(text)
+	logger.Debugf("%s", text)
 	text = strings.ReplaceAll(text, "\n", " ")
 	arr := strings.Split(text, " ")
 	a := article{}
@@ -320,10 +328,234 @@ func MarkWord(c *gin.Context) {
 	c.JSON(200, word)
 }
 
+func DeleteWord(c *gin.Context) {
+	word := c.Param("word")
+	if word == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "word is required"})
+		return
+	}
+	logger.Infof("DeleteWord: deleting word=%s", word)
+
+	// Find word ID first
+	var w sqlitex.Word
+	if err := sqlitex.DB.Where("english = ?", word).First(&w).Error; err == nil {
+		// Delete user_dicts referencing this word
+		sqlitex.DB.Where("word_id = ?", w.Id).Delete(&sqlitex.UserDict{})
+	}
+
+	// Delete from words table
+	sqlitex.DB.Where("english = ?", word).Delete(&sqlitex.Word{})
+
+	// Delete from youdao cache
+	sqlitex.DB.Where("english = ?", word).Delete(&sqlitex.Youdao{})
+
+	logger.Infof("DeleteWord: deleted word=%s", word)
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "word cleared"})
+}
+
 func Ping(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"message": "pong",
 	})
+}
+
+// rateLimitStore tracks last-sent timestamps for email rate limiting (60s).
+var (
+	rateLimitMu    sync.Mutex
+	rateLimitStore = make(map[string]time.Time)
+)
+
+// checkRateLimit returns true if the email address is allowed (not rate-limited).
+func checkRateLimit(email string) bool {
+	rateLimitMu.Lock()
+	defer rateLimitMu.Unlock()
+	if last, ok := rateLimitStore[email]; ok {
+		if time.Since(last) < 60*time.Second {
+			return false
+		}
+	}
+	rateLimitStore[email] = time.Now()
+	return true
+}
+
+// GetMe returns the current user's public fields including status.
+func GetMe(c *gin.Context) {
+	userID := middleware.GetUserIDFromContext(c)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Unauthorized"})
+		return
+	}
+	user := enx.GetUserByID(userID)
+	if user.Id == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "User not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"id":     user.Id,
+		"name":   user.Name,
+		"email":  user.Email,
+		"status": user.Status,
+	})
+}
+
+// VerifyEmail handles GET /api/verify-email?token=xxx
+func VerifyEmail(c *gin.Context) {
+	token := c.Query("token")
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid activation link."})
+		return
+	}
+
+	user := enx.GetUserByVerificationToken(token)
+	if user.Id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid activation link."})
+		return
+	}
+
+	if user.Status == "active" {
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "Account already activated."})
+		return
+	}
+
+	if time.Now().After(user.TokenExpiresAt) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Activation link has expired. Please request a new one."})
+		return
+	}
+
+	if err := user.Activate(); err != nil {
+		logger.Errorf("failed to activate user %s: %v", user.Id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to activate account"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+type ResendVerificationRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+// ResendVerification handles POST /api/resend-verification
+func ResendVerification(c *gin.Context) {
+	var req ResendVerificationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// Always return success to prevent user enumeration
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+
+	// Rate limiting
+	if !checkRateLimit(req.Email) {
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+
+	user := enx.GetUserByEmail(req.Email)
+	if user.Id == "" {
+		// Always return success to prevent user enumeration
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+
+	token, err := enx.GenerateToken()
+	if err != nil {
+		logger.Errorf("failed to generate verification token for %s: %v", req.Email, err)
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+
+	if err := user.SetVerificationToken(token, time.Now().Add(48*time.Hour)); err != nil {
+		logger.Errorf("failed to save verification token for %s: %v", req.Email, err)
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+
+	if err := email.SendVerificationEmail(req.Email, user.Name, token); err != nil {
+		logger.Errorf("failed to resend verification email to %s: %v", req.Email, err)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+// ForgotPassword handles POST /api/forgot-password
+func ForgotPassword(c *gin.Context) {
+	var req ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+
+	// Rate limiting
+	if !checkRateLimit("reset:" + req.Email) {
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+
+	user := enx.GetUserByEmail(req.Email)
+	if user.Id == "" {
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+
+	token, err := enx.GenerateToken()
+	if err != nil {
+		logger.Errorf("failed to generate reset token for %s: %v", req.Email, err)
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+
+	if err := user.SetResetToken(token, time.Now().Add(time.Hour)); err != nil {
+		logger.Errorf("failed to save reset token for %s: %v", req.Email, err)
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+
+	if err := email.SendPasswordResetEmail(req.Email, user.Name, token); err != nil {
+		logger.Errorf("failed to send reset email to %s: %v", req.Email, err)
+	}
+
+	response := gin.H{"success": true}
+	if user.Status == "pending" {
+		response["warning"] = "Your email address has not been verified. The reset email may not be delivered if the address is incorrect."
+	}
+	c.JSON(http.StatusOK, response)
+}
+
+type ResetPasswordRequest struct {
+	Token    string `json:"token" binding:"required"`
+	Password string `json:"password" binding:"required,min=6"`
+}
+
+// ResetPassword handles POST /api/reset-password
+func ResetPassword(c *gin.Context) {
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid request parameters"})
+		return
+	}
+
+	user := enx.GetUserByResetToken(req.Token)
+	if user.Id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid reset link."})
+		return
+	}
+
+	if time.Now().After(user.ResetTokenExpiresAt) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Reset link has expired. Please request a new one."})
+		return
+	}
+
+	if err := user.UpdatePassword(req.Password); err != nil {
+		logger.Errorf("failed to update password for user %s: %v", user.Id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to update password"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 type LoginRequest struct {
@@ -336,6 +568,7 @@ type LoginResponse struct {
 	Message   string    `json:"message"`
 	User      *enx.User `json:"user,omitempty"`
 	SessionID string    `json:"session_id,omitempty"`
+	Status    string    `json:"status,omitempty"`
 }
 
 func Login(c *gin.Context) {
@@ -374,6 +607,7 @@ func Login(c *gin.Context) {
 			Message:   "Login successful",
 			User:      user,
 			SessionID: session.ID,
+			Status:    user.Status,
 		})
 	} else {
 		logger.Errorf("user login failed, username: %s", req.Username)
@@ -433,8 +667,11 @@ type RegisterRequest struct {
 }
 
 type RegisterResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
+	Success   bool      `json:"success"`
+	Message   string    `json:"message"`
+	User      *enx.User `json:"user,omitempty"`
+	SessionID string    `json:"session_id,omitempty"`
+	Status    string    `json:"status,omitempty"`
 }
 
 func Register(c *gin.Context) {
@@ -469,11 +706,24 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	// Create new user
+	// Create new user with pending status and verification token
+	verifyToken, err := enx.GenerateToken()
+	if err != nil {
+		logger.Errorf("failed to generate verification token: %v", err)
+		c.JSON(http.StatusInternalServerError, RegisterResponse{
+			Success: false,
+			Message: "Failed to process registration",
+		})
+		return
+	}
+
 	user := &enx.User{
-		Name:     req.Username,
-		Password: hashedPassword,
-		Email:    req.Email,
+		Name:              req.Username,
+		Password:          hashedPassword,
+		Email:             req.Email,
+		Status:            "pending",
+		VerificationToken: verifyToken,
+		TokenExpiresAt:    time.Now().Add(48 * time.Hour),
 	}
 
 	if err := user.Create(); err != nil {
@@ -485,9 +735,33 @@ func Register(c *gin.Context) {
 		return
 	}
 
+	// Send verification email; failure is non-fatal
+	if err := email.SendVerificationEmail(req.Email, req.Username, verifyToken); err != nil {
+		logger.Errorf("failed to send verification email to %s: %v", req.Email, err)
+	}
+
+	// Auto-login: create session immediately
+	session, err := middleware.CreateSession(user.Id)
+	if err != nil {
+		logger.Errorf("failed to create session after registration for user %s: %v", user.Name, err)
+		// Registration succeeded, just skip auto-login
+		logger.Infof("user registration success (no session), user: %+v", user)
+		c.JSON(http.StatusOK, RegisterResponse{
+			Success: true,
+			Message: "Registration successful. Please check your email to verify your account.",
+			Status:  "pending",
+		})
+		return
+	}
+
+	c.SetCookie("session_id", session.ID, 24*3600, "/", "", false, true)
+
 	logger.Infof("user registration success, user: %+v", user)
 	c.JSON(http.StatusOK, RegisterResponse{
-		Success: true,
-		Message: "Registration successful",
+		Success:   true,
+		Message:   "Registration successful. Please check your email to verify your account.",
+		User:      user,
+		SessionID: session.ID,
+		Status:    "pending",
 	})
 }
