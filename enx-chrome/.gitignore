@@ -8,6 +8,9 @@ build/
 # Chrome dev profile (user data)
 .chrome-dev-profile/
 
+# Extension signing key (keep dist.pem local; public key lives in manifest.json)
+*.pem
+
 # Environment variables
 .env
 .env.local

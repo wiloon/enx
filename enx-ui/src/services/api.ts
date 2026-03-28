@@ -1,8 +1,9 @@
-import { ApiResponse, AuthResponse, WordData } from '@/types'
+import { ApiResponse, WordData } from '@/types'
 
 export class ApiService {
-  private baseUrl: string = 'https://enx-dev.wiloon.com'
-  private sessionId: string = ''
+  private baseUrl: string =
+    process.env.NEXT_PUBLIC_API_BASE_URL || 'https://enx-dev.wiloon.com'
+  private accessToken: string = ''
 
   constructor(baseUrl?: string) {
     if (baseUrl) {
@@ -10,8 +11,8 @@ export class ApiService {
     }
   }
 
-  setSessionId(sessionId: string) {
-    this.sessionId = sessionId
+  setAccessToken(token: string) {
+    this.accessToken = token
   }
 
   setBaseUrl(url: string) {
@@ -25,24 +26,28 @@ export class ApiService {
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-        ...(options.headers as Record<string, string> || {}),
+        ...((options.headers as Record<string, string>) || {}),
       }
 
-      if (this.sessionId) {
-        headers['X-Session-ID'] = this.sessionId
+      if (this.accessToken) {
+        headers['Authorization'] = `Bearer ${this.accessToken}`
       }
 
       const response = await fetch(`${this.baseUrl}${endpoint}`, {
         ...options,
         headers,
-        credentials: 'include',
       })
 
       if (!response.ok) {
         if (response.status === 401) {
           throw new Error('Session expired')
         }
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        const errorBody = await response.json().catch(() => null)
+        const message =
+          errorBody?.error ||
+          errorBody?.message ||
+          `HTTP ${response.status}: ${response.statusText}`
+        throw new Error(message)
       }
 
       const data = await response.json()
@@ -59,44 +64,22 @@ export class ApiService {
     }
   }
 
-  async login(username: string, password: string): Promise<ApiResponse<AuthResponse>> {
-    const response = await this.makeRequest<AuthResponse>('/api/login', {
-      method: 'POST',
-      body: JSON.stringify({ username, password }),
-    })
-
-    if (response.success && response.data) {
-      this.sessionId = response.data.sessionId
-    }
-
-    return response
-  }
-
-  async logout(): Promise<ApiResponse<void>> {
-    const response = await this.makeRequest<void>('/api/logout', {
-      method: 'POST',
-    })
-
-    if (response.success) {
-      this.sessionId = ''
-    }
-
-    return response
-  }
-
-  async register(username: string, email: string, password: string): Promise<ApiResponse<AuthResponse>> {
-    return this.makeRequest<AuthResponse>('/api/register', {
-      method: 'POST',
-      body: JSON.stringify({ username, email, password }),
-    })
-  }
-
-  async healthCheck(): Promise<ApiResponse<{ status: string }>> {
-    return this.makeRequest<{ status: string }>('/api/health')
+  async getMe(): Promise<
+    ApiResponse<{ id: string; name: string; email: string; status: string }>
+  > {
+    return this.makeRequest('/api/me')
   }
 
   async lookupWord(word: string): Promise<ApiResponse<WordData>> {
     return this.makeRequest<WordData>(`/api/word/${encodeURIComponent(word)}`)
+  }
+
+  async deleteWord(
+    word: string
+  ): Promise<ApiResponse<{ success: boolean; message: string }>> {
+    return this.makeRequest(`/api/word/${encodeURIComponent(word)}`, {
+      method: 'DELETE',
+    })
   }
 }
 

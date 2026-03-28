@@ -1,99 +1,112 @@
+import { useCallback } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
-import { useAtom } from 'jotai'
-import { userAtom, sessionIdAtom, isLoadingAtom } from '@/store/authAtoms'
+import { useAtom, useAtomValue } from 'jotai'
+import {
+  userAtom,
+  accessTokenAtom,
+  refreshTokenAtom,
+  isLoadingAtom,
+  isAuthenticatedAtom,
+} from '@/store/authAtoms'
 import { apiService } from '@/services/api'
-import { AuthResponse } from '@/types'
+import { beginCognitoSignIn, cognitoLogout, CognitoTokens } from '@/lib/cognito'
 
 export const useAuth = () => {
   const [user, setUser] = useAtom(userAtom)
-  const [sessionId, setSessionId] = useAtom(sessionIdAtom)
+  const [accessToken, setAccessToken] = useAtom(accessTokenAtom)
+  const [refreshToken, setRefreshToken] = useAtom(refreshTokenAtom)
   const [isLoading, setIsLoading] = useAtom(isLoadingAtom)
+  const isAuthenticated = useAtomValue(isAuthenticatedAtom)
   const queryClient = useQueryClient()
   const router = useRouter()
 
-  const loginMutation = useMutation({
-    mutationFn: async ({ username, password }: { username: string; password: string }) => {
-      setIsLoading(true)
-      const response = await apiService.login(username, password)
-      if (!response.success) {
-        throw new Error(response.error || 'Login failed')
-      }
-      return response.data!
-    },
-    onSuccess: (data: AuthResponse) => {
-      setUser({ ...data.user, isLoggedIn: true })
-      setSessionId(data.sessionId)
-      apiService.setSessionId(data.sessionId)
+  const clearAuth = () => {
+    setUser(null)
+    setAccessToken('')
+    setRefreshToken('')
+    apiService.setAccessToken('')
+    queryClient.clear()
+  }
+
+  const completeCognitoLogin = useCallback(async (tokens: CognitoTokens) => {
+    setAccessToken(tokens.access_token)
+    apiService.setAccessToken(tokens.access_token)
+    if (tokens.refresh_token) {
+      setRefreshToken(tokens.refresh_token)
+    }
+    const resp = await apiService.getMe()
+    if (resp.success && resp.data) {
+      setUser({
+        id: resp.data.id,
+        username: resp.data.name,
+        email: resp.data.email,
+        status: resp.data.status,
+        isLoggedIn: true,
+      })
+    } else {
+      setUser({
+        id: 'cognito-user',
+        username: 'user',
+        email: '',
+        status: 'active',
+        isLoggedIn: true,
+      })
+    }
+  }, [setAccessToken, setRefreshToken, setUser])
+
+  const signIn = async () => {
+    setIsLoading(true)
+    try {
+      await beginCognitoSignIn()
+    } finally {
       setIsLoading(false)
-      router.push('/lookup')
-    },
-    onError: (error: Error) => {
-      console.error('Login error:', error)
-      setIsLoading(false)
-    },
-  })
+    }
+  }
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
       setIsLoading(true)
-      const response = await apiService.logout()
-      if (!response.success) {
-        throw new Error(response.error || 'Logout failed')
-      }
+      clearAuth()
     },
     onSuccess: () => {
-      setUser(null)
-      setSessionId('')
-      apiService.setSessionId('')
-      queryClient.clear()
       setIsLoading(false)
+      cognitoLogout()
     },
-    onError: (error: Error) => {
-      console.error('Logout error:', error)
+    onError: () => {
       setIsLoading(false)
+      router.push('/')
     },
   })
 
-  const registerMutation = useMutation({
-    mutationFn: async ({ username, email, password }: { username: string; email: string; password: string }) => {
-      setIsLoading(true)
-      const response = await apiService.register(username, email, password)
-      if (!response.success) {
-        throw new Error(response.error || 'Registration failed')
+  const initializeSession = async () => {
+    if (!accessToken) return
+    apiService.setAccessToken(accessToken)
+    try {
+      const resp = await apiService.getMe()
+      if (resp.success && resp.data) {
+        setUser({
+          id: resp.data.id,
+          username: resp.data.name,
+          email: resp.data.email,
+          status: resp.data.status,
+          isLoggedIn: true,
+        })
+      } else {
+        clearAuth()
       }
-      return response.data!
-    },
-    onSuccess: (data: AuthResponse) => {
-      setUser({ ...data.user, isLoggedIn: true })
-      setSessionId(data.sessionId)
-      apiService.setSessionId(data.sessionId)
-      setIsLoading(false)
-      router.push('/lookup')
-    },
-    onError: (error: Error) => {
-      console.error('Registration error:', error)
-      setIsLoading(false)
-    },
-  })
-
-  // Initialize session on mount if we have stored session data
-  const initializeSession = () => {
-    if (sessionId) {
-      apiService.setSessionId(sessionId)
+    } catch {
+      clearAuth()
     }
   }
 
   return {
     user,
     isLoading,
-    isAuthenticated: !!(user && sessionId && user.isLoggedIn),
-    login: loginMutation.mutateAsync,
+    isAuthenticated,
+    signIn,
     logout: logoutMutation.mutateAsync,
-    register: registerMutation.mutateAsync,
-    loginError: loginMutation.error?.message,
-    logoutError: logoutMutation.error?.message,
-    registerError: registerMutation.error?.message,
+    completeCognitoLogin,
     initializeSession,
   }
 }

@@ -18,6 +18,11 @@ The extension is currently configured to work **only on the following websites**
 
 - **[InfoQ](https://www.infoq.com)** - Technology and software development content
 - **[NY Times Newsletters](https://messaging-custom-newsletters.nytimes.com/)** - Premium news content
+- **[Google Developers Blog](https://developers.googleblog.com)** - Google engineering articles
+- **[Microsoft Research](https://www.microsoft.com/en-us/research/)** - Research publications
+- **[Reuters](https://www.reuters.com)** - News
+- **[Anthropic](https://www.anthropic.com)** - AI research and announcements
+- **[Anthropic Skilljar](https://anthropic.skilljar.com)** - Claude learning courses (e.g., Claude 101)
 
 To add more websites, edit the `content_scripts.matches` array in `manifest.json`:
 
@@ -84,6 +89,18 @@ cp .env.example .env
 # - VITE_ENV=development (for local API)
 # - VITE_SENTRY_DSN=your_sentry_dsn (optional)
 ```
+
+### Cognito sign-in (Google / email)
+
+Sign-in uses `chrome.identity.launchWebAuthFlow` with AWS Cognito Hosted UI (same pool as enx-ui, separate App Client).
+
+**Extension ID must match Cognito callback URLs.** `manifest.json` includes a `key` field so the ID stays `omcdpipnjffmblbhiphddcmoldceapam` regardless of which folder you load from `dist/`.
+
+1. Rebuild and reload the extension (`task build` → reload in `chrome://extensions`)
+2. Confirm ID on the extensions page is `omcdpipnjffmblbhiphddcmoldceapam`
+3. Ensure Cognito `enx-chrome` App Client lists `https://omcdpipnjffmblbhiphddcmoldceapam.chromiumapp.org/callback` (run `tofu apply` in `w10n-config/infra/aws/opentofu/enx` after pulling infra changes)
+
+Private signing key: keep `dist.pem` local (gitignored). Do not commit it.
 
 ### Development
 
@@ -373,6 +390,16 @@ If you can't connect to the API:
    - Verify API URL is correct
 
 For more details, see [API_CONFIG_README.md](./API_CONFIG_README.md)
+
+### Cognito sign-in errors
+
+If popup shows **Authorization page could not be loaded**:
+
+1. Open `chrome://extensions` and confirm extension ID is `omcdpipnjffmblbhiphddcmoldceapam`
+2. If the ID differs, rebuild from this repo (manifest `key` pins the ID) and remove/re-add the unpacked extension
+3. Run `tofu apply` in `w10n-config/infra/aws/opentofu/enx` so Cognito allows the callback URL
+
+交接文档（含 AWS / OpenTofu 阻塞项）：`w10n-config` 仓库 `infra/aws/opentofu/enx/HANDOFF-chrome-cognito-oauth.md`
 
 ### Test Page
 

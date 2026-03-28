@@ -31,8 +31,8 @@ func Translate(c *gin.Context) {
 
 	// do not save sentence into DB
 	if strings.Contains(raw, " ") {
-		logger.Debugf("find from youdao: %s", raw)
-		epc := youdao.Query(raw)
+		logger.Debugf("find from youdao official API: %s", raw)
+		epc := youdao.QueryAPI(raw)
 		word := enx.Word{}
 		word.English = epc.English
 		word.Key = strings.ToLower(epc.English)
@@ -48,8 +48,13 @@ func Translate(c *gin.Context) {
 	word.Translate(userId)
 
 	if word.Id == "" {
-		logger.Debugf("find from youdao: %s", raw)
-		epc := youdao.Query(word.English)
+		logger.Debugf("find from youdao official API: %s", raw)
+		epc := youdao.QueryAPI(word.English)
+		if epc == nil {
+			logger.Warnf("youdao API returned nil for word: %s", word.English)
+			c.JSON(404, gin.H{"success": false, "message": "Word not found"})
+			return
+		}
 		word.English = epc.English
 		word.Key = strings.ToLower(epc.English)
 		word.Chinese = epc.Chinese
@@ -109,8 +114,8 @@ func TranslateByWord(c *gin.Context) {
 
 	// do not save sentence into DB
 	if strings.Contains(raw, " ") {
-		logger.Debugf("find from youdao: %s", raw)
-		epc := youdao.Query(raw)
+		logger.Debugf("find from youdao official API: %s", raw)
+		epc := youdao.QueryAPI(raw)
 		word := enx.Word{}
 		word.English = epc.English
 		word.Key = strings.ToLower(epc.English)
@@ -126,8 +131,13 @@ func TranslateByWord(c *gin.Context) {
 	word.Translate(userId)
 
 	if word.Id == "" {
-		logger.Debugf("find from youdao: %s", raw)
-		epc := youdao.Query(word.English)
+		logger.Debugf("find from youdao official API: %s", raw)
+		epc := youdao.QueryAPI(word.English)
+		if epc == nil {
+			logger.Warnf("youdao API returned nil for word: %s", word.English)
+			c.JSON(404, gin.H{"success": false, "message": "Word not found"})
+			return
+		}
 		word.English = epc.English
 		word.Key = strings.ToLower(epc.English)
 		word.Chinese = epc.Chinese

@@ -1,7 +1,8 @@
+version: "2"
+
 linters:
   enable:
     - gofmt
-    - golint
     - govet
     - errcheck
     - staticcheck
@@ -10,28 +11,24 @@ linters:
     - misspell
     - unconvert
     - gosec
+  settings:
+    gocyclo:
+      min-complexity: 15
+    dupl:
+      threshold: 100
+    goconst:
+      min-len: 2
+      min-occurrences: 3
+    misspell:
+      locale: US
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+    paths:
+      - vendor
 
 run:
-  deadline: 5m
+  timeout: 5m
   tests: true
-  skip-dirs:
-    - vendor
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
-
-linters-settings:
-  golint:
-    min-confidence: 0.8
-  gocyclo:
-    min-complexity: 15
-  dupl:
-    threshold: 100
-  goconst:
-    min-len: 2
-    min-occurrences: 3
-  misspell:
-    locale: US
