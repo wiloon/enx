@@ -98,7 +98,7 @@ tasks:
           echo "air is not installed. Installing..."
           go install github.com/air-verse/air@latest
         fi
-        
+
         MODE="{{.MODE}}"
         if [ "$MODE" = "bg" ]; then
           echo "🚀 Starting {{.APP_NAME}} in development mode (background)..."
@@ -268,7 +268,7 @@ tasks:
     cmds:
       - |
         STOPPED=0
-        
+
         # Try to stop air process first
         if [ -f air.pid ]; then
           PID=$(cat air.pid)
@@ -283,7 +283,7 @@ tasks:
             rm -f air.pid
           fi
         fi
-        
+
         # Try to stop binary process
         if [ -f {{.APP_NAME}}.pid ]; then
           PID=$(cat {{.APP_NAME}}.pid)
@@ -298,11 +298,22 @@ tasks:
             rm -f {{.APP_NAME}}.pid
           fi
         fi
-        
+
         # Also try to kill any remaining air or enx-api processes
         pkill -f "air.*enx-api" && echo "✅ Killed remaining air processes" || true
         pkill -f "enx-api/tmp/enx-api" && echo "✅ Killed remaining enx-api processes" || true
-        
+
+        # Wait for port 8080 to be released (up to 5 seconds)
+        for i in $(seq 1 10); do
+          if ! lsof -ti:8080 > /dev/null 2>&1; then
+            break
+          fi
+          echo "⏳ Waiting for port 8080 to be released... ($i/10)"
+          # Force kill anything still holding port 8080
+          lsof -ti:8080 | xargs kill -9 2>/dev/null || true
+          sleep 0.5
+        done
+
         if [ $STOPPED -eq 0 ]; then
           echo "⚠️  No PID files found. Server may not be running in background."
         fi

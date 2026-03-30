@@ -52,8 +52,8 @@ type UserDict struct {
 	WordId            string `gorm:"column:word_id;primaryKey"`
 	QueryCount        int    `gorm:"column:query_count;default:0"`
 	AlreadyAcquainted int    `gorm:"column:already_acquainted;default:0"`
-	CreatedAt         int64  `gorm:"column:created_at"`
-	UpdatedAt         int64  `gorm:"column:updated_at"`
+	CreatedAt         int64  `gorm:"column:created_at;not null"`
+	UpdatedAt         int64  `gorm:"column:updated_at;not null"`
 }
 
 func (UserDict) TableName() string {
