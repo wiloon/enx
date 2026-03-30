@@ -93,12 +93,6 @@ tasks:
     cmds:
       - task stop
 
-  api:restart:
-    desc: Restart enx-api (calls enx-api taskfile)
-    dir: enx-api
-    cmds:
-      - task restart
-
   api:status:
     desc: Show enx-api status (calls enx-api taskfile)
     dir: enx-api
@@ -179,6 +173,7 @@ tasks:
     vars:
       MODE: '{{.MODE | default "fg"}}'
     cmds:
+      - task stop
       - task dev MODE={{.MODE}}
 
   chrome:build:
