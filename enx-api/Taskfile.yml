@@ -32,11 +32,6 @@ tasks:
       - go mod download
       - go mod verify
 
-  tidy:
-    desc: Tidy Go module dependencies
-    cmds:
-      - go mod tidy
-
   build-dev:
     desc: Build for development (without version injection)
     cmds:
@@ -350,13 +345,6 @@ tasks:
       - echo "Development environment ready!"
       - echo "Run 'task run' to start the application"
       - echo "Run 'task dev' for hot reload mode"
-
-  ci-build:
-    desc: Build for CI/CD
-    cmds:
-      - task deps
-      - task test
-      - task build
 
   check:
     desc: Run all checks (fmt, vet, lint, test)
