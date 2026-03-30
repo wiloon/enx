@@ -83,7 +83,7 @@ func (word *Word) LoadByEnglish() {
 	word.Chinese = sWord.Chinese
 	word.Pronunciation = sWord.Pronunciation
 	word.LoadCount = sWord.LoadCount
-	logger.Debugf("load by english, word: %s, id: %d", word.English, word.Id)
+	logger.Debugf("load by english, word: %s, id: %s", word.English, word.Id)
 }
 
 func (word *Word) SetEnglishField(english string) {
@@ -136,7 +136,7 @@ func (word *Word) Translate(userId string) *Word {
 	if sWord.Id != "" {
 		// Query user_dicts from database using UUID
 		// userId needs to be converted to UUID string format
-		userIdStr := fmt.Sprintf("user-%d", userId) // Temporary: convert int userId to string
+		userIdStr := fmt.Sprintf("user-%s", userId) // Temporary: convert int userId to string
 		queryCount, _ := repo.GetUserWordQueryCount(sWord.Id, userIdStr)
 		if queryCount > 0 {
 			word.LoadCount = queryCount

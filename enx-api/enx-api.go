@@ -41,6 +41,32 @@ func main() {
 	logger.Sync()
 	sqlitex.Init()
 
+	router := setupRouter()
+
+	port := viper.GetInt("enx.port")
+	listenAddress := fmt.Sprintf(":%d", port)
+	srv := &http.Server{Addr: listenAddress, Handler: router}
+
+	idleConnectionsClosed := make(chan struct{})
+	go func() {
+		utils.WaitSignals()
+		if err := srv.Shutdown(context.Background()); err != nil {
+			logger.Errorf("http server shutdown: %v", err)
+		}
+		close(idleConnectionsClosed)
+	}()
+
+	logger.Infof("enx api listening port: %v", port)
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		logger.Errorf("failed to listen, %v", err)
+		logger.Error("server failed to start, exiting...")
+		os.Exit(1)
+	}
+	logger.Infof("listen end")
+	<-idleConnectionsClosed
+}
+
+func setupRouter() *gin.Engine {
 	// ReleaseMode
 	gin.SetMode(gin.DebugMode)
 	router := gin.New()
@@ -181,28 +207,7 @@ func main() {
 	// Temporary test route - no authentication required
 	router.POST("/mark-test", MarkWord)
 
-	port := viper.GetInt("enx.port")
-	listenAddress := fmt.Sprintf(":%d", port)
-	srv := &http.Server{Addr: listenAddress, Handler: router}
-
-	idleConnectionsClosed := make(chan struct{})
-	go func() {
-		utils.WaitSignals()
-		if err := srv.Shutdown(context.Background()); err != nil {
-			logger.Errorf("http server shutdown: %v", err)
-		}
-		close(idleConnectionsClosed)
-	}()
-
-	logger.Infof("enx api listening port: %v", port)
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		logger.Errorf("failed to listen, %v", err)
-		logger.Error("server failed to start, exiting...")
-		os.Exit(1)
-	}
-	logger.Infof("listen end")
-	<-idleConnectionsClosed
-
+	return router
 }
 
 type SearchResult struct {
@@ -270,7 +275,7 @@ func (l *line) appendWords(word string) int {
 
 func Wrap(c *gin.Context) {
 	text := c.Query("text")
-	logger.Debugf(text)
+	logger.Debugf("%s", text)
 	text = strings.ReplaceAll(text, "\n", " ")
 	arr := strings.Split(text, " ")
 	a := article{}

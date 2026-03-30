@@ -7,7 +7,7 @@ tmp_dir = "tmp"
 
 [build]
   args_bin = []
-  entrypoint = "./tmp/enx-api"
+  entrypoint = ["./tmp/enx-api"]
   cmd = "go build -o ./tmp/enx-api ."
   delay = 1000
   exclude_dir = ["assets", "tmp", "vendor", "testdata", "deploy", "test", "examples"]
@@ -19,13 +19,13 @@ tmp_dir = "tmp"
   include_dir = []
   include_ext = ["go", "tpl", "tmpl", "html", "toml"]
   include_file = []
-  kill_delay = "0s"
+  kill_delay = "3s"
   log = "build-errors.log"
   poll = false
   poll_interval = 0
   rerun = false
   rerun_delay = 500
-  send_interrupt = false
+  send_interrupt = true
   stop_on_error = false
 
 [color]
