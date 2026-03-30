@@ -124,9 +124,15 @@ tasks:
         fi
 
   test:
-    desc: Run unit tests only (fast, no database)
+    desc: Run all tests in the main package (register, E2E, etc.)
     cmds:
-      - echo "Running unit tests..."
+      - echo "Running API tests..."
+      - go test -v -timeout 60s .
+
+  test-all-pkgs:
+    desc: Run tests across all packages (requires all packages to compile)
+    cmds:
+      - echo "Running all package tests..."
       - go test -short ./...
 
   test-integration:

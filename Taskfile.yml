@@ -250,12 +250,6 @@ tasks:
     cmds:
       - task: build
 
-  chrome:build:
-    desc: Build enx-chrome extension
-    dir: enx-chrome
-    cmds:
-      - pnpm run build
-
   build-ui:
     desc: Build enx-ui
     dir: enx-ui

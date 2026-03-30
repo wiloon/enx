@@ -2,10 +2,11 @@ package redisx
 
 import (
 	"enx-api/utils/logger"
-	"github.com/gomodule/redigo/redis"
-	"github.com/spf13/viper"
 	"strconv"
 	"time"
+
+	"github.com/gomodule/redigo/redis"
+	"github.com/spf13/viper"
 )
 
 var pool *redis.Pool
@@ -25,7 +26,7 @@ func GetConn() redis.Conn {
 			address := viper.GetString("redis.address")
 			conn, err := redis.Dial("tcp", address)
 			if err != nil {
-				logger.Errorf("failed to connect to redis:" + err.Error())
+				logger.Errorf("failed to connect to redis: %v", err)
 			}
 			logger.Debugf("connected to redis, address: %v", address)
 			return conn, err

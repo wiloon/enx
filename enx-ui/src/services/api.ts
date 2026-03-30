@@ -1,7 +1,7 @@
 import { ApiResponse, AuthResponse, WordData } from '@/types'
 
 export class ApiService {
-  private baseUrl: string = 'https://enx-dev.wiloon.com'
+  private baseUrl: string = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://enx-dev.wiloon.com'
   private sessionId: string = ''
 
   constructor(baseUrl?: string) {
@@ -42,7 +42,9 @@ export class ApiService {
         if (response.status === 401) {
           throw new Error('Session expired')
         }
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        const errorBody = await response.json().catch(() => null)
+        const message = errorBody?.message || `HTTP ${response.status}: ${response.statusText}`
+        throw new Error(message)
       }
 
       const data = await response.json()
