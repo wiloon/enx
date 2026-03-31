@@ -22,7 +22,7 @@ This is a monorepo containing multiple sub-projects:
 
 ### Prerequisites
 
-- Go 1.21+
+- Go (see [enx-api/go.mod](enx-api/go.mod))
 - Node.js 25+ (managed by fnm)
 - pnpm
 - SQLite 3
