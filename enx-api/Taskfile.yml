@@ -119,41 +119,14 @@ tasks:
         fi
 
   test:
-    desc: Run all tests in the main package (register, E2E, etc.)
+    desc: Run unit tests across all packages
     cmds:
-      - echo "Running API tests..."
-      - go test -v -timeout 60s .
-
-  test-all-pkgs:
-    desc: Run tests across all packages (requires all packages to compile)
-    cmds:
-      - echo "Running all package tests..."
-      - go test -short ./...
+      - go test ./...
 
   test-integration:
-    desc: Run integration tests (requires database and config)
+    desc: Run unit tests + integration tests across all packages (requires database and config)
     cmds:
-      - echo "Setting up integration test environment..."
-      - |
-        # Create test database if not exists
-        if [ ! -f enx.db ]; then
-          echo "Creating test database..."
-          sqlite3 enx.db < enx.sql
-        fi
-      - |
-        # Create test config if not exists
-        if [ ! -f config.toml ]; then
-          echo "Using test config..."
-          cp config-e2e.toml config.toml
-        fi
-      - echo "Running integration tests..."
       - go test -tags=integration ./...
-
-  test-all:
-    desc: Run all tests (unit + integration)
-    cmds:
-      - task: test
-      - task: test-integration
 
   test-coverage:
     desc: Run tests with coverage
@@ -318,8 +291,6 @@ tasks:
         if [ $STOPPED -eq 0 ]; then
           echo "⚠️  No PID files found. Server may not be running in background."
         fi
-
-  restart:
 
   status:
     desc: Check API server status

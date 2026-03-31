@@ -2,24 +2,61 @@ package youdao
 
 import (
 	"crypto/sha256"
+	"enx-api/enx"
 	"enx-api/repo"
 	"enx-api/utils/logger"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/spf13/viper"
-	"github.com/tidwall/gjson"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/spf13/viper"
+	"github.com/tidwall/gjson"
 )
+
+// maxWordsPerQuery is the maximum number of words allowed in a single Youdao API query.
+// This prevents excessive API quota consumption from long sentences.
+const maxWordsPerQuery = 4
 
 type Response struct {
 	ReturnPhrase  string
 	Query         string
 	BasicExplains string
 	Phonetic      string
+}
+
+// QueryAPI calls the official Youdao API and returns the result in enx.Dictionary format.
+// This is the recommended way to translate words, replacing the deprecated web scraping approach.
+//
+// The function uses the official Youdao OpenAPI (https://openapi.youdao.com/api) with proper
+// authentication (appKey + appSecret + SHA256 signature) to avoid legal issues with web scraping.
+//
+// Results are cached in the database to avoid redundant API calls.
+// Input is limited to maxWordsPerQuery words to prevent excessive API quota consumption.
+func QueryAPI(words string) *enx.Dictionary {
+	// Reject queries with too many words to avoid consuming API quota
+	wordCount := len(strings.Fields(words))
+	if wordCount > maxWordsPerQuery {
+		logger.Infof("youdao query rejected: %d words exceeds limit of %d, input: %q", wordCount, maxWordsPerQuery, words)
+		return nil
+	}
+
+	resp := Translate(words)
+	if resp == nil {
+		return nil
+	}
+
+	// Convert Response to Dictionary format
+	dict := &enx.Dictionary{
+		English:       resp.Query,
+		Chinese:       resp.BasicExplains,
+		Pronunciation: resp.Phonetic,
+	}
+	return dict
 }
 
 func Translate(words string) *Response {

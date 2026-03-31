@@ -224,8 +224,8 @@ func DoSearch(c *gin.Context) {
 	result.WordList = words
 	result.Dict = enx.FindOne(key)
 	if result.Dict == nil || result.Dict.Chinese == "" {
-		// query from third party
-		epc := youdao.Query(key)
+		// query from official Youdao API
+		epc := youdao.QueryAPI(key)
 		result.Dict = epc
 	}
 	c.JSON(200, result)
@@ -239,8 +239,8 @@ func DoSearchThirdParty(c *gin.Context) {
 	result := SearchResult{}
 	result.WordList = words
 
-	// query from third party
-	epc := youdao.Query(key)
+	// query from official Youdao API
+	epc := youdao.QueryAPI(key)
 	result.Dict = epc
 
 	c.JSON(200, result)

@@ -31,8 +31,8 @@ func Translate(c *gin.Context) {
 
 	// do not save sentence into DB
 	if strings.Contains(raw, " ") {
-		logger.Debugf("find from youdao: %s", raw)
-		epc := youdao.Query(raw)
+		logger.Debugf("find from youdao official API: %s", raw)
+		epc := youdao.QueryAPI(raw)
 		word := enx.Word{}
 		word.English = epc.English
 		word.Key = strings.ToLower(epc.English)
@@ -48,8 +48,8 @@ func Translate(c *gin.Context) {
 	word.Translate(userId)
 
 	if word.Id == "" {
-		logger.Debugf("find from youdao: %s", raw)
-		epc := youdao.Query(word.English)
+		logger.Debugf("find from youdao official API: %s", raw)
+		epc := youdao.QueryAPI(word.English)
 		word.English = epc.English
 		word.Key = strings.ToLower(epc.English)
 		word.Chinese = epc.Chinese
@@ -109,8 +109,8 @@ func TranslateByWord(c *gin.Context) {
 
 	// do not save sentence into DB
 	if strings.Contains(raw, " ") {
-		logger.Debugf("find from youdao: %s", raw)
-		epc := youdao.Query(raw)
+		logger.Debugf("find from youdao official API: %s", raw)
+		epc := youdao.QueryAPI(raw)
 		word := enx.Word{}
 		word.English = epc.English
 		word.Key = strings.ToLower(epc.English)
@@ -126,8 +126,8 @@ func TranslateByWord(c *gin.Context) {
 	word.Translate(userId)
 
 	if word.Id == "" {
-		logger.Debugf("find from youdao: %s", raw)
-		epc := youdao.Query(word.English)
+		logger.Debugf("find from youdao official API: %s", raw)
+		epc := youdao.QueryAPI(word.English)
 		word.English = epc.English
 		word.Key = strings.ToLower(epc.English)
 		word.Chinese = epc.Chinese

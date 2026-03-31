@@ -43,6 +43,10 @@ type YoudaoQueryHistory struct {
 	Exist   int
 }
 
+func (YoudaoQueryHistory) TableName() string {
+	return "youdao"
+}
+
 // GetWordByEnglish get word id by english
 func GetWordByEnglish(english string) *Word {
 	word := &Word{}
