@@ -27,7 +27,9 @@ type RegisterFormData = z.infer<typeof registerSchema>;
 
 export default function LoginForm() {
   const [isRegisterMode, setIsRegisterMode] = useState(false);
-  const { login, register, isLoading, loginError, registerError } = useAuth();
+  const [loginApiError, setLoginApiError] = useState<string | null>(null);
+  const [registerApiError, setRegisterApiError] = useState<string | null>(null);
+  const { login, register, isLoading } = useAuth();
 
   const loginForm = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -47,18 +49,20 @@ export default function LoginForm() {
   });
 
   const onLoginSubmit = async (data: LoginFormData) => {
+    setLoginApiError(null);
     try {
       await login(data);
     } catch (error) {
-      console.error('Login failed:', error);
+      setLoginApiError(error instanceof Error ? error.message : 'Login failed');
     }
   };
 
   const onRegisterSubmit = async (data: RegisterFormData) => {
+    setRegisterApiError(null);
     try {
       await register(data);
     } catch (error) {
-      console.error('Registration failed:', error);
+      setRegisterApiError(error instanceof Error ? error.message : 'Registration failed');
     }
   };
 
@@ -107,8 +111,8 @@ export default function LoginForm() {
               </div>
             </div>
 
-            {loginError && (
-              <p className="text-sm text-red-600 text-center">{loginError}</p>
+            {loginApiError && (
+              <p className="text-sm text-red-600 text-center">{loginApiError}</p>
             )}
 
             <Button type="submit" className="w-full" disabled={isLoading}>
@@ -162,8 +166,8 @@ export default function LoginForm() {
               )}
             </div>
 
-            {registerError && (
-              <p className="text-sm text-red-600 text-center">{registerError}</p>
+            {registerApiError && (
+              <p className="text-sm text-red-600 text-center">{registerApiError}</p>
             )}
 
             <Button type="submit" className="w-full" disabled={isLoading}>

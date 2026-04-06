@@ -10,11 +10,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiService } from '@/services/api';
 
 export default function AuthWrapper() {
-  const { isAuthenticated, user, logout, initializeSession, isLoading } = useAuth();
+  const { isAuthenticated, user, logout, initializeSession } = useAuth();
   const [resendStatus, setResendStatus] = useState<'idle' | 'sending' | 'sent'>('idle');
+  const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
-    initializeSession();
+    initializeSession().finally(() => setInitializing(false));
   }, []);
 
   const handleResendVerification = async () => {
@@ -29,7 +30,7 @@ export default function AuthWrapper() {
     }
   };
 
-  if (isLoading) {
+  if (initializing) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
