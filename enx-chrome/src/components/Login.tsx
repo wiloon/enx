@@ -32,7 +32,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       apiService.getMe().then((resp) => {
         if (resp.success && resp.data) {
           const status = resp.data.status
-          setUser(prev => ({ ...prev, status }))
+          setUser({ ...user, status })
           chrome.storage.local.set({ userStatus: status })
         }
       }).catch(() => {/* non-fatal */})
