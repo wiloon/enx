@@ -277,6 +277,8 @@ class ContentWordProcessor {
       '.single-post__container', // Microsoft Research
       '#EMAIL_CONTAINER', // NY Times
       '.text', // TingRoom
+      '#lesson-main-content', // Anthropic Skilljar
+      '.sjwc-lesson-content-item', // Anthropic Skilljar (inner)
       'article', // Semantic HTML5
       '.content',
       '.entry-content',
