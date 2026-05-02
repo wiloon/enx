@@ -18,6 +18,11 @@ The extension is currently configured to work **only on the following websites**
 
 - **[InfoQ](https://www.infoq.com)** - Technology and software development content
 - **[NY Times Newsletters](https://messaging-custom-newsletters.nytimes.com/)** - Premium news content
+- **[Google Developers Blog](https://developers.googleblog.com)** - Google engineering articles
+- **[Microsoft Research](https://www.microsoft.com/en-us/research/)** - Research publications
+- **[Reuters](https://www.reuters.com)** - News
+- **[Anthropic](https://www.anthropic.com)** - AI research and announcements
+- **[Anthropic Skilljar](https://anthropic.skilljar.com)** - Claude learning courses (e.g., Claude 101)
 
 To add more websites, edit the `content_scripts.matches` array in `manifest.json`:
 

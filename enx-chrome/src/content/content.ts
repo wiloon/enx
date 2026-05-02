@@ -340,6 +340,18 @@ const sendToBackground = (
   })
 }
 
+// Extract US phonetic from a pronunciation string.
+// Some entries (scraped before the API migration) store both UK and US
+// phonetics concatenated, e.g. "[dɪˈskrɪmɪnətəri][dɪˈskrɪmɪnətə:ri]".
+// In that case the second bracket pair is the American English pronunciation.
+export const extractUSPhonetic = (pronunciation: string): string => {
+  const matches = pronunciation.match(/\[[^\]]+\]/g)
+  if (matches && matches.length >= 2) {
+    return matches[matches.length - 1]
+  }
+  return pronunciation
+}
+
 // Create and show word popup using Popover API + CSS Anchor Positioning
 // Requires Chrome 125+ for full support (CSS Anchor Positioning)
 const showWordPopup = async (word: string, event: MouseEvent) => {
@@ -422,7 +434,7 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
       const youdaoUrl = `https://www.youdao.com/result?word=${encodeURIComponent(wordData.English)}&lang=en`
 
       const pronunciationHtml = wordData.Pronunciation
-        ? `<span style="font-size: 14px; color: #666;">${wordData.Pronunciation}</span>`
+        ? `<span style="font-size: 14px; color: #666;">${extractUSPhonetic(wordData.Pronunciation)}</span>`
         : ''
 
       popup.innerHTML = `

@@ -6,7 +6,7 @@
 |-------|-------|
 | **Created** | 2026-05-02 |
 | **Author** | wiloon |
-| **Status** | Draft |
+| **Status** | Done |
 | **Type** | Site Support |
 
 ## Background
@@ -26,10 +26,10 @@ Add ENX word-highlighting support for the Anthropic Skilljar course platform.
 
 ### Functional
 
-- [ ] ENX word highlighting activates on `https://anthropic.skilljar.com/*` pages
-- [ ] Words are highlighted in the lesson content area (not in navigation, sidebar, or UI chrome)
-- [ ] Clicking a highlighted word opens the translation popup
-- [ ] Highlighting works on both statically and dynamically loaded lesson content
+- [x] ENX word highlighting activates on `https://anthropic.skilljar.com/*` pages
+- [x] Words are highlighted in the lesson content area (not in navigation, sidebar, or UI chrome)
+- [x] Clicking a highlighted word opens the translation popup
+- [ ] Highlighting works on both statically and dynamically loaded lesson content — dynamic loading out of scope
 
 ### Non-Functional
 
@@ -52,8 +52,8 @@ Before implementation, the following must be verified by inspecting the Skilljar
 2. ~~**Update `manifest.json`**~~ ✅ — `"https://anthropic.skilljar.com/*"` added to `content_scripts.matches`.
 3. ~~**Update `content.ts`**~~ ✅ — Selectors added to `getArticleNode()`.
 4. **Handle dynamic content (if needed)** — Verify after manual testing.
-5. **Manual test** — Load the extension on the target page and verify highlighting works correctly.
-6. **Update `README.md`** — Add Skilljar to the "Supported Websites" list.
+5. ~~**Manual test**~~ ✅ — Verified working on `https://anthropic.skilljar.com/claude-101/383389`.
+6. ~~**Update `README.md`**~~ ✅ — Skilljar added to the "Supported Websites" list.
 
 ## Acceptance Criteria
 
