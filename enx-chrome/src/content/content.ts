@@ -678,53 +678,65 @@ const processArticleContent = async (): Promise<boolean> => {
       return false
     }
 
-    console.log(`Found ${words.length} words to process`)
+    // Deduplicate words to reduce chunk count and avoid redundant backend calls
+    const uniqueWords = Array.from(new Set(words))
+    console.log(`Found ${words.length} words (${uniqueWords.length} unique) to process`)
 
     // Process words in chunks
     const chunkSize = 200 // Process in smaller chunks for better performance
     let processedChunks = 0
 
-    for (let i = 0; i < words.length; i += chunkSize) {
-      const chunk = words.slice(i, i + chunkSize)
+    const sendChunkWithRetry = async (chunk: string[], attempt = 1): Promise<void> => {
       const paragraph = chunk.join(' ')
-
-      console.log(`📦 Processing chunk ${processedChunks + 1}: ${chunk.length} words`)
-      console.log(`  First 5 words: ${chunk.slice(0, 5).join(', ')}`)
-
       try {
         const response = await sendToBackground({
           type: 'getWords',
           paragraph,
         })
 
-        console.log(`📨 Response for chunk ${processedChunks + 1}:`, {
-          success: response.success,
-          hasWordProperties: !!response.wordProperties,
-          sessionExpired: response.sessionExpired,
-          error: response.error,
-        })
-
         if (response.success && response.wordProperties) {
-          console.log('Raw response.wordProperties:', response.wordProperties)
-
           // Check if wordProperties is wrapped in a 'data' field
           const actualWordData =
             response.wordProperties.data || response.wordProperties
-          console.log('Actual word data to process:', actualWordData)
-          console.log('Word data keys:', Object.keys(actualWordData))
-
           Object.assign(wordCache, actualWordData)
           processedChunks++
           console.log(
-            `Processed ${Object.keys(actualWordData).length} words in chunk ${processedChunks}`
+            `✅ Chunk ${processedChunks}: ${Object.keys(actualWordData).length} words cached`
           )
-          console.log('Current word cache size:', Object.keys(wordCache).length)
         } else if (response.sessionExpired) {
-          console.log('Session expired during word processing')
-          showSessionExpiredMessage()
-          return false // Processing failed due to session expiry
+          throw new Error('SESSION_EXPIRED')
+        } else if (attempt < 2) {
+          // Retry once on failure (handles cold service worker or transient errors)
+          console.warn(`⚠️ Chunk failed (attempt ${attempt}), retrying...`, response.error)
+          await sendChunkWithRetry(chunk, attempt + 1)
+        } else {
+          console.error(`❌ Chunk failed after ${attempt} attempts:`, response.error)
         }
       } catch (error) {
+        if (error instanceof Error && error.message === 'SESSION_EXPIRED') {
+          throw error
+        }
+        if (attempt < 2) {
+          console.warn(`⚠️ Chunk error (attempt ${attempt}), retrying...`, error)
+          await sendChunkWithRetry(chunk, attempt + 1)
+        } else {
+          console.error(`❌ Chunk error after ${attempt} attempts:`, error)
+        }
+      }
+    }
+
+    for (let i = 0; i < uniqueWords.length; i += chunkSize) {
+      const chunk = uniqueWords.slice(i, i + chunkSize)
+      console.log(`📦 Processing chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(uniqueWords.length / chunkSize)}: ${chunk.length} words`)
+
+      try {
+        await sendChunkWithRetry(chunk)
+      } catch (error) {
+        if (error instanceof Error && error.message === 'SESSION_EXPIRED') {
+          console.log('Session expired during word processing')
+          showSessionExpiredMessage()
+          return false
+        }
         console.error('Error processing word chunk:', error)
         // Continue processing other chunks
       }

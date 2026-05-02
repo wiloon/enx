@@ -141,23 +141,23 @@ tasks:
   setup:
     desc: Setup all projects (install dependencies)
     cmds:
-      - task: setup-api
-      - task: setup-chrome
-      - task: setup-ui
+      - task: setup:api
+      - task: setup:chrome
+      - task: setup:ui
 
-  setup-api:
+  setup:api:
     desc: Setup enx-api
     dir: enx-api
     cmds:
       - task: deps
 
-  setup-chrome:
+  setup:chrome:
     desc: Setup enx-chrome
     dir: enx-chrome
     cmds:
       - task: setup
 
-  setup-ui:
+  setup:ui:
     desc: Setup enx-ui
     dir: enx-ui
     cmds:
@@ -182,11 +182,17 @@ tasks:
     cmds:
       - task build
 
-  dev-chrome:
+  dev:chrome:
     desc: Start Chrome browser with extension (auto-reload)
     dir: enx-chrome
     cmds:
       - task dev-chrome URL={{.URL | default "https://www.infoq.com/"}}
+
+  dev:
+    desc: Start Chrome browser with extension, open rssx-lab (auto-reload)
+    dir: enx-chrome
+    cmds:
+      - task dev-chrome URL={{.URL | default "https://rssx-lab.wiloon.com/"}}
 
   ui:run:
     desc: Start enx-ui in development mode
@@ -194,7 +200,7 @@ tasks:
     cmds:
       - pnpm dev
 
-  stop-dev:
+  stop:dev:
     desc: Stop all development services
     cmds:
       - echo "Stopping development services..."
@@ -204,7 +210,7 @@ tasks:
       - pkill -f "chromium.*playwright" || true
       - echo "✅ All services stopped"
 
-  restart-dev:
+  restart:dev:
     desc: Restart all development services (clean restart)
     cmds:
       - echo "🔄 Restarting ENX development environment..."
@@ -218,9 +224,9 @@ tasks:
       - echo "⏳ Waiting for ports to be freed..."
       - sleep 3
       - echo "🚀 Starting development environment..."
-      - task: dev-all
+      - task: dev:all
 
-  dev-logs:
+  dev:logs:
     desc: Show development logs (API and Chrome watch)
     cmds:
       - echo "=== ENX Development Logs ==="
@@ -240,17 +246,17 @@ tasks:
   build:
     desc: Build all projects
     cmds:
-      - task: build-api
+      - task: build:api
       - task: chrome:build
-      - task: build-ui
+      - task: build:ui
 
-  build-api:
+  build:api:
     desc: Build enx-api
     dir: enx-api
     cmds:
       - task: build
 
-  build-ui:
+  build:ui:
     desc: Build enx-ui
     dir: enx-ui
     cmds:
@@ -263,36 +269,36 @@ tasks:
   test:
     desc: Run unit tests for all projects (fast, no database)
     cmds:
-      - task: test-unit-api
-      - task: test-chrome
-      - task: test-ui
+      - task: test:unit:api
+      - task: test:chrome
+      - task: test:ui
 
-  test-unit:
+  test:unit:
     desc: Run unit tests only (no database, fast)
     cmds:
-      - task: test-unit-api
-      - task: test-chrome
-      - task: test-ui
+      - task: test:unit:api
+      - task: test:chrome
+      - task: test:ui
 
-  test-integration:
+  test:integration:
     desc: Run integration tests (requires database and config)
     cmds:
-      - task: test-integration-api
+      - task: test:integration:api
 
-  test-all:
+  test:all:
     desc: Run all tests (unit + integration)
     cmds:
-      - task: test-unit
-      - task: test-integration
+      - task: test:unit
+      - task: test:integration
 
-  test-unit-api:
+  test:unit:api:
     desc: Run enx-api unit tests (no database required)
     dir: enx-api
     cmds:
       - echo "Running unit tests (no database)..."
       - go test -short ./...
 
-  test-integration-api:
+  test:integration:api:
     desc: Run enx-api integration tests (requires database and config)
     dir: enx-api
     cmds:
@@ -306,26 +312,26 @@ tasks:
       - echo "Running integration tests..."
       - ENX_PORT=8090 ENX_DEV_MODE=true YOUDAO_URL=http://localhost:3000/api YOUDAO_APP_KEY=mock-app-key YOUDAO_APP_SECRET=mock-app-secret go test -tags=integration ./...
 
-  test-api:
+  test:api:
     desc: Run all enx-api tests (unit + integration)
     dir: enx-api
     cmds:
-      - task: test-unit-api
-      - task: test-integration-api
+      - task: test:unit:api
+      - task: test:integration:api
 
-  test-chrome:
+  test:chrome:
     desc: Run enx-chrome tests (unit tests)
     dir: enx-chrome
     cmds:
       - pnpm test
 
-  test-chrome-e2e:
+  test:chrome:e2e:
     desc: Run enx-chrome E2E tests
     dir: enx-chrome
     cmds:
-      - task: test-e2e
+      - task: test:e2e
 
-  test-ui:
+  test:ui:
     desc: Run enx-ui tests
     dir: enx-ui
     cmds:
@@ -337,20 +343,20 @@ tasks:
           pnpm test
         fi
 
-  test-coverage:
+  test:coverage:
     desc: Run tests with coverage for all projects
     cmds:
-      - task: test-coverage-api
-      - task: test-coverage-chrome
+      - task: test:coverage:api
+      - task: test:coverage:chrome
 
-  test-coverage-api:
+  test:coverage:api:
     desc: Run enx-api tests with coverage
     dir: enx-api
     cmds:
       - go test -cover -coverprofile=coverage.out ./...
       - go tool cover -html=coverage.out -o coverage.html
 
-  test-coverage-chrome:
+  test:coverage:chrome:
     desc: Run enx-chrome tests with coverage
     dir: enx-chrome
     cmds:
@@ -367,23 +373,23 @@ tasks:
   clean:
     desc: Clean all build artifacts and dependencies
     cmds:
-      - task: clean-api
-      - task: clean-chrome
-      - task: clean-ui
+      - task: clean:api
+      - task: clean:chrome
+      - task: clean:ui
 
-  clean-api:
+  clean:api:
     desc: Clean enx-api build artifacts
     dir: enx-api
     cmds:
       - task: clean
 
-  clean-chrome:
+  clean:chrome:
     desc: Clean enx-chrome build artifacts
     dir: enx-chrome
     cmds:
       - task: clean
 
-  clean-ui:
+  clean:ui:
     desc: Clean enx-ui build artifacts
     dir: enx-ui
     cmds:
@@ -395,7 +401,7 @@ tasks:
   # Packaging & Distribution
   # ===========================================
 
-  pack-chrome:
+  pack:chrome:
     desc: Pack enx-chrome extension for distribution
     dir: enx-chrome
     cmds:
@@ -419,7 +425,7 @@ tasks:
   # Mock API
   # ===========================================
 
-  mock-api:
+  mock:api:
     desc: Start mock API server
     dir: mock-api
     cmds:
