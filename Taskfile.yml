@@ -262,6 +262,11 @@ tasks:
     cmds:
       - pnpm build
 
+  tekton:build:ui:
+    desc: "Trigger enx-ui Tekton build (pulls latest GitHub main branch)"
+    cmds:
+      - kubectl create -f ../w10n-config/homelab/k8s/tekton/pipelinerun-enx-ui.yaml
+
   # ===========================================
   # Testing
   # ===========================================
