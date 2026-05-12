@@ -52,6 +52,6 @@ jobs:
           username: ec2-user
           key: ${{ secrets.EC2_TOKYO_SSH_KEY }}
           script: |
-            nerdctl pull ghcr.io/wiloon/enx-api:latest
+            sudo nerdctl pull ghcr.io/wiloon/enx-api:latest
             sudo systemctl restart enx-api
             sudo systemctl is-active --quiet enx-api && echo "enx-api started OK"
