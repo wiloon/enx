@@ -88,13 +88,6 @@ ON user_dicts(word_id);
 CREATE INDEX IF NOT EXISTS idx_user_dicts_updated_at 
 ON user_dicts(updated_at);
 
-create table youdao
-(
-    english TEXT          not null,
-    result  TEXT          not null,
-    exist   INTEGER default 0 not null
-);
-
 CREATE TABLE sessions (
     id TEXT PRIMARY KEY,
     user_id INTEGER NOT NULL,

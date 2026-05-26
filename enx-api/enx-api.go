@@ -7,13 +7,14 @@ import (
 	"enx-api/handlers"
 	"enx-api/middleware"
 	"enx-api/paragraph"
+	"enx-api/dictionary"
+	"enx-api/ecdict"
 	"enx-api/translate"
 	"enx-api/utils"
 	"enx-api/utils/logger"
 	"enx-api/utils/password"
 	"enx-api/utils/sqlitex"
 	wordCount "enx-api/word"
-	"enx-api/youdao"
 	"errors"
 	"fmt"
 	"net/http"
@@ -40,6 +41,9 @@ func main() {
 	logger.Warnf("warnf log test %s", "test")
 	logger.Sync()
 	sqlitex.Init()
+
+	ecdictDbPath := viper.GetString("ecdict.db_path")
+	ecdict.Init(ecdictDbPath)
 
 	router := setupRouter()
 
@@ -168,7 +172,7 @@ func setupRouter() *gin.Engine {
 		authGroup.GET("/load-count", wordCount.LoadCount)
 		authGroup.POST("/mark", MarkWord)
 		authGroup.GET("/do-search", DoSearch)
-		authGroup.GET("/third-party", DoSearchThirdParty)
+		authGroup.GET("/ecdict", DoSearchEcdict)
 		authGroup.GET("/wrap", Wrap)
 	}
 
@@ -186,7 +190,7 @@ func setupRouter() *gin.Engine {
 		apiGroup.GET("/load-count", wordCount.LoadCount)
 		apiGroup.POST("/mark", MarkWord)
 		apiGroup.GET("/do-search", DoSearch)
-		apiGroup.GET("/third-party", DoSearchThirdParty)
+		apiGroup.GET("/ecdict", DoSearchEcdict)
 		apiGroup.GET("/wrap", Wrap)
 	}
 
@@ -211,29 +215,28 @@ func DoSearch(c *gin.Context) {
 
 	result := SearchResult{}
 	result.WordList = words
-	result.Dict = enx.FindOne(key)
-	if result.Dict == nil || result.Dict.Chinese == "" {
-		epc := youdao.QueryAPI(key)
-		if epc != nil {
-			result.Dict = epc
-		}
+	dict, err := dictionary.Lookup(key)
+	if err != nil {
+		dictionary.RespondUnavailable(c)
+		return
 	}
+	result.Dict = dict
 	c.JSON(200, result)
 }
 
-func DoSearchThirdParty(c *gin.Context) {
+func DoSearchEcdict(c *gin.Context) {
 	key := c.Query("key")
-	logger.Infof("key: %v", key)
+	logger.Infof("ecdict search key: %v", key)
 	words := enx.Search(key)
+
+	if !ecdict.IsAvailable() {
+		dictionary.RespondUnavailable(c)
+		return
+	}
 
 	result := SearchResult{}
 	result.WordList = words
-
-	epc := youdao.QueryAPI(key)
-	if epc != nil {
-		result.Dict = epc
-	}
-
+	result.Dict = ecdict.Query(key)
 	c.JSON(200, result)
 }
 
@@ -343,9 +346,6 @@ func DeleteWord(c *gin.Context) {
 
 	// Delete from words table
 	sqlitex.DB.Where("english = ?", word).Delete(&sqlitex.Word{})
-
-	// Delete from youdao cache
-	sqlitex.DB.Where("english = ?", word).Delete(&sqlitex.Youdao{})
 
 	logger.Infof("DeleteWord: deleted word=%s", word)
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "word cleared"})

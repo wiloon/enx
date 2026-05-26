@@ -82,16 +82,6 @@ func (SyncState) TableName() string {
 	return "sync_state"
 }
 
-type Youdao struct {
-	English string `gorm:"column:english;not null"`
-	Result  string `gorm:"column:result;not null"`
-	Exist   int    `gorm:"column:exist;not null;default:0"`
-}
-
-func (Youdao) TableName() string {
-	return "youdao"
-}
-
 func Init() {
 	// Read database path from environment variable or use default
 	dbPath := os.Getenv("DB_PATH")
@@ -133,7 +123,7 @@ func Init() {
 
 	// Auto-migrate database schema
 	zapLog.Info("running database auto-migration...")
-	err = DB.AutoMigrate(&User{}, &Word{}, &UserDict{}, &Session{}, &SyncState{}, &Youdao{})
+	err = DB.AutoMigrate(&User{}, &Word{}, &UserDict{}, &Session{}, &SyncState{})
 	if err != nil {
 		zapLog.Errorf("failed to auto-migrate database: %v", err)
 		return

@@ -37,7 +37,6 @@ func viperInitInternal() {
 	// Set defaults so the app works without any config file
 	viper.SetDefault("enx.port", 8091)
 	viper.SetDefault("enx.dev-mode", false)
-	viper.SetDefault("youdao.url", "https://openapi.youdao.com/api")
 
 	// Bind each config key to an explicit environment variable
 	_ = viper.BindEnv("enx.port", "ENX_PORT")
@@ -46,9 +45,6 @@ func viperInitInternal() {
 	_ = viper.BindEnv("mysql.user", "MYSQL_USER")
 	_ = viper.BindEnv("mysql.password", "MYSQL_PASSWORD")
 	_ = viper.BindEnv("redis.address", "REDIS_ADDRESS")
-	_ = viper.BindEnv("youdao.url", "YOUDAO_URL")
-	_ = viper.BindEnv("youdao.app-key", "YOUDAO_APP_KEY")
-	_ = viper.BindEnv("youdao.app-secret", "YOUDAO_APP_SECRET")
 	_ = viper.BindEnv("resend.api-key", "RESEND_API_KEY")
 	_ = viper.BindEnv("resend.from", "RESEND_FROM")
 	_ = viper.BindEnv("app.frontend-base-url", "APP_FRONTEND_BASE_URL")
@@ -62,6 +58,9 @@ func viperInitInternal() {
 	viper.SetDefault("resend.api-key", "")
 	viper.SetDefault("resend.from", "ENX <no-reply@wiloon.com>")
 	viper.SetDefault("app.frontend-base-url", "https://enx-ui-lab.wiloon.com")
+
+	viper.SetDefault("ecdict.db_path", "")
+	_ = viper.BindEnv("ecdict.db_path", "ECDICT_DB_PATH")
 
 	// Also support automatic env var lookup (e.g. ENX_PORT for enx.port)
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
