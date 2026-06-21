@@ -1,6 +1,7 @@
 // ENX Content Script for word identification and translation
 // Note: Sentry initialization is skipped to avoid import issues in content script context
 
+import { WordProcessor } from '@/lib/wordProcessor'
 import { BackgroundResponse, ContentMessage, WordData } from '../types'
 
 console.log('ENX Content script loaded')
@@ -11,323 +12,6 @@ let currentPopup: HTMLElement | null = null
 let wordCache: Record<string, WordData> = {}
 let isProcessing = false
 let popupEventCleanup: (() => void) | null = null
-
-// Word processing utilities (inline to avoid import issues)
-class ContentWordProcessor {
-  static readonly WORD_PATTERNS = {
-    contractedWord: /\b[a-zA-Z][a-zA-Z'''-]*[a-zA-Z]\b|\b[a-zA-Z]\b/g,
-    htmlTag: /<[^>]*>/g,
-    htmlEntity: /&[a-zA-Z0-9#]+;/g,
-  }
-
-  static extractWords(text: string): string[] {
-    if (!text || text.trim() === '') return []
-
-    const cleanText = text
-      .replace(this.WORD_PATTERNS.htmlTag, ' ')
-      .replace(this.WORD_PATTERNS.htmlEntity, ' ')
-
-    const words = cleanText.match(this.WORD_PATTERNS.contractedWord) || []
-
-    return words
-      .map(word => word.trim())
-      .filter(word => {
-        return (
-          word.length > 0 &&
-          word.length <= 50 &&
-          !/^\d+$/.test(word) &&
-          /[a-zA-Z]/.test(word)
-        )
-      })
-      .map(word => word.toLowerCase())
-  }
-
-  static getColorCode(wordData: WordData): string {
-    // If word is already acquainted, known word type, or not in database, don't highlight
-    if (
-      wordData.AlreadyAcquainted === 1 ||
-      wordData.WordType === 1 ||
-      wordData.LoadCount === 0
-    ) {
-      return '#FFFFFF'
-    }
-
-    const loadCount = wordData.LoadCount || 0
-    const normalizedCount = Math.min(loadCount, 30) / 30
-    const hue = Math.round(300 * normalizedCount)
-
-    return `hsl(${hue}, 100%, 40%)`
-  }
-
-  static renderWithHighlights(
-    originalHtml: string,
-    wordDict: Record<string, WordData>
-  ): string {
-    console.log(
-      'Starting optimized renderWithHighlights with',
-      Object.keys(wordDict).length,
-      'words'
-    )
-
-    // Create a temporary DOM element to work with
-    const tempDiv = document.createElement('div')
-    tempDiv.innerHTML = originalHtml
-
-    // Early return if no words to process
-    const wordKeys = Object.keys(wordDict)
-    if (wordKeys.length === 0) {
-      return originalHtml
-    }
-
-    // Precompile word data and sort by length (longest first to avoid partial matches)
-    interface WordInfo {
-      word: string
-      regex: RegExp
-      colorCode: string
-      wordData: WordData
-    }
-
-    const wordInfos: WordInfo[] = wordKeys
-      .map(word => ({
-        word,
-        regex: new RegExp(
-          `\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
-          'gi'
-        ),
-        colorCode: this.getColorCode(wordDict[word]),
-        wordData: wordDict[word],
-      }))
-      .sort((a, b) => b.word.length - a.word.length) // Longest first
-
-    // Single TreeWalker traversal to collect all text nodes
-    const walker = document.createTreeWalker(tempDiv, NodeFilter.SHOW_TEXT, {
-      acceptNode: node => {
-        // Enhanced filtering: exclude more element types for better performance
-        const parent = node.parentElement
-        if (!parent) return NodeFilter.FILTER_REJECT
-
-        // Check if the text node is inside excluded elements
-        let current = parent
-        while (current && current !== tempDiv) {
-          const tagName = current.tagName.toLowerCase()
-          if (
-            [
-              'a',
-              'script',
-              'style',
-              'noscript',
-              'button',
-              'input',
-              'textarea',
-              'select',
-              'code',
-              'pre',
-            ].includes(tagName)
-          ) {
-            return NodeFilter.FILTER_REJECT
-          }
-          current = current.parentElement!
-        }
-
-        // Only accept nodes with meaningful text content
-        const text = node.textContent?.trim() || ''
-        return text.length > 0 && /[a-zA-Z]/.test(text)
-          ? NodeFilter.FILTER_ACCEPT
-          : NodeFilter.FILTER_REJECT
-      },
-    })
-
-    // Collect all text nodes in one pass
-    const textNodes: Text[] = []
-    let node = walker.nextNode()
-    while (node) {
-      textNodes.push(node as Text)
-      node = walker.nextNode()
-    }
-
-    console.log(`Collected ${textNodes.length} text nodes for processing`)
-
-    // Process nodes with word highlighting
-    interface NodeReplacement {
-      node: Text
-      newContent: string
-    }
-
-    const replacements: NodeReplacement[] = []
-    let totalReplacements = 0
-
-    // Process each text node once, checking all words
-    textNodes.forEach(textNode => {
-      let text = textNode.textContent || ''
-      let hasChanges = false
-
-      // Debug: Log text nodes that will be processed
-      if (text.includes('Claude') || text.includes('creator') || text.includes('Boris')) {
-        console.log('Processing text node:', text.substring(0, 100))
-        console.log('  Parent element:', textNode.parentElement?.tagName)
-        console.log('  Previous sibling:', textNode.previousSibling?.nodeName)
-        console.log('  Next sibling:', textNode.nextSibling?.nodeName)
-      }
-
-      // Use placeholders to avoid nested replacements
-      const placeholders: { placeholder: string; html: string }[] = []
-      let placeholderIndex = 0
-
-      // Apply all word highlights to this text node
-      wordInfos.forEach(({ word, regex, colorCode }) => {
-        if (regex.test(text)) {
-          text = text.replace(regex, match => {
-            totalReplacements++
-            hasChanges = true
-            console.log('Highlighting word:', match, 'with color:', colorCode)
-
-            // Create a unique placeholder that won't match any word pattern
-            const placeholder = `___ENX_PLACEHOLDER_${placeholderIndex++}___`
-            const html = `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="display: inline !important; text-decoration: ${colorCode} underline; text-decoration-thickness: 1px;">${match}</u>`
-
-            placeholders.push({ placeholder, html })
-            return placeholder
-          })
-          regex.lastIndex = 0 // Reset regex state
-        }
-      })
-
-      // Replace all placeholders with actual HTML
-      if (hasChanges) {
-        placeholders.forEach(({ placeholder, html }) => {
-          text = text.replace(placeholder, html)
-        })
-      }
-
-      if (hasChanges) {
-        replacements.push({ node: textNode, newContent: text })
-      }
-    })
-
-    console.log(
-      `Found ${replacements.length} nodes to replace with ${totalReplacements} total word matches`
-    )
-
-    // Batch DOM updates using DocumentFragment for better performance
-    replacements.forEach(({ node, newContent }) => {
-      // Debug: Check if the problem text node is being processed
-      const isProblematic = newContent.includes('Claude') && newContent.includes('creator')
-      
-      if (isProblematic) {
-        console.log('🔍 Processing problematic node')
-        console.log('Original text:', node.textContent)
-        console.log('New content:', newContent.substring(0, 300))
-      }
-
-      // Create a temporary container to parse HTML
-      const tempContainer = document.createElement('span')
-      tempContainer.innerHTML = newContent
-
-      if (isProblematic) {
-        console.log('TempContainer children count:', tempContainer.childNodes.length)
-        console.log('TempContainer innerHTML:', tempContainer.innerHTML.substring(0, 300))
-        // Log each child node
-        Array.from(tempContainer.childNodes).forEach((child, index) => {
-          console.log(`  Child ${index}:`, child.nodeName, child.nodeType, child.textContent?.substring(0, 50))
-        })
-      }
-
-      // Create a document fragment and move all parsed nodes to it
-      const fragment = document.createDocumentFragment()
-      while (tempContainer.firstChild) {
-        fragment.appendChild(tempContainer.firstChild)
-      }
-
-      // Replace the original text node with the fragment
-      const parent = node.parentNode
-      if (parent) {
-        parent.replaceChild(fragment, node)
-      }
-      
-      if (isProblematic) {
-        console.log('✅ Replacement complete')
-      }
-    })
-
-    console.log('Word highlighting optimization completed')
-
-    // Debug: Check final HTML structure
-    const finalHtml = tempDiv.innerHTML
-    if (finalHtml.includes('enx-word')) {
-      console.log('Final HTML sample:', finalHtml.substring(0, 500))
-      // Check if HTML tags are properly formed
-      const uTagsCount = (finalHtml.match(/<u[^>]*class="enx-word"/g) || []).length
-      const closingTagsCount = (finalHtml.match(/<\/u>/g) || []).length
-      console.log(
-        `Found ${uTagsCount} opening <u> tags and ${closingTagsCount} closing </u> tags`
-      )
-      if (uTagsCount !== closingTagsCount) {
-        console.error('⚠️ Tag mismatch! HTML structure may be broken')
-      }
-    }
-
-    return tempDiv.innerHTML
-  }
-
-  static getArticleNode(): Element | null {
-    const selectors = [
-      '.Article', // BBC
-      '.article__data', // InfoQ
-      '.post-content', // Blog posts
-      '.single-post__container', // Microsoft Research
-      '#EMAIL_CONTAINER', // NY Times
-      '.text', // TingRoom
-      '#lesson-main-content', // Anthropic Skilljar
-      '.sjwc-lesson-content-item', // Anthropic Skilljar (inner)
-      'article', // Semantic HTML5
-      '.content',
-      '.entry-content',
-      '.post-body',
-    ]
-
-    console.log('🔍 Searching for article node...')
-    console.log('Current URL:', window.location.href)
-
-    for (const selector of selectors) {
-      const element = document.querySelector(selector)
-      console.log(`Trying selector "${selector}":`, element ? 'Found' : 'Not found')
-
-      if (element) {
-        const textLength = element.textContent?.trim().length || 0
-        console.log(`  → Text length: ${textLength}`)
-
-        if (textLength > 100) {
-          console.log(`✅ Using article node with selector: ${selector}`)
-          return element
-        } else {
-          console.log(`  → Skipped (text too short: ${textLength} < 100)`)
-        }
-      }
-    }
-
-    // Fallback: find largest text container
-    console.log('🔍 Fallback: Finding largest text container...')
-    const allElements = document.querySelectorAll('div, main, section, article')
-    let largestElement: Element | null = null
-    let maxTextLength = 0
-
-    allElements.forEach(element => {
-      const textLength = element.textContent?.length || 0
-      if (textLength > maxTextLength && textLength > 500) {
-        maxTextLength = textLength
-        largestElement = element
-      }
-    })
-
-    if (largestElement) {
-      console.log(`✅ Fallback: Using largest element with ${maxTextLength} characters`)
-    } else {
-      console.log(`❌ No suitable article node found (searched ${allElements.length} elements)`)
-    }
-
-    return largestElement
-  }
-}
 
 // Send message to background script
 const sendToBackground = (
@@ -583,7 +267,7 @@ const hideWordPopup = () => {
 // Update word highlighting color
 const updateWordHighlighting = (word: string, wordData: WordData) => {
   const elements = document.querySelectorAll(`.enx-${word.toLowerCase()}`)
-  const colorCode = ContentWordProcessor.getColorCode(wordData)
+  const colorCode = WordProcessor.getColorCode(wordData)
 
   elements.forEach(element => {
     if (element instanceof HTMLElement) {
@@ -675,17 +359,19 @@ const processArticleContent = async (): Promise<boolean> => {
   try {
     console.log('Processing article content...')
 
-    const articleNode = ContentWordProcessor.getArticleNode()
-    if (!articleNode) {
+    const articleNodes = WordProcessor.getArticleNodes()
+    if (articleNodes.length === 0) {
       console.log('No article node found')
       return false
     }
 
-    console.log('Article node found:', articleNode)
+    console.log(`Article node(s) found: ${articleNodes.length}`, articleNodes)
 
-    // Get text content and extract words
-    const textContent = articleNode.textContent || ''
-    const words = ContentWordProcessor.extractWords(textContent)
+    // Get text content and extract words (script/style content excluded)
+    const textContent = articleNodes
+      .map(node => WordProcessor.cleanArticleText(node))
+      .join(' ')
+    const words = WordProcessor.extractWords(textContent)
 
     if (words.length === 0) {
       console.log('No words found to process')
@@ -769,59 +455,48 @@ const processArticleContent = async (): Promise<boolean> => {
       )
       console.log('Sample word data:', Object.values(wordCache)[0])
 
-      const originalHtml = articleNode.innerHTML
-      const highlightedHtml = ContentWordProcessor.renderWithHighlights(
-        originalHtml,
-        wordCache
-      )
+      // Highlighting is applied independently to every matched article node
+      articleNodes.forEach((articleNode, index) => {
+        const originalHtml = articleNode.innerHTML
+        const highlightedHtml = WordProcessor.renderWithHighlights(
+          originalHtml,
+          wordCache
+        )
 
-      console.log('Original HTML length:', originalHtml.length)
-      console.log('Highlighted HTML length:', highlightedHtml.length)
-      console.log('HTML changed:', originalHtml !== highlightedHtml)
+        console.log(
+          `[node ${index}] Original HTML length:`, originalHtml.length,
+          'Highlighted HTML length:', highlightedHtml.length
+        )
 
-      // Debug: Check if HTML contains properly formatted tags
-      if (highlightedHtml.includes('enx-word')) {
-        const sampleMatch = highlightedHtml.match(
-          /<u class="enx-word[^>]*>.*?<\/u>/
-        )?.[0]
-        console.log('Sample highlighted word HTML:', sampleMatch)
-      }
+        articleNode.innerHTML = highlightedHtml
 
-      articleNode.innerHTML = highlightedHtml
-
-      // Fix flex container issue: Find all span elements containing <u> elements
-      // and force them to use display: inline instead of inline-flex or -webkit-inline-box
-      const allSpans = articleNode.querySelectorAll('span')
-      let fixedSpanCount = 0
-      allSpans.forEach(span => {
-        // Check if this span has <u.enx-word> children
-        const hasUChildren = span.querySelector('u.enx-word')
-        if (hasUChildren) {
-          const computedStyle = window.getComputedStyle(span)
-          if (computedStyle.display === 'inline-flex' || computedStyle.display === '-webkit-inline-box') {
-            (span as HTMLElement).style.setProperty('display', 'inline', 'important')
-            fixedSpanCount++
+        // Fix flex container issue: Find all span elements containing <u> elements
+        // and force them to use display: inline instead of inline-flex or -webkit-inline-box
+        const allSpans = articleNode.querySelectorAll('span')
+        let fixedSpanCount = 0
+        allSpans.forEach(span => {
+          // Check if this span has <u.enx-word> children
+          const hasUChildren = span.querySelector('u.enx-word')
+          if (hasUChildren) {
+            const computedStyle = window.getComputedStyle(span)
+            if (computedStyle.display === 'inline-flex' || computedStyle.display === '-webkit-inline-box') {
+              (span as HTMLElement).style.setProperty('display', 'inline', 'important')
+              fixedSpanCount++
+            }
           }
+        })
+        if (fixedSpanCount > 0) {
+          console.log(`[node ${index}] Fixed ${fixedSpanCount} flex container spans to preserve whitespace`)
         }
+
+        // Add click listeners to highlighted words
+        addWordClickListeners(articleNode)
       })
-      if (fixedSpanCount > 0) {
-        console.log(`Fixed ${fixedSpanCount} flex container spans to preserve whitespace`)
-      }
 
-      // Debug: Verify the HTML was set correctly
-      const verifyHtml = articleNode.innerHTML
-      if (verifyHtml !== highlightedHtml) {
-        console.warn('HTML mismatch! Set value differs from retrieved value')
-        console.log('Set:', highlightedHtml.substring(0, 200))
-        console.log('Got:', verifyHtml.substring(0, 200))
-      }
-
-      // Add click listeners to highlighted words
-      addWordClickListeners(articleNode)
       console.log('Word highlighting applied.')
 
-      // Add processing complete indicator
-      addProcessingCompleteIndicator(articleNode)
+      // Add processing complete indicator to the first node only
+      addProcessingCompleteIndicator(articleNodes[0])
 
       console.log('✅ Article processing completed successfully')
       return true // Successfully processed and highlighted
