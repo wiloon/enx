@@ -1,13 +1,16 @@
 export interface User {
-  id: number
+  id: string
   username: string
   email?: string
+  status?: string
   isLoggedIn: boolean
 }
 
 export interface AuthResponse {
   user: User
   sessionId: string
+  session_id?: string
+  status?: string
   token?: string
 }
 

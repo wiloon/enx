@@ -215,6 +215,8 @@ func TestUserRepository_Create(t *testing.T) {
 
 **Any code change that modifies functional behavior MUST include or update automated tests.**
 
+**When creating a new function or modifying an existing one, you MUST write or update the corresponding unit test.** This applies to all layers: handlers, services, domain logic, utilities, and repositories.
+
 This is a non-negotiable requirement. Manual testing is acceptable as a supplement for exploratory or UI-visual checks, but it cannot substitute for automated tests. Automated tests:
 
 - Run repeatedly without human effort

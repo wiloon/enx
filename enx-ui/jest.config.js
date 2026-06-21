@@ -5,8 +5,10 @@ const createJestConfig = nextJest({
 })
 
 const customJestConfig = {
+  setupFiles: ['<rootDir>/jest.polyfills.js'],
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   testEnvironment: 'jsdom',
+  testPathIgnorePatterns: ['<rootDir>/e2e/'],
 }
 
 module.exports = createJestConfig(customJestConfig)

@@ -5,19 +5,14 @@ import { config, getApiBaseUrl } from '@/config/env'
 
 console.log('ENX Background script loaded')
 console.log('🌐 Config environment:', config.environment)
-let sessionId = ''
+let accessToken = ''
 
-// Load session from storage
 const loadSession = async () => {
   try {
-    console.log('Loading session from storage...')
-    const result = await chrome.storage.local.get(['sessionId'])
-    console.log('Storage result:', result)
-    if (result.sessionId) {
-      sessionId = result.sessionId
-      console.log('Session loaded from storage:', sessionId)
-    } else {
-      console.log('No sessionId found in storage')
+    const result = await chrome.storage.local.get(['accessToken'])
+    if (result.accessToken) {
+      accessToken = result.accessToken as string
+      console.log('Access token loaded from storage')
     }
   } catch (error) {
     console.error('Error loading session:', error)
@@ -29,8 +24,14 @@ const handleSessionExpiry = async () => {
   console.log('Session expired, clearing stored data and opening popup')
 
   // Clear session data
-  sessionId = ''
-  await chrome.storage.local.remove(['user', 'sessionId'])
+  accessToken = ''
+  await chrome.storage.local.remove([
+    'user',
+    'enx-user',
+    'accessToken',
+    'refreshToken',
+    'enx-session',
+  ])
 
   // Try to open the extension popup to show login form
   try {
@@ -63,14 +64,9 @@ const makeApiRequest = async (endpoint: string, options: RequestInit = {}) => {
       ...((options.headers as Record<string, string>) || {}),
     }
 
-    if (sessionId) {
-      headers['X-Session-ID'] = sessionId
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`
     }
-
-    console.log(`Making API request to: ${API_BASE_URL}${endpoint}`)
-    console.log('Request headers:', headers)
-    console.log('Request body:', options.body)
-    console.log('Current sessionId:', sessionId)
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
@@ -83,20 +79,6 @@ const makeApiRequest = async (endpoint: string, options: RequestInit = {}) => {
 
     if (!response.ok) {
       if (response.status === 401) {
-        // Try to get error details to distinguish login failure from session expiry
-        let errorData: any = null
-        try {
-          errorData = await response.json()
-        } catch (e) {
-          // Ignore JSON parsing errors
-        }
-
-        // Check if this is a login credentials error
-        if (errorData?.error === 'invalid_credentials') {
-          throw new Error(errorData.message || 'Invalid username or password')
-        }
-
-        // Otherwise treat as session expiry
         await handleSessionExpiry()
         throw new Error('Session expired')
       }
@@ -209,18 +191,12 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
         case 'markAcquainted':
           return await handleMarkAcquainted(request.word, request.userId)
 
-        case 'login':
-          return await handleLogin(request.username, request.password)
-
-        case 'logout':
-          return await handleLogout()
-
         case 'debugStorage':
           // Debug command to check storage
           const storageData = await chrome.storage.local.get(null)
           console.log('All Chrome storage data:', storageData)
-          console.log('Current sessionId in memory:', sessionId)
-          return { success: true, storage: storageData, sessionId }
+          console.log('Current accessToken in memory:', accessToken)
+          return { success: true, storage: storageData, accessToken }
 
         case 'hello':
           return { success: true, message: 'Hello from ENX background!' }
@@ -348,25 +324,31 @@ const handleMarkAcquainted = async (word: string, userId: number) => {
     word: word.trim(),
     userId,
   })
-  console.log('handleMarkAcquainted: Current sessionId available:', !!sessionId)
+  console.log('handleMarkAcquainted: Current accessToken available:', !!accessToken)
 
-  // If no sessionId in memory, try to reload from storage
-  if (!sessionId) {
+  // If no accessToken in memory, try to reload from storage
+  if (!accessToken) {
     console.log(
-      'handleMarkAcquainted: No sessionId in memory, trying to reload from storage...'
+      'handleMarkAcquainted: No accessToken in memory, trying to reload from storage...'
     )
     await loadSession()
     console.log(
-      'handleMarkAcquainted: After reload attempt, sessionId available:',
-      !!sessionId
+      'handleMarkAcquainted: After reload attempt, accessToken available:',
+      !!accessToken
     )
   }
 
   // Check if we have a session
-  if (!sessionId) {
+  if (!accessToken) {
     console.error('handleMarkAcquainted: No session ID available')
     // Clear user data since session is invalid
-    await chrome.storage.local.remove(['user', 'sessionId'])
+    await chrome.storage.local.remove([
+    'user',
+    'enx-user',
+    'accessToken',
+    'refreshToken',
+    'enx-session',
+  ])
     return {
       success: false,
       error: 'Session expired. Please click the extension icon to login again.',
@@ -408,63 +390,6 @@ const handleMarkAcquainted = async (word: string, userId: number) => {
   }
 }
 
-// Handle user login
-const handleLogin = async (username: string, password: string) => {
-  console.log('handleLogin: Starting login process for user:', username)
-  const response = await makeApiRequest('/api/login', {
-    method: 'POST',
-    body: JSON.stringify({ username, password }),
-  })
-
-  console.log('handleLogin: Login API response:', response)
-
-  if (response.success && response.data) {
-    console.log('handleLogin: Login successful, response.data:', response.data)
-
-    // API returns session_id, not sessionId
-    const sessionIdFromResponse =
-      response.data.session_id || response.data.sessionId
-    console.log('handleLogin: Extracted session ID:', sessionIdFromResponse)
-
-    sessionId = sessionIdFromResponse
-
-    // Store session in Chrome storage
-    const storageData = {
-      user: response.data.user,
-      sessionId: sessionIdFromResponse,
-    }
-    console.log('handleLogin: Storing to Chrome storage:', storageData)
-
-    await chrome.storage.local.set(storageData)
-
-    console.log(
-      'handleLogin: User logged in successfully, sessionId set to:',
-      sessionId
-    )
-    return {
-      success: true,
-      data: response.data,
-    }
-  } else {
-    console.error('handleLogin: Login failed:', response)
-    return response
-  }
-}
-
-// Handle user logout
-const handleLogout = async () => {
-  await makeApiRequest('/api/logout', {
-    method: 'POST',
-  })
-
-  // Clear session regardless of API response
-  sessionId = ''
-  await chrome.storage.local.remove(['user', 'sessionId'])
-
-  console.log('User logged out')
-  return { success: true }
-}
-
 // Handle service worker errors
 self.addEventListener('error', event => {
   console.error('ENX Service worker error:', event.error)
@@ -480,14 +405,14 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
   if (namespace === 'local') {
     console.log('Storage changes detected:', changes)
 
-    // If sessionId changed, update our memory
-    if (changes.sessionId) {
-      const newSessionId = changes.sessionId.newValue
-      if (newSessionId && newSessionId !== sessionId) {
-        sessionId = newSessionId
+    // If accessToken changed, update our memory
+    if (changes.accessToken) {
+      const newSessionId = changes.accessToken.newValue
+      if (newSessionId && newSessionId !== accessToken) {
+        accessToken = newSessionId
         console.log(
-          'Background script updated sessionId from storage:',
-          sessionId
+          'Background script updated accessToken from storage:',
+          accessToken
         )
       }
     }

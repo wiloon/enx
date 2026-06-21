@@ -23,5 +23,17 @@ file-name = "rssx.log"
 
 [youdao]
 url = "https://openapi.youdao.com/api"
-app-key = "567b022c76fd52ec"
-app-secret = ""
+# app-key and app-secret must be set via YOUDAO_APP_KEY / YOUDAO_APP_SECRET env vars, never in this file
+
+[resend]
+# api-key must be set via RESEND_API_KEY env var, never in this file
+from = "ENX <no-reply@wiloon.com>"
+
+[app]
+frontend-base-url = "https://enx-ui-lab.wiloon.com"
+
+[cognito]
+region = "us-east-1"
+user-pool-id = "us-east-1_1GWBJVx85"
+client-id = "1il7v7q7jn17150jq4lou6m7b0"
+chrome-client-id = "645kitlgap7l1q4ebrfkmi9ltv"

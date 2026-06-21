@@ -9,7 +9,9 @@
     "lint": "next lint",
     "test": "jest",
     "test:watch": "jest --watch",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.0",
@@ -22,14 +24,15 @@
     "jotai": "^2.12.5",
     "lucide-react": "^0.532.0",
     "next": "15.4.4",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
     "react-hook-form": "^7.61.1",
     "tailwind-merge": "^3.3.1",
     "zod": "^4.0.10"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.6.4",
     "@testing-library/react": "^16.3.0",

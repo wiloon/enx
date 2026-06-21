@@ -2,12 +2,15 @@
 
 export interface EnvConfig {
   apiBaseUrl: string
+  frontendBaseUrl: string
+  cognitoDomain: string
+  cognitoClientId: string
   environment: 'development' | 'production' | 'staging' | 'test'
 }
 
-// Safe access to import.meta.env for test environments
-// In test environment, import.meta is not available, so we provide a fallback
-const isTestEnv = typeof jest !== 'undefined'
+// Jest sets JEST_WORKER_ID; avoid referencing the jest global in app code
+const isTestEnv =
+  typeof process !== 'undefined' && process.env.JEST_WORKER_ID !== undefined
 
 const getEnvValue = (key: string, defaultValue: any = undefined) => {
   if (isTestEnv) {
@@ -26,18 +29,39 @@ const mode = getEnvValue('MODE', isTestEnv ? 'test' : 'development')
 const ENV_CONFIG: Record<string, EnvConfig> = {
   development: {
     apiBaseUrl: 'http://localhost:8090',
+    frontendBaseUrl: 'http://localhost:3000',
+    cognitoDomain:
+      getEnvValue('VITE_COGNITO_DOMAIN') ||
+      'https://enx-auth.auth.us-east-1.amazoncognito.com',
+    cognitoClientId:
+      getEnvValue('VITE_COGNITO_CLIENT_ID') || '645kitlgap7l1q4ebrfkmi9ltv',
     environment: 'development',
   },
   production: {
     apiBaseUrl: 'https://enx.wiloon.com',
+    frontendBaseUrl: 'https://enx-ui.wiloon.com',
+    cognitoDomain:
+      getEnvValue('VITE_COGNITO_DOMAIN') ||
+      'https://enx-auth.auth.us-east-1.amazoncognito.com',
+    cognitoClientId:
+      getEnvValue('VITE_COGNITO_CLIENT_ID') || '645kitlgap7l1q4ebrfkmi9ltv',
     environment: 'production',
   },
   staging: {
     apiBaseUrl: 'https://enx-lab.wiloon.com',
+    frontendBaseUrl: 'https://enx-ui-lab.wiloon.com',
+    cognitoDomain:
+      getEnvValue('VITE_COGNITO_DOMAIN') ||
+      'https://enx-auth.auth.us-east-1.amazoncognito.com',
+    cognitoClientId:
+      getEnvValue('VITE_COGNITO_CLIENT_ID') || '645kitlgap7l1q4ebrfkmi9ltv',
     environment: 'staging',
   },
   test: {
     apiBaseUrl: 'http://localhost:8090',
+    frontendBaseUrl: 'http://localhost:3000',
+    cognitoDomain: 'https://enx-auth.auth.us-east-1.amazoncognito.com',
+    cognitoClientId: '645kitlgap7l1q4ebrfkmi9ltv',
     environment: 'test',
   },
 }
