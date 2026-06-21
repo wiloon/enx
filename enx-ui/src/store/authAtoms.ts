@@ -4,14 +4,14 @@ import { User } from '@/types'
 
 export const userAtom = atomWithStorage<User | null>('enx-user', null)
 
-export const sessionIdAtom = atomWithStorage<string>('enx-session-id', '')
+export const accessTokenAtom = atomWithStorage<string>('enx-access-token', '')
 
-export const isAuthenticatedAtom = atom(
-  (get) => {
-    const user = get(userAtom)
-    const sessionId = get(sessionIdAtom)
-    return !!(user && sessionId && user.isLoggedIn)
-  }
-)
+export const refreshTokenAtom = atomWithStorage<string>('enx-refresh-token', '')
+
+export const isAuthenticatedAtom = atom((get) => {
+  const user = get(userAtom)
+  const accessToken = get(accessTokenAtom)
+  return !!(user && accessToken && user.isLoggedIn)
+})
 
 export const isLoadingAtom = atom(false)

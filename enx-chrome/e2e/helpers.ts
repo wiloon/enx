@@ -21,24 +21,51 @@ export async function openOptions(page: Page, extensionId: string) {
 }
 
 /**
- * Login to the extension
+ * Seed extension storage with a logged-in Cognito session (E2E helper).
+ * Avoids interactive Hosted UI OAuth during Playwright runs.
+ */
+export async function seedLoggedInState(
+  page: Page,
+  user: {
+    id?: number
+    username?: string
+    email?: string
+    accessToken?: string
+  } = {}
+) {
+  const userData = {
+    id: user.id ?? 1,
+    username: user.username ?? 'test-user',
+    email: user.email ?? 'test@example.com',
+    status: 'active',
+    isLoggedIn: true,
+  }
+  const accessToken = user.accessToken ?? 'test-access-token'
+
+  await page.evaluate(
+    ({ userData, accessToken }) => {
+      return chrome.storage.local.set({
+        user: userData,
+        'enx-user': userData,
+        accessToken,
+        refreshToken: 'test-refresh-token',
+      })
+    },
+    { userData, accessToken }
+  )
+}
+
+/**
+ * @deprecated Legacy username/password login removed after Cognito migration.
+ * Use seedLoggedInState() for E2E tests.
  */
 export async function login(
   page: Page,
-  username: string = 'wiloon',
-  password: string = 'haCahpro'
+  username: string = 'test-user',
+  _password?: string
 ) {
-  // Wait for login form
-  await page.waitForSelector('input[name="username"]', { timeout: 5000 })
-
-  // Fill in credentials
-  await page.fill('input[name="username"]', username)
-  await page.fill('input[name="password"]', password)
-
-  // Submit form
-  await page.click('button[type="submit"]')
-
-  // Wait for successful login
+  await seedLoggedInState(page, { username })
+  await page.reload({ waitUntil: 'domcontentloaded' })
   await page.waitForSelector('text=/Welcome/', { timeout: 10000 })
 }
 

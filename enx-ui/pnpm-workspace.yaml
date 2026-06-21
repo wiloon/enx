@@ -1,0 +1,6 @@
+packages:
+  - .
+allowBuilds:
+  '@sentry/cli': true
+  sharp: true
+  unrs-resolver: true

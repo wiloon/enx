@@ -1,29 +1,24 @@
 import {
   ApiResponse,
-  AuthResponse,
   WordResponse,
   ParagraphResponse,
   WordData,
 } from '@/types'
-import { config } from '@/config/env'
+import { getApiBaseUrl } from '@/config/env'
 
-// API Service for ENX extension
 export class ApiService {
-  private baseUrl: string = config.apiBaseUrl
-  private sessionId: string = ''
+  private accessToken: string = ''
 
-  constructor(baseUrl?: string) {
-    if (baseUrl) {
-      this.baseUrl = baseUrl
-    }
+  constructor(_baseUrl?: string) {
+    // Base URL resolved per-request via getApiBaseUrl()
   }
 
-  setSessionId(sessionId: string) {
-    this.sessionId = sessionId
+  setAccessToken(token: string) {
+    this.accessToken = token
   }
 
-  setBaseUrl(url: string) {
-    this.baseUrl = url
+  setBaseUrl(_url: string) {
+    // API base URL comes from chrome.storage / env via getApiBaseUrl()
   }
 
   private async makeRequest<T>(
@@ -31,16 +26,17 @@ export class ApiService {
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     try {
+      const base = await getApiBaseUrl()
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         ...((options.headers as Record<string, string>) || {}),
       }
 
-      if (this.sessionId) {
-        headers['X-Session-ID'] = this.sessionId
+      if (this.accessToken) {
+        headers['Authorization'] = `Bearer ${this.accessToken}`
       }
 
-      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      const response = await fetch(`${base}${endpoint}`, {
         ...options,
         headers,
       })
@@ -53,10 +49,7 @@ export class ApiService {
       }
 
       const data = await response.json()
-      return {
-        success: true,
-        data,
-      }
+      return { success: true, data }
     } catch (error) {
       console.error('API request failed:', error)
       return {
@@ -66,102 +59,45 @@ export class ApiService {
     }
   }
 
-  // Authentication APIs
-  async login(
-    username: string,
-    password: string
-  ): Promise<ApiResponse<AuthResponse>> {
-    const response = await this.makeRequest<AuthResponse>('/api/login', {
-      method: 'POST',
-      body: JSON.stringify({ username, password }),
-    })
-
-    if (response.success && response.data) {
-      // API returns session_id, not sessionId
-      this.sessionId = response.data.session_id || response.data.sessionId || ''
-    }
-
-    return response
+  async getMe(): Promise<
+    ApiResponse<{ id: string; name: string; email: string; status: string }>
+  > {
+    return this.makeRequest('/api/me')
   }
 
-  async logout(): Promise<ApiResponse<void>> {
-    const response = await this.makeRequest<void>('/api/logout', {
-      method: 'POST',
-    })
-
-    if (response.success) {
-      this.sessionId = ''
-    }
-
-    return response
-  }
-
-  async register(
-    username: string,
-    email: string,
-    password: string
-  ): Promise<ApiResponse<AuthResponse>> {
-    return this.makeRequest<AuthResponse>('/api/register', {
-      method: 'POST',
-      body: JSON.stringify({ username, email, password }),
-    })
-  }
-
-  // Word translation APIs
   async getOneWord(word: string): Promise<ApiResponse<WordResponse>> {
-    const encodedWord = encodeURIComponent(word)
-    return this.makeRequest<WordResponse>(`/api/translate?word=${encodedWord}`)
+    return this.makeRequest<WordResponse>(
+      `/api/translate?word=${encodeURIComponent(word)}`
+    )
   }
 
   async getWords(paragraph: string): Promise<ApiResponse<ParagraphResponse>> {
-    const encodedParagraph = encodeURIComponent(paragraph)
     return this.makeRequest<ParagraphResponse>(
-      `/api/paragraph-init?paragraph=${encodedParagraph}`
+      `/api/paragraph-init?paragraph=${encodeURIComponent(paragraph)}`
     )
   }
 
   async markAcquainted(word: string): Promise<ApiResponse<{ ecp: WordData }>> {
     return this.makeRequest<{ ecp: WordData }>('/api/mark', {
       method: 'POST',
-      body: JSON.stringify({
-        English: word,
-      }),
+      body: JSON.stringify({ English: word }),
     })
   }
 
-  // Session validation using a lightweight endpoint
-  async validateSession(): Promise<ApiResponse<any>> {
-    // Use the translate endpoint with a simple word to validate session
-    return this.makeRequest<WordResponse>('/api/translate?word=test')
+  async validateSession(): Promise<ApiResponse<unknown>> {
+    return this.makeRequest('/api/me')
   }
 }
 
-// Singleton instance
 export const apiService = new ApiService()
 
-// Helper functions for chrome extension messaging
-export const sendMessageToBackground = <T = any>(message: any): Promise<T> => {
+export const sendMessageToBackground = <T = unknown>(message: unknown): Promise<T> => {
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(message, response => {
+    chrome.runtime.sendMessage(message, (response) => {
       if (chrome.runtime.lastError) {
         reject(new Error(chrome.runtime.lastError.message))
       } else {
-        resolve(response)
-      }
-    })
-  })
-}
-
-export const sendMessageToTab = <T = any>(
-  tabId: number,
-  message: any
-): Promise<T> => {
-  return new Promise((resolve, reject) => {
-    chrome.tabs.sendMessage(tabId, message, response => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message))
-      } else {
-        resolve(response)
+        resolve(response as T)
       }
     })
   })

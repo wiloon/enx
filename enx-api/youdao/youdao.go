@@ -4,12 +4,18 @@ import (
 	"enx-api/enx"
 	"enx-api/utils/logger"
 	"fmt"
-	"github.com/PuerkitoBio/goquery"
 	"log"
 	"net/http"
 	"net/url"
+
+	"github.com/PuerkitoBio/goquery"
 )
 
+// Query is DEPRECATED: This function scrapes the Youdao website HTML, which may violate ToS.
+// Use QueryAPI() instead, which calls the official Youdao API.
+// This function is kept for backward compatibility only and may be removed in future versions.
+//
+// Deprecated: Use QueryAPI instead.
 func Query(words string) *enx.Dictionary {
 	baseUrl, _ := url.Parse("https://dict.youdao.com/")
 	baseUrl.Path = fmt.Sprintf("w/eng/%s", words)
