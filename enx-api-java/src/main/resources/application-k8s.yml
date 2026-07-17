@@ -1,0 +1,8 @@
+spring:
+  config:
+    activate:
+      on-profile: k8s
+
+logging:
+  level:
+    root: INFO

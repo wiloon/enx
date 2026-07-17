@@ -118,6 +118,41 @@ tasks:
           echo "⚠️  No log file found (enx-api.log)"
         fi
 
+  # Java API Service
+  java:build:
+    desc: Build enx-api-java boot JAR
+    dir: enx-api-java
+    cmds:
+      - task: build
+
+  java:test:
+    desc: Run enx-api-java tests
+    dir: enx-api-java
+    cmds:
+      - task: test
+
+  java:run:
+    desc: Run enx-api-java locally on port 8092
+    dir: enx-api-java
+    cmds:
+      - task: run
+
+  java:image:
+    desc: Build enx-api-java container image with Paketo
+    dir: enx-api-java
+    cmds:
+      - task: image
+
+  java:deploy:
+    desc: "Trigger Tekton build + GitOps deploy (code must be pushed to GitHub first)"
+    cmds:
+      - task: tekton:build:java-api
+
+  tekton:build:java-api:
+    desc: Trigger enx-api-java Tekton build and GitOps deploy via ArgoCD
+    cmds:
+      - kubectl create -f ../w10n-config/infra/homelab/k8s/tekton/pipelinerun-enx-api-java.yaml
+
   # All Services
   status:
     desc: Show status of all services
@@ -255,6 +290,7 @@ tasks:
     desc: Build all projects
     cmds:
       - task: build:api
+      - task: java:build
       - task: chrome:build
       - task: build:ui
 

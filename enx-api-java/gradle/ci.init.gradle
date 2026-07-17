@@ -1,0 +1,16 @@
+// CI init script: resolve project dependencies via homelab Nexus Maven proxy first.
+// Plugin resolution still uses default pluginManagement (gradlePluginPortal + mavenCentral).
+// Usage: ./gradlew ... -I gradle/ci.init.gradle
+// Override URL: NEXUS_MAVEN_URL=https://nexus.wiloon.com/repository/maven-public/
+
+def nexusMaven = System.getenv('NEXUS_MAVEN_URL') ?: 'https://nexus.wiloon.com/repository/maven-public/'
+
+allprojects {
+    repositories {
+        maven {
+            name = 'NexusMaven'
+            url = uri(nexusMaven)
+        }
+        mavenCentral()
+    }
+}
