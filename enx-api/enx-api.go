@@ -170,7 +170,6 @@ func setupRouter() *gin.Engine {
 		authGroup.GET("/do-search", DoSearch)
 		authGroup.GET("/third-party", DoSearchThirdParty)
 		authGroup.GET("/wrap", Wrap)
-		authGroup.POST("/log", LogHandler)
 	}
 
 	// API group for Kong gateway (with /api prefix)
@@ -189,7 +188,6 @@ func setupRouter() *gin.Engine {
 		apiGroup.GET("/do-search", DoSearch)
 		apiGroup.GET("/third-party", DoSearchThirdParty)
 		apiGroup.GET("/wrap", Wrap)
-		apiGroup.POST("/log", LogHandler)
 	}
 
 	// /api/me — requires authentication (Cognito JWT)
@@ -617,22 +615,6 @@ func Login(c *gin.Context) {
 			"message": "Invalid username or password",
 		})
 	}
-}
-
-type LogRequest struct {
-	Event     string `json:"event"`
-	Message   string `json:"message"`
-	Timestamp string `json:"timestamp"`
-}
-
-func LogHandler(c *gin.Context) {
-	var req LogRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid log request"})
-		return
-	}
-	logger.Infof("[FE-LOG] event: %s, message: %s, timestamp: %s", req.Event, req.Message, req.Timestamp)
-	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 func Logout(c *gin.Context) {

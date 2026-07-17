@@ -1,0 +1,14 @@
+FROM eclipse-temurin:26-jdk-jammy AS build
+WORKDIR /workdir
+COPY enx-api-java/ .
+ENV NEXUS_MAVEN_URL=https://nexus.wiloon.com/repository/maven-public/
+RUN chmod +x gradlew \
+    && ./gradlew bootJar --no-daemon -x test -I gradle/ci.init.gradle
+
+FROM eclipse-temurin:26-jre-jammy AS prod
+WORKDIR /app
+RUN groupadd -r app && useradd -r -g app app
+COPY --from=build /workdir/build/libs/*.jar app.jar
+USER app
+EXPOSE 8092
+ENTRYPOINT ["java", "-jar", "app.jar"]

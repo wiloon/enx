@@ -1,0 +1,40 @@
+version: '3'
+
+vars:
+  JAVA_HOME: /usr/lib/jvm/java-26-openjdk
+
+tasks:
+  build:
+    desc: Build boot JAR
+    env:
+      JAVA_HOME: '{{.JAVA_HOME}}'
+    cmds:
+      - ./gradlew bootJar
+
+  test:
+    desc: Run unit and integration tests
+    env:
+      JAVA_HOME: '{{.JAVA_HOME}}'
+    cmds:
+      - ./gradlew test
+
+  run:
+    desc: Run locally on port 8092 (requires COGNITO_* env vars)
+    env:
+      JAVA_HOME: '{{.JAVA_HOME}}'
+    cmds:
+      - ./gradlew bootRun
+
+  image:
+    desc: Build container image with Paketo (requires Docker)
+    env:
+      JAVA_HOME: '{{.JAVA_HOME}}'
+    cmds:
+      - ./gradlew bootBuildImage --imageName=docker-hosted.wiloon.com/enx-api-java:local
+
+  clean:
+    desc: Clean build outputs
+    env:
+      JAVA_HOME: '{{.JAVA_HOME}}'
+    cmds:
+      - ./gradlew clean
