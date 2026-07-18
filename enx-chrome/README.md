@@ -94,7 +94,13 @@ cp .env.example .env
 
 Sign-in uses `chrome.identity.launchWebAuthFlow` with AWS Cognito Hosted UI (same pool as enx-ui, separate App Client).
 
+The OAuth flow runs in the **background service worker** (not the popup). The popup only sends `cognitoSignIn` / `cognitoSignOut` and reads the result from storage. This avoids losing tokens when the popup closes while Hosted UI / Google steals focus. On success, a system notification is shown (`notifications` permission).
+
+**Sign out** clears local tokens, then opens Cognito Hosted UI `/logout` (via `launchWebAuthFlow`) so the Cognito browser session is cleared. `logout_uri` is the same chromiumapp callback URL already registered as `logout_urls` in OpenTofu. Google account cookies in the browser may still exist; Cognito session clear is what makes the next Sign in show the Hosted UI / provider chooser again.
+
 **Extension ID must match Cognito callback URLs.** `manifest.json` includes a `key` field so the ID stays `omcdpipnjffmblbhiphddcmoldceapam` regardless of which folder you load from `dist/`.
+
+Design notes: `docs/architecture/adr-001-chrome-oauth-in-background.md`, `docs/tasks/TASK-SPEC-enx-chrome-oauth-background.md`.
 
 1. Rebuild and reload the extension (`task build` → reload in `chrome://extensions`)
 2. Confirm ID on the extensions page is `omcdpipnjffmblbhiphddcmoldceapam`

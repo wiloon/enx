@@ -10,6 +10,7 @@ jest.mock('@/config/env', () => ({
 
 import {
   buildAuthorizeUrl,
+  buildLogoutUrl,
   buildRefreshTokenBody,
   buildTokenExchangeBody,
   createPkcePair,
@@ -17,6 +18,7 @@ import {
   getChromeRedirectUri,
   getCognitoConfigForExtension,
   signInWithCognito,
+  signOutWithCognito,
 } from '../cognito'
 
 const TEST_EXTENSION_ID = 'abcdefghijklmnopqrstuvwxyzabcdef'
@@ -75,6 +77,13 @@ describe('cognito helpers', () => {
     expect(url.searchParams.get('client_id')).toBe('test-client-id')
     expect(url.searchParams.get('code_challenge')).toBe('challenge-value')
     expect(url.searchParams.get('redirect_uri')).toBe(TEST_CONFIG.redirectUri)
+  })
+
+  it('buildLogoutUrl uses Cognito /logout and exact logout_uri', () => {
+    const url = new URL(buildLogoutUrl(TEST_CONFIG, TEST_CONFIG.redirectUri))
+    expect(url.pathname).toBe('/logout')
+    expect(url.searchParams.get('client_id')).toBe('test-client-id')
+    expect(url.searchParams.get('logout_uri')).toBe(TEST_CONFIG.redirectUri)
   })
 
   it('buildTokenExchangeBody includes PKCE verifier', () => {
@@ -144,5 +153,22 @@ describe('cognito helpers', () => {
       `${TEST_CONFIG.redirectUri}?error=access_denied&error_description=User%20denied`
     )
     await expect(signInWithCognito()).rejects.toThrow('User denied')
+  })
+
+  it('signOutWithCognito launches Cognito logout URL', async () => {
+    mockChromeIdentity(TEST_CONFIG.redirectUri)
+    await signOutWithCognito()
+    expect(chrome.identity.launchWebAuthFlow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: expect.stringContaining('/logout?'),
+        interactive: true,
+      }),
+      expect.any(Function)
+    )
+  })
+
+  it('signOutWithCognito ignores cancelled logout window', async () => {
+    mockChromeIdentity(undefined)
+    await expect(signOutWithCognito()).resolves.toBeUndefined()
   })
 })
