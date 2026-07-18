@@ -53,6 +53,18 @@ export function buildAuthorizeUrl(
   return `${cognitoConfig.domain}/oauth2/authorize?${params}`
 }
 
+/** logout_uri must exactly match Cognito App Client logout_urls (chrome: same as callback, no trailing slash). */
+export function buildLogoutUrl(
+  cognitoConfig: Pick<CognitoConfig, 'domain' | 'clientId'>,
+  logoutUri: string
+): string {
+  const params = new URLSearchParams({
+    client_id: cognitoConfig.clientId,
+    logout_uri: logoutUri,
+  })
+  return `${cognitoConfig.domain}/logout?${params}`
+}
+
 export function buildRefreshTokenBody(
   cognitoConfig: Pick<CognitoConfig, 'clientId'>,
   refreshToken: string
@@ -147,6 +159,25 @@ export async function signInWithCognito(): Promise<CognitoTokens> {
   if (!codeVerifier) throw new Error('Missing PKCE verifier')
 
   return exchangeCodeForTokens(cognitoConfig, code, codeVerifier)
+}
+
+/**
+ * Clear Cognito Hosted UI session via /logout.
+ * Uses the same chromiumapp callback URL registered as logout_urls in OpenTofu.
+ */
+export async function signOutWithCognito(): Promise<void> {
+  const cognitoConfig = getCognitoConfig()
+  const logoutUrl = buildLogoutUrl(cognitoConfig, cognitoConfig.redirectUri)
+  try {
+    await launchWebAuthFlow(logoutUrl)
+  } catch (error) {
+    // Local tokens are cleared by the caller first; Hosted UI clear is best-effort.
+    if (error instanceof Error && error.message === 'Sign-in cancelled') {
+      console.warn('Cognito logout window closed before redirect')
+      return
+    }
+    throw error
+  }
 }
 
 export async function exchangeCodeForTokens(

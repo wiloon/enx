@@ -2,10 +2,13 @@
 // Note: Sentry initialization is skipped in service worker context to avoid import issues
 
 import { config, getApiBaseUrl } from '@/config/env'
+import { signInWithCognito, signOutWithCognito } from '@/lib/cognito'
 
 console.log('ENX Background script loaded')
 console.log('🌐 Config environment:', config.environment)
 let accessToken = ''
+
+const LOGIN_SUCCESS_NOTIFICATION_ID = 'enx-login-success'
 
 const loadSession = async () => {
   try {
@@ -191,6 +194,12 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
         case 'markAcquainted':
           return await handleMarkAcquainted(request.word, request.userId)
 
+        case 'cognitoSignIn':
+          return await handleCognitoSignIn()
+
+        case 'cognitoSignOut':
+          return await handleCognitoSignOut()
+
         case 'debugStorage':
           // Debug command to check storage
           const storageData = await chrome.storage.local.get(null)
@@ -217,6 +226,116 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   handleAsync().then(sendResponse)
 
   return true // Keep the message channel open for async response
+})
+
+type StoredUser = {
+  id: number
+  username: string
+  email: string
+  status?: string
+  isLoggedIn: true
+}
+
+const notifyLoginSuccess = async () => {
+  try {
+    await chrome.notifications.create(LOGIN_SUCCESS_NOTIFICATION_ID, {
+      type: 'basic',
+      iconUrl: 'icons/icon-128.png',
+      title: 'ENX',
+      message: 'Signed in successfully. Click the ENX icon to continue.',
+    })
+  } catch (error) {
+    console.error('Failed to create login success notification:', error)
+  }
+}
+
+// OAuth must run in the service worker: popup is destroyed when Hosted UI steals focus.
+const handleCognitoSignIn = async () => {
+  try {
+    const tokens = await signInWithCognito()
+    accessToken = tokens.access_token
+
+    const me = await makeApiRequest('/api/me')
+    const userData: StoredUser =
+      me.success && me.data
+        ? {
+            id: me.data.id as unknown as number,
+            username: me.data.name,
+            email: me.data.email,
+            status: me.data.status,
+            isLoggedIn: true,
+          }
+        : {
+            id: 0,
+            username: 'user',
+            email: '',
+            isLoggedIn: true,
+          }
+
+    await chrome.storage.local.set({
+      user: userData,
+      'enx-user': userData,
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token || '',
+      'enx-session': {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token || '',
+      },
+    })
+
+    await notifyLoginSuccess()
+
+    return { success: true, user: userData }
+  } catch (error) {
+    console.error('Cognito sign-in failed:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Sign-in failed',
+    }
+  }
+}
+
+const AUTH_STORAGE_KEYS = [
+  'user',
+  'enx-user',
+  'accessToken',
+  'refreshToken',
+  'enx-session',
+] as const
+
+const clearLocalAuthState = async () => {
+  accessToken = ''
+  await chrome.storage.local.remove([...AUTH_STORAGE_KEYS])
+  await chrome.storage.session.remove('enx-oauth-verifier')
+}
+
+const handleCognitoSignOut = async () => {
+  try {
+    // Clear extension state first so popup reopen is logged out even if Hosted UI flow fails.
+    await clearLocalAuthState()
+    await signOutWithCognito()
+    return { success: true }
+  } catch (error) {
+    console.error('Cognito sign-out failed:', error)
+    // Local state already cleared; report Hosted UI failure but treat as signed out locally.
+    return {
+      success: true,
+      warning:
+        error instanceof Error
+          ? error.message
+          : 'Signed out locally; Cognito session clear failed',
+    }
+  }
+}
+
+chrome.notifications.onClicked.addListener(async notificationId => {
+  if (notificationId !== LOGIN_SUCCESS_NOTIFICATION_ID) return
+  try {
+    await chrome.action.openPopup()
+  } catch (error) {
+    console.log('Could not open popup from notification click:', error)
+  }
+  await chrome.notifications.clear(notificationId)
 })
 
 // Handle get one word translation

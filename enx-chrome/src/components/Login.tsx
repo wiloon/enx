@@ -1,11 +1,22 @@
-import { apiService } from '@/services/api'
-import { signInWithCognito } from '@/lib/cognito'
 import { errorAtom, isLoadingAtom, sessionAtom, userAtom } from '@/store/atoms'
 import { useAtom } from 'jotai'
 import { useEffect, useState } from 'react'
+import { apiService } from '@/services/api'
 
 interface LoginProps {
   onLoginSuccess?: () => void
+}
+
+type CognitoSignInResponse = {
+  success: boolean
+  error?: string
+  user?: {
+    id: number
+    username: string
+    email: string
+    status?: string
+    isLoggedIn: true
+  }
 }
 
 export default function Login({ onLoginSuccess }: LoginProps) {
@@ -19,17 +30,20 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
   useEffect(() => {
     if (user.isLoggedIn) {
-      apiService.getMe().then((resp) => {
-        if (resp.success && resp.data) {
-          setUser({
-            id: resp.data.id as unknown as number,
-            username: resp.data.name,
-            email: resp.data.email,
-            status: resp.data.status,
-            isLoggedIn: true,
-          })
-        }
-      }).catch(() => {})
+      apiService
+        .getMe()
+        .then(resp => {
+          if (resp.success && resp.data) {
+            setUser({
+              id: resp.data.id as unknown as number,
+              username: resp.data.name,
+              email: resp.data.email,
+              status: resp.data.status,
+              isLoggedIn: true,
+            })
+          }
+        })
+        .catch(() => {})
     }
   }, [])
 
@@ -37,37 +51,31 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     setIsLoading(true)
     setError(null)
     try {
-      const tokens = await signInWithCognito()
-      apiService.setAccessToken(tokens.access_token)
+      const response = (await chrome.runtime.sendMessage({
+        action: 'cognitoSignIn',
+      })) as CognitoSignInResponse
 
-      const me = await apiService.getMe()
-      const userData = me.success && me.data
-        ? {
-            id: me.data.id as unknown as number,
-            username: me.data.name,
-            email: me.data.email,
-            status: me.data.status,
-            isLoggedIn: true,
-          }
-        : {
-            id: 0,
-            username: 'user',
-            email: '',
-            isLoggedIn: true,
-          }
+      if (!response?.success || !response.user) {
+        throw new Error(response?.error || 'Sign-in failed')
+      }
 
-      setUser(userData)
-      setSession({
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token || '',
-      })
+      const result = await chrome.storage.local.get([
+        'accessToken',
+        'refreshToken',
+        'enx-session',
+      ])
+      const access =
+        (result.accessToken as string) ||
+        result['enx-session']?.accessToken ||
+        ''
+      const refresh =
+        (result.refreshToken as string) ||
+        result['enx-session']?.refreshToken ||
+        ''
 
-      await chrome.storage.local.set({
-        user: userData,
-        'enx-user': userData,
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token || '',
-      })
+      apiService.setAccessToken(access)
+      setUser(response.user)
+      setSession({ accessToken: access, refreshToken: refresh })
 
       onLoginSuccess?.()
     } catch (e) {
@@ -78,22 +86,27 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   }
 
   const handleLogout = async () => {
-    setUser({ id: 0, username: '', email: '', isLoggedIn: false })
-    setSession({ accessToken: '', refreshToken: '' })
-    apiService.setAccessToken('')
-    await chrome.storage.local.remove([
-      'user',
-      'enx-user',
-      'accessToken',
-      'refreshToken',
-      'enx-session',
-    ])
+    setIsLoading(true)
+    setError(null)
+    try {
+      await chrome.runtime.sendMessage({ action: 'cognitoSignOut' })
+    } catch (e) {
+      console.error('Sign-out message failed:', e)
+    } finally {
+      setUser({ id: 0, username: '', email: '', isLoggedIn: false })
+      setSession({ accessToken: '', refreshToken: '' })
+      apiService.setAccessToken('')
+      setIsLoading(false)
+    }
   }
 
   const handleEnableLearning = async () => {
     setUnderliningStatus('processing')
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      const [tab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      })
       if (tab?.id) {
         await chrome.tabs.sendMessage(tab.id, { action: 'enxRun' })
         setUnderliningStatus('completed')
