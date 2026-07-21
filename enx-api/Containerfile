@@ -2,7 +2,11 @@ FROM golang:1.26.0 AS build
 ENV GO111MODULE on
 WORKDIR /workdir
 COPY enx-api/ .
-RUN CGO_ENABLED=0 GOOS=linux go build -a enx-api.go
+ARG VERSION=dev
+ARG GIT_COMMIT=unknown
+ARG GIT_BRANCH=unknown
+ARG BUILD_TIME=unknown
+RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags "-X enx-api/version.Version=$VERSION -X enx-api/version.GitCommit=$GIT_COMMIT -X enx-api/version.GitBranch=$GIT_BRANCH -X enx-api/version.BuildTime=$BUILD_TIME" enx-api.go
 
 FROM alpine:3.21.3 AS prod
 COPY --from=build /workdir/enx-api /usr/local/bin/
