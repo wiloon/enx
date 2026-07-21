@@ -10,7 +10,7 @@
   },
   "keywords": ["mock", "api", "translation"],
   "author": "",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "packageManager": "pnpm@9.0.0",
   "dependencies": {
     "express": "^4.18.2",
