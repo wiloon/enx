@@ -116,8 +116,6 @@ func (word *Word) FindLoadCountById() int {
 }
 
 func (word *Word) Translate(userId string) *Word {
-	// tmp function, remove duplicate word
-	word.RemoveDuplicateWord()
 	// search word in db: exact match first, then case-insensitive (see repo.GetWordByEnglish)
 
 	if userId == "" {
@@ -142,18 +140,6 @@ func (word *Word) Translate(userId string) *Word {
 
 	logger.Infof("word translate result, id: %v, english: %s", sWord.Id, word.Key)
 	return word
-}
-
-func (word *Word) RemoveDuplicateWord() {
-	// count by english
-	count := repo.CountByEnglish(word.English)
-
-	if count > 1 {
-		// delete duplicate word
-		tmp_word := repo.GetWordByEnglishCaseSensitive(word.English)
-		// Note: DeleteDuplicateWord might need to be updated to accept string ID
-		repo.DeleteDuplicateWord(word.English, tmp_word.Id)
-	}
 }
 
 func (word *Word) Save() {

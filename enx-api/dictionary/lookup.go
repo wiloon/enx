@@ -6,31 +6,16 @@ import (
 
 	"enx-api/ecdict"
 	"enx-api/enx"
-	"enx-api/repo"
 
 	"github.com/gin-gonic/gin"
 )
 
-// ErrEcdictUnavailable is returned when local lookup misses and ECDICT is not configured.
+// ErrEcdictUnavailable is returned when ECDICT is not configured.
 var ErrEcdictUnavailable = errors.New("ecdict unavailable")
 
-// FromRepoWord maps a repo Word to Dictionary when it has content.
-func FromRepoWord(w *repo.Word) *enx.Dictionary {
-	if w == nil || w.Id == "" || w.Chinese == "" {
-		return nil
-	}
-	return &enx.Dictionary{
-		English:       w.English,
-		Chinese:       w.Chinese,
-		Pronunciation: w.Pronunciation,
-	}
-}
-
-// Lookup finds a definition: local words table (exact, then case-insensitive), then ECDICT (with word forms).
+// Lookup queries ECDICT (with word forms). Callers are expected to have
+// already checked the local words table themselves before calling this.
 func Lookup(english string) (*enx.Dictionary, error) {
-	if d := FromRepoWord(repo.GetWordByEnglish(english)); d != nil {
-		return d, nil
-	}
 	if !ecdict.IsAvailable() {
 		return nil, ErrEcdictUnavailable
 	}

@@ -1,3 +1,10 @@
+-- NOTE: this file is a historical/reference snapshot, not applied automatically.
+-- The live schema is managed by GORM AutoMigrate (enx-api/utils/sqlitex/sqlitex.go)
+-- plus the one-off scripts in enx-api/migrations/. The `users` table below in
+-- particular predates the Cognito auth migration and no longer matches the
+-- live schema (see migrations/005_cognito_migration.sql and sqlitex.go's User
+-- struct for the current shape).
+
 CREATE TABLE users (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
   `name` varchar(256) NOT NULL,
@@ -24,33 +31,37 @@ VALUES (2, 'user_2','user_2@wiloon.com', 'password_2', '2025-05-02 13:15:32', NU
 CREATE TABLE IF NOT EXISTS words (
     -- Primary key: UUID v4 for P2P compatibility
     id TEXT PRIMARY KEY,
-    
-    -- Word content
-    english TEXT NOT NULL UNIQUE COLLATE NOCASE,
+
+    -- Word content. Case-sensitive on purpose: the same English word can mean
+    -- different things depending on capitalization (e.g. proper nouns vs
+    -- common words). Lookups try an exact match first, then fall back to a
+    -- case-insensitive match (see idx_words_english_lower below).
+    english TEXT NOT NULL UNIQUE,
     chinese TEXT,
     pronunciation TEXT,
-    
+
     -- Timestamps (Unix milliseconds for P2P sync)
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     deleted_at INTEGER,  -- Soft delete: NULL = active, timestamp = deleted
-    
+
     -- Query statistics
     load_count INTEGER DEFAULT 0
 );
 
 -- Index for soft delete queries (only active records)
-CREATE INDEX IF NOT EXISTS idx_words_deleted_at 
-ON words(deleted_at) 
+CREATE INDEX IF NOT EXISTS idx_words_deleted_at
+ON words(deleted_at)
 WHERE deleted_at IS NULL;
 
 -- Index for timestamp-based sync queries
-CREATE INDEX IF NOT EXISTS idx_words_updated_at 
+CREATE INDEX IF NOT EXISTS idx_words_updated_at
 ON words(updated_at);
 
--- Index for english lookups (case insensitive)
-CREATE INDEX IF NOT EXISTS idx_words_english 
-ON words(english COLLATE NOCASE);
+-- Expression index for the case-insensitive fallback lookup
+-- (WHERE LOWER(english) = LOWER(?)); see migrations/006_words_english_lower_index.sql
+CREATE INDEX IF NOT EXISTS idx_words_english_lower
+ON words(LOWER(english));
 
 -- User Dictionary Table
 -- Stores user-specific word data (query count, familiarity)

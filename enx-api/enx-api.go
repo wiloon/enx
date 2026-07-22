@@ -171,7 +171,6 @@ func setupRouter() *gin.Engine {
 		authGroup.GET("/word/:word", translate.TranslateByWord)
 		authGroup.GET("/load-count", wordCount.LoadCount)
 		authGroup.POST("/mark", MarkWord)
-		authGroup.GET("/do-search", DoSearch)
 		authGroup.GET("/ecdict", DoSearchEcdict)
 		authGroup.GET("/wrap", Wrap)
 	}
@@ -189,7 +188,6 @@ func setupRouter() *gin.Engine {
 		apiGroup.DELETE("/word/:word", DeleteWord)
 		apiGroup.GET("/load-count", wordCount.LoadCount)
 		apiGroup.POST("/mark", MarkWord)
-		apiGroup.GET("/do-search", DoSearch)
 		apiGroup.GET("/ecdict", DoSearchEcdict)
 		apiGroup.GET("/wrap", Wrap)
 	}
@@ -204,30 +202,12 @@ func setupRouter() *gin.Engine {
 }
 
 type SearchResult struct {
-	WordList []string
-	Dict     *enx.Dictionary
-}
-
-func DoSearch(c *gin.Context) {
-	key := c.Query("key")
-	logger.Infof("key: %v", key)
-	words := enx.Search(key)
-
-	result := SearchResult{}
-	result.WordList = words
-	dict, err := dictionary.Lookup(key)
-	if err != nil {
-		dictionary.RespondUnavailable(c)
-		return
-	}
-	result.Dict = dict
-	c.JSON(200, result)
+	Dict *enx.Dictionary
 }
 
 func DoSearchEcdict(c *gin.Context) {
 	key := c.Query("key")
 	logger.Infof("ecdict search key: %v", key)
-	words := enx.Search(key)
 
 	if !ecdict.IsAvailable() {
 		dictionary.RespondUnavailable(c)
@@ -235,7 +215,6 @@ func DoSearchEcdict(c *gin.Context) {
 	}
 
 	result := SearchResult{}
-	result.WordList = words
 	result.Dict = ecdict.Query(key)
 	c.JSON(200, result)
 }

@@ -61,25 +61,6 @@ func GetWordByEnglish(english string) *Word {
 	return word
 }
 
-func GetWordByEnglishCaseSensitive(english string) *Word {
-	word := &Word{}
-	err := sqlitex.DB.Where("english = ? AND deleted_at IS NULL", english).First(word).Error
-	if err != nil {
-		logger.Debugf("word not found (case sensitive): %s, error: %v", english, err)
-		return &Word{}
-	}
-
-	// Convert timestamps for compatibility
-	if word.CreatedAt > 0 {
-		word.CreateDatetime = time.UnixMilli(word.CreatedAt)
-	}
-	if word.UpdatedAt > 0 {
-		word.UpdateDatetime = time.UnixMilli(word.UpdatedAt)
-	}
-
-	return word
-}
-
 // GetUserWordQueryCount get user word query count via GORM
 func GetUserWordQueryCount(wordId, userId string) (int, int) {
 	userDict := &UserDict{}
@@ -136,10 +117,4 @@ func CountByEnglish(english string) int {
 	sqlitex.DB.Model(&Word{}).Where("LOWER(english) = LOWER(?) AND deleted_at IS NULL", english).Count(&count)
 	logger.Debugf("count by english via GORM, word: %s, count: %d", english, count)
 	return int(count)
-}
-
-func DeleteDuplicateWord(english string, excludeId string) {
-	// This function is no longer needed with UUID-based P2P system
-	// Duplicates are prevented by unique constraint on english field
-	logger.Debugf("DeleteDuplicateWord called but skipped (P2P system prevents duplicates), english: %s, excluding id: %s", english, excludeId)
 }

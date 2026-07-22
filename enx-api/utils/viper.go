@@ -41,9 +41,6 @@ func viperInitInternal() {
 	// Bind each config key to an explicit environment variable
 	_ = viper.BindEnv("enx.port", "ENX_PORT")
 	_ = viper.BindEnv("enx.dev-mode", "ENX_DEV_MODE")
-	_ = viper.BindEnv("mysql.address", "MYSQL_ADDRESS")
-	_ = viper.BindEnv("mysql.user", "MYSQL_USER")
-	_ = viper.BindEnv("mysql.password", "MYSQL_PASSWORD")
 	_ = viper.BindEnv("redis.address", "REDIS_ADDRESS")
 	_ = viper.BindEnv("resend.api-key", "RESEND_API_KEY")
 	_ = viper.BindEnv("resend.from", "RESEND_FROM")
@@ -61,6 +58,12 @@ func viperInitInternal() {
 
 	viper.SetDefault("ecdict.db_path", "")
 	_ = viper.BindEnv("ecdict.db_path", "ECDICT_DB_PATH")
+
+	// Throttle for last_login_time/updated_at writes on every authenticated
+	// request (see docs/PERF_FIRST_QUERY_LATENCY.md) — only re-write when the
+	// previous value is older than this interval.
+	viper.SetDefault("user.last-login-update-interval", "5m")
+	_ = viper.BindEnv("user.last-login-update-interval", "USER_LAST_LOGIN_UPDATE_INTERVAL")
 
 	// Also support automatic env var lookup (e.g. ENX_PORT for enx.port)
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))

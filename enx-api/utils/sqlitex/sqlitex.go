@@ -113,7 +113,8 @@ func Init() {
 
 	var err error
 	zapLog.Infof("opening db: %s", dbPath)
-	DB, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{
+	dsn := dbPath + "?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)"
+	DB, err = gorm.Open(sqlite.Open(dsn), &gorm.Config{
 		Logger: newLogger,
 	})
 	if err != nil {
@@ -129,6 +130,14 @@ func Init() {
 		return
 	}
 	zapLog.Info("database auto-migration completed successfully")
+
+	// Expression index for the case-insensitive fallback lookup in
+	// repo.GetWordByEnglish (WHERE LOWER(english) = LOWER(?)). GORM
+	// AutoMigrate can't create expression indexes, so it's added here.
+	// Mirrored in migrations/006_words_english_lower_index.sql.
+	if err := DB.Exec("CREATE INDEX IF NOT EXISTS idx_words_english_lower ON words(LOWER(english))").Error; err != nil {
+		zapLog.Errorf("failed to create idx_words_english_lower: %v", err)
+	}
 
 	// One-time data migration: existing users (created before email verification was added)
 	// should be treated as already verified, so set their status to 'active'.
