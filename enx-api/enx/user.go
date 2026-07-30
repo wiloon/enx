@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/spf13/viper"
 )
 
 type User struct {
@@ -117,10 +118,12 @@ func GetOrCreateByCognitoSub(sub, email, username string) (string, error) {
 	existing := GetUserByCognitoSub(sub)
 	if existing.Id != "" {
 		now := time.Now()
-		_ = sqlitex.DB.Model(existing).Updates(map[string]interface{}{
-			"last_login_time": now,
-			"updated_at":      now,
-		}).Error
+		if now.Sub(existing.LastLoginTime) >= viper.GetDuration("user.last-login-update-interval") {
+			_ = sqlitex.DB.Model(existing).Updates(map[string]interface{}{
+				"last_login_time": now,
+				"updated_at":      now,
+			}).Error
+		}
 		return existing.Id, nil
 	}
 

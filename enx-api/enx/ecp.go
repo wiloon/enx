@@ -4,7 +4,6 @@ import (
 	"enx-api/repo"
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
-	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -117,10 +116,7 @@ func (word *Word) FindLoadCountById() int {
 }
 
 func (word *Word) Translate(userId string) *Word {
-	// tmp function, remove duplicate word
-	word.RemoveDuplicateWord()
-	// search word in db by English, e.g. French
-	// do not search db with lower case, since youdao api is case sensitive
+	// search word in db: exact match first, then case-insensitive (see repo.GetWordByEnglish)
 
 	if userId == "" {
 		logger.Errorf("no valid user id provided")
@@ -136,8 +132,7 @@ func (word *Word) Translate(userId string) *Word {
 	if sWord.Id != "" {
 		// Query user_dicts from database using UUID
 		// userId needs to be converted to UUID string format
-		userIdStr := fmt.Sprintf("user-%s", userId) // Temporary: convert int userId to string
-		queryCount, _ := repo.GetUserWordQueryCount(sWord.Id, userIdStr)
+		queryCount, _ := repo.GetUserWordQueryCount(sWord.Id, userId)
 		if queryCount > 0 {
 			word.LoadCount = queryCount
 		}
@@ -145,18 +140,6 @@ func (word *Word) Translate(userId string) *Word {
 
 	logger.Infof("word translate result, id: %v, english: %s", sWord.Id, word.Key)
 	return word
-}
-
-func (word *Word) RemoveDuplicateWord() {
-	// count by english
-	count := repo.CountByEnglish(word.English)
-
-	if count > 1 {
-		// delete duplicate word
-		tmp_word := repo.GetWordByEnglishCaseSensitive(word.English)
-		// Note: DeleteDuplicateWord might need to be updated to accept string ID
-		repo.DeleteDuplicateWord(word.English, tmp_word.Id)
-	}
 }
 
 func (word *Word) Save() {

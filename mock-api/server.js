@@ -251,31 +251,6 @@ const defaultTranslation = (word) => ({
   }
 });
 
-// Mock Youdao API endpoint
-// POST /api with form data
-app.post('/api', (req, res) => {
-  const { q, from, to, appKey, salt, sign, signType, curtime } = req.body;
-
-  console.log(`[Mock API] Translation request - word: "${q}", from: ${from}, to: ${to}`);
-
-  // Validate required parameters (similar to real Youdao API)
-  if (!q || !appKey || !salt || !sign) {
-    return res.json({
-      errorCode: '101',
-      msg: 'Missing required parameters'
-    });
-  }
-
-  // Get translation from mock dictionary or use default
-  const word = q.toLowerCase();
-  const translation = mockTranslations[word] || defaultTranslation(q);
-
-  console.log(`[Mock API] Returning translation: ${translation.returnPhrase}`);
-
-  // Return response in Youdao API format
-  res.json(translation);
-});
-
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'mock-translation-api' });
@@ -295,5 +270,5 @@ app.listen(PORT, () => {
   console.log(`🚀 Mock Translation API running on http://localhost:${PORT}`);
   console.log(`📝 Health check: http://localhost:${PORT}/health`);
   console.log(`📚 Available words: http://localhost:${PORT}/mock/words`);
-  console.log(`🔄 Mock Youdao endpoint: POST http://localhost:${PORT}/api`);
+  console.log(`📚 Mock words list: http://localhost:${PORT}/mock/words`);
 });

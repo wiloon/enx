@@ -32,6 +32,12 @@ tasks.withType<Test> {
     useJUnitPlatform()
 }
 
+// Eclipse/VS Code Java LS writes to bin/; remove it on clean to avoid
+// "Resource already exists on disk" when the Java builder and Buildship race.
+tasks.named<Delete>("clean") {
+    delete(layout.projectDirectory.dir("bin"))
+}
+
 tasks.named<org.springframework.boot.gradle.tasks.bundling.BootBuildImage>("bootBuildImage") {
     imageName.set("docker-hosted.wiloon.com/enx-api-java:local")
     environment.put("BP_JVM_VERSION", "26")

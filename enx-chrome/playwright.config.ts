@@ -56,18 +56,9 @@ export default defineConfig({
   // Run your local dev server before starting the tests
   webServer: [
     {
-      // Mock Translation API (Node.js + Express)
-      // Must start FIRST because enx-api depends on it
-      command: 'cd ../mock-api && pnpm start',
-      url: 'http://localhost:3000/health',
-      reuseExistingServer: !process.env.CI,
-      timeout: 10000,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    },
-    {
-      // Backend API server (enx-api) with E2E environment variables
-      command: 'cd ../enx-api && ENX_PORT=8090 ENX_DEV_MODE=true YOUDAO_URL=http://localhost:3000/api YOUDAO_APP_KEY=mock-app-key YOUDAO_APP_SECRET=mock-app-secret go run .',
+      // Backend API server (enx-api); set ECDICT_DB_PATH to a local ECDICT SQLite file for translation tests
+      command:
+        'cd ../enx-api && ENX_PORT=8090 ENX_DEV_MODE=true ECDICT_DB_PATH=${ECDICT_DB_PATH:-} go run .',
       url: 'http://localhost:8090/api/version',
       reuseExistingServer: !process.env.CI,
       timeout: 30000, // API might take longer to start

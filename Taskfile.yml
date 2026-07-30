@@ -364,7 +364,7 @@ tasks:
           sqlite3 enx.db < enx.sql
         fi
       - echo "Running integration tests..."
-      - ENX_PORT=8090 ENX_DEV_MODE=true YOUDAO_URL=http://localhost:3000/api YOUDAO_APP_KEY=mock-app-key YOUDAO_APP_SECRET=mock-app-secret go test -tags=integration ./...
+      - ENX_PORT=8090 ENX_DEV_MODE=true ECDICT_DB_PATH=${ECDICT_DB_PATH} go test -tags=integration ./...
 
   test:api:
     desc: Run all enx-api tests (unit + integration)

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -82,16 +83,6 @@ func (SyncState) TableName() string {
 	return "sync_state"
 }
 
-type Youdao struct {
-	English string `gorm:"column:english;not null"`
-	Result  string `gorm:"column:result;not null"`
-	Exist   int    `gorm:"column:exist;not null;default:0"`
-}
-
-func (Youdao) TableName() string {
-	return "youdao"
-}
-
 func Init() {
 	// Read database path from environment variable or use default
 	dbPath := os.Getenv("DB_PATH")
@@ -123,7 +114,8 @@ func Init() {
 
 	var err error
 	zapLog.Infof("opening db: %s", dbPath)
-	DB, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{
+	dsn := dbPath + "?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)"
+	DB, err = gorm.Open(sqlite.Open(dsn), &gorm.Config{
 		Logger: newLogger,
 	})
 	if err != nil {
@@ -131,14 +123,31 @@ func Init() {
 		return
 	}
 
+	// Homelab/AWS DBs created by migrations/20251230_migrate_words_to_p2p.sql
+	// embed "-- ..." comments inside CREATE TABLE. glebarez/sqlite AutoMigrate
+	// rewrites that SQL into words__temp and fails with "incomplete input",
+	// which previously skipped the expression index below. Repair once first.
+	if err := repairWordsTableDDLIfNeeded(); err != nil {
+		zapLog.Errorf("failed to repair words table DDL: %v", err)
+	}
+
 	// Auto-migrate database schema
 	zapLog.Info("running database auto-migration...")
-	err = DB.AutoMigrate(&User{}, &Word{}, &UserDict{}, &Session{}, &SyncState{}, &Youdao{})
+	err = DB.AutoMigrate(&User{}, &Word{}, &UserDict{}, &Session{}, &SyncState{})
 	if err != nil {
 		zapLog.Errorf("failed to auto-migrate database: %v", err)
-		return
+	} else {
+		zapLog.Info("database auto-migration completed successfully")
 	}
-	zapLog.Info("database auto-migration completed successfully")
+
+	// Expression index for the case-insensitive fallback lookup in
+	// repo.GetWordByEnglish (WHERE LOWER(english) = LOWER(?)). GORM
+	// AutoMigrate can't create expression indexes, so it's added here.
+	// Mirrored in migrations/006_words_english_lower_index.sql.
+	// Run even if AutoMigrate failed so lookups still get the index.
+	if err := DB.Exec("CREATE INDEX IF NOT EXISTS idx_words_english_lower ON words(LOWER(english))").Error; err != nil {
+		zapLog.Errorf("failed to create idx_words_english_lower: %v", err)
+	}
 
 	// One-time data migration: existing users (created before email verification was added)
 	// should be treated as already verified, so set their status to 'active'.
@@ -147,6 +156,52 @@ func Init() {
 	} else if result.RowsAffected > 0 {
 		zapLog.Infof("migrated %d existing users to active status", result.RowsAffected)
 	}
+}
+
+// repairWordsTableDDLIfNeeded rebuilds words without inline "--" comments in
+// sqlite_master. Those comments break glebarez AutoMigrate alter-table.
+func repairWordsTableDDLIfNeeded() error {
+	var createSQL string
+	if err := DB.Raw(`SELECT sql FROM sqlite_master WHERE type='table' AND name='words'`).Scan(&createSQL).Error; err != nil {
+		return err
+	}
+	if createSQL == "" || !strings.Contains(createSQL, "--") {
+		return nil
+	}
+
+	zapLog.Info("repairing words table DDL (strip inline SQL comments for AutoMigrate)")
+	return DB.Transaction(func(tx *gorm.DB) error {
+		steps := []string{
+			`CREATE TABLE words__clean (
+				id TEXT PRIMARY KEY,
+				english TEXT NOT NULL,
+				chinese TEXT,
+				pronunciation TEXT,
+				created_at INTEGER NOT NULL,
+				load_count INTEGER NOT NULL DEFAULT 0,
+				updated_at INTEGER NOT NULL,
+				deleted_at INTEGER
+			)`,
+			`INSERT INTO words__clean (id, english, chinese, pronunciation, created_at, load_count, updated_at, deleted_at)
+			 SELECT id, english, chinese, pronunciation,
+			        COALESCE(created_at, updated_at, 0),
+			        COALESCE(load_count, 0),
+			        updated_at,
+			        deleted_at
+			 FROM words`,
+			`DROP TABLE words`,
+			`ALTER TABLE words__clean RENAME TO words`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_english ON words(english)`,
+			`CREATE INDEX IF NOT EXISTS idx_words_updated_at ON words(updated_at)`,
+			`CREATE INDEX IF NOT EXISTS idx_words_deleted_at ON words(deleted_at) WHERE deleted_at IS NOT NULL`,
+		}
+		for _, step := range steps {
+			if err := tx.Exec(step).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func GetDB() *gorm.DB {

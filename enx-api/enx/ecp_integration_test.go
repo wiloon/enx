@@ -15,7 +15,7 @@ func init() {
 	sqlitex.Init()
 }
 
-func TestRemoveDuplcateWord(t *testing.T) {
+func TestSaveDuplicateEnglish_UniqueConstraintPreventsDuplicate(t *testing.T) {
 	fmt.Print("Test00")
 	// test data
 	word := Word{}
