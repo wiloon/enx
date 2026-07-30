@@ -2,6 +2,9 @@ FROM eclipse-temurin:26-jdk-jammy AS build
 WORKDIR /workdir
 COPY enx-api-java/ .
 ENV NEXUS_MAVEN_URL=https://nexus.wiloon.com/repository/maven-public/
+# Cap Gradle heap so Kaniko builds fit on ~8Gi worker nodes
+ENV GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=384m -Dfile.encoding=UTF-8"
+ENV GRADLE_USER_HOME=/tmp/gradle-home
 RUN chmod +x gradlew \
     && ./gradlew bootJar --no-daemon -x test -I gradle/ci.init.gradle
 

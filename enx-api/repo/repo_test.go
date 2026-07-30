@@ -16,6 +16,5 @@ func Test0(t *testing.T) {
 	// Translate("foo")
 	utils.ViperInit()
 	sqlitex.Init()
-	cacheHit, youdaoCanHandleThisWorld, _ := IsYouDaoRecordExist("foo")
-	fmt.Println(cacheHit, youdaoCanHandleThisWorld)
+	fmt.Println("db initialized")
 }

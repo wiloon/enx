@@ -37,20 +37,13 @@ func (UserDict) TableName() string {
 	return "user_dicts"
 }
 
-type YoudaoQueryHistory struct {
-	English string
-	Result  string
-	Exist   int
-}
-
-func (YoudaoQueryHistory) TableName() string {
-	return "youdao"
-}
-
-// GetWordByEnglish get word id by english
+// GetWordByEnglish looks up a word by exact english, then case-insensitive match.
 func GetWordByEnglish(english string) *Word {
 	word := &Word{}
-	err := sqlitex.DB.Where("LOWER(english) = LOWER(?) AND deleted_at IS NULL", english).First(word).Error
+	err := sqlitex.DB.Where("english = ? AND deleted_at IS NULL", english).First(word).Error
+	if err != nil {
+		err = sqlitex.DB.Where("LOWER(english) = LOWER(?) AND deleted_at IS NULL", english).First(word).Error
+	}
 	if err != nil {
 		logger.Debugf("word not found: %s, error: %v", english, err)
 		return &Word{} // Return empty word for compatibility
@@ -65,25 +58,6 @@ func GetWordByEnglish(english string) *Word {
 	}
 
 	logger.Debugf("find word via GORM, id: %s, english: %s", word.Id, word.English)
-	return word
-}
-
-func GetWordByEnglishCaseSensitive(english string) *Word {
-	word := &Word{}
-	err := sqlitex.DB.Where("english = ? AND deleted_at IS NULL", english).First(word).Error
-	if err != nil {
-		logger.Debugf("word not found (case sensitive): %s, error: %v", english, err)
-		return &Word{}
-	}
-
-	// Convert timestamps for compatibility
-	if word.CreatedAt > 0 {
-		word.CreateDatetime = time.UnixMilli(word.CreatedAt)
-	}
-	if word.UpdatedAt > 0 {
-		word.UpdateDatetime = time.UnixMilli(word.UpdatedAt)
-	}
-
 	return word
 }
 
@@ -138,41 +112,9 @@ func Translate(key string, userId string) Word {
 	return Word{} // Return empty word
 }
 
-// IsYouDaoRecordExist check if youdao dict response exist in db
-func IsYouDaoRecordExist(words string) (bool, bool, *YoudaoQueryHistory) {
-	cacheHit := false
-	youdaoCanHandleThisWord := false
-	yd := YoudaoQueryHistory{}
-	sqlitex.DB.Where("english=?", words).Find(&yd)
-
-	if yd.English != "" {
-		cacheHit = true
-	}
-	if cacheHit && yd.Exist == 1 {
-		youdaoCanHandleThisWord = true
-	}
-	logger.Debugf("check if youdao record exist, english: %s, cache hit: %v, youdao has this word: %v", words, cacheHit, youdaoCanHandleThisWord)
-	return cacheHit, youdaoCanHandleThisWord, &yd
-}
-
-// SaveYouDaoDictResponse save youdao dict response to db
-func SaveYouDaoDictResponse(word, response string, exist int) {
-	yqh := YoudaoQueryHistory{}
-	yqh.English = word
-	yqh.Result = response
-	yqh.Exist = exist
-	sqlitex.DB.Create(&yqh)
-}
-
 func CountByEnglish(english string) int {
 	var count int64
 	sqlitex.DB.Model(&Word{}).Where("LOWER(english) = LOWER(?) AND deleted_at IS NULL", english).Count(&count)
 	logger.Debugf("count by english via GORM, word: %s, count: %d", english, count)
 	return int(count)
-}
-
-func DeleteDuplicateWord(english string, excludeId string) {
-	// This function is no longer needed with UUID-based P2P system
-	// Duplicates are prevented by unique constraint on english field
-	logger.Debugf("DeleteDuplicateWord called but skipped (P2P system prevents duplicates), english: %s, excluding id: %s", english, excludeId)
 }

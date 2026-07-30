@@ -493,9 +493,9 @@ If you prefer to manage the backend manually:
    task test-e2e
    ```
 
-**Note**: Translation tests still require third-party translation API configuration (Youdao, etc.) in `enx-api/config.toml`.
+**Note**: Translation and dictionary tests require `ECDICT_DB_PATH` (or `[ecdict] db_path` in `enx-api/config.toml`) pointing to a local ECDICT SQLite database. If ECDICT is not configured, the API returns HTTP 503 for word lookups that need it.
 
-With backend running, **12/16 tests pass**. Translation tests require additional configuration.
+With backend running and ECDICT configured, translation E2E tests can run against the local API.
 
 ## Resources
 

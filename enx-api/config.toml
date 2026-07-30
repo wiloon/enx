@@ -21,9 +21,8 @@ level = "debug"
 path = "/data/rssx/logs/"
 file-name = "rssx.log"
 
-[youdao]
-url = "https://openapi.youdao.com/api"
-# app-key and app-secret must be set via YOUDAO_APP_KEY / YOUDAO_APP_SECRET env vars, never in this file
+[ecdict]
+db_path = ""
 
 [resend]
 # api-key must be set via RESEND_API_KEY env var, never in this file

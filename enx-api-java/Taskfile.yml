@@ -33,8 +33,9 @@ tasks:
       - ./gradlew bootBuildImage --imageName=docker-hosted.wiloon.com/enx-api-java:local
 
   clean:
-    desc: Clean build outputs
+    desc: Clean build outputs (Gradle build/ + IDE bin/)
     env:
       JAVA_HOME: '{{.JAVA_HOME}}'
     cmds:
+      - rm -rf bin
       - ./gradlew clean

@@ -23,7 +23,7 @@ Implemented proper test separation using Go build tags:
    - Added `//go:build integration` tags to:
      - `paragraph/paragraph_test.go`
      - `repo/repo_test.go`
-     - `youdao/youdao_test.go`
+     - `ecdict/ecdict_test.go`
 
 2. **Cleaned Up Unit Test Files**:
    - `enx/ecp_test.go` - Now contains only pure logic tests
@@ -398,7 +398,7 @@ webServer: [
 
 - Added "Automatic Backend Startup" section to `E2E_TESTING.md`
 - Documented manual startup as alternative approach
-- Clarified that translation tests require third-party API configuration
+- Clarified that translation tests require ECDICT (`ECDICT_DB_PATH`) configuration
 
 ---
 
