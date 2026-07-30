@@ -84,6 +84,11 @@ func UnavailableMessage() string {
 // upstream timeout with no way for the handler to recover).
 const queryTimeout = 3 * time.Second
 
+type lookupResult struct {
+	entry stardict
+	ok    bool
+}
+
 func Query(ctx context.Context, words string) *enx.Dictionary {
 	if !IsAvailable() {
 		return nil
@@ -92,17 +97,33 @@ func Query(ctx context.Context, words string) *enx.Dictionary {
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 
-	entry, ok := lookupEntry(ctx, words)
-	if !ok {
-		logger.Debugf("ECDICT: word not found: %s", words)
-		return nil
-	}
+	// The sqlite driver's context cancellation is best-effort: under
+	// concurrent slow scans it has been observed to keep running well past
+	// the deadline (17s+ vs. a 3s timeout). Racing the lookup in its own
+	// goroutine guarantees Query returns on time regardless of whether the
+	// underlying scan actually stops; the goroutine just finishes on its own
+	// later and its result is dropped.
+	resultCh := make(chan lookupResult, 1)
+	go func() {
+		entry, ok := lookupEntry(ctx, words)
+		resultCh <- lookupResult{entry, ok}
+	}()
 
-	logger.Debugf("ECDICT hit: %s -> %s", words, entry.Translation)
-	return &enx.Dictionary{
-		English:       entry.Word,
-		Chinese:       entry.Translation,
-		Pronunciation: entry.Phonetic,
+	select {
+	case res := <-resultCh:
+		if !res.ok {
+			logger.Debugf("ECDICT: word not found: %s", words)
+			return nil
+		}
+		logger.Debugf("ECDICT hit: %s -> %s", words, res.entry.Translation)
+		return &enx.Dictionary{
+			English:       res.entry.Word,
+			Chinese:       res.entry.Translation,
+			Pronunciation: res.entry.Phonetic,
+		}
+	case <-ctx.Done():
+		logger.Warnf("ECDICT: query exceeded %s, giving up: %s", queryTimeout, words)
+		return nil
 	}
 }
 
