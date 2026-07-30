@@ -1,6 +1,7 @@
 package dictionary
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -15,11 +16,11 @@ var ErrEcdictUnavailable = errors.New("ecdict unavailable")
 
 // Lookup queries ECDICT (with word forms). Callers are expected to have
 // already checked the local words table themselves before calling this.
-func Lookup(english string) (*enx.Dictionary, error) {
+func Lookup(ctx context.Context, english string) (*enx.Dictionary, error) {
 	if !ecdict.IsAvailable() {
 		return nil, ErrEcdictUnavailable
 	}
-	return ecdict.Query(english), nil
+	return ecdict.Query(ctx, english), nil
 }
 
 // RespondUnavailable writes the ADR-mandated 503 JSON response.

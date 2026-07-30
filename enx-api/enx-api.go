@@ -49,7 +49,13 @@ func main() {
 
 	port := viper.GetInt("enx.port")
 	listenAddress := fmt.Sprintf(":%d", port)
-	srv := &http.Server{Addr: listenAddress, Handler: router}
+	srv := &http.Server{
+		Addr:              listenAddress,
+		Handler:           router,
+		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 
 	idleConnectionsClosed := make(chan struct{})
 	go func() {
@@ -215,7 +221,7 @@ func DoSearchEcdict(c *gin.Context) {
 	}
 
 	result := SearchResult{}
-	result.Dict = ecdict.Query(key)
+	result.Dict = ecdict.Query(c.Request.Context(), key)
 	c.JSON(200, result)
 }
 

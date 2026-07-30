@@ -1,11 +1,13 @@
 package ecdict
 
 import (
+	"context"
 	"enx-api/enx"
 	"enx-api/utils/logger"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -75,12 +77,22 @@ func UnavailableMessage() string {
 	return defaultUnavailableReason
 }
 
-func Query(words string) *enx.Dictionary {
+// queryTimeout bounds each ECDICT lookup. The stardict table has no index on
+// sw/exchange, so the fallback scans below can occasionally take much longer
+// than the typical few-millisecond exact-match hit; without a deadline a slow
+// scan blocks the request indefinitely (observed hanging past Kong's 60s
+// upstream timeout with no way for the handler to recover).
+const queryTimeout = 3 * time.Second
+
+func Query(ctx context.Context, words string) *enx.Dictionary {
 	if !IsAvailable() {
 		return nil
 	}
 
-	entry, ok := lookupEntry(words)
+	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
+	defer cancel()
+
+	entry, ok := lookupEntry(ctx, words)
 	if !ok {
 		logger.Debugf("ECDICT: word not found: %s", words)
 		return nil
@@ -95,26 +107,39 @@ func Query(words string) *enx.Dictionary {
 }
 
 // lookupEntry: exact word → case-insensitive word → sw (strip-word) → exchange (inflections).
-func lookupEntry(words string) (stardict, bool) {
+func lookupEntry(ctx context.Context, words string) (stardict, bool) {
 	var entry stardict
+	dbc := db.WithContext(ctx)
 
-	if err := db.Where("word = ?", words).First(&entry).Error; err == nil {
+	if err := dbc.Where("word = ?", words).First(&entry).Error; err == nil {
 		return entry, true
 	}
-	if err := db.Where("LOWER(word) = LOWER(?)", words).First(&entry).Error; err == nil {
+	if ctx.Err() != nil {
+		return stardict{}, false
+	}
+	if err := dbc.Where("LOWER(word) = LOWER(?)", words).First(&entry).Error; err == nil {
 		return entry, true
+	}
+	if ctx.Err() != nil {
+		return stardict{}, false
 	}
 
 	sw := stripWord(words)
 	if sw != "" {
-		if err := db.Where("sw = ?", sw).First(&entry).Error; err == nil {
+		if err := dbc.Where("sw = ?", sw).First(&entry).Error; err == nil {
 			return entry, true
+		}
+		if ctx.Err() != nil {
+			return stardict{}, false
 		}
 	}
 
 	for _, pattern := range exchangePatterns(words) {
-		if err := db.Where("exchange LIKE ?", pattern).First(&entry).Error; err == nil {
+		if err := dbc.Where("exchange LIKE ?", pattern).First(&entry).Error; err == nil {
 			return entry, true
+		}
+		if ctx.Err() != nil {
+			return stardict{}, false
 		}
 	}
 

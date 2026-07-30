@@ -1,6 +1,7 @@
 package ecdict
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -29,10 +30,10 @@ func TestQueryExactThenCaseInsensitive(t *testing.T) {
 		t.Fatal("expected ECDICT available")
 	}
 
-	if got := Query("Hello"); got == nil || got.Chinese != "你好" {
+	if got := Query(context.Background(), "Hello"); got == nil || got.Chinese != "你好" {
 		t.Fatalf("exact match failed: %+v", got)
 	}
-	if got := Query("hello"); got == nil || got.Chinese != "你好" {
+	if got := Query(context.Background(), "hello"); got == nil || got.Chinese != "你好" {
 		t.Fatalf("case-insensitive match failed: %+v", got)
 	}
 }
@@ -42,7 +43,7 @@ func TestQueryWordFormViaSw(t *testing.T) {
 	createTestDBWithSw(t, dbPath)
 
 	Init(dbPath)
-	got := Query("us")
+	got := Query(context.Background(), "us")
 	if got == nil || got.English != "U.S." {
 		t.Fatalf("sw lookup failed: %+v", got)
 	}
@@ -53,7 +54,7 @@ func TestQueryWordFormViaExchange(t *testing.T) {
 	createTestDBWithExchange(t, dbPath)
 
 	Init(dbPath)
-	got := Query("running")
+	got := Query(context.Background(), "running")
 	if got == nil || got.English != "run" {
 		t.Fatalf("exchange lookup failed: %+v", got)
 	}
