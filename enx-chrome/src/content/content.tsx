@@ -75,6 +75,9 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
     max-height: 60vh;
     overflow-y: auto;
     margin: 16px;
+    padding: 0;
+    border: none;
+    background: transparent;
   `
 
   // 4. Render content via React, mounted inside a shadow root so Tailwind

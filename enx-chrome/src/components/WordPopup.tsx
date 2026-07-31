@@ -44,7 +44,7 @@ export default function WordPopup({
   return (
     <div
       ref={rootRef}
-      className="bg-white rounded-lg shadow-xl border border-gray-200 p-4 w-full"
+      className="bg-white rounded-lg shadow-xl border border-gray-200 p-4 w-full outline-none"
       tabIndex={-1}
       onKeyDown={handleKeyDown}
     >
@@ -147,7 +147,7 @@ export default function WordPopup({
               className="bg-green-500 hover:bg-green-600 text-white text-sm px-3 py-1 rounded transition-colors"
               title="Mark as acquainted"
             >
-              ✓ Mark Known
+              ✓ Know It
             </button>
           )}
         </div>
