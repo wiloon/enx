@@ -1,7 +1,8 @@
 import { errorAtom, isLoadingAtom, sessionAtom, userAtom } from '@/store/atoms'
 import { useAtom } from 'jotai'
 import { useEffect, useState } from 'react'
-import { apiService } from '@/services/api'
+import { sendMessageToBackground } from '@/services/api'
+import type { ApiRequestResult } from '@/background/background'
 
 interface LoginProps {
   onLoginSuccess?: () => void
@@ -30,8 +31,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
   useEffect(() => {
     if (user.isLoggedIn) {
-      apiService
-        .getMe()
+      sendMessageToBackground<ApiRequestResult>({ type: 'validateSession' })
         .then(resp => {
           if (resp.success && resp.data) {
             setUser({
@@ -73,7 +73,6 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         result['enx-session']?.refreshToken ||
         ''
 
-      apiService.setAccessToken(access)
       setUser(response.user)
       setSession({ accessToken: access, refreshToken: refresh })
 
@@ -95,7 +94,6 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     } finally {
       setUser({ id: 0, username: '', email: '', isLoggedIn: false })
       setSession({ accessToken: '', refreshToken: '' })
-      apiService.setAccessToken('')
       setIsLoading(false)
     }
   }

@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Draft — 2026-07-30（待 Review，Review 通过后开始实施） |
+| **状态** | Reviewed — 2026-07-31（§3.2/§3.6/§4.5 待确认项已由用户拍板，见下方对应小节；待实施） |
 | **类型** | SDD Task Spec（Spec 驱动实现；实现前以本文为准，实现后同步更新状态与验收清单） |
 | **目标** | 在现有单词查词弹窗基础上新增「整句翻译」入口：点击后在 Chrome 扩展的 Side Panel 中显示当前单词所在句子的英文原文 + 调用 AI 模型（Kimi / MiniMax）翻译出的中文整句译文；用户还可在侧边栏内点击原文中任意单词，在整句译文下方追加显示该词的释义（复用现有查词逻辑） |
 | **非目标** | 不改变现有查词弹窗内已有的单词翻译展示；不做侧边栏内的划词/多词选择整句翻译（仅覆盖"点击已高亮单词→查所在句"的路径）；不做翻译结果的本地持久化/历史记录；不在 v1 同时接入 Kimi 与 MiniMax 两个厂商（先实现一个，接口保留可替换点） |
@@ -23,9 +23,15 @@
 
 ## 2. 现状调查
 
-### 2.1 查词弹窗不是 React 组件，而是 content script 里手写的 DOM
+### 2.1 查词弹窗已是 React 组件（本节内容为 2026-07-31 Review 时更正，原 Draft 版本描述已过时）
 
-`src/components/WordPopup.tsx` 是一个基于 Jotai atom 的 React 组件，但 `grep -rn "WordPopup" src` 显示**它没有被任何地方 import**——真正在网页上显示的查词弹窗是 `content.ts` 里 `showWordPopup()` 手写的 `innerHTML` 字符串（约 L41-L173），配合 `setupPopupEventHandlers()`（约 L176-L251）绑定按钮事件。新增"整句翻译"按钮要加在**这份手写 HTML**里，不是 `WordPopup.tsx`（后者是死代码，本次不处理，不在 Spec 范围内）。
+Draft 版本（2026-07-30）曾调查得出"`src/components/WordPopup.tsx` 是死代码、没有任何地方 import，真正显示的弹窗是 `content.ts` 里手写的 innerHTML 字符串"的结论。Review 时重新核实代码，发现该结论已不成立：与本 Spec 撰写同期，仓库另有一条改造线（提交 `9adc7e8 popwindow react` → `f27380f popup react` → `0619faa fix enx chrome`）已经把查词弹窗切换成了真正的 React 渲染：
+
+- 文件已从 `content.ts` 重命名为 `content.tsx`。
+- `showWordPopup()`（`content.tsx` L48-160 附近）现在通过 `createRoot()` 在 Shadow DOM 内挂载 `<Provider store={contentScriptStore}><WordPopup ... /></Provider>`（`content.tsx:108-148`），`WordPopup.tsx` 是实际渲染内容的组件，并非死代码。
+- `setupPopupEventHandlers()` / `hideWordPopup()` 现在只负责 Popover 生命周期（`toggle` 事件、ESC、click-outside）与 React root 的 mount/unmount 配对，不再手写内容 HTML。
+
+**对实施的影响**：新增"🔤 整句翻译"按钮应作为 `WordPopup.tsx` 里的一个普通 React 按钮（放在现有"📚 Youdao / ✓ Know It"那一组 action buttons 旁边，`WordPopup.tsx` L129-153），通过 props 把点击回调传下去（参照 `onMarkAcquainted` 的传递方式），在 `content.tsx` 的 `showWordPopup()` 里实现该回调（调用 `WordProcessor.extractSentenceContext()` 取句 → `sendToBackground({type:'openSentencePanel', ...})`）。**不需要**、也不应该去找一份手写 HTML 字符串——那份代码已经不存在了。相应地，§6 文件索引里的 `content.ts` 改为 `content.tsx`，并新增 `WordPopup.tsx` 为需修改文件。
 
 ### 2.2 `chrome.action.onClicked` 目前是死代码
 
@@ -56,41 +62,32 @@
   → 点击后：
       1. content script 提取该单词所在句子（新逻辑，见 §3.4）
       2. 写入 chrome.storage.session（待处理上下文，见 §3.3）
-      3. 尝试直接打开 Side Panel（触发方式 B，见 §3.2，可能失败）
+      3. 尝试直接打开 Side Panel（触发路径③，见 §3.2，可能失败）
   → Side Panel（若已打开或本次打开成功）：
       1. 读取待处理上下文，展示英文原句
       2. 调用 enx-api 新端点做整句 AI 翻译，展示中文译文
       3. 用户点击原句中任意单词 → 复用现有 getOneWord 逻辑 → 在译文下方追加该词释义
-  → 若 Side Panel 未能直接打开（触发方式 B 失败）：
-      提示用户"已保存，请点击浏览器工具栏 ENX 图标查看"
-      → 用户点击工具栏图标（触发方式 A，见 §3.2，可靠）→ Side Panel 打开并读取到同一份待处理上下文
+  → 若 Side Panel 未能直接打开（触发路径③失败）：
+      提示用户"已保存，请点击工具栏 ENX 图标打开面板，或右键图标选择「打开整句翻译面板」"
+      → 用户走触发路径①或②（见 §3.2，均可靠）→ Side Panel 打开并读取到同一份待处理上下文
 ```
 
-### 3.2 Side Panel 触发方式：两种都实现
+### 3.2 Side Panel 触发方式（2026-07-31 Review 确认，替换 Draft 版 A1 方案）
 
-Chrome 要求 `chrome.sidePanel.open()` 必须响应"用户手势"，且**该 API 在 content script 里不可用**，必须经 background 中转。两种触发方式按用户要求都实现，互为兜底：
+Chrome 要求 `chrome.sidePanel.open()` 必须响应"用户手势"，且**该 API 在 content script 里不可用**，必须经 background 中转；但在扩展自己的页面（`popup.html`）里点击按钮、或在 `chrome.contextMenus.onClicked` 回调里调用，都是被 Chrome 认可的、未经转发的真实用户手势，可靠性明显高于"content script → `runtime.sendMessage` → background"这条转发链路。
 
-#### 触发方式 A（可靠，推荐主路径）：登录后把工具栏图标行为切到"直接打开 Side Panel"
+**Draft 版 A1 方案（登录后动态切换 `chrome.sidePanel.setPanelBehavior({openPanelOnActionClick: true})`）已废弃**：该方案会让 `popup.html`（含登出入口）在登录后无法再通过点图标访问，Review 认为这个取舍不必要——下面四条路径叠加即可覆盖所有场景，且不需要牺牲 `popup.html` 的图标入口。
 
-不使用 `chrome.action.onClicked`（已确认不可达，见 §2.2），改用官方 API `chrome.sidePanel.setPanelBehavior()`：
+四条触发路径（不互斥，任意一条成功即可，待处理上下文见 §3.3 始终先落盘）：
 
-- 未登录时：`setPanelBehavior({ openPanelOnActionClick: false })`（默认值，点图标继续打开 `popup.html` 走登录流程，不变）
-- 登录成功后（`handleCognitoSignIn` 落盘成功、以及 service worker 启动时读到已登录态）：`setPanelBehavior({ openPanelOnActionClick: true })`
+| 路径 | 触发方式 | 可靠性 | 说明 |
+| --- | --- | --- | --- |
+| ① `popup.html` 内按钮 | 左键点图标打开 `popup.html`（不变）→ 点击其中新增的"打开整句翻译面板"按钮 → 直接调用 `chrome.sidePanel.open({ windowId })` | 可靠 | popup 页面上下文里的点击是真实用户手势，未经转发。`popup.html` 默认图标目标不变，登录/登出流程完全不受影响 |
+| ② 右键图标 → 上下文菜单 | `background.ts` 用 `chrome.contextMenus.create({ id: 'enx-open-sentence-panel', title: '打开整句翻译面板', contexts: ['action'] })` 注册菜单项，`chrome.contextMenus.onClicked` 回调里调用 `chrome.sidePanel.open({ windowId: tab.windowId })` | 可靠 | 与左键点击互不冲突，右键菜单点击同样是 Chrome 认可的用户手势来源 |
+| ③ 查词弹窗按钮（原"触发方式 B"） | `content.tsx` 新增按钮点击处理：`sendToBackground({ type: 'openSentencePanel', tabId, sentence, word, sourceUrl })`；`background.ts` 消息处理新增 `case 'openSentencePanel'`：写入 `chrome.storage.session`（见 §3.3），然后 `try { await chrome.sidePanel.open({ tabId }) } catch (e) { /* 记录，不抛出 */ }` | 尽力而为 | **已知风险**：content script 触发的用户手势通常无法通过 `runtime.sendMessage` 传递到 background，Chrome 可能报 `may only be called in response to a user gesture` 并 reject。这属于预期内的失败，不算 bug——处理器无论 `sidePanel.open()` 成功与否都必须返回 `{ success: true, panelOpened: boolean }`，content script 据此决定是否显示"请点击/右键工具栏图标"的提示 |
+| ④（无需实现）关闭面板 | 无 | 不可行 | `chrome.sidePanel` API 只有 `open()` / `setOptions()` / `setPanelBehavior()` / `getOptions()` / `getPanelBehavior()`，**没有 `close()`**——这是 Chrome 的既定设计，扩展没有编程关闭 Side Panel 的能力。关闭一律交给 Chrome 面板自带的关闭控件，本 Spec 不做任何"关闭"按钮 |
 
-  **⚠️ 需在 Review 中确认的取舍**：`openPanelOnActionClick: true` 会让点击图标**始终**打开 Side Panel，`popup.html`（含登出入口）将不再能通过点图标访问。当前 `popup.html` 除登录表单外还有 `DebugPanel`（仅开发环境）。建议登出入口后续迁移到 Side Panel 内的一个小设置区域，或保留 `chrome.action.openPopup()` 之外的入口（如右键扩展图标菜单）。本 Spec 范围内先接受这个取舍，若 Review 认为不可接受，可退回选项：不动态切换，改成始终 `openPanelOnActionClick: true` 且把登录表单也一并迁移进 Side Panel（工作量更大，列为备选，见下表）。
-
-  | 选项 | 说明 | 结论 |
-  | --- | --- | --- |
-  | A1. 登录后动态切换 `openPanelOnActionClick` | 如上 | **本 Spec 采用**，改动最小 |
-  | A2. 始终 `openPanelOnActionClick: true`，登录表单迁入 Side Panel | 彻底放弃 `popup.html` 作为图标入口 | 改动面过大，超出本次范围，列入 §9 后续扩展 |
-  | A3. 保留 `chrome.contextMenus`，右键菜单项打开 Side Panel | 也是 Chrome 官方认可的用户手势来源 | 不是用户本次要求的两种方式之一，暂不实现，可作为 A1 之外的第三兜底记录在案 |
-
-#### 触发方式 B（尽力而为，弹窗按钮直连）：查词弹窗按钮点击 → 消息转发 → background 尝试 `sidePanel.open()`
-
-- `content.ts` 新增按钮点击处理：`sendToBackground({ type: 'openSentencePanel', tabId, sentence, word, sourceUrl })`。
-- `background.ts` 消息处理新增 `case 'openSentencePanel'`：写入 `chrome.storage.session`（见 §3.3），然后 `try { await chrome.sidePanel.open({ tabId }) } catch (e) { /* 记录，不抛出 */ }`。
-- **已知风险**：content script 触发的用户手势通常无法通过 `runtime.sendMessage` 传递到 background，Chrome 可能报 `may only be called in response to a user gesture` 并 reject。**这属于预期内的失败**，不算 bug——`openSentencePanel` 处理器无论 `sidePanel.open()` 成功与否都必须返回 `{ success: true, panelOpened: boolean }`，content script 据此决定是否显示"请点击工具栏图标"的提示。
-- 因为待处理上下文已经落盘（无论 A/B 哪个先执行成功），两种触发方式不是互斥的"二选一"，而是"B 失败时 A 兜底，且内容一致"。
+因为待处理上下文已经落盘（无论①②③哪条先触发成功），四条路径不是互斥的"选一个"，而是互为兜底、内容一致。
 
 ### 3.3 待处理句子上下文（Side Panel 与弹窗之间的数据契约）
 
@@ -138,14 +135,12 @@ static extractSentenceContext(
 - 配置：`config.toml` 新增 `[sentence-translate]` 段（`provider`、`model`、`base-url`，均非密钥），API Key 通过环境变量注入（如 `KIMI_API_KEY` / `MINIMAX_API_KEY`，对应 `viper.GetString("sentence-translate.api-key")`），**绝不写入 `config.toml`**，与 `resend.api-key` 先例一致。
 - **必须新增测试**：`aitranslate` 包单测（mock HTTP client，覆盖成功/超时/非 200 响应）；`translate` 或新 handler 的集成测试覆盖 502 路径。
 
-### 3.6 AI Provider 选型：Kimi vs MiniMax（待 Review 确认）
+### 3.6 AI Provider 选型：Kimi（2026-07-31 Review 已确认）
 
-| 选项 | 说明 | 备注 |
+| 选项 | 说明 | 结论 |
 | --- | --- | --- |
-| **Kimi（Moonshot AI）** | Chat Completions 接口与 OpenAI 格式兼容，集成成本低，国内访问稳定 | **本 Spec 推荐**，v1 优先实现 |
-| **MiniMax** | 同样是国内可用的 Chat/Completion API | 接口细节需另外确认；作为 `Translator` 接口的第二实现，留待需要时再补，不在 v1 一起做（避免为一个尚未验证需求的"多 provider"预先做两套集成） |
-
-请在 Review 时确认：v1 先接 Kimi 是否可接受；`Translator` 接口设计是否足以支撑未来切换/新增 provider。
+| **Kimi（Moonshot AI）** | Chat Completions 接口与 OpenAI 格式兼容，集成成本低，国内访问稳定 | **已确认采用**，v1 实现 |
+| **MiniMax** | 同样是国内可用的 Chat/Completion API | 不在 v1 实现，作为 `Translator` 接口的第二实现留待未来需要时再补（见 §9） |
 
 ### 3.7 Side Panel 页面（`enx-chrome`）
 
@@ -162,17 +157,18 @@ static extractSentenceContext(
 
 ## 4. 验收标准
 
-### 4.1 触发方式 A（工具栏图标）
+### 4.1 触发路径①②（工具栏图标：左键 popup 按钮 / 右键菜单）
 
-- [ ] 未登录状态下点击工具栏图标，行为不变（打开 `popup.html` 登录表单）
-- [ ] 登录成功后（新开窗口或刷新 service worker 后）点击工具栏图标，直接打开 Side Panel，而不是 `popup.html`
+- [ ] 左键点击工具栏图标，行为不变（打开 `popup.html`，登录/登出流程不受影响）
+- [ ] `popup.html` 内新增按钮，点击后直接打开 Side Panel（不依赖 pending context 也能打开，展示空状态）
+- [ ] 右键点击工具栏图标，出现"打开整句翻译面板"菜单项，点击后直接打开 Side Panel
 - [ ] Side Panel 打开时若无 pending context，显示空状态提示文案（而非空白/报错）
 
-### 4.2 触发方式 B（查词弹窗按钮）
+### 4.2 触发路径③（查词弹窗按钮）
 
-- [ ] 查词弹窗新增「🔤 整句翻译」按钮，不影响原有单词释义/发音/Mark Known 展示
+- [ ] 查词弹窗新增「🔤 整句翻译」按钮（`WordPopup.tsx` 内，与现有 Youdao/Know It 按钮同一区域），不影响原有单词释义/发音/Mark Known 展示
 - [ ] 点击按钮后，无论 `sidePanel.open()` 是否成功，`chrome.storage.session` 里都能读到最新 `enx-pending-sentence`
-- [ ] 若 `sidePanel.open()` 因用户手势限制失败，弹窗内出现"请点击工具栏图标查看"提示，不报未捕获异常（控制台无红色 Error）
+- [ ] 若 `sidePanel.open()` 因用户手势限制失败，弹窗内出现"请点击/右键工具栏图标查看"提示，不报未捕获异常（控制台无红色 Error）
 - [ ] 若 `sidePanel.open()` 成功，Side Panel 直接弹出并展示对应句子
 
 ### 4.3 句子提取
@@ -190,7 +186,7 @@ static extractSentenceContext(
 
 - [ ] 原句内每个单词可点击，点击后在译文下方追加该词释义
 - [ ] 该释义内容与查词弹窗里的释义一致（同一 `getOneWord` 数据源，非另起一套）
-- [ ] 连续点击多个不同单词，释义追加而非互相覆盖（或明确只保留最近一次，需在实现时与产品预期二次确认——本 Spec 默认"追加"，如需"仅保留最近一条"请在 Review 时提出）
+- [ ] 连续点击多个不同单词，释义追加显示（不互相覆盖，2026-07-31 Review 已确认）
 
 ### 4.6 已开面板的实时更新
 
@@ -202,8 +198,8 @@ static extractSentenceContext(
 
 | 风险 | 缓解 |
 | --- | --- |
-| `openPanelOnActionClick: true` 让 `popup.html` 图标入口失效，登出等功能暂时没有图标入口 | §3.2 A1 已标注为待 Review 确认项；短期可接受，登出可临时保留在 Side Panel 内一个小设置区 |
-| 触发方式 B 在当前/未来 Chrome 版本上是否真的会因用户手势限制失败，行为不确定 | 按"两种都实现，互为兜底"设计，无论 B 是否失败功能都可用；不依赖 B 一定成功 |
+| 查词弹窗按钮（路径③）在当前/未来 Chrome 版本上是否真的会因用户手势限制失败，行为不确定 | 按"四条路径叠加，互为兜底"设计（见 §3.2），无论③是否失败，①/②两条可靠路径都能打开面板 |
+| Side Panel 没有编程关闭接口 | 不做"关闭"按钮，明确交给 Chrome 面板自带关闭控件，写入 §3.2/§4 验收标准，避免误以为是遗漏 |
 | `Intl.Segmenter` 句子切分对口语化/无标点文本效果有限 | 兜底返回整个容器文本，不因切句失败导致功能不可用 |
 | AI Provider（Kimi/MiniMax）响应慢，Side Panel 长时间 loading | 需设置合理超时（建议 10s）+ loading 态明确提示，超时按 502 处理 |
 | API Key 若误写入 `config.toml` 或提交到仓库 | 严格遵循 `resend.api-key` 先例，仅走环境变量；提交前 review 确认 `config.toml` 无明文 key |
@@ -215,14 +211,16 @@ static extractSentenceContext(
 
 | 文件 | 说明 |
 | --- | --- |
-| `enx-chrome/manifest.json` | 新增 `sidePanel` permission、`side_panel.default_path` |
+| `enx-chrome/manifest.json` | 新增 `sidePanel`、`contextMenus` permission、`side_panel.default_path` |
 | `enx-chrome/sidepanel.html` | 新增，Side Panel 入口 HTML |
 | `enx-chrome/src/sidepanel/SidePanel.tsx` | 新增，Side Panel React 组件（英文原句 + AI 译文 + 单词点击释义） |
 | `enx-chrome/src/lib/wordProcessor.ts` | 新增 `extractSentenceContext()` |
-| `enx-chrome/src/content/content.ts` | 查词弹窗新增「整句翻译」按钮与点击处理（触发方式 B） |
+| `enx-chrome/src/components/WordPopup.tsx` | 新增「🔤 整句翻译」按钮（与现有 Youdao/Know It 按钮同区域），新增 `onOpenSentencePanel` 之类的 prop |
+| `enx-chrome/src/content/content.tsx` | `showWordPopup()` 里实现整句翻译按钮回调：`WordProcessor.extractSentenceContext()` 取句 → `sendToBackground({type:'openSentencePanel', ...})`（触发路径③） |
 | `enx-chrome/src/content/__tests__/` | 新增句子提取单测 |
-| `enx-chrome/src/background/background.ts` | 新增 `openSentencePanel` / `translateSentence` message handler；登录状态变化时调用 `setPanelBehavior`（触发方式 A） |
-| `enx-api/aitranslate/` | 新增，`Translator` 接口 + Kimi（或 MiniMax）实现 |
+| `enx-chrome/src/background/background.ts` | 新增 `openSentencePanel` / `translateSentence` message handler；新增 `chrome.contextMenus` 注册与 `onClicked` 处理（触发路径②） |
+| `enx-chrome/src/popup/Popup.tsx` / `popup.html` | 新增"打开整句翻译面板"按钮，直接调用 `chrome.sidePanel.open()`（触发路径①） |
+| `enx-api/aitranslate/` | 新增，`Translator` 接口 + Kimi 实现 |
 | `enx-api/translate/service.go` / `helpers.go` | 视最终路由挂载位置决定是否调整；`respondSentenceUnavailable` 的占位文案不再是唯一出路 |
 | `enx-api.go` | 注册 `POST /api/translate/sentence` |
 | `enx-api/config.toml` | 新增 `[sentence-translate]` 非密钥配置段 |
@@ -233,14 +231,15 @@ static extractSentenceContext(
 ## 7. 实施顺序（建议）
 
 ```text
-1. [ ] enx-api: 新增 aitranslate 包 + /api/translate/sentence 端点 + 单测/集成测试
+1. [ ] enx-api: 新增 aitranslate 包（Kimi 实现）+ /api/translate/sentence 端点 + 单测/集成测试
        （先把后端能力做完并可用 curl 独立验证，不依赖前端）
 2. [ ] enx-chrome: WordProcessor.extractSentenceContext() + 单测
        （纯逻辑，先用现有测试基础设施验证，不依赖 UI）
-3. [ ] enx-chrome: 查词弹窗新增「整句翻译」按钮 + storage.session 写入 + 触发方式 B
-4. [ ] enx-chrome: Side Panel 页面（读取 pending context → 调整句翻译 → 单词点击释义）
-5. [ ] enx-chrome: 触发方式 A（登录状态联动 setPanelBehavior）
-6. [ ] 本地 unpacked 加载，手工验证 §4 全部验收项（尤其触发方式 A/B 的真实 Chrome 行为，无法用单测替代）
+3. [ ] enx-chrome: WordPopup.tsx 新增「整句翻译」按钮 + content.tsx 里的回调实现
+       （取句 + storage.session 写入 + 触发路径③）
+4. [ ] enx-chrome: Side Panel 页面（读取 pending context → 调整句翻译 → 单词点击释义，追加显示）
+5. [ ] enx-chrome: 触发路径①（popup.html 按钮直连 sidePanel.open()）+ 路径②（右键 contextMenus）
+6. [ ] 本地 unpacked 加载，手工验证 §4 全部验收项（尤其①②③三条触发路径的真实 Chrome 行为，无法用单测替代）
 7. [ ] 勾选 §4 全部验收项，文首状态更新为 Done — YYYY-MM-DD
 ```
 
@@ -248,7 +247,7 @@ static extractSentenceContext(
 
 ## 8. SDD 工作方式（给 Agent / 开发者）
 
-1. **实现前**：以本文 Spec 为唯一需求来源；§3.2/§3.6 标注的"待 Review 确认"项必须先拿到明确答复再动手，不要自行决定后直接实现。
+1. **实现前**：以本文 Spec 为唯一需求来源；§3.2/§3.6/§4.5 原"待 Review 确认"项已于 2026-07-31 拿到明确答复（见各小节），按更新后的内容实现，不要参照已废弃的 Draft 版描述（如 A1 方案、`content.ts` 手写 HTML）。
 2. **实现中**：严格按 §7 分步提交，每步跑一次对应测试；enx-api 与 enx-chrome 改动建议分开提交，便于 review。
 3. **实现后**：勾选 §4 验收清单；将文首**状态**更新为 `Done — YYYY-MM-DD`。
 
@@ -256,7 +255,6 @@ static extractSentenceContext(
 
 ## 9. 后续扩展（Out of Scope，供未来 Spec 引用）
 
-- §3.2 A2：彻底放弃 `popup.html` 图标入口，登录表单迁入 Side Panel
 - §3.6：MiniMax 作为 `Translator` 接口的第二实现，或按用户配置切换 provider
 - 整句翻译结果本地缓存/历史记录
 - Side Panel 内支持划词（选中多个词）触发整句翻译，而不仅限于点击已高亮单词

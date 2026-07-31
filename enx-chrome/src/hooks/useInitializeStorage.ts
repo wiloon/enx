@@ -1,5 +1,4 @@
 import { getApiBaseUrl } from '@/config/env'
-import { apiService } from '@/services/api'
 import { apiBaseUrlAtom, sessionAtom, userAtom } from '@/store/atoms'
 import { useSetAtom } from 'jotai'
 import { useEffect } from 'react'
@@ -14,7 +13,6 @@ export const useInitializeStorage = () => {
       try {
         const apiUrl = await getApiBaseUrl()
         setApiBaseUrl(apiUrl)
-        apiService.setBaseUrl(apiUrl)
 
         const result = await chrome.storage.local.get([
           'enx-user',
@@ -41,10 +39,8 @@ export const useInitializeStorage = () => {
 
         if (token) {
           setSession({ accessToken: token, refreshToken: refresh })
-          apiService.setAccessToken(token)
         } else {
           setSession({ accessToken: '', refreshToken: '' })
-          apiService.setAccessToken('')
         }
       } catch (error) {
         console.error('Error initializing from storage:', error)
@@ -66,10 +62,8 @@ export const useInitializeStorage = () => {
         const token = changes.accessToken.newValue as string
         if (token) {
           setSession({ accessToken: token, refreshToken: '' })
-          apiService.setAccessToken(token)
         } else {
           setSession({ accessToken: '', refreshToken: '' })
-          apiService.setAccessToken('')
         }
       }
     }

@@ -104,7 +104,7 @@ const handleSessionExpiry = async () => {
   }
 }
 
-type ApiRequestResult = {
+export type ApiRequestResult = {
   success: boolean
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data?: any
@@ -254,6 +254,9 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
         case 'markAcquainted':
           return await handleMarkAcquainted(request.word, request.userId)
+
+        case 'validateSession':
+          return await makeApiRequest('/api/me')
 
         case 'cognitoSignIn':
           return await handleCognitoSignIn()

@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Draft — 2026-07-31（待 Review；ECDICT tag 数据源未验证前不可开始 §7 步骤 2 及之后的实施） |
+| **状态** | Draft — 2026-07-31（待 Review；§0 已用真实数据文件验证通过，可以开始 §7 步骤 2 及之后的实施） |
 | **类型** | SDD Task Spec（Spec 驱动实现；实现前以本文为准，实现后同步更新状态与验收清单） |
 | **目标** | 让登录用户在 `enx-ui` 查看自己在雅思词库范围内、已查询过的词的掌握进度：总览统计（已掌握/未掌握/重点复习）、词表明细、掌握率历史趋势曲线。数据层给 `words` 表打上 `is_ielts`/`is_cet4`/`is_cet6`/`is_toefl` 四个标记，通过两条路径维护：生产查询路径在缓存未命中新插入词时顺带打标（持续生效），批量脚本回填改造上线前已存在的历史行（一次性）。本次看板 UI 只做雅思视图 |
 | **非目标** | 不做 Web 端标记/编辑入口；不做 CET4/CET6/托福的看板 UI（数据层已打标，UI 复用留给未来 Spec）；不改变现有 `POST /api/mark` 行为；不做词库内容的后台管理界面；不做"阅读障碍"独立状态；不回填 `words` 表里"生产路径改造之前、ECDICT 里也没有"的词（批量脚本只处理已存在的行，见 ADR-003）；不修复 `words` 表既存的大小写重复行问题 |
@@ -11,9 +11,15 @@
 
 ---
 
-## 0. 前置阻塞项（实施前必须解决）
+## 0. 前置阻塞项（已解决，2026-07-31 验证通过）
 
-需要确认 ECDICT 挂载的实际数据文件里 `tag` 列是否有可用内容（不同版本/精简版 ECDICT 数据可能不含该列或为空）。**在此验证之前，不要开始 §7 步骤 2（生产路径改造、数据库迁移）及之后的任何步骤**——如果 `tag` 列实际是空的，本 Spec 整个"顺带打标"的设计需要先解决数据源问题（见 ADR-003 Revisit Trigger），而不是先写代码再发现打不出标。
+homelab k8s 的 `enx` namespace 下 `enx-api` Pod 实际挂载的 ECDICT 数据文件（`enx-ecdict-data` PVC，容器内路径 `/var/lib/enx-ecdict/stardict.db`）已用 `kubectl cp` 复制到本地并直接查询验证：
+
+- `stardict` 表共 **3,402,564** 行，`tag` 列**确实存在且有值**，格式是空格分隔的小写 token 字符串（如 `"cet6 toefl ielts"`），与 §3.2 `ParseExamTags` 的 `switch` 假设完全吻合，token 拼写就是 `ielts`/`cet4`/`cet6`/`toefl`，不需要调整。
+- 按精确 token 匹配（避免子串误命中）统计到的命中量级：**ielts 5040、cet4 3849、cet6 5407、toefl 6974**。这是"ECDICT 全库里带有该标签的词数"，不是"用户 `words` 表里能被标记的词数"——实际能打上标的数量取决于 `words` 表当时已经缓存了多少这些词（见 ADR-003 Decision 4 的既定约束：不回填缺失词）。
+- `stardict.word` 列本身带 `UNIQUE COLLATE NOCASE` 约束，即 **ECDICT 源数据不存在大小写重复行**——大小写重复只可能出现在 enx 自己的 `words` 缓存表里（见 §2.2），不是 ECDICT 数据的问题。
+
+**本地开发副本**：文件已放在 `enx-api/.local-data/ecdict/stardict.db`（已加入 `.gitignore`，不提交），并把 `enx-api/.env` 的 `ECDICT_DB_PATH` 指向这个路径，本地跑 `enx-api` 即可直接使用，不需要每个开发者各自重新下载/复制。
 
 ---
 
@@ -121,7 +127,7 @@ func ParseExamTags(tag string) ExamTags {
 }
 ```
 
-具体 ECDICT tag 值的拼写（是 `ielts` 还是别的写法）需要在 §7 步骤 1 用实际数据文件核实后再定，上面的 `switch` 分支值是待验证的假设，不是确认过的事实。
+上面的 `switch` 分支值（`ielts`/`cet4`/`cet6`/`toefl`）已用实际 ECDICT 数据文件核实（见 §0），确认无误。
 
 `stardict` struct（`ecdict.go:25-31`）加 `Tag string \`gorm:"column:tag"\``；`enx.Dictionary`（`enx.go:3-8`）加 `Tag string`；`Query()` 返回构造处（`ecdict.go:118-123`）把 `res.entry.Tag` 一并赋给返回的 `Dictionary.Tag`。
 
@@ -186,9 +192,10 @@ word.IsToefl = tags.Toefl
 
 ## 4. 验收标准
 
-### 4.1 ECDICT tag 数据验证（§0 前置阻塞项的落地检查）
+### 4.1 ECDICT tag 数据验证（§0 已完成，此处作为回归检查项保留）
 
-- [ ] 用实际挂载的 ECDICT 数据文件查询若干已知的雅思/CET4/CET6/托福词，确认 `tag` 列非空且包含预期标签值；若为空或格式与假设不符，先更新 §3.2 的 `switch` 分支再继续后续步骤
+- [x] 用实际挂载的 ECDICT 数据文件查询若干已知的雅思/CET4/CET6/托福词，确认 `tag` 列非空且包含预期标签值（2026-07-31 已用 `enx-api/.local-data/ecdict/stardict.db` 验证，见 §0）
+- [ ] 代码实现的 `ParseExamTags` 单测里加入 §0 记录的真实样例（如 `"cet6 toefl ielts"` → `{Cet6:true, Toefl:true, Ielts:true, Cet4:false}`），确认解析逻辑与真实数据格式一致，不只是和虚构样例一致
 
 ### 4.2 写入路径 A（生产路径顺带打标）
 
@@ -227,7 +234,7 @@ word.IsToefl = tags.Toefl
 
 | 风险 | 缓解 |
 | --- | --- |
-| ECDICT 数据文件的 `tag` 列可能为空或格式与假设不符 | §0/§4.1 作为前置验证，未通过不继续后续步骤 |
+| ECDICT 数据文件的 `tag` 列可能为空或格式与假设不符 | 已用 homelab 实际数据文件验证通过（§0），风险已排除；若未来 ECDICT 数据文件被替换为其它版本，需要重新跑一次 §4.1 的验证 |
 | 改造了生产查询路径（`fillFromEcdict`），有回归风险 | §4.2 明确要求既有字段行为（English/Chinese/Pronunciation）不受影响的回归测试；改动只新增字段赋值，不修改既有逻辑分支 |
 | 批量脚本逐词调用 `ecdict.Query()`，历史数据量大时耗时可能较长 | 一次性运维脚本，不要求实时性；若实测过慢可加并发（多个 goroutine 分片处理），实施时按实际数据量决定是否需要 |
 | 统计口径只覆盖"已查询过的词" | ADR-003 已记录为确认过的产品取舍；看板文案需要说明这一点 |
@@ -247,6 +254,7 @@ word.IsToefl = tags.Toefl
 | `enx-api/repo/ecp.go` | `Word` struct（DB 层）加四个字段 |
 | `enx-api/translate/helpers.go` | `fillFromEcdict()` 调用 `ParseExamTags` |
 | `enx-api/cmd/tag-wordlists/main.go`（新增） | 批量回填脚本，复用 `ecdict.Query`/`ParseExamTags` |
+| `enx-api/.local-data/ecdict/stardict.db`（本地数据，已 gitignore） | 从 homelab k8s 复制的 ECDICT 数据文件本地开发副本，`enx-api/.env` 的 `ECDICT_DB_PATH` 已指向此路径 |
 | `enx-api/handlers/wordlist.go`（新增） | `/api/word-lists/ielts/*` |
 | `enx-ui/src/app/wordlists/ielts/`（新增） | 看板页面 |
 | `docs/architecture/adr-003-ielts-wordlist-mastery-model.md` | 关联决策记录 |
@@ -256,7 +264,7 @@ word.IsToefl = tags.Toefl
 ## 7. 实施顺序（建议）
 
 ```text
-1. [ ] 验证 ECDICT 数据文件 tag 列实际内容（§0/§4.1），确认 §3.2 的标签值假设是否需要调整
+1. [x] 验证 ECDICT 数据文件 tag 列实际内容（§0/§4.1，已用 enx-api/.local-data/ecdict/stardict.db 完成）
 2. [ ] 数据库迁移：008_words_exam_tags.sql
 3. [ ] ecdict 包改造：stardict/Dictionary 加 Tag，新增 ParseExamTags（§3.2）
 4. [ ] 写入路径 A：enx.Word/repo.Word 加字段，fillFromEcdict 改造，Word.Save 改造（§3.3）
@@ -274,7 +282,7 @@ word.IsToefl = tags.Toefl
 
 ## 8. SDD 工作方式（给 Agent / 开发者）
 
-1. **实现前**：以本文与 [ADR-003](../architecture/adr-003-ielts-wordlist-mastery-model.md) 为唯一需求来源；§0/步骤 1 未验证通过前不进入步骤 2 及之后。
+1. **实现前**：以本文与 [ADR-003](../architecture/adr-003-ielts-wordlist-mastery-model.md) 为唯一需求来源；§0/步骤 1 已验证通过（见上），可以从步骤 2 开始实施。
 2. **实现中**：严格按 §7 分步提交；写入路径 A（改动生产路径）和路径 B（新增运维脚本）分开提交，便于分别 review 回归风险。
 3. **实现后**：勾选 §4 验收清单；状态更新为 `Done — YYYY-MM-DD`；ADR-003 状态同步改为 `Accepted`。
 

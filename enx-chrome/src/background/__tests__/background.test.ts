@@ -20,6 +20,16 @@ jest.mock('@/lib/cognito', () => ({
 import { refreshCognitoTokens } from '@/lib/cognito'
 import { loadSession, makeApiRequest } from '../background'
 
+// Captured immediately at import time, before any test's `resetAllMocks()`
+// wipes `chrome.runtime.onMessage.addListener`'s call history: importing
+// `../background` registers this listener as a top-level side effect.
+const onMessageListener = (chrome.runtime.onMessage.addListener as jest.Mock)
+  .mock.calls[0][0] as (
+  request: unknown,
+  sender: unknown,
+  sendResponse: (response: unknown) => void
+) => boolean
+
 function jsonResponse(status: number, body: unknown, ok = status < 400) {
   return {
     ok,
@@ -153,5 +163,96 @@ describe('background makeApiRequest / token refresh', () => {
     expect(resultA.success).toBe(true)
     expect(resultB.success).toBe(true)
     expect(refreshCognitoTokens).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('background onMessage / validateSession', () => {
+  const listener = onMessageListener
+
+  let storageFixture: Record<string, unknown>
+
+  beforeEach(async () => {
+    jest.resetAllMocks()
+
+    storageFixture = {
+      accessToken: 'old-access-token',
+      refreshToken: 'valid-refresh-token',
+    }
+    ;(chrome.storage.local.get as jest.Mock).mockImplementation(
+      async (keys: string[]) => {
+        const result: Record<string, unknown> = {}
+        for (const key of keys) {
+          if (key in storageFixture) result[key] = storageFixture[key]
+        }
+        return result
+      }
+    )
+    ;(chrome.storage.local.set as jest.Mock).mockResolvedValue(undefined)
+    ;(chrome.storage.local.remove as jest.Mock).mockResolvedValue(undefined)
+    ;(chrome.tabs.query as jest.Mock).mockResolvedValue([{ id: 1 }])
+    ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
+    ;(global.fetch as jest.Mock) = jest.fn()
+
+    await loadSession()
+  })
+
+  it('routes popup session checks through makeApiRequest, including its silent refresh', async () => {
+    // Same scenario as the "silently refreshes" test above (§3.5 fix): a
+    // popup validateSession check that hits an expired access token must
+    // get the same refresh-and-retry treatment as content-script requests,
+    // instead of the old ApiService path that gave up on the first 401.
+    ;(global.fetch as jest.Mock)
+      .mockResolvedValueOnce(jsonResponse(401, {}))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          id: '1',
+          name: 'Test User',
+          email: 'test@example.com',
+          status: 'active',
+        })
+      )
+    ;(refreshCognitoTokens as jest.Mock).mockResolvedValue({
+      access_token: 'new-access-token',
+      refresh_token: 'new-refresh-token',
+    })
+
+    const response = await new Promise(resolve => {
+      const keepChannelOpen = listener(
+        { type: 'validateSession' },
+        {},
+        resolve
+      )
+      expect(keepChannelOpen).toBe(true)
+    })
+
+    expect(response).toEqual({
+      success: true,
+      data: {
+        id: '1',
+        name: 'Test User',
+        email: 'test@example.com',
+        status: 'active',
+      },
+    })
+    expect(refreshCognitoTokens).toHaveBeenCalledWith('valid-refresh-token')
+    expect(global.fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports session-expired when refresh also fails, without clearing storage twice', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(401, {}))
+    ;(refreshCognitoTokens as jest.Mock).mockRejectedValue(
+      new Error('Token refresh failed: 400')
+    )
+
+    const response = await new Promise(resolve => {
+      listener({ type: 'validateSession' }, {}, resolve)
+    })
+
+    expect(response).toEqual({
+      success: false,
+      error: 'Your session has expired. Please login again.',
+      sessionExpired: true,
+    })
+    expect(chrome.storage.local.remove).toHaveBeenCalledTimes(1)
   })
 })

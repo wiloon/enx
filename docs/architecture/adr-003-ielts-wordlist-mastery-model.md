@@ -76,12 +76,12 @@ ALTER TABLE words ADD COLUMN is_toefl BOOLEAN NOT NULL DEFAULT 0;
 ### Negative
 
 - **改动了生产查询路径**（`fillFromEcdict`/`Word.Save`/`ecdict.Query`），这是第一次修订原本刻意避免的（当时决定"标记逻辑不碰生产路径，只用批量脚本"）。本次修订主动接受这个代价，因为"数据持续滞后"被认为是更大的问题；改动面集中在"多读一个字段、多算四个布尔值、多写四个列"，不改变现有查询结果的语义（`English/Chinese/Pronunciation` 完全不变），回归风险可控。
-- ECDICT 挂载的具体数据文件如果本身没有 `tag` 列或该列为空（比如用的是精简版 ECDICT 数据），`ParseExamTags` 会对空字符串返回全 `false`，这是优雅降级（不报错、不阻塞查词功能），但需要在实施时用实际数据文件验证 `tag` 列确实有值，否则路径 A 和路径 B 都会全程写入 `0`，起不到效果却不会报错提示。
+- ECDICT 挂载的具体数据文件如果本身没有 `tag` 列或该列为空，`ParseExamTags` 会对空字符串返回全 `false`，这是优雅降级（不报错、不阻塞查词功能）——**已用 homelab 实际数据文件验证 `tag` 列确实有值**（见 Open Question），这一条风险已排除，不再是待验证项。
 - 批量脚本（路径 B）仍然是运维性质的一次性工具，需要人工在路径 A 上线后手动跑一次，覆盖历史行；这一步骤如果被忘记，历史行会一直是 `0`，直到用户偶然重新触发同一个词的查询（但缓存命中的词不会重新走 `fillFromEcdict`，所以历史行实际上**永远不会**被路径 A 间接修复，必须依赖路径 B）。
 
 ### Mitigation
 
-- 实施时第一步（Task Spec §7 步骤 1）先验证 ECDICT 数据文件的 `tag` 列是否有实际内容，避免在假数据前提下完成开发。
+- ECDICT 数据文件的 `tag` 列内容已在 Review 阶段核实（Task Spec §0），避免了在假数据前提下完成开发的风险。
 - 批量脚本作为路径 A 上线后的**必需**后续步骤写入 Task Spec 验收标准，不是可选项。
 
 ---
@@ -95,6 +95,6 @@ ALTER TABLE words ADD COLUMN is_toefl BOOLEAN NOT NULL DEFAULT 0;
 
 ---
 
-## Open Question（非本 ADR 决策范围，实施前需确认）
+## Open Question（已解决，2026-07-31）
 
-批量脚本（路径 B）用来回填历史行时依赖的 ECDICT 数据文件版本/`tag` 列实际内容尚未核实（见 Task Spec §0、§7 步骤 1）。
+批量脚本（路径 B）依赖的 ECDICT 数据文件已从 homelab k8s（`enx` namespace，`enx-api` Pod 挂载的 `enx-ecdict-data` PVC）复制到本地核实：`tag` 列确实存在，格式与 §3.2/Task Spec §3.2 的解析假设一致（空格分隔小写 token），`ielts`/`cet4`/`cet6`/`toefl` 四个 token 精确命中量级分别为 5040/3849/5407/6974（ECDICT 全库口径，不是 `words` 表口径）。详见 Task Spec §0。本地开发副本存放于 `enx-api/.local-data/ecdict/stardict.db`（已 gitignore），`enx-api/.env` 的 `ECDICT_DB_PATH` 已指向该路径。

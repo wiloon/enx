@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | In Progress — 2026-07-31（自动化实现 + 单测已完成，手工真机验证待作者补充） |
+| **状态** | In Progress — 2026-07-31（`enx-chrome`/`enx-ui` 的统一请求出口自动化实现 + 单测已完成；手工真机验证中发现并已修复 **§2.4 的调研结论有误**导致的遗漏——`enx-chrome` 存在第二个未接入刷新逻辑的请求出口 `ApiService`（popup 专用），是"刷新成功但 popup 仍要求登录"的根因，详见 §2.5；修复方案见 §3.5，代码已实现、单测已补、`tsc`/`jest`/`vite build` 均过；仅剩两端的手工真机过期场景验证待补充） |
 | **类型** | SDD Task Spec（Spec 驱动实现；实现前以本文为准，实现后同步更新状态与验收清单） |
 | **目标** | 用户已用 Google（或 email）登录 Cognito 后，`access_token` 过期（1 小时）不应强制用户重新登录：在 `enx-chrome` 与 `enx-ui` 的统一 API 请求出口处，收到 401 时先用已持有的 `refresh_token` 静默换新 `access_token` 并重试一次原请求，只有 refresh 本身也失败时才走现有"Session expired"流程 |
 | **非目标** | 不引入 `aws-amplify` / `amazon-cognito-identity-js`，继续沿用仓库现有的手写 `fetch` 风格（见 [ADR-004](../architecture/adr-004-no-aws-amplify-hand-rolled-cognito.md)）；不做基于 `expires_in`/JWT 过期时间的**主动**预刷新（仅做 401 触发的**被动**刷新，见 §3.1 决策）；不改 Cognito App Client 的 `refresh_token` 有效期等 Cognito 控制台/基础设施配置；不改 `content.tsx` 里 `sessionExpired` 的展示逻辑（该逻辑保留作为 refresh 也失败时的最终兜底，本身没有 bug）；不清理 `enx-chrome/src/services/api.ts` 里未被引用的死代码 `ApiService`（见 §2.4，另起 Spec 处理） |
@@ -42,9 +42,33 @@ Cognito 签发的 `access_token`/`id_token` 默认 1 小时过期，但 `refresh
 
 两端的 `refresh_token` 都已正确持久化，`enx-chrome` 甚至连 Cognito 侧的刷新函数都写好并测过了——**唯独在真正发起请求、拿到 401 的那个环节，没有人把两者接起来**。这不是"Cognito/Google 不支持续期"，而是纯粹的实现缺口。
 
-### 2.4 顺带发现，明确不在本次范围内
+### 2.4 ~~顺带发现，明确不在本次范围内~~（结论有误，见 §2.5 更正）
 
-`enx-chrome/src/services/api.ts` 里还有一个 `ApiService` class（含 `getMe`/`lookupWord`/`deleteWord`），`grep -rn "services/api" enx-chrome/src` 显示它**没有被任何地方 import**——真正生效的请求出口是 `background.ts` 里的 `makeApiRequest`（同 §2.1）。这份死代码本次不处理，避免在修 bug 的同时扩大改动面；如需清理请另开 Spec。
+> **本节结论已被 §2.5 推翻，保留原文仅作调研过程存档，请勿依据本节判断 `ApiService` 是否需要处理。**
+
+`enx-chrome/src/services/api.ts` 里还有一个 `ApiService` class（含 `getMe`/`lookupWord`/`deleteWord`），当时 `grep -rn "services/api" enx-chrome/src` 显示它**没有被任何地方 import**——由此判断真正生效的请求出口只有 `background.ts` 里的 `makeApiRequest`（同 §2.1），这份代码是死代码，本次不处理。
+
+### 2.5 更正（2026-07-31 手工验证中发现）：`ApiService` 并非死代码，是 popup 端未修复的第二个请求出口
+
+**现象**：用户反馈——`content script` 侧因 access token 过期触发过一次静默刷新，刷新后页面查词功能正常；但紧接着点击扩展图标打开 `popup.html`，页面却显示"登录"按钮，而不是预期的 "Enable Learning Mode"。
+
+**根因排查**：
+
+- `enx-chrome/src/popup/Popup.tsx:24-43` 在 popup 每次挂载时，若 `user.isLoggedIn && session.accessToken` 均为真，会调用 `apiService.validateSession()`（本质是 `GET /api/me`）做二次校验；只要该请求失败（含 401），就会把 `userAtom`/`sessionAtom` 置空，并 `chrome.storage.local.remove(['user','enx-user','accessToken','refreshToken','enx-session'])`——**连刚被 `tryRefreshTokens()` 成功保存的、仍然有效的 `refreshToken` 也一并删除**。
+- `Login.tsx` 渲染"登录"按钮还是"Enable Learning Mode"按钮，纯粹由 `userAtom.isLoggedIn` 决定。
+- `enx-chrome/src/services/api.ts` 的 `ApiService.makeRequest()`（L44-49）遇到 401 直接 `throw new Error('Session expired')`，**没有 §3.2 加的刷新+重试逻辑**——因为 §2.4 当时判定它是死代码，实现刷新逻辑时压根没碰这个文件。
+- 但 `ApiService` 实际上**一直被 popup 侧代码引用**：`Popup.tsx`、`Login.tsx`、`useInitializeStorage.ts` 都在用它发请求；§2.4 的 `grep` 结论在当时（本 Spec 落地前）可能确实成立，但 popup 的 React 重写（`popwindow react` / `popup react` / `fix enx chrome` 几次提交）把它重新接了进来，本 Spec 实现刷新逻辑时未同步复查，导致这一变化被漏掉。
+
+**结论**：`enx-chrome` 里实际有**两个**独立的 API 请求出口，而不是 §2.1 假设的一个：
+
+| 出口 | 使用方 | 是否已接入刷新逻辑（§3.2） |
+| --- | --- | --- |
+| `background.ts` 的 `makeApiRequest()` | content script（`getOneWord`/`getWords`/`markAcquainted`） | 是 |
+| `services/api.ts` 的 `ApiService` | popup（`Popup.tsx` 会话校验、`Login.tsx`、`useInitializeStorage.ts`） | **否 —— 本次未覆盖，是当前 bug 的根因** |
+
+这解释了用户观察到的现象：content script 那条路径刷新成功、查词正常；popup 打开时走的是另一条完全独立、且撞上同一个 401 窗口就直接判"过期"并清空 storage（包括仍然有效的 `refreshToken`）的路径，于是显示登录按钮。
+
+修复方案见新增 §3.5（本轮仅记录调研结论与方案，代码改动留待下一步实现，见 §7 新增步骤）。
 
 ---
 
@@ -170,6 +194,34 @@ const tryRefreshTokens = async (): Promise<boolean> => {
 
 同一次"过期窗口"内的所有并发请求共享同一个 `refreshInFlight`，只真正打一次 Cognito，全部等它 resolve 后再各自重试。`enx-ui` 的 `ApiService` 做同样的单例内 in-flight 去重。
 
+### 3.5 `enx-chrome` popup：会话校验改走 background 的 `makeApiRequest`（修 §2.5 根因，已实现 — 2026-07-31）
+
+**不采用**的方案：给 `enx-chrome/src/services/api.ts` 的 `ApiService` 单独再实现一遍 §3.2/§3.4 的刷新+重试+去重逻辑。理由：popup 和 service worker 是两个独立的 JS 执行环境，`ApiService` 若自己维护 `refreshInFlight`/内存 token，会和 `background.ts` 已有的那一份完全脱节，变成两套刷新状态源，比现在还难维护，且违背"统一 API 请求出口"的初衷（本 Spec 标题即取此意）。
+
+**采用**的方案：popup 不再自己发 HTTP 请求，改成通过 `chrome.runtime.sendMessage` 把会话校验请求转发给 background，复用 `makeApiRequest()` 里已经实现好的刷新+重试+去重逻辑，让 `background.ts` 成为 `enx-chrome` 内真正唯一的请求出口。
+
+- **`background.ts`** 在 `chrome.runtime.onMessage` 的 switch（L248 起）里新增一个 `case 'validateSession'`，内部直接复用 `handleCognitoSignIn()` 里已经在用的同款调用：`return await makeApiRequest('/api/me')`。401 时会先尝试 `tryRefreshTokens()` 并重试一次，仍失败才真正返回失败结果。
+- **`Popup.tsx`**（L24-43）的 `validate()` 改为：
+  ```ts
+  const response = await sendMessageToBackground({ type: 'validateSession' })
+  if (!response.success) {
+    // 现有的清空 userAtom/sessionAtom + chrome.storage.local.remove(...) 逻辑不变，
+    // 只是现在只有 background 侧"刷新也失败"时才会走到这里
+  }
+  ```
+  `sendMessageToBackground` 已在 `enx-chrome/src/services/api.ts:94-104` 定义，可直接复用。
+- `ApiService`/`services/api.ts` 本身**不再需要**接入刷新逻辑：它要么保留给未来别的场景用（届时按需接入），要么随此次修复一并清空其 `makeRequest` 直连 `fetch` 的用法、只保留 `sendMessageToBackground`；具体取舍留到实现该步骤时再定，不在本次调研范围内预先决定。
+- 影响面：只有 popup 的会话校验路径变化，`Login.tsx` 依据 `userAtom.isLoggedIn` 渲染按钮的逻辑不用改。
+
+**实现记录（2026-07-31）：**
+
+- `background.ts` 新增 `case 'validateSession': return await makeApiRequest('/api/me')`；`ApiRequestResult` 类型改为 `export`，供 popup 侧按类型引用（`import type`，编译期擦除，不会把 service worker 代码打进 popup bundle）。
+- `Popup.tsx` 的 `validate()` 改用 `sendMessageToBackground<ApiRequestResult>({type:'validateSession'})`；同时移除了它原本对 `apiService.setBaseUrl()` 的调用——排查后发现该调用一直是空操作（`ApiService.setBaseUrl` 本就是 no-op stub），属于顺带清理，不是本次改动引入的问题。
+- **调研中额外发现一处同根同源的调用点**：`Login.tsx:32-48`（组件挂载时刷新用户资料的 `useEffect`）里也有一次独立的 `apiService.getMe()` 调用，同样直连 `fetch`、没有刷新逻辑——只是它失败时只 `.catch(() => {})` 静默吞掉、不会清空 storage，所以不是本次用户报告现象的直接肇因，但属于同一类"绕开统一出口"的问题，一并改成了 `sendMessageToBackground<ApiRequestResult>({type:'validateSession'})`。
+- **`ApiService` 清理结论**：确认 `getOneWord`/`getWords`/`markAcquainted`/`getMe`/`validateSession`/`makeRequest` 在改完 `Popup.tsx`/`Login.tsx` 后没有任何调用点（`grep` 全仓库确认），判定为确定死代码，已删除；`services/api.ts` 现在只保留 `sendMessageToBackground`。连带清理了 `Login.tsx`/`useInitializeStorage.ts` 里几处只为维护 `ApiService` 内部 `accessToken`/`baseUrl` 状态、但改完后已无人读取的 `setAccessToken`/`setBaseUrl` 调用。
+- 单测：`background/__tests__/background.test.ts` 新增 `validateSession` 消息用例（复用 `chrome.runtime.onMessage.addListener` 捕获监听器函数的方式），覆盖"刷新成功后返回 `/api/me` 数据"与"刷新失败后返回 session-expired"两种场景。
+- 验证：`npx tsc -p tsconfig.app.json --noEmit`、`npx jest`（12 suites / 80 tests 全过）、`npm run build`（`vite build`）均通过。
+
 ---
 
 ## 4. 验收标准
@@ -181,6 +233,9 @@ const tryRefreshTokens = async (): Promise<boolean> => {
 - [x] 单测：同一时刻两个请求都收到 401 → 只发起一次 `refreshCognitoTokens` 调用（断言 fetch/mock 调用次数）
 - [x] `loadSession()` 单测：`chrome.storage.local` 里同时有 `accessToken`/`refreshToken` 时，两者都被读入内存
 - [ ] **手工验证（未完成）**：登录后将 Cognito access token 有效期临时调短（或等待自然过期），继续查词，确认查词成功且**不再弹出** "session expired" 提示；仅在手动清空/使 refresh token 失效后才应看到该提示
+- [x] **新增（§2.5/§3.5，已实现 — 2026-07-31）**：`background.ts` 新增 `validateSession` message handler，单测覆盖其 401 → 刷新 → 重试的行为与 `makeApiRequest` 的其他调用点一致
+- [x] **新增（§2.5/§3.5，已实现 — 2026-07-31）**：`Popup.tsx`（及同根同源的 `Login.tsx` 用户资料刷新）的会话校验改走 `sendMessageToBackground({type:'validateSession'})`；`ApiService` 死代码已删除。单测已覆盖 message handler 层
+- [ ] **手工验证（未完成）**：access token 过期时打开 popup，应能静默刷新后正常显示 "Enable Learning Mode" 而非登录按钮；以及 §2.5 描述的原始场景——content script 触发过静默刷新后，点击扩展图标打开 popup，确认不再显示登录按钮
 
 ### 4.2 `enx-ui`
 
@@ -211,16 +266,19 @@ const tryRefreshTokens = async (): Promise<boolean> => {
 
 | 文件 | 说明 |
 | --- | --- |
-| `enx-chrome/src/background/background.ts` | `loadSession()` 补读 `refreshToken`；`makeApiRequest()` 新增 401 刷新重试逻辑；新增 `tryRefreshTokens()` + 模块级 `refreshInFlight` |
+| `enx-chrome/src/background/background.ts` | `loadSession()` 补读 `refreshToken`；`makeApiRequest()` 新增 401 刷新重试逻辑；新增 `tryRefreshTokens()` + 模块级 `refreshInFlight`；**（§3.5，已实现）**新增 `case 'validateSession'` message handler，`ApiRequestResult` 类型改为 `export` |
 | `enx-chrome/src/lib/cognito.ts` | `refreshCognitoTokens()` 已存在，无需改动，仅被新增调用点引用 |
+| `enx-chrome/src/popup/Popup.tsx` | **（§3.5，已实现）**`validate()` 里的 `apiService.validateSession()` 改为 `sendMessageToBackground({type:'validateSession'})`；顺带移除了对空操作 `apiService.setBaseUrl()` 的调用 |
+| `enx-chrome/src/components/Login.tsx` | **（§3.5，已实现，调研中新发现的同类问题）**挂载时刷新用户资料的 `apiService.getMe()` 同样改为 `sendMessageToBackground`；移除已无读取方的 `apiService.setAccessToken()` 调用 |
+| `enx-chrome/src/hooks/useInitializeStorage.ts` | **（§3.5，已实现）**移除已无读取方的 `apiService.setAccessToken()`/`setBaseUrl()` 调用 |
+| `enx-chrome/src/services/api.ts` | §2.4 曾误判为死代码；实际被 popup（`Popup.tsx`/`Login.tsx`/`useInitializeStorage.ts`）引用，是 §2.5 bug 的根因所在文件；**（§3.5，已实现）**`ApiService` 类（`makeRequest`/`getOneWord`/`getWords`/`markAcquainted`/`getMe`/`validateSession`）确认无调用点后整体删除，文件现在只保留 `sendMessageToBackground` |
 | `enx-chrome/src/lib/__tests__/cognito.test.ts` | 参考现有 refresh 相关 mock 写法 |
-| `enx-chrome/src/background/__tests__/` | 新增/扩展 `makeApiRequest` 401 场景单测（若目录不存在需新建） |
 | `enx-ui/src/lib/cognito.ts` | 新增 `refreshCognitoTokens()` / `buildRefreshTokenBody()` |
 | `enx-ui/src/services/api.ts` | `ApiService` 新增 `refreshToken`/`onTokensRefreshed`，`makeRequest()` 接入刷新重试 |
 | `enx-ui/src/hooks/useAuth.ts` | 注入 `onTokensRefreshed` 回调，保持 atoms 与 `ApiService` 内部 token 同步 |
 | `enx-ui/src/store/authAtoms.ts` | 无需改结构，`refreshTokenAtom` 已存在，仅确认写入路径 |
 | `enx-chrome/src/test/setup.ts` | 补充全局 `chrome` mock：`runtime.onInstalled`、`action.onClicked`、`notifications`、`storage.onChanged`（`background.ts` 顶层注册这些 listener，此前无单测 import 过该文件，mock 从未补全过） |
-| `enx-chrome/src/background/__tests__/background.test.ts` | 新增，覆盖 §4.1 全部单测项 |
+| `enx-chrome/src/background/__tests__/background.test.ts` | 覆盖 §4.1 全部单测项；**（§3.5，已实现）**新增 `validateSession` message 用例 |
 | `enx-ui/jest.config.js` | 新增 `moduleNameMapper`（`@/*` → `src/*`），修复 `@/lib/cognito` 运行时导入在 Jest 下无法解析的问题 |
 | `enx-ui/src/services/__tests__/api.test.ts` | 新增，覆盖 §4.2 全部单测项 |
 
@@ -235,7 +293,8 @@ const tryRefreshTokens = async (): Promise<boolean> => {
 4. [x] enx-ui: ApiService.makeRequest() 接入同样的刷新重试逻辑，useAuth.ts 接入 onTokensRefreshed，补单测
 5. [x] 两端 pnpm test 全量通过（另需修复：`enx-ui/jest.config.js` 补 `@/*` moduleNameMapper——此前只有 `@/types` 这类纯类型导入未触发过运行时解析，`api.ts` 新增的 `refreshCognitoTokens` 运行时导入首次暴露了该配置缺口）
 6. [ ] 手工验证 §4.1/§4.2 的真实过期场景（无法用单测完全替代，需要真实等待 token 过期或临时调短 App Client 有效期观察）——**待作者在真实 Chrome + Cognito 环境下完成**
-7. [ ] 勾选 §4 全部验收项，文首状态更新为 Done — YYYY-MM-DD
+7. [x] **新增（§2.5/§3.5，2026-07-31 手工验证中发现，已实现）**：`enx-chrome`：`background.ts` 新增 `validateSession` message handler + `Popup.tsx`/`Login.tsx` 改走 `sendMessageToBackground`，补单测；`services/api.ts` 确认死代码后删除。修复"popup 打开时二次校验没有刷新逻辑导致误判过期"的 bug；`tsc --noEmit` / `jest`（12 suites / 80 tests）/ `vite build` 均通过
+8. [ ] 手工验证 §4.1/§4.2/§2.5 的真实过期场景，勾选 §4 全部验收项，文首状态更新为 Done — YYYY-MM-DD
 ```
 
 ---
@@ -251,5 +310,5 @@ const tryRefreshTokens = async (): Promise<boolean> => {
 ## 9. 后续扩展（Out of Scope，供未来 Spec 引用）
 
 - §3.1 B2：基于 `expires_in` 的主动预刷新，减少过期后第一次请求的多余往返
-- 清理 `enx-chrome/src/services/api.ts` 里未被引用的死代码 `ApiService`（§2.4）
+- ~~清理 `enx-chrome/src/services/api.ts` 里未被引用的死代码 `ApiService`（§2.4）~~ ——**已作废**：§2.5 证实 `ApiService` 并非死代码，是 popup 侧仍在用的请求出口，相关修复已纳入 §3.5/§7 步骤 7，不再属于"未来扩展"
 - 若 Cognito 侧后续开启 refresh token 轮换，评估是否需要更细粒度的刷新失败重试/退避策略
