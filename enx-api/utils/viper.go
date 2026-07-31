@@ -59,6 +59,14 @@ func viperInitInternal() {
 	viper.SetDefault("ecdict.db_path", "")
 	_ = viper.BindEnv("ecdict.db_path", "ECDICT_DB_PATH")
 
+	// Sentence translation (AI provider selectable at deploy time, see
+	// docs/tasks/TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md §3.5).
+	// provider/model/base-url/region/model-id are non-secret and live in
+	// config.toml; API keys are env-var only, never written to config.toml.
+	viper.SetDefault("sentence-translate.provider", "")
+	_ = viper.BindEnv("sentence-translate.kimi.api-key", "KIMI_API_KEY")
+	_ = viper.BindEnv("sentence-translate.minimax.api-key", "MINIMAX_API_KEY")
+
 	// Throttle for last_login_time/updated_at writes on every authenticated
 	// request (see docs/PERF_FIRST_QUERY_LATENCY.md) — only re-write when the
 	// previous value is older than this interval.

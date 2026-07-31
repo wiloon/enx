@@ -29,6 +29,18 @@ global.crypto = webcrypto as Crypto
       addListener: jest.fn(),
     },
   },
+  contextMenus: {
+    create: jest.fn(),
+    onClicked: {
+      addListener: jest.fn(),
+    },
+  },
+  sidePanel: {
+    open: jest.fn(),
+  },
+  windows: {
+    getCurrent: jest.fn(),
+  },
   notifications: {
     create: jest.fn(),
     clear: jest.fn(),

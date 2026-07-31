@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"enx-api/aitranslate"
 	"enx-api/email"
 	"enx-api/enx"
 	"enx-api/handlers"
@@ -165,6 +166,24 @@ func setupRouter() *gin.Engine {
 	cognitoCfg := middleware.CognitoConfigFromViper()
 	cognitoAuth := middleware.CognitoAuth(cognitoCfg)
 
+	// Sentence translation is an optional feature: if sentence-translate.provider
+	// is unset, it stays disabled (same "unconfigured but not fatal" pattern as
+	// ECDICT when ecdict.db_path is empty) and the endpoint responds 502. But if
+	// a provider WAS explicitly configured and its credentials/config are
+	// missing, that's a deliberate misconfiguration and must fail fast rather
+	// than silently serving a broken endpoint (see
+	// docs/tasks/TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md §4.4).
+	sentenceTranslator, sentenceTranslateErr := aitranslate.New(context.Background())
+	if sentenceTranslateErr != nil {
+		if provider := viper.GetString("sentence-translate.provider"); provider != "" {
+			logger.Errorf("sentence-translate.provider=%q is configured but failed to initialize: %v", provider, sentenceTranslateErr)
+			os.Exit(1)
+		}
+		logger.Warnf("sentence translation disabled: %v", sentenceTranslateErr)
+		sentenceTranslator = nil
+	}
+	sentenceHandler := aitranslate.NewHandler(sentenceTranslator)
+
 	// APIs requiring authentication (Cognito JWT)
 	authGroup := router.Group("/")
 	authGroup.Use(cognitoAuth)
@@ -175,6 +194,7 @@ func setupRouter() *gin.Engine {
 		// translate
 		authGroup.GET("/translate", translate.Translate)
 		authGroup.GET("/word/:word", translate.TranslateByWord)
+		authGroup.POST("/translate/sentence", sentenceHandler.TranslateSentence)
 		authGroup.GET("/load-count", wordCount.LoadCount)
 		authGroup.POST("/mark", MarkWord)
 		authGroup.GET("/ecdict", DoSearchEcdict)
@@ -191,6 +211,7 @@ func setupRouter() *gin.Engine {
 		// translate
 		apiGroup.GET("/translate", translate.Translate)
 		apiGroup.GET("/word/:word", translate.TranslateByWord)
+		apiGroup.POST("/translate/sentence", sentenceHandler.TranslateSentence)
 		apiGroup.DELETE("/word/:word", DeleteWord)
 		apiGroup.GET("/load-count", wordCount.LoadCount)
 		apiGroup.POST("/mark", MarkWord)

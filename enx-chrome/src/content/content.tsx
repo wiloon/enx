@@ -6,7 +6,12 @@ import { Provider } from 'jotai'
 import { WordProcessor } from '@/lib/wordProcessor'
 import { BackgroundResponse, ContentMessage, WordData } from '../types'
 import { contentScriptStore } from './contentAtoms'
-import { currentWordAtom, isTranslatingAtom, errorAtom } from '@/store/atoms'
+import {
+  currentWordAtom,
+  isTranslatingAtom,
+  errorAtom,
+  sentencePanelHintAtom,
+} from '@/store/atoms'
 import WordPopup from '@/components/WordPopup'
 import tailwindCss from '@/index.css?inline'
 
@@ -137,12 +142,45 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
     }
   }
 
+  // Trigger path③ (spec §3.2): best-effort direct panel open, falling back to
+  // "please click/right-click the toolbar icon" guidance if the click's user
+  // gesture didn't survive being forwarded through runtime.sendMessage.
+  const handleOpenSentencePanel = async () => {
+    contentScriptStore.set(sentencePanelHintAtom, null)
+
+    const sentenceContext = WordProcessor.extractSentenceContext(anchor, word)
+    const sentence = sentenceContext?.sentence || word
+
+    try {
+      const response = await sendToBackground({
+        type: 'openSentencePanel',
+        word,
+        sentence,
+        sourceUrl: window.location.href,
+      })
+
+      if (response.success && !response.panelOpened) {
+        contentScriptStore.set(
+          sentencePanelHintAtom,
+          '已保存，请点击或右键工具栏 ENX 图标查看整句翻译'
+        )
+      }
+    } catch (error) {
+      console.error('Error opening sentence panel:', error)
+      contentScriptStore.set(
+        sentencePanelHintAtom,
+        '已保存，请点击或右键工具栏 ENX 图标查看整句翻译'
+      )
+    }
+  }
+
   root.render(
     <Provider store={contentScriptStore}>
       <WordPopup
         word={word}
         onClose={() => popup.hidePopover()}
         onMarkAcquainted={handleMarkAcquainted}
+        onOpenSentencePanel={handleOpenSentencePanel}
       />
     </Provider>
   )
@@ -151,6 +189,7 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
   contentScriptStore.set(currentWordAtom, null)
   contentScriptStore.set(isTranslatingAtom, true)
   contentScriptStore.set(errorAtom, null)
+  contentScriptStore.set(sentencePanelHintAtom, null)
 
   // 6. Add to DOM and show Popover
   document.body.appendChild(popup)

@@ -54,6 +54,8 @@ export interface ContentMessage {
     | 'enxRun'
     | 'login'
     | 'logout'
+    | 'openSentencePanel'
+    | 'translateSentence'
   word?: string
   words?: string
   paragraph?: string
@@ -61,6 +63,8 @@ export interface ContentMessage {
   username?: string
   password?: string
   data?: any
+  sentence?: string
+  sourceUrl?: string
 }
 
 export interface BackgroundResponse {
@@ -70,4 +74,23 @@ export interface BackgroundResponse {
   ecp?: WordData
   wordProperties?: Record<string, WordData>
   sessionExpired?: boolean
+  // Set by the 'openSentencePanel' handler: whether chrome.sidePanel.open()
+  // actually succeeded (it may fail if the click's user gesture didn't
+  // survive being forwarded through runtime.sendMessage -- see
+  // TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md §3.2 trigger path③).
+  panelOpened?: boolean
+  // Set by the 'translateSentence' handler on success.
+  chinese?: string
+}
+
+// chrome.storage.session key holding the sentence the Side Panel should show.
+// Shared constant so content.tsx/background.ts (writers) and SidePanel.tsx
+// (reader) can't drift apart on the key name.
+export const PENDING_SENTENCE_STORAGE_KEY = 'enx-pending-sentence'
+
+export interface PendingSentenceContext {
+  sentence: string
+  word: string
+  sourceUrl: string
+  createdAt: number
 }

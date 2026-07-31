@@ -22,6 +22,11 @@ export const isTranslatingAtom = atom(false)
 // Error state
 export const errorAtom = atom<string | null>(null)
 
+// Shown in the word popup when "整句翻译" was clicked but chrome.sidePanel.open()
+// could not be triggered directly (see TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md
+// §3.2 trigger path③) -- null hides the hint.
+export const sentencePanelHintAtom = atom<string | null>(null)
+
 // Extension enable state
 export const extensionEnabledAtom = atom(false)
 

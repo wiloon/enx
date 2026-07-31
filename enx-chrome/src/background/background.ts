@@ -8,6 +8,7 @@ import {
   signInWithCognito,
   signOutWithCognito,
 } from '@/lib/cognito'
+import { PENDING_SENTENCE_STORAGE_KEY, PendingSentenceContext } from '@/types'
 
 console.log('ENX Background script loaded')
 console.log('🌐 Config environment:', config.environment)
@@ -215,6 +216,40 @@ chrome.runtime.onInstalled.addListener(async details => {
 
   // Load session on installation
   await loadSession()
+
+  // Trigger path② (spec §3.2): a right-click menu item is a Chrome-approved
+  // user gesture source, same as an actual click, so sidePanel.open() called
+  // from its onClicked handler is reliable -- unlike forwarding a content
+  // script's click through runtime.sendMessage (trigger path③).
+  chrome.contextMenus.create(
+    {
+      id: 'enx-open-sentence-panel',
+      title: '打开整句翻译面板',
+      contexts: ['action'],
+    },
+    () => {
+      // Re-registering an existing id throws via chrome.runtime.lastError
+      // (not a JS exception) on repeated onInstalled "update" events; that's
+      // expected, not an error worth surfacing.
+      if (chrome.runtime.lastError) {
+        console.debug('contextMenus.create:', chrome.runtime.lastError.message)
+      }
+    }
+  )
+})
+
+// Trigger path② (spec §3.2): right-click the toolbar icon -> menu item ->
+// open the Side Panel directly. Independent of the left-click default_popup
+// behavior (trigger path①), so it can't interfere with login/logout.
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId !== 'enx-open-sentence-panel') return
+  if (tab?.windowId === undefined) return
+
+  try {
+    await chrome.sidePanel.open({ windowId: tab.windowId })
+  } catch (error) {
+    console.error('Failed to open side panel from context menu:', error)
+  }
 })
 
 // Handle extension icon clicks
@@ -239,7 +274,7 @@ chrome.action.onClicked.addListener(async tab => {
 })
 
 // Handle messages from content scripts and popup
-chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('Background received message:', request)
 
   // Handle async responses
@@ -254,6 +289,17 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
         case 'markAcquainted':
           return await handleMarkAcquainted(request.word, request.userId)
+
+        case 'openSentencePanel':
+          return await handleOpenSentencePanel(
+            request.word || '',
+            request.sentence || request.word || '',
+            request.sourceUrl || '',
+            sender.tab?.id
+          )
+
+        case 'translateSentence':
+          return await handleTranslateSentence(request.sentence || '')
 
         case 'validateSession':
           return await makeApiRequest('/api/me')
@@ -573,6 +619,63 @@ const handleMarkAcquainted = async (word: string, userId: number) => {
       sessionExpired: response.sessionExpired,
     }
   }
+}
+
+// Handle whole-sentence AI translation for the Side Panel (spec §3.5/§3.7).
+const handleTranslateSentence = async (sentence: string) => {
+  if (!sentence || sentence.trim() === '') {
+    return { success: false, error: 'No sentence provided' }
+  }
+
+  const response = await makeApiRequest('/api/translate/sentence', {
+    method: 'POST',
+    body: JSON.stringify({ sentence: sentence.trim() }),
+  })
+
+  if (response.success && response.data?.chinese) {
+    return { success: true, chinese: response.data.chinese as string }
+  }
+
+  return {
+    success: false,
+    error: response.error || 'Translation service unavailable',
+    sessionExpired: response.sessionExpired,
+  }
+}
+
+// Handle "整句翻译" (trigger path③, spec §3.2/§3.3): always persist the pending
+// sentence context first, then best-effort try to open the Side Panel
+// directly. sidePanel.open() commonly fails here because the click's user
+// gesture doesn't survive being forwarded through runtime.sendMessage from a
+// content script -- that's expected, not a bug, so this never throws back to
+// the caller; it reports panelOpened:false and lets the caller fall back to
+// trigger paths①/② (toolbar icon / right-click menu), which read the same
+// persisted context.
+const handleOpenSentencePanel = async (
+  word: string,
+  sentence: string,
+  sourceUrl: string,
+  tabId?: number
+) => {
+  const context: PendingSentenceContext = {
+    word,
+    sentence,
+    sourceUrl,
+    createdAt: Date.now(),
+  }
+  await chrome.storage.session.set({ [PENDING_SENTENCE_STORAGE_KEY]: context })
+
+  let panelOpened = false
+  if (tabId !== undefined) {
+    try {
+      await chrome.sidePanel.open({ tabId })
+      panelOpened = true
+    } catch (error) {
+      console.warn('handleOpenSentencePanel: sidePanel.open() failed (expected if the gesture did not forward):', error)
+    }
+  }
+
+  return { success: true, panelOpened }
 }
 
 // Handle service worker errors

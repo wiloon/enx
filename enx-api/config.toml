@@ -36,3 +36,25 @@ region = "us-east-1"
 user-pool-id = "us-east-1_1GWBJVx85"
 client-id = "1il7v7q7jn17150jq4lou6m7b0"
 chrome-client-id = "645kitlgap7l1q4ebrfkmi9ltv"
+
+[sentence-translate]
+# "kimi" | "bedrock" | "minimax" -- switch provider by changing this one line.
+# Left blank in this checked-in template: each deployment (homelab k8s, AWS
+# EC2, local dev) sets its own value, since the right provider depends on
+# where this is actually running. Empty means the feature stays disabled
+# (POST /api/translate/sentence responds 502) rather than failing to start.
+# API keys are never set here; see KIMI_API_KEY / MINIMAX_API_KEY env vars,
+# and the AWS credential chain (IAM instance role on EC2) for bedrock.
+provider = ""
+
+[sentence-translate.kimi]
+model = "moonshot-v1-8k"
+base-url = "https://api.moonshot.cn/v1"
+
+[sentence-translate.bedrock]
+region = "us-east-1"
+model-id = "anthropic.claude-3-5-haiku-20241022-v1:0"
+
+[sentence-translate.minimax]
+model = "MiniMax-Text-01"
+base-url = "https://api.minimax.io/v1"

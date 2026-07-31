@@ -45,9 +45,34 @@ function PopupContent() {
     console.log('Login successful')
   }
 
+  // Trigger path① (spec §3.2): a click inside the popup is a real,
+  // unforwarded user gesture, so sidePanel.open() here is reliable -- unlike
+  // forwarding a content script's click through runtime.sendMessage (trigger
+  // path③). Kept as an explicit button rather than switching
+  // openPanelOnActionClick, so popup.html (and its login/logout flow) stays
+  // reachable by left-clicking the toolbar icon.
+  const handleOpenSentencePanel = async () => {
+    try {
+      const win = await chrome.windows.getCurrent()
+      if (win.id !== undefined) {
+        await chrome.sidePanel.open({ windowId: win.id })
+      }
+    } catch (error) {
+      console.error('Failed to open side panel from popup:', error)
+    }
+  }
+
   return (
     <div className="min-h-[200px]">
       <Login onLoginSuccess={handleLoginSuccess} />
+      <button
+        type="button"
+        data-testid="popup-open-sentence-panel"
+        onClick={handleOpenSentencePanel}
+        className="w-full mt-2 text-sm text-blue-500 hover:text-blue-600 underline"
+      >
+        🔤 打开整句翻译面板
+      </button>
       {process.env.NODE_ENV === 'development' && <DebugPanel />}
     </div>
   )

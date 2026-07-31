@@ -259,4 +259,105 @@ export class WordProcessor {
     clone.querySelectorAll('script, style, noscript').forEach(el => el.remove())
     return clone.textContent || ''
   }
+
+  // Intl.Segmenter has a known "Maximum call stack exceeded" failure mode on
+  // very long strings (~40-50k+ chars) and slows down on heavy non-ASCII
+  // text. If the sentence container is unexpectedly huge (e.g. `closest()`
+  // walked all the way up to a wrapper that holds a whole article), segment
+  // only a window around the clicked word instead of the entire container.
+  static readonly MAX_SEGMENT_LENGTH = 5000
+  static readonly SEGMENT_WINDOW_RADIUS = 500
+
+  // Walks up from wordElement looking for the nearest block-level ancestor
+  // whose text is long enough to plausibly contain a full sentence. Mirrors
+  // getArticleNodes()'s ">20/100/500 chars" style thresholds, just at
+  // paragraph granularity instead of article granularity.
+  private static findSentenceContainer(wordElement: HTMLElement): Element | null {
+    const blockSelector = 'p, li, blockquote, td, div'
+    let current = wordElement.closest(blockSelector)
+
+    while (current) {
+      const length = current.textContent?.trim().length || 0
+      if (length > 20) {
+        return current
+      }
+      current = current.parentElement?.closest(blockSelector) || null
+    }
+
+    return null
+  }
+
+  // Range-based DOM position -> character offset within container's
+  // flattened textContent. This is what lets duplicate occurrences of the
+  // same word in one paragraph resolve to the sentence that was actually
+  // clicked, instead of always matching the first occurrence via indexOf().
+  private static getTextOffsetWithin(container: Element, target: HTMLElement): number {
+    const range = document.createRange()
+    range.selectNodeContents(container)
+    range.setEndBefore(target)
+    return range.toString().length
+  }
+
+  // From the clicked highlighted-word element, locates the sentence it
+  // belongs to. Returns null only when no plausible sentence container can
+  // be found at all; once a container is found, segmentation failures
+  // degrade to returning the container's full text rather than null, so the
+  // feature stays usable even when sentence-boundary detection can't help.
+  static extractSentenceContext(
+    wordElement: HTMLElement,
+    word: string
+  ): { sentence: string; sentenceIndex: number } | null {
+    const container = this.findSentenceContainer(wordElement)
+    if (!container) return null
+
+    const fullText = container.textContent || ''
+    if (fullText.trim().length === 0) return null
+
+    const offset = this.getTextOffsetWithin(container, wordElement)
+
+    let textToSegment = fullText
+    let baseOffset = offset
+    if (fullText.length > this.MAX_SEGMENT_LENGTH) {
+      const start = Math.max(0, offset - this.SEGMENT_WINDOW_RADIUS)
+      const end = Math.min(fullText.length, offset + this.SEGMENT_WINDOW_RADIUS)
+      textToSegment = fullText.slice(start, end)
+      baseOffset = offset - start
+    }
+
+    let result: { sentence: string; sentenceIndex: number } | null = null
+
+    if (typeof Intl !== 'undefined' && typeof Intl.Segmenter !== 'undefined') {
+      try {
+        const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' })
+        const segments = [...segmenter.segment(textToSegment)]
+
+        for (let i = 0; i < segments.length; i++) {
+          const segment = segments[i]
+          const segmentEnd = segment.index + segment.segment.length
+          if (baseOffset >= segment.index && baseOffset < segmentEnd) {
+            result = { sentence: segment.segment.trim(), sentenceIndex: i }
+            break
+          }
+        }
+      } catch (error) {
+        console.warn('extractSentenceContext: Intl.Segmenter failed, falling back to full text', error)
+      }
+    }
+
+    if (!result) {
+      result = { sentence: textToSegment.trim(), sentenceIndex: 0 }
+    }
+
+    // Sanity check only, not a correctness gate: if the DOM-offset math ever
+    // drifts, this surfaces it in the console instead of silently returning
+    // an unrelated sentence.
+    if (!result.sentence.toLowerCase().includes(word.toLowerCase())) {
+      console.warn(
+        `extractSentenceContext: resolved sentence does not contain clicked word "${word}"`,
+        result.sentence
+      )
+    }
+
+    return result
+  }
 }

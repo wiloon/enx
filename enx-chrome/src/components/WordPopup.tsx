@@ -4,22 +4,26 @@ import {
   currentWordAtom,
   isTranslatingAtom,
   errorAtom,
+  sentencePanelHintAtom,
 } from '@/store/atoms'
 
 interface WordPopupProps {
   word: string
   onClose: () => void
   onMarkAcquainted: (word: string) => void
+  onOpenSentencePanel: () => void
 }
 
 export default function WordPopup({
   word,
   onClose,
   onMarkAcquainted,
+  onOpenSentencePanel,
 }: WordPopupProps) {
   const [currentWord] = useAtom(currentWordAtom)
   const [isTranslating] = useAtom(isTranslatingAtom)
   const [error] = useAtom(errorAtom)
+  const [sentencePanelHint] = useAtom(sentencePanelHintAtom)
   const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -138,6 +142,14 @@ export default function WordPopup({
             >
               📚 Youdao
             </a>
+            <button
+              data-testid="word-popup-sentence-translation"
+              onClick={onOpenSentencePanel}
+              className="text-blue-500 hover:text-blue-600 text-sm"
+              title="Translate the whole sentence in the side panel"
+            >
+              🔤 整句翻译
+            </button>
           </div>
 
           {currentWord && currentWord.AlreadyAcquainted !== 1 && (
@@ -151,6 +163,20 @@ export default function WordPopup({
             </button>
           )}
         </div>
+
+        {/* Trigger path③ (see spec §3.2) best-effort hint: shown when
+            chrome.sidePanel.open() couldn't be triggered directly because the
+            click's user gesture didn't survive being forwarded through
+            runtime.sendMessage -- not an error, just guidance to a reliable
+            fallback path. */}
+        {sentencePanelHint && (
+          <div
+            data-testid="word-popup-sentence-panel-hint"
+            className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-blue-700 text-xs"
+          >
+            {sentencePanelHint}
+          </div>
+        )}
       </div>
     </div>
   )
