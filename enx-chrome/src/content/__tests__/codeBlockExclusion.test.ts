@@ -21,7 +21,7 @@ Object.defineProperty(global, 'NodeFilter', {
 import { WordData } from '../../types'
 
 /**
- * Minimal renderWithHighlights that mirrors the exclusion logic in content.ts.
+ * Minimal renderWithHighlights that mirrors the exclusion logic in content.tsx.
  * <code> and <pre> ancestors cause a text node to be rejected.
  */
 function renderWithHighlights(

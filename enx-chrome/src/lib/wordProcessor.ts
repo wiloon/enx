@@ -1,7 +1,7 @@
 import { WordData } from '@/types'
 
 // Single source of truth for article extraction / word highlighting.
-// content.ts and its tests import this instead of keeping their own copies.
+// content.tsx and its tests import this instead of keeping their own copies.
 export class WordProcessor {
   static readonly WORD_PATTERNS = {
     contractedWord: /\b[a-zA-Z][a-zA-Z'''-]*[a-zA-Z]\b|\b[a-zA-Z]\b/g,

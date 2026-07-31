@@ -42,10 +42,10 @@ test.describe('Content Script - Translation Popup', () => {
     const popup = page.locator('#enx-word-popup')
 
     // Should show the word in header
-    await expect(popup.locator('.enx-popup-header h3')).toBeVisible()
+    await expect(popup.locator('[data-testid="word-popup-header"] h3')).toBeVisible()
 
     // Should show translation content or loading state
-    await expect(popup.locator('.enx-popup-content')).toBeVisible()
+    await expect(popup.locator('[data-testid="word-popup-content"]')).toBeVisible()
   })
 
   test('should close translation popup when clicking outside', async ({
@@ -78,7 +78,7 @@ test.describe('Content Script - Translation Popup', () => {
     // Click first word
     await clickWordAndWaitForPopup(page, 0)
     const firstWord = await page
-      .locator('#enx-word-popup .enx-popup-header h3')
+      .locator('#enx-word-popup [data-testid="word-popup-header"] h3')
       .textContent()
 
     // Close popup
@@ -88,7 +88,7 @@ test.describe('Content Script - Translation Popup', () => {
     // Click second word
     await clickWordAndWaitForPopup(page, 1)
     const secondWord = await page
-      .locator('#enx-word-popup .enx-popup-header h3')
+      .locator('#enx-word-popup [data-testid="word-popup-header"] h3')
       .textContent()
 
     // Words should be different

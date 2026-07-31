@@ -19,7 +19,7 @@ describe('Flex Container Fix', () => {
   })
 
   /**
-   * Simulates the flex container fix logic from content.ts
+   * Simulates the flex container fix logic from content.tsx
    */
   function fixFlexContainers(root: HTMLElement) {
     const allSpans = root.querySelectorAll('span')

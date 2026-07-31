@@ -1,14 +1,21 @@
 // ENX Content Script for word identification and translation
 // Note: Sentry initialization is skipped to avoid import issues in content script context
 
+import { createRoot, type Root } from 'react-dom/client'
+import { Provider } from 'jotai'
 import { WordProcessor } from '@/lib/wordProcessor'
 import { BackgroundResponse, ContentMessage, WordData } from '../types'
+import { contentScriptStore } from './contentAtoms'
+import { currentWordAtom, isTranslatingAtom, errorAtom } from '@/store/atoms'
+import WordPopup from '@/components/WordPopup'
+import tailwindCss from '@/index.css?inline'
 
 console.log('ENX Content script loaded')
 
 // State management for content script
 let isEnxEnabled = false
 let currentPopup: HTMLElement | null = null
+let currentRoot: Root | null = null
 let wordCache: Record<string, WordData> = {}
 let isProcessing = false
 let popupEventCleanup: (() => void) | null = null
@@ -57,20 +64,8 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
   popup.className = 'enx-word-popup'
   popup.id = 'enx-word-popup'
 
-  // Add CSS animation if not already present
-  if (!document.getElementById('enx-spin-animation')) {
-    const style = document.createElement('style')
-    style.id = 'enx-spin-animation'
-    style.textContent = `
-      @keyframes spin {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
-      }
-    `
-    document.head.appendChild(style)
-  }
-
-  // 3. Apply CSS Anchor Positioning styles
+  // 3. Apply CSS Anchor Positioning styles (host element stays in light DOM,
+  // content rendering below is isolated inside its shadow root, see §2.1/§2.4)
   popup.style.cssText = `
     position-anchor: --${anchorId};
     position-area: top;
@@ -80,29 +75,73 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
     max-height: 60vh;
     overflow-y: auto;
     margin: 16px;
-    background: white;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    padding: 16px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 14px;
-    line-height: 1.4;
   `
 
-  // 4. Show loading state
-  popup.innerHTML = `
-    <div style="display: flex; align-items: center; justify-content: center; min-height: 60px;">
-      <span style="animation: spin 1s linear infinite; font-size: 24px;">⏳</span>
-    </div>
-  `
+  // 4. Render content via React, mounted inside a shadow root so Tailwind
+  // classes can't leak into (or be overridden by) the host page's styles.
+  const shadowRoot = popup.attachShadow({ mode: 'open' })
+  const styleTag = document.createElement('style')
+  styleTag.textContent = tailwindCss
+  shadowRoot.appendChild(styleTag)
 
-  // 5. Add to DOM and show Popover
+  const mountPoint = document.createElement('div')
+  shadowRoot.appendChild(mountPoint)
+
+  const root = createRoot(mountPoint)
+  currentRoot = root
+
+  const handleMarkAcquainted = async (englishWord: string) => {
+    try {
+      const response = await sendToBackground({
+        type: 'markAcquainted',
+        word: englishWord,
+      })
+      if (response.success) {
+        const cached = wordCache[englishWord.toLowerCase()]
+        const updated: WordData = cached
+          ? { ...cached, AlreadyAcquainted: 1 }
+          : {
+              Key: englishWord,
+              English: englishWord,
+              Pronunciation: '',
+              Chinese: '',
+              LoadCount: 0,
+              AlreadyAcquainted: 1,
+              WordType: 0,
+            }
+        wordCache[englishWord.toLowerCase()] = updated
+        contentScriptStore.set(currentWordAtom, updated)
+        updateWordHighlighting(englishWord, updated)
+        popup.hidePopover()
+      }
+    } catch (error) {
+      console.error('Error marking word as acquainted:', error)
+    }
+  }
+
+  root.render(
+    <Provider store={contentScriptStore}>
+      <WordPopup
+        word={word}
+        onClose={() => popup.hidePopover()}
+        onMarkAcquainted={handleMarkAcquainted}
+      />
+    </Provider>
+  )
+
+  // 5. Show loading state
+  contentScriptStore.set(currentWordAtom, null)
+  contentScriptStore.set(isTranslatingAtom, true)
+  contentScriptStore.set(errorAtom, null)
+
+  // 6. Add to DOM and show Popover
   document.body.appendChild(popup)
   popup.showPopover()
   currentPopup = popup
 
-  // 6. Fetch word translation
+  setupPopupEventHandlers(popup, anchor, root)
+
+  // 7. Fetch word translation
   try {
     console.log('Fetching translation for word:', word)
     const response = await sendToBackground({
@@ -113,62 +152,37 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
     console.log('Translation response:', response)
 
     if (response.success && response.ecp) {
-      // 7. Fill actual content
-      const wordData = response.ecp
-      const youdaoUrl = `https://www.youdao.com/result?word=${encodeURIComponent(wordData.English)}&lang=en`
+      // US phonetic extraction: some entries store both UK and US
+      // pronunciations concatenated, see extractUSPhonetic() above.
+      const wordData: WordData = {
+        ...response.ecp,
+        Pronunciation: response.ecp.Pronunciation
+          ? extractUSPhonetic(response.ecp.Pronunciation)
+          : response.ecp.Pronunciation,
+      }
 
-      const pronunciationHtml = wordData.Pronunciation
-        ? `<span style="font-size: 14px; color: #666;">${extractUSPhonetic(wordData.Pronunciation)}</span>`
-        : ''
-
-      popup.innerHTML = `
-        <div class="enx-popup-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-          <h3 style="margin: 0; font-size: 16px; font-weight: bold; color: #333;">
-            <div style="display: flex; align-items: baseline; gap: 8px;">
-              <span>${wordData.English}</span>
-              ${pronunciationHtml}
-            </div>
-          </h3>
-          <button class="enx-close-btn" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #999; padding: 0; margin: 0; line-height: 1; width: 20px; height: 20px;">×</button>
-        </div>
-        <div class="enx-popup-content">
-          ${wordData.Chinese ? `<div style="margin-bottom: 12px; color: #333;">${wordData.Chinese}</div>` : ''}
-          ${wordData.LoadCount !== undefined ? `<div style="margin-bottom: 12px; font-size: 12px; color: #888;">Query Count: ${wordData.LoadCount}</div>` : ''}
-          ${wordData.AlreadyAcquainted === 1 ? `<div style="color: #4CAF50; font-size: 12px; margin-bottom: 12px;">✓ Already acquainted</div>` : ''}
-          <div style="padding-top: 12px; border-top: 1px solid #eee;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <a href="${youdaoUrl}" target="_blank" style="color: #1976d2; text-decoration: none; font-size: 12px;">📚 Youdao</a>
-              ${wordData.AlreadyAcquainted !== 1 ? `<button class="enx-mark-btn" style="background: #4CAF50; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.2); margin-left: auto !important; margin-right: 0 !important;">✓ Mark Known</button>` : ''}
-            </div>
-          </div>
-        </div>
-      `
-
-      // 8. Browser automatically adjusts position (based on new content)
-      // No manual code needed, CSS Anchor Positioning handles it
-
-      // Setup event handlers
-      setupPopupEventHandlers(popup, anchor, anchorId, wordData)
+      contentScriptStore.set(currentWordAtom, wordData)
+      contentScriptStore.set(isTranslatingAtom, false)
 
       wordCache[word.toLowerCase()] = wordData
       updateWordHighlighting(word, wordData)
     } else if (response.sessionExpired) {
       console.log('Session expired, showing session expired message')
       popup.hidePopover()
-      popup.remove()
-      anchor.style.removeProperty('anchor-name')
-      currentPopup = null
       showSessionExpiredMessage()
     } else {
       const errorMessage = response.error || 'Translation service unavailable'
       console.error('Translation failed:', errorMessage)
-      popup.innerHTML = `<p style="color: #d32f2f; margin: 0;">❌ ${errorMessage}</p>`
-      setupPopupEventHandlers(popup, anchor, anchorId)
+      contentScriptStore.set(errorAtom, errorMessage)
+      contentScriptStore.set(isTranslatingAtom, false)
     }
   } catch (error) {
     console.error('Error fetching word translation:', error)
-    popup.innerHTML = `<p style="color: #d32f2f; margin: 0;">❌ Connection failed. Please check your internet connection.</p>`
-    setupPopupEventHandlers(popup, anchor, anchorId)
+    contentScriptStore.set(
+      errorAtom,
+      'Connection failed. Please check your internet connection.'
+    )
+    contentScriptStore.set(isTranslatingAtom, false)
   }
 }
 
@@ -176,44 +190,22 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
 const setupPopupEventHandlers = (
   popup: HTMLElement & { hidePopover: () => void },
   anchor: HTMLElement,
-  _anchorId: string,
-  wordData?: WordData
+  root: Root
 ) => {
-  // Close button handler
-  const closeBtn = popup.querySelector('.enx-close-btn')
-  if (closeBtn) {
-    closeBtn.addEventListener('click', () => {
-      popup.hidePopover()
-    })
-  }
-
-  // Mark Known button handler
-  if (wordData && wordData.AlreadyAcquainted !== 1) {
-    const markBtn = popup.querySelector('.enx-mark-btn')
-    if (markBtn) {
-      markBtn.addEventListener('click', async () => {
-        try {
-          const response = await sendToBackground({
-            type: 'markAcquainted',
-            word: wordData.English,
-          })
-          if (response.success) {
-            wordData.AlreadyAcquainted = 1
-            wordCache[wordData.English.toLowerCase()] = wordData
-            updateWordHighlighting(wordData.English, wordData)
-            popup.hidePopover()
-          }
-        } catch (error) {
-          console.error('Error marking word as acquainted:', error)
-        }
-      })
-    }
-  }
-
-  // Cleanup when popup is closed
+  // Cleanup when popup is closed via hidePopover() (close button / ESC /
+  // click-outside all route through hidePopover(), which reliably fires
+  // 'toggle' -- confirmed via the §4.3 spike). This does NOT fire when a
+  // popup is torn down by hideWordPopup()'s direct popup.remove() call (e.g.
+  // switching to a new word while this one is still open) -- that path
+  // unmounts explicitly instead, see hideWordPopup() below.
   popup.addEventListener('toggle', (e: Event) => {
     const toggleEvent = e as ToggleEvent
     if (toggleEvent.newState === 'closed') {
+      if (currentRoot === root) {
+        root.unmount()
+        currentRoot = null
+        console.debug('[enx] root unmounted')
+      }
       popup.remove()
       anchor.style.removeProperty('anchor-name')  // Cleanup anchor
       if (currentPopup === popup) {
@@ -252,6 +244,14 @@ const setupPopupEventHandlers = (
 
 // Hide word popup
 const hideWordPopup = () => {
+  // Direct DOM removal does not reliably fire the popover's 'toggle' event
+  // (confirmed via the §4.3 spike), so the React root is unmounted explicitly
+  // here rather than relying solely on the toggle handler above.
+  if (currentRoot) {
+    currentRoot.unmount()
+    currentRoot = null
+    console.debug('[enx] root unmounted')
+  }
   if (currentPopup) {
     currentPopup.remove()
     currentPopup = null

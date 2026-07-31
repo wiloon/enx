@@ -1,4 +1,4 @@
-import { Page } from '@playwright/test'
+import { BrowserContext, Page } from '@playwright/test'
 
 /**
  * Helper utilities for E2E tests
@@ -152,6 +152,111 @@ export async function clickWordAndWaitForPopup(page: Page, wordIndex = 0) {
 
   // Wait for translation popup (correct ID is enx-word-popup)
   await page.waitForSelector('#enx-word-popup', { timeout: 3000 })
+}
+
+/**
+ * Stub the extension's backend API calls so tests don't depend on a real
+ * enx-api backend or a valid Cognito session.
+ *
+ * background.ts's message handlers call `fetch()` directly inside the
+ * service worker. MV3 content scripts run in an isolated world, so a
+ * page-level `page.addInitScript` patch to `chrome.runtime.sendMessage`
+ * never reaches it (separate JS realm); `context.route()` doesn't intercept
+ * service-worker fetches either. Patching `self.fetch` inside the service
+ * worker itself via `Worker.evaluate()` is what actually works.
+ */
+export async function mockBackendFetch(
+  context: BrowserContext,
+  options: {
+    wordData?: Partial<{
+      Key: string
+      English: string
+      Pronunciation: string
+      Chinese: string
+      LoadCount: number
+      AlreadyAcquainted: number
+      WordType: number
+    }>
+    translateFails?: boolean
+    translateSessionExpired?: boolean
+  } = {}
+) {
+  let [sw] = context.serviceWorkers()
+  if (!sw) sw = await context.waitForEvent('serviceworker')
+
+  const wordData = {
+    Key: 'stub',
+    English: 'stub',
+    Pronunciation: '[stʌb]',
+    Chinese: '存根',
+    LoadCount: 1,
+    AlreadyAcquainted: 0,
+    WordType: 0,
+    ...options.wordData,
+  }
+  const translateFails = options.translateFails ?? false
+  const translateSessionExpired = options.translateSessionExpired ?? false
+
+  await sw.evaluate(({ wordData, translateFails, translateSessionExpired }) => {
+    const realFetch = self.fetch.bind(self)
+    self.fetch = async (input, init) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : (input as Request).url ?? String(input)
+
+      if (url.includes('/api/paragraph-init')) {
+        // Mirror the real endpoint's contract (word data for every word in
+        // the requested paragraph) using canned data, so whatever text is
+        // actually on the test page gets highlighted -- rather than
+        // hardcoding a word list that has to match the fixture's prose.
+        const paragraph = new URL(url).searchParams.get('paragraph') ?? ''
+        const words = paragraph.split(/[^a-zA-Z']+/).filter(Boolean)
+        const body: Record<string, unknown> = {}
+        for (const w of words) {
+          body[w.toLowerCase()] = { ...wordData, English: w }
+        }
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
+      if (url.includes('/api/translate')) {
+        // makeApiRequest() in background.ts treats a 401 as session expiry
+        // and sets sessionExpired: true on the returned error.
+        if (translateSessionExpired) {
+          return new Response(JSON.stringify({ error: 'unauthorized' }), {
+            status: 401,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+        if (translateFails) {
+          return new Response(
+            JSON.stringify({ error: 'stubbed translate failure' }),
+            { status: 500, headers: { 'Content-Type': 'application/json' } }
+          )
+        }
+        const requested = new URL(url).searchParams.get('word')
+        return new Response(
+          JSON.stringify({
+            ...wordData,
+            English: requested || wordData.English,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+      }
+
+      if (url.includes('/api/mark')) {
+        return new Response(
+          JSON.stringify({ ...wordData, AlreadyAcquainted: 1 }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+      }
+
+      return realFetch(input, init)
+    }
+  }, { wordData, translateFails, translateSessionExpired })
 }
 
 /**

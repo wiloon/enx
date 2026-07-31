@@ -23,10 +23,23 @@
         p {
             margin-bottom: 15px;
         }
+        /*
+         * Deliberately conflicts with Tailwind's utility classes of the same
+         * name, to verify the ENX popup's Shadow DOM keeps these two worlds
+         * from bleeding into each other (see TASK-SPEC §4.2).
+         */
+        .flex {
+            display: block;
+            color: red;
+        }
+        .text-sm {
+            font-size: 40px;
+        }
     </style>
 </head>
 <body>
     <h1>Test Article for ENX Extension</h1>
+    <div id="host-conflict-probe" class="flex text-sm" style="position: fixed; bottom: 0; right: 0;">probe</div>
 
     <article>
         <h2>Understanding Software Development</h2>
