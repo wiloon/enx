@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { useAtom, useAtomValue } from 'jotai'
@@ -21,11 +21,24 @@ export const useAuth = () => {
   const queryClient = useQueryClient()
   const router = useRouter()
 
+  // Keep ApiService's internal refresh token / callback in sync with the atoms
+  // so a silent 401->refresh cycle (see ApiService.tryRefreshTokens) writes
+  // the new tokens back into React state too.
+  useEffect(() => {
+    apiService.setOnTokensRefreshed((tokens) => {
+      setAccessToken(tokens.access_token)
+      if (tokens.refresh_token) {
+        setRefreshToken(tokens.refresh_token)
+      }
+    })
+  }, [setAccessToken, setRefreshToken])
+
   const clearAuth = () => {
     setUser(null)
     setAccessToken('')
     setRefreshToken('')
     apiService.setAccessToken('')
+    apiService.setRefreshToken('')
     queryClient.clear()
   }
 
@@ -34,6 +47,7 @@ export const useAuth = () => {
     apiService.setAccessToken(tokens.access_token)
     if (tokens.refresh_token) {
       setRefreshToken(tokens.refresh_token)
+      apiService.setRefreshToken(tokens.refresh_token)
     }
     const resp = await apiService.getMe()
     if (resp.success && resp.data) {
@@ -82,6 +96,7 @@ export const useAuth = () => {
   const initializeSession = async () => {
     if (!accessToken) return
     apiService.setAccessToken(accessToken)
+    apiService.setRefreshToken(refreshToken)
     try {
       const resp = await apiService.getMe()
       if (resp.success && resp.data) {

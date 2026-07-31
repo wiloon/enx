@@ -139,6 +139,50 @@ describe('cognito helpers', () => {
     expect(sessionStorage.getItem('enx-oauth-verifier')).toBe('test-verifier')
   })
 
+  it('buildRefreshTokenBody includes refresh token', async () => {
+    const { buildRefreshTokenBody } = await import('../cognito')
+    const body = buildRefreshTokenBody(TEST_CONFIG, 'refresh-token')
+
+    expect(body.get('grant_type')).toBe('refresh_token')
+    expect(body.get('refresh_token')).toBe('refresh-token')
+    expect(body.get('client_id')).toBe('test-client-id')
+  })
+
+  it('refreshCognitoTokens posts refresh token to token endpoint', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        access_token: 'new-access',
+        refresh_token: 'new-refresh',
+      }),
+    })
+
+    const { refreshCognitoTokens } = await import('../cognito')
+    const tokens = await refreshCognitoTokens('old-refresh-token')
+
+    expect(tokens.access_token).toBe('new-access')
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://auth.example.com/oauth2/token',
+      expect.objectContaining({ method: 'POST' })
+    )
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0]
+    const body = (init as RequestInit).body as URLSearchParams
+    expect(body.get('grant_type')).toBe('refresh_token')
+    expect(body.get('refresh_token')).toBe('old-refresh-token')
+  })
+
+  it('refreshCognitoTokens throws when Cognito rejects the refresh token', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValue({
+      ok: false,
+      status: 400,
+    })
+
+    const { refreshCognitoTokens } = await import('../cognito')
+    await expect(refreshCognitoTokens('expired-refresh-token')).rejects.toThrow(
+      'Token refresh failed: 400'
+    )
+  })
+
   it('throws when Cognito env is not configured', async () => {
     delete process.env.NEXT_PUBLIC_COGNITO_DOMAIN
     delete process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID

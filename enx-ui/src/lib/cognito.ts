@@ -92,6 +92,32 @@ export async function beginCognitoSignIn(): Promise<void> {
   window.location.href = buildAuthorizeUrl(config, challenge)
 }
 
+export function buildRefreshTokenBody(
+  config: Pick<CognitoConfig, 'clientId'>,
+  refreshToken: string
+): URLSearchParams {
+  return new URLSearchParams({
+    grant_type: 'refresh_token',
+    client_id: config.clientId,
+    refresh_token: refreshToken,
+  })
+}
+
+export async function refreshCognitoTokens(
+  refreshToken: string
+): Promise<CognitoTokens> {
+  const config = getConfig()
+  const res = await fetch(`${config.domain}/oauth2/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: buildRefreshTokenBody(config, refreshToken),
+  })
+  if (!res.ok) {
+    throw new Error(`Token refresh failed: ${res.status}`)
+  }
+  return res.json()
+}
+
 export async function exchangeCodeForTokens(
   code: string
 ): Promise<CognitoTokens> {

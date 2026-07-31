@@ -1,79 +1,67 @@
-# ADR-003: 雅思词库掌握度追踪的数据模型设计
+# ADR-003: 雅思/CET4/CET6/托福词库标记的数据模型设计
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Proposed — 2026-07-30（待 Review） |
-| **日期** | 2026-07-30 |
+| **状态** | Proposed — 2026-07-31（待 Review） |
+| **日期** | 2026-07-30，2026-07-31 两次修订（① 放弃多对多建模，改为在 `words` 表加布尔列，明确不回填缺失词；② 加入托福列，并新增"生产查询路径在缓存未命中时顺带打标"这条写入路径） |
 | **关联 Spec** | [`docs/tasks/TASK-SPEC-enx-ielts-wordlist-dashboard.md`](../tasks/TASK-SPEC-enx-ielts-wordlist-dashboard.md) |
-| **修订关系** | 扩展 [ADR-0001](../adr/0001-integrate-ecdict-dictionary.md) 引入的 ECDICT 数据基础；首次引入"词库（word list）"这一独立概念 |
+| **修订关系** | 扩展 [ADR-0001](../adr/0001-integrate-ecdict-dictionary.md) 引入的 ECDICT 数据基础；本 ADR 初版提出的 `word_lists`/`word_list_memberships` 多对多表已在第一次修订中放弃 |
 
 ---
 
 ## Context
 
-**产品需求**：enx web 端（`enx-ui`）需要内置雅思词库，让用户能查看自己对雅思词库的掌握进度——总览统计（掌握了多少、还有多少未掌握）、词表明细（某个词查询过几次、是否已标记为无障碍阅读）。标记动作本身发生在 `enx-chrome` 插件阅读时，本 ADR 只覆盖数据模型，Web 端展示细节见配套 Task Spec。
+**产品需求**：enx web 端（`enx-ui`）需要内置雅思词库，让用户查看自己对雅思词库的掌握进度；数据层同时标注 CET4/CET6/托福范围，供未来复用。
 
-**现状（写本 ADR 时已确认的事实）**：
+**现状（已确认的事实）**：
 
-1. `enx-api/repo/ecp.go:26-38` 已有 `user_dicts` 表（`UserDict{UserId, WordId, QueryCount, AlreadyAcquainted}`，联合主键 `user_id+word_id`），逐词记录每个用户的查询次数和"是否已掌握"（`already_acquainted` 为 0/1 二态）。标记路径：`enx-chrome` 的 Mark Known 按钮 → `POST /api/mark`（`enx-api.go:179/196`）→ `enx.UserDict.Mark()`（`enx-api/enx/user-dict.go:40-65`，直接对 `already_acquainted` 取反）→ `repo.UpsertUserDict` 覆盖式写入。该表还通过 `enx-sync`（`enx-sync/internal/repository/word_repository.go`、`proto/data_service.proto` 里的 `UpsertUserDict` RPC）做跨设备同步。
-2. `words` 表（`enx-api/repo/ecp.go:9-24`）和 ECDICT 导入逻辑（`enx-api/ecdict/ecdict.go:25-31` 的 `stardict` struct）都**没有词库/考试标签字段**。ADR-0001 的 Context 提到 ECDICT 原始数据集"包含……考试标签（四六级等）"，但当前实现只取了 `word/sw/phonetic/translation/exchange`，标签列从未被导入或暴露。
-3. `enx-api/handlers` 目前只有 `version.go`，没有任何暴露 `user_dicts` 聚合/列表数据的 HTTP endpoint；`enx-ui` 目前只有查词页（`src/app/lookup/`）和鉴权页，没有任何看板类页面。
-4. `UpsertUserDict`（`enx-api/repo/ecp.go:77-102`）是覆盖式更新（`INSERT ... ON CONFLICT UPDATE` 语义），**不保留历史**——拿不到"某个时间点的掌握率"，只有"当前状态"。
-
-**约束**（来自需求澄清阶段与用户确认的决策）：
-
-- 词库范围要设计成可扩展的通用框架，雅思是第一个词库，后续可能加 CET4/6、托福，不希望每加一个词库就改一次表结构。
-- 掌握状态维持现有二态（`already_acquainted` 0/1），不新增"阅读障碍"作为独立的第三态。
-- 需要支持备考进度的历史趋势展示（如每周掌握率变化曲线）。
-- Web 端本次只做只读看板，不做标记/编辑入口；标记仍然只在 `enx-chrome` 发生。
+1. `enx-api/repo/ecp.go:9-24` 的 `words` 表是**懒加载的查询缓存**——只有用户实际查过的词才会出现在这张表里，不是完整词典的镜像。
+2. **`words` 表有两条会新增行的写入路径**，这是本次修订新确认的关键事实：
+   - **批量标记脚本**（`cmd/tag-wordlists`，本 ADR 第一次修订的方案）——只处理表里已经存在的历史行。
+   - **生产查询路径的缓存未命中分支**——`translate/helpers.go:27-54` 的 `fillFromEcdict()`：当 `words` 表查不到某个词、但 ECDICT（`dictionary.Lookup` → `ecdict.Query`，`enx-api/ecdict/ecdict.go:92-128`）查到了，就会调用 `word.Save()`（`enx-api/enx/ecp.go:145-157`）把这个词**新插入** `words` 表。这条路径每天都在发生（只要有用户查到本地缓存里没有的新词），如果只做批量脚本，每次有新词插入都会带着四个考试标记列的默认值 `0`，需要人工再跑一次批量脚本才能补上——这在产品运行过程中是持续的数据滞后，不是一次性问题。
+3. ECDICT 原始数据集自带 `tag` 列（空格分隔多标签，含 `ielts`/`cet4`/`cet6`/`toefl`/`gk`/`ky`/`gre` 等），但当前 `enx-api/ecdict/ecdict.go:25-31` 的 `stardict` struct 和 `enx-api/enx/enx.go:3-8` 的 `Dictionary` struct 都没有携带这个字段——`ecdict.Query()` 返回结果里目前完全拿不到 tag 信息，无论是批量脚本还是生产路径都需要先把这个字段打通。
+4. `words` 表的唯一索引 `idx_english`（`migrations/007_repair_words_ddl_comments.sql`）区分大小写，同一单词可能存在大小写不同的多条行，标记逻辑必须逐行处理（沿用第一次修订的结论，不变）。
+5. `user_dicts` 表已有逐词查询次数和掌握标记，通过 `word_id`（UUID）关联，本次不受影响。
 
 ---
 
-## Options Considered
+## Decision（累积决策，含两次修订）
 
-### 词库建模
+**在 `words` 表加四个布尔列（`is_ielts`/`is_cet4`/`is_cet6`/`is_toefl`），并且有两条独立但共享同一套"tag 字符串 → 布尔值"解析逻辑的写入路径：**
 
-| 方案 | 做法 | Pros | Cons |
-| --- | --- | --- | --- |
-| **A. `words` 表加 `is_ielts` 布尔列** | 每新增一个词库加一列 | 改动最小 | 不支持一词多词库（一个词可能同时是雅思核心词和四级词）；每加一个词库都要改表结构和迁移脚本，不满足"通用框架"约束 |
-| **B. `word_lists` + `word_list_memberships` 多对多（推荐）** | 新增两张表：`word_lists`（词库定义）、`word_list_memberships`（word_id × word_list_id 关联） | 天然支持一词多词库；加新词库只需插数据，不改表结构；可以对每个词库单独统计进度 | 多一次 JOIN；需要一次性导入脚本把词库数据关联到 `words.id` |
-| **C. 词库数据完全放应用层（静态 JSON/配置文件，不落库）** | 部署时打包一份雅思词表 JSON，运行时在内存里判断某词是否属于该词库 | 不用改数据库 | 无法用 SQL 高效联表统计"某用户在某词库的掌握进度"（需要把全量 `user_dicts` 拉到应用层再和 JSON 做交集，词库上千词、用户上千时性能和实现复杂度都不划算）；无法支撑未来"per-word-list 独立进度"这类查询需求 |
+### 1. 表结构（第一次修订确定，本次加一列）
 
-### 历史趋势
+```sql
+ALTER TABLE words ADD COLUMN is_ielts BOOLEAN NOT NULL DEFAULT 0;
+ALTER TABLE words ADD COLUMN is_cet4  BOOLEAN NOT NULL DEFAULT 0;
+ALTER TABLE words ADD COLUMN is_cet6  BOOLEAN NOT NULL DEFAULT 0;
+ALTER TABLE words ADD COLUMN is_toefl BOOLEAN NOT NULL DEFAULT 0;
+```
 
-| 方案 | 做法 | Pros | Cons |
-| --- | --- | --- | --- |
-| **D. 只保留当前状态（现状）** | 不改 `user_dicts` 的覆盖式写入 | 零改动 | 做不了趋势图，不满足"需要历史趋势"的确认结论 |
-| **E. 新增事件流水表 `user_dict_events`（推荐）** | 状态变化时追加写入一条事件记录，`user_dicts` 保留作为当前状态的物化结果，两表并存 | 可以按时间聚合出趋势；`user_dicts` 的读路径不受影响（现有查询逻辑不用改） | 事件表会随使用量持续增长，需要限制写入频率（见 Decision） |
+不新建表，`words.id`（现有 UUID）仍是唯一标识符。
 
----
+### 2. 共享的 tag 解析逻辑（新增，`enx-api/ecdict` 包）
 
-## Decision
+`ecdict.go` 的 `stardict` struct 加 `Tag string \`gorm:"column:tag"\`` 字段；`enx.Dictionary`（`enx-api/enx/enx.go`）加 `Tag string` 字段，`Query()` 把 ECDICT 行的 `tag` 原样透传出去。新增一个纯函数（如 `ecdict.ParseExamTags(tag string) (ielts, cet4, cet6, toefl bool)`），把空格分隔的 tag 字符串解析成四个布尔值——**这是唯一一处知道"tag 字符串里的哪个词对应哪个布尔列"的地方**，两条写入路径都调用它，不各自维护一份解析逻辑。
 
-**采用方案 B（通用词库多对多模型）+ 方案 E（事件流水表)，掌握状态维持二态不变。**
+### 3. 写入路径 A：生产查询路径顺带打标（新增，本次修订核心）
 
-1. **新增两张表**（落地为迁移脚本，具体 DDL 见 Task Spec §3.1）：
-   - `word_lists(id, slug, name, created_at)` —— 词库定义，`slug` 如 `ielts`，"雅思核心词"是第一条记录。
-   - `word_list_memberships(word_list_id, word_id, created_at)`，联合主键 `(word_list_id, word_id)` —— 词库成员关系。是否属于某词库、属于哪些词库，都通过这张表的 JOIN 查询。
-   - `words`/`user_dicts` 表结构**不变**，不加任何词库相关列。
+`translate/helpers.go` 的 `fillFromEcdict()` 在 `epc != nil`（ECDICT 命中）时，除了现有的 `English/Chinese/Pronunciation` 赋值，额外调用 `ecdict.ParseExamTags(epc.Tag)` 得到四个布尔值，赋给 `word.IsIelts/IsCet4/IsCet6/IsToefl`（`enx.Word` 加对应字段）；`Word.Save()`（`enx-api/enx/ecp.go:145-157`）在构造 `repo.Word{}` 时把这四个字段一并写入新行。**从这条改造生效的时刻起，任何新插入 `words` 表的行都会带着正确的考试标记，不需要等下一次批量脚本运行。**
 
-2. **掌握状态不新增字段**：`already_acquainted` 维持 0/1。"未掌握"里"从没读到过"和"读到过但卡壳"两种含义不做数据层区分；应用层用 `already_acquainted = 0 AND query_count >= N`（N 为可调参数，不写进 schema）近似识别"重点复习词"，弥补二态模型的信息损失。这是本次和用户确认过的明确取舍，不是遗漏。
+### 4. 写入路径 B：批量回填脚本（第一次修订确定，本次简化实现方式）
 
-3. **新增 `user_dict_events` 追加写入表**：`(id, user_id, word_id, event_type, query_count, already_acquainted, created_at)`。**不是每次查询都写一条**——只在以下两种情况追加事件，避免高频词把表撑爆：
-   - `already_acquainted` 发生翻转（`event_type = mark_changed`）；
-   - `query_count` 跨越步进阈值（如每达到 5 的倍数，`event_type = query_milestone`）。
-   `user_dicts` 继续作为当前状态的物化表，供现有读路径（`GetUserWordQueryCount` 等）直接使用，不受影响；趋势图从 `user_dict_events` 单独聚合。
+`cmd/tag-wordlists` 仍然需要，用来修复"生产路径改造上线之前就已经存在"的历史行（那些行是在没有 tag 逻辑时插入的，天然是 `0`）。**实现方式因为路径 A 的引入而简化**：不再需要脚本自己定义一份独立的 stardict 查询（第一次修订曾经这样设计），可以直接对 `words` 表每一行调用现有的 `ecdict.Query()`（现在已经带 `Tag` 字段）取回 tag，再用同一个 `ecdict.ParseExamTags()` 解析——和路径 A 复用完全相同的函数，只是触发方式是"批量扫描现有行"而不是"单词缓存未命中时触发"。**仍然只 `UPDATE` 已存在的行，不 `INSERT` 新词**，这个约束不变（见 Consequences）。
 
-4. **Web 端只读**：新增的聚合/列表 API 都是 `GET`，不新增任何写入端点；标记相关的 `POST /api/mark` 行为、`enx-chrome` 侧代码完全不动。
+同一单词的多条大小写不同的行，两条路径都按各自场景自然处理：路径 A 是"新插入的这一行"，只影响这一行；路径 B 逐行扫描 `words` 表，天然会覆盖到所有大小写变体的历史行。
 
 ---
 
 ## Rationale
 
-1. **多对多建模是"通用框架"约束的直接推论**：一个词完全可能同时是雅思核心词和四级词，布尔列方案在这种场景下要么冗余要么表达不了，多对多是唯一能同时满足"支持一词多词库"和"加词库不改表结构"的方案。
-2. **二态状态模型是用户主动确认的权衡，不是技术限制**：三态模型技术上更精确，但用户判断当前阶段"未掌握 + 高查询次数"已经能近似表达"卡壳词"，用二态 + 应用层规则的组合成本更低，且不需要迁移现有 `user_dicts` 数据。
-3. **事件表按状态跳变/步进写入，而非每次查询都写**：`load_count`/`query_count` 在现有实现里几乎每次查词都会自增（`translate/service.go`），如果趋势表照抄这个写入频率，高频用户的事件表会远超 `user_dicts` 本身的量级；按跳变/步进写入把事件量收窄到"有意义的状态变化"，同时仍能支撑"按周聚合掌握率"这类趋势查询（趋势图不需要逐次查询的粒度）。
-4. **不动现有 `user_dicts` 读写路径**：`GetUserWordQueryCount`/`UpsertUserDict`/`Mark()` 等现有函数签名和行为不变，新增能力都是旁路（新表 + 新 JOIN 查询），把改动面限制在"新增"而不是"修改现有生产路径"，降低回归风险。
+1. **路径 A 是本次修订的关键新增**：如果只有批量脚本（路径 B），"数据准确"这件事会退化成一个需要人工定期重跑的运维任务——每有一个新词首次被查询插入，标记列就会短暂（直到下次运维手动跑脚本）是错的 `0`。让生产路径顺带打标，使得数据从写入的那一刻起就是准确的，不依赖后续人工操作。
+2. **两条路径共享同一个解析函数，而不是各自实现**：tag 字符串到布尔列的映射规则（比如"tag 里出现 `ielts` 这个词就是 `is_ielts=1`"）只应该有一处定义；如果路径 A 和路径 B 各自写一份解析逻辑，未来加新考试类型时容易漏改一处，或者两处判断标准悄悄产生分歧。
+3. **批量脚本仍然必要，不能被路径 A 完全取代**：路径 A 只覆盖"改造上线之后新插入的行"，改造上线之前已经存在于 `words` 表里的历史行（很可能是大多数数据）不会被路径 A 追溯性更新，必须靠路径 B 一次性回填。
+4. **不回填缺失词的约束在路径 A 里同样成立**：路径 A 本来就只在"ECDICT 有、`words` 表没有"时触发插入，这个插入动作是现有生产逻辑（懒加载缓存），本 ADR 没有改变"是否插入"这个决策，只是给"本来就要发生的插入"顺带补上四个字段，没有扩大"什么情况下会有新词进入 `words` 表"这个既有行为的范围。
 
 ---
 
@@ -81,32 +69,32 @@
 
 ### Positive
 
-- 未来加 CET4/6、托福等词库时，只需要一次性导入脚本插入 `word_lists`/`word_list_memberships` 数据，不需要再次评估表结构。
-- 现有标记流程（`enx-chrome` → `/api/mark` → `user_dicts`）完全不受影响，本次改造对现有生产路径是纯增量。
-- 有据可查的历史趋势，为后续"备考进度曲线"之类的产品能力打基础。
+- 数据从写入时刻起就是准确的，不再依赖批量脚本作为唯一的数据来源，减少"看板数字滞后于实际标记"的运维负担。
+- 两条路径共享同一个解析函数，加新考试类型（比如未来加托福之后还想加 GRE）只需要改 `ParseExamTags` 一处。
+- 批量脚本因为能复用 `ecdict.Query()` 而不需要维护一份独立的 tag 查询逻辑，实现更简单。
 
 ### Negative
 
-- 需要一份雅思词库的具体数据（词表来源、版本、词数），这是**产品侧待确认的输入**，不属于本 ADR 的技术决策范围（见 Task Spec §0，属于实施阻塞项）。
-- `word_list_memberships` 里的 `word_id` 要求词库里的词已经存在于 `words` 表；词库里如果有 `words` 表当前查不到的生僻词，需要在导入脚本里决定"跳过并记录"还是"顺带写入 `words` 表"（见 Task Spec §3.2，需要 Review 时明确）。
-- `user_dict_events` 即便限制了写入频率，仍会随使用量持续增长，需要在实施时给出索引策略（至少 `(user_id, created_at)`），必要时考虑保留窗口（如只保留最近 N 个月，供未来 Revisit）。
-- 词库量级较大（雅思核心词量级通常在几千词），`word_list_memberships` JOIN `user_dicts` 做全量统计时需要在 `word_list_memberships.word_list_id` 和 `user_dicts.user_id` 上有合适索引，否则统计接口在词库变大后可能变慢。
+- **改动了生产查询路径**（`fillFromEcdict`/`Word.Save`/`ecdict.Query`），这是第一次修订原本刻意避免的（当时决定"标记逻辑不碰生产路径，只用批量脚本"）。本次修订主动接受这个代价，因为"数据持续滞后"被认为是更大的问题；改动面集中在"多读一个字段、多算四个布尔值、多写四个列"，不改变现有查询结果的语义（`English/Chinese/Pronunciation` 完全不变），回归风险可控。
+- ECDICT 挂载的具体数据文件如果本身没有 `tag` 列或该列为空（比如用的是精简版 ECDICT 数据），`ParseExamTags` 会对空字符串返回全 `false`，这是优雅降级（不报错、不阻塞查词功能），但需要在实施时用实际数据文件验证 `tag` 列确实有值，否则路径 A 和路径 B 都会全程写入 `0`，起不到效果却不会报错提示。
+- 批量脚本（路径 B）仍然是运维性质的一次性工具，需要人工在路径 A 上线后手动跑一次，覆盖历史行；这一步骤如果被忘记，历史行会一直是 `0`，直到用户偶然重新触发同一个词的查询（但缓存命中的词不会重新走 `fillFromEcdict`，所以历史行实际上**永远不会**被路径 A 间接修复，必须依赖路径 B）。
 
 ### Mitigation
 
-- 词库数据来源作为 Task Spec 的显式前置步骤（§0），未确认前不进入 schema 落地之后的步骤，避免"数据没到位但表已经建错"的返工。
-- 导入脚本对"`words` 表里找不到的词"采取的策略（跳过 vs 补录）在 Task Spec 里作为需要 Review 确认的开放问题列出，不擅自决定。
+- 实施时第一步（Task Spec §7 步骤 1）先验证 ECDICT 数据文件的 `tag` 列是否有实际内容，避免在假数据前提下完成开发。
+- 批量脚本作为路径 A 上线后的**必需**后续步骤写入 Task Spec 验收标准，不是可选项。
 
 ---
 
 ## Revisit Trigger
 
-- 若后续产品需求明确要把"阅读障碍"做成独立于"未掌握"的状态（当前二态决策的前提发生变化），需要重新评估 `already_acquainted` 是否要从 `int 0/1` 升级为枚举字段，并设计现有数据的迁移路径。
-- 若 `user_dict_events` 的实际增长速度超出预期（例如单用户表增长到百万行量级），需要重新评估"状态跳变 + 步进写入"的频率策略，或引入定期归档/保留窗口。
-- 若产品决定 Web 端也要支持标记/批量操作（当前决策是"纯只读看板"），需要重新评估鉴权模型和 `/api/mark` 之外是否需要新的写入端点，且需要确认 Web 端写入是否也要触发 `enx-sync` 同步路径。
+- 若 ECDICT 挂载的数据文件确认不含可用的 `tag` 数据，需要重新评估标记数据的来源（退回到某个独立词表文件，而不是依赖 ECDICT 的 tag 列），路径 A 的"顺带打标"设计需要相应调整数据源。
+- 若产品后续需要"雅思词库全量覆盖率"而不是"已查询词中的掌握率"，需要重新评估是否要在路径 A 之外再引入"预热"逻辑（启动时或定期主动查询官方词表里所有词，逐一插入 `words` 表），这会让 `words` 表从"纯懒加载缓存"演变为"部分主动预加载"，是比本次更大的改动。
+- 若 `words` 表大小写重复行的问题后续被排期修复，需要确认修复方案（合并重复行）时是否会影响路径 A/B 已经写入的四个布尔列（预期不会，因为布尔列在合并后取"任一行为真则为真"即可，但需要在那个修复任务里显式验证）。
+- 若未来还要加更多考试类型（GRE、专四专八等），评估届时"每加一个类型加一列"是否仍然划算，或需要切回多对多建模（ADR-003 第一次修订放弃的方案）。
 
 ---
 
-## Open Question（非本 ADR 决策范围，实施前需产品侧给出）
+## Open Question（非本 ADR 决策范围，实施前需确认）
 
-雅思词库的具体数据来源尚未确定——用哪个词表版本、词量多大。这直接决定 `word_lists` 里"雅思"这条记录要导入哪些词，是 Task Spec 实施顺序里的第一个前置步骤（Step 0），在此之前不应该开始数据导入相关的实施工作。
+批量脚本（路径 B）用来回填历史行时依赖的 ECDICT 数据文件版本/`tag` 列实际内容尚未核实（见 Task Spec §0、§7 步骤 1）。

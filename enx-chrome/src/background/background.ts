@@ -2,23 +2,68 @@
 // Note: Sentry initialization is skipped in service worker context to avoid import issues
 
 import { config, getApiBaseUrl } from '@/config/env'
-import { signInWithCognito, signOutWithCognito } from '@/lib/cognito'
+import {
+  CognitoTokens,
+  refreshCognitoTokens,
+  signInWithCognito,
+  signOutWithCognito,
+} from '@/lib/cognito'
 
 console.log('ENX Background script loaded')
 console.log('🌐 Config environment:', config.environment)
 let accessToken = ''
+let refreshToken = ''
+let refreshInFlight: Promise<CognitoTokens> | null = null
 
 const LOGIN_SUCCESS_NOTIFICATION_ID = 'enx-login-success'
 
-const loadSession = async () => {
+export const loadSession = async () => {
   try {
-    const result = await chrome.storage.local.get(['accessToken'])
+    const result = await chrome.storage.local.get(['accessToken', 'refreshToken'])
     if (result.accessToken) {
       accessToken = result.accessToken as string
       console.log('Access token loaded from storage')
     }
+    if (result.refreshToken) {
+      refreshToken = result.refreshToken as string
+    }
   } catch (error) {
     console.error('Error loading session:', error)
+  }
+}
+
+// Silently exchange the refresh token for a new access token.
+// Concurrent 401s share a single in-flight refresh via `refreshInFlight`,
+// so a page full of simultaneous lookups doesn't fire multiple refresh calls.
+export const tryRefreshTokens = async (): Promise<boolean> => {
+  if (!refreshToken) {
+    await loadSession()
+  }
+  if (!refreshToken) {
+    return false
+  }
+
+  if (!refreshInFlight) {
+    refreshInFlight = refreshCognitoTokens(refreshToken).finally(() => {
+      refreshInFlight = null
+    })
+  }
+
+  try {
+    const tokens = await refreshInFlight
+    accessToken = tokens.access_token
+    if (tokens.refresh_token) {
+      refreshToken = tokens.refresh_token
+    }
+    await chrome.storage.local.set({
+      accessToken: tokens.access_token,
+      refreshToken,
+      'enx-session': { accessToken: tokens.access_token, refreshToken },
+    })
+    return true
+  } catch (error) {
+    console.error('Token refresh failed:', error)
+    return false
   }
 }
 
@@ -28,6 +73,7 @@ const handleSessionExpiry = async () => {
 
   // Clear session data
   accessToken = ''
+  refreshToken = ''
   await chrome.storage.local.remove([
     'user',
     'enx-user',
@@ -58,8 +104,20 @@ const handleSessionExpiry = async () => {
   }
 }
 
+type ApiRequestResult = {
+  success: boolean
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data?: any
+  error?: string
+  sessionExpired?: boolean
+}
+
 // API request helper
-const makeApiRequest = async (endpoint: string, options: RequestInit = {}) => {
+export const makeApiRequest = async (
+  endpoint: string,
+  options: RequestInit = {},
+  isRetry = false
+): Promise<ApiRequestResult> => {
   try {
     const API_BASE_URL = await getApiBaseUrl()
     const headers: Record<string, string> = {
@@ -82,6 +140,9 @@ const makeApiRequest = async (endpoint: string, options: RequestInit = {}) => {
 
     if (!response.ok) {
       if (response.status === 401) {
+        if (!isRetry && (await tryRefreshTokens())) {
+          return makeApiRequest(endpoint, options, true)
+        }
         await handleSessionExpiry()
         throw new Error('Session expired')
       }
@@ -254,6 +315,7 @@ const handleCognitoSignIn = async () => {
   try {
     const tokens = await signInWithCognito()
     accessToken = tokens.access_token
+    refreshToken = tokens.refresh_token || ''
 
     const me = await makeApiRequest('/api/me')
     const userData: StoredUser =
@@ -305,6 +367,7 @@ const AUTH_STORAGE_KEYS = [
 
 const clearLocalAuthState = async () => {
   accessToken = ''
+  refreshToken = ''
   await chrome.storage.local.remove([...AUTH_STORAGE_KEYS])
   await chrome.storage.session.remove('enx-oauth-verifier')
 }
@@ -533,6 +596,14 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
           'Background script updated accessToken from storage:',
           accessToken
         )
+      }
+    }
+
+    // Keep in-memory refreshToken in sync (used by tryRefreshTokens)
+    if (changes.refreshToken) {
+      const newRefreshToken = changes.refreshToken.newValue
+      if (newRefreshToken !== refreshToken) {
+        refreshToken = newRefreshToken || ''
       }
     }
   }

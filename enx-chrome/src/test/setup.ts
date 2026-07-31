@@ -16,10 +16,25 @@ global.crypto = webcrypto as Crypto
       addListener: jest.fn(),
       removeListener: jest.fn(),
     },
+    onInstalled: {
+      addListener: jest.fn(),
+    },
     getURL: jest.fn((path: string) => `chrome-extension://test/${path}`),
   },
   identity: {
     launchWebAuthFlow: jest.fn(),
+  },
+  action: {
+    onClicked: {
+      addListener: jest.fn(),
+    },
+  },
+  notifications: {
+    create: jest.fn(),
+    clear: jest.fn(),
+    onClicked: {
+      addListener: jest.fn(),
+    },
   },
   storage: {
     local: {
@@ -37,6 +52,10 @@ global.crypto = webcrypto as Crypto
       get: jest.fn(),
       set: jest.fn(),
       remove: jest.fn(),
+    },
+    onChanged: {
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
     },
   },
   tabs: {

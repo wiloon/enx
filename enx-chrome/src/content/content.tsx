@@ -64,8 +64,20 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
   popup.className = 'enx-word-popup'
   popup.id = 'enx-word-popup'
 
+  // Vertical margin must clear a full line of the host page's own text,
+  // not just a fixed pixel gap, or the popup's edge cuts into the line
+  // adjacent to the anchor (see docs discussion on reading-flow positioning).
+  const anchorStyle = window.getComputedStyle(anchor)
+  let anchorLineHeight = parseFloat(anchorStyle.lineHeight)
+  if (Number.isNaN(anchorLineHeight)) {
+    anchorLineHeight = parseFloat(anchorStyle.fontSize) * 1.2
+  }
+  const verticalMargin = Math.ceil(anchorLineHeight)
+
   // 3. Apply CSS Anchor Positioning styles (host element stays in light DOM,
   // content rendering below is isolated inside its shadow root, see §2.1/§2.4)
+  // position-area: top prioritizes showing above the clicked word, so the
+  // popup covers already-read text rather than the upcoming sentence.
   popup.style.cssText = `
     position-anchor: --${anchorId};
     position-area: top;
@@ -74,7 +86,10 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
     max-width: 480px;
     max-height: 60vh;
     overflow-y: auto;
-    margin: 16px;
+    margin-top: ${verticalMargin}px;
+    margin-bottom: ${verticalMargin}px;
+    margin-left: 16px;
+    margin-right: 16px;
     padding: 0;
     border: none;
     background: transparent;

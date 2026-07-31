@@ -2,169 +2,224 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Draft — 2026-07-30（待 Review；词库数据源未定前不可开始 §7 步骤 2 及之后的实施） |
+| **状态** | Draft — 2026-07-31（待 Review；ECDICT tag 数据源未验证前不可开始 §7 步骤 2 及之后的实施） |
 | **类型** | SDD Task Spec（Spec 驱动实现；实现前以本文为准，实现后同步更新状态与验收清单） |
-| **目标** | 让登录用户在 `enx-ui` 查看自己在"雅思核心词"词库上的掌握进度：总览统计（总词数/已掌握/未掌握/重点复习/未接触）、词表明细（按状态筛选、按查询次数或字母排序、分页）、掌握率历史趋势曲线 |
-| **非目标** | 不做 Web 端标记/编辑入口（标记仍只在 `enx-chrome` 完成，本次是纯只读看板）；不做雅思之外的其它词库（CET4/6、托福等），但 schema 按通用框架设计以便后续复用；不改变现有 `POST /api/mark` 行为和 `enx-chrome` 侧代码；不做词库内容的后台管理界面（新增/编辑词库由一次性导入脚本完成，不做 CRUD UI）；不做"阅读障碍"独立状态（维持现有二态） |
+| **目标** | 让登录用户在 `enx-ui` 查看自己在雅思词库范围内、已查询过的词的掌握进度：总览统计（已掌握/未掌握/重点复习）、词表明细、掌握率历史趋势曲线。数据层给 `words` 表打上 `is_ielts`/`is_cet4`/`is_cet6`/`is_toefl` 四个标记，通过两条路径维护：生产查询路径在缓存未命中新插入词时顺带打标（持续生效），批量脚本回填改造上线前已存在的历史行（一次性）。本次看板 UI 只做雅思视图 |
+| **非目标** | 不做 Web 端标记/编辑入口；不做 CET4/CET6/托福的看板 UI（数据层已打标，UI 复用留给未来 Spec）；不改变现有 `POST /api/mark` 行为；不做词库内容的后台管理界面；不做"阅读障碍"独立状态；不回填 `words` 表里"生产路径改造之前、ECDICT 里也没有"的词（批量脚本只处理已存在的行，见 ADR-003）；不修复 `words` 表既存的大小写重复行问题 |
 | **触发原因** | 产品需求：内置雅思词库，判断用户对雅思备考词汇的掌握程度和进度 |
-| **关联背景** | [`ADR-003: 雅思词库掌握度追踪的数据模型设计`](../architecture/adr-003-ielts-wordlist-mastery-model.md)；本 Spec 是该决策的落地实施计划 |
+| **关联背景** | [`ADR-003: 雅思/CET4/CET6/托福词库标记的数据模型设计`](../architecture/adr-003-ielts-wordlist-mastery-model.md)（2026-07-31 第二次修订：加托福列，新增"生产查询路径顺带打标"这条写入路径）；本 Spec 是该决策的落地实施计划 |
 
 ---
 
 ## 0. 前置阻塞项（实施前必须解决）
 
-雅思词库的具体数据来源尚未确定——用哪个词表版本、词量多大、字段是否包含词性/难度分级。**在此确认之前，不要开始 §7 步骤 2（数据库迁移）及之后的任何步骤**，因为表结构里 `word_lists`/`word_list_memberships` 的导入脚本设计依赖词库源数据的具体格式（CSV？纯文本词表？是否自带音标/释义？）。§7 步骤 1（Spike：确认 ECDICT 数据源是否已含考试标签）可以在词库数据源确认前先做。
+需要确认 ECDICT 挂载的实际数据文件里 `tag` 列是否有可用内容（不同版本/精简版 ECDICT 数据可能不含该列或为空）。**在此验证之前，不要开始 §7 步骤 2（生产路径改造、数据库迁移）及之后的任何步骤**——如果 `tag` 列实际是空的，本 Spec 整个"顺带打标"的设计需要先解决数据源问题（见 ADR-003 Revisit Trigger），而不是先写代码再发现打不出标。
 
 ---
 
 ## 1. 背景与动机
 
-详见 [ADR-003](../architecture/adr-003-ielts-wordlist-mastery-model.md) 的 Context/Decision。简述：`user_dicts` 表已经具备逐词的查询次数（`query_count`）和掌握标记（`already_acquainted`），但项目里完全没有"词库"概念，也没有任何 Web 端看板。ADR-003 决定新增通用的 `word_lists`/`word_list_memberships` 表建模词库归属，新增 `user_dict_events` 事件表支撑历史趋势，掌握状态维持现有二态不变，Web 端只做只读展示。
+详见 [ADR-003](../architecture/adr-003-ielts-wordlist-mastery-model.md)。简述：`words` 表要加四个考试标记布尔列，由两条写入路径维护——① 生产查询路径（`fillFromEcdict` → `Word.Save()`）在新插入词时顺带打标，从上线时刻起持续生效；② 一次性批量脚本回填上线前已存在的历史行。两条路径共享同一个 tag 解析函数，避免逻辑分裂。
 
 ---
 
 ## 2. 现状调查（本 Spec 编写时已确认的事实）
 
-### 2.1 `user_dicts` 现状：已有查询次数和二态掌握标记，但无词库归属、无历史
+### 2.1 `user_dicts` 现状
 
-`enx-api/repo/ecp.go:26-38` 的 `UserDict` struct 对应 `user_dicts` 表：
+`enx-api/repo/ecp.go:26-38` 的 `UserDict` struct，逐词记录查询次数和掌握标记，通过 `POST /api/mark`（`enx-api.go:179/196`）→ `MarkWord` → `enx.UserDict.Mark()`（`enx-api/enx/user-dict.go:40-65`）写入，`enx-sync` 跨设备同步，本次不涉及。
+
+### 2.2 `words` 表现状：两条会新增行的路径
+
+`enx-api/repo/ecp.go:9-24` 的 `Word` struct 对应 `words` 表，是懒加载查询缓存。**关键：新词进入这张表只有一条现有路径**——`translate/helpers.go:27-54` 的 `fillFromEcdict()`：
 
 ```go
-type UserDict struct {
-    UserId            string `gorm:"column:user_id;primaryKey"`
-    WordId            string `gorm:"column:word_id;primaryKey"`
-    QueryCount        int    `gorm:"column:query_count;default:0"`
-    AlreadyAcquainted int    `gorm:"column:already_acquainted;default:0"`
-    CreatedAt         int64  `gorm:"column:created_at"`
-    UpdatedAt         int64  `gorm:"column:updated_at"`
+func fillFromEcdict(c *gin.Context, word *enx.Word, userId string) (bool, bool) {
+    if word.Id != "" {
+        return true, false // 本地已有，不需要 ECDICT
+    }
+    epc, err := dictionary.Lookup(c.Request.Context(), word.English)
+    // ... 错误处理
+    if epc == nil {
+        return true, false // ECDICT 也没有，不插入
+    }
+    word.English = epc.English
+    word.Key = strings.ToLower(epc.English)
+    word.Chinese = epc.Chinese
+    word.Pronunciation = epc.Pronunciation
+    word.Save() // ← 新增行写入 words 表，见 enx-api/enx/ecp.go:145-157
+    // ...
 }
 ```
 
-`UpsertUserDict`（同文件 L77-102）是覆盖式写入：每次查词或点 Mark Known 都直接更新这一行，不保留历史。写入入口：
+`word.Save()`（`enx-api/enx/ecp.go:145-157`）构造 `repo.Word{}` 并 `sqlitex.DB.Create(&sWord)`。本次要在这个既有插入点上，多写入四个字段。`enx.Word` struct（`enx-api/enx/ecp.go:14-32`）和 `repo.Word` struct（`enx-api/repo/ecp.go:9-24`）都需要加对应字段。
 
-- 查词时的 `query_count` 自增：`enx-api/translate/service.go:40` 附近、`enx-api/enx/ecp.go:104/135`。
-- 标记切换：`POST /api/mark`（`enx-api.go:179/196`）→ `MarkWord` handler（`enx-api.go:269-313`）→ `enx.UserDict.Mark()`（`enx-api/enx/user-dict.go:40-65`）。
+`words` 表唯一索引 `idx_english` 区分大小写（`migrations/007`），标记逻辑（无论哪条路径）都要意识到同一单词可能有多条大小写不同的行。
 
-该表还通过 `enx-sync` 的 `UpsertUserDict` gRPC（`enx-sync/internal/repository/word_repository.go:433-448`、`enx-sync/proto/data_service.proto`）做跨设备同步，本次改造**不涉及** `enx-sync` 侧代码。
+### 2.3 ECDICT 现状：`tag` 列存在但当前完全没有被读取
 
-### 2.2 `words`/ECDICT 现状：无词库/考试标签字段
+`enx-api/ecdict/ecdict.go:25-31` 的 `stardict` struct 只取 `Word/Sw/Phonetic/Translation/Exchange`；`enx-api/enx/enx.go:3-8` 的 `Dictionary` struct 只有 `English/Chinese/Pronunciation/CreateTime`。两者都没有 `tag`。`Query()`（`ecdict.go:92-128`）的返回值构造处（`ecdict.go:118-123`）需要多带一个 `Tag` 字段透传出去。
 
-`enx-api/repo/ecp.go:9-24` 的 `Word` struct（对应 `words` 表）字段是 `Id/English/LoadCount/Chinese/Pronunciation/...`，没有任何标签列。`enx-api/ecdict/ecdict.go:25-31` 的 `stardict` struct（对应只读挂载的 ECDICT SQLite）只取了 `Word/Sw/Phonetic/Translation/Exchange` 五个字段。[ADR-0001](../adr/0001-integrate-ecdict-dictionary.md) Context 提到 ECDICT 原始数据集"包含……考试标签（四六级等）"，但当前项目从未导入或暴露这个字段——**本次雅思词库归属判断不依赖 ECDICT 的 tag 列**，而是走 ADR-003 决定的独立 `word_list_memberships` 表，二者是两条不同的数据路径，互不依赖（如果雅思词表数据源本身就是"从 ECDICT tag 列筛出 ielts 标签的词"，那是 §3.2 导入脚本内部的实现细节，不改变 `stardict` struct 或 ECDICT 查询逻辑）。
+### 2.4 `enx-api/handlers` 与 `enx-ui` 现状
 
-### 2.3 `enx-api/handlers` 现状：无任何列表/聚合类 endpoint
-
-`enx-api/handlers` 目录当前只有 `version.go`。现有和 `user_dicts` 相关的 HTTP 路由（`enx-api.go:176-198`）都是单词粒度的读写（`/word/:word`、`/mark`），**没有任何批量列表或聚合统计接口**，本次新增的 `/api/word-lists/*` 系列是全新的一组 endpoint，不是在现有 handler 上加分支。
-
-### 2.4 `enx-ui` 现状：无仪表盘页面，API 层是简单的 fetch 封装
-
-`enx-ui/src/app` 下现有路由只有 `lookup`（查词）、`auth/callback`、`forgot-password`、`reset-password`、`verify-email`，没有任何数据看板类页面。`enx-ui/src/services/api.ts` 是一个 `ApiService` class，`makeRequest<T>` 统一处理 `Authorization: Bearer <token>` header 和错误包装成 `ApiResponse<T>`（`success/data/error`），现有方法 `getMe()`/`lookupWord()`/`deleteWord()` 都是直接调用 `makeRequest`，本次新增的看板数据方法应该沿用同一个 `ApiService` 类和 `ApiResponse<T>` 包装模式，不要新建另一套请求封装。`enx-ui/src/types/index.ts` 里的 `WordData`（`Key/English/Pronunciation/Chinese/LoadCount/AlreadyAcquainted/WordType`）是现有查词结果的类型，本次词表明细的返回结构和它字段重叠但语义不同（`WordData` 是单词查询结果，本次是"某用户在某词库里的进度条目"），应该新增独立类型，不要复用/扩展 `WordData`。
-
-页面鉴权目前通过 `AuthWrapper.tsx`（`enx-ui/src/components/`）包裹，新增的看板页面路由需要复用这个组件保护，不要重新实现鉴权判断。
+`enx-api/handlers` 目前只有 `version.go`；`enx-ui` 无仪表盘页面。`ApiService`（`enx-ui/src/services/api.ts`）统一处理鉴权和 `ApiResponse<T>` 包装；`AuthWrapper` 组件负责页面级鉴权，均直接复用。
 
 ---
 
 ## 3. 目标设计
 
-### 3.1 数据库改动（新增迁移文件 `enx-api/migrations/008_word_lists.sql`）
+### 3.1 数据库改动（新增迁移文件 `enx-api/migrations/008_words_exam_tags.sql`）
 
 ```sql
-CREATE TABLE IF NOT EXISTS word_lists (
-    id         TEXT PRIMARY KEY,   -- UUID
-    slug       TEXT NOT NULL UNIQUE, -- 如 'ielts'
-    name       TEXT NOT NULL,        -- 如 '雅思核心词'
-    created_at INTEGER NOT NULL
-);
+ALTER TABLE words ADD COLUMN is_ielts BOOLEAN NOT NULL DEFAULT 0;
+ALTER TABLE words ADD COLUMN is_cet4  BOOLEAN NOT NULL DEFAULT 0;
+ALTER TABLE words ADD COLUMN is_cet6  BOOLEAN NOT NULL DEFAULT 0;
+ALTER TABLE words ADD COLUMN is_toefl BOOLEAN NOT NULL DEFAULT 0;
 
-CREATE TABLE IF NOT EXISTS word_list_memberships (
-    word_list_id TEXT NOT NULL,
-    word_id      TEXT NOT NULL,
-    created_at   INTEGER NOT NULL,
-    PRIMARY KEY (word_list_id, word_id)
-);
-CREATE INDEX IF NOT EXISTS idx_word_list_memberships_word_id
-    ON word_list_memberships(word_id);
-
-CREATE TABLE IF NOT EXISTS user_dict_events (
-    id                 TEXT PRIMARY KEY,  -- UUID
-    user_id            TEXT NOT NULL,
-    word_id            TEXT NOT NULL,
-    event_type         TEXT NOT NULL,     -- 'mark_changed' | 'query_milestone'
-    query_count        INTEGER NOT NULL,
-    already_acquainted INTEGER NOT NULL,
-    created_at         INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_user_dict_events_user_created
-    ON user_dict_events(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_words_is_ielts ON words(is_ielts) WHERE is_ielts = 1;
+CREATE INDEX IF NOT EXISTS idx_words_is_cet4  ON words(is_cet4)  WHERE is_cet4  = 1;
+CREATE INDEX IF NOT EXISTS idx_words_is_cet6  ON words(is_cet6)  WHERE is_cet6  = 1;
+CREATE INDEX IF NOT EXISTS idx_words_is_toefl ON words(is_toefl) WHERE is_toefl = 1;
 ```
 
-对应 GORM struct 新增到 `enx-api/repo/ecp.go`（或独立文件 `enx-api/repo/wordlist.go`，实施时二选一，倾向独立文件避免 `ecp.go` 进一步膨胀），并加入 `sqlitex.go:136` 的 `AutoMigrate(...)` 列表。
+同一迁移文件里一并建 `user_dict_events` 表（见 §3.4，用于趋势图，和考试标记列是两件独立的事，放同一个迁移文件纯粹是减少迁移文件数量）。
 
-### 3.2 词库数据导入（一次性脚本，非常驻服务）
+`repo.Word` struct（`enx-api/repo/ecp.go:9-24`）加：
 
-新增 `enx-api/cmd/import-wordlist/main.go`（参照现有 `enx-api/cmd` 下其它一次性工具的结构），读取 §0 确认的雅思词表源文件，对每个词：
+```go
+IsIelts bool `gorm:"column:is_ielts;default:false"`
+IsCet4  bool `gorm:"column:is_cet4;default:false"`
+IsCet6  bool `gorm:"column:is_cet6;default:false"`
+IsToefl bool `gorm:"column:is_toefl;default:false"`
+```
 
-1. 按 `GetWordByEnglish`（`enx-api/repo/ecp.go:41-62`）现有的精确匹配→忽略大小写匹配逻辑，在 `words` 表里查找对应 `word_id`。
-2. **找到**：写入一条 `word_list_memberships(word_list_id=<ielts的id>, word_id)`。
-3. **找不到**（`words` 表里没有这个词，比如词库里有生僻词或变体拼写而 ECDICT/本地词库没收录）：**跳过并记录日志**（打印到 stdout，导入结束后汇总"跳过 N 个词，清单见 xxx"）。**不在导入脚本里自动写入 `words` 表**——这是一个需要 Review 时明确的开放问题：如果跳过比例过高（比如 >5%），说明词库源数据和当前 `words` 表覆盖度不匹配，应该回头检查数据源或 ECDICT 覆盖率，而不是让导入脚本静默创建可能缺音标/释义的残缺词条。
+### 3.2 共享的 tag 解析逻辑（新增 `enx-api/ecdict/tags.go`）
 
-脚本需要幂等（重复运行不产生重复 `word_list_memberships` 行，用 `INSERT OR IGNORE` 或先查后插）。
+```go
+type ExamTags struct {
+    Ielts bool
+    Cet4  bool
+    Cet6  bool
+    Toefl bool
+}
 
-### 3.3 事件写入：`UpsertUserDict` 改造
+func ParseExamTags(tag string) ExamTags {
+    var t ExamTags
+    for _, f := range strings.Fields(tag) {
+        switch f {
+        case "ielts":
+            t.Ielts = true
+        case "cet4":
+            t.Cet4 = true
+        case "cet6":
+            t.Cet6 = true
+        case "toefl":
+            t.Toefl = true
+        }
+    }
+    return t
+}
+```
 
-`enx-api/repo/ecp.go:77-102` 的 `UpsertUserDict` 在写入/更新 `user_dicts` 后，按 ADR-003 Decision 追加事件：
+具体 ECDICT tag 值的拼写（是 `ielts` 还是别的写法）需要在 §7 步骤 1 用实际数据文件核实后再定，上面的 `switch` 分支值是待验证的假设，不是确认过的事实。
 
-- 若本次更新前后 `already_acquainted` 发生变化（对比 `existing.AlreadyAcquainted` 与传入值）：插入一条 `user_dict_events(event_type='mark_changed', ...)`。
-- 若 `query_count` 跨越 5 的倍数（如 `existing.QueryCount / 5 != queryCount / 5`）：插入一条 `event_type='query_milestone'`。
-- 两个条件都不满足（比如只是 query_count 从 3 涨到 4）：**不写事件**，只更新 `user_dicts`，维持现有行为。
+`stardict` struct（`ecdict.go:25-31`）加 `Tag string \`gorm:"column:tag"\``；`enx.Dictionary`（`enx.go:3-8`）加 `Tag string`；`Query()` 返回构造处（`ecdict.go:118-123`）把 `res.entry.Tag` 一并赋给返回的 `Dictionary.Tag`。
 
-步进阈值（当前定为 5）作为具名常量，不要硬编码成魔法数字散落在函数体内，方便后续按实际数据量调整。
+### 3.3 写入路径 A：生产查询路径顺带打标
 
-### 3.4 新增 API（`enx-api/handlers/wordlist.go`，新文件）
+`enx.Word` struct（`enx-api/enx/ecp.go:14-32`）加 `IsIelts/IsCet4/IsCet6/IsToefl bool` 字段。
+
+`translate/helpers.go` 的 `fillFromEcdict()` 在 `word.Chinese = epc.Chinese` 之后、`word.Save()` 之前，新增：
+
+```go
+tags := ecdict.ParseExamTags(epc.Tag)
+word.IsIelts = tags.Ielts
+word.IsCet4 = tags.Cet4
+word.IsCet6 = tags.Cet6
+word.IsToefl = tags.Toefl
+```
+
+（`translate` 包需要新增对 `enx-api/ecdict` 的 import；目前只 import 了 `enx-api/dictionary`，这是本次唯一新增的包依赖）
+
+`Word.Save()`（`enx-api/enx/ecp.go:145-157`）构造 `sWord := repo.Word{}` 时一并赋值 `sWord.IsIelts = word.IsIelts` 等四行。
+
+### 3.4 写入路径 B：批量回填脚本（回填改造上线前的历史行）
+
+新增 `enx-api/cmd/tag-wordlists/main.go`：
+
+1. `SELECT id, english FROM words`，逐行扫描。
+2. 对每一行调用 `ecdict.Query(ctx, row.English)`（复用生产查询函数，不再像本 Spec 上一版那样自己定义独立的 tag 查询逻辑）。
+3. 若查到结果，用 `ecdict.ParseExamTags(result.Tag)` 解析，`UPDATE words SET is_ielts=?, is_cet4=?, is_cet6=?, is_toefl=? WHERE id=?`。
+4. ECDICT 查不到的词（比如生僻词），跳过，不报错。
+5. 打印统计：扫描总行数、四个标记各命中多少行。
+6. **只 `UPDATE`，不 `INSERT`**——这一条约束不变（见 ADR-003 Decision 4）。
+7. **幂等**：重复运行结果不变；且路径 A 上线后新插入的行本身已经带正确标记，重复跑批量脚本对这些行是无意义但无害的重复写入（结果相同）。
+
+逐行调用 `ecdict.Query()` 而非批量 SQL JOIN，是因为 `words` 表和 ECDICT 是两个独立的 SQLite 文件（不同数据库连接，无法直接 JOIN），这本来就是现有架构的既定约束（`ecdict.go` 的 `db` 和 `sqlitex.DB` 是两个连接），不是本次引入的新限制。
+
+### 3.5 事件写入：`UpsertUserDict` 改造（历史趋势支持，与考试标记无关，独立功能）
+
+同前版本设计不变：`UpsertUserDict` 在 `already_acquainted` 翻转或 `query_count` 跨 5 的倍数时，追加写入 `user_dict_events(id, user_id, word_id, event_type, query_count, already_acquainted, created_at)`，其它情况不写。
+
+### 3.6 新增 API（`enx-api/handlers/wordlist.go`，新文件）
 
 | 方法 & 路径 | 说明 |
 | --- | --- |
-| `GET /api/word-lists/:slug/progress` | 返回 `{total, mastered, unmastered, need_review, untouched}`。`need_review` = `already_acquainted=0 AND query_count >= N`（N 沿用 §3.3 的步进阈值或独立可调参数，实施时决定是否复用同一常量）；`untouched` = 词库里存在但当前用户 `user_dicts` 无对应行的词数 |
-| `GET /api/word-lists/:slug/words?status=mastered\|unmastered\|need_review\|untouched\|all&sort=query_count\|english&order=asc\|desc&page=&page_size=` | 分页词表明细，每行含 `english/chinese/pronunciation/query_count/already_acquainted` |
-| `GET /api/word-lists/:slug/trend?weeks=8` | 从 `user_dict_events` 按周聚合出掌握率序列（每周取该用户当周末尾的 `mastered/total` 快照），返回 `[{week_start, mastered, total}]` |
+| `GET /api/word-lists/ielts/progress` | `{total, mastered, unmastered, need_review}`，查询 `words JOIN user_dicts ON words.id=user_dicts.word_id AND user_dicts.user_id=? WHERE words.is_ielts=1` |
+| `GET /api/word-lists/ielts/words?status=...&sort=...&order=...&page=&page_size=` | 分页词表明细 |
+| `GET /api/word-lists/ielts/trend?weeks=8` | 从 `user_dict_events` 按周聚合掌握率序列 |
 
-三个 endpoint 都挂在现有 `authGroup`/`apiGroup`（`enx-api.go:169-198`）下，复用现有鉴权中间件，不新增鉴权逻辑。`:slug` 目前只会传 `ielts`，但路由设计成通用参数，为未来其它词库预留。
+固定 `ielts` 路径，不做通用 `:slug`（理由同前版本：四个字段而非可参数化的表，`:slug → 列名` 映射本次不做）。
 
-### 3.5 `enx-ui` 新增页面
+### 3.7 `enx-ui` 新增页面
 
 | 文件 | 说明 |
 | --- | --- |
-| `enx-ui/src/app/wordlists/ielts/page.tsx`（新增） | 看板页面，用 `AuthWrapper` 包裹；顶部总览统计卡片 + 词表明细表格 + 趋势图 |
-| `enx-ui/src/app/wordlists/ielts/ProgressSummary.tsx`（新增） | 展示 `/progress` 返回的四个数字（已掌握/未掌握/重点复习/未接触），仿照 `enx-ui/src/app/lookup/WordResultCard.tsx` 的卡片风格 |
-| `enx-ui/src/app/wordlists/ielts/WordListTable.tsx`（新增） | 词表明细，状态筛选 tab + 排序下拉 + 分页控件，调用 `/words` endpoint |
-| `enx-ui/src/app/wordlists/ielts/TrendChart.tsx`（新增） | 掌握率趋势曲线，调用 `/trend` endpoint；图表库沿用项目现有依赖（若 `enx-ui` 尚未引入任何图表库，实施时先确认技术选型，不要在本 Spec 里预设具体库） |
-| `enx-ui/src/services/api.ts` | 新增 `getWordListProgress(slug)`/`getWordListWords(slug, params)`/`getWordListTrend(slug, weeks)` 三个方法，复用现有 `makeRequest<T>` |
-| `enx-ui/src/types/index.ts` | 新增 `WordListProgress`/`WordListEntry`/`WordListTrendPoint` 类型（不复用 `WordData`，见 §2.4） |
+| `enx-ui/src/app/wordlists/ielts/page.tsx`（新增） | 看板页面，`AuthWrapper` 包裹 |
+| `enx-ui/src/app/wordlists/ielts/ProgressSummary.tsx`（新增） | 总览统计卡片 |
+| `enx-ui/src/app/wordlists/ielts/WordListTable.tsx`（新增） | 词表明细，筛选/排序/分页 |
+| `enx-ui/src/app/wordlists/ielts/TrendChart.tsx`（新增） | 趋势曲线，图表库技术选型实施时定 |
+| `enx-ui/src/services/api.ts` | 新增 `getIeltsProgress()`/`getIeltsWords(params)`/`getIeltsTrend(weeks)` |
+| `enx-ui/src/types/index.ts` | 新增 `IeltsProgress`/`IeltsWordEntry`/`IeltsTrendPoint` |
 
 ---
 
 ## 4. 验收标准
 
-### 4.1 数据层
+### 4.1 ECDICT tag 数据验证（§0 前置阻塞项的落地检查）
 
-- [ ] 迁移执行后 `word_lists` 存在一条 `slug='ielts'` 记录；`word_list_memberships` 行数与 §3.2 导入脚本的"成功匹配"计数一致
-- [ ] 导入脚本重复运行两次，`word_list_memberships` 行数不变（幂等性）
-- [ ] 手工触发一次 `already_acquainted` 翻转（走现有 `/api/mark`），`user_dict_events` 新增恰好一条 `event_type='mark_changed'` 记录，且不影响 `user_dicts` 现有行为（现有 `/api/mark` 相关测试保持通过）
-- [ ] 连续查询同一词 5 次，`user_dict_events` 新增恰好一条 `event_type='query_milestone'`（不是 5 条）
+- [ ] 用实际挂载的 ECDICT 数据文件查询若干已知的雅思/CET4/CET6/托福词，确认 `tag` 列非空且包含预期标签值；若为空或格式与假设不符，先更新 §3.2 的 `switch` 分支再继续后续步骤
 
-### 4.2 API
+### 4.2 写入路径 A（生产路径顺带打标）
 
-- [ ] `GET /api/word-lists/ielts/progress`：新建测试用户，标记 3 个词为已掌握、5 个词查询过但未标记、其余未接触，断言返回的四个数字与预期精确匹配
-- [ ] `GET /api/word-lists/ielts/words?status=need_review`：断言只返回 `already_acquainted=0 AND query_count>=5` 的词，不多不少
-- [ ] 分页参数越界（`page` 超出总页数）返回空列表而非报错
-- [ ] `GET /api/word-lists/ielts/trend?weeks=8`：断言返回序列长度为 8，且每个点的 `mastered<=total`
-- [ ] 未登录请求以上三个 endpoint 均返回 401（复用现有鉴权中间件的既有行为）
+- [ ] 构造一个 `words` 表里不存在、ECDICT 里存在且 `tag` 含 `ielts` 的词，走一次真实查词请求（缓存未命中），断言新插入的行 `is_ielts=1`
+- [ ] 同上，验证 `is_cet4`/`is_cet6`/`is_toefl` 各自独立触发正确
+- [ ] 构造一个 ECDICT 里 `tag` 为空或不含任何已知标签的词，断言新插入行四个标记列均为 `0`（不报错，优雅降级）
+- [ ] 现有 `fillFromEcdict`/`Word.Save()` 相关测试（若有）在改造后仍然通过，`English/Chinese/Pronunciation` 等既有字段行为不受影响
 
-### 4.3 Web 端
+### 4.3 写入路径 B（批量回填脚本）
 
-- [ ] 看板页面加载后，总览统计卡片数字与直接查 `/progress` 接口返回值一致
-- [ ] 词表明细表格：切换状态筛选 tab，列表内容随之变化；切换排序，顺序随之变化；翻页正确
-- [ ] 趋势图能正常渲染 8 周数据，无控制台报错
-- [ ] 未登录用户访问 `/wordlists/ielts` 被 `AuthWrapper` 拦截，跳转到登录页（与现有受保护页面行为一致）
+- [ ] 构造一个改造前就存在的历史行（手工插入,不经过路径 A），脚本运行后其考试标记列被正确回填
+- [ ] 构造大小写两条历史行，脚本运行后两行独立被正确回填
+- [ ] ECDICT 查不到的历史词，脚本运行后该行标记列保持默认值,不报错、不中断整体运行
+- [ ] 脚本重复运行两次结果一致
+
+### 4.4 API
+
+- [ ] `GET /api/word-lists/ielts/progress`：新建测试用户，标记 3 个雅思词已掌握、5 个查询过未标记，断言返回数字精确匹配
+- [ ] `GET /api/word-lists/ielts/words?status=need_review`：只返回 `already_acquainted=0 AND query_count>=5`
+- [ ] 分页越界返回空列表
+- [ ] `GET /api/word-lists/ielts/trend?weeks=8`：序列长度为 8，`mastered<=total`
+- [ ] 未登录请求均返回 401
+
+### 4.5 事件写入
+
+- [ ] `already_acquainted` 翻转写入恰好一条 `mark_changed`
+- [ ] `query_count` 跨 5 的倍数写入恰好一条 `query_milestone`
+
+### 4.6 Web 端
+
+- [ ] 总览统计与 `/progress` 一致；词表筛选/排序/分页正确；趋势图正常渲染；未登录访问被拦截
 
 ---
 
@@ -172,11 +227,11 @@ CREATE INDEX IF NOT EXISTS idx_user_dict_events_user_created
 
 | 风险 | 缓解 |
 | --- | --- |
-| 雅思词库数据源未定，是当前最大的阻塞项 | §0/§7 已明确列为前置步骤，实施顺序上排在所有数据库改动之前 |
-| 导入脚本"找不到词"的处理策略（跳过 vs 补录）可能有争议 | §3.2 明确当前决定是"跳过并记录"，作为 Review 时的讨论点显式列出，不是隐藏假设 |
-| `user_dict_events` 即便限制了写入频率，长期仍会增长 | 索引已设计为 `(user_id, created_at)`；若实测增长过快，按 ADR-003 Revisit Trigger 重新评估保留策略，本次不做归档机制 |
-| 大词库（雅思核心词量级通常几千词）下 `/progress` 聚合查询可能慢 | `word_list_memberships` 已加 `word_id` 索引；实施时需要用接近真实词量的数据做一次性能验证（而非假设"应该没问题"），若超过可接受阈值（如 500ms）需要加缓存或调整查询方式 |
-| `enx-ui` 可能尚未引入图表库，`TrendChart` 的技术选型未定 | §3.5 已标注为实施时决定，不在本 Spec 里预设，避免绑定一个可能不合适的依赖 |
+| ECDICT 数据文件的 `tag` 列可能为空或格式与假设不符 | §0/§4.1 作为前置验证，未通过不继续后续步骤 |
+| 改造了生产查询路径（`fillFromEcdict`），有回归风险 | §4.2 明确要求既有字段行为（English/Chinese/Pronunciation）不受影响的回归测试；改动只新增字段赋值，不修改既有逻辑分支 |
+| 批量脚本逐词调用 `ecdict.Query()`，历史数据量大时耗时可能较长 | 一次性运维脚本，不要求实时性；若实测过慢可加并发（多个 goroutine 分片处理），实施时按实际数据量决定是否需要 |
+| 统计口径只覆盖"已查询过的词" | ADR-003 已记录为确认过的产品取舍；看板文案需要说明这一点 |
+| `words` 表既存大小写重复行不会被本次修复 | 列入 ADR-003 Revisit Trigger，本次只保证两条路径都不漏标 |
 
 ---
 
@@ -184,16 +239,16 @@ CREATE INDEX IF NOT EXISTS idx_user_dict_events_user_created
 
 | 文件 | 说明 |
 | --- | --- |
-| `enx-api/migrations/008_word_lists.sql`（新增） | `word_lists`/`word_list_memberships`/`user_dict_events` 建表 |
-| `enx-api/repo/wordlist.go`（新增，或并入 `ecp.go`） | 新表对应的 GORM struct 与查询函数 |
-| `enx-api/repo/ecp.go` | `UpsertUserDict` 改造，追加事件写入（§3.3） |
-| `enx-api/cmd/import-wordlist/main.go`（新增） | 一次性词库导入脚本 |
-| `enx-api/handlers/wordlist.go`（新增） | `/api/word-lists/*` 三个只读 endpoint |
-| `enx-api/enx-api.go` | 新增路由注册（`authGroup`/`apiGroup` 下） |
-| `enx-api/utils/sqlitex/sqlitex.go` | `AutoMigrate` 列表加入新 struct |
-| `enx-ui/src/app/wordlists/ielts/`（新增目录） | 看板页面及子组件 |
-| `enx-ui/src/services/api.ts` | 新增三个看板数据请求方法 |
-| `enx-ui/src/types/index.ts` | 新增看板相关类型 |
+| `enx-api/migrations/008_words_exam_tags.sql`（新增） | `words` 加四个布尔列 + 索引；`user_dict_events` 建表 |
+| `enx-api/ecdict/ecdict.go` | `stardict`/`Dictionary` 加 `Tag` 字段，`Query()` 透传 |
+| `enx-api/ecdict/tags.go`（新增） | `ParseExamTags` 共享解析函数 |
+| `enx-api/enx/enx.go` | `Dictionary` struct 加 `Tag` |
+| `enx-api/enx/ecp.go` | `Word` struct 加四个标记字段；`Save()` 写入 |
+| `enx-api/repo/ecp.go` | `Word` struct（DB 层）加四个字段 |
+| `enx-api/translate/helpers.go` | `fillFromEcdict()` 调用 `ParseExamTags` |
+| `enx-api/cmd/tag-wordlists/main.go`（新增） | 批量回填脚本，复用 `ecdict.Query`/`ParseExamTags` |
+| `enx-api/handlers/wordlist.go`（新增） | `/api/word-lists/ielts/*` |
+| `enx-ui/src/app/wordlists/ielts/`（新增） | 看板页面 |
 | `docs/architecture/adr-003-ielts-wordlist-mastery-model.md` | 关联决策记录 |
 
 ---
@@ -201,34 +256,33 @@ CREATE INDEX IF NOT EXISTS idx_user_dict_events_user_created
 ## 7. 实施顺序（建议）
 
 ```text
-0. [ ] 阻塞项：确认雅思词库数据源（词表版本、格式、词量），未确认不进入步骤 2
-1. [ ] Spike：核对 ECDICT 数据源本身是否含考试标签列（ADR-0001 提到但当前未导入），
-       确认本次导入是否可以/需要复用该字段，还是完全依赖独立的雅思词表源文件
-2. [ ] 数据库迁移：新增 008_word_lists.sql，本地跑一次迁移确认建表成功
-3. [ ] repo 层：新增 word_lists/word_list_memberships/user_dict_events 对应 struct 和查询函数；
-       改造 UpsertUserDict 追加事件写入（§3.3），补单测覆盖"翻转写事件/步进写事件/普通更新不写事件"三种分支
-4. [ ] 导入脚本：cmd/import-wordlist，先在开发库跑一次，人工核对"跳过词清单"是否在可接受范围
-5. [ ] API：新增 handlers/wordlist.go 三个 endpoint + 路由注册，补集成测试（§4.2）
-6. [ ] enx-ui：ProgressSummary → WordListTable → TrendChart 依次实现，
-       每步接入真实 API 后手工验证一次，不要三个组件都写完才第一次联调
-7. [ ] 端到端手工验证：用真实测试账号标记若干词，刷新看板确认数字符合预期
-8. [ ] 勾选 §4 全部验收项，文首状态更新为 Done — YYYY-MM-DD；ADR-003 状态同步改为 Accepted
+1. [ ] 验证 ECDICT 数据文件 tag 列实际内容（§0/§4.1），确认 §3.2 的标签值假设是否需要调整
+2. [ ] 数据库迁移：008_words_exam_tags.sql
+3. [ ] ecdict 包改造：stardict/Dictionary 加 Tag，新增 ParseExamTags（§3.2）
+4. [ ] 写入路径 A：enx.Word/repo.Word 加字段，fillFromEcdict 改造，Word.Save 改造（§3.3）
+       跑一次真实查词验证 §4.2 全部用例
+5. [ ] 写入路径 B：cmd/tag-wordlists（§3.4），在开发库跑一次，人工核对命中量级，
+       跑 §4.3 全部用例
+6. [ ] repo 层事件写入改造（§3.5），补单测
+7. [ ] API：handlers/wordlist.go 三个 endpoint + 路由注册，补集成测试（§4.4/§4.5）
+8. [ ] enx-ui：ProgressSummary → WordListTable → TrendChart 依次实现并联调
+9. [ ] 端到端手工验证；勾选 §4 全部验收项；状态更新为 Done — YYYY-MM-DD；
+       ADR-003 状态同步改为 Accepted
 ```
 
 ---
 
 ## 8. SDD 工作方式（给 Agent / 开发者）
 
-1. **实现前**：以本文 Spec 与 [ADR-003](../architecture/adr-003-ielts-wordlist-mastery-model.md) 为唯一需求来源；§0 前置阻塞项未解决前不开始步骤 2 及之后的工作。
-2. **实现中**：严格按 §7 分步提交，每步跑一次相关测试；数据库/后端改动（步骤 2-5）与前端改动（步骤 6）分开提交，便于 review。
-3. **实现后**：勾选 §4 验收清单；将文首**状态**更新为 `Done — YYYY-MM-DD`；同步把 ADR-003 状态从 `Proposed` 改为 `Accepted`。
+1. **实现前**：以本文与 [ADR-003](../architecture/adr-003-ielts-wordlist-mastery-model.md) 为唯一需求来源；§0/步骤 1 未验证通过前不进入步骤 2 及之后。
+2. **实现中**：严格按 §7 分步提交；写入路径 A（改动生产路径）和路径 B（新增运维脚本）分开提交，便于分别 review 回归风险。
+3. **实现后**：勾选 §4 验收清单；状态更新为 `Done — YYYY-MM-DD`；ADR-003 状态同步改为 `Accepted`。
 
 ---
 
-## 9. 后续扩展（Out of Scope，供未来 Spec 引用）
+## 9. 后续扩展（Out of Scope）
 
-- 其它词库（CET4/6、托福等）复用本次的 `word_lists`/`word_list_memberships` 框架，只需新增导入脚本运行一次，不需要新的 Spec 重新设计表结构
-- Web 端标记/批量操作入口（当前明确是纯只读看板）
-- "阅读障碍"独立于"未掌握"的第三态（当前维持二态，见 ADR-003 Revisit Trigger）
-- 基于遗忘曲线的复习提醒/间隔重复（spaced repetition），依赖本次 `user_dict_events` 建立的事件基础，但本次不实现调度逻辑
-- 词库内容的后台管理界面（当前词库更新方式是重新跑一次导入脚本）
+- CET4/CET6/托福看板 UI
+- 回填"生产路径改造前、ECDICT 里也没有"的词到 `words` 表（词库全量覆盖率）
+- `words` 表大小写重复行的数据清理
+- Web 端标记入口、"阅读障碍"独立状态、间隔重复复习提醒、词库后台管理界面
