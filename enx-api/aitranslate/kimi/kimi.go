@@ -19,6 +19,11 @@ const (
 	systemPrompt = "You are a professional English-to-Chinese translator. " +
 		"Translate the given English sentence into natural, fluent Chinese. " +
 		"Reply with the Chinese translation only, no explanation, no pinyin, no quotes."
+
+	wordContextSystemPrompt = "You are a professional English-to-Chinese translator. " +
+		"Given an English sentence and a specific word from that sentence, reply with the " +
+		"word's Chinese meaning as used in THIS sentence's context only, not a generic " +
+		"dictionary definition. Reply with the Chinese meaning only, no explanation, no pinyin, no quotes."
 )
 
 type Kimi struct {
@@ -73,6 +78,14 @@ type chatResponse struct {
 }
 
 func (k *Kimi) TranslateSentence(ctx context.Context, sentence string) (string, error) {
+	return k.chat(ctx, systemPrompt, sentence)
+}
+
+func (k *Kimi) TranslateWordInContext(ctx context.Context, sentence, word string) (string, error) {
+	return k.chat(ctx, wordContextSystemPrompt, fmt.Sprintf("Sentence: %s\nWord: %s", sentence, word))
+}
+
+func (k *Kimi) chat(ctx context.Context, systemPrompt, userContent string) (string, error) {
 	var result chatResponse
 	resp, err := k.client.R().
 		SetContext(ctx).
@@ -82,7 +95,7 @@ func (k *Kimi) TranslateSentence(ctx context.Context, sentence string) (string, 
 			Model: k.model,
 			Messages: []chatMessage{
 				{Role: "system", Content: systemPrompt},
-				{Role: "user", Content: sentence},
+				{Role: "user", Content: userContent},
 			},
 			Temperature: 0.3,
 		}).

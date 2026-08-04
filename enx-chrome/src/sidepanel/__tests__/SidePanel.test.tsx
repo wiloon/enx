@@ -97,13 +97,19 @@ describe('SidePanel', () => {
       if (message.type === 'translateSentence') {
         return { success: true, chinese: '猫是很棒的宠物。' }
       }
+      if (message.type === 'translateWordInContext') {
+        return { success: true, chinese: `${message.word}在这句里的意思` }
+      }
       if (message.type === 'getOneWord') {
         return {
           success: true,
           ecp: {
             English: message.word,
-            Chinese: `${message.word}的中文`,
-            Pronunciation: '',
+            // Deliberately different from the translateWordInContext value
+            // above -- this field must NOT show up in the Side Panel (spec
+            // §3.7 2026-08-03 change: only Pronunciation is used from here).
+            Chinese: `${message.word}的通用词典释义`,
+            Pronunciation: `/${message.word}/`,
           },
         }
       }
@@ -119,8 +125,49 @@ describe('SidePanel', () => {
 
     await waitFor(() => {
       const definitions = screen.getByTestId('sidepanel-definitions')
-      expect(definitions).toHaveTextContent('cats的中文')
-      expect(definitions).toHaveTextContent('great的中文')
+      expect(definitions).toHaveTextContent('cats在这句里的意思')
+      expect(definitions).toHaveTextContent('great在这句里的意思')
+      expect(definitions).toHaveTextContent('/cats/')
+      expect(definitions).toHaveTextContent('/great/')
+      expect(definitions).not.toHaveTextContent('通用词典释义')
+    })
+  })
+
+  it('still shows pronunciation when the contextual translation fails, and vice versa (spec §4.5, 互不阻塞)', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: 'Cats are great pets.',
+        word: 'great',
+        sourceUrl: '',
+        createdAt: 1,
+      },
+    })
+    mockSendMessage.mockImplementation(async (message: { type: string; word?: string }) => {
+      if (message.type === 'translateSentence') {
+        return { success: true, chinese: '猫是很棒的宠物。' }
+      }
+      if (message.type === 'translateWordInContext') {
+        return { success: false, error: 'translation service unavailable' }
+      }
+      if (message.type === 'getOneWord') {
+        return {
+          success: true,
+          ecp: { English: message.word, Chinese: 'unused', Pronunciation: '/greɪt/' },
+        }
+      }
+      return { success: false }
+    })
+
+    const user = userEvent.setup()
+    render(<SidePanel />)
+    await screen.findByTestId('sidepanel-sentence')
+
+    await user.click(screen.getByText('great'))
+
+    await waitFor(() => {
+      const definitions = screen.getByTestId('sidepanel-definitions')
+      expect(definitions).toHaveTextContent('translation service unavailable')
+      expect(definitions).toHaveTextContent('/greɪt/')
     })
   })
 

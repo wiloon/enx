@@ -301,6 +301,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'translateSentence':
           return await handleTranslateSentence(request.sentence || '')
 
+        case 'translateWordInContext':
+          return await handleTranslateWordInContext(
+            request.sentence || '',
+            request.word || ''
+          )
+
         case 'validateSession':
           return await makeApiRequest('/api/me')
 
@@ -630,6 +636,30 @@ const handleTranslateSentence = async (sentence: string) => {
   const response = await makeApiRequest('/api/translate/sentence', {
     method: 'POST',
     body: JSON.stringify({ sentence: sentence.trim() }),
+  })
+
+  if (response.success && response.data?.chinese) {
+    return { success: true, chinese: response.data.chinese as string }
+  }
+
+  return {
+    success: false,
+    error: response.error || 'Translation service unavailable',
+    sessionExpired: response.sessionExpired,
+  }
+}
+
+// Handle a single word's contextual translation for the Side Panel word-click
+// flow (spec §3.7/§3.8): unlike getOneWord/ECDICT, this returns the word's
+// meaning as used in the given sentence, not a generic dictionary gloss.
+const handleTranslateWordInContext = async (sentence: string, word: string) => {
+  if (!sentence || sentence.trim() === '' || !word || word.trim() === '') {
+    return { success: false, error: 'sentence and word are required' }
+  }
+
+  const response = await makeApiRequest('/api/translate/word-in-context', {
+    method: 'POST',
+    body: JSON.stringify({ sentence: sentence.trim(), word: word.trim() }),
   })
 
   if (response.success && response.data?.chinese) {

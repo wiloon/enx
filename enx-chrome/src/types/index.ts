@@ -56,6 +56,7 @@ export interface ContentMessage {
     | 'logout'
     | 'openSentencePanel'
     | 'translateSentence'
+    | 'translateWordInContext'
   word?: string
   words?: string
   paragraph?: string

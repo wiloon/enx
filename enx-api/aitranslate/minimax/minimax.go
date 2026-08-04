@@ -22,6 +22,11 @@ const (
 	systemPrompt = "You are a professional English-to-Chinese translator. " +
 		"Translate the given English sentence into natural, fluent Chinese. " +
 		"Reply with the Chinese translation only, no explanation, no pinyin, no quotes."
+
+	wordContextSystemPrompt = "You are a professional English-to-Chinese translator. " +
+		"Given an English sentence and a specific word from that sentence, reply with the " +
+		"word's Chinese meaning as used in THIS sentence's context only, not a generic " +
+		"dictionary definition. Reply with the Chinese meaning only, no explanation, no pinyin, no quotes."
 )
 
 type MiniMax struct {
@@ -78,6 +83,14 @@ type chatResponse struct {
 }
 
 func (m *MiniMax) TranslateSentence(ctx context.Context, sentence string) (string, error) {
+	return m.chat(ctx, systemPrompt, sentence)
+}
+
+func (m *MiniMax) TranslateWordInContext(ctx context.Context, sentence, word string) (string, error) {
+	return m.chat(ctx, wordContextSystemPrompt, fmt.Sprintf("Sentence: %s\nWord: %s", sentence, word))
+}
+
+func (m *MiniMax) chat(ctx context.Context, systemPrompt, userContent string) (string, error) {
 	req := m.client.R().
 		SetContext(ctx).
 		SetHeader("Authorization", "Bearer "+m.apiKey).
@@ -93,7 +106,7 @@ func (m *MiniMax) TranslateSentence(ctx context.Context, sentence string) (strin
 			Model: m.model,
 			Messages: []chatMessage{
 				{Role: "system", Content: systemPrompt},
-				{Role: "user", Content: sentence},
+				{Role: "user", Content: userContent},
 			},
 			Temperature: 0.3,
 		}).

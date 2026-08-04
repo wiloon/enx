@@ -116,38 +116,50 @@ function SidePanelContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingContext?.createdAt])
 
-  const handleWordClick = useCallback(async (rawWord: string) => {
-    const word = rawWord.toLowerCase()
-    try {
-      const response = await sendMessageToBackground<BackgroundResponse>({
-        type: 'getOneWord',
-        word,
-      } satisfies ContentMessage)
+  // Word click in the Side Panel translates the word using the current
+  // sentence as context (spec §3.7/§3.8) instead of reusing the
+  // context-free ECDICT lookup the page's word popup uses. Pronunciation is
+  // still cheap/context-independent, so it's fetched from the existing
+  // getOneWord/ECDICT path in parallel -- one request failing doesn't block
+  // the other from showing.
+  const handleWordClick = useCallback(
+    async (rawWord: string) => {
+      const word = rawWord.toLowerCase()
+      const sentence = pendingContext?.sentence
+      if (!sentence) return
 
-      if (response.success && response.ecp) {
-        const ecp = response.ecp
-        setDefinitions(prev => [
-          ...prev,
-          {
-            word: ecp.English || word,
-            chinese: ecp.Chinese || '',
-            pronunciation: ecp.Pronunciation || '',
-          },
-        ])
-      } else {
-        setDefinitions(prev => [
-          ...prev,
-          { word, chinese: response.error || '未找到释义', pronunciation: '' },
-        ])
-      }
-    } catch (error) {
-      console.error('SidePanel: getOneWord failed', error)
-      setDefinitions(prev => [
-        ...prev,
-        { word, chinese: '查询失败', pronunciation: '' },
+      const [contextResult, pronunciationResult] = await Promise.allSettled([
+        sendMessageToBackground<BackgroundResponse>({
+          type: 'translateWordInContext',
+          word,
+          sentence,
+        } satisfies ContentMessage),
+        sendMessageToBackground<BackgroundResponse>({
+          type: 'getOneWord',
+          word,
+        } satisfies ContentMessage),
       ])
-    }
-  }, [])
+
+      const chinese =
+        contextResult.status === 'fulfilled' &&
+        contextResult.value.success &&
+        contextResult.value.chinese
+          ? contextResult.value.chinese
+          : contextResult.status === 'fulfilled'
+            ? contextResult.value.error || '翻译失败'
+            : '翻译失败'
+
+      const pronunciation =
+        pronunciationResult.status === 'fulfilled' &&
+        pronunciationResult.value.success &&
+        pronunciationResult.value.ecp
+          ? pronunciationResult.value.ecp.Pronunciation || ''
+          : ''
+
+      setDefinitions(prev => [...prev, { word, chinese, pronunciation }])
+    },
+    [pendingContext?.sentence]
+  )
 
   if (!pendingContext) {
     return (

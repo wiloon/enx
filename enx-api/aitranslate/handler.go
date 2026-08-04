@@ -12,6 +12,11 @@ type sentenceRequest struct {
 	Sentence string `json:"sentence" binding:"required"`
 }
 
+type wordInContextRequest struct {
+	Sentence string `json:"sentence" binding:"required"`
+	Word     string `json:"word" binding:"required"`
+}
+
 // Handler wraps a Translator (which may be nil if sentence translation is
 // not configured, see New) so it can be registered as a gin route handler.
 type Handler struct {
@@ -42,6 +47,35 @@ func (h *Handler) TranslateSentence(c *gin.Context) {
 	chinese, err := h.translator.TranslateSentence(c.Request.Context(), req.Sentence)
 	if err != nil {
 		logger.Errorf("aitranslate: TranslateSentence failed: %v", err)
+		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "translation service unavailable"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "chinese": chinese})
+}
+
+// TranslateWordInContext handles POST /translate/word-in-context and POST
+// /api/translate/word-in-context. It translates a single word using the
+// surrounding sentence as context, so the result is the word's meaning as
+// used in that sentence rather than a generic dictionary gloss (see
+// docs/tasks/TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md §3.8).
+// Same "no silent empty result" convention as TranslateSentence: unavailable
+// or failed translation is always an explicit 502.
+func (h *Handler) TranslateWordInContext(c *gin.Context) {
+	var req wordInContextRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "sentence and word are required"})
+		return
+	}
+
+	if h.translator == nil {
+		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "sentence translation is not configured"})
+		return
+	}
+
+	chinese, err := h.translator.TranslateWordInContext(c.Request.Context(), req.Sentence, req.Word)
+	if err != nil {
+		logger.Errorf("aitranslate: TranslateWordInContext failed: %v", err)
 		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "translation service unavailable"})
 		return
 	}

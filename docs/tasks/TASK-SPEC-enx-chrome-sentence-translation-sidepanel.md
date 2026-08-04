@@ -2,9 +2,9 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Implemented — 2026-07-31（§7 步骤 1-5 代码已完成；`go test ./...`、`tsc --noEmit`、`jest`、`pnpm build` 均通过；步骤 6 的真实 Chrome 手工验证尚待用户执行，见 §4 验收清单标注） |
+| **状态** | Implemented — 2026-08-03（§7 步骤 8-9 代码已完成：`go test ./aitranslate/...`、`tsc --noEmit`、`jest`（93 项）、`pnpm build` 均通过；步骤 10 的真实 Chrome 手工验证——尤其"同一多义词在不同句子里点击返回不同中文含义"——尚待用户执行，见 §4.5 标注） |
 | **类型** | SDD Task Spec（Spec 驱动实现；实现前以本文为准，实现后同步更新状态与验收清单） |
-| **目标** | 在现有单词查词弹窗基础上新增「整句翻译」入口：点击后在 Chrome 扩展的 Side Panel 中显示当前单词所在句子的英文原文 + 调用 AI 模型（Kimi / AWS Bedrock / MiniMax，按配置切换）翻译出的中文整句译文；用户还可在侧边栏内点击原文中任意单词，在整句译文下方追加显示该词的释义（复用现有查词逻辑） |
+| **目标** | 在现有单词查词弹窗基础上新增「整句翻译」入口：点击后在 Chrome 扩展的 Side Panel 中显示当前单词所在句子的英文原文 + 调用 AI 模型（Kimi / AWS Bedrock / MiniMax，按配置切换）翻译出的中文整句译文；用户还可在侧边栏内点击原文中任意单词，在整句译文下方追加显示该词**在当前句子上下文中的中文含义**（2026-08-03 变更：改为调用 AI 模型按句子上下文翻译该词，不再复用 ECDICT 查词逻辑；音标字段单独并行查询 ECDICT/`getOneWord` 获取，见 §3.7） |
 | **非目标** | 不改变现有查词弹窗内已有的单词翻译展示；不做侧边栏内的划词/多词选择整句翻译（仅覆盖"点击已高亮单词→查所在句"的路径）；不做翻译结果的本地持久化/历史记录 |
 | **触发原因** | 用户反馈：点词查词后，若句子结构复杂，仅看单词释义仍无法理解整句含义；查词弹窗空间有限，无法容纳整句翻译内容，因此需要一个更大的展示区域（Side Panel）|
 | **关联背景** | [`docs/adr/0001-integrate-ecdict-dictionary.md`](../adr/0001-integrate-ecdict-dictionary.md) §Consequences 明确写了"句子翻译需后续单独方案；当前仅返回明确提示"——本 Spec 是该后续方案的落地 |
@@ -66,7 +66,10 @@ Draft 版本（2026-07-30）曾调查得出"`src/components/WordPopup.tsx` 是�
   → Side Panel（若已打开或本次打开成功）：
       1. 读取待处理上下文，展示英文原句
       2. 调用 enx-api 新端点做整句 AI 翻译，展示中文译文
-      3. 用户点击原句中任意单词 → 复用现有 getOneWord 逻辑 → 在译文下方追加该词释义
+      3. 用户点击原句中任意单词 → 并行发起两个请求（2026-08-03 变更，见 §3.7）：
+         a. 新端点 `/api/translate/word-in-context`：AI 按当前整句上下文翻译该词 → 中文含义
+         b. 现有 getOneWord 逻辑：只取音标字段，中文释义字段丢弃不用
+         → 在译文下方追加「单词 + 上下文中文含义 + 音标」
   → 若 Side Panel 未能直接打开（触发路径③失败）：
       提示用户"已保存，请点击工具栏 ENX 图标打开面板，或右键图标选择「打开整句翻译面板」"
       → 用户走触发路径①或②（见 §3.2，均可靠）→ Side Panel 打开并读取到同一份待处理上下文
@@ -195,8 +198,30 @@ static extractSentenceContext(
   "permissions": [..., "sidePanel"],
   "side_panel": { "default_path": "sidepanel.html" }
   ```
-- 组件状态机：`idle`（无 pending context）→ `loading`（正在请求整句翻译）→ `loaded`（展示英文原句 + 中文译文，原句内每个 token 可点击）→ 点击 token 后在下方追加一条 `{英文词: 中文释义}`（复用 `getOneWord` background action，与现有查词弹窗数据源一致，不新增查词逻辑）。
+- 组件状态机：`idle`（无 pending context）→ `loading`（正在请求整句翻译）→ `loaded`（展示英文原句 + 中文译文，原句内每个 token 可点击）→ 点击 token 后在下方追加一条释义。
+
+**2026-08-03 变更：单词点击的释义来源改为 AI 上下文翻译，音标改为单独并行查询**（原方案是完全复用 `getOneWord`，同一份 ECDICT 数据源出中文释义+音标；触发原因见 §3.8 前的说明）：
+
+- 点击 token 后并行发起两个请求，不互相阻塞：
+  1. `sendMessageToBackground({ type: 'translateWordInContext', word, sentence: pendingContext.sentence })` → 新 background handler → `POST /api/translate/word-in-context`（见 §3.8）→ 拿到该词在**当前句子上下文**中的中文含义
+  2. `sendMessageToBackground({ type: 'getOneWord', word })`（不变，仍是现有逻辑）→ 只取返回值里的**音标字段**，中文释义字段直接丢弃不展示
+- 两个请求都返回后再一起追加一条记录 `{ word, contextChinese, pronunciation }`；任一请求失败不阻塞另一个（音标查不到就留空，上下文翻译失败则该词条显示"翻译失败"提示，不影响音标展示）。
+- 原因：ECDICT 返回的是该词**脱离上下文的通用释义**（多义词时可能与当前句意不符）；Side Panel 已经有整句翻译作为上下文，用户想看的是这个词**在这句话里**具体是什么意思，因此中文含义必须走 AI 按句子上下文翻译，不能再用 ECDICT。音标是纯发音信息、与上下文无关，继续用 ECDICT 更快更省 token，没有理由跟着一起换成 AI。
+- 网页正文的查词弹窗（`WordPopup.tsx`）**不受影响**，仍然全量复用 `getOneWord`/ECDICT（中文释义+音标一起来），因为那里没有整句上下文可依托，ADR-0001 的决策在那个场景下继续成立。
 - `vite.config.ts` 目前没有手写 `rollupOptions.input`，`@crxjs/vite-plugin` 是通过读 `manifest.json` 里的 HTML 入口（`default_popup`、`options_page`）自动接入构建的；`side_panel.default_path` 是该插件明确支持的 MV3 字段，预期无需额外改 `vite.config.ts`，但实施时需要用 `pnpm build` 实测确认 `dist/sidepanel.html` 确实产出。
+
+### 3.8 enx-api 新增「上下文中单词翻译」端点（2026-08-03 新增）
+
+- 路由：`POST /api/translate/word-in-context`（与 `/api/translate/sentence` 同一 `authGroup`，同一 auth middleware，同一 provider 配置/切换机制，不新增配置段）。
+- Request: `{ "sentence": "...", "word": "..." }`；Response 成功：`{ "success": true, "chinese": "..." }`；失败：HTTP 502，`{ "success": false, "message": "..." }`（与 `/api/translate/sentence` 一致的"不可用要显式报错"约定）。
+- `Translator` 接口新增一个方法：`TranslateWordInContext(ctx context.Context, sentence, word string) (string, error)`，`kimi`/`bedrock`/`minimax` 三个现有实现各自补上这个方法，复用各自已有的 HTTP client/超时/错误处理，只是 system prompt 和 user content 不同：
+  ```
+  system: "You are a professional English-to-Chinese translator. Given an English sentence and a specific word from that sentence, reply with the word's Chinese meaning as used in THIS sentence's context only. Reply with the Chinese meaning only, no explanation, no pinyin, no quotes."
+  user: "Sentence: {sentence}\nWord: {word}"
+  ```
+  （具体措辞实现时可调整，但"按句子上下文而非通用释义翻译"这个约束必须保留在 prompt 里）。
+- `Handler` 新增 `TranslateWordInContext` 方法，注册路由，实现方式对照 `handler.go` 现有 `TranslateSentence` 的结构（校验 `translator == nil` → 502 "sentence translation is not configured"；调用失败 → 502 "translation service unavailable"；成功 → 200）。
+- **必须新增测试**：`kimi`/`bedrock`/`minimax` 各自补一个 `TranslateWordInContext` 单测（mock HTTP，验证 prompt 里带上了 sentence 和 word）；`handler_test.go` 补新端点的成功/502 路径测试。
 
 ---
 
@@ -224,6 +249,8 @@ static extractSentenceContext(
 
 ### 4.4 整句 AI 翻译（enx-api）
 
+- [x] （2026-08-03 新增，见 §3.8）`POST /api/translate/word-in-context` 对合法 `{sentence, word}` 返回 `{success:true, chinese:"..."}`，三种 provider 配置下均验证通过；provider 未配置/调用失败时返回 502，与 `/api/translate/sentence` 同一套约定——`kimi_test.go`/`bedrock_test.go`/`minimax_test.go` 各新增 `TranslateWordInContext` 成功/非 200 测试；`handler_test.go` 新增 `TestWordInContextHandlerSuccess`/`TranslatorError`/`NotConfigured`/`MissingFields` 四项，`go test ./...` 全绿
+
 - [x] `POST /api/translate/sentence` 对合法句子返回 `{success:true, chinese:"..."}`，`provider = "kimi"`、`"bedrock"`、`"minimax"` 三种配置下均验证通过——`kimi_test.go`/`bedrock_test.go`/`minimax_test.go`/`handler_test.go` 覆盖（mock HTTP/mock Bedrock client，非真实调用第三方 API；真实 API Key/IAM 权限下的端到端联调仍建议部署前手工 curl 一次）
 - [x] Provider 超时/非 200 时返回 HTTP 502 + `success:false`，不返回 200 空译文（三个 provider 均覆盖）——同上测试文件覆盖
 - [x] `KIMI_API_KEY` 未设置且 `provider = "kimi"` 时，启动阶段立即报错退出，不静默失败——`factory_test.go` 覆盖 `New()` 报错路径；`enx-api.go` 里 `os.Exit(1)` 分支未被测试直接执行（会终止测试进程),按代码走查确认逻辑正确
@@ -234,8 +261,11 @@ static extractSentenceContext(
 ### 4.5 Side Panel 内单词点击
 
 - [x] 原句内每个单词可点击，点击后在译文下方追加该词释义——`SidePanel.test.tsx` 覆盖
-- [x] 该释义内容与查词弹窗里的释义一致（同一 `getOneWord` 数据源，非另起一套）——`SidePanel.tsx` 复用 `sendMessageToBackground({type:'getOneWord'})`，未新写查词逻辑
-- [x] 连续点击多个不同单词，释义追加显示（不互相覆盖，2026-07-31 Review 已确认）——`SidePanel.test.tsx` 覆盖
+- [ ] （2026-08-03 变更，废弃旧标准）~~该释义内容与查词弹窗里的释义一致（同一 `getOneWord` 数据源，非另起一套）~~——**已不再适用**，见下方新标准
+- [x] 中文含义来自 `/api/translate/word-in-context`，按当前句子上下文翻译，**不等于**查词弹窗里那个词的通用 ECDICT 释义——`SidePanel.tsx` 的 `handleWordClick` 只取 `translateWordInContext` 响应的 `chinese` 字段，`getOneWord` 响应的 `ecp.Chinese` 字段不再使用；`SidePanel.test.tsx`「appends word definitions on click」用例断言两个数据源返回不同文案时，展示的是 `translateWordInContext` 的值且页面上不出现 `getOneWord` 的通用释义文本
+- [x] 音标字段仍来自 `getOneWord`/ECDICT，与网页正文查词弹窗显示的音标一致——同上用例断言 `ecp.Pronunciation` 正常展示
+- [x] 上下文翻译请求与音标查询并行发起、互不阻塞；任一方失败不影响另一方展示（如上下文翻译 502 时音标仍正常显示）——`Promise.allSettled` 实现；`SidePanel.test.tsx`「still shows pronunciation when the contextual translation fails, and vice versa」用例覆盖
+- [x] 连续点击多个不同单词，释义追加显示（不互相覆盖，2026-07-31 Review 已确认）——`SidePanel.test.tsx` 覆盖（追加机制本身不变，仅单条记录内容来源变化，测试断言已更新）
 
 ### 4.6 已开面板的实时更新
 
@@ -254,7 +284,9 @@ static extractSentenceContext(
 | API Key / AWS 凭证若误写入 `config.toml` 或提交到仓库 | 严格遵循 `resend.api-key` 先例，仅走环境变量；提交前 review 确认 `config.toml` 无明文 key/AWS access key |
 | Bedrock 对应 `model-id` 在目标 AWS 账号/region 未开通 model access，`provider = "bedrock"` 时调用直接失败 | 部署前手动在 Bedrock 控制台申请该模型的 access；`New()` 工厂函数 fail-fast 检查能及早暴露配置问题，但模型访问权限需人工确认，非代码可自动检测 |
 | EC2 实例角色权限范围过大（例如给了整个 Bedrock 的权限而非单一 model） | 给 EC2 实例挂的 IAM Role 限定 `bedrock:InvokeModel` 到具体 `model-id` 对应 ARN，遵循最小权限原则 |
-| Side Panel 与查词弹窗分别维护单词点击逻辑，未来可能出现重复实现（与 claude-blog Spec §2.2 类似的教训） | Side Panel 内单词点击复用 `sendToBackground({type:'getOneWord'})`，不新写查词逻辑；仅展示层各自实现 |
+| （2026-08-03 变更，原风险已不适用）~~Side Panel 与查词弹窗分别维护单词点击逻辑，未来可能出现重复实现~~ | **已按需求变更为有意分叉**：Side Panel 中文含义走 AI 按句子上下文翻译，查词弹窗中文释义走 ECDICT 通用释义——两者数据源不同是设计使然（前者要上下文义、后者要通用义），不是重复实现；音标字段两边仍共用 `getOneWord`/ECDICT，避免真正的重复 |
+| （2026-08-03 新增）Side Panel 单词点击从"本地查表，<50ms"变为"每次点击一次 AI 调用"，延迟从毫秒级升到秒级，且每次点击消耗一次第三方 API 调用/token 费用 | 与整句翻译同一套 loading/超时（10s）+ 明确提示的处理方式；上下文翻译与音标查询并行发起，音标先返回可先展示，不必等 AI 结果 |
+| （2026-08-03 新增）连续快速点击多个词会产生多个并发 AI 请求，可能触发 provider 侧限流 | v1 不做防抖/排队，出现限流问题时再按 502 错误路径提示用户重试；不属于本次变更的验收范围 |
 
 ---
 
@@ -264,21 +296,23 @@ static extractSentenceContext(
 | --- | --- |
 | `enx-chrome/manifest.json` | 新增 `sidePanel`、`contextMenus` permission、`side_panel.default_path` |
 | `enx-chrome/sidepanel.html` | 新增，Side Panel 入口 HTML |
-| `enx-chrome/src/sidepanel/SidePanel.tsx` | 新增，Side Panel React 组件（英文原句 + AI 译文 + 单词点击释义） |
-| `enx-chrome/src/sidepanel/__tests__/SidePanel.test.tsx` | 新增，覆盖空状态/加载译文/追加释义/`storage.onChanged` 实时刷新 |
+| `enx-chrome/src/sidepanel/SidePanel.tsx` | 新增，Side Panel React 组件（英文原句 + AI 译文 + 单词点击释义）；**2026-08-03 变更**：`handleWordClick` 改为并行发起 `translateWordInContext` + `getOneWord`，前者取中文含义、后者只取音标 |
+| `enx-chrome/src/sidepanel/__tests__/SidePanel.test.tsx` | 新增，覆盖空状态/加载译文/追加释义/`storage.onChanged` 实时刷新；**2026-08-03 变更**：单词点击相关断言改为验证「上下文中文含义来自 word-in-context 响应、音标来自 getOneWord 响应、任一方失败不阻塞另一方」 |
 | `enx-chrome/src/lib/wordProcessor.ts` | 新增 `extractSentenceContext()` |
 | `enx-chrome/src/components/WordPopup.tsx` | 新增「🔤 整句翻译」按钮（与现有 Youdao/Know It 按钮同区域），新增 `onOpenSentencePanel` 之类的 prop |
 | `enx-chrome/src/content/content.tsx` | `showWordPopup()` 里实现整句翻译按钮回调：`WordProcessor.extractSentenceContext()` 取句 → `sendToBackground({type:'openSentencePanel', ...})`（触发路径③） |
 | `enx-chrome/src/content/__tests__/` | 新增句子提取单测 |
-| `enx-chrome/src/background/background.ts` | 新增 `openSentencePanel` / `translateSentence` message handler；新增 `chrome.contextMenus` 注册与 `onClicked` 处理（触发路径②） |
+| `enx-chrome/src/background/background.ts` | 新增 `openSentencePanel` / `translateSentence` message handler；新增 `chrome.contextMenus` 注册与 `onClicked` 处理（触发路径②）；**2026-08-03 变更**：新增 `translateWordInContext` message handler（`handleTranslateWordInContext`），调用新端点，与既有 `handleGetOneWord` 并存、互不修改 |
 | `enx-chrome/src/popup/Popup.tsx` / `popup.html` | 新增"打开整句翻译面板"按钮，直接调用 `chrome.sidePanel.open()`（触发路径①） |
-| `enx-chrome/src/types/index.ts` | 新增 `PendingSentenceContext`/`PENDING_SENTENCE_STORAGE_KEY`；`ContentMessage`/`BackgroundResponse` 新增 `openSentencePanel`/`translateSentence` 相关字段 |
+| `enx-chrome/src/types/index.ts` | 新增 `PendingSentenceContext`/`PENDING_SENTENCE_STORAGE_KEY`；`ContentMessage`/`BackgroundResponse` 新增 `openSentencePanel`/`translateSentence` 相关字段；**2026-08-03 变更**：新增 `translateWordInContext` 相关 `ContentMessage`/`BackgroundResponse` 字段 |
 | `enx-chrome/src/store/atoms.ts` | 新增 `sentencePanelHintAtom`（触发路径③失败时的弹窗内提示） |
 | `enx-chrome/src/test/setup.ts` / `jest.config.js` / `src/test/styleMock.js` | 补充 `chrome.contextMenus`/`chrome.sidePanel`/`chrome.windows` mock；新增 CSS 模块 mock 以支持 `SidePanel.tsx` 的组件测试 |
 | `enx-chrome/tsconfig.json` | `lib` 新增 `ES2022.Intl`，让 TS 认识 `Intl.Segmenter` 类型 |
-| `enx-api/aitranslate/` | 新增，`Translator` 接口 + `New()` 工厂函数 + `kimi/`、`bedrock/`、`minimax/` 三个具体实现 |
+| `enx-api/aitranslate/` | 新增，`Translator` 接口 + `New()` 工厂函数 + `kimi/`、`bedrock/`、`minimax/` 三个具体实现；**2026-08-03 变更**：`Translator` 接口新增 `TranslateWordInContext` 方法，三个实现各自补充；`handler.go` 新增 `TranslateWordInContext` handler（见 §3.8） |
+| `enx-api/aitranslate/kimi|bedrock|minimax/*_test.go` | **2026-08-03 新增**，各补一个 `TranslateWordInContext` 单测（mock HTTP，断言 prompt 携带 sentence + word） |
+| `enx-api/aitranslate/handler_test.go` | **2026-08-03 新增**，覆盖 `/api/translate/word-in-context` 成功/502 路径 |
 | `enx-api/translate/service.go` / `helpers.go` | 视最终路由挂载位置决定是否调整；`respondSentenceUnavailable` 的占位文案不再是唯一出路 |
-| `enx-api.go` | 注册 `POST /api/translate/sentence` |
+| `enx-api.go` | 注册 `POST /api/translate/sentence`；**2026-08-03 变更**：新增注册 `POST /api/translate/word-in-context`（同一 `authGroup`） |
 | `enx-api/config.toml` | 新增 `[sentence-translate]` 非密钥配置段 |
 | `docs/adr/0001-integrate-ecdict-dictionary.md` | 背景引用，句子翻译缺口的原始记录 |
 
@@ -297,6 +331,12 @@ static extractSentenceContext(
 5. [x] enx-chrome: 触发路径①（popup.html 按钮直连 sidePanel.open()）+ 路径②（右键 contextMenus）—— 代码已实现且编译/构建通过，Chrome 原生弹出效果待真机验证
 6. [ ] 本地 unpacked 加载，手工验证 §4 全部验收项（尤其①②③三条触发路径的真实 Chrome 行为，无法用单测替代）—— **待用户执行**，自动化 Agent 无法操作真实 Chrome 浏览器
 7. [ ] 勾选 §4 全部验收项，文首状态更新为 Done — YYYY-MM-DD —— 待第 6 步完成后
+
+（2026-08-03 需求变更新增步骤，插在原 6/7 之前执行，完成后再走原 6/7）：
+
+8. [x] enx-api: `Translator` 接口新增 `TranslateWordInContext`，kimi/bedrock/minimax 三个实现补齐 + 各自单测；`Handler` 新增方法 + 路由注册（`authGroup` 与 `apiGroup` 两处，同 `/translate/sentence` 先例）+ handler 测试（见 §3.8）—— `go test ./aitranslate/...` 全绿；顶层 `enx-api` 包一个 `TestE2E_UnauthenticatedAccessRejected` 失败与本次改动无关（stash 掉本次改动后同样失败，是本地未配置 Cognito 环境导致的既有问题）
+9. [x] enx-chrome: `types/index.ts` 新增消息类型 → `background.ts` 新增 `translateWordInContext` handler → `SidePanel.tsx` 的 `handleWordClick` 改为并行调用 `translateWordInContext` + `getOneWord`（后者只取音标）→ 更新 `SidePanel.test.tsx` 断言（见 §3.7）—— `tsc --noEmit`、`jest`（93 项全过）、`pnpm build`（产出 `dist/sidepanel.html`）均通过
+10. [x] 勾选 §4.4/§4.5 新增验收项；`WordPopup.tsx`/网页正文查词弹窗未改动代码，回归测试（既有 jest 套件）全过，行为未受影响（该场景仍走 ECDICT）
 ```
 
 ---

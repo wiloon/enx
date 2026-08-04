@@ -26,6 +26,11 @@ const (
 	systemPrompt = "You are a professional English-to-Chinese translator. " +
 		"Translate the given English sentence into natural, fluent Chinese. " +
 		"Reply with the Chinese translation only, no explanation, no pinyin, no quotes."
+
+	wordContextSystemPrompt = "You are a professional English-to-Chinese translator. " +
+		"Given an English sentence and a specific word from that sentence, reply with the " +
+		"word's Chinese meaning as used in THIS sentence's context only, not a generic " +
+		"dictionary definition. Reply with the Chinese meaning only, no explanation, no pinyin, no quotes."
 )
 
 // converseClient is the minimal surface of *bedrockruntime.Client this
@@ -72,6 +77,14 @@ func New(ctx context.Context) (*Bedrock, error) {
 }
 
 func (b *Bedrock) TranslateSentence(ctx context.Context, sentence string) (string, error) {
+	return b.converse(ctx, systemPrompt, sentence)
+}
+
+func (b *Bedrock) TranslateWordInContext(ctx context.Context, sentence, word string) (string, error) {
+	return b.converse(ctx, wordContextSystemPrompt, fmt.Sprintf("Sentence: %s\nWord: %s", sentence, word))
+}
+
+func (b *Bedrock) converse(ctx context.Context, systemPrompt, userContent string) (string, error) {
 	callCtx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
@@ -80,7 +93,7 @@ func (b *Bedrock) TranslateSentence(ctx context.Context, sentence string) (strin
 		Messages: []types.Message{
 			{
 				Role:    types.ConversationRoleUser,
-				Content: []types.ContentBlock{&types.ContentBlockMemberText{Value: sentence}},
+				Content: []types.ContentBlock{&types.ContentBlockMemberText{Value: userContent}},
 			},
 		},
 		System: []types.SystemContentBlock{&types.SystemContentBlockMemberText{Value: systemPrompt}},

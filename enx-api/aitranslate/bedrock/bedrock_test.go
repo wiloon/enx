@@ -54,6 +54,38 @@ func TestTranslateSentenceConverseError(t *testing.T) {
 	}
 }
 
+func TestTranslateWordInContextSuccess(t *testing.T) {
+	fake := &fakeConverseClient{
+		output: &bedrockruntime.ConverseOutput{
+			Output: &types.ConverseOutputMemberMessage{
+				Value: types.Message{
+					Role:    types.ConversationRoleAssistant,
+					Content: []types.ContentBlock{&types.ContentBlockMemberText{Value: "银行"}},
+				},
+			},
+		},
+	}
+	b := newTestBedrock(fake)
+
+	chinese, err := b.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if chinese != "银行" {
+		t.Fatalf("chinese: got %q", chinese)
+	}
+}
+
+func TestTranslateWordInContextConverseError(t *testing.T) {
+	fake := &fakeConverseClient{err: errors.New("throttled")}
+	b := newTestBedrock(fake)
+
+	_, err := b.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
 func TestTranslateSentenceNoTextContent(t *testing.T) {
 	fake := &fakeConverseClient{
 		output: &bedrockruntime.ConverseOutput{

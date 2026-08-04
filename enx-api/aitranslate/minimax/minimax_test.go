@@ -1,7 +1,9 @@
 package minimax
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -65,6 +67,43 @@ func TestTranslateSentenceTimeout(t *testing.T) {
 	_, err := m.TranslateSentence(context.Background(), "Hello world")
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
+	}
+}
+
+func TestTranslateWordInContextSuccess(t *testing.T) {
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"银行"}}]}`))
+	}))
+	defer srv.Close()
+
+	m := newTestMiniMax(srv.URL)
+	chinese, err := m.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if chinese != "银行" {
+		t.Fatalf("chinese: got %q", chinese)
+	}
+	if !bytes.Contains(capturedBody, []byte("bank")) || !bytes.Contains(capturedBody, []byte("deposited cash")) {
+		t.Fatalf("request body missing sentence/word context: %s", capturedBody)
+	}
+}
+
+func TestTranslateWordInContextNon200(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"base_resp":{"status_code":1004,"status_msg":"invalid api key"}}`))
+	}))
+	defer srv.Close()
+
+	m := newTestMiniMax(srv.URL)
+	_, err := m.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank")
+	if err == nil {
+		t.Fatal("expected error, got nil")
 	}
 }
 
