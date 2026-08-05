@@ -2,9 +2,9 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Implemented — 2026-08-03（§7 步骤 8-9 代码已完成：`go test ./aitranslate/...`、`tsc --noEmit`、`jest`（93 项）、`pnpm build` 均通过；步骤 10 的真实 Chrome 手工验证——尤其"同一多义词在不同句子里点击返回不同中文含义"——尚待用户执行，见 §4.5 标注） |
+| **状态** | 2026-08-03 变更 Implemented；**2026-08-04 新变更 Implemented**（§3.9：Side Panel 单词点击展示从单行列表改为卡片，随后又经两次修订：合并为单行布局、移除 Youdao 外链、Query Count 改图标；`tsc --noEmit`、`jest`（96 项全过，SidePanel 10 项）、`vite build`（产出 `dist/sidepanel.html`）均通过；真实 Chrome 手工验证——分阶段渲染的视觉效果、卡片样式——尚待用户执行） |
 | **类型** | SDD Task Spec（Spec 驱动实现；实现前以本文为准，实现后同步更新状态与验收清单） |
-| **目标** | 在现有单词查词弹窗基础上新增「整句翻译」入口：点击后在 Chrome 扩展的 Side Panel 中显示当前单词所在句子的英文原文 + 调用 AI 模型（Kimi / AWS Bedrock / MiniMax，按配置切换）翻译出的中文整句译文；用户还可在侧边栏内点击原文中任意单词，在整句译文下方追加显示该词**在当前句子上下文中的中文含义**（2026-08-03 变更：改为调用 AI 模型按句子上下文翻译该词，不再复用 ECDICT 查词逻辑；音标字段单独并行查询 ECDICT/`getOneWord` 获取，见 §3.7） |
+| **目标** | 在现有单词查词弹窗基础上新增「整句翻译」入口：点击后在 Chrome 扩展的 Side Panel 中显示当前单词所在句子的英文原文 + 调用 AI 模型（Kimi / AWS Bedrock / MiniMax，按配置切换）翻译出的中文整句译文；用户还可在侧边栏内点击原文中任意单词，在整句译文下方追加显示该词**在当前句子上下文中的中文含义**（2026-08-03 变更：改为调用 AI 模型按句子上下文翻译该词，不再复用 ECDICT 查词逻辑；音标字段单独并行查询 ECDICT/`getOneWord` 获取，见 §3.7）。**2026-08-04 变更**：单词点击后的展示形式从单行文字改为卡片，卡片内同时展示 AI 上下文中文含义（突出显示）与词典原始中文释义（沿用 `getOneWord` 已查到但此前被丢弃的 `ecp.Chinese`/`ecp.LoadCount` 字段），并列出音标、Query Count、有道词典外链；卡片列表按点击时间倒序排列，重复点击已存在的词只置顶、不重新请求（见 §3.9） |
 | **非目标** | 不改变现有查词弹窗内已有的单词翻译展示；不做侧边栏内的划词/多词选择整句翻译（仅覆盖"点击已高亮单词→查所在句"的路径）；不做翻译结果的本地持久化/历史记录 |
 | **触发原因** | 用户反馈：点词查词后，若句子结构复杂，仅看单词释义仍无法理解整句含义；查词弹窗空间有限，无法容纳整句翻译内容，因此需要一个更大的展示区域（Side Panel）|
 | **关联背景** | [`docs/adr/0001-integrate-ecdict-dictionary.md`](../adr/0001-integrate-ecdict-dictionary.md) §Consequences 明确写了"句子翻译需后续单独方案；当前仅返回明确提示"——本 Spec 是该后续方案的落地 |
@@ -223,6 +223,64 @@ static extractSentenceContext(
 - `Handler` 新增 `TranslateWordInContext` 方法，注册路由，实现方式对照 `handler.go` 现有 `TranslateSentence` 的结构（校验 `translator == nil` → 502 "sentence translation is not configured"；调用失败 → 502 "translation service unavailable"；成功 → 200）。
 - **必须新增测试**：`kimi`/`bedrock`/`minimax` 各自补一个 `TranslateWordInContext` 单测（mock HTTP，验证 prompt 里带上了 sentence 和 word）；`handler_test.go` 补新端点的成功/502 路径测试。
 
+### 3.9 Side Panel 单词卡片改版（2026-08-04 新增，Implemented）
+
+**触发原因**：§3.7 的现状是点击单词后在译文下方追加一条纯文本单行（词 + 音标 + AI 上下文中文含义）。用户希望再补充展示词典原始中文释义（`getOneWord` 响应里的 `ecp.Chinese` 字段——这个字段其实一直在查，只是 §3.7 的 2026-08-03 变更里被明确丢弃未展示，见 §3.7 倒数第二段）。单行文字已经放不下"词 + 音标 + 上下文义 + 词典释义"这么多信息，因此改为卡片布局。
+
+**数据来源（不新增/不调用任何新后端接口）**：
+
+- `getOneWord`（§3.7 已有的并行请求之一）响应 `ecp: WordData` 里的 `Pronunciation`（音标）、`Chinese`（词典原始中文释义）、`LoadCount`（Query Count）三个字段本来就存在，本次改动只是把此前被丢弃的 `Chinese`/`LoadCount` 也消费展示出来。
+- `translateWordInContext`（§3.7/§3.8 已有）响应的 `chinese` 字段不变，继续作为"上下文中文含义"。
+
+**卡片内容与展示顺序**（对齐网页正文查词弹窗 `WordPopup.tsx` 的信息颗粒度，用户明确要求"跟现有的页面查词逻辑一致"）：
+
+1. 英文词 + 音标 + AI 上下文中文含义 + Query Count——**同一行**（2026-08-04 二次修订，用户要求："这样可以节省 y 轴的空间"；此前版本这四项分四行堆叠，`flex flex-wrap` 单行容器改为一行内展示，空间不够时才自动折行，不再固定占四行）。上下文含义样式仍突出/高亮（蓝色加粗），与词、音标、Query Count 的灰色系区分开
+2. 词典原始中文释义（`ecp.Chinese`，独立一行，样式弱于第 1 行的上下文含义；文本按 `\n` 换行渲染，避免多词性/多释义的原始字符串挤成一行）
+
+**明确不包含**（用户澄清确认）：
+
+- 「🔤 整句翻译」按钮——侧边栏本身就是整句翻译的展示位，不需要
+- 「已认识」状态与「✓ Know It」标记按钮——用户明确排除，Side Panel 卡片不做单词掌握状态管理
+- 有道词典外链（2026-08-04 三次修订，废弃第一版决策）——最初 §3.9 要求对齐 `WordPopup.tsx` 保留该外链，但用户后续要求"删掉,节省纵向的空间"，卡片不再渲染 Youdao 链接，`SidePanel.tsx` 里的 `getYoudaoUrl()` 辅助函数一并移除（`WordPopup.tsx` 网页正文查词弹窗不受影响，继续保留 Youdao 外链）
+
+**Query Count 改图标（2026-08-04 四次修订）**：用户反馈"Query Count"文字太长，侧边栏卡片多起来时重复出现、观感啰嗦，要求换成图标。原计划沿用仓库现有的纯 emoji 图标惯例（`WordPopup.tsx`/`SidePanel.tsx` 已有的 📚/🔤/✓/⏳ 都是 emoji，无图标库依赖），但用户明确选择引入专业 SVG 图标库而非 emoji。选型 `@heroicons/react`（MIT 许可，Tailwind Labs 官方图标库，与仓库已用的 Tailwind 生态一致，`20/solid`「mini」子集专为小尺寸内联场景设计）——`MagnifyingGlassIcon`（放大镜，语义对应"查询/搜索次数"）替换原来的 `Query Count: {N}` 文字，改为「图标 + 数字」（如 🔍 12，实际渲染为内联 SVG + 数字），原文字保留在 `title` 属性里作为悬浮提示，不完全丢失可读性。`WordPopup.tsx`（网页正文查词弹窗）与 `SidePanel.tsx`（侧边栏卡片）两处同步修改，保持两者展示一致。
+
+**布局：卡片直接渲染在侧边栏内部，不是浮层/弹出层**。这一点与网页正文 `WordPopup.tsx` 用 Popover API + Shadow DOM 悬浮显示的原因不同——页面内浮层是为了不遮挡网页正文，而侧边栏本身整个区域都是 ENX 生成的辅助内容，不存在"遮挡什么"的顾虑，因此卡片就是 `definitions` 列表里的普通 DOM 节点，不需要 anchor positioning / Popover API。
+
+**加载体验：分阶段渲染**（用户确认，覆盖 §3.7 旧描述"两个请求都返回后再一起追加"的行为）：
+
+- 点击单词的瞬间即在列表最前插入一张"骨架"卡片（标题已知，音标/上下文义/词典释义均为各自独立的 loading 占位）。
+- `getOneWord` 与 `translateWordInContext` 仍按 §3.7 并行发起，但各自 resolve 后只更新自己负责的字段（用 `word` 定位到列表里对应那一条），不再互相等待。`getOneWord` 通常更快返回，音标/Query Count/词典释义会先于 AI 上下文义显示出来。
+- 任一请求失败：该部分显示错误态（如"翻译失败"/词典部分为空），不阻塞另一部分正常显示，沿用 §3.7 已有的"互不阻塞"原则。
+
+**卡片列表排序与去重**（用户确认）：
+
+- 列表按点击时间倒序排列，最近点击的词卡片在最上面（此前是简单 append 到末尾）。
+- 若点击的词已存在于当前列表中（同一句子内重复点击同一个词），**不重新发起请求、不新增卡片**，只把已存在的那张卡片挪到列表最前面。
+
+**数据结构调整**（`enx-chrome/src/sidepanel/SidePanel.tsx`）：
+
+```ts
+type FetchStatus = 'loading' | 'loaded' | 'error'
+
+interface WordCardData {
+  word: string
+  pronunciation?: string
+  loadCount?: number
+  dictionaryChinese?: string
+  dictionaryStatus: FetchStatus
+  contextChinese?: string
+  contextStatus: FetchStatus
+}
+```
+
+`handleWordClick` 改为：
+
+1. 若 `word`（小写）已存在于 `definitions`：仅将该条记录移到数组最前，`return`，不发起任何请求。
+2. 否则：以 `{ word, dictionaryStatus: 'loading', contextStatus: 'loading' }` 插入 `definitions` 最前，然后并行发起 `getOneWord`、`translateWordInContext`；各自 `.then()` 里用 `word` 作为 key，`setDefinitions(prev => prev.map(...))` 只更新对应字段与其 `*Status`，不再用 `Promise.allSettled` 等两者都完成后一次性 append 一整条记录。
+
+**必须新增/更新测试**（`SidePanel.test.tsx`）：卡片分阶段渲染（`getOneWord` 先返回时词典部分先出现、上下文义仍是 loading 态，反之亦然）；重复点击已存在的词只重排不重新发请求（mock 的 `sendMessageToBackground` 调用次数不因重复点击而增加）；新点击的词卡片出现在列表最前而非末尾；词典释义为空（`ecp.Chinese` 为空）时该部分不渲染或显示空态，不报错。
+
 ---
 
 ## 4. 验收标准
@@ -262,10 +320,22 @@ static extractSentenceContext(
 
 - [x] 原句内每个单词可点击，点击后在译文下方追加该词释义——`SidePanel.test.tsx` 覆盖
 - [ ] （2026-08-03 变更，废弃旧标准）~~该释义内容与查词弹窗里的释义一致（同一 `getOneWord` 数据源，非另起一套）~~——**已不再适用**，见下方新标准
-- [x] 中文含义来自 `/api/translate/word-in-context`，按当前句子上下文翻译，**不等于**查词弹窗里那个词的通用 ECDICT 释义——`SidePanel.tsx` 的 `handleWordClick` 只取 `translateWordInContext` 响应的 `chinese` 字段，`getOneWord` 响应的 `ecp.Chinese` 字段不再使用；`SidePanel.test.tsx`「appends word definitions on click」用例断言两个数据源返回不同文案时，展示的是 `translateWordInContext` 的值且页面上不出现 `getOneWord` 的通用释义文本
+- [x] 「在这句话中」上下文含义来自 `/api/translate/word-in-context`，按当前句子上下文翻译，**不等于**查词弹窗里那个词的通用 ECDICT 释义——`SidePanel.tsx` 的 `handleWordClick` 里 `contextChinese` 只取 `translateWordInContext` 响应的 `chinese` 字段；（2026-08-04 变更）`getOneWord` 响应的 `ecp.Chinese` 字段不再是"丢弃不用"，而是作为卡片里单独一段「词典原始释义」展示，两者是卡片里两个不同区块，不会互相覆盖或混淆，见 §3.9/§4.5.1；`SidePanel.test.tsx`「appends word cards on click」用例断言两个数据源返回不同文案时二者都各自展示在对应区块
 - [x] 音标字段仍来自 `getOneWord`/ECDICT，与网页正文查词弹窗显示的音标一致——同上用例断言 `ecp.Pronunciation` 正常展示
-- [x] 上下文翻译请求与音标查询并行发起、互不阻塞；任一方失败不影响另一方展示（如上下文翻译 502 时音标仍正常显示）——`Promise.allSettled` 实现；`SidePanel.test.tsx`「still shows pronunciation when the contextual translation fails, and vice versa」用例覆盖
+- [x] 上下文翻译请求与词典查询并行发起、互不阻塞；任一方失败不影响另一方展示（如上下文翻译 502 时音标/词典释义仍正常显示）——两个请求各自独立 `.then()/.catch()`，用 `word` 定位更新对应卡片字段（2026-08-04 变更前是 `Promise.allSettled` 等两者都完成，见 §3.9 分阶段渲染）；`SidePanel.test.tsx`「still shows dictionary info when the contextual translation fails, and vice versa」用例覆盖
 - [x] 连续点击多个不同单词，释义追加显示（不互相覆盖，2026-07-31 Review 已确认）——`SidePanel.test.tsx` 覆盖（追加机制本身不变，仅单条记录内容来源变化，测试断言已更新）
+- [ ] （2026-08-03 描述，2026-08-04 起废弃）~~两个请求都返回后再一起追加一条记录~~——**已不再适用**，见下方 §3.9 新标准（改为分阶段渲染）
+
+### 4.5.1 Side Panel 单词卡片改版（2026-08-04 新增，见 §3.9，Implemented）
+
+- [x] 点击单词后立即在列表最前插入卡片骨架，音标/Query Count/词典释义与上下文中文含义各自独立 loading，互不等待——`handleWordClick` 先 `setDefinitions` 插入 `{ dictionaryStatus: 'loading', contextStatus: 'loading' }` 骨架，再各自发起请求；`SidePanel.test.tsx`「renders the card progressively」用例覆盖
+- [x] `getOneWord` 先于 `translateWordInContext` 返回时，音标/Query Count/词典释义先展示，上下文含义区仍显示 loading；反之亦然——同上用例用手动控制的 pending Promise 断言中间态
+- [x] 卡片展示顺序为：英文词 + 音标 + AI 上下文中文含义（突出显示）+ Query Count 同一行 → 词典原始中文释义——`SidePanel.tsx` JSX 结构与 §3.9 一致（2026-08-04 二次修订：前四项从四行合并为一行 `flex flex-wrap`；三次修订：移除 Youdao 外链行）
+- [x] 卡片不包含「整句翻译」按钮、「已认识」状态、「✓ Know It」按钮、有道词典外链——`SidePanel.tsx` 卡片 JSX 未渲染这四者（Youdao 外链 2026-08-04 三次修订移除）
+- [x] 卡片直接渲染在侧边栏内部，不使用 Popover API / anchor positioning / 悬浮层——卡片是 `definitions` 列表里的普通 `<div>`，无 Shadow DOM/Popover
+- [x] 词典释义为空（`ecp.Chinese` 为空）时该区域不渲染或显示空态，不报错、不显示 `undefined`——`def.dictionaryChinese &&` 短路渲染；`SidePanel.test.tsx`「does not render a dictionary section ... "undefined"」用例覆盖
+- [x] 新点击的词卡片出现在列表**最前**，而非追加到末尾——`setDefinitions(prev => [骨架, ...prev])`；「appends word cards on click」用例断言卡片顺序
+- [x] 重复点击列表中已存在的词：仅将其卡片移到最前，不重新发起 `getOneWord`/`translateWordInContext` 请求（mock 调用次数不增加）——「re-clicking a word already in the list」用例覆盖
 
 ### 4.6 已开面板的实时更新
 
@@ -287,6 +357,7 @@ static extractSentenceContext(
 | （2026-08-03 变更，原风险已不适用）~~Side Panel 与查词弹窗分别维护单词点击逻辑，未来可能出现重复实现~~ | **已按需求变更为有意分叉**：Side Panel 中文含义走 AI 按句子上下文翻译，查词弹窗中文释义走 ECDICT 通用释义——两者数据源不同是设计使然（前者要上下文义、后者要通用义），不是重复实现；音标字段两边仍共用 `getOneWord`/ECDICT，避免真正的重复 |
 | （2026-08-03 新增）Side Panel 单词点击从"本地查表，<50ms"变为"每次点击一次 AI 调用"，延迟从毫秒级升到秒级，且每次点击消耗一次第三方 API 调用/token 费用 | 与整句翻译同一套 loading/超时（10s）+ 明确提示的处理方式；上下文翻译与音标查询并行发起，音标先返回可先展示，不必等 AI 结果 |
 | （2026-08-03 新增）连续快速点击多个词会产生多个并发 AI 请求，可能触发 provider 侧限流 | v1 不做防抖/排队，出现限流问题时再按 502 错误路径提示用户重试；不属于本次变更的验收范围 |
+| （2026-08-04 新增）分阶段渲染引入了"两个请求各自独立更新同一条记录"的状态管理，若用 index 定位记录容易在列表重排（置顶）后错位更新 | §3.9 明确用 `word` 而非数组下标作为 `setDefinitions` 更新时的 key；新增测试覆盖"点击 A → 点击 B（A 移到最前）→ A 的请求才 resolve"这类交错时序，确保更新落到正确的卡片上 |
 
 ---
 
@@ -296,8 +367,8 @@ static extractSentenceContext(
 | --- | --- |
 | `enx-chrome/manifest.json` | 新增 `sidePanel`、`contextMenus` permission、`side_panel.default_path` |
 | `enx-chrome/sidepanel.html` | 新增，Side Panel 入口 HTML |
-| `enx-chrome/src/sidepanel/SidePanel.tsx` | 新增，Side Panel React 组件（英文原句 + AI 译文 + 单词点击释义）；**2026-08-03 变更**：`handleWordClick` 改为并行发起 `translateWordInContext` + `getOneWord`，前者取中文含义、后者只取音标 |
-| `enx-chrome/src/sidepanel/__tests__/SidePanel.test.tsx` | 新增，覆盖空状态/加载译文/追加释义/`storage.onChanged` 实时刷新；**2026-08-03 变更**：单词点击相关断言改为验证「上下文中文含义来自 word-in-context 响应、音标来自 getOneWord 响应、任一方失败不阻塞另一方」 |
+| `enx-chrome/src/sidepanel/SidePanel.tsx` | 新增，Side Panel React 组件（英文原句 + AI 译文 + 单词点击释义）；**2026-08-03 变更**：`handleWordClick` 改为并行发起 `translateWordInContext` + `getOneWord`，前者取中文含义、后者只取音标；**2026-08-04 变更**：`WordDefinition` → `WordCardData`（新增 `loadCount`/`dictionaryChinese`/`dictionaryStatus`/`contextStatus` 字段），单行文字列表改为卡片列表，`handleWordClick` 改为「已存在则置顶不重新请求；否则插入列表最前 + 两个请求分别独立更新对应字段」，见 §3.9 |
+| `enx-chrome/src/sidepanel/__tests__/SidePanel.test.tsx` | 新增，覆盖空状态/加载译文/追加释义/`storage.onChanged` 实时刷新；**2026-08-03 变更**：单词点击相关断言改为验证「上下文中文含义来自 word-in-context 响应、音标来自 getOneWord 响应、任一方失败不阻塞另一方」；**2026-08-04 变更**：新增卡片分阶段渲染、置顶去重、词典释义空态的测试用例，见 §3.9 末尾「必须新增/更新测试」 |
 | `enx-chrome/src/lib/wordProcessor.ts` | 新增 `extractSentenceContext()` |
 | `enx-chrome/src/components/WordPopup.tsx` | 新增「🔤 整句翻译」按钮（与现有 Youdao/Know It 按钮同区域），新增 `onOpenSentencePanel` 之类的 prop |
 | `enx-chrome/src/content/content.tsx` | `showWordPopup()` 里实现整句翻译按钮回调：`WordProcessor.extractSentenceContext()` 取句 → `sendToBackground({type:'openSentencePanel', ...})`（触发路径③） |
@@ -337,6 +408,16 @@ static extractSentenceContext(
 8. [x] enx-api: `Translator` 接口新增 `TranslateWordInContext`，kimi/bedrock/minimax 三个实现补齐 + 各自单测；`Handler` 新增方法 + 路由注册（`authGroup` 与 `apiGroup` 两处，同 `/translate/sentence` 先例）+ handler 测试（见 §3.8）—— `go test ./aitranslate/...` 全绿；顶层 `enx-api` 包一个 `TestE2E_UnauthenticatedAccessRejected` 失败与本次改动无关（stash 掉本次改动后同样失败，是本地未配置 Cognito 环境导致的既有问题）
 9. [x] enx-chrome: `types/index.ts` 新增消息类型 → `background.ts` 新增 `translateWordInContext` handler → `SidePanel.tsx` 的 `handleWordClick` 改为并行调用 `translateWordInContext` + `getOneWord`（后者只取音标）→ 更新 `SidePanel.test.tsx` 断言（见 §3.7）—— `tsc --noEmit`、`jest`（93 项全过）、`pnpm build`（产出 `dist/sidepanel.html`）均通过
 10. [x] 勾选 §4.4/§4.5 新增验收项；`WordPopup.tsx`/网页正文查词弹窗未改动代码，回归测试（既有 jest 套件）全过，行为未受影响（该场景仍走 ECDICT）
+
+（2026-08-04 需求变更新增步骤，不涉及后端，纯 `enx-chrome` 改动）：
+
+11. [x] enx-chrome: `SidePanel.tsx` 的 `WordDefinition` → `WordCardData`（新增字段）；`handleWordClick` 改为「已存在则置顶不重新请求，否则插入列表最前 + 两请求各自独立更新对应字段」；`definitions` 渲染从单行文字列表改为卡片列表（内容/顺序/样式见 §3.9）
+12. [x] enx-chrome: 补充/更新 `SidePanel.test.tsx`（分阶段渲染、置顶去重、词典释义空态，见 §3.9 末尾清单）；`tsc --noEmit`、`jest`（96 项全过，SidePanel 10 项）、`vite build`（产出 `dist/sidepanel.html`，本地用 fnm 切到 Node 24 跑通，仓库默认 Node 16 不满足 Vite 7 的 Node ≥20 要求）均通过
+13. [x] 勾选 §4.5.1 全部验收项，文首状态更新为 `Implemented`；真实 Chrome 手工验证卡片视觉效果——尚待用户执行
+
+（2026-08-04 四次修订，Query Count 改图标，不涉及后端）：
+
+14. [x] enx-chrome: `pnpm add @heroicons/react`；`WordPopup.tsx`/`SidePanel.tsx` 引入 `MagnifyingGlassIcon`（`@heroicons/react/20/solid`）替换 `Query Count: {N}` 文字为「图标 + 数字」，原文字保留为 `title` 属性；更新 `SidePanel.test.tsx` 里断言 `Query Count` 可见文本的用例，改为断言 `title` 属性；`tsc --noEmit`、`jest`（96 项全过）、`vite build` 均通过
 ```
 
 ---

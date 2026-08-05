@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useAtom } from 'jotai'
+import { MagnifyingGlassIcon } from '@heroicons/react/20/solid'
 import {
   currentWordAtom,
   isTranslatingAtom,
@@ -62,8 +63,12 @@ export default function WordPopup({
             {currentWord?.English || word}
           </h3>
           {currentWord?.LoadCount !== undefined && (
-            <span className="text-xs text-gray-500">
-              Query Count: {currentWord.LoadCount}
+            <span
+              className="inline-flex items-center gap-0.5 text-xs text-gray-500"
+              title={`Query Count: ${currentWord.LoadCount}`}
+            >
+              <MagnifyingGlassIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              {currentWord.LoadCount}
             </span>
           )}
         </div>

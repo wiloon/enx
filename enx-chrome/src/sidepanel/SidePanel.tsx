@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import '@/index.css'
+import { MagnifyingGlassIcon } from '@heroicons/react/20/solid'
 import { initSentry } from '@/lib/sentry'
 import { sendMessageToBackground } from '@/services/api'
 import {
@@ -13,10 +14,20 @@ initSentry()
 
 type Status = 'idle' | 'loading' | 'loaded' | 'error'
 
-interface WordDefinition {
+type FetchStatus = 'loading' | 'loaded' | 'error'
+
+// Word click in the Side Panel now renders as a card (spec §3.9) rather than
+// a single text line, so dictionary lookup (getOneWord) and AI contextual
+// translation (translateWordInContext) each track their own status -- the
+// card renders progressively, showing whichever half resolves first.
+interface WordCardData {
   word: string
-  chinese: string
-  pronunciation: string
+  pronunciation?: string
+  loadCount?: number
+  dictionaryChinese?: string
+  dictionaryStatus: FetchStatus
+  contextChinese?: string
+  contextStatus: FetchStatus
 }
 
 interface SentenceToken {
@@ -51,7 +62,7 @@ function SidePanelContent() {
   const [status, setStatus] = useState<Status>('idle')
   const [chinese, setChinese] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
-  const [definitions, setDefinitions] = useState<WordDefinition[]>([])
+  const [definitions, setDefinitions] = useState<WordCardData[]>([])
 
   // Load the pending context once on mount, then keep listening: if the
   // panel is already open and the user clicks "整句翻译" on another word on
@@ -116,49 +127,87 @@ function SidePanelContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingContext?.createdAt])
 
-  // Word click in the Side Panel translates the word using the current
-  // sentence as context (spec §3.7/§3.8) instead of reusing the
-  // context-free ECDICT lookup the page's word popup uses. Pronunciation is
-  // still cheap/context-independent, so it's fetched from the existing
-  // getOneWord/ECDICT path in parallel -- one request failing doesn't block
-  // the other from showing.
+  // Word click in the Side Panel fires two independent requests (spec
+  // §3.7/§3.8/§3.9): getOneWord (same lookup the page's word popup uses --
+  // pronunciation + dictionary Chinese + query count) and
+  // translateWordInContext (AI translation of the word's meaning in this
+  // specific sentence). Each updates only its own half of the card as soon
+  // as it resolves -- the card renders progressively rather than waiting for
+  // both. Re-clicking a word already in the list just moves its card to the
+  // front instead of re-fetching (spec §3.9).
   const handleWordClick = useCallback(
-    async (rawWord: string) => {
+    (rawWord: string) => {
       const word = rawWord.toLowerCase()
       const sentence = pendingContext?.sentence
       if (!sentence) return
 
-      const [contextResult, pronunciationResult] = await Promise.allSettled([
-        sendMessageToBackground<BackgroundResponse>({
-          type: 'translateWordInContext',
-          word,
-          sentence,
-        } satisfies ContentMessage),
-        sendMessageToBackground<BackgroundResponse>({
-          type: 'getOneWord',
-          word,
-        } satisfies ContentMessage),
+      if (definitions.some(d => d.word === word)) {
+        setDefinitions(prev => {
+          const index = prev.findIndex(d => d.word === word)
+          if (index === -1) return prev
+          return [prev[index], ...prev.slice(0, index), ...prev.slice(index + 1)]
+        })
+        return
+      }
+
+      setDefinitions(prev => [
+        { word, dictionaryStatus: 'loading', contextStatus: 'loading' },
+        ...prev,
       ])
 
-      const chinese =
-        contextResult.status === 'fulfilled' &&
-        contextResult.value.success &&
-        contextResult.value.chinese
-          ? contextResult.value.chinese
-          : contextResult.status === 'fulfilled'
-            ? contextResult.value.error || '翻译失败'
-            : '翻译失败'
+      sendMessageToBackground<BackgroundResponse>({
+        type: 'getOneWord',
+        word,
+      } satisfies ContentMessage)
+        .then(response => {
+          setDefinitions(prev =>
+            prev.map(d =>
+              d.word === word
+                ? {
+                    ...d,
+                    pronunciation: response.success ? response.ecp?.Pronunciation : undefined,
+                    dictionaryChinese: response.success ? response.ecp?.Chinese : undefined,
+                    loadCount: response.success ? response.ecp?.LoadCount : undefined,
+                    dictionaryStatus: response.success ? 'loaded' : 'error',
+                  }
+                : d
+            )
+          )
+        })
+        .catch(() => {
+          setDefinitions(prev =>
+            prev.map(d => (d.word === word ? { ...d, dictionaryStatus: 'error' } : d))
+          )
+        })
 
-      const pronunciation =
-        pronunciationResult.status === 'fulfilled' &&
-        pronunciationResult.value.success &&
-        pronunciationResult.value.ecp
-          ? pronunciationResult.value.ecp.Pronunciation || ''
-          : ''
-
-      setDefinitions(prev => [...prev, { word, chinese, pronunciation }])
+      sendMessageToBackground<BackgroundResponse>({
+        type: 'translateWordInContext',
+        word,
+        sentence,
+      } satisfies ContentMessage)
+        .then(response => {
+          const resolved = response.success && response.chinese
+          setDefinitions(prev =>
+            prev.map(d =>
+              d.word === word
+                ? {
+                    ...d,
+                    contextChinese: resolved ? response.chinese : response.error || '翻译失败',
+                    contextStatus: resolved ? 'loaded' : 'error',
+                  }
+                : d
+            )
+          )
+        })
+        .catch(() => {
+          setDefinitions(prev =>
+            prev.map(d =>
+              d.word === word ? { ...d, contextStatus: 'error', contextChinese: '翻译失败' } : d
+            )
+          )
+        })
     },
-    [pendingContext?.sentence]
+    [pendingContext?.sentence, definitions]
   )
 
   if (!pendingContext) {
@@ -225,13 +274,57 @@ function SidePanelContent() {
           className="border-t border-gray-100 pt-3 space-y-2"
           data-testid="sidepanel-definitions"
         >
-          {definitions.map((def, i) => (
-            <div key={i} className="text-gray-700">
-              <span className="font-medium">{def.word}</span>
-              {def.pronunciation && (
-                <span className="text-gray-500 ml-1">{def.pronunciation}</span>
+          {definitions.map(def => (
+            <div
+              key={def.word}
+              className="bg-white rounded-lg shadow-sm border border-gray-200 p-3"
+              data-testid={`sidepanel-card-${def.word}`}
+            >
+              {/* Word, phonetic, contextual meaning, and Query Count share one
+                  flex row (spec §3.9 revision) instead of stacking as
+                  separate blocks -- these four are the "headline" of the
+                  card, and keeping them on one line saves vertical space in
+                  the narrow side panel. */}
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mb-2">
+                <span className="font-bold text-gray-800">{def.word}</span>
+
+                {def.dictionaryStatus === 'loading' ? (
+                  <span className="text-gray-400 text-xs">音标加载中...</span>
+                ) : (
+                  def.pronunciation && (
+                    <span className="text-gray-600 text-sm">{def.pronunciation}</span>
+                  )
+                )}
+
+                {def.contextStatus === 'loading' ? (
+                  <span className="text-gray-400 text-sm">
+                    <span className="inline-block animate-spin mr-1">⏳</span>
+                    翻译中...
+                  </span>
+                ) : (
+                  <span className="text-blue-700 font-medium text-sm">{def.contextChinese}</span>
+                )}
+
+                {def.loadCount !== undefined && (
+                  <span
+                    className="inline-flex items-center gap-0.5 text-xs text-gray-400 ml-auto whitespace-nowrap"
+                    title={`Query Count: ${def.loadCount}`}
+                  >
+                    <MagnifyingGlassIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                    {def.loadCount}
+                  </span>
+                )}
+              </div>
+
+              {def.dictionaryStatus === 'loading' ? (
+                <div className="text-gray-400 text-xs">词典释义加载中...</div>
+              ) : (
+                def.dictionaryChinese && (
+                  <p className="text-gray-600 text-sm whitespace-pre-line border-t border-gray-100 pt-2 mt-2">
+                    {def.dictionaryChinese}
+                  </p>
+                )
               )}
-              <span className="ml-2">{def.chinese}</span>
             </div>
           ))}
         </div>

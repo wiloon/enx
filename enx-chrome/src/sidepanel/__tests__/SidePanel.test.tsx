@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 // Avoid loading the real sentry.ts (uses `import.meta`, which ts-jest can't
@@ -12,7 +12,7 @@ jest.mock('@/services/api', () => ({
 }))
 
 import { sendMessageToBackground } from '@/services/api'
-import { PENDING_SENTENCE_STORAGE_KEY } from '@/types'
+import { BackgroundResponse, PENDING_SENTENCE_STORAGE_KEY } from '@/types'
 import SidePanel from '../SidePanel'
 
 const mockSendMessage = sendMessageToBackground as jest.Mock
@@ -84,7 +84,7 @@ describe('SidePanel', () => {
     )
   })
 
-  it('appends word definitions on click instead of replacing the previous one (spec §4.5, "追加显示")', async () => {
+  it('appends word cards on click instead of replacing the previous one, newest on top (spec §3.9/§4.5)', async () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
@@ -105,11 +105,9 @@ describe('SidePanel', () => {
           success: true,
           ecp: {
             English: message.word,
-            // Deliberately different from the translateWordInContext value
-            // above -- this field must NOT show up in the Side Panel (spec
-            // §3.7 2026-08-03 change: only Pronunciation is used from here).
             Chinese: `${message.word}的通用词典释义`,
             Pronunciation: `/${message.word}/`,
+            LoadCount: 3,
           },
         }
       }
@@ -129,11 +127,25 @@ describe('SidePanel', () => {
       expect(definitions).toHaveTextContent('great在这句里的意思')
       expect(definitions).toHaveTextContent('/cats/')
       expect(definitions).toHaveTextContent('/great/')
-      expect(definitions).not.toHaveTextContent('通用词典释义')
+      // Dictionary Chinese meaning is shown now (spec §3.9), unlike the
+      // §3.7 2026-08-03 version which discarded it.
+      expect(definitions).toHaveTextContent('cats的通用词典释义')
+      expect(definitions).toHaveTextContent('great的通用词典释义')
+      // Query Count is now shown as a magnifying-glass icon + number, with
+      // "Query Count: N" as the hover title rather than visible text.
+      expect(within(screen.getByTestId('sidepanel-card-cats')).getByTitle('Query Count: 3')).toBeInTheDocument()
+      expect(within(screen.getByTestId('sidepanel-card-great')).getByTitle('Query Count: 3')).toBeInTheDocument()
     })
+
+    // Newest click ('great') renders above the earlier one ('cats').
+    const cards = screen.getAllByTestId(/^sidepanel-card-/)
+    expect(cards.map(c => c.getAttribute('data-testid'))).toEqual([
+      'sidepanel-card-great',
+      'sidepanel-card-cats',
+    ])
   })
 
-  it('still shows pronunciation when the contextual translation fails, and vice versa (spec §4.5, 互不阻塞)', async () => {
+  it('still shows dictionary info when the contextual translation fails, and vice versa (spec §4.5, 互不阻塞)', async () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
@@ -168,7 +180,142 @@ describe('SidePanel', () => {
       const definitions = screen.getByTestId('sidepanel-definitions')
       expect(definitions).toHaveTextContent('translation service unavailable')
       expect(definitions).toHaveTextContent('/greɪt/')
+      expect(definitions).toHaveTextContent('unused')
     })
+  })
+
+  it('renders the card progressively: dictionary info appears before the slower AI context translation resolves (spec §3.9)', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: 'Cats are great pets.',
+        word: 'great',
+        sourceUrl: '',
+        createdAt: 1,
+      },
+    })
+
+    let resolveContext: (value: BackgroundResponse) => void = () => {}
+    mockSendMessage.mockImplementation((message: { type: string; word?: string }) => {
+      if (message.type === 'translateSentence') {
+        return Promise.resolve({ success: true, chinese: '猫是很棒的宠物。' })
+      }
+      if (message.type === 'translateWordInContext') {
+        return new Promise(resolve => {
+          resolveContext = resolve
+        })
+      }
+      if (message.type === 'getOneWord') {
+        return Promise.resolve({
+          success: true,
+          ecp: { English: message.word, Chinese: '很棒的', Pronunciation: '/greɪt/', LoadCount: 1 },
+        })
+      }
+      return Promise.resolve({ success: false })
+    })
+
+    const user = userEvent.setup()
+    render(<SidePanel />)
+    await screen.findByTestId('sidepanel-sentence')
+
+    await user.click(screen.getByText('great'))
+
+    await waitFor(() => {
+      const card = screen.getByTestId('sidepanel-card-great')
+      expect(card).toHaveTextContent('/greɪt/')
+      expect(card).toHaveTextContent('很棒的')
+      expect(card).toHaveTextContent('翻译中...')
+    })
+
+    resolveContext({ success: true, chinese: 'great在这句里的意思' })
+
+    await waitFor(() => {
+      const card = screen.getByTestId('sidepanel-card-great')
+      expect(card).toHaveTextContent('great在这句里的意思')
+      expect(card).not.toHaveTextContent('翻译中...')
+    })
+  })
+
+  it('re-clicking a word already in the list moves its card to the top instead of re-fetching (spec §3.9)', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: 'Cats are great pets.',
+        word: 'great',
+        sourceUrl: '',
+        createdAt: 1,
+      },
+    })
+    mockSendMessage.mockImplementation(async (message: { type: string; word?: string }) => {
+      if (message.type === 'translateSentence') {
+        return { success: true, chinese: '猫是很棒的宠物。' }
+      }
+      if (message.type === 'translateWordInContext') {
+        return { success: true, chinese: `${message.word}在这句里的意思` }
+      }
+      if (message.type === 'getOneWord') {
+        return {
+          success: true,
+          ecp: { English: message.word, Chinese: `${message.word}释义`, Pronunciation: `/${message.word}/` },
+        }
+      }
+      return { success: false }
+    })
+
+    const user = userEvent.setup()
+    render(<SidePanel />)
+    await screen.findByTestId('sidepanel-sentence')
+
+    await user.click(screen.getByText('Cats'))
+    await user.click(screen.getByText('great'))
+    await waitFor(() => expect(screen.getByTestId('sidepanel-card-cats')).toHaveTextContent('cats释义'))
+
+    const callsAfterTwoDistinctWords = mockSendMessage.mock.calls.length
+    await user.click(screen.getByText('Cats'))
+
+    // Re-click just reorders -- no new getOneWord/translateWordInContext calls.
+    await waitFor(() => {
+      const cards = screen.getAllByTestId(/^sidepanel-card-/)
+      expect(cards.map(c => c.getAttribute('data-testid'))).toEqual([
+        'sidepanel-card-cats',
+        'sidepanel-card-great',
+      ])
+    })
+    expect(mockSendMessage.mock.calls.length).toBe(callsAfterTwoDistinctWords)
+  })
+
+  it('does not render a dictionary section, or the literal string "undefined", when the dictionary lookup has no Chinese meaning (spec §3.9)', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: 'Cats are great pets.',
+        word: 'great',
+        sourceUrl: '',
+        createdAt: 1,
+      },
+    })
+    mockSendMessage.mockImplementation(async (message: { type: string; word?: string }) => {
+      if (message.type === 'translateSentence') {
+        return { success: true, chinese: '猫是很棒的宠物。' }
+      }
+      if (message.type === 'translateWordInContext') {
+        return { success: true, chinese: `${message.word}在这句里的意思` }
+      }
+      if (message.type === 'getOneWord') {
+        return { success: true, ecp: { English: message.word, Chinese: '', Pronunciation: '' } }
+      }
+      return { success: false }
+    })
+
+    const user = userEvent.setup()
+    render(<SidePanel />)
+    await screen.findByTestId('sidepanel-sentence')
+
+    await user.click(screen.getByText('great'))
+
+    await waitFor(() => {
+      const card = screen.getByTestId('sidepanel-card-great')
+      expect(card).toHaveTextContent('great在这句里的意思')
+    })
+    const card = screen.getByTestId('sidepanel-card-great')
+    expect(card).not.toHaveTextContent('undefined')
   })
 
   it('refreshes in place with a new sentence when storage.onChanged fires, without needing sidePanel.open() again (spec §4.6)', async () => {
