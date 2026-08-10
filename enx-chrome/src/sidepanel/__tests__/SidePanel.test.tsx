@@ -12,7 +12,7 @@ jest.mock('@/services/api', () => ({
 }))
 
 import { sendMessageToBackground } from '@/services/api'
-import { BackgroundResponse, PENDING_SENTENCE_STORAGE_KEY } from '@/types'
+import { BackgroundResponse, LATEST_PAGE_WORD_STORAGE_KEY, PENDING_SENTENCE_STORAGE_KEY } from '@/types'
 import SidePanel from '../SidePanel'
 
 const mockSendMessage = sendMessageToBackground as jest.Mock
@@ -23,15 +23,22 @@ type StorageChangeListener = (
 ) => void
 
 describe('SidePanel', () => {
-  let storageChangeListener: StorageChangeListener | undefined
+  // SidePanel registers one onChanged listener per storage key it watches
+  // (PENDING_SENTENCE_STORAGE_KEY and LATEST_PAGE_WORD_STORAGE_KEY, see
+  // ADR-006), so tests must fan a simulated storage event out to all of
+  // them -- each listener already ignores keys/areas it doesn't care about.
+  let storageChangeListeners: StorageChangeListener[]
+  const fireStorageChange: StorageChangeListener = (changes, areaName) => {
+    storageChangeListeners.forEach(listener => listener(changes, areaName))
+  }
 
   beforeEach(() => {
     jest.clearAllMocks()
-    storageChangeListener = undefined
+    storageChangeListeners = []
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
     ;(chrome.storage.onChanged.addListener as jest.Mock).mockImplementation(
       (listener: StorageChangeListener) => {
-        storageChangeListener = listener
+        storageChangeListeners.push(listener)
       }
     )
     ;(chrome.storage.onChanged.removeListener as jest.Mock).mockImplementation(() => {})
@@ -333,7 +340,7 @@ describe('SidePanel', () => {
     await screen.findByTestId('sidepanel-empty-state')
 
     act(() => {
-      storageChangeListener?.(
+      fireStorageChange(
         {
           [PENDING_SENTENCE_STORAGE_KEY]: {
             newValue: {
@@ -352,7 +359,7 @@ describe('SidePanel', () => {
     )
 
     act(() => {
-      storageChangeListener?.(
+      fireStorageChange(
         {
           [PENDING_SENTENCE_STORAGE_KEY]: {
             newValue: {
@@ -376,7 +383,7 @@ describe('SidePanel', () => {
     await screen.findByTestId('sidepanel-empty-state')
 
     act(() => {
-      storageChangeListener?.(
+      fireStorageChange(
         {
           [PENDING_SENTENCE_STORAGE_KEY]: {
             newValue: {
@@ -395,5 +402,243 @@ describe('SidePanel', () => {
     // the empty state is still showing.
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(screen.getByTestId('sidepanel-empty-state')).toBeInTheDocument()
+  })
+
+  // ADR-006: a word looked up via the page's WordPopup should show up in the
+  // Side Panel's card list without ever triggering sentence translation.
+  it('shows a card for a word looked up on the page, without calling translateSentence (ADR-006)', async () => {
+    render(<SidePanel />)
+    await screen.findByTestId('sidepanel-empty-state')
+
+    act(() => {
+      fireStorageChange(
+        {
+          [LATEST_PAGE_WORD_STORAGE_KEY]: {
+            newValue: {
+              word: 'serendipity',
+              ecp: {
+                English: 'serendipity',
+                Chinese: '意外发现的美好事物',
+                Pronunciation: '/ˌser.ənˈdɪp.ə.ti/',
+                LoadCount: 5,
+              },
+              createdAt: 1,
+            },
+          },
+        },
+        'session'
+      )
+    })
+
+    await waitFor(() => {
+      const card = screen.getByTestId('sidepanel-card-serendipity')
+      expect(card).toHaveTextContent('意外发现的美好事物')
+      expect(card).toHaveTextContent('/ˌser.ənˈdɪp.ə.ti/')
+      // No sentence context, so the AI context-translation UI must not
+      // appear at all -- not even a loading state.
+      expect(card).not.toHaveTextContent('翻译中...')
+    })
+    expect(mockSendMessage).not.toHaveBeenCalled()
+  })
+
+  it('inserts a page-looked-up word into the existing card list and clears the current sentence display (ADR-006)', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: 'Cats are great pets.',
+        word: 'great',
+        sourceUrl: '',
+        createdAt: 1,
+      },
+    })
+    mockSendMessage.mockImplementation(async (message: { type: string; word?: string }) => {
+      if (message.type === 'translateSentence') {
+        return { success: true, chinese: '猫是很棒的宠物。' }
+      }
+      if (message.type === 'translateWordInContext') {
+        return { success: true, chinese: `${message.word}在这句里的意思` }
+      }
+      if (message.type === 'getOneWord') {
+        return {
+          success: true,
+          ecp: { English: message.word, Chinese: `${message.word}释义`, Pronunciation: `/${message.word}/` },
+        }
+      }
+      return { success: false }
+    })
+
+    const user = userEvent.setup()
+    render(<SidePanel />)
+    await screen.findByTestId('sidepanel-sentence')
+    await user.click(screen.getByText('great'))
+    await waitFor(() =>
+      expect(screen.getByTestId('sidepanel-card-great')).toHaveTextContent('great在这句里的意思')
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('猫是很棒的宠物。')
+    )
+
+    const callsBeforePageLookup = mockSendMessage.mock.calls.length
+
+    act(() => {
+      fireStorageChange(
+        {
+          [LATEST_PAGE_WORD_STORAGE_KEY]: {
+            newValue: {
+              word: 'serendipity',
+              ecp: {
+                English: 'serendipity',
+                Chinese: '意外发现的美好事物',
+                Pronunciation: '/ˌser.ənˈdɪp.ə.ti/',
+                LoadCount: 5,
+              },
+              createdAt: 2,
+            },
+          },
+        },
+        'session'
+      )
+    })
+
+    // The pre-existing sentence card stays; the new one is inserted on top.
+    await waitFor(() => {
+      const cards = screen.getAllByTestId(/^sidepanel-card-/)
+      expect(cards.map(c => c.getAttribute('data-testid'))).toEqual([
+        'sidepanel-card-serendipity',
+        'sidepanel-card-great',
+      ])
+    })
+    // Sentence original text + translation are cleared, not just hidden.
+    expect(screen.queryByTestId('sidepanel-sentence')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('sidepanel-chinese')).not.toBeInTheDocument()
+    // No re-fetch: the card was populated directly from the storage payload.
+    expect(mockSendMessage.mock.calls.length).toBe(callsBeforePageLookup)
+  })
+
+  it('keeps an existing page-lookup word card when a sentence translation is triggered afterwards (ADR-006 addendum)', async () => {
+    mockSendMessage.mockResolvedValue({ success: true, chinese: '猫是很棒的宠物。' })
+
+    render(<SidePanel />)
+    await screen.findByTestId('sidepanel-empty-state')
+
+    act(() => {
+      fireStorageChange(
+        {
+          [LATEST_PAGE_WORD_STORAGE_KEY]: {
+            newValue: {
+              word: 'serendipity',
+              ecp: {
+                English: 'serendipity',
+                Chinese: '意外发现的美好事物',
+                Pronunciation: '/ˌser.ənˈdɪp.ə.ti/',
+                LoadCount: 5,
+              },
+              createdAt: 1,
+            },
+          },
+        },
+        'session'
+      )
+    })
+    await screen.findByTestId('sidepanel-card-serendipity')
+
+    act(() => {
+      fireStorageChange(
+        {
+          [PENDING_SENTENCE_STORAGE_KEY]: {
+            newValue: {
+              sentence: 'Cats are great pets.',
+              word: 'great',
+              sourceUrl: '',
+              createdAt: 2,
+            },
+          },
+        },
+        'session'
+      )
+    })
+
+    await waitFor(() =>
+      expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('猫是很棒的宠物。')
+    )
+    // The word card from the earlier page lookup must still be there.
+    expect(screen.getByTestId('sidepanel-card-serendipity')).toBeInTheDocument()
+  })
+
+  it('backfills the in-sentence meaning when clicking a word that already has a page-lookup card (contextStatus "none")', async () => {
+    mockSendMessage.mockImplementation(async (message: { type: string; word?: string }) => {
+      if (message.type === 'translateSentence') {
+        return { success: true, chinese: '猫是很棒的宠物。' }
+      }
+      if (message.type === 'translateWordInContext') {
+        return { success: true, chinese: `${message.word}在这句里的意思` }
+      }
+      if (message.type === 'getOneWord') {
+        return {
+          success: true,
+          ecp: { English: message.word, Chinese: `${message.word}释义(重新查询)`, Pronunciation: `/${message.word}/` },
+        }
+      }
+      return { success: false }
+    })
+
+    render(<SidePanel />)
+    await screen.findByTestId('sidepanel-empty-state')
+
+    // 1) Word looked up on the page first -- card has dictionary data but
+    //    contextStatus 'none' (no sentence yet).
+    act(() => {
+      fireStorageChange(
+        {
+          [LATEST_PAGE_WORD_STORAGE_KEY]: {
+            newValue: {
+              word: 'cats',
+              ecp: { English: 'cats', Chinese: '猫的复数', Pronunciation: '/kæts/', LoadCount: 2 },
+              createdAt: 1,
+            },
+          },
+        },
+        'session'
+      )
+    })
+    const card = await screen.findByTestId('sidepanel-card-cats')
+    expect(card).toHaveTextContent('猫的复数')
+    expect(card).not.toHaveTextContent('翻译中...')
+
+    // 2) A sentence containing the same word arrives (e.g. via 整句翻译).
+    act(() => {
+      fireStorageChange(
+        {
+          [PENDING_SENTENCE_STORAGE_KEY]: {
+            newValue: {
+              sentence: 'Cats are great pets.',
+              word: 'great',
+              sourceUrl: '',
+              createdAt: 2,
+            },
+          },
+        },
+        'session'
+      )
+    })
+    await screen.findByTestId('sidepanel-sentence')
+    // The page-lookup card is untouched by the new sentence context.
+    expect(screen.getByTestId('sidepanel-card-cats')).toHaveTextContent('猫的复数')
+
+    const callsBeforeClick = mockSendMessage.mock.calls.length
+
+    // 3) Clicking "Cats" in the sentence should backfill the in-sentence
+    //    meaning onto the existing card, not silently do nothing.
+    const user = userEvent.setup()
+    await user.click(screen.getByText('Cats'))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('sidepanel-card-cats')).toHaveTextContent('cats在这句里的意思')
+    )
+    // Dictionary half is untouched -- reused, not re-fetched.
+    expect(screen.getByTestId('sidepanel-card-cats')).toHaveTextContent('猫的复数')
+    expect(screen.getByTestId('sidepanel-card-cats')).not.toHaveTextContent('猫释义(重新查询)')
+    expect(
+      mockSendMessage.mock.calls.slice(callsBeforeClick).some(call => call[0]?.type === 'getOneWord')
+    ).toBe(false)
   })
 })

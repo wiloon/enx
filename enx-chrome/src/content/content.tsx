@@ -48,19 +48,19 @@ export const extractUSPhonetic = (pronunciation: string): string => {
   return pronunciation
 }
 
-// Create and show word popup using Popover API + CSS Anchor Positioning
-// Requires Chrome 125+ for full support (CSS Anchor Positioning)
-const showWordPopup = async (word: string, event: MouseEvent) => {
-  if (!word || word.trim() === '') return
-
-  console.log('Showing popup for word:', word)
-
-  // Remove existing popup
-  hideWordPopup()
-
-  // 1. Mark the clicked element as anchor
-  const anchor = event.target as HTMLElement
-  const anchorId = `enx-word-anchor-${Date.now()}`
+// Shared Shadow DOM + CSS Anchor Positioning popup scaffold. Used by both
+// the dictionary-lookup popup (showWordPopup) and the drag-select
+// translation hint popup (showSelectionHint, ADR-007) -- anchors to the
+// given element and returns an unmounted React root ready to render into.
+// Requires Chrome 125+ for full support (CSS Anchor Positioning).
+const createAnchoredPopup = (
+  anchor: HTMLElement
+): {
+  popup: HTMLElement & { popover: string; showPopover: () => void; hidePopover: () => void }
+  root: Root
+} => {
+  // 1. Mark the anchor element
+  const anchorId = `enx-popup-anchor-${Date.now()}`
   anchor.style.setProperty('anchor-name', `--${anchorId}`)
 
   // 2. Create Popover popup
@@ -81,8 +81,8 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
 
   // 3. Apply CSS Anchor Positioning styles (host element stays in light DOM,
   // content rendering below is isolated inside its shadow root, see §2.1/§2.4)
-  // position-area: top prioritizes showing above the clicked word, so the
-  // popup covers already-read text rather than the upcoming sentence.
+  // position-area: top prioritizes showing above the anchor, so the popup
+  // covers already-read text rather than the upcoming sentence.
   popup.style.cssText = `
     position-anchor: --${anchorId};
     position-area: top;
@@ -111,6 +111,21 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
   shadowRoot.appendChild(mountPoint)
 
   const root = createRoot(mountPoint)
+
+  return { popup, root }
+}
+
+// Create and show word popup using Popover API + CSS Anchor Positioning
+const showWordPopup = async (word: string, event: MouseEvent) => {
+  if (!word || word.trim() === '') return
+
+  console.log('Showing popup for word:', word)
+
+  // Remove existing popup
+  hideWordPopup()
+
+  const anchor = event.target as HTMLElement
+  const { popup, root } = createAnchoredPopup(anchor)
   currentRoot = root
 
   const handleMarkAcquainted = async (englishWord: string) => {
@@ -223,6 +238,22 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
 
       wordCache[word.toLowerCase()] = wordData
       updateWordHighlighting(word, wordData)
+
+      // Mirror the lookup into the Side Panel's word list if it's open --
+      // ADR-006. Routed through the background service worker rather than
+      // writing chrome.storage.session directly: content scripts don't have
+      // session-storage access unless the background grants it via
+      // setAccessLevel(TRUSTED_AND_UNTRUSTED_CONTEXTS), and doing that would
+      // also expose other session keys (e.g. the OAuth verifier) to content
+      // scripts running on arbitrary third-party pages. This call never
+      // triggers chrome.sidePanel.open() and never touches
+      // PENDING_SENTENCE_STORAGE_KEY, so it can't force the panel open or
+      // trigger sentence translation.
+      sendToBackground({
+        type: 'recordPageWordLookup',
+        word: word.trim().toLowerCase(),
+        ecp: wordData,
+      })
     } else if (response.sessionExpired) {
       console.log('Session expired, showing session expired message')
       popup.hidePopover()
@@ -645,15 +676,118 @@ const addProcessingCompleteIndicator = (articleNode: Element) => {
   articleNode.insertBefore(indicator, articleNode.firstChild)
 }
 
-// Handle text selection for multi-word translation
+// Shows a lightweight popup carrying only the sentencePanelHint text, no
+// dictionary UI (ADR-007 Decision §4). Used by the drag-select translation
+// flow for the two cases where the user needs feedback: the selection was
+// rejected for being too long, or chrome.sidePanel.open() couldn't be
+// triggered and the panel needs to be opened manually.
+const showSelectionHint = (hint: string, event: MouseEvent) => {
+  hideWordPopup()
+
+  const anchor = event.target as HTMLElement
+  const { popup, root } = createAnchoredPopup(anchor)
+  currentRoot = root
+
+  contentScriptStore.set(sentencePanelHintAtom, hint)
+
+  root.render(
+    <Provider store={contentScriptStore}>
+      <WordPopup
+        word=""
+        variant="hint"
+        onClose={() => popup.hidePopover()}
+        onMarkAcquainted={() => {}}
+        onOpenSentencePanel={() => {}}
+      />
+    </Provider>
+  )
+
+  document.body.appendChild(popup)
+  popup.showPopover()
+  currentPopup = popup
+
+  setupPopupEventHandlers(popup, anchor, root)
+}
+
+// Drag-select translation (ADR-007): sends the selected text straight to
+// the Side Panel via the same 'openSentencePanel' message the "🔤 整句翻译"
+// button uses, skipping extractSentenceContext entirely -- the user's own
+// selection boundary already is the translation boundary, unlike a single
+// word click where the sentence has to be inferred from an anchor element.
+// `word` is left blank: PendingSentenceContext.word isn't read anywhere in
+// SidePanel.tsx, so there's nothing meaningful to put there for a selection
+// that isn't anchored to one specific word.
+const triggerSelectionTranslation = async (selectedText: string, event: MouseEvent) => {
+  try {
+    const response = await sendToBackground({
+      type: 'openSentencePanel',
+      word: '',
+      sentence: selectedText,
+      sourceUrl: window.location.href,
+    })
+
+    if (response.success && !response.panelOpened) {
+      showSelectionHint('已保存，请点击或右键工具栏 ENX 图标查看整句翻译', event)
+    }
+  } catch (error) {
+    console.error('Error opening sentence panel for selection:', error)
+    showSelectionHint('已保存，请点击或右键工具栏 ENX 图标查看整句翻译', event)
+  }
+}
+
+// ADR-007 tuning constants, kept together so they're easy to adjust without
+// hunting through the selection-handling logic below.
+const SELECTION_DICTIONARY_MAX_WORDS = 5
+const SELECTION_TRANSLATE_MAX_WORDS = 80
+const SELECTION_TRANSLATE_DEBOUNCE_MS = 500
+const SENTENCE_END_PUNCTUATION = /[.?!]/
+
+let selectionTranslateTimer: ReturnType<typeof setTimeout> | null = null
+
+// Cancels any pending drag-select translation. Called both on the next
+// mousedown (a new selection gesture starting -- ADR-007 Decision §3) and
+// whenever a mouseup itself needs to replace a still-pending timer.
+const cancelPendingSelectionTranslation = () => {
+  if (selectionTranslateTimer !== null) {
+    clearTimeout(selectionTranslateTimer)
+    selectionTranslateTimer = null
+  }
+}
+
+// Handle text selection (ADR-007): a selection with sentence-ending
+// punctuation, or longer than the dictionary-lookup threshold, is treated
+// as "translate this" rather than "look this phrase up" and is debounced
+// before triggering translateSentence (via triggerSelectionTranslation) --
+// see the ADR for why word-count alone can't tell a short phrase like "as a
+// matter of fact" apart from a short complete sentence like "I love cats.".
 const handleTextSelection = (event: MouseEvent) => {
+  cancelPendingSelectionTranslation()
+
   const selection = window.getSelection()
   const selectedText = selection?.toString().trim()
+  if (!selectedText) return
 
-  if (selectedText && selectedText.split(' ').length <= 5) {
-    // Handle multi-word selection
-    showWordPopup(selectedText, event)
+  const wordCount = selectedText.split(/\s+/).filter(Boolean).length
+
+  if (wordCount > SELECTION_TRANSLATE_MAX_WORDS) {
+    showSelectionHint(
+      `选中内容过长，请缩小选择范围（最多 ${SELECTION_TRANSLATE_MAX_WORDS} 个词）`,
+      event
+    )
+    return
   }
+
+  const looksLikeSentence = SENTENCE_END_PUNCTUATION.test(selectedText)
+  if (looksLikeSentence || wordCount > SELECTION_DICTIONARY_MAX_WORDS) {
+    selectionTranslateTimer = setTimeout(() => {
+      selectionTranslateTimer = null
+      triggerSelectionTranslation(selectedText, event)
+    }, SELECTION_TRANSLATE_DEBOUNCE_MS)
+    return
+  }
+
+  // <=5 words, no sentence-ending punctuation: existing dictionary lookup.
+  showWordPopup(selectedText, event)
 }
 
 // Enable ENX functionality
@@ -666,8 +800,11 @@ const enableEnx = async (): Promise<boolean> => {
   console.log('Enabling ENX functionality')
   isEnxEnabled = true
 
-  // Add mouseup listener for text selection
+  // Add mouseup listener for text selection, and mousedown to cancel a
+  // pending drag-select translation as soon as a new selection gesture
+  // starts (ADR-007 Decision §3).
   document.addEventListener('mouseup', handleTextSelection)
+  document.addEventListener('mousedown', cancelPendingSelectionTranslation)
 
   // Process article content and wait for completion
   const success = await processArticleContent()
@@ -690,6 +827,8 @@ const disableEnx = () => {
 
   // Remove event listeners
   document.removeEventListener('mouseup', handleTextSelection)
+  document.removeEventListener('mousedown', cancelPendingSelectionTranslation)
+  cancelPendingSelectionTranslation()
 
   // Hide popup
   hideWordPopup()

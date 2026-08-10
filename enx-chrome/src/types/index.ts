@@ -57,6 +57,7 @@ export interface ContentMessage {
     | 'openSentencePanel'
     | 'translateSentence'
     | 'translateWordInContext'
+    | 'recordPageWordLookup'
   word?: string
   words?: string
   paragraph?: string
@@ -66,6 +67,9 @@ export interface ContentMessage {
   data?: any
   sentence?: string
   sourceUrl?: string
+  // Set on 'recordPageWordLookup': the already-fetched dictionary result to
+  // mirror into the Side Panel (ADR-006), avoiding a second getOneWord call.
+  ecp?: WordData
 }
 
 export interface BackgroundResponse {
@@ -93,5 +97,18 @@ export interface PendingSentenceContext {
   sentence: string
   word: string
   sourceUrl: string
+  createdAt: number
+}
+
+// chrome.storage.session key holding the most recent word looked up via the
+// page's WordPopup. Overwritten on every lookup (no history kept) -- see
+// docs/architecture/adr-006-page-word-lookup-in-sidepanel.md. Unlike
+// PENDING_SENTENCE_STORAGE_KEY, writing this key never triggers sentence
+// translation and never forces the Side Panel open.
+export const LATEST_PAGE_WORD_STORAGE_KEY = 'enx-latest-page-word'
+
+export interface LatestPageWordLookup {
+  word: string
+  ecp: WordData
   createdAt: number
 }

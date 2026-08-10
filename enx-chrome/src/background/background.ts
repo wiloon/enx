@@ -8,7 +8,13 @@ import {
   signInWithCognito,
   signOutWithCognito,
 } from '@/lib/cognito'
-import { PENDING_SENTENCE_STORAGE_KEY, PendingSentenceContext } from '@/types'
+import {
+  LATEST_PAGE_WORD_STORAGE_KEY,
+  LatestPageWordLookup,
+  PENDING_SENTENCE_STORAGE_KEY,
+  PendingSentenceContext,
+  WordData,
+} from '@/types'
 
 console.log('ENX Background script loaded')
 console.log('🌐 Config environment:', config.environment)
@@ -297,6 +303,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             request.sourceUrl || '',
             sender.tab?.id
           )
+
+        case 'recordPageWordLookup':
+          return await handleRecordPageWordLookup(request.word || '', request.ecp)
 
         case 'translateSentence':
           return await handleTranslateSentence(request.sentence || '')
@@ -706,6 +715,23 @@ const handleOpenSentencePanel = async (
   }
 
   return { success: true, panelOpened }
+}
+
+// Mirrors a page-level WordPopup lookup into the Side Panel's word list
+// (ADR-006). Content scripts can't write chrome.storage.session directly
+// (no access unless the background grants TRUSTED_AND_UNTRUSTED_CONTEXTS,
+// which would also expose other session keys like the OAuth verifier to
+// arbitrary web pages), so this proxies the write the same way
+// handleOpenSentencePanel does for PENDING_SENTENCE_STORAGE_KEY. Overwrite
+// only -- no history -- and deliberately never touches
+// PENDING_SENTENCE_STORAGE_KEY or calls chrome.sidePanel.open().
+const handleRecordPageWordLookup = async (word: string, ecp?: WordData) => {
+  if (!word || !ecp) return { success: false, error: 'Missing word or dictionary data' }
+
+  const lookup: LatestPageWordLookup = { word, ecp, createdAt: Date.now() }
+  await chrome.storage.session.set({ [LATEST_PAGE_WORD_STORAGE_KEY]: lookup })
+
+  return { success: true }
 }
 
 // Handle service worker errors

@@ -7,12 +7,18 @@ import {
   errorAtom,
   sentencePanelHintAtom,
 } from '@/store/atoms'
+import { playPronunciation } from '@/lib/pronunciation'
 
 interface WordPopupProps {
   word: string
   onClose: () => void
   onMarkAcquainted: (word: string) => void
   onOpenSentencePanel: () => void
+  // 'hint': renders only the sentencePanelHint text, no dictionary UI.
+  // Used by the drag-select translation flow (ADR-007 Decision §4) when
+  // there's nothing to define -- either the selection was rejected for
+  // being too long, or chrome.sidePanel.open() needs a manual fallback.
+  variant?: 'dictionary' | 'hint'
 }
 
 export default function WordPopup({
@@ -20,6 +26,7 @@ export default function WordPopup({
   onClose,
   onMarkAcquainted,
   onOpenSentencePanel,
+  variant = 'dictionary',
 }: WordPopupProps) {
   const [currentWord] = useAtom(currentWordAtom)
   const [isTranslating] = useAtom(isTranslatingAtom)
@@ -44,6 +51,37 @@ export default function WordPopup({
 
   const getYoudaoUrl = (word: string) => {
     return `https://www.youdao.com/result?word=${encodeURIComponent(word)}&lang=en`
+  }
+
+  if (variant === 'hint') {
+    return (
+      <div
+        ref={rootRef}
+        className="bg-white rounded-lg shadow-xl border border-gray-200 p-3 w-full outline-none"
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+      >
+        <div className="flex justify-between items-start">
+          <span className="text-sm text-gray-500">划词翻译</span>
+          <button
+            data-testid="word-popup-close"
+            onClick={onClose}
+            className="text-gray-400 hover:text-red-500 text-xl leading-none ml-2"
+            title="Close"
+          >
+            ×
+          </button>
+        </div>
+        {sentencePanelHint && (
+          <div
+            data-testid="word-popup-sentence-panel-hint"
+            className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-blue-700 text-xs"
+          >
+            {sentencePanelHint}
+          </div>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -112,10 +150,19 @@ export default function WordPopup({
           <div className="space-y-3">
             {/* Pronunciation */}
             {currentWord.Pronunciation && (
-              <div>
+              <div className="flex items-center gap-1">
                 <span className="text-gray-600 font-medium">
                   {currentWord.Pronunciation}
                 </span>
+                <button
+                  data-testid="word-popup-play-pronunciation"
+                  type="button"
+                  onClick={() => playPronunciation(currentWord.English)}
+                  className="text-gray-400 hover:text-blue-500"
+                  title="Play pronunciation"
+                >
+                  🔊
+                </button>
               </div>
             )}
 
