@@ -66,6 +66,12 @@ export interface ContentMessage {
   password?: string
   data?: any
   sentence?: string
+  // Set on 'openSentencePanel' by the phrase-in-context lookup (ADR-008): a
+  // non-empty phrase means "show a phrase card for this text within
+  // `sentence`", not the whole-sentence translation slot. Left unset by the
+  // other two 'openSentencePanel' callers (single-word "🔤 整句翻译" button,
+  // ADR-007 drag-select-sentence translation).
+  phrase?: string
   sourceUrl?: string
   // Set on 'recordPageWordLookup': the already-fetched dictionary result to
   // mirror into the Side Panel (ADR-006), avoiding a second getOneWord call.
@@ -96,6 +102,13 @@ export const PENDING_SENTENCE_STORAGE_KEY = 'enx-pending-sentence'
 export interface PendingSentenceContext {
   sentence: string
   word: string
+  // Non-empty when this context is a phrase-in-context lookup (ADR-008):
+  // SidePanel.tsx renders a phrase card for `phrase` within `sentence`
+  // instead of running the whole-sentence translation slot. Not reused from
+  // `word` deliberately -- `word` is already non-empty for the unrelated
+  // single-word "🔤 整句翻译" button flow, and branching SidePanel.tsx on it
+  // would change that existing flow's behavior too.
+  phrase?: string
   sourceUrl: string
   createdAt: number
 }

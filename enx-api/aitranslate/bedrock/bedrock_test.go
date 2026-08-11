@@ -76,6 +76,34 @@ func TestTranslateWordInContextSuccess(t *testing.T) {
 	}
 }
 
+// ADR-008: word-in-context is reused as-is for a multi-word phrase (no
+// dictionary entry exists for a phrase, so this is the only lookup path).
+func TestTranslateWordInContextPhrase(t *testing.T) {
+	fake := &fakeConverseClient{
+		output: &bedrockruntime.ConverseOutput{
+			Output: &types.ConverseOutputMemberMessage{
+				Value: types.Message{
+					Role:    types.ConversationRoleAssistant,
+					Content: []types.ContentBlock{&types.ContentBlockMemberText{Value: "找到邮箱地址并联系"}},
+				},
+			},
+		},
+	}
+	b := newTestBedrock(fake)
+
+	chinese, err := b.TranslateWordInContext(
+		context.Background(),
+		"I'd have to find the right contacts, hunt down emails, and draft outreach.",
+		"hunt down emails",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if chinese != "找到邮箱地址并联系" {
+		t.Fatalf("chinese: got %q", chinese)
+	}
+}
+
 func TestTranslateWordInContextConverseError(t *testing.T) {
 	fake := &fakeConverseClient{err: errors.New("throttled")}
 	b := newTestBedrock(fake)

@@ -191,6 +191,135 @@ describe('SidePanel', () => {
     })
   })
 
+  it('renders a phrase card instead of the top sentence-translation slot when pendingContext.phrase is set (ADR-008)', async () => {
+    const fullSentence =
+      "I'd have to find the right contacts, hunt down emails, and draft outreach."
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: fullSentence,
+        word: '',
+        phrase: 'hunt down emails',
+        sourceUrl: '',
+        createdAt: 1,
+      },
+    })
+    mockSendMessage.mockImplementation(
+      async (message: { type: string; word?: string; sentence?: string }) => {
+        if (message.type === 'translateWordInContext') {
+          expect(message.word).toBe('hunt down emails')
+          expect(message.sentence).toBe(fullSentence)
+          return { success: true, chinese: '找到邮箱地址并联系' }
+        }
+        return { success: false }
+      }
+    )
+
+    render(<SidePanel />)
+
+    const card = await screen.findByTestId('sidepanel-card-hunt down emails')
+    expect(card).toHaveTextContent('找到邮箱地址并联系')
+
+    // The top single-slot sentence-translation area must stay untouched --
+    // a phrase context is not a whole-sentence translation.
+    expect(screen.queryByTestId('sidepanel-chinese')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('sidepanel-loading')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('sidepanel-error')).not.toBeInTheDocument()
+    expect(mockSendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'translateSentence' })
+    )
+
+    // No dictionary data exists for a phrase -- no pronunciation, no query
+    // count, no dictionary-meaning block should render on this card.
+    expect(within(card).queryByText(/音标加载中/)).not.toBeInTheDocument()
+    expect(within(card).queryByText(/词典释义加载中/)).not.toBeInTheDocument()
+  })
+
+  it('shows an error + retry on a phrase card, same as a word card (ADR-008)', async () => {
+    const fullSentence = 'Your session has just expired mid-sentence for this phrase test.'
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: fullSentence,
+        word: '',
+        phrase: 'expired mid-sentence',
+        sourceUrl: '',
+        createdAt: 1,
+      },
+    })
+    let callCount = 0
+    mockSendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'translateWordInContext') {
+        callCount += 1
+        if (callCount === 1) {
+          return { success: false, error: 'Your session has expired. Please login again.' }
+        }
+        return { success: true, chinese: '句子中途过期' }
+      }
+      return { success: false }
+    })
+
+    const user = userEvent.setup()
+    render(<SidePanel />)
+
+    const errorRow = await screen.findByTestId('sidepanel-context-error-expired mid-sentence')
+    expect(errorRow).toHaveTextContent('Your session has expired. Please login again.')
+
+    await user.click(within(errorRow).getByTestId('sidepanel-retry-context-expired mid-sentence'))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('sidepanel-context-error-expired mid-sentence')).not.toBeInTheDocument()
+      expect(screen.getByTestId('sidepanel-definitions')).toHaveTextContent('句子中途过期')
+    })
+    expect(callCount).toBe(2)
+  })
+
+  it('lets the user retry a failed contextual translation (e.g. session expiry) instead of leaving the card stuck', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: 'Cats are great pets.',
+        word: 'great',
+        sourceUrl: '',
+        createdAt: 1,
+      },
+    })
+    let contextCallCount = 0
+    mockSendMessage.mockImplementation(async (message: { type: string; word?: string }) => {
+      if (message.type === 'translateSentence') {
+        return { success: true, chinese: '猫是很棒的宠物。' }
+      }
+      if (message.type === 'translateWordInContext') {
+        contextCallCount += 1
+        if (contextCallCount === 1) {
+          return { success: false, error: 'Your session has expired. Please login again.' }
+        }
+        return { success: true, chinese: '很棒的' }
+      }
+      if (message.type === 'getOneWord') {
+        return {
+          success: true,
+          ecp: { English: message.word, Chinese: 'unused', Pronunciation: '/greɪt/' },
+        }
+      }
+      return { success: false }
+    })
+
+    const user = userEvent.setup()
+    render(<SidePanel />)
+    await screen.findByTestId('sidepanel-sentence')
+
+    await user.click(screen.getByText('great'))
+
+    const errorRow = await screen.findByTestId('sidepanel-context-error-great')
+    expect(errorRow).toHaveTextContent('Your session has expired. Please login again.')
+
+    await user.click(within(errorRow).getByTestId('sidepanel-retry-context-great'))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('sidepanel-context-error-great')).not.toBeInTheDocument()
+      expect(screen.getByTestId('sidepanel-definitions')).toHaveTextContent('很棒的')
+    })
+    expect(contextCallCount).toBe(2)
+  })
+
   it('renders the card progressively: dictionary info appears before the slower AI context translation resolves (spec §3.9)', async () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {

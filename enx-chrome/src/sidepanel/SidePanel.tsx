@@ -23,16 +23,20 @@ type FetchStatus = 'loading' | 'loaded' | 'error'
 // a single text line, so dictionary lookup (getOneWord) and AI contextual
 // translation (translateWordInContext) each track their own status -- the
 // card renders progressively, showing whichever half resolves first.
-// 'none' means "not applicable" -- used for cards created from a page-level
-// WordPopup lookup (ADR-006), which has no sentence context to translate
-// against and so must never show the "翻译中..."/context text UI at all.
+// 'none' means "not applicable". On contextStatus: cards created from a
+// page-level WordPopup lookup (ADR-006), which has no sentence context to
+// translate against and so must never show the "翻译中..."/context text UI
+// at all. On dictionaryStatus: phrase cards (ADR-008) -- a 2-5 word
+// selection never has an ECDICT/words entry, so they skip the dictionary
+// half entirely and only ever populate the context* fields.
 interface WordCardData {
   word: string
   pronunciation?: string
   loadCount?: number
   dictionaryChinese?: string
-  dictionaryStatus: FetchStatus
+  dictionaryStatus: FetchStatus | 'none'
   contextChinese?: string
+  contextError?: string
   contextStatus: FetchStatus | 'none'
 }
 
@@ -171,7 +175,10 @@ function SidePanelContent() {
   // already on screen -- whether they came from this sentence, an earlier
   // one, or a page-level lookup.
   useEffect(() => {
-    if (!pendingContext) return
+    // A phrase-in-context context (ADR-008) renders as a phrase card in the
+    // definitions list instead (see the effect below) -- the top slot stays
+    // reserved for genuine whole-sentence translation.
+    if (!pendingContext || pendingContext.phrase) return
 
     let cancelled = false
     setStatus('loading')
@@ -220,7 +227,8 @@ function SidePanelContent() {
             d.word === word
               ? {
                   ...d,
-                  contextChinese: resolved ? response.chinese : response.error || '翻译失败',
+                  contextChinese: resolved ? response.chinese : undefined,
+                  contextError: resolved ? undefined : response.error || '翻译失败',
                   contextStatus: resolved ? 'loaded' : 'error',
                 }
               : d
@@ -230,11 +238,50 @@ function SidePanelContent() {
       .catch(() => {
         setDefinitions(prev =>
           prev.map(d =>
-            d.word === word ? { ...d, contextStatus: 'error', contextChinese: '翻译失败' } : d
+            d.word === word
+              ? { ...d, contextStatus: 'error', contextChinese: undefined, contextError: '翻译失败' }
+              : d
           )
         )
       })
   }, [])
+
+  // Phrase-in-context lookup (ADR-008): a 2-5 word selection inside a larger
+  // sentence never has a dictionary entry (ECDICT/words only has single
+  // words), so it skips getOneWord entirely and only ever gets an AI
+  // translateWordInContext result -- rendered as a phrase card (dictionaryStatus
+  // 'none') mixed into the same definitions list as word cards, not the
+  // single-slot whole-sentence area above.
+  useEffect(() => {
+    if (!pendingContext?.phrase) return
+
+    const phrase = pendingContext.phrase
+    const sentence = pendingContext.sentence
+
+    setDefinitions(prev => [
+      { word: phrase, dictionaryStatus: 'none', contextStatus: 'loading' },
+      ...prev,
+    ])
+    fetchContextTranslation(phrase, sentence)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingContext?.createdAt])
+
+  // Lets a card stuck in contextStatus 'error' (e.g. session expiry) recover
+  // without a full page reload -- handleWordClick only re-fetches for
+  // contextStatus 'none', so an error needs its own explicit retry path.
+  const handleRetryContextTranslation = useCallback(
+    (word: string) => {
+      const sentence = pendingContext?.sentence
+      if (!sentence) return
+      setDefinitions(prev =>
+        prev.map(d =>
+          d.word === word ? { ...d, contextStatus: 'loading', contextError: undefined } : d
+        )
+      )
+      fetchContextTranslation(word, sentence)
+    },
+    [pendingContext?.sentence, fetchContextTranslation]
+  )
 
   // Word click in the Side Panel fires two independent requests (spec
   // §3.7/§3.8/§3.9): getOneWord (same lookup the page's word popup uses --
@@ -417,7 +464,7 @@ function SidePanelContent() {
                     翻译中...
                   </span>
                 )}
-                {(def.contextStatus === 'loaded' || def.contextStatus === 'error') && (
+                {def.contextStatus === 'loaded' && (
                   <span className="text-blue-700 font-medium text-sm">{def.contextChinese}</span>
                 )}
 
@@ -431,6 +478,27 @@ function SidePanelContent() {
                   </span>
                 )}
               </div>
+
+              {/* Kept off the headline row: an error (e.g. session expiry)
+                  read as a real translation there. Its own row + retry
+                  button makes it obviously an error and recoverable. */}
+              {def.contextStatus === 'error' && (
+                <div
+                  className="flex items-center justify-between gap-2 text-red-600 text-xs bg-red-50 rounded px-2 py-1 mb-2"
+                  data-testid={`sidepanel-context-error-${def.word}`}
+                >
+                  <span className="flex-1">{def.contextError}</span>
+                  <button
+                    type="button"
+                    data-testid={`sidepanel-retry-context-${def.word}`}
+                    onClick={() => handleRetryContextTranslation(def.word)}
+                    className="text-red-600 hover:text-red-800 font-medium whitespace-nowrap"
+                    title="Retry"
+                  >
+                    重试
+                  </button>
+                </div>
+              )}
 
               {def.dictionaryStatus === 'loading' ? (
                 <div className="text-gray-400 text-xs">词典释义加载中...</div>

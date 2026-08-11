@@ -301,7 +301,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             request.word || '',
             request.sentence || request.word || '',
             request.sourceUrl || '',
-            sender.tab?.id
+            sender.tab?.id,
+            request.phrase || undefined
           )
 
         case 'recordPageWordLookup':
@@ -694,11 +695,13 @@ const handleOpenSentencePanel = async (
   word: string,
   sentence: string,
   sourceUrl: string,
-  tabId?: number
+  tabId?: number,
+  phrase?: string
 ) => {
   const context: PendingSentenceContext = {
     word,
     sentence,
+    phrase,
     sourceUrl,
     createdAt: Date.now(),
   }

@@ -93,6 +93,35 @@ func TestTranslateWordInContextSuccess(t *testing.T) {
 	}
 }
 
+// ADR-008: word-in-context is reused as-is for a multi-word phrase (no
+// dictionary entry exists for a phrase, so this is the only lookup path).
+func TestTranslateWordInContextPhrase(t *testing.T) {
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"找到邮箱地址并联系"}}]}`))
+	}))
+	defer srv.Close()
+
+	m := newTestMiniMax(srv.URL)
+	chinese, err := m.TranslateWordInContext(
+		context.Background(),
+		"I'd have to find the right contacts, hunt down emails, and draft outreach.",
+		"hunt down emails",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if chinese != "找到邮箱地址并联系" {
+		t.Fatalf("chinese: got %q", chinese)
+	}
+	if !bytes.Contains(capturedBody, []byte("hunt down emails")) {
+		t.Fatalf("request body missing phrase: %s", capturedBody)
+	}
+}
+
 func TestTranslateWordInContextNon200(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)

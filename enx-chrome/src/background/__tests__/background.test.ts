@@ -256,3 +256,69 @@ describe('background onMessage / validateSession', () => {
     expect(chrome.storage.local.remove).toHaveBeenCalledTimes(1)
   })
 })
+
+// ADR-008: the phrase-in-context lookup reuses the 'openSentencePanel'
+// message/handler, just with an extra `phrase` field threaded through to
+// PendingSentenceContext. Verifies that plumbing independently of
+// content.tsx (which can't be imported in Jest -- see phraseAnchor.test.ts).
+describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)', () => {
+  const listener = onMessageListener
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    ;(chrome.storage.session.set as jest.Mock).mockResolvedValue(undefined)
+    ;(chrome.sidePanel.open as jest.Mock).mockResolvedValue(undefined)
+  })
+
+  it('threads request.phrase into the stored PendingSentenceContext', async () => {
+    const response = await new Promise(resolve => {
+      listener(
+        {
+          type: 'openSentencePanel',
+          word: '',
+          phrase: 'hunt down emails',
+          sentence: 'I had to hunt down emails and draft outreach.',
+          sourceUrl: 'https://example.com/post',
+        },
+        { tab: { id: 7 } },
+        resolve
+      )
+    })
+
+    expect(response).toEqual({ success: true, panelOpened: true })
+    expect(chrome.storage.session.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        'enx-pending-sentence': expect.objectContaining({
+          word: '',
+          phrase: 'hunt down emails',
+          sentence: 'I had to hunt down emails and draft outreach.',
+        }),
+      })
+    )
+  })
+
+  it('leaves phrase undefined for the existing whole-sentence/single-word callers', async () => {
+    const response = await new Promise(resolve => {
+      listener(
+        {
+          type: 'openSentencePanel',
+          word: 'great',
+          sentence: 'Cats are great pets.',
+          sourceUrl: 'https://example.com/post',
+        },
+        { tab: { id: 7 } },
+        resolve
+      )
+    })
+
+    expect(response).toEqual({ success: true, panelOpened: true })
+    expect(chrome.storage.session.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        'enx-pending-sentence': expect.objectContaining({
+          word: 'great',
+          phrase: undefined,
+        }),
+      })
+    )
+  })
+})

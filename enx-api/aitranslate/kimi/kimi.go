@@ -21,8 +21,8 @@ const (
 		"Reply with the Chinese translation only, no explanation, no pinyin, no quotes."
 
 	wordContextSystemPrompt = "You are a professional English-to-Chinese translator. " +
-		"Given an English sentence and a specific word from that sentence, reply with the " +
-		"word's Chinese meaning as used in THIS sentence's context only, not a generic " +
+		"Given an English sentence and a specific word or phrase from that sentence, reply with " +
+		"its Chinese meaning as used in THIS sentence's context only, not a generic " +
 		"dictionary definition. Reply with the Chinese meaning only, no explanation, no pinyin, no quotes."
 )
 

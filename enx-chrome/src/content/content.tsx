@@ -735,6 +735,71 @@ const triggerSelectionTranslation = async (selectedText: string, event: MouseEve
   }
 }
 
+// Phrase-in-context lookup (ADR-008): a 2-5 word selection inside a larger
+// sentence reuses the existing extractSentenceContext (built for single-word
+// clicks) by finding one already-wrapped <u class="enx-word"> element inside
+// the selection to use as its anchor, rather than writing a new
+// Range-based sentence-boundary algorithm. See ADR-008 Decision §1.
+const findPhraseAnchor = (event: MouseEvent): HTMLElement | null => {
+  const target = event.target as HTMLElement
+  if (target?.classList?.contains('enx-word')) return target
+
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) return null
+  const range = selection.getRangeAt(0)
+
+  let container = range.commonAncestorContainer as Node
+  if (container.nodeType !== Node.ELEMENT_NODE) {
+    container = container.parentElement as Node
+  }
+  if (!container || !(container instanceof HTMLElement)) return null
+
+  const candidates = container.querySelectorAll('.enx-word')
+  for (const candidate of Array.from(candidates)) {
+    if (range.intersectsNode(candidate)) {
+      return candidate as HTMLElement
+    }
+  }
+  return null
+}
+
+// Sends the selected phrase + its surrounding sentence (found via the anchor
+// above) to the Side Panel, reusing the same 'openSentencePanel' message and
+// PENDING_SENTENCE_STORAGE_KEY plumbing as triggerSelectionTranslation, just
+// with `phrase` set so SidePanel.tsx renders a phrase card (AI-only, no
+// dictionary lookup) instead of the whole-sentence translation slot.
+const triggerPhraseContextLookup = async (selectedText: string, event: MouseEvent) => {
+  const anchor = findPhraseAnchor(event)
+  if (!anchor) {
+    showSelectionHint('暂时无法识别所在句子，请尝试重新选择', event)
+    return
+  }
+
+  const sentenceContext = WordProcessor.extractSentenceContext(anchor, anchor.textContent || '')
+  const sentence = sentenceContext?.sentence
+  if (!sentence) {
+    showSelectionHint('暂时无法识别所在句子，请尝试重新选择', event)
+    return
+  }
+
+  try {
+    const response = await sendToBackground({
+      type: 'openSentencePanel',
+      word: '',
+      phrase: selectedText,
+      sentence,
+      sourceUrl: window.location.href,
+    })
+
+    if (response.success && !response.panelOpened) {
+      showSelectionHint('已保存，请点击或右键工具栏 ENX 图标查看', event)
+    }
+  } catch (error) {
+    console.error('Error opening phrase panel for selection:', error)
+    showSelectionHint('已保存，请点击或右键工具栏 ENX 图标查看', event)
+  }
+}
+
 // ADR-007 tuning constants, kept together so they're easy to adjust without
 // hunting through the selection-handling logic below.
 const SELECTION_DICTIONARY_MAX_WORDS = 5
@@ -754,12 +819,17 @@ const cancelPendingSelectionTranslation = () => {
   }
 }
 
-// Handle text selection (ADR-007): a selection with sentence-ending
+// Handle text selection (ADR-007/ADR-008): a selection with sentence-ending
 // punctuation, or longer than the dictionary-lookup threshold, is treated
 // as "translate this" rather than "look this phrase up" and is debounced
 // before triggering translateSentence (via triggerSelectionTranslation) --
 // see the ADR for why word-count alone can't tell a short phrase like "as a
 // matter of fact" apart from a short complete sentence like "I love cats.".
+// Within the remaining <=5-word, no-punctuation range, a single word is
+// still a dictionary lookup, but 2-5 words is a phrase -- ECDICT/words never
+// has phrase entries, so that case is routed to an AI in-context lookup
+// instead (ADR-008), not debounced since the selection itself is already
+// the exact, deliberate query (no boundary-tuning drag to wait out).
 const handleTextSelection = (event: MouseEvent) => {
   cancelPendingSelectionTranslation()
 
@@ -786,8 +856,14 @@ const handleTextSelection = (event: MouseEvent) => {
     return
   }
 
-  // <=5 words, no sentence-ending punctuation: existing dictionary lookup.
-  showWordPopup(selectedText, event)
+  if (wordCount === 1) {
+    // Single word, no sentence-ending punctuation: existing dictionary lookup.
+    showWordPopup(selectedText, event)
+    return
+  }
+
+  // 2-5 words, no sentence-ending punctuation: phrase-in-context AI lookup (ADR-008).
+  triggerPhraseContextLookup(selectedText, event)
 }
 
 // Enable ENX functionality
