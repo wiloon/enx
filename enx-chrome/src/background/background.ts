@@ -117,6 +117,13 @@ export type ApiRequestResult = {
   data?: any
   error?: string
   sessionExpired?: boolean
+  // HTTP status of a failed response (undefined for network-level failures
+  // that never got a response at all). Lets callers distinguish billing
+  // errors -- 402 insufficient AI credit, 429 daily dictionary quota
+  // exceeded -- from a generic failure, so the UI can point the user at
+  // /billing instead of just showing "translation failed" (TASK-SPEC
+  // §4.1/§4.2, Phase 4).
+  status?: number
 }
 
 // API request helper
@@ -165,7 +172,11 @@ export const makeApiRequest = async (
         // Ignore JSON parsing errors, use default message
       }
 
-      throw new Error(errorMessage)
+      // Returned directly (not thrown) so response.status survives into
+      // ApiRequestResult -- the catch block below only handles genuine
+      // exceptions (network failure, session expiry) that never got a
+      // real HTTP status.
+      return { success: false, error: errorMessage, status: response.status }
     }
 
     const data = await response.json()
@@ -517,11 +528,12 @@ const handleGetOneWord = async (word: string) => {
     }
   } else {
     console.error('API request failed:', response.error)
-    // Pass through session expiry flag
+    // Pass through session expiry flag and status (e.g. 429 daily quota)
     return {
       success: false,
       error: response.error || 'Translation service error',
       sessionExpired: response.sessionExpired,
+      status: response.status,
     }
   }
 }
@@ -656,6 +668,7 @@ const handleTranslateSentence = async (sentence: string) => {
     success: false,
     error: response.error || 'Translation service unavailable',
     sessionExpired: response.sessionExpired,
+    status: response.status,
   }
 }
 
@@ -680,6 +693,7 @@ const handleTranslateWordInContext = async (sentence: string, word: string) => {
     success: false,
     error: response.error || 'Translation service unavailable',
     sessionExpired: response.sessionExpired,
+    status: response.status,
   }
 }
 

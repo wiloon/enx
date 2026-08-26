@@ -3,6 +3,7 @@
 package dictionary
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -24,7 +25,7 @@ func TestMain(m *testing.M) {
 
 func TestLookupUnavailableWithoutEcdictConfig(t *testing.T) {
 	ecdict.Init("")
-	_, err := Lookup("not-in-local-db-xyz")
+	_, err := Lookup(context.Background(), "not-in-local-db-xyz", "test-user")
 	if !errors.Is(err, ErrEcdictUnavailable) {
 		t.Fatalf("expected ErrEcdictUnavailable, got %v", err)
 	}

@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"time"
 
+	"enx-api/utils/logger"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
@@ -77,14 +79,14 @@ func New(ctx context.Context) (*Bedrock, error) {
 }
 
 func (b *Bedrock) TranslateSentence(ctx context.Context, sentence string) (string, error) {
-	return b.converse(ctx, systemPrompt, sentence)
+	return b.converse(ctx, "translate_sentence", systemPrompt, sentence)
 }
 
 func (b *Bedrock) TranslateWordInContext(ctx context.Context, sentence, word string) (string, error) {
-	return b.converse(ctx, wordContextSystemPrompt, fmt.Sprintf("Sentence: %s\nWord: %s", sentence, word))
+	return b.converse(ctx, "translate_word_in_context", wordContextSystemPrompt, fmt.Sprintf("Sentence: %s\nWord: %s", sentence, word))
 }
 
-func (b *Bedrock) converse(ctx context.Context, systemPrompt, userContent string) (string, error) {
+func (b *Bedrock) converse(ctx context.Context, feature, systemPrompt, userContent string) (string, error) {
 	callCtx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
@@ -102,6 +104,19 @@ func (b *Bedrock) converse(ctx context.Context, systemPrompt, userContent string
 		return "", fmt.Errorf("bedrock: converse failed: %w", err)
 	}
 
+	// Logged (not yet acted on) so real token counts can be measured before
+	// deciding the token->credit conversion ratio and the translate_sentence
+	// vs translate_word_in_context cost split -- see
+	// docs/tasks/TASK-SPEC-enx-billing-stripe-subscription.md §4.1's "具体数值待定".
+	var inputTokens, outputTokens, totalTokens int32
+	if out.Usage != nil {
+		inputTokens = int32Value(out.Usage.InputTokens)
+		outputTokens = int32Value(out.Usage.OutputTokens)
+		totalTokens = int32Value(out.Usage.TotalTokens)
+	}
+	logger.Infof("aitranslate: usage provider=bedrock feature=%s model=%s input_chars=%d prompt_tokens=%d completion_tokens=%d total_tokens=%d",
+		feature, b.modelID, len(userContent), inputTokens, outputTokens, totalTokens)
+
 	msg, ok := out.Output.(*types.ConverseOutputMemberMessage)
 	if !ok {
 		return "", fmt.Errorf("bedrock: unexpected output type %T", out.Output)
@@ -112,4 +127,14 @@ func (b *Bedrock) converse(ctx context.Context, systemPrompt, userContent string
 		}
 	}
 	return "", fmt.Errorf("bedrock: no text content in response")
+}
+
+// int32Value dereferences a possibly-nil *int32 (Converse's TokenUsage
+// fields are documented "required" but are still pointers in the SDK, so a
+// defensive nil check beats a panic on an unexpected response shape).
+func int32Value(p *int32) int32 {
+	if p == nil {
+		return 0
+	}
+	return *p
 }

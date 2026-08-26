@@ -66,6 +66,20 @@ export default function AuthWrapper() {
 
           <Card>
             <CardHeader>
+              <CardTitle>订阅与积分</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-gray-600 mb-4">
+                升级到 enx Pro，或购买 AI 翻译积分，查看当前积分余额。
+              </p>
+              <Link href="/billing">
+                <Button className="w-full">前往订阅与积分</Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>Hello World</CardTitle>
             </CardHeader>
             <CardContent>

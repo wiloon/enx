@@ -7,6 +7,14 @@ jest.mock('@/lib/sentry', () => ({
   initSentry: jest.fn(),
 }))
 
+// SidePanel now links to enx-ui's billing page (config.frontendBaseUrl) from
+// its 402/429 error UI -- same import.meta issue as the sentry mock above.
+jest.mock('@/config/env', () => ({
+  config: {
+    frontendBaseUrl: 'http://localhost:3000',
+  },
+}))
+
 jest.mock('@/services/api', () => ({
   sendMessageToBackground: jest.fn(),
 }))
@@ -88,6 +96,110 @@ describe('SidePanel', () => {
 
     expect(await screen.findByTestId('sidepanel-error')).toHaveTextContent(
       'translation service unavailable'
+    )
+  })
+
+  it('shows an upgrade link instead of the raw message when sentence translation fails with 402 (insufficient AI credit)', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: 'Cats are great pets.',
+        word: 'great',
+        sourceUrl: '',
+        createdAt: 1,
+      },
+    })
+    mockSendMessage.mockResolvedValue({
+      success: false,
+      error: '积分不足，请充值或订阅',
+      status: 402,
+    })
+
+    render(<SidePanel />)
+
+    const errorBox = await screen.findByTestId('sidepanel-error')
+    expect(errorBox).toHaveTextContent('AI 翻译积分不足')
+    const link = within(errorBox).getByText('前往订阅 / 充值')
+    expect(link).toHaveAttribute('href', 'http://localhost:3000/billing')
+  })
+
+  it('shows an upgrade link on a word-context translation 402, alongside the retry button', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: 'Cats are great pets.',
+        word: 'great',
+        sourceUrl: '',
+        createdAt: 1,
+      },
+    })
+    mockSendMessage.mockImplementation(async (message: { type: string; word?: string }) => {
+      if (message.type === 'translateSentence') {
+        return { success: true, chinese: '猫是很棒的宠物。' }
+      }
+      if (message.type === 'translateWordInContext') {
+        return { success: false, error: '积分不足，请充值或订阅', status: 402 }
+      }
+      if (message.type === 'getOneWord') {
+        return {
+          success: true,
+          ecp: { English: message.word, Chinese: 'unused', Pronunciation: '/greɪt/' },
+        }
+      }
+      return { success: false }
+    })
+
+    const user = userEvent.setup()
+    render(<SidePanel />)
+    await screen.findByTestId('sidepanel-sentence')
+    await user.click(screen.getByText('great'))
+
+    const errorRow = await screen.findByTestId('sidepanel-context-error-great')
+    expect(errorRow).toHaveTextContent('AI 翻译积分不足')
+    expect(within(errorRow).getByText('前往订阅 / 充值')).toHaveAttribute(
+      'href',
+      'http://localhost:3000/billing'
+    )
+    // Retry must still be there -- topping up in another tab and retrying
+    // here should work without reopening the panel.
+    expect(within(errorRow).getByTestId('sidepanel-retry-context-great')).toBeInTheDocument()
+  })
+
+  it('shows an upgrade link (not the raw error) when the dictionary lookup hits the daily quota (429)', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: 'Cats are great pets.',
+        word: 'great',
+        sourceUrl: '',
+        createdAt: 1,
+      },
+    })
+    mockSendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'translateSentence') {
+        return { success: true, chinese: '猫是很棒的宠物。' }
+      }
+      if (message.type === 'translateWordInContext') {
+        return { success: true, chinese: '很棒的' }
+      }
+      if (message.type === 'getOneWord') {
+        return {
+          success: false,
+          error: 'Daily dictionary lookup limit reached. Upgrade to enx Pro for unlimited lookups.',
+          status: 429,
+        }
+      }
+      return { success: false }
+    })
+
+    const user = userEvent.setup()
+    render(<SidePanel />)
+    await screen.findByTestId('sidepanel-sentence')
+    await user.click(screen.getByText('great'))
+
+    const errorRow = await screen.findByTestId('sidepanel-dictionary-error-great')
+    expect(errorRow).toHaveTextContent('今日免费查词次数已用完')
+    expect(errorRow).not.toHaveTextContent('Upgrade to enx Pro')
+    expect(within(errorRow).getByText('前往订阅 / 充值')).toHaveAttribute(
+      'href',
+      'http://localhost:3000/billing'
     )
   })
 

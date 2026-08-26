@@ -3,13 +3,15 @@ package main
 import (
 	"context"
 	"enx-api/aitranslate"
+	"enx-api/billing"
+	billingstripe "enx-api/billing/stripe"
+	"enx-api/dictionary"
+	"enx-api/ecdict"
 	"enx-api/email"
 	"enx-api/enx"
 	"enx-api/handlers"
 	"enx-api/middleware"
 	"enx-api/paragraph"
-	"enx-api/dictionary"
-	"enx-api/ecdict"
 	"enx-api/translate"
 	"enx-api/utils"
 	"enx-api/utils/logger"
@@ -182,7 +184,23 @@ func setupRouter() *gin.Engine {
 		logger.Warnf("sentence translation disabled: %v", sentenceTranslateErr)
 		sentenceTranslator = nil
 	}
-	sentenceHandler := aitranslate.NewHandler(sentenceTranslator)
+	sentenceHandler := aitranslate.NewHandler(
+		sentenceTranslator,
+		aitranslate.DefaultCreditLedger,
+		viper.GetInt64("stripe.costs.translate-sentence"),
+		viper.GetInt64("stripe.costs.translate-word-in-context"),
+	)
+
+	// Stripe billing is likewise optional: without STRIPE_SECRET_KEY (a local
+	// dev box, or a deployment that hasn't set the secret yet), billing
+	// endpoints stay disabled (503) rather than the server failing to start.
+	// See docs/tasks/TASK-SPEC-enx-billing-stripe-subscription.md.
+	stripeClient, stripeErr := billingstripe.New(viper.GetString("stripe.secret-key"))
+	if stripeErr != nil {
+		logger.Warnf("billing disabled: %v", stripeErr)
+		stripeClient = nil
+	}
+	billingHandler := billing.NewHandler(stripeClient, viper.GetString("app.frontend-base-url"), viper.GetString("stripe.webhook-secret"))
 
 	// APIs requiring authentication (Cognito JWT)
 	authGroup := router.Group("/")
@@ -224,6 +242,19 @@ func setupRouter() *gin.Engine {
 	// /api/me — requires authentication (Cognito JWT)
 	apiGroup.GET("/me", GetMe)
 
+	// Billing (Stripe) — requires authentication (Cognito JWT).
+	apiGroup.POST("/billing/checkout/subscription", billingHandler.CheckoutSubscription)
+	apiGroup.POST("/billing/checkout/topup", billingHandler.CheckoutTopup)
+	apiGroup.POST("/billing/portal", billingHandler.Portal)
+	apiGroup.GET("/billing/me", billingHandler.Me)
+
+	// Stripe webhook — deliberately NOT in apiGroup/authGroup: Stripe can't
+	// present a Cognito JWT, so this is unauthenticated at the router root,
+	// relying on Stripe-Signature verification instead (TASK-SPEC §3). URL
+	// must match the endpoint registered in infra/stripe/opentofu/enx
+	// (w10n-config): enx-lab.wiloon.com/billing/webhook, no /api prefix.
+	router.POST("/billing/webhook", billingHandler.Webhook)
+
 	// Temporary test route - no authentication required
 	router.POST("/mark-test", MarkWord)
 
@@ -234,17 +265,28 @@ type SearchResult struct {
 	Dict *enx.Dictionary
 }
 
+// DoSearchEcdict handles GET /ecdict. Routed through dictionary.Lookup
+// (rather than calling ecdict.Query directly) so this endpoint is subject
+// to the same free-tier daily quota as the main translate path -- it's the
+// same underlying ECDICT lookup, and bypassing dictionary.Lookup here would
+// make the quota trivially avoidable by just hitting this endpoint instead.
 func DoSearchEcdict(c *gin.Context) {
 	key := c.Query("key")
 	logger.Infof("ecdict search key: %v", key)
 
-	if !ecdict.IsAvailable() {
+	userID := middleware.GetUserIDFromContext(c)
+	dict, err := dictionary.Lookup(c.Request.Context(), key, userID)
+	if errors.Is(err, dictionary.ErrEcdictUnavailable) {
 		dictionary.RespondUnavailable(c)
+		return
+	}
+	if errors.Is(err, dictionary.ErrQuotaExceeded) {
+		dictionary.RespondQuotaExceeded(c)
 		return
 	}
 
 	result := SearchResult{}
-	result.Dict = ecdict.Query(c.Request.Context(), key)
+	result.Dict = dict
 	c.JSON(200, result)
 }
 

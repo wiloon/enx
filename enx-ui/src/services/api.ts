@@ -1,4 +1,7 @@
-import { ApiResponse, WordData } from '@/types'
+import { ApiResponse, BillingMeData, CheckoutSessionData, WordData } from '@/types'
+
+export type SubscriptionPlan = 'pro' | 'pro-plus' | 'max'
+export type TopupTier = 'small' | 'medium' | 'large'
 import { CognitoTokens, refreshCognitoTokens } from '@/lib/cognito'
 
 export class ApiService {
@@ -126,6 +129,32 @@ export class ApiService {
     return this.makeRequest(`/api/word/${encodeURIComponent(word)}`, {
       method: 'DELETE',
     })
+  }
+
+  async getBillingMe(): Promise<ApiResponse<BillingMeData>> {
+    return this.makeRequest('/api/billing/me')
+  }
+
+  async createSubscriptionCheckout(
+    plan: SubscriptionPlan
+  ): Promise<ApiResponse<CheckoutSessionData>> {
+    return this.makeRequest('/api/billing/checkout/subscription', {
+      method: 'POST',
+      body: JSON.stringify({ plan }),
+    })
+  }
+
+  async createTopupCheckout(
+    tier: TopupTier
+  ): Promise<ApiResponse<CheckoutSessionData>> {
+    return this.makeRequest('/api/billing/checkout/topup', {
+      method: 'POST',
+      body: JSON.stringify({ tier }),
+    })
+  }
+
+  async createPortalSession(): Promise<ApiResponse<CheckoutSessionData>> {
+    return this.makeRequest('/api/billing/portal', { method: 'POST' })
   }
 }
 

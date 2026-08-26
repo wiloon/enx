@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"enx-api/utils/logger"
+
 	"github.com/go-resty/resty/v2"
 	"github.com/spf13/viper"
 )
@@ -71,21 +73,38 @@ type chatRequest struct {
 	Temperature float64       `json:"temperature"`
 }
 
+// usage mirrors the OpenAI-compatible "usage" object Kimi's Chat Completions
+// API returns alongside every response. Logged (not yet acted on) so real
+// token counts can be measured before deciding the token->credit
+// conversion ratio and the translate_sentence vs translate_word_in_context
+// cost split -- see docs/tasks/TASK-SPEC-enx-billing-stripe-subscription.md
+// §4.1's "具体数值待定". word-in-context sends the same sentence as context
+// plus the target word, so PromptTokens should be close to (not equal to)
+// translate_sentence's for the same sentence -- CompletionTokens is where
+// the two are expected to actually diverge (a full translated sentence vs.
+// one word's gloss).
+type usage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
 type chatResponse struct {
 	Choices []struct {
 		Message chatMessage `json:"message"`
 	} `json:"choices"`
+	Usage usage `json:"usage"`
 }
 
 func (k *Kimi) TranslateSentence(ctx context.Context, sentence string) (string, error) {
-	return k.chat(ctx, systemPrompt, sentence)
+	return k.chat(ctx, "translate_sentence", systemPrompt, sentence)
 }
 
 func (k *Kimi) TranslateWordInContext(ctx context.Context, sentence, word string) (string, error) {
-	return k.chat(ctx, wordContextSystemPrompt, fmt.Sprintf("Sentence: %s\nWord: %s", sentence, word))
+	return k.chat(ctx, "translate_word_in_context", wordContextSystemPrompt, fmt.Sprintf("Sentence: %s\nWord: %s", sentence, word))
 }
 
-func (k *Kimi) chat(ctx context.Context, systemPrompt, userContent string) (string, error) {
+func (k *Kimi) chat(ctx context.Context, feature, systemPrompt, userContent string) (string, error) {
 	var result chatResponse
 	resp, err := k.client.R().
 		SetContext(ctx).
@@ -111,5 +130,9 @@ func (k *Kimi) chat(ctx context.Context, systemPrompt, userContent string) (stri
 	if len(result.Choices) == 0 {
 		return "", fmt.Errorf("kimi: empty response")
 	}
+
+	logger.Infof("aitranslate: usage provider=kimi feature=%s model=%s input_chars=%d prompt_tokens=%d completion_tokens=%d total_tokens=%d",
+		feature, k.model, len(userContent), result.Usage.PromptTokens, result.Usage.CompletionTokens, result.Usage.TotalTokens)
+
 	return result.Choices[0].Message.Content, nil
 }

@@ -4,6 +4,7 @@ import { MagnifyingGlassIcon } from '@heroicons/react/20/solid'
 import { initSentry } from '@/lib/sentry'
 import { playPronunciation } from '@/lib/pronunciation'
 import { sendMessageToBackground } from '@/services/api'
+import { config } from '@/config/env'
 import {
   BackgroundResponse,
   ContentMessage,
@@ -35,9 +36,40 @@ interface WordCardData {
   loadCount?: number
   dictionaryChinese?: string
   dictionaryStatus: FetchStatus | 'none'
+  // Set when dictionaryStatus is 'error'. dictionaryErrorHttpStatus, when
+  // 429, means the free daily lookup quota was exceeded (TASK-SPEC §4.2) --
+  // rendered with an upgrade link instead of the generic message.
+  dictionaryError?: string
+  dictionaryErrorHttpStatus?: number
   contextChinese?: string
   contextError?: string
+  // Set alongside contextError when contextStatus is 'error'. 402 means the
+  // AI translation credit balance ran out (TASK-SPEC §4.1).
+  contextErrorHttpStatus?: number
   contextStatus: FetchStatus | 'none'
+}
+
+// Billing-related HTTP statuses the backend can return from the AI
+// translate and dictionary lookup endpoints (see billing/handler.go and
+// dictionary/lookup.go). Kept as named constants so the render logic below
+// reads as intent, not magic numbers.
+const HTTP_INSUFFICIENT_CREDIT = 402
+const HTTP_QUOTA_EXCEEDED = 429
+
+// Opens enx-ui's billing page in a new browser tab (not chrome.tabs.create,
+// which needs an extension-privileged context the Side Panel's rendered
+// content doesn't have -- a plain link works fine here).
+function UpgradeLink({ className }: { className?: string }) {
+  return (
+    <a
+      href={`${config.frontendBaseUrl}/billing`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={className ?? 'text-blue-600 hover:underline font-medium whitespace-nowrap'}
+    >
+      前往订阅 / 充值
+    </a>
+  )
 }
 
 interface SentenceToken {
@@ -72,6 +104,7 @@ function SidePanelContent() {
   const [status, setStatus] = useState<Status>('idle')
   const [chinese, setChinese] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
+  const [errorHttpStatus, setErrorHttpStatus] = useState<number | undefined>(undefined)
   const [definitions, setDefinitions] = useState<WordCardData[]>([])
 
   // Keep listening for a new sentence context: if the panel is already open
@@ -183,6 +216,7 @@ function SidePanelContent() {
     let cancelled = false
     setStatus('loading')
     setErrorMessage('')
+    setErrorHttpStatus(undefined)
 
     sendMessageToBackground<BackgroundResponse>({
       type: 'translateSentence',
@@ -195,6 +229,7 @@ function SidePanelContent() {
           setStatus('loaded')
         } else {
           setErrorMessage(response.error || 'Translation service unavailable')
+          setErrorHttpStatus(response.status)
           setStatus('error')
         }
       })
@@ -202,6 +237,7 @@ function SidePanelContent() {
         if (cancelled) return
         console.error('SidePanel: translateSentence failed', error)
         setErrorMessage('Translation service unavailable')
+        setErrorHttpStatus(undefined)
         setStatus('error')
       })
 
@@ -229,6 +265,7 @@ function SidePanelContent() {
                   ...d,
                   contextChinese: resolved ? response.chinese : undefined,
                   contextError: resolved ? undefined : response.error || '翻译失败',
+                  contextErrorHttpStatus: resolved ? undefined : response.status,
                   contextStatus: resolved ? 'loaded' : 'error',
                 }
               : d
@@ -239,7 +276,13 @@ function SidePanelContent() {
         setDefinitions(prev =>
           prev.map(d =>
             d.word === word
-              ? { ...d, contextStatus: 'error', contextChinese: undefined, contextError: '翻译失败' }
+              ? {
+                  ...d,
+                  contextStatus: 'error',
+                  contextChinese: undefined,
+                  contextError: '翻译失败',
+                  contextErrorHttpStatus: undefined,
+                }
               : d
           )
         )
@@ -337,6 +380,8 @@ function SidePanelContent() {
                     dictionaryChinese: response.success ? response.ecp?.Chinese : undefined,
                     loadCount: response.success ? response.ecp?.LoadCount : undefined,
                     dictionaryStatus: response.success ? 'loaded' : 'error',
+                    dictionaryError: response.success ? undefined : response.error || '词典查询失败',
+                    dictionaryErrorHttpStatus: response.success ? undefined : response.status,
                   }
                 : d
             )
@@ -344,7 +389,16 @@ function SidePanelContent() {
         })
         .catch(() => {
           setDefinitions(prev =>
-            prev.map(d => (d.word === word ? { ...d, dictionaryStatus: 'error' } : d))
+            prev.map(d =>
+              d.word === word
+                ? {
+                    ...d,
+                    dictionaryStatus: 'error',
+                    dictionaryError: '词典查询失败',
+                    dictionaryErrorHttpStatus: undefined,
+                  }
+                : d
+            )
           )
         })
 
@@ -409,7 +463,14 @@ function SidePanelContent() {
           )}
           {status === 'error' && (
             <div className="text-red-600" data-testid="sidepanel-error">
-              {errorMessage}
+              {errorHttpStatus === HTTP_INSUFFICIENT_CREDIT ? (
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span>AI 翻译积分不足</span>
+                  <UpgradeLink />
+                </div>
+              ) : (
+                errorMessage
+              )}
             </div>
           )}
           {status === 'loaded' && (
@@ -487,7 +548,14 @@ function SidePanelContent() {
                   className="flex items-center justify-between gap-2 text-red-600 text-xs bg-red-50 rounded px-2 py-1 mb-2"
                   data-testid={`sidepanel-context-error-${def.word}`}
                 >
-                  <span className="flex-1">{def.contextError}</span>
+                  <span className="flex-1">
+                    {def.contextErrorHttpStatus === HTTP_INSUFFICIENT_CREDIT
+                      ? 'AI 翻译积分不足'
+                      : def.contextError}
+                  </span>
+                  {def.contextErrorHttpStatus === HTTP_INSUFFICIENT_CREDIT && (
+                    <UpgradeLink className="text-red-600 hover:text-red-800 font-medium whitespace-nowrap underline" />
+                  )}
                   <button
                     type="button"
                     data-testid={`sidepanel-retry-context-${def.word}`}
@@ -497,6 +565,27 @@ function SidePanelContent() {
                   >
                     重试
                   </button>
+                </div>
+              )}
+
+              {/* Dictionary half's own error row -- 429 means the free daily
+                  lookup quota (TASK-SPEC §4.2) was hit, distinct from a
+                  generic lookup failure. Previously this half rendered
+                  nothing at all on error; the card just silently never
+                  filled in. */}
+              {def.dictionaryStatus === 'error' && (
+                <div
+                  className="flex items-center justify-between gap-2 text-red-600 text-xs bg-red-50 rounded px-2 py-1 mb-2"
+                  data-testid={`sidepanel-dictionary-error-${def.word}`}
+                >
+                  <span className="flex-1">
+                    {def.dictionaryErrorHttpStatus === HTTP_QUOTA_EXCEEDED
+                      ? '今日免费查词次数已用完'
+                      : def.dictionaryError}
+                  </span>
+                  {def.dictionaryErrorHttpStatus === HTTP_QUOTA_EXCEEDED && (
+                    <UpgradeLink className="text-red-600 hover:text-red-800 font-medium whitespace-nowrap underline" />
+                  )}
                 </div>
               )}
 

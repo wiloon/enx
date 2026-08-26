@@ -30,3 +30,26 @@ export interface WordData {
   AlreadyAcquainted: number
   WordType: number
 }
+
+// Mirrors GET /api/billing/me (enx-api/billing/handler.go Me). Status is
+// "none" | "active" | "past_due" | "canceled" -- see ADR-009's subscriptions
+// table, aligned with Stripe's own subscription.status values.
+export interface BillingSubscription {
+  status: string
+  plan: string
+  currentPeriodEnd: number
+}
+
+export interface BillingCredits {
+  subscriptionBalance: number
+  topupBalance: number
+}
+
+export interface BillingMeData {
+  subscription: BillingSubscription
+  credits: BillingCredits
+}
+
+export interface CheckoutSessionData {
+  url: string
+}

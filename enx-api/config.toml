@@ -58,3 +58,61 @@ model-id = "anthropic.claude-3-5-haiku-20241022-v1:0"
 [sentence-translate.minimax]
 model = "MiniMax-Text-01"
 base-url = "https://api.minimax.io/v1"
+
+[stripe]
+# Publishable key is designed to be public and safe to check in.
+# STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET are env-var only, never here
+# (same convention as KIMI_API_KEY / RESEND_API_KEY).
+publishable-key = ""
+
+[stripe.price]
+# Stripe Price lookup_keys, not raw Price IDs. lookup_keys are stable across
+# Sandbox/Live -- the underlying Price ID differs per Stripe mode, the
+# lookup_key doesn't -- so billing/stripe/checkout.go should resolve Price by
+# lookup_key via the Stripe API rather than hardcoding an ID. Catalog is
+# managed via OpenTofu in infra/stripe/opentofu/enx (w10n-config, private).
+#
+# Three subscription tiers (2026-08-26 decision, replacing the original
+# single "enx Pro" monthly/annual structure) -- annual billing is deferred
+# ("单独讨论"), not dropped: see infra/stripe/opentofu/enx/main.tf.
+pro = "enx_pro_monthly"
+pro-plus = "enx_pro_plus_monthly"
+max = "enx_max_monthly"
+credits-topup-small = "enx_credits_topup_small"
+credits-topup-medium = "enx_credits_topup_medium"
+credits-topup-large = "enx_credits_topup_large"
+
+[stripe.credits]
+# AI credits granted per grant event (subscription renewal / top-up
+# purchase). All placeholders -- 0 means "not decided yet", and the ledger
+# (billing/credit) deliberately REJECTS a grant of 0 rather than silently
+# under-crediting a paying customer, so billing/webhook.go's
+# invoice.paid/checkout.session.completed handlers will fail (Stripe
+# retries, visible in the Dashboard) until these are filled in. See
+# w10n-config/enx/monetization.md for the pricing discussion and
+# TASK-SPEC §10.2: PRs should not merge with these still at 0 if billing is
+# meant to go live.
+subscription-pro = 0
+subscription-pro-plus = 0
+subscription-max = 0
+topup-small = 0
+topup-medium = 0
+topup-large = 0
+
+[stripe.costs]
+# AI credit cost per call (ADR-009 Decision 4: fixed cost per feature, not
+# token-metered). Placeholders -- 0 means "not decided yet", and
+# billing/credit.Consume deliberately REJECTS a cost <= 0 rather than
+# silently letting AI calls through for free, so these endpoints respond
+# 502 until real numbers are filled in. See w10n-config/enx/monetization.md
+# ("暂定 1 积分/次,具体数值待定").
+translate-sentence = 0
+translate-word-in-context = 0
+
+[stripe.quota]
+# Free-tier daily dictionary lookup cap (ADR-009 Decision 6). Unlike the
+# cost/credit values above, 0 here means "unlimited" -- an unconfigured
+# quota should fail open (free lookups stay uncapped a little longer,
+# annoying at worst) not fail closed (breaks the free-tier hook for
+# everyone). See w10n-config/enx/monetization.md.
+dictionary-lookup-daily = 0

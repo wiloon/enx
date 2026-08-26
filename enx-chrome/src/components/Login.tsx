@@ -100,17 +100,29 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
   const handleEnableLearning = async () => {
     setUnderliningStatus('processing')
+    setError(null)
     try {
       const [tab] = await chrome.tabs.query({
         active: true,
         currentWindow: true,
       })
-      if (tab?.id) {
-        await chrome.tabs.sendMessage(tab.id, { action: 'enxRun' })
-        setUnderliningStatus('completed')
+      if (!tab?.id) {
+        throw new Error('No active tab found')
       }
-    } catch {
-      setError('Could not enable learning on this page')
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        action: 'enxRun',
+      })
+      if (!response?.success) {
+        throw new Error(response?.error || 'Failed to enable learning mode')
+      }
+      setUnderliningStatus('completed')
+    } catch (e) {
+      const message = e instanceof Error ? e.message : ''
+      setError(
+        message.includes('Receiving end does not exist')
+          ? 'This page needs to be refreshed before learning mode can start. Reload the page and try again.'
+          : message || 'Could not enable learning on this page'
+      )
       setUnderliningStatus('idle')
     }
   }
@@ -138,6 +150,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   return (
     <div className="w-80 p-4">
       <p className="mb-2">Welcome, {user.username}!</p>
+      {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
       <button
         type="button"
         className="w-full bg-green-600 text-white py-2 rounded mb-2 hover:bg-green-700"

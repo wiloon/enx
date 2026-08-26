@@ -85,6 +85,10 @@ export interface BackgroundResponse {
   ecp?: WordData
   wordProperties?: Record<string, WordData>
   sessionExpired?: boolean
+  // HTTP status of a failed request, when there was one -- 402 (insufficient
+  // AI credit) and 429 (daily dictionary quota exceeded) get distinct UI
+  // treatment in SidePanel.tsx instead of a generic error message.
+  status?: number
   // Set by the 'openSentencePanel' handler: whether chrome.sidePanel.open()
   // actually succeeded (it may fail if the click's user gesture didn't
   // survive being forwarded through runtime.sendMessage -- see

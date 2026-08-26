@@ -29,9 +29,13 @@ func fillFromEcdict(c *gin.Context, word *enx.Word, userId string) (bool, bool) 
 		return true, false
 	}
 
-	epc, err := dictionary.Lookup(c.Request.Context(), word.English)
+	epc, err := dictionary.Lookup(c.Request.Context(), word.English, userId)
 	if errors.Is(err, dictionary.ErrEcdictUnavailable) {
 		dictionary.RespondUnavailable(c)
+		return false, false
+	}
+	if errors.Is(err, dictionary.ErrQuotaExceeded) {
+		dictionary.RespondQuotaExceeded(c)
 		return false, false
 	}
 	if epc == nil {

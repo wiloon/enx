@@ -67,6 +67,39 @@ func viperInitInternal() {
 	_ = viper.BindEnv("sentence-translate.kimi.api-key", "KIMI_API_KEY")
 	_ = viper.BindEnv("sentence-translate.minimax.api-key", "MINIMAX_API_KEY")
 
+	// Stripe billing (see docs/tasks/TASK-SPEC-enx-billing-stripe-subscription.md).
+	// publishable-key and price lookup_keys are non-secret and live in
+	// config.toml; STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET are env-var
+	// only, never written to config.toml.
+	viper.SetDefault("stripe.publishable-key", "")
+	// Three subscription tiers (2026-08-26 decision) -- see config.toml's
+	// [stripe.price] comment.
+	viper.SetDefault("stripe.price.pro", "enx_pro_monthly")
+	viper.SetDefault("stripe.price.pro-plus", "enx_pro_plus_monthly")
+	viper.SetDefault("stripe.price.max", "enx_max_monthly")
+	viper.SetDefault("stripe.price.credits-topup-small", "enx_credits_topup_small")
+	viper.SetDefault("stripe.price.credits-topup-medium", "enx_credits_topup_medium")
+	viper.SetDefault("stripe.price.credits-topup-large", "enx_credits_topup_large")
+	_ = viper.BindEnv("stripe.secret-key", "STRIPE_SECRET_KEY")
+	_ = viper.BindEnv("stripe.webhook-secret", "STRIPE_WEBHOOK_SECRET")
+	// Credit amounts default to 0 (= "not configured"); billing/credit.Consume
+	// and GrantSubscription/GrantTopup deliberately reject 0 rather than
+	// silently under-crediting, see config.toml's [stripe.credits] comment.
+	viper.SetDefault("stripe.credits.subscription-pro", 0)
+	viper.SetDefault("stripe.credits.subscription-pro-plus", 0)
+	viper.SetDefault("stripe.credits.subscription-max", 0)
+	viper.SetDefault("stripe.credits.topup-small", 0)
+	viper.SetDefault("stripe.credits.topup-medium", 0)
+	viper.SetDefault("stripe.credits.topup-large", 0)
+	// AI call costs default to 0 (= "not configured"); billing/credit.Consume
+	// rejects a cost <= 0, see config.toml's [stripe.costs] comment.
+	viper.SetDefault("stripe.costs.translate-sentence", 0)
+	viper.SetDefault("stripe.costs.translate-word-in-context", 0)
+	// Free dictionary lookup quota defaults to 0 (= "unlimited"), the
+	// opposite fail-direction from costs/credits -- see config.toml's
+	// [stripe.quota] comment.
+	viper.SetDefault("stripe.quota.dictionary-lookup-daily", 0)
+
 	// Throttle for last_login_time/updated_at writes on every authenticated
 	// request (see docs/PERF_FIRST_QUERY_LATENCY.md) — only re-write when the
 	// previous value is older than this interval.

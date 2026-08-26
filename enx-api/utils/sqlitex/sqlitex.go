@@ -114,7 +114,25 @@ func Init() {
 
 	var err error
 	zapLog.Infof("opening db: %s", dbPath)
-	dsn := dbPath + "?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)"
+	// busy_timeout: without it, a writer that finds the file locked by
+	// another writer gets SQLITE_BUSY immediately instead of waiting. The
+	// credit ledger (billing/credit) relies on concurrent writers queuing
+	// rather than failing outright -- see ADR-009 Decision 5's "SQLite
+	// 特别说明".
+	//
+	// _txlock=immediate: a db.Transaction() that reads before it writes
+	// (e.g. ledger.ensureAccount's FirstOrCreate before the balance UPDATE)
+	// defaults to BEGIN DEFERRED, which takes its read snapshot at the
+	// first statement and only grabs the write lock later, at the UPDATE.
+	// In WAL mode, if another connection commits a write in between, that
+	// upgrade fails with SQLITE_BUSY immediately -- busy_timeout only
+	// retries a *blocked* lock wait, not a stale-snapshot upgrade, so it
+	// doesn't help here. BEGIN IMMEDIATE grabs the write lock at the start
+	// of the transaction instead, turning that failure mode into a normal
+	// lock wait that busy_timeout does cover. Verified empirically: without
+	// this, ~94% of 300 concurrent ledger writers to the same row failed
+	// with SQLITE_BUSY instantly; with it, all queue and succeed.
+	dsn := dbPath + "?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(10000)&_txlock=immediate"
 	DB, err = gorm.Open(sqlite.Open(dsn), &gorm.Config{
 		Logger: newLogger,
 	})
@@ -133,7 +151,8 @@ func Init() {
 
 	// Auto-migrate database schema
 	zapLog.Info("running database auto-migration...")
-	err = DB.AutoMigrate(&User{}, &Word{}, &UserDict{}, &Session{}, &SyncState{})
+	err = DB.AutoMigrate(&User{}, &Word{}, &UserDict{}, &Session{}, &SyncState{},
+		&Subscription{}, &CreditAccount{}, &CreditTransaction{}, &DictionaryLookupQuota{})
 	if err != nil {
 		zapLog.Errorf("failed to auto-migrate database: %v", err)
 	} else {
