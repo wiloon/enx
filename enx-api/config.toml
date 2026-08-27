@@ -102,13 +102,15 @@ topup-large = 0
 
 [stripe.costs]
 # AI credit cost per call (ADR-009 Decision 4: fixed cost per feature, not
-# token-metered). Placeholders -- 0 means "not decided yet", and
-# billing/credit.Consume deliberately REJECTS a cost <= 0 rather than
-# silently letting AI calls through for free, so these endpoints respond
-# 502 until real numbers are filled in. See w10n-config/enx/monetization.md
-# ("暂定 1 积分/次,具体数值待定").
-translate-sentence = 0
-translate-word-in-context = 0
+# token-metered). 0 means "not decided yet", and billing/credit.Consume
+# deliberately REJECTS a cost <= 0 rather than silently letting AI calls
+# through for free, so those endpoints respond 502. Sentence and word-in-
+# context are both 1 credit/call (2026-08-26 pricing decision, see
+# w10n-config/enx/monetization-tasks.md: "单词翻译与句子翻译统一 1 积分/次");
+# still pending overall review. Override per-deployment with
+# STRIPE_COSTS_TRANSLATE_SENTENCE / STRIPE_COSTS_TRANSLATE_WORD_IN_CONTEXT.
+translate-sentence = 1
+translate-word-in-context = 1
 
 [stripe.quota]
 # Free-tier daily dictionary lookup cap (ADR-009 Decision 6). Unlike the

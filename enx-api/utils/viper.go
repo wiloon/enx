@@ -95,9 +95,13 @@ func viperInitInternal() {
 	viper.SetDefault("stripe.credits.topup-medium", 0)
 	viper.SetDefault("stripe.credits.topup-large", 0)
 	// AI call costs default to 0 (= "not configured"); billing/credit.Consume
-	// rejects a cost <= 0, see config.toml's [stripe.costs] comment.
+	// rejects a cost <= 0, see config.toml's [stripe.costs] comment. Bindable
+	// via env so k8s deployments (which ship no config.toml, see Containerfile)
+	// can set them without a config file.
 	viper.SetDefault("stripe.costs.translate-sentence", 0)
+	_ = viper.BindEnv("stripe.costs.translate-sentence", "STRIPE_COSTS_TRANSLATE_SENTENCE")
 	viper.SetDefault("stripe.costs.translate-word-in-context", 0)
+	_ = viper.BindEnv("stripe.costs.translate-word-in-context", "STRIPE_COSTS_TRANSLATE_WORD_IN_CONTEXT")
 	// Free dictionary lookup quota defaults to 0 (= "unlimited"), the
 	// opposite fail-direction from costs/credits -- see config.toml's
 	// [stripe.quota] comment.
