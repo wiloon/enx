@@ -143,10 +143,16 @@ func Init() {
 
 	// Homelab/AWS DBs created by migrations/20251230_migrate_words_to_p2p.sql
 	// embed "-- ..." comments inside CREATE TABLE. glebarez/sqlite AutoMigrate
-	// rewrites that SQL into words__temp and fails with "incomplete input",
-	// which previously skipped the expression index below. Repair once first.
+	// rewrites that SQL into <table>__temp and fails ("incomplete input", or
+	// "table <t>__temp has no column named 1"), which aborts the whole
+	// AutoMigrate call -- so every model listed after the offending one
+	// (Subscription, CreditAccount, ...) silently never gets created. Repair
+	// the known offenders first.
 	if err := repairWordsTableDDLIfNeeded(); err != nil {
 		zapLog.Errorf("failed to repair words table DDL: %v", err)
+	}
+	if err := repairUserDictsTableDDLIfNeeded(); err != nil {
+		zapLog.Errorf("failed to repair user_dicts table DDL: %v", err)
 	}
 
 	// Auto-migrate database schema
@@ -213,6 +219,54 @@ func repairWordsTableDDLIfNeeded() error {
 			`CREATE UNIQUE INDEX IF NOT EXISTS idx_english ON words(english)`,
 			`CREATE INDEX IF NOT EXISTS idx_words_updated_at ON words(updated_at)`,
 			`CREATE INDEX IF NOT EXISTS idx_words_deleted_at ON words(deleted_at) WHERE deleted_at IS NOT NULL`,
+		}
+		for _, step := range steps {
+			if err := tx.Exec(step).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// repairUserDictsTableDDLIfNeeded rebuilds user_dicts without the inline "--"
+// field comments its original migration embedded. Same failure mode as
+// repairWordsTableDDLIfNeeded: glebarez AutoMigrate mis-parses the commented
+// DDL when it rebuilds the table ("table user_dicts__temp has no column named
+// 1"), which aborts AutoMigrate before the billing models are reached.
+func repairUserDictsTableDDLIfNeeded() error {
+	var createSQL string
+	if err := DB.Raw(`SELECT sql FROM sqlite_master WHERE type='table' AND name='user_dicts'`).Scan(&createSQL).Error; err != nil {
+		return err
+	}
+	if createSQL == "" || !strings.Contains(createSQL, "--") {
+		return nil
+	}
+
+	zapLog.Info("repairing user_dicts table DDL (strip inline SQL comments for AutoMigrate)")
+	return DB.Transaction(func(tx *gorm.DB) error {
+		steps := []string{
+			`CREATE TABLE user_dicts__clean (
+				user_id TEXT NOT NULL,
+				word_id TEXT NOT NULL,
+				query_count INTEGER DEFAULT 0,
+				already_acquainted INTEGER DEFAULT 0,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL,
+				PRIMARY KEY (user_id, word_id)
+			)`,
+			`INSERT INTO user_dicts__clean (user_id, word_id, query_count, already_acquainted, created_at, updated_at)
+			 SELECT user_id, word_id,
+			        COALESCE(query_count, 0),
+			        COALESCE(already_acquainted, 0),
+			        COALESCE(created_at, updated_at, 0),
+			        COALESCE(updated_at, created_at, 0)
+			 FROM user_dicts`,
+			`DROP TABLE user_dicts`,
+			`ALTER TABLE user_dicts__clean RENAME TO user_dicts`,
+			`CREATE INDEX IF NOT EXISTS idx_user_dicts_user_id ON user_dicts(user_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_user_dicts_word_id ON user_dicts(word_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_user_dicts_updated_at ON user_dicts(updated_at)`,
 		}
 		for _, step := range steps {
 			if err := tx.Exec(step).Error; err != nil {
