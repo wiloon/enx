@@ -38,7 +38,8 @@ client-id = "1il7v7q7jn17150jq4lou6m7b0"
 chrome-client-id = "645kitlgap7l1q4ebrfkmi9ltv"
 
 [sentence-translate]
-# "kimi" | "bedrock" | "minimax" -- switch provider by changing this one line.
+# "kimi" | "bedrock" | "minimax" -- switch provider by changing this one line,
+# or override per-deployment with the SENTENCE_TRANSLATE_PROVIDER env var.
 # Left blank in this checked-in template: each deployment (homelab k8s, AWS
 # EC2, local dev) sets its own value, since the right provider depends on
 # where this is actually running. Empty means the feature stays disabled

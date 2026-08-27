@@ -63,7 +63,10 @@ func viperInitInternal() {
 	// docs/tasks/TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md §3.5).
 	// provider/model/base-url/region/model-id are non-secret and live in
 	// config.toml; API keys are env-var only, never written to config.toml.
+	// provider is also bindable via env so k8s deployments (which ship no
+	// config.toml, see Containerfile) can select it without a config file.
 	viper.SetDefault("sentence-translate.provider", "")
+	_ = viper.BindEnv("sentence-translate.provider", "SENTENCE_TRANSLATE_PROVIDER")
 	_ = viper.BindEnv("sentence-translate.kimi.api-key", "KIMI_API_KEY")
 	_ = viper.BindEnv("sentence-translate.minimax.api-key", "MINIMAX_API_KEY")
 
