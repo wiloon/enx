@@ -54,7 +54,7 @@ func viperInitInternal() {
 	viper.SetDefault("cognito.region", "us-east-1")
 	viper.SetDefault("resend.api-key", "")
 	viper.SetDefault("resend.from", "ENX <no-reply@wiloon.com>")
-	viper.SetDefault("app.frontend-base-url", "https://enx-ui-lab.wiloon.com")
+	viper.SetDefault("app.frontend-base-url", "https://enx-ui.wiloon.lab")
 
 	viper.SetDefault("ecdict.db_path", "")
 	_ = viper.BindEnv("ecdict.db_path", "ECDICT_DB_PATH")
@@ -106,9 +106,15 @@ func viperInitInternal() {
 	viper.SetDefault("user.last-login-update-interval", "5m")
 	_ = viper.BindEnv("user.last-login-update-interval", "USER_LAST_LOGIN_UPDATE_INTERVAL")
 
-	// Also support automatic env var lookup (e.g. ENX_PORT for enx.port)
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
-	viper.AutomaticEnv()
+	// NOTE: deliberately not calling viper.AutomaticEnv(). Every env-var
+	// override above is bound explicitly via BindEnv, which doesn't need
+	// it. AutomaticEnv() makes viper treat ANY top-level key segment as
+	// shadowed by an identically-named (case-insensitive) OS env var, even
+	// one nobody meant to bind -- e.g. "user.last-login-update-interval"
+	// was silently resolving to "" instead of falling back to its "5m"
+	// SetDefault, because $USER is set in virtually every shell/container.
+	// See utils/viper_test.go's TestViperInitSetsDefaults for the
+	// regression test.
 
 	// Load .env file if present (useful for local development)
 	if err := godotenv.Load(); err == nil {

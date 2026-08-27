@@ -61,16 +61,20 @@ func GetWordByEnglish(english string) *Word {
 	return word
 }
 
-// GetUserWordQueryCount get user word query count via GORM
-func GetUserWordQueryCount(wordId, userId string) (int, int) {
+// GetUserWordQueryCount gets a user's query count and acquainted flag for a
+// word via GORM. found reports whether a user_dicts row actually exists --
+// callers must not infer existence from queryCount/alreadyAcquainted being
+// zero, since a legitimately existing row (e.g. a word just unmarked via
+// UserDict.Mark) can have both fields at zero.
+func GetUserWordQueryCount(wordId, userId string) (queryCount int, alreadyAcquainted int, found bool) {
 	userDict := &UserDict{}
 	err := sqlitex.DB.Where("user_id = ? AND word_id = ?", userId, wordId).First(userDict).Error
 	if err != nil {
 		logger.Debugf("user dict not found: user_id=%s, word_id=%s, error: %v", userId, wordId, err)
-		return 0, 0
+		return 0, 0, false
 	}
 
-	return userDict.QueryCount, userDict.AlreadyAcquainted
+	return userDict.QueryCount, userDict.AlreadyAcquainted, true
 }
 
 // UpsertUserDict creates or updates user dictionary entry via GORM

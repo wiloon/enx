@@ -48,8 +48,8 @@ const ENV_CONFIG: Record<string, EnvConfig> = {
     environment: 'production',
   },
   staging: {
-    apiBaseUrl: 'https://enx-lab.wiloon.com',
-    frontendBaseUrl: 'https://enx-ui-lab.wiloon.com',
+    apiBaseUrl: 'https://enx-api.wiloon.lab',
+    frontendBaseUrl: 'https://enx-ui.wiloon.lab',
     cognitoDomain:
       getEnvValue('VITE_COGNITO_DOMAIN') ||
       'https://enx-auth.auth.us-east-1.amazoncognito.com',

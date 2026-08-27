@@ -61,7 +61,7 @@ function OptionsContent() {
 
   const presetUrls = [
     { label: 'Local (Development)', url: 'http://localhost:8090' },
-    { label: 'Staging', url: 'https://enx-dev.wiloon.com' },
+    { label: 'Lab', url: 'https://enx-api.wiloon.lab' },
     { label: 'Production', url: 'https://enx.wiloon.com' },
   ]
 
@@ -188,9 +188,8 @@ function OptionsContent() {
               development.
             </p>
             <p>
-              <strong className="text-gray-800">Staging:</strong> Use
-              https://enx-dev.wiloon.com for testing with the development
-              server.
+              <strong className="text-gray-800">Lab:</strong> Use
+              https://enx-api.wiloon.lab for the homelab lab deployment.
             </p>
             <p>
               <strong className="text-gray-800">Production:</strong> Use

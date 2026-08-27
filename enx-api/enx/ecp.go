@@ -101,7 +101,7 @@ func (word *Word) SetEnglishField(english string) {
 	logger.Infof("set english, raw: %s, english: %s, key: %s", word.Raw, word.English, word.Key)
 }
 func (word *Word) FindQueryCount(userId string) int {
-	qc, acquainted := repo.GetUserWordQueryCount(word.Id, userId)
+	qc, acquainted, _ := repo.GetUserWordQueryCount(word.Id, userId)
 	logger.Debugf("find query count, word id: %s, word: %s, user_id: %s, query count: %d",
 		word.Id, word.English, userId, qc)
 	word.LoadCount = qc
@@ -132,7 +132,7 @@ func (word *Word) Translate(userId string) *Word {
 	if sWord.Id != "" {
 		// Query user_dicts from database using UUID
 		// userId needs to be converted to UUID string format
-		queryCount, _ := repo.GetUserWordQueryCount(sWord.Id, userId)
+		queryCount, _, _ := repo.GetUserWordQueryCount(sWord.Id, userId)
 		if queryCount > 0 {
 			word.LoadCount = queryCount
 		}
@@ -156,23 +156,3 @@ func (word *Word) Save() {
 	word.Id = sWord.Id
 }
 
-func (word *Word) UpdateTranslation() {
-	sqlitex.DB.Model(&repo.Word{}).
-		Where("id = ?", word.Id).
-		Updates(map[string]interface{}{
-			"chinese":          word.Chinese,
-			"pronunciation":    word.Pronunciation,
-			"update_datetime":  time.Now(),
-		})
-	logger.Debugf("updated translation for word: %s", word.English)
-}
-
-func (word *Word) UpdateLoadCount() {
-	sWord := repo.Word{}
-	sqlitex.DB.Model(&sWord).
-		Where("english=?", word.Key).
-		Updates(map[string]interface{}{
-			"load_count":      word.LoadCount,
-			"update_datetime": time.Now()})
-	logger.Debugf("update word: %v", word)
-}

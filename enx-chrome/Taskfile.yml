@@ -8,6 +8,15 @@ vars:
     sh: fnm exec --using=.node-version -- node -p "require('./package.json').version"
 
 tasks:
+  ensure-node:
+    internal: true
+    desc: Install Node from .node-version only when it is not installed yet
+    cmds:
+      - fnm install
+    status:
+      # Skip (no "already installed" warning) when the version is present
+      - fnm exec --using=.node-version -- true
+
   default:
     desc: Show available tasks
     cmds:
@@ -21,7 +30,7 @@ tasks:
   install:
     desc: Install dependencies
     cmds:
-      - fnm install
+      - task: ensure-node
       - echo "Installing dependencies for {{.EXT_NAME}}..."
       - '{{.FNM_EXEC}} pnpm install'
       - echo "Dependencies installed successfully!"
@@ -32,7 +41,7 @@ tasks:
       - echo "WARNING - Vite dev server may not work properly with Chrome extensions"
       - echo "If you see cannot connect to vite server or flashing popup, use task watch instead"
       - echo "Starting development server..."
-      - fnm install
+      - task: ensure-node
       - '{{.FNM_EXEC}} pnpm run dev'
 
 
@@ -43,7 +52,7 @@ tasks:
       - echo "Changes will auto-rebuild to dist/"
       - echo "Extension will auto-reload in Chromium when files change"
       - echo ""
-      - fnm install
+      - task: ensure-node
       - '{{.FNM_EXEC}} pnpm exec vite build --watch'
 
 
@@ -52,7 +61,7 @@ tasks:
     cmds:
       - echo "🚀 Starting development environment..."
       - echo "  1. Building extension..."
-      - fnm install
+      - task: ensure-node
       - '{{.FNM_EXEC}} pnpm exec vite build'
       - echo "  2. Starting watch mode in background..."
       - echo "  3. Launching Chromium with extension..."
@@ -118,7 +127,7 @@ tasks:
   build:
     desc: Build extension for production
     cmds:
-      - fnm install
+      - task: ensure-node
       - echo "Building {{.EXT_NAME}} v{{.VERSION}}..."
       - '{{.FNM_EXEC}} pnpm run build'
       - echo "Build completed! Output in dist/"
@@ -126,7 +135,7 @@ tasks:
   build-dev:
     desc: Build extension for local development (uses local API)
     cmds:
-      - fnm install
+      - task: ensure-node
       - echo "Building {{.EXT_NAME}} for local development..."
       - echo "API URL{{":"}} http{{":"}}//localhost{{":"}}8090"
       - '{{.FNM_EXEC}} pnpm run build'
@@ -136,41 +145,41 @@ tasks:
   build-watch:
     desc: Build extension in watch mode
     cmds:
-      - fnm install
+      - task: ensure-node
       - echo "Building in watch mode..."
       - '{{.FNM_EXEC}} pnpm run build -- --watch'
 
   preview:
     desc: Preview production build
     cmds:
-      - fnm install
+      - task: ensure-node
       - '{{.FNM_EXEC}} pnpm run preview'
 
   test:
     desc: Run tests
     cmds:
-      - fnm install
+      - task: ensure-node
       - echo "Running tests..."
       - '{{.FNM_EXEC}} pnpm test'
 
   test-watch:
     desc: Run tests in watch mode
     cmds:
-      - fnm install
+      - task: ensure-node
       - echo "Running tests in watch mode..."
       - '{{.FNM_EXEC}} pnpm run test:watch'
 
   test-coverage:
     desc: Run tests with coverage
     cmds:
-      - fnm install
+      - task: ensure-node
       - echo "Running tests with coverage..."
       - '{{.FNM_EXEC}} pnpm test -- --coverage'
 
   test-e2e:
     desc: Run E2E tests with Playwright
     cmds:
-      - fnm install
+      - task: ensure-node
       - echo "Running E2E tests..."
       - echo "⚠️  Make sure extension is built first (task build)"
       - '{{.FNM_EXEC}} pnpm run test:e2e'
@@ -178,7 +187,7 @@ tasks:
   test-e2e-ui:
     desc: Run E2E tests with Playwright UI
     cmds:
-      - fnm install
+      - task: ensure-node
       - echo "Opening Playwright UI..."
       - echo "⚠️  Make sure extension is built first (task build)"
       - '{{.FNM_EXEC}} pnpm run test:e2e:ui'
@@ -186,7 +195,7 @@ tasks:
   test-e2e-debug:
     desc: Run E2E tests in debug mode
     cmds:
-      - fnm install
+      - task: ensure-node
       - echo "Running E2E tests in debug mode..."
       - echo "⚠️  Make sure extension is built first (task build)"
       - '{{.FNM_EXEC}} pnpm run test:e2e:debug'
@@ -194,7 +203,7 @@ tasks:
   test-e2e-headed:
     desc: Run E2E tests with visible browser
     cmds:
-      - fnm install
+      - task: ensure-node
       - echo "Running E2E tests with visible browser..."
       - echo "⚠️  Make sure extension is built first (task build)"
       - '{{.FNM_EXEC}} pnpm run test:e2e:headed'
@@ -212,28 +221,28 @@ tasks:
   lint:
     desc: Lint code
     cmds:
-      - fnm install
+      - task: ensure-node
       - echo "Linting code..."
       - '{{.FNM_EXEC}} pnpm run lint'
 
   lint-fix:
     desc: Fix linting issues
     cmds:
-      - fnm install
+      - task: ensure-node
       - echo "Fixing linting issues..."
       - '{{.FNM_EXEC}} pnpm run lint:fix'
 
   format:
     desc: Format code with Prettier
     cmds:
-      - fnm install
+      - task: ensure-node
       - echo "Formatting code..."
       - '{{.FNM_EXEC}} pnpm run format'
 
   format-check:
     desc: Check code formatting
     cmds:
-      - fnm install
+      - task: ensure-node
       - echo "Checking code formatting..."
       - '{{.FNM_EXEC}} pnpm run format:check'
 
@@ -278,7 +287,7 @@ tasks:
   deps-update:
     desc: Update dependencies
     cmds:
-      - fnm install
+      - task: ensure-node
       - echo "Checking for outdated dependencies..."
       - '{{.FNM_EXEC}} pnpm outdated || true'
       - echo ""
@@ -287,14 +296,14 @@ tasks:
   deps-audit:
     desc: Check for security vulnerabilities
     cmds:
-      - fnm install
+      - task: ensure-node
       - echo "Auditing dependencies..."
       - '{{.FNM_EXEC}} pnpm audit'
 
   deps-audit-fix:
     desc: Fix security vulnerabilities
     cmds:
-      - fnm install
+      - task: ensure-node
       - echo "Fixing vulnerabilities..."
       - '{{.FNM_EXEC}} pnpm audit --fix'
 

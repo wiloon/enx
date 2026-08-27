@@ -6,7 +6,7 @@ import { CognitoTokens, refreshCognitoTokens } from '@/lib/cognito'
 
 export class ApiService {
   private baseUrl: string =
-    process.env.NEXT_PUBLIC_API_BASE_URL || 'https://enx-dev.wiloon.com'
+    process.env.NEXT_PUBLIC_API_BASE_URL || 'https://enx-api.wiloon.lab'
   private accessToken: string = ''
   private refreshToken: string = ''
   private refreshInFlight: Promise<CognitoTokens> | null = null

@@ -220,7 +220,7 @@ tasks:
       - task dev MODE={{.MODE}}
 
   chrome:build:
-    desc: Build enx-chrome extension to dist/ (connects to enx-lab.wiloon.com)
+    desc: Build enx-chrome extension to dist/ (connects to enx-api.wiloon.lab)
     dir: enx-chrome
     cmds:
       - task build

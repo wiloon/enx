@@ -104,9 +104,8 @@ func setupRouter() *gin.Engine {
 		// List of allowed origins
 		allowedOrigins := []string{
 			"http://localhost:3000",
+			"https://enx-ui.wiloon.lab",
 			"https://enx-ui.wiloon.com",
-			"https://enx-ui-lab.wiloon.com",
-			"https://enx-dev.wiloon.com",
 		}
 
 		// Check if origin is allowed or is a chrome extension
@@ -252,7 +251,7 @@ func setupRouter() *gin.Engine {
 	// present a Cognito JWT, so this is unauthenticated at the router root,
 	// relying on Stripe-Signature verification instead (TASK-SPEC §3). URL
 	// must match the endpoint registered in infra/stripe/opentofu/enx
-	// (w10n-config): enx-lab.wiloon.com/billing/webhook, no /api prefix.
+	// (w10n-config): enx-api.wiloon.lab/billing/webhook, no /api prefix.
 	router.POST("/billing/webhook", billingHandler.Webhook)
 
 	// Temporary test route - no authentication required
