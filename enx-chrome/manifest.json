@@ -11,7 +11,7 @@
     "http://localhost:8090/*",
     "https://enx-api.wiloon.lab/*",
     "https://enx-ui.wiloon.lab/*",
-    "https://enx-dev.wiloon.com/*",
+    "https://enx-api.wiloon.com/*",
     "https://enx.wiloon.com/*",
     "https://enx-auth.auth.us-east-1.amazoncognito.com/*",
     "https://www.youdao.com/*",

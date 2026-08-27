@@ -105,7 +105,7 @@ func setupRouter() *gin.Engine {
 		allowedOrigins := []string{
 			"http://localhost:3000",
 			"https://enx-ui.wiloon.lab",
-			"https://enx-ui.wiloon.com",
+			"https://enx.wiloon.com",
 		}
 
 		// Check if origin is allowed or is a chrome extension

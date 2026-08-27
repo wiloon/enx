@@ -62,7 +62,7 @@ function OptionsContent() {
   const presetUrls = [
     { label: 'Local (Development)', url: 'http://localhost:8090' },
     { label: 'Lab', url: 'https://enx-api.wiloon.lab' },
-    { label: 'Production', url: 'https://enx.wiloon.com' },
+    { label: 'Production', url: 'https://enx-api.wiloon.com' },
   ]
 
   if (isLoading) {
@@ -193,7 +193,7 @@ function OptionsContent() {
             </p>
             <p>
               <strong className="text-gray-800">Production:</strong> Use
-              https://enx.wiloon.com for the live production environment.
+              https://enx-api.wiloon.com for the live production environment.
             </p>
             <p className="text-gray-500 text-xs mt-4">
               💡 Tip: After changing the API URL, you may need to log in again.
