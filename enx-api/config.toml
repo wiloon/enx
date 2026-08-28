@@ -58,6 +58,11 @@ model-id = "anthropic.claude-3-5-haiku-20241022-v1:0"
 
 [sentence-translate.minimax]
 model = "MiniMax-Text-01"
+# International account (platform.minimax.io): https://api.minimax.io/v1
+# China account   (platform.minimaxi.com): https://api.minimaxi.com/v1
+# The key namespace differs per platform -- a China key against api.minimax.io
+# 401s ("invalid api key (2049)"). Override per-deploy with
+# SENTENCE_TRANSLATE_MINIMAX_BASE_URL.
 base-url = "https://api.minimax.io/v1"
 
 [stripe]

@@ -63,12 +63,23 @@ func viperInitInternal() {
 	// docs/tasks/TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md §3.5).
 	// provider/model/base-url/region/model-id are non-secret and live in
 	// config.toml; API keys are env-var only, never written to config.toml.
-	// provider is also bindable via env so k8s deployments (which ship no
-	// config.toml, see Containerfile) can select it without a config file.
+	// provider and the per-provider model/base-url are also bindable via env
+	// so k8s deployments (which ship no config.toml, see Containerfile) can
+	// set them without a config file. base-url matters for MiniMax: a
+	// platform.minimaxi.com (China) key must hit https://api.minimaxi.com/v1,
+	// not the code default https://api.minimax.io/v1 (international), or every
+	// call 401s with "invalid api key (2049)".
 	viper.SetDefault("sentence-translate.provider", "")
 	_ = viper.BindEnv("sentence-translate.provider", "SENTENCE_TRANSLATE_PROVIDER")
 	_ = viper.BindEnv("sentence-translate.kimi.api-key", "KIMI_API_KEY")
+	_ = viper.BindEnv("sentence-translate.kimi.base-url", "SENTENCE_TRANSLATE_KIMI_BASE_URL")
+	_ = viper.BindEnv("sentence-translate.kimi.model", "SENTENCE_TRANSLATE_KIMI_MODEL")
 	_ = viper.BindEnv("sentence-translate.minimax.api-key", "MINIMAX_API_KEY")
+	_ = viper.BindEnv("sentence-translate.minimax.base-url", "SENTENCE_TRANSLATE_MINIMAX_BASE_URL")
+	_ = viper.BindEnv("sentence-translate.minimax.model", "SENTENCE_TRANSLATE_MINIMAX_MODEL")
+	_ = viper.BindEnv("sentence-translate.minimax.group-id", "SENTENCE_TRANSLATE_MINIMAX_GROUP_ID")
+	_ = viper.BindEnv("sentence-translate.bedrock.region", "SENTENCE_TRANSLATE_BEDROCK_REGION")
+	_ = viper.BindEnv("sentence-translate.bedrock.model-id", "SENTENCE_TRANSLATE_BEDROCK_MODEL_ID")
 
 	// Stripe billing (see docs/tasks/TASK-SPEC-enx-billing-stripe-subscription.md).
 	// publishable-key and price lookup_keys are non-secret and live in
