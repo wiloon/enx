@@ -1,6 +1,11 @@
 import { useEffect, useRef } from 'react'
 import { useAtom } from 'jotai'
-import { MagnifyingGlassIcon } from '@heroicons/react/20/solid'
+import {
+  BookOpenIcon,
+  MagnifyingGlassIcon,
+  SpeakerWaveIcon,
+} from '@heroicons/react/20/solid'
+import SidePanelTranslateIcon from '@/components/icons/SidePanelTranslateIcon'
 import {
   currentWordAtom,
   isTranslatingAtom,
@@ -87,25 +92,39 @@ export default function WordPopup({
   return (
     <div
       ref={rootRef}
-      className="bg-white rounded-lg shadow-xl border border-gray-200 p-4 w-full outline-none"
+      className="bg-white rounded-lg shadow-xl border border-gray-200 p-3 w-full outline-none"
       tabIndex={-1}
       onKeyDown={handleKeyDown}
     >
-      {/* Header with word */}
+      {/* Header: word + phonetic + play + query count all on one line */}
       <div
         data-testid="word-popup-header"
-        className="flex justify-between items-start mb-3"
+        className="flex justify-between items-center gap-2 mb-2"
       >
-        <div className="flex-1">
-          <h3 className="text-lg font-bold text-gray-800">
+        <div className="flex flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
+          <h3 className="text-lg font-bold text-gray-800 leading-tight">
             {currentWord?.English || word}
           </h3>
+          {currentWord?.Pronunciation && (
+            <span className="inline-flex items-center gap-1 text-sm text-gray-500">
+              {currentWord.Pronunciation}
+              <button
+                data-testid="word-popup-play-pronunciation"
+                type="button"
+                onClick={() => playPronunciation(currentWord.English)}
+                className="text-gray-400 hover:text-blue-500 leading-none"
+                title="Play pronunciation"
+              >
+                <SpeakerWaveIcon className="h-3.5 w-3.5 block" aria-hidden="true" />
+              </button>
+            </span>
+          )}
           {currentWord?.LoadCount !== undefined && (
             <span
-              className="inline-flex items-center gap-0.5 text-xs text-gray-500"
+              className="inline-flex items-center gap-0.5 text-xs text-gray-400"
               title={`Query Count: ${currentWord.LoadCount}`}
             >
-              <MagnifyingGlassIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              <MagnifyingGlassIcon className="h-3 w-3" aria-hidden="true" />
               {currentWord.LoadCount}
             </span>
           )}
@@ -113,7 +132,7 @@ export default function WordPopup({
         <button
           data-testid="word-popup-close"
           onClick={onClose}
-          className="text-gray-400 hover:text-red-500 text-xl leading-none ml-2"
+          className="text-gray-400 hover:text-red-500 text-xl leading-none ml-1 shrink-0"
           title="Close"
         >
           ×
@@ -147,30 +166,12 @@ export default function WordPopup({
 
         {/* Word content */}
         {currentWord && !isTranslating && !error && (
-          <div className="space-y-3">
-            {/* Pronunciation */}
-            {currentWord.Pronunciation && (
-              <div className="flex items-center gap-1">
-                <span className="text-gray-600 font-medium">
-                  {currentWord.Pronunciation}
-                </span>
-                <button
-                  data-testid="word-popup-play-pronunciation"
-                  type="button"
-                  onClick={() => playPronunciation(currentWord.English)}
-                  className="text-gray-400 hover:text-blue-500"
-                  title="Play pronunciation"
-                >
-                  🔊
-                </button>
-              </div>
-            )}
-
+          <div className="space-y-2">
             {/* Chinese translation */}
             {currentWord.Chinese && (
-              <div>
-                <p className="text-gray-800">{currentWord.Chinese}</p>
-              </div>
+              <p className="text-sm leading-relaxed text-gray-800">
+                {currentWord.Chinese}
+              </p>
             )}
 
             {/* Acquainted status */}
@@ -183,24 +184,26 @@ export default function WordPopup({
         )}
 
         {/* Action buttons */}
-        <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-100">
-          <div className="flex space-x-2">
+        <div className="flex justify-between items-center mt-3 pt-2 border-t border-gray-100">
+          <div className="flex items-center gap-3">
             <a
               href={getYoudaoUrl(currentWord?.English || word)}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-500 hover:text-blue-600 text-sm"
+              className="inline-flex items-center gap-1 text-blue-500 hover:text-blue-600 text-sm"
               title="Open in Youdao Dictionary"
             >
-              📚 Youdao
+              <BookOpenIcon className="h-4 w-4" aria-hidden="true" />
+              Youdao
             </a>
             <button
               data-testid="word-popup-sentence-translation"
               onClick={onOpenSentencePanel}
-              className="text-blue-500 hover:text-blue-600 text-sm"
-              title="Translate the whole sentence in the side panel"
+              className="inline-flex items-center text-blue-500 hover:text-blue-600"
+              title="整句翻译（在侧边栏翻译整句）"
+              aria-label="整句翻译"
             >
-              🔤 整句翻译
+              <SidePanelTranslateIcon className="h-5 w-5" />
             </button>
           </div>
 

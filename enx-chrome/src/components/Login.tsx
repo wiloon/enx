@@ -84,18 +84,19 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     }
   }
 
-  const handleLogout = async () => {
-    setIsLoading(true)
+  const handleLogout = () => {
     setError(null)
-    try {
-      await chrome.runtime.sendMessage({ action: 'cognitoSignOut' })
-    } catch (e) {
-      console.error('Sign-out message failed:', e)
-    } finally {
-      setUser({ id: 0, username: '', email: '', isLoggedIn: false })
-      setSession({ accessToken: '', refreshToken: '' })
-      setIsLoading(false)
-    }
+    // Local token removal is the source of truth -- clear the UI immediately.
+    // The Hosted UI logout (launchWebAuthFlow) is best-effort and can hang
+    // (e.g. the proxy not covering the auth window), so don't block the popup
+    // on it. Also don't route logout through isLoadingAtom: it's shared with
+    // sign-in, and its logged-out-view label is "Signing in…", which is what
+    // showed on the Sign out button while the hung logout kept isLoading true.
+    setUser({ id: 0, username: '', email: '', isLoggedIn: false })
+    setSession({ accessToken: '', refreshToken: '' })
+    chrome.runtime
+      .sendMessage({ action: 'cognitoSignOut' })
+      .catch(e => console.error('Sign-out message failed:', e))
   }
 
   const handleEnableLearning = async () => {

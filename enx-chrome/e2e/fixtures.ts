@@ -21,8 +21,18 @@ export const test = base.extend<ExtensionFixtures>({
   context: async ({}, use) => {
     const pathToExtension = path.join(__dirname, '../dist')
 
+    // ENX_PROXY (e.g. http://127.0.0.1:7890) routes ALL of Chrome's traffic,
+    // including the chrome.identity.launchWebAuthFlow auth window, through the
+    // proxy -- which a system/extension proxy does not reliably do. Used by the
+    // homelab interactive-OAuth test to prove the "Authorization page could not
+    // be loaded" failure is a proxy-coverage issue.
+    const proxy = process.env.ENX_PROXY
+      ? { server: process.env.ENX_PROXY }
+      : undefined
+
     const context = await chromium.launchPersistentContext('', {
       headless: false,
+      proxy,
       args: [
         `--disable-extensions-except=${pathToExtension}`,
         `--load-extension=${pathToExtension}`,

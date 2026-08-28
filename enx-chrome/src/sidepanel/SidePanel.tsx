@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import '@/index.css'
-import { MagnifyingGlassIcon } from '@heroicons/react/20/solid'
+import { MagnifyingGlassIcon, SpeakerWaveIcon } from '@heroicons/react/20/solid'
 import { initSentry } from '@/lib/sentry'
 import { playPronunciation } from '@/lib/pronunciation'
 import { sendMessageToBackground } from '@/services/api'
@@ -414,7 +414,7 @@ function SidePanelContent() {
   if (!pendingContext && definitions.length === 0) {
     return (
       <div className="p-4 text-gray-500 text-sm" data-testid="sidepanel-empty-state">
-        点击网页正文中任意已高亮的单词，然后点击弹窗里的「🔤 整句翻译」按钮，整句英文和中文翻译会显示在这里。
+        点击网页正文中任意已高亮的单词，然后点击弹窗里的整句翻译图标按钮，整句英文和中文翻译会显示在这里。
       </div>
     )
   }
@@ -510,10 +510,10 @@ function SidePanelContent() {
                         data-testid={`sidepanel-play-pronunciation-${def.word}`}
                         type="button"
                         onClick={() => playPronunciation(def.word)}
-                        className="text-gray-400 hover:text-blue-500"
+                        className="text-gray-400 hover:text-blue-500 leading-none"
                         title="Play pronunciation"
                       >
-                        🔊
+                        <SpeakerWaveIcon className="h-3.5 w-3.5 block" aria-hidden="true" />
                       </button>
                     </span>
                   )

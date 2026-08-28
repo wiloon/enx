@@ -67,10 +67,21 @@ export default [
   },
   // Node.js configuration files
   {
-    files: ['*.js', '*.mjs', 'vite.config.ts'],
+    files: ['*.js', '*.mjs', 'scripts/**/*.{js,mjs}', 'vite.config.ts'],
     languageOptions: {
       globals: {
         ...globals.node,
+      },
+    },
+  },
+  // Playwright E2E specs / config run under Node with browser-context evaluate()
+  {
+    files: ['e2e/**/*.ts', 'playwright.config.ts', 'playwright.*.config.ts'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.browser,
+        chrome: 'readonly',
       },
     },
   },
