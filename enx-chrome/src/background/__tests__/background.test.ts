@@ -297,6 +297,32 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
     )
   })
 
+  it('skips sidePanel.open() and still reports panelOpened when a Side Panel context exists (regardless of its windowId)', async () => {
+    ;(chrome.runtime.getContexts as jest.Mock).mockResolvedValue([
+      { contextType: 'BACKGROUND' },
+      // windowId deliberately does NOT match sender.tab.windowId -- Chrome's
+      // SIDE_PANEL context windowId is unreliable, so this must still count.
+      { contextType: 'SIDE_PANEL', windowId: 999 },
+    ])
+
+    const response = await new Promise(resolve => {
+      listener(
+        {
+          type: 'openSentencePanel',
+          word: 'great',
+          sentence: 'Cats are great pets.',
+          sourceUrl: 'https://example.com/post',
+        },
+        { tab: { id: 7, windowId: 3 } },
+        resolve
+      )
+    })
+
+    expect(response).toEqual({ success: true, panelOpened: true })
+    expect(chrome.storage.session.set).toHaveBeenCalled()
+    expect(chrome.sidePanel.open).not.toHaveBeenCalled()
+  })
+
   it('leaves phrase undefined for the existing whole-sentence/single-word callers', async () => {
     const response = await new Promise(resolve => {
       listener(

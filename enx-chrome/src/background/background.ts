@@ -705,6 +705,30 @@ const handleTranslateWordInContext = async (sentence: string, word: string) => {
 // the caller; it reports panelOpened:false and lets the caller fall back to
 // trigger paths①/② (toolbar icon / right-click menu), which read the same
 // persisted context.
+//
+// If the Side Panel is *already* open we don't need a user gesture at all:
+// SidePanel.tsx re-reads PENDING_SENTENCE_STORAGE_KEY on storage.onChanged and
+// refreshes in place (spec §4.6). We detect that via chrome.runtime.getContexts
+// (Chrome 116+) and report panelOpened:true so the caller suppresses the
+// "click the toolbar icon" hint.
+const isSidePanelOpen = async (): Promise<boolean> => {
+  try {
+    // Query everything and match in JS rather than passing contextTypes as a
+    // filter: chrome.runtime.ContextType can be undefined at runtime. We also
+    // don't gate on the context's windowId -- it's unreliable across Chrome
+    // builds and frequently doesn't match sender.tab.windowId. A cross-window
+    // false positive only means another window's open panel also refreshes,
+    // which is harmless.
+    const contexts = (await chrome.runtime.getContexts?.({})) ?? []
+    return contexts.some(
+      c => c.contextType === ('SIDE_PANEL' as chrome.runtime.ContextType)
+    )
+  } catch (error) {
+    console.warn('isSidePanelOpen: getContexts() failed:', error)
+    return false
+  }
+}
+
 const handleOpenSentencePanel = async (
   word: string,
   sentence: string,
@@ -720,6 +744,12 @@ const handleOpenSentencePanel = async (
     createdAt: Date.now(),
   }
   await chrome.storage.session.set({ [PENDING_SENTENCE_STORAGE_KEY]: context })
+
+  // Already open -> the storage.onChanged listener in SidePanel.tsx picks up
+  // the new context; nothing else to do, and no hint should be shown.
+  if (await isSidePanelOpen()) {
+    return { success: true, panelOpened: true }
+  }
 
   let panelOpened = false
   if (tabId !== undefined) {

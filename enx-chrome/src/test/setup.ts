@@ -20,6 +20,8 @@ global.crypto = webcrypto as Crypto
       addListener: jest.fn(),
     },
     getURL: jest.fn((path: string) => `chrome-extension://test/${path}`),
+    getContexts: jest.fn(async () => []),
+    ContextType: { SIDE_PANEL: 'SIDE_PANEL' },
   },
   identity: {
     launchWebAuthFlow: jest.fn(),

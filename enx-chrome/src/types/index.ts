@@ -89,8 +89,12 @@ export interface BackgroundResponse {
   // AI credit) and 429 (daily dictionary quota exceeded) get distinct UI
   // treatment in SidePanel.tsx instead of a generic error message.
   status?: number
-  // Set by the 'openSentencePanel' handler: whether chrome.sidePanel.open()
-  // actually succeeded (it may fail if the click's user gesture didn't
+  // Set by the 'openSentencePanel' handler: true when the Side Panel is
+  // showing the pending sentence -- either chrome.sidePanel.open() succeeded,
+  // or the panel was already open for this window (detected via
+  // chrome.runtime.getContexts) and picks up the new context through its
+  // storage.onChanged listener. False means the caller should fall back to
+  // the "click the toolbar ENX icon" hint (the click's user gesture didn't
   // survive being forwarded through runtime.sendMessage -- see
   // TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md §3.2 trigger path③).
   panelOpened?: boolean
