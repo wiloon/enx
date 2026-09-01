@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Accepted — 2026-07-30（Spike 与实施均已验证方案 C 可行，见关联 Spec §4.3/§7；实施本身尚有少量验收项待补，见 Spec 状态） |
+| **状态** | Accepted — 2026-07-30（Spike 与实施均已验证方案 C 可行，见关联 Spec §4.3/§7；实施本身尚有少量验收项待补，见 Spec 状态）。**2026-09-01 [`adr-011`](adr-011-word-highlight-css-highlight-api-and-feature-split.md) 起弹窗定位机制从 CSS Anchor Positioning 改为 Floating UI 吃 `Range`；Shadow DOM + Popover（top-layer）渲染方式不变，本 ADR 其余部分仍有效。** |
 | **日期** | 2026-07-30 |
 | **关联 Spec** | [`docs/tasks/TASK-SPEC-enx-chrome-word-popup-react.md`](../tasks/TASK-SPEC-enx-chrome-word-popup-react.md) |
 | **修订关系** | 无（首次针对 content script UI 渲染方式的架构决策） |

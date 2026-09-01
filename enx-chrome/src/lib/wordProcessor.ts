@@ -48,43 +48,65 @@ export class WordProcessor {
     return `hsl(${hue}, 100%, 40%)`
   }
 
+  // The <u class="enx-word"> wrapper goes on every looked-up word so it stays
+  // clickable, but only words still worth reviewing get a visible underline.
+  // getColorCode() returns '#FFFFFF' as its "don't highlight" sentinel
+  // (acquainted / known / never looked up) — render `none`, not a white
+  // underline: white-on-white is invisible on an article page but shows up on
+  // a dark background (e.g. X in dark mode), making every word look underlined.
+  static getTextDecoration(wordData: WordData): string {
+    const colorCode = this.getColorCode(wordData)
+    return colorCode === '#FFFFFF' ? 'none' : `${colorCode} underline`
+  }
+
+  // Serialize-and-write-back highlight strategy (the default for every
+  // statically-rendered article site): parse `originalHtml` into a detached
+  // container, wrap matched words in place inside it, hand the string back to
+  // the caller to assign via `articleNode.innerHTML = ...`. The in-place
+  // strategy for React-owned DOM (ADR-010) skips this wrapper and calls
+  // applyHighlightsToNodes on live nodes directly.
   static renderWithHighlights(
     originalHtml: string,
     wordDict: Record<string, WordData>
   ): string {
-    const wordKeys = Object.keys(wordDict)
-    if (wordKeys.length === 0) {
+    if (Object.keys(wordDict).length === 0) {
       return originalHtml
     }
 
     const tempDiv = document.createElement('div')
     tempDiv.innerHTML = originalHtml
 
-    interface WordInfo {
-      word: string
-      regex: RegExp
-      colorCode: string
+    this.applyHighlightsToDom(tempDiv, wordDict)
+
+    // Tag-pairing self-check: only meaningful for this serialization path,
+    // where a broken fragment would corrupt the innerHTML written back. The
+    // in-place path never serializes, so it skips this.
+    const finalHtml = tempDiv.innerHTML
+    if (finalHtml.includes('enx-word')) {
+      const uTagsCount = (finalHtml.match(/<u[^>]*class="enx-word[^"]*"/g) || []).length
+      const closingTagsCount = (finalHtml.match(/<\/u>/g) || []).length
+      if (uTagsCount !== closingTagsCount) {
+        console.error('⚠️ Tag mismatch! HTML structure may be broken')
+      }
     }
 
-    const wordInfos: WordInfo[] = wordKeys
-      .map(word => ({
-        word,
-        regex: new RegExp(
-          `\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
-          'gi'
-        ),
-        colorCode: this.getColorCode(wordDict[word]),
-      }))
-      .sort((a, b) => b.word.length - a.word.length) // Longest first
+    return tempDiv.innerHTML
+  }
 
-    // Single TreeWalker traversal to collect all text nodes
-    const walker = document.createTreeWalker(tempDiv, NodeFilter.SHOW_TEXT, {
+  // The eligible-text-node filter, shared by both highlight strategies and by
+  // the in-place word-extraction path (ADR-010 Decision 3). Skips
+  // a/script/style/noscript/button/input/textarea/select/code/pre subtrees
+  // and text with no Latin letters. Keeping extraction and highlighting on
+  // this single traversal is what stops their filter rules from drifting
+  // apart (ADR-010 §1.3).
+  static collectTextNodes(root: Node): Text[] {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode: node => {
         const parent = node.parentElement
         if (!parent) return NodeFilter.FILTER_REJECT
 
-        let current = parent
-        while (current && current !== tempDiv) {
+        let current: HTMLElement | null = parent
+        while (current && current !== root) {
           const tagName = current.tagName.toLowerCase()
           if (
             [
@@ -102,7 +124,7 @@ export class WordProcessor {
           ) {
             return NodeFilter.FILTER_REJECT
           }
-          current = current.parentElement!
+          current = current.parentElement
         }
 
         const text = node.textContent?.trim() || ''
@@ -118,6 +140,48 @@ export class WordProcessor {
       textNodes.push(node as Text)
       node = walker.nextNode()
     }
+    return textNodes
+  }
+
+  // Wraps every highlighted-word occurrence inside `root` in a
+  // <u class="enx-word"> element, mutating `root` in place. `root` can be a
+  // detached container (renderWithHighlights) or a live DOM subtree
+  // (ADR-010 Decision 4).
+  static applyHighlightsToDom(
+    root: Node,
+    wordDict: Record<string, WordData>
+  ): void {
+    if (Object.keys(wordDict).length === 0) return
+    this.applyHighlightsToNodes(this.collectTextNodes(root), wordDict)
+  }
+
+  // Same wrapping logic as applyHighlightsToDom, but over a text-node list
+  // the caller already collected (the in-place path collects once and reuses
+  // the list for word extraction). Each matched text node is replaced by a
+  // DocumentFragment of text + <u> elements; unmatched nodes are untouched.
+  static applyHighlightsToNodes(
+    textNodes: Text[],
+    wordDict: Record<string, WordData>
+  ): void {
+    const wordKeys = Object.keys(wordDict)
+    if (wordKeys.length === 0 || textNodes.length === 0) return
+
+    interface WordInfo {
+      word: string
+      regex: RegExp
+      decoration: string
+    }
+
+    const wordInfos: WordInfo[] = wordKeys
+      .map(word => ({
+        word,
+        regex: new RegExp(
+          `\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
+          'gi'
+        ),
+        decoration: this.getTextDecoration(wordDict[word]),
+      }))
+      .sort((a, b) => b.word.length - a.word.length) // Longest first
 
     console.log(`Collected ${textNodes.length} text nodes for processing`)
 
@@ -137,14 +201,14 @@ export class WordProcessor {
       const placeholders: { placeholder: string; html: string }[] = []
       let placeholderIndex = 0
 
-      wordInfos.forEach(({ word, regex, colorCode }) => {
+      wordInfos.forEach(({ word, regex, decoration }) => {
         if (regex.test(text)) {
           text = text.replace(regex, match => {
             totalReplacements++
             hasChanges = true
 
             const placeholder = `___ENX_PLACEHOLDER_${placeholderIndex++}___`
-            const html = `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="display: inline !important; text-decoration: ${colorCode} underline; text-decoration-thickness: 1px;">${match}</u>`
+            const html = `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="display: inline !important; text-decoration: ${decoration}; text-decoration-thickness: 1px;">${match}</u>`
 
             placeholders.push({ placeholder, html })
             return placeholder
@@ -181,44 +245,49 @@ export class WordProcessor {
       }
     })
 
-    const finalHtml = tempDiv.innerHTML
-    if (finalHtml.includes('enx-word')) {
-      const uTagsCount = (finalHtml.match(/<u[^>]*class="enx-word[^"]*"/g) || []).length
-      const closingTagsCount = (finalHtml.match(/<\/u>/g) || []).length
-      if (uTagsCount !== closingTagsCount) {
-        console.error('⚠️ Tag mismatch! HTML structure may be broken')
-      }
-    }
-
     console.log('Word highlighting optimization completed')
-
-    return tempDiv.innerHTML
   }
 
   // Returns every element on the page that should be treated as article
   // content. A selector can match more than one element (e.g. a short
   // intro block and the real article body sharing the same class) — all
   // of them get processed, not just the longest one.
-  static getArticleNodes(): Element[] {
-    const selectors = [
-      '.Article', // BBC
-      '.article__data', // InfoQ
-      '.blog_post_content_wrap', // Claude blog (Webflow)
-      '.post-content', // Blog posts
-      '.single-post__container', // Microsoft Research
-      '#EMAIL_CONTAINER', // NY Times
-      '.text', // TingRoom
-      '#lesson-main-content', // Anthropic Skilljar
-      '.sjwc-lesson-content-item', // Anthropic Skilljar (inner)
-      'article', // Semantic HTML5
-      '.content',
-      '.entry-content',
-      '.post-body',
-    ]
+  //
+  // ADR-010: `options` carries the SiteAdapter's overrides. With no options
+  // (or the default adapter's values) this behaves exactly as before —
+  // built-in selector list, ">100 chars" threshold, largest-container
+  // fallback, every match returned. A `contentSelector` replaces the built-in
+  // list and disables the fallback; `focusedNodeResolver` narrows the winning
+  // selector's matches.
+  static getArticleNodes(options?: {
+    contentSelector?: string
+    minTextLength?: number
+    focusedNodeResolver?: (nodes: Element[]) => Element[]
+  }): Element[] {
+    const minTextLength = options?.minTextLength ?? 100
+    const focus = options?.focusedNodeResolver ?? ((nodes: Element[]) => nodes)
+
+    const selectors = options?.contentSelector
+      ? [options.contentSelector]
+      : [
+          '.Article', // BBC
+          '.article__data', // InfoQ
+          '.blog_post_content_wrap', // Claude blog (Webflow)
+          '.post-content', // Blog posts
+          '.single-post__container', // Microsoft Research
+          '#EMAIL_CONTAINER', // NY Times
+          '.text', // TingRoom
+          '#lesson-main-content', // Anthropic Skilljar
+          '.sjwc-lesson-content-item', // Anthropic Skilljar (inner)
+          'article', // Semantic HTML5
+          '.content',
+          '.entry-content',
+          '.post-body',
+        ]
 
     for (const selector of selectors) {
       const matches = Array.from(document.querySelectorAll(selector)).filter(
-        element => (element.textContent?.trim().length || 0) > 100
+        element => (element.textContent?.trim().length || 0) > minTextLength
       )
       // Drop matches nested inside another match, so the same text isn't processed twice.
       const nodes = matches.filter(
@@ -227,8 +296,14 @@ export class WordProcessor {
 
       if (nodes.length > 0) {
         console.log(`✅ Using article node with selector: ${selector}`)
-        return nodes
+        return focus(nodes)
       }
+    }
+
+    // A SiteAdapter that pins its own selector opts out of the guess-y
+    // fallback: "no node found" is a clean degradation there (ADR-010).
+    if (options?.contentSelector) {
+      return []
     }
 
     // Fallback: find the largest text container on the page

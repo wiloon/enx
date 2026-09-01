@@ -4,6 +4,7 @@
 import { createRoot, type Root } from 'react-dom/client'
 import { Provider } from 'jotai'
 import { WordProcessor } from '@/lib/wordProcessor'
+import { resolveSiteAdapter } from '@/lib/siteAdapters'
 import { BackgroundResponse, ContentMessage, WordData } from '../types'
 import { contentScriptStore } from './contentAtoms'
 import {
@@ -352,14 +353,16 @@ const hideWordPopup = () => {
   }
 }
 
-// Update word highlighting color
+// Update word highlighting color after a lookup / mark-acquainted. A word
+// that drops to the "don't highlight" state (just acquainted, or LoadCount
+// still 0) loses its underline entirely rather than getting a white one.
 const updateWordHighlighting = (word: string, wordData: WordData) => {
   const elements = document.querySelectorAll(`.enx-${word.toLowerCase()}`)
-  const colorCode = WordProcessor.getColorCode(wordData)
+  const decoration = WordProcessor.getTextDecoration(wordData)
 
   elements.forEach(element => {
     if (element instanceof HTMLElement) {
-      element.style.textDecoration = `${colorCode} underline`
+      element.style.textDecoration = decoration
       element.style.textDecorationThickness = '1px'
     }
   })
@@ -447,7 +450,14 @@ const processArticleContent = async (): Promise<boolean> => {
   try {
     console.log('Processing article content...')
 
-    const articleNodes = WordProcessor.getArticleNodes()
+    const adapter = resolveSiteAdapter(window.location)
+    console.log(`Site adapter: ${adapter.name} (highlight: ${adapter.highlightStrategy})`)
+
+    const articleNodes = WordProcessor.getArticleNodes({
+      contentSelector: adapter.contentSelector,
+      minTextLength: adapter.minTextLength,
+      focusedNodeResolver: adapter.focusedNodeResolver,
+    })
     if (articleNodes.length === 0) {
       console.log('No article node found')
       return false
@@ -455,10 +465,22 @@ const processArticleContent = async (): Promise<boolean> => {
 
     console.log(`Article node(s) found: ${articleNodes.length}`, articleNodes)
 
+    // inPlace strategy (ADR-010 Decision 3): word extraction and highlighting
+    // share one TreeWalker pass per node, so their filter rules can't drift
+    // apart. Joining text nodes with a space also stops a line-break-adjacent
+    // pair ("...ENDGAME" + "Most...") from being read as one non-word token.
+    const inPlace = adapter.highlightStrategy === 'inPlace'
+    const collectedTextNodes: Text[][] = inPlace
+      ? articleNodes.map(node => WordProcessor.collectTextNodes(node))
+      : []
+
     // Get text content and extract words (script/style content excluded)
-    const textContent = articleNodes
-      .map(node => WordProcessor.cleanArticleText(node))
-      .join(' ')
+    const textContent = inPlace
+      ? collectedTextNodes
+          .flat()
+          .map(n => n.textContent || '')
+          .join(' ')
+      : articleNodes.map(node => WordProcessor.cleanArticleText(node)).join(' ')
     const words = WordProcessor.extractWords(textContent)
 
     if (words.length === 0) {
@@ -545,18 +567,25 @@ const processArticleContent = async (): Promise<boolean> => {
 
       // Highlighting is applied independently to every matched article node
       articleNodes.forEach((articleNode, index) => {
-        const originalHtml = articleNode.innerHTML
-        const highlightedHtml = WordProcessor.renderWithHighlights(
-          originalHtml,
-          wordCache
-        )
+        if (inPlace) {
+          // Wrap matched words directly in the live (React-owned) text nodes:
+          // no innerHTML read/write, so React's element structure is untouched
+          // (ADR-010 Decision 4).
+          WordProcessor.applyHighlightsToNodes(collectedTextNodes[index], wordCache)
+        } else {
+          const originalHtml = articleNode.innerHTML
+          const highlightedHtml = WordProcessor.renderWithHighlights(
+            originalHtml,
+            wordCache
+          )
 
-        console.log(
-          `[node ${index}] Original HTML length:`, originalHtml.length,
-          'Highlighted HTML length:', highlightedHtml.length
-        )
+          console.log(
+            `[node ${index}] Original HTML length:`, originalHtml.length,
+            'Highlighted HTML length:', highlightedHtml.length
+          )
 
-        articleNode.innerHTML = highlightedHtml
+          articleNode.innerHTML = highlightedHtml
+        }
 
         // Fix flex container issue: Find all span elements containing <u> elements
         // and force them to use display: inline instead of inline-flex or -webkit-inline-box
@@ -583,8 +612,12 @@ const processArticleContent = async (): Promise<boolean> => {
 
       console.log('Word highlighting applied.')
 
-      // Add processing complete indicator to the first node only
-      addProcessingCompleteIndicator(articleNodes[0])
+      // Add processing complete indicator to the first node only. Skipped for
+      // adapters that opt out (ADR-010: the indicator is a structural
+      // insertBefore into the content container, which conflicts with React).
+      if (adapter.showProcessingIndicator) {
+        addProcessingCompleteIndicator(articleNodes[0])
+      }
 
       console.log('✅ Article processing completed successfully')
       return true // Successfully processed and highlighted
@@ -928,7 +961,27 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   console.log('Content script received message:', request)
 
   switch (request.action) {
-    case 'enxRun':
+    case 'enxRun': {
+      // ADR-010 Decision 1: an adapter can match the host but declare the
+      // current page out of scope (X list/timeline pages vs a tweet detail
+      // page). Abort with the adapter's message rather than silently doing
+      // nothing.
+      const adapter = resolveSiteAdapter(window.location)
+      const unsupportedReason = adapter.pageSupport?.(window.location)
+      if (unsupportedReason) {
+        sendResponse({ success: false, error: unsupportedReason })
+        break
+      }
+
+      // ADR-010 Decision 7 (G2): "enable once" becomes "re-arm". On an
+      // already-enabled page (e.g. X after an in-page navigation swapped the
+      // DOM), tear down and re-run instead of the old no-op early return.
+      // wordCache is module-level and survives, so re-processed words hit the
+      // cache and don't re-call the backend.
+      if (isEnxEnabled) {
+        disableEnx()
+      }
+
       enableEnx()
         .then(result => {
           sendResponse({ success: true, completed: result })
@@ -938,6 +991,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
           sendResponse({ success: false, error: error.message })
         })
       return true // Keep message channel open for async response
+    }
 
     case 'enxStop':
       disableEnx()

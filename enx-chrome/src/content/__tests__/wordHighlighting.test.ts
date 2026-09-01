@@ -111,6 +111,34 @@ describe('WordProcessor', () => {
     })
   })
 
+  describe('getTextDecoration', () => {
+    const base: WordData = {
+      Key: 'test',
+      English: 'test',
+      Chinese: '测试',
+      AlreadyAcquainted: 0,
+      LoadCount: 0,
+      WordType: 0,
+      Pronunciation: '',
+    }
+
+    it('is "none" for words that should not be highlighted (no white underline)', () => {
+      expect(WordProcessor.getTextDecoration(base)).toBe('none') // LoadCount 0
+      expect(
+        WordProcessor.getTextDecoration({ ...base, AlreadyAcquainted: 1, LoadCount: 5 })
+      ).toBe('none')
+      expect(
+        WordProcessor.getTextDecoration({ ...base, WordType: 1, LoadCount: 5 })
+      ).toBe('none')
+    })
+
+    it('is a colored underline for words still worth reviewing', () => {
+      expect(WordProcessor.getTextDecoration({ ...base, LoadCount: 15 })).toMatch(
+        /^hsl\(\d+, 100%, 40%\) underline$/
+      )
+    })
+  })
+
   describe('renderWithHighlights', () => {
     it('should wrap matched words in enx-word <u> elements', () => {
       const originalHtml = '<p>Hello world test</p>'

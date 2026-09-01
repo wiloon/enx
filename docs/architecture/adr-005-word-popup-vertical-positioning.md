@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Accepted — 2026-07-31 |
+| **状态** | Accepted — 2026-07-31。**部分被 [`adr-011`](adr-011-word-highlight-css-highlight-api-and-feature-split.md)（2026-09-01）取代**：「弹窗上边缘让开一整行正文」的诉求不变，但实现从「读锚点元素 `line-height` 算 margin + `position-area`」改为 Floating UI 的 `offset()` middleware（`line` 高度取自 `range.getClientRects()[0].height`）。下方「硬约束：必须用 CSS Anchor Positioning」一条随之作废。 |
 | **日期** | 2026-07-31 |
 | **关联 Spec** | 无（本次为线上问题修复，未创建独立 Task Spec） |
 | **关联 ADR** | [`adr-002-word-popup-react-shadow-dom.md`](adr-002-word-popup-react-shadow-dom.md)（弹窗必须继续用 CSS Anchor Positioning，不能退回手写定位算法，这是本决策的硬约束） |
