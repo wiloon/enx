@@ -3,8 +3,17 @@
 
 import { createRoot, type Root } from 'react-dom/client'
 import { Provider } from 'jotai'
+import {
+  computePosition,
+  autoUpdate,
+  offset,
+  flip,
+  shift,
+  size,
+} from '@floating-ui/dom'
 import { WordProcessor } from '@/lib/wordProcessor'
 import { resolveSiteAdapter } from '@/lib/siteAdapters'
+import { nearestElement, referenceLineHeight } from '@/lib/rangeUtils'
 import { BackgroundResponse, ContentMessage, WordData } from '../types'
 import { contentScriptStore } from './contentAtoms'
 import {
@@ -49,60 +58,97 @@ export const extractUSPhonetic = (pronunciation: string): string => {
   return pronunciation
 }
 
-// Shared Shadow DOM + CSS Anchor Positioning popup scaffold. Used by both
-// the dictionary-lookup popup (showWordPopup) and the drag-select
-// translation hint popup (showSelectionHint, ADR-007) -- anchors to the
-// given element and returns an unmounted React root ready to render into.
-// Requires Chrome 125+ for full support (CSS Anchor Positioning).
-const createAnchoredPopup = (
-  anchor: HTMLElement
-): {
-  popup: HTMLElement & { popover: string; showPopover: () => void; hidePopover: () => void }
-  root: Root
-} => {
-  // 1. Mark the anchor element
-  const anchorId = `enx-popup-anchor-${Date.now()}`
-  anchor.style.setProperty('anchor-name', `--${anchorId}`)
+type PopupElement = HTMLElement & {
+  popover: string
+  showPopover: () => void
+  hidePopover: () => void
+}
 
-  // 2. Create Popover popup
-  const popup = document.createElement('div') as HTMLElement & { popover: string; showPopover: () => void; hidePopover: () => void }
-  popup.popover = 'manual'  // Manual control
+// Positions `popup` against `reference` with Floating UI and keeps it there
+// while it's open. The Range is wrapped as a Floating UI "virtual element":
+// it supplies the geometry, and `contextElement` is what lets autoUpdate
+// discover the scroll ancestors to watch -- without it a Range alone can't
+// be tracked inside a nested scroll container (the X case). Returns the
+// autoUpdate cleanup, which the caller MUST run on close or the
+// scroll/resize listeners leak. `reference` geometry is the only thing this
+// reads from the host page -- nothing is written into it (ADR-011 C3).
+const attachPopupPositioning = (
+  popup: PopupElement,
+  reference: Range
+): (() => void) => {
+  const contextEl = nearestElement(reference.startContainer)
+  const virtualReference = {
+    getBoundingClientRect: () => reference.getBoundingClientRect(),
+    getClientRects: () => reference.getClientRects(),
+    contextElement: contextEl ?? undefined,
+  }
+
+  const update = () => {
+    computePosition(virtualReference, popup, {
+      strategy: 'fixed',
+      // 'top' keeps the popup over already-read text, not the upcoming
+      // sentence; flip/shift keep it on screen; offset re-measures the line
+      // height each tick so the "clear a line" gap (ADR-005) stays right if
+      // the font/zoom changes while it's open; size caps the height.
+      placement: 'top',
+      middleware: [
+        offset(() => referenceLineHeight(reference)),
+        flip(),
+        shift({ padding: 8 }),
+        size({
+          padding: 8,
+          apply({ availableHeight }) {
+            // Whichever is smaller: 60% of the viewport (so the popup never
+            // dominates the screen) or the room in the chosen direction.
+            const cap = Math.floor(window.innerHeight * 0.6)
+            popup.style.maxHeight = `${Math.min(cap, Math.floor(availableHeight))}px`
+          },
+        }),
+      ],
+    }).then(({ x, y }) => {
+      popup.style.left = `${x}px`
+      popup.style.top = `${y}px`
+    })
+  }
+
+  return autoUpdate(virtualReference, popup, update)
+}
+
+// Shared Shadow DOM + Floating UI popup scaffold. Used by both the
+// dictionary-lookup popup (showWordPopup) and the drag-select translation
+// hint popup (showSelectionHint, ADR-007). Positions against the given Range
+// and returns a React root ready to render into, a mount() to attach and
+// show it, and a cleanup() that stops the autoUpdate tracker (must be called
+// on close).
+const createAnchoredPopup = (
+  reference: Range
+): {
+  popup: PopupElement
+  root: Root
+  anchorNode: Node
+  mount: () => void
+  cleanup: () => void
+} => {
+  const popup = document.createElement('div') as PopupElement
+  popup.popover = 'manual'
   popup.className = 'enx-word-popup'
   popup.id = 'enx-word-popup'
-
-  // Vertical margin must clear a full line of the host page's own text,
-  // not just a fixed pixel gap, or the popup's edge cuts into the line
-  // adjacent to the anchor (see docs discussion on reading-flow positioning).
-  const anchorStyle = window.getComputedStyle(anchor)
-  let anchorLineHeight = parseFloat(anchorStyle.lineHeight)
-  if (Number.isNaN(anchorLineHeight)) {
-    anchorLineHeight = parseFloat(anchorStyle.fontSize) * 1.2
-  }
-  const verticalMargin = Math.ceil(anchorLineHeight)
-
-  // 3. Apply CSS Anchor Positioning styles (host element stays in light DOM,
-  // content rendering below is isolated inside its shadow root, see §2.1/§2.4)
-  // position-area: top prioritizes showing above the anchor, so the popup
-  // covers already-read text rather than the upcoming sentence.
   popup.style.cssText = `
-    position-anchor: --${anchorId};
-    position-area: top;
-    position-try-fallbacks: flip-block, flip-inline;
+    position: fixed;
+    top: 0;
+    left: 0;
     min-width: 400px;
     max-width: 480px;
     max-height: 60vh;
     overflow-y: auto;
-    margin-top: ${verticalMargin}px;
-    margin-bottom: ${verticalMargin}px;
-    margin-left: 16px;
-    margin-right: 16px;
     padding: 0;
     border: none;
     background: transparent;
+    margin: 0;
   `
 
-  // 4. Render content via React, mounted inside a shadow root so Tailwind
-  // classes can't leak into (or be overridden by) the host page's styles.
+  // Content is rendered inside a shadow root so Tailwind classes can't leak
+  // into (or be overridden by) the host page's styles.
   const shadowRoot = popup.attachShadow({ mode: 'open' })
   const styleTag = document.createElement('style')
   styleTag.textContent = tailwindCss
@@ -110,14 +156,30 @@ const createAnchoredPopup = (
 
   const mountPoint = document.createElement('div')
   shadowRoot.appendChild(mountPoint)
-
   const root = createRoot(mountPoint)
 
-  return { popup, root }
+  // For the click-outside guard: don't dismiss when the click landed on the
+  // word the popup belongs to.
+  const anchorNode: Node =
+    nearestElement(reference.startContainer) ?? reference.startContainer
+
+  let stopPositioning: (() => void) | null = null
+  const mount = () => {
+    document.body.appendChild(popup)
+    popup.showPopover()
+    stopPositioning = attachPopupPositioning(popup, reference)
+  }
+  const cleanup = () => {
+    stopPositioning?.()
+    stopPositioning = null
+  }
+
+  return { popup, root, anchorNode, mount, cleanup }
 }
 
-// Create and show word popup using Popover API + CSS Anchor Positioning
-const showWordPopup = async (word: string, event: MouseEvent) => {
+// Create and show word popup using the Popover API + Floating UI, positioned
+// against `reference` -- a Range over the clicked word (or the drag-selection).
+const showWordPopup = async (word: string, reference: Range) => {
   if (!word || word.trim() === '') return
 
   console.log('Showing popup for word:', word)
@@ -125,8 +187,8 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
   // Remove existing popup
   hideWordPopup()
 
-  const anchor = event.target as HTMLElement
-  const { popup, root } = createAnchoredPopup(anchor)
+  const { popup, root, anchorNode, mount, cleanup } =
+    createAnchoredPopup(reference)
   currentRoot = root
 
   const handleMarkAcquainted = async (englishWord: string) => {
@@ -164,7 +226,7 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
   const handleOpenSentencePanel = async () => {
     contentScriptStore.set(sentencePanelHintAtom, null)
 
-    const sentenceContext = WordProcessor.extractSentenceContext(anchor, word)
+    const sentenceContext = WordProcessor.extractSentenceContext(reference, word)
     const sentence = sentenceContext?.sentence || word
 
     try {
@@ -207,12 +269,11 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
   contentScriptStore.set(errorAtom, null)
   contentScriptStore.set(sentencePanelHintAtom, null)
 
-  // 6. Add to DOM and show Popover
-  document.body.appendChild(popup)
-  popup.showPopover()
+  // 6. Add to DOM, show Popover, start position tracking
+  mount()
   currentPopup = popup
 
-  setupPopupEventHandlers(popup, anchor, root)
+  setupPopupEventHandlers(popup, anchorNode, root, cleanup)
 
   // 7. Fetch word translation
   try {
@@ -275,11 +336,15 @@ const showWordPopup = async (word: string, event: MouseEvent) => {
   }
 }
 
-// Setup event handlers for Popover popup
+// Setup event handlers for Popover popup. `stopPositioning` is the Floating
+// UI autoUpdate cleanup from createAnchoredPopup -- folded into
+// popupEventCleanup so both close paths (the 'toggle' handler below and
+// hideWordPopup()'s direct teardown) stop the scroll/resize listeners.
 const setupPopupEventHandlers = (
-  popup: HTMLElement & { hidePopover: () => void },
-  anchor: HTMLElement,
-  root: Root
+  popup: PopupElement,
+  anchorNode: Node,
+  root: Root,
+  stopPositioning: () => void
 ) => {
   // Cleanup when popup is closed via hidePopover() (close button / ESC /
   // click-outside all route through hidePopover(), which reliably fires
@@ -296,7 +361,6 @@ const setupPopupEventHandlers = (
         console.debug('[enx] root unmounted')
       }
       popup.remove()
-      anchor.style.removeProperty('anchor-name')  // Cleanup anchor
       if (currentPopup === popup) {
         currentPopup = null
       }
@@ -316,8 +380,8 @@ const setupPopupEventHandlers = (
 
   // Click outside handler (optional, Popover API can handle this)
   const handleClickOutside = (e: MouseEvent) => {
-    const target = e.target as HTMLElement
-    if (!popup.contains(target) && !anchor.contains(target)) {
+    const target = e.target as Node
+    if (!popup.contains(target) && !anchorNode.contains(target)) {
       popup.hidePopover()
     }
   }
@@ -328,6 +392,7 @@ const setupPopupEventHandlers = (
   popupEventCleanup = () => {
     document.removeEventListener('keydown', handleKeydown)
     document.removeEventListener('click', handleClickOutside)
+    stopPositioning()
   }
 }
 
@@ -645,7 +710,9 @@ const addWordClickListeners = (container: Element) => {
       const word =
         (element as HTMLElement).dataset.word || element.textContent || ''
       if (word) {
-        showWordPopup(word, event as MouseEvent)
+        const reference = document.createRange()
+        reference.selectNodeContents(element)
+        showWordPopup(word, reference)
       }
     })
   })
@@ -714,11 +781,11 @@ const addProcessingCompleteIndicator = (articleNode: Element) => {
 // flow for the two cases where the user needs feedback: the selection was
 // rejected for being too long, or chrome.sidePanel.open() couldn't be
 // triggered and the panel needs to be opened manually.
-const showSelectionHint = (hint: string, event: MouseEvent) => {
+const showSelectionHint = (hint: string, reference: Range) => {
   hideWordPopup()
 
-  const anchor = event.target as HTMLElement
-  const { popup, root } = createAnchoredPopup(anchor)
+  const { popup, root, anchorNode, mount, cleanup } =
+    createAnchoredPopup(reference)
   currentRoot = root
 
   contentScriptStore.set(sentencePanelHintAtom, hint)
@@ -735,11 +802,10 @@ const showSelectionHint = (hint: string, event: MouseEvent) => {
     </Provider>
   )
 
-  document.body.appendChild(popup)
-  popup.showPopover()
+  mount()
   currentPopup = popup
 
-  setupPopupEventHandlers(popup, anchor, root)
+  setupPopupEventHandlers(popup, anchorNode, root, cleanup)
 }
 
 // Drag-select translation (ADR-007): sends the selected text straight to
@@ -750,7 +816,10 @@ const showSelectionHint = (hint: string, event: MouseEvent) => {
 // `word` is left blank: PendingSentenceContext.word isn't read anywhere in
 // SidePanel.tsx, so there's nothing meaningful to put there for a selection
 // that isn't anchored to one specific word.
-const triggerSelectionTranslation = async (selectedText: string, event: MouseEvent) => {
+const triggerSelectionTranslation = async (
+  selectedText: string,
+  reference: Range
+) => {
   try {
     const response = await sendToBackground({
       type: 'openSentencePanel',
@@ -760,58 +829,32 @@ const triggerSelectionTranslation = async (selectedText: string, event: MouseEve
     })
 
     if (response.success && !response.panelOpened) {
-      showSelectionHint('已保存，请点击或右键工具栏 ENX 图标查看整句翻译', event)
+      showSelectionHint('已保存，请点击或右键工具栏 ENX 图标查看整句翻译', reference)
     }
   } catch (error) {
     console.error('Error opening sentence panel for selection:', error)
-    showSelectionHint('已保存，请点击或右键工具栏 ENX 图标查看整句翻译', event)
+    showSelectionHint('已保存，请点击或右键工具栏 ENX 图标查看整句翻译', reference)
   }
 }
 
 // Phrase-in-context lookup (ADR-008): a 2-5 word selection inside a larger
-// sentence reuses the existing extractSentenceContext (built for single-word
-// clicks) by finding one already-wrapped <u class="enx-word"> element inside
-// the selection to use as its anchor, rather than writing a new
-// Range-based sentence-boundary algorithm. See ADR-008 Decision §1.
-const findPhraseAnchor = (event: MouseEvent): HTMLElement | null => {
-  const target = event.target as HTMLElement
-  if (target?.classList?.contains('enx-word')) return target
-
-  const selection = window.getSelection()
-  if (!selection || selection.rangeCount === 0) return null
-  const range = selection.getRangeAt(0)
-
-  let container = range.commonAncestorContainer as Node
-  if (container.nodeType !== Node.ELEMENT_NODE) {
-    container = container.parentElement as Node
-  }
-  if (!container || !(container instanceof HTMLElement)) return null
-
-  const candidates = container.querySelectorAll('.enx-word')
-  for (const candidate of Array.from(candidates)) {
-    if (range.intersectsNode(candidate)) {
-      return candidate as HTMLElement
-    }
-  }
-  return null
-}
-
-// Sends the selected phrase + its surrounding sentence (found via the anchor
-// above) to the Side Panel, reusing the same 'openSentencePanel' message and
-// PENDING_SENTENCE_STORAGE_KEY plumbing as triggerSelectionTranslation, just
-// with `phrase` set so SidePanel.tsx renders a phrase card (AI-only, no
-// dictionary lookup) instead of the whole-sentence translation slot.
-const triggerPhraseContextLookup = async (selectedText: string, event: MouseEvent) => {
-  const anchor = findPhraseAnchor(event)
-  if (!anchor) {
-    showSelectionHint('暂时无法识别所在句子，请尝试重新选择', event)
-    return
-  }
-
-  const sentenceContext = WordProcessor.extractSentenceContext(anchor, anchor.textContent || '')
+// sentence. The selection's own start position is a precise enough marker to
+// find the surrounding sentence -- no need to hunt for a highlighted-word
+// element inside it (ADR-011 Decision 5, which replaced findPhraseAnchor:
+// "a collapsed copy of the selection's start range").
+const triggerPhraseContextLookup = async (
+  selectedText: string,
+  reference: Range
+) => {
+  const anchor = reference.cloneRange()
+  anchor.collapse(true)
+  const sentenceContext = WordProcessor.extractSentenceContext(
+    anchor,
+    selectedText
+  )
   const sentence = sentenceContext?.sentence
   if (!sentence) {
-    showSelectionHint('暂时无法识别所在句子，请尝试重新选择', event)
+    showSelectionHint('暂时无法识别所在句子，请尝试重新选择', reference)
     return
   }
 
@@ -825,11 +868,11 @@ const triggerPhraseContextLookup = async (selectedText: string, event: MouseEven
     })
 
     if (response.success && !response.panelOpened) {
-      showSelectionHint('已保存，请点击或右键工具栏 ENX 图标查看', event)
+      showSelectionHint('已保存，请点击或右键工具栏 ENX 图标查看', reference)
     }
   } catch (error) {
     console.error('Error opening phrase panel for selection:', error)
-    showSelectionHint('已保存，请点击或右键工具栏 ENX 图标查看', event)
+    showSelectionHint('已保存，请点击或右键工具栏 ENX 图标查看', reference)
   }
 }
 
@@ -863,19 +906,23 @@ const cancelPendingSelectionTranslation = () => {
 // has phrase entries, so that case is routed to an AI in-context lookup
 // instead (ADR-008), not debounced since the selection itself is already
 // the exact, deliberate query (no boundary-tuning drag to wait out).
-const handleTextSelection = (event: MouseEvent) => {
+const handleTextSelection = () => {
   cancelPendingSelectionTranslation()
 
   const selection = window.getSelection()
   const selectedText = selection?.toString().trim()
-  if (!selectedText) return
+  if (!selectedText || !selection || selection.rangeCount === 0) return
+
+  // Captured now: the selection can be cleared (by a later click) before an
+  // async branch below gets to position its hint popup against it.
+  const selectionRange = selection.getRangeAt(0).cloneRange()
 
   const wordCount = selectedText.split(/\s+/).filter(Boolean).length
 
   if (wordCount > SELECTION_TRANSLATE_MAX_WORDS) {
     showSelectionHint(
       `选中内容过长，请缩小选择范围（最多 ${SELECTION_TRANSLATE_MAX_WORDS} 个词）`,
-      event
+      selectionRange
     )
     return
   }
@@ -884,19 +931,19 @@ const handleTextSelection = (event: MouseEvent) => {
   if (looksLikeSentence || wordCount > SELECTION_DICTIONARY_MAX_WORDS) {
     selectionTranslateTimer = setTimeout(() => {
       selectionTranslateTimer = null
-      triggerSelectionTranslation(selectedText, event)
+      triggerSelectionTranslation(selectedText, selectionRange)
     }, SELECTION_TRANSLATE_DEBOUNCE_MS)
     return
   }
 
   if (wordCount === 1) {
     // Single word, no sentence-ending punctuation: existing dictionary lookup.
-    showWordPopup(selectedText, event)
+    showWordPopup(selectedText, selectionRange)
     return
   }
 
   // 2-5 words, no sentence-ending punctuation: phrase-in-context AI lookup (ADR-008).
-  triggerPhraseContextLookup(selectedText, event)
+  triggerPhraseContextLookup(selectedText, selectionRange)
 }
 
 // Enable ENX functionality

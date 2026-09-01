@@ -1,4 +1,5 @@
 import { WordData } from '@/types'
+import { nearestElement } from '@/lib/rangeUtils'
 
 // Single source of truth for article extraction / word highlighting.
 // content.tsx and its tests import this instead of keeping their own copies.
@@ -343,13 +344,13 @@ export class WordProcessor {
   static readonly MAX_SEGMENT_LENGTH = 5000
   static readonly SEGMENT_WINDOW_RADIUS = 500
 
-  // Walks up from wordElement looking for the nearest block-level ancestor
-  // whose text is long enough to plausibly contain a full sentence. Mirrors
-  // getArticleNodes()'s ">20/100/500 chars" style thresholds, just at
-  // paragraph granularity instead of article granularity.
-  private static findSentenceContainer(wordElement: HTMLElement): Element | null {
+  // Walks up from a starting node looking for the nearest block-level
+  // ancestor whose text is long enough to plausibly contain a full sentence.
+  // Mirrors getArticleNodes()'s ">20/100/500 chars" style thresholds, just
+  // at paragraph granularity instead of article granularity.
+  private static findSentenceContainer(startNode: Node): Element | null {
     const blockSelector = 'p, li, blockquote, td, div'
-    let current = wordElement.closest(blockSelector)
+    let current = nearestElement(startNode)?.closest(blockSelector) || null
 
     while (current) {
       const length = current.textContent?.trim().length || 0
@@ -362,33 +363,40 @@ export class WordProcessor {
     return null
   }
 
-  // Range-based DOM position -> character offset within container's
-  // flattened textContent. This is what lets duplicate occurrences of the
-  // same word in one paragraph resolve to the sentence that was actually
-  // clicked, instead of always matching the first occurrence via indexOf().
-  private static getTextOffsetWithin(container: Element, target: HTMLElement): number {
+  // Range start -> character offset within container's flattened textContent.
+  // This is what lets duplicate occurrences of the same word in one paragraph
+  // resolve to the sentence that was actually clicked, instead of always
+  // matching the first occurrence via indexOf(). Using the range's own start
+  // (rather than "before the wrapping element") stays accurate whether the
+  // caller passed a range over an element or a raw text-node position, and
+  // isn't thrown off by whitespace around a wrapper.
+  private static getTextOffsetWithin(container: Element, reference: Range): number {
     const range = document.createRange()
     range.selectNodeContents(container)
-    range.setEndBefore(target)
+    range.setEnd(reference.startContainer, reference.startOffset)
     return range.toString().length
   }
 
-  // From the clicked highlighted-word element, locates the sentence it
-  // belongs to. Returns null only when no plausible sentence container can
-  // be found at all; once a container is found, segmentation failures
-  // degrade to returning the container's full text rather than null, so the
-  // feature stays usable even when sentence-boundary detection can't help.
+  // From a Range marking where the user clicked or started a selection,
+  // locates the sentence it belongs to. Returns null only when no plausible
+  // sentence container can be found at all; once a container is found,
+  // segmentation failures degrade to returning the container's full text
+  // rather than null, so the feature stays usable even when sentence-boundary
+  // detection can't help. (ADR-011 Decision 5: was element-based.)
+  // `queryText` is the single word (click / one-word selection) or the whole
+  // phrase (2-5 word selection, ADR-008) the sentence is being fetched for --
+  // used only for the sanity-check warning below.
   static extractSentenceContext(
-    wordElement: HTMLElement,
-    word: string
+    reference: Range,
+    queryText: string
   ): { sentence: string; sentenceIndex: number } | null {
-    const container = this.findSentenceContainer(wordElement)
+    const container = this.findSentenceContainer(reference.startContainer)
     if (!container) return null
 
     const fullText = container.textContent || ''
     if (fullText.trim().length === 0) return null
 
-    const offset = this.getTextOffsetWithin(container, wordElement)
+    const offset = this.getTextOffsetWithin(container, reference)
 
     let textToSegment = fullText
     let baseOffset = offset
@@ -425,10 +433,17 @@ export class WordProcessor {
 
     // Sanity check only, not a correctness gate: if the DOM-offset math ever
     // drifts, this surfaces it in the console instead of silently returning
-    // an unrelated sentence.
-    if (!result.sentence.toLowerCase().includes(word.toLowerCase())) {
+    // an unrelated sentence. Only checked for single words -- a phrase
+    // selection needn't appear verbatim in the segmented sentence (whitespace
+    // normalisation, spanning a boundary), so an exact-substring test there
+    // would just be noise.
+    const isSingleWord = !/\s/.test(queryText.trim())
+    if (
+      isSingleWord &&
+      !result.sentence.toLowerCase().includes(queryText.toLowerCase())
+    ) {
       console.warn(
-        `extractSentenceContext: resolved sentence does not contain clicked word "${word}"`,
+        `extractSentenceContext: resolved sentence does not contain "${queryText}"`,
         result.sentence
       )
     }

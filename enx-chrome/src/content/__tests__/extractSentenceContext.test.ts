@@ -1,94 +1,159 @@
 import { WordProcessor } from '@/lib/wordProcessor'
 
-// Mirrors the markup WordProcessor.renderWithHighlights() actually produces:
-// each highlighted word is wrapped in <u class="enx-word ...">.
-const wrapWord = (word: string) => `<u class="enx-word enx-${word.toLowerCase()}" data-word="${word}">${word}</u>`
+// ADR-011 Decision 5: extractSentenceContext now takes a Range instead of a
+// `.enx-word` element. Callers build the Range differently depending on the
+// entry point:
+//   - click on a highlighted word  -> range.selectNodeContents(theWord)
+//   - single-word drag-selection   -> the live selection Range (text nodes)
+//   - phrase drag-selection        -> a collapsed copy of the selection start
+// The word text is still wrapped here only so the paragraphs read naturally;
+// the highlight markup is irrelevant to this function now.
+const wrap = (word: string) =>
+  `<span class="w" data-word="${word}">${word}</span>`
+
+// Mirrors the click path: a Range whose start sits at the beginning of the
+// clicked word's element.
+const rangeOverElement = (el: Element): Range => {
+  const range = document.createRange()
+  range.selectNodeContents(el)
+  return range
+}
+
+// Mirrors the drag-select path: a collapsed Range inside a text node, N chars in.
+const collapsedRangeInText = (textNode: Node, offset: number): Range => {
+  const range = document.createRange()
+  range.setStart(textNode, offset)
+  range.collapse(true)
+  return range
+}
 
 describe('WordProcessor.extractSentenceContext', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
 
-  it('locates the correct sentence when clicking words in different sentences of the same paragraph', () => {
+  it('locates the correct sentence when the range is in different sentences of the same paragraph', () => {
     document.body.innerHTML = `
-      <p>Cats are ${wrapWord('great')} pets. Dogs are ${wrapWord('loyal')} companions. Birds can ${wrapWord('sing')} beautifully.</p>
+      <p>Cats are ${wrap('great')} pets. Dogs are ${wrap('loyal')} companions. Birds can ${wrap('sing')} beautifully.</p>
     `
-    const elements = document.querySelectorAll<HTMLElement>('.enx-word')
-    expect(elements).toHaveLength(3)
+    const words = document.querySelectorAll<HTMLElement>('.w')
+    expect(words).toHaveLength(3)
 
-    const greatResult = WordProcessor.extractSentenceContext(elements[0], 'great')
-    expect(greatResult?.sentence).toBe('Cats are great pets.')
-
-    const loyalResult = WordProcessor.extractSentenceContext(elements[1], 'loyal')
-    expect(loyalResult?.sentence).toBe('Dogs are loyal companions.')
-
-    const singResult = WordProcessor.extractSentenceContext(elements[2], 'sing')
-    expect(singResult?.sentence).toBe('Birds can sing beautifully.')
+    expect(
+      WordProcessor.extractSentenceContext(rangeOverElement(words[0]), 'great')
+        ?.sentence
+    ).toBe('Cats are great pets.')
+    expect(
+      WordProcessor.extractSentenceContext(rangeOverElement(words[1]), 'loyal')
+        ?.sentence
+    ).toBe('Dogs are loyal companions.')
+    expect(
+      WordProcessor.extractSentenceContext(rangeOverElement(words[2]), 'sing')
+        ?.sentence
+    ).toBe('Birds can sing beautifully.')
   })
 
   it('resolves the clicked occurrence of a word repeated twice in the same paragraph, not the first one', () => {
     document.body.innerHTML = `
-      <p>The ${wrapWord('bank')} is by the river. I went to the ${wrapWord('bank')} to deposit money.</p>
+      <p>The ${wrap('bank')} is by the river. I went to the ${wrap('bank')} to deposit money.</p>
     `
-    const elements = document.querySelectorAll<HTMLElement>('.enx-word')
-    expect(elements).toHaveLength(2)
+    const words = document.querySelectorAll<HTMLElement>('.w')
+    expect(words).toHaveLength(2)
 
-    const firstOccurrence = WordProcessor.extractSentenceContext(elements[0], 'bank')
-    expect(firstOccurrence?.sentence).toBe('The bank is by the river.')
+    expect(
+      WordProcessor.extractSentenceContext(rangeOverElement(words[0]), 'bank')
+        ?.sentence
+    ).toBe('The bank is by the river.')
+    expect(
+      WordProcessor.extractSentenceContext(rangeOverElement(words[1]), 'bank')
+        ?.sentence
+    ).toBe('I went to the bank to deposit money.')
+  })
 
-    const secondOccurrence = WordProcessor.extractSentenceContext(elements[1], 'bank')
-    expect(secondOccurrence?.sentence).toBe('I went to the bank to deposit money.')
+  it('resolves the sentence containing a multi-word phrase selection (ADR-008 path)', () => {
+    document.body.innerHTML = `
+      <p>Cats are great pets. You need to find the right contacts and draft outreach quickly. Birds can sing.</p>
+    `
+    const textNode = document.querySelector('p')!.firstChild as Node
+    const full = textNode.textContent || ''
+    // The phrase path collapses the selection to its start; here the phrase
+    // "find the right contacts" starts mid-sentence.
+    const phraseStart = full.indexOf('find the right contacts')
+
+    const result = WordProcessor.extractSentenceContext(
+      collapsedRangeInText(textNode, phraseStart),
+      'find the right contacts'
+    )
+    expect(result?.sentence).toBe(
+      'You need to find the right contacts and draft outreach quickly.'
+    )
+  })
+
+  it('works with a collapsed range inside a raw text node (the drag-select path)', () => {
+    document.body.innerHTML = `
+      <p>The bank is by the river. I went to the bank to deposit money.</p>
+    `
+    const textNode = document.querySelector('p')!.firstChild as Node
+    const full = textNode.textContent || ''
+    // Put the range start on the second "bank".
+    const secondBank = full.indexOf('bank', full.indexOf('bank') + 1)
+
+    const result = WordProcessor.extractSentenceContext(
+      collapsedRangeInText(textNode, secondBank),
+      'bank'
+    )
+    expect(result?.sentence).toBe('I went to the bank to deposit money.')
   })
 
   it('returns the whole container text when it only contains one sentence', () => {
     document.body.innerHTML = `
-      <p>This is the only ${wrapWord('sentence')} in this paragraph and it is long enough.</p>
+      <p>This is the only ${wrap('sentence')} in this paragraph and it is long enough.</p>
     `
-    const element = document.querySelector<HTMLElement>('.enx-word')!
+    const el = document.querySelector<HTMLElement>('.w')!
 
-    const result = WordProcessor.extractSentenceContext(element, 'sentence')
-    expect(result?.sentence).toBe(
-      'This is the only sentence in this paragraph and it is long enough.'
-    )
+    expect(
+      WordProcessor.extractSentenceContext(rangeOverElement(el), 'sentence')
+        ?.sentence
+    ).toBe('This is the only sentence in this paragraph and it is long enough.')
   })
 
   it('does not mis-split sentences on abbreviations like "Dr."', () => {
     document.body.innerHTML = `
-      <p>Dr. Smith works at the hospital. He is a ${wrapWord('great')} doctor.</p>
+      <p>Dr. Smith works at the hospital. He is a ${wrap('great')} doctor.</p>
     `
-    const element = document.querySelector<HTMLElement>('.enx-word')!
+    const el = document.querySelector<HTMLElement>('.w')!
 
-    const result = WordProcessor.extractSentenceContext(element, 'great')
-    expect(result?.sentence).toBe('He is a great doctor.')
-    // If "Dr." were mis-treated as a sentence boundary, the resolved sentence
-    // would start mid-word or merge unrelated fragments instead of this.
+    expect(
+      WordProcessor.extractSentenceContext(rangeOverElement(el), 'great')
+        ?.sentence
+    ).toBe('He is a great doctor.')
   })
 
-  it('falls back to a bounded window around the word when the container text exceeds the length cap', () => {
+  it('falls back to a bounded window around the range when the container text exceeds the length cap', () => {
     const filler = 'This is a long filler sentence used only to pad out the paragraph. '
-    const before = filler.repeat(120) // well past MAX_SEGMENT_LENGTH (5000)
+    const before = filler.repeat(120)
     const after = filler.repeat(120)
-    document.body.innerHTML = `<div>${before}The ${wrapWord('target')} word sits here. ${after}</div>`
+    document.body.innerHTML = `<div>${before}The ${wrap('target')} word sits here. ${after}</div>`
 
-    const element = document.querySelector<HTMLElement>('.enx-word')!
+    const el = document.querySelector<HTMLElement>('.w')!
     const container = document.querySelector('div')!
     expect(container.textContent!.length).toBeGreaterThan(WordProcessor.MAX_SEGMENT_LENGTH)
 
-    const result = WordProcessor.extractSentenceContext(element, 'target')
+    const result = WordProcessor.extractSentenceContext(rangeOverElement(el), 'target')
 
     expect(result).not.toBeNull()
     expect(result!.sentence).toContain('target')
-    // Bounded by the window (2x radius) plus one sentence's worth of slack,
-    // not the full multi-thousand-character container.
-    expect(result!.sentence.length).toBeLessThan(WordProcessor.SEGMENT_WINDOW_RADIUS * 2 + 200)
+    expect(result!.sentence.length).toBeLessThan(
+      WordProcessor.SEGMENT_WINDOW_RADIUS * 2 + 200
+    )
   })
 
   it('returns null when no ancestor container qualifies as a sentence container', () => {
-    // No <p>/<li>/<blockquote>/<td>/<div> ancestor at all.
-    document.body.innerHTML = wrapWord('orphan')
-    const element = document.querySelector<HTMLElement>('.enx-word')!
+    document.body.innerHTML = wrap('orphan')
+    const el = document.querySelector<HTMLElement>('.w')!
 
-    const result = WordProcessor.extractSentenceContext(element, 'orphan')
-    expect(result).toBeNull()
+    expect(
+      WordProcessor.extractSentenceContext(rangeOverElement(el), 'orphan')
+    ).toBeNull()
   })
 })

@@ -2,6 +2,46 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-09-01: Popup positioning takes a Range (Floating UI) — ADR-011 / issue #8
+
+**Agent**: Claude Code (Sonnet)
+**Task**: Prefactor for the CSS Custom Highlight API migration — decouple word-popup
+positioning from the `.enx-word` element so a later ticket can remove the elements.
+
+**Problem**:
+- The word popup and drag-select hint popup anchored to a DOM element via CSS Anchor
+  Positioning (an injected `anchor-name`), and `extractSentenceContext` / the phrase
+  anchor lookup both required a real element inside the article.
+- ADR-011 removes `.enx-word` entirely; positioning had to stop depending on it first.
+
+**Solution**:
+- Added `@floating-ui/dom`. `createAnchoredPopup` now takes a `Range` (wrapped as a
+  Floating UI virtual element, `contextElement` set so `autoUpdate` tracks nested
+  scroll containers — the X case); `computePosition` + `offset`/`flip`/`shift`/`size`,
+  `autoUpdate` cleanup folded into `popupEventCleanup` so both close paths stop it.
+- `WordProcessor.extractSentenceContext(reference: Range, queryText)` — reads the
+  range's start for the container/offset; `findSentenceContainer` / `getTextOffsetWithin`
+  Range-ified.
+- `findPhraseAnchor` deleted (ADR-011 Decision 5): the phrase flow passes a collapsed
+  copy of the selection's start range to `extractSentenceContext`.
+- New shared `src/lib/rangeUtils.ts` (`nearestElement`, `referenceLineHeight`).
+
+**Files**:
+- Modified: `enx-chrome/src/content/content.tsx`, `enx-chrome/src/lib/wordProcessor.ts`,
+  `enx-chrome/package.json`
+- Added: `enx-chrome/src/lib/rangeUtils.ts` + `__tests__/rangeUtils.test.ts`
+- Rewrote: `enx-chrome/src/content/__tests__/extractSentenceContext.test.ts`
+- Deleted: `enx-chrome/src/content/__tests__/phraseAnchor.test.ts`
+
+**Benefits**:
+- Article DOM is untouched even while a popup is open; popup flips/shifts at viewport
+  edges and tracks the word inside nested scroll containers.
+- One highlighting concern (`.enx-word`) can now be removed without also rewriting
+  positioning or sentence-context extraction.
+
+**Note**: popup geometry (Floating UI) is verified by Playwright E2E + manual, not unit
+tests — jsdom has no layout. `pnpm build` needs Node 24 (Vite 7).
+
 ## 2025-11-12: Separated Unit Tests and Integration Tests
 
 **Agent**: GitHub Copilot
