@@ -10,6 +10,34 @@ export class WordProcessor {
     htmlEntity: /&[a-zA-Z0-9#]+;/g,
   }
 
+  // Ancestor tags whose text is never looked up or highlighted (links,
+  // form controls, code). Shared by collectTextNodes (highlight + extract
+  // path) and expandToWordRange (click path) so their exclusion rules can't
+  // drift apart (ADR-010 §1.3 / ADR-011 Decision 2).
+  static readonly LOOKUP_EXCLUDED_TAGS = [
+    'a',
+    'script',
+    'style',
+    'noscript',
+    'button',
+    'input',
+    'textarea',
+    'select',
+    'code',
+    'pre',
+  ]
+
+  // CSS Custom Highlight API registry names, one per review stage
+  // (ADR-011 Decision 1 / E1).
+  static readonly HIGHLIGHT_NAME_PREFIX = 'enx-hl-'
+  static readonly REVIEW_BUCKET_COUNT = 5
+
+  // One shared word segmenter -- construction isn't free and tokenizeWords
+  // runs once per text node.
+  private static readonly wordSegmenter = new Intl.Segmenter('en', {
+    granularity: 'word',
+  })
+
   static extractWords(text: string): string[] {
     if (!text || text.trim() === '') return []
 
@@ -32,13 +60,19 @@ export class WordProcessor {
       .map(word => word.toLowerCase())
   }
 
+  // Whether a word is still worth reviewing (and so worth highlighting).
+  // False for words the user has marked acquainted, words tagged as a known
+  // part of speech, and words never actually looked up (LoadCount 0).
+  static isReviewable(wordData: WordData): boolean {
+    return (
+      wordData.AlreadyAcquainted !== 1 &&
+      wordData.WordType !== 1 &&
+      wordData.LoadCount !== 0
+    )
+  }
+
   static getColorCode(wordData: WordData): string {
-    // If word is already acquainted, known word type, or not in database, don't highlight
-    if (
-      wordData.AlreadyAcquainted === 1 ||
-      wordData.WordType === 1 ||
-      wordData.LoadCount === 0
-    ) {
+    if (!this.isReviewable(wordData)) {
       return '#FFFFFF'
     }
 
@@ -58,6 +92,24 @@ export class WordProcessor {
   static getTextDecoration(wordData: WordData): string {
     const colorCode = this.getColorCode(wordData)
     return colorCode === '#FFFFFF' ? 'none' : `${colorCode} underline`
+  }
+
+  // Which review-stage bucket a word belongs to (1 = most recently learned,
+  // REVIEW_BUCKET_COUNT = nearly known), or null when it shouldn't be
+  // highlighted at all. Replaces the ~31-step continuous hue with a handful
+  // of stages (ADR-011 E1); the "don't highlight" sentinel disappears
+  // because those words simply produce no Range. Boundaries are a first
+  // pass, tuned later against real articles -- keep the count of branches
+  // equal to REVIEW_BUCKET_COUNT.
+  static reviewBucket(wordData: WordData): number | null {
+    if (!this.isReviewable(wordData)) return null
+
+    const count = wordData.LoadCount
+    if (count <= 2) return 1
+    if (count <= 5) return 2
+    if (count <= 10) return 3
+    if (count <= 18) return 4
+    return this.REVIEW_BUCKET_COUNT
   }
 
   // Serialize-and-write-back highlight strategy (the default for every
@@ -100,33 +152,24 @@ export class WordProcessor {
   // and text with no Latin letters. Keeping extraction and highlighting on
   // this single traversal is what stops their filter rules from drifting
   // apart (ADR-010 §1.3).
+  // True when `node` sits inside a LOOKUP_EXCLUDED_TAGS subtree (walking up
+  // to, but not including, `root`).
+  static isInExcludedSubtree(node: Node, root?: Node): boolean {
+    let current: HTMLElement | null = node.parentElement
+    while (current && current !== root) {
+      if (this.LOOKUP_EXCLUDED_TAGS.includes(current.tagName.toLowerCase())) {
+        return true
+      }
+      current = current.parentElement
+    }
+    return false
+  }
+
   static collectTextNodes(root: Node): Text[] {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode: node => {
-        const parent = node.parentElement
-        if (!parent) return NodeFilter.FILTER_REJECT
-
-        let current: HTMLElement | null = parent
-        while (current && current !== root) {
-          const tagName = current.tagName.toLowerCase()
-          if (
-            [
-              'a',
-              'script',
-              'style',
-              'noscript',
-              'button',
-              'input',
-              'textarea',
-              'select',
-              'code',
-              'pre',
-            ].includes(tagName)
-          ) {
-            return NodeFilter.FILTER_REJECT
-          }
-          current = current.parentElement
-        }
+        if (!node.parentElement) return NodeFilter.FILTER_REJECT
+        if (this.isInExcludedSubtree(node, root)) return NodeFilter.FILTER_REJECT
 
         const text = node.textContent?.trim() || ''
         return text.length > 0 && /[a-zA-Z]/.test(text)
@@ -247,6 +290,139 @@ export class WordProcessor {
     })
 
     console.log('Word highlighting optimization completed')
+  }
+
+  // ---------------------------------------------------------------------------
+  // CSS Custom Highlight API path (ADR-011 Decision 1). No DOM mutation: the
+  // underline is painted over Ranges, not written as elements. These methods
+  // are additive for now -- ticket #11 wires them in and removes the
+  // element-wrapping ones above.
+  // ---------------------------------------------------------------------------
+
+  private static readonly ALPHA_SEGMENT = /^[A-Za-z]+$/
+
+  // Splits `text` into word tokens with their offsets, aligned with the keys
+  // extractWords() produces (which is what wordDict is keyed by). ICU word
+  // segmentation is the base; two adjustments make the tokens line up:
+  //   - drop segments with no ASCII letter (numbers, symbols) -- extractWords
+  //     rejects them too;
+  //   - rejoin `-<word>` runs so "well-known" / "state-of-the-art" stay whole
+  //     (ICU splits on the hyphen), but ONLY across letter-only segments, so
+  //     "COVID-19" / "Catch-22" tokenize to "covid" / "catch" -- which is
+  //     exactly what extractWords' letter-bounded pattern yields.
+  private static tokenizeWords(
+    text: string
+  ): { word: string; start: number; end: number }[] {
+    if (!text) return []
+    const segments = [...this.wordSegmenter.segment(text)]
+    const tokens: { word: string; start: number; end: number }[] = []
+
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i]
+      if (!seg.isWordLike || !/[a-zA-Z]/.test(seg.segment)) continue
+
+      let end = seg.index + seg.segment.length
+      while (
+        segments[i + 1]?.segment === '-' &&
+        segments[i + 1].index === end &&
+        segments[i + 2]?.index === end + 1 &&
+        this.ALPHA_SEGMENT.test(segments[i + 2].segment)
+      ) {
+        end = segments[i + 2].index + segments[i + 2].segment.length
+        i += 2
+      }
+
+      tokens.push({ word: text.slice(seg.index, end), start: seg.index, end })
+    }
+    return tokens
+  }
+
+  // A DOM Range spanning `token` within `node` (a text node).
+  private static rangeForToken(
+    node: Node,
+    token: { start: number; end: number }
+  ): Range {
+    const range = document.createRange()
+    range.setStart(node, token.start)
+    range.setEnd(node, token.end)
+    return range
+  }
+
+  // For the click-to-lookup path (ADR-011 Decision 2): given the caret
+  // position from caretPositionFromPoint (a text node + character offset),
+  // return a Range spanning the whole word the caret is inside -- or null if
+  // the caret isn't in a word, or sits inside an excluded subtree
+  // (link / button / code / ...). Never touches the DOM.
+  static expandToWordRange(node: Node, offset: number): Range | null {
+    if (node.nodeType !== Node.TEXT_NODE) return null
+    if (this.isInExcludedSubtree(node)) return null
+
+    const token = this.tokenizeWords(node.textContent || '').find(
+      t => offset >= t.start && offset <= t.end
+    )
+    return token ? this.rangeForToken(node, token) : null
+  }
+
+  // Builds the Ranges to highlight from an already-collected text-node list
+  // (collectTextNodes), grouped by review-stage bucket. Words not in
+  // `wordDict`, and words reviewBucket() rejects, produce no Range.
+  static buildHighlightRanges(
+    textNodes: Text[],
+    wordDict: Record<string, WordData>
+  ): Map<number, Range[]> {
+    const buckets = new Map<number, Range[]>()
+    if (Object.keys(wordDict).length === 0) return buckets
+
+    for (const node of textNodes) {
+      for (const token of this.tokenizeWords(node.textContent || '')) {
+        const data = wordDict[token.word.toLowerCase()]
+        if (!data) continue
+        const bucket = this.reviewBucket(data)
+        if (bucket === null) continue
+
+        const range = this.rangeForToken(node, token)
+
+        const existing = buckets.get(bucket)
+        if (existing) existing.push(range)
+        else buckets.set(bucket, [range])
+      }
+    }
+    return buckets
+  }
+
+  // Registers each bucket's Ranges as a named CSS.highlights entry, replacing
+  // any ENX highlights already registered.
+  static applyHighlights(buckets: Map<number, Range[]>): void {
+    this.clearHighlights()
+    for (const [bucket, ranges] of buckets) {
+      if (ranges.length === 0) continue
+      CSS.highlights.set(
+        `${this.HIGHLIGHT_NAME_PREFIX}${bucket}`,
+        new Highlight(...ranges)
+      )
+    }
+  }
+
+  // Removes every ENX highlight from the registry, leaving any highlights the
+  // host page registered untouched. This is all `disableEnx` needs to do.
+  static clearHighlights(): void {
+    for (const name of [...CSS.highlights.keys()]) {
+      if (name.startsWith(this.HIGHLIGHT_NAME_PREFIX)) {
+        CSS.highlights.delete(name)
+      }
+    }
+  }
+
+  // Re-derives every highlight over `root` from `wordDict` + the current DOM.
+  // Safe to call at any time -- there is no self-inflicted DOM mutation to
+  // filter out, so a full rebuild is the whole story (ADR-011 F section).
+  static rebuildHighlights(
+    root: Node,
+    wordDict: Record<string, WordData>
+  ): void {
+    this.applyHighlights(
+      this.buildHighlightRanges(this.collectTextNodes(root), wordDict)
+    )
   }
 
   // Returns every element on the page that should be treated as article

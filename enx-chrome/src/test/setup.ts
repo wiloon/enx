@@ -6,6 +6,26 @@ global.TextEncoder = TextEncoder as typeof global.TextEncoder
 global.TextDecoder = TextDecoder as typeof global.TextDecoder
 global.crypto = webcrypto as Crypto
 
+// CSS Custom Highlight API shim (ADR-011): jsdom implements neither
+// `Highlight` nor `CSS.highlights`. `Highlight` is a set of ranges;
+// `CSS.highlights` is a maplike of name -> Highlight. The real objects
+// carry rendering behaviour we can't exercise without layout, but the
+// registry bookkeeping (which names hold which ranges) is testable.
+class HighlightShim extends Set<Range> {
+  priority = 0
+  constructor(...ranges: Range[]) {
+    super(ranges)
+  }
+}
+if (typeof globalThis.Highlight === 'undefined') {
+  globalThis.Highlight = HighlightShim as unknown as typeof Highlight
+}
+if (typeof globalThis.CSS === 'undefined') {
+  globalThis.CSS = { highlights: new Map() } as unknown as typeof CSS
+} else if (!globalThis.CSS.highlights) {
+  globalThis.CSS.highlights = new Map() as unknown as HighlightRegistry
+}
+
 // Mock Chrome APIs
 ;(global as any).chrome = {
   runtime: {

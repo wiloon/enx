@@ -2,6 +2,43 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-09-01: WordProcessor Range-based highlight builder — ADR-011 / issue #10
+
+**Agent**: Claude Code (Sonnet)
+**Task**: Expand step for the CSS Custom Highlight API migration — add the Range-based
+building blocks to `WordProcessor`, not yet wired into the content script.
+
+**Problem**:
+- The highlight underline is drawn by wrapping every looked-up word in a `<u class="enx-word">`
+  element (`applyHighlightsToNodes`), which mutates the article DOM. ADR-011 moves to the
+  CSS Custom Highlight API: underlines painted over `Range`s, zero DOM mutation.
+- The risky new logic (range building, review-bucket assignment, ICU word-boundary
+  detection) needed to be proven by fast tests before the switch (issue #11).
+
+**Solution** (all additive — old element-wrapping methods untouched):
+- `reviewBucket(wordData)` — 5 review stages by `LoadCount`, or null when not reviewable;
+  the `#FFFFFF` "don't highlight" sentinel disappears (those words produce no Range).
+  `isReviewable(wordData)` extracted and shared with `getColorCode`.
+- `tokenizeWords` (private) — ICU word segmentation, dropping letter-free segments and
+  rejoining `-<word>` runs across letter-only segments only, so tokens line up with
+  `extractWords()` keys (`well-known` whole, `COVID-19` → `covid`).
+- `expandToWordRange(node, offset)` — caret position → whole-word `Range`, or null in an
+  excluded subtree / not on a word (click-to-lookup, issue #11).
+- `buildHighlightRanges` / `applyHighlights` / `clearHighlights` / `rebuildHighlights` —
+  bucketed `Range`s → named `CSS.highlights` entries (`enx-hl-1..5`), rebuildable, and
+  cleared without touching host-page highlights.
+- `isInExcludedSubtree` / `LOOKUP_EXCLUDED_TAGS` extracted; `collectTextNodes` now reuses
+  them (one source of truth for the exclusion set).
+- jsdom shim for `Highlight` / `CSS.highlights` in `src/test/setup.ts`.
+
+**Files**:
+- Modified: `enx-chrome/src/lib/wordProcessor.ts`, `enx-chrome/src/test/setup.ts`
+- Added: `enx-chrome/src/lib/__tests__/highlightRanges.test.ts` (16 tests)
+
+**Benefits**:
+- The Highlight-API path is fully covered before the content-script switch.
+- Tokenisation matches the backend's word keys, so highlights won't silently go missing.
+
 ## 2026-09-01: Fix pickFocusedTweet criteria + quote-tweet handling — ADR-011 / issue #9
 
 **Agent**: Claude Code (Sonnet)
