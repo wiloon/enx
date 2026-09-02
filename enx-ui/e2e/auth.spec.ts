@@ -3,7 +3,8 @@ import { test, expect } from '@playwright/test';
 test.describe('Cognito sign in', () => {
   test('shows Cognito sign in entry point', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'Sign in to ENX' })).toBeVisible();
+    // "Sign in to ENX" is a shadcn <CardTitle> (a <div>), not a heading element.
+    await expect(page.getByText('Sign in to ENX')).toBeVisible();
     await expect(
       page.getByText('Use your email or Google account via AWS Cognito.')
     ).toBeVisible();

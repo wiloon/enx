@@ -22,6 +22,10 @@ export default defineConfig({
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     env: {
+      // Point the API client at the app's own origin so e2e specs can stub
+      // /api/** with page.route() without cross-origin CORS preflights.
+      NEXT_PUBLIC_API_BASE_URL:
+        process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000',
       NEXT_PUBLIC_COGNITO_DOMAIN:
         process.env.NEXT_PUBLIC_COGNITO_DOMAIN ||
         'https://enx-auth.auth.us-east-1.amazoncognito.com',
