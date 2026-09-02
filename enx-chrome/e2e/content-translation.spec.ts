@@ -1,9 +1,6 @@
-// NOTE (ADR-011 issue #11): the CSS Custom Highlight API replaced the
-// <u class="enx-word"> elements. Assertions in this file that select
-// .enx-word or read its inline style are stale and will fail until this
-// spec is rewritten to click word text by coordinate and read
-// CSS.highlights. Tracked as an E2E follow-up; jest covers the switch
-// (src/lib/__tests__/highlightRanges.test.ts).
+// NOTE (ADR-011 issue #11 / #14): highlighting is painted with the CSS Custom
+// Highlight API -- there are no `.enx-word` marker elements. Lookups are
+// coordinate clicks on word text (clickWordAndWaitForPopup).
 
 import { expect, test } from './fixtures'
 import {
@@ -102,30 +99,14 @@ test.describe('Content Script - Translation Popup', () => {
     expect(firstWord).not.toBe(secondWord)
   })
 
-  test('should maintain consistent underline thickness after translation', async ({
-    page,
-  }) => {
-    // Get initial underline thickness of first highlighted word
-    const firstWord = page.locator('.enx-word').first()
-    await expect(firstWord).toBeVisible()
-
-    const initialThickness = await firstWord.evaluate((el: HTMLElement) => {
-      return window.getComputedStyle(el).textDecorationThickness
-    })
-
-    // Click word to trigger translation (which updates color)
-    await clickWordAndWaitForPopup(page, 0)
-
-    // Wait for potential color update
-    await page.waitForTimeout(500)
-
-    // Get underline thickness after translation/color update
-    const updatedThickness = await firstWord.evaluate((el: HTMLElement) => {
-      return window.getComputedStyle(el).textDecorationThickness
-    })
-
-    // Verify thickness remains consistent
-    expect(updatedThickness).toBe(initialThickness)
-    expect(updatedThickness).toBe('1px')
-  })
+  // REMOVED (ADR-011 issue #11 / #14): 'should maintain consistent underline
+  // thickness after translation'. It guarded an inline-style
+  // `text-decoration-thickness` drift bug on the old `<u class="enx-word">`
+  // element when its colour was updated post-translation. Under the CSS Custom
+  // Highlight API the underline is drawn entirely from the injected
+  // `::highlight(enx-hl-N)` rule -- there is no per-word element and no inline
+  // style to drift, and `getComputedStyle` cannot read a custom-highlight
+  // pseudo. The paint-stability concern (a word staying highlighted across a
+  // bucket change) is covered by content-popup-shadow-dom.spec.ts's Mark Known
+  // test and word-highlight-toggle.spec.ts.
 })

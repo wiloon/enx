@@ -1,13 +1,15 @@
-// NOTE (ADR-011 issue #11): the CSS Custom Highlight API replaced the
-// <u class="enx-word"> elements. Assertions in this file that select
-// .enx-word or read its inline style are stale and will fail until this
-// spec is rewritten to click word text by coordinate and read
-// CSS.highlights. Tracked as an E2E follow-up; jest covers the switch
-// (src/lib/__tests__/highlightRanges.test.ts).
+// NOTE (ADR-011 issue #11 / #14): highlighting is painted with the CSS Custom
+// Highlight API -- there are no `.enx-word` marker elements. A highlighted word
+// is a Range in `CSS.highlights`; a lookup is a coordinate click on the word's
+// on-screen box (clickHighlightedWord / getHighlightedWordRects in helpers.ts).
 
 import { expect, test } from './fixtures'
 import {
+  clickHighlightedWord,
   enableLearningMode,
+  getHighlightedWords,
+  getHighlightedWordsCount,
+  isWordHighlighted,
   mockBackendFetch,
   openPopup,
   seedLoggedInState,
@@ -51,48 +53,33 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
   test('§4.1: popup stays within viewport bounds when anchored near each edge', async ({
     page,
   }) => {
-    const words = page.locator('.enx-word')
-    const count = await words.count()
-    expect(count).toBeGreaterThan(0)
+    const words = await getHighlightedWords(page)
+    expect(words.length).toBeGreaterThan(0)
 
-    const boxes: { index: number; box: { x: number; y: number; width: number; height: number } }[] = []
-    for (let i = 0; i < count; i++) {
-      const box = await words.nth(i).boundingBox()
-      if (box) boxes.push({ index: i, box })
-    }
-    expect(boxes.length).toBeGreaterThan(0)
+    // Pick the document-order index of the word nearest each viewport edge.
+    // Indices are stable across the loop (nothing here mutates the highlight
+    // set), and clickHighlightedWord only scrolls a word into view when it is
+    // *off*-screen -- so these already-visible edge words keep their position
+    // and the popup is genuinely anchored near the edge.
+    const indexOfExtreme = (cmp: (a: number, b: number) => boolean, axis: 'x' | 'y') =>
+      words.reduce(
+        (best, w, i) => (cmp(w[axis], words[best][axis]) ? i : best),
+        0
+      )
 
     const viewport = page.viewportSize()!
     const scenarios: Array<{ label: string; index: number }> = [
-      {
-        label: 'top',
-        index: boxes.reduce((a, b) => (b.box.y < a.box.y ? b : a)).index,
-      },
-      {
-        label: 'bottom',
-        index: boxes.reduce((a, b) =>
-          b.box.y + b.box.height > a.box.y + a.box.height ? b : a
-        ).index,
-      },
-      {
-        label: 'left',
-        index: boxes.reduce((a, b) => (b.box.x < a.box.x ? b : a)).index,
-      },
-      {
-        label: 'right',
-        index: boxes.reduce((a, b) =>
-          b.box.x + b.box.width > a.box.x + a.box.width ? b : a
-        ).index,
-      },
+      { label: 'top', index: indexOfExtreme((a, b) => a < b, 'y') },
+      { label: 'bottom', index: indexOfExtreme((a, b) => a > b, 'y') },
+      { label: 'left', index: indexOfExtreme((a, b) => a < b, 'x') },
+      { label: 'right', index: indexOfExtreme((a, b) => a > b, 'x') },
     ]
 
     for (const { label, index } of scenarios) {
       await page.keyboard.press('Escape')
       await page.waitForTimeout(150)
 
-      const word = words.nth(index)
-      await word.scrollIntoViewIfNeeded()
-      await word.click()
+      await clickHighlightedWord(page, index)
       await page.waitForSelector('#enx-word-popup', { timeout: 3000 })
 
       const popupBox = await page.locator('#enx-word-popup').boundingBox()
@@ -114,9 +101,7 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
   })
 
   test('§4.1: Youdao link href matches the clicked word', async ({ page }) => {
-    const word = page.locator('.enx-word').first()
-    const clickedWord = (await word.textContent())?.trim() ?? ''
-    await word.click()
+    const clickedWord = await clickHighlightedWord(page, 0)
     const popup = page.locator('#enx-word-popup')
     await expect(popup).toBeVisible()
 
@@ -133,7 +118,7 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     await mockBackendFetch(context, { translateSessionExpired: true })
     const popup = page.locator('#enx-word-popup')
 
-    await page.locator('.enx-word').first().click()
+    await clickHighlightedWord(page, 0)
     // The popup opens showing loading state, then immediately closes once
     // the mocked 401/sessionExpired response comes back -- so it may already
     // be gone by the time we get to check it; only the end state matters here.
@@ -145,9 +130,7 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     page,
   }) => {
     const popup = page.locator('#enx-word-popup')
-    const word = page.locator('.enx-word').first()
-    const clickedWord = (await word.textContent())?.trim() ?? ''
-    await word.click()
+    const clickedWord = await clickHighlightedWord(page, 0)
     await expect(popup).toBeVisible()
 
     await expect(popup.locator('[data-testid="word-popup-content"]')).toBeVisible()
@@ -161,7 +144,7 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
   }) => {
     await mockBackendFetch(context, { translateFails: true })
     const popup = page.locator('#enx-word-popup')
-    await page.locator('.enx-word').first().click()
+    await clickHighlightedWord(page, 0)
     await expect(popup).toBeVisible()
     await expect(popup.locator('[data-testid="word-popup-error"]')).toBeVisible()
   })
@@ -170,34 +153,31 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     page,
   }) => {
     const popup = page.locator('#enx-word-popup')
-    const words = page.locator('.enx-word')
 
-    await words.nth(0).click()
+    await clickHighlightedWord(page, 0)
     await expect(popup).toBeVisible()
     await popup.locator('[data-testid="word-popup-close"]').click()
     await expect(popup).toHaveCount(0)
 
-    await words.nth(0).click()
+    await clickHighlightedWord(page, 0)
     await expect(popup).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(popup).toHaveCount(0)
 
-    await words.nth(0).click()
+    await clickHighlightedWord(page, 0)
     await expect(popup).toBeVisible()
     await page.waitForTimeout(150) // click-outside listener attaches async, see helpers
     await page.locator('h1').click()
     await expect(popup).toHaveCount(0)
   })
 
-  test('§4.1: Mark Known closes the popup and updates highlight color', async ({
+  test('§4.1: Mark Known closes the popup and drops the word from every highlight bucket', async ({
     page,
   }) => {
-    const word = page.locator('.enx-word').first()
-    const colorBefore = await word.evaluate(
-      (el) => getComputedStyle(el).textDecorationColor
-    )
+    const countBefore = await getHighlightedWordsCount(page)
+    const word = await clickHighlightedWord(page, 0)
+    expect(await isWordHighlighted(page, word)).toBe(true)
 
-    await word.click()
     const popup = page.locator('#enx-word-popup')
     const markBtn = popup.locator('[data-testid="word-popup-mark-known"]')
     await expect(markBtn).toBeVisible()
@@ -206,13 +186,11 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
 
     await page.waitForTimeout(200)
 
-    const colorAfter = await word.evaluate(
-      (el) => getComputedStyle(el).textDecorationColor
-    )
-    expect(colorAfter).not.toBe(colorBefore)
     // ADR-011: a no-longer-reviewable word drops out of every highlight
-    // bucket, so its Range disappears rather than turning white.
-    expect(colorAfter).toBe('rgb(255, 255, 255)')
+    // bucket -- its Range disappears from CSS.highlights rather than the old
+    // behaviour of the marker element's underline turning white.
+    expect(await isWordHighlighted(page, word)).toBe(false)
+    expect(await getHighlightedWordsCount(page)).toBeLessThan(countBefore)
   })
 
   test('§4.2: popup Tailwind styles are isolated from a host page with conflicting class names', async ({
@@ -225,7 +203,7 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     expect(beforeDisplay).toBe('block')
     expect(beforeFontSize).toBe('40px')
 
-    await page.locator('.enx-word').first().click()
+    await clickHighlightedWord(page, 0)
     const popup = page.locator('#enx-word-popup')
     await expect(popup).toBeVisible()
 
@@ -257,8 +235,7 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
       }
     })
 
-    const words = page.locator('.enx-word')
-    const count = await words.count()
+    const count = await getHighlightedWordsCount(page)
     expect(count).toBeGreaterThan(0)
 
     const cdp = await context.newCDPSession(page)
@@ -270,7 +247,7 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
 
     const CYCLES = 50
     for (let i = 0; i < CYCLES; i++) {
-      await words.nth(i % count).click()
+      await clickHighlightedWord(page, i % count)
       await page.waitForSelector('#enx-word-popup', { timeout: 3000 })
       await page.evaluate(() => {
         const el = document.getElementById('enx-word-popup') as (HTMLElement & { hidePopover: () => void }) | null

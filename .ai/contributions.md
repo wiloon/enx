@@ -2,6 +2,58 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-09-01: Rewrite Playwright E2E for the CSS Custom Highlight API — ADR-011 / issue #14
+
+**Agent**: Claude Code (Sonnet)
+**Task**: The `e2e/` specs still drove the removed `<u class="enx-word">` elements
+(issue #11 switched highlighting to the CSS Custom Highlight API, so the DOM has no
+marker nodes). Rewrite them against the new model so a homelab E2E run stops masking
+real regressions.
+
+**Solution**:
+- `e2e/helpers.ts`: one page-side range collector, `getHighlightedWords(page, {
+  scrollIndexIntoView? })` — every `enx-hl-*` range in document order with each word's
+  viewport-relative click point; it scrolls a target word in only when it is off-screen,
+  so viewport-edge tests keep their word where it was. `getHighlightedWordsCount` sums
+  `Highlight.size`; `getHighlightNames` lists the `enx-hl-*` buckets; `isWordHighlighted`
+  and `clickHighlightedWord` (real `page.mouse.click` at the word centre) build on the
+  collector. `clickWordAndWaitForPopup` delegates to `clickHighlightedWord`.
+  `waitForContentScript` now waits on the injected `style[data-enx-highlight-styles]`
+  **and** a non-empty `enx-hl-*` registry (a real paint), removing the reliance on
+  `enableLearningMode`'s fixed 2s sleep. Removed the `TODO(ADR-011 issue #11)` block.
+- `content-highlighting.spec.ts`: `'should add enx-word class…'` → `'should register
+  highlighted words in the CSS Highlight API'` (asserts `getHighlightNames` non-empty +
+  count > 0).
+- `content-translation.spec.ts`: the underline-thickness test is **removed** with a note
+  — it guarded an inline-style drift bug that cannot exist under the Highlight API, and
+  `getComputedStyle` can't read a custom-highlight pseudo; paint-stability is covered by
+  the Mark Known and toggle specs.
+- `content-popup-shadow-dom.spec.ts`: every `page.locator('.enx-word')` → coordinate
+  clicks; the Mark Known test now asserts the word's Range drops out of every bucket
+  (`isWordHighlighted` false, count decreases) — was: underline turns `rgb(255,255,255)`.
+- New `e2e/word-highlight-toggle.spec.ts` (issue #13 flow): toggling the preference via
+  the options page clears / repopulates `CSS.highlights` with no reload, and
+  click-to-lookup still works while the paint is off.
+- New `e2e/homelab-x-tweet-rebuild.spec.ts` (issue #12): a real spec in the homelab lane
+  (`playwright.homelab.config.ts`), `test.skip` unless `ENX_HOMELAB=1` + `ENX_ACCESS_TOKEN`
+  + `ENX_X_TWEET_URL`. Opens a tweet permalink, highlights it, clicks through to another
+  status (History-API route change, no reload), asserts the rebuild, then `goBack()` and
+  asserts the re-highlight. The SPA adapter only engages on a real `x.com` document so it
+  can't run in the local lane; jest (`src/content/__tests__/spaRebuild.test.ts`) covers
+  the pure rebuild logic.
+
+**Files**: modified `e2e/helpers.ts`, `e2e/content-highlighting.spec.ts`,
+`e2e/content-translation.spec.ts`, `e2e/content-popup-shadow-dom.spec.ts`; added
+`e2e/word-highlight-toggle.spec.ts`, `e2e/homelab-x-tweet-rebuild.spec.ts`.
+
+**Verification**: `eslint` clean on all touched e2e files (the pre-existing baseline
+`e2e/helpers.ts:_password` warning is untouched); `playwright test --list` compiles the
+local lane (26 tests, was 24: +3 toggle, −1 removed underline test) and the homelab
+lane (+1 x-tweet spec). The suite was **not executed** — it needs non-headless
+Chrome + the Go backend + homelab — so the new specs' "fails without the change"
+property is unverified and `pnpm test:e2e` / `test:e2e:homelab` are pending a homelab
+run. Jest still 139/139.
+
 ## 2026-09-01: "Highlight vocabulary while reading" toggle — ADR-011 / issue #13
 
 **Agent**: Claude Code (Sonnet)

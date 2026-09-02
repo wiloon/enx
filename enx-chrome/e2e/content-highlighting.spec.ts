@@ -1,13 +1,11 @@
-// NOTE (ADR-011 issue #11): the CSS Custom Highlight API replaced the
-// <u class="enx-word"> elements. Assertions in this file that select
-// .enx-word or read its inline style are stale and will fail until this
-// spec is rewritten to click word text by coordinate and read
-// CSS.highlights. Tracked as an E2E follow-up; jest covers the switch
-// (src/lib/__tests__/highlightRanges.test.ts).
+// NOTE (ADR-011 issue #11 / #14): highlighting is painted with the CSS Custom
+// Highlight API -- there are no `.enx-word` marker elements. Counts come from
+// `CSS.highlights` range totals; lookups are coordinate clicks on word text.
 
 import { expect, test } from './fixtures'
 import {
     enableLearningMode,
+    getHighlightNames,
     getHighlightedWordsCount,
     login,
     openPopup,
@@ -58,7 +56,7 @@ test.describe('Content Script - Word Highlighting', () => {
     expect(count).toBe(0)
   })
 
-  test('should add enx-word class to highlighted words', async ({
+  test('should register highlighted words in the CSS Highlight API', async ({
     page,
     extensionId,
   }) => {
@@ -69,9 +67,12 @@ test.describe('Content Script - Word Highlighting', () => {
     await enableLearningMode(page, extensionId)
     await waitForContentScript(page)
 
-    // Check CSS class
-    const firstWord = page.locator('.enx-word').first()
-    await expect(firstWord).toHaveClass(/enx-word/)
+    // The CSS Highlight API registry should carry at least one `enx-hl-*`
+    // bucket, and those buckets should hold ranges.
+    const names = await getHighlightNames(page)
+    expect(names.length).toBeGreaterThan(0)
+    expect(names.every((n) => n.startsWith('enx-hl-'))).toBe(true)
+    expect(await getHighlightedWordsCount(page)).toBeGreaterThan(0)
   })
 
   test('should work on different pages', async ({ page, extensionId }) => {
