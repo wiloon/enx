@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { useAtom } from 'jotai'
 import {
+  ArrowPathRoundedSquareIcon,
   BookOpenIcon,
-  MagnifyingGlassIcon,
   SpeakerWaveIcon,
 } from '@heroicons/react/20/solid'
 import SidePanelTranslateIcon from '@/components/icons/SidePanelTranslateIcon'
@@ -12,6 +12,7 @@ import {
   errorAtom,
   sentencePanelHintAtom,
 } from '@/store/atoms'
+import { formatPhonetic } from '@/lib/phonetic'
 import { playPronunciation } from '@/lib/pronunciation'
 
 interface WordPopupProps {
@@ -105,14 +106,14 @@ export default function WordPopup({
           <h3 className="text-lg font-bold text-gray-800 leading-tight">
             {currentWord?.English || word}
           </h3>
-          {currentWord?.Pronunciation && (
+          {formatPhonetic(currentWord?.Pronunciation) && (
             <span className="inline-flex items-center gap-1 text-sm text-gray-500">
-              {currentWord.Pronunciation}
+              {formatPhonetic(currentWord?.Pronunciation)}
               <button
                 data-testid="word-popup-play-pronunciation"
                 type="button"
-                onClick={() => playPronunciation(currentWord.English)}
-                className="text-gray-400 hover:text-blue-500 leading-none"
+                onClick={() => currentWord && playPronunciation(currentWord.English)}
+                className="text-gray-400 hover:text-blue-500 leading-none p-1 -m-1"
                 title="Play pronunciation"
               >
                 <SpeakerWaveIcon className="h-3.5 w-3.5 block" aria-hidden="true" />
@@ -124,7 +125,7 @@ export default function WordPopup({
               className="inline-flex items-center gap-0.5 text-xs text-gray-400"
               title={`Query Count: ${currentWord.LoadCount}`}
             >
-              <MagnifyingGlassIcon className="h-3 w-3" aria-hidden="true" />
+              <ArrowPathRoundedSquareIcon className="h-3 w-3" aria-hidden="true" />
               {currentWord.LoadCount}
             </span>
           )}

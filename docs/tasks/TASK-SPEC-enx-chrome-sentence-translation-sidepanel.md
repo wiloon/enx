@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | 2026-08-03 变更 Implemented；**2026-08-04 新变更 Implemented**（§3.9：Side Panel 单词点击展示从单行列表改为卡片，随后又经两次修订：合并为单行布局、移除 Youdao 外链、Query Count 改图标；`tsc --noEmit`、`jest`（96 项全过，SidePanel 10 项）、`vite build`（产出 `dist/sidepanel.html`）均通过；真实 Chrome 手工验证——分阶段渲染的视觉效果、卡片样式——尚待用户执行） |
+| **状态** | 2026-08-03 变更 Implemented；2026-08-04 新变更 Implemented（§3.9：Side Panel 单词点击展示从单行列表改为卡片，随后又经三次修订：合并为单行布局、移除 Youdao 外链、Query Count 改图标）；**2026-09-02 五次修订 Implemented**（§3.9：卡片改回列表式 + `formatPhonetic` 统一音标 + 单条移除 + 上下文义带「本句」标签 + 词典释义折叠 + Query Count 图标换 `ArrowPathRoundedSquareIcon`；`tsc --noEmit`、`jest`（SidePanel 20 项 + `phonetic` 新测试，既有 2 项 `pronunciation.test.ts` 失败为改动前既存、无关）、`vite build` 均通过；真实 Chrome 手工验证——列表分隔/移除按钮/展开收起/音标统一——尚待用户执行） |
 | **类型** | SDD Task Spec（Spec 驱动实现；实现前以本文为准，实现后同步更新状态与验收清单） |
 | **目标** | 在现有单词查词弹窗基础上新增「整句翻译」入口：点击后在 Chrome 扩展的 Side Panel 中显示当前单词所在句子的英文原文 + 调用 AI 模型（Kimi / AWS Bedrock / MiniMax，按配置切换）翻译出的中文整句译文；用户还可在侧边栏内点击原文中任意单词，在整句译文下方追加显示该词**在当前句子上下文中的中文含义**（2026-08-03 变更：改为调用 AI 模型按句子上下文翻译该词，不再复用 ECDICT 查词逻辑；音标字段单独并行查询 ECDICT/`getOneWord` 获取，见 §3.7）。**2026-08-04 变更**：单词点击后的展示形式从单行文字改为卡片，卡片内同时展示 AI 上下文中文含义（突出显示）与词典原始中文释义（沿用 `getOneWord` 已查到但此前被丢弃的 `ecp.Chinese`/`ecp.LoadCount` 字段），并列出音标、Query Count、有道词典外链；卡片列表按点击时间倒序排列，重复点击已存在的词只置顶、不重新请求（见 §3.9） |
 | **非目标** | 不改变现有查词弹窗内已有的单词翻译展示；不做侧边栏内的划词/多词选择整句翻译（仅覆盖"点击已高亮单词→查所在句"的路径）；不做翻译结果的本地持久化/历史记录 |
@@ -258,6 +258,27 @@ static extractSentenceContext(
 - 列表按点击时间倒序排列，最近点击的词卡片在最上面（此前是简单 append 到末尾）。
 - 若点击的词已存在于当前列表中（同一句子内重复点击同一个词），**不重新发起请求、不新增卡片**，只把已存在的那张卡片挪到列表最前面。
 
+---
+
+#### 2026-09-02 五次修订：卡片改列表 + 音标格式化 + 移除按钮（Implemented）
+
+**触发原因**：用户看到真实数据后的观感反馈——(a) 每张卡片自带 `border + shadow + rounded`，侧栏窄且白底白卡，边框噪音大、卡片间几乎分不开；(b) ECDICT `phonetic` 字段脏，同一个列表里 `/riˈtaɪəmənt/`、`[ləun]`、`taid`、`'mɒ:gidʒ` 四种格式混排；(c) `definitions` 列表只增不减，长时间阅读后全是噪音，没有单条移除入口；(d) 长释义（`underpins`/`mortgage` 等）把行撑得很高；(e) AI 上下文含义和词典释义都在，但层级不够清晰。
+
+**改动（均在 `SidePanel.tsx`，第 3 项额外触及 `WordPopup.tsx` / `content.tsx`）**：
+
+1. **卡片 → 列表**：废弃"每条一个独立 `bg-white rounded-lg shadow-sm border` 卡片"，改为**单个带边框容器 + `divide-y divide-gray-100` 发丝分隔**，每条 `px-3 py-2.5`，hover 加 `bg-gray-50`。`data-testid="sidepanel-card-<word>"` 保留不变（列表项仍是这个 testid）。§3.9「布局：卡片直接渲染在侧边栏内部」的结论不变，变的只是视觉分隔方式。
+2. **列表头**：容器上方加 `生词 N ｜ 清空`，`清空` 按钮（`data-testid="sidepanel-clear-definitions"`）一次清空整个 `definitions` 列表。
+3. **音标格式化**：新增 `enx-chrome/src/lib/phonetic.ts` 的 `formatPhonetic(raw?)`——统一去掉已有的 `[]` / `//` 包裹、`[uk][us]` 拼接时取末段（US，沿用原 `extractUSPhonetic` 的取舍）、统一重新包成 `/…/`、无有效值返回 `''`（渲染层据此不显示）。幂等。
+   - 原 `content.tsx` 里的 `extractUSPhonetic` 及其对应测试 `src/content/__tests__/phonetic.test.ts` **一并移除**，逻辑合并进 `formatPhonetic`；新测试 `src/lib/__tests__/phonetic.test.ts`。
+   - `content.tsx` 不再在写入 `wordCache`/atom 前做任何音标处理（存原始值）；`WordPopup.tsx` 与 `SidePanel.tsx` **在渲染时**各自调用 `formatPhonetic`，两个界面音标形状一致（对齐 §4.5.1 / §4.5「两处音标一致」的既有验收项）。
+4. **上下文含义移出标题行**：§3.9 二次修订把「词 + 音标 + 上下文义 + Query Count」压到同一行；本次把**上下文义从标题行移到释义区**，加一个蓝色「本句」小标签，排在词典释义（灰色）上方。标题行现在只有「词 + 音标 + 播放 + Query Count」。理由：上下文义和音标抢同一行、且一句 AI 译文与 ECDICT 多义词 dump 混在一行观感差；「本句」标签让"这个词在这句里的意思"这层语义显性化。
+5. **词典释义折叠**：词典释义默认 `line-clamp-3`，释义较长（>40 字符或含换行）时显示「展开 / 收起」（`data-testid="sidepanel-toggle-meaning-<word>"`），展开状态按 `word` 记在组件内 `expandedWords: Set<string>`，随列表重排保持。
+6. **单条移除**：每行 hover 时右上角出现 `×`（`XMarkIcon`，`data-testid="sidepanel-remove-<word>"`），从 `definitions` 中按 `word` 过滤掉该条。纯前端、不持久化，重新点该词会重新加入。
+7. **播放按钮热区**：喇叭 `<button>` 加 `p-1 -m-1` 扩大点击区（视觉尺寸不变）。`WordPopup.tsx` 同步。
+8. **Query Count 图标**：§3.9 四次修订选的 `MagnifyingGlassIcon`（放大镜，易被误读成"点击可搜索"的操作按钮）换成 `ArrowPathRoundedSquareIcon`（循环箭头，语义"反复查过"），颜色压到 `text-gray-300` 去操作感，`title="Query Count: N"` 不变。`WordPopup.tsx` 同步。
+
+**未包含 / 留待后续**：`loadCount` 高时的高亮（如 `FireIcon` + 琥珀色标记高频生词）；释义折叠的"是否超行"改为真实测量（当前是字符数启发式）；「本句 / 历史」来源标签。
+
 **数据结构调整**（`enx-chrome/src/sidepanel/SidePanel.tsx`）：
 
 ```ts
@@ -337,6 +358,18 @@ interface WordCardData {
 - [x] 新点击的词卡片出现在列表**最前**，而非追加到末尾——`setDefinitions(prev => [骨架, ...prev])`；「appends word cards on click」用例断言卡片顺序
 - [x] 重复点击列表中已存在的词：仅将其卡片移到最前，不重新发起 `getOneWord`/`translateWordInContext` 请求（mock 调用次数不增加）——「re-clicking a word already in the list」用例覆盖
 
+### 4.5.2 卡片改列表 + 音标格式化 + 移除按钮（2026-09-02 新增，见 §3.9 五次修订，Implemented）
+
+- [x] `formatPhonetic` 统一音标形状：裸串 `taid`→`/taid/`、`[ləun]`→`/ləun/`、已带 `//` 保持不变（幂等）、`[uk][us]` 拼接取末段、空/无效返回 `''`——`src/lib/__tests__/phonetic.test.ts` 覆盖
+- [x] `content.tsx` 不再预处理音标（存原始值），`WordPopup.tsx` 与 `SidePanel.tsx` 渲染时各自 `formatPhonetic`，两处形状一致——`extractUSPhonetic` 及其旧测试已移除；`tsc --noEmit`、`vite build` 通过
+- [x] 单词列表渲染为单个带边框容器 + `divide-y` 分隔，不再每条独立卡片阴影；`sidepanel-card-<word>` testid 不变——`SidePanel.test.tsx` 20 项全过（含卡片顺序、progressive、置顶去重等原有断言）
+- [x] 列表头 `生词 N`，`清空` 按钮（`sidepanel-clear-definitions`）清空 `definitions`
+- [x] 每行 hover 出现移除按钮（`sidepanel-remove-<word>`），按 `word` 从 `definitions` 过滤；纯前端不持久化
+- [x] 上下文中文含义从标题行移到释义区，带蓝色「本句」标签，排在词典释义上方；标题行只剩「词 + 音标 + 播放 + Query Count」
+- [x] 词典释义默认 `line-clamp-3`，长释义（>40 字符或含换行）显示「展开/收起」（`sidepanel-toggle-meaning-<word>`），展开态按 `word` 记录、随列表重排保持
+- [x] Query Count 图标 `MagnifyingGlassIcon` → `ArrowPathRoundedSquareIcon`，`title="Query Count: N"` 不变；`WordPopup.tsx` 同步——「appends word cards on click」用例断言 `getByTitle('Query Count: 3')` 仍通过
+- [ ] ⏳ 真实 Chrome 手工确认：列表视觉分隔、移除按钮 hover 出现、展开/收起、音标统一显示为 `/…/`——需真人在 unpacked 模式加载后确认
+
 ### 4.6 已开面板的实时更新
 
 - [x] Side Panel 已打开时，在网页里点另一个词的"整句翻译"，面板内容原地刷新为新句子，不需要重新触发打开——`SidePanel.test.tsx` 用 `chrome.storage.onChanged` 模拟覆盖
@@ -367,12 +400,14 @@ interface WordCardData {
 | --- | --- |
 | `enx-chrome/manifest.json` | 新增 `sidePanel`、`contextMenus` permission、`side_panel.default_path` |
 | `enx-chrome/sidepanel.html` | 新增，Side Panel 入口 HTML |
-| `enx-chrome/src/sidepanel/SidePanel.tsx` | 新增，Side Panel React 组件（英文原句 + AI 译文 + 单词点击释义）；**2026-08-03 变更**：`handleWordClick` 改为并行发起 `translateWordInContext` + `getOneWord`，前者取中文含义、后者只取音标；**2026-08-04 变更**：`WordDefinition` → `WordCardData`（新增 `loadCount`/`dictionaryChinese`/`dictionaryStatus`/`contextStatus` 字段），单行文字列表改为卡片列表，`handleWordClick` 改为「已存在则置顶不重新请求；否则插入列表最前 + 两个请求分别独立更新对应字段」，见 §3.9 |
+| `enx-chrome/src/sidepanel/SidePanel.tsx` | 新增，Side Panel React 组件（英文原句 + AI 译文 + 单词点击释义）；**2026-08-03 变更**：`handleWordClick` 改为并行发起 `translateWordInContext` + `getOneWord`，前者取中文含义、后者只取音标；**2026-08-04 变更**：`WordDefinition` → `WordCardData`（新增 `loadCount`/`dictionaryChinese`/`dictionaryStatus`/`contextStatus` 字段），单行文字列表改为卡片列表，`handleWordClick` 改为「已存在则置顶不重新请求；否则插入列表最前 + 两个请求分别独立更新对应字段」，见 §3.9；**2026-09-02 五次修订**：卡片改回 `divide-y` 列表式，新增 `生词 N / 清空` 列表头、单条移除按钮、`expandedWords` 词典释义折叠；上下文义移出标题行改带「本句」标签；音标改用 `formatPhonetic`；Query Count 图标换 `ArrowPathRoundedSquareIcon` |
 | `enx-chrome/src/sidepanel/__tests__/SidePanel.test.tsx` | 新增，覆盖空状态/加载译文/追加释义/`storage.onChanged` 实时刷新；**2026-08-03 变更**：单词点击相关断言改为验证「上下文中文含义来自 word-in-context 响应、音标来自 getOneWord 响应、任一方失败不阻塞另一方」；**2026-08-04 变更**：新增卡片分阶段渲染、置顶去重、词典释义空态的测试用例，见 §3.9 末尾「必须新增/更新测试」 |
 | `enx-chrome/src/lib/wordProcessor.ts` | 新增 `extractSentenceContext()` |
-| `enx-chrome/src/components/WordPopup.tsx` | 新增「🔤 整句翻译」按钮（与现有 Youdao/Know It 按钮同区域），新增 `onOpenSentencePanel` 之类的 prop |
-| `enx-chrome/src/content/content.tsx` | `showWordPopup()` 里实现整句翻译按钮回调：`WordProcessor.extractSentenceContext()` 取句 → `sendToBackground({type:'openSentencePanel', ...})`（触发路径③） |
-| `enx-chrome/src/content/__tests__/` | 新增句子提取单测 |
+| `enx-chrome/src/lib/phonetic.ts` | **2026-09-02 五次修订新增**：`formatPhonetic(raw?)`，渲染层音标格式化（去 `[]`/`//` 包裹、`[uk][us]` 取末段、统一包 `/…/`、无效返回 `''`、幂等）；`SidePanel.tsx` 与 `WordPopup.tsx` 共用 |
+| `enx-chrome/src/lib/__tests__/phonetic.test.ts` | **2026-09-02 五次修订新增**：`formatPhonetic` 单测（原 `src/content/__tests__/phonetic.test.ts` 移除，逻辑并入此处） |
+| `enx-chrome/src/components/WordPopup.tsx` | 新增「🔤 整句翻译」按钮（与现有 Youdao/Know It 按钮同区域），新增 `onOpenSentencePanel` 之类的 prop；**2026-09-02 五次修订**：音标改用 `formatPhonetic` 渲染，Query Count 图标换 `ArrowPathRoundedSquareIcon`，喇叭按钮加 `p-1 -m-1` 热区 |
+| `enx-chrome/src/content/content.tsx` | `showWordPopup()` 里实现整句翻译按钮回调：`WordProcessor.extractSentenceContext()` 取句 → `sendToBackground({type:'openSentencePanel', ...})`（触发路径③）；**2026-09-02 五次修订**：移除 `extractUSPhonetic`，不再预处理音标（存原始值，渲染层用 `formatPhonetic`） |
+| `enx-chrome/src/content/__tests__/` | 新增句子提取单测（**2026-09-02**：`phonetic.test.ts` 移除，见 `src/lib/__tests__/phonetic.test.ts`） |
 | `enx-chrome/src/background/background.ts` | 新增 `openSentencePanel` / `translateSentence` message handler；新增 `chrome.contextMenus` 注册与 `onClicked` 处理（触发路径②）；**2026-08-03 变更**：新增 `translateWordInContext` message handler（`handleTranslateWordInContext`），调用新端点，与既有 `handleGetOneWord` 并存、互不修改 |
 | `enx-chrome/src/popup/Popup.tsx` / `popup.html` | 新增"打开整句翻译面板"按钮，直接调用 `chrome.sidePanel.open()`（触发路径①） |
 | `enx-chrome/src/types/index.ts` | 新增 `PendingSentenceContext`/`PENDING_SENTENCE_STORAGE_KEY`；`ContentMessage`/`BackgroundResponse` 新增 `openSentencePanel`/`translateSentence` 相关字段；**2026-08-03 变更**：新增 `translateWordInContext` 相关 `ContentMessage`/`BackgroundResponse` 字段 |

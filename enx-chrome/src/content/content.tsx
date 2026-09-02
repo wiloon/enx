@@ -58,18 +58,6 @@ const sendToBackground = (
   })
 }
 
-// Extract US phonetic from a pronunciation string.
-// Some entries (scraped before the API migration) store both UK and US
-// phonetics concatenated, e.g. "[dɪˈskrɪmɪnətəri][dɪˈskrɪmɪnətə:ri]".
-// In that case the second bracket pair is the American English pronunciation.
-export const extractUSPhonetic = (pronunciation: string): string => {
-  const matches = pronunciation.match(/\[[^\]]+\]/g)
-  if (matches && matches.length >= 2) {
-    return matches[matches.length - 1]
-  }
-  return pronunciation
-}
-
 type PopupElement = HTMLElement & {
   popover: string
   showPopover: () => void
@@ -298,14 +286,10 @@ const showWordPopup = async (word: string, reference: Range) => {
     console.log('Translation response:', response)
 
     if (response.success && response.ecp) {
-      // US phonetic extraction: some entries store both UK and US
-      // pronunciations concatenated, see extractUSPhonetic() above.
-      const wordData: WordData = {
-        ...response.ecp,
-        Pronunciation: response.ecp.Pronunciation
-          ? extractUSPhonetic(response.ecp.Pronunciation)
-          : response.ecp.Pronunciation,
-      }
+      // The raw ECDICT phonetic field is kept as-is here; formatPhonetic()
+      // (src/lib/phonetic.ts) normalises it at render time in WordPopup and
+      // the Side Panel, so both surfaces show the same shape.
+      const wordData: WordData = { ...response.ecp }
 
       contentScriptStore.set(currentWordAtom, wordData)
       contentScriptStore.set(isTranslatingAtom, false)

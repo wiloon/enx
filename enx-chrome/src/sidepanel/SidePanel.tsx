@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import '@/index.css'
-import { MagnifyingGlassIcon, SpeakerWaveIcon } from '@heroicons/react/20/solid'
+import {
+  ArrowPathRoundedSquareIcon,
+  SpeakerWaveIcon,
+  XMarkIcon,
+} from '@heroicons/react/20/solid'
 import { initSentry } from '@/lib/sentry'
+import { formatPhonetic } from '@/lib/phonetic'
 import { playPronunciation } from '@/lib/pronunciation'
 import { sendMessageToBackground } from '@/services/api'
 import { config } from '@/config/env'
@@ -106,6 +111,31 @@ function SidePanelContent() {
   const [errorMessage, setErrorMessage] = useState('')
   const [errorHttpStatus, setErrorHttpStatus] = useState<number | undefined>(undefined)
   const [definitions, setDefinitions] = useState<WordCardData[]>([])
+  // Words whose (often verbose) dictionary meaning the user has expanded past
+  // the default 3-line clamp. Keyed by word so it survives list reordering.
+  const [expandedWords, setExpandedWords] = useState<Set<string>>(new Set())
+
+  const toggleExpanded = useCallback((word: string) => {
+    setExpandedWords(prev => {
+      const next = new Set(prev)
+      if (next.has(word)) next.delete(word)
+      else next.add(word)
+      return next
+    })
+  }, [])
+
+  // Removes a single card from the running list (ADR-006 list is append-only
+  // otherwise, so a long reading session accumulates noise). Purely local --
+  // nothing is persisted, re-clicking the word re-adds it.
+  const handleRemoveCard = useCallback((word: string) => {
+    setDefinitions(prev => prev.filter(d => d.word !== word))
+    setExpandedWords(prev => {
+      if (!prev.has(word)) return prev
+      const next = new Set(prev)
+      next.delete(word)
+      return next
+    })
+  }, [])
 
   // Keep listening for a new sentence context: if the panel is already open
   // and the user clicks "整句翻译" on another word on the page, this fires
@@ -482,124 +512,196 @@ function SidePanelContent() {
       )}
 
       {definitions.length > 0 && (
-        <div
-          className="border-t border-gray-100 pt-3 space-y-2"
-          data-testid="sidepanel-definitions"
-        >
-          {definitions.map(def => (
-            <div
-              key={def.word}
-              className="bg-white rounded-lg shadow-sm border border-gray-200 p-3"
-              data-testid={`sidepanel-card-${def.word}`}
+        <div className="border-t border-gray-100 pt-3" data-testid="sidepanel-definitions">
+          {/* List header: a running count + a way to clear the accumulated
+              list, which is otherwise append-only for the panel session
+              (ADR-006). */}
+          <div className="flex items-center justify-between mb-2 px-0.5">
+            <span className="text-xs font-medium text-gray-400">生词 {definitions.length}</span>
+            <button
+              type="button"
+              data-testid="sidepanel-clear-definitions"
+              onClick={() => {
+                setDefinitions([])
+                setExpandedWords(new Set())
+              }}
+              className="text-xs text-gray-400 hover:text-red-500"
             >
-              {/* Word, phonetic, contextual meaning, and Query Count share one
-                  flex row (spec §3.9 revision) instead of stacking as
-                  separate blocks -- these four are the "headline" of the
-                  card, and keeping them on one line saves vertical space in
-                  the narrow side panel. */}
-              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mb-2">
-                <span className="font-bold text-gray-800">{def.word}</span>
+              清空
+            </button>
+          </div>
 
-                {def.dictionaryStatus === 'loading' ? (
-                  <span className="text-gray-400 text-xs">音标加载中...</span>
-                ) : (
-                  def.pronunciation && (
-                    <span className="inline-flex items-center gap-1">
-                      <span className="text-gray-600 text-sm">{def.pronunciation}</span>
-                      <button
-                        data-testid={`sidepanel-play-pronunciation-${def.word}`}
-                        type="button"
-                        onClick={() => playPronunciation(def.word)}
-                        className="text-gray-400 hover:text-blue-500 leading-none"
-                        title="Play pronunciation"
-                      >
-                        <SpeakerWaveIcon className="h-3.5 w-3.5 block" aria-hidden="true" />
-                      </button>
-                    </span>
-                  )
-                )}
-
-                {def.contextStatus === 'loading' && (
-                  <span className="text-gray-400 text-sm">
-                    <span className="inline-block animate-spin mr-1">⏳</span>
-                    翻译中...
-                  </span>
-                )}
-                {def.contextStatus === 'loaded' && (
-                  <span className="text-blue-700 font-medium text-sm">{def.contextChinese}</span>
-                )}
-
-                {def.loadCount !== undefined && (
-                  <span
-                    className="inline-flex items-center gap-0.5 text-xs text-gray-400 ml-auto whitespace-nowrap"
-                    title={`Query Count: ${def.loadCount}`}
-                  >
-                    <MagnifyingGlassIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                    {def.loadCount}
-                  </span>
-                )}
-              </div>
-
-              {/* Kept off the headline row: an error (e.g. session expiry)
-                  read as a real translation there. Its own row + retry
-                  button makes it obviously an error and recoverable. */}
-              {def.contextStatus === 'error' && (
+          {/* One bordered list with hairline dividers instead of a stack of
+              individually-bordered cards (spec §3.9 revision): the panel is
+              narrow and white-on-white cards barely read against the
+              background -- a single frame with divide-y is denser and calmer. */}
+          <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+            {definitions.map(def => {
+              const phonetic = formatPhonetic(def.pronunciation)
+              const expanded = expandedWords.has(def.word)
+              const dictLong =
+                !!def.dictionaryChinese &&
+                (def.dictionaryChinese.length > 40 || def.dictionaryChinese.includes('\n'))
+              return (
                 <div
-                  className="flex items-center justify-between gap-2 text-red-600 text-xs bg-red-50 rounded px-2 py-1 mb-2"
-                  data-testid={`sidepanel-context-error-${def.word}`}
+                  key={def.word}
+                  className="group relative px-3 py-2.5 hover:bg-gray-50"
+                  data-testid={`sidepanel-card-${def.word}`}
                 >
-                  <span className="flex-1">
-                    {def.contextErrorHttpStatus === HTTP_INSUFFICIENT_CREDIT
-                      ? 'AI 翻译积分不足'
-                      : def.contextError}
-                  </span>
-                  {def.contextErrorHttpStatus === HTTP_INSUFFICIENT_CREDIT && (
-                    <UpgradeLink className="text-red-600 hover:text-red-800 font-medium whitespace-nowrap underline" />
-                  )}
+                  {/* Headline: word + phonetic + play + Query Count on one
+                      row. The contextual meaning is NOT here anymore -- it
+                      moved down into the meaning block with a 本句 tag so it
+                      reads as "this word, in this sentence" rather than
+                      competing with the phonetic for the same line. */}
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 pr-5">
+                    <span className="font-semibold text-gray-800">{def.word}</span>
+
+                    {def.dictionaryStatus === 'loading' ? (
+                      <span className="text-gray-400 text-xs">音标加载中...</span>
+                    ) : (
+                      phonetic && (
+                        <span className="inline-flex items-center gap-1">
+                          <span className="text-gray-500 text-xs">{phonetic}</span>
+                          <button
+                            data-testid={`sidepanel-play-pronunciation-${def.word}`}
+                            type="button"
+                            onClick={() => playPronunciation(def.word)}
+                            className="text-gray-400 hover:text-blue-500 leading-none p-1 -m-1"
+                            title="Play pronunciation"
+                          >
+                            <SpeakerWaveIcon className="h-3.5 w-3.5 block" aria-hidden="true" />
+                          </button>
+                        </span>
+                      )
+                    )}
+
+                    {def.loadCount !== undefined && (
+                      <span
+                        className="inline-flex items-center gap-0.5 text-xs text-gray-300 ml-auto whitespace-nowrap"
+                        title={`Query Count: ${def.loadCount}`}
+                      >
+                        <ArrowPathRoundedSquareIcon
+                          className="h-3.5 w-3.5"
+                          aria-hidden="true"
+                        />
+                        {def.loadCount}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Dismiss this card -- the list otherwise only grows. */}
                   <button
                     type="button"
-                    data-testid={`sidepanel-retry-context-${def.word}`}
-                    onClick={() => handleRetryContextTranslation(def.word)}
-                    className="text-red-600 hover:text-red-800 font-medium whitespace-nowrap"
-                    title="Retry"
+                    data-testid={`sidepanel-remove-${def.word}`}
+                    onClick={() => handleRemoveCard(def.word)}
+                    className="absolute top-1.5 right-1.5 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                    title="移除"
+                    aria-label={`移除 ${def.word}`}
                   >
-                    重试
+                    <XMarkIcon className="h-4 w-4" aria-hidden="true" />
                   </button>
-                </div>
-              )}
 
-              {/* Dictionary half's own error row -- 429 means the free daily
-                  lookup quota (TASK-SPEC §4.2) was hit, distinct from a
-                  generic lookup failure. Previously this half rendered
-                  nothing at all on error; the card just silently never
-                  filled in. */}
-              {def.dictionaryStatus === 'error' && (
-                <div
-                  className="flex items-center justify-between gap-2 text-red-600 text-xs bg-red-50 rounded px-2 py-1 mb-2"
-                  data-testid={`sidepanel-dictionary-error-${def.word}`}
-                >
-                  <span className="flex-1">
-                    {def.dictionaryErrorHttpStatus === HTTP_QUOTA_EXCEEDED
-                      ? '今日免费查词次数已用完'
-                      : def.dictionaryError}
-                  </span>
-                  {def.dictionaryErrorHttpStatus === HTTP_QUOTA_EXCEEDED && (
-                    <UpgradeLink className="text-red-600 hover:text-red-800 font-medium whitespace-nowrap underline" />
+                  {/* Kept off the headline row: an error (e.g. session expiry)
+                      read as a real translation there. Its own row + retry
+                      button makes it obviously an error and recoverable. */}
+                  {def.contextStatus === 'error' && (
+                    <div
+                      className="flex items-center justify-between gap-2 text-red-600 text-xs bg-red-50 rounded px-2 py-1 mt-2"
+                      data-testid={`sidepanel-context-error-${def.word}`}
+                    >
+                      <span className="flex-1">
+                        {def.contextErrorHttpStatus === HTTP_INSUFFICIENT_CREDIT
+                          ? 'AI 翻译积分不足'
+                          : def.contextError}
+                      </span>
+                      {def.contextErrorHttpStatus === HTTP_INSUFFICIENT_CREDIT && (
+                        <UpgradeLink className="text-red-600 hover:text-red-800 font-medium whitespace-nowrap underline" />
+                      )}
+                      <button
+                        type="button"
+                        data-testid={`sidepanel-retry-context-${def.word}`}
+                        onClick={() => handleRetryContextTranslation(def.word)}
+                        className="text-red-600 hover:text-red-800 font-medium whitespace-nowrap"
+                        title="Retry"
+                      >
+                        重试
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Dictionary half's own error row -- 429 means the free
+                      daily lookup quota (TASK-SPEC §4.2) was hit, distinct
+                      from a generic lookup failure. */}
+                  {def.dictionaryStatus === 'error' && (
+                    <div
+                      className="flex items-center justify-between gap-2 text-red-600 text-xs bg-red-50 rounded px-2 py-1 mt-2"
+                      data-testid={`sidepanel-dictionary-error-${def.word}`}
+                    >
+                      <span className="flex-1">
+                        {def.dictionaryErrorHttpStatus === HTTP_QUOTA_EXCEEDED
+                          ? '今日免费查词次数已用完'
+                          : def.dictionaryError}
+                      </span>
+                      {def.dictionaryErrorHttpStatus === HTTP_QUOTA_EXCEEDED && (
+                        <UpgradeLink className="text-red-600 hover:text-red-800 font-medium whitespace-nowrap underline" />
+                      )}
+                    </div>
+                  )}
+
+                  {/* Meaning block: the AI in-sentence gloss (tagged 本句,
+                      blue) sits above the generic dictionary meaning (gray,
+                      clamped to 3 lines -- ECDICT dumps can be very long). */}
+                  {(def.contextStatus === 'loading' ||
+                    def.contextStatus === 'loaded' ||
+                    def.dictionaryStatus === 'loading' ||
+                    def.dictionaryChinese) && (
+                    <div className="mt-1.5 space-y-1">
+                      {def.contextStatus === 'loading' && (
+                        <p className="text-gray-400 text-sm">
+                          <span className="inline-block animate-spin mr-1">⏳</span>
+                          翻译中...
+                        </p>
+                      )}
+                      {def.contextStatus === 'loaded' && (
+                        <p className="text-sm text-blue-700">
+                          <span className="mr-1.5 rounded bg-blue-50 px-1 py-0.5 text-[10px] font-medium text-blue-500">
+                            本句
+                          </span>
+                          <span className="font-medium">{def.contextChinese}</span>
+                        </p>
+                      )}
+
+                      {def.dictionaryStatus === 'loading' ? (
+                        <p className="text-gray-400 text-xs">词典释义加载中...</p>
+                      ) : (
+                        def.dictionaryChinese && (
+                          <div>
+                            <p
+                              className={`text-gray-500 text-sm whitespace-pre-line ${
+                                expanded ? '' : 'line-clamp-3'
+                              }`}
+                            >
+                              {def.dictionaryChinese}
+                            </p>
+                            {dictLong && (
+                              <button
+                                type="button"
+                                data-testid={`sidepanel-toggle-meaning-${def.word}`}
+                                onClick={() => toggleExpanded(def.word)}
+                                className="text-xs text-gray-400 hover:text-blue-500 mt-0.5"
+                              >
+                                {expanded ? '收起' : '展开'}
+                              </button>
+                            )}
+                          </div>
+                        )
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
-
-              {def.dictionaryStatus === 'loading' ? (
-                <div className="text-gray-400 text-xs">词典释义加载中...</div>
-              ) : (
-                def.dictionaryChinese && (
-                  <p className="text-gray-600 text-sm whitespace-pre-line border-t border-gray-100 pt-2 mt-2">
-                    {def.dictionaryChinese}
-                  </p>
-                )
-              )}
-            </div>
-          ))}
+              )
+            })}
+          </div>
         </div>
       )}
     </div>
