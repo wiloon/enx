@@ -52,39 +52,43 @@ const X_HOST = /(^|\.)(x|twitter)\.com$/
 const TWEET_DETAIL_PATH = /^\/[^/]+\/status\/\d+/
 
 // From the div[data-testid="tweetText"] nodes on a tweet-detail page (which
-// can also include ancestor tweets and the author's self-thread), pick the
-// one tweet the user opened. Criteria are tried in descending order of
-// expected reliability (ADR-010 premise §2.2 / Options B'1); when none
-// resolves a unique node, falls back to DOM order (Options B'2) — correct on
-// a standalone tweet page, potentially wrong on a conversation page.
+// can also include ancestor tweets, the author's self-thread, and a quoted
+// tweet's body), pick the one tweet body the user opened.
+//
+// The only reliable signal (browser-tested, adr-010-phase2-dom-readiness.md
+// §3): the opened tweet's <article> has tabindex="-1", ancestors/replies
+// have "0". The earlier font-size and "no self /status/ link" criteria were
+// both wrong -- a long main tweet renders smaller than a short reply, and
+// the main tweet's article does carry /status/ links (its permalink, and a
+// quoted tweet's).
+//
+// A quoted tweet's body lives in the SAME article[tabindex="-1"] as the main
+// body (a role="link" block, not a nested <article>), so the focused article
+// can hold >1 tweetText node. The main body is always first in DOM order.
 export function pickFocusedTweet(nodes: Element[]): Element[] {
   if (nodes.length <= 1) return nodes
 
-  // 1. The focused tweet's <article> has tabindex="-1"; replies/ancestors "0".
-  const byTabindex = nodes.filter(
-    n => n.closest('article')?.getAttribute('tabindex') === '-1'
-  )
-  if (byTabindex.length === 1) return byTabindex
+  // The opened tweet's <article> has tabindex="-1". During an SPA tweet
+  // switch the outgoing and incoming focused articles briefly coexist
+  // (adr-010-phase2-dom-readiness.md §3), so take the last in DOM order.
+  const focusedArticles = nodes
+    .map(n => n.closest('article'))
+    .filter((a): a is HTMLElement => a?.getAttribute('tabindex') === '-1')
+  const focusedArticle = focusedArticles[focusedArticles.length - 1]
 
-  // 2. The focused tweet's body renders visibly larger (~23px vs ~15px).
-  const sized = nodes.map(n => ({
-    node: n,
-    size: parseFloat(getComputedStyle(n).fontSize) || 0,
-  }))
-  const maxSize = Math.max(...sized.map(s => s.size))
-  const largest = sized.filter(s => s.size === maxSize && maxSize > 0)
-  if (largest.length === 1) return [largest[0].node]
+  if (focusedArticle) {
+    // A quoted tweet's body sits in the same focused article as the main body
+    // (a role="link" block, not a nested <article>), so there can be >1
+    // tweetText node here; the main body is first in DOM order.
+    const mainBody = nodes.find(n => focusedArticle.contains(n))
+    if (mainBody) return [mainBody]
+  }
 
-  // 3. Ancestor/reply <article>s link to their own /status/ permalink; the
-  //    focused tweet's does not (its permalink is the current URL).
-  const withoutSelfLink = nodes.filter(
-    n => !n.closest('article')?.querySelector('a[href*="/status/"]')
-  )
-  if (withoutSelfLink.length === 1) return withoutSelfLink
-
+  // No article marked focused (unexpected layout, or X changed the DOM):
+  // fall back to the first tweetText in DOM order.
   console.warn(
-    `[enx] pickFocusedTweet: no criterion resolved a single main tweet ` +
-      `(${nodes.length} candidates); falling back to DOM order`
+    `[enx] pickFocusedTweet: no article[tabindex="-1"] among ${nodes.length} ` +
+      `candidates; falling back to DOM order`
   )
   return [nodes[0]]
 }

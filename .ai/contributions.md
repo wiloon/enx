@@ -2,6 +2,34 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-09-01: Fix pickFocusedTweet criteria + quote-tweet handling — ADR-011 / issue #9
+
+**Agent**: Claude Code (Sonnet)
+**Task**: Prefactor — correct which tweet body gets processed on an X tweet-detail page.
+
+**Problem**:
+- `pickFocusedTweet` (ADR-010 §2.2) had three fallback criteria: `article[tabindex="-1"]`,
+  largest font size, and "the article with no self `/status/` link". Browser testing
+  (`docs/research/adr-010-phase2-dom-readiness.md` §3) showed the last two are wrong —
+  a long main tweet renders smaller than a short reply, and the main tweet's article does
+  carry `/status/` links (permalink, and a quoted tweet's).
+- A quoted tweet's body is a second `[data-testid="tweetText"]` inside the same focused
+  `<article>`, which the old code mishandled (fell through to the DOM-order fallback).
+
+**Solution**:
+- `pickFocusedTweet` keeps only `article[tabindex="-1"]`, taking the **last** such article
+  in DOM order (outgoing + incoming coexist during an SPA tweet switch), then the first
+  `tweetText` inside it (main body precedes quoted body). DOM-order fallback + `console.warn`
+  when no article is marked focused.
+- Font-size and self-`/status/`-link criteria removed.
+
+**Files**:
+- Modified: `enx-chrome/src/lib/siteAdapters.ts`, `enx-chrome/src/lib/__tests__/siteAdapters.test.ts`
+
+**Benefits**:
+- On a conversation / quote-tweet page, only the tweet the user opened is marked up.
+- Regression tests lock in that the two wrong criteria stay gone.
+
 ## 2026-09-01: Popup positioning takes a Range (Floating UI) — ADR-011 / issue #8
 
 **Agent**: Claude Code (Sonnet)
