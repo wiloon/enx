@@ -33,6 +33,9 @@ let currentPopup: HTMLElement | null = null
 let currentRoot: Root | null = null
 let wordCache: Record<string, WordData> = {}
 let isProcessing = false
+// Article roots ENX is currently operating on: the delegated click listener
+// is bound to each, and refreshHighlights() rebuilds highlights over them.
+let articleRoots: Element[] = []
 let popupEventCleanup: (() => void) | null = null
 
 // Send message to background script
@@ -212,7 +215,7 @@ const showWordPopup = async (word: string, reference: Range) => {
             }
         wordCache[englishWord.toLowerCase()] = updated
         contentScriptStore.set(currentWordAtom, updated)
-        updateWordHighlighting(englishWord, updated)
+        refreshHighlights()
         popup.hidePopover()
       }
     } catch (error) {
@@ -299,7 +302,7 @@ const showWordPopup = async (word: string, reference: Range) => {
       contentScriptStore.set(isTranslatingAtom, false)
 
       wordCache[word.toLowerCase()] = wordData
-      updateWordHighlighting(word, wordData)
+      refreshHighlights()
 
       // Mirror the lookup into the Side Panel's word list if it's open --
       // ADR-006. Routed through the background service worker rather than
@@ -418,19 +421,14 @@ const hideWordPopup = () => {
   }
 }
 
-// Update word highlighting color after a lookup / mark-acquainted. A word
-// that drops to the "don't highlight" state (just acquainted, or LoadCount
-// still 0) loses its underline entirely rather than getting a white one.
-const updateWordHighlighting = (word: string, wordData: WordData) => {
-  const elements = document.querySelectorAll(`.enx-${word.toLowerCase()}`)
-  const decoration = WordProcessor.getTextDecoration(wordData)
-
-  elements.forEach(element => {
-    if (element instanceof HTMLElement) {
-      element.style.textDecoration = decoration
-      element.style.textDecorationThickness = '1px'
-    }
-  })
+// After a lookup or a mark-acquainted, wordCache has changed, so a word may
+// move to a different review bucket or drop out of highlighting entirely.
+// Re-derive the highlights -- there's no DOM to touch, so a full rebuild is
+// cheap enough on a user action.
+const refreshHighlights = () => {
+  if (articleRoots.length > 0) {
+    WordProcessor.rebuildHighlights(articleRoots, wordCache)
+  }
 }
 
 // Show authentication error message
@@ -516,7 +514,7 @@ const processArticleContent = async (): Promise<boolean> => {
     console.log('Processing article content...')
 
     const adapter = resolveSiteAdapter(window.location)
-    console.log(`Site adapter: ${adapter.name} (highlight: ${adapter.highlightStrategy})`)
+    console.log(`Site adapter: ${adapter.name} (${adapter.contentVolatility})`)
 
     const articleNodes = WordProcessor.getArticleNodes({
       contentSelector: adapter.contentSelector,
@@ -530,22 +528,19 @@ const processArticleContent = async (): Promise<boolean> => {
 
     console.log(`Article node(s) found: ${articleNodes.length}`, articleNodes)
 
-    // inPlace strategy (ADR-010 Decision 3): word extraction and highlighting
-    // share one TreeWalker pass per node, so their filter rules can't drift
-    // apart. Joining text nodes with a space also stops a line-break-adjacent
-    // pair ("...ENDGAME" + "Most...") from being read as one non-word token.
-    const inPlace = adapter.highlightStrategy === 'inPlace'
-    const collectedTextNodes: Text[][] = inPlace
-      ? articleNodes.map(node => WordProcessor.collectTextNodes(node))
-      : []
+    const collectedTextNodes = articleNodes.flatMap(node =>
+      WordProcessor.collectTextNodes(node)
+    )
 
-    // Get text content and extract words (script/style content excluded)
-    const textContent = inPlace
-      ? collectedTextNodes
-          .flat()
-          .map(n => n.textContent || '')
-          .join(' ')
-      : articleNodes.map(node => WordProcessor.cleanArticleText(node)).join(' ')
+    // Volatile (React-owned) content extracts from the same filtered text
+    // nodes the highlighter uses, so the two can't drift apart (ADR-010
+    // Decision 3), and the space-join stops a line-break-adjacent pair
+    // ("...ENDGAME" + "Most...") reading as one token. Static article sites
+    // keep cleanArticleText -- switching them is out of ADR-011's scope.
+    const textContent =
+      adapter.contentVolatility === 'static'
+        ? articleNodes.map(node => WordProcessor.cleanArticleText(node)).join(' ')
+        : collectedTextNodes.map(n => n.textContent || '').join(' ')
     const words = WordProcessor.extractWords(textContent)
 
     if (words.length === 0) {
@@ -617,79 +612,34 @@ const processArticleContent = async (): Promise<boolean> => {
       }
     }
 
-    // Apply highlighting to the article
-    if (Object.keys(wordCache).length > 0) {
-      console.log(
-        'Applying highlighting for',
-        Object.keys(wordCache).length,
-        'words'
+    const haveWords = Object.keys(wordCache).length > 0
+
+    // Paint the highlights (ADR-011 Decision 1): build Ranges over the
+    // already-collected text nodes, bucket them, register with CSS.highlights.
+    // The article DOM is never touched.
+    if (haveWords) {
+      console.log('Applying highlighting for', Object.keys(wordCache).length, 'words')
+      WordProcessor.applyHighlights(
+        WordProcessor.buildHighlightRanges(collectedTextNodes, wordCache)
       )
-      console.log(
-        'Sample words from cache:',
-        Object.keys(wordCache).slice(0, 5)
-      )
-      console.log('Sample word data:', Object.values(wordCache)[0])
-
-      // Highlighting is applied independently to every matched article node
-      articleNodes.forEach((articleNode, index) => {
-        if (inPlace) {
-          // Wrap matched words directly in the live (React-owned) text nodes:
-          // no innerHTML read/write, so React's element structure is untouched
-          // (ADR-010 Decision 4).
-          WordProcessor.applyHighlightsToNodes(collectedTextNodes[index], wordCache)
-        } else {
-          const originalHtml = articleNode.innerHTML
-          const highlightedHtml = WordProcessor.renderWithHighlights(
-            originalHtml,
-            wordCache
-          )
-
-          console.log(
-            `[node ${index}] Original HTML length:`, originalHtml.length,
-            'Highlighted HTML length:', highlightedHtml.length
-          )
-
-          articleNode.innerHTML = highlightedHtml
-        }
-
-        // Fix flex container issue: Find all span elements containing <u> elements
-        // and force them to use display: inline instead of inline-flex or -webkit-inline-box
-        const allSpans = articleNode.querySelectorAll('span')
-        let fixedSpanCount = 0
-        allSpans.forEach(span => {
-          // Check if this span has <u.enx-word> children
-          const hasUChildren = span.querySelector('u.enx-word')
-          if (hasUChildren) {
-            const computedStyle = window.getComputedStyle(span)
-            if (computedStyle.display === 'inline-flex' || computedStyle.display === '-webkit-inline-box') {
-              (span as HTMLElement).style.setProperty('display', 'inline', 'important')
-              fixedSpanCount++
-            }
-          }
-        })
-        if (fixedSpanCount > 0) {
-          console.log(`[node ${index}] Fixed ${fixedSpanCount} flex container spans to preserve whitespace`)
-        }
-
-        // Add click listeners to highlighted words
-        addWordClickListeners(articleNode)
-      })
-
       console.log('Word highlighting applied.')
-
-      // Add processing complete indicator to the first node only. Skipped for
-      // adapters that opt out (ADR-010: the indicator is a structural
-      // insertBefore into the content container, which conflicts with React).
-      if (adapter.showProcessingIndicator) {
-        addProcessingCompleteIndicator(articleNodes[0])
-      }
-
-      console.log('✅ Article processing completed successfully')
-      return true // Successfully processed and highlighted
     } else {
       console.log('No words in cache, skipping highlighting')
-      return false // No words to highlight
     }
+
+    // Delegated click-to-lookup (ADR-011 Decision 2): one listener per
+    // article root, replacing the per-word listeners. Bound even with no
+    // highlights -- any English word is clickable.
+    setArticleRoots(articleNodes)
+
+    // The completion indicator is the one structural DOM insert; adapters
+    // that own a React tree opt out (ADR-010).
+    if (haveWords && adapter.showProcessingIndicator) {
+      addProcessingCompleteIndicator(articleNodes[0])
+    }
+
+    console.log('✅ Article processing completed successfully')
+    return haveWords
   } catch (error) {
     console.error('Error processing article:', error)
     return false // Processing failed
@@ -698,24 +648,53 @@ const processArticleContent = async (): Promise<boolean> => {
   }
 }
 
-// Add click listeners to highlighted words
-const addWordClickListeners = (container: Element) => {
-  const wordElements = container.querySelectorAll('.enx-word')
+// caretPositionFromPoint (Chrome 128+) with a fallback to the non-standard
+// caretRangeFromPoint. Returns the text node + character offset under the
+// pointer, or null.
+const caretFromPoint = (
+  x: number,
+  y: number
+): { node: Node; offset: number } | null => {
+  const doc = document as Document & {
+    caretRangeFromPoint?: (x: number, y: number) => Range | null
+  }
+  if (typeof doc.caretPositionFromPoint === 'function') {
+    const pos = doc.caretPositionFromPoint(x, y)
+    return pos ? { node: pos.offsetNode, offset: pos.offset } : null
+  }
+  const range = doc.caretRangeFromPoint?.(x, y)
+  return range ? { node: range.startContainer, offset: range.startOffset } : null
+}
 
-  wordElements.forEach(element => {
-    element.addEventListener('click', event => {
-      event.preventDefault()
-      event.stopPropagation()
+// One click listener per article root: resolve the word under the pointer
+// from its coordinates (no marker element needed) and open the popup on it.
+// Clicks inside links / code / buttons resolve to null and fall through.
+const handleArticleClick = (event: Event) => {
+  const { clientX, clientY } = event as MouseEvent
+  const caret = caretFromPoint(clientX, clientY)
+  if (!caret) return
+  const wordRange = WordProcessor.expandToWordRange(caret.node, caret.offset)
+  if (!wordRange) return
+  event.preventDefault()
+  event.stopPropagation()
+  showWordPopup(wordRange.toString(), wordRange)
+}
 
-      const word =
-        (element as HTMLElement).dataset.word || element.textContent || ''
-      if (word) {
-        const reference = document.createRange()
-        reference.selectNodeContents(element)
-        showWordPopup(word, reference)
-      }
-    })
-  })
+// articleRoots + its click listeners are managed together: point ENX at a
+// fresh set of roots, or clear it entirely.
+const setArticleRoots = (roots: Element[]) => {
+  clearArticleRoots()
+  articleRoots = roots
+  articleRoots.forEach(root =>
+    root.addEventListener('click', handleArticleClick)
+  )
+}
+
+const clearArticleRoots = () => {
+  articleRoots.forEach(root =>
+    root.removeEventListener('click', handleArticleClick)
+  )
+  articleRoots = []
 }
 
 // Add processing complete indicator to the article
@@ -995,12 +974,10 @@ const disableEnx = () => {
     indicator.remove()
   }
 
-  // Remove word highlighting
-  const wordElements = document.querySelectorAll('.enx-word')
-  wordElements.forEach(element => {
-    const textContent = element.textContent || ''
-    element.replaceWith(document.createTextNode(textContent))
-  })
+  // Drop the highlights and the click listener (ADR-011 Decision 1): no
+  // element unwrapping, no reflow.
+  WordProcessor.clearHighlights()
+  clearArticleRoots()
 }
 
 // Listen for messages from popup or background
@@ -1070,22 +1047,22 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   return true
 })
 
-// Add global CSS for hover-based cursor on highlighted words
-const wordStyles = document.createElement('style')
-wordStyles.setAttribute('data-enx-word-styles', 'true')
-wordStyles.textContent = `
-  .enx-word {
-    cursor: text;
-    transition: all 0.15s ease;
-  }
-
-  .enx-word:hover {
-    cursor: pointer;
-    opacity: 0.8;
-  }
-`
-if (!document.head.querySelector('style[data-enx-word-styles]')) {
-  document.head.appendChild(wordStyles)
+// ::highlight() rules for each review-stage bucket (ADR-011 Decision 1 /
+// E1). CSS.highlights registers which Ranges are in bucket N; these rules
+// paint them, using the palette that lives with REVIEW_BUCKET_COUNT in
+// WordProcessor. No cursor or :hover rule -- the article is untouched and
+// every word is clickable, so there's nothing to hint at.
+const highlightStyles = document.createElement('style')
+highlightStyles.setAttribute('data-enx-highlight-styles', 'true')
+highlightStyles.textContent = WordProcessor.HIGHLIGHT_BUCKET_HSL.map(
+  (hsl, i) =>
+    `::highlight(${WordProcessor.HIGHLIGHT_NAME_PREFIX}${i + 1}) {` +
+    ` text-decoration-line: underline;` +
+    ` text-decoration-color: hsl(${hsl});` +
+    ` text-decoration-thickness: 1px; }`
+).join('\n')
+if (!document.head.querySelector('style[data-enx-highlight-styles]')) {
+  document.head.appendChild(highlightStyles)
 }
 
 // Clean up on page unload

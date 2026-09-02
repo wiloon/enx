@@ -132,6 +132,14 @@ export async function enableLearningMode(page: Page, extensionId: string) {
   await page.waitForTimeout(2000)
 }
 
+// TODO(ADR-011 issue #11): these helpers and the specs that use them are
+// still written for the removed `<u class="enx-word">` elements. After the
+// switch to the CSS Custom Highlight API there are no marker elements:
+// highlight count comes from CSS.highlights range totals, and a lookup is a
+// coordinate click on the word text. Needs a rewrite + a homelab E2E run;
+// the jest suite covers the switch in the meantime
+// (src/lib/__tests__/highlightRanges.test.ts).
+
 /**
  * Get count of highlighted words on page
  */

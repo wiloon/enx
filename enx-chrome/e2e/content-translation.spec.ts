@@ -1,3 +1,10 @@
+// NOTE (ADR-011 issue #11): the CSS Custom Highlight API replaced the
+// <u class="enx-word"> elements. Assertions in this file that select
+// .enx-word or read its inline style are stale and will fail until this
+// spec is rewritten to click word text by coordinate and read
+// CSS.highlights. Tracked as an E2E follow-up; jest covers the switch
+// (src/lib/__tests__/highlightRanges.test.ts).
+
 import { expect, test } from './fixtures'
 import {
   clickWordAndWaitForPopup,

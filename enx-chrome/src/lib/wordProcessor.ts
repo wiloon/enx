@@ -28,9 +28,19 @@ export class WordProcessor {
   ]
 
   // CSS Custom Highlight API registry names, one per review stage
-  // (ADR-011 Decision 1 / E1).
+  // (ADR-011 Decision 1 / E1). The underline colour for each stage lives
+  // here too so the count and the palette stay in one place -- the content
+  // script generates the ::highlight() rules from HIGHLIGHT_BUCKET_HSL.
+  // Warm/urgent for a freshly-learned word, cool/faint as it nears "known".
   static readonly HIGHLIGHT_NAME_PREFIX = 'enx-hl-'
-  static readonly REVIEW_BUCKET_COUNT = 5
+  static readonly HIGHLIGHT_BUCKET_HSL: readonly string[] = [
+    '0 72% 48%', // 1 - very new
+    '28 80% 45%', // 2
+    '45 85% 38%', // 3
+    '150 45% 38%', // 4
+    '212 55% 50%', // 5 - nearly known
+  ]
+  static readonly REVIEW_BUCKET_COUNT = this.HIGHLIGHT_BUCKET_HSL.length
 
   // One shared word segmenter -- construction isn't free and tokenizeWords
   // runs once per text node.
@@ -71,29 +81,6 @@ export class WordProcessor {
     )
   }
 
-  static getColorCode(wordData: WordData): string {
-    if (!this.isReviewable(wordData)) {
-      return '#FFFFFF'
-    }
-
-    const loadCount = wordData.LoadCount || 0
-    const normalizedCount = Math.min(loadCount, 30) / 30
-    const hue = Math.round(300 * normalizedCount)
-
-    return `hsl(${hue}, 100%, 40%)`
-  }
-
-  // The <u class="enx-word"> wrapper goes on every looked-up word so it stays
-  // clickable, but only words still worth reviewing get a visible underline.
-  // getColorCode() returns '#FFFFFF' as its "don't highlight" sentinel
-  // (acquainted / known / never looked up) — render `none`, not a white
-  // underline: white-on-white is invisible on an article page but shows up on
-  // a dark background (e.g. X in dark mode), making every word look underlined.
-  static getTextDecoration(wordData: WordData): string {
-    const colorCode = this.getColorCode(wordData)
-    return colorCode === '#FFFFFF' ? 'none' : `${colorCode} underline`
-  }
-
   // Which review-stage bucket a word belongs to (1 = most recently learned,
   // REVIEW_BUCKET_COUNT = nearly known), or null when it shouldn't be
   // highlighted at all. Replaces the ~31-step continuous hue with a handful
@@ -112,46 +99,13 @@ export class WordProcessor {
     return this.REVIEW_BUCKET_COUNT
   }
 
-  // Serialize-and-write-back highlight strategy (the default for every
-  // statically-rendered article site): parse `originalHtml` into a detached
-  // container, wrap matched words in place inside it, hand the string back to
-  // the caller to assign via `articleNode.innerHTML = ...`. The in-place
-  // strategy for React-owned DOM (ADR-010) skips this wrapper and calls
-  // applyHighlightsToNodes on live nodes directly.
-  static renderWithHighlights(
-    originalHtml: string,
-    wordDict: Record<string, WordData>
-  ): string {
-    if (Object.keys(wordDict).length === 0) {
-      return originalHtml
-    }
-
-    const tempDiv = document.createElement('div')
-    tempDiv.innerHTML = originalHtml
-
-    this.applyHighlightsToDom(tempDiv, wordDict)
-
-    // Tag-pairing self-check: only meaningful for this serialization path,
-    // where a broken fragment would corrupt the innerHTML written back. The
-    // in-place path never serializes, so it skips this.
-    const finalHtml = tempDiv.innerHTML
-    if (finalHtml.includes('enx-word')) {
-      const uTagsCount = (finalHtml.match(/<u[^>]*class="enx-word[^"]*"/g) || []).length
-      const closingTagsCount = (finalHtml.match(/<\/u>/g) || []).length
-      if (uTagsCount !== closingTagsCount) {
-        console.error('⚠️ Tag mismatch! HTML structure may be broken')
-      }
-    }
-
-    return tempDiv.innerHTML
-  }
-
-  // The eligible-text-node filter, shared by both highlight strategies and by
-  // the in-place word-extraction path (ADR-010 Decision 3). Skips
+  // The eligible-text-node filter, shared by word extraction and highlight
+  // range building (ADR-010 Decision 3 / ADR-011). Skips
   // a/script/style/noscript/button/input/textarea/select/code/pre subtrees
   // and text with no Latin letters. Keeping extraction and highlighting on
   // this single traversal is what stops their filter rules from drifting
   // apart (ADR-010 §1.3).
+  //
   // True when `node` sits inside a LOOKUP_EXCLUDED_TAGS subtree (walking up
   // to, but not including, `root`).
   static isInExcludedSubtree(node: Node, root?: Node): boolean {
@@ -187,116 +141,9 @@ export class WordProcessor {
     return textNodes
   }
 
-  // Wraps every highlighted-word occurrence inside `root` in a
-  // <u class="enx-word"> element, mutating `root` in place. `root` can be a
-  // detached container (renderWithHighlights) or a live DOM subtree
-  // (ADR-010 Decision 4).
-  static applyHighlightsToDom(
-    root: Node,
-    wordDict: Record<string, WordData>
-  ): void {
-    if (Object.keys(wordDict).length === 0) return
-    this.applyHighlightsToNodes(this.collectTextNodes(root), wordDict)
-  }
-
-  // Same wrapping logic as applyHighlightsToDom, but over a text-node list
-  // the caller already collected (the in-place path collects once and reuses
-  // the list for word extraction). Each matched text node is replaced by a
-  // DocumentFragment of text + <u> elements; unmatched nodes are untouched.
-  static applyHighlightsToNodes(
-    textNodes: Text[],
-    wordDict: Record<string, WordData>
-  ): void {
-    const wordKeys = Object.keys(wordDict)
-    if (wordKeys.length === 0 || textNodes.length === 0) return
-
-    interface WordInfo {
-      word: string
-      regex: RegExp
-      decoration: string
-    }
-
-    const wordInfos: WordInfo[] = wordKeys
-      .map(word => ({
-        word,
-        regex: new RegExp(
-          `\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
-          'gi'
-        ),
-        decoration: this.getTextDecoration(wordDict[word]),
-      }))
-      .sort((a, b) => b.word.length - a.word.length) // Longest first
-
-    console.log(`Collected ${textNodes.length} text nodes for processing`)
-
-    interface NodeReplacement {
-      node: Text
-      newContent: string
-    }
-
-    const replacements: NodeReplacement[] = []
-    let totalReplacements = 0
-
-    textNodes.forEach(textNode => {
-      let text = textNode.textContent || ''
-      let hasChanges = false
-
-      // Use placeholders to avoid nested replacements
-      const placeholders: { placeholder: string; html: string }[] = []
-      let placeholderIndex = 0
-
-      wordInfos.forEach(({ word, regex, decoration }) => {
-        if (regex.test(text)) {
-          text = text.replace(regex, match => {
-            totalReplacements++
-            hasChanges = true
-
-            const placeholder = `___ENX_PLACEHOLDER_${placeholderIndex++}___`
-            const html = `<u class="enx-word enx-${word.toLowerCase()}" data-word="${match}" style="display: inline !important; text-decoration: ${decoration}; text-decoration-thickness: 1px;">${match}</u>`
-
-            placeholders.push({ placeholder, html })
-            return placeholder
-          })
-          regex.lastIndex = 0
-        }
-      })
-
-      if (hasChanges) {
-        placeholders.forEach(({ placeholder, html }) => {
-          text = text.replace(placeholder, html)
-        })
-        replacements.push({ node: textNode, newContent: text })
-      }
-    })
-
-    console.log(
-      `Found ${replacements.length} nodes to replace with ${totalReplacements} total word matches`
-    )
-
-    // Batch DOM updates using DocumentFragment for better performance
-    replacements.forEach(({ node, newContent }) => {
-      const tempContainer = document.createElement('span')
-      tempContainer.innerHTML = newContent
-
-      const fragment = document.createDocumentFragment()
-      while (tempContainer.firstChild) {
-        fragment.appendChild(tempContainer.firstChild)
-      }
-
-      const parent = node.parentNode
-      if (parent) {
-        parent.replaceChild(fragment, node)
-      }
-    })
-
-    console.log('Word highlighting optimization completed')
-  }
-
   // ---------------------------------------------------------------------------
   // CSS Custom Highlight API path (ADR-011 Decision 1). No DOM mutation: the
-  // underline is painted over Ranges, not written as elements. These methods
-  // are additive for now -- ticket #11 wires them in and removes the
-  // element-wrapping ones above.
+  // underline is painted over Ranges, not written as elements.
   // ---------------------------------------------------------------------------
 
   private static readonly ALPHA_SEGMENT = /^[A-Za-z]+$/
@@ -413,16 +260,16 @@ export class WordProcessor {
     }
   }
 
-  // Re-derives every highlight over `root` from `wordDict` + the current DOM.
-  // Safe to call at any time -- there is no self-inflicted DOM mutation to
-  // filter out, so a full rebuild is the whole story (ADR-011 F section).
+  // Re-derives every highlight over `roots` from `wordDict` + the current
+  // DOM. Safe to call at any time -- there is no self-inflicted DOM mutation
+  // to filter out, so a full rebuild is the whole story (ADR-011 F section).
   static rebuildHighlights(
-    root: Node,
+    roots: Node | Node[],
     wordDict: Record<string, WordData>
   ): void {
-    this.applyHighlights(
-      this.buildHighlightRanges(this.collectTextNodes(root), wordDict)
-    )
+    const list = Array.isArray(roots) ? roots : [roots]
+    const textNodes = list.flatMap(root => this.collectTextNodes(root))
+    this.applyHighlights(this.buildHighlightRanges(textNodes, wordDict))
   }
 
   // Returns every element on the page that should be treated as article

@@ -1,6 +1,14 @@
 import { WordProcessor } from '@/lib/wordProcessor'
 import { WordData } from '@/types'
 
+// This file is the coverage for the CSS Custom Highlight API path
+// (ADR-011). When the element-wrapping path was removed (issue #11), these
+// test files were deleted as they only exercised the old path via local
+// re-implementations: inPlaceHighlighting, flexContainerFix, htmlRendering,
+// whitespacePreservation, realWorldCase, highlightingIntegration,
+// codeBlockExclusion. The behaviour that still matters -- exclusion set,
+// no DOM mutation, review bucketing, word-boundary detection -- is here.
+
 const wd = (overrides: Partial<WordData> = {}): WordData => ({
   Key: 'x',
   English: 'x',
@@ -17,6 +25,14 @@ const textNodesUnder = (root: Node) => WordProcessor.collectTextNodes(root)
 beforeEach(() => {
   document.body.innerHTML = ''
   WordProcessor.clearHighlights()
+})
+
+describe('review-stage palette', () => {
+  it('has exactly REVIEW_BUCKET_COUNT colours', () => {
+    expect(WordProcessor.HIGHLIGHT_BUCKET_HSL).toHaveLength(
+      WordProcessor.REVIEW_BUCKET_COUNT
+    )
+  })
 })
 
 describe('WordProcessor.reviewBucket', () => {
@@ -106,12 +122,19 @@ describe('WordProcessor.buildHighlightRanges', () => {
     expect(hit).toEqual(['COVID', 'Catch'])
   })
 
-  it('does not highlight words inside an excluded subtree', () => {
-    document.body.innerHTML =
-      '<p>the endgame is <a href="#">the endgame link</a> here</p>'
-    WordProcessor.rebuildHighlights(document.body, { endgame: wd({ LoadCount: 4 }) })
+  it('does not highlight words inside excluded subtrees (a / code / pre / ...)', () => {
+    document.body.innerHTML = `
+      <p>the endgame is here</p>
+      <p><a href="#">endgame</a></p>
+      <p><code>endgame</code></p>
+      <pre>endgame</pre>
+      <p><button>endgame</button></p>
+    `
+    WordProcessor.rebuildHighlights(document.body, {
+      endgame: wd({ LoadCount: 4 }),
+    })
     const ranges = [...(CSS.highlights.get('enx-hl-2') ?? [])]
-    // Only the one occurrence outside the <a>.
+    // Only the one occurrence outside every excluded element.
     expect(ranges.map(r => r.toString())).toEqual(['endgame'])
   })
 
@@ -132,6 +155,16 @@ describe('WordProcessor.buildHighlightRanges', () => {
     expect(document.getElementById('s')).toBe(s)
     expect(document.getElementById('b')).toBe(b)
     expect(document.body.innerHTML).toBe(htmlBefore)
+  })
+
+  it('rebuildHighlights accepts several roots and highlights across all of them', () => {
+    document.body.innerHTML =
+      '<div id="a"><p>the endgame</p></div><div id="b"><p>the endgame again</p></div>'
+    WordProcessor.rebuildHighlights(
+      [document.getElementById('a')!, document.getElementById('b')!],
+      { endgame: wd({ LoadCount: 4 }) }
+    )
+    expect([...(CSS.highlights.get('enx-hl-2') ?? [])]).toHaveLength(2)
   })
 })
 

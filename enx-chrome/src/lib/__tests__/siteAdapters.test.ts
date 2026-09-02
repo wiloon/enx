@@ -20,12 +20,13 @@ describe('resolveSiteAdapter', () => {
   it('default adapter reproduces today behavior field-for-field', () => {
     expect(DEFAULT_ADAPTER).toMatchObject({
       minTextLength: 100,
-      highlightStrategy: 'innerHTML',
+      contentVolatility: 'static',
       showProcessingIndicator: true,
     })
     expect(DEFAULT_ADAPTER.contentSelector).toBeUndefined()
     expect(DEFAULT_ADAPTER.focusedNodeResolver).toBeUndefined()
     expect(DEFAULT_ADAPTER.pageSupport).toBeUndefined()
+    expect(DEFAULT_ADAPTER.clickBinding).toBeUndefined() // defaults to 'bubble'
   })
 
   it('matches x.com and twitter.com (incl. subdomains)', () => {
@@ -55,9 +56,10 @@ describe('resolveSiteAdapter', () => {
       }
     })
 
-    it('pins the tweetText selector and the in-place strategy', () => {
+    it('pins the tweetText selector and marks the content SPA-volatile', () => {
       expect(x.contentSelector).toBe('div[data-testid="tweetText"]')
-      expect(x.highlightStrategy).toBe('inPlace')
+      expect(x.contentVolatility).toBe('spa')
+      expect(x.clickBinding).toBe('bubble')
       expect(x.showProcessingIndicator).toBe(false)
       expect(x.minTextLength).toBe(1)
     })

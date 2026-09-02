@@ -1,14 +1,12 @@
-// ADR-010: per-site behavior differences that don't fit getArticleNodes()'s
-// flat selector list — the text-length threshold, which matched node is the
-// one to process, how highlights are written into the DOM, and whether to
-// show the completion indicator.
+// Per-site behavior differences that don't fit getArticleNodes()'s flat
+// selector list — the text-length threshold, which matched node is the one
+// to process, how volatile the content is, and whether to show the
+// completion indicator (ADR-010, ADR-011 Decision 4).
 //
 // resolveSiteAdapter() returns DEFAULT_ADAPTER for every site currently in
 // manifest.json's content-script whitelist; its field values reproduce
 // today's behavior field-for-field, so those sites must see no observable
 // change. Only X (a React SPA) needs a non-default adapter.
-
-export type HighlightStrategy = 'innerHTML' | 'inPlace'
 
 export interface SiteAdapter {
   name: string
@@ -31,7 +29,21 @@ export interface SiteAdapter {
    * processing. Undefined = process every match (today's behavior).
    */
   focusedNodeResolver?: (nodes: Element[]) => Element[]
-  highlightStrategy: HighlightStrategy
+  /**
+   * How the article content changes after learning mode is on, and so which
+   * observers the content script attaches (ADR-011 F section):
+   *   'static'    — no observers; re-run only on an explicit enxRun.
+   *   'spa'       — a route-change listener re-runs on in-page navigation.
+   *   'streaming' — incremental MutationObserver (ADR-010 Phase 3/4).
+   * Only 'static' is wired today; 'spa' is a placeholder for issue #12.
+   */
+  contentVolatility: 'static' | 'spa' | 'streaming'
+  /**
+   * Where the delegated click-to-lookup listener binds (ADR-011 Decision 2 /
+   * ADR-010 Options F3). Defaults to 'bubble'; 'documentCapture' is a
+   * placeholder, not yet implemented.
+   */
+  clickBinding?: 'bubble' | 'documentCapture'
   showProcessingIndicator: boolean
 }
 
@@ -41,7 +53,7 @@ export const DEFAULT_ADAPTER: SiteAdapter = {
   name: 'default',
   matches: () => true,
   minTextLength: 100,
-  highlightStrategy: 'innerHTML',
+  contentVolatility: 'static',
   showProcessingIndicator: true,
 }
 
@@ -105,7 +117,10 @@ const X_ADAPTER: SiteAdapter = {
   // default 100; >1 still filters out pure-emoji / pure-link empty nodes.
   minTextLength: 1,
   focusedNodeResolver: pickFocusedTweet,
-  highlightStrategy: 'inPlace',
+  // 'spa' branch (auto re-run on in-page tweet switch) lands in issue #12;
+  // for now X still needs a manual re-enable after switching tweets.
+  contentVolatility: 'spa',
+  clickBinding: 'bubble',
   showProcessingIndicator: false,
 }
 

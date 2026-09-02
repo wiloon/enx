@@ -2,6 +2,53 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-09-01: Switch word highlight to CSS Custom Highlight API — ADR-011 / issue #11
+
+**Agent**: Claude Code (Sonnet)
+**Task**: The atomic "contract" step of the expand–contract: remove the element-wrapping
+highlight path and switch every site to the CSS Custom Highlight API + delegated
+`caretPositionFromPoint` click-to-lookup.
+
+**Problem**:
+- Highlighting wrapped every looked-up word in `<u class="enx-word">`, mutating the
+  article DOM (two parallel strategies, a pile of workarounds — flex fix, tag-pairing
+  self-check, white-underline sentinel; on X it broke React).
+- Click-to-lookup only worked because each word was an element with a listener.
+
+**Solution**:
+- `wordProcessor.ts`: removed `renderWithHighlights` / `applyHighlightsToDom` /
+  `applyHighlightsToNodes` / `getColorCode` / `getTextDecoration`. `rebuildHighlights`
+  now takes one root or an array. The review-stage palette (`HIGHLIGHT_BUCKET_HSL`)
+  lives next to `REVIEW_BUCKET_COUNT`.
+- `content.tsx`: `processArticleContent` builds Ranges → `CSS.highlights`, no DOM touch.
+  One delegated `handleArticleClick` per article root resolves the word under the
+  pointer via `caretPositionFromPoint` (fallback `caretRangeFromPoint`) and
+  `expandToWordRange`. `updateWordHighlighting` → `refreshHighlights` (rebuild).
+  `disableEnx` → `clearHighlights()` + drop the listener. Module `.enx-word` CSS →
+  `::highlight(enx-hl-N)` rules generated from the shared palette.
+- `siteAdapters.ts`: dropped `highlightStrategy` + `HighlightStrategy`; added
+  `contentVolatility` (`'static'` wired, `'spa'`/`'streaming'` placeholders) and
+  `clickBinding` (`'bubble'` only). Static sites keep `cleanArticleText` for word
+  extraction — switching them is out of ADR-011's scope.
+
+**Files**:
+- Modified: `enx-chrome/src/content/content.tsx`, `enx-chrome/src/lib/wordProcessor.ts`,
+  `enx-chrome/src/lib/siteAdapters.ts`, plus the tests for each.
+- Deleted (tested only the removed element path, via local re-implementations):
+  `inPlaceHighlighting`, `flexContainerFix`, `htmlRendering`, `whitespacePreservation`,
+  `realWorldCase`, `highlightingIntegration`, `codeBlockExclusion` test files.
+  `wordHighlighting.test.ts` trimmed to `extractWords` + `cleanArticleText`.
+
+**Verified**:
+- Isolated-world `CSS.highlights` painting — a temporary probe in the built content
+  script registered a highlight + injected a `::highlight()` `<style>` on a real InfoQ
+  page; the underline painted, and the page's MAIN world saw the isolated-world
+  registration (`CSS.highlights` is per-Document, shared across worlds).
+
+**Follow-up**:
+- Playwright specs still assert `.enx-word` — need a rewrite pass (coordinate clicks,
+  `CSS.highlights` assertions). Noted in each affected spec + `e2e/helpers.ts`.
+
 ## 2026-09-01: WordProcessor Range-based highlight builder — ADR-011 / issue #10
 
 **Agent**: Claude Code (Sonnet)
