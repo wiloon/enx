@@ -19,6 +19,10 @@ import {
   isSupportedPage,
   waitForTweetReady,
 } from './spaRebuild'
+import {
+  getWordHighlightEnabled,
+  onWordHighlightEnabledChange,
+} from '@/config/preferences'
 import { BackgroundResponse, ContentMessage, WordData } from '../types'
 import { contentScriptStore } from './contentAtoms'
 import {
@@ -220,7 +224,7 @@ const showWordPopup = async (word: string, reference: Range) => {
             }
         wordCache[englishWord.toLowerCase()] = updated
         contentScriptStore.set(currentWordAtom, updated)
-        refreshHighlights()
+        void refreshHighlights()
         popup.hidePopover()
       }
     } catch (error) {
@@ -307,7 +311,7 @@ const showWordPopup = async (word: string, reference: Range) => {
       contentScriptStore.set(isTranslatingAtom, false)
 
       wordCache[word.toLowerCase()] = wordData
-      refreshHighlights()
+      void refreshHighlights()
 
       // Mirror the lookup into the Side Panel's word list if it's open --
       // ADR-006. Routed through the background service worker rather than
@@ -426,13 +430,17 @@ const hideWordPopup = () => {
   }
 }
 
-// After a lookup or a mark-acquainted, wordCache has changed, so a word may
-// move to a different review bucket or drop out of highlighting entirely.
-// Re-derive the highlights -- there's no DOM to touch, so a full rebuild is
-// cheap enough on a user action.
-const refreshHighlights = () => {
-  if (articleRoots.length > 0) {
+// Re-derive the ENX highlights from the current wordCache + DOM, or clear
+// them if the "highlight vocabulary while reading" preference is off
+// (ADR-011 Decision 3). Called after a lookup / mark-acquainted (a word may
+// change review bucket), a SPA tweet switch, and a preference flip. There's
+// no DOM to touch, so a full rebuild is cheap enough on a user action.
+const refreshHighlights = async () => {
+  if (articleRoots.length === 0) return
+  if (await getWordHighlightEnabled()) {
     WordProcessor.rebuildHighlights(articleRoots, wordCache)
+  } else {
+    WordProcessor.clearHighlights()
   }
 }
 
@@ -647,6 +655,11 @@ const processArticleContent = async (
       }
     }
 
+    // Read the highlight preference before the last stale check so the paint
+    // block below stays synchronous (ADR-011 Decision 3: word-data lookup
+    // always runs; only the highlight paint is gated).
+    const highlightEnabled = await getWordHighlightEnabled()
+
     // Last stale check before the paint. Everything from here to the return
     // is synchronous, so a queued navigate event can't interleave -- the
     // paint is effectively atomic with this guard.
@@ -657,12 +670,14 @@ const processArticleContent = async (
     // Paint the highlights (ADR-011 Decision 1): build Ranges over the
     // already-collected text nodes, bucket them, register with CSS.highlights.
     // The article DOM is never touched.
-    if (haveWords) {
+    if (haveWords && highlightEnabled) {
       console.log('Applying highlighting for', Object.keys(wordCache).length, 'words')
       WordProcessor.applyHighlights(
         WordProcessor.buildHighlightRanges(collectedTextNodes, wordCache)
       )
       console.log('Word highlighting applied.')
+    } else if (!highlightEnabled) {
+      console.log('Word highlight preference is off; skipping paint')
     } else {
       console.log('No words in cache, skipping highlighting')
     }
@@ -1137,6 +1152,15 @@ highlightStyles.textContent = WordProcessor.HIGHLIGHT_BUCKET_HSL.map(
 if (!document.head.querySelector('style[data-enx-highlight-styles]')) {
   document.head.appendChild(highlightStyles)
 }
+
+// Live-apply the "highlight vocabulary while reading" toggle (ADR-011
+// Decision 3): while learning mode is on, a flip from the popup or options
+// page repaints or clears the ENX highlights immediately -- no reload, no
+// re-fetch (wordCache is untouched). click-to-lookup is unaffected.
+// refreshHighlights() already reads the preference and paints or clears.
+onWordHighlightEnabledChange(() => {
+  if (isEnxEnabled) void refreshHighlights()
+})
 
 // Clean up on page unload
 window.addEventListener('beforeunload', () => {

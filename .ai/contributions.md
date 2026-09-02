@@ -2,6 +2,35 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-09-01: "Highlight vocabulary while reading" toggle — ADR-011 / issue #13
+
+**Agent**: Claude Code (Sonnet)
+**Task**: Make the word-highlight underline a toggle (default on) reachable from the
+options page and the popup; turning it off clears the underlines immediately without a
+reload, and click-to-lookup keeps working on any word.
+
+**Solution**:
+- New `src/config/preferences.ts` — `getWordHighlightEnabled` / `setWordHighlightEnabled`
+  over `chrome.storage.local` key `enx-word-highlight-enabled` (absent = on), modelled
+  on `config/env.ts`'s `getApiBaseUrl` / `setApiBaseUrl` (try/catch, `[ENX Config]`
+  prefix), plus `onWordHighlightEnabledChange` for the live/cross-surface sync.
+- New `src/hooks/useWordHighlightEnabled.ts` — load + `onChanged` sync + optimistic
+  persisting setter, shared by the options page and popup.
+- `content.tsx`: `processArticleContent` reads the preference *after* the `getWords`
+  round trip and gates only `buildHighlightRanges` + `applyHighlights` (word-data lookup
+  always runs). `refreshHighlights` is async: paints when on, `clearHighlights()` when
+  off. A top-level `onWordHighlightEnabledChange` listener calls `refreshHighlights()`
+  while learning mode is on -- no reload, no re-fetch. Click-to-lookup is never gated.
+- `Options.tsx`: a "Highlight vocabulary while reading" checkbox (default checked).
+  `Popup.tsx`: a "阅读时高亮生词" toggle. Both bound to the same key via the hook.
+
+**Files**: added `config/preferences.ts` + `config/__tests__/preferences.test.ts` (9),
+`hooks/useWordHighlightEnabled.ts` + `hooks/__tests__/useWordHighlightEnabled.test.tsx`
+(4); modified `content.tsx`, `options/Options.tsx`, `popup/Popup.tsx`.
+
+**Follow-up**: E2E coverage of the toggle flow rides on the pending Playwright rewrite
+(from #11).
+
 ## 2026-09-01: X in-page tweet-switch auto-rebuild — ADR-011 / issue #12
 
 **Agent**: Claude Code (Sonnet)

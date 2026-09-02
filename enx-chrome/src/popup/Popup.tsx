@@ -1,6 +1,7 @@
 import DebugPanel from '@/components/DebugPanel'
 import Login from '@/components/Login'
 import { useInitializeStorage } from '@/hooks/useInitializeStorage'
+import { useWordHighlightEnabled } from '@/hooks/useWordHighlightEnabled'
 import '@/index.css'
 import { initSentry } from '@/lib/sentry'
 import { sendMessageToBackground } from '@/services/api'
@@ -14,6 +15,10 @@ initSentry()
 function PopupContent() {
   const [user, setUser] = useAtom(userAtom)
   const [session, setSession] = useAtom(sessionAtom)
+  const {
+    enabled: wordHighlightEnabled,
+    setEnabled: setWordHighlightEnabled,
+  } = useWordHighlightEnabled()
 
   useInitializeStorage()
 
@@ -73,6 +78,16 @@ function PopupContent() {
       >
         🔤 打开整句翻译面板
       </button>
+      <label className="flex items-center justify-between mt-2 px-1 text-sm cursor-pointer">
+        <span className="text-gray-700">阅读时高亮生词</span>
+        <input
+          type="checkbox"
+          data-testid="popup-word-highlight-toggle"
+          checked={wordHighlightEnabled}
+          onChange={e => setWordHighlightEnabled(e.target.checked)}
+          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+        />
+      </label>
       {process.env.NODE_ENV === 'development' && <DebugPanel />}
     </div>
   )

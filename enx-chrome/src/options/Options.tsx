@@ -6,6 +6,7 @@ import {
 } from '@/config/env'
 import '@/index.css'
 import { initSentry } from '@/lib/sentry'
+import { useWordHighlightEnabled } from '@/hooks/useWordHighlightEnabled'
 import { apiBaseUrlAtom } from '@/store/atoms'
 import { Provider, useAtom } from 'jotai'
 import { useEffect, useState } from 'react'
@@ -17,6 +18,10 @@ function OptionsContent() {
   const [customUrl, setCustomUrl] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [message, setMessage] = useState('')
+  const {
+    enabled: wordHighlightEnabled,
+    setEnabled: setWordHighlightEnabled,
+  } = useWordHighlightEnabled()
 
   useEffect(() => {
     // Load the current API URL on mount
@@ -176,6 +181,31 @@ function OptionsContent() {
               {message}
             </div>
           )}
+        </div>
+
+        {/* Reading Preferences */}
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4 text-gray-800">
+            Reading Preferences
+          </h2>
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              data-testid="word-highlight-toggle"
+              checked={wordHighlightEnabled}
+              onChange={e => setWordHighlightEnabled(e.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>
+              <span className="block text-sm font-medium text-gray-800">
+                Highlight vocabulary while reading
+              </span>
+              <span className="block text-sm text-gray-500">
+                Underlines words worth reviewing. Turn off for a clean page —
+                you can still click any word to look it up.
+              </span>
+            </span>
+          </label>
         </div>
 
         {/* Help Section */}
