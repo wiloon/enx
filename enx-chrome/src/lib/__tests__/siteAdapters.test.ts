@@ -2,10 +2,13 @@ import {
   resolveSiteAdapter,
   pickFocusedTweet,
   DEFAULT_ADAPTER,
+  PageLocation,
 } from '@/lib/siteAdapters'
 
-const loc = (hostname: string, pathname: string) =>
-  ({ hostname, pathname }) as Location
+const loc = (hostname: string, pathname: string): PageLocation => ({
+  hostname,
+  pathname,
+})
 
 describe('resolveSiteAdapter', () => {
   it('returns the default adapter for whitelisted article sites', () => {

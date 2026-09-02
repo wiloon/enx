@@ -2,6 +2,43 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-09-01: X in-page tweet-switch auto-rebuild — ADR-011 / issue #12
+
+**Agent**: Claude Code (Sonnet)
+**Task**: On X (`contentVolatility: 'spa'`), re-run learning mode automatically when the
+user switches tweets in-page, so it survives a reply / quote-tweet click / browser back
+without a manual re-enable.
+
+**Solution**:
+- New `src/content/spaRebuild.ts`:
+  - `createSpaRebuilder(deps)` — pure orchestration factory. `onRouteChange(url)`: bump a
+    generation counter, `teardown()`, silently stop if the URL is out of scope, else
+    `waitForContentReady()` then `rebuild()`, abandoning at each await if a newer route
+    change landed. Also `start(navigation)` / `stop()` (manage the `navigate` listener)
+    and `makeIsCurrent()` (so the initial non-navigate run rides the same counter).
+  - `isSupportedPage(url)`, `shouldHandleTweetNavigate(event)` (skip download / hash /
+    reload), `waitForTweetReady(isCurrent)` (`MutationObserver` for
+    `article[tabindex="-1"] [data-testid="tweetText"]`, last match, 100ms debounce, 2s
+    timeout; never `document.title` / `aria-live`).
+- `content.tsx`: `enableEnx` starts the rebuilder + runs the initial pass under
+  `makeIsCurrent()`; `disableEnx` / `enxStop` stop it; only on a `'spa'` adapter with
+  `window.navigation`. `processArticleContent` takes `opts.isCurrent`, checks it before
+  every backend call and (atomically) before the paint, and short-circuits the
+  `getWords` round trip when every word is already cached.
+- `siteAdapters.ts`: `Location` → `PageLocation` (`Pick<Location, 'hostname' | 'pathname'>`)
+  so a `URL` from a navigate destination works.
+- New `src/types/navigation-api.d.ts` — minimal ambient Navigation API types (TS's
+  `lib.dom` ships none yet).
+
+**Files**: added `spaRebuild.ts` + `__tests__/spaRebuild.test.ts` (14 tests) +
+`navigation-api.d.ts`; modified `content.tsx`, `siteAdapters.ts` (+ test).
+
+**Detection was verified 2026-09-01** (issue #11 session): an isolated-world content
+script does receive Navigation API `navigate` events for `push` and `traverse`.
+
+**Follow-up**: the enable/disable listener wiring in `content.tsx` and the full
+tweet-switch flow are E2E territory (the Playwright rewrite is still pending from #11).
+
 ## 2026-09-01: Switch word highlight to CSS Custom Highlight API — ADR-011 / issue #11
 
 **Agent**: Claude Code (Sonnet)

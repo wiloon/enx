@@ -14,6 +14,11 @@ import {
 import { WordProcessor } from '@/lib/wordProcessor'
 import { resolveSiteAdapter } from '@/lib/siteAdapters'
 import { nearestElement, referenceLineHeight } from '@/lib/rangeUtils'
+import {
+  createSpaRebuilder,
+  isSupportedPage,
+  waitForTweetReady,
+} from './spaRebuild'
 import { BackgroundResponse, ContentMessage, WordData } from '../types'
 import { contentScriptStore } from './contentAtoms'
 import {
@@ -502,9 +507,21 @@ const showSessionExpiredMessage = (isLoginError = false) => {
   }, 10000)
 }
 
-// Process article content and add word highlighting
-const processArticleContent = async (): Promise<boolean> => {
-  if (isProcessing) {
+// Process article content and add word highlighting. `isCurrent` (SPA
+// auto-rebuild, ADR-011 Decision 6) is checked at every await boundary so a
+// run superseded by a newer tweet switch abandons instead of highlighting
+// stale content.
+const processArticleContent = async (
+  opts: { isCurrent?: () => boolean } = {}
+): Promise<boolean> => {
+  const isSpaRebuild = opts.isCurrent !== undefined
+  const stale = () => isSpaRebuild && !opts.isCurrent!()
+
+  // A user re-triggering enxRun on an already-processing page is a no-op; a
+  // SPA rebuild for a newer tweet must NOT be blocked by an in-flight run
+  // for the previous tweet -- that older run abandons at its next stale()
+  // check, well before it paints anything.
+  if (isProcessing && !isSpaRebuild) {
     console.log('Already processing, skipping...')
     return false
   }
@@ -552,6 +569,15 @@ const processArticleContent = async (): Promise<boolean> => {
     const uniqueWords = Array.from(new Set(words))
     console.log(`Found ${words.length} words (${uniqueWords.length} unique) to process`)
 
+    // Short-circuit (ADR-011 Decision 6.2): on a SPA rebuild, if every word
+    // of the new tweet is already cached -- typical when switching between
+    // tweets in one session -- skip the getWords / paragraph-init round trip
+    // and go straight to highlighting. Scoped to the SPA path; a static-site
+    // re-arm keeps calling the backend as before.
+    const allCached =
+      isSpaRebuild &&
+      uniqueWords.every(w => wordCache[w.toLowerCase()] !== undefined)
+
     // Process words in chunks
     const chunkSize = 200 // Process in smaller chunks for better performance
     let processedChunks = 0
@@ -563,6 +589,10 @@ const processArticleContent = async (): Promise<boolean> => {
           type: 'getWords',
           paragraph,
         })
+
+        // A newer tweet switch landed while this request was in flight --
+        // stop so we don't cache/paint for a tweet the user has left.
+        if (stale()) return
 
         if (response.success && response.wordProperties) {
           // Check if wordProperties is wrapped in a 'data' field
@@ -595,22 +625,32 @@ const processArticleContent = async (): Promise<boolean> => {
       }
     }
 
-    for (let i = 0; i < uniqueWords.length; i += chunkSize) {
-      const chunk = uniqueWords.slice(i, i + chunkSize)
-      console.log(`📦 Processing chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(uniqueWords.length / chunkSize)}: ${chunk.length} words`)
+    if (allCached) {
+      console.log(`All ${uniqueWords.length} words already cached; skipping backend`)
+    } else {
+      for (let i = 0; i < uniqueWords.length; i += chunkSize) {
+        if (stale()) return false
+        const chunk = uniqueWords.slice(i, i + chunkSize)
+        console.log(`📦 Processing chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(uniqueWords.length / chunkSize)}: ${chunk.length} words`)
 
-      try {
-        await sendChunkWithRetry(chunk)
-      } catch (error) {
-        if (error instanceof Error && error.message === 'SESSION_EXPIRED') {
-          console.log('Session expired during word processing')
-          showSessionExpiredMessage()
-          return false
+        try {
+          await sendChunkWithRetry(chunk)
+        } catch (error) {
+          if (error instanceof Error && error.message === 'SESSION_EXPIRED') {
+            console.log('Session expired during word processing')
+            showSessionExpiredMessage()
+            return false
+          }
+          console.error('Error processing word chunk:', error)
+          // Continue processing other chunks
         }
-        console.error('Error processing word chunk:', error)
-        // Continue processing other chunks
       }
     }
+
+    // Last stale check before the paint. Everything from here to the return
+    // is synchronous, so a queued navigate event can't interleave -- the
+    // paint is effectively atomic with this guard.
+    if (stale()) return false
 
     const haveWords = Object.keys(wordCache).length > 0
 
@@ -925,6 +965,25 @@ const handleTextSelection = () => {
   triggerPhraseContextLookup(selectedText, selectionRange)
 }
 
+// --- SPA in-page navigation auto-rebuild (ADR-011 Decision 6) --------------
+// isSupportedPage / waitForTweetReady / shouldHandleTweetNavigate + the
+// factory all live in ./spaRebuild; here we only wire the concrete deps.
+
+let spaRebuilderInstance: ReturnType<typeof createSpaRebuilder> | null = null
+const getSpaRebuilder = () => {
+  spaRebuilderInstance ??= createSpaRebuilder({
+    isPageSupported: isSupportedPage,
+    waitForContentReady: waitForTweetReady,
+    teardown: () => {
+      WordProcessor.clearHighlights()
+      clearArticleRoots()
+      hideWordPopup()
+    },
+    rebuild: isCurrent => processArticleContent({ isCurrent }).then(() => {}),
+  })
+  return spaRebuilderInstance
+}
+
 // Enable ENX functionality
 const enableEnx = async (): Promise<boolean> => {
   if (isEnxEnabled) {
@@ -941,8 +1000,21 @@ const enableEnx = async (): Promise<boolean> => {
   document.addEventListener('mouseup', handleTextSelection)
   document.addEventListener('mousedown', cancelPendingSelectionTranslation)
 
-  // Process article content and wait for completion
-  const success = await processArticleContent()
+  // On a 'spa' site (X), re-run automatically when the user switches tweets
+  // in-page (ADR-011 Decision 6). Static sites reload + re-inject anyway.
+  const isSpa =
+    resolveSiteAdapter(window.location).contentVolatility === 'spa' &&
+    !!window.navigation
+  if (isSpa) {
+    getSpaRebuilder().start(window.navigation!)
+  }
+
+  // The initial processing run also rides the SPA generation counter so it
+  // is abandoned if the user switches tweets before its backend call
+  // returns (otherwise it could paint the old tweet after teardown).
+  const success = await processArticleContent(
+    isSpa ? { isCurrent: getSpaRebuilder().makeIsCurrent() } : {}
+  )
 
   if (success) {
     console.log('✅ ENX enabled successfully with article processing')
@@ -964,6 +1036,7 @@ const disableEnx = () => {
   document.removeEventListener('mouseup', handleTextSelection)
   document.removeEventListener('mousedown', cancelPendingSelectionTranslation)
   cancelPendingSelectionTranslation()
+  spaRebuilderInstance?.stop()
 
   // Hide popup
   hideWordPopup()

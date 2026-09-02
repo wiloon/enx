@@ -8,10 +8,14 @@
 // today's behavior field-for-field, so those sites must see no observable
 // change. Only X (a React SPA) needs a non-default adapter.
 
+// The subset of a Location the adapters read. Both `window.location` and a
+// `URL` (from a Navigation API destination) satisfy it.
+export type PageLocation = Pick<Location, 'hostname' | 'pathname'>
+
 export interface SiteAdapter {
   name: string
-  /** Host-level match against window.location. */
-  matches: (location: Location) => boolean
+  /** Host-level match against the page location. */
+  matches: (location: PageLocation) => boolean
   /**
    * Page-level gate evaluated after `matches` succeeds. Returns a user-facing
    * string when this specific page is out of scope (e.g. an X timeline or
@@ -19,7 +23,7 @@ export interface SiteAdapter {
    * surfaces that message. Returns null when the page is supported. Undefined
    * means every page under the matched host is supported (today's behavior).
    */
-  pageSupport?: (location: Location) => string | null
+  pageSupport?: (location: PageLocation) => string | null
   /** Overrides getArticleNodes()'s built-in selector list when set. */
   contentSelector?: string
   /** Minimum trimmed textContent length for a node to count as content. */
@@ -33,9 +37,9 @@ export interface SiteAdapter {
    * How the article content changes after learning mode is on, and so which
    * observers the content script attaches (ADR-011 F section):
    *   'static'    — no observers; re-run only on an explicit enxRun.
-   *   'spa'       — a route-change listener re-runs on in-page navigation.
-   *   'streaming' — incremental MutationObserver (ADR-010 Phase 3/4).
-   * Only 'static' is wired today; 'spa' is a placeholder for issue #12.
+   *   'spa'       — a Navigation API route-change listener re-runs on in-page
+   *                 navigation (X switching tweets).
+   *   'streaming' — incremental MutationObserver (ADR-010 Phase 3/4, not yet).
    */
   contentVolatility: 'static' | 'spa' | 'streaming'
   /**
@@ -117,8 +121,6 @@ const X_ADAPTER: SiteAdapter = {
   // default 100; >1 still filters out pure-emoji / pure-link empty nodes.
   minTextLength: 1,
   focusedNodeResolver: pickFocusedTweet,
-  // 'spa' branch (auto re-run on in-page tweet switch) lands in issue #12;
-  // for now X still needs a manual re-enable after switching tweets.
   contentVolatility: 'spa',
   clickBinding: 'bubble',
   showProcessingIndicator: false,
@@ -127,6 +129,6 @@ const X_ADAPTER: SiteAdapter = {
 // Non-default adapters, checked in order.
 const ADAPTERS: SiteAdapter[] = [X_ADAPTER]
 
-export function resolveSiteAdapter(location: Location): SiteAdapter {
+export function resolveSiteAdapter(location: PageLocation): SiteAdapter {
   return ADAPTERS.find(adapter => adapter.matches(location)) ?? DEFAULT_ADAPTER
 }
