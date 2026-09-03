@@ -31,7 +31,7 @@ function CallbackHandler() {
 
     exchangeCodeForTokens(code)
       .then((tokens) => completeCognitoLogin(tokens))
-      .then(() => router.replace('/'))
+      .then(() => router.replace('/app'))
       .catch((e) =>
         setError(e instanceof Error ? e.message : 'Sign-in failed')
       )

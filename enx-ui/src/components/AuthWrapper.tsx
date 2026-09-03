@@ -41,7 +41,7 @@ export default function AuthWrapper() {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-2xl font-bold">Welcome, {user?.username}!</h1>
-            <p className="text-gray-600">ENX Learning Platform</p>
+            <p className="text-gray-600">Catseye</p>
           </div>
           <Button variant="outline" onClick={() => logout()}>
             Sign out
@@ -81,14 +81,15 @@ export default function AuthWrapper() {
 
           <Card>
             <CardHeader>
-              <CardTitle>订阅与积分</CardTitle>
+              <CardTitle>Subscription &amp; Credits</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-gray-600 mb-4">
-                升级到 enx Pro，或购买 AI 翻译积分，查看当前积分余额。
+                Upgrade to Catseye Pro or buy AI translation credits, and check
+                your current balance.
               </p>
               <Link href="/billing">
-                <Button className="w-full">前往订阅与积分</Button>
+                <Button className="w-full">Go to Subscription &amp; Credits</Button>
               </Link>
             </CardContent>
           </Card>

@@ -10,7 +10,7 @@ export default function LoginForm() {
   return (
     <Card className="w-full max-w-md mx-auto">
       <CardHeader>
-        <CardTitle className="text-center">Sign in to ENX</CardTitle>
+        <CardTitle className="text-center">Sign in to Catseye</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-gray-600 text-center">

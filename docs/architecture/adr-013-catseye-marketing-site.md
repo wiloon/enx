@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Proposed — 2026-09-02。设计决策已与用户收敛（品牌名 = Catseye、v1 = 精简首页、结构 = route group 分层 + 静态渲染）；实现走 TDD，本 ADR 的 Decision + 内容清单直接作为实现依据，不另写 TASK-SPEC（同 ADR-008 / 010 / 011 / 012 的做法）。 |
+| **状态** | Accepted — 2026-09-03。v1 已实现并部署（`enx.wiloon.lab`）。落地时的取舍：没有引入 `(marketing)` / `(app)` route group（单营销页不值当一层 group），改为 `/` = 营销页 + `/app` = 现有 `AuthWrapper` dashboard；登录跳转与 auth callback 改到 `/app`。组件在 `enx-ui/src/components/site/`，常量在 `src/lib/site.ts`。截图 / 演示视频 / OG 图 / Chrome Web Store id 仍是占位。 |
 | **日期** | 2026-09-02 |
 | **关联 ADR** | [`adr-010-product-naming-catseye.md`](adr-010-product-naming-catseye.md)（正式产品名 **猫眼翻译 / Catseye**；本 ADR 让官网正式启用 `Catseye` 作为对外品牌名，`ENX` / `enx` 收敛为代码内部代号）、[`adr-004-no-aws-amplify-hand-rolled-cognito.md`](adr-004-no-aws-amplify-hand-rolled-cognito.md)（现有 Cognito 客户端鉴权；营销区必须在鉴权边界**之外**）、[`adr-012-enx-ui-idiomatic-rephrasing.md`](adr-012-enx-ui-idiomatic-rephrasing.md)（enx-ui 现有页面形态：`'use client'` + shadcn 卡片 + React Query；营销区反过来是 Server Component + 静态渲染，两套并存） |
 | **关联配置** | `w10n-config/enx/market-research.md`（竞品分析）、`w10n-config/enx/monetization.md`（定价——v1 官网不含 `/pricing`，留到后续） |

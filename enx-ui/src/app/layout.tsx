@@ -14,8 +14,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ENX UI",
-  description: "ENX Learning Platform",
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL || "https://enx.wiloon.lab"
+  ),
+  title: "Catseye",
+  description: "AI-assisted English reading in your browser.",
 };
 
 export default function RootLayout({
