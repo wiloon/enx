@@ -9,10 +9,13 @@ RUN for i in 1 2 3 4 5; do \
       echo "pnpm install attempt $i failed, retrying in 60s..."; sleep 60; \
     done
 COPY . .
-ARG NEXT_PUBLIC_API_BASE_URL=https://enx-lab.wiloon.com
+# Defaults target the homelab lab deployment. The Tekton pipeline
+# (infra/homelab/k8s/tekton/pipeline-build-enx-ui.yaml) overrides these via
+# --build-arg; a bare `docker build` should still land somewhere real.
+ARG NEXT_PUBLIC_API_BASE_URL=https://enx-api.wiloon.lab
 ARG NEXT_PUBLIC_COGNITO_DOMAIN=https://enx-auth.auth.us-east-1.amazoncognito.com
 ARG NEXT_PUBLIC_COGNITO_CLIENT_ID=1il7v7q7jn17150jq4lou6m7b0
-ARG NEXT_PUBLIC_COGNITO_REDIRECT_URI=https://enx-ui-lab.wiloon.com/auth/callback
+ARG NEXT_PUBLIC_COGNITO_REDIRECT_URI=https://enx.wiloon.lab/auth/callback
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_COGNITO_DOMAIN=$NEXT_PUBLIC_COGNITO_DOMAIN
 ENV NEXT_PUBLIC_COGNITO_CLIENT_ID=$NEXT_PUBLIC_COGNITO_CLIENT_ID

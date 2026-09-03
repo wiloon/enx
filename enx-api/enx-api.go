@@ -105,7 +105,7 @@ func setupRouter() *gin.Engine {
 		// List of allowed origins
 		allowedOrigins := []string{
 			"http://localhost:3000",
-			"https://enx-ui.wiloon.lab",
+			"https://enx.wiloon.lab",
 			"https://enx.wiloon.com",
 		}
 

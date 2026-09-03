@@ -49,7 +49,7 @@ const ENV_CONFIG: Record<string, EnvConfig> = {
   },
   staging: {
     apiBaseUrl: 'https://enx-api.wiloon.lab',
-    frontendBaseUrl: 'https://enx-ui.wiloon.lab',
+    frontendBaseUrl: 'https://enx.wiloon.lab',
     cognitoDomain:
       getEnvValue('VITE_COGNITO_DOMAIN') ||
       'https://enx-auth.auth.us-east-1.amazoncognito.com',

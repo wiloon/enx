@@ -125,20 +125,22 @@ tasks:
 
 
   build:
-    desc: Build extension for production
+    desc: Build extension for the homelab deployment (API -> enx-api.wiloon.lab)
     cmds:
       - task: ensure-node
-      - echo "Building {{.EXT_NAME}} v{{.VERSION}}..."
+      - echo "Building {{.EXT_NAME}} v{{.VERSION}} (homelab)..."
       - '{{.FNM_EXEC}} pnpm run build'
       - echo "Build completed! Output in dist/"
 
   build-dev:
-    desc: Build extension for local development (uses local API)
+    desc: Build extension for local development (API -> http://localhost:8090)
     cmds:
       - task: ensure-node
       - echo "Building {{.EXT_NAME}} for local development..."
       - echo "API URL{{":"}} http{{":"}}//localhost{{":"}}8090"
-      - '{{.FNM_EXEC}} pnpm run build'
+      # --mode development loads .env.development (VITE_ENV=development). Without
+      # it `vite build` runs in production mode -> .env.production -> homelab.
+      - '{{.FNM_EXEC}} pnpm run build -- --mode development'
       - echo "Build completed! Load dist/ in chrome{{":"}}//extensions/"
 
 

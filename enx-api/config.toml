@@ -29,7 +29,7 @@ db_path = ""
 from = "ENX <no-reply@wiloon.com>"
 
 [app]
-frontend-base-url = "https://enx-ui.wiloon.lab"
+frontend-base-url = "https://enx.wiloon.lab"
 
 [cognito]
 region = "us-east-1"

@@ -54,7 +54,7 @@ func viperInitInternal() {
 	viper.SetDefault("cognito.region", "us-east-1")
 	viper.SetDefault("resend.api-key", "")
 	viper.SetDefault("resend.from", "ENX <no-reply@wiloon.com>")
-	viper.SetDefault("app.frontend-base-url", "https://enx-ui.wiloon.lab")
+	viper.SetDefault("app.frontend-base-url", "https://enx.wiloon.lab")
 
 	viper.SetDefault("ecdict.db_path", "")
 	_ = viper.BindEnv("ecdict.db_path", "ECDICT_DB_PATH")
