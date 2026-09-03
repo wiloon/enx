@@ -1,5 +1,10 @@
 version: '3'
 
+vars:
+  # enx-ui needs Node 18+ (Next 15); many shells still default to Node 16.
+  # Run its pnpm scripts through the version pinned in enx-ui/.node-version.
+  FNM_UI: fnm exec --using=.node-version --
+
 tasks:
   default:
     desc: Show available tasks
@@ -204,7 +209,7 @@ tasks:
     desc: Setup enx-ui
     dir: enx-ui
     cmds:
-      - pnpm install
+      - '{{.FNM_UI}} pnpm install'
 
   # ===========================================
   # Development
@@ -238,10 +243,10 @@ tasks:
       - task dev-chrome URL={{.URL | default "https://rssx-lab.wiloon.com/"}}
 
   ui:run:
-    desc: Start enx-ui in development mode
+    desc: Start enx-ui in development mode (http://localhost:3000)
     dir: enx-ui
     cmds:
-      - pnpm dev
+      - '{{.FNM_UI}} pnpm dev'
 
   stop:dev:
     desc: Stop all development services
@@ -304,7 +309,7 @@ tasks:
     desc: Build enx-ui
     dir: enx-ui
     cmds:
-      - pnpm build
+      - '{{.FNM_UI}} pnpm build'
 
   tekton:build:api:
     desc: "Trigger enx-api Tekton build and GitOps deploy via ArgoCD"
@@ -392,9 +397,9 @@ tasks:
       - |
         if [ ! -d "node_modules" ]; then
           echo "⚠️  enx-ui: node_modules not found, skipping tests"
-          echo "   Run 'task setup-ui' to install dependencies"
+          echo "   Run 'task setup:ui' to install dependencies"
         else
-          pnpm test
+          {{.FNM_UI}} pnpm test
         fi
 
   test:coverage:
