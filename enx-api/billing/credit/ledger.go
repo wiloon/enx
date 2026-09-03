@@ -31,6 +31,11 @@ const (
 	TypeConsume           = "CONSUME"
 	TypeRefund            = "REFUND"
 	TypeExpire            = "EXPIRE"
+	// TypeSettle marks a Settle row: a post-hoc deduction for a
+	// token-metered feature whose AI call already completed (ADR-012).
+	// Distinct from TypeConsume so accounting can tell "charged after the
+	// fact, may have gone negative" from "checked-then-charged".
+	TypeSettle = "SETTLE"
 )
 
 // Pool identifies which balance a Consume call drew from, so a caller whose

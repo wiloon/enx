@@ -29,10 +29,22 @@ const (
 )
 
 type Kimi struct {
-	apiKey  string
-	model   string
-	baseURL string
-	client  *resty.Client
+	apiKey string
+	model  string
+	// rephraseModel is used for the rephrase feature only (ADR-012); empty
+	// means "use model". Rephrase output is longer than a translation and
+	// the input cap will grow, so a deployment can point rephrase at a
+	// larger-context model without changing translation.
+	rephraseModel string
+	baseURL       string
+	client        *resty.Client
+}
+
+func (k *Kimi) modelForRephrase() string {
+	if k.rephraseModel != "" {
+		return k.rephraseModel
+	}
+	return k.model
 }
 
 // New builds a Kimi translator from config.toml (sentence-translate.kimi.*)
@@ -55,10 +67,11 @@ func New() (*Kimi, error) {
 	}
 
 	return &Kimi{
-		apiKey:  apiKey,
-		model:   model,
-		baseURL: baseURL,
-		client:  resty.New().SetTimeout(requestTimeout),
+		apiKey:        apiKey,
+		model:         model,
+		rephraseModel: viper.GetString("sentence-translate.kimi.rephrase-model"),
+		baseURL:       baseURL,
+		client:        resty.New().SetTimeout(requestTimeout),
 	}, nil
 }
 
@@ -97,42 +110,44 @@ type chatResponse struct {
 }
 
 func (k *Kimi) TranslateSentence(ctx context.Context, sentence string) (string, error) {
-	return k.chat(ctx, "translate_sentence", systemPrompt, sentence)
+	out, _, err := k.chat(ctx, "translate_sentence", k.model, 0.3, systemPrompt, sentence)
+	return out, err
 }
 
 func (k *Kimi) TranslateWordInContext(ctx context.Context, sentence, word string) (string, error) {
-	return k.chat(ctx, "translate_word_in_context", wordContextSystemPrompt, fmt.Sprintf("Sentence: %s\nWord: %s", sentence, word))
+	out, _, err := k.chat(ctx, "translate_word_in_context", k.model, 0.3, wordContextSystemPrompt, fmt.Sprintf("Sentence: %s\nWord: %s", sentence, word))
+	return out, err
 }
 
-func (k *Kimi) chat(ctx context.Context, feature, systemPrompt, userContent string) (string, error) {
+func (k *Kimi) chat(ctx context.Context, feature, model string, temperature float64, systemPrompt, userContent string) (string, usage, error) {
 	var result chatResponse
 	resp, err := k.client.R().
 		SetContext(ctx).
 		SetHeader("Authorization", "Bearer "+k.apiKey).
 		SetHeader("Content-Type", "application/json").
 		SetBody(chatRequest{
-			Model: k.model,
+			Model: model,
 			Messages: []chatMessage{
 				{Role: "system", Content: systemPrompt},
 				{Role: "user", Content: userContent},
 			},
-			Temperature: 0.3,
+			Temperature: temperature,
 		}).
 		SetResult(&result).
 		Post(k.baseURL + "/chat/completions")
 
 	if err != nil {
-		return "", fmt.Errorf("kimi: request failed: %w", err)
+		return "", usage{}, fmt.Errorf("kimi: request failed: %w", err)
 	}
 	if resp.StatusCode() != 200 {
-		return "", fmt.Errorf("kimi: unexpected status %d: %s", resp.StatusCode(), resp.String())
+		return "", usage{}, fmt.Errorf("kimi: unexpected status %d: %s", resp.StatusCode(), resp.String())
 	}
 	if len(result.Choices) == 0 {
-		return "", fmt.Errorf("kimi: empty response")
+		return "", usage{}, fmt.Errorf("kimi: empty response")
 	}
 
 	logger.Infof("aitranslate: usage provider=kimi feature=%s model=%s input_chars=%d prompt_tokens=%d completion_tokens=%d total_tokens=%d",
-		feature, k.model, len(userContent), result.Usage.PromptTokens, result.Usage.CompletionTokens, result.Usage.TotalTokens)
+		feature, model, len(userContent), result.Usage.PromptTokens, result.Usage.CompletionTokens, result.Usage.TotalTokens)
 
-	return result.Choices[0].Message.Content, nil
+	return result.Choices[0].Message.Content, result.Usage, nil
 }

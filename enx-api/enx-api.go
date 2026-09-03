@@ -4,6 +4,7 @@ import (
 	"context"
 	"enx-api/aitranslate"
 	"enx-api/billing"
+	"enx-api/billing/credit"
 	billingstripe "enx-api/billing/stripe"
 	"enx-api/dictionary"
 	"enx-api/ecdict"
@@ -190,6 +191,28 @@ func setupRouter() *gin.Engine {
 		viper.GetInt64("stripe.costs.translate-word-in-context"),
 	)
 
+	// Rephrase (ADR-012) reuses the same provider as sentence translation,
+	// but the provider must also implement rephrase support. Same
+	// "unconfigured is not fatal, misconfigured is" contract as above.
+	rephraser, rephraseErr := aitranslate.NewRephraser(context.Background())
+	if rephraseErr != nil {
+		if provider := viper.GetString("sentence-translate.provider"); provider != "" {
+			logger.Errorf("sentence-translate.provider=%q is configured but rephrase failed to initialize: %v", provider, rephraseErr)
+			os.Exit(1)
+		}
+		logger.Warnf("rephrase disabled: %v", rephraseErr)
+		rephraser = nil
+	}
+	rephraseHandler := aitranslate.NewRephraseHandler(
+		rephraser,
+		aitranslate.DefaultRephraseLedger,
+		credit.TokenPricing{
+			WeightIn:  viper.GetInt64("stripe.costs.rephrase.weight-in"),
+			WeightOut: viper.GetInt64("stripe.costs.rephrase.weight-out"),
+			Divisor:   viper.GetInt64("stripe.costs.rephrase.divisor"),
+		},
+	)
+
 	// Stripe billing is likewise optional: without STRIPE_SECRET_KEY (a local
 	// dev box, or a deployment that hasn't set the secret yet), billing
 	// endpoints stay disabled (503) rather than the server failing to start.
@@ -213,6 +236,7 @@ func setupRouter() *gin.Engine {
 		authGroup.GET("/word/:word", translate.TranslateByWord)
 		authGroup.POST("/translate/sentence", sentenceHandler.TranslateSentence)
 		authGroup.POST("/translate/word-in-context", sentenceHandler.TranslateWordInContext)
+		authGroup.POST("/rephrase", rephraseHandler.Rephrase)
 		authGroup.GET("/load-count", wordCount.LoadCount)
 		authGroup.POST("/mark", MarkWord)
 		authGroup.GET("/ecdict", DoSearchEcdict)
@@ -231,6 +255,7 @@ func setupRouter() *gin.Engine {
 		apiGroup.GET("/word/:word", translate.TranslateByWord)
 		apiGroup.POST("/translate/sentence", sentenceHandler.TranslateSentence)
 		apiGroup.POST("/translate/word-in-context", sentenceHandler.TranslateWordInContext)
+		apiGroup.POST("/rephrase", rephraseHandler.Rephrase)
 		apiGroup.DELETE("/word/:word", DeleteWord)
 		apiGroup.GET("/load-count", wordCount.LoadCount)
 		apiGroup.POST("/mark", MarkWord)

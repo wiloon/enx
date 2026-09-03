@@ -38,3 +38,9 @@ _Avoid_: site config、网站配置
 
 **内容易变程度（contentVolatility）**：
 站点适配器的一个字段，取 `static` / `spa` / `streaming`，描述正文在学习模式开启后会不会被替换，决定单词高亮要挂哪些 observer 来在 DOM 变化后重建。见 adr-011 F 节。
+
+### 界面功能（enx-ui）
+
+**地道表达（idiomatic rephrasing）**：
+输入一段中文 / 中英混杂 / 不地道的英文，返回地道的职场美式英语说法（面向跟美国同事发消息、邮件、协作沟通时的措辞优化），附 1–2 个不同语域的备选和中文学习注解。后端是 `aitranslate` 包内与英译中方向相反、按实际 token 计费的 `Rephraser` 能力。见 adr-012。
+_Avoid_: 翻译、直译、提示词生成、prompt generation

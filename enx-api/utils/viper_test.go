@@ -45,6 +45,14 @@ func TestViperInitSetsDefaults(t *testing.T) {
 	if got := viper.GetInt("stripe.credits.subscription-pro"); got != 0 {
 		t.Errorf("stripe.credits.subscription-pro = %d, want 0", got)
 	}
+	// Rephrase token pricing defaults to 0 (= "not priced"), so an
+	// unconfigured deployment 502s the endpoint rather than serving it free.
+	if got := viper.GetInt64("stripe.costs.rephrase.weight-in"); got != 0 {
+		t.Errorf("stripe.costs.rephrase.weight-in = %d, want 0", got)
+	}
+	if got := viper.GetInt64("stripe.costs.rephrase.divisor"); got != 0 {
+		t.Errorf("stripe.costs.rephrase.divisor = %d, want 0", got)
+	}
 	if got := viper.GetString("user.last-login-update-interval"); got != "5m" {
 		t.Errorf("user.last-login-update-interval = %q, want 5m (see the $USER-collision comment above)", got)
 	}

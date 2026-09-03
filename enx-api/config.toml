@@ -50,6 +50,11 @@ provider = ""
 
 [sentence-translate.kimi]
 model = "moonshot-v1-8k"
+# rephrase-model (ADR-012): rephrase-only override. Empty = use `model`.
+# Rephrase output is longer than a translation and its input cap will grow,
+# so a deployment can point rephrase at a larger-context model here without
+# touching translation. Override with SENTENCE_TRANSLATE_KIMI_REPHRASE_MODEL.
+rephrase-model = ""
 base-url = "https://api.moonshot.cn/v1"
 
 [sentence-translate.bedrock]
@@ -116,6 +121,21 @@ topup-large = 0
 # STRIPE_COSTS_TRANSLATE_SENTENCE / STRIPE_COSTS_TRANSLATE_WORD_IN_CONTEXT.
 translate-sentence = 1
 translate-word-in-context = 1
+
+[stripe.costs.rephrase]
+# Rephrase (ADR-012) is billed by ACTUAL token usage, not a fixed per-call
+# cost -- the first feature to do so, and the groundwork for site-wide token
+# billing. cost = ceil((prompt_tokens*weight-in + completion_tokens*weight-out)
+# / divisor), floored at 1. weight-out > weight-in because providers price
+# output tokens higher and the completion (idiomatic + alternatives + notes)
+# is the larger, more variable part. divisor <= 0 or both weights 0 means
+# "not priced yet" and the endpoint responds 502 (same convention as a
+# <= 0 fixed cost). Values below are placeholders pending pricing review;
+# calibrate from the `cost=` field in the usage log lines. Override with
+# STRIPE_COSTS_REPHRASE_WEIGHT_IN / _WEIGHT_OUT / _DIVISOR.
+weight-in = 1
+weight-out = 3
+divisor = 3000
 
 [stripe.quota]
 # Free-tier daily dictionary lookup cap (ADR-009 Decision 6). Unlike the

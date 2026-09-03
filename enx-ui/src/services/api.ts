@@ -1,4 +1,10 @@
-import { ApiResponse, BillingMeData, CheckoutSessionData, WordData } from '@/types'
+import {
+  ApiResponse,
+  BillingMeData,
+  CheckoutSessionData,
+  RephraseData,
+  WordData,
+} from '@/types'
 
 export type SubscriptionPlan = 'pro' | 'pro-plus' | 'max'
 export type TopupTier = 'small' | 'medium' | 'large'
@@ -155,6 +161,15 @@ export class ApiService {
 
   async createPortalSession(): Promise<ApiResponse<CheckoutSessionData>> {
     return this.makeRequest('/api/billing/portal', { method: 'POST' })
+  }
+
+  // Rephrase Chinese / mixed / rough English into idiomatic workplace
+  // American English (ADR-012). Billed by actual token usage.
+  async rephrase(input: string): Promise<ApiResponse<RephraseData>> {
+    return this.makeRequest<RephraseData>('/api/rephrase', {
+      method: 'POST',
+      body: JSON.stringify({ input }),
+    })
   }
 }
 

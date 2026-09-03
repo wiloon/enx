@@ -53,3 +53,18 @@ export interface BillingMeData {
 export interface CheckoutSessionData {
   url: string
 }
+
+// Mirrors POST /api/rephrase (enx-api aitranslate RephraseHandler, ADR-012).
+// The idiomatic rendering plus 1-2 alternatives at different registers and
+// 0-4 Chinese learning notes. Notes are Chinese by design (learning content);
+// everything else is English UI copy.
+export interface RephraseAlternative {
+  text: string
+  register: string
+}
+
+export interface RephraseData {
+  idiomatic: string
+  alternatives: RephraseAlternative[]
+  notes: string[]
+}

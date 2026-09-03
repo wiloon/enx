@@ -66,6 +66,21 @@ export default function AuthWrapper() {
 
           <Card>
             <CardHeader>
+              <CardTitle>Idiomatic Phrasing</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-gray-600 mb-4">
+                Turn Chinese or rough English into the way an American teammate
+                would phrase it, with alternatives and notes.
+              </p>
+              <Link href="/rephrase">
+                <Button className="w-full">Go to Idiomatic Phrasing</Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>订阅与积分</CardTitle>
             </CardHeader>
             <CardContent>

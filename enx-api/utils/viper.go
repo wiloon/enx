@@ -74,6 +74,7 @@ func viperInitInternal() {
 	_ = viper.BindEnv("sentence-translate.kimi.api-key", "KIMI_API_KEY")
 	_ = viper.BindEnv("sentence-translate.kimi.base-url", "SENTENCE_TRANSLATE_KIMI_BASE_URL")
 	_ = viper.BindEnv("sentence-translate.kimi.model", "SENTENCE_TRANSLATE_KIMI_MODEL")
+	_ = viper.BindEnv("sentence-translate.kimi.rephrase-model", "SENTENCE_TRANSLATE_KIMI_REPHRASE_MODEL")
 	_ = viper.BindEnv("sentence-translate.minimax.api-key", "MINIMAX_API_KEY")
 	_ = viper.BindEnv("sentence-translate.minimax.base-url", "SENTENCE_TRANSLATE_MINIMAX_BASE_URL")
 	_ = viper.BindEnv("sentence-translate.minimax.model", "SENTENCE_TRANSLATE_MINIMAX_MODEL")
@@ -113,6 +114,17 @@ func viperInitInternal() {
 	_ = viper.BindEnv("stripe.costs.translate-sentence", "STRIPE_COSTS_TRANSLATE_SENTENCE")
 	viper.SetDefault("stripe.costs.translate-word-in-context", 0)
 	_ = viper.BindEnv("stripe.costs.translate-word-in-context", "STRIPE_COSTS_TRANSLATE_WORD_IN_CONTEXT")
+	// Rephrase (ADR-012) is billed by actual token usage, not a fixed
+	// per-call cost: cost = ceil((prompt*weight-in + completion*weight-out)
+	// / divisor), floored at 1. divisor <= 0 or both weights 0 means "not
+	// priced yet" and the endpoint 502s. Defaults to 0 so an unconfigured
+	// deployment fails closed; k8s (no config.toml) sets the values via env.
+	viper.SetDefault("stripe.costs.rephrase.weight-in", 0)
+	_ = viper.BindEnv("stripe.costs.rephrase.weight-in", "STRIPE_COSTS_REPHRASE_WEIGHT_IN")
+	viper.SetDefault("stripe.costs.rephrase.weight-out", 0)
+	_ = viper.BindEnv("stripe.costs.rephrase.weight-out", "STRIPE_COSTS_REPHRASE_WEIGHT_OUT")
+	viper.SetDefault("stripe.costs.rephrase.divisor", 0)
+	_ = viper.BindEnv("stripe.costs.rephrase.divisor", "STRIPE_COSTS_REPHRASE_DIVISOR")
 	// Free dictionary lookup quota defaults to 0 (= "unlimited"), the
 	// opposite fail-direction from costs/credits -- see config.toml's
 	// [stripe.quota] comment.
