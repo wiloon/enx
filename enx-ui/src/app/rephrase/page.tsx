@@ -52,6 +52,16 @@ export default function RephrasePage() {
     if (canSubmit) mutation.mutate(input.trim())
   }
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Skip Enter presses that are confirming an IME candidate (e.g. pinyin),
+    // not actually submitting the form.
+    if (e.nativeEvent.isComposing) return
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      if (canSubmit) mutation.mutate(input.trim())
+    }
+  }
+
   const result = mutation.data
 
   return (
@@ -69,6 +79,7 @@ export default function RephrasePage() {
               id="rephrase-input"
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
               rows={4}
               placeholder="What do you want to say?"
               className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
