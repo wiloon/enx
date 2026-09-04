@@ -42,5 +42,12 @@ export default defineConfig(({ mode }) => {
       '@': resolve(__dirname, './src'),
     },
   },
+  build: {
+    // The large chunks are vendor code that's already appropriately code-split
+    // and mostly lazy-loaded (Clerk's clerk-js + its per-feature chunks, incl.
+    // the never-used Web3 wallet buttons behind a dynamic import; Sentry). The
+    // 500 kB default just adds noise here -- ADR-015.
+    chunkSizeWarningLimit: 1000,
+  },
 }
 })
