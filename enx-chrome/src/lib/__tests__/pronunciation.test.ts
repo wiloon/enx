@@ -87,4 +87,17 @@ describe('playPronunciation', () => {
     FakeAudio.instances[0].emitError()
     expect(speakMock).toHaveBeenCalledTimes(1)
   })
+
+  it('speaks only once when both play() rejects and the element errors', async () => {
+    const instance = new FakeAudio('unused')
+    instance.playResult = Promise.reject(new Error('blocked'))
+    // @ts-expect-error swap in the pre-built rejecting instance
+    globalThis.Audio = jest.fn(() => instance)
+
+    playPronunciation('hello')
+    instance.emitError()
+    await Promise.resolve().then(() => Promise.resolve())
+
+    expect(speakMock).toHaveBeenCalledTimes(1)
+  })
 })

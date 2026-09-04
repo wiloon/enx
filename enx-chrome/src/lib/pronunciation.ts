@@ -15,7 +15,17 @@ function speakWithBrowserTts(word: string): void {
 export function playPronunciation(word: string): void {
   if (!word) return
 
+  // A failed Youdao request rejects the play() promise *and* fires the audio
+  // element's 'error' event, so both fallback paths run and the browser TTS
+  // speaks the word twice. Guard so the fallback fires at most once.
+  let fellBack = false
+  const fallBack = () => {
+    if (fellBack) return
+    fellBack = true
+    speakWithBrowserTts(word)
+  }
+
   const audio = new Audio(YOUDAO_AUDIO_URL(word))
-  audio.addEventListener('error', () => speakWithBrowserTts(word), { once: true })
-  audio.play().catch(() => speakWithBrowserTts(word))
+  audio.addEventListener('error', fallBack, { once: true })
+  audio.play().catch(fallBack)
 }
