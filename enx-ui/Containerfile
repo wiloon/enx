@@ -13,13 +13,23 @@ COPY . .
 # (infra/homelab/k8s/tekton/pipeline-build-enx-ui.yaml) overrides these via
 # --build-arg; a bare `docker build` should still land somewhere real.
 ARG NEXT_PUBLIC_API_BASE_URL=https://enx-api.wiloon.lab
-ARG NEXT_PUBLIC_COGNITO_DOMAIN=https://enx-auth.auth.us-east-1.amazoncognito.com
-ARG NEXT_PUBLIC_COGNITO_CLIENT_ID=1il7v7q7jn17150jq4lou6m7b0
-ARG NEXT_PUBLIC_COGNITO_REDIRECT_URI=https://enx.wiloon.lab/auth/callback
+# Clerk (ADR-015). Publishable key + these URLs are inlined into the bundle at
+# build time (NEXT_PUBLIC_*), so the Tekton pipeline passes them via --build-arg.
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_cmF0aW9uYWwtZGVlci00NDUwLmNsZXJrLmFjY291bnRzLmRldiQ
+ARG NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+ARG NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+ARG NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/app
+ARG NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/app
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
-ENV NEXT_PUBLIC_COGNITO_DOMAIN=$NEXT_PUBLIC_COGNITO_DOMAIN
-ENV NEXT_PUBLIC_COGNITO_CLIENT_ID=$NEXT_PUBLIC_COGNITO_CLIENT_ID
-ENV NEXT_PUBLIC_COGNITO_REDIRECT_URI=$NEXT_PUBLIC_COGNITO_REDIRECT_URI
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ENV NEXT_PUBLIC_CLERK_SIGN_IN_URL=$NEXT_PUBLIC_CLERK_SIGN_IN_URL
+ENV NEXT_PUBLIC_CLERK_SIGN_UP_URL=$NEXT_PUBLIC_CLERK_SIGN_UP_URL
+ENV NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=$NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL
+ENV NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=$NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL
+# clerkMiddleware() needs SOME secret key present during `next build`; the real
+# value is injected at runtime from the k8s Secret `enx-clerk`. This dummy never
+# leaves the build stage.
+ENV CLERK_SECRET_KEY=sk_test_build_time_placeholder_only
 RUN pnpm build
 
 FROM node:22-alpine AS runner
