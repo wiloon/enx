@@ -4,7 +4,7 @@
 | --- | --- |
 | **状态** | Accepted — 2026-09-03（对话中收敛，待编码；产品未上线、真实用户 ≈ 0，**硬切**，无数据迁移、无过渡期双验签） |
 | **日期** | 2026-09-03 |
-| **关联 Spec** | 配套 TASK-SPEC 留到编码阶段再写（同 ADR-008 / ADR-010 / ADR-011 / ADR-014 的做法）；本 ADR 定 provider 选型、改动边界、各组件改动形状 |
+| **关联 Spec** | 编码走 MATT domain-modeling/TDD，未单写编码期 TASK-SPEC；[`docs/tasks/TASK-SPEC-enx-clerk-production-cutover.md`](../tasks/TASK-SPEC-enx-clerk-production-cutover.md)（**上线前**切生产 Clerk 实例 + 域名 + 自建 OAuth 凭证的清单，不改代码）。本 ADR 定 provider 选型、改动边界、各组件改动形状 |
 | **关联 ADR** | [`adr-004-no-aws-amplify-hand-rolled-cognito.md`](adr-004-no-aws-amplify-hand-rolled-cognito.md)（**其 Revisit Trigger #3 触发**：需要更多联邦 IdP + 网页/扩展会话同步，手写方案边际成本超过引入 SDK——本 ADR 是那条 trigger 的兑现，且这次引入的是 Clerk 而非 Amplify）、[`adr-001-chrome-oauth-in-background.md`](adr-001-chrome-oauth-in-background.md)（`launchWebAuthFlow` + background PKCE 交换流程被 `@clerk/chrome-extension` 取代）、[`adr-009-billing-stripe-subscription-and-ai-credits.md`](adr-009-billing-stripe-subscription-and-ai-credits.md)（计费/Stripe/积分全部键在本地 `users.Id`(UUID)，**不受本次切换影响**——见 Rationale 第 3 点）、[`adr-012`](adr-012-enx-ui-idiomatic-rephrasing.md) / [`adr-014`](adr-014-sidepanel-clicked-word-and-token-billing.md)（token 计费 handler 用 `GetUserIDFromContext`，取的是本地 UUID，不受影响） |
 | **关联背景** | [`docs/tasks/task-001-cognito-auth.md`](../tasks/task-001-cognito-auth.md)、[`docs/tasks/task-001-cognito-infra.md`](../tasks/task-001-cognito-infra.md)（最初的 Cognito 集成与 OpenTofu 模块） |
 | **关联配置** | `w10n-config`：`infra/aws/opentofu/enx/` 里的 Cognito 资源（User Pool、Hosted UI domain、Google IdP、两个 App Client）下线；k8s Secret `enx-cognito` 换成 `enx-clerk`（Clerk secret key + JWKS/issuer）。`w10n-config/enx/monetization*.md` 里的「Cognito 登录」相关描述同步。 |
