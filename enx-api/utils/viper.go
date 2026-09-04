@@ -48,6 +48,9 @@ func viperInitInternal() {
 	_ = viper.BindEnv("clerk.issuer", "CLERK_ISSUER")
 	_ = viper.BindEnv("clerk.authorized-parties", "CLERK_AUTHORIZED_PARTIES")
 	_ = viper.BindEnv("clerk.jwks-url", "CLERK_JWKS_URL")
+	// Space-separated Clerk user ids allowed to call POST /api/admin/*.
+	// Empty => admin endpoints are effectively off.
+	_ = viper.BindEnv("admin.clerk-user-ids", "ADMIN_CLERK_USER_IDS")
 
 	viper.SetDefault("resend.api-key", "")
 	viper.SetDefault("resend.from", "ENX <no-reply@wiloon.com>")

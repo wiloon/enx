@@ -276,6 +276,10 @@ func setupRouter() *gin.Engine {
 	apiGroup.POST("/billing/portal", billingHandler.Portal)
 	apiGroup.GET("/billing/me", billingHandler.Me)
 
+	// Admin: grant top-up credits to any user by email. Gated by the
+	// ADMIN_CLERK_USER_IDS allowlist inside the handler (on top of clerkAuth).
+	apiGroup.POST("/admin/credits/grant", billingHandler.GrantCredits)
+
 	// Stripe webhook — deliberately NOT in apiGroup/authGroup: Stripe can't
 	// present a Clerk session JWT, so this is unauthenticated at the router root,
 	// relying on Stripe-Signature verification instead (TASK-SPEC §3). URL

@@ -26,6 +26,26 @@ tasks:
     cmds:
       - go run ./cmd/send-test-email/main.go -to={{.TO}} -kind={{.KIND}}
 
+  grant-credits:
+    desc: |
+      Admin: grant top-up credits to a user by email (ADR-014/ADR-015).
+      Usage: task grant-credits USER=you@example.com AMOUNT=5000 TOKEN=<clerk-jwt> [REASON="..."] [API=https://enx-api.wiloon.lab]
+      TOKEN is the caller's Clerk session JWT -- in the browser console on the
+      site: `await window.Clerk.session.getToken()`. The caller's Clerk user id
+      must be in the server's ADMIN_CLERK_USER_IDS.
+    vars:
+      API: '{{.API | default "https://enx-api.wiloon.lab"}}'
+      REASON: '{{.REASON | default "manual grant"}}'
+    requires:
+      vars: [USER, AMOUNT, TOKEN]
+    cmds:
+      - |
+        curl -sS -X POST "{{.API}}/api/admin/credits/grant" \
+          -H "Authorization: Bearer {{.TOKEN}}" \
+          -H "Content-Type: application/json" \
+          -d '{"email":"{{.USER}}","amount":{{.AMOUNT}},"reason":"{{.REASON}}"}'
+        echo
+
   deps:
     desc: Download Go module dependencies
     cmds:
