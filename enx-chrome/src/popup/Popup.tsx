@@ -100,6 +100,9 @@ export default function Popup() {
     <ClerkProvider
       publishableKey={config.clerkPublishableKey}
       syncHost={config.clerkSyncHost}
+      // Pick up a session change on the website (e.g. the user just signed in
+      // there) without needing to reopen the popup.
+      __experimental_syncHostListener
       afterSignOutUrl="/popup.html"
     >
       <Provider>

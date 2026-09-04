@@ -1,4 +1,5 @@
-import { SignIn, SignOutButton, useUser } from '@clerk/chrome-extension'
+import { SignOutButton, useUser } from '@clerk/chrome-extension'
+import { config } from '@/config/env'
 import { errorAtom } from '@/store/atoms'
 import { useAtom } from 'jotai'
 import { useEffect, useState } from 'react'
@@ -54,15 +55,31 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   }
 
   if (!isSignedIn) {
+    // OAuth (Google/GitHub) can't complete inside the extension popup -- the
+    // popup is destroyed the moment it loses focus. Sign in on the Catseye
+    // website instead (full-page Clerk UI, OAuth works there); the extension
+    // then picks up the session automatically via ClerkProvider `syncHost`.
+    const openWebSignIn = () => {
+      chrome.tabs.create({ url: `${config.clerkSyncHost}/sign-in` })
+    }
     return (
-      <div className="w-80 p-4">
-        <h2 className="text-lg font-semibold mb-2">ENX Sign in</h2>
-        <p className="text-sm text-gray-600 mb-3">
-          Sign in with Google, GitHub, or email. If you&apos;re already signed
-          in on the Catseye website, this opens signed in.
+      <div className="w-80 p-4 space-y-3">
+        <h2 className="text-lg font-semibold">Catseye</h2>
+        <p className="text-sm text-gray-600">
+          Sign in to start highlighting and looking up words as you read.
         </p>
-        {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
-        <SignIn routing="hash" />
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        <button
+          type="button"
+          className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+          onClick={openWebSignIn}
+        >
+          Sign in on the web
+        </button>
+        <p className="text-xs text-gray-400">
+          Opens Catseye in a new tab. Once you&apos;re signed in there, come back
+          — this popup updates on its own.
+        </p>
       </div>
     )
   }
