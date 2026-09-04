@@ -8,7 +8,6 @@ import (
 	"enx-api/utils/sqlitex"
 
 	"github.com/glebarez/sqlite"
-	"github.com/spf13/viper"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
@@ -184,24 +183,6 @@ func TestGetUserByResetToken(t *testing.T) {
 	}
 }
 
-func TestGetUserByCognitoSub(t *testing.T) {
-	newUserTestDB(t)
-	u := &User{Name: "alice", CognitoSub: "sub-123"}
-	if err := u.Create(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	got := GetUserByCognitoSub("sub-123")
-	if got.Id != u.Id {
-		t.Errorf("Id = %q, want %q", got.Id, u.Id)
-	}
-
-	got = GetUserByCognitoSub("missing-sub")
-	if got.Id != "" {
-		t.Error("expected an empty user for a cognito sub that doesn't exist")
-	}
-}
-
 func TestUserActivateClearsVerificationToken(t *testing.T) {
 	newUserTestDB(t)
 	u := createTestUser(t, "alice", "hunter2")
@@ -263,97 +244,5 @@ func TestGenerateTokenIsUniqueAndHexEncoded(t *testing.T) {
 	}
 	if tok1 == tok2 {
 		t.Error("expected two calls to GenerateToken to produce different tokens")
-	}
-}
-
-func TestGetOrCreateByCognitoSubEmptySub(t *testing.T) {
-	newUserTestDB(t)
-
-	_, err := GetOrCreateByCognitoSub("", "a@b.com", "alice")
-	if err == nil {
-		t.Fatal("expected an error for an empty cognito sub")
-	}
-}
-
-func TestGetOrCreateByCognitoSubProvisionsNewUser(t *testing.T) {
-	newUserTestDB(t)
-
-	id, err := GetOrCreateByCognitoSub("sub-abc123", "alice@example.com", "")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if id == "" {
-		t.Fatal("expected a non-empty user id")
-	}
-
-	got := GetUserByCognitoSub("sub-abc123")
-	if got.Name != "alice" {
-		t.Errorf("Name = %q, want alice (derived from email)", got.Name)
-	}
-	if got.Status != "active" {
-		t.Errorf("Status = %q, want active", got.Status)
-	}
-}
-
-func TestGetOrCreateByCognitoSubFallsBackToSubForName(t *testing.T) {
-	newUserTestDB(t)
-
-	id, err := GetOrCreateByCognitoSub("sub-xyz789", "", "")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	got := GetUserByID(id)
-	want := "user-" + "sub-xyz789"[:8]
-	if got.Name != want {
-		t.Errorf("Name = %q, want %q (fallback derived from sub)", got.Name, want)
-	}
-}
-
-func TestGetOrCreateByCognitoSubUpdatesLastLoginForExistingUser(t *testing.T) {
-	newUserTestDB(t)
-	viper.Set("user.last-login-update-interval", 0)
-	defer viper.Set("user.last-login-update-interval", nil)
-
-	id, err := GetOrCreateByCognitoSub("sub-existing", "alice@example.com", "alice")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	before := GetUserByID(id)
-	time.Sleep(2 * time.Millisecond)
-
-	gotID, err := GetOrCreateByCognitoSub("sub-existing", "alice@example.com", "alice")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if gotID != id {
-		t.Fatalf("expected the same user id on a repeat lookup, got %q want %q", gotID, id)
-	}
-
-	after := GetUserByID(id)
-	if !after.LastLoginTime.After(before.LastLoginTime) {
-		t.Errorf("expected LastLoginTime to advance: before=%v after=%v", before.LastLoginTime, after.LastLoginTime)
-	}
-}
-
-func TestGetOrCreateByCognitoSubSkipsLastLoginUpdateWithinInterval(t *testing.T) {
-	newUserTestDB(t)
-	viper.Set("user.last-login-update-interval", "1h")
-	defer viper.Set("user.last-login-update-interval", nil)
-
-	id, err := GetOrCreateByCognitoSub("sub-throttled", "bob@example.com", "bob")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	before := GetUserByID(id)
-	time.Sleep(2 * time.Millisecond)
-
-	if _, err := GetOrCreateByCognitoSub("sub-throttled", "bob@example.com", "bob"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	after := GetUserByID(id)
-	if !after.LastLoginTime.Equal(before.LastLoginTime) {
-		t.Errorf("expected LastLoginTime to stay unchanged within the throttle interval: before=%v after=%v", before.LastLoginTime, after.LastLoginTime)
 	}
 }

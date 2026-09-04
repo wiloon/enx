@@ -8,15 +8,14 @@ import {
 
 export type SubscriptionPlan = 'pro' | 'pro-plus' | 'max'
 export type TopupTier = 'small' | 'medium' | 'large'
-import { CognitoTokens, refreshCognitoTokens } from '@/lib/cognito'
+
+type TokenGetter = () => Promise<string | null | undefined>
 
 export class ApiService {
   private baseUrl: string =
     process.env.NEXT_PUBLIC_API_BASE_URL || 'https://enx-api.wiloon.lab'
   private accessToken: string = ''
-  private refreshToken: string = ''
-  private refreshInFlight: Promise<CognitoTokens> | null = null
-  private onTokensRefreshed?: (tokens: CognitoTokens) => void
+  private tokenGetter?: TokenGetter
 
   constructor(baseUrl?: string) {
     if (baseUrl) {
@@ -24,56 +23,37 @@ export class ApiService {
     }
   }
 
+  // Test/fallback path: a statically supplied bearer token.
   setAccessToken(token: string) {
     this.accessToken = token
   }
 
-  setRefreshToken(token: string) {
-    this.refreshToken = token
-  }
-
-  setOnTokensRefreshed(callback: (tokens: CognitoTokens) => void) {
-    this.onTokensRefreshed = callback
+  // App path (ADR-015): Clerk's getToken(), wired by <ApiAuthBridge>. Clerk
+  // returns a fresh short-lived session JWT on every call, so there is no
+  // refresh cycle for ApiService to manage — a 401 is a real 401.
+  setTokenGetter(getter: TokenGetter | undefined) {
+    this.tokenGetter = getter
   }
 
   setBaseUrl(url: string) {
     this.baseUrl = url
   }
 
-  // Silently exchange the refresh token for a new access token. Concurrent
-  // 401s share a single in-flight refresh via `refreshInFlight`, so a burst
-  // of simultaneous requests doesn't fire multiple refresh calls.
-  private async tryRefreshTokens(): Promise<boolean> {
-    if (!this.refreshToken) {
-      return false
-    }
-
-    if (!this.refreshInFlight) {
-      this.refreshInFlight = refreshCognitoTokens(this.refreshToken).finally(
-        () => {
-          this.refreshInFlight = null
-        }
-      )
-    }
-
-    try {
-      const tokens = await this.refreshInFlight
-      this.accessToken = tokens.access_token
-      if (tokens.refresh_token) {
-        this.refreshToken = tokens.refresh_token
+  private async authToken(): Promise<string> {
+    if (this.tokenGetter) {
+      try {
+        return (await this.tokenGetter()) || ''
+      } catch (error) {
+        console.error('Clerk getToken failed:', error)
+        return ''
       }
-      this.onTokensRefreshed?.(tokens)
-      return true
-    } catch (error) {
-      console.error('Token refresh failed:', error)
-      return false
     }
+    return this.accessToken
   }
 
   private async makeRequest<T>(
     endpoint: string,
-    options: RequestInit = {},
-    isRetry = false
+    options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     try {
       const headers: Record<string, string> = {
@@ -81,8 +61,9 @@ export class ApiService {
         ...((options.headers as Record<string, string>) || {}),
       }
 
-      if (this.accessToken) {
-        headers['Authorization'] = `Bearer ${this.accessToken}`
+      const token = await this.authToken()
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
       }
 
       const response = await fetch(`${this.baseUrl}${endpoint}`, {
@@ -92,9 +73,6 @@ export class ApiService {
 
       if (!response.ok) {
         if (response.status === 401) {
-          if (!isRetry && (await this.tryRefreshTokens())) {
-            return this.makeRequest<T>(endpoint, options, true)
-          }
           throw new Error('Session expired')
         }
         const errorBody = await response.json().catch(() => null)

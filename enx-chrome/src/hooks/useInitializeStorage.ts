@@ -1,75 +1,18 @@
 import { getApiBaseUrl } from '@/config/env'
-import { apiBaseUrlAtom, sessionAtom, userAtom } from '@/store/atoms'
+import { apiBaseUrlAtom } from '@/store/atoms'
 import { useSetAtom } from 'jotai'
 import { useEffect } from 'react'
 
+// ADR-015: auth/session state comes from Clerk now, not chrome.storage. This
+// hook only resolves the (optionally overridden) API base URL.
 export const useInitializeStorage = () => {
-  const setUser = useSetAtom(userAtom)
-  const setSession = useSetAtom(sessionAtom)
   const setApiBaseUrl = useSetAtom(apiBaseUrlAtom)
 
   useEffect(() => {
-    const initializeFromStorage = async () => {
-      try {
-        const apiUrl = await getApiBaseUrl()
-        setApiBaseUrl(apiUrl)
-
-        const result = await chrome.storage.local.get([
-          'enx-user',
-          'enx-session',
-          'user',
-          'accessToken',
-        ])
-
-        const userData = result['enx-user'] || result.user
-        if (userData?.isLoggedIn) {
-          setUser(userData)
-        } else {
-          setUser({ id: 0, username: '', email: '', isLoggedIn: false })
-        }
-
-        const token =
-          result.accessToken ||
-          result['enx-session']?.accessToken ||
-          ''
-        const refresh =
-          result['enx-session']?.refreshToken ||
-          result.refreshToken ||
-          ''
-
-        if (token) {
-          setSession({ accessToken: token, refreshToken: refresh })
-        } else {
-          setSession({ accessToken: '', refreshToken: '' })
-        }
-      } catch (error) {
-        console.error('Error initializing from storage:', error)
-      }
-    }
-
-    const handleStorageChange = (changes: {
-      [key: string]: chrome.storage.StorageChange
-    }) => {
-      if (changes.user || changes['enx-user']) {
-        const userChange = changes.user || changes['enx-user']
-        if (userChange.newValue?.isLoggedIn) {
-          setUser(userChange.newValue)
-        } else if (!userChange.newValue) {
-          setUser({ id: 0, username: '', email: '', isLoggedIn: false })
-        }
-      }
-      if (changes.accessToken) {
-        const token = changes.accessToken.newValue as string
-        if (token) {
-          setSession({ accessToken: token, refreshToken: '' })
-        } else {
-          setSession({ accessToken: '', refreshToken: '' })
-        }
-      }
-    }
-
-    initializeFromStorage()
-    chrome.storage.local.onChanged.addListener(handleStorageChange)
-    return () => chrome.storage.local.onChanged.removeListener(handleStorageChange)
-  }, [setUser, setSession, setApiBaseUrl])
+    getApiBaseUrl()
+      .then(setApiBaseUrl)
+      .catch(error =>
+        console.error('Error resolving API base URL from storage:', error)
+      )
+  }, [setApiBaseUrl])
 }

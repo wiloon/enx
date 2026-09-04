@@ -1,7 +1,10 @@
 import { render, screen } from '@testing-library/react'
-import { Provider, createStore } from 'jotai'
-import { userAtom, accessTokenAtom } from '@/store/authAtoms'
 import { SITE } from '@/lib/site'
+
+const mockUseAuth = jest.fn(() => ({ isSignedIn: false }))
+jest.mock('@clerk/nextjs', () => ({
+  useAuth: () => mockUseAuth(),
+}))
 
 import HeaderAuthLinks from '../HeaderAuthLinks'
 import Hero from '../Hero'
@@ -21,27 +24,17 @@ const original = { ...SITE }
 afterEach(() => Object.assign(mutableSite, original))
 
 describe('HeaderAuthLinks', () => {
+  beforeEach(() => mockUseAuth.mockReturnValue({ isSignedIn: false }))
+
   it('shows "Sign in" pointing at /app when signed out', async () => {
     render(<HeaderAuthLinks />)
     const link = await screen.findByRole('link', { name: 'Sign in' })
     expect(link).toHaveAttribute('href', '/app')
   })
 
-  it('shows "Open App" when a signed-in user is in the store', async () => {
-    const store = createStore()
-    store.set(userAtom, {
-      id: '1',
-      username: 'u',
-      email: 'u@e.com',
-      status: 'active',
-      isLoggedIn: true,
-    })
-    store.set(accessTokenAtom, 'token')
-    render(
-      <Provider store={store}>
-        <HeaderAuthLinks />
-      </Provider>
-    )
+  it('shows "Open App" when Clerk reports a signed-in viewer', async () => {
+    mockUseAuth.mockReturnValue({ isSignedIn: true })
+    render(<HeaderAuthLinks />)
     expect(await screen.findByRole('link', { name: 'Open App' })).toBeInTheDocument()
   })
 })

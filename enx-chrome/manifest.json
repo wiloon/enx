@@ -4,7 +4,7 @@
   "name": "ENX - English Learning Extension",
   "version": "1.0.1",
   "description": "AI-powered English learning assistant that helps you learn vocabulary while browsing the web",
-  "permissions": ["storage", "activeTab", "scripting", "notifications", "identity", "sidePanel", "contextMenus"],
+  "permissions": ["storage", "activeTab", "scripting", "notifications", "identity", "sidePanel", "contextMenus", "cookies"],
   "host_permissions": [
     "http://*/*",
     "https://*/*",
@@ -13,10 +13,13 @@
     "https://enx.wiloon.lab/*",
     "https://enx-api.wiloon.com/*",
     "https://enx.wiloon.com/*",
-    "https://enx-auth.auth.us-east-1.amazoncognito.com/*",
+    "https://rational-deer-4450.clerk.accounts.dev/*",
     "https://www.youdao.com/*",
     "https://claude.com/blog/*"
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_title": "ENX English Learning"

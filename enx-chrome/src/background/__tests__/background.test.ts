@@ -1,28 +1,43 @@
 // Avoid loading the real env.ts (uses `import.meta`, which ts-jest can't parse
-// under CommonJS) and keep Cognito network calls fully mocked.
+// under CommonJS).
 jest.mock('@/config/env', () => ({
   config: {
     apiBaseUrl: 'http://localhost:8090',
     frontendBaseUrl: 'http://localhost:3000',
-    cognitoDomain: 'https://enx-auth.auth.us-east-1.amazoncognito.com',
-    cognitoClientId: '645kitlgap7l1q4ebrfkmi9ltv',
+    clerkPublishableKey: 'pk_test_x',
+    clerkSyncHost: 'http://localhost:3000',
     environment: 'test',
   },
   getApiBaseUrl: jest.fn(async () => 'http://localhost:8090'),
 }))
 
-jest.mock('@/lib/cognito', () => ({
-  refreshCognitoTokens: jest.fn(),
-  signInWithCognito: jest.fn(),
-  signOutWithCognito: jest.fn(),
+// Fake Clerk client (ADR-015): the background mints a session JWT via
+// clerk.session.getToken(). `setClerkSession` controls what it returns.
+const getToken = jest.fn<Promise<string | null>, []>()
+let clerkSession: { getToken: typeof getToken } | null = { getToken }
+
+function setClerkSession(token: string | null) {
+  if (token === null) {
+    clerkSession = null
+  } else {
+    clerkSession = { getToken }
+    getToken.mockResolvedValue(token)
+  }
+}
+
+jest.mock('@clerk/chrome-extension/background', () => ({
+  createClerkClient: jest.fn(async () => ({
+    get session() {
+      return clerkSession
+    },
+  })),
 }))
 
-import { refreshCognitoTokens } from '@/lib/cognito'
-import { loadSession, makeApiRequest } from '../background'
+import { makeApiRequest } from '../background'
 
-// Captured immediately at import time, before any test's `resetAllMocks()`
-// wipes `chrome.runtime.onMessage.addListener`'s call history: importing
-// `../background` registers this listener as a top-level side effect.
+// Captured at import time, before any test's resetAllMocks() wipes the
+// addListener call history: importing ../background registers this as a
+// top-level side effect.
 const onMessageListener = (chrome.runtime.onMessage.addListener as jest.Mock)
   .mock.calls[0][0] as (
   request: unknown,
@@ -39,78 +54,40 @@ function jsonResponse(status: number, body: unknown, ok = status < 400) {
   }
 }
 
-describe('background makeApiRequest / token refresh', () => {
-  let storageFixture: Record<string, unknown>
-
-  beforeEach(async () => {
+describe('background makeApiRequest / Clerk session token', () => {
+  beforeEach(() => {
     jest.resetAllMocks()
-
-    storageFixture = { accessToken: 'old-access-token', refreshToken: 'valid-refresh-token' }
-    ;(chrome.storage.local.get as jest.Mock).mockImplementation(
-      async (keys: string[]) => {
-        const result: Record<string, unknown> = {}
-        for (const key of keys) {
-          if (key in storageFixture) result[key] = storageFixture[key]
-        }
-        return result
-      }
-    )
-    ;(chrome.storage.local.set as jest.Mock).mockResolvedValue(undefined)
+    setClerkSession('clerk-session-jwt')
     ;(chrome.storage.local.remove as jest.Mock).mockResolvedValue(undefined)
     ;(chrome.tabs.query as jest.Mock).mockResolvedValue([{ id: 1 }])
     ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
     ;(global.fetch as jest.Mock) = jest.fn()
-
-    // Seed the module's in-memory accessToken/refreshToken from the fixture above.
-    await loadSession()
   })
 
-  it('loadSession reads both accessToken and refreshToken into memory', async () => {
-    await makeApiRequest('/api/me')
-
-    expect(chrome.storage.local.get).toHaveBeenCalledWith([
-      'accessToken',
-      'refreshToken',
-    ])
-    const [, requestInit] = (global.fetch as jest.Mock).mock.calls[0]
-    expect(requestInit.headers.Authorization).toBe('Bearer old-access-token')
-  })
-
-  it('silently refreshes the token on 401 and retries the request once', async () => {
-    ;(global.fetch as jest.Mock)
-      .mockResolvedValueOnce(jsonResponse(401, {}))
-      .mockResolvedValueOnce(jsonResponse(200, { English: 'test' }))
-    ;(refreshCognitoTokens as jest.Mock).mockResolvedValue({
-      access_token: 'new-access-token',
-      refresh_token: 'new-refresh-token',
-    })
+  it('attaches the Clerk session token as a Bearer header', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(200, { English: 'test' })
+    )
 
     const result = await makeApiRequest('/api/translate?word=test')
 
     expect(result).toEqual({ success: true, data: { English: 'test' } })
-    expect(refreshCognitoTokens).toHaveBeenCalledWith('valid-refresh-token')
-    expect(global.fetch).toHaveBeenCalledTimes(2)
-
-    // Retried request must use the newly refreshed access token.
-    const [, retryInit] = (global.fetch as jest.Mock).mock.calls[1]
-    expect(retryInit.headers.Authorization).toBe('Bearer new-access-token')
-
-    // New tokens persisted, and the session-expired path must not fire.
-    expect(chrome.storage.local.set).toHaveBeenCalledWith(
-      expect.objectContaining({
-        accessToken: 'new-access-token',
-        refreshToken: 'new-refresh-token',
-      })
-    )
-    expect(chrome.tabs.query).not.toHaveBeenCalled()
-    expect(chrome.storage.local.remove).not.toHaveBeenCalled()
+    const [, requestInit] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(requestInit.headers.Authorization).toBe('Bearer clerk-session-jwt')
   })
 
-  it('falls through to session-expired when the refresh call itself fails', async () => {
-    ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(401, {}))
-    ;(refreshCognitoTokens as jest.Mock).mockRejectedValue(
-      new Error('Token refresh failed: 400')
-    )
+  it('sends no Authorization header when there is no Clerk session', async () => {
+    setClerkSession(null)
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(200, {}))
+
+    await makeApiRequest('/api/me')
+
+    const [, requestInit] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(requestInit.headers.Authorization).toBeUndefined()
+  })
+
+  it('reports session-expired on a 401 without retrying', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
 
     const result = await makeApiRequest('/api/translate?word=test')
 
@@ -120,108 +97,53 @@ describe('background makeApiRequest / token refresh', () => {
       sessionExpired: true,
     })
     expect(global.fetch).toHaveBeenCalledTimes(1)
-    expect(chrome.storage.local.remove).toHaveBeenCalledWith(
-      expect.arrayContaining(['accessToken', 'refreshToken', 'enx-session'])
-    )
     expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
       1,
       expect.objectContaining({ action: 'sessionExpired' })
     )
   })
 
-  it('does not retry more than once if the refreshed token is still rejected', async () => {
-    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
-    ;(refreshCognitoTokens as jest.Mock).mockResolvedValue({
-      access_token: 'new-access-token',
+  it('propagates a non-401 error status (e.g. 402 insufficient credit)', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(402, { message: '积分不足' })
+    )
+
+    const result = await makeApiRequest('/api/translate/sentence', {
+      method: 'POST',
     })
 
-    const result = await makeApiRequest('/api/translate?word=test')
-
-    expect(result).toMatchObject({ success: false, sessionExpired: true })
-    expect(global.fetch).toHaveBeenCalledTimes(2) // original + exactly one retry
-    expect(refreshCognitoTokens).toHaveBeenCalledTimes(1)
-  })
-
-  it('deduplicates concurrent refresh calls triggered by simultaneous 401s', async () => {
-    let fetchCallCount = 0
-    ;(global.fetch as jest.Mock).mockImplementation(async () => {
-      fetchCallCount += 1
-      return fetchCallCount <= 2
-        ? jsonResponse(401, {})
-        : jsonResponse(200, { ok: true })
+    expect(result).toEqual({
+      success: false,
+      error: '积分不足',
+      status: 402,
     })
-    ;(refreshCognitoTokens as jest.Mock).mockResolvedValue({
-      access_token: 'new-access-token',
-      refresh_token: 'new-refresh-token',
-    })
-
-    const [resultA, resultB] = await Promise.all([
-      makeApiRequest('/api/translate?word=a'),
-      makeApiRequest('/api/translate?word=b'),
-    ])
-
-    expect(resultA.success).toBe(true)
-    expect(resultB.success).toBe(true)
-    expect(refreshCognitoTokens).toHaveBeenCalledTimes(1)
   })
 })
 
 describe('background onMessage / validateSession', () => {
   const listener = onMessageListener
 
-  let storageFixture: Record<string, unknown>
-
-  beforeEach(async () => {
+  beforeEach(() => {
     jest.resetAllMocks()
-
-    storageFixture = {
-      accessToken: 'old-access-token',
-      refreshToken: 'valid-refresh-token',
-    }
-    ;(chrome.storage.local.get as jest.Mock).mockImplementation(
-      async (keys: string[]) => {
-        const result: Record<string, unknown> = {}
-        for (const key of keys) {
-          if (key in storageFixture) result[key] = storageFixture[key]
-        }
-        return result
-      }
-    )
-    ;(chrome.storage.local.set as jest.Mock).mockResolvedValue(undefined)
+    setClerkSession('clerk-session-jwt')
     ;(chrome.storage.local.remove as jest.Mock).mockResolvedValue(undefined)
     ;(chrome.tabs.query as jest.Mock).mockResolvedValue([{ id: 1 }])
     ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
     ;(global.fetch as jest.Mock) = jest.fn()
-
-    await loadSession()
   })
 
-  it('routes popup session checks through makeApiRequest, including its silent refresh', async () => {
-    // Same scenario as the "silently refreshes" test above (§3.5 fix): a
-    // popup validateSession check that hits an expired access token must
-    // get the same refresh-and-retry treatment as content-script requests,
-    // instead of the old ApiService path that gave up on the first 401.
-    ;(global.fetch as jest.Mock)
-      .mockResolvedValueOnce(jsonResponse(401, {}))
-      .mockResolvedValueOnce(
-        jsonResponse(200, {
-          id: '1',
-          name: 'Test User',
-          email: 'test@example.com',
-          status: 'active',
-        })
-      )
-    ;(refreshCognitoTokens as jest.Mock).mockResolvedValue({
-      access_token: 'new-access-token',
-      refresh_token: 'new-refresh-token',
-    })
+  it('routes a popup session check through makeApiRequest and returns /api/me', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(200, {
+        id: '1',
+        name: 'Test User',
+        email: 'test@example.com',
+        status: 'active',
+      })
+    )
 
     const response = await new Promise(resolve => {
-      const keepChannelOpen = listener(
-        { type: 'validateSession' },
-        {},
-        resolve
-      )
+      const keepChannelOpen = listener({ type: 'validateSession' }, {}, resolve)
       expect(keepChannelOpen).toBe(true)
     })
 
@@ -234,15 +156,10 @@ describe('background onMessage / validateSession', () => {
         status: 'active',
       },
     })
-    expect(refreshCognitoTokens).toHaveBeenCalledWith('valid-refresh-token')
-    expect(global.fetch).toHaveBeenCalledTimes(2)
   })
 
-  it('reports session-expired when refresh also fails, without clearing storage twice', async () => {
+  it('reports session-expired on a 401', async () => {
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(401, {}))
-    ;(refreshCognitoTokens as jest.Mock).mockRejectedValue(
-      new Error('Token refresh failed: 400')
-    )
 
     const response = await new Promise(resolve => {
       listener({ type: 'validateSession' }, {}, resolve)
@@ -253,19 +170,18 @@ describe('background onMessage / validateSession', () => {
       error: 'Your session has expired. Please login again.',
       sessionExpired: true,
     })
-    expect(chrome.storage.local.remove).toHaveBeenCalledTimes(1)
   })
 })
 
 // ADR-008: the phrase-in-context lookup reuses the 'openSentencePanel'
 // message/handler, just with an extra `phrase` field threaded through to
-// PendingSentenceContext. Verifies that plumbing independently of
-// content.tsx (which can't be imported in Jest -- see phraseAnchor.test.ts).
+// PendingSentenceContext.
 describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)', () => {
   const listener = onMessageListener
 
   beforeEach(() => {
     jest.resetAllMocks()
+    setClerkSession('clerk-session-jwt')
     ;(chrome.storage.session.set as jest.Mock).mockResolvedValue(undefined)
     ;(chrome.sidePanel.open as jest.Mock).mockResolvedValue(undefined)
   })
@@ -298,8 +214,6 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
   })
 
   it('fires sidePanel.open() synchronously from the listener, before the storage write', async () => {
-    // open() must run inside the forwarded user gesture -- i.e. before the
-    // first `await` (the storage.session.set). Assert the call order.
     const calls: string[] = []
     ;(chrome.sidePanel.open as jest.Mock).mockImplementation(async () => {
       calls.push('sidePanel.open')
@@ -332,8 +246,6 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
     )
     ;(chrome.runtime.getContexts as jest.Mock).mockResolvedValue([
       { contextType: 'BACKGROUND' },
-      // windowId deliberately does NOT match sender.tab.windowId -- Chrome's
-      // SIDE_PANEL context windowId is unreliable, so this must still count.
       { contextType: 'SIDE_PANEL', windowId: 999 },
     ])
 
@@ -350,7 +262,6 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
       )
     })
 
-    // open() rejected, but a SIDE_PANEL context exists -> still panelOpened.
     expect(response).toEqual({ success: true, panelOpened: true })
     expect(chrome.storage.session.set).toHaveBeenCalled()
   })
@@ -408,20 +319,11 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
 describe('background onMessage / translateSentenceWithWord (ADR-014)', () => {
   const listener = onMessageListener
 
-  beforeEach(async () => {
+  beforeEach(() => {
     jest.resetAllMocks()
-    ;(chrome.storage.local.get as jest.Mock).mockImplementation(async (keys: string[]) => {
-      const fixture: Record<string, unknown> = {
-        accessToken: 'tok',
-        refreshToken: 'refresh',
-      }
-      const result: Record<string, unknown> = {}
-      for (const key of keys) if (key in fixture) result[key] = fixture[key]
-      return result
-    })
-    ;(chrome.storage.local.set as jest.Mock).mockResolvedValue(undefined)
+    setClerkSession('clerk-session-jwt')
+    ;(chrome.storage.local.remove as jest.Mock).mockResolvedValue(undefined)
     ;(global.fetch as jest.Mock) = jest.fn()
-    await loadSession()
   })
 
   const send = (request: unknown): Promise<unknown> =>

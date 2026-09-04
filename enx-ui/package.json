@@ -14,6 +14,7 @@
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.9.0",
     "@hookform/resolvers": "^5.2.0",
     "@radix-ui/react-label": "^2.1.7",
     "@radix-ui/react-slot": "^1.2.3",

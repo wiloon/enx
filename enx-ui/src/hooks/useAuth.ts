@@ -1,127 +1,35 @@
-import { useCallback, useEffect } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useRouter } from 'next/navigation'
-import { useAtom, useAtomValue } from 'jotai'
-import {
-  userAtom,
-  accessTokenAtom,
-  refreshTokenAtom,
-  isLoadingAtom,
-  isAuthenticatedAtom,
-} from '@/store/authAtoms'
-import { apiService } from '@/services/api'
-import { beginCognitoSignIn, cognitoLogout, CognitoTokens } from '@/lib/cognito'
+'use client'
 
+import { useAuth as useClerkAuth, useClerk, useUser } from '@clerk/nextjs'
+import { User } from '@/types'
+
+// Thin adapter over Clerk (ADR-015) that keeps the surface the app already
+// consumes: { user, isLoading, isAuthenticated, signIn, logout }. Session
+// tokens, refresh, and the /auth/callback exchange are all Clerk's job now.
 export const useAuth = () => {
-  const [user, setUser] = useAtom(userAtom)
-  const [accessToken, setAccessToken] = useAtom(accessTokenAtom)
-  const [refreshToken, setRefreshToken] = useAtom(refreshTokenAtom)
-  const [isLoading, setIsLoading] = useAtom(isLoadingAtom)
-  const isAuthenticated = useAtomValue(isAuthenticatedAtom)
-  const queryClient = useQueryClient()
-  const router = useRouter()
+  const { isLoaded, isSignedIn } = useClerkAuth()
+  const { user: clerkUser } = useUser()
+  const clerk = useClerk()
 
-  // Keep ApiService's internal refresh token / callback in sync with the atoms
-  // so a silent 401->refresh cycle (see ApiService.tryRefreshTokens) writes
-  // the new tokens back into React state too.
-  useEffect(() => {
-    apiService.setOnTokensRefreshed((tokens) => {
-      setAccessToken(tokens.access_token)
-      if (tokens.refresh_token) {
-        setRefreshToken(tokens.refresh_token)
-      }
-    })
-  }, [setAccessToken, setRefreshToken])
-
-  const clearAuth = () => {
-    setUser(null)
-    setAccessToken('')
-    setRefreshToken('')
-    apiService.setAccessToken('')
-    apiService.setRefreshToken('')
-    queryClient.clear()
-  }
-
-  const completeCognitoLogin = useCallback(async (tokens: CognitoTokens) => {
-    setAccessToken(tokens.access_token)
-    apiService.setAccessToken(tokens.access_token)
-    if (tokens.refresh_token) {
-      setRefreshToken(tokens.refresh_token)
-      apiService.setRefreshToken(tokens.refresh_token)
-    }
-    const resp = await apiService.getMe()
-    if (resp.success && resp.data) {
-      setUser({
-        id: resp.data.id,
-        username: resp.data.name,
-        email: resp.data.email,
-        status: resp.data.status,
-        isLoggedIn: true,
-      })
-    } else {
-      setUser({
-        id: 'cognito-user',
-        username: 'user',
-        email: '',
+  const user: User | null = clerkUser
+    ? {
+        id: clerkUser.id,
+        username:
+          clerkUser.fullName ||
+          clerkUser.username ||
+          clerkUser.primaryEmailAddress?.emailAddress ||
+          'user',
+        email: clerkUser.primaryEmailAddress?.emailAddress ?? '',
         status: 'active',
         isLoggedIn: true,
-      })
-    }
-  }, [setAccessToken, setRefreshToken, setUser])
-
-  const signIn = async () => {
-    setIsLoading(true)
-    try {
-      await beginCognitoSignIn()
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const logoutMutation = useMutation({
-    mutationFn: async () => {
-      setIsLoading(true)
-      clearAuth()
-    },
-    onSuccess: () => {
-      setIsLoading(false)
-      cognitoLogout()
-    },
-    onError: () => {
-      setIsLoading(false)
-      router.push('/')
-    },
-  })
-
-  const initializeSession = async () => {
-    if (!accessToken) return
-    apiService.setAccessToken(accessToken)
-    apiService.setRefreshToken(refreshToken)
-    try {
-      const resp = await apiService.getMe()
-      if (resp.success && resp.data) {
-        setUser({
-          id: resp.data.id,
-          username: resp.data.name,
-          email: resp.data.email,
-          status: resp.data.status,
-          isLoggedIn: true,
-        })
-      } else {
-        clearAuth()
       }
-    } catch {
-      clearAuth()
-    }
-  }
+    : null
 
   return {
     user,
-    isLoading,
-    isAuthenticated,
-    signIn,
-    logout: logoutMutation.mutateAsync,
-    completeCognitoLogin,
-    initializeSession,
+    isLoading: !isLoaded,
+    isAuthenticated: Boolean(isSignedIn),
+    signIn: () => clerk.redirectToSignIn(),
+    logout: () => clerk.signOut({ redirectUrl: '/' }),
   }
 }

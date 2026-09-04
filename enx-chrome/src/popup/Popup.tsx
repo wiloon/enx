@@ -3,48 +3,49 @@ import Login from '@/components/Login'
 import { useInitializeStorage } from '@/hooks/useInitializeStorage'
 import { useWordHighlightEnabled } from '@/hooks/useWordHighlightEnabled'
 import '@/index.css'
+import { config } from '@/config/env'
 import { initSentry } from '@/lib/sentry'
-import { sendMessageToBackground } from '@/services/api'
-import { sessionAtom, userAtom } from '@/store/atoms'
-import { Provider, useAtom } from 'jotai'
+import { userAtom } from '@/store/atoms'
+import { ClerkProvider, useUser } from '@clerk/chrome-extension'
+import { Provider, useSetAtom } from 'jotai'
 import { useEffect } from 'react'
-import type { ApiRequestResult } from '@/background/background'
 
 initSentry()
 
+// Mirror the Clerk session into userAtom (ADR-015) so the rest of the popup
+// (DebugPanel, etc.) can keep reading user.isLoggedIn / user.username.
+function ClerkUserSync() {
+  const { isLoaded, isSignedIn, user } = useUser()
+  const setUser = useSetAtom(userAtom)
+
+  useEffect(() => {
+    if (!isLoaded) return
+    if (isSignedIn && user) {
+      setUser({
+        id: 0,
+        username:
+          user.fullName ||
+          user.username ||
+          user.primaryEmailAddress?.emailAddress ||
+          'user',
+        email: user.primaryEmailAddress?.emailAddress || '',
+        isLoggedIn: true,
+      })
+    } else {
+      setUser({ id: 0, username: '', email: '', isLoggedIn: false })
+    }
+  }, [isLoaded, isSignedIn, user, setUser])
+
+  return null
+}
+
 function PopupContent() {
-  const [user, setUser] = useAtom(userAtom)
-  const [session, setSession] = useAtom(sessionAtom)
   const {
     enabled: wordHighlightEnabled,
     setEnabled: setWordHighlightEnabled,
   } = useWordHighlightEnabled()
 
   useInitializeStorage()
-
-  useEffect(() => {
-    const validate = async () => {
-      if (!user.isLoggedIn || !session.accessToken) return
-      // Goes through background's makeApiRequest, which silently refreshes an
-      // expired access token and retries once before reporting failure — see
-      // docs/tasks/TASK-SPEC-enx-cognito-session-refresh.md §3.5.
-      const response = await sendMessageToBackground<ApiRequestResult>({
-        type: 'validateSession',
-      })
-      if (!response.success) {
-        setUser({ id: 0, username: '', email: '', isLoggedIn: false })
-        setSession({ accessToken: '', refreshToken: '' })
-        await chrome.storage.local.remove([
-          'user',
-          'enx-user',
-          'accessToken',
-          'refreshToken',
-          'enx-session',
-        ])
-      }
-    }
-    validate()
-  }, [user.isLoggedIn, session.accessToken, setUser, setSession])
 
   const handleLoginSuccess = () => {
     console.log('Login successful')
@@ -69,6 +70,7 @@ function PopupContent() {
 
   return (
     <div className="min-h-[200px]">
+      <ClerkUserSync />
       <Login onLoginSuccess={handleLoginSuccess} />
       <button
         type="button"
@@ -95,8 +97,14 @@ function PopupContent() {
 
 export default function Popup() {
   return (
-    <Provider>
-      <PopupContent />
-    </Provider>
+    <ClerkProvider
+      publishableKey={config.clerkPublishableKey}
+      syncHost={config.clerkSyncHost}
+      afterSignOutUrl="/popup.html"
+    >
+      <Provider>
+        <PopupContent />
+      </Provider>
+    </ClerkProvider>
   )
 }

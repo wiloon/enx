@@ -25,7 +25,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// setUserID simulates what middleware.CognitoAuth sets on the context.
+// setUserID simulates what middleware.ClerkAuth sets on the context.
 func setUserID(userID string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Set("user_id", userID)

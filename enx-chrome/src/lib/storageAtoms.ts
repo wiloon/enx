@@ -33,31 +33,5 @@ export const createUserAtom = () => {
   return userAtom
 }
 
-// Cognito tokens with Chrome storage persistence
-export const createSessionAtom = () => {
-  const defaultSession = {
-    accessToken: '',
-    refreshToken: '',
-  }
-
-  const baseAtom = atom(defaultSession)
-
-  const sessionAtom = atom(
-    get => get(baseAtom),
-    async (_get, set, newValue: typeof defaultSession) => {
-      set(baseAtom, newValue)
-
-      try {
-        await chrome.storage.local.set({
-          'enx-session': newValue,
-          accessToken: newValue.accessToken,
-          refreshToken: newValue.refreshToken,
-        })
-      } catch (error) {
-        console.error('Failed to save session to storage:', error)
-      }
-    }
-  )
-
-  return sessionAtom
-}
+// ADR-015: session tokens are owned by Clerk (@clerk/chrome-extension), not
+// stored by the extension. `createSessionAtom` / `sessionAtom` are gone.

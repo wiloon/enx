@@ -1,7 +1,3 @@
-jest.mock('@/lib/cognito', () => ({
-  refreshCognitoTokens: jest.fn(),
-}))
-
 import { ApiService } from '../api'
 
 function jsonResponse(status: number, body: unknown, ok = status < 400) {

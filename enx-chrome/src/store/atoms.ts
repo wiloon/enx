@@ -1,16 +1,14 @@
 import { atom } from 'jotai'
 import { WordData } from '@/types'
-import { createUserAtom, createSessionAtom } from '@/lib/storageAtoms'
+import { createUserAtom } from '@/lib/storageAtoms'
 import { config } from '@/config/env'
 
 // Demo counter (keeping for hello world demo)
 export const countAtom = atom(0)
 
-// User authentication state with Chrome storage persistence
+// User profile mirror of the Clerk session (ADR-015), populated in the popup by
+// <ClerkUserSync>. Consumers read user.isLoggedIn / user.username.
 export const userAtom = createUserAtom()
-
-// Session management with Chrome storage persistence
-export const sessionAtom = createSessionAtom()
 
 // Current word being displayed in popup
 export const currentWordAtom = atom<WordData | null>(null)

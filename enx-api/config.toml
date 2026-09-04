@@ -31,11 +31,18 @@ from = "ENX <no-reply@wiloon.com>"
 [app]
 frontend-base-url = "https://enx.wiloon.lab"
 
-[cognito]
-region = "us-east-1"
-user-pool-id = "us-east-1_1GWBJVx85"
-client-id = "1il7v7q7jn17150jq4lou6m7b0"
-chrome-client-id = "645kitlgap7l1q4ebrfkmi9ltv"
+[clerk]
+# Clerk Frontend API origin; also the `iss` claim on every session token, and
+# the base for the JWKS endpoint (<issuer>/.well-known/jwks.json).
+# This is the Clerk *development* instance (rational-deer-4450). The production
+# instance has its own domain (clerk.catseye.* / custom); set CLERK_ISSUER in
+# that deployment's env to override. Empty -> ClerkAuth returns 503.
+issuer = "https://rational-deer-4450.clerk.accounts.dev"
+# Allow-list checked against the token `azp` claim (the origin the token was
+# minted for): the enx-ui origin(s) plus the extension id later
+# (chrome-extension://<id>). Override per-deployment with
+# CLERK_AUTHORIZED_PARTIES (space-separated).
+authorized-parties = ["https://enx.wiloon.lab", "http://localhost:3000"]
 
 [sentence-translate]
 # "kimi" | "bedrock" | "minimax" -- switch provider by changing this one line,

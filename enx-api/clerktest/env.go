@@ -1,5 +1,5 @@
 // Package clerktest provides a local JWKS server and signed Clerk-like session
-// tokens for tests, mirroring the cognitotest package it replaces.
+// tokens for middleware and e2e tests (ADR-015).
 package clerktest
 
 import (

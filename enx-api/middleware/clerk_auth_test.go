@@ -144,14 +144,17 @@ func TestClerkAuth_UnauthorizedParty(t *testing.T) {
 	}
 }
 
-func TestClerkAuth_MissingAuthorizedPartyClaim(t *testing.T) {
-	env, cfg := testClerkEnv(t)
-	token := env.SignSessionToken(t, jwt.MapClaims{
-		"sub": "user_noazp",
-		"azp": "",
-	})
-	if w := runClerkAuth(t, cfg, "Bearer "+token); w.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want 401", w.Code)
+func TestClerkAuth_AuthorizedPartyValidatedOnlyWhenPresent(t *testing.T) {
+	v := &clerkValidator{cfg: ClerkConfig{AuthorizedParties: []string{"https://enx.wiloon.lab"}}}
+
+	if !v.authorizedPartyAllowed(jwt.MapClaims{}) {
+		t.Error("absent azp should be allowed (Clerk manual-verification pattern)")
+	}
+	if !v.authorizedPartyAllowed(jwt.MapClaims{"azp": "https://enx.wiloon.lab"}) {
+		t.Error("known azp should be allowed")
+	}
+	if v.authorizedPartyAllowed(jwt.MapClaims{"azp": "https://evil.example"}) {
+		t.Error("unknown azp should be rejected")
 	}
 }
 

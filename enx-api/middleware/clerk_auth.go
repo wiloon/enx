@@ -141,10 +141,23 @@ func ClerkAuth(cfg ClerkConfig) gin.HandlerFunc {
 	}
 }
 
+// authorizedPartyAllowed follows Clerk's documented manual-verification pattern:
+// the `azp` claim is validated only when present. Clerk stamps it with the
+// origin the token was minted for; it can be absent for flows with no Origin
+// header. An absent azp is allowed; a present-but-unknown azp is rejected.
 func (v *clerkValidator) authorizedPartyAllowed(claims jwt.MapClaims) bool {
 	azp, _ := claims["azp"].(string)
 	if azp == "" {
-		return false
+		return true
 	}
 	return contains(v.cfg.AuthorizedParties, azp)
+}
+
+func contains(list []string, s string) bool {
+	for _, item := range list {
+		if item == s {
+			return true
+		}
+	}
+	return false
 }

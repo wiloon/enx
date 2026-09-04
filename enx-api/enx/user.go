@@ -6,17 +6,13 @@ import (
 	"enx-api/utils/logger"
 	"enx-api/utils/password"
 	"enx-api/utils/sqlitex"
-	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/spf13/viper"
 )
 
 type User struct {
 	Id                  string    `json:"id" gorm:"column:id;primaryKey"`
-	CognitoSub          string    `json:"-" gorm:"column:cognito_sub;uniqueIndex"`
 	ClerkUserID         string    `json:"-" gorm:"column:clerk_user_id;uniqueIndex"`
 	Name                string    `json:"name" gorm:"column:name"`
 	Email               string    `json:"email" gorm:"column:email"`
@@ -102,59 +98,6 @@ func GetUserByResetToken(token string) *User {
 	user := User{}
 	sqlitex.DB.Where("reset_token = ?", token).First(&user)
 	return &user
-}
-
-// GetUserByCognitoSub looks up a user by Cognito sub claim.
-func GetUserByCognitoSub(sub string) *User {
-	user := User{}
-	sqlitex.DB.Where("cognito_sub = ?", sub).First(&user)
-	return &user
-}
-
-// GetOrCreateByCognitoSub finds or auto-provisions a local user for a Cognito identity.
-func GetOrCreateByCognitoSub(sub, email, username string) (string, error) {
-	if sub == "" {
-		return "", fmt.Errorf("empty cognito sub")
-	}
-	existing := GetUserByCognitoSub(sub)
-	if existing.Id != "" {
-		now := time.Now()
-		if now.Sub(existing.LastLoginTime) >= viper.GetDuration("user.last-login-update-interval") {
-			_ = sqlitex.DB.Model(existing).Updates(map[string]interface{}{
-				"last_login_time": now,
-				"updated_at":      now,
-			}).Error
-		}
-		return existing.Id, nil
-	}
-
-	name := username
-	if name == "" && email != "" {
-		if at := strings.Index(email, "@"); at > 0 {
-			name = email[:at]
-		} else {
-			name = email
-		}
-	}
-	if name == "" {
-		name = "user-" + sub[:8]
-	}
-
-	u := &User{
-		Id:            uuid.New().String(),
-		CognitoSub:    sub,
-		Name:          name,
-		Email:         email,
-		Status:        "active",
-		CreateTime:    time.Now(),
-		UpdateTime:    time.Now(),
-		LastLoginTime: time.Now(),
-	}
-	if err := u.Create(); err != nil {
-		return "", err
-	}
-	logger.Infof("provisioned cognito user sub=%s id=%s name=%s", sub, u.Id, name)
-	return u.Id, nil
 }
 
 // GetUserByID looks up a user by their ID.

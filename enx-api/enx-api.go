@@ -165,8 +165,7 @@ func setupRouter() *gin.Engine {
 	router.GET("/version", handlers.GetVersion)
 	router.GET("/api/version", handlers.GetVersionSimple)
 
-	cognitoCfg := middleware.CognitoConfigFromViper()
-	cognitoAuth := middleware.CognitoAuth(cognitoCfg)
+	clerkAuth := middleware.ClerkAuth(middleware.ClerkConfigFromViper())
 
 	// Sentence translation is an optional feature: if sentence-translate.provider
 	// is unset, it stays disabled (same "unconfigured but not fatal" pattern as
@@ -227,9 +226,9 @@ func setupRouter() *gin.Engine {
 	}
 	billingHandler := billing.NewHandler(stripeClient, viper.GetString("app.frontend-base-url"), viper.GetString("stripe.webhook-secret"))
 
-	// APIs requiring authentication (Cognito JWT)
+	// APIs requiring authentication (Clerk session JWT)
 	authGroup := router.Group("/")
-	authGroup.Use(cognitoAuth)
+	authGroup.Use(clerkAuth)
 	{
 		// get words query count by paragraph
 		authGroup.GET("/paragraph-init", paragraph.ParagraphInit)
@@ -249,7 +248,7 @@ func setupRouter() *gin.Engine {
 
 	// API group for Kong gateway (with /api prefix)
 	apiGroup := router.Group("/api")
-	apiGroup.Use(cognitoAuth)
+	apiGroup.Use(clerkAuth)
 	{
 		// get words query count by paragraph
 		apiGroup.GET("/paragraph-init", paragraph.ParagraphInit)
@@ -268,17 +267,17 @@ func setupRouter() *gin.Engine {
 		apiGroup.GET("/wrap", Wrap)
 	}
 
-	// /api/me — requires authentication (Cognito JWT)
+	// /api/me — requires authentication (Clerk session JWT)
 	apiGroup.GET("/me", GetMe)
 
-	// Billing (Stripe) — requires authentication (Cognito JWT).
+	// Billing (Stripe) — requires authentication (Clerk session JWT).
 	apiGroup.POST("/billing/checkout/subscription", billingHandler.CheckoutSubscription)
 	apiGroup.POST("/billing/checkout/topup", billingHandler.CheckoutTopup)
 	apiGroup.POST("/billing/portal", billingHandler.Portal)
 	apiGroup.GET("/billing/me", billingHandler.Me)
 
 	// Stripe webhook — deliberately NOT in apiGroup/authGroup: Stripe can't
-	// present a Cognito JWT, so this is unauthenticated at the router root,
+	// present a Clerk session JWT, so this is unauthenticated at the router root,
 	// relying on Stripe-Signature verification instead (TASK-SPEC §3). URL
 	// must match the endpoint registered in infra/stripe/opentofu/enx
 	// (w10n-config): enx-api.wiloon.lab/billing/webhook, no /api prefix.

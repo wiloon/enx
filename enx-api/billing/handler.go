@@ -188,7 +188,7 @@ func (h *Handler) Me(c *gin.Context) {
 }
 
 // Webhook handles POST /billing/webhook. Deliberately unauthenticated
-// (no cognitoAuth) -- Stripe can't present a Cognito JWT, so the
+// (no clerkAuth) -- Stripe can't present a Clerk session JWT, so the
 // Stripe-Signature header is the only trust boundary (ADR-009 Decision 3).
 // Always responds with a bare status (no JSON body): Stripe only inspects
 // the status code, and everything here runs before/instead of the normal

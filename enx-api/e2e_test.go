@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"enx-api/cognitotest"
+	"enx-api/clerktest"
 	"enx-api/enx"
 	"enx-api/middleware"
 	"enx-api/utils"
@@ -42,7 +42,7 @@ func e2eCleanup(t *testing.T, username string) {
 // TestE2E_RegisterLoginMeLogout exercises the full happy-path user journey:
 // register → login → GET /api/me → logout → GET /api/me (expect 401).
 func TestE2E_RegisterLoginMeLogout(t *testing.T) {
-	t.Skip("legacy session auth removed; use Cognito integration tests")
+	t.Skip("legacy session auth removed; use Clerk integration tests")
 	ts, done := e2eServer(t)
 	defer done()
 
@@ -157,7 +157,7 @@ func TestE2E_RegisterLoginMeLogout(t *testing.T) {
 // TestE2E_VerifyEmail registers a user, obtains the verification token from the
 // DB, calls GET /api/verify-email?token=..., and confirms the account is active.
 func TestE2E_VerifyEmail(t *testing.T) {
-	t.Skip("legacy email verification removed; auth via Cognito")
+	t.Skip("legacy email verification removed; auth via Clerk")
 	ts, done := e2eServer(t)
 	defer done()
 
@@ -248,8 +248,8 @@ func TestE2E_UnauthenticatedAccessRejected(t *testing.T) {
 	}
 }
 
-func TestE2E_CognitoGetMe(t *testing.T) {
-	env := cognitotest.NewEnv(t)
+func TestE2E_ClerkGetMe(t *testing.T) {
+	env := clerktest.NewEnv(t)
 	utils.ViperInit()
 	env.ApplyViper()
 
@@ -262,17 +262,17 @@ func TestE2E_CognitoGetMe(t *testing.T) {
 		t.Fatal("sqlitex.DB is nil after Init")
 	}
 
-	sub := "e2e-cognito-getme-sub"
-	email := "e2e-cognito@example.com"
+	sub := "user_e2egetme001"
+	email := "e2e-clerk@example.com"
 	t.Cleanup(func() {
-		sqlitex.DB.Exec("DELETE FROM users WHERE cognito_sub = ?", sub)
+		sqlitex.DB.Exec("DELETE FROM users WHERE clerk_user_id = ?", sub)
 	})
-	sqlitex.DB.Exec("DELETE FROM users WHERE cognito_sub = ?", sub)
+	sqlitex.DB.Exec("DELETE FROM users WHERE clerk_user_id = ?", sub)
 
-	token := env.SignAccessToken(t, jwt.MapClaims{
-		"sub":              sub,
-		"email":            email,
-		"cognito:username": "e2e-cognito-user",
+	token := env.SignSessionToken(t, jwt.MapClaims{
+		"sub":   sub,
+		"email": email,
+		"name":  "e2e-clerk-user",
 	})
 
 	ts, done := e2eServer(t)
@@ -301,8 +301,8 @@ func TestE2E_CognitoGetMe(t *testing.T) {
 	if body["email"] != email {
 		t.Fatalf("email = %q, want %q", body["email"], email)
 	}
-	if body["name"] != "e2e-cognito-user" {
-		t.Fatalf("name = %q, want e2e-cognito-user", body["name"])
+	if body["name"] != "e2e-clerk-user" {
+		t.Fatalf("name = %q, want e2e-clerk-user", body["name"])
 	}
 }
 
@@ -342,7 +342,7 @@ func TestE2E_VerifyEmail_MissingToken(t *testing.T) {
 
 // TestE2E_LoginInvalidCredentials verifies that bad credentials produce 401.
 func TestE2E_LoginInvalidCredentials(t *testing.T) {
-	t.Skip("legacy login removed; auth via Cognito")
+	t.Skip("legacy login removed; auth via Clerk")
 	ts, done := e2eServer(t)
 	defer done()
 

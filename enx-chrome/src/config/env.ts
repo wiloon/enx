@@ -3,10 +3,19 @@
 export interface EnvConfig {
   apiBaseUrl: string
   frontendBaseUrl: string
-  cognitoDomain: string
-  cognitoClientId: string
+  // Clerk (ADR-015). Publishable key is not secret; syncHost is the website
+  // origin whose Clerk session the extension mirrors (@clerk/chrome-extension
+  // ClerkProvider `syncHost`) so "logged in on the site -> logged in in the
+  // extension" works without a second sign-in.
+  clerkPublishableKey: string
+  clerkSyncHost: string
   environment: 'development' | 'production' | 'staging' | 'test'
 }
+
+// Clerk *development* instance (rational-deer-4450). Production builds override
+// via VITE_CLERK_PUBLISHABLE_KEY once a production Clerk instance exists.
+const DEV_CLERK_PUBLISHABLE_KEY =
+  'pk_test_cmF0aW9uYWwtZGVlci00NDUwLmNsZXJrLmFjY291bnRzLmRldiQ'
 
 // Jest sets JEST_WORKER_ID; avoid referencing the jest global in app code
 const isTestEnv =
@@ -30,38 +39,35 @@ const ENV_CONFIG: Record<string, EnvConfig> = {
   development: {
     apiBaseUrl: 'http://localhost:8090',
     frontendBaseUrl: 'http://localhost:3000',
-    cognitoDomain:
-      getEnvValue('VITE_COGNITO_DOMAIN') ||
-      'https://enx-auth.auth.us-east-1.amazoncognito.com',
-    cognitoClientId:
-      getEnvValue('VITE_COGNITO_CLIENT_ID') || '645kitlgap7l1q4ebrfkmi9ltv',
+    clerkPublishableKey:
+      getEnvValue('VITE_CLERK_PUBLISHABLE_KEY') || DEV_CLERK_PUBLISHABLE_KEY,
+    clerkSyncHost:
+      getEnvValue('VITE_CLERK_SYNC_HOST') || 'http://localhost:3000',
     environment: 'development',
   },
   production: {
     apiBaseUrl: 'https://enx-api.wiloon.com',
     frontendBaseUrl: 'https://enx.wiloon.com',
-    cognitoDomain:
-      getEnvValue('VITE_COGNITO_DOMAIN') ||
-      'https://enx-auth.auth.us-east-1.amazoncognito.com',
-    cognitoClientId:
-      getEnvValue('VITE_COGNITO_CLIENT_ID') || '645kitlgap7l1q4ebrfkmi9ltv',
+    clerkPublishableKey:
+      getEnvValue('VITE_CLERK_PUBLISHABLE_KEY') || DEV_CLERK_PUBLISHABLE_KEY,
+    clerkSyncHost:
+      getEnvValue('VITE_CLERK_SYNC_HOST') || 'https://enx.wiloon.com',
     environment: 'production',
   },
   staging: {
     apiBaseUrl: 'https://enx-api.wiloon.lab',
     frontendBaseUrl: 'https://enx.wiloon.lab',
-    cognitoDomain:
-      getEnvValue('VITE_COGNITO_DOMAIN') ||
-      'https://enx-auth.auth.us-east-1.amazoncognito.com',
-    cognitoClientId:
-      getEnvValue('VITE_COGNITO_CLIENT_ID') || '645kitlgap7l1q4ebrfkmi9ltv',
+    clerkPublishableKey:
+      getEnvValue('VITE_CLERK_PUBLISHABLE_KEY') || DEV_CLERK_PUBLISHABLE_KEY,
+    clerkSyncHost:
+      getEnvValue('VITE_CLERK_SYNC_HOST') || 'https://enx.wiloon.lab',
     environment: 'staging',
   },
   test: {
     apiBaseUrl: 'http://localhost:8090',
     frontendBaseUrl: 'http://localhost:3000',
-    cognitoDomain: 'https://enx-auth.auth.us-east-1.amazoncognito.com',
-    cognitoClientId: '645kitlgap7l1q4ebrfkmi9ltv',
+    clerkPublishableKey: DEV_CLERK_PUBLISHABLE_KEY,
+    clerkSyncHost: 'http://localhost:3000',
     environment: 'test',
   },
 }

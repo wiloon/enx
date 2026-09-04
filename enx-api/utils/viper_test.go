@@ -36,9 +36,6 @@ func TestViperInitSetsDefaults(t *testing.T) {
 	if got := viper.GetBool("enx.dev-mode"); got != false {
 		t.Errorf("enx.dev-mode = %v, want false", got)
 	}
-	if got := viper.GetString("cognito.region"); got != "us-east-1" {
-		t.Errorf("cognito.region = %q, want us-east-1", got)
-	}
 	if got := viper.GetString("stripe.price.pro"); got != "enx_pro_monthly" {
 		t.Errorf("stripe.price.pro = %q, want enx_pro_monthly", got)
 	}

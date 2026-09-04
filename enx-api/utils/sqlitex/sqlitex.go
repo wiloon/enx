@@ -20,7 +20,6 @@ var DB *gorm.DB
 // These are minimal struct definitions for table creation
 type User struct {
 	Id                  string    `gorm:"column:id;primaryKey"`
-	CognitoSub          string    `gorm:"column:cognito_sub;uniqueIndex"`
 	ClerkUserID         string    `gorm:"column:clerk_user_id;uniqueIndex"`
 	Name                string    `gorm:"column:name;unique"`
 	Email               string    `gorm:"column:email;unique"`

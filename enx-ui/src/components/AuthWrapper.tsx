@@ -1,6 +1,5 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/hooks/useAuth'
 import LoginForm from './LoginForm'
@@ -9,14 +8,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 export default function AuthWrapper() {
-  const { isAuthenticated, user, logout, initializeSession } = useAuth()
-  const [initializing, setInitializing] = useState(true)
+  const { isAuthenticated, isLoading, user, logout } = useAuth()
 
-  useEffect(() => {
-    initializeSession().finally(() => setInitializing(false))
-  }, [initializeSession])
-
-  if (initializing) {
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">

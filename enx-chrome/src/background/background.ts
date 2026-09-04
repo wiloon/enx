@@ -1,13 +1,8 @@
 // ENX Background Script - Handles API communication and message routing
 // Note: Sentry initialization is skipped in service worker context to avoid import issues
 
+import { createClerkClient } from '@clerk/chrome-extension/background'
 import { config, getApiBaseUrl } from '@/config/env'
-import {
-  CognitoTokens,
-  refreshCognitoTokens,
-  signInWithCognito,
-  signOutWithCognito,
-} from '@/lib/cognito'
 import {
   LATEST_PAGE_WORD_STORAGE_KEY,
   LatestPageWordLookup,
@@ -18,76 +13,48 @@ import {
 
 console.log('ENX Background script loaded')
 console.log('🌐 Config environment:', config.environment)
-let accessToken = ''
-let refreshToken = ''
-let refreshInFlight: Promise<CognitoTokens> | null = null
 
-const LOGIN_SUCCESS_NOTIFICATION_ID = 'enx-login-success'
+// ADR-015: Clerk owns the session. The service worker holds a single Clerk
+// client (synced from the website via `syncHost`) and mints a fresh, short-
+// lived session JWT for every API call via `session.getToken()`. There is no
+// refresh cycle for us to manage — a 401 is a real 401.
+type ClerkClient = Awaited<ReturnType<typeof createClerkClient>>
+let clerkClientPromise: Promise<ClerkClient> | null = null
 
-export const loadSession = async () => {
+const getClerk = (): Promise<ClerkClient> => {
+  if (!clerkClientPromise) {
+    clerkClientPromise = createClerkClient({
+      publishableKey: config.clerkPublishableKey,
+      syncHost: config.clerkSyncHost,
+    })
+  }
+  return clerkClientPromise
+}
+
+const getSessionToken = async (): Promise<string | null> => {
   try {
-    const result = await chrome.storage.local.get(['accessToken', 'refreshToken'])
-    if (result.accessToken) {
-      accessToken = result.accessToken as string
-      console.log('Access token loaded from storage')
-    }
-    if (result.refreshToken) {
-      refreshToken = result.refreshToken as string
-    }
+    const clerk = await getClerk()
+    return (await clerk.session?.getToken()) ?? null
   } catch (error) {
-    console.error('Error loading session:', error)
+    console.error('Clerk getToken failed:', error)
+    return null
   }
 }
 
-// Silently exchange the refresh token for a new access token.
-// Concurrent 401s share a single in-flight refresh via `refreshInFlight`,
-// so a page full of simultaneous lookups doesn't fire multiple refresh calls.
-export const tryRefreshTokens = async (): Promise<boolean> => {
-  if (!refreshToken) {
-    await loadSession()
-  }
-  if (!refreshToken) {
-    return false
-  }
-
-  if (!refreshInFlight) {
-    refreshInFlight = refreshCognitoTokens(refreshToken).finally(() => {
-      refreshInFlight = null
-    })
-  }
-
+const isSignedIn = async (): Promise<boolean> => {
   try {
-    const tokens = await refreshInFlight
-    accessToken = tokens.access_token
-    if (tokens.refresh_token) {
-      refreshToken = tokens.refresh_token
-    }
-    await chrome.storage.local.set({
-      accessToken: tokens.access_token,
-      refreshToken,
-      'enx-session': { accessToken: tokens.access_token, refreshToken },
-    })
-    return true
+    return Boolean((await getClerk()).session)
   } catch (error) {
-    console.error('Token refresh failed:', error)
+    console.error('Clerk session check failed:', error)
     return false
   }
 }
 
-// Handle session expiry
+// Handle session expiry: Clerk manages token lifetime, so a 401 means the
+// session is genuinely gone. Nudge the active tab's content script to prompt
+// re-login (the popup renders Clerk's <SignIn/>).
 const handleSessionExpiry = async () => {
-  console.log('Session expired, clearing stored data and opening popup')
-
-  // Clear session data
-  accessToken = ''
-  refreshToken = ''
-  await chrome.storage.local.remove([
-    'user',
-    'enx-user',
-    'accessToken',
-    'refreshToken',
-    'enx-session',
-  ])
+  console.log('Session expired (401 from API)')
 
   // Try to open the extension popup to show login form
   try {
@@ -129,8 +96,7 @@ export type ApiRequestResult = {
 // API request helper
 export const makeApiRequest = async (
   endpoint: string,
-  options: RequestInit = {},
-  isRetry = false
+  options: RequestInit = {}
 ): Promise<ApiRequestResult> => {
   try {
     const API_BASE_URL = await getApiBaseUrl()
@@ -139,8 +105,9 @@ export const makeApiRequest = async (
       ...((options.headers as Record<string, string>) || {}),
     }
 
-    if (accessToken) {
-      headers['Authorization'] = `Bearer ${accessToken}`
+    const token = await getSessionToken()
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
     }
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -154,9 +121,6 @@ export const makeApiRequest = async (
 
     if (!response.ok) {
       if (response.status === 401) {
-        if (!isRetry && (await tryRefreshTokens())) {
-          return makeApiRequest(endpoint, options, true)
-        }
         await handleSessionExpiry()
         throw new Error('Session expired')
       }
@@ -231,8 +195,8 @@ chrome.runtime.onInstalled.addListener(async details => {
     console.log('ENX Extension updated')
   }
 
-  // Load session on installation
-  await loadSession()
+  // Warm the Clerk client (syncs the session from the website via syncHost).
+  void getClerk()
 
   // Trigger path② (spec §3.2): a right-click menu item is a Chrome-approved
   // user gesture source, same as an actual click, so sidePanel.open() called
@@ -273,9 +237,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 chrome.action.onClicked.addListener(async tab => {
   console.log('ENX Extension icon clicked', tab)
 
-  // Check if user is logged in
-  const result = await chrome.storage.local.get(['user'])
-  if (!result.user || !result.user.isLoggedIn) {
+  // Check if user is logged in (Clerk session synced from the website)
+  if (!(await isSignedIn())) {
     console.log('User not logged in, popup will handle this')
     return
   }
@@ -347,18 +310,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'validateSession':
           return await makeApiRequest('/api/me')
 
-        case 'cognitoSignIn':
-          return await handleCognitoSignIn()
-
-        case 'cognitoSignOut':
-          return await handleCognitoSignOut()
-
         case 'debugStorage':
           // Debug command to check storage
           const storageData = await chrome.storage.local.get(null)
           console.log('All Chrome storage data:', storageData)
-          console.log('Current accessToken in memory:', accessToken)
-          return { success: true, storage: storageData, accessToken }
+          return {
+            success: true,
+            storage: storageData,
+            signedIn: await isSignedIn(),
+          }
 
         case 'hello':
           return { success: true, message: 'Hello from ENX background!' }
@@ -381,117 +341,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return true // Keep the message channel open for async response
 })
 
-type StoredUser = {
-  id: number
-  username: string
-  email: string
-  status?: string
-  isLoggedIn: true
-}
-
-const notifyLoginSuccess = async () => {
-  try {
-    await chrome.notifications.create(LOGIN_SUCCESS_NOTIFICATION_ID, {
-      type: 'basic',
-      iconUrl: 'icons/icon-128.png',
-      title: 'ENX',
-      message: 'Signed in successfully. Click the ENX icon to continue.',
-    })
-  } catch (error) {
-    console.error('Failed to create login success notification:', error)
-  }
-}
-
-// OAuth must run in the service worker: popup is destroyed when Hosted UI steals focus.
-const handleCognitoSignIn = async () => {
-  try {
-    const tokens = await signInWithCognito()
-    accessToken = tokens.access_token
-    refreshToken = tokens.refresh_token || ''
-
-    const me = await makeApiRequest('/api/me')
-    const userData: StoredUser =
-      me.success && me.data
-        ? {
-            id: me.data.id as unknown as number,
-            username: me.data.name,
-            email: me.data.email,
-            status: me.data.status,
-            isLoggedIn: true,
-          }
-        : {
-            id: 0,
-            username: 'user',
-            email: '',
-            isLoggedIn: true,
-          }
-
-    await chrome.storage.local.set({
-      user: userData,
-      'enx-user': userData,
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token || '',
-      'enx-session': {
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token || '',
-      },
-    })
-
-    await notifyLoginSuccess()
-
-    return { success: true, user: userData }
-  } catch (error) {
-    console.error('Cognito sign-in failed:', error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Sign-in failed',
-    }
-  }
-}
-
-const AUTH_STORAGE_KEYS = [
-  'user',
-  'enx-user',
-  'accessToken',
-  'refreshToken',
-  'enx-session',
-] as const
-
-const clearLocalAuthState = async () => {
-  accessToken = ''
-  refreshToken = ''
-  await chrome.storage.local.remove([...AUTH_STORAGE_KEYS])
-  await chrome.storage.session.remove('enx-oauth-verifier')
-}
-
-const handleCognitoSignOut = async () => {
-  try {
-    // Clear extension state first so popup reopen is logged out even if Hosted UI flow fails.
-    await clearLocalAuthState()
-    await signOutWithCognito()
-    return { success: true }
-  } catch (error) {
-    console.error('Cognito sign-out failed:', error)
-    // Local state already cleared; report Hosted UI failure but treat as signed out locally.
-    return {
-      success: true,
-      warning:
-        error instanceof Error
-          ? error.message
-          : 'Signed out locally; Cognito session clear failed',
-    }
-  }
-}
-
-chrome.notifications.onClicked.addListener(async notificationId => {
-  if (notificationId !== LOGIN_SUCCESS_NOTIFICATION_ID) return
-  try {
-    await chrome.action.openPopup()
-  } catch (error) {
-    console.log('Could not open popup from notification click:', error)
-  }
-  await chrome.notifications.clear(notificationId)
-})
+// Sign-in / sign-out now happen in the popup via Clerk's <SignIn/> and
+// <SignOutButton/> (ADR-015); the service worker just reads the synced session.
 
 // Handle get one word translation
 const handleGetOneWord = async (word: string) => {
@@ -599,31 +450,10 @@ const handleMarkAcquainted = async (word: string, userId: number) => {
     word: word.trim(),
     userId,
   })
-  console.log('handleMarkAcquainted: Current accessToken available:', !!accessToken)
 
-  // If no accessToken in memory, try to reload from storage
-  if (!accessToken) {
-    console.log(
-      'handleMarkAcquainted: No accessToken in memory, trying to reload from storage...'
-    )
-    await loadSession()
-    console.log(
-      'handleMarkAcquainted: After reload attempt, accessToken available:',
-      !!accessToken
-    )
-  }
-
-  // Check if we have a session
-  if (!accessToken) {
-    console.error('handleMarkAcquainted: No session ID available')
-    // Clear user data since session is invalid
-    await chrome.storage.local.remove([
-    'user',
-    'enx-user',
-    'accessToken',
-    'refreshToken',
-    'enx-session',
-  ])
+  // Check if we have a Clerk session (synced from the website).
+  if (!(await isSignedIn())) {
+    console.error('handleMarkAcquainted: no Clerk session')
     return {
       success: false,
       error: 'Session expired. Please click the extension icon to login again.',
@@ -854,36 +684,9 @@ self.addEventListener('unhandledrejection', event => {
   console.error('ENX Unhandled promise rejection:', event.reason)
 })
 
-// Listen for storage changes
-chrome.storage.onChanged.addListener((changes, namespace) => {
-  if (namespace === 'local') {
-    console.log('Storage changes detected:', changes)
-
-    // If accessToken changed, update our memory
-    if (changes.accessToken) {
-      const newSessionId = changes.accessToken.newValue
-      if (newSessionId && newSessionId !== accessToken) {
-        accessToken = newSessionId
-        console.log(
-          'Background script updated accessToken from storage:',
-          accessToken
-        )
-      }
-    }
-
-    // Keep in-memory refreshToken in sync (used by tryRefreshTokens)
-    if (changes.refreshToken) {
-      const newRefreshToken = changes.refreshToken.newValue
-      if (newRefreshToken !== refreshToken) {
-        refreshToken = newRefreshToken || ''
-      }
-    }
-  }
-})
-
 // Initialize background script
 const initialize = async () => {
-  await loadSession()
+  await getClerk()
   console.log('ENX Background script initialization complete')
 }
 
