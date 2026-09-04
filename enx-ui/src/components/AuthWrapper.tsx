@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
+import { RedirectToSignIn } from '@clerk/nextjs'
 import { useAuth } from '@/hooks/useAuth'
-import LoginForm from './LoginForm'
 import HelloWorld from './HelloWorld'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -22,11 +22,10 @@ export default function AuthWrapper() {
   }
 
   if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen p-8 flex items-center justify-center">
-        <LoginForm />
-      </div>
-    )
+    // Send them to the dedicated /sign-in route (its catch-all handles Clerk's
+    // /sign-in/sso-callback for OAuth). Rendering <SignIn> inline here made
+    // Clerk use /app/sso-callback as the OAuth return, which 404s.
+    return <RedirectToSignIn />
   }
 
   return (
