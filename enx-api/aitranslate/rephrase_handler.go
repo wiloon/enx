@@ -1,7 +1,6 @@
 package aitranslate
 
 import (
-	"context"
 	"net/http"
 	"unicode/utf8"
 
@@ -18,23 +17,17 @@ import (
 // to grow.
 const maxRephraseInputRunes = 200
 
-// RephraseLedger is the slice of billing/credit the rephrase handler needs.
-// Separate from CreditLedger (Consume/Refund) because rephrase bills after
-// the fact by actual token usage: a pre-call Balance check, then a Settle
-// that may drive the balance negative (ADR-012 Decision 5).
-type RephraseLedger interface {
-	Balance(ctx context.Context, userID string) (int64, error)
-	Settle(ctx context.Context, userID, feature string, cost int64) error
-}
-
-// RephraseHandler serves POST /rephrase and POST /api/rephrase.
+// RephraseHandler serves POST /rephrase and POST /api/rephrase. It bills by
+// actual token usage (ADR-012 Decision 5): a pre-call Balance check, then a
+// Settle that may drive the balance negative -- the same TokenLedger the
+// sentence translation handler uses (ADR-014).
 type RephraseHandler struct {
 	rephraser rephrase.Rephraser
-	ledger    RephraseLedger
+	ledger    TokenLedger
 	pricing   credit.TokenPricing
 }
 
-func NewRephraseHandler(rephraser rephrase.Rephraser, ledger RephraseLedger, pricing credit.TokenPricing) *RephraseHandler {
+func NewRephraseHandler(rephraser rephrase.Rephraser, ledger TokenLedger, pricing credit.TokenPricing) *RephraseHandler {
 	return &RephraseHandler{rephraser: rephraser, ledger: ledger, pricing: pricing}
 }
 

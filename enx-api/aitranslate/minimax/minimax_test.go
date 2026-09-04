@@ -30,7 +30,7 @@ func TestTranslateSentenceSuccess(t *testing.T) {
 	defer srv.Close()
 
 	m := newTestMiniMax(srv.URL)
-	chinese, err := m.TranslateSentence(context.Background(), "Hello world")
+	chinese, _, err := m.TranslateSentence(context.Background(), "Hello world")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestTranslateSentenceNon200(t *testing.T) {
 	defer srv.Close()
 
 	m := newTestMiniMax(srv.URL)
-	_, err := m.TranslateSentence(context.Background(), "Hello world")
+	_, _, err := m.TranslateSentence(context.Background(), "Hello world")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -64,7 +64,7 @@ func TestTranslateSentenceTimeout(t *testing.T) {
 	m := newTestMiniMax(srv.URL)
 	m.client.SetTimeout(10 * time.Millisecond)
 
-	_, err := m.TranslateSentence(context.Background(), "Hello world")
+	_, _, err := m.TranslateSentence(context.Background(), "Hello world")
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}
@@ -81,7 +81,7 @@ func TestTranslateWordInContextSuccess(t *testing.T) {
 	defer srv.Close()
 
 	m := newTestMiniMax(srv.URL)
-	chinese, err := m.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank")
+	chinese, _, err := m.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestTranslateWordInContextPhrase(t *testing.T) {
 	defer srv.Close()
 
 	m := newTestMiniMax(srv.URL)
-	chinese, err := m.TranslateWordInContext(
+	chinese, _, err := m.TranslateWordInContext(
 		context.Background(),
 		"I'd have to find the right contacts, hunt down emails, and draft outreach.",
 		"hunt down emails",
@@ -130,7 +130,7 @@ func TestTranslateWordInContextNon200(t *testing.T) {
 	defer srv.Close()
 
 	m := newTestMiniMax(srv.URL)
-	_, err := m.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank")
+	_, _, err := m.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

@@ -294,6 +294,16 @@ chrome.action.onClicked.addListener(async tab => {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('Background received message:', request)
 
+  // Trigger path③ (spec §3.2): chrome.sidePanel.open() only works inside the
+  // user gesture that Chrome forwards with a content-script runtime.sendMessage,
+  // and that gesture is spent by the first `await`. So fire open() here --
+  // synchronously, before handleAsync()'s storage writes -- rather than inside
+  // handleOpenSentencePanel. Its outcome is awaited later via this promise.
+  const sentencePanelOpening =
+    (request.type || request.action) === 'openSentencePanel'
+      ? openSentencePanelForGesture(sender.tab?.id)
+      : undefined
+
   // Handle async responses
   const handleAsync = async () => {
     try {
@@ -312,8 +322,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             request.word || '',
             request.sentence || request.word || '',
             request.sourceUrl || '',
-            sender.tab?.id,
-            request.phrase || undefined
+            request.phrase || undefined,
+            sentencePanelOpening
           )
 
         case 'recordPageWordLookup':
@@ -324,6 +334,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         case 'translateWordInContext':
           return await handleTranslateWordInContext(
+            request.sentence || '',
+            request.word || ''
+          )
+
+        case 'translateSentenceWithWord':
+          return await handleTranslateSentenceWithWord(
             request.sentence || '',
             request.word || ''
           )
@@ -672,6 +688,43 @@ const handleTranslateSentence = async (sentence: string) => {
   }
 }
 
+// Handle the combined "translate the whole sentence AND gloss the clicked
+// word in that sentence's context" call (ADR-014): one AI round-trip that
+// backs the Side Panel opened from a word click, replacing a separate
+// translateSentence + translateWordInContext pair. `wordChinese` comes back
+// empty if the model omitted it -- SidePanel.tsx then falls back to a
+// standalone translateWordInContext call.
+const handleTranslateSentenceWithWord = async (sentence: string, word: string) => {
+  if (
+    !sentence ||
+    sentence.trim() === '' ||
+    !word ||
+    word.trim() === ''
+  ) {
+    return { success: false, error: 'sentence and word are required' }
+  }
+
+  const response = await makeApiRequest('/api/translate/sentence-with-word', {
+    method: 'POST',
+    body: JSON.stringify({ sentence: sentence.trim(), word: word.trim() }),
+  })
+
+  if (response.success && response.data?.chinese) {
+    return {
+      success: true,
+      chinese: response.data.chinese as string,
+      wordChinese: (response.data.wordChinese as string) || '',
+    }
+  }
+
+  return {
+    success: false,
+    error: response.error || 'Translation service unavailable',
+    sessionExpired: response.sessionExpired,
+    status: response.status,
+  }
+}
+
 // Handle a single word's contextual translation for the Side Panel word-click
 // flow (spec §3.7/§3.8): unlike getOneWord/ECDICT, this returns the word's
 // meaning as used in the given sentence, not a generic dictionary gloss.
@@ -697,14 +750,30 @@ const handleTranslateWordInContext = async (sentence: string, word: string) => {
   }
 }
 
-// Handle "整句翻译" (trigger path③, spec §3.2/§3.3): always persist the pending
-// sentence context first, then best-effort try to open the Side Panel
-// directly. sidePanel.open() commonly fails here because the click's user
-// gesture doesn't survive being forwarded through runtime.sendMessage from a
-// content script -- that's expected, not a bug, so this never throws back to
-// the caller; it reports panelOpened:false and lets the caller fall back to
-// trigger paths①/② (toolbar icon / right-click menu), which read the same
-// persisted context.
+// Best-effort chrome.sidePanel.open() for trigger path③, called synchronously
+// from the onMessage listener so it runs inside the user gesture Chrome
+// forwards with a content-script runtime.sendMessage -- any `await` before
+// open() spends that gesture. Resolves true if the panel opened (or was
+// already open: open() on an open panel is a harmless no-op), false if the
+// gesture didn't forward, so the caller can fall back to trigger paths①/②
+// (toolbar icon / right-click menu), which read the same persisted context.
+const openSentencePanelForGesture = (tabId?: number): Promise<boolean> => {
+  if (tabId === undefined) return Promise.resolve(false)
+  return chrome.sidePanel
+    .open({ tabId })
+    .then(() => true)
+    .catch(error => {
+      console.warn(
+        'openSentencePanelForGesture: sidePanel.open() failed (expected if the gesture did not forward):',
+        error
+      )
+      return false
+    })
+}
+
+// Handle "整句翻译" (trigger path③, spec §3.2/§3.3): persist the pending sentence
+// context, then report whether openSentencePanelForGesture() (fired earlier by
+// the onMessage listener) managed to open the panel.
 //
 // If the Side Panel is *already* open we don't need a user gesture at all:
 // SidePanel.tsx re-reads PENDING_SENTENCE_STORAGE_KEY on storage.onChanged and
@@ -733,8 +802,8 @@ const handleOpenSentencePanel = async (
   word: string,
   sentence: string,
   sourceUrl: string,
-  tabId?: number,
-  phrase?: string
+  phrase?: string,
+  panelOpening?: Promise<boolean>
 ) => {
   const context: PendingSentenceContext = {
     word,
@@ -745,20 +814,14 @@ const handleOpenSentencePanel = async (
   }
   await chrome.storage.session.set({ [PENDING_SENTENCE_STORAGE_KEY]: context })
 
-  // Already open -> the storage.onChanged listener in SidePanel.tsx picks up
-  // the new context; nothing else to do, and no hint should be shown.
-  if (await isSidePanelOpen()) {
-    return { success: true, panelOpened: true }
-  }
-
-  let panelOpened = false
-  if (tabId !== undefined) {
-    try {
-      await chrome.sidePanel.open({ tabId })
-      panelOpened = true
-    } catch (error) {
-      console.warn('handleOpenSentencePanel: sidePanel.open() failed (expected if the gesture did not forward):', error)
-    }
+  // The onMessage listener already fired sidePanel.open() inside the forwarded
+  // gesture; await its outcome here. Fall back to a getContexts() probe in case
+  // open() rejected but the panel is in fact already open -- SidePanel.tsx then
+  // picks up the new context via storage.onChanged (spec §4.6) and no hint is
+  // needed.
+  let panelOpened = panelOpening ? await panelOpening : false
+  if (!panelOpened) {
+    panelOpened = await isSidePanelOpen()
   }
 
   return { success: true, panelOpened }

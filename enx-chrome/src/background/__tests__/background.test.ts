@@ -297,7 +297,39 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
     )
   })
 
-  it('skips sidePanel.open() and still reports panelOpened when a Side Panel context exists (regardless of its windowId)', async () => {
+  it('fires sidePanel.open() synchronously from the listener, before the storage write', async () => {
+    // open() must run inside the forwarded user gesture -- i.e. before the
+    // first `await` (the storage.session.set). Assert the call order.
+    const calls: string[] = []
+    ;(chrome.sidePanel.open as jest.Mock).mockImplementation(async () => {
+      calls.push('sidePanel.open')
+    })
+    ;(chrome.storage.session.set as jest.Mock).mockImplementation(async () => {
+      calls.push('storage.session.set')
+    })
+
+    const response = await new Promise(resolve => {
+      listener(
+        {
+          type: 'openSentencePanel',
+          word: 'great',
+          sentence: 'Cats are great pets.',
+          sourceUrl: 'https://example.com/post',
+        },
+        { tab: { id: 7 } },
+        resolve
+      )
+    })
+
+    expect(response).toEqual({ success: true, panelOpened: true })
+    expect(chrome.sidePanel.open).toHaveBeenCalledWith({ tabId: 7 })
+    expect(calls).toEqual(['sidePanel.open', 'storage.session.set'])
+  })
+
+  it('falls back to a getContexts() probe when the gesture did not forward', async () => {
+    ;(chrome.sidePanel.open as jest.Mock).mockRejectedValue(
+      new Error('sidePanel.open() may only be called in response to a user gesture')
+    )
     ;(chrome.runtime.getContexts as jest.Mock).mockResolvedValue([
       { contextType: 'BACKGROUND' },
       // windowId deliberately does NOT match sender.tab.windowId -- Chrome's
@@ -318,9 +350,33 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
       )
     })
 
+    // open() rejected, but a SIDE_PANEL context exists -> still panelOpened.
     expect(response).toEqual({ success: true, panelOpened: true })
     expect(chrome.storage.session.set).toHaveBeenCalled()
-    expect(chrome.sidePanel.open).not.toHaveBeenCalled()
+  })
+
+  it('reports panelOpened:false when the gesture did not forward and no panel is open', async () => {
+    ;(chrome.sidePanel.open as jest.Mock).mockRejectedValue(
+      new Error('sidePanel.open() may only be called in response to a user gesture')
+    )
+    ;(chrome.runtime.getContexts as jest.Mock).mockResolvedValue([
+      { contextType: 'BACKGROUND' },
+    ])
+
+    const response = await new Promise(resolve => {
+      listener(
+        {
+          type: 'openSentencePanel',
+          word: 'great',
+          sentence: 'Cats are great pets.',
+          sourceUrl: 'https://example.com/post',
+        },
+        { tab: { id: 7 } },
+        resolve
+      )
+    })
+
+    expect(response).toEqual({ success: true, panelOpened: false })
   })
 
   it('leaves phrase undefined for the existing whole-sentence/single-word callers', async () => {
@@ -346,5 +402,85 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
         }),
       })
     )
+  })
+})
+
+describe('background onMessage / translateSentenceWithWord (ADR-014)', () => {
+  const listener = onMessageListener
+
+  beforeEach(async () => {
+    jest.resetAllMocks()
+    ;(chrome.storage.local.get as jest.Mock).mockImplementation(async (keys: string[]) => {
+      const fixture: Record<string, unknown> = {
+        accessToken: 'tok',
+        refreshToken: 'refresh',
+      }
+      const result: Record<string, unknown> = {}
+      for (const key of keys) if (key in fixture) result[key] = fixture[key]
+      return result
+    })
+    ;(chrome.storage.local.set as jest.Mock).mockResolvedValue(undefined)
+    ;(global.fetch as jest.Mock) = jest.fn()
+    await loadSession()
+  })
+
+  const send = (request: unknown): Promise<unknown> =>
+    new Promise(resolve => listener(request, {}, resolve))
+
+  it('POSTs sentence + word to /api/translate/sentence-with-word and returns both halves', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(200, { success: true, chinese: '猫是很棒的宠物。', wordChinese: '极好的' })
+    )
+
+    const response = await send({
+      type: 'translateSentenceWithWord',
+      sentence: 'Cats are great pets.',
+      word: 'great',
+    })
+
+    expect(response).toEqual({ success: true, chinese: '猫是很棒的宠物。', wordChinese: '极好的' })
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toContain('/api/translate/sentence-with-word')
+    expect(JSON.parse(init.body)).toEqual({ sentence: 'Cats are great pets.', word: 'great' })
+  })
+
+  it('normalizes a missing wordChinese to an empty string (graceful degrade)', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(200, { success: true, chinese: '猫是很棒的宠物。' })
+    )
+
+    const response = await send({
+      type: 'translateSentenceWithWord',
+      sentence: 'Cats are great pets.',
+      word: 'great',
+    })
+
+    expect(response).toEqual({ success: true, chinese: '猫是很棒的宠物。', wordChinese: '' })
+  })
+
+  it('propagates the HTTP status on failure (e.g. 402 insufficient credit)', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(402, { success: false, message: '积分不足，请充值或订阅' })
+    )
+
+    const response = (await send({
+      type: 'translateSentenceWithWord',
+      sentence: 'Cats are great pets.',
+      word: 'great',
+    })) as { success: boolean; status?: number }
+
+    expect(response.success).toBe(false)
+    expect(response.status).toBe(402)
+  })
+
+  it('rejects a request missing the word without calling the API', async () => {
+    const response = await send({
+      type: 'translateSentenceWithWord',
+      sentence: 'Cats are great pets.',
+      word: '',
+    })
+
+    expect(response).toEqual({ success: false, error: 'sentence and word are required' })
+    expect(global.fetch).not.toHaveBeenCalled()
   })
 })

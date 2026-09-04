@@ -35,7 +35,7 @@ func TestTranslateSentenceSuccess(t *testing.T) {
 	}
 	b := newTestBedrock(fake)
 
-	chinese, err := b.TranslateSentence(context.Background(), "Hello world")
+	chinese, _, err := b.TranslateSentence(context.Background(), "Hello world")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestTranslateSentenceConverseError(t *testing.T) {
 	fake := &fakeConverseClient{err: errors.New("throttled")}
 	b := newTestBedrock(fake)
 
-	_, err := b.TranslateSentence(context.Background(), "Hello world")
+	_, _, err := b.TranslateSentence(context.Background(), "Hello world")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -67,7 +67,7 @@ func TestTranslateWordInContextSuccess(t *testing.T) {
 	}
 	b := newTestBedrock(fake)
 
-	chinese, err := b.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank")
+	chinese, _, err := b.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestTranslateWordInContextPhrase(t *testing.T) {
 	}
 	b := newTestBedrock(fake)
 
-	chinese, err := b.TranslateWordInContext(
+	chinese, _, err := b.TranslateWordInContext(
 		context.Background(),
 		"I'd have to find the right contacts, hunt down emails, and draft outreach.",
 		"hunt down emails",
@@ -108,7 +108,7 @@ func TestTranslateWordInContextConverseError(t *testing.T) {
 	fake := &fakeConverseClient{err: errors.New("throttled")}
 	b := newTestBedrock(fake)
 
-	_, err := b.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank")
+	_, _, err := b.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -124,7 +124,7 @@ func TestTranslateSentenceNoTextContent(t *testing.T) {
 	}
 	b := newTestBedrock(fake)
 
-	_, err := b.TranslateSentence(context.Background(), "Hello world")
+	_, _, err := b.TranslateSentence(context.Background(), "Hello world")
 	if err == nil {
 		t.Fatal("expected error for empty content, got nil")
 	}

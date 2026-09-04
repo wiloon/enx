@@ -2,10 +2,10 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Accepted — 2026-07-31 |
+| **状态** | Accepted — 2026-07-31；**Revisit Trigger #3 已于 2026-09-03 触发，本 ADR「继续手写、暂不引入 SDK」的结论被 [`adr-015`](adr-015-cognito-to-clerk-auth-migration.md) 取代**（改为引入 Clerk SDK，整体迁出 Cognito）。「不用 aws-amplify」这一判断本身仍成立。 |
 | **日期** | 2026-07-31 |
 | **关联 Spec** | [`docs/tasks/TASK-SPEC-enx-cognito-session-refresh.md`](../tasks/TASK-SPEC-enx-cognito-session-refresh.md) |
-| **关联 ADR** | [`adr-001-chrome-oauth-in-background.md`](adr-001-chrome-oauth-in-background.md)（enx-chrome 的 `launchWebAuthFlow` + PKCE 流程现状） |
+| **关联 ADR** | [`adr-001-chrome-oauth-in-background.md`](adr-001-chrome-oauth-in-background.md)（enx-chrome 的 `launchWebAuthFlow` + PKCE 流程现状）、[`adr-015-cognito-to-clerk-auth-migration.md`](adr-015-cognito-to-clerk-auth-migration.md)（兑现本 ADR 的 Revisit Trigger #3） |
 | **关联背景** | [`docs/tasks/task-001-cognito-auth.md`](../tasks/task-001-cognito-auth.md)（最初的 Cognito 集成决策，全程手写 `fetch`，未引入任何 Cognito SDK） |
 
 ---

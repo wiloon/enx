@@ -57,6 +57,7 @@ export interface ContentMessage {
     | 'openSentencePanel'
     | 'translateSentence'
     | 'translateWordInContext'
+    | 'translateSentenceWithWord'
     | 'recordPageWordLookup'
   word?: string
   words?: string
@@ -100,6 +101,12 @@ export interface BackgroundResponse {
   panelOpened?: boolean
   // Set by the 'translateSentence' handler on success.
   chinese?: string
+  // Set by the 'translateSentenceWithWord' handler (ADR-014) on success: the
+  // clicked word's meaning in the sentence's context, returned in the SAME
+  // call as `chinese` (the whole-sentence translation). May be an empty
+  // string if the model omitted it -- the Side Panel then falls back to a
+  // separate 'translateWordInContext' call.
+  wordChinese?: string
 }
 
 // chrome.storage.session key holding the sentence the Side Panel should show.

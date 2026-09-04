@@ -110,17 +110,20 @@ topup-small = 0
 topup-medium = 0
 topup-large = 0
 
-[stripe.costs]
-# AI credit cost per call (ADR-009 Decision 4: fixed cost per feature, not
-# token-metered). 0 means "not decided yet", and billing/credit.Consume
-# deliberately REJECTS a cost <= 0 rather than silently letting AI calls
-# through for free, so those endpoints respond 502. Sentence and word-in-
-# context are both 1 credit/call (2026-08-26 pricing decision, see
-# w10n-config/enx/monetization-tasks.md: "单词翻译与句子翻译统一 1 积分/次");
-# still pending overall review. Override per-deployment with
-# STRIPE_COSTS_TRANSLATE_SENTENCE / STRIPE_COSTS_TRANSLATE_WORD_IN_CONTEXT.
-translate-sentence = 1
-translate-word-in-context = 1
+[stripe.costs.translate]
+# AI translation (整句翻译 / 上下文词义 / 整句+词义合并) is billed by ACTUAL
+# token usage (ADR-014), replacing the earlier fixed 1-credit-per-call
+# (ADR-009 Decision 4). The three features share one model and a
+# near-identical token profile, so one price fits all three.
+# cost = ceil((prompt_tokens*weight-in + completion_tokens*weight-out)
+# / divisor), floored at 1. divisor <= 0 or both weights 0 means "not
+# priced yet" and the endpoints respond 502. Values below are placeholders
+# pending pricing review; calibrate from the `cost=` field in the usage log
+# lines. Override with STRIPE_COSTS_TRANSLATE_WEIGHT_IN / _WEIGHT_OUT /
+# _DIVISOR.
+weight-in = 1
+weight-out = 3
+divisor = 3000
 
 [stripe.costs.rephrase]
 # Rephrase (ADR-012) is billed by ACTUAL token usage, not a fixed per-call

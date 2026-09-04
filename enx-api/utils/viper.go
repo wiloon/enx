@@ -106,19 +106,21 @@ func viperInitInternal() {
 	viper.SetDefault("stripe.credits.topup-small", 0)
 	viper.SetDefault("stripe.credits.topup-medium", 0)
 	viper.SetDefault("stripe.credits.topup-large", 0)
-	// AI call costs default to 0 (= "not configured"); billing/credit.Consume
-	// rejects a cost <= 0, see config.toml's [stripe.costs] comment. Bindable
-	// via env so k8s deployments (which ship no config.toml, see Containerfile)
-	// can set them without a config file.
-	viper.SetDefault("stripe.costs.translate-sentence", 0)
-	_ = viper.BindEnv("stripe.costs.translate-sentence", "STRIPE_COSTS_TRANSLATE_SENTENCE")
-	viper.SetDefault("stripe.costs.translate-word-in-context", 0)
-	_ = viper.BindEnv("stripe.costs.translate-word-in-context", "STRIPE_COSTS_TRANSLATE_WORD_IN_CONTEXT")
-	// Rephrase (ADR-012) is billed by actual token usage, not a fixed
-	// per-call cost: cost = ceil((prompt*weight-in + completion*weight-out)
-	// / divisor), floored at 1. divisor <= 0 or both weights 0 means "not
-	// priced yet" and the endpoint 502s. Defaults to 0 so an unconfigured
-	// deployment fails closed; k8s (no config.toml) sets the values via env.
+	// AI translation (sentence / word-in-context / sentence-with-word) is
+	// billed by actual token usage (ADR-014), same formula as rephrase:
+	// cost = ceil((prompt*weight-in + completion*weight-out) / divisor),
+	// floored at 1. divisor <= 0 or both weights 0 means "not priced yet"
+	// and the endpoints 502. Defaults to 0 so an unconfigured deployment
+	// fails closed; k8s (no config.toml) sets the values via env.
+	viper.SetDefault("stripe.costs.translate.weight-in", 0)
+	_ = viper.BindEnv("stripe.costs.translate.weight-in", "STRIPE_COSTS_TRANSLATE_WEIGHT_IN")
+	viper.SetDefault("stripe.costs.translate.weight-out", 0)
+	_ = viper.BindEnv("stripe.costs.translate.weight-out", "STRIPE_COSTS_TRANSLATE_WEIGHT_OUT")
+	viper.SetDefault("stripe.costs.translate.divisor", 0)
+	_ = viper.BindEnv("stripe.costs.translate.divisor", "STRIPE_COSTS_TRANSLATE_DIVISOR")
+	// Rephrase (ADR-012) is likewise billed by actual token usage. Defaults
+	// to 0 so an unconfigured deployment fails closed; k8s (no config.toml)
+	// sets the values via env.
 	viper.SetDefault("stripe.costs.rephrase.weight-in", 0)
 	_ = viper.BindEnv("stripe.costs.rephrase.weight-in", "STRIPE_COSTS_REPHRASE_WEIGHT_IN")
 	viper.SetDefault("stripe.costs.rephrase.weight-out", 0)

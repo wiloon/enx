@@ -248,15 +248,27 @@ function SidePanelContent() {
     setErrorMessage('')
     setErrorHttpStatus(undefined)
 
-    sendMessageToBackground<BackgroundResponse>({
-      type: 'translateSentence',
-      sentence: pendingContext.sentence,
-    } satisfies ContentMessage)
+    // Opened from a page word click -> one combined call returns both the
+    // whole-sentence translation and that word's in-context meaning (ADR-014),
+    // and the word's card is seeded immediately + highlighted in the original.
+    // Opened from a drag-selected sentence (ADR-007) -> no anchor word, so
+    // just the plain whole-sentence translation.
+    const clickedWord = pendingContext.word?.trim() || ''
+    const sentence = pendingContext.sentence
+
+    const request: ContentMessage = clickedWord
+      ? { type: 'translateSentenceWithWord', sentence, word: clickedWord }
+      : { type: 'translateSentence', sentence }
+
+    sendMessageToBackground<BackgroundResponse>(request)
       .then(response => {
         if (cancelled) return
         if (response.success && response.chinese) {
           setChinese(response.chinese)
           setStatus('loaded')
+          if (clickedWord) {
+            autoLookupClickedWord(clickedWord, sentence, response.wordChinese || '')
+          }
         } else {
           setErrorMessage(response.error || 'Translation service unavailable')
           setErrorHttpStatus(response.status)
@@ -265,7 +277,7 @@ function SidePanelContent() {
       })
       .catch(error => {
         if (cancelled) return
-        console.error('SidePanel: translateSentence failed', error)
+        console.error('SidePanel: sentence translation failed', error)
         setErrorMessage('Translation service unavailable')
         setErrorHttpStatus(undefined)
         setStatus('error')
@@ -318,6 +330,105 @@ function SidePanelContent() {
         )
       })
   }, [])
+
+  // Fetches the dictionary half of a card (pronunciation + ECDICT Chinese +
+  // Query Count) via the same getOneWord lookup the page's word popup uses,
+  // and merges it into whichever card already has this word. Shared by
+  // handleWordClick and the auto-lookup that runs when the panel is opened
+  // from a page word click (ADR-014). NOTE: getOneWord increments the
+  // server-side Query Count, so callers must only run this once per word --
+  // never for a card that already has its dictionary data.
+  const fetchDictionary = useCallback((word: string) => {
+    sendMessageToBackground<BackgroundResponse>({
+      type: 'getOneWord',
+      word,
+    } satisfies ContentMessage)
+      .then(response => {
+        setDefinitions(prev =>
+          prev.map(d =>
+            d.word === word
+              ? {
+                  ...d,
+                  pronunciation: response.success ? response.ecp?.Pronunciation : undefined,
+                  dictionaryChinese: response.success ? response.ecp?.Chinese : undefined,
+                  loadCount: response.success ? response.ecp?.LoadCount : undefined,
+                  dictionaryStatus: response.success ? 'loaded' : 'error',
+                  dictionaryError: response.success ? undefined : response.error || '词典查询失败',
+                  dictionaryErrorHttpStatus: response.success ? undefined : response.status,
+                }
+              : d
+          )
+        )
+      })
+      .catch(() => {
+        setDefinitions(prev =>
+          prev.map(d =>
+            d.word === word
+              ? {
+                  ...d,
+                  dictionaryStatus: 'error',
+                  dictionaryError: '词典查询失败',
+                  dictionaryErrorHttpStatus: undefined,
+                }
+              : d
+          )
+        )
+      })
+  }, [])
+
+  // Runs when the Side Panel is opened from a page word click (ADR-014): the
+  // combined translateSentenceWithWord call already returned the sentence
+  // translation AND (usually) this word's in-context meaning, so seed a card
+  // for it right away -- the user shouldn't have to click the word again in
+  // the panel. `wordChinese` empty means the model omitted it: fall back to
+  // a standalone translateWordInContext call. Mirrors handleWordClick's
+  // "existing card -> just reorder, don't re-fetch" rule so a word already
+  // in the running list (ADR-006) isn't double-counted by getOneWord.
+  const autoLookupClickedWord = useCallback(
+    (rawWord: string, sentence: string, wordChinese: string) => {
+      const word = rawWord.toLowerCase()
+      const contextResolved = wordChinese.trim() !== ''
+      const existing = definitions.find(d => d.word === word)
+
+      if (existing) {
+        setDefinitions(prev => {
+          const index = prev.findIndex(d => d.word === word)
+          if (index === -1) return prev
+          const reordered = [prev[index], ...prev.slice(0, index), ...prev.slice(index + 1)]
+          if (contextResolved && reordered[0].contextStatus !== 'loaded') {
+            reordered[0] = {
+              ...reordered[0],
+              contextChinese: wordChinese,
+              contextError: undefined,
+              contextErrorHttpStatus: undefined,
+              contextStatus: 'loaded',
+            }
+          }
+          return reordered
+        })
+        if (!contextResolved && existing.contextStatus === 'none') {
+          setDefinitions(prev =>
+            prev.map(d => (d.word === word ? { ...d, contextStatus: 'loading' } : d))
+          )
+          fetchContextTranslation(word, sentence)
+        }
+        return
+      }
+
+      setDefinitions(prev => [
+        {
+          word,
+          dictionaryStatus: 'loading',
+          contextStatus: contextResolved ? 'loaded' : 'loading',
+          contextChinese: contextResolved ? wordChinese : undefined,
+        },
+        ...prev,
+      ])
+      fetchDictionary(word)
+      if (!contextResolved) fetchContextTranslation(word, sentence)
+    },
+    [definitions, fetchDictionary, fetchContextTranslation]
+  )
 
   // Phrase-in-context lookup (ADR-008): a 2-5 word selection inside a larger
   // sentence never has a dictionary entry (ECDICT/words only has single
@@ -396,45 +507,10 @@ function SidePanelContent() {
         ...prev,
       ])
 
-      sendMessageToBackground<BackgroundResponse>({
-        type: 'getOneWord',
-        word,
-      } satisfies ContentMessage)
-        .then(response => {
-          setDefinitions(prev =>
-            prev.map(d =>
-              d.word === word
-                ? {
-                    ...d,
-                    pronunciation: response.success ? response.ecp?.Pronunciation : undefined,
-                    dictionaryChinese: response.success ? response.ecp?.Chinese : undefined,
-                    loadCount: response.success ? response.ecp?.LoadCount : undefined,
-                    dictionaryStatus: response.success ? 'loaded' : 'error',
-                    dictionaryError: response.success ? undefined : response.error || '词典查询失败',
-                    dictionaryErrorHttpStatus: response.success ? undefined : response.status,
-                  }
-                : d
-            )
-          )
-        })
-        .catch(() => {
-          setDefinitions(prev =>
-            prev.map(d =>
-              d.word === word
-                ? {
-                    ...d,
-                    dictionaryStatus: 'error',
-                    dictionaryError: '词典查询失败',
-                    dictionaryErrorHttpStatus: undefined,
-                  }
-                : d
-            )
-          )
-        })
-
+      fetchDictionary(word)
       fetchContextTranslation(word, sentence)
     },
-    [pendingContext?.sentence, definitions, fetchContextTranslation]
+    [pendingContext?.sentence, definitions, fetchContextTranslation, fetchDictionary]
   )
 
   // The guided hint only makes sense when the panel has shown nothing at
@@ -450,6 +526,12 @@ function SidePanelContent() {
   }
 
   const tokens = pendingContext ? tokenizeSentence(pendingContext.sentence) : []
+  // The word the user clicked on the page before opening the panel (ADR-014):
+  // highlight every occurrence of it in the original so they can see which
+  // word the auto-seeded card belongs to. Not set for a drag-selected
+  // sentence (ADR-007) or a phrase lookup (ADR-008).
+  const clickedWord =
+    pendingContext && !pendingContext.phrase ? (pendingContext.word || '').toLowerCase() : ''
 
   return (
     <div className="p-4 space-y-4 text-sm">
@@ -471,7 +553,14 @@ function SidePanelContent() {
                   key={i}
                   type="button"
                   onClick={() => handleWordClick(token.text)}
-                  className="hover:bg-yellow-100 hover:underline rounded px-0.5"
+                  data-clicked-word={
+                    clickedWord && token.text.toLowerCase() === clickedWord ? 'true' : undefined
+                  }
+                  className={`hover:bg-yellow-100 hover:underline rounded px-0.5 ${
+                    clickedWord && token.text.toLowerCase() === clickedWord
+                      ? 'bg-yellow-200 font-medium'
+                      : ''
+                  }`}
                 >
                   {token.text}
                 </button>

@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | 2026-08-03 变更 Implemented；2026-08-04 新变更 Implemented（§3.9：Side Panel 单词点击展示从单行列表改为卡片，随后又经三次修订：合并为单行布局、移除 Youdao 外链、Query Count 改图标）；**2026-09-02 五次修订 Implemented**（§3.9：卡片改回列表式 + `formatPhonetic` 统一音标 + 单条移除 + 上下文义带「本句」标签 + 词典释义折叠 + Query Count 图标换 `ArrowPathRoundedSquareIcon`；`tsc --noEmit`、`jest`（SidePanel 20 项 + `phonetic` 新测试，既有 2 项 `pronunciation.test.ts` 失败为改动前既存、无关）、`vite build` 均通过；真实 Chrome 手工验证——列表分隔/移除按钮/展开收起/音标统一——尚待用户执行） |
+| **状态** | 2026-08-03 变更 Implemented；2026-08-04 新变更 Implemented（§3.9：Side Panel 单词点击展示从单行列表改为卡片，随后又经三次修订：合并为单行布局、移除 Youdao 外链、Query Count 改图标）；**2026-09-02 五次修订 Implemented**（§3.9：卡片改回列表式 + `formatPhonetic` 统一音标 + 单条移除 + 上下文义带「本句」标签 + 词典释义折叠 + Query Count 图标换 `ArrowPathRoundedSquareIcon`）；**2026-09-03 §3.10 Implemented（见 ADR-014）**：从查词弹窗打开面板时默认高亮点击词 + 合并「整句翻译」与「该词本句含义」为一次 `translate/sentence-with-word` AI 调用（结构化返回）+ `aitranslate` 三个翻译功能全部迁到按 token 精确计费；`go test ./aitranslate/...`、`tsc`、`jest`（chrome 151 项）、`vite build` 均通过；真实 Chrome 手工验证尚待用户执行 |
 | **类型** | SDD Task Spec（Spec 驱动实现；实现前以本文为准，实现后同步更新状态与验收清单） |
 | **目标** | 在现有单词查词弹窗基础上新增「整句翻译」入口：点击后在 Chrome 扩展的 Side Panel 中显示当前单词所在句子的英文原文 + 调用 AI 模型（Kimi / AWS Bedrock / MiniMax，按配置切换）翻译出的中文整句译文；用户还可在侧边栏内点击原文中任意单词，在整句译文下方追加显示该词**在当前句子上下文中的中文含义**（2026-08-03 变更：改为调用 AI 模型按句子上下文翻译该词，不再复用 ECDICT 查词逻辑；音标字段单独并行查询 ECDICT/`getOneWord` 获取，见 §3.7）。**2026-08-04 变更**：单词点击后的展示形式从单行文字改为卡片，卡片内同时展示 AI 上下文中文含义（突出显示）与词典原始中文释义（沿用 `getOneWord` 已查到但此前被丢弃的 `ecp.Chinese`/`ecp.LoadCount` 字段），并列出音标、Query Count、有道词典外链；卡片列表按点击时间倒序排列，重复点击已存在的词只置顶、不重新请求（见 §3.9） |
 | **非目标** | 不改变现有查词弹窗内已有的单词翻译展示；不做侧边栏内的划词/多词选择整句翻译（仅覆盖"点击已高亮单词→查所在句"的路径）；不做翻译结果的本地持久化/历史记录 |
@@ -143,6 +143,8 @@ static extractSentenceContext(
 **必须新增单测**（`src/content/__tests__/`，jsdom）：多句段落中点击不同句子的词、单词在段落中重复出现两次、容器只有一句、缩写词（"Dr. Smith works..."）不被误切、容器文本超过上限时退化为截取前后文本再切句。
 
 ### 3.5 enx-api 新增整句翻译端点
+
+> **2026-09-03（ADR-014）**：本节的固定成本计费（`Consume`/`Refund`、`translate_sentence` 成本 1 积分/次）已改为**按 token 精确计费**（`Balance` 预检 + `Settle` 实扣，公式同 rephrase）；并新增合并端点 `POST /(api/)translate/sentence-with-word`，Request `{sentence, word}`、Response 成功 `{success, chinese, wordChinese}`（`wordChinese` 可能为空串）。`Translator` 接口三方法均改为返回 `(..., aitranslate.Usage, error)`。详见 §3.10 与 ADR-014。
 
 - 路由：`POST /api/translate/sentence`（挂在现有 `apiGroup`，复用既有 auth middleware；`authGroup` 是否也需要视前端调用路径而定，按现有 `/translate` 与 `/api/translate` 均注册的先例，两处都加）。
 - Request: `{ "sentence": "..." }`；Response 成功：`{ "success": true, "chinese": "..." }`；失败（AI 服务不可用/超时）：HTTP 502，`{ "success": false, "message": "..." }`（沿用 ECDICT 集成时"不可用要显式报错，不能静默返回空"的约定，见 ADR-0001）。
@@ -301,6 +303,24 @@ interface WordCardData {
 2. 否则：以 `{ word, dictionaryStatus: 'loading', contextStatus: 'loading' }` 插入 `definitions` 最前，然后并行发起 `getOneWord`、`translateWordInContext`；各自 `.then()` 里用 `word` 作为 key，`setDefinitions(prev => prev.map(...))` 只更新对应字段与其 `*Status`，不再用 `Promise.allSettled` 等两者都完成后一次性 append 一整条记录。
 
 **必须新增/更新测试**（`SidePanel.test.tsx`）：卡片分阶段渲染（`getOneWord` 先返回时词典部分先出现、上下文义仍是 loading 态，反之亦然）；重复点击已存在的词只重排不重新发请求（mock 的 `sendMessageToBackground` 调用次数不因重复点击而增加）；新点击的词卡片出现在列表最前而非末尾；词典释义为空（`ecp.Chinese` 为空）时该部分不渲染或显示空态，不报错。
+
+### 3.10 打开面板时默认高亮点击词 + 合并 AI 调用（2026-09-03 新增，见 ADR-014，Implemented）
+
+**触发原因**：触发路径③（查词弹窗 →「整句翻译」）打开面板后，用户几乎必然还想知道「刚点的那个词在这句里什么意思」，但当前要在侧边栏原文里**再点一次**那个词才触发第二次 AI 调用（`translateWordInContext`）。而且点过的词在侧边栏没有任何标记。
+
+**变更**（仅影响「从查词弹窗打开面板」这一路径，即 `pendingContext.word` 非空且无 `phrase`）：
+
+1. **默认高亮点击词**：`SidePanel.tsx` 渲染英文原文时，对每个与 `pendingContext.word`（小写比较）相同的 clickable token 加持久高亮类 `bg-yellow-200 font-medium`（区别于 hover 态 `hover:bg-yellow-100`）+ `data-clicked-word="true"`。句中所有同形词都高亮。拖选整句（`word` 为空）/ 短语查询（`phrase` 非空）不高亮。
+2. **合并 AI 调用**：打开面板的 effect 不再发 `translateSentence`，改发新消息 `translateSentenceWithWord {sentence, word}` → 新 background handler `handleTranslateSentenceWithWord` → `POST /api/translate/sentence-with-word`（见 §3.5 端点表补充）→ **一次** AI 调用返回 `{success, chinese, wordChinese}`：`chinese` 是整句译文（进顶部单句槽），`wordChinese` 是该词**在本句上下文中**的含义。
+3. **自动 seed 生词卡**：拿到响应后，为 `pendingContext.word` seed 一张卡（去重/置顶规则同 §3.9 `handleWordClick`：已存在只置顶），`wordChinese` 填「本句」含义（`contextStatus: 'loaded'`），并调 `fetchDictionary(word)`（从 `handleWordClick` 抽出的 `getOneWord` 那半）补音标/词典释义/Query Count。
+4. **优雅降级**：`wordChinese` 为空串（模型只返回整句、漏了 `word`）→ 卡片 `contextStatus: 'loading'` 并单独发一次 `translateWordInContext(word, sentence)` 兜底。整句译文不受影响。
+5. **面板已打开、用户在侧边栏里点另一个词**：不变，仍走 `translateWordInContext` + `getOneWord`（整句译文已在上方，不重译）。
+
+**enx-api 侧**（详见 ADR-014）：新叶子包 `aitranslate/sentenceword`（`SystemPrompt` / `ParseResult` → `Result{SentenceChinese, WordChinese}`，`sentence` 空报错、`word` 空容忍）；`Translator` 三方法改返回 `Usage`，新增 `TranslateSentenceWithWord`，kimi/minimax/bedrock 各补实现；`Handler` 从 `Consume/Refund` 固定成本改为 `Balance/Settle` **按 token 精确计费**（三个翻译功能 `translate_sentence` / `translate_word_in_context` / `translate_sentence_with_word` 共用 `[stripe.costs.translate]` 权重）；路由 `POST /(api/)translate/sentence-with-word`。
+
+**必须新增/更新测试**：
+- enx-api：`sentenceword/*_test.go`（正常 / fenced / 缺 word 容忍 / 缺 sentence 报错 / 非 JSON）；三 provider 各 `TranslateSentenceWithWord` 成功 + 缺 word 降级 + 非 200；`handler_test.go` 重写为 token 计费流程（fake ledger 用 Balance/Settle），覆盖三方法的成功计费 / 402 余额不足 / provider 失败不计费 / 未配置 502 / 缺字段 400 / Settle 失败仍返回结果。
+- enx-chrome：`SidePanel.test.tsx` 新增 describe「opened from a page word click (ADR-014)」——发 `translateSentenceWithWord` 而非 `translateSentence`、两半都显示、句中所有同形词高亮（`data-clicked-word`）、`wordChinese` 空时兜底发 `translateWordInContext`、`word` 为空（拖选）时仍走 `translateSentence` 且无高亮无自动卡片。既有用例里 `pendingContext.word` 从 `'great'` 改为 `''`（那些用例不测本特性）。`background.test.ts` 新增 `translateSentenceWithWord` handler describe（POST 到正确路径 / `wordChinese` 缺失归一化 / 402 status 透传 / 缺 word 不调 API）。
 
 ---
 

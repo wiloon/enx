@@ -186,9 +186,12 @@ func setupRouter() *gin.Engine {
 	}
 	sentenceHandler := aitranslate.NewHandler(
 		sentenceTranslator,
-		aitranslate.DefaultCreditLedger,
-		viper.GetInt64("stripe.costs.translate-sentence"),
-		viper.GetInt64("stripe.costs.translate-word-in-context"),
+		aitranslate.DefaultTokenLedger,
+		credit.TokenPricing{
+			WeightIn:  viper.GetInt64("stripe.costs.translate.weight-in"),
+			WeightOut: viper.GetInt64("stripe.costs.translate.weight-out"),
+			Divisor:   viper.GetInt64("stripe.costs.translate.divisor"),
+		},
 	)
 
 	// Rephrase (ADR-012) reuses the same provider as sentence translation,
@@ -205,7 +208,7 @@ func setupRouter() *gin.Engine {
 	}
 	rephraseHandler := aitranslate.NewRephraseHandler(
 		rephraser,
-		aitranslate.DefaultRephraseLedger,
+		aitranslate.DefaultTokenLedger,
 		credit.TokenPricing{
 			WeightIn:  viper.GetInt64("stripe.costs.rephrase.weight-in"),
 			WeightOut: viper.GetInt64("stripe.costs.rephrase.weight-out"),
@@ -236,6 +239,7 @@ func setupRouter() *gin.Engine {
 		authGroup.GET("/word/:word", translate.TranslateByWord)
 		authGroup.POST("/translate/sentence", sentenceHandler.TranslateSentence)
 		authGroup.POST("/translate/word-in-context", sentenceHandler.TranslateWordInContext)
+		authGroup.POST("/translate/sentence-with-word", sentenceHandler.TranslateSentenceWithWord)
 		authGroup.POST("/rephrase", rephraseHandler.Rephrase)
 		authGroup.GET("/load-count", wordCount.LoadCount)
 		authGroup.POST("/mark", MarkWord)
@@ -255,6 +259,7 @@ func setupRouter() *gin.Engine {
 		apiGroup.GET("/word/:word", translate.TranslateByWord)
 		apiGroup.POST("/translate/sentence", sentenceHandler.TranslateSentence)
 		apiGroup.POST("/translate/word-in-context", sentenceHandler.TranslateWordInContext)
+		apiGroup.POST("/translate/sentence-with-word", sentenceHandler.TranslateSentenceWithWord)
 		apiGroup.POST("/rephrase", rephraseHandler.Rephrase)
 		apiGroup.DELETE("/word/:word", DeleteWord)
 		apiGroup.GET("/load-count", wordCount.LoadCount)

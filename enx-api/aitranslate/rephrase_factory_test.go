@@ -5,17 +5,21 @@ import (
 	"testing"
 
 	"enx-api/aitranslate/rephrase"
+	"enx-api/aitranslate/sentenceword"
 )
 
 // translatorOnly implements Translator but NOT rephrase.Rephraser -- stands
 // in for a provider (minimax, bedrock) that hasn't added rephrase support.
 type translatorOnly struct{}
 
-func (translatorOnly) TranslateSentence(ctx context.Context, s string) (string, error) {
-	return "", nil
+func (translatorOnly) TranslateSentence(ctx context.Context, s string) (string, Usage, error) {
+	return "", Usage{}, nil
 }
-func (translatorOnly) TranslateWordInContext(ctx context.Context, s, w string) (string, error) {
-	return "", nil
+func (translatorOnly) TranslateWordInContext(ctx context.Context, s, w string) (string, Usage, error) {
+	return "", Usage{}, nil
+}
+func (translatorOnly) TranslateSentenceWithWord(ctx context.Context, s, w string) (sentenceword.Result, Usage, error) {
+	return sentenceword.Result{}, Usage{}, nil
 }
 
 // translatorAndRephraser is a provider that supports both.

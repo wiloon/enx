@@ -6,6 +6,20 @@ AI 辅助英语阅读工具。用户在网页上阅读英文时，ENX 标注生�
 
 ## Language
 
+### 身份与账户（跨组件）
+
+**本地用户身份（local user identity / `users.Id`）**：
+ENX 自己的用户主键，UUID。生词本、复习、`stripe_customer` / `credit_accounts` / `subscriptions`、token 计费等所有业务数据都键在它上面。外部认证身份首次登录时由 `GetOrCreate` 派生并绑定。
+_Avoid_: user id（单说时含糊）、账号、login id
+
+**外部认证身份（external auth identity）**：
+第三方身份服务里的用户标识（当前是 Clerk 的 `user_xxx`）。ENX 只用它认出「登录的是谁」并映射到某个本地用户身份，不用它键任何业务数据。`users` 表存一列做这个映射。见 adr-015（此前是 Cognito 的 `sub`，见 adr-004）。
+_Avoid_: sub、cognito sub、clerk id（口头）
+
+**会话同步（session sync）**：
+用户在 Catseye 网站登录后，打开浏览器扩展即为登录态、无需在扩展里再登一次。靠 `@clerk/chrome-extension` 的 `syncHost` 指向网站域名实现。见 adr-015。
+_Avoid_: SSO、单点登录
+
 ### 阅读辅助功能（enx-chrome）
 
 **学习模式（learning mode）**：
@@ -31,6 +45,13 @@ _Avoid_: 选择翻译、划句翻译
 **短语查询（phrase lookup）**：
 选中 2–5 个词、无句末标点的选区，走 AI 的「在上下文中解释这个短语」，而非词典查询（词典无短语条目）。见 adr-008。
 _Avoid_: 词组翻译、idiom lookup
+
+**整句+词义合并调用（sentence-with-word）**：
+从正文查词弹窗打开 Side Panel 时，用**一次** AI 调用（`POST /api/translate/sentence-with-word`，结构化返回 `{sentence, word}`）同时拿到整句译文和「刚点的那个词在这句里的含义」，并在侧边栏原文里高亮该词的所有同形词。模型漏返回 `word` 时优雅降级为再单独查一次。见 adr-014。
+_Avoid_: 合并翻译、combined translate
+
+**AI 翻译按 token 计费**：
+`aitranslate` 的整句翻译 / 上下文词义 / 整句+词义合并三个功能都按 provider 返回的实际 prompt/completion token 用量扣费（`Balance` 预检 + `Settle` 实扣，公式同「地道表达」），不再是固定 1 积分/次。共用 `[stripe.costs.translate]` 一组权重。见 adr-014（推翻 adr-009 Decision 4 翻译部分、adr-012 Decision 1）。
 
 **站点适配器（SiteAdapter）**：
 把「某个网站与默认行为的差异」（正文选择器、最小文本长度阈值、哪个匹配节点才是正文、页面是否在支持范围内、点击监听绑定方式、内容易变程度等）收在一处的对象。默认适配器逐字段等于历史行为。见 adr-010、adr-011。

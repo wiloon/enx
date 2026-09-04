@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"time"
 
+	"enx-api/aitranslate/aiusage"
 	"enx-api/utils/logger"
 
 	"github.com/go-resty/resty/v2"
@@ -95,14 +96,24 @@ type chatResponse struct {
 	Usage usage `json:"usage"`
 }
 
-func (m *MiniMax) TranslateSentence(ctx context.Context, sentence string) (string, error) {
-	out, _, err := m.chat(ctx, "translate_sentence", 0.3, systemPrompt, sentence)
-	return out, err
+func (m *MiniMax) TranslateSentence(ctx context.Context, sentence string) (string, aiusage.Usage, error) {
+	out, u, err := m.chat(ctx, "translate_sentence", 0.3, systemPrompt, sentence)
+	return out, toUsage(u), err
 }
 
-func (m *MiniMax) TranslateWordInContext(ctx context.Context, sentence, word string) (string, error) {
-	out, _, err := m.chat(ctx, "translate_word_in_context", 0.3, wordContextSystemPrompt, fmt.Sprintf("Sentence: %s\nWord: %s", sentence, word))
-	return out, err
+func (m *MiniMax) TranslateWordInContext(ctx context.Context, sentence, word string) (string, aiusage.Usage, error) {
+	out, u, err := m.chat(ctx, "translate_word_in_context", 0.3, wordContextSystemPrompt, fmt.Sprintf("Sentence: %s\nWord: %s", sentence, word))
+	return out, toUsage(u), err
+}
+
+// toUsage maps MiniMax's OpenAI-compatible usage object to the
+// provider-neutral aiusage.Usage the Translator interface returns.
+func toUsage(u usage) aiusage.Usage {
+	return aiusage.Usage{
+		PromptTokens:     u.PromptTokens,
+		CompletionTokens: u.CompletionTokens,
+		TotalTokens:      u.TotalTokens,
+	}
 }
 
 func (m *MiniMax) chat(ctx context.Context, feature string, temperature float64, systemPrompt, userContent string) (string, usage, error) {

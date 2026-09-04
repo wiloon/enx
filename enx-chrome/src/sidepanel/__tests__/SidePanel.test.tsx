@@ -61,7 +61,7 @@ describe('SidePanel', () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
-        word: 'great',
+        word: '',
         sourceUrl: 'https://example.com',
         createdAt: 1,
       },
@@ -82,7 +82,7 @@ describe('SidePanel', () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
-        word: 'great',
+        word: '',
         sourceUrl: '',
         createdAt: 1,
       },
@@ -103,7 +103,7 @@ describe('SidePanel', () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
-        word: 'great',
+        word: '',
         sourceUrl: '',
         createdAt: 1,
       },
@@ -126,7 +126,7 @@ describe('SidePanel', () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
-        word: 'great',
+        word: '',
         sourceUrl: '',
         createdAt: 1,
       },
@@ -167,7 +167,7 @@ describe('SidePanel', () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
-        word: 'great',
+        word: '',
         sourceUrl: '',
         createdAt: 1,
       },
@@ -207,7 +207,7 @@ describe('SidePanel', () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
-        word: 'great',
+        word: '',
         sourceUrl: '',
         createdAt: 1,
       },
@@ -268,7 +268,7 @@ describe('SidePanel', () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
-        word: 'great',
+        word: '',
         sourceUrl: '',
         createdAt: 1,
       },
@@ -388,7 +388,7 @@ describe('SidePanel', () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
-        word: 'great',
+        word: '',
         sourceUrl: '',
         createdAt: 1,
       },
@@ -436,7 +436,7 @@ describe('SidePanel', () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
-        word: 'great',
+        word: '',
         sourceUrl: '',
         createdAt: 1,
       },
@@ -487,7 +487,7 @@ describe('SidePanel', () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
-        word: 'great',
+        word: '',
         sourceUrl: '',
         createdAt: 1,
       },
@@ -534,7 +534,7 @@ describe('SidePanel', () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
-        word: 'great',
+        word: '',
         sourceUrl: '',
         createdAt: 1,
       },
@@ -586,7 +586,7 @@ describe('SidePanel', () => {
           [PENDING_SENTENCE_STORAGE_KEY]: {
             newValue: {
               sentence: 'First sentence.',
-              word: 'first',
+              word: '',
               sourceUrl: '',
               createdAt: 1,
             },
@@ -605,7 +605,7 @@ describe('SidePanel', () => {
           [PENDING_SENTENCE_STORAGE_KEY]: {
             newValue: {
               sentence: 'Second sentence.',
-              word: 'second',
+              word: '',
               sourceUrl: '',
               createdAt: 2,
             },
@@ -629,7 +629,7 @@ describe('SidePanel', () => {
           [PENDING_SENTENCE_STORAGE_KEY]: {
             newValue: {
               sentence: 'Should be ignored.',
-              word: 'ignored',
+              word: '',
               sourceUrl: '',
               createdAt: 1,
             },
@@ -686,7 +686,7 @@ describe('SidePanel', () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
-        word: 'great',
+        word: '',
         sourceUrl: '',
         createdAt: 1,
       },
@@ -788,7 +788,7 @@ describe('SidePanel', () => {
           [PENDING_SENTENCE_STORAGE_KEY]: {
             newValue: {
               sentence: 'Cats are great pets.',
-              word: 'great',
+              word: '',
               sourceUrl: '',
               createdAt: 2,
             },
@@ -852,7 +852,7 @@ describe('SidePanel', () => {
           [PENDING_SENTENCE_STORAGE_KEY]: {
             newValue: {
               sentence: 'Cats are great pets.',
-              word: 'great',
+              word: '',
               sourceUrl: '',
               createdAt: 2,
             },
@@ -881,5 +881,135 @@ describe('SidePanel', () => {
     expect(
       mockSendMessage.mock.calls.slice(callsBeforeClick).some(call => call[0]?.type === 'getOneWord')
     ).toBe(false)
+  })
+
+  // ADR-014: opening the panel from a page word click sends ONE combined AI
+  // call that returns the whole-sentence translation AND that word's
+  // in-context meaning; the panel highlights the clicked word in the
+  // original and seeds its card without the user clicking it again.
+  describe('opened from a page word click (ADR-014)', () => {
+    const pendingWithWord = {
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: 'Cats are great pets.',
+        word: 'great',
+        sourceUrl: '',
+        createdAt: 1,
+      },
+    }
+
+    it('sends translateSentenceWithWord (not translateSentence) and shows both halves', async () => {
+      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue(pendingWithWord)
+      mockSendMessage.mockImplementation(async (message: { type: string; word?: string }) => {
+        if (message.type === 'translateSentenceWithWord') {
+          return { success: true, chinese: '猫是很棒的宠物。', wordChinese: '极好的' }
+        }
+        if (message.type === 'getOneWord') {
+          return {
+            success: true,
+            ecp: { English: message.word, Chinese: 'great的词典释义', Pronunciation: '/greɪt/', LoadCount: 7 },
+          }
+        }
+        return { success: false }
+      })
+
+      render(<SidePanel />)
+
+      await waitFor(() =>
+        expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('猫是很棒的宠物。')
+      )
+      // Card for the clicked word is seeded automatically, 本句 meaning from
+      // the SAME combined call (no separate translateWordInContext).
+      await waitFor(() => {
+        const card = screen.getByTestId('sidepanel-card-great')
+        expect(card).toHaveTextContent('极好的')
+        expect(card).toHaveTextContent('great的词典释义')
+        expect(card).toHaveTextContent('/greɪt/')
+      })
+      expect(mockSendMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'translateSentence' })
+      )
+      expect(mockSendMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'translateWordInContext' })
+      )
+    })
+
+    it('highlights every occurrence of the clicked word in the original', async () => {
+      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+        [PENDING_SENTENCE_STORAGE_KEY]: {
+          sentence: 'A great day for a great walk.',
+          word: 'great',
+          sourceUrl: '',
+          createdAt: 1,
+        },
+      })
+      mockSendMessage.mockResolvedValue({ success: true, chinese: '译文', wordChinese: '极好的' })
+
+      render(<SidePanel />)
+
+      const sentence = await screen.findByTestId('sidepanel-sentence')
+      const highlighted = within(sentence)
+        .getAllByRole('button')
+        .filter(b => b.getAttribute('data-clicked-word') === 'true')
+      expect(highlighted).toHaveLength(2)
+      highlighted.forEach(b => expect(b).toHaveTextContent('great'))
+    })
+
+    it('falls back to a separate translateWordInContext when the model omits the word gloss', async () => {
+      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue(pendingWithWord)
+      mockSendMessage.mockImplementation(async (message: { type: string; word?: string }) => {
+        if (message.type === 'translateSentenceWithWord') {
+          return { success: true, chinese: '猫是很棒的宠物。', wordChinese: '' }
+        }
+        if (message.type === 'translateWordInContext') {
+          return { success: true, chinese: '兜底：极好的' }
+        }
+        if (message.type === 'getOneWord') {
+          return { success: true, ecp: { English: message.word, Chinese: 'x', Pronunciation: '/greɪt/' } }
+        }
+        return { success: false }
+      })
+
+      render(<SidePanel />)
+
+      await waitFor(() =>
+        expect(screen.getByTestId('sidepanel-card-great')).toHaveTextContent('兜底：极好的')
+      )
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'translateWordInContext', word: 'great' })
+      )
+    })
+
+    it('does not seed a card or highlight for a drag-selected sentence (no anchor word)', async () => {
+      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+        [PENDING_SENTENCE_STORAGE_KEY]: {
+          sentence: 'Cats are great pets.',
+          word: '',
+          sourceUrl: '',
+          createdAt: 1,
+        },
+      })
+      mockSendMessage.mockImplementation(async (message: { type: string }) => {
+        if (message.type === 'translateSentence') {
+          return { success: true, chinese: '猫是很棒的宠物。' }
+        }
+        return { success: false }
+      })
+
+      render(<SidePanel />)
+
+      await waitFor(() =>
+        expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('猫是很棒的宠物。')
+      )
+      expect(mockSendMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'translateSentenceWithWord' })
+      )
+      expect(screen.queryByTestId('sidepanel-definitions')).not.toBeInTheDocument()
+      const sentence = screen.getByTestId('sidepanel-sentence')
+      expect(
+        within(sentence)
+          .getAllByRole('button')
+          .some(b => b.getAttribute('data-clicked-word') === 'true')
+      ).toBe(false)
+    })
   })
 })

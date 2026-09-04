@@ -17,6 +17,7 @@ import (
 type User struct {
 	Id                  string    `json:"id" gorm:"column:id;primaryKey"`
 	CognitoSub          string    `json:"-" gorm:"column:cognito_sub;uniqueIndex"`
+	ClerkUserID         string    `json:"-" gorm:"column:clerk_user_id;uniqueIndex"`
 	Name                string    `json:"name" gorm:"column:name"`
 	Email               string    `json:"email" gorm:"column:email"`
 	Password            string    `json:"-" gorm:"column:password"`
