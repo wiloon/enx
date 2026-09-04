@@ -26,15 +26,15 @@ export default defineConfig({
       // /api/** with page.route() without cross-origin CORS preflights.
       NEXT_PUBLIC_API_BASE_URL:
         process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000',
-      NEXT_PUBLIC_COGNITO_DOMAIN:
-        process.env.NEXT_PUBLIC_COGNITO_DOMAIN ||
-        'https://enx-auth.auth.us-east-1.amazoncognito.com',
-      NEXT_PUBLIC_COGNITO_CLIENT_ID:
-        process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID ||
-        '1il7v7q7jn17150jq4lou6m7b0',
-      NEXT_PUBLIC_COGNITO_REDIRECT_URI:
-        process.env.NEXT_PUBLIC_COGNITO_REDIRECT_URI ||
-        'http://localhost:3000/auth/callback',
+      // Clerk (ADR-015). Dev instance publishable key is non-secret.
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
+        process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ||
+        'pk_test_cmF0aW9uYWwtZGVlci00NDUwLmNsZXJrLmFjY291bnRzLmRldiQ',
+      NEXT_PUBLIC_CLERK_SIGN_IN_URL: '/sign-in',
+      NEXT_PUBLIC_CLERK_SIGN_UP_URL: '/sign-up',
+      NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL: '/app',
+      NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL: '/app',
+      CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY || 'sk_test_placeholder',
     },
   },
 });

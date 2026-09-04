@@ -1,49 +1,54 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '@playwright/test'
 
 test.describe('marketing landing', () => {
   test('/ is the public landing page, not the login form', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/')
     await expect(
       page.getByRole('heading', { name: /learn english while you read the web/i })
-    ).toBeVisible();
+    ).toBeVisible()
     await expect(
       page.getByRole('link', { name: /add to chrome/i }).first()
-    ).toBeVisible();
-    await expect(page.getByText('Sign in to Catseye')).toHaveCount(0);
-  });
+    ).toBeVisible()
+    // No inline sign-in widget on the landing page.
+    await expect(page.locator('.cl-signIn-root')).toHaveCount(0)
+  })
 
   test('the comparison table names Catseye and a competitor', async ({ page }) => {
-    await page.goto('/');
-    await expect(page.getByRole('columnheader', { name: 'Catseye' })).toBeVisible();
+    await page.goto('/')
+    await expect(page.getByRole('columnheader', { name: 'Catseye' })).toBeVisible()
     await expect(
       page.getByRole('columnheader', { name: 'Immersive Translate' })
-    ).toBeVisible();
-  });
-});
+    ).toBeVisible()
+  })
+})
 
-test.describe('Cognito sign in', () => {
-  test('shows Cognito sign in entry point at /app', async ({ page }) => {
-    await page.goto('/app');
-    // "Sign in to Catseye" is a shadcn <CardTitle> (a <div>), not a heading.
-    await expect(page.getByText('Sign in to Catseye')).toBeVisible();
-    await expect(
-      page.getByText('Use your email or Google account via AWS Cognito.')
-    ).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
-  });
+test.describe('Clerk sign in (ADR-015)', () => {
+  test('/app redirects a signed-out visitor to /sign-in', async ({ page }) => {
+    await page.goto('/app')
+    await page.waitForURL(/\/sign-in(\/|\?|$)/, { timeout: 15000 })
+    expect(new URL(page.url()).pathname).toMatch(/^\/sign-in/)
+  })
 
-  test('redirects to Cognito Hosted UI when Sign in is clicked', async ({ page }) => {
-    await page.goto('/app');
-    await page.getByRole('button', { name: 'Sign in' }).click();
-    await page.waitForURL(/auth\.(example\.com|us-east-1\.amazoncognito\.com)\/oauth2\/authorize/, {
+  test('/sign-in renders the Clerk sign-in widget', async ({ page }) => {
+    await page.goto('/sign-in')
+    await expect(page.locator('.cl-signIn-root, .cl-rootBox').first()).toBeVisible({
       timeout: 15000,
-    });
+    })
+  })
 
-    const url = new URL(page.url());
-    expect(url.searchParams.get('response_type')).toBe('code');
-    expect(url.searchParams.get('code_challenge_method')).toBe('S256');
-    expect(url.searchParams.get('code_challenge')).toBeTruthy();
-    expect(url.searchParams.get('client_id')).toBeTruthy();
-    expect(url.searchParams.get('redirect_uri')).toContain('/auth/callback');
-  });
-});
+  // The exact regression from the first Clerk deploy: Clerk derives its OAuth
+  // callback as `<sign-in path>/sso-callback`. That route must resolve (Clerk's
+  // catch-all handles it) — a 404 here means an OAuth login dead-ends after the
+  // provider redirects back. See src/__tests__/clerk-routing.test.ts.
+  test('/sign-in/sso-callback resolves (no 404)', async ({ page }) => {
+    const res = await page.goto('/sign-in/sso-callback')
+    expect(res?.status()).not.toBe(404)
+  })
+
+  test('/app/sso-callback is NOT a route (nothing should mount SignIn there)', async ({
+    page,
+  }) => {
+    const res = await page.goto('/app/sso-callback')
+    expect(res?.status()).toBe(404)
+  })
+})

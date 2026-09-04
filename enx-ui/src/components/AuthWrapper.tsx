@@ -23,8 +23,9 @@ export default function AuthWrapper() {
 
   if (!isAuthenticated) {
     // Send them to the dedicated /sign-in route (its catch-all handles Clerk's
-    // /sign-in/sso-callback for OAuth). Rendering <SignIn> inline here made
-    // Clerk use /app/sso-callback as the OAuth return, which 404s.
+    // /sign-in/sso-callback for OAuth). Mounting the Clerk sign-in widget
+    // inline here made Clerk use /app/sso-callback as the OAuth return, which
+    // 404s (see src/__tests__/clerk-routing.test.ts).
     return <RedirectToSignIn />
   }
 
