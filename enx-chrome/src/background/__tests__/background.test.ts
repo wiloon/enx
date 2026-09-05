@@ -16,7 +16,19 @@ jest.mock('@/config/env', () => ({
 const getToken = jest.fn<Promise<string | null>, []>()
 let clerkSession: { getToken: typeof getToken } | null = { getToken }
 
+// Re-installed on every setClerkSession() call because it runs after each
+// describe block's jest.resetAllMocks(), which wipes mockImplementation --
+// see the "Captured at import time" comment below for the same gotcha.
+function installCreateClerkClientMock() {
+  ;(createClerkClient as jest.Mock).mockImplementation(async () => ({
+    get session() {
+      return clerkSession
+    },
+  }))
+}
+
 function setClerkSession(token: string | null) {
+  installCreateClerkClientMock()
   if (token === null) {
     clerkSession = null
   } else {
@@ -26,13 +38,10 @@ function setClerkSession(token: string | null) {
 }
 
 jest.mock('@clerk/chrome-extension/background', () => ({
-  createClerkClient: jest.fn(async () => ({
-    get session() {
-      return clerkSession
-    },
-  })),
+  createClerkClient: jest.fn(),
 }))
 
+import { createClerkClient } from '@clerk/chrome-extension/background'
 import { makeApiRequest } from '../background'
 
 // Captured at import time, before any test's resetAllMocks() wipes the
@@ -117,6 +126,42 @@ describe('background makeApiRequest / Clerk session token', () => {
       error: '积分不足',
       status: 402,
     })
+  })
+
+  it('retries once with a fresh Clerk client when the cached session comes back empty', async () => {
+    // Simulates a service worker cold-start racing the dev-instance JWT
+    // relay (ADR-015): the cached client's session reads empty, but a fresh
+    // client -- the mitigation's retry -- picks up the now-synced session.
+    setClerkSession(null)
+    const callsBefore = (createClerkClient as jest.Mock).mock.calls.length
+    ;(createClerkClient as jest.Mock).mockImplementationOnce(async () => ({
+      session: { getToken: jest.fn(async () => 'recovered-jwt') },
+    }))
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(200, { English: 'test' })
+    )
+
+    const result = await makeApiRequest('/api/translate?word=test')
+
+    expect(result).toEqual({ success: true, data: { English: 'test' } })
+    const [, requestInit] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(requestInit.headers.Authorization).toBe('Bearer recovered-jwt')
+    expect((createClerkClient as jest.Mock).mock.calls.length).toBe(
+      callsBefore + 1
+    )
+  })
+
+  it('reports a real session expiry when the retried client is also empty', async () => {
+    setClerkSession(null)
+    ;(createClerkClient as jest.Mock).mockImplementationOnce(async () => ({
+      session: null,
+    }))
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(200, {}))
+
+    await makeApiRequest('/api/me')
+
+    const [, requestInit] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(requestInit.headers.Authorization).toBeUndefined()
   })
 })
 

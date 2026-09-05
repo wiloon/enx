@@ -16,8 +16,7 @@ console.log('🌐 Config environment:', config.environment)
 
 // ADR-015: Clerk owns the session. The service worker holds a single Clerk
 // client (synced from the website via `syncHost`) and mints a fresh, short-
-// lived session JWT for every API call via `session.getToken()`. There is no
-// refresh cycle for us to manage — a 401 is a real 401.
+// lived session JWT for every API call via `session.getToken()`.
 type ClerkClient = Awaited<ReturnType<typeof createClerkClient>>
 let clerkClientPromise: Promise<ClerkClient> | null = null
 
@@ -31,9 +30,27 @@ const getClerk = (): Promise<ClerkClient> => {
   return clerkClientPromise
 }
 
+// Mitigation for a false "session expired": homelab still runs Clerk's
+// *development* instance (see TASK-SPEC-enx-clerk-production-cutover.md),
+// which syncs the session into the extension via a dev-browser-JWT relay
+// instead of a shared prod cookie. MV3 evicts an idle service worker, wiping
+// `clerkClientPromise`; when a new event wakes it, the relay handshake can
+// still be in flight, so the freshly-created client resolves with no session
+// even though the user is still signed in on the website. If that happens,
+// throw away the cached client and retry once with a brand-new one before
+// concluding the session is genuinely gone (a still-empty session after the
+// retry is treated as a real 401/logout).
+const getSyncedClerk = async (): Promise<ClerkClient> => {
+  const clerk = await getClerk()
+  if (clerk.session) return clerk
+
+  clerkClientPromise = null
+  return getClerk()
+}
+
 const getSessionToken = async (): Promise<string | null> => {
   try {
-    const clerk = await getClerk()
+    const clerk = await getSyncedClerk()
     return (await clerk.session?.getToken()) ?? null
   } catch (error) {
     console.error('Clerk getToken failed:', error)
@@ -43,7 +60,7 @@ const getSessionToken = async (): Promise<string | null> => {
 
 const isSignedIn = async (): Promise<boolean> => {
   try {
-    return Boolean((await getClerk()).session)
+    return Boolean((await getSyncedClerk()).session)
   } catch (error) {
     console.error('Clerk session check failed:', error)
     return false
