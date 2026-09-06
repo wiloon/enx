@@ -2,11 +2,11 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Accepted — 2026-09-06。删掉死接口 `GET /ecdict`（#19/#20 随之消失）、seam 收敛（A2，收敛后只剩 `translateWord` 一个 caller）、每次调用计量不去重（B2）、SQLite 不上 Redis（C2）、单条 upsert（D2）、词典路径 fail-open（E2）、#17/#18 一并修均已确认。TDD 进度：**步骤 0（删 `/ecdict`，`abbb590`）、1（单条 upsert，`ce0dc13`）、2（`Lookup` fail-open #17/#18，`bbf0d44`）、3（`MeterLookup` 收敛 + 本地命中也计量 B2）已完成**。剩余步骤 4（配额行清理）。A2 的「本地 `words` 查询搬进 `dictionary.Lookup`」这部分因 `translateWord` 复习计数无测试覆盖而推迟，见 Decision 1。 |
+| **状态** | Accepted — 2026-09-06。删掉死接口 `GET /ecdict`（#19/#20 随之消失）、seam 收敛（A2，收敛后只剩 `translateWord` 一个 caller）、每次调用计量不去重（B2）、SQLite 不上 Redis（C2）、单条 upsert（D2）、词典路径 fail-open（E2）、#17/#18 一并修均已确认。TDD 进度：**步骤 0（删 `/ecdict`，`abbb590`）、1（单条 upsert，`ce0dc13`）、2（`Lookup` fail-open #17/#18，`bbf0d44`）、3（`MeterLookup` 收敛 + 本地命中也计量 B2，`eb7b5ce`）已完成**。步骤 4（配额行清理）推迟为 [#21](https://github.com/wiloon/enx/issues/21)。A2 的「本地 `words` 查询搬进 `dictionary.Lookup`」推迟，前置是补 `translateWord` 复习计数的测试覆盖 [#22](https://github.com/wiloon/enx/issues/22)，见 Decision 1 / Revisit。 |
 | **日期** | 2026-09-06 |
 | **关联 Spec** | [`TASK-SPEC-enx-billing-stripe-subscription.md`](../tasks/TASK-SPEC-enx-billing-stripe-subscription.md) §4.2 已把 `dictionary.Lookup` 定位为「统一查词入口，在返回结果前插入配额检查」——本 ADR 是**把这个意图补齐**（实现时 `fillFromEcdict` 把「先查本地」的分支留在了 seam 外）；配套 TASK-SPEC 增补留到编码阶段（同 ADR-008 / ADR-011 / ADR-017 的做法） |
 | **关联 ADR** | [`adr-009-billing-stripe-subscription-and-ai-credits.md`](adr-009-billing-stripe-subscription-and-ai-credits.md)（Decision 6：免费查词走独立每日配额、不进积分系统；本 ADR **澄清并延续**它——配额覆盖**所有释义查询**，含本地缓存命中，并把计量点收敛到一个 seam）、[`adr-014-sidepanel-clicked-word-and-token-billing.md`](adr-014-sidepanel-clicked-word-and-token-billing.md)（AI 翻译按 token 计费、与查词配额是两个独立计量器；本 ADR 不动 AI 侧） |
-| **关联 Issue** | 解决 [#16](https://github.com/wiloon/enx/issues/16)（配额先扣后查——本 ADR 确认这是有意的）、[#17](https://github.com/wiloon/enx/issues/17)（非 sentinel error 被当「查无此词」）、[#18](https://github.com/wiloon/enx/issues/18)（`isActiveSubscriber` 吞错误、订阅者被降级 429）、[#19](https://github.com/wiloon/enx/issues/19) + [#20](https://github.com/wiloon/enx/issues/20)（`/ecdict` 的错误处理 / 计量不一致——**通过删除这个无客户端的死接口解决**，见 Decision 0） |
+| **关联 Issue** | 解决 [#16](https://github.com/wiloon/enx/issues/16)（配额先扣后查——本 ADR 确认这是有意的）、[#17](https://github.com/wiloon/enx/issues/17)（非 sentinel error 被当「查无此词」）、[#18](https://github.com/wiloon/enx/issues/18)（`isActiveSubscriber` 吞错误、订阅者被降级 429）、[#19](https://github.com/wiloon/enx/issues/19) + [#20](https://github.com/wiloon/enx/issues/20)（`/ecdict` 的错误处理 / 计量不一致——**通过删除这个无客户端的死接口解决**，见 Decision 0）。派生后续：[#21](https://github.com/wiloon/enx/issues/21)（配额行清理，步骤 4）、[#22](https://github.com/wiloon/enx/issues/22)（`translateWord` 复习计数补测试，深 seam 的前置） |
 
 ---
 
@@ -176,7 +176,7 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 - **本地命中的词从「永远免费」变成「计量」**：今天所有真实查词都命中翻译路径的本地分支、绕过配额；本 ADR 之后它们开始计数。这是把 ADR-009 Decision 6 落到实处，但对一个重度阅读用户是可感知的用量增加——同样靠「上限设高」兜。
 - **fail-open 意味着配额在存储故障期间完全失效**——可接受（它不是 paywall），但要清楚这不是一个能在 DB 出问题时兜住成本的机制。
 - **A2 的深 seam 只做了一半**：计量收敛了（`MeterLookup`），但本地 `words` 查询还在 `translateWord`/`word.Translate` 里，`dictionary.Lookup` 仍是「ECDICT + 计量」。原因：`translateWord` 的 `QueryCount` 记账零测试覆盖，盲改不安全。完整深 seam 留作后续（Revisit）。
-- **`translateWord` 的 `user_dicts.QueryCount` 复习计数记账至今无测试覆盖**——本 ADR 没碰它，但这是一块该补的债。
+- **`translateWord` 的 `user_dicts.QueryCount` 复习计数记账至今无测试覆盖**——本 ADR 没碰它，记为 [#22](https://github.com/wiloon/enx/issues/22)。
 
 ### Mitigation
 
@@ -185,7 +185,7 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
   1. `CheckAndIncrementLookup` 改单条 upsert（**已完成**，语义不变，6 现有 + 1 新增测试全绿）。
   2. `isActiveSubscriber` 返 `(bool, error)` + `dictionary.Lookup` fail-open（#17/#18）（**已完成**，`bbf0d44`，2 新 + 4 现有测试全绿）。
   3. 抽 `dictionary.MeterLookup`；`fillFromEcdict` 的本地命中分支也调它 → 计量收敛 + B2（**已完成**，新增 `TestTranslateWordMetersLocalCacheHit`，`translate`/`dictionary` 单测 + 集成测试全绿）。**深 seam（本地查询搬进 `Lookup`）推迟**——见 Decision 1 / Revisit。
-  4. 配额行清理 job（G）。
+  4. 配额行清理 job（G）—— 推迟为 #21。
   5. 每步独立可验证、可回滚。
 - 上限数值：初值给一个明显偏高的数（阅读会话点词量的数倍），上线后看真实分布再逐步收。
 
@@ -206,7 +206,7 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 
 ## Revisit Trigger
 
-- **要把本地 `words` 查询搬进 `dictionary.Lookup`（A2 深 seam）**：前置条件是先给 `translateWord` 的 `user_dicts.QueryCount` 复习计数记账补上测试覆盖（现在零覆盖）。有覆盖之后这个重构才安全。触发点：加第二个查词 caller，或 `translateWord` 本身要大改。
+- **要把本地 `words` 查询搬进 `dictionary.Lookup`（A2 深 seam）**：前置条件是 [#22](https://github.com/wiloon/enx/issues/22)（补 `translateWord` 复习计数的测试覆盖）。有覆盖之后这个重构才安全。触发点：加第二个查词 caller，或 `translateWord` 本身要大改。
 - **enx-api 变多副本 + 换外部共享 DB（Postgres）**：SQLite 单文件单写者不再成立，重新评估 Redis / 外部计数器 / DB 原生原子自增。
 - **真实数据显示正常阅读用户会撞上限**：要么提高上限，要么回到「按去重词数」计量（B1）——那时候复杂度是值得付的。
 - **需要把配额做成用户可见的用量条**：「缓存命中也算」会让用户困惑（「我就重看了个查过的词怎么也扣」），届时考虑 B1，或分级展示（不到 80% 不显示数字）。
