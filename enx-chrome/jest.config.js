@@ -4,6 +4,7 @@ export default {
   setupFiles: ['<rootDir>/jest.polyfills.js'],
   setupFilesAfterEnv: ['<rootDir>/src/test/setup.ts'],
   moduleNameMapper: {
+    '\\.css$': '<rootDir>/src/test/styleMock.js',
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   testMatch: [

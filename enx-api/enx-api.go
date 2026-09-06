@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
+	"enx-api/aitranslate"
+	"enx-api/billing"
+	"enx-api/billing/credit"
+	billingstripe "enx-api/billing/stripe"
+	"enx-api/ecdict"
 	"enx-api/email"
 	"enx-api/enx"
 	"enx-api/handlers"
 	"enx-api/middleware"
 	"enx-api/paragraph"
-	"enx-api/dictionary"
-	"enx-api/ecdict"
 	"enx-api/translate"
 	"enx-api/utils"
 	"enx-api/utils/logger"
@@ -101,9 +104,8 @@ func setupRouter() *gin.Engine {
 		// List of allowed origins
 		allowedOrigins := []string{
 			"http://localhost:3000",
-			"https://enx-ui.wiloon.com",
-			"https://enx-ui-lab.wiloon.com",
-			"https://enx-dev.wiloon.com",
+			"https://enx.wiloon.lab",
+			"https://enx.wiloon.com",
 		}
 
 		// Check if origin is allowed or is a chrome extension
@@ -162,12 +164,70 @@ func setupRouter() *gin.Engine {
 	router.GET("/version", handlers.GetVersion)
 	router.GET("/api/version", handlers.GetVersionSimple)
 
-	cognitoCfg := middleware.CognitoConfigFromViper()
-	cognitoAuth := middleware.CognitoAuth(cognitoCfg)
+	clerkAuth := middleware.ClerkAuth(middleware.ClerkConfigFromViper())
 
-	// APIs requiring authentication (Cognito JWT)
+	// Sentence translation is an optional feature: if sentence-translate.provider
+	// is unset, it stays disabled (same "unconfigured but not fatal" pattern as
+	// ECDICT when ecdict.db_path is empty) and the endpoint responds 502. But if
+	// a provider WAS explicitly configured and its credentials/config are
+	// missing, that's a deliberate misconfiguration and must fail fast rather
+	// than silently serving a broken endpoint (see
+	// docs/tasks/TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md §4.4).
+	sentenceTranslator, sentenceTranslateErr := aitranslate.New(context.Background())
+	if sentenceTranslateErr != nil {
+		if provider := viper.GetString("sentence-translate.provider"); provider != "" {
+			logger.Errorf("sentence-translate.provider=%q is configured but failed to initialize: %v", provider, sentenceTranslateErr)
+			os.Exit(1)
+		}
+		logger.Warnf("sentence translation disabled: %v", sentenceTranslateErr)
+		sentenceTranslator = nil
+	}
+	sentenceHandler := aitranslate.NewHandler(
+		sentenceTranslator,
+		aitranslate.DefaultTokenLedger,
+		credit.TokenPricing{
+			WeightIn:  viper.GetInt64("stripe.costs.translate.weight-in"),
+			WeightOut: viper.GetInt64("stripe.costs.translate.weight-out"),
+			Divisor:   viper.GetInt64("stripe.costs.translate.divisor"),
+		},
+	)
+
+	// Rephrase (ADR-012) reuses the same provider as sentence translation,
+	// but the provider must also implement rephrase support. Same
+	// "unconfigured is not fatal, misconfigured is" contract as above.
+	rephraser, rephraseErr := aitranslate.NewRephraser(context.Background())
+	if rephraseErr != nil {
+		if provider := viper.GetString("sentence-translate.provider"); provider != "" {
+			logger.Errorf("sentence-translate.provider=%q is configured but rephrase failed to initialize: %v", provider, rephraseErr)
+			os.Exit(1)
+		}
+		logger.Warnf("rephrase disabled: %v", rephraseErr)
+		rephraser = nil
+	}
+	rephraseHandler := aitranslate.NewRephraseHandler(
+		rephraser,
+		aitranslate.DefaultTokenLedger,
+		credit.TokenPricing{
+			WeightIn:  viper.GetInt64("stripe.costs.rephrase.weight-in"),
+			WeightOut: viper.GetInt64("stripe.costs.rephrase.weight-out"),
+			Divisor:   viper.GetInt64("stripe.costs.rephrase.divisor"),
+		},
+	)
+
+	// Stripe billing is likewise optional: without STRIPE_SECRET_KEY (a local
+	// dev box, or a deployment that hasn't set the secret yet), billing
+	// endpoints stay disabled (503) rather than the server failing to start.
+	// See docs/tasks/TASK-SPEC-enx-billing-stripe-subscription.md.
+	stripeClient, stripeErr := billingstripe.New(viper.GetString("stripe.secret-key"))
+	if stripeErr != nil {
+		logger.Warnf("billing disabled: %v", stripeErr)
+		stripeClient = nil
+	}
+	billingHandler := billing.NewHandler(stripeClient, viper.GetString("app.frontend-base-url"), viper.GetString("stripe.webhook-secret"))
+
+	// APIs requiring authentication (Clerk session JWT)
 	authGroup := router.Group("/")
-	authGroup.Use(cognitoAuth)
+	authGroup.Use(clerkAuth)
 	{
 		// get words query count by paragraph
 		authGroup.GET("/paragraph-init", paragraph.ParagraphInit)
@@ -175,15 +235,18 @@ func setupRouter() *gin.Engine {
 		// translate
 		authGroup.GET("/translate", translate.Translate)
 		authGroup.GET("/word/:word", translate.TranslateByWord)
+		authGroup.POST("/translate/sentence", sentenceHandler.TranslateSentence)
+		authGroup.POST("/translate/word-in-context", sentenceHandler.TranslateWordInContext)
+		authGroup.POST("/translate/sentence-with-word", sentenceHandler.TranslateSentenceWithWord)
+		authGroup.POST("/rephrase", rephraseHandler.Rephrase)
 		authGroup.GET("/load-count", wordCount.LoadCount)
 		authGroup.POST("/mark", MarkWord)
-		authGroup.GET("/ecdict", DoSearchEcdict)
 		authGroup.GET("/wrap", Wrap)
 	}
 
 	// API group for Kong gateway (with /api prefix)
 	apiGroup := router.Group("/api")
-	apiGroup.Use(cognitoAuth)
+	apiGroup.Use(clerkAuth)
 	{
 		// get words query count by paragraph
 		apiGroup.GET("/paragraph-init", paragraph.ParagraphInit)
@@ -191,38 +254,40 @@ func setupRouter() *gin.Engine {
 		// translate
 		apiGroup.GET("/translate", translate.Translate)
 		apiGroup.GET("/word/:word", translate.TranslateByWord)
+		apiGroup.POST("/translate/sentence", sentenceHandler.TranslateSentence)
+		apiGroup.POST("/translate/word-in-context", sentenceHandler.TranslateWordInContext)
+		apiGroup.POST("/translate/sentence-with-word", sentenceHandler.TranslateSentenceWithWord)
+		apiGroup.POST("/rephrase", rephraseHandler.Rephrase)
 		apiGroup.DELETE("/word/:word", DeleteWord)
 		apiGroup.GET("/load-count", wordCount.LoadCount)
 		apiGroup.POST("/mark", MarkWord)
-		apiGroup.GET("/ecdict", DoSearchEcdict)
 		apiGroup.GET("/wrap", Wrap)
 	}
 
-	// /api/me — requires authentication (Cognito JWT)
+	// /api/me — requires authentication (Clerk session JWT)
 	apiGroup.GET("/me", GetMe)
+
+	// Billing (Stripe) — requires authentication (Clerk session JWT).
+	apiGroup.POST("/billing/checkout/subscription", billingHandler.CheckoutSubscription)
+	apiGroup.POST("/billing/checkout/topup", billingHandler.CheckoutTopup)
+	apiGroup.POST("/billing/portal", billingHandler.Portal)
+	apiGroup.GET("/billing/me", billingHandler.Me)
+
+	// Admin: grant top-up credits to any user by email. Gated by the
+	// ADMIN_CLERK_USER_IDS allowlist inside the handler (on top of clerkAuth).
+	apiGroup.POST("/admin/credits/grant", billingHandler.GrantCredits)
+
+	// Stripe webhook — deliberately NOT in apiGroup/authGroup: Stripe can't
+	// present a Clerk session JWT, so this is unauthenticated at the router root,
+	// relying on Stripe-Signature verification instead (TASK-SPEC §3). URL
+	// must match the endpoint registered in infra/stripe/opentofu/enx
+	// (w10n-config): enx-api.wiloon.lab/billing/webhook, no /api prefix.
+	router.POST("/billing/webhook", billingHandler.Webhook)
 
 	// Temporary test route - no authentication required
 	router.POST("/mark-test", MarkWord)
 
 	return router
-}
-
-type SearchResult struct {
-	Dict *enx.Dictionary
-}
-
-func DoSearchEcdict(c *gin.Context) {
-	key := c.Query("key")
-	logger.Infof("ecdict search key: %v", key)
-
-	if !ecdict.IsAvailable() {
-		dictionary.RespondUnavailable(c)
-		return
-	}
-
-	result := SearchResult{}
-	result.Dict = ecdict.Query(c.Request.Context(), key)
-	c.JSON(200, result)
 }
 
 type article struct {

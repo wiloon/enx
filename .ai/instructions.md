@@ -2,7 +2,10 @@
 
 ## Language Requirements
 
-Use **English** for all code, comments, documentation, and configuration files to maintain consistency across the project.
+- **Code, comments, and configuration files:** English.
+- **User-facing UI copy in `enx-chrome` and `enx-ui`:** English. This covers menu items, buttons, labels, placeholders, tooltips, and every hint / notice / toast / error message shown to the user — including the `message` strings the API returns for display (e.g. "insufficient credits", "service unavailable"). Do not ship new Chinese UI strings. Some pre-existing screens still contain Chinese copy (`AuthWrapper.tsx`, the billing pages, some `aitranslate` handler messages); migrate those to English when you touch them, but a dedicated sweep is out of scope for unrelated changes.
+  - Exception: text that is itself *language-learning content* aimed at the Chinese-speaking user may be Chinese by design — e.g. the Chinese learning notes returned by the "地道表达" feature (ADR-012). This is content, not chrome.
+- **Documentation:** English by default. ADRs under `docs/architecture/` are written in Chinese (established convention, see the existing `adr-*.md`); match the language of the doc you are editing.
 
 ## Code Conventions
 
@@ -208,6 +211,33 @@ func TestUserRepository_Create(t *testing.T) {
 - ✅ **Service Layer:** Multi-step operations, business rules
 - ⚠️ **Keep simple things simple:** Don't over-engineer trivial CRUD operations
 - ⚠️ **Pragmatic approach:** Adapt patterns to project needs, not dogma
+
+### External Data Sources
+
+#### ECDICT is read-only
+
+[ECDICT](https://github.com/skywind3000/ECDICT) is a **third-party open-source**
+English–Chinese dictionary dataset (see `docs/adr/0001-integrate-ecdict-dictionary.md`).
+It ships as a standalone SQLite file, mounted separately from the application
+image and the application database, and the connection is opened `mode=ro`
+(`enx-api/ecdict/ecdict.go`).
+
+**The application layer treats ECDICT as strictly read-only.** Never:
+
+- write to, update, or delete rows in the `stardict` table
+- run schema migrations / `AutoMigrate` against the ECDICT database
+- open the ECDICT connection in read-write mode
+
+Any word data the application *owns* — corrections, per-user progress and query
+counts, phrase entries, cross-reference fixes — lives in the application's own
+tables (`words`, `user_dicts`, …), keyed to ECDICT by lookup. If an ECDICT
+entry is wrong or missing, the fix goes in an application-side table, never in
+ECDICT. This keeps ECDICT a drop-in, independently-updatable dataset: a new
+upstream release can replace the file wholesale with no migration.
+
+The single word-lookup seam is `dictionary.Lookup` (ADR-018): it reads the
+application's `words`/`user_dicts` first, then `ecdict.Query`; callers do not
+touch `ecdict` directly.
 
 ## Testing Requirements
 

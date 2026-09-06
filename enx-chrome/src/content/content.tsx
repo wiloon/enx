@@ -1,0 +1,1154 @@
+// ENX Content Script for word identification and translation
+// Note: Sentry initialization is skipped to avoid import issues in content script context
+
+import { createRoot, type Root } from 'react-dom/client'
+import { Provider } from 'jotai'
+import {
+  computePosition,
+  autoUpdate,
+  offset,
+  flip,
+  shift,
+  size,
+} from '@floating-ui/dom'
+import { WordProcessor } from '@/lib/wordProcessor'
+import { resolveSiteAdapter } from '@/lib/siteAdapters'
+import { nearestElement, referenceLineHeight } from '@/lib/rangeUtils'
+import {
+  createSpaRebuilder,
+  isSupportedPage,
+  waitForTweetReady,
+} from './spaRebuild'
+import {
+  getWordHighlightEnabled,
+  onWordHighlightEnabledChange,
+} from '@/config/preferences'
+import { BackgroundResponse, ContentMessage, WordData } from '../types'
+import { contentScriptStore } from './contentAtoms'
+import {
+  currentWordAtom,
+  isTranslatingAtom,
+  errorAtom,
+  sentencePanelHintAtom,
+} from '@/store/atoms'
+import WordPopover from '@/components/WordPopover'
+import tailwindCss from '@/index.css?inline'
+
+console.log('ENX Content script loaded')
+
+// State management for content script
+let isEnxEnabled = false
+let currentOverlay: HTMLElement | null = null
+let currentRoot: Root | null = null
+let wordCache: Record<string, WordData> = {}
+let isProcessing = false
+// Article roots ENX is currently operating on: the delegated click listener
+// is bound to each, and refreshHighlights() rebuilds highlights over them.
+let articleRoots: Element[] = []
+let overlayEventCleanup: (() => void) | null = null
+
+// Send message to background script
+const sendToBackground = (
+  message: ContentMessage
+): Promise<BackgroundResponse> => {
+  return new Promise(resolve => {
+    chrome.runtime.sendMessage(message, response => {
+      resolve(response || { success: false, error: 'No response' })
+    })
+  })
+}
+
+type OverlayElement = HTMLElement & {
+  popover: string
+  showPopover: () => void
+  hidePopover: () => void
+}
+
+// Positions `overlay` against `reference` with Floating UI and keeps it there
+// while it's open. The Range is wrapped as a Floating UI "virtual element":
+// it supplies the geometry, and `contextElement` is what lets autoUpdate
+// discover the scroll ancestors to watch -- without it a Range alone can't
+// be tracked inside a nested scroll container (the X case). Returns the
+// autoUpdate cleanup, which the caller MUST run on close or the
+// scroll/resize listeners leak. `reference` geometry is the only thing this
+// reads from the host page -- nothing is written into it (ADR-011 C3).
+const attachOverlayPositioning = (
+  overlay: OverlayElement,
+  reference: Range
+): (() => void) => {
+  const contextEl = nearestElement(reference.startContainer)
+  const virtualReference = {
+    getBoundingClientRect: () => reference.getBoundingClientRect(),
+    getClientRects: () => reference.getClientRects(),
+    contextElement: contextEl ?? undefined,
+  }
+
+  const update = () => {
+    computePosition(virtualReference, overlay, {
+      strategy: 'fixed',
+      // 'top' keeps the overlay over already-read text, not the upcoming
+      // sentence; flip/shift keep it on screen; offset re-measures the line
+      // height each tick so the "clear a line" gap (ADR-005) stays right if
+      // the font/zoom changes while it's open; size caps the height.
+      placement: 'top',
+      middleware: [
+        offset(() => referenceLineHeight(reference)),
+        flip(),
+        shift({ padding: 8 }),
+        size({
+          padding: 8,
+          apply({ availableHeight }) {
+            // Whichever is smaller: 60% of the viewport (so the overlay never
+            // dominates the screen) or the room in the chosen direction.
+            const cap = Math.floor(window.innerHeight * 0.6)
+            overlay.style.maxHeight = `${Math.min(cap, Math.floor(availableHeight))}px`
+          },
+        }),
+      ],
+    }).then(({ x, y }) => {
+      overlay.style.left = `${x}px`
+      overlay.style.top = `${y}px`
+    })
+  }
+
+  return autoUpdate(virtualReference, overlay, update)
+}
+
+// Shared Shadow DOM + Floating UI overlay scaffold. Used by both the
+// dictionary-lookup overlay (showWordPopover) and the drag-select translation
+// hint overlay (showSelectionHint, ADR-007). Positions against the given Range
+// and returns a React root ready to render into, a mount() to attach and
+// show it, and a cleanup() that stops the autoUpdate tracker (must be called
+// on close).
+const createAnchoredOverlay = (
+  reference: Range
+): {
+  overlay: OverlayElement
+  root: Root
+  anchorNode: Node
+  mount: () => void
+  cleanup: () => void
+} => {
+  const overlay = document.createElement('div') as OverlayElement
+  overlay.popover = 'manual'
+  overlay.className = 'enx-anchored-overlay'
+  overlay.id = 'enx-anchored-overlay'
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    min-width: 400px;
+    max-width: 480px;
+    max-height: 60vh;
+    overflow-y: auto;
+    padding: 0;
+    border: none;
+    background: transparent;
+    margin: 0;
+  `
+
+  // Content is rendered inside a shadow root so Tailwind classes can't leak
+  // into (or be overridden by) the host page's styles.
+  const shadowRoot = overlay.attachShadow({ mode: 'open' })
+  const styleTag = document.createElement('style')
+  styleTag.textContent = tailwindCss
+  shadowRoot.appendChild(styleTag)
+
+  const mountPoint = document.createElement('div')
+  shadowRoot.appendChild(mountPoint)
+  const root = createRoot(mountPoint)
+
+  // For the click-outside guard: don't dismiss when the click landed on the
+  // word the overlay belongs to.
+  const anchorNode: Node =
+    nearestElement(reference.startContainer) ?? reference.startContainer
+
+  let stopPositioning: (() => void) | null = null
+  const mount = () => {
+    document.body.appendChild(overlay)
+    overlay.showPopover()
+    stopPositioning = attachOverlayPositioning(overlay, reference)
+  }
+  const cleanup = () => {
+    stopPositioning?.()
+    stopPositioning = null
+  }
+
+  return { overlay, root, anchorNode, mount, cleanup }
+}
+
+// Create and show word overlay using the Popover API + Floating UI, positioned
+// against `reference` -- a Range over the clicked word (or the drag-selection).
+const showWordPopover = async (word: string, reference: Range) => {
+  if (!word || word.trim() === '') return
+
+  console.log('Showing overlay for word:', word)
+
+  // Remove existing overlay
+  hideCurrentOverlay()
+
+  const { overlay, root, anchorNode, mount, cleanup } =
+    createAnchoredOverlay(reference)
+  currentRoot = root
+
+  const handleMarkAcquainted = async (englishWord: string) => {
+    try {
+      const response = await sendToBackground({
+        type: 'markAcquainted',
+        word: englishWord,
+      })
+      if (response.success) {
+        const cached = wordCache[englishWord.toLowerCase()]
+        const updated: WordData = cached
+          ? { ...cached, AlreadyAcquainted: 1 }
+          : {
+              Key: englishWord,
+              English: englishWord,
+              Pronunciation: '',
+              Chinese: '',
+              LoadCount: 0,
+              AlreadyAcquainted: 1,
+              WordType: 0,
+            }
+        wordCache[englishWord.toLowerCase()] = updated
+        contentScriptStore.set(currentWordAtom, updated)
+        void refreshHighlights()
+        overlay.hidePopover()
+      }
+    } catch (error) {
+      console.error('Error marking word as acquainted:', error)
+    }
+  }
+
+  // Trigger path③ (spec §3.2): best-effort direct panel open, falling back to
+  // "please click/right-click the toolbar icon" guidance if the click's user
+  // gesture didn't survive being forwarded through runtime.sendMessage.
+  const handleOpenSentencePanel = async () => {
+    contentScriptStore.set(sentencePanelHintAtom, null)
+
+    const sentenceContext = WordProcessor.extractSentenceContext(reference, word)
+    const sentence = sentenceContext?.sentence || word
+
+    try {
+      const response = await sendToBackground({
+        type: 'openSentencePanel',
+        word,
+        sentence,
+        sourceUrl: window.location.href,
+      })
+
+      if (response.success && !response.panelOpened) {
+        contentScriptStore.set(
+          sentencePanelHintAtom,
+          '已保存，请点击或右键工具栏 ENX 图标查看整句翻译'
+        )
+      }
+    } catch (error) {
+      console.error('Error opening sentence panel:', error)
+      contentScriptStore.set(
+        sentencePanelHintAtom,
+        '已保存，请点击或右键工具栏 ENX 图标查看整句翻译'
+      )
+    }
+  }
+
+  root.render(
+    <Provider store={contentScriptStore}>
+      <WordPopover
+        word={word}
+        onClose={() => overlay.hidePopover()}
+        onMarkAcquainted={handleMarkAcquainted}
+        onOpenSentencePanel={handleOpenSentencePanel}
+      />
+    </Provider>
+  )
+
+  // 5. Show loading state
+  contentScriptStore.set(currentWordAtom, null)
+  contentScriptStore.set(isTranslatingAtom, true)
+  contentScriptStore.set(errorAtom, null)
+  contentScriptStore.set(sentencePanelHintAtom, null)
+
+  // 6. Add to DOM, show Popover, start position tracking
+  mount()
+  currentOverlay = overlay
+
+  setupOverlayEventHandlers(overlay, anchorNode, root, cleanup)
+
+  // 7. Fetch word translation
+  try {
+    console.log('Fetching translation for word:', word)
+    const response = await sendToBackground({
+      type: 'getOneWord',
+      word: word.trim(),
+    })
+
+    console.log('Translation response:', response)
+
+    if (response.success && response.ecp) {
+      // The raw ECDICT phonetic field is kept as-is here; formatPhonetic()
+      // (src/lib/phonetic.ts) normalises it at render time in WordPopover and
+      // the Side Panel, so both surfaces show the same shape.
+      const wordData: WordData = { ...response.ecp }
+
+      contentScriptStore.set(currentWordAtom, wordData)
+      contentScriptStore.set(isTranslatingAtom, false)
+
+      wordCache[word.toLowerCase()] = wordData
+      void refreshHighlights()
+
+      // Mirror the lookup into the Side Panel's word list if it's open --
+      // ADR-006. Routed through the background service worker rather than
+      // writing chrome.storage.session directly: content scripts don't have
+      // session-storage access unless the background grants it via
+      // setAccessLevel(TRUSTED_AND_UNTRUSTED_CONTEXTS), and doing that would
+      // also expose other session keys (e.g. the OAuth verifier) to content
+      // scripts running on arbitrary third-party pages. This call never
+      // triggers chrome.sidePanel.open() and never touches
+      // PENDING_SENTENCE_STORAGE_KEY, so it can't force the panel open or
+      // trigger sentence translation.
+      sendToBackground({
+        type: 'recordPageWordLookup',
+        word: word.trim().toLowerCase(),
+        ecp: wordData,
+      })
+    } else if (response.sessionExpired) {
+      console.log('Session expired, showing session expired message')
+      overlay.hidePopover()
+      showSessionExpiredMessage()
+    } else {
+      const errorMessage = response.error || 'Translation service unavailable'
+      console.error('Translation failed:', errorMessage)
+      contentScriptStore.set(errorAtom, errorMessage)
+      contentScriptStore.set(isTranslatingAtom, false)
+    }
+  } catch (error) {
+    console.error('Error fetching word translation:', error)
+    contentScriptStore.set(
+      errorAtom,
+      'Connection failed. Please check your internet connection.'
+    )
+    contentScriptStore.set(isTranslatingAtom, false)
+  }
+}
+
+// Setup event handlers for Popover overlay. `stopPositioning` is the Floating
+// UI autoUpdate cleanup from createAnchoredOverlay -- folded into
+// overlayEventCleanup so both close paths (the 'toggle' handler below and
+// hideCurrentOverlay()'s direct teardown) stop the scroll/resize listeners.
+const setupOverlayEventHandlers = (
+  overlay: OverlayElement,
+  anchorNode: Node,
+  root: Root,
+  stopPositioning: () => void
+) => {
+  // Cleanup when overlay is closed via hidePopover() (close button / ESC /
+  // click-outside all route through hidePopover(), which reliably fires
+  // 'toggle' -- confirmed via the §4.3 spike). This does NOT fire when a
+  // overlay is torn down by hideCurrentOverlay()'s direct .remove() call
+  // (e.g. switching to a new word while this one is still open) -- that path
+  // unmounts explicitly instead, see hideCurrentOverlay() below.
+  overlay.addEventListener('toggle', (e: Event) => {
+    const toggleEvent = e as ToggleEvent
+    if (toggleEvent.newState === 'closed') {
+      if (currentRoot === root) {
+        root.unmount()
+        currentRoot = null
+        console.debug('[enx] root unmounted')
+      }
+      overlay.remove()
+      if (currentOverlay === overlay) {
+        currentOverlay = null
+      }
+      if (overlayEventCleanup) {
+        overlayEventCleanup()
+        overlayEventCleanup = null
+      }
+    }
+  })
+
+  // ESC key handler
+  const handleKeydown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      overlay.hidePopover()
+    }
+  }
+
+  // Click outside handler (optional, Popover API can handle this)
+  const handleClickOutside = (e: MouseEvent) => {
+    const target = e.target as Node
+    if (!overlay.contains(target) && !anchorNode.contains(target)) {
+      overlay.hidePopover()
+    }
+  }
+
+  document.addEventListener('keydown', handleKeydown)
+  document.addEventListener('click', handleClickOutside)
+
+  overlayEventCleanup = () => {
+    document.removeEventListener('keydown', handleKeydown)
+    document.removeEventListener('click', handleClickOutside)
+    stopPositioning()
+  }
+}
+
+// Hide word overlay
+const hideCurrentOverlay = () => {
+  // Direct DOM removal does not reliably fire the popover's 'toggle' event
+  // (confirmed via the §4.3 spike), so the React root is unmounted explicitly
+  // here rather than relying solely on the toggle handler above.
+  if (currentRoot) {
+    currentRoot.unmount()
+    currentRoot = null
+    console.debug('[enx] root unmounted')
+  }
+  if (currentOverlay) {
+    currentOverlay.remove()
+    currentOverlay = null
+  }
+
+  // Clean up event listeners
+  if (overlayEventCleanup) {
+    overlayEventCleanup()
+    overlayEventCleanup = null
+  }
+}
+
+// Re-derive the ENX highlights from the current wordCache + DOM, or clear
+// them if the "highlight vocabulary while reading" preference is off
+// (ADR-011 Decision 3). Called after a lookup / mark-acquainted (a word may
+// change review bucket), a SPA tweet switch, and a preference flip. There's
+// no DOM to touch, so a full rebuild is cheap enough on a user action.
+const refreshHighlights = async () => {
+  if (articleRoots.length === 0) return
+  if (await getWordHighlightEnabled()) {
+    WordProcessor.rebuildHighlights(articleRoots, wordCache)
+  } else {
+    WordProcessor.clearHighlights()
+  }
+}
+
+// Show authentication error message
+const showSessionExpiredMessage = (isLoginError = false) => {
+  // Remove any existing session message
+  const existingMessage = document.getElementById('enx-session-expired')
+  if (existingMessage) {
+    existingMessage.remove()
+  }
+
+  const title = isLoginError ? 'Login Required' : 'Session Expired'
+  const message = isLoginError 
+    ? 'Please click the ENX extension icon to login.'
+    : 'Your session has expired. Please click the ENX extension icon to login again.'
+
+  // Create notification
+  const notification = document.createElement('div')
+  notification.id = 'enx-session-expired'
+  notification.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #ff5722;
+    color: white;
+    padding: 16px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 10001;
+    max-width: 320px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.4;
+    animation: slideIn 0.3s ease-out;
+  `
+
+  notification.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+      <div>
+        <div style="font-weight: bold; margin-bottom: 4px;">${title}</div>
+        <div style="font-size: 13px; opacity: 0.9;">${message}</div>
+      </div>
+      <button id="enx-close-session-msg" style="background: none; border: none; color: white; font-size: 18px; cursor: pointer; padding: 0; margin-left: 12px;">×</button>
+    </div>
+  `
+
+  // Add CSS animation
+  const style = document.createElement('style')
+  style.textContent = `
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+  `
+  document.head.appendChild(style)
+
+  document.body.appendChild(notification)
+
+  // Add close button event
+  const closeBtn = notification.querySelector('#enx-close-session-msg')
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      notification.remove()
+    })
+  }
+
+  // Auto remove after 10 seconds
+  setTimeout(() => {
+    if (notification.parentNode) {
+      notification.remove()
+    }
+  }, 10000)
+}
+
+// Process article content and add word highlighting. `isCurrent` (SPA
+// auto-rebuild, ADR-011 Decision 6) is checked at every await boundary so a
+// run superseded by a newer tweet switch abandons instead of highlighting
+// stale content.
+const processArticleContent = async (
+  opts: { isCurrent?: () => boolean } = {}
+): Promise<boolean> => {
+  const isSpaRebuild = opts.isCurrent !== undefined
+  const stale = () => isSpaRebuild && !opts.isCurrent!()
+
+  // A user re-triggering enxRun on an already-processing page is a no-op; a
+  // SPA rebuild for a newer tweet must NOT be blocked by an in-flight run
+  // for the previous tweet -- that older run abandons at its next stale()
+  // check, well before it paints anything.
+  if (isProcessing && !isSpaRebuild) {
+    console.log('Already processing, skipping...')
+    return false
+  }
+  isProcessing = true
+
+  try {
+    console.log('Processing article content...')
+
+    const adapter = resolveSiteAdapter(window.location)
+    console.log(`Site adapter: ${adapter.name} (${adapter.contentVolatility})`)
+
+    const articleNodes = WordProcessor.getArticleNodes({
+      contentSelector: adapter.contentSelector,
+      minTextLength: adapter.minTextLength,
+      focusedNodeResolver: adapter.focusedNodeResolver,
+    })
+    if (articleNodes.length === 0) {
+      console.log('No article node found')
+      return false
+    }
+
+    console.log(`Article node(s) found: ${articleNodes.length}`, articleNodes)
+
+    const collectedTextNodes = articleNodes.flatMap(node =>
+      WordProcessor.collectTextNodes(node)
+    )
+
+    // Volatile (React-owned) content extracts from the same filtered text
+    // nodes the highlighter uses, so the two can't drift apart (ADR-010
+    // Decision 3), and the space-join stops a line-break-adjacent pair
+    // ("...ENDGAME" + "Most...") reading as one token. Static article sites
+    // keep cleanArticleText -- switching them is out of ADR-011's scope.
+    const textContent =
+      adapter.contentVolatility === 'static'
+        ? articleNodes.map(node => WordProcessor.cleanArticleText(node)).join(' ')
+        : collectedTextNodes.map(n => n.textContent || '').join(' ')
+    const words = WordProcessor.extractWords(textContent)
+
+    if (words.length === 0) {
+      console.log('No words found to process')
+      return false
+    }
+
+    // Deduplicate words to reduce chunk count and avoid redundant backend calls
+    const uniqueWords = Array.from(new Set(words))
+    console.log(`Found ${words.length} words (${uniqueWords.length} unique) to process`)
+
+    // Short-circuit (ADR-011 Decision 6.2): on a SPA rebuild, if every word
+    // of the new tweet is already cached -- typical when switching between
+    // tweets in one session -- skip the getWords / paragraph-init round trip
+    // and go straight to highlighting. Scoped to the SPA path; a static-site
+    // re-arm keeps calling the backend as before.
+    const allCached =
+      isSpaRebuild &&
+      uniqueWords.every(w => wordCache[w.toLowerCase()] !== undefined)
+
+    // Process words in chunks
+    const chunkSize = 200 // Process in smaller chunks for better performance
+    let processedChunks = 0
+
+    const sendChunkWithRetry = async (chunk: string[], attempt = 1): Promise<void> => {
+      const paragraph = chunk.join(' ')
+      try {
+        const response = await sendToBackground({
+          type: 'getWords',
+          paragraph,
+        })
+
+        // A newer tweet switch landed while this request was in flight --
+        // stop so we don't cache/paint for a tweet the user has left.
+        if (stale()) return
+
+        if (response.success && response.wordProperties) {
+          // Check if wordProperties is wrapped in a 'data' field
+          const actualWordData =
+            response.wordProperties.data || response.wordProperties
+          Object.assign(wordCache, actualWordData)
+          processedChunks++
+          console.log(
+            `✅ Chunk ${processedChunks}: ${Object.keys(actualWordData).length} words cached`
+          )
+        } else if (response.sessionExpired) {
+          throw new Error('SESSION_EXPIRED')
+        } else if (attempt < 2) {
+          // Retry once on failure (handles cold service worker or transient errors)
+          console.warn(`⚠️ Chunk failed (attempt ${attempt}), retrying...`, response.error)
+          await sendChunkWithRetry(chunk, attempt + 1)
+        } else {
+          console.error(`❌ Chunk failed after ${attempt} attempts:`, response.error)
+        }
+      } catch (error) {
+        if (error instanceof Error && error.message === 'SESSION_EXPIRED') {
+          throw error
+        }
+        if (attempt < 2) {
+          console.warn(`⚠️ Chunk error (attempt ${attempt}), retrying...`, error)
+          await sendChunkWithRetry(chunk, attempt + 1)
+        } else {
+          console.error(`❌ Chunk error after ${attempt} attempts:`, error)
+        }
+      }
+    }
+
+    if (allCached) {
+      console.log(`All ${uniqueWords.length} words already cached; skipping backend`)
+    } else {
+      for (let i = 0; i < uniqueWords.length; i += chunkSize) {
+        if (stale()) return false
+        const chunk = uniqueWords.slice(i, i + chunkSize)
+        console.log(`📦 Processing chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(uniqueWords.length / chunkSize)}: ${chunk.length} words`)
+
+        try {
+          await sendChunkWithRetry(chunk)
+        } catch (error) {
+          if (error instanceof Error && error.message === 'SESSION_EXPIRED') {
+            console.log('Session expired during word processing')
+            showSessionExpiredMessage()
+            return false
+          }
+          console.error('Error processing word chunk:', error)
+          // Continue processing other chunks
+        }
+      }
+    }
+
+    // Read the highlight preference before the last stale check so the paint
+    // block below stays synchronous (ADR-011 Decision 3: word-data lookup
+    // always runs; only the highlight paint is gated).
+    const highlightEnabled = await getWordHighlightEnabled()
+
+    // Last stale check before the paint. Everything from here to the return
+    // is synchronous, so a queued navigate event can't interleave -- the
+    // paint is effectively atomic with this guard.
+    if (stale()) return false
+
+    const haveWords = Object.keys(wordCache).length > 0
+
+    // Paint the highlights (ADR-011 Decision 1): build Ranges over the
+    // already-collected text nodes, bucket them, register with CSS.highlights.
+    // The article DOM is never touched.
+    if (haveWords && highlightEnabled) {
+      console.log('Applying highlighting for', Object.keys(wordCache).length, 'words')
+      WordProcessor.applyHighlights(
+        WordProcessor.buildHighlightRanges(collectedTextNodes, wordCache)
+      )
+      console.log('Word highlighting applied.')
+    } else if (!highlightEnabled) {
+      console.log('Word highlight preference is off; skipping paint')
+    } else {
+      console.log('No words in cache, skipping highlighting')
+    }
+
+    // Delegated click-to-lookup (ADR-011 Decision 2): one listener per
+    // article root, replacing the per-word listeners. Bound even with no
+    // highlights -- any English word is clickable.
+    setArticleRoots(articleNodes)
+
+    // The completion indicator is the one structural DOM insert; adapters
+    // that own a React tree opt out (ADR-010).
+    if (haveWords && adapter.showProcessingIndicator) {
+      addProcessingCompleteIndicator(articleNodes[0])
+    }
+
+    console.log('✅ Article processing completed successfully')
+    return haveWords
+  } catch (error) {
+    console.error('Error processing article:', error)
+    return false // Processing failed
+  } finally {
+    isProcessing = false
+  }
+}
+
+// caretPositionFromPoint (Chrome 128+) with a fallback to the non-standard
+// caretRangeFromPoint. Returns the text node + character offset under the
+// pointer, or null.
+const caretFromPoint = (
+  x: number,
+  y: number
+): { node: Node; offset: number } | null => {
+  const doc = document as Document & {
+    caretRangeFromPoint?: (x: number, y: number) => Range | null
+  }
+  if (typeof doc.caretPositionFromPoint === 'function') {
+    const pos = doc.caretPositionFromPoint(x, y)
+    return pos ? { node: pos.offsetNode, offset: pos.offset } : null
+  }
+  const range = doc.caretRangeFromPoint?.(x, y)
+  return range ? { node: range.startContainer, offset: range.startOffset } : null
+}
+
+// One click listener per article root: resolve the word under the pointer
+// from its coordinates (no marker element needed) and open the overlay on it.
+// Clicks inside links / code / buttons resolve to null and fall through.
+const handleArticleClick = (event: Event) => {
+  const { clientX, clientY } = event as MouseEvent
+  const caret = caretFromPoint(clientX, clientY)
+  if (!caret) return
+  const wordRange = WordProcessor.expandToWordRange(caret.node, caret.offset)
+  if (!wordRange) return
+  event.preventDefault()
+  event.stopPropagation()
+  showWordPopover(wordRange.toString(), wordRange)
+}
+
+// articleRoots + its click listeners are managed together: point ENX at a
+// fresh set of roots, or clear it entirely.
+const setArticleRoots = (roots: Element[]) => {
+  clearArticleRoots()
+  articleRoots = roots
+  articleRoots.forEach(root =>
+    root.addEventListener('click', handleArticleClick)
+  )
+}
+
+const clearArticleRoots = () => {
+  articleRoots.forEach(root =>
+    root.removeEventListener('click', handleArticleClick)
+  )
+  articleRoots = []
+}
+
+// Add processing complete indicator to the article
+const addProcessingCompleteIndicator = (articleNode: Element) => {
+  // Remove any existing indicator
+  const existingIndicator = document.getElementById('enx-processing-complete')
+  if (existingIndicator) {
+    existingIndicator.remove()
+  }
+
+  // Create the indicator element
+  const indicator = document.createElement('div')
+  indicator.id = 'enx-processing-complete'
+  indicator.style.cssText = `
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    background: linear-gradient(90deg, #4CAF50, #45a049);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+    animation: slideInFromTop 0.5s ease-out;
+    z-index: 1000;
+  `
+
+  indicator.innerHTML = `
+    <svg style="width: 14px; height: 14px; margin-right: 6px;" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    Article processed • Click words for translation
+  `
+
+  // Add CSS animation
+  const style = document.createElement('style')
+  style.textContent = `
+    @keyframes slideInFromTop {
+      from {
+        transform: translateY(-20px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+  `
+  if (!document.head.querySelector('style[data-enx-animations]')) {
+    style.setAttribute('data-enx-animations', 'true')
+    document.head.appendChild(style)
+  }
+
+  // Insert at the beginning of the article
+  articleNode.insertBefore(indicator, articleNode.firstChild)
+}
+
+// Shows a lightweight overlay carrying only the sentencePanelHint text, no
+// dictionary UI (ADR-007 Decision §4). Used by the drag-select translation
+// flow for the two cases where the user needs feedback: the selection was
+// rejected for being too long, or chrome.sidePanel.open() couldn't be
+// triggered and the panel needs to be opened manually.
+const showSelectionHint = (hint: string, reference: Range) => {
+  hideCurrentOverlay()
+
+  const { overlay, root, anchorNode, mount, cleanup } =
+    createAnchoredOverlay(reference)
+  currentRoot = root
+
+  contentScriptStore.set(sentencePanelHintAtom, hint)
+
+  root.render(
+    <Provider store={contentScriptStore}>
+      <WordPopover
+        word=""
+        variant="hint"
+        onClose={() => overlay.hidePopover()}
+        onMarkAcquainted={() => {}}
+        onOpenSentencePanel={() => {}}
+      />
+    </Provider>
+  )
+
+  mount()
+  currentOverlay = overlay
+
+  setupOverlayEventHandlers(overlay, anchorNode, root, cleanup)
+}
+
+// Drag-select translation (ADR-007): sends the selected text straight to
+// the Side Panel via the same 'openSentencePanel' message the "🔤 整句翻译"
+// button uses, skipping extractSentenceContext entirely -- the user's own
+// selection boundary already is the translation boundary, unlike a single
+// word click where the sentence has to be inferred from an anchor element.
+// `word` is left blank: PendingSentenceContext.word isn't read anywhere in
+// SidePanel.tsx, so there's nothing meaningful to put there for a selection
+// that isn't anchored to one specific word.
+const triggerSelectionTranslation = async (
+  selectedText: string,
+  reference: Range
+) => {
+  try {
+    const response = await sendToBackground({
+      type: 'openSentencePanel',
+      word: '',
+      sentence: selectedText,
+      sourceUrl: window.location.href,
+    })
+
+    if (response.success && !response.panelOpened) {
+      showSelectionHint('已保存，请点击或右键工具栏 ENX 图标查看整句翻译', reference)
+    }
+  } catch (error) {
+    console.error('Error opening sentence panel for selection:', error)
+    showSelectionHint('已保存，请点击或右键工具栏 ENX 图标查看整句翻译', reference)
+  }
+}
+
+// Phrase-in-context lookup (ADR-008): a 2-5 word selection inside a larger
+// sentence. The selection's own start position is a precise enough marker to
+// find the surrounding sentence -- no need to hunt for a highlighted-word
+// element inside it (ADR-011 Decision 5, which replaced findPhraseAnchor:
+// "a collapsed copy of the selection's start range").
+const triggerPhraseContextLookup = async (
+  selectedText: string,
+  reference: Range
+) => {
+  const anchor = reference.cloneRange()
+  anchor.collapse(true)
+  const sentenceContext = WordProcessor.extractSentenceContext(
+    anchor,
+    selectedText
+  )
+  const sentence = sentenceContext?.sentence
+  if (!sentence) {
+    showSelectionHint('暂时无法识别所在句子，请尝试重新选择', reference)
+    return
+  }
+
+  try {
+    const response = await sendToBackground({
+      type: 'openSentencePanel',
+      word: '',
+      phrase: selectedText,
+      sentence,
+      sourceUrl: window.location.href,
+    })
+
+    if (response.success && !response.panelOpened) {
+      showSelectionHint('已保存，请点击或右键工具栏 ENX 图标查看', reference)
+    }
+  } catch (error) {
+    console.error('Error opening phrase panel for selection:', error)
+    showSelectionHint('已保存，请点击或右键工具栏 ENX 图标查看', reference)
+  }
+}
+
+// ADR-007 tuning constants, kept together so they're easy to adjust without
+// hunting through the selection-handling logic below.
+const SELECTION_DICTIONARY_MAX_WORDS = 5
+const SELECTION_TRANSLATE_MAX_WORDS = 80
+const SELECTION_TRANSLATE_DEBOUNCE_MS = 500
+const SENTENCE_END_PUNCTUATION = /[.?!]/
+
+let selectionTranslateTimer: ReturnType<typeof setTimeout> | null = null
+
+// Cancels any pending drag-select translation. Called both on the next
+// mousedown (a new selection gesture starting -- ADR-007 Decision §3) and
+// whenever a mouseup itself needs to replace a still-pending timer.
+const cancelPendingSelectionTranslation = () => {
+  if (selectionTranslateTimer !== null) {
+    clearTimeout(selectionTranslateTimer)
+    selectionTranslateTimer = null
+  }
+}
+
+// Handle text selection (ADR-007/ADR-008): a selection with sentence-ending
+// punctuation, or longer than the dictionary-lookup threshold, is treated
+// as "translate this" rather than "look this phrase up" and is debounced
+// before triggering translateSentence (via triggerSelectionTranslation) --
+// see the ADR for why word-count alone can't tell a short phrase like "as a
+// matter of fact" apart from a short complete sentence like "I love cats.".
+// Within the remaining <=5-word, no-punctuation range, a single word is
+// still a dictionary lookup, but 2-5 words is a phrase -- ECDICT/words never
+// has phrase entries, so that case is routed to an AI in-context lookup
+// instead (ADR-008), not debounced since the selection itself is already
+// the exact, deliberate query (no boundary-tuning drag to wait out).
+const handleTextSelection = () => {
+  cancelPendingSelectionTranslation()
+
+  const selection = window.getSelection()
+  const selectedText = selection?.toString().trim()
+  if (!selectedText || !selection || selection.rangeCount === 0) return
+
+  // Captured now: the selection can be cleared (by a later click) before an
+  // async branch below gets to position its hint overlay against it.
+  const selectionRange = selection.getRangeAt(0).cloneRange()
+
+  const wordCount = selectedText.split(/\s+/).filter(Boolean).length
+
+  if (wordCount > SELECTION_TRANSLATE_MAX_WORDS) {
+    showSelectionHint(
+      `选中内容过长，请缩小选择范围（最多 ${SELECTION_TRANSLATE_MAX_WORDS} 个词）`,
+      selectionRange
+    )
+    return
+  }
+
+  const looksLikeSentence = SENTENCE_END_PUNCTUATION.test(selectedText)
+  if (looksLikeSentence || wordCount > SELECTION_DICTIONARY_MAX_WORDS) {
+    selectionTranslateTimer = setTimeout(() => {
+      selectionTranslateTimer = null
+      triggerSelectionTranslation(selectedText, selectionRange)
+    }, SELECTION_TRANSLATE_DEBOUNCE_MS)
+    return
+  }
+
+  if (wordCount === 1) {
+    // Single word, no sentence-ending punctuation: existing dictionary lookup.
+    showWordPopover(selectedText, selectionRange)
+    return
+  }
+
+  // 2-5 words, no sentence-ending punctuation: phrase-in-context AI lookup (ADR-008).
+  triggerPhraseContextLookup(selectedText, selectionRange)
+}
+
+// --- SPA in-page navigation auto-rebuild (ADR-011 Decision 6) --------------
+// isSupportedPage / waitForTweetReady / shouldHandleTweetNavigate + the
+// factory all live in ./spaRebuild; here we only wire the concrete deps.
+
+let spaRebuilderInstance: ReturnType<typeof createSpaRebuilder> | null = null
+const getSpaRebuilder = () => {
+  spaRebuilderInstance ??= createSpaRebuilder({
+    isPageSupported: isSupportedPage,
+    waitForContentReady: waitForTweetReady,
+    teardown: () => {
+      WordProcessor.clearHighlights()
+      clearArticleRoots()
+      hideCurrentOverlay()
+    },
+    rebuild: isCurrent => processArticleContent({ isCurrent }).then(() => {}),
+  })
+  return spaRebuilderInstance
+}
+
+// Enable ENX functionality
+const enableEnx = async (): Promise<boolean> => {
+  if (isEnxEnabled) {
+    console.log('ENX already enabled')
+    return false
+  }
+
+  console.log('Enabling ENX functionality')
+  isEnxEnabled = true
+
+  // Add mouseup listener for text selection, and mousedown to cancel a
+  // pending drag-select translation as soon as a new selection gesture
+  // starts (ADR-007 Decision §3).
+  document.addEventListener('mouseup', handleTextSelection)
+  document.addEventListener('mousedown', cancelPendingSelectionTranslation)
+
+  // On a 'spa' site (X), re-run automatically when the user switches tweets
+  // in-page (ADR-011 Decision 6). Static sites reload + re-inject anyway.
+  const isSpa =
+    resolveSiteAdapter(window.location).contentVolatility === 'spa' &&
+    !!window.navigation
+  if (isSpa) {
+    getSpaRebuilder().start(window.navigation!)
+  }
+
+  // The initial processing run also rides the SPA generation counter so it
+  // is abandoned if the user switches tweets before its backend call
+  // returns (otherwise it could paint the old tweet after teardown).
+  const success = await processArticleContent(
+    isSpa ? { isCurrent: getSpaRebuilder().makeIsCurrent() } : {}
+  )
+
+  if (success) {
+    console.log('✅ ENX enabled successfully with article processing')
+  } else {
+    console.warn('⚠️ ENX enabled but article processing had issues')
+  }
+
+  return success
+}
+
+// Disable ENX functionality
+const disableEnx = () => {
+  if (!isEnxEnabled) return
+
+  console.log('Disabling ENX functionality')
+  isEnxEnabled = false
+
+  // Remove event listeners
+  document.removeEventListener('mouseup', handleTextSelection)
+  document.removeEventListener('mousedown', cancelPendingSelectionTranslation)
+  cancelPendingSelectionTranslation()
+  spaRebuilderInstance?.stop()
+
+  // Hide overlay
+  hideCurrentOverlay()
+
+  // Remove processing complete indicator
+  const indicator = document.getElementById('enx-processing-complete')
+  if (indicator) {
+    indicator.remove()
+  }
+
+  // Drop the highlights and the click listener (ADR-011 Decision 1): no
+  // element unwrapping, no reflow.
+  WordProcessor.clearHighlights()
+  clearArticleRoots()
+}
+
+// Listen for messages from the popup or background
+chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+  console.log('Content script received message:', request)
+
+  switch (request.action) {
+    case 'enxRun': {
+      // ADR-010 Decision 1: an adapter can match the host but declare the
+      // current page out of scope (X list/timeline pages vs a tweet detail
+      // page). Abort with the adapter's message rather than silently doing
+      // nothing.
+      const adapter = resolveSiteAdapter(window.location)
+      const unsupportedReason = adapter.pageSupport?.(window.location)
+      if (unsupportedReason) {
+        sendResponse({ success: false, error: unsupportedReason })
+        break
+      }
+
+      // ADR-010 Decision 7 (G2): "enable once" becomes "re-arm". On an
+      // already-enabled page (e.g. X after an in-page navigation swapped the
+      // DOM), tear down and re-run instead of the old no-op early return.
+      // wordCache is module-level and survives, so re-processed words hit the
+      // cache and don't re-call the backend.
+      if (isEnxEnabled) {
+        disableEnx()
+      }
+
+      enableEnx()
+        .then(result => {
+          sendResponse({ success: true, completed: result })
+        })
+        .catch(error => {
+          console.error('Error enabling ENX:', error)
+          sendResponse({ success: false, error: error.message })
+        })
+      return true // Keep message channel open for async response
+    }
+
+    case 'enxStop':
+      disableEnx()
+      sendResponse({ success: true })
+      break
+
+    case 'getPageInfo':
+      sendResponse({
+        title: document.title,
+        url: window.location.href,
+        isEnxEnabled,
+      })
+      break
+
+    case 'sessionExpired':
+      console.log('Session expired notification received')
+      showSessionExpiredMessage()
+      // Disable ENX functionality if it's currently enabled
+      if (isEnxEnabled) {
+        disableEnx()
+      }
+      sendResponse({ success: true })
+      break
+
+    default:
+      sendResponse({ success: false, error: 'Unknown action' })
+  }
+
+  return true
+})
+
+// ::highlight() rules for each review-stage bucket (ADR-011 Decision 1 /
+// E1). CSS.highlights registers which Ranges are in bucket N; these rules
+// paint them, using the palette that lives with REVIEW_BUCKET_COUNT in
+// WordProcessor. No cursor or :hover rule -- the article is untouched and
+// every word is clickable, so there's nothing to hint at.
+const highlightStyles = document.createElement('style')
+highlightStyles.setAttribute('data-enx-highlight-styles', 'true')
+highlightStyles.textContent = WordProcessor.HIGHLIGHT_BUCKET_HSL.map(
+  (hsl, i) =>
+    `::highlight(${WordProcessor.HIGHLIGHT_NAME_PREFIX}${i + 1}) {` +
+    ` text-decoration-line: underline;` +
+    ` text-decoration-color: hsl(${hsl});` +
+    ` text-decoration-thickness: 1px; }`
+).join('\n')
+if (!document.head.querySelector('style[data-enx-highlight-styles]')) {
+  document.head.appendChild(highlightStyles)
+}
+
+// Live-apply the "highlight vocabulary while reading" toggle (ADR-011
+// Decision 3): while learning mode is on, a flip from the popup or options
+// page repaints or clears the ENX highlights immediately -- no reload, no
+// re-fetch (wordCache is untouched). click-to-lookup is unaffected.
+// refreshHighlights() already reads the preference and paints or clears.
+onWordHighlightEnabledChange(() => {
+  if (isEnxEnabled) void refreshHighlights()
+})
+
+// Clean up on page unload
+window.addEventListener('beforeunload', () => {
+  hideCurrentOverlay()
+})
+
+console.log('ENX Content script ready')

@@ -30,7 +30,7 @@ func cleanupTestUser(t *testing.T, username string) {
 }
 
 func TestRegister_MissingRequiredFields(t *testing.T) {
-	t.Skip("POST /api/register removed; auth via Cognito")
+	t.Skip("POST /api/register removed; auth via Clerk")
 	r := setupRegisterRouter()
 
 	// missing password and email

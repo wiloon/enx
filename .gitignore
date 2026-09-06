@@ -47,3 +47,6 @@ coverage.html
 .env
 *.env
 !.env.example
+
+# Local dev data (e.g. downloaded ECDICT database), not for commit
+enx-api/.local-data/

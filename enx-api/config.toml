@@ -29,10 +29,128 @@ db_path = ""
 from = "ENX <no-reply@wiloon.com>"
 
 [app]
-frontend-base-url = "https://enx-ui-lab.wiloon.com"
+frontend-base-url = "https://enx.wiloon.lab"
 
-[cognito]
+[clerk]
+# Clerk Frontend API origin; also the `iss` claim on every session token, and
+# the base for the JWKS endpoint (<issuer>/.well-known/jwks.json).
+# This is the Clerk *development* instance (rational-deer-4450). The production
+# instance has its own domain (clerk.catseye.* / custom); set CLERK_ISSUER in
+# that deployment's env to override. Empty -> ClerkAuth returns 503.
+issuer = "https://rational-deer-4450.clerk.accounts.dev"
+# Allow-list checked against the token `azp` claim (the origin the token was
+# minted for): the enx-ui origin(s) plus the extension id later
+# (chrome-extension://<id>). Override per-deployment with
+# CLERK_AUTHORIZED_PARTIES (space-separated).
+authorized-parties = ["https://enx.wiloon.lab", "http://localhost:3000"]
+
+[sentence-translate]
+# "kimi" | "bedrock" | "minimax" -- switch provider by changing this one line,
+# or override per-deployment with the SENTENCE_TRANSLATE_PROVIDER env var.
+# Left blank in this checked-in template: each deployment (homelab k8s, AWS
+# EC2, local dev) sets its own value, since the right provider depends on
+# where this is actually running. Empty means the feature stays disabled
+# (POST /api/translate/sentence responds 502) rather than failing to start.
+# API keys are never set here; see KIMI_API_KEY / MINIMAX_API_KEY env vars,
+# and the AWS credential chain (IAM instance role on EC2) for bedrock.
+provider = ""
+
+[sentence-translate.kimi]
+model = "moonshot-v1-8k"
+# rephrase-model (ADR-012): rephrase-only override. Empty = use `model`.
+# Rephrase output is longer than a translation and its input cap will grow,
+# so a deployment can point rephrase at a larger-context model here without
+# touching translation. Override with SENTENCE_TRANSLATE_KIMI_REPHRASE_MODEL.
+rephrase-model = ""
+base-url = "https://api.moonshot.cn/v1"
+
+[sentence-translate.bedrock]
 region = "us-east-1"
-user-pool-id = "us-east-1_1GWBJVx85"
-client-id = "1il7v7q7jn17150jq4lou6m7b0"
-chrome-client-id = "645kitlgap7l1q4ebrfkmi9ltv"
+model-id = "anthropic.claude-3-5-haiku-20241022-v1:0"
+
+[sentence-translate.minimax]
+model = "MiniMax-Text-01"
+# International account (platform.minimax.io): https://api.minimax.io/v1
+# China account   (platform.minimaxi.com): https://api.minimaxi.com/v1
+# The key namespace differs per platform -- a China key against api.minimax.io
+# 401s ("invalid api key (2049)"). Override per-deploy with
+# SENTENCE_TRANSLATE_MINIMAX_BASE_URL.
+base-url = "https://api.minimax.io/v1"
+
+[stripe]
+# Publishable key is designed to be public and safe to check in.
+# STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET are env-var only, never here
+# (same convention as KIMI_API_KEY / RESEND_API_KEY).
+publishable-key = ""
+
+[stripe.price]
+# Stripe Price lookup_keys, not raw Price IDs. lookup_keys are stable across
+# Sandbox/Live -- the underlying Price ID differs per Stripe mode, the
+# lookup_key doesn't -- so billing/stripe/checkout.go should resolve Price by
+# lookup_key via the Stripe API rather than hardcoding an ID. Catalog is
+# managed via OpenTofu in infra/stripe/opentofu/enx (w10n-config, private).
+#
+# Three subscription tiers (2026-08-26 decision, replacing the original
+# single "enx Pro" monthly/annual structure) -- annual billing is deferred
+# ("单独讨论"), not dropped: see infra/stripe/opentofu/enx/main.tf.
+pro = "enx_pro_monthly"
+pro-plus = "enx_pro_plus_monthly"
+max = "enx_max_monthly"
+credits-topup-small = "enx_credits_topup_small"
+credits-topup-medium = "enx_credits_topup_medium"
+credits-topup-large = "enx_credits_topup_large"
+
+[stripe.credits]
+# AI credits granted per grant event (subscription renewal / top-up
+# purchase). All placeholders -- 0 means "not decided yet", and the ledger
+# (billing/credit) deliberately REJECTS a grant of 0 rather than silently
+# under-crediting a paying customer, so billing/webhook.go's
+# invoice.paid/checkout.session.completed handlers will fail (Stripe
+# retries, visible in the Dashboard) until these are filled in. See
+# w10n-config/enx/monetization.md for the pricing discussion and
+# TASK-SPEC §10.2: PRs should not merge with these still at 0 if billing is
+# meant to go live.
+subscription-pro = 0
+subscription-pro-plus = 0
+subscription-max = 0
+topup-small = 0
+topup-medium = 0
+topup-large = 0
+
+[stripe.costs.translate]
+# AI translation (整句翻译 / 上下文词义 / 整句+词义合并) is billed by ACTUAL
+# token usage (ADR-014), replacing the earlier fixed 1-credit-per-call
+# (ADR-009 Decision 4). The three features share one model and a
+# near-identical token profile, so one price fits all three.
+# cost = ceil((prompt_tokens*weight-in + completion_tokens*weight-out)
+# / divisor), floored at 1. divisor <= 0 or both weights 0 means "not
+# priced yet" and the endpoints respond 502. Values below are placeholders
+# pending pricing review; calibrate from the `cost=` field in the usage log
+# lines. Override with STRIPE_COSTS_TRANSLATE_WEIGHT_IN / _WEIGHT_OUT /
+# _DIVISOR.
+weight-in = 1
+weight-out = 3
+divisor = 3000
+
+[stripe.costs.rephrase]
+# Rephrase (ADR-012) is billed by ACTUAL token usage, not a fixed per-call
+# cost -- the first feature to do so, and the groundwork for site-wide token
+# billing. cost = ceil((prompt_tokens*weight-in + completion_tokens*weight-out)
+# / divisor), floored at 1. weight-out > weight-in because providers price
+# output tokens higher and the completion (idiomatic + alternatives + notes)
+# is the larger, more variable part. divisor <= 0 or both weights 0 means
+# "not priced yet" and the endpoint responds 502 (same convention as a
+# <= 0 fixed cost). Values below are placeholders pending pricing review;
+# calibrate from the `cost=` field in the usage log lines. Override with
+# STRIPE_COSTS_REPHRASE_WEIGHT_IN / _WEIGHT_OUT / _DIVISOR.
+weight-in = 1
+weight-out = 3
+divisor = 3000
+
+[stripe.quota]
+# Free-tier daily dictionary lookup cap (ADR-009 Decision 6). Unlike the
+# cost/credit values above, 0 here means "unlimited" -- an unconfigured
+# quota should fail open (free lookups stay uncapped a little longer,
+# annoying at worst) not fail closed (breaks the free-tier hook for
+# everyone). See w10n-config/enx/monetization.md.
+dictionary-lookup-daily = 0

@@ -45,19 +45,92 @@ func viperInitInternal() {
 	_ = viper.BindEnv("resend.api-key", "RESEND_API_KEY")
 	_ = viper.BindEnv("resend.from", "RESEND_FROM")
 	_ = viper.BindEnv("app.frontend-base-url", "APP_FRONTEND_BASE_URL")
-	_ = viper.BindEnv("cognito.region", "COGNITO_REGION")
-	_ = viper.BindEnv("cognito.user-pool-id", "COGNITO_USER_POOL_ID")
-	_ = viper.BindEnv("cognito.client-id", "COGNITO_CLIENT_ID")
-	_ = viper.BindEnv("cognito.chrome-client-id", "COGNITO_CHROME_CLIENT_ID")
-	_ = viper.BindEnv("cognito.jwks-url", "COGNITO_JWKS_URL")
+	_ = viper.BindEnv("clerk.issuer", "CLERK_ISSUER")
+	_ = viper.BindEnv("clerk.authorized-parties", "CLERK_AUTHORIZED_PARTIES")
+	_ = viper.BindEnv("clerk.jwks-url", "CLERK_JWKS_URL")
+	// Space-separated Clerk user ids allowed to call POST /api/admin/*.
+	// Empty => admin endpoints are effectively off.
+	_ = viper.BindEnv("admin.clerk-user-ids", "ADMIN_CLERK_USER_IDS")
 
-	viper.SetDefault("cognito.region", "us-east-1")
 	viper.SetDefault("resend.api-key", "")
 	viper.SetDefault("resend.from", "ENX <no-reply@wiloon.com>")
-	viper.SetDefault("app.frontend-base-url", "https://enx-ui-lab.wiloon.com")
+	viper.SetDefault("app.frontend-base-url", "https://enx.wiloon.lab")
 
 	viper.SetDefault("ecdict.db_path", "")
 	_ = viper.BindEnv("ecdict.db_path", "ECDICT_DB_PATH")
+
+	// Sentence translation (AI provider selectable at deploy time, see
+	// docs/tasks/TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md §3.5).
+	// provider/model/base-url/region/model-id are non-secret and live in
+	// config.toml; API keys are env-var only, never written to config.toml.
+	// provider and the per-provider model/base-url are also bindable via env
+	// so k8s deployments (which ship no config.toml, see Containerfile) can
+	// set them without a config file. base-url matters for MiniMax: a
+	// platform.minimaxi.com (China) key must hit https://api.minimaxi.com/v1,
+	// not the code default https://api.minimax.io/v1 (international), or every
+	// call 401s with "invalid api key (2049)".
+	viper.SetDefault("sentence-translate.provider", "")
+	_ = viper.BindEnv("sentence-translate.provider", "SENTENCE_TRANSLATE_PROVIDER")
+	_ = viper.BindEnv("sentence-translate.kimi.api-key", "KIMI_API_KEY")
+	_ = viper.BindEnv("sentence-translate.kimi.base-url", "SENTENCE_TRANSLATE_KIMI_BASE_URL")
+	_ = viper.BindEnv("sentence-translate.kimi.model", "SENTENCE_TRANSLATE_KIMI_MODEL")
+	_ = viper.BindEnv("sentence-translate.kimi.rephrase-model", "SENTENCE_TRANSLATE_KIMI_REPHRASE_MODEL")
+	_ = viper.BindEnv("sentence-translate.minimax.api-key", "MINIMAX_API_KEY")
+	_ = viper.BindEnv("sentence-translate.minimax.base-url", "SENTENCE_TRANSLATE_MINIMAX_BASE_URL")
+	_ = viper.BindEnv("sentence-translate.minimax.model", "SENTENCE_TRANSLATE_MINIMAX_MODEL")
+	_ = viper.BindEnv("sentence-translate.minimax.group-id", "SENTENCE_TRANSLATE_MINIMAX_GROUP_ID")
+	_ = viper.BindEnv("sentence-translate.bedrock.region", "SENTENCE_TRANSLATE_BEDROCK_REGION")
+	_ = viper.BindEnv("sentence-translate.bedrock.model-id", "SENTENCE_TRANSLATE_BEDROCK_MODEL_ID")
+
+	// Stripe billing (see docs/tasks/TASK-SPEC-enx-billing-stripe-subscription.md).
+	// publishable-key and price lookup_keys are non-secret and live in
+	// config.toml; STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET are env-var
+	// only, never written to config.toml.
+	viper.SetDefault("stripe.publishable-key", "")
+	// Three subscription tiers (2026-08-26 decision) -- see config.toml's
+	// [stripe.price] comment.
+	viper.SetDefault("stripe.price.pro", "enx_pro_monthly")
+	viper.SetDefault("stripe.price.pro-plus", "enx_pro_plus_monthly")
+	viper.SetDefault("stripe.price.max", "enx_max_monthly")
+	viper.SetDefault("stripe.price.credits-topup-small", "enx_credits_topup_small")
+	viper.SetDefault("stripe.price.credits-topup-medium", "enx_credits_topup_medium")
+	viper.SetDefault("stripe.price.credits-topup-large", "enx_credits_topup_large")
+	_ = viper.BindEnv("stripe.secret-key", "STRIPE_SECRET_KEY")
+	_ = viper.BindEnv("stripe.webhook-secret", "STRIPE_WEBHOOK_SECRET")
+	// Credit amounts default to 0 (= "not configured"); billing/credit.Consume
+	// and GrantSubscription/GrantTopup deliberately reject 0 rather than
+	// silently under-crediting, see config.toml's [stripe.credits] comment.
+	viper.SetDefault("stripe.credits.subscription-pro", 0)
+	viper.SetDefault("stripe.credits.subscription-pro-plus", 0)
+	viper.SetDefault("stripe.credits.subscription-max", 0)
+	viper.SetDefault("stripe.credits.topup-small", 0)
+	viper.SetDefault("stripe.credits.topup-medium", 0)
+	viper.SetDefault("stripe.credits.topup-large", 0)
+	// AI translation (sentence / word-in-context / sentence-with-word) is
+	// billed by actual token usage (ADR-014), same formula as rephrase:
+	// cost = ceil((prompt*weight-in + completion*weight-out) / divisor),
+	// floored at 1. divisor <= 0 or both weights 0 means "not priced yet"
+	// and the endpoints 502. Defaults to 0 so an unconfigured deployment
+	// fails closed; k8s (no config.toml) sets the values via env.
+	viper.SetDefault("stripe.costs.translate.weight-in", 0)
+	_ = viper.BindEnv("stripe.costs.translate.weight-in", "STRIPE_COSTS_TRANSLATE_WEIGHT_IN")
+	viper.SetDefault("stripe.costs.translate.weight-out", 0)
+	_ = viper.BindEnv("stripe.costs.translate.weight-out", "STRIPE_COSTS_TRANSLATE_WEIGHT_OUT")
+	viper.SetDefault("stripe.costs.translate.divisor", 0)
+	_ = viper.BindEnv("stripe.costs.translate.divisor", "STRIPE_COSTS_TRANSLATE_DIVISOR")
+	// Rephrase (ADR-012) is likewise billed by actual token usage. Defaults
+	// to 0 so an unconfigured deployment fails closed; k8s (no config.toml)
+	// sets the values via env.
+	viper.SetDefault("stripe.costs.rephrase.weight-in", 0)
+	_ = viper.BindEnv("stripe.costs.rephrase.weight-in", "STRIPE_COSTS_REPHRASE_WEIGHT_IN")
+	viper.SetDefault("stripe.costs.rephrase.weight-out", 0)
+	_ = viper.BindEnv("stripe.costs.rephrase.weight-out", "STRIPE_COSTS_REPHRASE_WEIGHT_OUT")
+	viper.SetDefault("stripe.costs.rephrase.divisor", 0)
+	_ = viper.BindEnv("stripe.costs.rephrase.divisor", "STRIPE_COSTS_REPHRASE_DIVISOR")
+	// Free dictionary lookup quota defaults to 0 (= "unlimited"), the
+	// opposite fail-direction from costs/credits -- see config.toml's
+	// [stripe.quota] comment.
+	viper.SetDefault("stripe.quota.dictionary-lookup-daily", 0)
 
 	// Throttle for last_login_time/updated_at writes on every authenticated
 	// request (see docs/PERF_FIRST_QUERY_LATENCY.md) — only re-write when the
@@ -65,9 +138,15 @@ func viperInitInternal() {
 	viper.SetDefault("user.last-login-update-interval", "5m")
 	_ = viper.BindEnv("user.last-login-update-interval", "USER_LAST_LOGIN_UPDATE_INTERVAL")
 
-	// Also support automatic env var lookup (e.g. ENX_PORT for enx.port)
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
-	viper.AutomaticEnv()
+	// NOTE: deliberately not calling viper.AutomaticEnv(). Every env-var
+	// override above is bound explicitly via BindEnv, which doesn't need
+	// it. AutomaticEnv() makes viper treat ANY top-level key segment as
+	// shadowed by an identically-named (case-insensitive) OS env var, even
+	// one nobody meant to bind -- e.g. "user.last-login-update-interval"
+	// was silently resolving to "" instead of falling back to its "5m"
+	// SetDefault, because $USER is set in virtually every shell/container.
+	// See utils/viper_test.go's TestViperInitSetsDefaults for the
+	// regression test.
 
 	// Load .env file if present (useful for local development)
 	if err := godotenv.Load(); err == nil {
