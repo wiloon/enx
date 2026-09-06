@@ -99,7 +99,15 @@ const getSyncedClerk = async (): Promise<ClerkClient> => {
 const GET_TOKEN_RETRY_DELAYS_MS =
   config.environment === 'test' ? [0, 0] : [300, 700]
 
-const getSessionToken = async (): Promise<string | null> => {
+// `forceRefresh` bypasses clerk-js's in-memory token cache (getToken({
+// skipCache: true })). Needed after a 401: clerk-js refreshes the ~60s session
+// JWT on a setTimeout that does NOT fire while an MV3 worker is suspended, so a
+// warm-looking worker can hand out a token minted 15 min ago -- long expired --
+// without re-minting. Forcing a fresh mint (or surfacing that the mint itself
+// fails) is the only way to tell a stale cache from a real logout.
+const getSessionToken = async (
+  opts: { forceRefresh?: boolean } = {}
+): Promise<string | null> => {
   let clerk: ClerkClient
   try {
     clerk = await getSyncedClerk()
@@ -110,9 +118,11 @@ const getSessionToken = async (): Promise<string | null> => {
 
   if (!clerk.session) return null
 
+  const getTokenOpts = opts.forceRefresh ? { skipCache: true } : undefined
+
   for (let attempt = 1; attempt <= GET_TOKEN_RETRY_DELAYS_MS.length + 1; attempt++) {
     try {
-      const token = (await clerk.session.getToken()) ?? null
+      const token = (await clerk.session.getToken(getTokenOpts)) ?? null
       if (token) return token
       swlog(`clerk getToken() returned null (attempt ${attempt})`, 'warn')
     } catch (error) {
@@ -125,7 +135,7 @@ const getSessionToken = async (): Promise<string | null> => {
 
   swlog(
     `clerk getToken() gave no token after ${GET_TOKEN_RETRY_DELAYS_MS.length + 1} ` +
-      `attempts despite an active session`,
+      `attempts (forceRefresh=${Boolean(opts.forceRefresh)}) despite an active session`,
     'error'
   )
   return null
@@ -192,68 +202,94 @@ export const makeApiRequest = async (
   // cold boot can report how long this instance had been gone (swlog.ts).
   void heartbeat()
 
+  // Up to two attempts: if the first gets a 401 while we *did* send a token,
+  // it's almost always an expired session JWT served from clerk-js's cache
+  // (see getSessionToken) -- force a fresh mint and replay once before
+  // concluding the session is gone. `forceRefresh` stays false for the retry
+  // when we had no token to begin with (nothing to refresh -> real 401).
+  let forceRefresh = false
+
   try {
-    const API_BASE_URL = await getApiBaseUrl()
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...((options.headers as Record<string, string>) || {}),
-    }
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const API_BASE_URL = await getApiBaseUrl()
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...((options.headers as Record<string, string>) || {}),
+      }
 
-    const token = await getSessionToken()
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`
-    } else {
-      swlog(
-        `no session token for ${options.method ?? 'GET'} ${endpoint} ` +
-          `(+${Date.now() - WORKER_BOOTED_AT}ms since worker boot) -- ` +
-          `sending unauthenticated, expect 401`,
-        'warn'
-      )
-    }
-
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      ...options,
-      headers,
-    })
-
-    console.log(
-      `API response status: ${response.status} ${response.statusText}`
-    )
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        // Log enough to tell a real logout (had a token, still 401) from the
-        // MV3 cold-start race (no token, and only moments since worker boot).
+      const token = await getSessionToken({ forceRefresh })
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      } else {
         swlog(
-          `401 from ${endpoint}: hadToken=${Boolean(token)}, ` +
-            `+${Date.now() - WORKER_BOOTED_AT}ms since worker boot`,
+          `no session token for ${options.method ?? 'GET'} ${endpoint} ` +
+            `(+${Date.now() - WORKER_BOOTED_AT}ms since worker boot) -- ` +
+            `sending unauthenticated, expect 401`,
           'warn'
         )
-        await handleSessionExpiry()
-        throw new Error('Session expired')
       }
 
-      // Try to get error details from response body
-      let errorMessage = `HTTP ${response.status}: ${response.statusText}`
-      try {
-        const errorData = await response.json()
-        if (errorData.error || errorData.message) {
-          errorMessage = errorData.error || errorData.message
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        ...options,
+        headers,
+      })
+
+      console.log(
+        `API response status: ${response.status} ${response.statusText}`
+      )
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Body tells stale-token ("token expired") from a config/signature
+          // problem ("invalid token"); log it plus how long the worker has
+          // been up (a real logout can 401 with a token too, but not right
+          // after other calls in the same worker succeeded).
+          const body = await response.text().catch(() => '')
+          swlog(
+            `401 from ${endpoint}: hadToken=${Boolean(token)}, ` +
+              `forceRefresh=${forceRefresh}, attempt=${attempt}, ` +
+              `+${Date.now() - WORKER_BOOTED_AT}ms since worker boot; body=${body.slice(0, 200)}`,
+            'warn'
+          )
+
+          if (attempt === 1 && token) {
+            swlog('retrying once with a force-refreshed Clerk token', 'warn')
+            forceRefresh = true
+            continue
+          }
+
+          await handleSessionExpiry()
+          throw new Error('Session expired')
         }
-      } catch (e) {
-        // Ignore JSON parsing errors, use default message
+
+        // Try to get error details from response body
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`
+        try {
+          const errorData = await response.json()
+          if (errorData.error || errorData.message) {
+            errorMessage = errorData.error || errorData.message
+          }
+        } catch (e) {
+          // Ignore JSON parsing errors, use default message
+        }
+
+        // Returned directly (not thrown) so response.status survives into
+        // ApiRequestResult -- the catch block below only handles genuine
+        // exceptions (network failure, session expiry) that never got a
+        // real HTTP status.
+        return { success: false, error: errorMessage, status: response.status }
       }
 
-      // Returned directly (not thrown) so response.status survives into
-      // ApiRequestResult -- the catch block below only handles genuine
-      // exceptions (network failure, session expiry) that never got a
-      // real HTTP status.
-      return { success: false, error: errorMessage, status: response.status }
+      if (forceRefresh) {
+        swlog(`${endpoint} succeeded after force-refreshing the Clerk token`)
+      }
+      const data = await response.json()
+      console.log('API response data:', data)
+      return { success: true, data }
     }
 
-    const data = await response.json()
-    console.log('API response data:', data)
-    return { success: true, data }
+    // Loop always returns or throws; this satisfies the type checker.
+    throw new Error('Session expired')
   } catch (error) {
     console.error('API request failed:', error)
 

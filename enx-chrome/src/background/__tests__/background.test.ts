@@ -60,6 +60,7 @@ function jsonResponse(status: number, body: unknown, ok = status < 400) {
     status,
     statusText: ok ? 'OK' : 'Unauthorized',
     json: async () => body,
+    text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
   }
 }
 
@@ -95,7 +96,40 @@ describe('background makeApiRequest / Clerk session token', () => {
     expect(requestInit.headers.Authorization).toBeUndefined()
   })
 
-  it('reports session-expired on a 401 without retrying', async () => {
+  it('force-refreshes the token once on a 401, then reports session-expired if it persists', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
+
+    const result = await makeApiRequest('/api/translate?word=test')
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Your session has expired. Please login again.',
+      sessionExpired: true,
+    })
+    // Attempt 1 (cached token) + attempt 2 (skipCache token).
+    expect(global.fetch).toHaveBeenCalledTimes(2)
+    expect(getToken).toHaveBeenNthCalledWith(2, { skipCache: true })
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ action: 'sessionExpired' })
+    )
+  })
+
+  it('recovers when a 401 is fixed by a force-refreshed token', async () => {
+    ;(global.fetch as jest.Mock)
+      .mockResolvedValueOnce(jsonResponse(401, { error: 'token expired' }))
+      .mockResolvedValueOnce(jsonResponse(200, { English: 'ok' }))
+
+    const result = await makeApiRequest('/api/translate?word=test')
+
+    expect(result).toEqual({ success: true, data: { English: 'ok' } })
+    expect(global.fetch).toHaveBeenCalledTimes(2)
+    expect(getToken).toHaveBeenNthCalledWith(2, { skipCache: true })
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('does not retry a 401 when it never had a token to refresh', async () => {
+    setClerkSession(null)
     ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
 
     const result = await makeApiRequest('/api/translate?word=test')
@@ -106,10 +140,6 @@ describe('background makeApiRequest / Clerk session token', () => {
       sessionExpired: true,
     })
     expect(global.fetch).toHaveBeenCalledTimes(1)
-    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
-      1,
-      expect.objectContaining({ action: 'sessionExpired' })
-    )
   })
 
   it('propagates a non-401 error status (e.g. 402 insufficient credit)', async () => {
@@ -224,7 +254,8 @@ describe('background onMessage / validateSession', () => {
   })
 
   it('reports session-expired on a 401', async () => {
-    ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(401, {}))
+    // Persistent 401 so both the initial and the force-refresh retry see it.
+    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
 
     const response = await new Promise(resolve => {
       listener({ type: 'validateSession' }, {}, resolve)

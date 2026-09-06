@@ -13,6 +13,15 @@ import (
 	"github.com/spf13/viper"
 )
 
+// clerkClockLeeway is how far a Clerk session token's exp/nbf/iat may be off
+// before we reject it. Clerk mints session JWTs with a ~60s TTL and clerk-js
+// refreshes them on a timer; that timer is frozen while an MV3 service worker
+// (the extension) is suspended, so a just-woken worker can present a token
+// that's a few seconds past exp by our clock. A minute of leeway absorbs that
+// plus ordinary host clock drift (homelab pods have no tight NTP guarantee)
+// without accepting a token more than roughly one extra lifetime stale.
+const clerkClockLeeway = 60 * time.Second
+
 // ClerkConfig holds Clerk session-token validation settings.
 type ClerkConfig struct {
 	// Issuer is the Clerk Frontend API origin, e.g. https://enx.clerk.accounts.dev
@@ -96,7 +105,7 @@ func ClerkAuth(cfg ClerkConfig) gin.HandlerFunc {
 		token, err := jwt.ParseWithClaims(tokenStr, claims, v.jwks.Keyfunc,
 			jwt.WithValidMethods([]string{"RS256"}),
 			jwt.WithIssuer(v.cfg.Issuer),
-			jwt.WithLeeway(5*time.Second),
+			jwt.WithLeeway(clerkClockLeeway),
 		)
 		if err != nil || !token.Valid {
 			msg := "invalid token"

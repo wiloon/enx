@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -73,5 +74,42 @@ func TestClerkAuth_ValidTokenProvisionsUser(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+}
+
+// A token a few seconds past exp by our clock must still be accepted:
+// clerk-js's ~60s-TTL refresh timer is frozen while the extension's MV3
+// service worker is suspended, and homelab pods have loose clock sync.
+// clerkClockLeeway (60s) covers that.
+func TestClerkAuth_ExpiredWithinLeewayAccepted(t *testing.T) {
+	initClerkIntegrationDB(t)
+	env := clerktest.NewEnv(t)
+
+	sub := "user_integrationclerk_leeway"
+	t.Cleanup(func() {
+		sqlitex.DB.Exec("DELETE FROM users WHERE clerk_user_id = ?", sub)
+	})
+	sqlitex.DB.Exec("DELETE FROM users WHERE clerk_user_id = ?", sub)
+
+	now := time.Now()
+	token := env.SignSessionToken(t, jwt.MapClaims{
+		"sub":   sub,
+		"email": "clerk-leeway@example.com",
+		"iat":   now.Add(-90 * time.Second).Unix(),
+		"exp":   now.Add(-30 * time.Second).Unix(),
+	})
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(ClerkAuth(clerkTestConfig(env)))
+	r.GET("/api/me", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (token 30s past exp is within leeway), body: %s", w.Code, w.Body.String())
 	}
 }
