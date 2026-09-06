@@ -31,28 +31,40 @@ func Lookup(ctx context.Context, english, userID string) (*enx.Dictionary, error
 	if !ecdict.IsAvailable() {
 		return nil, ErrEcdictUnavailable
 	}
+	if err := MeterLookup(ctx, userID); err != nil {
+		return nil, err
+	}
+	return ecdict.Query(ctx, english), nil
+}
 
-	// The quota is a usage cap on a near-zero-cost operation, not a paywall,
-	// so its failure modes fail open (ADR-018 E2): a subscriber-check
-	// hiccup must not 429 a paying user (#18), and a quota-store hiccup must
-	// not hide a real definition behind "not found" (#17).
+// MeterLookup charges one dictionary lookup against the free-tier daily
+// quota (ADR-018 B2): every resolved lookup counts, whether it came from the
+// local words cache or from ECDICT, so callers that serve a word from cache
+// still call this. Active subscribers are exempt.
+//
+// The quota is a usage cap on a near-zero-cost operation, not a paywall, so
+// it fails open (E2): a subscriber-check or quota-store hiccup logs a
+// warning and returns nil (allow) -- a paying user is never 429'd by a DB
+// blip (#18), and a real definition is never hidden behind "quota error"
+// (#17). Only a genuine ErrQuotaExceeded is returned.
+func MeterLookup(ctx context.Context, userID string) error {
 	subscriber, err := isActiveSubscriber(userID)
 	if err != nil {
 		logger.Warnf("dictionary: subscriber check failed for user %s, treating as subscriber: %v", userID, err)
-		subscriber = true
+		return nil
+	}
+	if subscriber {
+		return nil
 	}
 
-	if !subscriber {
-		limit := viper.GetInt64("stripe.quota.dictionary-lookup-daily")
-		if err := quota.CheckAndIncrementLookup(ctx, userID, limit, time.Now()); err != nil {
-			if errors.Is(err, ErrQuotaExceeded) {
-				return nil, ErrQuotaExceeded
-			}
-			logger.Warnf("dictionary: quota check failed for user %s, allowing lookup: %v", userID, err)
+	limit := viper.GetInt64("stripe.quota.dictionary-lookup-daily")
+	if err := quota.CheckAndIncrementLookup(ctx, userID, limit, time.Now()); err != nil {
+		if errors.Is(err, ErrQuotaExceeded) {
+			return ErrQuotaExceeded
 		}
+		logger.Warnf("dictionary: quota check failed for user %s, allowing lookup: %v", userID, err)
 	}
-
-	return ecdict.Query(ctx, english), nil
+	return nil
 }
 
 func isActiveSubscriber(userID string) (bool, error) {

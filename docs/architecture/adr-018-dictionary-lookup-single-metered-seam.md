@@ -1,8 +1,8 @@
-# ADR-018：查词收敛成一个计量 seam——删掉没人调的 `GET /ecdict`，`words`/`user_dicts` + ECDICT 封在 `dictionary.Lookup` 之下，每次调用计一次每日配额（不去重、缓存命中也算），SQLite 单条 upsert 计数，配额存储出错时 fail-open
+# ADR-018：查词计量收敛到一个函数——删掉没人调的 `GET /ecdict`，`dictionary.MeterLookup` 成为所有查词路径唯一的计量点，每次调用计一次每日配额（不去重、缓存命中也算），SQLite 单条 upsert 计数，配额存储出错时 fail-open
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Accepted — 2026-09-06。删掉死接口 `GET /ecdict`（#19/#20 随之消失）、seam 收敛（A2，收敛后只剩 `translateWord` 一个 caller）、每次调用计量不去重（B2）、SQLite 不上 Redis（C2）、单条 upsert（D2）、词典路径 fail-open（E2）、#17/#18 一并修均已确认。TDD 进度：**步骤 0（删 `/ecdict`，`abbb590`）、步骤 1（单条 upsert，`ce0dc13`）、步骤 2（`isActiveSubscriber` + `Lookup` fail-open，#17/#18）已完成**。剩余步骤 3（`dictionary.Lookup` 深 seam + B2 计量）、4（配额行清理）。 |
+| **状态** | Accepted — 2026-09-06。删掉死接口 `GET /ecdict`（#19/#20 随之消失）、seam 收敛（A2，收敛后只剩 `translateWord` 一个 caller）、每次调用计量不去重（B2）、SQLite 不上 Redis（C2）、单条 upsert（D2）、词典路径 fail-open（E2）、#17/#18 一并修均已确认。TDD 进度：**步骤 0（删 `/ecdict`，`abbb590`）、1（单条 upsert，`ce0dc13`）、2（`Lookup` fail-open #17/#18，`bbf0d44`）、3（`MeterLookup` 收敛 + 本地命中也计量 B2）已完成**。剩余步骤 4（配额行清理）。A2 的「本地 `words` 查询搬进 `dictionary.Lookup`」这部分因 `translateWord` 复习计数无测试覆盖而推迟，见 Decision 1。 |
 | **日期** | 2026-09-06 |
 | **关联 Spec** | [`TASK-SPEC-enx-billing-stripe-subscription.md`](../tasks/TASK-SPEC-enx-billing-stripe-subscription.md) §4.2 已把 `dictionary.Lookup` 定位为「统一查词入口，在返回结果前插入配额检查」——本 ADR 是**把这个意图补齐**（实现时 `fillFromEcdict` 把「先查本地」的分支留在了 seam 外）；配套 TASK-SPEC 增补留到编码阶段（同 ADR-008 / ADR-011 / ADR-017 的做法） |
 | **关联 ADR** | [`adr-009-billing-stripe-subscription-and-ai-credits.md`](adr-009-billing-stripe-subscription-and-ai-credits.md)（Decision 6：免费查词走独立每日配额、不进积分系统；本 ADR **澄清并延续**它——配额覆盖**所有释义查询**，含本地缓存命中，并把计量点收敛到一个 seam）、[`adr-014-sidepanel-clicked-word-and-token-billing.md`](adr-014-sidepanel-clicked-word-and-token-billing.md)（AI 翻译按 token 计费、与查词配额是两个独立计量器；本 ADR 不动 AI 侧） |
@@ -74,9 +74,9 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 | 方案 | 做法 | 结论 |
 | --- | --- | --- |
 | A1. 现状：`dictionary.Lookup` = ECDICT-only 包装，「先查本地」留在 caller | `fillFromEcdict` 判 `word.Id` 提前返回，本地命中的词绕过配额 | seam 太浅；配额漏在本地命中路径上（今天所有真实查词都命中这条）|
-| **A2.（采用）`dictionary.Lookup(ctx, word, userID)` = 完整的「查一个词」** | 内部：本地 `words`/`user_dicts` → 命中即返回；未命中再查 ECDICT。返回统一结果（释义 + 一个 `source` 标记，caller 一般不看）。删掉 `/ecdict` 后**只有 `translateWord` 一个 caller**调它 | 应用层只说「查这个词」；计量点只有一个（见 B）；`fillFromEcdict` 那段「判 `word.Id` / 分两支」的逻辑收进 seam 内。**`user_dicts.QueryCount` 复习计数不进 seam**（见下） |
+| **A2.（部分采用）「一个计量点」立刻做，「深 seam」推迟** | **本次**：抽 `dictionary.MeterLookup(ctx, userID)`，所有查词路径（`Lookup` 的 ECDICT 分支 + `fillFromEcdict` 的本地命中分支）都调它 → 计量收敛到一个函数、B2 达成。**推迟**：把本地 `words` 查询也搬进 `dictionary.Lookup`（让 caller 只说「查这个词」）——因为 `translateWord` 的本地查询紧挨着 `user_dicts.QueryCount` 复习计数记账，而**那段记账零测试覆盖**，盲改风险大 | 计量收敛 + `/ecdict` 已删 + 单 caller，已经消掉「某条路径漏计量」的风险；深 seam 的额外收益（应用层完全不碰本地/ECDICT 之分）等它值得的时候再做，见 Revisit |
 
-**`QueryCount` 复习计数不进 seam**：`translateWord` 在本地命中时会 `user_dicts.QueryCount++`（并在标过「已掌握」时翻回未掌握）——这是复习系统的熟悉度追踪（CONTEXT.md「复习档位」），跟「把词解析成释义」是两个 concern。seam 只管「解析 + 计一次配额」，`QueryCount` 那套留在 `translateWord`（调完 seam 之后做）。删掉 `/ecdict` 后没有第二个 caller，这个边界没有歧义。
+**`QueryCount` 复习计数无论如何不进 seam**：`translateWord` 在本地命中时会 `user_dicts.QueryCount++`（并在标过「已掌握」时翻回未掌握）——这是复习系统的熟悉度追踪（CONTEXT.md「复习档位」），跟「把词解析成释义」是两个 concern。
 
 ### B. 计量口径：去重 vs 不去重，缓存命中算不算
 
@@ -126,13 +126,12 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 
 0. **删掉死接口 `GET /ecdict`**（已实现）：移除 `authGroup` / `apiGroup` 两条 `GET("/ecdict", DoSearchEcdict)` 路由、`DoSearchEcdict` 函数、`SearchResult` struct、随之无用的 `"enx-api/dictionary"` import（`enx-api.go`）。`go build` + `dictionary`/`translate`/`billing` 包测试通过。#19、#20 随之不存在。
 
-1. **`dictionary.Lookup(ctx, word, userID)` 变成完整的查词 seam**（采用 A2）：
-   - 内部先查本地（`words` + `user_dicts`），命中直接返回（带 `source: local`）；未命中再 `ecdict.Query`（带 `source: ecdict`）；两者都没有 → `(nil, nil)`。
-   - 删掉 `/ecdict` 后**唯一 caller 是 `translate/service.go` 的 `translateWord`**（经 `fillFromEcdict`）。`fillFromEcdict` 里「判 `word.Id` / 分两支 / 写 `words`」的编排收进 seam；`fillFromEcdict` 退化成薄 adapter 或删除。
-   - **`user_dicts.QueryCount` 复习计数不进 seam**——留在 `translateWord`（调完 seam 之后做），它是「熟悉度追踪」不是「解析释义」，行为逐字节不变（有测试覆盖）。
-   - 具体返回结构（是否复用 `enx.Word` / `enx.Dictionary`、`source` 字段形态）留给 TASK-SPEC。
+1. **计量收敛到一个函数 `dictionary.MeterLookup(ctx, userID)`**（采用 A2 的「一个计量点」部分，**已实现**）：
+   - `MeterLookup` = 订阅判断（fail-open 到订阅者）+ 配额 upsert（非 `ErrQuotaExceeded` 错误 fail-open 放行）。是所有查词路径唯一的计量入口。
+   - `dictionary.Lookup`（ECDICT 路径）调它；`translate/helpers.go` 的 `fillFromEcdict` 在**本地命中分支**也调它（今天这条路绕过配额——正是 B2 要改的）。
+   - **`dictionary.Lookup` 内联本地 `words` 查询这部分（A2 的深 seam）本次不做**——`translateWord` 的本地查询 + `user_dicts.QueryCount` 复习计数记账**完全没有测试覆盖**（`translate` 包只测了鉴权和 sentence-unavailable），盲改风险 > 收益。留作独立后续（先补 QueryCount 覆盖，再把本地查询搬进 seam）。当前 caller 只有一个、`/ecdict` 已删，「计量漏一条路径」的风险已经被计量收敛 + 单 caller 压住。
 
-2. **计量：每次调用 `+1`，不去重，缓存命中也算**（采用 B2）。非订阅用户每进入一次 `dictionary.Lookup`，配额 `+1`（**先扣后查**，#16 确认为有意；不管结果 `local` / `ecdict` / 空）。订阅用户跳过。澄清 ADR-009 Decision 6：配额是「释义查询」的每日封顶，不区分数据来源。
+2. **计量：每次调用 `+1`，不去重，缓存命中也算**（采用 B2，**已实现**）。非订阅用户每次查词（本地命中 or ECDICT）配额 `+1`（**先扣后查**，#16 确认为有意；空结果也算）。订阅用户跳过。澄清 ADR-009 Decision 6：配额是「释义查询」的每日封顶，不区分数据来源。测试：`TestTranslateWordMetersLocalCacheHit`（本地已有的词，limit=1，第二次 429）。
 
 3. **存储：SQLite，复用 `dictionary_lookup_quota`**（采用 C2）。不引 Redis。
 
@@ -165,7 +164,7 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 ### Positive
 
 - 死接口 `GET /ecdict` / `DoSearchEcdict` / `SearchResult` 删除，`enx-api` 少一段没人走、还行为不一致的代码。#19 / #20 消失。
-- 一个 seam、一个 caller、一个计量点。#16 那类不一致从设计上消失，不靠「记得在每条路径都加判断」。
+- 一个计量点（`dictionary.MeterLookup`），一个 caller（`translateWord`）。#16 / #20 那类「某条路径漏了计量或计量不一致」从设计上消失。
 - #17 / #18 随重构一并修：基建抖动不再表现为「查无此词」，付费订阅者不再被 DB 抖动降级 429。
 - 配额自增从三分支读后写事务变成一条原子 upsert，读后写窗口彻底消失（不是当前 bug，是去掉脆形态）。
 - 跟 `billing/credit` 一套存储、一套并发模式，少一个 homelab 组件。
@@ -176,15 +175,16 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 - **缓存命中现在也计量**：阅读时重复点同一个词会消耗配额，靠「上限设高」兜底。上限初值必须按真实阅读会话的点词**总量**（含重复）留足余量，不能按「查字典」的直觉设。
 - **本地命中的词从「永远免费」变成「计量」**：今天所有真实查词都命中翻译路径的本地分支、绕过配额；本 ADR 之后它们开始计数。这是把 ADR-009 Decision 6 落到实处，但对一个重度阅读用户是可感知的用量增加——同样靠「上限设高」兜。
 - **fail-open 意味着配额在存储故障期间完全失效**——可接受（它不是 paywall），但要清楚这不是一个能在 DB 出问题时兜住成本的机制。
-- **`dictionary.Lookup` 重构要动 `fillFromEcdict` / `translateWord` 的结构**，以及它们和 `dictionary` / `translate` 包的测试；`user_dicts.QueryCount` 复习计数逻辑（留在 `translateWord`）要保证行为逐字节不变（有测试覆盖）。
+- **A2 的深 seam 只做了一半**：计量收敛了（`MeterLookup`），但本地 `words` 查询还在 `translateWord`/`word.Translate` 里，`dictionary.Lookup` 仍是「ECDICT + 计量」。原因：`translateWord` 的 `QueryCount` 记账零测试覆盖，盲改不安全。完整深 seam 留作后续（Revisit）。
+- **`translateWord` 的 `user_dicts.QueryCount` 复习计数记账至今无测试覆盖**——本 ADR 没碰它，但这是一块该补的债。
 
 ### Mitigation
 
 - 实施顺序建议：
   0. 删掉 `GET /ecdict` / `DoSearchEcdict`（**已完成**，`abbb590`）。
   1. `CheckAndIncrementLookup` 改单条 upsert（**已完成**，语义不变，6 现有 + 1 新增测试全绿）。
-  2. `isActiveSubscriber` 返 `(bool, error)` + `dictionary.Lookup` fail-open（#17/#18）（**已完成**，2 个新测试 + 4 个现有测试全绿）。不改 seam 形状。
-  3. `dictionary.Lookup` 收敛成深 seam（A2）：内部并本地 + ECDICT，`translateWord` 改为只调它，计量口径统一（B2）。`fillFromEcdict` 删除或退化成薄 adapter。`QueryCount` 记账留在 `translateWord`。
+  2. `isActiveSubscriber` 返 `(bool, error)` + `dictionary.Lookup` fail-open（#17/#18）（**已完成**，`bbf0d44`，2 新 + 4 现有测试全绿）。
+  3. 抽 `dictionary.MeterLookup`；`fillFromEcdict` 的本地命中分支也调它 → 计量收敛 + B2（**已完成**，新增 `TestTranslateWordMetersLocalCacheHit`，`translate`/`dictionary` 单测 + 集成测试全绿）。**深 seam（本地查询搬进 `Lookup`）推迟**——见 Decision 1 / Revisit。
   4. 配额行清理 job（G）。
   5. 每步独立可验证、可回滚。
 - 上限数值：初值给一个明显偏高的数（阅读会话点词量的数倍），上线后看真实分布再逐步收。
@@ -206,6 +206,7 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 
 ## Revisit Trigger
 
+- **要把本地 `words` 查询搬进 `dictionary.Lookup`（A2 深 seam）**：前置条件是先给 `translateWord` 的 `user_dicts.QueryCount` 复习计数记账补上测试覆盖（现在零覆盖）。有覆盖之后这个重构才安全。触发点：加第二个查词 caller，或 `translateWord` 本身要大改。
 - **enx-api 变多副本 + 换外部共享 DB（Postgres）**：SQLite 单文件单写者不再成立，重新评估 Redis / 外部计数器 / DB 原生原子自增。
 - **真实数据显示正常阅读用户会撞上限**：要么提高上限，要么回到「按去重词数」计量（B1）——那时候复杂度是值得付的。
 - **需要把配额做成用户可见的用量条**：「缓存命中也算」会让用户困惑（「我就重看了个查过的词怎么也扣」），届时考虑 B1，或分级展示（不到 80% 不显示数字）。

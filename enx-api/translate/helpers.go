@@ -26,6 +26,13 @@ func respondSentenceUnavailable(c *gin.Context, raw string) {
 // Returns (continueHandler, filledFromEcdict).
 func fillFromEcdict(c *gin.Context, word *enx.Word, userId string) (bool, bool) {
 	if word.Id != "" {
+		// A local cache hit still counts against the free daily quota
+		// (ADR-018 B2) -- there's just no ECDICT round-trip or cache-fill
+		// to do. MeterLookup only ever returns ErrQuotaExceeded.
+		if err := dictionary.MeterLookup(c.Request.Context(), userId); err != nil {
+			dictionary.RespondQuotaExceeded(c)
+			return false, false
+		}
 		return true, false
 	}
 
