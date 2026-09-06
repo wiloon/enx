@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import '@/index.css'
 import {
   ArrowPathRoundedSquareIcon,
+  MagnifyingGlassIcon,
   SpeakerWaveIcon,
   XMarkIcon,
 } from '@heroicons/react/20/solid'
 import { initSentry } from '@/lib/sentry'
 import { formatPhonetic } from '@/lib/phonetic'
 import { playPronunciation } from '@/lib/pronunciation'
+import { snapToWordBounds } from '@/lib/wordSegment'
 import { sendMessageToBackground } from '@/services/api'
 import { config } from '@/config/env'
 import {
@@ -77,31 +79,112 @@ function UpgradeLink({ className }: { className?: string }) {
   )
 }
 
-interface SentenceToken {
-  text: string
-  clickable: boolean
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+// The original sentence renders as plain selectable text (ADR-017): no
+// per-word elements, so a drag-select can run across words and clicks resolve
+// by character offset. The one bit of markup is a <mark> around every
+// occurrence of the word the user clicked on the page before opening the
+// panel (ADR-014), so they can see which word the auto-seeded card belongs
+// to. <mark> wraps the same text run, so it doesn't affect selection offsets.
+const renderSentence = (sentence: string, clickedWord: string): ReactNode => {
+  if (!clickedWord) return sentence
+  const re = new RegExp(`\\b${escapeRegExp(clickedWord)}\\b`, 'gi')
+  const parts: ReactNode[] = []
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(sentence)) !== null) {
+    if (m.index > last) parts.push(sentence.slice(last, m.index))
+    parts.push(
+      <mark
+        key={m.index}
+        data-clicked-word="true"
+        className="bg-yellow-200 font-medium rounded px-0.5"
+      >
+        {m[0]}
+      </mark>
+    )
+    last = m.index + m[0].length
+  }
+  if (last < sentence.length) parts.push(sentence.slice(last))
+  return parts
 }
 
-// Splits a sentence into tokens, keeping whitespace/punctuation as separate
-// non-clickable chunks so only actual words are clickable (spec §3.7).
-const WORD_TOKEN = /[a-zA-Z][a-zA-Z'-]*/g
-const tokenizeSentence = (sentence: string): SentenceToken[] => {
-  const tokens: SentenceToken[] = []
-  let lastIndex = 0
+// Character offset of a (node, offset) selection boundary within `root`'s
+// text, computed by measuring the flattened text before it. Works regardless
+// of how the text is split into nodes (e.g. by a <mark>), and is testable in
+// jsdom since Range.toString() is implemented there.
+const boundaryCharOffset = (root: HTMLElement, node: Node, offset: number): number => {
+  const pre = document.createRange()
+  pre.selectNodeContents(root)
+  pre.setEnd(node, offset)
+  return pre.toString().length
+}
 
-  for (const match of sentence.matchAll(WORD_TOKEN)) {
-    const index = match.index ?? 0
-    if (index > lastIndex) {
-      tokens.push({ text: sentence.slice(lastIndex, index), clickable: false })
+// The current selection as a [start, end) character interval within the
+// rendered sentence, or null if there's no selection inside `root`.
+const getSelectionCharRange = (root: HTMLElement): [number, number] | null => {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) return null
+  if (!sel.anchorNode || !sel.focusNode) return null
+  if (!root.contains(sel.anchorNode) || !root.contains(sel.focusNode)) return null
+  const r = sel.getRangeAt(0)
+  const a = boundaryCharOffset(root, r.startContainer, r.startOffset)
+  const b = boundaryCharOffset(root, r.endContainer, r.endOffset)
+  return a <= b ? [a, b] : [b, a]
+}
+
+// The confirm affordance for an in-panel phrase selection (ADR-017 D2): a
+// bare icon button pinned just below the selection -- the selected text is
+// its own label. Autofocuses so it can be confirmed with Enter / dismissed
+// with Esc without reaching for the mouse again; also dismissed on a
+// pointerdown anywhere else or on scroll.
+function PhraseConfirmButton({
+  rect,
+  onConfirm,
+  onDismiss,
+}: {
+  rect: { bottom: number; left: number } | null
+  onConfirm: () => void
+  onDismiss: () => void
+}) {
+  const ref = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    ref.current?.focus()
+    const dismissOnOutside = (e: Event) => {
+      if (e.target instanceof Node && ref.current?.contains(e.target)) return
+      onDismiss()
     }
-    tokens.push({ text: match[0], clickable: true })
-    lastIndex = index + match[0].length
-  }
-  if (lastIndex < sentence.length) {
-    tokens.push({ text: sentence.slice(lastIndex), clickable: false })
-  }
+    document.addEventListener('pointerdown', dismissOnOutside)
+    window.addEventListener('scroll', onDismiss, true)
+    return () => {
+      document.removeEventListener('pointerdown', dismissOnOutside)
+      window.removeEventListener('scroll', onDismiss, true)
+    }
+  }, [onDismiss])
 
-  return tokens
+  // rect is viewport coordinates from the selection's bounding box; clamp
+  // into the panel so it can't render off-screen.
+  const top = rect ? Math.max(4, rect.bottom + 4) : 4
+  const left = rect ? Math.max(4, Math.min(rect.left, window.innerWidth - 40)) : 4
+
+  return (
+    <button
+      ref={ref}
+      type="button"
+      data-testid="sidepanel-phrase-confirm"
+      aria-label="查这段词的句中释义"
+      onClick={onConfirm}
+      onKeyDown={e => {
+        if (e.key === 'Escape') onDismiss()
+      }}
+      style={{ position: 'fixed', top, left }}
+      className="z-10 inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-blue-600 shadow-sm hover:bg-blue-100"
+    >
+      <MagnifyingGlassIcon className="h-4 w-4" aria-hidden="true" />
+    </button>
+  )
 }
 
 function SidePanelContent() {
@@ -430,23 +513,40 @@ function SidePanelContent() {
     [definitions, fetchDictionary, fetchContextTranslation]
   )
 
-  // Phrase-in-context lookup (ADR-008): a 2-5 word selection inside a larger
-  // sentence never has a dictionary entry (ECDICT/words only has single
-  // words), so it skips getOneWord entirely and only ever gets an AI
-  // translateWordInContext result -- rendered as a phrase card (dictionaryStatus
-  // 'none') mixed into the same definitions list as word cards, not the
-  // single-slot whole-sentence area above.
+  // Phrase-in-context lookup (ADR-008/017): a multi-word selection never has a
+  // dictionary entry (ECDICT/words only has single words), so it skips
+  // getOneWord entirely and only ever gets an AI translateWordInContext
+  // result -- rendered as a phrase card (dictionaryStatus 'none') mixed into
+  // the same definitions list as word cards, not the single-slot
+  // whole-sentence area above. Re-selecting a phrase already in the list just
+  // moves its card up -- no second AI call, no second charge.
+  const upsertPhraseCard = useCallback(
+    (phrase: string) => {
+      const sentence = pendingContext?.sentence
+      if (!sentence) return
+      const index = definitions.findIndex(d => d.word === phrase)
+      if (index !== -1) {
+        setDefinitions(prev => {
+          const i = prev.findIndex(d => d.word === phrase)
+          if (i === -1) return prev
+          return [prev[i], ...prev.slice(0, i), ...prev.slice(i + 1)]
+        })
+        return
+      }
+      setDefinitions(prev => [
+        { word: phrase, dictionaryStatus: 'none', contextStatus: 'loading' },
+        ...prev,
+      ])
+      fetchContextTranslation(phrase, sentence)
+    },
+    [pendingContext?.sentence, definitions, fetchContextTranslation]
+  )
+
+  // A phrase arriving via pendingContext (ADR-008: drag-selected on the web
+  // page, already confirmed there) goes straight to a card -- no confirm
+  // button, unlike an in-panel drag-select (ADR-017).
   useEffect(() => {
-    if (!pendingContext?.phrase) return
-
-    const phrase = pendingContext.phrase
-    const sentence = pendingContext.sentence
-
-    setDefinitions(prev => [
-      { word: phrase, dictionaryStatus: 'none', contextStatus: 'loading' },
-      ...prev,
-    ])
-    fetchContextTranslation(phrase, sentence)
+    if (pendingContext?.phrase) upsertPhraseCard(pendingContext.phrase)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingContext?.createdAt])
 
@@ -513,6 +613,68 @@ function SidePanelContent() {
     [pendingContext?.sentence, definitions, fetchContextTranslation, fetchDictionary]
   )
 
+  // Mouse selection inside the rendered original sentence (ADR-017). Resolve
+  // it to a whole-word character interval, then: 1 word -> look it up (same as
+  // clicking a word used to); 2+ words -> phrase, behind the confirm button.
+  // Mouse only -- the plain <p> takes no keyboard selection; a keyboard user
+  // reaches a word via double-click (still a mouseup) and the confirm button
+  // autofocuses once it appears.
+  const sentenceRef = useRef<HTMLParagraphElement>(null)
+  // A 2+-word selection in the sentence is a phrase lookup, but it costs an AI
+  // call (ADR-014 billing), so it waits behind a confirm button rather than
+  // firing on mouseup like a single-word click does (ADR-017 D2).
+  const [pendingPhrase, setPendingPhrase] = useState<{
+    text: string
+    rect: { bottom: number; left: number } | null
+  } | null>(null)
+  const clearPendingPhrase = useCallback(() => setPendingPhrase(null), [])
+
+  // Total words in the sentence -- invariant per context, so a selection that
+  // spans them all is "the whole sentence" and the top slot already has it.
+  const sentenceWordCount = useMemo(() => {
+    const s = pendingContext?.sentence
+    return s ? snapToWordBounds(s, 0, s.length).wordCount : 0
+  }, [pendingContext?.sentence])
+
+  const handleSentenceSelection = useCallback(() => {
+    clearPendingPhrase()
+    const root = sentenceRef.current
+    const sentence = pendingContext?.sentence
+    if (!root || !sentence) return
+    const range = getSelectionCharRange(root)
+    if (!range) return
+    const { text, wordCount } = snapToWordBounds(sentence, range[0], range[1])
+    if (wordCount === 0) return
+    if (wordCount === 1) {
+      handleWordClick(text)
+      return
+    }
+    // Whole sentence (or more) selected -- the top slot already translates it.
+    if (wordCount >= sentenceWordCount) return
+    // Already looked up -- skip the confirm step, just surface the card again.
+    if (definitions.some(d => d.word === text)) {
+      upsertPhraseCard(text)
+      return
+    }
+    const sel = window.getSelection()
+    // jsdom's Range has no getBoundingClientRect; guard so the handler stays
+    // callable there (position is best-effort anyway).
+    const r = sel?.rangeCount ? sel.getRangeAt(0) : null
+    const domRect =
+      r && typeof r.getBoundingClientRect === 'function' ? r.getBoundingClientRect() : null
+    setPendingPhrase({
+      text,
+      rect: domRect ? { bottom: domRect.bottom, left: domRect.left } : null,
+    })
+  }, [
+    pendingContext?.sentence,
+    sentenceWordCount,
+    handleWordClick,
+    clearPendingPhrase,
+    definitions,
+    upsertPhraseCard,
+  ])
+
   // The guided hint only makes sense when the panel has shown nothing at
   // all yet. Once there's a word popover (from a page lookup, ADR-006) the
   // panel has useful content to show even without a sentence context, so the
@@ -525,7 +687,6 @@ function SidePanelContent() {
     )
   }
 
-  const tokens = pendingContext ? tokenizeSentence(pendingContext.sentence) : []
   // The word the user clicked on the page before opening the panel (ADR-014):
   // highlight every occurrence of it in the original so they can see which
   // word the auto-seeded card belongs to. Not set for a drag-selected
@@ -546,29 +707,24 @@ function SidePanelContent() {
               {pendingContext.sourceUrl}
             </div>
           )}
-          <p className="text-gray-900 leading-relaxed" data-testid="sidepanel-sentence">
-            {tokens.map((token, i) =>
-              token.clickable ? (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => handleWordClick(token.text)}
-                  data-clicked-word={
-                    clickedWord && token.text.toLowerCase() === clickedWord ? 'true' : undefined
-                  }
-                  className={`hover:bg-yellow-100 hover:underline rounded px-0.5 ${
-                    clickedWord && token.text.toLowerCase() === clickedWord
-                      ? 'bg-yellow-200 font-medium'
-                      : ''
-                  }`}
-                >
-                  {token.text}
-                </button>
-              ) : (
-                <span key={i}>{token.text}</span>
-              )
-            )}
+          <p
+            ref={sentenceRef}
+            className="text-gray-900 leading-relaxed select-text"
+            data-testid="sidepanel-sentence"
+            onMouseUp={handleSentenceSelection}
+          >
+            {renderSentence(pendingContext?.sentence ?? '', clickedWord)}
           </p>
+          {pendingPhrase && (
+            <PhraseConfirmButton
+              rect={pendingPhrase.rect}
+              onConfirm={() => {
+                upsertPhraseCard(pendingPhrase.text)
+                clearPendingPhrase()
+              }}
+              onDismiss={clearPendingPhrase}
+            />
+          )}
         </div>
       )}
 

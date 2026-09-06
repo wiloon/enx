@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 // Avoid loading the real sentry.ts (uses `import.meta`, which ts-jest can't
@@ -24,6 +24,45 @@ import { BackgroundResponse, LATEST_PAGE_WORD_STORAGE_KEY, PENDING_SENTENCE_STOR
 import SidePanel from '../SidePanel'
 
 const mockSendMessage = sendMessageToBackground as jest.Mock
+
+const SENTENCE = 'Cats are great pets.'
+
+// The rendered original sentence is plain selectable text (ADR-017), so a
+// "word click" is a selection resolved by character offset, not a button
+// press. This drives the same path the browser would when the user
+// clicks/drags over `word`: set the DOM selection to span `word` within the
+// sentence element (walking text nodes so it works even when a <mark>
+// highlight splits them) and fire the mouseup the handler listens for.
+const selectWord = (word: string, sentence = SENTENCE) => {
+  const el = screen.getByTestId('sidepanel-sentence')
+  const start = sentence.toLowerCase().indexOf(word.toLowerCase())
+  const end = start + word.length
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+  let acc = 0
+  let startNode: Node | null = null
+  let startOffset = 0
+  let endNode: Node | null = null
+  let endOffset = 0
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const len = n.textContent!.length
+    if (startNode === null && start <= acc + len) {
+      startNode = n
+      startOffset = start - acc
+    }
+    if (endNode === null && end <= acc + len) {
+      endNode = n
+      endOffset = end - acc
+    }
+    acc += len
+  }
+  const range = document.createRange()
+  range.setStart(startNode!, startOffset)
+  range.setEnd(endNode!, endOffset)
+  const sel = window.getSelection()!
+  sel.removeAllRanges()
+  sel.addRange(range)
+  fireEvent.mouseUp(el)
+}
 
 type StorageChangeListener = (
   changes: { [key: string]: chrome.storage.StorageChange },
@@ -76,6 +115,24 @@ describe('SidePanel', () => {
     await waitFor(() =>
       expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('猫是很棒的宠物。')
     )
+  })
+
+  it('renders the original sentence as selectable plain text, not per-word buttons (ADR-017)', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: 'Cats are great pets.',
+        word: '',
+        sourceUrl: '',
+        createdAt: 1,
+      },
+    })
+    mockSendMessage.mockResolvedValue({ success: true, chinese: '猫是很棒的宠物。' })
+
+    render(<SidePanel />)
+
+    const sentence = await screen.findByTestId('sidepanel-sentence')
+    expect(sentence).toHaveTextContent('Cats are great pets.')
+    expect(within(sentence).queryAllByRole('button')).toHaveLength(0)
   })
 
   it('shows the translator error message instead of a blank/silent result (spec §4.4/§4.6 tie-in)', async () => {
@@ -147,10 +204,9 @@ describe('SidePanel', () => {
       return { success: false }
     })
 
-    const user = userEvent.setup()
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-sentence')
-    await user.click(screen.getByText('great'))
+    selectWord('great')
 
     const errorRow = await screen.findByTestId('sidepanel-context-error-great')
     expect(errorRow).toHaveTextContent('AI 翻译积分不足')
@@ -189,10 +245,9 @@ describe('SidePanel', () => {
       return { success: false }
     })
 
-    const user = userEvent.setup()
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-sentence')
-    await user.click(screen.getByText('great'))
+    selectWord('great')
 
     const errorRow = await screen.findByTestId('sidepanel-dictionary-error-great')
     expect(errorRow).toHaveTextContent('今日免费查词次数已用完')
@@ -233,12 +288,11 @@ describe('SidePanel', () => {
       return { success: false }
     })
 
-    const user = userEvent.setup()
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-sentence')
 
-    await user.click(screen.getByText('Cats'))
-    await user.click(screen.getByText('great'))
+    selectWord('Cats')
+    selectWord('great')
 
     await waitFor(() => {
       const definitions = screen.getByTestId('sidepanel-definitions')
@@ -289,11 +343,10 @@ describe('SidePanel', () => {
       return { success: false }
     })
 
-    const user = userEvent.setup()
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-sentence')
 
-    await user.click(screen.getByText('great'))
+    selectWord('great')
 
     await waitFor(() => {
       const definitions = screen.getByTestId('sidepanel-definitions')
@@ -418,7 +471,7 @@ describe('SidePanel', () => {
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-sentence')
 
-    await user.click(screen.getByText('great'))
+    selectWord('great')
 
     const errorRow = await screen.findByTestId('sidepanel-context-error-great')
     expect(errorRow).toHaveTextContent('Your session has expired. Please login again.')
@@ -461,11 +514,10 @@ describe('SidePanel', () => {
       return Promise.resolve({ success: false })
     })
 
-    const user = userEvent.setup()
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-sentence')
 
-    await user.click(screen.getByText('great'))
+    selectWord('great')
 
     await waitFor(() => {
       const card = screen.getByTestId('sidepanel-card-great')
@@ -508,16 +560,15 @@ describe('SidePanel', () => {
       return { success: false }
     })
 
-    const user = userEvent.setup()
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-sentence')
 
-    await user.click(screen.getByText('Cats'))
-    await user.click(screen.getByText('great'))
+    selectWord('Cats')
+    selectWord('great')
     await waitFor(() => expect(screen.getByTestId('sidepanel-card-cats')).toHaveTextContent('cats释义'))
 
     const callsAfterTwoDistinctWords = mockSendMessage.mock.calls.length
-    await user.click(screen.getByText('Cats'))
+    selectWord('Cats')
 
     // Re-click just reorders -- no new getOneWord/translateWordInContext calls.
     await waitFor(() => {
@@ -552,11 +603,10 @@ describe('SidePanel', () => {
       return { success: false }
     })
 
-    const user = userEvent.setup()
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-sentence')
 
-    await user.click(screen.getByText('great'))
+    selectWord('great')
 
     await waitFor(() => {
       const card = screen.getByTestId('sidepanel-card-great')
@@ -707,10 +757,9 @@ describe('SidePanel', () => {
       return { success: false }
     })
 
-    const user = userEvent.setup()
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-sentence')
-    await user.click(screen.getByText('great'))
+    selectWord('great')
     await waitFor(() =>
       expect(screen.getByTestId('sidepanel-card-great')).toHaveTextContent('great在这句里的意思')
     )
@@ -869,8 +918,7 @@ describe('SidePanel', () => {
 
     // 3) Clicking "Cats" in the sentence should backfill the in-sentence
     //    meaning onto the existing card, not silently do nothing.
-    const user = userEvent.setup()
-    await user.click(screen.getByText('Cats'))
+    selectWord('Cats')
 
     await waitFor(() =>
       expect(screen.getByTestId('sidepanel-card-cats')).toHaveTextContent('cats在这句里的意思')
@@ -947,11 +995,11 @@ describe('SidePanel', () => {
       render(<SidePanel />)
 
       const sentence = await screen.findByTestId('sidepanel-sentence')
-      const highlighted = within(sentence)
-        .getAllByRole('button')
-        .filter(b => b.getAttribute('data-clicked-word') === 'true')
+      const highlighted = Array.from(
+        sentence.querySelectorAll('[data-clicked-word="true"]')
+      )
       expect(highlighted).toHaveLength(2)
-      highlighted.forEach(b => expect(b).toHaveTextContent('great'))
+      highlighted.forEach(el => expect(el).toHaveTextContent('great'))
     })
 
     it('falls back to a separate translateWordInContext when the model omits the word gloss', async () => {
@@ -1005,11 +1053,119 @@ describe('SidePanel', () => {
       )
       expect(screen.queryByTestId('sidepanel-definitions')).not.toBeInTheDocument()
       const sentence = screen.getByTestId('sidepanel-sentence')
+      expect(sentence.querySelector('[data-clicked-word]')).toBeNull()
+    })
+  })
+
+  describe('drag-select phrase lookup in the sentence (ADR-017)', () => {
+    const seedSentence = async (chinese = '猫是很棒的宠物。') => {
+      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+        [PENDING_SENTENCE_STORAGE_KEY]: {
+          sentence: SENTENCE,
+          word: '',
+          sourceUrl: '',
+          createdAt: 1,
+        },
+      })
+      mockSendMessage.mockImplementation(async (message: { type: string }) => {
+        if (message.type === 'translateSentence') return { success: true, chinese }
+        if (message.type === 'translateWordInContext') {
+          return { success: true, chinese: '很棒的宠物（本句）' }
+        }
+        return { success: false }
+      })
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-sentence')
+    }
+
+    it('pops a confirm button, and sends no lookup yet, when 2+ words are selected', async () => {
+      await seedSentence()
+
+      selectWord('great pets')
+
+      expect(await screen.findByTestId('sidepanel-phrase-confirm')).toBeInTheDocument()
+      expect(mockSendMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'translateWordInContext' })
+      )
+    })
+
+    it('confirms the selection into a phrase card with one in-context lookup', async () => {
+      const user = userEvent.setup()
+      await seedSentence()
+
+      selectWord('great pets')
+      await user.click(await screen.findByTestId('sidepanel-phrase-confirm'))
+
+      const card = await screen.findByTestId('sidepanel-card-great pets')
+      expect(card).toHaveTextContent('很棒的宠物（本句）')
+      expect(within(card).queryByText(/音标加载中/)).not.toBeInTheDocument()
       expect(
-        within(sentence)
-          .getAllByRole('button')
-          .some(b => b.getAttribute('data-clicked-word') === 'true')
-      ).toBe(false)
+        mockSendMessage.mock.calls.filter(
+          ([m]) => m.type === 'translateWordInContext'
+        )
+      ).toHaveLength(1)
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'translateWordInContext',
+          word: 'great pets',
+          sentence: SENTENCE,
+        })
+      )
+      expect(screen.queryByTestId('sidepanel-phrase-confirm')).not.toBeInTheDocument()
+    })
+
+    it('snaps a part-word drag out to whole words before looking up', async () => {
+      const user = userEvent.setup()
+      await seedSentence()
+
+      // "Cats are grea|t pet|s." -> phrase should be "great pets"
+      selectWord('reat pet')
+      await user.click(await screen.findByTestId('sidepanel-phrase-confirm'))
+
+      await screen.findByTestId('sidepanel-card-great pets')
+    })
+
+    it('dismisses the confirm button on Escape without looking anything up', async () => {
+      const user = userEvent.setup()
+      await seedSentence()
+
+      selectWord('great pets')
+      const btn = await screen.findByTestId('sidepanel-phrase-confirm')
+      expect(btn).toHaveFocus() // autofocus so a keyboard selection can confirm/cancel
+      await user.keyboard('{Escape}')
+
+      await waitFor(() =>
+        expect(screen.queryByTestId('sidepanel-phrase-confirm')).not.toBeInTheDocument()
+      )
+      expect(mockSendMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'translateWordInContext' })
+      )
+    })
+
+    it('does not pop the confirm button when the whole sentence is selected', async () => {
+      await seedSentence()
+
+      selectWord(SENTENCE)
+
+      await waitFor(() => expect(mockSendMessage).toHaveBeenCalled())
+      expect(screen.queryByTestId('sidepanel-phrase-confirm')).not.toBeInTheDocument()
+    })
+
+    it('re-selecting a phrase already in the list just moves its card up, no new lookup', async () => {
+      const user = userEvent.setup()
+      await seedSentence()
+
+      selectWord('great pets')
+      await user.click(await screen.findByTestId('sidepanel-phrase-confirm'))
+      await screen.findByTestId('sidepanel-card-great pets')
+
+      selectWord('great pets')
+      await waitFor(() =>
+        expect(screen.queryByTestId('sidepanel-phrase-confirm')).not.toBeInTheDocument()
+      )
+      expect(
+        mockSendMessage.mock.calls.filter(([m]) => m.type === 'translateWordInContext')
+      ).toHaveLength(1)
     })
   })
 })
