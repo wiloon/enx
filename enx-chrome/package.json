@@ -13,6 +13,8 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:headed": "playwright test --headed",
+    "test:e2e:homelab": "playwright test --config playwright.homelab.config.ts",
+    "smoke:homelab": "node scripts/homelab-smoke.mjs",
     "test:all": "pnpm test && pnpm test:e2e",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -20,6 +22,9 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
+    "@clerk/chrome-extension": "^3.1.80",
+    "@floating-ui/dom": "^1.8.0",
+    "@heroicons/react": "^2.2.0",
     "@sentry/react": "^7.114.0",
     "@sentry/tracing": "^7.114.0",
     "jotai": "^2.8.0",

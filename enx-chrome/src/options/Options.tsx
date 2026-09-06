@@ -6,6 +6,7 @@ import {
 } from '@/config/env'
 import '@/index.css'
 import { initSentry } from '@/lib/sentry'
+import { useWordHighlightEnabled } from '@/hooks/useWordHighlightEnabled'
 import { apiBaseUrlAtom } from '@/store/atoms'
 import { Provider, useAtom } from 'jotai'
 import { useEffect, useState } from 'react'
@@ -17,6 +18,10 @@ function OptionsContent() {
   const [customUrl, setCustomUrl] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [message, setMessage] = useState('')
+  const {
+    enabled: wordHighlightEnabled,
+    setEnabled: setWordHighlightEnabled,
+  } = useWordHighlightEnabled()
 
   useEffect(() => {
     // Load the current API URL on mount
@@ -61,8 +66,8 @@ function OptionsContent() {
 
   const presetUrls = [
     { label: 'Local (Development)', url: 'http://localhost:8090' },
-    { label: 'Staging', url: 'https://enx-dev.wiloon.com' },
-    { label: 'Production', url: 'https://enx.wiloon.com' },
+    { label: 'Lab', url: 'https://enx-api.wiloon.lab' },
+    { label: 'Production', url: 'https://enx-api.wiloon.com' },
   ]
 
   if (isLoading) {
@@ -178,6 +183,31 @@ function OptionsContent() {
           )}
         </div>
 
+        {/* Reading Preferences */}
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4 text-gray-800">
+            Reading Preferences
+          </h2>
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              data-testid="word-highlight-toggle"
+              checked={wordHighlightEnabled}
+              onChange={e => setWordHighlightEnabled(e.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>
+              <span className="block text-sm font-medium text-gray-800">
+                Highlight vocabulary while reading
+              </span>
+              <span className="block text-sm text-gray-500">
+                Underlines words worth reviewing. Turn off for a clean page —
+                you can still click any word to look it up.
+              </span>
+            </span>
+          </label>
+        </div>
+
         {/* Help Section */}
         <div className="bg-white rounded-lg shadow-lg p-6">
           <h2 className="text-xl font-semibold mb-4 text-gray-800">Help</h2>
@@ -188,13 +218,12 @@ function OptionsContent() {
               development.
             </p>
             <p>
-              <strong className="text-gray-800">Staging:</strong> Use
-              https://enx-dev.wiloon.com for testing with the development
-              server.
+              <strong className="text-gray-800">Lab:</strong> Use
+              https://enx-api.wiloon.lab for the homelab lab deployment.
             </p>
             <p>
               <strong className="text-gray-800">Production:</strong> Use
-              https://enx.wiloon.com for the live production environment.
+              https://enx-api.wiloon.com for the live production environment.
             </p>
             <p className="text-gray-500 text-xs mt-4">
               💡 Tip: After changing the API URL, you may need to log in again.

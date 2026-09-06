@@ -41,10 +41,16 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
 }
 
 :root {
   --radius: 0.625rem;
+  /* Marketing accent (ADR-013 Decision 4): the "cat's eye nebula" teal-blue,
+     used only in the marketing area for CTAs, links and icon accents. */
+  --brand: oklch(0.55 0.13 230);
+  --brand-foreground: oklch(0.985 0 0);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -79,6 +85,8 @@
 }
 
 .dark {
+  --brand: oklch(0.7 0.12 230);
+  --brand-foreground: oklch(0.205 0 0);
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);

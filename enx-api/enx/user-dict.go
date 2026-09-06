@@ -66,11 +66,8 @@ func (ud *UserDict) Mark() {
 
 // IsExist checks if user dict record exists in database
 func (ud *UserDict) IsExist() bool {
-	queryCount, alreadyAcquainted := repo.GetUserWordQueryCount(ud.WordId, ud.UserId)
-
-	// If both are 0, record might not exist (or both fields are actually 0)
-	// Repository returns 0,0 for non-existent records
-	if queryCount == 0 && alreadyAcquainted == 0 {
+	queryCount, alreadyAcquainted, found := repo.GetUserWordQueryCount(ud.WordId, ud.UserId)
+	if !found {
 		logger.Debugf("user dict record not found, word_id: %s, user_id: %s",
 			ud.WordId, ud.UserId)
 		return false

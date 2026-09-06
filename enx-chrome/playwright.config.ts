@@ -7,6 +7,9 @@ import { defineConfig, devices } from '@playwright/test'
 export default defineConfig({
   testDir: './e2e',
 
+  // Homelab specs run against a live deployment via playwright.homelab.config.ts
+  testIgnore: /homelab-.*\.spec\.ts/,
+
   // Run tests in files in parallel
   fullyParallel: false,
 

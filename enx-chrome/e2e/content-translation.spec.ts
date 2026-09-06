@@ -1,3 +1,7 @@
+// NOTE (ADR-011 issue #11 / #14): highlighting is painted with the CSS Custom
+// Highlight API -- there are no `.enx-word` marker elements. Lookups are
+// coordinate clicks on word text (clickWordAndWaitForPopup).
+
 import { expect, test } from './fixtures'
 import {
   clickWordAndWaitForPopup,
@@ -30,7 +34,7 @@ test.describe('Content Script - Translation Popup', () => {
     await clickWordAndWaitForPopup(page, 0)
 
     // Check popup is visible
-    const popup = page.locator('#enx-word-popup')
+    const popup = page.locator('#enx-anchored-overlay')
     await expect(popup).toBeVisible()
   })
 
@@ -39,13 +43,13 @@ test.describe('Content Script - Translation Popup', () => {
   }) => {
     await clickWordAndWaitForPopup(page, 0)
 
-    const popup = page.locator('#enx-word-popup')
+    const popup = page.locator('#enx-anchored-overlay')
 
     // Should show the word in header
-    await expect(popup.locator('.enx-popup-header h3')).toBeVisible()
+    await expect(popup.locator('[data-testid="word-popover-header"] h3')).toBeVisible()
 
     // Should show translation content or loading state
-    await expect(popup.locator('.enx-popup-content')).toBeVisible()
+    await expect(popup.locator('[data-testid="word-popover-content"]')).toBeVisible()
   })
 
   test('should close translation popup when clicking outside', async ({
@@ -54,7 +58,7 @@ test.describe('Content Script - Translation Popup', () => {
     await clickWordAndWaitForPopup(page, 0)
 
     // Popup should be visible
-    await expect(page.locator('#enx-word-popup')).toBeVisible()
+    await expect(page.locator('#enx-anchored-overlay')).toBeVisible()
 
     // Wait for click-outside handler to be attached (100ms timeout in content script)
     await page.waitForTimeout(150)
@@ -64,10 +68,10 @@ test.describe('Content Script - Translation Popup', () => {
     await header.click()
 
     // Wait for popup to be removed
-    await page.waitForSelector('#enx-word-popup', { state: 'detached', timeout: 2000 })
+    await page.waitForSelector('#enx-anchored-overlay', { state: 'detached', timeout: 2000 })
 
     // Double-check it's not visible
-    const popup = page.locator('#enx-word-popup')
+    const popup = page.locator('#enx-anchored-overlay')
     const exists = await popup.count()
     expect(exists).toBe(0)
   })
@@ -78,7 +82,7 @@ test.describe('Content Script - Translation Popup', () => {
     // Click first word
     await clickWordAndWaitForPopup(page, 0)
     const firstWord = await page
-      .locator('#enx-word-popup .enx-popup-header h3')
+      .locator('#enx-anchored-overlay [data-testid="word-popover-header"] h3')
       .textContent()
 
     // Close popup
@@ -88,37 +92,21 @@ test.describe('Content Script - Translation Popup', () => {
     // Click second word
     await clickWordAndWaitForPopup(page, 1)
     const secondWord = await page
-      .locator('#enx-word-popup .enx-popup-header h3')
+      .locator('#enx-anchored-overlay [data-testid="word-popover-header"] h3')
       .textContent()
 
     // Words should be different
     expect(firstWord).not.toBe(secondWord)
   })
 
-  test('should maintain consistent underline thickness after translation', async ({
-    page,
-  }) => {
-    // Get initial underline thickness of first highlighted word
-    const firstWord = page.locator('.enx-word').first()
-    await expect(firstWord).toBeVisible()
-
-    const initialThickness = await firstWord.evaluate((el: HTMLElement) => {
-      return window.getComputedStyle(el).textDecorationThickness
-    })
-
-    // Click word to trigger translation (which updates color)
-    await clickWordAndWaitForPopup(page, 0)
-
-    // Wait for potential color update
-    await page.waitForTimeout(500)
-
-    // Get underline thickness after translation/color update
-    const updatedThickness = await firstWord.evaluate((el: HTMLElement) => {
-      return window.getComputedStyle(el).textDecorationThickness
-    })
-
-    // Verify thickness remains consistent
-    expect(updatedThickness).toBe(initialThickness)
-    expect(updatedThickness).toBe('1px')
-  })
+  // REMOVED (ADR-011 issue #11 / #14): 'should maintain consistent underline
+  // thickness after translation'. It guarded an inline-style
+  // `text-decoration-thickness` drift bug on the old `<u class="enx-word">`
+  // element when its colour was updated post-translation. Under the CSS Custom
+  // Highlight API the underline is drawn entirely from the injected
+  // `::highlight(enx-hl-N)` rule -- there is no per-word element and no inline
+  // style to drift, and `getComputedStyle` cannot read a custom-highlight
+  // pseudo. The paint-stability concern (a word staying highlighted across a
+  // bucket change) is covered by content-popup-shadow-dom.spec.ts's Mark Known
+  // test and word-highlight-toggle.spec.ts.
 })

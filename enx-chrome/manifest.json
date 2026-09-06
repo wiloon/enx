@@ -4,18 +4,22 @@
   "name": "ENX - English Learning Extension",
   "version": "1.0.1",
   "description": "AI-powered English learning assistant that helps you learn vocabulary while browsing the web",
-  "permissions": ["storage", "activeTab", "scripting", "notifications", "identity"],
+  "permissions": ["storage", "activeTab", "scripting", "notifications", "identity", "sidePanel", "contextMenus", "cookies"],
   "host_permissions": [
     "http://*/*",
     "https://*/*",
     "http://localhost:8090/*",
-    "https://enx-lab.wiloon.com/*",
-    "https://enx-dev.wiloon.com/*",
+    "https://enx-api.wiloon.lab/*",
+    "https://enx.wiloon.lab/*",
+    "https://enx-api.wiloon.com/*",
     "https://enx.wiloon.com/*",
-    "https://enx-auth.auth.us-east-1.amazoncognito.com/*",
+    "https://rational-deer-4450.clerk.accounts.dev/*",
     "https://www.youdao.com/*",
     "https://claude.com/blog/*"
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_title": "ENX English Learning"
@@ -34,9 +38,11 @@
         "https://www.reuters.com/*",
         "https://www.anthropic.com/*",
         "https://anthropic.skilljar.com/*",
-        "https://claude.com/blog/*"
+        "https://claude.com/blog/*",
+        "https://x.com/*",
+        "https://twitter.com/*"
       ],
-      "js": ["src/content/content.ts"],
+      "js": ["src/content/content.tsx"],
       "run_at": "document_end"
     }
   ],
@@ -47,6 +53,9 @@
     "128": "icons/icon-128.png"
   },
   "options_page": "options.html",
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
   "commands": {
     "_execute_action": {
       "suggested_key": {

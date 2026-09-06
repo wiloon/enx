@@ -1,145 +1,99 @@
-import { errorAtom, isLoadingAtom, sessionAtom, userAtom } from '@/store/atoms'
+import { SignOutButton, useUser } from '@clerk/chrome-extension'
+import { config } from '@/config/env'
+import { errorAtom } from '@/store/atoms'
 import { useAtom } from 'jotai'
 import { useEffect, useState } from 'react'
-import { apiService } from '@/services/api'
 
 interface LoginProps {
   onLoginSuccess?: () => void
 }
 
-type CognitoSignInResponse = {
-  success: boolean
-  error?: string
-  user?: {
-    id: number
-    username: string
-    email: string
-    status?: string
-    isLoggedIn: true
-  }
-}
-
 export default function Login({ onLoginSuccess }: LoginProps) {
-  const [user, setUser] = useAtom(userAtom)
-  const [, setSession] = useAtom(sessionAtom)
-  const [isLoading, setIsLoading] = useAtom(isLoadingAtom)
+  const { isLoaded, isSignedIn, user } = useUser()
   const [error, setError] = useAtom(errorAtom)
   const [underliningStatus, setUnderliningStatus] = useState<
     'idle' | 'processing' | 'completed'
   >('idle')
 
   useEffect(() => {
-    if (user.isLoggedIn) {
-      apiService
-        .getMe()
-        .then(resp => {
-          if (resp.success && resp.data) {
-            setUser({
-              id: resp.data.id as unknown as number,
-              username: resp.data.name,
-              email: resp.data.email,
-              status: resp.data.status,
-              isLoggedIn: true,
-            })
-          }
-        })
-        .catch(() => {})
-    }
-  }, [])
-
-  const handleCognitoSignIn = async () => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      const response = (await chrome.runtime.sendMessage({
-        action: 'cognitoSignIn',
-      })) as CognitoSignInResponse
-
-      if (!response?.success || !response.user) {
-        throw new Error(response?.error || 'Sign-in failed')
-      }
-
-      const result = await chrome.storage.local.get([
-        'accessToken',
-        'refreshToken',
-        'enx-session',
-      ])
-      const access =
-        (result.accessToken as string) ||
-        result['enx-session']?.accessToken ||
-        ''
-      const refresh =
-        (result.refreshToken as string) ||
-        result['enx-session']?.refreshToken ||
-        ''
-
-      apiService.setAccessToken(access)
-      setUser(response.user)
-      setSession({ accessToken: access, refreshToken: refresh })
-
+    if (isLoaded && isSignedIn) {
       onLoginSuccess?.()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Sign-in failed')
-    } finally {
-      setIsLoading(false)
     }
-  }
-
-  const handleLogout = async () => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      await chrome.runtime.sendMessage({ action: 'cognitoSignOut' })
-    } catch (e) {
-      console.error('Sign-out message failed:', e)
-    } finally {
-      setUser({ id: 0, username: '', email: '', isLoggedIn: false })
-      setSession({ accessToken: '', refreshToken: '' })
-      apiService.setAccessToken('')
-      setIsLoading(false)
-    }
-  }
+  }, [isLoaded, isSignedIn, onLoginSuccess])
 
   const handleEnableLearning = async () => {
     setUnderliningStatus('processing')
+    setError(null)
     try {
       const [tab] = await chrome.tabs.query({
         active: true,
         currentWindow: true,
       })
-      if (tab?.id) {
-        await chrome.tabs.sendMessage(tab.id, { action: 'enxRun' })
-        setUnderliningStatus('completed')
+      if (!tab?.id) {
+        throw new Error('No active tab found')
       }
-    } catch {
-      setError('Could not enable learning on this page')
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        action: 'enxRun',
+      })
+      if (!response?.success) {
+        throw new Error(response?.error || 'Failed to enable learning mode')
+      }
+      setUnderliningStatus('completed')
+    } catch (e) {
+      const message = e instanceof Error ? e.message : ''
+      setError(
+        message.includes('Receiving end does not exist')
+          ? 'This page needs to be refreshed before learning mode can start. Reload the page and try again.'
+          : message || 'Could not enable learning on this page'
+      )
       setUnderliningStatus('idle')
     }
   }
 
-  if (!user.isLoggedIn) {
+  if (!isLoaded) {
+    return <div className="w-80 p-4 text-sm text-gray-600">Loading…</div>
+  }
+
+  if (!isSignedIn) {
+    // OAuth (Google/GitHub) can't complete inside the extension popup -- the
+    // popup is destroyed the moment it loses focus. Sign in on the Catseye
+    // website instead (full-page Clerk UI, OAuth works there); the extension
+    // then picks up the session automatically via ClerkProvider `syncHost`.
+    const openWebSignIn = () => {
+      chrome.tabs.create({ url: `${config.clerkSyncHost}/sign-in` })
+    }
     return (
-      <div className="w-80 p-4">
-        <h2 className="text-lg font-semibold mb-2">ENX Sign in</h2>
-        <p className="text-sm text-gray-600 mb-4">
-          Sign in with email or Google (AWS Cognito).
+      <div className="w-80 p-4 space-y-3">
+        <h2 className="text-lg font-semibold">Catseye</h2>
+        <p className="text-sm text-gray-600">
+          Sign in to start highlighting and looking up words as you read.
         </p>
-        {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+        {error && <p className="text-sm text-red-600">{error}</p>}
         <button
           type="button"
-          className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:opacity-50"
-          disabled={isLoading}
-          onClick={handleCognitoSignIn}
+          className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+          onClick={openWebSignIn}
         >
-          {isLoading ? 'Signing in…' : 'Sign in'}
+          Sign in on the web
         </button>
+        <p className="text-xs text-gray-400">
+          Opens Catseye in a new tab. Once you&apos;re signed in there, come back
+          — this popup updates on its own.
+        </p>
       </div>
     )
   }
 
+  const displayName =
+    user?.fullName ||
+    user?.username ||
+    user?.primaryEmailAddress?.emailAddress ||
+    'there'
+
   return (
     <div className="w-80 p-4">
-      <p className="mb-2">Welcome, {user.username}!</p>
+      <p className="mb-2">Welcome, {displayName}!</p>
+      {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
       <button
         type="button"
         className="w-full bg-green-600 text-white py-2 rounded mb-2 hover:bg-green-700"
@@ -152,13 +106,11 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             ? 'Enabled'
             : 'Enable Learning Mode'}
       </button>
-      <button
-        type="button"
-        className="w-full border py-2 rounded"
-        onClick={handleLogout}
-      >
-        Sign out
-      </button>
+      <SignOutButton>
+        <button type="button" className="w-full border py-2 rounded">
+          Sign out
+        </button>
+      </SignOutButton>
     </div>
   )
 }

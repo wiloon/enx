@@ -2,6 +2,276 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-09-01: Rewrite Playwright E2E for the CSS Custom Highlight API — ADR-011 / issue #14
+
+**Agent**: Claude Code (Sonnet)
+**Task**: The `e2e/` specs still drove the removed `<u class="enx-word">` elements
+(issue #11 switched highlighting to the CSS Custom Highlight API, so the DOM has no
+marker nodes). Rewrite them against the new model so a homelab E2E run stops masking
+real regressions.
+
+**Solution**:
+- `e2e/helpers.ts`: one page-side range collector, `getHighlightedWords(page, {
+  scrollIndexIntoView? })` — every `enx-hl-*` range in document order with each word's
+  viewport-relative click point; it scrolls a target word in only when it is off-screen,
+  so viewport-edge tests keep their word where it was. `getHighlightedWordsCount` sums
+  `Highlight.size`; `getHighlightNames` lists the `enx-hl-*` buckets; `isWordHighlighted`
+  and `clickHighlightedWord` (real `page.mouse.click` at the word centre) build on the
+  collector. `clickWordAndWaitForPopup` delegates to `clickHighlightedWord`.
+  `waitForContentScript` now waits on the injected `style[data-enx-highlight-styles]`
+  **and** a non-empty `enx-hl-*` registry (a real paint), removing the reliance on
+  `enableLearningMode`'s fixed 2s sleep. Removed the `TODO(ADR-011 issue #11)` block.
+- `content-highlighting.spec.ts`: `'should add enx-word class…'` → `'should register
+  highlighted words in the CSS Highlight API'` (asserts `getHighlightNames` non-empty +
+  count > 0).
+- `content-translation.spec.ts`: the underline-thickness test is **removed** with a note
+  — it guarded an inline-style drift bug that cannot exist under the Highlight API, and
+  `getComputedStyle` can't read a custom-highlight pseudo; paint-stability is covered by
+  the Mark Known and toggle specs.
+- `content-popup-shadow-dom.spec.ts`: every `page.locator('.enx-word')` → coordinate
+  clicks; the Mark Known test now asserts the word's Range drops out of every bucket
+  (`isWordHighlighted` false, count decreases) — was: underline turns `rgb(255,255,255)`.
+- New `e2e/word-highlight-toggle.spec.ts` (issue #13 flow): toggling the preference via
+  the options page clears / repopulates `CSS.highlights` with no reload, and
+  click-to-lookup still works while the paint is off.
+- New `e2e/homelab-x-tweet-rebuild.spec.ts` (issue #12): a real spec in the homelab lane
+  (`playwright.homelab.config.ts`), `test.skip` unless `ENX_HOMELAB=1` + `ENX_ACCESS_TOKEN`
+  + `ENX_X_TWEET_URL`. Opens a tweet permalink, highlights it, clicks through to another
+  status (History-API route change, no reload), asserts the rebuild, then `goBack()` and
+  asserts the re-highlight. The SPA adapter only engages on a real `x.com` document so it
+  can't run in the local lane; jest (`src/content/__tests__/spaRebuild.test.ts`) covers
+  the pure rebuild logic.
+
+**Files**: modified `e2e/helpers.ts`, `e2e/content-highlighting.spec.ts`,
+`e2e/content-translation.spec.ts`, `e2e/content-popup-shadow-dom.spec.ts`; added
+`e2e/word-highlight-toggle.spec.ts`, `e2e/homelab-x-tweet-rebuild.spec.ts`.
+
+**Verification**: `eslint` clean on all touched e2e files (the pre-existing baseline
+`e2e/helpers.ts:_password` warning is untouched); `playwright test --list` compiles the
+local lane (26 tests, was 24: +3 toggle, −1 removed underline test) and the homelab
+lane (+1 x-tweet spec). The suite was **not executed** — it needs non-headless
+Chrome + the Go backend + homelab — so the new specs' "fails without the change"
+property is unverified and `pnpm test:e2e` / `test:e2e:homelab` are pending a homelab
+run. Jest still 139/139.
+
+## 2026-09-01: "Highlight vocabulary while reading" toggle — ADR-011 / issue #13
+
+**Agent**: Claude Code (Sonnet)
+**Task**: Make the word-highlight underline a toggle (default on) reachable from the
+options page and the popup; turning it off clears the underlines immediately without a
+reload, and click-to-lookup keeps working on any word.
+
+**Solution**:
+- New `src/config/preferences.ts` — `getWordHighlightEnabled` / `setWordHighlightEnabled`
+  over `chrome.storage.local` key `enx-word-highlight-enabled` (absent = on), modelled
+  on `config/env.ts`'s `getApiBaseUrl` / `setApiBaseUrl` (try/catch, `[ENX Config]`
+  prefix), plus `onWordHighlightEnabledChange` for the live/cross-surface sync.
+- New `src/hooks/useWordHighlightEnabled.ts` — load + `onChanged` sync + optimistic
+  persisting setter, shared by the options page and popup.
+- `content.tsx`: `processArticleContent` reads the preference *after* the `getWords`
+  round trip and gates only `buildHighlightRanges` + `applyHighlights` (word-data lookup
+  always runs). `refreshHighlights` is async: paints when on, `clearHighlights()` when
+  off. A top-level `onWordHighlightEnabledChange` listener calls `refreshHighlights()`
+  while learning mode is on -- no reload, no re-fetch. Click-to-lookup is never gated.
+- `Options.tsx`: a "Highlight vocabulary while reading" checkbox (default checked).
+  `Popup.tsx`: a "阅读时高亮生词" toggle. Both bound to the same key via the hook.
+
+**Files**: added `config/preferences.ts` + `config/__tests__/preferences.test.ts` (9),
+`hooks/useWordHighlightEnabled.ts` + `hooks/__tests__/useWordHighlightEnabled.test.tsx`
+(4); modified `content.tsx`, `options/Options.tsx`, `popup/Popup.tsx`.
+
+**Follow-up**: E2E coverage of the toggle flow rides on the pending Playwright rewrite
+(from #11).
+
+## 2026-09-01: X in-page tweet-switch auto-rebuild — ADR-011 / issue #12
+
+**Agent**: Claude Code (Sonnet)
+**Task**: On X (`contentVolatility: 'spa'`), re-run learning mode automatically when the
+user switches tweets in-page, so it survives a reply / quote-tweet click / browser back
+without a manual re-enable.
+
+**Solution**:
+- New `src/content/spaRebuild.ts`:
+  - `createSpaRebuilder(deps)` — pure orchestration factory. `onRouteChange(url)`: bump a
+    generation counter, `teardown()`, silently stop if the URL is out of scope, else
+    `waitForContentReady()` then `rebuild()`, abandoning at each await if a newer route
+    change landed. Also `start(navigation)` / `stop()` (manage the `navigate` listener)
+    and `makeIsCurrent()` (so the initial non-navigate run rides the same counter).
+  - `isSupportedPage(url)`, `shouldHandleTweetNavigate(event)` (skip download / hash /
+    reload), `waitForTweetReady(isCurrent)` (`MutationObserver` for
+    `article[tabindex="-1"] [data-testid="tweetText"]`, last match, 100ms debounce, 2s
+    timeout; never `document.title` / `aria-live`).
+- `content.tsx`: `enableEnx` starts the rebuilder + runs the initial pass under
+  `makeIsCurrent()`; `disableEnx` / `enxStop` stop it; only on a `'spa'` adapter with
+  `window.navigation`. `processArticleContent` takes `opts.isCurrent`, checks it before
+  every backend call and (atomically) before the paint, and short-circuits the
+  `getWords` round trip when every word is already cached.
+- `siteAdapters.ts`: `Location` → `PageLocation` (`Pick<Location, 'hostname' | 'pathname'>`)
+  so a `URL` from a navigate destination works.
+- New `src/types/navigation-api.d.ts` — minimal ambient Navigation API types (TS's
+  `lib.dom` ships none yet).
+
+**Files**: added `spaRebuild.ts` + `__tests__/spaRebuild.test.ts` (14 tests) +
+`navigation-api.d.ts`; modified `content.tsx`, `siteAdapters.ts` (+ test).
+
+**Detection was verified 2026-09-01** (issue #11 session): an isolated-world content
+script does receive Navigation API `navigate` events for `push` and `traverse`.
+
+**Follow-up**: the enable/disable listener wiring in `content.tsx` and the full
+tweet-switch flow are E2E territory (the Playwright rewrite is still pending from #11).
+
+## 2026-09-01: Switch word highlight to CSS Custom Highlight API — ADR-011 / issue #11
+
+**Agent**: Claude Code (Sonnet)
+**Task**: The atomic "contract" step of the expand–contract: remove the element-wrapping
+highlight path and switch every site to the CSS Custom Highlight API + delegated
+`caretPositionFromPoint` click-to-lookup.
+
+**Problem**:
+- Highlighting wrapped every looked-up word in `<u class="enx-word">`, mutating the
+  article DOM (two parallel strategies, a pile of workarounds — flex fix, tag-pairing
+  self-check, white-underline sentinel; on X it broke React).
+- Click-to-lookup only worked because each word was an element with a listener.
+
+**Solution**:
+- `wordProcessor.ts`: removed `renderWithHighlights` / `applyHighlightsToDom` /
+  `applyHighlightsToNodes` / `getColorCode` / `getTextDecoration`. `rebuildHighlights`
+  now takes one root or an array. The review-stage palette (`HIGHLIGHT_BUCKET_HSL`)
+  lives next to `REVIEW_BUCKET_COUNT`.
+- `content.tsx`: `processArticleContent` builds Ranges → `CSS.highlights`, no DOM touch.
+  One delegated `handleArticleClick` per article root resolves the word under the
+  pointer via `caretPositionFromPoint` (fallback `caretRangeFromPoint`) and
+  `expandToWordRange`. `updateWordHighlighting` → `refreshHighlights` (rebuild).
+  `disableEnx` → `clearHighlights()` + drop the listener. Module `.enx-word` CSS →
+  `::highlight(enx-hl-N)` rules generated from the shared palette.
+- `siteAdapters.ts`: dropped `highlightStrategy` + `HighlightStrategy`; added
+  `contentVolatility` (`'static'` wired, `'spa'`/`'streaming'` placeholders) and
+  `clickBinding` (`'bubble'` only). Static sites keep `cleanArticleText` for word
+  extraction — switching them is out of ADR-011's scope.
+
+**Files**:
+- Modified: `enx-chrome/src/content/content.tsx`, `enx-chrome/src/lib/wordProcessor.ts`,
+  `enx-chrome/src/lib/siteAdapters.ts`, plus the tests for each.
+- Deleted (tested only the removed element path, via local re-implementations):
+  `inPlaceHighlighting`, `flexContainerFix`, `htmlRendering`, `whitespacePreservation`,
+  `realWorldCase`, `highlightingIntegration`, `codeBlockExclusion` test files.
+  `wordHighlighting.test.ts` trimmed to `extractWords` + `cleanArticleText`.
+
+**Verified**:
+- Isolated-world `CSS.highlights` painting — a temporary probe in the built content
+  script registered a highlight + injected a `::highlight()` `<style>` on a real InfoQ
+  page; the underline painted, and the page's MAIN world saw the isolated-world
+  registration (`CSS.highlights` is per-Document, shared across worlds).
+
+**Follow-up**:
+- Playwright specs still assert `.enx-word` — need a rewrite pass (coordinate clicks,
+  `CSS.highlights` assertions). Noted in each affected spec + `e2e/helpers.ts`.
+
+## 2026-09-01: WordProcessor Range-based highlight builder — ADR-011 / issue #10
+
+**Agent**: Claude Code (Sonnet)
+**Task**: Expand step for the CSS Custom Highlight API migration — add the Range-based
+building blocks to `WordProcessor`, not yet wired into the content script.
+
+**Problem**:
+- The highlight underline is drawn by wrapping every looked-up word in a `<u class="enx-word">`
+  element (`applyHighlightsToNodes`), which mutates the article DOM. ADR-011 moves to the
+  CSS Custom Highlight API: underlines painted over `Range`s, zero DOM mutation.
+- The risky new logic (range building, review-bucket assignment, ICU word-boundary
+  detection) needed to be proven by fast tests before the switch (issue #11).
+
+**Solution** (all additive — old element-wrapping methods untouched):
+- `reviewBucket(wordData)` — 5 review stages by `LoadCount`, or null when not reviewable;
+  the `#FFFFFF` "don't highlight" sentinel disappears (those words produce no Range).
+  `isReviewable(wordData)` extracted and shared with `getColorCode`.
+- `tokenizeWords` (private) — ICU word segmentation, dropping letter-free segments and
+  rejoining `-<word>` runs across letter-only segments only, so tokens line up with
+  `extractWords()` keys (`well-known` whole, `COVID-19` → `covid`).
+- `expandToWordRange(node, offset)` — caret position → whole-word `Range`, or null in an
+  excluded subtree / not on a word (click-to-lookup, issue #11).
+- `buildHighlightRanges` / `applyHighlights` / `clearHighlights` / `rebuildHighlights` —
+  bucketed `Range`s → named `CSS.highlights` entries (`enx-hl-1..5`), rebuildable, and
+  cleared without touching host-page highlights.
+- `isInExcludedSubtree` / `LOOKUP_EXCLUDED_TAGS` extracted; `collectTextNodes` now reuses
+  them (one source of truth for the exclusion set).
+- jsdom shim for `Highlight` / `CSS.highlights` in `src/test/setup.ts`.
+
+**Files**:
+- Modified: `enx-chrome/src/lib/wordProcessor.ts`, `enx-chrome/src/test/setup.ts`
+- Added: `enx-chrome/src/lib/__tests__/highlightRanges.test.ts` (16 tests)
+
+**Benefits**:
+- The Highlight-API path is fully covered before the content-script switch.
+- Tokenisation matches the backend's word keys, so highlights won't silently go missing.
+
+## 2026-09-01: Fix pickFocusedTweet criteria + quote-tweet handling — ADR-011 / issue #9
+
+**Agent**: Claude Code (Sonnet)
+**Task**: Prefactor — correct which tweet body gets processed on an X tweet-detail page.
+
+**Problem**:
+- `pickFocusedTweet` (ADR-010 §2.2) had three fallback criteria: `article[tabindex="-1"]`,
+  largest font size, and "the article with no self `/status/` link". Browser testing
+  (`docs/research/adr-010-phase2-dom-readiness.md` §3) showed the last two are wrong —
+  a long main tweet renders smaller than a short reply, and the main tweet's article does
+  carry `/status/` links (permalink, and a quoted tweet's).
+- A quoted tweet's body is a second `[data-testid="tweetText"]` inside the same focused
+  `<article>`, which the old code mishandled (fell through to the DOM-order fallback).
+
+**Solution**:
+- `pickFocusedTweet` keeps only `article[tabindex="-1"]`, taking the **last** such article
+  in DOM order (outgoing + incoming coexist during an SPA tweet switch), then the first
+  `tweetText` inside it (main body precedes quoted body). DOM-order fallback + `console.warn`
+  when no article is marked focused.
+- Font-size and self-`/status/`-link criteria removed.
+
+**Files**:
+- Modified: `enx-chrome/src/lib/siteAdapters.ts`, `enx-chrome/src/lib/__tests__/siteAdapters.test.ts`
+
+**Benefits**:
+- On a conversation / quote-tweet page, only the tweet the user opened is marked up.
+- Regression tests lock in that the two wrong criteria stay gone.
+
+## 2026-09-01: Popup positioning takes a Range (Floating UI) — ADR-011 / issue #8
+
+**Agent**: Claude Code (Sonnet)
+**Task**: Prefactor for the CSS Custom Highlight API migration — decouple word-popup
+positioning from the `.enx-word` element so a later ticket can remove the elements.
+
+**Problem**:
+- The word popup and drag-select hint popup anchored to a DOM element via CSS Anchor
+  Positioning (an injected `anchor-name`), and `extractSentenceContext` / the phrase
+  anchor lookup both required a real element inside the article.
+- ADR-011 removes `.enx-word` entirely; positioning had to stop depending on it first.
+
+**Solution**:
+- Added `@floating-ui/dom`. `createAnchoredPopup` now takes a `Range` (wrapped as a
+  Floating UI virtual element, `contextElement` set so `autoUpdate` tracks nested
+  scroll containers — the X case); `computePosition` + `offset`/`flip`/`shift`/`size`,
+  `autoUpdate` cleanup folded into `popupEventCleanup` so both close paths stop it.
+- `WordProcessor.extractSentenceContext(reference: Range, queryText)` — reads the
+  range's start for the container/offset; `findSentenceContainer` / `getTextOffsetWithin`
+  Range-ified.
+- `findPhraseAnchor` deleted (ADR-011 Decision 5): the phrase flow passes a collapsed
+  copy of the selection's start range to `extractSentenceContext`.
+- New shared `src/lib/rangeUtils.ts` (`nearestElement`, `referenceLineHeight`).
+
+**Files**:
+- Modified: `enx-chrome/src/content/content.tsx`, `enx-chrome/src/lib/wordProcessor.ts`,
+  `enx-chrome/package.json`
+- Added: `enx-chrome/src/lib/rangeUtils.ts` + `__tests__/rangeUtils.test.ts`
+- Rewrote: `enx-chrome/src/content/__tests__/extractSentenceContext.test.ts`
+- Deleted: `enx-chrome/src/content/__tests__/phraseAnchor.test.ts`
+
+**Benefits**:
+- Article DOM is untouched even while a popup is open; popup flips/shifts at viewport
+  edges and tracks the word inside nested scroll containers.
+- One highlighting concern (`.enx-word`) can now be removed without also rewriting
+  positioning or sentence-context extraction.
+
+**Note**: popup geometry (Floating UI) is verified by Playwright E2E + manual, not unit
+tests — jsdom has no layout. `pnpm build` needs Node 24 (Vite 7).
+
 ## 2025-11-12: Separated Unit Tests and Integration Tests
 
 **Agent**: GitHub Copilot
