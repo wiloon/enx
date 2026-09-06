@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Accepted — 2026-09-06。删掉死接口 `GET /ecdict`（#19/#20 随之消失）、seam 收敛（A2，收敛后只剩 `translateWord` 一个 caller）、每次调用计量不去重（B2）、SQLite 不上 Redis（C2）、单条 upsert（D2）、词典路径 fail-open（E2）、#17/#18 一并修均已确认。`GET /ecdict` 删除已实现（`enx-api.go`，`go build` / 相关包测试通过）；其余进入 TDD，按 Mitigation 的实施顺序推进。 |
+| **状态** | Accepted — 2026-09-06。删掉死接口 `GET /ecdict`（#19/#20 随之消失）、seam 收敛（A2，收敛后只剩 `translateWord` 一个 caller）、每次调用计量不去重（B2）、SQLite 不上 Redis（C2）、单条 upsert（D2）、词典路径 fail-open（E2）、#17/#18 一并修均已确认。TDD 进度：**步骤 0（删 `/ecdict`）已提交 `abbb590`；步骤 1（`CheckAndIncrementLookup` 单条 upsert，语义不变）已实现**。剩余步骤 2（#17/#18 错误处理）、3（`dictionary.Lookup` 深 seam + B2 计量）、4（配额行清理）。 |
 | **日期** | 2026-09-06 |
 | **关联 Spec** | [`TASK-SPEC-enx-billing-stripe-subscription.md`](../tasks/TASK-SPEC-enx-billing-stripe-subscription.md) §4.2 已把 `dictionary.Lookup` 定位为「统一查词入口，在返回结果前插入配额检查」——本 ADR 是**把这个意图补齐**（实现时 `fillFromEcdict` 把「先查本地」的分支留在了 seam 外）；配套 TASK-SPEC 增补留到编码阶段（同 ADR-008 / ADR-011 / ADR-017 的做法） |
 | **关联 ADR** | [`adr-009-billing-stripe-subscription-and-ai-credits.md`](adr-009-billing-stripe-subscription-and-ai-credits.md)（Decision 6：免费查词走独立每日配额、不进积分系统；本 ADR **澄清并延续**它——配额覆盖**所有释义查询**，含本地缓存命中，并把计量点收敛到一个 seam）、[`adr-014-sidepanel-clicked-word-and-token-billing.md`](adr-014-sidepanel-clicked-word-and-token-billing.md)（AI 翻译按 token 计费、与查词配额是两个独立计量器；本 ADR 不动 AI 侧） |
@@ -40,9 +40,13 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 
 （#19：`DoSearchEcdict` 通用错误返回 `200 {Dict:null}`——随死接口一起删掉，不单独修。）
 
-### 计数器的并发首查冲突（#15 的一个放大面）
+### 计数器是读后写的事务
 
-`CheckAndIncrementLookup`（`billing/quota/lookup_quota.go`）现在是**先 `First` 再 `Create`/`Update`** 的事务。当天某用户第一次查词时，若 N 个查词并发（SW 冷启动后一次页面加载打出去一批），N 个 goroutine 全部 `ErrRecordNotFound` → 全部 `tx.Create` 同一个 `(user_id, date)` → 唯一约束冲突，N−1 个拿到错误，然后被 #17/#18 误判。`_txlock=immediate` + `busy_timeout(10000)` 缓解锁等待，但 `Create` 撞唯一键这一下仍会返回错误给 N−1 个 caller。
+`CheckAndIncrementLookup`（`billing/quota/lookup_quota.go`）现在是**先 `First` 再 `Create`/`Update`** 的事务。理论上当天首查并发时 N 个 goroutine 全部 `ErrRecordNotFound` → 全部 `tx.Create` 同一个 `(user_id, date)` PK → 冲突。
+
+**实测（2026-09-06，`TestCheckAndIncrementLookupConcurrentFirstOfDay`，30 goroutine × 5 轮）：不复现。** `_txlock=immediate` 让每个 `Transaction()` 在 `BEGIN IMMEDIATE` 就拿 RESERVED 锁，事务被完全串行化，第二个 goroutine 进来时行已存在、走 `Update` 分支。所以这不是一个当前可复现的 bug（review 给的是 PLAUSIBLE）。
+
+但读后写的形态本身是脆的：换掉 `_txlock=immediate`、或极端争用下超过 `busy_timeout(10000)`，窗口就回来了。而且三分支事务比一条语句难读。D 节把它换成单条原子 upsert——**纯简化 + defense in depth，不改语义**。
 
 ### 设计问题：要不要 Redis
 
@@ -88,12 +92,12 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 | C1. Redis：`INCR` + `EXPIRE` | 原子自增、TTL 自动过期昨天的计数 | 引一个有状态服务进 homelab k8s，要自己的持久化 / 备份；**多副本共享计数器**才需要它，homelab 是单 pod（PVC RWO），没这个问题 |
 | **C2.（采用）SQLite，复用现有 `dictionary_lookup_quota` 表** | 跟 `billing/credit`（AI 积分账本）同一套存储；SQLite 已配 WAL + `synchronous(NORMAL)` + `busy_timeout(10000)` + `_txlock=immediate`，已有 40-goroutine 并发不超发测试 | 每人每天一次自增的量离 SQLite 单写者瓶颈差几个数量级；少一个 homelab 组件；跟 AI 积分一套心智模型。行累积用清理 job（见 G），不是上 Redis 的理由 |
 
-### D. 并发下的 check + increment（修 #17/#18 的根，也压住 #15 的一个面）
+### D. 并发下的 check + increment
 
 | 方案 | 做法 | 结论 |
 | --- | --- | --- |
-| D1. 现状：事务内 `First` → 没有则 `Create`、有则条件 `UpdateColumn` | 读后写 | 当天首查并发时 N−1 个 `Create` 撞唯一键 |
-| **D2.（采用）单条 upsert** | `INSERT INTO dictionary_lookup_quota (user_id, date, count) VALUES (?, ?, 1) ON CONFLICT(user_id, date) DO UPDATE SET count = count + 1 RETURNING count`（GORM `clause.OnConflict` + `Returning`）。拿到 `count` 后跟 `limit` 比：`count > limit` → 已超，返回 `ErrQuotaExceeded`（这一次的 `+1` 已经落库，等于「多放 1 次就拒下一次」——竞态窗口内最多多放 1 次，可接受） | check + create + update 塌成一条原子语句，`Create` 撞唯一键消失；不需要显式事务；`(user_id, date)` 唯一约束/索引在 TASK-SPEC 阶段补 |
+| D1. 现状：事务内 `First` → 没有则 `Create`、有则条件 `UpdateColumn` | 读后写，三分支 | 靠 `_txlock=immediate` 串行化才不出问题；形态脆、难读 |
+| **D2.（采用）单条 upsert，`DO UPDATE` 带 `WHERE`**（**已实现**） | `INSERT INTO dictionary_lookup_quota (user_id, date, count) VALUES (?, ?, 1) ON CONFLICT(user_id, date) DO UPDATE SET count = count + 1 WHERE count < ?`。`RowsAffected == 0` → `ErrQuotaExceeded` | `WHERE count < limit` 让被拒的调用**不落库**——与现状**语义完全一致**（`TestCheckAndIncrementLookupExceedsLimit` 的「rejected attempt shouldn't count」原样绿），没有 `RETURNING` 方案那种「多放 1 次」的妥协。一条语句、无事务、无读后写窗口。`(user_id, date)` 已是复合主键，唯一约束现成 |
 
 ### E. 配额存储读写出错时怎么办
 
@@ -132,7 +136,7 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 
 3. **存储：SQLite，复用 `dictionary_lookup_quota`**（采用 C2）。不引 Redis。
 
-4. **`CheckAndIncrementLookup` 改单条 upsert**（采用 D2）：`INSERT ... ON CONFLICT(user_id, date) DO UPDATE SET count = count + 1 RETURNING count`，`count > limit` 时返回 `ErrQuotaExceeded`。补 `(user_id, date)` 唯一约束。删掉现在的读后写事务。
+4. **`CheckAndIncrementLookup` 改单条 upsert**（采用 D2，**已实现**）：`INSERT ... ON CONFLICT(user_id, date) DO UPDATE SET count = count + 1 WHERE count < ?`，`RowsAffected == 0` → `ErrQuotaExceeded`。删掉读后写事务。语义与现状完全一致（6 个现有测试 + 新增 `TestCheckAndIncrementLookupConcurrentFirstOfDay` 全绿）。
 
 5. **失败策略：词典路径 fail-open**（采用 E2）。`CheckAndIncrementLookup` 内部 DB 错误 → warn + 放行。`isActiveSubscriber` → `(bool, error)`，出错 → warn + 当订阅者（跳过配额）。AI 积分路径不动。
 
@@ -150,7 +154,7 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 - **A2（深 seam）而不是 A1**：把「先本地后 ECDICT + 计量」这段编排放进 `dictionary.Lookup`，`translateWord` 从「自己拼装、还把配额漏在本地命中路径上」变成「只说查词」。#20 那类不一致不是加个判断能根治的，是 seam 位置的问题——计量逻辑跟着数据源走，就必然有人漏掉某条路径。`QueryCount` 不进 seam：那是复习系统的 concern，不是查词的 concern。
 - **B2（不去重）而不是 B1**：去重要维护「每人每天的词集合」，为一个「上限设高、正常用户碰不到」的抗滥用机制付这个复杂度不值。缓存命中也计量看起来「对缓存不公平」，但配额不是成本核算、是用量封顶——一个每小时刷上万词的 scraper，它刷的是不是缓存命中，跟「该不该拦它」无关。
 - **C2（SQLite）而不是 C1（Redis）**：Redis 解决的是「多副本要共享计数器」，homelab 是单 pod，没有这个问题。每人每天一次自增，SQLite 轻松。引 Redis 等于给 homelab 加一个要备份、要监控的有状态服务，换不到任何东西。真到了 enx-api 多副本 + 外部 DB 的那天，这是个会被架构本身逼着重新回答的问题（见 Revisit）。
-- **D2（单条 upsert）而不是 D1（读后写）**：`ON CONFLICT DO UPDATE` 是 SQLite 原生原子操作，一条语句同时表达「没有就建、有就加一」，并发首查不再撞唯一键。竞态下「多放 1 次」是因为 `RETURNING count` 拿到的值可能已被并发的另一次 `+1` 推过 limit——但那只意味着「第 limit+1 次被放行、第 limit+2 次开始拒」，对一个宽松上限完全无所谓。
+- **D2（单条 upsert）而不是 D1（读后写）**：不是为了修一个 bug（实测当前实现的并发首查不出问题，`_txlock=immediate` 串行化了），是为了**去掉脆的形态**——读后写窗口不复存在，三分支事务变一条语句。`DO UPDATE ... WHERE count < limit` 保住了「被拒不落库」这个现状语义，不用像 `RETURNING count` 方案那样接受「多放 1 次」。
 - **E2（fail-open）而不是 E1**：ADR-009 Decision 6 的注释已经确立了方向——「配额失败开放，最坏是免费查词多放一会儿，不是坏掉的 paywall」。#17/#18 是 fail-closed 思路（把错误当拒绝信号）写出来的 bug。词典查询边际成本≈0，存储抖动时优先保用户体验。AI 积分是真钱，维持 fail-closed。
 - **先扣后查（#16）**：查询本身（不管命中与否）就是要计量的那个动作。「查了个不存在的词不该扣」在去重模型下才有意义；不去重模型里「查一次算一次」是自洽的，把这条写进 ADR 就能关掉 #16。
 
@@ -163,7 +167,7 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 - 死接口 `GET /ecdict` / `DoSearchEcdict` / `SearchResult` 删除，`enx-api` 少一段没人走、还行为不一致的代码。#19 / #20 消失。
 - 一个 seam、一个 caller、一个计量点。#16 那类不一致从设计上消失，不靠「记得在每条路径都加判断」。
 - #17 / #18 随重构一并修：基建抖动不再表现为「查无此词」，付费订阅者不再被 DB 抖动降级 429。
-- 当天首次查词的并发冲突消失（单条 upsert）。
+- 配额自增从三分支读后写事务变成一条原子 upsert，读后写窗口彻底消失（不是当前 bug，是去掉脆形态）。
 - 跟 `billing/credit` 一套存储、一套并发模式，少一个 homelab 组件。
 - 为未来「收窄免费额度」和「加反滥用信号」留好了口子——收窄只改一个配置数字，不动调用点。
 
@@ -173,13 +177,12 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 - **本地命中的词从「永远免费」变成「计量」**：今天所有真实查词都命中翻译路径的本地分支、绕过配额；本 ADR 之后它们开始计数。这是把 ADR-009 Decision 6 落到实处，但对一个重度阅读用户是可感知的用量增加——同样靠「上限设高」兜。
 - **fail-open 意味着配额在存储故障期间完全失效**——可接受（它不是 paywall），但要清楚这不是一个能在 DB 出问题时兜住成本的机制。
 - **`dictionary.Lookup` 重构要动 `fillFromEcdict` / `translateWord` 的结构**，以及它们和 `dictionary` / `translate` 包的测试；`user_dicts.QueryCount` 复习计数逻辑（留在 `translateWord`）要保证行为逐字节不变（有测试覆盖）。
-- 竞态窗口内配额可能多放 1 次——对宽松上限无影响，但严格说不是精确封顶。
 
 ### Mitigation
 
 - 实施顺序建议：
-  0. 删掉 `GET /ecdict` / `DoSearchEcdict`（**已完成**）。
-  1. `CheckAndIncrementLookup` 改单条 upsert + 唯一约束（不改语义，并发测试仍绿）。
+  0. 删掉 `GET /ecdict` / `DoSearchEcdict`（**已完成**，`abbb590`）。
+  1. `CheckAndIncrementLookup` 改单条 upsert（**已完成**，语义不变，6 现有 + 1 新增测试全绿）。
   2. `isActiveSubscriber` 返 `(bool, error)` + `dictionary.Lookup` 错误路径修（#17/#18）。此步不改 seam 形状，可独立上线。
   3. `dictionary.Lookup` 收敛成深 seam（A2）：内部并本地 + ECDICT，`translateWord` 改为只调它，计量口径统一（B2）。`fillFromEcdict` 删除或退化成薄 adapter。`QueryCount` 记账留在 `translateWord`。
   4. 配额行清理 job（G）。

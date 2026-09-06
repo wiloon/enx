@@ -149,6 +149,43 @@ func TestCheckAndIncrementLookupConcurrencyNoOverspend(t *testing.T) {
 	}
 }
 
+// TestCheckAndIncrementLookupConcurrentFirstOfDay isolates the "no row exists
+// yet" race from the overspend concern: many goroutines hit a brand-new user
+// under a limit none of them can exceed, so every call must succeed and the
+// stored count must equal the number of calls. A read-then-INSERT
+// implementation lets two goroutines both see "no row" and collide on the
+// (user_id, date) primary key.
+func TestCheckAndIncrementLookupConcurrentFirstOfDay(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	now := time.Now()
+	const attempts = 30
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var errs []error
+
+	for i := 0; i < attempts; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := CheckAndIncrementLookup(ctx, userID, 10_000, now); err != nil {
+				mu.Lock()
+				errs = append(errs, err)
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+
+	if len(errs) != 0 {
+		t.Fatalf("%d of %d concurrent first-of-day lookups errored: %v", len(errs), attempts, errs)
+	}
+	if row := loadRow(t, userID, now); row.Count != attempts {
+		t.Fatalf("stored count=%d, want %d", row.Count, attempts)
+	}
+}
+
 func loadRow(t *testing.T, userID string, at time.Time) sqlitex.DictionaryLookupQuota {
 	t.Helper()
 	var row sqlitex.DictionaryLookupQuota

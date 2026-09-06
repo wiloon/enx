@@ -10,19 +10,18 @@ import (
 	"time"
 
 	"enx-api/utils/sqlitex"
-
-	"gorm.io/gorm"
 )
 
 // ErrQuotaExceeded is returned when userID has already used up today's free
 // dictionary lookups. Callers should map this to HTTP 429.
 var ErrQuotaExceeded = errors.New("quota: daily dictionary lookup limit exceeded")
 
-// CheckAndIncrementLookup atomically checks userID's lookup count for
-// today (UTC) against limit and, if under it, increments the count. The
-// check and increment happen in one conditional UPDATE ("WHERE ... count <
-// limit"), so concurrent lookups from the same user can't push the count
-// past limit (same pattern as billing/credit's balance deductions).
+// CheckAndIncrementLookup checks userID's lookup count for today (UTC)
+// against limit and, if under it, increments the count -- in one atomic
+// statement: insert the day's first lookup, or bump an existing count but
+// only while it's below limit. A rejected call touches nothing. No
+// read-then-write window and no transaction, so concurrent lookups from the
+// same user can neither overcount nor collide on the (user_id, date) key.
 //
 // limit <= 0 means "unlimited" rather than "always blocked". This is the
 // opposite failure direction from billing/credit's grant/cost functions:
@@ -40,28 +39,16 @@ func CheckAndIncrementLookup(ctx context.Context, userID string, limit int64, no
 
 	date := now.UTC().Format("2006-01-02")
 
-	return sqlitex.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var row sqlitex.DictionaryLookupQuota
-		err := tx.Where("user_id = ? AND date = ?", userID, date).First(&row).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return tx.Create(&sqlitex.DictionaryLookupQuota{UserId: userID, Date: date, Count: 1}).Error
-		}
-		if err != nil {
-			return err
-		}
-		if row.Count >= limit {
-			return ErrQuotaExceeded
-		}
-
-		result := tx.Model(&sqlitex.DictionaryLookupQuota{}).
-			Where("user_id = ? AND date = ? AND count < ?", userID, date, limit).
-			UpdateColumn("count", gorm.Expr("count + 1"))
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected == 0 {
-			return ErrQuotaExceeded
-		}
-		return nil
-	})
+	res := sqlitex.DB.WithContext(ctx).Exec(
+		`INSERT INTO dictionary_lookup_quota (user_id, date, count) VALUES (?, ?, 1)
+		 ON CONFLICT(user_id, date) DO UPDATE SET count = count + 1 WHERE count < ?`,
+		userID, date, limit,
+	)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrQuotaExceeded
+	}
+	return nil
 }
