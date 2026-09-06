@@ -6,7 +6,6 @@ import (
 	"enx-api/billing"
 	"enx-api/billing/credit"
 	billingstripe "enx-api/billing/stripe"
-	"enx-api/dictionary"
 	"enx-api/ecdict"
 	"enx-api/email"
 	"enx-api/enx"
@@ -242,7 +241,6 @@ func setupRouter() *gin.Engine {
 		authGroup.POST("/rephrase", rephraseHandler.Rephrase)
 		authGroup.GET("/load-count", wordCount.LoadCount)
 		authGroup.POST("/mark", MarkWord)
-		authGroup.GET("/ecdict", DoSearchEcdict)
 		authGroup.GET("/wrap", Wrap)
 	}
 
@@ -263,7 +261,6 @@ func setupRouter() *gin.Engine {
 		apiGroup.DELETE("/word/:word", DeleteWord)
 		apiGroup.GET("/load-count", wordCount.LoadCount)
 		apiGroup.POST("/mark", MarkWord)
-		apiGroup.GET("/ecdict", DoSearchEcdict)
 		apiGroup.GET("/wrap", Wrap)
 	}
 
@@ -291,35 +288,6 @@ func setupRouter() *gin.Engine {
 	router.POST("/mark-test", MarkWord)
 
 	return router
-}
-
-type SearchResult struct {
-	Dict *enx.Dictionary
-}
-
-// DoSearchEcdict handles GET /ecdict. Routed through dictionary.Lookup
-// (rather than calling ecdict.Query directly) so this endpoint is subject
-// to the same free-tier daily quota as the main translate path -- it's the
-// same underlying ECDICT lookup, and bypassing dictionary.Lookup here would
-// make the quota trivially avoidable by just hitting this endpoint instead.
-func DoSearchEcdict(c *gin.Context) {
-	key := c.Query("key")
-	logger.Infof("ecdict search key: %v", key)
-
-	userID := middleware.GetUserIDFromContext(c)
-	dict, err := dictionary.Lookup(c.Request.Context(), key, userID)
-	if errors.Is(err, dictionary.ErrEcdictUnavailable) {
-		dictionary.RespondUnavailable(c)
-		return
-	}
-	if errors.Is(err, dictionary.ErrQuotaExceeded) {
-		dictionary.RespondQuotaExceeded(c)
-		return
-	}
-
-	result := SearchResult{}
-	result.Dict = dict
-	c.JSON(200, result)
 }
 
 type article struct {

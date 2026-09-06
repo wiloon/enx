@@ -212,6 +212,33 @@ func TestUserRepository_Create(t *testing.T) {
 - ⚠️ **Keep simple things simple:** Don't over-engineer trivial CRUD operations
 - ⚠️ **Pragmatic approach:** Adapt patterns to project needs, not dogma
 
+### External Data Sources
+
+#### ECDICT is read-only
+
+[ECDICT](https://github.com/skywind3000/ECDICT) is a **third-party open-source**
+English–Chinese dictionary dataset (see `docs/adr/0001-integrate-ecdict-dictionary.md`).
+It ships as a standalone SQLite file, mounted separately from the application
+image and the application database, and the connection is opened `mode=ro`
+(`enx-api/ecdict/ecdict.go`).
+
+**The application layer treats ECDICT as strictly read-only.** Never:
+
+- write to, update, or delete rows in the `stardict` table
+- run schema migrations / `AutoMigrate` against the ECDICT database
+- open the ECDICT connection in read-write mode
+
+Any word data the application *owns* — corrections, per-user progress and query
+counts, phrase entries, cross-reference fixes — lives in the application's own
+tables (`words`, `user_dicts`, …), keyed to ECDICT by lookup. If an ECDICT
+entry is wrong or missing, the fix goes in an application-side table, never in
+ECDICT. This keeps ECDICT a drop-in, independently-updatable dataset: a new
+upstream release can replace the file wholesale with no migration.
+
+The single word-lookup seam is `dictionary.Lookup` (ADR-018): it reads the
+application's `words`/`user_dicts` first, then `ecdict.Query`; callers do not
+touch `ecdict` directly.
+
 ## Testing Requirements
 
 ### Core Rule
