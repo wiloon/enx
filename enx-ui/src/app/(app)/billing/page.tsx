@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -74,15 +73,7 @@ export default function BillingPage() {
 
   return (
     <div className="container mx-auto p-6 max-w-3xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">订阅与积分</h1>
-        <Link
-          href="/"
-          className="text-sm text-muted-foreground hover:underline"
-        >
-          返回首页
-        </Link>
-      </div>
+      <h1 className="text-2xl font-bold">订阅与积分</h1>
 
       <Card>
         <CardHeader>
