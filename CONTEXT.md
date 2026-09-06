@@ -23,12 +23,24 @@ _Avoid_: SSO、单点登录
 ### 阅读辅助功能（enx-chrome）
 
 **学习模式（learning mode）**：
-用户在某个页面上启用 ENX 后的状态。由工具栏图标 / popup 的「Enable Learning Mode」开启（发 `enxRun`），`enxStop` 关闭。启用后整篇取词、查词、并激活下面的交互。
+用户在某个页面上启用 ENX 后的状态。由工具栏弹窗（popup）的「Enable Learning Mode」开启（发 `enxRun`），`enxStop` 关闭。启用后整篇取词、查词、并激活下面的交互。
 _Avoid_: 阅读模式、reading mode
 
 **点击查词（click-to-lookup）**：
-点正文里任意一个英文词，弹窗显示该词释义。学习模式的核心交互，不单独设开关——跟随学习模式开关。不依赖任何注入到正文的标记元素。
+点正文里任意一个英文词，弹出查词浮层显示该词释义。学习模式的核心交互，不单独设开关——跟随学习模式开关。不依赖任何注入到正文的标记元素。
 _Avoid_: 点词翻译、tap-to-translate
+
+**查词浮层（word popover）**：
+点击查词后紧贴该词弹出的浮层，显示音标、释义、复习档位，并带打开 Side Panel（整句+词义）的入口。由 content script 注入进正文，用 Popover API 渲染，一次只有一个、下次查词即被替换。代码：组件 `WordPopover`（`src/components/WordPopover.tsx`）、`showWordPopover()`；DOM 是 `#enx-anchored-overlay`（与划词提示浮层共用的定位脚手架 `createAnchoredOverlay`）。**不是** Chrome 的 action popup，也不是 Side Panel 里那种会累积的卡片。
+_Avoid_: 弹窗、popup（专指下面工具栏那个）、单词卡 / word card（专指 Side Panel 列表里的卡，见下）、tooltip
+
+**工具栏弹窗（popup）**：
+左键点扩展工具栏图标弹出的小窗（`popup.html`，manifest 的 `action.default_popup`），承载登录态提示、学习模式开关。是 Chrome 的 action popup；右键图标走的是 Side Panel，是另一条路径。
+_Avoid_: 查词浮层、扩展面板、side panel
+
+**单词卡 / 短语卡 / 整句卡（word card / phrase card / sentence card）**：
+Side Panel 里那条会累积的卡片列表的三种条目（`WordCardData`，见 adr-006、adr-008）。查词浮层里查过的词会被「镜像」成列表里的一张单词卡。是 Side Panel 的概念，不是正文里的浮层。
+_Avoid_: 用「单词卡」指正文里的查词浮层
 
 **单词高亮（word highlight）**：
 给「值得复习」的生词在正文里加彩色下划线，颜色按复习档位分级。是一个**独立的、用户可开关**的功能（默认开，设置项 `enx-word-highlight-enabled`）。关掉后正文无下划线，但点击查词照常。
@@ -47,7 +59,7 @@ _Avoid_: 选择翻译、划句翻译
 _Avoid_: 词组翻译、idiom lookup
 
 **整句+词义合并调用（sentence-with-word）**：
-从正文查词弹窗打开 Side Panel 时，用**一次** AI 调用（`POST /api/translate/sentence-with-word`，结构化返回 `{sentence, word}`）同时拿到整句译文和「刚点的那个词在这句里的含义」，并在侧边栏原文里高亮该词的所有同形词。模型漏返回 `word` 时优雅降级为再单独查一次。见 adr-014。
+从查词浮层打开 Side Panel 时，用**一次** AI 调用（`POST /api/translate/sentence-with-word`，结构化返回 `{sentence, word}`）同时拿到整句译文和「刚点的那个词在这句里的含义」，并在侧边栏原文里高亮该词的所有同形词。模型漏返回 `word` 时优雅降级为再单独查一次。见 adr-014。
 _Avoid_: 合并翻译、combined translate
 
 **AI 翻译按 token 计费**：
