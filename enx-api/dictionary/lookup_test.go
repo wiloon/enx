@@ -121,6 +121,52 @@ func TestLookupSkipsQuotaForActiveSubscriber(t *testing.T) {
 	}
 }
 
+// A failing subscription lookup must not silently demote a paying user to
+// the free tier and 429 them (#18). Fail open: treat as a subscriber.
+func TestLookupTreatsSubscriberCheckFailureAsSubscriber(t *testing.T) {
+	setupTestDB(t)
+	setupFakeEcdict(t)
+	setQuotaLimit(t, 1)
+	userID := "u-" + t.Name()
+	ctx := context.Background()
+
+	if err := sqlitex.DB.Migrator().DropTable(&sqlitex.Subscription{}); err != nil {
+		t.Fatalf("drop subscriptions table: %v", err)
+	}
+
+	for i := 0; i < 5; i++ {
+		if _, err := Lookup(ctx, "word", userID); err != nil {
+			t.Fatalf("lookup %d: subscriber-check failure should fail open, got %v", i, err)
+		}
+	}
+
+	var count int64
+	sqlitex.DB.Model(&sqlitex.DictionaryLookupQuota{}).Where("user_id = ?", userID).Count(&count)
+	if count != 0 {
+		t.Fatalf("got %d quota rows, want 0 (user treated as subscriber)", count)
+	}
+}
+
+// A failing quota store must not block a dictionary lookup (#17, ADR-018 E2).
+// Fail open: allow the lookup.
+func TestLookupFailsOpenWhenQuotaStoreUnavailable(t *testing.T) {
+	setupTestDB(t)
+	setupFakeEcdict(t)
+	setQuotaLimit(t, 1)
+	userID := "u-" + t.Name()
+	ctx := context.Background()
+
+	if err := sqlitex.DB.Migrator().DropTable(&sqlitex.DictionaryLookupQuota{}); err != nil {
+		t.Fatalf("drop quota table: %v", err)
+	}
+
+	for i := 0; i < 3; i++ {
+		if _, err := Lookup(ctx, "word", userID); err != nil {
+			t.Fatalf("lookup %d: quota-store failure should fail open, got %v", i, err)
+		}
+	}
+}
+
 func TestLookupPastDueSubscriberIsNotExempt(t *testing.T) {
 	setupTestDB(t)
 	setupFakeEcdict(t)

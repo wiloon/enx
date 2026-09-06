@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Accepted — 2026-09-06。删掉死接口 `GET /ecdict`（#19/#20 随之消失）、seam 收敛（A2，收敛后只剩 `translateWord` 一个 caller）、每次调用计量不去重（B2）、SQLite 不上 Redis（C2）、单条 upsert（D2）、词典路径 fail-open（E2）、#17/#18 一并修均已确认。TDD 进度：**步骤 0（删 `/ecdict`）已提交 `abbb590`；步骤 1（`CheckAndIncrementLookup` 单条 upsert，语义不变）已实现**。剩余步骤 2（#17/#18 错误处理）、3（`dictionary.Lookup` 深 seam + B2 计量）、4（配额行清理）。 |
+| **状态** | Accepted — 2026-09-06。删掉死接口 `GET /ecdict`（#19/#20 随之消失）、seam 收敛（A2，收敛后只剩 `translateWord` 一个 caller）、每次调用计量不去重（B2）、SQLite 不上 Redis（C2）、单条 upsert（D2）、词典路径 fail-open（E2）、#17/#18 一并修均已确认。TDD 进度：**步骤 0（删 `/ecdict`，`abbb590`）、步骤 1（单条 upsert，`ce0dc13`）、步骤 2（`isActiveSubscriber` + `Lookup` fail-open，#17/#18）已完成**。剩余步骤 3（`dictionary.Lookup` 深 seam + B2 计量）、4（配额行清理）。 |
 | **日期** | 2026-09-06 |
 | **关联 Spec** | [`TASK-SPEC-enx-billing-stripe-subscription.md`](../tasks/TASK-SPEC-enx-billing-stripe-subscription.md) §4.2 已把 `dictionary.Lookup` 定位为「统一查词入口，在返回结果前插入配额检查」——本 ADR 是**把这个意图补齐**（实现时 `fillFromEcdict` 把「先查本地」的分支留在了 seam 外）；配套 TASK-SPEC 增补留到编码阶段（同 ADR-008 / ADR-011 / ADR-017 的做法） |
 | **关联 ADR** | [`adr-009-billing-stripe-subscription-and-ai-credits.md`](adr-009-billing-stripe-subscription-and-ai-credits.md)（Decision 6：免费查词走独立每日配额、不进积分系统；本 ADR **澄清并延续**它——配额覆盖**所有释义查询**，含本地缓存命中，并把计量点收敛到一个 seam）、[`adr-014-sidepanel-clicked-word-and-token-billing.md`](adr-014-sidepanel-clicked-word-and-token-billing.md)（AI 翻译按 token 计费、与查词配额是两个独立计量器；本 ADR 不动 AI 侧） |
@@ -104,14 +104,14 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 | 方案 | 做法 | 结论 |
 | --- | --- | --- |
 | E1. fail-closed：错误冒泡 → 5xx / 拒绝查词 | 跟 AI 积分路径一致 | 一次词典查询边际成本 ≈ 0，为它在存储抖动时挡住用户不划算；#17/#18 已经证明 fail-closed 的 bug 容易误伤真实用户 |
-| **E2.（采用）fail-open：配额表读/写出错时，放行这次查词 + 记 `warn`** | `CheckAndIncrementLookup` 内部 DB 错误 → log warn、`return nil`（放行）。`isActiveSubscriber` 出错 → log warn、当作**订阅者**处理（直接跳过配额）。`limit <= 0 = 无限` 的既有惯例本来就是这个方向（ADR-009 Decision 6 的注释已写明「配额失败开放，最坏是免费查词多放一会儿，不是坏掉的 paywall」） | 存储故障期间配额短暂完全失效——可接受，它不是 paywall。**AI 积分路径维持 fail-closed**（那是真钱，ADR-014） |
+| **E2.（采用）fail-open：配额表读/写出错时，放行这次查词 + 记 `warn`** | **策略在 `dictionary.Lookup` 层**，`billing/quota` 保持诚实：`CheckAndIncrementLookup` 仍返回真实错误，`Lookup` 把非 `ErrQuotaExceeded` 的错误 log warn 后放行。`isActiveSubscriber` 出错 → log warn、当作**订阅者**处理（跳过配额）。`limit <= 0 = 无限` 的既有惯例本来就是这个方向（ADR-009 Decision 6 的注释已写明「配额失败开放，最坏是免费查词多放一会儿，不是坏掉的 paywall」） | 存储故障期间配额短暂完全失效——可接受，它不是 paywall。**AI 积分路径维持 fail-closed**（那是真钱，ADR-014） |
 
 ### F. #17 / #18 的错误处理（随本 ADR 一并修）
 
 | Issue | 修法 |
 | --- | --- |
-| #17 | `dictionary.Lookup` / `fillFromEcdict`：`err != nil` 且非 sentinel → 冒泡成 5xx（`translate` 路径返 502 类，符合 [`adr/0001-integrate-ecdict-dictionary.md`](../adr/0001-integrate-ecdict-dictionary.md) 确立的「不可用要显式报错、不能静默返回空」约定），**不**再落到「`epc == nil` → 查无此词」。「ECDICT 真没这个词」是 `epc == nil && err == nil`，与「查询失败」区分开 |
-| #18 | `isActiveSubscriber` 改签名返 `(bool, error)`；出错按 E2 —— log warn + 当订阅者处理（跳过配额），不 429 付费用户 |
+| #17 | **由 E2 直接解决**：`Lookup` 对配额存储错误 fail-open（放行 + warn），不再把它冒泡成 `(nil, err)` 让 `fillFromEcdict` 当「查无此词」。`fillFromEcdict` 里 `epc == nil` 现在只可能是「ECDICT 真没这个词」（已加注释说明这个契约）。测试：`TestLookupFailsOpenWhenQuotaStoreUnavailable`（删掉配额表 → `Lookup` 仍成功） |
+| #18 | `isActiveSubscriber` 改签名返 `(bool, error)`；`Lookup` 出错 → log warn + 当订阅者处理（跳过配额），不 429 付费用户。测试：`TestLookupTreatsSubscriberCheckFailureAsSubscriber`（删掉 subscriptions 表 → 免费上限也不触发） |
 | #19 | 不单独修——挂在死接口 `DoSearchEcdict` 上，随 Decision 0 一起删掉 |
 
 ### G. 旧配额行清理
@@ -138,9 +138,9 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 
 4. **`CheckAndIncrementLookup` 改单条 upsert**（采用 D2，**已实现**）：`INSERT ... ON CONFLICT(user_id, date) DO UPDATE SET count = count + 1 WHERE count < ?`，`RowsAffected == 0` → `ErrQuotaExceeded`。删掉读后写事务。语义与现状完全一致（6 个现有测试 + 新增 `TestCheckAndIncrementLookupConcurrentFirstOfDay` 全绿）。
 
-5. **失败策略：词典路径 fail-open**（采用 E2）。`CheckAndIncrementLookup` 内部 DB 错误 → warn + 放行。`isActiveSubscriber` → `(bool, error)`，出错 → warn + 当订阅者（跳过配额）。AI 积分路径不动。
+5. **失败策略：词典路径 fail-open**（采用 E2，**已实现**）。策略在 `dictionary.Lookup` 层：`isActiveSubscriber` 返 `(bool, error)`，出错 → warn + 当订阅者；`CheckAndIncrementLookup` 的非 `ErrQuotaExceeded` 错误 → warn + 放行。`billing/quota` 保持返回真实错误。AI 积分路径不动。
 
-6. **#17/#18 一并修**（见 F 表）。
+6. **#17/#18 一并修**（见 F 表，**已实现**：#18 显式修，#17 由 E2 覆盖）。
 
 7. **加旧配额行清理**（采用 G）：定期 `DELETE ... WHERE date < <保留窗口>`，窗口值 TASK-SPEC 定（够短、又能覆盖任何「回看昨天用量」的需求，如 7–30 天）。
 
@@ -183,7 +183,7 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 - 实施顺序建议：
   0. 删掉 `GET /ecdict` / `DoSearchEcdict`（**已完成**，`abbb590`）。
   1. `CheckAndIncrementLookup` 改单条 upsert（**已完成**，语义不变，6 现有 + 1 新增测试全绿）。
-  2. `isActiveSubscriber` 返 `(bool, error)` + `dictionary.Lookup` 错误路径修（#17/#18）。此步不改 seam 形状，可独立上线。
+  2. `isActiveSubscriber` 返 `(bool, error)` + `dictionary.Lookup` fail-open（#17/#18）（**已完成**，2 个新测试 + 4 个现有测试全绿）。不改 seam 形状。
   3. `dictionary.Lookup` 收敛成深 seam（A2）：内部并本地 + ECDICT，`translateWord` 改为只调它，计量口径统一（B2）。`fillFromEcdict` 删除或退化成薄 adapter。`QueryCount` 记账留在 `translateWord`。
   4. 配额行清理 job（G）。
   5. 每步独立可验证、可回滚。

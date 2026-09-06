@@ -9,6 +9,7 @@ import (
 	"enx-api/billing/quota"
 	"enx-api/ecdict"
 	"enx-api/enx"
+	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
 
 	"github.com/gin-gonic/gin"
@@ -31,22 +32,38 @@ func Lookup(ctx context.Context, english, userID string) (*enx.Dictionary, error
 		return nil, ErrEcdictUnavailable
 	}
 
-	if !isActiveSubscriber(userID) {
+	// The quota is a usage cap on a near-zero-cost operation, not a paywall,
+	// so its failure modes fail open (ADR-018 E2): a subscriber-check
+	// hiccup must not 429 a paying user (#18), and a quota-store hiccup must
+	// not hide a real definition behind "not found" (#17).
+	subscriber, err := isActiveSubscriber(userID)
+	if err != nil {
+		logger.Warnf("dictionary: subscriber check failed for user %s, treating as subscriber: %v", userID, err)
+		subscriber = true
+	}
+
+	if !subscriber {
 		limit := viper.GetInt64("stripe.quota.dictionary-lookup-daily")
 		if err := quota.CheckAndIncrementLookup(ctx, userID, limit, time.Now()); err != nil {
-			return nil, err
+			if errors.Is(err, ErrQuotaExceeded) {
+				return nil, ErrQuotaExceeded
+			}
+			logger.Warnf("dictionary: quota check failed for user %s, allowing lookup: %v", userID, err)
 		}
 	}
 
 	return ecdict.Query(ctx, english), nil
 }
 
-func isActiveSubscriber(userID string) bool {
+func isActiveSubscriber(userID string) (bool, error) {
 	var count int64
-	sqlitex.DB.Model(&sqlitex.Subscription{}).
+	err := sqlitex.DB.Model(&sqlitex.Subscription{}).
 		Where("user_id = ? AND status = ?", userID, "active").
-		Count(&count)
-	return count > 0
+		Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // RespondUnavailable writes the ADR-mandated 503 JSON response.
