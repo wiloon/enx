@@ -645,7 +645,7 @@ describe('SidePanel', () => {
     expect(screen.getByTestId('sidepanel-empty-state')).toBeInTheDocument()
   })
 
-  // ADR-006: a word looked up via the page's WordPopup should show up in the
+  // ADR-006: a word looked up via the page's word popover should show up in the
   // Side Panel's card list without ever triggering sentence translation.
   it('shows a card for a word looked up on the page, without calling translateSentence (ADR-006)', async () => {
     render(<SidePanel />)

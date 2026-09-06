@@ -80,9 +80,9 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
       await page.waitForTimeout(150)
 
       await clickHighlightedWord(page, index)
-      await page.waitForSelector('#enx-word-popup', { timeout: 3000 })
+      await page.waitForSelector('#enx-anchored-overlay', { timeout: 3000 })
 
-      const popupBox = await page.locator('#enx-word-popup').boundingBox()
+      const popupBox = await page.locator('#enx-anchored-overlay').boundingBox()
       expect(popupBox, `${label}: popup should render with a bounding box`).toBeTruthy()
       if (!popupBox) continue
 
@@ -102,7 +102,7 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
 
   test('§4.1: Youdao link href matches the clicked word', async ({ page }) => {
     const clickedWord = await clickHighlightedWord(page, 0)
-    const popup = page.locator('#enx-word-popup')
+    const popup = page.locator('#enx-anchored-overlay')
     await expect(popup).toBeVisible()
 
     const href = await popup.locator('a[title="Open in Youdao Dictionary"]').getAttribute('href')
@@ -116,7 +116,7 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     context,
   }) => {
     await mockBackendFetch(context, { translateSessionExpired: true })
-    const popup = page.locator('#enx-word-popup')
+    const popup = page.locator('#enx-anchored-overlay')
 
     await clickHighlightedWord(page, 0)
     // The popup opens showing loading state, then immediately closes once
@@ -129,13 +129,13 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
   test('§4.1: loading -> success content renders via data-testid hooks', async ({
     page,
   }) => {
-    const popup = page.locator('#enx-word-popup')
+    const popup = page.locator('#enx-anchored-overlay')
     const clickedWord = await clickHighlightedWord(page, 0)
     await expect(popup).toBeVisible()
 
-    await expect(popup.locator('[data-testid="word-popup-content"]')).toBeVisible()
-    await expect(popup.locator('[data-testid="word-popup-header"] h3')).toHaveText(clickedWord)
-    await expect(popup.locator('[data-testid="word-popup-content"]')).toContainText('存根')
+    await expect(popup.locator('[data-testid="word-popover-content"]')).toBeVisible()
+    await expect(popup.locator('[data-testid="word-popover-header"] h3')).toHaveText(clickedWord)
+    await expect(popup.locator('[data-testid="word-popover-content"]')).toContainText('存根')
   })
 
   test('§4.1: failure state renders via data-testid hook', async ({
@@ -143,20 +143,20 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     context,
   }) => {
     await mockBackendFetch(context, { translateFails: true })
-    const popup = page.locator('#enx-word-popup')
+    const popup = page.locator('#enx-anchored-overlay')
     await clickHighlightedWord(page, 0)
     await expect(popup).toBeVisible()
-    await expect(popup.locator('[data-testid="word-popup-error"]')).toBeVisible()
+    await expect(popup.locator('[data-testid="word-popover-error"]')).toBeVisible()
   })
 
   test('§4.1: close button / ESC / click-outside all close the popup', async ({
     page,
   }) => {
-    const popup = page.locator('#enx-word-popup')
+    const popup = page.locator('#enx-anchored-overlay')
 
     await clickHighlightedWord(page, 0)
     await expect(popup).toBeVisible()
-    await popup.locator('[data-testid="word-popup-close"]').click()
+    await popup.locator('[data-testid="word-popover-close"]').click()
     await expect(popup).toHaveCount(0)
 
     await clickHighlightedWord(page, 0)
@@ -178,8 +178,8 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     const word = await clickHighlightedWord(page, 0)
     expect(await isWordHighlighted(page, word)).toBe(true)
 
-    const popup = page.locator('#enx-word-popup')
-    const markBtn = popup.locator('[data-testid="word-popup-mark-known"]')
+    const popup = page.locator('#enx-anchored-overlay')
+    const markBtn = popup.locator('[data-testid="word-popover-mark-known"]')
     await expect(markBtn).toBeVisible()
     await markBtn.click()
     await expect(popup).toHaveCount(0)
@@ -204,7 +204,7 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     expect(beforeFontSize).toBe('40px')
 
     await clickHighlightedWord(page, 0)
-    const popup = page.locator('#enx-word-popup')
+    const popup = page.locator('#enx-anchored-overlay')
     await expect(popup).toBeVisible()
 
     const afterDisplay = await probe.evaluate((el) => getComputedStyle(el).display)
@@ -215,7 +215,7 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     // reverse: the popup's own Tailwind classes must not be overridden by the
     // host page's conflicting .flex/.text-sm rules
     const headerDisplay = await popup
-      .locator('[data-testid="word-popup-header"]')
+      .locator('[data-testid="word-popover-header"]')
       .evaluate((el) => getComputedStyle(el).display)
     expect(headerDisplay).toBe('flex')
   })
@@ -248,13 +248,13 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     const CYCLES = 50
     for (let i = 0; i < CYCLES; i++) {
       await clickHighlightedWord(page, i % count)
-      await page.waitForSelector('#enx-word-popup', { timeout: 3000 })
+      await page.waitForSelector('#enx-anchored-overlay', { timeout: 3000 })
       await page.evaluate(() => {
-        const el = document.getElementById('enx-word-popup') as (HTMLElement & { hidePopover: () => void }) | null
+        const el = document.getElementById('enx-anchored-overlay') as (HTMLElement & { hidePopover: () => void }) | null
         el?.hidePopover()
       })
       await page.waitForFunction(
-        () => document.querySelectorAll('#enx-word-popup').length === 0
+        () => document.querySelectorAll('#enx-anchored-overlay').length === 0
       )
     }
 

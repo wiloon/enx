@@ -34,7 +34,7 @@ test.describe('Content Script - Translation Popup', () => {
     await clickWordAndWaitForPopup(page, 0)
 
     // Check popup is visible
-    const popup = page.locator('#enx-word-popup')
+    const popup = page.locator('#enx-anchored-overlay')
     await expect(popup).toBeVisible()
   })
 
@@ -43,13 +43,13 @@ test.describe('Content Script - Translation Popup', () => {
   }) => {
     await clickWordAndWaitForPopup(page, 0)
 
-    const popup = page.locator('#enx-word-popup')
+    const popup = page.locator('#enx-anchored-overlay')
 
     // Should show the word in header
-    await expect(popup.locator('[data-testid="word-popup-header"] h3')).toBeVisible()
+    await expect(popup.locator('[data-testid="word-popover-header"] h3')).toBeVisible()
 
     // Should show translation content or loading state
-    await expect(popup.locator('[data-testid="word-popup-content"]')).toBeVisible()
+    await expect(popup.locator('[data-testid="word-popover-content"]')).toBeVisible()
   })
 
   test('should close translation popup when clicking outside', async ({
@@ -58,7 +58,7 @@ test.describe('Content Script - Translation Popup', () => {
     await clickWordAndWaitForPopup(page, 0)
 
     // Popup should be visible
-    await expect(page.locator('#enx-word-popup')).toBeVisible()
+    await expect(page.locator('#enx-anchored-overlay')).toBeVisible()
 
     // Wait for click-outside handler to be attached (100ms timeout in content script)
     await page.waitForTimeout(150)
@@ -68,10 +68,10 @@ test.describe('Content Script - Translation Popup', () => {
     await header.click()
 
     // Wait for popup to be removed
-    await page.waitForSelector('#enx-word-popup', { state: 'detached', timeout: 2000 })
+    await page.waitForSelector('#enx-anchored-overlay', { state: 'detached', timeout: 2000 })
 
     // Double-check it's not visible
-    const popup = page.locator('#enx-word-popup')
+    const popup = page.locator('#enx-anchored-overlay')
     const exists = await popup.count()
     expect(exists).toBe(0)
   })
@@ -82,7 +82,7 @@ test.describe('Content Script - Translation Popup', () => {
     // Click first word
     await clickWordAndWaitForPopup(page, 0)
     const firstWord = await page
-      .locator('#enx-word-popup [data-testid="word-popup-header"] h3')
+      .locator('#enx-anchored-overlay [data-testid="word-popover-header"] h3')
       .textContent()
 
     // Close popup
@@ -92,7 +92,7 @@ test.describe('Content Script - Translation Popup', () => {
     // Click second word
     await clickWordAndWaitForPopup(page, 1)
     const secondWord = await page
-      .locator('#enx-word-popup [data-testid="word-popup-header"] h3')
+      .locator('#enx-anchored-overlay [data-testid="word-popover-header"] h3')
       .textContent()
 
     // Words should be different

@@ -30,7 +30,7 @@ type FetchStatus = 'loading' | 'loaded' | 'error'
 // translation (translateWordInContext) each track their own status -- the
 // card renders progressively, showing whichever half resolves first.
 // 'none' means "not applicable". On contextStatus: cards created from a
-// page-level WordPopup lookup (ADR-006), which has no sentence context to
+// page-level word popover lookup (ADR-006), which has no sentence context to
 // translate against and so must never show the "翻译中..."/context text UI
 // at all. On dictionaryStatus: phrase cards (ADR-008) -- a 2-5 word
 // selection never has an ECDICT/words entry, so they skip the dictionary
@@ -158,7 +158,7 @@ function SidePanelContent() {
     return () => chrome.storage.onChanged.removeListener(listener)
   }, [])
 
-  // Mirrors a word looked up via the page's WordPopup into the same card
+  // Mirrors a word looked up via the page's word popover into the same card
   // list used for sentence-word clicks (ADR-006). Merges the already-fetched
   // WordData directly -- no re-fetch -- and clears the sentence
   // original/translation display, since the incoming word may not belong to
@@ -514,7 +514,7 @@ function SidePanelContent() {
   )
 
   // The guided hint only makes sense when the panel has shown nothing at
-  // all yet. Once there's a word card (from a page lookup, ADR-006) the
+  // all yet. Once there's a word popover (from a page lookup, ADR-006) the
   // panel has useful content to show even without a sentence context, so the
   // definitions list below must render independently of `pendingContext`.
   if (!pendingContext && definitions.length === 0) {

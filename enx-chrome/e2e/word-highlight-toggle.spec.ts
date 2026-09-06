@@ -76,8 +76,8 @@ test.describe('Word highlight preference toggle', () => {
 
     // The delegated click-to-lookup listener is bound regardless of the paint.
     await page.mouse.click(target.x, target.y)
-    await page.waitForSelector('#enx-word-popup', { timeout: 3000 })
-    await expect(page.locator('#enx-word-popup')).toBeVisible()
+    await page.waitForSelector('#enx-anchored-overlay', { timeout: 3000 })
+    await expect(page.locator('#enx-anchored-overlay')).toBeVisible()
   })
 
   test('turning the preference back on repopulates highlights without a reload', async ({
@@ -96,6 +96,6 @@ test.describe('Word highlight preference toggle', () => {
 
     // and the repainted words are clickable again
     await clickHighlightedWord(page, 0)
-    await expect(page.locator('#enx-word-popup')).toBeVisible()
+    await expect(page.locator('#enx-anchored-overlay')).toBeVisible()
   })
 })

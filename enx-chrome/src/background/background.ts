@@ -10,9 +10,24 @@ import {
   PendingSentenceContext,
   WordData,
 } from '@/types'
+import {
+  heartbeat,
+  readSwLog,
+  recordWorkerBoot,
+  swlog,
+  WORKER_BOOTED_AT,
+} from './swlog'
 
 console.log('ENX Background script loaded')
 console.log('🌐 Config environment:', config.environment)
+
+// Records this worker instance's boot and how long the previous instance had
+// been gone -- the only reliable way to observe MV3 service-worker eviction
+// (see swlog.ts). Fire-and-forget; nothing downstream depends on it.
+void recordWorkerBoot()
+
+const sleep = (ms: number): Promise<void> =>
+  ms <= 0 ? Promise.resolve() : new Promise(resolve => setTimeout(resolve, ms))
 
 // ADR-015: Clerk owns the session. The service worker holds a single Clerk
 // client (synced from the website via `syncHost`) and mints a fresh, short-
@@ -31,31 +46,89 @@ const getClerk = (): Promise<ClerkClient> => {
 }
 
 // Mitigation for a false "session expired": homelab still runs Clerk's
-// *development* instance (see TASK-SPEC-enx-clerk-production-cutover.md),
-// which syncs the session into the extension via a dev-browser-JWT relay
-// instead of a shared prod cookie. MV3 evicts an idle service worker, wiping
-// `clerkClientPromise`; when a new event wakes it, the relay handshake can
-// still be in flight, so the freshly-created client resolves with no session
-// even though the user is still signed in on the website. If that happens,
-// throw away the cached client and retry once with a brand-new one before
-// concluding the session is genuinely gone (a still-empty session after the
-// retry is treated as a real 401/logout).
+// *development* instance (see TASK-SPEC-enx-clerk-production-cutover.md).
+// On a dev instance @clerk/chrome-extension syncs the session by reading the
+// website's `__clerk_db_jwt` dev-browser cookie and replaying it to Clerk's
+// Frontend API; production instead shares a first-party cookie the worker can
+// read synchronously. MV3 evicts an idle service worker, wiping
+// `clerkClientPromise`; when a new event wakes it, `createClerkClient()` runs
+// `clerk.load()`, and if that Frontend API round-trip (authed with the synced
+// dev-browser JWT) is slow, transiently fails, or the cookie hasn't propagated
+// yet, the client resolves with *no session* and throws no error -- even though
+// the user is still signed in on the website.
+//
+// So: when the first client has no session, rebuild it from scratch a few
+// times with backoff (each rebuild re-runs clerk.load() -> re-reads the
+// website cookie) before concluding the session is genuinely gone. Only a
+// still-empty session after every retry is treated as a real logout. The real
+// fix is the production Clerk cutover; this just stops a stale/slow dev-browser
+// sync from surfacing as "Session Expired" mid-reading.
+const SESSION_SYNC_RETRY_DELAYS_MS =
+  config.environment === 'test' ? [0, 0, 0] : [200, 500, 1000]
+
 const getSyncedClerk = async (): Promise<ClerkClient> => {
-  const clerk = await getClerk()
+  let clerk = await getClerk()
   if (clerk.session) return clerk
 
-  clerkClientPromise = null
-  return getClerk()
+  for (let attempt = 1; attempt <= SESSION_SYNC_RETRY_DELAYS_MS.length; attempt++) {
+    await sleep(SESSION_SYNC_RETRY_DELAYS_MS[attempt - 1])
+    clerkClientPromise = null
+    clerk = await getClerk()
+    if (clerk.session) {
+      swlog(
+        `clerk session recovered on retry ${attempt} ` +
+          `(+${Date.now() - WORKER_BOOTED_AT}ms since worker boot)`
+      )
+      return clerk
+    }
+  }
+
+  swlog(
+    `clerk session still empty after ${SESSION_SYNC_RETRY_DELAYS_MS.length} ` +
+      `retries (+${Date.now() - WORKER_BOOTED_AT}ms since worker boot) -- ` +
+      `treating as signed out`,
+    'warn'
+  )
+  return clerk
 }
 
+// getToken() can also fail transiently on its own: the session exists but the
+// short-lived JWT needs refreshing and that Frontend API call blips. Retry a
+// couple of times before giving up (which would send an unauthenticated
+// request and get a 401 -> "Session Expired").
+const GET_TOKEN_RETRY_DELAYS_MS =
+  config.environment === 'test' ? [0, 0] : [300, 700]
+
 const getSessionToken = async (): Promise<string | null> => {
+  let clerk: ClerkClient
   try {
-    const clerk = await getSyncedClerk()
-    return (await clerk.session?.getToken()) ?? null
+    clerk = await getSyncedClerk()
   } catch (error) {
-    console.error('Clerk getToken failed:', error)
+    swlog(`getSyncedClerk failed: ${String(error)}`, 'error')
     return null
   }
+
+  if (!clerk.session) return null
+
+  for (let attempt = 1; attempt <= GET_TOKEN_RETRY_DELAYS_MS.length + 1; attempt++) {
+    try {
+      const token = (await clerk.session.getToken()) ?? null
+      if (token) return token
+      swlog(`clerk getToken() returned null (attempt ${attempt})`, 'warn')
+    } catch (error) {
+      swlog(`clerk getToken() threw (attempt ${attempt}): ${String(error)}`, 'warn')
+    }
+    if (attempt <= GET_TOKEN_RETRY_DELAYS_MS.length) {
+      await sleep(GET_TOKEN_RETRY_DELAYS_MS[attempt - 1])
+    }
+  }
+
+  swlog(
+    `clerk getToken() gave no token after ${GET_TOKEN_RETRY_DELAYS_MS.length + 1} ` +
+      `attempts despite an active session`,
+    'error'
+  )
+  return null
 }
 
 const isSignedIn = async (): Promise<boolean> => {
@@ -115,6 +188,10 @@ export const makeApiRequest = async (
   endpoint: string,
   options: RequestInit = {}
 ): Promise<ApiRequestResult> => {
+  // An API call proves the worker is alive; refresh the heartbeat so the next
+  // cold boot can report how long this instance had been gone (swlog.ts).
+  void heartbeat()
+
   try {
     const API_BASE_URL = await getApiBaseUrl()
     const headers: Record<string, string> = {
@@ -125,6 +202,13 @@ export const makeApiRequest = async (
     const token = await getSessionToken()
     if (token) {
       headers['Authorization'] = `Bearer ${token}`
+    } else {
+      swlog(
+        `no session token for ${options.method ?? 'GET'} ${endpoint} ` +
+          `(+${Date.now() - WORKER_BOOTED_AT}ms since worker boot) -- ` +
+          `sending unauthenticated, expect 401`,
+        'warn'
+      )
     }
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -138,6 +222,13 @@ export const makeApiRequest = async (
 
     if (!response.ok) {
       if (response.status === 401) {
+        // Log enough to tell a real logout (had a token, still 401) from the
+        // MV3 cold-start race (no token, and only moments since worker boot).
+        swlog(
+          `401 from ${endpoint}: hadToken=${Boolean(token)}, ` +
+            `+${Date.now() - WORKER_BOOTED_AT}ms since worker boot`,
+          'warn'
+        )
         await handleSessionExpiry()
         throw new Error('Session expired')
       }
@@ -336,6 +427,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             storage: storageData,
             signedIn: await isSignedIn(),
           }
+
+        case 'getSwLog':
+          // Post-mortem view of service-worker boots + auth failures
+          // (swlog.ts ring buffer). Survives worker eviction.
+          return { success: true, log: await readSwLog() }
 
         case 'hello':
           return { success: true, message: 'Hello from ENX background!' }
@@ -674,7 +770,7 @@ const handleOpenSentencePanel = async (
   return { success: true, panelOpened }
 }
 
-// Mirrors a page-level WordPopup lookup into the Side Panel's word list
+// Mirrors a page-level word popover lookup into the Side Panel's word list
 // (ADR-006). Content scripts can't write chrome.storage.session directly
 // (no access unless the background grants TRUSTED_AND_UNTRUSTED_CONTEXTS,
 // which would also expose other session keys like the OAuth verifier to

@@ -129,7 +129,7 @@ export interface PendingSentenceContext {
 }
 
 // chrome.storage.session key holding the most recent word looked up via the
-// page's WordPopup. Overwritten on every lookup (no history kept) -- see
+// page's word popover. Overwritten on every lookup (no history kept) -- see
 // docs/architecture/adr-006-page-word-lookup-in-sidepanel.md. Unlike
 // PENDING_SENTENCE_STORAGE_KEY, writing this key never triggers sentence
 // translation and never forces the Side Panel open.

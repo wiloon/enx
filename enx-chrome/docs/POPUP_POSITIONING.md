@@ -10,7 +10,7 @@
 | **AI Model** | Claude Sonnet 4.5 |
 | **Status** | ✅ Implemented |
 | **Version** | 2.0.0 |
-| **Implementation** | `src/content/content.ts` - `showWordPopup()` |
+| **Implementation** | `src/content/content.tsx` - `showWordPopover()` |
 
 ## 概述
 
@@ -172,7 +172,7 @@ popup.showPopover()
 // ✅ 复用弹窗，只更新内容
 let currentPopup: HTMLElement | null = null
 
-function showWordPopup(word: string) {
+function showWordPopover(word: string) {
   if (currentPopup) {
     currentPopup.hidePopover()
     currentPopup.remove()
@@ -424,7 +424,7 @@ async function showPopup(button, popup) {
 ```tsx
 import { useFloating, autoUpdate, offset, flip, shift } from '@floating-ui/react'
 
-function WordPopup() {
+function WordPopover() {
   const { refs, floatingStyles } = useFloating({
     placement: 'top',
     middleware: [offset(16), flip(), shift({ padding: 16 })],
@@ -662,8 +662,8 @@ if (supportsNativeAPIs) {
 
 ## 实现位置
 
-- **文件**: `enx-chrome/src/content/content.ts`
-- **函数**: `showWordPopup(word: string, event: MouseEvent)`
+- **文件**: `enx-chrome/src/content/content.tsx`
+- **函数**: `showWordPopover(word: string, event: MouseEvent)`
 
 ## 弹窗样式配置
 
@@ -739,7 +739,7 @@ popup.style.cssText = `
 **定位策略**：
 
 ```css
-.word-popup {
+.enx-anchored-overlay {
   /* 绑定锚点 */
   position-anchor: --word-anchor;
   
@@ -785,7 +785,7 @@ popup.style.cssText = `
 
 ```css
 /* CSS 配置 */
-.word-popup {
+.enx-anchored-overlay {
   position-anchor: --word-anchor;
   position-area: top;        /* 优先上方 */
   margin-bottom: 16px;       /* 与锚点间距 */
@@ -803,7 +803,7 @@ popup.style.cssText = `
 
 ```css
 /* CSS 配置（增加回退方案）*/
-.word-popup {
+.enx-anchored-overlay {
   position-anchor: --word-anchor;
   position-area: top;
   position-try-fallbacks: flip-block;  /* 上下翻转 */
@@ -878,7 +878,7 @@ popup.style.cssText = `
 ```typescript
 // 实际实现代码（已部署）
 // 直接使用现代 API，无兼容性检测
-async function showWordPopup(word: string, event: MouseEvent) {
+async function showWordPopover(word: string, event: MouseEvent) {
   // 1. 标记锚点元素
   const anchor = event.target as HTMLElement
   const anchorId = `enx-word-anchor-${Date.now()}`  // 实际使用带前缀的ID
@@ -887,7 +887,7 @@ async function showWordPopup(word: string, event: MouseEvent) {
   // 2. 创建 Popover 弹窗
   const popup = document.createElement('div')
   popup.popover = 'auto'  // 自动关闭模式
-  popup.className = 'enx-word-popup'
+  popup.className = 'enx-anchored-overlay'
   popup.id = `popup-${anchorId}`
   
   // 3. 应用 CSS Anchor Positioning
@@ -972,7 +972,7 @@ async function showWordPopup(word: string, event: MouseEvent) {
 
 ```css
 /* 使用样式表可以复用样式 */
-.enx-word-popup {
+.enx-anchored-overlay {
   /* Popover 基础样式 */
   &::backdrop {
     background: rgba(0, 0, 0, 0.05);  /* 可选的半透明背景 */
@@ -1241,6 +1241,6 @@ popup.showPopover()  // 浏览器自动测量和定位
 
 ## 参考资料
 
-- **实现文件**: `enx-chrome/src/content/content.ts`
+- **实现文件**: `enx-chrome/src/content/content.tsx`
 - **相关类型**: `enx-chrome/src/content/types.ts` - `WordData` 接口
 - **样式约定**: 使用内联样式避免与页面 CSS 冲突

@@ -15,7 +15,7 @@ import {
 import { formatPhonetic } from '@/lib/phonetic'
 import { playPronunciation } from '@/lib/pronunciation'
 
-interface WordPopupProps {
+interface WordPopoverProps {
   word: string
   onClose: () => void
   onMarkAcquainted: (word: string) => void
@@ -27,13 +27,13 @@ interface WordPopupProps {
   variant?: 'dictionary' | 'hint'
 }
 
-export default function WordPopup({
+export default function WordPopover({
   word,
   onClose,
   onMarkAcquainted,
   onOpenSentencePanel,
   variant = 'dictionary',
-}: WordPopupProps) {
+}: WordPopoverProps) {
   const [currentWord] = useAtom(currentWordAtom)
   const [isTranslating] = useAtom(isTranslatingAtom)
   const [error] = useAtom(errorAtom)
@@ -70,7 +70,7 @@ export default function WordPopup({
         <div className="flex justify-between items-start">
           <span className="text-sm text-gray-500">划词翻译</span>
           <button
-            data-testid="word-popup-close"
+            data-testid="word-popover-close"
             onClick={onClose}
             className="text-gray-400 hover:text-red-500 text-xl leading-none ml-2"
             title="Close"
@@ -80,7 +80,7 @@ export default function WordPopup({
         </div>
         {sentencePanelHint && (
           <div
-            data-testid="word-popup-sentence-panel-hint"
+            data-testid="word-popover-sentence-panel-hint"
             className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-blue-700 text-xs"
           >
             {sentencePanelHint}
@@ -99,7 +99,7 @@ export default function WordPopup({
     >
       {/* Header: word + phonetic + play + query count all on one line */}
       <div
-        data-testid="word-popup-header"
+        data-testid="word-popover-header"
         className="flex justify-between items-center gap-2 mb-2"
       >
         <div className="flex flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
@@ -110,7 +110,7 @@ export default function WordPopup({
             <span className="inline-flex items-center gap-1 text-sm text-gray-500">
               {formatPhonetic(currentWord?.Pronunciation)}
               <button
-                data-testid="word-popup-play-pronunciation"
+                data-testid="word-popover-play-pronunciation"
                 type="button"
                 onClick={() => currentWord && playPronunciation(currentWord.English)}
                 className="text-gray-400 hover:text-blue-500 leading-none p-1 -m-1"
@@ -131,7 +131,7 @@ export default function WordPopup({
           )}
         </div>
         <button
-          data-testid="word-popup-close"
+          data-testid="word-popover-close"
           onClick={onClose}
           className="text-gray-400 hover:text-red-500 text-xl leading-none ml-1 shrink-0"
           title="Close"
@@ -140,7 +140,7 @@ export default function WordPopup({
         </button>
       </div>
 
-      <div data-testid="word-popup-content">
+      <div data-testid="word-popover-content">
         {/* Loading state */}
         {isTranslating && (
           <div className="space-y-3">
@@ -158,7 +158,7 @@ export default function WordPopup({
         {/* Error state */}
         {error && !isTranslating && (
           <div
-            data-testid="word-popup-error"
+            data-testid="word-popover-error"
             className="p-3 bg-red-50 border border-red-200 rounded mb-3"
           >
             <p className="text-red-700 text-sm">{error}</p>
@@ -198,7 +198,7 @@ export default function WordPopup({
               Youdao
             </a>
             <button
-              data-testid="word-popup-sentence-translation"
+              data-testid="word-popover-sentence-translation"
               onClick={onOpenSentencePanel}
               className="inline-flex items-center text-blue-500 hover:text-blue-600"
               title="整句翻译（在侧边栏翻译整句）"
@@ -210,7 +210,7 @@ export default function WordPopup({
 
           {currentWord && currentWord.AlreadyAcquainted !== 1 && (
             <button
-              data-testid="word-popup-mark-known"
+              data-testid="word-popover-mark-known"
               onClick={() => onMarkAcquainted(currentWord.English)}
               className="bg-green-500 hover:bg-green-600 text-white text-sm px-3 py-1 rounded transition-colors"
               title="Mark as acquainted"
@@ -227,7 +227,7 @@ export default function WordPopup({
             fallback path. */}
         {sentencePanelHint && (
           <div
-            data-testid="word-popup-sentence-panel-hint"
+            data-testid="word-popover-sentence-panel-hint"
             className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-blue-700 text-xs"
           >
             {sentencePanelHint}

@@ -128,6 +128,26 @@ describe('background makeApiRequest / Clerk session token', () => {
     })
   })
 
+  it('retries getToken() when the session is present but the first mint blips', async () => {
+    // The dev-instance JWT mint (Frontend API round-trip) can fail transiently
+    // even with an active session -- retry rather than fall through to a 401.
+    setClerkSession('eventual-jwt')
+    getToken.mockReset()
+    getToken
+      .mockRejectedValueOnce(new Error('network blip'))
+      .mockResolvedValueOnce('eventual-jwt')
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(200, { English: 'test' })
+    )
+
+    const result = await makeApiRequest('/api/translate?word=test')
+
+    expect(result).toEqual({ success: true, data: { English: 'test' } })
+    const [, requestInit] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(requestInit.headers.Authorization).toBe('Bearer eventual-jwt')
+    expect(getToken).toHaveBeenCalledTimes(2)
+  })
+
   it('retries once with a fresh Clerk client when the cached session comes back empty', async () => {
     // Simulates a service worker cold-start racing the dev-instance JWT
     // relay (ADR-015): the cached client's session reads empty, but a fresh

@@ -307,8 +307,8 @@ export async function clickWordAndWaitForPopup(page: Page, wordIndex = 0) {
 
   await clickHighlightedWord(page, wordIndex)
 
-  // Wait for translation popup (correct ID is enx-word-popup)
-  await page.waitForSelector('#enx-word-popup', { timeout: 3000 })
+  // Wait for translation popup (correct ID is enx-anchored-overlay)
+  await page.waitForSelector('#enx-anchored-overlay', { timeout: 3000 })
 }
 
 /**

@@ -31,21 +31,21 @@ import {
   errorAtom,
   sentencePanelHintAtom,
 } from '@/store/atoms'
-import WordPopup from '@/components/WordPopup'
+import WordPopover from '@/components/WordPopover'
 import tailwindCss from '@/index.css?inline'
 
 console.log('ENX Content script loaded')
 
 // State management for content script
 let isEnxEnabled = false
-let currentPopup: HTMLElement | null = null
+let currentOverlay: HTMLElement | null = null
 let currentRoot: Root | null = null
 let wordCache: Record<string, WordData> = {}
 let isProcessing = false
 // Article roots ENX is currently operating on: the delegated click listener
 // is bound to each, and refreshHighlights() rebuilds highlights over them.
 let articleRoots: Element[] = []
-let popupEventCleanup: (() => void) | null = null
+let overlayEventCleanup: (() => void) | null = null
 
 // Send message to background script
 const sendToBackground = (
@@ -58,13 +58,13 @@ const sendToBackground = (
   })
 }
 
-type PopupElement = HTMLElement & {
+type OverlayElement = HTMLElement & {
   popover: string
   showPopover: () => void
   hidePopover: () => void
 }
 
-// Positions `popup` against `reference` with Floating UI and keeps it there
+// Positions `overlay` against `reference` with Floating UI and keeps it there
 // while it's open. The Range is wrapped as a Floating UI "virtual element":
 // it supplies the geometry, and `contextElement` is what lets autoUpdate
 // discover the scroll ancestors to watch -- without it a Range alone can't
@@ -72,8 +72,8 @@ type PopupElement = HTMLElement & {
 // autoUpdate cleanup, which the caller MUST run on close or the
 // scroll/resize listeners leak. `reference` geometry is the only thing this
 // reads from the host page -- nothing is written into it (ADR-011 C3).
-const attachPopupPositioning = (
-  popup: PopupElement,
+const attachOverlayPositioning = (
+  overlay: OverlayElement,
   reference: Range
 ): (() => void) => {
   const contextEl = nearestElement(reference.startContainer)
@@ -84,9 +84,9 @@ const attachPopupPositioning = (
   }
 
   const update = () => {
-    computePosition(virtualReference, popup, {
+    computePosition(virtualReference, overlay, {
       strategy: 'fixed',
-      // 'top' keeps the popup over already-read text, not the upcoming
+      // 'top' keeps the overlay over already-read text, not the upcoming
       // sentence; flip/shift keep it on screen; offset re-measures the line
       // height each tick so the "clear a line" gap (ADR-005) stays right if
       // the font/zoom changes while it's open; size caps the height.
@@ -98,42 +98,42 @@ const attachPopupPositioning = (
         size({
           padding: 8,
           apply({ availableHeight }) {
-            // Whichever is smaller: 60% of the viewport (so the popup never
+            // Whichever is smaller: 60% of the viewport (so the overlay never
             // dominates the screen) or the room in the chosen direction.
             const cap = Math.floor(window.innerHeight * 0.6)
-            popup.style.maxHeight = `${Math.min(cap, Math.floor(availableHeight))}px`
+            overlay.style.maxHeight = `${Math.min(cap, Math.floor(availableHeight))}px`
           },
         }),
       ],
     }).then(({ x, y }) => {
-      popup.style.left = `${x}px`
-      popup.style.top = `${y}px`
+      overlay.style.left = `${x}px`
+      overlay.style.top = `${y}px`
     })
   }
 
-  return autoUpdate(virtualReference, popup, update)
+  return autoUpdate(virtualReference, overlay, update)
 }
 
-// Shared Shadow DOM + Floating UI popup scaffold. Used by both the
-// dictionary-lookup popup (showWordPopup) and the drag-select translation
-// hint popup (showSelectionHint, ADR-007). Positions against the given Range
+// Shared Shadow DOM + Floating UI overlay scaffold. Used by both the
+// dictionary-lookup overlay (showWordPopover) and the drag-select translation
+// hint overlay (showSelectionHint, ADR-007). Positions against the given Range
 // and returns a React root ready to render into, a mount() to attach and
 // show it, and a cleanup() that stops the autoUpdate tracker (must be called
 // on close).
-const createAnchoredPopup = (
+const createAnchoredOverlay = (
   reference: Range
 ): {
-  popup: PopupElement
+  overlay: OverlayElement
   root: Root
   anchorNode: Node
   mount: () => void
   cleanup: () => void
 } => {
-  const popup = document.createElement('div') as PopupElement
-  popup.popover = 'manual'
-  popup.className = 'enx-word-popup'
-  popup.id = 'enx-word-popup'
-  popup.style.cssText = `
+  const overlay = document.createElement('div') as OverlayElement
+  overlay.popover = 'manual'
+  overlay.className = 'enx-anchored-overlay'
+  overlay.id = 'enx-anchored-overlay'
+  overlay.style.cssText = `
     position: fixed;
     top: 0;
     left: 0;
@@ -149,7 +149,7 @@ const createAnchoredPopup = (
 
   // Content is rendered inside a shadow root so Tailwind classes can't leak
   // into (or be overridden by) the host page's styles.
-  const shadowRoot = popup.attachShadow({ mode: 'open' })
+  const shadowRoot = overlay.attachShadow({ mode: 'open' })
   const styleTag = document.createElement('style')
   styleTag.textContent = tailwindCss
   shadowRoot.appendChild(styleTag)
@@ -159,36 +159,36 @@ const createAnchoredPopup = (
   const root = createRoot(mountPoint)
 
   // For the click-outside guard: don't dismiss when the click landed on the
-  // word the popup belongs to.
+  // word the overlay belongs to.
   const anchorNode: Node =
     nearestElement(reference.startContainer) ?? reference.startContainer
 
   let stopPositioning: (() => void) | null = null
   const mount = () => {
-    document.body.appendChild(popup)
-    popup.showPopover()
-    stopPositioning = attachPopupPositioning(popup, reference)
+    document.body.appendChild(overlay)
+    overlay.showPopover()
+    stopPositioning = attachOverlayPositioning(overlay, reference)
   }
   const cleanup = () => {
     stopPositioning?.()
     stopPositioning = null
   }
 
-  return { popup, root, anchorNode, mount, cleanup }
+  return { overlay, root, anchorNode, mount, cleanup }
 }
 
-// Create and show word popup using the Popover API + Floating UI, positioned
+// Create and show word overlay using the Popover API + Floating UI, positioned
 // against `reference` -- a Range over the clicked word (or the drag-selection).
-const showWordPopup = async (word: string, reference: Range) => {
+const showWordPopover = async (word: string, reference: Range) => {
   if (!word || word.trim() === '') return
 
-  console.log('Showing popup for word:', word)
+  console.log('Showing overlay for word:', word)
 
-  // Remove existing popup
-  hideWordPopup()
+  // Remove existing overlay
+  hideCurrentOverlay()
 
-  const { popup, root, anchorNode, mount, cleanup } =
-    createAnchoredPopup(reference)
+  const { overlay, root, anchorNode, mount, cleanup } =
+    createAnchoredOverlay(reference)
   currentRoot = root
 
   const handleMarkAcquainted = async (englishWord: string) => {
@@ -213,7 +213,7 @@ const showWordPopup = async (word: string, reference: Range) => {
         wordCache[englishWord.toLowerCase()] = updated
         contentScriptStore.set(currentWordAtom, updated)
         void refreshHighlights()
-        popup.hidePopover()
+        overlay.hidePopover()
       }
     } catch (error) {
       console.error('Error marking word as acquainted:', error)
@@ -254,9 +254,9 @@ const showWordPopup = async (word: string, reference: Range) => {
 
   root.render(
     <Provider store={contentScriptStore}>
-      <WordPopup
+      <WordPopover
         word={word}
-        onClose={() => popup.hidePopover()}
+        onClose={() => overlay.hidePopover()}
         onMarkAcquainted={handleMarkAcquainted}
         onOpenSentencePanel={handleOpenSentencePanel}
       />
@@ -271,9 +271,9 @@ const showWordPopup = async (word: string, reference: Range) => {
 
   // 6. Add to DOM, show Popover, start position tracking
   mount()
-  currentPopup = popup
+  currentOverlay = overlay
 
-  setupPopupEventHandlers(popup, anchorNode, root, cleanup)
+  setupOverlayEventHandlers(overlay, anchorNode, root, cleanup)
 
   // 7. Fetch word translation
   try {
@@ -287,7 +287,7 @@ const showWordPopup = async (word: string, reference: Range) => {
 
     if (response.success && response.ecp) {
       // The raw ECDICT phonetic field is kept as-is here; formatPhonetic()
-      // (src/lib/phonetic.ts) normalises it at render time in WordPopup and
+      // (src/lib/phonetic.ts) normalises it at render time in WordPopover and
       // the Side Panel, so both surfaces show the same shape.
       const wordData: WordData = { ...response.ecp }
 
@@ -314,7 +314,7 @@ const showWordPopup = async (word: string, reference: Range) => {
       })
     } else if (response.sessionExpired) {
       console.log('Session expired, showing session expired message')
-      popup.hidePopover()
+      overlay.hidePopover()
       showSessionExpiredMessage()
     } else {
       const errorMessage = response.error || 'Translation service unavailable'
@@ -332,23 +332,23 @@ const showWordPopup = async (word: string, reference: Range) => {
   }
 }
 
-// Setup event handlers for Popover popup. `stopPositioning` is the Floating
-// UI autoUpdate cleanup from createAnchoredPopup -- folded into
-// popupEventCleanup so both close paths (the 'toggle' handler below and
-// hideWordPopup()'s direct teardown) stop the scroll/resize listeners.
-const setupPopupEventHandlers = (
-  popup: PopupElement,
+// Setup event handlers for Popover overlay. `stopPositioning` is the Floating
+// UI autoUpdate cleanup from createAnchoredOverlay -- folded into
+// overlayEventCleanup so both close paths (the 'toggle' handler below and
+// hideCurrentOverlay()'s direct teardown) stop the scroll/resize listeners.
+const setupOverlayEventHandlers = (
+  overlay: OverlayElement,
   anchorNode: Node,
   root: Root,
   stopPositioning: () => void
 ) => {
-  // Cleanup when popup is closed via hidePopover() (close button / ESC /
+  // Cleanup when overlay is closed via hidePopover() (close button / ESC /
   // click-outside all route through hidePopover(), which reliably fires
   // 'toggle' -- confirmed via the §4.3 spike). This does NOT fire when a
-  // popup is torn down by hideWordPopup()'s direct popup.remove() call (e.g.
-  // switching to a new word while this one is still open) -- that path
-  // unmounts explicitly instead, see hideWordPopup() below.
-  popup.addEventListener('toggle', (e: Event) => {
+  // overlay is torn down by hideCurrentOverlay()'s direct .remove() call
+  // (e.g. switching to a new word while this one is still open) -- that path
+  // unmounts explicitly instead, see hideCurrentOverlay() below.
+  overlay.addEventListener('toggle', (e: Event) => {
     const toggleEvent = e as ToggleEvent
     if (toggleEvent.newState === 'closed') {
       if (currentRoot === root) {
@@ -356,13 +356,13 @@ const setupPopupEventHandlers = (
         currentRoot = null
         console.debug('[enx] root unmounted')
       }
-      popup.remove()
-      if (currentPopup === popup) {
-        currentPopup = null
+      overlay.remove()
+      if (currentOverlay === overlay) {
+        currentOverlay = null
       }
-      if (popupEventCleanup) {
-        popupEventCleanup()
-        popupEventCleanup = null
+      if (overlayEventCleanup) {
+        overlayEventCleanup()
+        overlayEventCleanup = null
       }
     }
   })
@@ -370,30 +370,30 @@ const setupPopupEventHandlers = (
   // ESC key handler
   const handleKeydown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
-      popup.hidePopover()
+      overlay.hidePopover()
     }
   }
 
   // Click outside handler (optional, Popover API can handle this)
   const handleClickOutside = (e: MouseEvent) => {
     const target = e.target as Node
-    if (!popup.contains(target) && !anchorNode.contains(target)) {
-      popup.hidePopover()
+    if (!overlay.contains(target) && !anchorNode.contains(target)) {
+      overlay.hidePopover()
     }
   }
 
   document.addEventListener('keydown', handleKeydown)
   document.addEventListener('click', handleClickOutside)
 
-  popupEventCleanup = () => {
+  overlayEventCleanup = () => {
     document.removeEventListener('keydown', handleKeydown)
     document.removeEventListener('click', handleClickOutside)
     stopPositioning()
   }
 }
 
-// Hide word popup
-const hideWordPopup = () => {
+// Hide word overlay
+const hideCurrentOverlay = () => {
   // Direct DOM removal does not reliably fire the popover's 'toggle' event
   // (confirmed via the §4.3 spike), so the React root is unmounted explicitly
   // here rather than relying solely on the toggle handler above.
@@ -402,15 +402,15 @@ const hideWordPopup = () => {
     currentRoot = null
     console.debug('[enx] root unmounted')
   }
-  if (currentPopup) {
-    currentPopup.remove()
-    currentPopup = null
+  if (currentOverlay) {
+    currentOverlay.remove()
+    currentOverlay = null
   }
 
   // Clean up event listeners
-  if (popupEventCleanup) {
-    popupEventCleanup()
-    popupEventCleanup = null
+  if (overlayEventCleanup) {
+    overlayEventCleanup()
+    overlayEventCleanup = null
   }
 }
 
@@ -706,7 +706,7 @@ const caretFromPoint = (
 }
 
 // One click listener per article root: resolve the word under the pointer
-// from its coordinates (no marker element needed) and open the popup on it.
+// from its coordinates (no marker element needed) and open the overlay on it.
 // Clicks inside links / code / buttons resolve to null and fall through.
 const handleArticleClick = (event: Event) => {
   const { clientX, clientY } = event as MouseEvent
@@ -716,7 +716,7 @@ const handleArticleClick = (event: Event) => {
   if (!wordRange) return
   event.preventDefault()
   event.stopPropagation()
-  showWordPopup(wordRange.toString(), wordRange)
+  showWordPopover(wordRange.toString(), wordRange)
 }
 
 // articleRoots + its click listeners are managed together: point ENX at a
@@ -794,26 +794,26 @@ const addProcessingCompleteIndicator = (articleNode: Element) => {
   articleNode.insertBefore(indicator, articleNode.firstChild)
 }
 
-// Shows a lightweight popup carrying only the sentencePanelHint text, no
+// Shows a lightweight overlay carrying only the sentencePanelHint text, no
 // dictionary UI (ADR-007 Decision §4). Used by the drag-select translation
 // flow for the two cases where the user needs feedback: the selection was
 // rejected for being too long, or chrome.sidePanel.open() couldn't be
 // triggered and the panel needs to be opened manually.
 const showSelectionHint = (hint: string, reference: Range) => {
-  hideWordPopup()
+  hideCurrentOverlay()
 
-  const { popup, root, anchorNode, mount, cleanup } =
-    createAnchoredPopup(reference)
+  const { overlay, root, anchorNode, mount, cleanup } =
+    createAnchoredOverlay(reference)
   currentRoot = root
 
   contentScriptStore.set(sentencePanelHintAtom, hint)
 
   root.render(
     <Provider store={contentScriptStore}>
-      <WordPopup
+      <WordPopover
         word=""
         variant="hint"
-        onClose={() => popup.hidePopover()}
+        onClose={() => overlay.hidePopover()}
         onMarkAcquainted={() => {}}
         onOpenSentencePanel={() => {}}
       />
@@ -821,9 +821,9 @@ const showSelectionHint = (hint: string, reference: Range) => {
   )
 
   mount()
-  currentPopup = popup
+  currentOverlay = overlay
 
-  setupPopupEventHandlers(popup, anchorNode, root, cleanup)
+  setupOverlayEventHandlers(overlay, anchorNode, root, cleanup)
 }
 
 // Drag-select translation (ADR-007): sends the selected text straight to
@@ -932,7 +932,7 @@ const handleTextSelection = () => {
   if (!selectedText || !selection || selection.rangeCount === 0) return
 
   // Captured now: the selection can be cleared (by a later click) before an
-  // async branch below gets to position its hint popup against it.
+  // async branch below gets to position its hint overlay against it.
   const selectionRange = selection.getRangeAt(0).cloneRange()
 
   const wordCount = selectedText.split(/\s+/).filter(Boolean).length
@@ -956,7 +956,7 @@ const handleTextSelection = () => {
 
   if (wordCount === 1) {
     // Single word, no sentence-ending punctuation: existing dictionary lookup.
-    showWordPopup(selectedText, selectionRange)
+    showWordPopover(selectedText, selectionRange)
     return
   }
 
@@ -976,7 +976,7 @@ const getSpaRebuilder = () => {
     teardown: () => {
       WordProcessor.clearHighlights()
       clearArticleRoots()
-      hideWordPopup()
+      hideCurrentOverlay()
     },
     rebuild: isCurrent => processArticleContent({ isCurrent }).then(() => {}),
   })
@@ -1037,8 +1037,8 @@ const disableEnx = () => {
   cancelPendingSelectionTranslation()
   spaRebuilderInstance?.stop()
 
-  // Hide popup
-  hideWordPopup()
+  // Hide overlay
+  hideCurrentOverlay()
 
   // Remove processing complete indicator
   const indicator = document.getElementById('enx-processing-complete')
@@ -1052,7 +1052,7 @@ const disableEnx = () => {
   clearArticleRoots()
 }
 
-// Listen for messages from popup or background
+// Listen for messages from the popup or background
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   console.log('Content script received message:', request)
 
@@ -1148,7 +1148,7 @@ onWordHighlightEnabledChange(() => {
 
 // Clean up on page unload
 window.addEventListener('beforeunload', () => {
-  hideWordPopup()
+  hideCurrentOverlay()
 })
 
 console.log('ENX Content script ready')
