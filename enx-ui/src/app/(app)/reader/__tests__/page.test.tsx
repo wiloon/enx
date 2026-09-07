@@ -46,7 +46,7 @@ it('returns to the editor with the text intact via Edit', () => {
   paste('Keep me.')
   fireEvent.click(screen.getByRole('button', { name: 'Read' }))
 
-  fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Edit text' }))
 
   expect(screen.getByLabelText(/paste english text/i)).toHaveValue('Keep me.')
 })
@@ -80,7 +80,7 @@ describe('enabling learning mode via the extension', () => {
     render(<ReaderPage />)
     paste('One.')
     fireEvent.click(screen.getByRole('button', { name: 'Read' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit text' }))
     fireEvent.click(screen.getByRole('button', { name: 'Read' }))
 
     expect(enableCalls()).toHaveLength(2)
