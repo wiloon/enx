@@ -101,6 +101,73 @@ it('shows the backend error message when the request fails', async () => {
   )
 })
 
+it('clears the box and the previous result via the Clear button', async () => {
+  mockRephrase.mockResolvedValue({ success: true, data: okData })
+  renderPage()
+
+  const box = screen.getByLabelText(/Type in Chinese or rough English/i)
+  fireEvent.change(box, { target: { value: '帮我看下这个' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Rephrase' }))
+  await waitFor(() =>
+    expect(
+      screen.getByText('Could you review this when you get a chance?')
+    ).toBeInTheDocument()
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+
+  expect(box).toHaveValue('')
+  expect(
+    screen.queryByText('Could you review this when you get a chance?')
+  ).not.toBeInTheDocument()
+})
+
+it('Escape clears the box, but not while composing an IME candidate', () => {
+  renderPage()
+  const box = screen.getByLabelText(/Type in Chinese or rough English/i)
+
+  fireEvent.change(box, { target: { value: '帮我看下这个' } })
+  fireEvent.keyDown(box, { key: 'Escape', isComposing: true })
+  expect(box).toHaveValue('帮我看下这个')
+
+  fireEvent.keyDown(box, { key: 'Escape' })
+  expect(box).toHaveValue('')
+})
+
+it('disables Clear when there is nothing to clear', () => {
+  renderPage()
+  expect(screen.getByRole('button', { name: 'Clear' })).toBeDisabled()
+
+  fireEvent.change(screen.getByLabelText(/Type in Chinese or rough English/i), {
+    target: { value: '你好' },
+  })
+  expect(screen.getByRole('button', { name: 'Clear' })).toBeEnabled()
+})
+
+it('selects the whole input on focus once a result is showing', async () => {
+  mockRephrase.mockResolvedValue({ success: true, data: okData })
+  renderPage()
+
+  const box = screen.getByLabelText(
+    /Type in Chinese or rough English/i
+  ) as HTMLTextAreaElement
+  const select = jest.spyOn(box, 'select')
+
+  fireEvent.change(box, { target: { value: '帮我看下这个' } })
+  fireEvent.focus(box)
+  expect(select).not.toHaveBeenCalled()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Rephrase' }))
+  await waitFor(() =>
+    expect(
+      screen.getByText('Could you review this when you get a chance?')
+    ).toBeInTheDocument()
+  )
+
+  fireEvent.focus(box)
+  expect(select).toHaveBeenCalled()
+})
+
 it('copies a rendering to the clipboard', async () => {
   const writeText = jest.fn().mockResolvedValue(undefined)
   Object.assign(navigator, { clipboard: { writeText } })
