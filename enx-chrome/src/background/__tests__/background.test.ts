@@ -42,7 +42,7 @@ jest.mock('@clerk/chrome-extension/background', () => ({
 }))
 
 import { createClerkClient } from '@clerk/chrome-extension/background'
-import { makeApiRequest } from '../background'
+import { makeApiRequest, __resetClerkClientCacheForTests } from '../background'
 
 // Captured at import time, before any test's resetAllMocks() wipes the
 // addListener call history: importing ../background registers this as a
@@ -53,6 +53,16 @@ const onMessageListener = (chrome.runtime.onMessage.addListener as jest.Mock)
   sender: unknown,
   sendResponse: (response: unknown) => void
 ) => boolean
+
+// ADR-019: the one web -> extension channel. enx-ui (an externally_connectable
+// origin) is the only caller.
+const onMessageExternalListener = (
+  chrome.runtime.onMessageExternal.addListener as jest.Mock
+).mock.calls[0][0] as (
+  message: unknown,
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: unknown) => void
+) => boolean | void
 
 function jsonResponse(status: number, body: unknown, ok = status < 400) {
   return {
@@ -480,5 +490,67 @@ describe('background onMessage / translateSentenceWithWord (ADR-014)', () => {
 
     expect(response).toEqual({ success: false, error: 'sentence and word are required' })
     expect(global.fetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('background onMessageExternal (ADR-019 web -> extension channel)', () => {
+  const external = onMessageExternalListener
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    __resetClerkClientCacheForTests()
+    setClerkSession('clerk-session-jwt')
+    ;(chrome.runtime.getManifest as jest.Mock).mockReturnValue({ version: '1.2.3' })
+    ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
+  })
+
+  const call = (
+    message: unknown,
+    sender: Partial<chrome.runtime.MessageSender> = {
+      origin: 'https://enx.wiloon.com',
+      tab: { id: 7 } as chrome.tabs.Tab,
+    }
+  ): Promise<unknown> =>
+    new Promise(resolve =>
+      external(message, sender as chrome.runtime.MessageSender, resolve)
+    )
+
+  it('answers enx:ping with the extension version', async () => {
+    const response = await call({ type: 'enx:ping' })
+    expect(response).toEqual({ ok: true, version: '1.2.3' })
+  })
+
+  it('runs enxRun on the sender tab for enx:enable-reader when signed in', async () => {
+    const response = await call({ type: 'enx:enable-reader' })
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(7, { action: 'enxRun' })
+    expect(response).toEqual({ ok: true })
+  })
+
+  it('refuses enx:enable-reader when signed out, without touching the tab', async () => {
+    setClerkSession(null)
+    const response = await call({ type: 'enx:enable-reader' })
+    expect(response).toEqual({ ok: false, reason: 'signed-out' })
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('drops a message from an origin that is not an enx-ui origin', async () => {
+    const sendResponse = jest.fn()
+    const keptOpen = external(
+      { type: 'enx:enable-reader' },
+      {
+        origin: 'https://evil.example',
+        tab: { id: 7 } as chrome.tabs.Tab,
+      } as chrome.runtime.MessageSender,
+      sendResponse
+    )
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(keptOpen).toBe(false)
+    expect(sendResponse).not.toHaveBeenCalled()
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('answers an unknown message type with ok:false', async () => {
+    const response = await call({ type: 'enx:frobnicate' })
+    expect(response).toEqual({ ok: false, reason: 'unknown-type' })
   })
 })

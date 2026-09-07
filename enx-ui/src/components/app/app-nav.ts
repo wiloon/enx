@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  BookOpen,
   CreditCard,
   Home,
   Search,
@@ -21,6 +22,7 @@ export const NAV_MAIN: NavItem[] = [
   { label: 'Home', href: '/app', icon: Home },
   { label: 'Word Lookup', href: '/lookup', icon: Search },
   { label: 'Rephrase', href: '/rephrase', icon: Sparkles },
+  { label: 'Reader', href: '/reader', icon: BookOpen },
 ]
 
 // Reading insights — daily / weekly / monthly stats and charts live under here

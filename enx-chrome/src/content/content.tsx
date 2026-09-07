@@ -13,6 +13,7 @@ import {
 } from '@floating-ui/dom'
 import { WordProcessor } from '@/lib/wordProcessor'
 import { resolveSiteAdapter } from '@/lib/siteAdapters'
+import { stampExtensionPresence } from '@/lib/extensionPresence'
 import { nearestElement, referenceLineHeight } from '@/lib/rangeUtils'
 import {
   createSpaRebuilder,
@@ -35,6 +36,10 @@ import WordPopover from '@/components/WordPopover'
 import tailwindCss from '@/index.css?inline'
 
 console.log('ENX Content script loaded')
+
+// ADR-019: let enx-ui detect the extension is installed (fallback to the
+// externally_connectable ping). No-op on every other site.
+stampExtensionPresence(document, window.location, chrome.runtime.getManifest().version)
 
 // State management for content script
 let isEnxEnabled = false
