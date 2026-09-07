@@ -11,8 +11,8 @@ package bedrock
 import (
 	"context"
 	"fmt"
-	"time"
 
+	"enx-api/aitranslate/aicfg"
 	"enx-api/aitranslate/aiusage"
 	"enx-api/utils/logger"
 
@@ -24,8 +24,6 @@ import (
 )
 
 const (
-	requestTimeout = 10 * time.Second
-
 	systemPrompt = "You are a professional English-to-Chinese translator. " +
 		"Translate the given English sentence into natural, fluent Chinese. " +
 		"Reply with the Chinese translation only, no explanation, no pinyin, no quotes."
@@ -88,7 +86,7 @@ func (b *Bedrock) TranslateWordInContext(ctx context.Context, sentence, word str
 }
 
 func (b *Bedrock) converse(ctx context.Context, feature, systemPrompt, userContent string) (string, aiusage.Usage, error) {
-	callCtx, cancel := context.WithTimeout(ctx, requestTimeout)
+	callCtx, cancel := context.WithTimeout(ctx, aicfg.RequestTimeout())
 	defer cancel()
 
 	out, err := b.client.Converse(callCtx, &bedrockruntime.ConverseInput{
