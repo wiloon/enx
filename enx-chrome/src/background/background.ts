@@ -45,6 +45,13 @@ const getClerk = (): Promise<ClerkClient> => {
   return clerkClientPromise
 }
 
+// Test-only: the cached Clerk client is module state that survives
+// jest.resetAllMocks(), so a suite that needs a clean signed-in / signed-out
+// starting point must flush it explicitly.
+export const __resetClerkClientCacheForTests = (): void => {
+  clerkClientPromise = null
+}
+
 // Mitigation for a false "session expired": homelab still runs Clerk's
 // *development* instance (see TASK-SPEC-enx-clerk-production-cutover.md).
 // On a dev instance @clerk/chrome-extension syncs the session by reading the
@@ -488,6 +495,46 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   handleAsync().then(sendResponse)
 
   return true // Keep the message channel open for async response
+})
+
+// ADR-019: the one web -> extension channel. Only enx-ui's own origins can
+// reach it (also enforced by manifest `externally_connectable`), and the
+// vocabulary is a fixed two-word list -- neither message transits an
+// internal content-script action.
+const ENX_UI_ORIGINS = new Set([
+  'http://localhost:3000',
+  'https://enx.wiloon.lab',
+  'https://enx.wiloon.com',
+])
+
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+  // Trust the browser-reported origin, never anything inside the message.
+  if (!sender.origin || !ENX_UI_ORIGINS.has(sender.origin)) {
+    return false
+  }
+
+  const type = (message as { type?: string } | null)?.type
+
+  if (type === 'enx:ping') {
+    sendResponse({ ok: true, version: chrome.runtime.getManifest().version })
+    return false
+  }
+
+  if (type === 'enx:enable-reader') {
+    void (async () => {
+      if (!(await isSignedIn())) {
+        sendResponse({ ok: false, reason: 'signed-out' })
+        return
+      }
+      const tabId = sender.tab?.id
+      await chrome.tabs.sendMessage(tabId!, { action: 'enxRun' })
+      sendResponse({ ok: true })
+    })()
+    return true
+  }
+
+  sendResponse({ ok: false, reason: 'unknown-type' })
+  return false
 })
 
 // Sign-in / sign-out now happen in the popup via Clerk's <SignIn/> and

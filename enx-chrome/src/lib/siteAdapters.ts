@@ -126,8 +126,37 @@ const X_ADAPTER: SiteAdapter = {
   showProcessingIndicator: false,
 }
 
+// --- enx-ui Reader (ADR-019) ---------------------------------------------
+// enx-ui's /reader page renders user-pasted plain text into
+// #enx-reader-article; the extension treats it like a whitelisted article
+// site, but only on the /reader route. The app's other pages (/lookup,
+// /rephrase, /billing, ...) load the content script too (the manifest
+// whitelists the whole origin) but are not meant to be read here.
+
+const ENX_UI_HOSTS = new Set(['localhost', 'enx.wiloon.lab', 'enx.wiloon.com'])
+
+/** True when the page is served by enx-ui (dev, homelab, or prod). */
+export function isEnxUiHost(location: PageLocation): boolean {
+  return ENX_UI_HOSTS.has(location.hostname)
+}
+
+const READER_ADAPTER: SiteAdapter = {
+  name: 'reader',
+  matches: location => ENX_UI_HOSTS.has(location.hostname),
+  pageSupport: location =>
+    location.pathname === '/reader' || location.pathname.startsWith('/reader/')
+      ? null
+      : 'ENX only works on the Reader page here. Paste text into the Reader and submit first.',
+  contentSelector: '#enx-reader-article',
+  // The user may paste a single short paragraph.
+  minTextLength: 1,
+  contentVolatility: 'static',
+  clickBinding: 'bubble',
+  showProcessingIndicator: false,
+}
+
 // Non-default adapters, checked in order.
-const ADAPTERS: SiteAdapter[] = [X_ADAPTER]
+const ADAPTERS: SiteAdapter[] = [X_ADAPTER, READER_ADAPTER]
 
 export function resolveSiteAdapter(location: PageLocation): SiteAdapter {
   return ADAPTERS.find(adapter => adapter.matches(location)) ?? DEFAULT_ADAPTER

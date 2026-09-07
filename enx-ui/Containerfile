@@ -20,12 +20,21 @@ ARG NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
 ARG NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
 ARG NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/app
 ARG NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/app
+# ADR-019: the Reader page asks the ENX Chrome extension to enable learning
+# mode via chrome.runtime.sendMessage(<id>, ...). The id is deterministic
+# because enx-chrome/manifest.json ships a fixed `key`, so this default is
+# correct for every unpacked/homelab load. Re-publishing under a Web Store
+# id later means overriding this build-arg.
+ARG NEXT_PUBLIC_ENX_EXTENSION_ID=omcdpipnjffmblbhiphddcmoldceapam
+ARG NEXT_PUBLIC_ENX_EXTENSION_WEB_STORE_URL=
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 ENV NEXT_PUBLIC_CLERK_SIGN_IN_URL=$NEXT_PUBLIC_CLERK_SIGN_IN_URL
 ENV NEXT_PUBLIC_CLERK_SIGN_UP_URL=$NEXT_PUBLIC_CLERK_SIGN_UP_URL
 ENV NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=$NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL
 ENV NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=$NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL
+ENV NEXT_PUBLIC_ENX_EXTENSION_ID=$NEXT_PUBLIC_ENX_EXTENSION_ID
+ENV NEXT_PUBLIC_ENX_EXTENSION_WEB_STORE_URL=$NEXT_PUBLIC_ENX_EXTENSION_WEB_STORE_URL
 # clerkMiddleware() needs SOME secret key present during `next build`; the real
 # value is injected at runtime from the k8s Secret `enx-clerk`. This dummy never
 # leaves the build stage.
