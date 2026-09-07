@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -31,6 +31,7 @@ function CopyButton({ text }: { text: string }) {
 
 export default function RephrasePage() {
   const [input, setInput] = useState('')
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const mutation = useMutation<RephraseData, Error, string>({
     mutationFn: async (text: string) => {
@@ -46,19 +47,40 @@ export default function RephrasePage() {
   const charCount = [...input].length
   const tooLong = charCount > MAX_CHARS
   const canSubmit = input.trim().length > 0 && !tooLong && !mutation.isPending
+  const canClear = input.length > 0 || mutation.isSuccess || mutation.isError
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (canSubmit) mutation.mutate(input.trim())
   }
 
+  // Wipe the box and the previous result so the next sentence starts clean.
+  const handleClear = () => {
+    setInput('')
+    mutation.reset()
+    inputRef.current?.focus()
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Skip Enter presses that are confirming an IME candidate (e.g. pinyin),
-    // not actually submitting the form.
+    // Skip Enter/Escape presses that are confirming or dismissing an IME
+    // candidate (e.g. pinyin), not acting on the form.
     if (e.nativeEvent.isComposing) return
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       if (canSubmit) mutation.mutate(input.trim())
+    }
+    if (e.key === 'Escape' && canClear) {
+      e.preventDefault()
+      handleClear()
+    }
+  }
+
+  // Once a result is showing, the box still holds the sentence we just
+  // rephrased -- select it all on focus so the next keystroke replaces it
+  // without a manual Cmd+A or backspacing.
+  const handleFocus = (e: React.FocusEvent<HTMLTextAreaElement>) => {
+    if (mutation.isSuccess && input.trim() === mutation.variables) {
+      e.currentTarget.select()
     }
   }
 
@@ -77,9 +99,11 @@ export default function RephrasePage() {
             </Label>
             <textarea
               id="rephrase-input"
+              ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
+              onFocus={handleFocus}
               rows={4}
               placeholder="What do you want to say?"
               className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -90,9 +114,20 @@ export default function RephrasePage() {
               >
                 {charCount} / {MAX_CHARS}
               </span>
-              <Button type="submit" disabled={!canSubmit}>
-                {mutation.isPending ? 'Rephrasing…' : 'Rephrase'}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={handleClear}
+                  disabled={!canClear}
+                  title="Clear (Esc)"
+                >
+                  Clear
+                </Button>
+                <Button type="submit" disabled={!canSubmit}>
+                  {mutation.isPending ? 'Rephrasing…' : 'Rephrase'}
+                </Button>
+              </div>
             </div>
           </form>
 
