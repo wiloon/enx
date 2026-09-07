@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { Pencil } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -51,10 +52,19 @@ export default function ReaderPage() {
     const storeUrl = webStoreUrl()
 
     return (
-      <div className="container mx-auto p-6 max-w-2xl space-y-4">
-        <div className="flex justify-end">
-          <Button type="button" variant="ghost" onClick={() => setArticle(null)}>
-            Edit
+      <div className="container mx-auto max-w-2xl p-6 space-y-4">
+        <div className="flex items-center justify-between rounded-md border bg-muted/40 px-4 py-2.5">
+          <span className="text-sm font-medium text-muted-foreground">
+            Reading mode
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setArticle(null)}
+          >
+            <Pencil aria-hidden="true" />
+            Edit text
           </Button>
         </div>
         {showInstallPrompt && (
