@@ -56,6 +56,9 @@ func TestViperInitSetsDefaults(t *testing.T) {
 	if got := viper.GetDuration("user.last-login-update-interval"); got != 5*time.Minute {
 		t.Errorf("user.last-login-update-interval as duration = %v, want 5m", got)
 	}
+	if got := viper.GetDuration("sentence-translate.request-timeout"); got != 60*time.Second {
+		t.Errorf("sentence-translate.request-timeout = %v, want 60s", got)
+	}
 
 	// Calling it again must be a no-op (sync.Once) and must not panic.
 	ViperInit()

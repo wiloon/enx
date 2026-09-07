@@ -71,6 +71,12 @@ func viperInitInternal() {
 	// call 401s with "invalid api key (2049)".
 	viper.SetDefault("sentence-translate.provider", "")
 	_ = viper.BindEnv("sentence-translate.provider", "SENTENCE_TRANSLATE_PROVIDER")
+	// Per-call provider API timeout (aitranslate/aicfg). Defaults to 60s:
+	// MiniMax's M-series models "think" before the first response byte, so
+	// the original hard-coded 10s timed out on rephrase. Override with
+	// SENTENCE_TRANSLATE_REQUEST_TIMEOUT (a Go duration string, e.g. "90s").
+	viper.SetDefault("sentence-translate.request-timeout", "60s")
+	_ = viper.BindEnv("sentence-translate.request-timeout", "SENTENCE_TRANSLATE_REQUEST_TIMEOUT")
 	_ = viper.BindEnv("sentence-translate.kimi.api-key", "KIMI_API_KEY")
 	_ = viper.BindEnv("sentence-translate.kimi.base-url", "SENTENCE_TRANSLATE_KIMI_BASE_URL")
 	_ = viper.BindEnv("sentence-translate.kimi.model", "SENTENCE_TRANSLATE_KIMI_MODEL")

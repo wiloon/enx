@@ -8,8 +8,8 @@ package minimax
 import (
 	"context"
 	"fmt"
-	"time"
 
+	"enx-api/aitranslate/aicfg"
 	"enx-api/aitranslate/aiusage"
 	"enx-api/utils/logger"
 
@@ -20,7 +20,6 @@ import (
 const (
 	defaultModel   = "MiniMax-Text-01"
 	defaultBaseURL = "https://api.minimax.io/v1"
-	requestTimeout = 10 * time.Second
 
 	systemPrompt = "You are a professional English-to-Chinese translator. " +
 		"Translate the given English sentence into natural, fluent Chinese. " +
@@ -64,7 +63,7 @@ func New() (*MiniMax, error) {
 		model:   model,
 		baseURL: baseURL,
 		groupID: viper.GetString("sentence-translate.minimax.group-id"),
-		client:  resty.New().SetTimeout(requestTimeout),
+		client:  resty.New().SetTimeout(aicfg.RequestTimeout()),
 	}, nil
 }
 

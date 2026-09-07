@@ -54,6 +54,11 @@ authorized-parties = ["https://enx.wiloon.lab", "http://localhost:3000"]
 # API keys are never set here; see KIMI_API_KEY / MINIMAX_API_KEY env vars,
 # and the AWS credential chain (IAM instance role on EC2) for bedrock.
 provider = ""
+# Per-call timeout for the provider API request (Go duration string).
+# Default 60s: MiniMax's M-series models spend time "thinking" before the
+# first response byte, and the old hard-coded 10s timed out on rephrase.
+# Override with SENTENCE_TRANSLATE_REQUEST_TIMEOUT.
+request-timeout = "60s"
 
 [sentence-translate.kimi]
 model = "moonshot-v1-8k"

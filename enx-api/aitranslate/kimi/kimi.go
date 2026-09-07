@@ -5,8 +5,8 @@ package kimi
 import (
 	"context"
 	"fmt"
-	"time"
 
+	"enx-api/aitranslate/aicfg"
 	"enx-api/aitranslate/aiusage"
 	"enx-api/utils/logger"
 
@@ -17,7 +17,6 @@ import (
 const (
 	defaultModel   = "moonshot-v1-8k"
 	defaultBaseURL = "https://api.moonshot.cn/v1"
-	requestTimeout = 10 * time.Second
 
 	systemPrompt = "You are a professional English-to-Chinese translator. " +
 		"Translate the given English sentence into natural, fluent Chinese. " +
@@ -72,7 +71,7 @@ func New() (*Kimi, error) {
 		model:         model,
 		rephraseModel: viper.GetString("sentence-translate.kimi.rephrase-model"),
 		baseURL:       baseURL,
-		client:        resty.New().SetTimeout(requestTimeout),
+		client:        resty.New().SetTimeout(aicfg.RequestTimeout()),
 	}, nil
 }
 
