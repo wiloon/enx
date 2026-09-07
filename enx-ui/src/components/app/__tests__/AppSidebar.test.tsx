@@ -18,6 +18,7 @@ it('renders every navigation destination', () => {
     'Home',
     'Word Lookup',
     'Rephrase',
+    'Reader',
     'Reading Stats',
     'Billing',
   ]) {

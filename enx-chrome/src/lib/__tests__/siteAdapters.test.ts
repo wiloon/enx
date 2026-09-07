@@ -206,3 +206,49 @@ describe('pickFocusedTweet', () => {
     warn.mockRestore()
   })
 })
+
+// ADR-019: enx-ui's /reader page renders user-pasted plain text as an
+// article; the extension treats it like any whitelisted article site, but
+// only on the /reader route (the app's other pages -- lookup, rephrase,
+// billing -- are not meant to be read by the extension).
+describe('READER_ADAPTER (enx-ui paste-text reader)', () => {
+  it('matches the enx-ui hosts (dev, homelab, prod)', () => {
+    for (const host of ['localhost', 'enx.wiloon.lab', 'enx.wiloon.com']) {
+      expect(resolveSiteAdapter(loc(host, '/reader')).name).toBe('reader')
+    }
+  })
+
+  it('does not match unrelated hosts', () => {
+    expect(resolveSiteAdapter(loc('www.infoq.com', '/reader')).name).toBe(
+      'default'
+    )
+    expect(resolveSiteAdapter(loc('enx.wiloon.com.evil.net', '/reader')).name).toBe(
+      'default'
+    )
+  })
+
+  describe('pageSupport gate', () => {
+    const reader = resolveSiteAdapter(loc('enx.wiloon.com', '/reader'))
+
+    it('allows the /reader route', () => {
+      expect(reader.pageSupport!(loc('enx.wiloon.com', '/reader'))).toBeNull()
+    })
+
+    it('rejects every other enx-ui page with a message', () => {
+      for (const path of ['/', '/app', '/lookup', '/rephrase', '/billing']) {
+        expect(reader.pageSupport!(loc('enx.wiloon.com', path))).toEqual(
+          expect.stringMatching(/reader/i)
+        )
+      }
+    })
+  })
+
+  it('pins a dedicated content container and treats it as static', () => {
+    const reader = resolveSiteAdapter(loc('enx.wiloon.com', '/reader'))
+    expect(reader.contentSelector).toBe('#enx-reader-article')
+    expect(reader.contentVolatility).toBe('static')
+    expect(reader.clickBinding).toBe('bubble')
+    expect(reader.showProcessingIndicator).toBe(false)
+    expect(reader.minTextLength).toBe(1)
+  })
+})
