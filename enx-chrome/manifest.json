@@ -40,12 +40,22 @@
         "https://anthropic.skilljar.com/*",
         "https://claude.com/blog/*",
         "https://x.com/*",
-        "https://twitter.com/*"
+        "https://twitter.com/*",
+        "http://localhost:3000/*",
+        "https://enx.wiloon.lab/*",
+        "https://enx.wiloon.com/*"
       ],
       "js": ["src/content/content.tsx"],
       "run_at": "document_end"
     }
   ],
+  "externally_connectable": {
+    "matches": [
+      "http://localhost:3000/*",
+      "https://enx.wiloon.lab/*",
+      "https://enx.wiloon.com/*"
+    ]
+  },
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",

@@ -36,9 +36,14 @@ if (typeof globalThis.CSS === 'undefined') {
       addListener: jest.fn(),
       removeListener: jest.fn(),
     },
+    onMessageExternal: {
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+    },
     onInstalled: {
       addListener: jest.fn(),
     },
+    getManifest: jest.fn(() => ({ version: '0.0.0-test' })),
     getURL: jest.fn((path: string) => `chrome-extension://test/${path}`),
     getContexts: jest.fn(async () => []),
     ContextType: { SIDE_PANEL: 'SIDE_PANEL' },
