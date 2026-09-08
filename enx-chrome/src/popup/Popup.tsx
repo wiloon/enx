@@ -159,7 +159,14 @@ function SignedInBody({
             {email || '已登录'}
           </p>
         </div>
-        <SignOutButton>
+        {/*
+          `redirectUrl` defaults to "/" in <SignOutButton>, which after sign-out
+          navigates the popup to chrome-extension://<id>/ -- a directory with no
+          index, so Chrome shows ERR_FILE_NOT_FOUND. It also shadows the
+          ClerkProvider `afterSignOutUrl`, so set it here explicitly back to the
+          popup page.
+        */}
+        <SignOutButton redirectUrl="/popup.html">
           <button
             type="button"
             title="退出登录"

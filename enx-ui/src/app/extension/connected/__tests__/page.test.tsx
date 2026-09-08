@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import ExtensionConnectedPage from '../page'
 
 beforeEach(() => {
@@ -30,4 +30,28 @@ it('renders a fallback message for when the tab is not closed automatically', ()
 
 it('renders without an extension present (a plain web visitor)', () => {
   expect(() => render(<ExtensionConnectedPage />)).not.toThrow()
+})
+
+it('counts the return delay down and then drops the seconds', () => {
+  jest.useFakeTimers()
+  try {
+    render(<ExtensionConnectedPage />)
+
+    expect(screen.getByText(/in 3s/i)).toBeInTheDocument()
+
+    act(() => {
+      jest.advanceTimersByTime(1000)
+    })
+    expect(screen.getByText(/in 2s/i)).toBeInTheDocument()
+
+    act(() => {
+      jest.advanceTimersByTime(3000)
+    })
+    expect(screen.queryByText(/in \d+s/i)).not.toBeInTheDocument()
+    expect(
+      screen.getByText(/taking you back to what you were reading/i)
+    ).toBeInTheDocument()
+  } finally {
+    jest.useRealTimers()
+  }
 })

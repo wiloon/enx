@@ -79,7 +79,7 @@ Clerk `forceRedirectUrl` → `/extension/connected`，页面显示「✓ 已登�
 
 - `Login.tsx` 的 `openWebSignIn` 改为发 `chrome.runtime.sendMessage({ action: 'openWebSignIn' })` 给 background（popup 和 sidepanel 共用一条路径，不各自 `tabs.create`）。
 - background 新增 `openWebSignIn` handler：把 `sender.tab`（发起时的活动 tab）连同其 `windowId` 存进 `chrome.storage.session`，然后 `chrome.tabs.create({ url: '${clerkSyncHost}/sign-in?src=extension&redirect_url=/extension/connected' })`，把 `loginTabId` 一并记下。
-- `onMessageExternal` 加 `enx:signed-in` 分支：校验 `sender.origin ∈ ENX_UI_ORIGINS` → 关登录 tab、激活并聚焦记录的 origin tab / window、发通知；state 用完即清。消息体里的任何 tab id / URL 一律不信。
+- `onMessageExternal` 加 `enx:signed-in` 分支：校验 `sender.origin ∈ ENX_UI_ORIGINS` → 先停留 3s（`SIGNIN_RETURN_HOLD_MS`，测试环境为 0；回跳页同步显示倒计时）让用户看清 `/extension/connected` 的「You're signed in」→ 关登录 tab、激活并聚焦记录的 origin tab / window、发通知；state 用完即清。消息体里的任何 tab id / URL 一律不信。
 
   **关登录 tab 的三个前置条件（缺一就只切焦点、不关）**：
   1. `isSignedIn()` 确认为真（签出态回 `{ ok:false, reason:'signed-out' }`，不动 tab）；

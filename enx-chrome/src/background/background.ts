@@ -508,6 +508,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 const SIGNIN_RETURN_STORAGE_KEY = 'enx-signin-return'
 const SIGNIN_RETURN_TTL_MS = 10 * 60 * 1000
 
+// Hold on /extension/connected for a beat before closing the sign-in tab and
+// switching back, so the user actually reads "You're signed in" instead of it
+// flashing past. Kept in sync with the countdown shown on that page
+// (enx-ui /extension/connected). Zero under test so the suite doesn't wait.
+const SIGNIN_RETURN_HOLD_MS = config.environment === 'test' ? 0 : 3000
+
 interface SignInReturn {
   originTabId: number
   originWindowId: number
@@ -566,6 +572,10 @@ const handleSignedInReturn = async (): Promise<{
     await chrome.storage.session.remove(SIGNIN_RETURN_STORAGE_KEY)
     return { ok: true, returned: false }
   }
+
+  // Let the "You're signed in" page linger a moment before we yank the user
+  // back -- otherwise the return trip is instant and they never see it.
+  await sleep(SIGNIN_RETURN_HOLD_MS)
 
   try {
     const loginTab = await chrome.tabs.get(stored.loginTabId)

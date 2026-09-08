@@ -22,6 +22,7 @@ export interface ApiResponse<T = any> {
 }
 
 export interface WordData {
+  Id: string
   Key: string
   English: string
   Pronunciation: string
