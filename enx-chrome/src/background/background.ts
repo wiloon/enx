@@ -461,6 +461,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'validateSession':
           return await makeApiRequest('/api/me')
 
+        case 'openWebSignIn':
+          return await handleOpenWebSignIn()
+
         case 'debugStorage':
           // Debug command to check storage
           const storageData = await chrome.storage.local.get(null)
@@ -497,9 +500,110 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return true // Keep the message channel open for async response
 })
 
-// ADR-019: the one web -> extension channel. Only enx-ui's own origins can
-// reach it (also enforced by manifest `externally_connectable`), and the
-// vocabulary is a fixed two-word list -- neither message transits an
+// ADR-020: the popup opens the web sign-in tab through the service worker,
+// not itself -- chrome.tabs.create steals focus and Chrome destroys the popup
+// before it could record where to send the user back. The worker opens the
+// tab, remembers the tab the user came from, and does the cleanup when the
+// /extension/connected page reports the sign-in via `enx:signed-in`.
+const SIGNIN_RETURN_STORAGE_KEY = 'enx-signin-return'
+const SIGNIN_RETURN_TTL_MS = 10 * 60 * 1000
+
+interface SignInReturn {
+  originTabId: number
+  originWindowId: number
+  loginTabId: number
+  createdAt: number
+}
+
+const handleOpenWebSignIn = async (): Promise<{ success: boolean }> => {
+  const [origin] = await chrome.tabs.query({
+    active: true,
+    lastFocusedWindow: true,
+  })
+
+  const signInUrl =
+    `${config.clerkSyncHost}/sign-in?src=extension&redirect_url=` +
+    encodeURIComponent('/extension/connected')
+  const loginTab = await chrome.tabs.create({ url: signInUrl })
+
+  if (
+    origin?.id !== undefined &&
+    origin.windowId !== undefined &&
+    loginTab.id !== undefined
+  ) {
+    const record: SignInReturn = {
+      originTabId: origin.id,
+      originWindowId: origin.windowId,
+      loginTabId: loginTab.id,
+      createdAt: Date.now(),
+    }
+    await chrome.storage.session.set({ [SIGNIN_RETURN_STORAGE_KEY]: record })
+  }
+
+  return { success: true }
+}
+
+// ADR-020: /extension/connected reports a completed web sign-in. Close the
+// sign-in tab we opened, switch focus back to the tab the user came from, and
+// notify. Guarded three ways so a misfire can't close a tab the user is using:
+//   1. the Clerk session must actually be live now;
+//   2. close only the exact loginTabId we recorded (never sender.tab.id);
+//   3. and only while that tab is still parked on /extension/connected.
+const handleSignedInReturn = async (): Promise<{
+  ok: boolean
+  reason?: string
+  returned?: boolean
+}> => {
+  if (!(await isSignedIn())) {
+    return { ok: false, reason: 'signed-out' }
+  }
+
+  const stored = (await chrome.storage.session.get(SIGNIN_RETURN_STORAGE_KEY))[
+    SIGNIN_RETURN_STORAGE_KEY
+  ] as SignInReturn | undefined
+
+  if (!stored || Date.now() - stored.createdAt > SIGNIN_RETURN_TTL_MS) {
+    await chrome.storage.session.remove(SIGNIN_RETURN_STORAGE_KEY)
+    return { ok: true, returned: false }
+  }
+
+  try {
+    const loginTab = await chrome.tabs.get(stored.loginTabId)
+    const stillOnReturnPage = Boolean(
+      loginTab.url?.startsWith(`${config.clerkSyncHost}/extension/connected`)
+    )
+    if (stillOnReturnPage) {
+      await chrome.tabs.remove(stored.loginTabId)
+    }
+  } catch {
+    // Tab already gone -- nothing to close.
+  }
+
+  try {
+    await chrome.tabs.update(stored.originTabId, { active: true })
+    await chrome.windows.update(stored.originWindowId, { focused: true })
+  } catch {
+    // The origin tab or window was closed while the user signed in.
+  }
+
+  try {
+    chrome.notifications.create({
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
+      title: 'Signed in to Catseye',
+      message: 'You can keep reading — learning mode is ready.',
+    })
+  } catch {
+    // Notifications turned off by the user or the OS.
+  }
+
+  await chrome.storage.session.remove(SIGNIN_RETURN_STORAGE_KEY)
+  return { ok: true, returned: true }
+}
+
+// ADR-019 / ADR-020: the one web -> extension channel. Only enx-ui's own
+// origins can reach it (also enforced by manifest `externally_connectable`),
+// and the vocabulary is a fixed three-word list -- no message transits an
 // internal content-script action.
 const ENX_UI_ORIGINS = new Set([
   'http://localhost:3000',
@@ -529,6 +633,13 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
       const tabId = sender.tab?.id
       await chrome.tabs.sendMessage(tabId!, { action: 'enxRun' })
       sendResponse({ ok: true })
+    })()
+    return true
+  }
+
+  if (type === 'enx:signed-in') {
+    void (async () => {
+      sendResponse(await handleSignedInReturn())
     })()
     return true
   }

@@ -17,8 +17,12 @@ _Avoid_: user id（单说时含糊）、账号、login id
 _Avoid_: sub、cognito sub、clerk id（口头）
 
 **会话同步（session sync）**：
-用户在 Catseye 网站登录后，打开浏览器扩展即为登录态、无需在扩展里再登一次。靠 `@clerk/chrome-extension` 的 `syncHost` 指向网站域名实现。见 adr-015。
+用户在 Catseye 网站登录后，打开浏览器扩展即为登录态、无需在扩展里再登一次。靠 `@clerk/chrome-extension` 的 `syncHost` 指向网站域名实现。见 adr-015。登录动作的收尾（扩展打开网站登录 tab、登完关掉中转页 `/extension/connected` 并把用户切回原来在读的页面）见 adr-020。
 _Avoid_: SSO、单点登录
+
+**登录回跳页（`/extension/connected`）**：
+enx-ui 的一个中转页。扩展发起的网站登录（`/sign-in?src=extension`）登录成功后落到这里；它经「网页→扩展」通道发 `enx:signed-in`，扩展据此关掉这个 tab、切回用户原来的标签页、发登录成功通知。普通 web 访客直接打开它无害（扩展不在场即 no-op）。见 adr-020。
+_Avoid_: 登录成功页、callback 页
 
 ### 阅读辅助功能（enx-chrome）
 

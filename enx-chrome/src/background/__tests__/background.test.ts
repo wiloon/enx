@@ -279,6 +279,60 @@ describe('background onMessage / validateSession', () => {
   })
 })
 
+// ADR-020: the popup delegates opening the web sign-in tab to the background
+// (the popup is destroyed the moment chrome.tabs.create steals focus).
+describe('background onMessage / openWebSignIn (ADR-020)', () => {
+  const listener = onMessageListener
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    ;(chrome.tabs.query as jest.Mock).mockResolvedValue([
+      { id: 42, windowId: 7 },
+    ])
+    ;(chrome.tabs.create as jest.Mock).mockResolvedValue({ id: 99 })
+    ;(chrome.storage.session.set as jest.Mock).mockResolvedValue(undefined)
+  })
+
+  const send = (request: unknown): Promise<unknown> =>
+    new Promise(resolve => listener(request, {}, resolve))
+
+  it('opens the sign-in tab with the extension marker and the return redirect', async () => {
+    const response = await send({ action: 'openWebSignIn' })
+
+    expect(response).toEqual({ success: true })
+    const [{ url }] = (chrome.tabs.create as jest.Mock).mock.calls[0]
+    expect(url).toContain('http://localhost:3000/sign-in')
+    expect(url).toContain('src=extension')
+    expect(url).toContain(
+      `redirect_url=${encodeURIComponent('/extension/connected')}`
+    )
+  })
+
+  it('records the tab the user came from for the return trip', async () => {
+    await send({ action: 'openWebSignIn' })
+
+    expect(chrome.storage.session.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        'enx-signin-return': expect.objectContaining({
+          originTabId: 42,
+          originWindowId: 7,
+          loginTabId: 99,
+        }),
+      })
+    )
+  })
+
+  it('still opens the sign-in tab when there is no identifiable origin tab', async () => {
+    ;(chrome.tabs.query as jest.Mock).mockResolvedValue([])
+
+    const response = await send({ action: 'openWebSignIn' })
+
+    expect(response).toEqual({ success: true })
+    expect(chrome.tabs.create).toHaveBeenCalled()
+    expect(chrome.storage.session.set).not.toHaveBeenCalled()
+  })
+})
+
 // ADR-008: the phrase-in-context lookup reuses the 'openSentencePanel'
 // message/handler, just with an extra `phrase` field threaded through to
 // PendingSentenceContext.
@@ -552,5 +606,90 @@ describe('background onMessageExternal (ADR-019 web -> extension channel)', () =
   it('answers an unknown message type with ok:false', async () => {
     const response = await call({ type: 'enx:frobnicate' })
     expect(response).toEqual({ ok: false, reason: 'unknown-type' })
+  })
+
+  // ADR-020: /extension/connected reports a completed web sign-in.
+  describe('enx:signed-in return flow', () => {
+    const pending = {
+      originTabId: 42,
+      originWindowId: 7,
+      loginTabId: 99,
+      createdAt: Date.now(),
+    }
+
+    beforeEach(() => {
+      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+        'enx-signin-return': pending,
+      })
+      ;(chrome.storage.session.remove as jest.Mock).mockResolvedValue(undefined)
+      ;(chrome.tabs.get as jest.Mock).mockResolvedValue({
+        id: 99,
+        url: 'http://localhost:3000/extension/connected',
+      })
+      ;(chrome.tabs.remove as jest.Mock).mockResolvedValue(undefined)
+      ;(chrome.tabs.update as jest.Mock).mockResolvedValue(undefined)
+      ;(chrome.windows.update as jest.Mock).mockResolvedValue(undefined)
+      ;(chrome.runtime.getURL as jest.Mock).mockReturnValue('icon-url')
+    })
+
+    it('closes the recorded sign-in tab and refocuses the origin tab', async () => {
+      const response = await call({ type: 'enx:signed-in' })
+
+      expect(response).toEqual({ ok: true, returned: true })
+      expect(chrome.tabs.remove).toHaveBeenCalledWith(99)
+      expect(chrome.tabs.update).toHaveBeenCalledWith(42, { active: true })
+      expect(chrome.windows.update).toHaveBeenCalledWith(7, { focused: true })
+      expect(chrome.notifications.create).toHaveBeenCalled()
+      expect(chrome.storage.session.remove).toHaveBeenCalledWith(
+        'enx-signin-return'
+      )
+    })
+
+    it('refuses when signed out, without touching any tab', async () => {
+      setClerkSession(null)
+
+      const response = await call({ type: 'enx:signed-in' })
+
+      expect(response).toEqual({ ok: false, reason: 'signed-out' })
+      expect(chrome.tabs.remove).not.toHaveBeenCalled()
+      expect(chrome.tabs.update).not.toHaveBeenCalled()
+    })
+
+    it('leaves the sign-in tab open if the user navigated it away, but still refocuses', async () => {
+      ;(chrome.tabs.get as jest.Mock).mockResolvedValue({
+        id: 99,
+        url: 'http://localhost:3000/billing',
+      })
+
+      const response = await call({ type: 'enx:signed-in' })
+
+      expect(response).toEqual({ ok: true, returned: true })
+      expect(chrome.tabs.remove).not.toHaveBeenCalled()
+      expect(chrome.tabs.update).toHaveBeenCalledWith(42, { active: true })
+    })
+
+    it('is a no-op when there is no pending sign-in', async () => {
+      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
+
+      const response = await call({ type: 'enx:signed-in' })
+
+      expect(response).toEqual({ ok: true, returned: false })
+      expect(chrome.tabs.remove).not.toHaveBeenCalled()
+      expect(chrome.tabs.update).not.toHaveBeenCalled()
+    })
+
+    it('ignores a stale pending record', async () => {
+      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+        'enx-signin-return': { ...pending, createdAt: Date.now() - 20 * 60_000 },
+      })
+
+      const response = await call({ type: 'enx:signed-in' })
+
+      expect(response).toEqual({ ok: true, returned: false })
+      expect(chrome.tabs.remove).not.toHaveBeenCalled()
+      expect(chrome.storage.session.remove).toHaveBeenCalledWith(
+        'enx-signin-return'
+      )
+    })
   })
 })

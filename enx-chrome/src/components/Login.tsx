@@ -1,5 +1,4 @@
 import { SignOutButton, useUser } from '@clerk/chrome-extension'
-import { config } from '@/config/env'
 import { errorAtom } from '@/store/atoms'
 import { useAtom } from 'jotai'
 import { useEffect, useState } from 'react'
@@ -59,8 +58,13 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     // popup is destroyed the moment it loses focus. Sign in on the Catseye
     // website instead (full-page Clerk UI, OAuth works there); the extension
     // then picks up the session automatically via ClerkProvider `syncHost`.
+    //
+    // ADR-020: the background service worker opens the tab (the popup is
+    // already gone by the time chrome.tabs.create resolves), records the tab
+    // the user came from, and switches focus back once /extension/connected
+    // reports the sign-in.
     const openWebSignIn = () => {
-      chrome.tabs.create({ url: `${config.clerkSyncHost}/sign-in` })
+      chrome.runtime.sendMessage({ action: 'openWebSignIn' })
     }
     return (
       <div className="w-80 p-4 space-y-3">
