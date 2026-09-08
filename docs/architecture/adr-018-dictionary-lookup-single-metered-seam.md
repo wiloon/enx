@@ -201,6 +201,7 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 - **AI 翻译计费**（ADR-014，token 计费，独立计量器，不动）。
 - **`user_dicts.QueryCount` 复习计数机制**本身不变，留在 `translateWord`，不进 seam。
 - **恢复 / 重建一个词典搜索接口**：`/ecdict` 删了；如果以后 enx-ui 要一个独立的「查词搜索框」，它应该直接用现有的 `GET /api/word/:word`（`translate.TranslateByWord`），不需要单独的端点。
+- **管理员词条维护端点**（[ADR-021](adr-021-enx-ui-admin-dictionary-maintenance.md)）：`GET /api/admin/words/:word` / `GET /api/admin/ecdict/:word` / `POST /api/admin/words/:word/sync-from-ecdict` 是 `RequireAdmin` 后面的运维工具，**有意在本 ADR 的计量范围外**——它们返回两张表各自的原始行、不走 `MeterLookup`、不复用 `translateWord`。「计量收敛到一个 seam」针对的是**用户查词**的所有路径，不含管理员维护。`ecdict.LookupRaw`（ADR-021 新增）成为 `ecdict.Query` 的底层实现，`Query` 变薄适配器——查词计量路径的行为不变。
 
 ---
 

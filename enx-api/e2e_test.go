@@ -16,6 +16,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/spf13/viper"
 )
 
 // e2eServer creates a real httptest.Server backed by the full application router.
@@ -294,7 +295,7 @@ func TestE2E_ClerkGetMe(t *testing.T) {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
 
-	var body map[string]string
+	var body map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
@@ -303,6 +304,48 @@ func TestE2E_ClerkGetMe(t *testing.T) {
 	}
 	if body["name"] != "e2e-clerk-user" {
 		t.Fatalf("name = %q, want e2e-clerk-user", body["name"])
+	}
+	// isAdmin present and false: this sub is not in the (unset) allowlist.
+	if v, ok := body["isAdmin"].(bool); !ok || v {
+		t.Fatalf("isAdmin = %v (%T), want false", body["isAdmin"], body["isAdmin"])
+	}
+}
+
+func TestE2E_ClerkGetMe_IsAdminReflectsAllowlist(t *testing.T) {
+	env := clerktest.NewEnv(t)
+	utils.ViperInit()
+	env.ApplyViper()
+
+	sub := "user_e2egetme_admin"
+	viper.Set("admin.clerk-user-ids", []string{sub})
+	t.Cleanup(func() { viper.Set("admin.clerk-user-ids", nil) })
+
+	dbPath := filepath.Join(t.TempDir(), "enx-e2e-admin.db")
+	if err := os.Setenv("DB_PATH", dbPath); err != nil {
+		t.Fatalf("set DB_PATH: %v", err)
+	}
+	sqlitex.Init()
+	t.Cleanup(func() { sqlitex.DB.Exec("DELETE FROM users WHERE clerk_user_id = ?", sub) })
+
+	token := env.SignSessionToken(t, jwt.MapClaims{"sub": sub, "email": "admin-me@example.com", "name": "admin-me"})
+
+	ts, done := e2eServer(t)
+	defer done()
+
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET /api/me: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if v, ok := body["isAdmin"].(bool); !ok || !v {
+		t.Fatalf("isAdmin = %v, want true (sub is in the allowlist)", body["isAdmin"])
 	}
 }
 

@@ -1,7 +1,10 @@
 import {
+  AdminEcdictRow,
+  AdminWordRow,
   ApiResponse,
   BillingMeData,
   CheckoutSessionData,
+  MeData,
   RephraseData,
   WordData,
 } from '@/types'
@@ -97,10 +100,28 @@ export class ApiService {
     }
   }
 
-  async getMe(): Promise<
-    ApiResponse<{ id: string; name: string; email: string; status: string }>
-  > {
+  async getMe(): Promise<ApiResponse<MeData>> {
     return this.makeRequest('/api/me')
+  }
+
+  // Admin dictionary maintenance (ADR-021). Each of these hits a dedicated
+  // admin-only endpoint (RequireAdmin) that returns the raw table row — no
+  // metering, no words/ECDICT merge, no backfill.
+  async adminGetWord(word: string): Promise<ApiResponse<AdminWordRow>> {
+    return this.makeRequest(`/api/admin/words/${encodeURIComponent(word)}`)
+  }
+
+  async adminGetEcdict(word: string): Promise<ApiResponse<AdminEcdictRow>> {
+    return this.makeRequest(`/api/admin/ecdict/${encodeURIComponent(word)}`)
+  }
+
+  async adminSyncWordFromEcdict(word: string): Promise<
+    ApiResponse<{ success: boolean; matchedBy: string; word: AdminWordRow }>
+  > {
+    return this.makeRequest(
+      `/api/admin/words/${encodeURIComponent(word)}/sync-from-ecdict`,
+      { method: 'POST' }
+    )
   }
 
   async lookupWord(word: string): Promise<ApiResponse<WordData>> {

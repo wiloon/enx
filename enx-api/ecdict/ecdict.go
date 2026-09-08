@@ -84,14 +84,30 @@ func UnavailableMessage() string {
 // upstream timeout with no way for the handler to recover).
 const queryTimeout = 3 * time.Second
 
-type lookupResult struct {
-	entry stardict
-	ok    bool
+// StardictRow is a raw row of the ECDICT `stardict` table. The admin
+// maintenance page (ADR-021) needs every column, unlike enx.Dictionary which
+// drops sw/exchange.
+type StardictRow struct {
+	Word        string `json:"word"`
+	Sw          string `json:"sw"`
+	Phonetic    string `json:"phonetic"`
+	Translation string `json:"translation"`
+	Exchange    string `json:"exchange"`
 }
 
-func Query(ctx context.Context, words string) *enx.Dictionary {
+type rawResult struct {
+	entry     stardict
+	matchedBy string
+	ok        bool
+}
+
+// LookupRaw runs the same fallback chain as the user lookup path -- exact →
+// case-insensitive → sw (strip-word) → exchange (inflections) -- but returns
+// the raw stardict row and which strategy matched, and does NOT go through
+// metering. It is the single query implementation; Query is a thin adapter.
+func LookupRaw(ctx context.Context, word string) (row StardictRow, matchedBy string, found bool) {
 	if !IsAvailable() {
-		return nil
+		return StardictRow{}, "", false
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
@@ -100,71 +116,86 @@ func Query(ctx context.Context, words string) *enx.Dictionary {
 	// The sqlite driver's context cancellation is best-effort: under
 	// concurrent slow scans it has been observed to keep running well past
 	// the deadline (17s+ vs. a 3s timeout). Racing the lookup in its own
-	// goroutine guarantees Query returns on time regardless of whether the
+	// goroutine guarantees we return on time regardless of whether the
 	// underlying scan actually stops; the goroutine just finishes on its own
 	// later and its result is dropped.
-	resultCh := make(chan lookupResult, 1)
+	resultCh := make(chan rawResult, 1)
 	go func() {
-		entry, ok := lookupEntry(ctx, words)
-		resultCh <- lookupResult{entry, ok}
+		entry, matchedBy, ok := lookupEntry(ctx, word)
+		resultCh <- rawResult{entry, matchedBy, ok}
 	}()
 
 	select {
 	case res := <-resultCh:
 		if !res.ok {
-			logger.Debugf("ECDICT: word not found: %s", words)
-			return nil
+			logger.Debugf("ECDICT: word not found: %s", word)
+			return StardictRow{}, "", false
 		}
-		logger.Debugf("ECDICT hit: %s -> %s", words, res.entry.Translation)
-		return &enx.Dictionary{
-			English:       res.entry.Word,
-			Chinese:       res.entry.Translation,
-			Pronunciation: res.entry.Phonetic,
-		}
+		logger.Debugf("ECDICT hit (%s): %s -> %s", res.matchedBy, word, res.entry.Translation)
+		return StardictRow{
+			Word:        res.entry.Word,
+			Sw:          res.entry.Sw,
+			Phonetic:    res.entry.Phonetic,
+			Translation: res.entry.Translation,
+			Exchange:    res.entry.Exchange,
+		}, res.matchedBy, true
 	case <-ctx.Done():
-		logger.Warnf("ECDICT: query exceeded %s, giving up: %s", queryTimeout, words)
-		return nil
+		logger.Warnf("ECDICT: query exceeded %s, giving up: %s", queryTimeout, word)
+		return StardictRow{}, "", false
 	}
 }
 
-// lookupEntry: exact word → case-insensitive word → sw (strip-word) → exchange (inflections).
-func lookupEntry(ctx context.Context, words string) (stardict, bool) {
-	var entry stardict
+func Query(ctx context.Context, words string) *enx.Dictionary {
+	row, _, ok := LookupRaw(ctx, words)
+	if !ok {
+		return nil
+	}
+	return &enx.Dictionary{
+		English:       row.Word,
+		Chinese:       row.Translation,
+		Pronunciation: row.Phonetic,
+	}
+}
+
+// lookupEntry: exact word → case-insensitive word → sw (strip-word) → exchange
+// (inflections). matchedBy names the strategy that hit ("exact" / "lower" /
+// "sw" / "exchange"), empty when nothing matched.
+func lookupEntry(ctx context.Context, words string) (entry stardict, matchedBy string, found bool) {
 	dbc := db.WithContext(ctx)
 
 	if err := dbc.Where("word = ?", words).First(&entry).Error; err == nil {
-		return entry, true
+		return entry, "exact", true
 	}
 	if ctx.Err() != nil {
-		return stardict{}, false
+		return stardict{}, "", false
 	}
 	if err := dbc.Where("LOWER(word) = LOWER(?)", words).First(&entry).Error; err == nil {
-		return entry, true
+		return entry, "lower", true
 	}
 	if ctx.Err() != nil {
-		return stardict{}, false
+		return stardict{}, "", false
 	}
 
 	sw := stripWord(words)
 	if sw != "" {
 		if err := dbc.Where("sw = ?", sw).First(&entry).Error; err == nil {
-			return entry, true
+			return entry, "sw", true
 		}
 		if ctx.Err() != nil {
-			return stardict{}, false
+			return stardict{}, "", false
 		}
 	}
 
 	for _, pattern := range exchangePatterns(words) {
 		if err := dbc.Where("exchange LIKE ?", pattern).First(&entry).Error; err == nil {
-			return entry, true
+			return entry, "exchange", true
 		}
 		if ctx.Err() != nil {
-			return stardict{}, false
+			return stardict{}, "", false
 		}
 	}
 
-	return stardict{}, false
+	return stardict{}, "", false
 }
 
 func exchangePatterns(words string) []string {

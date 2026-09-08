@@ -1,18 +1,22 @@
-import { SignOutButton, useUser } from '@clerk/chrome-extension'
+import { useUser } from '@clerk/chrome-extension'
 import { errorAtom } from '@/store/atoms'
 import { useAtom } from 'jotai'
-import { useEffect, useState } from 'react'
+import { useEffect, type ReactNode } from 'react'
+import { AcademicCapIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
 
 interface LoginProps {
   onLoginSuccess?: () => void
+  /** Rendered once the user is signed in. */
+  children?: ReactNode
 }
 
-export default function Login({ onLoginSuccess }: LoginProps) {
-  const { isLoaded, isSignedIn, user } = useUser()
-  const [error, setError] = useAtom(errorAtom)
-  const [underliningStatus, setUnderliningStatus] = useState<
-    'idle' | 'processing' | 'completed'
-  >('idle')
+/**
+ * Auth gate for the popup. Shows a loading placeholder, then either the
+ * sign-in card (signed out) or `children` (signed in).
+ */
+export default function Login({ onLoginSuccess, children }: LoginProps) {
+  const { isLoaded, isSignedIn } = useUser()
+  const [error] = useAtom(errorAtom)
 
   useEffect(() => {
     if (isLoaded && isSignedIn) {
@@ -20,101 +24,63 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     }
   }, [isLoaded, isSignedIn, onLoginSuccess])
 
-  const handleEnableLearning = async () => {
-    setUnderliningStatus('processing')
-    setError(null)
-    try {
-      const [tab] = await chrome.tabs.query({
-        active: true,
-        currentWindow: true,
-      })
-      if (!tab?.id) {
-        throw new Error('No active tab found')
-      }
-      const response = await chrome.tabs.sendMessage(tab.id, {
-        action: 'enxRun',
-      })
-      if (!response?.success) {
-        throw new Error(response?.error || 'Failed to enable learning mode')
-      }
-      setUnderliningStatus('completed')
-    } catch (e) {
-      const message = e instanceof Error ? e.message : ''
-      setError(
-        message.includes('Receiving end does not exist')
-          ? 'This page needs to be refreshed before learning mode can start. Reload the page and try again.'
-          : message || 'Could not enable learning on this page'
-      )
-      setUnderliningStatus('idle')
-    }
-  }
-
   if (!isLoaded) {
-    return <div className="w-80 p-4 text-sm text-gray-600">Loading…</div>
-  }
-
-  if (!isSignedIn) {
-    // OAuth (Google/GitHub) can't complete inside the extension popup -- the
-    // popup is destroyed the moment it loses focus. Sign in on the Catseye
-    // website instead (full-page Clerk UI, OAuth works there); the extension
-    // then picks up the session automatically via ClerkProvider `syncHost`.
-    //
-    // ADR-020: the background service worker opens the tab (the popup is
-    // already gone by the time chrome.tabs.create resolves), records the tab
-    // the user came from, and switches focus back once /extension/connected
-    // reports the sign-in.
-    const openWebSignIn = () => {
-      chrome.runtime.sendMessage({ action: 'openWebSignIn' })
-    }
     return (
-      <div className="w-80 p-4 space-y-3">
-        <h2 className="text-lg font-semibold">Catseye</h2>
-        <p className="text-sm text-gray-600">
-          Sign in to start highlighting and looking up words as you read.
-        </p>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button
-          type="button"
-          className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
-          onClick={openWebSignIn}
-        >
-          Sign in on the web
-        </button>
-        <p className="text-xs text-gray-400">
-          Opens Catseye in a new tab. Once you&apos;re signed in there, come back
-          — this popup updates on its own.
-        </p>
+      <div className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-slate-400">
+        <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-200 border-t-slate-500" />
+        加载中…
       </div>
     )
   }
 
-  const displayName =
-    user?.fullName ||
-    user?.username ||
-    user?.primaryEmailAddress?.emailAddress ||
-    'there'
+  if (isSignedIn) {
+    return <>{children}</>
+  }
+
+  // OAuth (Google/GitHub) can't complete inside the extension popup -- the
+  // popup is destroyed the moment it loses focus. Sign in on the website
+  // instead (full-page Clerk UI, OAuth works there); the extension then picks
+  // up the session automatically via ClerkProvider `syncHost`.
+  //
+  // ADR-020: the background service worker opens the tab (the popup is already
+  // gone by the time chrome.tabs.create resolves), records the tab the user
+  // came from, and switches focus back once /extension/connected reports the
+  // sign-in.
+  const openWebSignIn = () => {
+    chrome.runtime.sendMessage({ action: 'openWebSignIn' })
+  }
 
   return (
-    <div className="w-80 p-4">
-      <p className="mb-2">Welcome, {displayName}!</p>
-      {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+    <div className="px-4 py-7">
+      <div className="flex flex-col items-center text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-500 text-white shadow-lg shadow-sky-500/20">
+          <AcademicCapIcon className="h-7 w-7" />
+        </div>
+        <h2 className="mt-4 text-base font-semibold text-slate-800">
+          登录 ENX
+        </h2>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500">
+          登录后即可在阅读网页时高亮生词、随点随查。
+        </p>
+      </div>
+
+      {error && (
+        <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+          {error}
+        </p>
+      )}
+
       <button
         type="button"
-        className="w-full bg-green-600 text-white py-2 rounded mb-2 hover:bg-green-700"
-        onClick={handleEnableLearning}
-        disabled={underliningStatus === 'processing'}
+        onClick={openWebSignIn}
+        className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-500 py-2.5 text-sm font-medium text-white shadow-md shadow-sky-500/25 transition hover:brightness-105 active:scale-[0.99]"
       >
-        {underliningStatus === 'processing'
-          ? 'Enabling…'
-          : underliningStatus === 'completed'
-            ? 'Enabled'
-            : 'Enable Learning Mode'}
+        在网页中登录
+        <ArrowRightIcon className="h-4 w-4" />
       </button>
-      <SignOutButton>
-        <button type="button" className="w-full border py-2 rounded">
-          Sign out
-        </button>
-      </SignOutButton>
+      <p className="mt-2.5 text-center text-[11px] leading-relaxed text-slate-400">
+        将打开一个新标签页。在那里完成登录后回到此处，弹窗会自动刷新。
+      </p>
     </div>
   )
 }

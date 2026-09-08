@@ -34,30 +34,6 @@ func adminRequest(t *testing.T, callerClerkID, body string) *httptest.ResponseRe
 	return w
 }
 
-func TestIsAdminClerkUser(t *testing.T) {
-	tests := []struct {
-		name        string
-		configured  []string
-		clerkUserID string
-		want        bool
-	}{
-		{"empty allowlist -> nobody is admin", nil, "user_abc", false},
-		{"empty clerk id -> not admin", []string{"user_abc"}, "", false},
-		{"id in allowlist", []string{"user_abc", "user_def"}, "user_def", true},
-		{"id not in allowlist", []string{"user_abc"}, "user_zzz", false},
-		{"surrounding whitespace tolerated", []string{" user_abc ", "user_def"}, "user_abc", true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			viper.Set("admin.clerk-user-ids", tt.configured)
-			defer viper.Set("admin.clerk-user-ids", nil)
-			if got := isAdminClerkUser(tt.clerkUserID); got != tt.want {
-				t.Fatalf("isAdminClerkUser(%q) = %v, want %v", tt.clerkUserID, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestGrantCredits_ForbiddenForNonAdmin(t *testing.T) {
 	viper.Set("admin.clerk-user-ids", []string{"user_admin"})
 	defer viper.Set("admin.clerk-user-ids", nil)

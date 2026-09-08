@@ -277,6 +277,17 @@ func setupRouter() *gin.Engine {
 	// ADMIN_CLERK_USER_IDS allowlist inside the handler (on top of clerkAuth).
 	apiGroup.POST("/admin/credits/grant", billingHandler.GrantCredits)
 
+	// Admin: dictionary maintenance (ADR-021). Gated by RequireAdmin (same
+	// ADMIN_CLERK_USER_IDS allowlist). Deliberately not on the user lookup
+	// path -- raw rows, no metering, no ECDICT backfill.
+	adminDict := apiGroup.Group("/admin")
+	adminDict.Use(middleware.RequireAdmin())
+	{
+		adminDict.GET("/words/:word", AdminGetWord)
+		adminDict.GET("/ecdict/:word", AdminGetEcdict)
+		adminDict.POST("/words/:word/sync-from-ecdict", AdminSyncWordFromEcdict)
+	}
+
 	// Stripe webhook — deliberately NOT in apiGroup/authGroup: Stripe can't
 	// present a Clerk session JWT, so this is unauthenticated at the router root,
 	// relying on Stripe-Signature verification instead (TASK-SPEC §3). URL
@@ -426,7 +437,10 @@ func checkRateLimit(email string) bool {
 	return true
 }
 
-// GetMe returns the current user's public fields including status.
+// GetMe returns the current user's public fields including status. isAdmin
+// reflects the ADMIN_CLERK_USER_IDS allowlist (ADR-021) and is the only
+// signal enx-ui uses to decide whether to render the admin navigation; the
+// allowlist itself stays server-side.
 func GetMe(c *gin.Context) {
 	userID := middleware.GetUserIDFromContext(c)
 	if userID == "" {
@@ -439,10 +453,11 @@ func GetMe(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"id":     user.Id,
-		"name":   user.Name,
-		"email":  user.Email,
-		"status": user.Status,
+		"id":      user.Id,
+		"name":    user.Name,
+		"email":   user.Email,
+		"status":  user.Status,
+		"isAdmin": middleware.IsAdminClerkUser(c.GetString("clerk_user_id")),
 	})
 }
 

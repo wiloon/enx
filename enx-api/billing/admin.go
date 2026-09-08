@@ -2,40 +2,22 @@ package billing
 
 import (
 	"net/http"
-	"strings"
 
 	"enx-api/billing/credit"
 	"enx-api/enx"
+	"enx-api/middleware"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/spf13/viper"
 )
-
-// isAdminClerkUser reports whether the given Clerk user id (`sub`) is in the
-// ADMIN_CLERK_USER_IDS allowlist. An empty allowlist means the admin
-// endpoints are effectively disabled. Not a roles system -- see
-// docs/architecture/adr-015 discussion; migrate to Clerk publicMetadata if
-// this outgrows an env var.
-func isAdminClerkUser(clerkUserID string) bool {
-	if clerkUserID == "" {
-		return false
-	}
-	for _, id := range viper.GetStringSlice("admin.clerk-user-ids") {
-		if strings.TrimSpace(id) == clerkUserID {
-			return true
-		}
-	}
-	return false
-}
 
 // GrantCredits handles POST /api/admin/credits/grant: an admin adds top-up
 // credits to any user by email. Same ledger path as a Stripe top-up
 // (credit.GrantTopup), just triggered manually -- for testing on homelab and
 // for support comps in production.
 func (h *Handler) GrantCredits(c *gin.Context) {
-	if !isAdminClerkUser(c.GetString("clerk_user_id")) {
+	if !middleware.IsAdminClerkUser(c.GetString("clerk_user_id")) {
 		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "admin access required"})
 		return
 	}
