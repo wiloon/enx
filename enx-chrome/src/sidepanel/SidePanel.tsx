@@ -74,7 +74,7 @@ function UpgradeLink({ className }: { className?: string }) {
       rel="noopener noreferrer"
       className={className ?? 'text-blue-600 hover:underline font-medium whitespace-nowrap'}
     >
-      前往订阅 / 充值
+      Subscribe / add credit
     </a>
   )
 }
@@ -174,7 +174,7 @@ function PhraseConfirmButton({
       ref={ref}
       type="button"
       data-testid="sidepanel-phrase-confirm"
-      aria-label="查这段词的句中释义"
+      aria-label="Look up this phrase's meaning in context"
       onClick={onConfirm}
       onKeyDown={e => {
         if (e.key === 'Escape') onDismiss()
@@ -389,7 +389,7 @@ function SidePanelContent() {
               ? {
                   ...d,
                   contextChinese: resolved ? response.chinese : undefined,
-                  contextError: resolved ? undefined : response.error || '翻译失败',
+                  contextError: resolved ? undefined : response.error || 'Translation failed',
                   contextErrorHttpStatus: resolved ? undefined : response.status,
                   contextStatus: resolved ? 'loaded' : 'error',
                 }
@@ -405,7 +405,7 @@ function SidePanelContent() {
                   ...d,
                   contextStatus: 'error',
                   contextChinese: undefined,
-                  contextError: '翻译失败',
+                  contextError: 'Translation failed',
                   contextErrorHttpStatus: undefined,
                 }
               : d
@@ -436,7 +436,7 @@ function SidePanelContent() {
                   dictionaryChinese: response.success ? response.ecp?.Chinese : undefined,
                   loadCount: response.success ? response.ecp?.LoadCount : undefined,
                   dictionaryStatus: response.success ? 'loaded' : 'error',
-                  dictionaryError: response.success ? undefined : response.error || '词典查询失败',
+                  dictionaryError: response.success ? undefined : response.error || 'Dictionary lookup failed',
                   dictionaryErrorHttpStatus: response.success ? undefined : response.status,
                 }
               : d
@@ -450,7 +450,7 @@ function SidePanelContent() {
               ? {
                   ...d,
                   dictionaryStatus: 'error',
-                  dictionaryError: '词典查询失败',
+                  dictionaryError: 'Dictionary lookup failed',
                   dictionaryErrorHttpStatus: undefined,
                 }
               : d
@@ -682,7 +682,7 @@ function SidePanelContent() {
   if (!pendingContext && definitions.length === 0) {
     return (
       <div className="p-4 text-gray-500 text-sm" data-testid="sidepanel-empty-state">
-        点击网页正文中任意已高亮的单词，然后点击弹窗里的整句翻译图标按钮，整句英文和中文翻译会显示在这里。
+        Click any highlighted word in the page text, then click the sentence-translation icon in the popup. The full English sentence and its Chinese translation will appear here.
       </div>
     )
   }
@@ -733,14 +733,14 @@ function SidePanelContent() {
           {status === 'loading' && (
             <div className="text-gray-500" data-testid="sidepanel-loading">
               <span className="inline-block animate-spin mr-2">⏳</span>
-              翻译中...
+              Translating...
             </div>
           )}
           {status === 'error' && (
             <div className="text-red-600" data-testid="sidepanel-error">
               {errorHttpStatus === HTTP_INSUFFICIENT_CREDIT ? (
                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <span>AI 翻译积分不足</span>
+                  <span>Not enough AI translation credit</span>
                   <UpgradeLink />
                 </div>
               ) : (
@@ -762,7 +762,7 @@ function SidePanelContent() {
               list, which is otherwise append-only for the panel session
               (ADR-006). */}
           <div className="flex items-center justify-between mb-2 px-0.5">
-            <span className="text-xs font-medium text-gray-400">生词 {definitions.length}</span>
+            <span className="text-xs font-medium text-gray-400">New words {definitions.length}</span>
             <button
               type="button"
               data-testid="sidepanel-clear-definitions"
@@ -772,7 +772,7 @@ function SidePanelContent() {
               }}
               className="text-xs text-gray-400 hover:text-red-500"
             >
-              清空
+              Clear
             </button>
           </div>
 
@@ -802,7 +802,7 @@ function SidePanelContent() {
                     <span className="font-semibold text-gray-800">{def.word}</span>
 
                     {def.dictionaryStatus === 'loading' ? (
-                      <span className="text-gray-400 text-xs">音标加载中...</span>
+                      <span className="text-gray-400 text-xs">Loading phonetics...</span>
                     ) : (
                       phonetic && (
                         <span className="inline-flex items-center gap-1">
@@ -840,8 +840,8 @@ function SidePanelContent() {
                     data-testid={`sidepanel-remove-${def.word}`}
                     onClick={() => handleRemoveCard(def.word)}
                     className="absolute top-1.5 right-1.5 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
-                    title="移除"
-                    aria-label={`移除 ${def.word}`}
+                    title="Remove"
+                    aria-label={`Remove ${def.word}`}
                   >
                     <XMarkIcon className="h-4 w-4" aria-hidden="true" />
                   </button>
@@ -856,7 +856,7 @@ function SidePanelContent() {
                     >
                       <span className="flex-1">
                         {def.contextErrorHttpStatus === HTTP_INSUFFICIENT_CREDIT
-                          ? 'AI 翻译积分不足'
+                          ? 'Not enough AI translation credit'
                           : def.contextError}
                       </span>
                       {def.contextErrorHttpStatus === HTTP_INSUFFICIENT_CREDIT && (
@@ -869,7 +869,7 @@ function SidePanelContent() {
                         className="text-red-600 hover:text-red-800 font-medium whitespace-nowrap"
                         title="Retry"
                       >
-                        重试
+                        Retry
                       </button>
                     </div>
                   )}
@@ -884,7 +884,7 @@ function SidePanelContent() {
                     >
                       <span className="flex-1">
                         {def.dictionaryErrorHttpStatus === HTTP_QUOTA_EXCEEDED
-                          ? '今日免费查词次数已用完'
+                          ? "You've used up today's free lookups"
                           : def.dictionaryError}
                       </span>
                       {def.dictionaryErrorHttpStatus === HTTP_QUOTA_EXCEEDED && (
@@ -904,20 +904,20 @@ function SidePanelContent() {
                       {def.contextStatus === 'loading' && (
                         <p className="text-gray-400 text-sm">
                           <span className="inline-block animate-spin mr-1">⏳</span>
-                          翻译中...
+                          Translating...
                         </p>
                       )}
                       {def.contextStatus === 'loaded' && (
                         <p className="text-sm text-blue-700">
                           <span className="mr-1.5 rounded bg-blue-50 px-1 py-0.5 text-[10px] font-medium text-blue-500">
-                            本句
+                            in context
                           </span>
                           <span className="font-medium">{def.contextChinese}</span>
                         </p>
                       )}
 
                       {def.dictionaryStatus === 'loading' ? (
-                        <p className="text-gray-400 text-xs">词典释义加载中...</p>
+                        <p className="text-gray-400 text-xs">Loading dictionary definition...</p>
                       ) : (
                         def.dictionaryChinese && (
                           <div>
@@ -935,7 +935,7 @@ function SidePanelContent() {
                                 onClick={() => toggleExpanded(def.word)}
                                 className="text-xs text-gray-400 hover:text-blue-500 mt-0.5"
                               >
-                                {expanded ? '收起' : '展开'}
+                                {expanded ? 'Collapse' : 'Expand'}
                               </button>
                             )}
                           </div>

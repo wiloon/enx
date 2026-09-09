@@ -81,7 +81,7 @@ func (h *Handler) billedCall(c *gin.Context, feature string, fn func(ctx context
 		return false
 	}
 	if balance < 1 {
-		c.JSON(http.StatusPaymentRequired, gin.H{"success": false, "message": "积分不足，请充值或订阅"})
+		c.JSON(http.StatusPaymentRequired, gin.H{"success": false, "message": "Insufficient credit. Please add credit or subscribe."})
 		return false
 	}
 

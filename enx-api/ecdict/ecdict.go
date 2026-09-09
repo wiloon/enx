@@ -20,7 +20,7 @@ var (
 	unavailableReason string
 )
 
-const defaultUnavailableReason = "ECDICT 词典未配置或无法打开，请设置 ECDICT_DB_PATH 并确保数据库文件存在"
+const defaultUnavailableReason = "The ECDICT dictionary is not configured or could not be opened. Set ECDICT_DB_PATH and make sure the database file exists."
 
 type stardict struct {
 	Word        string `gorm:"column:word"`
@@ -45,7 +45,7 @@ func Init(dbPath string) {
 	}
 
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		unavailableReason = fmt.Sprintf("ECDICT 数据库文件不存在: %s", dbPath)
+		unavailableReason = fmt.Sprintf("ECDICT database file does not exist: %s", dbPath)
 		logger.Warnf("%s", unavailableReason)
 		return
 	}
@@ -56,7 +56,7 @@ func Init(dbPath string) {
 		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
 	})
 	if err != nil {
-		unavailableReason = fmt.Sprintf("无法打开 ECDICT 数据库: %v", err)
+		unavailableReason = fmt.Sprintf("could not open ECDICT database: %v", err)
 		logger.Errorf("%s", unavailableReason)
 		return
 	}

@@ -14,14 +14,15 @@ export default function BillingSuccessPage() {
     <div className="container mx-auto p-6 max-w-md">
       <Card>
         <CardHeader>
-          <CardTitle>支付已提交</CardTitle>
+          <CardTitle>Payment submitted</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-muted-foreground">
-            我们正在处理你的付款，账户状态和积分余额通常会在几秒内更新。
+            We&apos;re processing your payment. Your account status and credit
+            balance usually update within a few seconds.
           </p>
           <Link href="/billing">
-            <Button className="w-full">返回订阅与积分</Button>
+            <Button className="w-full">Back to Subscription &amp; Credits</Button>
           </Link>
         </CardContent>
       </Card>

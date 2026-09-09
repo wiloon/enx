@@ -68,7 +68,7 @@ export default function WordPopover({
         onKeyDown={handleKeyDown}
       >
         <div className="flex justify-between items-start">
-          <span className="text-sm text-gray-500">划词翻译</span>
+          <span className="text-sm text-gray-500">Selection translation</span>
           <button
             data-testid="word-popover-close"
             onClick={onClose}
@@ -201,8 +201,8 @@ export default function WordPopover({
               data-testid="word-popover-sentence-translation"
               onClick={onOpenSentencePanel}
               className="inline-flex items-center text-blue-500 hover:text-blue-600"
-              title="整句翻译（在侧边栏翻译整句）"
-              aria-label="整句翻译"
+              title="Sentence translation (translate the whole sentence in the side panel)"
+              aria-label="Sentence translation"
             >
               <SidePanelTranslateIcon className="h-5 w-5" />
             </button>

@@ -55,7 +55,7 @@ describe('resolveSiteAdapter', () => {
 
     it('rejects timeline / search / profile pages with a message', () => {
       for (const path of ['/', '/home', '/explore', '/search', '/jack']) {
-        expect(x.pageSupport!(loc('x.com', path))).toMatch(/推文详情页/)
+        expect(x.pageSupport!(loc('x.com', path))).toMatch(/tweet detail pages/)
       }
     })
 

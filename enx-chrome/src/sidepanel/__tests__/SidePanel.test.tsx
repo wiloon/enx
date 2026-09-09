@@ -167,15 +167,15 @@ describe('SidePanel', () => {
     })
     mockSendMessage.mockResolvedValue({
       success: false,
-      error: '积分不足，请充值或订阅',
+      error: 'Insufficient credit. Please add credit or subscribe.',
       status: 402,
     })
 
     render(<SidePanel />)
 
     const errorBox = await screen.findByTestId('sidepanel-error')
-    expect(errorBox).toHaveTextContent('AI 翻译积分不足')
-    const link = within(errorBox).getByText('前往订阅 / 充值')
+    expect(errorBox).toHaveTextContent('Not enough AI translation credit')
+    const link = within(errorBox).getByText('Subscribe / add credit')
     expect(link).toHaveAttribute('href', 'http://localhost:3000/billing')
   })
 
@@ -193,7 +193,7 @@ describe('SidePanel', () => {
         return { success: true, chinese: '猫是很棒的宠物。' }
       }
       if (message.type === 'translateWordInContext') {
-        return { success: false, error: '积分不足，请充值或订阅', status: 402 }
+        return { success: false, error: 'Insufficient credit. Please add credit or subscribe.', status: 402 }
       }
       if (message.type === 'getOneWord') {
         return {
@@ -209,8 +209,8 @@ describe('SidePanel', () => {
     selectWord('great')
 
     const errorRow = await screen.findByTestId('sidepanel-context-error-great')
-    expect(errorRow).toHaveTextContent('AI 翻译积分不足')
-    expect(within(errorRow).getByText('前往订阅 / 充值')).toHaveAttribute(
+    expect(errorRow).toHaveTextContent('Not enough AI translation credit')
+    expect(within(errorRow).getByText('Subscribe / add credit')).toHaveAttribute(
       'href',
       'http://localhost:3000/billing'
     )
@@ -250,9 +250,9 @@ describe('SidePanel', () => {
     selectWord('great')
 
     const errorRow = await screen.findByTestId('sidepanel-dictionary-error-great')
-    expect(errorRow).toHaveTextContent('今日免费查词次数已用完')
+    expect(errorRow).toHaveTextContent("You've used up today's free lookups")
     expect(errorRow).not.toHaveTextContent('Upgrade to enx Pro')
-    expect(within(errorRow).getByText('前往订阅 / 充值')).toHaveAttribute(
+    expect(within(errorRow).getByText('Subscribe / add credit')).toHaveAttribute(
       'href',
       'http://localhost:3000/billing'
     )
@@ -395,8 +395,8 @@ describe('SidePanel', () => {
 
     // No dictionary data exists for a phrase -- no pronunciation, no query
     // count, no dictionary-meaning block should render on this card.
-    expect(within(card).queryByText(/音标加载中/)).not.toBeInTheDocument()
-    expect(within(card).queryByText(/词典释义加载中/)).not.toBeInTheDocument()
+    expect(within(card).queryByText(/Loading phonetics/)).not.toBeInTheDocument()
+    expect(within(card).queryByText(/Loading dictionary definition/)).not.toBeInTheDocument()
   })
 
   it('shows an error + retry on a phrase card, same as a word card (ADR-008)', async () => {
@@ -523,7 +523,7 @@ describe('SidePanel', () => {
       const card = screen.getByTestId('sidepanel-card-great')
       expect(card).toHaveTextContent('/greɪt/')
       expect(card).toHaveTextContent('很棒的')
-      expect(card).toHaveTextContent('翻译中...')
+      expect(card).toHaveTextContent('Translating...')
     })
 
     resolveContext({ success: true, chinese: 'great在这句里的意思' })
@@ -531,7 +531,7 @@ describe('SidePanel', () => {
     await waitFor(() => {
       const card = screen.getByTestId('sidepanel-card-great')
       expect(card).toHaveTextContent('great在这句里的意思')
-      expect(card).not.toHaveTextContent('翻译中...')
+      expect(card).not.toHaveTextContent('Translating...')
     })
   })
 
@@ -727,7 +727,7 @@ describe('SidePanel', () => {
       expect(card).toHaveTextContent('/ˌser.ənˈdɪp.ə.ti/')
       // No sentence context, so the AI context-translation UI must not
       // appear at all -- not even a loading state.
-      expect(card).not.toHaveTextContent('翻译中...')
+      expect(card).not.toHaveTextContent('Translating...')
     })
     expect(mockSendMessage).not.toHaveBeenCalled()
   })
@@ -892,7 +892,7 @@ describe('SidePanel', () => {
     })
     const card = await screen.findByTestId('sidepanel-card-cats')
     expect(card).toHaveTextContent('猫的复数')
-    expect(card).not.toHaveTextContent('翻译中...')
+    expect(card).not.toHaveTextContent('Translating...')
 
     // 2) A sentence containing the same word arrives (e.g. via 整句翻译).
     act(() => {
@@ -1098,7 +1098,7 @@ describe('SidePanel', () => {
 
       const card = await screen.findByTestId('sidepanel-card-great pets')
       expect(card).toHaveTextContent('很棒的宠物（本句）')
-      expect(within(card).queryByText(/音标加载中/)).not.toBeInTheDocument()
+      expect(within(card).queryByText(/Loading phonetics/)).not.toBeInTheDocument()
       expect(
         mockSendMessage.mock.calls.filter(
           ([m]) => m.type === 'translateWordInContext'

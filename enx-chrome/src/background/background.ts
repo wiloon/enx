@@ -356,7 +356,7 @@ chrome.runtime.onInstalled.addListener(async details => {
   chrome.contextMenus.create(
     {
       id: 'enx-open-sentence-panel',
-      title: '打开整句翻译面板',
+      title: 'Open sentence translation panel',
       contexts: ['action'],
     },
     () => {

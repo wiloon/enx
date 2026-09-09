@@ -28,7 +28,7 @@ export default function Login({ onLoginSuccess, children }: LoginProps) {
     return (
       <div className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-slate-400">
         <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-200 border-t-slate-500" />
-        加载中…
+        Loading…
       </div>
     )
   }
@@ -57,10 +57,10 @@ export default function Login({ onLoginSuccess, children }: LoginProps) {
           <AcademicCapIcon className="h-7 w-7" />
         </div>
         <h2 className="mt-4 text-base font-semibold text-slate-800">
-          登录 ENX
+          Sign in to ENX
         </h2>
         <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500">
-          登录后即可在阅读网页时高亮生词、随点随查。
+          Sign in to highlight new words and look them up as you read.
         </p>
       </div>
 
@@ -75,11 +75,11 @@ export default function Login({ onLoginSuccess, children }: LoginProps) {
         onClick={openWebSignIn}
         className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-500 py-2.5 text-sm font-medium text-white shadow-md shadow-sky-500/25 transition hover:brightness-105 active:scale-[0.99]"
       >
-        在网页中登录
+        Sign in on the website
         <ArrowRightIcon className="h-4 w-4" />
       </button>
       <p className="mt-2.5 text-center text-[11px] leading-relaxed text-slate-400">
-        将打开一个新标签页。在那里完成登录后回到此处，弹窗会自动刷新。
+        This opens a new tab. Finish signing in there, then come back here and the popup will refresh automatically.
       </p>
     </div>
   )

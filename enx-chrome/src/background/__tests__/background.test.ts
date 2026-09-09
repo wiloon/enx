@@ -154,7 +154,7 @@ describe('background makeApiRequest / Clerk session token', () => {
 
   it('propagates a non-401 error status (e.g. 402 insufficient credit)', async () => {
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
-      jsonResponse(402, { message: '积分不足' })
+      jsonResponse(402, { message: 'Insufficient credit. Please add credit or subscribe.' })
     )
 
     const result = await makeApiRequest('/api/translate/sentence', {
@@ -163,7 +163,7 @@ describe('background makeApiRequest / Clerk session token', () => {
 
     expect(result).toEqual({
       success: false,
-      error: '积分不足',
+      error: 'Insufficient credit. Please add credit or subscribe.',
       status: 402,
     })
   })
@@ -522,7 +522,7 @@ describe('background onMessage / translateSentenceWithWord (ADR-014)', () => {
 
   it('propagates the HTTP status on failure (e.g. 402 insufficient credit)', async () => {
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
-      jsonResponse(402, { success: false, message: '积分不足，请充值或订阅' })
+      jsonResponse(402, { success: false, message: 'Insufficient credit. Please add credit or subscribe.' })
     )
 
     const response = (await send({

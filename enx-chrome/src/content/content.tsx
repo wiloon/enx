@@ -245,14 +245,14 @@ const showWordPopover = async (word: string, reference: Range) => {
       if (response.success && !response.panelOpened) {
         contentScriptStore.set(
           sentencePanelHintAtom,
-          '已保存，请点击或右键工具栏 ENX 图标查看整句翻译'
+          'Saved. Click or right-click the ENX toolbar icon to view the sentence translation.'
         )
       }
     } catch (error) {
       console.error('Error opening sentence panel:', error)
       contentScriptStore.set(
         sentencePanelHintAtom,
-        '已保存，请点击或右键工具栏 ENX 图标查看整句翻译'
+        'Saved. Click or right-click the ENX toolbar icon to view the sentence translation.'
       )
     }
   }
@@ -852,11 +852,11 @@ const triggerSelectionTranslation = async (
     })
 
     if (response.success && !response.panelOpened) {
-      showSelectionHint('已保存，请点击或右键工具栏 ENX 图标查看整句翻译', reference)
+      showSelectionHint('Saved. Click or right-click the ENX toolbar icon to view the sentence translation.', reference)
     }
   } catch (error) {
     console.error('Error opening sentence panel for selection:', error)
-    showSelectionHint('已保存，请点击或右键工具栏 ENX 图标查看整句翻译', reference)
+    showSelectionHint('Saved. Click or right-click the ENX toolbar icon to view the sentence translation.', reference)
   }
 }
 
@@ -877,7 +877,7 @@ const triggerPhraseContextLookup = async (
   )
   const sentence = sentenceContext?.sentence
   if (!sentence) {
-    showSelectionHint('暂时无法识别所在句子，请尝试重新选择', reference)
+    showSelectionHint('Could not identify the sentence right now. Try selecting again.', reference)
     return
   }
 
@@ -891,11 +891,11 @@ const triggerPhraseContextLookup = async (
     })
 
     if (response.success && !response.panelOpened) {
-      showSelectionHint('已保存，请点击或右键工具栏 ENX 图标查看', reference)
+      showSelectionHint('Saved. Click or right-click the ENX toolbar icon to view.', reference)
     }
   } catch (error) {
     console.error('Error opening phrase panel for selection:', error)
-    showSelectionHint('已保存，请点击或右键工具栏 ENX 图标查看', reference)
+    showSelectionHint('Saved. Click or right-click the ENX toolbar icon to view.', reference)
   }
 }
 
@@ -944,7 +944,7 @@ const handleTextSelection = () => {
 
   if (wordCount > SELECTION_TRANSLATE_MAX_WORDS) {
     showSelectionHint(
-      `选中内容过长，请缩小选择范围（最多 ${SELECTION_TRANSLATE_MAX_WORDS} 个词）`,
+      `Selection is too long. Narrow it down (at most ${SELECTION_TRANSLATE_MAX_WORDS} words).`,
       selectionRange
     )
     return

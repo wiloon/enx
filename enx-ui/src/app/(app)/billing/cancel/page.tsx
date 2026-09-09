@@ -10,14 +10,14 @@ export default function BillingCancelPage() {
     <div className="container mx-auto p-6 max-w-md">
       <Card>
         <CardHeader>
-          <CardTitle>已取消</CardTitle>
+          <CardTitle>Canceled</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-muted-foreground">
-            结账已取消，没有产生任何费用。
+            Checkout was canceled and you were not charged.
           </p>
           <Link href="/billing">
-            <Button className="w-full">返回订阅与积分</Button>
+            <Button className="w-full">Back to Subscription &amp; Credits</Button>
           </Link>
         </CardContent>
       </Card>

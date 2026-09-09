@@ -24,21 +24,21 @@ export const SUBSCRIPTION_PLANS: PlanOption[] = [
     name: 'enx Pro',
     priceLabel: '$3/mo',
     creditsLabel: PLACEHOLDER,
-    description: '无限查词 + 每月 AI 翻译积分',
+    description: 'Unlimited lookups + monthly AI translation credits',
   },
   {
     plan: 'pro-plus',
     name: 'enx Pro+',
     priceLabel: '$10/mo',
     creditsLabel: PLACEHOLDER,
-    description: '无限查词 + 更多每月 AI 翻译积分',
+    description: 'Unlimited lookups + more monthly AI translation credits',
   },
   {
     plan: 'max',
     name: 'enx Max',
     priceLabel: '$20/mo',
     creditsLabel: PLACEHOLDER,
-    description: '无限查词 + 最多每月 AI 翻译积分',
+    description: 'Unlimited lookups + maximum monthly AI translation credits',
   },
 ]
 
@@ -50,9 +50,9 @@ export interface TopupOption {
 }
 
 export const TOPUP_TIERS: TopupOption[] = [
-  { tier: 'small', name: '小额充值', priceLabel: PLACEHOLDER, creditsLabel: PLACEHOLDER },
-  { tier: 'medium', name: '中额充值', priceLabel: PLACEHOLDER, creditsLabel: PLACEHOLDER },
-  { tier: 'large', name: '大额充值', priceLabel: PLACEHOLDER, creditsLabel: PLACEHOLDER },
+  { tier: 'small', name: 'Small top-up', priceLabel: PLACEHOLDER, creditsLabel: PLACEHOLDER },
+  { tier: 'medium', name: 'Medium top-up', priceLabel: PLACEHOLDER, creditsLabel: PLACEHOLDER },
+  { tier: 'large', name: 'Large top-up', priceLabel: PLACEHOLDER, creditsLabel: PLACEHOLDER },
 ]
 
 const PLAN_NAMES: Record<string, string> = {
@@ -65,12 +65,12 @@ export function subscriptionStatusLabel(status: string, plan?: string): string {
   const planName = (plan && PLAN_NAMES[plan]) || 'Pro'
   switch (status) {
     case 'active':
-      return `${planName} 会员`
+      return `${planName} member`
     case 'past_due':
-      return '订阅逾期'
+      return 'Subscription past due'
     case 'canceled':
-      return '已取消'
+      return 'Canceled'
     default:
-      return '免费用户'
+      return 'Free user'
   }
 }

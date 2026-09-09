@@ -3,7 +3,7 @@
 ## Language Requirements
 
 - **Code, comments, and configuration files:** English.
-- **User-facing UI copy in `enx-chrome` and `enx-ui`:** English. This covers menu items, buttons, labels, placeholders, tooltips, and every hint / notice / toast / error message shown to the user — including the `message` strings the API returns for display (e.g. "insufficient credits", "service unavailable"). Do not ship new Chinese UI strings. Some pre-existing screens still contain Chinese copy (`AuthWrapper.tsx`, the billing pages, some `aitranslate` handler messages); migrate those to English when you touch them, but a dedicated sweep is out of scope for unrelated changes.
+- **User-facing UI copy in `enx-chrome` and `enx-ui`:** English. This covers menu items, buttons, labels, placeholders, tooltips, and every hint / notice / toast / error message shown to the user — including the `message` strings the API returns for display (e.g. "insufficient credits", "service unavailable"). Do not ship new Chinese UI strings. A full sweep of `enx-chrome`, `enx-ui`, and the user-facing `message` strings in `enx-api` (`aitranslate`, `translate`, `dictionary`, `ecdict`) was completed on 2026-09-08; there is no known remaining Chinese UI copy. If you find any, treat it as a bug and fix it in place.
   - Exception: text that is itself *language-learning content* aimed at the Chinese-speaking user may be Chinese by design — e.g. the Chinese learning notes returned by the "地道表达" feature (ADR-012). This is content, not chrome.
 - **Documentation:** English by default. ADRs under `docs/architecture/` are written in Chinese (established convention, see the existing `adr-*.md`); match the language of the doc you are editing.
 

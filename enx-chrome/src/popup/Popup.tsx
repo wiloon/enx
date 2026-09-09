@@ -61,13 +61,13 @@ function Header() {
       </div>
       <div className="flex-1 leading-tight">
         <p className="text-sm font-semibold text-slate-800">ENX</p>
-        <p className="text-[11px] text-slate-400">英语阅读助手</p>
+        <p className="text-[11px] text-slate-400">English Reading Assistant</p>
       </div>
       <button
         type="button"
         onClick={openOptions}
-        title="设置"
-        aria-label="设置"
+        title="Settings"
+        aria-label="Settings"
         className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
       >
         <Cog6ToothIcon className="h-[18px] w-[18px]" />
@@ -121,8 +121,8 @@ function SignedInBody({
       const message = e instanceof Error ? e.message : ''
       setError(
         message.includes('Receiving end does not exist')
-          ? '请先刷新此页面，再开启学习模式。'
-          : message || '无法在此页面开启学习模式'
+          ? 'Please refresh this page before enabling learning mode.'
+          : message || 'Cannot enable learning mode on this page'
       )
       setLearningStatus('idle')
     }
@@ -156,7 +156,7 @@ function SignedInBody({
             {displayName}
           </p>
           <p className="truncate text-[11px] text-slate-400">
-            {email || '已登录'}
+            {email || 'Signed in'}
           </p>
         </div>
         {/*
@@ -169,8 +169,8 @@ function SignedInBody({
         <SignOutButton redirectUrl="/popup.html">
           <button
             type="button"
-            title="退出登录"
-            aria-label="退出登录"
+            title="Sign out"
+            aria-label="Sign out"
             className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
           >
             <ArrowRightOnRectangleIcon className="h-[18px] w-[18px]" />
@@ -196,10 +196,10 @@ function SignedInBody({
           <SparklesIcon className="h-[18px] w-[18px]" />
         )}
         {learningStatus === 'processing'
-          ? '正在开启…'
+          ? 'Enabling…'
           : learningStatus === 'completed'
-            ? '已开启学习模式'
-            : '开启学习模式'}
+            ? 'Learning mode enabled'
+            : 'Enable learning mode'}
       </button>
 
       <button
@@ -212,7 +212,7 @@ function SignedInBody({
           <LanguageIcon className="h-[18px] w-[18px]" />
         </span>
         <span className="flex-1 text-sm font-medium text-slate-700">
-          整句翻译面板
+          Sentence translation panel
         </span>
         <ChevronRightIcon className="h-4 w-4 text-slate-300" />
       </button>
@@ -223,10 +223,10 @@ function SignedInBody({
         </span>
         <span className="min-w-0 flex-1 leading-tight">
           <span className="block text-sm font-medium text-slate-700">
-            阅读时高亮生词
+            Highlight new words while reading
           </span>
           <span className="block text-[11px] text-slate-400">
-            为值得复习的单词加下划线
+            Underline words worth reviewing
           </span>
         </span>
         <span className="relative inline-flex shrink-0 items-center">

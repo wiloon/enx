@@ -17,7 +17,7 @@ import { SUBSCRIPTION_PLANS, TOPUP_TIERS, subscriptionStatusLabel } from './plan
 
 export default function BillingPage() {
   // Tracks which button (if any) triggered a checkout/portal redirect, so
-  // only that button shows "跳转中..." and every button disables while a
+  // only that button shows "Redirecting..." and every button disables while a
   // redirect is in flight (avoids a second click firing a second Checkout
   // Session before the page navigates away).
   const [redirecting, setRedirecting] = useState<string | null>(null)
@@ -47,7 +47,7 @@ export default function BillingPage() {
       window.location.href = resp.data.url
       return
     }
-    setCheckoutError(resp.error || '未能创建结账会话，请稍后重试')
+    setCheckoutError(resp.error || 'Could not start checkout. Please try again later.')
     setRedirecting(null)
   }
 
@@ -73,12 +73,12 @@ export default function BillingPage() {
 
   return (
     <div className="container mx-auto p-6 max-w-3xl space-y-6">
-      <h1 className="text-2xl font-bold">订阅与积分</h1>
+      <h1 className="text-2xl font-bold">Subscription &amp; Credits</h1>
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            当前状态
+            Current status
             {!isLoading && !error && (
               <Badge variant={badgeVariant}>
                 {subscriptionStatusLabel(status, data?.subscription.plan)}
@@ -87,22 +87,22 @@ export default function BillingPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          {isLoading && <p className="text-muted-foreground">加载中...</p>}
+          {isLoading && <p className="text-muted-foreground">Loading...</p>}
           {error && (
             <p className="text-destructive">
-              {error instanceof Error ? error.message : '加载账单状态失败'}
+              {error instanceof Error ? error.message : 'Failed to load billing status'}
             </p>
           )}
           {data && (
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <div className="text-muted-foreground">订阅积分余额</div>
+                <div className="text-muted-foreground">Subscription credit balance</div>
                 <div className="text-lg font-medium">
                   {data.credits.subscriptionBalance}
                 </div>
               </div>
               <div>
-                <div className="text-muted-foreground">充值积分余额</div>
+                <div className="text-muted-foreground">Top-up credit balance</div>
                 <div className="text-lg font-medium">
                   {data.credits.topupBalance}
                 </div>
@@ -117,7 +117,7 @@ export default function BillingPage() {
               onClick={handleManageBilling}
               disabled={redirecting !== null}
             >
-              {redirecting === 'portal' ? '跳转中...' : '管理订阅 / 账单'}
+              {redirecting === 'portal' ? 'Redirecting...' : 'Manage subscription / billing'}
             </Button>
           </CardFooter>
         )}
@@ -130,7 +130,7 @@ export default function BillingPage() {
       )}
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">升级订阅</h2>
+        <h2 className="text-lg font-semibold">Upgrade subscription</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {SUBSCRIPTION_PLANS.map((option) => (
             <Card key={option.plan}>
@@ -141,7 +141,7 @@ export default function BillingPage() {
               <CardContent>
                 <div className="text-2xl font-bold">{option.priceLabel}</div>
                 <div className="text-sm text-muted-foreground">
-                  每期 {option.creditsLabel} 积分
+                  {option.creditsLabel} credits per period
                 </div>
               </CardContent>
               <CardFooter>
@@ -151,10 +151,10 @@ export default function BillingPage() {
                   disabled={isActive || redirecting !== null}
                 >
                   {redirecting === `subscription-${option.plan}`
-                    ? '跳转中...'
+                    ? 'Redirecting...'
                     : isActive
-                      ? '已订阅'
-                      : '订阅'}
+                      ? 'Subscribed'
+                      : 'Subscribe'}
                 </Button>
               </CardFooter>
             </Card>
@@ -163,7 +163,7 @@ export default function BillingPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">购买 AI 翻译积分</h2>
+        <h2 className="text-lg font-semibold">Buy AI translation credits</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {TOPUP_TIERS.map((option) => (
             <Card key={option.tier}>
@@ -173,7 +173,7 @@ export default function BillingPage() {
               <CardContent>
                 <div className="text-2xl font-bold">{option.priceLabel}</div>
                 <div className="text-sm text-muted-foreground">
-                  {option.creditsLabel} 积分
+                  {option.creditsLabel} credits
                 </div>
               </CardContent>
               <CardFooter>
@@ -183,7 +183,7 @@ export default function BillingPage() {
                   onClick={() => handleTopup(option.tier)}
                   disabled={redirecting !== null}
                 >
-                  {redirecting === `topup-${option.tier}` ? '跳转中...' : '购买'}
+                  {redirecting === `topup-${option.tier}` ? 'Redirecting...' : 'Buy'}
                 </Button>
               </CardFooter>
             </Card>
