@@ -1,6 +1,13 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
 COPY .npmrc ./
+# Homelab CI: the Tekton pipeline (pipeline-build-enx-ui.yaml) passes the
+# in-cluster Nexus npm-group URL here so the build resolves packages over plain
+# HTTP -- node:22-alpine ships only the public CA bundle and does not trust the
+# internal *.wiloon.com cert Kong serves on https://nexus.wiloon.com. A bare
+# `docker build` leaves this empty and keeps the committed .npmrc registry.
+ARG NPM_REGISTRY=
+RUN if [ -n "$NPM_REGISTRY" ]; then sed -i "s|^registry=.*|registry=$NPM_REGISTRY|" .npmrc; fi
 RUN npm install -g pnpm@9.15.9
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN for i in 1 2 3 4 5; do \
