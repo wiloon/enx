@@ -321,6 +321,15 @@ tasks:
     cmds:
       - kubectl create -f ../w10n-config/infra/homelab/k8s/tekton/pipelinerun-enx-ui.yaml
 
+  deploy:homelab:
+    desc: "Build+deploy the CURRENT branch's api & ui to homelab; skips a service the cluster already runs. REV=<branch|tag>, FORCE=true to rebuild anyway"
+    dir: ../w10n-config/infra/homelab
+    vars:
+      REV:
+        sh: git -C {{.ROOT_DIR}} rev-parse --abbrev-ref HEAD
+    cmds:
+      - task tekton-deploy-enx REV={{.REV}} FORCE={{.FORCE | default "false"}} ENX_DIR={{.ROOT_DIR}}
+
   # ===========================================
   # Testing
   # ===========================================

@@ -22,6 +22,7 @@ export interface ApiResponse<T = any> {
 }
 
 export interface WordData {
+  Id: string
   Key: string
   English: string
   Pronunciation: string
@@ -67,4 +68,41 @@ export interface RephraseData {
   idiomatic: string
   alternatives: RephraseAlternative[]
   notes: string[]
+}
+
+// GET /api/me (enx-api GetMe). isAdmin reflects the ADMIN_CLERK_USER_IDS
+// allowlist (ADR-021) and is the only signal the UI uses to decide whether
+// to show the admin navigation.
+export interface MeData {
+  id: string
+  name: string
+  email: string
+  status: string
+  isAdmin: boolean
+}
+
+// GET /api/admin/words/:word (ADR-021): the raw words-table row, tombstones
+// (deletedAt) included. `found` is false when the word is not in the table.
+export interface AdminWordRow {
+  found: boolean
+  id?: string
+  english?: string
+  chinese?: string
+  pronunciation?: string
+  loadCount?: number
+  createdAt?: number
+  updatedAt?: number
+  deletedAt?: number | null
+}
+
+// GET /api/admin/ecdict/:word (ADR-021): the matched ECDICT stardict row plus
+// which fallback strategy hit ("exact" | "lower" | "sw" | "exchange").
+export interface AdminEcdictRow {
+  found: boolean
+  matchedBy?: string
+  word?: string
+  sw?: string
+  phonetic?: string
+  translation?: string
+  exchange?: string
 }

@@ -60,6 +60,34 @@ func TestQueryWordFormViaExchange(t *testing.T) {
 	}
 }
 
+func TestLookupRawReportsMatchStrategyAndRawRow(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "ecdict-raw.db")
+	createTestDBWithExchange(t, dbPath) // seeds "run" with exchange "i:running/..."
+	Init(dbPath)
+
+	if row, matchedBy, found := LookupRaw(context.Background(), "run"); !found ||
+		matchedBy != "exact" || row.Word != "run" || row.Exchange == "" {
+		t.Fatalf("exact: found=%v matchedBy=%q row=%+v", found, matchedBy, row)
+	}
+
+	// "running" is only reachable via the exchange fallback.
+	if row, matchedBy, found := LookupRaw(context.Background(), "running"); !found ||
+		matchedBy != "exchange" || row.Word != "run" {
+		t.Fatalf("exchange: found=%v matchedBy=%q row=%+v", found, matchedBy, row)
+	}
+
+	if _, _, found := LookupRaw(context.Background(), "nonexistentword"); found {
+		t.Fatal("expected not found for a word absent from ECDICT")
+	}
+}
+
+func TestLookupRawUnavailableWhenNotInitialized(t *testing.T) {
+	Init("") // unavailable
+	if _, _, found := LookupRaw(context.Background(), "hello"); found {
+		t.Fatal("expected not found when ECDICT unavailable")
+	}
+}
+
 func createTestDB(t *testing.T, dbPath string) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{

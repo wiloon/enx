@@ -4,7 +4,9 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { SITE } from '@/lib/site'
 import { cn } from '@/lib/utils'
+import { useIsAdmin } from '@/hooks/useIsAdmin'
 import {
+  NAV_ADMIN,
   NAV_FOOTER,
   NAV_INSIGHTS,
   NAV_MAIN,
@@ -45,6 +47,7 @@ function NavLink({
 // close itself on selection.
 export default function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
+  const { isAdmin } = useIsAdmin()
 
   const renderGroup = (items: NavItem[]) =>
     items.map((item) => (
@@ -77,6 +80,16 @@ export default function AppSidebar({ onNavigate }: { onNavigate?: () => void }) 
 
         <div className="my-2 border-t border-sidebar-border" />
         {renderGroup(NAV_INSIGHTS)}
+
+        {isAdmin && (
+          <>
+            <div className="my-2 border-t border-sidebar-border" />
+            <p className="px-3 pb-1 text-xs font-medium uppercase tracking-wide text-sidebar-foreground/50">
+              Admin
+            </p>
+            {renderGroup(NAV_ADMIN)}
+          </>
+        )}
 
         <div className="mt-auto flex flex-col gap-1 pt-2">
           <div className="mb-1 border-t border-sidebar-border" />

@@ -6,8 +6,14 @@ jest.mock('next/navigation', () => ({
   usePathname: () => mockPathname(),
 }))
 
+const mockUseIsAdmin = jest.fn()
+jest.mock('@/hooks/useIsAdmin', () => ({
+  useIsAdmin: () => mockUseIsAdmin(),
+}))
+
 beforeEach(() => {
   jest.clearAllMocks()
+  mockUseIsAdmin.mockReturnValue({ isAdmin: false, isLoading: false })
 })
 
 it('renders every navigation destination', () => {
@@ -56,4 +62,24 @@ it('closes the drawer when a link is chosen', () => {
 
   screen.getByRole('link', { name: 'Word Lookup' }).click()
   expect(onNavigate).toHaveBeenCalled()
+})
+
+it('hides the Admin group for a non-admin', () => {
+  mockPathname.mockReturnValue('/app')
+  mockUseIsAdmin.mockReturnValue({ isAdmin: false, isLoading: false })
+  render(<AppSidebar />)
+
+  expect(screen.queryByText('Admin')).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('link', { name: 'Dictionary' })
+  ).not.toBeInTheDocument()
+})
+
+it('shows the Admin group for an admin', () => {
+  mockPathname.mockReturnValue('/app')
+  mockUseIsAdmin.mockReturnValue({ isAdmin: true, isLoading: false })
+  render(<AppSidebar />)
+
+  expect(screen.getByText('Admin')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Dictionary' })).toBeInTheDocument()
 })

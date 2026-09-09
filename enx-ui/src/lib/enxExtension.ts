@@ -74,3 +74,19 @@ export function requestReaderMode(): void {
     // no-op
   }
 }
+
+// ADR-020: the /extension/connected page tells the extension a web sign-in
+// just completed, so the extension can close this tab and switch the user
+// back to the tab they came from. Fire-and-forget; a no-op when the
+// extension is absent (a plain web visitor lands here harmlessly).
+export function notifySignedIn(): void {
+  const rt = runtime()
+  const id = extensionId()
+  const send = rt?.sendMessage
+  if (!id || !send) return
+  try {
+    send(id, { type: 'enx:signed-in' }, () => void rt?.lastError)
+  } catch {
+    // no-op
+  }
+}

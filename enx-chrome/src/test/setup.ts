@@ -67,6 +67,7 @@ if (typeof globalThis.CSS === 'undefined') {
   },
   windows: {
     getCurrent: jest.fn(),
+    update: jest.fn(),
   },
   notifications: {
     create: jest.fn(),
@@ -100,6 +101,10 @@ if (typeof globalThis.CSS === 'undefined') {
   tabs: {
     query: jest.fn(),
     sendMessage: jest.fn(),
+    create: jest.fn(),
+    get: jest.fn(),
+    update: jest.fn(),
+    remove: jest.fn(),
   },
 } as any
 

@@ -39,6 +39,43 @@ func TestTranslateSentenceSuccess(t *testing.T) {
 	}
 }
 
+func TestTranslateSentenceStripsThinkReasoning(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"<think>\nHello world -> 你好世界. Keep it simple.\n</think>\n你好世界"}}]}`))
+	}))
+	defer srv.Close()
+
+	m := newTestMiniMax(srv.URL)
+	chinese, _, err := m.TranslateSentence(context.Background(), "Hello world")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if chinese != "你好世界" {
+		t.Fatalf("chinese: got %q", chinese)
+	}
+}
+
+func TestStripReasoning(t *testing.T) {
+	cases := []struct {
+		name, in, want string
+	}{
+		{"no tags", "你好世界", "你好世界"},
+		{"closed block", "<think>reasoning</think>\n\n你好世界", "你好世界"},
+		{"implied open, close only", "reasoning here</think>你好世界", "你好世界"},
+		{"multiple blocks", "<think>a</think>x<think>b</think>你好世界", "你好世界"},
+		{"truncated mid-thought", "<think>reasoning with no end", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := stripReasoning(c.in); got != c.want {
+				t.Fatalf("stripReasoning(%q): got %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
 func TestTranslateSentenceNon200(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)

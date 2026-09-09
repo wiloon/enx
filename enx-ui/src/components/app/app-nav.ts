@@ -5,6 +5,7 @@ import {
   Home,
   Search,
   Sparkles,
+  Wrench,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -37,10 +38,18 @@ export const NAV_FOOTER: NavItem[] = [
   { label: 'Billing', href: '/billing', icon: CreditCard },
 ]
 
+// Admin-only tools (ADR-021). Rendered in the sidebar only when
+// useIsAdmin() is true; the routes underneath are gated by
+// (app)/admin/layout.tsx on the client and RequireAdmin on the server.
+export const NAV_ADMIN: NavItem[] = [
+  { label: 'Dictionary', href: '/admin/dictionary', icon: Wrench },
+]
+
 export const ALL_NAV: NavItem[] = [
   ...NAV_MAIN,
   ...NAV_INSIGHTS,
   ...NAV_FOOTER,
+  ...NAV_ADMIN,
 ]
 
 // True when `pathname` is `item.href` or a nested route beneath it, so

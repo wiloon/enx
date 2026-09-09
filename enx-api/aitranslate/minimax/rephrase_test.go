@@ -38,6 +38,33 @@ func TestRephraseSuccess(t *testing.T) {
 	}
 }
 
+// MiniMax's M-series ("thinking") models return their chain of thought
+// inline in message.content wrapped in <think>...</think>, and draft a JSON
+// object inside it before the real answer. Without stripping, ParseResult
+// grabs the first '{' from the draft and 502s with
+// "invalid character '<' after top-level value" (the '<' of </think>).
+func TestRephraseStripsThinkReasoning(t *testing.T) {
+	body := `{"choices":[{"message":{"role":"assistant","content":"<think>\nThey want a colleague to take a look. Draft: {\"idiomatic\":\"rough\"}\nRefine the wording.\n</think>\n\n{\"idiomatic\":\"Could you take a look at this when you get a chance?\",\"alternatives\":[{\"text\":\"Mind taking a look at this?\",\"register\":\"casual (Slack)\"}],\"notes\":[\"用 when you get a chance 弱化催促。\"]}"}}],"usage":{"prompt_tokens":269,"completion_tokens":419,"total_tokens":688}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	m := newTestMiniMax(srv.URL)
+	got, err := m.Rephrase(context.Background(), "帮我看下这个问题")
+	if err != nil {
+		t.Fatalf("Rephrase: %v", err)
+	}
+	if got.Idiomatic != "Could you take a look at this when you get a chance?" {
+		t.Fatalf("Idiomatic: got %q", got.Idiomatic)
+	}
+	if len(got.Alternatives) != 1 || got.Alternatives[0].Text != "Mind taking a look at this?" {
+		t.Fatalf("Alternatives: got %+v", got.Alternatives)
+	}
+}
+
 func TestRephraseNon200(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)

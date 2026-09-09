@@ -8,6 +8,7 @@ package minimax
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"enx-api/aitranslate/aicfg"
 	"enx-api/aitranslate/aiusage"
@@ -151,5 +152,30 @@ func (m *MiniMax) chat(ctx context.Context, feature string, temperature float64,
 	logger.Infof("aitranslate: usage provider=minimax feature=%s model=%s input_chars=%d prompt_tokens=%d completion_tokens=%d total_tokens=%d",
 		feature, m.model, len(userContent), result.Usage.PromptTokens, result.Usage.CompletionTokens, result.Usage.TotalTokens)
 
-	return result.Choices[0].Message.Content, result.Usage, nil
+	raw := result.Choices[0].Message.Content
+	content := stripReasoning(raw)
+	if content != raw {
+		logger.Debugf("aitranslate: minimax feature=%s stripped %d chars of <think> reasoning", feature, len(raw)-len(content))
+	}
+	return content, result.Usage, nil
+}
+
+// stripReasoning removes the chain-of-thought MiniMax's M-series ("thinking")
+// models emit inline in the message content, wrapped in <think>...</think>
+// (the opening tag is sometimes implied and only the closing one is sent).
+// The model drafts its answer -- sometimes a whole JSON object -- inside that
+// block before the real answer, which breaks callers that scan the content
+// for the first '{' (rephrase.ParseResult) or treat the whole string as the
+// result (sentence translation). Everything up to and including the final
+// </think> is reasoning; keep only what follows. A <think> with no close
+// means the reply was truncated mid-thought and carries no usable answer.
+func stripReasoning(content string) string {
+	const openTag, closeTag = "<think>", "</think>"
+	if i := strings.LastIndex(content, closeTag); i >= 0 {
+		return strings.TrimSpace(content[i+len(closeTag):])
+	}
+	if strings.Contains(content, openTag) {
+		return ""
+	}
+	return content
 }

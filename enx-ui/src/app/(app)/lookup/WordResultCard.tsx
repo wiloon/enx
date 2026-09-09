@@ -27,6 +27,11 @@ export default function WordResultCard({ data, onClear, clearing }: WordResultCa
       <CardContent className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
+            <Label className="text-sm font-medium text-gray-600">Word ID</Label>
+            <div className="text-lg font-mono break-all">{data.Id}</div>
+          </div>
+
+          <div>
             <Label className="text-sm font-medium text-gray-600">Chinese Translation</Label>
             <div className="text-lg font-medium">{data.Chinese}</div>
           </div>
