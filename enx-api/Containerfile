@@ -1,12 +1,25 @@
 FROM golang:1.26.0 AS build
-ENV GO111MODULE on
+ENV GO111MODULE=on
+ENV CGO_ENABLED=0
+ENV GOOS=linux
 WORKDIR /workdir
+
+# Dependencies first, in their own layer. It is rebuilt only when go.mod /
+# go.sum change, so with Kaniko's registry cache (--cache=true in
+# infra/homelab/k8s/tekton/pipeline-build-enx-api.yaml) a code-only change
+# skips the module download entirely.
+COPY enx-api/go.mod enx-api/go.sum ./
+RUN go mod download
+
 COPY enx-api/ .
 ARG VERSION=dev
 ARG GIT_COMMIT=unknown
 ARG GIT_BRANCH=unknown
 ARG BUILD_TIME=unknown
-RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags "-X enx-api/version.Version=$VERSION -X enx-api/version.GitCommit=$GIT_COMMIT -X enx-api/version.GitBranch=$GIT_BRANCH -X enx-api/version.BuildTime=$BUILD_TIME" enx-api.go
+# No `-a`: it forced a rebuild of every package including the standard library
+# for zero benefit here. `-trimpath` + `-s -w` shrink the binary (faster push /
+# pull) and make the build more reproducible (steadier cache hits).
+RUN go build -trimpath -ldflags "-s -w -X enx-api/version.Version=$VERSION -X enx-api/version.GitCommit=$GIT_COMMIT -X enx-api/version.GitBranch=$GIT_BRANCH -X enx-api/version.BuildTime=$BUILD_TIME" enx-api.go
 
 FROM alpine:3.21.3 AS prod
 COPY --from=build /workdir/enx-api /usr/local/bin/
