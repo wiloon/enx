@@ -2,6 +2,15 @@ FROM golang:1.26.0 AS build
 ENV GO111MODULE=on
 ENV CGO_ENABLED=0
 ENV GOOS=linux
+# Module proxy. Homelab CI (pipeline-build-enx-api.yaml) overrides this with the
+# in-cluster Nexus go-group URL over plain HTTP -- golang:1.26.0 does not trust
+# the internal *.wiloon.com CA that Kong serves on https://nexus.wiloon.com --
+# so `go mod download` hits the local cache. A bare `docker build` falls back to
+# the public CN mirror. The goproxy.cn entry and ,direct suffix also let the
+# checksum DB (sum.golang.org) resolve, which Nexus's Go proxy can't proxy.
+# Setup: infra/homelab/k8s/nexus/scripts/setup-go-proxy.sh (w10n-config repo).
+ARG GOPROXY=https://goproxy.cn,direct
+ENV GOPROXY=${GOPROXY}
 WORKDIR /workdir
 
 # Dependencies first, in their own layer. It is rebuilt only when go.mod /

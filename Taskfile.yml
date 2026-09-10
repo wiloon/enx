@@ -330,6 +330,24 @@ tasks:
     cmds:
       - task tekton-deploy-enx REV={{.REV}} FORCE={{.FORCE | default "false"}} ENX_DIR={{.ROOT_DIR}}
 
+  deploy:homelab:api:
+    desc: "Build+deploy ONLY the CURRENT branch's api to homelab; skips if the cluster already runs it. REV=<branch|tag>, FORCE=true to rebuild anyway"
+    dir: ../w10n-config/infra/homelab
+    vars:
+      REV:
+        sh: git -C {{.ROOT_DIR}} rev-parse --abbrev-ref HEAD
+    cmds:
+      - task tekton-deploy-enx SERVICE=api REV={{.REV}} FORCE={{.FORCE | default "false"}} ENX_DIR={{.ROOT_DIR}}
+
+  deploy:homelab:ui:
+    desc: "Build+deploy ONLY the CURRENT branch's ui to homelab; skips if the cluster already runs it. REV=<branch|tag>, FORCE=true to rebuild anyway"
+    dir: ../w10n-config/infra/homelab
+    vars:
+      REV:
+        sh: git -C {{.ROOT_DIR}} rev-parse --abbrev-ref HEAD
+    cmds:
+      - task tekton-deploy-enx SERVICE=ui REV={{.REV}} FORCE={{.FORCE | default "false"}} ENX_DIR={{.ROOT_DIR}}
+
   # ===========================================
   # Testing
   # ===========================================
