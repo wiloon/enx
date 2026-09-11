@@ -710,6 +710,20 @@ const caretFromPoint = (
   return range ? { node: range.startContainer, offset: range.startOffset } : null
 }
 
+// caretPositionFromPoint/caretRangeFromPoint snap to the nearest character
+// even when (x, y) is far past the end of a line -- clicking in the blank
+// space to the right of a short line resolves to that line's last word.
+// Guard against that by requiring the click to actually land inside the
+// resolved word's own rendered box, not just on its text node.
+const pointInRange = (range: Range, x: number, y: number): boolean => {
+  const rects = range.getClientRects()
+  for (let i = 0; i < rects.length; i++) {
+    const r = rects[i]
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return true
+  }
+  return false
+}
+
 // One click listener per article root: resolve the word under the pointer
 // from its coordinates (no marker element needed) and open the overlay on it.
 // Clicks inside links / code / buttons resolve to null and fall through.
@@ -719,6 +733,7 @@ const handleArticleClick = (event: Event) => {
   if (!caret) return
   const wordRange = WordProcessor.expandToWordRange(caret.node, caret.offset)
   if (!wordRange) return
+  if (!pointInRange(wordRange, clientX, clientY)) return
   event.preventDefault()
   event.stopPropagation()
   showWordPopover(wordRange.toString(), wordRange)
