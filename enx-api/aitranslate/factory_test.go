@@ -49,3 +49,10 @@ func TestNewBedrockMissingModelID(t *testing.T) {
 		t.Fatal("expected error when sentence-translate.bedrock.model-id is not set")
 	}
 }
+
+func TestNewDeepSeekMissingAPIKey(t *testing.T) {
+	withProvider(t, "deepseek")
+	if _, err := New(context.Background()); err == nil {
+		t.Fatal("expected error when DEEPSEEK_API_KEY is not set")
+	}
+}

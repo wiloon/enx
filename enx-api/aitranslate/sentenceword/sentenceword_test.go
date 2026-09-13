@@ -60,3 +60,36 @@ func TestParseResultInvalidJSON(t *testing.T) {
 		t.Fatal("expected an error on malformed JSON")
 	}
 }
+
+// Reproduces the homelab 2026-09-13 failure: MiniMax dropped the comma
+// between fields and inserted a stray remark instead, which breaks strict
+// JSON parsing ("invalid character 'A' after object key:value pair") even
+// though both fields are individually intact.
+func TestParseResultRecoversFromMissingCommaBetweenFields(t *testing.T) {
+	raw := `{"sentence": "我们的越狱者是自主的" Additional thoughts here, "word": "自主的"}`
+	res, err := ParseResult(raw)
+	if err != nil {
+		t.Fatalf("expected fallback recovery, got error: %v", err)
+	}
+	if res.SentenceChinese != "我们的越狱者是自主的" || res.WordChinese != "自主的" {
+		t.Fatalf("got %+v", res)
+	}
+}
+
+func TestParseResultFallbackStillRequiresSentence(t *testing.T) {
+	raw := `{"word": "自主的" some stray text without a sentence field}`
+	if _, err := ParseResult(raw); err == nil {
+		t.Fatal("expected an error when even the fallback finds no sentence field")
+	}
+}
+
+func TestParseResultRecoversEscapedQuoteInFieldValue(t *testing.T) {
+	raw := `{"sentence": "他说\"你好\"" stray, "word": "你好"}`
+	res, err := ParseResult(raw)
+	if err != nil {
+		t.Fatalf("expected fallback recovery, got error: %v", err)
+	}
+	if res.SentenceChinese != `他说"你好"` {
+		t.Fatalf("got %+v", res)
+	}
+}

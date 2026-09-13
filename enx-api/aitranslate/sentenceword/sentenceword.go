@@ -12,6 +12,7 @@ package sentenceword
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -46,28 +47,76 @@ type wireResult struct {
 	Word     string `json:"word"`
 }
 
+// sentenceFieldPattern and wordFieldPattern pull a "sentence" or "word"
+// field's quoted value out of a reply directly, without requiring the
+// surrounding text to be a well-formed JSON object. Chatty models sometimes
+// drop the comma between fields and insert a stray remark instead (e.g.
+// `"sentence": "..." Additional note here, "word": "..."`), which breaks
+// strict JSON parsing even though each field's own value is intact -- see
+// fieldFallback below.
+var (
+	sentenceFieldPattern = regexp.MustCompile(`"sentence"\s*:\s*"((?:[^"\\]|\\.)*)"`)
+	wordFieldPattern     = regexp.MustCompile(`"word"\s*:\s*"((?:[^"\\]|\\.)*)"`)
+)
+
 // ParseResult turns a provider's raw reply into a Result. The sentence
 // translation is required; a missing or empty word gloss is tolerated (see
-// Result.WordChinese). Extraction is the same lenient "first brace to last
-// brace" span as aitranslate/rephrase, since small models don't reliably
-// return a bare object even when told to.
+// Result.WordChinese). Extraction starts from the same lenient "first brace
+// to last brace" span as aitranslate/rephrase, since small models don't
+// reliably return a bare object even when told to; if that span isn't valid
+// JSON, fieldFallback recovers the two fields independently rather than
+// failing the whole reply over one model formatting slip.
 func ParseResult(raw string) (Result, error) {
 	start := strings.IndexByte(raw, '{')
 	end := strings.LastIndexByte(raw, '}')
 	if start < 0 || end < start {
 		return Result{}, fmt.Errorf("sentenceword: reply contains no JSON object")
 	}
+	obj := raw[start : end+1]
 
 	var wire wireResult
-	if err := json.Unmarshal([]byte(raw[start:end+1]), &wire); err != nil {
-		return Result{}, fmt.Errorf("sentenceword: reply is not valid JSON: %w", err)
-	}
-	if strings.TrimSpace(wire.Sentence) == "" {
-		return Result{}, fmt.Errorf("sentenceword: reply has no sentence translation")
+	if err := json.Unmarshal([]byte(obj), &wire); err == nil {
+		if sentence := strings.TrimSpace(wire.Sentence); sentence != "" {
+			return Result{SentenceChinese: sentence, WordChinese: strings.TrimSpace(wire.Word)}, nil
+		}
 	}
 
-	return Result{
-		SentenceChinese: strings.TrimSpace(wire.Sentence),
-		WordChinese:     strings.TrimSpace(wire.Word),
-	}, nil
+	return fieldFallback(obj)
+}
+
+// fieldFallback recovers Result fields by regex when obj as a whole doesn't
+// parse as JSON (or parsed but came out with no sentence). It only requires
+// each field's own quoted value to be well-formed, so it survives the kind
+// of malformed-but-recognizable reply that breaks encoding/json.
+func fieldFallback(obj string) (Result, error) {
+	sentence := unquoteJSONString(firstSubmatch(sentenceFieldPattern, obj))
+	if strings.TrimSpace(sentence) == "" {
+		return Result{}, fmt.Errorf("sentenceword: reply has no sentence translation")
+	}
+	word := unquoteJSONString(firstSubmatch(wordFieldPattern, obj))
+	return Result{SentenceChinese: strings.TrimSpace(sentence), WordChinese: strings.TrimSpace(word)}, nil
+}
+
+func firstSubmatch(re *regexp.Regexp, s string) string {
+	m := re.FindStringSubmatch(s)
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
+
+// unquoteJSONString decodes a JSON string body's escape sequences (\", \n,
+// \uXXXX, ...) by re-wrapping it as a JSON string literal and letting
+// encoding/json unescape it. Falls back to the raw text if that somehow
+// isn't valid (the regex it comes from guarantees well-formed escapes, so
+// this is only a safety net).
+func unquoteJSONString(s string) string {
+	if s == "" {
+		return ""
+	}
+	var out string
+	if err := json.Unmarshal([]byte(`"`+s+`"`), &out); err != nil {
+		return s
+	}
+	return out
 }

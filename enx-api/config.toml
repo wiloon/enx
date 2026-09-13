@@ -45,14 +45,15 @@ issuer = "https://rational-deer-4450.clerk.accounts.dev"
 authorized-parties = ["https://enx.wiloon.lab", "http://localhost:3000"]
 
 [sentence-translate]
-# "kimi" | "bedrock" | "minimax" -- switch provider by changing this one line,
-# or override per-deployment with the SENTENCE_TRANSLATE_PROVIDER env var.
-# Left blank in this checked-in template: each deployment (homelab k8s, AWS
-# EC2, local dev) sets its own value, since the right provider depends on
-# where this is actually running. Empty means the feature stays disabled
-# (POST /api/translate/sentence responds 502) rather than failing to start.
-# API keys are never set here; see KIMI_API_KEY / MINIMAX_API_KEY env vars,
-# and the AWS credential chain (IAM instance role on EC2) for bedrock.
+# "kimi" | "bedrock" | "minimax" | "deepseek" -- switch provider by changing
+# this one line, or override per-deployment with the SENTENCE_TRANSLATE_PROVIDER
+# env var. Left blank in this checked-in template: each deployment (homelab
+# k8s, AWS EC2, local dev) sets its own value, since the right provider
+# depends on where this is actually running. Empty means the feature stays
+# disabled (POST /api/translate/sentence responds 502) rather than failing
+# to start. API keys are never set here; see KIMI_API_KEY / MINIMAX_API_KEY /
+# DEEPSEEK_API_KEY env vars, and the AWS credential chain (IAM instance role
+# on EC2) for bedrock.
 provider = ""
 # Per-call timeout for the provider API request (Go duration string).
 # Default 60s: MiniMax's M-series models spend time "thinking" before the
@@ -81,6 +82,15 @@ model = "MiniMax-Text-01"
 # 401s ("invalid api key (2049)"). Override per-deploy with
 # SENTENCE_TRANSLATE_MINIMAX_BASE_URL.
 base-url = "https://api.minimax.io/v1"
+
+[sentence-translate.deepseek]
+model = "deepseek-chat"
+# rephrase-model (mirrors kimi's): rephrase-only override. Empty = use `model`.
+rephrase-model = ""
+# One unified endpoint -- unlike MiniMax/Kimi, DeepSeek has no separate
+# international/China account or base URL. Override with
+# SENTENCE_TRANSLATE_DEEPSEEK_BASE_URL only for a self-hosted/proxy setup.
+base-url = "https://api.deepseek.com"
 
 [stripe]
 # Publishable key is designed to be public and safe to check in.

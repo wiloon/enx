@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"enx-api/aitranslate/bedrock"
+	"enx-api/aitranslate/deepseek"
 	"enx-api/aitranslate/kimi"
 	"enx-api/aitranslate/minimax"
 
@@ -12,7 +13,7 @@ import (
 )
 
 // New builds the Translator selected by sentence-translate.provider in
-// config.toml ("kimi", "bedrock", or "minimax").
+// config.toml ("kimi", "bedrock", "minimax", or "deepseek").
 //
 // If the provider is unset entirely, sentence translation is treated as an
 // optional, unconfigured feature (like ECDICT when ecdict.db_path is empty)
@@ -29,9 +30,11 @@ func New(ctx context.Context) (Translator, error) {
 		return bedrock.New(ctx)
 	case "minimax":
 		return minimax.New()
+	case "deepseek":
+		return deepseek.New()
 	case "":
 		return nil, fmt.Errorf("aitranslate: sentence-translate.provider is not configured")
 	default:
-		return nil, fmt.Errorf("aitranslate: unknown sentence-translate.provider %q (must be \"kimi\", \"bedrock\", or \"minimax\")", provider)
+		return nil, fmt.Errorf("aitranslate: unknown sentence-translate.provider %q (must be \"kimi\", \"bedrock\", \"minimax\", or \"deepseek\")", provider)
 	}
 }
