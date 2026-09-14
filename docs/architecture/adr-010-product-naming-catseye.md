@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Accepted — 2026-08-25 |
+| **状态** | 🔴 **Superseded** — 2026-09-12。正式命名已改为 **Catglish**（不设中文名），决策记录在 `starlabrys/ops` 仓库 `docs/product/ADR-0004-enx-product-name.md`；域名 `catglish.com` 已注册。本文件仅作历史记录保留 |
 | **日期** | 2026-08-25 |
 
 ---

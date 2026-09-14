@@ -1,4 +1,4 @@
-# LAUNCH-CHECKLIST：enx / Catseye 公开上线清单
+# LAUNCH-CHECKLIST：enx / Catglish 公开上线清单
 
 | 字段 | 值 |
 | --- | --- |
@@ -20,12 +20,9 @@
 
 ## 0. 需要先拍板的决策（阻塞后续所有工作）
 
-- [ ] **0.1 生产域名**。文档之间不一致，必须定一个：
-  - `w10n-config/enx/monetization-tasks.md` → 「继续用 `enx.wiloon.com`，迁 AWS EC2」
-  - `adr-013` / `adr-015` / `TASK-SPEC-clerk-cutover` → 用 `catseye.*` 品牌域名，且「已有生产公网域名」是 Clerk 切换与官网上线的**前提**
-  - `enx-chrome/src/config/env.ts` 的 `production` 环境已硬编码 `clerkSyncHost = https://enx.wiloon.com`
-  - `w10n-config/enx/monetization.md` → 「等订阅跑出付费信号再买独立品牌域名」
-  - ⚠️ 冲突点：Clerk prod 实例要配 `clerk.<域名>` 子域，Stripe live webhook 要固定公网 URL，Chrome 扩展 `host_permissions` 要写死域名 —— 这些都得等域名定了才能做。
+- [x] **0.1 生产域名** —— 2026-09-12 拍板：**`catglish.com`**（独立品牌域名，已在 Cloudflare 注册），不走 `<name>.starlibraries.com` 二级域名方案。产品正式命名同期定为 **Catglish**，取代本文档标题及各处仍在用的 "Catseye"（见 `adr-010`，已 Superseded）。
+  - 遗留待更新：`adr-013` / `adr-015` / `TASK-SPEC-clerk-cutover` 里的 `catseye.*` 品牌域名引用、`enx-chrome/src/config/env.ts` 硬编码的 `clerkSyncHost = https://enx.wiloon.com`、`w10n-config/enx/monetization-tasks.md` 里的 `enx.wiloon.com` 方案 —— 这些文档/代码仍待逐一改成 `catglish.com`，本次只拍板域名本身，未做全量替换
+  - ⚠️ 冲突点（域名定了之后才能做）：Clerk prod 实例配 `clerk.catglish.com` 子域，Stripe live webhook 固定公网 URL，Chrome 扩展 `host_permissions` 写死 `catglish.com`
 - [ ] **0.2 生产部署环境**：AWS EC2（monetization-tasks 的方案）还是留在别处？`enx-api-java` 已随 ADR-015 从 homelab 下线，不再是双栈。
 - [ ] **0.3 上线档位范围**：只上 Pro 单档，还是 Pro / Pro+ / Max 三档一起上？年付是否上线即支持（年付积分发放机制未实现，见 §2.3）。
 - [ ] **0.4 Pro 最终定价**。`$4.99/mo` 是 2026-08-26 暂定值，用户明确说过「之后整体 review」；Pro+ / Max 完全未定价（OpenTofu 里占位 `$3 / $10 / $20`）。
@@ -109,7 +106,7 @@
 - [ ] **7.1** 演示视频（当前是 16:9 占位容器，通过常量开关接入，不阻塞但推广前需要）。
 - [ ] **7.2** 产品截图、OG 图（社交分享卡片）。
 - [ ] **7.3** `/pricing` 公开页（`adr-013` v1 未做，`/billing` 是登录后的页）。上线收费时需要一个免登录可见的定价页。
-- [ ] **7.4** 品牌统一：官网对外用 `Catseye`，确认 title / logo / 文案一致。
+- [ ] **7.4** 品牌统一：官网对外用 `Catglish`，确认 title / logo / 文案一致。
 
 ---
 
