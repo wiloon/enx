@@ -641,8 +641,19 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
         return
       }
       const tabId = sender.tab?.id
-      await chrome.tabs.sendMessage(tabId!, { action: 'enxRun' })
-      sendResponse({ ok: true })
+      try {
+        await chrome.tabs.sendMessage(tabId!, { action: 'enxRun' })
+        sendResponse({ ok: true })
+      } catch (error) {
+        // No content-script listener on this tab (stale extension build,
+        // or the tab predates a matches-pattern change) -- surface it
+        // instead of leaving the caller's callback waiting on nothing.
+        sendResponse({
+          ok: false,
+          reason: 'no-content-script',
+          message: error instanceof Error ? error.message : String(error),
+        })
+      }
     })()
     return true
   }

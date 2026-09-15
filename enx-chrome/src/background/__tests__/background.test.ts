@@ -587,6 +587,18 @@ describe('background onMessageExternal (ADR-019 web -> extension channel)', () =
     expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
   })
 
+  it('answers with no-content-script instead of hanging when the tab has no listener', async () => {
+    ;(chrome.tabs.sendMessage as jest.Mock).mockRejectedValue(
+      new Error('Could not establish connection. Receiving end does not exist.')
+    )
+    const response = await call({ type: 'enx:enable-reader' })
+    expect(response).toEqual({
+      ok: false,
+      reason: 'no-content-script',
+      message: 'Could not establish connection. Receiving end does not exist.',
+    })
+  })
+
   it('drops a message from an origin that is not an enx-ui origin', async () => {
     const sendResponse = jest.fn()
     const keptOpen = external(
