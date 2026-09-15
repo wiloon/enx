@@ -33,6 +33,7 @@ import {
   sentencePanelHintAtom,
 } from '@/store/atoms'
 import WordPopover from '@/components/WordPopover'
+import SidePanelTranslateIcon from '@/components/icons/SidePanelTranslateIcon'
 import tailwindCss from '@/index.css?inline'
 
 console.log('ENX Content script loaded')
@@ -728,6 +729,18 @@ const pointInRange = (range: Range, x: number, y: number): boolean => {
 // from its coordinates (no marker element needed) and open the overlay on it.
 // Clicks inside links / code / buttons resolve to null and fall through.
 const handleArticleClick = (event: Event) => {
+  // A drag-selection leaves a non-collapsed window Selection in place when
+  // the 'click' event fires right after mouseup -- a plain click collapses
+  // any prior selection on mousedown, before this ever runs. Bail out here
+  // so a multi-word drag-select doesn't also pop up a single-word lookup
+  // for whatever word happened to be under the pointer at release (that word
+  // is handled, if at all, via handleTextSelection/showSelectionTranslateButton
+  // instead).
+  const activeSelection = window.getSelection()
+  if (activeSelection && !activeSelection.isCollapsed && activeSelection.toString().trim() !== '') {
+    return
+  }
+
   const { clientX, clientY } = event as MouseEvent
   const caret = caretFromPoint(clientX, clientY)
   if (!caret) return
@@ -914,38 +927,146 @@ const triggerPhraseContextLookup = async (
   }
 }
 
+// Small floating "translate this" button anchored to the bottom-right corner
+// of a multi-word drag-selection. Replaces the old behavior of firing a
+// backend call straight off mouseup: that fired on every boundary tweak, and
+// the native 'click' event that follows mouseup could separately resolve to
+// the last word under the pointer and pop up a single-word lookup on top of
+// the phrase/sentence result (the two-overlays bug). Now nothing is sent
+// until the user deliberately clicks this icon.
+let selectionButtonOverlay: OverlayElement | null = null
+let selectionButtonRoot: Root | null = null
+let selectionButtonCleanup: (() => void) | null = null
+
+const hideSelectionTranslateButton = () => {
+  if (selectionButtonRoot) {
+    selectionButtonRoot.unmount()
+    selectionButtonRoot = null
+  }
+  if (selectionButtonOverlay) {
+    selectionButtonOverlay.remove()
+    selectionButtonOverlay = null
+  }
+  if (selectionButtonCleanup) {
+    selectionButtonCleanup()
+    selectionButtonCleanup = null
+  }
+}
+
+const showSelectionTranslateButton = (
+  reference: Range,
+  onTrigger: () => void
+) => {
+  hideSelectionTranslateButton()
+
+  const overlay = document.createElement('div') as OverlayElement
+  overlay.popover = 'manual'
+  overlay.className = 'enx-selection-translate-button'
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    margin: 0;
+  `
+
+  const shadowRoot = overlay.attachShadow({ mode: 'open' })
+  const styleTag = document.createElement('style')
+  styleTag.textContent = tailwindCss
+  shadowRoot.appendChild(styleTag)
+
+  const mountPoint = document.createElement('div')
+  shadowRoot.appendChild(mountPoint)
+  const root = createRoot(mountPoint)
+  selectionButtonRoot = root
+
+  const anchorNode: Node =
+    nearestElement(reference.startContainer) ?? reference.startContainer
+
+  const handleClick = () => {
+    hideSelectionTranslateButton()
+    onTrigger()
+  }
+
+  root.render(
+    <button
+      type="button"
+      onClick={handleClick}
+      className="flex items-center justify-center h-7 w-7 rounded-full bg-blue-500 hover:bg-blue-600 text-white shadow-md"
+      title="Translate selection"
+      aria-label="Translate selection"
+    >
+      <SidePanelTranslateIcon className="h-4 w-4" />
+    </button>
+  )
+
+  document.body.appendChild(overlay)
+  overlay.showPopover()
+  selectionButtonOverlay = overlay
+
+  // Anchored at the selection's bottom-right corner rather than the
+  // top/line-height placement used by createAnchoredOverlay -- this is a
+  // small affordance sitting next to the selection, not a content overlay
+  // that needs to clear a line above it.
+  const virtualReference = {
+    getBoundingClientRect: () => reference.getBoundingClientRect(),
+    getClientRects: () => reference.getClientRects(),
+    contextElement: nearestElement(reference.startContainer) ?? undefined,
+  }
+  const update = () => {
+    computePosition(virtualReference, overlay, {
+      strategy: 'fixed',
+      placement: 'bottom-end',
+      middleware: [offset(6), flip(), shift({ padding: 8 })],
+    }).then(({ x, y }) => {
+      overlay.style.left = `${x}px`
+      overlay.style.top = `${y}px`
+    })
+  }
+  const stopPositioning = autoUpdate(virtualReference, overlay, update)
+
+  const handleClickOutside = (e: MouseEvent) => {
+    const target = e.target as Node
+    if (!overlay.contains(target) && !anchorNode.contains(target)) {
+      hideSelectionTranslateButton()
+    }
+  }
+  const handleKeydown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') hideSelectionTranslateButton()
+  }
+  document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown', handleKeydown)
+
+  selectionButtonCleanup = () => {
+    document.removeEventListener('click', handleClickOutside)
+    document.removeEventListener('keydown', handleKeydown)
+    stopPositioning()
+  }
+}
+
 // ADR-007 tuning constants, kept together so they're easy to adjust without
 // hunting through the selection-handling logic below.
 const SELECTION_DICTIONARY_MAX_WORDS = 5
 const SELECTION_TRANSLATE_MAX_WORDS = 80
-const SELECTION_TRANSLATE_DEBOUNCE_MS = 500
 const SENTENCE_END_PUNCTUATION = /[.?!]/
-
-let selectionTranslateTimer: ReturnType<typeof setTimeout> | null = null
-
-// Cancels any pending drag-select translation. Called both on the next
-// mousedown (a new selection gesture starting -- ADR-007 Decision §3) and
-// whenever a mouseup itself needs to replace a still-pending timer.
-const cancelPendingSelectionTranslation = () => {
-  if (selectionTranslateTimer !== null) {
-    clearTimeout(selectionTranslateTimer)
-    selectionTranslateTimer = null
-  }
-}
 
 // Handle text selection (ADR-007/ADR-008): a selection with sentence-ending
 // punctuation, or longer than the dictionary-lookup threshold, is treated
-// as "translate this" rather than "look this phrase up" and is debounced
-// before triggering translateSentence (via triggerSelectionTranslation) --
-// see the ADR for why word-count alone can't tell a short phrase like "as a
-// matter of fact" apart from a short complete sentence like "I love cats.".
-// Within the remaining <=5-word, no-punctuation range, a single word is
-// still a dictionary lookup, but 2-5 words is a phrase -- ECDICT/words never
-// has phrase entries, so that case is routed to an AI in-context lookup
-// instead (ADR-008), not debounced since the selection itself is already
-// the exact, deliberate query (no boundary-tuning drag to wait out).
+// as "translate this" rather than "look this phrase up" -- see the ADR for
+// why word-count alone can't tell a short phrase like "as a matter of fact"
+// apart from a short complete sentence like "I love cats.". Within the
+// remaining <=5-word, no-punctuation range, a single word is still an
+// immediate dictionary lookup, but 2-5 words is a phrase -- ECDICT/words
+// never has phrase entries, so that case is routed to an AI in-context
+// lookup instead (ADR-008). Both the sentence and phrase cases surface a
+// click-to-translate button (showSelectionTranslateButton) rather than
+// firing immediately: this is what a multi-word selection resolves to, so
+// mouseup must never also run the single-word click lookup on top of it --
+// see the selection guard in handleArticleClick.
 const handleTextSelection = () => {
-  cancelPendingSelectionTranslation()
+  hideSelectionTranslateButton()
 
   const selection = window.getSelection()
   const selectedText = selection?.toString().trim()
@@ -967,10 +1088,9 @@ const handleTextSelection = () => {
 
   const looksLikeSentence = SENTENCE_END_PUNCTUATION.test(selectedText)
   if (looksLikeSentence || wordCount > SELECTION_DICTIONARY_MAX_WORDS) {
-    selectionTranslateTimer = setTimeout(() => {
-      selectionTranslateTimer = null
+    showSelectionTranslateButton(selectionRange, () => {
       triggerSelectionTranslation(selectedText, selectionRange)
-    }, SELECTION_TRANSLATE_DEBOUNCE_MS)
+    })
     return
   }
 
@@ -981,7 +1101,9 @@ const handleTextSelection = () => {
   }
 
   // 2-5 words, no sentence-ending punctuation: phrase-in-context AI lookup (ADR-008).
-  triggerPhraseContextLookup(selectedText, selectionRange)
+  showSelectionTranslateButton(selectionRange, () => {
+    triggerPhraseContextLookup(selectedText, selectionRange)
+  })
 }
 
 // --- SPA in-page navigation auto-rebuild (ADR-011 Decision 6) --------------
@@ -1013,11 +1135,11 @@ const enableEnx = async (): Promise<boolean> => {
   console.log('Enabling ENX functionality')
   isEnxEnabled = true
 
-  // Add mouseup listener for text selection, and mousedown to cancel a
-  // pending drag-select translation as soon as a new selection gesture
-  // starts (ADR-007 Decision §3).
+  // Add mouseup listener for text selection, and mousedown to dismiss a
+  // still-showing selection-translate button as soon as a new selection
+  // gesture starts (ADR-007 Decision §3).
   document.addEventListener('mouseup', handleTextSelection)
-  document.addEventListener('mousedown', cancelPendingSelectionTranslation)
+  document.addEventListener('mousedown', hideSelectionTranslateButton)
 
   // On a 'spa' site (X), re-run automatically when the user switches tweets
   // in-page (ADR-011 Decision 6). Static sites reload + re-inject anyway.
@@ -1053,8 +1175,8 @@ const disableEnx = () => {
 
   // Remove event listeners
   document.removeEventListener('mouseup', handleTextSelection)
-  document.removeEventListener('mousedown', cancelPendingSelectionTranslation)
-  cancelPendingSelectionTranslation()
+  document.removeEventListener('mousedown', hideSelectionTranslateButton)
+  hideSelectionTranslateButton()
   spaRebuilderInstance?.stop()
 
   // Hide overlay

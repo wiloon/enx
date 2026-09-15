@@ -4,6 +4,11 @@ vars:
   # enx-ui needs Node 18+ (Next 15); many shells still default to Node 16.
   # Run its pnpm scripts through the version pinned in enx-ui/.node-version.
   FNM_UI: fnm exec --using=.node-version --
+  # ROOT_DIR follows the invocation path. A symlink such as ~/enx ->
+  # ~/workspace/projects/enx would make ../w10n-config resolve to ~/w10n-config.
+  ENX_REAL_DIR:
+    sh: realpath '{{.ROOT_DIR}}'
+  W10N_HOMELAB: '{{.ENX_REAL_DIR}}/../w10n-config/infra/homelab'
 
 tasks:
   default:
@@ -156,7 +161,7 @@ tasks:
   tekton:build:java-api:
     desc: Trigger enx-api-java Tekton build and GitOps deploy via ArgoCD
     cmds:
-      - kubectl create -f ../w10n-config/infra/homelab/k8s/tekton/pipelinerun-enx-api-java.yaml
+      - kubectl create -f {{.W10N_HOMELAB}}/k8s/tekton/pipelinerun-enx-api-java.yaml
 
   # All Services
   status:
@@ -314,16 +319,16 @@ tasks:
   tekton:build:api:
     desc: "Trigger enx-api Tekton build and GitOps deploy via ArgoCD"
     cmds:
-      - kubectl create -f ../w10n-config/infra/homelab/k8s/tekton/pipelinerun-enx-api.yaml
+      - kubectl create -f {{.W10N_HOMELAB}}/k8s/tekton/pipelinerun-enx-api.yaml
 
   tekton:build:ui:
     desc: "Trigger enx-ui Tekton build and GitOps deploy via ArgoCD"
     cmds:
-      - kubectl create -f ../w10n-config/infra/homelab/k8s/tekton/pipelinerun-enx-ui.yaml
+      - kubectl create -f {{.W10N_HOMELAB}}/k8s/tekton/pipelinerun-enx-ui.yaml
 
   deploy:homelab:
     desc: "Build+deploy the CURRENT branch's api & ui to homelab, and build the Chrome extension locally so it's ready to test against homelab. REV=<branch|tag>, FORCE=true to rebuild anyway"
-    dir: ../w10n-config/infra/homelab
+    dir: '{{.W10N_HOMELAB}}'
     vars:
       REV:
         sh: git -C {{.ROOT_DIR}} rev-parse --abbrev-ref HEAD
@@ -333,7 +338,7 @@ tasks:
 
   deploy:homelab:api:
     desc: "Build+deploy ONLY the CURRENT branch's api to homelab; skips if the cluster already runs it. REV=<branch|tag>, FORCE=true to rebuild anyway"
-    dir: ../w10n-config/infra/homelab
+    dir: '{{.W10N_HOMELAB}}'
     vars:
       REV:
         sh: git -C {{.ROOT_DIR}} rev-parse --abbrev-ref HEAD
@@ -342,7 +347,7 @@ tasks:
 
   deploy:homelab:ui:
     desc: "Build+deploy ONLY the CURRENT branch's ui to homelab; skips if the cluster already runs it. REV=<branch|tag>, FORCE=true to rebuild anyway"
-    dir: ../w10n-config/infra/homelab
+    dir: '{{.W10N_HOMELAB}}'
     vars:
       REV:
         sh: git -C {{.ROOT_DIR}} rev-parse --abbrev-ref HEAD

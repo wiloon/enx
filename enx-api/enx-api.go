@@ -12,6 +12,7 @@ import (
 	"enx-api/handlers"
 	"enx-api/middleware"
 	"enx-api/paragraph"
+	"enx-api/reader"
 	"enx-api/repo"
 	"enx-api/translate"
 	"enx-api/utils"
@@ -49,6 +50,8 @@ func main() {
 	ecdictDbPath := viper.GetString("ecdict.db_path")
 	ecdict.Init(ecdictDbPath)
 
+	go runReaderDocumentCleanup()
+
 	router := setupRouter()
 
 	port := viper.GetInt("enx.port")
@@ -78,6 +81,32 @@ func main() {
 	}
 	logger.Infof("listen end")
 	<-idleConnectionsClosed
+}
+
+// runReaderDocumentCleanup periodically hard-deletes expired reader
+// documents (ADR-022 Option A1). The 7-day retention is a promise to users,
+// not just an internal detail: read paths (reader.ListDocuments,
+// reader.GetDocument) already filter out expired rows on their own, but
+// this is what actually removes them from disk. Runs once immediately so a
+// restart doesn't leave stale rows sitting for up to an hour, then hourly.
+func runReaderDocumentCleanup() {
+	purge := func() {
+		deleted, err := reader.PurgeExpired(context.Background(), time.Now())
+		if err != nil {
+			logger.Errorf("reader: purge expired documents failed: %v", err)
+			return
+		}
+		if deleted > 0 {
+			logger.Infof("reader: purged %d expired document(s)", deleted)
+		}
+	}
+
+	purge()
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for range ticker.C {
+		purge()
+	}
 }
 
 func setupRouter() *gin.Engine {
@@ -273,6 +302,15 @@ func setupRouter() *gin.Engine {
 	apiGroup.POST("/billing/checkout/topup", billingHandler.CheckoutTopup)
 	apiGroup.POST("/billing/portal", billingHandler.Portal)
 	apiGroup.GET("/billing/me", billingHandler.Me)
+
+	// Reader (ADR-022): enx-ui's pasted-text documents. 20,000-char limit and
+	// 50-document-per-user cap are enforced in reader.CreateDocument; 7-day
+	// TTL is enforced by runReaderDocumentCleanup plus the expiry filter
+	// baked into reader.ListDocuments / reader.GetDocument.
+	apiGroup.POST("/reader/documents", reader.CreateDocumentHandler)
+	apiGroup.GET("/reader/documents", reader.ListDocumentsHandler)
+	apiGroup.GET("/reader/documents/:id", reader.GetDocumentHandler)
+	apiGroup.DELETE("/reader/documents/:id", reader.DeleteDocumentHandler)
 
 	// Admin: grant top-up credits to any user by email. Gated by the
 	// ADMIN_CLERK_USER_IDS allowlist inside the handler (on top of clerkAuth).

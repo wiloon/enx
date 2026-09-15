@@ -106,3 +106,17 @@ export interface AdminEcdictRow {
   translation?: string
   exchange?: string
 }
+
+// Reader "paste text" documents (ADR-022): 20,000-char limit, 7-day TTL, 50
+// documents per user (oldest evicted on write) -- all enforced server-side.
+export interface ReaderDocumentSummary {
+  id: string
+  createdAt: string
+}
+
+export interface ReaderDocument {
+  id: string
+  content: string
+  createdAt: string
+  expiresAt: string
+}

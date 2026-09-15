@@ -5,6 +5,8 @@ import {
   BillingMeData,
   CheckoutSessionData,
   MeData,
+  ReaderDocument,
+  ReaderDocumentSummary,
   RephraseData,
   WordData,
 } from '@/types'
@@ -168,6 +170,34 @@ export class ApiService {
     return this.makeRequest<RephraseData>('/api/rephrase', {
       method: 'POST',
       body: JSON.stringify({ input }),
+    })
+  }
+
+  // Reader "paste text" documents (ADR-022). Length (20,000 chars) and the
+  // 50-document-per-user cap are enforced server-side; this client sends
+  // whatever it's given and surfaces the backend's rejection message.
+  async createReaderDocument(content: string): Promise<ApiResponse<{ id: string }>> {
+    return this.makeRequest('/api/reader/documents', {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    })
+  }
+
+  async listReaderDocuments(): Promise<
+    ApiResponse<{ documents: ReaderDocumentSummary[] }>
+  > {
+    return this.makeRequest('/api/reader/documents')
+  }
+
+  async getReaderDocument(id: string): Promise<ApiResponse<ReaderDocument>> {
+    return this.makeRequest(`/api/reader/documents/${encodeURIComponent(id)}`)
+  }
+
+  async deleteReaderDocument(
+    id: string
+  ): Promise<ApiResponse<{ success: boolean }>> {
+    return this.makeRequest(`/api/reader/documents/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
     })
   }
 }
