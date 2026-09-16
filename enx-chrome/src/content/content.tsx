@@ -966,8 +966,40 @@ const handleGlobalMouseDown = (e: MouseEvent) => {
   hideSelectionTranslateButton()
 }
 
+// Backstop for handleGlobalMouseDown: when focus returns to the page from
+// another surface (e.g. the Side Panel), the click that refocuses the tab
+// can be consumed by the browser for that focus handoff and never reach our
+// 'mousedown' listener -- but it still runs the browser's native "clear the
+// selection" behavior. Without this, the button is left showing until a
+// second click. selectionchange fires regardless of what collapsed the
+// selection, so it's a more reliable signal here than mousedown.
+const handleSelectionChangeForButton = () => {
+  if (!selectionButtonOverlay) return
+  const selection = window.getSelection()
+  if (!selection || selection.isCollapsed || !selection.toString().trim()) {
+    hideSelectionTranslateButton()
+  }
+}
+
+// True when the user dragged the selection "backwards" (mouse ended before
+// where it started, e.g. dragging right-to-left or bottom-to-top) -- a
+// Range's start/end are always in document order regardless of drag
+// direction, so this needs the Selection's anchor/focus (focus is where the
+// mouse ended up) to tell forward from backward.
+const isSelectionBackward = (selection: Selection): boolean => {
+  if (!selection.anchorNode || !selection.focusNode) return false
+  if (selection.anchorNode === selection.focusNode) {
+    return selection.anchorOffset > selection.focusOffset
+  }
+  const position = selection.anchorNode.compareDocumentPosition(
+    selection.focusNode
+  )
+  return (position & Node.DOCUMENT_POSITION_PRECEDING) !== 0
+}
+
 const showSelectionTranslateButton = (
   reference: Range,
+  isBackward: boolean,
   onTrigger: () => void
 ) => {
   hideSelectionTranslateButton()
@@ -1016,19 +1048,28 @@ const showSelectionTranslateButton = (
   overlay.showPopover()
   selectionButtonOverlay = overlay
 
-  // Anchored at the selection's bottom-right corner rather than the
-  // top/line-height placement used by createAnchoredOverlay -- this is a
-  // small affordance sitting next to the selection, not a content overlay
-  // that needs to clear a line above it.
+  // Anchored next to wherever the mouse actually stopped, not the selection's
+  // overall bounding box -- a multi-line selection's bounding box is as wide
+  // as its widest line, so anchoring to it can leave the button far from the
+  // last word (and thus from the cursor) when an earlier line runs wider
+  // than the last one. A forward drag (mouse moves toward the end of the
+  // document) ends at the range's end, bottom-right of its last line; a
+  // backward drag ends at the range's start, top-left of its first line.
+  // Using getClientRects()[…] instead of a captured point keeps this live
+  // across scrolling, same as autoUpdate expects.
   const virtualReference = {
-    getBoundingClientRect: () => reference.getBoundingClientRect(),
+    getBoundingClientRect: () => {
+      const rects = reference.getClientRects()
+      if (rects.length === 0) return reference.getBoundingClientRect()
+      return isBackward ? rects[0] : rects[rects.length - 1]
+    },
     getClientRects: () => reference.getClientRects(),
     contextElement: nearestElement(reference.startContainer) ?? undefined,
   }
   const update = () => {
     computePosition(virtualReference, overlay, {
       strategy: 'fixed',
-      placement: 'bottom-end',
+      placement: isBackward ? 'top-start' : 'bottom-end',
       middleware: [offset(6), flip(), shift({ padding: 8 })],
     }).then(({ x, y }) => {
       overlay.style.left = `${x}px`
@@ -1098,6 +1139,7 @@ const handleTextSelection = (event: MouseEvent) => {
   // Captured now: the selection can be cleared (by a later click) before an
   // async branch below gets to position its hint overlay against it.
   const selectionRange = selection.getRangeAt(0).cloneRange()
+  const isBackward = isSelectionBackward(selection)
 
   const wordCount = selectedText.split(/\s+/).filter(Boolean).length
 
@@ -1111,7 +1153,7 @@ const handleTextSelection = (event: MouseEvent) => {
 
   const looksLikeSentence = SENTENCE_END_PUNCTUATION.test(selectedText)
   if (looksLikeSentence || wordCount > SELECTION_DICTIONARY_MAX_WORDS) {
-    showSelectionTranslateButton(selectionRange, () => {
+    showSelectionTranslateButton(selectionRange, isBackward, () => {
       triggerSelectionTranslation(selectedText, selectionRange)
     })
     return
@@ -1124,7 +1166,7 @@ const handleTextSelection = (event: MouseEvent) => {
   }
 
   // 2-5 words, no sentence-ending punctuation: phrase-in-context AI lookup (ADR-008).
-  showSelectionTranslateButton(selectionRange, () => {
+  showSelectionTranslateButton(selectionRange, isBackward, () => {
     triggerPhraseContextLookup(selectedText, selectionRange)
   })
 }
@@ -1163,6 +1205,7 @@ const enableEnx = async (): Promise<boolean> => {
   // gesture starts (ADR-007 Decision §3).
   document.addEventListener('mouseup', handleTextSelection)
   document.addEventListener('mousedown', handleGlobalMouseDown)
+  document.addEventListener('selectionchange', handleSelectionChangeForButton)
 
   // On a 'spa' site (X), re-run automatically when the user switches tweets
   // in-page (ADR-011 Decision 6). Static sites reload + re-inject anyway.
@@ -1199,6 +1242,7 @@ const disableEnx = () => {
   // Remove event listeners
   document.removeEventListener('mouseup', handleTextSelection)
   document.removeEventListener('mousedown', handleGlobalMouseDown)
+  document.removeEventListener('selectionchange', handleSelectionChangeForButton)
   hideSelectionTranslateButton()
   spaRebuilderInstance?.stop()
 
