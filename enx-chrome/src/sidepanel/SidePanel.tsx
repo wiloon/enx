@@ -48,6 +48,11 @@ interface WordCardData {
   dictionaryError?: string
   dictionaryErrorHttpStatus?: number
   contextChinese?: string
+  // One short clause explaining why contextChinese differs from
+  // dictionaryChinese, when the model judged the gap worth flagging. Empty
+  // or unset means no explanation was offered (ordinary sense, or the
+  // fallback translateWordInContext call was used instead).
+  contextWhy?: string
   contextError?: string
   // Set alongside contextError when contextStatus is 'error'. 402 means the
   // AI translation credit balance ran out (TASK-SPEC §4.1).
@@ -318,7 +323,7 @@ function WordCard({
 
   return (
     <div
-      className="group relative rounded-lg border border-gray-200 px-3 py-2.5 hover:bg-gray-50"
+      className="group relative rounded-lg border border-gray-200 bg-white px-3 py-2.5 hover:bg-gray-50"
       data-testid={`sidepanel-card-${card.word}`}
     >
       {/* Headline: word + phonetic + play + Query Count on one row. The
@@ -438,6 +443,14 @@ function WordCard({
               <span className="font-medium">{card.contextChinese}</span>
             </p>
           )}
+          {card.contextStatus === 'loaded' && card.contextWhy && (
+            <p
+              data-testid={`sidepanel-context-why-${card.word}`}
+              className="text-xs italic text-gray-400"
+            >
+              {card.contextWhy}
+            </p>
+          )}
 
           {card.dictionaryStatus === 'loading' ? (
             <p className="text-gray-400 text-xs">Loading dictionary definition...</p>
@@ -545,7 +558,10 @@ function SentenceBlock({
   }, [entry, sentenceWordCount, onWordClick, onPhraseConfirm, clearPendingPhrase])
 
   return (
-    <div data-testid={`sidepanel-sentence-entry-${entry.id}`} className="space-y-3">
+    <div
+      data-testid={`sidepanel-sentence-entry-${entry.id}`}
+      className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3"
+    >
       <div>
         {entry.sourceUrl && (
           <div
@@ -754,18 +770,25 @@ function SidePanelContent() {
   // Shared by every card-mutating callback below: fetches the word's meaning
   // in the given sentence and merges it into the matching card at `sentenceId`
   // (undefined = top-level), without touching the dictionary half.
+  // dictionaryChinese, when given, is that word's dictionary definition --
+  // looked up by the caller BEFORE this call (dictionary-first) -- embedded
+  // in the AI prompt so the response's `why` can explain a divergence.
+  // Callers with no dictionary entry to offer (a phrase, ADR-008) just omit
+  // it.
   const fetchContextTranslation = useCallback(
-    (word: string, sentence: string, sentenceId: string | undefined) => {
+    (word: string, sentence: string, sentenceId: string | undefined, dictionaryChinese?: string) => {
       sendMessageToBackground<BackgroundResponse>({
         type: 'translateWordInContext',
         word,
         sentence,
+        dictionaryChinese,
       } satisfies ContentMessage)
         .then(response => {
           const resolved = response.success && response.chinese
           setEntries(prev =>
             patchCard(prev, sentenceId, word, {
               contextChinese: resolved ? response.chinese : undefined,
+              contextWhy: resolved ? response.why || undefined : undefined,
               contextError: resolved ? undefined : response.error || 'Translation failed',
               contextErrorHttpStatus: resolved ? undefined : response.status,
               contextStatus: resolved ? 'loaded' : 'error',
@@ -777,6 +800,7 @@ function SidePanelContent() {
             patchCard(prev, sentenceId, word, {
               contextStatus: 'error',
               contextChinese: undefined,
+              contextWhy: undefined,
               contextError: 'Translation failed',
               contextErrorHttpStatus: undefined,
             })
@@ -787,69 +811,84 @@ function SidePanelContent() {
   )
 
   // Fetches the dictionary half of a card (pronunciation + ECDICT Chinese +
-  // Query Count) via the same getOneWord lookup the page's word popup uses.
+  // Query Count) via the same getOneWord lookup the page's word popup uses,
+  // and resolves with the looked-up Chinese definition (or undefined on
+  // failure/no entry) so callers can feed it into a subsequent
+  // dictionary-first AI call (see fetchWordContext below).
   // NOTE: getOneWord increments the server-side Query Count, so callers must
   // only run this once per word -- never for a card that already has it.
-  const fetchDictionary = useCallback((word: string, sentenceId: string | undefined) => {
-    sendMessageToBackground<BackgroundResponse>({
-      type: 'getOneWord',
-      word,
-    } satisfies ContentMessage)
-      .then(response => {
-        setEntries(prev =>
-          patchCard(prev, sentenceId, word, {
-            pronunciation: response.success ? response.ecp?.Pronunciation : undefined,
-            dictionaryChinese: response.success ? response.ecp?.Chinese : undefined,
-            loadCount: response.success ? response.ecp?.LoadCount : undefined,
-            dictionaryStatus: response.success ? 'loaded' : 'error',
-            dictionaryError: response.success ? undefined : response.error || 'Dictionary lookup failed',
-            dictionaryErrorHttpStatus: response.success ? undefined : response.status,
-          })
-        )
-      })
-      .catch(() => {
-        setEntries(prev =>
-          patchCard(prev, sentenceId, word, {
-            dictionaryStatus: 'error',
-            dictionaryError: 'Dictionary lookup failed',
-            dictionaryErrorHttpStatus: undefined,
-          })
-        )
-      })
-  }, [])
+  const fetchDictionary = useCallback(
+    (word: string, sentenceId: string | undefined): Promise<string | undefined> => {
+      return sendMessageToBackground<BackgroundResponse>({
+        type: 'getOneWord',
+        word,
+      } satisfies ContentMessage)
+        .then(response => {
+          setEntries(prev =>
+            patchCard(prev, sentenceId, word, {
+              pronunciation: response.success ? response.ecp?.Pronunciation : undefined,
+              dictionaryChinese: response.success ? response.ecp?.Chinese : undefined,
+              loadCount: response.success ? response.ecp?.LoadCount : undefined,
+              dictionaryStatus: response.success ? 'loaded' : 'error',
+              dictionaryError: response.success ? undefined : response.error || 'Dictionary lookup failed',
+              dictionaryErrorHttpStatus: response.success ? undefined : response.status,
+            })
+          )
+          return response.success ? response.ecp?.Chinese : undefined
+        })
+        .catch(() => {
+          setEntries(prev =>
+            patchCard(prev, sentenceId, word, {
+              dictionaryStatus: 'error',
+              dictionaryError: 'Dictionary lookup failed',
+              dictionaryErrorHttpStatus: undefined,
+            })
+          )
+          return undefined
+        })
+    },
+    []
+  )
 
-  // Runs when a SentenceEntry is created from a page word click (ADR-014):
-  // the combined translateSentenceWithWord call already returned the
-  // sentence translation AND (usually) this word's in-context meaning, so
-  // seed a card for it right away, nested into the SAME brand-new entry --
-  // the anchor word is the word this sentence was opened for. The entry is
-  // usually brand new when this runs, so there's usually no existing card at
-  // this scope -- EXCEPT the entry (and its <mark>-highlighted anchor word)
-  // render synchronously before this combined call resolves, so the user can
-  // click that highlighted word (handleWordClick, which already fires both
-  // fetches) while this is still in flight. Guard against that race the same
-  // way the pre-ADR-023 version did: if a card already exists, only reorder
-  // + backfill the context half from this response if it isn't loaded yet --
-  // never re-fetch (would double the Query Count and double-charge the AI
-  // call for the same word).
+  // The single entry point for "look up a word's dictionary AND context
+  // meaning, dictionary-first" (used by every single-word lookup -- the
+  // anchor word from a page click, an in-sentence word click, and a retry
+  // that needs the dictionary redone). The dictionary result renders
+  // immediately via fetchDictionary's own patchCard; only once it resolves
+  // (successfully or not) does the AI call fire, so the model always has
+  // whatever dictionary definition is available to compare against. A
+  // phrase (ADR-008) has no dictionary entry and skips this entirely,
+  // calling fetchContextTranslation directly instead.
+  const fetchWordContext = useCallback(
+    (word: string, sentence: string, sentenceId: string | undefined) => {
+      fetchDictionary(word, sentenceId).then(dictionaryChinese => {
+        fetchContextTranslation(word, sentence, sentenceId, dictionaryChinese)
+      })
+    },
+    [fetchDictionary, fetchContextTranslation]
+  )
+
+  // Runs when a SentenceEntry is created from a page word click: seeds a
+  // card for the anchor word (the word this sentence was opened for) right
+  // away, nested into the SAME brand-new entry, and kicks off the same
+  // dictionary-first lookup (fetchWordContext) as any other word click --
+  // this fires independently of the sentence's own whole-sentence
+  // translation (they must not block each other). The entry is usually
+  // brand new when this runs, so there's usually no existing card at this
+  // scope -- EXCEPT the entry (and its <mark>-highlighted anchor word)
+  // render synchronously just before this runs, so in principle the user
+  // could click that highlighted word (handleWordClick) in the same tick.
+  // Guard against that race the same way the pre-ADR-023 version did: if a
+  // card already exists, just reorder it -- never re-seed/re-fetch (would
+  // double the Query Count and double-charge the AI call for the same
+  // word).
   const seedAnchorWord = useCallback(
-    (sentenceId: string, rawWord: string, sentence: string, wordChinese: string) => {
+    (sentenceId: string, rawWord: string, sentence: string) => {
       const word = rawWord.toLowerCase()
-      const contextResolved = wordChinese.trim() !== ''
       const existing = findCard(entriesRef.current, sentenceId, word)
 
       if (existing) {
         setEntries(prev => reorderOrInsertCard(prev, sentenceId, word, () => existing))
-        if (contextResolved && existing.contextStatus !== 'loaded') {
-          setEntries(prev =>
-            patchCard(prev, sentenceId, word, {
-              contextChinese: wordChinese,
-              contextError: undefined,
-              contextErrorHttpStatus: undefined,
-              contextStatus: 'loaded',
-            })
-          )
-        }
         return
       }
 
@@ -857,14 +896,12 @@ function SidePanelContent() {
         reorderOrInsertCard(prev, sentenceId, word, () => ({
           word,
           dictionaryStatus: 'loading',
-          contextStatus: contextResolved ? 'loaded' : 'loading',
-          contextChinese: contextResolved ? wordChinese : undefined,
+          contextStatus: 'loading',
         }))
       )
-      fetchDictionary(word, sentenceId)
-      if (!contextResolved) fetchContextTranslation(word, sentence, sentenceId)
+      fetchWordContext(word, sentence, sentenceId)
     },
-    [fetchDictionary, fetchContextTranslation]
+    [fetchWordContext]
   )
 
   // Re-translate whenever a new sentence context arrives (and it isn't a
@@ -896,17 +933,14 @@ function SidePanelContent() {
       ...prev,
     ])
 
+    // The anchor word's dictionary-first lookup is entirely independent of
+    // the whole-sentence translation below -- neither should block the
+    // other -- so it fires here, not inside that request's .then().
+    if (anchorWord) seedAnchorWord(id, anchorWord, sentence)
+
     let cancelled = false
 
-    // Opened from a page word click -> one combined call returns both the
-    // whole-sentence translation and that word's in-context meaning (ADR-014).
-    // Opened from a drag-selected sentence (ADR-007) -> no anchor word, so
-    // just the plain whole-sentence translation.
-    const request: ContentMessage = anchorWord
-      ? { type: 'translateSentenceWithWord', sentence, word: anchorWord }
-      : { type: 'translateSentence', sentence }
-
-    sendMessageToBackground<BackgroundResponse>(request)
+    sendMessageToBackground<BackgroundResponse>({ type: 'translateSentence', sentence } satisfies ContentMessage)
       .then(response => {
         if (cancelled) return
         if (response.success && response.chinese) {
@@ -914,7 +948,6 @@ function SidePanelContent() {
           setEntries(prev =>
             prev.map(e => (e.kind === 'sentence' && e.id === id ? { ...e, chinese, status: 'loaded' } : e))
           )
-          if (anchorWord) seedAnchorWord(id, anchorWord, sentence, response.wordChinese || '')
         } else {
           const errorMessage = response.error || 'Translation service unavailable'
           const errorHttpStatus = response.status
@@ -986,7 +1019,13 @@ function SidePanelContent() {
   // without a full page reload. Recovers the sentence text from the owning
   // SentenceEntry when nested, or from the card's own `contextSentence` when
   // it's a top-level phrase card (ADR-023 -- there's no ambient "current
-  // sentence" singleton anymore to fall back on).
+  // sentence" singleton anymore to fall back on). Three cases, by what the
+  // dictionary half is doing: a phrase card (dictionaryStatus 'none') has no
+  // dictionary to redo, so just retry the AI call alone; a card whose
+  // dictionary already loaded reuses that definition rather than re-running
+  // getOneWord (would double the Query Count); anything else (dictionary
+  // itself never resolved, e.g. also hit the same session expiry) redoes
+  // the whole dictionary-first chain.
   const handleRetryContextTranslation = useCallback(
     (sentenceId: string | undefined, word: string) => {
       const sentenceEntry = sentenceId
@@ -995,21 +1034,42 @@ function SidePanelContent() {
       const card = findCard(entries, sentenceId, word)
       const sentence = sentenceEntry?.sentence ?? card?.contextSentence
       if (!sentence) return
-      setEntries(prev => patchCard(prev, sentenceId, word, { contextStatus: 'loading', contextError: undefined }))
-      fetchContextTranslation(word, sentence, sentenceId)
+
+      if (card?.dictionaryStatus === 'none') {
+        setEntries(prev => patchCard(prev, sentenceId, word, { contextStatus: 'loading', contextError: undefined }))
+        fetchContextTranslation(word, sentence, sentenceId)
+        return
+      }
+
+      if (card?.dictionaryStatus === 'loaded') {
+        setEntries(prev => patchCard(prev, sentenceId, word, { contextStatus: 'loading', contextError: undefined }))
+        fetchContextTranslation(word, sentence, sentenceId, card.dictionaryChinese)
+        return
+      }
+
+      setEntries(prev =>
+        patchCard(prev, sentenceId, word, {
+          dictionaryStatus: 'loading',
+          dictionaryError: undefined,
+          contextStatus: 'loading',
+          contextError: undefined,
+        })
+      )
+      fetchWordContext(word, sentence, sentenceId)
     },
-    [entries, fetchContextTranslation]
+    [entries, fetchContextTranslation, fetchWordContext]
   )
 
   // A single-word selection inside a sentence's own rendered original
   // (ADR-017) -- always nested into that entry's `words` (`sentenceId` is
   // always defined here; only page clicks and main-page phrases populate the
-  // top-level list). Fires two independent requests (spec §3.7/§3.8/§3.9):
-  // getOneWord and translateWordInContext, each updating only its own half
-  // of the card as soon as it resolves. Re-clicking a word already nested
-  // here just moves its card up instead of re-fetching (spec §3.9). A card
-  // with contextStatus 'none' can't occur at this scope (only a page-lookup
-  // card is ever 'none', and those are always top-level).
+  // top-level list). Runs the same dictionary-first lookup (fetchWordContext)
+  // as an anchor word click (spec §3.7/§3.8/§3.9): the dictionary half
+  // renders as soon as it resolves, then the AI call fires with that
+  // definition. Re-clicking a word already nested here just moves its card
+  // up instead of re-fetching (spec §3.9). A card with contextStatus 'none'
+  // can't occur at this scope (only a page-lookup card is ever 'none', and
+  // those are always top-level).
   const handleWordClick = useCallback(
     (rawWord: string, sentence: string, sentenceId: string) => {
       const word = rawWord.toLowerCase()
@@ -1025,10 +1085,9 @@ function SidePanelContent() {
           contextStatus: 'loading',
         }))
       )
-      fetchDictionary(word, sentenceId)
-      fetchContextTranslation(word, sentence, sentenceId)
+      fetchWordContext(word, sentence, sentenceId)
     },
-    [entries, fetchContextTranslation, fetchDictionary]
+    [entries, fetchWordContext]
   )
 
   // The guided hint only makes sense when the panel has shown nothing at

@@ -25,11 +25,6 @@ const (
 	systemPrompt = "You are a professional English-to-Chinese translator. " +
 		"Translate the given English sentence into natural, fluent Chinese. " +
 		"Reply with the Chinese translation only, no explanation, no pinyin, no quotes."
-
-	wordContextSystemPrompt = "You are a professional English-to-Chinese translator. " +
-		"Given an English sentence and a specific word or phrase from that sentence, reply with " +
-		"its Chinese meaning as used in THIS sentence's context only, not a generic " +
-		"dictionary definition. Reply with the Chinese meaning only, no explanation, no pinyin, no quotes."
 )
 
 type MiniMax struct {
@@ -98,11 +93,6 @@ type chatResponse struct {
 
 func (m *MiniMax) TranslateSentence(ctx context.Context, sentence string) (string, aiusage.Usage, error) {
 	out, u, err := m.chat(ctx, "translate_sentence", 0.3, systemPrompt, sentence)
-	return out, toUsage(u), err
-}
-
-func (m *MiniMax) TranslateWordInContext(ctx context.Context, sentence, word string) (string, aiusage.Usage, error) {
-	out, u, err := m.chat(ctx, "translate_word_in_context", 0.3, wordContextSystemPrompt, fmt.Sprintf("Sentence: %s\nWord: %s", sentence, word))
 	return out, toUsage(u), err
 }
 

@@ -77,6 +77,11 @@ export interface ContentMessage {
   // Set on 'recordPageWordLookup': the already-fetched dictionary result to
   // mirror into the Side Panel (ADR-006), avoiding a second getOneWord call.
   ecp?: WordData
+  // Set on 'translateWordInContext': that word's dictionary definition,
+  // looked up by the caller BEFORE sending this message (dictionary-first),
+  // so the model can explain a divergence instead of guessing blind. Empty
+  // when the word has no dictionary entry or the lookup failed.
+  dictionaryChinese?: string
 }
 
 export interface BackgroundResponse {
@@ -104,9 +109,17 @@ export interface BackgroundResponse {
   // Set by the 'translateSentenceWithWord' handler (ADR-014) on success: the
   // clicked word's meaning in the sentence's context, returned in the SAME
   // call as `chinese` (the whole-sentence translation). May be an empty
-  // string if the model omitted it -- the Side Panel then falls back to a
-  // separate 'translateWordInContext' call.
+  // string if the model omitted it. Not currently sent by the Side Panel --
+  // word context lookups always go through 'translateWordInContext' instead
+  // (dictionary-first, so the model has a definition to compare against) --
+  // but the endpoint stays available for a future caller.
   wordChinese?: string
+  // Set by the 'translateWordInContext' handler: one short clause
+  // explaining why the contextual meaning differs from the word's
+  // dictionary definition passed in the request. Empty when no dictionary
+  // definition was given, or the model judged the contextual meaning
+  // unsurprising.
+  why?: string
 }
 
 // chrome.storage.session key holding the sentence the Side Panel should show.

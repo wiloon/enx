@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"enx-api/aitranslate/sentenceword"
+	"enx-api/aitranslate/wordcontext"
 	"enx-api/billing/credit"
 
 	"github.com/gin-gonic/gin"
@@ -19,13 +20,15 @@ import (
 var tokenTestPricing = credit.TokenPricing{WeightIn: 1, WeightOut: 3, Divisor: 3000}
 
 type fakeTranslator struct {
-	chinese    string
-	swwResult  sentenceword.Result
-	usage      Usage
-	err        error
-	sentenceIn string
-	wordIn     string
-	callCount  int
+	chinese      string
+	swwResult    sentenceword.Result
+	wordResult   wordcontext.Result
+	usage        Usage
+	err          error
+	sentenceIn   string
+	wordIn       string
+	dictionaryIn string
+	callCount    int
 }
 
 func (f *fakeTranslator) TranslateSentence(ctx context.Context, sentence string) (string, Usage, error) {
@@ -34,10 +37,10 @@ func (f *fakeTranslator) TranslateSentence(ctx context.Context, sentence string)
 	return f.chinese, f.usage, f.err
 }
 
-func (f *fakeTranslator) TranslateWordInContext(ctx context.Context, sentence, word string) (string, Usage, error) {
+func (f *fakeTranslator) TranslateWordInContext(ctx context.Context, sentence, word, dictionaryChinese string) (wordcontext.Result, Usage, error) {
 	f.callCount++
-	f.sentenceIn, f.wordIn = sentence, word
-	return f.chinese, f.usage, f.err
+	f.sentenceIn, f.wordIn, f.dictionaryIn = sentence, word, dictionaryChinese
+	return f.wordResult, f.usage, f.err
 }
 
 func (f *fakeTranslator) TranslateSentenceWithWord(ctx context.Context, sentence, word string) (sentenceword.Result, Usage, error) {
@@ -202,10 +205,10 @@ func TestHandlerMissingSentence(t *testing.T) {
 // --- TranslateWordInContext ------------------------------------------------
 
 func TestWordInContextHandlerSuccess(t *testing.T) {
-	tr := &fakeTranslator{chinese: "银行", usage: usageCosting2}
+	tr := &fakeTranslator{wordResult: wordcontext.Result{WordChinese: "银行"}, usage: usageCosting2}
 	ledger := &fakeTokenLedger{balance: 100}
 	h := NewHandler(tr, ledger, tokenTestPricing)
-	w := doPostWordInContext(t, h, `{"sentence":"I deposited cash at the bank.","word":"bank"}`)
+	w := doPostWordInContext(t, h, `{"sentence":"I deposited cash at the bank.","word":"bank","dictionaryChinese":"n. 银行；水岸"}`)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())
@@ -213,6 +216,7 @@ func TestWordInContextHandlerSuccess(t *testing.T) {
 	var resp struct {
 		Success bool   `json:"success"`
 		Chinese string `json:"chinese"`
+		Why     string `json:"why"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
@@ -220,11 +224,29 @@ func TestWordInContextHandlerSuccess(t *testing.T) {
 	if !resp.Success || resp.Chinese != "银行" {
 		t.Fatalf("unexpected response: %+v", resp)
 	}
-	if tr.wordIn != "bank" {
-		t.Fatalf("provider got word %q", tr.wordIn)
+	if tr.wordIn != "bank" || tr.dictionaryIn != "n. 银行；水岸" {
+		t.Fatalf("provider got word %q dictionary %q", tr.wordIn, tr.dictionaryIn)
 	}
 	if len(ledger.settleCalls) != 1 || ledger.settleCalls[0].feature != "translate_word_in_context" || ledger.settleCalls[0].cost != 2 {
 		t.Fatalf("unexpected settle calls: %+v", ledger.settleCalls)
+	}
+}
+
+// The client omits dictionaryChinese when the dictionary lookup it ran
+// before this call failed or the word has no entry -- still a valid
+// request, and "why" naturally comes back empty (nothing to compare
+// against).
+func TestWordInContextHandlerNoDictionaryDefinition(t *testing.T) {
+	tr := &fakeTranslator{wordResult: wordcontext.Result{WordChinese: "找到并联系"}, usage: usageCosting2}
+	ledger := &fakeTokenLedger{balance: 100}
+	h := NewHandler(tr, ledger, tokenTestPricing)
+	w := doPostWordInContext(t, h, `{"sentence":"Hunt down emails and reach out.","word":"hunt down emails"}`)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())
+	}
+	if tr.dictionaryIn != "" {
+		t.Fatalf("expected empty dictionaryIn, got %q", tr.dictionaryIn)
 	}
 }
 

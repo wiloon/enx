@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"enx-api/aitranslate/sentenceword"
+	"enx-api/aitranslate/wordcontext"
 	"enx-api/billing/credit"
 	"enx-api/middleware"
 	"enx-api/utils/logger"
@@ -19,6 +20,11 @@ type sentenceRequest struct {
 type wordInContextRequest struct {
 	Sentence string `json:"sentence" binding:"required"`
 	Word     string `json:"word" binding:"required"`
+	// DictionaryChinese is the word's dictionary definition, looked up by
+	// the client BEFORE this call. Empty is valid -- no dictionary entry,
+	// or the lookup failed -- in which case the response's "why" is always
+	// empty too (nothing to compare the contextual meaning against).
+	DictionaryChinese string `json:"dictionaryChinese"`
 }
 
 type sentenceWithWordRequest struct {
@@ -136,17 +142,17 @@ func (h *Handler) TranslateWordInContext(c *gin.Context) {
 		return
 	}
 
-	var chinese string
+	var res wordcontext.Result
 	ok := h.billedCall(c, "translate_word_in_context", func(ctx context.Context) (Usage, error) {
 		var u Usage
 		var err error
-		chinese, u, err = h.translator.TranslateWordInContext(ctx, req.Sentence, req.Word)
+		res, u, err = h.translator.TranslateWordInContext(ctx, req.Sentence, req.Word, req.DictionaryChinese)
 		return u, err
 	})
 	if !ok {
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "chinese": chinese})
+	c.JSON(http.StatusOK, gin.H{"success": true, "chinese": res.WordChinese, "why": res.Why})
 }
 
 // TranslateSentenceWithWord handles POST /translate/sentence-with-word and

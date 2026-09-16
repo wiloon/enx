@@ -489,6 +489,75 @@ describe('SidePanel', () => {
     expect(contextCallCount).toBe(2)
   })
 
+  // When the dictionary lookup itself never resolved (e.g. the same session
+  // expiry broke both halves), retry must redo the whole dictionary-first
+  // chain -- not just re-run the AI call with no definition to compare
+  // against.
+  it('retries the dictionary lookup too when it never resolved, not just the AI call', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: 'Cats are great pets.',
+        word: '',
+        sourceUrl: '',
+        createdAt: 1,
+      },
+    })
+    let getOneWordCalls = 0
+    let contextCalls = 0
+    mockSendMessage.mockImplementation(
+      async (message: { type: string; word?: string; dictionaryChinese?: string }) => {
+        if (message.type === 'translateSentence') {
+          return { success: true, chinese: '猫是很棒的宠物。' }
+        }
+        if (message.type === 'getOneWord') {
+          getOneWordCalls += 1
+          if (getOneWordCalls === 1) {
+            return { success: false, error: 'Your session has expired. Please login again.' }
+          }
+          return {
+            success: true,
+            ecp: { English: message.word, Chinese: 'great的词典释义', Pronunciation: '/greɪt/' },
+          }
+        }
+        if (message.type === 'translateWordInContext') {
+          contextCalls += 1
+          if (contextCalls === 1) {
+            return { success: false, error: 'Your session has expired. Please login again.' }
+          }
+          return { success: true, chinese: '很棒的' }
+        }
+        return { success: false }
+      }
+    )
+
+    const user = userEvent.setup()
+    render(<SidePanel />)
+    await screen.findByTestId('sidepanel-sentence')
+
+    selectWord('great')
+
+    const errorRow = await screen.findByTestId('sidepanel-context-error-great')
+    await user.click(within(errorRow).getByTestId('sidepanel-retry-context-great'))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('sidepanel-context-error-great')).not.toBeInTheDocument()
+      const card = screen.getByTestId('sidepanel-card-great')
+      expect(card).toHaveTextContent('很棒的')
+      expect(card).toHaveTextContent('great的词典释义')
+    })
+    expect(getOneWordCalls).toBe(2)
+    expect(contextCalls).toBe(2)
+    // The successful retry's AI call had the dictionary definition to
+    // compare against, unlike the first attempt.
+    expect(mockSendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: 'translateWordInContext',
+        word: 'great',
+        dictionaryChinese: 'great的词典释义',
+      })
+    )
+  })
+
   it('renders the card progressively: dictionary info appears before the slower AI context translation resolves (spec §3.9)', async () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {
@@ -965,23 +1034,20 @@ describe('SidePanel', () => {
       },
     }
 
-    it('does not double-fetch when the anchor word is clicked in the sentence while translateSentenceWithWord is still in flight (ADR-023 race)', async () => {
+    it('does not double-fetch when the anchor word is clicked in the sentence while its own dictionary-first lookup is still in flight (ADR-023 race)', async () => {
       ;(chrome.storage.session.get as jest.Mock).mockResolvedValue(pendingWithWord)
 
-      let resolveCombined: (value: BackgroundResponse) => void = () => {}
+      let resolveDictionary: (value: BackgroundResponse) => void = () => {}
       let getOneWordCalls = 0
       let contextCalls = 0
       mockSendMessage.mockImplementation((message: { type: string; word?: string }) => {
-        if (message.type === 'translateSentenceWithWord') {
-          return new Promise(resolve => {
-            resolveCombined = resolve
-          })
+        if (message.type === 'translateSentence') {
+          return Promise.resolve({ success: true, chinese: '猫是很棒的宠物。' })
         }
         if (message.type === 'getOneWord') {
           getOneWordCalls += 1
-          return Promise.resolve({
-            success: true,
-            ecp: { English: message.word, Chinese: 'great词典', Pronunciation: '/greɪt/', LoadCount: 1 },
+          return new Promise(resolve => {
+            resolveDictionary = resolve
           })
         }
         if (message.type === 'translateWordInContext') {
@@ -992,53 +1058,66 @@ describe('SidePanel', () => {
       })
 
       render(<SidePanel />)
-      // The anchor word is highlighted (and clickable) as soon as the
-      // sentence renders, before translateSentenceWithWord resolves.
+      // The anchor word's own card (and its dictionary-first lookup) is
+      // seeded synchronously as soon as the sentence entry is created --
+      // before getOneWord resolves -- and the word is highlighted
+      // (clickable) in the same render.
       await screen.findByTestId('sidepanel-sentence')
       selectWord('great')
+
+      expect(getOneWordCalls).toBe(1)
+      expect(contextCalls).toBe(0)
+
+      resolveDictionary({
+        success: true,
+        ecp: {
+          Key: 'great',
+          English: 'great',
+          Chinese: 'great词典',
+          Pronunciation: '/greɪt/',
+          LoadCount: 1,
+          AlreadyAcquainted: 0,
+          WordType: 0,
+        },
+      })
 
       await waitFor(() =>
         expect(screen.getByTestId('sidepanel-sentence-words')).toHaveTextContent('great语境义')
       )
-      expect(getOneWordCalls).toBe(1)
-      expect(contextCalls).toBe(1)
-
-      resolveCombined({ success: true, chinese: '猫是很棒的宠物。', wordChinese: 'great极好的' })
-
-      await waitFor(() =>
-        expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('猫是很棒的宠物。')
-      )
       // Still only ever fetched once each -- no double Query Count
-      // increment, no double AI charge for the same word.
+      // increment, no double AI charge for the same word, despite the
+      // click landing while the dictionary lookup was still in flight.
       expect(getOneWordCalls).toBe(1)
       expect(contextCalls).toBe(1)
-      // The context already loaded from the click is kept, not clobbered by
-      // the combined response's wordChinese arriving after.
-      expect(screen.getByTestId('sidepanel-sentence-words')).toHaveTextContent('great语境义')
     })
 
-    it('sends translateSentenceWithWord (not translateSentence) and shows both halves', async () => {
+    it('sends translateSentence (not translateSentenceWithWord) and looks up the anchor word dictionary-first', async () => {
       ;(chrome.storage.session.get as jest.Mock).mockResolvedValue(pendingWithWord)
-      mockSendMessage.mockImplementation(async (message: { type: string; word?: string }) => {
-        if (message.type === 'translateSentenceWithWord') {
-          return { success: true, chinese: '猫是很棒的宠物。', wordChinese: '极好的' }
-        }
-        if (message.type === 'getOneWord') {
-          return {
-            success: true,
-            ecp: { English: message.word, Chinese: 'great的词典释义', Pronunciation: '/greɪt/', LoadCount: 7 },
+      mockSendMessage.mockImplementation(
+        async (message: { type: string; word?: string; dictionaryChinese?: string }) => {
+          if (message.type === 'translateSentence') {
+            return { success: true, chinese: '猫是很棒的宠物。' }
           }
+          if (message.type === 'getOneWord') {
+            return {
+              success: true,
+              ecp: { English: message.word, Chinese: 'great的词典释义', Pronunciation: '/greɪt/', LoadCount: 7 },
+            }
+          }
+          if (message.type === 'translateWordInContext') {
+            return { success: true, chinese: '极好的', why: '' }
+          }
+          return { success: false }
         }
-        return { success: false }
-      })
+      )
 
       render(<SidePanel />)
 
       await waitFor(() =>
         expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('猫是很棒的宠物。')
       )
-      // Card for the clicked word is seeded automatically, 本句 meaning from
-      // the SAME combined call (no separate translateWordInContext).
+      // Card for the clicked word is seeded automatically: dictionary first,
+      // then the AI call fed that definition.
       await waitFor(() => {
         const card = screen.getByTestId('sidepanel-card-great')
         expect(card).toHaveTextContent('极好的')
@@ -1046,10 +1125,14 @@ describe('SidePanel', () => {
         expect(card).toHaveTextContent('/greɪt/')
       })
       expect(mockSendMessage).not.toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'translateSentence' })
+        expect.objectContaining({ type: 'translateSentenceWithWord' })
       )
-      expect(mockSendMessage).not.toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'translateWordInContext' })
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'translateWordInContext',
+          word: 'great',
+          dictionaryChinese: 'great的词典释义',
+        })
       )
     })
 
@@ -1074,28 +1157,34 @@ describe('SidePanel', () => {
       highlighted.forEach(el => expect(el).toHaveTextContent('great'))
     })
 
-    it('falls back to a separate translateWordInContext when the model omits the word gloss', async () => {
+    // The dictionary lookup is optional context for the AI call, not a
+    // precondition: a word with no dictionary entry (or a failed lookup)
+    // still gets its contextual meaning, just with no definition to compare
+    // against (so `why` naturally comes back empty).
+    it('still looks up the context meaning when the anchor word has no dictionary entry', async () => {
       ;(chrome.storage.session.get as jest.Mock).mockResolvedValue(pendingWithWord)
-      mockSendMessage.mockImplementation(async (message: { type: string; word?: string }) => {
-        if (message.type === 'translateSentenceWithWord') {
-          return { success: true, chinese: '猫是很棒的宠物。', wordChinese: '' }
+      mockSendMessage.mockImplementation(
+        async (message: { type: string; word?: string; dictionaryChinese?: string }) => {
+          if (message.type === 'translateSentence') {
+            return { success: true, chinese: '猫是很棒的宠物。' }
+          }
+          if (message.type === 'getOneWord') {
+            return { success: false, error: 'not found' }
+          }
+          if (message.type === 'translateWordInContext') {
+            return { success: true, chinese: '极好的' }
+          }
+          return { success: false }
         }
-        if (message.type === 'translateWordInContext') {
-          return { success: true, chinese: '兜底：极好的' }
-        }
-        if (message.type === 'getOneWord') {
-          return { success: true, ecp: { English: message.word, Chinese: 'x', Pronunciation: '/greɪt/' } }
-        }
-        return { success: false }
-      })
+      )
 
       render(<SidePanel />)
 
       await waitFor(() =>
-        expect(screen.getByTestId('sidepanel-card-great')).toHaveTextContent('兜底：极好的')
+        expect(screen.getByTestId('sidepanel-card-great')).toHaveTextContent('极好的')
       )
       expect(mockSendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'translateWordInContext', word: 'great' })
+        expect.objectContaining({ type: 'translateWordInContext', word: 'great', dictionaryChinese: undefined })
       )
     })
 

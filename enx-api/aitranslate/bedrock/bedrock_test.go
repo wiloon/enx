@@ -55,52 +55,48 @@ func TestTranslateSentenceConverseError(t *testing.T) {
 }
 
 func TestTranslateWordInContextSuccess(t *testing.T) {
-	fake := &fakeConverseClient{
-		output: &bedrockruntime.ConverseOutput{
-			Output: &types.ConverseOutputMemberMessage{
-				Value: types.Message{
-					Role:    types.ConversationRoleAssistant,
-					Content: []types.ContentBlock{&types.ContentBlockMemberText{Value: "银行"}},
-				},
-			},
-		},
-	}
+	fake := &fakeConverseClient{output: bedrockTextOutput(`{"word":"银行","why":""}`)}
 	b := newTestBedrock(fake)
 
-	chinese, _, err := b.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank")
+	res, _, err := b.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank", "n. 银行；水岸")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if chinese != "银行" {
-		t.Fatalf("chinese: got %q", chinese)
+	if res.WordChinese != "银行" {
+		t.Fatalf("result: got %+v", res)
+	}
+}
+
+func TestTranslateWordInContextWhy(t *testing.T) {
+	fake := &fakeConverseClient{output: bedrockTextOutput(`{"word":"倾向于","why":"此处是动词 tip 的引申用法，词典只收录了名词义"}`)}
+	b := newTestBedrock(fake)
+
+	res, _, err := b.TranslateWordInContext(context.Background(), "The market tips toward recovery.", "tips", "n. 秘诀, 技巧；小贴士, 小窍门")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.WordChinese != "倾向于" || res.Why == "" {
+		t.Fatalf("result: got %+v", res)
 	}
 }
 
 // ADR-008: word-in-context is reused as-is for a multi-word phrase (no
 // dictionary entry exists for a phrase, so this is the only lookup path).
 func TestTranslateWordInContextPhrase(t *testing.T) {
-	fake := &fakeConverseClient{
-		output: &bedrockruntime.ConverseOutput{
-			Output: &types.ConverseOutputMemberMessage{
-				Value: types.Message{
-					Role:    types.ConversationRoleAssistant,
-					Content: []types.ContentBlock{&types.ContentBlockMemberText{Value: "找到邮箱地址并联系"}},
-				},
-			},
-		},
-	}
+	fake := &fakeConverseClient{output: bedrockTextOutput(`{"word":"找到邮箱地址并联系","why":""}`)}
 	b := newTestBedrock(fake)
 
-	chinese, _, err := b.TranslateWordInContext(
+	res, _, err := b.TranslateWordInContext(
 		context.Background(),
 		"I'd have to find the right contacts, hunt down emails, and draft outreach.",
 		"hunt down emails",
+		"",
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if chinese != "找到邮箱地址并联系" {
-		t.Fatalf("chinese: got %q", chinese)
+	if res.WordChinese != "找到邮箱地址并联系" {
+		t.Fatalf("result: got %+v", res)
 	}
 }
 
@@ -108,7 +104,7 @@ func TestTranslateWordInContextConverseError(t *testing.T) {
 	fake := &fakeConverseClient{err: errors.New("throttled")}
 	b := newTestBedrock(fake)
 
-	_, _, err := b.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank")
+	_, _, err := b.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank", "")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

@@ -449,7 +449,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'translateWordInContext':
           return await handleTranslateWordInContext(
             request.sentence || '',
-            request.word || ''
+            request.word || '',
+            request.dictionaryChinese || ''
           )
 
         case 'translateSentenceWithWord':
@@ -886,18 +887,35 @@ const handleTranslateSentenceWithWord = async (sentence: string, word: string) =
 // Handle a single word's contextual translation for the Side Panel word-click
 // flow (spec §3.7/§3.8): unlike getOneWord/ECDICT, this returns the word's
 // meaning as used in the given sentence, not a generic dictionary gloss.
-const handleTranslateWordInContext = async (sentence: string, word: string) => {
+// dictionaryChinese is that word's dictionary definition, looked up by the
+// Side Panel BEFORE sending this message (dictionary-first): it's embedded
+// in the AI prompt so the model can explain (`why`) a divergence instead of
+// guessing blind. Empty when the word has no dictionary entry or the lookup
+// failed -- still a valid request, `why` then comes back empty too.
+const handleTranslateWordInContext = async (
+  sentence: string,
+  word: string,
+  dictionaryChinese: string
+) => {
   if (!sentence || sentence.trim() === '' || !word || word.trim() === '') {
     return { success: false, error: 'sentence and word are required' }
   }
 
   const response = await makeApiRequest('/api/translate/word-in-context', {
     method: 'POST',
-    body: JSON.stringify({ sentence: sentence.trim(), word: word.trim() }),
+    body: JSON.stringify({
+      sentence: sentence.trim(),
+      word: word.trim(),
+      dictionaryChinese,
+    }),
   })
 
   if (response.success && response.data?.chinese) {
-    return { success: true, chinese: response.data.chinese as string }
+    return {
+      success: true,
+      chinese: response.data.chinese as string,
+      why: (response.data.why as string) || '',
+    }
   }
 
   return {

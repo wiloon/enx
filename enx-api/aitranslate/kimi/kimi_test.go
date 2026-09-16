@@ -76,20 +76,20 @@ func TestTranslateWordInContextSuccess(t *testing.T) {
 		capturedBody, _ = io.ReadAll(r.Body)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"银行"}}]}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"{\"word\":\"银行\",\"why\":\"\"}"}}]}`))
 	}))
 	defer srv.Close()
 
 	k := newTestKimi(srv.URL)
-	chinese, _, err := k.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank")
+	res, _, err := k.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank", "n. 银行；水岸")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if chinese != "银行" {
-		t.Fatalf("chinese: got %q", chinese)
+	if res.WordChinese != "银行" {
+		t.Fatalf("result: got %+v", res)
 	}
-	if !bytes.Contains(capturedBody, []byte("bank")) || !bytes.Contains(capturedBody, []byte("deposited cash")) {
-		t.Fatalf("request body missing sentence/word context: %s", capturedBody)
+	if !bytes.Contains(capturedBody, []byte("bank")) || !bytes.Contains(capturedBody, []byte("deposited cash")) || !bytes.Contains(capturedBody, []byte("Dictionary definition")) {
+		t.Fatalf("request body missing sentence/word/dictionary context: %s", capturedBody)
 	}
 }
 
@@ -101,24 +101,28 @@ func TestTranslateWordInContextPhrase(t *testing.T) {
 		capturedBody, _ = io.ReadAll(r.Body)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"找到邮箱地址并联系"}}]}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"{\"word\":\"找到邮箱地址并联系\",\"why\":\"\"}"}}]}`))
 	}))
 	defer srv.Close()
 
 	k := newTestKimi(srv.URL)
-	chinese, _, err := k.TranslateWordInContext(
+	res, _, err := k.TranslateWordInContext(
 		context.Background(),
 		"I'd have to find the right contacts, hunt down emails, and draft outreach.",
 		"hunt down emails",
+		"",
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if chinese != "找到邮箱地址并联系" {
-		t.Fatalf("chinese: got %q", chinese)
+	if res.WordChinese != "找到邮箱地址并联系" {
+		t.Fatalf("result: got %+v", res)
 	}
 	if !bytes.Contains(capturedBody, []byte("hunt down emails")) {
 		t.Fatalf("request body missing phrase: %s", capturedBody)
+	}
+	if bytes.Contains(capturedBody, []byte("Dictionary definition")) {
+		t.Fatalf("request body should omit dictionary definition line when empty: %s", capturedBody)
 	}
 }
 
@@ -130,7 +134,7 @@ func TestTranslateWordInContextNon200(t *testing.T) {
 	defer srv.Close()
 
 	k := newTestKimi(srv.URL)
-	_, _, err := k.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank")
+	_, _, err := k.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank", "")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

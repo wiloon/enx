@@ -6,6 +6,7 @@ import (
 
 	"enx-api/aitranslate/rephrase"
 	"enx-api/aitranslate/sentenceword"
+	"enx-api/aitranslate/wordcontext"
 )
 
 // translatorOnly implements Translator but NOT rephrase.Rephraser -- stands
@@ -15,8 +16,8 @@ type translatorOnly struct{}
 func (translatorOnly) TranslateSentence(ctx context.Context, s string) (string, Usage, error) {
 	return "", Usage{}, nil
 }
-func (translatorOnly) TranslateWordInContext(ctx context.Context, s, w string) (string, Usage, error) {
-	return "", Usage{}, nil
+func (translatorOnly) TranslateWordInContext(ctx context.Context, s, w, dictionaryChinese string) (wordcontext.Result, Usage, error) {
+	return wordcontext.Result{}, Usage{}, nil
 }
 func (translatorOnly) TranslateSentenceWithWord(ctx context.Context, s, w string) (sentenceword.Result, Usage, error) {
 	return sentenceword.Result{}, Usage{}, nil

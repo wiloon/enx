@@ -23,16 +23,9 @@ import (
 	"github.com/spf13/viper"
 )
 
-const (
-	systemPrompt = "You are a professional English-to-Chinese translator. " +
-		"Translate the given English sentence into natural, fluent Chinese. " +
-		"Reply with the Chinese translation only, no explanation, no pinyin, no quotes."
-
-	wordContextSystemPrompt = "You are a professional English-to-Chinese translator. " +
-		"Given an English sentence and a specific word or phrase from that sentence, reply with " +
-		"its Chinese meaning as used in THIS sentence's context only, not a generic " +
-		"dictionary definition. Reply with the Chinese meaning only, no explanation, no pinyin, no quotes."
-)
+const systemPrompt = "You are a professional English-to-Chinese translator. " +
+	"Translate the given English sentence into natural, fluent Chinese. " +
+	"Reply with the Chinese translation only, no explanation, no pinyin, no quotes."
 
 // converseClient is the minimal surface of *bedrockruntime.Client this
 // package needs, so tests can substitute a fake instead of calling AWS.
@@ -79,10 +72,6 @@ func New(ctx context.Context) (*Bedrock, error) {
 
 func (b *Bedrock) TranslateSentence(ctx context.Context, sentence string) (string, aiusage.Usage, error) {
 	return b.converse(ctx, "translate_sentence", systemPrompt, sentence)
-}
-
-func (b *Bedrock) TranslateWordInContext(ctx context.Context, sentence, word string) (string, aiusage.Usage, error) {
-	return b.converse(ctx, "translate_word_in_context", wordContextSystemPrompt, fmt.Sprintf("Sentence: %s\nWord: %s", sentence, word))
 }
 
 func (b *Bedrock) converse(ctx context.Context, feature, systemPrompt, userContent string) (string, aiusage.Usage, error) {

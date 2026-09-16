@@ -8,6 +8,7 @@ import (
 
 	"enx-api/aitranslate/aiusage"
 	"enx-api/aitranslate/sentenceword"
+	"enx-api/aitranslate/wordcontext"
 )
 
 // Usage re-exports aiusage.Usage so code in this package doesn't need the
@@ -25,7 +26,12 @@ type Translator interface {
 	// surrounding sentence as context, so a polysemous word gets the meaning
 	// it actually has in that sentence rather than a dictionary's generic
 	// gloss. See docs/tasks/TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md §3.8.
-	TranslateWordInContext(ctx context.Context, sentence, word string) (string, Usage, error)
+	// dictionaryChinese is that word's dictionary definition, looked up by
+	// the caller BEFORE this call (dictionary-first, so the model can
+	// explain a divergence instead of guessing blind) -- it may be empty
+	// when the word has no dictionary entry or the lookup failed, in which
+	// case Result.Why will always come back empty too.
+	TranslateWordInContext(ctx context.Context, sentence, word, dictionaryChinese string) (wordcontext.Result, Usage, error)
 
 	// TranslateSentenceWithWord does both of the above in ONE LLM call
 	// (ADR-014): the whole-sentence translation plus `word`'s meaning in
