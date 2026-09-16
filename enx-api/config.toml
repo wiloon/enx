@@ -39,10 +39,10 @@ frontend-base-url = "https://enx.wiloon.lab"
 # that deployment's env to override. Empty -> ClerkAuth returns 503.
 issuer = "https://rational-deer-4450.clerk.accounts.dev"
 # Allow-list checked against the token `azp` claim (the origin the token was
-# minted for): the enx-ui origin(s) plus the extension id later
-# (chrome-extension://<id>). Override per-deployment with
-# CLERK_AUTHORIZED_PARTIES (space-separated).
-authorized-parties = ["https://enx.wiloon.lab", "http://localhost:3000"]
+# minted for): the enx-ui origin(s) plus the extension id
+# (chrome-extension://<id>, fixed by the "key" in enx-chrome/manifest.json).
+# Override per-deployment with CLERK_AUTHORIZED_PARTIES (space-separated).
+authorized-parties = ["https://enx.wiloon.lab", "http://localhost:3000", "chrome-extension://omcdpipnjffmblbhiphddcmoldceapam"]
 
 [sentence-translate]
 # "kimi" | "bedrock" | "minimax" | "deepseek" -- switch provider by changing

@@ -96,6 +96,27 @@ describe('ApiService reader documents', () => {
     expect(result.error).toBe('document not found')
   })
 
+  it('PUTs revised content to update a document in place', async () => {
+    const doc = {
+      id: 'doc-1',
+      content: 'revised text',
+      createdAt: '2026-09-14T00:00:00Z',
+      expiresAt: '2026-09-22T00:00:00Z',
+    }
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(200, { success: true, ...doc })
+    )
+
+    const result = await service.updateReaderDocument('doc-1', 'revised text')
+
+    expect(result.success).toBe(true)
+    expect(result.data?.content).toBe('revised text')
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toBe('http://localhost:8090/api/reader/documents/doc-1')
+    expect(init.method).toBe('PUT')
+    expect(JSON.parse(init.body)).toEqual({ content: 'revised text' })
+  })
+
   it('DELETEs a document by id', async () => {
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
       jsonResponse(200, { success: true })

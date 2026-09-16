@@ -121,7 +121,7 @@ function SignedInBody({
       const message = e instanceof Error ? e.message : ''
       setError(
         message.includes('Receiving end does not exist')
-          ? 'Please refresh this page before enabling learning mode.'
+          ? 'No content script on this tab. Reload the extension at chrome://extensions, then refresh this page.'
           : message || 'Cannot enable learning mode on this page'
       )
       setLearningStatus('idle')

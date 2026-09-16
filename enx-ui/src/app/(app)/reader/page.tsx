@@ -13,7 +13,9 @@ import { MAX_CONTENT_LENGTH } from './constants'
 
 // sessionStorage key the history page writes to just before navigating here
 // to open a saved document (ADR-022 Option E: reopening reuses this same
-// reading-view render path instead of a second implementation).
+// reading-view render path instead of a second implementation). Carries
+// both the id (so re-submitting updates this same document -- ADR-022
+// Addendum) and the content.
 const OPEN_DOC_STORAGE_KEY = 'enx-reader-open-doc'
 
 // Split pasted plain text into paragraphs on blank lines; keep newlines
@@ -28,6 +30,12 @@ function toParagraphs(text: string): string[] {
 export default function ReaderPage() {
   const [draft, setDraft] = useState('')
   const [article, setArticle] = useState<string | null>(null)
+  // The saved document this reading session is backed by, if any. Set after
+  // the first successful save (create or open-from-history). While set,
+  // submitting again updates this same document (PUT) instead of creating a
+  // new one -- that's what makes "Edit text" actually mean "edit", per the
+  // ADR-022 Addendum. "New" clears it to start a genuinely separate document.
+  const [documentId, setDocumentId] = useState<string | null>(null)
   // Bumped on every submit so re-reading the same text still re-triggers the
   // extension (state value alone wouldn't change).
   const [readSeq, setReadSeq] = useState(0)
@@ -45,27 +53,33 @@ export default function ReaderPage() {
   const canRead =
     draft.trim().length > 0 && draft.length <= MAX_CONTENT_LENGTH
 
-  const openArticle = (text: string, { save }: { save: boolean }) => {
-    setArticle(text)
-    setReadSeq((n) => n + 1)
-    if (!save) {
-      setSaveStatus('saved')
-      return
-    }
-    setSaveStatus('saving')
-    apiService.createReaderDocument(text).then((resp) => {
-      setSaveStatus(resp.success ? 'saved' : 'error')
-    })
-  }
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!canRead) return
-    openArticle(draft, { save: true })
+    setArticle(draft)
+    setReadSeq((n) => n + 1)
+    setSaveStatus('saving')
+    const request = documentId
+      ? apiService.updateReaderDocument(documentId, draft)
+      : apiService.createReaderDocument(draft)
+    request.then((resp) => {
+      setSaveStatus(resp.success ? 'saved' : 'error')
+      if (resp.success && resp.data) setDocumentId(resp.data.id)
+    })
+  }
+
+  // Starts a genuinely new document: distinct from "Edit text", which keeps
+  // editing the one this session is backed by.
+  const handleNew = () => {
+    setDraft('')
+    setArticle(null)
+    setDocumentId(null)
+    setSaveStatus('idle')
   }
 
   // Reopening a document from "My Documents" (history page): it's already
-  // persisted, so this just renders it -- no second POST.
+  // persisted, so this just renders it -- no POST. Its id is remembered so a
+  // later "Edit text" + Read updates this document instead of creating one.
   useEffect(() => {
     let raw: string | null = null
     try {
@@ -76,10 +90,13 @@ export default function ReaderPage() {
     }
     if (!raw) return
     try {
-      const parsed = JSON.parse(raw) as { content?: string }
+      const parsed = JSON.parse(raw) as { id?: string; content?: string }
       if (parsed.content) {
         setDraft(parsed.content)
-        openArticle(parsed.content, { save: false })
+        setDocumentId(parsed.id ?? null)
+        setSaveStatus('saved')
+        setArticle(parsed.content)
+        setReadSeq((n) => n + 1)
       }
     } catch {
       // Malformed handoff payload -- ignore.
@@ -101,7 +118,7 @@ export default function ReaderPage() {
 
     return (
       <div className="container mx-auto max-w-2xl p-6 space-y-4">
-        <div className="flex items-center justify-between rounded-md border bg-muted/40 px-4 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/40 px-4 py-2.5">
           <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-muted-foreground">
               Reading mode
@@ -112,15 +129,26 @@ export default function ReaderPage() {
               {saveStatus === 'error' && "Couldn't save (still readable)"}
             </span>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setArticle(null)}
-          >
-            <Pencil aria-hidden="true" />
-            Edit text
-          </Button>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/reader/history"
+              className="text-sm font-medium text-muted-foreground underline-offset-4 hover:underline"
+            >
+              My Documents
+            </Link>
+            <Button type="button" variant="outline" size="sm" onClick={handleNew}>
+              New
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setArticle(null)}
+            >
+              <Pencil aria-hidden="true" />
+              Edit text
+            </Button>
+          </div>
         </div>
         {showInstallPrompt && (
           <div className="flex items-start justify-between gap-4 rounded-md border border-input bg-muted/40 p-3 text-sm">

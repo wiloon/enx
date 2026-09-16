@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Accepted — 2026-09-15。已实现：enx-api 新增 `reader` 包（`CreateDocument`/`ListDocuments`/`GetDocument`/`DeleteDocument`/`PurgeExpired`，19 个测试覆盖长度上限、50 篇淘汰最旧、过期过滤、归属校验）+ 4 个 `/api/reader/documents` 路由 + `runReaderDocumentCleanup` 定时清理协程；enx-ui reader 页提交时落库、`textarea` 加 2 万字符上限与计数、新增 `/reader/history` 列表页（回看 / 重开 / 删除），99 个前端测试全绿，`next build` 通过。 |
+| **状态** | Accepted — 2026-09-15。已实现：enx-api `reader` 包（`CreateDocument`/`ListDocuments`/`GetDocument`/`UpdateDocument`/`DeleteDocument`/`PurgeExpired`，31 个测试）+ 5 个 `/api/reader/documents` 路由（含 Addendum 1 的 `PUT` 原地编辑、Addendum 2 的 `preview` 字段）+ `runReaderDocumentCleanup` 定时清理协程；enx-ui reader 页支持新建 / 原地编辑（`documentId` 跟踪 + 「New」按钮区分「另起一篇」和「继续编辑」）、`textarea` 2 万字符上限、`/reader/history` 列表页（按最后编辑时间排序、每行显示内容预览 + 时间、回看 / 重开 / 删除）、阅读态顶栏常驻「My Documents」入口，105 个前端测试全绿，`next build` 通过。 |
 | **日期** | 2026-09-15 |
 | **关联 ADR** | [`adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md`](adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md)（本 ADR 是它 Revisit Trigger 里明确预留的「要持久化 / 多篇文档：Option E2」——推翻其 Decision 1「一次性，不持久化」和 Consequences 里记的隐私论证「粘贴的文本只存在于当前标签页的内存里」；reader 页本身的渲染 / 查词 / 扩展通知机制不变，仍照 ADR-019 走）、[`adr-018-dictionary-lookup-single-metered-seam.md`](adr-018-dictionary-lookup-single-metered-seam.md)（查词配额——本 ADR 明确「存文档」不占用它的配额口径，两者是不同的计量维度）、[`adr-015-cognito-to-clerk-auth-migration.md`](adr-015-cognito-to-clerk-auth-migration.md)（文档归属用户靠 Clerk 会话识别，复用现有登录态） |
 
@@ -14,6 +14,55 @@
 2. **保留期限 7 天，这是对用户的产品承诺**，不是内部实现细节——意味着 7 天后要**真的删除**，不能只是「查不到但盘上还在」。
 3. **单次粘贴文本长度上限 2 万字符**（约 3,000–4,000 英文单词，量级参考 DeepL / Google 翻译单次请求上限），服务端强校验。
 4. **单用户最多保留 50 篇文档，超出时淘汰最旧的一篇**——跟 7 天 TTL 是两道独立的限制，不是二选一：TTL 保证「多久」（哪怕只存过一篇也保证 7 天后必删），数量上限保证「多少」（不管存多频繁，占用有天花板）。
+5. **（2026-09-15 追加）已保存的文档支持原地编辑**：新增 `PUT /api/reader/documents/:id`。见下方 Addendum。
+
+---
+
+## Addendum（2026-09-15）：已保存文档支持原地编辑
+
+### 触发原因
+
+上线后走查发现一个交互问题：reader 页的「Edit text」按钮回到输入态、改完文字再点「Read」，无论这段文字是不是从「我的文档」打开的已保存文档，点击后总会**新建**一条记录——`POST` 是这个页面唯一的写路径，原文档原样留在列表里，形成一条几乎重复的记录。这跟「Edit」这个按钮名字暗示的「修改当前文档」直接矛盾，用户会以为在改原文档，实际上留了两条。
+
+### Option F：这种「打开已保存文档 → 编辑 → 再提交」该怎么处理
+
+| 方案 | 说明 | 结论 |
+| --- | --- | --- |
+| **F1.（采用）支持真正的原地编辑**：新增 `PUT /api/reader/documents/:id`，编辑已保存文档再提交时更新同一条记录，不新建 | 用户明确选择这个方向。代价：后端多一个端点 + 前端要跟踪「当前文章对应哪个文档 ID」；`reader` 包不再是纯 create-only，本 ADR 的「不可变」立场（Decision 1 隐含、Out of Scope 未明确写但设计上如此）被推翻，需要显式记录 |
+| F2. 维持不可变，只改按钮文案（比如把「Edit text」改成「新建 / 重新粘贴」，文案说明会存成新文档） | 后端不用动，改动最小 | **否决**（用户选择）：不解决「编辑同一篇文章要反复迭代」时列表被灌满近似重复记录的问题，只是不再误导 |
+
+### Decision（补充）
+
+1. **`reader.UpdateDocument(ctx, userID, id, content, now)`**：校验 `content` 非空且 ≤ 20,000 字符（与 `CreateDocument` 同一套校验）；按 `id + user_id + expires_at > now` 定位文档，找不到（不存在 / 不属于该用户 / 已过期）返回 `gorm.ErrRecordNotFound`；替换 `content`，**7 天保留期从这次编辑的时间重新计算**（`expires_at = now + 7d`）——编辑是一次新的活跃行为，没理由不延长它的生命周期。**不占用** `MaxDocumentsPerUser` 淘汰逻辑：这不是新建行。
+2. **`PUT /api/reader/documents/:id`** 挂在跟其它三个端点一样的 `apiGroup`（Clerk auth）下，404 语义跟 `GetDocument` 一致。
+3. **`ListDocuments` 排序改成按「最后编辑时间」倒序**（新增 `updated_at` 列，`CreateDocument` 时等于 `created_at`，`UpdateDocument` 时刷新）——编辑一篇旧文档会让它重新跳到列表顶端，符合「最近动过的排前面」的直觉。**踩坑记录**：`sqlitex.ReaderDocument` 这个字段特意命名成 `LastEditedAt`（映射到 `updated_at` 列）而不是 `UpdatedAt`——gorm 对结构体字段名字面是 `UpdatedAt` 的字段有约定式的自动行为：每次 `Save`/`Update` 都会**无条件**拿 gorm 自己算的当前时间去覆盖调用方设置的值，不管调用方传的 `now` 是多少。这个仓库到处靠显式传 `now time.Time` 做可测试的确定性时间控制，撞上这个约定会在测试里产生诡异的、貌似正确实则被悄悄替换成真实墙钟时间的值——已经在 `TestListDocumentsOrdersEditedDocumentToTheTop` 这个用例上踩过一次，改字段名后解决。
+4. **enx-ui reader 页**：`documentId` 状态跟着「当前文章对应哪篇已保存文档」走——首次提交（`documentId` 为空）走 `POST` 建新文档并记下返回的 id；再次提交（`documentId` 有值，无论是刚创建的还是从「我的文档」打开的）走 `PUT` 更新同一篇。新增一个跟「Edit text」并列的**「New」按钮**，清空 `documentId` 和草稿，才是真正「另起一篇」的入口——这直接解决了用户反馈的第二个问题「要粘贴全新文本得先点 Edit，容易被当成编辑当前文档」：现在 Edit 名副其实地编辑当前文档，New 才是新起一篇。
+5. **阅读态顶部常驻「My Documents」入口**（另一个用户反馈：阅读态下要切菜单才能回列表）：跟「Edit text」「New」并列放在阅读态顶栏，不需要先回输入态再点。
+
+### Consequences（补充）
+
+| 风险 | 缓解 |
+| --- | --- |
+| **编辑会重置 7 天 TTL，理论上可以靠「定期编辑一下」把文档永久留着**，削弱本 ADR 版权论证依赖的「内容不会长期存在」前提 | 参照 ADR-018 决策 8 同样的推理：这需要用户手动、逐篇、反复操作，摩擦本身就是防线，不是一个值得现在就防的真实滥用信号；真出现再回来加限制（比如编辑次数上限） |
+| **`reader` 包从「create-only 不可变」变成可变**，任何以后读这份 ADR 的人看到 Decision 1 的免责论证（「一次性」「不可变」）会跟这个 Addendum 矛盾 | 本 Addendum 就是显式记录这次推翻的原因和时间，不悄悄改 |
+
+---
+
+## Addendum 2（2026-09-15）：「我的文档」列表加内容预览
+
+### 触发原因
+
+Decision 2 当时把预览写成可选项（「不必每条都带全文，可用首行 / 前 N 字符做预览」），第一版实现图省事只展示了日期，用户走查反馈：列表里一排全是时间戳，看不出哪篇是哪篇，得逐条点开才知道内容，体验不好。
+
+### Decision（补充）
+
+- `DocumentSummary` 新增 `Preview string`：取 `content`，`strings.Fields` + `strings.Join(" ")` 把所有空白（含段落间的换行）折叠成单行，再按 rune 截到 100 个字符，超出加 `…`。`previewMaxLength = 100` 是个经验值，够看清一行内容，不需要用户名字段之外单独存一份「标题」。
+- `GET /api/reader/documents` 的每条返回里加 `preview` 字段；`ListDocuments`/`GetDocument` 的过滤和排序逻辑不变。
+- enx-ui 「我的文档」列表每一行改成两行展示：预览文字（`truncate` 单行省略号兜底超宽情况）在上，最后编辑时间在下；预览为空（理论上不会，`content` 非空是 `CreateDocument` 的前置校验，但仍处理这个边界）时显示「Untitled」。
+
+### Consequences（补充）
+
+- 预览是从 `ListDocuments` 已经查出来的整行 `content` 现算的，不是数据库层面的 `SUBSTR`——`reader_documents` 单表最多 50 篇 × 2 万字符，一次查询顶多 1MB，对 SQLite 而言可忽略，没必要为了省这点数据量在 SQL 里做截断。
 
 ---
 

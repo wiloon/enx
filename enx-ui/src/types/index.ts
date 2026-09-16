@@ -109,9 +109,13 @@ export interface AdminEcdictRow {
 
 // Reader "paste text" documents (ADR-022): 20,000-char limit, 7-day TTL, 50
 // documents per user (oldest evicted on write) -- all enforced server-side.
+// Editing a document (ADR-022 Addendum) bumps `updatedAt` and resets the
+// TTL; lists sort by `updatedAt`, not `createdAt`.
 export interface ReaderDocumentSummary {
   id: string
   createdAt: string
+  updatedAt: string
+  preview: string
 }
 
 export interface ReaderDocument {

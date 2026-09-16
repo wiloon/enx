@@ -310,6 +310,7 @@ func setupRouter() *gin.Engine {
 	apiGroup.POST("/reader/documents", reader.CreateDocumentHandler)
 	apiGroup.GET("/reader/documents", reader.ListDocumentsHandler)
 	apiGroup.GET("/reader/documents/:id", reader.GetDocumentHandler)
+	apiGroup.PUT("/reader/documents/:id", reader.UpdateDocumentHandler)
 	apiGroup.DELETE("/reader/documents/:id", reader.DeleteDocumentHandler)
 
 	// Admin: grant top-up credits to any user by email. Gated by the

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -203,6 +204,97 @@ func TestListDocumentsExcludesExpired(t *testing.T) {
 	}
 }
 
+func TestListDocumentsOrdersEditedDocumentToTheTop(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	now := time.Now()
+
+	older, err := CreateDocument(ctx, userID, "older", now)
+	if err != nil {
+		t.Fatalf("create older: %v", err)
+	}
+	newer, err := CreateDocument(ctx, userID, "newer", now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("create newer: %v", err)
+	}
+
+	// Editing the older document later than either creation should move it
+	// to the top of the list, ahead of the untouched newer one.
+	if _, err := UpdateDocument(ctx, userID, older.ID, "older, edited", now.Add(2*time.Minute)); err != nil {
+		t.Fatalf("UpdateDocument: %v", err)
+	}
+
+	docs, err := ListDocuments(ctx, userID, now.Add(3*time.Minute))
+	if err != nil {
+		t.Fatalf("ListDocuments: %v", err)
+	}
+	if len(docs) != 2 || docs[0].ID != older.ID || docs[1].ID != newer.ID {
+		t.Fatalf("got %+v, want [%s, %s] (edited doc first)", docs, older.ID, newer.ID)
+	}
+}
+
+func TestListDocumentsIncludesShortContentAsPreview(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	now := time.Now()
+
+	if _, err := CreateDocument(ctx, userID, "Hello world, this is a short article.", now); err != nil {
+		t.Fatalf("CreateDocument: %v", err)
+	}
+
+	docs, err := ListDocuments(ctx, userID, now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("ListDocuments: %v", err)
+	}
+	if len(docs) != 1 {
+		t.Fatalf("got %d documents, want 1", len(docs))
+	}
+	if docs[0].Preview != "Hello world, this is a short article." {
+		t.Fatalf("got preview %q, want content unchanged (short enough to fit)", docs[0].Preview)
+	}
+}
+
+func TestListDocumentsTruncatesLongContentInPreview(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	now := time.Now()
+
+	content := strings.Repeat("word ", 100) // 500 chars, well over any reasonable preview length
+	if _, err := CreateDocument(ctx, userID, content, now); err != nil {
+		t.Fatalf("CreateDocument: %v", err)
+	}
+
+	docs, err := ListDocuments(ctx, userID, now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("ListDocuments: %v", err)
+	}
+	preview := docs[0].Preview
+	if runeLen := len([]rune(preview)); runeLen > previewMaxLength+1 { // +1 for the trailing ellipsis rune
+		t.Fatalf("preview is %d runes (max %d + ellipsis): %q", runeLen, previewMaxLength, preview)
+	}
+	if !strings.HasSuffix(preview, "…") {
+		t.Fatalf("got preview %q, want it truncated with a trailing ellipsis", preview)
+	}
+}
+
+func TestListDocumentsCollapsesWhitespaceInPreview(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	now := time.Now()
+
+	if _, err := CreateDocument(ctx, userID, "First line.\n\n  Second   paragraph.", now); err != nil {
+		t.Fatalf("CreateDocument: %v", err)
+	}
+
+	docs, err := ListDocuments(ctx, userID, now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("ListDocuments: %v", err)
+	}
+	if docs[0].Preview != "First line. Second paragraph." {
+		t.Fatalf("got preview %q, want newlines/extra spaces collapsed to single spaces", docs[0].Preview)
+	}
+}
+
 func TestGetDocumentReturnsFullContent(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
@@ -251,6 +343,112 @@ func TestGetDocumentRejectsExpired(t *testing.T) {
 	checkAt := now.Add(7*24*time.Hour + 30*time.Second)
 	if _, err := GetDocument(ctx, userID, created.ID, checkAt); !errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Fatalf("got %v, want gorm.ErrRecordNotFound", err)
+	}
+}
+
+func TestUpdateDocumentReplacesContentAndExtendsExpiry(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	now := time.Now()
+
+	created, err := CreateDocument(ctx, userID, "original", now)
+	if err != nil {
+		t.Fatalf("CreateDocument: %v", err)
+	}
+
+	editAt := now.Add(24 * time.Hour)
+	updated, err := UpdateDocument(ctx, userID, created.ID, "revised", editAt)
+	if err != nil {
+		t.Fatalf("UpdateDocument: %v", err)
+	}
+
+	if updated.Content != "revised" {
+		t.Fatalf("got content %q, want %q", updated.Content, "revised")
+	}
+	wantExpiresAt := editAt.Add(7 * 24 * time.Hour)
+	if diff := updated.ExpiresAt.Sub(wantExpiresAt); diff < -time.Second || diff > time.Second {
+		t.Fatalf("got expiresAt %v, want ~%v (extended from the edit time)", updated.ExpiresAt, wantExpiresAt)
+	}
+
+	got, err := GetDocument(ctx, userID, created.ID, editAt.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("GetDocument after update: %v", err)
+	}
+	if got.Content != "revised" {
+		t.Fatalf("GetDocument returned content %q, want %q", got.Content, "revised")
+	}
+}
+
+func TestUpdateDocumentRejectsWrongOwner(t *testing.T) {
+	ctx := context.Background()
+	ownerID := "u-" + t.Name()
+	attackerID := "attacker-" + t.Name()
+	now := time.Now()
+
+	created, err := CreateDocument(ctx, ownerID, "private", now)
+	if err != nil {
+		t.Fatalf("CreateDocument: %v", err)
+	}
+
+	if _, err := UpdateDocument(ctx, attackerID, created.ID, "hijacked", now.Add(time.Minute)); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("got %v, want gorm.ErrRecordNotFound", err)
+	}
+	got, err := GetDocument(ctx, ownerID, created.ID, now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("GetDocument: %v", err)
+	}
+	if got.Content != "private" {
+		t.Fatalf("content changed to %q, want unchanged %q", got.Content, "private")
+	}
+}
+
+func TestUpdateDocumentRejectsExpired(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	now := time.Now()
+
+	created, err := CreateDocument(ctx, userID, "will expire", now)
+	if err != nil {
+		t.Fatalf("CreateDocument: %v", err)
+	}
+
+	checkAt := now.Add(7*24*time.Hour + 30*time.Second)
+	if _, err := UpdateDocument(ctx, userID, created.ID, "too late", checkAt); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("got %v, want gorm.ErrRecordNotFound", err)
+	}
+}
+
+func TestUpdateDocumentRejectsContentOverMaxLength(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	now := time.Now()
+
+	created, err := CreateDocument(ctx, userID, "original", now)
+	if err != nil {
+		t.Fatalf("CreateDocument: %v", err)
+	}
+
+	tooLong := make([]byte, MaxContentLength+1)
+	for i := range tooLong {
+		tooLong[i] = 'a'
+	}
+	if _, err := UpdateDocument(ctx, userID, created.ID, string(tooLong), now.Add(time.Minute)); !errors.Is(err, ErrContentTooLong) {
+		t.Fatalf("got %v, want ErrContentTooLong", err)
+	}
+}
+
+func TestUpdateDocumentRejectsEmptyContent(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	now := time.Now()
+
+	created, err := CreateDocument(ctx, userID, "original", now)
+	if err != nil {
+		t.Fatalf("CreateDocument: %v", err)
+	}
+
+	if _, err := UpdateDocument(ctx, userID, created.ID, "", now.Add(time.Minute)); !errors.Is(err, ErrContentEmpty) {
+		t.Fatalf("got %v, want ErrContentEmpty", err)
 	}
 }
 

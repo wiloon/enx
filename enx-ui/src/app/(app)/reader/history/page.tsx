@@ -42,7 +42,7 @@ export default function ReaderHistoryPage() {
     try {
       sessionStorage.setItem(
         OPEN_DOC_STORAGE_KEY,
-        JSON.stringify({ content: resp.data.content })
+        JSON.stringify({ id: resp.data.id, content: resp.data.content })
       )
     } catch {
       // Storage unavailable -- fall through, /reader will just show empty.
@@ -115,11 +115,14 @@ export default function ReaderHistoryPage() {
                     type="button"
                     onClick={() => handleOpen(doc.id)}
                     disabled={openingId === doc.id}
-                    className="flex-1 text-left text-sm hover:underline disabled:opacity-50"
+                    className="min-w-0 flex-1 text-left hover:underline disabled:opacity-50"
                   >
-                    {openingId === doc.id
-                      ? 'Opening…'
-                      : new Date(doc.createdAt).toLocaleString()}
+                    <span className="block truncate text-sm">
+                      {openingId === doc.id ? 'Opening…' : doc.preview || 'Untitled'}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      {new Date(doc.updatedAt).toLocaleString()}
+                    </span>
                   </button>
                   <Button
                     type="button"

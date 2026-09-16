@@ -193,6 +193,20 @@ export class ApiService {
     return this.makeRequest(`/api/reader/documents/${encodeURIComponent(id)}`)
   }
 
+  // Replaces a saved document's content in place and resets its 7-day TTL
+  // (ADR-022 Addendum: this is what "Edit" on an already-saved document
+  // does -- as opposed to createReaderDocument, which always makes a new
+  // document).
+  async updateReaderDocument(
+    id: string,
+    content: string
+  ): Promise<ApiResponse<ReaderDocument>> {
+    return this.makeRequest(`/api/reader/documents/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ content }),
+    })
+  }
+
   async deleteReaderDocument(
     id: string
   ): Promise<ApiResponse<{ success: boolean }>> {

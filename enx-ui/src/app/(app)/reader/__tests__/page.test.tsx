@@ -4,17 +4,24 @@ import { MAX_CONTENT_LENGTH } from '../constants'
 import { apiService } from '@/services/api'
 
 jest.mock('@/services/api', () => ({
-  apiService: { createReaderDocument: jest.fn() },
+  apiService: {
+    createReaderDocument: jest.fn(),
+    updateReaderDocument: jest.fn(),
+  },
 }))
 
 const mockCreateReaderDocument =
   apiService.createReaderDocument as jest.Mock
+const mockUpdateReaderDocument =
+  apiService.updateReaderDocument as jest.Mock
 
 beforeEach(() => {
   ;(global as unknown as { chrome?: unknown }).chrome = undefined
   document.documentElement.removeAttribute('data-enx-extension')
   mockCreateReaderDocument.mockReset()
   mockCreateReaderDocument.mockResolvedValue({ success: true, data: { id: 'doc-1' } })
+  mockUpdateReaderDocument.mockReset()
+  mockUpdateReaderDocument.mockResolvedValue({ success: true, data: { id: 'doc-1' } })
   sessionStorage.clear()
 })
 
@@ -216,5 +223,68 @@ describe('persistence (ADR-022)', () => {
     )
     expect(mockCreateReaderDocument).not.toHaveBeenCalled()
     expect(sessionStorage.getItem('enx-reader-open-doc')).toBeNull()
+  })
+
+  it('editing and re-reading a just-created document updates it instead of creating a second one', async () => {
+    render(<ReaderPage />)
+    paste('First version.')
+    await clickRead()
+    expect(mockCreateReaderDocument).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit text' }))
+    paste('Revised version.')
+    await clickRead()
+
+    expect(mockCreateReaderDocument).toHaveBeenCalledTimes(1)
+    expect(mockUpdateReaderDocument).toHaveBeenCalledWith(
+      'doc-1',
+      'Revised version.'
+    )
+  })
+
+  it('editing a document opened from history updates that same document', async () => {
+    sessionStorage.setItem(
+      'enx-reader-open-doc',
+      JSON.stringify({ id: 'doc-from-history', content: 'Original.' })
+    )
+    render(<ReaderPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit text' }))
+    paste('Edited.')
+    await clickRead()
+
+    expect(mockCreateReaderDocument).not.toHaveBeenCalled()
+    expect(mockUpdateReaderDocument).toHaveBeenCalledWith(
+      'doc-from-history',
+      'Edited.'
+    )
+  })
+
+  it('"New" starts a genuinely separate document, not an update', async () => {
+    render(<ReaderPage />)
+    paste('First document.')
+    await clickRead()
+    expect(mockCreateReaderDocument).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'New' }))
+    expect(screen.getByLabelText(/paste english text/i)).toHaveValue('')
+
+    paste('Second document.')
+    await clickRead()
+
+    expect(mockCreateReaderDocument).toHaveBeenCalledTimes(2)
+    expect(mockCreateReaderDocument).toHaveBeenLastCalledWith('Second document.')
+    expect(mockUpdateReaderDocument).not.toHaveBeenCalled()
+  })
+
+  it('shows a "My Documents" link and a "New" button in reading mode too', async () => {
+    render(<ReaderPage />)
+    paste('Some text.')
+    await clickRead()
+
+    expect(
+      screen.getAllByRole('link', { name: 'My Documents' })[0]
+    ).toHaveAttribute('href', '/reader/history')
+    expect(screen.getByRole('button', { name: 'New' })).toBeInTheDocument()
   })
 })

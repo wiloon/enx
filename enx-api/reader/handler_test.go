@@ -96,7 +96,8 @@ func TestListDocumentsHandlerReturnsUsersDocuments(t *testing.T) {
 	var resp struct {
 		Success   bool `json:"success"`
 		Documents []struct {
-			ID string `json:"id"`
+			ID      string `json:"id"`
+			Preview string `json:"preview"`
 		} `json:"documents"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
@@ -104,6 +105,9 @@ func TestListDocumentsHandlerReturnsUsersDocuments(t *testing.T) {
 	}
 	if !resp.Success || len(resp.Documents) != 1 {
 		t.Fatalf("got %+v, want success=true and 1 document", resp)
+	}
+	if resp.Documents[0].Preview != "first" {
+		t.Fatalf("got preview %q, want %q", resp.Documents[0].Preview, "first")
 	}
 }
 
@@ -141,6 +145,83 @@ func TestGetDocumentHandlerReturns404WhenNotFound(t *testing.T) {
 		GetDocumentHandler, "u-"+t.Name(), "")
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("status: got %d want %d, body=%s", w.Code, http.StatusNotFound, w.Body.String())
+	}
+}
+
+func TestUpdateDocumentHandlerReplacesContent(t *testing.T) {
+	userID := "u-" + t.Name()
+
+	created := doRequest(t, http.MethodPost, "/api/reader/documents", CreateDocumentHandler, userID, `{"content":"original"}`)
+	var createResp struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &createResp); err != nil {
+		t.Fatalf("unmarshal create response: %v", err)
+	}
+
+	w := doParamRequest(t, http.MethodPut, "/api/reader/documents/:id", "/api/reader/documents/"+createResp.ID,
+		UpdateDocumentHandler, userID, `{"content":"revised"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status: got %d want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var resp struct {
+		Success bool   `json:"success"`
+		ID      string `json:"id"`
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v, body=%s", err, w.Body.String())
+	}
+	if !resp.Success || resp.Content != "revised" {
+		t.Fatalf("got %+v, want success=true and content=%q", resp, "revised")
+	}
+
+	get := doParamRequest(t, http.MethodGet, "/api/reader/documents/:id", "/api/reader/documents/"+createResp.ID,
+		GetDocumentHandler, userID, "")
+	var getResp struct {
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal(get.Body.Bytes(), &getResp); err != nil {
+		t.Fatalf("unmarshal get response: %v", err)
+	}
+	if getResp.Content != "revised" {
+		t.Fatalf("GET after update returned content=%q, want %q", getResp.Content, "revised")
+	}
+}
+
+func TestUpdateDocumentHandlerReturns404WhenNotFound(t *testing.T) {
+	w := doParamRequest(t, http.MethodPut, "/api/reader/documents/:id", "/api/reader/documents/does-not-exist",
+		UpdateDocumentHandler, "u-"+t.Name(), `{"content":"revised"}`)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status: got %d want %d, body=%s", w.Code, http.StatusNotFound, w.Body.String())
+	}
+}
+
+func TestUpdateDocumentHandlerRejectsContentOverMaxLength(t *testing.T) {
+	userID := "u-" + t.Name()
+
+	created := doRequest(t, http.MethodPost, "/api/reader/documents", CreateDocumentHandler, userID, `{"content":"original"}`)
+	var createResp struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &createResp); err != nil {
+		t.Fatalf("unmarshal create response: %v", err)
+	}
+
+	tooLong := make([]byte, MaxContentLength+1)
+	for i := range tooLong {
+		tooLong[i] = 'a'
+	}
+	body, err := json.Marshal(map[string]string{"content": string(tooLong)})
+	if err != nil {
+		t.Fatalf("marshal body: %v", err)
+	}
+
+	w := doParamRequest(t, http.MethodPut, "/api/reader/documents/:id", "/api/reader/documents/"+createResp.ID,
+		UpdateDocumentHandler, userID, string(body))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d want %d, body=%s", w.Code, http.StatusBadRequest, w.Body.String())
 	}
 }
 

@@ -36,6 +36,8 @@ func CreateDocumentHandler(c *gin.Context) {
 type documentSummaryResponse struct {
 	ID        string    `json:"id"`
 	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	Preview   string    `json:"preview"`
 }
 
 // ListDocumentsHandler handles GET /api/reader/documents.
@@ -49,7 +51,7 @@ func ListDocumentsHandler(c *gin.Context) {
 
 	summaries := make([]documentSummaryResponse, len(docs))
 	for i, d := range docs {
-		summaries[i] = documentSummaryResponse{ID: d.ID, CreatedAt: d.CreatedAt}
+		summaries[i] = documentSummaryResponse{ID: d.ID, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt, Preview: d.Preview}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "documents": summaries})
@@ -65,6 +67,34 @@ func GetDocumentHandler(c *gin.Context) {
 	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to get document"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":   true,
+		"id":        doc.ID,
+		"content":   doc.Content,
+		"createdAt": doc.CreatedAt,
+		"expiresAt": doc.ExpiresAt,
+	})
+}
+
+// UpdateDocumentHandler handles PUT /api/reader/documents/:id.
+func UpdateDocumentHandler(c *gin.Context) {
+	var req createDocumentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid request body"})
+		return
+	}
+
+	userID := middleware.GetUserIDFromContext(c)
+	doc, err := UpdateDocument(c.Request.Context(), userID, c.Param("id"), req.Content, time.Now())
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "document not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
 		return
 	}
 
