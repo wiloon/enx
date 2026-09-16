@@ -953,6 +953,19 @@ const hideSelectionTranslateButton = () => {
   }
 }
 
+// Global mousedown handler (enableEnx/disableEnx) that dismisses a
+// still-showing button once a new selection gesture starts elsewhere on the
+// page. Must ignore mousedown on the button's own overlay -- otherwise
+// clicking the button itself fires this handler first (mousedown precedes
+// click), tearing the button out of the DOM before its React onClick ever
+// runs, so the click is silently swallowed and nothing gets sent to the
+// Side Panel.
+const handleGlobalMouseDown = (e: MouseEvent) => {
+  const target = e.target as Node
+  if (selectionButtonOverlay && selectionButtonOverlay.contains(target)) return
+  hideSelectionTranslateButton()
+}
+
 const showSelectionTranslateButton = (
   reference: Range,
   onTrigger: () => void
@@ -1139,7 +1152,7 @@ const enableEnx = async (): Promise<boolean> => {
   // still-showing selection-translate button as soon as a new selection
   // gesture starts (ADR-007 Decision §3).
   document.addEventListener('mouseup', handleTextSelection)
-  document.addEventListener('mousedown', hideSelectionTranslateButton)
+  document.addEventListener('mousedown', handleGlobalMouseDown)
 
   // On a 'spa' site (X), re-run automatically when the user switches tweets
   // in-page (ADR-011 Decision 6). Static sites reload + re-inject anyway.
@@ -1175,7 +1188,7 @@ const disableEnx = () => {
 
   // Remove event listeners
   document.removeEventListener('mouseup', handleTextSelection)
-  document.removeEventListener('mousedown', hideSelectionTranslateButton)
+  document.removeEventListener('mousedown', handleGlobalMouseDown)
   hideSelectionTranslateButton()
   spaRebuilderInstance?.stop()
 

@@ -46,6 +46,25 @@
 | **编辑会重置 7 天 TTL，理论上可以靠「定期编辑一下」把文档永久留着**，削弱本 ADR 版权论证依赖的「内容不会长期存在」前提 | 参照 ADR-018 决策 8 同样的推理：这需要用户手动、逐篇、反复操作，摩擦本身就是防线，不是一个值得现在就防的真实滥用信号；真出现再回来加限制（比如编辑次数上限） |
 | **`reader` 包从「create-only 不可变」变成可变**，任何以后读这份 ADR 的人看到 Decision 1 的免责论证（「一次性」「不可变」）会跟这个 Addendum 矛盾 | 本 Addendum 就是显式记录这次推翻的原因和时间，不悄悄改 |
 
+### 上线事故（2026-09-15）：homelab `reader_documents` 迁移失败，`/api/reader/documents` 全线 500
+
+给已有数据的表新加 `updated_at NOT NULL` 列，直接把 homelab 上跑着的 enx-api 干挂了——不是本地测试库（`TestMain` 每次都 `os.Remove` 建全新库，走的是 `CREATE TABLE` 带全部列，从没跑过这条 `ALTER TABLE` 路径，本地测试天生盖不到这个场景）。日志：
+
+```
+SQL logic error: Cannot add a NOT NULL column with default value NULL (1)
+ALTER TABLE `reader_documents` ADD `updated_at` integer NOT NULL
+failed to auto-migrate database: ...
+```
+
+SQLite 不允许给已经有行的表加一个没有默认值的 `NOT NULL` 列。`gorm.AutoMigrate` 这一步失败后只是 `zapLog.Errorf` 记日志、不 fatal（跟这个仓库其它迁移失败的一贯处理方式一样），进程继续跑，但 `reader_documents` 表从此没有 `updated_at` 列——`ListDocuments` 的 `ORDER BY updated_at DESC` 直接报 `no such column: updated_at`，`/api/reader/documents` 全部端点 500，前端表现为「My Documents」列表报 `failed to list documents`。
+
+**修复**：
+1. `ReaderDocument.LastEditedAt` 加 `default:0` gorm tag，让 `ALTER TABLE ... ADD COLUMN` 对已有数据的表也能成功（SQLite 允许加带默认值的 NOT NULL 列）。
+2. `sqlitex.Init()` 里加一条一次性回填：`UPDATE reader_documents SET updated_at = created_at WHERE updated_at = 0`，跟现有的 `users.status` 回填是同一个模式——不这么做的话，迁移前就存在的文档会因为 `updated_at=0` 排到列表最后面。
+3. 补了 `utils/sqlitex/reader_migration_test.go`（照抄 `repair_smoke_test.go` 的写法：手工建一张带数据的旧版表，再跑 `AutoMigrate` + 回填，断言不报错且回填正确）——先验证过这个测试在没有 `default:0` 时确实会红，说明它真的挂住了这次的问题，不是摆设。
+
+**教训**：这仓库所有单元测试的 `TestMain` 都是全新建库，天生测不到「给已有数据的表加列」这条路径；这类 schema 变更以后要么手动在有数据的库上验证一遍，要么就靠这类专门的 migration smoke test（`repair_smoke_test.go` 已经是先例）。
+
 ---
 
 ## Addendum 2（2026-09-15）：「我的文档」列表加内容预览

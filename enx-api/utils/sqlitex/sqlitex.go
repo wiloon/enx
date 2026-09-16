@@ -182,6 +182,17 @@ func Init() {
 	} else if result.RowsAffected > 0 {
 		zapLog.Infof("migrated %d existing users to active status", result.RowsAffected)
 	}
+
+	// One-time data migration: reader_documents rows created before the
+	// updated_at column existed land on its `default:0` (see ReaderDocument)
+	// -- backfill them to created_at so they sort correctly in
+	// reader.ListDocuments (ORDER BY updated_at DESC) instead of all
+	// bunching at the bottom.
+	if result := DB.Exec("UPDATE reader_documents SET updated_at = created_at WHERE updated_at = 0"); result.Error != nil {
+		zapLog.Errorf("failed to backfill reader_documents.updated_at: %v", result.Error)
+	} else if result.RowsAffected > 0 {
+		zapLog.Infof("backfilled updated_at for %d existing reader_documents rows", result.RowsAffected)
+	}
 }
 
 // repairWordsTableDDLIfNeeded rebuilds words without inline "--" comments in
