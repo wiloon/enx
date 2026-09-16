@@ -108,7 +108,7 @@ function UpgradeLink({ className }: { className?: string }) {
       href={`${config.frontendBaseUrl}/billing`}
       target="_blank"
       rel="noopener noreferrer"
-      className={className ?? 'text-blue-600 hover:underline font-medium whitespace-nowrap'}
+      className={className ?? 'text-brand hover:underline font-medium whitespace-nowrap'}
     >
       Subscribe / add credit
     </a>
@@ -135,7 +135,7 @@ const renderSentence = (sentence: string, clickedWord: string): ReactNode => {
       <mark
         key={m.index}
         data-clicked-word="true"
-        className="bg-yellow-200 font-medium rounded-sm px-0.5"
+        className="bg-brand/15 text-foreground font-medium rounded-sm px-0.5"
       >
         {m[0]}
       </mark>
@@ -292,7 +292,7 @@ function PhraseConfirmButton({
         if (e.key === 'Escape') onDismiss()
       }}
       style={{ position: 'fixed', top, left }}
-      className="z-10 inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-blue-600 shadow-xs hover:bg-blue-100"
+      className="z-10 inline-flex items-center rounded-md border border-brand/25 bg-brand-muted px-2 py-1 text-brand shadow-xs hover:bg-brand/15"
     >
       <MagnifyingGlassIcon className="h-4 w-4" aria-hidden="true" />
     </button>
@@ -323,7 +323,7 @@ function WordCard({
 
   return (
     <div
-      className="group relative rounded-lg border border-gray-200 bg-white px-3 py-2.5 hover:bg-gray-50"
+      className="group relative rounded-lg border border-border bg-background px-3 py-2.5 hover:bg-muted"
       data-testid={`sidepanel-card-${card.word}`}
     >
       {/* Headline: word + phonetic + play + Query Count on one row. The
@@ -331,19 +331,19 @@ function WordCard({
           with a 本句 tag so it reads as "this word, in this sentence" rather
           than competing with the phonetic for the same line. */}
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 pr-5">
-        <span className="font-semibold text-gray-800">{card.word}</span>
+        <span className="font-semibold text-foreground">{card.word}</span>
 
         {card.dictionaryStatus === 'loading' ? (
-          <span className="text-gray-400 text-xs">Loading phonetics...</span>
+          <span className="text-muted-foreground text-xs">Loading phonetics...</span>
         ) : (
           phonetic && (
             <span className="inline-flex items-center gap-1">
-              <span className="text-gray-500 text-xs">{phonetic}</span>
+              <span className="text-muted-foreground text-xs">{phonetic}</span>
               <button
                 data-testid={`sidepanel-play-pronunciation-${card.word}`}
                 type="button"
                 onClick={() => playPronunciation(card.word)}
-                className="text-gray-400 hover:text-blue-500 leading-none p-1 -m-1"
+                className="text-muted-foreground hover:text-brand leading-none p-1 -m-1"
                 title="Play pronunciation"
               >
                 <SpeakerWaveIcon className="h-3.5 w-3.5 block" aria-hidden="true" />
@@ -354,7 +354,7 @@ function WordCard({
 
         {card.loadCount !== undefined && (
           <span
-            className="inline-flex items-center gap-0.5 text-xs text-gray-300 ml-auto whitespace-nowrap"
+            className="inline-flex items-center gap-0.5 text-xs text-muted-foreground ml-auto whitespace-nowrap"
             title={`Query Count: ${card.loadCount}`}
           >
             <ArrowPathRoundedSquareIcon className="h-3.5 w-3.5" aria-hidden="true" />
@@ -368,7 +368,7 @@ function WordCard({
         type="button"
         data-testid={`sidepanel-remove-${card.word}`}
         onClick={onRemove}
-        className="absolute top-1.5 right-1.5 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+        className="absolute top-1.5 right-1.5 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
         title="Remove"
         aria-label={`Remove ${card.word}`}
       >
@@ -380,7 +380,7 @@ function WordCard({
           obviously an error and recoverable. */}
       {card.contextStatus === 'error' && (
         <div
-          className="flex items-center justify-between gap-2 text-red-600 text-xs bg-red-50 rounded-sm px-2 py-1 mt-2"
+          className="flex items-center justify-between gap-2 text-destructive text-xs bg-destructive/10 rounded-sm px-2 py-1 mt-2"
           data-testid={`sidepanel-context-error-${card.word}`}
         >
           <span className="flex-1">
@@ -389,13 +389,13 @@ function WordCard({
               : card.contextError}
           </span>
           {card.contextErrorHttpStatus === HTTP_INSUFFICIENT_CREDIT && (
-            <UpgradeLink className="text-red-600 hover:text-red-800 font-medium whitespace-nowrap underline" />
+            <UpgradeLink className="text-destructive hover:text-destructive/80 font-medium whitespace-nowrap underline" />
           )}
           <button
             type="button"
             data-testid={`sidepanel-retry-context-${card.word}`}
             onClick={onRetryContext}
-            className="text-red-600 hover:text-red-800 font-medium whitespace-nowrap"
+            className="text-destructive hover:text-destructive/80 font-medium whitespace-nowrap"
             title="Retry"
           >
             Retry
@@ -407,7 +407,7 @@ function WordCard({
           quota (TASK-SPEC §4.2) was hit, distinct from a generic failure. */}
       {card.dictionaryStatus === 'error' && (
         <div
-          className="flex items-center justify-between gap-2 text-red-600 text-xs bg-red-50 rounded-sm px-2 py-1 mt-2"
+          className="flex items-center justify-between gap-2 text-destructive text-xs bg-destructive/10 rounded-sm px-2 py-1 mt-2"
           data-testid={`sidepanel-dictionary-error-${card.word}`}
         >
           <span className="flex-1">
@@ -416,7 +416,7 @@ function WordCard({
               : card.dictionaryError}
           </span>
           {card.dictionaryErrorHttpStatus === HTTP_QUOTA_EXCEEDED && (
-            <UpgradeLink className="text-red-600 hover:text-red-800 font-medium whitespace-nowrap underline" />
+            <UpgradeLink className="text-destructive hover:text-destructive/80 font-medium whitespace-nowrap underline" />
           )}
         </div>
       )}
@@ -430,14 +430,14 @@ function WordCard({
         card.dictionaryChinese) && (
         <div className="mt-1.5 space-y-1">
           {card.contextStatus === 'loading' && (
-            <p className="text-gray-400 text-sm">
+            <p className="text-muted-foreground text-sm">
               <span className="inline-block animate-spin mr-1">⏳</span>
               Translating...
             </p>
           )}
           {card.contextStatus === 'loaded' && (
-            <p className="text-sm text-blue-700">
-              <span className="mr-1.5 rounded-sm bg-blue-50 px-1 py-0.5 text-[10px] font-medium text-blue-500">
+            <p className="text-sm text-brand">
+              <span className="mr-1.5 rounded-sm bg-brand-muted px-1 py-0.5 text-[10px] font-medium text-brand">
                 in context
               </span>
               <span className="font-medium">{card.contextChinese}</span>
@@ -446,19 +446,19 @@ function WordCard({
           {card.contextStatus === 'loaded' && card.contextWhy && (
             <p
               data-testid={`sidepanel-context-why-${card.word}`}
-              className="text-xs italic text-gray-400"
+              className="text-xs italic text-muted-foreground"
             >
               {card.contextWhy}
             </p>
           )}
 
           {card.dictionaryStatus === 'loading' ? (
-            <p className="text-gray-400 text-xs">Loading dictionary definition...</p>
+            <p className="text-muted-foreground text-xs">Loading dictionary definition...</p>
           ) : (
             card.dictionaryChinese && (
               <div>
                 <p
-                  className={`text-gray-500 text-sm whitespace-pre-line ${expanded ? '' : 'line-clamp-3'}`}
+                  className={`text-muted-foreground text-sm whitespace-pre-line ${expanded ? '' : 'line-clamp-3'}`}
                 >
                   {card.dictionaryChinese}
                 </p>
@@ -467,7 +467,7 @@ function WordCard({
                     type="button"
                     data-testid={`sidepanel-toggle-meaning-${card.word}`}
                     onClick={onToggleExpand}
-                    className="text-xs text-gray-400 hover:text-blue-500 mt-0.5"
+                    className="text-xs text-muted-foreground hover:text-brand mt-0.5"
                   >
                     {expanded ? 'Collapse' : 'Expand'}
                   </button>
@@ -560,12 +560,12 @@ function SentenceBlock({
   return (
     <div
       data-testid={`sidepanel-sentence-entry-${entry.id}`}
-      className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3"
+      className="space-y-3 rounded-lg border border-border bg-muted p-3"
     >
       <div>
         {entry.sourceUrl && (
           <div
-            className="text-xs text-gray-400 mb-1 truncate"
+            className="text-xs text-muted-foreground mb-1 truncate"
             title={entry.sourceUrl}
             data-testid="sidepanel-source-url"
           >
@@ -574,7 +574,7 @@ function SentenceBlock({
         )}
         <p
           ref={sentenceRef}
-          className="text-gray-900 leading-relaxed select-text"
+          className="text-foreground leading-relaxed select-text"
           data-testid="sidepanel-sentence"
           onMouseUp={handleSentenceSelection}
         >
@@ -592,15 +592,15 @@ function SentenceBlock({
         )}
       </div>
 
-      <div className="border-t border-gray-100 pt-3">
+      <div className="border-t border-border pt-3">
         {entry.status === 'loading' && (
-          <div className="text-gray-500" data-testid="sidepanel-loading">
+          <div className="text-muted-foreground" data-testid="sidepanel-loading">
             <span className="inline-block animate-spin mr-2">⏳</span>
             Translating...
           </div>
         )}
         {entry.status === 'error' && (
-          <div className="text-red-600" data-testid="sidepanel-error">
+          <div className="text-destructive" data-testid="sidepanel-error">
             {entry.errorHttpStatus === HTTP_INSUFFICIENT_CREDIT ? (
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span>Not enough AI translation credit</span>
@@ -612,7 +612,7 @@ function SentenceBlock({
           </div>
         )}
         {entry.status === 'loaded' && (
-          <p className="text-gray-800" data-testid="sidepanel-chinese">
+          <p className="text-foreground" data-testid="sidepanel-chinese">
             {entry.chinese}
           </p>
         )}
@@ -1094,7 +1094,7 @@ function SidePanelContent() {
   // all yet.
   if (entries.length === 0) {
     return (
-      <div className="p-4 text-gray-500 text-sm" data-testid="sidepanel-empty-state">
+      <div className="p-4 text-muted-foreground text-sm" data-testid="sidepanel-empty-state">
         Click any highlighted word in the page text, then click the sentence-translation icon in the popup. The full English sentence and its Chinese translation will appear here.
       </div>
     )
@@ -1110,7 +1110,7 @@ function SidePanelContent() {
             setEntries([])
             setExpandedWords(new Set())
           }}
-          className="text-xs text-gray-400 hover:text-red-500"
+          className="text-xs text-muted-foreground hover:text-destructive"
         >
           Clear
         </button>

@@ -28,10 +28,25 @@ beforeEach(() => {
 })
 
 describe('review-stage palette', () => {
+  const parsed = WordProcessor.HIGHLIGHT_BUCKET_COLORS.map(c => {
+    const m = c.match(/^oklch\(([\d.]+) ([\d.]+) ([\d.]+)\)$/)
+    if (!m) throw new Error(`not an oklch() colour: ${c}`)
+    return { L: Number(m[1]), C: Number(m[2]), H: Number(m[3]) }
+  })
+
   it('has exactly REVIEW_BUCKET_COUNT colours', () => {
-    expect(WordProcessor.HIGHLIGHT_BUCKET_HSL).toHaveLength(
+    expect(WordProcessor.HIGHLIGHT_BUCKET_COLORS).toHaveLength(
       WordProcessor.REVIEW_BUCKET_COUNT
     )
+  })
+
+  // The ramp encodes an order, so it has to be readable as one: a single hue
+  // whose lightness climbs. A rainbow passes every other test we have.
+  it('is a single-hue ramp with monotonically rising lightness', () => {
+    expect(new Set(parsed.map(p => p.H)).size).toBe(1)
+    for (let i = 1; i < parsed.length; i++) {
+      expect(parsed[i].L - parsed[i - 1].L).toBeGreaterThanOrEqual(0.06)
+    }
   })
 })
 

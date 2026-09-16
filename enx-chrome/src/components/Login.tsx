@@ -26,8 +26,8 @@ export default function Login({ onLoginSuccess, children }: LoginProps) {
 
   if (!isLoaded) {
     return (
-      <div className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-slate-400">
-        <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-200 border-t-slate-500" />
+      <div className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-muted-foreground">
+        <span className="h-4 w-4 animate-spin rounded-full border-2 border-border border-t-muted-foreground" />
         Loading…
       </div>
     )
@@ -53,19 +53,19 @@ export default function Login({ onLoginSuccess, children }: LoginProps) {
   return (
     <div className="px-4 py-7">
       <div className="flex flex-col items-center text-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-500 text-white shadow-lg shadow-sky-500/20">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand text-brand-foreground shadow-lg shadow-brand/20">
           <AcademicCapIcon className="h-7 w-7" />
         </div>
-        <h2 className="mt-4 text-base font-semibold text-slate-800">
+        <h2 className="mt-4 text-base font-semibold text-foreground">
           Sign in to ENX
         </h2>
-        <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500">
+        <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
           Sign in to highlight new words and look them up as you read.
         </p>
       </div>
 
       {error && (
-        <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+        <p className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
           {error}
         </p>
       )}
@@ -73,12 +73,12 @@ export default function Login({ onLoginSuccess, children }: LoginProps) {
       <button
         type="button"
         onClick={openWebSignIn}
-        className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-500 py-2.5 text-sm font-medium text-white shadow-md shadow-sky-500/25 transition hover:brightness-105 active:scale-[0.99]"
+        className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-2.5 text-sm font-medium text-brand-foreground shadow-md shadow-brand/25 transition hover:brightness-105 active:scale-[0.99]"
       >
         Sign in on the website
         <ArrowRightIcon className="h-4 w-4" />
       </button>
-      <p className="mt-2.5 text-center text-[11px] leading-relaxed text-slate-400">
+      <p className="mt-2.5 text-center text-[11px] leading-relaxed text-muted-foreground">
         This opens a new tab. Finish signing in there, then come back here and the popup will refresh automatically.
       </p>
     </div>

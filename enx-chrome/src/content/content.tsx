@@ -38,6 +38,21 @@ import tailwindCss from '@/index.css?inline'
 
 console.log('ENX Content script loaded')
 
+// Colours for the elements we inject straight into the host page. These cannot
+// use the tokens from index.css: that stylesheet is only ever attached inside
+// our shadow roots, so a var() here would resolve against the host page and
+// come back empty. Literals, kept in step with index.css by hand -- and kept
+// together here rather than buried in the cssText blocks that use them.
+const HOST_PAGE_COLORS = {
+  destructive: 'oklch(0.577 0.245 27.325)', // mirrors --color-destructive
+  success: 'oklch(0.58 0.14 150)', // mirrors --color-success
+  // ADR-025, the sentence a word click opened the panel for. The one warm
+  // accent in the system, and intentionally so: it is a transient locator on
+  // someone else's page, where a warm wash stays legible against backgrounds
+  // that the cool tokens have to compete with.
+  activeSentenceWash: 'hsl(45 95% 55% / 35%)',
+} as const
+
 // Tailwind v4 declares its --tw-* variables with @property, and browsers ignore
 // @property inside a shadow root. Unregistered, those variables resolve to the
 // guaranteed-invalid value, which silently kills every utility built on them --
@@ -522,7 +537,7 @@ const showSessionExpiredMessage = (isLoginError = false) => {
     position: fixed;
     top: 20px;
     right: 20px;
-    background: #ff5722;
+    background: ${HOST_PAGE_COLORS.destructive};
     color: white;
     padding: 16px 20px;
     border-radius: 8px;
@@ -852,7 +867,7 @@ const addProcessingCompleteIndicator = (articleNode: Element) => {
     position: relative;
     display: inline-flex;
     align-items: center;
-    background: linear-gradient(90deg, #4CAF50, #45a049);
+    background: ${HOST_PAGE_COLORS.success};
     color: white;
     padding: 8px 12px;
     border-radius: 20px;
@@ -1105,7 +1120,7 @@ const showSelectionTranslateButton = (
     <button
       type="button"
       onClick={handleClick}
-      className="flex items-center justify-center h-7 w-7 rounded-full bg-blue-500 hover:bg-blue-600 text-white shadow-md"
+      className="flex items-center justify-center h-7 w-7 rounded-full bg-brand hover:bg-brand/90 text-brand-foreground shadow-md"
       title="Translate selection"
       aria-label="Translate selection"
     >
@@ -1406,18 +1421,18 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 const highlightStyles = document.createElement('style')
 highlightStyles.setAttribute('data-enx-highlight-styles', 'true')
 highlightStyles.textContent =
-  WordProcessor.HIGHLIGHT_BUCKET_HSL.map(
-    (hsl, i) =>
+  WordProcessor.HIGHLIGHT_BUCKET_COLORS.map(
+    (color, i) =>
       `::highlight(${WordProcessor.HIGHLIGHT_NAME_PREFIX}${i + 1}) {` +
       ` text-decoration-line: underline;` +
-      ` text-decoration-color: hsl(${hsl});` +
+      ` text-decoration-color: ${color};` +
       ` text-decoration-thickness: 1px; }`
   ).join('\n') +
   // ADR-025: background wash for the sentence a word click most recently
   // opened the sentence panel for -- a different visual channel
   // (background, not underline) so it reads distinctly from review buckets.
   `\n::highlight(${WordProcessor.ACTIVE_SENTENCE_HIGHLIGHT_NAME}) {` +
-  ` background-color: hsl(45 95% 55% / 35%); }`
+  ` background-color: ${HOST_PAGE_COLORS.activeSentenceWash}; }`
 if (!document.head.querySelector('style[data-enx-highlight-styles]')) {
   document.head.appendChild(highlightStyles)
 }

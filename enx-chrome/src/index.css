@@ -1,3 +1,38 @@
 /* source("../") pins automatic content detection to the extension root; without
    it Tailwind walks up to the monorepo git root and scans enx-ui/enx-api too. */
 @import 'tailwindcss' source('../');
+
+/* Automatic detection reads Markdown too, so class names quoted in docs get
+   real CSS generated for them. */
+@source not '../docs';
+
+/* Shares enx-ui's shadcn token values verbatim (enx-ui/src/app/globals.css) so
+   the extension and the web app read as one product. --brand is the ENX accent
+   and carries the colourful actions here; --primary stays near-black, as it is
+   there. The review-stage underline ramp is NOT here: it paints the host page,
+   which cannot see these properties -- it lives in WordProcessor. */
+@theme {
+  --color-background: oklch(1 0 0);
+  --color-foreground: oklch(0.145 0 0);
+  --color-muted: oklch(0.97 0 0);
+  --color-muted-foreground: oklch(0.556 0 0);
+  --color-border: oklch(0.922 0 0);
+  --color-primary: oklch(0.205 0 0);
+  --color-primary-foreground: oklch(0.985 0 0);
+  --color-destructive: oklch(0.577 0.245 27.325);
+  --color-destructive-foreground: oklch(0.985 0 0);
+
+  /* Every brand shade derives from this one angle, so retuning the accent is a
+     one-number edit (mirror it in enx-ui/src/app/globals.css).
+     Hue 200, not enx-ui's original 230: 230 sat 9 degrees from the most
+     contested point in this category (Quizlet, Readwise, Anki, Busuu,
+     Rosetta Stone all cluster at 239-270 in OKLCH). */
+  --brand-hue: 200;
+  --color-brand: oklch(0.55 0.13 var(--brand-hue));
+  --color-brand-foreground: oklch(0.985 0 0);
+  --color-brand-muted: oklch(0.96 0.02 var(--brand-hue));
+
+  /* No counterpart in enx-ui yet -- the extension needs it for "acquainted". */
+  --color-success: oklch(0.58 0.14 150);
+  --color-success-foreground: oklch(0.985 0 0);
+}

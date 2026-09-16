@@ -72,45 +72,45 @@ function OptionsContent() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-8 flex items-center justify-center">
-        <div className="text-gray-600">Loading...</div>
+      <div className="min-h-screen bg-muted p-8 flex items-center justify-center">
+        <div className="text-muted-foreground">Loading...</div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="min-h-screen bg-muted p-8">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-800 mb-8">
+        <h1 className="text-3xl font-bold text-foreground mb-8">
           Enx Extension Options
         </h1>
 
         {/* Current Environment Info */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <h3 className="text-sm font-semibold text-blue-800 mb-2">
+        <div className="bg-brand-muted border border-brand/25 rounded-lg p-4 mb-6">
+          <h3 className="text-sm font-semibold text-brand mb-2">
             Current Environment
           </h3>
-          <p className="text-sm text-blue-700">
+          <p className="text-sm text-brand">
             <span className="font-medium">Mode:</span> {config.environment}
           </p>
-          <p className="text-sm text-blue-700">
+          <p className="text-sm text-brand">
             <span className="font-medium">Default API:</span>{' '}
             {config.apiBaseUrl}
           </p>
-          <p className="text-sm text-blue-700">
+          <p className="text-sm text-brand">
             <span className="font-medium">Active API:</span> {apiBaseUrl}
           </p>
         </div>
 
         {/* API URL Configuration */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">
+        <div className="bg-background rounded-lg shadow-lg p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4 text-foreground">
             API URL Configuration
           </h2>
 
           {/* Preset URLs */}
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-3">
+            <label className="block text-sm font-medium text-foreground mb-3">
               Quick Select:
             </label>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -120,8 +120,8 @@ function OptionsContent() {
                   onClick={() => setCustomUrl(preset.url)}
                   className={`p-3 rounded-lg border-2 transition-all ${
                     customUrl === preset.url
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300'
+                      ? 'border-brand bg-brand-muted text-brand'
+                      : 'border-border bg-background text-foreground hover:border-brand/50'
                   }`}
                 >
                   <div className="font-medium text-sm">{preset.label}</div>
@@ -135,7 +135,7 @@ function OptionsContent() {
           <div className="mb-4">
             <label
               htmlFor="apiUrl"
-              className="block text-sm font-medium text-gray-700 mb-2"
+              className="block text-sm font-medium text-foreground mb-2"
             >
               Custom API URL:
             </label>
@@ -145,9 +145,9 @@ function OptionsContent() {
               value={customUrl}
               onChange={e => setCustomUrl(e.target.value)}
               placeholder="http://localhost:8090"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-transparent"
             />
-            <p className="mt-2 text-sm text-gray-500">
+            <p className="mt-2 text-sm text-muted-foreground">
               Enter the base URL of your ENX API server (e.g.,
               http://localhost:8090)
             </p>
@@ -157,13 +157,13 @@ function OptionsContent() {
           <div className="flex gap-3">
             <button
               onClick={handleSave}
-              className="px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg transition-colors"
+              className="px-6 py-2 bg-brand hover:bg-brand/90 text-brand-foreground font-medium rounded-lg transition-colors"
             >
               Save
             </button>
             <button
               onClick={handleReset}
-              className="px-6 py-2 bg-gray-500 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors"
+              className="px-6 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg transition-colors"
             >
               Reset to Default
             </button>
@@ -174,8 +174,8 @@ function OptionsContent() {
             <div
               className={`mt-4 p-3 rounded-lg ${
                 message.startsWith('✅')
-                  ? 'bg-green-50 text-green-700'
-                  : 'bg-red-50 text-red-700'
+                  ? 'bg-success/10 text-success'
+                  : 'bg-destructive/10 text-destructive'
               }`}
             >
               {message}
@@ -184,8 +184,8 @@ function OptionsContent() {
         </div>
 
         {/* Reading Preferences */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">
+        <div className="bg-background rounded-lg shadow-lg p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4 text-foreground">
             Reading Preferences
           </h2>
           <label className="flex items-start gap-3 cursor-pointer">
@@ -194,13 +194,13 @@ function OptionsContent() {
               data-testid="word-highlight-toggle"
               checked={wordHighlightEnabled}
               onChange={e => setWordHighlightEnabled(e.target.checked)}
-              className="mt-1 h-4 w-4 rounded-sm border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="mt-1 h-4 w-4 rounded-sm border-border text-brand focus:ring-brand"
             />
             <span>
-              <span className="block text-sm font-medium text-gray-800">
+              <span className="block text-sm font-medium text-foreground">
                 Highlight vocabulary while reading
               </span>
-              <span className="block text-sm text-gray-500">
+              <span className="block text-sm text-muted-foreground">
                 Underlines words worth reviewing. Turn off for a clean page —
                 you can still click any word to look it up.
               </span>
@@ -209,23 +209,23 @@ function OptionsContent() {
         </div>
 
         {/* Help Section */}
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">Help</h2>
-          <div className="space-y-3 text-sm text-gray-600">
+        <div className="bg-background rounded-lg shadow-lg p-6">
+          <h2 className="text-xl font-semibold mb-4 text-foreground">Help</h2>
+          <div className="space-y-3 text-sm text-muted-foreground">
             <p>
-              <strong className="text-gray-800">Development (Local):</strong>{' '}
+              <strong className="text-foreground">Development (Local):</strong>{' '}
               Use http://localhost:8090 when running the API server locally for
               development.
             </p>
             <p>
-              <strong className="text-gray-800">Lab:</strong> Use
+              <strong className="text-foreground">Lab:</strong> Use
               https://enx-api.wiloon.lab for the homelab lab deployment.
             </p>
             <p>
-              <strong className="text-gray-800">Production:</strong> Use
+              <strong className="text-foreground">Production:</strong> Use
               https://enx-api.wiloon.com for the live production environment.
             </p>
-            <p className="text-gray-500 text-xs mt-4">
+            <p className="text-muted-foreground text-xs mt-4">
               💡 Tip: After changing the API URL, you may need to log in again.
             </p>
           </div>

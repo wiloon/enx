@@ -63,16 +63,16 @@ export default function WordPopover({
     return (
       <div
         ref={rootRef}
-        className="bg-white rounded-lg shadow-xl border border-gray-200 p-3 w-full outline-hidden"
+        className="bg-background rounded-lg shadow-xl border border-border p-3 w-full outline-hidden"
         tabIndex={-1}
         onKeyDown={handleKeyDown}
       >
         <div className="flex justify-between items-start">
-          <span className="text-sm text-gray-500">Selection translation</span>
+          <span className="text-sm text-muted-foreground">Selection translation</span>
           <button
             data-testid="word-popover-close"
             onClick={onClose}
-            className="text-gray-400 hover:text-red-500 text-xl leading-none ml-2"
+            className="text-muted-foreground hover:text-destructive text-xl leading-none ml-2"
             title="Close"
           >
             ×
@@ -81,7 +81,7 @@ export default function WordPopover({
         {sentencePanelHint && (
           <div
             data-testid="word-popover-sentence-panel-hint"
-            className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-sm text-blue-700 text-xs"
+            className="mt-2 p-2 bg-brand-muted border border-brand/25 rounded-sm text-brand text-xs"
           >
             {sentencePanelHint}
           </div>
@@ -93,7 +93,7 @@ export default function WordPopover({
   return (
     <div
       ref={rootRef}
-      className="bg-white rounded-lg shadow-xl border border-gray-200 p-3 w-full outline-hidden"
+      className="bg-background rounded-lg shadow-xl border border-border p-3 w-full outline-hidden"
       tabIndex={-1}
       onKeyDown={handleKeyDown}
     >
@@ -103,17 +103,17 @@ export default function WordPopover({
         className="flex justify-between items-center gap-2 mb-2"
       >
         <div className="flex flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
-          <h3 className="text-lg font-bold text-gray-800 leading-tight">
+          <h3 className="text-lg font-bold text-foreground leading-tight">
             {currentWord?.English || word}
           </h3>
           {formatPhonetic(currentWord?.Pronunciation) && (
-            <span className="inline-flex items-center gap-1 text-sm text-gray-500">
+            <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
               {formatPhonetic(currentWord?.Pronunciation)}
               <button
                 data-testid="word-popover-play-pronunciation"
                 type="button"
                 onClick={() => currentWord && playPronunciation(currentWord.English)}
-                className="text-gray-400 hover:text-blue-500 leading-none p-1 -m-1"
+                className="text-muted-foreground hover:text-brand leading-none p-1 -m-1"
                 title="Play pronunciation"
               >
                 <SpeakerWaveIcon className="h-3.5 w-3.5 block" aria-hidden="true" />
@@ -122,7 +122,7 @@ export default function WordPopover({
           )}
           {currentWord?.LoadCount !== undefined && (
             <span
-              className="inline-flex items-center gap-0.5 text-xs text-gray-400"
+              className="inline-flex items-center gap-0.5 text-xs text-muted-foreground"
               title={`Query Count: ${currentWord.LoadCount}`}
             >
               <ArrowPathRoundedSquareIcon className="h-3 w-3" aria-hidden="true" />
@@ -133,7 +133,7 @@ export default function WordPopover({
         <button
           data-testid="word-popover-close"
           onClick={onClose}
-          className="text-gray-400 hover:text-red-500 text-xl leading-none ml-1 shrink-0"
+          className="text-muted-foreground hover:text-destructive text-xl leading-none ml-1 shrink-0"
           title="Close"
         >
           ×
@@ -145,10 +145,10 @@ export default function WordPopover({
         {isTranslating && (
           <div className="space-y-3">
             <div className="animate-pulse">
-              <div className="h-4 bg-gray-200 rounded-sm w-3/4 mb-2"></div>
-              <div className="h-4 bg-gray-200 rounded-sm w-1/2"></div>
+              <div className="h-4 bg-muted rounded-sm w-3/4 mb-2"></div>
+              <div className="h-4 bg-muted rounded-sm w-1/2"></div>
             </div>
-            <div className="text-center text-gray-500 text-sm">
+            <div className="text-center text-muted-foreground text-sm">
               <span className="inline-block animate-spin mr-2">⏳</span>
               Loading translation...
             </div>
@@ -159,9 +159,9 @@ export default function WordPopover({
         {error && !isTranslating && (
           <div
             data-testid="word-popover-error"
-            className="p-3 bg-red-50 border border-red-200 rounded-sm mb-3"
+            className="p-3 bg-destructive/10 border border-destructive/25 rounded-sm mb-3"
           >
-            <p className="text-red-700 text-sm">{error}</p>
+            <p className="text-destructive text-sm">{error}</p>
           </div>
         )}
 
@@ -170,14 +170,14 @@ export default function WordPopover({
           <div className="space-y-2">
             {/* Chinese translation */}
             {currentWord.Chinese && (
-              <p className="text-sm leading-relaxed text-gray-800">
+              <p className="text-sm leading-relaxed text-foreground">
                 {currentWord.Chinese}
               </p>
             )}
 
             {/* Acquainted status */}
             {currentWord.AlreadyAcquainted === 1 && (
-              <div className="text-green-600 text-sm font-medium">
+              <div className="text-success text-sm font-medium">
                 ✓ Already acquainted
               </div>
             )}
@@ -185,13 +185,13 @@ export default function WordPopover({
         )}
 
         {/* Action buttons */}
-        <div className="flex justify-between items-center mt-3 pt-2 border-t border-gray-100">
+        <div className="flex justify-between items-center mt-3 pt-2 border-t border-border">
           <div className="flex items-center gap-3">
             <a
               href={getYoudaoUrl(currentWord?.English || word)}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-blue-500 hover:text-blue-600 text-sm"
+              className="inline-flex items-center gap-1 text-brand hover:text-brand/80 text-sm"
               title="Open in Youdao Dictionary"
             >
               <BookOpenIcon className="h-4 w-4" aria-hidden="true" />
@@ -200,7 +200,7 @@ export default function WordPopover({
             <button
               data-testid="word-popover-sentence-translation"
               onClick={onOpenSentencePanel}
-              className="inline-flex items-center text-blue-500 hover:text-blue-600"
+              className="inline-flex items-center text-brand hover:text-brand/80"
               title="Sentence translation (translate the whole sentence in the side panel)"
               aria-label="Sentence translation"
             >
@@ -212,7 +212,7 @@ export default function WordPopover({
             <button
               data-testid="word-popover-mark-known"
               onClick={() => onMarkAcquainted(currentWord.English)}
-              className="bg-green-500 hover:bg-green-600 text-white text-sm px-3 py-1 rounded-sm transition-colors"
+              className="bg-success hover:bg-success/90 text-success-foreground text-sm px-3 py-1 rounded-sm transition-colors"
               title="Mark as acquainted"
             >
               ✓ Know It
@@ -228,7 +228,7 @@ export default function WordPopover({
         {sentencePanelHint && (
           <div
             data-testid="word-popover-sentence-panel-hint"
-            className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-sm text-blue-700 text-xs"
+            className="mt-2 p-2 bg-brand-muted border border-brand/25 rounded-sm text-brand text-xs"
           >
             {sentencePanelHint}
           </div>

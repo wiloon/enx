@@ -30,17 +30,25 @@ export class WordProcessor {
   // CSS Custom Highlight API registry names, one per review stage
   // (ADR-011 Decision 1 / E1). The underline colour for each stage lives
   // here too so the count and the palette stay in one place -- the content
-  // script generates the ::highlight() rules from HIGHLIGHT_BUCKET_HSL.
-  // Warm/urgent for a freshly-learned word, cool/faint as it nears "known".
+  // script generates the ::highlight() rules from HIGHLIGHT_BUCKET_COLORS.
+  //
+  // An ordinal ramp: one hue, lightness rising monotonically, so a reader can
+  // tell stage order from the colour alone. The previous red/orange/yellow/
+  // green/blue scale could not be ordered by eye, and it spent five hues on a
+  // single encoding, leaving nothing of the wheel for the rest of the UI.
+  // Violet is deliberately none of link-blue, marker-yellow, success-green or
+  // error-red, so an underline never impersonates one of those.
+  // Literal colours, not tokens: these rules are injected into the host page's
+  // document, which has none of our custom properties.
   static readonly HIGHLIGHT_NAME_PREFIX = 'enx-hl-'
-  static readonly HIGHLIGHT_BUCKET_HSL: readonly string[] = [
-    '0 72% 48%', // 1 - very new
-    '28 80% 45%', // 2
-    '45 85% 38%', // 3
-    '150 45% 38%', // 4
-    '212 55% 50%', // 5 - nearly known
+  static readonly HIGHLIGHT_BUCKET_COLORS: readonly string[] = [
+    'oklch(0.45 0.13 305)', // 1 - very new, most prominent
+    'oklch(0.53 0.13 305)', // 2
+    'oklch(0.61 0.12 305)', // 3
+    'oklch(0.69 0.1 305)', // 4
+    'oklch(0.77 0.08 305)', // 5 - nearly known, faintest
   ]
-  static readonly REVIEW_BUCKET_COUNT = this.HIGHLIGHT_BUCKET_HSL.length
+  static readonly REVIEW_BUCKET_COUNT = this.HIGHLIGHT_BUCKET_COLORS.length
 
   // Marks the sentence a word-click just opened the sentence panel for
   // (ADR-025), so the user can find it again after returning from the side

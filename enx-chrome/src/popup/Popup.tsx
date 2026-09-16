@@ -55,20 +55,20 @@ function Header() {
   }
 
   return (
-    <header className="flex items-center gap-2.5 border-b border-slate-200/70 bg-white px-4 py-3">
-      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-sky-500 to-indigo-500 text-white">
+    <header className="flex items-center gap-2.5 border-b border-border bg-background px-4 py-3">
+      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-brand-foreground">
         <AcademicCapIcon className="h-[18px] w-[18px]" />
       </div>
       <div className="flex-1 leading-tight">
-        <p className="text-sm font-semibold text-slate-800">ENX</p>
-        <p className="text-[11px] text-slate-400">English Reading Assistant</p>
+        <p className="text-sm font-semibold text-foreground">ENX</p>
+        <p className="text-[11px] text-muted-foreground">English Reading Assistant</p>
       </div>
       <button
         type="button"
         onClick={openOptions}
         title="Settings"
         aria-label="Settings"
-        className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+        className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
       >
         <Cog6ToothIcon className="h-[18px] w-[18px]" />
       </button>
@@ -147,15 +147,15 @@ function SignedInBody({
 
   return (
     <div className="space-y-2.5 p-3">
-      <div className="flex items-center gap-3 rounded-xl bg-white p-3 shadow-xs ring-1 ring-slate-200/60">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-400 to-indigo-400 text-sm font-semibold text-white">
+      <div className="flex items-center gap-3 rounded-xl bg-background p-3 shadow-xs ring-1 ring-border">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-sm font-semibold text-brand-foreground">
           {initial}
         </div>
         <div className="min-w-0 flex-1 leading-tight">
-          <p className="truncate text-sm font-medium text-slate-800">
+          <p className="truncate text-sm font-medium text-foreground">
             {displayName}
           </p>
-          <p className="truncate text-[11px] text-slate-400">
+          <p className="truncate text-[11px] text-muted-foreground">
             {email || 'Signed in'}
           </p>
         </div>
@@ -171,7 +171,7 @@ function SignedInBody({
             type="button"
             title="Sign out"
             aria-label="Sign out"
-            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+            className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
           >
             <ArrowRightOnRectangleIcon className="h-[18px] w-[18px]" />
           </button>
@@ -179,7 +179,7 @@ function SignedInBody({
       </div>
 
       {error && (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+        <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
           {error}
         </p>
       )}
@@ -188,7 +188,7 @@ function SignedInBody({
         type="button"
         onClick={handleEnableLearning}
         disabled={learningStatus === 'processing'}
-        className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-500 py-2.5 text-sm font-semibold text-white shadow-md shadow-sky-500/25 transition hover:brightness-105 active:scale-[0.99] disabled:opacity-60"
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-2.5 text-sm font-semibold text-brand-foreground shadow-md shadow-brand/25 transition hover:brightness-105 active:scale-[0.99] disabled:opacity-60"
       >
         {learningStatus === 'completed' ? (
           <CheckCircleIcon className="h-[18px] w-[18px]" />
@@ -206,26 +206,26 @@ function SignedInBody({
         type="button"
         data-testid="popup-open-sentence-panel"
         onClick={handleOpenSentencePanel}
-        className="flex w-full items-center gap-3 rounded-xl bg-white px-3 py-2.5 text-left shadow-xs ring-1 ring-slate-200/60 transition hover:ring-sky-300"
+        className="flex w-full items-center gap-3 rounded-xl bg-background px-3 py-2.5 text-left shadow-xs ring-1 ring-border transition hover:ring-brand/50"
       >
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-50 text-sky-500">
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-muted text-brand">
           <LanguageIcon className="h-[18px] w-[18px]" />
         </span>
-        <span className="flex-1 text-sm font-medium text-slate-700">
+        <span className="flex-1 text-sm font-medium text-foreground">
           Sentence translation panel
         </span>
-        <ChevronRightIcon className="h-4 w-4 text-slate-300" />
+        <ChevronRightIcon className="h-4 w-4 text-muted-foreground" />
       </button>
 
-      <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-white px-3 py-2.5 shadow-xs ring-1 ring-slate-200/60">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-500">
+      <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-background px-3 py-2.5 shadow-xs ring-1 ring-border">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-muted text-brand">
           <BookOpenIcon className="h-[18px] w-[18px]" />
         </span>
         <span className="min-w-0 flex-1 leading-tight">
-          <span className="block text-sm font-medium text-slate-700">
+          <span className="block text-sm font-medium text-foreground">
             Highlight new words while reading
           </span>
-          <span className="block text-[11px] text-slate-400">
+          <span className="block text-[11px] text-muted-foreground">
             Underline words worth reviewing
           </span>
         </span>
@@ -237,8 +237,8 @@ function SignedInBody({
             onChange={e => setWordHighlightEnabled(e.target.checked)}
             className="peer sr-only"
           />
-          <span className="block h-5 w-9 rounded-full bg-slate-200 transition peer-checked:bg-sky-500 peer-focus-visible:ring-2 peer-focus-visible:ring-sky-400 peer-focus-visible:ring-offset-1" />
-          <span className="pointer-events-none absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition peer-checked:translate-x-4" />
+          <span className="block h-5 w-9 rounded-full bg-border transition peer-checked:bg-brand peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-1" />
+          <span className="pointer-events-none absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-background shadow-sm transition peer-checked:translate-x-4" />
         </span>
       </label>
     </div>
@@ -256,7 +256,7 @@ function PopupContent() {
   }
 
   return (
-    <div className="w-[340px] bg-slate-50 font-sans text-slate-900 antialiased">
+    <div className="w-[340px] bg-muted font-sans text-foreground antialiased">
       <ClerkUserSync />
       <Header />
       <div className="min-h-[180px]">

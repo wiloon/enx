@@ -48,8 +48,14 @@
 :root {
   --radius: 0.625rem;
   /* Marketing accent (ADR-013 Decision 4): the "cat's eye nebula" teal-blue,
-     used only in the marketing area for CTAs, links and icon accents. */
-  --brand: oklch(0.55 0.13 230);
+     used only in the marketing area for CTAs, links and icon accents.
+     Both the light and dark shades derive from --brand-hue, so retuning the
+     accent is a one-number edit (mirror it in enx-chrome/src/index.css).
+     Hue 200, moved off 230: that sat 9 degrees from where this category piles
+     up (Quizlet, Readwise, Anki, Busuu and Rosetta Stone all land in 239-270
+     OKLCH). enx-chrome uses the same value as its action colour. */
+  --brand-hue: 200;
+  --brand: oklch(0.55 0.13 var(--brand-hue));
   --brand-foreground: oklch(0.985 0 0);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -85,7 +91,7 @@
 }
 
 .dark {
-  --brand: oklch(0.7 0.12 230);
+  --brand: oklch(0.7 0.12 var(--brand-hue));
   --brand-foreground: oklch(0.205 0 0);
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);

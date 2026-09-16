@@ -12,14 +12,14 @@ export default function HelloWorld() {
   }
 
   return (
-    <div className="p-6 max-w-md mx-auto bg-white rounded-lg shadow-lg">
-      <h1 className="text-2xl font-bold text-gray-800 mb-4">
+    <div className="p-6 max-w-md mx-auto bg-background rounded-lg shadow-lg">
+      <h1 className="text-2xl font-bold text-foreground mb-4">
         Enx Chrome Extension
       </h1>
-      <p className="text-gray-600 mb-4">{message}</p>
+      <p className="text-muted-foreground mb-4">{message}</p>
       <button
         onClick={handleClick}
-        className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-sm transition-colors"
+        className="bg-brand hover:bg-brand/90 text-brand-foreground font-medium py-2 px-4 rounded-sm transition-colors"
       >
         Click me! ({count})
       </button>
