@@ -80,25 +80,21 @@ describe('FeatureSection', () => {
 })
 
 describe('Comparison', () => {
-  it('has a highlighted Catseye column plus competitor columns', () => {
+  it('lists similar apps, including Sentiaread', () => {
     render(<Comparison />)
-    const catseye = screen.getByRole('columnheader', { name: 'Catseye' })
-    expect(catseye).toHaveAttribute('aria-current', 'true')
-    expect(
-      screen.getByRole('columnheader', { name: 'Immersive Translate' })
-    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Immersive Translate' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Sentiaread' })).toBeInTheDocument()
   })
 
-  it('labels every yes/partial/no cell for screen readers', () => {
+  it('ranks apps by users/stars descending', () => {
     render(<Comparison />)
-    expect(screen.getAllByLabelText('yes').length).toBeGreaterThan(0)
-    expect(screen.getAllByLabelText('partial').length).toBeGreaterThan(0)
-    expect(screen.getAllByLabelText('no').length).toBeGreaterThan(0)
+    const names = screen.getAllByRole('link').map((a) => a.textContent)
+    expect(names.indexOf('Immersive Translate')).toBeLessThan(names.indexOf('Sentiaread'))
   })
 
   it('shows the data-freshness disclaimer', () => {
     render(<Comparison />)
-    expect(screen.getByText(/publicly available information as of/i)).toBeInTheDocument()
+    expect(screen.getByText(/approximate as of/i)).toBeInTheDocument()
   })
 })
 

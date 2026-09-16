@@ -1,4 +1,5 @@
 import { crx } from '@crxjs/vite-plugin'
+import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
@@ -18,7 +19,7 @@ export default defineConfig(({ mode }) => {
   console.log('🔧 Vite Config - VITE_ENV from .env:', env.VITE_ENV)
 
   return {
-  plugins: [react(), crx({ manifest })],
+  plugins: [tailwindcss(), react(), crx({ manifest })],
   define: {
     __APP_VERSION__: JSON.stringify(version),
     // Explicitly inject VITE_ENV for both dev and build modes

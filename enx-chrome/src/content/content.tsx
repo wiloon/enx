@@ -38,6 +38,24 @@ import tailwindCss from '@/index.css?inline'
 
 console.log('ENX Content script loaded')
 
+// Tailwind v4 declares its --tw-* variables with @property, and browsers ignore
+// @property inside a shadow root. Unregistered, those variables resolve to the
+// guaranteed-invalid value, which silently kills every utility built on them --
+// shadow-*, ring-*, border, the filter/gradient families. The custom property
+// registry is document-global, so registering them in the host document makes
+// them apply inside our shadow roots too.
+const TW_PROPERTY_STYLE_ID = 'enx-tw-property-registrations'
+
+function ensureTailwindPropertyRegistrations() {
+  if (document.getElementById(TW_PROPERTY_STYLE_ID)) return
+  const rules = tailwindCss.match(/@property\s+--[\w-]+\s*\{[^}]*\}/g)
+  if (!rules) return
+  const style = document.createElement('style')
+  style.id = TW_PROPERTY_STYLE_ID
+  style.textContent = rules.join('\n')
+  ;(document.head ?? document.documentElement).appendChild(style)
+}
+
 // ADR-019: let enx-ui detect the extension is installed (fallback to the
 // externally_connectable ping). No-op on every other site.
 stampExtensionPresence(document, window.location, chrome.runtime.getManifest().version)
@@ -155,6 +173,7 @@ const createAnchoredOverlay = (
 
   // Content is rendered inside a shadow root so Tailwind classes can't leak
   // into (or be overridden by) the host page's styles.
+  ensureTailwindPropertyRegistrations()
   const shadowRoot = overlay.attachShadow({ mode: 'open' })
   const styleTag = document.createElement('style')
   styleTag.textContent = tailwindCss
@@ -234,6 +253,14 @@ const showWordPopover = async (word: string, reference: Range) => {
 
     const sentenceContext = WordProcessor.extractSentenceContext(reference, word)
     const sentence = sentenceContext?.sentence || word
+
+    // ADR-025: mark the sentence so it's findable again after the user
+    // returns from the side panel. Word-click path only -- drag-select
+    // (ADR-007) and phrase lookup (ADR-008/017) already leave the browser's
+    // own selection highlight in place.
+    if (sentenceContext?.range) {
+      setActiveSentenceHighlight(sentenceContext.range)
+    }
 
     try {
       const response = await sendToBackground({
@@ -432,6 +459,47 @@ const refreshHighlights = async () => {
   } else {
     WordProcessor.clearHighlights()
   }
+}
+
+// ADR-025: marks the sentence a word click just opened the sentence panel
+// for, so the user can find their place again after returning from the side
+// panel. There's no timer -- the mark stays until the user actually does
+// something in the page, which is the only moment it's known to have served
+// its purpose. mousemove is deliberately not one of those events: the cursor
+// is often already sitting over the article, so it would clear the mark
+// before the user's eyes found it.
+const ACTIVE_SENTENCE_CLEAR_EVENTS = ['click', 'scroll', 'keydown'] as const
+let activeSentenceHighlightCleanup: (() => void) | null = null
+
+const setActiveSentenceHighlight = (range: Range) => {
+  activeSentenceHighlightCleanup?.()
+
+  WordProcessor.setActiveSentenceHighlight(range)
+
+  let registerListenersId = 0
+
+  function clear() {
+    WordProcessor.clearActiveSentenceHighlight()
+    for (const type of ACTIVE_SENTENCE_CLEAR_EVENTS) {
+      document.removeEventListener(type, clear, true)
+    }
+    window.clearTimeout(registerListenersId)
+    activeSentenceHighlightCleanup = null
+  }
+
+  // Capture phase, because scroll doesn't bubble: a nested scroller (X's
+  // timeline, any overflow container) would otherwise never reach document.
+  // Deferred a tick, because this runs from the "整句翻译" button's own click
+  // handler and that click is still bubbling toward `document` right now
+  // (WordPopover never calls stopPropagation) -- registering synchronously
+  // would let that same click clear the highlight it just set.
+  registerListenersId = window.setTimeout(() => {
+    for (const type of ACTIVE_SENTENCE_CLEAR_EVENTS) {
+      document.addEventListener(type, clear, true)
+    }
+  }, 0)
+
+  activeSentenceHighlightCleanup = clear
 }
 
 // Show authentication error message
@@ -1017,6 +1085,7 @@ const showSelectionTranslateButton = (
     margin: 0;
   `
 
+  ensureTailwindPropertyRegistrations()
   const shadowRoot = overlay.attachShadow({ mode: 'open' })
   const styleTag = document.createElement('style')
   styleTag.textContent = tailwindCss
@@ -1258,6 +1327,7 @@ const disableEnx = () => {
   // Drop the highlights and the click listener (ADR-011 Decision 1): no
   // element unwrapping, no reflow.
   WordProcessor.clearHighlights()
+  activeSentenceHighlightCleanup?.() // ADR-025: also drops its click/timeout listeners
   clearArticleRoots()
 }
 
@@ -1335,13 +1405,19 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 // every word is clickable, so there's nothing to hint at.
 const highlightStyles = document.createElement('style')
 highlightStyles.setAttribute('data-enx-highlight-styles', 'true')
-highlightStyles.textContent = WordProcessor.HIGHLIGHT_BUCKET_HSL.map(
-  (hsl, i) =>
-    `::highlight(${WordProcessor.HIGHLIGHT_NAME_PREFIX}${i + 1}) {` +
-    ` text-decoration-line: underline;` +
-    ` text-decoration-color: hsl(${hsl});` +
-    ` text-decoration-thickness: 1px; }`
-).join('\n')
+highlightStyles.textContent =
+  WordProcessor.HIGHLIGHT_BUCKET_HSL.map(
+    (hsl, i) =>
+      `::highlight(${WordProcessor.HIGHLIGHT_NAME_PREFIX}${i + 1}) {` +
+      ` text-decoration-line: underline;` +
+      ` text-decoration-color: hsl(${hsl});` +
+      ` text-decoration-thickness: 1px; }`
+  ).join('\n') +
+  // ADR-025: background wash for the sentence a word click most recently
+  // opened the sentence panel for -- a different visual channel
+  // (background, not underline) so it reads distinctly from review buckets.
+  `\n::highlight(${WordProcessor.ACTIVE_SENTENCE_HIGHLIGHT_NAME}) {` +
+  ` background-color: hsl(45 95% 55% / 35%); }`
 if (!document.head.querySelector('style[data-enx-highlight-styles]')) {
   document.head.appendChild(highlightStyles)
 }

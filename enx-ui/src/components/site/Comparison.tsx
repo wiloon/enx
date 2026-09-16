@@ -1,25 +1,95 @@
-// Competitor comparison (ADR-013 Decision 3 / H1). Facts only, drawn from
-// w10n-config/enx/market-research.md §4.2 — no strategic framing on the page.
-type Cell = 'yes' | 'partial' | 'no'
+// Similar apps in this space, ranked by reach (Chrome Web Store users, or
+// GitHub stars where the project is open source). No feature comparison —
+// see market-research.md if that's needed elsewhere.
+type App = {
+  name: string
+  url: string
+  description: string
+  users?: number
+  stars?: number
+}
 
-const COLUMNS = ['Catseye', 'Immersive Translate', 'Readlang', 'LingQ', 'Language Reactor']
+const APPS: App[] = [
+  {
+    name: 'Immersive Translate',
+    url: 'https://immersivetranslate.com',
+    description: 'Dual-language webpage, PDF, and video subtitle translator. Open source.',
+    users: 3_000_000,
+    stars: 18_900,
+  },
+  {
+    name: 'Language Reactor',
+    url: 'https://www.languagereactor.com',
+    description: 'Dual subtitles and popup dictionary for learning from Netflix and YouTube.',
+    users: 2_000_000,
+  },
+  {
+    name: 'Trancy',
+    url: 'https://www.trancy.org',
+    description: 'AI bilingual subtitles, webpage translation, vocabulary, and speaking practice.',
+    users: 300_000,
+  },
+  {
+    name: 'Toucan by Babbel',
+    url: 'https://www.jointoucan.com',
+    description: 'Swaps words on pages you browse for target-language translations, with a review dashboard.',
+    users: 200_000,
+  },
+  {
+    name: 'Readlang',
+    url: 'https://readlang.com',
+    description: 'Reads foreign-language web pages, translates clicked words, builds flashcards.',
+    users: 100_000,
+  },
+  {
+    name: 'Rememberry',
+    url: 'https://www.rememberry.in',
+    description: 'Translates words while browsing and turns them into spaced-repetition flashcards.',
+    users: 100_000,
+  },
+  {
+    name: 'TransOver',
+    url: 'https://github.com/hanxue/transover',
+    description: 'Hover, click, or select to translate any word or phrase on a page. Open source.',
+    users: 100_000,
+  },
+  {
+    name: 'KISS Translator',
+    url: 'https://github.com/fishjar/kiss-translator',
+    description: 'Minimalist bilingual webpage, selection, and video subtitle translator. Open source.',
+    users: 100_000,
+    stars: 12_500,
+  },
+  {
+    name: 'LingQ',
+    url: 'https://www.lingq.com',
+    description: 'Imports web articles and video captions into a lookup-and-review reader.',
+    users: 80_000,
+  },
+  {
+    name: 'NeonLingo',
+    url: 'https://www.neonlingo.com',
+    description: 'AI in-context word lookup that highlights saved words again wherever they reappear.',
+    users: 3_000,
+  },
+  {
+    name: 'VocabTracker',
+    url: 'https://www.vocabtracker.com',
+    description: 'Highlights words on any page by familiarity. Inspired by LingQ, Readlang, and LWT.',
+    users: 3_000,
+  },
+  {
+    name: 'Sentiaread',
+    url: 'https://sentiaread.com',
+    description: 'AI reader that explains words in context and simplifies sentences to your level.',
+    users: 1_000,
+  },
+].sort((a, b) => (b.users ?? b.stars ?? 0) - (a.users ?? a.stars ?? 0))
 
-const ROWS: { label: string; cells: Cell[] }[] = [
-  { label: "Works on the English page you're actually reading", cells: ['yes', 'yes', 'yes', 'partial', 'partial'] },
-  { label: 'Underlines words by your level', cells: ['yes', 'no', 'no', 'partial', 'no'] },
-  { label: 'Click a word for its meaning, in place', cells: ['yes', 'partial', 'yes', 'yes', 'yes'] },
-  { label: "Tracks what you've looked up over time", cells: ['yes', 'no', 'yes', 'yes', 'partial'] },
-  { label: 'Exam-vocabulary mastery (IELTS / TOEFL / CET)', cells: ['yes', 'no', 'no', 'no', 'no'] },
-  { label: 'Mastery growth curve', cells: ['yes', 'no', 'no', 'partial', 'no'] },
-  { label: 'AI meaning-in-context (not just a dictionary entry)', cells: ['yes', 'yes', 'no', 'no', 'partial'] },
-  { label: 'Sentence translation on demand', cells: ['yes', 'yes', 'yes', 'yes', 'yes'] },
-  { label: 'Chinese-native explanations', cells: ['yes', 'yes', 'no', 'no', 'partial'] },
-]
-
-const MARK: Record<Cell, { glyph: string; label: string }> = {
-  yes: { glyph: '✓', label: 'yes' },
-  partial: { glyph: '~', label: 'partial' },
-  no: { glyph: '—', label: 'no' },
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K`
+  return `${n}`
 }
 
 const AS_OF = 'September 2026'
@@ -28,56 +98,39 @@ export default function Comparison() {
   return (
     <section id="compare" className="scroll-mt-16 mx-auto max-w-6xl px-4 py-16 sm:px-6">
       <h2 className="text-center text-3xl font-bold tracking-tight">
-        Plenty of tools translate the web. Catseye is built to help you learn from it.
+        Similar apps in this space
       </h2>
 
-      <div className="mt-10 overflow-x-auto">
-        <table className="w-full min-w-[640px] border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-border">
-              <th className="py-3 pr-4 text-left font-medium text-muted-foreground">Capability</th>
-              {COLUMNS.map((c, i) => (
-                <th
-                  key={c}
-                  className={`px-3 py-3 text-center font-semibold ${
-                    i === 0 ? 'text-brand' : 'text-muted-foreground'
-                  }`}
-                  aria-current={i === 0 ? 'true' : undefined}
-                >
-                  {c}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {ROWS.map((row) => (
-              <tr key={row.label} className="border-b border-border/60">
-                <th scope="row" className="py-3 pr-4 text-left font-normal">
-                  {row.label}
-                </th>
-                {row.cells.map((cell, i) => (
-                  <td
-                    key={i}
-                    className={`px-3 py-3 text-center ${
-                      i === 0 ? 'bg-brand/5 font-semibold text-brand' : 'text-foreground/70'
-                    }`}
-                  >
-                    <span aria-label={MARK[cell].label}>{MARK[cell].glyph}</span>
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <ul className="mt-10 divide-y divide-border/60 border-y border-border">
+        {APPS.map((app) => (
+          <li key={app.name} className="flex flex-wrap items-baseline justify-between gap-2 py-4">
+            <div>
+              <a
+                href={app.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold hover:underline"
+              >
+                {app.name}
+              </a>
+              <p className="text-sm text-muted-foreground">{app.description}</p>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {app.users != null && <span>{formatCount(app.users)} users</span>}
+              {app.stars != null && (
+                <span>
+                  {app.users != null ? ' · ' : ''}
+                  {formatCount(app.stars)} GitHub stars
+                </span>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
 
-      <p className="mx-auto mt-6 max-w-2xl text-center text-sm text-muted-foreground">
-        Catseye is the only one that combines real webpage reading, passive
-        mastery tracking, and exam-vocabulary progress in one place.
-      </p>
       <p className="mt-2 text-center text-xs text-muted-foreground/70">
-        Comparison based on publicly available information as of {AS_OF}. Features
-        change — corrections welcome.
+        Ranked by Chrome Web Store users, or GitHub stars where the project is open source.
+        Figures are public and approximate as of {AS_OF}.
       </p>
     </section>
   )

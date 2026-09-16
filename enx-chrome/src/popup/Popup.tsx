@@ -147,7 +147,7 @@ function SignedInBody({
 
   return (
     <div className="space-y-2.5 p-3">
-      <div className="flex items-center gap-3 rounded-xl bg-white p-3 shadow-sm ring-1 ring-slate-200/60">
+      <div className="flex items-center gap-3 rounded-xl bg-white p-3 shadow-xs ring-1 ring-slate-200/60">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-400 to-indigo-400 text-sm font-semibold text-white">
           {initial}
         </div>
@@ -206,7 +206,7 @@ function SignedInBody({
         type="button"
         data-testid="popup-open-sentence-panel"
         onClick={handleOpenSentencePanel}
-        className="flex w-full items-center gap-3 rounded-xl bg-white px-3 py-2.5 text-left shadow-sm ring-1 ring-slate-200/60 transition hover:ring-sky-300"
+        className="flex w-full items-center gap-3 rounded-xl bg-white px-3 py-2.5 text-left shadow-xs ring-1 ring-slate-200/60 transition hover:ring-sky-300"
       >
         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-50 text-sky-500">
           <LanguageIcon className="h-[18px] w-[18px]" />
@@ -217,7 +217,7 @@ function SignedInBody({
         <ChevronRightIcon className="h-4 w-4 text-slate-300" />
       </button>
 
-      <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-white px-3 py-2.5 shadow-sm ring-1 ring-slate-200/60">
+      <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-white px-3 py-2.5 shadow-xs ring-1 ring-slate-200/60">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-500">
           <BookOpenIcon className="h-[18px] w-[18px]" />
         </span>
@@ -238,7 +238,7 @@ function SignedInBody({
             className="peer sr-only"
           />
           <span className="block h-5 w-9 rounded-full bg-slate-200 transition peer-checked:bg-sky-500 peer-focus-visible:ring-2 peer-focus-visible:ring-sky-400 peer-focus-visible:ring-offset-1" />
-          <span className="pointer-events-none absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-4" />
+          <span className="pointer-events-none absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition peer-checked:translate-x-4" />
         </span>
       </label>
     </div>

@@ -42,6 +42,14 @@ export class WordProcessor {
   ]
   static readonly REVIEW_BUCKET_COUNT = this.HIGHLIGHT_BUCKET_HSL.length
 
+  // Marks the sentence a word-click just opened the sentence panel for
+  // (ADR-025), so the user can find it again after returning from the side
+  // panel. Deliberately outside HIGHLIGHT_NAME_PREFIX: applyHighlights()
+  // wipes every enx-hl-* entry on each rebuild (a word's review bucket can
+  // change on practically any lookup), which would silently clear this one
+  // out from under an unrelated highlight refresh if it shared the prefix.
+  static readonly ACTIVE_SENTENCE_HIGHLIGHT_NAME = 'enx-active-sentence'
+
   // One shared word segmenter -- construction isn't free and tokenizeWords
   // runs once per text node.
   private static readonly wordSegmenter = new Intl.Segmenter('en', {
@@ -260,6 +268,17 @@ export class WordProcessor {
     }
   }
 
+  // ADR-025: single-Range highlight for "the sentence a word click just
+  // opened the sentence panel for". Replaces whatever was previously active
+  // -- only the most recently queried sentence stays marked.
+  static setActiveSentenceHighlight(range: Range): void {
+    CSS.highlights.set(this.ACTIVE_SENTENCE_HIGHLIGHT_NAME, new Highlight(range))
+  }
+
+  static clearActiveSentenceHighlight(): void {
+    CSS.highlights.delete(this.ACTIVE_SENTENCE_HIGHLIGHT_NAME)
+  }
+
   // Re-derives every highlight over `roots` from `wordDict` + the current
   // DOM. Safe to call at any time -- there is no self-inflicted DOM mutation
   // to filter out, so a full rebuild is the whole story (ADR-011 F section).
@@ -400,6 +419,49 @@ export class WordProcessor {
     return range.toString().length
   }
 
+  // Inverse of getTextOffsetWithin: [start, end) character offsets into
+  // container's flattened textContent -> a Range spanning that text, by
+  // walking the container's text nodes and locating the ones the offsets
+  // fall in. Returns null if the offsets don't resolve to real text nodes
+  // (container's live text no longer matches the offsets it was computed
+  // from -- shouldn't happen since callers use it synchronously).
+  private static rangeFromContainerOffsets(
+    container: Element,
+    start: number,
+    end: number
+  ): Range | null {
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+    let consumed = 0
+    let startNode: Text | null = null
+    let startOffset = 0
+    let endNode: Text | null = null
+    let endOffset = 0
+    let node: Node | null
+
+    while ((node = walker.nextNode())) {
+      const text = node as Text
+      const nodeEnd = consumed + text.data.length
+
+      if (startNode === null && start <= nodeEnd) {
+        startNode = text
+        startOffset = Math.max(0, start - consumed)
+      }
+      if (end <= nodeEnd) {
+        endNode = text
+        endOffset = Math.max(0, end - consumed)
+        break
+      }
+      consumed = nodeEnd
+    }
+
+    if (!startNode || !endNode) return null
+
+    const range = document.createRange()
+    range.setStart(startNode, startOffset)
+    range.setEnd(endNode, endOffset)
+    return range
+  }
+
   // From a Range marking where the user clicked or started a selection,
   // locates the sentence it belongs to. Returns null only when no plausible
   // sentence container can be found at all; once a container is found,
@@ -409,10 +471,13 @@ export class WordProcessor {
   // `queryText` is the single word (click / one-word selection) or the whole
   // phrase (2-5 word selection, ADR-008) the sentence is being fetched for --
   // used only for the sanity-check warning below.
+  // `range` (ADR-025) spans the resolved sentence in the live DOM, trimmed of
+  // its leading/trailing whitespace, for setActiveSentenceHighlight(). null
+  // when the offsets can't be resolved back to text nodes.
   static extractSentenceContext(
     reference: Range,
     queryText: string
-  ): { sentence: string; sentenceIndex: number } | null {
+  ): { sentence: string; sentenceIndex: number; range: Range | null } | null {
     const container = this.findSentenceContainer(reference.startContainer)
     if (!container) return null
 
@@ -423,14 +488,16 @@ export class WordProcessor {
 
     let textToSegment = fullText
     let baseOffset = offset
+    let windowStart = 0
     if (fullText.length > this.MAX_SEGMENT_LENGTH) {
-      const start = Math.max(0, offset - this.SEGMENT_WINDOW_RADIUS)
+      windowStart = Math.max(0, offset - this.SEGMENT_WINDOW_RADIUS)
       const end = Math.min(fullText.length, offset + this.SEGMENT_WINDOW_RADIUS)
-      textToSegment = fullText.slice(start, end)
-      baseOffset = offset - start
+      textToSegment = fullText.slice(windowStart, end)
+      baseOffset = offset - windowStart
     }
 
-    let result: { sentence: string; sentenceIndex: number } | null = null
+    let result: { sentence: string; sentenceIndex: number; start: number; end: number } | null =
+      null
 
     if (typeof Intl !== 'undefined' && typeof Intl.Segmenter !== 'undefined') {
       try {
@@ -441,7 +508,12 @@ export class WordProcessor {
           const segment = segments[i]
           const segmentEnd = segment.index + segment.segment.length
           if (baseOffset >= segment.index && baseOffset < segmentEnd) {
-            result = { sentence: segment.segment.trim(), sentenceIndex: i }
+            result = {
+              sentence: segment.segment.trim(),
+              sentenceIndex: i,
+              start: windowStart + segment.index,
+              end: windowStart + segmentEnd,
+            }
             break
           }
         }
@@ -451,8 +523,25 @@ export class WordProcessor {
     }
 
     if (!result) {
-      result = { sentence: textToSegment.trim(), sentenceIndex: 0 }
+      result = {
+        sentence: textToSegment.trim(),
+        sentenceIndex: 0,
+        start: windowStart,
+        end: windowStart + textToSegment.length,
+      }
     }
+
+    // Trim the highlight range to the sentence's non-whitespace extent so it
+    // doesn't paint the gap before/after it.
+    const rawSpan = fullText.slice(result.start, result.end)
+    const leading = rawSpan.length - rawSpan.trimStart().length
+    const trailing = rawSpan.length - rawSpan.trimEnd().length
+    const trimmedStart = result.start + leading
+    const trimmedEnd = result.end - trailing
+    const range =
+      trimmedEnd > trimmedStart
+        ? this.rangeFromContainerOffsets(container, trimmedStart, trimmedEnd)
+        : null
 
     // Sanity check only, not a correctness gate: if the DOM-offset math ever
     // drifts, this surfaces it in the console instead of silently returning
@@ -471,6 +560,6 @@ export class WordProcessor {
       )
     }
 
-    return result
+    return { sentence: result.sentence, sentenceIndex: result.sentenceIndex, range }
   }
 }

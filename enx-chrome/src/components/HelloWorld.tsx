@@ -19,7 +19,7 @@ export default function HelloWorld() {
       <p className="text-gray-600 mb-4">{message}</p>
       <button
         onClick={handleClick}
-        className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded transition-colors"
+        className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-sm transition-colors"
       >
         Click me! ({count})
       </button>

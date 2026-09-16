@@ -11,7 +11,7 @@ export default function DebugPanel() {
   }
 
   return (
-    <div className="mt-4 p-3 bg-gray-100 rounded text-xs">
+    <div className="mt-4 p-3 bg-gray-100 rounded-sm text-xs">
       <h4 className="font-bold mb-2">Debug Info:</h4>
       <div className="space-y-1">
         <div>User: {JSON.stringify(user, null, 2)}</div>
@@ -29,7 +29,7 @@ export default function DebugPanel() {
             console.log('Chrome Storage:', result)
             alert('Check console for storage data')
           }}
-          className="mt-2 px-2 py-1 bg-blue-500 text-white rounded text-xs"
+          className="mt-2 px-2 py-1 bg-blue-500 text-white rounded-sm text-xs"
         >
           Check Storage
         </button>

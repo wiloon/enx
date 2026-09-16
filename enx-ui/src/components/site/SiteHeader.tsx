@@ -5,7 +5,7 @@ import HeaderAuthLinks from './HeaderAuthLinks'
 const NAV = [
   { label: 'Features', href: '#features' },
   { label: 'How it works', href: '#how-it-works' },
-  { label: 'Compare', href: '#compare' },
+  { label: 'Similar apps', href: '#compare' },
   { label: 'Install', href: '#install' },
 ]
 

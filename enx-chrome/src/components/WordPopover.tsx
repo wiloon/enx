@@ -63,7 +63,7 @@ export default function WordPopover({
     return (
       <div
         ref={rootRef}
-        className="bg-white rounded-lg shadow-xl border border-gray-200 p-3 w-full outline-none"
+        className="bg-white rounded-lg shadow-xl border border-gray-200 p-3 w-full outline-hidden"
         tabIndex={-1}
         onKeyDown={handleKeyDown}
       >
@@ -81,7 +81,7 @@ export default function WordPopover({
         {sentencePanelHint && (
           <div
             data-testid="word-popover-sentence-panel-hint"
-            className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-blue-700 text-xs"
+            className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-sm text-blue-700 text-xs"
           >
             {sentencePanelHint}
           </div>
@@ -93,7 +93,7 @@ export default function WordPopover({
   return (
     <div
       ref={rootRef}
-      className="bg-white rounded-lg shadow-xl border border-gray-200 p-3 w-full outline-none"
+      className="bg-white rounded-lg shadow-xl border border-gray-200 p-3 w-full outline-hidden"
       tabIndex={-1}
       onKeyDown={handleKeyDown}
     >
@@ -145,8 +145,8 @@ export default function WordPopover({
         {isTranslating && (
           <div className="space-y-3">
             <div className="animate-pulse">
-              <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-              <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+              <div className="h-4 bg-gray-200 rounded-sm w-3/4 mb-2"></div>
+              <div className="h-4 bg-gray-200 rounded-sm w-1/2"></div>
             </div>
             <div className="text-center text-gray-500 text-sm">
               <span className="inline-block animate-spin mr-2">⏳</span>
@@ -159,7 +159,7 @@ export default function WordPopover({
         {error && !isTranslating && (
           <div
             data-testid="word-popover-error"
-            className="p-3 bg-red-50 border border-red-200 rounded mb-3"
+            className="p-3 bg-red-50 border border-red-200 rounded-sm mb-3"
           >
             <p className="text-red-700 text-sm">{error}</p>
           </div>
@@ -212,7 +212,7 @@ export default function WordPopover({
             <button
               data-testid="word-popover-mark-known"
               onClick={() => onMarkAcquainted(currentWord.English)}
-              className="bg-green-500 hover:bg-green-600 text-white text-sm px-3 py-1 rounded transition-colors"
+              className="bg-green-500 hover:bg-green-600 text-white text-sm px-3 py-1 rounded-sm transition-colors"
               title="Mark as acquainted"
             >
               ✓ Know It
@@ -228,7 +228,7 @@ export default function WordPopover({
         {sentencePanelHint && (
           <div
             data-testid="word-popover-sentence-panel-hint"
-            className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-blue-700 text-xs"
+            className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-sm text-blue-700 text-xs"
           >
             {sentencePanelHint}
           </div>

@@ -135,7 +135,7 @@ const renderSentence = (sentence: string, clickedWord: string): ReactNode => {
       <mark
         key={m.index}
         data-clicked-word="true"
-        className="bg-yellow-200 font-medium rounded px-0.5"
+        className="bg-yellow-200 font-medium rounded-sm px-0.5"
       >
         {m[0]}
       </mark>
@@ -292,7 +292,7 @@ function PhraseConfirmButton({
         if (e.key === 'Escape') onDismiss()
       }}
       style={{ position: 'fixed', top, left }}
-      className="z-10 inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-blue-600 shadow-sm hover:bg-blue-100"
+      className="z-10 inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-blue-600 shadow-xs hover:bg-blue-100"
     >
       <MagnifyingGlassIcon className="h-4 w-4" aria-hidden="true" />
     </button>
@@ -380,7 +380,7 @@ function WordCard({
           obviously an error and recoverable. */}
       {card.contextStatus === 'error' && (
         <div
-          className="flex items-center justify-between gap-2 text-red-600 text-xs bg-red-50 rounded px-2 py-1 mt-2"
+          className="flex items-center justify-between gap-2 text-red-600 text-xs bg-red-50 rounded-sm px-2 py-1 mt-2"
           data-testid={`sidepanel-context-error-${card.word}`}
         >
           <span className="flex-1">
@@ -407,7 +407,7 @@ function WordCard({
           quota (TASK-SPEC §4.2) was hit, distinct from a generic failure. */}
       {card.dictionaryStatus === 'error' && (
         <div
-          className="flex items-center justify-between gap-2 text-red-600 text-xs bg-red-50 rounded px-2 py-1 mt-2"
+          className="flex items-center justify-between gap-2 text-red-600 text-xs bg-red-50 rounded-sm px-2 py-1 mt-2"
           data-testid={`sidepanel-dictionary-error-${card.word}`}
         >
           <span className="flex-1">
@@ -437,7 +437,7 @@ function WordCard({
           )}
           {card.contextStatus === 'loaded' && (
             <p className="text-sm text-blue-700">
-              <span className="mr-1.5 rounded bg-blue-50 px-1 py-0.5 text-[10px] font-medium text-blue-500">
+              <span className="mr-1.5 rounded-sm bg-blue-50 px-1 py-0.5 text-[10px] font-medium text-blue-500">
                 in context
               </span>
               <span className="font-medium">{card.contextChinese}</span>
