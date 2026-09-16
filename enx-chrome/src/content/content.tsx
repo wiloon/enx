@@ -995,9 +995,6 @@ const showSelectionTranslateButton = (
   const root = createRoot(mountPoint)
   selectionButtonRoot = root
 
-  const anchorNode: Node =
-    nearestElement(reference.startContainer) ?? reference.startContainer
-
   const handleClick = () => {
     hideSelectionTranslateButton()
     onTrigger()
@@ -1040,20 +1037,23 @@ const showSelectionTranslateButton = (
   }
   const stopPositioning = autoUpdate(virtualReference, overlay, update)
 
-  const handleClickOutside = (e: MouseEvent) => {
-    const target = e.target as Node
-    if (!overlay.contains(target) && !anchorNode.contains(target)) {
-      hideSelectionTranslateButton()
-    }
-  }
+  // Dismissal on "the user started doing something else" is handled by the
+  // global mousedown listener (enableEnx), which already ignores mousedown
+  // on this overlay -- not duplicated here as a 'click' listener. A 'click'
+  // listener is the wrong signal for this: the drag-selection gesture that
+  // shows this button ends with mousedown+mouseup on the selection's own
+  // container, and the browser follows that with a *trailing click* event
+  // targeting that container. `anchorNode` (nearest element of the
+  // selection's *start*) is often narrower than the container the click
+  // lands on -- e.g. a sentence starting inside a `<strong>`/`<a>` -- so an
+  // outside-click check here would misfire on that trailing click and tear
+  // the button down before the user ever gets to click it.
   const handleKeydown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') hideSelectionTranslateButton()
   }
-  document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleKeydown)
 
   selectionButtonCleanup = () => {
-    document.removeEventListener('click', handleClickOutside)
     document.removeEventListener('keydown', handleKeydown)
     stopPositioning()
   }
@@ -1078,7 +1078,17 @@ const SENTENCE_END_PUNCTUATION = /[.?!]/
 // firing immediately: this is what a multi-word selection resolves to, so
 // mouseup must never also run the single-word click lookup on top of it --
 // see the selection guard in handleArticleClick.
-const handleTextSelection = () => {
+const handleTextSelection = (event: MouseEvent) => {
+  // Clicking the translate button is itself a mousedown+mouseup+click on the
+  // page: the mouseup this handler is bound to fires first, and the text
+  // selection that produced the button is still non-empty at that point (a
+  // button click doesn't clear it). Left unguarded, this handler would tear
+  // the button down and immediately recreate it from that same selection --
+  // right as it's about to run -- so the trailing 'click' lands on a button
+  // node that was already replaced, and onTrigger never fires.
+  const target = event.target as Node
+  if (selectionButtonOverlay && selectionButtonOverlay.contains(target)) return
+
   hideSelectionTranslateButton()
 
   const selection = window.getSelection()

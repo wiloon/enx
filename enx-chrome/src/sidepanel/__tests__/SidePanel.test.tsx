@@ -33,8 +33,10 @@ const SENTENCE = 'Cats are great pets.'
 // clicks/drags over `word`: set the DOM selection to span `word` within the
 // sentence element (walking text nodes so it works even when a <mark>
 // highlight splits them) and fire the mouseup the handler listens for.
-const selectWord = (word: string, sentence = SENTENCE) => {
-  const el = screen.getByTestId('sidepanel-sentence')
+// `container` picks which sentence's <p> to select in when more than one
+// SentenceEntry (ADR-023) is on screen at once; defaults to the sole one.
+const selectWord = (word: string, sentence = SENTENCE, container?: HTMLElement) => {
+  const el = container ?? screen.getByTestId('sidepanel-sentence')
   const start = sentence.toLowerCase().indexOf(word.toLowerCase())
   const end = start + word.length
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
@@ -295,7 +297,9 @@ describe('SidePanel', () => {
     selectWord('great')
 
     await waitFor(() => {
-      const definitions = screen.getByTestId('sidepanel-definitions')
+      // Selected inside the sentence, so both cards nest under it (ADR-023),
+      // not a separate top-level list.
+      const definitions = screen.getByTestId('sidepanel-sentence-words')
       expect(definitions).toHaveTextContent('cats在这句里的意思')
       expect(definitions).toHaveTextContent('great在这句里的意思')
       expect(definitions).toHaveTextContent('/cats/')
@@ -349,7 +353,7 @@ describe('SidePanel', () => {
     selectWord('great')
 
     await waitFor(() => {
-      const definitions = screen.getByTestId('sidepanel-definitions')
+      const definitions = screen.getByTestId('sidepanel-sentence-words')
       expect(definitions).toHaveTextContent('translation service unavailable')
       expect(definitions).toHaveTextContent('/greɪt/')
       expect(definitions).toHaveTextContent('unused')
@@ -432,7 +436,7 @@ describe('SidePanel', () => {
 
     await waitFor(() => {
       expect(screen.queryByTestId('sidepanel-context-error-expired mid-sentence')).not.toBeInTheDocument()
-      expect(screen.getByTestId('sidepanel-definitions')).toHaveTextContent('句子中途过期')
+      expect(screen.getByTestId('sidepanel-card-expired mid-sentence')).toHaveTextContent('句子中途过期')
     })
     expect(callCount).toBe(2)
   })
@@ -480,7 +484,7 @@ describe('SidePanel', () => {
 
     await waitFor(() => {
       expect(screen.queryByTestId('sidepanel-context-error-great')).not.toBeInTheDocument()
-      expect(screen.getByTestId('sidepanel-definitions')).toHaveTextContent('很棒的')
+      expect(screen.getByTestId('sidepanel-sentence-words')).toHaveTextContent('很棒的')
     })
     expect(contextCallCount).toBe(2)
   })
@@ -664,9 +668,12 @@ describe('SidePanel', () => {
         'session'
       )
     })
-    await waitFor(() =>
-      expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('第二句。')
-    )
+    // Refreshes in place (no sidePanel.open() needed) and, since ADR-023,
+    // prepends rather than replaces -- the first sentence stays as history.
+    await waitFor(() => {
+      const chineses = screen.getAllByTestId('sidepanel-chinese')
+      expect(chineses.map(c => c.textContent)).toEqual(['第二句。', '第一句。'])
+    })
   })
 
   it('ignores storage.onChanged events from areas other than session', async () => {
@@ -732,7 +739,7 @@ describe('SidePanel', () => {
     expect(mockSendMessage).not.toHaveBeenCalled()
   })
 
-  it('inserts a page-looked-up word into the existing card list and clears the current sentence display (ADR-006)', async () => {
+  it('keeps the sentence (and its nested in-sentence word) visible when a page word lookup arrives afterwards (ADR-023, fixes the previous "sentence disappears" bug)', async () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
@@ -761,7 +768,7 @@ describe('SidePanel', () => {
     await screen.findByTestId('sidepanel-sentence')
     selectWord('great')
     await waitFor(() =>
-      expect(screen.getByTestId('sidepanel-card-great')).toHaveTextContent('great在这句里的意思')
+      expect(screen.getByTestId('sidepanel-sentence-words')).toHaveTextContent('great在这句里的意思')
     )
     await waitFor(() =>
       expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('猫是很棒的宠物。')
@@ -789,17 +796,22 @@ describe('SidePanel', () => {
       )
     })
 
-    // The pre-existing sentence card stays; the new one is inserted on top.
-    await waitFor(() => {
-      const cards = screen.getAllByTestId(/^sidepanel-card-/)
-      expect(cards.map(c => c.getAttribute('data-testid'))).toEqual([
-        'sidepanel-card-serendipity',
-        'sidepanel-card-great',
-      ])
-    })
-    // Sentence original text + translation are cleared, not just hidden.
-    expect(screen.queryByTestId('sidepanel-sentence')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('sidepanel-chinese')).not.toBeInTheDocument()
+    // The new top-level card appears, and the sentence -- and its nested
+    // in-sentence word -- must stay exactly as they were.
+    await screen.findByTestId('sidepanel-card-serendipity')
+    expect(screen.getByTestId('sidepanel-sentence')).toHaveTextContent('Cats are great pets.')
+    expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('猫是很棒的宠物。')
+    expect(screen.getByTestId('sidepanel-sentence-words')).toHaveTextContent('great在这句里的意思')
+
+    // Newest arrival ('serendipity', a top-level card) renders above the
+    // sentence entry (ADR-023 Decision 4: a page click always prepends to
+    // the top-level list, never touching any sentence entry).
+    const serendipityCard = screen.getByTestId('sidepanel-card-serendipity')
+    const sentenceEntry = screen.getByTestId(/^sidepanel-sentence-entry-/)
+    expect(
+      serendipityCard.compareDocumentPosition(sentenceEntry) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+
     // No re-fetch: the card was populated directly from the storage payload.
     expect(mockSendMessage.mock.calls.length).toBe(callsBeforePageLookup)
   })
@@ -854,7 +866,13 @@ describe('SidePanel', () => {
     expect(screen.getByTestId('sidepanel-card-serendipity')).toBeInTheDocument()
   })
 
-  it('backfills the in-sentence meaning when clicking a word that already has a page-lookup card (contextStatus "none")', async () => {
+  // Pre-ADR-023, a page-lookup card and an in-sentence click on the same
+  // word shared one global list, so this backfilled onto the same card
+  // without re-fetching the dictionary half. ADR-023 Decision B2/C2
+  // deliberately drops that cross-scope matching -- an in-sentence click
+  // never searches the top-level list for a word to reuse -- so the two are
+  // now independent cards, each fetched on its own.
+  it('treats an in-sentence word click as independent from an existing top-level page-lookup card for the same word (ADR-023)', async () => {
     mockSendMessage.mockImplementation(async (message: { type: string; word?: string }) => {
       if (message.type === 'translateSentence') {
         return { success: true, chinese: '猫是很棒的宠物。' }
@@ -874,8 +892,8 @@ describe('SidePanel', () => {
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-empty-state')
 
-    // 1) Word looked up on the page first -- card has dictionary data but
-    //    contextStatus 'none' (no sentence yet).
+    // 1) Word looked up on the page first -- top-level card, dictionary data
+    //    only, contextStatus 'none' (no sentence yet).
     act(() => {
       fireStorageChange(
         {
@@ -890,9 +908,9 @@ describe('SidePanel', () => {
         'session'
       )
     })
-    const card = await screen.findByTestId('sidepanel-card-cats')
-    expect(card).toHaveTextContent('猫的复数')
-    expect(card).not.toHaveTextContent('Translating...')
+    const topLevelCard = await screen.findByTestId('sidepanel-card-cats')
+    expect(topLevelCard).toHaveTextContent('猫的复数')
+    expect(topLevelCard).not.toHaveTextContent('Translating...')
 
     // 2) A sentence containing the same word arrives (e.g. via 整句翻译).
     act(() => {
@@ -914,21 +932,23 @@ describe('SidePanel', () => {
     // The page-lookup card is untouched by the new sentence context.
     expect(screen.getByTestId('sidepanel-card-cats')).toHaveTextContent('猫的复数')
 
-    const callsBeforeClick = mockSendMessage.mock.calls.length
-
-    // 3) Clicking "Cats" in the sentence should backfill the in-sentence
-    //    meaning onto the existing card, not silently do nothing.
+    // 3) Clicking "Cats" inside the sentence fetches a fresh, separate card
+    //    nested under the sentence -- it does not touch the top-level one.
+    //    Both scopes now render a "cats" card, so disambiguate by container
+    //    rather than relying on the word testid alone.
     selectWord('Cats')
 
     await waitFor(() =>
-      expect(screen.getByTestId('sidepanel-card-cats')).toHaveTextContent('cats在这句里的意思')
+      expect(screen.getByTestId('sidepanel-sentence-words')).toHaveTextContent('cats在这句里的意思')
     )
-    // Dictionary half is untouched -- reused, not re-fetched.
-    expect(screen.getByTestId('sidepanel-card-cats')).toHaveTextContent('猫的复数')
-    expect(screen.getByTestId('sidepanel-card-cats')).not.toHaveTextContent('猫释义(重新查询)')
-    expect(
-      mockSendMessage.mock.calls.slice(callsBeforeClick).some(call => call[0]?.type === 'getOneWord')
-    ).toBe(false)
+    const nestedCard = within(screen.getByTestId('sidepanel-sentence-words')).getByTestId('sidepanel-card-cats')
+    expect(nestedCard).toHaveTextContent('cats在这句里的意思')
+    expect(nestedCard).toHaveTextContent('cats释义(重新查询)')
+
+    // The top-level card is untouched -- still the original dictionary text.
+    const topLevelCardAfter = screen.getAllByTestId('sidepanel-card-cats').find(el => el !== nestedCard)!
+    expect(topLevelCardAfter).toHaveTextContent('猫的复数')
+    expect(topLevelCardAfter).not.toHaveTextContent('cats释义(重新查询)')
   })
 
   // ADR-014: opening the panel from a page word click sends ONE combined AI
@@ -944,6 +964,58 @@ describe('SidePanel', () => {
         createdAt: 1,
       },
     }
+
+    it('does not double-fetch when the anchor word is clicked in the sentence while translateSentenceWithWord is still in flight (ADR-023 race)', async () => {
+      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue(pendingWithWord)
+
+      let resolveCombined: (value: BackgroundResponse) => void = () => {}
+      let getOneWordCalls = 0
+      let contextCalls = 0
+      mockSendMessage.mockImplementation((message: { type: string; word?: string }) => {
+        if (message.type === 'translateSentenceWithWord') {
+          return new Promise(resolve => {
+            resolveCombined = resolve
+          })
+        }
+        if (message.type === 'getOneWord') {
+          getOneWordCalls += 1
+          return Promise.resolve({
+            success: true,
+            ecp: { English: message.word, Chinese: 'great词典', Pronunciation: '/greɪt/', LoadCount: 1 },
+          })
+        }
+        if (message.type === 'translateWordInContext') {
+          contextCalls += 1
+          return Promise.resolve({ success: true, chinese: 'great语境义' })
+        }
+        return Promise.resolve({ success: false })
+      })
+
+      render(<SidePanel />)
+      // The anchor word is highlighted (and clickable) as soon as the
+      // sentence renders, before translateSentenceWithWord resolves.
+      await screen.findByTestId('sidepanel-sentence')
+      selectWord('great')
+
+      await waitFor(() =>
+        expect(screen.getByTestId('sidepanel-sentence-words')).toHaveTextContent('great语境义')
+      )
+      expect(getOneWordCalls).toBe(1)
+      expect(contextCalls).toBe(1)
+
+      resolveCombined({ success: true, chinese: '猫是很棒的宠物。', wordChinese: 'great极好的' })
+
+      await waitFor(() =>
+        expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('猫是很棒的宠物。')
+      )
+      // Still only ever fetched once each -- no double Query Count
+      // increment, no double AI charge for the same word.
+      expect(getOneWordCalls).toBe(1)
+      expect(contextCalls).toBe(1)
+      // The context already loaded from the click is kept, not clobbered by
+      // the combined response's wordChinese arriving after.
+      expect(screen.getByTestId('sidepanel-sentence-words')).toHaveTextContent('great语境义')
+    })
 
     it('sends translateSentenceWithWord (not translateSentence) and shows both halves', async () => {
       ;(chrome.storage.session.get as jest.Mock).mockResolvedValue(pendingWithWord)
@@ -1051,7 +1123,8 @@ describe('SidePanel', () => {
       expect(mockSendMessage).not.toHaveBeenCalledWith(
         expect.objectContaining({ type: 'translateSentenceWithWord' })
       )
-      expect(screen.queryByTestId('sidepanel-definitions')).not.toBeInTheDocument()
+      expect(screen.queryAllByTestId(/^sidepanel-card-/)).toHaveLength(0)
+      expect(screen.queryByTestId('sidepanel-sentence-words')).not.toBeInTheDocument()
       const sentence = screen.getByTestId('sidepanel-sentence')
       expect(sentence.querySelector('[data-clicked-word]')).toBeNull()
     })
@@ -1166,6 +1239,121 @@ describe('SidePanel', () => {
       expect(
         mockSendMessage.mock.calls.filter(([m]) => m.type === 'translateWordInContext')
       ).toHaveLength(1)
+    })
+  })
+
+  describe('unified history list (ADR-023)', () => {
+    it('keeps every translated sentence in the panel, newest on top', async () => {
+      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+        [PENDING_SENTENCE_STORAGE_KEY]: {
+          sentence: 'First sentence.',
+          word: '',
+          sourceUrl: '',
+          createdAt: 1,
+        },
+      })
+      mockSendMessage.mockImplementation(async (message: { sentence?: string }) => {
+        if (message.sentence === 'First sentence.') return { success: true, chinese: '第一句。' }
+        if (message.sentence === 'Second sentence.') return { success: true, chinese: '第二句。' }
+        return { success: false }
+      })
+
+      render(<SidePanel />)
+      await waitFor(() => expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('第一句。'))
+
+      act(() => {
+        fireStorageChange(
+          {
+            [PENDING_SENTENCE_STORAGE_KEY]: {
+              newValue: { sentence: 'Second sentence.', word: '', sourceUrl: '', createdAt: 2 },
+            },
+          },
+          'session'
+        )
+      })
+
+      await waitFor(() => {
+        const sentences = screen.getAllByTestId('sidepanel-sentence')
+        expect(sentences.map(s => s.textContent)).toEqual(['Second sentence.', 'First sentence.'])
+      })
+      const chineses = screen.getAllByTestId('sidepanel-chinese')
+      expect(chineses.map(c => c.textContent)).toEqual(['第二句。', '第一句。'])
+    })
+
+    it('nests a word looked up inside a historical (non-newest) sentence there, without moving that sentence in the list', async () => {
+      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+        [PENDING_SENTENCE_STORAGE_KEY]: {
+          sentence: 'Cats are great pets.',
+          word: '',
+          sourceUrl: '',
+          createdAt: 1,
+        },
+      })
+      mockSendMessage.mockImplementation(
+        async (message: { type: string; sentence?: string; word?: string }) => {
+          if (message.type === 'translateSentence' && message.sentence === 'Cats are great pets.') {
+            return { success: true, chinese: '猫是很棒的宠物。' }
+          }
+          if (message.type === 'translateSentence' && message.sentence === 'Dogs are loyal friends.') {
+            return { success: true, chinese: '狗是忠诚的朋友。' }
+          }
+          if (message.type === 'translateWordInContext') {
+            return { success: true, chinese: `${message.word}在这句里的意思` }
+          }
+          if (message.type === 'getOneWord') {
+            return {
+              success: true,
+              ecp: { English: message.word, Chinese: `${message.word}释义`, Pronunciation: `/${message.word}/` },
+            }
+          }
+          return { success: false }
+        }
+      )
+
+      render(<SidePanel />)
+      await waitFor(() =>
+        expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('猫是很棒的宠物。')
+      )
+
+      act(() => {
+        fireStorageChange(
+          {
+            [PENDING_SENTENCE_STORAGE_KEY]: {
+              newValue: { sentence: 'Dogs are loyal friends.', word: '', sourceUrl: '', createdAt: 2 },
+            },
+          },
+          'session'
+        )
+      })
+
+      await waitFor(() => {
+        const sentences = screen.getAllByTestId('sidepanel-sentence')
+        expect(sentences.map(s => s.textContent)).toEqual([
+          'Dogs are loyal friends.',
+          'Cats are great pets.',
+        ])
+      })
+
+      // Click a word inside the OLDER sentence, now in the #2 slot.
+      const historicalSentenceEl = screen.getAllByTestId('sidepanel-sentence')[1]
+      selectWord('great', 'Cats are great pets.', historicalSentenceEl)
+
+      await waitFor(() => {
+        const entryContainers = screen.getAllByTestId(/^sidepanel-sentence-entry-/)
+        expect(within(entryContainers[1]).getByTestId('sidepanel-sentence-words')).toHaveTextContent(
+          'great在这句里的意思'
+        )
+      })
+
+      // Order is unchanged -- the sentence clicked into did not jump to the top.
+      const sentencesAfter = screen.getAllByTestId('sidepanel-sentence')
+      expect(sentencesAfter.map(s => s.textContent)).toEqual([
+        'Dogs are loyal friends.',
+        'Cats are great pets.',
+      ])
+      // The newer sentence's own nested list is untouched (still empty).
+      const entryContainersAfter = screen.getAllByTestId(/^sidepanel-sentence-entry-/)
+      expect(within(entryContainersAfter[0]).queryByTestId('sidepanel-sentence-words')).not.toBeInTheDocument()
     })
   })
 })
