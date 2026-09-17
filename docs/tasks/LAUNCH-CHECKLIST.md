@@ -141,7 +141,13 @@
   - `w10n-config`（Stripe，用户在结账页和收据上看得到）
     - [x] `infra/stripe/opentofu/enx/main.tf` — `stripe_product.*.name`（→ `Catglish Pro` / `Pro+` / `Max` / `AI Credits Top-up`）与 `description`（"unlimited dictionary lookups" 已改成「a much higher daily dictionary lookup limit」）。2026-09-16 **已 `tofu apply`（sandbox / `default` workspace）4 changed**，`lookup_key` 与价格 ID 未变。⚠️ **live mode 目录尚未建立**，上线时要在 `live` workspace 重做一遍
     - [ ] 遗留漂移：`stripe_webhook_endpoint.billing_lab` 的 `url` 在 Stripe 上仍是旧域名 `enx-lab.wiloon.com`，而 `variables.tf` 已随域名迁移改成 `enx-api.wiloon.lab`。本次用 `-target` 跳过了它，**下次任何不带 `-target` 的 `tofu apply` 都会把它一起带上**。两个 URL 公网都不可达（开发期靠 stripe-cli 转发），所以改与不改不影响当前链路
-    - [ ] Clerk 应用显示名（登录页和 Clerk 发的邮件上可见）
+    - [x] **Clerk 应用显示名**（2026-09-17）——`enx` → `Catglish`，Support email 一并填了。已验证 `https://rational-deer-4450.accounts.dev/sign-in` 显示 "Sign in to Catglish"、标签页 "My account | Catglish"。
+      - 路径：**Configure 标签 → 左侧菜单拉到最底部 `Application` 分组 → `Settings` → Application details → Application name**。⚠️ 左侧菜单里**有两个 `Settings`**：`Instance` 分组下那个**不含**应用名，`Application` 分组下（菜单最底部，容易滚过去）那个才对。
+      - 同页还有未做的：**Logo / Favicon 都没上传**（登录页和 Clerk 邮件会用）；"Remove Secured by Clerk branding" 需要 Pro 计划，Hobby 用不了。
+      - 该字段说明原文：*"Customize the name of your application. Used in the dashboard and with Clerk components."* —— 登录页那句 `Sign in to ...` 就来自这里。
+      - **建生产实例时直接填 `Catglish`**（§4 Clerk 生产切换）：dev 和 prod 是两个独立实例、各有各的应用名，不要事后才想起来改。
+      - 清理记录：2026-09-17 删掉了两个同名 `enx` 的孤儿应用（`relaxing-sunfish-5757`、`credible-chicken-3147`，两个仓库里零引用），只留 `rational-deer-4450`。三个同名应用并存时极易改错实例。
+      - 记一个坑：实例 ID 是 `ins_3IqqlDCeP4K55bcIp1Ebadk8LP0`，中间是**大写 I** 不是小写 l，手抄 URL 会打不开。
     - [ ] Chrome Web Store 上架条目的名称 / 简介（§6）
 
   **② 不要改的（改了会坏）**
