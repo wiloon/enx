@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"enx-api/aitranslate"
+	"enx-api/aitranslate/aicfg"
 	"enx-api/billing"
 	"enx-api/billing/credit"
 	billingstripe "enx-api/billing/stripe"
@@ -58,18 +59,20 @@ func main() {
 
 	port := viper.GetInt("enx.port")
 	listenAddress := fmt.Sprintf(":%d", port)
-	srv := &http.Server{
-		Addr:              listenAddress,
-		Handler:           router,
-		ReadHeaderTimeout: 10 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       120 * time.Second,
-	}
+	srv := newServer(listenAddress, router)
 
 	idleConnectionsClosed := make(chan struct{})
 	go func() {
 		utils.WaitSignals()
-		if err := srv.Shutdown(context.Background()); err != nil {
+		// Bounded, and deliberately bounded at the same ceiling as a single
+		// request: Shutdown waits for in-flight requests to finish, so a
+		// grace period shorter than WriteTimeout would abort billed AI calls
+		// on every deploy -- the same failure mode newServer exists to
+		// prevent. context.Background() had the opposite problem: one stuck
+		// connection kept the process alive forever.
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), srv.WriteTimeout+shutdownGraceMargin)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
 			logger.Errorf("http server shutdown: %v", err)
 		}
 		close(idleConnectionsClosed)
@@ -83,6 +86,63 @@ func main() {
 	}
 	logger.Infof("listen end")
 	<-idleConnectionsClosed
+}
+
+const (
+	// writeTimeoutHeadroom is what the server allows a metered request on top
+	// of the provider call itself: Clerk JWT verification (which can make a
+	// network round trip when the JWKS cache refreshes), the ADR-014 balance
+	// precheck, the ledger Settle write, JSON encoding, and pushing the
+	// response to a client that may be on a slow mobile link. All of that is
+	// normally milliseconds; 15s is sized so it is never the thing that kills
+	// a legitimate request, while still keeping the total bounded (75s at the
+	// 60s default) well under IdleTimeout.
+	writeTimeoutHeadroom = 15 * time.Second
+
+	// minWriteTimeout floors the derived value so a deliberately tiny
+	// provider timeout (a test or a misconfigured env var setting "1s")
+	// cannot shrink the server's own budget below what the non-AI routes
+	// need. It is the historical 30s, which was always fine for those.
+	minWriteTimeout = 30 * time.Second
+
+	// shutdownGraceMargin is the slack Shutdown gets beyond one request's
+	// ceiling, so a request that started just before SIGTERM can still
+	// finish and flush instead of being cut off mid-response.
+	shutdownGraceMargin = 5 * time.Second
+)
+
+// newServer builds the HTTP server. Extracted from main() so the timeout
+// coupling below is reachable from a test.
+//
+// WriteTimeout is derived from aicfg.RequestTimeout() instead of being its
+// own constant because the two are not independent: Go's WriteTimeout starts
+// when the request header is read and covers body read, handler execution and
+// response write, so a WriteTimeout below the provider timeout means the
+// server tears the connection down while its own handler is still waiting on
+// the model. On /translate/sentence and /rephrase that is worse than a
+// dropped request -- they are token-billed (ADR-012/ADR-014), the handler
+// keeps running past the write deadline, so the provider call completes and
+// Settle charges the user for a response that never reached them.
+//
+// That is not hypothetical: WriteTimeout sat at a hard-coded 30s (added when
+// the provider timeout was 10s) while the provider default was later raised
+// to 60s for MiniMax's M-series "thinking" models, silently putting every
+// 30-60s translation in the billed-but-undelivered window. Deriving it means
+// raising SENTENCE_TRANSLATE_REQUEST_TIMEOUT can no longer reopen that gap.
+//
+// Callers must run utils.ViperInit() first: aicfg.RequestTimeout() reads viper.
+func newServer(addr string, handler http.Handler) *http.Server {
+	writeTimeout := aicfg.RequestTimeout() + writeTimeoutHeadroom
+	if writeTimeout < minWriteTimeout {
+		writeTimeout = minWriteTimeout
+	}
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       120 * time.Second,
+	}
 }
 
 // runReaderDocumentCleanup periodically hard-deletes expired reader
@@ -173,8 +233,12 @@ func setupRouter() *gin.Engine {
 			}
 		}
 
-		// Also allow chrome extensions
-		if !isAllowed && len(origin) > 0 && (origin[:17] == "chrome-extension:" || origin[:16] == "moz-extension:") {
+		// Also allow browser extensions. strings.HasPrefix, not a slice: any
+		// Origin shorter than the slice bound panicked here, and browsers do
+		// send short ones (literal "null" for sandboxed iframes and file://
+		// documents). The "://" is part of the prefix so the match can't be
+		// satisfied by an origin that merely starts with the scheme name.
+		if !isAllowed && (strings.HasPrefix(origin, "chrome-extension://") || strings.HasPrefix(origin, "moz-extension://")) {
 			isAllowed = true
 		}
 
@@ -182,7 +246,10 @@ func setupRouter() *gin.Engine {
 			c.Header("Access-Control-Allow-Origin", origin)
 			c.Header("Access-Control-Allow-Credentials", "true")
 			c.Header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
-			c.Header("Access-Control-Allow-Headers", "Origin, Authorization, X-Session-ID, X-User-ID, Content-Type, Cookie")
+			// X-Enx-Tz-Offset is read by stats.TZOffsetMiddleware (ADR-029
+			// Decision 7a); without it here, preflight rejects the header and
+			// the whole cross-origin request fails once a client starts sending it.
+			c.Header("Access-Control-Allow-Headers", "Origin, Authorization, X-Session-ID, X-User-ID, Content-Type, Cookie, X-Enx-Tz-Offset")
 			c.Header("Access-Control-Expose-Headers", "Content-Length")
 			c.Header("Access-Control-Max-Age", "43200") // 12 hours
 		}

@@ -1,3 +1,18 @@
+// Command compare-via-grpc is a one-off diagnostic for P2P sync drift: it lists
+// word IDs in the local SQLite file and in a peer's SyncWords stream, then prints
+// the IDs each side is missing. Reach for it when the two nodes disagree on the
+// word count and you need to know which records actually differ.
+//
+// The local DB path and the peer address are hardcoded to this homelab's setup
+// (192.168.50.190:50051, /var/lib/enx-api/enx.db) because it was written for a
+// specific incident, not as a general tool. Edit them before running elsewhere.
+//
+// It lives in its own directory rather than behind //go:build ignore so that
+// `go build ./...` keeps type-checking it against enx-sync/proto, which is
+// regenerated from the shared data_service.proto and would otherwise rot here
+// unnoticed until the next time sync breaks and this is needed in a hurry.
+//
+// Run with: go run ./scripts/compare-via-grpc
 package main
 
 import (

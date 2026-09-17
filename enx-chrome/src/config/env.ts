@@ -25,7 +25,7 @@ const getEnvValue = (key: string, defaultValue: any = undefined) => {
   if (isTestEnv) {
     return defaultValue
   }
-  // @ts-ignore - import.meta.env is available in Vite
+  // import.meta.env is injected by Vite (see envPrefix / define in vite.config.ts)
   return import.meta?.env?.[key] ?? defaultValue
 }
 

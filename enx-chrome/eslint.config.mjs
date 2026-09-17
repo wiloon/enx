@@ -26,6 +26,12 @@ export default [
         chrome: 'readonly',
         __APP_VERSION__: 'readonly',
         React: 'readonly',
+        // `process` never exists at runtime in an extension page/worker, but
+        // Vite statically replaces `process.env.NODE_ENV` with a string literal
+        // at build time (see its default `define`), so build-time reads of it
+        // are legal here. Anything else on `process` would throw -- tsc, not
+        // this entry, is what catches that.
+        process: 'readonly',
       },
     },
     plugins: {
@@ -43,7 +49,15 @@ export default [
         { allowConstantExport: true },
       ],
       'react/react-in-jsx-scope': 'off',
-      '@typescript-eslint/no-unused-vars': 'error',
+      // `_foo` is the codebase's marker for "kept for the signature, not used"
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+        },
+      ],
     },
     settings: {
       react: {
@@ -62,15 +76,31 @@ export default [
       globals: {
         ...globals.jest,
         ...globals.browser,
+        // Jest runs on Node: setup/mocks legitimately touch `global`, `__dirname`
+        ...globals.node,
       },
     },
   },
-  // Node.js configuration files
+  // Node.js configuration files and scripts. The globs must be `**/`-prefixed:
+  // in flat config a bare `*.js` only matches the project root, which left
+  // nested CommonJS helpers such as src/test/styleMock.js without node globals.
+  // Extension/browser source is TypeScript, so this never captures it.
   {
-    files: ['*.js', '*.mjs', 'scripts/**/*.{js,mjs}', 'vite.config.ts'],
+    files: ['**/*.{js,cjs,mjs}', 'vite.config.ts'],
     languageOptions: {
       globals: {
         ...globals.node,
+      },
+    },
+  },
+  // Console snippets meant to be pasted into the extension's devtools
+  {
+    files: ['scripts/clear-api-config.js'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.webextensions,
+        chrome: 'readonly',
       },
     },
   },
@@ -84,8 +114,27 @@ export default [
         chrome: 'readonly',
       },
     },
+    rules: {
+      // Playwright fixtures receive a `use` callback; the React Hooks plugin
+      // reads every `use(...)` call as React's `use` hook and flags it.
+      'react-hooks/rules-of-hooks': 'off',
+    },
   },
+  // Not source: build output, dependencies and local run artifacts. Flat config
+  // does not read .gitignore, so every directory ignored there has to be
+  // repeated here -- `.chrome-dev-profile/` in particular is a Chrome user-data
+  // directory holding Chrome's own bundled, minified JavaScript.
   {
-    ignores: ['dist', 'node_modules', 'coverage'],
+    ignores: [
+      'dist/**',
+      'build/**',
+      'node_modules/**',
+      'coverage/**',
+      '.nyc_output/**',
+      '.chrome-dev-profile/**',
+      'test-results/**',
+      'playwright-report/**',
+      'blob-report/**',
+    ],
   },
 ]

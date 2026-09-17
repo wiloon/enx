@@ -14,11 +14,24 @@ func TestIsTestEnv(t *testing.T) {
 	}
 }
 
-// TestViperInitSetsDefaults exercises ViperInit end to end. There's no
-// config.toml or .env under utils/, so this runs the pure-defaults path.
-// ViperInit is guarded by sync.Once, so this must be the only test in the
-// package that calls it.
+// TestViperInitSetsDefaults exercises ViperInit end to end on the
+// pure-defaults path. ViperInit is guarded by sync.Once, so this must be the
+// only test in the package that calls it.
 func TestViperInitSetsDefaults(t *testing.T) {
+	// viperInitInternal searches /usr/local/etc/enx/, $HOME/.enx and "." for
+	// config.toml (plus godotenv's ".env" in the working directory). Only the
+	// first two can realistically exist here: "go test" runs with the working
+	// directory set to utils/, which ships neither file. $HOME/.enx/config.toml
+	// however is a developer's *real* personal config, and picking it up made
+	// this test fail on their machine while passing in CI. Point HOME at an
+	// empty temp dir so the search misses. viper expands "$HOME" when
+	// AddConfigPath is called (i.e. inside ViperInit, via os.Getenv("HOME")),
+	// so setting it beforehand is enough, and t.Setenv restores it afterwards.
+	// /usr/local/etc/enx/config.toml is the one path this can't redirect; the
+	// ConfigFileUsed check below turns that into an explicit diagnostic instead
+	// of a pile of confusing value mismatches.
+	t.Setenv("HOME", t.TempDir())
+
 	// Regression guard: viper.AutomaticEnv() used to be enabled, which made
 	// viper treat "user.last-login-update-interval" as shadowed by the
 	// ambient $USER env var (present in virtually every shell/container),
@@ -29,6 +42,12 @@ func TestViperInitSetsDefaults(t *testing.T) {
 	t.Setenv("USER", "someone")
 
 	ViperInit()
+
+	// Anything below this point assumes no config file won the search; if one
+	// did, say so plainly rather than reporting every default as "wrong".
+	if used := viper.ConfigFileUsed(); used != "" {
+		t.Fatalf("a config file leaked into the defaults-only test: %s", used)
+	}
 
 	if got := viper.GetInt("enx.port"); got != 8091 {
 		t.Errorf("enx.port = %d, want 8091", got)

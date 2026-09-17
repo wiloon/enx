@@ -46,7 +46,6 @@ export const test = base.extend<ExtensionFixtures>({
     await context.close()
   },
 
-  // eslint-disable-next-line no-empty-pattern
   extensionId: async ({ context }, use) => {
     // Wait for service worker (background script)
     let [background] = context.serviceWorkers()

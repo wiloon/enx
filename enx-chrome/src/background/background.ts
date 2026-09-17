@@ -276,7 +276,7 @@ export const makeApiRequest = async (
           if (errorData.error || errorData.message) {
             errorMessage = errorData.error || errorData.message
           }
-        } catch (e) {
+        } catch {
           // Ignore JSON parsing errors, use default message
         }
 
@@ -465,7 +465,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'openWebSignIn':
           return await handleOpenWebSignIn()
 
-        case 'debugStorage':
+        case 'debugStorage': {
           // Debug command to check storage
           const storageData = await chrome.storage.local.get(null)
           console.log('All Chrome storage data:', storageData)
@@ -474,6 +474,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             storage: storageData,
             signedIn: await isSignedIn(),
           }
+        }
 
         case 'getSwLog':
           // Post-mortem view of service-worker boots + auth failures

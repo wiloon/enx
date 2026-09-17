@@ -1,3 +1,19 @@
+// Command fetch-missing-words is the follow-up to compare-via-grpc: given the IDs
+// that comparison reported as present only on the peer, it streams the peer's
+// words and prints the English text and timestamps of just those records, so the
+// drift can be judged (stale local copy vs. genuinely lost write) before deciding
+// how to reconcile.
+//
+// The peer address (192.168.50.190:50051) and the ID list are hardcoded leftovers
+// from the incident this was written for — the list is meant to be pasted over
+// with whatever compare-via-grpc last reported.
+//
+// It lives in its own directory rather than behind //go:build ignore so that
+// `go build ./...` keeps type-checking it against enx-sync/proto, which is
+// regenerated from the shared data_service.proto and would otherwise rot here
+// unnoticed until the next time sync breaks and this is needed in a hurry.
+//
+// Run with: go run ./scripts/fetch-missing-words
 package main
 
 import (

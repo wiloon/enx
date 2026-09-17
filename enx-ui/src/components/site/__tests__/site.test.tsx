@@ -19,7 +19,9 @@ jest.mock('@/lib/site', () => {
   return { SITE: { ...actual.SITE } }
 })
 
-const mutableSite = SITE as { -readonly [K in keyof typeof SITE]: (typeof SITE)[K] }
+// `as const` in src/lib/site.ts narrows each value to a string literal; these
+// tests swap in other strings, so widen to `string` as well as dropping readonly.
+const mutableSite = SITE as unknown as Record<keyof typeof SITE, string>
 const original = { ...SITE }
 afterEach(() => Object.assign(mutableSite, original))
 
