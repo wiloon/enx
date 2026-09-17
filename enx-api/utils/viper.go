@@ -143,6 +143,14 @@ func viperInitInternal() {
 	viper.SetDefault("stripe.quota.dictionary-lookup-daily-free", 0)
 	_ = viper.BindEnv("stripe.quota.dictionary-lookup-daily-free", "STRIPE_QUOTA_DICTIONARY_LOOKUP_DAILY_FREE")
 	viper.SetDefault("stripe.quota.dictionary-lookup-daily-subscribed", 0)
+
+	// Reading statistics ingest guards (ADR-028 Decision 9). The word cap
+	// bounds a single session report; the TTL is how long a deduplication
+	// row is kept, which only needs to outlive the client's retry window.
+	viper.SetDefault("stats.ingest.max-words-per-report", 50000)
+	_ = viper.BindEnv("stats.ingest.max-words-per-report", "STATS_INGEST_MAX_WORDS_PER_REPORT")
+	viper.SetDefault("stats.ingest.log-ttl-days", 7)
+	_ = viper.BindEnv("stats.ingest.log-ttl-days", "STATS_INGEST_LOG_TTL_DAYS")
 	_ = viper.BindEnv("stripe.quota.dictionary-lookup-daily-subscribed", "STRIPE_QUOTA_DICTIONARY_LOOKUP_DAILY_SUBSCRIBED")
 	// Superseded single-tier key, read as a fallback for -free.
 	viper.SetDefault("stripe.quota.dictionary-lookup-daily", 0)

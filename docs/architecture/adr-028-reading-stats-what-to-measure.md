@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Proposed — 2026-09-16。**本次未写任何代码。2026-09-16 修订**：用户指出配额不该是「免费/付费」的开关而是档位，由此产出 [`adr-029`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md)；本 ADR 的 Context（配额表偏斜）与 L1 数据来源随之修订，见下方标注。 与 [`adr-027`](adr-027-enx-ui-app-home-workbench-and-return-path.md) 是一对：027 管应用区的交互 / 布局 / 配色，本 ADR 管「统计哪些数据、怎么采、怎么存」。本 ADR 的结论**反向修改了 027 的状态条字段与 `overview` 契约**，见文末「对 ADR-027 的影响」。 |
+| **状态** | **v1 后端已实现 — 2026-09-16**；扩展侧埋点（L0 阅读水位 + 上报队列）与 enx-ui 展示（Home 状态条 / `/stats` 曲线）仍待做，见文末「实施进度」。原始记录：Proposed — 2026-09-16。**当时未写任何代码。2026-09-16 修订**：用户指出配额不该是「免费/付费」的开关而是档位，由此产出 [`adr-029`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md)；本 ADR 的 Context（配额表偏斜）与 L1 数据来源随之修订，见下方标注。 与 [`adr-027`](adr-027-enx-ui-app-home-workbench-and-return-path.md) 是一对：027 管应用区的交互 / 布局 / 配色，本 ADR 管「统计哪些数据、怎么采、怎么存」。本 ADR 的结论**反向修改了 027 的状态条字段与 `overview` 契约**，见文末「对 ADR-027 的影响」。 |
 | **日期** | 2026-09-16 |
 | **关联 Spec** | 无独立 TASK-SPEC，留到编码阶段再写 |
 | **关联 ADR** | [`adr-029-lookup-quota-tiered-limits-and-count-gate-split.md`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md)（**前置**：029 把配额改成人人有额度的分档模型并解耦计数与拦截，`dictionary_lookup_quota` 因此第一次成为全体用户的每日查词计数器；本 ADR 的 L1 数据来源据此改为服务端，见 Decision 5 补注）、[`adr-027-enx-ui-app-home-workbench-and-return-path.md`](adr-027-enx-ui-app-home-workbench-and-return-path.md)（**配对 ADR**：Home 状态条与 `/stats` 曲线是本 ADR 数据的唯一消费者；027 Decision 7 的 `overview` 契约按本 ADR 重写，027 Options G「不做 streak」的结论在这里得到正式的替代方案）、[`adr-018-dictionary-lookup-single-metered-seam.md`](adr-018-dictionary-lookup-single-metered-seam.md)（查词计量的单一 seam；本 ADR 的 L1 埋点**挂在同一个 seam 上**，但**统计不寄生于计费**，见 Options F）、[`adr-009-billing-stripe-subscription-and-ai-credits.md`](adr-009-billing-stripe-subscription-and-ai-credits.md)（`credit_transactions` 已是一份带时间戳的 AI 动作日志——本 ADR 只拿它**回填历史**，不拿它当长期数据源；`dictionary_lookup_quota` 的免费用户偏斜见 Context）、[`adr-006-page-word-lookup-in-sidepanel.md`](adr-006-page-word-lookup-in-sidepanel.md)、[`adr-008-phrase-selection-context-translation.md`](adr-008-phrase-selection-context-translation.md)、[`adr-017-sidepanel-sentence-drag-select-phrase-lookup.md`](adr-017-sidepanel-sentence-drag-select-phrase-lookup.md)、[`adr-023-sidepanel-unified-history-list-nested-sentence-words.md`](adr-023-sidepanel-unified-history-list-nested-sentence-words.md)（这四份定义了阶梯上 L1'–L3 的具体动作与消息）、[`adr-011-word-highlight-css-highlight-api-and-feature-split.md`](adr-011-word-highlight-css-highlight-api-and-feature-split.md)（`enxRun` / `getArticleNodes()` / `collectTextNodes()` 是 L0 埋点的落点）、[`adr-026-user-reported-definition-issues.md`](adr-026-user-reported-definition-issues.md)（同一条隐私原则：持久化「用户在读什么」是全新性质的事，要极度克制——本 ADR 因此选择**一个 URL 都不存**） |
@@ -326,6 +326,27 @@ URL、域名、页面标题、正文内容、阅读时刻（精确到秒/小时�
 5. **streak 解禁**：027 Options G 因为没有可信活跃数据而否决了 streak；`daily_stats` 有行即活跃，v1.1 可以加回，027 的 Revisit Trigger 相应更新。
 6. **套餐 / 余额卡明确口径**（用户本次确认要显示）：显示 `Subscription plan` + **积分余额**。ADR-009 的余额是**两个池**（`subscriptionBalance` 订阅赠送 + `topupBalance` 充值），建议**主显示合计**（用户只关心「我还能用多少」），hover / 次行再拆两个池——因为两个池的过期规则不同，完全不拆会在余额突然变少时造成困惑。
 7. **扩展安装状态**保持 027 Decision 1 的设计不变（用户本次确认要显示）。
+
+---
+
+## 实施进度（2026-09-16 更新）
+
+**✅ 已完成 —— v1 后端**
+
+- `utils/sqlitex/stats_models.go`：`daily_stats`（v1.1 的三列一并建好、默认 0）+ `stats_ingest_log`，登记进 `AutoMigrate`。**按仓库既有惯例（`reader_documents`、计费三表）只走 AutoMigrate，没有写 `migrations/*.sql`**——本 ADR 原文提的 `migrations/0XX_daily_stats.sql` 与实际惯例不符，以实现为准。
+- `stats/daily.go`：`Ingest`（幂等 + 截断 + 日期合理性校验）、`AddLookup`（服务端 L1）、`PurgeIngestLog`。**去重行与计数更新同一个事务**——分开提交的话，崩在中间会永久丢一次会话的数据（日志写了、计数没写，重试又被去重吃掉）。
+- `stats/query.go`：`GetOverview`（today / week / sparkline / vocab / recent）、`GetSeries`（day/week/month/year 分桶，空桶补 0）。周一起算。
+- `stats/handler.go`：`POST /api/stats/ingest`、`GET /api/stats/overview`、`GET /api/stats/series`，加 `X-Enx-Tz-Offset` 的读取与中间件。
+- `enx-api.go`：三条路由注册在 `apiGroup`（不进查词计量路径）、`runStatsIngestLogCleanup()` 每小时清理去重行、两个鉴权组挂上 `stats.TZOffsetMiddleware()`。
+- **Decision 7a 落地**：`dictionary.MeterLookup` 在放行后顺手 `stats.AddLookup`，best-effort。同一个动作现在被记两次，口径不同且**有意不一致**：`dictionary_lookup_quota` 是 UTC 日 / 记**请求数**（含被 429 的），`daily_stats` 是用户本地日 / 记**已服务的查词**。
+- `utils/viper.go`：`stats.ingest.max-words-per-report`（默认 50000）、`stats.ingest.log-ttl-days`（默认 7）。
+- 测试：`stats/daily_test.go` + `stats/query_test.go`，覆盖累加、幂等重放、日期越界拒绝、截断与负值丢弃、空 delta 无副作用、本地日分桶、sparkline 补零、周一起算、系列空桶补零、TTL 清理。`go build ./...` / `go vet` / `go test ./...` 通过。
+
+**⏳ 待做**
+
+- enx-chrome：`src/lib/readingProgress.ts`（`enxRun` 存 `totalWords` + 累计偏移表；点击水位；节流滚动水位；本地会话状态）、`background` 上报缓冲 + 幂等队列。
+- enx-ui：Home 状态条 + sparkline 接 `overview`（即 ADR-027 阶段 2）；`/stats` 画曲线 ①②④。
+- 部署：`task deploy:homelab`。
 
 ---
 

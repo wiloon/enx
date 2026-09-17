@@ -14,6 +14,7 @@ import (
 	"enx-api/paragraph"
 	"enx-api/reader"
 	"enx-api/repo"
+	"enx-api/stats"
 	"enx-api/translate"
 	"enx-api/utils"
 	"enx-api/utils/logger"
@@ -51,6 +52,7 @@ func main() {
 	ecdict.Init(ecdictDbPath)
 
 	go runReaderDocumentCleanup()
+	go runStatsIngestLogCleanup()
 
 	router := setupRouter()
 
@@ -98,6 +100,30 @@ func runReaderDocumentCleanup() {
 		}
 		if deleted > 0 {
 			logger.Infof("reader: purged %d expired document(s)", deleted)
+		}
+	}
+
+	purge()
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for range ticker.C {
+		purge()
+	}
+}
+
+// runStatsIngestLogCleanup periodically deletes expired stats deduplication
+// rows (ADR-028 Decision 5). Only the dedup log is purged -- daily_stats is
+// the user's own history and is never deleted. Mirrors the reader cleanup:
+// once on start so a restart doesn't leave a backlog, then hourly.
+func runStatsIngestLogCleanup() {
+	purge := func() {
+		deleted, err := stats.PurgeIngestLog(context.Background(), time.Now())
+		if err != nil {
+			logger.Errorf("stats: purge ingest log failed: %v", err)
+			return
+		}
+		if deleted > 0 {
+			logger.Infof("stats: purged %d expired ingest-log row(s)", deleted)
 		}
 	}
 
@@ -258,6 +284,7 @@ func setupRouter() *gin.Engine {
 	// APIs requiring authentication (Clerk session JWT)
 	authGroup := router.Group("/")
 	authGroup.Use(clerkAuth)
+	authGroup.Use(stats.TZOffsetMiddleware())
 	{
 		// get words query count by paragraph
 		authGroup.GET("/paragraph-init", paragraph.ParagraphInit)
@@ -277,6 +304,9 @@ func setupRouter() *gin.Engine {
 	// API group for Kong gateway (with /api prefix)
 	apiGroup := router.Group("/api")
 	apiGroup.Use(clerkAuth)
+	// Carries X-Enx-Tz-Offset down to dictionary.MeterLookup so a lookup is
+	// counted under the caller's own day (ADR-029 Decision 7a).
+	apiGroup.Use(stats.TZOffsetMiddleware())
 	{
 		// get words query count by paragraph
 		apiGroup.GET("/paragraph-init", paragraph.ParagraphInit)
@@ -312,6 +342,13 @@ func setupRouter() *gin.Engine {
 	apiGroup.GET("/reader/documents/:id", reader.GetDocumentHandler)
 	apiGroup.PUT("/reader/documents/:id", reader.UpdateDocumentHandler)
 	apiGroup.DELETE("/reader/documents/:id", reader.DeleteDocumentHandler)
+
+	// Reading statistics (ADR-028). Deliberately NOT on the metered path:
+	// these look up no words, call no model and touch no credits, so they
+	// sit outside ADR-018's single metering seam (same as admin/ADR-021).
+	apiGroup.POST("/stats/ingest", stats.IngestHandler)
+	apiGroup.GET("/stats/overview", stats.OverviewHandler)
+	apiGroup.GET("/stats/series", stats.SeriesHandler)
 
 	// Admin: grant top-up credits to any user by email. Gated by the
 	// ADMIN_CLERK_USER_IDS allowlist inside the handler (on top of clerkAuth).

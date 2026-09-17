@@ -10,6 +10,7 @@ import (
 	"enx-api/billing/quota"
 	"enx-api/ecdict"
 	"enx-api/enx"
+	"enx-api/stats"
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
 
@@ -56,13 +57,30 @@ func Lookup(ctx context.Context, english, userID string) (*enx.Dictionary, error
 func MeterLookup(ctx context.Context, userID string) error {
 	limit := resolveLookupLimit(userID)
 
-	count, err := quota.IncrementLookup(ctx, userID, time.Now())
+	now := time.Now()
+	count, err := quota.IncrementLookup(ctx, userID, now)
 	if err != nil {
 		logger.Warnf("dictionary: quota count failed for user %s, allowing lookup: %v", userID, err)
 		return nil
 	}
 	if limit > 0 && count > limit {
 		return ErrQuotaExceeded
+	}
+
+	// Also file this lookup under the user's own local day, for the learning
+	// statistics (ADR-029 Decision 7a). This is the same event the quota
+	// counter just recorded, deliberately counted twice under two different
+	// definitions of "a day" and of "a lookup":
+	//
+	//   dictionary_lookup_quota — UTC day, counts REQUESTS (rejected ones
+	//     too). Adversarial view: what is this account consuming?
+	//   daily_stats            — the user's local day, counts SERVED
+	//     lookups. Learning view: how much did I actually learn today?
+	//
+	// Their numbers are expected not to match (ADR-029 Decision 6). This one
+	// is best-effort: statistics must never cost a user their definition.
+	if err := stats.AddLookup(ctx, userID, stats.LocalDateFromContext(ctx, now), stats.OffsetFromContext(ctx)); err != nil {
+		logger.Warnf("dictionary: stats lookup count failed for user %s: %v", userID, err)
 	}
 	return nil
 }
