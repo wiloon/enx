@@ -9,14 +9,8 @@ import { Label } from '@/components/ui/label'
 import { requestReaderMode, webStoreUrl } from '@/lib/enxExtension'
 import { useExtensionStatus } from '@/hooks/useExtensionStatus'
 import { apiService } from '@/services/api'
+import { consumeReaderDocument } from '@/lib/readerSession'
 import { MAX_CONTENT_LENGTH } from './constants'
-
-// sessionStorage key the history page writes to just before navigating here
-// to open a saved document (ADR-022 Option E: reopening reuses this same
-// reading-view render path instead of a second implementation). Carries
-// both the id (so re-submitting updates this same document -- ADR-022
-// Addendum) and the content.
-const OPEN_DOC_STORAGE_KEY = 'enx-reader-open-doc'
 
 // Split pasted plain text into paragraphs on blank lines; keep newlines
 // inside a paragraph (rendered with `white-space: pre-wrap`).
@@ -81,27 +75,15 @@ export default function ReaderPage() {
   // persisted, so this just renders it -- no POST. Its id is remembered so a
   // later "Edit text" + Read updates this document instead of creating one.
   useEffect(() => {
-    let raw: string | null = null
-    try {
-      raw = sessionStorage.getItem(OPEN_DOC_STORAGE_KEY)
-      if (raw) sessionStorage.removeItem(OPEN_DOC_STORAGE_KEY)
-    } catch {
-      // Storage unavailable (private browsing, etc.) -- nothing to open.
+    const parsed = consumeReaderDocument()
+    if (parsed?.content) {
+      setDraft(parsed.content)
+      setDocumentId(parsed.id ?? null)
+      setSaveStatus('saved')
+      setArticle(parsed.content)
+      setReadSeq((n) => n + 1)
     }
-    if (!raw) return
-    try {
-      const parsed = JSON.parse(raw) as { id?: string; content?: string }
-      if (parsed.content) {
-        setDraft(parsed.content)
-        setDocumentId(parsed.id ?? null)
-        setSaveStatus('saved')
-        setArticle(parsed.content)
-        setReadSeq((n) => n + 1)
-      }
-    } catch {
-      // Malformed handoff payload -- ignore.
-    }
-    // Only ever relevant right after navigating in from the history page.
+    // Only ever relevant right after navigating in from a document list.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -160,10 +142,10 @@ export default function ReaderPage() {
                   rel="noopener noreferrer"
                   className="font-medium underline"
                 >
-                  Install the ENX extension
+                  Install the Catglish extension
                 </a>
               ) : (
-                <span className="font-medium">Install the ENX extension</span>
+                <span className="font-medium">Install the Catglish extension</span>
               )}{' '}
               to click any word on this page for its definition.
             </p>

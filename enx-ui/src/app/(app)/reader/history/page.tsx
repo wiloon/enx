@@ -8,11 +8,7 @@ import { ArrowLeft, Trash2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { apiService } from '@/services/api'
-
-// sessionStorage key ../page.tsx reads on mount to open a document without a
-// second POST (ADR-022 Option E1: reopening reuses the reading-view render
-// path, it doesn't re-implement it).
-const OPEN_DOC_STORAGE_KEY = 'enx-reader-open-doc'
+import { stashReaderDocument } from '@/lib/readerSession'
 
 export default function ReaderHistoryPage() {
   const router = useRouter()
@@ -39,14 +35,7 @@ export default function ReaderHistoryPage() {
       setActionError(resp.error || 'Failed to open document')
       return
     }
-    try {
-      sessionStorage.setItem(
-        OPEN_DOC_STORAGE_KEY,
-        JSON.stringify({ id: resp.data.id, content: resp.data.content })
-      )
-    } catch {
-      // Storage unavailable -- fall through, /reader will just show empty.
-    }
+    stashReaderDocument({ id: resp.data.id, content: resp.data.content })
     router.push('/reader')
   }
 

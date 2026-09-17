@@ -212,7 +212,7 @@ export default function WordPopover({
             <button
               data-testid="word-popover-mark-known"
               onClick={() => onMarkAcquainted(currentWord.English)}
-              className="bg-success hover:bg-success/90 text-success-foreground text-sm px-3 py-1 rounded-sm transition-colors"
+              className="bg-brand hover:bg-brand/90 text-brand-foreground text-sm px-3 py-1 rounded-sm transition-colors"
               title="Mark as acquainted"
             >
               ✓ Know It

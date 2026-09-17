@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL || "https://enx.wiloon.lab"
   ),
-  title: "Catseye",
+  title: "Catglish",
   description: "AI-assisted English reading in your browser.",
 };
 

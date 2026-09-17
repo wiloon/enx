@@ -11,6 +11,11 @@ const buttonVariants = cva(
       variant: {
         default:
           "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90",
+        // ADR-027 decision 3: the brand teal enters the app area. At most one
+        // solid `brand` button per screen -- it is that screen's primary
+        // action. Secondary goes `outline`, tertiary `ghost`, and `default`
+        // (neutral near-black) stays for genuinely neutral actions.
+        brand: "bg-brand text-brand-foreground shadow-xs hover:bg-brand/90",
         destructive:
           "bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
         outline:

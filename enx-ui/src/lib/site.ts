@@ -2,10 +2,10 @@
 // so launch prep is a single-file review.
 
 export const SITE = {
-  name: 'Catseye',
+  name: 'Catglish',
   tagline: 'Learn English while you read the web',
   subtitle:
-    'Catseye is a browser extension for AI-assisted English reading. Turn it on for any English page — new words get underlined by difficulty, click any word for its meaning, select a sentence to translate it. Everything you look up flows into your vocabulary list and review system.',
+    'Catglish is a browser extension for AI-assisted English reading. Turn it on for any English page — new words get underlined by difficulty, click any word for its meaning, select a sentence to translate it. Everything you look up flows into your vocabulary list and review system.',
 
   // TODO: real Chrome Web Store listing id
   chromeWebStoreUrl: 'https://chromewebstore.google.com/',

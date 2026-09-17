@@ -2,6 +2,7 @@ import {
   BarChart3,
   BookOpen,
   CreditCard,
+  Globe,
   Home,
   Search,
   Sparkles,
@@ -36,6 +37,9 @@ export const NAV_INSIGHTS: NavItem[] = [
 // compete with the primary navigation.
 export const NAV_FOOTER: NavItem[] = [
   { label: 'Billing', href: '/billing', icon: CreditCard },
+  // Back to the marketing site (ADR-027 decision 4). Same Next.js app, so it
+  // is a plain in-app link, not an external one.
+  { label: 'Back to site', href: '/', icon: Globe },
 ]
 
 // Admin-only tools (ADR-021). Rendered in the sidebar only when
@@ -55,6 +59,9 @@ export const ALL_NAV: NavItem[] = [
 // True when `pathname` is `item.href` or a nested route beneath it, so
 // /stats/weekly still lights up "Reading Stats".
 export function isNavItemActive(pathname: string, href: string): boolean {
+  // '/' is a prefix of every route, so the generic startsWith() rule would
+  // light up "Back to site" everywhere. Only an exact match counts.
+  if (href === '/') return pathname === '/'
   return pathname === href || pathname.startsWith(href + '/')
 }
 
@@ -64,5 +71,5 @@ export function navTitleForPath(pathname: string): string {
   const match = [...ALL_NAV]
     .filter((item) => isNavItemActive(pathname, item.href))
     .sort((a, b) => b.href.length - a.href.length)[0]
-  return match?.label ?? 'Catseye'
+  return match?.label ?? 'Catglish'
 }

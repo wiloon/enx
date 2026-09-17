@@ -117,14 +117,14 @@
 
   **① 要改的（用户可见）**
 
-  - `enx-ui`
-    - [ ] `src/lib/site.ts` — `SITE.name` + `subtitle` 整段文案
-    - [ ] `src/app/layout.tsx:13` `title`、`src/app/page.tsx:17,19` metadata title/description
-    - [ ] `src/components/site/{InstallCTA,FeatureSection,HowItWorks}.tsx` 正文里嵌在句子中的 `Catseye`
-    - [ ] `src/app/(app)/app/page.tsx` — 随 `adr-027` 重写一并处理
-    - [ ] `src/components/app/app-nav.ts:67` — `navTitleForPath` 的兜底返回值
-    - [ ] `src/app/(app)/reader/page.tsx:163,166`、`src/app/extension/connected/page.tsx:40` — 面向用户的 "the ENX extension"
-    - [ ] `src/app/(app)/billing/plans.ts:24,31,38` — `enx Pro` / `enx Pro+` / `enx Max`
+  - `enx-ui` —— **2026-09-16 已全部完成**（随 `adr-027` 阶段 1 一起落地）
+    - [x] `src/lib/site.ts` — `SITE.name` + `subtitle` 整段文案
+    - [x] `src/app/layout.tsx:13` `title`、`src/app/page.tsx:17,19` metadata title/description
+    - [x] `src/components/site/{InstallCTA,FeatureSection,HowItWorks}.tsx` 正文里嵌在句子中的 `Catseye`
+    - [x] `src/app/(app)/app/page.tsx` — 随 `adr-027` 重写一并处理
+    - [x] `src/components/app/app-nav.ts:67` — `navTitleForPath` 的兜底返回值
+    - [x] `src/app/(app)/reader/page.tsx:163,166`、`src/app/extension/connected/page.tsx:40` — 面向用户的 "the ENX extension"
+    - [ ] `src/app/(app)/billing/plans.ts:24,31,38` — `enx Pro` / `enx Pro+` / `enx Max`。**未做**：这三条的 `description` 还写着 "Unlimited lookups"，按 `adr-029` 要一并改掉，所以留到 029 落地时一次改完，避免改两遍
   - `enx-chrome`
     - [ ] `manifest.json` — `name`（现为 `ENX - English Learning Extension`）、`description`、`action.default_title`、`commands` 里的 `description`。**扩展 ID 不受影响**（ID 由密钥决定，不是名字）
     - [ ] `popup.html` / `options.html` / `sidepanel.html` 的 `<title>`
@@ -152,8 +152,8 @@
 
   **③ 顺带确认**
 
-  - [ ] `enx-ui/src/app/globals.css` 里 `--brand` 的注释把配色来源讲成「猫眼星云 cat's eye nebula」——**整段删掉重写，不保留任何猫眼表述**（商标冲突风险）。注意那段注释里还有**另一半理由是站得住的、必须留下**：hue 200 是避开同类产品扎堆的 239–270 才选的（Quizlet / Readwise / Anki / Busuu / Rosetta Stone 都落在那个区间），这条是真实的差异化依据，与产品名无关。`enx-chrome/src/index.css` 里镜像的同一段注释一并改
-  - [ ] 全仓搜一遍 `猫眼` / `cat's eye` / `Catseye`，UI 文案、代码注释、README、营销文案里**不留**（`adr-010` / `adr-013` 正文除外，那是历史决策记录）
+  - [x] `enx-ui/src/app/globals.css` 里 `--brand` 的注释（2026-09-16 完成）——猫眼星云那句已整段删掉，hue 200 避开 239–270 扎堆区间的理由保留。查证：`enx-chrome/src/index.css` 的镜像注释**本来就没有**猫眼表述，无需改动
+  - [x] 全仓搜一遍 `猫眼` / `cat's eye` / `Catseye`（2026-09-16）：`enx-ui/src` 已清零；**`enx-chrome` 与 `enx-api` 仍待改**（见上方 ① 的对应小节）
   - [ ] **README 已加命名说明**（2026-09-16 完成）：`ENX` = 开发代号，`Catglish` = 产品名，无中文名
   - [ ] **Git 仓库改名**：用户明确**这次不做**，以后再说。届时要连带处理 Go module 路径、CI、部署清单、`w10n-config` 里的引用
   - [ ] 改完全仓 `grep -rnE "Catseye|ENX -|enx Pro"` 复查一遍，排除 `__tests__` 和 ADR 历史记录（**ADR 正文里的历史表述不要改**，那是决策记录，改了就失真）

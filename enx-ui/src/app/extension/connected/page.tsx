@@ -37,7 +37,7 @@ export default function ExtensionConnectedPage() {
             : 'The extension is ready. Taking you back to what you were reading…'}
         </p>
         <p className="mt-4 text-xs text-muted-foreground">
-          If you came here from the ENX extension and this tab doesn&apos;t
+          If you came here from the Catglish extension and this tab doesn&apos;t
           close on its own, you can close it and return to your page — the
           extension is signed in now.
         </p>

@@ -47,8 +47,8 @@
 
 :root {
   --radius: 0.625rem;
-  /* Marketing accent (ADR-013 Decision 4): the "cat's eye nebula" teal-blue,
-     used only in the marketing area for CTAs, links and icon accents.
+  /* Brand accent (ADR-013 decision 4, extended to the app area by ADR-027
+     decision 3): a teal-blue used for CTAs, links and icon accents.
      Both the light and dark shades derive from --brand-hue, so retuning the
      accent is a one-number edit (mirror it in enx-chrome/src/index.css).
      Hue 200, moved off 230: that sat 9 degrees from where this category piles

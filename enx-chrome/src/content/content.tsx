@@ -43,9 +43,12 @@ console.log('ENX Content script loaded')
 // our shadow roots, so a var() here would resolve against the host page and
 // come back empty. Literals, kept in step with index.css by hand -- and kept
 // together here rather than buried in the cssText blocks that use them.
+const BRAND_HUE = 200 // keep in step with --brand-hue in index.css
+
 const HOST_PAGE_COLORS = {
+  brand: `oklch(0.55 0.13 ${BRAND_HUE})`, // mirrors --color-brand
+  brandShadow: `oklch(0.55 0.13 ${BRAND_HUE} / 30%)`,
   destructive: 'oklch(0.577 0.245 27.325)', // mirrors --color-destructive
-  success: 'oklch(0.58 0.14 150)', // mirrors --color-success
   // ADR-025, the sentence a word click opened the panel for. The one warm
   // accent in the system, and intentionally so: it is a transient locator on
   // someone else's page, where a warm wash stays legible against backgrounds
@@ -164,7 +167,6 @@ const createAnchoredOverlay = (
 ): {
   overlay: OverlayElement
   root: Root
-  anchorNode: Node
   mount: () => void
   cleanup: () => void
 } => {
@@ -198,11 +200,6 @@ const createAnchoredOverlay = (
   shadowRoot.appendChild(mountPoint)
   const root = createRoot(mountPoint)
 
-  // For the click-outside guard: don't dismiss when the click landed on the
-  // word the overlay belongs to.
-  const anchorNode: Node =
-    nearestElement(reference.startContainer) ?? reference.startContainer
-
   let stopPositioning: (() => void) | null = null
   const mount = () => {
     document.body.appendChild(overlay)
@@ -214,7 +211,7 @@ const createAnchoredOverlay = (
     stopPositioning = null
   }
 
-  return { overlay, root, anchorNode, mount, cleanup }
+  return { overlay, root, mount, cleanup }
 }
 
 // Create and show word overlay using the Popover API + Floating UI, positioned
@@ -227,8 +224,7 @@ const showWordPopover = async (word: string, reference: Range) => {
   // Remove existing overlay
   hideCurrentOverlay()
 
-  const { overlay, root, anchorNode, mount, cleanup } =
-    createAnchoredOverlay(reference)
+  const { overlay, root, mount, cleanup } = createAnchoredOverlay(reference)
   currentRoot = root
 
   const handleMarkAcquainted = async (englishWord: string) => {
@@ -321,7 +317,7 @@ const showWordPopover = async (word: string, reference: Range) => {
   mount()
   currentOverlay = overlay
 
-  setupOverlayEventHandlers(overlay, anchorNode, root, cleanup)
+  setupOverlayEventHandlers(overlay, reference, root, cleanup)
 
   // 7. Fetch word translation
   try {
@@ -380,13 +376,27 @@ const showWordPopover = async (word: string, reference: Range) => {
   }
 }
 
+// Does (x, y) fall inside a Range's own rendered box(es)? Used in two places
+// where "near the text" is not good enough: resolving a click to a word
+// (caretPositionFromPoint/caretRangeFromPoint snap to the nearest character
+// even when the click is far past the end of a line), and the overlay's
+// click-outside guard.
+const pointInRange = (range: Range, x: number, y: number): boolean => {
+  const rects = range.getClientRects()
+  for (let i = 0; i < rects.length; i++) {
+    const r = rects[i]
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return true
+  }
+  return false
+}
+
 // Setup event handlers for Popover overlay. `stopPositioning` is the Floating
 // UI autoUpdate cleanup from createAnchoredOverlay -- folded into
 // overlayEventCleanup so both close paths (the 'toggle' handler below and
 // hideCurrentOverlay()'s direct teardown) stop the scroll/resize listeners.
 const setupOverlayEventHandlers = (
   overlay: OverlayElement,
-  anchorNode: Node,
+  reference: Range,
   root: Root,
   stopPositioning: () => void
 ) => {
@@ -422,18 +432,34 @@ const setupOverlayEventHandlers = (
     }
   }
 
-  // Click outside handler (optional, Popover API can handle this)
+  // Click outside handler (optional, Popover API can handle this). The "is
+  // this a click on the word the overlay belongs to?" guard is a hit-test
+  // against the reference Range's own rendered boxes, not `contains()` on its
+  // containing element: a word's nearest element is usually the whole <p>, so
+  // an element-level check treated every click inside that paragraph -- the
+  // blank space after its last word very much included -- as a click on the
+  // anchor, and the overlay only closed once the pointer left the paragraph
+  // box entirely (i.e. out near the page margin).
   const handleClickOutside = (e: MouseEvent) => {
     const target = e.target as Node
-    if (!overlay.contains(target) && !anchorNode.contains(target)) {
-      overlay.hidePopover()
-    }
+    if (overlay.contains(target)) return
+    if (pointInRange(reference, e.clientX, e.clientY)) return
+    overlay.hidePopover()
   }
 
   document.addEventListener('keydown', handleKeydown)
-  document.addEventListener('click', handleClickOutside)
+  // Deferred a tick: the gesture that opened this overlay is often still
+  // propagating (handleTextSelection runs off 'mouseup', and the browser
+  // sends a trailing 'click' right after it). A listener added mid-dispatch
+  // still receives that in-flight event, and its release point can sit just
+  // outside the reference's boxes -- which would tear the overlay down in
+  // the same gesture that created it.
+  const armClickOutside = window.setTimeout(() => {
+    document.addEventListener('click', handleClickOutside)
+  }, 0)
 
   overlayEventCleanup = () => {
+    window.clearTimeout(armClickOutside)
     document.removeEventListener('keydown', handleKeydown)
     document.removeEventListener('click', handleClickOutside)
     stopPositioning()
@@ -794,20 +820,6 @@ const caretFromPoint = (
   return range ? { node: range.startContainer, offset: range.startOffset } : null
 }
 
-// caretPositionFromPoint/caretRangeFromPoint snap to the nearest character
-// even when (x, y) is far past the end of a line -- clicking in the blank
-// space to the right of a short line resolves to that line's last word.
-// Guard against that by requiring the click to actually land inside the
-// resolved word's own rendered box, not just on its text node.
-const pointInRange = (range: Range, x: number, y: number): boolean => {
-  const rects = range.getClientRects()
-  for (let i = 0; i < rects.length; i++) {
-    const r = rects[i]
-    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return true
-  }
-  return false
-}
-
 // One click listener per article root: resolve the word under the pointer
 // from its coordinates (no marker element needed) and open the overlay on it.
 // Clicks inside links / code / buttons resolve to null and fall through.
@@ -867,7 +879,7 @@ const addProcessingCompleteIndicator = (articleNode: Element) => {
     position: relative;
     display: inline-flex;
     align-items: center;
-    background: ${HOST_PAGE_COLORS.success};
+    background: ${HOST_PAGE_COLORS.brand};
     color: white;
     padding: 8px 12px;
     border-radius: 20px;
@@ -875,7 +887,7 @@ const addProcessingCompleteIndicator = (articleNode: Element) => {
     font-size: 12px;
     font-weight: 500;
     margin-bottom: 16px;
-    box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+    box-shadow: 0 2px 8px ${HOST_PAGE_COLORS.brandShadow};
     animation: slideInFromTop 0.5s ease-out;
     z-index: 1000;
   `
@@ -918,8 +930,7 @@ const addProcessingCompleteIndicator = (articleNode: Element) => {
 const showSelectionHint = (hint: string, reference: Range) => {
   hideCurrentOverlay()
 
-  const { overlay, root, anchorNode, mount, cleanup } =
-    createAnchoredOverlay(reference)
+  const { overlay, root, mount, cleanup } = createAnchoredOverlay(reference)
   currentRoot = root
 
   contentScriptStore.set(sentencePanelHintAtom, hint)
@@ -939,7 +950,7 @@ const showSelectionHint = (hint: string, reference: Range) => {
   mount()
   currentOverlay = overlay
 
-  setupOverlayEventHandlers(overlay, anchorNode, root, cleanup)
+  setupOverlayEventHandlers(overlay, reference, root, cleanup)
 }
 
 // Drag-select translation (ADR-007): sends the selected text straight to

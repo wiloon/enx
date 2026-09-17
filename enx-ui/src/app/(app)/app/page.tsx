@@ -1,63 +1,64 @@
 'use client'
 
-import Link from 'next/link'
+import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/useAuth'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useExtensionStatus } from '@/hooks/useExtensionStatus'
+import { apiService } from '@/services/api'
+import ContinueReading from '@/components/app/home/ContinueReading'
+import ExtensionBanner from '@/components/app/home/ExtensionBanner'
+import OnboardingChecklist from '@/components/app/home/OnboardingChecklist'
+import PlanCard from '@/components/app/home/PlanCard'
+import QuickTiles from '@/components/app/home/QuickTiles'
 
-// App home / overview (ADR-013, ADR-016). Auth gating and the page chrome
-// (sidebar + topbar) live in the (app) route-group layout; this page is just
-// the landing content.
-const SHORTCUTS = [
-  {
-    title: 'Word Lookup',
-    href: '/lookup',
-    body: 'Look up English words to see their Chinese translation, IPA pronunciation, lookup count, and mastery status.',
-  },
-  {
-    title: 'Rephrase',
-    href: '/rephrase',
-    body: 'Turn Chinese or rough English into the way an American teammate would phrase it, with alternatives and notes.',
-  },
-  {
-    title: 'Reading Stats',
-    href: '/stats',
-    body: 'Track the words you look up and the sentences you read — daily, weekly, and monthly.',
-  },
-  {
-    title: 'Billing',
-    href: '/billing',
-    body: 'Upgrade to Catseye Pro or buy AI translation credits, and check your current balance.',
-  },
-]
-
+// App home (ADR-027): a status-driven workbench, not a directory of features
+// -- the sidebar already navigates. Two forms, picked by whether this user
+// has anything of their own yet. The today/vocabulary status strip needs
+// GET /api/stats/overview (ADR-028) and lands with stage 2.
 export default function AppHome() {
   const { user } = useAuth()
+  const extensionStatus = useExtensionStatus()
+
+  const {
+    data: documents,
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: ['reader-documents'],
+    queryFn: async () => {
+      const resp = await apiService.listReaderDocuments()
+      if (resp.success && resp.data) return resp.data.documents
+      throw new Error(resp.error || 'Failed to load documents')
+    },
+  })
+
+  // Stage-1 stand-in for "has this user done anything yet"; stage 2 switches
+  // to overview.vocab.total > 0.
+  const hasData = (documents?.length ?? 0) > 0
+  const showOnboarding = !isLoading && !isError && !hasData
+  const name = user?.username ? `, ${user.username}` : ''
 
   return (
-    <div className="mx-auto max-w-4xl p-6 md:p-8">
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold">
-          Welcome{user?.username ? `, ${user.username}` : ''}!
-        </h2>
-        <p className="text-muted-foreground">Catseye</p>
-      </div>
+    <div className="mx-auto max-w-4xl space-y-6 p-6 md:p-8">
+      <h2 className="text-2xl font-bold">
+        {hasData ? 'Welcome back' : 'Welcome'}
+        {name}!
+      </h2>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        {SHORTCUTS.map((item) => (
-          <Card key={item.href}>
-            <CardHeader>
-              <CardTitle>{item.title}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="mb-4 text-muted-foreground">{item.body}</p>
-              <Link href={item.href}>
-                <Button className="w-full">Go to {item.title}</Button>
-              </Link>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {showOnboarding ? (
+        <OnboardingChecklist status={extensionStatus} />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_16rem]">
+          <ContinueReading
+            documents={documents}
+            isLoading={isLoading}
+            isError={isError}
+          />
+          <PlanCard />
+        </div>
+      )}
+
+      <QuickTiles />
+      <ExtensionBanner status={extensionStatus} />
     </div>
   )
 }

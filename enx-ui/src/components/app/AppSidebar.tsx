@@ -62,8 +62,10 @@ export default function AppSidebar({ onNavigate }: { onNavigate?: () => void }) 
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
       <div className="flex h-14 items-center border-b border-sidebar-border px-4">
+        {/* The logo goes back to the marketing site (ADR-027 decision 4);
+            the Home nav item already owns /app. */}
         <Link
-          href={SITE.appPath}
+          href="/"
           onClick={onNavigate}
           className="flex items-center gap-2 font-semibold"
         >

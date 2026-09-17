@@ -27,9 +27,30 @@ it('renders every navigation destination', () => {
     'Reader',
     'Reading Stats',
     'Billing',
+    'Back to site',
   ]) {
     expect(screen.getByRole('link', { name: label })).toBeInTheDocument()
   }
+})
+
+// "Back to site" points at '/', which is a prefix of every route, so the
+// generic prefix rule would light it up everywhere (ADR-027 decision 4).
+it('never marks "Back to site" as the current page inside the app', () => {
+  for (const pathname of ['/app', '/reader/history', '/billing']) {
+    mockPathname.mockReturnValue(pathname)
+    const { unmount } = render(<AppSidebar />)
+    expect(
+      screen.getByRole('link', { name: 'Back to site' })
+    ).not.toHaveAttribute('aria-current')
+    unmount()
+  }
+})
+
+it('shows no pre-rename product names', () => {
+  mockPathname.mockReturnValue('/app')
+  render(<AppSidebar />)
+
+  expect(screen.queryByText(/Catseye|ENX/)).not.toBeInTheDocument()
 })
 
 it('marks only the current route as active', () => {

@@ -14,9 +14,9 @@ import SiteFooter from '@/components/site/SiteFooter'
 export const dynamic = 'force-static'
 
 export const metadata: Metadata = {
-  title: 'Catseye — AI-assisted English reading in your browser',
+  title: 'Catglish — AI-assisted English reading in your browser',
   description:
-    'Catseye underlines the words worth learning as you read English online, explains any word you click, and translates whole sentences on demand.',
+    'Catglish underlines the words worth learning as you read English online, explains any word you click, and translates whole sentences on demand.',
 }
 
 export default function LandingPage() {

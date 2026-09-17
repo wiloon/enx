@@ -7,7 +7,7 @@ const STEPS = [
   {
     n: 2,
     title: 'Turn on learning mode',
-    body: 'Click the Catseye icon on any English page.',
+    body: 'Click the Catglish icon on any English page.',
   },
   {
     n: 3,

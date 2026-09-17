@@ -20,12 +20,12 @@ const FEATURES: Feature[] = [
   },
   {
     title: 'Select a sentence to translate it',
-    body: 'Drag-select a full sentence and Catseye translates it in the side panel, keeping the original in view. Select a short phrase instead and it explains the phrase in context.',
+    body: 'Drag-select a full sentence and Catglish translates it in the side panel, keeping the original in view. Select a short phrase instead and it explains the phrase in context.',
     imageAlt: 'The browser side panel showing a translated sentence',
   },
   {
     title: 'Idiomatic phrasing',
-    body: 'Writing to an American teammate? Paste Chinese or rough English and Catseye rewrites it the way a colleague would actually say it — with alternatives and short notes on what changed.',
+    body: 'Writing to an American teammate? Paste Chinese or rough English and Catglish rewrites it the way a colleague would actually say it — with alternatives and short notes on what changed.',
     imageAlt: 'The idiomatic phrasing page with alternatives and notes',
   },
 ]

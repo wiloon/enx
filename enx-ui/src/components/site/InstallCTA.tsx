@@ -35,7 +35,7 @@ function BrowserButton({
 export default function InstallCTA() {
   return (
     <section id="install" className="scroll-mt-16 mx-auto max-w-6xl px-4 py-16 text-center sm:px-6">
-      <h2 className="text-3xl font-bold tracking-tight">Start reading with Catseye</h2>
+      <h2 className="text-3xl font-bold tracking-tight">Start reading with Catglish</h2>
       <p className="mt-3 text-muted-foreground">
         Free to install. Your vocabulary, building itself as you read.
       </p>
