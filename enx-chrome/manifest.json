@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiBY2NMV58HKw1g13kUFY6pyH2dzEuhZ8r+rR3Lw8N0Z3B4qxIou3gxVv/6wKJUuD5Aky6ZqXdCuBNCG1GTukRp5R0o8ulRFmLSSz/uWcxdgynA9s5Sr3hgkaIsECmyt9U84Y3Rob/6GB1hYk9hp6qsd8+GLK+82/xFCJoSck1piDeJNJQY+XQQgwn/+bORpD/m1KpQaEUya7ZnKAJYNbQ44/3sTsgWwZuevGW0ShETaqCIOb7K2dIbwWwDesceWjIbu6G9OjRuuup74jWkTbiQVLvMKONhv1/oI72+sgsP1c9ru1jEKZnNE46zlfLaSaLL5bNMSODrLnq1u9Ynh1twIDAQAB",
-  "name": "ENX - English Learning Extension",
+  "name": "Catglish - Learn English as you read the web",
   "version": "1.0.1",
-  "description": "AI-powered English learning assistant that helps you learn vocabulary while browsing the web",
+  "description": "Underlines the words worth learning as you read English online, explains any word you click, and translates whole sentences.",
   "permissions": ["storage", "activeTab", "scripting", "notifications", "identity", "sidePanel", "contextMenus", "cookies"],
   "host_permissions": [
     "http://*/*",
@@ -22,7 +22,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "ENX English Learning"
+    "default_title": "Catglish"
   },
   "background": {
     "service_worker": "src/background/background.ts"
@@ -72,7 +72,7 @@
         "default": "Ctrl+Shift+E",
         "mac": "Command+Shift+E"
       },
-      "description": "Toggle ENX learning mode"
+      "description": "Toggle Catglish learning mode"
     }
   }
 }

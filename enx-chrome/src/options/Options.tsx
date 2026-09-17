@@ -82,7 +82,7 @@ function OptionsContent() {
     <div className="min-h-screen bg-muted p-8">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold text-foreground mb-8">
-          Enx Extension Options
+          Catglish Extension Options
         </h1>
 
         {/* Current Environment Info */}
@@ -148,7 +148,7 @@ function OptionsContent() {
               className="w-full px-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-transparent"
             />
             <p className="mt-2 text-sm text-muted-foreground">
-              Enter the base URL of your ENX API server (e.g.,
+              Enter the base URL of your Catglish API server (e.g.,
               http://localhost:8090)
             </p>
           </div>

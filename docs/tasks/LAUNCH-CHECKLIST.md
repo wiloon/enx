@@ -127,10 +127,13 @@
     - [x] `src/app/(app)/reader/page.tsx:163,166`、`src/app/extension/connected/page.tsx:40` — 面向用户的 "the ENX extension"
     - [x] `src/app/(app)/billing/plans.ts:24,31,38` — `enx Pro` / `enx Pro+` / `enx Max`（2026-09-16 随 `adr-029` 一并改完，同时把三条 description 里不可兑现的 "Unlimited lookups" 改掉）
   - `enx-chrome`
-    - [ ] `manifest.json` — `name`（现为 `ENX - English Learning Extension`）、`description`、`action.default_title`、`commands` 里的 `description`。**扩展 ID 不受影响**（ID 由密钥决定，不是名字）
-    - [ ] `popup.html` / `options.html` / `sidepanel.html` 的 `<title>`
-    - [ ] `src/popup/Popup.tsx:63`、`src/components/Login.tsx:60`、`src/options/Options.tsx:151`
-    - [ ] `src/background/background.ts:604` — 通知标题 `Signed in to Catseye`
+    - [x] `manifest.json`（2026-09-16）— `name` → `Catglish - Learn English as you read the web`（**44 字符，压在 Web Store 标题上限 45 以内**）、`description` 重写（124 字符 / 上限 132）、`action.default_title` → `Catglish`、`commands.description`。`key` 未动，**扩展 ID 不变**
+    - [x] `popup.html` / `options.html` / `sidepanel.html` 的 `<title>`（2026-09-16）
+    - [x] `src/popup/Popup.tsx`、`src/components/Login.tsx`、`src/options/Options.tsx`（2026-09-16）。**清单原先漏了 `Options.tsx` 的 h1 `Enx Extension Options`**，一并改掉
+    - [x] `src/background/background.ts` — 通知标题 `Signed in to Catseye` → `Signed in to Catglish`（2026-09-16）
+    - [x] **清单原先漏掉、扫描时新发现的 10 处页面内可见提示**（2026-09-16）：`src/content/content.tsx` 的 8 处（「Saved. Click or right-click the **ENX** toolbar icon…」×6、登录/会话过期提示 ×2，都渲染在浮层里给用户看）、`src/lib/siteAdapters.ts` 的 2 处 `pageSupport` 文案（X 非推文详情页、enx-ui 非 Reader 页时 `enxRun` 中止并把这句话显示给用户）
+    - 未动（按「只改用户可见」原则）：代码注释、`console.log` 前缀 `[ENX Config]`、`isEnxEnabled` / `enableEnx` / `ENX_UI_ORIGINS` / `ENX_UI_HOSTS` / `isEnxUiHost` 等内部标识符、调试用的 `'Hello from ENX background!'`、未被引用的 `HelloWorld.tsx`、`test-*.html` / `config-check.html` 等开发页
+    - 验证：`tsc --noEmit` 通过，`pnpm test` 18 suites / 186 tests 全绿，`pnpm build` 通过
   - `enx-api`（面向用户的响应文案）—— **2026-09-16 已完成**（随 `adr-029`）
     - [x] `dictionary/lookup.go:95` — 429 文案。`unlimited` 已去掉，改成「a much higher daily limit」；并区分免费用户（引导升级）与订阅用户（账号异常，引导联系支持）
     - [x] `billing/handler.go:109` — `an active Catglish Pro (or higher) subscription is required...`

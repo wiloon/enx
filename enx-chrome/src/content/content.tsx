@@ -284,14 +284,14 @@ const showWordPopover = async (word: string, reference: Range) => {
       if (response.success && !response.panelOpened) {
         contentScriptStore.set(
           sentencePanelHintAtom,
-          'Saved. Click or right-click the ENX toolbar icon to view the sentence translation.'
+          'Saved. Click or right-click the Catglish toolbar icon to view the sentence translation.'
         )
       }
     } catch (error) {
       console.error('Error opening sentence panel:', error)
       contentScriptStore.set(
         sentencePanelHintAtom,
-        'Saved. Click or right-click the ENX toolbar icon to view the sentence translation.'
+        'Saved. Click or right-click the Catglish toolbar icon to view the sentence translation.'
       )
     }
   }
@@ -553,8 +553,8 @@ const showSessionExpiredMessage = (isLoginError = false) => {
 
   const title = isLoginError ? 'Login Required' : 'Session Expired'
   const message = isLoginError 
-    ? 'Please click the ENX extension icon to login.'
-    : 'Your session has expired. Please click the ENX extension icon to login again.'
+    ? 'Please click the Catglish extension icon to login.'
+    : 'Your session has expired. Please click the Catglish extension icon to login again.'
 
   // Create notification
   const notification = document.createElement('div')
@@ -974,11 +974,11 @@ const triggerSelectionTranslation = async (
     })
 
     if (response.success && !response.panelOpened) {
-      showSelectionHint('Saved. Click or right-click the ENX toolbar icon to view the sentence translation.', reference)
+      showSelectionHint('Saved. Click or right-click the Catglish toolbar icon to view the sentence translation.', reference)
     }
   } catch (error) {
     console.error('Error opening sentence panel for selection:', error)
-    showSelectionHint('Saved. Click or right-click the ENX toolbar icon to view the sentence translation.', reference)
+    showSelectionHint('Saved. Click or right-click the Catglish toolbar icon to view the sentence translation.', reference)
   }
 }
 
@@ -1013,11 +1013,11 @@ const triggerPhraseContextLookup = async (
     })
 
     if (response.success && !response.panelOpened) {
-      showSelectionHint('Saved. Click or right-click the ENX toolbar icon to view.', reference)
+      showSelectionHint('Saved. Click or right-click the Catglish toolbar icon to view.', reference)
     }
   } catch (error) {
     console.error('Error opening phrase panel for selection:', error)
-    showSelectionHint('Saved. Click or right-click the ENX toolbar icon to view.', reference)
+    showSelectionHint('Saved. Click or right-click the Catglish toolbar icon to view.', reference)
   }
 }
 

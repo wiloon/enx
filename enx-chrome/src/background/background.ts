@@ -601,7 +601,7 @@ const handleSignedInReturn = async (): Promise<{
     chrome.notifications.create({
       type: 'basic',
       iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
-      title: 'Signed in to Catseye',
+      title: 'Signed in to Catglish',
       message: 'You can keep reading — learning mode is ready.',
     })
   } catch {

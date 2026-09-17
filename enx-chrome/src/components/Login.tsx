@@ -57,7 +57,7 @@ export default function Login({ onLoginSuccess, children }: LoginProps) {
           <AcademicCapIcon className="h-7 w-7" />
         </div>
         <h2 className="mt-4 text-base font-semibold text-foreground">
-          Sign in to ENX
+          Sign in to Catglish
         </h2>
         <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
           Sign in to highlight new words and look them up as you read.

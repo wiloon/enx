@@ -115,7 +115,7 @@ const X_ADAPTER: SiteAdapter = {
   pageSupport: location =>
     TWEET_DETAIL_PATH.test(location.pathname)
       ? null
-      : 'ENX currently supports only X tweet detail pages. Open a tweet first.',
+      : 'Catglish currently supports only X tweet detail pages. Open a tweet first.',
   contentSelector: 'div[data-testid="tweetText"]',
   // A tweet body caps at 280 chars and short tweets fall well under the
   // default 100; >1 still filters out pure-emoji / pure-link empty nodes.
@@ -146,7 +146,7 @@ const READER_ADAPTER: SiteAdapter = {
   pageSupport: location =>
     location.pathname === '/reader' || location.pathname.startsWith('/reader/')
       ? null
-      : 'ENX only works on the Reader page here. Paste text into the Reader and submit first.',
+      : 'Catglish only works on the Reader page here. Paste text into the Reader and submit first.',
   contentSelector: '#enx-reader-article',
   // The user may paste a single short paragraph.
   minTextLength: 1,

@@ -60,7 +60,7 @@ function Header() {
         <AcademicCapIcon className="h-[18px] w-[18px]" />
       </div>
       <div className="flex-1 leading-tight">
-        <p className="text-sm font-semibold text-foreground">ENX</p>
+        <p className="text-sm font-semibold text-foreground">Catglish</p>
         <p className="text-[11px] text-muted-foreground">English Reading Assistant</p>
       </div>
       <button
