@@ -11,7 +11,7 @@ type Subscription struct {
 	StripeCustomerId     string  `gorm:"column:stripe_customer_id;not null;uniqueIndex"`
 	StripeSubscriptionId *string `gorm:"column:stripe_subscription_id;uniqueIndex"` // nil until first subscription
 	Status               string  `gorm:"column:status;not null;default:none"`
-	Plan                 string  `gorm:"column:plan"` // "pro" | "pro-plus" | "max"; empty until the first checkout/invoice resolves it
+	Plan                 string  `gorm:"column:plan"`               // "pro" | "pro-plus" | "max"; empty until the first checkout/invoice resolves it
 	CurrentPeriodEnd     int64   `gorm:"column:current_period_end"` // Unix seconds, from Stripe
 	CreatedAt            int64   `gorm:"column:created_at;not null"`
 	UpdatedAt            int64   `gorm:"column:updated_at;not null"`

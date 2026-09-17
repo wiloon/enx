@@ -21,8 +21,9 @@
 ## 0. 需要先拍板的决策（阻塞后续所有工作）
 
 - [x] **0.1 生产域名** —— 2026-09-12 拍板：**`catglish.com`**（独立品牌域名，已在 Cloudflare 注册），不走 `<name>.starlibraries.com` 二级域名方案。产品正式命名同期定为 **Catglish**，取代本文档标题及各处仍在用的 "Catseye"（见 `adr-010`，已 Superseded）。
-  - 遗留待更新：`adr-013` / `adr-015` / `TASK-SPEC-clerk-cutover` 里的 `catseye.*` 品牌域名引用、`enx-chrome/src/config/env.ts` 硬编码的 `clerkSyncHost = https://enx.wiloon.com`、`w10n-config/enx/monetization-tasks.md` 里的 `enx.wiloon.com` 方案 —— 这些文档/代码仍待逐一改成 `catglish.com`，本次只拍板域名本身，未做全量替换
-  - ⚠️ 冲突点（域名定了之后才能做）：Clerk prod 实例配 `clerk.catglish.com` 子域，Stripe live webhook 固定公网 URL，Chrome 扩展 `host_permissions` 写死 `catglish.com`
+  - 遗留待更新：`adr-013` / `adr-015` / `TASK-SPEC-clerk-cutover` 里的 `catseye.*` 品牌域名引用、`enx-chrome/src/config/env.ts` 硬编码的 `clerkSyncHost = https://enx.wiloon.com` —— 仍待逐一改成 `catglish.com`（`w10n-config/enx/monetization-tasks.md` 里的 `enx.wiloon.com` 方案同理）
+  - ✅ **API 子域名已拍板（2026-09-16）：`api.catglish.com`**。`catglish.com` 给营销站 / Web UI，`api.catglish.com` 给 enx-api。已先停在 `w10n-config/infra/stripe/opentofu/enx/variables.tf` 的 `webhook_url_prod`（**暂未接任何资源**）。这一个决策同时解锁下面三个冲突点
+  - ⚠️ 冲突点（域名定了之后才能做）：Clerk prod 实例配 `clerk.catglish.com` 子域，Stripe live webhook 固定公网 URL（→ `https://api.catglish.com/billing/webhook`，**live mode 是另一套 endpoint + 另一个 `whsec_`**，需等服务真的公网可达后再建，提前建只会累积投递失败直到被 Stripe 自动禁用），Chrome 扩展 `host_permissions` 写死 `catglish.com`
 - [ ] **0.2 生产部署环境**：AWS EC2（monetization-tasks 的方案）还是留在别处？`enx-api-java` 已随 ADR-015 从 homelab 下线，不再是双栈。
 - [ ] **0.3 上线档位范围**：只上 Pro 单档，还是 Pro / Pro+ / Max 三档一起上？年付是否上线即支持（年付积分发放机制未实现，见 §2.3）。
 - [ ] **0.4 Pro 最终定价**。`$4.99/mo` 是 2026-08-26 暂定值，用户明确说过「之后整体 review」；Pro+ / Max 完全未定价（OpenTofu 里占位 `$3 / $10 / $20`）。
@@ -135,7 +136,8 @@
     - [x] `billing/handler.go:109` — `an active Catglish Pro (or higher) subscription is required...`
     - ~~`email/email.go` 的邮件标题~~ —— **不在改名范围内。** 用户确认认证全部走 Clerk，不再有自建邮件。查证：`Register` / `VerifyEmail` / `ForgotPassword` / `ResetPassword` 这几个 handler **根本没有注册到任何路由上**，连同 `email/` 包都是 ADR-015 迁移后的**死代码**（不是「将来不用」，是现在就不可达）。→ 见下方新增的清理项 **2.x**，那是删除任务，不是改名任务
   - `w10n-config`（Stripe，用户在结账页和收据上看得到）
-    - [x] `infra/stripe/opentofu/enx/main.tf` — `stripe_product.*.name`（→ `Catglish Pro` / `Pro+` / `Max` / `AI Credits Top-up`）与 `description`（"unlimited dictionary lookups" 已改成「a much higher daily dictionary lookup limit」）。2026-09-16 改完，**`lookup_key` 未动**；⚠️ **尚未 `tofu apply`**，上线前需执行
+    - [x] `infra/stripe/opentofu/enx/main.tf` — `stripe_product.*.name`（→ `Catglish Pro` / `Pro+` / `Max` / `AI Credits Top-up`）与 `description`（"unlimited dictionary lookups" 已改成「a much higher daily dictionary lookup limit」）。2026-09-16 **已 `tofu apply`（sandbox / `default` workspace）4 changed**，`lookup_key` 与价格 ID 未变。⚠️ **live mode 目录尚未建立**，上线时要在 `live` workspace 重做一遍
+    - [ ] 遗留漂移：`stripe_webhook_endpoint.billing_lab` 的 `url` 在 Stripe 上仍是旧域名 `enx-lab.wiloon.com`，而 `variables.tf` 已随域名迁移改成 `enx-api.wiloon.lab`。本次用 `-target` 跳过了它，**下次任何不带 `-target` 的 `tofu apply` 都会把它一起带上**。两个 URL 公网都不可达（开发期靠 stripe-cli 转发），所以改与不改不影响当前链路
     - [ ] Clerk 应用显示名（登录页和 Clerk 发的邮件上可见）
     - [ ] Chrome Web Store 上架条目的名称 / 简介（§6）
 
