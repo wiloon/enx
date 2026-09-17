@@ -39,7 +39,7 @@
 - [ ] **1.2** 用真实 `aitranslate: usage ... cost=` 日志校准 token 权重（现在 `weight-in=1 / weight-out=3 / divisor=3000` 是占位，`[stripe.costs.translate]` 与 `[stripe.costs.rephrase]` 各一组）。需要先有真实 AI 调用产生日志（依赖 §3 联调）。
 - [ ] **1.3** Stripe 目录里的占位价格改成定稿值：`w10n-config/infra/stripe/opentofu/enx/terraform.tfvars`（`price_pro_monthly_cents` 等），`tofu apply`。
 - [ ] **1.4** `enx-ui` 定价页文案同步真实数字：`enx-ui/src/app/(app)/billing/plans.ts`。
-- [ ] **1.5** 免费查词每日配额：决策是「上线前不设、上线后按真实用量再定」，保持 `[stripe.quota] dictionary-lookup-daily = 0`（= 无限制）。**确认一下这个决策仍然成立**即可，无需改代码。
+- [ ] **1.5** 免费查词每日配额：决策是「上线前不设、上线后按真实用量再定」。**⚠️ 2026-09-16 更正：这个计划按当前实现无法执行，需要改代码**——`limit <= 0` 时 `quota.CheckAndIncrementLookup` 直接返回、**一行都不写**，所以带着 `dictionary-lookup-daily = 0` 上线等于**不积累任何用量数据**，「上线后按真实用量再定」的那个「真实用量」永远不存在。根因是「计数」和「拦截」共用同一个开关。修法见 [`adr-029`](../architecture/adr-029-lookup-quota-tiered-limits-and-count-gate-split.md)：配额改成人人有额度的**分档模型**（免费档低、订阅档高到用不完），并把**计数与拦截解耦**——`limit <= 0` 改为「照常计数、不拦截」。这样才能带着「计数开、拦截关」上线，2–4 周后拿真实分布定数字。
 
 ---
 
@@ -49,6 +49,7 @@
 - [ ] **2.2** 核对三档订阅链路端到端一致：`config.toml [stripe.price]`（`pro` / `pro-plus` / `max` → lookup_key）、`billing/handler.go` 的 plan 参数校验、`billing/stripe/checkout.go` 按 lookup_key 解析 Price、`enx-ui` `plans.ts`。代码结构已是三档，需一次通读确认没有遗留的「monthly/annual」两档假设。
 - [ ] **2.3**（仅当 §0.3 决定上线支持年付）实现独立于 Stripe 账单周期的月度积分发放：定时任务扫 `status=active` 的订阅，`credit_accounts.period_end` 过期就发下月额度。`invoice.paid` 对年付一年只触发一次，与账本「每月发、不结转」对不上。设计已在 `w10n-config/enx/HANDOFF-stripe-billing-integration.md` §4.4 讨论，未编码。
 - [ ] **2.4** `ManagedPayments` 假设未验证：`billing/stripe/checkout.go` 建 Checkout Session 时没显式设置该字段，赌 Stripe 账号级配置自动生效，从未用真实请求验证。§3 联调时确认。
+- [ ] **2.5** **删除 ADR-015 遗留的自建认证死代码**（2026-09-16 查证）：`enx-api` 里的 `Register` / `Login` / `VerifyEmail` / `ForgotPassword` / `ResetPassword` handler 以及整个 `email/` 包（含 `cmd/send-test-email`），**已经没有注册到任何路由上**——认证全部走 Clerk（`adr-015`）。不是「将来不用」，是现在就不可达。留着的代价：一条能发邮件、能改密码的完整路径躺在代码里，哪天被误注册就是真的漏洞面；也会持续误导读代码的人以为还有自建认证。删之前确认 `e2e_test.go` 里依赖这些 handler 的用例一并处理。
 
 ---
 
@@ -106,7 +107,56 @@
 - [ ] **7.1** 演示视频（当前是 16:9 占位容器，通过常量开关接入，不阻塞但推广前需要）。
 - [ ] **7.2** 产品截图、OG 图（社交分享卡片）。
 - [ ] **7.3** `/pricing` 公开页（`adr-013` v1 未做，`/billing` 是登录后的页）。上线收费时需要一个免登录可见的定价页。
-- [ ] **7.4** 品牌统一：官网对外用 `Catglish`，确认 title / logo / 文案一致。
+- [ ] **7.4** 品牌统一：对外一律用 **`Catglish`**，把 UI 上残留的 `ENX` / `Catseye` / `enx Pro` 全部换掉（命名决策见 `adr-010`（已 Superseded）与 `starlabrys/ops` 的 `docs/product/ADR-0004-enx-product-name.md`；2026-09-16 用户再次确认）。
+
+  **原则（用户 2026-09-16 确认）：`ENX` 是本项目的开发代号，继续保留。** 后端代码、非 UI 代码、内部标识符、日志前缀、代码注释**一律不动**——不为改产品名去动不需要动的代码。**只改用户看得见的那一部分。**
+
+  在此之上还有一条：下面第二组里的标识符**长得像品牌名，实际是协议的一部分**，改了会静默地弄坏功能。
+
+  **产品只有一个英文名 `Catglish`，没有中文名。** 且**不再保留任何「猫眼 / cat's eye」相关表述**（商标冲突风险），包括配色理由里的「猫眼星云」。
+
+  **① 要改的（用户可见）**
+
+  - `enx-ui`
+    - [ ] `src/lib/site.ts` — `SITE.name` + `subtitle` 整段文案
+    - [ ] `src/app/layout.tsx:13` `title`、`src/app/page.tsx:17,19` metadata title/description
+    - [ ] `src/components/site/{InstallCTA,FeatureSection,HowItWorks}.tsx` 正文里嵌在句子中的 `Catseye`
+    - [ ] `src/app/(app)/app/page.tsx` — 随 `adr-027` 重写一并处理
+    - [ ] `src/components/app/app-nav.ts:67` — `navTitleForPath` 的兜底返回值
+    - [ ] `src/app/(app)/reader/page.tsx:163,166`、`src/app/extension/connected/page.tsx:40` — 面向用户的 "the ENX extension"
+    - [ ] `src/app/(app)/billing/plans.ts:24,31,38` — `enx Pro` / `enx Pro+` / `enx Max`
+  - `enx-chrome`
+    - [ ] `manifest.json` — `name`（现为 `ENX - English Learning Extension`）、`description`、`action.default_title`、`commands` 里的 `description`。**扩展 ID 不受影响**（ID 由密钥决定，不是名字）
+    - [ ] `popup.html` / `options.html` / `sidepanel.html` 的 `<title>`
+    - [ ] `src/popup/Popup.tsx:63`、`src/components/Login.tsx:60`、`src/options/Options.tsx:151`
+    - [ ] `src/background/background.ts:604` — 通知标题 `Signed in to Catseye`
+  - `enx-api`（面向用户的响应文案）
+    - [ ] `dictionary/lookup.go:95` — 429 文案。**同时按 `adr-029` 把 `unlimited` 改掉**（分档后不再是无限），并区分「免费用户撞墙 → 引导升级」与「订阅用户撞墙 → 账号异常，别引导掏钱」
+    - [ ] `billing/handler.go:109` — `an active enx Pro (or higher) subscription is required...`
+    - ~~`email/email.go` 的邮件标题~~ —— **不在改名范围内。** 用户确认认证全部走 Clerk，不再有自建邮件。查证：`Register` / `VerifyEmail` / `ForgotPassword` / `ResetPassword` 这几个 handler **根本没有注册到任何路由上**，连同 `email/` 包都是 ADR-015 迁移后的**死代码**（不是「将来不用」，是现在就不可达）。→ 见下方新增的清理项 **2.x**，那是删除任务，不是改名任务
+  - `w10n-config`（Stripe，用户在结账页和收据上看得到）
+    - [ ] `infra/stripe/opentofu/enx/main.tf` — `stripe_product.*.name`（`enx Pro` / `enx Pro+` / `enx Max`）与 `description`。**description 里的 "unlimited dictionary lookups" 按 `adr-029` 一并改掉**，否则是不可兑现的承诺
+    - [ ] Clerk 应用显示名（登录页和 Clerk 发的邮件上可见）
+    - [ ] Chrome Web Store 上架条目的名称 / 简介（§6）
+
+  **② 不要改的（改了会坏）**
+
+  | 标识符 | 在哪 | 为什么不能动 |
+  | --- | --- | --- |
+  | `data-enx-extension` / `dataset.enxExtension` | `enx-chrome` 内容脚本写、`enx-ui` `useExtensionStatus` 读 | `adr-019` 定的网页↔扩展探测契约，两端必须同时改才不断，收益为零 |
+  | `enx-hl-*` / `enx-active-sentence` | `WordProcessor` 的 CSS Highlight API 注册名 | 注册名 + `::highlight()` 选择器必须对得上 |
+  | `enx-reader-open-doc` | `/reader` 与 `/reader/history` 之间的 sessionStorage 键 | 改了会让用户已存的会话数据读不出来 |
+  | `ENX_UI_ORIGINS`、消息类型（`enxRun` / `getOneWord` / …） | 扩展内部 | 纯内部标识符，改名只增加 diff |
+  | Stripe `lookup_key`（`enx_pro_monthly` 等） | `main.tf` | **最危险的一个**：代码按 `lookup_key` 解析价格，改了会直接查不到价。`name` 可改，`lookup_key` 必须保持原样 |
+  | 仓库名 / Go module 路径 / 包名 / `enx-*` 目录名 | 全仓 | `enx` 继续作为内部代号，`adr-010` 原本就是这个分工 |
+
+  **③ 顺带确认**
+
+  - [ ] `enx-ui/src/app/globals.css` 里 `--brand` 的注释把配色来源讲成「猫眼星云 cat's eye nebula」——**整段删掉重写，不保留任何猫眼表述**（商标冲突风险）。注意那段注释里还有**另一半理由是站得住的、必须留下**：hue 200 是避开同类产品扎堆的 239–270 才选的（Quizlet / Readwise / Anki / Busuu / Rosetta Stone 都落在那个区间），这条是真实的差异化依据，与产品名无关。`enx-chrome/src/index.css` 里镜像的同一段注释一并改
+  - [ ] 全仓搜一遍 `猫眼` / `cat's eye` / `Catseye`，UI 文案、代码注释、README、营销文案里**不留**（`adr-010` / `adr-013` 正文除外，那是历史决策记录）
+  - [ ] **README 已加命名说明**（2026-09-16 完成）：`ENX` = 开发代号，`Catglish` = 产品名，无中文名
+  - [ ] **Git 仓库改名**：用户明确**这次不做**，以后再说。届时要连带处理 Go module 路径、CI、部署清单、`w10n-config` 里的引用
+  - [ ] 改完全仓 `grep -rnE "Catseye|ENX -|enx Pro"` 复查一遍，排除 `__tests__` 和 ADR 历史记录（**ADR 正文里的历史表述不要改**，那是决策记录，改了就失真）
 
 ---
 
@@ -114,7 +164,7 @@
 
 ### P1 —— 推广前建议补
 
-- [ ] 免费查词每日配额定具体数值（机制 `billing/quota` 已实现，订阅用户跳过）。
+- [ ] 免费查词每日配额定具体数值（依赖 §1.5 的 ADR-029 改造先落地，否则没有数据可依据）。两档都要定：`free` 和 `subscribed`（后者是滥用天花板，不是产品档位）。
 - [ ] 积分档位、配额数值按真实使用数据微调。
 - [ ] `aitranslate` token 权重按累积的真实 `cost=` 日志再校准一轮。
 

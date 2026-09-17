@@ -1,5 +1,7 @@
 # ENX - English Learning Tool
 
+> **Naming:** the product ships to users as **Catglish** (`catglish.com`). **ENX** is the internal development codename and stays that way — it is the repository name, the Go module path, the package and directory names, and the prefix on internal identifiers. Only user-visible strings carry the product name. There is no Chinese name; Catglish is the only name.
+
 An English learning tool designed to train the human brain to recognize and understand English directly, without relying on translation.
 
 ## 🎯 Purpose

@@ -3,6 +3,7 @@
 | 字段 | 值 |
 | --- | --- |
 | **状态** | Accepted — 2026-09-03。v1 已实现并部署（`enx.wiloon.lab`）。落地时的取舍：没有引入 `(marketing)` / `(app)` route group（单营销页不值当一层 group），改为 `/` = 营销页 + `/app` = 现有 `AuthWrapper` dashboard；登录跳转与 auth callback 改到 `/app`。组件在 `enx-ui/src/components/site/`，常量在 `src/lib/site.ts`。截图 / 演示视频 / OG 图 / Chrome Web Store id 仍是占位。 |
+| **后续修订** | 🔶 2026-09-16：**产品正式名已由 `Catseye` 改为 `Catglish`**（`adr-010` 已 Superseded，域名 `catglish.com`），且**不再保留任何「猫眼 / cat's eye」表述**（商标冲突风险），产品**只有英文名、无中文名**。因此本 ADR 决策 4 里 `--brand` 「猫眼星云」的意象来源作废——**保留的是同一段理由的另一半**：hue 200 是为避开同类产品扎堆的 239–270（Quizlet / Readwise / Anki / Busuu / Rosetta Stone）才选的，这条与产品名无关、继续成立。`globals.css` 与 `enx-chrome/src/index.css` 的注释需重写，清单见 `docs/tasks/LAUNCH-CHECKLIST.md` §7.4。**本 ADR 正文保持原样**（历史决策记录）。 |
 | **日期** | 2026-09-02 |
 | **关联 ADR** | [`adr-010-product-naming-catseye.md`](adr-010-product-naming-catseye.md)（正式产品名 **猫眼翻译 / Catseye**；本 ADR 让官网正式启用 `Catseye` 作为对外品牌名，`ENX` / `enx` 收敛为代码内部代号）、[`adr-004-no-aws-amplify-hand-rolled-cognito.md`](adr-004-no-aws-amplify-hand-rolled-cognito.md)（现有 Cognito 客户端鉴权；营销区必须在鉴权边界**之外**）、[`adr-012-enx-ui-idiomatic-rephrasing.md`](adr-012-enx-ui-idiomatic-rephrasing.md)（enx-ui 现有页面形态：`'use client'` + shadcn 卡片 + React Query；营销区反过来是 Server Component + 静态渲染，两套并存） |
 | **关联配置** | `w10n-config/enx/market-research.md`（竞品分析）、`w10n-config/enx/monetization.md`（定价——v1 官网不含 `/pricing`，留到后续） |
