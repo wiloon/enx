@@ -112,7 +112,7 @@ test.describe('/billing', () => {
     await expect(page.getByRole('heading', { name: '订阅与积分' })).toBeVisible()
     await expect(page.getByText('免费用户')).toBeVisible()
 
-    await expect(card(page, 'enx Pro+')).toContainText('$10/mo')
+    await expect(card(page, 'Catglish Pro+')).toContainText('$10/mo')
     await expect(card(page, 'enx Max')).toContainText('$20/mo')
     await expect(page.getByRole('button', { name: '订阅', exact: true })).toHaveCount(3)
 
@@ -171,7 +171,7 @@ test.describe('/billing', () => {
     await stubStripeRedirects(page)
 
     await page.goto('/billing')
-    await card(page, 'enx Pro+').getByRole('button', { name: '订阅', exact: true }).click()
+    await card(page, 'Catglish Pro+').getByRole('button', { name: '订阅', exact: true }).click()
 
     await page.waitForURL('https://checkout.stripe.test/**')
     expect(sentPlan).toEqual({ plan: 'pro-plus' })
@@ -202,7 +202,7 @@ test.describe('/billing', () => {
     })
 
     await page.goto('/billing')
-    const button = card(page, 'enx Pro+').getByRole('button', { name: '订阅', exact: true })
+    const button = card(page, 'Catglish Pro+').getByRole('button', { name: '订阅', exact: true })
     await button.click()
 
     await expect(page.getByText('结账服务暂时不可用')).toBeVisible()

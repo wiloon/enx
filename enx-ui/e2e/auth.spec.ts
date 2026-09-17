@@ -13,11 +13,17 @@ test.describe('marketing landing', () => {
     await expect(page.locator('.cl-signIn-root')).toHaveCount(0)
   })
 
-  test('the comparison table names Catseye and a competitor', async ({ page }) => {
+  // This section used to be a feature matrix with our own highlighted column,
+  // which is what the old assertion looked for. It is now a plain list of
+  // similar apps ranked by size -- no table, no self column -- so the check is
+  // that the section still renders and still names a competitor.
+  test('the "similar apps" section lists a competitor', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByRole('columnheader', { name: 'Catseye' })).toBeVisible()
     await expect(
-      page.getByRole('columnheader', { name: 'Immersive Translate' })
+      page.getByRole('heading', { name: /similar apps in this space/i })
+    ).toBeVisible()
+    await expect(
+      page.getByRole('link', { name: 'Immersive Translate' })
     ).toBeVisible()
   })
 })
