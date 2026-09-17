@@ -106,7 +106,7 @@ func (h *Handler) CheckoutTopup(c *gin.Context) {
 		// an existing subscription's allowance rather than being a free-tier
 		// way to buy AI translate without ever subscribing (2026-08-26
 		// decision, see w10n-config/enx/monetization-tasks.md).
-		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "an active enx Pro (or higher) subscription is required before buying AI credits"})
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "an active Catglish Pro (or higher) subscription is required before buying AI credits"})
 		return
 	}
 

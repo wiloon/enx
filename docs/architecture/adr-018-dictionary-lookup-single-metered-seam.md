@@ -131,19 +131,19 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
    - `dictionary.Lookup`（ECDICT 路径）调它；`translate/helpers.go` 的 `fillFromEcdict` 在**本地命中分支**也调它（今天这条路绕过配额——正是 B2 要改的）。
    - **`dictionary.Lookup` 内联本地 `words` 查询这部分（A2 的深 seam）本次不做**——`translateWord` 的本地查询 + `user_dicts.QueryCount` 复习计数记账**完全没有测试覆盖**（`translate` 包只测了鉴权和 sentence-unavailable），盲改风险 > 收益。留作独立后续（先补 QueryCount 覆盖，再把本地查询搬进 seam）。当前 caller 只有一个、`/ecdict` 已删，「计量漏一条路径」的风险已经被计量收敛 + 单 caller 压住。
 
-2. **计量：每次调用 `+1`，不去重，缓存命中也算**（采用 B2，**已实现**）。非订阅用户每次查词（本地命中 or ECDICT）配额 `+1`（**先扣后查**，#16 确认为有意；空结果也算）。订阅用户跳过。澄清 ADR-009 Decision 6：配额是「释义查询」的每日封顶，不区分数据来源。测试：`TestTranslateWordMetersLocalCacheHit`（本地已有的词，limit=1，第二次 429）。
+2. **计量：每次调用 `+1`，不去重，缓存命中也算**（采用 B2，**已实现**）。非订阅用户每次查词（本地命中 or ECDICT）配额 `+1`（**先扣后查**，#16 确认为有意；空结果也算）。~~订阅用户跳过。~~ —— **2026-09-16 被 [`adr-029`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md) 修订并实现：不再有「跳过计量」这条路径，所有用户同一条路径，只是 `limit` 不同。** 澄清 ADR-009 Decision 6：配额是「释义查询」的每日封顶，不区分数据来源。测试：`TestTranslateWordMetersLocalCacheHit`（本地已有的词，limit=1，第二次 429）。
 
 3. **存储：SQLite，复用 `dictionary_lookup_quota`**（采用 C2）。不引 Redis。
 
-4. **`CheckAndIncrementLookup` 改单条 upsert**（采用 D2，**已实现**）：`INSERT ... ON CONFLICT(user_id, date) DO UPDATE SET count = count + 1 WHERE count < ?`，`RowsAffected == 0` → `ErrQuotaExceeded`。删掉读后写事务。语义与现状完全一致（6 个现有测试 + 新增 `TestCheckAndIncrementLookupConcurrentFirstOfDay` 全绿）。
+4. **`CheckAndIncrementLookup` 改单条 upsert**（采用 D2，**已实现**）：`INSERT ... ON CONFLICT(user_id, date) DO UPDATE SET count = count + 1 WHERE count < ?`，`RowsAffected == 0` → `ErrQuotaExceeded`。删掉读后写事务。语义与现状完全一致（6 个现有测试 + 新增 `TestCheckAndIncrementLookupConcurrentFirstOfDay` 全绿）。—— **2026-09-16 被 [`adr-029`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md) 取代**：函数拆成 `quota.IncrementLookup`（无条件计数，`RETURNING count`）+ `dictionary.MeterLookup` 里的一次比较。D2 当时以「被拒的调用不落库」为优点，029 恰恰把那一点当成缺点推翻了（超限部分才是定价最需要的信号）。
 
-5. **失败策略：词典路径 fail-open**（采用 E2，**已实现**）。策略在 `dictionary.Lookup` 层：`isActiveSubscriber` 返 `(bool, error)`，出错 → warn + 当订阅者；`CheckAndIncrementLookup` 的非 `ErrQuotaExceeded` 错误 → warn + 放行。`billing/quota` 保持返回真实错误。AI 积分路径不动。
+5. **失败策略：词典路径 fail-open**（采用 E2，**已实现**）。策略在 `dictionary.Lookup` 层：`isActiveSubscriber` 返 `(bool, error)`，出错 → warn + 当订阅者；`CheckAndIncrementLookup` 的非 `ErrQuotaExceeded` 错误 → warn + 放行。`billing/quota` 保持返回真实错误。AI 积分路径不动。—— **2026-09-16 按 [`adr-029`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md) 改写实现方式**：订阅检查失败不再「跳过计量」，而是**按最高档处理、照常计数**。#18「付费用户不被 DB 抖动降级成 429」的不变量继续成立，但不再丢数据。
 
 6. **#17/#18 一并修**（见 F 表，**已实现**：#18 显式修，#17 由 E2 覆盖）。
 
 7. **加旧配额行清理**（采用 G）：定期 `DELETE ... WHERE date < <保留窗口>`，窗口值 TASK-SPEC 定（够短、又能覆盖任何「回看昨天用量」的需求，如 7–30 天）。
 
-8. **免费每日上限的具体数值**不在本 ADR 内确定（同 ADR-009 惯例，属产品侧定价决策）。初值要求：**明显高于**一次正常长阅读会话的点词总量（含重复点击）的数倍，先放开观察真实分布再收。`limit <= 0` 维持「无限」语义。
+8. **免费每日上限的具体数值**不在本 ADR 内确定（同 ADR-009 惯例，属产品侧定价决策）。初值要求：**明显高于**一次正常长阅读会话的点词总量（含重复点击）的数倍，先放开观察真实分布再收。~~`limit <= 0` 维持「无限」语义。~~ —— **2026-09-16 被 [`adr-029`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md) 修订并实现：`limit <= 0` 的新语义是「照常计数、不拦截」。** 旧语义（也不计数）让「先观察再收」这个计划本身无法执行。
 
 ---
 

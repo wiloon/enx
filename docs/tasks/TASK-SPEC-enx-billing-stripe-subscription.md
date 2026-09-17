@@ -56,9 +56,9 @@
 | --- | --- | --- |
 | `user_id` | TEXT | 联合主键 |
 | `date` | TEXT | 联合主键，`YYYY-MM-DD`（UTC），每天一行 |
-| `count` | INTEGER, default 0 | |
+| `count` | INTEGER, default 0 | 查询**请求**数，含被 429 拒掉的，所以**可能大于当时的 limit** |
 
-订阅用户（`subscriptions.status == active`）跳过这张表的检查，直接放行。
+~~订阅用户（`subscriptions.status == active`）跳过这张表的检查，直接放行。~~ —— **2026-09-16 按 [`adr-029`](../architecture/adr-029-lookup-quota-tiered-limits-and-count-gate-split.md) 修订并实现**：**所有用户都写行**，订阅用户只是适用更高的一档上限（`stripe.quota.dictionary-lookup-daily-subscribed`）。计数无条件发生，拦截是之后的一次比较；两档都是 0 时照常计数、不拦截。日界维持 UTC（防改设备时区重置额度），与 ADR-028 `daily_stats` 的本地日口径**不一致是设计使然**。
 
 ---
 
@@ -151,9 +151,9 @@ if err := credit.Consume(c.Request.Context(), userID, "translate_sentence", cost
 
 **注意扣费时机**：先扣积分再调用 AI provider，避免"AI 调用成功但扣费失败"导致的免费薅取；但如果 AI provider 调用失败（网络错误/超时），需要把已扣的积分退回（`credit.Refund`，本 Spec 未展开，实现阶段一并设计），否则用户会因为服务故障被冤枉扣费。
 
-### 4.2 免费查词配额检查
+### 4.2 查词配额检查
 
-`enx-api/dictionary/`（统一查词入口，ADR-0001 提到的 `dictionary.Lookup`）在返回结果前插入配额检查：订阅用户跳过；免费用户检查 `dictionary_lookup_quota` 当日计数，超限返回 429（区别于查词失败的 503，语义上是"配额用尽"不是"服务不可用"）。
+`enx-api/dictionary/`（统一查词入口，ADR-0001 提到的 `dictionary.Lookup`）在返回结果前插入配额检查。**2026-09-16 按 [`adr-029`](../architecture/adr-029-lookup-quota-tiered-limits-and-count-gate-split.md) 已改为分档**：不再有「订阅用户跳过」这条路径，所有用户走同一条路径，`resolveLookupLimit` 按订阅状态选档；计数无条件发生，超过本档上限才返回 429（区别于查词失败的 503，语义上是"配额用尽"不是"服务不可用"）。429 文案分两种：免费用户引导升级，订阅用户引导联系支持（对他们来说撞墙 = 账号异常）。
 
 ---
 

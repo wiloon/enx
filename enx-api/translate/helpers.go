@@ -30,7 +30,7 @@ func fillFromEcdict(c *gin.Context, word *enx.Word, userId string) (bool, bool) 
 		// (ADR-018 B2) -- there's just no ECDICT round-trip or cache-fill
 		// to do. MeterLookup only ever returns ErrQuotaExceeded.
 		if err := dictionary.MeterLookup(c.Request.Context(), userId); err != nil {
-			dictionary.RespondQuotaExceeded(c)
+			dictionary.RespondQuotaExceeded(c, userId)
 			return false, false
 		}
 		return true, false
@@ -47,7 +47,7 @@ func fillFromEcdict(c *gin.Context, word *enx.Word, userId string) (bool, bool) 
 		return false, false
 	}
 	if errors.Is(err, dictionary.ErrQuotaExceeded) {
-		dictionary.RespondQuotaExceeded(c)
+		dictionary.RespondQuotaExceeded(c, userId)
 		return false, false
 	}
 	if epc == nil {

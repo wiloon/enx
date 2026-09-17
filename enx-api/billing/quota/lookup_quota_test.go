@@ -2,7 +2,6 @@ package quota
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -22,14 +21,18 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestCheckAndIncrementLookupUnderLimit(t *testing.T) {
+func TestIncrementLookupReturnsRunningCount(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	now := time.Now()
 
-	for i := 0; i < 3; i++ {
-		if err := CheckAndIncrementLookup(ctx, userID, 5, now); err != nil {
+	for i := 1; i <= 3; i++ {
+		count, err := IncrementLookup(ctx, userID, now)
+		if err != nil {
 			t.Fatalf("lookup %d: %v", i, err)
+		}
+		if count != int64(i) {
+			t.Fatalf("lookup %d returned count=%d, want %d", i, count, i)
 		}
 	}
 
@@ -39,123 +42,50 @@ func TestCheckAndIncrementLookupUnderLimit(t *testing.T) {
 	}
 }
 
-func TestCheckAndIncrementLookupExceedsLimit(t *testing.T) {
+// The count is what tells the caller a user went over; it must keep climbing
+// past whatever limit the caller applies (ADR-029 Options C2), otherwise the
+// suppressed demand is invisible.
+func TestIncrementLookupKeepsCountingPastAnyLimit(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	now := time.Now()
 
-	for i := 0; i < 2; i++ {
-		if err := CheckAndIncrementLookup(ctx, userID, 2, now); err != nil {
+	var last int64
+	for i := 0; i < 20; i++ {
+		count, err := IncrementLookup(ctx, userID, now)
+		if err != nil {
 			t.Fatalf("lookup %d: %v", i, err)
 		}
+		last = count
 	}
-
-	if err := CheckAndIncrementLookup(ctx, userID, 2, now); !errors.Is(err, ErrQuotaExceeded) {
-		t.Fatalf("got %v, want ErrQuotaExceeded", err)
-	}
-
-	// The rejected attempt must not have incremented the counter.
-	row := loadRow(t, userID, now)
-	if row.Count != 2 {
-		t.Fatalf("got count=%d, want 2 (rejected attempt shouldn't count)", row.Count)
+	if last != 20 {
+		t.Fatalf("got count=%d after 20 lookups, want 20", last)
 	}
 }
 
-func TestCheckAndIncrementLookupZeroLimitIsUnlimited(t *testing.T) {
-	ctx := context.Background()
-	userID := "u-" + t.Name()
-	now := time.Now()
-
-	for i := 0; i < 50; i++ {
-		if err := CheckAndIncrementLookup(ctx, userID, 0, now); err != nil {
-			t.Fatalf("lookup %d with limit=0: %v", i, err)
-		}
-	}
-	// limit<=0 means "don't even track it" -- no row should be created.
-	var count int64
-	sqlitex.DB.Model(&sqlitex.DictionaryLookupQuota{}).Where("user_id = ?", userID).Count(&count)
-	if count != 0 {
-		t.Fatalf("got %d quota rows for an unlimited (limit=0) user, want 0", count)
-	}
-}
-
-func TestCheckAndIncrementLookupResetsPerUTCDay(t *testing.T) {
+func TestIncrementLookupResetsPerUTCDay(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	yesterday := time.Now().UTC().AddDate(0, 0, -1)
 	today := time.Now().UTC()
 
-	if err := CheckAndIncrementLookup(ctx, userID, 1, yesterday); err != nil {
+	if _, err := IncrementLookup(ctx, userID, yesterday); err != nil {
 		t.Fatalf("yesterday's lookup: %v", err)
 	}
-	// Yesterday's single-use limit is exhausted...
-	if err := CheckAndIncrementLookup(ctx, userID, 1, yesterday); !errors.Is(err, ErrQuotaExceeded) {
-		t.Fatalf("got %v, want ErrQuotaExceeded for yesterday's second lookup", err)
+	count, err := IncrementLookup(ctx, userID, today)
+	if err != nil {
+		t.Fatalf("today's lookup: %v", err)
 	}
-	// ...but today is a fresh day with its own counter.
-	if err := CheckAndIncrementLookup(ctx, userID, 1, today); err != nil {
-		t.Fatalf("today's lookup should succeed on a fresh counter: %v", err)
-	}
-}
-
-// TestCheckAndIncrementLookupConcurrencyNoOverspend mirrors
-// billing/credit's concurrency test: many goroutines racing to increment
-// the same user's daily counter must never push the stored count past
-// limit.
-func TestCheckAndIncrementLookupConcurrencyNoOverspend(t *testing.T) {
-	ctx := context.Background()
-	userID := "u-" + t.Name()
-	now := time.Now()
-	const limit = int64(15)
-	const attempts = 40
-
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	var succeeded, exceeded, otherErrs int64
-
-	for i := 0; i < attempts; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			err := CheckAndIncrementLookup(ctx, userID, limit, now)
-			mu.Lock()
-			defer mu.Unlock()
-			switch {
-			case err == nil:
-				succeeded++
-			case errors.Is(err, ErrQuotaExceeded):
-				exceeded++
-			default:
-				otherErrs++
-				t.Logf("unexpected error: %v", err)
-			}
-		}()
-	}
-	wg.Wait()
-
-	if otherErrs != 0 {
-		t.Fatalf("%d calls failed with an unexpected error", otherErrs)
-	}
-	if succeeded != limit {
-		t.Fatalf("succeeded=%d, want exactly %d", succeeded, limit)
-	}
-	if succeeded+exceeded != attempts {
-		t.Fatalf("succeeded+exceeded=%d, want %d", succeeded+exceeded, attempts)
-	}
-
-	row := loadRow(t, userID, now)
-	if row.Count != limit {
-		t.Fatalf("stored count=%d, want exactly %d (no overcount)", row.Count, limit)
+	if count != 1 {
+		t.Fatalf("got count=%d on a fresh day, want 1", count)
 	}
 }
 
-// TestCheckAndIncrementLookupConcurrentFirstOfDay isolates the "no row exists
-// yet" race from the overspend concern: many goroutines hit a brand-new user
-// under a limit none of them can exceed, so every call must succeed and the
-// stored count must equal the number of calls. A read-then-INSERT
-// implementation lets two goroutines both see "no row" and collide on the
-// (user_id, date) primary key.
-func TestCheckAndIncrementLookupConcurrentFirstOfDay(t *testing.T) {
+// Concurrent increments must neither overcount nor collide on the
+// (user_id, date) key, and every caller must see a distinct running count --
+// a read-then-write implementation would hand the same number to two
+// goroutines.
+func TestIncrementLookupConcurrent(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	now := time.Now()
@@ -164,22 +94,29 @@ func TestCheckAndIncrementLookupConcurrentFirstOfDay(t *testing.T) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var errs []error
+	seen := map[int64]bool{}
 
 	for i := 0; i < attempts; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := CheckAndIncrementLookup(ctx, userID, 10_000, now); err != nil {
-				mu.Lock()
+			count, err := IncrementLookup(ctx, userID, now)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
 				errs = append(errs, err)
-				mu.Unlock()
+				return
 			}
+			seen[count] = true
 		}()
 	}
 	wg.Wait()
 
 	if len(errs) != 0 {
-		t.Fatalf("%d of %d concurrent first-of-day lookups errored: %v", len(errs), attempts, errs)
+		t.Fatalf("%d of %d concurrent lookups errored: %v", len(errs), attempts, errs)
+	}
+	if len(seen) != attempts {
+		t.Fatalf("got %d distinct counts, want %d", len(seen), attempts)
 	}
 	if row := loadRow(t, userID, now); row.Count != attempts {
 		t.Fatalf("stored count=%d, want %d", row.Count, attempts)

@@ -56,11 +56,26 @@ func setupFakeEcdict(t *testing.T) {
 	t.Cleanup(func() { ecdict.Init("") })
 }
 
-func setQuotaLimit(t *testing.T, limit int64) {
+func setQuotaLimits(t *testing.T, free, subscribed int64) {
 	t.Helper()
-	previous := viper.Get("stripe.quota.dictionary-lookup-daily")
-	viper.Set("stripe.quota.dictionary-lookup-daily", limit)
-	t.Cleanup(func() { viper.Set("stripe.quota.dictionary-lookup-daily", previous) })
+	for key, value := range map[string]int64{
+		"stripe.quota.dictionary-lookup-daily-free":       free,
+		"stripe.quota.dictionary-lookup-daily-subscribed": subscribed,
+	} {
+		previous := viper.Get(key)
+		viper.Set(key, value)
+		t.Cleanup(func() { viper.Set(key, previous) })
+	}
+}
+
+func quotaRowCount(t *testing.T, userID string) int64 {
+	t.Helper()
+	var count int64
+	sqlitex.DB.Model(&sqlitex.DictionaryLookupQuota{}).
+		Where("user_id = ?", userID).
+		Select("COALESCE(SUM(count), 0)").
+		Scan(&count)
+	return count
 }
 
 func TestLookupReturnsUnavailableWhenEcdictMissing(t *testing.T) {
@@ -75,7 +90,7 @@ func TestLookupReturnsUnavailableWhenEcdictMissing(t *testing.T) {
 func TestLookupEnforcesQuotaForFreeUser(t *testing.T) {
 	setupTestDB(t)
 	setupFakeEcdict(t)
-	setQuotaLimit(t, 2)
+	setQuotaLimits(t, 2, 0)
 	userID := "u-" + t.Name()
 	ctx := context.Background()
 
@@ -90,10 +105,54 @@ func TestLookupEnforcesQuotaForFreeUser(t *testing.T) {
 	}
 }
 
-func TestLookupSkipsQuotaForActiveSubscriber(t *testing.T) {
+// The whole point of ADR-029: with no limit configured, lookups must still
+// be counted -- otherwise "launch with it off, set a number from real usage"
+// can never produce any usage to look at.
+func TestLookupCountsWithNoLimitConfigured(t *testing.T) {
 	setupTestDB(t)
 	setupFakeEcdict(t)
-	setQuotaLimit(t, 1) // deliberately tiny, to prove the subscriber ignores it
+	setQuotaLimits(t, 0, 0)
+	userID := "u-" + t.Name()
+	ctx := context.Background()
+
+	for i := 0; i < 5; i++ {
+		if _, err := Lookup(ctx, "word", userID); err != nil {
+			t.Fatalf("lookup %d: an unset limit must not block, got %v", i, err)
+		}
+	}
+
+	if got := quotaRowCount(t, userID); got != 5 {
+		t.Fatalf("counted %d lookups, want 5", got)
+	}
+}
+
+// Rejected requests keep counting, so the overflow shows how much demand the
+// limit is suppressing (ADR-029 Options C2).
+func TestLookupKeepsCountingPastTheLimit(t *testing.T) {
+	setupTestDB(t)
+	setupFakeEcdict(t)
+	setQuotaLimits(t, 1, 0)
+	userID := "u-" + t.Name()
+	ctx := context.Background()
+
+	if _, err := Lookup(ctx, "word", userID); err != nil {
+		t.Fatalf("lookup 1: %v", err)
+	}
+	for i := 2; i <= 4; i++ {
+		if _, err := Lookup(ctx, "word", userID); !errors.Is(err, ErrQuotaExceeded) {
+			t.Fatalf("lookup %d: got %v, want ErrQuotaExceeded", i, err)
+		}
+	}
+
+	if got := quotaRowCount(t, userID); got != 4 {
+		t.Fatalf("counted %d lookups, want 4 (rejected requests count too)", got)
+	}
+}
+
+func TestLookupAppliesTheSubscribedTier(t *testing.T) {
+	setupTestDB(t)
+	setupFakeEcdict(t)
+	setQuotaLimits(t, 1, 100) // free tier deliberately tiny
 	userID := "u-" + t.Name()
 	ctx := context.Background()
 
@@ -109,24 +168,24 @@ func TestLookupSkipsQuotaForActiveSubscriber(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		if _, err := Lookup(ctx, "word", userID); err != nil {
-			t.Fatalf("lookup %d: subscriber should never hit the quota, got %v", i, err)
+			t.Fatalf("lookup %d: subscriber is under their own tier, got %v", i, err)
 		}
 	}
 
-	// A subscriber's lookups shouldn't even be tracked in the quota table.
-	var count int64
-	sqlitex.DB.Model(&sqlitex.DictionaryLookupQuota{}).Where("user_id = ?", userID).Count(&count)
-	if count != 0 {
-		t.Fatalf("got %d quota rows for a subscriber, want 0", count)
+	// Subscribers are counted now too -- that's what makes per-user usage
+	// data exist for everyone (ADR-029 Decision 1).
+	if got := quotaRowCount(t, userID); got != 5 {
+		t.Fatalf("counted %d lookups for a subscriber, want 5", got)
 	}
 }
 
 // A failing subscription lookup must not silently demote a paying user to
-// the free tier and 429 them (#18). Fail open: treat as a subscriber.
+// the free tier and 429 them (#18). Fail open to the highest tier -- but
+// keep counting (ADR-029 Options G2).
 func TestLookupTreatsSubscriberCheckFailureAsSubscriber(t *testing.T) {
 	setupTestDB(t)
 	setupFakeEcdict(t)
-	setQuotaLimit(t, 1)
+	setQuotaLimits(t, 1, 100)
 	userID := "u-" + t.Name()
 	ctx := context.Background()
 
@@ -140,10 +199,8 @@ func TestLookupTreatsSubscriberCheckFailureAsSubscriber(t *testing.T) {
 		}
 	}
 
-	var count int64
-	sqlitex.DB.Model(&sqlitex.DictionaryLookupQuota{}).Where("user_id = ?", userID).Count(&count)
-	if count != 0 {
-		t.Fatalf("got %d quota rows, want 0 (user treated as subscriber)", count)
+	if got := quotaRowCount(t, userID); got != 5 {
+		t.Fatalf("counted %d lookups, want 5 (fail-open still counts)", got)
 	}
 }
 
@@ -152,7 +209,7 @@ func TestLookupTreatsSubscriberCheckFailureAsSubscriber(t *testing.T) {
 func TestLookupFailsOpenWhenQuotaStoreUnavailable(t *testing.T) {
 	setupTestDB(t)
 	setupFakeEcdict(t)
-	setQuotaLimit(t, 1)
+	setQuotaLimits(t, 1, 0)
 	userID := "u-" + t.Name()
 	ctx := context.Background()
 
@@ -170,7 +227,7 @@ func TestLookupFailsOpenWhenQuotaStoreUnavailable(t *testing.T) {
 func TestLookupPastDueSubscriberIsNotExempt(t *testing.T) {
 	setupTestDB(t)
 	setupFakeEcdict(t)
-	setQuotaLimit(t, 1)
+	setQuotaLimits(t, 1, 0)
 	userID := "u-" + t.Name()
 	ctx := context.Background()
 
@@ -189,5 +246,25 @@ func TestLookupPastDueSubscriberIsNotExempt(t *testing.T) {
 	}
 	if _, err := Lookup(ctx, "word2", userID); !errors.Is(err, ErrQuotaExceeded) {
 		t.Fatalf("lookup 2: got %v, want ErrQuotaExceeded (past_due is not active)", err)
+	}
+}
+
+// The pre-ADR-029 key keeps working as the free tier for one release.
+func TestLookupFallsBackToTheSupersededQuotaKey(t *testing.T) {
+	setupTestDB(t)
+	setupFakeEcdict(t)
+	setQuotaLimits(t, 0, 0)
+	previous := viper.Get("stripe.quota.dictionary-lookup-daily")
+	viper.Set("stripe.quota.dictionary-lookup-daily", 1)
+	t.Cleanup(func() { viper.Set("stripe.quota.dictionary-lookup-daily", previous) })
+
+	userID := "u-" + t.Name()
+	ctx := context.Background()
+
+	if _, err := Lookup(ctx, "word1", userID); err != nil {
+		t.Fatalf("lookup 1: %v", err)
+	}
+	if _, err := Lookup(ctx, "word2", userID); !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("lookup 2: got %v, want ErrQuotaExceeded from the superseded key", err)
 	}
 }

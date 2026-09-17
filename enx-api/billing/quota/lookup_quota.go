@@ -1,7 +1,7 @@
-// Package quota enforces the free-tier daily dictionary lookup limit
-// (ADR-009 Decision 6, TASK-SPEC §4.2). It knows nothing about
-// subscriptions -- callers decide whether a user is exempt (an active
-// subscriber) before calling CheckAndIncrementLookup at all.
+// Package quota counts dictionary lookups per user per UTC day. Counting is
+// all it does: what a user's limit is, and whether they are over it, belong
+// to the caller (dictionary.MeterLookup). Splitting the two is what lets the
+// service ship with counting on and blocking off (ADR-029 Decision 2).
 package quota
 
 import (
@@ -12,43 +12,37 @@ import (
 	"enx-api/utils/sqlitex"
 )
 
-// ErrQuotaExceeded is returned when userID has already used up today's free
+// ErrQuotaExceeded is returned when userID has already used up today's
 // dictionary lookups. Callers should map this to HTTP 429.
 var ErrQuotaExceeded = errors.New("quota: daily dictionary lookup limit exceeded")
 
-// CheckAndIncrementLookup checks userID's lookup count for today (UTC)
-// against limit and, if under it, increments the count -- in one atomic
-// statement: insert the day's first lookup, or bump an existing count but
-// only while it's below limit. A rejected call touches nothing. No
-// read-then-write window and no transaction, so concurrent lookups from the
-// same user can neither overcount nor collide on the (user_id, date) key.
+// IncrementLookup records one lookup request for userID on now's UTC day and
+// returns that day's running count, this request included.
 //
-// limit <= 0 means "unlimited" rather than "always blocked". This is the
-// opposite failure direction from billing/credit's grant/cost functions:
-// those fail closed on an unconfigured (0) value because the risk is
-// silently shortchanging a paying customer or giving away free AI calls.
-// Here, an unconfigured quota failing open just means free lookups stay
-// uncapped a little longer -- annoying at worst, not a broken paywall, and
-// the free daily lookup is meant to stay a generous "hook" (see
-// w10n-config/enx/monetization.md), so defaulting to unlimited until a real
-// number is set is the safer default.
-func CheckAndIncrementLookup(ctx context.Context, userID string, limit int64, now time.Time) error {
-	if limit <= 0 {
-		return nil
-	}
-
+// It counts unconditionally, including requests the caller is about to
+// reject (ADR-029 Options C2): the overflow is the demand that the limit
+// suppressed, which is exactly the signal needed to pick a limit. So the
+// stored count may exceed any limit -- readers must not assume otherwise.
+//
+// The count is atomic in one statement, as before: no read-then-write
+// window, so concurrent lookups from the same user can neither overcount nor
+// collide on the (user_id, date) key.
+//
+// The day boundary is UTC and deliberately differs from ADR-028's
+// daily_stats, which uses the user's local day -- a local boundary can be
+// reset by changing the device clock, and this table is the adversarial one.
+func IncrementLookup(ctx context.Context, userID string, now time.Time) (int64, error) {
 	date := now.UTC().Format("2006-01-02")
 
-	res := sqlitex.DB.WithContext(ctx).Exec(
+	var count int64
+	err := sqlitex.DB.WithContext(ctx).Raw(
 		`INSERT INTO dictionary_lookup_quota (user_id, date, count) VALUES (?, ?, 1)
-		 ON CONFLICT(user_id, date) DO UPDATE SET count = count + 1 WHERE count < ?`,
-		userID, date, limit,
-	)
-	if res.Error != nil {
-		return res.Error
+		 ON CONFLICT(user_id, date) DO UPDATE SET count = count + 1
+		 RETURNING count`,
+		userID, date,
+	).Scan(&count).Error
+	if err != nil {
+		return 0, err
 	}
-	if res.RowsAffected == 0 {
-		return ErrQuotaExceeded
-	}
-	return nil
+	return count, nil
 }

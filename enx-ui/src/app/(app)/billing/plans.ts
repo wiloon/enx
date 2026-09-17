@@ -8,6 +8,8 @@ import { SubscriptionPlan, TopupTier } from '@/services/api'
 // single "enx Pro" monthly/annual structure on 2026-08-26 (still
 // provisional numbers, subject to change before general availability, but
 // no longer "undecided" -- see w10n-config/enx/monetization-tasks.md).
+// Lookups are not "unlimited" on any tier: every tier has a daily ceiling,
+// subscribers just get a far higher one (ADR-029).
 export const PLACEHOLDER = 'TBD'
 
 export interface PlanOption {
@@ -21,24 +23,24 @@ export interface PlanOption {
 export const SUBSCRIPTION_PLANS: PlanOption[] = [
   {
     plan: 'pro',
-    name: 'enx Pro',
+    name: 'Catglish Pro',
     priceLabel: '$3/mo',
     creditsLabel: PLACEHOLDER,
-    description: 'Unlimited lookups + monthly AI translation credits',
+    description: 'A much higher daily lookup limit + monthly AI translation credits',
   },
   {
     plan: 'pro-plus',
-    name: 'enx Pro+',
+    name: 'Catglish Pro+',
     priceLabel: '$10/mo',
     creditsLabel: PLACEHOLDER,
-    description: 'Unlimited lookups + more monthly AI translation credits',
+    description: 'A much higher daily lookup limit + more monthly AI translation credits',
   },
   {
     plan: 'max',
-    name: 'enx Max',
+    name: 'Catglish Max',
     priceLabel: '$20/mo',
     creditsLabel: PLACEHOLDER,
-    description: 'Unlimited lookups + maximum monthly AI translation credits',
+    description: 'A much higher daily lookup limit + maximum monthly AI translation credits',
   },
 ]
 

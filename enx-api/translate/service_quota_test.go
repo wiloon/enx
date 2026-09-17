@@ -34,9 +34,14 @@ func setupQuotaTestDB(t *testing.T) {
 
 func setQuotaLimit(t *testing.T, limit int64) {
 	t.Helper()
-	prev := viper.Get("stripe.quota.dictionary-lookup-daily")
-	viper.Set("stripe.quota.dictionary-lookup-daily", limit)
-	t.Cleanup(func() { viper.Set("stripe.quota.dictionary-lookup-daily", prev) })
+	for key, value := range map[string]int64{
+		"stripe.quota.dictionary-lookup-daily-free":       limit,
+		"stripe.quota.dictionary-lookup-daily-subscribed": 0,
+	} {
+		prev := viper.Get(key)
+		viper.Set(key, value)
+		t.Cleanup(func() { viper.Set(key, prev) })
+	}
 }
 
 func translateCtx(word, userID string) (*gin.Context, *httptest.ResponseRecorder) {

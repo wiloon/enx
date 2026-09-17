@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sync"
 	"time"
 
 	"enx-api/billing/quota"
@@ -25,8 +26,7 @@ var ErrQuotaExceeded = quota.ErrQuotaExceeded
 
 // Lookup queries ECDICT (with word forms). Callers are expected to have
 // already checked the local words table themselves before calling this.
-// Subject to the free-tier daily quota (TASK-SPEC §4.2) unless userID
-// belongs to an active subscriber.
+// Subject to the daily lookup quota for userID's tier (ADR-029).
 func Lookup(ctx context.Context, english, userID string) (*enx.Dictionary, error) {
 	if !ecdict.IsAvailable() {
 		return nil, ErrEcdictUnavailable
@@ -37,34 +37,66 @@ func Lookup(ctx context.Context, english, userID string) (*enx.Dictionary, error
 	return ecdict.Query(ctx, english), nil
 }
 
-// MeterLookup charges one dictionary lookup against the free-tier daily
-// quota (ADR-018 B2): every resolved lookup counts, whether it came from the
-// local words cache or from ECDICT, so callers that serve a word from cache
-// still call this. Active subscribers are exempt.
+// MeterLookup charges one dictionary lookup against the caller's daily quota
+// (ADR-018 B2): every resolved lookup counts, whether it came from the local
+// words cache or from ECDICT, so callers that serve a word from cache still
+// call this.
+//
+// Everyone is metered; subscribers just get a much higher ceiling (ADR-029
+// Decision 1). Counting and blocking are separate steps: the count always
+// happens, the comparison only when a limit is configured, so the service
+// can run with counting on and blocking off until there is enough usage data
+// to pick real numbers.
 //
 // The quota is a usage cap on a near-zero-cost operation, not a paywall, so
-// it fails open (E2): a subscriber-check or quota-store hiccup logs a
-// warning and returns nil (allow) -- a paying user is never 429'd by a DB
-// blip (#18), and a real definition is never hidden behind "quota error"
-// (#17). Only a genuine ErrQuotaExceeded is returned.
+// it fails open (E2): a quota-store hiccup logs a warning and returns nil
+// (allow) -- a paying user is never 429'd by a DB blip (#18), and a real
+// definition is never hidden behind "quota error" (#17). Only a genuine
+// ErrQuotaExceeded is returned.
 func MeterLookup(ctx context.Context, userID string) error {
-	subscriber, err := isActiveSubscriber(userID)
-	if err != nil {
-		logger.Warnf("dictionary: subscriber check failed for user %s, treating as subscriber: %v", userID, err)
-		return nil
-	}
-	if subscriber {
-		return nil
-	}
+	limit := resolveLookupLimit(userID)
 
-	limit := viper.GetInt64("stripe.quota.dictionary-lookup-daily")
-	if err := quota.CheckAndIncrementLookup(ctx, userID, limit, time.Now()); err != nil {
-		if errors.Is(err, ErrQuotaExceeded) {
-			return ErrQuotaExceeded
-		}
-		logger.Warnf("dictionary: quota check failed for user %s, allowing lookup: %v", userID, err)
+	count, err := quota.IncrementLookup(ctx, userID, time.Now())
+	if err != nil {
+		logger.Warnf("dictionary: quota count failed for user %s, allowing lookup: %v", userID, err)
+		return nil
+	}
+	if limit > 0 && count > limit {
+		return ErrQuotaExceeded
 	}
 	return nil
+}
+
+// resolveLookupLimit returns userID's daily lookup ceiling. 0 means "count,
+// but never block" -- the state the service launches in (ADR-029 Decision 4).
+func resolveLookupLimit(userID string) int64 {
+	subscribed, err := isActiveSubscriber(userID)
+	if err != nil {
+		// #18: a DB blip must never downgrade a paying user into a 429, so
+		// an unreadable subscription resolves to the highest tier.
+		logger.Warnf("dictionary: subscriber check failed for user %s, using the subscribed limit: %v", userID, err)
+		subscribed = true
+	}
+	if subscribed {
+		return viper.GetInt64("stripe.quota.dictionary-lookup-daily-subscribed")
+	}
+	return freeLookupLimit()
+}
+
+var legacyQuotaKeyWarning sync.Once
+
+func freeLookupLimit() int64 {
+	if limit := viper.GetInt64("stripe.quota.dictionary-lookup-daily-free"); limit > 0 {
+		return limit
+	}
+	// Pre-ADR-029 single-tier key, honoured for one release.
+	if legacy := viper.GetInt64("stripe.quota.dictionary-lookup-daily"); legacy > 0 {
+		legacyQuotaKeyWarning.Do(func() {
+			logger.Warnf("config: stripe.quota.dictionary-lookup-daily is deprecated, use stripe.quota.dictionary-lookup-daily-free")
+		})
+		return legacy
+	}
+	return 0
 }
 
 func isActiveSubscriber(userID string) (bool, error) {
@@ -86,12 +118,20 @@ func RespondUnavailable(c *gin.Context) {
 	})
 }
 
-// RespondQuotaExceeded writes the 429 response for a free user who's hit
-// their daily dictionary lookup limit -- distinct from the 503 above, which
-// means "the service itself is unavailable" (TASK-SPEC §4.2).
-func RespondQuotaExceeded(c *gin.Context) {
+// RespondQuotaExceeded writes the 429 response for a user who has hit their
+// daily dictionary lookup limit -- distinct from the 503 above, which means
+// "the service itself is unavailable" (TASK-SPEC §4.2).
+//
+// A subscriber hitting their ceiling is not an upsell moment: that tier is
+// set high enough that reaching it means the account is being misused, not
+// that they should pay more (ADR-029 Decision 5).
+func RespondQuotaExceeded(c *gin.Context, userID string) {
+	message := "Daily dictionary lookup limit reached. Upgrade to Catglish Pro for a much higher daily limit."
+	if subscribed, err := isActiveSubscriber(userID); err == nil && subscribed {
+		message = "Daily dictionary lookup limit reached. That is unusually high for a subscription -- please contact support."
+	}
 	c.JSON(http.StatusTooManyRequests, gin.H{
 		"success": false,
-		"message": "Daily dictionary lookup limit reached. Upgrade to enx Pro for unlimited lookups.",
+		"message": message,
 	})
 }

@@ -39,7 +39,7 @@
 - [ ] **1.2** 用真实 `aitranslate: usage ... cost=` 日志校准 token 权重（现在 `weight-in=1 / weight-out=3 / divisor=3000` 是占位，`[stripe.costs.translate]` 与 `[stripe.costs.rephrase]` 各一组）。需要先有真实 AI 调用产生日志（依赖 §3 联调）。
 - [ ] **1.3** Stripe 目录里的占位价格改成定稿值：`w10n-config/infra/stripe/opentofu/enx/terraform.tfvars`（`price_pro_monthly_cents` 等），`tofu apply`。
 - [ ] **1.4** `enx-ui` 定价页文案同步真实数字：`enx-ui/src/app/(app)/billing/plans.ts`。
-- [ ] **1.5** 免费查词每日配额：决策是「上线前不设、上线后按真实用量再定」。**⚠️ 2026-09-16 更正：这个计划按当前实现无法执行，需要改代码**——`limit <= 0` 时 `quota.CheckAndIncrementLookup` 直接返回、**一行都不写**，所以带着 `dictionary-lookup-daily = 0` 上线等于**不积累任何用量数据**，「上线后按真实用量再定」的那个「真实用量」永远不存在。根因是「计数」和「拦截」共用同一个开关。修法见 [`adr-029`](../architecture/adr-029-lookup-quota-tiered-limits-and-count-gate-split.md)：配额改成人人有额度的**分档模型**（免费档低、订阅档高到用不完），并把**计数与拦截解耦**——`limit <= 0` 改为「照常计数、不拦截」。这样才能带着「计数开、拦截关」上线，2–4 周后拿真实分布定数字。
+- [x] **1.5** 免费查词每日配额：决策是「上线前不设、上线后按真实用量再定」。**⚠️ 2026-09-16 更正：这个计划按当时的实现无法执行，需要改代码**——`limit <= 0` 时 `quota.CheckAndIncrementLookup` 直接返回、**一行都不写**，所以带着 `dictionary-lookup-daily = 0` 上线等于**不积累任何用量数据**。根因是「计数」和「拦截」共用同一个开关。**→ 2026-09-16 已按 [`adr-029`](../architecture/adr-029-lookup-quota-tiered-limits-and-count-gate-split.md) 改完并上线就绪**：配额改成人人有额度的**分档模型**，**计数与拦截已解耦**（`limit <= 0` = 照常计数、不拦截）。配置项现为 `stripe.quota.dictionary-lookup-daily-free` / `-subscribed`，**两者保持 0 上线**，2–4 周后拿真实分布定数字（→ §8）。
 
 ---
 
@@ -124,18 +124,18 @@
     - [x] `src/app/(app)/app/page.tsx` — 随 `adr-027` 重写一并处理
     - [x] `src/components/app/app-nav.ts:67` — `navTitleForPath` 的兜底返回值
     - [x] `src/app/(app)/reader/page.tsx:163,166`、`src/app/extension/connected/page.tsx:40` — 面向用户的 "the ENX extension"
-    - [ ] `src/app/(app)/billing/plans.ts:24,31,38` — `enx Pro` / `enx Pro+` / `enx Max`。**未做**：这三条的 `description` 还写着 "Unlimited lookups"，按 `adr-029` 要一并改掉，所以留到 029 落地时一次改完，避免改两遍
+    - [x] `src/app/(app)/billing/plans.ts:24,31,38` — `enx Pro` / `enx Pro+` / `enx Max`（2026-09-16 随 `adr-029` 一并改完，同时把三条 description 里不可兑现的 "Unlimited lookups" 改掉）
   - `enx-chrome`
     - [ ] `manifest.json` — `name`（现为 `ENX - English Learning Extension`）、`description`、`action.default_title`、`commands` 里的 `description`。**扩展 ID 不受影响**（ID 由密钥决定，不是名字）
     - [ ] `popup.html` / `options.html` / `sidepanel.html` 的 `<title>`
     - [ ] `src/popup/Popup.tsx:63`、`src/components/Login.tsx:60`、`src/options/Options.tsx:151`
     - [ ] `src/background/background.ts:604` — 通知标题 `Signed in to Catseye`
-  - `enx-api`（面向用户的响应文案）
-    - [ ] `dictionary/lookup.go:95` — 429 文案。**同时按 `adr-029` 把 `unlimited` 改掉**（分档后不再是无限），并区分「免费用户撞墙 → 引导升级」与「订阅用户撞墙 → 账号异常，别引导掏钱」
-    - [ ] `billing/handler.go:109` — `an active enx Pro (or higher) subscription is required...`
+  - `enx-api`（面向用户的响应文案）—— **2026-09-16 已完成**（随 `adr-029`）
+    - [x] `dictionary/lookup.go:95` — 429 文案。`unlimited` 已去掉，改成「a much higher daily limit」；并区分免费用户（引导升级）与订阅用户（账号异常，引导联系支持）
+    - [x] `billing/handler.go:109` — `an active Catglish Pro (or higher) subscription is required...`
     - ~~`email/email.go` 的邮件标题~~ —— **不在改名范围内。** 用户确认认证全部走 Clerk，不再有自建邮件。查证：`Register` / `VerifyEmail` / `ForgotPassword` / `ResetPassword` 这几个 handler **根本没有注册到任何路由上**，连同 `email/` 包都是 ADR-015 迁移后的**死代码**（不是「将来不用」，是现在就不可达）。→ 见下方新增的清理项 **2.x**，那是删除任务，不是改名任务
   - `w10n-config`（Stripe，用户在结账页和收据上看得到）
-    - [ ] `infra/stripe/opentofu/enx/main.tf` — `stripe_product.*.name`（`enx Pro` / `enx Pro+` / `enx Max`）与 `description`。**description 里的 "unlimited dictionary lookups" 按 `adr-029` 一并改掉**，否则是不可兑现的承诺
+    - [x] `infra/stripe/opentofu/enx/main.tf` — `stripe_product.*.name`（→ `Catglish Pro` / `Pro+` / `Max` / `AI Credits Top-up`）与 `description`（"unlimited dictionary lookups" 已改成「a much higher daily dictionary lookup limit」）。2026-09-16 改完，**`lookup_key` 未动**；⚠️ **尚未 `tofu apply`**，上线前需执行
     - [ ] Clerk 应用显示名（登录页和 Clerk 发的邮件上可见）
     - [ ] Chrome Web Store 上架条目的名称 / 简介（§6）
 

@@ -163,9 +163,17 @@ weight-out = 3
 divisor = 3000
 
 [stripe.quota]
-# Free-tier daily dictionary lookup cap (ADR-009 Decision 6). Unlike the
-# cost/credit values above, 0 here means "unlimited" -- an unconfigured
-# quota should fail open (free lookups stay uncapped a little longer,
-# annoying at worst) not fail closed (breaks the free-tier hook for
-# everyone). See w10n-config/enx/monetization.md.
-dictionary-lookup-daily = 0
+# Daily dictionary lookup ceilings, one per tier (ADR-029). Everyone is
+# counted; the tier only decides the number. 0 means "count, but never
+# block" -- unlike the cost/credit values above, an unconfigured quota fails
+# open, because failing closed would break the free-tier hook for everyone
+# (see w10n-config/enx/monetization.md).
+#
+# Both at 0 is the launch state: observe real usage for a few weeks, then
+# set numbers (LAUNCH-CHECKLIST §1.5). `-subscribed` is an abuse ceiling,
+# not a product tier -- set it high enough that normal use never reaches it.
+#
+# Superseded key `dictionary-lookup-daily` still works as a fallback for
+# `-free` for one release.
+dictionary-lookup-daily-free = 0
+dictionary-lookup-daily-subscribed = 0

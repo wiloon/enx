@@ -137,9 +137,14 @@ func viperInitInternal() {
 	_ = viper.BindEnv("stripe.costs.rephrase.weight-out", "STRIPE_COSTS_REPHRASE_WEIGHT_OUT")
 	viper.SetDefault("stripe.costs.rephrase.divisor", 0)
 	_ = viper.BindEnv("stripe.costs.rephrase.divisor", "STRIPE_COSTS_REPHRASE_DIVISOR")
-	// Free dictionary lookup quota defaults to 0 (= "unlimited"), the
-	// opposite fail-direction from costs/credits -- see config.toml's
-	// [stripe.quota] comment.
+	// Daily dictionary lookup ceilings per tier (ADR-029). 0 = count but
+	// never block, the opposite fail-direction from costs/credits -- see
+	// config.toml's [stripe.quota] comment.
+	viper.SetDefault("stripe.quota.dictionary-lookup-daily-free", 0)
+	_ = viper.BindEnv("stripe.quota.dictionary-lookup-daily-free", "STRIPE_QUOTA_DICTIONARY_LOOKUP_DAILY_FREE")
+	viper.SetDefault("stripe.quota.dictionary-lookup-daily-subscribed", 0)
+	_ = viper.BindEnv("stripe.quota.dictionary-lookup-daily-subscribed", "STRIPE_QUOTA_DICTIONARY_LOOKUP_DAILY_SUBSCRIBED")
+	// Superseded single-tier key, read as a fallback for -free.
 	viper.SetDefault("stripe.quota.dictionary-lookup-daily", 0)
 
 	// Throttle for last_login_time/updated_at writes on every authenticated

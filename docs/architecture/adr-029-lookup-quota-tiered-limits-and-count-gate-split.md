@@ -2,12 +2,12 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Proposed — 2026-09-16。**本次未写任何代码。** 修订两份已 Accepted 的 ADR 的具体决策，并修正 `LAUNCH-CHECKLIST` §1.5 里一个**无法自洽的上线计划**（见 Context）。 |
+| **状态** | **已实现 — 2026-09-16**（代码 + 配置 + 文案全部落地；两档默认值仍为 0 = 「计数开、拦截关」，具体数值等上线后的真实用量）。修订两份已 Accepted 的 ADR 的具体决策，并修正 `LAUNCH-CHECKLIST` §1.5 里一个**无法自洽的上线计划**（见 Context）。**Decision 7a（L1 改服务端记 + 时区头）不在本次实现范围**，它属于 ADR-028 落地时的选型。 |
 | **日期** | 2026-09-16 |
 | **关联 Spec** | [`docs/tasks/TASK-SPEC-enx-billing-stripe-subscription.md`](../tasks/TASK-SPEC-enx-billing-stripe-subscription.md) §1.4 / §4.2（配额表与拦截语义，本 ADR 改动其口径） |
 | **关联 ADR** | [`adr-009-billing-stripe-subscription-and-ai-credits.md`](adr-009-billing-stripe-subscription-and-ai-credits.md)（**修订其决策 6**「免费用户每日上限值待定；**订阅用户不限量**」→ 改为分档上限，订阅档高到正常用户碰不到，但**存在**）、[`adr-018-dictionary-lookup-single-metered-seam.md`](adr-018-dictionary-lookup-single-metered-seam.md)（**修订其决策 2「订阅用户跳过」、决策 8「`limit <= 0` 维持无限语义」**；其决策 5 的 fail-open 策略**保留但改写**：失败时用最高档而不是「跳过计量」，#18「付费用户不被 DB 抖动降级 429」的不变量继续成立）、[`adr-028-reading-stats-what-to-measure.md`](adr-028-reading-stats-what-to-measure.md)（本 ADR 让 `dictionary_lookup_quota` 第一次成为**全体用户**的每日查词计数器，028 Context 里「该表对订阅用户偏斜」的描述随之修订，L1 的数据来源可改为服务端，见 Decision 7）、[`adr-027-enx-ui-app-home-workbench-and-return-path.md`](adr-027-enx-ui-app-home-workbench-and-return-path.md)（剩余额度的显示方式随之改为**状态驱动**，见 Decision 8） |
 | **关联 Issue** | 与 [#21](https://github.com/wiloon/enx/issues/21)（配额行清理）直接相关：本 ADR 让配额行从「只有免费用户在限额生效时才有」变成「人人每天一行」，行数上升，清理策略的优先级提高。 |
-| **关联代码** | **待实现。** `enx-api/billing/quota/lookup_quota.go`（`CheckAndIncrementLookup` 拆成「总是计数」+「按档拦截」）、`enx-api/dictionary/lookup.go`（`isActiveSubscriber` → `resolveLookupLimit`，429 文案）、`enx-api/utils/viper.go` + `config.toml`（配额项从 1 个变 2 个）、`docs/tasks/LAUNCH-CHECKLIST.md` §1.5。 |
+| **关联代码** | **已实现（2026-09-16）。** `enx-api/billing/quota/lookup_quota.go`（`CheckAndIncrementLookup` → `IncrementLookup`，无条件计数 + `RETURNING count`；已验证 `glebarez/sqlite` 支持 `RETURNING`，采用 Options D1、未用回退方案）、`enx-api/dictionary/lookup.go`（`isActiveSubscriber` → `resolveLookupLimit`；`MeterLookup` 先计数再比较；429 文案按档位分层）、`enx-api/utils/viper.go` + `config.toml`（两档 + 旧键回退 + 新增 `BindEnv`）、`enx-api/utils/sqlitex/billing_models.go`（model 注释：`count` 可超 `limit`、与 `daily_stats` 口径不同）、`enx-api/billing/handler.go`、`enx-ui/src/app/(app)/billing/plans.ts`、`w10n-config/infra/stripe/opentofu/enx/main.tf`（`name` / `description`，**`lookup_key` 未动**；尚未 `tofu apply`）。 |
 
 ---
 
