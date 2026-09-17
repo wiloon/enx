@@ -61,6 +61,12 @@ const APPS: App[] = [
     stars: 12_500,
   },
   {
+    name: 'Read Frog',
+    url: 'https://github.com/mengxi-ream/read-frog',
+    description: 'Dual-language webpage and PDF translator with vocabulary review for language learners. Open source.',
+    stars: 9_715,
+  },
+  {
     name: 'LingQ',
     url: 'https://www.lingq.com',
     description: 'Imports web articles and video captions into a lookup-and-review reader.',
