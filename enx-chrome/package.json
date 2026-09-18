@@ -5,8 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p tsconfig.app.json && vite build",
-    "package:webstore": "pnpm build && node scripts/package-webstore.mjs",
+    "build": "tsc -p tsconfig.app.json && vite build --mode homelab",
+    "build:homelab": "pnpm build",
+    "build:dev": "tsc -p tsconfig.app.json && vite build --mode development",
+    "build:prod": "tsc -p tsconfig.app.json && vite build --mode production",
+    "package:webstore": "pnpm build:prod && node scripts/package-webstore.mjs",
     "preview": "vite preview",
     "test": "jest",
     "test:watch": "jest --watch",

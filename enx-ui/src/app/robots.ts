@@ -1,9 +1,10 @@
 import type { MetadataRoute } from 'next'
 
-export const dynamic = 'force-static'
+// Read per request: SITE_URL comes from the container, not from the build.
+export const dynamic = 'force-dynamic'
 
 export default function robots(): MetadataRoute.Robots {
-  const base = process.env.NEXT_PUBLIC_SITE_URL || 'https://enx.wiloon.lab'
+  const base = process.env.SITE_URL || 'https://enx.wiloon.lab'
   return {
     rules: { userAgent: '*', allow: '/', disallow: '/app' },
     sitemap: `${base}/sitemap.xml`,

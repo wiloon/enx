@@ -1,0 +1,16 @@
+# Keep the image build hermetic: the builder stage installs its own deps, and a
+# local .env.local must never reach it (it holds a Clerk secret, and any
+# NEXT_PUBLIC_* in it would be inlined into the bundle -- silently making the
+# image environment-specific again).
+node_modules
+.next
+.env
+.env.*
+.git
+.gitignore
+e2e
+test-results
+playwright-report
+coverage
+Containerfile
+README.md

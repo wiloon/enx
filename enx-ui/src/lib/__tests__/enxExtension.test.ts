@@ -1,4 +1,5 @@
 import { notifySignedIn } from '../enxExtension'
+import { setRuntimeEnv } from '@/test/runtimeEnv'
 
 type SendMessage = jest.Mock
 
@@ -9,7 +10,7 @@ function installChrome(sendMessage?: SendMessage, lastError?: unknown) {
 }
 
 beforeEach(() => {
-  process.env.NEXT_PUBLIC_ENX_EXTENSION_ID = 'test-ext-id'
+  setRuntimeEnv({ ENX_EXTENSION_ID: 'test-ext-id' })
   installChrome(undefined)
 })
 
@@ -32,7 +33,7 @@ describe('notifySignedIn (ADR-020)', () => {
   })
 
   it('is a no-op when the extension id is not configured', () => {
-    delete process.env.NEXT_PUBLIC_ENX_EXTENSION_ID
+    setRuntimeEnv({ ENX_EXTENSION_ID: '' })
     const sendMessage = jest.fn()
     installChrome(sendMessage)
 

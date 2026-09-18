@@ -53,18 +53,17 @@ ADR-015 把认证从 Cognito 迁到 Clerk，**代码已完成并上了 homelab**
 - [ ] `CLERK_ISSUER` → `https://clerk.<域名>`
 - [ ] `CLERK_AUTHORIZED_PARTIES` → 生产网站 origin（+ 扩展 id `chrome-extension://<id>`），空格分隔
 
-**enx-ui**（`deployment-ui.yaml` + `pipeline-build-enx-ui.yaml` build-args）：
-- [ ] `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` → `pk_live_...`（build-arg，会 bake 进 bundle，必须重新构建镜像）
+**enx-ui**（运行期 env：生产 `/opt/enx/enx-ui.env`，homelab `deployment-ui.yaml` + Secret `enx-clerk`）：
+- [ ] `CLERK_PUBLISHABLE_KEY` → `pk_live_...`（**不再是 build-arg**，重启容器即生效）
 - [ ] `CLERK_SECRET_KEY` → `sk_live_...`（k8s secret `enx-clerk`，`kubectl` 更新）
-- [ ] 其余 `NEXT_PUBLIC_CLERK_SIGN_IN_URL` 等不变（`/sign-in` `/sign-up` `/app`）
-- [ ] 重新触发 enx-ui pipeline（新 `pk_live` 才能 bake 进去）
+- [ ] 其余 `NEXT_PUBLIC_CLERK_SIGN_IN_URL` 等不变（`/sign-in` `/sign-up` `/app`，路由常量，每个环境一样）
+- [ ] 重启 enx-ui（生产 `systemctl restart enx-ui`；homelab 滚动 Deployment）—— **不需要重新构建镜像**
 
-**enx-chrome**（`enx-chrome/src/config/env.ts` 的 `production` 环境默认值，或 `VITE_*` 覆盖）：
-- [ ] `clerkPublishableKey` → `pk_live_...`
+**enx-chrome**（`enx-chrome/src/config/targets.ts` 的 `production` 目标，或 `.env.production` 的 `VITE_*` 覆盖）：
+- [ ] `VITE_CLERK_PUBLISHABLE_KEY` → `pk_live_...`（写进 `.env.production`）
 - [ ] `clerkSyncHost` → 生产网站域名
-- [ ] `manifest.json` 的 `host_permissions` 加 `https://clerk.<域名>/*`（保留或替换 dev 的 `rational-deer-4450.clerk.accounts.dev`）
-- [ ] `manifest.json` CSP 里如有硬编码 Clerk 域名，同步
-- [ ] 用 `production` 环境重新 `pnpm build`，重新打包上架
+- [ ] Clerk 的 `host_permissions` **无需手改**：由 publishable key 解码得出，换 key 后 manifest 自动跟着变
+- [ ] `task package-webstore`（`--mode production`）重新打包上架
 
 ### 5. 验证
 

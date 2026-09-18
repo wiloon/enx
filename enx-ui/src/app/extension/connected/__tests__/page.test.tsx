@@ -1,8 +1,9 @@
 import { act, render, screen } from '@testing-library/react'
 import ExtensionConnectedPage from '../page'
+import { setRuntimeEnv } from '@/test/runtimeEnv'
 
 beforeEach(() => {
-  process.env.NEXT_PUBLIC_ENX_EXTENSION_ID = 'test-ext-id'
+  setRuntimeEnv({ ENX_EXTENSION_ID: 'test-ext-id' })
   ;(global as unknown as { chrome?: unknown }).chrome = undefined
 })
 

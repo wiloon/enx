@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { useExtensionStatus } from '../useExtensionStatus'
+import { setRuntimeEnv } from '@/test/runtimeEnv'
 
 type SendMessage = jest.Mock
 
@@ -10,7 +11,7 @@ function installChrome(sendMessage?: SendMessage, lastError?: unknown) {
 }
 
 beforeEach(() => {
-  process.env.NEXT_PUBLIC_ENX_EXTENSION_ID = 'test-ext-id'
+  setRuntimeEnv({ ENX_EXTENSION_ID: 'test-ext-id' })
   installChrome(undefined)
   document.documentElement.removeAttribute('data-enx-extension')
 })

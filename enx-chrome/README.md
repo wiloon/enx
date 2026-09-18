@@ -98,13 +98,13 @@ The OAuth flow runs in the **background service worker** (not the popup). The po
 
 **Sign out** clears local tokens, then opens Cognito Hosted UI `/logout` (via `launchWebAuthFlow`) so the Cognito browser session is cleared. `logout_uri` is the same chromiumapp callback URL already registered as `logout_urls` in OpenTofu. Google account cookies in the browser may still exist; Cognito session clear is what makes the next Sign in show the Hosted UI / provider chooser again.
 
-**Extension ID must match Cognito callback URLs.** `manifest.json` includes a `key` field so the ID stays `omcdpipnjffmblbhiphddcmoldceapam` regardless of which folder you load from `dist/`.
+**Extension ID must match Cognito callback URLs.** `manifest.json` includes a `key` field so the ID stays `combdcldlodkikjfhjbdbogjlfmnbjkf` regardless of which folder you load from `dist/`.
 
 Design notes: `docs/architecture/adr-001-chrome-oauth-in-background.md`, `docs/tasks/TASK-SPEC-enx-chrome-oauth-background.md`.
 
 1. Rebuild and reload the extension (`task build` → reload in `chrome://extensions`)
-2. Confirm ID on the extensions page is `omcdpipnjffmblbhiphddcmoldceapam`
-3. Ensure Cognito `enx-chrome` App Client lists `https://omcdpipnjffmblbhiphddcmoldceapam.chromiumapp.org/callback` (run `tofu apply` in `w10n-config/infra/aws/opentofu/enx` after pulling infra changes)
+2. Confirm ID on the extensions page is `combdcldlodkikjfhjbdbogjlfmnbjkf`
+3. Ensure Cognito `enx-chrome` App Client lists `https://combdcldlodkikjfhjbdbogjlfmnbjkf.chromiumapp.org/callback` (run `tofu apply` in `w10n-config/infra/aws/opentofu/enx` after pulling infra changes)
 
 Private signing key: keep `dist.pem` local (gitignored). Do not commit it.
 
@@ -218,7 +218,9 @@ task build
 For detailed task documentation, see [TASKFILE_README.md](./TASKFILE_README.md)
 
 - `task dev` - Start development server with hot reload
-- `task build` - Build extension for production
+- `task build` - Build extension for the homelab deployment
+- `task build-prod` - Build extension for production
+- `task package-webstore` - Production build + Chrome Web Store zip
 - `task test` - Run tests
 - `task lint` - Lint code
 - `task format` - Format code
@@ -228,13 +230,14 @@ For detailed task documentation, see [TASKFILE_README.md](./TASKFILE_README.md)
 
 ### API Endpoints
 
-The extension supports multiple environments:
+The build target decides which URLs are compiled into the bundle and the
+manifest (see `src/config/targets.ts`):
 
-- **Development**: `http://localhost:8090` (default when `VITE_ENV=development`)
-- **Staging**: `https://enx-dev.wiloon.com`
-- **Production**: `https://enx.wiloon.com`
+- **Development** (`task build-dev`): `http://localhost:8090`
+- **Homelab** (`task build`): `https://enx-api.wiloon.lab`
+- **Production** (`task build-prod`): `https://enx-api.wiloon.com`
 
-You can change the API endpoint in the extension's Options page:
+You can still change the API endpoint at runtime in the extension's Options page:
 
 1. Right-click extension icon → Options
 2. Select or enter your desired API URL
@@ -401,7 +404,7 @@ For more details, see [API_CONFIG_README.md](./API_CONFIG_README.md)
 
 If popup shows **Authorization page could not be loaded**:
 
-1. Open `chrome://extensions` and confirm extension ID is `omcdpipnjffmblbhiphddcmoldceapam`
+1. Open `chrome://extensions` and confirm extension ID is `combdcldlodkikjfhjbdbogjlfmnbjkf`
 2. If the ID differs, rebuild from this repo (manifest `key` pins the ID) and remove/re-add the unpacked extension
 3. Run `tofu apply` in `w10n-config/infra/aws/opentofu/enx` so Cognito allows the callback URL
 

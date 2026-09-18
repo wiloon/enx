@@ -25,6 +25,8 @@ export default function RefundPolicyPage() {
     <LegalPage
       title="Refund Policy"
       intro={`If ${SITE.name} isn't working out for you, we would rather give you your money back than keep it. Here are the rules, written down in advance so you can hold us to them.`}
+      locale="en"
+      enHref="/refund"
     >
       <Section heading="Subscriptions">
         <p>
@@ -130,7 +132,7 @@ export default function RefundPolicyPage() {
 
       <Section heading="Contact">
         <p>
-          {LEGAL.companyNameEn} ({LEGAL.companyName}) —{' '}
+          {SITE.name} is operated by <Term>{LEGAL.operatorName}</Term> —{' '}
           <Term>{LEGAL.contactEmail}</Term>
         </p>
       </Section>

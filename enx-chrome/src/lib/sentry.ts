@@ -1,9 +1,15 @@
 import * as Sentry from '@sentry/react'
+import { config } from '@/config/env'
 
 export const initSentry = () => {
+  const dsn = import.meta.env.VITE_SENTRY_DSN
+  if (!dsn) {
+    return
+  }
+
   Sentry.init({
-    dsn: import.meta.env.VITE_SENTRY_DSN,
-    environment: import.meta.env.MODE || 'development',
+    dsn,
+    environment: config.environment,
     integrations: [
       Sentry.browserTracingIntegration(),
       Sentry.replayIntegration(),

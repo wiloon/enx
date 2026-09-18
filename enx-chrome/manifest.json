@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiBY2NMV58HKw1g13kUFY6pyH2dzEuhZ8r+rR3Lw8N0Z3B4qxIou3gxVv/6wKJUuD5Aky6ZqXdCuBNCG1GTukRp5R0o8ulRFmLSSz/uWcxdgynA9s5Sr3hgkaIsECmyt9U84Y3Rob/6GB1hYk9hp6qsd8+GLK+82/xFCJoSck1piDeJNJQY+XQQgwn/+bORpD/m1KpQaEUya7ZnKAJYNbQ44/3sTsgWwZuevGW0ShETaqCIOb7K2dIbwWwDesceWjIbu6G9OjRuuup74jWkTbiQVLvMKONhv1/oI72+sgsP1c9ru1jEKZnNE46zlfLaSaLL5bNMSODrLnq1u9Ynh1twIDAQAB",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvlo1g6oA/X9l54OVVrBAOJB2sBy5BlynO3iM0Hw3oMoI6MJyep97O9vTpGglkHlFsfpsSmF4VOhlemRvYDZT5ERQdtGYx5hCALDKxY0tt1PZpKGcfSCL8S5uEB5FPG899XnmjDr7VpcqAs1XfCUv2KVGdf2Y2IPy3QQcHR05nUxDzggfF+JzUUor25MtdyecktfDO7szR8/v2MOtmgXGhKd4eq7RVHBsYXfUrqC2ReEFRxZBii7ztFASe9zDCjUA6fUnq6bbciG6jk060DwbNvQSsucHja4mtu5ZntICPO+G3QGvyO8eN5dmBwubBE2j0turlmXdTLsIVVyoYyeFgwIDAQAB",
   "name": "Catglish - Learn English as you read the web",
   "version": "1.0.1",
   "description": "Underlines the words worth learning as you read English online, explains any word you click, and translates whole sentences.",
@@ -8,12 +8,6 @@
   "host_permissions": [
     "http://*/*",
     "https://*/*",
-    "http://localhost:8090/*",
-    "https://enx-api.wiloon.lab/*",
-    "https://enx.wiloon.lab/*",
-    "https://enx-api.wiloon.com/*",
-    "https://enx.wiloon.com/*",
-    "https://rational-deer-4450.clerk.accounts.dev/*",
     "https://www.youdao.com/*",
     "https://claude.com/blog/*"
   ],
@@ -40,21 +34,14 @@
         "https://anthropic.skilljar.com/*",
         "https://claude.com/blog/*",
         "https://x.com/*",
-        "https://twitter.com/*",
-        "http://localhost:3000/*",
-        "https://enx.wiloon.lab/*",
-        "https://enx.wiloon.com/*"
+        "https://twitter.com/*"
       ],
       "js": ["src/content/content.tsx"],
       "run_at": "document_end"
     }
   ],
   "externally_connectable": {
-    "matches": [
-      "http://localhost:3000/*",
-      "https://enx.wiloon.lab/*",
-      "https://enx.wiloon.com/*"
-    ]
+    "matches": []
   },
   "icons": {
     "16": "icons/icon-16.png",

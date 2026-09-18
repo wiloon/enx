@@ -190,7 +190,7 @@ Background 在 OAuth 成功后一次性写入（字段名与 `Login.tsx` / `stor
 
 ### 4.2 手工（必须，真实 Cognito + Google）
 
-前置：unpacked 加载当前 `dist/`，扩展 ID 仍为 `omcdpipnjffmblbhiphddcmoldceapam`，且处于**未登录**（可先 Sign out 或清扩展 storage）。系统通知权限允许 Chrome。
+前置：unpacked 加载当前 `dist/`，扩展 ID 仍为 `combdcldlodkikjfhjbdbogjlfmnbjkf`，且处于**未登录**（可先 Sign out 或清扩展 storage）。系统通知权限允许 Chrome。
 
 | # | 步骤 | 期望 |
 | --- | --- | --- |

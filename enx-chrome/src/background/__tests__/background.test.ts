@@ -6,6 +6,11 @@ jest.mock('@/config/env', () => ({
     frontendBaseUrl: 'http://localhost:3000',
     clerkPublishableKey: 'pk_test_x',
     clerkSyncHost: 'http://localhost:3000',
+    uiOrigins: [
+      'http://localhost:3000',
+      'https://enx.wiloon.lab',
+      'https://enx.wiloon.com',
+    ],
     environment: 'test',
   },
   getApiBaseUrl: jest.fn(async () => 'http://localhost:8090'),

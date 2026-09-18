@@ -195,9 +195,12 @@ The extension uses different API endpoints based on the environment:
 
 ### Default Environments
 
-- **Development** (`task dev`): `http://localhost:8090` - connects to local API server
-- **Staging** (`VITE_ENV=staging`): `https://enx-dev.wiloon.com` - dev server
-- **Production** (`task build`): `https://enx.wiloon.com` - production server
+- **Development** (`task build-dev`): `http://localhost:8090` - connects to local API server
+- **Homelab** (`task build`): `https://enx-api.wiloon.lab` - homelab k8s deployment
+- **Production** (`task build-prod`, `task package-webstore`): `https://enx-api.wiloon.com`
+
+The URLs live in `src/config/targets.ts` and are injected into both the bundle
+and the generated `manifest.json` at build time.
 
 ### Override Environment
 
@@ -207,11 +210,14 @@ Create a `.env` file to override the environment:
 # Use local development server
 VITE_ENV=development
 
-# Or use staging server
-VITE_ENV=staging
+# Or use the homelab deployment
+VITE_ENV=homelab
 
-# Or use production server
+# Or use production
 VITE_ENV=production
+
+# Or override a single URL for one build
+VITE_API_BASE_URL=http://192.168.50.71:8090
 ```
 
 ### Runtime Configuration

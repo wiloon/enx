@@ -6,7 +6,7 @@ import { defineConfig, devices } from '@playwright/test'
  * Unlike playwright.config.ts this starts NO local servers -- it drives the
  * built extension (dist/) against https://enx-api.wiloon.lab and real Cognito.
  *
- *   pnpm build                 # produces dist/ with VITE_ENV=staging (homelab)
+ *   pnpm build                 # produces dist/ with VITE_ENV=homelab
  *   pnpm test:e2e:homelab      # see package.json
  *
  * Gated on ENX_HOMELAB=1 so it never runs in the normal suite / CI by accident.

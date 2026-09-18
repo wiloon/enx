@@ -11,7 +11,18 @@
 
 ---
 
-## Context
+## 修订记录
+
+- **2026-09-18（上线前）**：enx-ui 改为**运行期配置**，镜像从此环境无关。原先 `NEXT_PUBLIC_*`（Clerk publishable key、API 地址、站点域名、扩展 id）在 `next build` 时被内联，生产镜像与 homelab 镜像是两个产物。现在：
+  - `ClerkProvider` 接收 `publishableKey` prop，root layout 每次请求读 `process.env`
+  - 浏览器只打同源 `/api/*`，由 `next.config.ts` 的 `rewrites()`（服务启动时求值）按 `API_BASE_URL` 反代 —— API 地址不再进 bundle，且没有 CORS
+  - 浏览器需要的少量值（扩展 id）由 root layout 注入 `window.__ENX_ENV__`（`src/lib/runtimeEnv.ts`）
+  - root layout 标 `force-dynamic`，避免静态预渲染把构建机的 env 冻进 HTML
+  - 两条流水线（Tekton / GitHub Actions）因此都不再传任何部署相关 build-arg，`deploy-prod.yml` 的 fail-fast 检查随之删除
+
+  Decision 6 的双流水线结构**不变**（理由仍成立：家里断网不能影响发版），但两边构建的现在是可互换的产物。
+
+---
 
 homelab（`enx.wiloon.lab` / `enx-api.wiloon.lab`）跑在局域网里，只有作者能访问。要让真实用户注册、订阅、使用，需要一个公网可达的生产环境。
 
@@ -97,7 +108,7 @@ homelab 那套不能管生产：Tekton 推的是集群内 Nexus（外网拉不�
 
 - **单点**。没有冗余，机器挂了站就挂了。当前阶段（无真实用户、当 pre-production）可以接受，这是刻意的取舍而不是疏忽。
 - **`enx-ui` 必须跑在一台机器上**，不能放 S3 / Pages。它是 SSR + Clerk 中间件，静态托管跑不了。
-- **生产镜像 ≠ homelab 镜像**。`NEXT_PUBLIC_*`（含 Clerk publishable key）是 build-time 内联的，不能把 lab 镜像改个环境变量当生产用。`deploy-prod.yml` 里有一步 fail-fast 专门挡这个。
+- ~~**生产镜像 ≠ homelab 镜像**~~ —— 见「修订记录 2026-09-18」：改成运行期配置后两者可互换，改配置只需重启容器。代价是 root layout `force-dynamic`，marketing / legal 页不再静态预渲染（由 Cloudflare 缓存兜住）。
 - **Clerk 两个实例的用户库互相隔离**。homelab 的测试账号在生产上不存在；`ADMIN_CLERK_USER_IDS` 必须换成生产实例里的新 id，否则管理端点静默失效。
 
 **已知待办（不阻塞本 ADR）**

@@ -3,14 +3,16 @@
 // (exactly as on any article site). These helpers detect whether that
 // extension is installed and ask it to enable learning mode on the Reader tab.
 
+import { runtimeEnv } from './runtimeEnv'
+
 // Set once the extension is packed / published. Empty in local dev, which
 // makes every helper below a no-op (treated as "not installed").
 export function extensionId(): string {
-  return process.env.NEXT_PUBLIC_ENX_EXTENSION_ID ?? ''
+  return runtimeEnv('ENX_EXTENSION_ID')
 }
 
 export function webStoreUrl(): string {
-  return process.env.NEXT_PUBLIC_ENX_EXTENSION_WEB_STORE_URL ?? ''
+  return runtimeEnv('ENX_EXTENSION_WEB_STORE_URL')
 }
 
 type ExternalRuntime = {

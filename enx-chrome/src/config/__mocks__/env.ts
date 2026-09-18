@@ -4,8 +4,11 @@ export const config = {
   frontendBaseUrl: 'http://localhost:3000',
   clerkPublishableKey: 'pk_test_x',
   clerkSyncHost: 'http://localhost:3000',
+  uiOrigins: ['http://localhost:3000'],
   environment: 'test' as const,
 }
+
+export const apiBaseUrlOverrideAllowed = true
 
 export const getApiBaseUrl = async (): Promise<string> => {
   return config.apiBaseUrl

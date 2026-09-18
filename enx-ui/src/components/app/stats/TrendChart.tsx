@@ -1,55 +1,68 @@
-'use client'
+'use client';
 
-import { useEffect, useRef, useState } from 'react'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 // One measure over time. Deliberately ONE: plotting words-read and lookups
 // together would need two y-scales, and a dual-axis chart can be made to show
 // any correlation you like by choosing the scales. The metric switcher above
 // the chart is what replaces the second axis.
+//
+// Recharts renders SVG, which is why it is used here rather than a canvas
+// library: the marks take the app's own Tailwind tokens (`fill-brand`,
+// `stroke-border`), so light and dark mode come from the same CSS variables
+// as the rest of the app instead of a second, hand-kept palette that drifts.
 
 export type TrendDatum = {
   /** Axis label, already shortened for the bucket size. */
-  label: string
+  label: string;
   /** The full label used in the tooltip, e.g. the whole date. */
-  fullLabel: string
+  fullLabel: string;
   /** null renders a gap, not a zero -- see `gapNote`. */
-  value: number | null
-}
+  value: number | null;
+};
 
-const HEIGHT = 240
-const PAD_LEFT = 44
-const PAD_RIGHT = 12
-const PAD_TOP = 12
-const PAD_BOTTOM = 28
-const MAX_BAR_WIDTH = 24
-/** Surface-colored gap between touching bars (dataviz: the gap separates, not a stroke). */
-const BAR_GAP = 2
+const HEIGHT = 240;
+/** dataviz: cap bars rather than filling the band, so 7 points aren't 7 slabs. */
+const MAX_BAR_WIDTH = 24;
 
-/** Clean y-axis ticks: 0, then a round step at or above the data's maximum. */
+/**
+ * Clean y-axis ticks: 0, then a round step at or above the data's maximum.
+ *
+ * Recharts left to itself divides the data range into equal parts, which
+ * gives an axis labelled 950 / 1,900 / 2,850 / 3,800 -- arithmetically fine
+ * and unreadable. Worse here than elsewhere, because `formatValue` rounds
+ * for display (ADR-028 Decision 8), so those ticks then PRINT as
+ * 1,000 / 1,900 / 2,900 / 3,800: unevenly spaced numbers on an evenly
+ * spaced axis.
+ */
 function axisTicks(max: number): number[] {
-  if (max <= 0) return [0, 1]
-  const rough = max / 3
-  const magnitude = 10 ** Math.floor(Math.log10(rough))
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * magnitude).find((s) => s >= rough)!
-  const top = Math.ceil(max / step) * step
-  const ticks: number[] = []
-  for (let v = 0; v <= top + step / 2; v += step) ticks.push(Math.round(v * 100) / 100)
-  return ticks
-}
+  // No data: a single baseline. Dividing an empty range produces fractional
+  // ticks, and "<100" printed three times is not an axis.
+  if (max <= 0) return [0];
 
-function useWidth(): [React.RefObject<HTMLDivElement | null>, number] {
-  const ref = useRef<HTMLDivElement | null>(null)
-  const [width, setWidth] = useState(720)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const observer = new ResizeObserver(([entry]) => {
-      setWidth(Math.max(280, entry.contentRect.width))
-    })
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-  return [ref, width]
+  const rough = max / 3;
+  const magnitude = 10 ** Math.floor(Math.log10(rough));
+  const step = [1, 2, 2.5, 5, 10]
+    .map((m) => m * magnitude)
+    .find((s) => s >= rough)!;
+  const top = Math.ceil(max / step) * step;
+
+  const ticks: number[] = [];
+  for (let v = 0; v <= top + step / 2; v += step) {
+    ticks.push(Math.round(v * 100) / 100);
+  }
+  return ticks;
 }
 
 export default function TrendChart({
@@ -59,196 +72,124 @@ export default function TrendChart({
   valueLabel,
   gapNote,
 }: {
-  data: TrendDatum[]
-  kind: 'bar' | 'line'
-  formatValue: (value: number) => string
+  data: TrendDatum[];
+  kind: 'bar' | 'line';
+  formatValue: (value: number) => string;
   /** What one value means, for the tooltip and the screen-reader table. */
-  valueLabel: string
+  valueLabel: string;
   /** Shown when some buckets are null, explaining why they are blank. */
-  gapNote?: string
+  gapNote?: string;
 }) {
-  const [ref, width] = useWidth()
-  const [hover, setHover] = useState<number | null>(null)
+  const hasData = data.some((d) => d.value !== null && d.value > 0);
+  const hasGaps = data.some((d) => d.value === null);
 
-  const values = data.map((d) => d.value).filter((v): v is number => v !== null)
-  const max = values.length > 0 ? Math.max(...values) : 0
-  const ticks = axisTicks(max)
-  const top = ticks[ticks.length - 1]
+  const max = Math.max(0, ...data.map((d) => d.value ?? 0));
+  const ticks = axisTicks(max);
+  // Pinning the domain to the tick range is what stops Recharts recomputing
+  // its own -- passing `ticks` alone leaves the scale unchanged and the
+  // labels land in the wrong places.
+  const domain: [number, number] = [0, ticks[ticks.length - 1] || 1];
 
-  const plotWidth = Math.max(1, width - PAD_LEFT - PAD_RIGHT)
-  const plotHeight = HEIGHT - PAD_TOP - PAD_BOTTOM
-  const band = plotWidth / Math.max(1, data.length)
-  // Clamped, so a value the axis wasn't scaled for lands on the edge of the
-  // plot instead of somewhere down the page. Counts and ratios can't go
-  // negative today, which is exactly why an unclamped mark escaping the
-  // chart would be a confusing thing to debug later.
-  const y = (v: number) =>
-    PAD_TOP + plotHeight * (1 - Math.max(0, Math.min(v, top)) / top)
-  const bandCenter = (i: number) => PAD_LEFT + band * (i + 0.5)
+  // Labels collide on a long window; Recharts drops the ones that don't fit
+  // and the tooltip carries the rest.
+  const labelInterval = data.length > 14 ? Math.ceil(data.length / 10) - 1 : 0;
 
-  // Bars are capped rather than filling their band, so a 7-point day view
-  // doesn't render seven slabs.
-  const barWidth = Math.min(MAX_BAR_WIDTH, Math.max(2, band - BAR_GAP))
+  const axisProps = {
+    tick: { fontSize: 10 },
+    tickLine: false,
+    axisLine: false,
+    className: 'fill-muted-foreground',
+  } as const;
 
-  // Every label collides on a 365-point year; show a readable subset and let
-  // the tooltip carry the rest.
-  const labelStride = Math.ceil((data.length * 56) / plotWidth)
-
-  const hasData = values.some((v) => v > 0)
-  const hasGaps = data.some((d) => d.value === null)
+  const tooltip = (
+    <Tooltip
+      cursor={{ className: 'fill-muted', opacity: 0.35 }}
+      content={
+        <ChartTooltip formatValue={formatValue} valueLabel={valueLabel} />
+      }
+    />
+  );
 
   return (
-    <div ref={ref} className="relative w-full">
-      <svg
-        width="100%"
-        height={HEIGHT}
-        viewBox={`0 0 ${width} ${HEIGHT}`}
-        role="img"
-        aria-label={`${valueLabel} over time`}
-      >
-        {/* Recessive hairline grid: solid, one step off the surface. */}
-        {ticks.map((t) => (
-          <g key={t}>
-            <line
-              x1={PAD_LEFT}
-              x2={width - PAD_RIGHT}
-              y1={y(t)}
-              y2={y(t)}
-              className="stroke-border"
-              strokeWidth={1}
-            />
-            {/* An empty window gets a bare baseline: labelling the
-                placeholder scale would put a number on the axis that
-                describes nothing. */}
-            {(max > 0 || t === 0) && (
-              <text
-                x={PAD_LEFT - 8}
-                y={y(t) + 4}
-                textAnchor="end"
-                className="fill-muted-foreground text-[10px] tabular-nums"
-              >
-                {formatValue(t)}
-              </text>
-            )}
-          </g>
-        ))}
-
-        {kind === 'bar' &&
-          data.map((d, i) => {
-            if (d.value === null || d.value <= 0) return null
-            const h = Math.max(2, plotHeight * (Math.min(d.value, top) / top))
-            return (
-              <rect
-                key={d.label + i}
-                x={bandCenter(i) - barWidth / 2}
-                y={HEIGHT - PAD_BOTTOM - h}
-                width={barWidth}
-                height={h}
-                // 4px rounded data-end; the baseline end stays square
-                // because the radius is clipped by the axis line below it.
-                rx={Math.min(4, barWidth / 2)}
-                className="fill-brand"
-                opacity={hover === null || hover === i ? 1 : 0.65}
+    <div className="relative w-full">
+      {/* Recharts gives the SVG no accessible name, so the chart is announced
+          as nothing at all. The name goes on a wrapper rather than inside
+          the library's markup, where a version bump could drop it; the table
+          below is the actual alternative for anyone who cannot see it. */}
+      <div role="img" aria-label={`${valueLabel} over time`}>
+        <ResponsiveContainer width="100%" height={HEIGHT}>
+          {kind === 'bar' ? (
+            <BarChart
+              data={data}
+              margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+            >
+              <CartesianGrid vertical={false} className="stroke-border" />
+              <XAxis dataKey="label" interval={labelInterval} {...axisProps} />
+              <YAxis
+                tickFormatter={formatValue}
+                ticks={ticks}
+                domain={domain}
+                width={52}
+                {...axisProps}
               />
-            )
-          })}
-
-        {kind === 'line' && (
-          <>
-            {/* Each unbroken run of values is its own path, so a gap is a
-                gap rather than a straight line across the missing weeks. */}
-            {runsOf(data).map((run, ri) => (
-              <path
-                key={ri}
-                d={run
-                  .map(
-                    (i, k) =>
-                      `${k === 0 ? 'M' : 'L'} ${bandCenter(i)} ${y(data[i].value!)}`
-                  )
-                  .join(' ')}
-                fill="none"
+              {tooltip}
+              <Bar
+                dataKey="value"
+                maxBarSize={MAX_BAR_WIDTH}
+                radius={[4, 4, 0, 0]}
+              >
+                {/* Per-cell, so the colour is a Tailwind class that follows
+                  dark mode rather than a hard-coded hex that would not. */}
+                {data.map((_, i) => (
+                  <Cell key={i} className="fill-brand" />
+                ))}
+              </Bar>
+            </BarChart>
+          ) : (
+            <LineChart
+              data={data}
+              margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+            >
+              <CartesianGrid vertical={false} className="stroke-border" />
+              <XAxis dataKey="label" interval={labelInterval} {...axisProps} />
+              <YAxis
+                tickFormatter={formatValue}
+                ticks={ticks}
+                domain={domain}
+                width={52}
+                {...axisProps}
+              />
+              {tooltip}
+              <Line
+                type="linear"
+                dataKey="value"
+                // false is what turns a null into a GAP instead of a straight
+                // line drawn across weeks we have no data for -- the whole
+                // reason `value` is nullable.
+                connectNulls={false}
                 className="stroke-brand"
                 strokeWidth={2}
                 strokeLinecap="round"
-                strokeLinejoin="round"
+                dot={{
+                  className: 'fill-brand stroke-card',
+                  strokeWidth: 2,
+                  r: 3.5,
+                }}
+                activeDot={{
+                  className: 'fill-brand stroke-card',
+                  strokeWidth: 2,
+                  r: 5,
+                }}
+                isAnimationActive={false}
               />
-            ))}
-            {data.map((d, i) =>
-              d.value === null ? null : (
-                <circle
-                  key={d.label + i}
-                  cx={bandCenter(i)}
-                  cy={y(d.value)}
-                  r={hover === i ? 5 : 3.5}
-                  className="fill-brand stroke-card"
-                  // Surface ring, so a marker stays legible over the line.
-                  strokeWidth={2}
-                />
-              )
-            )}
-          </>
-        )}
-
-        {/* Baseline, drawn last so bars sit on it. */}
-        <line
-          x1={PAD_LEFT}
-          x2={width - PAD_RIGHT}
-          y1={HEIGHT - PAD_BOTTOM}
-          y2={HEIGHT - PAD_BOTTOM}
-          className="stroke-border"
-          strokeWidth={1}
-        />
-
-        {data.map((d, i) =>
-          i % labelStride === 0 ? (
-            <text
-              key={`label-${i}`}
-              x={bandCenter(i)}
-              y={HEIGHT - PAD_BOTTOM + 16}
-              textAnchor="middle"
-              className="fill-muted-foreground text-[10px]"
-            >
-              {d.label}
-            </text>
-          ) : null
-        )}
-
-        {/* Full-height hit bands: the hover target is the column, not the
-            2px-wide mark inside it. */}
-        {data.map((d, i) => (
-          <rect
-            key={`hit-${i}`}
-            x={PAD_LEFT + band * i}
-            y={PAD_TOP}
-            width={band}
-            height={plotHeight}
-            fill="transparent"
-            onMouseEnter={() => setHover(i)}
-            onMouseLeave={() => setHover((h) => (h === i ? null : h))}
-          />
-        ))}
-      </svg>
-
-      {hover !== null && (
-        <div
-          className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-md border bg-popover px-2.5 py-1.5 text-xs shadow-md"
-          style={{
-            left: `${Math.min(Math.max(bandCenter(hover), 60), width - 60)}px`,
-            top: `${PAD_TOP}px`,
-          }}
-        >
-          <div className="font-medium">{data[hover].fullLabel}</div>
-          <div className="text-muted-foreground tabular-nums">
-            {data[hover].value === null
-              ? 'Not enough reading to measure'
-              : `${formatValue(data[hover].value!)} ${valueLabel}`}
-          </div>
-        </div>
-      )}
+            </LineChart>
+          )}
+        </ResponsiveContainer>
+      </div>
 
       {!hasData && (
-        // Over the plot only -- inset-0 would also cover the table below,
-        // which is the one place an all-zero window is still worth reading.
+        // Over the plot only -- covering the table below would hide the one
+        // place an all-zero window is still worth reading.
         <p
           className="absolute inset-x-0 top-0 flex items-center justify-center text-sm text-muted-foreground"
           style={{ height: HEIGHT }}
@@ -261,7 +202,8 @@ export default function TrendChart({
         <p className="mt-2 text-xs text-muted-foreground">{gapNote}</p>
       )}
 
-      {/* Identity is never color-alone: the same numbers as a table. */}
+      {/* A chart is not readable by a screen reader, and colour is never the
+          only channel: the same numbers as a table. */}
       <details className="mt-3">
         <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
           View as table
@@ -286,21 +228,32 @@ export default function TrendChart({
         </table>
       </details>
     </div>
-  )
+  );
 }
 
-/** Indices of `data`, grouped into runs of consecutive non-null values. */
-function runsOf(data: TrendDatum[]): number[][] {
-  const runs: number[][] = []
-  let current: number[] = []
-  data.forEach((d, i) => {
-    if (d.value === null) {
-      if (current.length > 0) runs.push(current)
-      current = []
-    } else {
-      current.push(i)
-    }
-  })
-  if (current.length > 0) runs.push(current)
-  return runs.filter((r) => r.length > 0)
+/** Recharts' built-in tooltip is unstyled and shows the raw dataKey. */
+function ChartTooltip({
+  active,
+  payload,
+  formatValue,
+  valueLabel,
+}: {
+  active?: boolean;
+  payload?: { payload: TrendDatum }[];
+  formatValue: (value: number) => string;
+  valueLabel: string;
+}) {
+  if (!active || !payload?.length) return null;
+  const datum = payload[0].payload;
+
+  return (
+    <div className="rounded-md border bg-popover px-2.5 py-1.5 text-xs shadow-md">
+      <div className="font-medium">{datum.fullLabel}</div>
+      <div className="text-muted-foreground tabular-nums">
+        {datum.value === null
+          ? 'Not enough reading to measure'
+          : `${formatValue(datum.value)} ${valueLabel}`}
+      </div>
+    </div>
+  );
 }

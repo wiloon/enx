@@ -1,9 +1,11 @@
 import {
+  apiBaseUrlOverrideAllowed,
   config,
   getApiBaseUrl,
   resetApiBaseUrl,
   setApiBaseUrl,
 } from '@/config/env'
+import { TARGETS } from '@/config/targets'
 import '@/index.css'
 import { initSentry } from '@/lib/sentry'
 import { useWordHighlightEnabled } from '@/hooks/useWordHighlightEnabled'
@@ -18,10 +20,8 @@ function OptionsContent() {
   const [customUrl, setCustomUrl] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [message, setMessage] = useState('')
-  const {
-    enabled: wordHighlightEnabled,
-    setEnabled: setWordHighlightEnabled,
-  } = useWordHighlightEnabled()
+  const { enabled: wordHighlightEnabled, setEnabled: setWordHighlightEnabled } =
+    useWordHighlightEnabled()
 
   useEffect(() => {
     // Load the current API URL on mount
@@ -65,9 +65,9 @@ function OptionsContent() {
   }
 
   const presetUrls = [
-    { label: 'Local (Development)', url: 'http://localhost:8090' },
-    { label: 'Lab', url: 'https://enx-api.wiloon.lab' },
-    { label: 'Production', url: 'https://enx-api.wiloon.com' },
+    { label: 'Local (Development)', url: TARGETS.development.apiBaseUrl },
+    { label: 'Lab', url: TARGETS.homelab.apiBaseUrl },
+    { label: 'Production', url: TARGETS.production.apiBaseUrl },
   ]
 
   if (isLoading) {
@@ -103,85 +103,87 @@ function OptionsContent() {
         </div>
 
         {/* API URL Configuration */}
-        <div className="bg-background rounded-lg shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4 text-foreground">
-            API URL Configuration
-          </h2>
+        {apiBaseUrlOverrideAllowed && (
+          <div className="bg-background rounded-lg shadow-lg p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4 text-foreground">
+              API URL Configuration
+            </h2>
 
-          {/* Preset URLs */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-foreground mb-3">
-              Quick Select:
-            </label>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {presetUrls.map(preset => (
-                <button
-                  key={preset.url}
-                  onClick={() => setCustomUrl(preset.url)}
-                  className={`p-3 rounded-lg border-2 transition-all ${
-                    customUrl === preset.url
-                      ? 'border-brand bg-brand-muted text-brand'
-                      : 'border-border bg-background text-foreground hover:border-brand/50'
-                  }`}
-                >
-                  <div className="font-medium text-sm">{preset.label}</div>
-                  <div className="text-xs mt-1 opacity-75">{preset.url}</div>
-                </button>
-              ))}
+            {/* Preset URLs */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-foreground mb-3">
+                Quick Select:
+              </label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {presetUrls.map(preset => (
+                  <button
+                    key={preset.url}
+                    onClick={() => setCustomUrl(preset.url)}
+                    className={`p-3 rounded-lg border-2 transition-all ${
+                      customUrl === preset.url
+                        ? 'border-brand bg-brand-muted text-brand'
+                        : 'border-border bg-background text-foreground hover:border-brand/50'
+                    }`}
+                  >
+                    <div className="font-medium text-sm">{preset.label}</div>
+                    <div className="text-xs mt-1 opacity-75">{preset.url}</div>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
 
-          {/* Custom URL Input */}
-          <div className="mb-4">
-            <label
-              htmlFor="apiUrl"
-              className="block text-sm font-medium text-foreground mb-2"
-            >
-              Custom API URL:
-            </label>
-            <input
-              type="text"
-              id="apiUrl"
-              value={customUrl}
-              onChange={e => setCustomUrl(e.target.value)}
-              placeholder="http://localhost:8090"
-              className="w-full px-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-transparent"
-            />
-            <p className="mt-2 text-sm text-muted-foreground">
-              Enter the base URL of your Catglish API server (e.g.,
-              http://localhost:8090)
-            </p>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex gap-3">
-            <button
-              onClick={handleSave}
-              className="px-6 py-2 bg-brand hover:bg-brand/90 text-brand-foreground font-medium rounded-lg transition-colors"
-            >
-              Save
-            </button>
-            <button
-              onClick={handleReset}
-              className="px-6 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg transition-colors"
-            >
-              Reset to Default
-            </button>
-          </div>
-
-          {/* Status Message */}
-          {message && (
-            <div
-              className={`mt-4 p-3 rounded-lg ${
-                message.startsWith('✅')
-                  ? 'bg-success/10 text-success'
-                  : 'bg-destructive/10 text-destructive'
-              }`}
-            >
-              {message}
+            {/* Custom URL Input */}
+            <div className="mb-4">
+              <label
+                htmlFor="apiUrl"
+                className="block text-sm font-medium text-foreground mb-2"
+              >
+                Custom API URL:
+              </label>
+              <input
+                type="text"
+                id="apiUrl"
+                value={customUrl}
+                onChange={e => setCustomUrl(e.target.value)}
+                placeholder="http://localhost:8090"
+                className="w-full px-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-transparent"
+              />
+              <p className="mt-2 text-sm text-muted-foreground">
+                Enter the base URL of your Catglish API server (e.g.,
+                http://localhost:8090)
+              </p>
             </div>
-          )}
-        </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={handleSave}
+                className="px-6 py-2 bg-brand hover:bg-brand/90 text-brand-foreground font-medium rounded-lg transition-colors"
+              >
+                Save
+              </button>
+              <button
+                onClick={handleReset}
+                className="px-6 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg transition-colors"
+              >
+                Reset to Default
+              </button>
+            </div>
+
+            {/* Status Message */}
+            {message && (
+              <div
+                className={`mt-4 p-3 rounded-lg ${
+                  message.startsWith('✅')
+                    ? 'bg-success/10 text-success'
+                    : 'bg-destructive/10 text-destructive'
+                }`}
+              >
+                {message}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Reading Preferences */}
         <div className="bg-background rounded-lg shadow-lg p-6 mb-6">
@@ -209,27 +211,33 @@ function OptionsContent() {
         </div>
 
         {/* Help Section */}
-        <div className="bg-background rounded-lg shadow-lg p-6">
-          <h2 className="text-xl font-semibold mb-4 text-foreground">Help</h2>
-          <div className="space-y-3 text-sm text-muted-foreground">
-            <p>
-              <strong className="text-foreground">Development (Local):</strong>{' '}
-              Use http://localhost:8090 when running the API server locally for
-              development.
-            </p>
-            <p>
-              <strong className="text-foreground">Lab:</strong> Use
-              https://enx-api.wiloon.lab for the homelab lab deployment.
-            </p>
-            <p>
-              <strong className="text-foreground">Production:</strong> Use
-              https://enx-api.wiloon.com for the live production environment.
-            </p>
-            <p className="text-muted-foreground text-xs mt-4">
-              💡 Tip: After changing the API URL, you may need to log in again.
-            </p>
+        {apiBaseUrlOverrideAllowed && (
+          <div className="bg-background rounded-lg shadow-lg p-6">
+            <h2 className="text-xl font-semibold mb-4 text-foreground">Help</h2>
+            <div className="space-y-3 text-sm text-muted-foreground">
+              <p>
+                <strong className="text-foreground">
+                  Development (Local):
+                </strong>{' '}
+                Use {TARGETS.development.apiBaseUrl} when running the API server
+                locally for development.
+              </p>
+              <p>
+                <strong className="text-foreground">Lab:</strong> Use{' '}
+                {TARGETS.homelab.apiBaseUrl} for the homelab lab deployment.
+              </p>
+              <p>
+                <strong className="text-foreground">Production:</strong> Use{' '}
+                {TARGETS.production.apiBaseUrl} for the live production
+                environment.
+              </p>
+              <p className="text-muted-foreground text-xs mt-4">
+                💡 Tip: After changing the API URL, you may need to log in
+                again.
+              </p>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )

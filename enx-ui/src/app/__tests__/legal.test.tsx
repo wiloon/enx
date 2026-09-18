@@ -2,6 +2,9 @@ import { render, screen } from '@testing-library/react'
 import PrivacyPolicyPage from '../privacy/page'
 import TermsPage from '../terms/page'
 import RefundPolicyPage from '../refund/page'
+import PrivacyPolicyZhPage from '../zh/privacy/page'
+import TermsZhPage from '../zh/terms/page'
+import RefundPolicyZhPage from '../zh/refund/page'
 import SiteFooter from '@/components/site/SiteFooter'
 import { AI_PROVIDER, LEGAL, SUBPROCESSORS } from '@/lib/legal'
 
@@ -47,6 +50,19 @@ describe('Privacy Policy', () => {
     expect(
       screen.getByText(/The domain or title of any page you read/)
     ).toBeInTheDocument()
+  })
+
+  it('says a person runs this, not a company', () => {
+    render(<PrivacyPolicyPage />)
+
+    expect(
+      screen.getByText(/There is no company and no team/)
+    ).toBeInTheDocument()
+    // These pages were written for a company first. A leftover corporate
+    // identity for the OPERATOR would mean the change was half-applied --
+    // third-party names like "Amazon Web Services, Inc." are fine and are
+    // deliberately not matched here.
+    expect(screen.queryByText(/有限公司|Xingyue/)).toBeNull()
   })
 
   it('tells the reader how to delete their data, and where to write', () => {
@@ -133,5 +149,65 @@ describe('launch blockers', () => {
       .map(([k]) => k)
 
     expect(unfilled).toEqual([])
+  })
+})
+
+// --- the Chinese versions (LAUNCH-CHECKLIST §6.2b) -------------------------
+//
+// Two hand-written translations drift. These tests do not check the wording
+// -- no test can -- but they do catch the failure that actually happens:
+// someone edits one language and forgets the other, and the two pages stop
+// saying the same number of things.
+
+describe('bilingual legal pages', () => {
+  const pairs: [string, () => React.JSX.Element, () => React.JSX.Element][] = [
+    ['privacy', PrivacyPolicyPage, PrivacyPolicyZhPage],
+    ['terms', TermsPage, TermsZhPage],
+    ['refund', RefundPolicyPage, RefundPolicyZhPage],
+  ]
+
+  it.each(pairs)('%s has the same section count in both languages', (_n, En, Zh) => {
+    const en = render(<En />)
+    const enCount = en.container.querySelectorAll('h2').length
+    en.unmount()
+
+    const zh = render(<Zh />)
+    const zhCount = zh.container.querySelectorAll('h2').length
+
+    expect(zhCount).toBe(enCount)
+  })
+
+  it.each(pairs)('%s links to the other language', (_n, En, Zh) => {
+    const en = render(<En />)
+    expect(screen.getByRole('link', { name: /Chinese/ })).toBeInTheDocument()
+    en.unmount()
+
+    render(<Zh />)
+    expect(screen.getByRole('link', { name: /英文/ })).toBeInTheDocument()
+  })
+
+  it('says which language governs, so a drifted translation is still resolvable', () => {
+    render(<TermsZhPage />)
+    expect(screen.getByText(/以中文版为准/)).toBeInTheDocument()
+  })
+
+  it('marks the Chinese pages as Chinese for screen readers and search engines', () => {
+    const { container } = render(<PrivacyPolicyZhPage />)
+    expect(container.querySelector('main')).toHaveAttribute('lang', 'zh-Hans')
+  })
+
+  it('keeps the "no company" framing in Chinese too', () => {
+    render(<TermsZhPage />)
+    expect(screen.getByText(/不是一家公司/)).toBeInTheDocument()
+  })
+
+  it('carries the limitation of liability as its own signposted section', () => {
+    // 《民法典》496: the party supplying standard terms must draw attention
+    // to the ones limiting its own liability. A clause buried mid-paragraph
+    // is the thing that rule exists to catch.
+    render(<TermsZhPage />)
+    expect(
+      screen.getByRole('heading', { name: /责任限制/ })
+    ).toBeInTheDocument()
   })
 })

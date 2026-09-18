@@ -21,7 +21,9 @@ export default function TermsPage() {
   return (
     <LegalPage
       title="Terms of Service"
-      intro={`These terms are the agreement between you and ${LEGAL.companyNameEn} for the use of ${SITE.name}. Using the service means you accept them.`}
+      intro={`These terms are the agreement between you and ${LEGAL.operatorName}, the individual who runs ${SITE.name}. Using the service means you accept them.`}
+      locale="en"
+      enHref="/terms"
     >
       <Section heading="1. The service">
         <p>
@@ -29,6 +31,18 @@ export default function TermsPage() {
           English: it highlights words worth learning, looks up definitions,
           translates sentences you select, and keeps a vocabulary list and
           reading statistics for you.
+        </p>
+        <p>
+          It is run by <Term>one person</Term>, {LEGAL.operatorRole}, not by a
+          company. Support is answered by that person, which means replies
+          come when they come — see the response time in the{' '}
+          <a
+            href="/refund"
+            className="underline underline-offset-4 hover:text-foreground"
+          >
+            Refund Policy
+          </a>{' '}
+          for the commitment that is actually made.
         </p>
         <p>
           We may change, add or remove features. If we discontinue a paid
@@ -150,7 +164,7 @@ export default function TermsPage() {
       <Section heading="9. Our intellectual property">
         <p>
           The software, the site, the name {SITE.name} and its branding belong
-          to {LEGAL.companyNameEn}. Nothing in these terms transfers any of that
+          to {LEGAL.operatorName}. Nothing in these terms transfers any of that
           to you. You get a personal, non-exclusive, non-transferable right to
           use the service while your account is in good standing.
         </p>
@@ -168,7 +182,7 @@ export default function TermsPage() {
 
       <Section heading="11. Limitation of liability">
         <p>
-          To the extent the law allows, {LEGAL.companyNameEn} is not liable for
+          To the extent the law allows, {LEGAL.operatorName} is not liable for
           indirect or consequential loss, lost profits, lost data, or losses
           arising from your reliance on a definition or translation. Our total
           liability to you for any claim is limited to what you paid us in the
@@ -192,9 +206,8 @@ export default function TermsPage() {
 
       <Section heading="13. Governing law">
         <p>
-          These terms are governed by the laws of {LEGAL.jurisdiction}.
-          Disputes we cannot settle between us are subject to the courts of{' '}
-          {LEGAL.courtVenue}, where {LEGAL.companyNameEn} is registered.
+          These terms are governed by the laws of {LEGAL.jurisdiction}, where
+          the operator lives.
         </p>
         <p>
           If you are a consumer, this does not deprive you of the protection
@@ -216,10 +229,9 @@ export default function TermsPage() {
 
       <Section heading="15. Contact">
         <p>
-          <Term>{LEGAL.companyNameEn}</Term> ({LEGAL.companyName}), registered{' '}
-          {LEGAL.incorporatedOn}
+          {SITE.name} is operated by <Term>{LEGAL.operatorName}</Term>,{' '}
+          {LEGAL.operatorRole} in {LEGAL.jurisdiction}.
         </p>
-        <p>{LEGAL.companyAddress}</p>
         <p>
           <Term>{LEGAL.contactEmail}</Term>
         </p>

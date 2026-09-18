@@ -49,7 +49,7 @@ issuer = "https://rational-deer-4450.clerk.accounts.dev"
 # minted for): the enx-ui origin(s) plus the extension id
 # (chrome-extension://<id>, fixed by the "key" in enx-chrome/manifest.json).
 # Override per-deployment with CLERK_AUTHORIZED_PARTIES (space-separated).
-authorized-parties = ["https://enx.wiloon.lab", "http://localhost:3000", "chrome-extension://omcdpipnjffmblbhiphddcmoldceapam"]
+authorized-parties = ["https://enx.wiloon.lab", "http://localhost:3000", "chrome-extension://combdcldlodkikjfhjbdbogjlfmnbjkf"]
 
 [sentence-translate]
 # "kimi" | "bedrock" | "minimax" | "deepseek" -- switch provider by changing

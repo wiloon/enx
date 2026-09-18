@@ -631,14 +631,10 @@ const handleSignedInReturn = async (): Promise<{
 }
 
 // ADR-019 / ADR-020: the one web -> extension channel. Only enx-ui's own
-// origins can reach it (also enforced by manifest `externally_connectable`),
-// and the vocabulary is a fixed three-word list -- no message transits an
-// internal content-script action.
-const ENX_UI_ORIGINS = new Set([
-  'http://localhost:3000',
-  'https://enx.wiloon.lab',
-  'https://enx.wiloon.com',
-])
+// origins can reach it (also enforced by manifest `externally_connectable`,
+// stamped from the same target config at build time), and the vocabulary is a
+// fixed three-word list -- no message transits an internal content-script action.
+const ENX_UI_ORIGINS = new Set(config.uiOrigins)
 
 chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
   // Trust the browser-reported origin, never anything inside the message.

@@ -8,9 +8,9 @@ import type { BillingMeData } from '@/types'
 // status, gates the buttons, surfaces errors, and hands the browser off to
 // Stripe Checkout / the billing portal.
 //
-// playwright.config.ts points NEXT_PUBLIC_API_BASE_URL at the app's own origin;
-// the stubs also send permissive CORS headers so they still work if the API
-// base URL is left cross-origin.
+// The API client is same-origin (/api/*, proxied by next.config.ts rewrites),
+// so page.route stubs intercept it directly; the stubs also send permissive
+// CORS headers, harmless now but kept for cross-origin runs.
 
 const CHECKOUT_URL = 'https://checkout.stripe.test/c/pay/cs_test_123'
 const PORTAL_URL = 'https://billing.stripe.test/p/session/bps_test_123'

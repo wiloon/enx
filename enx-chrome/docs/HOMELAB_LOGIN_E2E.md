@@ -22,7 +22,7 @@ Walks the same request chain the extension performs, one hop at a time:
 | 5    | `GET /api/me` + junk token → 401                        | token validation misconfigured                                                                                            |
 | 6    | Cognito `USER_PASSWORD_AUTH` → `GET /api/me` → 200      | `401` = pod's user-pool-id / client-id don't match the token                                                              |
 
-Step 3 uses `ENX_EXTENSION_ID` (default `omcdpipnjffmblbhiphddcmoldceapam`, the
+Step 3 uses `ENX_EXTENSION_ID` (default `combdcldlodkikjfhjbdbogjlfmnbjkf`, the
 pinned-`key` ID). It is the check for the extension's
 _"Authorization page could not be loaded … must be registered in Cognito callback
 URLs"_ error — note that message is a **hardcoded hint** in `cognito.ts`, appended

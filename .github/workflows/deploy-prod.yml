@@ -102,14 +102,11 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ---------------------------------------------------------------------
-  # enx-ui: Next.js inlines every NEXT_PUBLIC_* at BUILD time, so the
-  # production image is a genuinely different artifact from the homelab one
-  # -- you cannot promote the lab image by changing an env var on the host.
-  # That is why the Clerk publishable key is a build-arg here.
-  #
-  # `vars.` not `secrets.`: a Clerk pk_live_ key is public by design (it ships
-  # inside the JS bundle). Putting it in secrets would only mean GitHub masks
-  # it in the logs, which makes build failures harder to read for no gain.
+  # enx-ui: environment-agnostic since the runtime-config change -- the
+  # publishable key, API host, site URL and extension id are all read from the
+  # container's env at request time (next.config.ts rewrites + runtimeEnv.ts),
+  # never inlined at build time. This build takes no deployment-specific args,
+  # and the resulting image is interchangeable with the homelab one.
   # ---------------------------------------------------------------------
   build-ui:
     name: Build enx-ui
@@ -130,30 +127,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Fail fast on missing production build vars
-        run: |
-          missing=()
-          [ -n "${{ vars.PROD_API_BASE_URL }}" ] || missing+=(PROD_API_BASE_URL)
-          [ -n "${{ vars.PROD_CLERK_PUBLISHABLE_KEY }}" ] || missing+=(PROD_CLERK_PUBLISHABLE_KEY)
-          if [ ${#missing[@]} -gt 0 ]; then
-            echo "::error::Missing repository variables: ${missing[*]}"
-            echo "Set them under Settings -> Secrets and variables -> Actions -> Variables."
-            echo "Without them the image would silently fall back to the homelab"
-            echo "defaults in enx-ui/Containerfile and ship a lab build to production."
-            exit 1
-          fi
-
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: enx-ui
           file: enx-ui/Containerfile
           push: true
-          build-args: |
-            NEXT_PUBLIC_API_BASE_URL=${{ vars.PROD_API_BASE_URL }}
-            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.PROD_CLERK_PUBLISHABLE_KEY }}
-            NEXT_PUBLIC_ENX_EXTENSION_ID=${{ vars.PROD_EXTENSION_ID }}
-            NEXT_PUBLIC_ENX_EXTENSION_WEB_STORE_URL=${{ vars.PROD_EXTENSION_WEB_STORE_URL }}
           tags: |
             ${{ env.UI_IMAGE }}:${{ needs.version.outputs.tag }}
           cache-from: type=gha

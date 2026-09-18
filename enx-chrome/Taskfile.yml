@@ -53,7 +53,7 @@ tasks:
       - echo "Extension will auto-reload in Chromium when files change"
       - echo ""
       - task: ensure-node
-      - '{{.FNM_EXEC}} pnpm exec vite build --watch'
+      - '{{.FNM_EXEC}} pnpm exec vite build --mode homelab --watch'
 
 
   dev-chrome:
@@ -62,7 +62,7 @@ tasks:
       - echo "🚀 Starting development environment..."
       - echo "  1. Building extension..."
       - task: ensure-node
-      - '{{.FNM_EXEC}} pnpm exec vite build'
+      - '{{.FNM_EXEC}} pnpm exec vite build --mode homelab'
       - echo "  2. Starting watch mode in background..."
       - echo "  3. Launching Chromium with extension..."
       - echo ""
@@ -73,7 +73,7 @@ tasks:
       - echo ""
       - |
         # Start watch mode in background
-        fnm exec --using=.node-version -- pnpm exec vite build --watch > /tmp/enx-watch.log 2>&1 &
+        fnm exec --using=.node-version -- pnpm exec vite build --mode homelab --watch > /tmp/enx-watch.log 2>&1 &
         WATCH_PID=$!
         echo "📝 Watch mode running (PID: $WATCH_PID)"
         echo "📝 Watch logs: /tmp/enx-watch.log"
@@ -132,6 +132,16 @@ tasks:
       - '{{.FNM_EXEC}} pnpm run build'
       - echo "Build completed! Output in dist/"
 
+  build-prod:
+    desc: Build extension for production (API -> enx-api.wiloon.com)
+    cmds:
+      - task: ensure-node
+      - echo "Building {{.EXT_NAME}} v{{.VERSION}} (production)..."
+      # --mode production loads .env.production (VITE_ENV=production), which also
+      # keeps the lab/localhost origins out of the generated manifest.
+      - '{{.FNM_EXEC}} pnpm run build:prod'
+      - echo "Build completed! Output in dist/"
+
   build-dev:
     desc: Build extension for local development (API -> http://localhost:8090)
     cmds:
@@ -139,8 +149,8 @@ tasks:
       - echo "Building {{.EXT_NAME}} for local development..."
       - echo "API URL{{":"}} http{{":"}}//localhost{{":"}}8090"
       # --mode development loads .env.development (VITE_ENV=development). Without
-      # it `vite build` runs in production mode -> .env.production -> homelab.
-      - '{{.FNM_EXEC}} pnpm run build -- --mode development'
+      # it `vite build` runs in homelab mode -> enx-api.wiloon.lab.
+      - '{{.FNM_EXEC}} pnpm run build:dev'
       - echo "Build completed! Load dist/ in chrome{{":"}}//extensions/"
 
 
@@ -272,13 +282,20 @@ tasks:
       - echo "All checks passed!"
 
   pack:
-    desc: Build and create zip for Chrome Web Store
+    desc: Build (homelab) and create a zip
     deps:
       - build
     cmds:
       - echo "Creating extension package..."
       - cd dist && zip -r ../{{.EXT_NAME}}-v{{.VERSION}}.zip .
       - echo "Package created {{.EXT_NAME}}-v{{.VERSION}}.zip"
+
+  package-webstore:
+    desc: Build for production and create the Chrome Web Store upload zip
+    cmds:
+      - task: ensure-node
+      - echo "Packaging {{.EXT_NAME}} v{{.VERSION}} for the Chrome Web Store (production)..."
+      - '{{.FNM_EXEC}} pnpm run package:webstore'
 
   version:
     desc: Show extension version

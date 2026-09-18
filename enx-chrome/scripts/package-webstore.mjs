@@ -11,7 +11,7 @@
  *
  * Why that matters. enx-chrome/manifest.json ships a fixed `key` so that an
  * unpacked local load always gets the same extension id
- * (omcdpipnjffmblbhiphddcmoldceapam) -- a whole chain of config depends on
+ * (combdcldlodkikjfhjbdbogjlfmnbjkf) -- a whole chain of config depends on
  * that id being stable: Clerk's authorized_parties, enx-ui's
  * NEXT_PUBLIC_ENX_EXTENSION_ID, the ADR-019 web-to-extension channel.
  *

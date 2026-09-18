@@ -373,7 +373,12 @@ URL、域名、页面标题、正文内容、阅读时刻（精确到秒/小时�
 - **桶大小**（day / week / month / year）是页面级开关，切换只换 `GET /stats/series` 的 `period` 与窗口宽度（30 天 / 12 周 / 12 月 / 5 年，见 `lib/statsWindow.ts` 的 `BUCKETS`）。
 - **度量**（阅读词数 / 文章数 / 生词密度）是图内开关，**不重新请求**——一次 `series` 的返回够画所有度量。
 - **一次只画一个度量，绝不上第二根 y 轴。** 阅读词数和查词次数差两个数量级，双轴图的两条线想让它们「相关」就能相关，度量开关就是用来替掉那根第二轴的。
-- 图表是自己写的 SVG，没引第三方图表库：单序列的柱 / 线 + 网格 + tooltip + 表格视图，比一个依赖轻，也省掉私有源装包（见 `nexus-npm-registry-ca`）。
+- 图表用 **Recharts 3.10.1**（2026-09-18 从手写 SVG 换过来，用户选定）。选它而不是 Chart.js / ECharts / uPlot 的理由：它渲染 **SVG**，柱线可以直接吃项目的 Tailwind token（`fill-brand` / `stroke-border`），明暗两套主题跟 app 其余部分共用同一批 CSS 变量；canvas 类的库做不到，得用 JS 读 CSS 变量再手动重绘，等于维护第二套调色板。
+  - **代价**：`/stats` 首屏 JS 从 5.85 KB 涨到 **119 KB**（first load 236 KB）。recharts 3.x 还会拖进 `@reduxjs/toolkit`。
+  - ⚠️ **两处必须手动接管 Recharts 的默认行为，换版本时别丢**：
+    1. **y 轴刻度**：Recharts 默认把数据范围等分，得到 950 / 1900 / 2850 / 3800 这种刻度；再经过 `approximateWords()` 取整显示，就变成「等距的轴上印着不等距的数」。所以 `TrendChart` 保留了自己的 `axisTicks()`，并**同时**传 `ticks` 和 `domain` —— 只传 `ticks` 不改 scale，标签会落错位置。
+    2. **可访问名称**：Recharts 不给 SVG 任何 accessible name，图表会被读屏软件念成空白。名字挂在外层 `<div role="img">` 上，不放进库自己的 markup（版本升级会丢）。
+  - 空值语义靠 `connectNulls={false}`：null 是**断口**，不是 0，也不是跨过几周拉一条直线。这正是 `TrendDatum.value` 可空的全部理由。
 
 ---
 

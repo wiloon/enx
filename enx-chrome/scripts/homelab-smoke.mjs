@@ -27,7 +27,7 @@
  *   COGNITO_USER_POOL_ID  default us-east-1_1GWBJVx85
  *   COGNITO_CLIENT_ID     default 645kitlgap7l1q4ebrfkmi9ltv   (the chrome app client)
  *   COGNITO_HOSTED_UI     default https://enx-auth.auth.us-east-1.amazoncognito.com
- *   ENX_EXTENSION_ID      default omcdpipnjffmblbhiphddcmoldceapam (from manifest "key")
+ *   ENX_EXTENSION_ID      default combdcldlodkikjfhjbdbogjlfmnbjkf (from manifest "key")
  *   NODE_OPTIONS=--use-system-ca      trust the OS store (Wiloon Root CA lives there)
  */
 
@@ -42,7 +42,7 @@ const HOSTED_UI = (
   'https://enx-auth.auth.us-east-1.amazoncognito.com'
 ).replace(/\/$/, '')
 const EXT_ID =
-  process.env.ENX_EXTENSION_ID || 'omcdpipnjffmblbhiphddcmoldceapam'
+  process.env.ENX_EXTENSION_ID || 'combdcldlodkikjfhjbdbogjlfmnbjkf'
 const REDIRECT_URI = `https://${EXT_ID}.chromiumapp.org/callback`
 
 const IDP = `https://cognito-idp.${REGION}.amazonaws.com`

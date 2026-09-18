@@ -107,7 +107,7 @@
   ```
   `chrome.runtime` 不存在、或回调带 `lastError`（没装扩展 / 扩展没白名单本域）→ **静默**（决策 5：没装扩展就是个静态英文阅读页，不做额外处理）。
 - 提供「Edit」按钮回到输入态；再次提交再发一次消息（用户改了文本要重扫）。
-- `EXT_ID` 来自 enx-ui 配置 `NEXT_PUBLIC_ENX_EXTENSION_ID`。**扩展 ID 是确定的**——`enx-chrome/manifest.json` 带固定 `key`，任何未打包加载 / homelab 构建都得到同一个 ID `omcdpipnjffmblbhiphddcmoldceapam`（= `SHA256(DER(key))` 前 16 字节按 a–p 映射）。所以 `enx-ui/Containerfile` 直接把它作为 `ARG` 默认值写死，homelab Tekton 流水线**不需要**为它加 `--build-arg`；未来上 Web Store 换 ID 时覆盖这个 build-arg 即可。`NEXT_PUBLIC_ENX_EXTENSION_WEB_STORE_URL` 留空 → 引导 banner 只显示文字、不带链接（扩展尚未上架，见 LAUNCH-CHECKLIST）。
+- `EXT_ID` 来自 enx-ui 配置 `NEXT_PUBLIC_ENX_EXTENSION_ID`。**扩展 ID 是确定的**——`enx-chrome/manifest.json` 带固定 `key`，任何未打包加载 / homelab 构建都得到同一个 ID `combdcldlodkikjfhjbdbogjlfmnbjkf`（= `SHA256(DER(key))` 前 16 字节按 a–p 映射）。所以 `enx-ui/Containerfile` 直接把它作为 `ARG` 默认值写死，homelab Tekton 流水线**不需要**为它加 `--build-arg`；未来上 Web Store 换 ID 时覆盖这个 build-arg 即可。`NEXT_PUBLIC_ENX_EXTENSION_WEB_STORE_URL` 留空 → 引导 banner 只显示文字、不带链接（扩展尚未上架，见 LAUNCH-CHECKLIST）。
 
 **扩展探测 + 引导（`useExtensionStatus` hook）**：
 

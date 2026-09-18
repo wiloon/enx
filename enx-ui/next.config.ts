@@ -2,6 +2,15 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Evaluated when the server starts, not at build time -- this is what lets
+  // the browser talk to the API without the API host being baked into the
+  // bundle. ApiService therefore calls same-origin /api/*.
+  async rewrites() {
+    const apiBaseUrl = process.env.API_BASE_URL || "https://enx-api.wiloon.lab";
+    return [
+      { source: "/api/:path*", destination: `${apiBaseUrl}/api/:path*` },
+    ];
+  },
   eslint: {
     // `next build` runs ESLint and fails the build on any error. Until the
     // repo-wide formatting decision is made, that would block deploys:

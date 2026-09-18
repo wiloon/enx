@@ -63,6 +63,14 @@ export default function SiteFooter() {
                 Refund Policy
               </Link>
             </li>
+            <li>
+              {/* One link is enough: each legal page carries its own
+                  language switch, so this only has to get the reader to
+                  the set. */}
+              <Link href="/zh/terms" className="hover:text-foreground">
+                中文条款
+              </Link>
+            </li>
           </ul>
         </div>
       </div>

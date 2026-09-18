@@ -22,13 +22,12 @@ export default defineConfig({
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     env: {
-      // Point the API client at the app's own origin so e2e specs can stub
-      // /api/** with page.route() without cross-origin CORS preflights.
-      NEXT_PUBLIC_API_BASE_URL:
-        process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000',
+      // The API client is same-origin (/api/*), so the rewrite target only has
+      // to be a real URL; specs stub /api/** with page.route() anyway.
+      API_BASE_URL: process.env.API_BASE_URL || 'http://localhost:3000',
       // Clerk (ADR-015). Dev instance publishable key is non-secret.
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
-        process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ||
+      CLERK_PUBLISHABLE_KEY:
+        process.env.CLERK_PUBLISHABLE_KEY ||
         'pk_test_cmF0aW9uYWwtZGVlci00NDUwLmNsZXJrLmFjY291bnRzLmRldiQ',
       NEXT_PUBLIC_CLERK_SIGN_IN_URL: '/sign-in',
       NEXT_PUBLIC_CLERK_SIGN_UP_URL: '/sign-up',

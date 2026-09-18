@@ -28,13 +28,21 @@ export default function PrivacyPolicyPage() {
     <LegalPage
       title="Privacy Policy"
       intro={`${SITE.name} is a reading tool, which means it sees what you read. This page explains exactly how much of that we keep — and how much we deliberately throw away.`}
+      locale="en"
+      enHref="/privacy"
     >
       <Section heading="Who we are">
         <p>
-          {SITE.name} is operated by <Term>{LEGAL.companyNameEn}</Term> (
-          {LEGAL.companyName}), {LEGAL.companyAddress}. For anything in this
-          policy, including a request to delete your data, write to{' '}
-          <Term>{LEGAL.privacyEmail}</Term>.
+          {SITE.name} is built and run by <Term>{LEGAL.operatorName}</Term>,{' '}
+          {LEGAL.operatorRole} based in {LEGAL.jurisdiction}. There is no
+          company and no team — when this page says &ldquo;we&rdquo;, it means
+          one person.
+        </p>
+        <p>
+          That is worth knowing for a practical reason: your data is handled
+          by one individual and the providers listed below, and nobody else.
+          For anything in this policy, including a request to delete your
+          data, write to <Term>{LEGAL.privacyEmail}</Term>.
         </p>
       </Section>
 

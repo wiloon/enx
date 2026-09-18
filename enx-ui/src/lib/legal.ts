@@ -8,21 +8,32 @@
 // none: it is a representation to users and to two review processes.
 
 export const LEGAL = {
-  // --- The entity behind the service -------------------------------------
-  // GDPR calls this the "controller"; Stripe calls it the merchant of
-  // record. It must match the name on the Stripe account and the Chrome Web
-  // Store developer account, or both reviews raise it.
-  companyName: '星钺（大连）科技有限公司',
-  /** English rendering, for the English-language pages. */
-  companyNameEn: 'Xingyue (Dalian) Technology Co., Ltd.',
-  companyAddress:
-    '辽宁省大连市高新技术产业园区闻涛街41号21层2号 (Room 2, Floor 21, No. 41 Wentao Street, Hi-Tech Industrial Park, Dalian, Liaoning, China)',
-  /** Law governing the Terms. */
+  // --- Who operates the service -------------------------------------------
+  // Catglish is run by ONE PERSON, not a company (decided 2026-09-18). That
+  // is a legitimate and common way to publish a browser extension, and the
+  // pages say so plainly rather than using a corporate "we" that implies an
+  // entity that does not exist.
+  //
+  // GDPR would call this person the "controller"; Stripe calls them the
+  // merchant of record. The name here must match the Chrome Web Store
+  // developer account and the payment account, or both reviews raise it.
+  // Exactly as it appears on the passport, given-name first and in caps.
+  // Matching the travel document is what keeps this consistent with the
+  // Chrome Web Store developer account and the payment account; a mismatch
+  // is something either review can stop on.
+  operatorName: 'YUE WANG',
+  /** Filled into sentences like "operated by {operatorName}, {operatorRole}". */
+  operatorRole: 'an independent developer',
+  operatorRoleZh: '一名独立开发者',
+  /**
+   * Country of residence, which is what governs the Terms for a person
+   * rather than a company. No street address is published: an individual's
+   * home address does not belong on a public page, and neither the Chrome
+   * Web Store nor Stripe requires it to be published -- they collect it
+   * privately during verification.
+   */
   jurisdiction: "the People's Republic of China",
-  /** Court venue named in the Terms. */
-  courtVenue: 'Dalian, Liaoning',
-  /** Company registration date, cited in the Terms' contact block. */
-  incorporatedOn: '2026-06-10',
+  jurisdictionZh: '中华人民共和国',
 
   // --- Contact ------------------------------------------------------------
   // On catglish.com (LAUNCH-CHECKLIST §0.1). ⚠️ Both mailboxes must exist
@@ -77,6 +88,11 @@ export const AI_PROVIDER = {
 /**
  * Every third party that receives personal data, and what it gets.
  *
+ * Each row carries both languages. Keeping them in one object is what makes
+ * a half-done translation visible in review: adding a provider without its
+ * `*Zh` fields is a type error, not a Chinese page that quietly falls back
+ * to English.
+ *
  * GDPR calls these sub-processors and requires them listed; Chrome Web Store
  * asks the same question in different words. Keeping the list in code means
  * adding an integration puts this file in the diff.
@@ -85,36 +101,56 @@ export const SUBPROCESSORS = [
   {
     name: 'Clerk',
     purpose: 'Sign-in and account management',
+    purposeZh: '登录与账号管理',
     data: 'Email address, authentication events',
+    dataZh: '邮箱地址、登录事件',
     location: 'United States',
+    locationZh: '美国',
     url: 'https://clerk.com/legal/privacy',
   },
   {
     name: 'Stripe',
     purpose: 'Payments and subscriptions',
+    purposeZh: '支付与订阅',
     data: 'Email address, payment details, billing history',
+    dataZh: '邮箱地址、支付信息、账单记录',
     location: 'United States',
+    locationZh: '美国',
     url: 'https://stripe.com/privacy',
   },
   {
     name: `${AI_PROVIDER.name} (${AI_PROVIDER.model})`,
     purpose: 'Sentence and in-context translation',
+    purposeZh: '整句与语境内翻译',
     data: 'The sentence or phrase you select, and the word you clicked',
+    dataZh: '你划选的句子或短语，以及你点击的那个词',
     location: LEGAL.hostingRegion,
+    locationZh: LEGAL.hostingRegion,
     url: AI_PROVIDER.privacyUrl,
   },
   {
     name: 'Sentry',
-    purpose: 'Crash and error reporting',
-    data: 'Error messages, stack traces, browser and version information',
+    purpose: 'Crash reporting and performance monitoring',
+    // Deliberately mentions the API request URLs: performance traces record
+    // calls like /api/word/<word>, so a looked-up word reaches Sentry. That
+    // is the same vocabulary the policy already says we store, but it is a
+    // second copy in a second country, which is exactly the kind of thing a
+    // sub-processor list exists to surface.
+    purposeZh: '崩溃报告与性能监控',
+    data: 'Error messages, stack traces, browser and version information, and the URLs of requests made to our own API (which can include a word you looked up)',
+    dataZh: '错误信息、调用栈、浏览器与版本信息，以及对我们自己 API 的请求地址（其中可能包含你查过的某个词）',
     location: 'United States',
+    locationZh: '美国',
     url: 'https://sentry.io/privacy/',
   },
   {
     name: 'Amazon Web Services',
     purpose: 'Hosting',
+    purposeZh: '服务器托管',
     data: 'All data described in this policy',
+    dataZh: '本政策中描述的全部数据',
     location: LEGAL.hostingRegion,
+    locationZh: LEGAL.hostingRegion,
     url: 'https://aws.amazon.com/privacy/',
   },
 ] as const

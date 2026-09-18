@@ -31,8 +31,11 @@ export function localDate(now: Date = new Date()): string {
 }
 
 export class ApiService {
-  private baseUrl: string =
-    process.env.NEXT_PUBLIC_API_BASE_URL || 'https://enx-api.wiloon.lab'
+  // Same-origin by design: endpoints below are already /api/*, and
+  // next.config.ts rewrites those to the real API host at request time. That
+  // keeps the API host out of the JS bundle (so one image runs in any
+  // environment) and sidesteps CORS entirely.
+  private baseUrl: string = ''
   private accessToken: string = ''
   private tokenGetter?: TokenGetter
 

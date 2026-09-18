@@ -92,8 +92,9 @@
 - [ ] **4.2** 自建 OAuth 凭证（prod 实例不能用 Clerk 共享的）：Google Cloud Console 新建 OAuth 2.0 Web client + 品牌化同意页；GitHub OAuth App。回调地址填 Clerk prod 给出的。
 - [ ] **4.3** DNS：加 `clerk.<域名>` CNAME 指向 Clerk，等域名验证 + 证书签发；其它 Clerk 要求的子域（`accounts.` / `clkmail.` 等）一并加。
 - [ ] **4.4** 部署环境变量切换（`w10n-config`）：
-  - enx-api：`CLERK_ISSUER` → `https://clerk.<域名>`（当前硬编码 `rational-deer-4450.clerk.accounts.dev`）、`CLERK_AUTHORIZED_PARTIES` → 生产 origin + `chrome-extension://<id>`
-  - enx-ui：`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` → `pk_live_...`（build-arg，须**重新构建镜像** bake 进 bundle）、`CLERK_SECRET_KEY` → `sk_live_...`（Secret `enx-clerk`）
+  - ✅ `<id>` 部分已提前填好（2026-09-18，不等 §4.1–4.3）：`infra/aws/ansible/ec2-tokyo/templates/enx-api-prod.env.j2` 的 `CLERK_AUTHORIZED_PARTIES` 与 `enx-ui-prod.env.j2` 的 `ENX_EXTENSION_ID` 都已换成正式 extension id `combdcldlodkikjfhjbdbogjlfmnbjkf`（不是 §6.1 完成就能定的——两个模板此前各留了 `REPLACE_WITH_WEB_STORE_ID` 占位符）。`ENX_EXTENSION_WEB_STORE_URL` 仍留空：item 还是草稿，公开 listing URL 会 404，等 §6.1 真正提审通过后再填。
+  - enx-api：`CLERK_ISSUER` → `https://clerk.<域名>`（当前硬编码 `rational-deer-4450.clerk.accounts.dev`）、`CLERK_AUTHORIZED_PARTIES` 的 origin 部分（`https://{{ catglish_site_domain }}`）仍是模板变量，等 §0.1 的域名落地 DNS 才能渲染出真实值
+  - enx-ui：`CLERK_PUBLISHABLE_KEY` → `pk_live_...`、`CLERK_SECRET_KEY` → `sk_live_...`（生产为 `/opt/enx/enx-ui.env`，homelab 为 Secret `enx-clerk`）。**都是运行期读取，改完重启即可，不用重新构建镜像**（ADR-031 修订记录 2026-09-18）
   - enx-chrome：`VITE_CLERK_PUBLISHABLE_KEY` / `VITE_CLERK_SYNC_HOST`（或改 `enx-chrome/src/config/env.ts` 的 `production` 默认值）、`manifest.json` `host_permissions` 加 `https://clerk.<域名>/*`、CSP 同步 → **用 production 环境重新 build 并重新打包上架**
 - [ ] **4.5** 验证：三种登录均落回登录态、`/api/me` 200；扩展在网站登录态下打开应免登（`syncHost`）；enx-api 日志确认验签用的是 prod issuer。
 - [ ] **4.6** dev 实例 `rational-deer-4450` 保留给 homelab / 本地开发，不删。
@@ -113,7 +114,7 @@
 
   homelab 那套**不能**管生产：Tekton 推的是集群内 Nexus（`nexus.nexus.svc.cluster.local:8086`，外网拉不到），ArgoCD selfHeal 也只对着 homelab 集群 —— 而且家里断网就发不了 hotfix。
   - `deploy-prod.yml` 一个 tag **同时发 api 和 ui**（两者共享 Clerk 实例、CORS 白名单、extension id，版本漂移会变成难查的 401）。
-  - `NEXT_PUBLIC_*`（含 Clerk pk）是 **build-time 注入**，所以**生产镜像和 homelab 镜像是两个不同的产物**，不能把 lab 镜像改个 env 就当生产用。workflow 里有一步 fail-fast 专门挡这个。
+  - ~~`NEXT_PUBLIC_*`（含 Clerk pk）是 **build-time 注入**~~ —— 2026-09-18 起 enx-ui 全部改为**运行期**读取（ADR-031 修订记录），生产镜像与 homelab 镜像可互换；两条流水线都不再传部署相关 build-arg，fail-fast 检查已删除。
   - 主机侧逻辑在 `w10n-config/infra/aws/ansible/ec2-tokyo/files/enx-deploy.sh`（Ansible 分发）：先 pull 两个镜像再重启，健康检查失败会提示回滚命令。**回滚 = SSH 上去 `sudo enx-deploy.sh <旧 tag>`，不依赖 GitHub。**
   - 待办：在 GitHub 配 Secrets `PROD_HOST` / `PROD_SSH_USER` / `PROD_SSH_KEY`，Variables `PROD_API_BASE_URL` / `PROD_SITE_BASE_URL` / `PROD_CLERK_PUBLISHABLE_KEY` / `PROD_EXTENSION_ID`；GHCR 上的两个 package 设为 public（否则主机 pull 要先 `nerdctl login`）。
 - [ ] **5.2** 生产 DNS / TLS / CORS：确认 `<生产域名>` 与 `<api 域名>` 的解析、证书、`enx-api` CORS 白名单、`enx-chrome` `host_permissions` 全部指向新构建，无 Cognito 时代遗留配置。
@@ -129,20 +130,35 @@
 
 ## 6. Chrome Web Store 上架
 
-- [ ] **6.1** 创建 Web Store 开发者账号，**上传草稿**拿到**正式 extension id**（不需要提交审核）。
-  - ⚠️ id 是 `manifest.json` `host_permissions`、Clerk `authorized_parties`、`syncHost` 回跳、`enx-ui` 的 `NEXT_PUBLIC_ENX_EXTENSION_ID` 的依赖 —— 先拿 id 再定 §4.4 的 `CLERK_AUTHORIZED_PARTIES`。
-  - ⚠️ **首次上传必须去掉 manifest 里的 `key`**。`enx-chrome/manifest.json:3` 有一个固定 `key`（它让本地 unpacked 的 id 恒为 `omcdpipnjffmblbhiphddcmoldceapam`），但 Web Store 的「Add new item」会直接拒绝带 `key` 的包：`key field not allowed in manifest`。已提供 `pnpm package:webstore`（`enx-chrome/scripts/package-webstore.mjs`）自动剥掉。
-  - 拿到 id 后：Package 页 → "View public key" → 抄回 `manifest.json` 的 `key`。此后本地 id 与商店 id 一致，但**旧的 dev id 会变**，要复查所有硬编码它的地方。
-  - ⚠️ `host_permissions` 现在有 `http://*/*` + `https://*/*`。拿 id 不受影响，但**真正提交审核时**会触发 broad-permissions 说明流程，明显拖慢审核。
+- [x] **6.1** 创建 Web Store 开发者账号，**上传草稿**拿到**正式 extension id**（不需要提交审核）—— **2026-09-18 完成**。
+  - **正式 extension id：`combdcldlodkikjfhjbdbogjlfmnbjkf`**（取代旧 dev id `omcdpipnjffmblbhiphddcmoldceapam`，两者结构一致，都是 `SHA256(DER(key))` 前 16 字节按 a–p 映射）。
+  - Package 页公钥已抄回 `enx-chrome/manifest.json` 的 `key`，本地 unpacked 加载的 id 现在与商店 id 一致。
+  - 所有硬编码旧 dev id 的地方（`enx-api/config.toml` 的 Clerk `authorized-parties`、`enx-chrome/scripts/homelab-smoke.mjs`、`enx-chrome/README.md`、`enx-chrome/docs/HOMELAB_LOGIN_E2E.md`、`enx-chrome/scripts/package-webstore.mjs` 注释、`adr-019`、`TASK-SPEC-enx-chrome-oauth-background.md`，以及 `w10n-config/infra/homelab/k8s/enx/deployment.yaml` 的 `authorized-parties`）已同步替换为新 id。§4.4 的 `CLERK_AUTHORIZED_PARTIES` 现在可以定了。
+  - ⚠️ `host_permissions` 仍有 `http://*/*` + `https://*/*`。拿 id 不受影响，但**真正提交审核时**会触发 broad-permissions 说明流程，明显拖慢审核 —— 尚未收窄。
+  - **账号身份**：$5 注册费已付。按 DSA 声明为 **trader**（理由：§0.4 要卖订阅，DSA 的 trader 定义是「出于贸易/商业/职业目的行事的自然人或法人」，与有没有公司无关）。当前停在 **Publisher Account Verification**（见 §6.1a），审核中不阻塞已完成的上述工作。
+- [ ] **6.1a** **Publisher verification（trader 身份的后果，2026-09-18 新增）**
+  - trader 要提交并验证：**法定姓名 + 街道地址 + 电话 + 邮箱**。个人主体**不需要 D-U-N-S**（那是组织主体才要的）。
+  - ⚠️ **姓名必须与 `legal.ts` 的 `operatorName`（`YUE WANG`，护照拼写）和收款账号一致** —— 三处对不上，验证或 Stripe 入驻会卡。
+  - ⚠️⚠️ **这些信息会公开显示在商店 listing 上**，不是私下验证。这直接推翻了 §6.2 里「Web Store 只在私下验证时收取地址」的判断。**要准备一个能收信、可验证的非住宅地址**（家人的公司 / 虚拟办公 / 代收点），Google 会往该地址寄验证或要证明文件。
+  - 验证有截止期限，逾期会影响分发；但**通常不阻塞 Add new item**，所以拿 id 可以和验证并行推进。
 - [x] **6.2** 隐私政策页 + 服务条款页 + 退款政策页 —— **2026-09-17 起草完成**，作为官网静态页：`/privacy`、`/terms`、`/refund`，页脚新增 Legal 一栏，三条都进了 `sitemap.ts`。
   - **三条独立的硬性要求**，不是只有 Web Store 要：① Web Store 要求处理个人数据的扩展提供隐私政策 URL；② **Stripe 商户要求网站有服务条款 + 退款政策 + 可联系方式**；③ 退款规则写在收费之前才有约束力。
-  - **占位符集中在 `enx-ui/src/lib/legal.ts`**（同 `site.ts` 的惯例）。剩 3 个 `TODO` 必须在公开前填实：**公司名、注册地址、管辖辖区**，以及 `effectiveDate`。已填实的：托管地 `ap-northeast-1 (Tokyo, Japan)`（§0.2）、联系邮箱 `support@` / `privacy@catglish.com`（§0.1）。
-  - ⚠️ **`support@catglish.com` / `privacy@catglish.com` 两个信箱还不存在**。Web Store 会公开列出联系地址，用户的删号请求和退款请求也走这里。Cloudflare Email Routing 就够。
+  - **占位符集中在 `enx-ui/src/lib/legal.ts`**（同 `site.ts` 的惯例）。已填实：署名 **YUE WANG**（护照拼写，务必与 Web Store 开发者账号 / 收款账号一致）、管辖 **中华人民共和国**（个人常居地）、托管地 `ap-northeast-1 (Tokyo, Japan)`（§0.2）、邮箱 `support@` / `privacy@catglish.com`（§0.1，**已 apply 并验证可收信**）。**只剩 `effectiveDate` 一个 TODO**（填上线日）。
+  - ⚠️ **主体改为「个人」（2026-09-18 用户决定）**。一度按 **星钺（大连）科技有限公司** 写过一版，已全部回退：三页现在明写「由一个人运营、没有公司、没有团队」，`legal.ts` 的 `companyName` / `companyAddress` / `courtVenue` / `incorporatedOn` 都换成了 `operatorName` + `operatorRole`。**官网三页不公布街道地址** —— 个人住址不该上公开页面。⚠️ **2026-09-18 更正**：原文「Web Store 与 Stripe 都只在私下验证时收取」对 Web Store **不成立** —— 账号已声明为 trader，姓名 / 街道地址 / 电话会公开列在商店 listing 上（见 §6.1a）。官网三页仍可不写地址，但商店页面上会有一个，两者必须是同一个地址。测试 `legal.test.tsx` 有一条守着这件事（页面里不得再出现「有限公司 / Xingyue」）。
   - ⚠️ **测试里有一个故意失败的哨兵**：`enx-ui/src/app/__tests__/legal.test.tsx` 的 `it.failing('has no unfilled placeholders…')`。占位符填完后它会由「预期失败」变成「意外通过」而报错，那就是提醒把 `it.failing` 改回 `it`。
   - ⚠️ **退款立场（2026-09-17 拍板）**：订阅首次扣费 **7 天无理由全额退**；未消费积分**随时可退**；已消费积分不退（AI 成本已实际发生）。改这个立场要同步改 `legal.ts` 的 `subscriptionRefundDays` 和 `/refund` 的正文。
-  - ⚠️ **政策与代码必须对齐，否则政策是虚假陈述**。隐私政策明写「不存 URL / 标题 / 阅读时刻」（这一条由 `daily_stats` 没有那几个列来保证，见 `adr-028` Decision 10），并**点名 DeepSeek 是中国公司**（线上 `SENTENCE_TRANSLATE_PROVIDER=deepseek`）。换 AI provider 要同步改 `legal.ts` 的 `AI_PROVIDER`。
-- [ ] **6.2a** ⚠️ **Sentry 采样与 PII 剥离** —— `enx-ui/sentry.client.config.ts` 与 `enx-chrome/src/lib/sentry.ts` 都是 `tracesSampleRate: 1.0`，全量性能追踪**默认会带 URL**。隐私政策承诺「不存你在读什么」，而 Sentry 里躺着完整 URL —— **这是政策与实现冲突，不是文档问题**。上线前降采样 + 配 `beforeSend` 剥 URL / PII。
-- [ ] **6.2b** 中文版法律页（可选，但面向中文用户更稳）。现三页为英文（与全英文站点一致，且 Web Store / Stripe 审核读英文）。中国消费者发生争议时，中文版更站得住。
+  - ⚠️ **政策与代码必须对齐，否则政策是虚假陈述**。隐私政策明写「不存 URL / 标题 / 阅读时刻」（由 `daily_stats` 没有那几个列来保证，见 `adr-028` Decision 10）。
+  - **AI provider（2026-09-18 更正）**：生产只用 **AWS Bedrock 上的 Anthropic Claude**，与 EC2 同 region。`aitranslate/` 里的 kimi / minimax / **deepseek** 是给 homelab 和未来可能的大陆境内部署留的，**不在生产启用，因此不写进面向公众的隐私政策**。⚠️ 若生产改用其中之一，`legal.ts` 的 `AI_PROVIDER` 与 sub-processor 列表必须**同一个 commit 改掉** —— 隐私政策写错接收方是虚假陈述，不是文档滞后。
+- [ ] **6.2a** **Sentry 采样**（2026-09-18 复核后降级，不是上线阻塞项）
+  - **先前的判断说重了，已更正**：一度记为「Sentry 里躺着用户在读的页面 URL，政策与实现冲突」。逐条查证后结论是**不冲突**：① content script **没有**初始化 Sentry（`initSentry()` 只在 popup / options / sidepanel 调用），扩展在第三方网页上不往 Sentry 发任何东西；② Session Replay 的 `maskAllText` / `maskAllInputs` / `blockAllMedia` 在 `@sentry/replay@7.120.4` 与 `@sentry-internal/replay@9.46.0` **默认均为 true**，所以侧边栏里渲染的 `sourceUrl`、`/reader` 里粘贴的原文，在录像中都是遮罩的；③ `sourceUrl` 只写 `chrome.storage.session`，**从不发给 API**（`handleOpenSentencePanel`）。
+  - **仍值得做，但是成本/整洁问题**：`tracesSampleRate: 1.0` 是 100% 性能采样，会把**我方自己的 API 请求 URL**（如 `/api/word/<word>`，路径里带查询的单词）送进 Sentry。这不是新增数据类别（`user_dicts` 本来就存），但等于在美国多了一份词表副本 —— 已据实写进隐私政策的 sub-processor 表。建议降到 0.1，并在两个 config 里**显式**写出 `maskAllText: true`（本来就是默认值，显式写是为了不被人无意中关掉）。
+- [x] **6.2b** **中英双语法律页 —— 2026-09-18 已做**。用户决定同时提供两版，中文版在 `/zh/privacy`、`/zh/terms`、`/zh/refund`。
+  - **不是切换而是独立 URL**：每一版都有自己可链接、可收藏、可引用的地址 —— 「你同意的是哪一版条款」必须是个能指出来的东西。每页右上角有语言切换按钮，双向可达；页脚加了一条「中文条款」入口；六条全部进 `sitemap.ts`，并用 `alternates.languages` 声明互为译本。
+  - ⚠️ **中文版声明「以中文版为准」**（`LegalPage` 的 `translationNote`）。理由：运营者常居中国大陆、管辖写中国法、用户是中文用户 —— 真出争议时法院看的是用户实际读到的那一版；服务着中文消费者却主张「以英文为准」，恰恰是法院不认的姿态。**这是我替你选的，值得找律师确认一次。**
+  - **《民法典》第 496 条**要求提供格式条款一方对免除/减轻自身责任的条款尽到提示说明义务。因此中文版把「7. 关于准确性」和「11. 责任限制」各自单独成节、标题带「请务必读这一条」、正文加粗，而不是埋在段落中间。`legal.test.tsx` 有一条守着第 11 条必须是独立小节。
+  - **防漂移**：`legal.test.tsx` 比对两版的小节数量（`h2` 计数必须相等），并检查双向语言链接、`lang="zh-Hans"`、以及「不是一家公司」的表述在中文版同样存在。sub-processor 表的中英文字段在 `legal.ts` 同一个对象里 —— 新增服务商漏了 `*Zh` 字段是**类型错误**，而不是一个悄悄回落成英文的中文页。
+- [ ] **6.2c** ⚠️ **PIPL 数据出境**（主体改个人后依然成立：PIPL 管的是「个人信息处理者」，自然人对外提供服务同样落入） —— 大陆主体 + 服务器在东京 = 个人信息出境（PIPL 第 38 条）。2024《促进和规范数据跨境流动规定》给了豁免口子：非关基运营者、一年内向境外提供不满 10 万人非敏感个人信息可免安评 / 标准合同 / 认证。**初期大概率落在豁免内**，但要：① 记录用户量，逼近 10 万时提前启动标准合同备案；② 隐私政策已披露存储地与接收方（已做）；③ 取得用户单独同意（注册流程里的条款勾选要覆盖出境这一项）。**建议找律师确认一次**，我不是律师。
+- [ ] **6.2d** ⚠️⚠️ **Stripe 与中国大陆 —— 可能阻塞整条付费链路，请尽早核实**。Stripe 标准商户入驻的支持国家/地区列表**不含中国大陆**（支持香港、新加坡、美国等）。⚠️ **改成个人主体并不能绕开这一条** —— Stripe 卡的是**所在国家/地区**，不是公司还是个人；大陆自然人同样不在支持列表。若开不了户，§2 / §3 的整套订阅 + 积分实现就没有收款通道。可能的出路：Stripe 的跨境商户专项、换用支持大陆的收单（Paddle / LemonSqueezy 这类 MoR，或支付宝 / 微信支付），或用境外关联主体。**这一条我没有把握，需要你直接找 Stripe 确认**，因为它决定 §0.4 定价和 §2 全部工作是否成立。
 - [ ] **6.3** Web Store listing 素材：图标、截图、宣传图、简介。
 - [ ] **6.4** `adr-013` 里官网的 Chrome Web Store 链接 / id 占位替换成真实值。
 

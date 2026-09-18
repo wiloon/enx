@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import ReaderPage from '../page'
 import { MAX_CONTENT_LENGTH } from '../constants'
 import { apiService } from '@/services/api'
+import { setRuntimeEnv } from '@/test/runtimeEnv'
 
 jest.mock('@/services/api', () => ({
   apiService: {
@@ -83,7 +84,7 @@ describe('enabling learning mode via the extension', () => {
   let sendMessage: jest.Mock
 
   beforeEach(() => {
-    process.env.NEXT_PUBLIC_ENX_EXTENSION_ID = 'test-ext-id'
+    setRuntimeEnv({ ENX_EXTENSION_ID: 'test-ext-id' })
     sendMessage = jest.fn()
     ;(global as unknown as { chrome?: unknown }).chrome = { runtime: { sendMessage } }
   })
@@ -122,8 +123,9 @@ describe('extension install prompt', () => {
   }
 
   it('prompts to install the extension in the reading view when it is absent', async () => {
-    process.env.NEXT_PUBLIC_ENX_EXTENSION_WEB_STORE_URL =
-      'https://chromewebstore.google.com/detail/enx'
+    setRuntimeEnv({
+      ENX_EXTENSION_WEB_STORE_URL: 'https://chromewebstore.google.com/detail/enx',
+    })
     ;(global as unknown as { chrome?: unknown }).chrome = undefined
 
     render(<ReaderPage />)
@@ -137,7 +139,7 @@ describe('extension install prompt', () => {
   })
 
   it('does not prompt when the extension is installed', async () => {
-    process.env.NEXT_PUBLIC_ENX_EXTENSION_ID = 'test-ext-id'
+    setRuntimeEnv({ ENX_EXTENSION_ID: 'test-ext-id' })
     ;(global as unknown as { chrome?: unknown }).chrome = {
       runtime: { sendMessage: jest.fn((_id, _m, cb) => cb({ ok: true, version: '1' })) },
     }
