@@ -1,5 +1,8 @@
 # Database Schema
 
+> ⚠️ **暂停维护（2026-09-17）** — 见 [`../README.md`](../README.md)。
+> P2P 同步已暂时废弃，本目录描述的同步特性**不构成新设计的约束**。
+
 ## Overview
 
 This directory contains SQL schema definitions for the data-service database.

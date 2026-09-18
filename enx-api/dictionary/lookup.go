@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"enx-api/billing/quota"
+	"enx-api/dictsample"
 	"enx-api/ecdict"
 	"enx-api/enx"
 	"enx-api/stats"
@@ -35,7 +36,16 @@ func Lookup(ctx context.Context, english, userID string) (*enx.Dictionary, error
 	if err := MeterLookup(ctx, userID); err != nil {
 		return nil, err
 	}
-	return ecdict.Query(ctx, english), nil
+	dict := ecdict.Query(ctx, english)
+	// ADR-030 Decision 0 ②: record whether ECDICT resolved this, so the
+	// miss rate stops being a guess. Temporary, off by default, and the
+	// `dictsample` package is meant to be deleted whole afterwards.
+	if dict != nil {
+		dictsample.Word(english, dictsample.SourceEcdict)
+	} else {
+		dictsample.Word(english, dictsample.SourceNone)
+	}
+	return dict, nil
 }
 
 // MeterLookup charges one dictionary lookup against the caller's daily quota

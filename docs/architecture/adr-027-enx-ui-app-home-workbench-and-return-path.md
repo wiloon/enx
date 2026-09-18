@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | **阶段 1 已实现 — 2026-09-16**（用户确认后落地；阶段 2「统计数据」仍是 Proposed，依赖 [`adr-028`](adr-028-reading-stats-what-to-measure.md)）。**2026-09-16 二次修订**：统计的「测什么 / 怎么采 / 怎么存」已拆到 ADR-028，本 ADR 收敛为**只管交互、布局、配色**；Decision 1 的状态条字段、Decision 7 的 `overview` 契约、Decision 8 的 streak 结论均按 ADR-028 回写。**三次修订**：[`adr-029`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md) 把配额改成分档模型，剩余额度对所有用户都算得出来了，Decision 10 的显示方式随之改为**状态驱动**（用量 ≥70% 才上状态条）。**四次修订**：用户 2026-09-16 确认对外正式名为 **Catglish**（只有英文名、无中文名，且不再保留任何「猫眼 / cat's eye」表述），本 ADR 范围内的**用户可见**品牌串一并替换；`ENX` 作为开发代号保留，非 UI 代码一律不动。见 Decision 11。 |
+| **状态** | **阶段 1 + 阶段 2 均已实现 — 阶段 2 于 2026-09-17 落地**（数据源见 [`adr-028`](adr-028-reading-stats-what-to-measure.md)）。**2026-09-17 五次修订**：用户提出「继续阅读不是主要功能」，**Home 的「继续阅读」整块移除**，位置让给状态条；见文末「阶段 2 落地与对 Decision 1 的修订」。**2026-09-16 二次修订**：统计的「测什么 / 怎么采 / 怎么存」已拆到 ADR-028，本 ADR 收敛为**只管交互、布局、配色**；Decision 1 的状态条字段、Decision 7 的 `overview` 契约、Decision 8 的 streak 结论均按 ADR-028 回写。**三次修订**：[`adr-029`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md) 把配额改成分档模型，剩余额度对所有用户都算得出来了，Decision 10 的显示方式随之改为**状态驱动**（用量 ≥70% 才上状态条）。**四次修订**：用户 2026-09-16 确认对外正式名为 **Catglish**（只有英文名、无中文名，且不再保留任何「猫眼 / cat's eye」表述），本 ADR 范围内的**用户可见**品牌串一并替换；`ENX` 作为开发代号保留，非 UI 代码一律不动。见 Decision 11。 |
 | **日期** | 2026-09-16 |
 | **关联 Spec** | 无独立 TASK-SPEC，留到编码阶段再写（同 ADR-008/010/011/017/025/026 的做法） |
 | **关联 ADR** | [`adr-029-lookup-quota-tiered-limits-and-count-gate-split.md`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md)（配额分档后剩余额度对全体用户可算，本 ADR Decision 10 的额度显示改为状态驱动）、[`adr-028-reading-stats-what-to-measure.md`](adr-028-reading-stats-what-to-measure.md)（**配对 ADR**：本 ADR 管「Home 长什么样」，028 管「Home 上那些数字是什么、从哪来」。028 的结论反向改了本 ADR 的 Decision 1 / 7 / 8，见各处标注）、[`adr-016-enx-ui-app-shell-navigation.md`](adr-016-enx-ui-app-shell-navigation.md)（**主要依赖**：本 ADR 改的正是其建立的 App Shell 与 `/app` 概览页；其决策 5「`app-nav.ts` 是导航唯一事实源，加一个分区 = 加一行」继续成立，本 ADR 的 `Back to site` 就是加一行；其决策 6「本次范围 = 骨架 + 占位」正是 `/app` 现在这副样子的由来）、[`adr-013-catseye-marketing-site.md`](adr-013-catseye-marketing-site.md)（**本 ADR 显式修订其决策 4 的最后一条**「应用区不引用 `--brand`」，见 Decision 3；返回入口指向的 `/` 即其营销首页）、[`adr-022-enx-ui-reader-persistence-and-retention.md`](adr-022-enx-ui-reader-persistence-and-retention.md)（「继续阅读」直接复用其 `GET /api/reader/documents` 与 7 天 TTL 语义）、[`adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md`](adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md)（扩展安装状态用其 `useExtensionStatus()` / `pingExtension()`）、[`adr-018-dictionary-lookup-single-metered-seam.md`](adr-018-dictionary-lookup-single-metered-seam.md)（阶段 2 的 `stats/overview` **只读配额计数、不是查词**，显式在计量 seam 之外，同 ADR-021/026 的处理）、[`adr-009-billing-stripe-subscription-and-ai-credits.md`](adr-009-billing-stripe-subscription-and-ai-credits.md)（套餐 / 余额小卡读其 `GET /api/billing/me`；免费日配额表 `dictionary_lookup_quota` 的语义边界见 Decision 8） |
@@ -272,7 +272,7 @@ Reading Stats 仍是占位。它的完整设计（四条曲线、日 / 周 / 月
 ### 12. 测试
 
 - `components/app/__tests__/AppSidebar.test.tsx` 现有的导航标签断言要加 `Back to site`；补一条「`/app` 下 `Back to site` 不是 `aria-current="page"`」的断言（守住 Decision 4 那个「靠巧合成立」的高亮行为）。
-- 新增 `app/(app)/app/__tests__/page.test.tsx`：无数据 → 渲染 3 步引导；有 Reader 文档 → 渲染「继续阅读」且列出 preview；卡片是 `<a href>` 而不是 `<button>`；`getBillingMe` 失败时套餐小卡静默隐藏、不炸整页。
+- 新增 `app/(app)/app/__tests__/page.test.tsx`：无数据 → 渲染 3 步引导；有数据 → 渲染状态条；卡片是 `<a href>` 而不是 `<button>`；`getBillingMe` 失败时套餐小卡静默隐藏、不炸整页；`overview` 失败时**既不渲染状态条也不渲染引导**（此时并不知道这个用户是不是新用户，猜错哪一边都比留白更糟）。
 - 阶段 2 补 `overview` 的 handler 测试：新用户全零不 500；`sparkline` 恒为 7 个点。
 - 改名后补一条断言：应用区渲染出的可见文案里不再出现 `Catseye` / `ENX`（`AppSidebar.test.tsx` 加一条 `queryByText(/Catseye|ENX/)` 为 null 即可），防止后续回归。
 
@@ -362,3 +362,22 @@ Reading Stats 仍是占位。它的完整设计（四条曲线、日 / 周 / 月
 - 一旦 ADR-028 的 L2/L3 埋点落地 → 评估状态条是否该加一个「升级率」指标，还是该让它留在 `/stats`（Home 状态条最多 4 个数，加一个就要挤掉一个）。
 - 一旦 Home 需要第 4 个数据源 → 重新评估「一个聚合端点」是否还成立（F1 vs F2）。
 - 一旦应用区引入第二个需要品牌色的复杂组件（如带品牌强调的表格 / 图表）→ 重新评估 C2（作用域内重定义 `--primary`）是否比一路加 variant 更省。
+
+---
+
+## 阶段 2 落地与对 Decision 1 的修订（2026-09-17）
+
+**用户原话概括**：「Continue reading 从 Home 拿掉，我不认为这是一个主要的功能；Home 我更希望显示一些统计信息。」
+
+### 改了什么
+
+- `src/components/app/home/ContinueReading.tsx` **已删除**（不是隐藏）。`/reader` 页自己有两个 `/reader/history` 入口，删掉它不切断任何路径。
+- 新增 `src/components/app/home/StatStrip.tsx`：今日阅读词数 / 今日查词 / 本周阅读词数 / 生词本规模，加一条 7 天 sparkline，整块链到 `/stats`。数据来自 `GET /api/stats/overview`（ADR-028）。
+- `app/(app)/app/page.tsx` 的「有没有数据」判定从**「有没有 Reader 文档」改成 `overview.vocab.total > 0`**，正如 Decision 1 原本就写的阶段 2 计划。这个改动顺带修掉一个口径问题：原判定说的是「用过 `/reader` 这一条路径」，而生词本任何一条路径查词都会长，说的才是「用过 Catglish」。
+- Decision 1 版式里的「最近查的词」这一格**没做**。`overview.recent` 已经在返回里，但 Home 加满四块之后它挤掉的是状态条的呼吸空间；留到有人真的想要再说。
+
+### 为什么这一条值得记
+
+「继续阅读」在阶段 1 是**因为当时只有这个端点**才放上 Home 的（Options E1 写得很直白：阶段 1 只用已有端点）。一个为了「先有东西可显示」而占住首屏的区块，很容易在数据源到位之后被当成既定设计留下来。它回答的是「你想重新打开哪份文档」——而 `/reader` 已经回答得更好——并且让粘贴文本阅读器（几个入口之一，且不是主场景）在首屏上看起来像是产品本身。
+
+`/stats` 同一轮从「日 / 周 / 月 / 年三张静态卡片」改成一张图 + 切换，见 ADR-028 的「对 `/stats` 形态的修订」。

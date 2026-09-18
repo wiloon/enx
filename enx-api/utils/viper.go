@@ -58,6 +58,12 @@ func viperInitInternal() {
 
 	viper.SetDefault("ecdict.db_path", "")
 	_ = viper.BindEnv("ecdict.db_path", "ECDICT_DB_PATH")
+	// ADR-030 Decision 0: temporary lookup sampling (see the dictsample
+	// package). Off by default -- it is measurement scaffolding with an
+	// expiry date, and a deploy that forgets to disable it should cost
+	// nothing.
+	viper.SetDefault("ecdict.sampling", false)
+	_ = viper.BindEnv("ecdict.sampling", "ECDICT_SAMPLING")
 
 	// Sentence translation (AI provider selectable at deploy time, see
 	// docs/tasks/TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md §3.5).
@@ -116,6 +122,17 @@ func viperInitInternal() {
 	viper.SetDefault("stripe.credits.topup-small", 0)
 	viper.SetDefault("stripe.credits.topup-medium", 0)
 	viper.SetDefault("stripe.credits.topup-large", 0)
+	// These six MUST be settable by env: the container image ships no
+	// config.toml, so without a BindEnv a containerised deployment is stuck
+	// at the 0 default forever -- meaning a successful subscription grants
+	// nothing and every aitranslate request then 502s. The rest of the
+	// [stripe] block was already bound this way; these were missed.
+	_ = viper.BindEnv("stripe.credits.subscription-pro", "STRIPE_CREDITS_SUBSCRIPTION_PRO")
+	_ = viper.BindEnv("stripe.credits.subscription-pro-plus", "STRIPE_CREDITS_SUBSCRIPTION_PRO_PLUS")
+	_ = viper.BindEnv("stripe.credits.subscription-max", "STRIPE_CREDITS_SUBSCRIPTION_MAX")
+	_ = viper.BindEnv("stripe.credits.topup-small", "STRIPE_CREDITS_TOPUP_SMALL")
+	_ = viper.BindEnv("stripe.credits.topup-medium", "STRIPE_CREDITS_TOPUP_MEDIUM")
+	_ = viper.BindEnv("stripe.credits.topup-large", "STRIPE_CREDITS_TOPUP_LARGE")
 	// AI translation (sentence / word-in-context / sentence-with-word) is
 	// billed by actual token usage (ADR-014), same formula as rephrase:
 	// cost = ceil((prompt*weight-in + completion*weight-out) / divisor),

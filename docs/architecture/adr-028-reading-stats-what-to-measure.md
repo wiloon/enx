@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | **v1 后端已实现 — 2026-09-16**；扩展侧埋点（L0 阅读水位 + 上报队列）与 enx-ui 展示（Home 状态条 / `/stats` 曲线）仍待做，见文末「实施进度」。原始记录：Proposed — 2026-09-16。**当时未写任何代码。2026-09-16 修订**：用户指出配额不该是「免费/付费」的开关而是档位，由此产出 [`adr-029`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md)；本 ADR 的 Context（配额表偏斜）与 L1 数据来源随之修订，见下方标注。 与 [`adr-027`](adr-027-enx-ui-app-home-workbench-and-return-path.md) 是一对：027 管应用区的交互 / 布局 / 配色，本 ADR 管「统计哪些数据、怎么采、怎么存」。本 ADR 的结论**反向修改了 027 的状态条字段与 `overview` 契约**，见文末「对 ADR-027 的影响」。 |
+| **状态** | **v1 全链路已实现 — 2026-09-17**（后端 2026-09-16，扩展侧 L0 埋点 + 上报队列与 enx-ui 展示 2026-09-17）；剩部署与隐私政策页，见文末「实施进度」。**2026-09-17 修订**：`/stats` 的版式按用户意见从「日/周/月/年四个区块」改为**一张图 + 桶大小/度量两个切换**，见文末「对 `/stats` 形态的修订」。原始记录：Proposed — 2026-09-16。**当时未写任何代码。2026-09-16 修订**：用户指出配额不该是「免费/付费」的开关而是档位，由此产出 [`adr-029`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md)；本 ADR 的 Context（配额表偏斜）与 L1 数据来源随之修订，见下方标注。 与 [`adr-027`](adr-027-enx-ui-app-home-workbench-and-return-path.md) 是一对：027 管应用区的交互 / 布局 / 配色，本 ADR 管「统计哪些数据、怎么采、怎么存」。本 ADR 的结论**反向修改了 027 的状态条字段与 `overview` 契约**，见文末「对 ADR-027 的影响」。 |
 | **日期** | 2026-09-16 |
 | **关联 Spec** | 无独立 TASK-SPEC，留到编码阶段再写 |
 | **关联 ADR** | [`adr-029-lookup-quota-tiered-limits-and-count-gate-split.md`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md)（**前置**：029 把配额改成人人有额度的分档模型并解耦计数与拦截，`dictionary_lookup_quota` 因此第一次成为全体用户的每日查词计数器；本 ADR 的 L1 数据来源据此改为服务端，见 Decision 5 补注）、[`adr-027-enx-ui-app-home-workbench-and-return-path.md`](adr-027-enx-ui-app-home-workbench-and-return-path.md)（**配对 ADR**：Home 状态条与 `/stats` 曲线是本 ADR 数据的唯一消费者；027 Decision 7 的 `overview` 契约按本 ADR 重写，027 Options G「不做 streak」的结论在这里得到正式的替代方案）、[`adr-018-dictionary-lookup-single-metered-seam.md`](adr-018-dictionary-lookup-single-metered-seam.md)（查词计量的单一 seam；本 ADR 的 L1 埋点**挂在同一个 seam 上**，但**统计不寄生于计费**，见 Options F）、[`adr-009-billing-stripe-subscription-and-ai-credits.md`](adr-009-billing-stripe-subscription-and-ai-credits.md)（`credit_transactions` 已是一份带时间戳的 AI 动作日志——本 ADR 只拿它**回填历史**，不拿它当长期数据源；`dictionary_lookup_quota` 的免费用户偏斜见 Context）、[`adr-006-page-word-lookup-in-sidepanel.md`](adr-006-page-word-lookup-in-sidepanel.md)、[`adr-008-phrase-selection-context-translation.md`](adr-008-phrase-selection-context-translation.md)、[`adr-017-sidepanel-sentence-drag-select-phrase-lookup.md`](adr-017-sidepanel-sentence-drag-select-phrase-lookup.md)、[`adr-023-sidepanel-unified-history-list-nested-sentence-words.md`](adr-023-sidepanel-unified-history-list-nested-sentence-words.md)（这四份定义了阶梯上 L1'–L3 的具体动作与消息）、[`adr-011-word-highlight-css-highlight-api-and-feature-split.md`](adr-011-word-highlight-css-highlight-api-and-feature-split.md)（`enxRun` / `getArticleNodes()` / `collectTextNodes()` 是 L0 埋点的落点）、[`adr-026-user-reported-definition-issues.md`](adr-026-user-reported-definition-issues.md)（同一条隐私原则：持久化「用户在读什么」是全新性质的事，要极度克制——本 ADR 因此选择**一个 URL 都不存**） |
@@ -342,11 +342,38 @@ URL、域名、页面标题、正文内容、阅读时刻（精确到秒/小时�
 - `utils/viper.go`：`stats.ingest.max-words-per-report`（默认 50000）、`stats.ingest.log-ttl-days`（默认 7）。
 - 测试：`stats/daily_test.go` + `stats/query_test.go`，覆盖累加、幂等重放、日期越界拒绝、截断与负值丢弃、空 delta 无副作用、本地日分桶、sparkline 补零、周一起算、系列空桶补零、TTL 清理。`go build ./...` / `go vet` / `go test ./...` 通过。
 
+**✅ 已完成 —— v1 客户端埋点（2026-09-17）**
+
+- `enx-chrome/src/lib/readingProgress.ts`：`ReadingSession` 持有一篇文章的阅读水位。`charOffsetToWords()` 按**均匀词密度**把字符偏移折算成词序号——不建精确的 offset→word 表，是因为那张表每次 DOM 变动都要失效，换来的精度又被 Decision 8 的取整扔掉。多正文节点用累计基址（`NodeSpan.charBase`），不各算各的。水位单调不降；`takeDelta()` 交出增量的**同时**就地清零（统计允许有损，重复计数比丢一次更糟）。
+- 滚动水位按 Decision 2 的保守折扣实现：判读线取**视口底部往上一屏**，刚滚进来的那一屏不算读过。用 `getBoundingClientRect()` 的客户端坐标，因此在内部 div 滚动的站点上同样成立。
+- `enx-chrome/src/content/readingTracker.ts`：四个触发器（水位 +100 词 / 标签页 `visibilitychange → hidden` / `pagehide` / 闲置 5 分钟）。`pagehide` 与 `visibilitychange` 都挂上——前者在被丢弃或进 bfcache 的标签页上不保证触发，重复 flush 无代价（第二次拿到的增量是 0）。
+- `enx-chrome/src/background/statsReporter.ts`：幂等队列。`clientEventId` 由 `crypto.randomUUID()` 生成，**重试复用同一个 ID**；队列存 `chrome.storage.local`（MV3 会回收 worker，模块变量活不过一次回收）；4xx（除 429）判定为永久失败直接丢弃，其余重试 3 次后放弃；上限 50 条。worker 每次启动顺手 drain 一次。
+- **`X-Enx-Tz-Offset` 补上了**：挂在 `makeApiRequest` 这一个地方（enx-chrome）和 `ApiService.makeRequest`（enx-ui），所以**查词请求也带**。此前两端都没发这个头，Decision 7a 的「本地日」实际一直按 UTC 日在记——对 UTC+8 的用户，早上 8 点前查的词记到了前一天。
+- 测试：`readingProgress.test.ts`（24 例，含跨节点累计偏移、单调性、滚动折扣、增量只报一次、文章只计一次）、`statsReporter.test.ts`（幂等 ID 复用、4xx 丢弃 / 429 重试、按序停在第一个瞬时失败）。`pnpm test` 210 例通过，`tsc` + `vite build` 通过。
+
+**✅ 已完成 —— v1 展示端（2026-09-17）**
+
+- `enx-ui`：`/stats` 从「日 / 周 / 月 / 年三张静态卡片」改成**一张图 + 两个切换**（桶大小 × 度量），见下方「对 /stats 形态的修订」。曲线 ① 阅读量、② 生词密度已上线；③ 等 v1.1；④ 词汇积累暂以 Home 状态条的数字承载，没单独画堆叠面积。
+- `enx-ui`：Home 状态条 `StatStrip` 接 `overview`，**取代了原来的 "Continue reading"**（ADR-027 阶段 2 落地，见该 ADR 的修订）。
+- Decision 8 落到了每一处：`approximateWords()` 用在状态条、汇总小卡、图表 y 轴刻度、tooltip 和表格视图上——早先只在小卡上取整，表格里却印着 `1,237`，反而显得小卡在撒谎。
+
 **⏳ 待做**
 
-- enx-chrome：`src/lib/readingProgress.ts`（`enxRun` 存 `totalWords` + 累计偏移表；点击水位；节流滚动水位；本地会话状态）、`background` 上报缓冲 + 幂等队列。
-- enx-ui：Home 状态条 + sparkline 接 `overview`（即 ADR-027 阶段 2）；`/stats` 画曲线 ①②④。
 - 部署：`task deploy:homelab`。
+- 上线前硬前置未解除：`LAUNCH-CHECKLIST` §6.2 隐私政策页。**客户端埋点已经开始采集阅读行为**（仍然一个 URL 都不存），隐私政策必须先说清楚采什么、存多久。
+
+---
+
+## 对 `/stats` 形态的修订（2026-09-17，用户提出）
+
+原 Decision 7 把四条曲线列成四格，加上日 / 周 / 月 / 年，隐含的版式是「很多块」。用户指出这不对：**日 / 周 / 月 / 年不是四个区块，而是同一张图的一个开关**。
+
+落地形态：
+
+- **桶大小**（day / week / month / year）是页面级开关，切换只换 `GET /stats/series` 的 `period` 与窗口宽度（30 天 / 12 周 / 12 月 / 5 年，见 `lib/statsWindow.ts` 的 `BUCKETS`）。
+- **度量**（阅读词数 / 文章数 / 生词密度）是图内开关，**不重新请求**——一次 `series` 的返回够画所有度量。
+- **一次只画一个度量，绝不上第二根 y 轴。** 阅读词数和查词次数差两个数量级，双轴图的两条线想让它们「相关」就能相关，度量开关就是用来替掉那根第二轴的。
+- 图表是自己写的 SVG，没引第三方图表库：单序列的柱 / 线 + 网格 + tooltip + 表格视图，比一个依赖轻，也省掉私有源装包（见 `nexus-npm-registry-ca`）。
 
 ---
 

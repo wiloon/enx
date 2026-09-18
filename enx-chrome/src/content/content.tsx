@@ -26,6 +26,7 @@ import {
 } from '@/config/preferences'
 import { BackgroundResponse, ContentMessage, WordData } from '../types'
 import { contentScriptStore } from './contentAtoms'
+import { noteWordInteraction, startArticle } from './readingTracker'
 import {
   currentWordAtom,
   isTranslatingAtom,
@@ -786,6 +787,14 @@ const processArticleContent = async (
     // highlights -- any English word is clickable.
     setArticleRoots(articleNodes)
 
+    // L0 reading instrumentation (ADR-028): `words.length` was computed
+    // above for chunking and, until now, thrown away -- it is the denominator
+    // of the only honest progress metric we have ("lookups per 1,000 words").
+    // Started after the paint so a failed run never reports a read article.
+    startArticle(articleNodes, words.length, delta => {
+      void sendToBackground({ type: 'reportReadingProgress', delta })
+    })
+
     // The completion indicator is the one structural DOM insert; adapters
     // that own a React tree opt out (ADR-010).
     if (haveWords && adapter.showProcessingIndicator) {
@@ -844,6 +853,10 @@ const handleArticleClick = (event: Event) => {
   if (!pointInRange(wordRange, clientX, clientY)) return
   event.preventDefault()
   event.stopPropagation()
+  // Where in the article this click landed is the click half of the reading
+  // watermark (ADR-028 Decision 2). Recorded before the popover opens, so a
+  // failed lookup still counts as "the user read this far".
+  noteWordInteraction(wordRange)
   showWordPopover(wordRange.toString(), wordRange)
 }
 
@@ -1181,7 +1194,7 @@ const showSelectionTranslateButton = (
   // container, and the browser follows that with a *trailing click* event
   // targeting that container. `anchorNode` (nearest element of the
   // selection's *start*) is often narrower than the container the click
-  // lands on -- e.g. a sentence starting inside a `<strong>`/`<a>` -- so an
+  // lands on -- e.g. a sentence starting inside a `<strong>`/`<a>` -- so a
   // outside-click check here would misfire on that trailing click and tear
   // the button down before the user ever gets to click it.
   const handleKeydown = (e: KeyboardEvent) => {

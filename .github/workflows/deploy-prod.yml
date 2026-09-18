@@ -1,0 +1,215 @@
+name: Deploy to production
+
+# Production releases are TAG-driven, not branch-driven.
+#
+#   main push            -> homelab (Tekton + ArgoCD, `task deploy:homelab`)
+#   git tag v0.1.0       -> production (this workflow)
+#
+# Rationale: the homelab pipeline pushes to an in-cluster Nexus
+# (nexus.nexus.svc.cluster.local:8086) that nothing outside the cluster can
+# pull from, and ArgoCD's selfHeal only reconciles the homelab cluster. A
+# production release must not depend on the house being online, so it builds
+# on GitHub runners, publishes to GHCR and deploys over SSH.
+#
+# The API and the UI are released TOGETHER from one tag. They share a Clerk
+# instance, a CORS allowlist and an extension id; letting them drift to
+# different revisions is how you get a 401 that takes an evening to explain.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing image tag to re-deploy (skips the build). Leave empty to build from the current ref.'
+        required: false
+        type: string
+
+concurrency:
+  group: production
+  # Never cancel a half-finished deploy; queue behind it instead.
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  API_IMAGE: ghcr.io/wiloon/enx-api
+  UI_IMAGE: ghcr.io/wiloon/enx-ui
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Resolve the tag that everything downstream uses.
+  # ---------------------------------------------------------------------
+  version:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      build: ${{ steps.resolve.outputs.build }}
+    steps:
+      - id: resolve
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=$(echo '${{ github.sha }}' | cut -c1-12)" >> "$GITHUB_OUTPUT"
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ---------------------------------------------------------------------
+  # enx-api: a static Go binary, nothing environment-specific baked in.
+  # Every production value arrives at runtime from /opt/enx/enx-api.env.
+  # ---------------------------------------------------------------------
+  build-api:
+    name: Build enx-api
+    needs: version
+    if: needs.version.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: enx-api/Containerfile
+          push: true
+          # Public proxy: the in-cluster Nexus the homelab build uses is not
+          # reachable from a GitHub runner.
+          build-args: |
+            GOPROXY=https://proxy.golang.org,direct
+            VERSION=${{ needs.version.outputs.tag }}
+            GIT_COMMIT=${{ github.sha }}
+            GIT_BRANCH=${{ github.ref_name }}
+          tags: |
+            ${{ env.API_IMAGE }}:${{ needs.version.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------------------------------------------------------------------
+  # enx-ui: Next.js inlines every NEXT_PUBLIC_* at BUILD time, so the
+  # production image is a genuinely different artifact from the homelab one
+  # -- you cannot promote the lab image by changing an env var on the host.
+  # That is why the Clerk publishable key is a build-arg here.
+  #
+  # `vars.` not `secrets.`: a Clerk pk_live_ key is public by design (it ships
+  # inside the JS bundle). Putting it in secrets would only mean GitHub masks
+  # it in the logs, which makes build failures harder to read for no gain.
+  # ---------------------------------------------------------------------
+  build-ui:
+    name: Build enx-ui
+    needs: version
+    if: needs.version.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fail fast on missing production build vars
+        run: |
+          missing=()
+          [ -n "${{ vars.PROD_API_BASE_URL }}" ] || missing+=(PROD_API_BASE_URL)
+          [ -n "${{ vars.PROD_CLERK_PUBLISHABLE_KEY }}" ] || missing+=(PROD_CLERK_PUBLISHABLE_KEY)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing repository variables: ${missing[*]}"
+            echo "Set them under Settings -> Secrets and variables -> Actions -> Variables."
+            echo "Without them the image would silently fall back to the homelab"
+            echo "defaults in enx-ui/Containerfile and ship a lab build to production."
+            exit 1
+          fi
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: enx-ui
+          file: enx-ui/Containerfile
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=${{ vars.PROD_API_BASE_URL }}
+            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.PROD_CLERK_PUBLISHABLE_KEY }}
+            NEXT_PUBLIC_ENX_EXTENSION_ID=${{ vars.PROD_EXTENSION_ID }}
+            NEXT_PUBLIC_ENX_EXTENSION_WEB_STORE_URL=${{ vars.PROD_EXTENSION_WEB_STORE_URL }}
+          tags: |
+            ${{ env.UI_IMAGE }}:${{ needs.version.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------------------------------------------------------------------
+  # Deploy. All the logic lives in /usr/local/bin/enx-deploy.sh on the host
+  # (provisioned from w10n-config: infra/aws/ansible/ec2-tokyo/files/), so
+  # rollback is `enx-deploy.sh <older-tag>` from an SSH session and does not
+  # need GitHub to be up.
+  # ---------------------------------------------------------------------
+  deploy:
+    name: Deploy
+    needs: [version, build-api, build-ui]
+    # `always()` + explicit result check: build-api/build-ui are skipped on a
+    # re-deploy (inputs.tag set), and a skipped need would otherwise skip this.
+    if: >-
+      always() &&
+      needs.version.result == 'success' &&
+      needs.build-api.result != 'failure' &&
+      needs.build-ui.result != 'failure' &&
+      needs.build-api.result != 'cancelled' &&
+      needs.build-ui.result != 'cancelled'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script_stop: true
+          script: |
+            sudo /usr/local/bin/enx-deploy.sh ${{ needs.version.outputs.tag }}
+
+  # ---------------------------------------------------------------------
+  # Smoke test from OUTSIDE the host: proves DNS, TLS and the reverse proxy
+  # work, not just that the containers came up. enx-deploy.sh already checked
+  # the loopback side.
+  # ---------------------------------------------------------------------
+  smoke:
+    name: Public smoke test
+    needs: [version, deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe public endpoints
+        run: |
+          set -euo pipefail
+          api="${{ vars.PROD_API_BASE_URL }}"
+          site="${{ vars.PROD_SITE_BASE_URL }}"
+          echo "GET $api/ping"
+          curl -fsS --retry 5 --retry-delay 5 --retry-all-errors "$api/ping"
+          echo
+          echo "GET $site/"
+          curl -fsS --retry 5 --retry-delay 5 --retry-all-errors -o /dev/null -w '%{http_code}\n' "$site/"
+
+      - name: Report deployed version
+        run: echo "Deployed ${{ needs.version.outputs.tag }} to production."

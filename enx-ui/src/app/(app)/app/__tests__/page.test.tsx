@@ -6,8 +6,7 @@ import { useExtensionStatus } from '@/hooks/useExtensionStatus'
 
 jest.mock('@/services/api', () => ({
   apiService: {
-    listReaderDocuments: jest.fn(),
-    getReaderDocument: jest.fn(),
+    getStatsOverview: jest.fn(),
     getBillingMe: jest.fn(),
   },
 }))
@@ -24,9 +23,40 @@ jest.mock('@/hooks/useExtensionStatus', () => ({
   useExtensionStatus: jest.fn(),
 }))
 
-const mockList = apiService.listReaderDocuments as jest.Mock
+const mockOverview = apiService.getStatsOverview as jest.Mock
 const mockBilling = apiService.getBillingMe as jest.Mock
 const mockExtensionStatus = useExtensionStatus as jest.Mock
+
+const EMPTY_TOTALS = {
+  wordsRead: 0,
+  articlesRead: 0,
+  wordLookups: 0,
+  newWords: 0,
+  wordsMastered: 0,
+  phraseLookups: 0,
+  sentenceTranslations: 0,
+  contextLookups: 0,
+}
+
+function overview(
+  partial: {
+    today?: Partial<typeof EMPTY_TOTALS>
+    week?: Partial<typeof EMPTY_TOTALS>
+    sparkline?: number[]
+    vocab?: { total: number; mastered: number }
+  } = {}
+) {
+  return {
+    success: true,
+    data: {
+      today: { ...EMPTY_TOTALS, ...partial.today },
+      week: { ...EMPTY_TOTALS, ...partial.week },
+      sparkline: partial.sparkline ?? [0, 0, 0, 0, 0, 0, 0],
+      vocab: partial.vocab ?? { total: 0, mastered: 0 },
+      recent: [],
+    },
+  }
+}
 
 function renderPage() {
   const client = new QueryClient({
@@ -52,7 +82,7 @@ beforeEach(() => {
 })
 
 it('walks a user with no data through the three onboarding steps', async () => {
-  mockList.mockResolvedValue({ success: true, data: { documents: [] } })
+  mockOverview.mockResolvedValue(overview())
 
   renderPage()
 
@@ -61,35 +91,41 @@ it('walks a user with no data through the three onboarding steps', async () => {
   expect(
     screen.getByRole('link', { name: 'Paste some text instead' })
   ).toBeInTheDocument()
-  expect(screen.queryByText('Continue reading')).not.toBeInTheDocument()
+  expect(screen.queryByText('Today')).not.toBeInTheDocument()
 })
 
-it('shows the workbench with saved documents once there is data', async () => {
-  mockList.mockResolvedValue({
-    success: true,
-    data: {
-      documents: [
-        {
-          id: 'doc-1',
-          createdAt: '2026-09-15T00:00:00Z',
-          updatedAt: new Date().toISOString(),
-          preview: 'An article about sea otters',
-        },
-      ],
-    },
-  })
+it('leads a returning user with their own numbers, not a document list', async () => {
+  mockOverview.mockResolvedValue(
+    overview({
+      today: { wordsRead: 1237, wordLookups: 14 },
+      week: { wordsRead: 8400 },
+      sparkline: [400, 0, 1200, 900, 0, 300, 1237],
+      vocab: { total: 312, mastered: 48 },
+    })
+  )
 
   renderPage()
 
-  expect(
-    await screen.findByText('An article about sea otters')
-  ).toBeInTheDocument()
-  expect(screen.getByText('Continue reading')).toBeInTheDocument()
+  expect(await screen.findByText('Today')).toBeInTheDocument()
+  // Rounded, because reading volume is inferred (ADR-028 Decision 8).
+  expect(screen.getByText('1,200')).toBeInTheDocument()
+  expect(screen.getByText('14')).toBeInTheDocument()
+  expect(screen.getByText('312')).toBeInTheDocument()
   expect(screen.queryByText('Get started in three steps')).not.toBeInTheDocument()
+  expect(screen.queryByText('Continue reading')).not.toBeInTheDocument()
+})
+
+it('links the status strip to the full stats page', async () => {
+  mockOverview.mockResolvedValue(overview({ vocab: { total: 5, mastered: 0 } }))
+
+  renderPage()
+
+  const strip = await screen.findByRole('link', { name: /Today/ })
+  expect(strip).toHaveAttribute('href', '/stats')
 })
 
 it('renders feature entries as links, not buttons (ADR-027 decision 2)', async () => {
-  mockList.mockResolvedValue({ success: true, data: { documents: [] } })
+  mockOverview.mockResolvedValue(overview())
 
   renderPage()
 
@@ -101,42 +137,33 @@ it('renders feature entries as links, not buttons (ADR-027 decision 2)', async (
 })
 
 it('hides the plan card when billing fails instead of taking the page down', async () => {
-  mockList.mockResolvedValue({
-    success: true,
-    data: {
-      documents: [
-        {
-          id: 'doc-1',
-          createdAt: '2026-09-15T00:00:00Z',
-          updatedAt: new Date().toISOString(),
-          preview: 'An article',
-        },
-      ],
-    },
-  })
+  mockOverview.mockResolvedValue(overview({ vocab: { total: 5, mastered: 0 } }))
   mockBilling.mockResolvedValue({ success: false, error: 'boom' })
 
   renderPage()
 
-  expect(await screen.findByText('Continue reading')).toBeInTheDocument()
+  expect(await screen.findByText('Today')).toBeInTheDocument()
   await waitFor(() =>
     expect(screen.queryByText(/credits/)).not.toBeInTheDocument()
   )
 })
 
-it('keeps the document list failure inside its own block', async () => {
-  mockList.mockResolvedValue({ success: false, error: 'boom' })
+it('keeps a stats failure from blanking the rest of Home', async () => {
+  mockOverview.mockResolvedValue({ success: false, error: 'boom' })
 
   renderPage()
 
-  expect(
-    await screen.findByText("Couldn't load your documents.")
-  ).toBeInTheDocument()
-  expect(screen.getByRole('link', { name: 'Reader' })).toBeInTheDocument()
+  // No strip, no onboarding (which would be wrong -- we don't know whether
+  // this user is new), but the rest of the page still works.
+  expect(await screen.findByRole('link', { name: 'Reader' })).toBeInTheDocument()
+  await waitFor(() =>
+    expect(screen.queryByText('Get started in three steps')).not.toBeInTheDocument()
+  )
+  expect(screen.queryByText('Today')).not.toBeInTheDocument()
 })
 
 it('offers the install banner only when the extension is missing', async () => {
-  mockList.mockResolvedValue({ success: true, data: { documents: [] } })
+  mockOverview.mockResolvedValue(overview())
   mockExtensionStatus.mockReturnValue('not-installed')
 
   renderPage()

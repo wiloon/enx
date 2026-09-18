@@ -17,6 +17,12 @@ import {
   swlog,
   WORKER_BOOTED_AT,
 } from './swlog'
+import {
+  enqueueReport,
+  flushQueue,
+  utcOffsetMinutes,
+  type StatsDelta,
+} from './statsReporter'
 
 console.log('ENX Background script loaded')
 console.log('🌐 Config environment:', config.environment)
@@ -221,6 +227,14 @@ export const makeApiRequest = async (
       const API_BASE_URL = await getApiBaseUrl()
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
+        // Every call carries the user's UTC offset so the server can file
+        // what it counts under the user's own calendar day (ADR-029
+        // Decision 7a). It is on the shared helper rather than on the
+        // lookup call because "which day is it for this user" is a property
+        // of the caller, not of one endpoint -- and because a lookup that
+        // silently lands on yesterday is invisible until someone reads a
+        // chart and finds it wrong.
+        'X-Enx-Tz-Offset': String(utcOffsetMinutes()),
         ...((options.headers as Record<string, string>) || {}),
       }
 
@@ -442,6 +456,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         case 'recordPageWordLookup':
           return await handleRecordPageWordLookup(request.word || '', request.ecp)
+
+        case 'reportReadingProgress':
+          return await handleReportReadingProgress(request.delta)
 
         case 'translateSentence':
           return await handleTranslateSentence(request.sentence || '')
@@ -1021,6 +1038,20 @@ const handleRecordPageWordLookup = async (word: string, ecp?: WordData) => {
   return { success: true }
 }
 
+// L0 reading statistics (ADR-028). The content script owns the watermark and
+// hands over only a delta; the background owns getting it to the server,
+// because it is the only context with a Clerk token and the only one that
+// outlives the page. Reports are queued, so this resolving does not mean the
+// server has it -- and deliberately so: the reading UI must never wait on a
+// statistics round trip.
+const handleReportReadingProgress = async (delta?: StatsDelta) => {
+  if (!delta) return { success: false, error: 'Missing delta' }
+  if (!(await isSignedIn())) return { success: true, queued: false }
+
+  await enqueueReport(delta, makeApiRequest)
+  return { success: true, queued: true }
+}
+
 // Handle service worker errors
 self.addEventListener('error', event => {
   console.error('ENX Service worker error:', event.error)
@@ -1034,6 +1065,12 @@ self.addEventListener('unhandledrejection', event => {
 // Initialize background script
 const initialize = async () => {
   await getClerk()
+  // A worker wake-up is the only reliable moment to retry reports stranded
+  // by the eviction that ended the previous instance. Fire-and-forget: a
+  // failed drain must not hold up the worker the reading path depends on.
+  if (await isSignedIn()) {
+    void flushQueue(makeApiRequest)
+  }
   console.log('ENX Background script initialization complete')
 }
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"enx-api/dictionary"
+	"enx-api/dictsample"
 	"enx-api/enx"
 	"strings"
 
@@ -33,6 +34,11 @@ func fillFromEcdict(c *gin.Context, word *enx.Word, userId string) (bool, bool) 
 			dictionary.RespondQuotaExceeded(c, userId)
 			return false, false
 		}
+		// ADR-030 Decision 0 ②: a local hit is still a resolved lookup and
+		// belongs in the denominator -- without it the measured miss rate
+		// would be the miss rate of *new* words only, which is much higher
+		// than the rate a user actually experiences.
+		dictsample.Word(word.English, dictsample.SourceLocal)
 		return true, false
 	}
 

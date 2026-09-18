@@ -112,8 +112,10 @@ test.describe('/billing', () => {
     await expect(page.getByRole('heading', { name: '订阅与积分' })).toBeVisible()
     await expect(page.getByText('免费用户')).toBeVisible()
 
-    await expect(card(page, 'Catglish Pro+')).toContainText('$10/mo')
-    await expect(card(page, 'enx Max')).toContainText('$20/mo')
+    // Prices come from plans.ts and must mirror the Stripe catalog; see the
+    // comment there. 'enx Max' was stale -- the card is 'Catglish Max'.
+    await expect(card(page, 'Catglish Pro+')).toContainText('$9.99/mo')
+    await expect(card(page, 'Catglish Max')).toContainText('$19.99/mo')
     await expect(page.getByRole('button', { name: '订阅', exact: true })).toHaveCount(3)
 
     await expect(page.getByRole('heading', { name: '购买 AI 翻译积分' })).toBeVisible()

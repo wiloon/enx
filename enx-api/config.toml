@@ -23,6 +23,13 @@ file-name = "rssx.log"
 
 [ecdict]
 db_path = ""
+# ADR-030 Decision 0: temporary lookup sampling. When true, every dictionary
+# lookup and every multi-word selection emits one DICTSAMPLE line (see the
+# `dictsample` package) so the ECDICT miss rate and the phrase hit rate stop
+# being guesses. Carries no user id. Time-boxed: turn it on for ~2 weeks,
+# analyse with scripts/dictsample-report.sh, then turn it off and delete the
+# package. Off by default. Env: ECDICT_SAMPLING.
+sampling = false
 
 [resend]
 # api-key must be set via RESEND_API_KEY env var, never in this file
@@ -125,12 +132,30 @@ credits-topup-large = "enx_credits_topup_large"
 # w10n-config/enx/monetization.md for the pricing discussion and
 # TASK-SPEC §10.2: PRs should not merge with these still at 0 if billing is
 # meant to go live.
-subscription-pro = 0
-subscription-pro-plus = 0
-subscription-max = 0
-topup-small = 0
-topup-medium = 0
-topup-large = 0
+#
+# 2026-09-17: provisional values set so the production deployment can take a
+# real subscription without the ledger refusing the grant. They are NOT
+# calibrated -- [stripe.costs.*] below is still at placeholder weights, so
+# "1 credit" does not yet correspond to a measured cost. Re-derive both
+# together once there is real `aitranslate: usage ... cost=` data
+# (LAUNCH-CHECKLIST §1.2).
+#
+# Shape: credits-per-dollar rises with the tier (125 / 150 / 200), so
+# upgrading is always better value than stacking top-ups.
+#   Pro    $3.99  ->  500
+#   Pro+   $9.99  -> 1500
+#   Max   $19.99  -> 4000
+subscription-pro = 500
+subscription-pro-plus = 1500
+subscription-max = 4000
+# Top-ups never expire, so they are priced slightly worse per credit than the
+# cheapest subscription (~100-115/$ vs 125/$).
+#   small  $2.99  ->  300
+#   medium $6.99  ->  750
+#   large $12.99  -> 1500
+topup-small = 300
+topup-medium = 750
+topup-large = 1500
 
 [stripe.costs.translate]
 # AI translation (整句翻译 / 上下文词义 / 整句+词义合并) is billed by ACTUAL

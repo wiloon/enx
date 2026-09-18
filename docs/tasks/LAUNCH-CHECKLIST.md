@@ -24,9 +24,28 @@
   - 遗留待更新：`adr-013` / `adr-015` / `TASK-SPEC-clerk-cutover` 里的 `catseye.*` 品牌域名引用、`enx-chrome/src/config/env.ts` 硬编码的 `clerkSyncHost = https://enx.wiloon.com` —— 仍待逐一改成 `catglish.com`（`w10n-config/enx/monetization-tasks.md` 里的 `enx.wiloon.com` 方案同理）
   - ✅ **API 子域名已拍板（2026-09-16）：`api.catglish.com`**。`catglish.com` 给营销站 / Web UI，`api.catglish.com` 给 enx-api。已先停在 `w10n-config/infra/stripe/opentofu/enx/variables.tf` 的 `webhook_url_prod`（**暂未接任何资源**）。这一个决策同时解锁下面三个冲突点
   - ⚠️ 冲突点（域名定了之后才能做）：Clerk prod 实例配 `clerk.catglish.com` 子域，Stripe live webhook 固定公网 URL（→ `https://api.catglish.com/billing/webhook`，**live mode 是另一套 endpoint + 另一个 `whsec_`**，需等服务真的公网可达后再建，提前建只会累积投递失败直到被 Stripe 自动禁用），Chrome 扩展 `host_permissions` 写死 `catglish.com`
-- [ ] **0.2 生产部署环境**：AWS EC2（monetization-tasks 的方案）还是留在别处？`enx-api-java` 已随 ADR-015 从 homelab 下线，不再是双栈。
-- [ ] **0.3 上线档位范围**：只上 Pro 单档，还是 Pro / Pro+ / Max 三档一起上？年付是否上线即支持（年付积分发放机制未实现，见 §2.3）。
-- [ ] **0.4 Pro 最终定价**。`$4.99/mo` 是 2026-08-26 暂定值，用户明确说过「之后整体 review」；Pro+ / Max 完全未定价（OpenTofu 里占位 `$3 / $10 / $20`）。
+- [x] **0.2 生产部署环境** —— 2026-09-17 拍板：**AWS EC2 东京（`ec2-tokyo`，ap-northeast-1）单机**，不用手上那 4 台 VPS。
+  - **为什么是单机而不是「4 台 VPS 各部一部分」**：生产只有 2 个进程（`enx-api` + `enx-ui`），各自 request 128Mi；`enx-api` 是 **SQLite 单写者**（PVC `ReadWriteOnce`），多副本会互相锁死，**没有可分的东西**。拆成多机只增加一跳跨公网延迟和一套 TLS。
+  - **为什么不用那 4 台 VPS**：它们全是 Xray 翻墙节点（`w10n-config/infra/xray/xray-inventory.ini`）。把付费用户的服务和翻墙节点放同一个 IP 上，节点被封会顺手带走业务。
+  - **为什么是 AWS**：① AI provider 是中国 host（`api.deepseek.com` / `api.minimaxi.com`），东京路由明显优于手上那几台美国 VPS；② S3 备份链路（EventBridge → Lambda → SSM → `enx-api-backup.sh`）本来就是照着这台 EC2 写的；③ 以后要接 RDS / ElastiCache / Bedrock 时零迁移成本 —— 注意 **ElastiCache 没有公网 endpoint**，「服务在 VPS、缓存在 AWS」这种组合不成立，计算必须跟着数据走。
+  - **机型**：`t2.nano`（0.5GB）扛不住，已改为 **`t3.small` + 30GB gp3**（`infra/aws/opentofu/ec2-tokyo/`，`var.instance_type` / `var.root_volume_size`）。EIP 不变，apply 会停机重启几分钟；扩盘后要在机器上跑 `growpart` + `xfs_growfs`。
+  - ⚠️ **遗留**：这台机器同时跑着 vaultwarden（个人密码库）。当前生产**没有真实用户、当 pre-production 用**，可以接受；**在 Stripe 切 live / 真实用户进来之前**要把 enx 拆到独立实例，别让公网产品和密码库共享爆炸半径。
+- [x] **0.3 上线档位范围** —— 2026-09-17：**三档（Pro / Pro+ / Max）一起上，只上月付**。年付**不上线**（发放机制未实现，见 §2.3；第一个年付用户就会是一张事故工单）。竞品调研在**私有仓库** `w10n-config/enx/pricing-decision-2026-09.md`（本仓库 public，定价推算不落这里）。
+- [x] **0.4 定价（暂定，会调）** —— 2026-09-17：生产虽当 pre-production 用，但**公网可达、陌生人可能真的点订阅**，所以数值必须是「能跑通的真值」而非占位。
+
+  | 档位 | 价格 | 月度积分 | 积分/美元 |
+  | --- | --- | --- | --- |
+  | Pro | **$3.99/mo** | 500 | 125 |
+  | Pro+ | **$9.99/mo** | 1,500 | 150 |
+  | Max | **$19.99/mo** | 4,000 | 200 |
+  | 充值 小 | **$2.99** | 300 | 100 |
+  | 充值 中 | **$6.99** | 750 | 107 |
+  | 充值 大 | **$12.99** | 1,500 | 115 |
+
+  - 形状：**积分/美元随档位递增**（125→150→200），所以升档永远比堆充值划算；充值不过期，所以单价略差于最便宜的订阅。
+  - 对标：Pro $3.99 明显低于沉浸式翻译 Pro / LingQ Premium（都是 $14.99），略低于 Trancy（$3.49–4.99）。Max $19.99 远低于沉浸式翻译 Max（$39.99）。
+  - ⚠️ **积分数值未经校准**：`[stripe.costs.*]` 还是占位权重（`weight-in=1 / weight-out=3 / divisor=3000`），所以「1 积分」目前不对应任何实测成本。**§1.2 校准后必须把价格和积分一起重算**。
+  - **三处必须同步改，否则页面标一个价、卡上扣另一个价**：`enx-ui/src/app/(app)/billing/plans.ts`（展示）、`w10n-config/infra/stripe/opentofu/enx/variables.tf`（实收）、`enx-api/config.toml [stripe.credits]`（发放）。
 
 ---
 
@@ -34,12 +53,14 @@
 
 > 现状：`enx-api/config.toml` 的 `[stripe.credits]` 六个值全是 `0`，homelab `deployment.yaml` 也没有 `STRIPE_CREDITS_*` env。账本代码遇到 0 会**拒绝发放**（防止「忘配置」被静默当成「免费」）→ 订阅成功也拿不到积分，`aitranslate` 所有请求返回 502。
 
-- [ ] **1.1** 定稿并回填 `[stripe.credits]`（`enx-api/config.toml` + homelab `deployment.yaml` env + AWS 部署环境）：
+- [x] **1.1** ~~定稿并回填 `[stripe.credits]`~~ —— 2026-09-17 已填暂定值（见 §0.4）。
+  - ⚠️ **同时修了一个会让整件事做不成的 bug**：`utils/viper.go` 里 `stripe.credits.*` 六个键只有 `SetDefault`、**没有 `BindEnv`**，而 `AutomaticEnv()` 是刻意不开的。容器镜像里没有 `config.toml`，所以**容器化部署根本无法通过环境变量配置积分**——永远是 0。原计划「homelab deployment.yaml env 里填」这条路在代码里不存在。已补上六个 `BindEnv`。
+  - 原文：定稿并回填 `[stripe.credits]`（`enx-api/config.toml` + homelab `deployment.yaml` env + AWS 部署环境）：
   - `subscription-pro` / `subscription-pro-plus` / `subscription-max`（月度发放，当月不结转）
   - `topup-small` / `topup-medium` / `topup-large`（一次性充值积分，长期有效）
 - [ ] **1.2** 用真实 `aitranslate: usage ... cost=` 日志校准 token 权重（现在 `weight-in=1 / weight-out=3 / divisor=3000` 是占位，`[stripe.costs.translate]` 与 `[stripe.costs.rephrase]` 各一组）。需要先有真实 AI 调用产生日志（依赖 §3 联调）。
 - [ ] **1.3** Stripe 目录里的占位价格改成定稿值：`w10n-config/infra/stripe/opentofu/enx/terraform.tfvars`（`price_pro_monthly_cents` 等），`tofu apply`。
-- [ ] **1.4** `enx-ui` 定价页文案同步真实数字：`enx-ui/src/app/(app)/billing/plans.ts`。
+- [x] **1.4** ~~`enx-ui` 定价页文案同步真实数字~~ —— 2026-09-17 已同步（此前页面写的是 `$3 / $10 / $20`、积分 `TBD`，与实收价不符）。`e2e/billing.spec.ts` 里过时的 `'enx Max'` / `$10/mo` 断言一并修正。
 - [x] **1.5** 免费查词每日配额：决策是「上线前不设、上线后按真实用量再定」。**⚠️ 2026-09-16 更正：这个计划按当时的实现无法执行，需要改代码**——`limit <= 0` 时 `quota.CheckAndIncrementLookup` 直接返回、**一行都不写**，所以带着 `dictionary-lookup-daily = 0` 上线等于**不积累任何用量数据**。根因是「计数」和「拦截」共用同一个开关。**→ 2026-09-16 已按 [`adr-029`](../architecture/adr-029-lookup-quota-tiered-limits-and-count-gate-split.md) 改完并上线就绪**：配额改成人人有额度的**分档模型**，**计数与拦截已解耦**（`limit <= 0` = 照常计数、不拦截）。配置项现为 `stripe.quota.dictionary-lookup-daily-free` / `-subscribed`，**两者保持 0 上线**，2–4 周后拿真实分布定数字（→ §8）。
 
 ---
@@ -81,11 +102,24 @@
 
 ## 5. 部署环境 / 域名基础设施
 
-> 依赖 §0.1、§0.2 的决策。以下按「迁 AWS」路径写，若决定别的方案需相应调整。
+> §0.1（`catglish.com` / `api.catglish.com`）与 §0.2（AWS EC2 东京单机）均已拍板，以下按该路径执行。
 
-- [ ] **5.1** `enx-ui` 生产部署流程：目前只有 homelab Tekton pipeline（`w10n-config/infra/homelab/k8s/tekton/pipeline-build-enx-ui.yaml`）和 `enx-ui` 仓库内无专属 CI（只有 `.github/workflows/deploy-enx-api.yml`）。参照 `deploy-enx-api.yml` 补一份 AWS 部署 workflow，注意 `NEXT_PUBLIC_*`（含 Clerk pk）是 build-time 注入。
+- [x] **5.1 生产 CI/CD** —— 2026-09-17 建好。**打 tag 部署，两套流水线各司其职**：
+
+  | 触发 | 流水线 | 目标 |
+  | --- | --- | --- |
+  | push `main` | Tekton + ArgoCD（`task deploy:homelab`） | homelab = staging，**不动** |
+  | push tag `v*` | `.github/workflows/deploy-prod.yml` | GHCR → SSH → EC2 东京 = 生产 |
+
+  homelab 那套**不能**管生产：Tekton 推的是集群内 Nexus（`nexus.nexus.svc.cluster.local:8086`，外网拉不到），ArgoCD selfHeal 也只对着 homelab 集群 —— 而且家里断网就发不了 hotfix。
+  - `deploy-prod.yml` 一个 tag **同时发 api 和 ui**（两者共享 Clerk 实例、CORS 白名单、extension id，版本漂移会变成难查的 401）。
+  - `NEXT_PUBLIC_*`（含 Clerk pk）是 **build-time 注入**，所以**生产镜像和 homelab 镜像是两个不同的产物**，不能把 lab 镜像改个 env 就当生产用。workflow 里有一步 fail-fast 专门挡这个。
+  - 主机侧逻辑在 `w10n-config/infra/aws/ansible/ec2-tokyo/files/enx-deploy.sh`（Ansible 分发）：先 pull 两个镜像再重启，健康检查失败会提示回滚命令。**回滚 = SSH 上去 `sudo enx-deploy.sh <旧 tag>`，不依赖 GitHub。**
+  - 待办：在 GitHub 配 Secrets `PROD_HOST` / `PROD_SSH_USER` / `PROD_SSH_KEY`，Variables `PROD_API_BASE_URL` / `PROD_SITE_BASE_URL` / `PROD_CLERK_PUBLISHABLE_KEY` / `PROD_EXTENSION_ID`；GHCR 上的两个 package 设为 public（否则主机 pull 要先 `nerdctl login`）。
 - [ ] **5.2** 生产 DNS / TLS / CORS：确认 `<生产域名>` 与 `<api 域名>` 的解析、证书、`enx-api` CORS 白名单、`enx-chrome` `host_permissions` 全部指向新构建，无 Cognito 时代遗留配置。
 - [ ] **5.3** 生产数据库：决策是「上线继续用 SQLite + S3 备份」，Postgres 迁移明确排到上线后。确认生产环境的 SQLite 持久卷 + 备份链路就绪。
+  - ✅ 2026-09-17 决定：**生产从空库起**，不从 homelab 带数据（homelab 的 `enx.db` 只有作者自测数据）。
+  - ✅ ECDICT `stardict.db`（~850MB）由 **部署脚本从上游 release 直接下载到机器**（`install-enx-prod.yml`，版本**固定**在 `1.0.28`），不从 homelab 拷、也不打进镜像（打进去等于每次 pull 多背 850MB）。
 - [ ] **5.4** Stripe Live webhook endpoint 指向 `<api 域名>/billing/webhook`，重新验证签名与公网可达性（`infra/stripe/opentofu/enx/` 加第二个 `stripe_webhook_endpoint`）。
 - [ ] **5.5** 生产环境完整端到端冒烟（§3.2 的全流程，在生产域名 + Clerk prod + Stripe live 上重跑一遍）—— **最终发布门禁**。
 - [ ] **5.6** 确认 `enx-api` 的 AI provider 生产配置（MiniMax `MiniMax-Text-01`，当前指向 `api.minimaxi.com` 国内 host）在生产网络环境可达。
@@ -95,9 +129,20 @@
 
 ## 6. Chrome Web Store 上架
 
-- [ ] **6.1** 创建 Web Store 开发者账号，提交扩展，拿到**正式 extension id**。
-  - ⚠️ id 是 `manifest.json` `host_permissions`、Clerk `authorized_parties`、`syncHost` 回跳的依赖 —— 先拿 id 再定 §4.4 的 `CLERK_AUTHORIZED_PARTIES`。
-- [ ] **6.2** 隐私政策页 + 服务条款页（Web Store 上架要求；`adr-013` v1 明确未做）。可作为官网新增静态页。
+- [ ] **6.1** 创建 Web Store 开发者账号，**上传草稿**拿到**正式 extension id**（不需要提交审核）。
+  - ⚠️ id 是 `manifest.json` `host_permissions`、Clerk `authorized_parties`、`syncHost` 回跳、`enx-ui` 的 `NEXT_PUBLIC_ENX_EXTENSION_ID` 的依赖 —— 先拿 id 再定 §4.4 的 `CLERK_AUTHORIZED_PARTIES`。
+  - ⚠️ **首次上传必须去掉 manifest 里的 `key`**。`enx-chrome/manifest.json:3` 有一个固定 `key`（它让本地 unpacked 的 id 恒为 `omcdpipnjffmblbhiphddcmoldceapam`），但 Web Store 的「Add new item」会直接拒绝带 `key` 的包：`key field not allowed in manifest`。已提供 `pnpm package:webstore`（`enx-chrome/scripts/package-webstore.mjs`）自动剥掉。
+  - 拿到 id 后：Package 页 → "View public key" → 抄回 `manifest.json` 的 `key`。此后本地 id 与商店 id 一致，但**旧的 dev id 会变**，要复查所有硬编码它的地方。
+  - ⚠️ `host_permissions` 现在有 `http://*/*` + `https://*/*`。拿 id 不受影响，但**真正提交审核时**会触发 broad-permissions 说明流程，明显拖慢审核。
+- [x] **6.2** 隐私政策页 + 服务条款页 + 退款政策页 —— **2026-09-17 起草完成**，作为官网静态页：`/privacy`、`/terms`、`/refund`，页脚新增 Legal 一栏，三条都进了 `sitemap.ts`。
+  - **三条独立的硬性要求**，不是只有 Web Store 要：① Web Store 要求处理个人数据的扩展提供隐私政策 URL；② **Stripe 商户要求网站有服务条款 + 退款政策 + 可联系方式**；③ 退款规则写在收费之前才有约束力。
+  - **占位符集中在 `enx-ui/src/lib/legal.ts`**（同 `site.ts` 的惯例）。剩 3 个 `TODO` 必须在公开前填实：**公司名、注册地址、管辖辖区**，以及 `effectiveDate`。已填实的：托管地 `ap-northeast-1 (Tokyo, Japan)`（§0.2）、联系邮箱 `support@` / `privacy@catglish.com`（§0.1）。
+  - ⚠️ **`support@catglish.com` / `privacy@catglish.com` 两个信箱还不存在**。Web Store 会公开列出联系地址，用户的删号请求和退款请求也走这里。Cloudflare Email Routing 就够。
+  - ⚠️ **测试里有一个故意失败的哨兵**：`enx-ui/src/app/__tests__/legal.test.tsx` 的 `it.failing('has no unfilled placeholders…')`。占位符填完后它会由「预期失败」变成「意外通过」而报错，那就是提醒把 `it.failing` 改回 `it`。
+  - ⚠️ **退款立场（2026-09-17 拍板）**：订阅首次扣费 **7 天无理由全额退**；未消费积分**随时可退**；已消费积分不退（AI 成本已实际发生）。改这个立场要同步改 `legal.ts` 的 `subscriptionRefundDays` 和 `/refund` 的正文。
+  - ⚠️ **政策与代码必须对齐，否则政策是虚假陈述**。隐私政策明写「不存 URL / 标题 / 阅读时刻」（这一条由 `daily_stats` 没有那几个列来保证，见 `adr-028` Decision 10），并**点名 DeepSeek 是中国公司**（线上 `SENTENCE_TRANSLATE_PROVIDER=deepseek`）。换 AI provider 要同步改 `legal.ts` 的 `AI_PROVIDER`。
+- [ ] **6.2a** ⚠️ **Sentry 采样与 PII 剥离** —— `enx-ui/sentry.client.config.ts` 与 `enx-chrome/src/lib/sentry.ts` 都是 `tracesSampleRate: 1.0`，全量性能追踪**默认会带 URL**。隐私政策承诺「不存你在读什么」，而 Sentry 里躺着完整 URL —— **这是政策与实现冲突，不是文档问题**。上线前降采样 + 配 `beforeSend` 剥 URL / PII。
+- [ ] **6.2b** 中文版法律页（可选，但面向中文用户更稳）。现三页为英文（与全英文站点一致，且 Web Store / Stripe 审核读英文）。中国消费者发生争议时，中文版更站得住。
 - [ ] **6.3** Web Store listing 素材：图标、截图、宣传图、简介。
 - [ ] **6.4** `adr-013` 里官网的 Chrome Web Store 链接 / id 占位替换成真实值。
 

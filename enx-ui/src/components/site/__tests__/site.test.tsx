@@ -115,7 +115,10 @@ describe('SiteFooter', () => {
     const hrefs = screen
       .getAllByRole('link')
       .map((a) => a.getAttribute('href'))
-    for (const dead of ['/docs', '/pricing', '/changelog', '/privacy']) {
+    // /privacy, /terms and /refund were on this list until the pages were
+    // written (LAUNCH-CHECKLIST §6.2); they now exist and are asserted in
+    // app/__tests__/legal.test.tsx instead.
+    for (const dead of ['/docs', '/pricing', '/changelog']) {
       expect(hrefs).not.toContain(dead)
     }
   })

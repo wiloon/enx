@@ -7,6 +7,7 @@ import (
 	"enx-api/aitranslate/sentenceword"
 	"enx-api/aitranslate/wordcontext"
 	"enx-api/billing/credit"
+	"enx-api/dictsample"
 	"enx-api/middleware"
 	"enx-api/utils/logger"
 
@@ -141,6 +142,13 @@ func (h *Handler) TranslateWordInContext(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "sentence and word are required"})
 		return
 	}
+
+	// ADR-030 Decision 0 ④: phrases never reach a dictionary today
+	// (Decision 8 is what would change that), so the only way to learn
+	// how many of them ECDICT/Wiktionary could have answered is to record
+	// the selections and match them offline. Single words are skipped --
+	// they already went through the dictionary path.
+	dictsample.Phrase(req.Word)
 
 	var res wordcontext.Result
 	ok := h.billedCall(c, "translate_word_in_context", func(ctx context.Context) (Usage, error) {

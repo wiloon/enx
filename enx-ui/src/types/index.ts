@@ -124,3 +124,59 @@ export interface ReaderDocument {
   createdAt: string
   expiresAt: string
 }
+// Reading statistics (ADR-028). Every number here is a day-grained aggregate
+// over the user's OWN local days -- the server stores no URL, no page title
+// and no timestamp, so there is nothing else it could return.
+//
+// `wordsRead` and `articlesRead` are estimates inferred from where the user
+// clicked and scrolled, not measurements; the UI has to say so and must not
+// render them to a precision they don't have (ADR-028 Decision 8).
+export interface StatsTotals {
+  wordsRead: number
+  articlesRead: number
+  wordLookups: number
+  newWords: number
+  wordsMastered: number
+  phraseLookups: number
+  sentenceTranslations: number
+  contextLookups: number
+}
+
+export interface StatsVocab {
+  total: number
+  mastered: number
+}
+
+// "Words I touched recently", not strictly "words I looked up recently":
+// the underlying ordering is by user_dicts.updated_at, which marking a word
+// known also bumps (ADR-028 Decision 7).
+export interface StatsRecentWord {
+  english: string
+  chinese: string
+  queryCount: number
+}
+
+// GET /api/stats/overview
+export interface StatsOverview {
+  today: StatsTotals
+  week: StatsTotals
+  sparkline: number[]
+  vocab: StatsVocab
+  recent: StatsRecentWord[]
+}
+
+// The bucket size of a series. The server zero-fills empty buckets rather
+// than skipping them, so a gap in the data is a gap in the chart and not a
+// straight line across a week the user did not read (ADR-028 Decision 6).
+export type StatsPeriod = 'day' | 'week' | 'month' | 'year'
+
+export interface StatsPoint {
+  date: string
+  totals: StatsTotals
+}
+
+// GET /api/stats/series
+export interface StatsSeries {
+  period: StatsPeriod
+  points: StatsPoint[]
+}

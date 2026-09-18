@@ -8,6 +8,9 @@ import {
   ReaderDocument,
   ReaderDocumentSummary,
   RephraseData,
+  StatsOverview,
+  StatsPeriod,
+  StatsSeries,
   WordData,
 } from '@/types'
 
@@ -15,6 +18,17 @@ export type SubscriptionPlan = 'pro' | 'pro-plus' | 'max'
 export type TopupTier = 'small' | 'medium' | 'large'
 
 type TokenGetter = () => Promise<string | null | undefined>
+
+// The caller's own calendar day as YYYY-MM-DD. toISOString() would give the
+// UTC day, which is a different day for most of the world for part of every
+// day -- and getting it wrong shows up as yesterday's reading on today's
+// chart, which nobody would think to question.
+export function localDate(now: Date = new Date()): string {
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
 
 export class ApiService {
   private baseUrl: string =
@@ -63,6 +77,12 @@ export class ApiService {
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
+        // The server files reading statistics under the user's own calendar
+        // day, which only the client knows (ADR-029 Decision 7a). Sent on
+        // every request, not just the stats ones: a word looked up from
+        // /lookup counts too, and a header that is only sometimes present is
+        // a header that is sometimes wrong.
+        'X-Enx-Tz-Offset': String(-new Date().getTimezoneOffset()),
         ...((options.headers as Record<string, string>) || {}),
       }
 
@@ -104,6 +124,21 @@ export class ApiService {
 
   async getMe(): Promise<ApiResponse<MeData>> {
     return this.makeRequest('/api/me')
+  }
+
+  // Reading statistics (ADR-028). Neither endpoint looks up a word, calls a
+  // model or touches credits, so both sit outside ADR-018's metering seam.
+  async getStatsOverview(): Promise<ApiResponse<StatsOverview>> {
+    return this.makeRequest(`/api/stats/overview?date=${localDate()}`)
+  }
+
+  async getStatsSeries(
+    period: StatsPeriod,
+    from: string,
+    to: string
+  ): Promise<ApiResponse<StatsSeries>> {
+    const params = new URLSearchParams({ period, from, to })
+    return this.makeRequest(`/api/stats/series?${params}`)
   }
 
   // Admin dictionary maintenance (ADR-021). Each of these hits a dedicated

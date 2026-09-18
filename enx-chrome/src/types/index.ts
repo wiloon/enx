@@ -59,6 +59,7 @@ export interface ContentMessage {
     | 'translateWordInContext'
     | 'translateSentenceWithWord'
     | 'recordPageWordLookup'
+    | 'reportReadingProgress'
   word?: string
   words?: string
   paragraph?: string
@@ -82,6 +83,18 @@ export interface ContentMessage {
   // so the model can explain a divergence instead of guessing blind. Empty
   // when the word has no dictionary entry or the lookup failed.
   dictionaryChinese?: string
+  // Set on 'reportReadingProgress' (ADR-028): one reading session's increment
+  // to today's counters. Always a delta, never an absolute -- the content
+  // script owns the watermark and reports only what it has not reported yet.
+  delta?: ReadingStatsDelta
+}
+
+// The L0 half of ADR-028's metric set. The other columns of `daily_stats`
+// either come from the server (word_lookups, on the metered lookup seam) or
+// are v1.1 and still zero everywhere.
+export interface ReadingStatsDelta {
+  wordsRead?: number
+  articlesRead?: number
 }
 
 export interface BackgroundResponse {
