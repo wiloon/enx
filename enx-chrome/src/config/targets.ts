@@ -55,11 +55,16 @@ export const TARGETS: Record<TargetName, Target> = {
   },
   production: {
     name: 'production',
-    apiBaseUrl: 'https://enx-api.wiloon.com',
-    frontendBaseUrl: 'https://enx.wiloon.com',
+    // Catglish production (ADR-031): catglish.com serves enx-ui, api.catglish.com
+    // serves enx-api. The Clerk publishable key comes from .env.production
+    // (VITE_CLERK_PUBLISHABLE_KEY, a pk_live_ key for clerk.catglish.com); the
+    // dev key below is only a fallback so a bare `--mode production` build still
+    // boots -- it must never ship, which .env.production prevents.
+    apiBaseUrl: 'https://api.catglish.com',
+    frontendBaseUrl: 'https://catglish.com',
     clerkPublishableKey: DEV_CLERK_PUBLISHABLE_KEY,
-    clerkSyncHost: 'https://enx.wiloon.com',
-    uiOrigins: ['https://enx.wiloon.com'],
+    clerkSyncHost: 'https://catglish.com',
+    uiOrigins: ['https://catglish.com'],
   },
   test: {
     name: 'test',

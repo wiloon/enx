@@ -37,7 +37,12 @@ describe('manifest stamping (ADR-019)', () => {
 
     expect(origins).not.toContain('https://enx.wiloon.lab/*')
     expect(origins).not.toContain('http://localhost:3000/*')
-    expect(manifest.host_permissions).toContain('https://enx-api.wiloon.com/*')
+    expect(manifest.host_permissions).toContain('https://api.catglish.com/*')
+    // The website origin must be both reachable (host permission, for the
+    // Clerk session sync) and the ONLY UI origin wired to the web -> extension
+    // channel, otherwise a stale domain silently keeps the old site trusted.
+    expect(manifest.host_permissions).toContain('https://catglish.com/*')
+    expect(manifest.externally_connectable.matches).toEqual(['https://catglish.com/*'])
   })
 
   it('derives the Clerk host permission from the publishable key', () => {

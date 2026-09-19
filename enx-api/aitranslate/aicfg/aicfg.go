@@ -1,7 +1,7 @@
 // Package aicfg holds configuration shared by the AI translation provider
-// packages (kimi, minimax, bedrock). Like aiusage it is a leaf package, so a
-// provider can read shared config without importing aitranslate (which
-// imports the providers -- see aitranslate/factory.go).
+// packages (kimi, minimax, bedrock, deepseek, gemini). Like aiusage it is a
+// leaf package, so a provider can read shared config without importing
+// aitranslate (which imports the providers -- see aitranslate/factory.go).
 package aicfg
 
 import (

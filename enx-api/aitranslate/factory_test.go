@@ -56,3 +56,10 @@ func TestNewDeepSeekMissingAPIKey(t *testing.T) {
 		t.Fatal("expected error when DEEPSEEK_API_KEY is not set")
 	}
 }
+
+func TestNewGeminiMissingAPIKey(t *testing.T) {
+	withProvider(t, "gemini")
+	if _, err := New(context.Background()); err == nil {
+		t.Fatal("expected error when GEMINI_API_KEY is not set")
+	}
+}

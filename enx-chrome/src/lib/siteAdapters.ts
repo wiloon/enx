@@ -133,7 +133,12 @@ const X_ADAPTER: SiteAdapter = {
 // /rephrase, /billing, ...) load the content script too (the manifest
 // whitelists the whole origin) but are not meant to be read here.
 
-const ENX_UI_HOSTS = new Set(['localhost', 'enx.wiloon.lab', 'enx.wiloon.com'])
+const ENX_UI_HOSTS = new Set([
+  'localhost',
+  'enx.wiloon.lab',
+  'enx.wiloon.com',
+  'catglish.com',
+])
 
 /** True when the page is served by enx-ui (dev, homelab, or prod). */
 export function isEnxUiHost(location: PageLocation): boolean {

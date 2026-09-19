@@ -69,13 +69,13 @@ export const LEGAL = {
  * provider" is not a disclosure -- where the text goes is exactly what a
  * reader of a privacy policy is trying to find out.
  *
- * ⚠️ `enx-api/aitranslate/` also ships kimi, minimax and deepseek providers,
- * selected by `SENTENCE_TRANSLATE_PROVIDER`. Those exist for homelab and for
- * a possible future mainland-China deployment; production runs Bedrock, so
- * production is what this policy describes. If production is ever switched
- * to one of the others, THIS CONSTANT AND THE SUB-PROCESSOR LIST MUST CHANGE
- * IN THE SAME COMMIT -- a policy naming the wrong recipient of user text is
- * a false statement, not a stale doc.
+ * ⚠️ `enx-api/aitranslate/` also ships kimi, minimax, deepseek and gemini
+ * providers, selected by `SENTENCE_TRANSLATE_PROVIDER`. Those exist for
+ * homelab, trials, and a possible future mainland-China deployment;
+ * production currently still names Bedrock below. If production is ever
+ * switched to one of the others, THIS CONSTANT AND THE SUB-PROCESSOR LIST
+ * MUST CHANGE IN THE SAME COMMIT -- a policy naming the wrong recipient of
+ * user text is a false statement, not a stale doc.
  */
 export const AI_PROVIDER = {
   name: 'Amazon Bedrock',

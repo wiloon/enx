@@ -2,6 +2,15 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-09-18: Gemini Flash provider for aitranslate
+
+**Agent**: Cursor Grok
+**Task**: Add a `gemini` provider so Catglish can trial Gemini 2.5 Flash while Bedrock Anthropic is blocked.
+
+**Solution**: New `enx-api/aitranslate/gemini` package against Google's OpenAI-compatible Chat Completions endpoint (`generativelanguage.googleapis.com/v1beta/openai`). Default model is `gemini-3.6-flash` (2.5-flash 404s for new API keys). Same Translator + Rephraser surface as kimi/deepseek. Wired through `factory.go`, `GEMINI_API_KEY` / model / base-url env bindings, `config.toml`, and the EC2 prod env template. Production `legal.ts` AI_PROVIDER is still Bedrock until a real cutover.
+
+**Verification**: `go test ./aitranslate/...` green (gemini package + factory missing-key case).
+
 ## 2026-09-01: Rewrite Playwright E2E for the CSS Custom Highlight API — ADR-011 / issue #14
 
 **Agent**: Claude Code (Sonnet)

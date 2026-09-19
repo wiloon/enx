@@ -86,17 +86,21 @@
 
 ## 4. Clerk 生产实例切换
 
-> 完整清单见 [`TASK-SPEC-enx-clerk-production-cutover.md`](./TASK-SPEC-enx-clerk-production-cutover.md)（状态：Not started）。当前三端全部指向 Clerk **development 实例** `rational-deer-4450`（共享 OAuth 凭证、非品牌化同意页、宽松安全策略），不适合公网真实流量。要点：
+> 完整清单见 [`TASK-SPEC-enx-clerk-production-cutover.md`](./TASK-SPEC-enx-clerk-production-cutover.md)（状态：**§1–§3 完成 2026-09-18**）。生产实例 `sz5x08ornsg5` 已建成，`clerk.catglish.com` 可用。**三端仍指向 development 实例** `rational-deer-4450` —— 切换就是下面 4.4。要点：
 
-- [ ] **4.1** Clerk dashboard 从 dev 实例 clone 出 production 实例；核对自定义 session token claim（`email` = `{{user.primary_email_address}}`、`name` = `{{user.full_name}}`，enx-api 首次开通用户依赖）。
-- [ ] **4.2** 自建 OAuth 凭证（prod 实例不能用 Clerk 共享的）：Google Cloud Console 新建 OAuth 2.0 Web client + 品牌化同意页；GitHub OAuth App。回调地址填 Clerk prod 给出的。
-- [ ] **4.3** DNS：加 `clerk.<域名>` CNAME 指向 Clerk，等域名验证 + 证书签发；其它 Clerk 要求的子域（`accounts.` / `clkmail.` 等）一并加。
+- [x] **4.1** ~~Clerk dashboard 从 dev 实例 clone 出 production 实例~~ —— 2026-09-18 完成，实例 id `sz5x08ornsg5`。session token claim `email` / `name` 已核对存在。**Paths 不会被 clone**，已手配为 `catglish.com/sign-in` 与 `/sign-up`。
+- [x] **4.2** ~~自建 OAuth 凭证~~ —— 2026-09-18 完成。Google client `694354922023-gc2tpc4h8...`（建在**既有的** `enx-oauth-prod` 项目里，不是新项目）、GitHub client `Ov23liagkTBa4JpBpc08`，回调均为 `https://clerk.catglish.com/v1/oauth_callback`，已实测 Clerk 确实在用这两套凭证。
+  - ⚠️ Google consent screen 必须 Publish 到 **In production**，停在 Testing 只有白名单用户能登录。
+  - ⚠️ OAuth client **无法用 OpenTofu 建**（`google_iap_brand` 需要 organization，个人项目没有），这步永远手工。
+- [x] **4.3** ~~DNS~~ —— 2026-09-18 完成，5 条 CNAME 全部生效并由 `infra/cloudflare/opentofu/catglish/` 接管。**必须永远灰云**：橙云会导致 Cloudflare Error 1000，错误信息里看不出跟 Clerk 有关。
 - [ ] **4.4** 部署环境变量切换（`w10n-config`）：
   - ✅ `<id>` 部分已提前填好（2026-09-18，不等 §4.1–4.3）：`infra/aws/ansible/ec2-tokyo/templates/enx-api-prod.env.j2` 的 `CLERK_AUTHORIZED_PARTIES` 与 `enx-ui-prod.env.j2` 的 `ENX_EXTENSION_ID` 都已换成正式 extension id `combdcldlodkikjfhjbdbogjlfmnbjkf`（不是 §6.1 完成就能定的——两个模板此前各留了 `REPLACE_WITH_WEB_STORE_ID` 占位符）。`ENX_EXTENSION_WEB_STORE_URL` 仍留空：item 还是草稿，公开 listing URL 会 404，等 §6.1 真正提审通过后再填。
   - enx-api：`CLERK_ISSUER` → `https://clerk.<域名>`（当前硬编码 `rational-deer-4450.clerk.accounts.dev`）、`CLERK_AUTHORIZED_PARTIES` 的 origin 部分（`https://{{ catglish_site_domain }}`）仍是模板变量，等 §0.1 的域名落地 DNS 才能渲染出真实值
   - enx-ui：`CLERK_PUBLISHABLE_KEY` → `pk_live_...`、`CLERK_SECRET_KEY` → `sk_live_...`（生产为 `/opt/enx/enx-ui.env`，homelab 为 Secret `enx-clerk`）。**都是运行期读取，改完重启即可，不用重新构建镜像**（ADR-031 修订记录 2026-09-18）
-  - enx-chrome：`VITE_CLERK_PUBLISHABLE_KEY` / `VITE_CLERK_SYNC_HOST`（或改 `enx-chrome/src/config/env.ts` 的 `production` 默认值）、`manifest.json` `host_permissions` 加 `https://clerk.<域名>/*`、CSP 同步 → **用 production 环境重新 build 并重新打包上架**
+  - enx-chrome：`VITE_CLERK_PUBLISHABLE_KEY` / `VITE_CLERK_SYNC_HOST` 等写进 `enx-chrome/.env.production`（Vite 按 mode 自动加载），或直接改 `src/config/targets.ts` 的 `production` 目标 —— 后者是 single source of truth，留着 `enx.wiloon.com` 的旧值迟早会打出错包。**`host_permissions` 不用手改**：`clerkFrontendApiHost()` 从 publishable key 里 base64 解出 Clerk 域名，换 key 后 manifest 自动跟着变 → `pnpm package:webstore` 重新打包上架
+  - **Clerk `allowed_origins`**：用 `sk_live_` 调 `PATCH https://api.clerk.com/v1/instance`，把 `chrome-extension://combdcldlodkikjfhjbdbogjlfmnbjkf` 加进去，否则扩展 syncHost 免登不工作。**dev 实例上做过不算**，生产实例要用生产 secret key 重做一遍。
 - [ ] **4.5** 验证：三种登录均落回登录态、`/api/me` 200；扩展在网站登录态下打开应免登（`syncHost`）；enx-api 日志确认验签用的是 prod issuer。
+  - **阻塞**：需要生产站点可访问，而 `catglish.com` 目前 502 —— origin 证书与 nginx vhost 已就位，但 `RUNBOOK-enx-prod.md` §3.4（`enx-deploy.sh`、systemd unit、ECDICT）还没跑。
 - [ ] **4.6** dev 实例 `rational-deer-4450` 保留给 homelab / 本地开发，不删。
 
 ---
@@ -116,7 +120,7 @@
   - `deploy-prod.yml` 一个 tag **同时发 api 和 ui**（两者共享 Clerk 实例、CORS 白名单、extension id，版本漂移会变成难查的 401）。
   - ~~`NEXT_PUBLIC_*`（含 Clerk pk）是 **build-time 注入**~~ —— 2026-09-18 起 enx-ui 全部改为**运行期**读取（ADR-031 修订记录），生产镜像与 homelab 镜像可互换；两条流水线都不再传部署相关 build-arg，fail-fast 检查已删除。
   - 主机侧逻辑在 `w10n-config/infra/aws/ansible/ec2-tokyo/files/enx-deploy.sh`（Ansible 分发）：先 pull 两个镜像再重启，健康检查失败会提示回滚命令。**回滚 = SSH 上去 `sudo enx-deploy.sh <旧 tag>`，不依赖 GitHub。**
-  - 待办：在 GitHub 配 Secrets `PROD_HOST` / `PROD_SSH_USER` / `PROD_SSH_KEY`，Variables `PROD_API_BASE_URL` / `PROD_SITE_BASE_URL` / `PROD_CLERK_PUBLISHABLE_KEY` / `PROD_EXTENSION_ID`；GHCR 上的两个 package 设为 public（否则主机 pull 要先 `nerdctl login`）。
+  - 待办：在 GitHub 配 Secrets `PROD_HOST` / `PROD_SSH_USER` / `PROD_SSH_KEY`，Variables `PROD_API_BASE_URL` / `PROD_SITE_BASE_URL` / `PROD_CLERK_PUBLISHABLE_KEY` / `PROD_EXTENSION_ID`；GHCR 包**保持 private**，改为在主机上 `sudo nerdctl login ghcr.io`（classic PAT，仅 `read:packages`，须带 `sudo`，因为 `enx-deploy.sh` 以 root 拉取）—— 步骤见 w10n-config `RUNBOOK-enx-prod.md` §3.5。不设 public 的原因：包可见性无法用 OpenTofu 或 API 管理，且包要等首次构建后才存在，「先设 public」在顺序上走不通。
 - [ ] **5.2** 生产 DNS / TLS / CORS：确认 `<生产域名>` 与 `<api 域名>` 的解析、证书、`enx-api` CORS 白名单、`enx-chrome` `host_permissions` 全部指向新构建，无 Cognito 时代遗留配置。
 - [ ] **5.3** 生产数据库：决策是「上线继续用 SQLite + S3 备份」，Postgres 迁移明确排到上线后。确认生产环境的 SQLite 持久卷 + 备份链路就绪。
   - ✅ 2026-09-17 决定：**生产从空库起**，不从 homelab 带数据（homelab 的 `enx.db` 只有作者自测数据）。
