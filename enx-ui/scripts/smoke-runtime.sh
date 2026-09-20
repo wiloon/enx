@@ -108,3 +108,18 @@ if [ -z "$CID" ] && grep -q "Missing publishableKey" "$LOG"; then
 fi
 
 echo "✅ smoke: GET / -> 200, runtime key and extension id served"
+
+# The API relay must follow the container's API_BASE_URL, not a value frozen at
+# build time (next.config rewrites() froze it once: production would have
+# relayed to the homelab API). The host is unresolvable, so the request fails;
+# what matters is which host the server tried.
+curl -s -o /dev/null -m 15 "http://127.0.0.1:${PORT}/api/smoke-relay-check" || true
+server_log() { if [ -n "$CID" ]; then "$CLI" logs "$CID" 2>&1; else cat "$LOG"; fi; }
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  server_log | grep -q "api.smoke.invalid" && break
+  sleep 1
+done
+server_log | grep -q "api.smoke.invalid" \
+  || fail "/api/* was not relayed to the runtime API_BASE_URL (${API_BASE_URL}); target is frozen at build time"
+
+echo "✅ smoke: /api/* relayed to the runtime API_BASE_URL"
