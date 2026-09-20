@@ -435,6 +435,16 @@ tasks:
           {{.FNM_UI}} pnpm test
         fi
 
+  test:ui:smoke:
+    desc: "Build enx-ui, start it with ONLY runtime env vars and check GET / (catches build-time config leaks). SKIP_BUILD=true to reuse .next"
+    dir: enx-ui
+    cmds:
+      - |
+        if [ "{{.SKIP_BUILD | default "false"}}" != "true" ]; then
+          {{.FNM_UI}} pnpm build
+        fi
+      - '{{.FNM_UI}} bash scripts/smoke-runtime.sh'
+
   test:coverage:
     desc: Run tests with coverage for all projects
     cmds:

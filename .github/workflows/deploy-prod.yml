@@ -127,6 +127,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Build once into the local daemon and smoke-test THAT image with runtime
+      # env vars only, before anything is pushed: a build-time config leak
+      # (see enx-ui/scripts/smoke-runtime.sh) fails here instead of on the host.
+      - name: Build (local, for smoke test)
+        uses: docker/build-push-action@v6
+        with:
+          context: enx-ui
+          file: enx-ui/Containerfile
+          load: true
+          push: false
+          tags: enx-ui:smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test (runtime config only)
+        run: SMOKE_IMAGE=enx-ui:smoke enx-ui/scripts/smoke-runtime.sh
+
+      # Same inputs as above, so this is served from the layer cache.
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
