@@ -1,6 +1,7 @@
 import {
   resolveSiteAdapter,
   pickFocusedTweet,
+  X_CONTENT_SELECTOR,
   DEFAULT_ADAPTER,
   PageLocation,
 } from '@/lib/siteAdapters'
@@ -59,8 +60,16 @@ describe('resolveSiteAdapter', () => {
       }
     })
 
-    it('pins the tweetText selector and marks the content SPA-volatile', () => {
-      expect(x.contentSelector).toBe('div[data-testid="tweetText"]')
+    it('allows an X Article, which shares the /status/ URL shape', () => {
+      expect(
+        x.pageSupport!(loc('x.com', '/sairahul1/status/2089995692874068433'))
+      ).toBeNull()
+    })
+
+    it('pins the tweetText + article-body selectors and marks the content SPA-volatile', () => {
+      expect(x.contentSelector).toBe(
+        'div[data-testid="tweetText"], [data-testid="twitterArticleRichTextView"]'
+      )
       expect(x.contentVolatility).toBe('spa')
       expect(x.clickBinding).toBe('bubble')
       expect(x.showProcessingIndicator).toBe(false)
@@ -187,6 +196,40 @@ describe('pickFocusedTweet', () => {
     expect(focused[0].textContent).toBe('the main tweet body')
     expect(warn).not.toHaveBeenCalled()
     warn.mockRestore()
+  })
+
+  it('picks the article body on an X Article page, ahead of replies and its own duplicate article', () => {
+    // Verified in Chrome (2026-09-20): an Article page has no tweetText in the
+    // opened post, two article[tabindex="-1"] (the body is in the last), and
+    // replies below as tabindex="0" tweetText articles.
+    document.body.innerHTML = `
+      <article tabindex="-1"><div data-testid="twitter-article-title">title</div></article>
+      <article tabindex="-1">
+        <div data-testid="twitterArticleReadView">
+          <div data-testid="twitterArticleRichTextView">the article body</div>
+        </div>
+      </article>
+      <article tabindex="0">
+        <div data-testid="tweetText">a reply under the article</div>
+      </article>
+    `
+    const nodes = Array.from(document.querySelectorAll(X_CONTENT_SELECTOR))
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+    const focused = pickFocusedTweet(nodes)
+    expect(focused).toHaveLength(1)
+    expect(focused[0].textContent).toBe('the article body')
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('returns a lone article body unchanged (no replies loaded yet)', () => {
+    document.body.innerHTML = `
+      <article tabindex="-1">
+        <div data-testid="twitterArticleRichTextView">the article body</div>
+      </article>
+    `
+    const nodes = Array.from(document.querySelectorAll(X_CONTENT_SELECTOR))
+    expect(pickFocusedTweet(nodes)).toEqual(nodes)
   })
 
   it('falls back to DOM order (with a warning) when no article is marked focused', () => {

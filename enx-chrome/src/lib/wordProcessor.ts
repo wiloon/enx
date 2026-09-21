@@ -27,6 +27,11 @@ export class WordProcessor {
     'pre',
   ]
 
+  // Whole subtrees skipped by selector, for chrome the tag list can't reach:
+  // an X Article code block keeps its <pre><code> body in the tag list above,
+  // but its "plaintext" language label sits beside it in a plain <span>.
+  static readonly LOOKUP_EXCLUDED_SELECTORS = ['[data-testid="markdown-code-block"]']
+
   // CSS Custom Highlight API registry names, one per review stage
   // (ADR-011 Decision 1 / E1). The underline colour for each stage lives
   // here too so the count and the palette stay in one place -- the content
@@ -127,7 +132,10 @@ export class WordProcessor {
   static isInExcludedSubtree(node: Node, root?: Node): boolean {
     let current: HTMLElement | null = node.parentElement
     while (current && current !== root) {
-      if (this.LOOKUP_EXCLUDED_TAGS.includes(current.tagName.toLowerCase())) {
+      if (
+        this.LOOKUP_EXCLUDED_TAGS.includes(current.tagName.toLowerCase()) ||
+        this.LOOKUP_EXCLUDED_SELECTORS.some(selector => current!.matches(selector))
+      ) {
         return true
       }
       current = current.parentElement

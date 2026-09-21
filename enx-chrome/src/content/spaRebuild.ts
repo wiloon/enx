@@ -10,7 +10,7 @@
 // and the navigate filter (`shouldHandleTweetNavigate`) sit beside it, each
 // unit-testable.
 
-import { resolveSiteAdapter } from '@/lib/siteAdapters'
+import { resolveSiteAdapter, X_CONTENT_SELECTORS } from '@/lib/siteAdapters'
 
 export interface SpaRebuilderDeps {
   /** Is the destination URL still a supported page for this adapter? */
@@ -80,7 +80,9 @@ export function isSupportedPage(url: string): boolean {
   }
 }
 
-const TWEET_READY_SELECTOR = 'article[tabindex="-1"] [data-testid="tweetText"]'
+const TWEET_READY_SELECTOR = X_CONTENT_SELECTORS.map(
+  selector => `article[tabindex="-1"] ${selector}`
+).join(', ')
 const TWEET_READY_DEBOUNCE_MS = 100
 const TWEET_READY_TIMEOUT_MS = 2000
 
