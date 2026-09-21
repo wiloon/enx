@@ -31,6 +31,8 @@ ENV NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/app
 # value arrives at runtime from the env file / k8s Secret. This dummy never
 # leaves the build stage.
 ENV CLERK_SECRET_KEY=sk_test_build_time_placeholder_only
+# No point phoning home from a CI build (it also stalls ~3s on the first call).
+ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm build
 
 FROM node:22-alpine AS runner
