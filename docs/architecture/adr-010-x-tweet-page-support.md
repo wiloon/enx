@@ -286,6 +286,39 @@ ADR-007 的划词整句翻译挂在 `document` 的 `mouseup` 冒泡阶段（`con
 
 `content.tsx:931` 的 `case 'enxRun'` 改为：已启用则先 `disableEnx()`，再执行完整的 `enableEnx()`。`wordCache` 是模块级变量、`disableEnx` 不清空它，所以重新处理时同一批词直接命中缓存，不产生额外后端请求。
 
+### 8. X Article（长文）与"处理失败"的可见性（2026-09-20 追加）
+
+**起因**：用户在 `x.com/sairahul1/status/2089995692874068433` 上点 Enable 没有任何反应，而其他推文详情页正常。该页面是 X 的 **Article（长文）**——URL 与普通推文同形（`/<user>/status/<id>`），所以通过了 Decision 1 的 `pageSupport`，但它没有 `tweetText` 节点，适配器把选择器写死为 `div[data-testid="tweetText"]`，`getArticleNodes` 返回空数组，`processArticleContent` 静默返回 `false`；而弹窗只看 `success`，仍显示"已完成"。
+
+**实测（Chrome，2026-09-20）**：
+- 页面内 `tweetText` 数量为 0；正文是单个 `[data-testid="twitterArticleRichTextView"]`（约 1600 词，179 个有效文本节点），位于 `article[data-testid="twitterArticleReadView"]` 内。
+- 页面有**两个** `article[tabindex="-1"]`，正文只在 DOM 序靠后的那个里——与前提 §2.2 记录的"取 DOM 序最后一个"一致。
+- 评论区回复仍是 `tabindex="0"` 的 `tweetText` 文章。
+- 正文含 10 个 `[data-testid="markdown-code-block"]`。其 `<pre><code>` 已被 `LOOKUP_EXCLUDED_TAGS` 排除，但代码块顶部的语言标签（"plaintext"）是普通 `<span>`，会漏出来被当成生词。
+
+**决定**：
+1. X 适配器 `contentSelector` 改为 `tweetText` 与 `twitterArticleRichTextView` 的并集。`minTextLength`、`contentVolatility: 'spa'`、点击绑定均不变。
+2. `pickFocusedTweet`：在被聚焦的 `article` 内，`twitterArticleRichTextView` 优先于其他节点；其余逻辑不变（含"无聚焦 article 时退回 DOM 序并 `console.warn`"）。
+3. `WordProcessor` 新增 `LOOKUP_EXCLUDED_SELECTORS`（目前仅 `markdown-code-block`），与 `LOOKUP_EXCLUDED_TAGS` 一起由 `isInExcludedSubtree` 判定，所以取词、高亮、点击三条路径同时生效。
+4. `spaRebuild` 的就绪选择器同步扩成并集，否则长文页在 SPA 切换后会白等 2s 超时。
+5. **`processArticleContent` / `enableEnx` 由 `boolean` 改为带原因的 `EnableOutcome`**（`src/lib/enableOutcome.ts`）。原因：`unsupported-page`、`no-article-node`、`no-words`、`lookup-failed`、`session-expired`、`error`。`enxRun` 失败时应答 `success: false` + `reason` + 面向用户的英文 `error`，弹窗沿用既有错误展示。"被更新一次 SPA 切换取代"和"重复触发"不是失败，仍应答成功。
+
+**不做**：长文**标题**（`twitter-article-title`，位于正文容器之外）暂不处理——它很短，且要让 `pickFocusedTweet` 返回多个节点，牵动更多；有需要再单独加。长文里嵌入的推文卡片不单独处理（被外层正文节点包含，随正文一并处理）。
+
+**失败记录：用户确认后才上报（2026-09-20）**
+
+要解决的是"页面处理失败时，我们能不能知道是哪个站点、哪个页面、什么问题"。这与 ADR-028 Decision 4/10（服务端一个 URL 都不存，是该 ADR"最重要的一条边界"）直接冲突，所以**不做被动上报**，只做"用户看到提示并点击确认后才发送"：
+
+6. **哪些失败值得问**：`isReportableFailure`——`no-article-node`、`no-words`、`error`（即"这个页面的结构难住了我们"）。`unsupported-page`（用户在 X 时间线上，是有意的边界）、`session-expired`（用户自己的状态）、`lookup-failed`（多半是网络）都与页面结构无关，不问。
+7. **交互**：`enxRun` 失败后，弹窗在错误提示下方显示 `PageReportPrompt`：写明将发送什么、**逐字显示将要发送的 URL**，"Send report" / "No thanks"两个按钮。点击前不发送任何东西。
+8. **URL 脱敏**（扩展与 enx-api 各实现一份，规则相同，**服务端以自己的为准、不信任客户端**）：只保留 origin + path；丢弃 query、fragment、用户名口令；host 小写；路径里疑似标识符的段——含 `@`、UUID、≥20 位且字母数字混合的无分隔符长串、≥32 位的无分隔符长串——替换为 `:redacted`（白名单里的 `messaging-custom-newsletters.nytimes.com` 这类退订链接会把邮箱/令牌放进路径）。X 的 19 位纯数字推文 ID 与带连字符的文章 slug 不受影响。脱敏后超过 1024 字符、或非 http(s) 页面，则不提供上报。
+9. **存储**：新表 `page_reports`（`pagereport` 包，`POST /api/page-reports`，不在计量路径上）。存 `user_id`、脱敏 URL、host、reason、adapter 名、扩展版本、时间；**不进 `daily_stats`，不喂任何统计或用户画像功能**。同一用户对同一页面同一原因 24h 内重复上报视为已记录（返回 `recorded:false`）；每人最多 50 条，超出淘汰最旧；保留 90 天，`runPageReportCleanup` 每小时清理。reason 白名单与 `isReportableFailure` 一致。
+10. **隐私政策**：`enx-ui` 中英文隐私页已同步——数据表新增一行，"我们刻意不保存什么"一节改为"除一种例外"，并如实说明这个例外（原文"我们的数据库里没有任何一列存放 URL"不再成立，必须改）。这是 ADR-026/028 一贯的"隐私政策先行"要求。
+
+**与 "保存文章" 的关系（[ADR-032](adr-032-saved-pages-and-no-passive-reading-history.md)）**：用户提出过把上报与收藏合成一条路径。评估后**保持分表**——两者的可见性、保留期、上限、URL 脱敏强度都不同，合表后按 `created_at` 的 90 天清理一旦漏写过滤条件就会误删用户收藏。共享的是交互形态（点击 → 展示将发送内容 → 确认）、URL 规范化代码与提示组件，不共享存储。
+
+**不做**：SPA 自动重建（用户在 X 内切到长文页）失败时不弹提示——那条路径没有可以点击确认的界面，而被动上报被上面否决了；它仍只写 `console.warn`。**账号删除**时清理 `page_reports` 目前没有对应流程可挂（仓库里尚无账号删除实现），做账号删除时必须一并处理。
+
 ---
 
 ## Rationale
@@ -349,6 +382,7 @@ ADR-007 的划词整句翻译挂在 `document` 的 `mouseup` 冒泡阶段（`con
 - **接入第三个 SPA 站点时**：如果 `inPlace` 在 X 上跑了一段时间没有问题，应该考虑把它提升为默认策略，删掉 `innerHTML` 分支——两条路径长期并存是债，不是终态。
 - **现有站点的取词噪声**（`cleanArticleText` 不排除 `<a>`）如果在统计功能上造成可见问题（生词本里出现大量人名/域名），把 Decision 3 的 `collectTextNodes` 取词方式推广到所有站点。
 - **X 改版导致 `data-testid` 失效**：更新适配器的 `contentSelector`；如果 X 开始高频改版，考虑改用结构特征（如 `[dir="auto"]` + 文本长度）而非 `data-testid` 定位。
+- **再出现"URL 合法但没有 tweetText"的页面形态**（Article 之后，可能还有 Spaces、Notes、社区帖等）：Decision 8 的失败记录依赖用户愿意点"Send report"，覆盖率天然偏低。如果发现新形态仍主要靠用户口头报障，考虑在上报里补充页面结构指纹（页面上出现了哪些 `data-testid`，不含任何页面内容）；这仍需先过隐私政策，不能默认加。
 
 ---
 
