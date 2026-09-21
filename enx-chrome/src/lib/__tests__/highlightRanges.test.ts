@@ -153,6 +153,26 @@ describe('WordProcessor.buildHighlightRanges', () => {
     expect(ranges.map(r => r.toString())).toEqual(['endgame'])
   })
 
+  it('skips a whole X Article code block, including its language label', () => {
+    // The label ("plaintext") sits in a plain <span> beside the <pre><code>
+    // body, so the tag list alone would let it through as a lookup word.
+    document.body.innerHTML = `
+      <p>the endgame is here</p>
+      <div data-testid="markdown-code-block">
+        <span>endgame</span>
+        <pre><code>endgame</code></pre>
+      </div>
+    `
+    WordProcessor.rebuildHighlights(document.body, {
+      endgame: wd({ LoadCount: 4 }),
+    })
+    const ranges = [...(CSS.highlights.get('enx-hl-2') ?? [])]
+    expect(ranges.map(r => r.toString())).toEqual(['endgame'])
+    expect(textNodesUnder(document.body).map(n => n.textContent?.trim())).toEqual([
+      'the endgame is here',
+    ])
+  })
+
   it('creates and moves no element nodes (article DOM is untouched)', () => {
     document.body.innerHTML =
       '<p id="p"><span id="s">the endgame is <b id="b">clearly</b> here</span></p>'

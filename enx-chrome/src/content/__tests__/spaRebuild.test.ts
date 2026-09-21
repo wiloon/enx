@@ -204,6 +204,21 @@ describe('waitForTweetReady', () => {
     expect(done).toBe(true)
   })
 
+  it('also treats an X Article body as ready (no tweetText on an Article page)', async () => {
+    const p = waitForTweetReady(() => true)
+    let done = false
+    p.then(() => {
+      done = true
+    })
+
+    document.body.innerHTML =
+      '<article tabindex="-1"><div data-testid="twitterArticleRichTextView">the article body</div></article>'
+    await Promise.resolve()
+    jest.advanceTimersByTime(110) // past the 100ms debounce, well short of the 2s timeout
+    await Promise.resolve()
+    expect(done).toBe(true)
+  })
+
   it('resolves via the 2s timeout when readiness never appears', async () => {
     const p = waitForTweetReady(() => true)
     let done = false

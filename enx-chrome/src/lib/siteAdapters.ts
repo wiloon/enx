@@ -67,6 +67,16 @@ export const DEFAULT_ADAPTER: SiteAdapter = {
 const X_HOST = /(^|\.)(x|twitter)\.com$/
 const TWEET_DETAIL_PATH = /^\/[^/]+\/status\/\d+/
 
+// A tweet's body, and the body of an X Article (long-form post). An Article
+// lives at the same /<user>/status/<id> URL as a tweet but renders no
+// tweetText node at all -- its body is one twitterArticleRichTextView block
+// (verified in Chrome, 2026-09-20), inside the same article[tabindex="-1"]
+// focus marker a tweet uses.
+export const X_TWEET_TEXT_SELECTOR = 'div[data-testid="tweetText"]'
+export const X_ARTICLE_BODY_SELECTOR = '[data-testid="twitterArticleRichTextView"]'
+export const X_CONTENT_SELECTORS = [X_TWEET_TEXT_SELECTOR, X_ARTICLE_BODY_SELECTOR]
+export const X_CONTENT_SELECTOR = X_CONTENT_SELECTORS.join(', ')
+
 // From the div[data-testid="tweetText"] nodes on a tweet-detail page (which
 // can also include ancestor tweets, the author's self-thread, and a quoted
 // tweet's body), pick the one tweet body the user opened.
@@ -95,8 +105,12 @@ export function pickFocusedTweet(nodes: Element[]): Element[] {
   if (focusedArticle) {
     // A quoted tweet's body sits in the same focused article as the main body
     // (a role="link" block, not a nested <article>), so there can be >1
-    // tweetText node here; the main body is first in DOM order.
-    const mainBody = nodes.find(n => focusedArticle.contains(n))
+    // tweetText node here; the main body is first in DOM order. On an X
+    // Article page the article body wins outright: replies below it are
+    // tweetText nodes too, but they live in tabindex="0" articles.
+    const inFocused = nodes.filter(n => focusedArticle.contains(n))
+    const mainBody =
+      inFocused.find(n => n.matches(X_ARTICLE_BODY_SELECTOR)) ?? inFocused[0]
     if (mainBody) return [mainBody]
   }
 
@@ -116,7 +130,7 @@ const X_ADAPTER: SiteAdapter = {
     TWEET_DETAIL_PATH.test(location.pathname)
       ? null
       : 'Catglish currently supports only X tweet detail pages. Open a tweet first.',
-  contentSelector: 'div[data-testid="tweetText"]',
+  contentSelector: X_CONTENT_SELECTOR,
   // A tweet body caps at 280 chars and short tweets fall well under the
   // default 100; >1 still filters out pure-emoji / pure-link empty nodes.
   minTextLength: 1,
