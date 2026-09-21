@@ -552,6 +552,66 @@ describe('background onMessage / translateSentenceWithWord (ADR-014)', () => {
   })
 })
 
+describe('background onMessage / submitPageReport (ADR-010 Decision 8)', () => {
+  const listener = onMessageListener
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    setClerkSession('clerk-session-jwt')
+    ;(chrome.runtime.getManifest as jest.Mock).mockReturnValue({ version: '1.0.1' })
+    ;(global.fetch as jest.Mock) = jest.fn()
+  })
+
+  const send = (request: unknown): Promise<unknown> =>
+    new Promise(resolve => listener(request, {}, resolve))
+
+  it('POSTs the page report to /api/page-reports with the extension version', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(200, { success: true, recorded: true })
+    )
+
+    const response = await send({
+      type: 'submitPageReport',
+      pageReport: {
+        url: 'https://x.com/a/status/1',
+        reason: 'no-article-node',
+        adapter: 'x',
+      },
+    })
+
+    expect(response).toMatchObject({ success: true })
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toContain('/api/page-reports')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body)).toEqual({
+      url: 'https://x.com/a/status/1',
+      reason: 'no-article-node',
+      adapter: 'x',
+      extVersion: '1.0.1',
+    })
+  })
+
+  it('reports failure to the popup instead of dropping a report the user confirmed', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(500, { success: false, message: 'could not record the report' })
+    )
+
+    const response = (await send({
+      type: 'submitPageReport',
+      pageReport: { url: 'https://x.com/a/status/1', reason: 'error', adapter: 'x' },
+    })) as { success: boolean }
+
+    expect(response.success).toBe(false)
+  })
+
+  it('rejects a request with no URL without calling the API', async () => {
+    const response = await send({ type: 'submitPageReport' })
+
+    expect(response).toEqual({ success: false, error: 'Missing report' })
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+})
+
 describe('background onMessageExternal (ADR-019 web -> extension channel)', () => {
   const external = onMessageExternalListener
 

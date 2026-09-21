@@ -3,7 +3,10 @@ import Login from '@/components/Login'
 import { useInitializeStorage } from '@/hooks/useInitializeStorage'
 import { useWordHighlightEnabled } from '@/hooks/useWordHighlightEnabled'
 import '@/index.css'
+import PageReportPrompt, { PageReportStatus } from '@/components/PageReportPrompt'
 import { config } from '@/config/env'
+import { isReportableFailure, EnableFailureReason } from '@/lib/enableOutcome'
+import { PageReportPayload, sanitizePageUrl } from '@/lib/pageReport'
 import { initSentry } from '@/lib/sentry'
 import { errorAtom, userAtom } from '@/store/atoms'
 import { ClerkProvider, SignOutButton, useUser } from '@clerk/chrome-extension'
@@ -99,9 +102,31 @@ function SignedInBody({
   const email = user?.primaryEmailAddress?.emailAddress || ''
   const initial = (displayName || 'U').trim().charAt(0).toUpperCase()
 
+  // Set only after a failure on a page we could not read; the user decides
+  // whether it is sent (ADR-010 Decision 8).
+  const [reportCandidate, setReportCandidate] =
+    useState<PageReportPayload | null>(null)
+  const [reportStatus, setReportStatus] = useState<PageReportStatus>('idle')
+
+  const handleSendReport = async () => {
+    if (!reportCandidate) return
+    setReportStatus('sending')
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'submitPageReport',
+        pageReport: reportCandidate,
+      })
+      setReportStatus(response?.success ? 'sent' : 'failed')
+    } catch {
+      setReportStatus('failed')
+    }
+  }
+
   const handleEnableLearning = async () => {
     setLearningStatus('processing')
     setError(null)
+    setReportCandidate(null)
+    setReportStatus('idle')
     try {
       const [tab] = await chrome.tabs.query({
         active: true,
@@ -114,6 +139,13 @@ function SignedInBody({
         action: 'enxRun',
       })
       if (!response?.success) {
+        // Only failures that say "this page's layout defeated us" are worth
+        // offering; a network error or expired session is not the page's fault.
+        const reason = response?.reason as EnableFailureReason | undefined
+        const url = sanitizePageUrl(tab.url)
+        if (reason && isReportableFailure(reason) && url) {
+          setReportCandidate({ url, reason, adapter: response.adapter ?? '' })
+        }
         throw new Error(response?.error || 'Failed to enable learning mode')
       }
       setLearningStatus('completed')
@@ -182,6 +214,15 @@ function SignedInBody({
         <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
           {error}
         </p>
+      )}
+
+      {reportCandidate && (
+        <PageReportPrompt
+          url={reportCandidate.url}
+          status={reportStatus}
+          onSend={handleSendReport}
+          onDismiss={() => setReportCandidate(null)}
+        />
       )}
 
       <button

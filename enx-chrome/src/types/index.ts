@@ -60,6 +60,7 @@ export interface ContentMessage {
     | 'translateSentenceWithWord'
     | 'recordPageWordLookup'
     | 'reportReadingProgress'
+    | 'submitPageReport'
   word?: string
   words?: string
   paragraph?: string
@@ -87,6 +88,10 @@ export interface ContentMessage {
   // to today's counters. Always a delta, never an absolute -- the content
   // script owns the watermark and reports only what it has not reported yet.
   delta?: ReadingStatsDelta
+  // Set on 'submitPageReport' (ADR-010 Decision 8): a page the user confirmed
+  // they want reported. `url` is already sanitized by the popup; enx-api
+  // sanitizes again and does not trust it.
+  pageReport?: { url: string; reason: string; adapter: string }
 }
 
 // The L0 half of ADR-028's metric set. The other columns of `daily_stats`
