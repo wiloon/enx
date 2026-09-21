@@ -13,6 +13,12 @@ import {
 } from '@floating-ui/dom'
 import { WordProcessor } from '@/lib/wordProcessor'
 import { resolveSiteAdapter } from '@/lib/siteAdapters'
+import {
+  ENABLE_OK,
+  EnableOutcome,
+  failed,
+  failureMessage,
+} from '@/lib/enableOutcome'
 import { stampExtensionPresence } from '@/lib/extensionPresence'
 import { nearestElement, referenceLineHeight } from '@/lib/rangeUtils'
 import {
@@ -621,7 +627,7 @@ const showSessionExpiredMessage = (isLoginError = false) => {
 // stale content.
 const processArticleContent = async (
   opts: { isCurrent?: () => boolean } = {}
-): Promise<boolean> => {
+): Promise<EnableOutcome> => {
   const isSpaRebuild = opts.isCurrent !== undefined
   const stale = () => isSpaRebuild && !opts.isCurrent!()
 
@@ -631,7 +637,7 @@ const processArticleContent = async (
   // check, well before it paints anything.
   if (isProcessing && !isSpaRebuild) {
     console.log('Already processing, skipping...')
-    return false
+    return ENABLE_OK
   }
   isProcessing = true
 
@@ -648,7 +654,7 @@ const processArticleContent = async (
     })
     if (articleNodes.length === 0) {
       console.log('No article node found')
-      return false
+      return failed('no-article-node')
     }
 
     console.log(`Article node(s) found: ${articleNodes.length}`, articleNodes)
@@ -670,7 +676,7 @@ const processArticleContent = async (
 
     if (words.length === 0) {
       console.log('No words found to process')
-      return false
+      return failed('no-words')
     }
 
     // Deduplicate words to reduce chunk count and avoid redundant backend calls
@@ -737,7 +743,8 @@ const processArticleContent = async (
       console.log(`All ${uniqueWords.length} words already cached; skipping backend`)
     } else {
       for (let i = 0; i < uniqueWords.length; i += chunkSize) {
-        if (stale()) return false
+        // Superseded by a newer tweet switch: not a failure.
+        if (stale()) return ENABLE_OK
         const chunk = uniqueWords.slice(i, i + chunkSize)
         console.log(`📦 Processing chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(uniqueWords.length / chunkSize)}: ${chunk.length} words`)
 
@@ -747,7 +754,7 @@ const processArticleContent = async (
           if (error instanceof Error && error.message === 'SESSION_EXPIRED') {
             console.log('Session expired during word processing')
             showSessionExpiredMessage()
-            return false
+            return failed('session-expired')
           }
           console.error('Error processing word chunk:', error)
           // Continue processing other chunks
@@ -763,7 +770,7 @@ const processArticleContent = async (
     // Last stale check before the paint. Everything from here to the return
     // is synchronous, so a queued navigate event can't interleave -- the
     // paint is effectively atomic with this guard.
-    if (stale()) return false
+    if (stale()) return ENABLE_OK
 
     const haveWords = Object.keys(wordCache).length > 0
 
@@ -802,10 +809,10 @@ const processArticleContent = async (
     }
 
     console.log('✅ Article processing completed successfully')
-    return haveWords
+    return haveWords ? ENABLE_OK : failed('lookup-failed')
   } catch (error) {
     console.error('Error processing article:', error)
-    return false // Processing failed
+    return failed('error')
   } finally {
     isProcessing = false
   }
@@ -1299,10 +1306,10 @@ const getSpaRebuilder = () => {
 }
 
 // Enable ENX functionality
-const enableEnx = async (): Promise<boolean> => {
+const enableEnx = async (): Promise<EnableOutcome> => {
   if (isEnxEnabled) {
     console.log('ENX already enabled')
-    return false
+    return ENABLE_OK
   }
 
   console.log('Enabling ENX functionality')
@@ -1327,17 +1334,17 @@ const enableEnx = async (): Promise<boolean> => {
   // The initial processing run also rides the SPA generation counter so it
   // is abandoned if the user switches tweets before its backend call
   // returns (otherwise it could paint the old tweet after teardown).
-  const success = await processArticleContent(
+  const outcome = await processArticleContent(
     isSpa ? { isCurrent: getSpaRebuilder().makeIsCurrent() } : {}
   )
 
-  if (success) {
+  if (outcome.ok) {
     console.log('✅ ENX enabled successfully with article processing')
   } else {
-    console.warn('⚠️ ENX enabled but article processing had issues')
+    console.warn(`⚠️ ENX enabled but article processing failed: ${outcome.reason}`)
   }
 
-  return success
+  return outcome
 }
 
 // Disable ENX functionality
@@ -1383,7 +1390,11 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       const adapter = resolveSiteAdapter(window.location)
       const unsupportedReason = adapter.pageSupport?.(window.location)
       if (unsupportedReason) {
-        sendResponse({ success: false, error: unsupportedReason })
+        sendResponse({
+          success: false,
+          reason: 'unsupported-page',
+          error: unsupportedReason,
+        })
         break
       }
 
@@ -1397,8 +1408,19 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       }
 
       enableEnx()
-        .then(result => {
-          sendResponse({ success: true, completed: result })
+        .then(outcome => {
+          // A failed run used to answer success:true, so the popup showed
+          // "completed" over a page with nothing highlighted.
+          sendResponse(
+            outcome.ok
+              ? { success: true, completed: true }
+              : {
+                  success: false,
+                  reason: outcome.reason,
+                  adapter: adapter.name,
+                  error: failureMessage(outcome.reason),
+                }
+          )
         })
         .catch(error => {
           console.error('Error enabling ENX:', error)
