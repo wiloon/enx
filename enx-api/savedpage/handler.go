@@ -31,6 +31,16 @@ func toResponse(p Page) pageResponse {
 	}
 }
 
+// invalidURLMessage tells the user what is wrong with the address. A too-long
+// one is also an invalid one (ErrURLTooLong wraps ErrInvalidURL), so it is
+// named first.
+func invalidURLMessage(err error) string {
+	if errors.Is(err, urlnorm.ErrURLTooLong) {
+		return fmt.Sprintf("That address is too long to save (the limit is %d characters).", urlnorm.MaxURLLength)
+	}
+	return "that is not a valid web page address"
+}
+
 type saveRequest struct {
 	URL   string `json:"url"`
 	Title string `json:"title"`
@@ -55,7 +65,7 @@ func SaveHandler(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, urlnorm.ErrInvalidURL):
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "that is not a valid web page address"})
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": invalidURLMessage(err)})
 		case errors.Is(err, ErrLimitReached):
 			c.JSON(http.StatusUnprocessableEntity, gin.H{
 				"success": false,
@@ -123,7 +133,7 @@ func UpdateHandler(c *gin.Context) {
 		case errors.Is(err, ErrDuplicate):
 			c.JSON(http.StatusConflict, gin.H{"success": false, "message": "you have already saved a page with that address"})
 		case errors.Is(err, urlnorm.ErrInvalidURL):
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "that is not a valid web page address"})
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": invalidURLMessage(err)})
 		default:
 			logger.Errorf("savedpage: update failed for user %s: %v", userID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not update the page"})

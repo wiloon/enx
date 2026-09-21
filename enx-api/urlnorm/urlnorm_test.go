@@ -2,6 +2,7 @@ package urlnorm
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -64,5 +65,35 @@ func TestForSaveRejectsAnythingThatIsNotAWebPage(t *testing.T) {
 		if _, _, err := ForSave(raw); !errors.Is(err, ErrInvalidURL) {
 			t.Errorf("ForSave(%q): err=%v, want ErrInvalidURL", raw, err)
 		}
+	}
+}
+
+// urlOfLength builds an https URL exactly n characters long.
+func urlOfLength(n int) string {
+	const prefix = "https://example.com/"
+	return prefix + strings.Repeat("a", n-len(prefix))
+}
+
+func TestForSaveAcceptsAURLUpToTheLimitAndRejectsOneCharacterMore(t *testing.T) {
+	if _, _, err := ForSave(urlOfLength(MaxURLLength)); err != nil {
+		t.Fatalf("a URL of exactly %d characters: %v, want it accepted", MaxURLLength, err)
+	}
+	if _, _, err := ForSave(urlOfLength(MaxURLLength + 1)); !errors.Is(err, ErrURLTooLong) {
+		t.Fatalf("a URL of %d characters: err=%v, want ErrURLTooLong", MaxURLLength+1, err)
+	}
+}
+
+func TestForSaveToleratesLongTrackingSuffixesButNotAbsurdInput(t *testing.T) {
+	// 3000 characters of campaign parameters on a short address: it is still a
+	// short address once they are dropped.
+	withTracking := "https://example.com/read?p=1&utm_campaign=" + strings.Repeat("x", 3000)
+	got, _, err := ForSave(withTracking)
+	if err != nil || got != "https://example.com/read?p=1" {
+		t.Fatalf("long tracking suffix: got %q err=%v, want the short address", got, err)
+	}
+
+	// But input long enough to be abusive is refused before it is even parsed.
+	if _, _, err := ForSave("https://example.com/?utm_campaign=" + strings.Repeat("x", 5000)); !errors.Is(err, ErrURLTooLong) {
+		t.Fatalf("5000-character input: err=%v, want ErrURLTooLong", err)
 	}
 }

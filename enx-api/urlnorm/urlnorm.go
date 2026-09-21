@@ -5,6 +5,7 @@ package urlnorm
 
 import (
 	"errors"
+	"fmt"
 	"net/url"
 	"regexp"
 	"strings"
@@ -13,8 +14,24 @@ import (
 // ErrInvalidURL is returned for anything that is not an http(s) page with a host.
 var ErrInvalidURL = errors.New("urlnorm: invalid url")
 
+// MaxURLLength is the longest normalized URL that can be saved. A normal page
+// address is a few hundred characters; 2048 is the length browsers and servers
+// have long agreed on, so it is generous without being unbounded.
+const MaxURLLength = 2048
+
+// maxRawURLLength bounds what ForSave is willing to parse at all. It is looser
+// than MaxURLLength because normalization can shrink a link a great deal.
+const maxRawURLLength = 4096
+
+// ErrURLTooLong is returned for a URL longer than MaxURLLength. It wraps
+// ErrInvalidURL, so callers that only care "is this saveable" need one check.
+var ErrURLTooLong = fmt.Errorf("%w: longer than %d characters", ErrInvalidURL, MaxURLLength)
+
 // ForSave normalizes raw for saving and returns it with its host.
 func ForSave(raw string) (normalized, host string, err error) {
+	if len(raw) > maxRawURLLength {
+		return "", "", ErrURLTooLong
+	}
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 		return "", "", ErrInvalidURL
@@ -24,7 +41,13 @@ func ForSave(raw string) (normalized, host string, err error) {
 	u.RawFragment = ""
 	u.Host = strings.ToLower(u.Host)
 	u.RawQuery = dropTrackingParams(u.RawQuery, isXHost(u.Hostname()))
-	return u.String(), u.Hostname(), nil
+	normalized = u.String()
+	// Measured after normalization: a short page address that arrived with a
+	// long tracking suffix is still a short page address.
+	if len(normalized) > MaxURLLength {
+		return "", "", ErrURLTooLong
+	}
+	return normalized, u.Hostname(), nil
 }
 
 // isTrackingParam reports whether key is a campaign / click-id parameter that

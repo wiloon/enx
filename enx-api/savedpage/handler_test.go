@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -263,5 +264,28 @@ func TestExportHandlerDownloadsTheCallersPagesWithoutInternalIDs(t *testing.T) {
 	}
 	if len(item) != 3 {
 		t.Fatalf("item has fields %v, want exactly url, title, savedAt (no ids, no user id)", item)
+	}
+}
+
+func TestATooLongURLGetsAClearMessageOnSaveAndEdit(t *testing.T) {
+	user := "u-" + t.Name()
+	page := savePage(t, user, "https://example.com/a")
+	tooLong := "https://example.com/" + strings.Repeat("a", 2100)
+
+	messageOf := func(w *httptest.ResponseRecorder) string {
+		var resp struct {
+			Message string `json:"message"`
+		}
+		json.Unmarshal(w.Body.Bytes(), &resp)
+		return resp.Message
+	}
+
+	w := request(t, http.MethodPost, "/api/saved-pages", "/api/saved-pages", SaveHandler, user, `{"url":"`+tooLong+`","title":"t"}`)
+	if w.Code != http.StatusBadRequest || !strings.Contains(messageOf(w), "too long") {
+		t.Errorf("save: status %d message %q, want 400 saying the address is too long", w.Code, messageOf(w))
+	}
+	w = patch(t, user, page.ID, `{"url":"`+tooLong+`"}`)
+	if w.Code != http.StatusBadRequest || !strings.Contains(messageOf(w), "too long") {
+		t.Errorf("edit: status %d message %q, want 400 saying the address is too long", w.Code, messageOf(w))
 	}
 }
