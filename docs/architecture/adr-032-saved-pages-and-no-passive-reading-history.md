@@ -3,6 +3,7 @@
 | 字段 | 值 |
 | --- | --- |
 | **状态** | **Accepted — 2026-09-20**（用户确认）。开始实现，按 tdd 分步：先 enx-api，再扩展，再 enx-ui。保存文章计划随移动端一起做。文中所有法律判断均为工程侧的风险梳理，**未经律师确认**，见 Decision 8。**2026-09-20 用户已确认**：分表；只存 URL + 标题；默认永久保存；在 enx-ui 上可查看 / 编辑 / 删除；数量与长度上限采用默认值；浏览器本地历史暂不做，现在也不改隐私条款。 |
+| **术语** | 中文统一称「**收藏**」，英文代码 / API / UI 用 `saved`（不用 bookmark 以免与浏览器书签混淆）。本文行文里的「保存」「保存文章」「已保存页面」都指收藏；见 `CONTEXT.md`。 |
 | **日期** | 2026-09-20 |
 | **关联 Spec** | 无独立 TASK-SPEC，留到编码阶段再写 |
 | **关联 ADR** | [`adr-028-reading-stats-what-to-measure.md`](adr-028-reading-stats-what-to-measure.md)（**被本 ADR 修订**：它的「服务端一个 URL 都不存」边界现在有两个用户主动触发的例外，本 ADR 是第二个；Decision 3 的默认立场——不记录阅读历史——被本 ADR 原样继承并写进条款）、[`adr-010-x-tweet-page-support.md`](adr-010-x-tweet-page-support.md)（Decision 8 的 `page_reports` 是第一个例外，本 ADR Options D 说明为何不与之合表）、[`adr-026-user-reported-definition-issues.md`](adr-026-user-reported-definition-issues.md)（Options D 已就「页面 URL 存不存」做过一次决定，本 ADR 的保存场景需要**不同**的处理，见 Options C）、[`adr-022-enx-ui-reader-persistence-and-retention.md`](adr-022-enx-ui-reader-persistence-and-retention.md)（Reader 存的是用户**自己粘贴**的文本，性质与「替用户存别人的文章」不同，见 Rationale）、[`adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md`](adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md)（外部文章进入产品的另一条路径） |
