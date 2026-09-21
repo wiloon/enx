@@ -480,6 +480,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'submitPageReport':
           return await handleSubmitPageReport(request.pageReport)
 
+        case 'savePage':
+          return await handleSavePage(request.savedPage)
+
         case 'translateSentence':
           return await handleTranslateSentence(request.sentence || '')
 
@@ -1087,6 +1090,17 @@ const handleSubmitPageReport = async (report?: {
       adapter: report.adapter,
       extVersion: chrome.runtime.getManifest().version,
     }),
+  })
+}
+
+// A page the user chose to save (ADR-032). Like the page report it is not
+// fire-and-forget: the popup shows the user whether it was saved, and shows
+// the server's own message when it was not (limit reached, address too long).
+const handleSavePage = async (page?: { url: string; title: string }) => {
+  if (!page?.url) return { success: false, error: 'Missing page' }
+  return await makeApiRequest('/api/saved-pages', {
+    method: 'POST',
+    body: JSON.stringify({ url: page.url, title: page.title }),
   })
 }
 

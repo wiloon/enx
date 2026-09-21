@@ -61,6 +61,7 @@ export interface ContentMessage {
     | 'recordPageWordLookup'
     | 'reportReadingProgress'
     | 'submitPageReport'
+    | 'savePage'
   word?: string
   words?: string
   paragraph?: string
@@ -92,6 +93,10 @@ export interface ContentMessage {
   // they want reported. `url` is already sanitized by the popup; enx-api
   // sanitizes again and does not trust it.
   pageReport?: { url: string; reason: string; adapter: string }
+  // Set on 'savePage' (ADR-032): the page the user chose to save (收藏).
+  // The URL is sent as the browser has it; enx-api normalizes it (drops the
+  // fragment, credentials and tracking parameters) and returns what it stored.
+  savedPage?: { url: string; title: string }
 }
 
 // The L0 half of ADR-028's metric set. The other columns of `daily_stats`
