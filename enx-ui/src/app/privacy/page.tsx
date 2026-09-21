@@ -139,6 +139,11 @@ export default function PrivacyPolicyPage() {
                   'As long as your account exists',
                 ],
                 [
+                  'The address of a page Catglish could not read — only if you press "Send report" in the extension',
+                  'So we can fix support for that page',
+                  '90 days, then deleted automatically (most recent 50 reports)',
+                ],
+                [
                   'Subscription status, credit balance, and a record of each AI call (which feature, how much it cost)',
                   'Billing, and showing you where your credits went',
                   'As long as your account exists, plus any period required for tax and accounting records',
@@ -162,9 +167,10 @@ export default function PrivacyPolicyPage() {
 
       <Section heading="What we deliberately do not store">
         <p>
-          The reading statistics are built from day-level totals only. There is
-          no column anywhere in our database for any of the following, so there
-          is nothing to hand over, leak or subpoena:
+          The reading statistics are built from day-level totals only. Apart
+          from the one exception described below, there is no column anywhere
+          in our database for any of the following, so there is nothing to hand
+          over, leak or subpoena:
         </p>
         <List
           items={[
@@ -176,8 +182,21 @@ export default function PrivacyPolicyPage() {
           ]}
         />
         <p>
-          Which article you were reading is something your own browser knows
-          and our servers never learn.
+          The one exception is a report you send yourself. When Catglish cannot
+          process a page, the extension offers to send us that page&apos;s
+          address. It shows you exactly what would be sent, and sends nothing
+          unless you press &quot;Send report&quot;. The address is cut down to
+          the site and path — no query string, no fragment, no login details —
+          and parts of the path that look like personal identifiers, such as an
+          email address or a long token, are replaced with a placeholder. We
+          keep it, together with the reason the page failed and your account
+          identifier, for 90 days and for no more than your 50 most recent
+          reports. It is used only to fix support for that page — never for
+          statistics or profiling.
+        </p>
+        <p>
+          Apart from a report you send, which article you were reading is
+          something your own browser knows and our servers never learn.
         </p>
       </Section>
 
