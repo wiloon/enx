@@ -10,15 +10,20 @@ ARG NPM_REGISTRY=
 RUN if [ -n "$NPM_REGISTRY" ]; then sed -i "s|^registry=.*|registry=$NPM_REGISTRY|" .npmrc; fi
 RUN npm install -g pnpm@9.15.9
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# Retry the install (the npm proxy is flaky), but fail the layer if every
+# attempt fails: a bare `for` exits with the status of its last command (the
+# `sleep`), which used to let a broken node_modules through to `pnpm build`.
 # The trailing `rm` drops the pnpm store once node_modules is populated:
 # node_modules is hard-linked from it, so the store adds ~42k extra entries
 # (and ~10MB) to this layer, all re-created each time the cached layer is
 # extracted. Nothing after this needs it (`pnpm build` does not touch the store).
-RUN for i in 1 2 3 4 5; do \
+RUN ok=0; \
+    for i in 1 2 3 4 5; do \
       pnpm fetch --frozen-lockfile || true; \
-      pnpm install --frozen-lockfile --prefer-offline && break; \
+      if pnpm install --frozen-lockfile --prefer-offline; then ok=1; break; fi; \
       echo "pnpm install attempt $i failed, retrying in 60s..."; sleep 60; \
     done; \
+    [ "$ok" = 1 ] || { echo "pnpm install failed after 5 attempts" >&2; exit 1; }; \
     rm -rf "$(pnpm store path)"
 COPY . .
 # No deployment-specific build-args: every per-environment value
