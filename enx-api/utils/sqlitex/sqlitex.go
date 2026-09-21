@@ -159,7 +159,7 @@ func Init() {
 	zapLog.Info("running database auto-migration...")
 	err = DB.AutoMigrate(&User{}, &Word{}, &UserDict{}, &Session{}, &SyncState{},
 		&Subscription{}, &CreditAccount{}, &CreditTransaction{}, &DictionaryLookupQuota{},
-		&ReaderDocument{}, &DailyStat{}, &StatsIngestLog{}, &PageReport{})
+		&ReaderDocument{}, &DailyStat{}, &StatsIngestLog{}, &PageReport{}, &SavedPage{})
 	if err != nil {
 		zapLog.Errorf("failed to auto-migrate database: %v", err)
 	} else {
