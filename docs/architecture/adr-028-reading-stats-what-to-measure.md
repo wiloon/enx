@@ -252,7 +252,7 @@ CREATE TABLE daily_stats (
 
 ### 10. 明确不采集的东西
 
-URL、域名、页面标题、正文内容、阅读时刻（精确到秒/小时）、IP、设备指纹。**一个都不存。** `daily_stats` 的每一行都应当能直接给用户看而不引起任何不适——这是本 ADR 的验收标准。
+URL、域名、页面标题、正文内容、阅读时刻（精确到秒/小时）、IP、设备指纹。**一个都不存。**（**例外有且只有两个，都由用户点击触发**：①用户在扩展弹窗里点"Send report"主动上报的"无法处理的页面"，存于独立的 `page_reports` 表，脱敏、限量、90 天过期，见 [ADR-010 Decision 8](adr-010-x-tweet-page-support.md)；②用户主动"保存"的文章，存于独立的 `saved_pages` 表，只存 URL + 标题，直到用户删除，见 [ADR-032](adr-032-saved-pages-and-no-passive-reading-history.md)。二者都不由阅读行为被动产生，都不进 `daily_stats`，也不参与任何统计。默认立场——**不记录阅读历史**——由 ADR-032 Decision 1/2 重申并写进条款。） `daily_stats` 的每一行都应当能直接给用户看而不引起任何不适——这是本 ADR 的验收标准。
 
 ---
 
