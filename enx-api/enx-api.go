@@ -12,6 +12,7 @@ import (
 	"enx-api/enx"
 	"enx-api/handlers"
 	"enx-api/middleware"
+	"enx-api/pagereport"
 	"enx-api/paragraph"
 	"enx-api/reader"
 	"enx-api/repo"
@@ -54,6 +55,7 @@ func main() {
 
 	go runReaderDocumentCleanup()
 	go runStatsIngestLogCleanup()
+	go runPageReportCleanup()
 
 	router := setupRouter()
 
@@ -184,6 +186,29 @@ func runStatsIngestLogCleanup() {
 		}
 		if deleted > 0 {
 			logger.Infof("stats: purged %d expired ingest-log row(s)", deleted)
+		}
+	}
+
+	purge()
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for range ticker.C {
+		purge()
+	}
+}
+
+// runPageReportCleanup periodically hard-deletes page reports past their
+// retention period (ADR-010 Decision 8). Mirrors the other cleanups: once on
+// start so a restart doesn't leave a backlog, then hourly.
+func runPageReportCleanup() {
+	purge := func() {
+		deleted, err := pagereport.PurgeExpired(context.Background(), time.Now())
+		if err != nil {
+			logger.Errorf("pagereport: purge failed: %v", err)
+			return
+		}
+		if deleted > 0 {
+			logger.Infof("pagereport: purged %d expired report(s)", deleted)
 		}
 	}
 
@@ -416,6 +441,11 @@ func setupRouter() *gin.Engine {
 	apiGroup.POST("/stats/ingest", stats.IngestHandler)
 	apiGroup.GET("/stats/overview", stats.OverviewHandler)
 	apiGroup.GET("/stats/series", stats.SeriesHandler)
+
+	// User-confirmed "this page didn't work" reports (ADR-010 Decision 8).
+	// The one endpoint that stores a (sanitized) URL, so the extension only
+	// calls it after the user clicks to confirm. Not on the metered path.
+	apiGroup.POST("/page-reports", pagereport.SubmitHandler)
 
 	// Admin: grant top-up credits to any user by email. Gated by the
 	// ADMIN_CLERK_USER_IDS allowlist inside the handler (on top of clerkAuth).
