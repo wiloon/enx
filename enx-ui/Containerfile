@@ -10,11 +10,16 @@ ARG NPM_REGISTRY=
 RUN if [ -n "$NPM_REGISTRY" ]; then sed -i "s|^registry=.*|registry=$NPM_REGISTRY|" .npmrc; fi
 RUN npm install -g pnpm@9.15.9
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# The trailing `rm` drops the pnpm store once node_modules is populated:
+# node_modules is hard-linked from it, so the store adds ~42k extra entries
+# (and ~10MB) to this layer, all re-created each time the cached layer is
+# extracted. Nothing after this needs it (`pnpm build` does not touch the store).
 RUN for i in 1 2 3 4 5; do \
       pnpm fetch --frozen-lockfile || true; \
       pnpm install --frozen-lockfile --prefer-offline && break; \
       echo "pnpm install attempt $i failed, retrying in 60s..."; sleep 60; \
-    done
+    done; \
+    rm -rf "$(pnpm store path)"
 COPY . .
 # No deployment-specific build-args: every per-environment value
 # (CLERK_PUBLISHABLE_KEY, API_BASE_URL, SITE_URL, ENX_EXTENSION_ID, ...) is read
