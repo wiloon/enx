@@ -9,7 +9,14 @@ name: Deploy to production
 # (nexus.nexus.svc.cluster.local:8086) that nothing outside the cluster can
 # pull from, and ArgoCD's selfHeal only reconciles the homelab cluster. A
 # production release must not depend on the house being online, so it builds
-# on GitHub runners, publishes to GHCR and deploys over SSH.
+# on GitHub runners, publishes to ECR and deploys via SSM Run Command.
+#
+# Both ECR pushes and the SSM deploy trigger authenticate as the same OIDC
+# role (github-actions-enx-deploy, defined in w10n-config:
+# infra/aws/opentofu/ec2-tokyo/ecr.tf) -- no long-lived AWS keys or SSH
+# private key live in GitHub Secrets. Its trust policy only allows tag
+# pushes on this repo (matches the `on.push.tags` trigger below), so a
+# workflow_dispatch run against a branch ref cannot assume it.
 #
 # The API and the UI are released TOGETHER from one tag. They share a Clerk
 # instance, a CORS allowlist and an extension id; letting them drift to
@@ -32,9 +39,12 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  REGISTRY: ghcr.io
-  API_IMAGE: ghcr.io/wiloon/enx-api
-  UI_IMAGE: ghcr.io/wiloon/enx-ui
+  AWS_REGION: ap-northeast-1
+  AWS_ROLE_ARN: arn:aws:iam::881263273270:role/github-actions-enx-deploy
+  PROD_INSTANCE_ID: i-0800115f04acea45b
+  ECR_REGISTRY: 881263273270.dkr.ecr.ap-northeast-1.amazonaws.com
+  API_IMAGE: 881263273270.dkr.ecr.ap-northeast-1.amazonaws.com/enx-api
+  UI_IMAGE: 881263273270.dkr.ecr.ap-northeast-1.amazonaws.com/enx-ui
 
 jobs:
   # ---------------------------------------------------------------------
@@ -71,17 +81,20 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
       - uses: docker/setup-buildx-action@v3
 
-      - uses: docker/login-action@v3
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -115,17 +128,20 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
       - uses: docker/setup-buildx-action@v3
 
-      - uses: docker/login-action@v3
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
 
       # Build once into the local daemon and smoke-test THAT image with runtime
       # env vars only, before anything is pushed: a build-time config leak
@@ -169,8 +185,12 @@ jobs:
   # ---------------------------------------------------------------------
   # Deploy. All the logic lives in /usr/local/bin/enx-deploy.sh on the host
   # (provisioned from w10n-config: infra/aws/ansible/ec2-tokyo/files/), so
-  # rollback is `enx-deploy.sh <older-tag>` from an SSH session and does not
-  # need GitHub to be up.
+  # rollback is `enx-deploy.sh <older-tag>` from an SSM session (or the AWS
+  # console) and does not need GitHub to be up.
+  #
+  # Triggered via SSM Run Command rather than SSH: no SSH private key lives
+  # in GitHub Secrets, and the host does not need port 22 open to GitHub's
+  # runner IP ranges. Auth is the same OIDC role used to push to ECR above.
   # ---------------------------------------------------------------------
   deploy:
     name: Deploy
@@ -186,16 +206,55 @@ jobs:
       needs.build-ui.result != 'cancelled'
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: read
+      id-token: write
     steps:
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_SSH_USER }}
-          key: ${{ secrets.PROD_SSH_KEY }}
-          script_stop: true
-          script: |
-            sudo /usr/local/bin/enx-deploy.sh ${{ needs.version.outputs.tag }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy via SSM Run Command
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.version.outputs.tag }}"
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${{ env.PROD_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "enx deploy $TAG" \
+            --parameters "{\"commands\":[\"sudo /usr/local/bin/enx-deploy.sh $TAG\"]}" \
+            --query "Command.CommandId" --output text)
+          echo "SSM command: $COMMAND_ID"
+
+          # Poll until the command leaves an in-flight state. enx-deploy.sh's
+          # own health-check loop can take up to ~30s per service, so give
+          # this plenty of room before giving up.
+          STATUS="InProgress"
+          for _ in $(seq 1 60); do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "${{ env.PROD_INSTANCE_ID }}" \
+              --query "Status" --output text 2>/dev/null || echo "Pending")
+            echo "status: $STATUS"
+            case "$STATUS" in
+              Success|Failed|Cancelled|TimedOut) break ;;
+            esac
+            sleep 5
+          done
+
+          echo "==> stdout"
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" --instance-id "${{ env.PROD_INSTANCE_ID }}" \
+            --query "StandardOutputContent" --output text || true
+          echo "==> stderr"
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" --instance-id "${{ env.PROD_INSTANCE_ID }}" \
+            --query "StandardErrorContent" --output text || true
+
+          [ "$STATUS" = "Success" ] || { echo "enx-deploy.sh did not succeed (status: $STATUS)" >&2; exit 1; }
 
   # ---------------------------------------------------------------------
   # Smoke test from OUTSIDE the host: proves DNS, TLS and the reverse proxy
