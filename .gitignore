@@ -55,3 +55,4 @@ coverage.html
 
 # Local dev data (e.g. downloaded ECDICT database), not for commit
 enx-api/.local-data/
+.DS_Store
