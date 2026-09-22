@@ -106,6 +106,9 @@ if (typeof globalThis.CSS === 'undefined') {
     update: jest.fn(),
     remove: jest.fn(),
   },
+  scripting: {
+    executeScript: jest.fn(),
+  },
 } as any
 
 if (!global.fetch) {

@@ -10,6 +10,10 @@ export class WordProcessor {
     htmlEntity: /&[a-zA-Z0-9#]+;/g,
   }
 
+  // getArticleNodes()'s largest-text fallback rejects a candidate whose
+  // link-to-text ratio exceeds this (adr-034 Decision 3).
+  static readonly LINK_DENSITY_THRESHOLD = 0.5
+
   // Ancestor tags whose text is never looked up or highlighted (links,
   // form controls, code). Shared by collectTextNodes (highlight + extract
   // path) and expandToWordRange (click path) so their exclusion rules can't
@@ -318,6 +322,21 @@ export class WordProcessor {
   // fallback, every match returned. A `contentSelector` replaces the built-in
   // list and disables the fallback; `focusedNodeResolver` narrows the winning
   // selector's matches.
+  // Fraction of `element`'s text that sits inside <a> tags -- high for nav
+  // bars, related-link lists and comment threads, low for article prose
+  // (adr-034 Decision 3).
+  static linkDensity(element: Element): number {
+    const totalLength = element.textContent?.length || 0
+    if (totalLength === 0) return 0
+
+    let linkLength = 0
+    element.querySelectorAll('a').forEach(a => {
+      linkLength += a.textContent?.length || 0
+    })
+
+    return linkLength / totalLength
+  }
+
   static getArticleNodes(options?: {
     contentSelector?: string
     minTextLength?: number
@@ -365,17 +384,20 @@ export class WordProcessor {
       return []
     }
 
-    // Fallback: find the largest text container on the page
+    // Fallback: find the largest text container on the page, skipping
+    // candidates whose text is mostly inside <a> tags (nav, related-links,
+    // comment threads) -- adr-034 Decision 3. Threshold is a starting point,
+    // tunable against real sites; not meant to be precise on day one.
     const allElements = document.querySelectorAll('div, main, section, article')
     let largestElement: Element | null = null
     let maxTextLength = 0
 
     allElements.forEach(element => {
       const textLength = element.textContent?.length || 0
-      if (textLength > maxTextLength && textLength > 500) {
-        maxTextLength = textLength
-        largestElement = element
-      }
+      if (textLength <= maxTextLength || textLength <= 500) return
+      if (this.linkDensity(element) > this.LINK_DENSITY_THRESHOLD) return
+      maxTextLength = textLength
+      largestElement = element
     })
 
     if (largestElement) {

@@ -13,6 +13,7 @@ const ALL_REASONS: EnableFailureReason[] = [
   'lookup-failed',
   'session-expired',
   'error',
+  'injection-blocked',
 ]
 
 describe('enableOutcome', () => {
