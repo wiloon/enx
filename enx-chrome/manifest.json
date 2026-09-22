@@ -5,12 +5,7 @@
   "version": "1.0.1",
   "description": "Underlines the words worth learning as you read English online, explains any word you click, and translates whole sentences.",
   "permissions": ["storage", "activeTab", "scripting", "notifications", "identity", "sidePanel", "contextMenus", "cookies"],
-  "host_permissions": [
-    "http://*/*",
-    "https://*/*",
-    "https://www.youdao.com/*",
-    "https://claude.com/blog/*"
-  ],
+  "host_permissions": [],
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   },
@@ -25,14 +20,6 @@
     {
       "matches": [
         "https://rssx-lab.wiloon.com/*",
-        "https://www.infoq.com/*",
-        "https://messaging-custom-newsletters.nytimes.com/*",
-        "https://developers.googleblog.com/*",
-        "https://www.microsoft.com/en-us/research/*",
-        "https://www.reuters.com/*",
-        "https://www.anthropic.com/*",
-        "https://anthropic.skilljar.com/*",
-        "https://claude.com/blog/*",
         "https://x.com/*",
         "https://twitter.com/*"
       ],

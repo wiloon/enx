@@ -138,13 +138,21 @@ jobs:
           load: true
           push: false
           tags: enx-ui:smoke
+          # The committed .npmrc default (nexus.wiloon.com) only resolves on
+          # the homelab LAN/wg tunnel -- same reasoning as GOPROXY above for
+          # build-api. Without this the pnpm install hangs on pnpm's own
+          # fetch-retry backoff (up to ~10min per package) instead of failing
+          # fast.
+          build-args: |
+            NPM_REGISTRY=https://registry.npmjs.org/
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Smoke test (runtime config only)
         run: SMOKE_IMAGE=enx-ui:smoke enx-ui/scripts/smoke-runtime.sh
 
-      # Same inputs as above, so this is served from the layer cache.
+      # Same inputs as above (including build-args, so the cache actually
+      # hits), so this is served from the layer cache.
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -153,6 +161,8 @@ jobs:
           push: true
           tags: |
             ${{ env.UI_IMAGE }}:${{ needs.version.outputs.tag }}
+          build-args: |
+            NPM_REGISTRY=https://registry.npmjs.org/
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

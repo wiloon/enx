@@ -18,6 +18,10 @@ export type EnableFailureReason =
   | 'session-expired'
   /** An unexpected exception. */
   | 'error'
+  /** The browser refused to run our script on this page (chrome://, the
+   *  Web Store, etc.) -- adr-034: on-demand injection can't help here, and
+   *  never will, so it isn't a page-structure problem worth reporting. */
+  | 'injection-blocked'
 
 export type EnableOutcome =
   | { ok: true }
@@ -43,6 +47,7 @@ const FAILURE_MESSAGES: Record<EnableFailureReason, string> = {
     "Catglish couldn't load word data for this page. Check your connection and try again.",
   'session-expired': 'Your session has expired. Please sign in again.',
   error: 'Something went wrong while processing this page.',
+  'injection-blocked': "Catglish can't run on this page.",
 }
 
 export const failureMessage = (reason: EnableFailureReason): string =>

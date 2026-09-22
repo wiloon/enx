@@ -6,6 +6,7 @@ import '@/index.css'
 import PageReportPrompt, { PageReportStatus } from '@/components/PageReportPrompt'
 import { config } from '@/config/env'
 import { isReportableFailure, EnableFailureReason } from '@/lib/enableOutcome'
+import { enableLearningModeOnTab } from '@/lib/enableLearningMode'
 import { PageReportPayload, sanitizePageUrl } from '@/lib/pageReport'
 import { initSentry } from '@/lib/sentry'
 import { errorAtom, userAtom } from '@/store/atoms'
@@ -135,9 +136,7 @@ function SignedInBody({
       if (!tab?.id) {
         throw new Error('No active tab found')
       }
-      const response = await chrome.tabs.sendMessage(tab.id, {
-        action: 'enxRun',
-      })
+      const response = await enableLearningModeOnTab(tab.id)
       if (!response?.success) {
         // Only failures that say "this page's layout defeated us" are worth
         // offering; a network error or expired session is not the page's fault.
@@ -150,12 +149,11 @@ function SignedInBody({
       }
       setLearningStatus('completed')
     } catch (e) {
+      // enableLearningModeOnTab already turns "no content script yet" into an
+      // inject-and-retry, so anything still thrown here is a genuine failure
+      // (no active tab, or the injected/retried enxRun call itself rejected).
       const message = e instanceof Error ? e.message : ''
-      setError(
-        message.includes('Receiving end does not exist')
-          ? 'No content script on this tab. Reload the extension at chrome://extensions, then refresh this page.'
-          : message || 'Cannot enable learning mode on this page'
-      )
+      setError(message || 'Cannot enable learning mode on this page')
       setLearningStatus('idle')
     }
   }

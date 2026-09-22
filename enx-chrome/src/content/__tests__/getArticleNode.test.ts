@@ -57,4 +57,34 @@ describe('WordProcessor.getArticleNodes', () => {
     expect(nodes).toHaveLength(1)
     expect(nodes[0].textContent).toContain('Fallback content')
   })
+
+  it('should skip a high-link-density candidate in the largest-text fallback, even when it has more raw text than the real article', () => {
+    // A related-links block whose raw text is longer than the real article
+    // body, but almost all of it lives inside <a> tags (adr-034 Decision 3).
+    const linkText = 'Related story headline that is fairly long. '.repeat(20)
+    // The real article: plain prose, well over the 500-char floor, one
+    // incidental inline link -- low link density.
+    const articleText = 'Real article prose with normal sentences. '.repeat(15)
+
+    document.body.innerHTML = `
+      <div id="related-links">
+        ${linkText
+          .match(/.{1,45}/g)!
+          .map(t => `<a href="/x">${t}</a>`)
+          .join('')}
+      </div>
+      <div id="real-article">
+        <p>${articleText}<a href="/see-also">see also</a></p>
+      </div>
+    `
+
+    expect(
+      document.getElementById('related-links')!.textContent!.length
+    ).toBeGreaterThan(document.getElementById('real-article')!.textContent!.length)
+
+    const nodes = WordProcessor.getArticleNodes()
+
+    expect(nodes).toHaveLength(1)
+    expect(nodes[0].id).toBe('real-article')
+  })
 })
