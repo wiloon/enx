@@ -233,6 +233,9 @@ tasks:
     desc: Build enx-chrome extension to dist/ (connects to enx-api.wiloon.lab)
     dir: enx-chrome
     cmds:
+      # Drop the previous bundle first. A failed pnpm build must not leave a
+      # stale dist/ that Chrome keeps loading.
+      - rm -rf dist
       - task build
 
   dev:chrome:

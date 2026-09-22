@@ -478,6 +478,26 @@ export class WordProcessor {
     return range
   }
 
+  // Builds the string Intl.Segmenter runs sentence-break detection against:
+  // same length and content as `fullText`, except every character inside a
+  // LOOKUP_EXCLUDED_TAGS span (code, pre, ...) is replaced with a neutral
+  // letter. Segment boundaries computed from this string index directly into
+  // `fullText` unchanged, since lengths match; only the punctuation the
+  // segmenter sees is different. Falls back to `fullText` itself if the
+  // walked length ever disagrees with it (shouldn't happen -- textContent is
+  // defined as the concatenation of the same text nodes -- but a mismatch
+  // would silently corrupt every offset downstream, so it's worth guarding).
+  private static buildSegmentationText(container: Element, fullText: string): string {
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+    let masked = ''
+    let node: Node | null
+    while ((node = walker.nextNode())) {
+      const text = (node as Text).data
+      masked += this.isInExcludedSubtree(node, container) ? 'x'.repeat(text.length) : text
+    }
+    return masked.length === fullText.length ? masked : fullText
+  }
+
   // From a Range marking where the user clicked or started a selection,
   // locates the sentence it belongs to. Returns null only when no plausible
   // sentence container can be found at all; once a container is found,
@@ -500,15 +520,24 @@ export class WordProcessor {
     const fullText = container.textContent || ''
     if (fullText.trim().length === 0) return null
 
+    // Inline <code>/<pre> spans (e.g. `<?start>`, `<?end>`) hold literal
+    // syntax whose punctuation ICU's sentence-break rules mistake for real
+    // sentence terminators, fracturing one prose sentence into several at
+    // each false "?"/"." inside the code span. Segmentation runs against a
+    // same-length masked copy with those spans blanked out instead, so
+    // boundaries land only on the surrounding prose; the returned sentence
+    // text always comes from `fullText`, never from the masked copy.
+    const segmentationText = this.buildSegmentationText(container, fullText)
+
     const offset = this.getTextOffsetWithin(container, reference)
 
-    let textToSegment = fullText
+    let textToSegment = segmentationText
     let baseOffset = offset
     let windowStart = 0
-    if (fullText.length > this.MAX_SEGMENT_LENGTH) {
+    if (segmentationText.length > this.MAX_SEGMENT_LENGTH) {
       windowStart = Math.max(0, offset - this.SEGMENT_WINDOW_RADIUS)
-      const end = Math.min(fullText.length, offset + this.SEGMENT_WINDOW_RADIUS)
-      textToSegment = fullText.slice(windowStart, end)
+      const end = Math.min(segmentationText.length, offset + this.SEGMENT_WINDOW_RADIUS)
+      textToSegment = segmentationText.slice(windowStart, end)
       baseOffset = offset - windowStart
     }
 
@@ -524,11 +553,13 @@ export class WordProcessor {
           const segment = segments[i]
           const segmentEnd = segment.index + segment.segment.length
           if (baseOffset >= segment.index && baseOffset < segmentEnd) {
+            const start = windowStart + segment.index
+            const end = windowStart + segmentEnd
             result = {
-              sentence: segment.segment.trim(),
+              sentence: fullText.slice(start, end).trim(),
               sentenceIndex: i,
-              start: windowStart + segment.index,
-              end: windowStart + segmentEnd,
+              start,
+              end,
             }
             break
           }
@@ -540,7 +571,7 @@ export class WordProcessor {
 
     if (!result) {
       result = {
-        sentence: textToSegment.trim(),
+        sentence: fullText.slice(windowStart, windowStart + textToSegment.length).trim(),
         sentenceIndex: 0,
         start: windowStart,
         end: windowStart + textToSegment.length,

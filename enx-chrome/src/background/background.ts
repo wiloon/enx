@@ -328,10 +328,12 @@ export const makeApiRequest = async (
       error instanceof TypeError &&
       error.message.includes('Failed to fetch')
     ) {
+      // Surface the target URL: "internet connection" is usually wrong -- more
+      // often the Lab API host is unreachable or Options points at a dead URL.
+      const apiUrl = await getApiBaseUrl().catch(() => '(unknown)')
       return {
         success: false,
-        error:
-          'Unable to connect to translation service. Please check your internet connection.',
+        error: `Unable to reach translation API at ${apiUrl}. Check Options → Active API, and that the host is reachable.`,
       }
     }
 

@@ -148,6 +148,22 @@ describe('WordProcessor.extractSentenceContext', () => {
     )
   })
 
+  it('does not mis-split on "?" inside an inline <code> span, and does not bleed into the next sentence', () => {
+    document.body.innerHTML = `
+      <p>The parser removes the <code>&lt;?start&gt;</code> and <code>&lt;?end&gt;</code> markers along with any ${wrap(
+        'intermediate'
+      )} nodes between them. Developers may also include processing instructions.</p>
+    `
+    const el = document.querySelector<HTMLElement>('.w')!
+
+    const result = WordProcessor.extractSentenceContext(rangeOverElement(el), 'intermediate')
+
+    expect(result?.sentence).toBe(
+      'The parser removes the <?start> and <?end> markers along with any intermediate nodes between them.'
+    )
+    expect(result?.sentence).not.toContain('Developers')
+  })
+
   it('returns null when no ancestor container qualifies as a sentence container', () => {
     document.body.innerHTML = wrap('orphan')
     const el = document.querySelector<HTMLElement>('.w')!
