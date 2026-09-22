@@ -36,6 +36,8 @@ Default canonical vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `
 
 Single-context layout: one root `CONTEXT.md` (created lazily) plus ADRs in `docs/architecture/`. See `docs/agents/domain.md`.
 
+**TASK-SPEC is optional** — Matt skills do not require `docs/tasks/TASK-SPEC-*.md` before coding; ADR Decision + TDD is enough unless the work needs a long multi-phase checklist. Details in `docs/agents/domain.md` §ADR vs TASK-SPEC.
+
 ---
 
 *For AI guidelines, see [.ai/instructions.md](.ai/instructions.md)*

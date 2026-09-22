@@ -2,9 +2,9 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Proposed — 2026-08-29（同日据评审意见把范围从"主推文 + 评论区"收窄为"仅主推文正文"，影响见 Context 边界 2） |
+| **状态** | Proposed — 2026-08-29（同日据评审意见把范围从"主推文 + 评论区"收窄为"仅主推文正文"，影响见 Context 边界 2）。**2026-09-20** Decision 8 页面上报已落地。**2026-09-21** 补 Decision 11–13（admin 列表 + 邮件通知管理员；`email/` 改用于此）。 |
 | **日期** | 2026-08-29 |
-| **关联 Spec** | 配套 TASK-SPEC 留到编码阶段再写（同 ADR-008 的做法）；本 ADR 只定技术路径与边界 |
+| **关联 Spec** | 无独立 TASK-SPEC；Decision 即实现依据（同 adr-012 Decision 10）。历史 TASK-SPEC 文件若存在只作参考，不是编码门禁。 |
 | **关联 ADR** | [`adr-007-drag-select-sentence-translation.md`](adr-007-drag-select-sentence-translation.md)（划词整句翻译，本决策不改其分级逻辑，只需确认 `mouseup` 在 X 上不被抢）、[`adr-008-phrase-selection-context-translation.md`](adr-008-phrase-selection-context-translation.md)（短语查询依赖"选区内能找到 `.enx-word` 锚点"这个前提，本决策必须保持该前提成立）、[`adr-002-word-popup-react-shadow-dom.md`](adr-002-word-popup-react-shadow-dom.md)（Shadow DOM + Popover 弹窗，在 X 上无需改动，见 Consequences） |
 
 ---
@@ -319,6 +319,14 @@ ADR-007 的划词整句翻译挂在 `document` 的 `mouseup` 冒泡阶段（`con
 
 **不做**：SPA 自动重建（用户在 X 内切到长文页）失败时不弹提示——那条路径没有可以点击确认的界面，而被动上报被上面否决了；它仍只写 `console.warn`。**账号删除**时清理 `page_reports` 目前没有对应流程可挂（仓库里尚无账号删除实现），做账号删除时必须一并处理。
 
+**运维闭环：admin 列表 + 邮件通知管理员（2026-09-21）**
+
+Decision 8 只解决了「用户确认后写入 `page_reports`」。写入后若无人看见，上报等于黑盒。术语上这叫**页面上报（page report）**，与 adr-026 的**释义反馈（definition feedback）**分开，不要笼统叫「反馈」。
+
+11. **Admin 查看页**：`enx-ui` 在 `(app)/admin/` 下增加页面上报列表（复用 adr-021 的 `RequireAdmin` + `NAV_ADMIN`）。配套 `GET /api/admin/page-reports`（及按需的详情）；只读即可，一期不做「已处理」状态机。
+12. **通知管理员，不回执用户**：每次**新写入**成功（`recorded:true`）后，用 Resend 发一封短邮件给管理员（收件人走配置，如 `resend.admin-to` / env）。邮件内容：host、脱敏 URL、reason、adapter、扩展版本、时间。用户侧保持现有 `Thanks — report sent` 文案，**不**发确认信、**不**自动开 GitHub Issue。
+13. **`email/` 包用途收窄（修订 LAUNCH-CHECKLIST §2.5）**：自建注册/验证/重置密码的 handler 与对应邮件模板仍按清单删除（认证走 Clerk）。**保留** Resend 发送能力，改用于本 ADR 的管理员通知（以及日后 adr-026 释义反馈的同类通知）。认证邮件字符串（含历史 `ENX` 文案）随 handler 一并删掉，不再改名。
+
 ---
 
 ## Rationale
@@ -329,6 +337,7 @@ ADR-007 的划词整句翻译挂在 `document` 的 `mouseup` 冒泡阶段（`con
 - **选 F1（维持现状）而不是 F3**：范围收窄到主推文之后，F3 要解决的问题（评论上的点击跳转）在本次范围里不存在了。为一个当前不存在的冲突提前引入第二条点击绑定路径，是把成本花在猜测上；F3 的实现细节已经写在 Options 表里，实测证伪时照着做即可，不会因为"当时没想到"而返工。
 - **选 B'1 而不是 B'2**：范围收窄的代价就是必须回答"哪个是主推文"。`B'2`（取第一个）在最常见的独立推文页上恰好正确，正因如此它的错误只会在对话串页面上出现——这种"平时都对、特定场景静默出错"的兜底不适合当主方案，只适合当判据全失效时的最后一道。
 - **不做语言过滤（H1）**：`extractWords` 的字符类过滤已经天然做到了想要的效果，再加一层 `lang` 判断只会引入误伤。
+- **Admin 列表 + 邮件通知 admin，而非回执用户 / 自动开 Issue（Decision 11–13）**：单人运维下「报了你看不见」是真缺口；给用户自动回执会抬高「会跟进」的预期却兑现不了；GitHub Issue 噪声大、URL 进外部系统隐私更差。Resend 已有骨架，认证死路径删掉后，同一发送通道只服务管理员通知。
 
 ---
 

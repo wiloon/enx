@@ -71,7 +71,9 @@
 - [ ] **2.2** 核对三档订阅链路端到端一致：`config.toml [stripe.price]`（`pro` / `pro-plus` / `max` → lookup_key）、`billing/handler.go` 的 plan 参数校验、`billing/stripe/checkout.go` 按 lookup_key 解析 Price、`enx-ui` `plans.ts`。代码结构已是三档，需一次通读确认没有遗留的「monthly/annual」两档假设。
 - [ ] **2.3**（仅当 §0.3 决定上线支持年付）实现独立于 Stripe 账单周期的月度积分发放：定时任务扫 `status=active` 的订阅，`credit_accounts.period_end` 过期就发下月额度。`invoice.paid` 对年付一年只触发一次，与账本「每月发、不结转」对不上。设计已在 `w10n-config/enx/HANDOFF-stripe-billing-integration.md` §4.4 讨论，未编码。
 - [ ] **2.4** `ManagedPayments` 假设未验证：`billing/stripe/checkout.go` 建 Checkout Session 时没显式设置该字段，赌 Stripe 账号级配置自动生效，从未用真实请求验证。§3 联调时确认。
-- [ ] **2.5** **删除 ADR-015 遗留的自建认证死代码**（2026-09-16 查证）：`enx-api` 里的 `Register` / `Login` / `VerifyEmail` / `ForgotPassword` / `ResetPassword` handler 以及整个 `email/` 包（含 `cmd/send-test-email`），**已经没有注册到任何路由上**——认证全部走 Clerk（`adr-015`）。不是「将来不用」，是现在就不可达。留着的代价：一条能发邮件、能改密码的完整路径躺在代码里，哪天被误注册就是真的漏洞面；也会持续误导读代码的人以为还有自建认证。删之前确认 `e2e_test.go` 里依赖这些 handler 的用例一并处理。
+- [x] **2.5** **清理 ADR-015 遗留的自建认证死代码；保留 Resend 给管理员通知**（2026-09-16 查证；**2026-09-21 修订并落地**，见 [adr-010](../architecture/adr-010-x-tweet-page-support.md) Decision 13）：
+  - **已删除**：`Register` / `Login` / `VerifyEmail` / `ForgotPassword` / `ResetPassword` handler、认证邮件模板、`cmd/send-test-email`、`register_test.go` 与相关 e2e Skip 用例。认证全部走 Clerk（`adr-015`）。
+  - **已保留并改用途**：`email/` 的 Resend 发送能力 → `NotifyAdminPageReport`（页面上报成功写入后通知管理员）。配置：`RESEND_API_KEY`、`RESEND_FROM`、`RESEND_ADMIN_TO`。
 
 ---
 
@@ -202,7 +204,7 @@
   - `enx-api`（面向用户的响应文案）—— **2026-09-16 已完成**（随 `adr-029`）
     - [x] `dictionary/lookup.go:95` — 429 文案。`unlimited` 已去掉，改成「a much higher daily limit」；并区分免费用户（引导升级）与订阅用户（账号异常，引导联系支持）
     - [x] `billing/handler.go:109` — `an active Catglish Pro (or higher) subscription is required...`
-    - ~~`email/email.go` 的邮件标题~~ —— **不在改名范围内。** 用户确认认证全部走 Clerk，不再有自建邮件。查证：`Register` / `VerifyEmail` / `ForgotPassword` / `ResetPassword` 这几个 handler **根本没有注册到任何路由上**，连同 `email/` 包都是 ADR-015 迁移后的**死代码**（不是「将来不用」，是现在就不可达）。→ 见下方新增的清理项 **2.x**，那是删除任务，不是改名任务
+    - ~~`email/email.go` 的邮件标题~~ —— **不在品牌改名范围内。** 认证邮件是死路径；`email/` 按 §2.5 / adr-010 Decision 13 **收窄为管理员通知**，新文案用 Catglish，不改历史 ENX 认证模板（那些随 handler 删除）。
   - `w10n-config`（Stripe，用户在结账页和收据上看得到）
     - [x] `infra/stripe/opentofu/enx/main.tf` — `stripe_product.*.name`（→ `Catglish Pro` / `Pro+` / `Max` / `AI Credits Top-up`）与 `description`（"unlimited dictionary lookups" 已改成「a much higher daily dictionary lookup limit」）。2026-09-16 **已 `tofu apply`（sandbox / `default` workspace）4 changed**，`lookup_key` 与价格 ID 未变。⚠️ **live mode 目录尚未建立**，上线时要在 `live` workspace 重做一遍
     - [ ] 遗留漂移：`stripe_webhook_endpoint.billing_lab` 的 `url` 在 Stripe 上仍是旧域名 `enx-lab.wiloon.com`，而 `variables.tf` 已随域名迁移改成 `enx-api.wiloon.lab`。本次用 `-target` 跳过了它，**下次任何不带 `-target` 的 `tofu apply` 都会把它一起带上**。两个 URL 公网都不可达（开发期靠 stripe-cli 转发），所以改与不改不影响当前链路

@@ -44,6 +44,7 @@ func viperInitInternal() {
 	_ = viper.BindEnv("redis.address", "REDIS_ADDRESS")
 	_ = viper.BindEnv("resend.api-key", "RESEND_API_KEY")
 	_ = viper.BindEnv("resend.from", "RESEND_FROM")
+	_ = viper.BindEnv("resend.admin-to", "RESEND_ADMIN_TO")
 	_ = viper.BindEnv("app.frontend-base-url", "APP_FRONTEND_BASE_URL")
 	_ = viper.BindEnv("clerk.issuer", "CLERK_ISSUER")
 	_ = viper.BindEnv("clerk.authorized-parties", "CLERK_AUTHORIZED_PARTIES")
@@ -53,7 +54,8 @@ func viperInitInternal() {
 	_ = viper.BindEnv("admin.clerk-user-ids", "ADMIN_CLERK_USER_IDS")
 
 	viper.SetDefault("resend.api-key", "")
-	viper.SetDefault("resend.from", "ENX <no-reply@wiloon.com>")
+	viper.SetDefault("resend.from", "Catglish <no-reply@catglish.com>")
+	viper.SetDefault("resend.admin-to", "")
 	viper.SetDefault("app.frontend-base-url", "https://enx.wiloon.lab")
 
 	viper.SetDefault("ecdict.db_path", "")

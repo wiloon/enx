@@ -1,5 +1,6 @@
 import {
   AdminEcdictRow,
+  AdminPageReport,
   AdminWordRow,
   ApiResponse,
   BillingMeData,
@@ -162,6 +163,13 @@ export class ApiService {
       `/api/admin/words/${encodeURIComponent(word)}/sync-from-ecdict`,
       { method: 'POST' }
     )
+  }
+
+  // Page reports (ADR-010 Decision 11): user-confirmed learning-mode failures.
+  async adminListPageReports(): Promise<
+    ApiResponse<{ success: boolean; reports: AdminPageReport[] }>
+  > {
+    return this.makeRequest('/api/admin/page-reports')
   }
 
   async lookupWord(word: string): Promise<ApiResponse<WordData>> {

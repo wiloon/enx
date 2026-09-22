@@ -204,3 +204,53 @@ func PurgeExpired(ctx context.Context, now time.Time) (int64, error) {
 	}
 	return res.RowsAffected, nil
 }
+
+// DefaultListLimit is how many page reports the admin list returns when
+// the caller does not ask for a smaller page (ADR-010 Decision 11).
+const DefaultListLimit = 100
+
+// MaxListLimit caps the admin list query.
+const MaxListLimit = 200
+
+// Report is one page report as shown to an admin.
+type Report struct {
+	ID         string `json:"id"`
+	UserID     string `json:"userId"`
+	URL        string `json:"url"`
+	Host       string `json:"host"`
+	Reason     string `json:"reason"`
+	Adapter    string `json:"adapter"`
+	ExtVersion string `json:"extVersion"`
+	CreatedAt  int64  `json:"createdAt"`
+}
+
+// ListRecent returns the newest page reports first, for the admin queue.
+func ListRecent(ctx context.Context, limit int) ([]Report, error) {
+	if limit <= 0 {
+		limit = DefaultListLimit
+	}
+	if limit > MaxListLimit {
+		limit = MaxListLimit
+	}
+	var rows []sqlitex.PageReport
+	if err := sqlitex.DB.WithContext(ctx).
+		Order("created_at DESC, id DESC").
+		Limit(limit).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]Report, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, Report{
+			ID:         r.ID,
+			UserID:     r.UserID,
+			URL:        r.URL,
+			Host:       r.Host,
+			Reason:     r.Reason,
+			Adapter:    r.Adapter,
+			ExtVersion: r.ExtVersion,
+			CreatedAt:  r.CreatedAt,
+		})
+	}
+	return out, nil
+}

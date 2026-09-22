@@ -3,7 +3,9 @@ package email
 import (
 	"enx-api/utils/logger"
 	"fmt"
+	"html"
 	"net/http"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/spf13/viper"
@@ -47,28 +49,45 @@ func sendEmail(to, subject, htmlBody string) error {
 	return nil
 }
 
-// SendVerificationEmail sends an HTML activation email via the Resend API.
-// The activation link is built as: {frontend-base-url}/verify-email?token={token}
-func SendVerificationEmail(to, username, token string) error {
-	baseURL := viper.GetString("app.frontend-base-url")
-	link := fmt.Sprintf("%s/verify-email?token=%s", baseURL, token)
-	subject := "Activate your ENX account"
-	htmlBody := fmt.Sprintf(
-		"<p>Hi %s,</p><p>Click the link below to activate your ENX account. The link expires in 48 hours.</p><p><a href=%q>Activate my account</a></p><p>If you did not create an account, you can safely ignore this email.</p>",
-		username, link,
-	)
-	return sendEmail(to, subject, htmlBody)
+// PageReportNotify is the fields shown in the admin page-report email
+// (ADR-010 Decision 12). Kept as a plain struct so pagereport does not
+// import this package's HTTP helpers.
+type PageReportNotify struct {
+	URL        string
+	Host       string
+	Reason     string
+	Adapter    string
+	ExtVersion string
+	CreatedAt  time.Time
 }
 
-// SendPasswordResetEmail sends an HTML password reset email via the Resend API.
-// The reset link is built as: {frontend-base-url}/reset-password?token={token}
-func SendPasswordResetEmail(to, username, token string) error {
-	baseURL := viper.GetString("app.frontend-base-url")
-	link := fmt.Sprintf("%s/reset-password?token=%s", baseURL, token)
-	subject := "Reset your ENX password"
+// NotifyAdminPageReport emails the configured admin when a user records a
+// new page report. Best-effort: missing API key or admin-to skips with nil.
+func NotifyAdminPageReport(r PageReportNotify) error {
+	to := viper.GetString("resend.admin-to")
+	if to == "" {
+		logger.Warnf("resend.admin-to is not set, skipping page-report notify")
+		return nil
+	}
+
+	when := r.CreatedAt.UTC().Format(time.RFC3339)
+	subject := fmt.Sprintf("Catglish page report: %s (%s)", r.Host, r.Reason)
 	htmlBody := fmt.Sprintf(
-		"<p>Hi %s,</p><p>Click the link below to reset your ENX password. The link expires in 1 hour.</p><p><a href=%q>Reset my password</a></p><p>If you did not request a password reset, you can safely ignore this email.</p>",
-		username, link,
+		"<p>A user sent a page report.</p>"+
+			"<ul>"+
+			"<li><strong>Host:</strong> %s</li>"+
+			"<li><strong>URL:</strong> %s</li>"+
+			"<li><strong>Reason:</strong> %s</li>"+
+			"<li><strong>Adapter:</strong> %s</li>"+
+			"<li><strong>Extension:</strong> %s</li>"+
+			"<li><strong>Time (UTC):</strong> %s</li>"+
+			"</ul>",
+		html.EscapeString(r.Host),
+		html.EscapeString(r.URL),
+		html.EscapeString(r.Reason),
+		html.EscapeString(r.Adapter),
+		html.EscapeString(r.ExtVersion),
+		html.EscapeString(when),
 	)
 	return sendEmail(to, subject, htmlBody)
 }

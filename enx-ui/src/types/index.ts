@@ -107,6 +107,18 @@ export interface AdminEcdictRow {
   exchange?: string
 }
 
+// GET /api/admin/page-reports (ADR-010 Decision 11): newest page reports first.
+export interface AdminPageReport {
+  id: string
+  userId: string
+  url: string
+  host: string
+  reason: string
+  adapter: string
+  extVersion: string
+  createdAt: number
+}
+
 // Reader "paste text" documents (ADR-022): 20,000-char limit, 7-day TTL, 50
 // documents per user (oldest evicted on write) -- all enforced server-side.
 // Editing a document (ADR-022 Addendum) bumps `updatedAt` and resets the

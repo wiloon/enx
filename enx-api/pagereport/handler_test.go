@@ -57,3 +57,43 @@ func TestSubmitHandlerRejectsBadRequests(t *testing.T) {
 		}
 	}
 }
+
+func TestListHandlerReturnsNewestReports(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	user := "u-" + t.Name()
+	body := `{"url":"https://list-handler.example/page","reason":"no-words","adapter":"generic","extVersion":"2.0.0"}`
+	if w := post(t, user, body); w.Code != http.StatusOK {
+		t.Fatalf("seed submit: %d %s", w.Code, w.Body.String())
+	}
+
+	router := gin.New()
+	router.GET("/api/admin/page-reports", ListHandler)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/page-reports", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list status %d body=%s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Success bool `json:"success"`
+		Reports []struct {
+			URL    string `json:"url"`
+			Host   string `json:"host"`
+			Reason string `json:"reason"`
+			UserID string `json:"userId"`
+		} `json:"reports"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil || !resp.Success {
+		t.Fatalf("resp=%+v err=%v", resp, err)
+	}
+	found := false
+	for _, r := range resp.Reports {
+		if r.UserID == user && r.URL == "https://list-handler.example/page" && r.Reason == "no-words" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("seeded report not in list: %+v", resp.Reports)
+	}
+}

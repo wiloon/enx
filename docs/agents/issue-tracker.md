@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Issues and specs for this repo live as GitHub issues in `wiloon/enx`. Use the `gh` CLI for all operations.
+Issues for this repo live as GitHub issues in `wiloon/enx`. Use the `gh` CLI for all operations. Optional long-form implementation notes may still live under `docs/tasks/TASK-SPEC-*.md`; those are not the issue tracker and are not required before coding (see `docs/agents/domain.md`).
 
 ## Conventions
 

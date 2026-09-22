@@ -76,6 +76,14 @@ _Avoid_: site config、网站配置
 **内容易变程度（contentVolatility）**：
 站点适配器的一个字段，取 `static` / `spa` / `streaming`，描述正文在学习模式开启后会不会被替换，决定单词高亮要挂哪些 observer 来在 DOM 变化后重建。见 adr-011 F 节。
 
+**页面上报（page report）**：
+学习模式因**页面结构**处理失败（取不到正文、取不到词、处理报错等），用户在弹窗里确认后，把**脱敏后的页面地址**交给管理员，用来改进站点适配。表 `page_reports`。见 adr-010 Decision 8。
+_Avoid_: 反馈（笼统）、bug report、issue、释义反馈（那是另一类）
+
+**释义反馈（definition feedback）**：
+用户认为某次查词的**词典释义和/或上下文释义**有问题，主动提交词、原句与释义快照，供管理员排查词典或 AI。表 `word_feedback`。见 adr-026（待实现）。
+_Avoid_: 反馈（笼统）、页面上报、查词反馈（含糊）、word report
+
 ### 界面功能（enx-ui）
 
 **地道表达（idiomatic rephrasing）**：

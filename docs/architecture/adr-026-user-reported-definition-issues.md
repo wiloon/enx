@@ -4,7 +4,7 @@
 | --- | --- |
 | **状态** | Proposed — 2026-09-16。**计划在工具正式上线部署之后再开发**，本 ADR 先把决策记录下来。本次未写任何代码。 |
 | **日期** | 2026-09-16 |
-| **关联 Spec** | 无独立 TASK-SPEC，留到编码阶段再写（同 ADR-008/010/011/017/025 的做法） |
+| **关联 Spec** | 无独立 TASK-SPEC；Decision 即实现依据（同 adr-012 Decision 10）。 |
 | **关联 ADR** | [`adr-021-enx-ui-admin-dictionary-maintenance.md`](adr-021-enx-ui-admin-dictionary-maintenance.md)（**主要依赖**：复用其建立的 `middleware.RequireAdmin` + `(app)/admin/` 子树 + `NAV_ADMIN` 条件导航；本 ADR 继承并强化其「`words` 表只能由人订正」的边界，见 Decision 8；管理页与其 `/admin/dictionary` 互链）、[`adr-024-word-context-dictionary-first-why.md`](adr-024-word-context-dictionary-first-why.md)（本 ADR 记录的「上下文释义 / `why`」快照即其产物；**本 ADR 不改其返回契约**，见 Decision 5 对 provider 的处理）、[`adr-023-sidepanel-unified-history-list-nested-sentence-words.md`](adr-023-sidepanel-unified-history-list-nested-sentence-words.md)（提交入口加在其 `WordCard` 上；原句的取法依赖其「top-level 卡读 `contextSentence`、嵌套卡读所属 `SentenceEntry.sentence`」的结构，见 Decision 2）、[`adr-006-page-word-lookup-in-sidepanel.md`](adr-006-page-word-lookup-in-sidepanel.md)（其镜像进来的卡**没有句子上下文**，决定了表单要按卡的形态降级，见 Decision 2）、[`adr-008-phrase-selection-context-translation.md`](adr-008-phrase-selection-context-translation.md)（短语卡无词典条目，`dictionary_wrong` 分类对其不可用）、[`adr-018-dictionary-lookup-single-metered-seam.md`](adr-018-dictionary-lookup-single-metered-seam.md)（提交/管理端点都**不是查词**，同 ADR-021 显式在计量范围外） |
 | **关联代码** | **待实现。** 预期落点——enx-api：新薄包 `feedback/`（model + handler + 限频），`migrations/009_word_feedback.sql`，`enx-api.go` 注册 `POST /api/word-feedback`（`clerkAuth`）与 `/api/admin/feedback*`（`clerkAuth` + `RequireAdmin`）。enx-chrome：`sidepanel/SidePanel.tsx` 的 `WordCard`（入口图标 + 卡内内联表单）、`services/api.ts`、`types/index.ts`。enx-ui：`src/app/(app)/admin/feedback/page.tsx`、`src/components/app/app-nav.ts`、`src/services/api.ts`。另需新增隐私政策 / 服务条款静态页（见「关联清单」）。 |
 | **关联清单** | **硬前置**：`docs/tasks/LAUNCH-CHECKLIST.md` 的 **6.2「隐私政策页 + 服务条款页」必须先落地**——本功能是 ENX 第一次持久化「用户正在阅读的内容」，性质与存生词完全不同（见 Decision 7）。无新增外部服务 / 密钥。新增两个 viper 配置项：每日提交上限、自由文本长度上限。 |
@@ -190,10 +190,10 @@
    - 管理员认可某条 case 后，走的仍是 ADR-021 既有的写操作（ECDICT sync，或未来的通用编辑端点），是一次**独立的、显式的**管理员动作。
    - 因此本期**不给** `word_feedback` 加「建议的正确释义」这类可直接 apply 的字段——那会诱导出一键回写。
 
-9. **明确不做用户侧闭环**：不通知、不回复、用户也查不到自己提过的 case 列表（I2）。
+9. **用户侧不做闭环；管理员侧与页面上报对齐通知**：不回执用户、不回复、用户也查不到自己提过的 case 列表（I2）。**管理员**在新写入成功时收到邮件通知——与 [adr-010](adr-010-x-tweet-page-support.md) Decision 12–13 同一套 Resend / `email/` 通道（认证邮件已废弃），本 ADR 实现时复用，不另建发送栈。术语用**释义反馈（definition feedback）**，勿与**页面上报（page report）**混称。
 
 10. **实施顺序**（功能整体排在**工具正式上线部署之后**）
-    1. enx-api：表 + `POST /api/word-feedback` + 限频去重 + 测试（纯后端，可单测，无用户可见变化）；
+    1. enx-api：表 + `POST /api/word-feedback` + 限频去重 + 管理员通知 + 测试（纯后端，可单测，无用户可见变化）；
     2. 隐私政策 / 服务条款页（LAUNCH-CHECKLIST 6.2）——**必须在第 3 步之前**；
     3. enx-chrome：入口 + 内联表单 + 同意清单；
     4. enx-ui：`/admin/feedback` 队列页 + 三个 admin 端点。

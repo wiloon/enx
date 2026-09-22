@@ -32,8 +32,10 @@ db_path = ""
 sampling = false
 
 [resend]
-# api-key must be set via RESEND_API_KEY env var, never in this file
-from = "ENX <no-reply@wiloon.com>"
+# api-key must be set via RESEND_API_KEY env var, never in this file.
+# admin-to (RESEND_ADMIN_TO): where new page reports are emailed (ADR-010 Decision 12).
+# Empty = skip notify (same "unconfigured but not fatal" pattern as api-key).
+from = "Catglish <no-reply@catglish.com>"
 
 [app]
 frontend-base-url = "https://enx.wiloon.lab"

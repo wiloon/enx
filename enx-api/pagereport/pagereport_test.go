@@ -170,3 +170,44 @@ func TestPurgeExpiredRemovesOnlyOldRows(t *testing.T) {
 		t.Fatalf("remaining rows: %+v", rows)
 	}
 }
+
+func TestListRecentNewestFirstAndRespectsLimit(t *testing.T) {
+	ctx := context.Background()
+	user := "u-" + t.Name()
+	now := time.Now()
+
+	for i := 0; i < 5; i++ {
+		url := fmt.Sprintf("https://example.com/list-%s-%d", t.Name(), i)
+		if _, err := Submit(ctx, user, input(url), now.Add(time.Duration(i)*time.Second)); err != nil {
+			t.Fatalf("Submit %d: %v", i, err)
+		}
+	}
+
+	all, err := ListRecent(ctx, 100)
+	if err != nil {
+		t.Fatalf("ListRecent: %v", err)
+	}
+	var ours []Report
+	for _, r := range all {
+		if r.UserID == user {
+			ours = append(ours, r)
+		}
+	}
+	if len(ours) != 5 {
+		t.Fatalf("ours: got %d want 5", len(ours))
+	}
+	if ours[0].URL != "https://example.com/list-"+t.Name()+"-4" {
+		t.Fatalf("newest first: got %q", ours[0].URL)
+	}
+	if ours[0].Host != "example.com" || ours[0].Reason != "no-article-node" {
+		t.Fatalf("unexpected fields: %+v", ours[0])
+	}
+
+	limited, err := ListRecent(ctx, 2)
+	if err != nil {
+		t.Fatalf("ListRecent limit: %v", err)
+	}
+	if len(limited) > 2 {
+		t.Fatalf("limit: got %d want <= 2", len(limited))
+	}
+}

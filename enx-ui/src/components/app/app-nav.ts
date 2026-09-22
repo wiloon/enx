@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   BarChart3,
   BookOpen,
   CreditCard,
@@ -47,6 +48,7 @@ export const NAV_FOOTER: NavItem[] = [
 // (app)/admin/layout.tsx on the client and RequireAdmin on the server.
 export const NAV_ADMIN: NavItem[] = [
   { label: 'Dictionary', href: '/admin/dictionary', icon: Wrench },
+  { label: 'Page reports', href: '/admin/page-reports', icon: AlertTriangle },
 ]
 
 export const ALL_NAV: NavItem[] = [
