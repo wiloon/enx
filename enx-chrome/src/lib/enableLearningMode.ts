@@ -50,5 +50,32 @@ export async function enableLearningModeOnTab(
     }
   }
 
-  return await chrome.tabs.sendMessage(tabId, { action: 'enxRun' })
+  return await sendEnxRunWithRetry(tabId)
+}
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+// The injected file is CRXJS's loader IIFE (dist/assets/*-loader-*.js): it
+// kicks off an async import() of the real content-script bundle and its
+// top-level code returns before that import finishes, so
+// chrome.scripting.executeScript() resolving does NOT mean the real
+// addListener call has run yet. A single immediate retry can still lose
+// that race and throw the raw "Receiving end does not exist" straight at
+// the user -- back off and retry a few times before giving up.
+async function sendEnxRunWithRetry(tabId: number): Promise<EnxRunResponse> {
+  const retryDelaysMs = [100, 250, 500, 1000]
+  for (const delay of retryDelaysMs) {
+    await sleep(delay)
+    try {
+      return await chrome.tabs.sendMessage(tabId, { action: 'enxRun' })
+    } catch (err) {
+      if (!isNoReceiverError(err)) throw err
+    }
+  }
+  // Injection itself succeeded but the script never came up listening --
+  // something past our control (slow network on the second chunk, an
+  // uncaught error before addListener runs). The raw browser message isn't
+  // useful to a user, so this becomes the generic failure reason rather
+  // than propagating "Receiving end does not exist" verbatim.
+  return { success: false, reason: 'error', error: failureMessage('error') }
 }
