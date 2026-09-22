@@ -51,5 +51,22 @@ export function buildManifest(base: Manifest, target: Target): Manifest {
     content_scripts: contentScripts,
     // ADR-019: exactly the enx-ui origins, never more.
     externally_connectable: { matches: uiPatterns },
+    // adr-034: content_scripts[0].matches only lists the sites that need
+    // persistent auto-injection now (X/RSSX/enx-ui). CRXJS's content-script
+    // loader dynamically imports the real bundle, and CRXJS scopes that
+    // dynamic import's web_accessible_resources entry to
+    // content_scripts[0].matches too (verified by inspecting the built
+    // manifest -- @crxjs/vite-plugin's documented `defineDynamicResource`
+    // escape hatch does NOT override this, the loader's own resource entry
+    // still wins). So a page injected on demand (any other site, via
+    // chrome.scripting.executeScript) has its import() blocked with
+    // "Resources must be listed in the web_accessible_resources manifest
+    // key". This second, wildcard entry keeps every built JS asset
+    // loadable from any page regardless of that scoping -- Chrome allows a
+    // resource to be covered by more than one web_accessible_resources
+    // entry.
+    web_accessible_resources: [
+      { resources: ['assets/*'], matches: ['http://*/*', 'https://*/*'] },
+    ],
   }
 }
