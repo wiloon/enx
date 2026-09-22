@@ -60,6 +60,23 @@ describe('manifest stamping (ADR-019)', () => {
     )
   })
 
+  // adr-034: on-demand injection (chrome.scripting.executeScript) can target
+  // any page, but CRXJS scopes the content-script loader's dynamically
+  // imported chunk to content_scripts[0].matches by default -- which is now
+  // only X/RSSX/enx-ui. Without a broader web_accessible_resources entry,
+  // injecting on any other site fails with "Resources must be listed in the
+  // web_accessible_resources manifest key" (reproduced on a live InfoQ page).
+  it('keeps built JS assets web-accessible from any page, not just the declarative whitelist', () => {
+    const manifest = buildManifest(base, TARGETS.production)
+    const broadEntry = manifest.web_accessible_resources.find(
+      (entry: { matches: string[] }) =>
+        entry.matches.includes('http://*/*') &&
+        entry.matches.includes('https://*/*')
+    )
+    expect(broadEntry).toBeDefined()
+    expect(broadEntry.resources).toContain('assets/*')
+  })
+
   it('leaves the static manifest free of deployment-specific origins', () => {
     const serialized = JSON.stringify(base)
     expect(serialized).not.toContain('enx.wiloon.lab')
