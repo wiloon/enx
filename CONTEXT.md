@@ -76,6 +76,14 @@ _Avoid_: site config、网站配置
 **内容易变程度（contentVolatility）**：
 站点适配器的一个字段，取 `static` / `spa` / `streaming`，描述正文在学习模式开启后会不会被替换，决定单词高亮要挂哪些 observer 来在 DOM 变化后重建。见 adr-011 F 节。
 
+**安装态（extension presence）**：
+就当前这个页面而言，这个浏览器是否装了 Catglish，以及 Catglish 是否已登录。页面只展示它。点击查词仍只发生在学习模式里。见 adr-033。
+_Avoid_: enx:ping（那是 enx-ui Reader 的消息通道，见 adr-019）
+
+**RSSX 阅读区（RSSX reading pane）**：
+RSSX Reader 右侧当前打开的那一篇 Article。在 RSSX 上，学习模式的作用范围是这一篇的正文，不是订阅列表，也不是文章列表。见 adr-033。
+_Avoid_: RSSX 首页、整页
+
 **页面上报（page report）**：
 学习模式因**页面结构**处理失败（取不到正文、取不到词、处理报错等），用户在弹窗里确认后，把**脱敏后的页面地址**交给管理员，用来改进站点适配。表 `page_reports`。见 adr-010 Decision 8。
 _Avoid_: 反馈（笼统）、bug report、issue、释义反馈（那是另一类）
