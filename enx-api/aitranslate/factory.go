@@ -9,12 +9,14 @@ import (
 	"enx-api/aitranslate/gemini"
 	"enx-api/aitranslate/kimi"
 	"enx-api/aitranslate/minimax"
+	"enx-api/aitranslate/openrouter"
 
 	"github.com/spf13/viper"
 )
 
 // New builds the Translator selected by sentence-translate.provider in
-// config.toml ("kimi", "bedrock", "minimax", "deepseek", or "gemini").
+// config.toml ("kimi", "bedrock", "minimax", "deepseek", "gemini", or
+// "openrouter").
 //
 // If the provider is unset entirely, sentence translation is treated as an
 // optional, unconfigured feature (like ECDICT when ecdict.db_path is empty)
@@ -35,9 +37,11 @@ func New(ctx context.Context) (Translator, error) {
 		return deepseek.New()
 	case "gemini":
 		return gemini.New()
+	case "openrouter":
+		return openrouter.New()
 	case "":
 		return nil, fmt.Errorf("aitranslate: sentence-translate.provider is not configured")
 	default:
-		return nil, fmt.Errorf("aitranslate: unknown sentence-translate.provider %q (must be \"kimi\", \"bedrock\", \"minimax\", \"deepseek\", or \"gemini\")", provider)
+		return nil, fmt.Errorf("aitranslate: unknown sentence-translate.provider %q (must be \"kimi\", \"bedrock\", \"minimax\", \"deepseek\", \"gemini\", or \"openrouter\")", provider)
 	}
 }

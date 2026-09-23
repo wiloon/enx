@@ -103,6 +103,10 @@ func viperInitInternal() {
 	_ = viper.BindEnv("sentence-translate.gemini.base-url", "SENTENCE_TRANSLATE_GEMINI_BASE_URL")
 	_ = viper.BindEnv("sentence-translate.gemini.model", "SENTENCE_TRANSLATE_GEMINI_MODEL")
 	_ = viper.BindEnv("sentence-translate.gemini.rephrase-model", "SENTENCE_TRANSLATE_GEMINI_REPHRASE_MODEL")
+	_ = viper.BindEnv("sentence-translate.openrouter.api-key", "OPENROUTER_API_KEY")
+	_ = viper.BindEnv("sentence-translate.openrouter.base-url", "SENTENCE_TRANSLATE_OPENROUTER_BASE_URL")
+	_ = viper.BindEnv("sentence-translate.openrouter.model", "SENTENCE_TRANSLATE_OPENROUTER_MODEL")
+	_ = viper.BindEnv("sentence-translate.openrouter.rephrase-model", "SENTENCE_TRANSLATE_OPENROUTER_REPHRASE_MODEL")
 
 	// Stripe billing (see docs/tasks/TASK-SPEC-enx-billing-stripe-subscription.md).
 	// publishable-key and price lookup_keys are non-secret and live in

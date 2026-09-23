@@ -63,3 +63,10 @@ func TestNewGeminiMissingAPIKey(t *testing.T) {
 		t.Fatal("expected error when GEMINI_API_KEY is not set")
 	}
 }
+
+func TestNewOpenRouterMissingAPIKey(t *testing.T) {
+	withProvider(t, "openrouter")
+	if _, err := New(context.Background()); err == nil {
+		t.Fatal("expected error when OPENROUTER_API_KEY is not set")
+	}
+}
