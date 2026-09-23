@@ -1,7 +1,7 @@
 // ENX Background Script - Handles API communication and message routing
 // Note: Sentry initialization is skipped in service worker context to avoid import issues
 
-import { createClerkClient } from '@clerk/chrome-extension/background'
+import { createClerkClient } from '@clerk/chrome-extension/client'
 import { config, getApiBaseUrl } from '@/config/env'
 import {
   LATEST_PAGE_WORD_STORAGE_KEY,
@@ -46,6 +46,7 @@ const getClerk = (): Promise<ClerkClient> => {
     clerkClientPromise = createClerkClient({
       publishableKey: config.clerkPublishableKey,
       syncHost: config.clerkSyncHost,
+      background: true,
     })
   }
   return clerkClientPromise

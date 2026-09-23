@@ -42,11 +42,11 @@ function setClerkSession(token: string | null) {
   }
 }
 
-jest.mock('@clerk/chrome-extension/background', () => ({
+jest.mock('@clerk/chrome-extension/client', () => ({
   createClerkClient: jest.fn(),
 }))
 
-import { createClerkClient } from '@clerk/chrome-extension/background'
+import { createClerkClient } from '@clerk/chrome-extension/client'
 import { makeApiRequest, __resetClerkClientCacheForTests } from '../background'
 
 // Captured at import time, before any test's resetAllMocks() wipes the

@@ -6,7 +6,6 @@ package aicfg
 
 import (
 	"time"
-
 	"github.com/spf13/viper"
 )
 
