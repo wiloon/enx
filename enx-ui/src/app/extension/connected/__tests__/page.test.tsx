@@ -33,6 +33,41 @@ it('renders without an extension present (a plain web visitor)', () => {
   expect(() => render(<ExtensionConnectedPage />)).not.toThrow()
 })
 
+it('retries notifying the extension until it confirms the hand-off', async () => {
+  jest.useFakeTimers()
+  try {
+    const sendMessage = jest
+      .fn()
+      .mockImplementationOnce((_id, _msg, callback) =>
+        callback({ ok: false, reason: 'signed-out' })
+      )
+      .mockImplementationOnce((_id, _msg, callback) =>
+        callback({ ok: true, returned: true })
+      )
+    ;(global as unknown as { chrome?: unknown }).chrome = {
+      runtime: { sendMessage },
+    }
+
+    render(<ExtensionConnectedPage />)
+    expect(sendMessage).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(2500)
+    })
+    expect(sendMessage).toHaveBeenCalledTimes(2)
+
+    // A third retry would only fire if the second attempt's "signed-out"
+    // retry path were still armed -- it shouldn't be, since that attempt
+    // resolved returned: true.
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(2500)
+    })
+    expect(sendMessage).toHaveBeenCalledTimes(2)
+  } finally {
+    jest.useRealTimers()
+  }
+})
+
 it('counts the return delay down and then drops the seconds', () => {
   jest.useFakeTimers()
   try {

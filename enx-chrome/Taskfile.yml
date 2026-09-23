@@ -49,7 +49,7 @@ tasks:
     desc: Watch mode for local development (recommended for Chrome extensions)
     cmds:
       - echo "Starting watch mode for local development..."
-      - echo "Changes will auto-rebuild to dist/"
+      - echo "Changes will auto-rebuild to dist-homelab/"
       - echo "Extension will auto-reload in Chromium when files change"
       - echo ""
       - task: ensure-node
@@ -67,7 +67,7 @@ tasks:
       - echo "  3. Launching Chromium with extension..."
       - echo ""
       - echo "📝 After code changes:"
-      - echo "   - Watch mode will auto-rebuild to dist/"
+      - echo "   - Watch mode will auto-rebuild to dist-homelab/"
       - echo "   - Manually reload extension in chrome://extensions/"
       - echo "   - Or use Extensions Reloader extension for auto-reload"
       - echo ""
@@ -103,7 +103,7 @@ tasks:
       - echo "  1. Chrome will open to chrome{{":"}}//extensions/"
       - echo "  2. Enable 'Developer mode' (top-right toggle)"
       - echo "  3. Click 'Load unpacked'"
-      - echo "  4. Select{{":"}} $(pwd)/dist"
+      - echo "  4. Select{{":"}} $(pwd)/dist-homelab"
       - echo ""
       - echo "After first setup, the extension will be remembered and auto-reload with 'task watch'"
       - echo ""
@@ -130,7 +130,7 @@ tasks:
       - task: ensure-node
       - echo "Building {{.EXT_NAME}} v{{.VERSION}} (homelab)..."
       - '{{.FNM_EXEC}} pnpm run build'
-      - echo "Build completed! Output in dist/"
+      - echo "Build completed! Output in dist-homelab/"
 
   build-prod:
     desc: Build extension for production (API -> enx-api.wiloon.com)
@@ -140,7 +140,7 @@ tasks:
       # --mode production loads .env.production (VITE_ENV=production), which also
       # keeps the lab/localhost origins out of the generated manifest.
       - '{{.FNM_EXEC}} pnpm run build:prod'
-      - echo "Build completed! Output in dist/"
+      - echo "Build completed! Output in dist-production/"
 
   build-dev:
     desc: Build extension for local development (API -> http://localhost:8090)
@@ -151,7 +151,7 @@ tasks:
       # --mode development loads .env.development (VITE_ENV=development). Without
       # it `vite build` runs in homelab mode -> enx-api.wiloon.lab.
       - '{{.FNM_EXEC}} pnpm run build:dev'
-      - echo "Build completed! Load dist/ in chrome{{":"}}//extensions/"
+      - echo "Build completed! Load dist-development/ in chrome{{":"}}//extensions/"
 
 
   build-watch:
@@ -262,15 +262,15 @@ tasks:
     desc: Clean build artifacts and dependencies
     cmds:
       - echo "Cleaning build artifacts..."
-      - rm -rf dist
+      - rm -rf dist dist-homelab dist-production dist-development dist-webstore
       - rm -rf node_modules
       - echo "Clean completed!"
 
   clean-dist:
-    desc: Clean only build output
+    desc: Clean only build output (all per-target dist-* directories)
     cmds:
-      - echo "Cleaning dist directory..."
-      - rm -rf dist
+      - echo "Cleaning dist directories..."
+      - rm -rf dist dist-homelab dist-production dist-development dist-webstore
       - echo "Dist cleaned!"
 
   check:
@@ -287,7 +287,7 @@ tasks:
       - build
     cmds:
       - echo "Creating extension package..."
-      - cd dist && zip -r ../{{.EXT_NAME}}-v{{.VERSION}}.zip .
+      - cd dist-homelab && zip -r ../{{.EXT_NAME}}-v{{.VERSION}}.zip .
       - echo "Package created {{.EXT_NAME}}-v{{.VERSION}}.zip"
 
   package-webstore:
@@ -333,7 +333,7 @@ tasks:
       - task build
       - echo ""
       - echo "Setup complete! Extension is ready."
-      - echo "Load the 'dist' directory in Chrome as an unpacked extension."
+      - echo "Load the 'dist-homelab' directory in Chrome as an unpacked extension."
 
   reload:
     desc: Rebuild and remind to reload extension

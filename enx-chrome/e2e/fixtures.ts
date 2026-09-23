@@ -19,7 +19,7 @@ type ExtensionFixtures = {
 export const test = base.extend<ExtensionFixtures>({
   // eslint-disable-next-line no-empty-pattern
   context: async ({}, use) => {
-    const pathToExtension = path.join(__dirname, '../dist')
+    const pathToExtension = path.join(__dirname, '../dist-homelab')
 
     // ENX_PROXY (e.g. http://127.0.0.1:7890) routes ALL of Chrome's traffic,
     // including the chrome.identity.launchWebAuthFlow auth window, through the

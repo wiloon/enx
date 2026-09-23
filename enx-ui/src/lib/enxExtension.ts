@@ -77,18 +77,47 @@ export function requestReaderMode(): void {
   }
 }
 
+export type SignedInReturnResult = {
+  ok: boolean
+  reason?: string
+  returned?: boolean
+}
+
 // ADR-020: the /extension/connected page tells the extension a web sign-in
 // just completed, so the extension can close this tab and switch the user
-// back to the tab they came from. Fire-and-forget; a no-op when the
-// extension is absent (a plain web visitor lands here harmlessly).
-export function notifySignedIn(): void {
+// back to the tab they came from. Resolves the extension's response, or null
+// when there is no messaging bridge, the extension doesn't answer, or the
+// call times out -- a no-op case the caller can retry (a cold MV3 service
+// worker can take a few seconds to wake up and resync the Clerk session, see
+// background.ts's SESSION_SYNC_RETRY_DELAYS_MS) or ignore (a plain web
+// visitor lands here harmlessly).
+export function notifySignedIn(
+  timeoutMs = 4000
+): Promise<SignedInReturnResult | null> {
   const rt = runtime()
   const id = extensionId()
   const send = rt?.sendMessage
-  if (!id || !send) return
-  try {
-    send(id, { type: 'enx:signed-in' }, () => void rt?.lastError)
-  } catch {
-    // no-op
-  }
+  if (!id || !send) return Promise.resolve(null)
+
+  return new Promise<SignedInReturnResult | null>(resolve => {
+    let settled = false
+    const done = (result: SignedInReturnResult | null) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(result)
+    }
+    const timer = setTimeout(() => done(null), timeoutMs)
+
+    try {
+      send(id, { type: 'enx:signed-in' }, response => {
+        if (rt?.lastError || !response || typeof response !== 'object') {
+          return done(null)
+        }
+        done(response as SignedInReturnResult)
+      })
+    } catch {
+      done(null)
+    }
+  })
 }

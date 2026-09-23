@@ -59,6 +59,10 @@ export default defineConfig(({ mode }) => {
     },
   },
   build: {
+    // Separate output dir per target so a homelab build and a production build
+    // can sit on disk at the same time -- each gets loaded unpacked into its
+    // own Chrome profile instead of one overwriting the other.
+    outDir: `dist-${targetName}`,
     // The large chunks are vendor code that's already appropriately code-split
     // and mostly lazy-loaded (Clerk's clerk-js + its per-feature chunks, incl.
     // the never-used Web3 wallet buttons behind a dynamic import; Sentry). The

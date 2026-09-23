@@ -28,26 +28,49 @@ describe('notifySignedIn (ADR-020)', () => {
     )
   })
 
-  it('is a no-op when there is no extension messaging bridge', () => {
-    expect(() => notifySignedIn()).not.toThrow()
+  it('resolves with the extension response', async () => {
+    const sendMessage = jest.fn((_id, _msg, callback) =>
+      callback({ ok: true, returned: true })
+    )
+    installChrome(sendMessage)
+
+    await expect(notifySignedIn()).resolves.toEqual({ ok: true, returned: true })
   })
 
-  it('is a no-op when the extension id is not configured', () => {
+  it('resolves null when there is no extension messaging bridge', async () => {
+    await expect(notifySignedIn()).resolves.toBeNull()
+  })
+
+  it('resolves null when the extension id is not configured', async () => {
     setRuntimeEnv({ ENX_EXTENSION_ID: '' })
     const sendMessage = jest.fn()
     installChrome(sendMessage)
 
-    notifySignedIn()
-
+    await expect(notifySignedIn()).resolves.toBeNull()
     expect(sendMessage).not.toHaveBeenCalled()
   })
 
-  it('swallows a throwing sendMessage', () => {
+  it('resolves null when sendMessage throws', async () => {
     const sendMessage = jest.fn(() => {
       throw new Error('extension context invalidated')
     })
     installChrome(sendMessage)
 
-    expect(() => notifySignedIn()).not.toThrow()
+    await expect(notifySignedIn()).resolves.toBeNull()
+  })
+
+  it('resolves null when the callback never fires (timeout)', async () => {
+    jest.useFakeTimers()
+    try {
+      const sendMessage = jest.fn()
+      installChrome(sendMessage)
+
+      const result = notifySignedIn(1000)
+      jest.advanceTimersByTime(1000)
+
+      await expect(result).resolves.toBeNull()
+    } finally {
+      jest.useRealTimers()
+    }
   })
 })

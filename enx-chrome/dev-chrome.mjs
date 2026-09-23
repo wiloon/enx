@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-const pathToExtension = path.join(__dirname, 'dist')
+const pathToExtension = path.join(__dirname, 'dist-homelab')
 const url = process.argv[2] || 'https://www.infoq.com/'
 const userDataDir = path.join(__dirname, '.chrome-dev-profile')
 const tmpExtensionDir = '/tmp/enx-chrome-ext'

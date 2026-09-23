@@ -127,6 +127,7 @@ export default [
   {
     ignores: [
       'dist/**',
+      'dist-*/**',
       'build/**',
       'node_modules/**',
       'coverage/**',

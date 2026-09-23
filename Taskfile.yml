@@ -230,13 +230,19 @@ tasks:
       - task dev MODE={{.MODE}}
 
   chrome:build:
-    desc: Build enx-chrome extension to dist/ (connects to enx-api.wiloon.lab)
+    desc: Build enx-chrome extension to dist-homelab/ (connects to enx-api.wiloon.lab)
     dir: enx-chrome
     cmds:
       # Drop the previous bundle first. A failed pnpm build must not leave a
-      # stale dist/ that Chrome keeps loading.
-      - rm -rf dist
+      # stale dist-homelab/ that Chrome keeps loading.
+      - rm -rf dist-homelab
       - task build
+
+  chrome:build:prod:
+    desc: Build enx-chrome extension to dist-production/ (connects to api.catglish.com)
+    dir: enx-chrome
+    cmds:
+      - task build-prod
 
   dev:chrome:
     desc: Start Chrome browser with extension (auto-reload)

@@ -2,7 +2,7 @@
 
 # Test script to verify Chrome extension loading
 
-EXT_DIR="/home/wiloon/workspace/enx/enx-chrome/dist"
+EXT_DIR="$(cd "$(dirname "$0")" && pwd)/dist-homelab"
 URL="${1:-https://www.infoq.com/}"
 
 echo "Extension directory: $EXT_DIR"

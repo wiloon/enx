@@ -12,7 +12,7 @@ The `task dev-chrome` command starts a Chrome instance with the ENX extension pr
 
 ### The Solution
 - **Dedicated Chrome instance**: `task dev-chrome` starts a **new Chrome process** with its own user data directory
-- **Extension auto-reload**: This Chrome instance automatically reloads the extension when files in `dist/` change
+- **Extension auto-reload**: This Chrome instance automatically reloads the extension when files in `dist-homelab/` change
 - **Similar to E2E testing**: Uses the same technique as Playwright E2E tests - launching Chrome with `--load-extension` flag
 
 ## Usage
@@ -50,8 +50,8 @@ Default URL: `https://www.infoq.com/`
 The `task dev-chrome` command runs:
 ```bash
 google-chrome \
-  --load-extension=$(pwd)/dist \           # Load ENX extension from dist/
-  --disable-extensions-except=$(pwd)/dist \ # Disable other extensions
+  --load-extension=$(pwd)/dist-homelab \           # Load ENX extension from dist-homelab/
+  --disable-extensions-except=$(pwd)/dist-homelab \ # Disable other extensions
   --user-data-dir=/tmp/chrome-dev-enx \    # Separate Chrome profile
   "https://www.infoq.com/"                  # Open this URL
 ```
@@ -63,8 +63,8 @@ google-chrome \
 
 ### Why Auto-Reload Works
 
-1. **`task watch`**: Vite rebuilds to `dist/` when source files change
-2. **Chrome watches `dist/`**: The Chrome instance monitors the extension directory
+1. **`task watch`**: Vite rebuilds to `dist-homelab/` when source files change
+2. **Chrome watches `dist-homelab/`**: The Chrome instance monitors the extension directory
 3. **Auto-reload**: Chrome detects changes and automatically reloads the extension
 4. **No manual action**: No need to click reload in `chrome://extensions/`!
 
@@ -167,13 +167,13 @@ google-chrome-stable
 ### Extension not loading
 
 1. **Build first**: Run `pnpm build` before `task dev-chrome`
-2. **Check dist/**: Verify `dist/manifest.json` exists
+2. **Check dist-homelab/**: Verify `dist-homelab/manifest.json` exists
 3. **Rebuild**: Run `task build` to rebuild extension
 
 ### Extension not auto-reloading
 
 1. **Verify watch mode running**: Check terminal 2 for rebuild messages
-2. **Check dist/ changes**: Run `ls -la dist/` to see timestamp changes
+2. **Check dist-homelab/ changes**: Run `ls -la dist-homelab/` to see timestamp changes
 3. **Restart Chrome**: Kill Chrome and run `task dev-chrome` again
 
 ### Chrome already running error
@@ -202,7 +202,7 @@ use: {
 
 **Dev Chrome** (`task dev-chrome`):
 ```bash
-google-chrome --load-extension=$(pwd)/dist ...
+google-chrome --load-extension=$(pwd)/dist-homelab ...
 ```
 
 Both launch Chrome with the extension pre-loaded, enabling auto-reload!

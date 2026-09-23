@@ -5,7 +5,7 @@ import { openPopup } from './helpers'
  * Homelab login E2E.
  *
  * Run with:
- *   pnpm build                                        # dist/ -> VITE_ENV=staging (enx-api.wiloon.lab)
+ *   pnpm build                                        # dist-homelab/ -> VITE_ENV=homelab (enx-api.wiloon.lab)
  *   ENX_HOMELAB=1 ENX_ACCESS_TOKEN=eyJ... pnpm test:e2e:homelab
  *
  * Get a token first from the browserless smoke test, which prints an

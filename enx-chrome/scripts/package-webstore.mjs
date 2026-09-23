@@ -2,7 +2,7 @@
 /**
  * Build a Chrome Web Store upload package.
  *
- *   pnpm build && node scripts/package-webstore.mjs
+ *   pnpm build:prod && node scripts/package-webstore.mjs
  *
  * Writes dist-webstore/catglish-<version>.zip.
  *
@@ -36,18 +36,18 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const dist = join(root, 'dist')
+const dist = join(root, 'dist-production')
 const outDir = join(root, 'dist-webstore')
 const stageDir = join(outDir, 'package')
 
 if (!existsSync(dist)) {
-  console.error('dist/ not found. Run `pnpm build` first.')
+  console.error('dist-production/ not found. Run `pnpm build:prod` first.')
   process.exit(1)
 }
 
 const manifestPath = join(dist, 'manifest.json')
 if (!existsSync(manifestPath)) {
-  console.error(`No manifest.json in dist/. Did the build finish?`)
+  console.error(`No manifest.json in dist-production/. Did the build finish?`)
   process.exit(1)
 }
 
