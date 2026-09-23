@@ -69,20 +69,43 @@ export const LEGAL = {
  * provider" is not a disclosure -- where the text goes is exactly what a
  * reader of a privacy policy is trying to find out.
  *
- * ⚠️ `enx-api/aitranslate/` also ships kimi, minimax, deepseek and gemini
- * providers, selected by `SENTENCE_TRANSLATE_PROVIDER`. Those exist for
- * homelab, trials, and a possible future mainland-China deployment;
- * production currently still names Bedrock below. If production is ever
- * switched to one of the others, THIS CONSTANT AND THE SUB-PROCESSOR LIST
- * MUST CHANGE IN THE SAME COMMIT -- a policy naming the wrong recipient of
- * user text is a false statement, not a stale doc.
+ * 2026-09-23: switched from Amazon Bedrock (Anthropic's Claude) to DeepSeek.
+ * Bedrock hit two launch-day blockers (Anthropic's one-time Bedrock
+ * use-case-details gate, and aitranslate/bedrock never having implemented
+ * rephrase) -- see enx-api/aitranslate/openrouter/'s package comment.
+ * Requests are routed through OpenRouter (an API aggregator, not named here
+ * as its own sub-processor by product decision) to DeepSeek, which is the
+ * entity that actually runs the model and sees the text. `location` is
+ * DeepSeek's own processing location, which is NOT the same as
+ * `LEGAL.hostingRegion` -- unlike Bedrock (an AWS service in the same
+ * region as our EC2 host), DeepSeek runs in mainland China. Any page that
+ * used to assume "AI provider location == hostingRegion" needed its prose
+ * fixed, not just this constant -- see privacy/page.tsx and
+ * zh/privacy/page.tsx.
+ *
+ * ⚠️ `enx-api/aitranslate/` also ships bedrock, kimi, minimax, and gemini
+ * providers, selected by `SENTENCE_TRANSLATE_PROVIDER`. If production is
+ * ever switched to a different one, THIS CONSTANT AND THE SUB-PROCESSOR
+ * LIST MUST CHANGE IN THE SAME COMMIT -- a policy naming the wrong
+ * recipient of user text is a false statement, not a stale doc.
  */
 export const AI_PROVIDER = {
-  name: 'Amazon Bedrock',
-  entity: 'Amazon Web Services, Inc.',
-  /** The model family served through Bedrock. */
-  model: "Anthropic's Claude",
-  privacyUrl: 'https://aws.amazon.com/privacy/',
+  name: 'DeepSeek',
+  entity:
+    'Hangzhou DeepSeek Artificial Intelligence Basic Technology Research Co., Ltd.',
+  // Separate from `entity` (not just a translation of it) because the
+  // English privacy page is tested to contain no stray "有限公司" -- that
+  // guard exists to catch a leftover corporate OPERATOR identity, but a
+  // literal Chinese company-suffix substring in a third-party name would
+  // trip it just the same. Keeping the Chinese name Chinese-page-only
+  // keeps that guard meaningful instead of needing a carve-out.
+  entityZh: '杭州深度求索人工智能基础技术研究有限公司',
+  /** The model family currently in use. */
+  model: 'DeepSeek-V4 (Flash)',
+  /** Where DeepSeek processes the request -- see the comment above. */
+  location: 'mainland China',
+  locationZh: '中国大陆',
+  privacyUrl: 'https://cdn.deepseek.com/policies/en-US/deepseek-privacy-policy.html',
 } as const
 
 /**
@@ -124,8 +147,8 @@ export const SUBPROCESSORS = [
     purposeZh: '整句与语境内翻译',
     data: 'The sentence or phrase you select, and the word you clicked',
     dataZh: '你划选的句子或短语，以及你点击的那个词',
-    location: LEGAL.hostingRegion,
-    locationZh: LEGAL.hostingRegion,
+    location: AI_PROVIDER.location,
+    locationZh: AI_PROVIDER.locationZh,
     url: AI_PROVIDER.privacyUrl,
   },
   {

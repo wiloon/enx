@@ -59,9 +59,9 @@ export default function PrivacyPolicyPage() {
             </>,
             <>
               When you ask for a sentence translation, that sentence is sent
-              to an AI model running on{' '}
-              <Term>{AI_PROVIDER.name}</Term>, in the same region as the rest
-              of our infrastructure. We do not keep a copy.
+              to an AI model run by{' '}
+              <Term>{AI_PROVIDER.name}</Term>, in {AI_PROVIDER.location}. We do
+              not keep a copy.
             </>,
             <>
               We do not sell your data, and we do not use it for advertising.
@@ -204,17 +204,16 @@ export default function PrivacyPolicyPage() {
         <p>
           When you select a sentence or phrase and ask for a translation, that
           text — and the word you clicked, if any — is sent to{' '}
-          <Term>{AI_PROVIDER.model}</Term> models running on{' '}
+          <Term>{AI_PROVIDER.model}</Term>, run by{' '}
           <Term>{AI_PROVIDER.name}</Term> ({AI_PROVIDER.entity}), in{' '}
-          <Term>{LEGAL.hostingRegion}</Term> — the same region as the rest of
-          our infrastructure. This happens only for text you explicitly
-          select; it does not happen as you read.
+          <Term>{AI_PROVIDER.location}</Term>. This happens only for text you
+          explicitly select; it does not happen as you read.
         </p>
         <p>
           We do not store the sentence or the translation on our servers. We
           do store a billing record that the call happened, what it cost, and
-          when — not what it contained. Amazon&apos;s handling of the text is
-          governed by{' '}
+          when — not what it contained. {AI_PROVIDER.name}&apos;s handling of
+          the text is governed by{' '}
           <a
             href={AI_PROVIDER.privacyUrl}
             target="_blank"

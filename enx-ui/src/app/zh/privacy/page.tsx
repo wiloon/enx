@@ -50,8 +50,8 @@ export default function PrivacyPolicyZhPage() {
               我们保存你读了多少的<Term>每日总量</Term>。我们不保存你是<Term>在哪个页面</Term>上读的。
             </>,
             <>
-              当你要求翻译整句时，那句话会被发送到运行在 <Term>{AI_PROVIDER.name}</Term>{' '}
-              上的 AI 模型，与我们其余基础设施位于同一区域。我们不留副本。
+              当你要求翻译整句时，那句话会被发送到 <Term>{AI_PROVIDER.name}</Term>{' '}
+              运行的 AI 模型，处理位置在{AI_PROVIDER.locationZh}。我们不留副本。
             </>,
             <>我们不出售你的数据，也不用它做广告。</>,
           ]}
@@ -175,15 +175,15 @@ export default function PrivacyPolicyZhPage() {
       <Section heading="整句翻译与 AI">
         <p>
           当你划选一个句子或短语并要求翻译时，这段文本 —— 以及你点击的那个词（如果有）
-          —— 会被发送到运行在 <Term>{AI_PROVIDER.name}</Term>（{AI_PROVIDER.entity}）
-          上的 <Term>{AI_PROVIDER.model}</Term> 模型，位于{' '}
-          <Term>{LEGAL.hostingRegion}</Term>，与我们其余基础设施同一区域。
+          —— 会被发送到 <Term>{AI_PROVIDER.name}</Term>（{AI_PROVIDER.entityZh}）
+          运行的 <Term>{AI_PROVIDER.model}</Term> 模型，处理位置在{' '}
+          <Term>{AI_PROVIDER.locationZh}</Term>。
           这只在你明确划选文本时发生，不会在你阅读过程中发生。
         </p>
         <p>
           我们不在服务器上保存这个句子或它的译文。我们保存的是一条计费记录：
           这次调用发生了、花了多少、在什么时候 —— 不包含内容。
-          Amazon 对该文本的处理适用{' '}
+          {AI_PROVIDER.name} 对该文本的处理适用{' '}
           <a
             href={AI_PROVIDER.privacyUrl}
             target="_blank"
