@@ -106,7 +106,7 @@ Design notes: `docs/architecture/adr-001-chrome-oauth-in-background.md`, `docs/t
 2. Confirm ID on the extensions page is `combdcldlodkikjfhjbdbogjlfmnbjkf`
 3. Ensure Cognito `enx-chrome` App Client lists `https://combdcldlodkikjfhjbdbogjlfmnbjkf.chromiumapp.org/callback` (run `tofu apply` in `w10n-config/infra/aws/opentofu/enx` after pulling infra changes)
 
-Private signing key: keep `dist.pem` local (gitignored). Do not commit it.
+No private signing key is needed: the Web Store signs releases with its own key, and `manifest.json` only carries the matching public key. Never commit `*.pem` / `*.crx` (gitignored).
 
 ### Development
 

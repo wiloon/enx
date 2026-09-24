@@ -9,8 +9,9 @@ build/
 # Chrome dev profile (user data)
 .chrome-dev-profile/
 
-# Extension signing key (keep dist.pem local; public key lives in manifest.json)
+# Extension signing keys / packed builds (Web Store signs releases; manifest.json holds its public key)
 *.pem
+*.crx
 
 # Environment variables
 .env
