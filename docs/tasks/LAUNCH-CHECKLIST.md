@@ -250,7 +250,7 @@
 
 - [ ] SQLite → PostgreSQL 迁移（自托管优先，RDS 视免费额度）。
 - [ ] Redis / ElastiCache / DynamoDB 缓存评估（含用 DynamoDB 做查词配额计数器）。
-- [ ] WeChat 登录 + 国内推广。
+- [ ] WeChat 登录 + 国内推广 → 国内版独立部署，见 `adr-035`（双部署 + 资质前置条件）、`adr-036`（自托管 Logto）。二者均为 Proposed；资质申请周期以月计，可提前并行。
 - [ ] 反滥用 / 反刷单检测（等真被刷再设计）。
 - [ ] 独立品牌域名购买（若 §0.1 决定先不用品牌域名）。
 - [ ] Clerk → Logto 二次迁移评估（`adr-015` 的 Revisit Trigger，MAU 接近 10k 免费线时再做）。
