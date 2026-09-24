@@ -288,8 +288,8 @@ func setupRouter() *gin.Engine {
 	// Add detailed CORS and request logging middleware AFTER CORS
 	router.Use(func(c *gin.Context) {
 		logger.Infof("🔵 %s %s from %s", c.Request.Method, c.Request.URL.Path, c.ClientIP())
-		logger.Infof("📋 Headers: X-Session-ID='%s', Content-Type='%s', Origin='%s'",
-			c.GetHeader("X-Session-ID"), c.GetHeader("Content-Type"), c.GetHeader("Origin"))
+		logger.Infof("📋 Headers: Content-Type='%s', Origin='%s'",
+			c.GetHeader("Content-Type"), c.GetHeader("Origin"))
 		logger.Debugf("🌐 User-Agent: %s", c.GetHeader("User-Agent"))
 
 		// Check if this is a preflight request

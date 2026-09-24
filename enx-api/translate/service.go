@@ -64,12 +64,10 @@ func translateWord(c *gin.Context, raw string) {
 
 // Translate handles GET /translate?word=
 func Translate(c *gin.Context) {
-	logger.Debugf("session id: %s", c.GetHeader("X-Session-ID"))
 	translateWord(c, c.Query("word"))
 }
 
 // TranslateByWord handles GET /word/:word
 func TranslateByWord(c *gin.Context) {
-	logger.Debugf("session id: %s", c.GetHeader("X-Session-ID"))
 	translateWord(c, c.Param("word"))
 }
