@@ -64,6 +64,46 @@ func TestInitCreatesDatabaseAndMigratesSchema(t *testing.T) {
 	}
 }
 
+// The DSN pragmas are parsed by the sqlite driver (glebarez/go-sqlite on top
+// of modernc.org/sqlite). A driver upgrade that stops honoring the
+// "_pragma=" query syntax would silently drop WAL and busy_timeout, which the
+// credit ledger's concurrent writers depend on (see the comment in Init).
+func TestInitAppliesDSNPragmas(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "enx-sqlitex-pragma-test.db")
+	t.Setenv("DB_PATH", dbPath)
+
+	Init()
+
+	if DB == nil {
+		t.Fatal("expected Init to set the package-level DB")
+	}
+
+	var journalMode string
+	if err := DB.Raw("PRAGMA journal_mode").Scan(&journalMode).Error; err != nil {
+		t.Fatalf("PRAGMA journal_mode: %v", err)
+	}
+	if journalMode != "wal" {
+		t.Errorf("journal_mode = %q, want %q", journalMode, "wal")
+	}
+
+	var busyTimeout int
+	if err := DB.Raw("PRAGMA busy_timeout").Scan(&busyTimeout).Error; err != nil {
+		t.Fatalf("PRAGMA busy_timeout: %v", err)
+	}
+	if busyTimeout != 10000 {
+		t.Errorf("busy_timeout = %d, want 10000", busyTimeout)
+	}
+
+	// synchronous: 0=OFF, 1=NORMAL, 2=FULL, 3=EXTRA.
+	var synchronous int
+	if err := DB.Raw("PRAGMA synchronous").Scan(&synchronous).Error; err != nil {
+		t.Fatalf("PRAGMA synchronous: %v", err)
+	}
+	if synchronous != 1 {
+		t.Errorf("synchronous = %d, want 1 (NORMAL)", synchronous)
+	}
+}
+
 func TestInitCreatesMissingParentDirectory(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "nested", "dir", "enx.db")
 	t.Setenv("DB_PATH", dbPath)
