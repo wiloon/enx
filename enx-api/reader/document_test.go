@@ -75,6 +75,46 @@ func TestCreateDocumentAcceptsContentAtMaxLength(t *testing.T) {
 	}
 }
 
+// The limit is in characters as enx-ui counts them (UTF-16 code units), not
+// bytes: "—" is 3 bytes in UTF-8 but one character in the textarea.
+func TestCreateDocumentAcceptsMultiByteContentAtMaxLength(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+
+	atLimit := strings.Repeat("—", MaxContentLength)
+	if _, err := CreateDocument(ctx, userID, atLimit, time.Now()); err != nil {
+		t.Fatalf("CreateDocument with %d multi-byte characters: %v", MaxContentLength, err)
+	}
+}
+
+func TestCreateDocumentRejectsMultiByteContentOverMaxLength(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+
+	tooLong := strings.Repeat("—", MaxContentLength+1)
+	if _, err := CreateDocument(ctx, userID, tooLong, time.Now()); !errors.Is(err, ErrContentTooLong) {
+		t.Fatalf("got %v, want ErrContentTooLong", err)
+	}
+}
+
+// An emoji outside the BMP is two UTF-16 code units, so it counts as 2 --
+// the same as the textarea's maxLength.
+func TestContentLengthCountsUTF16CodeUnits(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want int
+	}{
+		{"abc", 3},
+		{"“hi”—é", 6},
+		{"中文", 2},
+		{"😀", 2},
+	} {
+		if got := contentLength(tc.in); got != tc.want {
+			t.Errorf("contentLength(%q) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestCreateDocumentRejectsEmptyContent(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
