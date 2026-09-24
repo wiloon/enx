@@ -93,7 +93,8 @@ func TestHandleCheckoutSessionCompletedSubscriptionEstablishesMapping(t *testing
 		"metadata": {"type": "subscription", "plan": "pro-plus"}
 	}`)
 
-	h := NewHandler(nil, "https://example.com", "whsec_test")
+	h := NewHandler(fakeStripe(t, map[string]string{"sub_1": liveSubscription("sub_1", "active", 1700000000)}),
+		"https://example.com", "whsec_test")
 	if err := h.dispatchWebhookEvent(context.Background(), event); err != nil {
 		t.Fatalf("dispatchWebhookEvent: %v", err)
 	}
@@ -107,18 +108,15 @@ func TestHandleCheckoutSessionCompletedSubscriptionEstablishesMapping(t *testing
 	}
 }
 
-func TestHandleSubscriptionUpdatedSetsStatusAndPeriodEnd(t *testing.T) {
+func TestHandleSubscriptionUpdatedSetsStatusAndPeriodEndFromStripe(t *testing.T) {
 	userID := "u-" + t.Name()
 	seedSubscription(t, userID, "cus_x", "sub_x", "active", 0)
 
-	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeCustomerSubscriptionUpdated, `{
-		"id": "sub_x",
-		"status": "past_due",
-		"items": {"object": "list", "data": [{"id": "si_1", "current_period_end": 1700000000}]}
-	}`)
-
-	if err := handleSubscriptionUpdated(event); err != nil {
-		t.Fatalf("handleSubscriptionUpdated: %v", err)
+	h := NewHandler(fakeStripe(t, map[string]string{"sub_x": liveSubscription("sub_x", "past_due", 1700000000)}),
+		"https://example.com", "whsec_test")
+	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeCustomerSubscriptionUpdated, `{"id": "sub_x", "status": "past_due"}`)
+	if err := h.dispatchWebhookEvent(context.Background(), event); err != nil {
+		t.Fatalf("dispatchWebhookEvent: %v", err)
 	}
 
 	var sub sqlitex.Subscription
@@ -128,13 +126,81 @@ func TestHandleSubscriptionUpdatedSetsStatusAndPeriodEnd(t *testing.T) {
 	}
 }
 
+// Stripe does not deliver events in order and redelivers failed ones later:
+// a stale customer.subscription.updated ("active") processed after the
+// subscription was deleted must not resurrect it.
+func TestHandleSubscriptionUpdatedStaleEventAfterDeletionStaysCanceled(t *testing.T) {
+	userID := "u-" + t.Name()
+	seedSubscription(t, userID, "cus_stale", "sub_stale", "active", 0)
+
+	h := NewHandler(fakeStripe(t, map[string]string{"sub_stale": liveSubscription("sub_stale", "canceled", 1700000000)}),
+		"https://example.com", "whsec_test")
+	ctx := context.Background()
+	deleted := fakeEvent("evt-del-"+t.Name(), stripeSDK.EventTypeCustomerSubscriptionDeleted, `{"id": "sub_stale", "status": "canceled"}`)
+	staleUpdate := fakeEvent("evt-upd-"+t.Name(), stripeSDK.EventTypeCustomerSubscriptionUpdated, `{"id": "sub_stale", "status": "active"}`)
+	for _, event := range []stripeSDK.Event{deleted, staleUpdate} {
+		if err := h.dispatchWebhookEvent(ctx, event); err != nil {
+			t.Fatalf("dispatchWebhookEvent %s: %v", event.Type, err)
+		}
+	}
+
+	var sub sqlitex.Subscription
+	sqlitex.DB.Where("user_id = ?", userID).First(&sub)
+	if sub.Status != "canceled" {
+		t.Fatalf("got status=%q, want canceled", sub.Status)
+	}
+}
+
+// A redelivered checkout.session.completed must not mark an already
+// canceled subscription active either.
+func TestHandleCheckoutSessionCompletedUsesLiveStatus(t *testing.T) {
+	userID := "u-" + t.Name()
+	h := NewHandler(fakeStripe(t, map[string]string{"sub_late": liveSubscription("sub_late", "canceled", 1700000000)}),
+		"https://example.com", "whsec_test")
+	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeCheckoutSessionCompleted, `{
+		"id": "cs_late",
+		"client_reference_id": "`+userID+`",
+		"customer": "cus_late",
+		"subscription": "sub_late",
+		"metadata": {"type": "subscription", "plan": "pro"}
+	}`)
+	if err := h.dispatchWebhookEvent(context.Background(), event); err != nil {
+		t.Fatalf("dispatchWebhookEvent: %v", err)
+	}
+
+	var sub sqlitex.Subscription
+	sqlitex.DB.Where("user_id = ?", userID).First(&sub)
+	if sub.Status != "canceled" {
+		t.Fatalf("got status=%q, want canceled", sub.Status)
+	}
+}
+
 func TestHandleSubscriptionUpdatedNoLocalRowIsAnError(t *testing.T) {
+	h := NewHandler(fakeStripe(t, map[string]string{"sub_never_seen": liveSubscription("sub_never_seen", "active", 0)}),
+		"https://example.com", "whsec_test")
 	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeCustomerSubscriptionUpdated, `{
 		"id": "sub_never_seen",
 		"status": "active"
 	}`)
-	if err := handleSubscriptionUpdated(event); err == nil {
+	if err := h.dispatchWebhookEvent(context.Background(), event); err == nil {
 		t.Fatal("expected an error when no local subscriptions row matches (Stripe should retry)")
+	}
+}
+
+func TestHandleSubscriptionEventStripeErrorIsAnError(t *testing.T) {
+	userID := "u-" + t.Name()
+	seedSubscription(t, userID, "cus_err", "sub_err", "active", 0)
+
+	h := NewHandler(fakeStripe(t, map[string]string{}), "https://example.com", "whsec_test")
+	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeCustomerSubscriptionDeleted, `{"id": "sub_err", "status": "canceled"}`)
+	if err := h.dispatchWebhookEvent(context.Background(), event); err == nil {
+		t.Fatal("expected an error when Stripe can't be reached (Stripe should retry)")
+	}
+
+	var sub sqlitex.Subscription
+	sqlitex.DB.Where("user_id = ?", userID).First(&sub)
+	if sub.Status != "active" {
+		t.Fatalf("got status=%q, want the row untouched (active)", sub.Status)
 	}
 }
 
@@ -142,9 +208,11 @@ func TestHandleSubscriptionDeletedSetsCanceled(t *testing.T) {
 	userID := "u-" + t.Name()
 	seedSubscription(t, userID, "cus_y", "sub_y", "active", 1700000000)
 
+	h := NewHandler(fakeStripe(t, map[string]string{"sub_y": liveSubscription("sub_y", "canceled", 1700000000)}),
+		"https://example.com", "whsec_test")
 	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeCustomerSubscriptionDeleted, `{"id": "sub_y", "status": "canceled"}`)
-	if err := handleSubscriptionDeleted(event); err != nil {
-		t.Fatalf("handleSubscriptionDeleted: %v", err)
+	if err := h.dispatchWebhookEvent(context.Background(), event); err != nil {
+		t.Fatalf("dispatchWebhookEvent: %v", err)
 	}
 
 	var sub sqlitex.Subscription
@@ -158,12 +226,14 @@ func TestHandleInvoicePaymentFailedSetsPastDue(t *testing.T) {
 	userID := "u-" + t.Name()
 	seedSubscription(t, userID, "cus_z", "sub_z", "active", 1700000000)
 
+	h := NewHandler(fakeStripe(t, map[string]string{"sub_z": liveSubscription("sub_z", "past_due", 1700000000)}),
+		"https://example.com", "whsec_test")
 	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeInvoicePaymentFailed, `{
 		"id": "in_1",
 		"parent": {"type": "subscription_details", "subscription_details": {"subscription": "sub_z"}}
 	}`)
-	if err := handleInvoicePaymentFailed(event); err != nil {
-		t.Fatalf("handleInvoicePaymentFailed: %v", err)
+	if err := h.dispatchWebhookEvent(context.Background(), event); err != nil {
+		t.Fatalf("dispatchWebhookEvent: %v", err)
 	}
 
 	var sub sqlitex.Subscription
@@ -173,9 +243,44 @@ func TestHandleInvoicePaymentFailedSetsPastDue(t *testing.T) {
 	}
 }
 
+func TestHandleInvoicePaidGrantsCreditsAndSyncsState(t *testing.T) {
+	userID := "u-" + t.Name()
+	seedSubscription(t, userID, "cus_paid", "sub_paid", "incomplete", 0)
+	viperSet(t, "stripe.price.pro", "enx_pro")
+	viperSet(t, "stripe.price.pro-plus", "enx_pro_plus")
+	viperSet(t, "stripe.price.max", "enx_max")
+	viperSet(t, "stripe.credits.subscription-pro-plus", 500)
+
+	h := NewHandler(fakeStripe(t, map[string]string{"sub_paid": liveSubscription("sub_paid", "active", 1800000000)}),
+		"https://example.com", "whsec_test")
+	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeInvoicePaid, `{
+		"id": "in_paid",
+		"period_end": 1700000000,
+		"parent": {"type": "subscription_details", "subscription_details": {"subscription": "sub_paid"}},
+		"lines": {"object": "list", "data": [{"id": "il_1", "pricing": {"price_details": {"price": "price_pro_plus"}}}]}
+	}`)
+	if err := h.dispatchWebhookEvent(context.Background(), event); err != nil {
+		t.Fatalf("dispatchWebhookEvent: %v", err)
+	}
+
+	var sub sqlitex.Subscription
+	sqlitex.DB.Where("user_id = ?", userID).First(&sub)
+	if sub.Status != "active" || sub.Plan != "pro-plus" || sub.CurrentPeriodEnd != 1800000000 {
+		t.Fatalf("got status=%q plan=%q current_period_end=%d, want active/pro-plus/1800000000", sub.Status, sub.Plan, sub.CurrentPeriodEnd)
+	}
+	var account sqlitex.CreditAccount
+	if err := sqlitex.DB.Where("user_id = ?", userID).First(&account).Error; err != nil {
+		t.Fatalf("load credit_accounts: %v", err)
+	}
+	if account.SubscriptionBalance != 500 {
+		t.Fatalf("got subscription_balance=%d, want 500", account.SubscriptionBalance)
+	}
+}
+
 func TestHandleInvoicePaymentFailedOneOffInvoiceIsNoop(t *testing.T) {
+	h := NewHandler(fakeStripe(t, map[string]string{}), "https://example.com", "whsec_test")
 	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeInvoicePaymentFailed, `{"id": "in_2"}`)
-	if err := handleInvoicePaymentFailed(event); err != nil {
+	if err := h.dispatchWebhookEvent(context.Background(), event); err != nil {
 		t.Fatalf("expected nil (no-op) for a non-subscription invoice, got: %v", err)
 	}
 }
@@ -288,4 +393,43 @@ func viperSet(t *testing.T, key string, value interface{}) {
 	previous := viper.Get(key)
 	viper.Set(key, value)
 	t.Cleanup(func() { viper.Set(key, previous) })
+}
+
+// fakeStripe returns a Stripe client backed by a local server that answers
+// GET /v1/subscriptions/{id} from subs (id -> JSON body) and 404s anything
+// else, so tests control what "Stripe's current state" is.
+func fakeStripe(t *testing.T, subs map[string]string) *stripeSDK.Client {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/prices" {
+			// Price lookup by lookup_key, as SubscriptionTierForPrice does:
+			// lookup key "enx_<x>" maps to price id "price_<x>".
+			key := strings.TrimPrefix(r.URL.Query().Get("lookup_keys[0]"), "enx_")
+			_, _ = w.Write([]byte(`{"object":"list","url":"/v1/prices","has_more":false,"data":[{"id":"price_` + key + `","object":"price"}]}`))
+			return
+		}
+		id := strings.TrimPrefix(r.URL.Path, "/v1/subscriptions/")
+		body, ok := subs[id]
+		if r.Method != http.MethodGet || !ok {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":{"type":"invalid_request_error","message":"No such subscription"}}`))
+			return
+		}
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(server.Close)
+
+	backend := stripeSDK.GetBackendWithConfig(stripeSDK.APIBackend, &stripeSDK.BackendConfig{
+		URL:               stripeSDK.String(server.URL),
+		HTTPClient:        server.Client(),
+		MaxNetworkRetries: stripeSDK.Int64(0),
+	})
+	return stripeSDK.NewClient("sk_test_123", stripeSDK.WithBackends(&stripeSDK.Backends{API: backend}))
+}
+
+func liveSubscription(id, status string, periodEnd int64) string {
+	return `{"id":"` + id + `","object":"subscription","status":"` + status + `",` +
+		`"items":{"object":"list","data":[{"id":"si_` + id + `","object":"subscription_item","current_period_end":` +
+		strconv.FormatInt(periodEnd, 10) + `}]}}`
 }
