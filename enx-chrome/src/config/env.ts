@@ -84,7 +84,9 @@ const isAllowedApiBaseUrl = (url: string): boolean =>
 // Allow runtime override from storage
 export const getApiBaseUrl = async (): Promise<string> => {
   try {
-    const result = await chrome.storage.local.get(['apiBaseUrl'])
+    const result = await chrome.storage.local.get<{ apiBaseUrl?: string }>([
+      'apiBaseUrl',
+    ])
     if (result.apiBaseUrl) {
       if (!isAllowedApiBaseUrl(result.apiBaseUrl)) {
         console.warn(

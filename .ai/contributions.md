@@ -2,6 +2,19 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-09-24: Dependency upgrades for enx-api, enx-ui, enx-chrome
+
+**Agent**: Claude Code
+**Task**: Upgrade dependencies to recent versions without changing behavior; add the unit tests the upgrades need.
+
+**Solution**:
+- `enx-api`: `go get -u ./...` (minor/patch only). Notable: aws-sdk-go-v2 1.47, stripe-go v86.4.2, x/crypto 0.57, modernc.org/sqlite 1.23 -> 1.59. New `TestInitAppliesDSNPragmas` checks the driver still honors the `_pragma=` DSN (WAL, busy_timeout, synchronous).
+- `enx-ui`: next 15.4.4 -> 15.5.26 (latest 15.x), react 19.3, lucide-react 1.x, the rest to latest within major (pnpm 9.15.9, the Containerfile's version, wrote the lockfile). New `src/__tests__/middleware.test.ts` covers the `/api` relay rewrite, the 500 when `API_BASE_URL` is unset, and the Clerk hand-off.
+- `enx-chrome`: React 18 -> 19, @sentry/react 7 -> 10 (dropped unused `@sentry/tracing`), jest 30, @testing-library/react 16, @types/chrome 0.3 (explicit `chrome.storage.local.get<T>` result types).
+- Deliberately NOT upgraded (breaking majors, need their own change): next 16, @sentry/nextjs 10+, vite 8 / @crxjs 3, eslint 10, typescript 7, jotai 3.
+
+**Verification**: enx-api `go test ./...` green; enx-ui 182 jest tests, tsc, `next build`, and `scripts/smoke-runtime.sh` green; enx-chrome 253 jest tests, tsc, and `vite build` (production/homelab/development) green. Lint counts unchanged. Chrome Playwright E2E gives the same results as main in the sandbox (most specs need a signed-in Clerk session). `go test -tags=integration` has one failure, `TestSaveDuplicateEnglish_UniqueConstraintPreventsDuplicate`, which also fails on main.
+
 ## 2026-09-18: Gemini Flash provider for aitranslate
 
 **Agent**: Cursor Grok

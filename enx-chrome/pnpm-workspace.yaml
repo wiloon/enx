@@ -7,6 +7,11 @@ allowBuilds:
   esbuild: true
   sharp: true
   utf-8-validate: false
+  # jest 30 deps: @parcel/watcher is only used by `jest --watch` and
+  # unrs-resolver's script just checks for a prebuilt binary (shipped as an
+  # optional dependency). Neither needs its install script.
+  '@parcel/watcher': false
+  unrs-resolver: false
 onlyBuiltDependencies:
   - esbuild
   - sharp
