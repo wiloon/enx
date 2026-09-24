@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"enx-api/utils/logger"
+	"enx-api/utils/sqlitex"
 	"fmt"
 	"github.com/go-resty/resty/v2"
 	"regexp"
 	"testing"
-		"enx-api/utils/sqlitex"
 )
 
 var client *resty.Client

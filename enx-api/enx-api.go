@@ -288,8 +288,8 @@ func setupRouter() *gin.Engine {
 	// Add detailed CORS and request logging middleware AFTER CORS
 	router.Use(func(c *gin.Context) {
 		logger.Infof("🔵 %s %s from %s", c.Request.Method, c.Request.URL.Path, c.ClientIP())
-		logger.Infof("📋 Headers: X-Session-ID='%s', Content-Type='%s', Origin='%s'",
-			c.GetHeader("X-Session-ID"), c.GetHeader("Content-Type"), c.GetHeader("Origin"))
+		logger.Infof("📋 Headers: Content-Type='%s', Origin='%s'",
+			c.GetHeader("Content-Type"), c.GetHeader("Origin"))
 		logger.Debugf("🌐 User-Agent: %s", c.GetHeader("User-Agent"))
 
 		// Check if this is a preflight request
@@ -469,9 +469,6 @@ func setupRouter() *gin.Engine {
 	// (w10n-config): enx-api.wiloon.lab/billing/webhook, no /api prefix.
 	router.POST("/billing/webhook", billingHandler.Webhook)
 
-	// Temporary test route - no authentication required
-	router.POST("/mark-test", MarkWord)
-
 	return router
 }
 
@@ -545,6 +542,18 @@ func MarkWord(c *gin.Context) {
 	}
 
 	word.Translate(userId)
+
+	// A word with no `words` row (e.g. one ECDICT doesn't know) has no id to
+	// key a user_dicts row on. Writing one with an empty word_id would make
+	// every such word share that single row -- marking a second one toggled
+	// the first back off -- and the phantom row would count towards the
+	// user's vocabulary. Nothing is lost by skipping the write: paragraph-init
+	// never reads acquainted state for an id-less word anyway.
+	if word.Id == "" {
+		logger.Infof("MarkWord: word not in dictionary, nothing to mark: %s", word.English)
+		c.JSON(200, word)
+		return
+	}
 
 	ud := enx.UserDict{}
 	ud.WordId = word.Id

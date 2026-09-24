@@ -155,4 +155,3 @@ func (word *Word) Save() {
 	logger.Debugf("save word: %v, tx: %v", sWord, tx)
 	word.Id = sWord.Id
 }
-

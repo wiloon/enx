@@ -28,12 +28,11 @@ func (h *Handler) dispatchWebhookEvent(ctx context.Context, event stripeSDK.Even
 		return h.handleCheckoutSessionCompleted(ctx, event)
 	case stripeSDK.EventTypeInvoicePaid:
 		return h.handleInvoicePaid(ctx, event)
-	case stripeSDK.EventTypeCustomerSubscriptionUpdated:
-		return handleSubscriptionUpdated(event)
-	case stripeSDK.EventTypeCustomerSubscriptionDeleted:
-		return handleSubscriptionDeleted(event)
+	case stripeSDK.EventTypeCustomerSubscriptionUpdated,
+		stripeSDK.EventTypeCustomerSubscriptionDeleted:
+		return h.handleSubscriptionChanged(ctx, event)
 	case stripeSDK.EventTypeInvoicePaymentFailed:
-		return handleInvoicePaymentFailed(event)
+		return h.handleInvoicePaymentFailed(ctx, event)
 	default:
 		return nil
 	}
@@ -78,15 +77,20 @@ func (h *Handler) handleCheckoutSessionCompleted(ctx context.Context, event stri
 	if session.Subscription != nil {
 		subscriptionID = session.Subscription.ID
 	}
-	// Provisional status: this fires on successful payment (enx has no free
-	// trial, see monetization.md "Pay Up Front"), so "active" is a
-	// reasonable initial value. customer.subscription.updated corrects it
-	// with Stripe's authoritative state shortly after. Plan comes from the
-	// checkout session's metadata (set by CheckoutSubscription); invoice.paid
-	// re-resolves and overwrites it from the price ID on every renewal, so
-	// this is only a best-effort value for the UI until the first invoice
-	// lands.
-	return upsertSubscription(userID, customerID, subscriptionID, "active", session.Metadata["plan"], 0)
+	if subscriptionID == "" {
+		return fmt.Errorf("checkout.session.completed %s: subscription checkout without a subscription", session.ID)
+	}
+	// Status comes from Stripe, not an assumed "active": a redelivery of this
+	// event can arrive after the subscription was already canceled (see
+	// syncSubscriptionState). Plan comes from the checkout session's
+	// metadata (set by CheckoutSubscription); invoice.paid re-resolves and
+	// overwrites it from the price ID on every renewal, so this is only a
+	// best-effort value for the UI until the first invoice lands.
+	live, err := billingstripe.RetrieveSubscription(ctx, h.sc, subscriptionID)
+	if err != nil {
+		return fmt.Errorf("checkout.session.completed %s: retrieve subscription %s: %w", session.ID, subscriptionID, err)
+	}
+	return upsertSubscription(userID, customerID, subscriptionID, string(live.Status), session.Metadata["plan"], subscriptionPeriodEnd(live))
 }
 
 // handleInvoicePaid is the sole trigger for granting subscription credits
@@ -135,54 +139,73 @@ func (h *Handler) handleInvoicePaid(ctx context.Context, event stripeSDK.Event) 
 		return err
 	}
 
-	return updateSubscriptionBySubscriptionID(subscriptionID, map[string]interface{}{
-		"status":             "active",
-		"plan":               plan,
-		"current_period_end": inv.PeriodEnd,
-		"updated_at":         time.Now().UnixMilli(),
-	})
+	if err := updateSubscriptionBySubscriptionID(subscriptionID, map[string]interface{}{
+		"plan":       plan,
+		"updated_at": time.Now().UnixMilli(),
+	}); err != nil {
+		return err
+	}
+	return h.syncSubscriptionState(ctx, subscriptionID)
 }
 
-func handleSubscriptionUpdated(event stripeSDK.Event) error {
+// handleSubscriptionChanged handles customer.subscription.updated and
+// customer.subscription.deleted. The payload is only used for the
+// subscription id; the state written comes from Stripe (see
+// syncSubscriptionState).
+func (h *Handler) handleSubscriptionChanged(ctx context.Context, event stripeSDK.Event) error {
 	var sub stripeSDK.Subscription
 	if err := json.Unmarshal(event.Data.Raw, &sub); err != nil {
-		return fmt.Errorf("unmarshal customer.subscription.updated: %w", err)
+		return fmt.Errorf("unmarshal %s: %w", event.Type, err)
 	}
-
-	updates := map[string]interface{}{
-		"status":     string(sub.Status),
-		"updated_at": time.Now().UnixMilli(),
+	if sub.ID == "" {
+		return fmt.Errorf("%s %s: missing subscription id", event.Type, event.ID)
 	}
-	if sub.Items != nil && len(sub.Items.Data) > 0 && sub.Items.Data[0].CurrentPeriodEnd > 0 {
-		updates["current_period_end"] = sub.Items.Data[0].CurrentPeriodEnd
-	}
-	return updateSubscriptionBySubscriptionID(sub.ID, updates)
+	return h.syncSubscriptionState(ctx, sub.ID)
 }
 
-func handleSubscriptionDeleted(event stripeSDK.Event) error {
-	var sub stripeSDK.Subscription
-	if err := json.Unmarshal(event.Data.Raw, &sub); err != nil {
-		return fmt.Errorf("unmarshal customer.subscription.deleted: %w", err)
-	}
-	return updateSubscriptionBySubscriptionID(sub.ID, map[string]interface{}{
-		"status":     "canceled",
-		"updated_at": time.Now().UnixMilli(),
-	})
-}
-
-func handleInvoicePaymentFailed(event stripeSDK.Event) error {
+func (h *Handler) handleInvoicePaymentFailed(ctx context.Context, event stripeSDK.Event) error {
 	var inv stripeSDK.Invoice
 	if err := json.Unmarshal(event.Data.Raw, &inv); err != nil {
 		return fmt.Errorf("unmarshal invoice.payment_failed: %w", err)
 	}
 	subscriptionID := invoiceSubscriptionID(&inv)
 	if subscriptionID == "" {
-		return nil // one-off invoice, not a subscription -- nothing to mark past_due
+		return nil // one-off invoice, not a subscription -- nothing to update
 	}
-	return updateSubscriptionBySubscriptionID(subscriptionID, map[string]interface{}{
-		"status":     "past_due",
+	return h.syncSubscriptionState(ctx, subscriptionID)
+}
+
+// syncSubscriptionState copies a subscription's CURRENT status and period
+// end from Stripe into the local row. Stripe does not guarantee event
+// order, and a delivery that failed is retried later, so an event's payload
+// can be older than the state already stored -- e.g. a stale
+// customer.subscription.updated ("active") processed after
+// customer.subscription.deleted would otherwise resurrect a canceled
+// subscription for good, since no later event would correct it. Reading
+// the live object makes every subscription event converge on Stripe's
+// state regardless of the order they arrive in.
+func (h *Handler) syncSubscriptionState(ctx context.Context, subscriptionID string) error {
+	live, err := billingstripe.RetrieveSubscription(ctx, h.sc, subscriptionID)
+	if err != nil {
+		return fmt.Errorf("retrieve subscription %s: %w", subscriptionID, err)
+	}
+	updates := map[string]interface{}{
+		"status":     string(live.Status),
 		"updated_at": time.Now().UnixMilli(),
-	})
+	}
+	if end := subscriptionPeriodEnd(live); end > 0 {
+		updates["current_period_end"] = end
+	}
+	return updateSubscriptionBySubscriptionID(subscriptionID, updates)
+}
+
+// subscriptionPeriodEnd is the subscription's current period end (Unix
+// seconds), which Stripe reports per item; 0 when there are no items.
+func subscriptionPeriodEnd(sub *stripeSDK.Subscription) int64 {
+	if sub.Items != nil && len(sub.Items.Data) > 0 {
+		return sub.Items.Data[0].CurrentPeriodEnd
+	}
+	return 0
 }
 
 func invoiceSubscriptionID(inv *stripeSDK.Invoice) string {
