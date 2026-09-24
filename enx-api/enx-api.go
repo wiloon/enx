@@ -546,6 +546,18 @@ func MarkWord(c *gin.Context) {
 
 	word.Translate(userId)
 
+	// A word with no `words` row (e.g. one ECDICT doesn't know) has no id to
+	// key a user_dicts row on. Writing one with an empty word_id would make
+	// every such word share that single row -- marking a second one toggled
+	// the first back off -- and the phantom row would count towards the
+	// user's vocabulary. Nothing is lost by skipping the write: paragraph-init
+	// never reads acquainted state for an id-less word anyway.
+	if word.Id == "" {
+		logger.Infof("MarkWord: word not in dictionary, nothing to mark: %s", word.English)
+		c.JSON(200, word)
+		return
+	}
+
 	ud := enx.UserDict{}
 	ud.WordId = word.Id
 	ud.UserId = userId
