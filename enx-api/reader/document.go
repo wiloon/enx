@@ -9,6 +9,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf16"
 
 	"github.com/google/uuid"
 
@@ -17,7 +18,8 @@ import (
 
 const retentionPeriod = 7 * 24 * time.Hour
 
-// MaxContentLength is the per-document character limit (ADR-022 Option C).
+// MaxContentLength is the per-document character limit (ADR-022 Option C),
+// counted the way enx-ui's textarea counts it (see contentLength).
 const MaxContentLength = 20000
 
 // ErrContentTooLong is returned when content exceeds MaxContentLength.
@@ -57,7 +59,7 @@ func CreateDocument(ctx context.Context, userID, content string, now time.Time) 
 	if content == "" {
 		return nil, ErrContentEmpty
 	}
-	if len(content) > MaxContentLength {
+	if contentLength(content) > MaxContentLength {
 		return nil, ErrContentTooLong
 	}
 
@@ -139,7 +141,7 @@ func UpdateDocument(ctx context.Context, userID, id, content string, now time.Ti
 	if content == "" {
 		return nil, ErrContentEmpty
 	}
-	if len(content) > MaxContentLength {
+	if contentLength(content) > MaxContentLength {
 		return nil, ErrContentTooLong
 	}
 
@@ -179,6 +181,20 @@ func PurgeExpired(ctx context.Context, now time.Time) (int64, error) {
 		return 0, res.Error
 	}
 	return res.RowsAffected, nil
+}
+
+// contentLength measures content in UTF-16 code units -- the unit of a
+// JavaScript string's .length and a <textarea maxLength>, which is what
+// enx-ui's counter shows and enforces. len() would count UTF-8 bytes, so a
+// document with curly quotes, em dashes or CJK text that the UI accepts
+// (e.g. 19,000 characters, several of them 3 bytes each) would be rejected
+// here.
+func contentLength(content string) int {
+	n := 0
+	for _, r := range content {
+		n += utf16.RuneLen(r)
+	}
+	return n
 }
 
 // previewMaxLength caps DocumentSummary.Preview so a "My Documents" row
