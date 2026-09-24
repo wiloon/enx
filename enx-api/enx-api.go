@@ -469,9 +469,6 @@ func setupRouter() *gin.Engine {
 	// (w10n-config): enx-api.wiloon.lab/billing/webhook, no /api prefix.
 	router.POST("/billing/webhook", billingHandler.Webhook)
 
-	// Temporary test route - no authentication required
-	router.POST("/mark-test", MarkWord)
-
 	return router
 }
 
