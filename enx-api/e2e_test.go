@@ -205,7 +205,7 @@ func TestE2E_AdminPageReportsRequiresAdmin(t *testing.T) {
 		t.Fatalf("status = %d, want 200 for admin", resp2.StatusCode)
 	}
 	var body struct {
-		Success bool            `json:"success"`
+		Success bool             `json:"success"`
 		Reports []map[string]any `json:"reports"`
 	}
 	if err := json.NewDecoder(resp2.Body).Decode(&body); err != nil || !body.Success {

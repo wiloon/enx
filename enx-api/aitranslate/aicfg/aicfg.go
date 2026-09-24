@@ -5,8 +5,8 @@
 package aicfg
 
 import (
-	"time"
 	"github.com/spf13/viper"
+	"time"
 )
 
 // defaultRequestTimeout is the per-call ceiling for a provider's HTTP
