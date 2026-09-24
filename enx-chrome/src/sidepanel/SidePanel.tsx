@@ -917,6 +917,9 @@ function SidePanelContent() {
     const anchorWord = pendingContext.word?.trim() || ''
     const clickedWord = anchorWord.toLowerCase()
 
+    // pendingContext is an external event (a message from the content
+    // script), so turning it into a new entry here is intended.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEntries(prev => [
       {
         kind: 'sentence',
@@ -1010,6 +1013,8 @@ function SidePanelContent() {
   // a genuine whole-sentence translation).
   useEffect(() => {
     if (pendingContext?.phrase) {
+      // Same as above: reacting to an external pendingContext message.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       upsertPhraseCard(pendingContext.phrase, pendingContext.sentence, undefined)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

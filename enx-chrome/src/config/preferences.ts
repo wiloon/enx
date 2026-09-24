@@ -7,7 +7,9 @@ export const WORD_HIGHLIGHT_KEY = 'enx-word-highlight-enabled'
 // Whether "highlight vocabulary while reading" is on. Absent = on.
 export const getWordHighlightEnabled = async (): Promise<boolean> => {
   try {
-    const result = await chrome.storage.local.get(WORD_HIGHLIGHT_KEY)
+    const result = await chrome.storage.local.get<{
+      [WORD_HIGHLIGHT_KEY]?: boolean
+    }>(WORD_HIGHLIGHT_KEY)
     return result[WORD_HIGHLIGHT_KEY] ?? true
   } catch (error) {
     console.warn('[ENX Config] failed to read word-highlight preference:', error)
@@ -35,7 +37,9 @@ export const onWordHighlightEnabledChange = (
     areaName: string
   ) => {
     if (areaName === 'local' && WORD_HIGHLIGHT_KEY in changes) {
-      handler(changes[WORD_HIGHLIGHT_KEY].newValue ?? true)
+      handler(
+        (changes[WORD_HIGHLIGHT_KEY].newValue as boolean | undefined) ?? true
+      )
     }
   }
   chrome.storage.onChanged.addListener(listener)
