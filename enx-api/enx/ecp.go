@@ -142,7 +142,10 @@ func (word *Word) Translate(userId string) *Word {
 	return word
 }
 
-func (word *Word) Save() {
+// Save inserts the word as a new row. On failure (e.g. the UNIQUE constraint
+// on words.english) it returns the error and leaves word.Id untouched, so
+// callers never hold an id that was not persisted.
+func (word *Word) Save() error {
 	sWord := repo.Word{}
 	sWord.Id = uuid.NewString() // Generate UUID for new word
 	sWord.CreateDatetime = time.Now()
@@ -151,7 +154,11 @@ func (word *Word) Save() {
 	sWord.Chinese = word.Chinese
 	sWord.Pronunciation = word.Pronunciation
 	sWord.LoadCount = word.LoadCount
-	tx := sqlitex.DB.Create(&sWord)
-	logger.Debugf("save word: %v, tx: %v", sWord, tx)
+	if err := sqlitex.DB.Create(&sWord).Error; err != nil {
+		logger.Errorf("failed to save word: %s, error: %v", sWord.English, err)
+		return err
+	}
+	logger.Debugf("save word: %v", sWord)
 	word.Id = sWord.Id
+	return nil
 }

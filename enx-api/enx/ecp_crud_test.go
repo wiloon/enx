@@ -80,7 +80,9 @@ func TestWordSaveAssignsIDAndPersists(t *testing.T) {
 	db := newEcpTestDB(t)
 
 	w := &Word{English: "newword", Chinese: "新词", Pronunciation: "/nu/", LoadCount: 1}
-	w.Save()
+	if err := w.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
 
 	if w.Id == "" {
 		t.Fatal("expected Save to assign an Id")
@@ -92,6 +94,27 @@ func TestWordSaveAssignsIDAndPersists(t *testing.T) {
 	}
 	if row.Chinese != "新词" {
 		t.Errorf("Chinese = %q, want 新词", row.Chinese)
+	}
+}
+
+func TestWordSaveDuplicateEnglishReturnsErrorAndKeepsIdEmpty(t *testing.T) {
+	db := newEcpTestDB(t)
+
+	if err := (&Word{English: "dup"}).Save(); err != nil {
+		t.Fatalf("first Save: %v", err)
+	}
+	w := &Word{English: "dup"}
+	if err := w.Save(); err == nil {
+		t.Fatal("expected the second Save to fail on the unique constraint")
+	}
+	if w.Id != "" {
+		t.Errorf("Id = %q, want empty: the row was never persisted", w.Id)
+	}
+
+	var n int64
+	db.Model(&repo.Word{}).Where("english = ?", "dup").Count(&n)
+	if n != 1 {
+		t.Errorf("rows = %d, want 1", n)
 	}
 }
 
