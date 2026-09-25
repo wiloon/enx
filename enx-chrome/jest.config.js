@@ -30,7 +30,15 @@ export default {
         },
       },
     ],
+    // jotai 3 ships ESM only; compile it to CommonJS like our own sources.
+    '^.+/node_modules/.+/jotai/.+\\.js$': [
+      'ts-jest',
+      { tsconfig: { allowJs: true, esModuleInterop: true } },
+    ],
   },
+  // node_modules is untransformed by default; jotai is the exception. The
+  // lookahead covers both pnpm's .pnpm/jotai@x store dir and the jotai/ dir.
+  transformIgnorePatterns: ['/node_modules/(?!\\.pnpm/jotai@|jotai/)'],
   extensionsToTreatAsEsm: ['.ts', '.tsx'],
   globals: {
     'import.meta': {
