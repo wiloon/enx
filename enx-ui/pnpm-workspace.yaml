@@ -4,3 +4,12 @@ allowBuilds:
   '@sentry/cli': true
   sharp: true
   unrs-resolver: true
+  # Pulled in by jest-haste-map; only `jest --watch` uses it, and its prebuilt
+  # binaries ship as optional dependencies, so its install script is not needed.
+  '@parcel/watcher': false
+# Supply-chain guard: never install a package version that is less than a day
+# old (pnpm 11+ default, pinned here so it does not depend on the pnpm version).
+# This is what the image build runs with. For local testing right after an
+# upgrade, override it for one command only:
+#   pnpm_config_minimum_release_age=0 pnpm install
+minimumReleaseAge: 1440

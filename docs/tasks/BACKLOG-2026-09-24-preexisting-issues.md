@@ -113,3 +113,18 @@ Not bugs, just left for dedicated changes:
 | enx-ui, enx-chrome | @testing-library/jest-dom         | 6.9       | 7.x    |
 | enx-chrome | vite / @crxjs/vite-plugin / @vitejs/plugin-react | 7 / 2.7 / 5 | 8 / 3 / 6 (must move together) |
 | enx-chrome | @sentry/react                             | 10.x      | 11.x   |
+
+## 10. enx-chrome: root `tsc --noEmit` fails on two test files
+
+- `pnpm exec tsc --noEmit` (root `tsconfig.json`, which includes tests)
+  reports TS18046/TS18048/TS2488 in `src/__tests__/manifest.test.ts`:
+  `manifest.externally_connectable` is `unknown` and `manifest.content_scripts`
+  is possibly `undefined`. `src/background/__tests__/statsReporter.test.ts`
+  has 3 more (TS2352/TS2493: casting `fetch` mock call tuples). All 10 errors
+  are on `main` as well.
+- `pnpm build` only type-checks `tsconfig.app.json`, and Jest still passes, so
+  nothing caught it. Probably a manifest type change from the 2026-09-24
+  dependency upgrade (#34). Found while moving to pnpm 12; the lockfile is
+  unchanged, so pnpm is not the cause.
+- Suggested fix: narrow the types in the test (a type guard or a local
+  interface for the fields it reads).

@@ -69,8 +69,8 @@ If you want the extension to work on **all websites**, change the `matches` patt
 
 ### Prerequisites
 
-- Node.js 16+
-- pnpm (recommended) or npm
+- Node.js 24 LTS (pinned in `.node-version`; fnm picks it up automatically)
+- pnpm (the version in `package.json` `packageManager`)
 - Chrome browser
 
 ### Installation
