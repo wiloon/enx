@@ -7,7 +7,7 @@
 // (providers/RuntimeEnvScript.tsx), so one image runs anywhere.
 //
 // Server-only values (CLERK_SECRET_KEY, API_BASE_URL) never belong here: read
-// process.env directly in server components, middleware or next.config.
+// process.env directly in server components, proxy.ts or next.config.
 
 export type RuntimeEnv = {
   ENX_EXTENSION_ID: string

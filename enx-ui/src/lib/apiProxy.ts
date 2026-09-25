@@ -1,7 +1,7 @@
 // Where a browser request for `/api/*` is forwarded to.
 //
 // The browser only ever talks to its own origin; this server relays `/api/*`
-// to the real API. The target MUST be read per request (from middleware), not
+// to the real API. The target MUST be read per request (from proxy.ts), not
 // from next.config.ts `rewrites()`: rewrites are evaluated at `next build` and
 // frozen into routes-manifest.json, so the API host would be baked into the
 // image and `API_BASE_URL` set on the container would do nothing.

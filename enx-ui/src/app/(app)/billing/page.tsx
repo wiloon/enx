@@ -44,7 +44,7 @@ export default function BillingPage() {
     setRedirecting(key)
     const resp = await request()
     if (resp.success && resp.data?.url) {
-      window.location.href = resp.data.url
+      window.location.assign(resp.data.url)
       return
     }
     setCheckoutError(

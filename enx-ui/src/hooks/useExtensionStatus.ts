@@ -14,16 +14,15 @@ export function useExtensionStatus(): ExtensionStatus {
   useEffect(() => {
     // Fast path: the content script stamps the running version onto <html>
     // on enx-ui pages (ADR-019 Option G2), so we can skip the ping round-trip.
-    if (
+    const stamped =
       typeof document !== 'undefined' &&
-      document.documentElement.dataset.enxExtension
-    ) {
-      setStatus('installed')
-      return
-    }
+      Boolean(document.documentElement.dataset.enxExtension)
+    const check = stamped
+      ? Promise.resolve({ installed: true })
+      : pingExtension()
 
     let cancelled = false
-    pingExtension().then(({ installed }) => {
+    check.then(({ installed }) => {
       if (!cancelled) setStatus(installed ? 'installed' : 'not-installed')
     })
     return () => {

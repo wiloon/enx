@@ -1,14 +1,6 @@
-import { dirname } from 'path'
-import { fileURLToPath } from 'url'
-import { FlatCompat } from '@eslint/eslintrc'
+import nextVitals from 'eslint-config-next/core-web-vitals'
+import nextTypescript from 'eslint-config-next/typescript'
 import prettierRecommended from 'eslint-plugin-prettier/recommended'
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-})
 
 const eslintConfig = [
   // Flat config does not read .eslintignore, so build output and run
@@ -29,7 +21,8 @@ const eslintConfig = [
       'playwright/.cache/',
     ],
   },
-  ...compat.extends('next/core-web-vitals', 'next/typescript'),
+  ...nextVitals,
+  ...nextTypescript,
   // Jest loads these two as CommonJS (package.json has no "type": "module"),
   // so require() is the correct form here.
   {

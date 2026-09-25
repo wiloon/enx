@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { usePathname } from 'next/navigation'
 import AppSidebar from './AppSidebar'
 import AppTopbar from './AppTopbar'
@@ -11,10 +11,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const pathname = usePathname()
 
-  // Close the mobile drawer whenever the route changes.
-  useEffect(() => {
+  // Close the mobile drawer whenever the route changes. Adjusted during render
+  // (https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes)
+  // rather than in an effect, so the stale drawer never paints.
+  const [drawerPath, setDrawerPath] = useState(pathname)
+  if (drawerPath !== pathname) {
+    setDrawerPath(pathname)
     setDrawerOpen(false)
-  }, [pathname])
+  }
 
   return (
     <div className="flex min-h-screen">

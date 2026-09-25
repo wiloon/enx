@@ -38,7 +38,8 @@ const clerk = clerkMiddleware({
   publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
 })
 
-export default function middleware(req: NextRequest, event: NextFetchEvent) {
+// Next 16 renamed middleware.ts to proxy.ts (same role, Node.js runtime).
+export default function proxy(req: NextRequest, event: NextFetchEvent) {
   if (isApiPath(req.nextUrl.pathname)) return relayToApi(req)
   return clerk(req, event)
 }
