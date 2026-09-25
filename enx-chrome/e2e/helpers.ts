@@ -29,55 +29,6 @@ export async function openOptions(page: Page, extensionId: string) {
 }
 
 /**
- * Seed extension storage with a logged-in Cognito session (E2E helper).
- * Avoids interactive Hosted UI OAuth during Playwright runs.
- */
-export async function seedLoggedInState(
-  page: Page,
-  user: {
-    id?: number
-    username?: string
-    email?: string
-    accessToken?: string
-  } = {}
-) {
-  const userData = {
-    id: user.id ?? 1,
-    username: user.username ?? 'test-user',
-    email: user.email ?? 'test@example.com',
-    status: 'active',
-    isLoggedIn: true,
-  }
-  const accessToken = user.accessToken ?? 'test-access-token'
-
-  await page.evaluate(
-    ({ userData, accessToken }) => {
-      return chrome.storage.local.set({
-        user: userData,
-        'enx-user': userData,
-        accessToken,
-        refreshToken: 'test-refresh-token',
-      })
-    },
-    { userData, accessToken }
-  )
-}
-
-/**
- * @deprecated Legacy username/password login removed after Cognito migration.
- * Use seedLoggedInState() for E2E tests.
- */
-export async function login(
-  page: Page,
-  username: string = 'test-user',
-  _password?: string
-) {
-  await seedLoggedInState(page, { username })
-  await page.reload({ waitUntil: 'domcontentloaded' })
-  await page.waitForSelector('text=/Welcome/', { timeout: 10000 })
-}
-
-/**
  * Wait until highlighting has actually been painted: the content script's
  * `<style data-enx-highlight-styles>` is in the head AND `CSS.highlights` holds
  * at least one non-empty `enx-hl-*` entry. The style tag alone only proves the

@@ -9,6 +9,7 @@
     "build:homelab": "pnpm build",
     "build:dev": "tsc -p tsconfig.app.json && vite build --mode development",
     "build:prod": "tsc -p tsconfig.app.json && vite build --mode production",
+    "build:e2e": "tsc -p tsconfig.app.json && VITE_ENX_UI_ORIGINS=http://localhost:3000,http://localhost:8765 vite build --mode development --outDir dist-e2e",
     "package:webstore": "pnpm build:prod && node scripts/package-webstore.mjs",
     "preview": "vite preview",
     "test": "jest",
@@ -35,6 +36,7 @@
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
+    "@clerk/testing": "2.2.37",
     "@crxjs/vite-plugin": "^3.0.0",
     "@eslint/compat": "^2.1.1",
     "@eslint/js": "^9.39.5",
