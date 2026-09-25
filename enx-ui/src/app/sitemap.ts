@@ -11,10 +11,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
     // Store, Stripe) go looking for them, and because a policy nobody can
     // find is not published in any meaningful sense.
     ...['/privacy', '/terms', '/refund'].flatMap((path) => [
-      { url: `${base}${path}`, changeFrequency: 'yearly' as const, priority: 0.3 },
+      {
+        url: `${base}${path}`,
+        changeFrequency: 'yearly' as const,
+        priority: 0.3,
+      },
       // The Chinese versions are separate URLs, not a toggle, so each one
       // can be linked and cited -- and so each one is indexable.
-      { url: `${base}/zh${path}`, changeFrequency: 'yearly' as const, priority: 0.3 },
+      {
+        url: `${base}/zh${path}`,
+        changeFrequency: 'yearly' as const,
+        priority: 0.3,
+      },
     ]),
   ]
 }

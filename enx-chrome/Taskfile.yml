@@ -2,7 +2,7 @@ version: '3'
 
 vars:
   EXT_NAME: enx-chrome-extension
-  # Use project Node from .node-version (see README: Node.js 25+ via fnm)
+  # Use project Node from .node-version (Node.js 24 LTS via fnm)
   FNM_EXEC: fnm exec --using=.node-version --
   VERSION:
     sh: fnm exec --using=.node-version -- node -p "require('./package.json').version"

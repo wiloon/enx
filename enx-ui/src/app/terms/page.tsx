@@ -34,8 +34,8 @@ export default function TermsPage() {
         </p>
         <p>
           It is run by <Term>one person</Term>, {LEGAL.operatorRole}, not by a
-          company. Support is answered by that person, which means replies
-          come when they come — see the response time in the{' '}
+          company. Support is answered by that person, which means replies come
+          when they come — see the response time in the{' '}
           <a
             href="/refund"
             className="underline underline-offset-4 hover:text-foreground"
@@ -54,8 +54,8 @@ export default function TermsPage() {
       <Section heading="2. Your account">
         <p>
           You need an account to use {SITE.name}. You are responsible for
-          keeping access to it secure, and for what happens under it. Tell us
-          at {LEGAL.contactEmail} if you believe someone else has access.
+          keeping access to it secure, and for what happens under it. Tell us at{' '}
+          {LEGAL.contactEmail} if you believe someone else has access.
         </p>
         <p>
           One account is for one person. Sharing credentials, or using one
@@ -76,22 +76,22 @@ export default function TermsPage() {
         />
         <p>
           We may suspend or close an account that does any of these. Where the
-          breach is not deliberate, we will tell you first and give you a
-          chance to stop.
+          breach is not deliberate, we will tell you first and give you a chance
+          to stop.
         </p>
       </Section>
 
       <Section heading="4. Subscriptions">
         <p>
           Paid plans are billed in advance and <Term>renew automatically</Term>{' '}
-          at the end of each period until you cancel. You can cancel at any
-          time from the Billing page; cancelling stops the next renewal and
-          leaves your access running until the end of the period you have
-          already paid for.
+          at the end of each period until you cancel. You can cancel at any time
+          from the Billing page; cancelling stops the next renewal and leaves
+          your access running until the end of the period you have already paid
+          for.
         </p>
         <p>
-          Prices are shown at checkout. If we change a price, the change
-          applies from your next renewal and we will tell you in advance.
+          Prices are shown at checkout. If we change a price, the change applies
+          from your next renewal and we will tell you in advance.
         </p>
       </Section>
 
@@ -126,9 +126,8 @@ export default function TermsPage() {
             Refund Policy
           </a>
           , which forms part of these terms. In short: a first subscription
-          charge can be refunded in full within{' '}
-          {LEGAL.subscriptionRefundDays} days, and unused credits can be
-          refunded at any time.
+          charge can be refunded in full within {LEGAL.subscriptionRefundDays}{' '}
+          days, and unused credits can be refunded at any time.
         </p>
       </Section>
 
@@ -151,13 +150,13 @@ export default function TermsPage() {
         <p>
           {SITE.name} works on web pages published by other people. We do not
           own, control, endorse or take responsibility for that content. Your
-          use of it remains subject to whatever terms the site that published
-          it sets.
+          use of it remains subject to whatever terms the site that published it
+          sets.
         </p>
         <p>
           Text you paste into the Reader remains yours. You give us permission
-          only to store and display it back to you, and to process it to
-          provide the features you use. We delete it after 7 days automatically.
+          only to store and display it back to you, and to process it to provide
+          the features you use. We delete it after 7 days automatically.
         </p>
       </Section>
 
@@ -173,10 +172,9 @@ export default function TermsPage() {
       <Section heading="10. Availability">
         <p>
           We aim to keep {SITE.name} running, but we do not promise it will be
-          uninterrupted or error-free. We may take it down for maintenance,
-          and depend on third-party providers who may have outages of their
-          own. Extended paid downtime is handled as a refund under the Refund
-          Policy.
+          uninterrupted or error-free. We may take it down for maintenance, and
+          depend on third-party providers who may have outages of their own.
+          Extended paid downtime is handled as a refund under the Refund Policy.
         </p>
       </Section>
 
@@ -197,10 +195,10 @@ export default function TermsPage() {
       <Section heading="12. Ending the agreement">
         <p>
           You can close your account at any time by writing to{' '}
-          {LEGAL.contactEmail}. We may close or suspend an account that
-          breaches these terms, or if we stop operating the service — in which
-          case we will give notice and refund the unused portion of anything
-          you have paid.
+          {LEGAL.contactEmail}. We may close or suspend an account that breaches
+          these terms, or if we stop operating the service — in which case we
+          will give notice and refund the unused portion of anything you have
+          paid.
         </p>
       </Section>
 
@@ -210,20 +208,20 @@ export default function TermsPage() {
           the operator lives.
         </p>
         <p>
-          If you are a consumer, this does not deprive you of the protection
-          of mandatory rules in your own country of residence, and it does not
-          limit any right you have to bring a complaint to a consumer
-          protection authority where you live.
+          If you are a consumer, this does not deprive you of the protection of
+          mandatory rules in your own country of residence, and it does not
+          limit any right you have to bring a complaint to a consumer protection
+          authority where you live.
         </p>
       </Section>
 
       <Section heading="14. Changes">
         <p>
-          We may update these terms. We will change the date at the top and,
-          for a material change, tell you by email before it takes effect.
+          We may update these terms. We will change the date at the top and, for
+          a material change, tell you by email before it takes effect.
           Continuing to use {SITE.name} after that means you accept the new
-          terms; if you do not, close your account and we will refund the
-          unused portion of your current period.
+          terms; if you do not, close your account and we will refund the unused
+          portion of your current period.
         </p>
       </Section>
 

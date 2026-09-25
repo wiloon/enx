@@ -25,9 +25,9 @@ export function serverRuntimeEnv(): RuntimeEnv {
 
 export function runtimeEnv(key: keyof RuntimeEnv): string {
   if (typeof window !== 'undefined') {
-    const injected = (window as unknown as Record<string, RuntimeEnv | undefined>)[
-      RUNTIME_ENV_GLOBAL
-    ]
+    const injected = (
+      window as unknown as Record<string, RuntimeEnv | undefined>
+    )[RUNTIME_ENV_GLOBAL]
     return injected?.[key] ?? ''
   }
   return serverRuntimeEnv()[key]

@@ -132,9 +132,7 @@ export default function RephrasePage() {
           </form>
 
           {mutation.isError && (
-            <div className="text-sm text-red-600">
-              {mutation.error.message}
-            </div>
+            <div className="text-sm text-red-600">{mutation.error.message}</div>
           )}
 
           {result && (

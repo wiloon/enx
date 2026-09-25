@@ -48,9 +48,9 @@ export default function RefundPolicyPage() {
         <List
           items={[
             <>
-              <Term>A renewal you did not expect.</Term> If you were charged
-              for a renewal you meant to cancel and you have not used the
-              service in that period, write to us and we will refund it.
+              <Term>A renewal you did not expect.</Term> If you were charged for
+              a renewal you meant to cancel and you have not used the service in
+              that period, write to us and we will refund it.
             </>,
             <>
               <Term>Extended downtime.</Term> If {SITE.name} is unavailable for
@@ -83,11 +83,10 @@ export default function RefundPolicyPage() {
 
       <Section heading="Your rights as a consumer">
         <p>
-          Depending on where you live, you may have a statutory right to
-          cancel a purchase of digital services within a set period. This
-          policy does not replace that right, and nothing here takes it away.
-          Where your local law gives you more than this page does, your local
-          law wins.
+          Depending on where you live, you may have a statutory right to cancel
+          a purchase of digital services within a set period. This policy does
+          not replace that right, and nothing here takes it away. Where your
+          local law gives you more than this page does, your local law wins.
         </p>
       </Section>
 
@@ -98,19 +97,20 @@ export default function RefundPolicyPage() {
           form or a reason.
         </p>
         <p>
-          We will reply within <Term>{LEGAL.refundResponseDays} business days</Term>.
-          Approved refunds go back to the original payment method through
-          Stripe; how long it then takes to appear is up to your bank, usually
-          5–10 business days.
+          We will reply within{' '}
+          <Term>{LEGAL.refundResponseDays} business days</Term>. Approved
+          refunds go back to the original payment method through Stripe; how
+          long it then takes to appear is up to your bank, usually 5–10 business
+          days.
         </p>
       </Section>
 
       <Section heading="Chargebacks">
         <p>
-          If something looks wrong on your statement, please write to us
-          before disputing the charge with your bank — we can almost always
-          sort it out faster, and a chargeback automatically suspends the
-          account while the bank investigates.
+          If something looks wrong on your statement, please write to us before
+          disputing the charge with your bank — we can almost always sort it out
+          faster, and a chargeback automatically suspends the account while the
+          bank investigates.
         </p>
       </Section>
 

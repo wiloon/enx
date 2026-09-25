@@ -45,7 +45,11 @@ function NavLink({
 // The app-shell primary navigation (ADR-016). Rendered both as the fixed
 // desktop rail and inside the mobile drawer; `onNavigate` lets the drawer
 // close itself on selection.
-export default function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
+export default function AppSidebar({
+  onNavigate,
+}: {
+  onNavigate?: () => void
+}) {
   const pathname = usePathname()
   const { isAdmin } = useIsAdmin()
 

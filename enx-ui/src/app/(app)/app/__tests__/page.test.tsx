@@ -86,7 +86,9 @@ it('walks a user with no data through the three onboarding steps', async () => {
 
   renderPage()
 
-  expect(await screen.findByText('Get started in three steps')).toBeInTheDocument()
+  expect(
+    await screen.findByText('Get started in three steps')
+  ).toBeInTheDocument()
   expect(screen.getByText('Catglish is installed')).toBeInTheDocument()
   expect(
     screen.getByRole('link', { name: 'Paste some text instead' })
@@ -111,7 +113,9 @@ it('leads a returning user with their own numbers, not a document list', async (
   expect(screen.getByText('1,200')).toBeInTheDocument()
   expect(screen.getByText('14')).toBeInTheDocument()
   expect(screen.getByText('312')).toBeInTheDocument()
-  expect(screen.queryByText('Get started in three steps')).not.toBeInTheDocument()
+  expect(
+    screen.queryByText('Get started in three steps')
+  ).not.toBeInTheDocument()
   expect(screen.queryByText('Continue reading')).not.toBeInTheDocument()
 })
 
@@ -133,7 +137,9 @@ it('renders feature entries as links, not buttons (ADR-027 decision 2)', async (
     const tile = await screen.findByRole('link', { name: label })
     expect(tile.tagName).toBe('A')
   }
-  expect(screen.queryByRole('button', { name: /Go to/ })).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: /Go to/ })
+  ).not.toBeInTheDocument()
 })
 
 it('hides the plan card when billing fails instead of taking the page down', async () => {
@@ -155,9 +161,13 @@ it('keeps a stats failure from blanking the rest of Home', async () => {
 
   // No strip, no onboarding (which would be wrong -- we don't know whether
   // this user is new), but the rest of the page still works.
-  expect(await screen.findByRole('link', { name: 'Reader' })).toBeInTheDocument()
+  expect(
+    await screen.findByRole('link', { name: 'Reader' })
+  ).toBeInTheDocument()
   await waitFor(() =>
-    expect(screen.queryByText('Get started in three steps')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('Get started in three steps')
+    ).not.toBeInTheDocument()
   )
   expect(screen.queryByText('Today')).not.toBeInTheDocument()
 })

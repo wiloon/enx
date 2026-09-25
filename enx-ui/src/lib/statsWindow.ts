@@ -111,7 +111,10 @@ export function bucketLabels(
     case 'month':
       return { label: month, fullLabel: `${month} ${date.getFullYear()}` }
     case 'year':
-      return { label: String(date.getFullYear()), fullLabel: String(date.getFullYear()) }
+      return {
+        label: String(date.getFullYear()),
+        fullLabel: String(date.getFullYear()),
+      }
   }
 }
 

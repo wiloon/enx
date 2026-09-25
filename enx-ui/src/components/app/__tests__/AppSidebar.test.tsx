@@ -103,7 +103,5 @@ it('shows the Admin group for an admin', () => {
 
   expect(screen.getByText('Admin')).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'Dictionary' })).toBeInTheDocument()
-  expect(
-    screen.getByRole('link', { name: 'Page reports' })
-  ).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Page reports' })).toBeInTheDocument()
 })

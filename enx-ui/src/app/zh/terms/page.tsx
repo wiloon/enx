@@ -53,10 +53,12 @@ export default function TermsZhPage() {
       <Section heading="2. 你的账号">
         <p>
           使用 {SITE.name} 需要账号。你应妥善保管账号访问权限，
-          并对该账号下发生的行为负责。若你认为他人取得了访问权限，
-          请立即联系 {LEGAL.contactEmail}。
+          并对该账号下发生的行为负责。若你认为他人取得了访问权限， 请立即联系{' '}
+          {LEGAL.contactEmail}。
         </p>
-        <p>一个账号供一个人使用。不得共享凭据，也不得用一个账号为多人提供服务。</p>
+        <p>
+          一个账号供一个人使用。不得共享凭据，也不得用一个账号为多人提供服务。
+        </p>
       </Section>
 
       <Section heading="3. 可接受的使用">
@@ -94,8 +96,7 @@ export default function TermsZhPage() {
           积分随订阅发放，也可以单独购买，按应用内显示的费率消耗。
         </p>
         <p>
-          积分在服务之外没有现金价值，也不能在账号之间转让。
-          未消费的积分可按
+          积分在服务之外没有现金价值，也不能在账号之间转让。 未消费的积分可按
           <a
             href="/zh/refund"
             className="underline underline-offset-4 hover:text-foreground"
@@ -123,8 +124,8 @@ export default function TermsZhPage() {
       <Section heading="7. 关于准确性 —— 请务必读这一条">
         <p>
           释义、译文和解释由词典和 AI 语言模型产生。它们
-          <Term>经常有用，也时而出错</Term>。
-          一段 AI 译文可以读起来流畅、笃定，同时仍然曲解了原文。
+          <Term>经常有用，也时而出错</Term>。 一段 AI
+          译文可以读起来流畅、笃定，同时仍然曲解了原文。
         </p>
         <p>
           {SITE.name} 是一个学习辅助工具。
@@ -147,8 +148,8 @@ export default function TermsZhPage() {
 
       <Section heading="9. 我们的知识产权">
         <p>
-          软件、网站、{SITE.name} 这个名称及其品牌标识归 {LEGAL.operatorName} 所有。
-          本协议不向你转让其中任何一项。在你的账号状态正常期间，
+          软件、网站、{SITE.name} 这个名称及其品牌标识归 {LEGAL.operatorName}{' '}
+          所有。 本协议不向你转让其中任何一项。在你的账号状态正常期间，
           你获得的是一项个人的、非排他的、不可转让的使用权。
         </p>
       </Section>
@@ -195,7 +196,8 @@ export default function TermsZhPage() {
       <Section heading="14. 变更">
         <p>
           我们可能更新本协议。我们会更改顶部的日期；对你有实质影响的变更，
-          会在生效前通过邮件通知你。此后继续使用 {SITE.name} 即表示你接受新条款；
+          会在生效前通过邮件通知你。此后继续使用 {SITE.name}{' '}
+          即表示你接受新条款；
           若你不接受，可以注销账号，我们会退还当前周期中未使用的部分。
         </p>
       </Section>

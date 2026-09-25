@@ -7,11 +7,7 @@ import AppTopbar from './AppTopbar'
 
 // The persistent app-shell (ADR-016): a fixed sidebar rail on desktop, a
 // toggleable drawer on mobile, and a topbar over the scrolling content area.
-export default function AppShell({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function AppShell({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const pathname = usePathname()
 

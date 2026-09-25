@@ -8,7 +8,10 @@ export default function SiteFooter() {
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-12 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">
         <div>
           <div className="flex items-center gap-2 font-semibold">
-            <span aria-hidden className="inline-block h-4 w-4 rounded-full bg-brand" />
+            <span
+              aria-hidden
+              className="inline-block h-4 w-4 rounded-full bg-brand"
+            />
             {SITE.name}
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -20,7 +23,12 @@ export default function SiteFooter() {
           <h3 className="text-sm font-medium">Product</h3>
           <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
             <li>
-              <a href={SITE.chromeWebStoreUrl} target="_blank" rel="noreferrer" className="hover:text-foreground">
+              <a
+                href={SITE.chromeWebStoreUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="hover:text-foreground"
+              >
                 Add to Chrome
               </a>
             </li>
@@ -36,7 +44,12 @@ export default function SiteFooter() {
           <h3 className="text-sm font-medium">Resources</h3>
           <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
             <li>
-              <a href={SITE.githubUrl} target="_blank" rel="noreferrer" className="hover:text-foreground">
+              <a
+                href={SITE.githubUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="hover:text-foreground"
+              >
                 GitHub
               </a>
             </li>

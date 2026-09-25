@@ -32,7 +32,10 @@ export default function StatStrip() {
 
   if (isLoading) {
     return (
-      <div className="h-32 animate-pulse rounded-lg border bg-muted" aria-hidden />
+      <div
+        className="h-32 animate-pulse rounded-lg border bg-muted"
+        aria-hidden
+      />
     )
   }
 
@@ -54,9 +57,18 @@ export default function StatStrip() {
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Figure label="Words read" value={approximateWords(data.today.wordsRead)} />
-        <Figure label="Looked up" value={data.today.wordLookups.toLocaleString()} />
-        <Figure label="This week" value={approximateWords(data.week.wordsRead)} />
+        <Figure
+          label="Words read"
+          value={approximateWords(data.today.wordsRead)}
+        />
+        <Figure
+          label="Looked up"
+          value={data.today.wordLookups.toLocaleString()}
+        />
+        <Figure
+          label="This week"
+          value={approximateWords(data.week.wordsRead)}
+        />
         <Figure label="Word list" value={data.vocab.total.toLocaleString()} />
       </div>
 
@@ -108,4 +120,3 @@ function Sparkline({ values }: { values: number[] }) {
     </div>
   )
 }
-

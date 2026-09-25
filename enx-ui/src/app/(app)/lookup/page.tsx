@@ -13,7 +13,11 @@ export default function WordLookupPage() {
   const [clearing, setClearing] = useState(false)
   const queryClient = useQueryClient()
 
-  const { data: wordData, isLoading, error } = useQuery({
+  const {
+    data: wordData,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['word-lookup', currentWord],
     queryFn: async () => {
       if (!currentWord) return null
@@ -60,7 +64,9 @@ export default function WordLookupPage() {
           />
 
           {isLoading && (
-            <div className="text-center py-8 text-gray-600">Looking up word...</div>
+            <div className="text-center py-8 text-gray-600">
+              Looking up word...
+            </div>
           )}
 
           {error && (
@@ -70,7 +76,11 @@ export default function WordLookupPage() {
           )}
 
           {wordData && (
-            <WordResultCard data={wordData} onClear={handleClear} clearing={clearing} />
+            <WordResultCard
+              data={wordData}
+              onClear={handleClear}
+              clearing={clearing}
+            />
           )}
 
           {currentWord && !isLoading && !error && !wordData && (

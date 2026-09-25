@@ -1,7 +1,7 @@
 version: '3'
 
 vars:
-  # enx-ui needs Node 18+ (Next 15); many shells still default to Node 16.
+  # enx-ui needs Node 24 (LTS); many shells still default to an older Node.
   # Run its pnpm scripts through the version pinned in enx-ui/.node-version.
   FNM_UI: fnm exec --using=.node-version --
   # ROOT_DIR follows the invocation path. A symlink such as ~/enx ->

@@ -50,18 +50,13 @@ being handled on a separate branch.
   ESM or babel with an `import.meta` plugin. Then add tests for the three
   functions and for the production guard.
 
-## 4. enx-ui: about 2650 ESLint errors (prettier backlog)
+## 4. enx-ui: about 2650 ESLint errors (prettier backlog) — DONE
 
-- `npx eslint .` reports about 2646 `prettier/prettier` errors, 2
-  `@typescript-eslint/no-require-imports`, and 1 `no-explicit-any`.
-- Root cause: `.prettierrc` asks for semicolons, but the codebase is written
-  without them. `next.config.ts` sets `eslint.ignoreDuringBuilds: true`
-  because of this, and its comment already describes the problem.
-- Decision needed: either change `.prettierrc` to `semi: false` (and whatever
-  else the code already follows), or run `prettier --write .` once. Then drop
-  `ignoreDuringBuilds` and run lint in CI.
-- Note: `next lint` is deprecated (removed in Next 16), so the `lint` script
-  should become `eslint .` at the same time.
+Resolved on branch `chore/enx-ui-lint-semi-false`: `.prettierrc` now says
+`semi: false` to match the code (same as enx-chrome), the remaining ~470
+formatting diffs were fixed with `eslint --fix`, the last 3 errors were fixed
+by hand, `ignoreDuringBuilds` was removed from `next.config.ts`, and the
+`lint` script is now `eslint .`.
 
 ## 5. enx-chrome: 12 ESLint errors
 
@@ -118,3 +113,18 @@ Not bugs, just left for dedicated changes:
 | enx-ui, enx-chrome | @testing-library/jest-dom         | 6.9       | 7.x    |
 | enx-chrome | vite / @crxjs/vite-plugin / @vitejs/plugin-react | 7 / 2.7 / 5 | 8 / 3 / 6 (must move together) |
 | enx-chrome | @sentry/react                             | 10.x      | 11.x   |
+
+## 10. enx-chrome: root `tsc --noEmit` fails on two test files
+
+- `pnpm exec tsc --noEmit` (root `tsconfig.json`, which includes tests)
+  reports TS18046/TS18048/TS2488 in `src/__tests__/manifest.test.ts`:
+  `manifest.externally_connectable` is `unknown` and `manifest.content_scripts`
+  is possibly `undefined`. `src/background/__tests__/statsReporter.test.ts`
+  has 3 more (TS2352/TS2493: casting `fetch` mock call tuples). All 10 errors
+  are on `main` as well.
+- `pnpm build` only type-checks `tsconfig.app.json`, and Jest still passes, so
+  nothing caught it. Probably a manifest type change from the 2026-09-24
+  dependency upgrade (#34). Found while moving to pnpm 12; the lockfile is
+  unchanged, so pnpm is not the cause.
+- Suggested fix: narrow the types in the test (a type guard or a local
+  interface for the fields it reads).

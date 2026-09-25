@@ -105,7 +105,8 @@ export const AI_PROVIDER = {
   /** Where DeepSeek processes the request -- see the comment above. */
   location: 'mainland China',
   locationZh: '中国大陆',
-  privacyUrl: 'https://cdn.deepseek.com/policies/en-US/deepseek-privacy-policy.html',
+  privacyUrl:
+    'https://cdn.deepseek.com/policies/en-US/deepseek-privacy-policy.html',
 } as const
 
 /**
@@ -161,7 +162,8 @@ export const SUBPROCESSORS = [
     // sub-processor list exists to surface.
     purposeZh: '崩溃报告与性能监控',
     data: 'Error messages, stack traces, browser and version information, and the URLs of requests made to our own API (which can include a word you looked up)',
-    dataZh: '错误信息、调用栈、浏览器与版本信息，以及对我们自己 API 的请求地址（其中可能包含你查过的某个词）',
+    dataZh:
+      '错误信息、调用栈、浏览器与版本信息，以及对我们自己 API 的请求地址（其中可能包含你查过的某个词）',
     location: 'United States',
     locationZh: '美国',
     url: 'https://sentry.io/privacy/',

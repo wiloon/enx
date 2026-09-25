@@ -4,7 +4,9 @@
 import { NextRequest, type NextFetchEvent } from 'next/server'
 
 const clerkHandler = jest.fn()
-const clerkMiddleware = jest.fn<typeof clerkHandler, unknown[]>(() => clerkHandler)
+const clerkMiddleware = jest.fn<typeof clerkHandler, unknown[]>(
+  () => clerkHandler
+)
 
 jest.mock('@clerk/nextjs/server', () => ({
   clerkMiddleware: (...args: unknown[]) => clerkMiddleware(...args),
@@ -38,7 +40,9 @@ describe('middleware', () => {
   it('passes the runtime publishable key to clerkMiddleware', async () => {
     process.env.CLERK_PUBLISHABLE_KEY = 'pk_test_runtime'
     await loadMiddleware()
-    expect(clerkMiddleware).toHaveBeenCalledWith({ publishableKey: 'pk_test_runtime' })
+    expect(clerkMiddleware).toHaveBeenCalledWith({
+      publishableKey: 'pk_test_runtime',
+    })
   })
 
   it('rewrites /api/* to API_BASE_URL, keeping path and query', async () => {
@@ -61,7 +65,10 @@ describe('middleware', () => {
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
     const { default: middleware } = await loadMiddleware()
 
-    const res = middleware(new NextRequest('https://enx.example/api/me'), event) as Response
+    const res = middleware(
+      new NextRequest('https://enx.example/api/me'),
+      event
+    ) as Response
 
     expect(res.status).toBe(500)
     expect(await res.json()).toEqual({

@@ -44,7 +44,8 @@ describe('Clerk sign-in/up routing contract', () => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const p = path.join(dir, entry.name)
         if (entry.isDirectory()) {
-          if (entry.name !== '__tests__' && entry.name !== 'node_modules') walk(p, acc)
+          if (entry.name !== '__tests__' && entry.name !== 'node_modules')
+            walk(p, acc)
         } else if (/\.tsx$/.test(entry.name)) {
           acc.push(p)
         }
@@ -57,7 +58,9 @@ describe('Clerk sign-in/up routing contract', () => {
 
     const offenders = walk(SRC).filter((f) => {
       if (allowedRoots.some((root) => f.startsWith(root))) return false
-      return /<(SignIn|SignUp)[\s/>]/.test(stripComments(readFileSync(f, 'utf8')))
+      return /<(SignIn|SignUp)[\s/>]/.test(
+        stripComments(readFileSync(f, 'utf8'))
+      )
     })
 
     expect(offenders).toEqual([])

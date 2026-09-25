@@ -156,7 +156,9 @@ export class ApiService {
     return this.makeRequest(`/api/admin/ecdict/${encodeURIComponent(word)}`)
   }
 
-  async adminSyncWordFromEcdict(word: string): Promise<
+  async adminSyncWordFromEcdict(
+    word: string
+  ): Promise<
     ApiResponse<{ success: boolean; matchedBy: string; word: AdminWordRow }>
   > {
     return this.makeRequest(
@@ -222,7 +224,9 @@ export class ApiService {
   // Reader "paste text" documents (ADR-022). Length (20,000 chars) and the
   // 50-document-per-user cap are enforced server-side; this client sends
   // whatever it's given and surfaces the backend's rejection message.
-  async createReaderDocument(content: string): Promise<ApiResponse<{ id: string }>> {
+  async createReaderDocument(
+    content: string
+  ): Promise<ApiResponse<{ id: string }>> {
     return this.makeRequest('/api/reader/documents', {
       method: 'POST',
       body: JSON.stringify({ content }),

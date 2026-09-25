@@ -4,7 +4,9 @@ test.describe('marketing landing', () => {
   test('/ is the public landing page, not the login form', async ({ page }) => {
     await page.goto('/')
     await expect(
-      page.getByRole('heading', { name: /learn english while you read the web/i })
+      page.getByRole('heading', {
+        name: /learn english while you read the web/i,
+      })
     ).toBeVisible()
     await expect(
       page.getByRole('link', { name: /add to chrome/i }).first()
@@ -37,7 +39,9 @@ test.describe('Clerk sign in (ADR-015)', () => {
 
   test('/sign-in renders the Clerk sign-in widget', async ({ page }) => {
     await page.goto('/sign-in')
-    await expect(page.locator('.cl-signIn-root, .cl-rootBox').first()).toBeVisible({
+    await expect(
+      page.locator('.cl-signIn-root, .cl-rootBox').first()
+    ).toBeVisible({
       timeout: 15000,
     })
   })

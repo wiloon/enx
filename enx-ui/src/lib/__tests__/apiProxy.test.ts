@@ -12,7 +12,11 @@ describe('isApiPath', () => {
 describe('apiProxyUrl', () => {
   it('joins base, path and query', () => {
     expect(
-      apiProxyUrl('/api/stats/overview', '?date=2026-09-20', 'http://enx-api.enx.svc:8091')?.href
+      apiProxyUrl(
+        '/api/stats/overview',
+        '?date=2026-09-20',
+        'http://enx-api.enx.svc:8091'
+      )?.href
     ).toBe('http://enx-api.enx.svc:8091/api/stats/overview?date=2026-09-20')
   })
   it('tolerates a trailing slash on the base', () => {
@@ -25,7 +29,10 @@ describe('apiProxyUrl', () => {
       'https://h.example/gw/api/me'
     )
   })
-  it.each([undefined, '', '   '])('returns null, with no default, for %p', (base) => {
-    expect(apiProxyUrl('/api/me', '', base)).toBeNull()
-  })
+  it.each([undefined, '', '   '])(
+    'returns null, with no default, for %p',
+    (base) => {
+      expect(apiProxyUrl('/api/me', '', base)).toBeNull()
+    }
+  )
 })

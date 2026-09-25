@@ -22,7 +22,9 @@ export default function BillingSuccessPage() {
             balance usually update within a few seconds.
           </p>
           <Link href="/billing">
-            <Button className="w-full">Back to Subscription &amp; Credits</Button>
+            <Button className="w-full">
+              Back to Subscription &amp; Credits
+            </Button>
           </Link>
         </CardContent>
       </Card>

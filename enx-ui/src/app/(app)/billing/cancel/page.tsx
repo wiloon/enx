@@ -17,7 +17,9 @@ export default function BillingCancelPage() {
             Checkout was canceled and you were not charged.
           </p>
           <Link href="/billing">
-            <Button className="w-full">Back to Subscription &amp; Credits</Button>
+            <Button className="w-full">
+              Back to Subscription &amp; Credits
+            </Button>
           </Link>
         </CardContent>
       </Card>

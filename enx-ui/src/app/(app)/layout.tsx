@@ -7,11 +7,7 @@ import AppShell from '@/components/app/AppShell'
 // Shared shell + auth gate for the whole app area (ADR-016): /app, /lookup,
 // /rephrase, /billing, /stats. The marketing pages at "/" stay outside this
 // group and unauthenticated.
-export default function AppLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth()
 
   if (isLoading) {

@@ -39,7 +39,8 @@ const METRICS: {
     id: 'wordsRead',
     label: 'Words read',
     title: 'Words read',
-    subtitle: 'Estimated from where you looked words up and how far you scrolled.',
+    subtitle:
+      'Estimated from where you looked words up and how far you scrolled.',
     kind: 'bar',
     valueLabel: 'words',
   },
@@ -161,7 +162,10 @@ export default function ReadingStatsPage() {
         </CardHeader>
         <CardContent>
           {isLoading && (
-            <div className="h-[240px] animate-pulse rounded bg-muted" aria-hidden />
+            <div
+              className="h-[240px] animate-pulse rounded bg-muted"
+              aria-hidden
+            />
           )}
           {isError && (
             <p className="py-20 text-center text-sm text-muted-foreground">

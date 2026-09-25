@@ -32,8 +32,7 @@ const STRINGS = {
     otherLanguageLabel: '用英文阅读本页',
     // Says which version governs. Without this, two translations that drift
     // leave it genuinely unclear which one the reader agreed to.
-    translationNote:
-      '本页为英文版的中文翻译。两版如有出入，以中文版为准。',
+    translationNote: '本页为英文版的中文翻译。两版如有出入，以中文版为准。',
   },
 } as const
 

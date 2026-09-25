@@ -44,14 +44,17 @@ export default function PrivacyPolicyZhPage() {
         <List
           items={[
             <>
-              我们保存<Term>你查过的词</Term>，因为那就是生词本 —— 它本身就是产品。
+              我们保存<Term>你查过的词</Term>，因为那就是生词本 ——
+              它本身就是产品。
             </>,
             <>
-              我们保存你读了多少的<Term>每日总量</Term>。我们不保存你是<Term>在哪个页面</Term>上读的。
+              我们保存你读了多少的<Term>每日总量</Term>。我们不保存你是
+              <Term>在哪个页面</Term>上读的。
             </>,
             <>
-              当你要求翻译整句时，那句话会被发送到 <Term>{AI_PROVIDER.name}</Term>{' '}
-              运行的 AI 模型，处理位置在{AI_PROVIDER.locationZh}。我们不留副本。
+              当你要求翻译整句时，那句话会被发送到{' '}
+              <Term>{AI_PROVIDER.name}</Term> 运行的 AI 模型，处理位置在
+              {AI_PROVIDER.locationZh}。我们不留副本。
             </>,
             <>我们不出售你的数据，也不用它做广告。</>,
           ]}
@@ -64,13 +67,15 @@ export default function PrivacyPolicyZhPage() {
           扩展才会在该页面上工作。它不会在你打开的每个网站上后台运行。
         </p>
         <p>
-          开启之后，它<Term>在你的浏览器里</Term>读取正文，找出页面上的英文单词，
+          开启之后，它<Term>在你的浏览器里</Term>
+          读取正文，找出页面上的英文单词，
           并给值得学的词加下划线。这段文本在本地处理。离开你浏览器的只有：
         </p>
         <List
           items={[
             <>
-              页面上的<Term>单词列表</Term>，以便我们返回每个词的释义和你的复习状态；
+              页面上的<Term>单词列表</Term>
+              ，以便我们返回每个词的释义和你的复习状态；
             </>,
             <>
               你<Term>点击</Term>的词，用于查询；
@@ -149,7 +154,8 @@ export default function PrivacyPolicyZhPage() {
       <Section heading="我们刻意不保存什么">
         <p>
           阅读统计只由「天」级别的汇总数字构成。除下文说明的一种例外，我们的数据库里
-          <Term>没有任何一列</Term>存放下面这些东西，所以也就无从交出、无从泄露、无从被调取：
+          <Term>没有任何一列</Term>
+          存放下面这些东西，所以也就无从交出、无从泄露、无从被调取：
         </p>
         <List
           items={[
@@ -161,10 +167,12 @@ export default function PrivacyPolicyZhPage() {
           ]}
         />
         <p>
-          唯一的例外是你主动发送的报告。当 Catglish 无法处理某个页面时，扩展会询问是否把该页面的地址发给我们。
+          唯一的例外是你主动发送的报告。当 Catglish
+          无法处理某个页面时，扩展会询问是否把该页面的地址发给我们。
           它会完整显示将要发送的内容，你点击「发送报告」之前不会发送任何东西。地址只保留站点和路径部分
           （不含查询参数、片段和登录信息），路径里像邮箱或长令牌这样可能指向个人的部分会被替换为占位符。
-          我们连同页面失败的原因和你的账号标识一起保存最多 90 天，且每人最多保留最近 50 条。
+          我们连同页面失败的原因和你的账号标识一起保存最多 90
+          天，且每人最多保留最近 50 条。
           它只用于修复对该页面的支持，不用于统计或用户画像。
         </p>
         <p>
@@ -174,9 +182,10 @@ export default function PrivacyPolicyZhPage() {
 
       <Section heading="整句翻译与 AI">
         <p>
-          当你划选一个句子或短语并要求翻译时，这段文本 —— 以及你点击的那个词（如果有）
-          —— 会被发送到 <Term>{AI_PROVIDER.name}</Term>（{AI_PROVIDER.entityZh}）
-          运行的 <Term>{AI_PROVIDER.model}</Term> 模型，处理位置在{' '}
+          当你划选一个句子或短语并要求翻译时，这段文本 ——
+          以及你点击的那个词（如果有） —— 会被发送到{' '}
+          <Term>{AI_PROVIDER.name}</Term>（{AI_PROVIDER.entityZh}） 运行的{' '}
+          <Term>{AI_PROVIDER.model}</Term> 模型，处理位置在{' '}
           <Term>{AI_PROVIDER.locationZh}</Term>。
           这只在你明确划选文本时发生，不会在你阅读过程中发生。
         </p>
@@ -210,7 +219,10 @@ export default function PrivacyPolicyZhPage() {
             </thead>
             <tbody>
               {SUBPROCESSORS.map((p) => (
-                <tr key={p.name} className="border-b border-border/60 align-top">
+                <tr
+                  key={p.name}
+                  className="border-b border-border/60 align-top"
+                >
                   <td className="py-3 pr-4">
                     <a
                       href={p.url}
@@ -231,7 +243,8 @@ export default function PrivacyPolicyZhPage() {
         </div>
         <p>
           这些服务商位于中国境外，因此使用 {SITE.name} 会涉及
-          <Term>个人信息向境外提供</Term>。我们在此明确告知接收方、处理目的与数据类型；
+          <Term>个人信息向境外提供</Term>
+          。我们在此明确告知接收方、处理目的与数据类型；
           你注册使用即表示对此单独同意。我们不出售个人信息，也不与广告商或数据经纪商共享。
           仅在法律强制要求、或为防止服务被滥用时，我们才会披露数据。
         </p>
@@ -240,7 +253,8 @@ export default function PrivacyPolicyZhPage() {
       <Section heading="支付">
         <p>
           支付由 <Term>Stripe</Term> 处理。你的卡号从不到达我们的服务器 ——
-          Stripe 处理它，只回传给我们一个客户编号、你的订阅状态，以及用于显示的后四位。
+          Stripe
+          处理它，只回传给我们一个客户编号、你的订阅状态，以及用于显示的后四位。
           退款事宜见{' '}
           <a
             href="/zh/refund"
@@ -255,8 +269,9 @@ export default function PrivacyPolicyZhPage() {
       <Section heading="你的数据存放在哪里">
         <p>
           我们的服务器和数据库运行在 {LEGAL.hostingProvider} 的{' '}
-          <Term>{LEGAL.hostingRegion}</Term>。上面列出的服务商各自运行在它们自己的区域，
-          因此使用 {SITE.name} 会涉及你的数据在不止一个国家或地区被处理。
+          <Term>{LEGAL.hostingRegion}</Term>
+          。上面列出的服务商各自运行在它们自己的区域， 因此使用 {SITE.name}{' '}
+          会涉及你的数据在不止一个国家或地区被处理。
         </p>
       </Section>
 
@@ -291,7 +306,8 @@ export default function PrivacyPolicyZhPage() {
       <Section heading="未成年人">
         <p>
           {SITE.name} 并非面向 14 岁以下儿童，我们也不会有意收集他们的数据。
-          若你认为有儿童注册了账号，请联系 {LEGAL.privacyEmail}，我们会予以删除。
+          若你认为有儿童注册了账号，请联系 {LEGAL.privacyEmail}
+          ，我们会予以删除。
         </p>
       </Section>
 
@@ -304,8 +320,8 @@ export default function PrivacyPolicyZhPage() {
 
       <Section heading="联系方式">
         <p>
-          隐私问题与数据请求：<Term>{LEGAL.privacyEmail}</Term>。
-          其他事宜：<Term>{LEGAL.contactEmail}</Term>。
+          隐私问题与数据请求：<Term>{LEGAL.privacyEmail}</Term>。 其他事宜：
+          <Term>{LEGAL.contactEmail}</Term>。
         </p>
       </Section>
     </LegalPage>

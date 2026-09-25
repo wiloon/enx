@@ -22,7 +22,9 @@ it('reports not-installed when the page has no extension messaging bridge', asyn
 })
 
 it('reports installed when the extension answers the ping', async () => {
-  const sendMessage = jest.fn((_id, _msg, cb) => cb({ ok: true, version: '1.2.3' }))
+  const sendMessage = jest.fn((_id, _msg, cb) =>
+    cb({ ok: true, version: '1.2.3' })
+  )
   installChrome(sendMessage)
 
   const { result } = renderHook(() => useExtensionStatus())

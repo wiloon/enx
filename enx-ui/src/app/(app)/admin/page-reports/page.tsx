@@ -8,7 +8,10 @@ import type { AdminPageReport } from '@/types'
 function formatWhen(ms: number): string {
   if (!ms) return '—'
   try {
-    return new Date(ms).toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC')
+    return new Date(ms)
+      .toISOString()
+      .replace('T', ' ')
+      .replace(/\.\d+Z$/, ' UTC')
   } catch {
     return String(ms)
   }
@@ -51,7 +54,9 @@ export default function AdminPageReportsPage() {
             </p>
           )}
           {query.isSuccess && query.data.length === 0 && (
-            <p className="text-sm text-muted-foreground">No page reports yet.</p>
+            <p className="text-sm text-muted-foreground">
+              No page reports yet.
+            </p>
           )}
           {query.isSuccess && query.data.length > 0 && (
             <div className="overflow-x-auto">
@@ -68,12 +73,17 @@ export default function AdminPageReportsPage() {
                 </thead>
                 <tbody>
                   {query.data.map((r: AdminPageReport) => (
-                    <tr key={r.id} className="border-b border-border/60 align-top">
+                    <tr
+                      key={r.id}
+                      className="border-b border-border/60 align-top"
+                    >
                       <td className="py-2 pr-3 whitespace-nowrap font-mono text-xs">
                         {formatWhen(r.createdAt)}
                       </td>
                       <td className="py-2 pr-3">{r.host}</td>
-                      <td className="py-2 pr-3 font-mono text-xs">{r.reason}</td>
+                      <td className="py-2 pr-3 font-mono text-xs">
+                        {r.reason}
+                      </td>
                       <td className="py-2 pr-3 break-all font-mono text-xs">
                         {r.url}
                       </td>
