@@ -5,6 +5,8 @@ export default {
   setupFilesAfterEnv: ['<rootDir>/src/test/setup.ts'],
   moduleNameMapper: {
     '\\.css$': '<rootDir>/src/test/styleMock.js',
+    // Vite-only import.meta.env reader -> process.env stub (see buildEnv.ts)
+    '^(\\.|@/config)/buildEnv$': '<rootDir>/src/test/buildEnvStub.ts',
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   testMatch: [

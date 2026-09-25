@@ -4,6 +4,7 @@
 // build time (`vite build --mode homelab|production`), so nothing here is
 // hardcoded per deployment.
 
+import { readBuildEnv } from './buildEnv'
 import {
   applyOverrides,
   DEFAULT_TARGET,
@@ -26,28 +27,15 @@ export interface EnvConfig {
   environment: TargetName
 }
 
-// Jest sets JEST_WORKER_ID; avoid referencing the jest global in app code
-const isTestEnv =
-  typeof process !== 'undefined' && process.env.JEST_WORKER_ID !== undefined
+const getEnvValue = (key: string, defaultValue?: string): string | undefined =>
+  readBuildEnv(key) ?? defaultValue
 
-const getEnvValue = (
-  key: string,
-  defaultValue?: string
-): string | undefined => {
-  if (isTestEnv) {
-    return defaultValue
-  }
-  // import.meta.env is injected by Vite (see envPrefix / define in vite.config.ts)
-  return (import.meta?.env?.[key] as string | undefined) ?? defaultValue
-}
+const mode = getEnvValue('MODE', 'development')
 
-const mode = getEnvValue('MODE', isTestEnv ? 'test' : 'development')
-
-const currentEnv: TargetName = isTestEnv
-  ? 'test'
-  : (resolveTargetName(getEnvValue('VITE_ENV')) ??
-    resolveTargetName(mode) ??
-    DEFAULT_TARGET)
+const currentEnv: TargetName =
+  resolveTargetName(getEnvValue('VITE_ENV')) ??
+  resolveTargetName(mode) ??
+  DEFAULT_TARGET
 
 // Export the active configuration
 const target = applyOverrides(TARGETS[currentEnv], {
