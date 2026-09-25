@@ -12,7 +12,10 @@ export const getWordHighlightEnabled = async (): Promise<boolean> => {
     }>(WORD_HIGHLIGHT_KEY)
     return result[WORD_HIGHLIGHT_KEY] ?? true
   } catch (error) {
-    console.warn('[ENX Config] failed to read word-highlight preference:', error)
+    console.warn(
+      '[ENX Config] failed to read word-highlight preference:',
+      error
+    )
     return true
   }
 }
@@ -23,7 +26,10 @@ export const setWordHighlightEnabled = async (
   try {
     await chrome.storage.local.set({ [WORD_HIGHLIGHT_KEY]: enabled })
   } catch (error) {
-    console.error('[ENX Config] failed to save word-highlight preference:', error)
+    console.error(
+      '[ENX Config] failed to save word-highlight preference:',
+      error
+    )
   }
 }
 

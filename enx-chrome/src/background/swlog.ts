@@ -90,7 +90,9 @@ export const heartbeat = async (): Promise<void> => {
 }
 
 // Called once from background.ts's module top level.
-export const recordWorkerBoot = async (reason = 'cold start'): Promise<void> => {
+export const recordWorkerBoot = async (
+  reason = 'cold start'
+): Promise<void> => {
   let downtimeMs: number | null = null
   try {
     const stored = await chrome.storage.session.get(LAST_ALIVE_KEY)

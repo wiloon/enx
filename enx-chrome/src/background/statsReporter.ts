@@ -70,7 +70,7 @@ export function localDate(now: Date = new Date()): string {
 }
 
 function isEmpty(delta: StatsDelta): boolean {
-  return Object.values(delta).every((v) => !v || v <= 0)
+  return Object.values(delta).every(v => !v || v <= 0)
 }
 
 async function readQueue(): Promise<QueuedReport[]> {
@@ -100,7 +100,10 @@ async function writeQueue(queue: QueuedReport[]): Promise<void> {
  */
 export async function enqueueReport(
   delta: StatsDelta,
-  request: (endpoint: string, options: RequestInit) => Promise<ApiRequestResult>,
+  request: (
+    endpoint: string,
+    options: RequestInit
+  ) => Promise<ApiRequestResult>,
   now: Date = new Date()
 ): Promise<void> {
   if (isEmpty(delta)) return

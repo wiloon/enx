@@ -12,7 +12,9 @@ test.describe('Popup - Cognito login', () => {
   }) => {
     await openPopup(page, extensionId)
 
-    await expect(page.getByRole('heading', { name: 'ENX Sign in' })).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: 'ENX Sign in' })
+    ).toBeVisible()
     await expect(
       page.getByText('Sign in with email or Google (AWS Cognito).')
     ).toBeVisible()

@@ -10,7 +10,7 @@ describe('formatPhonetic', () => {
   })
 
   it('leaves an already slash-wrapped phonetic unchanged (idempotent)', () => {
-    expect(formatPhonetic("/rɪˈtaɪəmənt/")).toBe("/rɪˈtaɪəmənt/")
+    expect(formatPhonetic('/rɪˈtaɪəmənt/')).toBe('/rɪˈtaɪəmənt/')
     expect(formatPhonetic(formatPhonetic('mɒ:gidʒ'))).toBe('/mɒ:gidʒ/')
   })
 

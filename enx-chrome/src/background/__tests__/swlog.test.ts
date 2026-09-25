@@ -4,18 +4,26 @@ import { heartbeat, readSwLog, recordWorkerBoot, swlog } from '../swlog'
 function installStorage(initial: Record<string, unknown> = {}) {
   const local: Record<string, unknown> = { ...initial }
   const session: Record<string, unknown> = {}
-  ;(chrome.storage.local.get as jest.Mock).mockImplementation(async (key: string) => ({
-    [key]: local[key],
-  }))
-  ;(chrome.storage.local.set as jest.Mock).mockImplementation(async (obj: object) => {
-    Object.assign(local, obj)
-  })
-  ;(chrome.storage.session.get as jest.Mock).mockImplementation(async (key: string) => ({
-    [key]: session[key],
-  }))
-  ;(chrome.storage.session.set as jest.Mock).mockImplementation(async (obj: object) => {
-    Object.assign(session, obj)
-  })
+  ;(chrome.storage.local.get as jest.Mock).mockImplementation(
+    async (key: string) => ({
+      [key]: local[key],
+    })
+  )
+  ;(chrome.storage.local.set as jest.Mock).mockImplementation(
+    async (obj: object) => {
+      Object.assign(local, obj)
+    }
+  )
+  ;(chrome.storage.session.get as jest.Mock).mockImplementation(
+    async (key: string) => ({
+      [key]: session[key],
+    })
+  )
+  ;(chrome.storage.session.set as jest.Mock).mockImplementation(
+    async (obj: object) => {
+      Object.assign(session, obj)
+    }
+  )
   return { local, session }
 }
 
@@ -55,9 +63,15 @@ describe('swlog ring buffer', () => {
   })
 
   it('never throws when storage is unavailable', async () => {
-    ;(chrome.storage.local.get as jest.Mock).mockRejectedValue(new Error('no storage'))
-    ;(chrome.storage.local.set as jest.Mock).mockRejectedValue(new Error('no storage'))
-    ;(chrome.storage.session.set as jest.Mock).mockRejectedValue(new Error('no storage'))
+    ;(chrome.storage.local.get as jest.Mock).mockRejectedValue(
+      new Error('no storage')
+    )
+    ;(chrome.storage.local.set as jest.Mock).mockRejectedValue(
+      new Error('no storage')
+    )
+    ;(chrome.storage.session.set as jest.Mock).mockRejectedValue(
+      new Error('no storage')
+    )
 
     expect(() => swlog('still fine')).not.toThrow()
     await expect(heartbeat()).resolves.toBeUndefined()

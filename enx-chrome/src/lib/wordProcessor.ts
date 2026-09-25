@@ -34,7 +34,9 @@ export class WordProcessor {
   // Whole subtrees skipped by selector, for chrome the tag list can't reach:
   // an X Article code block keeps its <pre><code> body in the tag list above,
   // but its "plaintext" language label sits beside it in a plain <span>.
-  static readonly LOOKUP_EXCLUDED_SELECTORS = ['[data-testid="markdown-code-block"]']
+  static readonly LOOKUP_EXCLUDED_SELECTORS = [
+    '[data-testid="markdown-code-block"]',
+  ]
 
   // CSS Custom Highlight API registry names, one per review stage
   // (ADR-011 Decision 1 / E1). The underline colour for each stage lives
@@ -138,7 +140,9 @@ export class WordProcessor {
     while (current && current !== root) {
       if (
         this.LOOKUP_EXCLUDED_TAGS.includes(current.tagName.toLowerCase()) ||
-        this.LOOKUP_EXCLUDED_SELECTORS.some(selector => current!.matches(selector))
+        this.LOOKUP_EXCLUDED_SELECTORS.some(selector =>
+          current!.matches(selector)
+        )
       ) {
         return true
       }
@@ -151,7 +155,8 @@ export class WordProcessor {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode: node => {
         if (!node.parentElement) return NodeFilter.FILTER_REJECT
-        if (this.isInExcludedSubtree(node, root)) return NodeFilter.FILTER_REJECT
+        if (this.isInExcludedSubtree(node, root))
+          return NodeFilter.FILTER_REJECT
 
         const text = node.textContent?.trim() || ''
         return text.length > 0 && /[a-zA-Z]/.test(text)
@@ -292,7 +297,10 @@ export class WordProcessor {
   // opened the sentence panel for". Replaces whatever was previously active
   // -- only the most recently queried sentence stays marked.
   static setActiveSentenceHighlight(range: Range): void {
-    CSS.highlights.set(this.ACTIVE_SENTENCE_HIGHLIGHT_NAME, new Highlight(range))
+    CSS.highlights.set(
+      this.ACTIVE_SENTENCE_HIGHLIGHT_NAME,
+      new Highlight(range)
+    )
   }
 
   static clearActiveSentenceHighlight(): void {
@@ -369,7 +377,8 @@ export class WordProcessor {
       )
       // Drop matches nested inside another match, so the same text isn't processed twice.
       const nodes = matches.filter(
-        element => !matches.some(other => other !== element && other.contains(element))
+        element =>
+          !matches.some(other => other !== element && other.contains(element))
       )
 
       if (nodes.length > 0) {
@@ -401,7 +410,9 @@ export class WordProcessor {
     })
 
     if (largestElement) {
-      console.log(`✅ Fallback: Using largest element with ${maxTextLength} characters`)
+      console.log(
+        `✅ Fallback: Using largest element with ${maxTextLength} characters`
+      )
       return [largestElement]
     }
 
@@ -450,7 +461,10 @@ export class WordProcessor {
   // (rather than "before the wrapping element") stays accurate whether the
   // caller passed a range over an element or a raw text-node position, and
   // isn't thrown off by whitespace around a wrapper.
-  private static getTextOffsetWithin(container: Element, reference: Range): number {
+  private static getTextOffsetWithin(
+    container: Element,
+    reference: Range
+  ): number {
     const range = document.createRange()
     range.selectNodeContents(container)
     range.setEnd(reference.startContainer, reference.startOffset)
@@ -509,13 +523,18 @@ export class WordProcessor {
   // walked length ever disagrees with it (shouldn't happen -- textContent is
   // defined as the concatenation of the same text nodes -- but a mismatch
   // would silently corrupt every offset downstream, so it's worth guarding).
-  private static buildSegmentationText(container: Element, fullText: string): string {
+  private static buildSegmentationText(
+    container: Element,
+    fullText: string
+  ): string {
     const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
     let masked = ''
     let node: Node | null
     while ((node = walker.nextNode())) {
       const text = (node as Text).data
-      masked += this.isInExcludedSubtree(node, container) ? 'x'.repeat(text.length) : text
+      masked += this.isInExcludedSubtree(node, container)
+        ? 'x'.repeat(text.length)
+        : text
     }
     return masked.length === fullText.length ? masked : fullText
   }
@@ -558,13 +577,20 @@ export class WordProcessor {
     let windowStart = 0
     if (segmentationText.length > this.MAX_SEGMENT_LENGTH) {
       windowStart = Math.max(0, offset - this.SEGMENT_WINDOW_RADIUS)
-      const end = Math.min(segmentationText.length, offset + this.SEGMENT_WINDOW_RADIUS)
+      const end = Math.min(
+        segmentationText.length,
+        offset + this.SEGMENT_WINDOW_RADIUS
+      )
       textToSegment = segmentationText.slice(windowStart, end)
       baseOffset = offset - windowStart
     }
 
-    let result: { sentence: string; sentenceIndex: number; start: number; end: number } | null =
-      null
+    let result: {
+      sentence: string
+      sentenceIndex: number
+      start: number
+      end: number
+    } | null = null
 
     if (typeof Intl !== 'undefined' && typeof Intl.Segmenter !== 'undefined') {
       try {
@@ -587,13 +613,18 @@ export class WordProcessor {
           }
         }
       } catch (error) {
-        console.warn('extractSentenceContext: Intl.Segmenter failed, falling back to full text', error)
+        console.warn(
+          'extractSentenceContext: Intl.Segmenter failed, falling back to full text',
+          error
+        )
       }
     }
 
     if (!result) {
       result = {
-        sentence: fullText.slice(windowStart, windowStart + textToSegment.length).trim(),
+        sentence: fullText
+          .slice(windowStart, windowStart + textToSegment.length)
+          .trim(),
         sentenceIndex: 0,
         start: windowStart,
         end: windowStart + textToSegment.length,
@@ -629,6 +660,10 @@ export class WordProcessor {
       )
     }
 
-    return { sentence: result.sentence, sentenceIndex: result.sentenceIndex, range }
+    return {
+      sentence: result.sentence,
+      sentenceIndex: result.sentenceIndex,
+      range,
+    }
   }
 }

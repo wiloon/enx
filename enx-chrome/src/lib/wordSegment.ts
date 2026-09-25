@@ -45,7 +45,9 @@ export function snapToWordBounds(
   // caret (start === end) "touches" means the caret sits within [wordStart,
   // wordEnd].
   const hit = words.filter(w =>
-    start === end ? w.start <= start && start <= w.end : w.start < end && w.end > start
+    start === end
+      ? w.start <= start && start <= w.end
+      : w.start < end && w.end > start
   )
 
   if (hit.length === 0) {

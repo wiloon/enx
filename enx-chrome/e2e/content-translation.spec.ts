@@ -46,10 +46,14 @@ test.describe('Content Script - Translation Popup', () => {
     const popup = page.locator('#enx-anchored-overlay')
 
     // Should show the word in header
-    await expect(popup.locator('[data-testid="word-popover-header"] h3')).toBeVisible()
+    await expect(
+      popup.locator('[data-testid="word-popover-header"] h3')
+    ).toBeVisible()
 
     // Should show translation content or loading state
-    await expect(popup.locator('[data-testid="word-popover-content"]')).toBeVisible()
+    await expect(
+      popup.locator('[data-testid="word-popover-content"]')
+    ).toBeVisible()
   })
 
   test('should close translation popup when clicking outside', async ({
@@ -68,7 +72,10 @@ test.describe('Content Script - Translation Popup', () => {
     await header.click()
 
     // Wait for popup to be removed
-    await page.waitForSelector('#enx-anchored-overlay', { state: 'detached', timeout: 2000 })
+    await page.waitForSelector('#enx-anchored-overlay', {
+      state: 'detached',
+      timeout: 2000,
+    })
 
     // Double-check it's not visible
     const popup = page.locator('#enx-anchored-overlay')

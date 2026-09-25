@@ -68,7 +68,9 @@ export default function WordPopover({
         onKeyDown={handleKeyDown}
       >
         <div className="flex justify-between items-start">
-          <span className="text-sm text-muted-foreground">Selection translation</span>
+          <span className="text-sm text-muted-foreground">
+            Selection translation
+          </span>
           <button
             data-testid="word-popover-close"
             onClick={onClose}
@@ -112,11 +114,16 @@ export default function WordPopover({
               <button
                 data-testid="word-popover-play-pronunciation"
                 type="button"
-                onClick={() => currentWord && playPronunciation(currentWord.English)}
+                onClick={() =>
+                  currentWord && playPronunciation(currentWord.English)
+                }
                 className="text-muted-foreground hover:text-brand leading-none p-1 -m-1"
                 title="Play pronunciation"
               >
-                <SpeakerWaveIcon className="h-3.5 w-3.5 block" aria-hidden="true" />
+                <SpeakerWaveIcon
+                  className="h-3.5 w-3.5 block"
+                  aria-hidden="true"
+                />
               </button>
             </span>
           )}
@@ -125,7 +132,10 @@ export default function WordPopover({
               className="inline-flex items-center gap-0.5 text-xs text-muted-foreground"
               title={`Query Count: ${currentWord.LoadCount}`}
             >
-              <ArrowPathRoundedSquareIcon className="h-3 w-3" aria-hidden="true" />
+              <ArrowPathRoundedSquareIcon
+                className="h-3 w-3"
+                aria-hidden="true"
+              />
               {currentWord.LoadCount}
             </span>
           )}

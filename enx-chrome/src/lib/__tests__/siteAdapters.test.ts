@@ -34,7 +34,12 @@ describe('resolveSiteAdapter', () => {
   })
 
   it('matches x.com and twitter.com (incl. subdomains)', () => {
-    for (const host of ['x.com', 'twitter.com', 'www.x.com', 'mobile.twitter.com']) {
+    for (const host of [
+      'x.com',
+      'twitter.com',
+      'www.x.com',
+      'mobile.twitter.com',
+    ]) {
       expect(resolveSiteAdapter(loc(host, '/user/status/1')).name).toBe('x')
     }
   })
@@ -49,9 +54,7 @@ describe('resolveSiteAdapter', () => {
 
     it('allows a tweet detail page', () => {
       expect(x.pageSupport!(loc('x.com', '/jack/status/20'))).toBeNull()
-      expect(
-        x.pageSupport!(loc('x.com', '/jack/status/20/photo/1'))
-      ).toBeNull()
+      expect(x.pageSupport!(loc('x.com', '/jack/status/20/photo/1'))).toBeNull()
     })
 
     it('rejects timeline / search / profile pages with a message', () => {
@@ -245,7 +248,9 @@ describe('pickFocusedTweet', () => {
     const focused = pickFocusedTweet(tweetTexts())
     expect(focused).toHaveLength(1)
     expect(focused[0].textContent).toBe('first')
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('pickFocusedTweet'))
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('pickFocusedTweet')
+    )
     warn.mockRestore()
   })
 })
@@ -265,9 +270,9 @@ describe('READER_ADAPTER (enx-ui paste-text reader)', () => {
     expect(resolveSiteAdapter(loc('www.infoq.com', '/reader')).name).toBe(
       'default'
     )
-    expect(resolveSiteAdapter(loc('enx.wiloon.com.evil.net', '/reader')).name).toBe(
-      'default'
-    )
+    expect(
+      resolveSiteAdapter(loc('enx.wiloon.com.evil.net', '/reader')).name
+    ).toBe('default')
   })
 
   describe('pageSupport gate', () => {

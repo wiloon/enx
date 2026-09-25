@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import '@/index.css'
 import {
   ArrowPathRoundedSquareIcon,
@@ -108,7 +115,9 @@ function UpgradeLink({ className }: { className?: string }) {
       href={`${config.frontendBaseUrl}/billing`}
       target="_blank"
       rel="noopener noreferrer"
-      className={className ?? 'text-brand hover:underline font-medium whitespace-nowrap'}
+      className={
+        className ?? 'text-brand hover:underline font-medium whitespace-nowrap'
+      }
     >
       Subscribe / add credit
     </a>
@@ -150,7 +159,11 @@ const renderSentence = (sentence: string, clickedWord: string): ReactNode => {
 // text, computed by measuring the flattened text before it. Works regardless
 // of how the text is split into nodes (e.g. by a <mark>), and is testable in
 // jsdom since Range.toString() is implemented there.
-const boundaryCharOffset = (root: HTMLElement, node: Node, offset: number): number => {
+const boundaryCharOffset = (
+  root: HTMLElement,
+  node: Node,
+  offset: number
+): number => {
   const pre = document.createRange()
   pre.selectNodeContents(root)
   pre.setEnd(node, offset)
@@ -163,7 +176,8 @@ const getSelectionCharRange = (root: HTMLElement): [number, number] | null => {
   const sel = window.getSelection()
   if (!sel || sel.rangeCount === 0) return null
   if (!sel.anchorNode || !sel.focusNode) return null
-  if (!root.contains(sel.anchorNode) || !root.contains(sel.focusNode)) return null
+  if (!root.contains(sel.anchorNode) || !root.contains(sel.focusNode))
+    return null
   const r = sel.getRangeAt(0)
   const a = boundaryCharOffset(root, r.startContainer, r.startOffset)
   const b = boundaryCharOffset(root, r.endContainer, r.endOffset)
@@ -183,7 +197,10 @@ const findCard = (
   word: string
 ): WordCardData | undefined => {
   if (sentenceId === undefined) {
-    return entries.find((e): e is { kind: 'word' } & WordCardData => e.kind === 'word' && e.word === word)
+    return entries.find(
+      (e): e is { kind: 'word' } & WordCardData =>
+        e.kind === 'word' && e.word === word
+    )
   }
   const sentence = entries.find(
     (e): e is SentenceEntry => e.kind === 'sentence' && e.id === sentenceId
@@ -202,14 +219,26 @@ const reorderOrInsertCard = (
 ): PanelEntry[] => {
   if (sentenceId === undefined) {
     const index = entries.findIndex(e => e.kind === 'word' && e.word === word)
-    if (index !== -1) return [entries[index], ...entries.slice(0, index), ...entries.slice(index + 1)]
+    if (index !== -1)
+      return [
+        entries[index],
+        ...entries.slice(0, index),
+        ...entries.slice(index + 1),
+      ]
     return [{ kind: 'word', ...makeCard() }, ...entries]
   }
   return entries.map(e => {
     if (e.kind !== 'sentence' || e.id !== sentenceId) return e
     const index = e.words.findIndex(w => w.word === word)
     if (index !== -1) {
-      return { ...e, words: [e.words[index], ...e.words.slice(0, index), ...e.words.slice(index + 1)] }
+      return {
+        ...e,
+        words: [
+          e.words[index],
+          ...e.words.slice(0, index),
+          ...e.words.slice(index + 1),
+        ],
+      }
     }
     return { ...e, words: [makeCard(), ...e.words] }
   })
@@ -222,11 +251,16 @@ const patchCard = (
   patch: Partial<WordCardData>
 ): PanelEntry[] => {
   if (sentenceId === undefined) {
-    return entries.map(e => (e.kind === 'word' && e.word === word ? { ...e, ...patch } : e))
+    return entries.map(e =>
+      e.kind === 'word' && e.word === word ? { ...e, ...patch } : e
+    )
   }
   return entries.map(e =>
     e.kind === 'sentence' && e.id === sentenceId
-      ? { ...e, words: e.words.map(w => (w.word === word ? { ...w, ...patch } : w)) }
+      ? {
+          ...e,
+          words: e.words.map(w => (w.word === word ? { ...w, ...patch } : w)),
+        }
       : e
   )
 }
@@ -240,7 +274,9 @@ const removeCard = (
     return entries.filter(e => !(e.kind === 'word' && e.word === word))
   }
   return entries.map(e =>
-    e.kind === 'sentence' && e.id === sentenceId ? { ...e, words: e.words.filter(w => w.word !== word) } : e
+    e.kind === 'sentence' && e.id === sentenceId
+      ? { ...e, words: e.words.filter(w => w.word !== word) }
+      : e
   )
 }
 
@@ -279,7 +315,9 @@ function PhraseConfirmButton({
   // rect is viewport coordinates from the selection's bounding box; clamp
   // into the panel so it can't render off-screen.
   const top = rect ? Math.max(4, rect.bottom + 4) : 4
-  const left = rect ? Math.max(4, Math.min(rect.left, window.innerWidth - 40)) : 4
+  const left = rect
+    ? Math.max(4, Math.min(rect.left, window.innerWidth - 40))
+    : 4
 
   return (
     <button
@@ -319,7 +357,9 @@ function WordCard({
 }) {
   const phonetic = formatPhonetic(card.pronunciation)
   const dictLong =
-    !!card.dictionaryChinese && (card.dictionaryChinese.length > 40 || card.dictionaryChinese.includes('\n'))
+    !!card.dictionaryChinese &&
+    (card.dictionaryChinese.length > 40 ||
+      card.dictionaryChinese.includes('\n'))
 
   return (
     <div
@@ -334,7 +374,9 @@ function WordCard({
         <span className="font-semibold text-foreground">{card.word}</span>
 
         {card.dictionaryStatus === 'loading' ? (
-          <span className="text-muted-foreground text-xs">Loading phonetics...</span>
+          <span className="text-muted-foreground text-xs">
+            Loading phonetics...
+          </span>
         ) : (
           phonetic && (
             <span className="inline-flex items-center gap-1">
@@ -346,7 +388,10 @@ function WordCard({
                 className="text-muted-foreground hover:text-brand leading-none p-1 -m-1"
                 title="Play pronunciation"
               >
-                <SpeakerWaveIcon className="h-3.5 w-3.5 block" aria-hidden="true" />
+                <SpeakerWaveIcon
+                  className="h-3.5 w-3.5 block"
+                  aria-hidden="true"
+                />
               </button>
             </span>
           )
@@ -357,7 +402,10 @@ function WordCard({
             className="inline-flex items-center gap-0.5 text-xs text-muted-foreground ml-auto whitespace-nowrap"
             title={`Query Count: ${card.loadCount}`}
           >
-            <ArrowPathRoundedSquareIcon className="h-3.5 w-3.5" aria-hidden="true" />
+            <ArrowPathRoundedSquareIcon
+              className="h-3.5 w-3.5"
+              aria-hidden="true"
+            />
             {card.loadCount}
           </span>
         )}
@@ -453,7 +501,9 @@ function WordCard({
           )}
 
           {card.dictionaryStatus === 'loading' ? (
-            <p className="text-muted-foreground text-xs">Loading dictionary definition...</p>
+            <p className="text-muted-foreground text-xs">
+              Loading dictionary definition...
+            </p>
           ) : (
             card.dictionaryChinese && (
               <div>
@@ -499,7 +549,11 @@ function SentenceBlock({
   expandedWords: Set<string>
   onToggleExpand: (word: string) => void
   onWordClick: (sentenceId: string, sentence: string, word: string) => void
-  onPhraseConfirm: (sentenceId: string, sentence: string, phrase: string) => void
+  onPhraseConfirm: (
+    sentenceId: string,
+    sentence: string,
+    phrase: string
+  ) => void
   onRemoveWord: (sentenceId: string, word: string) => void
   onRetryContext: (sentenceId: string, word: string) => void
 }) {
@@ -532,7 +586,11 @@ function SentenceBlock({
     if (!root) return
     const range = getSelectionCharRange(root)
     if (!range) return
-    const { text, wordCount } = snapToWordBounds(entry.sentence, range[0], range[1])
+    const { text, wordCount } = snapToWordBounds(
+      entry.sentence,
+      range[0],
+      range[1]
+    )
     if (wordCount === 0) return
     if (wordCount === 1) {
       onWordClick(entry.id, entry.sentence, text)
@@ -550,12 +608,20 @@ function SentenceBlock({
     // callable there (position is best-effort anyway).
     const r = sel?.rangeCount ? sel.getRangeAt(0) : null
     const domRect =
-      r && typeof r.getBoundingClientRect === 'function' ? r.getBoundingClientRect() : null
+      r && typeof r.getBoundingClientRect === 'function'
+        ? r.getBoundingClientRect()
+        : null
     setPendingPhrase({
       text,
       rect: domRect ? { bottom: domRect.bottom, left: domRect.left } : null,
     })
-  }, [entry, sentenceWordCount, onWordClick, onPhraseConfirm, clearPendingPhrase])
+  }, [
+    entry,
+    sentenceWordCount,
+    onWordClick,
+    onPhraseConfirm,
+    clearPendingPhrase,
+  ])
 
   return (
     <div
@@ -594,7 +660,10 @@ function SentenceBlock({
 
       <div className="border-t border-border pt-3">
         {entry.status === 'loading' && (
-          <div className="text-muted-foreground" data-testid="sidepanel-loading">
+          <div
+            className="text-muted-foreground"
+            data-testid="sidepanel-loading"
+          >
             <span className="inline-block animate-spin mr-2">⏳</span>
             Translating...
           </div>
@@ -660,7 +729,8 @@ function SidePanelContent() {
   // Last-seen sentence context, purely as the effect trigger below -- the
   // displayed data itself lives in `entries` once the effect creates (or
   // updates) a SentenceEntry from it.
-  const [pendingContext, setPendingContext] = useState<PendingSentenceContext | null>(null)
+  const [pendingContext, setPendingContext] =
+    useState<PendingSentenceContext | null>(null)
   // Words whose (often verbose) dictionary meaning the user has expanded past
   // the default 3-line clamp. Keyed by word only (not by scope) -- shared
   // across the top-level list and every sentence's nested list.
@@ -678,15 +748,18 @@ function SidePanelContent() {
   // Removes a single card from the running list (ADR-006 list is append-only
   // otherwise, so a long reading session accumulates noise). Purely local --
   // nothing is persisted, re-clicking the word re-adds it.
-  const handleRemoveCard = useCallback((sentenceId: string | undefined, word: string) => {
-    setEntries(prev => removeCard(prev, sentenceId, word))
-    setExpandedWords(prev => {
-      if (!prev.has(word)) return prev
-      const next = new Set(prev)
-      next.delete(word)
-      return next
-    })
-  }, [])
+  const handleRemoveCard = useCallback(
+    (sentenceId: string | undefined, word: string) => {
+      setEntries(prev => removeCard(prev, sentenceId, word))
+      setExpandedWords(prev => {
+        if (!prev.has(word)) return prev
+        const next = new Set(prev)
+        next.delete(word)
+        return next
+      })
+    },
+    []
+  )
 
   // Keep listening for a new sentence context: if the panel is already open
   // and the user clicks "整句翻译" on another word on the page, this fires
@@ -754,9 +827,9 @@ function SidePanelContent() {
       chrome.storage.session.get(LATEST_PAGE_WORD_STORAGE_KEY),
     ]).then(([sentenceResult, wordResult]) => {
       const sentence = sentenceResult[PENDING_SENTENCE_STORAGE_KEY] as
-        | PendingSentenceContext
-        | undefined
-      const word = wordResult[LATEST_PAGE_WORD_STORAGE_KEY] as LatestPageWordLookup | undefined
+        PendingSentenceContext | undefined
+      const word = wordResult[LATEST_PAGE_WORD_STORAGE_KEY] as
+        LatestPageWordLookup | undefined
 
       if (word && (!sentence || word.createdAt > sentence.createdAt)) {
         mergePageWordLookup(word)
@@ -776,7 +849,12 @@ function SidePanelContent() {
   // Callers with no dictionary entry to offer (a phrase, ADR-008) just omit
   // it.
   const fetchContextTranslation = useCallback(
-    (word: string, sentence: string, sentenceId: string | undefined, dictionaryChinese?: string) => {
+    (
+      word: string,
+      sentence: string,
+      sentenceId: string | undefined,
+      dictionaryChinese?: string
+    ) => {
       sendMessageToBackground<BackgroundResponse>({
         type: 'translateWordInContext',
         word,
@@ -789,7 +867,9 @@ function SidePanelContent() {
             patchCard(prev, sentenceId, word, {
               contextChinese: resolved ? response.chinese : undefined,
               contextWhy: resolved ? response.why || undefined : undefined,
-              contextError: resolved ? undefined : response.error || 'Translation failed',
+              contextError: resolved
+                ? undefined
+                : response.error || 'Translation failed',
               contextErrorHttpStatus: resolved ? undefined : response.status,
               contextStatus: resolved ? 'loaded' : 'error',
             })
@@ -818,7 +898,10 @@ function SidePanelContent() {
   // NOTE: getOneWord increments the server-side Query Count, so callers must
   // only run this once per word -- never for a card that already has it.
   const fetchDictionary = useCallback(
-    (word: string, sentenceId: string | undefined): Promise<string | undefined> => {
+    (
+      word: string,
+      sentenceId: string | undefined
+    ): Promise<string | undefined> => {
       return sendMessageToBackground<BackgroundResponse>({
         type: 'getOneWord',
         word,
@@ -826,12 +909,20 @@ function SidePanelContent() {
         .then(response => {
           setEntries(prev =>
             patchCard(prev, sentenceId, word, {
-              pronunciation: response.success ? response.ecp?.Pronunciation : undefined,
-              dictionaryChinese: response.success ? response.ecp?.Chinese : undefined,
+              pronunciation: response.success
+                ? response.ecp?.Pronunciation
+                : undefined,
+              dictionaryChinese: response.success
+                ? response.ecp?.Chinese
+                : undefined,
               loadCount: response.success ? response.ecp?.LoadCount : undefined,
               dictionaryStatus: response.success ? 'loaded' : 'error',
-              dictionaryError: response.success ? undefined : response.error || 'Dictionary lookup failed',
-              dictionaryErrorHttpStatus: response.success ? undefined : response.status,
+              dictionaryError: response.success
+                ? undefined
+                : response.error || 'Dictionary lookup failed',
+              dictionaryErrorHttpStatus: response.success
+                ? undefined
+                : response.status,
             })
           )
           return response.success ? response.ecp?.Chinese : undefined
@@ -888,7 +979,9 @@ function SidePanelContent() {
       const existing = findCard(entriesRef.current, sentenceId, word)
 
       if (existing) {
-        setEntries(prev => reorderOrInsertCard(prev, sentenceId, word, () => existing))
+        setEntries(prev =>
+          reorderOrInsertCard(prev, sentenceId, word, () => existing)
+        )
         return
       }
 
@@ -943,16 +1036,24 @@ function SidePanelContent() {
 
     let cancelled = false
 
-    sendMessageToBackground<BackgroundResponse>({ type: 'translateSentence', sentence } satisfies ContentMessage)
+    sendMessageToBackground<BackgroundResponse>({
+      type: 'translateSentence',
+      sentence,
+    } satisfies ContentMessage)
       .then(response => {
         if (cancelled) return
         if (response.success && response.chinese) {
           const chinese = response.chinese
           setEntries(prev =>
-            prev.map(e => (e.kind === 'sentence' && e.id === id ? { ...e, chinese, status: 'loaded' } : e))
+            prev.map(e =>
+              e.kind === 'sentence' && e.id === id
+                ? { ...e, chinese, status: 'loaded' }
+                : e
+            )
           )
         } else {
-          const errorMessage = response.error || 'Translation service unavailable'
+          const errorMessage =
+            response.error || 'Translation service unavailable'
           const errorHttpStatus = response.status
           setEntries(prev =>
             prev.map(e =>
@@ -969,7 +1070,12 @@ function SidePanelContent() {
         setEntries(prev =>
           prev.map(e =>
             e.kind === 'sentence' && e.id === id
-              ? { ...e, errorMessage: 'Translation service unavailable', errorHttpStatus: undefined, status: 'error' }
+              ? {
+                  ...e,
+                  errorMessage: 'Translation service unavailable',
+                  errorHttpStatus: undefined,
+                  status: 'error',
+                }
               : e
           )
         )
@@ -1015,7 +1121,11 @@ function SidePanelContent() {
     if (pendingContext?.phrase) {
       // Same as above: reacting to an external pendingContext message.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      upsertPhraseCard(pendingContext.phrase, pendingContext.sentence, undefined)
+      upsertPhraseCard(
+        pendingContext.phrase,
+        pendingContext.sentence,
+        undefined
+      )
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingContext?.createdAt])
@@ -1034,21 +1144,39 @@ function SidePanelContent() {
   const handleRetryContextTranslation = useCallback(
     (sentenceId: string | undefined, word: string) => {
       const sentenceEntry = sentenceId
-        ? entries.find((e): e is SentenceEntry => e.kind === 'sentence' && e.id === sentenceId)
+        ? entries.find(
+            (e): e is SentenceEntry =>
+              e.kind === 'sentence' && e.id === sentenceId
+          )
         : undefined
       const card = findCard(entries, sentenceId, word)
       const sentence = sentenceEntry?.sentence ?? card?.contextSentence
       if (!sentence) return
 
       if (card?.dictionaryStatus === 'none') {
-        setEntries(prev => patchCard(prev, sentenceId, word, { contextStatus: 'loading', contextError: undefined }))
+        setEntries(prev =>
+          patchCard(prev, sentenceId, word, {
+            contextStatus: 'loading',
+            contextError: undefined,
+          })
+        )
         fetchContextTranslation(word, sentence, sentenceId)
         return
       }
 
       if (card?.dictionaryStatus === 'loaded') {
-        setEntries(prev => patchCard(prev, sentenceId, word, { contextStatus: 'loading', contextError: undefined }))
-        fetchContextTranslation(word, sentence, sentenceId, card.dictionaryChinese)
+        setEntries(prev =>
+          patchCard(prev, sentenceId, word, {
+            contextStatus: 'loading',
+            contextError: undefined,
+          })
+        )
+        fetchContextTranslation(
+          word,
+          sentence,
+          sentenceId,
+          card.dictionaryChinese
+        )
         return
       }
 
@@ -1080,7 +1208,9 @@ function SidePanelContent() {
       const word = rawWord.toLowerCase()
       const existing = findCard(entries, sentenceId, word)
       if (existing) {
-        setEntries(prev => reorderOrInsertCard(prev, sentenceId, word, () => existing))
+        setEntries(prev =>
+          reorderOrInsertCard(prev, sentenceId, word, () => existing)
+        )
         return
       }
       setEntries(prev =>
@@ -1099,8 +1229,13 @@ function SidePanelContent() {
   // all yet.
   if (entries.length === 0) {
     return (
-      <div className="p-4 text-muted-foreground text-sm" data-testid="sidepanel-empty-state">
-        Click any highlighted word in the page text, then click the sentence-translation icon in the popup. The full English sentence and its Chinese translation will appear here.
+      <div
+        className="p-4 text-muted-foreground text-sm"
+        data-testid="sidepanel-empty-state"
+      >
+        Click any highlighted word in the page text, then click the
+        sentence-translation icon in the popup. The full English sentence and
+        its Chinese translation will appear here.
       </div>
     )
   }
@@ -1128,8 +1263,12 @@ function SidePanelContent() {
             entry={entry}
             expandedWords={expandedWords}
             onToggleExpand={toggleExpanded}
-            onWordClick={(sentenceId, sentence, word) => handleWordClick(word, sentence, sentenceId)}
-            onPhraseConfirm={(sentenceId, sentence, phrase) => upsertPhraseCard(phrase, sentence, sentenceId)}
+            onWordClick={(sentenceId, sentence, word) =>
+              handleWordClick(word, sentence, sentenceId)
+            }
+            onPhraseConfirm={(sentenceId, sentence, phrase) =>
+              upsertPhraseCard(phrase, sentence, sentenceId)
+            }
             onRemoveWord={handleRemoveCard}
             onRetryContext={handleRetryContextTranslation}
           />
@@ -1140,7 +1279,9 @@ function SidePanelContent() {
             expanded={expandedWords.has(entry.word)}
             onToggleExpand={() => toggleExpanded(entry.word)}
             onRemove={() => handleRemoveCard(undefined, entry.word)}
-            onRetryContext={() => handleRetryContextTranslation(undefined, entry.word)}
+            onRetryContext={() =>
+              handleRetryContextTranslation(undefined, entry.word)
+            }
           />
         )
       )}

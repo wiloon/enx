@@ -159,7 +159,9 @@ describe('background makeApiRequest / Clerk session token', () => {
 
   it('propagates a non-401 error status (e.g. 402 insufficient credit)', async () => {
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
-      jsonResponse(402, { message: 'Insufficient credit. Please add credit or subscribe.' })
+      jsonResponse(402, {
+        message: 'Insufficient credit. Please add credit or subscribe.',
+      })
     )
 
     const result = await makeApiRequest('/api/translate/sentence', {
@@ -407,7 +409,9 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
 
   it('falls back to a getContexts() probe when the gesture did not forward', async () => {
     ;(chrome.sidePanel.open as jest.Mock).mockRejectedValue(
-      new Error('sidePanel.open() may only be called in response to a user gesture')
+      new Error(
+        'sidePanel.open() may only be called in response to a user gesture'
+      )
     )
     ;(chrome.runtime.getContexts as jest.Mock).mockResolvedValue([
       { contextType: 'BACKGROUND' },
@@ -433,7 +437,9 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
 
   it('reports panelOpened:false when the gesture did not forward and no panel is open', async () => {
     ;(chrome.sidePanel.open as jest.Mock).mockRejectedValue(
-      new Error('sidePanel.open() may only be called in response to a user gesture')
+      new Error(
+        'sidePanel.open() may only be called in response to a user gesture'
+      )
     )
     ;(chrome.runtime.getContexts as jest.Mock).mockResolvedValue([
       { contextType: 'BACKGROUND' },
@@ -496,7 +502,11 @@ describe('background onMessage / translateSentenceWithWord (ADR-014)', () => {
 
   it('POSTs sentence + word to /api/translate/sentence-with-word and returns both halves', async () => {
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
-      jsonResponse(200, { success: true, chinese: '猫是很棒的宠物。', wordChinese: '极好的' })
+      jsonResponse(200, {
+        success: true,
+        chinese: '猫是很棒的宠物。',
+        wordChinese: '极好的',
+      })
     )
 
     const response = await send({
@@ -505,10 +515,17 @@ describe('background onMessage / translateSentenceWithWord (ADR-014)', () => {
       word: 'great',
     })
 
-    expect(response).toEqual({ success: true, chinese: '猫是很棒的宠物。', wordChinese: '极好的' })
+    expect(response).toEqual({
+      success: true,
+      chinese: '猫是很棒的宠物。',
+      wordChinese: '极好的',
+    })
     const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
     expect(url).toContain('/api/translate/sentence-with-word')
-    expect(JSON.parse(init.body)).toEqual({ sentence: 'Cats are great pets.', word: 'great' })
+    expect(JSON.parse(init.body)).toEqual({
+      sentence: 'Cats are great pets.',
+      word: 'great',
+    })
   })
 
   it('normalizes a missing wordChinese to an empty string (graceful degrade)', async () => {
@@ -522,12 +539,19 @@ describe('background onMessage / translateSentenceWithWord (ADR-014)', () => {
       word: 'great',
     })
 
-    expect(response).toEqual({ success: true, chinese: '猫是很棒的宠物。', wordChinese: '' })
+    expect(response).toEqual({
+      success: true,
+      chinese: '猫是很棒的宠物。',
+      wordChinese: '',
+    })
   })
 
   it('propagates the HTTP status on failure (e.g. 402 insufficient credit)', async () => {
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
-      jsonResponse(402, { success: false, message: 'Insufficient credit. Please add credit or subscribe.' })
+      jsonResponse(402, {
+        success: false,
+        message: 'Insufficient credit. Please add credit or subscribe.',
+      })
     )
 
     const response = (await send({
@@ -547,7 +571,10 @@ describe('background onMessage / translateSentenceWithWord (ADR-014)', () => {
       word: '',
     })
 
-    expect(response).toEqual({ success: false, error: 'sentence and word are required' })
+    expect(response).toEqual({
+      success: false,
+      error: 'sentence and word are required',
+    })
     expect(global.fetch).not.toHaveBeenCalled()
   })
 })
@@ -558,7 +585,9 @@ describe('background onMessage / submitPageReport (ADR-010 Decision 8)', () => {
   beforeEach(() => {
     jest.resetAllMocks()
     setClerkSession('clerk-session-jwt')
-    ;(chrome.runtime.getManifest as jest.Mock).mockReturnValue({ version: '1.0.1' })
+    ;(chrome.runtime.getManifest as jest.Mock).mockReturnValue({
+      version: '1.0.1',
+    })
     ;(global.fetch as jest.Mock) = jest.fn()
   })
 
@@ -593,12 +622,19 @@ describe('background onMessage / submitPageReport (ADR-010 Decision 8)', () => {
 
   it('reports failure to the popup instead of dropping a report the user confirmed', async () => {
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
-      jsonResponse(500, { success: false, message: 'could not record the report' })
+      jsonResponse(500, {
+        success: false,
+        message: 'could not record the report',
+      })
     )
 
     const response = (await send({
       type: 'submitPageReport',
-      pageReport: { url: 'https://x.com/a/status/1', reason: 'error', adapter: 'x' },
+      pageReport: {
+        url: 'https://x.com/a/status/1',
+        reason: 'error',
+        adapter: 'x',
+      },
     })) as { success: boolean }
 
     expect(response.success).toBe(false)
@@ -619,7 +655,9 @@ describe('background onMessageExternal (ADR-019 web -> extension channel)', () =
     jest.resetAllMocks()
     __resetClerkClientCacheForTests()
     setClerkSession('clerk-session-jwt')
-    ;(chrome.runtime.getManifest as jest.Mock).mockReturnValue({ version: '1.2.3' })
+    ;(chrome.runtime.getManifest as jest.Mock).mockReturnValue({
+      version: '1.2.3',
+    })
     ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
   })
 
@@ -641,7 +679,9 @@ describe('background onMessageExternal (ADR-019 web -> extension channel)', () =
 
   it('runs enxRun on the sender tab for enx:enable-reader when signed in', async () => {
     const response = await call({ type: 'enx:enable-reader' })
-    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(7, { action: 'enxRun' })
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(7, {
+      action: 'enxRun',
+    })
     expect(response).toEqual({ ok: true })
   })
 
@@ -757,7 +797,10 @@ describe('background onMessageExternal (ADR-019 web -> extension channel)', () =
 
     it('ignores a stale pending record', async () => {
       ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
-        'enx-signin-return': { ...pending, createdAt: Date.now() - 20 * 60_000 },
+        'enx-signin-return': {
+          ...pending,
+          createdAt: Date.now() - 20 * 60_000,
+        },
       })
 
       const response = await call({ type: 'enx:signed-in' })

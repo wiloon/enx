@@ -1,4 +1,11 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 // Avoid loading the real sentry.ts (uses `import.meta`, which ts-jest can't
@@ -20,7 +27,11 @@ jest.mock('@/services/api', () => ({
 }))
 
 import { sendMessageToBackground } from '@/services/api'
-import { BackgroundResponse, LATEST_PAGE_WORD_STORAGE_KEY, PENDING_SENTENCE_STORAGE_KEY } from '@/types'
+import {
+  BackgroundResponse,
+  LATEST_PAGE_WORD_STORAGE_KEY,
+  PENDING_SENTENCE_STORAGE_KEY,
+} from '@/types'
 import SidePanel from '../SidePanel'
 
 const mockSendMessage = sendMessageToBackground as jest.Mock
@@ -35,7 +46,11 @@ const SENTENCE = 'Cats are great pets.'
 // highlight splits them) and fire the mouseup the handler listens for.
 // `container` picks which sentence's <p> to select in when more than one
 // SentenceEntry (ADR-023) is on screen at once; defaults to the sole one.
-const selectWord = (word: string, sentence = SENTENCE, container?: HTMLElement) => {
+const selectWord = (
+  word: string,
+  sentence = SENTENCE,
+  container?: HTMLElement
+) => {
   const el = container ?? screen.getByTestId('sidepanel-sentence')
   const start = sentence.toLowerCase().indexOf(word.toLowerCase())
   const end = start + word.length
@@ -90,12 +105,16 @@ describe('SidePanel', () => {
         storageChangeListeners.push(listener)
       }
     )
-    ;(chrome.storage.onChanged.removeListener as jest.Mock).mockImplementation(() => {})
+    ;(chrome.storage.onChanged.removeListener as jest.Mock).mockImplementation(
+      () => {}
+    )
   })
 
   it('shows the empty state when there is no pending sentence context (spec §4.1)', async () => {
     render(<SidePanel />)
-    expect(await screen.findByTestId('sidepanel-empty-state')).toBeInTheDocument()
+    expect(
+      await screen.findByTestId('sidepanel-empty-state')
+    ).toBeInTheDocument()
   })
 
   it('loads and displays the sentence + translation once a pending context is stored', async () => {
@@ -107,7 +126,10 @@ describe('SidePanel', () => {
         createdAt: 1,
       },
     })
-    mockSendMessage.mockResolvedValue({ success: true, chinese: '猫是很棒的宠物。' })
+    mockSendMessage.mockResolvedValue({
+      success: true,
+      chinese: '猫是很棒的宠物。',
+    })
 
     render(<SidePanel />)
 
@@ -115,7 +137,9 @@ describe('SidePanel', () => {
       'Cats are great pets.'
     )
     await waitFor(() =>
-      expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('猫是很棒的宠物。')
+      expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent(
+        '猫是很棒的宠物。'
+      )
     )
   })
 
@@ -128,7 +152,10 @@ describe('SidePanel', () => {
         createdAt: 1,
       },
     })
-    mockSendMessage.mockResolvedValue({ success: true, chinese: '猫是很棒的宠物。' })
+    mockSendMessage.mockResolvedValue({
+      success: true,
+      chinese: '猫是很棒的宠物。',
+    })
 
     render(<SidePanel />)
 
@@ -190,21 +217,31 @@ describe('SidePanel', () => {
         createdAt: 1,
       },
     })
-    mockSendMessage.mockImplementation(async (message: { type: string; word?: string }) => {
-      if (message.type === 'translateSentence') {
-        return { success: true, chinese: '猫是很棒的宠物。' }
-      }
-      if (message.type === 'translateWordInContext') {
-        return { success: false, error: 'Insufficient credit. Please add credit or subscribe.', status: 402 }
-      }
-      if (message.type === 'getOneWord') {
-        return {
-          success: true,
-          ecp: { English: message.word, Chinese: 'unused', Pronunciation: '/greɪt/' },
+    mockSendMessage.mockImplementation(
+      async (message: { type: string; word?: string }) => {
+        if (message.type === 'translateSentence') {
+          return { success: true, chinese: '猫是很棒的宠物。' }
         }
+        if (message.type === 'translateWordInContext') {
+          return {
+            success: false,
+            error: 'Insufficient credit. Please add credit or subscribe.',
+            status: 402,
+          }
+        }
+        if (message.type === 'getOneWord') {
+          return {
+            success: true,
+            ecp: {
+              English: message.word,
+              Chinese: 'unused',
+              Pronunciation: '/greɪt/',
+            },
+          }
+        }
+        return { success: false }
       }
-      return { success: false }
-    })
+    )
 
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-sentence')
@@ -212,13 +249,14 @@ describe('SidePanel', () => {
 
     const errorRow = await screen.findByTestId('sidepanel-context-error-great')
     expect(errorRow).toHaveTextContent('Not enough AI translation credit')
-    expect(within(errorRow).getByText('Subscribe / add credit')).toHaveAttribute(
-      'href',
-      'http://localhost:3000/billing'
-    )
+    expect(
+      within(errorRow).getByText('Subscribe / add credit')
+    ).toHaveAttribute('href', 'http://localhost:3000/billing')
     // Retry must still be there -- topping up in another tab and retrying
     // here should work without reopening the panel.
-    expect(within(errorRow).getByTestId('sidepanel-retry-context-great')).toBeInTheDocument()
+    expect(
+      within(errorRow).getByTestId('sidepanel-retry-context-great')
+    ).toBeInTheDocument()
   })
 
   it('shows an upgrade link (not the raw error) when the dictionary lookup hits the daily quota (429)', async () => {
@@ -240,7 +278,8 @@ describe('SidePanel', () => {
       if (message.type === 'getOneWord') {
         return {
           success: false,
-          error: 'Daily dictionary lookup limit reached. Upgrade to enx Pro for unlimited lookups.',
+          error:
+            'Daily dictionary lookup limit reached. Upgrade to enx Pro for unlimited lookups.',
           status: 429,
         }
       }
@@ -251,13 +290,14 @@ describe('SidePanel', () => {
     await screen.findByTestId('sidepanel-sentence')
     selectWord('great')
 
-    const errorRow = await screen.findByTestId('sidepanel-dictionary-error-great')
+    const errorRow = await screen.findByTestId(
+      'sidepanel-dictionary-error-great'
+    )
     expect(errorRow).toHaveTextContent("You've used up today's free lookups")
     expect(errorRow).not.toHaveTextContent('Upgrade to enx Pro')
-    expect(within(errorRow).getByText('Subscribe / add credit')).toHaveAttribute(
-      'href',
-      'http://localhost:3000/billing'
-    )
+    expect(
+      within(errorRow).getByText('Subscribe / add credit')
+    ).toHaveAttribute('href', 'http://localhost:3000/billing')
   })
 
   it('appends word cards on click instead of replacing the previous one, newest on top (spec §3.9/§4.5)', async () => {
@@ -269,26 +309,28 @@ describe('SidePanel', () => {
         createdAt: 1,
       },
     })
-    mockSendMessage.mockImplementation(async (message: { type: string; word?: string }) => {
-      if (message.type === 'translateSentence') {
-        return { success: true, chinese: '猫是很棒的宠物。' }
-      }
-      if (message.type === 'translateWordInContext') {
-        return { success: true, chinese: `${message.word}在这句里的意思` }
-      }
-      if (message.type === 'getOneWord') {
-        return {
-          success: true,
-          ecp: {
-            English: message.word,
-            Chinese: `${message.word}的通用词典释义`,
-            Pronunciation: `/${message.word}/`,
-            LoadCount: 3,
-          },
+    mockSendMessage.mockImplementation(
+      async (message: { type: string; word?: string }) => {
+        if (message.type === 'translateSentence') {
+          return { success: true, chinese: '猫是很棒的宠物。' }
         }
+        if (message.type === 'translateWordInContext') {
+          return { success: true, chinese: `${message.word}在这句里的意思` }
+        }
+        if (message.type === 'getOneWord') {
+          return {
+            success: true,
+            ecp: {
+              English: message.word,
+              Chinese: `${message.word}的通用词典释义`,
+              Pronunciation: `/${message.word}/`,
+              LoadCount: 3,
+            },
+          }
+        }
+        return { success: false }
       }
-      return { success: false }
-    })
+    )
 
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-sentence')
@@ -310,8 +352,16 @@ describe('SidePanel', () => {
       expect(definitions).toHaveTextContent('great的通用词典释义')
       // Query Count is now shown as a magnifying-glass icon + number, with
       // "Query Count: N" as the hover title rather than visible text.
-      expect(within(screen.getByTestId('sidepanel-card-cats')).getByTitle('Query Count: 3')).toBeInTheDocument()
-      expect(within(screen.getByTestId('sidepanel-card-great')).getByTitle('Query Count: 3')).toBeInTheDocument()
+      expect(
+        within(screen.getByTestId('sidepanel-card-cats')).getByTitle(
+          'Query Count: 3'
+        )
+      ).toBeInTheDocument()
+      expect(
+        within(screen.getByTestId('sidepanel-card-great')).getByTitle(
+          'Query Count: 3'
+        )
+      ).toBeInTheDocument()
     })
 
     // Newest click ('great') renders above the earlier one ('cats').
@@ -331,21 +381,27 @@ describe('SidePanel', () => {
         createdAt: 1,
       },
     })
-    mockSendMessage.mockImplementation(async (message: { type: string; word?: string }) => {
-      if (message.type === 'translateSentence') {
-        return { success: true, chinese: '猫是很棒的宠物。' }
-      }
-      if (message.type === 'translateWordInContext') {
-        return { success: false, error: 'translation service unavailable' }
-      }
-      if (message.type === 'getOneWord') {
-        return {
-          success: true,
-          ecp: { English: message.word, Chinese: 'unused', Pronunciation: '/greɪt/' },
+    mockSendMessage.mockImplementation(
+      async (message: { type: string; word?: string }) => {
+        if (message.type === 'translateSentence') {
+          return { success: true, chinese: '猫是很棒的宠物。' }
         }
+        if (message.type === 'translateWordInContext') {
+          return { success: false, error: 'translation service unavailable' }
+        }
+        if (message.type === 'getOneWord') {
+          return {
+            success: true,
+            ecp: {
+              English: message.word,
+              Chinese: 'unused',
+              Pronunciation: '/greɪt/',
+            },
+          }
+        }
+        return { success: false }
       }
-      return { success: false }
-    })
+    )
 
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-sentence')
@@ -399,12 +455,17 @@ describe('SidePanel', () => {
 
     // No dictionary data exists for a phrase -- no pronunciation, no query
     // count, no dictionary-meaning block should render on this card.
-    expect(within(card).queryByText(/Loading phonetics/)).not.toBeInTheDocument()
-    expect(within(card).queryByText(/Loading dictionary definition/)).not.toBeInTheDocument()
+    expect(
+      within(card).queryByText(/Loading phonetics/)
+    ).not.toBeInTheDocument()
+    expect(
+      within(card).queryByText(/Loading dictionary definition/)
+    ).not.toBeInTheDocument()
   })
 
   it('shows an error + retry on a phrase card, same as a word card (ADR-008)', async () => {
-    const fullSentence = 'Your session has just expired mid-sentence for this phrase test.'
+    const fullSentence =
+      'Your session has just expired mid-sentence for this phrase test.'
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: fullSentence,
@@ -419,7 +480,10 @@ describe('SidePanel', () => {
       if (message.type === 'translateWordInContext') {
         callCount += 1
         if (callCount === 1) {
-          return { success: false, error: 'Your session has expired. Please login again.' }
+          return {
+            success: false,
+            error: 'Your session has expired. Please login again.',
+          }
         }
         return { success: true, chinese: '句子中途过期' }
       }
@@ -429,14 +493,26 @@ describe('SidePanel', () => {
     const user = userEvent.setup()
     render(<SidePanel />)
 
-    const errorRow = await screen.findByTestId('sidepanel-context-error-expired mid-sentence')
-    expect(errorRow).toHaveTextContent('Your session has expired. Please login again.')
+    const errorRow = await screen.findByTestId(
+      'sidepanel-context-error-expired mid-sentence'
+    )
+    expect(errorRow).toHaveTextContent(
+      'Your session has expired. Please login again.'
+    )
 
-    await user.click(within(errorRow).getByTestId('sidepanel-retry-context-expired mid-sentence'))
+    await user.click(
+      within(errorRow).getByTestId(
+        'sidepanel-retry-context-expired mid-sentence'
+      )
+    )
 
     await waitFor(() => {
-      expect(screen.queryByTestId('sidepanel-context-error-expired mid-sentence')).not.toBeInTheDocument()
-      expect(screen.getByTestId('sidepanel-card-expired mid-sentence')).toHaveTextContent('句子中途过期')
+      expect(
+        screen.queryByTestId('sidepanel-context-error-expired mid-sentence')
+      ).not.toBeInTheDocument()
+      expect(
+        screen.getByTestId('sidepanel-card-expired mid-sentence')
+      ).toHaveTextContent('句子中途过期')
     })
     expect(callCount).toBe(2)
   })
@@ -451,25 +527,34 @@ describe('SidePanel', () => {
       },
     })
     let contextCallCount = 0
-    mockSendMessage.mockImplementation(async (message: { type: string; word?: string }) => {
-      if (message.type === 'translateSentence') {
-        return { success: true, chinese: '猫是很棒的宠物。' }
-      }
-      if (message.type === 'translateWordInContext') {
-        contextCallCount += 1
-        if (contextCallCount === 1) {
-          return { success: false, error: 'Your session has expired. Please login again.' }
+    mockSendMessage.mockImplementation(
+      async (message: { type: string; word?: string }) => {
+        if (message.type === 'translateSentence') {
+          return { success: true, chinese: '猫是很棒的宠物。' }
         }
-        return { success: true, chinese: '很棒的' }
-      }
-      if (message.type === 'getOneWord') {
-        return {
-          success: true,
-          ecp: { English: message.word, Chinese: 'unused', Pronunciation: '/greɪt/' },
+        if (message.type === 'translateWordInContext') {
+          contextCallCount += 1
+          if (contextCallCount === 1) {
+            return {
+              success: false,
+              error: 'Your session has expired. Please login again.',
+            }
+          }
+          return { success: true, chinese: '很棒的' }
         }
+        if (message.type === 'getOneWord') {
+          return {
+            success: true,
+            ecp: {
+              English: message.word,
+              Chinese: 'unused',
+              Pronunciation: '/greɪt/',
+            },
+          }
+        }
+        return { success: false }
       }
-      return { success: false }
-    })
+    )
 
     const user = userEvent.setup()
     render(<SidePanel />)
@@ -478,13 +563,21 @@ describe('SidePanel', () => {
     selectWord('great')
 
     const errorRow = await screen.findByTestId('sidepanel-context-error-great')
-    expect(errorRow).toHaveTextContent('Your session has expired. Please login again.')
+    expect(errorRow).toHaveTextContent(
+      'Your session has expired. Please login again.'
+    )
 
-    await user.click(within(errorRow).getByTestId('sidepanel-retry-context-great'))
+    await user.click(
+      within(errorRow).getByTestId('sidepanel-retry-context-great')
+    )
 
     await waitFor(() => {
-      expect(screen.queryByTestId('sidepanel-context-error-great')).not.toBeInTheDocument()
-      expect(screen.getByTestId('sidepanel-sentence-words')).toHaveTextContent('很棒的')
+      expect(
+        screen.queryByTestId('sidepanel-context-error-great')
+      ).not.toBeInTheDocument()
+      expect(screen.getByTestId('sidepanel-sentence-words')).toHaveTextContent(
+        '很棒的'
+      )
     })
     expect(contextCallCount).toBe(2)
   })
@@ -505,24 +598,38 @@ describe('SidePanel', () => {
     let getOneWordCalls = 0
     let contextCalls = 0
     mockSendMessage.mockImplementation(
-      async (message: { type: string; word?: string; dictionaryChinese?: string }) => {
+      async (message: {
+        type: string
+        word?: string
+        dictionaryChinese?: string
+      }) => {
         if (message.type === 'translateSentence') {
           return { success: true, chinese: '猫是很棒的宠物。' }
         }
         if (message.type === 'getOneWord') {
           getOneWordCalls += 1
           if (getOneWordCalls === 1) {
-            return { success: false, error: 'Your session has expired. Please login again.' }
+            return {
+              success: false,
+              error: 'Your session has expired. Please login again.',
+            }
           }
           return {
             success: true,
-            ecp: { English: message.word, Chinese: 'great的词典释义', Pronunciation: '/greɪt/' },
+            ecp: {
+              English: message.word,
+              Chinese: 'great的词典释义',
+              Pronunciation: '/greɪt/',
+            },
           }
         }
         if (message.type === 'translateWordInContext') {
           contextCalls += 1
           if (contextCalls === 1) {
-            return { success: false, error: 'Your session has expired. Please login again.' }
+            return {
+              success: false,
+              error: 'Your session has expired. Please login again.',
+            }
           }
           return { success: true, chinese: '很棒的' }
         }
@@ -537,10 +644,14 @@ describe('SidePanel', () => {
     selectWord('great')
 
     const errorRow = await screen.findByTestId('sidepanel-context-error-great')
-    await user.click(within(errorRow).getByTestId('sidepanel-retry-context-great'))
+    await user.click(
+      within(errorRow).getByTestId('sidepanel-retry-context-great')
+    )
 
     await waitFor(() => {
-      expect(screen.queryByTestId('sidepanel-context-error-great')).not.toBeInTheDocument()
+      expect(
+        screen.queryByTestId('sidepanel-context-error-great')
+      ).not.toBeInTheDocument()
       const card = screen.getByTestId('sidepanel-card-great')
       expect(card).toHaveTextContent('很棒的')
       expect(card).toHaveTextContent('great的词典释义')
@@ -569,23 +680,30 @@ describe('SidePanel', () => {
     })
 
     let resolveContext: (value: BackgroundResponse) => void = () => {}
-    mockSendMessage.mockImplementation((message: { type: string; word?: string }) => {
-      if (message.type === 'translateSentence') {
-        return Promise.resolve({ success: true, chinese: '猫是很棒的宠物。' })
+    mockSendMessage.mockImplementation(
+      (message: { type: string; word?: string }) => {
+        if (message.type === 'translateSentence') {
+          return Promise.resolve({ success: true, chinese: '猫是很棒的宠物。' })
+        }
+        if (message.type === 'translateWordInContext') {
+          return new Promise(resolve => {
+            resolveContext = resolve
+          })
+        }
+        if (message.type === 'getOneWord') {
+          return Promise.resolve({
+            success: true,
+            ecp: {
+              English: message.word,
+              Chinese: '很棒的',
+              Pronunciation: '/greɪt/',
+              LoadCount: 1,
+            },
+          })
+        }
+        return Promise.resolve({ success: false })
       }
-      if (message.type === 'translateWordInContext') {
-        return new Promise(resolve => {
-          resolveContext = resolve
-        })
-      }
-      if (message.type === 'getOneWord') {
-        return Promise.resolve({
-          success: true,
-          ecp: { English: message.word, Chinese: '很棒的', Pronunciation: '/greɪt/', LoadCount: 1 },
-        })
-      }
-      return Promise.resolve({ success: false })
-    })
+    )
 
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-sentence')
@@ -617,28 +735,38 @@ describe('SidePanel', () => {
         createdAt: 1,
       },
     })
-    mockSendMessage.mockImplementation(async (message: { type: string; word?: string }) => {
-      if (message.type === 'translateSentence') {
-        return { success: true, chinese: '猫是很棒的宠物。' }
-      }
-      if (message.type === 'translateWordInContext') {
-        return { success: true, chinese: `${message.word}在这句里的意思` }
-      }
-      if (message.type === 'getOneWord') {
-        return {
-          success: true,
-          ecp: { English: message.word, Chinese: `${message.word}释义`, Pronunciation: `/${message.word}/` },
+    mockSendMessage.mockImplementation(
+      async (message: { type: string; word?: string }) => {
+        if (message.type === 'translateSentence') {
+          return { success: true, chinese: '猫是很棒的宠物。' }
         }
+        if (message.type === 'translateWordInContext') {
+          return { success: true, chinese: `${message.word}在这句里的意思` }
+        }
+        if (message.type === 'getOneWord') {
+          return {
+            success: true,
+            ecp: {
+              English: message.word,
+              Chinese: `${message.word}释义`,
+              Pronunciation: `/${message.word}/`,
+            },
+          }
+        }
+        return { success: false }
       }
-      return { success: false }
-    })
+    )
 
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-sentence')
 
     selectWord('Cats')
     selectWord('great')
-    await waitFor(() => expect(screen.getByTestId('sidepanel-card-cats')).toHaveTextContent('cats释义'))
+    await waitFor(() =>
+      expect(screen.getByTestId('sidepanel-card-cats')).toHaveTextContent(
+        'cats释义'
+      )
+    )
 
     const callsAfterTwoDistinctWords = mockSendMessage.mock.calls.length
     selectWord('Cats')
@@ -663,18 +791,23 @@ describe('SidePanel', () => {
         createdAt: 1,
       },
     })
-    mockSendMessage.mockImplementation(async (message: { type: string; word?: string }) => {
-      if (message.type === 'translateSentence') {
-        return { success: true, chinese: '猫是很棒的宠物。' }
+    mockSendMessage.mockImplementation(
+      async (message: { type: string; word?: string }) => {
+        if (message.type === 'translateSentence') {
+          return { success: true, chinese: '猫是很棒的宠物。' }
+        }
+        if (message.type === 'translateWordInContext') {
+          return { success: true, chinese: `${message.word}在这句里的意思` }
+        }
+        if (message.type === 'getOneWord') {
+          return {
+            success: true,
+            ecp: { English: message.word, Chinese: '', Pronunciation: '' },
+          }
+        }
+        return { success: false }
       }
-      if (message.type === 'translateWordInContext') {
-        return { success: true, chinese: `${message.word}在这句里的意思` }
-      }
-      if (message.type === 'getOneWord') {
-        return { success: true, ecp: { English: message.word, Chinese: '', Pronunciation: '' } }
-      }
-      return { success: false }
-    })
+    )
 
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-sentence')
@@ -690,15 +823,17 @@ describe('SidePanel', () => {
   })
 
   it('refreshes in place with a new sentence when storage.onChanged fires, without needing sidePanel.open() again (spec §4.6)', async () => {
-    mockSendMessage.mockImplementation(async (message: { sentence?: string }) => {
-      if (message.sentence === 'First sentence.') {
-        return { success: true, chinese: '第一句。' }
+    mockSendMessage.mockImplementation(
+      async (message: { sentence?: string }) => {
+        if (message.sentence === 'First sentence.') {
+          return { success: true, chinese: '第一句。' }
+        }
+        if (message.sentence === 'Second sentence.') {
+          return { success: true, chinese: '第二句。' }
+        }
+        return { success: false }
       }
-      if (message.sentence === 'Second sentence.') {
-        return { success: true, chinese: '第二句。' }
-      }
-      return { success: false }
-    })
+    )
 
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-empty-state')
@@ -719,7 +854,9 @@ describe('SidePanel', () => {
       )
     })
     await waitFor(() =>
-      expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('第一句。')
+      expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent(
+        '第一句。'
+      )
     )
 
     act(() => {
@@ -817,30 +954,40 @@ describe('SidePanel', () => {
         createdAt: 1,
       },
     })
-    mockSendMessage.mockImplementation(async (message: { type: string; word?: string }) => {
-      if (message.type === 'translateSentence') {
-        return { success: true, chinese: '猫是很棒的宠物。' }
-      }
-      if (message.type === 'translateWordInContext') {
-        return { success: true, chinese: `${message.word}在这句里的意思` }
-      }
-      if (message.type === 'getOneWord') {
-        return {
-          success: true,
-          ecp: { English: message.word, Chinese: `${message.word}释义`, Pronunciation: `/${message.word}/` },
+    mockSendMessage.mockImplementation(
+      async (message: { type: string; word?: string }) => {
+        if (message.type === 'translateSentence') {
+          return { success: true, chinese: '猫是很棒的宠物。' }
         }
+        if (message.type === 'translateWordInContext') {
+          return { success: true, chinese: `${message.word}在这句里的意思` }
+        }
+        if (message.type === 'getOneWord') {
+          return {
+            success: true,
+            ecp: {
+              English: message.word,
+              Chinese: `${message.word}释义`,
+              Pronunciation: `/${message.word}/`,
+            },
+          }
+        }
+        return { success: false }
       }
-      return { success: false }
-    })
+    )
 
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-sentence')
     selectWord('great')
     await waitFor(() =>
-      expect(screen.getByTestId('sidepanel-sentence-words')).toHaveTextContent('great在这句里的意思')
+      expect(screen.getByTestId('sidepanel-sentence-words')).toHaveTextContent(
+        'great在这句里的意思'
+      )
     )
     await waitFor(() =>
-      expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('猫是很棒的宠物。')
+      expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent(
+        '猫是很棒的宠物。'
+      )
     )
 
     const callsBeforePageLookup = mockSendMessage.mock.calls.length
@@ -868,9 +1015,15 @@ describe('SidePanel', () => {
     // The new top-level card appears, and the sentence -- and its nested
     // in-sentence word -- must stay exactly as they were.
     await screen.findByTestId('sidepanel-card-serendipity')
-    expect(screen.getByTestId('sidepanel-sentence')).toHaveTextContent('Cats are great pets.')
-    expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('猫是很棒的宠物。')
-    expect(screen.getByTestId('sidepanel-sentence-words')).toHaveTextContent('great在这句里的意思')
+    expect(screen.getByTestId('sidepanel-sentence')).toHaveTextContent(
+      'Cats are great pets.'
+    )
+    expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent(
+      '猫是很棒的宠物。'
+    )
+    expect(screen.getByTestId('sidepanel-sentence-words')).toHaveTextContent(
+      'great在这句里的意思'
+    )
 
     // Newest arrival ('serendipity', a top-level card) renders above the
     // sentence entry (ADR-023 Decision 4: a page click always prepends to
@@ -878,7 +1031,8 @@ describe('SidePanel', () => {
     const serendipityCard = screen.getByTestId('sidepanel-card-serendipity')
     const sentenceEntry = screen.getByTestId(/^sidepanel-sentence-entry-/)
     expect(
-      serendipityCard.compareDocumentPosition(sentenceEntry) & Node.DOCUMENT_POSITION_FOLLOWING
+      serendipityCard.compareDocumentPosition(sentenceEntry) &
+        Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
 
     // No re-fetch: the card was populated directly from the storage payload.
@@ -886,7 +1040,10 @@ describe('SidePanel', () => {
   })
 
   it('keeps an existing page-lookup word card when a sentence translation is triggered afterwards (ADR-006 addendum)', async () => {
-    mockSendMessage.mockResolvedValue({ success: true, chinese: '猫是很棒的宠物。' })
+    mockSendMessage.mockResolvedValue({
+      success: true,
+      chinese: '猫是很棒的宠物。',
+    })
 
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-empty-state')
@@ -929,7 +1086,9 @@ describe('SidePanel', () => {
     })
 
     await waitFor(() =>
-      expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('猫是很棒的宠物。')
+      expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent(
+        '猫是很棒的宠物。'
+      )
     )
     // The word card from the earlier page lookup must still be there.
     expect(screen.getByTestId('sidepanel-card-serendipity')).toBeInTheDocument()
@@ -942,21 +1101,27 @@ describe('SidePanel', () => {
   // never searches the top-level list for a word to reuse -- so the two are
   // now independent cards, each fetched on its own.
   it('treats an in-sentence word click as independent from an existing top-level page-lookup card for the same word (ADR-023)', async () => {
-    mockSendMessage.mockImplementation(async (message: { type: string; word?: string }) => {
-      if (message.type === 'translateSentence') {
-        return { success: true, chinese: '猫是很棒的宠物。' }
-      }
-      if (message.type === 'translateWordInContext') {
-        return { success: true, chinese: `${message.word}在这句里的意思` }
-      }
-      if (message.type === 'getOneWord') {
-        return {
-          success: true,
-          ecp: { English: message.word, Chinese: `${message.word}释义(重新查询)`, Pronunciation: `/${message.word}/` },
+    mockSendMessage.mockImplementation(
+      async (message: { type: string; word?: string }) => {
+        if (message.type === 'translateSentence') {
+          return { success: true, chinese: '猫是很棒的宠物。' }
         }
+        if (message.type === 'translateWordInContext') {
+          return { success: true, chinese: `${message.word}在这句里的意思` }
+        }
+        if (message.type === 'getOneWord') {
+          return {
+            success: true,
+            ecp: {
+              English: message.word,
+              Chinese: `${message.word}释义(重新查询)`,
+              Pronunciation: `/${message.word}/`,
+            },
+          }
+        }
+        return { success: false }
       }
-      return { success: false }
-    })
+    )
 
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-empty-state')
@@ -969,7 +1134,12 @@ describe('SidePanel', () => {
           [LATEST_PAGE_WORD_STORAGE_KEY]: {
             newValue: {
               word: 'cats',
-              ecp: { English: 'cats', Chinese: '猫的复数', Pronunciation: '/kæts/', LoadCount: 2 },
+              ecp: {
+                English: 'cats',
+                Chinese: '猫的复数',
+                Pronunciation: '/kæts/',
+                LoadCount: 2,
+              },
               createdAt: 1,
             },
           },
@@ -999,7 +1169,9 @@ describe('SidePanel', () => {
     })
     await screen.findByTestId('sidepanel-sentence')
     // The page-lookup card is untouched by the new sentence context.
-    expect(screen.getByTestId('sidepanel-card-cats')).toHaveTextContent('猫的复数')
+    expect(screen.getByTestId('sidepanel-card-cats')).toHaveTextContent(
+      '猫的复数'
+    )
 
     // 3) Clicking "Cats" inside the sentence fetches a fresh, separate card
     //    nested under the sentence -- it does not touch the top-level one.
@@ -1008,14 +1180,20 @@ describe('SidePanel', () => {
     selectWord('Cats')
 
     await waitFor(() =>
-      expect(screen.getByTestId('sidepanel-sentence-words')).toHaveTextContent('cats在这句里的意思')
+      expect(screen.getByTestId('sidepanel-sentence-words')).toHaveTextContent(
+        'cats在这句里的意思'
+      )
     )
-    const nestedCard = within(screen.getByTestId('sidepanel-sentence-words')).getByTestId('sidepanel-card-cats')
+    const nestedCard = within(
+      screen.getByTestId('sidepanel-sentence-words')
+    ).getByTestId('sidepanel-card-cats')
     expect(nestedCard).toHaveTextContent('cats在这句里的意思')
     expect(nestedCard).toHaveTextContent('cats释义(重新查询)')
 
     // The top-level card is untouched -- still the original dictionary text.
-    const topLevelCardAfter = screen.getAllByTestId('sidepanel-card-cats').find(el => el !== nestedCard)!
+    const topLevelCardAfter = screen
+      .getAllByTestId('sidepanel-card-cats')
+      .find(el => el !== nestedCard)!
     expect(topLevelCardAfter).toHaveTextContent('猫的复数')
     expect(topLevelCardAfter).not.toHaveTextContent('cats释义(重新查询)')
   })
@@ -1035,27 +1213,34 @@ describe('SidePanel', () => {
     }
 
     it('does not double-fetch when the anchor word is clicked in the sentence while its own dictionary-first lookup is still in flight (ADR-023 race)', async () => {
-      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue(pendingWithWord)
+      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue(
+        pendingWithWord
+      )
 
       let resolveDictionary: (value: BackgroundResponse) => void = () => {}
       let getOneWordCalls = 0
       let contextCalls = 0
-      mockSendMessage.mockImplementation((message: { type: string; word?: string }) => {
-        if (message.type === 'translateSentence') {
-          return Promise.resolve({ success: true, chinese: '猫是很棒的宠物。' })
+      mockSendMessage.mockImplementation(
+        (message: { type: string; word?: string }) => {
+          if (message.type === 'translateSentence') {
+            return Promise.resolve({
+              success: true,
+              chinese: '猫是很棒的宠物。',
+            })
+          }
+          if (message.type === 'getOneWord') {
+            getOneWordCalls += 1
+            return new Promise(resolve => {
+              resolveDictionary = resolve
+            })
+          }
+          if (message.type === 'translateWordInContext') {
+            contextCalls += 1
+            return Promise.resolve({ success: true, chinese: 'great语境义' })
+          }
+          return Promise.resolve({ success: false })
         }
-        if (message.type === 'getOneWord') {
-          getOneWordCalls += 1
-          return new Promise(resolve => {
-            resolveDictionary = resolve
-          })
-        }
-        if (message.type === 'translateWordInContext') {
-          contextCalls += 1
-          return Promise.resolve({ success: true, chinese: 'great语境义' })
-        }
-        return Promise.resolve({ success: false })
-      })
+      )
 
       render(<SidePanel />)
       // The anchor word's own card (and its dictionary-first lookup) is
@@ -1082,7 +1267,9 @@ describe('SidePanel', () => {
       })
 
       await waitFor(() =>
-        expect(screen.getByTestId('sidepanel-sentence-words')).toHaveTextContent('great语境义')
+        expect(
+          screen.getByTestId('sidepanel-sentence-words')
+        ).toHaveTextContent('great语境义')
       )
       // Still only ever fetched once each -- no double Query Count
       // increment, no double AI charge for the same word, despite the
@@ -1092,16 +1279,27 @@ describe('SidePanel', () => {
     })
 
     it('sends translateSentence (not translateSentenceWithWord) and looks up the anchor word dictionary-first', async () => {
-      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue(pendingWithWord)
+      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue(
+        pendingWithWord
+      )
       mockSendMessage.mockImplementation(
-        async (message: { type: string; word?: string; dictionaryChinese?: string }) => {
+        async (message: {
+          type: string
+          word?: string
+          dictionaryChinese?: string
+        }) => {
           if (message.type === 'translateSentence') {
             return { success: true, chinese: '猫是很棒的宠物。' }
           }
           if (message.type === 'getOneWord') {
             return {
               success: true,
-              ecp: { English: message.word, Chinese: 'great的词典释义', Pronunciation: '/greɪt/', LoadCount: 7 },
+              ecp: {
+                English: message.word,
+                Chinese: 'great的词典释义',
+                Pronunciation: '/greɪt/',
+                LoadCount: 7,
+              },
             }
           }
           if (message.type === 'translateWordInContext') {
@@ -1114,7 +1312,9 @@ describe('SidePanel', () => {
       render(<SidePanel />)
 
       await waitFor(() =>
-        expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('猫是很棒的宠物。')
+        expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent(
+          '猫是很棒的宠物。'
+        )
       )
       // Card for the clicked word is seeded automatically: dictionary first,
       // then the AI call fed that definition.
@@ -1145,7 +1345,11 @@ describe('SidePanel', () => {
           createdAt: 1,
         },
       })
-      mockSendMessage.mockResolvedValue({ success: true, chinese: '译文', wordChinese: '极好的' })
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        chinese: '译文',
+        wordChinese: '极好的',
+      })
 
       render(<SidePanel />)
 
@@ -1162,9 +1366,15 @@ describe('SidePanel', () => {
     // still gets its contextual meaning, just with no definition to compare
     // against (so `why` naturally comes back empty).
     it('still looks up the context meaning when the anchor word has no dictionary entry', async () => {
-      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue(pendingWithWord)
+      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue(
+        pendingWithWord
+      )
       mockSendMessage.mockImplementation(
-        async (message: { type: string; word?: string; dictionaryChinese?: string }) => {
+        async (message: {
+          type: string
+          word?: string
+          dictionaryChinese?: string
+        }) => {
           if (message.type === 'translateSentence') {
             return { success: true, chinese: '猫是很棒的宠物。' }
           }
@@ -1181,10 +1391,16 @@ describe('SidePanel', () => {
       render(<SidePanel />)
 
       await waitFor(() =>
-        expect(screen.getByTestId('sidepanel-card-great')).toHaveTextContent('极好的')
+        expect(screen.getByTestId('sidepanel-card-great')).toHaveTextContent(
+          '极好的'
+        )
       )
       expect(mockSendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'translateWordInContext', word: 'great', dictionaryChinese: undefined })
+        expect.objectContaining({
+          type: 'translateWordInContext',
+          word: 'great',
+          dictionaryChinese: undefined,
+        })
       )
     })
 
@@ -1207,13 +1423,17 @@ describe('SidePanel', () => {
       render(<SidePanel />)
 
       await waitFor(() =>
-        expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('猫是很棒的宠物。')
+        expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent(
+          '猫是很棒的宠物。'
+        )
       )
       expect(mockSendMessage).not.toHaveBeenCalledWith(
         expect.objectContaining({ type: 'translateSentenceWithWord' })
       )
       expect(screen.queryAllByTestId(/^sidepanel-card-/)).toHaveLength(0)
-      expect(screen.queryByTestId('sidepanel-sentence-words')).not.toBeInTheDocument()
+      expect(
+        screen.queryByTestId('sidepanel-sentence-words')
+      ).not.toBeInTheDocument()
       const sentence = screen.getByTestId('sidepanel-sentence')
       expect(sentence.querySelector('[data-clicked-word]')).toBeNull()
     })
@@ -1230,7 +1450,8 @@ describe('SidePanel', () => {
         },
       })
       mockSendMessage.mockImplementation(async (message: { type: string }) => {
-        if (message.type === 'translateSentence') return { success: true, chinese }
+        if (message.type === 'translateSentence')
+          return { success: true, chinese }
         if (message.type === 'translateWordInContext') {
           return { success: true, chinese: '很棒的宠物（本句）' }
         }
@@ -1245,7 +1466,9 @@ describe('SidePanel', () => {
 
       selectWord('great pets')
 
-      expect(await screen.findByTestId('sidepanel-phrase-confirm')).toBeInTheDocument()
+      expect(
+        await screen.findByTestId('sidepanel-phrase-confirm')
+      ).toBeInTheDocument()
       expect(mockSendMessage).not.toHaveBeenCalledWith(
         expect.objectContaining({ type: 'translateWordInContext' })
       )
@@ -1260,7 +1483,9 @@ describe('SidePanel', () => {
 
       const card = await screen.findByTestId('sidepanel-card-great pets')
       expect(card).toHaveTextContent('很棒的宠物（本句）')
-      expect(within(card).queryByText(/Loading phonetics/)).not.toBeInTheDocument()
+      expect(
+        within(card).queryByText(/Loading phonetics/)
+      ).not.toBeInTheDocument()
       expect(
         mockSendMessage.mock.calls.filter(
           ([m]) => m.type === 'translateWordInContext'
@@ -1273,7 +1498,9 @@ describe('SidePanel', () => {
           sentence: SENTENCE,
         })
       )
-      expect(screen.queryByTestId('sidepanel-phrase-confirm')).not.toBeInTheDocument()
+      expect(
+        screen.queryByTestId('sidepanel-phrase-confirm')
+      ).not.toBeInTheDocument()
     })
 
     it('snaps a part-word drag out to whole words before looking up', async () => {
@@ -1297,7 +1524,9 @@ describe('SidePanel', () => {
       await user.keyboard('{Escape}')
 
       await waitFor(() =>
-        expect(screen.queryByTestId('sidepanel-phrase-confirm')).not.toBeInTheDocument()
+        expect(
+          screen.queryByTestId('sidepanel-phrase-confirm')
+        ).not.toBeInTheDocument()
       )
       expect(mockSendMessage).not.toHaveBeenCalledWith(
         expect.objectContaining({ type: 'translateWordInContext' })
@@ -1310,7 +1539,9 @@ describe('SidePanel', () => {
       selectWord(SENTENCE)
 
       await waitFor(() => expect(mockSendMessage).toHaveBeenCalled())
-      expect(screen.queryByTestId('sidepanel-phrase-confirm')).not.toBeInTheDocument()
+      expect(
+        screen.queryByTestId('sidepanel-phrase-confirm')
+      ).not.toBeInTheDocument()
     })
 
     it('re-selecting a phrase already in the list just moves its card up, no new lookup', async () => {
@@ -1323,10 +1554,14 @@ describe('SidePanel', () => {
 
       selectWord('great pets')
       await waitFor(() =>
-        expect(screen.queryByTestId('sidepanel-phrase-confirm')).not.toBeInTheDocument()
+        expect(
+          screen.queryByTestId('sidepanel-phrase-confirm')
+        ).not.toBeInTheDocument()
       )
       expect(
-        mockSendMessage.mock.calls.filter(([m]) => m.type === 'translateWordInContext')
+        mockSendMessage.mock.calls.filter(
+          ([m]) => m.type === 'translateWordInContext'
+        )
       ).toHaveLength(1)
     })
   })
@@ -1341,20 +1576,33 @@ describe('SidePanel', () => {
           createdAt: 1,
         },
       })
-      mockSendMessage.mockImplementation(async (message: { sentence?: string }) => {
-        if (message.sentence === 'First sentence.') return { success: true, chinese: '第一句。' }
-        if (message.sentence === 'Second sentence.') return { success: true, chinese: '第二句。' }
-        return { success: false }
-      })
+      mockSendMessage.mockImplementation(
+        async (message: { sentence?: string }) => {
+          if (message.sentence === 'First sentence.')
+            return { success: true, chinese: '第一句。' }
+          if (message.sentence === 'Second sentence.')
+            return { success: true, chinese: '第二句。' }
+          return { success: false }
+        }
+      )
 
       render(<SidePanel />)
-      await waitFor(() => expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('第一句。'))
+      await waitFor(() =>
+        expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent(
+          '第一句。'
+        )
+      )
 
       act(() => {
         fireStorageChange(
           {
             [PENDING_SENTENCE_STORAGE_KEY]: {
-              newValue: { sentence: 'Second sentence.', word: '', sourceUrl: '', createdAt: 2 },
+              newValue: {
+                sentence: 'Second sentence.',
+                word: '',
+                sourceUrl: '',
+                createdAt: 2,
+              },
             },
           },
           'session'
@@ -1363,7 +1611,10 @@ describe('SidePanel', () => {
 
       await waitFor(() => {
         const sentences = screen.getAllByTestId('sidepanel-sentence')
-        expect(sentences.map(s => s.textContent)).toEqual(['Second sentence.', 'First sentence.'])
+        expect(sentences.map(s => s.textContent)).toEqual([
+          'Second sentence.',
+          'First sentence.',
+        ])
       })
       const chineses = screen.getAllByTestId('sidepanel-chinese')
       expect(chineses.map(c => c.textContent)).toEqual(['第二句。', '第一句。'])
@@ -1380,10 +1631,16 @@ describe('SidePanel', () => {
       })
       mockSendMessage.mockImplementation(
         async (message: { type: string; sentence?: string; word?: string }) => {
-          if (message.type === 'translateSentence' && message.sentence === 'Cats are great pets.') {
+          if (
+            message.type === 'translateSentence' &&
+            message.sentence === 'Cats are great pets.'
+          ) {
             return { success: true, chinese: '猫是很棒的宠物。' }
           }
-          if (message.type === 'translateSentence' && message.sentence === 'Dogs are loyal friends.') {
+          if (
+            message.type === 'translateSentence' &&
+            message.sentence === 'Dogs are loyal friends.'
+          ) {
             return { success: true, chinese: '狗是忠诚的朋友。' }
           }
           if (message.type === 'translateWordInContext') {
@@ -1392,7 +1649,11 @@ describe('SidePanel', () => {
           if (message.type === 'getOneWord') {
             return {
               success: true,
-              ecp: { English: message.word, Chinese: `${message.word}释义`, Pronunciation: `/${message.word}/` },
+              ecp: {
+                English: message.word,
+                Chinese: `${message.word}释义`,
+                Pronunciation: `/${message.word}/`,
+              },
             }
           }
           return { success: false }
@@ -1401,14 +1662,21 @@ describe('SidePanel', () => {
 
       render(<SidePanel />)
       await waitFor(() =>
-        expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('猫是很棒的宠物。')
+        expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent(
+          '猫是很棒的宠物。'
+        )
       )
 
       act(() => {
         fireStorageChange(
           {
             [PENDING_SENTENCE_STORAGE_KEY]: {
-              newValue: { sentence: 'Dogs are loyal friends.', word: '', sourceUrl: '', createdAt: 2 },
+              newValue: {
+                sentence: 'Dogs are loyal friends.',
+                word: '',
+                sourceUrl: '',
+                createdAt: 2,
+              },
             },
           },
           'session'
@@ -1424,14 +1692,17 @@ describe('SidePanel', () => {
       })
 
       // Click a word inside the OLDER sentence, now in the #2 slot.
-      const historicalSentenceEl = screen.getAllByTestId('sidepanel-sentence')[1]
+      const historicalSentenceEl =
+        screen.getAllByTestId('sidepanel-sentence')[1]
       selectWord('great', 'Cats are great pets.', historicalSentenceEl)
 
       await waitFor(() => {
-        const entryContainers = screen.getAllByTestId(/^sidepanel-sentence-entry-/)
-        expect(within(entryContainers[1]).getByTestId('sidepanel-sentence-words')).toHaveTextContent(
-          'great在这句里的意思'
+        const entryContainers = screen.getAllByTestId(
+          /^sidepanel-sentence-entry-/
         )
+        expect(
+          within(entryContainers[1]).getByTestId('sidepanel-sentence-words')
+        ).toHaveTextContent('great在这句里的意思')
       })
 
       // Order is unchanged -- the sentence clicked into did not jump to the top.
@@ -1441,8 +1712,14 @@ describe('SidePanel', () => {
         'Cats are great pets.',
       ])
       // The newer sentence's own nested list is untouched (still empty).
-      const entryContainersAfter = screen.getAllByTestId(/^sidepanel-sentence-entry-/)
-      expect(within(entryContainersAfter[0]).queryByTestId('sidepanel-sentence-words')).not.toBeInTheDocument()
+      const entryContainersAfter = screen.getAllByTestId(
+        /^sidepanel-sentence-entry-/
+      )
+      expect(
+        within(entryContainersAfter[0]).queryByTestId(
+          'sidepanel-sentence-words'
+        )
+      ).not.toBeInTheDocument()
     })
   })
 })

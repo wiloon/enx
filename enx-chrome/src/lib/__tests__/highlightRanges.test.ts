@@ -58,7 +58,8 @@ describe('WordProcessor.reviewBucket', () => {
   })
 
   it('maps load count to ascending stages, one per boundary', () => {
-    const bucketFor = (c: number) => WordProcessor.reviewBucket(wd({ LoadCount: c }))
+    const bucketFor = (c: number) =>
+      WordProcessor.reviewBucket(wd({ LoadCount: c }))
     // boundary pairs: last count of each stage, first of the next
     expect([bucketFor(2), bucketFor(3)]).toEqual([1, 2])
     expect([bucketFor(5), bucketFor(6)]).toEqual([2, 3])
@@ -102,8 +103,7 @@ describe('WordProcessor.buildHighlightRanges', () => {
   })
 
   it('matches contractions and hyphenated compounds as whole words', () => {
-    document.body.innerHTML =
-      "<p>it's a well-known problem, isn't it</p>"
+    document.body.innerHTML = "<p>it's a well-known problem, isn't it</p>"
     const buckets = WordProcessor.buildHighlightRanges(
       textNodesUnder(document.body),
       {
@@ -168,9 +168,9 @@ describe('WordProcessor.buildHighlightRanges', () => {
     })
     const ranges = [...(CSS.highlights.get('enx-hl-2') ?? [])]
     expect(ranges.map(r => r.toString())).toEqual(['endgame'])
-    expect(textNodesUnder(document.body).map(n => n.textContent?.trim())).toEqual([
-      'the endgame is here',
-    ])
+    expect(
+      textNodesUnder(document.body).map(n => n.textContent?.trim())
+    ).toEqual(['the endgame is here'])
   })
 
   it('creates and moves no element nodes (article DOM is untouched)', () => {
@@ -222,7 +222,10 @@ describe('WordProcessor.applyHighlights / clearHighlights', () => {
     WordProcessor.applyHighlights(new Map([[1, [document.createRange()]]]))
     WordProcessor.applyHighlights(new Map([[2, [document.createRange()]]]))
 
-    expect([...CSS.highlights.keys()].sort()).toEqual(['enx-hl-2', 'site-search'])
+    expect([...CSS.highlights.keys()].sort()).toEqual([
+      'enx-hl-2',
+      'site-search',
+    ])
 
     WordProcessor.clearHighlights()
     expect([...CSS.highlights.keys()]).toEqual(['site-search'])
@@ -249,7 +252,9 @@ describe('WordProcessor.expandToWordRange', () => {
   it('expands to the whole hyphenated compound from either half', () => {
     const n = textNode('<p>a well-known fact</p>')
     expect(WordProcessor.expandToWordRange(n, 3)?.toString()).toBe('well-known') // in "well"
-    expect(WordProcessor.expandToWordRange(n, 10)?.toString()).toBe('well-known') // in "known"
+    expect(WordProcessor.expandToWordRange(n, 10)?.toString()).toBe(
+      'well-known'
+    ) // in "known"
   })
 
   it('returns null on punctuation / whitespace between words and at string end', () => {
@@ -269,6 +274,8 @@ describe('WordProcessor.expandToWordRange', () => {
 
   it('returns null for a non-text node', () => {
     document.body.innerHTML = '<p>hi</p>'
-    expect(WordProcessor.expandToWordRange(document.querySelector('p')!, 0)).toBeNull()
+    expect(
+      WordProcessor.expandToWordRange(document.querySelector('p')!, 0)
+    ).toBeNull()
   })
 })

@@ -31,7 +31,10 @@ export interface SpaRebuilderDeps {
 
 /** The slice of the Navigation API this module uses (Chrome 102+). */
 export interface NavigationLike {
-  addEventListener(type: 'navigate', listener: (event: NavigateEvent) => void): void
+  addEventListener(
+    type: 'navigate',
+    listener: (event: NavigateEvent) => void
+  ): void
   removeEventListener(
     type: 'navigate',
     listener: (event: NavigateEvent) => void

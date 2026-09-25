@@ -42,7 +42,9 @@ describe('manifest stamping (ADR-019)', () => {
     // Clerk session sync) and the ONLY UI origin wired to the web -> extension
     // channel, otherwise a stale domain silently keeps the old site trusted.
     expect(manifest.host_permissions).toContain('https://catglish.com/*')
-    expect(manifest.externally_connectable.matches).toEqual(['https://catglish.com/*'])
+    expect(manifest.externally_connectable.matches).toEqual([
+      'https://catglish.com/*',
+    ])
   })
 
   it('derives the Clerk host permission from the publishable key', () => {

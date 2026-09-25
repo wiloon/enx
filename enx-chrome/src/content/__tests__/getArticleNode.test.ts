@@ -80,7 +80,9 @@ describe('WordProcessor.getArticleNodes', () => {
 
     expect(
       document.getElementById('related-links')!.textContent!.length
-    ).toBeGreaterThan(document.getElementById('real-article')!.textContent!.length)
+    ).toBeGreaterThan(
+      document.getElementById('real-article')!.textContent!.length
+    )
 
     const nodes = WordProcessor.getArticleNodes()
 
