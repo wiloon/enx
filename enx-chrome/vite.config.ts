@@ -4,14 +4,14 @@ import react from '@vitejs/plugin-react'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { defineConfig, loadEnv } from 'vite'
-import manifest from './manifest.json'
-import { buildManifest } from './src/config/manifest'
+import manifest from './manifest.json' with { type: 'json' }
+import { buildManifest } from './src/config/manifest.ts'
 import {
   applyOverrides,
   DEFAULT_TARGET,
   resolveTargetName,
   TARGETS,
-} from './src/config/targets'
+} from './src/config/targets.ts'
 
 // Read version from package.json
 const packageJson = JSON.parse(readFileSync('./package.json', 'utf-8'))
@@ -72,7 +72,7 @@ export default defineConfig(({ mode }) => {
     },
     resolve: {
       alias: {
-        '@': resolve(__dirname, './src'),
+        '@': resolve(import.meta.dirname, './src'),
       },
     },
     build: {
