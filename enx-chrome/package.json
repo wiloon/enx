@@ -29,13 +29,13 @@
     "@clerk/chrome-extension": "^3.1.85",
     "@floating-ui/dom": "^1.8.0",
     "@heroicons/react": "^2.2.0",
-    "@sentry/react": "^10.75.3",
+    "@sentry/react": "^11.0.0",
     "jotai": "^2.20.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
-    "@crxjs/vite-plugin": "^2.7.1",
+    "@crxjs/vite-plugin": "^3.0.0",
     "@eslint/compat": "^2.1.1",
     "@eslint/js": "^9.39.5",
     "@playwright/test": "^1.63.0",
@@ -51,7 +51,7 @@
     "@types/react-dom": "^19.3.0",
     "@typescript-eslint/eslint-plugin": "^8.70.1",
     "@typescript-eslint/parser": "^8.70.1",
-    "@vitejs/plugin-react": "^5.2.0",
+    "@vitejs/plugin-react": "^6.1.1",
     "eslint": "^9.39.5",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
@@ -65,7 +65,7 @@
     "tailwindcss": "^4.3.3",
     "ts-jest": "^29.4.13",
     "typescript": "^5.9.3",
-    "vite": "^7.3.6"
+    "vite": "^8.3.1"
   },
   "packageManager": "pnpm@12.6.0"
 }

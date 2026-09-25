@@ -2,7 +2,7 @@
 // in every deployment, and this fills in the deployment-specific origins from
 // the selected target (see targets.ts). Called from vite.config.ts.
 
-import { clerkFrontendApiHost, type Target } from './targets'
+import { clerkFrontendApiHost, type Target } from './targets.ts'
 
 interface ContentScript {
   matches?: string[]
