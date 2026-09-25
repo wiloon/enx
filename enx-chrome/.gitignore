@@ -13,6 +13,17 @@ build/
 *.pem
 *.crx
 
+# Web Store upload packages (build output; dist-*/ above also covers them)
+dist-webstore/
+
+# Playwright run state / reports
+test-results/
+playwright-report/
+blob-report/
+
+# Backup files
+*.backup
+
 # Environment variables
 .env
 .env.local
