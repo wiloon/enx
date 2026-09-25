@@ -8,19 +8,20 @@ upgrade did not cause it.
 The committed `enx-chrome/dist.pem` private key is **not** tracked here. It is
 being handled on a separate branch.
 
-## 1. enx-api: integration test fails when the package runs as a whole
+## 1. enx-api: integration test fails when the package runs as a whole — DONE
 
-- Test: `enx/ecp_integration_test.go`, `TestSaveDuplicateEnglish_UniqueConstraintPreventsDuplicate`
-- Repro: `cd enx-api && go test -count=1 -tags=integration ./enx/`
-  fails with `wor count should be 1, actual: 2`.
-  `go test -count=1 -tags=integration -run TestSaveDuplicateEnglish ./enx/` passes.
-- Likely cause (not confirmed): the integration tests in `enx/` share one
-  SQLite file through `sqlitex.Init()` in `init()`, so rows written by other
-  tests leak into this one. `CountByEnglish` matches on `LOWER(english)`, so
-  another test's `"kehinde"` (or the same word in any case) would be counted.
-- Suggested fix: give each test its own `DB_PATH` (`t.TempDir()`), or clean the
-  `words` table in a setup helper.
-- Only runs under `-tags=integration`. The default `go test ./...` is green.
+Resolved on branch `fix/enx-api-integration-test-db`. The original guess (a
+shared SQLite file) was wrong. The real cause: `ecp_integration_test.go`
+opened its DB once in `init()`, but other tests in `enx/` (`ecp_crud_test.go`
+and others) replace the global `sqlitex.DB` with in-memory DBs migrated from
+`repo.Word`, whose `english` column had no `unique` constraint. So when the
+integration test ran after them, `Save()` twice inserted two rows.
+
+Fixes: the integration tests now call `sqlitex.Init()` per test on a
+`t.TempDir()` DB; `repo.Word.English` now has `unique;not null` to match
+`sqlitex.Word`; `Word.Save()` now returns the insert error and no longer sets
+`word.Id` when nothing was persisted. `fillFromEcdict` falls back to the
+existing row when a concurrent lookup inserted the word first.
 
 ## 2. enx-chrome: Playwright E2E is flaky, and most specs need a real login
 

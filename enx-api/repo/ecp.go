@@ -8,7 +8,7 @@ import (
 
 type Word struct {
 	Id             string    `gorm:"column:id;primaryKey"` // UUID
-	English        string    `gorm:"column:english"`
+	English        string    `gorm:"column:english;unique;not null"`
 	LoadCount      int       `gorm:"column:load_count;default:0"`
 	Chinese        string    `gorm:"column:chinese"`
 	Pronunciation  string    `gorm:"column:pronunciation"`

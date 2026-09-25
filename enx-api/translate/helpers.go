@@ -6,6 +6,7 @@ import (
 	"enx-api/dictionary"
 	"enx-api/dictsample"
 	"enx-api/enx"
+	"enx-api/utils/logger"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -64,7 +65,17 @@ func fillFromEcdict(c *gin.Context, word *enx.Word, userId string) (bool, bool) 
 	word.Key = strings.ToLower(epc.English)
 	word.Chinese = epc.Chinese
 	word.Pronunciation = epc.Pronunciation
-	word.Save()
+	if err := word.Save(); err != nil {
+		// words.english is UNIQUE: a concurrent lookup of the same new word
+		// most likely inserted it first, so reuse that row.
+		word.FindId()
+		if word.Id == "" {
+			// Still answer with the ECDICT result; just skip the user_dicts
+			// bookkeeping, which needs a persisted word id.
+			logger.Errorf("word not persisted, skip user dict: %s, error: %v", word.English, err)
+			return true, true
+		}
+	}
 
 	userDict := enx.UserDict{}
 	userDict.UserId = userId
