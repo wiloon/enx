@@ -27,7 +27,7 @@ if (typeof globalThis.CSS === 'undefined') {
 }
 
 // Mock Chrome APIs
-;(global as any).chrome = {
+;(globalThis as unknown as { chrome: unknown }).chrome = {
   runtime: {
     id: 'abcdefghijklmnopqrstuvwxyzabcdef',
     sendMessage: jest.fn(),
@@ -109,7 +109,7 @@ if (typeof globalThis.CSS === 'undefined') {
   scripting: {
     executeScript: jest.fn(),
   },
-} as any
+}
 
 if (!global.fetch) {
   global.fetch = jest.fn()

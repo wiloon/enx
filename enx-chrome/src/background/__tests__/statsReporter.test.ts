@@ -24,14 +24,12 @@ beforeAll(() => {
 
 beforeEach(() => {
   store = {}
-  ;(global as any).chrome.storage.local.get = jest.fn(async (key: string) => ({
+  chrome.storage.local.get = jest.fn(async (key: string) => ({
     [key]: store[key],
-  }))
-  ;(global as any).chrome.storage.local.set = jest.fn(
-    async (items: Record<string, unknown>) => {
-      Object.assign(store, items)
-    }
-  )
+  })) as unknown as typeof chrome.storage.local.get
+  chrome.storage.local.set = jest.fn(async (items: Record<string, unknown>) => {
+    Object.assign(store, items)
+  }) as unknown as typeof chrome.storage.local.set
 })
 
 function queue(): QueuedReport[] {
@@ -39,9 +37,16 @@ function queue(): QueuedReport[] {
 }
 
 const ok = () =>
-  jest.fn(async () => ({ success: true, data: { applied: true } }))
+  jest.fn(async (_endpoint: string, _options: RequestInit) => ({
+    success: true,
+    data: { applied: true },
+  }))
 const failing = (status?: number) =>
-  jest.fn(async () => ({ success: false, error: 'nope', status }))
+  jest.fn(async (_endpoint: string, _options: RequestInit) => ({
+    success: false,
+    error: 'nope',
+    status,
+  }))
 
 describe('localDate / utcOffsetMinutes', () => {
   it("reports the offset in the server's sign convention (UTC+8 -> +480)", () => {
@@ -62,7 +67,7 @@ describe('enqueueReport', () => {
     await enqueueReport({ wordsRead: 340, articlesRead: 1 }, request)
 
     expect(request).toHaveBeenCalledTimes(1)
-    const [endpoint, options] = request.mock.calls[0] as [string, RequestInit]
+    const [endpoint, options] = request.mock.calls[0]
     expect(endpoint).toBe('/api/stats/ingest')
     expect(JSON.parse(options.body as string)).toMatchObject({
       delta: { wordsRead: 340, articlesRead: 1 },
@@ -92,9 +97,7 @@ describe('enqueueReport', () => {
     const request = ok()
     await flushQueue(request)
 
-    const body = JSON.parse(
-      (request.mock.calls[0][1] as RequestInit).body as string
-    )
+    const body = JSON.parse(request.mock.calls[0][1].body as string)
     expect(body.clientEventId).toBe(id)
     expect(queue()).toHaveLength(0)
   })
