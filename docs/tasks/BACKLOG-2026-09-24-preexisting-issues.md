@@ -76,20 +76,28 @@ on branch `chore/backlog-small-fixes`, and `.gitignore` now lists `dist-webstore
 Resolved on branch `chore/backlog-small-fixes`: `repo/redisx/redis_test.go` uses `google/uuid`
 (`NewSHA1` = v5, same output) and `go mod tidy` dropped `satori/go.uuid`.
 
-## 9. Upgrades deliberately deferred (breaking majors)
+## 9. Upgrades deliberately deferred (breaking majors) — PARTLY DONE
 
-Not bugs, just left for dedicated changes:
+Done on 2026-09-25, each in its own PR with the breaking changes fixed in code:
 
-| Project    | Package                                   | Current   | Latest |
-|------------|-------------------------------------------|-----------|--------|
-| enx-ui     | next / eslint-config-next                 | 15.5.26   | 16.x (middleware -> proxy rename, `next lint` removed, `eslint` config key removed) |
-| enx-ui     | @sentry/nextjs                            | 9.47      | 11.x   |
-| enx-ui, enx-chrome | eslint (9.x is now marked deprecated on npm) | 9.39 | 10.x |
-| enx-ui, enx-chrome | typescript                        | 5.9       | 7.x    |
-| enx-ui, enx-chrome | jotai                             | 2.20      | 3.x    |
-| enx-ui, enx-chrome | @testing-library/jest-dom         | 6.9       | 7.x    |
-| enx-chrome | vite / @crxjs/vite-plugin / @vitejs/plugin-react | 7 / 2.7 / 5 | 8 / 3 / 6 (must move together) |
-| enx-chrome | @sentry/react                             | 10.x      | 11.x   |
+| PR  | Project    | Upgrade |
+|-----|------------|---------|
+| #39 | enx-ui     | next / eslint-config-next 15.5 -> 16.3, @sentry/nextjs 9 -> 11 (Sentry 9 does not accept next 16 as a peer) |
+| #40 | enx-chrome | vite 7 -> 8, @crxjs/vite-plugin 2.7 -> 3, @vitejs/plugin-react 5 -> 6, @sentry/react 10 -> 11 |
+| #41 | both       | jotai 2 -> 3, @testing-library/jest-dom 6 -> 7 |
+
+### Still open: blocked upstream
+
+Neither affects what users run: both are build/dev-time tools and are not in
+the shipped extension or the enx-ui image.
+
+| Project | Package | Current | Target | Blocked by | Retry when |
+|---------|---------|---------|--------|------------|------------|
+| enx-ui, enx-chrome | eslint | 9.39 | 10.x | Latest `eslint-plugin-react` (7.37.5), `eslint-plugin-import` (2.32.0) and `eslint-plugin-jsx-a11y` (6.10.2) all declare `eslint` peers up to `^9` only. enx-chrome uses eslint-plugin-react directly; eslint-config-next pulls in all three. | All three publish an eslint 10 peer range (`pnpm view <pkg> peerDependencies.eslint`) |
+| enx-ui, enx-chrome | typescript | 5.9 | 7.x | TS 7 is the Go rewrite with no stable JS API yet (only `typescript/unstable/*`). `ts-jest` peers `typescript <7`, `typescript-eslint` peers `<6.1.0`, and Next's build type-check uses the JS API. | ts-jest and typescript-eslint support 7; TS 6.0 is possible earlier as a stepping stone (both already accept it) |
+
+eslint 9 shows as "deprecated" on npm because 10 is out, but it still works and
+still gets maintenance releases for now. Recheck both rows at least quarterly.
 
 ## 10. enx-chrome: root `tsc --noEmit` fails on two test files — DONE
 
