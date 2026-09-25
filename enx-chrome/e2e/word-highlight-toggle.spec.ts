@@ -4,6 +4,7 @@
 // flipping it takes effect on an open page with no reload -- word-data lookup
 // (click-to-translate) keeps working while the paint is off.
 
+import { loginAvailable, LOGIN_SKIP_REASON } from './auth'
 import { expect, test } from './fixtures'
 import {
   clickHighlightedWord,
@@ -11,8 +12,6 @@ import {
   getHighlightedWords,
   getHighlightedWordsCount,
   openOptions,
-  openPopup,
-  seedLoggedInState,
   waitForContentScript,
 } from './helpers'
 
@@ -33,12 +32,10 @@ async function setHighlightPref(
 }
 
 test.describe('Word highlight preference toggle', () => {
-  test.beforeEach(async ({ page, extensionId }) => {
-    const popupPage = await page.context().newPage()
-    await openPopup(popupPage, extensionId)
-    await seedLoggedInState(popupPage, { username: 'test-user' })
-    await popupPage.close()
+  // ADR-037: a real Clerk session; skipped (not faked) without credentials.
+  test.skip(!loginAvailable, LOGIN_SKIP_REASON)
 
+  test.beforeEach(async ({ page, extensionId, signedIn: _signedIn }) => {
     // Start each test from the default-on state.
     await setHighlightPref(page, extensionId, true)
 

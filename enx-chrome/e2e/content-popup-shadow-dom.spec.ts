@@ -3,6 +3,7 @@
 // is a Range in `CSS.highlights`; a lookup is a coordinate click on the word's
 // on-screen box (clickHighlightedWord / getHighlightedWordRects in helpers.ts).
 
+import { loginAvailable, LOGIN_SKIP_REASON } from './auth'
 import { expect, test } from './fixtures'
 import {
   clickHighlightedWord,
@@ -11,44 +12,37 @@ import {
   getHighlightedWordsCount,
   isWordHighlighted,
   mockBackendFetch,
-  openPopup,
-  seedLoggedInState,
   waitForContentScript,
 } from './helpers'
 
 // Covers TASK-SPEC-enx-chrome-word-popup-react.md §4.1 (viewport-edge
 // anchoring, close paths), §4.2 (style isolation) and §4.4 (resource
 // cleanup). Backend calls are stubbed (see mockBackendFetch in helpers.ts)
-// so these tests don't depend on a real enx-api backend or a valid Cognito
-// session -- see TASK-SPEC §4.4 discussion for why. mockBackendFetch reflects
+// so these tests don't depend on enx-api's data -- see TASK-SPEC §4.4
+// discussion for why. They still need a real Clerk session (ADR-037): the
+// background mints a token before every request, ahead of the stubbed fetch. mockBackendFetch reflects
 // the actually-requested word back into the WordData it returns (see
 // helpers.ts), so English always matches whatever word was clicked.
 
 test.describe('Word popup - Shadow DOM React implementation', () => {
-  test.beforeEach(async ({ context, page, extensionId }) => {
-    // handleMarkAcquainted in background.ts short-circuits to sessionExpired
-    // if no accessToken is present in storage, before it ever reaches the
-    // mocked fetch -- seed a (fake, unvalidated) token so that client-side
-    // gate passes. The mocked fetch is what actually answers the request.
-    // chrome.storage is only reachable from an actual extension page (main
-    // world of a plain http page never has `chrome.*` injected), so this has
-    // to run against popup.html, same as the existing login() helper does.
-    const popupPage = await page.context().newPage()
-    await openPopup(popupPage, extensionId)
-    await seedLoggedInState(popupPage, { username: 'test-user' })
-    await popupPage.close()
-    await mockBackendFetch(context, {
-      wordData: {
-        Pronunciation: '[stʌb]',
-        Chinese: '存根',
-        LoadCount: 3,
-        AlreadyAcquainted: 0,
-      },
-    })
-    await page.goto('/test-page.html', { waitUntil: 'domcontentloaded' })
-    await enableLearningMode(page, extensionId)
-    await waitForContentScript(page)
-  })
+  // ADR-037: a real Clerk session; skipped (not faked) without credentials.
+  test.skip(!loginAvailable, LOGIN_SKIP_REASON)
+
+  test.beforeEach(
+    async ({ context, page, extensionId, signedIn: _signedIn }) => {
+      await mockBackendFetch(context, {
+        wordData: {
+          Pronunciation: '[stʌb]',
+          Chinese: '存根',
+          LoadCount: 3,
+          AlreadyAcquainted: 0,
+        },
+      })
+      await page.goto('/test-page.html', { waitUntil: 'domcontentloaded' })
+      await enableLearningMode(page, extensionId)
+      await waitForContentScript(page)
+    }
+  )
 
   test('§4.1: popup stays within viewport bounds when anchored near each edge', async ({
     page,

@@ -2,23 +2,19 @@
 // Highlight API -- there are no `.enx-word` marker elements. Lookups are
 // coordinate clicks on word text (clickWordAndWaitForPopup).
 
+import { loginAvailable, LOGIN_SKIP_REASON } from './auth'
 import { expect, test } from './fixtures'
 import {
   clickWordAndWaitForPopup,
   enableLearningMode,
-  login,
-  openPopup,
   waitForContentScript,
 } from './helpers'
 
 test.describe('Content Script - Translation Popup', () => {
-  test.beforeEach(async ({ page, extensionId }) => {
-    // Login
-    const popupPage = await page.context().newPage()
-    await openPopup(popupPage, extensionId)
-    await login(popupPage, 'wiloon', 'haCahpro')
-    await popupPage.close()
+  // ADR-037: a real Clerk session; skipped (not faked) without credentials.
+  test.skip(!loginAvailable, LOGIN_SKIP_REASON)
 
+  test.beforeEach(async ({ page, extensionId, signedIn: _signedIn }) => {
     // Navigate and enable learning mode on local test page
     await page.goto('/test-page.html', {
       waitUntil: 'domcontentloaded',

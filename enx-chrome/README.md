@@ -279,79 +279,32 @@ The unit test setup includes:
 
 ### E2E Tests
 
-Run Playwright E2E tests:
+Playwright drives a dedicated build (`dist-e2e/`) against a **local** stack,
+never homelab (ADR-037): enx-api on :8090 with a throwaway database, static
+test pages on :8765, and, for signed-in specs, enx-ui on :3000.
 
 ```bash
-# Build extension first (required for E2E tests)
-pnpm run build
-# or
-task build
+pnpm build:e2e     # dist-e2e/: development target + the :8765 test pages
+pnpm test:e2e      # no credentials: signed-out specs run, signed-in ones skip
 
-# Run E2E tests
-pnpm run test:e2e
-# or
-task test-e2e
+# Signed-in specs: a real session on the Clerk *development* instance
+# (rational-deer-4450), created with @clerk/testing and synced into the
+# extension through syncHost. Create the user in the Clerk dashboard once;
+# test emails use the `+clerk_test` suffix (verification code 424242).
+CLERK_SECRET_KEY=sk_test_... E2E_CLERK_USER_EMAIL=e2e+clerk_test@example.com pnpm test:e2e
 
-# Run with UI mode (recommended for development)
-pnpm run test:e2e:ui
-# or
-task test-e2e-ui
-
-# Run in debug mode
-pnpm run test:e2e:debug
-# or
-task test-e2e-debug
-
-# Run with visible browser
-pnpm run test:e2e:headed
-# or
-task test-e2e-headed
-
-# Run all tests (unit + E2E)
-pnpm run test:all
-# or
-task test-all
+pnpm test:e2e:ui   # UI mode
+pnpm test:e2e:debug
 ```
 
-The E2E test setup includes:
-
-- Playwright with Chromium browser automation
-- Custom fixtures for Chrome extension testing
-- Extension loading from `dist/` directory
-- Tests for popup, content scripts, translation, and options page
-
-**Important Notes**:
-
-- ⚠️ **Always build extension first**: E2E tests require a built extension in `dist/`
-- 🎯 **Tests run in visible browser**: Chrome extensions require `headless: false`
-- 📝 **Test files**: Located in `e2e/` directory
-- 🔧 **Configuration**: See `playwright.config.ts`
-
-E2E Test Coverage:
-
-- **Popup Login** (`e2e/popup-login.spec.ts`):
-  - Login form display
-  - Successful authentication
-  - Error handling for invalid credentials
-  - Login state persistence
-
-- **Content Script - Word Highlighting** (`e2e/content-highlighting.spec.ts`):
-  - Word highlighting on BBC News
-  - Learning mode toggle
-  - CSS class application
-  - Multi-site support
-
-- **Content Script - Translation** (`e2e/content-translation.spec.ts`):
-  - Translation popup display
-  - Word and translation content
-  - Popup close behavior
-  - Different words show different translations
-
-- **Options Page** (`e2e/options-page.spec.ts`):
-  - API configuration UI
-  - Save custom API URL
-  - Default URL display
-  - Reset to default functionality
+- Chrome extensions need `headless: false`, so a browser window opens.
+- Ports 8090 and 8765 must be free. Those servers are never reused, so a
+  developer's own enx-api or an unrelated app cannot answer for them.
+- If this Playwright version's Chromium isn't downloaded, point
+  `E2E_CHROMIUM_PATH` at an installed Chromium or Chrome for Testing binary
+  (branded Chrome ignores `--load-extension`).
+- `pnpm test:e2e:homelab` is a separate, manual smoke run against the homelab
+  deployment (`playwright.homelab.config.ts`).
 
 ## Troubleshooting
 
