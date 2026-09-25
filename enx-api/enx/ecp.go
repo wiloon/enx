@@ -148,8 +148,11 @@ func (word *Word) Translate(userId string) *Word {
 func (word *Word) Save() error {
 	sWord := repo.Word{}
 	sWord.Id = uuid.NewString() // Generate UUID for new word
-	sWord.CreateDatetime = time.Now()
-	sWord.UpdateDatetime = time.Now()
+	// Set explicitly: GORM's auto timestamps on an int64 field are Unix
+	// seconds, but words.created_at/updated_at are Unix milliseconds.
+	now := time.Now().UnixMilli()
+	sWord.CreatedAt = now
+	sWord.UpdatedAt = now
 	sWord.English = word.English
 	sWord.Chinese = word.Chinese
 	sWord.Pronunciation = word.Pronunciation

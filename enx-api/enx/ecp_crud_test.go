@@ -97,6 +97,28 @@ func TestWordSaveAssignsIDAndPersists(t *testing.T) {
 	}
 }
 
+func TestWordSaveStoresMillisecondTimestamps(t *testing.T) {
+	db := newEcpTestDB(t)
+
+	before := time.Now().UnixMilli()
+	w := &Word{English: "stamped"}
+	if err := w.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	after := time.Now().UnixMilli()
+
+	var row repo.Word
+	if err := db.Where("id = ?", w.Id).First(&row).Error; err != nil {
+		t.Fatalf("expected the word to be persisted: %v", err)
+	}
+	if row.CreatedAt < before || row.CreatedAt > after {
+		t.Errorf("created_at = %d, want Unix ms in [%d, %d]", row.CreatedAt, before, after)
+	}
+	if row.UpdatedAt < before || row.UpdatedAt > after {
+		t.Errorf("updated_at = %d, want Unix ms in [%d, %d]", row.UpdatedAt, before, after)
+	}
+}
+
 func TestWordSaveDuplicateEnglishReturnsErrorAndKeepsIdEmpty(t *testing.T) {
 	db := newEcpTestDB(t)
 
