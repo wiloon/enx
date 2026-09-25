@@ -16,7 +16,11 @@ export default function QuickTiles() {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       {TILES.map(({ label, href, icon: Icon }) => (
-        <Link key={href} href={href} className={`${tileClass} flex-row items-center gap-3`}>
+        <Link
+          key={href}
+          href={href}
+          className={`${tileClass} flex-row items-center gap-3`}
+        >
           <Icon aria-hidden className="size-4 shrink-0 text-brand" />
           <span className="text-sm font-medium">{label}</span>
           <ChevronRight

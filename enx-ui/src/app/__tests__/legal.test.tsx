@@ -25,7 +25,9 @@ describe('Privacy Policy', () => {
   it('names the AI provider and where it runs, not "a third party"', () => {
     render(<PrivacyPolicyPage />)
 
-    expect(screen.getAllByText(new RegExp(AI_PROVIDER.name)).length).toBeGreaterThan(0)
+    expect(
+      screen.getAllByText(new RegExp(AI_PROVIDER.name)).length
+    ).toBeGreaterThan(0)
     expect(
       screen.getAllByText(new RegExp(escapeRegExp(LEGAL.hostingRegion))).length
     ).toBeGreaterThan(0)
@@ -115,7 +117,9 @@ describe('Refund Policy', () => {
     render(<RefundPolicyPage />)
 
     expect(
-      screen.getByText(/Where your local law gives you more than this page does/)
+      screen.getByText(
+        /Where your local law gives you more than this page does/
+      )
     ).toBeInTheDocument()
   })
 })
@@ -124,14 +128,12 @@ describe('site footer', () => {
   it('links all three legal pages, because reviewers go looking for them', () => {
     render(<SiteFooter />)
 
-    expect(screen.getByRole('link', { name: 'Privacy Policy' })).toHaveAttribute(
-      'href',
-      '/privacy'
-    )
-    expect(screen.getByRole('link', { name: 'Terms of Service' })).toHaveAttribute(
-      'href',
-      '/terms'
-    )
+    expect(
+      screen.getByRole('link', { name: 'Privacy Policy' })
+    ).toHaveAttribute('href', '/privacy')
+    expect(
+      screen.getByRole('link', { name: 'Terms of Service' })
+    ).toHaveAttribute('href', '/terms')
     expect(screen.getByRole('link', { name: 'Refund Policy' })).toHaveAttribute(
       'href',
       '/refund'
@@ -166,16 +168,19 @@ describe('bilingual legal pages', () => {
     ['refund', RefundPolicyPage, RefundPolicyZhPage],
   ]
 
-  it.each(pairs)('%s has the same section count in both languages', (_n, En, Zh) => {
-    const en = render(<En />)
-    const enCount = en.container.querySelectorAll('h2').length
-    en.unmount()
+  it.each(pairs)(
+    '%s has the same section count in both languages',
+    (_n, En, Zh) => {
+      const en = render(<En />)
+      const enCount = en.container.querySelectorAll('h2').length
+      en.unmount()
 
-    const zh = render(<Zh />)
-    const zhCount = zh.container.querySelectorAll('h2').length
+      const zh = render(<Zh />)
+      const zhCount = zh.container.querySelectorAll('h2').length
 
-    expect(zhCount).toBe(enCount)
-  })
+      expect(zhCount).toBe(enCount)
+    }
+  )
 
   it.each(pairs)('%s links to the other language', (_n, En, Zh) => {
     const en = render(<En />)

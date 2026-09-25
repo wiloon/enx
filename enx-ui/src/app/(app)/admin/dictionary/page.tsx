@@ -51,7 +51,11 @@ function Field({
           mono ? 'font-mono text-sm break-all' : 'text-sm whitespace-pre-wrap'
         }
       >
-        {empty ? <span className="text-muted-foreground">—</span> : String(value)}
+        {empty ? (
+          <span className="text-muted-foreground">—</span>
+        ) : (
+          String(value)
+        )}
       </div>
     </div>
   )
@@ -95,7 +99,10 @@ function ConsistencyBanner({ c }: { c: Consistency }) {
     }
   }
   return (
-    <div className={`rounded-md px-3 py-2 text-sm ${style[c.kind]}`} role="status">
+    <div
+      className={`rounded-md px-3 py-2 text-sm ${style[c.kind]}`}
+      role="status"
+    >
       {text}
     </div>
   )
@@ -155,10 +162,10 @@ export default function AdminDictionaryPage() {
       <div className="mb-6">
         <h2 className="text-2xl font-bold">Dictionary Maintenance</h2>
         <p className="text-muted-foreground">
-          Compare a word&apos;s <code>words</code>-table entry against ECDICT and,
-          if they diverge, copy ECDICT&apos;s data onto the <code>words</code>{' '}
-          row. The <code>words</code> table is a shared cache — a sync affects
-          every user&apos;s next lookup.
+          Compare a word&apos;s <code>words</code>-table entry against ECDICT
+          and, if they diverge, copy ECDICT&apos;s data onto the{' '}
+          <code>words</code> row. The <code>words</code> table is a shared cache
+          — a sync affects every user&apos;s next lookup.
         </p>
       </div>
 

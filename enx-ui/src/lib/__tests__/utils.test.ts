@@ -32,6 +32,8 @@ describe('cn utility function', () => {
       'hover:bg-gray-100',
       'focus:outline-none'
     )
-    expect(result).toBe('text-sm font-medium hover:bg-gray-100 focus:outline-none')
+    expect(result).toBe(
+      'text-sm font-medium hover:bg-gray-100 focus:outline-none'
+    )
   })
 })

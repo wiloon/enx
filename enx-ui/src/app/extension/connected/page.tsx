@@ -41,7 +41,8 @@ export default function ExtensionConnectedPage() {
       // confirmed the hand-off (returned: true, tab is closing now) or told
       // us there's nothing to do (already handled, or the record expired).
       // Only retry the transient "haven't synced yet" cases.
-      const shouldRetry = result === null || (!result.ok && result.reason === 'signed-out')
+      const shouldRetry =
+        result === null || (!result.ok && result.reason === 'signed-out')
       if (!shouldRetry) return
 
       if (Date.now() - startedAt < NOTIFY_RETRY_BUDGET_MS) {
@@ -51,7 +52,7 @@ export default function ExtensionConnectedPage() {
     void attempt()
 
     const timer = setInterval(() => {
-      setSecondsLeft(s => (s > 0 ? s - 1 : 0))
+      setSecondsLeft((s) => (s > 0 ? s - 1 : 0))
     }, 1000)
     return () => {
       cancelled = true

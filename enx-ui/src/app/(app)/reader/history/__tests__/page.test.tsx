@@ -44,7 +44,7 @@ it('shows an empty state when there are no saved documents', async () => {
   expect(await screen.findByText('No saved documents yet.')).toBeInTheDocument()
 })
 
-it('lists saved documents newest first, showing each one\'s content preview', async () => {
+it("lists saved documents newest first, showing each one's content preview", async () => {
   mockList.mockResolvedValue({
     success: true,
     data: {
@@ -90,7 +90,9 @@ it('falls back to "Untitled" when a document has no preview text', async () => {
 
   renderPage()
 
-  expect(await screen.findByRole('button', { name: /Untitled/ })).toBeInTheDocument()
+  expect(
+    await screen.findByRole('button', { name: /Untitled/ })
+  ).toBeInTheDocument()
 })
 
 it('shows an error when the list fails to load', async () => {

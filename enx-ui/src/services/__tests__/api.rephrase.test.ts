@@ -55,7 +55,10 @@ describe('ApiService.rephrase', () => {
 
   it('surfaces the backend message on a 502 service-unavailable response', async () => {
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
-      jsonResponse(502, { success: false, message: 'Rephrase service unavailable.' })
+      jsonResponse(502, {
+        success: false,
+        message: 'Rephrase service unavailable.',
+      })
     )
 
     const result = await service.rephrase('帮我看下这个')

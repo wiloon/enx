@@ -11,18 +11,22 @@ jest.mock('@/services/api', () => ({
   },
 }))
 
-const mockCreateReaderDocument =
-  apiService.createReaderDocument as jest.Mock
-const mockUpdateReaderDocument =
-  apiService.updateReaderDocument as jest.Mock
+const mockCreateReaderDocument = apiService.createReaderDocument as jest.Mock
+const mockUpdateReaderDocument = apiService.updateReaderDocument as jest.Mock
 
 beforeEach(() => {
   ;(global as unknown as { chrome?: unknown }).chrome = undefined
   document.documentElement.removeAttribute('data-enx-extension')
   mockCreateReaderDocument.mockReset()
-  mockCreateReaderDocument.mockResolvedValue({ success: true, data: { id: 'doc-1' } })
+  mockCreateReaderDocument.mockResolvedValue({
+    success: true,
+    data: { id: 'doc-1' },
+  })
   mockUpdateReaderDocument.mockReset()
-  mockUpdateReaderDocument.mockResolvedValue({ success: true, data: { id: 'doc-1' } })
+  mockUpdateReaderDocument.mockResolvedValue({
+    success: true,
+    data: { id: 'doc-1' },
+  })
   sessionStorage.clear()
 })
 
@@ -65,9 +69,7 @@ it('renders the pasted text as paragraphs split on blank lines', async () => {
   expect(paragraphs[1]).toHaveTextContent('Second paragraph.')
 
   // The editor is replaced by the reading view.
-  expect(
-    screen.queryByRole('button', { name: 'Read' })
-  ).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Read' })).not.toBeInTheDocument()
 })
 
 it('returns to the editor with the text intact via Edit', async () => {
@@ -86,12 +88,15 @@ describe('enabling learning mode via the extension', () => {
   beforeEach(() => {
     setRuntimeEnv({ ENX_EXTENSION_ID: 'test-ext-id' })
     sendMessage = jest.fn()
-    ;(global as unknown as { chrome?: unknown }).chrome = { runtime: { sendMessage } }
+    ;(global as unknown as { chrome?: unknown }).chrome = {
+      runtime: { sendMessage },
+    }
   })
 
   const enableCalls = () =>
     sendMessage.mock.calls.filter(
-      ([, message]) => (message as { type?: string })?.type === 'enx:enable-reader'
+      ([, message]) =>
+        (message as { type?: string })?.type === 'enx:enable-reader'
     )
 
   it('notifies the extension once the article is rendered, not before', async () => {
@@ -124,7 +129,8 @@ describe('extension install prompt', () => {
 
   it('prompts to install the extension in the reading view when it is absent', async () => {
     setRuntimeEnv({
-      ENX_EXTENSION_WEB_STORE_URL: 'https://chromewebstore.google.com/detail/enx',
+      ENX_EXTENSION_WEB_STORE_URL:
+        'https://chromewebstore.google.com/detail/enx',
     })
     ;(global as unknown as { chrome?: unknown }).chrome = undefined
 
@@ -141,7 +147,9 @@ describe('extension install prompt', () => {
   it('does not prompt when the extension is installed', async () => {
     setRuntimeEnv({ ENX_EXTENSION_ID: 'test-ext-id' })
     ;(global as unknown as { chrome?: unknown }).chrome = {
-      runtime: { sendMessage: jest.fn((_id, _m, cb) => cb({ ok: true, version: '1' })) },
+      runtime: {
+        sendMessage: jest.fn((_id, _m, cb) => cb({ ok: true, version: '1' })),
+      },
     }
 
     render(<ReaderPage />)
@@ -151,7 +159,9 @@ describe('extension install prompt', () => {
       expect(document.querySelector('#enx-reader-article')).toBeInTheDocument()
     )
     await waitFor(() =>
-      expect(screen.queryByRole('link', { name: /install/i })).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('link', { name: /install/i })
+      ).not.toBeInTheDocument()
     )
   })
 
@@ -163,7 +173,9 @@ describe('extension install prompt', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /dismiss/i }))
 
-    expect(screen.queryByRole('link', { name: /install/i })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: /install/i })
+    ).not.toBeInTheDocument()
   })
 })
 
@@ -275,7 +287,9 @@ describe('persistence (ADR-022)', () => {
     await clickRead()
 
     expect(mockCreateReaderDocument).toHaveBeenCalledTimes(2)
-    expect(mockCreateReaderDocument).toHaveBeenLastCalledWith('Second document.')
+    expect(mockCreateReaderDocument).toHaveBeenLastCalledWith(
+      'Second document.'
+    )
     expect(mockUpdateReaderDocument).not.toHaveBeenCalled()
   })
 

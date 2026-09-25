@@ -1,5 +1,9 @@
 import { clerkMiddleware } from '@clerk/nextjs/server'
-import { NextResponse, type NextFetchEvent, type NextRequest } from 'next/server'
+import {
+  NextResponse,
+  type NextFetchEvent,
+  type NextRequest,
+} from 'next/server'
 import { apiProxyUrl, isApiPath } from '@/lib/apiProxy'
 
 // `/api/*` is relayed to the API named by API_BASE_URL, read on every request

@@ -75,7 +75,9 @@ it('reports which fields are out of sync', async () => {
   renderPage()
   lookUp('run')
 
-  await waitFor(() => expect(screen.getByText(/Out of sync/)).toBeInTheDocument())
+  await waitFor(() =>
+    expect(screen.getByText(/Out of sync/)).toBeInTheDocument()
+  )
   expect(screen.getByText(/translation differs/)).toBeInTheDocument()
 })
 

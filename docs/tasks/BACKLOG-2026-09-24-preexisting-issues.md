@@ -50,18 +50,13 @@ being handled on a separate branch.
   ESM or babel with an `import.meta` plugin. Then add tests for the three
   functions and for the production guard.
 
-## 4. enx-ui: about 2650 ESLint errors (prettier backlog)
+## 4. enx-ui: about 2650 ESLint errors (prettier backlog) — DONE
 
-- `npx eslint .` reports about 2646 `prettier/prettier` errors, 2
-  `@typescript-eslint/no-require-imports`, and 1 `no-explicit-any`.
-- Root cause: `.prettierrc` asks for semicolons, but the codebase is written
-  without them. `next.config.ts` sets `eslint.ignoreDuringBuilds: true`
-  because of this, and its comment already describes the problem.
-- Decision needed: either change `.prettierrc` to `semi: false` (and whatever
-  else the code already follows), or run `prettier --write .` once. Then drop
-  `ignoreDuringBuilds` and run lint in CI.
-- Note: `next lint` is deprecated (removed in Next 16), so the `lint` script
-  should become `eslint .` at the same time.
+Resolved on branch `chore/enx-ui-lint-semi-false`: `.prettierrc` now says
+`semi: false` to match the code (same as enx-chrome), the remaining ~470
+formatting diffs were fixed with `eslint --fix`, the last 3 errors were fixed
+by hand, `ignoreDuringBuilds` was removed from `next.config.ts`, and the
+`lint` script is now `eslint .`.
 
 ## 5. enx-chrome: 12 ESLint errors
 

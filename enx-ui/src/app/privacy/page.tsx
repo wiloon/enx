@@ -39,10 +39,10 @@ export default function PrivacyPolicyPage() {
           one person.
         </p>
         <p>
-          That is worth knowing for a practical reason: your data is handled
-          by one individual and the providers listed below, and nobody else.
-          For anything in this policy, including a request to delete your
-          data, write to <Term>{LEGAL.privacyEmail}</Term>.
+          That is worth knowing for a practical reason: your data is handled by
+          one individual and the providers listed below, and nobody else. For
+          anything in this policy, including a request to delete your data,
+          write to <Term>{LEGAL.privacyEmail}</Term>.
         </p>
       </Section>
 
@@ -54,14 +54,13 @@ export default function PrivacyPolicyPage() {
               vocabulary list — it is the product.
             </>,
             <>
-              We store <Term>daily totals</Term> of how much you read. We do
-              not store <Term>which pages</Term> you read them on.
+              We store <Term>daily totals</Term> of how much you read. We do not
+              store <Term>which pages</Term> you read them on.
             </>,
             <>
-              When you ask for a sentence translation, that sentence is sent
-              to an AI model run by{' '}
-              <Term>{AI_PROVIDER.name}</Term>, in {AI_PROVIDER.location}. We do
-              not keep a copy.
+              When you ask for a sentence translation, that sentence is sent to
+              an AI model run by <Term>{AI_PROVIDER.name}</Term>, in{' '}
+              {AI_PROVIDER.location}. We do not keep a copy.
             </>,
             <>
               We do not sell your data, and we do not use it for advertising.
@@ -72,15 +71,15 @@ export default function PrivacyPolicyPage() {
 
       <Section heading="What the extension does on the pages you visit">
         <p>
-          The extension only acts on a page when <Term>you turn it on</Term>{' '}
-          for that page, from the toolbar button or the right-click menu. It is
-          not running in the background on every site you open.
+          The extension only acts on a page when <Term>you turn it on</Term> for
+          that page, from the toolbar button or the right-click menu. It is not
+          running in the background on every site you open.
         </p>
         <p>
-          When you do turn it on, it reads the article text <Term>in your
-          browser</Term> to find the English words on the page and underline
-          the ones worth learning. That text is processed locally. What leaves
-          your browser is limited to:
+          When you do turn it on, it reads the article text{' '}
+          <Term>in your browser</Term> to find the English words on the page and
+          underline the ones worth learning. That text is processed locally.
+          What leaves your browser is limited to:
         </p>
         <List
           items={[
@@ -101,8 +100,8 @@ export default function PrivacyPolicyPage() {
           The extension requests permission for all websites because you may
           want to read English on any of them, and it cannot know in advance
           which. That permission is not a statement that we collect anything
-          from those sites. The address, title and full text of a page are
-          never sent to our servers and never stored.
+          from those sites. The address, title and full text of a page are never
+          sent to our servers and never stored.
         </p>
       </Section>
 
@@ -168,8 +167,8 @@ export default function PrivacyPolicyPage() {
       <Section heading="What we deliberately do not store">
         <p>
           The reading statistics are built from day-level totals only. Apart
-          from the one exception described below, there is no column anywhere
-          in our database for any of the following, so there is nothing to hand
+          from the one exception described below, there is no column anywhere in
+          our database for any of the following, so there is nothing to hand
           over, leak or subpoena:
         </p>
         <List
@@ -210,10 +209,10 @@ export default function PrivacyPolicyPage() {
           explicitly select; it does not happen as you read.
         </p>
         <p>
-          We do not store the sentence or the translation on our servers. We
-          do store a billing record that the call happened, what it cost, and
-          when — not what it contained. {AI_PROVIDER.name}&apos;s handling of
-          the text is governed by{' '}
+          We do not store the sentence or the translation on our servers. We do
+          store a billing record that the call happened, what it cost, and when
+          — not what it contained. {AI_PROVIDER.name}&apos;s handling of the
+          text is governed by{' '}
           <a
             href={AI_PROVIDER.privacyUrl}
             target="_blank"
@@ -222,16 +221,16 @@ export default function PrivacyPolicyPage() {
           >
             their privacy policy
           </a>
-          . If you would rather no text left your browser at all, do not use
-          the sentence-translation features; word lookup and highlighting do
-          not involve an AI provider.
+          . If you would rather no text left your browser at all, do not use the
+          sentence-translation features; word lookup and highlighting do not
+          involve an AI provider.
         </p>
       </Section>
 
       <Section heading="Who else receives your data">
         <p>
-          We use the following providers. Each receives only what it needs to
-          do its job.
+          We use the following providers. Each receives only what it needs to do
+          its job.
         </p>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -244,7 +243,10 @@ export default function PrivacyPolicyPage() {
             </thead>
             <tbody>
               {SUBPROCESSORS.map((p) => (
-                <tr key={p.name} className="border-b border-border/60 align-top">
+                <tr
+                  key={p.name}
+                  className="border-b border-border/60 align-top"
+                >
                   <td className="py-3 pr-4">
                     <a
                       href={p.url}
@@ -274,8 +276,8 @@ export default function PrivacyPolicyPage() {
         <p>
           Payments are processed by <Term>Stripe</Term>. Your card number never
           reaches our servers — Stripe handles it and gives us back only a
-          customer reference, your subscription status, and the last four
-          digits for display. Refunds are covered by our{' '}
+          customer reference, your subscription status, and the last four digits
+          for display. Refunds are covered by our{' '}
           <a
             href="/refund"
             className="underline underline-offset-4 hover:text-foreground"
@@ -312,18 +314,17 @@ export default function PrivacyPolicyPage() {
               will send you a machine-readable copy.
             </>,
             <>
-              <Term>Stop the extension.</Term> It only acts on pages you turn
-              it on for. Removing it from your browser stops all local
-              processing immediately.
+              <Term>Stop the extension.</Term> It only acts on pages you turn it
+              on for. Removing it from your browser stops all local processing
+              immediately.
             </>,
           ]}
         />
         <p>
           Depending on where you live, you may have additional rights —
           including to correct your data, to object to processing, or to
-          complain to a data protection authority. Write to{' '}
-          {LEGAL.privacyEmail} and we will honour those requests regardless of
-          where you are.
+          complain to a data protection authority. Write to {LEGAL.privacyEmail}{' '}
+          and we will honour those requests regardless of where you are.
         </p>
       </Section>
 

@@ -40,8 +40,8 @@ export default function OnboardingChecklist({
 
         <Step done={false} index={2}>
           <span>
-            Open any English page and turn {SITE.name} on — words worth
-            learning get underlined, and any word you click is explained.
+            Open any English page and turn {SITE.name} on — words worth learning
+            get underlined, and any word you click is explained.
           </span>
         </Step>
 
@@ -73,14 +73,19 @@ function Step({
 }) {
   return (
     <li className="flex gap-3 text-sm">
-      <span className="mt-0.5 shrink-0" aria-label={done ? 'Done' : `Step ${index}`}>
+      <span
+        className="mt-0.5 shrink-0"
+        aria-label={done ? 'Done' : `Step ${index}`}
+      >
         {done ? (
           <Check aria-hidden className="size-4 text-brand" />
         ) : (
           <Circle aria-hidden className="size-4 text-muted-foreground" />
         )}
       </span>
-      <span className={done ? 'text-muted-foreground' : undefined}>{children}</span>
+      <span className={done ? 'text-muted-foreground' : undefined}>
+        {children}
+      </span>
     </li>
   )
 }

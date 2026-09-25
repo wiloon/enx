@@ -30,21 +30,24 @@ export const SUBSCRIPTION_PLANS: PlanOption[] = [
     name: 'Catglish Pro',
     priceLabel: '$3.99/mo',
     creditsLabel: '500 credits/mo',
-    description: 'A much higher daily lookup limit + monthly AI translation credits',
+    description:
+      'A much higher daily lookup limit + monthly AI translation credits',
   },
   {
     plan: 'pro-plus',
     name: 'Catglish Pro+',
     priceLabel: '$9.99/mo',
     creditsLabel: '1,500 credits/mo',
-    description: 'A much higher daily lookup limit + more monthly AI translation credits',
+    description:
+      'A much higher daily lookup limit + more monthly AI translation credits',
   },
   {
     plan: 'max',
     name: 'Catglish Max',
     priceLabel: '$19.99/mo',
     creditsLabel: '4,000 credits/mo',
-    description: 'A much higher daily lookup limit + maximum monthly AI translation credits',
+    description:
+      'A much higher daily lookup limit + maximum monthly AI translation credits',
   },
 ]
 
@@ -56,9 +59,24 @@ export interface TopupOption {
 }
 
 export const TOPUP_TIERS: TopupOption[] = [
-  { tier: 'small', name: 'Small top-up', priceLabel: '$2.99', creditsLabel: '300 credits' },
-  { tier: 'medium', name: 'Medium top-up', priceLabel: '$6.99', creditsLabel: '750 credits' },
-  { tier: 'large', name: 'Large top-up', priceLabel: '$12.99', creditsLabel: '1,500 credits' },
+  {
+    tier: 'small',
+    name: 'Small top-up',
+    priceLabel: '$2.99',
+    creditsLabel: '300 credits',
+  },
+  {
+    tier: 'medium',
+    name: 'Medium top-up',
+    priceLabel: '$6.99',
+    creditsLabel: '750 credits',
+  },
+  {
+    tier: 'large',
+    name: 'Large top-up',
+    priceLabel: '$12.99',
+    creditsLabel: '1,500 credits',
+  },
 ]
 
 const PLAN_NAMES: Record<string, string> = {

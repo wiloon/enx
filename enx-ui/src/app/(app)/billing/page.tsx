@@ -13,7 +13,11 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { apiService, SubscriptionPlan, TopupTier } from '@/services/api'
-import { SUBSCRIPTION_PLANS, TOPUP_TIERS, subscriptionStatusLabel } from './plans'
+import {
+  SUBSCRIPTION_PLANS,
+  TOPUP_TIERS,
+  subscriptionStatusLabel,
+} from './plans'
 
 export default function BillingPage() {
   // Tracks which button (if any) triggered a checkout/portal redirect, so
@@ -23,11 +27,7 @@ export default function BillingPage() {
   const [redirecting, setRedirecting] = useState<string | null>(null)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
 
-  const {
-    data,
-    isLoading,
-    error,
-  } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['billing-me'],
     queryFn: async () => {
       const resp = await apiService.getBillingMe()
@@ -47,7 +47,9 @@ export default function BillingPage() {
       window.location.href = resp.data.url
       return
     }
-    setCheckoutError(resp.error || 'Could not start checkout. Please try again later.')
+    setCheckoutError(
+      resp.error || 'Could not start checkout. Please try again later.'
+    )
     setRedirecting(null)
   }
 
@@ -90,19 +92,25 @@ export default function BillingPage() {
           {isLoading && <p className="text-muted-foreground">Loading...</p>}
           {error && (
             <p className="text-destructive">
-              {error instanceof Error ? error.message : 'Failed to load billing status'}
+              {error instanceof Error
+                ? error.message
+                : 'Failed to load billing status'}
             </p>
           )}
           {data && (
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <div className="text-muted-foreground">Subscription credit balance</div>
+                <div className="text-muted-foreground">
+                  Subscription credit balance
+                </div>
                 <div className="text-lg font-medium">
                   {data.credits.subscriptionBalance}
                 </div>
               </div>
               <div>
-                <div className="text-muted-foreground">Top-up credit balance</div>
+                <div className="text-muted-foreground">
+                  Top-up credit balance
+                </div>
                 <div className="text-lg font-medium">
                   {data.credits.topupBalance}
                 </div>
@@ -117,7 +125,9 @@ export default function BillingPage() {
               onClick={handleManageBilling}
               disabled={redirecting !== null}
             >
-              {redirecting === 'portal' ? 'Redirecting...' : 'Manage subscription / billing'}
+              {redirecting === 'portal'
+                ? 'Redirecting...'
+                : 'Manage subscription / billing'}
             </Button>
           </CardFooter>
         )}
@@ -183,7 +193,9 @@ export default function BillingPage() {
                   onClick={() => handleTopup(option.tier)}
                   disabled={redirecting !== null}
                 >
-                  {redirecting === `topup-${option.tier}` ? 'Redirecting...' : 'Buy'}
+                  {redirecting === `topup-${option.tier}`
+                    ? 'Redirecting...'
+                    : 'Buy'}
                 </Button>
               </CardFooter>
             </Card>

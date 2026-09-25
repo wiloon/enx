@@ -34,7 +34,10 @@ describe('notifySignedIn (ADR-020)', () => {
     )
     installChrome(sendMessage)
 
-    await expect(notifySignedIn()).resolves.toEqual({ ok: true, returned: true })
+    await expect(notifySignedIn()).resolves.toEqual({
+      ok: true,
+      returned: true,
+    })
   })
 
   it('resolves null when there is no extension messaging bridge', async () => {

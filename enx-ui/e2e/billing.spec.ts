@@ -21,12 +21,20 @@ const freeUser: BillingMeData = {
 }
 
 const activeProPlus: BillingMeData = {
-  subscription: { status: 'active', plan: 'pro-plus', currentPeriodEnd: 1893456000 },
+  subscription: {
+    status: 'active',
+    plan: 'pro-plus',
+    currentPeriodEnd: 1893456000,
+  },
   credits: { subscriptionBalance: 1200, topupBalance: 300 },
 }
 
 const pastDue: BillingMeData = {
-  subscription: { status: 'past_due', plan: 'pro', currentPeriodEnd: 1893456000 },
+  subscription: {
+    status: 'past_due',
+    plan: 'pro',
+    currentPeriodEnd: 1893456000,
+  },
   credits: { subscriptionBalance: 0, topupBalance: 40 },
 }
 
@@ -71,7 +79,10 @@ async function stubBilling(page: Page, stubs: BillingStubs) {
       const { status, body } = stubs.me()
       return jsonResponse(route, status, body)
     }
-    if (path.endsWith('/api/billing/checkout/subscription') && stubs.checkoutSubscription) {
+    if (
+      path.endsWith('/api/billing/checkout/subscription') &&
+      stubs.checkoutSubscription
+    ) {
       const { status, body } = stubs.checkoutSubscription(payload)
       return jsonResponse(route, status, body)
     }
@@ -83,14 +94,19 @@ async function stubBilling(page: Page, stubs: BillingStubs) {
       const { status, body } = stubs.portal()
       return jsonResponse(route, status, body)
     }
-    return jsonResponse(route, 500, { error: `unstubbed billing call: ${req.method()} ${path}` })
+    return jsonResponse(route, 500, {
+      error: `unstubbed billing call: ${req.method()} ${path}`,
+    })
   })
 }
 
 // Fulfil the top-level navigation that window.location.href triggers, so a test
 // can assert the browser actually left for Stripe.
 async function stubStripeRedirects(page: Page) {
-  for (const glob of ['https://checkout.stripe.test/**', 'https://billing.stripe.test/**']) {
+  for (const glob of [
+    'https://checkout.stripe.test/**',
+    'https://billing.stripe.test/**',
+  ]) {
     await page.route(glob, (route) =>
       route.fulfill({
         status: 200,
@@ -105,44 +121,65 @@ const card = (page: Page, text: string) =>
   page.locator('[data-slot="card"]').filter({ hasText: text })
 
 test.describe('/billing', () => {
-  test('free user sees "免费用户", the plan tiers, and top-up options', async ({ page }) => {
+  test('free user sees "免费用户", the plan tiers, and top-up options', async ({
+    page,
+  }) => {
     await stubBilling(page, { me: () => ({ status: 200, body: freeUser }) })
     await page.goto('/billing')
 
-    await expect(page.getByRole('heading', { name: '订阅与积分' })).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: '订阅与积分' })
+    ).toBeVisible()
     await expect(page.getByText('免费用户')).toBeVisible()
 
     // Prices come from plans.ts and must mirror the Stripe catalog; see the
     // comment there. 'enx Max' was stale -- the card is 'Catglish Max'.
     await expect(card(page, 'Catglish Pro+')).toContainText('$9.99/mo')
     await expect(card(page, 'Catglish Max')).toContainText('$19.99/mo')
-    await expect(page.getByRole('button', { name: '订阅', exact: true })).toHaveCount(3)
+    await expect(
+      page.getByRole('button', { name: '订阅', exact: true })
+    ).toHaveCount(3)
 
-    await expect(page.getByRole('heading', { name: '购买 AI 翻译积分' })).toBeVisible()
-    await expect(page.getByRole('button', { name: '购买', exact: true })).toHaveCount(3)
+    await expect(
+      page.getByRole('heading', { name: '购买 AI 翻译积分' })
+    ).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: '购买', exact: true })
+    ).toHaveCount(3)
 
     // No billing-portal button until there is a subscription.
-    await expect(page.getByRole('button', { name: '管理订阅 / 账单' })).toHaveCount(0)
+    await expect(
+      page.getByRole('button', { name: '管理订阅 / 账单' })
+    ).toHaveCount(0)
   })
 
   test('active subscriber sees balances, the portal button, and disabled subscribe buttons', async ({
     page,
   }) => {
-    await stubBilling(page, { me: () => ({ status: 200, body: activeProPlus }) })
+    await stubBilling(page, {
+      me: () => ({ status: 200, body: activeProPlus }),
+    })
     await page.goto('/billing')
 
     await expect(page.getByText('Pro+ 会员')).toBeVisible()
     await expect(card(page, '订阅积分余额')).toContainText('1200')
     await expect(card(page, '充值积分余额')).toContainText('300')
 
-    await expect(page.getByRole('button', { name: '管理订阅 / 账单' })).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: '管理订阅 / 账单' })
+    ).toBeVisible()
 
-    const subscribeButtons = page.getByRole('button', { name: '已订阅', exact: true })
+    const subscribeButtons = page.getByRole('button', {
+      name: '已订阅',
+      exact: true,
+    })
     await expect(subscribeButtons).toHaveCount(3)
     await expect(subscribeButtons.first()).toBeDisabled()
   })
 
-  test('past_due subscriber reaches the Stripe billing portal', async ({ page }) => {
+  test('past_due subscriber reaches the Stripe billing portal', async ({
+    page,
+  }) => {
     let portalRequested = false
     await stubBilling(page, {
       me: () => ({ status: 200, body: pastDue }),
@@ -161,7 +198,9 @@ test.describe('/billing', () => {
     expect(portalRequested).toBe(true)
   })
 
-  test('subscribing sends the chosen plan and redirects to Stripe Checkout', async ({ page }) => {
+  test('subscribing sends the chosen plan and redirects to Stripe Checkout', async ({
+    page,
+  }) => {
     let sentPlan: unknown
     await stubBilling(page, {
       me: () => ({ status: 200, body: freeUser }),
@@ -173,13 +212,17 @@ test.describe('/billing', () => {
     await stubStripeRedirects(page)
 
     await page.goto('/billing')
-    await card(page, 'Catglish Pro+').getByRole('button', { name: '订阅', exact: true }).click()
+    await card(page, 'Catglish Pro+')
+      .getByRole('button', { name: '订阅', exact: true })
+      .click()
 
     await page.waitForURL('https://checkout.stripe.test/**')
     expect(sentPlan).toEqual({ plan: 'pro-plus' })
   })
 
-  test('buying a top-up sends the chosen tier and redirects to Stripe Checkout', async ({ page }) => {
+  test('buying a top-up sends the chosen tier and redirects to Stripe Checkout', async ({
+    page,
+  }) => {
     let sentTier: unknown
     await stubBilling(page, {
       me: () => ({ status: 200, body: freeUser }),
@@ -191,20 +234,30 @@ test.describe('/billing', () => {
     await stubStripeRedirects(page)
 
     await page.goto('/billing')
-    await card(page, '小额充值').getByRole('button', { name: '购买', exact: true }).click()
+    await card(page, '小额充值')
+      .getByRole('button', { name: '购买', exact: true })
+      .click()
 
     await page.waitForURL('https://checkout.stripe.test/**')
     expect(sentTier).toEqual({ tier: 'small' })
   })
 
-  test('a failed checkout shows an error banner and re-enables the button', async ({ page }) => {
+  test('a failed checkout shows an error banner and re-enables the button', async ({
+    page,
+  }) => {
     await stubBilling(page, {
       me: () => ({ status: 200, body: freeUser }),
-      checkoutSubscription: () => ({ status: 503, body: { error: '结账服务暂时不可用' } }),
+      checkoutSubscription: () => ({
+        status: 503,
+        body: { error: '结账服务暂时不可用' },
+      }),
     })
 
     await page.goto('/billing')
-    const button = card(page, 'Catglish Pro+').getByRole('button', { name: '订阅', exact: true })
+    const button = card(page, 'Catglish Pro+').getByRole('button', {
+      name: '订阅',
+      exact: true,
+    })
     await button.click()
 
     await expect(page.getByText('结账服务暂时不可用')).toBeVisible()
@@ -212,7 +265,9 @@ test.describe('/billing', () => {
     await expect(button).toBeEnabled()
   })
 
-  test('a failed billing-status load surfaces the error instead of a badge', async ({ page }) => {
+  test('a failed billing-status load surfaces the error instead of a badge', async ({
+    page,
+  }) => {
     await stubBilling(page, {
       me: () => ({ status: 500, body: { error: '账单服务暂时不可用' } }),
     })
@@ -224,29 +279,33 @@ test.describe('/billing', () => {
 })
 
 test.describe('/billing/success', () => {
-  test('explains the payment is still processing and links back to /billing', async ({ page }) => {
+  test('explains the payment is still processing and links back to /billing', async ({
+    page,
+  }) => {
     await page.goto('/billing/success')
 
     await expect(page.getByText('支付已提交', { exact: true })).toBeVisible()
     await expect(
-      page.getByText('我们正在处理你的付款，账户状态和积分余额通常会在几秒内更新。')
+      page.getByText(
+        '我们正在处理你的付款，账户状态和积分余额通常会在几秒内更新。'
+      )
     ).toBeVisible()
-    await expect(page.getByRole('link', { name: '返回订阅与积分' })).toHaveAttribute(
-      'href',
-      '/billing'
-    )
+    await expect(
+      page.getByRole('link', { name: '返回订阅与积分' })
+    ).toHaveAttribute('href', '/billing')
   })
 })
 
 test.describe('/billing/cancel', () => {
-  test('reassures no charge was made and links back to /billing', async ({ page }) => {
+  test('reassures no charge was made and links back to /billing', async ({
+    page,
+  }) => {
     await page.goto('/billing/cancel')
 
     await expect(page.getByText('已取消', { exact: true })).toBeVisible()
     await expect(page.getByText('结账已取消，没有产生任何费用。')).toBeVisible()
-    await expect(page.getByRole('link', { name: '返回订阅与积分' })).toHaveAttribute(
-      'href',
-      '/billing'
-    )
+    await expect(
+      page.getByRole('link', { name: '返回订阅与积分' })
+    ).toHaveAttribute('href', '/billing')
   })
 })

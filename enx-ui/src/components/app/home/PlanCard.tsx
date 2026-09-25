@@ -22,7 +22,12 @@ export default function PlanCard() {
   })
 
   if (isLoading) {
-    return <div className="h-24 animate-pulse rounded-lg border bg-muted" aria-hidden />
+    return (
+      <div
+        className="h-24 animate-pulse rounded-lg border bg-muted"
+        aria-hidden
+      />
+    )
   }
 
   // Billing is not load-bearing for Home; if it fails, the card disappears.
@@ -34,7 +39,8 @@ export default function PlanCard() {
   return (
     <Link href="/billing" className={tileClass}>
       <span className="flex items-center gap-2 text-sm font-semibold">
-        {SITE.name} · {subscriptionStatusLabel(subscription.status, subscription.plan)}
+        {SITE.name} ·{' '}
+        {subscriptionStatusLabel(subscription.status, subscription.plan)}
         <ChevronRight
           aria-hidden
           className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
@@ -42,7 +48,9 @@ export default function PlanCard() {
       </span>
       <span className="mt-2 text-2xl font-semibold tabular-nums">
         {total.toLocaleString()}
-        <span className="ml-1 text-sm font-normal text-muted-foreground">credits</span>
+        <span className="ml-1 text-sm font-normal text-muted-foreground">
+          credits
+        </span>
       </span>
       {/* The two pools expire under different rules, so a lone total would
           look like credits vanished when the subscription pool resets. */}

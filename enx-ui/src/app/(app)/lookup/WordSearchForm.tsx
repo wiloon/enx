@@ -8,7 +8,11 @@ interface WordSearchFormProps {
   onSearch: (e: React.FormEvent) => void
 }
 
-export default function WordSearchForm({ value, onChange, onSearch }: WordSearchFormProps) {
+export default function WordSearchForm({
+  value,
+  onChange,
+  onSearch,
+}: WordSearchFormProps) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       onSearch(e)

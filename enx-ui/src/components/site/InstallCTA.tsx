@@ -34,13 +34,22 @@ function BrowserButton({
 
 export default function InstallCTA() {
   return (
-    <section id="install" className="scroll-mt-16 mx-auto max-w-6xl px-4 py-16 text-center sm:px-6">
-      <h2 className="text-3xl font-bold tracking-tight">Start reading with Catglish</h2>
+    <section
+      id="install"
+      className="scroll-mt-16 mx-auto max-w-6xl px-4 py-16 text-center sm:px-6"
+    >
+      <h2 className="text-3xl font-bold tracking-tight">
+        Start reading with Catglish
+      </h2>
       <p className="mt-3 text-muted-foreground">
         Free to install. Your vocabulary, building itself as you read.
       </p>
       <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-        <BrowserButton name="Add to Chrome" url={SITE.chromeWebStoreUrl} primary />
+        <BrowserButton
+          name="Add to Chrome"
+          url={SITE.chromeWebStoreUrl}
+          primary
+        />
         <BrowserButton name="Edge" url={SITE.edgeAddonUrl} />
         <BrowserButton name="Firefox" url={SITE.firefoxAddonUrl} />
       </div>

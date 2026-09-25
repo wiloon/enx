@@ -25,8 +25,12 @@ it('tells the extension the sign-in is done on mount', () => {
 it('renders a fallback message for when the tab is not closed automatically', () => {
   render(<ExtensionConnectedPage />)
 
-  expect(screen.getByRole('heading', { name: /signed in/i })).toBeInTheDocument()
-  expect(screen.getByText(/close it and return to your page/i)).toBeInTheDocument()
+  expect(
+    screen.getByRole('heading', { name: /signed in/i })
+  ).toBeInTheDocument()
+  expect(
+    screen.getByText(/close it and return to your page/i)
+  ).toBeInTheDocument()
 })
 
 it('renders without an extension present (a plain web visitor)', () => {

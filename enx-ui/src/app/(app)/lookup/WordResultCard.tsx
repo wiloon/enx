@@ -9,7 +9,11 @@ interface WordResultCardProps {
   clearing: boolean
 }
 
-export default function WordResultCard({ data, onClear, clearing }: WordResultCardProps) {
+export default function WordResultCard({
+  data,
+  onClear,
+  clearing,
+}: WordResultCardProps) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -32,17 +36,23 @@ export default function WordResultCard({ data, onClear, clearing }: WordResultCa
           </div>
 
           <div>
-            <Label className="text-sm font-medium text-gray-600">Chinese Translation</Label>
+            <Label className="text-sm font-medium text-gray-600">
+              Chinese Translation
+            </Label>
             <div className="text-lg font-medium">{data.Chinese}</div>
           </div>
 
           <div>
-            <Label className="text-sm font-medium text-gray-600">IPA Pronunciation</Label>
+            <Label className="text-sm font-medium text-gray-600">
+              IPA Pronunciation
+            </Label>
             <div className="text-lg font-mono">{data.Pronunciation}</div>
           </div>
 
           <div>
-            <Label className="text-sm font-medium text-gray-600">Lookup Count</Label>
+            <Label className="text-sm font-medium text-gray-600">
+              Lookup Count
+            </Label>
             <div className="text-lg">{data.LoadCount}</div>
           </div>
 

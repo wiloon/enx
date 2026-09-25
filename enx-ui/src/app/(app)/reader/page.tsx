@@ -44,8 +44,7 @@ export default function ReaderPage() {
     [article]
   )
 
-  const canRead =
-    draft.trim().length > 0 && draft.length <= MAX_CONTENT_LENGTH
+  const canRead = draft.trim().length > 0 && draft.length <= MAX_CONTENT_LENGTH
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -84,7 +83,6 @@ export default function ReaderPage() {
       setReadSeq((n) => n + 1)
     }
     // Only ever relevant right after navigating in from a document list.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Once the article is on the page, ask the ENX extension to enable learning
@@ -118,7 +116,12 @@ export default function ReaderPage() {
             >
               My Documents
             </Link>
-            <Button type="button" variant="outline" size="sm" onClick={handleNew}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleNew}
+            >
               New
             </Button>
             <Button
@@ -145,7 +148,9 @@ export default function ReaderPage() {
                   Install the Catglish extension
                 </a>
               ) : (
-                <span className="font-medium">Install the Catglish extension</span>
+                <span className="font-medium">
+                  Install the Catglish extension
+                </span>
               )}{' '}
               to click any word on this page for its definition.
             </p>

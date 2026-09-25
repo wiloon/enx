@@ -7,7 +7,11 @@ import type { ExtensionStatus } from '@/hooks/useExtensionStatus'
 
 // The only solid button allowed on Home (ADR-027 decision 2): for someone
 // without the extension, installing it is the one real primary action.
-export default function ExtensionBanner({ status }: { status: ExtensionStatus }) {
+export default function ExtensionBanner({
+  status,
+}: {
+  status: ExtensionStatus
+}) {
   if (status === 'unknown') return null
 
   if (status === 'installed') {

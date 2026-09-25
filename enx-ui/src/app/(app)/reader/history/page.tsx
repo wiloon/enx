@@ -79,7 +79,9 @@ export default function ReaderHistoryPage() {
 
           {error && (
             <div className="text-center py-8 text-red-600">
-              {error instanceof Error ? error.message : 'Failed to load documents'}
+              {error instanceof Error
+                ? error.message
+                : 'Failed to load documents'}
             </div>
           )}
 
@@ -107,7 +109,9 @@ export default function ReaderHistoryPage() {
                     className="min-w-0 flex-1 text-left hover:underline disabled:opacity-50"
                   >
                     <span className="block truncate text-sm">
-                      {openingId === doc.id ? 'Opening…' : doc.preview || 'Untitled'}
+                      {openingId === doc.id
+                        ? 'Opening…'
+                        : doc.preview || 'Untitled'}
                     </span>
                     <span className="block text-xs text-muted-foreground">
                       {new Date(doc.updatedAt).toLocaleString()}

@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ReadingStatsPage from '../page'
 import { apiService } from '@/services/api'
@@ -52,8 +58,16 @@ beforeEach(() => {
     data: {
       period: 'day',
       points: [
-        point('2026-09-15', { wordsRead: 1200, wordLookups: 18, articlesRead: 2 }),
-        point('2026-09-16', { wordsRead: 800, wordLookups: 6, articlesRead: 1 }),
+        point('2026-09-15', {
+          wordsRead: 1200,
+          wordLookups: 18,
+          articlesRead: 2,
+        }),
+        point('2026-09-16', {
+          wordsRead: 800,
+          wordLookups: 6,
+          articlesRead: 1,
+        }),
       ],
     },
   })
@@ -90,9 +104,7 @@ it('switches the plotted measure without refetching', async () => {
 
   fireEvent.click(screen.getByRole('radio', { name: 'New-word density' }))
 
-  expect(
-    await screen.findByText(/Lookups per 1,000 words/)
-  ).toBeInTheDocument()
+  expect(await screen.findByText(/Lookups per 1,000 words/)).toBeInTheDocument()
   // The same series answers every measure, so no second round trip.
   expect(mockSeries).toHaveBeenCalledTimes(1)
 })
@@ -100,7 +112,9 @@ it('switches the plotted measure without refetching', async () => {
 it('labels the density chart as one where lower is better', async () => {
   renderPage()
 
-  fireEvent.click(await screen.findByRole('radio', { name: 'New-word density' }))
+  fireEvent.click(
+    await screen.findByRole('radio', { name: 'New-word density' })
+  )
 
   expect(await screen.findByText(/lower is better/)).toBeInTheDocument()
 })
@@ -120,7 +134,9 @@ it('leaves a thin bucket unplotted rather than drawing a noise spike', async () 
   })
   renderPage()
 
-  fireEvent.click(await screen.findByRole('radio', { name: 'New-word density' }))
+  fireEvent.click(
+    await screen.findByRole('radio', { name: 'New-word density' })
+  )
 
   // The table view is always in the DOM (a <details> summary hides it
   // visually), so the values can be asserted without opening it.
@@ -128,7 +144,9 @@ it('leaves a thin bucket unplotted rather than drawing a noise spike', async () 
   expect(table.getByText('10')).toBeInTheDocument()
   expect(table.getByText('—')).toBeInTheDocument()
   expect(
-    screen.getByText(/read too little that period for the ratio to mean anything/)
+    screen.getByText(
+      /read too little that period for the ratio to mean anything/
+    )
   ).toBeInTheDocument()
 })
 
@@ -152,7 +170,9 @@ it('rounds reading volume instead of claiming a precision it lacks', async () =>
 it('says the volume is an estimate and that nothing about the page is stored', async () => {
   renderPage()
 
-  expect(await screen.findByText(/Words read is an estimate/)).toBeInTheDocument()
+  expect(
+    await screen.findByText(/Words read is an estimate/)
+  ).toBeInTheDocument()
   expect(
     screen.getByText(/never a URL, a page title, or what you were reading/)
   ).toBeInTheDocument()

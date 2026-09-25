@@ -42,7 +42,10 @@ function Placeholder({ alt }: { alt: string }) {
 
 export default function FeatureSection() {
   return (
-    <section id="features" className="scroll-mt-16 mx-auto max-w-6xl px-4 py-16 sm:px-6">
+    <section
+      id="features"
+      className="scroll-mt-16 mx-auto max-w-6xl px-4 py-16 sm:px-6"
+    >
       <h2 className="text-center text-3xl font-bold tracking-tight">
         Read the web. Learn from it.
       </h2>

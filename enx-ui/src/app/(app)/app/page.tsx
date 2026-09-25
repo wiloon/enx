@@ -27,7 +27,11 @@ export default function AppHome() {
   // signal available in one request: it grows from a lookup anywhere -- the
   // extension, /lookup or /reader -- so it says "has read with Catglish",
   // not "has used one particular surface".
-  const { data: overview, isLoading, isError } = useQuery({
+  const {
+    data: overview,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ['stats-overview'],
     queryFn: async () => {
       const resp = await apiService.getStatsOverview()

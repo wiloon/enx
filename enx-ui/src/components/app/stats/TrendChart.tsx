@@ -1,4 +1,4 @@
-'use client';
+'use client'
 
 import {
   Bar,
@@ -11,7 +11,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-} from 'recharts';
+} from 'recharts'
 
 // One measure over time. Deliberately ONE: plotting words-read and lookups
 // together would need two y-scales, and a dual-axis chart can be made to show
@@ -25,16 +25,16 @@ import {
 
 export type TrendDatum = {
   /** Axis label, already shortened for the bucket size. */
-  label: string;
+  label: string
   /** The full label used in the tooltip, e.g. the whole date. */
-  fullLabel: string;
+  fullLabel: string
   /** null renders a gap, not a zero -- see `gapNote`. */
-  value: number | null;
-};
+  value: number | null
+}
 
-const HEIGHT = 240;
+const HEIGHT = 240
 /** dataviz: cap bars rather than filling the band, so 7 points aren't 7 slabs. */
-const MAX_BAR_WIDTH = 24;
+const MAX_BAR_WIDTH = 24
 
 /**
  * Clean y-axis ticks: 0, then a round step at or above the data's maximum.
@@ -49,20 +49,20 @@ const MAX_BAR_WIDTH = 24;
 function axisTicks(max: number): number[] {
   // No data: a single baseline. Dividing an empty range produces fractional
   // ticks, and "<100" printed three times is not an axis.
-  if (max <= 0) return [0];
+  if (max <= 0) return [0]
 
-  const rough = max / 3;
-  const magnitude = 10 ** Math.floor(Math.log10(rough));
+  const rough = max / 3
+  const magnitude = 10 ** Math.floor(Math.log10(rough))
   const step = [1, 2, 2.5, 5, 10]
     .map((m) => m * magnitude)
-    .find((s) => s >= rough)!;
-  const top = Math.ceil(max / step) * step;
+    .find((s) => s >= rough)!
+  const top = Math.ceil(max / step) * step
 
-  const ticks: number[] = [];
+  const ticks: number[] = []
   for (let v = 0; v <= top + step / 2; v += step) {
-    ticks.push(Math.round(v * 100) / 100);
+    ticks.push(Math.round(v * 100) / 100)
   }
-  return ticks;
+  return ticks
 }
 
 export default function TrendChart({
@@ -72,34 +72,34 @@ export default function TrendChart({
   valueLabel,
   gapNote,
 }: {
-  data: TrendDatum[];
-  kind: 'bar' | 'line';
-  formatValue: (value: number) => string;
+  data: TrendDatum[]
+  kind: 'bar' | 'line'
+  formatValue: (value: number) => string
   /** What one value means, for the tooltip and the screen-reader table. */
-  valueLabel: string;
+  valueLabel: string
   /** Shown when some buckets are null, explaining why they are blank. */
-  gapNote?: string;
+  gapNote?: string
 }) {
-  const hasData = data.some((d) => d.value !== null && d.value > 0);
-  const hasGaps = data.some((d) => d.value === null);
+  const hasData = data.some((d) => d.value !== null && d.value > 0)
+  const hasGaps = data.some((d) => d.value === null)
 
-  const max = Math.max(0, ...data.map((d) => d.value ?? 0));
-  const ticks = axisTicks(max);
+  const max = Math.max(0, ...data.map((d) => d.value ?? 0))
+  const ticks = axisTicks(max)
   // Pinning the domain to the tick range is what stops Recharts recomputing
   // its own -- passing `ticks` alone leaves the scale unchanged and the
   // labels land in the wrong places.
-  const domain: [number, number] = [0, ticks[ticks.length - 1] || 1];
+  const domain: [number, number] = [0, ticks[ticks.length - 1] || 1]
 
   // Labels collide on a long window; Recharts drops the ones that don't fit
   // and the tooltip carries the rest.
-  const labelInterval = data.length > 14 ? Math.ceil(data.length / 10) - 1 : 0;
+  const labelInterval = data.length > 14 ? Math.ceil(data.length / 10) - 1 : 0
 
   const axisProps = {
     tick: { fontSize: 10 },
     tickLine: false,
     axisLine: false,
     className: 'fill-muted-foreground',
-  } as const;
+  } as const
 
   const tooltip = (
     <Tooltip
@@ -108,7 +108,7 @@ export default function TrendChart({
         <ChartTooltip formatValue={formatValue} valueLabel={valueLabel} />
       }
     />
-  );
+  )
 
   return (
     <div className="relative w-full">
@@ -228,7 +228,7 @@ export default function TrendChart({
         </table>
       </details>
     </div>
-  );
+  )
 }
 
 /** Recharts' built-in tooltip is unstyled and shows the raw dataKey. */
@@ -238,13 +238,13 @@ function ChartTooltip({
   formatValue,
   valueLabel,
 }: {
-  active?: boolean;
-  payload?: { payload: TrendDatum }[];
-  formatValue: (value: number) => string;
-  valueLabel: string;
+  active?: boolean
+  payload?: { payload: TrendDatum }[]
+  formatValue: (value: number) => string
+  valueLabel: string
 }) {
-  if (!active || !payload?.length) return null;
-  const datum = payload[0].payload;
+  if (!active || !payload?.length) return null
+  const datum = payload[0].payload
 
   return (
     <div className="rounded-md border bg-popover px-2.5 py-1.5 text-xs shadow-md">
@@ -255,5 +255,5 @@ function ChartTooltip({
           : `${formatValue(datum.value)} ${valueLabel}`}
       </div>
     </div>
-  );
+  )
 }

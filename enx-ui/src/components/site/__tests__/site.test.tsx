@@ -37,7 +37,9 @@ describe('HeaderAuthLinks', () => {
   it('shows "Open App" when Clerk reports a signed-in viewer', async () => {
     mockUseAuth.mockReturnValue({ isSignedIn: true })
     render(<HeaderAuthLinks />)
-    expect(await screen.findByRole('link', { name: 'Open App' })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('link', { name: 'Open App' })
+    ).toBeInTheDocument()
   })
 })
 
@@ -46,10 +48,9 @@ describe('Hero', () => {
     render(<Hero />)
     const cta = screen.getByRole('link', { name: /add to chrome/i })
     expect(cta).toHaveAttribute('href', SITE.chromeWebStoreUrl)
-    expect(screen.getByRole('link', { name: /see how it works/i })).toHaveAttribute(
-      'href',
-      '#how-it-works'
-    )
+    expect(
+      screen.getByRole('link', { name: /see how it works/i })
+    ).toHaveAttribute('href', '#how-it-works')
   })
 })
 
@@ -75,7 +76,9 @@ describe('DemoVideo', () => {
 describe('FeatureSection', () => {
   it('renders every feature title and an accessible image for each', () => {
     render(<FeatureSection />)
-    expect(screen.getByText('Word highlight while you read')).toBeInTheDocument()
+    expect(
+      screen.getByText('Word highlight while you read')
+    ).toBeInTheDocument()
     expect(screen.getByText('Idiomatic phrasing')).toBeInTheDocument()
     expect(screen.getAllByRole('img').length).toBeGreaterThanOrEqual(4)
   })
@@ -84,14 +87,18 @@ describe('FeatureSection', () => {
 describe('Comparison', () => {
   it('lists similar apps, including Sentiaread', () => {
     render(<Comparison />)
-    expect(screen.getByRole('link', { name: 'Immersive Translate' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Immersive Translate' })
+    ).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Sentiaread' })).toBeInTheDocument()
   })
 
   it('ranks apps by users/stars descending', () => {
     render(<Comparison />)
     const names = screen.getAllByRole('link').map((a) => a.textContent)
-    expect(names.indexOf('Immersive Translate')).toBeLessThan(names.indexOf('Sentiaread'))
+    expect(names.indexOf('Immersive Translate')).toBeLessThan(
+      names.indexOf('Sentiaread')
+    )
   })
 
   it('shows the data-freshness disclaimer', () => {
@@ -112,9 +119,7 @@ describe('InstallCTA', () => {
 describe('SiteFooter', () => {
   it('does not link to routes that do not exist yet', () => {
     render(<SiteFooter />)
-    const hrefs = screen
-      .getAllByRole('link')
-      .map((a) => a.getAttribute('href'))
+    const hrefs = screen.getAllByRole('link').map((a) => a.getAttribute('href'))
     // /privacy, /terms and /refund were on this list until the pages were
     // written (LAUNCH-CHECKLIST §6.2); they now exist and are asserted in
     // app/__tests__/legal.test.tsx instead.

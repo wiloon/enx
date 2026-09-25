@@ -25,7 +25,8 @@ type ExternalRuntime = {
 }
 
 function runtime(): ExternalRuntime | undefined {
-  return (globalThis as { chrome?: { runtime?: ExternalRuntime } }).chrome?.runtime
+  return (globalThis as { chrome?: { runtime?: ExternalRuntime } }).chrome
+    ?.runtime
 }
 
 export type PingResult = { installed: boolean; version?: string }
@@ -39,7 +40,7 @@ export function pingExtension(timeoutMs = 2000): Promise<PingResult> {
   const send = rt?.sendMessage
   if (!id || !send) return Promise.resolve({ installed: false })
 
-  return new Promise<PingResult>(resolve => {
+  return new Promise<PingResult>((resolve) => {
     let settled = false
     const done = (result: PingResult) => {
       if (settled) return
@@ -50,7 +51,7 @@ export function pingExtension(timeoutMs = 2000): Promise<PingResult> {
     const timer = setTimeout(() => done({ installed: false }), timeoutMs)
 
     try {
-      send(id, { type: 'enx:ping' }, response => {
+      send(id, { type: 'enx:ping' }, (response) => {
         if (rt?.lastError || !response || typeof response !== 'object') {
           return done({ installed: false })
         }
@@ -99,7 +100,7 @@ export function notifySignedIn(
   const send = rt?.sendMessage
   if (!id || !send) return Promise.resolve(null)
 
-  return new Promise<SignedInReturnResult | null>(resolve => {
+  return new Promise<SignedInReturnResult | null>((resolve) => {
     let settled = false
     const done = (result: SignedInReturnResult | null) => {
       if (settled) return
@@ -110,7 +111,7 @@ export function notifySignedIn(
     const timer = setTimeout(() => done(null), timeoutMs)
 
     try {
-      send(id, { type: 'enx:signed-in' }, response => {
+      send(id, { type: 'enx:signed-in' }, (response) => {
         if (rt?.lastError || !response || typeof response !== 'object') {
           return done(null)
         }
