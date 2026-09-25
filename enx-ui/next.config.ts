@@ -19,7 +19,7 @@ const nextConfig: NextConfig = {
   },
   // `/api/*` is NOT proxied via `rewrites()`: those are evaluated at build time
   // and frozen into the image, so API_BASE_URL would be ignored at runtime.
-  // The relay lives in src/middleware.ts and reads API_BASE_URL per request.
+  // The relay lives in src/proxy.ts and reads API_BASE_URL per request.
 }
 
 export default nextConfig

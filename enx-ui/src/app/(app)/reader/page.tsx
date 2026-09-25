@@ -76,6 +76,10 @@ export default function ReaderPage() {
   useEffect(() => {
     const parsed = consumeReaderDocument()
     if (parsed?.content) {
+      // consumeReaderDocument() removes the hand-off from sessionStorage, so it
+      // cannot run in a state initializer (StrictMode calls those twice, and
+      // the server render has no sessionStorage). One-shot, on mount only.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDraft(parsed.content)
       setDocumentId(parsed.id ?? null)
       setSaveStatus('saved')

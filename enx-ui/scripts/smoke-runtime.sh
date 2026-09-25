@@ -97,7 +97,7 @@ done
 [ "$code" = "200" ] || fail "GET / returned HTTP ${code} after ${TIMEOUT}s (want 200)"
 
 # The extension id proves the runtime-env script serves the container's values;
-# the key proves ClerkProvider (and, by 200, the middleware) used the runtime key.
+# the key proves ClerkProvider (and, by 200, the proxy) used the runtime key.
 grep -q "\"ENX_EXTENSION_ID\":\"${EXT_ID}\"" "$BODY" \
   || fail "HTML does not carry the runtime ENX_EXTENSION_ID (build-time value served?)"
 grep -q "$PK" "$BODY" \
