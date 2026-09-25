@@ -26,7 +26,7 @@ export interface AuthResponse {
   token?: string
 }
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean
   data?: T
   error?: string
@@ -67,7 +67,7 @@ export interface ContentMessage {
   userId?: number
   username?: string
   password?: string
-  data?: any
+  data?: unknown
   sentence?: string
   // Set on 'openSentencePanel' by the phrase-in-context lookup (ADR-008): a
   // non-empty phrase means "show a phrase card for this text within
@@ -104,7 +104,7 @@ export interface ReadingStatsDelta {
 
 export interface BackgroundResponse {
   success: boolean
-  data?: any
+  data?: unknown
   error?: string
   ecp?: WordData
   wordProperties?: Record<string, WordData>

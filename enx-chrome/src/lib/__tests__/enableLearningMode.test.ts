@@ -18,14 +18,18 @@ describe('enableLearningModeOnTab', () => {
 
     expect(result).toEqual({ success: true })
     expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(1)
-    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(7, { action: 'enxRun' })
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(7, {
+      action: 'enxRun',
+    })
     expect(chrome.scripting.executeScript).not.toHaveBeenCalled()
   })
 
   it('injects the content script and retries when nothing is listening yet', async () => {
     ;(chrome.tabs.sendMessage as jest.Mock)
       .mockRejectedValueOnce(
-        new Error('Could not establish connection. Receiving end does not exist.')
+        new Error(
+          'Could not establish connection. Receiving end does not exist.'
+        )
       )
       .mockResolvedValueOnce({ success: true })
     ;(chrome.scripting.executeScript as jest.Mock).mockResolvedValue(undefined)

@@ -73,8 +73,12 @@ const TWEET_DETAIL_PATH = /^\/[^/]+\/status\/\d+/
 // (verified in Chrome, 2026-09-20), inside the same article[tabindex="-1"]
 // focus marker a tweet uses.
 export const X_TWEET_TEXT_SELECTOR = 'div[data-testid="tweetText"]'
-export const X_ARTICLE_BODY_SELECTOR = '[data-testid="twitterArticleRichTextView"]'
-export const X_CONTENT_SELECTORS = [X_TWEET_TEXT_SELECTOR, X_ARTICLE_BODY_SELECTOR]
+export const X_ARTICLE_BODY_SELECTOR =
+  '[data-testid="twitterArticleRichTextView"]'
+export const X_CONTENT_SELECTORS = [
+  X_TWEET_TEXT_SELECTOR,
+  X_ARTICLE_BODY_SELECTOR,
+]
 export const X_CONTENT_SELECTOR = X_CONTENT_SELECTORS.join(', ')
 
 // From the div[data-testid="tweetText"] nodes on a tweet-detail page (which

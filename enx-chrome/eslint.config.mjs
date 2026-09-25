@@ -49,6 +49,10 @@ export default [
         { allowConstantExport: true },
       ],
       'react/react-in-jsx-scope': 'off',
+      // tsc already reports undefined names, and no-undef does not know
+      // TypeScript's ambient DOM types (e.g. RequestInit). typescript-eslint
+      // recommends turning it off for TS files.
+      'no-undef': 'off',
       // `_foo` is the codebase's marker for "kept for the signature, not used"
       '@typescript-eslint/no-unused-vars': [
         'error',

@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"testing"
 
-	uuid "github.com/satori/go.uuid"
+	"github.com/google/uuid"
 )
 
 func TestUUID(t *testing.T) {
-	rootUUID, _ := uuid.FromString("5e4a8cfe-73df-4ca6-8089-18c189cc1aa3")
+	rootUUID := uuid.MustParse("5e4a8cfe-73df-4ca6-8089-18c189cc1aa3")
 
 	for i := 0; i < 10; i++ {
-		newsUUID := uuid.NewV5(rootUUID, "news_id")
+		newsUUID := uuid.NewSHA1(rootUUID, []byte("news_id")) // v5
 		fmt.Println(newsUUID)
 	}
 

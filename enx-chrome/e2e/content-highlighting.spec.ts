@@ -4,12 +4,12 @@
 
 import { expect, test } from './fixtures'
 import {
-    enableLearningMode,
-    getHighlightNames,
-    getHighlightedWordsCount,
-    login,
-    openPopup,
-    waitForContentScript,
+  enableLearningMode,
+  getHighlightNames,
+  getHighlightedWordsCount,
+  login,
+  openPopup,
+  waitForContentScript,
 } from './helpers'
 
 test.describe('Content Script - Word Highlighting', () => {
@@ -21,10 +21,7 @@ test.describe('Content Script - Word Highlighting', () => {
     await popupPage.close()
   })
 
-  test('should highlight words on test page', async ({
-    page,
-    extensionId,
-  }) => {
+  test('should highlight words on test page', async ({ page, extensionId }) => {
     // Navigate to local test page
     await page.goto('/test-page.html', {
       waitUntil: 'domcontentloaded',
@@ -71,7 +68,7 @@ test.describe('Content Script - Word Highlighting', () => {
     // bucket, and those buckets should hold ranges.
     const names = await getHighlightNames(page)
     expect(names.length).toBeGreaterThan(0)
-    expect(names.every((n) => n.startsWith('enx-hl-'))).toBe(true)
+    expect(names.every(n => n.startsWith('enx-hl-'))).toBe(true)
     expect(await getHighlightedWordsCount(page)).toBeGreaterThan(0)
   })
 

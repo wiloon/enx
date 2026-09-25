@@ -3,7 +3,9 @@ import Login from '@/components/Login'
 import { useInitializeStorage } from '@/hooks/useInitializeStorage'
 import { useWordHighlightEnabled } from '@/hooks/useWordHighlightEnabled'
 import '@/index.css'
-import PageReportPrompt, { PageReportStatus } from '@/components/PageReportPrompt'
+import PageReportPrompt, {
+  PageReportStatus,
+} from '@/components/PageReportPrompt'
 import { config } from '@/config/env'
 import { isReportableFailure, EnableFailureReason } from '@/lib/enableOutcome'
 import { enableLearningModeOnTab } from '@/lib/enableLearningMode'
@@ -65,7 +67,9 @@ function Header() {
       </div>
       <div className="flex-1 leading-tight">
         <p className="text-sm font-semibold text-foreground">Catglish</p>
-        <p className="text-[11px] text-muted-foreground">English Reading Assistant</p>
+        <p className="text-[11px] text-muted-foreground">
+          English Reading Assistant
+        </p>
       </div>
       <button
         type="button"

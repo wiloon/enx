@@ -61,7 +61,10 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     // set), and clickHighlightedWord only scrolls a word into view when it is
     // *off*-screen -- so these already-visible edge words keep their position
     // and the popup is genuinely anchored near the edge.
-    const indexOfExtreme = (cmp: (a: number, b: number) => boolean, axis: 'x' | 'y') =>
+    const indexOfExtreme = (
+      cmp: (a: number, b: number) => boolean,
+      axis: 'x' | 'y'
+    ) =>
       words.reduce(
         (best, w, i) => (cmp(w[axis], words[best][axis]) ? i : best),
         0
@@ -83,10 +86,18 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
       await page.waitForSelector('#enx-anchored-overlay', { timeout: 3000 })
 
       const popupBox = await page.locator('#enx-anchored-overlay').boundingBox()
-      expect(popupBox, `${label}: popup should render with a bounding box`).toBeTruthy()
+      expect(
+        popupBox,
+        `${label}: popup should render with a bounding box`
+      ).toBeTruthy()
       if (!popupBox) continue
 
-      console.log(`scenario(${label}) popupBox=`, popupBox, 'viewport=', viewport)
+      console.log(
+        `scenario(${label}) popupBox=`,
+        popupBox,
+        'viewport=',
+        viewport
+      )
       expect(popupBox.x, `${label}: left edge >= 0`).toBeGreaterThanOrEqual(0)
       expect(popupBox.y, `${label}: top edge >= 0`).toBeGreaterThanOrEqual(0)
       expect(
@@ -105,7 +116,9 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     const popup = page.locator('#enx-anchored-overlay')
     await expect(popup).toBeVisible()
 
-    const href = await popup.locator('a[title="Open in Youdao Dictionary"]').getAttribute('href')
+    const href = await popup
+      .locator('a[title="Open in Youdao Dictionary"]')
+      .getAttribute('href')
     expect(href).toBe(
       `https://www.youdao.com/result?word=${encodeURIComponent(clickedWord)}&lang=en`
     )
@@ -133,9 +146,15 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     const clickedWord = await clickHighlightedWord(page, 0)
     await expect(popup).toBeVisible()
 
-    await expect(popup.locator('[data-testid="word-popover-content"]')).toBeVisible()
-    await expect(popup.locator('[data-testid="word-popover-header"] h3')).toHaveText(clickedWord)
-    await expect(popup.locator('[data-testid="word-popover-content"]')).toContainText('存根')
+    await expect(
+      popup.locator('[data-testid="word-popover-content"]')
+    ).toBeVisible()
+    await expect(
+      popup.locator('[data-testid="word-popover-header"] h3')
+    ).toHaveText(clickedWord)
+    await expect(
+      popup.locator('[data-testid="word-popover-content"]')
+    ).toContainText('存根')
   })
 
   test('§4.1: failure state renders via data-testid hook', async ({
@@ -146,7 +165,9 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     const popup = page.locator('#enx-anchored-overlay')
     await clickHighlightedWord(page, 0)
     await expect(popup).toBeVisible()
-    await expect(popup.locator('[data-testid="word-popover-error"]')).toBeVisible()
+    await expect(
+      popup.locator('[data-testid="word-popover-error"]')
+    ).toBeVisible()
   })
 
   test('§4.1: close button / ESC / click-outside all close the popup', async ({
@@ -197,8 +218,12 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     page,
   }) => {
     const probe = page.locator('#host-conflict-probe')
-    const beforeDisplay = await probe.evaluate((el) => getComputedStyle(el).display)
-    const beforeFontSize = await probe.evaluate((el) => getComputedStyle(el).fontSize)
+    const beforeDisplay = await probe.evaluate(
+      el => getComputedStyle(el).display
+    )
+    const beforeFontSize = await probe.evaluate(
+      el => getComputedStyle(el).fontSize
+    )
     // sanity: fixture's own conflicting rules are actually in effect
     expect(beforeDisplay).toBe('block')
     expect(beforeFontSize).toBe('40px')
@@ -207,16 +232,25 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     const popup = page.locator('#enx-anchored-overlay')
     await expect(popup).toBeVisible()
 
-    const afterDisplay = await probe.evaluate((el) => getComputedStyle(el).display)
-    const afterFontSize = await probe.evaluate((el) => getComputedStyle(el).fontSize)
-    expect(afterDisplay, 'host page style unaffected by popup being open').toBe(beforeDisplay)
-    expect(afterFontSize, 'host page style unaffected by popup being open').toBe(beforeFontSize)
+    const afterDisplay = await probe.evaluate(
+      el => getComputedStyle(el).display
+    )
+    const afterFontSize = await probe.evaluate(
+      el => getComputedStyle(el).fontSize
+    )
+    expect(afterDisplay, 'host page style unaffected by popup being open').toBe(
+      beforeDisplay
+    )
+    expect(
+      afterFontSize,
+      'host page style unaffected by popup being open'
+    ).toBe(beforeFontSize)
 
     // reverse: the popup's own Tailwind classes must not be overridden by the
     // host page's conflicting .flex/.text-sm rules
     const headerDisplay = await popup
       .locator('[data-testid="word-popover-header"]')
-      .evaluate((el) => getComputedStyle(el).display)
+      .evaluate(el => getComputedStyle(el).display)
     expect(headerDisplay).toBe('flex')
   })
 
@@ -226,7 +260,7 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
   }) => {
     const consoleIssues: string[] = []
     let unmountLogCount = 0
-    page.on('console', (msg) => {
+    page.on('console', msg => {
       if (msg.type() === 'error' || msg.type() === 'warning') {
         consoleIssues.push(`${msg.type()}: ${msg.text()}`)
       }
@@ -242,7 +276,9 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     await cdp.send('HeapProfiler.enable')
     await cdp.send('HeapProfiler.collectGarbage')
     const heapBefore = await page.evaluate(
-      () => (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0
+      () =>
+        (performance as unknown as { memory?: { usedJSHeapSize: number } })
+          .memory?.usedJSHeapSize ?? 0
     )
 
     const CYCLES = 50
@@ -250,7 +286,8 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
       await clickHighlightedWord(page, i % count)
       await page.waitForSelector('#enx-anchored-overlay', { timeout: 3000 })
       await page.evaluate(() => {
-        const el = document.getElementById('enx-anchored-overlay') as (HTMLElement & { hidePopover: () => void }) | null
+        const el = document.getElementById('enx-anchored-overlay') as
+          (HTMLElement & { hidePopover: () => void }) | null
         el?.hidePopover()
       })
       await page.waitForFunction(
@@ -265,14 +302,24 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
 
     await cdp.send('HeapProfiler.collectGarbage')
     const heapAfter = await page.evaluate(
-      () => (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0
+      () =>
+        (performance as unknown as { memory?: { usedJSHeapSize: number } })
+          .memory?.usedJSHeapSize ?? 0
     )
 
-    console.log('heap before:', heapBefore, 'after:', heapAfter, 'ratio:', heapBefore ? heapAfter / heapBefore : 'n/a')
+    console.log(
+      'heap before:',
+      heapBefore,
+      'after:',
+      heapAfter,
+      'ratio:',
+      heapBefore ? heapAfter / heapBefore : 'n/a'
+    )
     if (heapBefore > 0) {
-      expect(heapAfter, 'heap growth stays within 1.5x baseline (starting threshold, calibrate as needed)').toBeLessThanOrEqual(
-        heapBefore * 1.5
-      )
+      expect(
+        heapAfter,
+        'heap growth stays within 1.5x baseline (starting threshold, calibrate as needed)'
+      ).toBeLessThanOrEqual(heapBefore * 1.5)
     }
 
     expect(consoleIssues, consoleIssues.join('\n')).toHaveLength(0)

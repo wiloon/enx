@@ -61,8 +61,12 @@ function findChromium() {
   for (const bin of chromeCandidates) {
     const result = spawnSync('which', [bin], { encoding: 'utf8' })
     if (result.status === 0 && result.stdout.trim()) {
-      console.error('❌ Chromium is required on Linux to load unpacked extensions.')
-      console.error('   Google Chrome was found but it restricts --load-extension and')
+      console.error(
+        '❌ Chromium is required on Linux to load unpacked extensions.'
+      )
+      console.error(
+        '   Google Chrome was found but it restricts --load-extension and'
+      )
       console.error('   the extension will not appear in chrome://extensions.')
       console.log('💡 Install Chromium:')
       console.log('     sudo pacman -S chromium          (Arch)')
@@ -99,13 +103,18 @@ let chromeProcess
 if (isMac) {
   // Use 'open -a' on macOS so Chromium gets proper network entitlements
   // (required for WireGuard utun interface access)
-  chromeProcess = spawn('open', [
-    '-a', '/Applications/Chromium.app',
-    '--wait-apps',
-    '--new',
-    '--args',
-    ...chromeArgs,
-  ], { stdio: 'inherit' })
+  chromeProcess = spawn(
+    'open',
+    [
+      '-a',
+      '/Applications/Chromium.app',
+      '--wait-apps',
+      '--new',
+      '--args',
+      ...chromeArgs,
+    ],
+    { stdio: 'inherit' }
+  )
 } else {
   chromeProcess = spawn(chromiumBin, chromeArgs, { stdio: 'inherit' })
 }

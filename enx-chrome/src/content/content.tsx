@@ -83,7 +83,11 @@ function ensureTailwindPropertyRegistrations() {
 
 // ADR-019: let enx-ui detect the extension is installed (fallback to the
 // externally_connectable ping). No-op on every other site.
-stampExtensionPresence(document, window.location, chrome.runtime.getManifest().version)
+stampExtensionPresence(
+  document,
+  window.location,
+  chrome.runtime.getManifest().version
+)
 
 // State management for content script
 let isEnxEnabled = false
@@ -269,7 +273,10 @@ const showWordPopover = async (word: string, reference: Range) => {
   const handleOpenSentencePanel = async () => {
     contentScriptStore.set(sentencePanelHintAtom, null)
 
-    const sentenceContext = WordProcessor.extractSentenceContext(reference, word)
+    const sentenceContext = WordProcessor.extractSentenceContext(
+      reference,
+      word
+    )
     const sentence = sentenceContext?.sentence || word
 
     // ADR-025: mark the sentence so it's findable again after the user
@@ -559,7 +566,7 @@ const showSessionExpiredMessage = (isLoginError = false) => {
   }
 
   const title = isLoginError ? 'Login Required' : 'Session Expired'
-  const message = isLoginError 
+  const message = isLoginError
     ? 'Please click the Catglish extension icon to login.'
     : 'Your session has expired. Please click the Catglish extension icon to login again.'
 
@@ -670,7 +677,9 @@ const processArticleContent = async (
     // keep cleanArticleText -- switching them is out of ADR-011's scope.
     const textContent =
       adapter.contentVolatility === 'static'
-        ? articleNodes.map(node => WordProcessor.cleanArticleText(node)).join(' ')
+        ? articleNodes
+            .map(node => WordProcessor.cleanArticleText(node))
+            .join(' ')
         : collectedTextNodes.map(n => n.textContent || '').join(' ')
     const words = WordProcessor.extractWords(textContent)
 
@@ -681,7 +690,9 @@ const processArticleContent = async (
 
     // Deduplicate words to reduce chunk count and avoid redundant backend calls
     const uniqueWords = Array.from(new Set(words))
-    console.log(`Found ${words.length} words (${uniqueWords.length} unique) to process`)
+    console.log(
+      `Found ${words.length} words (${uniqueWords.length} unique) to process`
+    )
 
     // Short-circuit (ADR-011 Decision 6.2): on a SPA rebuild, if every word
     // of the new tweet is already cached -- typical when switching between
@@ -696,7 +707,10 @@ const processArticleContent = async (
     const chunkSize = 200 // Process in smaller chunks for better performance
     let processedChunks = 0
 
-    const sendChunkWithRetry = async (chunk: string[], attempt = 1): Promise<void> => {
+    const sendChunkWithRetry = async (
+      chunk: string[],
+      attempt = 1
+    ): Promise<void> => {
       const paragraph = chunk.join(' ')
       try {
         const response = await sendToBackground({
@@ -721,17 +735,26 @@ const processArticleContent = async (
           throw new Error('SESSION_EXPIRED')
         } else if (attempt < 2) {
           // Retry once on failure (handles cold service worker or transient errors)
-          console.warn(`⚠️ Chunk failed (attempt ${attempt}), retrying...`, response.error)
+          console.warn(
+            `⚠️ Chunk failed (attempt ${attempt}), retrying...`,
+            response.error
+          )
           await sendChunkWithRetry(chunk, attempt + 1)
         } else {
-          console.error(`❌ Chunk failed after ${attempt} attempts:`, response.error)
+          console.error(
+            `❌ Chunk failed after ${attempt} attempts:`,
+            response.error
+          )
         }
       } catch (error) {
         if (error instanceof Error && error.message === 'SESSION_EXPIRED') {
           throw error
         }
         if (attempt < 2) {
-          console.warn(`⚠️ Chunk error (attempt ${attempt}), retrying...`, error)
+          console.warn(
+            `⚠️ Chunk error (attempt ${attempt}), retrying...`,
+            error
+          )
           await sendChunkWithRetry(chunk, attempt + 1)
         } else {
           console.error(`❌ Chunk error after ${attempt} attempts:`, error)
@@ -740,13 +763,17 @@ const processArticleContent = async (
     }
 
     if (allCached) {
-      console.log(`All ${uniqueWords.length} words already cached; skipping backend`)
+      console.log(
+        `All ${uniqueWords.length} words already cached; skipping backend`
+      )
     } else {
       for (let i = 0; i < uniqueWords.length; i += chunkSize) {
         // Superseded by a newer tweet switch: not a failure.
         if (stale()) return ENABLE_OK
         const chunk = uniqueWords.slice(i, i + chunkSize)
-        console.log(`📦 Processing chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(uniqueWords.length / chunkSize)}: ${chunk.length} words`)
+        console.log(
+          `📦 Processing chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(uniqueWords.length / chunkSize)}: ${chunk.length} words`
+        )
 
         try {
           await sendChunkWithRetry(chunk)
@@ -778,7 +805,11 @@ const processArticleContent = async (
     // already-collected text nodes, bucket them, register with CSS.highlights.
     // The article DOM is never touched.
     if (haveWords && highlightEnabled) {
-      console.log('Applying highlighting for', Object.keys(wordCache).length, 'words')
+      console.log(
+        'Applying highlighting for',
+        Object.keys(wordCache).length,
+        'words'
+      )
       WordProcessor.applyHighlights(
         WordProcessor.buildHighlightRanges(collectedTextNodes, wordCache)
       )
@@ -833,7 +864,9 @@ const caretFromPoint = (
     return pos ? { node: pos.offsetNode, offset: pos.offset } : null
   }
   const range = doc.caretRangeFromPoint?.(x, y)
-  return range ? { node: range.startContainer, offset: range.startOffset } : null
+  return range
+    ? { node: range.startContainer, offset: range.startOffset }
+    : null
 }
 
 // One click listener per article root: resolve the word under the pointer
@@ -848,7 +881,11 @@ const handleArticleClick = (event: Event) => {
   // is handled, if at all, via handleTextSelection/showSelectionTranslateButton
   // instead).
   const activeSelection = window.getSelection()
-  if (activeSelection && !activeSelection.isCollapsed && activeSelection.toString().trim() !== '') {
+  if (
+    activeSelection &&
+    !activeSelection.isCollapsed &&
+    activeSelection.toString().trim() !== ''
+  ) {
     return
   }
 
@@ -994,11 +1031,17 @@ const triggerSelectionTranslation = async (
     })
 
     if (response.success && !response.panelOpened) {
-      showSelectionHint('Saved. Click or right-click the Catglish toolbar icon to view the sentence translation.', reference)
+      showSelectionHint(
+        'Saved. Click or right-click the Catglish toolbar icon to view the sentence translation.',
+        reference
+      )
     }
   } catch (error) {
     console.error('Error opening sentence panel for selection:', error)
-    showSelectionHint('Saved. Click or right-click the Catglish toolbar icon to view the sentence translation.', reference)
+    showSelectionHint(
+      'Saved. Click or right-click the Catglish toolbar icon to view the sentence translation.',
+      reference
+    )
   }
 }
 
@@ -1019,7 +1062,10 @@ const triggerPhraseContextLookup = async (
   )
   const sentence = sentenceContext?.sentence
   if (!sentence) {
-    showSelectionHint('Could not identify the sentence right now. Try selecting again.', reference)
+    showSelectionHint(
+      'Could not identify the sentence right now. Try selecting again.',
+      reference
+    )
     return
   }
 
@@ -1033,11 +1079,17 @@ const triggerPhraseContextLookup = async (
     })
 
     if (response.success && !response.panelOpened) {
-      showSelectionHint('Saved. Click or right-click the Catglish toolbar icon to view.', reference)
+      showSelectionHint(
+        'Saved. Click or right-click the Catglish toolbar icon to view.',
+        reference
+      )
     }
   } catch (error) {
     console.error('Error opening phrase panel for selection:', error)
-    showSelectionHint('Saved. Click or right-click the Catglish toolbar icon to view.', reference)
+    showSelectionHint(
+      'Saved. Click or right-click the Catglish toolbar icon to view.',
+      reference
+    )
   }
 }
 
@@ -1341,7 +1393,9 @@ const enableEnx = async (): Promise<EnableOutcome> => {
   if (outcome.ok) {
     console.log('✅ ENX enabled successfully with article processing')
   } else {
-    console.warn(`⚠️ ENX enabled but article processing failed: ${outcome.reason}`)
+    console.warn(
+      `⚠️ ENX enabled but article processing failed: ${outcome.reason}`
+    )
   }
 
   return outcome
@@ -1357,7 +1411,10 @@ const disableEnx = () => {
   // Remove event listeners
   document.removeEventListener('mouseup', handleTextSelection)
   document.removeEventListener('mousedown', handleGlobalMouseDown)
-  document.removeEventListener('selectionchange', handleSelectionChangeForButton)
+  document.removeEventListener(
+    'selectionchange',
+    handleSelectionChangeForButton
+  )
   hideSelectionTranslateButton()
   spaRebuilderInstance?.stop()
 

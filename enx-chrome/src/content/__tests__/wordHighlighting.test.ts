@@ -46,7 +46,11 @@ describe('WordProcessor', () => {
 
     it('should handle HTML tags and entities', () => {
       const text = 'Hello <strong>world</strong> &amp; test'
-      expect(WordProcessor.extractWords(text)).toEqual(['hello', 'world', 'test'])
+      expect(WordProcessor.extractWords(text)).toEqual([
+        'hello',
+        'world',
+        'test',
+      ])
     })
 
     it('should return empty array for empty or invalid input', () => {

@@ -45,3 +45,6 @@ next-env.d.ts
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# pnpm only (pnpm-lock.yaml); npm lockfiles drift
+package-lock.json

@@ -27,7 +27,10 @@ export const formatPhonetic = (raw?: string | null): string => {
 
   // Strip any existing wrapping delimiters ([...] or /.../) and surrounding
   // whitespace, then re-wrap in a single pair of slashes.
-  s = s.replace(/^[/[]+/, '').replace(/[/\]]+$/, '').trim()
+  s = s
+    .replace(/^[/[]+/, '')
+    .replace(/[/\]]+$/, '')
+    .trim()
   if (!s) return ''
 
   return `/${s}/`

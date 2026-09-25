@@ -84,7 +84,11 @@ const getSyncedClerk = async (): Promise<ClerkClient> => {
   let clerk = await getClerk()
   if (clerk.session) return clerk
 
-  for (let attempt = 1; attempt <= SESSION_SYNC_RETRY_DELAYS_MS.length; attempt++) {
+  for (
+    let attempt = 1;
+    attempt <= SESSION_SYNC_RETRY_DELAYS_MS.length;
+    attempt++
+  ) {
     await sleep(SESSION_SYNC_RETRY_DELAYS_MS[attempt - 1])
     clerkClientPromise = null
     clerk = await getClerk()
@@ -134,13 +138,20 @@ const getSessionToken = async (
 
   const getTokenOpts = opts.forceRefresh ? { skipCache: true } : undefined
 
-  for (let attempt = 1; attempt <= GET_TOKEN_RETRY_DELAYS_MS.length + 1; attempt++) {
+  for (
+    let attempt = 1;
+    attempt <= GET_TOKEN_RETRY_DELAYS_MS.length + 1;
+    attempt++
+  ) {
     try {
       const token = (await clerk.session.getToken(getTokenOpts)) ?? null
       if (token) return token
       swlog(`clerk getToken() returned null (attempt ${attempt})`, 'warn')
     } catch (error) {
-      swlog(`clerk getToken() threw (attempt ${attempt}): ${String(error)}`, 'warn')
+      swlog(
+        `clerk getToken() threw (attempt ${attempt}): ${String(error)}`,
+        'warn'
+      )
     }
     if (attempt <= GET_TOKEN_RETRY_DELAYS_MS.length) {
       await sleep(GET_TOKEN_RETRY_DELAYS_MS[attempt - 1])
@@ -458,7 +469,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           )
 
         case 'recordPageWordLookup':
-          return await handleRecordPageWordLookup(request.word || '', request.ecp)
+          return await handleRecordPageWordLookup(
+            request.word || '',
+            request.ecp
+          )
 
         case 'reportReadingProgress':
           return await handleReportReadingProgress(request.delta)
@@ -642,53 +656,55 @@ const handleSignedInReturn = async (): Promise<{
 // fixed three-word list -- no message transits an internal content-script action.
 const ENX_UI_ORIGINS = new Set(config.uiOrigins)
 
-chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
-  // Trust the browser-reported origin, never anything inside the message.
-  if (!sender.origin || !ENX_UI_ORIGINS.has(sender.origin)) {
+chrome.runtime.onMessageExternal.addListener(
+  (message, sender, sendResponse) => {
+    // Trust the browser-reported origin, never anything inside the message.
+    if (!sender.origin || !ENX_UI_ORIGINS.has(sender.origin)) {
+      return false
+    }
+
+    const type = (message as { type?: string } | null)?.type
+
+    if (type === 'enx:ping') {
+      sendResponse({ ok: true, version: chrome.runtime.getManifest().version })
+      return false
+    }
+
+    if (type === 'enx:enable-reader') {
+      void (async () => {
+        if (!(await isSignedIn())) {
+          sendResponse({ ok: false, reason: 'signed-out' })
+          return
+        }
+        const tabId = sender.tab?.id
+        try {
+          await chrome.tabs.sendMessage(tabId!, { action: 'enxRun' })
+          sendResponse({ ok: true })
+        } catch (error) {
+          // No content-script listener on this tab (stale extension build,
+          // or the tab predates a matches-pattern change) -- surface it
+          // instead of leaving the caller's callback waiting on nothing.
+          sendResponse({
+            ok: false,
+            reason: 'no-content-script',
+            message: error instanceof Error ? error.message : String(error),
+          })
+        }
+      })()
+      return true
+    }
+
+    if (type === 'enx:signed-in') {
+      void (async () => {
+        sendResponse(await handleSignedInReturn())
+      })()
+      return true
+    }
+
+    sendResponse({ ok: false, reason: 'unknown-type' })
     return false
   }
-
-  const type = (message as { type?: string } | null)?.type
-
-  if (type === 'enx:ping') {
-    sendResponse({ ok: true, version: chrome.runtime.getManifest().version })
-    return false
-  }
-
-  if (type === 'enx:enable-reader') {
-    void (async () => {
-      if (!(await isSignedIn())) {
-        sendResponse({ ok: false, reason: 'signed-out' })
-        return
-      }
-      const tabId = sender.tab?.id
-      try {
-        await chrome.tabs.sendMessage(tabId!, { action: 'enxRun' })
-        sendResponse({ ok: true })
-      } catch (error) {
-        // No content-script listener on this tab (stale extension build,
-        // or the tab predates a matches-pattern change) -- surface it
-        // instead of leaving the caller's callback waiting on nothing.
-        sendResponse({
-          ok: false,
-          reason: 'no-content-script',
-          message: error instanceof Error ? error.message : String(error),
-        })
-      }
-    })()
-    return true
-  }
-
-  if (type === 'enx:signed-in') {
-    void (async () => {
-      sendResponse(await handleSignedInReturn())
-    })()
-    return true
-  }
-
-  sendResponse({ ok: false, reason: 'unknown-type' })
-  return false
-})
+)
 
 // Sign-in / sign-out now happen in the popup via Clerk's <SignIn/> and
 // <SignOutButton/> (ADR-015); the service worker just reads the synced session.
@@ -873,13 +889,11 @@ const handleTranslateSentence = async (sentence: string) => {
 // translateSentence + translateWordInContext pair. `wordChinese` comes back
 // empty if the model omitted it -- SidePanel.tsx then falls back to a
 // standalone translateWordInContext call.
-const handleTranslateSentenceWithWord = async (sentence: string, word: string) => {
-  if (
-    !sentence ||
-    sentence.trim() === '' ||
-    !word ||
-    word.trim() === ''
-  ) {
+const handleTranslateSentenceWithWord = async (
+  sentence: string,
+  word: string
+) => {
+  if (!sentence || sentence.trim() === '' || !word || word.trim() === '') {
     return { success: false, error: 'sentence and word are required' }
   }
 
@@ -1032,7 +1046,8 @@ const handleOpenSentencePanel = async (
 // only -- no history -- and deliberately never touches
 // PENDING_SENTENCE_STORAGE_KEY or calls chrome.sidePanel.open().
 const handleRecordPageWordLookup = async (word: string, ecp?: WordData) => {
-  if (!word || !ecp) return { success: false, error: 'Missing word or dictionary data' }
+  if (!word || !ecp)
+    return { success: false, error: 'Missing word or dictionary data' }
 
   const lookup: LatestPageWordLookup = { word, ecp, createdAt: Date.now() }
   await chrome.storage.session.set({ [LATEST_PAGE_WORD_STORAGE_KEY]: lookup })
@@ -1058,9 +1073,11 @@ const handleReportReadingProgress = async (delta?: StatsDelta) => {
 // the stats queue this is NOT fire-and-forget: the popup shows the user
 // whether it went through, and a report they clicked "send" on is not
 // silently dropped.
-const handleSubmitPageReport = async (
-  report?: { url: string; reason: string; adapter: string }
-) => {
+const handleSubmitPageReport = async (report?: {
+  url: string
+  reason: string
+  adapter: string
+}) => {
   if (!report?.url) return { success: false, error: 'Missing report' }
   return await makeApiRequest('/api/page-reports', {
     method: 'POST',

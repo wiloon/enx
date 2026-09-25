@@ -103,7 +103,7 @@ export class ReadingSession {
     this.totalWords = Math.max(0, totalWords)
 
     let base = 0
-    this.spans = nodes.map((node) => {
+    this.spans = nodes.map(node => {
       const charLength = (node.textContent || '').length
       const span = { node, charBase: base, charLength }
       base += charLength
@@ -134,7 +134,7 @@ export class ReadingSession {
    * exact word, so everything before it has been read.
    */
   noteInteraction(reference: Range): void {
-    const span = this.spans.find((s) => s.node.contains(reference.startContainer))
+    const span = this.spans.find(s => s.node.contains(reference.startContainer))
     if (!span) return
 
     const range = document.createRange()

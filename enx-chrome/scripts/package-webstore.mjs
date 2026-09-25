@@ -31,7 +31,14 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, cpSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  cpSync,
+} from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -55,27 +62,44 @@ rmSync(outDir, { recursive: true, force: true })
 mkdirSync(stageDir, { recursive: true })
 cpSync(dist, stageDir, { recursive: true })
 
-const manifest = JSON.parse(readFileSync(join(stageDir, 'manifest.json'), 'utf8'))
+const manifest = JSON.parse(
+  readFileSync(join(stageDir, 'manifest.json'), 'utf8')
+)
 const hadKey = Object.prototype.hasOwnProperty.call(manifest, 'key')
 delete manifest.key
-writeFileSync(join(stageDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+writeFileSync(
+  join(stageDir, 'manifest.json'),
+  `${JSON.stringify(manifest, null, 2)}\n`
+)
 
 const zipName = `catglish-${manifest.version}.zip`
 // -r recurse, -q quiet, -X drop macOS extended attributes (the store rejects
 // packages containing __MACOSX/ and friends).
-execFileSync('zip', ['-r', '-q', '-X', join('..', zipName), '.'], { cwd: stageDir })
+execFileSync('zip', ['-r', '-q', '-X', join('..', zipName), '.'], {
+  cwd: stageDir,
+})
 rmSync(stageDir, { recursive: true, force: true })
 
 console.log(`Wrote ${join('dist-webstore', zipName)}`)
 console.log(`  name:    ${manifest.name}`)
 console.log(`  version: ${manifest.version}`)
-console.log(`  key:     ${hadKey ? 'stripped (required for the FIRST upload)' : 'was not present'}`)
+console.log(
+  `  key:     ${hadKey ? 'stripped (required for the FIRST upload)' : 'was not present'}`
+)
 
-const broad = (manifest.host_permissions ?? []).filter((p) => p === 'http://*/*' || p === 'https://*/*')
+const broad = (manifest.host_permissions ?? []).filter(
+  p => p === 'http://*/*' || p === 'https://*/*'
+)
 if (broad.length > 0) {
   console.log('')
-  console.log(`  NOTE: host_permissions requests all-URLs (${broad.join(', ')}).`)
-  console.log('  That is fine for getting an id from a draft, but when you actually')
-  console.log('  submit for review it triggers the broad-permissions justification')
+  console.log(
+    `  NOTE: host_permissions requests all-URLs (${broad.join(', ')}).`
+  )
+  console.log(
+    '  That is fine for getting an id from a draft, but when you actually'
+  )
+  console.log(
+    '  submit for review it triggers the broad-permissions justification'
+  )
   console.log('  path and noticeably slows approval.')
 }

@@ -27,7 +27,8 @@ describe('referenceLineHeight', () => {
   // fallback ladder, which is the part with real branching.
 
   it('falls back to the computed line-height of the range start element', () => {
-    document.body.innerHTML = '<p id="p" style="line-height: 30px">hello world</p>'
+    document.body.innerHTML =
+      '<p id="p" style="line-height: 30px">hello world</p>'
     const p = document.getElementById('p')!
     const range = document.createRange()
     range.selectNodeContents(p)

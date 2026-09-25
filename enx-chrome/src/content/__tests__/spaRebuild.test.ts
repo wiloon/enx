@@ -86,7 +86,9 @@ describe('createSpaRebuilder.onRouteChange', () => {
     const second = deferred()
     let n = 0
     const { deps } = makeDeps({
-      waitForContentReady: jest.fn(() => (++n === 1 ? first.promise : second.promise)),
+      waitForContentReady: jest.fn(() =>
+        ++n === 1 ? first.promise : second.promise
+      ),
     })
     const r = createSpaRebuilder(deps)
 
@@ -144,14 +146,18 @@ describe('createSpaRebuilder.start / stop', () => {
 
 describe('shouldHandleTweetNavigate', () => {
   it('accepts push and traverse, rejects reload / hashChange / download', () => {
-    expect(shouldHandleTweetNavigate(navEvent('u', { navigationType: 'push' }))).toBe(true)
+    expect(
+      shouldHandleTweetNavigate(navEvent('u', { navigationType: 'push' }))
+    ).toBe(true)
     expect(
       shouldHandleTweetNavigate(navEvent('u', { navigationType: 'traverse' }))
     ).toBe(true)
     expect(
       shouldHandleTweetNavigate(navEvent('u', { navigationType: 'reload' }))
     ).toBe(false)
-    expect(shouldHandleTweetNavigate(navEvent('u', { hashChange: true }))).toBe(false)
+    expect(shouldHandleTweetNavigate(navEvent('u', { hashChange: true }))).toBe(
+      false
+    )
     expect(
       shouldHandleTweetNavigate(navEvent('u', { downloadRequest: 'x' }))
     ).toBe(false)

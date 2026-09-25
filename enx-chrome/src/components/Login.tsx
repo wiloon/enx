@@ -79,7 +79,8 @@ export default function Login({ onLoginSuccess, children }: LoginProps) {
         <ArrowRightIcon className="h-4 w-4" />
       </button>
       <p className="mt-2.5 text-center text-[11px] leading-relaxed text-muted-foreground">
-        This opens a new tab. Finish signing in there, then come back here and the popup will refresh automatically.
+        This opens a new tab. Finish signing in there, then come back here and
+        the popup will refresh automatically.
       </p>
     </div>
   )

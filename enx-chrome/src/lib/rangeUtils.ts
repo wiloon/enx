@@ -6,9 +6,7 @@
 // The nearest Element for a node: the node itself if it is one, otherwise its
 // parent element. Returns null only for a detached text node / the document.
 export const nearestElement = (node: Node): Element | null =>
-  node.nodeType === Node.ELEMENT_NODE
-    ? (node as Element)
-    : node.parentElement
+  node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement
 
 // Height of one line of text at the range's start, used as the popup's
 // vertical offset so its edge clears the line the clicked word sits on

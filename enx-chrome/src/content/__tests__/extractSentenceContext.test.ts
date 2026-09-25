@@ -130,16 +130,22 @@ describe('WordProcessor.extractSentenceContext', () => {
   })
 
   it('falls back to a bounded window around the range when the container text exceeds the length cap', () => {
-    const filler = 'This is a long filler sentence used only to pad out the paragraph. '
+    const filler =
+      'This is a long filler sentence used only to pad out the paragraph. '
     const before = filler.repeat(120)
     const after = filler.repeat(120)
     document.body.innerHTML = `<div>${before}The ${wrap('target')} word sits here. ${after}</div>`
 
     const el = document.querySelector<HTMLElement>('.w')!
     const container = document.querySelector('div')!
-    expect(container.textContent!.length).toBeGreaterThan(WordProcessor.MAX_SEGMENT_LENGTH)
+    expect(container.textContent!.length).toBeGreaterThan(
+      WordProcessor.MAX_SEGMENT_LENGTH
+    )
 
-    const result = WordProcessor.extractSentenceContext(rangeOverElement(el), 'target')
+    const result = WordProcessor.extractSentenceContext(
+      rangeOverElement(el),
+      'target'
+    )
 
     expect(result).not.toBeNull()
     expect(result!.sentence).toContain('target')
@@ -156,7 +162,10 @@ describe('WordProcessor.extractSentenceContext', () => {
     `
     const el = document.querySelector<HTMLElement>('.w')!
 
-    const result = WordProcessor.extractSentenceContext(rangeOverElement(el), 'intermediate')
+    const result = WordProcessor.extractSentenceContext(
+      rangeOverElement(el),
+      'intermediate'
+    )
 
     expect(result?.sentence).toBe(
       'The parser removes the <?start> and <?end> markers along with any intermediate nodes between them.'

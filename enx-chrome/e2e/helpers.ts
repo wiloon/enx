@@ -86,7 +86,7 @@ export async function login(
  */
 export async function waitForContentScript(page: Page, timeout = 10000) {
   await page.waitForFunction(
-    (prefix) => {
+    prefix => {
       if (!document.head.querySelector('style[data-enx-highlight-styles]')) {
         return false
       }
@@ -118,7 +118,7 @@ export async function enableLearningMode(page: Page, extensionId: string) {
   await popupPage.waitForLoadState('domcontentloaded')
 
   // Execute the enable logic from popup context (has chrome.tabs API access)
-  const result = await popupPage.evaluate(async (url) => {
+  const result = await popupPage.evaluate(async url => {
     try {
       // Find the tab with our target URL
       const tabs = await chrome.tabs.query({})
@@ -130,7 +130,7 @@ export async function enableLearningMode(page: Page, extensionId: string) {
 
       // Send enxRun message to that specific tab's content script
       const response = await chrome.tabs.sendMessage(targetTab.id, {
-        action: 'enxRun'
+        action: 'enxRun',
       })
 
       return response
@@ -144,7 +144,9 @@ export async function enableLearningMode(page: Page, extensionId: string) {
   console.log('Enable learning mode result:', result)
 
   if (!result || !result.success) {
-    throw new Error(`Failed to enable learning mode: ${result?.error || 'Unknown error'}`)
+    throw new Error(
+      `Failed to enable learning mode: ${result?.error || 'Unknown error'}`
+    )
   }
 
   // Wait for processing
@@ -211,7 +213,7 @@ export async function getHighlightedWords(
         }
       }
 
-      return ranges.map((range) => {
+      return ranges.map(range => {
         const rect = range.getBoundingClientRect()
         return {
           text: range.toString(),
@@ -231,7 +233,7 @@ export async function getHighlightedWords(
  * across every `enx-hl-*` entry in `CSS.highlights`.
  */
 export async function getHighlightedWordsCount(page: Page): Promise<number> {
-  return await page.evaluate((prefix) => {
+  return await page.evaluate(prefix => {
     const registry = (
       CSS as unknown as { highlights?: Iterable<[string, { size: number }]> }
     ).highlights
@@ -249,7 +251,7 @@ export async function getHighlightedWordsCount(page: Page): Promise<number> {
  * (one per review bucket that has at least one word).
  */
 export async function getHighlightNames(page: Page): Promise<string[]> {
-  return await page.evaluate((prefix) => {
+  return await page.evaluate(prefix => {
     const registry = (
       CSS as unknown as { highlights?: Iterable<[string, unknown]> }
     ).highlights
@@ -272,7 +274,7 @@ export async function isWordHighlighted(
   text: string
 ): Promise<boolean> {
   const words = await getHighlightedWords(page)
-  return words.some((w) => w.text.toLowerCase() === text.toLowerCase())
+  return words.some(w => w.text.toLowerCase() === text.toLowerCase())
 }
 
 /**
@@ -354,66 +356,69 @@ export async function mockBackendFetch(
   const translateFails = options.translateFails ?? false
   const translateSessionExpired = options.translateSessionExpired ?? false
 
-  await sw.evaluate(({ wordData, translateFails, translateSessionExpired }) => {
-    const realFetch = self.fetch.bind(self)
-    self.fetch = async (input, init) => {
-      const url =
-        typeof input === 'string'
-          ? input
-          : (input as Request).url ?? String(input)
+  await sw.evaluate(
+    ({ wordData, translateFails, translateSessionExpired }) => {
+      const realFetch = self.fetch.bind(self)
+      self.fetch = async (input, init) => {
+        const url =
+          typeof input === 'string'
+            ? input
+            : ((input as Request).url ?? String(input))
 
-      if (url.includes('/api/paragraph-init')) {
-        // Mirror the real endpoint's contract (word data for every word in
-        // the requested paragraph) using canned data, so whatever text is
-        // actually on the test page gets highlighted -- rather than
-        // hardcoding a word list that has to match the fixture's prose.
-        const paragraph = new URL(url).searchParams.get('paragraph') ?? ''
-        const words = paragraph.split(/[^a-zA-Z']+/).filter(Boolean)
-        const body: Record<string, unknown> = {}
-        for (const w of words) {
-          body[w.toLowerCase()] = { ...wordData, English: w }
-        }
-        return new Response(JSON.stringify(body), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      }
-
-      if (url.includes('/api/translate')) {
-        // makeApiRequest() in background.ts treats a 401 as session expiry
-        // and sets sessionExpired: true on the returned error.
-        if (translateSessionExpired) {
-          return new Response(JSON.stringify({ error: 'unauthorized' }), {
-            status: 401,
+        if (url.includes('/api/paragraph-init')) {
+          // Mirror the real endpoint's contract (word data for every word in
+          // the requested paragraph) using canned data, so whatever text is
+          // actually on the test page gets highlighted -- rather than
+          // hardcoding a word list that has to match the fixture's prose.
+          const paragraph = new URL(url).searchParams.get('paragraph') ?? ''
+          const words = paragraph.split(/[^a-zA-Z']+/).filter(Boolean)
+          const body: Record<string, unknown> = {}
+          for (const w of words) {
+            body[w.toLowerCase()] = { ...wordData, English: w }
+          }
+          return new Response(JSON.stringify(body), {
+            status: 200,
             headers: { 'Content-Type': 'application/json' },
           })
         }
-        if (translateFails) {
+
+        if (url.includes('/api/translate')) {
+          // makeApiRequest() in background.ts treats a 401 as session expiry
+          // and sets sessionExpired: true on the returned error.
+          if (translateSessionExpired) {
+            return new Response(JSON.stringify({ error: 'unauthorized' }), {
+              status: 401,
+              headers: { 'Content-Type': 'application/json' },
+            })
+          }
+          if (translateFails) {
+            return new Response(
+              JSON.stringify({ error: 'stubbed translate failure' }),
+              { status: 500, headers: { 'Content-Type': 'application/json' } }
+            )
+          }
+          const requested = new URL(url).searchParams.get('word')
           return new Response(
-            JSON.stringify({ error: 'stubbed translate failure' }),
-            { status: 500, headers: { 'Content-Type': 'application/json' } }
+            JSON.stringify({
+              ...wordData,
+              English: requested || wordData.English,
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
           )
         }
-        const requested = new URL(url).searchParams.get('word')
-        return new Response(
-          JSON.stringify({
-            ...wordData,
-            English: requested || wordData.English,
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } }
-        )
-      }
 
-      if (url.includes('/api/mark')) {
-        return new Response(
-          JSON.stringify({ ...wordData, AlreadyAcquainted: 1 }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } }
-        )
-      }
+        if (url.includes('/api/mark')) {
+          return new Response(
+            JSON.stringify({ ...wordData, AlreadyAcquainted: 1 }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          )
+        }
 
-      return realFetch(input, init)
-    }
-  }, { wordData, translateFails, translateSessionExpired })
+        return realFetch(input, init)
+      }
+    },
+    { wordData, translateFails, translateSessionExpired }
+  )
 }
 
 /**

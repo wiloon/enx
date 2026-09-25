@@ -46,7 +46,9 @@ describe('PageReportPrompt', () => {
 
   it('offers a retry with an error when sending failed', () => {
     setup('failed')
-    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't send the report")
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      "Couldn't send the report"
+    )
     expect(screen.getByRole('button', { name: 'Send report' })).toBeEnabled()
   })
 

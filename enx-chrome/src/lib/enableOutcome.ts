@@ -24,8 +24,7 @@ export type EnableFailureReason =
   | 'injection-blocked'
 
 export type EnableOutcome =
-  | { ok: true }
-  | { ok: false; reason: EnableFailureReason }
+  { ok: true } | { ok: false; reason: EnableFailureReason }
 
 // Not failures: a newer run took over (SPA navigation) or the same run was
 // re-triggered. These are reported as ok:true upstream and never surface.

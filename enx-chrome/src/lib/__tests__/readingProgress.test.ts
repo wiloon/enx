@@ -26,7 +26,14 @@ function rangeAt(node: HTMLElement, offset: number): Range {
 // that wants to exercise noteScroll has to supply the geometry itself.
 function stubRect(node: HTMLElement, top: number, height: number): void {
   node.getBoundingClientRect = () =>
-    ({ top, height, bottom: top + height, left: 0, right: 0, width: 100 }) as DOMRect
+    ({
+      top,
+      height,
+      bottom: top + height,
+      left: 0,
+      right: 0,
+      width: 100,
+    }) as DOMRect
 }
 
 afterEach(() => {

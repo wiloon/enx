@@ -31,7 +31,8 @@ import {
  */
 
 const HOMELAB = process.env.ENX_HOMELAB === '1'
-const API_BASE_URL = process.env.ENX_API_BASE_URL || 'https://enx-api.wiloon.lab'
+const API_BASE_URL =
+  process.env.ENX_API_BASE_URL || 'https://enx-api.wiloon.lab'
 const ACCESS_TOKEN = process.env.ENX_ACCESS_TOKEN || ''
 const TWEET_URL = process.env.ENX_X_TWEET_URL || ''
 
@@ -76,11 +77,13 @@ test.describe('Homelab - X tweet-switch auto-rebuild', () => {
     //    quoted tweet). x.com routes this via the History API -- no reload.
     const otherStatus = page
       .locator(`article a[href*="/status/"]`)
-      .filter({ hasNot: page.locator(`[href="${new URL(firstUrl).pathname}"]`) })
+      .filter({
+        hasNot: page.locator(`[href="${new URL(firstUrl).pathname}"]`),
+      })
       .first()
     await otherStatus.scrollIntoViewIfNeeded()
     await Promise.all([
-      page.waitForURL((u) => u.toString() !== firstUrl, { timeout: 15000 }),
+      page.waitForURL(u => u.toString() !== firstUrl, { timeout: 15000 }),
       otherStatus.click(),
     ])
 
