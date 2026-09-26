@@ -12,7 +12,10 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # Install exactly the pnpm that package.json's `packageManager` pins, so the
 # image and local dev never drift apart. Plain `npm install -g` (not corepack)
 # so the download goes through the .npmrc registry (Nexus) like everything else.
-RUN npm install -g "$(node -p "require('./package.json').packageManager")"
+# --userconfig is required: npm skips the project .npmrc in global mode, so a
+# bare `npm install -g` went to registry.npmjs.org with the 5-minute default
+# fetch-timeout and stalled the 2026-09-25/26 CI builds until they timed out.
+RUN npm install -g --userconfig ./.npmrc "$(node -p "require('./package.json').packageManager")"
 # Retry the install (the npm proxy is flaky), but fail the layer if every
 # attempt fails: a bare `for` exits with the status of its last command (the
 # `sleep`), which used to let a broken node_modules through to `pnpm build`.
