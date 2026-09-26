@@ -13,3 +13,13 @@ allowBuilds:
 # upgrade, override it for one command only:
 #   pnpm_config_minimum_release_age=0 pnpm install
 minimumReleaseAge: 1440
+# Network: pnpm 11+ reads these here, not from .npmrc (which now only carries
+# the registry for pnpm, and the fetch-* settings for the `npm install -g pnpm`
+# step in the Containerfile). Same policy as .npmrc: fail a stuck request after
+# 60s and retry soon (10s..60s backoff) rather than idling for minutes; the
+# Containerfile retries the whole install 5 times on top.
+fetchTimeout: 60000
+fetchRetries: 5
+fetchRetryMintimeout: 10000
+fetchRetryMaxtimeout: 60000
+networkConcurrency: 8
