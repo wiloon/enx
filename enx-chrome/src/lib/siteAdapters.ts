@@ -10,7 +10,7 @@
 
 // The subset of a Location the adapters read. Both `window.location` and a
 // `URL` (from a Navigation API destination) satisfy it.
-export type PageLocation = Pick<Location, 'hostname' | 'pathname'>
+export type PageLocation = Pick<Location, 'host' | 'hostname' | 'pathname'>
 
 export interface SiteAdapter {
   name: string
@@ -151,8 +151,11 @@ const X_ADAPTER: SiteAdapter = {
 // /rephrase, /billing, ...) load the content script too (the manifest
 // whitelists the whole origin) but are not meant to be read here.
 
+// Matched against `host`, so the port counts: dev enx-ui is localhost:3000,
+// and other localhost servers (e.g. the E2E fixture pages on :8765) are
+// ordinary sites, not the Reader.
 const ENX_UI_HOSTS = new Set([
-  'localhost',
+  'localhost:3000',
   'enx.wiloon.lab',
   'enx.wiloon.com',
   'catglish.com',
@@ -160,12 +163,12 @@ const ENX_UI_HOSTS = new Set([
 
 /** True when the page is served by enx-ui (dev, homelab, or prod). */
 export function isEnxUiHost(location: PageLocation): boolean {
-  return ENX_UI_HOSTS.has(location.hostname)
+  return ENX_UI_HOSTS.has(location.host)
 }
 
 const READER_ADAPTER: SiteAdapter = {
   name: 'reader',
-  matches: location => ENX_UI_HOSTS.has(location.hostname),
+  matches: isEnxUiHost,
   pageSupport: location =>
     location.pathname === '/reader' || location.pathname.startsWith('/reader/')
       ? null
