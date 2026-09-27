@@ -68,8 +68,9 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        // Extension must run in non-headless mode
-        headless: false,
+        // Headless by default (Chromium's new headless mode loads extensions,
+        // see e2e/fixtures.ts). `pnpm test:e2e:headed` shows the windows.
+        headless: true,
       },
     },
   ],
@@ -82,8 +83,11 @@ export default defineConfig({
     {
       // Backend API server (enx-api); set ECDICT_DB_PATH to a local ECDICT
       // SQLite file for translation tests. Never reused: an enx-api already on
-      // :8090 is the developer's, with their real database.
-      command: `cd ../enx-api && ENX_PORT=8090 ENX_DEV_MODE=true DB_PATH=${process.env.E2E_DB_PATH} ECDICT_DB_PATH=\${ECDICT_DB_PATH:-} go run .`,
+      // :8090 is the developer's, with their real database. `-c config.toml`
+      // pins the repo config: without it viper checks /usr/local/etc/enx/ and
+      // ~/.enx/ first, and a stale config there (no [clerk] section) makes
+      // every signed-in request fail with 503 "auth service unavailable".
+      command: `cd ../enx-api && ENX_PORT=8090 ENX_DEV_MODE=true DB_PATH=${process.env.E2E_DB_PATH} ECDICT_DB_PATH=\${ECDICT_DB_PATH:-} go run . -c config.toml`,
       url: `${API_ORIGIN}/api/version`,
       reuseExistingServer: false,
       timeout: 60000, // `go run` compiles first
@@ -95,7 +99,11 @@ export default defineConfig({
     ...(loginAvailable
       ? [
           {
-            command: `cd ../enx-ui && API_BASE_URL=${API_ORIGIN} pnpm dev`,
+            // `exec next`, not `pnpm dev`: pnpm 12 starts the script in its
+            // own process group, so Playwright's teardown (kill the shell's
+            // group) orphaned `next`, which kept the stdio pipes open and
+            // hung the run forever after the last test.
+            command: `cd ../enx-ui && API_BASE_URL=${API_ORIGIN} exec ./node_modules/.bin/next dev --turbopack`,
             url: UI_ORIGIN,
             reuseExistingServer: !process.env.CI,
             timeout: 120000,

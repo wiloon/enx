@@ -173,6 +173,21 @@ describe('WordProcessor.buildHighlightRanges', () => {
     ).toEqual(['the endgame is here'])
   })
 
+  it("skips the extension's own UI inserted into the article", () => {
+    // The "Article processed • Click words for translation" indicator is
+    // appended inside the article after the first paint; a later rebuild
+    // (e.g. after a lookup) must not highlight words in it.
+    document.body.innerHTML = `
+      <p>the endgame is here</p>
+      <div id="enx-processing-complete" data-enx-ui>Click the endgame</div>
+    `
+    WordProcessor.rebuildHighlights(document.body, {
+      endgame: wd({ LoadCount: 4 }),
+    })
+    const ranges = [...(CSS.highlights.get('enx-hl-2') ?? [])]
+    expect(ranges.map(r => r.toString())).toEqual(['endgame'])
+  })
+
   it('creates and moves no element nodes (article DOM is untouched)', () => {
     document.body.innerHTML =
       '<p id="p"><span id="s">the endgame is <b id="b">clearly</b> here</span></p>'

@@ -266,6 +266,27 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     const count = await getHighlightedWordsCount(page)
     expect(count).toBeGreaterThan(0)
 
+    // locator.waitFor(), not waitForSelector(): the latter returns an
+    // ElementHandle that pins every closed overlay (and React's ~140 root
+    // listeners on it) in the heap, which read as a leak here.
+    const openAndClose = async (i: number) => {
+      await clickHighlightedWord(page, i % count)
+      await page.locator('#enx-anchored-overlay').waitFor({ timeout: 3000 })
+      await page.evaluate(() => {
+        const el = document.getElementById('enx-anchored-overlay') as
+          (HTMLElement & { hidePopover: () => void }) | null
+        el?.hidePopover()
+      })
+      await page.waitForFunction(
+        () => document.querySelectorAll('#enx-anchored-overlay').length === 0
+      )
+    }
+
+    // Warm up before the baseline: the first opens load the popup chunk and
+    // initialise React (~1.7 MB, once), which is not growth per cycle.
+    const WARMUP = 5
+    for (let i = 0; i < WARMUP; i++) await openAndClose(i)
+
     const cdp = await context.newCDPSession(page)
     await cdp.send('HeapProfiler.enable')
     await cdp.send('HeapProfiler.collectGarbage')
@@ -276,18 +297,7 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     )
 
     const CYCLES = 50
-    for (let i = 0; i < CYCLES; i++) {
-      await clickHighlightedWord(page, i % count)
-      await page.waitForSelector('#enx-anchored-overlay', { timeout: 3000 })
-      await page.evaluate(() => {
-        const el = document.getElementById('enx-anchored-overlay') as
-          (HTMLElement & { hidePopover: () => void }) | null
-        el?.hidePopover()
-      })
-      await page.waitForFunction(
-        () => document.querySelectorAll('#enx-anchored-overlay').length === 0
-      )
-    }
+    for (let i = WARMUP; i < WARMUP + CYCLES; i++) await openAndClose(i)
 
     expect(
       await page.evaluate(() => document.querySelectorAll('[popover]').length),
@@ -312,11 +322,11 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     if (heapBefore > 0) {
       expect(
         heapAfter,
-        'heap growth stays within 1.5x baseline (starting threshold, calibrate as needed)'
+        'heap growth over 50 cycles stays within 1.5x the warmed-up baseline'
       ).toBeLessThanOrEqual(heapBefore * 1.5)
     }
 
     expect(consoleIssues, consoleIssues.join('\n')).toHaveLength(0)
-    expect(unmountLogCount).toBe(CYCLES)
+    expect(unmountLogCount).toBe(WARMUP + CYCLES)
   })
 })

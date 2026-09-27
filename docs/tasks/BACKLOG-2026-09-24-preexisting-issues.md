@@ -23,20 +23,43 @@ Fixes: the integration tests now call `sqlitex.Init()` per test on a
 `word.Id` when nothing was persisted. `fillFromEcdict` falls back to the
 existing row when a concurrent lookup inserted the word first.
 
-## 2. enx-chrome: Playwright E2E is flaky, and most specs need a real login
+## 2. enx-chrome: Playwright E2E is flaky, and most specs need a real login — DONE
 
-- In a sandbox without Clerk or homelab access, most specs fail on `main` and
-  on the upgrade branch alike (content highlighting, translation popup, word
-  highlight toggle). They need a signed-in session and reachable API/Clerk
-  endpoints.
-- Order dependence: `e2e/options-page.spec.ts:5` passes alone but failed in a
-  full-suite run on `main`. Some state likely leaks between tests, such as
-  `chrome.storage` or the reused API server (`reuseExistingServer`).
-- `e2e/fixtures.ts` always loads `dist-homelab`, so the extension under test
-  points at the homelab API, not the local `enx-api` that `playwright.config.ts`
-  starts on :8090.
-- Suggested follow-up: document the E2E prerequisites. Consider a local build
-  mode aimed at the :8090 API, and isolate storage per test.
+Resolved by ADR-037 (#42), then made to pass with real credentials on
+2026-09-27: all 26 specs pass (two consecutive full runs, headless, ~3.7 min).
+
+- `e2e/fixtures.ts` loads `dist-e2e`, which points at the local `enx-api` on
+  :8090 that `playwright.config.ts` starts with a fresh temporary `DB_PATH`.
+- Each test gets a fresh temporary Chromium profile, so `chrome.storage` no
+  longer leaks between tests.
+- Signed-in specs use a real Clerk dev-instance session via `@clerk/testing`
+  (credentials from `~/.config/enx/e2e.env`; see ADR-037). Without them they
+  are skipped, never faked.
+
+What it took to get the signed-in specs green:
+
+- enx-api is started with `-c config.toml`: viper otherwise prefers
+  `/usr/local/etc/enx/` and `~/.enx/`, and a stale config there (no
+  `[clerk]`) made every signed-in request fail with 503.
+- enx-ui is started with `exec next dev`, not `pnpm dev`: pnpm 12 runs the
+  script in its own process group, the orphaned `next` kept Playwright's
+  stdio pipes open, and the run hung forever after the last test.
+- Headless by default (`pnpm test:e2e:headed` to watch).
+- `e2e/seed.ts` seeds the per-run DB after sign-in: every word on the fixture
+  pages into `words`, and the E2E user's `user_dicts` (reset per test). No
+  ECDICT needed: highlighting and lookups read only these two tables.
+- `enableLearningMode` retries while the content script is still loading.
+- The popup heap check warms up before its baseline and uses
+  `locator.waitFor()` (a `waitForSelector` ElementHandle pinned every closed
+  overlay and read as a ~9 KB-per-open leak).
+
+Product bugs found on the way, fixed in `src/`:
+
+- The Reader adapter matched any `localhost` port as enx-ui (now `host`,
+  i.e. `localhost:3000`), so learning mode refused every other local site.
+- After a lookup, highlights were rebuilt over the extension's own
+  "Article processed • Click words for translation" indicator; its text is
+  now excluded (`[data-enx-ui]`).
 
 ## 3. enx-chrome: `src/config/env.ts` cannot be loaded under Jest — DONE
 
@@ -76,7 +99,7 @@ on branch `chore/backlog-small-fixes`, and `.gitignore` now lists `dist-webstore
 Resolved on branch `chore/backlog-small-fixes`: `repo/redisx/redis_test.go` uses `google/uuid`
 (`NewSHA1` = v5, same output) and `go mod tidy` dropped `satori/go.uuid`.
 
-## 9. Upgrades deliberately deferred (breaking majors) — PARTLY DONE
+## 9. Upgrades deliberately deferred (breaking majors) — DONE except BLOCKED rows
 
 Done on 2026-09-25, each in its own PR with the breaking changes fixed in code:
 
@@ -85,19 +108,26 @@ Done on 2026-09-25, each in its own PR with the breaking changes fixed in code:
 | #39 | enx-ui     | next / eslint-config-next 15.5 -> 16.3, @sentry/nextjs 9 -> 11 (Sentry 9 does not accept next 16 as a peer) |
 | #40 | enx-chrome | vite 7 -> 8, @crxjs/vite-plugin 2.7 -> 3, @vitejs/plugin-react 5 -> 6, @sentry/react 10 -> 11 |
 | #41 | both       | jotai 2 -> 3, @testing-library/jest-dom 6 -> 7 |
+| #43 | enx-ui     | typescript 5.9 -> 6.0 |
+| —   | enx-chrome | typescript 5.9 -> 6.0 (branch `chore/enx-chrome-typescript-6`, pinned `~6.0.3` because typescript-eslint peers `<6.1.0`) |
 
-### Still open: blocked upstream
+### BLOCKED upstream — do later, when the "Retry when" condition is met
 
 Neither affects what users run: both are build/dev-time tools and are not in
 the shipped extension or the enx-ui image.
 
-| Project | Package | Current | Target | Blocked by | Retry when |
-|---------|---------|---------|--------|------------|------------|
-| enx-ui, enx-chrome | eslint | 9.39 | 10.x | Latest `eslint-plugin-react` (7.37.5), `eslint-plugin-import` (2.32.0) and `eslint-plugin-jsx-a11y` (6.10.2) all declare `eslint` peers up to `^9` only. enx-chrome uses eslint-plugin-react directly; eslint-config-next pulls in all three. | All three publish an eslint 10 peer range (`pnpm view <pkg> peerDependencies.eslint`) |
-| enx-ui, enx-chrome | typescript | 5.9 | 7.x | TS 7 is the Go rewrite with no stable JS API yet (only `typescript/unstable/*`). `ts-jest` peers `typescript <7`, `typescript-eslint` peers `<6.1.0`, and Next's build type-check uses the JS API. | ts-jest and typescript-eslint support 7; TS 6.0 is possible earlier as a stepping stone (both already accept it) |
+| Status | Project | Package | Current | Target | Blocked by | Retry when |
+|--------|---------|---------|---------|--------|------------|------------|
+| BLOCKED | enx-ui, enx-chrome | eslint | 9.39 | 10.x | Latest `eslint-plugin-react` (7.37.5), `eslint-plugin-import` (2.32.0) and `eslint-plugin-jsx-a11y` (6.10.2) all declare `eslint` peers up to `^9` only. enx-chrome uses eslint-plugin-react directly; eslint-config-next pulls in all three. | All three publish an eslint 10 peer range (`pnpm view <pkg> peerDependencies.eslint`) |
+| BLOCKED | enx-ui, enx-chrome | typescript | 6.0 | 7.x | TS 7 is the Go rewrite with no stable JS API yet (only `typescript/unstable/*`). `ts-jest` peers `typescript <7`, `typescript-eslint` peers `<6.1.0`, and Next's build type-check uses the JS API. | ts-jest and typescript-eslint support 7 (the 6.0 stepping stone is done in both projects) |
 
 eslint 9 shows as "deprecated" on npm because 10 is out, but it still works and
 still gets maintenance releases for now. Recheck both rows at least quarterly.
+
+Last checked 2026-09-26: eslint-plugin-react 7.37.5, eslint-plugin-import
+2.32.0 and eslint-plugin-jsx-a11y 6.10.2 still peer `eslint` up to `^9`;
+ts-jest 29.4.14 peers `typescript <7`; typescript-eslint 8.70.1 peers
+`typescript <6.1.0` (so 6.1 is blocked too, not only 7).
 
 ## 10. enx-chrome: root `tsc --noEmit` fails on two test files — DONE
 

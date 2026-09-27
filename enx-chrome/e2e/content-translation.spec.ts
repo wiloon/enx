@@ -7,6 +7,7 @@ import { expect, test } from './fixtures'
 import {
   clickWordAndWaitForPopup,
   enableLearningMode,
+  getHighlightedWords,
   waitForContentScript,
 } from './helpers'
 
@@ -92,8 +93,14 @@ test.describe('Content Script - Translation Popup', () => {
     await page.click('body', { position: { x: 10, y: 10 } })
     await page.waitForTimeout(300)
 
-    // Click second word
-    await clickWordAndWaitForPopup(page, 1)
+    // Click the first highlighted word with different text: the page repeats
+    // words, so index 1 can be the same word again (e.g. a title and heading).
+    const words = await getHighlightedWords(page)
+    const otherIndex = words.findIndex(
+      w => w.text.toLowerCase() !== words[0].text.toLowerCase()
+    )
+    expect(otherIndex).toBeGreaterThan(0)
+    await clickWordAndWaitForPopup(page, otherIndex)
     const secondWord = await page
       .locator('#enx-anchored-overlay [data-testid="word-popover-header"] h3')
       .textContent()

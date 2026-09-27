@@ -4,6 +4,7 @@ import { existsSync } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { E2E_USER_EMAIL, UI_ORIGIN } from './auth'
+import { seedVocabulary } from './seed'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -38,7 +39,7 @@ type WorkerFixtures = {
 export const test = base.extend<ExtensionFixtures, WorkerFixtures>({
   extensionDir: ['dist-e2e', { option: true }],
 
-  context: async ({ extensionDir }, use) => {
+  context: async ({ extensionDir, headless }, use) => {
     const pathToExtension = path.join(__dirname, '..', extensionDir)
     if (!existsSync(path.join(pathToExtension, 'manifest.json'))) {
       throw new Error(
@@ -59,8 +60,13 @@ export const test = base.extend<ExtensionFixtures, WorkerFixtures>({
     // between tests. E2E_CHROMIUM_PATH reuses an already-installed Chromium
     // when this Playwright version's own build is not downloaded. It must be
     // Chromium: branded Chrome ignores --load-extension.
+    //
+    // `headless` comes from the config (and --headed). Headless only works
+    // with full Chromium's new headless mode: channel 'chromium' keeps
+    // Playwright off chromium-headless-shell, which cannot load extensions.
     const context = await chromium.launchPersistentContext('', {
-      headless: false,
+      headless,
+      channel: 'chromium',
       proxy,
       executablePath: process.env.E2E_CHROMIUM_PATH || undefined,
       args: [
@@ -121,6 +127,9 @@ export const test = base.extend<ExtensionFixtures, WorkerFixtures>({
       .toPass({ timeout: 30_000 })
     await popup.close()
     await site.close()
+
+    // The user now exists in enx-api; give it the fixture vocabulary.
+    seedVocabulary()
 
     await use()
   },

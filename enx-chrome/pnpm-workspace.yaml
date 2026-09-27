@@ -18,3 +18,11 @@ allowBuilds:
 # upgrade, override it for one command only:
 #   pnpm_config_minimum_release_age=0 pnpm install
 minimumReleaseAge: 1440
+peerDependencyRules:
+  allowedVersions:
+    # ws@7 (under Clerk's Solana wallet deps -> react-native dev-middleware)
+    # peers utf-8-validate ^5, but rpc-websockets pulls in 6. ws accepts 6's
+    # API (a plain function export), it is an optional native accelerator we
+    # never build (allowBuilds above), and none of this code reaches the
+    # extension bundle.
+    ws>utf-8-validate: '6'

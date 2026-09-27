@@ -79,12 +79,24 @@ export async function enableLearningMode(page: Page, extensionId: string) {
         return { success: false, error: `Tab not found for URL: ${url}` }
       }
 
-      // Send enxRun message to that specific tab's content script
-      const response = await chrome.tabs.sendMessage(targetTab.id, {
-        action: 'enxRun',
-      })
-
-      return response
+      // Send enxRun message to that specific tab's content script. The
+      // manifest injects a loader at document_end that import()s the real
+      // module, so right after goto(domcontentloaded) the listener may not
+      // exist yet: retry only that error, briefly.
+      const deadline = Date.now() + 5000
+      for (;;) {
+        try {
+          return await chrome.tabs.sendMessage(targetTab.id, {
+            action: 'enxRun',
+          })
+        } catch (error) {
+          const notReady = /Receiving end does not exist/.test(
+            (error as Error).message
+          )
+          if (!notReady || Date.now() > deadline) throw error
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+      }
     } catch (error) {
       return { success: false, error: (error as Error).message }
     }
@@ -260,8 +272,9 @@ export async function clickWordAndWaitForPopup(page: Page, wordIndex = 0) {
 
   await clickHighlightedWord(page, wordIndex)
 
-  // Wait for translation popup (correct ID is enx-anchored-overlay)
-  await page.waitForSelector('#enx-anchored-overlay', { timeout: 3000 })
+  // Wait for translation popup (correct ID is enx-anchored-overlay). Not
+  // waitForSelector: its unused ElementHandle would pin the overlay in memory.
+  await page.locator('#enx-anchored-overlay').waitFor({ timeout: 3000 })
 }
 
 /**
