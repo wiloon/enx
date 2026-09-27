@@ -25,7 +25,6 @@ RUN npm install -g --userconfig ./.npmrc "$(node -p "require('./package.json').p
 # extracted. Nothing after this needs it (`pnpm build` does not touch the store).
 RUN ok=0; \
     for i in 1 2 3 4 5; do \
-      pnpm fetch --frozen-lockfile || true; \
       if pnpm install --frozen-lockfile --prefer-offline; then ok=1; break; fi; \
       echo "pnpm install attempt $i failed, retrying in 60s..."; sleep 60; \
     done; \
