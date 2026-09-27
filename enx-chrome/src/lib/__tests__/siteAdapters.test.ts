@@ -6,8 +6,10 @@ import {
   PageLocation,
 } from '@/lib/siteAdapters'
 
-const loc = (hostname: string, pathname: string): PageLocation => ({
-  hostname,
+// `host` includes the port (as on window.location); hostname drops it.
+const loc = (host: string, pathname: string): PageLocation => ({
+  host,
+  hostname: host.split(':')[0],
   pathname,
 })
 
@@ -261,9 +263,17 @@ describe('pickFocusedTweet', () => {
 // billing -- are not meant to be read by the extension).
 describe('READER_ADAPTER (enx-ui paste-text reader)', () => {
   it('matches the enx-ui hosts (dev, homelab, prod)', () => {
-    for (const host of ['localhost', 'enx.wiloon.lab', 'enx.wiloon.com']) {
+    for (const host of ['localhost:3000', 'enx.wiloon.lab', 'enx.wiloon.com']) {
       expect(resolveSiteAdapter(loc(host, '/reader')).name).toBe('reader')
     }
+  })
+
+  it('does not match other localhost ports', () => {
+    // E2E fixture pages are served from localhost:8765; they are ordinary
+    // article pages, not enx-ui.
+    expect(
+      resolveSiteAdapter(loc('localhost:8765', '/test-page.html')).name
+    ).toBe('default')
   })
 
   it('does not match unrelated hosts', () => {

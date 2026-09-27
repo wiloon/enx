@@ -573,6 +573,7 @@ const showSessionExpiredMessage = (isLoginError = false) => {
   // Create notification
   const notification = document.createElement('div')
   notification.id = 'enx-session-expired'
+  notification.dataset.enxUi = ''
   notification.style.cssText = `
     position: fixed;
     top: 20px;
@@ -932,6 +933,8 @@ const addProcessingCompleteIndicator = (articleNode: Element) => {
   // Create the indicator element
   const indicator = document.createElement('div')
   indicator.id = 'enx-processing-complete'
+  // Inserted inside the article: keep its text out of word lookup/highlighting.
+  indicator.dataset.enxUi = ''
   indicator.style.cssText = `
     position: relative;
     display: inline-flex;
