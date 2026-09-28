@@ -17,7 +17,10 @@ export interface Target {
   clerkPublishableKey: string
   /**
    * Origin whose Clerk session the extension mirrors (@clerk/chrome-extension
-   * ClerkProvider `syncHost`).
+   * ClerkProvider `syncHost`): the website for a development instance (the
+   * `__clerk_db_jwt` cookie lives there), the Clerk Frontend API host for a
+   * production instance (`__client` lives there). Not where the sign-in tab
+   * goes -- that is frontendBaseUrl.
    */
   clerkSyncHost: string
   /**
@@ -63,7 +66,11 @@ export const TARGETS: Record<TargetName, Target> = {
     apiBaseUrl: 'https://api.catglish.com',
     frontendBaseUrl: 'https://catglish.com',
     clerkPublishableKey: DEV_CLERK_PUBLISHABLE_KEY,
-    clerkSyncHost: 'https://catglish.com',
+    // Not the website: a production Clerk instance sets the `__client` cookie
+    // on its Frontend API host (Domain=clerk.catglish.com), and
+    // @clerk/chrome-extension reads that cookie at syncHost. With
+    // https://catglish.com here the extension never sees the session.
+    clerkSyncHost: 'https://clerk.catglish.com',
     uiOrigins: ['https://catglish.com'],
   },
   test: {
