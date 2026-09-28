@@ -18,7 +18,12 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'pnpm dev',
+    // Same as `pnpm dev`, but without pnpm in between: pnpm 12's native
+    // binary starts the script in a new process group, so Playwright's
+    // teardown (SIGKILL to the webServer's group) misses next dev, which then
+    // holds the output pipe open until the teardown timeout and lingers on
+    // :3000 to block the next run.
+    command: './node_modules/.bin/next dev --turbopack',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     env: {
