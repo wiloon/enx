@@ -20,7 +20,7 @@
 1. **范围仅限单词点击这一条路径**：只在 `handleOpenSentencePanel` 里加高亮。`triggerSelectionTranslation`（ADR-007）与 `triggerPhraseContextLookup`（ADR-008/017）不动——原生选区已经覆盖同样的视觉需求，再加高亮是重复噪音。
 2. **只高亮最近一次查询的句子**，不做累积列表。下一次单词点击触发整句翻译时，上一个高亮直接被替换。
 3. **复用 ADR-011 的 CSS Custom Highlight API 机制**（`CSS.highlights` + `::highlight()`），不引入 DOM class 或包裹元素——延续 ADR-011「正文 DOM 全程不变」的立场。新开一个独立的 highlight 名（如 `enx-hl-active-sentence`），不复用 `enx-hl-<bucket>` 那几档复习进度色——语义不同（一个是"这个词该不该复习"，一个是"刚才查的是这句"），混在一起容易互相干扰。
-4. **清除时机：用户在主窗口里真的操作了才清除，不设任何计时器**——`click` / `scroll` / `keydown` 三个事件任一触发即清。不用 `mousemove`：光标常常本来就停在正文上（或者只是划过），会在用户眼睛找到高亮之前就把它清掉。
+4. **清除时机：用户在主窗口里真的操作了才清除，不设任何计时器**——`click` / `keydown` 任一触发即清。不用 `mousemove`：光标常常本来就停在正文上（或者只是划过），会在用户眼睛找到高亮之前就把它清掉。**也不用 `scroll`**（2026-09-27 修订，最初三件套含 `scroll`）：用户切回来的第一个动作往往就是滚几行找位置，滚一下高亮就没了，正好在最需要它的时候消失；而高亮挂在 `Range` 上，本来就跟着文字一起滚动，不存在错位。
 5. **明确不做自动淡出**。起初的草案里有一个「几秒后自动消失」的兜底，担心的是「用户切回来但不点任何地方，高亮无限期留着」。实现后发现这个担心站不住：高亮本来就是一层浅底色，而「替用户留着位置」正是它的职责，用户一操作它就消失了，没有需要兜底的场景。反过来计时器会主动破坏功能——见下方 Decisions 第 2 条。
 
 ## Decisions（实现形状）
@@ -29,10 +29,10 @@
 - **新增 `WordProcessor.setActiveSentenceHighlight(range: Range)`**：内部 `CSS.highlights.set('enx-hl-active-sentence', new Highlight(range))`，替换式写入（不是 add，同一时刻只有一句）。配套 `clearActiveSentenceHighlight()`：`CSS.highlights.delete('enx-hl-active-sentence')`。
 - **样式**：一条 `::highlight(enx-hl-active-sentence) { background-color: ...; }` 规则，追加进 content.tsx:1331-1347 现有的那个 `<style data-enx-highlight-styles>` 里（按 bucket 生成规则的同一段逻辑里多加一条，不新开 `<style>` 标签）。
 - **触发点**：`handleOpenSentencePanel`（content.tsx:232-259）在 `extractSentenceContext` 返回句子偏移后，构造 `Range` 并调用 `setActiveSentenceHighlight`。
-- **清除**：`ACTIVE_SENTENCE_CLEAR_EVENTS = ['click', 'scroll', 'keydown']` 三个监听，任一触发就 `clear()`，`clear` 内部把三个监听和那个注册用的 `setTimeout` 一并撤掉。三条实现期踩出来的约束：
+- **清除**：`ACTIVE_SENTENCE_CLEAR_EVENTS = ['click', 'keydown']` 两个监听，任一触发就 `clear()`，`clear` 内部把监听和那个注册用的 `setTimeout` 一并撤掉。三条实现期踩出来的约束：
   1. **必须延后一个 tick 注册**（`setTimeout(..., 0)`）。`handleOpenSentencePanel` 是「整句翻译」按钮自己的 click handler，调用它的那个 click 事件此刻仍在向 `document` 冒泡（`WordPopover` 全程没有 `stopPropagation`），同步注册会让**这一次点击**立刻把自己刚设好的高亮清掉，用户根本看不到。这是本功能第一版上线后「完全看不到高亮」的原因。
   2. **不要加固定计时器**。第一版加过一个 8s 自动清除，结果是：用户点完切到侧边栏读译文，读译文几十秒很正常，计时器在人还在侧边栏时就到期，回到主窗口高亮已经没了——功能等于没做。曾考虑改成「`window` 的 `focus` 事件触发后再开始倒计时」（侧边栏与主窗口同属一个浏览器窗口，tab 始终 visible，`visibilitychange` 不触发，只有 `focus`/`blur` 可用），但既然「用户操作即清除」已经覆盖了全部真实场景，计时器整个删掉，不留这个维度。
-  3. **监听用捕获阶段**（`addEventListener(type, clear, true)`）。`scroll` 不冒泡，嵌套滚动容器（X 的时间线、任何 `overflow` 容器）里的滚动不走捕获就永远到不了 `document`。
+  3. **监听用捕获阶段**（`addEventListener(type, clear, true)`）。最初是为了 `scroll`（不冒泡，嵌套滚动容器里的滚动不走捕获到不了 `document`）；`scroll` 摘掉后仍保留，避免页面自己的 handler `stopPropagation` 把点击/按键吞掉。
 - **highlight 名字故意不带 `enx-hl-` 前缀**（最终定为 `enx-active-sentence`）。`applyHighlights` 每次重建都会先 `clearHighlights()` 把所有 `enx-hl-*` 全清一遍，而重建在「几乎任何一次查词」后都会发生（词的复习档位可能变），共用前缀会让这条高亮被一次无关的 `refreshHighlights()` 顺手抹掉。
 - **`disableEnx` 清理**：`disableEnx`（content.tsx）里 `WordProcessor.clearHighlights()` 之后显式再调一次本功能的 cleanup——因为上一条的关系，前缀匹配那个循环扫不到它，而且还要顺带摘掉 click 监听和计时器。
 
@@ -44,7 +44,7 @@
 
 ## Revisit Triggers
 
-- 若 `click`/`scroll`/`keydown` 这组信号实际用起来不对——最可能的是 `scroll` 太急（用户回来第一个动作往往就是滚动几行找位置，结果高亮在眼睛跟上之前就没了）——先把 `scroll` 从清除事件里摘掉，退回 `click` + `keydown`。反方向（高亮留得太久碍事）目前没有预期场景，真出现再考虑计时器，但要连带解决 Decisions 第 2 条的问题。
+- ~~若 `scroll` 太急，先把它从清除事件里摘掉~~——2026-09-27 已按此执行，见已确认决策第 4 条。仍可能不对的是 `keydown`：空格 / 方向键 / PageDown 这类键盘滚动现在还会清掉高亮，若用户反馈，可改成只在非导航键时清除。反方向（高亮留得太久碍事）目前没有预期场景，真出现再考虑计时器，但要连带解决 Decisions 第 2 条的问题。
 - 另一条互补的思路：触发那一刻直接 `scrollIntoView` 把句子滚进视口，减少"找"这个动作本身。当前没做，因为它会在用户还没离开主窗口时就动页面滚动位置，干扰性比高亮大得多。
 - 高亮的具体配色（背景色/透明度）需要在实现时找几篇真实文章试一下，确认和复习进度的下划线颜色不会混淆、不会太扎眼。
 - 如果以后发现划词/短语路径在长文章场景下原生选区也不够醒目（比如滚动后选区状态丢失），可以再评估要不要把同一套机制延伸过去——但目前没有这个诉求，YAGNI。

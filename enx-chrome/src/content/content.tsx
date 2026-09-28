@@ -522,8 +522,10 @@ const refreshHighlights = async () => {
 // something in the page, which is the only moment it's known to have served
 // its purpose. mousemove is deliberately not one of those events: the cursor
 // is often already sitting over the article, so it would clear the mark
-// before the user's eyes found it.
-const ACTIVE_SENTENCE_CLEAR_EVENTS = ['click', 'scroll', 'keydown'] as const
+// before the user's eyes found it. Neither is scroll: scrolling a few lines is
+// usually how the user goes looking for the mark on returning, and the
+// highlight is a Range, so it moves with the text anyway.
+const ACTIVE_SENTENCE_CLEAR_EVENTS = ['click', 'keydown'] as const
 let activeSentenceHighlightCleanup: (() => void) | null = null
 
 const setActiveSentenceHighlight = (range: Range) => {
@@ -542,9 +544,8 @@ const setActiveSentenceHighlight = (range: Range) => {
     activeSentenceHighlightCleanup = null
   }
 
-  // Capture phase, because scroll doesn't bubble: a nested scroller (X's
-  // timeline, any overflow container) would otherwise never reach document.
-  // Deferred a tick, because this runs from the "整句翻译" button's own click
+  // Capture phase, so a page handler calling stopPropagation can't hide the
+  // interaction from us. Deferred a tick, because this runs from the "整句翻译" button's own click
   // handler and that click is still bubbling toward `document` right now
   // (WordPopover never calls stopPropagation) -- registering synchronously
   // would let that same click clear the highlight it just set.
