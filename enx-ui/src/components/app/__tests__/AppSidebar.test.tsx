@@ -11,6 +11,12 @@ jest.mock('@/hooks/useIsAdmin', () => ({
   useIsAdmin: () => mockUseIsAdmin(),
 }))
 
+// Covered in SidebarVersions.test.tsx; keeps these tests off the network.
+jest.mock('../SidebarVersions', () => ({
+  __esModule: true,
+  default: () => null,
+}))
+
 beforeEach(() => {
   jest.clearAllMocks()
   mockUseIsAdmin.mockReturnValue({ isAdmin: false, isLoading: false })

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { pingExtension } from '@/lib/enxExtension'
+import { detectExtension } from '@/lib/enxExtension'
 
 // ADR-019: whether the ENX Chrome extension is available to this page.
 // 'unknown' until the check resolves; the Reader page shows its install
@@ -12,17 +12,8 @@ export function useExtensionStatus(): ExtensionStatus {
   const [status, setStatus] = useState<ExtensionStatus>('unknown')
 
   useEffect(() => {
-    // Fast path: the content script stamps the running version onto <html>
-    // on enx-ui pages (ADR-019 Option G2), so we can skip the ping round-trip.
-    const stamped =
-      typeof document !== 'undefined' &&
-      Boolean(document.documentElement.dataset.enxExtension)
-    const check = stamped
-      ? Promise.resolve({ installed: true })
-      : pingExtension()
-
     let cancelled = false
-    check.then(({ installed }) => {
+    detectExtension().then(({ installed }) => {
       if (!cancelled) setStatus(installed ? 'installed' : 'not-installed')
     })
     return () => {

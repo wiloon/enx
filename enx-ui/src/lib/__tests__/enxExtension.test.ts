@@ -1,4 +1,4 @@
-import { notifySignedIn } from '../enxExtension'
+import { detectExtension, notifySignedIn } from '../enxExtension'
 import { setRuntimeEnv } from '@/test/runtimeEnv'
 
 type SendMessage = jest.Mock
@@ -75,5 +75,34 @@ describe('notifySignedIn (ADR-020)', () => {
     } finally {
       jest.useRealTimers()
     }
+  })
+})
+
+describe('detectExtension', () => {
+  afterEach(() => {
+    document.documentElement.removeAttribute('data-enx-extension')
+  })
+
+  it('reads the version off the content-script stamp without pinging', async () => {
+    document.documentElement.dataset.enxExtension = '1.0.1'
+    const sendMessage = jest.fn()
+    installChrome(sendMessage)
+
+    await expect(detectExtension()).resolves.toEqual({
+      installed: true,
+      version: '1.0.1',
+    })
+    expect(sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the ping and passes its version through', async () => {
+    installChrome(
+      jest.fn((_id, _msg, cb) => cb({ ok: true, version: '1.0.2' }))
+    )
+
+    await expect(detectExtension()).resolves.toEqual({
+      installed: true,
+      version: '1.0.2',
+    })
   })
 })
