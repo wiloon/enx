@@ -6,7 +6,10 @@ testdata_dir = "testdata"
 tmp_dir = "tmp"
 
 [build]
-  args_bin = []
+  # Always the repo's config.toml: without -c, viper prefers
+  # /usr/local/etc/enx/ and ~/.enx/, and a stale config there (no [clerk])
+  # makes every signed-in request 503 "auth service unavailable".
+  args_bin = ["-c", "config.toml"]
   entrypoint = ["./tmp/enx-api"]
   cmd = "go build -o ./tmp/enx-api ."
   delay = 1000
