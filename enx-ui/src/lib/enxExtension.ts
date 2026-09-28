@@ -64,6 +64,20 @@ export function pingExtension(timeoutMs = 2000): Promise<PingResult> {
   })
 }
 
+// Fast path first: the content script stamps the running version onto <html>
+// on enx-ui pages (ADR-019 Option G2), which skips the ping round-trip. The
+// stamp can land after the page mounts, so an absent stamp falls back to the
+// ping rather than meaning "not installed".
+export function detectExtension(): Promise<PingResult> {
+  const stamped =
+    typeof document !== 'undefined'
+      ? document.documentElement.dataset.enxExtension
+      : undefined
+  return stamped
+    ? Promise.resolve({ installed: true, version: stamped })
+    : pingExtension()
+}
+
 // Fire-and-forget: ask the extension to run learning mode on the current tab.
 // Safe to call when the extension is absent.
 export function requestReaderMode(): void {

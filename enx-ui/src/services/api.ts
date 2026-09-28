@@ -12,6 +12,7 @@ import {
   StatsOverview,
   StatsPeriod,
   StatsSeries,
+  VersionData,
   WordData,
 } from '@/types'
 
@@ -128,6 +129,10 @@ export class ApiService {
 
   async getMe(): Promise<ApiResponse<MeData>> {
     return this.makeRequest('/api/me')
+  }
+
+  async getVersion(): Promise<ApiResponse<VersionData>> {
+    return this.makeRequest('/api/version')
   }
 
   // Reading statistics (ADR-028). Neither endpoint looks up a word, calls a

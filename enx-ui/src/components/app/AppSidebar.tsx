@@ -13,6 +13,7 @@ import {
   type NavItem,
   isNavItemActive,
 } from './app-nav'
+import SidebarVersions from './SidebarVersions'
 
 function NavLink({
   item,
@@ -100,6 +101,7 @@ export default function AppSidebar({
         <div className="mt-auto flex flex-col gap-1 pt-2">
           <div className="mb-1 border-t border-sidebar-border" />
           {renderGroup(NAV_FOOTER)}
+          <SidebarVersions />
         </div>
       </nav>
     </div>

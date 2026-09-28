@@ -70,6 +70,15 @@ export interface RephraseData {
   notes: string[]
 }
 
+// GET /api/version (enx-api GetVersionSimple), stamped via ldflags at build.
+// enx-api and enx-ui ship from one tag, so the sidebar shows this as the
+// product version. Baking the tag into the enx-ui image instead is #51.
+export interface VersionData {
+  version: string
+  commit: string
+  build_time: string
+}
+
 // GET /api/me (enx-api GetMe). isAdmin reflects the ADMIN_CLERK_USER_IDS
 // allowlist (ADR-021) and is the only signal the UI uses to decide whether
 // to show the admin navigation.
