@@ -5,7 +5,10 @@ jest.mock('@/config/env', () => ({
     apiBaseUrl: 'http://localhost:8090',
     frontendBaseUrl: 'http://localhost:3000',
     clerkPublishableKey: 'pk_test_x',
-    clerkSyncHost: 'http://localhost:3000',
+    // Deliberately not the website origin: in production the sync host is
+    // Clerk's Frontend API (clerk.catglish.com), and the sign-in tab must still
+    // go to the website.
+    clerkSyncHost: 'https://clerk.localhost.test',
     uiOrigins: [
       'http://localhost:3000',
       'https://enx.wiloon.lab',

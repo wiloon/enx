@@ -567,7 +567,7 @@ const handleOpenWebSignIn = async (): Promise<{ success: boolean }> => {
   })
 
   const signInUrl =
-    `${config.clerkSyncHost}/sign-in?src=extension&redirect_url=` +
+    `${config.frontendBaseUrl}/sign-in?src=extension&redirect_url=` +
     encodeURIComponent('/extension/connected')
   const loginTab = await chrome.tabs.create({ url: signInUrl })
 
@@ -619,7 +619,7 @@ const handleSignedInReturn = async (): Promise<{
   try {
     const loginTab = await chrome.tabs.get(stored.loginTabId)
     const stillOnReturnPage = Boolean(
-      loginTab.url?.startsWith(`${config.clerkSyncHost}/extension/connected`)
+      loginTab.url?.startsWith(`${config.frontendBaseUrl}/extension/connected`)
     )
     if (stillOnReturnPage) {
       await chrome.tabs.remove(stored.loginTabId)

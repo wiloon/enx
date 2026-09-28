@@ -1,7 +1,12 @@
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { buildManifest } from '../config/manifest'
-import { TARGETS, type Target, type TargetName } from '../config/targets'
+import {
+  clerkFrontendApiHost,
+  TARGETS,
+  type Target,
+  type TargetName,
+} from '../config/targets'
 
 const base = JSON.parse(
   readFileSync(join(__dirname, '../../manifest.json'), 'utf8')
@@ -58,6 +63,21 @@ describe('manifest stamping (ADR-019)', () => {
     expect(manifest.externally_connectable.matches).toEqual([
       'https://catglish.com/*',
     ])
+  })
+
+  // A production Clerk instance keeps the `__client` cookie on its Frontend
+  // API host (Domain=clerk.catglish.com), not on the website, and
+  // @clerk/chrome-extension reads that cookie at `syncHost`. Pointing syncHost
+  // at catglish.com makes the extension look signed out forever.
+  it('syncs the production Clerk session from the Frontend API host', () => {
+    const key = 'pk_live_Y2xlcmsuY2F0Z2xpc2guY29tJA' // .env.production
+    expect(TARGETS.production.clerkSyncHost).toBe(
+      `https://${clerkFrontendApiHost(key)}`
+    )
+    expect(
+      stamp({ ...TARGETS.production, clerkPublishableKey: key })
+        .host_permissions
+    ).toContain('https://clerk.catglish.com/*')
   })
 
   it('derives the Clerk host permission from the publishable key', () => {
