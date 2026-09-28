@@ -24,7 +24,11 @@ export default function RootLayout({
 }>) {
   return (
     <ClerkProvider publishableKey={process.env.CLERK_PUBLISHABLE_KEY}>
-      <html lang="en">
+      {/* The enx-chrome content script stamps <html data-enx-extension>
+          before hydration (ADR-019), so <html>'s own attributes differ from
+          the server's by design. This only covers <html> itself, not its
+          children. */}
+      <html lang="en" suppressHydrationWarning>
         <head>
           <RuntimeEnvScript />
         </head>
