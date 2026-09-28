@@ -63,3 +63,4 @@ Clerk 官方给 E2E 的方案是 `@clerk/testing`：`clerkSetup()` 在全局 set
 
 - 不需要登录的用例：本地可跑（`pnpm build:e2e && pnpm test:e2e`）。
 - 需要登录的用例：`CLERK_SECRET_KEY=sk_test_... E2E_CLERK_USER_EMAIL=e2e+clerk_test@example.com pnpm test:e2e`。首次需在 Clerk dashboard（dev 实例 rational-deer-4450）建这个用户。
+- **enx-ui 也用同一套（2026-09-28）**：`enx-ui/e2e/fixtures.ts` 提供同名 `signedIn` fixture（`clerkSetup()` 按 worker 取 Testing Token，`clerk.signIn()` 在 `/` 上登录，不涉及扩展同步），`billing.spec.ts` 所有用例先登录、账单 API 仍用 `page.route` 桩掉；缺凭据时整份 skip。运行：`set -a; . ./.env.local; set +a; E2E_CLERK_USER_EMAIL=e2e+clerk_test@example.com pnpm test:e2e`（`playwright.config.ts` 的 `webServer.env` 会用占位 key 覆盖 `.env.local`，所以必须先 export）。测试用户 `e2e+clerk_test@example.com` 已在 dev 实例建好。

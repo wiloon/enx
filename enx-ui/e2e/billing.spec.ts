@@ -1,4 +1,5 @@
-import { test, expect, type Page, type Route } from '@playwright/test'
+import { type Page, type Route } from '@playwright/test'
+import { test, expect, loginAvailable, LOGIN_SKIP_REASON } from './fixtures'
 import type { BillingMeData } from '@/types'
 
 // Coverage for the three billing UI pages (/billing, /billing/success,
@@ -116,6 +117,11 @@ async function stubStripeRedirects(page: Page) {
     )
   }
 }
+
+// Every /billing* route sits behind Clerk, so each test signs in first as the
+// dev-instance test user (ADR-037); the billing API itself stays stubbed.
+test.skip(!loginAvailable, LOGIN_SKIP_REASON)
+test.beforeEach(async ({ signedIn }) => signedIn)
 
 const card = (page: Page, text: string) =>
   page.locator('[data-slot="card"]').filter({ hasText: text })
@@ -293,8 +299,9 @@ test.describe('/billing', () => {
     })
 
     await page.goto('/billing')
+    // Scoped to <main>: the Next dev error overlay repeats the same message.
     await expect(
-      page.getByText('Billing is temporarily unavailable')
+      page.getByRole('main').getByText('Billing is temporarily unavailable')
     ).toBeVisible()
     await expect(page.getByText('Free user')).toHaveCount(0)
   })
