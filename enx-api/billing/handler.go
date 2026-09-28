@@ -101,15 +101,9 @@ func (h *Handler) CheckoutTopup(c *gin.Context) {
 		return
 	}
 
-	if !hasActiveSubscription(userID) {
-		// AI translate access requires Pro or above; credit top-ups top off
-		// an existing subscription's allowance rather than being a free-tier
-		// way to buy AI translate without ever subscribing (2026-08-26
-		// decision, see w10n-config/enx/monetization-tasks.md).
-		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "an active Catglish Pro (or higher) subscription is required before buying AI credits"})
-		return
-	}
-
+	// No subscription is required: AI translate is unlocked by any credit
+	// balance, whether it came from a subscription or a top-up (2026-08-26
+	// decision, LAUNCH-CHECKLIST 2.1).
 	lookupKey := viper.GetString("stripe.price.credits-topup-" + req.Tier)
 	session, err := billingstripe.CreateCheckoutSession(c.Request.Context(), h.sc, billingstripe.CheckoutSessionParams{
 		PriceLookupKey:    lookupKey,
@@ -235,16 +229,4 @@ func existingStripeCustomerID(userID string) string {
 		return ""
 	}
 	return sub.StripeCustomerId
-}
-
-// hasActiveSubscription reports whether userID currently has an active
-// subscription at any tier (pro/pro-plus/max). Used to gate CheckoutTopup:
-// AI credit top-ups require an existing Pro-or-above subscription (see
-// w10n-config/enx/monetization-tasks.md, 2026-08-26 decision).
-func hasActiveSubscription(userID string) bool {
-	var sub sqlitex.Subscription
-	if err := sqlitex.DB.Where("user_id = ?", userID).First(&sub).Error; err != nil {
-		return false
-	}
-	return sub.Status == "active"
 }

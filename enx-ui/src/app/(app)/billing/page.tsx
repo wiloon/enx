@@ -19,7 +19,15 @@ import {
   subscriptionStatusLabel,
 } from './plans'
 
+type BillingTab = 'subscription' | 'topup'
+
+const TABS: { id: BillingTab; label: string }[] = [
+  { id: 'subscription', label: 'Monthly subscription' },
+  { id: 'topup', label: 'One-time credits' },
+]
+
 export default function BillingPage() {
+  const [tab, setTab] = useState<BillingTab>('subscription')
   // Tracks which button (if any) triggered a checkout/portal redirect, so
   // only that button shows "Redirecting..." and every button disables while a
   // redirect is in flight (avoids a second click firing a second Checkout
@@ -139,69 +147,114 @@ export default function BillingPage() {
         </div>
       )}
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Upgrade subscription</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {SUBSCRIPTION_PLANS.map((option) => (
-            <Card key={option.plan}>
-              <CardHeader>
-                <CardTitle>{option.name}</CardTitle>
-                <CardDescription>{option.description}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{option.priceLabel}</div>
-                <div className="text-sm text-muted-foreground">
-                  {option.creditsLabel} credits per period
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button
-                  className="w-full"
-                  onClick={() => handleSubscribe(option.plan)}
-                  disabled={isActive || redirecting !== null}
-                >
-                  {redirecting === `subscription-${option.plan}`
-                    ? 'Redirecting...'
-                    : isActive
-                      ? 'Subscribed'
-                      : 'Subscribe'}
-                </Button>
-              </CardFooter>
-            </Card>
-          ))}
-        </div>
-      </section>
+      <div
+        role="tablist"
+        aria-label="Billing options"
+        className="inline-flex rounded-lg bg-muted p-1"
+      >
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            id={`billing-tab-${t.id}`}
+            aria-selected={tab === t.id}
+            aria-controls={`billing-panel-${t.id}`}
+            onClick={() => setTab(t.id)}
+            className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+              tab === t.id
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Buy AI translation credits</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {TOPUP_TIERS.map((option) => (
-            <Card key={option.tier}>
-              <CardHeader>
-                <CardTitle>{option.name}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{option.priceLabel}</div>
-                <div className="text-sm text-muted-foreground">
-                  {option.creditsLabel} credits
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button
-                  className="w-full"
-                  variant="outline"
-                  onClick={() => handleTopup(option.tier)}
-                  disabled={redirecting !== null}
-                >
-                  {redirecting === `topup-${option.tier}`
-                    ? 'Redirecting...'
-                    : 'Buy'}
-                </Button>
-              </CardFooter>
-            </Card>
-          ))}
-        </div>
-      </section>
+      {tab === 'subscription' && (
+        <section
+          role="tabpanel"
+          id="billing-panel-subscription"
+          aria-labelledby="billing-tab-subscription"
+          className="space-y-3"
+        >
+          <p className="text-sm text-muted-foreground">
+            A fresh batch of AI translation credits every month. Unused
+            subscription credits expire at the end of each period.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {SUBSCRIPTION_PLANS.map((option) => (
+              <Card key={option.plan}>
+                <CardHeader>
+                  <CardTitle>{option.name}</CardTitle>
+                  <CardDescription>{option.description}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{option.priceLabel}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {option.creditsLabel} credits per period
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button
+                    className="w-full"
+                    onClick={() => handleSubscribe(option.plan)}
+                    disabled={isActive || redirecting !== null}
+                  >
+                    {redirecting === `subscription-${option.plan}`
+                      ? 'Redirecting...'
+                      : isActive
+                        ? 'Subscribed'
+                        : 'Subscribe'}
+                  </Button>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {tab === 'topup' && (
+        <section
+          role="tabpanel"
+          id="billing-panel-topup"
+          aria-labelledby="billing-tab-topup"
+          className="space-y-3"
+        >
+          <p className="text-sm text-muted-foreground">
+            Buy AI translation credits once, no subscription needed. Top-up
+            credits never expire and are used after your subscription credits.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {TOPUP_TIERS.map((option) => (
+              <Card key={option.tier}>
+                <CardHeader>
+                  <CardTitle>{option.name}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{option.priceLabel}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {option.creditsLabel} credits
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button
+                    className="w-full"
+                    variant="outline"
+                    onClick={() => handleTopup(option.tier)}
+                    disabled={redirecting !== null}
+                  >
+                    {redirecting === `topup-${option.tier}`
+                      ? 'Redirecting...'
+                      : 'Buy'}
+                  </Button>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   )
 }
