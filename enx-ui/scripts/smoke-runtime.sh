@@ -115,11 +115,15 @@ echo "✅ smoke: GET / -> 200, runtime key and extension id served"
 # what matters is which host the server tried.
 curl -s -o /dev/null -m 15 "http://127.0.0.1:${PORT}/api/smoke-relay-check" || true
 server_log() { if [ -n "$CID" ]; then "$CLI" logs "$CID" 2>&1; else cat "$LOG"; fi; }
+# Capture the log before matching: `server_log | grep -q` lets grep exit on the
+# first match, the log writer then dies of SIGPIPE, and pipefail turns a found
+# match into a failure.
+relayed() { local log; log="$(server_log)"; [[ "$log" == *api.smoke.invalid* ]]; }
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-  server_log | grep -q "api.smoke.invalid" && break
+  relayed && break
   sleep 1
 done
-server_log | grep -q "api.smoke.invalid" \
+relayed \
   || fail "/api/* was not relayed to the runtime API_BASE_URL (${API_BASE_URL}); target is frozen at build time"
 
 echo "✅ smoke: /api/* relayed to the runtime API_BASE_URL"
