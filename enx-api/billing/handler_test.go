@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -104,38 +105,63 @@ func TestCheckoutSubscriptionRejectsLegacyPlanValues(t *testing.T) {
 	}
 }
 
-// CheckoutTopup requires an existing active subscription (2026-08-26
-// decision, see w10n-config/enx/monetization-tasks.md): AI credit top-ups
-// must not be a free-tier way to buy AI translate without ever subscribing.
-func TestCheckoutTopupRequiresActiveSubscription(t *testing.T) {
-	userID := "u-" + t.Name()
-	seedUser(t, userID)
+// fakeStripeClient points the Stripe SDK at a local httptest.Server that
+// answers the two calls CreateCheckoutSession makes (price lookup by
+// lookup_key, session create). onSession receives the session-create form.
+func fakeStripeClient(t *testing.T, onSession func(form url.Values)) *stripeSDK.Client {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/prices":
+			w.Write([]byte(`{"object":"list","url":"/v1/prices","has_more":false,"data":[{"id":"price_topup_small","object":"price"}]}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/checkout/sessions":
+			if err := r.ParseForm(); err != nil {
+				t.Errorf("parse session form: %v", err)
+			}
+			onSession(r.PostForm)
+			w.Write([]byte(`{"id":"cs_test_1","object":"checkout.session","url":"https://checkout.stripe.test/c/pay/cs_test_1"}`))
+		default:
+			t.Errorf("unexpected Stripe call: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(server.Close)
 
-	h := NewHandler(fakeConfiguredClient(), "https://example.com", "whsec_test")
-	w := doRequest(t, http.MethodPost, "/billing/checkout/topup", h.CheckoutTopup, userID, `{"tier":"small"}`)
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("status: got %d want 403, body=%s", w.Code, w.Body.String())
-	}
+	backend := stripeSDK.GetBackendWithConfig(stripeSDK.APIBackend, &stripeSDK.BackendConfig{
+		URL:        stripeSDK.String(server.URL),
+		HTTPClient: server.Client(),
+	})
+	return stripeSDK.NewClient("sk_test_fake", stripeSDK.WithBackends(&stripeSDK.Backends{API: backend}))
 }
 
-func TestCheckoutTopupPastDueSubscriptionIsRejected(t *testing.T) {
+// A user with no subscription can buy a credit top-up: any credit balance
+// unlocks AI translate, whatever its source (2026-08-26 decision,
+// LAUNCH-CHECKLIST 2.1).
+func TestCheckoutTopupWithoutSubscriptionCreatesPaymentSession(t *testing.T) {
 	userID := "u-" + t.Name()
 	seedUser(t, userID)
-	sub := sqlitex.Subscription{
-		UserId:           userID,
-		StripeCustomerId: "cus_past_due",
-		Status:           "past_due",
-		CreatedAt:        1,
-		UpdatedAt:        1,
-	}
-	if err := sqlitex.DB.Create(&sub).Error; err != nil {
-		t.Fatalf("seed subscription: %v", err)
-	}
 
-	h := NewHandler(fakeConfiguredClient(), "https://example.com", "whsec_test")
+	var form url.Values
+	h := NewHandler(fakeStripeClient(t, func(f url.Values) { form = f }), "https://example.com", "whsec_test")
 	w := doRequest(t, http.MethodPost, "/billing/checkout/topup", h.CheckoutTopup, userID, `{"tier":"small"}`)
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("status: got %d want 403, body=%s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"url":"https://checkout.stripe.test/c/pay/cs_test_1"`)) {
+		t.Fatalf("expected checkout url in body, got %s", w.Body.String())
+	}
+	if got := form.Get("mode"); got != "payment" {
+		t.Errorf("mode: got %q want payment", got)
+	}
+	if got := form.Get("client_reference_id"); got != userID {
+		t.Errorf("client_reference_id: got %q want %q", got, userID)
+	}
+	if got := form.Get("metadata[type]"); got != "topup" {
+		t.Errorf("metadata[type]: got %q want topup", got)
+	}
+	if got := form.Get("metadata[tier]"); got != "small" {
+		t.Errorf("metadata[tier]: got %q want small", got)
 	}
 }
 

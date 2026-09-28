@@ -67,7 +67,7 @@
 
 ## 2. 计费 —— 代码遗留待办
 
-- [ ] **2.1** 移除 `CheckoutTopup` 的「必须有 active 订阅否则 403」校验（`enx-api/billing/handler.go`）。2026-08-26 决策已改为「有积分余额即可用 AI，不限来源」，这条校验现在与决策矛盾。
+- [x] **2.1** ~~移除 `CheckoutTopup` 的「必须有 active 订阅否则 403」校验（`enx-api/billing/handler.go`）~~ —— 2026-09-27 已移除（连同 `hasActiveSubscription` 与两条 403 测试）。决策：有积分余额即可用 AI，不限来源；免费用户可直接买一次性积分。`/billing` 同时改为「按月订阅 / 一次性积分」两个标签页，默认订阅。
 - [ ] **2.2** 核对三档订阅链路端到端一致：`config.toml [stripe.price]`（`pro` / `pro-plus` / `max` → lookup_key）、`billing/handler.go` 的 plan 参数校验、`billing/stripe/checkout.go` 按 lookup_key 解析 Price、`enx-ui` `plans.ts`。代码结构已是三档，需一次通读确认没有遗留的「monthly/annual」两档假设。
 - [ ] **2.3**（仅当 §0.3 决定上线支持年付）实现独立于 Stripe 账单周期的月度积分发放：定时任务扫 `status=active` 的订阅，`credit_accounts.period_end` 过期就发下月额度。`invoice.paid` 对年付一年只触发一次，与账本「每月发、不结转」对不上。设计已在 `w10n-config/enx/HANDOFF-stripe-billing-integration.md` §4.4 讨论，未编码。
 - [ ] **2.4** `ManagedPayments` 假设未验证：`billing/stripe/checkout.go` 建 Checkout Session 时没显式设置该字段，赌 Stripe 账号级配置自动生效，从未用真实请求验证。§3 联调时确认。

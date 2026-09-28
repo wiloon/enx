@@ -121,35 +121,45 @@ const card = (page: Page, text: string) =>
   page.locator('[data-slot="card"]').filter({ hasText: text })
 
 test.describe('/billing', () => {
-  test('free user sees "免费用户", the plan tiers, and top-up options', async ({
+  test('free user sees "Free user", the plan tiers by default, and top-up options behind the tab', async ({
     page,
   }) => {
     await stubBilling(page, { me: () => ({ status: 200, body: freeUser }) })
     await page.goto('/billing')
 
     await expect(
-      page.getByRole('heading', { name: '订阅与积分' })
+      page.getByRole('heading', { name: 'Subscription & Credits' })
     ).toBeVisible()
-    await expect(page.getByText('免费用户')).toBeVisible()
+    await expect(page.getByText('Free user')).toBeVisible()
 
     // Prices come from plans.ts and must mirror the Stripe catalog; see the
     // comment there. 'enx Max' was stale -- the card is 'Catglish Max'.
     await expect(card(page, 'Catglish Pro+')).toContainText('$9.99/mo')
     await expect(card(page, 'Catglish Max')).toContainText('$19.99/mo')
     await expect(
-      page.getByRole('button', { name: '订阅', exact: true })
+      page.getByRole('button', { name: 'Subscribe', exact: true })
     ).toHaveCount(3)
 
+    // The monthly-subscription tab is the default; top-ups sit behind the
+    // second tab.
     await expect(
-      page.getByRole('heading', { name: '购买 AI 翻译积分' })
-    ).toBeVisible()
+      page.getByRole('tab', { name: 'Monthly subscription' })
+    ).toHaveAttribute('aria-selected', 'true')
     await expect(
-      page.getByRole('button', { name: '购买', exact: true })
+      page.getByRole('button', { name: 'Buy', exact: true })
+    ).toHaveCount(0)
+
+    await page.getByRole('tab', { name: 'One-time credits' }).click()
+    await expect(
+      page.getByRole('button', { name: 'Buy', exact: true })
     ).toHaveCount(3)
+    await expect(
+      page.getByRole('button', { name: 'Subscribe', exact: true })
+    ).toHaveCount(0)
 
     // No billing-portal button until there is a subscription.
     await expect(
-      page.getByRole('button', { name: '管理订阅 / 账单' })
+      page.getByRole('button', { name: 'Manage subscription / billing' })
     ).toHaveCount(0)
   })
 
@@ -161,16 +171,18 @@ test.describe('/billing', () => {
     })
     await page.goto('/billing')
 
-    await expect(page.getByText('Pro+ 会员')).toBeVisible()
-    await expect(card(page, '订阅积分余额')).toContainText('1200')
-    await expect(card(page, '充值积分余额')).toContainText('300')
+    await expect(page.getByText('Pro+ member')).toBeVisible()
+    await expect(card(page, 'Subscription credit balance')).toContainText(
+      '1200'
+    )
+    await expect(card(page, 'Top-up credit balance')).toContainText('300')
 
     await expect(
-      page.getByRole('button', { name: '管理订阅 / 账单' })
+      page.getByRole('button', { name: 'Manage subscription / billing' })
     ).toBeVisible()
 
     const subscribeButtons = page.getByRole('button', {
-      name: '已订阅',
+      name: 'Subscribed',
       exact: true,
     })
     await expect(subscribeButtons).toHaveCount(3)
@@ -191,9 +203,11 @@ test.describe('/billing', () => {
     await stubStripeRedirects(page)
 
     await page.goto('/billing')
-    await expect(page.getByText('订阅逾期')).toBeVisible()
+    await expect(page.getByText('Subscription past due')).toBeVisible()
 
-    await page.getByRole('button', { name: '管理订阅 / 账单' }).click()
+    await page
+      .getByRole('button', { name: 'Manage subscription / billing' })
+      .click()
     await page.waitForURL('https://billing.stripe.test/**')
     expect(portalRequested).toBe(true)
   })
@@ -213,7 +227,7 @@ test.describe('/billing', () => {
 
     await page.goto('/billing')
     await card(page, 'Catglish Pro+')
-      .getByRole('button', { name: '订阅', exact: true })
+      .getByRole('button', { name: 'Subscribe', exact: true })
       .click()
 
     await page.waitForURL('https://checkout.stripe.test/**')
@@ -234,8 +248,9 @@ test.describe('/billing', () => {
     await stubStripeRedirects(page)
 
     await page.goto('/billing')
-    await card(page, '小额充值')
-      .getByRole('button', { name: '购买', exact: true })
+    await page.getByRole('tab', { name: 'One-time credits' }).click()
+    await card(page, 'Small top-up')
+      .getByRole('button', { name: 'Buy', exact: true })
       .click()
 
     await page.waitForURL('https://checkout.stripe.test/**')
@@ -249,18 +264,20 @@ test.describe('/billing', () => {
       me: () => ({ status: 200, body: freeUser }),
       checkoutSubscription: () => ({
         status: 503,
-        body: { error: '结账服务暂时不可用' },
+        body: { error: 'Checkout is temporarily unavailable' },
       }),
     })
 
     await page.goto('/billing')
     const button = card(page, 'Catglish Pro+').getByRole('button', {
-      name: '订阅',
+      name: 'Subscribe',
       exact: true,
     })
     await button.click()
 
-    await expect(page.getByText('结账服务暂时不可用')).toBeVisible()
+    await expect(
+      page.getByText('Checkout is temporarily unavailable')
+    ).toBeVisible()
     await expect(page).toHaveURL(/\/billing$/)
     await expect(button).toBeEnabled()
   })
@@ -269,12 +286,17 @@ test.describe('/billing', () => {
     page,
   }) => {
     await stubBilling(page, {
-      me: () => ({ status: 500, body: { error: '账单服务暂时不可用' } }),
+      me: () => ({
+        status: 500,
+        body: { error: 'Billing is temporarily unavailable' },
+      }),
     })
 
     await page.goto('/billing')
-    await expect(page.getByText('账单服务暂时不可用')).toBeVisible()
-    await expect(page.getByText('免费用户')).toHaveCount(0)
+    await expect(
+      page.getByText('Billing is temporarily unavailable')
+    ).toBeVisible()
+    await expect(page.getByText('Free user')).toHaveCount(0)
   })
 })
 
@@ -284,14 +306,16 @@ test.describe('/billing/success', () => {
   }) => {
     await page.goto('/billing/success')
 
-    await expect(page.getByText('支付已提交', { exact: true })).toBeVisible()
+    await expect(
+      page.getByText('Payment submitted', { exact: true })
+    ).toBeVisible()
     await expect(
       page.getByText(
-        '我们正在处理你的付款，账户状态和积分余额通常会在几秒内更新。'
+        "We're processing your payment. Your account status and credit balance usually update within a few seconds."
       )
     ).toBeVisible()
     await expect(
-      page.getByRole('link', { name: '返回订阅与积分' })
+      page.getByRole('link', { name: 'Back to Subscription & Credits' })
     ).toHaveAttribute('href', '/billing')
   })
 })
@@ -302,10 +326,12 @@ test.describe('/billing/cancel', () => {
   }) => {
     await page.goto('/billing/cancel')
 
-    await expect(page.getByText('已取消', { exact: true })).toBeVisible()
-    await expect(page.getByText('结账已取消，没有产生任何费用。')).toBeVisible()
+    await expect(page.getByText('Canceled', { exact: true })).toBeVisible()
     await expect(
-      page.getByRole('link', { name: '返回订阅与积分' })
+      page.getByText('Checkout was canceled and you were not charged.')
+    ).toBeVisible()
+    await expect(
+      page.getByRole('link', { name: 'Back to Subscription & Credits' })
     ).toHaveAttribute('href', '/billing')
   })
 })
