@@ -9,7 +9,7 @@ Read [.ai/instructions.md](.ai/instructions.md) before the first code change of 
 - **DDD layering.** Handlers do HTTP only. Business rules live in domain services and entities (`enx/`, or a domain package such as `dictionary/`). SQL lives in `repo/`. A domain service receives its repositories and data sources as interfaces through a constructor, so its unit tests run on fakes with no database. Plain CRUD stays plain.
 - **Coverage before refactoring.** Measure it first (`go test -cover ./<pkg>`). Where behaviour is uncovered, write characterization tests that pin today's behaviour, then refactor. Precedent: #22 went in before the ADR-018 deep seam.
 - **Every functional change ships with tests**: unit by default, `//go:build integration` for real-DB or full-HTTP flows.
-- **One word-lookup entry point:** `dictionary.Resolve` (ADR-018). User lookups go through it, never straight to `words` or `ecdict`.
+- **One word-lookup entry point:** `dictionary.Service.Resolve` (ADR-018), wired in `main`. User lookups go through it, never straight to `words` or `ecdict`.
 
 ## Documentation
 
