@@ -50,7 +50,13 @@ jest.mock('@clerk/chrome-extension/client', () => ({
 }))
 
 import { createClerkClient } from '@clerk/chrome-extension/client'
-import { makeApiRequest, __resetClerkClientCacheForTests } from '../background'
+import { getApiBaseUrl } from '@/config/env'
+import {
+  makeApiRequest,
+  handleGetWords,
+  __resetClerkClientCacheForTests,
+  __resetParagraphMethodForTests,
+} from '../background'
 
 // Captured at import time, before any test's resetAllMocks() wipes the
 // addListener call history: importing ../background registers this as a
@@ -998,5 +1004,92 @@ describe('background auto-enable wiring (adr-039)', () => {
     expect(chrome.scripting.registerContentScripts).toHaveBeenCalledWith([
       expect.objectContaining({ matches: ['https://www.infoq.com/*'] }),
     ])
+  })
+})
+
+// ADR-041: paragraph-init sends page text in a body, via QUERY by default and
+// POST where the user's network rejects QUERY.
+describe('handleGetWords (paragraph-init method)', () => {
+  beforeEach(() => {
+    jest.resetAllMocks()
+    setClerkSession('clerk-session-jwt')
+    __resetParagraphMethodForTests()
+    // resetAllMocks() wipes the env mock's implementation too.
+    ;(getApiBaseUrl as jest.Mock).mockResolvedValue('http://localhost:8090')
+    ;(chrome.storage.local.remove as jest.Mock).mockResolvedValue(undefined)
+    ;(chrome.tabs.query as jest.Mock).mockResolvedValue([{ id: 1 }])
+    ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
+    ;(global.fetch as jest.Mock) = jest.fn()
+  })
+
+  const calls = () =>
+    (global.fetch as jest.Mock).mock.calls.map(([url, init]) => ({
+      url,
+      method: init.method,
+      body: init.body,
+    }))
+
+  it('sends QUERY with the paragraph in a JSON body, not the URL', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(200, { data: { hello: { Id: 'w1' } } })
+    )
+
+    const result = await handleGetWords('hello world')
+
+    expect(result).toEqual({
+      success: true,
+      wordProperties: { data: { hello: { Id: 'w1' } } },
+    })
+    expect(calls()).toEqual([
+      {
+        url: 'http://localhost:8090/api/paragraph-init',
+        method: 'QUERY',
+        body: JSON.stringify({ paragraph: 'hello world' }),
+      },
+    ])
+  })
+
+  it.each([
+    [
+      'a network-level failure',
+      () => Promise.reject(new TypeError('Failed to fetch')),
+    ],
+    ['405 from a proxy', () => Promise.resolve(jsonResponse(405, {}))],
+    ['501 from a proxy', () => Promise.resolve(jsonResponse(501, {}))],
+  ])(
+    'falls back to POST after %s, and stays on POST',
+    async (_, firstReply) => {
+      ;(global.fetch as jest.Mock)
+        .mockImplementationOnce(firstReply)
+        .mockResolvedValueOnce(jsonResponse(200, { data: {} }))
+        .mockResolvedValueOnce(jsonResponse(200, { data: {} }))
+
+      expect((await handleGetWords('hello')).success).toBe(true)
+      expect(calls().map(c => c.method)).toEqual(['QUERY', 'POST'])
+
+      await handleGetWords('world')
+      expect(calls().map(c => c.method)).toEqual(['QUERY', 'POST', 'POST'])
+    }
+  )
+
+  it('keeps using QUERY when the POST retry fails too (e.g. the API is down)', async () => {
+    ;(global.fetch as jest.Mock)
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(jsonResponse(200, { data: {} }))
+
+    expect((await handleGetWords('hello')).success).toBe(false)
+    await handleGetWords('world')
+    expect(calls().map(c => c.method)).toEqual(['QUERY', 'POST', 'QUERY'])
+  })
+
+  it.each([
+    ['a server error', 500],
+    ['a quota rejection', 429],
+  ])('does not fall back on %s', async (_, status) => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(status, {}))
+
+    expect((await handleGetWords('hello')).success).toBe(false)
+    expect(calls().map(c => c.method)).toEqual(['QUERY'])
   })
 })

@@ -803,16 +803,51 @@ const handleGetOneWord = async (word: string) => {
   }
 }
 
+// paragraph-init sends page text, so it travels in the request body, never
+// the URL, where CDN and proxy access logs would record it (ADR-041). QUERY
+// (RFC 10008) is the exact method for a read-only query with a body; POST
+// carries the same request on networks that reject QUERY.
+let paragraphInitMethod: 'QUERY' | 'POST' = 'QUERY'
+
+export const __resetParagraphMethodForTests = (): void => {
+  paragraphInitMethod = 'QUERY'
+}
+
+// Did QUERY fail to get through, rather than get an answer from enx-api? A
+// network-level failure (no status), or a proxy on the user's network
+// answering 405/501 for a method it doesn't know. Session expiry and real API
+// errors (402/429/500...) are answers, and POST would get the same one.
+const queryMethodBlocked = (r: ApiRequestResult): boolean =>
+  !r.success &&
+  !r.sessionExpired &&
+  (r.status === undefined || r.status === 405 || r.status === 501)
+
 // Handle get multiple words
-const handleGetWords = async (paragraph: string) => {
+export const handleGetWords = async (paragraph: string) => {
   if (!paragraph || paragraph.trim() === '') {
     return { success: false, error: 'No paragraph provided' }
   }
 
-  const encodedParagraph = encodeURIComponent(paragraph)
-  const response = await makeApiRequest(
-    `/api/paragraph-init?paragraph=${encodedParagraph}`
-  )
+  const body = JSON.stringify({ paragraph })
+  let response = await makeApiRequest('/api/paragraph-init', {
+    method: paragraphInitMethod,
+    body,
+  })
+  if (paragraphInitMethod === 'QUERY' && queryMethodBlocked(response)) {
+    swlog(
+      `paragraph-init: QUERY did not get through (${response.status ?? 'network error'}), retrying with POST`,
+      'warn'
+    )
+    response = await makeApiRequest('/api/paragraph-init', {
+      method: 'POST',
+      body,
+    })
+    // Only a POST that worked proves this network needs it; a failing POST
+    // (say, the API is down) must not pin the worker to POST.
+    if (response.success) {
+      paragraphInitMethod = 'POST'
+    }
+  }
 
   console.log('paragraph-init API response:', response)
 

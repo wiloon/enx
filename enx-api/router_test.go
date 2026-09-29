@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -53,5 +55,38 @@ func TestRemovedRoutesAreNotRegistered(t *testing.T) {
 		case "DELETE /api/word/:word", "GET /api/wrap":
 			t.Errorf("%s %s is still registered", r.Method, r.Path)
 		}
+	}
+}
+
+// ADR-041: paragraph-init takes its paragraph in a body via QUERY (default)
+// or POST (fallback); the GET form stays until old extensions are gone.
+func TestParagraphInitRoutes(t *testing.T) {
+	utils.ViperInit()
+	gin.SetMode(gin.TestMode)
+
+	registered := map[string]bool{}
+	for _, r := range setupRouter().Routes() {
+		registered[r.Method+" "+r.Path] = true
+	}
+	for _, route := range []string{"QUERY /api/paragraph-init", "POST /api/paragraph-init", "GET /api/paragraph-init"} {
+		if !registered[route] {
+			t.Errorf("%s is not registered", route)
+		}
+	}
+}
+
+// A cross-origin QUERY is preflighted; the preflight must allow it.
+func TestCORSPreflightAllowsQuery(t *testing.T) {
+	utils.ViperInit()
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodOptions, "/api/paragraph-init", nil)
+	req.Header.Set("Origin", "chrome-extension://abcdefghijklmnop")
+	req.Header.Set("Access-Control-Request-Method", "QUERY")
+	setupRouter().ServeHTTP(w, req)
+
+	if !strings.Contains(w.Header().Get("Access-Control-Allow-Methods"), "QUERY") {
+		t.Fatalf("Access-Control-Allow-Methods = %q, want QUERY listed", w.Header().Get("Access-Control-Allow-Methods"))
 	}
 }
