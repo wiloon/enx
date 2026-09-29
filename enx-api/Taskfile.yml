@@ -118,18 +118,24 @@ tasks:
         if [ "$MODE" = "bg" ]; then
           echo "🚀 Starting {{.APP_NAME}} in development mode (background)..."
           mkdir -p logs
-          nohup air > {{.LOG_FILE}} 2>&1 &
-          echo $! > air.pid
-          sleep 2
-          if ps -p $(cat air.pid) > /dev/null 2>&1; then
-            echo "✅ Development server started (PID: $(cat air.pid))"
-            echo "   Logs: {{.LOG_FILE}}"
-            echo "   Stop with: task stop or pkill -f air"
-          else
-            echo "❌ Failed to start development server"
-            tail -20 {{.LOG_FILE}}
-            exit 1
-          fi
+          # Background through bash: Task's built-in shell sets $! to a
+          # goroutine label ("g1"), not a PID, so air.pid would be useless.
+          bash -c 'nohup air > {{.LOG_FILE}} 2>&1 & echo $! > air.pid'
+          # air compiles before it listens; wait for /ping (8091 is `port`
+          # in config.toml), giving up early if air itself died.
+          for i in $(seq 1 120); do
+            if curl -sf -o /dev/null http://localhost:8091/ping; then
+              echo "✅ Development server started (PID: $(cat air.pid))"
+              echo "   Logs: {{.LOG_FILE}}"
+              echo "   Stop with: task stop"
+              exit 0
+            fi
+            ps -p "$(cat air.pid)" > /dev/null 2>&1 || break
+            sleep 1
+          done
+          echo "❌ Failed to start development server"
+          tail -20 {{.LOG_FILE}}
+          exit 1
         elif [ "$MODE" = "fg" ]; then
           echo "🚀 Starting {{.APP_NAME}} in development mode (foreground)..."
           air
@@ -244,8 +250,8 @@ tasks:
         MODE="{{.MODE}}"
         if [ "$MODE" = "bg" ]; then
           echo "Starting {{.APP_NAME}} in background mode..."
-          nohup ./{{.APP_NAME}} > {{.LOG_FILE}} 2>&1 &
-          echo $! > {{.PID_FILE}}
+          # Through bash: Task's built-in shell sets $! to "g1", not a PID.
+          bash -c 'nohup ./{{.APP_NAME}} > {{.LOG_FILE}} 2>&1 & echo $! > {{.PID_FILE}}'
           echo "{{.APP_NAME}} started in background (PID: $(cat {{.PID_FILE}}))"
           echo "Log file: {{.LOG_FILE}}"
           echo "Stop with: task stop"
@@ -260,15 +266,17 @@ tasks:
   stop:
     desc: Stop background API server (supports both air and binary modes)
     cmds:
+      # Task's built-in shell has no `kill` builtin ("unsupported builtin"),
+      # hence ps -p and /bin/kill.
       - |
         STOPPED=0
 
         # Try to stop air process first
         if [ -f air.pid ]; then
           PID=$(cat air.pid)
-          if kill -0 $PID 2>/dev/null; then
+          if ps -p $PID > /dev/null 2>&1; then
             echo "🛑 Stopping air development server (PID: $PID)..."
-            kill $PID
+            /bin/kill $PID
             rm -f air.pid
             echo "✅ air stopped"
             STOPPED=1
@@ -281,9 +289,9 @@ tasks:
         # Try to stop binary process
         if [ -f {{.APP_NAME}}.pid ]; then
           PID=$(cat {{.APP_NAME}}.pid)
-          if kill -0 $PID 2>/dev/null; then
+          if ps -p $PID > /dev/null 2>&1; then
             echo "🛑 Stopping {{.APP_NAME}} (PID: $PID)..."
-            kill $PID
+            /bin/kill $PID
             rm -f {{.APP_NAME}}.pid
             echo "✅ {{.APP_NAME}} stopped"
             STOPPED=1
@@ -297,14 +305,14 @@ tasks:
         pkill -f "air.*enx-api" && echo "✅ Killed remaining air processes" || true
         pkill -f "enx-api/tmp/enx-api" && echo "✅ Killed remaining enx-api processes" || true
 
-        # Wait for port 8080 to be released (up to 5 seconds)
+        # Wait for port 8091 (`port` in config.toml) to be released (up to 5 seconds)
         for i in $(seq 1 10); do
-          if ! lsof -ti:8080 > /dev/null 2>&1; then
+          if ! lsof -ti tcp:8091 -sTCP:LISTEN > /dev/null 2>&1; then
             break
           fi
-          echo "⏳ Waiting for port 8080 to be released... ($i/10)"
-          # Force kill anything still holding port 8080
-          lsof -ti:8080 | xargs kill -9 2>/dev/null || true
+          echo "⏳ Waiting for port 8091 to be released... ($i/10)"
+          # Force kill anything still holding port 8091
+          lsof -ti tcp:8091 -sTCP:LISTEN | xargs kill -9 2>/dev/null || true
           sleep 0.5
         done
 
@@ -324,7 +332,7 @@ tasks:
           exit 0
         fi
         PID=$(cat {{.PID_FILE}})
-        if kill -0 $PID 2>/dev/null; then
+        if ps -p $PID > /dev/null 2>&1; then
           echo "{{.APP_NAME}} is running (PID: $PID)"
           if [ -f {{.LOG_FILE}} ]; then
             echo ""
