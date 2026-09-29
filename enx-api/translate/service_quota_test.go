@@ -5,6 +5,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"enx-api/dictionary"
+	"enx-api/dictionary/adapters"
+	"enx-api/repo"
 	"enx-api/utils/sqlitex"
 
 	"github.com/gin-gonic/gin"
@@ -30,6 +33,15 @@ func setupQuotaTestDB(t *testing.T) {
 		t.Fatal(err)
 	}
 	sqlitex.DB = db
+}
+
+// newTestHandler wires the production dictionary service and review log
+// over whatever sqlitex.DB and ECDICT the test has set up.
+func newTestHandler() *Handler {
+	return NewHandler(
+		dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, dictionary.QuotaMeter{}),
+		repo.ReviewLog{},
+	)
 }
 
 func setQuotaLimit(t *testing.T, limit int64) {
@@ -68,13 +80,13 @@ func TestTranslateWordMetersLocalCacheHit(t *testing.T) {
 	}
 
 	c1, w1 := translateCtx("serendipity", "u-local")
-	translateWord(c1, "serendipity")
+	newTestHandler().translateWord(c1, "serendipity")
 	if w1.Code != http.StatusOK {
 		t.Fatalf("lookup 1: got %d, want 200 (body=%s)", w1.Code, w1.Body.String())
 	}
 
 	c2, w2 := translateCtx("serendipity", "u-local")
-	translateWord(c2, "serendipity")
+	newTestHandler().translateWord(c2, "serendipity")
 	if w2.Code != http.StatusTooManyRequests {
 		t.Fatalf("lookup 2: got %d, want 429 -- a local cache hit must count against the quota", w2.Code)
 	}

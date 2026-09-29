@@ -3,10 +3,8 @@ package dictionary
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"testing"
 
-	"enx-api/ecdict"
 	"enx-api/utils/sqlitex"
 
 	"github.com/glebarez/sqlite"
@@ -27,43 +25,6 @@ func setupTestDB(t *testing.T) {
 		t.Fatal(err)
 	}
 	sqlitex.DB = db
-}
-
-// stardictRow is one entry for setupFakeEcdict.
-type stardictRow struct {
-	Word, Sw, Phonetic, Translation, Exchange string
-}
-
-// setupFakeEcdict makes ecdict.IsAvailable() report true against a real
-// on-disk sqlite file with the stardict table shape, holding rows (none by
-// default), so Lookup exercises its quota path instead of short-circuiting
-// on ErrEcdictUnavailable.
-func setupFakeEcdict(t *testing.T, rows ...stardictRow) {
-	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "ecdict.db")
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
-		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec(`CREATE TABLE stardict (word TEXT, sw TEXT, phonetic TEXT, translation TEXT, exchange TEXT)`).Error; err != nil {
-		t.Fatal(err)
-	}
-	for _, r := range rows {
-		if err := db.Exec(`INSERT INTO stardict VALUES (?, ?, ?, ?, ?)`,
-			r.Word, r.Sw, r.Phonetic, r.Translation, r.Exchange).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sqlDB.Close()
-
-	ecdict.Init(dbPath)
-	t.Cleanup(func() { ecdict.Init("") })
 }
 
 func setQuotaLimits(t *testing.T, free, subscribed int64) {
@@ -88,29 +49,19 @@ func quotaRowCount(t *testing.T, userID string) int64 {
 	return count
 }
 
-func TestLookupReturnsUnavailableWhenEcdictMissing(t *testing.T) {
+func TestMeterLookupEnforcesQuotaForFreeUser(t *testing.T) {
 	setupTestDB(t)
-	ecdict.Init("")
-	_, err := lookupEcdict(context.Background(), "unknownword", "test-user")
-	if !errors.Is(err, ErrEcdictUnavailable) {
-		t.Fatalf("expected ErrEcdictUnavailable, got %v", err)
-	}
-}
-
-func TestLookupEnforcesQuotaForFreeUser(t *testing.T) {
-	setupTestDB(t)
-	setupFakeEcdict(t)
 	setQuotaLimits(t, 2, 0)
 	userID := "u-" + t.Name()
 	ctx := context.Background()
 
-	if _, err := lookupEcdict(ctx, "word1", userID); err != nil {
+	if err := MeterLookup(ctx, userID); err != nil {
 		t.Fatalf("lookup 1: %v", err)
 	}
-	if _, err := lookupEcdict(ctx, "word2", userID); err != nil {
+	if err := MeterLookup(ctx, userID); err != nil {
 		t.Fatalf("lookup 2: %v", err)
 	}
-	if _, err := lookupEcdict(ctx, "word3", userID); !errors.Is(err, ErrQuotaExceeded) {
+	if err := MeterLookup(ctx, userID); !errors.Is(err, ErrQuotaExceeded) {
 		t.Fatalf("lookup 3: got %v, want ErrQuotaExceeded", err)
 	}
 }
@@ -118,15 +69,14 @@ func TestLookupEnforcesQuotaForFreeUser(t *testing.T) {
 // The whole point of ADR-029: with no limit configured, lookups must still
 // be counted -- otherwise "launch with it off, set a number from real usage"
 // can never produce any usage to look at.
-func TestLookupCountsWithNoLimitConfigured(t *testing.T) {
+func TestMeterLookupCountsWithNoLimitConfigured(t *testing.T) {
 	setupTestDB(t)
-	setupFakeEcdict(t)
 	setQuotaLimits(t, 0, 0)
 	userID := "u-" + t.Name()
 	ctx := context.Background()
 
 	for i := 0; i < 5; i++ {
-		if _, err := lookupEcdict(ctx, "word", userID); err != nil {
+		if err := MeterLookup(ctx, userID); err != nil {
 			t.Fatalf("lookup %d: an unset limit must not block, got %v", i, err)
 		}
 	}
@@ -138,18 +88,17 @@ func TestLookupCountsWithNoLimitConfigured(t *testing.T) {
 
 // Rejected requests keep counting, so the overflow shows how much demand the
 // limit is suppressing (ADR-029 Options C2).
-func TestLookupKeepsCountingPastTheLimit(t *testing.T) {
+func TestMeterLookupKeepsCountingPastTheLimit(t *testing.T) {
 	setupTestDB(t)
-	setupFakeEcdict(t)
 	setQuotaLimits(t, 1, 0)
 	userID := "u-" + t.Name()
 	ctx := context.Background()
 
-	if _, err := lookupEcdict(ctx, "word", userID); err != nil {
+	if err := MeterLookup(ctx, userID); err != nil {
 		t.Fatalf("lookup 1: %v", err)
 	}
 	for i := 2; i <= 4; i++ {
-		if _, err := lookupEcdict(ctx, "word", userID); !errors.Is(err, ErrQuotaExceeded) {
+		if err := MeterLookup(ctx, userID); !errors.Is(err, ErrQuotaExceeded) {
 			t.Fatalf("lookup %d: got %v, want ErrQuotaExceeded", i, err)
 		}
 	}
@@ -159,9 +108,8 @@ func TestLookupKeepsCountingPastTheLimit(t *testing.T) {
 	}
 }
 
-func TestLookupAppliesTheSubscribedTier(t *testing.T) {
+func TestMeterLookupAppliesTheSubscribedTier(t *testing.T) {
 	setupTestDB(t)
-	setupFakeEcdict(t)
 	setQuotaLimits(t, 1, 100) // free tier deliberately tiny
 	userID := "u-" + t.Name()
 	ctx := context.Background()
@@ -177,7 +125,7 @@ func TestLookupAppliesTheSubscribedTier(t *testing.T) {
 	}
 
 	for i := 0; i < 5; i++ {
-		if _, err := lookupEcdict(ctx, "word", userID); err != nil {
+		if err := MeterLookup(ctx, userID); err != nil {
 			t.Fatalf("lookup %d: subscriber is under their own tier, got %v", i, err)
 		}
 	}
@@ -192,9 +140,8 @@ func TestLookupAppliesTheSubscribedTier(t *testing.T) {
 // A failing subscription lookup must not silently demote a paying user to
 // the free tier and 429 them (#18). Fail open to the highest tier -- but
 // keep counting (ADR-029 Options G2).
-func TestLookupTreatsSubscriberCheckFailureAsSubscriber(t *testing.T) {
+func TestMeterLookupTreatsSubscriberCheckFailureAsSubscriber(t *testing.T) {
 	setupTestDB(t)
-	setupFakeEcdict(t)
 	setQuotaLimits(t, 1, 100)
 	userID := "u-" + t.Name()
 	ctx := context.Background()
@@ -204,7 +151,7 @@ func TestLookupTreatsSubscriberCheckFailureAsSubscriber(t *testing.T) {
 	}
 
 	for i := 0; i < 5; i++ {
-		if _, err := lookupEcdict(ctx, "word", userID); err != nil {
+		if err := MeterLookup(ctx, userID); err != nil {
 			t.Fatalf("lookup %d: subscriber-check failure should fail open, got %v", i, err)
 		}
 	}
@@ -216,9 +163,8 @@ func TestLookupTreatsSubscriberCheckFailureAsSubscriber(t *testing.T) {
 
 // A failing quota store must not block a dictionary lookup (#17, ADR-018 E2).
 // Fail open: allow the lookup.
-func TestLookupFailsOpenWhenQuotaStoreUnavailable(t *testing.T) {
+func TestMeterLookupFailsOpenWhenQuotaStoreUnavailable(t *testing.T) {
 	setupTestDB(t)
-	setupFakeEcdict(t)
 	setQuotaLimits(t, 1, 0)
 	userID := "u-" + t.Name()
 	ctx := context.Background()
@@ -228,15 +174,14 @@ func TestLookupFailsOpenWhenQuotaStoreUnavailable(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		if _, err := lookupEcdict(ctx, "word", userID); err != nil {
+		if err := MeterLookup(ctx, userID); err != nil {
 			t.Fatalf("lookup %d: quota-store failure should fail open, got %v", i, err)
 		}
 	}
 }
 
-func TestLookupPastDueSubscriberIsNotExempt(t *testing.T) {
+func TestMeterLookupPastDueSubscriberIsNotExempt(t *testing.T) {
 	setupTestDB(t)
-	setupFakeEcdict(t)
 	setQuotaLimits(t, 1, 0)
 	userID := "u-" + t.Name()
 	ctx := context.Background()
@@ -251,18 +196,17 @@ func TestLookupPastDueSubscriberIsNotExempt(t *testing.T) {
 		t.Fatalf("seed subscription: %v", err)
 	}
 
-	if _, err := lookupEcdict(ctx, "word1", userID); err != nil {
+	if err := MeterLookup(ctx, userID); err != nil {
 		t.Fatalf("lookup 1: %v", err)
 	}
-	if _, err := lookupEcdict(ctx, "word2", userID); !errors.Is(err, ErrQuotaExceeded) {
+	if err := MeterLookup(ctx, userID); !errors.Is(err, ErrQuotaExceeded) {
 		t.Fatalf("lookup 2: got %v, want ErrQuotaExceeded (past_due is not active)", err)
 	}
 }
 
 // The pre-ADR-029 key keeps working as the free tier for one release.
-func TestLookupFallsBackToTheSupersededQuotaKey(t *testing.T) {
+func TestMeterLookupFallsBackToTheSupersededQuotaKey(t *testing.T) {
 	setupTestDB(t)
-	setupFakeEcdict(t)
 	setQuotaLimits(t, 0, 0)
 	previous := viper.Get("stripe.quota.dictionary-lookup-daily")
 	viper.Set("stripe.quota.dictionary-lookup-daily", 1)
@@ -271,10 +215,10 @@ func TestLookupFallsBackToTheSupersededQuotaKey(t *testing.T) {
 	userID := "u-" + t.Name()
 	ctx := context.Background()
 
-	if _, err := lookupEcdict(ctx, "word1", userID); err != nil {
+	if err := MeterLookup(ctx, userID); err != nil {
 		t.Fatalf("lookup 1: %v", err)
 	}
-	if _, err := lookupEcdict(ctx, "word2", userID); !errors.Is(err, ErrQuotaExceeded) {
+	if err := MeterLookup(ctx, userID); !errors.Is(err, ErrQuotaExceeded) {
 		t.Fatalf("lookup 2: got %v, want ErrQuotaExceeded from the superseded key", err)
 	}
 }

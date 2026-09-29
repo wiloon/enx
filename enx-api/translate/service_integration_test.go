@@ -33,7 +33,7 @@ func TestTranslateReturns503WhenEcdictRequiredButMissing(t *testing.T) {
 		ctx.Set("user_id", "test-user")
 		ctx.Next()
 	})
-	r.GET("/translate", Translate)
+	r.GET("/translate", newTestHandler().Translate)
 
 	req := httptest.NewRequest(http.MethodGet, "/translate?word=notlocalxyz", nil)
 	w := httptest.NewRecorder()

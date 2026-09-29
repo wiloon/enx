@@ -129,7 +129,7 @@ type lookupResponse struct {
 func lookup(t *testing.T, raw, userID string) lookupResponse {
 	t.Helper()
 	c, w := translateCtx(raw, userID)
-	translateWord(c, raw)
+	newTestHandler().translateWord(c, raw)
 	if w.Code != http.StatusOK {
 		t.Fatalf("lookup %q: got %d, want 200 (body=%s)", raw, w.Code, w.Body.String())
 	}
