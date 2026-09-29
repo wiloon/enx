@@ -3,6 +3,7 @@
 ## Problem
 
 When using `task dev` (Vite dev server), the Chrome extension popup shows:
+
 - ❌ "cannot connect to vite server" error message
 - ❌ Popup keeps flashing/reloading
 - ❌ Extension functionality doesn't work
@@ -30,6 +31,7 @@ task watch
 ### Watch Mode Workflow
 
 1. **Start watch mode:**
+
    ```bash
    task watch
    ```
@@ -53,12 +55,12 @@ task watch
 
 ### When to Use Each Command
 
-| Command          | Use Case              | Notes                                        |
-| ---------------- | --------------------- | -------------------------------------------- |
+| Command          | Use Case              | Notes                                         |
+| ---------------- | --------------------- | --------------------------------------------- |
 | `task watch`     | **Local development** | ✅ Recommended - auto-rebuild + manual reload |
-| `task build`     | One-time build        | Same as watch but no auto-rebuild            |
-| `task build-dev` | Alias for build       | Uses local API (`localhost:8090`)            |
-| `task dev`       | ⚠️  Not recommended    | May cause "cannot connect" errors            |
+| `task build`     | One-time build        | Same as watch but no auto-rebuild             |
+| `task build-dev` | Alias for build       | Uses local API (`localhost:8090`)             |
+| `task dev`       | ⚠️ Not recommended    | May cause "cannot connect" errors             |
 
 ## Technical Details
 
@@ -69,9 +71,9 @@ When running `task dev`:
 1. Vite starts dev server on `http://localhost:5173`
 2. Generated `dist/service-worker-loader.js` contains:
    ```javascript
-   import 'http://localhost:5173/@vite/env';
-   import 'http://localhost:5173/@crx/client-worker';
-   import 'http://localhost:5173/src/background/background.ts';
+   import 'http://localhost:5173/@vite/env'
+   import 'http://localhost:5173/@crx/client-worker'
+   import 'http://localhost:5173/src/background/background.ts'
    ```
 3. Extension tries to load these modules from localhost
 4. **Connection fails** due to security policies → error message

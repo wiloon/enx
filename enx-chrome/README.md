@@ -388,6 +388,7 @@ Or save this as an HTML file and open it in Chrome.
 ### Known Issues
 
 **Vite Dev Server with Chrome Extensions**:
+
 - Symptom: Popup shows "cannot connect to vite server" and keeps flashing
 - Cause: `@crxjs/vite-plugin` dev server connection issues with Chrome extension security policies
 - Solution: Use `task watch` instead of `task dev` for local development

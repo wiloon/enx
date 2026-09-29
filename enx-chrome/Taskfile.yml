@@ -44,7 +44,6 @@ tasks:
       - task: ensure-node
       - '{{.FNM_EXEC}} pnpm run dev'
 
-
   watch:
     desc: Watch mode for local development (recommended for Chrome extensions)
     cmds:
@@ -54,7 +53,6 @@ tasks:
       - echo ""
       - task: ensure-node
       - '{{.FNM_EXEC}} pnpm exec vite build --mode homelab --watch'
-
 
   dev-chrome:
     desc: Start Chrome with extension and auto-rebuild (all-in-one development mode)
@@ -115,15 +113,6 @@ tasks:
           --no-first-run \
           "$URL"
 
-
-
-
-
-
-
-
-
-
   build:
     desc: Build extension for the homelab deployment (API -> enx-api.wiloon.lab)
     cmds:
@@ -152,7 +141,6 @@ tasks:
       # it `vite build` runs in homelab mode -> enx-api.wiloon.lab.
       - '{{.FNM_EXEC}} pnpm run build:dev'
       - echo "Build completed! Load dist-development/ in chrome{{":"}}//extensions/"
-
 
   build-watch:
     desc: Build extension in watch mode
@@ -344,7 +332,6 @@ tasks:
       - echo "Build complete! Remember to{{":"}}"
       - echo "1. Go to chrome{{":"}}//extensions"
       - echo "2. Click the reload button on {{.EXT_NAME}}"
-
 
   ci:
     desc: CI/CD workflow (install, lint, test, build)

@@ -172,4 +172,4 @@ task test-e2e-ui
 
 ---
 
-*Last updated: 2025-11-10*
+_Last updated: 2025-11-10_

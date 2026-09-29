@@ -16,9 +16,9 @@ As a result, code snippets are visually modified (words underlined with color) a
 Before enx processing:
 
 ```html
-<code class="language-markup">yaml
-BucketNamePrefix: 'amzn-s3-demo-bucket'
-BucketNamespace: 'account-regional'
+<code class="language-markup"
+  >yaml BucketNamePrefix: 'amzn-s3-demo-bucket' BucketNamespace:
+  'account-regional'
 </code>
 ```
 
@@ -139,12 +139,12 @@ describe('Code block exclusion', () => {
 
 ## Acceptance Criteria
 
-| Scenario | Expected Behavior |
-|---|---|
-| Plain article text | Words highlighted and clickable as before |
-| Inline code `<code>word</code>` | No highlighting, no click handler |
-| Block code `<pre><code>...</code></pre>` | No highlighting, no click handler |
-| `<pre>` without inner `<code>` | No highlighting, no click handler |
+| Scenario                                                  | Expected Behavior                                                            |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Plain article text                                        | Words highlighted and clickable as before                                    |
+| Inline code `<code>word</code>`                           | No highlighting, no click handler                                            |
+| Block code `<pre><code>...</code></pre>`                  | No highlighting, no click handler                                            |
+| `<pre>` without inner `<code>`                            | No highlighting, no click handler                                            |
 | Nested structure: `<p>text <code>snippet</code> text</p>` | Only the `<p>` text nodes are highlighted; the `<code>` text node is skipped |
 
 ## Risk Assessment

@@ -22,13 +22,13 @@ Implemented **hover-based cursor styling** to improve the user experience:
 
 ```css
 .enx-word {
-  cursor: text;              /* Default: Normal text cursor */
+  cursor: text; /* Default: Normal text cursor */
   transition: all 0.15s ease; /* Smooth transition */
 }
 
 .enx-word:hover {
-  cursor: pointer;            /* Only show hand cursor on hover */
-  opacity: 0.8;              /* Visual feedback on hover */
+  cursor: pointer; /* Only show hand cursor on hover */
+  opacity: 0.8; /* Visual feedback on hover */
 }
 ```
 
