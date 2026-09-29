@@ -26,6 +26,7 @@ When creating or updating code, follow DDD best practices to maintain clean arch
 enx-api/
 ├── handlers/      # HTTP handlers (presentation layer)
 ├── enx/          # Domain logic and entities
+├── dictionary/, billing/, stats/, …  # Domain packages, one per domain concept
 ├── repo/         # Repository pattern (data access)
 ├── utils/        # Shared utilities
 └── middleware/   # Cross-cutting concerns
@@ -235,9 +236,10 @@ entry is wrong or missing, the fix goes in an application-side table, never in
 ECDICT. This keeps ECDICT a drop-in, independently-updatable dataset: a new
 upstream release can replace the file wholesale with no migration.
 
-The single word-lookup seam is `dictionary.Lookup` (ADR-018): it reads the
-application's `words`/`user_dicts` first, then `ecdict.Query`; callers do not
-touch `ecdict` directly.
+The single word-lookup entry point is `dictionary.Service.Resolve` (ADR-018): it reads
+the application's `words` table first, then ECDICT (caching a hit in `words`),
+and meters the lookup; callers do not touch `ecdict` directly. Per-user review
+bookkeeping (`user_dicts`) stays with the caller (`repo.RecordWordLookup`).
 
 ## Testing Requirements
 
