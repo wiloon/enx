@@ -62,6 +62,7 @@ export interface ContentMessage {
     | 'reportReadingProgress'
     | 'submitPageReport'
     | 'savePage'
+    | 'shouldAutoEnable'
   word?: string
   words?: string
   paragraph?: string
@@ -110,6 +111,9 @@ export interface ReadingStatsDelta {
 export interface BackgroundResponse {
   success: boolean
   data?: unknown
+  // Set by 'shouldAutoEnable' (adr-039): this page's site is one the user
+  // chose "Always enable on this site" for, and they are signed in.
+  autoEnable?: boolean
   error?: string
   ecp?: WordData
   wordProperties?: Record<string, WordData>

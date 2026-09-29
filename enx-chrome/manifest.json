@@ -4,8 +4,18 @@
   "name": "Catglish - Learn English as you read the web",
   "version": "1.0.1",
   "description": "Underlines the words worth learning as you read English online, explains any word you click, and translates whole sentences.",
-  "permissions": ["storage", "activeTab", "scripting", "notifications", "identity", "sidePanel", "contextMenus", "cookies"],
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "notifications",
+    "identity",
+    "sidePanel",
+    "contextMenus",
+    "cookies"
+  ],
   "host_permissions": [],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   },

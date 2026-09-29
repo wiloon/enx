@@ -897,3 +897,106 @@ describe('background onMessageExternal (ADR-019 web -> extension channel)', () =
     })
   })
 })
+
+// adr-039: per-site "Always enable on this site".
+describe('background auto-enable wiring (adr-039)', () => {
+  const listener = onMessageListener
+  // Captured at collection time, before any beforeEach resetAllMocks().
+  const firstListener = (event: { addListener: unknown }) =>
+    (event.addListener as jest.Mock).mock.calls[0]?.[0] as () => unknown
+  const onPermissionsAdded = firstListener(chrome.permissions.onAdded)
+  const onPermissionsRemoved = firstListener(chrome.permissions.onRemoved)
+  const onStartup = firstListener(chrome.runtime.onStartup)
+
+  const JS = ['assets/content.tsx-loader-abc.js']
+
+  function granted(...origins: string[]) {
+    ;(chrome.permissions.getAll as jest.Mock).mockResolvedValue({
+      permissions: [],
+      origins,
+    })
+  }
+
+  const ask = (
+    sender: unknown,
+    request: unknown = { action: 'shouldAutoEnable' }
+  ) =>
+    new Promise(resolve => {
+      listener(request, sender, resolve)
+    })
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    __resetClerkClientCacheForTests()
+    setClerkSession('clerk-session-jwt')
+    ;(chrome.runtime.getManifest as jest.Mock).mockReturnValue({
+      host_permissions: [],
+      content_scripts: [{ matches: [], js: JS }],
+    })
+    ;(
+      chrome.scripting.getRegisteredContentScripts as jest.Mock
+    ).mockResolvedValue([])
+    ;(chrome.scripting.registerContentScripts as jest.Mock).mockResolvedValue(
+      undefined
+    )
+    granted()
+  })
+
+  it('answers true for a granted site when signed in', async () => {
+    granted('https://www.infoq.com/*')
+    expect(await ask({ origin: 'https://www.infoq.com' })).toEqual({
+      success: true,
+      autoEnable: true,
+    })
+  })
+
+  it('answers false for a site that was not granted', async () => {
+    expect(await ask({ origin: 'https://www.infoq.com' })).toEqual({
+      success: true,
+      autoEnable: false,
+    })
+  })
+
+  // Auto-enabling while signed out would put a "session expired" notice on
+  // every page of the site.
+  it('answers false when signed out', async () => {
+    granted('https://www.infoq.com/*')
+    setClerkSession(null)
+    expect(await ask({ origin: 'https://www.infoq.com' })).toEqual({
+      success: true,
+      autoEnable: false,
+    })
+  })
+
+  // The origin comes from Chrome's sender info, never from the message body.
+  it('uses the sender origin, not a claimed one', async () => {
+    granted('https://www.infoq.com/*')
+    expect(
+      await ask(
+        { origin: 'https://evil.example' },
+        { action: 'shouldAutoEnable', origin: 'https://www.infoq.com' }
+      )
+    ).toEqual({ success: true, autoEnable: false })
+  })
+
+  it('falls back to the sender tab URL when origin is absent', async () => {
+    granted('https://www.infoq.com/*')
+    expect(await ask({ tab: { url: 'https://www.infoq.com/news/1' } })).toEqual(
+      { success: true, autoEnable: true }
+    )
+  })
+
+  it.each([
+    ['permissions.onAdded', () => onPermissionsAdded],
+    ['permissions.onRemoved', () => onPermissionsRemoved],
+    ['runtime.onStartup', () => onStartup],
+  ])('reconciles registered scripts on %s', async (_name, get) => {
+    granted('https://www.infoq.com/*')
+
+    await get()()
+
+    expect(chrome.scripting.registerContentScripts).toHaveBeenCalledWith([
+      expect.objectContaining({ matches: ['https://www.infoq.com/*'] }),
+    ])
+  })
+})

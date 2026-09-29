@@ -43,6 +43,9 @@ if (typeof globalThis.CSS === 'undefined') {
     onInstalled: {
       addListener: jest.fn(),
     },
+    onStartup: {
+      addListener: jest.fn(),
+    },
     getManifest: jest.fn(() => ({ version: '0.0.0-test' })),
     getURL: jest.fn((path: string) => `chrome-extension://test/${path}`),
     getContexts: jest.fn(async () => []),
@@ -108,6 +111,21 @@ if (typeof globalThis.CSS === 'undefined') {
   },
   scripting: {
     executeScript: jest.fn(),
+    registerContentScripts: jest.fn(),
+    unregisterContentScripts: jest.fn(),
+    getRegisteredContentScripts: jest.fn(),
+  },
+  permissions: {
+    request: jest.fn(),
+    remove: jest.fn(),
+    contains: jest.fn(),
+    getAll: jest.fn(),
+    onAdded: {
+      addListener: jest.fn(),
+    },
+    onRemoved: {
+      addListener: jest.fn(),
+    },
   },
 }
 
