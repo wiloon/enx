@@ -257,10 +257,35 @@ tasks:
       - task dev-chrome URL={{.URL | default "https://rssx-lab.wiloon.com/"}}
 
   ui:run:
-    desc: Start enx-ui in development mode (http://localhost:3000)
+    desc: Restart enx-ui in development mode on http://localhost:3000 (usage - task ui:run [MODE=fg|bg] - default is fg)
+    dir: enx-ui
+    vars:
+      MODE: '{{.MODE | default "fg"}}'
+    cmds:
+      - '{{.FNM_UI}} bash scripts/dev-server.sh {{.MODE}}'
+
+  ui:stop:
+    desc: Stop the enx-ui dev server
     dir: enx-ui
     cmds:
-      - '{{.FNM_UI}} pnpm dev'
+      - bash scripts/dev-server.sh stop
+
+  dev:web:
+    desc: Restart enx-api and enx-ui in the background, then open the site in a new Chrome window (replacing the previous run's). URL=/app to open another page
+    vars:
+      URL: '{{.URL | default "/"}}'
+    cmds:
+      - task: api:run
+        vars: { MODE: bg }
+      - task: ui:run
+        vars: { MODE: bg }
+      - cd enx-ui && bash scripts/dev-server.sh open '{{.URL}}'
+
+  stop:web:
+    desc: Stop the enx-api and enx-ui dev servers started by dev:web
+    cmds:
+      - task: api:stop
+      - task: ui:stop
 
   stop:dev:
     desc: Stop all development services
