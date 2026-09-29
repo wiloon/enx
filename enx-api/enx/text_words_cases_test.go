@@ -7,10 +7,10 @@ import (
 	"enx-api/repo"
 )
 
-func TestQueryCountInTextDigitLeadingToken(t *testing.T) {
+func TestWordsInDigitLeadingToken(t *testing.T) {
 	newEcpTestDB(t)
 
-	out := QueryCountInText("6-year-old", "u1")
+	out := wordsIn(t, "6-year-old", "u1")
 	got, ok := out["6-year-old"]
 	if !ok {
 		t.Fatal(`expected key "6-year-old" to be present`)
@@ -20,10 +20,10 @@ func TestQueryCountInTextDigitLeadingToken(t *testing.T) {
 	}
 }
 
-func TestQueryCountInTextWordNotInDB(t *testing.T) {
+func TestWordsInWordNotInDB(t *testing.T) {
 	newEcpTestDB(t)
 
-	out := QueryCountInText("morning", "u1")
+	out := wordsIn(t, "morning", "u1")
 	got, ok := out["morning"]
 	if !ok {
 		t.Fatal(`expected key "morning" to be present`)
@@ -33,7 +33,7 @@ func TestQueryCountInTextWordNotInDB(t *testing.T) {
 	}
 }
 
-func TestQueryCountInTextWordWithExistingUserDict(t *testing.T) {
+func TestWordsInWordWithExistingUserDict(t *testing.T) {
 	db := newEcpTestDB(t)
 	now := time.Now().UnixMilli()
 	if err := db.Create(&repo.Word{Id: "id-morning", English: "morning", CreatedAt: now, UpdatedAt: now}).Error; err != nil {
@@ -43,7 +43,7 @@ func TestQueryCountInTextWordWithExistingUserDict(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out := QueryCountInText("morning", "u1")
+	out := wordsIn(t, "morning", "u1")
 	got, ok := out["morning"]
 	if !ok {
 		t.Fatal(`expected key "morning" to be present`)
@@ -56,10 +56,10 @@ func TestQueryCountInTextWordWithExistingUserDict(t *testing.T) {
 	}
 }
 
-func TestQueryCountInTextCollapsesWhitespaceAndSkipsEmpty(t *testing.T) {
+func TestWordsInCollapsesWhitespaceAndSkipsEmpty(t *testing.T) {
 	newEcpTestDB(t)
 
-	out := QueryCountInText("hello   world", "u1")
+	out := wordsIn(t, "hello   world", "u1")
 	if _, ok := out["hello"]; !ok {
 		t.Error(`expected key "hello" to be present`)
 	}

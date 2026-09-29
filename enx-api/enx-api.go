@@ -10,6 +10,7 @@ import (
 	"enx-api/dictionary"
 	"enx-api/dictionary/adapters"
 	"enx-api/ecdict"
+	"enx-api/enx"
 	"enx-api/handlers"
 	"enx-api/middleware"
 	"enx-api/pagereport"
@@ -291,6 +292,9 @@ func setupRouter() *gin.Engine {
 
 	// Word lookup (ADR-018): the dictionary domain service over the words
 	// table and ECDICT, plus the per-user review log.
+	// Word states for a page (paragraph-init): one query per paragraph.
+	paragraphHandler := paragraph.NewHandler(enx.NewTextWords(enx.RepoWordStates{}))
+
 	lookupHandler := translate.NewHandler(
 		dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, dictionary.QuotaMeter{}),
 		repo.ReviewLog{},
@@ -364,7 +368,7 @@ func setupRouter() *gin.Engine {
 	apiGroup.Use(stats.TZOffsetMiddleware())
 	{
 		// get words query count by paragraph
-		apiGroup.GET("/paragraph-init", paragraph.ParagraphInit)
+		apiGroup.GET("/paragraph-init", paragraphHandler.ParagraphInit)
 
 		// translate
 		apiGroup.GET("/translate", lookupHandler.Translate)

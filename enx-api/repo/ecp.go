@@ -3,6 +3,7 @@ package repo
 import (
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
+	"strings"
 	"time"
 )
 
@@ -118,4 +119,48 @@ func ToggleAcquainted(userId, wordId string) (queryCount int, alreadyAcquainted 
 		RETURNING query_count, already_acquainted`,
 		userId, wordId, now, now).Scan(&row).Error
 	return row.QueryCount, row.AlreadyAcquainted, err
+}
+
+// WordState is a words row with one user's review state for it.
+type WordState struct {
+	Id                string
+	English           string
+	QueryCount        int
+	AlreadyAcquainted int
+}
+
+// wordStatesSQL takes the user id and a list of lower-cased englishes.
+const wordStatesSQL = `
+	SELECT w.id, w.english,
+		COALESCE(ud.query_count, 0) AS query_count,
+		COALESCE(ud.already_acquainted, 0) AS already_acquainted
+	FROM words w
+	LEFT JOIN user_dicts ud ON ud.word_id = w.id AND ud.user_id = ?
+	WHERE LOWER(w.english) IN ? AND +w.deleted_at IS NULL`
+
+// wordStatesChunk keeps each IN list well under SQLite's bound-parameter limit.
+const wordStatesChunk = 500
+
+// WordStatesByEnglish returns every live words row whose english matches one
+// of englishes case-insensitively, with userId's review state (zero when the
+// user has no row for it). One query per 500 words, using the
+// LOWER(english) index. The unary + on deleted_at keeps SQLite's planner off
+// idx_words_deleted_at: with an IN list it otherwise prefers that index,
+// which matches every live row, i.e. scans the table.
+func WordStatesByEnglish(userId string, englishes []string) ([]WordState, error) {
+	lower := make([]string, 0, len(englishes))
+	for _, e := range englishes {
+		lower = append(lower, strings.ToLower(e))
+	}
+	var states []WordState
+	for start := 0; start < len(lower); start += wordStatesChunk {
+		end := min(start+wordStatesChunk, len(lower))
+		var chunk []WordState
+		err := sqlitex.DB.Raw(wordStatesSQL, userId, lower[start:end]).Scan(&chunk).Error
+		if err != nil {
+			return nil, err
+		}
+		states = append(states, chunk...)
+	}
+	return states, nil
 }
