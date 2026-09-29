@@ -23,7 +23,7 @@ func setupTestDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&sqlitex.Word{}, &sqlitex.Subscription{}, &sqlitex.DictionaryLookupQuota{}); err != nil {
+	if err := db.AutoMigrate(&sqlitex.Word{}, &sqlitex.Subscription{}, &sqlitex.DictionaryLookupQuota{}, &sqlitex.DailyStat{}); err != nil {
 		t.Fatal(err)
 	}
 	sqlitex.DB = db
