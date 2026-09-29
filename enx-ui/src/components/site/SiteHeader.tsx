@@ -1,5 +1,7 @@
 import Link from 'next/link'
 import { SITE } from '@/lib/site'
+import BrandMark from './BrandMark'
+import GitHubIcon from './GitHubIcon'
 import HeaderAuthLinks from './HeaderAuthLinks'
 
 const NAV = [
@@ -14,11 +16,7 @@ export default function SiteHeader() {
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-4 sm:px-6">
         <Link href="/" className="flex items-center gap-2 font-semibold">
-          <span
-            aria-hidden
-            className="inline-block h-5 w-5 rounded-full bg-brand ring-2 ring-brand/25"
-          />
-          {SITE.name}
+          <BrandMark />
         </Link>
 
         <nav className="hidden flex-1 items-center gap-6 md:flex">
@@ -34,6 +32,16 @@ export default function SiteHeader() {
         </nav>
 
         <div className="ml-auto flex items-center gap-4 md:ml-0">
+          <a
+            href={SITE.githubUrl}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="GitHub"
+            title="Source code on GitHub"
+            className="text-foreground/70 transition-colors hover:text-foreground"
+          >
+            <GitHubIcon className="h-5 w-5" />
+          </a>
           <HeaderAuthLinks />
           <a
             href={SITE.chromeWebStoreUrl}

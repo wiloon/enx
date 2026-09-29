@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import AppSidebar from '../AppSidebar'
+import { SITE } from '@/lib/site'
 
 const mockPathname = jest.fn()
 jest.mock('next/navigation', () => ({
@@ -110,4 +111,15 @@ it('shows the Admin group for an admin', () => {
   expect(screen.getByText('Admin')).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'Dictionary' })).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'Page reports' })).toBeInTheDocument()
+})
+
+it('marks the product as Beta and links to GitHub', () => {
+  mockPathname.mockReturnValue('/app')
+  render(<AppSidebar />)
+
+  expect(screen.getByText('Beta')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'GitHub' })).toHaveAttribute(
+    'href',
+    SITE.githubUrl
+  )
 })
