@@ -12,6 +12,7 @@ import (
 	"enx-api/ecdict"
 	"enx-api/enx"
 	"enx-api/handlers"
+	"enx-api/metrics"
 	"enx-api/middleware"
 	"enx-api/pagereport"
 	"enx-api/paragraph"
@@ -57,7 +58,9 @@ func main() {
 	go runStatsIngestLogCleanup()
 	go runPageReportCleanup()
 
-	router := setupRouter()
+	m := metrics.New()
+	go serveMetrics(viper.GetString("metrics.addr"), m)
+	router := setupRouter(m)
 
 	port := viper.GetInt("enx.port")
 	listenAddress := fmt.Sprintf(":%d", port)
@@ -220,17 +223,18 @@ func runPageReportCleanup() {
 	}
 }
 
-func setupRouter() *gin.Engine {
+func setupRouter(m *metrics.Metrics) *gin.Engine {
 	// ReleaseMode
 	gin.SetMode(gin.DebugMode)
 	router := gin.New()
 
-	// Add Recovery middleware to recover from panics
-	router.Use(gin.Recovery())
-
+	// Metrics and the request log wrap Recovery, so a recovered panic is
+	// recorded as the 500 Recovery writes (ADR-040).
+	router.Use(m.Middleware())
 	// One structured line per request (route template, status, duration,
 	// user) instead of free-text request logging.
 	router.Use(middleware.RequestLog(logger.Infow))
+	router.Use(gin.Recovery())
 
 	// Custom CORS middleware to support chrome-extension origins
 	router.Use(func(c *gin.Context) {
@@ -315,6 +319,8 @@ func setupRouter() *gin.Engine {
 		}
 		logger.Warnf("sentence translation disabled: %v", sentenceTranslateErr)
 		sentenceTranslator = nil
+	} else {
+		sentenceTranslator = aitranslate.Instrument(sentenceTranslator, viper.GetString("sentence-translate.provider"), m)
 	}
 	sentenceHandler := aitranslate.NewHandler(
 		sentenceTranslator,
@@ -337,6 +343,8 @@ func setupRouter() *gin.Engine {
 		}
 		logger.Warnf("rephrase disabled: %v", rephraseErr)
 		rephraser = nil
+	} else {
+		rephraser = aitranslate.InstrumentRephraser(rephraser, viper.GetString("sentence-translate.provider"), m)
 	}
 	rephraseHandler := aitranslate.NewRephraseHandler(
 		rephraser,
@@ -453,4 +461,24 @@ func setupRouter() *gin.Engine {
 	router.POST("/billing/webhook", billingHandler.Webhook)
 
 	return router
+}
+
+// serveMetrics serves /metrics on its own listener (ADR-040): never the
+// public port, so nginx and the ingress never expose it. addr defaults to
+// 127.0.0.1:9091 (EC2, where only the local Alloy scrapes it); homelab sets
+// METRICS_ADDR=0.0.0.0:9091 so the cluster's Prometheus can reach the pod.
+// An empty addr turns it off.
+func serveMetrics(addr string, m *metrics.Metrics) {
+	if addr == "" {
+		logger.Warn("metrics listener disabled (metrics.addr is empty)")
+		return
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", m.Handler())
+	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	logger.Infof("metrics listening on %s", addr)
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		// Losing metrics must not take the API down with it.
+		logger.Errorf("metrics listener on %s stopped: %v", addr, err)
+	}
 }

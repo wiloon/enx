@@ -7,6 +7,7 @@ import (
 
 	"enx-api/dictionary"
 	"enx-api/enx"
+	"enx-api/metrics"
 	"enx-api/middleware"
 	"enx-api/utils/logger"
 
@@ -80,6 +81,10 @@ func (h *Handler) translateWord(c *gin.Context, raw string) {
 		c.JSON(502, gin.H{"success": false, "message": "Dictionary lookup failed"})
 		return
 	}
+
+	// ADR-040: the metrics middleware records this request's latency under
+	// the source that answered it.
+	c.Set(metrics.LookupSourceKey, string(res.Source))
 
 	word.Id = res.ID
 	word.English = res.English

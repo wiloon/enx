@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"enx-api/dictionary"
+	"enx-api/metrics"
 
 	"github.com/gin-gonic/gin"
 )
@@ -93,5 +94,28 @@ func TestHandlerAnswersWhenReviewLogFails(t *testing.T) {
 	code, resp := serve(t, NewHandler(fakeResolver{res: res}, reviews), "run")
 	if code != http.StatusOK || resp.Chinese != "v. 跑" || resp.LoadCount != 0 {
 		t.Fatalf("got %d %+v, want 200 with the definition and LoadCount 0", code, resp)
+	}
+}
+
+// ADR-040: the handler tags a completed lookup with its source, which the
+// metrics middleware turns into the lookup-latency histogram.
+func TestHandlerTagsLookupSource(t *testing.T) {
+	for _, tc := range []struct {
+		res  dictionary.Result
+		err  error
+		want string
+	}{
+		{dictionary.Result{ID: "w1", English: "run", Source: dictionary.SourceLocal}, nil, "local"},
+		{dictionary.Result{ID: "w2", English: "run", Source: dictionary.SourceEcdict}, nil, "ecdict"},
+		{dictionary.Result{English: "zzxqv", Source: dictionary.SourceMiss}, nil, "miss"},
+		// A lookup that never completed is not a lookup-latency sample.
+		{dictionary.Result{}, dictionary.ErrEcdictUnavailable, ""},
+	} {
+		gin.SetMode(gin.TestMode)
+		c, _ := translateCtx("run", "u1")
+		NewHandler(fakeResolver{res: tc.res, err: tc.err}, &fakeReviewLog{}).translateWord(c, "run")
+		if got := c.GetString(metrics.LookupSourceKey); got != tc.want {
+			t.Errorf("source %q / err %v: tagged %q, want %q", tc.res.Source, tc.err, got, tc.want)
+		}
 	}
 }
