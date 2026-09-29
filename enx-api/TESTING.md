@@ -52,7 +52,7 @@ cd enx-api && task test-integration
 **Prerequisites**:
 - Database: `enx-api/enx.db` (auto-created from `enx.sql`)
 - Config: `enx-api/config.toml` (auto-copied from `config-e2e.toml`)
-- ECDICT (for translation/dictionary integration tests): set `ECDICT_DB_PATH` to a local [ECDICT](https://github.com/skywind3000/ECDICT) SQLite file
+- ECDICT (for translation/dictionary integration tests): the test tasks default `ECDICT_DB_PATH` to the shared local copy `~/.local/share/enx/ecdict/stardict.db` (run `task ecdict:download` at the repo root once; see the root README "ECDICT dictionary (local copy)"). Set `ECDICT_DB_PATH` to use another file. Unit tests never need it: they build a small fake `stardict` table.
 - Integration tests: `dictionary/lookup_integration_test.go`（Lookup 503）、`translate/service_integration_test.go`（翻译 API 503）
 
 ### All Tests

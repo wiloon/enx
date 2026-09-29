@@ -43,6 +43,9 @@ This is a monorepo containing multiple sub-projects:
 # Install dependencies for all projects
 task setup
 
+# Download the ECDICT dictionary for local development (once per machine)
+task ecdict:download
+
 # Start API server
 task api:start
 
@@ -54,6 +57,19 @@ task dev-chrome
 ```
 
 ## Development Environment
+
+### ECDICT dictionary (local copy)
+
+enx-api falls back to [ECDICT](https://github.com/skywind3000/ECDICT) (`stardict.db`, ~850MB, 3.4M entries) for words that are not yet in its `words` table. For local development there is one shared copy per machine, outside the repo:
+
+- Path: `~/.local/share/enx/ecdict/stardict.db`
+- Get it: `task ecdict:download`. It downloads the release production uses (1.0.28; the URL is pinned in w10n-config `infra/aws/ansible/ec2-tokyo/site.yml`), and does nothing if the file is already there.
+- Used by: `task api:run` / `task dev:web` / enx-api `task dev`, and the integration test tasks, whenever `ECDICT_DB_PATH` is unset. Set `ECDICT_DB_PATH` to use another file.
+- Because it lives outside the repo, every git worktree uses the same copy and `git clean` never deletes it.
+
+This copy is for local development only. Production downloads its own copy on the EC2 host (ADR-031), and homelab mounts it from the `enx-ecdict-data` PVC.
+
+Without the file, enx-api still starts. Words already in `words` still resolve, and any other word returns 503 "ECDICT unavailable".
 
 ### Load Unpacked Extension
 
