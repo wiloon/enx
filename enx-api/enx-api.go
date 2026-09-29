@@ -43,12 +43,9 @@ func main() {
 	devMode := viper.GetBool("enx.dev-mode")
 	fmt.Println("devMode:", devMode)
 
-	// deploy to docker/k8s, disable file output
-	logger.Init("CONSOLE", "debug", "enx-api")
-	logger.Debug("debug log test")
-	logger.Warn("warn log test")
-	logger.Warnf("warnf log test %s", "test")
-	logger.Sync()
+	// Console only (docker/k8s collect stdout). The level comes from
+	// log.level / LOG_LEVEL, default info.
+	logger.Init("CONSOLE", viper.GetString("log.level"), "enx-api")
 	m := metrics.New()
 	sqlitex.Init()
 	if err := m.InstrumentDB(sqlitex.DB); err != nil {

@@ -1,6 +1,11 @@
 package logger
 
-import "testing"
+import (
+	"testing"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+)
 
 // This test must run before any test that calls Init, since sugaredLogger
 // is a package-level var that, once set, is never nil again for the rest
@@ -44,13 +49,29 @@ func TestDefaultLoggerSyncPanics(t *testing.T) {
 	_ = GetLogger().Sync()
 }
 
-func TestInitWithInvalidLevelIsANoop(t *testing.T) {
+// A mistyped LOG_LEVEL must not leave the service on the unlevelled stdlib
+// logger (which prints everything): it falls back to info.
+func TestInitWithInvalidLevelFallsBackToInfo(t *testing.T) {
 	Init("CONSOLE", "not-a-real-level", "enx-api-test")
 
-	// sugaredLogger must remain unset, so GetLogger still returns the
-	// default (non-zap) logger.
-	if _, ok := GetLogger().(*defaultLogger); !ok {
-		t.Fatalf("expected an invalid level to leave the default logger in place, got %T", GetLogger())
+	assertLevel(t, zap.InfoLevel)
+}
+
+func TestInitAppliesTheLevel(t *testing.T) {
+	Init("CONSOLE", "warn", "enx-api-test")
+
+	assertLevel(t, zap.WarnLevel)
+}
+
+func assertLevel(t *testing.T, want zapcore.Level) {
+	t.Helper()
+	sugar, ok := GetLogger().(*zap.SugaredLogger)
+	if !ok {
+		t.Fatalf("GetLogger() = %T, want the zap logger", GetLogger())
+	}
+	core := sugar.Desugar().Core()
+	if !core.Enabled(want) || (want > zapcore.DebugLevel && core.Enabled(want-1)) {
+		t.Fatalf("logger is not at %s", want)
 	}
 }
 

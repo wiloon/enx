@@ -52,6 +52,10 @@ func TestViperInitSetsDefaults(t *testing.T) {
 	if got := viper.GetInt("enx.port"); got != 8091 {
 		t.Errorf("enx.port = %d, want 8091", got)
 	}
+	// Production has no config.toml: without LOG_LEVEL it must not log at debug.
+	if got := viper.GetString("log.level"); got != "info" {
+		t.Errorf("log.level = %q, want info", got)
+	}
 	if got := viper.GetBool("enx.dev-mode"); got != false {
 		t.Errorf("enx.dev-mode = %v, want false", got)
 	}
@@ -81,4 +85,15 @@ func TestViperInitSetsDefaults(t *testing.T) {
 
 	// Calling it again must be a no-op (sync.Once) and must not panic.
 	ViperInit()
+}
+
+func TestViperInitLogLevelFromEnv(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LOG_LEVEL", "warn")
+
+	ViperInit()
+
+	if got := viper.GetString("log.level"); got != "warn" {
+		t.Errorf("log.level = %q, want warn from LOG_LEVEL", got)
+	}
 }
