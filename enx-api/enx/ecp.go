@@ -65,24 +65,9 @@ func (word *Word) SetEnglish(raw string) {
 	word.SetEnglishField(english)
 }
 
-// count by english
-func (word *Word) CountByEnglish() int {
-	count := repo.CountByEnglish(word.English)
-	return count
-}
 func (word *Word) FindId() {
 	sWord := repo.GetWordByEnglish(word.English)
 	word.Id = sWord.Id
-}
-
-func (word *Word) LoadByEnglish() {
-	sWord := repo.GetWordByEnglish(word.English)
-	word.Id = sWord.Id
-	word.English = sWord.English
-	word.Chinese = sWord.Chinese
-	word.Pronunciation = sWord.Pronunciation
-	word.LoadCount = sWord.LoadCount
-	logger.Debugf("load by english, word: %s, id: %s", word.English, word.Id)
 }
 
 func (word *Word) SetEnglishField(english string) {
@@ -107,39 +92,6 @@ func (word *Word) FindQueryCount(userId string) int {
 	word.LoadCount = qc
 	word.AlreadyAcquainted = acquainted
 	return qc
-}
-
-func (word *Word) FindLoadCountById() int {
-	sqlitex.DB.Table("words").Where("words.id=?", word.Id).Scan(&word)
-	logger.Debugf("find one load count, word: %+v", word)
-	return word.LoadCount
-}
-
-func (word *Word) Translate(userId string) *Word {
-	// search word in db: exact match first, then case-insensitive (see repo.GetWordByEnglish)
-
-	if userId == "" {
-		logger.Errorf("no valid user id provided")
-		return word
-	}
-
-	sWord := repo.Translate(word.English, userId)
-	word.Id = sWord.Id
-	word.Chinese = sWord.Chinese
-	word.Pronunciation = sWord.Pronunciation
-
-	word.LoadCount = sWord.LoadCount
-	if sWord.Id != "" {
-		// Query user_dicts from database using UUID
-		// userId needs to be converted to UUID string format
-		queryCount, _, _ := repo.GetUserWordQueryCount(sWord.Id, userId)
-		if queryCount > 0 {
-			word.LoadCount = queryCount
-		}
-	}
-
-	logger.Infof("word translate result, id: %v, english: %s", sWord.Id, word.Key)
-	return word
 }
 
 // Save inserts the word as a new row. On failure (e.g. the UNIQUE constraint

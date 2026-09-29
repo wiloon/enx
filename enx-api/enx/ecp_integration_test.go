@@ -37,20 +37,9 @@ func TestSaveDuplicateEnglish_UniqueConstraintPreventsDuplicate(t *testing.T) {
 		t.Error("second Save should fail on the unique constraint")
 	}
 
-	word.Translate("1")
-	count := word.CountByEnglish()
+	var count int64
+	sqlitex.DB.Model(&sqlitex.Word{}).Where("english = ?", "Kehinde").Count(&count)
 	if count != 1 {
 		t.Errorf("word count should be 1, actual: %d", count)
-	}
-}
-
-func TestWordNotExist(t *testing.T) {
-	setupIntegrationDB(t)
-	word := Word{}
-	word.SetEnglish("wordddd")
-
-	word.Translate("1")
-	if word.Id != "" {
-		t.Errorf("invalid word id")
 	}
 }

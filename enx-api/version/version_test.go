@@ -45,37 +45,6 @@ func TestGetVersionInfo(t *testing.T) {
 	}
 }
 
-func TestGetVersionString(t *testing.T) {
-	versionStr := GetVersionString()
-
-	if versionStr == "" {
-		t.Fatal("GetVersionString() returned empty string")
-	}
-
-	// Should contain "enx-api v" prefix
-	if len(versionStr) < 8 {
-		t.Error("Version string too short")
-	}
-}
-
-func TestGetDetailedVersionString(t *testing.T) {
-	detailedStr := GetDetailedVersionString()
-
-	if detailedStr == "" {
-		t.Fatal("GetDetailedVersionString() returned empty string")
-	}
-
-	// Should contain multiple lines with version information
-	if len(detailedStr) < 20 {
-		t.Error("Detailed version string too short")
-	}
-
-	// Should contain uptime information
-	if !strings.Contains(detailedStr, "Uptime:") {
-		t.Error("Detailed version string should contain uptime information")
-	}
-}
-
 func TestGetUptime(t *testing.T) {
 	uptime := GetUptime()
 

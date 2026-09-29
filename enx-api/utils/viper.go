@@ -41,7 +41,6 @@ func viperInitInternal() {
 	// Bind each config key to an explicit environment variable
 	_ = viper.BindEnv("enx.port", "ENX_PORT")
 	_ = viper.BindEnv("enx.dev-mode", "ENX_DEV_MODE")
-	_ = viper.BindEnv("redis.address", "REDIS_ADDRESS")
 	_ = viper.BindEnv("resend.api-key", "RESEND_API_KEY")
 	_ = viper.BindEnv("resend.from", "RESEND_FROM")
 	_ = viper.BindEnv("resend.admin-to", "RESEND_ADMIN_TO")

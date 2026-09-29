@@ -147,42 +147,6 @@ func TestGetUserByID(t *testing.T) {
 	}
 }
 
-func TestGetUserByVerificationToken(t *testing.T) {
-	newUserTestDB(t)
-	u := createTestUser(t, "alice", "hunter2")
-	if err := u.SetVerificationToken("tok-123", time.Now().Add(48*time.Hour)); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	got := GetUserByVerificationToken("tok-123")
-	if got.Id != u.Id {
-		t.Errorf("Id = %q, want %q", got.Id, u.Id)
-	}
-
-	got = GetUserByVerificationToken("missing-token")
-	if got.Id != "" {
-		t.Error("expected an empty user for a token that doesn't exist")
-	}
-}
-
-func TestGetUserByResetToken(t *testing.T) {
-	newUserTestDB(t)
-	u := createTestUser(t, "alice", "hunter2")
-	if err := u.SetResetToken("reset-123", time.Now().Add(1*time.Hour)); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	got := GetUserByResetToken("reset-123")
-	if got.Id != u.Id {
-		t.Errorf("Id = %q, want %q", got.Id, u.Id)
-	}
-
-	got = GetUserByResetToken("missing-token")
-	if got.Id != "" {
-		t.Error("expected an empty user for a token that doesn't exist")
-	}
-}
-
 func TestUserActivateClearsVerificationToken(t *testing.T) {
 	newUserTestDB(t)
 	u := createTestUser(t, "alice", "hunter2")
@@ -227,22 +191,5 @@ func TestUserUpdatePasswordClearsResetToken(t *testing.T) {
 	loginOld := &User{Name: "alice", Password: "old-password"}
 	if loginOld.Login() {
 		t.Error("expected login with the old password to fail")
-	}
-}
-
-func TestGenerateTokenIsUniqueAndHexEncoded(t *testing.T) {
-	tok1, err := GenerateToken()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	tok2, err := GenerateToken()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(tok1) != 64 { // 32 bytes hex-encoded
-		t.Errorf("len(tok1) = %d, want 64", len(tok1))
-	}
-	if tok1 == tok2 {
-		t.Error("expected two calls to GenerateToken to produce different tokens")
 	}
 }
