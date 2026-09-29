@@ -45,9 +45,11 @@ func main() {
 
 	// Console only (docker/k8s collect stdout). The level comes from
 	// log.level / LOG_LEVEL, default info.
-	logger.Init("CONSOLE", viper.GetString("log.level"), "enx-api")
+	logLevel := viper.GetString("log.level")
+	logger.Init("CONSOLE", logLevel, "enx-api")
+	gin.SetMode(ginMode(logLevel))
 	m := metrics.New()
-	sqlitex.Init()
+	sqlitex.InitWithLogLevel(logLevel)
 	if err := m.InstrumentDB(sqlitex.DB); err != nil {
 		// Losing the busy counter must not stop the API.
 		logger.Errorf("metrics: sqlite instrumentation: %v", err)
@@ -224,9 +226,16 @@ func runPageReportCleanup() {
 	}
 }
 
+// ginMode ties gin's mode to the log level: debug keeps gin's route dump and
+// warnings, anything else (production defaults to info) runs release.
+func ginMode(logLevel string) string {
+	if strings.EqualFold(strings.TrimSpace(logLevel), "debug") {
+		return gin.DebugMode
+	}
+	return gin.ReleaseMode
+}
+
 func setupRouter(m *metrics.Metrics) *gin.Engine {
-	// ReleaseMode
-	gin.SetMode(gin.DebugMode)
 	router := gin.New()
 
 	// Metrics and the request log wrap Recovery, so a recovered panic is

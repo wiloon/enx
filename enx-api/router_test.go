@@ -91,3 +91,20 @@ func TestCORSPreflightAllowsQuery(t *testing.T) {
 		t.Fatalf("Access-Control-Allow-Methods = %q, want QUERY listed", w.Header().Get("Access-Control-Allow-Methods"))
 	}
 }
+
+// Production runs at the default log level, so gin must not stay in debug
+// mode there (it dumps every route and warns on each start).
+func TestGinModeFollowsLogLevel(t *testing.T) {
+	cases := map[string]string{
+		"debug":   gin.DebugMode,
+		" DEBUG ": gin.DebugMode,
+		"info":    gin.ReleaseMode,
+		"warn":    gin.ReleaseMode,
+		"":        gin.ReleaseMode,
+	}
+	for level, want := range cases {
+		if got := ginMode(level); got != want {
+			t.Errorf("ginMode(%q) = %q, want %q", level, got, want)
+		}
+	}
+}

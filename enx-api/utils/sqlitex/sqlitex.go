@@ -83,7 +83,14 @@ func (SyncState) TableName() string {
 	return "sync_state"
 }
 
+// Init opens the database with full SQL logging, as tests and tools expect.
 func Init() {
+	InitWithLogLevel("debug")
+}
+
+// InitWithLogLevel opens the database, deriving the SQL log level from the
+// application log level (see SQLLogLevel).
+func InitWithLogLevel(level string) {
 	// Read database path from environment variable or use default
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {
@@ -99,9 +106,9 @@ func Init() {
 		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
 		logger.Config{
 			SlowThreshold:             time.Second, // Slow SQL threshold
-			LogLevel:                  logger.Info, // Log level
-			IgnoreRecordNotFoundError: true,        // Ignore ErrRecordNotFound error for logger
-			Colorful:                  true,        // Disable color
+			LogLevel:                  SQLLogLevel(level),
+			IgnoreRecordNotFoundError: true, // Ignore ErrRecordNotFound error for logger
+			Colorful:                  true, // Disable color
 		},
 	)
 
@@ -287,4 +294,13 @@ func repairUserDictsTableDDLIfNeeded() error {
 		}
 		return nil
 	})
+}
+
+// SQLLogLevel maps the application log level to GORM's. Every statement is
+// traced only at debug; otherwise GORM reports slow queries and errors.
+func SQLLogLevel(level string) logger.LogLevel {
+	if strings.EqualFold(strings.TrimSpace(level), "debug") {
+		return logger.Info
+	}
+	return logger.Warn
 }
