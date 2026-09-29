@@ -14,6 +14,10 @@ export const SITE = {
 
   githubUrl: 'https://github.com/wiloon/enx',
 
+  // Release stage shown as a badge next to the logo. Empty => no badge; clear
+  // it at general availability.
+  stage: 'Beta',
+
   // Demo video slot (ADR-013 Decision 6). Empty => poster + "Demo coming soon".
   demoVideoUrl: '',
   demoPoster: '/marketing/demo-poster.svg',

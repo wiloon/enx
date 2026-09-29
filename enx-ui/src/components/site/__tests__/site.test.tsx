@@ -13,6 +13,7 @@ import FeatureSection from '../FeatureSection'
 import Comparison from '../Comparison'
 import InstallCTA from '../InstallCTA'
 import SiteFooter from '../SiteFooter'
+import SiteHeader from '../SiteHeader'
 
 jest.mock('@/lib/site', () => {
   const actual = jest.requireActual('@/lib/site')
@@ -126,5 +127,29 @@ describe('SiteFooter', () => {
     for (const dead of ['/docs', '/pricing', '/changelog']) {
       expect(hrefs).not.toContain(dead)
     }
+  })
+})
+
+describe('SiteHeader', () => {
+  it('shows the release-stage badge next to the logo', () => {
+    render(<SiteHeader />)
+    expect(screen.getByRole('link', { name: /Catglish Beta/ })).toHaveAttribute(
+      'href',
+      '/'
+    )
+  })
+
+  it('drops the badge when no stage is set', () => {
+    mutableSite.stage = ''
+    render(<SiteHeader />)
+    expect(screen.queryByText('Beta')).not.toBeInTheDocument()
+  })
+
+  it('links to the GitHub repository', () => {
+    render(<SiteHeader />)
+    expect(screen.getByRole('link', { name: 'GitHub' })).toHaveAttribute(
+      'href',
+      SITE.githubUrl
+    )
   })
 })
