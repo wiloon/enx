@@ -432,18 +432,24 @@ logger.With(
 
 #### HTTP Request/Response Logging
 
-**Request logging:**
-```go
-logger.Infof("🔵 %s %s from %s", method, path, clientIP)
-logger.Debugf("📋 Headers: X-Session-ID='%s', Content-Type='%s'", 
-    sessionID, contentType)
+enx-api logs every request in **one structured line**, written by
+`middleware.RequestLog` (registered in `setupRouter`) after the handler
+returns:
+
+```
+2026-09-29 00:15:02.798	info	request	{"method": "GET", "route": "/api/word/:word", "status": 200, "duration_ms": 4.2, "user_id": "u1"}
 ```
 
-**Response logging:**
-```go
-logger.Infof("✅ %d %s %s", status, method, path)
-logger.Debugf("📤 Response headers: %+v", headers)
-```
+- `route` is gin's route template, never the raw path: `/api/word/<word>`
+  would put what the user looked up into the logs. Unmatched paths log as
+  `unmatched`.
+- The client IP is not logged (behind Cloudflare it is not the user's
+  anyway), nor are headers.
+- CORS preflights (`OPTIONS`) are not logged.
+
+Handlers do not log the request or response themselves; they log only
+what the request line cannot show (a failed dependency, an admin action).
+For other structured events use `logger.Infow(msg, "key", value, …)`.
 
 **Error logging:**
 ```go

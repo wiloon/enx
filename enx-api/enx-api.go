@@ -227,15 +227,9 @@ func setupRouter() *gin.Engine {
 	// Add Recovery middleware to recover from panics
 	router.Use(gin.Recovery())
 
-	// Add detailed CORS and request logging middleware BEFORE CORS
-	router.Use(func(c *gin.Context) {
-		logger.Debugf("🔵 [PRE-CORS] %s %s from %s", c.Request.Method, c.Request.URL.Path, c.ClientIP())
-		logger.Debugf("📋 Origin='%s'", c.GetHeader("Origin"))
-
-		c.Next()
-
-		logger.Debugf("✅ [PRE-CORS] %d %s %s", c.Writer.Status(), c.Request.Method, c.Request.URL.Path)
-	})
+	// One structured line per request (route template, status, duration,
+	// user) instead of free-text request logging.
+	router.Use(middleware.RequestLog(logger.Infow))
 
 	// Custom CORS middleware to support chrome-extension origins
 	router.Use(func(c *gin.Context) {
@@ -285,24 +279,6 @@ func setupRouter() *gin.Engine {
 		}
 
 		c.Next()
-	})
-
-	// Add detailed CORS and request logging middleware AFTER CORS
-	router.Use(func(c *gin.Context) {
-		logger.Infof("🔵 %s %s from %s", c.Request.Method, c.Request.URL.Path, c.ClientIP())
-		logger.Infof("📋 Headers: Content-Type='%s', Origin='%s'",
-			c.GetHeader("Content-Type"), c.GetHeader("Origin"))
-		logger.Debugf("🌐 User-Agent: %s", c.GetHeader("User-Agent"))
-
-		// Check if this is a preflight request
-		if c.Request.Method == "OPTIONS" {
-			logger.Infof("✈️  CORS Preflight request")
-		}
-
-		c.Next()
-
-		logger.Infof("✅ %d %s %s", c.Writer.Status(), c.Request.Method, c.Request.URL.Path)
-		logger.Debugf("📤 Response Headers: %+v", c.Writer.Header())
 	})
 
 	router.GET("/ping", handlers.Ping)
