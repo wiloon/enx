@@ -8,10 +8,17 @@ describe('saveOutcome', () => {
         data: {
           success: true,
           created: true,
-          page: { id: 'p1', url: 'https://www.infoq.com/articles/kube', title: 'Kube' },
+          page: {
+            id: 'p1',
+            url: 'https://www.infoq.com/articles/kube',
+            title: 'Kube',
+          },
         },
       })
-    ).toEqual({ status: 'saved', savedUrl: 'https://www.infoq.com/articles/kube' })
+    ).toEqual({
+      status: 'saved',
+      savedUrl: 'https://www.infoq.com/articles/kube',
+    })
   })
 
   it('reports a page that was already saved as already-saved, not as newly saved', () => {
@@ -21,10 +28,17 @@ describe('saveOutcome', () => {
         data: {
           success: true,
           created: false,
-          page: { id: 'p1', url: 'https://www.infoq.com/articles/kube', title: 'Kube' },
+          page: {
+            id: 'p1',
+            url: 'https://www.infoq.com/articles/kube',
+            title: 'Kube',
+          },
         },
       })
-    ).toEqual({ status: 'already-saved', savedUrl: 'https://www.infoq.com/articles/kube' })
+    ).toEqual({
+      status: 'already-saved',
+      savedUrl: 'https://www.infoq.com/articles/kube',
+    })
   })
 
   it("reports a refusal as failed and carries the server's own message", () => {

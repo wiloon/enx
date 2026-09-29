@@ -16,5 +16,8 @@ export function saveOutcome(result: ApiRequestResult): SaveOutcome {
     return { status: 'failed', errorMessage: result.error }
   }
   const savedUrl = result.data?.page?.url
-  return { status: result.data?.created === false ? 'already-saved' : 'saved', savedUrl }
+  return {
+    status: result.data?.created === false ? 'already-saved' : 'saved',
+    savedUrl,
+  }
 }

@@ -668,7 +668,12 @@ describe('background onMessage / savePage (ADR-032)', () => {
       jsonResponse(201, {
         success: true,
         created: true,
-        page: { id: 'p1', url: 'https://www.infoq.com/articles/kube', title: 'Kube', host: 'www.infoq.com' },
+        page: {
+          id: 'p1',
+          url: 'https://www.infoq.com/articles/kube',
+          title: 'Kube',
+          host: 'www.infoq.com',
+        },
       })
     )
 
@@ -689,7 +694,10 @@ describe('background onMessage / savePage (ADR-032)', () => {
     })
     expect(response).toMatchObject({
       success: true,
-      data: { created: true, page: { url: 'https://www.infoq.com/articles/kube' } },
+      data: {
+        created: true,
+        page: { url: 'https://www.infoq.com/articles/kube' },
+      },
     })
   })
 
@@ -714,7 +722,10 @@ describe('background onMessage / savePage (ADR-032)', () => {
   })
 
   it('rejects a request with no URL without calling the API', async () => {
-    const response = await send({ type: 'savePage', savedPage: { url: '', title: 't' } })
+    const response = await send({
+      type: 'savePage',
+      savedPage: { url: '', title: 't' },
+    })
 
     expect(response).toEqual({ success: false, error: 'Missing page' })
     expect(global.fetch).not.toHaveBeenCalled()

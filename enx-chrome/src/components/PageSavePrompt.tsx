@@ -3,7 +3,8 @@
 // browser has it and the page title -- and saves nothing until the user
 // confirms.
 
-export type PageSaveStatus = 'idle' | 'saving' | 'saved' | 'already-saved' | 'failed'
+export type PageSaveStatus =
+  'idle' | 'saving' | 'saved' | 'already-saved' | 'failed'
 
 interface PageSavePromptProps {
   /** The address as the browser has it; enx-api normalizes it on save. */
