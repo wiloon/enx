@@ -77,6 +77,25 @@ func GetUserWordQueryCount(wordId, userId string) (queryCount int, alreadyAcquai
 	return userDict.QueryCount, userDict.AlreadyAcquainted, true
 }
 
+// RecordWordLookup counts one lookup of wordId by userId for the review
+// system: the first lookup starts query_count at 1, a repeat adds 1, and
+// looking up a word the user had marked as known puts it back into review.
+// It is a single statement, so concurrent lookups can't lose an increment.
+func RecordWordLookup(userId, wordId string) (queryCount int, alreadyAcquainted int, err error) {
+	now := time.Now().UnixMilli()
+	var row UserDict
+	err = sqlitex.DB.Raw(`
+		INSERT INTO user_dicts (user_id, word_id, query_count, already_acquainted, created_at, updated_at)
+		VALUES (?, ?, 1, 0, ?, ?)
+		ON CONFLICT (user_id, word_id) DO UPDATE SET
+			query_count = COALESCE(query_count, 0) + 1,
+			already_acquainted = 0,
+			updated_at = excluded.updated_at
+		RETURNING query_count, already_acquainted`,
+		userId, wordId, now, now).Scan(&row).Error
+	return row.QueryCount, row.AlreadyAcquainted, err
+}
+
 // UpsertUserDict creates or updates user dictionary entry via GORM
 func UpsertUserDict(userId, wordId string, queryCount, alreadyAcquainted int) error {
 	now := time.Now().UnixMilli()

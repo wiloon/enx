@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Accepted — 2026-09-06。删掉死接口 `GET /ecdict`（#19/#20 随之消失）、seam 收敛（A2，收敛后只剩 `translateWord` 一个 caller）、每次调用计量不去重（B2）、SQLite 不上 Redis（C2）、单条 upsert（D2）、词典路径 fail-open（E2）、#17/#18 一并修均已确认。TDD 进度：**步骤 0（删 `/ecdict`，`abbb590`）、1（单条 upsert，`ce0dc13`）、2（`Lookup` fail-open #17/#18，`bbf0d44`）、3（`MeterLookup` 收敛 + 本地命中也计量 B2，`eb7b5ce`）已完成**。步骤 4（配额行清理）推迟为 [#21](https://github.com/wiloon/enx/issues/21)。A2 的「本地 `words` 查询搬进 `dictionary.Lookup`」推迟，前置是补 `translateWord` 复习计数的测试覆盖 [#22](https://github.com/wiloon/enx/issues/22)，见 Decision 1 / Revisit。 |
+| **状态** | Accepted — 2026-09-06。删掉死接口 `GET /ecdict`（#19/#20 随之消失）、seam 收敛（A2，收敛后只剩 `translateWord` 一个 caller）、每次调用计量不去重（B2）、SQLite 不上 Redis（C2）、单条 upsert（D2）、词典路径 fail-open（E2）、#17/#18 一并修均已确认。TDD 进度：**步骤 0（删 `/ecdict`，`abbb590`）、1（单条 upsert，`ce0dc13`）、2（`Lookup` fail-open #17/#18，`bbf0d44`）、3（`MeterLookup` 收敛 + 本地命中也计量 B2，`eb7b5ce`）已完成**。步骤 4（配额行清理）推迟为 [#21](https://github.com/wiloon/enx/issues/21)。A2 的深 seam 曾推迟到 [#22](https://github.com/wiloon/enx/issues/22)（补复习计数测试）之后；**2026-09-29 已完成**，见文末「修订记录」。 |
 | **日期** | 2026-09-06 |
 | **关联 Spec** | [`TASK-SPEC-enx-billing-stripe-subscription.md`](../tasks/TASK-SPEC-enx-billing-stripe-subscription.md) §4.2 已把 `dictionary.Lookup` 定位为「统一查词入口，在返回结果前插入配额检查」——本 ADR 是**把这个意图补齐**（实现时 `fillFromEcdict` 把「先查本地」的分支留在了 seam 外）；配套 TASK-SPEC 增补留到编码阶段（同 ADR-008 / ADR-011 / ADR-017 的做法） |
 | **关联 ADR** | [`adr-009-billing-stripe-subscription-and-ai-credits.md`](adr-009-billing-stripe-subscription-and-ai-credits.md)（Decision 6：免费查词走独立每日配额、不进积分系统；本 ADR **澄清并延续**它——配额覆盖**所有释义查询**，含本地缓存命中，并把计量点收敛到一个 seam）、[`adr-014-sidepanel-clicked-word-and-token-billing.md`](adr-014-sidepanel-clicked-word-and-token-billing.md)（AI 翻译按 token 计费、与查词配额是两个独立计量器；本 ADR 不动 AI 侧） |
@@ -175,7 +175,7 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 - **缓存命中现在也计量**：阅读时重复点同一个词会消耗配额，靠「上限设高」兜底。上限初值必须按真实阅读会话的点词**总量**（含重复）留足余量，不能按「查字典」的直觉设。
 - **本地命中的词从「永远免费」变成「计量」**：今天所有真实查词都命中翻译路径的本地分支、绕过配额；本 ADR 之后它们开始计数。这是把 ADR-009 Decision 6 落到实处，但对一个重度阅读用户是可感知的用量增加——同样靠「上限设高」兜。
 - **fail-open 意味着配额在存储故障期间完全失效**——可接受（它不是 paywall），但要清楚这不是一个能在 DB 出问题时兜住成本的机制。
-- **A2 的深 seam 只做了一半**：计量收敛了（`MeterLookup`），但本地 `words` 查询还在 `translateWord`/`word.Translate` 里，`dictionary.Lookup` 仍是「ECDICT + 计量」。原因：`translateWord` 的 `QueryCount` 记账零测试覆盖，盲改不安全。完整深 seam 留作后续（Revisit）。
+- **A2 的深 seam 只做了一半**：计量收敛了（`MeterLookup`），但本地 `words` 查询还在 `translateWord`/`word.Translate` 里，`dictionary.Lookup` 仍是「ECDICT + 计量」。原因：`translateWord` 的 `QueryCount` 记账零测试覆盖，盲改不安全。完整深 seam 留作后续（Revisit）。**2026-09-29 已补完**，见「修订记录」。
 - **`translateWord` 的 `user_dicts.QueryCount` 复习计数记账至今无测试覆盖**——本 ADR 没碰它，记为 [#22](https://github.com/wiloon/enx/issues/22)。
 
 ### Mitigation
@@ -207,9 +207,26 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 
 ## Revisit Trigger
 
-- **要把本地 `words` 查询搬进 `dictionary.Lookup`（A2 深 seam）**：前置条件是 [#22](https://github.com/wiloon/enx/issues/22)（补 `translateWord` 复习计数的测试覆盖）。有覆盖之后这个重构才安全。触发点：加第二个查词 caller，或 `translateWord` 本身要大改。
+- ~~**要把本地 `words` 查询搬进 `dictionary.Lookup`（A2 深 seam）**~~（2026-09-29 已完成，见「修订记录」）：前置条件是 [#22](https://github.com/wiloon/enx/issues/22)（补 `translateWord` 复习计数的测试覆盖）。有覆盖之后这个重构才安全。触发点：加第二个查词 caller，或 `translateWord` 本身要大改。
 - **enx-api 变多副本 + 换外部共享 DB（Postgres）**：SQLite 单文件单写者不再成立，重新评估 Redis / 外部计数器 / DB 原生原子自增。
 - **真实数据显示正常阅读用户会撞上限**：要么提高上限，要么回到「按去重词数」计量（B1）——那时候复杂度是值得付的。
 - **需要把配额做成用户可见的用量条**：「缓存命中也算」会让用户困惑（「我就重看了个查过的词怎么也扣」），届时考虑 B1，或分级展示（不到 80% 不显示数字）。
 - **反滥用需要更细的信号**（识别刷子而不只是封顶）：每日计数器不够，单独设计滑动窗口 / 多维度限流，可能连配额表结构一起改。
 - **fail-open 被证明会被利用**（有人专门在 DB 抖动窗口刷）：把词典路径也改 fail-closed，但要先修完 #17/#18 那类误伤 bug。
+
+---
+
+## 修订记录
+
+### 2026-09-29：A2 深 seam 完成
+
+前置 [#22](https://github.com/wiloon/enx/issues/22) 已由 PR #63 满足（`translate/review_count_test.go` 的复习计数特征测试），随后按 Decision 1 把深 seam 补完：
+
+- 入口改为 **`dictionary.Resolve(ctx, english, userID) (Result, error)`**：先查本地 `words` → 未命中查 ECDICT → ECDICT 命中则回填 `words`，并统一计量（`MeterLookup`）与 `dictsample` 采样。`Result.Source` 标明来源：`local` / `ecdict` / `miss`。
+- 原来的 `dictionary.Lookup` 改名为不导出的 `lookupEcdict`，成为 `Resolve` 的一个步骤，外部不能再绕过本地缓存直接查 ECDICT。
+- `translate/helpers.go:fillFromEcdict` 删除，ECDICT 回填 `words` 移到 `dictionary.cacheWord`。历史文档（本 ADR 正文、ADR-003、ADR-021、`TASK-SPEC-enx-ielts-wordlist-dashboard.md` 等）里提到 `fillFromEcdict` 的地方指的都是这个位置。
+- 复习记账（Decision 1 里说的「`QueryCount` 不进 seam」保持不变）留在 `translateWord`，但由「查 → 判断 → 写 → 再查」改成一条 `repo.RecordWordLookup`：`INSERT … ON CONFLICT (user_id, word_id) DO UPDATE … RETURNING`。并发查同一个词不会再丢计数。
+- 效果：一次本地命中的 SQL 从 9 条降到 5 条（`user_dicts` 从 4 读 1 写变成 1 条 upsert）；剩下 4 条是 `words` 查询和计量本身。
+- 行为变化：首次查词的计数固定从 1 开始，不再用 `words.load_count + 1`。`load_count` 在现行代码里没有写入路径，生产从空库起（ADR-031）恒为 0，结果不变；只有从 P2P 迁移带来旧 `load_count` 值的 homelab 老数据会有差异。
+
+仍未解决（频率未知）：本地检查用用户输入的原词。一个变形词如果在 ECDICT 里**没有自己的词条**、只能靠 `exchange` 列反查到原形，它就会被缓存成原形那一行，之后再查这个变形仍然本地未命中，每次都走 ECDICT 的 `exchange LIKE` 扫描（无索引，`ecdict.queryTimeout` 为 3 秒）。常见变形（如 "ran"）在 ECDICT 里通常有独立词条，精确匹配即命中并单独缓存，不受影响；未核实有多少变形只能靠 `exchange` 命中。ADR-030 的 `dictsample` 采样按词记录来源，同一个词反复记成 `ecdict` 即属此类，开采样即可量出来（ADR-040 的指标按规定不带单词标签，量不了），确有必要再做「变形 → 原形」映射（schema 变更，另行处理）。

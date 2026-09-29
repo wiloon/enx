@@ -29,12 +29,16 @@ func setupTestDB(t *testing.T) {
 	sqlitex.DB = db
 }
 
+// stardictRow is one entry for setupFakeEcdict.
+type stardictRow struct {
+	Word, Sw, Phonetic, Translation, Exchange string
+}
+
 // setupFakeEcdict makes ecdict.IsAvailable() report true against a real
-// (but empty) on-disk sqlite file with the stardict table shape, so Lookup
-// exercises its quota path instead of short-circuiting on
-// ErrEcdictUnavailable. The actual query result doesn't matter for these
-// tests -- only whether Lookup got past the quota check.
-func setupFakeEcdict(t *testing.T) {
+// on-disk sqlite file with the stardict table shape, holding rows (none by
+// default), so Lookup exercises its quota path instead of short-circuiting
+// on ErrEcdictUnavailable.
+func setupFakeEcdict(t *testing.T, rows ...stardictRow) {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "ecdict.db")
 	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
@@ -45,6 +49,12 @@ func setupFakeEcdict(t *testing.T) {
 	}
 	if err := db.Exec(`CREATE TABLE stardict (word TEXT, sw TEXT, phonetic TEXT, translation TEXT, exchange TEXT)`).Error; err != nil {
 		t.Fatal(err)
+	}
+	for _, r := range rows {
+		if err := db.Exec(`INSERT INTO stardict VALUES (?, ?, ?, ?, ?)`,
+			r.Word, r.Sw, r.Phonetic, r.Translation, r.Exchange).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
 	sqlDB, err := db.DB()
 	if err != nil {
@@ -81,7 +91,7 @@ func quotaRowCount(t *testing.T, userID string) int64 {
 func TestLookupReturnsUnavailableWhenEcdictMissing(t *testing.T) {
 	setupTestDB(t)
 	ecdict.Init("")
-	_, err := Lookup(context.Background(), "unknownword", "test-user")
+	_, err := lookupEcdict(context.Background(), "unknownword", "test-user")
 	if !errors.Is(err, ErrEcdictUnavailable) {
 		t.Fatalf("expected ErrEcdictUnavailable, got %v", err)
 	}
@@ -94,13 +104,13 @@ func TestLookupEnforcesQuotaForFreeUser(t *testing.T) {
 	userID := "u-" + t.Name()
 	ctx := context.Background()
 
-	if _, err := Lookup(ctx, "word1", userID); err != nil {
+	if _, err := lookupEcdict(ctx, "word1", userID); err != nil {
 		t.Fatalf("lookup 1: %v", err)
 	}
-	if _, err := Lookup(ctx, "word2", userID); err != nil {
+	if _, err := lookupEcdict(ctx, "word2", userID); err != nil {
 		t.Fatalf("lookup 2: %v", err)
 	}
-	if _, err := Lookup(ctx, "word3", userID); !errors.Is(err, ErrQuotaExceeded) {
+	if _, err := lookupEcdict(ctx, "word3", userID); !errors.Is(err, ErrQuotaExceeded) {
 		t.Fatalf("lookup 3: got %v, want ErrQuotaExceeded", err)
 	}
 }
@@ -116,7 +126,7 @@ func TestLookupCountsWithNoLimitConfigured(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 5; i++ {
-		if _, err := Lookup(ctx, "word", userID); err != nil {
+		if _, err := lookupEcdict(ctx, "word", userID); err != nil {
 			t.Fatalf("lookup %d: an unset limit must not block, got %v", i, err)
 		}
 	}
@@ -135,11 +145,11 @@ func TestLookupKeepsCountingPastTheLimit(t *testing.T) {
 	userID := "u-" + t.Name()
 	ctx := context.Background()
 
-	if _, err := Lookup(ctx, "word", userID); err != nil {
+	if _, err := lookupEcdict(ctx, "word", userID); err != nil {
 		t.Fatalf("lookup 1: %v", err)
 	}
 	for i := 2; i <= 4; i++ {
-		if _, err := Lookup(ctx, "word", userID); !errors.Is(err, ErrQuotaExceeded) {
+		if _, err := lookupEcdict(ctx, "word", userID); !errors.Is(err, ErrQuotaExceeded) {
 			t.Fatalf("lookup %d: got %v, want ErrQuotaExceeded", i, err)
 		}
 	}
@@ -167,7 +177,7 @@ func TestLookupAppliesTheSubscribedTier(t *testing.T) {
 	}
 
 	for i := 0; i < 5; i++ {
-		if _, err := Lookup(ctx, "word", userID); err != nil {
+		if _, err := lookupEcdict(ctx, "word", userID); err != nil {
 			t.Fatalf("lookup %d: subscriber is under their own tier, got %v", i, err)
 		}
 	}
@@ -194,7 +204,7 @@ func TestLookupTreatsSubscriberCheckFailureAsSubscriber(t *testing.T) {
 	}
 
 	for i := 0; i < 5; i++ {
-		if _, err := Lookup(ctx, "word", userID); err != nil {
+		if _, err := lookupEcdict(ctx, "word", userID); err != nil {
 			t.Fatalf("lookup %d: subscriber-check failure should fail open, got %v", i, err)
 		}
 	}
@@ -218,7 +228,7 @@ func TestLookupFailsOpenWhenQuotaStoreUnavailable(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		if _, err := Lookup(ctx, "word", userID); err != nil {
+		if _, err := lookupEcdict(ctx, "word", userID); err != nil {
 			t.Fatalf("lookup %d: quota-store failure should fail open, got %v", i, err)
 		}
 	}
@@ -241,10 +251,10 @@ func TestLookupPastDueSubscriberIsNotExempt(t *testing.T) {
 		t.Fatalf("seed subscription: %v", err)
 	}
 
-	if _, err := Lookup(ctx, "word1", userID); err != nil {
+	if _, err := lookupEcdict(ctx, "word1", userID); err != nil {
 		t.Fatalf("lookup 1: %v", err)
 	}
-	if _, err := Lookup(ctx, "word2", userID); !errors.Is(err, ErrQuotaExceeded) {
+	if _, err := lookupEcdict(ctx, "word2", userID); !errors.Is(err, ErrQuotaExceeded) {
 		t.Fatalf("lookup 2: got %v, want ErrQuotaExceeded (past_due is not active)", err)
 	}
 }
@@ -261,10 +271,10 @@ func TestLookupFallsBackToTheSupersededQuotaKey(t *testing.T) {
 	userID := "u-" + t.Name()
 	ctx := context.Background()
 
-	if _, err := Lookup(ctx, "word1", userID); err != nil {
+	if _, err := lookupEcdict(ctx, "word1", userID); err != nil {
 		t.Fatalf("lookup 1: %v", err)
 	}
-	if _, err := Lookup(ctx, "word2", userID); !errors.Is(err, ErrQuotaExceeded) {
+	if _, err := lookupEcdict(ctx, "word2", userID); !errors.Is(err, ErrQuotaExceeded) {
 		t.Fatalf("lookup 2: got %v, want ErrQuotaExceeded from the superseded key", err)
 	}
 }

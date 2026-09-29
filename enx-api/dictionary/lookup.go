@@ -26,10 +26,10 @@ var ErrEcdictUnavailable = errors.New("ecdict unavailable")
 // need to import this package (matches ErrEcdictUnavailable's pattern).
 var ErrQuotaExceeded = quota.ErrQuotaExceeded
 
-// Lookup queries ECDICT (with word forms). Callers are expected to have
-// already checked the local words table themselves before calling this.
-// Subject to the daily lookup quota for userID's tier (ADR-029).
-func Lookup(ctx context.Context, english, userID string) (*enx.Dictionary, error) {
+// lookupEcdict queries ECDICT (with word forms): Resolve's step for a word
+// the local words table doesn't have. Subject to the daily lookup quota for
+// userID's tier (ADR-029).
+func lookupEcdict(ctx context.Context, english, userID string) (*enx.Dictionary, error) {
 	if !ecdict.IsAvailable() {
 		return nil, ErrEcdictUnavailable
 	}
