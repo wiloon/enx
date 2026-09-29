@@ -103,6 +103,23 @@ func RecordWordLookup(userId, wordId string) (queryCount int, alreadyAcquainted 
 	return row.QueryCount, row.AlreadyAcquainted, err
 }
 
+// ToggleAcquainted flips userId's "already know this word" flag for wordId
+// in one statement: a word with no user_dicts row yet becomes known with
+// query_count 0. It returns the row's state afterwards.
+func ToggleAcquainted(userId, wordId string) (queryCount int, alreadyAcquainted int, err error) {
+	now := time.Now().UnixMilli()
+	var row UserDict
+	err = sqlitex.DB.Raw(`
+		INSERT INTO user_dicts (user_id, word_id, query_count, already_acquainted, created_at, updated_at)
+		VALUES (?, ?, 0, 1, ?, ?)
+		ON CONFLICT (user_id, word_id) DO UPDATE SET
+			already_acquainted = 1 - COALESCE(already_acquainted, 0),
+			updated_at = excluded.updated_at
+		RETURNING query_count, already_acquainted`,
+		userId, wordId, now, now).Scan(&row).Error
+	return row.QueryCount, row.AlreadyAcquainted, err
+}
+
 // UpsertUserDict creates or updates user dictionary entry via GORM
 func UpsertUserDict(userId, wordId string, queryCount, alreadyAcquainted int) error {
 	now := time.Now().UnixMilli()

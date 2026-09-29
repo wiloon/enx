@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { apiService } from '@/services/api'
+import { useIsAdmin } from '@/hooks/useIsAdmin'
 import WordSearchForm from './WordSearchForm'
 import WordResultCard from './WordResultCard'
 
@@ -12,6 +13,7 @@ export default function WordLookupPage() {
   const [currentWord, setCurrentWord] = useState('')
   const [clearing, setClearing] = useState(false)
   const queryClient = useQueryClient()
+  const { isAdmin } = useIsAdmin()
 
   const {
     data: wordData,
@@ -78,7 +80,7 @@ export default function WordLookupPage() {
           {wordData && (
             <WordResultCard
               data={wordData}
-              onClear={handleClear}
+              onClear={isAdmin ? handleClear : undefined}
               clearing={clearing}
             />
           )}
