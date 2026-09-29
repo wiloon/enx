@@ -25,11 +25,12 @@ func init() {
 func Init(to, level, projectName string) {
 	var cores []zapcore.Core
 
-	var lvl zapcore.Level
-	err := lvl.UnmarshalText([]byte(level))
-	if err != nil {
-		log.Println("invalid level:", level)
-		return
+	// An unknown level falls back to info rather than leaving the unlevelled
+	// stdlib logger in place, which would print everything.
+	lvl := zapcore.InfoLevel
+	if err := lvl.UnmarshalText([]byte(level)); err != nil {
+		log.Printf("invalid log level %q, using info", level)
+		lvl = zapcore.InfoLevel
 	}
 
 	logTo := strings.ToUpper(to)

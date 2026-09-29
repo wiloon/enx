@@ -68,6 +68,10 @@ func viperInitInternal() {
 	// ADR-040: the /metrics listener. Loopback by default; homelab (k8s)
 	// sets 0.0.0.0:9091 so the in-cluster Prometheus can reach the pod.
 	viper.SetDefault("metrics.addr", "127.0.0.1:9091")
+	// Log level. Production ships no config.toml, so this default is what it
+	// runs at; the repo's config.toml sets debug for local development.
+	viper.SetDefault("log.level", "info")
+	_ = viper.BindEnv("log.level", "LOG_LEVEL")
 	_ = viper.BindEnv("metrics.addr", "METRICS_ADDR")
 
 	// Sentence translation (AI provider selectable at deploy time, see
