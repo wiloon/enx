@@ -14,56 +14,6 @@ type UserDict struct {
 	AlreadyAcquainted int `json:"already_acquainted"`
 }
 
-// UpdateQueryCount updates the query count and acquainted status in database
-func (ud *UserDict) UpdateQueryCount() {
-	err := repo.UpsertUserDict(ud.UserId, ud.WordId, ud.QueryCount, ud.AlreadyAcquainted)
-	if err != nil {
-		logger.Errorf("failed to update query count: %v", err)
-		return
-	}
-	logger.Debugf("update user dict, user_id: %s, word_id: %s, query_count: %d",
-		ud.UserId, ud.WordId, ud.QueryCount)
-}
-
-// Save creates or updates user dict record in database
-func (ud *UserDict) Save() {
-	err := repo.UpsertUserDict(ud.UserId, ud.WordId, ud.QueryCount, ud.AlreadyAcquainted)
-	if err != nil {
-		logger.Errorf("failed to save user dict: %v", err)
-		return
-	}
-	logger.Debugf("save user dict, user_id: %s, word_id: %s, query_count: %d",
-		ud.UserId, ud.WordId, ud.QueryCount)
-}
-
-// Mark toggles the already_acquainted flag in database
-func (ud *UserDict) Mark() {
-	logger.Infof("Mark: Starting mark operation for word_id: %s, user_id: %s", ud.WordId, ud.UserId)
-
-	if ud.IsExist() {
-		logger.Infof("Mark: Record exists, current AlreadyAcquainted: %d", ud.AlreadyAcquainted)
-		// Toggle the acquainted status
-		if ud.AlreadyAcquainted == 1 {
-			ud.AlreadyAcquainted = 0
-			logger.Infof("Mark: Changed from 1 to 0")
-		} else {
-			ud.AlreadyAcquainted = 1
-			logger.Infof("Mark: Changed from 0 to 1")
-		}
-	} else {
-		logger.Infof("Mark: Record does not exist, creating new record with AlreadyAcquainted: 1")
-		ud.AlreadyAcquainted = 1
-		ud.QueryCount = 0
-	}
-
-	err := repo.UpsertUserDict(ud.UserId, ud.WordId, ud.QueryCount, ud.AlreadyAcquainted)
-	if err != nil {
-		logger.Errorf("Mark: failed to mark user dict: %v", err)
-		return
-	}
-	logger.Infof("Mark: Final AlreadyAcquainted state: %d", ud.AlreadyAcquainted)
-}
-
 // IsExist checks if user dict record exists in database
 func (ud *UserDict) IsExist() bool {
 	queryCount, alreadyAcquainted, found := repo.GetUserWordQueryCount(ud.WordId, ud.UserId)

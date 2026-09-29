@@ -88,14 +88,3 @@ func GetVersionInfo() *Info {
 		Uptime:    GetUptime(),
 	}
 }
-
-// GetVersionString returns version string
-func GetVersionString() string {
-	return fmt.Sprintf("enx-api v%s (%s)", Version, GitCommit)
-}
-
-// GetDetailedVersionString returns detailed version string
-func GetDetailedVersionString() string {
-	return fmt.Sprintf("enx-api v%s\nBuild Time: %s\nGit Commit: %s\nGit Branch: %s\nGo Version: %s\nUptime: %s",
-		Version, BuildTime, GitCommit, GitBranch, GoVersion, GetUptime())
-}

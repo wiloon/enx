@@ -1,8 +1,6 @@
 package enx
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"enx-api/utils/logger"
 	"enx-api/utils/password"
 	"enx-api/utils/sqlitex"
@@ -70,33 +68,10 @@ func (u *User) Create() error {
 	return sqlitex.DB.Create(u).Error
 }
 
-// GenerateToken generates a cryptographically secure 32-byte random hex token.
-func GenerateToken() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
-}
-
-// GetUserByVerificationToken looks up a user by their email verification token.
-func GetUserByVerificationToken(token string) *User {
-	user := User{}
-	sqlitex.DB.Where("verification_token = ?", token).First(&user)
-	return &user
-}
-
 // GetUserByEmail looks up a user by email address.
 func GetUserByEmail(email string) *User {
 	user := User{}
 	sqlitex.DB.Where("email = ?", email).First(&user)
-	return &user
-}
-
-// GetUserByResetToken looks up a user by their password reset token.
-func GetUserByResetToken(token string) *User {
-	user := User{}
-	sqlitex.DB.Where("reset_token = ?", token).First(&user)
 	return &user
 }
 

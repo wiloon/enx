@@ -39,69 +39,21 @@ func TestUserDictIsExistFalseWhenMissing(t *testing.T) {
 	}
 }
 
-func TestUserDictSaveThenIsExist(t *testing.T) {
-	newUserDictTestDB(t)
+func TestUserDictIsExist(t *testing.T) {
+	db := newUserDictTestDB(t)
 
-	ud := UserDict{UserId: "u1", WordId: "w1", QueryCount: 3, AlreadyAcquainted: 1}
-	ud.Save()
+	if err := db.Create(&repo.UserDict{UserId: "u1", WordId: "w1", QueryCount: 3, AlreadyAcquainted: 1, CreatedAt: 1, UpdatedAt: 1}).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	reloaded := UserDict{UserId: "u1", WordId: "w1"}
 	if !reloaded.IsExist() {
-		t.Fatal("expected IsExist to be true after Save")
+		t.Fatal("expected IsExist to be true for a stored row")
 	}
 	if reloaded.QueryCount != 3 {
 		t.Errorf("QueryCount = %d, want 3", reloaded.QueryCount)
 	}
 	if reloaded.AlreadyAcquainted != 1 {
 		t.Errorf("AlreadyAcquainted = %d, want 1", reloaded.AlreadyAcquainted)
-	}
-}
-
-func TestUserDictUpdateQueryCount(t *testing.T) {
-	newUserDictTestDB(t)
-
-	ud := UserDict{UserId: "u1", WordId: "w1", QueryCount: 1}
-	ud.Save()
-
-	ud.QueryCount = 7
-	ud.UpdateQueryCount()
-
-	reloaded := UserDict{UserId: "u1", WordId: "w1"}
-	reloaded.IsExist()
-	if reloaded.QueryCount != 7 {
-		t.Errorf("QueryCount = %d, want 7 after UpdateQueryCount", reloaded.QueryCount)
-	}
-}
-
-func TestUserDictMarkTogglesAcquainted(t *testing.T) {
-	newUserDictTestDB(t)
-
-	ud := UserDict{UserId: "u1", WordId: "w1"}
-	// No existing record: Mark should create one as acquainted.
-	ud.Mark()
-	if ud.AlreadyAcquainted != 1 {
-		t.Fatalf("AlreadyAcquainted = %d, want 1 after first Mark", ud.AlreadyAcquainted)
-	}
-
-	// Existing acquainted record: Mark should toggle it back off.
-	ud2 := UserDict{UserId: "u1", WordId: "w1"}
-	ud2.Mark()
-	if ud2.AlreadyAcquainted != 0 {
-		t.Fatalf("AlreadyAcquainted = %d, want 0 after second Mark", ud2.AlreadyAcquainted)
-	}
-
-	// Regression guard: IsExist used to infer "no record" purely from
-	// QueryCount==0 && AlreadyAcquainted==0, which is exactly the state this
-	// row is now in even though Mark() just persisted it. repo.GetUserWordQueryCount
-	// now reports existence explicitly via its found return value instead of
-	// guessing from field values, so this must be true.
-	reloaded := UserDict{UserId: "u1", WordId: "w1"}
-	if !reloaded.IsExist() {
-		t.Error("expected IsExist to report true for an existing 0/0 row")
-	}
-
-	var row repo.UserDict
-	if err := sqlitex.DB.Where("user_id = ? AND word_id = ?", "u1", "w1").First(&row).Error; err != nil {
-		t.Fatalf("expected the row to actually exist in the DB: %v", err)
 	}
 }

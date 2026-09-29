@@ -46,9 +46,6 @@ func TestInitCreatesDatabaseAndMigratesSchema(t *testing.T) {
 	if DB == nil {
 		t.Fatal("expected Init to set the package-level DB")
 	}
-	if GetDB() != DB {
-		t.Error("expected GetDB() to return the same *gorm.DB as DB")
-	}
 
 	for _, table := range []string{
 		"users", "words", "user_dicts", "sessions", "sync_state",

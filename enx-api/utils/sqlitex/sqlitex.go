@@ -288,7 +288,3 @@ func repairUserDictsTableDDLIfNeeded() error {
 		return nil
 	})
 }
-
-func GetDB() *gorm.DB {
-	return DB
-}
