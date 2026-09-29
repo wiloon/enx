@@ -1,16 +1,16 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
+  <head>
     <title>ENX Env Test</title>
-</head>
-<body>
+  </head>
+  <body>
     <h1>ENX Environment Test</h1>
     <pre id="output"></pre>
     <script type="module">
-        import { config, getApiBaseUrl } from './src/config/env.ts';
+      import { config, getApiBaseUrl } from './src/config/env.ts'
 
-        const output = document.getElementById('output');
-        output.textContent = `
+      const output = document.getElementById('output')
+      output.textContent = `
 Environment: ${config.environment}
 API Base URL: ${config.apiBaseUrl}
 
@@ -20,7 +20,7 @@ import.meta.env.MODE: ${import.meta.env.MODE}
 import.meta.env.VITE_ENV: ${import.meta.env.VITE_ENV}
 
 Runtime API URL: ${await getApiBaseUrl()}
-        `;
+        `
     </script>
-</body>
+  </body>
 </html>

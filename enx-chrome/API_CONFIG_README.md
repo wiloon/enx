@@ -12,11 +12,11 @@ One entry per deployment, selected by the Vite mode at build time and stamped
 into both the runtime config (`src/config/env.ts`) and the generated
 `manifest.json` (`src/config/manifest.ts`):
 
-| Target | Build command | API | UI |
-| --- | --- | --- | --- |
-| `development` | `task build-dev` | `http://localhost:8090` | `http://localhost:3000` |
-| `homelab` | `task build` | `https://enx-api.wiloon.lab` | `https://enx.wiloon.lab` |
-| `production` | `task build-prod` / `task package-webstore` | `https://enx-api.wiloon.com` | `https://enx.wiloon.com` |
+| Target        | Build command                               | API                          | UI                       |
+| ------------- | ------------------------------------------- | ---------------------------- | ------------------------ |
+| `development` | `task build-dev`                            | `http://localhost:8090`      | `http://localhost:3000`  |
+| `homelab`     | `task build`                                | `https://enx-api.wiloon.lab` | `https://enx.wiloon.lab` |
+| `production`  | `task build-prod` / `task package-webstore` | `https://enx-api.wiloon.com` | `https://enx.wiloon.com` |
 
 Individual values can be overridden per build without editing the table:
 `VITE_API_BASE_URL`, `VITE_FRONTEND_BASE_URL`, `VITE_CLERK_PUBLISHABLE_KEY`,

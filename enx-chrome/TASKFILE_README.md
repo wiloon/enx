@@ -40,6 +40,7 @@ task reload
 ```
 
 **Important Notes**:
+
 - **`task watch`** is recommended for local development. It automatically rebuilds to `dist/` when files change.
 - **`task dev`** starts Vite dev server but may cause "cannot connect to vite server" errors and flashing popup in Chrome extensions.
 - After rebuilding, **manually reload the extension** in `chrome://extensions/`.

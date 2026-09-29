@@ -5,6 +5,7 @@
 **Bug**: When highlighting multiple words, if a word appears in the HTML attribute of a previously highlighted word, it creates nested/malformed HTML.
 
 **Example**:
+
 - Highlighting "GitHub" creates: `<u class="enx-word" data-word="GitHub">GitHub</u>`
 - Then highlighting "data" would match the `data` in `data-word="GitHub"`, creating:
   ```html
@@ -22,29 +23,35 @@
 Added a new test suite: **"Nested Word Replacement - Bug Fix"** with 5 comprehensive tests:
 
 ### 1. `should not create nested highlights when word appears in HTML attribute`
+
 **Purpose**: Reproduces the exact bug scenario where "data" appears in "data-word" attribute
 
 **Test Cases**:
+
 - Highlights "GitHub" first → creates `data-word="GitHub"` attribute
 - Then highlights "data"
 - **Buggy behavior**: Would create nested `<u>` tags
 - **Fixed behavior**: Uses placeholders to avoid nesting
 
 **Assertions**:
+
 - ✅ Buggy approach produces nested tags
 - ✅ Fixed approach with placeholders does NOT produce nested tags
 - ✅ Final HTML has correct structure with 2 separate `<u>` elements
 
 ### 2. `should handle multiple words that could create nested replacements`
+
 **Purpose**: Tests complex scenario with multiple overlapping words
 
 **Test Data**:
+
 ```
 "The event data architecture includes GitHub event handling"
 Words: ["event", "data", "architecture", "GitHub"]
 ```
 
 **Assertions**:
+
 - ✅ All 5 occurrences highlighted (event appears twice)
 - ✅ No nested `<u>` tags created
 - ✅ No malformed HTML patterns like `<u ... <u ...>data</u>-word=`
@@ -53,35 +60,42 @@ Words: ["event", "data", "architecture", "GitHub"]
 - ✅ No nested `<u>` tags inside highlighted words
 
 ### 3. `should preserve word boundaries during placeholder replacement`
+
 **Purpose**: Ensures word boundary regex works correctly with placeholders
 
 **Test Data**: `"data dataset database"`
 
 **Assertions**:
+
 - ✅ Only "data" is highlighted (word boundary `\b`)
 - ✅ "dataset" and "database" remain unchanged
 - ✅ No partial word matches
 
 ### 4. `should not interfere with placeholder pattern in actual text`
+
 **Purpose**: Edge case - what if actual text contains similar patterns?
 
 **Test Data**: `"Some ___PLACEHOLDER___ text with data"`
 
 **Assertions**:
+
 - ✅ Original placeholder-like text preserved
 - ✅ "data" is still correctly highlighted
 - ✅ No interference between user text and internal placeholders
 
 ### 5. `should match the exact behavior from renderWithHighlights`
+
 **Purpose**: Integration test matching real-world usage
 
 **Test Data**: Simulates exact flow from `ContentWordProcessor.renderWithHighlights`
+
 ```
 "GitHub announced during its annual event"
 Words with LoadCount: GitHub(5), announced(10), during(0), its(0), annual(15), event(0)
 ```
 
 **Assertions**:
+
 - ✅ All 6 words highlighted
 - ✅ Opening and closing tags count matches (6 each)
 - ✅ No nested `<u>` tags
@@ -93,6 +107,7 @@ Words with LoadCount: GitHub(5), announced(10), during(0), its(0), annual(15), e
 ### Modified: `src/content/content.ts`
 
 **Before (Buggy)**:
+
 ```typescript
 wordInfos.forEach(({ word, regex, colorCode }) => {
   if (regex.test(text)) {
@@ -104,6 +119,7 @@ wordInfos.forEach(({ word, regex, colorCode }) => {
 ```
 
 **After (Fixed)**:
+
 ```typescript
 // Use placeholders to avoid nested replacements
 const placeholders: { placeholder: string; html: string }[] = []
@@ -115,7 +131,7 @@ wordInfos.forEach(({ word, regex, colorCode }) => {
       const placeholder = `___ENX_PLACEHOLDER_${placeholderIndex++}___`
       const html = `<u class="enx-word" data-word="${match}">${match}</u>`
       placeholders.push({ placeholder, html })
-      return placeholder  // Return placeholder, not HTML
+      return placeholder // Return placeholder, not HTML
     })
   }
 })
@@ -137,6 +153,7 @@ placeholders.forEach(({ placeholder, html }) => {
 ## Real-world Verification
 
 **Production Test**: InfoQ article with 603 words
+
 - ✅ All words highlighted correctly
 - ✅ No nested HTML tags
 - ✅ No malformed attributes
@@ -152,6 +169,7 @@ placeholders.forEach(({ placeholder, html }) => {
 ## Future Improvements
 
 Potential enhancements (not required now):
+
 - Performance optimization: Use single regex pass instead of multiple
 - More edge cases: Special characters, HTML entities, etc.
 - Stress test: 1000+ words with many overlaps

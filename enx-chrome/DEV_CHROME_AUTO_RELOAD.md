@@ -7,10 +7,12 @@ The `task dev-chrome` command starts a Chrome instance with the ENX extension pr
 ## Why This Works
 
 ### The Problem
+
 - **User-managed Chrome**: Chrome security policy prevents external processes from reloading extensions in your personal Chrome browser
 - **Manual reload needed**: After rebuilding, you have to manually click reload in `chrome://extensions/`
 
 ### The Solution
+
 - **Dedicated Chrome instance**: `task dev-chrome` starts a **new Chrome process** with its own user data directory
 - **Extension auto-reload**: This Chrome instance automatically reloads the extension when files in `dist-homelab/` change
 - **Similar to E2E testing**: Uses the same technique as Playwright E2E tests - launching Chrome with `--load-extension` flag
@@ -20,12 +22,14 @@ The `task dev-chrome` command starts a Chrome instance with the ENX extension pr
 ### Basic Workflow
 
 **Terminal 1** - Watch mode (auto-rebuild):
+
 ```bash
 cd enx-chrome
 task watch
 ```
 
 **Terminal 2** - Launch Chrome with extension:
+
 ```bash
 cd enx-chrome
 task dev-chrome
@@ -36,6 +40,7 @@ task dev-chrome
 ### Custom URL
 
 Open a specific website:
+
 ```bash
 task dev-chrome URL=https://www.bbc.com/news
 task dev-chrome URL=http://localhost:3000
@@ -48,6 +53,7 @@ Default URL: `https://www.infoq.com/`
 ### Technical Details
 
 The `task dev-chrome` command runs:
+
 ```bash
 google-chrome \
   --load-extension=$(pwd)/dist-homelab \           # Load ENX extension from dist-homelab/
@@ -57,6 +63,7 @@ google-chrome \
 ```
 
 **Key flags**:
+
 - `--load-extension`: Pre-load extension from directory
 - `--disable-extensions-except`: Only enable ENX extension (faster startup)
 - `--user-data-dir`: Separate Chrome profile (won't interfere with your personal Chrome)
@@ -119,24 +126,26 @@ Each Chrome instance auto-reloads independently!
 
 ## Comparison with Other Methods
 
-| Method                               | Auto-Rebuild | Auto-Reload   | Manual Steps                        | Use Case              |
-| ------------------------------------ | ------------ | ------------- | ----------------------------------- | --------------------- |
-| `task watch` only                    | ✅ Yes        | ❌ No          | Click reload in chrome://extensions | Simple development    |
-| `task dev` (Vite HMR)                | ✅ Yes        | ❌ No (broken) | None (but has issues)               | ⚠️ Not recommended     |
-| **`task watch` + `task dev-chrome`** | ✅ Yes        | ✅ Yes         | None!                               | **✨ Best experience** |
-| E2E tests                            | ✅ Yes        | ✅ Yes         | None                                | Automated testing     |
+| Method                               | Auto-Rebuild | Auto-Reload    | Manual Steps                        | Use Case               |
+| ------------------------------------ | ------------ | -------------- | ----------------------------------- | ---------------------- |
+| `task watch` only                    | ✅ Yes       | ❌ No          | Click reload in chrome://extensions | Simple development     |
+| `task dev` (Vite HMR)                | ✅ Yes       | ❌ No (broken) | None (but has issues)               | ⚠️ Not recommended     |
+| **`task watch` + `task dev-chrome`** | ✅ Yes       | ✅ Yes         | None!                               | **✨ Best experience** |
+| E2E tests                            | ✅ Yes       | ✅ Yes         | None                                | Automated testing      |
 
 ## User Data Directory
 
 The Chrome instance uses `/tmp/chrome-dev-enx` as its user data directory:
 
 **Benefits**:
+
 - Separate from your personal Chrome profile
 - Won't interfere with your existing Chrome sessions
 - Can be safely deleted anytime
 - Fresh start each time (no stale cache issues)
 
 **Cleanup** (optional):
+
 ```bash
 rm -rf /tmp/chrome-dev-enx
 ```
@@ -146,18 +155,21 @@ rm -rf /tmp/chrome-dev-enx
 ### "google-chrome command not found"
 
 **macOS**:
+
 ```bash
 # Update Taskfile.yml to use:
 /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome
 ```
 
 **Windows**:
+
 ```bash
 # Update Taskfile.yml to use:
 "C:\Program Files\Google\Chrome\Application\chrome.exe"
 ```
 
 **Linux** (alternative names):
+
 ```bash
 chromium-browser  # Debian/Ubuntu
 chromium          # Arch/Fedora
@@ -193,6 +205,7 @@ pkill -f "chrome-dev-enx"
 This approach uses the **same technique** as E2E tests:
 
 **E2E Tests** (`playwright.config.ts`):
+
 ```typescript
 use: {
   ...devices['Desktop Chrome'],
@@ -201,6 +214,7 @@ use: {
 ```
 
 **Dev Chrome** (`task dev-chrome`):
+
 ```bash
 google-chrome --load-extension=$(pwd)/dist-homelab ...
 ```

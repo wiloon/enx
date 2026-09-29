@@ -2,19 +2,20 @@
 
 ## Document Information
 
-| Field | Value |
-|-------|-------|
-| **Created** | 2026-01-04 |
-| **Last Updated** | 2026-01-04 |
-| **AI Assisted** | Yes (GitHub Copilot) |
-| **AI Model** | Claude Sonnet 4.5 |
-| **Status** | ✅ Implemented |
-| **Version** | 2.0.0 |
+| Field              | Value                                           |
+| ------------------ | ----------------------------------------------- |
+| **Created**        | 2026-01-04                                      |
+| **Last Updated**   | 2026-01-04                                      |
+| **AI Assisted**    | Yes (GitHub Copilot)                            |
+| **AI Model**       | Claude Sonnet 4.5                               |
+| **Status**         | ✅ Implemented                                  |
+| **Version**        | 2.0.0                                           |
 | **Implementation** | `src/content/content.tsx` - `showWordPopover()` |
 
 ## 概述
 
 本文档描述了 ENX Chrome 扩展中单词查询弹窗的定位算法设计与实现。弹窗定位的核心目标是：
+
 1. 不遮挡用户点击的单词
 2. 不影响用户继续阅读后续内容
 3. 确保弹窗始终在视口可见范围内
@@ -35,6 +36,7 @@
 **简介**：Popover API 是 **WHATWG HTML Living Standard** 的一部分，由 Open UI Community Group 提出并标准化，提供原生的弹窗管理能力，无需第三方库。
 
 **标准来源**：
+
 - **规范**：[WHATWG HTML Living Standard - Popover](https://html.spec.whatwg.org/multipage/popover.html)
 - **提案**：[Open UI - Popover API Explainer](https://open-ui.org/components/popover.research.explainer/)
 - **标准化时间**：2022年加入 WHATWG HTML 规范
@@ -49,20 +51,20 @@
 <!-- JavaScript 命令式用法 -->
 <script>
   const popup = document.getElementById('my-popup')
-  popup.showPopover()  // 显示
-  popup.hidePopover()  // 隐藏
+  popup.showPopover() // 显示
+  popup.hidePopover() // 隐藏
 </script>
 ```
 
 **核心能力**：
 
-| 特性 | 说明 | 优势 |
-|------|------|------|
-| **Top Layer 渲染** | 弹窗自动显示在页面最上层 | 无需手动设置 `z-index: 99999` |
-| **焦点管理** | 自动捕获和恢复焦点 | 支持键盘导航，改善可访问性 |
-| **轻量级关闭** | 支持"轻触消失"行为 | 点击外部区域自动关闭（可配置） |
-| **事件系统** | `toggle`, `beforetoggle` 事件 | 监听显示/隐藏状态变化 |
-| **无障碍支持** | 内置 ARIA 语义 | 自动添加 `role="dialog"` 等属性 |
+| 特性               | 说明                          | 优势                            |
+| ------------------ | ----------------------------- | ------------------------------- |
+| **Top Layer 渲染** | 弹窗自动显示在页面最上层      | 无需手动设置 `z-index: 99999`   |
+| **焦点管理**       | 自动捕获和恢复焦点            | 支持键盘导航，改善可访问性      |
+| **轻量级关闭**     | 支持"轻触消失"行为            | 点击外部区域自动关闭（可配置）  |
+| **事件系统**       | `toggle`, `beforetoggle` 事件 | 监听显示/隐藏状态变化           |
+| **无障碍支持**     | 内置 ARIA 语义                | 自动添加 `role="dialog"` 等属性 |
 
 **Popover 类型**：
 
@@ -75,6 +77,7 @@ popup.popover = 'auto'
 ```
 
 **浏览器支持**：
+
 - **Chrome 114+** (2023年5月17日发布)
   - Chrome 114 首次正式支持 Popover API
   - 在 Chrome 110-113 版本可通过实验性标志启用
@@ -83,11 +86,13 @@ popup.popover = 'auto'
 - **Edge 114+** (2023年6月，基于 Chromium 114)
 
 **标准实现进度**：
+
 - ✅ **已标准化**：WHATWG HTML Living Standard
 - ✅ **主流浏览器支持**：Chrome、Firefox、Safari、Edge 均已支持
 - ✅ **生产就绪**：自 2023年5月起可在生产环境使用（Chrome 114+）
 
 **为什么使用 Popover API**：
+
 - ✅ 替代传统的 `position: fixed` + 高 z-index 方案
 - ✅ 浏览器原生管理弹窗层级，避免 z-index 冲突
 - ✅ 自动处理焦点陷阱（focus trap）
@@ -99,6 +104,7 @@ popup.popover = 'auto'
 #### 场景特点
 
 **单词翻译弹窗的典型需求**：
+
 1. 👆 **点击触发**：用户点击单词时显示翻译
 2. 🎯 **精确定位**：弹窗应出现在单词附近，不遮挡内容
 3. 🖱️ **需要交互**：用户需要点击"标记已认识"、访问外部链接等
@@ -121,14 +127,14 @@ popup.showPopover()
 
 **`auto` 模式的行为详解**：
 
-| 操作类型 | 能否正常使用？ | 说明 |
-|---------|--------------|------|
-| 🖱️ **鼠标滚轮** | ✅ **可以** | 鼠标滚轮滚动不受焦点影响，可以正常滚动页面 |
-| ⌨️ **键盘滚动** | ❌ **不可以** | Space、PageDown、↑↓ 等按键无法滚动页面 |
-| 🔤 **Ctrl+F 查找** | ❌ **不可以** | 焦点在弹窗内，快捷键可能被拦截 |
-| 📝 **选择文本** | ⚠️ **部分可以** | 可以选择页面文本，但 Tab 键会在弹窗内循环 |
-| ⌨️ **ESC 关闭** | ✅ **可以** | `auto` 模式自动支持 ESC 键关闭 |
-| 🖱️ **点击外部关闭** | ✅ **可以** | `auto` 模式自动支持点击外部关闭 |
+| 操作类型            | 能否正常使用？  | 说明                                       |
+| ------------------- | --------------- | ------------------------------------------ |
+| 🖱️ **鼠标滚轮**     | ✅ **可以**     | 鼠标滚轮滚动不受焦点影响，可以正常滚动页面 |
+| ⌨️ **键盘滚动**     | ❌ **不可以**   | Space、PageDown、↑↓ 等按键无法滚动页面     |
+| 🔤 **Ctrl+F 查找**  | ❌ **不可以**   | 焦点在弹窗内，快捷键可能被拦截             |
+| 📝 **选择文本**     | ⚠️ **部分可以** | 可以选择页面文本，但 Tab 键会在弹窗内循环  |
+| ⌨️ **ESC 关闭**     | ✅ **可以**     | `auto` 模式自动支持 ESC 键关闭             |
+| 🖱️ **点击外部关闭** | ✅ **可以**     | `auto` 模式自动支持点击外部关闭            |
 
 **典型场景影响**：
 
@@ -146,16 +152,17 @@ popup.showPopover()
 
 **权衡分析**：
 
-| 维度 | `auto` 模式 | `manual` 模式 | 推荐 |
-|------|-----------|--------------|------|
-| **鼠标滚动** | ✅ 可用 | ✅ 可用 | 平手 |
-| **键盘滚动** | ❌ 不可用 | ✅ 可用 | manual |
-| **快捷键** | ❌ 可能失效 | ✅ 正常 | manual |
-| **自动关闭** | ✅ 内置 | ⚠️ 需手动实现 | ⭐ auto |
-| **代码量** | 简单 | 稍多（+10行） | ⭐ auto |
-| **用户体验** | ✅ 大多数用户流畅 | ✅ 所有用户流畅 | auto |
+| 维度         | `auto` 模式       | `manual` 模式   | 推荐    |
+| ------------ | ----------------- | --------------- | ------- |
+| **鼠标滚动** | ✅ 可用           | ✅ 可用         | 平手    |
+| **键盘滚动** | ❌ 不可用         | ✅ 可用         | manual  |
+| **快捷键**   | ❌ 可能失效       | ✅ 正常         | manual  |
+| **自动关闭** | ✅ 内置           | ⚠️ 需手动实现   | ⭐ auto |
+| **代码量**   | 简单              | 稍多（+10行）   | ⭐ auto |
+| **用户体验** | ✅ 大多数用户流畅 | ✅ 所有用户流畅 | auto    |
 
 **结论**：对于单词翻译场景，推荐使用 `auto` 模式
+
 - ✅ **优势**：自动关闭，无需手动实现事件监听
 - ✅ **优势**：鼠标滚轮正常工作，满足大多数用户需求
 - ✅ **优势**：代码简洁，维护成本低
@@ -177,9 +184,9 @@ function showWordPopover(word: string) {
     currentPopup.hidePopover()
     currentPopup.remove()
   }
-  
+
   const popup = document.createElement('div')
-  popup.popover = 'auto'  // 自动关闭模式
+  popup.popover = 'auto' // 自动关闭模式
   // ...配置弹窗
   currentPopup = popup
 }
@@ -193,25 +200,26 @@ function showWordPopover(word: string) {
 
 ```typescript
 // ✅ 完美组合
-popup.popover = 'auto'  // Popover 管理层级、生命周期和自动关闭
-popup.style.setProperty('position-anchor', '--word')  // CSS Anchor 管理定位
+popup.popover = 'auto' // Popover 管理层级、生命周期和自动关闭
+popup.style.setProperty('position-anchor', '--word') // CSS Anchor 管理定位
 popup.style.positionArea = 'top'
 ```
 
 **为什么是完美组合**：
+
 - 🎯 **职责分离**：Popover 管"如何显示"，Anchor 管"在哪显示"
 - ⚡ **性能最优**：两者都是浏览器原生 API，GPU 加速
 - 🛠️ **代码简洁**：声明式语法，易于维护
 
 #### 与其他方案对比
 
-| 方案 | 适合单词翻译场景？ | 原因 |
-|------|------------------|------|
-| **Popover API (auto)** | ✅ **非常适合** | 层级管理自动化，自动关闭，鼠标滚轮可用 |
-| **Dialog 元素** | ❌ **不适合** | 模态对话框会阻断页面交互，过于重量级 |
-| **Tooltip 库** | ⚠️ **部分适合** | 通常用于悬停触发，不太适合点击 + 复杂交互 |
-| **自定义 div + z-index** | ⚠️ **传统方案** | 需要手动管理层级，容易出现 z-index 冲突 |
-| **Floating UI 库** | ✅ **适合（兼容方案）** | 功能丰富，兼容性好，但需要额外依赖 |
+| 方案                     | 适合单词翻译场景？      | 原因                                      |
+| ------------------------ | ----------------------- | ----------------------------------------- |
+| **Popover API (auto)**   | ✅ **非常适合**         | 层级管理自动化，自动关闭，鼠标滚轮可用    |
+| **Dialog 元素**          | ❌ **不适合**           | 模态对话框会阻断页面交互，过于重量级      |
+| **Tooltip 库**           | ⚠️ **部分适合**         | 通常用于悬停触发，不太适合点击 + 复杂交互 |
+| **自定义 div + z-index** | ⚠️ **传统方案**         | 需要手动管理层级，容易出现 z-index 冲突   |
+| **Floating UI 库**       | ✅ **适合（兼容方案）** | 功能丰富，兼容性好，但需要额外依赖        |
 
 #### 最佳实践建议
 
@@ -220,7 +228,7 @@ popup.style.positionArea = 'top'
 ```typescript
 // ✅ 最佳实践
 const popup = document.createElement('div')
-popup.popover = 'auto'  // 自动关闭，无需手动处理
+popup.popover = 'auto' // 自动关闭，无需手动处理
 
 // 配置定位
 anchor.style.setProperty('anchor-name', '--word-anchor')
@@ -234,7 +242,7 @@ popup.style.cssText = `
 popup.showPopover()
 
 // 监听 toggle 事件清理资源
-popup.addEventListener('toggle', (e) => {
+popup.addEventListener('toggle', e => {
   if (e.newState === 'closed') {
     anchor.style.removeProperty('anchor-name')
     popup.remove()
@@ -243,6 +251,7 @@ popup.addEventListener('toggle', (e) => {
 ```
 
 **关键要点**：
+
 1. ✅ **使用 auto 模式** - 自动处理点击外部和 ESC 关闭，代码简洁
 2. ✅ **配合 CSS Anchor** - 自动定位，无需手动计算坐标
 3. ✅ **监听 toggle 事件** - 及时清理资源（移除锚点、删除元素）
@@ -253,18 +262,19 @@ popup.addEventListener('toggle', (e) => {
 
 **Popover API 非常适合单词翻译场景**，使用 `auto` 模式可获得最佳体验：
 
-| 评估维度 | 评分 | 说明 |
-|---------|------|------|
-| **技术匹配度** | ⭐⭐⭐⭐⭐ | Top layer 和事件系统完美匹配需求 |
-| **用户体验** | ⭐⭐⭐⭐⭐ | auto 模式自动关闭，鼠标滚轮可用，体验流畅 |
-| **开发成本** | ⭐⭐⭐⭐⭐ | 比传统方案简单，无需手动事件处理 |
-| **性能表现** | ⭐⭐⭐⭐⭐ | 浏览器原生 API，性能最优 |
-| **可维护性** | ⭐⭐⭐⭐⭐ | 声明式 + 标准 API，代码最简洁 |
-| **兼容性** | ⭐⭐⭐⭐ | Chrome 114+，现代浏览器支持良好 |
+| 评估维度       | 评分       | 说明                                      |
+| -------------- | ---------- | ----------------------------------------- |
+| **技术匹配度** | ⭐⭐⭐⭐⭐ | Top layer 和事件系统完美匹配需求          |
+| **用户体验**   | ⭐⭐⭐⭐⭐ | auto 模式自动关闭，鼠标滚轮可用，体验流畅 |
+| **开发成本**   | ⭐⭐⭐⭐⭐ | 比传统方案简单，无需手动事件处理          |
+| **性能表现**   | ⭐⭐⭐⭐⭐ | 浏览器原生 API，性能最优                  |
+| **可维护性**   | ⭐⭐⭐⭐⭐ | 声明式 + 标准 API，代码最简洁             |
+| **兼容性**     | ⭐⭐⭐⭐   | Chrome 114+，现代浏览器支持良好           |
 
 **总体评分：⭐⭐⭐⭐⭐（强烈推荐）**
 
 **特别适合**：
+
 - ✅ Chrome 扩展项目（用户浏览器版本可控）
 - ✅ 现代 Web 应用（目标用户使用最新浏览器）
 - ✅ 需要频繁显示/隐藏的弹窗场景
@@ -285,9 +295,9 @@ popup.addEventListener('toggle', (e) => {
 /* 步骤 2: 将弹窗绑定到锚点 */
 .popup {
   position-anchor: --my-anchor;
-  
+
   /* 步骤 3: 指定相对位置 */
-  position-area: top;  /* 显示在锚点上方 */
+  position-area: top; /* 显示在锚点上方 */
 }
 ```
 
@@ -302,6 +312,7 @@ popup.addEventListener('toggle', (e) => {
 ```
 
 **常用位置值**：
+
 - `top` - 锚点上方
 - `bottom` - 锚点下方
 - `left` / `right` - 锚点左侧/右侧
@@ -312,17 +323,18 @@ popup.addEventListener('toggle', (e) => {
 ```css
 .popup {
   position-anchor: --word;
-  position-area: top;  /* 首选：上方 */
-  
+  position-area: top; /* 首选：上方 */
+
   /* 空间不足时的回退方案 */
   position-try-fallbacks:
-    flip-block,    /* 垂直翻转：上→下 或 下→上 */
-    flip-inline,   /* 水平翻转：左→右 或 右→左 */
-    flip-start;    /* 对角翻转 */
+    flip-block,
+    /* 垂直翻转：上→下 或 下→上 */ flip-inline,
+    /* 水平翻转：左→右 或 右→左 */ flip-start; /* 对角翻转 */
 }
 ```
 
 **浏览器自动处理**：
+
 1. 检测锚点位置
 2. 测量弹窗尺寸
 3. 尝试 `position-area` 指定的位置
@@ -332,23 +344,25 @@ popup.addEventListener('toggle', (e) => {
 
 **与传统方案对比**：
 
-| 特性 | 传统方案 | CSS Anchor Positioning |
-|------|---------|------------------------|
-| **定位方式** | JavaScript 计算 `left/top` | CSS 声明式配置 |
-| **坐标系统** | 绝对坐标（px 值） | 相对锚点（语义化） |
-| **滚动跟随** | 需要监听 scroll 事件 | 浏览器自动处理 |
-| **边界检测** | 手动实现 Math.max/min | 自动 + fallback 机制 |
-| **代码复杂度** | 高（~100行计算逻辑） | 低（~5行CSS） |
-| **性能** | JavaScript 主线程 | 浏览器合成器线程（GPU） |
-| **维护成本** | 高 | 低 |
+| 特性           | 传统方案                   | CSS Anchor Positioning  |
+| -------------- | -------------------------- | ----------------------- |
+| **定位方式**   | JavaScript 计算 `left/top` | CSS 声明式配置          |
+| **坐标系统**   | 绝对坐标（px 值）          | 相对锚点（语义化）      |
+| **滚动跟随**   | 需要监听 scroll 事件       | 浏览器自动处理          |
+| **边界检测**   | 手动实现 Math.max/min      | 自动 + fallback 机制    |
+| **代码复杂度** | 高（~100行计算逻辑）       | 低（~5行CSS）           |
+| **性能**       | JavaScript 主线程          | 浏览器合成器线程（GPU） |
+| **维护成本**   | 高                         | 低                      |
 
 **浏览器支持**：
+
 - Chrome 125+ (2024年5月)
 - Firefox: 🚧 开发中 (预计 2024年底)
 - Safari: 🚧 开发中
 - Edge 125+
 
 **为什么使用 CSS Anchor Positioning**：
+
 - ✅ **零 JavaScript 计算**：浏览器原生处理所有定位逻辑
 - ✅ **自动滚动跟随**：锚点移动时弹窗自动跟随，无需监听 scroll
 - ✅ **声明式语法**：CSS 配置比 JavaScript 更易理解和维护
@@ -360,8 +374,8 @@ popup.addEventListener('toggle', (e) => {
 
 ```typescript
 // Popover API 提供弹窗管理
-popup.popover = 'auto'  // 自动关闭模式
-popup.showPopover()  // 自动显示在 top layer
+popup.popover = 'auto' // 自动关闭模式
+popup.showPopover() // 自动显示在 top layer
 
 // CSS Anchor Positioning 提供定位能力
 popup.style.positionAnchor = '--word-anchor'
@@ -369,10 +383,12 @@ popup.style.positionArea = 'top'
 ```
 
 **协同效果**：
+
 - 🎯 **Popover** 解决"如何显示" → 层级管理、焦点、无障碍
 - 🎯 **CSS Anchor** 解决"在哪显示" → 自动定位、跟随、边界处理
 
 **适用场景**：
+
 - ✅ Tooltip / 工具提示
 - ✅ Dropdown / 下拉菜单
 - ✅ Context Menu / 右键菜单
@@ -380,6 +396,7 @@ popup.style.positionArea = 'top'
 - ✅ 任何需要相对于页面元素定位的浮层
 
 **参考资源**：
+
 - [MDN: Popover API](https://developer.mozilla.org/en-US/docs/Web/API/Popover_API)
 - [MDN: CSS Anchor Positioning](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_anchor_positioning)
 - [W3C Spec: CSS Anchor Positioning](https://drafts.csswg.org/css-anchor-position-1/)
@@ -404,17 +421,17 @@ import { computePosition, flip, shift, offset } from '@floating-ui/dom'
 
 async function showPopup(button, popup) {
   const { x, y } = await computePosition(button, popup, {
-    placement: 'top',           // 首选位置：上方
+    placement: 'top', // 首选位置：上方
     middleware: [
-      offset(16),               // 与锚点的间距
-      flip(),                   // 空间不足时翻转
-      shift({ padding: 16 })    // 保持在视口内
-    ]
+      offset(16), // 与锚点的间距
+      flip(), // 空间不足时翻转
+      shift({ padding: 16 }), // 保持在视口内
+    ],
   })
-  
+
   Object.assign(popup.style, {
     left: `${x}px`,
-    top: `${y}px`
+    top: `${y}px`,
   })
 }
 ```
@@ -422,13 +439,19 @@ async function showPopup(button, popup) {
 **React Hooks 用法**：
 
 ```tsx
-import { useFloating, autoUpdate, offset, flip, shift } from '@floating-ui/react'
+import {
+  useFloating,
+  autoUpdate,
+  offset,
+  flip,
+  shift,
+} from '@floating-ui/react'
 
 function WordPopover() {
   const { refs, floatingStyles } = useFloating({
     placement: 'top',
     middleware: [offset(16), flip(), shift({ padding: 16 })],
-    whileElementsMounted: autoUpdate  // 自动更新位置
+    whileElementsMounted: autoUpdate, // 自动更新位置
   })
 
   return (
@@ -444,21 +467,23 @@ function WordPopover() {
 
 **核心中间件（Middleware）**：
 
-| 中间件 | 功能 | 示例 |
-|--------|------|------|
-| **offset** | 设置与锚点的距离 | `offset(16)` |
-| **flip** | 空间不足时翻转位置 | `flip()` |
-| **shift** | 移动以保持在视口内 | `shift({ padding: 16 })` |
-| **size** | 调整弹窗尺寸适应可用空间 | `size()` |
-| **arrow** | 计算箭头位置 | `arrow({ element: arrowRef })` |
-| **autoPlacement** | 自动选择最佳位置 | `autoPlacement()` |
+| 中间件            | 功能                     | 示例                           |
+| ----------------- | ------------------------ | ------------------------------ |
+| **offset**        | 设置与锚点的距离         | `offset(16)`                   |
+| **flip**          | 空间不足时翻转位置       | `flip()`                       |
+| **shift**         | 移动以保持在视口内       | `shift({ padding: 16 })`       |
+| **size**          | 调整弹窗尺寸适应可用空间 | `size()`                       |
+| **arrow**         | 计算箭头位置             | `arrow({ element: arrowRef })` |
+| **autoPlacement** | 自动选择最佳位置         | `autoPlacement()`              |
 
 **浏览器支持**：
+
 - ✅ 所有现代浏览器（Chrome, Firefox, Safari, Edge）
 - ✅ IE11+（需要 polyfills）
 - ✅ 移动端浏览器
 
 **为什么使用 Floating UI**：
+
 - ✅ **兼容性极佳**：支持所有现代浏览器，无需最新版本
 - ✅ **功能丰富**：箭头、虚拟元素、滚动优化等高级特性
 - ✅ **框架无关**：原生 JS、React、Vue 都有对应版本
@@ -466,11 +491,13 @@ function WordPopover() {
 - ✅ **性能优秀**：仅 ~3KB gzipped，比手写逻辑更高效
 
 **局限性**：
+
 - ⚠️ **需要 JavaScript**：依赖 JS 运行时，不是纯 CSS 方案
 - ⚠️ **手动更新**：需要监听滚动/resize 事件（虽然有 `autoUpdate`）
 - ⚠️ **包体积**：虽然小巧，但仍增加 ~3KB 依赖
 
 **参考资源**：
+
 - [Floating UI 官网](https://floating-ui.com/)
 - [GitHub Repository](https://github.com/floating-ui/floating-ui)
 - [React Hooks 文档](https://floating-ui.com/docs/react)
@@ -479,24 +506,25 @@ function WordPopover() {
 
 #### 1. 技术实现对比
 
-| 特性 | Floating UI | Popover + CSS Anchor |
-|------|-------------|---------------------|
-| **技术类型** | JavaScript 库 | 浏览器原生 API |
-| **实现方式** | JS 计算坐标 + position: absolute | CSS 声明式定位 |
-| **包体积** | ~3KB (gzipped) | 0 KB（浏览器内置） |
-| **运行时开销** | JavaScript 主线程 | 浏览器合成器线程（GPU） |
-| **定位更新** | 需要 autoUpdate 监听 | 浏览器自动跟随 |
-| **层级管理** | 手动设置 z-index | 自动 top layer |
+| 特性           | Floating UI                      | Popover + CSS Anchor    |
+| -------------- | -------------------------------- | ----------------------- |
+| **技术类型**   | JavaScript 库                    | 浏览器原生 API          |
+| **实现方式**   | JS 计算坐标 + position: absolute | CSS 声明式定位          |
+| **包体积**     | ~3KB (gzipped)                   | 0 KB（浏览器内置）      |
+| **运行时开销** | JavaScript 主线程                | 浏览器合成器线程（GPU） |
+| **定位更新**   | 需要 autoUpdate 监听             | 浏览器自动跟随          |
+| **层级管理**   | 手动设置 z-index                 | 自动 top layer          |
 
 #### 2. 浏览器兼容性对比
 
-| 方案 | Chrome | Firefox | Safari | Edge | 可用时间 |
-|------|--------|---------|--------|------|----------|
-| **Floating UI** | ✅ 全版本 | ✅ 全版本 | ✅ 全版本 | ✅ 全版本 | 立即可用 |
-| **Popover API** | 114+ | 125+ | 17+ | 114+ | 2023-2024 |
-| **CSS Anchor** | 125+ | 🚧 开发中 | 🚧 开发中 | 125+ | 2024+ |
+| 方案            | Chrome    | Firefox   | Safari    | Edge      | 可用时间  |
+| --------------- | --------- | --------- | --------- | --------- | --------- |
+| **Floating UI** | ✅ 全版本 | ✅ 全版本 | ✅ 全版本 | ✅ 全版本 | 立即可用  |
+| **Popover API** | 114+      | 125+      | 17+       | 114+      | 2023-2024 |
+| **CSS Anchor**  | 125+      | 🚧 开发中 | 🚧 开发中 | 125+      | 2024+     |
 
 **结论**：
+
 - **Floating UI**：✅ 现在就能用，兼容所有浏览器
 - **Popover + Anchor**：⏳ 需要等待浏览器支持（Chrome 125+）
 
@@ -511,24 +539,24 @@ import { computePosition, flip, shift, offset } from '@floating-ui/dom'
 async function showPopup(word: string, event: MouseEvent) {
   const anchor = event.target as HTMLElement
   const popup = document.createElement('div')
-  popup.innerHTML = '...'  // 弹窗内容
+  popup.innerHTML = '...' // 弹窗内容
   document.body.appendChild(popup)
-  
+
   // 计算位置
   const { x, y } = await computePosition(anchor, popup, {
     placement: 'top',
-    middleware: [offset(16), flip(), shift({ padding: 16 })]
+    middleware: [offset(16), flip(), shift({ padding: 16 })],
   })
-  
+
   Object.assign(popup.style, {
     position: 'absolute',
     left: `${x}px`,
-    top: `${y}px`
+    top: `${y}px`,
   })
-  
+
   // 监听滚动/resize 更新位置
   const cleanup = autoUpdate(anchor, popup, async () => {
-    const { x, y } = await computePosition(anchor, popup, { /* ... */ })
+    const { x, y } = await computePosition(anchor, popup, {/* ... */})
     Object.assign(popup.style, { left: `${x}px`, top: `${y}px` })
   })
 }
@@ -541,17 +569,17 @@ async function showPopup(word: string, event: MouseEvent) {
 async function showPopup(word: string, event: MouseEvent) {
   const anchor = event.target as HTMLElement
   anchor.style.anchorName = '--word-anchor'
-  
+
   const popup = document.createElement('div')
-  popup.popover = 'auto'  // 自动关闭模式
+  popup.popover = 'auto' // 自动关闭模式
   popup.style.cssText = `
     position-anchor: --word-anchor;
     position-area: top;
     position-try-fallbacks: flip-block;
     margin: 16px;
   `
-  popup.innerHTML = '...'  // 弹窗内容
-  
+  popup.innerHTML = '...' // 弹窗内容
+
   document.body.appendChild(popup)
   popup.showPopover()
   // 浏览器自动处理滚动跟随、边界检测和点击外部关闭
@@ -559,45 +587,49 @@ async function showPopup(word: string, event: MouseEvent) {
 ```
 
 **代码量对比**：
+
 - Floating UI: ~25 行（含滚动监听）
 - Popover + Anchor: ~10 行（无需监听）
 
 #### 4. 性能对比
 
-| 指标 | Floating UI | Popover + CSS Anchor |
-|------|-------------|---------------------|
-| **初始定位** | ~2ms（JS 计算） | ~0.5ms（浏览器原生） |
-| **滚动性能** | 60fps（需优化） | 60fps+（GPU 加速） |
-| **内存占用** | +3KB 库 + 监听器 | 0 额外开销 |
-| **重排次数** | 每次滚动触发 | 浏览器优化批处理 |
-| **电池影响** | 轻微（JS 运行） | 极小（GPU 处理） |
+| 指标         | Floating UI      | Popover + CSS Anchor |
+| ------------ | ---------------- | -------------------- |
+| **初始定位** | ~2ms（JS 计算）  | ~0.5ms（浏览器原生） |
+| **滚动性能** | 60fps（需优化）  | 60fps+（GPU 加速）   |
+| **内存占用** | +3KB 库 + 监听器 | 0 额外开销           |
+| **重排次数** | 每次滚动触发     | 浏览器优化批处理     |
+| **电池影响** | 轻微（JS 运行）  | 极小（GPU 处理）     |
 
 **结论**：
+
 - **Floating UI**：性能良好，但依赖 JavaScript
 - **Popover + Anchor**：性能卓越，GPU 加速无 JS 开销
 
 #### 5. 功能对比
 
-| 功能 | Floating UI | Popover + CSS Anchor |
-|------|-------------|---------------------|
-| **基础定位** | ✅ | ✅ |
-| **边界检测** | ✅ | ✅ |
-| **自动翻转** | ✅ | ✅ |
-| **滚动跟随** | ✅（需 autoUpdate） | ✅（自动） |
-| **箭头指示** | ✅ | ⚠️ 需手动实现 |
-| **虚拟元素** | ✅ | ❌ |
-| **尺寸自适应** | ✅（size 中间件） | ⚠️ 部分支持 |
-| **动画支持** | ⚠️ 需第三方库 | ✅ CSS 原生 |
-| **焦点管理** | ⚠️ 需手动实现 | ✅ Popover 自动 |
-| **键盘导航** | ⚠️ 需手动实现 | ✅ Popover 自动 |
+| 功能           | Floating UI         | Popover + CSS Anchor |
+| -------------- | ------------------- | -------------------- |
+| **基础定位**   | ✅                  | ✅                   |
+| **边界检测**   | ✅                  | ✅                   |
+| **自动翻转**   | ✅                  | ✅                   |
+| **滚动跟随**   | ✅（需 autoUpdate） | ✅（自动）           |
+| **箭头指示**   | ✅                  | ⚠️ 需手动实现        |
+| **虚拟元素**   | ✅                  | ❌                   |
+| **尺寸自适应** | ✅（size 中间件）   | ⚠️ 部分支持          |
+| **动画支持**   | ⚠️ 需第三方库       | ✅ CSS 原生          |
+| **焦点管理**   | ⚠️ 需手动实现       | ✅ Popover 自动      |
+| **键盘导航**   | ⚠️ 需手动实现       | ✅ Popover 自动      |
 
 **结论**：
+
 - **Floating UI**：功能更丰富（箭头、虚拟元素）
 - **Popover + Anchor**：无障碍特性更完善
 
 #### 6. 使用建议
 
 **选择 Floating UI 的场景**：
+
 - ✅ 需要**立即**支持所有浏览器
 - ✅ 需要高级功能（箭头、虚拟元素、复杂动画）
 - ✅ 已使用 React/Vue 框架，希望集成 hooks
@@ -605,6 +637,7 @@ async function showPopup(word: string, event: MouseEvent) {
 - ✅ 需要支持旧版浏览器（如企业环境）
 
 **选择 Popover + CSS Anchor 的场景**：
+
 - ✅ 只需支持 Chrome 125+（Chrome 扩展）
 - ✅ 追求**极致性能**（GPU 加速）
 - ✅ 希望**零依赖**，减小包体积
@@ -616,7 +649,7 @@ async function showPopup(word: string, event: MouseEvent) {
 
 ```typescript
 // 特性检测 + 渐进增强
-const supportsNativeAPIs = 
+const supportsNativeAPIs =
   'popover' in HTMLElement.prototype &&
   CSS.supports('position-anchor', '--test')
 
@@ -630,6 +663,7 @@ if (supportsNativeAPIs) {
 ```
 
 **本项目选择**：
+
 - **当前实现**：原生 `position: absolute` + 手动计算
 - **推荐升级路径**：
   1. **短期**：使用 Floating UI（立即可用，兼容性好）
@@ -638,24 +672,25 @@ if (supportsNativeAPIs) {
 
 #### 7. 迁移成本对比
 
-| 方案 | 学习成本 | 开发时间 | 依赖管理 | 维护成本 |
-|------|---------|---------|---------|---------|
-| **Floating UI** | 中等 | 1-2天 | 需要 npm 包 | 中等（库更新） |
-| **Popover + Anchor** | 低 | 0.5-1天 | 无 | 低（浏览器标准） |
-| **混合方案** | 高 | 2-3天 | 需要 npm 包 | 中等（维护两套） |
+| 方案                 | 学习成本 | 开发时间 | 依赖管理    | 维护成本         |
+| -------------------- | -------- | -------- | ----------- | ---------------- |
+| **Floating UI**      | 中等     | 1-2天    | 需要 npm 包 | 中等（库更新）   |
+| **Popover + Anchor** | 低       | 0.5-1天  | 无          | 低（浏览器标准） |
+| **混合方案**         | 高       | 2-3天    | 需要 npm 包 | 中等（维护两套） |
 
 **总结**：
 
-| 维度 | Floating UI | Popover + CSS Anchor | 推荐指数 |
-|------|-------------|---------------------|---------|
-| **兼容性** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | Floating UI |
-| **性能** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | Popover + Anchor |
-| **功能** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | Floating UI |
-| **易用性** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | Popover + Anchor |
-| **可维护性** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | Popover + Anchor |
-| **无障碍** | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | Popover + Anchor |
+| 维度         | Floating UI | Popover + CSS Anchor | 推荐指数         |
+| ------------ | ----------- | -------------------- | ---------------- |
+| **兼容性**   | ⭐⭐⭐⭐⭐  | ⭐⭐⭐               | Floating UI      |
+| **性能**     | ⭐⭐⭐⭐    | ⭐⭐⭐⭐⭐           | Popover + Anchor |
+| **功能**     | ⭐⭐⭐⭐⭐  | ⭐⭐⭐⭐             | Floating UI      |
+| **易用性**   | ⭐⭐⭐⭐    | ⭐⭐⭐⭐⭐           | Popover + Anchor |
+| **可维护性** | ⭐⭐⭐⭐    | ⭐⭐⭐⭐⭐           | Popover + Anchor |
+| **无障碍**   | ⭐⭐⭐      | ⭐⭐⭐⭐⭐           | Popover + Anchor |
 
 **最终建议**：
+
 - **Chrome 扩展项目**：使用 **Popover + CSS Anchor**（目标用户都是 Chrome 125+）
 - **通用网站项目**：使用 **Floating UI**（需要兼容所有浏览器）
 - **追求完美项目**：**渐进增强方案**（两者都支持）
@@ -677,6 +712,7 @@ overflow-y: auto;     // 内容超出时显示滚动条
 ```
 
 **设计理由**:
+
 - **宽度 400-480px**: 相比之前的 280-320px，更宽的弹窗能更好地显示中英文翻译内容，提高可读性
 - **高度 60vh**: 使用视口相对单位确保在不同屏幕尺寸下都有合适的高度限制，避免弹窗过高遮挡大量内容
 - **overflow-y: auto**: 当翻译内容过长时，弹窗内部出现滚动条而不是无限扩展高度
@@ -684,11 +720,12 @@ overflow-y: auto;     // 内容超出时显示滚动条
 ### 定位常量
 
 ```typescript
-const margin = 16             // 弹窗与视口边界/点击位置的最小间距（符合 8px 倍数设计规范）
-const lineHeight = 24         // 默认行高后备值（实际使用时应动态获取点击元素的行高）
+const margin = 16 // 弹窗与视口边界/点击位置的最小间距（符合 8px 倍数设计规范）
+const lineHeight = 24 // 默认行高后备值（实际使用时应动态获取点击元素的行高）
 ```
 
 **设计说明**:
+
 - **margin = 16px**: 采用 Material Design 推荐的 8px 倍数间距系统，便于维护和视觉统一
 - **lineHeight = 24px**: 作为后备值，实际计算时应通过 `window.getComputedStyle(event.target).lineHeight` 动态获取
 
@@ -701,12 +738,13 @@ const lineHeight = 24         // 默认行高后备值（实际使用时应动�
 提供原生弹窗管理能力：
 
 ```typescript
-popup.popover = 'auto'   // 自动关闭模式
-popup.showPopover()      // 显示弹窗
-popup.hidePopover()      // 隐藏弹窗（通常自动触发）
+popup.popover = 'auto' // 自动关闭模式
+popup.showPopover() // 显示弹窗
+popup.hidePopover() // 隐藏弹窗（通常自动触发）
 ```
 
 **核心优势**：
+
 - ✅ **自动层级管理**：弹窗显示在 top layer，无需手动设置 z-index
 - ✅ **自动关闭**：点击外部或按 ESC 键自动关闭
 - ✅ **鼠标滚轮可用**：不影响页面滚动
@@ -731,6 +769,7 @@ popup.style.cssText = `
 ```
 
 **核心优势**：
+
 - ✅ **自动滚动跟随**：弹窗自动跟随锚点元素移动，无需监听滚动事件
 - ✅ **智能边界处理**：空间不足时自动调整位置（使用 `position-try-fallbacks`）
 - ✅ **浏览器原生优化**：性能优于 JavaScript 手动计算
@@ -742,21 +781,22 @@ popup.style.cssText = `
 .enx-anchored-overlay {
   /* 绑定锚点 */
   position-anchor: --word-anchor;
-  
+
   /* 首选：上方显示 */
   position-area: top;
-  
+
   /* 回退方案：空间不足时自动调整 */
-  position-try-fallbacks: 
-    flip-block,      /* 垂直翻转（上→下） */
-    flip-inline;     /* 水平翻转（左→右） */
-  
+  position-try-fallbacks:
+    flip-block,
+    /* 垂直翻转（上→下） */ flip-inline; /* 水平翻转（左→右） */
+
   /* 间距设置 */
-  margin: 16px;      /* 与锚点和视口边界的最小间距 */
+  margin: 16px; /* 与锚点和视口边界的最小间距 */
 }
 ```
 
 **工作原理**：
+
 1. 点击单词时，将该元素标记为锚点（`anchor-name`）
 2. 弹窗通过 `position-anchor` 绑定到锚点
 3. 使用 `position-area: top` 指定显示在上方
@@ -765,16 +805,18 @@ popup.style.cssText = `
 
 ### 浏览器兼容性
 
-| API | Chrome | Firefox | Safari | Edge |
-|-----|--------|---------|--------|------|
-| **Popover API** | 114+ | 125+ | 17+ | 114+ |
-| **CSS Anchor Positioning** | 125+ | 🚧 开发中 | 🚧 开发中 | 125+ |
+| API                        | Chrome | Firefox   | Safari    | Edge |
+| -------------------------- | ------ | --------- | --------- | ---- |
+| **Popover API**            | 114+   | 125+      | 17+       | 114+ |
+| **CSS Anchor Positioning** | 125+   | 🚧 开发中 | 🚧 开发中 | 125+ |
 
 **目标浏览器**：
+
 - **Chrome 125+**：完整支持 Popover API + CSS Anchor Positioning
 - **Chrome 扩展**：用户默认使用最新版 Chrome，无需兼容旧版本
 
 **实现策略**：
+
 - ✅ 直接使用现代 API，无特性检测
 - ✅ 无回退方案，简化代码维护
 - ✅ 假设用户浏览器已支持所需特性
@@ -787,12 +829,13 @@ popup.style.cssText = `
 /* CSS 配置 */
 .enx-anchored-overlay {
   position-anchor: --word-anchor;
-  position-area: top;        /* 优先上方 */
-  margin-bottom: 16px;       /* 与锚点间距 */
+  position-area: top; /* 优先上方 */
+  margin-bottom: 16px; /* 与锚点间距 */
 }
 ```
 
 **浏览器自动处理**：
+
 1. 检测锚点元素位置（单词位置）
 2. 测量弹窗尺寸（300px 高）
 3. 检查上方空间（500px 可用）
@@ -806,12 +849,13 @@ popup.style.cssText = `
 .enx-anchored-overlay {
   position-anchor: --word-anchor;
   position-area: top;
-  position-try-fallbacks: flip-block;  /* 上下翻转 */
+  position-try-fallbacks: flip-block; /* 上下翻转 */
   margin: 16px;
 }
 ```
 
 **浏览器自动处理**：
+
 1. 检测上方空间（100px，不足以容纳 300px 弹窗）
 2. ✗ 空间不足，触发回退机制
 3. 尝试 `flip-block`：翻转到单词下方
@@ -834,6 +878,7 @@ popup.style.cssText = `
 ```
 
 **关键优势**：
+
 - ✅ **零 JavaScript 计算**：浏览器原生处理所有位置计算
 - ✅ **自动边界处理**：不会溢出视口
 - ✅ **性能优异**：GPU 加速，滚动流畅
@@ -856,6 +901,7 @@ popup.style.cssText = `
 ```
 
 **关键优势**：
+
 - ✅ **无需手动计算坐标**：浏览器自动处理所有定位逻辑
 - ✅ **自动滚动跟随**：弹窗自动跟随锚点移动，无需监听 scroll 事件
 - ✅ **自动边界处理**：空间不足时自动回退到其他位置
@@ -864,14 +910,14 @@ popup.style.cssText = `
 
 **与传统方案对比**：
 
-| 方面 | 传统方案（position: absolute） | 现代方案（Popover + Anchor） |
-|------|-------------------------------|-----------------------------|
-| **坐标计算** | 手动计算 clickX/Y + scroll | 浏览器自动 |
-| **滚动跟随** | 自动（文档坐标） | 自动（锚点绑定） |
-| **边界检测** | 手动 Math.max/min | 浏览器自动 + fallbacks |
-| **代码复杂度** | ~100 行定位逻辑 | ~10 行声明式 CSS |
-| **性能** | 良好 | 优秀（GPU 加速） |
-| **维护成本** | 中等 | 低 |
+| 方面           | 传统方案（position: absolute） | 现代方案（Popover + Anchor） |
+| -------------- | ------------------------------ | ---------------------------- |
+| **坐标计算**   | 手动计算 clickX/Y + scroll     | 浏览器自动                   |
+| **滚动跟随**   | 自动（文档坐标）               | 自动（锚点绑定）             |
+| **边界检测**   | 手动 Math.max/min              | 浏览器自动 + fallbacks       |
+| **代码复杂度** | ~100 行定位逻辑                | ~10 行声明式 CSS             |
+| **性能**       | 良好                           | 优秀（GPU 加速）             |
+| **维护成本**   | 中等                           | 低                           |
 
 ### 完整实现代码
 
@@ -881,15 +927,15 @@ popup.style.cssText = `
 async function showWordPopover(word: string, event: MouseEvent) {
   // 1. 标记锚点元素
   const anchor = event.target as HTMLElement
-  const anchorId = `enx-word-anchor-${Date.now()}`  // 实际使用带前缀的ID
+  const anchorId = `enx-word-anchor-${Date.now()}` // 实际使用带前缀的ID
   anchor.style.anchorName = `--${anchorId}`
-  
+
   // 2. 创建 Popover 弹窗
   const popup = document.createElement('div')
-  popup.popover = 'auto'  // 自动关闭模式
+  popup.popover = 'auto' // 自动关闭模式
   popup.className = 'enx-anchored-overlay'
   popup.id = `popup-${anchorId}`
-  
+
   // 3. 应用 CSS Anchor Positioning
   popup.style.cssText = `
     /* 锚点绑定 */
@@ -915,22 +961,22 @@ async function showWordPopover(word: string, event: MouseEvent) {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     padding: 16px;
   `
-  
+
   // 4. 显示加载状态
   popup.innerHTML = `
     <div style="display: flex; align-items: center; justify-content: center; min-height: 60px;">
       <span style="animation: spin 1s linear infinite; font-size: 24px;">⏳</span>
     </div>
   `
-  
+
   // 5. 显示 Popover
   document.body.appendChild(popup)
   popup.showPopover()
-  
+
   // 6. 异步获取翻译数据
   try {
     const wordData = await fetchWordTranslation(word)
-    
+
     // 7. 填充实际内容
     popup.innerHTML = `
       <div class="enx-popup-header">
@@ -950,19 +996,18 @@ async function showWordPopover(word: string, event: MouseEvent) {
         </div>
       </div>
     `
-    
+
     // 8. 浏览器自动调整位置（基于新内容）
     // 无需手动代码，CSS Anchor Positioning 自动处理
-    
   } catch (error) {
     popup.innerHTML = `<p style="color: red;">翻译失败: ${error.message}</p>`
   }
-  
+
   // 9. 监听关闭事件，清理资源
   popup.addEventListener('toggle', (e: ToggleEvent) => {
     if (e.newState === 'closed') {
       popup.remove()
-      anchor.style.anchorName = ''  // 清理锚点
+      anchor.style.anchorName = '' // 清理锚点
     }
   })
 }
@@ -975,31 +1020,40 @@ async function showWordPopover(word: string, event: MouseEvent) {
 .enx-anchored-overlay {
   /* Popover 基础样式 */
   &::backdrop {
-    background: rgba(0, 0, 0, 0.05);  /* 可选的半透明背景 */
+    background: rgba(0, 0, 0, 0.05); /* 可选的半透明背景 */
   }
-  
+
   /* Anchor Positioning 自动处理 */
   /* JavaScript 中动态设置 position-anchor */
-  
+
   /* 动画 */
   @starting-style {
     opacity: 0;
     transform: scale(0.95);
   }
-  
+
   opacity: 1;
   transform: scale(1);
-  transition: opacity 0.2s, transform 0.2s, overlay 0.2s allow-discrete, display 0.2s allow-discrete;
+  transition:
+    opacity 0.2s,
+    transform 0.2s,
+    overlay 0.2s allow-discrete,
+    display 0.2s allow-discrete;
 }
 
 /* 加载动画 */
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 ```
 
 **设计要点**：
+
 - ✅ **代码简洁**：无需手动计算坐标，代码量减少 70%
 - ✅ **声明式定位**：通过 CSS 属性控制定位策略
 - ✅ **自动响应**：内容变化时，浏览器自动重新计算位置
@@ -1035,11 +1089,16 @@ async function showWordPopover(word: string, event: MouseEvent) {
 ### 头部布局
 
 ```html
-<div class="enx-popup-header" style="display: flex; justify-content: space-between; align-items: center;">
+<div
+  class="enx-popup-header"
+  style="display: flex; justify-content: space-between; align-items: center;"
+>
   <h3>
     <div style="display: flex; align-items: baseline; gap: 8px;">
       <span>单词</span>
-      <span style="font-size: 14px; font-weight: normal; color: #666;">发音</span>
+      <span style="font-size: 14px; font-weight: normal; color: #666;"
+        >发音</span
+      >
     </div>
   </h3>
   <button class="enx-close-btn">×</button>
@@ -1047,6 +1106,7 @@ async function showWordPopover(word: string, event: MouseEvent) {
 ```
 
 **改进点**:
+
 - 将发音信息从内容区移到标题区
 - 发音与单词、关闭按钮在同一行显示
 - 使用 `flex` 布局优化空间利用
@@ -1099,6 +1159,7 @@ newY = Math.max(
 ### 为什么使用 Popover API + CSS Anchor Positioning？
 
 **传统方案的局限性**:
+
 1. ❌ 需要手动计算文档坐标（clientX + scrollX）
 2. ❌ 需要手动实现边界检测逻辑
 3. ❌ 需要监听滚动事件更新位置（如果使用 fixed）
@@ -1110,8 +1171,8 @@ newY = Math.max(
 #### 1. Popover API 优势
 
 ```typescript
-popup.popover = 'auto'  // 自动关闭模式
-popup.showPopover()  // 自动显示在 top layer
+popup.popover = 'auto' // 自动关闭模式
+popup.showPopover() // 自动显示在 top layer
 ```
 
 - ✅ **自动层级管理**：无需设置 z-index，自动在最上层
@@ -1137,6 +1198,7 @@ position-try-fallbacks: flip-block;
 #### 3. 代码复杂度对比
 
 **传统方案（position: absolute）**：
+
 ```typescript
 // ~100 行代码
 - 计算 clickX/Y (考虑 scroll)
@@ -1148,6 +1210,7 @@ position-try-fallbacks: flip-block;
 ```
 
 **现代方案（Popover + Anchor）**：
+
 ```typescript
 // ~10 行代码
 anchor.style.anchorName = '--word'
@@ -1166,18 +1229,19 @@ popup.showPopover()
 // 传统方案：必须手动测量
 popup.style.visibility = 'hidden'
 document.body.appendChild(popup)
-const height = popup.offsetHeight  // 手动测量
+const height = popup.offsetHeight // 手动测量
 // ...复杂的位置计算...
 popup.style.visibility = 'visible'
 ```
 
 ```typescript
 // 现代方案：浏览器自动
-popup.showPopover()  // 浏览器自动测量和定位
+popup.showPopover() // 浏览器自动测量和定位
 // 内容变化时，浏览器自动重新计算
 ```
 
 **浏览器内部流程**：
+
 1. 解析 CSS Anchor Positioning 属性
 2. 定位锚点元素位置
 3. 测量弹窗实际尺寸（包括内容、padding、border）
@@ -1191,13 +1255,13 @@ popup.showPopover()  // 浏览器自动测量和定位
 
 ### 性能优势
 
-| 方面 | 传统方案 | 现代方案 |
-|------|---------|----------|
-| **坐标计算** | JavaScript（主线程） | 浏览器原生（GPU） |
-| **滚动监听** | 需要（或使用 absolute） | 不需要 |
-| **重排次数** | 多次（测量→计算→应用） | 一次 |
-| **内容变化** | 手动重新计算 | 浏览器自动 |
-| **动画性能** | 60fps（可能掉帧） | 60fps+（GPU 加速） |
+| 方面         | 传统方案                | 现代方案           |
+| ------------ | ----------------------- | ------------------ |
+| **坐标计算** | JavaScript（主线程）    | 浏览器原生（GPU）  |
+| **滚动监听** | 需要（或使用 absolute） | 不需要             |
+| **重排次数** | 多次（测量→计算→应用）  | 一次               |
+| **内容变化** | 手动重新计算            | 浏览器自动         |
+| **动画性能** | 60fps（可能掉帧）       | 60fps+（GPU 加速） |
 
 ## 已知问题与改进方向
 
@@ -1218,10 +1282,10 @@ popup.showPopover()  // 浏览器自动测量和定位
    这样可以适应不同网页的排版样式，确保弹窗位置更精确
 2. **智能水平对齐**: 当靠近边缘时自动调整对齐方式（左对齐/右对齐）
 3. **动画过渡**: 添加加载指示器到弹窗的平滑过渡动画
-4. **加载指示器优化**: 
+4. **加载指示器优化**:
    - 使用更精致的 CSS 动画或 SVG 图标
    - 根据主题自适应颜色
-5. **智能预加载**: 
+5. **智能预加载**:
    - 检测鼠标悬停在单词上的时间
    - 如果悬停超过阈值（如 500ms），预加载翻译
    - 点击时如果已有缓存立即显示，无需加载指示器
