@@ -98,7 +98,13 @@ func Warn(args ...interface{}) {
 	GetLogger().Warn(args...)
 }
 func Warnf(msg string, args ...interface{}) {
-	GetLogger().Errorf(msg, args...)
+	GetLogger().Warnf(msg, args...)
+}
+
+// Infow logs msg with alternating key/value fields, e.g.
+// Infow("request", "route", route, "status", 200).
+func Infow(msg string, keysAndValues ...interface{}) {
+	GetLogger().Infow(msg, keysAndValues...)
 }
 func Sync() {
 	err := GetLogger().Sync()

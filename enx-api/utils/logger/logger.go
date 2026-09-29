@@ -9,6 +9,9 @@ type Logger interface {
 
 	Infof(format string, args ...interface{})
 
+	// Infow logs msg with alternating key/value fields.
+	Infow(msg string, keysAndValues ...interface{})
+
 	Warn(args ...interface{})
 
 	Warnf(format string, args ...interface{})
