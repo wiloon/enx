@@ -371,27 +371,8 @@ func setupRouter() *gin.Engine {
 	}
 	billingHandler := billing.NewHandler(stripeClient, viper.GetString("app.frontend-base-url"), viper.GetString("stripe.webhook-secret"))
 
-	// APIs requiring authentication (Clerk session JWT)
-	authGroup := router.Group("/")
-	authGroup.Use(clerkAuth)
-	authGroup.Use(stats.TZOffsetMiddleware())
-	{
-		// get words query count by paragraph
-		authGroup.GET("/paragraph-init", paragraph.ParagraphInit)
-
-		// translate
-		authGroup.GET("/translate", translate.Translate)
-		authGroup.GET("/word/:word", translate.TranslateByWord)
-		authGroup.POST("/translate/sentence", sentenceHandler.TranslateSentence)
-		authGroup.POST("/translate/word-in-context", sentenceHandler.TranslateWordInContext)
-		authGroup.POST("/translate/sentence-with-word", sentenceHandler.TranslateSentenceWithWord)
-		authGroup.POST("/rephrase", rephraseHandler.Rephrase)
-		authGroup.GET("/load-count", wordCount.LoadCount)
-		authGroup.POST("/mark", MarkWord)
-		authGroup.GET("/wrap", Wrap)
-	}
-
-	// API group for Kong gateway (with /api prefix)
+	// Authenticated APIs (Clerk session JWT). enx-chrome and enx-ui call only
+	// these /api routes; nothing is registered twice at the root.
 	apiGroup := router.Group("/api")
 	apiGroup.Use(clerkAuth)
 	// Carries X-Enx-Tz-Offset down to dictionary.MeterLookup so a lookup is

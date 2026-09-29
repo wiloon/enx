@@ -17,7 +17,7 @@ import (
 // to grow.
 const maxRephraseInputRunes = 200
 
-// RephraseHandler serves POST /rephrase and POST /api/rephrase. It bills by
+// RephraseHandler serves POST /api/rephrase. It bills by
 // actual token usage (ADR-012 Decision 5): a pre-call Balance check, then a
 // Settle that may drive the balance negative -- the same TokenLedger the
 // sentence translation handler uses (ADR-014).
