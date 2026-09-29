@@ -1,8 +1,13 @@
 package translate
 
 import (
+	"errors"
+	"strings"
+
+	"enx-api/dictionary"
 	"enx-api/enx"
 	"enx-api/middleware"
+	"enx-api/repo"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
@@ -28,36 +33,41 @@ func translateWord(c *gin.Context, raw string) {
 
 	word := enx.Word{}
 	word.SetEnglish(raw)
-	word.Translate(userId)
 
-	ok, filledFromEcdict := fillFromEcdict(c, &word, userId)
-	if !ok {
+	res, err := dictionary.Resolve(c.Request.Context(), word.English, userId)
+	switch {
+	case errors.Is(err, dictionary.ErrEcdictUnavailable):
+		dictionary.RespondUnavailable(c)
+		return
+	case errors.Is(err, dictionary.ErrQuotaExceeded):
+		dictionary.RespondQuotaExceeded(c, userId)
+		return
+	case err != nil:
+		// Resolve documents only the two sentinels above (ADR-018 E2); an
+		// unknown error must never be passed off as "word not found" (#17).
+		logger.Errorf("translate word %s: %v", word.English, err)
+		c.JSON(502, gin.H{"success": false, "message": "Dictionary lookup failed"})
 		return
 	}
 
-	if word.Id != "" && !filledFromEcdict {
-		logger.Infof("word exist in local dict: %v", raw)
-		userDict := enx.UserDict{}
-		userDict.UserId = userId
-		userDict.WordId = word.Id
-		if userDict.IsExist() {
-			userDict.QueryCount = userDict.QueryCount + 1
-			if userDict.AlreadyAcquainted == 1 {
-				logger.Infof("word was marked as acquainted, resetting to unacquainted: %s", raw)
-				userDict.AlreadyAcquainted = 0
-			}
-			userDict.UpdateQueryCount()
+	word.Id = res.ID
+	word.English = res.English
+	word.Key = strings.ToLower(res.English)
+	word.Chinese = res.Chinese
+	word.Pronunciation = res.Pronunciation
+
+	// Review bookkeeping needs a persisted word: nothing to count on a miss.
+	if word.Id != "" {
+		qc, acquainted, err := repo.RecordWordLookup(userId, word.Id)
+		if err != nil {
+			logger.Errorf("record lookup of %s for %s: %v", word.English, userId, err)
+			word.FindQueryCount(userId)
 		} else {
-			if word.LoadCount >= 0 {
-				userDict.QueryCount = word.LoadCount + 1
-			} else {
-				userDict.QueryCount = 1
-			}
-			userDict.Save()
+			word.LoadCount = qc
+			word.AlreadyAcquainted = acquainted
 		}
 	}
 
-	word.FindQueryCount(userId)
 	logger.Debugf("translate result: %+v", word)
 	c.JSON(200, word)
 }
