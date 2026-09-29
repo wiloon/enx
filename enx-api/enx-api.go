@@ -264,7 +264,7 @@ func setupRouter() *gin.Engine {
 		if isAllowed {
 			c.Header("Access-Control-Allow-Origin", origin)
 			c.Header("Access-Control-Allow-Credentials", "true")
-			c.Header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
+			c.Header("Access-Control-Allow-Methods", "GET, POST, QUERY, OPTIONS, PUT, DELETE")
 			// X-Enx-Tz-Offset is read by stats.TZOffsetMiddleware (ADR-029
 			// Decision 7a); without it here, preflight rejects the header and
 			// the whole cross-origin request fails once a client starts sending it.
@@ -368,6 +368,10 @@ func setupRouter() *gin.Engine {
 	apiGroup.Use(stats.TZOffsetMiddleware())
 	{
 		// get words query count by paragraph
+		// ADR-041: QUERY is the default, POST the fallback; GET is
+		// deprecated and kept only for older extension builds.
+		apiGroup.Handle("QUERY", "/paragraph-init", paragraphHandler.ParagraphInitBody)
+		apiGroup.POST("/paragraph-init", paragraphHandler.ParagraphInitBody)
 		apiGroup.GET("/paragraph-init", paragraphHandler.ParagraphInit)
 
 		// translate

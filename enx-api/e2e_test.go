@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -210,5 +211,45 @@ func TestE2E_AdminPageReportsRequiresAdmin(t *testing.T) {
 	}
 	if err := json.NewDecoder(resp2.Body).Decode(&body); err != nil || !body.Success {
 		t.Fatalf("body=%+v err=%v", body, err)
+	}
+}
+
+// ADR-041: a real QUERY request, with the paragraph in its JSON body, goes
+// through the whole router -- CORS, Clerk auth, logging -- to paragraph-init.
+func TestE2E_ParagraphInitOverQuery(t *testing.T) {
+	env := clerktest.NewEnv(t)
+	utils.ViperInit()
+	env.ApplyViper()
+	if err := os.Setenv("DB_PATH", filepath.Join(t.TempDir(), "enx-query.db")); err != nil {
+		t.Fatal(err)
+	}
+	sqlitex.Init()
+	if err := sqlitex.DB.Create(&sqlitex.Word{Id: "w-morning", English: "morning", CreatedAt: 1, UpdatedAt: 1}).Error; err != nil {
+		t.Fatal(err)
+	}
+	token := env.SignSessionToken(t, jwt.MapClaims{"sub": "user_e2equery001", "email": "e2e-query@example.com", "name": "e2e-query"})
+
+	ts, done := e2eServer(t)
+	defer done()
+
+	for _, method := range []string{"QUERY", http.MethodPost} {
+		req, err := http.NewRequest(method, ts.URL+"/api/paragraph-init", strings.NewReader(`{"paragraph":"Good morning."}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := ts.Client().Do(req)
+		if err != nil {
+			t.Fatalf("%s: %v", method, err)
+		}
+		var body struct {
+			Data map[string]struct{ Id string }
+		}
+		err = json.NewDecoder(resp.Body).Decode(&body)
+		resp.Body.Close()
+		if err != nil || resp.StatusCode != http.StatusOK || body.Data["morning"].Id != "w-morning" {
+			t.Fatalf("%s: status %d, err %v, body %+v; want 200 with morning -> w-morning", method, resp.StatusCode, err, body)
+		}
 	}
 }
