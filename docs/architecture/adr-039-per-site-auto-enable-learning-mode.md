@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-09-28
 related: adr-034（按需注入，本 ADR 兑现其 Revisit Trigger 第 3 条）
 ---
@@ -19,10 +19,11 @@ related: adr-034（按需注入，本 ADR 兑现其 Revisit Trigger 第 3 条）
 1. `manifest.json` 增加 `"optional_host_permissions": ["https://*/*", "http://*/*"]`。可选权限不进入安装警告。
 2. **授权**：popup 在普通网页（`http:`/`https:`）上显示「在此站点总是启用」开关（显示条件见「实现要点」）；打开时在点击回调里直接调 `chrome.permissions.request({ origins: [\`${origin}/*\`] })`（必须是用户手势内调用）。关闭时调 `chrome.permissions.remove`。开关状态读 `chrome.permissions.contains`。
 3. **注册与收敛（seam）**：background 提供一个 `reconcileAutoEnableScripts()`——期望集合 = 已授予的 host origins − manifest 必需 `host_permissions`（api/ui/Clerk）− 静态 `content_scripts[0].matches` 已覆盖的 origin；实际集合 = `chrome.scripting.getRegisteredContentScripts()` 中 id 前缀为 `auto-enable:` 的条目；多注册、少注销。脚本 `files` 取 `content_scripts[0].js`（与 `enableLearningMode.ts` 同一来源），`runAt: 'document_end'`，`persistAcrossSessions: true`。在 `permissions.onAdded` / `permissions.onRemoved` / `runtime.onInstalled` / `runtime.onStartup` 时调用。**不依赖 popup 里 `request()` 的 Promise 结果去注册**：Chrome 弹出授权框时 popup 可能失焦关闭，Promise 回调未必能执行；`onAdded` 在 background 里总会触发。
-4. **自动启用**：content script 加载后向 background 发 `shouldAutoEnable`，background 用 `chrome.permissions.contains({ origins: [\`${origin}/*\`] })`（且 origin 不属于必需 `host_permissions`）作答；为真则走与 `enxRun` 相同的启用路径。**自动启用失败必须静默**：同一 origin 下的首页、列表页等非文章页会得到 `no-article-node` / `unsupported-page`，此时不弹任何提示、不触发 page report（那是手动启用时才有的交互），页面保持原样。这使静态注入的站点（X、RSSX）也能统一支持「总是启用」，且不会重复注入。
-5. 重复注入由 content script 已有的 `enxRun` 幂等守卫兜底（`content.tsx:643`）。
-6. **静态预注入的范围不变**：`content_scripts.matches` 仍只列 adr-034 的三类站点（X、RSSX、enx-ui）。预注入 ≠ 自动启用——这三类站点上脚本在，但 Learning Mode 仍由用户点按钮或本 ADR 的开关决定。产品不维护「默认自动启用站点」列表；自动启用完全来自用户的选择。
-7. **站点选择只存在浏览器里**：权限授予由 Chrome 自己保存在本机的扩展配置里，不进 `chrome.storage`，也不上传 enx-api。v1 不做跨设备同步（换设备需重新勾选）。
+4. **自动启用**：content script 加载后向 background 发 `shouldAutoEnable`。background 取 **Chrome 的 sender 信息**里的 origin（`sender.origin`，缺省用 `sender.tab.url`），不信任消息体；该 origin 的精确模式必须在已授予的可选 host origins 里（不属于必需 `host_permissions`），**且用户已登录**——未登录时自动启用只会在每个页面弹「会话过期」，所以答 false。为真则走与 `enxRun` 相同的启用路径。**自动启用失败必须静默**：同一 origin 下的首页、列表页等非文章页会得到 `no-article-node` / `unsupported-page`，此时不弹任何提示、不触发 page report（那是手动启用时才有的交互），并调用 `disableEnx()` 让页面保持原样（不留下划词翻译监听）。这使静态注入的站点（X、RSSX）也能统一支持「总是启用」，且不会重复注入。
+5. **通配授予不算站点**：用户若在 Chrome 的站点访问菜单里给了「所有网站」，`getAll()` 会出现 `https://*/*`；只把形如 `scheme://host[:port]/*` 的精确模式当作自动启用站点，通配、子域通配和带路径的模式一律忽略，避免变成「处处自动启用」。
+6. 重复注入由 content script 已有的 `enxRun` 幂等守卫兜底（`content.tsx:643`）。
+7. **静态预注入的范围不变**：`content_scripts.matches` 仍只列 adr-034 的三类站点（X、RSSX、enx-ui）。预注入 ≠ 自动启用——这三类站点上脚本在，但 Learning Mode 仍由用户点按钮或本 ADR 的开关决定。产品不维护「默认自动启用站点」列表；自动启用完全来自用户的选择。
+8. **站点选择只存在浏览器里**：权限授予由 Chrome 自己保存在本机的扩展配置里，不进 `chrome.storage`，也不上传 enx-api。v1 不做跨设备同步（换设备需重新勾选）。
 
 ## 实现要点（给实现者 / AFK agent）
 
@@ -35,8 +36,17 @@ related: adr-034（按需注入，本 ADR 兑现其 Revisit Trigger 第 3 条）
   - content 自动启用路径：结果为 `no-article-node` / `unsupported-page` 时不显示任何 UI、不发 page report。
   - `manifest.test.ts`：`optional_host_permissions` 为 `["https://*/*", "http://*/*"]`，静态 `host_permissions` 仍为 `[]`。
   - Popup：打开开关调用 `permissions.request`（精确 origin），关闭调用 `permissions.remove`，初始状态来自 `permissions.contains`。
-- 验收：`cd enx-chrome && pnpm test && pnpm build && pnpm build:prod` 全绿；构建出的 `dist/manifest.json` 含 `optional_host_permissions`。
+- 验收：`cd enx-chrome && pnpm test && pnpm build && pnpm build:prod` 全绿；构建出的 `dist-homelab/manifest.json`、`dist-production/manifest.json` 含 `optional_host_permissions`。
 - **不在 agent 范围内（PR 描述里列为人工验证项）**：真实 Chrome 中在 InfoQ 勾选开关 → 授权框 → 新开文章页自动进入 Learning Mode → 在 Chrome 扩展菜单收回站点权限 → 不再自动启用、开关复位。
+
+## 实现记录（2026-09-28，#62）
+
+- `src/lib/autoEnableSite.ts`：站点模式的唯一定义（`sitePatternFor` / `isSitePattern` / `autoEnableSiteFor`），popup、background 共用。
+- `src/background/autoEnable.ts`：`grantedAutoEnableSites()` / `reconcileAutoEnableScripts()` / `shouldAutoEnable()`；reconcile 还会把「文件名已过期」（扩展更新后哈希变了）的注册视为缺失并重新注册。`background.ts` 挂 `permissions.onAdded/onRemoved`、`runtime.onStartup/onInstalled`，路由 `shouldAutoEnable`（含登录检查）。
+- `src/content/autoEnable.ts`：`maybeAutoEnable(deps)`，失败全部静默并回滚；`content.tsx` 把 `enxRun` 的启用主体抽成 `runLearningMode()` 供两处复用。
+- `src/hooks/useAutoEnableSite.ts` + `Popup.tsx` 开关。
+- 测试：`autoEnableSite.test.ts`、`background/__tests__/autoEnable.test.ts`、`content/__tests__/autoEnable.test.ts`、`useAutoEnableSite.test.tsx`、`background.test.ts`（消息路由与监听器）、`manifest.test.ts`。`pnpm test` 334 用例全绿，`pnpm lint`、`pnpm build`、`pnpm build:prod` 通过。
+- 人工验证项（真实 Chrome）尚未做，见上。
 
 ## Consequences
 

@@ -20,6 +20,7 @@ import {
   failureMessage,
 } from '@/lib/enableOutcome'
 import { stampExtensionPresence } from '@/lib/extensionPresence'
+import { maybeAutoEnable } from './autoEnable'
 import { nearestElement, referenceLineHeight } from '@/lib/rangeUtils'
 import {
   createSpaRebuilder,
@@ -1438,6 +1439,19 @@ const disableEnx = () => {
   clearArticleRoots()
 }
 
+// The enable path shared by the popup's enxRun and adr-039 auto-enable.
+const runLearningMode = (): Promise<EnableOutcome> => {
+  // ADR-010 Decision 7 (G2): "enable once" becomes "re-arm". On an
+  // already-enabled page (e.g. X after an in-page navigation swapped the
+  // DOM), tear down and re-run instead of the old no-op early return.
+  // wordCache is module-level and survives, so re-processed words hit the
+  // cache and don't re-call the backend.
+  if (isEnxEnabled) {
+    disableEnx()
+  }
+  return enableEnx()
+}
+
 // Listen for messages from the popup or background
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   console.log('Content script received message:', request)
@@ -1459,16 +1473,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
         break
       }
 
-      // ADR-010 Decision 7 (G2): "enable once" becomes "re-arm". On an
-      // already-enabled page (e.g. X after an in-page navigation swapped the
-      // DOM), tear down and re-run instead of the old no-op early return.
-      // wordCache is module-level and survives, so re-processed words hit the
-      // cache and don't re-call the backend.
-      if (isEnxEnabled) {
-        disableEnx()
-      }
-
-      enableEnx()
+      runLearningMode()
         .then(outcome => {
           // A failed run used to answer success:true, so the popup showed
           // "completed" over a page with nothing highlighted.
@@ -1556,6 +1561,18 @@ onWordHighlightEnabledChange(() => {
 // Clean up on page unload
 window.addEventListener('beforeunload', () => {
   hideCurrentOverlay()
+})
+
+// adr-039: on a site the user chose "Always enable on this site" for, turn
+// learning mode on at load. Every failure is silent (home and list pages on
+// the same origin have no article); the popup button stays the loud path.
+void maybeAutoEnable({
+  askBackground: async () =>
+    (await sendToBackground({ type: 'shouldAutoEnable' })).autoEnable === true,
+  isPageSupported: () =>
+    !resolveSiteAdapter(window.location).pageSupport?.(window.location),
+  enable: runLearningMode,
+  disable: disableEnx,
 })
 
 console.log('ENX Content script ready')

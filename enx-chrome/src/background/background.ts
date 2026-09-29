@@ -23,6 +23,7 @@ import {
   utcOffsetMinutes,
   type StatsDelta,
 } from './statsReporter'
+import { reconcileAutoEnableScripts, shouldAutoEnable } from './autoEnable'
 
 console.log('ENX Background script loaded')
 console.log('🌐 Config environment:', config.environment)
@@ -398,6 +399,29 @@ chrome.runtime.onInstalled.addListener(async details => {
   )
 })
 
+// adr-039: keep the per-site auto-enable scripts in line with the optional
+// host permissions the user granted. Registration happens here rather than in
+// the popup, which Chrome may close while its permission dialog is up.
+const reconcileAutoEnable = () =>
+  reconcileAutoEnableScripts().catch(error =>
+    console.error('Failed to reconcile auto-enable scripts:', error)
+  )
+chrome.permissions.onAdded.addListener(reconcileAutoEnable)
+chrome.permissions.onRemoved.addListener(reconcileAutoEnable)
+chrome.runtime.onStartup.addListener(reconcileAutoEnable)
+// Covers updates too: the hashed content-script bundle is renamed.
+chrome.runtime.onInstalled.addListener(reconcileAutoEnable)
+
+// The page's origin comes from Chrome's sender info, never from the message.
+// Signed out, auto-enabling would only put a session notice on every page.
+const handleShouldAutoEnable = async (
+  sender: chrome.runtime.MessageSender
+): Promise<boolean> => {
+  const origin = sender.origin ?? sender.tab?.url
+  if (!(await shouldAutoEnable(origin))) return false
+  return isSignedIn()
+}
+
 // Trigger path② (spec §3.2): right-click the toolbar icon -> menu item ->
 // open the Side Panel directly. Independent of the left-click default_popup
 // behavior (trigger path①), so it can't interfere with login/logout.
@@ -520,6 +544,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           // Post-mortem view of service-worker boots + auth failures
           // (swlog.ts ring buffer). Survives worker eviction.
           return { success: true, log: await readSwLog() }
+
+        case 'shouldAutoEnable':
+          return {
+            success: true,
+            autoEnable: await handleShouldAutoEnable(sender),
+          }
 
         case 'hello':
           return { success: true, message: 'Hello from ENX background!' }

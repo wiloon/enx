@@ -1,5 +1,6 @@
 import DebugPanel from '@/components/DebugPanel'
 import Login from '@/components/Login'
+import { useAutoEnableSite } from '@/hooks/useAutoEnableSite'
 import { useInitializeStorage } from '@/hooks/useInitializeStorage'
 import { useWordHighlightEnabled } from '@/hooks/useWordHighlightEnabled'
 import '@/index.css'
@@ -23,6 +24,7 @@ import {
   CheckCircleIcon,
   ChevronRightIcon,
   Cog6ToothIcon,
+  GlobeAltIcon,
   LanguageIcon,
   SparklesIcon,
 } from '@heroicons/react/24/outline'
@@ -97,6 +99,7 @@ function SignedInBody({
   setWordHighlightEnabled,
 }: SignedInBodyProps) {
   const { user } = useUser()
+  const autoEnableSite = useAutoEnableSite()
   const [error, setError] = useAtom(errorAtom)
   const [learningStatus, setLearningStatus] = useState<
     'idle' | 'processing' | 'completed'
@@ -361,6 +364,34 @@ function SignedInBody({
           <span className="pointer-events-none absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-background shadow-sm transition peer-checked:translate-x-4" />
         </span>
       </label>
+
+      {/* adr-039: only on pages whose site can be auto-enabled. */}
+      {autoEnableSite.site && (
+        <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-background px-3 py-2.5 shadow-xs ring-1 ring-border">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-muted text-brand">
+            <GlobeAltIcon className="h-[18px] w-[18px]" />
+          </span>
+          <span className="min-w-0 flex-1 leading-tight">
+            <span className="block text-sm font-medium text-foreground">
+              Always enable on this site
+            </span>
+            <span className="block truncate text-[11px] text-muted-foreground">
+              {autoEnableSite.host}
+            </span>
+          </span>
+          <span className="relative inline-flex shrink-0 items-center">
+            <input
+              type="checkbox"
+              data-testid="popup-auto-enable-site-toggle"
+              checked={autoEnableSite.enabled}
+              onChange={e => void autoEnableSite.setEnabled(e.target.checked)}
+              className="peer sr-only"
+            />
+            <span className="block h-5 w-9 rounded-full bg-border transition peer-checked:bg-brand peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-1" />
+            <span className="pointer-events-none absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-background shadow-sm transition peer-checked:translate-x-4" />
+          </span>
+        </label>
+      )}
     </div>
   )
 }

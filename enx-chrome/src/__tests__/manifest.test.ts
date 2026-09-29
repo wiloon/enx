@@ -110,6 +110,26 @@ describe('manifest stamping (ADR-019)', () => {
     expect(broadEntry?.resources).toContain('assets/*')
   })
 
+  // adr-039: per-site auto-enable asks for one exact origin at a time at
+  // runtime; the ceiling is declared optional so installing shows no
+  // "all sites" warning, and the static host_permissions stays empty.
+  it.each(targetNames)(
+    'declares optional host permissions for per-site auto-enable (%s)',
+    name => {
+      const manifest = stamp(TARGETS[name]) as unknown as {
+        optional_host_permissions: string[]
+      }
+      expect(manifest.optional_host_permissions).toEqual([
+        'https://*/*',
+        'http://*/*',
+      ])
+    }
+  )
+
+  it('keeps the static host_permissions empty', () => {
+    expect(base.host_permissions).toEqual([])
+  })
+
   it('leaves the static manifest free of deployment-specific origins', () => {
     const serialized = JSON.stringify(base)
     expect(serialized).not.toContain('enx.wiloon.lab')
