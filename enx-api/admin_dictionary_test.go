@@ -112,6 +112,7 @@ func TestE2E_AdminDictionary_RequiresAdmin(t *testing.T) {
 		{http.MethodGet, "/api/admin/words/hello"},
 		{http.MethodGet, "/api/admin/ecdict/hello"},
 		{http.MethodPost, "/api/admin/words/hello/sync-from-ecdict"},
+		{http.MethodDelete, "/api/admin/words/hello"},
 	}
 	for _, ep := range endpoints {
 		if code, _ := doJSON(t, ep.method, base+ep.path, plainToken); code != http.StatusForbidden {
@@ -181,5 +182,34 @@ func TestE2E_AdminDictionary_SyncFromEcdict(t *testing.T) {
 	}
 	if code, body := doJSON(t, http.MethodGet, base+"/api/admin/words/serendipity", adminToken); code != http.StatusOK || body["found"] != false {
 		t.Fatalf("serendipity should not have been written: code=%d body=%+v", code, body)
+	}
+}
+
+// Deleting a words row drops every user's review row for it too, so only an
+// admin may do it (it used to be DELETE /api/word/:word, open to any user).
+func TestE2E_AdminDictionary_DeleteWord(t *testing.T) {
+	base, adminToken, plainToken := adminDictEnv(t)
+
+	if err := sqlitex.DB.Create(&sqlitex.Word{Id: "w-hello", English: "hello", CreatedAt: 1, UpdatedAt: 1}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range []string{"u-a", "u-b"} {
+		if err := sqlitex.DB.Create(&sqlitex.UserDict{UserId: user, WordId: "w-hello", QueryCount: 3, CreatedAt: 1, UpdatedAt: 1}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if code, _ := doJSON(t, http.MethodDelete, base+"/api/word/hello", plainToken); code != http.StatusNotFound {
+		t.Fatalf("old DELETE /api/word/hello as a user: status = %d, want 404 (route removed)", code)
+	}
+
+	if code, body := doJSON(t, http.MethodDelete, base+"/api/admin/words/hello", adminToken); code != http.StatusOK || body["success"] != true {
+		t.Fatalf("admin delete: code=%d body=%+v", code, body)
+	}
+	var words, reviews int64
+	sqlitex.DB.Model(&sqlitex.Word{}).Where("english = ?", "hello").Count(&words)
+	sqlitex.DB.Model(&sqlitex.UserDict{}).Where("word_id = ?", "w-hello").Count(&reviews)
+	if words != 0 || reviews != 0 {
+		t.Fatalf("after delete: %d words rows, %d user_dicts rows; want 0 and 0", words, reviews)
 	}
 }

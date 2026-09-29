@@ -31,7 +31,6 @@ func TestLookupRoutesAreRegisteredOnlyUnderAPI(t *testing.T) {
 		"POST /rephrase",
 		"GET /load-count",
 		"POST /mark",
-		"GET /wrap",
 	} {
 		if registered[route] {
 			t.Errorf("%s is registered at the root; it should exist only under /api", route)
@@ -39,6 +38,20 @@ func TestLookupRoutesAreRegisteredOnlyUnderAPI(t *testing.T) {
 		method, path, _ := strings.Cut(route, " ")
 		if !registered[method+" /api"+path] {
 			t.Errorf("%s /api%s is not registered", method, path)
+		}
+	}
+}
+
+// Routes with no remaining caller are gone: DELETE /api/word/:word moved to
+// the admin group, and /api/wrap had no client at all.
+func TestRemovedRoutesAreNotRegistered(t *testing.T) {
+	utils.ViperInit()
+	gin.SetMode(gin.TestMode)
+
+	for _, r := range setupRouter().Routes() {
+		switch r.Method + " " + r.Path {
+		case "DELETE /api/word/:word", "GET /api/wrap":
+			t.Errorf("%s %s is still registered", r.Method, r.Path)
 		}
 	}
 }

@@ -5,28 +5,31 @@ import { WordData } from '@/types'
 
 interface WordResultCardProps {
   data: WordData
-  onClear: () => void
-  clearing: boolean
+  // Admin-only: omit it and the Clear button is not rendered.
+  onClear?: () => void
+  clearing?: boolean
 }
 
 export default function WordResultCard({
   data,
   onClear,
-  clearing,
+  clearing = false,
 }: WordResultCardProps) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-2xl">{data.English}</CardTitle>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onClear}
-          disabled={clearing}
-          className="text-red-600 border-red-300 hover:bg-red-50"
-        >
-          {clearing ? 'Clearing...' : 'Clear'}
-        </Button>
+        {onClear && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onClear}
+            disabled={clearing}
+            className="text-red-600 border-red-300 hover:bg-red-50"
+          >
+            {clearing ? 'Clearing...' : 'Clear'}
+          </Button>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

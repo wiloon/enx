@@ -10,7 +10,6 @@ import (
 	"enx-api/dictionary"
 	"enx-api/dictionary/adapters"
 	"enx-api/ecdict"
-	"enx-api/enx"
 	"enx-api/handlers"
 	"enx-api/middleware"
 	"enx-api/pagereport"
@@ -306,7 +305,7 @@ func setupRouter() *gin.Engine {
 		logger.Debugf("📤 Response Headers: %+v", c.Writer.Header())
 	})
 
-	router.GET("/ping", Ping)
+	router.GET("/ping", handlers.Ping)
 
 	// Version information API - no authentication required
 	router.GET("/version", handlers.GetVersion)
@@ -398,14 +397,12 @@ func setupRouter() *gin.Engine {
 		apiGroup.POST("/translate/word-in-context", sentenceHandler.TranslateWordInContext)
 		apiGroup.POST("/translate/sentence-with-word", sentenceHandler.TranslateSentenceWithWord)
 		apiGroup.POST("/rephrase", rephraseHandler.Rephrase)
-		apiGroup.DELETE("/word/:word", DeleteWord)
 		apiGroup.GET("/load-count", wordCount.LoadCount)
-		apiGroup.POST("/mark", MarkWord)
-		apiGroup.GET("/wrap", Wrap)
+		apiGroup.POST("/mark", handlers.MarkWord)
 	}
 
 	// /api/me — requires authentication (Clerk session JWT)
-	apiGroup.GET("/me", GetMe)
+	apiGroup.GET("/me", handlers.GetMe)
 
 	// Billing (Stripe) — requires authentication (Clerk session JWT).
 	apiGroup.POST("/billing/checkout/subscription", billingHandler.CheckoutSubscription)
@@ -455,9 +452,10 @@ func setupRouter() *gin.Engine {
 	adminDict := apiGroup.Group("/admin")
 	adminDict.Use(middleware.RequireAdmin())
 	{
-		adminDict.GET("/words/:word", AdminGetWord)
-		adminDict.GET("/ecdict/:word", AdminGetEcdict)
-		adminDict.POST("/words/:word/sync-from-ecdict", AdminSyncWordFromEcdict)
+		adminDict.GET("/words/:word", handlers.AdminGetWord)
+		adminDict.DELETE("/words/:word", handlers.AdminDeleteWord)
+		adminDict.GET("/ecdict/:word", handlers.AdminGetEcdict)
+		adminDict.POST("/words/:word/sync-from-ecdict", handlers.AdminSyncWordFromEcdict)
 		// Page reports (ADR-010 Decision 11): read-only queue of user-confirmed
 		// learning-mode failures. Not on the metered path.
 		adminDict.GET("/page-reports", pagereport.ListHandler)
@@ -471,294 +469,4 @@ func setupRouter() *gin.Engine {
 	router.POST("/billing/webhook", billingHandler.Webhook)
 
 	return router
-}
-
-type article struct {
-	WidthMax int `json:"-"`
-	Lines    []*line
-}
-
-func (a *article) appendWords(word string) {
-	if len(a.Lines) == 0 {
-		a.Lines = append(a.Lines, &line{})
-	}
-	tmp := a.Lines[len(a.Lines)-1]
-	lineWidth := tmp.appendWords(word)
-	if lineWidth > a.WidthMax {
-		a.Lines = append(a.Lines, &line{})
-	}
-}
-
-type line struct {
-	width int
-	Words []string
-}
-
-func (l *line) appendWords(word string) int {
-	l.Words = append(l.Words, word)
-	l.width = l.width + len(word) + 1
-	return l.width
-}
-
-func Wrap(c *gin.Context) {
-	text := c.Query("text")
-	logger.Debugf("%s", text)
-	text = strings.ReplaceAll(text, "\n", " ")
-	arr := strings.Split(text, " ")
-	a := article{}
-	a.WidthMax = 80
-	for _, v := range arr {
-		a.appendWords(v)
-	}
-	c.JSON(200, a.Lines)
-}
-
-func MarkWord(c *gin.Context) {
-	logger.Infof("MarkWord: Starting mark word request")
-
-	word := enx.Word{}
-	// set key
-	err := c.BindJSON(&word)
-	if err != nil {
-		logger.Errorf("MarkWord: Failed to bind JSON: %v", err)
-		c.JSON(400, gin.H{
-			"success": false,
-			"message": "Invalid request body",
-		})
-		return
-	}
-	logger.Infof("MarkWord: Successfully parsed word: %s", word.English)
-	word.Key = strings.ToLower(word.English)
-
-	// Get user ID from session context
-	userId := middleware.GetUserIDFromContext(c)
-	logger.Infof("MarkWord: Retrieved user ID from context: %s", userId)
-	if userId == "" {
-		logger.Errorf("MarkWord: No valid user id found in session context")
-		c.JSON(401, gin.H{
-			"success": false,
-			"message": "Invalid session",
-		})
-		return
-	}
-
-	word.Translate(userId)
-
-	// A word with no `words` row (e.g. one ECDICT doesn't know) has no id to
-	// key a user_dicts row on. Writing one with an empty word_id would make
-	// every such word share that single row -- marking a second one toggled
-	// the first back off -- and the phantom row would count towards the
-	// user's vocabulary. Nothing is lost by skipping the write: paragraph-init
-	// never reads acquainted state for an id-less word anyway.
-	if word.Id == "" {
-		logger.Infof("MarkWord: word not in dictionary, nothing to mark: %s", word.English)
-		c.JSON(200, word)
-		return
-	}
-
-	ud := enx.UserDict{}
-	ud.WordId = word.Id
-	ud.UserId = userId
-
-	// Load current state first (this is crucial!)
-	ud.IsExist()
-	logger.Infof("MarkWord: Before marking - AlreadyAcquainted: %d", ud.AlreadyAcquainted)
-
-	ud.Mark() // This will toggle the state
-
-	// Use the state after marking (no need to query again)
-	word.LoadCount = ud.QueryCount
-	word.AlreadyAcquainted = ud.AlreadyAcquainted
-
-	logger.Infof("MarkWord: Word marked, new state AlreadyAcquainted: %d", ud.AlreadyAcquainted)
-	c.JSON(200, word)
-}
-
-func DeleteWord(c *gin.Context) {
-	word := c.Param("word")
-	if word == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "word is required"})
-		return
-	}
-	logger.Infof("DeleteWord: deleting word=%s", word)
-
-	// Find word ID first
-	var w sqlitex.Word
-	if err := sqlitex.DB.Where("english = ?", word).First(&w).Error; err == nil {
-		// Delete user_dicts referencing this word
-		sqlitex.DB.Where("word_id = ?", w.Id).Delete(&sqlitex.UserDict{})
-	}
-
-	// Delete from words table
-	sqlitex.DB.Where("english = ?", word).Delete(&sqlitex.Word{})
-
-	logger.Infof("DeleteWord: deleted word=%s", word)
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "word cleared"})
-}
-
-func Ping(c *gin.Context) {
-	c.JSON(200, gin.H{
-		"message": "pong",
-	})
-}
-
-// GetMe returns the current user's public fields including status. isAdmin
-// reflects the ADMIN_CLERK_USER_IDS allowlist (ADR-021) and is the only
-// signal enx-ui uses to decide whether to render the admin navigation; the
-// allowlist itself stays server-side.
-func GetMe(c *gin.Context) {
-	userID := middleware.GetUserIDFromContext(c)
-	if userID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Unauthorized"})
-		return
-	}
-	user := enx.GetUserByID(userID)
-	if user.Id == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "User not found"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"id":      user.Id,
-		"name":    user.Name,
-		"email":   user.Email,
-		"status":  user.Status,
-		"isAdmin": middleware.IsAdminClerkUser(c.GetString("clerk_user_id")),
-	})
-}
-
-// ---------------------------------------------------------------------------
-// Admin dictionary maintenance (ADR-021). Kept in enx-api.go with the rest of
-// package main because the Containerfile builds `go build enx-api.go` (a
-// single file), not `go build .` -- a sibling .go file would be dropped.
-//
-// These handlers are independent of the user lookup path
-// (translate.Handler.TranslateByWord): no metering, no words/ECDICT
-// merge-or-short-circuit, no ECDICT backfill, no user_dicts review counting.
-// They return each table's raw row so an admin can compare `words` against
-// ECDICT and, if wanted, copy ECDICT's data onto the `words` row. Gated by
-// middleware.RequireAdmin on the route.
-
-// adminWordRow is a words-table row for the maintenance page -- every column,
-// tombstones (deleted_at) included.
-type adminWordRow struct {
-	Found         bool   `json:"found"`
-	Id            string `json:"id,omitempty"`
-	English       string `json:"english,omitempty"`
-	Chinese       string `json:"chinese,omitempty"`
-	Pronunciation string `json:"pronunciation,omitempty"`
-	LoadCount     int    `json:"loadCount,omitempty"`
-	CreatedAt     int64  `json:"createdAt,omitempty"`
-	UpdatedAt     int64  `json:"updatedAt,omitempty"`
-	DeletedAt     *int64 `json:"deletedAt,omitempty"`
-}
-
-func adminWordRowFrom(w *repo.Word) adminWordRow {
-	return adminWordRow{
-		Found:         true,
-		Id:            w.Id,
-		English:       w.English,
-		Chinese:       w.Chinese,
-		Pronunciation: w.Pronunciation,
-		LoadCount:     w.LoadCount,
-		CreatedAt:     w.CreatedAt,
-		UpdatedAt:     w.UpdatedAt,
-		DeletedAt:     w.DeletedAt,
-	}
-}
-
-// adminEcdictRow is the matched ECDICT stardict row plus which fallback
-// strategy hit ("exact" / "lower" / "sw" / "exchange").
-type adminEcdictRow struct {
-	Found       bool   `json:"found"`
-	MatchedBy   string `json:"matchedBy,omitempty"`
-	Word        string `json:"word,omitempty"`
-	Sw          string `json:"sw,omitempty"`
-	Phonetic    string `json:"phonetic,omitempty"`
-	Translation string `json:"translation,omitempty"`
-	Exchange    string `json:"exchange,omitempty"`
-}
-
-// AdminGetWord handles GET /api/admin/words/:word.
-func AdminGetWord(c *gin.Context) {
-	word := strings.TrimSpace(c.Param("word"))
-	if word == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "word is required"})
-		return
-	}
-	row, found := repo.AdminGetWord(word)
-	if !found {
-		c.JSON(http.StatusOK, adminWordRow{Found: false})
-		return
-	}
-	c.JSON(http.StatusOK, adminWordRowFrom(row))
-}
-
-// AdminGetEcdict handles GET /api/admin/ecdict/:word.
-func AdminGetEcdict(c *gin.Context) {
-	word := strings.TrimSpace(c.Param("word"))
-	if word == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "word is required"})
-		return
-	}
-	if !ecdict.IsAvailable() {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": ecdict.UnavailableMessage()})
-		return
-	}
-	row, matchedBy, found := ecdict.LookupRaw(c.Request.Context(), word)
-	if !found {
-		c.JSON(http.StatusOK, adminEcdictRow{Found: false})
-		return
-	}
-	c.JSON(http.StatusOK, adminEcdictRow{
-		Found:       true,
-		MatchedBy:   matchedBy,
-		Word:        row.Word,
-		Sw:          row.Sw,
-		Phonetic:    row.Phonetic,
-		Translation: row.Translation,
-		Exchange:    row.Exchange,
-	})
-}
-
-// AdminSyncWordFromEcdict handles POST /api/admin/words/:word/sync-from-ecdict:
-// copy the matched ECDICT row's translation/phonetic onto the words-table row
-// (creating it if absent). The words table is a global shared cache, so this
-// affects every user's next lookup of this word.
-func AdminSyncWordFromEcdict(c *gin.Context) {
-	word := strings.TrimSpace(c.Param("word"))
-	if word == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "word is required"})
-		return
-	}
-	if !ecdict.IsAvailable() {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": ecdict.UnavailableMessage()})
-		return
-	}
-
-	eRow, matchedBy, found := ecdict.LookupRaw(c.Request.Context(), word)
-	if !found {
-		c.JSON(http.StatusConflict, gin.H{"success": false, "message": "no ECDICT entry to sync from"})
-		return
-	}
-
-	before, _ := repo.AdminGetWord(word)
-	after, err := repo.AdminSyncWordFromEcdict(word, eRow.Translation, eRow.Phonetic)
-	if err != nil {
-		logger.Errorf("AdminSyncWordFromEcdict: word=%q: %v", word, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to update word"})
-		return
-	}
-
-	beforeChinese, beforePron := "", ""
-	if before != nil {
-		beforeChinese, beforePron = before.Chinese, before.Pronunciation
-	}
-	logger.Infof("admin AdminSyncWordFromEcdict: %s synced word=%q from ECDICT (matchedBy=%s): chinese %q -> %q, pronunciation %q -> %q",
-		c.GetString("clerk_user_id"), word, matchedBy, beforeChinese, after.Chinese, beforePron, after.Pronunciation)
-
-	c.JSON(http.StatusOK, gin.H{
-		"success":   true,
-		"matchedBy": matchedBy,
-		"word":      adminWordRowFrom(after),
-	})
 }

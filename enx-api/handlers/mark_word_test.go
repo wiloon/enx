@@ -1,6 +1,7 @@
-package main
+package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -76,5 +77,35 @@ func TestMarkWordInDictionaryMarksAcquainted(t *testing.T) {
 	}
 	if ud.AlreadyAcquainted != 1 {
 		t.Fatalf("already_acquainted = %d, want 1", ud.AlreadyAcquainted)
+	}
+}
+
+// Marking twice flips the word back to "learning", and the toggle never
+// touches the lookup count.
+func TestMarkWordTogglesAndKeepsQueryCount(t *testing.T) {
+	if err := os.Setenv("DB_PATH", filepath.Join(t.TempDir(), "enx-mark.db")); err != nil {
+		t.Fatalf("set DB_PATH: %v", err)
+	}
+	sqlitex.Init()
+	gin.SetMode(gin.TestMode)
+
+	wordID := "w-" + t.Name()
+	userID := "u-" + t.Name()
+	if err := sqlitex.DB.Create(&sqlitex.Word{Id: wordID, English: "zzqxtoggle", CreatedAt: 1, UpdatedAt: 1}).Error; err != nil {
+		t.Fatalf("seed word: %v", err)
+	}
+	if err := sqlitex.DB.Create(&sqlitex.UserDict{UserId: userID, WordId: wordID, QueryCount: 5, CreatedAt: 1, UpdatedAt: 1}).Error; err != nil {
+		t.Fatalf("seed user_dict: %v", err)
+	}
+
+	for i, want := range []int{1, 0} {
+		w := markWordRequest(t, userID, "zzqxtoggle")
+		var resp struct{ LoadCount, AlreadyAcquainted int }
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("mark %d: %v (body %s)", i+1, err, w.Body.String())
+		}
+		if w.Code != http.StatusOK || resp.AlreadyAcquainted != want || resp.LoadCount != 5 {
+			t.Fatalf("mark %d: status %d, response %+v; want acquainted %d, LoadCount 5", i+1, w.Code, resp, want)
+		}
 	}
 }

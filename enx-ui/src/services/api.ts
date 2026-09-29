@@ -183,10 +183,12 @@ export class ApiService {
     return this.makeRequest<WordData>(`/api/word/${encodeURIComponent(word)}`)
   }
 
+  // Admin-only (ADR-021): drops the shared words row and every user's review
+  // row for it; the next lookup re-fills the word from ECDICT.
   async deleteWord(
     word: string
-  ): Promise<ApiResponse<{ success: boolean; message: string }>> {
-    return this.makeRequest(`/api/word/${encodeURIComponent(word)}`, {
+  ): Promise<ApiResponse<{ success: boolean; deleted: boolean }>> {
+    return this.makeRequest(`/api/admin/words/${encodeURIComponent(word)}`, {
       method: 'DELETE',
     })
   }
