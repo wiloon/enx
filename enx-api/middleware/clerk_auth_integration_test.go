@@ -56,7 +56,7 @@ func TestClerkAuth_ValidTokenProvisionsUser(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.Use(ClerkAuth(clerkTestConfig(env)))
+	r.Use(ClerkAuth(clerkTestConfig(env), nil))
 	r.GET("/api/me", func(c *gin.Context) {
 		if got, _ := c.Get("clerk_user_id"); got != sub {
 			t.Fatalf("clerk_user_id = %v, want %s", got, sub)
@@ -101,7 +101,7 @@ func TestClerkAuth_ExpiredWithinLeewayAccepted(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.Use(ClerkAuth(clerkTestConfig(env)))
+	r.Use(ClerkAuth(clerkTestConfig(env), nil))
 	r.GET("/api/me", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)

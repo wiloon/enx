@@ -68,23 +68,46 @@ func newClerkValidator(cfg ClerkConfig) (*clerkValidator, error) {
 	return &clerkValidator{cfg: cfg, jwks: jwks}, nil
 }
 
+// AuthObserver records how a Clerk token check ended and how long it took:
+// metrics.Metrics in production (ADR-040).
+type AuthObserver interface {
+	ObserveAuth(outcome string, elapsed time.Duration)
+}
+
+// Auth outcomes reported to AuthObserver.
+const (
+	authOK                = "ok"
+	authMissingToken      = "missing_token"
+	authExpired           = "expired"
+	authInvalid           = "invalid"
+	authUnauthorizedParty = "unauthorized_party"
+	authProvisionError    = "provision_error"
+	authUnavailable       = "unavailable"
+)
+
 // ClerkAuth validates Clerk session-token JWTs and provisions local users.
-func ClerkAuth(cfg ClerkConfig) gin.HandlerFunc {
+// obs, when not nil, hears how every check ended.
+func ClerkAuth(cfg ClerkConfig, obs AuthObserver) gin.HandlerFunc {
+	observe := func(outcome string, start time.Time) {
+		if obs != nil {
+			obs.ObserveAuth(outcome, time.Since(start))
+		}
+	}
+	unavailable := func(c *gin.Context) {
+		observe(authUnavailable, time.Now())
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "auth service unavailable"})
+		c.Abort()
+	}
+
 	if !cfg.valid() {
 		logger.Errorf("ClerkAuth: incomplete config (issuer=%q parties=%d)", cfg.Issuer, len(cfg.AuthorizedParties))
-		return func(c *gin.Context) {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "auth service unavailable"})
-			c.Abort()
-		}
+		return unavailable
 	}
 
 	v, err := newClerkValidator(cfg)
 	if err != nil {
 		logger.Errorf("ClerkAuth: JWKS init failed: %v", err)
-		return func(c *gin.Context) {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "auth service unavailable"})
-			c.Abort()
-		}
+		return unavailable
 	}
 
 	return func(c *gin.Context) {
@@ -92,11 +115,16 @@ func ClerkAuth(cfg ClerkConfig) gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		start := time.Now()
+		reject := func(outcome, msg string) {
+			observe(outcome, start)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": msg})
+			c.Abort()
+		}
 
 		auth := c.GetHeader("Authorization")
 		if auth == "" || !strings.HasPrefix(auth, "Bearer ") {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing authorization header"})
-			c.Abort()
+			reject(authMissingToken, "missing authorization header")
 			return
 		}
 		tokenStr := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
@@ -108,28 +136,25 @@ func ClerkAuth(cfg ClerkConfig) gin.HandlerFunc {
 			jwt.WithLeeway(clerkClockLeeway),
 		)
 		if err != nil || !token.Valid {
-			msg := "invalid token"
 			if err != nil {
-				if strings.Contains(err.Error(), "expired") {
-					msg = "token expired"
-				}
 				logger.Debugf("ClerkAuth: parse failed: %v", err)
+				if strings.Contains(err.Error(), "expired") {
+					reject(authExpired, "token expired")
+					return
+				}
 			}
-			c.JSON(http.StatusUnauthorized, gin.H{"error": msg})
-			c.Abort()
+			reject(authInvalid, "invalid token")
 			return
 		}
 
 		if !v.authorizedPartyAllowed(claims) {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			c.Abort()
+			reject(authUnauthorizedParty, "invalid token")
 			return
 		}
 
 		sub, _ := claims["sub"].(string)
 		if sub == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			c.Abort()
+			reject(authInvalid, "invalid token")
 			return
 		}
 
@@ -139,11 +164,13 @@ func ClerkAuth(cfg ClerkConfig) gin.HandlerFunc {
 		userID, err := enx.GetOrCreateByClerkUserID(sub, email, name)
 		if err != nil {
 			logger.Errorf("ClerkAuth: provision user clerk_user_id=%s: %v", sub, err)
+			observe(authProvisionError, start)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			c.Abort()
 			return
 		}
 
+		observe(authOK, start)
 		c.Set("clerk_user_id", sub)
 		c.Set("user_id", userID)
 		c.Next()

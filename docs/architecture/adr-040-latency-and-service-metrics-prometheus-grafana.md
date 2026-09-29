@@ -84,9 +84,9 @@ OTel 能顺带做 tracing，但当前只有一个 Go 服务、没有跨服务调
 
 **外部依赖与存储**
 
-- `enx_clerk_verify_duration_seconds{outcome}`、`enx_clerk_jwks_fetch_total{outcome}` —— 鉴权失败在用户那里表现为「会话过期」，非常难从用户描述反推。
-- `enx_stripe_webhook_total{event_type, outcome}` —— 付了钱没生效的唯一早期信号。`event_type` 只记我们处理的那几种，其余归 `other`。
-- `enx_sqlite_busy_total{op}` —— `SQLITE_BUSY` / `database is locked` 的出现次数（`op ∈ {read, write}`）。单写者在用户增长后最先出问题的地方。
+- `enx_clerk_verify_duration_seconds{outcome}` —— 每次 Clerk token 校验的耗时与结果，`outcome ∈ {ok, missing_token, expired, invalid, unauthorized_party, provision_error, unavailable}`。鉴权失败在用户那里表现为「会话过期」，非常难从用户描述反推。（起草时还列了 `enx_clerk_jwks_fetch_total`；JWKS 由 `keyfunc` 在内部拉取和缓存，不提供拉取回调，改它的存储层不值得。JWKS 刷新会走网络，直接表现为这个直方图的耗时尖峰，所以不单列。）
+- `enx_stripe_webhook_total{event_type, outcome}` —— 付了钱没生效的唯一早期信号。`event_type` 只记我们处理的那几种，其余归 `other`，签名校验失败的记为 `unknown`（未验证的 payload 里的类型不可信）；`outcome ∈ {ok, error, bad_signature}`。
+- `enx_sqlite_busy_total{op}` —— `SQLITE_BUSY` / `SQLITE_LOCKED` / `database is locked` 的出现次数（`op ∈ {read, write, raw}`，经 GORM 回调统计）。单写者在用户增长后最先出问题的地方。
 
 **进程与主机**
 
@@ -182,3 +182,4 @@ Grafana dashboard 的 JSON 放进 `w10n-config` 的 `infra/homelab/k8s/observabi
 | --- | --- | --- |
 | 2026-09-29 | homelab 采集由 `additional-scrape-configs` 改为 `ServiceMonitor` | 前者适合集群外静态目标，集群内服务的标准做法是后者；维护者确认 |
 | 2026-09-29 | 查词入口、路由、请求日志、AI 装饰位置按已合并代码更新 | #64/#69/#70/#72 在本 ADR 起草后合并 |
+| 2026-09-29 | 去掉 `enx_clerk_jwks_fetch_total`，Clerk 只保留校验耗时直方图并列出 outcome；写明 Stripe、SQLite 指标的标签取值 | `keyfunc` 不暴露 JWKS 拉取回调；实现时确定了具体取值 |

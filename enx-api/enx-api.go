@@ -49,7 +49,12 @@ func main() {
 	logger.Warn("warn log test")
 	logger.Warnf("warnf log test %s", "test")
 	logger.Sync()
+	m := metrics.New()
 	sqlitex.Init()
+	if err := m.InstrumentDB(sqlitex.DB); err != nil {
+		// Losing the busy counter must not stop the API.
+		logger.Errorf("metrics: sqlite instrumentation: %v", err)
+	}
 
 	ecdictDbPath := viper.GetString("ecdict.db_path")
 	ecdict.Init(ecdictDbPath)
@@ -58,7 +63,6 @@ func main() {
 	go runStatsIngestLogCleanup()
 	go runPageReportCleanup()
 
-	m := metrics.New()
 	go serveMetrics(viper.GetString("metrics.addr"), m)
 	router := setupRouter(m)
 
@@ -292,7 +296,7 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	router.GET("/version", handlers.GetVersion)
 	router.GET("/api/version", handlers.GetVersionSimple)
 
-	clerkAuth := middleware.ClerkAuth(middleware.ClerkConfigFromViper())
+	clerkAuth := middleware.ClerkAuth(middleware.ClerkConfigFromViper(), m)
 
 	// Word lookup (ADR-018): the dictionary domain service over the words
 	// table and ECDICT, plus the per-user review log.
@@ -365,7 +369,7 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 		logger.Warnf("billing disabled: %v", stripeErr)
 		stripeClient = nil
 	}
-	billingHandler := billing.NewHandler(stripeClient, viper.GetString("app.frontend-base-url"), viper.GetString("stripe.webhook-secret"))
+	billingHandler := billing.NewHandler(stripeClient, viper.GetString("app.frontend-base-url"), viper.GetString("stripe.webhook-secret"), m)
 
 	// Authenticated APIs (Clerk session JWT). enx-chrome and enx-ui call only
 	// these /api routes; nothing is registered twice at the root.

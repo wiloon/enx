@@ -27,10 +27,23 @@ type Handler struct {
 	sc              *stripeSDK.Client
 	frontendBaseURL string
 	webhookSecret   string
+	webhooks        WebhookObserver
 }
 
-func NewHandler(sc *stripeSDK.Client, frontendBaseURL, webhookSecret string) *Handler {
-	return &Handler{sc: sc, frontendBaseURL: frontendBaseURL, webhookSecret: webhookSecret}
+// WebhookObserver hears the outcome of every Stripe webhook delivery:
+// metrics.Metrics in production (ADR-040). Nil records nothing.
+type WebhookObserver interface {
+	ObserveWebhook(eventType, outcome string)
+}
+
+func NewHandler(sc *stripeSDK.Client, frontendBaseURL, webhookSecret string, webhooks WebhookObserver) *Handler {
+	return &Handler{sc: sc, frontendBaseURL: frontendBaseURL, webhookSecret: webhookSecret, webhooks: webhooks}
+}
+
+func (h *Handler) observeWebhook(eventType, outcome string) {
+	if h.webhooks != nil {
+		h.webhooks.ObserveWebhook(eventType, outcome)
+	}
 }
 
 type checkoutSubscriptionRequest struct {
@@ -202,6 +215,8 @@ func (h *Handler) Webhook(c *gin.Context) {
 	event, err := billingstripe.ConstructEvent(payload, c.GetHeader("Stripe-Signature"), h.webhookSecret)
 	if err != nil {
 		logger.Warnf("billing: webhook signature verification failed: %v", err)
+		// The type of an unverified payload can't be trusted as a label.
+		h.observeWebhook("unknown", "bad_signature")
 		c.Status(http.StatusBadRequest)
 		return
 	}
@@ -212,10 +227,12 @@ func (h *Handler) Webhook(c *gin.Context) {
 		// isn't there yet because events arrived out of order," which
 		// resolves itself on retry once the missing event lands.
 		logger.Errorf("billing: webhook event id=%s type=%s failed: %v", event.ID, event.Type, err)
+		h.observeWebhook(webhookEventLabel(event.Type), "error")
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 
+	h.observeWebhook(webhookEventLabel(event.Type), "ok")
 	c.Status(http.StatusOK)
 }
 

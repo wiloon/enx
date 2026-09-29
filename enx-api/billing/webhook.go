@@ -38,6 +38,21 @@ func (h *Handler) dispatchWebhookEvent(ctx context.Context, event stripeSDK.Even
 	}
 }
 
+// webhookEventLabel narrows an event type to the ones dispatchWebhookEvent
+// handles, so an unexpected type can't mint a new metric series.
+func webhookEventLabel(t stripeSDK.EventType) string {
+	switch t {
+	case stripeSDK.EventTypeCheckoutSessionCompleted,
+		stripeSDK.EventTypeInvoicePaid,
+		stripeSDK.EventTypeCustomerSubscriptionUpdated,
+		stripeSDK.EventTypeCustomerSubscriptionDeleted,
+		stripeSDK.EventTypeInvoicePaymentFailed:
+		return string(t)
+	default:
+		return "other"
+	}
+}
+
 // handleCheckoutSessionCompleted establishes/updates the local
 // user<->Stripe customer mapping. For a top-up purchase it also grants the
 // credits; for a subscription purchase it deliberately does NOT grant

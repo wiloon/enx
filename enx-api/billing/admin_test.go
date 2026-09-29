@@ -20,7 +20,7 @@ import (
 // context (what middleware.ClerkAuth sets).
 func adminRequest(t *testing.T, callerClerkID, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	h := NewHandler(nil, "https://example.com", "whsec_test")
+	h := NewHandler(nil, "https://example.com", "whsec_test", nil)
 	router := gin.New()
 	router.POST("/api/admin/credits/grant", func(c *gin.Context) {
 		c.Set("clerk_user_id", callerClerkID)
