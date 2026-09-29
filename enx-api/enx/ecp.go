@@ -31,8 +31,12 @@ type Word struct {
 	WordType int
 }
 
+// nonEnglish matches everything SetEnglish strips from a token. Compiled
+// once: SetEnglish runs for every word of every page (paragraph-init).
+var nonEnglish = regexp.MustCompile(`[^a-zA-Z\-'’ ]+`)
+
 func (word *Word) SetEnglish(raw string) {
-	raw = regexp.MustCompile(`[^a-zA-Z\-'’ ]+`).ReplaceAllString(raw, "")
+	raw = nonEnglish.ReplaceAllString(raw, "")
 
 	english := ""
 	if strings.Contains(raw, "'s") ||
@@ -44,7 +48,6 @@ func (word *Word) SetEnglish(raw string) {
 		strings.Contains(raw, "'re") {
 		// do nothing
 		english = raw
-		logger.Infof("set english no replace, raw: %s, english: %s", raw, english)
 	} else {
 		english = raw
 		english = strings.TrimSuffix(english, "-")
@@ -53,8 +56,7 @@ func (word *Word) SetEnglish(raw string) {
 		english = strings.TrimSuffix(english, ",")
 		english = strings.TrimPrefix(english, "(")
 		english = strings.TrimSuffix(english, ")")
-		english = regexp.MustCompile(`[^a-zA-Z\-'’ ]+`).ReplaceAllString(english, "")
-		logger.Debugf("replace non english char, raw: %s, english: %s", raw, english)
+		english = nonEnglish.ReplaceAllString(english, "")
 	}
 
 	// if english end with - or space, remove it
@@ -83,7 +85,6 @@ func (word *Word) SetEnglishField(english string) {
 		word.English = english
 		word.Key = strings.ToLower(english)
 	}
-	logger.Infof("set english, raw: %s, english: %s, key: %s", word.Raw, word.English, word.Key)
 }
 func (word *Word) FindQueryCount(userId string) int {
 	qc, acquainted, _ := repo.GetUserWordQueryCount(word.Id, userId)
