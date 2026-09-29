@@ -107,8 +107,7 @@ func (h *Handler) billedCall(c *gin.Context, feature string, fn func(ctx context
 	return true
 }
 
-// TranslateSentence handles POST /translate/sentence and POST
-// /api/translate/sentence. It never returns a 200 with an empty/partial
+// TranslateSentence handles POST /api/translate/sentence. It never returns a 200 with an empty/partial
 // translation: unavailable or failed translation is always an explicit 502
 // (ADR-0001's "no silent empty result").
 func (h *Handler) TranslateSentence(c *gin.Context) {
@@ -131,8 +130,7 @@ func (h *Handler) TranslateSentence(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "chinese": chinese})
 }
 
-// TranslateWordInContext handles POST /translate/word-in-context and POST
-// /api/translate/word-in-context. It translates a single word using the
+// TranslateWordInContext handles POST /api/translate/word-in-context. It translates a single word using the
 // surrounding sentence as context, so the result is the word's meaning as
 // used in that sentence rather than a generic dictionary gloss (see
 // docs/tasks/TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md §3.8).
@@ -163,13 +161,13 @@ func (h *Handler) TranslateWordInContext(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "chinese": res.WordChinese, "why": res.Why})
 }
 
-// TranslateSentenceWithWord handles POST /translate/sentence-with-word and
-// POST /api/translate/sentence-with-word (ADR-014): one LLM call returns
-// both the whole-sentence translation and `word`'s meaning in that
-// sentence's context, so the Side Panel opened from a word click needs just
-// one AI round-trip instead of two. `wordChinese` in the response may be an
-// empty string if the model omitted it -- the client falls back to a
-// separate word-in-context call rather than the whole request failing.
+// TranslateSentenceWithWord handles POST /api/translate/sentence-with-word
+// (ADR-014): one LLM call returns both the whole-sentence translation and
+// `word`'s meaning in that sentence's context, so the Side Panel opened from
+// a word click needs just one AI round-trip instead of two. `wordChinese` in
+// the response may be an empty string if the model omitted it -- the client
+// falls back to a separate word-in-context call rather than the whole
+// request failing.
 func (h *Handler) TranslateSentenceWithWord(c *gin.Context) {
 	var req sentenceWithWordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

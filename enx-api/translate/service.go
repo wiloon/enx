@@ -72,12 +72,12 @@ func translateWord(c *gin.Context, raw string) {
 	c.JSON(200, word)
 }
 
-// Translate handles GET /translate?word=
+// Translate handles GET /api/translate?word=
 func Translate(c *gin.Context) {
 	translateWord(c, c.Query("word"))
 }
 
-// TranslateByWord handles GET /word/:word
+// TranslateByWord handles GET /api/word/:word
 func TranslateByWord(c *gin.Context) {
 	translateWord(c, c.Param("word"))
 }
