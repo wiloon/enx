@@ -6,16 +6,19 @@ import '@/index.css'
 import PageReportPrompt, {
   PageReportStatus,
 } from '@/components/PageReportPrompt'
+import PageSavePrompt, { PageSaveStatus } from '@/components/PageSavePrompt'
 import { config } from '@/config/env'
 import { isReportableFailure, EnableFailureReason } from '@/lib/enableOutcome'
 import { enableLearningModeOnTab } from '@/lib/enableLearningMode'
 import { PageReportPayload, sanitizePageUrl } from '@/lib/pageReport'
+import { saveOutcome } from '@/lib/pageSave'
 import { initSentry } from '@/lib/sentry'
 import { errorAtom, userAtom } from '@/store/atoms'
 import { ClerkProvider, SignOutButton, useUser } from '@clerk/chrome-extension'
 import {
   AcademicCapIcon,
   ArrowRightOnRectangleIcon,
+  BookmarkIcon,
   BookOpenIcon,
   CheckCircleIcon,
   ChevronRightIcon,
@@ -124,6 +127,49 @@ function SignedInBody({
       setReportStatus(response?.success ? 'sent' : 'failed')
     } catch {
       setReportStatus('failed')
+    }
+  }
+
+  // Saving (收藏) the current page is a separate, explicit action: the user
+  // sees the address and title first and nothing is sent until they confirm
+  // (ADR-032 Decision 4).
+  const [saveCandidate, setSaveCandidate] = useState<{
+    url: string
+    title: string
+  } | null>(null)
+  const [saveStatus, setSaveStatus] = useState<PageSaveStatus>('idle')
+  const [savedUrl, setSavedUrl] = useState<string | undefined>()
+  const [saveError, setSaveError] = useState<string | undefined>()
+
+  const handleStartSave = async () => {
+    setError(null)
+    setSaveStatus('idle')
+    setSavedUrl(undefined)
+    setSaveError(undefined)
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (!tab?.url || !/^https?:\/\//.test(tab.url)) {
+      setSaveCandidate(null)
+      setError('Only web pages can be saved.')
+      return
+    }
+    setSaveCandidate({ url: tab.url, title: tab.title ?? '' })
+  }
+
+  const handleConfirmSave = async () => {
+    if (!saveCandidate) return
+    setSaveStatus('saving')
+    try {
+      const result = await chrome.runtime.sendMessage({
+        type: 'savePage',
+        savedPage: saveCandidate,
+      })
+      const outcome = saveOutcome(result)
+      setSaveStatus(outcome.status)
+      setSavedUrl(outcome.savedUrl)
+      setSaveError(outcome.errorMessage)
+    } catch {
+      setSaveStatus('failed')
+      setSaveError(undefined)
     }
   }
 
@@ -244,6 +290,37 @@ function SignedInBody({
             ? 'Learning mode enabled'
             : 'Enable learning mode'}
       </button>
+
+      {saveCandidate ? (
+        <PageSavePrompt
+          url={saveCandidate.url}
+          title={saveCandidate.title}
+          status={saveStatus}
+          savedUrl={savedUrl}
+          errorMessage={saveError}
+          onSave={handleConfirmSave}
+          onCancel={() => setSaveCandidate(null)}
+        />
+      ) : (
+        <button
+          type="button"
+          data-testid="popup-save-page"
+          onClick={handleStartSave}
+          className="flex w-full items-center gap-3 rounded-xl bg-background px-3 py-2.5 text-left shadow-xs ring-1 ring-border transition hover:ring-brand/50"
+        >
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-muted text-brand">
+            <BookmarkIcon className="h-[18px] w-[18px]" />
+          </span>
+          <span className="min-w-0 flex-1 leading-tight">
+            <span className="block text-sm font-medium text-foreground">
+              Save this page
+            </span>
+            <span className="block text-[11px] text-muted-foreground">
+              Add it to your Saved list
+            </span>
+          </span>
+        </button>
+      )}
 
       <button
         type="button"

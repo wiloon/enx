@@ -651,6 +651,87 @@ describe('background onMessage / submitPageReport (ADR-010 Decision 8)', () => {
   })
 })
 
+describe('background onMessage / savePage (ADR-032)', () => {
+  const listener = onMessageListener
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    setClerkSession('clerk-session-jwt')
+    ;(global.fetch as jest.Mock) = jest.fn()
+  })
+
+  const send = (request: unknown): Promise<unknown> =>
+    new Promise(resolve => listener(request, {}, resolve))
+
+  it('POSTs the page URL and title to /api/saved-pages and returns what was stored', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(201, {
+        success: true,
+        created: true,
+        page: {
+          id: 'p1',
+          url: 'https://www.infoq.com/articles/kube',
+          title: 'Kube',
+          host: 'www.infoq.com',
+        },
+      })
+    )
+
+    const response = await send({
+      type: 'savePage',
+      savedPage: {
+        url: 'https://www.infoq.com/articles/kube?utm_source=x#top',
+        title: 'Kube',
+      },
+    })
+
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toContain('/api/saved-pages')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body)).toEqual({
+      url: 'https://www.infoq.com/articles/kube?utm_source=x#top',
+      title: 'Kube',
+    })
+    expect(response).toMatchObject({
+      success: true,
+      data: {
+        created: true,
+        page: { url: 'https://www.infoq.com/articles/kube' },
+      },
+    })
+  })
+
+  it("passes the server's own message and status through when the save is refused", async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(422, {
+        success: false,
+        message: 'You can save up to 1000 pages. Delete some to save more.',
+      })
+    )
+
+    const response = await send({
+      type: 'savePage',
+      savedPage: { url: 'https://example.com/one-too-many', title: 't' },
+    })
+
+    expect(response).toEqual({
+      success: false,
+      error: 'You can save up to 1000 pages. Delete some to save more.',
+      status: 422,
+    })
+  })
+
+  it('rejects a request with no URL without calling the API', async () => {
+    const response = await send({
+      type: 'savePage',
+      savedPage: { url: '', title: 't' },
+    })
+
+    expect(response).toEqual({ success: false, error: 'Missing page' })
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+})
+
 describe('background onMessageExternal (ADR-019 web -> extension channel)', () => {
   const external = onMessageExternalListener
 

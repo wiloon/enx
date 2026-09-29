@@ -15,6 +15,7 @@ import (
 	"enx-api/paragraph"
 	"enx-api/reader"
 	"enx-api/repo"
+	"enx-api/savedpage"
 	"enx-api/stats"
 	"enx-api/translate"
 	"enx-api/utils"
@@ -443,6 +444,16 @@ func setupRouter() *gin.Engine {
 	// The one endpoint that stores a (sanitized) URL, so the extension only
 	// calls it after the user clicks to confirm. Not on the metered path.
 	apiGroup.POST("/page-reports", pagereport.SubmitHandler)
+
+	// Pages the user chose to save (ADR-032): URL + title only, readable and
+	// editable by that user alone -- there is deliberately no admin route.
+	// Not on the metered path.
+	apiGroup.POST("/saved-pages", savedpage.SaveHandler)
+	apiGroup.GET("/saved-pages", savedpage.ListHandler)
+	apiGroup.GET("/saved-pages/export", savedpage.ExportHandler)
+	apiGroup.PATCH("/saved-pages/:id", savedpage.UpdateHandler)
+	apiGroup.DELETE("/saved-pages/:id", savedpage.DeleteHandler)
+	apiGroup.DELETE("/saved-pages", savedpage.DeleteAllHandler)
 
 	// Admin: grant top-up credits to any user by email. Gated by the
 	// ADMIN_CLERK_USER_IDS allowlist inside the handler (on top of clerkAuth).

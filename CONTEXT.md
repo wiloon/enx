@@ -84,9 +84,15 @@ _Avoid_: enx:ping（那是 enx-ui Reader 的消息通道，见 adr-019）
 RSSX Reader 右侧当前打开的那一篇 Article。在 RSSX 上，学习模式的作用范围是这一篇的正文，不是订阅列表，也不是文章列表。见 adr-033。
 _Avoid_: RSSX 首页、整页
 
+### 收藏与问题上报（跨组件）
+
+**收藏（saved page）**：
+用户主动收藏的一个页面：URL（规范化：去掉 fragment、凭据与跟踪参数）+ 标题，**仅本人可见**，永久保存直到本人删除或账号注销。**不含正文、不含译文**——这是版权与隐私边界，不是待补的功能。入口：扩展工具栏弹窗的「Save this page」、enx-ui 的 Saved 页、移动端系统分享菜单。英文代码与 UI 用 saved（表 `saved_pages`，接口 `/api/saved-pages`）。见 adr-032。
+_Avoid_: 已保存页面、保存文章（存的是地址不是文章）、稍后读 / read-later、书签 / bookmark（与浏览器书签混淆）、favorites（有「点赞」含义）
+
 **页面上报（page report）**：
-学习模式因**页面结构**处理失败（取不到正文、取不到词、处理报错等），用户在弹窗里确认后，把**脱敏后的页面地址**交给管理员，用来改进站点适配。表 `page_reports`。见 adr-010 Decision 8。
-_Avoid_: 反馈（笼统）、bug report、issue、释义反馈（那是另一类）
+学习模式因**页面结构**处理失败（取不到正文、取不到词、处理报错等）后，用户在工具栏弹窗里点「Send report」确认，把**脱敏后的页面地址**交给管理员（强脱敏：只留 origin + path，疑似标识符的路径段替换为 `:redacted`），用来改进站点适配。90 天自动过期，每人最多 50 条。与「收藏」是两回事：收藏属于用户、永久、仅本人可见；上报属于我们、短期、用于修页面支持。表 `page_reports`。见 adr-010 Decision 8。
+_Avoid_: 反馈（笼统）、bug report、issue、错误报告 / crash report（那是 Sentry）、释义反馈（那是另一类）
 
 **释义反馈（definition feedback）**：
 用户认为某次查词的**词典释义和/或上下文释义**有问题，主动提交词、原句与释义快照，供管理员排查词典或 AI。表 `word_feedback`。见 adr-026（待实现）。
