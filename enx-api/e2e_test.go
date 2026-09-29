@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"enx-api/clerktest"
+	"enx-api/metrics"
 	"enx-api/utils"
 	"enx-api/utils/sqlitex"
 	"net/http"
@@ -23,7 +24,7 @@ func e2eServer(t *testing.T) (*httptest.Server, func()) {
 	t.Helper()
 	utils.ViperInit()
 	gin.SetMode(gin.TestMode)
-	router := setupRouter()
+	router := setupRouter(metrics.New())
 	ts := httptest.NewServer(router)
 	return ts, func() { ts.Close() }
 }
@@ -251,5 +252,54 @@ func TestE2E_ParagraphInitOverQuery(t *testing.T) {
 		if err != nil || resp.StatusCode != http.StatusOK || body.Data["morning"].Id != "w-morning" {
 			t.Fatalf("%s: status %d, err %v, body %+v; want 200 with morning -> w-morning", method, resp.StatusCode, err, body)
 		}
+	}
+}
+
+// ADR-040 wiring: a real lookup through the full router lands in the lookup
+// histogram under the source that answered -- ECDICT first, then the words
+// cache -- and in the HTTP counters under its route template.
+func TestE2E_LookupMetrics(t *testing.T) {
+	env := clerktest.NewEnv(t)
+	utils.ViperInit()
+	env.ApplyViper()
+	if err := os.Setenv("DB_PATH", filepath.Join(t.TempDir(), "enx-metrics.db")); err != nil {
+		t.Fatal(err)
+	}
+	sqlitex.Init()
+	seedEcdict(t)
+	token := env.SignSessionToken(t, jwt.MapClaims{"sub": "user_e2emetrics001", "email": "e2e-metrics@example.com", "name": "e2e-metrics"})
+
+	gin.SetMode(gin.TestMode)
+	m := metrics.New()
+	ts := httptest.NewServer(setupRouter(m))
+	defer ts.Close()
+
+	for i := 0; i < 2; i++ {
+		req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/word/hello", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := ts.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("lookup %d: status %d", i+1, resp.StatusCode)
+		}
+	}
+
+	w := httptest.NewRecorder()
+	m.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	out := w.Body.String()
+	for _, want := range []string{
+		`enx_dictionary_lookup_duration_seconds_count{source="ecdict"} 1`,
+		`enx_dictionary_lookup_duration_seconds_count{source="local"} 1`,
+		`enx_http_requests_total{method="GET",route="/api/word/:word",status="200"} 2`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("/metrics lacks %q", want)
+		}
+	}
+	if strings.Contains(out, "hello") {
+		t.Error("/metrics contains the looked-up word")
 	}
 }

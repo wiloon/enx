@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"enx-api/metrics"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -70,5 +71,27 @@ func TestRequestLogLabelsUnmatchedRoutes(t *testing.T) {
 func TestRequestLogSkipsPreflight(t *testing.T) {
 	if lines := serveRequestLog(t, http.MethodOptions, "/api/word/serendipity"); len(lines) != 0 {
 		t.Fatalf("got %+v, want no line for OPTIONS", lines)
+	}
+}
+
+// A word lookup's line carries the dictionary source that answered it.
+func TestRequestLogAddsLookupSource(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var lines []logLine
+	r := gin.New()
+	r.Use(RequestLog(recordLog(&lines)))
+	r.GET("/api/word/:word", func(c *gin.Context) {
+		c.Set(metrics.LookupSourceKey, "ecdict")
+		c.Status(http.StatusOK)
+	})
+	r.GET("/api/me", func(c *gin.Context) { c.Status(http.StatusOK) })
+	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/word/run", nil))
+	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/me", nil))
+
+	if got := lines[0].fields["lookup_source"]; got != "ecdict" {
+		t.Fatalf("lookup line: lookup_source = %v, want ecdict", got)
+	}
+	if _, ok := lines[1].fields["lookup_source"]; ok {
+		t.Fatalf("non-lookup line has a lookup_source: %+v", lines[1])
 	}
 }

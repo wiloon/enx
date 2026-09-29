@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"enx-api/metrics"
 	"enx-api/utils"
 
 	"github.com/gin-gonic/gin"
@@ -19,7 +20,7 @@ func TestLookupRoutesAreRegisteredOnlyUnderAPI(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	registered := map[string]bool{}
-	for _, r := range setupRouter().Routes() {
+	for _, r := range setupRouter(metrics.New()).Routes() {
 		registered[r.Method+" "+r.Path] = true
 	}
 
@@ -50,7 +51,7 @@ func TestRemovedRoutesAreNotRegistered(t *testing.T) {
 	utils.ViperInit()
 	gin.SetMode(gin.TestMode)
 
-	for _, r := range setupRouter().Routes() {
+	for _, r := range setupRouter(metrics.New()).Routes() {
 		switch r.Method + " " + r.Path {
 		case "DELETE /api/word/:word", "GET /api/wrap":
 			t.Errorf("%s %s is still registered", r.Method, r.Path)
@@ -65,7 +66,7 @@ func TestParagraphInitRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	registered := map[string]bool{}
-	for _, r := range setupRouter().Routes() {
+	for _, r := range setupRouter(metrics.New()).Routes() {
 		registered[r.Method+" "+r.Path] = true
 	}
 	for _, route := range []string{"QUERY /api/paragraph-init", "POST /api/paragraph-init", "GET /api/paragraph-init"} {
@@ -84,7 +85,7 @@ func TestCORSPreflightAllowsQuery(t *testing.T) {
 	req := httptest.NewRequest(http.MethodOptions, "/api/paragraph-init", nil)
 	req.Header.Set("Origin", "chrome-extension://abcdefghijklmnop")
 	req.Header.Set("Access-Control-Request-Method", "QUERY")
-	setupRouter().ServeHTTP(w, req)
+	setupRouter(metrics.New()).ServeHTTP(w, req)
 
 	if !strings.Contains(w.Header().Get("Access-Control-Allow-Methods"), "QUERY") {
 		t.Fatalf("Access-Control-Allow-Methods = %q, want QUERY listed", w.Header().Get("Access-Control-Allow-Methods"))

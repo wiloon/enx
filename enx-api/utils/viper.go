@@ -65,6 +65,10 @@ func viperInitInternal() {
 	// nothing.
 	viper.SetDefault("ecdict.sampling", false)
 	_ = viper.BindEnv("ecdict.sampling", "ECDICT_SAMPLING")
+	// ADR-040: the /metrics listener. Loopback by default; homelab (k8s)
+	// sets 0.0.0.0:9091 so the in-cluster Prometheus can reach the pod.
+	viper.SetDefault("metrics.addr", "127.0.0.1:9091")
+	_ = viper.BindEnv("metrics.addr", "METRICS_ADDR")
 
 	// Sentence translation (AI provider selectable at deploy time, see
 	// docs/tasks/TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md §3.5).
