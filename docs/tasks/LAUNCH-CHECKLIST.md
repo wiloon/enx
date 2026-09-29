@@ -236,6 +236,8 @@
   - [ ] **Git 仓库改名**：用户明确**这次不做**，以后再说。届时要连带处理 Go module 路径、CI、部署清单、`w10n-config` 里的引用
   - [ ] 改完全仓 `grep -rnE "Catseye|ENX -|enx Pro"` 复查一遍，排除 `__tests__` 和 ADR 历史记录（**ADR 正文里的历史表述不要改**，那是决策记录，改了就失真）
 
+- [ ] **7.5** 去掉 Beta 标志：正式上线（结束小范围邀请测试）时，把 `enx-ui/src/lib/site.ts` 的 `SITE.stage` 改成 `''`。营销页头部和 `/app` 侧边栏的 `BETA` 徽标都读这一个值（PR #59，2026-09-28），改完同步更新 `site.test.tsx` / `AppSidebar.test.tsx` 里断言 Beta 的用例。
+
 ---
 
 ## 8. 上线后（不阻塞发布）
