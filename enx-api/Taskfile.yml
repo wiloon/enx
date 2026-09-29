@@ -11,6 +11,13 @@ vars:
   BUILD_TIME:
     sh: date -u '+%Y-%m-%d_%H:%M:%S_UTC'
 
+env:
+  # Default to the shared local ECDICT copy (`task ecdict:download` at the
+  # repo root), so every task in every worktree gets dictionary lookups
+  # without a .env. An ECDICT_DB_PATH already set in the shell wins.
+  ECDICT_DB_PATH:
+    sh: echo "${ECDICT_DB_PATH:-$HOME/.local/share/enx/ecdict/stardict.db}"
+
 tasks:
   default:
     desc: Show available tasks

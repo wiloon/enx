@@ -229,6 +229,27 @@ tasks:
       - task stop
       - task dev MODE={{.MODE}}
 
+  ecdict:download:
+    desc: Download ECDICT (stardict.db, ~850MB) to ~/.local/share/enx/ecdict for local development; one copy shared by all worktrees
+    vars:
+      # Same release as production: keep in sync with ecdict_release_url in
+      # w10n-config infra/aws/ansible/ec2-tokyo/site.yml.
+      ECDICT_URL: https://github.com/skywind3000/ECDICT/releases/download/1.0.28/ecdict-sqlite-28.zip
+    cmds:
+      - |
+        dest="$HOME/.local/share/enx/ecdict"
+        if [ -f "$dest/stardict.db" ]; then
+          echo "✅ ECDICT already present: $dest/stardict.db"
+          exit 0
+        fi
+        mkdir -p "$dest"
+        tmp=$(mktemp -d)
+        trap 'rm -rf "$tmp"' EXIT
+        curl -fL --retry 3 -o "$tmp/ecdict.zip" "{{.ECDICT_URL}}"
+        unzip -q "$tmp/ecdict.zip" stardict.db -d "$tmp"
+        mv "$tmp/stardict.db" "$dest/stardict.db"
+        echo "✅ ECDICT downloaded: $dest/stardict.db"
+
   chrome:build:
     desc: Build enx-chrome extension to dist-homelab/ (connects to enx-api.wiloon.lab)
     dir: enx-chrome
@@ -436,7 +457,7 @@ tasks:
           sqlite3 enx.db < enx.sql
         fi
       - echo "Running integration tests..."
-      - ENX_PORT=8090 ENX_DEV_MODE=true ECDICT_DB_PATH=${ECDICT_DB_PATH} go test -tags=integration ./...
+      - ENX_PORT=8090 ENX_DEV_MODE=true ECDICT_DB_PATH="${ECDICT_DB_PATH:-$HOME/.local/share/enx/ecdict/stardict.db}" go test -tags=integration ./...
 
   test:api:
     desc: Run all enx-api tests (unit + integration)
