@@ -52,8 +52,9 @@ func TestIsSentence(t *testing.T) {
 func setupTranslateRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/translate", Translate)
-	r.GET("/word/:word", TranslateByWord)
+	h := newTestHandler()
+	r.GET("/translate", h.Translate)
+	r.GET("/word/:word", h.TranslateByWord)
 	return r
 }
 
@@ -77,7 +78,7 @@ func TestTranslateWordRespondsSentenceUnavailableForAuthenticatedMultiWordInput(
 	c, _ := gin.CreateTestContext(w)
 	c.Set("user_id", "u1")
 
-	translateWord(c, "hello world")
+	newTestHandler().translateWord(c, "hello world")
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status: got %d want 200", w.Code)

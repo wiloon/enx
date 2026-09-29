@@ -77,6 +77,13 @@ func GetUserWordQueryCount(wordId, userId string) (queryCount int, alreadyAcquai
 	return userDict.QueryCount, userDict.AlreadyAcquainted, true
 }
 
+// ReviewLog exposes RecordWordLookup as the translate handler's ReviewLog.
+type ReviewLog struct{}
+
+func (ReviewLog) RecordWordLookup(userId, wordId string) (int, int, error) {
+	return RecordWordLookup(userId, wordId)
+}
+
 // RecordWordLookup counts one lookup of wordId by userId for the review
 // system: the first lookup starts query_count at 1, a repeat adds 1, and
 // looking up a word the user had marked as known puts it back into review.

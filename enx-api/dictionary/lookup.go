@@ -8,9 +8,7 @@ import (
 	"time"
 
 	"enx-api/billing/quota"
-	"enx-api/dictsample"
 	"enx-api/ecdict"
-	"enx-api/enx"
 	"enx-api/stats"
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
@@ -26,26 +24,12 @@ var ErrEcdictUnavailable = errors.New("ecdict unavailable")
 // need to import this package (matches ErrEcdictUnavailable's pattern).
 var ErrQuotaExceeded = quota.ErrQuotaExceeded
 
-// lookupEcdict queries ECDICT (with word forms): Resolve's step for a word
-// the local words table doesn't have. Subject to the daily lookup quota for
-// userID's tier (ADR-029).
-func lookupEcdict(ctx context.Context, english, userID string) (*enx.Dictionary, error) {
-	if !ecdict.IsAvailable() {
-		return nil, ErrEcdictUnavailable
-	}
-	if err := MeterLookup(ctx, userID); err != nil {
-		return nil, err
-	}
-	dict := ecdict.Query(ctx, english)
-	// ADR-030 Decision 0 ②: record whether ECDICT resolved this, so the
-	// miss rate stops being a guess. Temporary, off by default, and the
-	// `dictsample` package is meant to be deleted whole afterwards.
-	if dict != nil {
-		dictsample.Word(english, dictsample.SourceEcdict)
-	} else {
-		dictsample.Word(english, dictsample.SourceNone)
-	}
-	return dict, nil
+// QuotaMeter is the production Meter: MeterLookup's daily quota plus the
+// learning-statistics count.
+type QuotaMeter struct{}
+
+func (QuotaMeter) Charge(ctx context.Context, userID string) error {
+	return MeterLookup(ctx, userID)
 }
 
 // MeterLookup charges one dictionary lookup against the caller's daily quota

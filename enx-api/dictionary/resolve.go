@@ -4,8 +4,6 @@ import (
 	"context"
 
 	"enx-api/dictsample"
-	"enx-api/enx"
-	"enx-api/repo"
 	"enx-api/utils/logger"
 )
 
@@ -18,6 +16,13 @@ const (
 	SourceMiss   Source = "miss"   // neither knows the word
 )
 
+// Entry is one English word's dictionary definition.
+type Entry struct {
+	English       string
+	Chinese       string
+	Pronunciation string
+}
+
 // Result is a resolved word lookup. ID is the words row id; it is empty on a
 // miss, and in the rare case an ECDICT entry could not be cached.
 type Result struct {
@@ -28,61 +33,98 @@ type Result struct {
 	Source        Source
 }
 
+// WordStore is the application's own word cache: the words table.
+type WordStore interface {
+	// Find returns the cached word, exact match first, then
+	// case-insensitive; ok is false when it is not cached.
+	Find(ctx context.Context, english string) (id string, entry Entry, ok bool, err error)
+	// Add caches entry and returns its id. When entry.English is already
+	// cached -- an inflection resolved to a cached headword ("ran" ->
+	// "run"), or a concurrent lookup added it first -- it returns the
+	// existing row's id.
+	Add(ctx context.Context, entry Entry) (id string, err error)
+}
+
+// ExternalDictionary is a read-only dictionary consulted when the WordStore
+// misses. ECDICT today; ADR-030's provider chain adds more.
+type ExternalDictionary interface {
+	Available() bool
+	// Lookup resolves english, possibly to its headword (Entry.English);
+	// ok is false when the dictionary doesn't know it.
+	Lookup(ctx context.Context, english string) (entry Entry, ok bool)
+}
+
+// Meter charges one lookup against a user's daily quota (ADR-018 B2,
+// ADR-029). It returns ErrQuotaExceeded or nil.
+type Meter interface {
+	Charge(ctx context.Context, userID string) error
+}
+
+// Service resolves user word lookups (ADR-018's single lookup seam).
+type Service struct {
+	words    WordStore
+	external ExternalDictionary
+	meter    Meter
+}
+
+func NewService(words WordStore, external ExternalDictionary, meter Meter) *Service {
+	return &Service{words: words, external: external, meter: meter}
+}
+
 // Resolve turns a normalized English word into its definition: the local
-// words table first, then ECDICT, caching an ECDICT hit in the words table
-// (ADR-018 A2's deep seam). Every resolution is metered against userID's
-// daily quota, whichever source answers (ADR-018 B2).
+// words table first, then the external dictionary, caching an external hit
+// in the words table. Every resolution is metered against userID's daily
+// quota, whichever source answers (ADR-018 B2).
 //
-// It returns only the sentinels ErrEcdictUnavailable (not cached and ECDICT
-// is not configured) and ErrQuotaExceeded.
-func Resolve(ctx context.Context, english, userID string) (Result, error) {
-	if w := repo.GetWordByEnglish(english); w.Id != "" {
-		if err := MeterLookup(ctx, userID); err != nil {
+// Besides a WordStore read error, it returns only the sentinels
+// ErrEcdictUnavailable (not cached, and no external dictionary configured)
+// and ErrQuotaExceeded.
+func (s *Service) Resolve(ctx context.Context, english, userID string) (Result, error) {
+	id, cached, ok, err := s.words.Find(ctx, english)
+	if err != nil {
+		return Result{}, err
+	}
+	if ok {
+		if err := s.meter.Charge(ctx, userID); err != nil {
 			return Result{}, err
 		}
 		// ADR-030 Decision 0 ②: a local hit belongs in the miss-rate
 		// denominator too.
 		dictsample.Word(english, dictsample.SourceLocal)
 		return Result{
-			ID:            w.Id,
+			ID:            id,
 			English:       english,
-			Chinese:       w.Chinese,
-			Pronunciation: w.Pronunciation,
+			Chinese:       cached.Chinese,
+			Pronunciation: cached.Pronunciation,
 			Source:        SourceLocal,
 		}, nil
 	}
 
-	entry, err := lookupEcdict(ctx, english, userID)
-	if err != nil {
+	if !s.external.Available() {
+		return Result{}, ErrEcdictUnavailable
+	}
+	if err := s.meter.Charge(ctx, userID); err != nil {
 		return Result{}, err
 	}
-	if entry == nil {
+	entry, found := s.external.Lookup(ctx, english)
+	if !found {
+		dictsample.Word(english, dictsample.SourceNone)
 		return Result{English: english, Source: SourceMiss}, nil
 	}
+	dictsample.Word(english, dictsample.SourceEcdict)
+
+	id, err = s.words.Add(ctx, entry)
+	if err != nil {
+		// Still answer with the definition; the caller skips the review
+		// bookkeeping, which needs a persisted word id.
+		logger.Errorf("dictionary: could not cache %s: %v", entry.English, err)
+		id = ""
+	}
 	return Result{
-		ID:            cacheWord(entry),
+		ID:            id,
 		English:       entry.English,
 		Chinese:       entry.Chinese,
 		Pronunciation: entry.Pronunciation,
 		Source:        SourceEcdict,
 	}, nil
-}
-
-// cacheWord stores an ECDICT entry in the words table and returns its id.
-// The headword may already be cached -- an inflection resolved to it ("ran"
-// -> "run"), or a concurrent lookup inserted it first -- and then that row
-// is reused. Returns "" if the word could not be persisted.
-func cacheWord(entry *enx.Dictionary) string {
-	w := enx.Word{
-		English:       entry.English,
-		Chinese:       entry.Chinese,
-		Pronunciation: entry.Pronunciation,
-	}
-	if err := w.Save(); err != nil {
-		w.FindId()
-		if w.Id == "" {
-			logger.Errorf("dictionary: could not cache %s: %v", entry.English, err)
-		}
-	}
-	return w.Id
 }

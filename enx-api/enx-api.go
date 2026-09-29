@@ -7,6 +7,8 @@ import (
 	"enx-api/billing"
 	"enx-api/billing/credit"
 	billingstripe "enx-api/billing/stripe"
+	"enx-api/dictionary"
+	"enx-api/dictionary/adapters"
 	"enx-api/ecdict"
 	"enx-api/enx"
 	"enx-api/handlers"
@@ -312,6 +314,13 @@ func setupRouter() *gin.Engine {
 
 	clerkAuth := middleware.ClerkAuth(middleware.ClerkConfigFromViper())
 
+	// Word lookup (ADR-018): the dictionary domain service over the words
+	// table and ECDICT, plus the per-user review log.
+	lookupHandler := translate.NewHandler(
+		dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, dictionary.QuotaMeter{}),
+		repo.ReviewLog{},
+	)
+
 	// Sentence translation is an optional feature: if sentence-translate.provider
 	// is unset, it stays disabled (same "unconfigured but not fatal" pattern as
 	// ECDICT when ecdict.db_path is empty) and the endpoint responds 502. But if
@@ -383,8 +392,8 @@ func setupRouter() *gin.Engine {
 		apiGroup.GET("/paragraph-init", paragraph.ParagraphInit)
 
 		// translate
-		apiGroup.GET("/translate", translate.Translate)
-		apiGroup.GET("/word/:word", translate.TranslateByWord)
+		apiGroup.GET("/translate", lookupHandler.Translate)
+		apiGroup.GET("/word/:word", lookupHandler.TranslateByWord)
 		apiGroup.POST("/translate/sentence", sentenceHandler.TranslateSentence)
 		apiGroup.POST("/translate/word-in-context", sentenceHandler.TranslateWordInContext)
 		apiGroup.POST("/translate/sentence-with-word", sentenceHandler.TranslateSentenceWithWord)
@@ -623,7 +632,7 @@ func GetMe(c *gin.Context) {
 // single file), not `go build .` -- a sibling .go file would be dropped.
 //
 // These handlers are independent of the user lookup path
-// (translate.TranslateByWord / translateWord): no metering, no words/ECDICT
+// (translate.Handler.TranslateByWord): no metering, no words/ECDICT
 // merge-or-short-circuit, no ECDICT backfill, no user_dicts review counting.
 // They return each table's raw row so an admin can compare `words` against
 // ECDICT and, if wanted, copy ECDICT's data onto the `words` row. Gated by

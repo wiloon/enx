@@ -1,19 +1,50 @@
 package translate
 
 import (
+	"context"
 	"errors"
 	"strings"
 
 	"enx-api/dictionary"
 	"enx-api/enx"
 	"enx-api/middleware"
-	"enx-api/repo"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
 )
 
-func translateWord(c *gin.Context, raw string) {
+// Resolver resolves a word lookup: dictionary.Service in production.
+type Resolver interface {
+	Resolve(ctx context.Context, english, userID string) (dictionary.Result, error)
+}
+
+// ReviewLog records a user's lookup of a word for the review system:
+// repo.ReviewLog in production.
+type ReviewLog interface {
+	RecordWordLookup(userID, wordID string) (queryCount int, alreadyAcquainted int, err error)
+}
+
+// Handler serves the word lookup endpoints.
+type Handler struct {
+	dict    Resolver
+	reviews ReviewLog
+}
+
+func NewHandler(dict Resolver, reviews ReviewLog) *Handler {
+	return &Handler{dict: dict, reviews: reviews}
+}
+
+// Translate handles GET /api/translate?word=
+func (h *Handler) Translate(c *gin.Context) {
+	h.translateWord(c, c.Query("word"))
+}
+
+// TranslateByWord handles GET /api/word/:word
+func (h *Handler) TranslateByWord(c *gin.Context) {
+	h.translateWord(c, c.Param("word"))
+}
+
+func (h *Handler) translateWord(c *gin.Context, raw string) {
 	userId := middleware.GetUserIDFromContext(c)
 	if userId == "" {
 		logger.Errorf("no valid user id found in session")
@@ -34,7 +65,7 @@ func translateWord(c *gin.Context, raw string) {
 	word := enx.Word{}
 	word.SetEnglish(raw)
 
-	res, err := dictionary.Resolve(c.Request.Context(), word.English, userId)
+	res, err := h.dict.Resolve(c.Request.Context(), word.English, userId)
 	switch {
 	case errors.Is(err, dictionary.ErrEcdictUnavailable):
 		dictionary.RespondUnavailable(c)
@@ -43,8 +74,8 @@ func translateWord(c *gin.Context, raw string) {
 		dictionary.RespondQuotaExceeded(c, userId)
 		return
 	case err != nil:
-		// Resolve documents only the two sentinels above (ADR-018 E2); an
-		// unknown error must never be passed off as "word not found" (#17).
+		// Only the two sentinels above mean something to the client; any
+		// other error must never be passed off as "word not found" (#17).
 		logger.Errorf("translate word %s: %v", word.English, err)
 		c.JSON(502, gin.H{"success": false, "message": "Dictionary lookup failed"})
 		return
@@ -58,10 +89,11 @@ func translateWord(c *gin.Context, raw string) {
 
 	// Review bookkeeping needs a persisted word: nothing to count on a miss.
 	if word.Id != "" {
-		qc, acquainted, err := repo.RecordWordLookup(userId, word.Id)
+		qc, acquainted, err := h.reviews.RecordWordLookup(userId, word.Id)
 		if err != nil {
+			// The definition is still worth answering with; the counts
+			// stay at zero for this response.
 			logger.Errorf("record lookup of %s for %s: %v", word.English, userId, err)
-			word.FindQueryCount(userId)
 		} else {
 			word.LoadCount = qc
 			word.AlreadyAcquainted = acquainted
@@ -70,14 +102,4 @@ func translateWord(c *gin.Context, raw string) {
 
 	logger.Debugf("translate result: %+v", word)
 	c.JSON(200, word)
-}
-
-// Translate handles GET /api/translate?word=
-func Translate(c *gin.Context) {
-	translateWord(c, c.Query("word"))
-}
-
-// TranslateByWord handles GET /api/word/:word
-func TranslateByWord(c *gin.Context) {
-	translateWord(c, c.Param("word"))
 }
