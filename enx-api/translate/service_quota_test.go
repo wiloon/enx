@@ -25,7 +25,7 @@ func setupQuotaTestDB(t *testing.T) {
 	}
 	if err := db.AutoMigrate(
 		&sqlitex.Word{}, &sqlitex.UserDict{},
-		&sqlitex.Subscription{}, &sqlitex.DictionaryLookupQuota{},
+		&sqlitex.Subscription{}, &sqlitex.DictionaryLookupQuota{}, &sqlitex.DailyStat{},
 	); err != nil {
 		t.Fatal(err)
 	}

@@ -66,8 +66,9 @@ func fillFromEcdict(c *gin.Context, word *enx.Word, userId string) (bool, bool) 
 	word.Chinese = epc.Chinese
 	word.Pronunciation = epc.Pronunciation
 	if err := word.Save(); err != nil {
-		// words.english is UNIQUE: a concurrent lookup of the same new word
-		// most likely inserted it first, so reuse that row.
+		// words.english is UNIQUE: the headword is already cached -- either an
+		// inflection resolved to it ("ran" -> "run") or a concurrent lookup of
+		// the same new word inserted it first. Reuse that row.
 		word.FindId()
 		if word.Id == "" {
 			// Still answer with the ECDICT result; just skip the user_dicts
@@ -75,6 +76,10 @@ func fillFromEcdict(c *gin.Context, word *enx.Word, userId string) (bool, bool) 
 			logger.Errorf("word not persisted, skip user dict: %s, error: %v", word.English, err)
 			return true, true
 		}
+		// The user may already be reviewing that word: report it as not
+		// filled from ECDICT so translateWord counts on from the existing
+		// user_dicts row instead of overwriting it with QueryCount 1 (#22).
+		return true, false
 	}
 
 	userDict := enx.UserDict{}
