@@ -37,7 +37,7 @@ func TestHandleCheckoutSessionCompletedTopupGrantsCredits(t *testing.T) {
 		"metadata": {"type": "topup", "tier": "small"}
 	}`)
 
-	h := NewHandler(nil, "https://example.com", "whsec_test")
+	h := NewHandler(nil, "https://example.com", "whsec_test", nil)
 	if err := h.dispatchWebhookEvent(context.Background(), event); err != nil {
 		t.Fatalf("dispatchWebhookEvent: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestHandleCheckoutSessionCompletedTopupUnconfiguredAmount(t *testing.T) {
 		"metadata": {"type": "topup", "tier": "medium"}
 	}`)
 
-	h := NewHandler(nil, "https://example.com", "whsec_test")
+	h := NewHandler(nil, "https://example.com", "whsec_test", nil)
 	err := h.dispatchWebhookEvent(context.Background(), event)
 	if err == nil {
 		t.Fatal("expected an error for an unconfigured (0) credit amount, got nil")
@@ -94,7 +94,7 @@ func TestHandleCheckoutSessionCompletedSubscriptionEstablishesMapping(t *testing
 	}`)
 
 	h := NewHandler(fakeStripe(t, map[string]string{"sub_1": liveSubscription("sub_1", "active", 1700000000)}),
-		"https://example.com", "whsec_test")
+		"https://example.com", "whsec_test", nil)
 	if err := h.dispatchWebhookEvent(context.Background(), event); err != nil {
 		t.Fatalf("dispatchWebhookEvent: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestHandleSubscriptionUpdatedSetsStatusAndPeriodEndFromStripe(t *testing.T)
 	seedSubscription(t, userID, "cus_x", "sub_x", "active", 0)
 
 	h := NewHandler(fakeStripe(t, map[string]string{"sub_x": liveSubscription("sub_x", "past_due", 1700000000)}),
-		"https://example.com", "whsec_test")
+		"https://example.com", "whsec_test", nil)
 	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeCustomerSubscriptionUpdated, `{"id": "sub_x", "status": "past_due"}`)
 	if err := h.dispatchWebhookEvent(context.Background(), event); err != nil {
 		t.Fatalf("dispatchWebhookEvent: %v", err)
@@ -134,7 +134,7 @@ func TestHandleSubscriptionUpdatedStaleEventAfterDeletionStaysCanceled(t *testin
 	seedSubscription(t, userID, "cus_stale", "sub_stale", "active", 0)
 
 	h := NewHandler(fakeStripe(t, map[string]string{"sub_stale": liveSubscription("sub_stale", "canceled", 1700000000)}),
-		"https://example.com", "whsec_test")
+		"https://example.com", "whsec_test", nil)
 	ctx := context.Background()
 	deleted := fakeEvent("evt-del-"+t.Name(), stripeSDK.EventTypeCustomerSubscriptionDeleted, `{"id": "sub_stale", "status": "canceled"}`)
 	staleUpdate := fakeEvent("evt-upd-"+t.Name(), stripeSDK.EventTypeCustomerSubscriptionUpdated, `{"id": "sub_stale", "status": "active"}`)
@@ -156,7 +156,7 @@ func TestHandleSubscriptionUpdatedStaleEventAfterDeletionStaysCanceled(t *testin
 func TestHandleCheckoutSessionCompletedUsesLiveStatus(t *testing.T) {
 	userID := "u-" + t.Name()
 	h := NewHandler(fakeStripe(t, map[string]string{"sub_late": liveSubscription("sub_late", "canceled", 1700000000)}),
-		"https://example.com", "whsec_test")
+		"https://example.com", "whsec_test", nil)
 	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeCheckoutSessionCompleted, `{
 		"id": "cs_late",
 		"client_reference_id": "`+userID+`",
@@ -177,7 +177,7 @@ func TestHandleCheckoutSessionCompletedUsesLiveStatus(t *testing.T) {
 
 func TestHandleSubscriptionUpdatedNoLocalRowIsAnError(t *testing.T) {
 	h := NewHandler(fakeStripe(t, map[string]string{"sub_never_seen": liveSubscription("sub_never_seen", "active", 0)}),
-		"https://example.com", "whsec_test")
+		"https://example.com", "whsec_test", nil)
 	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeCustomerSubscriptionUpdated, `{
 		"id": "sub_never_seen",
 		"status": "active"
@@ -191,7 +191,7 @@ func TestHandleSubscriptionEventStripeErrorIsAnError(t *testing.T) {
 	userID := "u-" + t.Name()
 	seedSubscription(t, userID, "cus_err", "sub_err", "active", 0)
 
-	h := NewHandler(fakeStripe(t, map[string]string{}), "https://example.com", "whsec_test")
+	h := NewHandler(fakeStripe(t, map[string]string{}), "https://example.com", "whsec_test", nil)
 	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeCustomerSubscriptionDeleted, `{"id": "sub_err", "status": "canceled"}`)
 	if err := h.dispatchWebhookEvent(context.Background(), event); err == nil {
 		t.Fatal("expected an error when Stripe can't be reached (Stripe should retry)")
@@ -209,7 +209,7 @@ func TestHandleSubscriptionDeletedSetsCanceled(t *testing.T) {
 	seedSubscription(t, userID, "cus_y", "sub_y", "active", 1700000000)
 
 	h := NewHandler(fakeStripe(t, map[string]string{"sub_y": liveSubscription("sub_y", "canceled", 1700000000)}),
-		"https://example.com", "whsec_test")
+		"https://example.com", "whsec_test", nil)
 	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeCustomerSubscriptionDeleted, `{"id": "sub_y", "status": "canceled"}`)
 	if err := h.dispatchWebhookEvent(context.Background(), event); err != nil {
 		t.Fatalf("dispatchWebhookEvent: %v", err)
@@ -227,7 +227,7 @@ func TestHandleInvoicePaymentFailedSetsPastDue(t *testing.T) {
 	seedSubscription(t, userID, "cus_z", "sub_z", "active", 1700000000)
 
 	h := NewHandler(fakeStripe(t, map[string]string{"sub_z": liveSubscription("sub_z", "past_due", 1700000000)}),
-		"https://example.com", "whsec_test")
+		"https://example.com", "whsec_test", nil)
 	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeInvoicePaymentFailed, `{
 		"id": "in_1",
 		"parent": {"type": "subscription_details", "subscription_details": {"subscription": "sub_z"}}
@@ -252,7 +252,7 @@ func TestHandleInvoicePaidGrantsCreditsAndSyncsState(t *testing.T) {
 	viperSet(t, "stripe.credits.subscription-pro-plus", 500)
 
 	h := NewHandler(fakeStripe(t, map[string]string{"sub_paid": liveSubscription("sub_paid", "active", 1800000000)}),
-		"https://example.com", "whsec_test")
+		"https://example.com", "whsec_test", nil)
 	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeInvoicePaid, `{
 		"id": "in_paid",
 		"period_end": 1700000000,
@@ -278,7 +278,7 @@ func TestHandleInvoicePaidGrantsCreditsAndSyncsState(t *testing.T) {
 }
 
 func TestHandleInvoicePaymentFailedOneOffInvoiceIsNoop(t *testing.T) {
-	h := NewHandler(fakeStripe(t, map[string]string{}), "https://example.com", "whsec_test")
+	h := NewHandler(fakeStripe(t, map[string]string{}), "https://example.com", "whsec_test", nil)
 	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeInvoicePaymentFailed, `{"id": "in_2"}`)
 	if err := h.dispatchWebhookEvent(context.Background(), event); err != nil {
 		t.Fatalf("expected nil (no-op) for a non-subscription invoice, got: %v", err)
@@ -286,7 +286,7 @@ func TestHandleInvoicePaymentFailedOneOffInvoiceIsNoop(t *testing.T) {
 }
 
 func TestDispatchWebhookEventUnknownTypeIsNoop(t *testing.T) {
-	h := NewHandler(nil, "https://example.com", "whsec_test")
+	h := NewHandler(nil, "https://example.com", "whsec_test", nil)
 	event := fakeEvent("evt-"+t.Name(), "some.unhandled.event", `{}`)
 	if err := h.dispatchWebhookEvent(context.Background(), event); err != nil {
 		t.Fatalf("expected nil for an unhandled event type, got: %v", err)
@@ -296,7 +296,7 @@ func TestDispatchWebhookEventUnknownTypeIsNoop(t *testing.T) {
 // --- gin-endpoint-level tests: signature verification + status codes ---
 
 func TestWebhookEndpointNotConfigured(t *testing.T) {
-	h := NewHandler(nil, "https://example.com", "whsec_test")
+	h := NewHandler(nil, "https://example.com", "whsec_test", nil)
 	router := gin.New()
 	router.POST("/billing/webhook", h.Webhook)
 
@@ -309,7 +309,7 @@ func TestWebhookEndpointNotConfigured(t *testing.T) {
 }
 
 func TestWebhookEndpointBadSignature(t *testing.T) {
-	h := NewHandler(fakeConfiguredClient(), "https://example.com", "whsec_test")
+	h := NewHandler(fakeConfiguredClient(), "https://example.com", "whsec_test", nil)
 	router := gin.New()
 	router.POST("/billing/webhook", h.Webhook)
 
@@ -347,7 +347,7 @@ func TestWebhookEndpointValidSignatureDispatches(t *testing.T) {
 	// fakeConfiguredClient (a fake-but-well-formed key) never makes a
 	// network call here: the topup dispatch path doesn't touch the Stripe
 	// API at all, only credit.GrantTopup + the local DB.
-	h := NewHandler(fakeConfiguredClient(), "https://example.com", secret)
+	h := NewHandler(fakeConfiguredClient(), "https://example.com", secret, nil)
 	router := gin.New()
 	router.POST("/billing/webhook", h.Webhook)
 

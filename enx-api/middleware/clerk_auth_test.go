@@ -24,7 +24,7 @@ func testClerkEnv(t *testing.T) (*clerktest.Env, ClerkConfig) {
 func runClerkAuth(t *testing.T, cfg ClerkConfig, authHeader string) *httptest.ResponseRecorder {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	handler := ClerkAuth(cfg)
+	handler := ClerkAuth(cfg, nil)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
@@ -170,7 +170,7 @@ func TestClerkAuth_OPTIONSAllowed(t *testing.T) {
 	_, cfg := testClerkEnv(t)
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.Use(ClerkAuth(cfg))
+	r.Use(ClerkAuth(cfg, nil))
 	called := false
 	r.OPTIONS("/api/me", func(c *gin.Context) {
 		called = true

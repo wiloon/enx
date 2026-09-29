@@ -12,7 +12,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 func newTestRouter(m *Metrics) *gin.Engine {
@@ -151,3 +154,69 @@ func exposition(t *testing.T, m *Metrics) string {
 	body, _ := io.ReadAll(w.Body)
 	return string(body)
 }
+
+func TestObserveAuthAndWebhook(t *testing.T) {
+	m := New()
+	m.ObserveAuth("ok", 3*time.Millisecond)
+	m.ObserveAuth("expired", time.Millisecond)
+	m.ObserveWebhook("invoice.paid", "ok")
+	m.ObserveWebhook("invoice.paid", "error")
+
+	out := exposition(t, m)
+	for _, want := range []string{
+		`enx_clerk_verify_duration_seconds_count{outcome="ok"} 1`,
+		`enx_clerk_verify_duration_seconds_count{outcome="expired"} 1`,
+		`enx_stripe_webhook_total{event_type="invoice.paid",outcome="ok"} 1`,
+		`enx_stripe_webhook_total{event_type="invoice.paid",outcome="error"} 1`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("exposition lacks %q", want)
+		}
+	}
+}
+
+// A statement that fails because SQLite is busy is counted as a read or a
+// write; other errors are not.
+func TestInstrumentDBCountsBusyErrors(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: gormlogger.Default.LogMode(gormlogger.Silent)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	type row struct{ ID int }
+	if err := db.AutoMigrate(&row{}); err != nil {
+		t.Fatal(err)
+	}
+	m := New()
+	if err := m.InstrumentDB(db); err != nil {
+		t.Fatal(err)
+	}
+	// Stand in for SQLite reporting a locked database.
+	busy := errors.New("database is locked (5) (SQLITE_BUSY)")
+	inject := func(err error) func(*gorm.DB) {
+		return func(tx *gorm.DB) {
+			if tx.Statement.Context.Value(injectKey{}) != nil {
+				_ = tx.AddError(err)
+			}
+		}
+	}
+	_ = db.Callback().Query().Before("gorm:query").Register("test:inject", inject(busy))
+	_ = db.Callback().Create().Before("gorm:create").Register("test:inject", inject(busy))
+	ctx := context.WithValue(context.Background(), injectKey{}, true)
+
+	db.WithContext(ctx).Find(&[]row{})
+	db.WithContext(ctx).Find(&[]row{})
+	db.WithContext(ctx).Create(&row{ID: 1})
+	db.Find(&[]row{}) // no error: not counted
+
+	out := exposition(t, m)
+	for _, want := range []string{
+		`enx_sqlite_busy_total{op="read"} 2`,
+		`enx_sqlite_busy_total{op="write"} 1`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("exposition lacks %q", want)
+		}
+	}
+}
+
+type injectKey struct{}
