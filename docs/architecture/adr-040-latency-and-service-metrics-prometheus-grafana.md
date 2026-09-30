@@ -156,7 +156,8 @@ Grafana dashboard 的 JSON 放进 `w10n-config` 的 `infra/homelab/k8s/observabi
 
 **同一份 JSON 导入 homelab Grafana 和 Grafana Cloud 两处。** 为此查询必须与采集器无关：
 
-- 只用 `enx_*` 指标自己的标签（`source`、`route`、`provider` 等）过滤和分组。`job`、`instance` 这类标签由采集器决定，两边取值不同，查询里不出现。
+- `enx_*` 指标只用它们自己的标签（`source`、`route`、`provider` 等）过滤和分组，不带 `job`、`instance`。
+- Go 运行时和进程指标（`go_goroutines`、`process_resident_memory_bytes` 等）是通用名字，集群里每个 Go 服务都导出，必须用 **`job="enx-api"`** 筛选。为了让同一份 JSON 两边都能用，两个采集器都产生这个值：homelab 的 `ServiceMonitor` 默认把 `job` 设为 Service 名 `enx-api`；生产的 Alloy 配置里 `job_name` 也必须写 `enx-api`。`instance` 仍然不出现在查询里。
 - 数据源用 Grafana 的数据源变量（`${datasource}`），不写死数据源 UID。这一点**有意偏离** homelab 看板「数据源 UID 写死」的约定：写死的 UID 只在 homelab 的 Grafana 里存在，导入 Grafana Cloud 就失效。Grafana Cloud 那边用 UI 或 API 导入同一份 JSON，选中它的 Prometheus 数据源即可。
 - 主机指标（node_exporter）同理：homelab 的节点指标来自 kube-prometheus-stack 自带的 node_exporter，生产来自 EC2 上的 node_exporter，指标名相同；「主机」一行按 `instance` 变量选择，不写死。
 
@@ -183,3 +184,4 @@ Grafana dashboard 的 JSON 放进 `w10n-config` 的 `infra/homelab/k8s/observabi
 | 2026-09-29 | homelab 采集由 `additional-scrape-configs` 改为 `ServiceMonitor` | 前者适合集群外静态目标，集群内服务的标准做法是后者；维护者确认 |
 | 2026-09-29 | 查词入口、路由、请求日志、AI 装饰位置按已合并代码更新 | #64/#69/#70/#72 在本 ADR 起草后合并 |
 | 2026-09-29 | 去掉 `enx_clerk_jwks_fetch_total`，Clerk 只保留校验耗时直方图并列出 outcome；写明 Stripe、SQLite 指标的标签取值 | `keyfunc` 不暴露 JWKS 拉取回调；实现时确定了具体取值 |
+| 2026-09-30 | Decision 7：进程指标的面板用 `job="enx-api"` 筛选，两个采集器统一这个 job 名 | `go_*` / `process_*` 是通用指标名，不按 job 筛会混进集群里其他 Go 服务 |
