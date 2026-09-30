@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { SITE } from '@/lib/site'
+import { SUBSCRIPTION_PLANS } from '@/lib/plans'
 
 const mockUseAuth = jest.fn(() => ({ isSignedIn: false }))
 jest.mock('@clerk/nextjs', () => ({
@@ -52,6 +53,17 @@ describe('Hero', () => {
     expect(
       screen.getByRole('link', { name: /see how it works/i })
     ).toHaveAttribute('href', '#how-it-works')
+  })
+
+  it('quotes the cheapest plan from plans.ts and links to /pricing', () => {
+    render(<Hero />)
+    expect(screen.getByText(/plans from/)).toHaveTextContent(
+      `plans from ${SUBSCRIPTION_PLANS[0].priceLabel}`
+    )
+    expect(screen.getByRole('link', { name: 'See pricing' })).toHaveAttribute(
+      'href',
+      '/pricing'
+    )
   })
 })
 
@@ -123,10 +135,18 @@ describe('SiteFooter', () => {
     const hrefs = screen.getAllByRole('link').map((a) => a.getAttribute('href'))
     // /privacy, /terms and /refund were on this list until the pages were
     // written (LAUNCH-CHECKLIST §6.2); they now exist and are asserted in
-    // app/__tests__/legal.test.tsx instead.
-    for (const dead of ['/docs', '/pricing', '/changelog']) {
+    // app/__tests__/legal.test.tsx instead. /pricing left it with §7.3.
+    for (const dead of ['/docs', '/changelog']) {
       expect(hrefs).not.toContain(dead)
     }
+  })
+
+  it('links to the public pricing page', () => {
+    render(<SiteFooter />)
+    expect(screen.getByRole('link', { name: 'Pricing' })).toHaveAttribute(
+      'href',
+      '/pricing'
+    )
   })
 })
 
@@ -143,6 +163,18 @@ describe('SiteHeader', () => {
     mutableSite.stage = ''
     render(<SiteHeader />)
     expect(screen.queryByText('Beta')).not.toBeInTheDocument()
+  })
+
+  it('links to /pricing, and roots section links at / so they work off the landing page', () => {
+    render(<SiteHeader />)
+    expect(screen.getByRole('link', { name: 'Pricing' })).toHaveAttribute(
+      'href',
+      '/pricing'
+    )
+    expect(screen.getByRole('link', { name: 'Features' })).toHaveAttribute(
+      'href',
+      '/#features'
+    )
   })
 
   it('links to the GitHub repository', () => {

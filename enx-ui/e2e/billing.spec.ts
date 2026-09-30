@@ -142,6 +142,12 @@ test.describe('/billing', () => {
     // comment there. 'enx Max' was stale -- the card is 'Catglish Max'.
     await expect(card(page, 'Catglish Pro+')).toContainText('$9.99/mo')
     await expect(card(page, 'Catglish Max')).toContainText('$19.99/mo')
+    // creditsLabel already carries its unit; the page once appended another
+    // ("500 credits/mo credits per period").
+    await expect(card(page, 'Catglish Pro+')).toContainText('1,500 credits/mo')
+    await expect(card(page, 'Catglish Pro+')).not.toContainText(
+      'credits/mo credits'
+    )
     await expect(
       page.getByRole('button', { name: 'Subscribe', exact: true })
     ).toHaveCount(3)

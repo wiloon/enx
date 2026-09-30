@@ -1,4 +1,6 @@
+import Link from 'next/link'
 import { SITE } from '@/lib/site'
+import { SUBSCRIPTION_PLANS } from '@/lib/plans'
 
 export default function Hero() {
   return (
@@ -25,6 +27,13 @@ export default function Hero() {
           See how it works
         </a>
       </div>
+      <p className="mt-4 text-sm text-muted-foreground">
+        Free to use · AI translation plans from{' '}
+        {SUBSCRIPTION_PLANS[0].priceLabel} ·{' '}
+        <Link href="/pricing" className="underline hover:text-foreground">
+          See pricing
+        </Link>
+      </p>
     </section>
   )
 }

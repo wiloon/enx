@@ -7,17 +7,19 @@ import { Badge } from '@/components/ui/badge'
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import PriceCard from '@/components/site/PriceCard'
 import { apiService, SubscriptionPlan, TopupTier } from '@/services/api'
 import {
+  SUBSCRIPTION_CREDITS_RULE,
   SUBSCRIPTION_PLANS,
+  TOPUP_CREDITS_RULE,
   TOPUP_TIERS,
   subscriptionStatusLabel,
-} from './plans'
+} from '@/lib/plans'
 
 type BillingTab = 'subscription' | 'topup'
 
@@ -180,23 +182,17 @@ export default function BillingPage() {
           className="space-y-3"
         >
           <p className="text-sm text-muted-foreground">
-            A fresh batch of AI translation credits every month. Unused
-            subscription credits expire at the end of each period.
+            {SUBSCRIPTION_CREDITS_RULE}
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {SUBSCRIPTION_PLANS.map((option) => (
-              <Card key={option.plan}>
-                <CardHeader>
-                  <CardTitle>{option.name}</CardTitle>
-                  <CardDescription>{option.description}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{option.priceLabel}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {option.creditsLabel} credits per period
-                  </div>
-                </CardContent>
-                <CardFooter>
+              <PriceCard
+                key={option.plan}
+                name={option.name}
+                priceLabel={option.priceLabel}
+                creditsLabel={option.creditsLabel}
+                description={option.description}
+                action={
                   <Button
                     className="w-full"
                     onClick={() => handleSubscribe(option.plan)}
@@ -208,8 +204,8 @@ export default function BillingPage() {
                         ? 'Subscribed'
                         : 'Subscribe'}
                   </Button>
-                </CardFooter>
-              </Card>
+                }
+              />
             ))}
           </div>
         </section>
@@ -222,23 +218,15 @@ export default function BillingPage() {
           aria-labelledby="billing-tab-topup"
           className="space-y-3"
         >
-          <p className="text-sm text-muted-foreground">
-            Buy AI translation credits once, no subscription needed. Top-up
-            credits never expire and are used after your subscription credits.
-          </p>
+          <p className="text-sm text-muted-foreground">{TOPUP_CREDITS_RULE}</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {TOPUP_TIERS.map((option) => (
-              <Card key={option.tier}>
-                <CardHeader>
-                  <CardTitle>{option.name}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{option.priceLabel}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {option.creditsLabel} credits
-                  </div>
-                </CardContent>
-                <CardFooter>
+              <PriceCard
+                key={option.tier}
+                name={option.name}
+                priceLabel={option.priceLabel}
+                creditsLabel={option.creditsLabel}
+                action={
                   <Button
                     className="w-full"
                     variant="outline"
@@ -249,8 +237,8 @@ export default function BillingPage() {
                       ? 'Redirecting...'
                       : 'Buy'}
                   </Button>
-                </CardFooter>
-              </Card>
+                }
+              />
             ))}
           </div>
         </section>

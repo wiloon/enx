@@ -61,7 +61,7 @@
 - [ ] **1.2** 用真实 `aitranslate: usage ... cost=` 日志校准 token 权重（现在 `weight-in=1 / weight-out=3 / divisor=3000` 是占位，`[stripe.costs.translate]` 与 `[stripe.costs.rephrase]` 各一组）。需要先有真实 AI 调用产生日志（依赖 §3 联调）。
 - [ ] **1.3** Stripe 目录里的占位价格改成定稿值：`w10n-config/infra/stripe/opentofu/enx/terraform.tfvars`（`price_pro_monthly_cents` 等），`tofu apply`。
 - [x] **1.4** ~~`enx-ui` 定价页文案同步真实数字~~ —— 2026-09-17 已同步（此前页面写的是 `$3 / $10 / $20`、积分 `TBD`，与实收价不符）。`e2e/billing.spec.ts` 里过时的 `'enx Max'` / `$10/mo` 断言一并修正。
-- [x] **1.5** 免费查词每日配额：决策是「上线前不设、上线后按真实用量再定」。**⚠️ 2026-09-16 更正：这个计划按当时的实现无法执行，需要改代码**——`limit <= 0` 时 `quota.CheckAndIncrementLookup` 直接返回、**一行都不写**，所以带着 `dictionary-lookup-daily = 0` 上线等于**不积累任何用量数据**。根因是「计数」和「拦截」共用同一个开关。**→ 2026-09-16 已按 [`adr-029`](../architecture/adr-029-lookup-quota-tiered-limits-and-count-gate-split.md) 改完并上线就绪**：配额改成人人有额度的**分档模型**，**计数与拦截已解耦**（`limit <= 0` = 照常计数、不拦截）。配置项现为 `stripe.quota.dictionary-lookup-daily-free` / `-subscribed`，**两者保持 0 上线**，2–4 周后拿真实分布定数字（→ §8）。
+- [x] **1.5** 免费查词每日配额：决策是「上线前不设、上线后按真实用量再定」。**⚠️ 2026-09-16 更正：这个计划按当时的实现无法执行，需要改代码**——`limit <= 0` 时 `quota.CheckAndIncrementLookup` 直接返回、**一行都不写**，所以带着 `dictionary-lookup-daily = 0` 上线等于**不积累任何用量数据**。根因是「计数」和「拦截」共用同一个开关。**→ 2026-09-16 已按 [`adr-029`](../architecture/adr-029-lookup-quota-tiered-limits-and-count-gate-split.md) 改完并上线就绪**：配额改成人人有额度的**分档模型**，**计数与拦截已解耦**（`limit <= 0` = 照常计数、不拦截）。配置项现为 `stripe.quota.dictionary-lookup-daily-free` / `-subscribed`，**两者保持 0 上线**，2–4 周后拿真实分布定数字（→ §8）。 **2026-09-29 更新：free 先定 200 次/日**（刻意宽松，只挡脚本/批量爬取），并公开写在 `/pricing` 上；数字在 `enx-api/config.toml`、`enx-ui/src/lib/plans.ts`（`FREE_DAILY_LOOKUPS`）和两套部署的 `STRIPE_QUOTA_DICTIONARY_LOOKUP_DAILY_FREE` 四处，改时一起改。`-subscribed` 仍为 0。
 
 ---
 
@@ -174,7 +174,7 @@
 
 - [ ] **7.1** 演示视频（当前是 16:9 占位容器，通过常量开关接入，不阻塞但推广前需要）。
 - [ ] **7.2** 产品截图、OG 图（社交分享卡片）。
-- [ ] **7.3** `/pricing` 公开页（`adr-013` v1 未做，`/billing` 是登录后的页）。上线收费时需要一个免登录可见的定价页。
+- [x] **7.3** `/pricing` 公开页 —— 2026-09-29 已做（分支 `feat/public-pricing-page`）。只展示不收款：CTA 未登录走 `/sign-up?redirect_url=/billing`，已登录直达 `/billing`。价格与 `/billing` 同源（`enx-ui/src/lib/plans.ts`，原在 `(app)/billing/`）、同组件（`PriceCard`）；含免费档（每日查词 200 次，见 §1.5）；不展示年付（§0.3）。首页导航 / hero / 页脚 / sitemap 均已加入口。
 - [ ] **7.4** 品牌统一：对外一律用 **`Catglish`**，把 UI 上残留的 `ENX` / `Catseye` / `enx Pro` 全部换掉（命名决策见 `adr-010`（已 Superseded）与 `starlabrys/ops` 的 `docs/product/ADR-0004-enx-product-name.md`；2026-09-16 用户再次确认）。
 
   **原则（用户 2026-09-16 确认）：`ENX` 是本项目的开发代号，继续保留。** 后端代码、非 UI 代码、内部标识符、日志前缀、代码注释**一律不动**——不为改产品名去动不需要动的代码。**只改用户看得见的那一部分。**

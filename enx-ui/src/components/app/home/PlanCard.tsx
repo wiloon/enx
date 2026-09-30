@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight } from 'lucide-react'
 import { apiService } from '@/services/api'
-import { subscriptionStatusLabel } from '@/app/(app)/billing/plans'
+import { subscriptionStatusLabel } from '@/lib/plans'
 import { SITE } from '@/lib/site'
 import { tileClass } from './tile'
 
