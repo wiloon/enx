@@ -5,9 +5,9 @@
 | **状态** | **Proposed — 2026-09-30**（Decision 与原 Open Questions 均已按用户拍板写死；**仍待用户明确 Accept** 后再改 Accepted）。在用户 Accept 之前，**不以本 ADR 启动编码或改仓库实现**。Accept 后以 Decision 为实现依据（同 adr-012 Decision 10 / adr-034），**不要求**先写 `TASK-SPEC`。 |
 | **日期** | 2026-09-30 |
 | **关联 Spec** | 无。本 ADR 即 Phase 1 产品与技术边界；编码走 domain-modeling / TDD，不强制配套 TASK-SPEC（见 `docs/agents/domain.md` §ADR vs TASK-SPEC）。 |
-| **关联清单** | **iOS 提审硬前置**：账号删除（Web + App 均可发起，级联 `saved_pages` / `page_reports` / reader 文档 / 配额行 / Clerk 用户等）——对齐 adr-032 关联清单里已欠的前置；App Store 隐私标签 / Privacy Manifest；`docs/tasks/LAUNCH-CHECKLIST.md` 隐私政策与服务条款须补 iOS（本机正文缓存、WebView Cookie 仅在设备）。**Clerk**：Native API + iOS App 登记（Team ID + Bundle ID）+ 开启 Sign in with Apple（网页与 App 均提供）。 |
+| **关联清单** | **Phase 1 发布目标 = 仅 TestFlight 内测，不上 App Store**（见 Decision 10）。**正式 App Store 提审前硬前置**（**不**阻塞 Phase 1 TestFlight）：Sign in with Apple（enx-ui + iOS）；账号删除（Web + App，级联 `saved_pages` / `page_reports` / reader 文档 / 配额行 / Clerk 用户等，对齐 adr-032）；App Store 隐私标签 / Privacy Manifest；`docs/tasks/LAUNCH-CHECKLIST.md` 隐私政策与服务条款补 iOS。**外部前置（用户本人执行）**见文末「外部前置清单」。 |
 | **关联 ADR** | [`adr-032-saved-pages-and-no-passive-reading-history.md`](adr-032-saved-pages-and-no-passive-reading-history.md)（收藏只存 URL+标题；Decision 5 预留「移动端 WebView + 本机抽文本」——本 ADR 把载体锁成 iOS 原生并补全产品流。**收窄其 Decision 4**：Phase 1 **不做**移动端系统分享菜单；App **无**收藏写入口，收藏只在桌面扩展完成，见本文 Decision 5。注：adr-032 文首「关联代码 / 待实现」已过期——api 与扩展收藏已落地，见本文关联代码）、[`adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md`](adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md) / [`adr-022-enx-ui-reader-persistence-and-retention.md`](adr-022-enx-ui-reader-persistence-and-retention.md)（桌面 Reader 把查词交给扩展；移动端无扩展，由原生阅读视图承接点击查词）、[`adr-015-cognito-to-clerk-auth-migration.md`](adr-015-cognito-to-clerk-auth-migration.md)（Clerk JWT → 本地 `users.Id`；本 ADR 在 iOS 复用同一合同，并新增 Sign in with Apple）、[`adr-018-dictionary-lookup-single-metered-seam.md`](adr-018-dictionary-lookup-single-metered-seam.md) / [`adr-029-lookup-quota-tiered-limits-and-count-gate-split.md`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md)（查词计量与时区头）、[`adr-034-site-support-on-demand-injection-and-generic-content-detection.md`](adr-034-site-support-on-demand-injection-and-generic-content-detection.md)（扩展侧因需保留原 DOM **不**整库引入 Readability.js；iOS 抽到独立原生视图，前提不同，**允许**引入 Readability 类库）、[`adr-035-global-and-china-editions-dual-deployment.md`](adr-035-global-and-china-editions-dual-deployment.md) / [`adr-036-china-edition-authentication-logto.md`](adr-036-china-edition-authentication-logto.md)（**均为 Proposed**；Phase 1 **不上**中国大陆区，海外版 Clerk，见 Decision 9） |
-| **关联代码** | **iOS 客户端：待实现（Accept 之后）。** 预期落点：新建 `enx-ios/`（与 `enx-chrome` / `enx-ui` / `enx-api` 并列；Swift / SwiftUI 或团队惯用 iOS 栈，本 ADR 不锁 UIKit vs SwiftUI）。**已实现（收藏数据面）**：enx-api `/api/saved-pages*`（`savedpage/`、`urlnorm/`，PR #61）；enx-chrome popup「Save this page」（`pageSave.ts` / `PageSavePrompt.tsx`）。**未实现**：enx-ui Saved 页（仍属 adr-032 Decision 4）。`GET /api/saved-pages` 无分页（上限 1000 条一次返回），对 iOS Phase 1 足够。查词：`GET /api/word/:word` → `dictionary.Service.Resolve`（adr-018）。认证：Clerk session JWT（adr-015）。**不**新增「上传全文」类 API。 |
+| **关联代码** | **iOS 客户端：待实现（Accept 之后）。** **已确认落点**：本 monorepo 顶层 **`enx-ios/`**（与 `enx-chrome` / `enx-ui` / `enx-api` 并列），**不**单独建仓库；SwiftUI / UIKit 分工待定（下一轮再补）。**已实现（收藏数据面）**：enx-api `/api/saved-pages*`（`savedpage/`、`urlnorm/`，PR #61）；enx-chrome popup「Save this page」（`pageSave.ts` / `PageSavePrompt.tsx`）。**未实现**：enx-ui Saved 页（仍属 adr-032 Decision 4）。`GET /api/saved-pages` 无分页（上限 1000 条一次返回），对 iOS Phase 1 足够。查词：`GET /api/word/:word` → `dictionary.Service.Resolve`（adr-018）。认证：Clerk session JWT（adr-015）。**不**新增「上传全文」类 API。 |
 
 ---
 
@@ -26,8 +26,9 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 5. 不做移动浏览器扩展战略；桌面仍以 `enx-chrome` 为主。
 6. 服务端不存正文（对齐 adr-032）。
 7. App 内**无**升级提示与外部购买引导；StoreKit 内购 Phase 1 不做。
-8. 账号删除（Web + 移动）为 iOS 提审硬前置。
+8. Sign in with Apple 与账号删除仍是已定需求，但是 **正式 App Store 提审前**硬前置；Phase 1 发布目标仅为 **TestFlight 内测**，不上 App Store。
 9. Phase 1 **不上**中国大陆区；**不做**系统分享写入口（收窄 adr-032 Decision 4）；抽正文失败**不**做选中/粘贴降级。
+10. 工程落在 monorepo 的 `enx-ios/`；主验收站点为 InfoQ 英文站。
 
 这些决定难以反悔（原生工程与商店身份、与扩展的分工边界、版权边界、审核条款），且与「先做响应式 / Capacitor 壳」的旧假设相反，需要单独 ADR 写清否决项。
 
@@ -121,12 +122,13 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 
 ## Decision
 
-### 1. Phase 1 载体：仅 iOS 原生；不用 RN；Capacitor 不作主路径
+### 1. Phase 1 载体：仅 iOS 原生；工程在 monorepo 的 `enx-ios/`
 
-- 新建顶层工程 **`enx-ios/`**（名称与现有 `enx-*` 并列；Accept 后立项时若需微调目录名，以仓库惯例小改，不另开 ADR）。App Store 显示名 / Bundle ID 随产品品牌（Catglish）另定，不在本 ADR 锁死。
+- **已确认**：在本 monorepo 新建顶层工程 **`enx-ios/`**（与 `enx-chrome` / `enx-ui` / `enx-api` 并列），**不**单独建 iOS 仓库。
 - **不做** React Native / Flutter 客户端。
 - **不做** 以 Capacitor / Cordova 包装 Web 作为阅读助手主路径。
 - **长期**仍计划 Android 原生（Kotlin 等），**不进入 Phase 1**；开 Android 时另立阶段 / ADR，默认仍原生而非回头选 RN。
+- SwiftUI / UIKit 分工待定（下一轮再补）；Bundle ID / 商店显示名随产品品牌（Catglish）另定。
 
 ### 2. Phase 1 产品流（主路径）
 
@@ -149,9 +151,9 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 
 - Phase 1 使用 **Clerk iOS SDK** 登录（海外版 Clerk 实例）。
 - enx-api 继续验 Clerk session JWT，映射到本地用户身份（`users.Id`）；**不**为移动端另发明一套 session。
-- **Sign in with Apple**：在 Clerk 开启 Apple social connection；**enx-ui 与 iOS App 都提供**该入口（网页登录选项会一并出现）。注意 Apple「隐藏邮箱」中继地址对按邮箱操作的管理接口（如 `/api/admin/credits/grant`）的影响，实现期核对。
-- **CORS**：不适用于原生 `URLSession`，Phase 1 **不必**为 iOS 改 CORS。`azp`：缺省即放行；若 Clerk iOS SDK 签发的 token **带** `azp`，把该值加入 `CLERK_AUTHORIZED_PARTIES`。真正要做的是 Clerk 侧：开启 Native API、登记 iOS App（Team ID + Bundle ID），生产实例清单见 `docs/tasks/TASK-SPEC-enx-clerk-production-cutover.md`。
-- 国内版 IdP（adr-035/036，**均为 Proposed**）与中国大陆区上架见 Decision 9；不在 Phase 1 另造第三套用户模型。
+- **Sign in with Apple**：**已定需求**——在 Clerk 开启 Apple social connection；**enx-ui 与 iOS App 都提供**该入口。注意 Apple「隐藏邮箱」中继地址对按邮箱操作的管理接口（如 `/api/admin/credits/grant`）的影响。其为 **正式 App Store 提审前硬前置**，**不**阻塞 Phase 1 TestFlight（见 Decision 10）；TestFlight 阶段可用 Clerk 已有登录方式（如 Google / GitHub）跑通闭环。
+- **CORS**：不适用于原生 `URLSession`，Phase 1 **不必**为 iOS 改 CORS。`azp`：缺省即放行；若 Clerk iOS SDK 签发的 token **带** `azp`，把该值加入 `CLERK_AUTHORIZED_PARTIES`（实测见外部前置清单）。Clerk 侧 Native API / App 登记等由用户在后台配置，见「外部前置清单」。
+- 国内版 IdP（adr-035/036，**均为 Proposed**）与中国大陆区见 Decision 9；不在 Phase 1 另造第三套用户模型。
 
 ### 4. 桌面与移动的分工
 
@@ -168,8 +170,10 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 ### 6. 明确不做（Phase 1 / 本 ADR 范围）
 
 - React Native / Flutter；Capacitor 主壳。
-- Phase 1 内的 Android 工程与上架。
-- 中国大陆区 App Store 上架、ICP 备案、国内版 IdP（见 Decision 9）。
+- 单独的 iOS 仓库（工程只在 monorepo `enx-ios/`）。
+- Phase 1 内的 Android 工程。
+- Phase 1 **上架 App Store**（只做 TestFlight，见 Decision 10）。
+- 中国大陆区、ICP 备案、国内版 IdP（见 Decision 9）。
 - 移动浏览器扩展战略。
 - 系统分享 / App 内收藏写入（收窄 adr-032 Decision 4）。
 - 抽正文失败后的选中文字送入阅读视图、粘贴文本等降级（Options H1/H2）。
@@ -181,43 +185,50 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 - 为移动端复活 `enx-sync` / P2P。
 - 以本 ADR 为由要求先写 `TASK-SPEC`（不需要）。
 
-### 7. App Store 上架约束（Phase 1）
+### 7. 商店合规与「何时必须做完」
 
-- **付费（Guideline 3.1.1 / 3.1.3）**：按 Decision G3 / 2a——App 内零购买、零升级引导；多平台订阅权益在 App 内静默生效。
-- **Sign in with Apple（Guideline 4.8）**：见 Decision 3。
-- **账号删除（Guideline 5.1.1(v)）**：**Web 与移动端都要能发起**；级联清理业务数据与 Clerk 用户。此为 **iOS 提审硬前置**（对齐 adr-032 关联清单；今日仓库尚未实现，须在提审前补齐端点与 UI）。
-- 隐私标签 / Privacy Manifest / 隐私政策补 iOS 本机缓存与 WebView Cookie 表述，见关联清单。
-- **上架地区**：见 Decision 9（不含中国大陆区）。
+- **付费（Guideline 3.1.1 / 3.1.3）**：Phase 1 即按 Decision G3 / 2a——App 内零购买、零升级引导；多平台订阅权益在 App 内静默生效（TestFlight 构建同样遵守，避免习惯性带上营销文案）。
+- **Sign in with Apple（Guideline 4.8）**与**账号删除（Guideline 5.1.1(v)）**：需求已定（Apple：enx-ui + iOS；删号：Web + App，级联见关联清单），但是 **正式向 App Store 提审前的硬前置**，**不**阻塞 Phase 1 TestFlight 内测。今日仓库尚未实现账号删除端点，须在正式提审前补齐。
+- 隐私标签 / Privacy Manifest / 隐私政策补 iOS：随正式提审清单走，见关联清单。
+- **地区**：见 Decision 9（不含中国大陆区）。日后正式上架也不在 Phase 1 范围。
 
-### 8. Phase 1 完成定义（验收口径）
+### 8. Phase 1 完成定义（验收口径）——目标为 TestFlight 内测可交付
 
-事先登记样本与门槛（参照 adr-030「测之前定死阈值」的精神；具体数字 Accept 前可在实现 issue 里填，但类别如下不可缺）：
+事先登记样本与门槛（参照 adr-030「测之前定死阈值」的精神；具体成功率数字可在实现 issue 里填）：
 
-1. **样本站点**：至少覆盖 adr-034 Context 中扩展原支持的静态文章站若干 + 1–2 个公开页；登录墙 / 付费墙站点单独标注「仅验证 WebView 打开与失败提示，不计入抽取成功率」。
-2. **抽取成功路径**：用户点击触发后，在样本公开页上达到事先登记的成功率门槛；过短 / 非正文计为失败。
+1. **主测试站点**：**InfoQ 英文站**（`https://www.infoq.com`）——Phase 1 端到端与抽取成功路径以此站公开文章页为主。登录墙 / 付费墙站点若另测，只验证 WebView 打开与失败提示，不计入抽取成功率。
+2. **抽取成功路径**：用户点击触发后，在 InfoQ 样本页上达到事先登记的成功率门槛；过短 / 非正文计为失败。
 3. **抽取失败路径**：对至少一条故意失败样本，App **只**展示失败提示并保留 WebView 可读；**不**出现选中送入阅读视图 / 粘贴文本等降级入口。
-4. **端到端**：桌面扩展收藏 → iOS 列表出现同一条（App 侧无写收藏动作）→ 打开 WebView → 进入原生阅读视图 → 点击查词返回释义且计入配额 → 超额时 App 内仅见中性「配额不足」、无升级引导。
-5. **认证与地区**：Clerk 登录（含 Sign in with Apple）成功拿到可验签 JWT；账号删除路径在提审前可用；上架配置不含中国大陆区。
+4. **端到端**：桌面扩展收藏 InfoQ 文章 → iOS 列表出现同一条（App 侧无写收藏）→ 打开 WebView → 进入原生阅读视图 → 点击查词返回释义且计入配额 → 超额时 App 内仅见中性「配额不足」、无升级引导。
+5. **认证（TestFlight）**：Clerk iOS SDK 登录成功拿到可验签 JWT 即可；**不**要求 Phase 1 已上 Sign in with Apple 或账号删除。
+6. **分发**：构建可上传 **TestFlight**；Phase 1 **不**提交 App Store 正式审核。若使用 TestFlight **外部测试**，须通过 Apple **Beta App Review**；**内部测试**不需要 Beta App Review。
 
 ### 9. Phase 1 不上中国大陆区
 
-- Phase 1 只面向**非中国大陆** App Store 区；使用**海外版** Clerk。
+- Phase 1（含日后若上架）默认**不含**中国大陆区；使用**海外版** Clerk。
 - **ICP 备案、国内版部署 / Logto（adr-035/036）不在 Phase 1 范围**；若日后要上大陆区，另立 ADR / 阶段，不 silently 扩本 ADR。
+
+### 10. Phase 1 发布目标 = 仅 TestFlight 内测
+
+- Phase 1 **不上 App Store**；交付物是可供内部（及可选外部）测试的 TestFlight 构建。
+- **内部测试**：无需 Beta App Review，适合尽早验证 Decision 8 闭环。
+- **外部测试**：仍须通过 Apple Beta App Review；评审可能触及部分指南，但正式上架前的 Sign in with Apple / 账号删除硬前置仍按 Decision 7 卡在 **App Store 提审**，不因 Phase 1 选择内部 TestFlight 而取消这些已定需求。
+- 从 TestFlight 走到正式上架时，另开阶段 / checklist，完成本文关联清单中的提审硬前置。
 
 ---
 
 ## Rationale
 
 - **原生而非壳 / RN**：Phase 1 要验证的是「抽正文 + 原生点击查词」闭环，不是「把现有 Web 塞进商店」。
+- **工程留在 monorepo**：与现有 `enx-*` 并列，共享 issue / CI / API 合同，避免双仓漂移。
+- **先 TestFlight、后上架**：把阅读闭环与商店合规拆开；SiWA / 删号仍做，但不堵第一轮真机验证。
 - **先 iOS 后 Android**：双端并行会让第一阶段变成脚手架竞赛。
 - **只读注入 ≠ 交互注入**：本机抽正文在 iOS 上现实路径就是对第三方页 WebView 跑抽取脚本；把边界画在「只读 + 用户手势 + 隔离 world」上，既让 Decision 可实现，又不滑回扩展模型。
 - **TextKit 而非本地 WebView 渲染**：高亮与点词命中落在原生文本系统上，避免「阅读视图仍是 WebView」的灰色地带。
-- **查词离开第三方页 DOM**：稳定排版与系统字体在原生侧更可控；WebView 只负责打开原站（公开只读或用户在 App 内另登）。
 - **WebView 登录现实写进 Decision**：避免实现者误以为能复用 Safari 订阅 Cookie；Google 内嵌登录被拒是平台限制，不在 Phase 1 做 UA 伪装等规避。
-- **App 内零付费引导**：用最小合规面先上架验证阅读闭环；StoreKit + Stripe 双账本成本高，留给专门 ADR。
-- **Sign in with Apple 网页一并开**：满足 4.8 的同时避免「仅 App 有 Apple、网页没有」的身份分裂；隐藏邮箱副作用在管理接口侧消化。
-- **账号删除硬前置**：审核条款 + adr-032 已要求的数据义务，不能再欠到上架当天。
-- **不上大陆区 / 不做分享写入口 / 失败不降级**：把 Phase 1 钉在「海外只读续读 + 抽取成败二元」上，避免 ICP、Share Extension 与半套 Reader 入口同时进第一阶段。
+- **App 内零付费引导**：即使只发 TestFlight 也不夹带升级文案，避免养成违规构建习惯。
+- **Sign in with Apple / 删号绑正式提审**：满足日后 4.8 / 5.1.1(v)，同时不拖慢 InfoQ 闭环验证。
+- **不上大陆区 / 不做分享写入口 / 失败不降级**：把 Phase 1 钉在「海外只读续读 + 抽取成败二元」上。
 - **不要求 TASK-SPEC**：决策面已可编码；细节用 TDD 与实现期 issue（`docs/agents/domain.md`）。
 
 ---
@@ -228,35 +239,37 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 
 - 移动与桌面分工清晰：扩展管桌面原页点词与收藏写入，App 管原生阅读视图点词。
 - 版权与隐私边界与 adr-032 一致；只读抽正文不扩大服务端持有面。
-- 注入 / 渲染 / 审核 / 地区 / 失败路径边界可验收，降低实现期争吵成本。
-- Phase 1 范围可交付：一条主路径，一个平台，一套认证，零 IAP，无大陆区与分享扩展。
+- TestFlight 先行，可在 SiWA / 删号未齐时验证 InfoQ 主路径。
+- Phase 1 范围可交付：一条主路径、monorepo 内一个工程、零 IAP、不上架。
 
 ### Negative
 
-- 需从零建 `enx-ios/`、商店账号与 CI；短期无 Android 客户端；无中国大陆区用户可装。
-- 公开页以外，用户须在 WebView 内重新登录；Google OAuth 站点基本不可登；付费墙体验弱于「Safari 已登录」。
+- 需申请 Apple Developer、配置 Clerk Native，并新建 `enx-ios/`；短期无 Android、无大陆区、无 App Store 公开页。
+- 公开页以外，用户须在 WebView 内重新登录；Google OAuth 站点基本不可登。
 - Phase 1 App 不能从手机侧新增收藏，完全依赖桌面扩展。
-- 桌面与移动查词 UI 两套实现。
-- 账号删除与 Sign in with Apple 会波及 enx-api / enx-ui，不只是 App 工程。
+- 桌面与移动查词 UI 两套实现；SiWA / 删号仍会在正式提审前波及 enx-api / enx-ui。
 - 抽正文失败时用户在 App 内无法点词（仅 WebView 可读 + 失败提示）。
+- TestFlight 外部测试仍可能触发 Beta App Review 摩擦。
 
 ### Mitigation
 
-- 抽正文失败：保留 WebView 可读 + 明确失败提示；**不**加选中/粘贴降级；**不**改为服务端存正文。后续若要降级，走 Revisit Trigger 另议。
+- 抽正文失败：保留 WebView 可读 + 明确失败提示；**不**加选中/粘贴降级；**不**改为服务端存正文。
+- Phase 1 优先 **内部** TestFlight，降低 Beta Review 压力；外部测试再视需要开启。
 - 设置页提供「清除网站数据」；登出默认清 WebView 数据与正文缓存。
-- Android / 大陆区 / 系统分享在对应 Revisit 或另阶段再开。
-- 429 等文案在 api 或客户端侧按 Decision 2a 处理，提审前用真机配额打满验收。
+- Android / 大陆区 / 系统分享 / 正式上架在对应 Revisit 或另阶段再开。
+- 429 等文案按 Decision 2a 处理，TestFlight 验收时用真机配额打满。
 
 ---
 
 ## Out of Scope（本次不做）
 
-- Android 工程、上架与 CI。
+- Phase 1 提交 App Store 正式审核 / 公开发布。
+- Android 工程。
 - 中国大陆区上架、ICP 备案、国内版 App 登录（adr-035/036）。
 - 系统分享菜单 / Share Extension / App 内收藏写入。
 - 抽正文失败后的选中送入阅读视图、粘贴文本等降级。
 - 正文抽取库的最终选型细节与「过短」字数阈值（实现期用样本定；**允许**在 iOS 整库引入 Readability 类实现，与 adr-034 扩展侧决定前提不同）。
-- UIKit vs SwiftUI 导航与设计系统；iOS 查词 UI 的最终组件命名（不称「查词浮层」）。
+- SwiftUI / UIKit 分工与设计系统（待定，下一轮再补）；iOS 查词 UI 最终组件命名（不称「查词浮层」）。
 - 划词整句翻译、单词高亮档位、生词本复习在 iOS 上的完整对等（Phase 1 以点击查词闭环为必达）。
 - StoreKit 内购与 Stripe 权益同步（后续 ADR）。
 - enx-ui 无扩展时的 Web 内点词（adr-019 Revisit）。
@@ -267,19 +280,39 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 
 ## Open Questions
 
-**已全部关闭（2026-09-30 用户拍板）**——见 Decision 5（收窄 adr-032 Decision 4 / 无分享写入口）、Decision 2 第 4 步与 Options H3（失败直接提示）、Decision 9（不上中国大陆区）。本节不再保留待决项。
+**已全部关闭（2026-09-30 用户拍板）**——见 Decision 5 / 2 / 9 / 10 等。本节不再保留待决项。SwiftUI / UIKit 分工明确为**待定**（非开放产品决策，下一轮再补）。
+
+---
+
+## 外部前置清单（须由用户本人执行；非 agent 代办）
+
+下列为人工操作，**不在** Accept 后的编码任务内自动完成；缺项会卡住 TestFlight 或正式上架，但不改变本文 Decision。
+
+1. **Apple Developer Program 账号**（目前还没有）
+   - 加入 [Apple Developer Program](https://developer.apple.com/programs/) 后才能签真机 / 上传 TestFlight。
+   - **个人账号**：以个人法律实体加入，流程相对快；App 显示销售商为个人姓名；后续若要以公司名义上架通常需迁移或新建公司账号。
+   - **公司 / 组织账号**：需合法实体 + **D-U-N-S 编号**（Dun & Bradstreet）；D-U-N-S 申请与 Apple 审核常额外耗时（常见数天到数周），适合要以公司名上架、多人团队的情况。
+   - Phase 1 仅 TestFlight 时，个人或公司账号均可；正式上架前再确认销售商身份是否要换成公司。
+
+2. **Clerk 后台（生产实例）**
+   - 启用 **Native API**。
+   - 登记 iOS App（**Bundle ID** + Apple **Team ID**）。
+   - 开启 **Sign in with Apple**（正式提审前必达；需在 Apple Developer 配置 Services ID / Key 等，再填入 Clerk）——网页与 iOS 均提供，见 Decision 3。
+   - 在**生产** Clerk 实例上完成上述配置（勿只配开发实例就当上架就绪）；清单细节可对照 `docs/tasks/TASK-SPEC-enx-clerk-production-cutover.md`。
+   - **实测**：Clerk iOS SDK `getToken()` 签发的 session JWT **是否带 `azp`**——不带则现有中间件直接放行；若带，把该值加入 `CLERK_AUTHORIZED_PARTIES`。
 
 ---
 
 ## Revisit Trigger
 
+- **TestFlight 闭环验证完毕、准备正式上架**：完成 Decision 7 提审硬前置（SiWA、账号删除、隐私标签等），另开上架阶段；仍不上中国大陆区除非另议。
 - **iOS 主路径已验证且需要 Android 用户**：另阶段立项 Android 原生（仍非 RN），产品流与本文 Decision 2/5 对齐。
 - **需要中国大陆区或国内版 IdP**：另立阶段 / ADR（ICP、adr-035/036）；不在本 ADR 内扩范围。
 - **需要移动端收藏写入口**（系统分享等）：另议；届时显式修订「对 adr-032 Decision 4 的 Phase 1 收窄」。
 - **抽取失败率过高、用户强烈要求降级**：可重开 Options H1/H2，另补 Decision；**不**改为服务端存正文；**不**做 Google `disallowed_useragent` 规避。
 - **WebView 打开 / 登录在目标站点上系统性失败**：收窄可读站点预期或另议入口，仍不存正文、不做 UA 规避。
 - **人力无法维持单端原生、且移动需求已被证明**：另立 ADR 重开载体选择；默认仍优先「单端原生做深」，而非先引入 RN。
-- **App Store 条款变化**（尤其 3.1.x 付费、4.8 登录、5.1.1(v) 删号）或 Clerk 移动登录阻塞：付费面另立 IAP ADR；身份走 adr-015 退出路径（Logto / OIDC），若 adr-036 Accepted 则可复用其认证 seam。
+- **App Store / TestFlight Beta 条款变化**或 Clerk 移动登录阻塞：付费面另立 IAP ADR；身份走 adr-015 退出路径（Logto / OIDC），若 adr-036 Accepted 则可复用其认证 seam。
 - **平台出现可依赖的通用网页注入扩展能力**：可评估，**当前不作为战略**，需新 ADR 才能改 E2。
 - **需要 App 内购买**：走 Options G2，另立 ADR（StoreKit 分成 + 与 Stripe 权益同步）。
 
@@ -287,8 +320,8 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 
 ## 待用户 Accept 时确认
 
-Decision 1–9 与 Options 否决项已全部按用户拍板写死；原 Open Questions 已关闭。Accept 时请将状态栏改为 Accepted 并注明日期。下列项**不阻塞 Accept**，留到实现期：
+Decision 1–10 与 Options 否决项已按用户拍板写死；原 Open Questions 已关闭。Accept 时请将状态栏改为 Accepted 并注明日期。下列项**不阻塞 Accept**，留到实现期 / 下一轮：
 
-1. `enx-ios/` 内模块切分与 Xcode / CI 骨架。
+1. `enx-ios/` 内模块切分与 Xcode / CI 骨架；**SwiftUI / UIKit 分工待定**。
 2. Readability（或同类）的具体集成方式与「过短」阈值数字。
 3. `X-Enx-Client: ios` 与 429 文案分流的精确实现（api 改 message vs 客户端本地文案）。
