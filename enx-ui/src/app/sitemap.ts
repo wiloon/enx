@@ -7,6 +7,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const base = process.env.SITE_URL || 'https://enx.wiloon.lab'
   return [
     { url: `${base}/`, changeFrequency: 'monthly', priority: 1 },
+    { url: `${base}/pricing`, changeFrequency: 'monthly', priority: 0.8 },
     // The legal pages are listed because two review processes (Chrome Web
     // Store, Stripe) go looking for them, and because a policy nobody can
     // find is not published in any meaningful sense.

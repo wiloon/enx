@@ -204,11 +204,14 @@ divisor = 3000
 # open, because failing closed would break the free-tier hook for everyone
 # (see w10n-config/enx/monetization.md).
 #
-# Both at 0 is the launch state: observe real usage for a few weeks, then
-# set numbers (LAUNCH-CHECKLIST §1.5). `-subscribed` is an abuse ceiling,
-# not a product tier -- set it high enough that normal use never reaches it.
+# `-free` is 200 (2026-09-29): generous on purpose -- a heavy reading day is
+# well under that, so it only stops scripts and bulk scraping. The number is
+# published on the /pricing page (enx-ui/src/lib/plans.ts FREE_DAILY_LOOKUPS);
+# change both together. `-subscribed` stays 0 for now; it is an abuse
+# ceiling, not a product tier -- set it high enough that normal use never
+# reaches it.
 #
 # Superseded key `dictionary-lookup-daily` still works as a fallback for
 # `-free` for one release.
-dictionary-lookup-daily-free = 0
+dictionary-lookup-daily-free = 200
 dictionary-lookup-daily-subscribed = 0

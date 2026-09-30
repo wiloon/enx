@@ -4,11 +4,14 @@ import BrandMark from './BrandMark'
 import GitHubIcon from './GitHubIcon'
 import HeaderAuthLinks from './HeaderAuthLinks'
 
+// Section links are rooted at "/" because the header is also shown on
+// /pricing, where a bare "#features" would point nowhere.
 const NAV = [
-  { label: 'Features', href: '#features' },
-  { label: 'How it works', href: '#how-it-works' },
-  { label: 'Similar apps', href: '#compare' },
-  { label: 'Install', href: '#install' },
+  { label: 'Features', href: '/#features' },
+  { label: 'How it works', href: '/#how-it-works' },
+  { label: 'Pricing', href: '/pricing' },
+  { label: 'Similar apps', href: '/#compare' },
+  { label: 'Install', href: '/#install' },
 ]
 
 export default function SiteHeader() {
