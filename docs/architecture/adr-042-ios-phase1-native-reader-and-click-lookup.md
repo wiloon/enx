@@ -7,7 +7,7 @@
 | **关联 Spec** | 无。本 ADR 即 Phase 1 产品与技术边界；编码走 domain-modeling / TDD，不强制配套 TASK-SPEC（见 `docs/agents/domain.md` §ADR vs TASK-SPEC）。 |
 | **关联清单** | **Phase 1 发布目标 = 仅 TestFlight 内测，不上 App Store**（见 Decision 10）。**正式 App Store 提审前硬前置**（**不**阻塞 Phase 1 TestFlight）：Sign in with Apple（enx-ui + iOS）；账号删除（Web + App，级联 `saved_pages` / `page_reports` / reader 文档 / 配额行 / Clerk 用户等，对齐 adr-032）；App Store 隐私标签 / Privacy Manifest；`docs/tasks/LAUNCH-CHECKLIST.md` 隐私政策与服务条款补 iOS。**外部前置（用户本人执行）**见文末「外部前置清单」。 |
 | **关联 ADR** | [`adr-032-saved-pages-and-no-passive-reading-history.md`](adr-032-saved-pages-and-no-passive-reading-history.md)（收藏只存 URL+标题；Decision 5 预留「移动端 WebView + 本机抽文本」——本 ADR 把载体锁成 iOS 原生并补全产品流。**收窄其 Decision 4**：Phase 1 **不做**移动端系统分享菜单；App **无**收藏写入口，收藏只在桌面扩展完成，见本文 Decision 5。注：adr-032 文首「关联代码 / 待实现」已过期——api 与扩展收藏已落地，见本文关联代码）、[`adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md`](adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md) / [`adr-022-enx-ui-reader-persistence-and-retention.md`](adr-022-enx-ui-reader-persistence-and-retention.md)（桌面 Reader 把查词交给扩展；移动端无扩展，由原生阅读视图承接点击查词）、[`adr-015-cognito-to-clerk-auth-migration.md`](adr-015-cognito-to-clerk-auth-migration.md)（Clerk JWT → 本地 `users.Id`；本 ADR 在 iOS 复用同一合同，并新增 Sign in with Apple）、[`adr-018-dictionary-lookup-single-metered-seam.md`](adr-018-dictionary-lookup-single-metered-seam.md) / [`adr-029-lookup-quota-tiered-limits-and-count-gate-split.md`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md)（查词计量与时区头）、[`adr-034-site-support-on-demand-injection-and-generic-content-detection.md`](adr-034-site-support-on-demand-injection-and-generic-content-detection.md)（扩展侧因需保留原 DOM **不**整库引入 Readability.js；iOS 抽到独立原生视图，前提不同，**允许**引入 Readability 类库）、[`adr-035-global-and-china-editions-dual-deployment.md`](adr-035-global-and-china-editions-dual-deployment.md) / [`adr-036-china-edition-authentication-logto.md`](adr-036-china-edition-authentication-logto.md)（**均为 Proposed**；Phase 1 **不上**中国大陆区，海外版 Clerk，见 Decision 9） |
-| **关联代码** | **iOS 客户端：待实现（Accept 之后）。** **已确认落点**：本 monorepo 顶层 **`enx-ios/`**（与 `enx-chrome` / `enx-ui` / `enx-api` 并列），**不**单独建仓库；UI 栈见 Decision 11（SwiftUI 壳 + UIKit 阅读视图 / WKWebView，最低 iOS 17）。**已实现（收藏数据面）**：enx-api `/api/saved-pages*`（`savedpage/`、`urlnorm/`，PR #61）；enx-chrome popup「Save this page」（`pageSave.ts` / `PageSavePrompt.tsx`）。**未实现**：enx-ui Saved 页（仍属 adr-032 Decision 4）。`GET /api/saved-pages` 无分页（上限 1000 条一次返回），对 iOS Phase 1 足够。查词：`GET /api/word/:word` → `dictionary.Service.Resolve`（adr-018）。认证：Clerk session JWT（adr-015）。**不**新增「上传全文」类 API。 |
+| **关联代码** | **iOS 客户端：待实现。** **已确认落点**：本 monorepo 顶层 **`enx-ios/`**（与 `enx-chrome` / `enx-ui` / `enx-api` 并列），**不**单独建仓库；UI 栈见 Decision 11（SwiftUI 壳 + UIKit 阅读视图 / WKWebView，最低 iOS 17）。**已实现（收藏数据面）**：enx-api `/api/saved-pages*`（`savedpage/`、`urlnorm/`，PR #61）；enx-chrome popup「Save this page」（`pageSave.ts` / `PageSavePrompt.tsx`）。**未实现**：enx-ui Saved 页（仍属 adr-032 Decision 4）。`GET /api/saved-pages` 无分页（上限 1000 条一次返回），对 iOS Phase 1 足够。查词：`GET /api/word/:word` → `dictionary.Service.Resolve`（adr-018）。认证：Clerk session JWT（adr-015）。**不**新增「上传全文」类 API。 |
 
 ---
 
@@ -302,7 +302,7 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 
 ## 外部前置清单（须由用户本人执行；非 agent 代办）
 
-下列为人工操作，**不在** Accept 后的编码任务内自动完成；缺项会卡住 TestFlight 或正式上架，但不改变本文 Decision。
+下列为人工操作，**不在**编码任务内自动完成；缺项会卡住 TestFlight 或正式上架，但不改变本文 Decision。
 
 1. **Apple Developer Program 账号**（目前还没有）
    - 加入 [Apple Developer Program](https://developer.apple.com/programs/) 后才能签真机 / 上传 TestFlight。
@@ -334,9 +334,9 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 
 ---
 
-## 待用户 Accept 时确认
+## 实现期细节（不另开 ADR）
 
-Decision 1–11 与 Options 否决项已按用户拍板写死；原 Open Questions 已关闭。Accept 时请将状态栏改为 Accepted 并注明日期。下列项**不阻塞 Accept**，留到实现期：
+下列项留到编码阶段用 TDD / issue 收口，不改变本文 Decision：
 
 1. `enx-ios/` 内模块切分与 Xcode / CI 骨架（按 Decision 11：SwiftUI 壳 + `UIViewRepresentable` 包装阅读视图 / WKWebView）。
 2. Readability（或同类）的具体集成方式与「过短」阈值数字。
