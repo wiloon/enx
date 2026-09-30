@@ -1,6 +1,6 @@
 # ENX
 
-AI 辅助英语阅读工具。用户在网页上阅读英文时，ENX 标注生词、点词查释义、划词翻译整句，并把查过的词沉淀到生词本与复习系统。仓库含 `enx-api`（后端）、`enx-ui`（Web 前端）、`enx-chrome`（浏览器扩展）、`enx-sync`（同步）。
+AI 辅助英语阅读工具。用户在网页上阅读英文时，ENX 标注生词、点词查释义、划词翻译整句，并把查过的词沉淀到生词本与复习系统。仓库含 `enx-api`（后端）、`enx-ui`（Web 前端）、`enx-chrome`（浏览器扩展）、`enx-sync`（同步）。移动端见下文「原生阅读视图」与 adr-042。
 
 本文件只是术语表。实现决策见 `docs/architecture/adr-*.md`。
 
@@ -27,15 +27,15 @@ _Avoid_: 登录成功页、callback 页
 ### 阅读辅助功能（enx-chrome）
 
 **学习模式（learning mode）**：
-用户在某个页面上启用 ENX 后的状态。由工具栏弹窗（popup）的「Enable Learning Mode」开启（发 `enxRun`），`enxStop` 关闭。启用后整篇取词、查词、并激活下面的交互。
-_Avoid_: 阅读模式、reading mode
+用户在某个页面上启用 ENX 后的状态。由工具栏弹窗（popup）的「Enable Learning Mode」开启（发 `enxRun`），`enxStop` 关闭。启用后整篇取词、查词、并激活下面的交互。这是 **enx-chrome** 的概念；移动端见下文「原生阅读视图」。
+_Avoid_: 阅读模式、reading mode（二者易与浏览器 Reader View 或移动端原生阅读视图混淆）
 
 **点击查词（click-to-lookup）**：
-点正文里任意一个英文词，弹出查词浮层显示该词释义。学习模式的核心交互，不单独设开关——跟随学习模式开关。不依赖任何注入到正文的标记元素。
+点正文里任意一个英文词，显示该词释义。在扩展里是学习模式的核心交互（经查词浮层展示），不单独设开关——跟随学习模式开关，不依赖任何注入到正文的标记元素。在 iOS 上发生在**原生阅读视图**内（不在 WebView 内），见 adr-042；iOS 查词 UI **不称**查词浮层（命名待定）。
 _Avoid_: 点词翻译、tap-to-translate
 
 **查词浮层（word popover）**：
-点击查词后紧贴该词弹出的浮层，显示音标、释义、复习档位，并带打开 Side Panel（整句+词义）的入口。由 content script 注入进正文，用 Popover API 渲染，一次只有一个、下次查词即被替换。代码：组件 `WordPopover`（`src/components/WordPopover.tsx`）、`showWordPopover()`；DOM 是 `#enx-anchored-overlay`（与划词提示浮层共用的定位脚手架 `createAnchoredOverlay`）。**不是** Chrome 的 action popup，也不是 Side Panel 里那种会累积的卡片。
+**仅 enx-chrome**：点击查词后紧贴该词弹出的浮层，显示音标、释义、复习档位，并带打开 Side Panel（整句+词义）的入口。由 content script 注入进正文，用 Popover API 渲染，一次只有一个、下次查词即被替换。代码：组件 `WordPopover`（`src/components/WordPopover.tsx`）、`showWordPopover()`；DOM 是 `#enx-anchored-overlay`（与划词提示浮层共用的定位脚手架 `createAnchoredOverlay`）。**不是** Chrome 的 action popup，也不是 Side Panel 里那种会累积的卡片，也不是 iOS 原生查词 UI。
 _Avoid_: 弹窗、popup（专指下面工具栏那个）、单词卡 / word card（专指 Side Panel 列表里的卡，见下）、tooltip
 
 **工具栏弹窗（popup）**：
@@ -87,7 +87,7 @@ _Avoid_: RSSX 首页、整页
 ### 收藏与问题上报（跨组件）
 
 **收藏（saved page）**：
-用户主动收藏的一个页面：URL（规范化：去掉 fragment、凭据与跟踪参数）+ 标题，**仅本人可见**，永久保存直到本人删除或账号注销。**不含正文、不含译文**——这是版权与隐私边界，不是待补的功能。入口：扩展工具栏弹窗的「Save this page」、enx-ui 的 Saved 页、移动端系统分享菜单。英文代码与 UI 用 saved（表 `saved_pages`，接口 `/api/saved-pages`）。见 adr-032。
+用户主动收藏的一个页面：URL（规范化：去掉 fragment、凭据与跟踪参数）+ 标题，**仅本人可见**，永久保存直到本人删除或账号注销。**不含正文、不含译文**——这是版权与隐私边界，不是待补的功能。英文代码与 UI 用 saved（表 `saved_pages`，接口 `/api/saved-pages`）。**已落地入口**：扩展工具栏弹窗的「Save this page」。**尚未落地**：enx-ui Saved 页（adr-032 Decision 4）。iOS Phase 1：**不做**系统分享等移动端写入口（收窄 adr-032 Decision 4）；主路径是「桌面扩展收藏 → App 只读列表打开」，见 adr-032、adr-042。
 _Avoid_: 已保存页面、保存文章（存的是地址不是文章）、稍后读 / read-later、书签 / bookmark（与浏览器书签混淆）、favorites（有「点赞」含义）
 
 **页面上报（page report）**：
@@ -107,3 +107,9 @@ _Avoid_: 翻译、直译、提示词生成、prompt generation
 **粘贴文本阅读器（Reader）**：
 enx-ui 的一个页面（`/reader`）。用户粘贴一段英文纯文本、提交后 enx-ui 把它渲染成一个普通文章页；点词查词等阅读辅助**全部交给 enx-chrome**（跟在 InfoQ 上阅读一样），enx-ui 侧不实现查词。提交后 enx-ui 主动发消息让扩展在本标签页启用学习模式。一次性、不持久化。见 adr-019。
 _Avoid_: 文章导入、reader mode（浏览器自带阅读模式）、粘贴翻译、article import
+
+### 移动端（enx-ios，Phase 1）
+
+**原生阅读视图（native reader view）**：
+iOS App 在 WKWebView 打开目标页之后，由用户点击按钮触发本机只读抽正文，再用 **UIKit `UITextView` + TextKit 2**（经 `UIViewRepresentable` 嵌在 SwiftUI 里）展示正文的界面。高亮与**点击查词**在原生层完成，不在 WebView 内完成；不以本地 WebView 渲染抽出的正文。与桌面扩展的「学习模式」不是同一概念；也不等同于 Safari 等系统 Reader View 产品。见 adr-042 Decision 11。
+_Avoid_: 学习模式（那是 enx-chrome 术语）、阅读模式（口语；指的就是本词条，文档里不用）、reader mode、查词浮层（那是扩展组件）、点词翻译（应说点击查词）
