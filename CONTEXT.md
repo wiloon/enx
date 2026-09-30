@@ -87,7 +87,7 @@ _Avoid_: RSSX 首页、整页
 ### 收藏与问题上报（跨组件）
 
 **收藏（saved page）**：
-用户主动收藏的一个页面：URL（规范化：去掉 fragment、凭据与跟踪参数）+ 标题，**仅本人可见**，永久保存直到本人删除或账号注销。**不含正文、不含译文**——这是版权与隐私边界，不是待补的功能。英文代码与 UI 用 saved（表 `saved_pages`，接口 `/api/saved-pages`）。**已落地入口**：扩展工具栏弹窗的「Save this page」。**尚未落地**：enx-ui Saved 页（adr-032 Decision 4）；移动端系统分享菜单是否为 iOS Phase 1 必达见 adr-042 Open Questions。iOS Phase 1 主路径是「桌面扩展收藏 → App 收藏列表打开」，见 adr-032、adr-042。
+用户主动收藏的一个页面：URL（规范化：去掉 fragment、凭据与跟踪参数）+ 标题，**仅本人可见**，永久保存直到本人删除或账号注销。**不含正文、不含译文**——这是版权与隐私边界，不是待补的功能。英文代码与 UI 用 saved（表 `saved_pages`，接口 `/api/saved-pages`）。**已落地入口**：扩展工具栏弹窗的「Save this page」。**尚未落地**：enx-ui Saved 页（adr-032 Decision 4）。iOS Phase 1：**不做**系统分享等移动端写入口（收窄 adr-032 Decision 4）；主路径是「桌面扩展收藏 → App 只读列表打开」，见 adr-032、adr-042。
 _Avoid_: 已保存页面、保存文章（存的是地址不是文章）、稍后读 / read-later、书签 / bookmark（与浏览器书签混淆）、favorites（有「点赞」含义）
 
 **页面上报（page report）**：

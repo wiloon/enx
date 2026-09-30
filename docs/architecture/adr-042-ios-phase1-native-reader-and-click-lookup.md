@@ -2,11 +2,11 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | **Proposed — 2026-09-30**（用户已锁定 Decision 主体；审阅修订后仍待确认再标 Accepted）。在用户 Accept 之前，**不以本 ADR 启动编码或改仓库实现**。Accept 后以 Decision 为实现依据（同 adr-012 Decision 10 / adr-034），**不要求**先写 `TASK-SPEC`。 |
+| **状态** | **Proposed — 2026-09-30**（Decision 与原 Open Questions 均已按用户拍板写死；**仍待用户明确 Accept** 后再改 Accepted）。在用户 Accept 之前，**不以本 ADR 启动编码或改仓库实现**。Accept 后以 Decision 为实现依据（同 adr-012 Decision 10 / adr-034），**不要求**先写 `TASK-SPEC`。 |
 | **日期** | 2026-09-30 |
 | **关联 Spec** | 无。本 ADR 即 Phase 1 产品与技术边界；编码走 domain-modeling / TDD，不强制配套 TASK-SPEC（见 `docs/agents/domain.md` §ADR vs TASK-SPEC）。 |
 | **关联清单** | **iOS 提审硬前置**：账号删除（Web + App 均可发起，级联 `saved_pages` / `page_reports` / reader 文档 / 配额行 / Clerk 用户等）——对齐 adr-032 关联清单里已欠的前置；App Store 隐私标签 / Privacy Manifest；`docs/tasks/LAUNCH-CHECKLIST.md` 隐私政策与服务条款须补 iOS（本机正文缓存、WebView Cookie 仅在设备）。**Clerk**：Native API + iOS App 登记（Team ID + Bundle ID）+ 开启 Sign in with Apple（网页与 App 均提供）。 |
-| **关联 ADR** | [`adr-032-saved-pages-and-no-passive-reading-history.md`](adr-032-saved-pages-and-no-passive-reading-history.md)（收藏只存 URL+标题；Decision 5 预留「移动端 WebView + 本机抽文本」——本 ADR 把载体锁成 iOS 原生并补全产品流。**收窄其 Decision 4**：移动端「系统分享菜单」是否为 Phase 1 必达见本文 Open Questions，未拍板前不以分享入口替代桌面扩展收藏主路径。注：adr-032 文首「关联代码 / 待实现」已过期——api 与扩展收藏已落地，见本文关联代码）、[`adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md`](adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md) / [`adr-022-enx-ui-reader-persistence-and-retention.md`](adr-022-enx-ui-reader-persistence-and-retention.md)（桌面 Reader 把查词交给扩展；移动端无扩展，由原生阅读视图承接点击查词）、[`adr-015-cognito-to-clerk-auth-migration.md`](adr-015-cognito-to-clerk-auth-migration.md)（Clerk JWT → 本地 `users.Id`；本 ADR 在 iOS 复用同一合同，并新增 Sign in with Apple）、[`adr-018-dictionary-lookup-single-metered-seam.md`](adr-018-dictionary-lookup-single-metered-seam.md) / [`adr-029-lookup-quota-tiered-limits-and-count-gate-split.md`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md)（查词计量与时区头）、[`adr-034-site-support-on-demand-injection-and-generic-content-detection.md`](adr-034-site-support-on-demand-injection-and-generic-content-detection.md)（扩展侧因需保留原 DOM **不**整库引入 Readability.js；iOS 抽到独立原生视图，前提不同，**允许**引入 Readability 类库）、[`adr-035-global-and-china-editions-dual-deployment.md`](adr-035-global-and-china-editions-dual-deployment.md) / [`adr-036-china-edition-authentication-logto.md`](adr-036-china-edition-authentication-logto.md)（**均为 Proposed**；Phase 1 默认海外版 Clerk；是否上中国大陆区见 Open Questions） |
+| **关联 ADR** | [`adr-032-saved-pages-and-no-passive-reading-history.md`](adr-032-saved-pages-and-no-passive-reading-history.md)（收藏只存 URL+标题；Decision 5 预留「移动端 WebView + 本机抽文本」——本 ADR 把载体锁成 iOS 原生并补全产品流。**收窄其 Decision 4**：Phase 1 **不做**移动端系统分享菜单；App **无**收藏写入口，收藏只在桌面扩展完成，见本文 Decision 5。注：adr-032 文首「关联代码 / 待实现」已过期——api 与扩展收藏已落地，见本文关联代码）、[`adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md`](adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md) / [`adr-022-enx-ui-reader-persistence-and-retention.md`](adr-022-enx-ui-reader-persistence-and-retention.md)（桌面 Reader 把查词交给扩展；移动端无扩展，由原生阅读视图承接点击查词）、[`adr-015-cognito-to-clerk-auth-migration.md`](adr-015-cognito-to-clerk-auth-migration.md)（Clerk JWT → 本地 `users.Id`；本 ADR 在 iOS 复用同一合同，并新增 Sign in with Apple）、[`adr-018-dictionary-lookup-single-metered-seam.md`](adr-018-dictionary-lookup-single-metered-seam.md) / [`adr-029-lookup-quota-tiered-limits-and-count-gate-split.md`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md)（查词计量与时区头）、[`adr-034-site-support-on-demand-injection-and-generic-content-detection.md`](adr-034-site-support-on-demand-injection-and-generic-content-detection.md)（扩展侧因需保留原 DOM **不**整库引入 Readability.js；iOS 抽到独立原生视图，前提不同，**允许**引入 Readability 类库）、[`adr-035-global-and-china-editions-dual-deployment.md`](adr-035-global-and-china-editions-dual-deployment.md) / [`adr-036-china-edition-authentication-logto.md`](adr-036-china-edition-authentication-logto.md)（**均为 Proposed**；Phase 1 **不上**中国大陆区，海外版 Clerk，见 Decision 9） |
 | **关联代码** | **iOS 客户端：待实现（Accept 之后）。** 预期落点：新建 `enx-ios/`（与 `enx-chrome` / `enx-ui` / `enx-api` 并列；Swift / SwiftUI 或团队惯用 iOS 栈，本 ADR 不锁 UIKit vs SwiftUI）。**已实现（收藏数据面）**：enx-api `/api/saved-pages*`（`savedpage/`、`urlnorm/`，PR #61）；enx-chrome popup「Save this page」（`pageSave.ts` / `PageSavePrompt.tsx`）。**未实现**：enx-ui Saved 页（仍属 adr-032 Decision 4）。`GET /api/saved-pages` 无分页（上限 1000 条一次返回），对 iOS Phase 1 足够。查词：`GET /api/word/:word` → `dictionary.Service.Resolve`（adr-018）。认证：Clerk session JWT（adr-015）。**不**新增「上传全文」类 API。 |
 
 ---
@@ -27,6 +27,7 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 6. 服务端不存正文（对齐 adr-032）。
 7. App 内**无**升级提示与外部购买引导；StoreKit 内购 Phase 1 不做。
 8. 账号删除（Web + 移动）为 iOS 提审硬前置。
+9. Phase 1 **不上**中国大陆区；**不做**系统分享写入口（收窄 adr-032 Decision 4）；抽正文失败**不**做选中/粘贴降级。
 
 这些决定难以反悔（原生工程与商店身份、与扩展的分工边界、版权边界、审核条款），且与「先做响应式 / Capacitor 壳」的旧假设相反，需要单独 ADR 写清否决项。
 
@@ -83,7 +84,7 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 | --- | --- |
 | D1. 系统分享 / 剪贴板 / 精选库 / 收藏列表**全部作为 Phase 1 必达** | **否决作 Phase 1 必达包。** 入口过多会拖住主闭环验证。 |
 | D2. 仅系统分享进 App，不做收藏列表 | **否决作 Phase 1 主路径。** 跨设备续读的数据面是 adr-032 的 `saved-pages`；桌面已收藏、手机打开，才是锁定叙事。 |
-| **D3.（采用）Phase 1 主路径 = 桌面扩展收藏 → iOS 收藏列表 → 打开** | 系统分享是否 Phase 1 必达见 **Open Questions**（与 adr-032 Decision 4 的关系须显式拍板）；精选库等另议。 |
+| **D3.（采用）Phase 1 主路径 = 桌面扩展收藏 → iOS 只读收藏列表 → 打开** | **收窄 adr-032 Decision 4**：Phase 1 **不做**系统分享入口；App **无**收藏写入口，收藏只在桌面扩展完成。精选库等另议。 |
 
 ### E. 移动浏览器扩展战略
 
@@ -99,6 +100,14 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 | F1. 服务端存正文或译文供 App 拉取 | **否决。** 对齐 adr-032 Options B2/B3。 |
 | F2. 服务端代抓 URL 取正文 | **否决。** adr-032 已禁止服务端主动抓 URL。 |
 | **F3.（采用）只在本机抽正文；服务端仅 URL+标题** | 可选本机离线缓存（adr-032 B4），永不上传正文。 |
+
+### H. 抽正文失败时怎么办
+
+| 方案 | 结论 |
+| --- | --- |
+| H1. WebView 选中文字 →「在阅读视图中打开选中内容」 | **否决（Phase 1）。** |
+| H2. 粘贴纯文本进入原生阅读视图 | **否决（Phase 1）。** |
+| **H3.（采用）直接提示失败** | 保留 WebView 可读 + 明确失败文案；不进入原生阅读视图；**不**上传正文。 |
 
 ### G. App 内付费
 
@@ -124,8 +133,8 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 1. 用户在桌面用 `enx-chrome` **收藏**当前页（adr-032：仅规范化 URL + 标题）。
 2. iOS App 拉取同一用户的 **收藏列表**（`GET /api/saved-pages`）。
 3. 用户点开一条：App 内 **WKWebView** 加载该 URL。WebView 使用 App 自己的持久化网站数据（如 `WKWebsiteDataStore.default()`）。产品接受的站点打开方式是：**只读公开站点，或用户在该 WebView 内单独登录**——**不是**「沿用 Safari 已有登录态」。已知限制（**不做规避**）：与 Safari **不共享** Cookie / 登录态；依赖 Google 登录的站点在内嵌 WebView 中会被拒（`disallowed_useragent`），这类站点在 App 内基本登不上。
-4. WebView 加载完成后显示「进入阅读视图」（或等价）按钮；**仅当用户点击**时，向该 WebView 注入**只读**抽正文脚本（如 Readability，**隔离 content world**），在本机得到正文结构。服务端不持有、不接收全文。抽取结果过短或判为非正文时按失败处理（具体阈值实现期用样本定）。
-5. 进入 **原生阅读视图**：用 **TextKit 2 / `UITextView`（或等价原生文本控件）** 渲染抽出的正文；**高亮与点击查词只在原生层**。禁止用本地 `WKWebView`（`loadHTMLString` 等）渲染该正文；禁止在第三方页 WebView 内做点击查词、高亮或渲染任何 ENX UI。
+4. WebView 加载完成后显示「进入阅读视图」（或等价）按钮；**仅当用户点击**时，向该 WebView 注入**只读**抽正文脚本（如 Readability，**隔离 content world**），在本机得到正文结构。服务端不持有、不接收全文。抽取失败、结果过短或判为非正文时：按 Options H3 **直接提示失败**，保留 WebView 可读；**不做**「选中文字送入阅读视图」「粘贴文本」等降级（具体「过短」阈值实现期用样本定）。
+5. 仅抽取成功时进入 **原生阅读视图**：用 **TextKit 2 / `UITextView`（或等价原生文本控件）** 渲染抽出的正文；**高亮与点击查词只在原生层**。禁止用本地 `WKWebView`（`loadHTMLString` 等）渲染该正文；禁止在第三方页 WebView 内做点击查词、高亮或渲染任何 ENX UI。
 6. 查词请求走现有 enx-api 合同（见 Decision 2a）；只上传词或（若后续做划词）用户选中的片段，不上传文章全文。
 
 ### 2a. 查词计量、错误展示与统计（Phase 1）
@@ -138,29 +147,32 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 
 ### 3. 认证
 
-- Phase 1（默认海外版部署）使用 **Clerk iOS SDK** 登录。
+- Phase 1 使用 **Clerk iOS SDK** 登录（海外版 Clerk 实例）。
 - enx-api 继续验 Clerk session JWT，映射到本地用户身份（`users.Id`）；**不**为移动端另发明一套 session。
 - **Sign in with Apple**：在 Clerk 开启 Apple social connection；**enx-ui 与 iOS App 都提供**该入口（网页登录选项会一并出现）。注意 Apple「隐藏邮箱」中继地址对按邮箱操作的管理接口（如 `/api/admin/credits/grant`）的影响，实现期核对。
 - **CORS**：不适用于原生 `URLSession`，Phase 1 **不必**为 iOS 改 CORS。`azp`：缺省即放行；若 Clerk iOS SDK 签发的 token **带** `azp`，把该值加入 `CLERK_AUTHORIZED_PARTIES`。真正要做的是 Clerk 侧：开启 Native API、登记 iOS App（Team ID + Bundle ID），生产实例清单见 `docs/tasks/TASK-SPEC-enx-clerk-production-cutover.md`。
-- 国内版若启用，跟 adr-035/036（**均为 Proposed**）的部署侧 IdP；不在 Phase 1 另造第三套用户模型。是否上中国大陆区见 Open Questions。
+- 国内版 IdP（adr-035/036，**均为 Proposed**）与中国大陆区上架见 Decision 9；不在 Phase 1 另造第三套用户模型。
 
 ### 4. 桌面与移动的分工
 
-- **桌面**阅读助手主路径仍是 `enx-chrome`（学习模式 + 点击查词）。
+- **桌面**阅读助手主路径仍是 `enx-chrome`（学习模式 + 点击查词）；**收藏写入**也只在桌面扩展完成（Phase 1）。
 - **移动**不做浏览器扩展战略，不对外承诺与桌面「任意网页注入点词」对等。
 - enx-ui 继续承担账户、Billing（**Web 上**）等；**Saved 管理**待 adr-032 的 enx-ui Saved 页落地后承担。enx-ui **不是** Phase 1 移动阅读主路径。
 
-### 5. 服务端与收藏边界（继承 adr-032）
+### 5. 服务端与收藏边界（继承 adr-032；收窄其 Decision 4）
 
 - 服务端**不存**正文、**不存**译文、**不**代抓 URL。
-- 收藏数据与桌面共用 `saved-pages`；App **依赖**扩展（或 Open Questions 中拍板的其它显式写入口）写入收藏，以及已落地的 api 端点。
+- 收藏数据与桌面共用 `saved-pages`；Phase 1 iOS App **只读**列表（`GET`），**没有**收藏写入口（无系统分享、无 App 内 Save）。**明确收窄 adr-032 Decision 4**：该条把「移动端系统分享菜单」列为收藏显式入口之一——Phase 1 **不做**；收藏只在桌面 `enx-chrome` 完成后再到 App 打开。
 - 本机可按 adr-032 Options B4 做离线正文缓存；缓存不得上传；**排除 iCloud 备份**；登出 ENX 时清除；设置里提供一键清除网站数据与正文缓存。登出时是否同时清 WebView 网站数据：默认**清除**（实现期可做成设置项，默认开）。
 
 ### 6. 明确不做（Phase 1 / 本 ADR 范围）
 
 - React Native / Flutter；Capacitor 主壳。
 - Phase 1 内的 Android 工程与上架。
+- 中国大陆区 App Store 上架、ICP 备案、国内版 IdP（见 Decision 9）。
 - 移动浏览器扩展战略。
+- 系统分享 / App 内收藏写入（收窄 adr-032 Decision 4）。
+- 抽正文失败后的选中文字送入阅读视图、粘贴文本等降级（Options H1/H2）。
 - 在第三方页 WebView 内做点击查词 / 高亮 / 渲染 ENX UI（只读抽正文脚本除外，见 Decision 2）。
 - 用本地 WebView 渲染抽出的正文。
 - 服务端全文 / 译文存储；「上传全文」API。
@@ -175,15 +187,22 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 - **Sign in with Apple（Guideline 4.8）**：见 Decision 3。
 - **账号删除（Guideline 5.1.1(v)）**：**Web 与移动端都要能发起**；级联清理业务数据与 Clerk 用户。此为 **iOS 提审硬前置**（对齐 adr-032 关联清单；今日仓库尚未实现，须在提审前补齐端点与 UI）。
 - 隐私标签 / Privacy Manifest / 隐私政策补 iOS 本机缓存与 WebView Cookie 表述，见关联清单。
+- **上架地区**：见 Decision 9（不含中国大陆区）。
 
 ### 8. Phase 1 完成定义（验收口径）
 
 事先登记样本与门槛（参照 adr-030「测之前定死阈值」的精神；具体数字 Accept 前可在实现 issue 里填，但类别如下不可缺）：
 
 1. **样本站点**：至少覆盖 adr-034 Context 中扩展原支持的静态文章站若干 + 1–2 个公开页；登录墙 / 付费墙站点单独标注「仅验证 WebView 打开与失败提示，不计入抽取成功率」。
-2. **抽取**：用户点击触发后，在样本公开页上达到事先登记的成功率门槛；过短 / 非正文按失败。
-3. **端到端**：桌面扩展收藏 → iOS 列表出现同一条 → 打开 WebView → 进入原生阅读视图 → 点击查词返回释义且计入配额 → 超额时 App 内仅见中性「配额不足」、无升级引导。
-4. **认证**：Clerk 登录（含 Sign in with Apple）成功拿到可验签 JWT；账号删除路径在提审前可用。
+2. **抽取成功路径**：用户点击触发后，在样本公开页上达到事先登记的成功率门槛；过短 / 非正文计为失败。
+3. **抽取失败路径**：对至少一条故意失败样本，App **只**展示失败提示并保留 WebView 可读；**不**出现选中送入阅读视图 / 粘贴文本等降级入口。
+4. **端到端**：桌面扩展收藏 → iOS 列表出现同一条（App 侧无写收藏动作）→ 打开 WebView → 进入原生阅读视图 → 点击查词返回释义且计入配额 → 超额时 App 内仅见中性「配额不足」、无升级引导。
+5. **认证与地区**：Clerk 登录（含 Sign in with Apple）成功拿到可验签 JWT；账号删除路径在提审前可用；上架配置不含中国大陆区。
+
+### 9. Phase 1 不上中国大陆区
+
+- Phase 1 只面向**非中国大陆** App Store 区；使用**海外版** Clerk。
+- **ICP 备案、国内版部署 / Logto（adr-035/036）不在 Phase 1 范围**；若日后要上大陆区，另立 ADR / 阶段，不 silently 扩本 ADR。
 
 ---
 
