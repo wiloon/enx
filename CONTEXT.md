@@ -111,5 +111,5 @@ _Avoid_: 文章导入、reader mode（浏览器自带阅读模式）、粘贴翻
 ### 移动端（enx-ios，Phase 1）
 
 **原生阅读视图（native reader view）**：
-iOS App 在 WKWebView 打开目标页之后，由用户点击按钮触发本机只读抽正文，再用 **TextKit / UITextView 一类原生文本控件**展示正文的界面。高亮与**点击查词**在原生层完成，不在 WebView 内完成；不以本地 WebView 渲染抽出的正文。与桌面扩展的「学习模式」不是同一概念；也不等同于 Safari 等系统 Reader View 产品。见 adr-042。
+iOS App 在 WKWebView 打开目标页之后，由用户点击按钮触发本机只读抽正文，再用 **UIKit `UITextView` + TextKit 2**（经 `UIViewRepresentable` 嵌在 SwiftUI 里）展示正文的界面。高亮与**点击查词**在原生层完成，不在 WebView 内完成；不以本地 WebView 渲染抽出的正文。与桌面扩展的「学习模式」不是同一概念；也不等同于 Safari 等系统 Reader View 产品。见 adr-042 Decision 11。
 _Avoid_: 学习模式（那是 enx-chrome 术语）、阅读模式（口语；指的就是本词条，文档里不用）、reader mode、查词浮层（那是扩展组件）、点词翻译（应说点击查词）

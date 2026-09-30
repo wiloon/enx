@@ -7,7 +7,7 @@
 | **关联 Spec** | 无。本 ADR 即 Phase 1 产品与技术边界；编码走 domain-modeling / TDD，不强制配套 TASK-SPEC（见 `docs/agents/domain.md` §ADR vs TASK-SPEC）。 |
 | **关联清单** | **Phase 1 发布目标 = 仅 TestFlight 内测，不上 App Store**（见 Decision 10）。**正式 App Store 提审前硬前置**（**不**阻塞 Phase 1 TestFlight）：Sign in with Apple（enx-ui + iOS）；账号删除（Web + App，级联 `saved_pages` / `page_reports` / reader 文档 / 配额行 / Clerk 用户等，对齐 adr-032）；App Store 隐私标签 / Privacy Manifest；`docs/tasks/LAUNCH-CHECKLIST.md` 隐私政策与服务条款补 iOS。**外部前置（用户本人执行）**见文末「外部前置清单」。 |
 | **关联 ADR** | [`adr-032-saved-pages-and-no-passive-reading-history.md`](adr-032-saved-pages-and-no-passive-reading-history.md)（收藏只存 URL+标题；Decision 5 预留「移动端 WebView + 本机抽文本」——本 ADR 把载体锁成 iOS 原生并补全产品流。**收窄其 Decision 4**：Phase 1 **不做**移动端系统分享菜单；App **无**收藏写入口，收藏只在桌面扩展完成，见本文 Decision 5。注：adr-032 文首「关联代码 / 待实现」已过期——api 与扩展收藏已落地，见本文关联代码）、[`adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md`](adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md) / [`adr-022-enx-ui-reader-persistence-and-retention.md`](adr-022-enx-ui-reader-persistence-and-retention.md)（桌面 Reader 把查词交给扩展；移动端无扩展，由原生阅读视图承接点击查词）、[`adr-015-cognito-to-clerk-auth-migration.md`](adr-015-cognito-to-clerk-auth-migration.md)（Clerk JWT → 本地 `users.Id`；本 ADR 在 iOS 复用同一合同，并新增 Sign in with Apple）、[`adr-018-dictionary-lookup-single-metered-seam.md`](adr-018-dictionary-lookup-single-metered-seam.md) / [`adr-029-lookup-quota-tiered-limits-and-count-gate-split.md`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md)（查词计量与时区头）、[`adr-034-site-support-on-demand-injection-and-generic-content-detection.md`](adr-034-site-support-on-demand-injection-and-generic-content-detection.md)（扩展侧因需保留原 DOM **不**整库引入 Readability.js；iOS 抽到独立原生视图，前提不同，**允许**引入 Readability 类库）、[`adr-035-global-and-china-editions-dual-deployment.md`](adr-035-global-and-china-editions-dual-deployment.md) / [`adr-036-china-edition-authentication-logto.md`](adr-036-china-edition-authentication-logto.md)（**均为 Proposed**；Phase 1 **不上**中国大陆区，海外版 Clerk，见 Decision 9） |
-| **关联代码** | **iOS 客户端：待实现（Accept 之后）。** **已确认落点**：本 monorepo 顶层 **`enx-ios/`**（与 `enx-chrome` / `enx-ui` / `enx-api` 并列），**不**单独建仓库；SwiftUI / UIKit 分工待定（下一轮再补）。**已实现（收藏数据面）**：enx-api `/api/saved-pages*`（`savedpage/`、`urlnorm/`，PR #61）；enx-chrome popup「Save this page」（`pageSave.ts` / `PageSavePrompt.tsx`）。**未实现**：enx-ui Saved 页（仍属 adr-032 Decision 4）。`GET /api/saved-pages` 无分页（上限 1000 条一次返回），对 iOS Phase 1 足够。查词：`GET /api/word/:word` → `dictionary.Service.Resolve`（adr-018）。认证：Clerk session JWT（adr-015）。**不**新增「上传全文」类 API。 |
+| **关联代码** | **iOS 客户端：待实现（Accept 之后）。** **已确认落点**：本 monorepo 顶层 **`enx-ios/`**（与 `enx-chrome` / `enx-ui` / `enx-api` 并列），**不**单独建仓库；UI 栈见 Decision 11（SwiftUI 壳 + UIKit 阅读视图 / WKWebView，最低 iOS 17）。**已实现（收藏数据面）**：enx-api `/api/saved-pages*`（`savedpage/`、`urlnorm/`，PR #61）；enx-chrome popup「Save this page」（`pageSave.ts` / `PageSavePrompt.tsx`）。**未实现**：enx-ui Saved 页（仍属 adr-032 Decision 4）。`GET /api/saved-pages` 无分页（上限 1000 条一次返回），对 iOS Phase 1 足够。查词：`GET /api/word/:word` → `dictionary.Service.Resolve`（adr-018）。认证：Clerk session JWT（adr-015）。**不**新增「上传全文」类 API。 |
 
 ---
 
@@ -77,7 +77,7 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 | C1. 在打开第三方页的 WebView 内注入 **交互式** JS（模拟 content script：点词监听、高亮、查词 UI） | **否决。** 会把移动端拖回「扩展注入」模型；第三方 DOM / CSP / 登录墙摩擦大；与「原生 UI 点击查词」锁定冲突。**注意**：否决的是**交互式**注入，不是一切脚本——只读抽正文见 C3。 |
 | C2. WebView 内叠加原生透明命中层，仍对着网页排版点词 | **否决。** 坐标映射 / 重排 / 缩放失败模式多；收益只是「看起来还在原页上点」。 |
 | C2b. 抽出 HTML 后用**本地** `WKWebView`（`loadHTMLString`）渲染正文，再在其上或旁挂点词 | **否决。** 用户已拍板：正文用原生文本渲染；不以本地 WebView 承载阅读视图。 |
-| **C3.（采用）允许只读抽正文脚本 + 原生阅读视图内点词** | 向加载第三方页的 `WKWebView` 注入**只读**抽取脚本（如 Readability，放在**隔离 content world**），由**用户点击按钮**触发，不自动跑；脚本只读 DOM、返回正文结构，**禁止**在该 WebView 内渲染任何 ENX UI、禁止为高亮 / 点词挂交互监听。抽出的正文用 **TextKit 2 / `UITextView`（或等价原生文本控件）** 渲染；高亮与点击查词只在原生层。与 adr-032 Decision 5「设备上抽取文本」一致；与 adr-034「扩展不整库引入 Readability」不冲突（扩展要留在原 DOM，iOS 要离开原 DOM）。 |
+| **C3.（采用）允许只读抽正文脚本 + 原生阅读视图内点词** | 向加载第三方页的 `WKWebView` 注入**只读**抽取脚本（如 Readability，放在**隔离 content world**），由**用户点击按钮**触发，不自动跑；脚本只读 DOM、返回正文结构，**禁止**在该 WebView 内渲染任何 ENX UI、禁止为高亮 / 点词挂交互监听。抽出的正文用 **`UITextView` + TextKit 2**（嵌在 SwiftUI 内）渲染；高亮与点击查词只在原生层。见 Decision 11。与 adr-032 Decision 5「设备上抽取文本」一致；与 adr-034「扩展不整库引入 Readability」不冲突（扩展要留在原 DOM，iOS 要离开原 DOM）。 |
 
 ### D. Phase 1 的 URL 入口范围
 
@@ -118,6 +118,14 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 | G2. Phase 1 上 StoreKit 内购并与 Stripe 权益同步 | **否决作 Phase 1。** 列为**后续选项**：须另立 ADR，写清 Apple 分成、收据校验、与现有 Stripe 订阅 / 积分的双向同步与对账代价。 |
 | **G3.（采用）Phase 1 App 内零购买入口、零升级引导** | 配额不足只提示「配额不足」（或等价中性文案）；已在 Web 订阅的用户在 App 内静默享受权益。429 文案须按客户端区分或由 App 使用本地文案（见 Decision 7）。 |
 
+### I. UI 框架（SwiftUI vs UIKit）
+
+| 方案 | 结论 |
+| --- | --- |
+| I1. 纯 SwiftUI 做阅读视图（`AttributedString` 链接 + `OpenURLAction`，或每词一个视图的自定义 `Layout`） | **否决。** 能做出点击查词，但释义浮层难以锚定到单词在正文中的位置；后续划词 / 整句翻译 / 当前句高亮（adr-007、adr-017、adr-025）在字符级几何与选区上很难做实。 |
+| I2. 纯 UIKit（全 App） | **否决。** 收藏列表、登录、设置、导航等常规页面用 UIKit 开发效率低于 SwiftUI，收益不成比例。 |
+| **I3.（采用）SwiftUI 为主 + UIKit 阅读视图 / WKWebView** | 壳与列表用 SwiftUI；原生阅读视图用 `UITextView` + TextKit 2；打开原站用 `WKWebView`；二者均经 `UIViewRepresentable` 嵌入。最低 **iOS 17**。见 Decision 11。 |
+
 ---
 
 ## Decision
@@ -128,7 +136,7 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 - **不做** React Native / Flutter 客户端。
 - **不做** 以 Capacitor / Cordova 包装 Web 作为阅读助手主路径。
 - **长期**仍计划 Android 原生（Kotlin 等），**不进入 Phase 1**；开 Android 时另立阶段 / ADR，默认仍原生而非回头选 RN。
-- SwiftUI / UIKit 分工待定（下一轮再补）；Bundle ID / 商店显示名随产品品牌（Catglish）另定。
+- UI 栈见 Decision 11；Bundle ID / 商店显示名随产品品牌（Catglish）另定。
 
 ### 2. Phase 1 产品流（主路径）
 
@@ -136,7 +144,7 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 2. iOS App 拉取同一用户的 **收藏列表**（`GET /api/saved-pages`）。
 3. 用户点开一条：App 内 **WKWebView** 加载该 URL。WebView 使用 App 自己的持久化网站数据（如 `WKWebsiteDataStore.default()`）。产品接受的站点打开方式是：**只读公开站点，或用户在该 WebView 内单独登录**——**不是**「沿用 Safari 已有登录态」。已知限制（**不做规避**）：与 Safari **不共享** Cookie / 登录态；依赖 Google 登录的站点在内嵌 WebView 中会被拒（`disallowed_useragent`），这类站点在 App 内基本登不上。
 4. WebView 加载完成后显示「进入阅读视图」（或等价）按钮；**仅当用户点击**时，向该 WebView 注入**只读**抽正文脚本（如 Readability，**隔离 content world**），在本机得到正文结构。服务端不持有、不接收全文。抽取失败、结果过短或判为非正文时：按 Options H3 **直接提示失败**，保留 WebView 可读；**不做**「选中文字送入阅读视图」「粘贴文本」等降级（具体「过短」阈值实现期用样本定）。
-5. 仅抽取成功时进入 **原生阅读视图**：用 **TextKit 2 / `UITextView`（或等价原生文本控件）** 渲染抽出的正文；**高亮与点击查词只在原生层**。禁止用本地 `WKWebView`（`loadHTMLString` 等）渲染该正文；禁止在第三方页 WebView 内做点击查词、高亮或渲染任何 ENX UI。
+5. 仅抽取成功时进入 **原生阅读视图**（Decision 11）：`UITextView` + TextKit 2 渲染正文、生词高亮与点击查词的字符命中；**高亮与点击查词只在原生层**。禁止用本地 `WKWebView`（`loadHTMLString` 等）渲染该正文；禁止在第三方页 WebView 内做点击查词、高亮或渲染任何 ENX UI。
 6. 查词请求走现有 enx-api 合同（见 Decision 2a）；只上传词或（若后续做划词）用户选中的片段，不上传文章全文。
 
 ### 2a. 查词计量、错误展示与统计（Phase 1）
@@ -215,6 +223,14 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 - **外部测试**：仍须通过 Apple Beta App Review；评审可能触及部分指南，但正式上架前的 Sign in with Apple / 账号删除硬前置仍按 Decision 7 卡在 **App Store 提审**，不因 Phase 1 选择内部 TestFlight 而取消这些已定需求。
 - 从 TestFlight 走到正式上架时，另开阶段 / checklist，完成本文关联清单中的提审硬前置。
 
+### 11. UI 框架：SwiftUI 壳 + UIKit 阅读视图 / WKWebView；最低 iOS 17
+
+- **App 整体以 SwiftUI 为主**：收藏列表、登录、设置、导航等常规界面。
+- **原生阅读视图用 UIKit**：`UITextView` + **TextKit 2**，承担正文渲染、生词高亮、点击查词的**字符命中**；经 `UIViewRepresentable` 嵌入 SwiftUI。
+- **打开原站的 WebView**：`WKWebView`，同样经 `UIViewRepresentable` 嵌入 SwiftUI（只读抽正文脚本边界见 Decision 2）。
+- **最低系统版本：iOS 17**（部署 target）。
+- 否决纯 SwiftUI 阅读视图与纯 UIKit 全 App，见 Options I1 / I2。
+
 ---
 
 ## Rationale
@@ -224,7 +240,7 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 - **先 TestFlight、后上架**：把阅读闭环与商店合规拆开；SiWA / 删号仍做，但不堵第一轮真机验证。
 - **先 iOS 后 Android**：双端并行会让第一阶段变成脚手架竞赛。
 - **只读注入 ≠ 交互注入**：本机抽正文在 iOS 上现实路径就是对第三方页 WebView 跑抽取脚本；把边界画在「只读 + 用户手势 + 隔离 world」上，既让 Decision 可实现，又不滑回扩展模型。
-- **TextKit 而非本地 WebView 渲染**：高亮与点词命中落在原生文本系统上，避免「阅读视图仍是 WebView」的灰色地带。
+- **SwiftUI + UITextView/TextKit 2**：常规页用 SwiftUI 提速；点词几何与后续划词/句级高亮需要 TextKit 级字符命中，纯 SwiftUI 路径否决理由见 Options I1。
 - **WebView 登录现实写进 Decision**：避免实现者误以为能复用 Safari 订阅 Cookie；Google 内嵌登录被拒是平台限制，不在 Phase 1 做 UA 伪装等规避。
 - **App 内零付费引导**：即使只发 TestFlight 也不夹带升级文案，避免养成违规构建习惯。
 - **Sign in with Apple / 删号绑正式提审**：满足日后 4.8 / 5.1.1(v)，同时不拖慢 InfoQ 闭环验证。
@@ -269,7 +285,7 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 - 系统分享菜单 / Share Extension / App 内收藏写入。
 - 抽正文失败后的选中送入阅读视图、粘贴文本等降级。
 - 正文抽取库的最终选型细节与「过短」字数阈值（实现期用样本定；**允许**在 iOS 整库引入 Readability 类实现，与 adr-034 扩展侧决定前提不同）。
-- SwiftUI / UIKit 分工与设计系统（待定，下一轮再补）；iOS 查词 UI 最终组件命名（不称「查词浮层」）。
+- 设计系统细节与 iOS 查词 UI 最终组件命名（不称「查词浮层」）；划词 / 整句翻译 / 当前句高亮的完整实现（Phase 1 以点击查词闭环为必达，栈已按 Decision 11 预留 TextKit 命中能力）。
 - 划词整句翻译、单词高亮档位、生词本复习在 iOS 上的完整对等（Phase 1 以点击查词闭环为必达）。
 - StoreKit 内购与 Stripe 权益同步（后续 ADR）。
 - enx-ui 无扩展时的 Web 内点词（adr-019 Revisit）。
@@ -280,7 +296,7 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 
 ## Open Questions
 
-**已全部关闭（2026-09-30 用户拍板）**——见 Decision 5 / 2 / 9 / 10 等。本节不再保留待决项。SwiftUI / UIKit 分工明确为**待定**（非开放产品决策，下一轮再补）。
+**已全部关闭（2026-09-30 用户拍板）**——见 Decision 5 / 2 / 9 / 10 / 11 等。本节不再保留待决项。
 
 ---
 
@@ -320,8 +336,8 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 
 ## 待用户 Accept 时确认
 
-Decision 1–10 与 Options 否决项已按用户拍板写死；原 Open Questions 已关闭。Accept 时请将状态栏改为 Accepted 并注明日期。下列项**不阻塞 Accept**，留到实现期 / 下一轮：
+Decision 1–11 与 Options 否决项已按用户拍板写死；原 Open Questions 已关闭。Accept 时请将状态栏改为 Accepted 并注明日期。下列项**不阻塞 Accept**，留到实现期：
 
-1. `enx-ios/` 内模块切分与 Xcode / CI 骨架；**SwiftUI / UIKit 分工待定**。
+1. `enx-ios/` 内模块切分与 Xcode / CI 骨架（按 Decision 11：SwiftUI 壳 + `UIViewRepresentable` 包装阅读视图 / WKWebView）。
 2. Readability（或同类）的具体集成方式与「过短」阈值数字。
 3. `X-Enx-Client: ios` 与 429 文案分流的精确实现（api 改 message vs 客户端本地文案）。
