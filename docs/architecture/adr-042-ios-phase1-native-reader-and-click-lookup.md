@@ -217,6 +217,7 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 - **App 内零付费引导**：用最小合规面先上架验证阅读闭环；StoreKit + Stripe 双账本成本高，留给专门 ADR。
 - **Sign in with Apple 网页一并开**：满足 4.8 的同时避免「仅 App 有 Apple、网页没有」的身份分裂；隐藏邮箱副作用在管理接口侧消化。
 - **账号删除硬前置**：审核条款 + adr-032 已要求的数据义务，不能再欠到上架当天。
+- **不上大陆区 / 不做分享写入口 / 失败不降级**：把 Phase 1 钉在「海外只读续读 + 抽取成败二元」上，避免 ICP、Share Extension 与半套 Reader 入口同时进第一阶段。
 - **不要求 TASK-SPEC**：决策面已可编码；细节用 TDD 与实现期 issue（`docs/agents/domain.md`）。
 
 ---
@@ -225,24 +226,25 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 
 ### Positive
 
-- 移动与桌面分工清晰：扩展管桌面原页点词，App 管原生阅读视图点词。
+- 移动与桌面分工清晰：扩展管桌面原页点词与收藏写入，App 管原生阅读视图点词。
 - 版权与隐私边界与 adr-032 一致；只读抽正文不扩大服务端持有面。
-- 注入 / 渲染 / 审核边界可验收，降低实现期争吵成本。
-- Phase 1 范围可交付：一条主路径，一个平台，一套认证，零 IAP。
+- 注入 / 渲染 / 审核 / 地区 / 失败路径边界可验收，降低实现期争吵成本。
+- Phase 1 范围可交付：一条主路径，一个平台，一套认证，零 IAP，无大陆区与分享扩展。
 
 ### Negative
 
-- 需从零建 `enx-ios/`、商店账号与 CI；短期无 Android 客户端。
+- 需从零建 `enx-ios/`、商店账号与 CI；短期无 Android 客户端；无中国大陆区用户可装。
 - 公开页以外，用户须在 WebView 内重新登录；Google OAuth 站点基本不可登；付费墙体验弱于「Safari 已登录」。
+- Phase 1 App 不能从手机侧新增收藏，完全依赖桌面扩展。
 - 桌面与移动查词 UI 两套实现。
 - 账号删除与 Sign in with Apple 会波及 enx-api / enx-ui，不只是 App 工程。
-- 抽正文失败时，若无降级（见 Open Questions），用户在 App 内可能暂时无法点词。
+- 抽正文失败时用户在 App 内无法点词（仅 WebView 可读 + 失败提示）。
 
 ### Mitigation
 
-- 抽正文失败：至少保留 WebView 可读 + 明确「无法进入原生阅读视图」提示；进一步降级见 Open Questions，**不**改为服务端存正文。
+- 抽正文失败：保留 WebView 可读 + 明确失败提示；**不**加选中/粘贴降级；**不**改为服务端存正文。后续若要降级，走 Revisit Trigger 另议。
 - 设置页提供「清除网站数据」；登出默认清 WebView 数据与正文缓存。
-- Android 在 iOS 主路径验证后再立项。
+- Android / 大陆区 / 系统分享在对应 Revisit 或另阶段再开。
 - 429 等文案在 api 或客户端侧按 Decision 2a 处理，提审前用真机配额打满验收。
 
 ---
@@ -250,29 +252,32 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 ## Out of Scope（本次不做）
 
 - Android 工程、上架与 CI。
+- 中国大陆区上架、ICP 备案、国内版 App 登录（adr-035/036）。
+- 系统分享菜单 / Share Extension / App 内收藏写入。
+- 抽正文失败后的选中送入阅读视图、粘贴文本等降级。
 - 正文抽取库的最终选型细节与「过短」字数阈值（实现期用样本定；**允许**在 iOS 整库引入 Readability 类实现，与 adr-034 扩展侧决定前提不同）。
 - UIKit vs SwiftUI 导航与设计系统；iOS 查词 UI 的最终组件命名（不称「查词浮层」）。
 - 划词整句翻译、单词高亮档位、生词本复习在 iOS 上的完整对等（Phase 1 以点击查词闭环为必达）。
 - StoreKit 内购与 Stripe 权益同步（后续 ADR）。
-- 国内版 App 登录与中国大陆区上架（Open Questions / adr-035·036）。
 - enx-ui 无扩展时的 Web 内点词（adr-019 Revisit）。
 - iOS 是否展示 adr-022 的 Reader「我的文档」（`/api/reader/documents`）——不做进 Phase 1 主路径。
 - App Store 显示名与 Bundle ID 的最终字符串。
 
 ---
 
-## Open Questions（尚未拍板，实现前须用户确认）
+## Open Questions
 
-1. **是否上中国大陆区 App Store？** 涉及 ICP 备案、Clerk 在大陆可用性，以及与 Proposed 的 adr-035/036 关系。未拍板前，本文**不**假定上架地区名单。
-2. **抽正文失败的降级**是否采用、采用哪一种（可多选）：(a) 在 WebView 中选中文字 → 原生菜单「在阅读视图中打开选中内容」；(b) 粘贴纯文本进入原生阅读视图。二者仍是本机、不上传全文，与 F3 一致；**本文不预选**。
-3. **系统分享入口 Phase 1 是否必做？** adr-032 Decision 4 将「移动端系统分享菜单」写为收藏的显式入口之一；本文 Options D3 把 Phase 1 **主路径**定为桌面扩展收藏 → iOS 列表只读打开。若分享不做，则 Phase 1 iOS **可能没有任何收藏写入口**（只读列表）——这是对 adr-032 Decision 4 的**收窄**，须显式拍板：必做 / 可延期 / 改由其它写入口替代。
+**已全部关闭（2026-09-30 用户拍板）**——见 Decision 5（收窄 adr-032 Decision 4 / 无分享写入口）、Decision 2 第 4 步与 Options H3（失败直接提示）、Decision 9（不上中国大陆区）。本节不再保留待决项。
 
 ---
 
 ## Revisit Trigger
 
 - **iOS 主路径已验证且需要 Android 用户**：另阶段立项 Android 原生（仍非 RN），产品流与本文 Decision 2/5 对齐。
-- **WebView 打开 / 登录在目标站点上系统性失败**：收窄入口（更多依赖粘贴文本 / 精选库等——若 Open Questions 2 已采纳），**不**改为服务端存正文；**不**做 Google `disallowed_useragent` 规避。
+- **需要中国大陆区或国内版 IdP**：另立阶段 / ADR（ICP、adr-035/036）；不在本 ADR 内扩范围。
+- **需要移动端收藏写入口**（系统分享等）：另议；届时显式修订「对 adr-032 Decision 4 的 Phase 1 收窄」。
+- **抽取失败率过高、用户强烈要求降级**：可重开 Options H1/H2，另补 Decision；**不**改为服务端存正文；**不**做 Google `disallowed_useragent` 规避。
+- **WebView 打开 / 登录在目标站点上系统性失败**：收窄可读站点预期或另议入口，仍不存正文、不做 UA 规避。
 - **人力无法维持单端原生、且移动需求已被证明**：另立 ADR 重开载体选择；默认仍优先「单端原生做深」，而非先引入 RN。
 - **App Store 条款变化**（尤其 3.1.x 付费、4.8 登录、5.1.1(v) 删号）或 Clerk 移动登录阻塞：付费面另立 IAP ADR；身份走 adr-015 退出路径（Logto / OIDC），若 adr-036 Accepted 则可复用其认证 seam。
 - **平台出现可依赖的通用网页注入扩展能力**：可评估，**当前不作为战略**，需新 ADR 才能改 E2。
@@ -282,7 +287,7 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 
 ## 待用户 Accept 时确认
 
-Decision 1–8 与 Options 否决项已按锁定项写死。Accept 时请：(1) 关闭或回答 **Open Questions**；(2) 状态栏改为 Accepted 并注明日期。下列项**不阻塞 Accept**，留到实现期：
+Decision 1–9 与 Options 否决项已全部按用户拍板写死；原 Open Questions 已关闭。Accept 时请将状态栏改为 Accepted 并注明日期。下列项**不阻塞 Accept**，留到实现期：
 
 1. `enx-ios/` 内模块切分与 Xcode / CI 骨架。
 2. Readability（或同类）的具体集成方式与「过短」阈值数字。
