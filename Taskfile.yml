@@ -388,6 +388,9 @@ tasks:
       REV:
         sh: git -C {{.ROOT_DIR}} rev-parse --abbrev-ref HEAD
     cmds:
+      # Tekton builds origin's commit, the extension builds the local tree:
+      # pull first so both are on the same code.
+      - git -C {{.ROOT_DIR}} pull --ff-only
       - task: chrome:build
       - task tekton-deploy-enx REV={{.REV}} FORCE={{.FORCE | default "false"}} ENX_DIR={{.ROOT_DIR}}
 
