@@ -28,7 +28,7 @@ ADR-032 锁定「收藏 = URL + 标题、服务端不存正文」，并把移动
 7. App 内**无**升级提示与外部购买引导；StoreKit 内购 Phase 1 不做。
 8. Sign in with Apple 与账号删除仍是已定需求，但是 **正式 App Store 提审前**硬前置；Phase 1 发布目标仅为 **TestFlight 内测**，不上 App Store。
 9. Phase 1 **不上**中国大陆区；**不做**系统分享写入口（收窄 adr-032 Decision 4）；抽正文失败**不**做选中/粘贴降级。
-10. 工程落在 monorepo 的 `enx-ios/`；主验收站点为 InfoQ 英文站。
+10. 工程落在 monorepo 的 `enx-ios/`；主验收站点为 InfoQ 英文站；UI = SwiftUI 壳 + UITextView/TextKit 2 阅读视图 + WKWebView（iOS 17+）。
 
 这些决定难以反悔（原生工程与商店身份、与扩展的分工边界、版权边界、审核条款），且与「先做响应式 / Capacitor 壳」的旧假设相反，需要单独 ADR 写清否决项。
 
