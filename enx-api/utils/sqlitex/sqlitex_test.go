@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"gorm.io/gorm/logger"
 )
 
 func TestTableNames(t *testing.T) {
@@ -125,5 +127,22 @@ func TestRepairWordsTableDDLIfNeededNoopWhenClean(t *testing.T) {
 
 	if err := repairWordsTableDDLIfNeeded(); err != nil {
 		t.Errorf("unexpected error on a clean words table: %v", err)
+	}
+}
+
+// Only debug traces every statement; production (info) keeps slow queries
+// and errors.
+func TestSQLLogLevel(t *testing.T) {
+	cases := map[string]logger.LogLevel{
+		"debug": logger.Info,
+		"Debug": logger.Info,
+		"info":  logger.Warn,
+		"error": logger.Warn,
+		"":      logger.Warn,
+	}
+	for level, want := range cases {
+		if got := SQLLogLevel(level); got != want {
+			t.Errorf("SQLLogLevel(%q) = %v, want %v", level, got, want)
+		}
 	}
 }
