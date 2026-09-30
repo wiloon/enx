@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | **Proposed — 2026-09-30**（Decision 与原 Open Questions 均已按用户拍板写死；**仍待用户明确 Accept** 后再改 Accepted）。在用户 Accept 之前，**不以本 ADR 启动编码或改仓库实现**。Accept 后以 Decision 为实现依据（同 adr-012 Decision 10 / adr-034），**不要求**先写 `TASK-SPEC`。 |
+| **状态** | **Accepted — 2026-09-30（用户确认）**。以 Decision 为实现依据（同 adr-012 Decision 10 / adr-034），**不要求**先写 `TASK-SPEC`。 |
 | **日期** | 2026-09-30 |
 | **关联 Spec** | 无。本 ADR 即 Phase 1 产品与技术边界；编码走 domain-modeling / TDD，不强制配套 TASK-SPEC（见 `docs/agents/domain.md` §ADR vs TASK-SPEC）。 |
 | **关联清单** | **Phase 1 发布目标 = 仅 TestFlight 内测，不上 App Store**（见 Decision 10）。**正式 App Store 提审前硬前置**（**不**阻塞 Phase 1 TestFlight）：Sign in with Apple（enx-ui + iOS）；账号删除（Web + App，级联 `saved_pages` / `page_reports` / reader 文档 / 配额行 / Clerk 用户等，对齐 adr-032）；App Store 隐私标签 / Privacy Manifest；`docs/tasks/LAUNCH-CHECKLIST.md` 隐私政策与服务条款补 iOS。**外部前置（用户本人执行）**见文末「外部前置清单」。 |
