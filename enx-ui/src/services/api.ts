@@ -6,6 +6,8 @@ import {
   BillingMeData,
   CheckoutSessionData,
   MeData,
+  PreferenceChanges,
+  PreferencesData,
   ReaderDocument,
   ReaderDocumentSummary,
   RephraseData,
@@ -129,6 +131,21 @@ export class ApiService {
 
   async getMe(): Promise<ApiResponse<MeData>> {
     return this.makeRequest('/api/me')
+  }
+
+  // Per-user settings kept on the server (ADR-044); the extension reads and
+  // writes the same ones. PUT answers with the full set, like GET.
+  async getPreferences(): Promise<ApiResponse<PreferencesData>> {
+    return this.makeRequest('/api/me/preferences')
+  }
+
+  async updatePreferences(
+    changes: PreferenceChanges
+  ): Promise<ApiResponse<PreferencesData>> {
+    return this.makeRequest('/api/me/preferences', {
+      method: 'PUT',
+      body: JSON.stringify(changes),
+    })
   }
 
   async getVersion(): Promise<ApiResponse<VersionData>> {
