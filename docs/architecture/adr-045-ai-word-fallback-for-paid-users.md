@@ -97,7 +97,7 @@ ADR-030 早就把「AI 兜底」设计成链尾，但它的存储与计费方案
    - **`is_word = true` 且 `quality ≥ 阈值`**（配置 `ai_word_cache_min_quality`，初值 8，**是猜测值，上线后按数据调**）：写入 `words`，`source='ai'`，同时按普通查词流程记入 `user_dicts`（生词本）。因为有了 `words.id`，这条路径与 ECDICT 命中完全一样。
    - **`is_word = true` 但分数不够**：展示给当事用户，**不入库**，没有 `words.id`，所以不进生词本（`Resolve` 对「无法缓存」本来就有这条分支：`ID` 为空则跳过复习记账）。
    - **`is_word = false`**：按未命中处理，浮层显示「AI 也没有这个词」。
-   - **库表变更**（迁移 `009`）：
+   - **库表变更**（GORM AutoMigrate：改 `sqlitex.Word` 与 `repo.Word` 两个 model，不写 SQL 迁移文件；下面的 SQL 只说明列的含义。`source` 与 `admin_edited_at` 已随第一步实现，`ai_quality` 与 `ai_prompt_version` 随 AI 兜底后端加）：
 
      ```sql
      ALTER TABLE words ADD COLUMN source            TEXT    NOT NULL DEFAULT 'ecdict';  -- 'ecdict' | 'ai'：词最初从哪来，之后不变

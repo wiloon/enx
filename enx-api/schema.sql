@@ -46,7 +46,15 @@ CREATE TABLE IF NOT EXISTS words (
     deleted_at INTEGER,  -- Soft delete: NULL = active, timestamp = deleted
 
     -- Query statistics
-    load_count INTEGER DEFAULT 0
+    load_count INTEGER DEFAULT 0,
+
+    -- Where the definition first came from: 'ecdict' or 'ai' (ADR-045).
+    -- Unchanged by an admin edit; that is admin_edited_at.
+    source TEXT NOT NULL DEFAULT 'ecdict',
+
+    -- Unix milliseconds of the last admin edit; NULL = never edited. An 'ai'
+    -- row is hidden from users who can't use AI until it has been edited.
+    admin_edited_at INTEGER
 );
 
 -- Index for soft delete queries (only active records)

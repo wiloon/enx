@@ -29,6 +29,11 @@ type Word struct {
 	// 0: default: normal type
 	// 1: raw: this word would not be translated
 	WordType int
+
+	// Where the definition first came from, "ecdict" or "ai" (ADR-045). Left
+	// out when empty so the many places that serialize a Word without a
+	// lookup behind it don't grow a field.
+	Origin string `json:"Origin,omitempty"`
 }
 
 // nonEnglish matches everything SetEnglish strips from a token. Compiled

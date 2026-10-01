@@ -33,6 +33,12 @@ func NewService(source Source) *Service {
 	return &Service{source: source}
 }
 
+// CanUseAI reports whether userID may use AI features (see Status.CanUseAI).
+func (s *Service) CanUseAI(ctx context.Context, userID string) (bool, error) {
+	status, err := s.Status(ctx, userID)
+	return status.CanUseAI, err
+}
+
 // Status returns userID's payment state. A subscriber is entitled without
 // the top-up balance being read: an active subscription already answers
 // both questions.

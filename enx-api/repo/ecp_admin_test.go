@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -114,5 +115,134 @@ func TestAdminSyncWordFromEcdictOverwritesExistingRow(t *testing.T) {
 	sqlitex.DB.Model(&Word{}).Where("LOWER(english) = LOWER(?)", "run").Count(&count)
 	if count != 1 {
 		t.Fatalf("row count = %d, want 1", count)
+	}
+}
+
+func TestFindWordForLookupHidesUneditedAIRows(t *testing.T) {
+	db := newTestDB(t)
+	now := time.Now().UnixMilli()
+	for _, w := range []Word{
+		{Id: "w-ecdict", English: "serendipity", Chinese: "机缘巧合", Source: WordSourceECDICT},
+		{Id: "w-ai", English: "rizzler", Chinese: "很有魅力的人", Source: WordSourceAI},
+		{Id: "w-ai-edited", English: "doomscroll", Chinese: "刷坏消息", Source: WordSourceAI, AdminEditedAt: &now},
+		{Id: "w-ecdict-edited", English: "gist", Chinese: "要点", Source: WordSourceECDICT, AdminEditedAt: &now},
+	} {
+		w.CreatedAt, w.UpdatedAt = now, now
+		if err := db.Create(&w).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, tc := range []struct {
+		word      string
+		includeAI bool
+		want      string // "" = not visible
+	}{
+		{"serendipity", false, "w-ecdict"},
+		{"rizzler", false, ""},
+		{"rizzler", true, "w-ai"},
+		{"RIZZLER", true, "w-ai"},
+		{"doomscroll", false, "w-ai-edited"},
+		{"gist", false, "w-ecdict-edited"},
+		{"missing", true, ""},
+	} {
+		if got := FindWordForLookup(tc.word, tc.includeAI).Id; got != tc.want {
+			t.Errorf("FindWordForLookup(%q, includeAI=%v) = %q, want %q", tc.word, tc.includeAI, got, tc.want)
+		}
+	}
+}
+
+func TestFindWordForLookupSkipsSoftDeletedRows(t *testing.T) {
+	db := newTestDB(t)
+	now := time.Now().UnixMilli()
+	if err := db.Create(&Word{Id: "w1", English: "gone", Chinese: "没了", Source: WordSourceECDICT, CreatedAt: now, UpdatedAt: now, DeletedAt: &now}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got := FindWordForLookup("gone", true).Id; got != "" {
+		t.Fatalf("a soft-deleted row was found: %q", got)
+	}
+}
+
+func TestAdminEditWordRecordsTheEditAndKeepsTheSource(t *testing.T) {
+	db := newTestDB(t)
+	now := time.Now().UnixMilli()
+	if err := db.Create(&Word{Id: "w-ai", English: "rizzler", Chinese: "旧释义", Pronunciation: "", Source: WordSourceAI, CreatedAt: now, UpdatedAt: now}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got := FindWordForLookup("rizzler", false).Id; got != "" {
+		t.Fatal("precondition: an unedited AI row should be hidden")
+	}
+
+	row, err := AdminEditWord("Rizzler", "n. 很有魅力的人", "ˈrɪzlər")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Chinese != "n. 很有魅力的人" || row.Pronunciation != "ˈrɪzlər" {
+		t.Fatalf("returned row = %+v", row)
+	}
+	if row.Source != WordSourceAI {
+		t.Fatalf("Source = %q: an edit must not rewrite where the row came from", row.Source)
+	}
+	if row.AdminEditedAt == nil || *row.AdminEditedAt < now {
+		t.Fatalf("AdminEditedAt = %v, want a time at or after the edit", row.AdminEditedAt)
+	}
+
+	var stored Word
+	if err := db.Where("id = ?", "w-ai").First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Chinese != "n. 很有魅力的人" || stored.Source != WordSourceAI || stored.AdminEditedAt == nil {
+		t.Fatalf("stored row = %+v", stored)
+	}
+	// Editing is what releases an AI row to users who can't use AI.
+	if got := FindWordForLookup("rizzler", false).Id; got != "w-ai" {
+		t.Fatalf("after an admin edit the row should be visible to everyone, got %q", got)
+	}
+}
+
+func TestAdminEditWordRefusesMissingAndDeletedRows(t *testing.T) {
+	db := newTestDB(t)
+	now := time.Now().UnixMilli()
+	if err := db.Create(&Word{Id: "w-dead", English: "goodbye", Chinese: "再见", Source: WordSourceECDICT, CreatedAt: now, UpdatedAt: now, DeletedAt: &now}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, word := range []string{"missing", "goodbye"} {
+		if _, err := AdminEditWord(word, "x", ""); !errors.Is(err, ErrWordNotFound) {
+			t.Errorf("AdminEditWord(%q) err = %v, want ErrWordNotFound", word, err)
+		}
+	}
+}
+
+func TestAdminSyncWordFromEcdictResetsToAPlainECDICTRow(t *testing.T) {
+	db := newTestDB(t)
+	now := time.Now().UnixMilli()
+	if err := db.Create(&Word{Id: "w1", English: "rizzler", Chinese: "AI 的释义", Source: WordSourceAI, AdminEditedAt: &now, CreatedAt: now, UpdatedAt: now}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	row, err := AdminSyncWordFromEcdict("rizzler", "n. ECDICT 的释义", "ˈrɪzlər")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Source != WordSourceECDICT || row.AdminEditedAt != nil {
+		t.Fatalf("row = %+v, want source ecdict and no recorded edit", row)
+	}
+	var stored Word
+	if err := db.Where("id = ?", "w1").First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Source != WordSourceECDICT || stored.AdminEditedAt != nil || stored.Chinese != "n. ECDICT 的释义" {
+		t.Fatalf("stored row = %+v", stored)
+	}
+}
+
+func TestAdminSyncWordFromEcdictCreatesAnECDICTRow(t *testing.T) {
+	newTestDB(t)
+	row, err := AdminSyncWordFromEcdict("fresh", "新的", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Source != WordSourceECDICT || row.AdminEditedAt != nil {
+		t.Fatalf("row = %+v, want source ecdict and no recorded edit", row)
 	}
 }

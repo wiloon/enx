@@ -71,3 +71,31 @@ func TestStatusReturnsSourceErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestCanUseAI(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		src  fakeSource
+		want bool
+	}{
+		{"subscriber", fakeSource{subscribed: true}, true},
+		{"top-up only", fakeSource{topup: 5}, true},
+		{"neither", fakeSource{}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			src := tc.src
+			got, err := NewService(&src).CanUseAI(context.Background(), "u1")
+			if err != nil || got != tc.want {
+				t.Fatalf("CanUseAI = %v, %v, want %v", got, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestCanUseAIReturnsSourceErrors(t *testing.T) {
+	boom := errors.New("db down")
+	got, err := NewService(&fakeSource{subscribedErr: boom}).CanUseAI(context.Background(), "u1")
+	if !errors.Is(err, boom) || got {
+		t.Fatalf("CanUseAI = %v, %v, want false and the source error", got, err)
+	}
+}

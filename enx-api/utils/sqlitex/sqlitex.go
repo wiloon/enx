@@ -47,6 +47,13 @@ type Word struct {
 	UpdatedAt     int64   `gorm:"column:updated_at;not null"`
 	DeletedAt     *int64  `gorm:"column:deleted_at;index:idx_words_deleted_at"`
 	LoadCount     int     `gorm:"column:load_count;default:0"`
+	// Where the definition first came from: "ecdict" or "ai" (ADR-045). It
+	// does not change when an admin edits the row; that is AdminEditedAt.
+	Source string `gorm:"column:source;not null;default:ecdict"`
+	// Unix milliseconds of the last admin edit; NULL when no admin has
+	// changed the row. An AI row is hidden from users who can't use AI
+	// until an admin has edited it (ADR-045 Decision 6).
+	AdminEditedAt *int64 `gorm:"column:admin_edited_at"`
 }
 
 func (Word) TableName() string {

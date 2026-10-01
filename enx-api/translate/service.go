@@ -91,6 +91,7 @@ func (h *Handler) translateWord(c *gin.Context, raw string) {
 	word.Key = strings.ToLower(res.English)
 	word.Chinese = res.Chinese
 	word.Pronunciation = res.Pronunciation
+	word.Origin = string(res.Origin)
 
 	// Review bookkeeping needs a persisted word: nothing to count on a miss.
 	if word.Id != "" {

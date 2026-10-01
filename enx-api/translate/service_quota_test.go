@@ -1,6 +1,7 @@
 package translate
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -35,11 +36,16 @@ func setupQuotaTestDB(t *testing.T) {
 	sqlitex.DB = db
 }
 
+// noAI is an Entitlements for tests that don't exercise AI definitions.
+type noAI struct{}
+
+func (noAI) CanUseAI(context.Context, string) (bool, error) { return false, nil }
+
 // newTestHandler wires the production dictionary service and review log
 // over whatever sqlitex.DB and ECDICT the test has set up.
 func newTestHandler() *Handler {
 	return NewHandler(
-		dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, dictionary.QuotaMeter{}),
+		dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, dictionary.QuotaMeter{}, noAI{}),
 		repo.ReviewLog{},
 	)
 }

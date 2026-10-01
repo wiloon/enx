@@ -13,16 +13,24 @@ type Word struct {
 	LoadCount      int       `gorm:"column:load_count;default:0"`
 	Chinese        string    `gorm:"column:chinese"`
 	Pronunciation  string    `gorm:"column:pronunciation"`
-	CreatedAt      int64     `gorm:"column:created_at"` // Unix milliseconds
-	UpdatedAt      int64     `gorm:"column:updated_at"` // Unix milliseconds
-	DeletedAt      *int64    `gorm:"column:deleted_at"` // NULL or Unix milliseconds
-	CreateDatetime time.Time `gorm:"-"`                 // For compatibility
-	UpdateDatetime time.Time `gorm:"-"`                 // For compatibility
+	CreatedAt      int64     `gorm:"column:created_at"`            // Unix milliseconds
+	UpdatedAt      int64     `gorm:"column:updated_at"`            // Unix milliseconds
+	DeletedAt      *int64    `gorm:"column:deleted_at"`            // NULL or Unix milliseconds
+	Source         string    `gorm:"column:source;default:ecdict"` // WordSourceECDICT or WordSourceAI (ADR-045)
+	AdminEditedAt  *int64    `gorm:"column:admin_edited_at"`       // NULL = no admin has edited the row; else Unix milliseconds
+	CreateDatetime time.Time `gorm:"-"`                            // For compatibility
+	UpdateDatetime time.Time `gorm:"-"`                            // For compatibility
 }
 
 func (Word) TableName() string {
 	return "words"
 }
+
+// Where a words row's definition first came from (ADR-045).
+const (
+	WordSourceECDICT = "ecdict"
+	WordSourceAI     = "ai"
+)
 
 type UserDict struct {
 	UserId            string    `gorm:"column:user_id;primaryKey"`
@@ -66,6 +74,25 @@ func GetWordByEnglish(english string) *Word {
 	}
 
 	logger.Debugf("find word via GORM, id: %s, english: %s", word.Id, word.English)
+	return word
+}
+
+// FindWordForLookup is GetWordByEnglish for the user lookup path. Unless
+// includeAI, it leaves out the rows only users who can use AI may see: AI-made
+// definitions no admin has edited yet (ADR-045 Decision 6). The exclusion is
+// in the query rather than applied after reading, so a hidden row is never
+// loaded and cannot leak through a caller that forgets to filter it.
+func FindWordForLookup(english string, includeAI bool) *Word {
+	english = CanonicalEnglish(english)
+	query := sqlitex.DB.Where("english = ? AND deleted_at IS NULL", english)
+	if !includeAI {
+		query = query.Where("(source <> ? OR admin_edited_at IS NOT NULL)", WordSourceAI)
+	}
+	word := &Word{}
+	if err := query.First(word).Error; err != nil {
+		logger.Debugf("word not found for lookup: %s (includeAI=%v): %v", english, includeAI, err)
+		return &Word{}
+	}
 	return word
 }
 

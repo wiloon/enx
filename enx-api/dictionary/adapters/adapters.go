@@ -17,8 +17,8 @@ import (
 // WordsTable is the dictionary.WordStore backed by the words table.
 type WordsTable struct{}
 
-func (WordsTable) Find(_ context.Context, english string) (string, dictionary.Entry, bool, error) {
-	w := repo.GetWordByEnglish(english)
+func (WordsTable) Find(_ context.Context, english string, includeAI bool) (string, dictionary.Entry, bool, error) {
+	w := repo.FindWordForLookup(english, includeAI)
 	if w.Id == "" {
 		return "", dictionary.Entry{}, false, nil
 	}
@@ -26,6 +26,7 @@ func (WordsTable) Find(_ context.Context, english string) (string, dictionary.En
 		English:       w.English,
 		Chinese:       w.Chinese,
 		Pronunciation: w.Pronunciation,
+		Origin:        dictionary.Origin(w.Source),
 	}, true, nil
 }
 

@@ -313,8 +313,13 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	// Word states for a page (paragraph-init): one query per paragraph.
 	paragraphHandler := paragraph.NewHandler(enx.NewTextWords(enx.RepoWordStates{}))
 
+	// One entitlement judgement (ADR-045 Decision 14) for the lookup, which
+	// hides AI-made definitions from users who can't use AI, and for the
+	// preferences, whose editability follows the same rule.
+	entitlements := entitlement.NewService(entadapters.Billing{})
+
 	lookupHandler := translate.NewHandler(
-		dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, dictionary.QuotaMeter{}),
+		dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, dictionary.QuotaMeter{}, entitlements),
 		repo.ReviewLog{},
 	)
 
@@ -415,7 +420,7 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	// state (ADR-045 Decision 14).
 	preferencesHandler := handlers.NewPreferencesHandler(preferences.NewService(
 		prefadapters.Table{},
-		entitlement.NewService(entadapters.Billing{}),
+		entitlements,
 	))
 	apiGroup.GET("/me/preferences", preferencesHandler.Get)
 	apiGroup.PUT("/me/preferences", preferencesHandler.Update)
@@ -469,6 +474,7 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	adminDict.Use(middleware.RequireAdmin())
 	{
 		adminDict.GET("/words/:word", handlers.AdminGetWord)
+		adminDict.PUT("/words/:word", handlers.AdminEditWord)
 		adminDict.DELETE("/words/:word", handlers.AdminDeleteWord)
 		adminDict.GET("/ecdict/:word", handlers.AdminGetEcdict)
 		adminDict.POST("/words/:word/sync-from-ecdict", handlers.AdminSyncWordFromEcdict)
