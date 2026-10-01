@@ -33,6 +33,7 @@ it('renders every navigation destination', () => {
     'Rephrase',
     'Reader',
     'Reading Stats',
+    'Settings',
     'Billing',
     'Back to site',
   ]) {

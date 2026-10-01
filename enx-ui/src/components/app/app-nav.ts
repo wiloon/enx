@@ -6,6 +6,7 @@ import {
   Globe,
   Home,
   Search,
+  Settings,
   Sparkles,
   Wrench,
   type LucideIcon,
@@ -37,6 +38,7 @@ export const NAV_INSIGHTS: NavItem[] = [
 // Account / utility items, pinned to the bottom of the sidebar so they don't
 // compete with the primary navigation.
 export const NAV_FOOTER: NavItem[] = [
+  { label: 'Settings', href: '/settings', icon: Settings },
   { label: 'Billing', href: '/billing', icon: CreditCard },
   // Back to the marketing site (ADR-027 decision 4). Same Next.js app, so it
   // is a plain in-app link, not an external one.

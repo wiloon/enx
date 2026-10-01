@@ -51,6 +51,24 @@ export interface BillingMeData {
   credits: BillingCredits
 }
 
+// GET/PUT /api/me/preferences (enx-api preferences, ADR-044). `value` is the
+// user's explicit choice (null = unset, the default applies); `effective` is
+// what the server acts on, with the default and the user's entitlement
+// applied -- show it, never recompute it; `editable` is whether the user may
+// change it (false for a user who can't use AI at all).
+export interface PreferenceView {
+  value: boolean | null
+  effective: boolean
+  editable: boolean
+}
+
+export type PreferenceKey = 'aiWordFallback' | 'aiWordFallbackNoticeAck'
+
+export type PreferencesData = Record<PreferenceKey, PreferenceView>
+
+// A partial update: null returns the key to its default.
+export type PreferenceChanges = Partial<Record<PreferenceKey, boolean | null>>
+
 export interface CheckoutSessionData {
   url: string
 }
