@@ -526,6 +526,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'validateSession':
           return await makeApiRequest('/api/me')
 
+        // Server-side user preferences (ADR-044). The options page and, later,
+        // the lookup overlay reach them through here because the session token
+        // lives in this worker.
+        case 'getPreferences':
+          return await makeApiRequest('/api/me/preferences')
+
+        case 'updatePreferences':
+          return await handleUpdatePreferences(request.changes)
+
         case 'openWebSignIn':
           return await handleOpenWebSignIn()
 
@@ -1161,6 +1170,20 @@ const handleSubmitPageReport = async (report?: {
 // A page the user chose to save (ADR-032). Like the page report it is not
 // fire-and-forget: the popup shows the user whether it was saved, and shows
 // the server's own message when it was not (limit reached, address too long).
+// PUT /api/me/preferences with a partial change -- { key: true | false | null },
+// null returning the key to its default. The server validates the keys and
+// the user's entitlement; this only refuses a body that is not an object, so
+// a malformed message never becomes a request.
+const handleUpdatePreferences = async (changes: unknown) => {
+  if (!changes || typeof changes !== 'object' || Array.isArray(changes)) {
+    return { success: false, error: 'No preference changes were provided' }
+  }
+  return await makeApiRequest('/api/me/preferences', {
+    method: 'PUT',
+    body: JSON.stringify(changes),
+  })
+}
+
 const handleSavePage = async (page?: { url: string; title: string }) => {
   if (!page?.url) return { success: false, error: 'Missing page' }
   return await makeApiRequest('/api/saved-pages', {

@@ -5,6 +5,7 @@ import {
   resetApiBaseUrl,
   setApiBaseUrl,
 } from '@/config/env'
+import AiWordFallbackSetting from '@/components/AiWordFallbackSetting'
 import { TARGETS } from '@/config/targets'
 import '@/index.css'
 import { initSentry } from '@/lib/sentry'
@@ -208,6 +209,14 @@ function OptionsContent() {
               </span>
             </span>
           </label>
+        </div>
+
+        {/* AI word lookup (stored in the account, ADR-044) */}
+        <div className="bg-background rounded-lg shadow-lg p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4 text-foreground">
+            AI Word Lookup
+          </h2>
+          <AiWordFallbackSetting />
         </div>
 
         {/* Help Section */}
