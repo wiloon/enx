@@ -4,6 +4,7 @@
 | --- | --- |
 | **状态** | **Proposed — 2026-09-17。本次未写任何代码。** 2026-09-17 第一轮讨论后修订：Decision 0（先测量）、Decision 3（WordNet 喂 AI）、Decision 6（AI 结果落候选队列、不回写 `words`）、Options G（独立缓存表）**已获用户确认**；2026-09-17 补充确认：**AI 释义当场展示给用户**（审核因此降级为事后纠错），存储形态见 Decision 6 的 `ai_definitions` 表设计。**2026-09-17 第二轮：用户接受 CC BY-SA 的署名标注，并确认采纳 Wiktionary 作为备用源（因此来源展示锁定为 E2）——文末三个待确认问题全部关闭。** **2026-09-17 第四轮：实测了 homelab 的 ECDICT（340 万条，其中 204 万是多词条目、60.1%）**——Decision 0 的 ①③ 两个闸门已通过且结果大幅好于预期（无需换 build；短语的 ECDICT 基础远超预期，推翻了前端注释里「ECDICT 只有单词」的前提）；同时发现多词条目含大量噪声，Decision 8 因此新增一条过滤护栏。剩余待测：② 有效 miss 率、④ 拖选短语命中率。**第三轮**：短语查词从 Out of Scope 收进来成为 Decision 8（词典优先 + 两阶段 + 三条护栏），并修正了初稿对其落点的错误描述。本 ADR 的**设计问题已无悬念，剩下的闸门是 Decision 0 的四个测量数**（线上 ECDICT build → 有效 miss 率 → 多词条目数 → 拖选短语命中率），**阈值已预先登记在 Decision 0，测之前定死**。其中 build 要最先测——它可能让后面三个全部作废。**P2P 同步（`enx-sync`）已于 2026-09-17 标记为暂停维护，本 ADR 不再把它当作设计约束**（初稿曾以它为否决 G1 的理由之一，该理由已撤销）。 |
 | **日期** | 2026-09-17 |
+| **修订（2026-09-30）** | **Decision 0 的 miss 率闸门（对 AI 兜底）、Decision 5、Decision 6、Options D2 被 [ADR-045](adr-045-ai-word-fallback-for-paid-users.md) 取代**：AI 兜底改为只发单个词、由模型打分、高分直接写入 `words`（`source='ai'`）、按 token 扣积分；不再有 `ai_definitions` 候选表。其余决定（provider 链、WordNet 喂 AI、Wiktionary 独立表、短语 Decision 8）不变。下文被取代的条目已就地标注，**以 ADR-045 为准**。 |
 | **关联 Spec** | 无独立 TASK-SPEC，留到编码阶段再写（同 ADR-008/010/011/017/025/026 的做法） |
 | **关联 ADR** | [`adr-018-dictionary-lookup-single-metered-seam.md`](adr-018-dictionary-lookup-single-metered-seam.md)（**主要依赖**：本 ADR 把它留下的 `dictionary.Lookup` 单一 seam 从「ECDICT-only 薄包装」扩成有序 provider 链；计量口径在 Options D 里被**扩充而非推翻**——查词配额仍按 018 B2 每次调用计一次，AI 兜底另立计量器）、[`docs/adr/0001-integrate-ecdict-dictionary.md`](../adr/0001-integrate-ecdict-dictionary.md)（ECDICT 集成的原始决策，本 ADR **不撤销它**，ECDICT 继续是主源）、[`adr-024-word-context-dictionary-first-why.md`](adr-024-word-context-dictionary-first-why.md)（**最大受益方**：其「词典释义进提示词、AI 据此判断上下文义并解释 `why`」现在喂的是 ECDICT `translation` 那一整坨文本；本 ADR 的 WordNet 义项清单把它从「自由发挥」变成「选择题 + 解释」，见 Options B）、[`adr-021-enx-ui-admin-dictionary-maintenance.md`](adr-021-enx-ui-admin-dictionary-maintenance.md)（其 `ecdict.LookupRaw` 是 ECDICT provider 的现成形状，新 provider 照抄；其确立的「`words` 表只能由人订正」边界**被本 ADR 完整继承**，AI 结果因此只落候选队列，见 Decision 6）、[`adr-026-user-reported-definition-issues.md`](adr-026-user-reported-definition-issues.md)（**两处咬合**：① 没有 `source` 字段，用户报告的释义问题就无法归因到源——本 ADR Decision 5 是它的前置；② 它建立的 `(app)/admin/` 审核队列与本 ADR 的 AI 候选队列是同一类东西，应当共用一套管理页形态）、[`adr-008-phrase-selection-context-translation.md`](adr-008-phrase-selection-context-translation.md) + [`adr-017-sidepanel-sentence-drag-select-phrase-lookup.md`](adr-017-sidepanel-sentence-drag-select-phrase-lookup.md)（**本 ADR Decision 8 修改其行为**：它们建立的「短语选中 → 直接调 AI、无词典半边」被改成「先探词典、命中则走 ADR-024 的两阶段」；两份 ADR 的端点与消息形状不变，变的是 `upsertPhraseCard` 里那个写死的 `dictionaryStatus: 'none'`）、[`adr-028-reading-stats-what-to-measure.md`](adr-028-reading-stats-what-to-measure.md)（其 L1/L2 理解阻力阶梯是 Decision 8 计量例外的理由——短语探测混进 L1 会糊掉「每千词查词数」）、[`adr-029-lookup-quota-tiered-limits-and-count-gate-split.md`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md)（分档配额；AI 兜底的成本量级与查词差三个数量级，不能共用一个计数器，见 Options D）、[`adr-009-billing-stripe-subscription-and-ai-credits.md`](adr-009-billing-stripe-subscription-and-ai-credits.md)（AI 动作走积分系统——AI 兜底如果做，归它管而不是归查词配额管） |
 | **关联 Issue** | 待建。预期至少 3 个：miss 率采样脚本、`source` 字段迁移、WordNet 义项表构建 + 接入 `wordcontext`。 |
@@ -131,7 +132,7 @@ ENX 要收订阅（ADR-009，Stripe 已接）。ECDICT 自身的数据来源是�
 | 方案 | 做法 | 结论 |
 | --- | --- | --- |
 | D1. 算一次查词，共用 `dictionary_lookup_quota` | 沿用 ADR-018 B2 | **成本量级差三个数量级**。一个额度买的是一次 SQLite 读；让它也能买一次 LLM 调用，等于把 AI 成本敞口开到配额上限那么大 |
-| **（推荐）D2. 查词配额照计，AI 兜底额外走 ADR-009 的积分系统** | `MeterLookup` 不变；AI provider 命中时再扣一次 AI 积分，并写候选表保证同一个词只付一次 | 与 ADR-014「AI 翻译按 token 计费、与查词配额是两个独立计量器」一致 |
+| **（推荐，已由 [ADR-045](adr-045-ai-word-fallback-for-paid-users.md) 细化为按 token 结算）D2. 查词配额照计，AI 兜底额外走 ADR-009 的积分系统** | `MeterLookup` 不变；AI provider 命中时再扣一次 AI 积分，并写候选表保证同一个词只付一次 | 与 ADR-014「AI 翻译按 token 计费、与查词配额是两个独立计量器」一致 |
 | D3. 不做 AI 兜底 | 查不到就是查不到 | 若 Decision 0 的 miss 率极低，这是对的答案 |
 
 ### E. 来源对用户可见吗
@@ -229,7 +230,11 @@ ENX 要收订阅（ADR-009，Stripe 已接）。ECDICT 自身的数据来源是�
    - **ShareAlike 的边界靠 G2 的表隔离守住**：Wiktionary 派生内容只存在于 `wiktionary_entries`，不与 `words`、`ai_definitions`、用户数据混表。这样 SA 的义务范围清晰地落在那一张表上，不会蔓延到自有数据。**表隔离在这里做的是法律工作，不只是整洁**——实现时不要为了"少读一张表"把它合回去。
    - ⚠️ 上述是工程上的常规做法，不是法律意见；正式上线前如果对 SA 的范围仍有疑虑，值得找专业意见确认一次。
 5. **✅ `words` 表加 `source` 列**（默认 `'ecdict'`），且**不接纳非 ECDICT 来源的行**。
+
+   > **⚠️ 后半句已被 [ADR-045](adr-045-ai-word-fallback-for-paid-users.md) 取代（2026-09-30）**：`words` 现在接纳 `source ∈ {ecdict, ai}`，另加 `admin_edited_at` 记录管理员是否改过。`source` 列本身照加。
 6. **✅ AI 兜底：当场展示给用户，同时落候选表由管理员事后审核，永不自动回写 `words`（已确认，2026-09-17）。**
+
+   > **⚠️ 本条已被 [ADR-045](adr-045-ai-word-fallback-for-paid-users.md) 取代（2026-09-30）**：不再有 `ai_definitions` 候选表与「永不自动回写」；改为 AI 返回「是否是词 + 质量分」，达标直接写入 `words`（`source='ai'`），管理员在词典维护页事后筛查。**保留**下面「AI 要的是无语境的词典式释义，不要复用 ADR-024 的 `wordcontext`」这一条的精神，ADR-045 Decision 2 沿用并加强为「只发词、不发句子」。以下为原文，仅供查阅历史。
 
    **⚠️ 这意味着审核是事后纠错，不是发布前闸门**——`pending` 状态的 AI 释义**照常展示**（带 `AI` 标记），管理员是在补救而不是把关。接受这一点是「要展示」这个选择的直接后果，缓解手段只有两个：E2 的来源标记，和 ADR-026 的报告入口。
 
