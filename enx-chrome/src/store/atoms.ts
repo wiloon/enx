@@ -20,6 +20,32 @@ export const isTranslatingAtom = atom(false)
 // Error state
 export const errorAtom = atom<string | null>(null)
 
+// The AI word fallback inside the word popup (ADR-045): what a lookup that
+// found nothing offers, and where an AI lookup stands.
+export type AiLookupState =
+  | { status: 'idle' }
+  // Not found: a "Look up with AI" button. canUse false = the user can't use
+  // AI yet, so the button points at billing instead.
+  | { status: 'offer'; canUse: boolean }
+  | { status: 'loading' }
+  // The definition is in currentWordAtom.
+  | { status: 'found' }
+  | { status: 'none' }
+  | {
+      status: 'error'
+      reason: 'credit' | 'rate-limited' | 'not-entitled' | 'unavailable'
+    }
+
+export const aiLookupAtom = atom<AiLookupState>({ status: 'idle' })
+
+// The one-time "this word was sent to an AI provider" notice, shown with the
+// first AI result. offerStop: also offer "Stop using AI automatically" (only
+// when the lookup ran by itself).
+export const aiNoticeAtom = atom<{ show: boolean; offerStop: boolean }>({
+  show: false,
+  offerStop: false,
+})
+
 // Shown in the word popup when "整句翻译" was clicked but chrome.sidePanel.open()
 // could not be triggered directly (see TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md
 // §3.2 trigger path③) -- null hides the hint.

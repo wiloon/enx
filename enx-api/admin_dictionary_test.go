@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"enx-api/clerktest"
@@ -72,9 +75,26 @@ func seedEcdict(t *testing.T) {
 
 func doJSON(t *testing.T, method, url, token string) (int, map[string]any) {
 	t.Helper()
-	req, err := http.NewRequest(method, url, nil)
+	return doJSONBody(t, method, url, token, nil)
+}
+
+// doJSONBody is doJSON with a JSON request body (nil sends none).
+func doJSONBody(t *testing.T, method, url, token string, payload any) (int, map[string]any) {
+	t.Helper()
+	var reader io.Reader
+	if payload != nil {
+		encoded, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatalf("encode body: %v", err)
+		}
+		reader = bytes.NewReader(encoded)
+	}
+	req, err := http.NewRequest(method, url, reader)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
+	}
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -96,6 +116,7 @@ func TestE2E_AdminDictionary_RequiresAdmin(t *testing.T) {
 		{http.MethodGet, "/api/admin/words/hello"},
 		{http.MethodGet, "/api/admin/ecdict/hello"},
 		{http.MethodPost, "/api/admin/words/hello/sync-from-ecdict"},
+		{http.MethodPut, "/api/admin/words/hello"},
 		{http.MethodDelete, "/api/admin/words/hello"},
 	}
 	for _, ep := range endpoints {
@@ -166,6 +187,103 @@ func TestE2E_AdminDictionary_SyncFromEcdict(t *testing.T) {
 	}
 	if code, body := doJSON(t, http.MethodGet, base+"/api/admin/words/serendipity", adminToken); code != http.StatusOK || body["found"] != false {
 		t.Fatalf("serendipity should not have been written: code=%d body=%+v", code, body)
+	}
+}
+
+// ADR-045 Decision 6: an admin's edit is recorded, keeps the row's source, and
+// is what releases an AI-made row to users who can't use AI.
+func TestE2E_AdminDictionary_EditWord(t *testing.T) {
+	base, adminToken, _ := adminDictEnv(t)
+	url := base + "/api/admin/words/hello"
+
+	// Only an existing row can be edited.
+	if code, _ := doJSONBody(t, http.MethodPut, url, adminToken, map[string]string{"chinese": "x"}); code != http.StatusNotFound {
+		t.Fatalf("edit of an absent word: code=%d, want 404", code)
+	}
+	if code, _ := doJSON(t, http.MethodPost, base+"/api/admin/words/hello/sync-from-ecdict", adminToken); code != http.StatusOK {
+		t.Fatalf("sync: code=%d", code)
+	}
+
+	code, body := doJSONBody(t, http.MethodPut, url, adminToken, map[string]string{"chinese": "  int. 你好，喂  ", "pronunciation": "/həˈləʊ/"})
+	if code != http.StatusOK || body["success"] != true {
+		t.Fatalf("edit: code=%d body=%+v", code, body)
+	}
+	word, _ := body["word"].(map[string]any)
+	if word["chinese"] != "int. 你好，喂" || word["pronunciation"] != "/həˈləʊ/" || word["source"] != "ecdict" || word["adminEditedAt"] == nil {
+		t.Fatalf("edited word = %+v, want trimmed text, source kept as ecdict, and the edit recorded", word)
+	}
+
+	code, body = doJSON(t, http.MethodGet, url, adminToken)
+	if code != http.StatusOK || body["chinese"] != "int. 你好，喂" || body["adminEditedAt"] == nil {
+		t.Fatalf("words after edit: code=%d body=%+v", code, body)
+	}
+
+	for name, payload := range map[string]map[string]string{
+		"empty chinese":     {"chinese": "   "},
+		"missing chinese":   {"pronunciation": "/x/"},
+		"too long chinese":  {"chinese": strings.Repeat("长", 4001)},
+		"too long phonetic": {"chinese": "x", "pronunciation": strings.Repeat("a", 101)},
+	} {
+		if code, _ := doJSONBody(t, http.MethodPut, url, adminToken, payload); code != http.StatusBadRequest {
+			t.Errorf("%s: code=%d, want 400", name, code)
+		}
+	}
+	if code, _ := doJSONBody(t, http.MethodPut, url, adminToken, nil); code != http.StatusBadRequest {
+		t.Errorf("no body: code=%d, want 400", code)
+	}
+}
+
+// ADR-045 Decision 6 end to end: an AI-made definition in the words table is
+// shown to a user who can use AI, hidden from one who can't, and shown to
+// everyone once an admin has edited it. The admin account stands in for the
+// user without AI: it has no subscription and no credit.
+func TestE2E_Lookup_AIDefinitionVisibility(t *testing.T) {
+	base, adminToken, plainToken := adminDictEnv(t)
+	t.Cleanup(func() {
+		sqlitex.DB.Exec("DELETE FROM words WHERE english = ?", "rizzler")
+		sqlitex.DB.Exec("DELETE FROM credit_accounts WHERE user_id IN (SELECT id FROM users WHERE clerk_user_id = ?)", nonAdminSub)
+	})
+
+	// The plain user exists once it has made a request; give it credit.
+	if code, _ := doJSON(t, http.MethodGet, base+"/api/me", plainToken); code != http.StatusOK {
+		t.Fatalf("GET /api/me: code=%d", code)
+	}
+	var plainID string
+	if err := sqlitex.DB.Raw("SELECT id FROM users WHERE clerk_user_id = ?", nonAdminSub).Scan(&plainID).Error; err != nil || plainID == "" {
+		t.Fatalf("plain user id = %q, %v", plainID, err)
+	}
+	if err := sqlitex.DB.Create(&sqlitex.CreditAccount{UserId: plainID, TopupBalance: 25, UpdatedAt: 1}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	// An AI-made row (not in ECDICT), as the AI fallback will leave it.
+	chinese := "n. 很有魅力的人"
+	if err := sqlitex.DB.Create(&sqlitex.Word{
+		Id: "w-ai-rizzler", English: "rizzler", Chinese: &chinese, CreatedAt: 1, UpdatedAt: 1, Source: "ai",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	lookup := func(token string) map[string]any {
+		t.Helper()
+		code, body := doJSON(t, http.MethodGet, base+"/api/word/rizzler", token)
+		if code != http.StatusOK {
+			t.Fatalf("lookup: code=%d body=%+v", code, body)
+		}
+		return body
+	}
+
+	if got := lookup(plainToken); got["Chinese"] != chinese || got["Origin"] != "ai" {
+		t.Fatalf("a user with credit should see the AI definition with its origin, got %+v", got)
+	}
+	if got := lookup(adminToken); got["Chinese"] != "" {
+		t.Fatalf("a user who can't use AI must not see an unedited AI definition, got %+v", got)
+	}
+
+	if code, _ := doJSONBody(t, http.MethodPut, base+"/api/admin/words/rizzler", adminToken, map[string]string{"chinese": "n. 魅力十足的人"}); code != http.StatusOK {
+		t.Fatalf("admin edit: code=%d", code)
+	}
+	if got := lookup(adminToken); got["Chinese"] != "n. 魅力十足的人" || got["Origin"] != "ai" {
+		t.Fatalf("after an admin edit everyone should see it, got %+v", got)
 	}
 }
 

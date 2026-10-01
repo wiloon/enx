@@ -41,6 +41,12 @@ import {
   sentencePanelHintAtom,
 } from '@/store/atoms'
 import WordPopover from '@/components/WordPopover'
+import {
+  handleLookupMiss,
+  resetAiLookup,
+  runAiLookup,
+  type AiLookupDeps,
+} from '@/lib/aiLookupFlow'
 import SidePanelTranslateIcon from '@/components/icons/SidePanelTranslateIcon'
 import tailwindCss from '@/index.css?inline'
 
@@ -311,6 +317,34 @@ const showWordPopover = async (word: string, reference: Range) => {
     }
   }
 
+  // The AI word fallback (ADR-045): what a lookup that found nothing offers,
+  // and what to do with an AI-made definition. Its answer can arrive seconds
+  // later, after the user has clicked another word, so every step checks that
+  // this popup is still the current one.
+  const aiDeps: AiLookupDeps = {
+    store: contentScriptStore,
+    isCurrent: () => currentOverlay === overlay,
+    onDefined: defined => {
+      wordCache[word.toLowerCase()] = defined
+      void refreshHighlights()
+      // A word the AI was confident enough to store is in the user's
+      // vocabulary like any other lookup; mirror it into the side panel.
+      sendToBackground({
+        type: 'recordPageWordLookup',
+        word: word.trim().toLowerCase(),
+        ecp: defined,
+      })
+    },
+    onSessionExpired: () => {
+      overlay.hidePopover()
+      showSessionExpiredMessage()
+    },
+  }
+  const handleAiLookup = () => {
+    const current = contentScriptStore.get(currentWordAtom)
+    void runAiLookup(current?.English || word, { auto: false }, aiDeps)
+  }
+
   root.render(
     <Provider store={contentScriptStore}>
       <WordPopover
@@ -318,6 +352,7 @@ const showWordPopover = async (word: string, reference: Range) => {
         onClose={() => overlay.hidePopover()}
         onMarkAcquainted={handleMarkAcquainted}
         onOpenSentencePanel={handleOpenSentencePanel}
+        onAiLookup={handleAiLookup}
       />
     </Provider>
   )
@@ -327,6 +362,7 @@ const showWordPopover = async (word: string, reference: Range) => {
   contentScriptStore.set(isTranslatingAtom, true)
   contentScriptStore.set(errorAtom, null)
   contentScriptStore.set(sentencePanelHintAtom, null)
+  resetAiLookup(contentScriptStore)
 
   // 6. Add to DOM, show Popover, start position tracking
   mount()
@@ -371,6 +407,10 @@ const showWordPopover = async (word: string, reference: Range) => {
         word: word.trim().toLowerCase(),
         ecp: wordData,
       })
+
+      // Nothing found: the server says whether the AI fallback starts by
+      // itself, is offered as a button, or is for subscribers only.
+      handleLookupMiss(wordData, aiDeps)
     } else if (response.sessionExpired) {
       console.log('Session expired, showing session expired message')
       overlay.hidePopover()

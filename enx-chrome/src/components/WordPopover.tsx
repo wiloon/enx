@@ -6,6 +6,7 @@ import {
   SpeakerWaveIcon,
 } from '@heroicons/react/20/solid'
 import SidePanelTranslateIcon from '@/components/icons/SidePanelTranslateIcon'
+import { AiBadge, AiMissPanel, AiNotice } from '@/components/AiLookup'
 import {
   currentWordAtom,
   isTranslatingAtom,
@@ -20,6 +21,8 @@ interface WordPopoverProps {
   onClose: () => void
   onMarkAcquainted: (word: string) => void
   onOpenSentencePanel: () => void
+  // The "Look up with AI" button after a lookup that found nothing (ADR-045).
+  onAiLookup?: () => void
   // 'hint': renders only the sentencePanelHint text, no dictionary UI.
   // Used by the drag-select translation flow (ADR-007 Decision §4) when
   // there's nothing to define -- either the selection was rejected for
@@ -32,6 +35,7 @@ export default function WordPopover({
   onClose,
   onMarkAcquainted,
   onOpenSentencePanel,
+  onAiLookup = () => {},
   variant = 'dictionary',
 }: WordPopoverProps) {
   const [currentWord] = useAtom(currentWordAtom)
@@ -178,12 +182,19 @@ export default function WordPopover({
         {/* Word content */}
         {currentWord && !isTranslating && !error && (
           <div className="space-y-2">
-            {/* Chinese translation */}
-            {currentWord.Chinese && (
-              <p className="text-sm leading-relaxed text-foreground">
-                {currentWord.Chinese}
-              </p>
+            {/* Chinese translation; a definition a model wrote is marked as
+                such (ADR-045). With none, the AI fallback's state is shown. */}
+            {currentWord.Chinese ? (
+              <div className="flex items-start gap-2">
+                <p className="text-sm leading-relaxed text-foreground">
+                  {currentWord.Chinese}
+                </p>
+                {currentWord.Origin === 'ai' && <AiBadge />}
+              </div>
+            ) : (
+              <AiMissPanel onLookup={onAiLookup} />
             )}
+            <AiNotice />
 
             {/* Acquainted status */}
             {currentWord.AlreadyAcquainted === 1 && (

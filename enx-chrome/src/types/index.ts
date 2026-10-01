@@ -8,6 +8,13 @@ export interface WordData {
   LoadCount: number
   AlreadyAcquainted: number
   WordType: number
+  // Where the definition first came from; absent on a miss (ADR-045). "ai"
+  // marks a definition a model wrote rather than the dictionary.
+  Origin?: 'ecdict' | 'ai'
+  // Present only on a lookup that found nothing, when the server has the AI
+  // word fallback set up: CanUse = this user may use it (offer a button; if
+  // not, point at billing), Auto = it should also start by itself.
+  AIFallback?: { CanUse: boolean; Auto: boolean }
 }
 
 export interface User {

@@ -388,6 +388,81 @@ describe('background onMessage / getPreferences and updatePreferences (ADR-044)'
   })
 })
 
+// ADR-045: the AI word fallback's second request.
+describe('background onMessage / defineWordWithAI (ADR-045)', () => {
+  const listener = onMessageListener
+  const call = (request: unknown) =>
+    new Promise(resolve => {
+      expect(listener(request, {}, resolve)).toBe(true)
+    })
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    __resetClerkClientCacheForTests()
+    setClerkSession('clerk-session-jwt')
+    ;(getApiBaseUrl as jest.Mock).mockResolvedValue('http://localhost:8090')
+    ;(chrome.storage.local.remove as jest.Mock).mockResolvedValue(undefined)
+    ;(chrome.tabs.query as jest.Mock).mockResolvedValue([{ id: 1 }])
+    ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
+    ;(global.fetch as jest.Mock) = jest.fn()
+  })
+
+  it('POSTs only the word to /api/dictionary/ai-word', async () => {
+    const body = { found: true, word: { English: 'rizzler' } }
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(200, body))
+
+    const response = await call({
+      type: 'defineWordWithAI',
+      word: '  rizzler  ',
+      // Anything else a caller adds must never be forwarded.
+      sentence: 'He is a total rizzler.',
+    })
+
+    expect(response).toEqual({ success: true, data: body })
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toBe('http://localhost:8090/api/dictionary/ai-word')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body)).toEqual({ word: 'rizzler' })
+    expect(init.headers.Authorization).toBe('Bearer clerk-session-jwt')
+  })
+
+  it.each([
+    ['missing', undefined],
+    ['empty', ''],
+    ['blank', '   '],
+    ['a number', 42],
+    ['an object', { word: 'rizzler' }],
+  ])('refuses %s word without calling the API', async (_name, word) => {
+    const response = await call({ type: 'defineWordWithAI', word })
+
+    expect(response).toMatchObject({ success: false })
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [402, 'Insufficient credit'],
+    [403, 'Not entitled'],
+    [429, 'Too many AI lookups'],
+    [502, 'AI lookup failed'],
+  ])('passes a %i through with its status', async (status, message) => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(status, { message }, false)
+    )
+
+    const response = await call({ type: 'defineWordWithAI', word: 'rizzler' })
+
+    expect(response).toEqual({ success: false, error: message, status })
+  })
+
+  it('reports session expiry on a 401', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
+
+    const response = await call({ type: 'defineWordWithAI', word: 'rizzler' })
+
+    expect(response).toMatchObject({ success: false, sessionExpired: true })
+  })
+})
+
 // ADR-020: the popup delegates opening the web sign-in tab to the background
 // (the popup is destroyed the moment chrome.tabs.create steals focus).
 describe('background onMessage / openWebSignIn (ADR-020)', () => {

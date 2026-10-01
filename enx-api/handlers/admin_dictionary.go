@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"enx-api/ecdict"
 	"enx-api/repo"
@@ -32,6 +34,11 @@ type adminWordRow struct {
 	CreatedAt     int64  `json:"createdAt,omitempty"`
 	UpdatedAt     int64  `json:"updatedAt,omitempty"`
 	DeletedAt     *int64 `json:"deletedAt,omitempty"`
+	// Source is where the definition first came from ("ecdict" or "ai");
+	// AdminEditedAt is when an admin last edited it, absent if none has
+	// (ADR-045 Decision 6).
+	Source        string `json:"source,omitempty"`
+	AdminEditedAt *int64 `json:"adminEditedAt,omitempty"`
 }
 
 func adminWordRowFrom(w *repo.Word) adminWordRow {
@@ -45,6 +52,8 @@ func adminWordRowFrom(w *repo.Word) adminWordRow {
 		CreatedAt:     w.CreatedAt,
 		UpdatedAt:     w.UpdatedAt,
 		DeletedAt:     w.DeletedAt,
+		Source:        w.Source,
+		AdminEditedAt: w.AdminEditedAt,
 	}
 }
 
@@ -143,6 +152,64 @@ func AdminSyncWordFromEcdict(c *gin.Context) {
 		"matchedBy": matchedBy,
 		"word":      adminWordRowFrom(after),
 	})
+}
+
+// Bounds on an admin's edit. ECDICT translations run long, so the Chinese
+// limit is generous; it exists to stop a pasted document, not to shape
+// definitions.
+const (
+	adminEditChineseMax       = 4000
+	adminEditPronunciationMax = 100
+)
+
+type adminEditWordRequest struct {
+	Chinese       string `json:"chinese"`
+	Pronunciation string `json:"pronunciation"`
+}
+
+// AdminEditWord handles PUT /api/admin/words/:word: replace the live words
+// row's chinese and pronunciation and record the edit (repo.AdminEditWord).
+// An AI-made row an admin has edited is no longer hidden from users who can't
+// use AI (ADR-045 Decision 6). The row must exist: creating one is what the
+// ECDICT sync and the user lookup do.
+func AdminEditWord(c *gin.Context) {
+	word := strings.TrimSpace(c.Param("word"))
+	if word == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "word is required"})
+		return
+	}
+	var req adminEditWordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "chinese and pronunciation are required"})
+		return
+	}
+	req.Chinese = strings.TrimSpace(req.Chinese)
+	req.Pronunciation = strings.TrimSpace(req.Pronunciation)
+	if req.Chinese == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "chinese must not be empty"})
+		return
+	}
+	if utf8.RuneCountInString(req.Chinese) > adminEditChineseMax || utf8.RuneCountInString(req.Pronunciation) > adminEditPronunciationMax {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "chinese or pronunciation is too long"})
+		return
+	}
+
+	before, _ := repo.AdminGetWord(word)
+	after, err := repo.AdminEditWord(word, req.Chinese, req.Pronunciation)
+	switch {
+	case errors.Is(err, repo.ErrWordNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "word not found"})
+		return
+	case err != nil:
+		logger.Errorf("AdminEditWord: word=%q: %v", word, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to update word"})
+		return
+	}
+
+	logger.Infof("admin AdminEditWord: %s edited word=%q (source=%s): chinese %q -> %q, pronunciation %q -> %q",
+		c.GetString("clerk_user_id"), word, after.Source, before.Chinese, after.Chinese, before.Pronunciation, after.Pronunciation)
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "word": adminWordRowFrom(after)})
 }
 
 // AdminDeleteWord handles DELETE /api/admin/words/:word: remove the words row

@@ -529,6 +529,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // Server-side user preferences (ADR-044). The options page and, later,
         // the lookup overlay reach them through here because the session token
         // lives in this worker.
+        // The AI word fallback's second request (ADR-045): define a word the
+        // dictionaries lack. Sent only after a lookup missed.
+        case 'defineWordWithAI':
+          return await handleDefineWordWithAI(request.word)
+
         case 'getPreferences':
           return await makeApiRequest('/api/me/preferences')
 
@@ -1170,6 +1175,19 @@ const handleSubmitPageReport = async (report?: {
 // A page the user chose to save (ADR-032). Like the page report it is not
 // fire-and-forget: the popup shows the user whether it was saved, and shows
 // the server's own message when it was not (limit reached, address too long).
+// POST /api/dictionary/ai-word. The server validates the word, the user's
+// entitlement and credit, and does the billing; this only refuses a message
+// with no usable word so it never becomes a request.
+const handleDefineWordWithAI = async (word: unknown) => {
+  if (typeof word !== 'string' || word.trim() === '') {
+    return { success: false, error: 'No word provided' }
+  }
+  return await makeApiRequest('/api/dictionary/ai-word', {
+    method: 'POST',
+    body: JSON.stringify({ word: word.trim() }),
+  })
+}
+
 // PUT /api/me/preferences with a partial change -- { key: true | false | null },
 // null returning the key to its default. The server validates the keys and
 // the user's entitlement; this only refuses a body that is not an object, so

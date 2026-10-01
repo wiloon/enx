@@ -25,14 +25,36 @@ type ReviewLog interface {
 	RecordWordLookup(userID, wordID string) (queryCount int, alreadyAcquainted int, err error)
 }
 
+// AIDefiner defines a word the dictionaries lack: dictionary.Service in
+// production (ADR-045).
+type AIDefiner interface {
+	DefineWithAI(ctx context.Context, english, userID string) (dictionary.Result, error)
+}
+
+// AIPolicy says what the AI fallback offers a user: adapters.AIPolicy in
+// production.
+type AIPolicy interface {
+	Fallback(ctx context.Context, userID string) (canUse, auto bool)
+}
+
 // Handler serves the word lookup endpoints.
 type Handler struct {
 	dict    Resolver
 	reviews ReviewLog
+	ai      AIDefiner
+	policy  AIPolicy
 }
 
 func NewHandler(dict Resolver, reviews ReviewLog) *Handler {
 	return &Handler{dict: dict, reviews: reviews}
+}
+
+// WithAI sets up the AI word fallback: ai answers POST /api/dictionary/ai-word
+// and policy decides what a lookup that found nothing offers the user. Without
+// it the lookup response says nothing about AI and the endpoint is not served.
+func (h *Handler) WithAI(ai AIDefiner, policy AIPolicy) *Handler {
+	h.ai, h.policy = ai, policy
+	return h
 }
 
 // Translate handles GET /api/translate?word=
@@ -91,6 +113,7 @@ func (h *Handler) translateWord(c *gin.Context, raw string) {
 	word.Key = strings.ToLower(res.English)
 	word.Chinese = res.Chinese
 	word.Pronunciation = res.Pronunciation
+	word.Origin = string(res.Origin)
 
 	// Review bookkeeping needs a persisted word: nothing to count on a miss.
 	if word.Id != "" {
@@ -103,6 +126,13 @@ func (h *Handler) translateWord(c *gin.Context, raw string) {
 			word.LoadCount = qc
 			word.AlreadyAcquainted = acquainted
 		}
+	}
+
+	// A lookup that found nothing tells the client what the AI fallback
+	// offers this user, so it can run it, offer it, or point at billing.
+	if res.Source == dictionary.SourceMiss && h.policy != nil {
+		canUse, auto := h.policy.Fallback(c.Request.Context(), userId)
+		word.AIFallback = &enx.AIFallback{CanUse: canUse, Auto: auto}
 	}
 
 	logger.Debugf("translate result: %+v", word)

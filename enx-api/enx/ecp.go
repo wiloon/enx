@@ -29,6 +29,24 @@ type Word struct {
 	// 0: default: normal type
 	// 1: raw: this word would not be translated
 	WordType int
+
+	// Where the definition first came from, "ecdict" or "ai" (ADR-045). Left
+	// out when empty so the many places that serialize a Word without a
+	// lookup behind it don't grow a field.
+	Origin string `json:"Origin,omitempty"`
+
+	// What the AI fallback offers after a lookup found nothing (ADR-045).
+	// Present only on such a miss, and only when the fallback is set up.
+	AIFallback *AIFallback `json:"AIFallback,omitempty"`
+}
+
+// AIFallback is what the AI word fallback offers the user who just missed a
+// word. CanUse: they may use it at all (the client offers a manual "look it up
+// with AI" button). Auto: it should also start by itself. Both are decided on
+// the server; the client only acts on them.
+type AIFallback struct {
+	CanUse bool
+	Auto   bool
 }
 
 // nonEnglish matches everything SetEnglish strips from a token. Compiled

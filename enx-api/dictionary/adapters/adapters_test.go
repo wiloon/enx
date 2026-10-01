@@ -59,13 +59,66 @@ func TestWordsTableFind(t *testing.T) {
 	ctx := context.Background()
 
 	for _, english := range []string{"serendipity", "Serendipity"} {
-		gotID, entry, ok, err := WordsTable{}.Find(ctx, english)
+		gotID, entry, ok, err := WordsTable{}.Find(ctx, english, false)
 		if err != nil || !ok || gotID != id || entry.Chinese != "机缘巧合" {
 			t.Fatalf("Find(%q) = %q, %+v, %v, %v; want row %s", english, gotID, entry, ok, err, id)
 		}
 	}
-	if _, _, ok, err := (WordsTable{}).Find(ctx, "zzxqv"); ok || err != nil {
+	if _, _, ok, err := (WordsTable{}).Find(ctx, "zzxqv", false); ok || err != nil {
 		t.Fatalf("Find(zzxqv): ok=%v err=%v, want a clean miss", ok, err)
+	}
+}
+
+// seedWordFrom seeds a words row with an explicit source and admin-edit mark.
+func seedWordFrom(t *testing.T, english, chinese, source string, editedAt *int64) string {
+	t.Helper()
+	id := uuid.NewString()
+	if err := sqlitex.DB.Create(&sqlitex.Word{
+		Id: id, English: english, Chinese: &chinese, CreatedAt: 1, UpdatedAt: 1,
+		Source: source, AdminEditedAt: editedAt,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// ADR-045 Decision 6: AI-made rows are left out of the query for users who
+// can't use AI, until an admin has edited them.
+func TestWordsTableFindHidesUneditedAIRowsUnlessIncluded(t *testing.T) {
+	setupWordsDB(t)
+	edited := int64(1700000000000)
+	ecdictID := seedWordFrom(t, "serendipity", "机缘巧合", "ecdict", nil)
+	aiID := seedWordFrom(t, "rizzler", "很有魅力的人", "ai", nil)
+	editedAIID := seedWordFrom(t, "doomscroll", "刷坏消息", "ai", &edited)
+	editedECDICTID := seedWordFrom(t, "gist", "要点", "ecdict", &edited)
+	ctx := context.Background()
+
+	for _, tc := range []struct {
+		word      string
+		includeAI bool
+		wantID    string // "" = not visible
+		wantAI    bool
+	}{
+		{"serendipity", false, ecdictID, false},
+		{"serendipity", true, ecdictID, false},
+		{"rizzler", false, "", false},
+		{"rizzler", true, aiID, true},
+		{"Rizzler", true, aiID, true},
+		{"doomscroll", false, editedAIID, true},
+		{"doomscroll", true, editedAIID, true},
+		{"gist", false, editedECDICTID, false},
+	} {
+		id, entry, ok, err := WordsTable{}.Find(ctx, tc.word, tc.includeAI)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok != (tc.wantID != "") || id != tc.wantID {
+			t.Errorf("Find(%q, includeAI=%v) = %q, ok=%v; want id %q", tc.word, tc.includeAI, id, ok, tc.wantID)
+			continue
+		}
+		if ok && (entry.Origin == dictionary.OriginAI) != tc.wantAI {
+			t.Errorf("Find(%q, includeAI=%v).Origin = %q, wantAI=%v", tc.word, tc.includeAI, entry.Origin, tc.wantAI)
+		}
 	}
 }
 

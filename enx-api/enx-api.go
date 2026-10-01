@@ -4,6 +4,7 @@ import (
 	"context"
 	"enx-api/aitranslate"
 	"enx-api/aitranslate/aicfg"
+	"enx-api/aitranslate/worddef"
 	"enx-api/billing"
 	"enx-api/billing/credit"
 	billingstripe "enx-api/billing/stripe"
@@ -313,9 +314,20 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	// Word states for a page (paragraph-init): one query per paragraph.
 	paragraphHandler := paragraph.NewHandler(enx.NewTextWords(enx.RepoWordStates{}))
 
-	lookupHandler := translate.NewHandler(
-		dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, dictionary.QuotaMeter{}),
-		repo.ReviewLog{},
+	// One entitlement judgement (ADR-045 Decision 14) for the lookup, which
+	// hides AI-made definitions from users who can't use AI, and for the
+	// preferences, whose editability follows the same rule.
+	entitlements := entitlement.NewService(entadapters.Billing{})
+
+	dictionaryService := dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, dictionary.QuotaMeter{}, entitlements)
+	preferencesService := preferences.NewService(prefadapters.Table{}, entitlements)
+
+	// The AI word fallback (ADR-045) is a second request after a lookup
+	// missed. The policy decides what that miss offers each user; the service
+	// itself is switched on below, once the AI provider exists.
+	lookupHandler := translate.NewHandler(dictionaryService, repo.ReviewLog{}).WithAI(
+		dictionaryService,
+		adapters.AIPolicy{Service: dictionaryService, Entitlements: entitlements, Preferences: preferencesService},
 	)
 
 	// Sentence translation is an optional feature: if sentence-translate.provider
@@ -336,6 +348,41 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	} else {
 		sentenceTranslator = aitranslate.Instrument(sentenceTranslator, viper.GetString("sentence-translate.provider"), m)
 	}
+
+	// The AI word fallback (ADR-045) rides on the same provider, but only a
+	// provider that implements DefineWord can serve it; others leave it off,
+	// like any optional feature that is not configured.
+	if sentenceTranslator != nil {
+		if definer, ok := aitranslate.AsWordDefiner(sentenceTranslator); ok {
+			dictionaryService.EnableAI(
+				adapters.AIDefiner{Definer: definer},
+				adapters.TokenBilling{
+					Pricing: credit.TokenPricing{
+						WeightIn:  viper.GetInt64("stripe.costs.define-word.weight-in"),
+						WeightOut: viper.GetInt64("stripe.costs.define-word.weight-out"),
+						Divisor:   viper.GetInt64("stripe.costs.define-word.divisor"),
+					},
+					Feature: "lookup_word_ai",
+				},
+				dictionary.NewMemoryLimiter(dictionary.AILimits{
+					CallsPerMinute:    viper.GetInt("ai-word.calls-per-minute"),
+					CallsPerDay:       viper.GetInt("ai-word.calls-per-day"),
+					CacheWritesPerDay: viper.GetInt("ai-word.cache-writes-per-day"),
+				}, nil),
+				dictionary.AIConfig{
+					MinQuality:    viper.GetInt("ai-word.min-quality"),
+					PromptVersion: worddef.PromptVersion,
+					CallTimeout:   viper.GetDuration("ai-word.call-timeout"),
+				},
+			)
+			if !dictionaryService.AIConfigured() {
+				logger.Warnf("AI word lookup is off: stripe.costs.define-word has no price")
+			}
+		} else {
+			logger.Warnf("AI word lookup is off: provider %q does not implement DefineWord", viper.GetString("sentence-translate.provider"))
+		}
+	}
+
 	sentenceHandler := aitranslate.NewHandler(
 		sentenceTranslator,
 		aitranslate.DefaultTokenLedger,
@@ -399,6 +446,7 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 		// translate
 		apiGroup.GET("/translate", lookupHandler.Translate)
 		apiGroup.GET("/word/:word", lookupHandler.TranslateByWord)
+		apiGroup.POST("/dictionary/ai-word", lookupHandler.AIWord)
 		apiGroup.POST("/translate/sentence", sentenceHandler.TranslateSentence)
 		apiGroup.POST("/translate/word-in-context", sentenceHandler.TranslateWordInContext)
 		apiGroup.POST("/translate/sentence-with-word", sentenceHandler.TranslateSentenceWithWord)
@@ -413,10 +461,7 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	// Server-side user preferences (ADR-044): the AI word fallback switch and
 	// its one-time notice. Defaults and editability follow the user's payment
 	// state (ADR-045 Decision 14).
-	preferencesHandler := handlers.NewPreferencesHandler(preferences.NewService(
-		prefadapters.Table{},
-		entitlement.NewService(entadapters.Billing{}),
-	))
+	preferencesHandler := handlers.NewPreferencesHandler(preferencesService)
 	apiGroup.GET("/me/preferences", preferencesHandler.Get)
 	apiGroup.PUT("/me/preferences", preferencesHandler.Update)
 
@@ -469,6 +514,7 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	adminDict.Use(middleware.RequireAdmin())
 	{
 		adminDict.GET("/words/:word", handlers.AdminGetWord)
+		adminDict.PUT("/words/:word", handlers.AdminEditWord)
 		adminDict.DELETE("/words/:word", handlers.AdminDeleteWord)
 		adminDict.GET("/ecdict/:word", handlers.AdminGetEcdict)
 		adminDict.POST("/words/:word/sync-from-ecdict", handlers.AdminSyncWordFromEcdict)

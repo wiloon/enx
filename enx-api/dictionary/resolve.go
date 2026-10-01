@@ -27,11 +27,27 @@ var (
 	ErrExternalTimeout = errors.New("dictionary: external dictionary timed out")
 )
 
+// Origin is where a definition first came from (ADR-045). It is how a client
+// tells an ECDICT definition from one an AI wrote.
+type Origin string
+
+const (
+	OriginECDICT Origin = "ecdict"
+	OriginAI     Origin = "ai"
+)
+
 // Entry is one English word's dictionary definition.
 type Entry struct {
 	English       string
 	Chinese       string
 	Pronunciation string
+	// Origin is set on entries read from the WordStore; the zero value means
+	// ECDICT.
+	Origin Origin
+	// For an AI-made entry only: the model's 0-10 confidence and the prompt
+	// version that produced it, stored with the row (ADR-045).
+	Quality       int
+	PromptVersion string
 }
 
 // Result is a resolved word lookup. ID is the words row id; it is empty on a
@@ -42,14 +58,20 @@ type Result struct {
 	Chinese       string
 	Pronunciation string
 	Source        Source
+	// Origin is empty on a miss.
+	Origin Origin
 }
 
 // WordStore is the application's own word cache: the words table.
 type WordStore interface {
 	// Find returns the cached word, exact match first, then
-	// case-insensitive; ok is false when it is not cached.
-	Find(ctx context.Context, english string) (id string, entry Entry, ok bool, err error)
-	// Add caches entry and returns its id. When entry.English is already
+	// case-insensitive; ok is false when it is not cached. Unless includeAI,
+	// it leaves out AI-made definitions no admin has edited: those are only
+	// for users who can use AI (ADR-045 Decision 6). The exclusion is the
+	// store's job, so a hidden row is never read.
+	Find(ctx context.Context, english string, includeAI bool) (id string, entry Entry, ok bool, err error)
+	// Add caches entry, with entry.Origin as the row's source, and returns
+	// its id. When entry.English is already
 	// cached -- an inflection resolved to a cached headword ("ran" ->
 	// "run"), or a concurrent lookup added it first -- it returns the
 	// existing row's id.
@@ -72,27 +94,56 @@ type Meter interface {
 	Charge(ctx context.Context, userID string) error
 }
 
+// Entitlements says whether a user may use AI features (ADR-045 Decision 14).
+type Entitlements interface {
+	CanUseAI(ctx context.Context, userID string) (bool, error)
+}
+
 // Service resolves user word lookups (ADR-018's single lookup seam).
 type Service struct {
 	words    WordStore
 	external ExternalDictionary
 	meter    Meter
+	ent      Entitlements
+	ai       *aiFallback // nil until EnableAI
 }
 
-func NewService(words WordStore, external ExternalDictionary, meter Meter) *Service {
-	return &Service{words: words, external: external, meter: meter}
+func NewService(words WordStore, external ExternalDictionary, meter Meter, ent Entitlements) *Service {
+	return &Service{words: words, external: external, meter: meter, ent: ent}
+}
+
+// findCached reads the words table for userID. It looks first at the rows
+// every user may see, which is the whole cache for nearly every lookup and
+// costs no entitlement check. Only on a miss does it ask whether userID may
+// use AI and, if so, look again for AI-made rows. A user who may not never
+// has such a row read at all, and an entitlement error counts as "may not":
+// the worst outcome is a paying user briefly not seeing an AI definition.
+func (s *Service) findCached(ctx context.Context, english, userID string) (string, Entry, bool, error) {
+	id, entry, ok, err := s.words.Find(ctx, english, false)
+	if err != nil || ok {
+		return id, entry, ok, err
+	}
+	canUseAI, err := s.ent.CanUseAI(ctx, userID)
+	if err != nil {
+		logger.Warnf("dictionary: entitlement check failed for user %s, hiding AI definitions: %v", userID, err)
+		return "", Entry{}, false, nil
+	}
+	if !canUseAI {
+		return "", Entry{}, false, nil
+	}
+	return s.words.Find(ctx, english, true)
 }
 
 // Resolve turns a normalized English word into its definition: the local
-// words table first, then the external dictionary, caching an external hit
-// in the words table. Every resolution is metered against userID's daily
+// words table first (AI-made definitions only for users who may use AI), then
+// the external dictionary, caching an external hit in the words table. Every resolution is metered against userID's daily
 // quota, whichever source answers (ADR-018 B2).
 //
 // Besides a WordStore read error, it returns only the sentinels
 // ErrEcdictUnavailable (not cached, and no external dictionary configured)
 // and ErrQuotaExceeded.
 func (s *Service) Resolve(ctx context.Context, english, userID string) (Result, error) {
-	id, cached, ok, err := s.words.Find(ctx, english)
+	id, cached, ok, err := s.findCached(ctx, english, userID)
 	if err != nil {
 		return Result{}, err
 	}
@@ -109,6 +160,7 @@ func (s *Service) Resolve(ctx context.Context, english, userID string) (Result, 
 			Chinese:       cached.Chinese,
 			Pronunciation: cached.Pronunciation,
 			Source:        SourceLocal,
+			Origin:        originOrECDICT(cached.Origin),
 		}, nil
 	}
 
@@ -118,22 +170,35 @@ func (s *Service) Resolve(ctx context.Context, english, userID string) (Result, 
 	if err := s.meter.Charge(ctx, userID); err != nil {
 		return Result{}, err
 	}
+	res := s.fromExternal(ctx, english)
+	switch res.Source {
+	case SourceMiss:
+		dictsample.Word(english, dictsample.SourceNone)
+	case SourceEcdict:
+		dictsample.Word(english, dictsample.SourceEcdict)
+	}
+	return res, nil
+}
+
+// fromExternal asks the external dictionary for english and turns the answer
+// into a Result: SourceEcdict (cached in the words table), SourceMiss, or --
+// when it could not answer -- SourceTimeout or SourceError. It does not meter
+// and does not sample; callers do both.
+func (s *Service) fromExternal(ctx context.Context, english string) Result {
 	entry, err := s.external.Lookup(ctx, english)
 	switch {
 	case errors.Is(err, ErrNotInDictionary):
-		dictsample.Word(english, dictsample.SourceNone)
-		return Result{English: english, Source: SourceMiss}, nil
+		return Result{English: english, Source: SourceMiss}
 	case errors.Is(err, ErrExternalTimeout):
 		// No definition for the user, as for a miss; labelled apart so the
 		// miss rate measures dictionary coverage only (ADR-040).
-		return Result{English: english, Source: SourceTimeout}, nil
+		return Result{English: english, Source: SourceTimeout}
 	case err != nil:
 		logger.Warnf("dictionary: external lookup of %s failed: %v", english, err)
-		return Result{English: english, Source: SourceError}, nil
+		return Result{English: english, Source: SourceError}
 	}
-	dictsample.Word(english, dictsample.SourceEcdict)
 
-	id, err = s.words.Add(ctx, entry)
+	id, err := s.words.Add(ctx, entry)
 	if err != nil {
 		// Still answer with the definition; the caller skips the review
 		// bookkeeping, which needs a persisted word id.
@@ -146,5 +211,15 @@ func (s *Service) Resolve(ctx context.Context, english, userID string) (Result, 
 		Chinese:       entry.Chinese,
 		Pronunciation: entry.Pronunciation,
 		Source:        SourceEcdict,
-	}, nil
+		Origin:        OriginECDICT,
+	}
+}
+
+// originOrECDICT reads the zero Origin as ECDICT, the only origin there was
+// before ADR-045.
+func originOrECDICT(o Origin) Origin {
+	if o == "" {
+		return OriginECDICT
+	}
+	return o
 }

@@ -197,6 +197,30 @@ weight-in = 1
 weight-out = 3
 divisor = 3000
 
+[stripe.costs.define-word]
+# The AI word fallback (ADR-045): a word the dictionaries lack is defined by a
+# model, billed by ACTUAL token usage like the features above. The prompt and
+# the reply are tiny, so one call costs the minimum of 1 credit at these
+# values. divisor <= 0 or both weights 0 means "not priced yet" and the
+# feature does not run. Placeholders pending pricing review; calibrate from
+# the `cost=` field in the usage log lines. Override with
+# STRIPE_COSTS_DEFINE_WORD_WEIGHT_IN / _WEIGHT_OUT / _DIVISOR.
+weight-in = 1
+weight-out = 3
+divisor = 3000
+
+[ai-word]
+# Tuning for the AI word fallback (ADR-045). Starting guesses -- tune from
+# usage. min-quality: the model's own 0-10 confidence a definition needs to be
+# cached for everyone (below it the user still sees it). The ceilings are per
+# user; 0 means no ceiling of that kind. Override with AI_WORD_MIN_QUALITY /
+# _CALLS_PER_MINUTE / _CALLS_PER_DAY / _CACHE_WRITES_PER_DAY / _CALL_TIMEOUT.
+min-quality = 8
+calls-per-minute = 6
+calls-per-day = 200
+cache-writes-per-day = 50
+call-timeout = "45s"
+
 [stripe.quota]
 # Daily dictionary lookup ceilings, one per tier (ADR-029). Everyone is
 # counted; the tier only decides the number. 0 means "count, but never

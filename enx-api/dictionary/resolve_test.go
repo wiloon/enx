@@ -11,26 +11,43 @@ import (
 // match first, then case-insensitive.
 type fakeWords struct {
 	rows    map[string]Entry // id -> entry
+	edited  map[string]bool  // id -> an admin has edited the row
 	added   []Entry
+	finds   []bool // the includeAI argument of every Find call, in order
 	findErr error
 	addErr  error
 }
 
-func newFakeWords() *fakeWords { return &fakeWords{rows: map[string]Entry{}} }
+func newFakeWords() *fakeWords {
+	return &fakeWords{rows: map[string]Entry{}, edited: map[string]bool{}}
+}
 
 func (f *fakeWords) seed(id string, e Entry) { f.rows[id] = e }
 
-func (f *fakeWords) Find(_ context.Context, english string) (string, Entry, bool, error) {
+// seedEdited seeds a row an admin has edited.
+func (f *fakeWords) seedEdited(id string, e Entry) {
+	f.rows[id] = e
+	f.edited[id] = true
+}
+
+// visible mirrors the words table's rule: unless includeAI, AI-made rows no
+// admin has edited are left out.
+func (f *fakeWords) visible(id string, e Entry, includeAI bool) bool {
+	return includeAI || e.Origin != OriginAI || f.edited[id]
+}
+
+func (f *fakeWords) Find(_ context.Context, english string, includeAI bool) (string, Entry, bool, error) {
+	f.finds = append(f.finds, includeAI)
 	if f.findErr != nil {
 		return "", Entry{}, false, f.findErr
 	}
 	for id, e := range f.rows {
-		if e.English == english {
+		if e.English == english && f.visible(id, e, includeAI) {
 			return id, e, true, nil
 		}
 	}
 	for id, e := range f.rows {
-		if strings.EqualFold(e.English, english) {
+		if strings.EqualFold(e.English, english) && f.visible(id, e, includeAI) {
 			return id, e, true, nil
 		}
 	}
@@ -93,16 +110,33 @@ func (m *fakeMeter) Charge(context.Context, string) error {
 	return nil
 }
 
+// fakeEntitlements answers CanUseAI with a fixed result and counts the asks.
+type fakeEntitlements struct {
+	can   bool
+	err   error
+	calls int
+}
+
+func (e *fakeEntitlements) CanUseAI(context.Context, string) (bool, error) {
+	e.calls++
+	return e.can, e.err
+}
+
 var run = Entry{English: "run", Chinese: "v. 跑", Pronunciation: "rʌn"}
 
+// newTestService is a service for a user who may not use AI.
 func newTestService() (*Service, *fakeWords, *fakeExternal, *fakeMeter) {
+	return newTestServiceFor(&fakeEntitlements{})
+}
+
+func newTestServiceFor(ent Entitlements) (*Service, *fakeWords, *fakeExternal, *fakeMeter) {
 	words := newFakeWords()
 	external := &fakeExternal{
 		entries: map[string]Entry{"run": run},
 		forms:   map[string]string{"ran": "run"},
 	}
 	meter := &fakeMeter{}
-	return NewService(words, external, meter), words, external, meter
+	return NewService(words, external, meter, ent), words, external, meter
 }
 
 func TestResolveLocalHit(t *testing.T) {
@@ -113,7 +147,7 @@ func TestResolveLocalHit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Result{ID: "w1", English: "serendipity", Chinese: "机缘巧合", Source: SourceLocal}
+	want := Result{ID: "w1", English: "serendipity", Chinese: "机缘巧合", Source: SourceLocal, Origin: OriginECDICT}
 	if res != want {
 		t.Fatalf("got %+v, want %+v", res, want)
 	}
@@ -172,7 +206,7 @@ func TestResolveExternalHitIsCached(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Result{ID: "id-run", English: "run", Chinese: "v. 跑", Pronunciation: "rʌn", Source: SourceEcdict}
+	want := Result{ID: "id-run", English: "run", Chinese: "v. 跑", Pronunciation: "rʌn", Source: SourceEcdict, Origin: OriginECDICT}
 	if res != want {
 		t.Fatalf("got %+v, want %+v", res, want)
 	}
@@ -293,5 +327,102 @@ func TestResolveLabelsExternalFailures(t *testing.T) {
 		if len(words.added) != 0 {
 			t.Errorf("%v: cached %v", tc.err, words.added)
 		}
+	}
+}
+
+// ADR-045 Decision 6: AI-made definitions in the words table are only for
+// users who can use AI, until an admin has edited them.
+
+var aiRow = Entry{English: "rizzler", Chinese: "n. 很有魅力的人", Origin: OriginAI}
+
+func TestResolveECDICTRowNeverAsksForEntitlement(t *testing.T) {
+	ent := &fakeEntitlements{}
+	svc, words, _, _ := newTestServiceFor(ent)
+	words.seed("w1", Entry{English: "serendipity", Chinese: "机缘巧合"})
+
+	res, err := svc.Resolve(context.Background(), "serendipity", "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Origin != OriginECDICT {
+		t.Fatalf("Origin = %q, want %q", res.Origin, OriginECDICT)
+	}
+	if ent.calls != 0 {
+		t.Fatalf("entitlement asked %d times for an ECDICT row, want 0 (the common path stays free)", ent.calls)
+	}
+	if len(words.finds) != 1 || words.finds[0] {
+		t.Fatalf("Find calls = %v, want a single call without AI rows", words.finds)
+	}
+}
+
+func TestResolveShowsAIDefinitionToUsersWhoCanUseAI(t *testing.T) {
+	svc, words, external, meter := newTestServiceFor(&fakeEntitlements{can: true})
+	words.seed("w2", aiRow)
+
+	res, err := svc.Resolve(context.Background(), "rizzler", "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Result{ID: "w2", English: "rizzler", Chinese: "n. 很有魅力的人", Source: SourceLocal, Origin: OriginAI}
+	if res != want {
+		t.Fatalf("got %+v, want %+v", res, want)
+	}
+	if len(external.queried) != 0 {
+		t.Fatalf("ECDICT queried %v: a cached AI row should answer first", external.queried)
+	}
+	if meter.charged != 1 {
+		t.Fatalf("charged %d, want 1", meter.charged)
+	}
+}
+
+func TestResolveHidesAIDefinitionFromUsersWhoCannotUseAI(t *testing.T) {
+	svc, words, external, _ := newTestServiceFor(&fakeEntitlements{can: false})
+	words.seed("w2", aiRow)
+
+	res, err := svc.Resolve(context.Background(), "rizzler", "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Source != SourceMiss || res.Chinese != "" || res.ID != "" {
+		t.Fatalf("got %+v, want a plain miss", res)
+	}
+	// The hidden row must never be read for this user, not read and dropped.
+	for _, includeAI := range words.finds {
+		if includeAI {
+			t.Fatalf("Find calls = %v: a user who can't use AI must never trigger a read of AI rows", words.finds)
+		}
+	}
+	if len(external.queried) != 1 {
+		t.Fatalf("ECDICT queried %v, want one query after the words table", external.queried)
+	}
+}
+
+func TestResolveShowsAnAdminEditedAIDefinitionToEveryone(t *testing.T) {
+	ent := &fakeEntitlements{can: false}
+	svc, words, _, _ := newTestServiceFor(ent)
+	words.seedEdited("w2", aiRow)
+
+	res, err := svc.Resolve(context.Background(), "rizzler", "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ID != "w2" || res.Origin != OriginAI || res.Chinese != aiRow.Chinese {
+		t.Fatalf("got %+v, want the edited AI row", res)
+	}
+	if ent.calls != 0 {
+		t.Fatalf("entitlement asked %d times, want 0: an edited row is visible to all", ent.calls)
+	}
+}
+
+func TestResolveTreatsAnEntitlementErrorAsNotEntitled(t *testing.T) {
+	svc, words, _, _ := newTestServiceFor(&fakeEntitlements{can: true, err: errors.New("db down")})
+	words.seed("w2", aiRow)
+
+	res, err := svc.Resolve(context.Background(), "rizzler", "u1")
+	if err != nil {
+		t.Fatalf("an entitlement failure must not fail the lookup: %v", err)
+	}
+	if res.Source != SourceMiss {
+		t.Fatalf("got %+v, want the AI row hidden, as for a user who can't use AI", res)
 	}
 }
