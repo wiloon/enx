@@ -24,7 +24,6 @@ This is a monorepo containing multiple sub-projects:
 | **[enx-api-java](enx-api-java/)** | Backend API server (Java, dual-stack) | Java 26, Spring Boot 4.1, Gradle |
 | **[enx-chrome](enx-chrome/)** | Chrome browser extension | TypeScript, React, Vite |
 | **[enx-ui](enx-ui/)** | Web UI (future) | Next.js, React |
-| **[enx-sync](enx-sync/)** | P2P data sync service | Go, gRPC |
 | **[mock-api](mock-api/)** | Mock API server for testing | Node.js |
 
 ## 🚀 Quick Start

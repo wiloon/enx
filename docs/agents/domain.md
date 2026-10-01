@@ -24,8 +24,7 @@ If any of these files don't exist, **proceed silently**. Don't flag their absenc
 │   └── 0001-integrate-ecdict-dictionary.md   ← legacy location
 ├── enx-api/
 ├── enx-ui/
-├── enx-chrome/
-└── enx-sync/                          ← P2P 同步，暂停维护（2026-09-17）；新设计不考虑 P2P
+└── enx-chrome/
 ```
 
 ## Use the glossary's vocabulary

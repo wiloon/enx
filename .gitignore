@@ -16,7 +16,6 @@ enx-api/enx-api
 enx-api/enx-server
 enx-api/migrate
 enx-api/send-test-email
-enx-sync/server
 enx-data-service/bin/
 
 # Dependency directories (remove the comment below to include it)
