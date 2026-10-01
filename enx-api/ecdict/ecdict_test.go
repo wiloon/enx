@@ -2,14 +2,25 @@ package ecdict
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
-	"github.com/glebarez/sqlite"
-	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
+	"enx-api/ecdict/ecdicttest"
 )
+
+func use(t *testing.T, rows ...ecdicttest.Row) {
+	t.Helper()
+	Init(ecdicttest.Create(t, rows...))
+	if !IsAvailable() {
+		t.Fatal("expected ECDICT available")
+	}
+	t.Cleanup(func() { Init("") })
+}
+
+var run = ecdicttest.Row{Word: "run", Phonetic: "/rʌn/", Translation: "跑", Exchange: "i:running/p:ran/d:ran"}
 
 func TestInitUnavailableWhenPathEmpty(t *testing.T) {
 	Init("")
@@ -21,142 +32,113 @@ func TestInitUnavailableWhenPathEmpty(t *testing.T) {
 	}
 }
 
-func TestQueryExactThenCaseInsensitive(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "ecdict-test.db")
-	createTestDB(t, dbPath)
+// stardict.word is COLLATE NOCASE, so the exact step already matches any
+// case; there is no separate case-insensitive step.
+func TestFindExactMatchesAnyCase(t *testing.T) {
+	use(t, ecdicttest.Row{Word: "Hello", Translation: "你好"})
 
-	Init(dbPath)
-	if !IsAvailable() {
-		t.Fatal("expected ECDICT available")
-	}
-
-	if got := Query(context.Background(), "Hello"); got == nil || got.Chinese != "你好" {
-		t.Fatalf("exact match failed: %+v", got)
-	}
-	if got := Query(context.Background(), "hello"); got == nil || got.Chinese != "你好" {
-		t.Fatalf("case-insensitive match failed: %+v", got)
+	for _, w := range []string{"Hello", "hello", "HELLO"} {
+		row, matchedBy, err := Find(context.Background(), w)
+		if err != nil || matchedBy != "exact" || row.Translation != "你好" {
+			t.Fatalf("Find(%q) = %+v, %q, %v; want the exact match", w, row, matchedBy, err)
+		}
 	}
 }
 
-func TestQueryWordFormViaSw(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "ecdict-sw.db")
-	createTestDBWithSw(t, dbPath)
+func TestFindViaSw(t *testing.T) {
+	use(t, ecdicttest.Row{Word: "U.S.", Sw: "us", Translation: "美国"})
 
-	Init(dbPath)
-	got := Query(context.Background(), "us")
-	if got == nil || got.English != "U.S." {
-		t.Fatalf("sw lookup failed: %+v", got)
+	row, matchedBy, err := Find(context.Background(), "us")
+	if err != nil || matchedBy != "sw" || row.Word != "U.S." {
+		t.Fatalf("got %+v, %q, %v; want U.S. via sw", row, matchedBy, err)
 	}
 }
 
-func TestQueryWordFormViaExchange(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "ecdict-exchange.db")
-	createTestDBWithExchange(t, dbPath)
+func TestFindViaExchange(t *testing.T) {
+	use(t, run)
 
-	Init(dbPath)
-	got := Query(context.Background(), "running")
-	if got == nil || got.English != "run" {
-		t.Fatalf("exchange lookup failed: %+v", got)
+	row, matchedBy, err := Find(context.Background(), "running")
+	if err != nil || matchedBy != "exchange" || row.Word != "run" || row.Exchange == "" {
+		t.Fatalf("got %+v, %q, %v; want run via exchange", row, matchedBy, err)
 	}
 }
 
-func TestLookupRawReportsMatchStrategyAndRawRow(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "ecdict-raw.db")
-	createTestDBWithExchange(t, dbPath) // seeds "run" with exchange "i:running/..."
-	Init(dbPath)
+// The three exchange patterns are tried in one scan but keep their order:
+// a ":form/" match beats an alphabetically earlier "/form/" match.
+func TestFindExchangeKeepsPatternPrecedence(t *testing.T) {
+	use(t,
+		ecdicttest.Row{Word: "aaa", Translation: "x", Exchange: "d:foo/ran/i:bar"},
+		ecdicttest.Row{Word: "run", Translation: "跑", Exchange: "p:ran/d:ran"},
+	)
 
-	if row, matchedBy, found := LookupRaw(context.Background(), "run"); !found ||
-		matchedBy != "exact" || row.Word != "run" || row.Exchange == "" {
-		t.Fatalf("exact: found=%v matchedBy=%q row=%+v", found, matchedBy, row)
-	}
-
-	// "running" is only reachable via the exchange fallback.
-	if row, matchedBy, found := LookupRaw(context.Background(), "running"); !found ||
-		matchedBy != "exchange" || row.Word != "run" {
-		t.Fatalf("exchange: found=%v matchedBy=%q row=%+v", found, matchedBy, row)
-	}
-
-	if _, _, found := LookupRaw(context.Background(), "nonexistentword"); found {
-		t.Fatal("expected not found for a word absent from ECDICT")
+	row, _, err := Find(context.Background(), "ran")
+	if err != nil || row.Word != "run" {
+		t.Fatalf("got %+v, %v; want run (pattern \":ran/\" first)", row, err)
 	}
 }
 
-func TestLookupRawUnavailableWhenNotInitialized(t *testing.T) {
-	Init("") // unavailable
-	if _, _, found := LookupRaw(context.Background(), "hello"); found {
-		t.Fatal("expected not found when ECDICT unavailable")
+func TestFindNotFound(t *testing.T) {
+	use(t, run)
+
+	if _, _, err := Find(context.Background(), "zzxqv"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("got %v, want ErrNotFound", err)
 	}
 }
 
-func createTestDB(t *testing.T, dbPath string) {
-	t.Helper()
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
-		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec(`CREATE TABLE stardict (
-		word TEXT PRIMARY KEY,
-		sw TEXT,
-		phonetic TEXT,
-		translation TEXT,
-		exchange TEXT
-	)`).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec(`INSERT INTO stardict (word, sw, phonetic, translation, exchange) VALUES (?, ?, ?, ?, ?)`,
-		"Hello", "hello", "/həˈloʊ/", "你好", "",
-	).Error; err != nil {
-		t.Fatal(err)
+func TestFindTimeout(t *testing.T) {
+	use(t, run)
+	prev := queryTimeout
+	queryTimeout = time.Nanosecond
+	t.Cleanup(func() { queryTimeout = prev })
+
+	if _, _, err := Find(context.Background(), "zzxqv"); !errors.Is(err, ErrTimeout) {
+		t.Fatalf("got %v, want ErrTimeout", err)
 	}
 }
 
-func createTestDBWithSw(t *testing.T, dbPath string) {
-	t.Helper()
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
-		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec(`CREATE TABLE stardict (
-		word TEXT PRIMARY KEY,
-		sw TEXT,
-		phonetic TEXT,
-		translation TEXT,
-		exchange TEXT
-	)`).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec(`INSERT INTO stardict (word, sw, phonetic, translation, exchange) VALUES (?, ?, ?, ?, ?)`,
-		"U.S.", "us", "", "美国", "",
-	).Error; err != nil {
-		t.Fatal(err)
+// A request the caller abandoned is not a timeout and not a miss.
+func TestFindCallerCanceled(t *testing.T) {
+	use(t, run)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _, err := Find(ctx, "zzxqv")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("got %v, want context.Canceled", err)
 	}
 }
 
-func createTestDBWithExchange(t *testing.T, dbPath string) {
-	t.Helper()
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
-		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
-	})
-	if err != nil {
+// A broken database is an error, never "not found".
+func TestFindDatabaseError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "empty.db")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Exec(`CREATE TABLE stardict (
-		word TEXT PRIMARY KEY,
-		sw TEXT,
-		phonetic TEXT,
-		translation TEXT,
-		exchange TEXT
-	)`).Error; err != nil {
-		t.Fatal(err)
+	Init(path) // opens, but has no stardict table
+	t.Cleanup(func() { Init("") })
+
+	_, _, err := Find(context.Background(), "run")
+	if err == nil || errors.Is(err, ErrNotFound) || errors.Is(err, ErrTimeout) {
+		t.Fatalf("got %v, want the database error", err)
 	}
-	if err := db.Exec(`INSERT INTO stardict (word, sw, phonetic, translation, exchange) VALUES (?, ?, ?, ?, ?)`,
-		"run", "run", "/rʌn/", "跑", "i:running/p:ran/d:ran",
-	).Error; err != nil {
-		t.Fatal(err)
+}
+
+func TestFindUnavailable(t *testing.T) {
+	Init("")
+	if _, _, err := Find(context.Background(), "run"); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("got %v, want ErrUnavailable", err)
+	}
+}
+
+// LookupRaw (admin page) keeps its found-or-not shape on top of Find.
+func TestLookupRaw(t *testing.T) {
+	use(t, run)
+
+	if row, matchedBy, found := LookupRaw(context.Background(), "RUN"); !found || matchedBy != "exact" || row.Word != "run" {
+		t.Fatalf("got %+v, %q, %v", row, matchedBy, found)
+	}
+	if _, _, found := LookupRaw(context.Background(), "zzxqv"); found {
+		t.Fatal("found a word absent from ECDICT")
 	}
 }
 
@@ -172,11 +154,5 @@ func TestInitMissingFile(t *testing.T) {
 }
 
 func TestInitOpensReadOnly(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "ecdict-ro.db")
-	createTestDB(t, dbPath)
-
-	Init(dbPath)
-	if !IsAvailable() {
-		t.Fatal("expected read-only open to succeed")
-	}
+	use(t, run)
 }

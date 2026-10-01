@@ -58,18 +58,25 @@ type fakeExternal struct {
 	unavailable bool
 	entries     map[string]Entry
 	forms       map[string]string
+	err         error // returned instead of looking anything up
 	queried     []string
 }
 
 func (f *fakeExternal) Available() bool { return !f.unavailable }
 
-func (f *fakeExternal) Lookup(_ context.Context, english string) (Entry, bool) {
+func (f *fakeExternal) Lookup(_ context.Context, english string) (Entry, error) {
 	f.queried = append(f.queried, english)
+	if f.err != nil {
+		return Entry{}, f.err
+	}
 	if head, ok := f.forms[english]; ok {
 		english = head
 	}
 	e, ok := f.entries[english]
-	return e, ok
+	if !ok {
+		return Entry{}, ErrNotInDictionary
+	}
+	return e, nil
 }
 
 // fakeMeter counts charges and rejects once limit is reached (0 = no limit).
@@ -258,5 +265,33 @@ func TestResolveReturnsWordStoreErrors(t *testing.T) {
 
 	if _, err := svc.Resolve(context.Background(), "run", "u1"); err == nil || err.Error() != "db down" {
 		t.Fatalf("got %v, want the store's error", err)
+	}
+}
+
+// The external dictionary failing to answer is not a miss: it is labelled
+// timeout or error, so the miss rate measures dictionary coverage only. The
+// user still gets a no-definition answer, and nothing is cached.
+func TestResolveLabelsExternalFailures(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		want Source
+	}{
+		{ErrExternalTimeout, SourceTimeout},
+		{errors.New("disk I/O error"), SourceError},
+		{context.Canceled, SourceError},
+	} {
+		svc, words, external, _ := newTestService()
+		external.err = tc.err
+
+		res, err := svc.Resolve(context.Background(), "run", "u1")
+		if err != nil {
+			t.Fatalf("%v: Resolve returned %v, want a result", tc.err, err)
+		}
+		if res != (Result{English: "run", Source: tc.want}) {
+			t.Errorf("%v: got %+v, want source %q and no definition", tc.err, res, tc.want)
+		}
+		if len(words.added) != 0 {
+			t.Errorf("%v: cached %v", tc.err, words.added)
+		}
 	}
 }

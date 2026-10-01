@@ -3,17 +3,14 @@ package translate
 import (
 	"encoding/json"
 	"net/http"
-	"path/filepath"
 	"testing"
 
 	"enx-api/ecdict"
+	"enx-api/ecdict/ecdicttest"
 	"enx-api/utils/sqlitex"
 
 	"github.com/gin-gonic/gin"
-	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
-	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
 )
 
 // Characterization tests for the per-user review bookkeeping translateWord
@@ -21,37 +18,13 @@ import (
 // and so the underline colour in enx-chrome. They pin today's behaviour so
 // the ADR-018 deep-seam refactor can move the lookup code safely.
 
-type stardictRow struct {
-	Word, Sw, Phonetic, Translation, Exchange string
-}
+type stardictRow = ecdicttest.Row
 
 // setupEcdictWith opens a throwaway on-disk stardict holding rows, so the
 // ECDICT fallback returns real entries.
 func setupEcdictWith(t *testing.T, rows ...stardictRow) {
 	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "ecdict.db")
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
-		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec(`CREATE TABLE stardict (word TEXT, sw TEXT, phonetic TEXT, translation TEXT, exchange TEXT)`).Error; err != nil {
-		t.Fatal(err)
-	}
-	for _, r := range rows {
-		if err := db.Exec(`INSERT INTO stardict VALUES (?, ?, ?, ?, ?)`,
-			r.Word, r.Sw, r.Phonetic, r.Translation, r.Exchange).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sqlDB.Close()
-
-	ecdict.Init(dbPath)
+	ecdict.Init(ecdicttest.Create(t, rows...))
 	t.Cleanup(func() { ecdict.Init("") })
 }
 

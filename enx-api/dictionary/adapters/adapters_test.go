@@ -2,11 +2,12 @@ package adapters
 
 import (
 	"context"
-	"path/filepath"
+	"errors"
 	"testing"
 
 	"enx-api/dictionary"
 	"enx-api/ecdict"
+	"enx-api/ecdict/ecdicttest"
 	"enx-api/utils/sqlitex"
 
 	"github.com/glebarez/sqlite"
@@ -44,27 +45,11 @@ func seedWord(t *testing.T, english, chinese string) string {
 // translation, exchange}).
 func setupEcdict(t *testing.T, rows ...[5]string) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "ecdict.db")
-	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{
-		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec(`CREATE TABLE stardict (word TEXT, sw TEXT, phonetic TEXT, translation TEXT, exchange TEXT)`).Error; err != nil {
-		t.Fatal(err)
-	}
+	var rs []ecdicttest.Row
 	for _, r := range rows {
-		if err := db.Exec(`INSERT INTO stardict VALUES (?, ?, ?, ?, ?)`, r[0], r[1], r[2], r[3], r[4]).Error; err != nil {
-			t.Fatal(err)
-		}
+		rs = append(rs, ecdicttest.Row{Word: r[0], Sw: r[1], Phonetic: r[2], Translation: r[3], Exchange: r[4]})
 	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sqlDB.Close()
-	ecdict.Init(path)
+	ecdict.Init(ecdicttest.Create(t, rs...))
 	t.Cleanup(func() { ecdict.Init("") })
 }
 
@@ -106,13 +91,23 @@ func TestEcdictLookup(t *testing.T) {
 		t.Fatal("Available() = false with a database configured")
 	}
 	want := dictionary.Entry{English: "run", Chinese: "v. 跑", Pronunciation: "rʌn"}
-	for _, english := range []string{"run", "ran"} {
-		if got, ok := (Ecdict{}).Lookup(ctx, english); !ok || got != want {
-			t.Fatalf("Lookup(%q) = %+v, %v; want %+v", english, got, ok, want)
+	for _, english := range []string{"run", "RUN", "ran"} {
+		if got, err := (Ecdict{}).Lookup(ctx, english); err != nil || got != want {
+			t.Fatalf("Lookup(%q) = %+v, %v; want %+v", english, got, err, want)
 		}
 	}
-	if _, ok := (Ecdict{}).Lookup(ctx, "zzxqv"); ok {
-		t.Fatal("Lookup(zzxqv) found something")
+	if _, err := (Ecdict{}).Lookup(ctx, "zzxqv"); !errors.Is(err, dictionary.ErrNotInDictionary) {
+		t.Fatalf("Lookup(zzxqv) = %v, want ErrNotInDictionary", err)
+	}
+}
+
+// A lookup the caller abandoned surfaces as the context error (labelled "error").
+func TestEcdictLookupFailures(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	setupEcdict(t, [5]string{"run", "run", "", "v. 跑", ""})
+	if _, err := (Ecdict{}).Lookup(ctx, "zzxqv"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled: got %v, want context.Canceled", err)
 	}
 }
 
