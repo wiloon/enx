@@ -295,6 +295,99 @@ describe('background onMessage / validateSession', () => {
   })
 })
 
+// ADR-044: server-side preferences. The options page can't hold the session
+// token, so it asks the background to call /api/me/preferences.
+describe('background onMessage / getPreferences and updatePreferences (ADR-044)', () => {
+  const listener = onMessageListener
+  const call = (request: unknown) =>
+    new Promise(resolve => {
+      expect(listener(request, {}, resolve)).toBe(true)
+    })
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    __resetClerkClientCacheForTests()
+    setClerkSession('clerk-session-jwt')
+    ;(getApiBaseUrl as jest.Mock).mockResolvedValue('http://localhost:8090')
+    ;(chrome.storage.local.remove as jest.Mock).mockResolvedValue(undefined)
+    ;(chrome.tabs.query as jest.Mock).mockResolvedValue([{ id: 1 }])
+    ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
+    ;(global.fetch as jest.Mock) = jest.fn()
+  })
+
+  it('getPreferences reads GET /api/me/preferences with the session token', async () => {
+    const prefs = {
+      aiWordFallback: { value: null, effective: true, editable: true },
+    }
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(200, prefs))
+
+    const response = await call({ type: 'getPreferences' })
+
+    expect(response).toEqual({ success: true, data: prefs })
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toBe('http://localhost:8090/api/me/preferences')
+    expect(init.method).toBeUndefined()
+    expect(init.headers.Authorization).toBe('Bearer clerk-session-jwt')
+  })
+
+  it('updatePreferences sends the partial change as a PUT body', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(200, {}))
+
+    await call({
+      type: 'updatePreferences',
+      changes: { aiWordFallback: false, aiWordFallbackNoticeAck: null },
+    })
+
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toBe('http://localhost:8090/api/me/preferences')
+    expect(init.method).toBe('PUT')
+    expect(JSON.parse(init.body)).toEqual({
+      aiWordFallback: false,
+      aiWordFallbackNoticeAck: null,
+    })
+  })
+
+  it.each([
+    ['missing', undefined],
+    ['null', null],
+    ['an array', [true]],
+    ['a string', 'aiWordFallback'],
+  ])(
+    'updatePreferences refuses %s changes without calling the API',
+    async (_name, changes) => {
+      const response = await call({ type: 'updatePreferences', changes })
+
+      expect(response).toMatchObject({ success: false })
+      expect(global.fetch).not.toHaveBeenCalled()
+    }
+  )
+
+  it('passes a 403 through with the server message and status', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(403, { message: 'Not entitled' }, false)
+    )
+
+    const response = await call({
+      type: 'updatePreferences',
+      changes: { aiWordFallback: true },
+    })
+
+    expect(response).toEqual({
+      success: false,
+      error: 'Not entitled',
+      status: 403,
+    })
+  })
+
+  it('reports session expiry on a 401', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
+
+    const response = await call({ type: 'getPreferences' })
+
+    expect(response).toMatchObject({ success: false, sessionExpired: true })
+  })
+})
+
 // ADR-020: the popup delegates opening the web sign-in tab to the background
 // (the popup is destroyed the moment chrome.tabs.create steals focus).
 describe('background onMessage / openWebSignIn (ADR-020)', () => {
