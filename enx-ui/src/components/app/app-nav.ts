@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   BarChart3,
   BookOpen,
+  ClipboardCheck,
   CreditCard,
   Globe,
   Home,
@@ -50,6 +51,8 @@ export const NAV_FOOTER: NavItem[] = [
 // (app)/admin/layout.tsx on the client and RequireAdmin on the server.
 export const NAV_ADMIN: NavItem[] = [
   { label: 'Dictionary', href: '/admin/dictionary', icon: Wrench },
+  // AI-made definitions waiting for review (ADR-045).
+  { label: 'AI definitions', href: '/admin/ai-words', icon: ClipboardCheck },
   { label: 'Page reports', href: '/admin/page-reports', icon: AlertTriangle },
 ]
 

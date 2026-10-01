@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -39,21 +40,32 @@ type adminWordRow struct {
 	// (ADR-045 Decision 6).
 	Source        string `json:"source,omitempty"`
 	AdminEditedAt *int64 `json:"adminEditedAt,omitempty"`
+	// For an AI-made row: the model's own 0-10 confidence and the prompt
+	// version that produced it.
+	AIQuality       *int    `json:"aiQuality,omitempty"`
+	AIPromptVersion *string `json:"aiPromptVersion,omitempty"`
+	// How many users have the word in their vocabulary and how many lookups
+	// they made of it. Filled by AdminGetWord only. (loadCount above is not
+	// maintained and is always 0.)
+	Users   int64 `json:"users,omitempty"`
+	Lookups int64 `json:"lookups,omitempty"`
 }
 
 func adminWordRowFrom(w *repo.Word) adminWordRow {
 	return adminWordRow{
-		Found:         true,
-		Id:            w.Id,
-		English:       w.English,
-		Chinese:       w.Chinese,
-		Pronunciation: w.Pronunciation,
-		LoadCount:     w.LoadCount,
-		CreatedAt:     w.CreatedAt,
-		UpdatedAt:     w.UpdatedAt,
-		DeletedAt:     w.DeletedAt,
-		Source:        w.Source,
-		AdminEditedAt: w.AdminEditedAt,
+		Found:           true,
+		Id:              w.Id,
+		English:         w.English,
+		Chinese:         w.Chinese,
+		Pronunciation:   w.Pronunciation,
+		LoadCount:       w.LoadCount,
+		CreatedAt:       w.CreatedAt,
+		UpdatedAt:       w.UpdatedAt,
+		DeletedAt:       w.DeletedAt,
+		Source:          w.Source,
+		AdminEditedAt:   w.AdminEditedAt,
+		AIQuality:       w.AIQuality,
+		AIPromptVersion: w.AIPromptVersion,
 	}
 }
 
@@ -81,7 +93,13 @@ func AdminGetWord(c *gin.Context) {
 		c.JSON(http.StatusOK, adminWordRow{Found: false})
 		return
 	}
-	c.JSON(http.StatusOK, adminWordRowFrom(row))
+	out := adminWordRowFrom(row)
+	if usage, err := repo.AdminWordUsage(row.Id); err != nil {
+		logger.Warnf("AdminGetWord: usage of word=%q: %v", word, err)
+	} else {
+		out.Users, out.Lookups = usage.Users, usage.Lookups
+	}
+	c.JSON(http.StatusOK, out)
 }
 
 // AdminGetEcdict handles GET /api/admin/ecdict/:word.
@@ -152,6 +170,52 @@ func AdminSyncWordFromEcdict(c *gin.Context) {
 		"matchedBy": matchedBy,
 		"word":      adminWordRowFrom(after),
 	})
+}
+
+const (
+	adminAIWordsDefaultLimit = 50
+	adminAIWordsMaxLimit     = 200
+)
+
+// AdminListAIWords handles GET /api/admin/ai-words: the AI-made definitions
+// waiting for an admin (reviewed=false, the default), or the ones an admin has
+// already edited or approved (reviewed=true), busiest first. An unreviewed AI
+// definition is visible only to users who can use AI (ADR-045 Decision 6), so
+// this queue is the backlog of what the rest of the users cannot yet see.
+func AdminListAIWords(c *gin.Context) {
+	reviewed := c.Query("reviewed") == "true"
+	limit := adminAIWordsDefaultLimit
+	if raw := c.Query("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > adminAIWordsMaxLimit {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "limit must be between 1 and 200"})
+			return
+		}
+		limit = n
+	}
+	offset := 0
+	if raw := c.Query("offset"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "offset must be 0 or more"})
+			return
+		}
+		offset = n
+	}
+
+	rows, total, err := repo.AdminListAIWords(reviewed, limit, offset)
+	if err != nil {
+		logger.Errorf("AdminListAIWords: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to list AI definitions"})
+		return
+	}
+	words := make([]adminWordRow, 0, len(rows))
+	for i := range rows {
+		row := adminWordRowFrom(&rows[i].Word)
+		row.Users, row.Lookups = rows[i].Users, rows[i].Lookups
+		words = append(words, row)
+	}
+	c.JSON(http.StatusOK, gin.H{"words": words, "total": total})
 }
 
 // Bounds on an admin's edit. ECDICT translations run long, so the Chinese

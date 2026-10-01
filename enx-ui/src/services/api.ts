@@ -1,4 +1,5 @@
 import {
+  AdminAiWordsPage,
   AdminEcdictRow,
   AdminPageReport,
   AdminWordRow,
@@ -187,6 +188,35 @@ export class ApiService {
       `/api/admin/words/${encodeURIComponent(word)}/sync-from-ecdict`,
       { method: 'POST' }
     )
+  }
+
+  // Replaces the definition of a words row and records the edit (ADR-045). An
+  // AI-made row an admin has edited stops being hidden from users who can't
+  // use AI, so saving it unchanged is how an admin approves it.
+  async adminEditWord(
+    word: string,
+    chinese: string,
+    pronunciation: string
+  ): Promise<ApiResponse<{ success: boolean; word: AdminWordRow }>> {
+    return this.makeRequest(`/api/admin/words/${encodeURIComponent(word)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ chinese, pronunciation }),
+    })
+  }
+
+  // The review queue: AI-made definitions no admin has edited yet
+  // (reviewed=false), or the ones already edited or approved.
+  async adminListAiWords(
+    reviewed: boolean,
+    limit: number,
+    offset: number
+  ): Promise<ApiResponse<AdminAiWordsPage>> {
+    const params = new URLSearchParams({
+      reviewed: String(reviewed),
+      limit: String(limit),
+      offset: String(offset),
+    })
+    return this.makeRequest(`/api/admin/ai-words?${params}`)
   }
 
   // Page reports (ADR-010 Decision 11): user-confirmed learning-mode failures.
