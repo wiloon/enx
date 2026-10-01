@@ -75,7 +75,7 @@ ADR-045 的 AI 兜底需要一个**随套餐变默认值、服务端也要读**�
                               "editable": true | false } }
    PUT /api/me/preferences
      <- { "aiWordFallback": true | false | null }             // null = 删行，回到默认
-     -> 同 GET；不可编辑的 key 返回 403 {code: "requires_subscription"}
+     -> 同 GET；不可编辑的 key 返回 403 {code: "not_entitled"}（资格是「订阅或充值余额」，不只是订阅）
    ```
 
    未知 key 返回 400。部分更新：body 里没出现的 key 不动。
