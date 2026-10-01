@@ -10,17 +10,18 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-func TestRepairWordsTableDDLAndIndex(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "test.db")
-
+// P2P-era databases (migrations/20251230_migrate_words_to_p2p.sql) have a
+// words table whose CREATE TABLE embeds "--" comments. glebarez AutoMigrate
+// can't rewrite that SQL, and its failure aborted the whole AutoMigrate call,
+// so the billing tables listed after Word were never created. Since ADR-043
+// the NOCASE migration rebuilds such a table (it is case-sensitive too), so
+// Init must come out with a clean words table and every later table present.
+func TestInitHandlesCommentedP2PWordsTable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.db")
 	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	DB = db
-	t.Cleanup(func() { DB = nil })
-
 	bad := `CREATE TABLE "words" (
     id TEXT PRIMARY KEY,                    -- UUID instead of auto-increment
     english TEXT NOT NULL,                   -- Original field
@@ -31,57 +32,26 @@ func TestRepairWordsTableDDLAndIndex(t *testing.T) {
     updated_at INTEGER NOT NULL,             -- required
     deleted_at INTEGER                       -- Soft delete
 )`
-	if err := db.Exec(bad).Error; err != nil {
-		t.Fatal(err)
+	for _, stmt := range []string{bad,
+		`INSERT INTO words VALUES ('a','Hello',NULL,NULL,NULL,1,100,NULL)`,
+		`CREATE UNIQUE INDEX idx_english ON words(english)`,
+	} {
+		if err := db.Exec(stmt).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := db.Exec(`INSERT INTO words VALUES ('a','Hello',NULL,NULL,NULL,1,100,NULL)`).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec(`CREATE UNIQUE INDEX idx_english ON words(english)`).Error; err != nil {
-		t.Fatal(err)
-	}
+	sqlDB, _ := db.DB()
+	sqlDB.Close()
 
-	if err := db.AutoMigrate(&Word{}); err == nil {
-		t.Fatal("expected AutoMigrate to fail on commented DDL")
-	}
+	t.Setenv("DB_PATH", path)
+	Init()
 
-	if err := repairWordsTableDDLIfNeeded(); err != nil {
-		t.Fatalf("repair: %v", err)
+	if ddl := wordsDDL(t); strings.Contains(ddl, "--") || !englishNoCase.MatchString(ddl) {
+		t.Fatalf("words not rebuilt cleanly: %s", ddl)
 	}
-
-	var createSQL string
-	if err := db.Raw(`SELECT sql FROM sqlite_master WHERE type='table' AND name='words'`).Scan(&createSQL).Error; err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(createSQL, "--") {
-		t.Fatalf("DDL still has comments: %s", createSQL)
-	}
-
-	if err := db.AutoMigrate(&Word{}); err != nil {
-		t.Fatalf("AutoMigrate after repair: %v", err)
-	}
-	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_words_english_lower ON words(LOWER(english))").Error; err != nil {
-		t.Fatalf("create index: %v", err)
-	}
-
-	var idxCount int64
-	if err := db.Raw(`SELECT COUNT(*) FROM sqlite_master WHERE name='idx_words_english_lower'`).Scan(&idxCount).Error; err != nil {
-		t.Fatal(err)
-	}
-	if idxCount != 1 {
-		t.Fatalf("index missing, count=%d", idxCount)
-	}
-
-	var n int64
-	if err := db.Raw(`SELECT COUNT(*) FROM words`).Scan(&n).Error; err != nil {
-		t.Fatal(err)
-	}
-	if n != 1 {
-		t.Fatalf("row count=%d", n)
-	}
-
-	// Second call should be a no-op
-	if err := repairWordsTableDDLIfNeeded(); err != nil {
-		t.Fatalf("second repair: %v", err)
+	for _, table := range []string{"subscriptions", "credit_accounts", "credit_transactions", "dictionary_lookup_quota"} {
+		if !DB.Migrator().HasTable(table) {
+			t.Errorf("AutoMigrate stopped before %s", table)
+		}
 	}
 }

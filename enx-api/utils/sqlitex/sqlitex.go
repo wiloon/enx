@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -35,8 +36,11 @@ type User struct {
 }
 
 type Word struct {
-	Id            string  `gorm:"column:id;primaryKey"`
-	English       string  `gorm:"column:english;unique;not null"`
+	Id string `gorm:"column:id;primaryKey"`
+	// COLLATE NOCASE, unique (ADR-043): one row per word whatever its case,
+	// the same rule as ECDICT's stardict.word. "english = ?" is therefore
+	// case-insensitive and served by idx_words_english.
+	English       string  `gorm:"column:english;type:TEXT COLLATE NOCASE;not null;uniqueIndex:idx_words_english"`
 	Chinese       *string `gorm:"column:chinese"`
 	Pronunciation *string `gorm:"column:pronunciation"`
 	CreatedAt     int64   `gorm:"column:created_at;not null"`
@@ -148,16 +152,21 @@ func InitWithLogLevel(level string) {
 		return
 	}
 
+	// ADR-043: rebuild a case-sensitive words table (clearing words and
+	// user_dicts) before AutoMigrate, which can't change a column's
+	// collation and mangles the table when it tries.
+	if err := migrateWordsEnglishNoCase(); err != nil {
+		zapLog.Errorf("failed to migrate words.english to COLLATE NOCASE: %v", err)
+	}
+
 	// Homelab/AWS DBs created by migrations/20251230_migrate_words_to_p2p.sql
 	// embed "-- ..." comments inside CREATE TABLE. glebarez/sqlite AutoMigrate
 	// rewrites that SQL into <table>__temp and fails ("incomplete input", or
 	// "table <t>__temp has no column named 1"), which aborts the whole
 	// AutoMigrate call -- so every model listed after the offending one
 	// (Subscription, CreditAccount, ...) silently never gets created. Repair
-	// the known offenders first.
-	if err := repairWordsTableDDLIfNeeded(); err != nil {
-		zapLog.Errorf("failed to repair words table DDL: %v", err)
-	}
+	// the known offenders first. (words no longer needs this: the migration
+	// above rebuilds any pre-ADR-043 words table, commented or not.)
 	if err := repairUserDictsTableDDLIfNeeded(); err != nil {
 		zapLog.Errorf("failed to repair user_dicts table DDL: %v", err)
 	}
@@ -171,15 +180,6 @@ func InitWithLogLevel(level string) {
 		zapLog.Errorf("failed to auto-migrate database: %v", err)
 	} else {
 		zapLog.Info("database auto-migration completed successfully")
-	}
-
-	// Expression index for the case-insensitive fallback lookup in
-	// repo.GetWordByEnglish (WHERE LOWER(english) = LOWER(?)). GORM
-	// AutoMigrate can't create expression indexes, so it's added here.
-	// Mirrored in migrations/006_words_english_lower_index.sql.
-	// Run even if AutoMigrate failed so lookups still get the index.
-	if err := DB.Exec("CREATE INDEX IF NOT EXISTS idx_words_english_lower ON words(LOWER(english))").Error; err != nil {
-		zapLog.Errorf("failed to create idx_words_english_lower: %v", err)
 	}
 
 	// One-time data migration: existing users (created before email verification was added)
@@ -200,52 +200,6 @@ func InitWithLogLevel(level string) {
 	} else if result.RowsAffected > 0 {
 		zapLog.Infof("backfilled updated_at for %d existing reader_documents rows", result.RowsAffected)
 	}
-}
-
-// repairWordsTableDDLIfNeeded rebuilds words without inline "--" comments in
-// sqlite_master. Those comments break glebarez AutoMigrate alter-table.
-func repairWordsTableDDLIfNeeded() error {
-	var createSQL string
-	if err := DB.Raw(`SELECT sql FROM sqlite_master WHERE type='table' AND name='words'`).Scan(&createSQL).Error; err != nil {
-		return err
-	}
-	if createSQL == "" || !strings.Contains(createSQL, "--") {
-		return nil
-	}
-
-	zapLog.Info("repairing words table DDL (strip inline SQL comments for AutoMigrate)")
-	return DB.Transaction(func(tx *gorm.DB) error {
-		steps := []string{
-			`CREATE TABLE words__clean (
-				id TEXT PRIMARY KEY,
-				english TEXT NOT NULL,
-				chinese TEXT,
-				pronunciation TEXT,
-				created_at INTEGER NOT NULL,
-				load_count INTEGER NOT NULL DEFAULT 0,
-				updated_at INTEGER NOT NULL,
-				deleted_at INTEGER
-			)`,
-			`INSERT INTO words__clean (id, english, chinese, pronunciation, created_at, load_count, updated_at, deleted_at)
-			 SELECT id, english, chinese, pronunciation,
-			        COALESCE(created_at, updated_at, 0),
-			        COALESCE(load_count, 0),
-			        updated_at,
-			        deleted_at
-			 FROM words`,
-			`DROP TABLE words`,
-			`ALTER TABLE words__clean RENAME TO words`,
-			`CREATE UNIQUE INDEX IF NOT EXISTS idx_english ON words(english)`,
-			`CREATE INDEX IF NOT EXISTS idx_words_updated_at ON words(updated_at)`,
-			`CREATE INDEX IF NOT EXISTS idx_words_deleted_at ON words(deleted_at) WHERE deleted_at IS NOT NULL`,
-		}
-		for _, step := range steps {
-			if err := tx.Exec(step).Error; err != nil {
-				return err
-			}
-		}
-		return nil
-	})
 }
 
 // repairUserDictsTableDDLIfNeeded rebuilds user_dicts without the inline "--"
@@ -303,4 +257,44 @@ func SQLLogLevel(level string) logger.LogLevel {
 		return logger.Info
 	}
 	return logger.Warn
+}
+
+// wordsEnglishNoCase recognises a words table whose english column already
+// has ADR-043's COLLATE NOCASE.
+var wordsEnglishNoCase = regexp.MustCompile("(?i)`?english`?[^,]*COLLATE NOCASE")
+
+// migrateWordsEnglishNoCase moves a words table from before ADR-043
+// (case-sensitive english) to the case-insensitive unique one. SQLite can't
+// change a column's collation in place, and case-variant rows ("US", "us")
+// would violate the new unique index, so -- as decided in ADR-043 -- it
+// clears words and user_dicts (the only table referencing words.id) and
+// drops words; AutoMigrate then recreates it from the Word model. Every
+// other table is left alone. This only ever touches the application
+// database: ECDICT is a separate, read-only file. A fresh database, or one
+// already migrated, is left untouched.
+func migrateWordsEnglishNoCase() error {
+	var ddl string
+	if err := DB.Raw(`SELECT sql FROM sqlite_master WHERE type='table' AND name='words'`).Scan(&ddl).Error; err != nil {
+		return err
+	}
+	if ddl == "" || wordsEnglishNoCase.MatchString(ddl) {
+		return nil
+	}
+
+	var words, reviews int64
+	DB.Raw(`SELECT count(*) FROM words`).Scan(&words)
+	if DB.Migrator().HasTable("user_dicts") {
+		DB.Raw(`SELECT count(*) FROM user_dicts`).Scan(&reviews)
+	}
+	zapLog.Warnf("ADR-043: rebuilding words with english COLLATE NOCASE; clearing %d words and %d user_dicts rows", words, reviews)
+
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if tx.Migrator().HasTable("user_dicts") {
+			if err := tx.Exec(`DELETE FROM user_dicts`).Error; err != nil {
+				return err
+			}
+		}
+		// Dropping the table drops its indexes, idx_words_english_lower too.
+		return tx.Exec(`DROP TABLE words`).Error
+	})
 }

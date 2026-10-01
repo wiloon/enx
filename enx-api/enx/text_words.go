@@ -54,9 +54,8 @@ var whitespace = regexp.MustCompile(`\s+`)
 // In returns the words of paragraph keyed by each token's cleaned raw form
 // (Word.Raw), each with its words-row id and userID's review state. A token
 // that starts with a digit ("6-year-old") comes back as WordType 1 and is
-// not looked up. Matching follows repo.GetWordByEnglish: the exact-case row
-// first, else the case-insensitive match with the lowest id. All words are
-// looked up in one query.
+// not looked up. A word has one row whatever its case or apostrophe
+// (ADR-043). All words are looked up in one query.
 func (s *TextWords) In(ctx context.Context, paragraph, userID string) (map[string]Word, error) {
 	words := make(map[string]Word)
 	var lookup []string
@@ -85,24 +84,17 @@ func (s *TextWords) In(ctx context.Context, paragraph, userID string) (map[strin
 	if err != nil {
 		return nil, err
 	}
-	exact := make(map[string]WordState, len(states))
-	folded := make(map[string]WordState, len(states))
+	// words.english is unique case-insensitively, so each folded key has at
+	// most one row.
+	byKey := make(map[string]WordState, len(states))
 	for _, st := range states {
-		exact[st.English] = st
-		key := strings.ToLower(st.English)
-		if prev, ok := folded[key]; !ok || st.ID < prev.ID {
-			folded[key] = st
-		}
+		byKey[strings.ToLower(st.English)] = st
 	}
 	for raw, w := range words {
 		if w.WordType == 1 || w.English == "" {
 			continue
 		}
-		st, ok := exact[w.English]
-		if !ok {
-			st, ok = folded[strings.ToLower(w.English)]
-		}
-		if ok {
+		if st, ok := byKey[strings.ToLower(w.English)]; ok {
 			w.Id = st.ID
 			w.LoadCount = st.QueryCount
 			w.AlreadyAcquainted = st.AlreadyAcquainted

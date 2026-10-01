@@ -10,17 +10,14 @@ import (
 	"gorm.io/gorm"
 )
 
-// AdminGetWord looks up a words-table row by exact english, then
-// case-insensitive -- the same matching GetWordByEnglish does, but WITHOUT the
-// `deleted_at IS NULL` filter: the admin maintenance page (ADR-021) needs to
-// see the raw row, soft-delete tombstones included. found reports whether any
-// row matched.
+// AdminGetWord looks up a words-table row the way GetWordByEnglish does (any
+// case, either apostrophe), but WITHOUT the `deleted_at IS NULL` filter: the
+// admin maintenance page (ADR-021) needs to see the raw row, soft-delete
+// tombstones included. found reports whether any row matched.
 func AdminGetWord(english string) (*Word, bool) {
+	english = CanonicalEnglish(english)
 	word := &Word{}
 	err := sqlitex.DB.Where("english = ?", english).First(word).Error
-	if err != nil {
-		err = sqlitex.DB.Where("LOWER(english) = LOWER(?)", english).First(word).Error
-	}
 	if err != nil {
 		logger.Debugf("AdminGetWord: not found: %s (%v)", english, err)
 		return nil, false
@@ -36,6 +33,7 @@ func AdminGetWord(english string) (*Word, bool) {
 // after the write. Idempotent. Authz and audit logging are the caller's
 // responsibility (ADR-021).
 func AdminSyncWordFromEcdict(english, chinese, pronunciation string) (*Word, error) {
+	english = CanonicalEnglish(english)
 	now := time.Now().UnixMilli()
 
 	if existing, found := AdminGetWord(english); found {
@@ -75,6 +73,7 @@ func AdminSyncWordFromEcdict(english, chinese, pronunciation string) (*Word, err
 // shared cache, so this resets that word for every user; the next lookup
 // re-fills it from ECDICT. deleted reports whether a words row existed.
 func AdminDeleteWord(english string) (deleted bool, err error) {
+	english = CanonicalEnglish(english)
 	err = sqlitex.DB.Transaction(func(tx *gorm.DB) error {
 		var w Word
 		if err := tx.Where("english = ?", english).Limit(1).Find(&w).Error; err != nil {

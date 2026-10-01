@@ -8,8 +8,8 @@ import (
 )
 
 type Word struct {
-	Id             string    `gorm:"column:id;primaryKey"` // UUID
-	English        string    `gorm:"column:english;unique;not null"`
+	Id             string    `gorm:"column:id;primaryKey"`                                                           // UUID
+	English        string    `gorm:"column:english;type:TEXT COLLATE NOCASE;not null;uniqueIndex:idx_words_english"` // ADR-043, same as sqlitex.Word
 	LoadCount      int       `gorm:"column:load_count;default:0"`
 	Chinese        string    `gorm:"column:chinese"`
 	Pronunciation  string    `gorm:"column:pronunciation"`
@@ -38,13 +38,20 @@ func (UserDict) TableName() string {
 	return "user_dicts"
 }
 
-// GetWordByEnglish looks up a word by exact english, then case-insensitive match.
+// CanonicalEnglish is the form a word is stored and looked up under: curly
+// apostrophes become straight ones ("don’t" -> "don't"), so both spellings
+// are one row (ADR-043). Case needs no folding here: words.english is
+// COLLATE NOCASE.
+func CanonicalEnglish(english string) string {
+	return strings.ReplaceAll(english, "’", "'")
+}
+
+// GetWordByEnglish looks up a live word, in any case and either apostrophe
+// (ADR-043): one query on idx_words_english.
 func GetWordByEnglish(english string) *Word {
+	english = CanonicalEnglish(english)
 	word := &Word{}
 	err := sqlitex.DB.Where("english = ? AND deleted_at IS NULL", english).First(word).Error
-	if err != nil {
-		err = sqlitex.DB.Where("LOWER(english) = LOWER(?) AND deleted_at IS NULL", english).First(word).Error
-	}
 	if err != nil {
 		logger.Debugf("word not found: %s, error: %v", english, err)
 		return &Word{} // Return empty word for compatibility
@@ -129,34 +136,35 @@ type WordState struct {
 	AlreadyAcquainted int
 }
 
-// wordStatesSQL takes the user id and a list of lower-cased englishes.
+// wordStatesSQL takes the user id and a list of canonical englishes;
+// english is COLLATE NOCASE, so the IN matches any case.
 const wordStatesSQL = `
 	SELECT w.id, w.english,
 		COALESCE(ud.query_count, 0) AS query_count,
 		COALESCE(ud.already_acquainted, 0) AS already_acquainted
 	FROM words w
 	LEFT JOIN user_dicts ud ON ud.word_id = w.id AND ud.user_id = ?
-	WHERE LOWER(w.english) IN ? AND +w.deleted_at IS NULL`
+	WHERE w.english IN ? AND +w.deleted_at IS NULL`
 
 // wordStatesChunk keeps each IN list well under SQLite's bound-parameter limit.
 const wordStatesChunk = 500
 
-// WordStatesByEnglish returns every live words row whose english matches one
-// of englishes case-insensitively, with userId's review state (zero when the
-// user has no row for it). One query per 500 words, using the
-// LOWER(english) index. The unary + on deleted_at keeps SQLite's planner off
+// WordStatesByEnglish returns every live words row matching one of
+// englishes (any case, either apostrophe), with userId's review state (zero
+// when the user has no row for it). One query per 500 words, on
+// idx_words_english. The unary + on deleted_at keeps SQLite's planner off
 // idx_words_deleted_at: with an IN list it otherwise prefers that index,
 // which matches every live row, i.e. scans the table.
 func WordStatesByEnglish(userId string, englishes []string) ([]WordState, error) {
-	lower := make([]string, 0, len(englishes))
+	keys := make([]string, 0, len(englishes))
 	for _, e := range englishes {
-		lower = append(lower, strings.ToLower(e))
+		keys = append(keys, CanonicalEnglish(e))
 	}
 	var states []WordState
-	for start := 0; start < len(lower); start += wordStatesChunk {
-		end := min(start+wordStatesChunk, len(lower))
+	for start := 0; start < len(keys); start += wordStatesChunk {
+		end := min(start+wordStatesChunk, len(keys))
 		var chunk []WordState
-		err := sqlitex.DB.Raw(wordStatesSQL, userId, lower[start:end]).Scan(&chunk).Error
+		err := sqlitex.DB.Raw(wordStatesSQL, userId, keys[start:end]).Scan(&chunk).Error
 		if err != nil {
 			return nil, err
 		}

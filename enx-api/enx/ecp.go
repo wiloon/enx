@@ -73,6 +73,8 @@ func (word *Word) FindId() {
 }
 
 func (word *Word) SetEnglishField(english string) {
+	// ADR-043: the lookup key uses straight apostrophes ("don’t" -> "don't").
+	english = repo.CanonicalEnglish(english)
 	if strings.Contains(english, "'s") {
 		tmpKey := strings.Replace(english, "'s", "", -1)
 		word.English = tmpKey
@@ -106,7 +108,7 @@ func (word *Word) Save() error {
 	now := time.Now().UnixMilli()
 	sWord.CreatedAt = now
 	sWord.UpdatedAt = now
-	sWord.English = word.English
+	sWord.English = repo.CanonicalEnglish(word.English)
 	sWord.Chinese = word.Chinese
 	sWord.Pronunciation = word.Pronunciation
 	sWord.LoadCount = word.LoadCount

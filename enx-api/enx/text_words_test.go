@@ -51,9 +51,8 @@ func seedTextWords(t *testing.T) {
 		{Id: "id-assassins", English: "assassins"},
 		{Id: "id-dog", English: "dog"},
 		{Id: "id-US", English: "US"},
-		{Id: "id-us", English: "us"},
-		{Id: "id-b-Apple", English: "Apple"},
-		{Id: "id-a-APPLE", English: "APPLE"},
+		{Id: "id-apple", English: "Apple"},
+		{Id: "id-dont", English: "don't"},
 		{Id: "id-gone", English: "gone", DeletedAt: &deleted},
 		{Id: "id-well-known", English: "well-known"},
 	} {
@@ -133,16 +132,18 @@ func TestWordsInTokens(t *testing.T) {
 	})
 }
 
-// An exact-case row wins; otherwise the case-insensitive match with the
-// lowest id. Soft-deleted rows are invisible.
-func TestWordsInCaseMatching(t *testing.T) {
+// ADR-043: a word has one row whatever its case, and a curly apostrophe on
+// the page finds the straight one. The key stays the token as it appears on
+// the page; soft-deleted rows are invisible.
+func TestWordsInCaseAndApostrophe(t *testing.T) {
 	seedTextWords(t)
 
-	checkWords(t, wordsIn(t, "US us Us apple gone", "u1"), map[string]wantWord{
+	checkWords(t, wordsIn(t, "US us Us apple don’t gone", "u1"), map[string]wantWord{
 		"US":    {english: "US", id: "id-US"},
-		"us":    {english: "us", id: "id-us"},
+		"us":    {english: "us", id: "id-US"},
 		"Us":    {english: "Us", id: "id-US"},
-		"apple": {english: "apple", id: "id-a-APPLE"},
+		"apple": {english: "apple", id: "id-apple"},
+		"don’t": {english: "don't", id: "id-dont"},
 		"gone":  {english: "gone"},
 	})
 }

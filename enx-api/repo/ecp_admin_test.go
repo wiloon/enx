@@ -32,7 +32,7 @@ func TestAdminGetWordIncludesSoftDeletedRows(t *testing.T) {
 	}
 }
 
-func TestAdminGetWordCaseInsensitiveFallback(t *testing.T) {
+func TestAdminGetWordAnyCaseAndApostrophe(t *testing.T) {
 	db := newTestDB(t)
 	now := time.Now().UnixMilli()
 	if err := db.Create(&Word{Id: "w1", English: "Hello", Chinese: "你好", CreatedAt: now, UpdatedAt: now}).Error; err != nil {
@@ -40,6 +40,12 @@ func TestAdminGetWordCaseInsensitiveFallback(t *testing.T) {
 	}
 	if row, found := AdminGetWord("hello"); !found || row.Id != "w1" {
 		t.Fatalf("case-insensitive: found=%v row=%+v", found, row)
+	}
+	if err := db.Create(&Word{Id: "w2", English: "don't", CreatedAt: now, UpdatedAt: now}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row, found := AdminGetWord("don’t"); !found || row.Id != "w2" {
+		t.Fatalf("curly apostrophe: found=%v row=%+v", found, row)
 	}
 }
 
