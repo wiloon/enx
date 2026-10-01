@@ -108,3 +108,26 @@ func TestGinModeFollowsLogLevel(t *testing.T) {
 		}
 	}
 }
+
+// ADR-044: the preference routes exist under /api and sit behind the session
+// check -- a request with no credentials never reaches the handler.
+func TestPreferencesRoutesRequireAuthentication(t *testing.T) {
+	utils.ViperInit()
+	gin.SetMode(gin.TestMode)
+	router := setupRouter(metrics.New())
+
+	registered := map[string]bool{}
+	for _, r := range router.Routes() {
+		registered[r.Method+" "+r.Path] = true
+	}
+	for _, method := range []string{http.MethodGet, http.MethodPut} {
+		if !registered[method+" /api/me/preferences"] {
+			t.Errorf("%s /api/me/preferences is not registered", method)
+		}
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(method, "/api/me/preferences", strings.NewReader(`{"aiWordFallback":true}`)))
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("%s /api/me/preferences without credentials: status %d, want 401", method, w.Code)
+		}
+	}
+}

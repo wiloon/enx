@@ -10,12 +10,16 @@ import (
 	"enx-api/dictionary"
 	"enx-api/dictionary/adapters"
 	"enx-api/ecdict"
+	"enx-api/entitlement"
+	entadapters "enx-api/entitlement/adapters"
 	"enx-api/enx"
 	"enx-api/handlers"
 	"enx-api/metrics"
 	"enx-api/middleware"
 	"enx-api/pagereport"
 	"enx-api/paragraph"
+	"enx-api/preferences"
+	prefadapters "enx-api/preferences/adapters"
 	"enx-api/reader"
 	"enx-api/repo"
 	"enx-api/savedpage"
@@ -405,6 +409,16 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 
 	// /api/me — requires authentication (Clerk session JWT)
 	apiGroup.GET("/me", handlers.GetMe)
+
+	// Server-side user preferences (ADR-044): the AI word fallback switch and
+	// its one-time notice. Defaults and editability follow the user's payment
+	// state (ADR-045 Decision 14).
+	preferencesHandler := handlers.NewPreferencesHandler(preferences.NewService(
+		prefadapters.Table{},
+		entitlement.NewService(entadapters.Billing{}),
+	))
+	apiGroup.GET("/me/preferences", preferencesHandler.Get)
+	apiGroup.PUT("/me/preferences", preferencesHandler.Update)
 
 	// Billing (Stripe) — requires authentication (Clerk session JWT).
 	apiGroup.POST("/billing/checkout/subscription", billingHandler.CheckoutSubscription)

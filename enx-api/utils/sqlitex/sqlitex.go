@@ -175,7 +175,8 @@ func InitWithLogLevel(level string) {
 	zapLog.Info("running database auto-migration...")
 	err = DB.AutoMigrate(&User{}, &Word{}, &UserDict{}, &Session{}, &SyncState{},
 		&Subscription{}, &CreditAccount{}, &CreditTransaction{}, &DictionaryLookupQuota{},
-		&ReaderDocument{}, &DailyStat{}, &StatsIngestLog{}, &PageReport{}, &SavedPage{})
+		&ReaderDocument{}, &DailyStat{}, &StatsIngestLog{}, &PageReport{}, &SavedPage{},
+		&UserPreference{})
 	if err != nil {
 		zapLog.Errorf("failed to auto-migrate database: %v", err)
 	} else {
