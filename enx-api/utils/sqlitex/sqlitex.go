@@ -54,6 +54,11 @@ type Word struct {
 	// changed the row. An AI row is hidden from users who can't use AI
 	// until an admin has edited it (ADR-045 Decision 6).
 	AdminEditedAt *int64 `gorm:"column:admin_edited_at"`
+	// For source "ai" only: the model's own 0-10 confidence in the
+	// definition, and the prompt version that produced it, so a better prompt
+	// can later re-generate the rows an older one wrote (ADR-045).
+	AIQuality       *int    `gorm:"column:ai_quality"`
+	AIPromptVersion *string `gorm:"column:ai_prompt_version"`
 }
 
 func (Word) TableName() string {

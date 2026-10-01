@@ -246,3 +246,57 @@ func TestAdminSyncWordFromEcdictCreatesAnECDICTRow(t *testing.T) {
 		t.Fatalf("row = %+v, want source ecdict and no recorded edit", row)
 	}
 }
+
+func TestInsertWordFillsInWhatTheCallerLeavesOut(t *testing.T) {
+	newTestDB(t)
+	before := time.Now().UnixMilli()
+
+	row := Word{English: "don’t", Chinese: "aux. 不要"}
+	if err := InsertWord(&row); err != nil {
+		t.Fatal(err)
+	}
+	if row.Id == "" {
+		t.Fatal("the inserted row has no id")
+	}
+	if row.English != "don't" {
+		t.Fatalf("English = %q, want the straight-apostrophe spelling", row.English)
+	}
+	if row.Source != WordSourceECDICT {
+		t.Fatalf("Source = %q, want ecdict by default", row.Source)
+	}
+	if row.CreatedAt < before || row.UpdatedAt < before {
+		t.Fatalf("timestamps %d/%d are not Unix milliseconds from now", row.CreatedAt, row.UpdatedAt)
+	}
+	if got := GetWordByEnglish("don't"); got.Id != row.Id {
+		t.Fatalf("the row is not findable by its word: %+v", got)
+	}
+}
+
+func TestInsertWordKeepsAnAISourceAndItsProvenance(t *testing.T) {
+	newTestDB(t)
+	quality, version := 9, "v1"
+
+	row := Word{English: "rizzler", Chinese: "n. 很有魅力的人", Source: WordSourceAI, AIQuality: &quality, AIPromptVersion: &version}
+	if err := InsertWord(&row); err != nil {
+		t.Fatal(err)
+	}
+	stored := FindWordForLookup("rizzler", true)
+	if stored.Source != WordSourceAI || stored.AIQuality == nil || *stored.AIQuality != 9 || *stored.AIPromptVersion != "v1" {
+		t.Fatalf("stored row = %+v", stored)
+	}
+}
+
+func TestInsertWordRefusesAWordThatIsAlreadyThere(t *testing.T) {
+	newTestDB(t)
+	if err := InsertWord(&Word{English: "Hello", Chinese: "你好"}); err != nil {
+		t.Fatal(err)
+	}
+
+	again := Word{English: "hello", Chinese: "喂"}
+	if err := InsertWord(&again); err == nil {
+		t.Fatal("expected the UNIQUE constraint to refuse a second row for the same word, in any case")
+	}
+	if again.Id != "" {
+		t.Fatalf("Id = %q: a caller must never hold an id that was not persisted", again.Id)
+	}
+}

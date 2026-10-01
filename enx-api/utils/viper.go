@@ -171,6 +171,27 @@ func viperInitInternal() {
 	_ = viper.BindEnv("stripe.costs.rephrase.weight-out", "STRIPE_COSTS_REPHRASE_WEIGHT_OUT")
 	viper.SetDefault("stripe.costs.rephrase.divisor", 0)
 	_ = viper.BindEnv("stripe.costs.rephrase.divisor", "STRIPE_COSTS_REPHRASE_DIVISOR")
+	// The AI word fallback (ADR-045) is billed by actual token usage too, and
+	// fails closed the same way: with no price it does not run.
+	viper.SetDefault("stripe.costs.define-word.weight-in", 0)
+	_ = viper.BindEnv("stripe.costs.define-word.weight-in", "STRIPE_COSTS_DEFINE_WORD_WEIGHT_IN")
+	viper.SetDefault("stripe.costs.define-word.weight-out", 0)
+	_ = viper.BindEnv("stripe.costs.define-word.weight-out", "STRIPE_COSTS_DEFINE_WORD_WEIGHT_OUT")
+	viper.SetDefault("stripe.costs.define-word.divisor", 0)
+	_ = viper.BindEnv("stripe.costs.define-word.divisor", "STRIPE_COSTS_DEFINE_WORD_DIVISOR")
+	// AI word fallback tuning (ADR-045). Starting guesses, to be tuned from
+	// usage: a definition is cached only at or above min-quality (0-10), and
+	// the three ceilings are per user.
+	viper.SetDefault("ai-word.min-quality", 8)
+	_ = viper.BindEnv("ai-word.min-quality", "AI_WORD_MIN_QUALITY")
+	viper.SetDefault("ai-word.calls-per-minute", 6)
+	_ = viper.BindEnv("ai-word.calls-per-minute", "AI_WORD_CALLS_PER_MINUTE")
+	viper.SetDefault("ai-word.calls-per-day", 200)
+	_ = viper.BindEnv("ai-word.calls-per-day", "AI_WORD_CALLS_PER_DAY")
+	viper.SetDefault("ai-word.cache-writes-per-day", 50)
+	_ = viper.BindEnv("ai-word.cache-writes-per-day", "AI_WORD_CACHE_WRITES_PER_DAY")
+	viper.SetDefault("ai-word.call-timeout", "45s")
+	_ = viper.BindEnv("ai-word.call-timeout", "AI_WORD_CALL_TIMEOUT")
 	// Daily dictionary lookup ceilings per tier (ADR-029). 0 = count but
 	// never block, the opposite fail-direction from costs/credits -- see
 	// config.toml's [stripe.quota] comment.

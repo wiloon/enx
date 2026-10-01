@@ -220,6 +220,20 @@ ADR-030 早就把「AI 兜底」设计成链尾，但它的存储与计费方案
 - 有资格与没资格的用户对同一个词可能看到不同结果，`Resolve` 因此多了一个资格依赖，要有对应的测试。
 - 每个 AI provider（bedrock、deepseek、gemini、kimi、minimax、openrouter）都要支持「定义一个词」这个调用，或抽出共用的提示词与解析层。实现时先看 `sentenceword` / `wordcontext` 是怎么共用的。
 
+## 实现说明（2026-10-01，后端 AI 兜底）
+
+实现时细化或偏离了上文的几处，以此为准：
+
+- **provider 范围**：先只做 **deepseek**（homelab）和 **openrouter**（生产）。`DefineWord` 是个**可选接口**（`aitranslate.WordDefiner`，经 `AsWordDefiner` 取用，能穿过指标包装 `Instrument`），不是给共享的 `Translator` 接口加方法，所以 bedrock、gemini、kimi、minimax 不用改。provider 不支持时整个 AI 兜底关闭，启动日志里有一条 warn。
+- **第二个请求的形状**：`POST /api/dictionary/ai-word`，body `{"word": "..."}`。成功是 200 `{"found": true, "word": {…与查词相同的 Word 载荷…}}`，AI 没有定义是 200 `{"found": false, "reason": "no_definition"}`。错误用状态码加稳定的 `code`：`invalid_word` 400、`not_entitled` 403、`insufficient_credit` 402、`rate_limited` 429、`ai_unavailable` 503、`ai_failed` 502。
+- **第一个请求的字段**：未命中且已配置兜底时，响应里带 `AIFallback: { CanUse, Auto }`（首字母大写，与这个载荷里其他字段一致，不是 Decision 3 里写的小写）。命中时不带。
+- **计费细化**（Decision 7）：调用失败**不扣费**；模型回了**不合格的内容**（解析或校验失败）也**不扣费**，因为那不是用户的责任；调用成功才扣，包括「不是词」。
+- **服务端会重查**：第二个请求先看 `words` 和 ECDICT，已有就直接返回、不调模型、不扣费，所以重复点击或手写请求不会为已知的词付费。ECDICT 超时或没配置时**不**用 AI 顶上，原因见 Decision 1。
+- **限流**是进程内存里的计数（`dictionary.MemoryLimiter`），重启清零，只会多放过几次；配置键 `ai-word.calls-per-minute`（6）、`calls-per-day`（200）、`cache-writes-per-day`（50）、`min-quality`（8）、`call-timeout`（45s），0 表示该项不限。数值都是起始猜测值。
+- **定价配置**：`stripe.costs.define-word.weight-in / weight-out / divisor`。**未配置就不运行**（fail closed）。k8s 里没有 `config.toml`，部署时要用环境变量 `STRIPE_COSTS_DEFINE_WORD_WEIGHT_IN / _WEIGHT_OUT / _DIVISOR` 设置，否则 homelab 和生产的 AI 兜底是关着的。
+- **提示词版本**：`worddef.PromptVersion = "v1"`，随每条 AI 定义写入 `words.ai_prompt_version`；改提示词时同步改它。
+- **还没做**：`dictsample` 的 AI 来源和按结果分类的计数（模型调用本身已由 `ObserveAI` 记为 `define_word`）；并发首查同一个词时各调一次、各扣一次（单飞，与 #15 同类）；扩展端的浮层状态和手动按钮（第 3 步）；enx-ui 管理员页的编辑表单。
+
 ## Test Plan
 
 遵循仓库约定：功能改动带测试，单元测试为主，真实库或完整 HTTP 流程用 `//go:build integration`。

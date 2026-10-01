@@ -42,8 +42,12 @@ type Entry struct {
 	Chinese       string
 	Pronunciation string
 	// Origin is set on entries read from the WordStore; the zero value means
-	// ECDICT, which is what every entry added so far is.
+	// ECDICT.
 	Origin Origin
+	// For an AI-made entry only: the model's 0-10 confidence and the prompt
+	// version that produced it, stored with the row (ADR-045).
+	Quality       int
+	PromptVersion string
 }
 
 // Result is a resolved word lookup. ID is the words row id; it is empty on a
@@ -66,7 +70,8 @@ type WordStore interface {
 	// for users who can use AI (ADR-045 Decision 6). The exclusion is the
 	// store's job, so a hidden row is never read.
 	Find(ctx context.Context, english string, includeAI bool) (id string, entry Entry, ok bool, err error)
-	// Add caches entry and returns its id. When entry.English is already
+	// Add caches entry, with entry.Origin as the row's source, and returns
+	// its id. When entry.English is already
 	// cached -- an inflection resolved to a cached headword ("ran" ->
 	// "run"), or a concurrent lookup added it first -- it returns the
 	// existing row's id.
@@ -100,6 +105,7 @@ type Service struct {
 	external ExternalDictionary
 	meter    Meter
 	ent      Entitlements
+	ai       *aiFallback // nil until EnableAI
 }
 
 func NewService(words WordStore, external ExternalDictionary, meter Meter, ent Entitlements) *Service {
@@ -164,22 +170,35 @@ func (s *Service) Resolve(ctx context.Context, english, userID string) (Result, 
 	if err := s.meter.Charge(ctx, userID); err != nil {
 		return Result{}, err
 	}
+	res := s.fromExternal(ctx, english)
+	switch res.Source {
+	case SourceMiss:
+		dictsample.Word(english, dictsample.SourceNone)
+	case SourceEcdict:
+		dictsample.Word(english, dictsample.SourceEcdict)
+	}
+	return res, nil
+}
+
+// fromExternal asks the external dictionary for english and turns the answer
+// into a Result: SourceEcdict (cached in the words table), SourceMiss, or --
+// when it could not answer -- SourceTimeout or SourceError. It does not meter
+// and does not sample; callers do both.
+func (s *Service) fromExternal(ctx context.Context, english string) Result {
 	entry, err := s.external.Lookup(ctx, english)
 	switch {
 	case errors.Is(err, ErrNotInDictionary):
-		dictsample.Word(english, dictsample.SourceNone)
-		return Result{English: english, Source: SourceMiss}, nil
+		return Result{English: english, Source: SourceMiss}
 	case errors.Is(err, ErrExternalTimeout):
 		// No definition for the user, as for a miss; labelled apart so the
 		// miss rate measures dictionary coverage only (ADR-040).
-		return Result{English: english, Source: SourceTimeout}, nil
+		return Result{English: english, Source: SourceTimeout}
 	case err != nil:
 		logger.Warnf("dictionary: external lookup of %s failed: %v", english, err)
-		return Result{English: english, Source: SourceError}, nil
+		return Result{English: english, Source: SourceError}
 	}
-	dictsample.Word(english, dictsample.SourceEcdict)
 
-	id, err = s.words.Add(ctx, entry)
+	id, err := s.words.Add(ctx, entry)
 	if err != nil {
 		// Still answer with the definition; the caller skips the review
 		// bookkeeping, which needs a persisted word id.
@@ -193,7 +212,7 @@ func (s *Service) Resolve(ctx context.Context, english, userID string) (Result, 
 		Pronunciation: entry.Pronunciation,
 		Source:        SourceEcdict,
 		Origin:        OriginECDICT,
-	}, nil
+	}
 }
 
 // originOrECDICT reads the zero Origin as ECDICT, the only origin there was
