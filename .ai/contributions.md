@@ -2,6 +2,15 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-10-01: Archive and remove enx-sync
+
+**Agent**: Claude Code
+**Task**: Remove the suspended P2P sync service (`enx-sync/`, suspended 2026-09-17) from the repo without losing its design and code.
+
+**Solution**: Extracted `enx-sync/` with its history into a standalone repo (`git filter-repo --subdirectory-filter`), marked it a read-only archive, and tagged the last enx commit that still contains the directory as `archive/enx-sync-final`. Then `git rm -r enx-sync` and dropped its references (root `Taskfile.yml` sync/data tasks, `.gitignore`, README, CONTEXT.md, `.ai/instructions.md`, `docs/agents/domain.md`). Historical ADRs that mention enx-sync were left as written.
+
+**Restore**: `git checkout archive/enx-sync-final -- enx-sync`, or browse the archive repo.
+
 ## 2026-09-24: Dependency upgrades for enx-api, enx-ui, enx-chrome
 
 **Agent**: Claude Code

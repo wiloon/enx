@@ -1,6 +1,6 @@
 # ENX
 
-AI 辅助英语阅读工具。用户在网页上阅读英文时，ENX 标注生词、点词查释义、划词翻译整句，并把查过的词沉淀到生词本与复习系统。仓库含 `enx-api`（后端）、`enx-ui`（Web 前端）、`enx-chrome`（浏览器扩展）、`enx-sync`（同步）。移动端见下文「原生阅读视图」与 adr-042。
+AI 辅助英语阅读工具。用户在网页上阅读英文时，ENX 标注生词、点词查释义、划词翻译整句，并把查过的词沉淀到生词本与复习系统。仓库含 `enx-api`（后端）、`enx-ui`（Web 前端）、`enx-chrome`（浏览器扩展）。（P2P 同步 `enx-sync` 已于 2026-10-01 移出仓库并归档，见 `archive/enx-sync-final` tag 与 wiloon/enx-sync-archive。）移动端见下文「原生阅读视图」与 adr-042。
 
 本文件只是术语表。实现决策见 `docs/architecture/adr-*.md`。
 

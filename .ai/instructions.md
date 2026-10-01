@@ -325,13 +325,6 @@ pnpm test:watch  # Jest in watch mode
 
 Unit tests live in `src/lib/__tests__/`.
 
-#### enx-sync (Go)
-
-```bash
-go test ./...          # All tests
-go test ./internal/... # Specific package tree
-```
-
 ### Writing Tests: Key Principles
 
 1. **Test the behavior, not the implementation.** Assert on outputs and side effects, not internal state.
@@ -544,7 +537,6 @@ This is a monorepo with the following sub-projects:
 - **enx-api** - Go backend API server (SQLite database)
 - **enx-chrome** - Chrome extension (TypeScript, Vite)
 - **enx-ui** - Next.js web UI
-- **enx-sync** - P2P data sync service (Go)
 - **mock-api** - Mock API server for testing
 
 ## Development Commands
