@@ -32,11 +32,11 @@ CREATE TABLE IF NOT EXISTS words (
     -- Primary key: UUID v4 for P2P compatibility
     id TEXT PRIMARY KEY,
 
-    -- Word content. Case-sensitive on purpose: the same English word can mean
-    -- different things depending on capitalization (e.g. proper nouns vs
-    -- common words). Lookups try an exact match first, then fall back to a
-    -- case-insensitive match (see idx_words_english_lower below).
-    english TEXT NOT NULL UNIQUE,
+    -- Word content (ADR-043). Case-insensitive and unique, the same rule as
+    -- ECDICT's stardict.word: a word has one row whatever its case, so
+    -- `english = ?` matches any case through idx_words_english. Stored with
+    -- straight apostrophes (repo.CanonicalEnglish: "don’t" -> "don't").
+    english TEXT COLLATE NOCASE NOT NULL,
     chinese TEXT,
     pronunciation TEXT,
 
@@ -58,10 +58,9 @@ WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_words_updated_at
 ON words(updated_at);
 
--- Expression index for the case-insensitive fallback lookup
--- (WHERE LOWER(english) = LOWER(?)); see migrations/006_words_english_lower_index.sql
-CREATE INDEX IF NOT EXISTS idx_words_english_lower
-ON words(LOWER(english));
+-- Unique, case-insensitive (the column is COLLATE NOCASE) -- ADR-043
+CREATE UNIQUE INDEX IF NOT EXISTS idx_words_english
+ON words(english);
 
 -- User Dictionary Table
 -- Stores user-specific word data (query count, familiarity)

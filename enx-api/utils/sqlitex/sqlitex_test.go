@@ -120,13 +120,12 @@ func TestInitCreatesMissingParentDirectory(t *testing.T) {
 // repairWordsTableDDLIfNeeded's fast path: a freshly created words table has
 // no inline "--" comments in its sqlite_master DDL, so it should return nil
 // immediately without attempting the rebuild.
-func TestRepairWordsTableDDLIfNeededNoopWhenClean(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "enx-repair-test.db")
-	t.Setenv("DB_PATH", dbPath)
+func TestMigrateWordsEnglishNoCaseNoopWhenMigrated(t *testing.T) {
+	t.Setenv("DB_PATH", filepath.Join(t.TempDir(), "enx-repair-test.db"))
 	Init()
 
-	if err := repairWordsTableDDLIfNeeded(); err != nil {
-		t.Errorf("unexpected error on a clean words table: %v", err)
+	if err := migrateWordsEnglishNoCase(); err != nil {
+		t.Errorf("unexpected error on an already-migrated words table: %v", err)
 	}
 }
 

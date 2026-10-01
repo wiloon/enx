@@ -1,6 +1,7 @@
 package enx
 
 import (
+	"enx-api/repo"
 	"testing"
 )
 
@@ -84,5 +85,36 @@ func TestSetEnglishTrimsSuffixesAndPrefixes(t *testing.T) {
 		if word.English != c.english {
 			t.Errorf("SetEnglish(%q).English = %q, want %q", c.raw, word.English, c.english)
 		}
+	}
+}
+
+// ADR-043: the lookup key uses straight apostrophes; Raw keeps the page's
+// spelling, because the extension keys its cache on it.
+func TestSetEnglishStraightensApostrophes(t *testing.T) {
+	for raw, want := range map[string][2]string{
+		"don’t": {"don't", "don’t"},
+		"Tom’s": {"Tom", "Tom’s"},
+		"don't": {"don't", "don't"},
+	} {
+		w := Word{}
+		w.SetEnglish(raw)
+		if w.English != want[0] || w.Raw != want[1] {
+			t.Errorf("SetEnglish(%q): English=%q Raw=%q, want %q / %q", raw, w.English, w.Raw, want[0], want[1])
+		}
+	}
+}
+
+func TestWordSaveStoresCanonicalEnglish(t *testing.T) {
+	db := newEcpTestDB(t)
+	w := Word{English: "won’t"}
+	if err := w.Save(); err != nil {
+		t.Fatal(err)
+	}
+	var stored repo.Word
+	if err := db.Where("id = ?", w.Id).First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.English != "won't" {
+		t.Fatalf("stored english %q, want won't", stored.English)
 	}
 }

@@ -237,7 +237,8 @@ ECDICT. This keeps ECDICT a drop-in, independently-updatable dataset: a new
 upstream release can replace the file wholesale with no migration.
 
 The single word-lookup entry point is `dictionary.Service.Resolve` (ADR-018): it reads
-the application's `words` table first, then ECDICT (caching a hit in `words`),
+the application's `words` table first (case-insensitive, straight apostrophes:
+ADR-043), then ECDICT (caching a hit in `words`),
 and meters the lookup; callers do not touch `ecdict` directly. Per-user review
 bookkeeping (`user_dicts`) stays with the caller (`repo.RecordWordLookup`).
 

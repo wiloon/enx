@@ -1,3 +1,6 @@
+-- SUPERSEDED by ADR-043 (008_words_english_nocase.sql): words.english is now
+-- COLLATE NOCASE with a unique index, so this LOWER() index is gone.
+--
 -- Expression index to speed up the case-insensitive fallback lookup in
 -- repo.GetWordByEnglish (WHERE LOWER(english) = LOWER(?)). `english` itself
 -- stays case-sensitive in storage; this only indexes the LOWER() expression.

@@ -29,7 +29,9 @@ func TestWordStatesByEnglish(t *testing.T) {
 		db.Create(&ud)
 	}
 
-	states, err := WordStatesByEnglish("u1", []string{"run", "WALK", "gone", "absent"})
+	db.Create(&Word{Id: "w4", English: "don't", CreatedAt: 1, UpdatedAt: 1})
+
+	states, err := WordStatesByEnglish("u1", []string{"run", "WALK", "gone", "absent", "don’t"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,8 +42,9 @@ func TestWordStatesByEnglish(t *testing.T) {
 	want := map[string]WordState{
 		"w1": {Id: "w1", English: "Run", QueryCount: 3, AlreadyAcquainted: 1},
 		"w2": {Id: "w2", English: "walk"}, // u2's row is not u1's
+		"w4": {Id: "w4", English: "don't"},
 	}
-	if len(got) != len(want) || got["w1"] != want["w1"] || got["w2"] != want["w2"] {
+	if len(got) != len(want) || got["w1"] != want["w1"] || got["w2"] != want["w2"] || got["w4"] != want["w4"] {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
 }
@@ -64,11 +67,11 @@ func TestWordStatesByEnglishChunks(t *testing.T) {
 
 // The lookup must stay an index search: a table scan per paragraph is the
 // cost this query exists to avoid.
-func TestWordStatesByEnglishUsesTheLowerEnglishIndex(t *testing.T) {
+func TestWordStatesByEnglishUsesTheEnglishIndex(t *testing.T) {
 	if err := os.Setenv("DB_PATH", filepath.Join(t.TempDir(), "plan.db")); err != nil {
 		t.Fatal(err)
 	}
-	sqlitex.Init() // the real schema, including idx_words_english_lower
+	sqlitex.Init() // the real schema, including idx_words_english
 
 	var plan []struct{ Detail string }
 	if err := sqlitex.DB.Raw("EXPLAIN QUERY PLAN "+wordStatesSQL, "u1", []string{"a", "b"}).Scan(&plan).Error; err != nil {
@@ -79,7 +82,7 @@ func TestWordStatesByEnglishUsesTheLowerEnglishIndex(t *testing.T) {
 		details = append(details, p.Detail)
 	}
 	joined := strings.Join(details, " | ")
-	if !strings.Contains(joined, "idx_words_english_lower") {
-		t.Fatalf("plan does not use idx_words_english_lower: %s", joined)
+	if !strings.Contains(joined, "idx_words_english") {
+		t.Fatalf("plan does not use idx_words_english: %s", joined)
 	}
 }
