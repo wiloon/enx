@@ -117,6 +117,7 @@ func TestE2E_AdminDictionary_RequiresAdmin(t *testing.T) {
 		{http.MethodGet, "/api/admin/ecdict/hello"},
 		{http.MethodPost, "/api/admin/words/hello/sync-from-ecdict"},
 		{http.MethodPut, "/api/admin/words/hello"},
+		{http.MethodGet, "/api/admin/ai-words"},
 		{http.MethodDelete, "/api/admin/words/hello"},
 	}
 	for _, ep := range endpoints {
@@ -284,6 +285,87 @@ func TestE2E_Lookup_AIDefinitionVisibility(t *testing.T) {
 	}
 	if got := lookup(adminToken); got["Chinese"] != "n. 魅力十足的人" || got["Origin"] != "ai" {
 		t.Fatalf("after an admin edit everyone should see it, got %+v", got)
+	}
+}
+
+// ADR-045: the review queue lists AI-made definitions busiest first, an edit
+// takes a word out of it, and the word detail carries real usage.
+func TestE2E_AdminDictionary_AIReviewQueue(t *testing.T) {
+	base, adminToken, _ := adminDictEnv(t)
+	t.Cleanup(func() {
+		sqlitex.DB.Exec("DELETE FROM words WHERE english IN ('queuea', 'queueb', 'queuec')")
+		sqlitex.DB.Exec("DELETE FROM user_dicts WHERE word_id LIKE 'w-queue%'")
+	})
+	quality, version := 8, "v1"
+	for i, name := range []string{"queuea", "queueb", "queuec"} {
+		chinese := "n. " + name
+		if err := sqlitex.DB.Create(&sqlitex.Word{
+			Id: "w-" + name, English: name, Chinese: &chinese, Source: "ai",
+			AIQuality: &quality, AIPromptVersion: &version, CreatedAt: int64(i + 1), UpdatedAt: int64(i + 1),
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	// queueb is the busiest: two users, five lookups.
+	for _, ud := range []sqlitex.UserDict{
+		{UserId: "x1", WordId: "w-queueb", QueryCount: 2, CreatedAt: 1, UpdatedAt: 1},
+		{UserId: "x2", WordId: "w-queueb", QueryCount: 3, CreatedAt: 1, UpdatedAt: 1},
+		{UserId: "x1", WordId: "w-queuea", QueryCount: 1, CreatedAt: 1, UpdatedAt: 1},
+	} {
+		if err := sqlitex.DB.Create(&ud).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	names := func(body map[string]any) []string {
+		var out []string
+		list, _ := body["words"].([]any)
+		for _, item := range list {
+			out = append(out, item.(map[string]any)["english"].(string))
+		}
+		return out
+	}
+
+	code, body := doJSON(t, http.MethodGet, base+"/api/admin/ai-words", adminToken)
+	if code != http.StatusOK || body["total"] != float64(3) {
+		t.Fatalf("queue: code=%d body=%+v", code, body)
+	}
+	if got := names(body); len(got) != 3 || got[0] != "queueb" || got[1] != "queuea" || got[2] != "queuec" {
+		t.Fatalf("queue order = %v, want queueb (2 users), queuea (1), queuec (0)", got)
+	}
+	first := body["words"].([]any)[0].(map[string]any)
+	if first["users"] != float64(2) || first["lookups"] != float64(5) || first["aiQuality"] != float64(8) || first["aiPromptVersion"] != "v1" || first["source"] != "ai" {
+		t.Fatalf("first row = %+v, want its usage and provenance", first)
+	}
+
+	// Approving (an edit, even with the text unchanged) takes it out of the queue.
+	if code, _ := doJSONBody(t, http.MethodPut, base+"/api/admin/words/queueb", adminToken, map[string]string{"chinese": "n. queueb"}); code != http.StatusOK {
+		t.Fatalf("approve: code=%d", code)
+	}
+	_, body = doJSON(t, http.MethodGet, base+"/api/admin/ai-words", adminToken)
+	if got := names(body); len(got) != 2 || body["total"] != float64(2) {
+		t.Fatalf("queue after approving = %v (total %v), want 2 left", got, body["total"])
+	}
+	_, body = doJSON(t, http.MethodGet, base+"/api/admin/ai-words?reviewed=true", adminToken)
+	if got := names(body); len(got) != 1 || got[0] != "queueb" {
+		t.Fatalf("reviewed = %v, want [queueb]", got)
+	}
+
+	// The word detail shows the same real usage; loadCount is not a signal.
+	_, detail := doJSON(t, http.MethodGet, base+"/api/admin/words/queueb", adminToken)
+	if detail["users"] != float64(2) || detail["lookups"] != float64(5) || detail["source"] != "ai" || detail["adminEditedAt"] == nil {
+		t.Fatalf("detail = %+v", detail)
+	}
+
+	// Paging and bad parameters.
+	_, body = doJSON(t, http.MethodGet, base+"/api/admin/ai-words?limit=1&offset=1", adminToken)
+	if got := names(body); len(got) != 1 || body["total"] != float64(2) {
+		t.Fatalf("page = %v (total %v), want 1 row of 2", got, body["total"])
+	}
+	for _, q := range []string{"limit=0", "limit=201", "limit=abc", "offset=-1", "offset=x"} {
+		if code, _ := doJSON(t, http.MethodGet, base+"/api/admin/ai-words?"+q, adminToken); code != http.StatusBadRequest {
+			t.Errorf("?%s: code=%d, want 400", q, code)
+		}
 	}
 }
 

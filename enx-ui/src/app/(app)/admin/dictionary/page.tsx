@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { apiService } from '@/services/api'
+import WordEditor from '@/components/admin/WordEditor'
 import type { AdminEcdictRow, AdminWordRow } from '@/types'
 
 type Consistency =
@@ -108,9 +109,15 @@ function ConsistencyBanner({ c }: { c: Consistency }) {
   )
 }
 
+// When an admin last edited or approved a row, or "Never".
+function editedLabel(ms?: number | null): string {
+  return ms ? new Date(ms).toLocaleString() : 'Never'
+}
+
 export default function AdminDictionaryPage() {
   const [input, setInput] = useState('')
   const [word, setWord] = useState('')
+  const [editing, setEditing] = useState(false)
   const queryClient = useQueryClient()
 
   const wordQuery = useQuery({
@@ -145,17 +152,41 @@ export default function AdminDictionaryPage() {
     },
   })
 
+  // Saving an edit also approves an AI-made row: an edited row is no longer
+  // hidden from users who can't use AI (ADR-045).
+  const save = useMutation({
+    mutationFn: async (edit: { chinese: string; pronunciation: string }) => {
+      const resp = await apiService.adminEditWord(
+        word,
+        edit.chinese,
+        edit.pronunciation
+      )
+      if (resp.success && resp.data?.success) return resp.data
+      throw new Error(resp.error || 'Save failed')
+    },
+    onSuccess: () => {
+      setEditing(false)
+      queryClient.invalidateQueries({ queryKey: ['admin-word', word] })
+      queryClient.invalidateQueries({ queryKey: ['admin-ai-words'] })
+    },
+  })
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     const next = input.trim().toLowerCase()
     if (next) {
       setWord(next)
+      setEditing(false)
       sync.reset()
+      save.reset()
     }
   }
 
   const consistency = assess(wordQuery.data, ecdictQuery.data)
   const canSync = ecdictQuery.data?.found === true && !sync.isPending
+  const row = wordQuery.data
+  const canEdit = row?.found === true && row.deletedAt == null
+  const awaitingReview = canEdit && row?.source === 'ai' && !row?.adminEditedAt
 
   return (
     <div className="mx-auto max-w-4xl p-6 md:p-8">
@@ -220,34 +251,132 @@ export default function AdminDictionaryPage() {
                     </span>
                   )}
                 </CardTitle>
-                <Button
-                  size="sm"
-                  onClick={() => sync.mutate()}
-                  disabled={!canSync}
-                  title={
-                    ecdictQuery.data?.found
-                      ? 'Overwrite chinese / pronunciation from ECDICT'
-                      : 'No ECDICT entry to sync from'
-                  }
-                >
-                  {sync.isPending ? 'Syncing…' : 'Sync from ECDICT'}
-                </Button>
+                <div className="flex gap-2">
+                  {canEdit && !editing && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditing(true)}
+                    >
+                      Edit
+                    </Button>
+                  )}
+                  {awaitingReview && !editing && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={save.isPending}
+                      onClick={() =>
+                        save.mutate({
+                          chinese: row?.chinese ?? '',
+                          pronunciation: row?.pronunciation ?? '',
+                        })
+                      }
+                      title="Keep the definition as it is and release it to every user"
+                    >
+                      {save.isPending ? 'Approving…' : 'Approve'}
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    onClick={() => sync.mutate()}
+                    disabled={!canSync}
+                    title={
+                      ecdictQuery.data?.found
+                        ? 'Overwrite chinese / pronunciation from ECDICT'
+                        : 'No ECDICT entry to sync from'
+                    }
+                  >
+                    {sync.isPending ? 'Syncing…' : 'Sync from ECDICT'}
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-3">
                 {wordQuery.isLoading ? (
                   <p className="text-sm text-muted-foreground">Loading…</p>
                 ) : wordQuery.data?.found ? (
                   <>
+                    {wordQuery.data.source === 'ai' && (
+                      <div
+                        role="status"
+                        className="rounded-md bg-amber-100 px-3 py-2 text-sm text-amber-900"
+                      >
+                        {wordQuery.data.adminEditedAt
+                          ? 'AI-made definition, reviewed by an admin — visible to every user.'
+                          : 'AI-made definition, not yet reviewed — only users who can use AI see it until you approve or edit it.'}
+                      </div>
+                    )}
                     <Field label="English" value={wordQuery.data.english} />
-                    <Field label="Chinese" value={wordQuery.data.chinese} />
+                    {editing ? (
+                      <WordEditor
+                        idPrefix="admin-word"
+                        initialChinese={wordQuery.data.chinese ?? ''}
+                        initialPronunciation={
+                          wordQuery.data.pronunciation ?? ''
+                        }
+                        saving={save.isPending}
+                        error={
+                          save.error ? (save.error as Error).message : null
+                        }
+                        onSave={(chinese, pronunciation) =>
+                          save.mutate({ chinese, pronunciation })
+                        }
+                        onCancel={() => {
+                          setEditing(false)
+                          save.reset()
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <Field label="Chinese" value={wordQuery.data.chinese} />
+                        <Field
+                          label="Pronunciation"
+                          value={wordQuery.data.pronunciation}
+                          mono
+                        />
+                      </>
+                    )}
+                    {save.error && !editing && (
+                      <p role="alert" className="text-sm text-red-700">
+                        {(save.error as Error).message}
+                      </p>
+                    )}
                     <Field
-                      label="Pronunciation"
-                      value={wordQuery.data.pronunciation}
-                      mono
+                      label="Source"
+                      value={
+                        wordQuery.data.source === 'ai'
+                          ? 'AI (model-written)'
+                          : 'ECDICT'
+                      }
                     />
                     <Field
-                      label="Lookup count"
-                      value={wordQuery.data.loadCount ?? 0}
+                      label="Edited by an admin"
+                      value={editedLabel(wordQuery.data.adminEditedAt)}
+                    />
+                    {wordQuery.data.source === 'ai' && (
+                      <>
+                        <Field
+                          label="AI confidence"
+                          value={
+                            wordQuery.data.aiQuality != null
+                              ? `${wordQuery.data.aiQuality} / 10`
+                              : undefined
+                          }
+                        />
+                        <Field
+                          label="Prompt version"
+                          value={wordQuery.data.aiPromptVersion}
+                          mono
+                        />
+                      </>
+                    )}
+                    <Field
+                      label="Users with this word"
+                      value={wordQuery.data.users ?? 0}
+                    />
+                    <Field
+                      label="Total lookups"
+                      value={wordQuery.data.lookups ?? 0}
                     />
                     <Field label="Row id" value={wordQuery.data.id} mono />
                   </>

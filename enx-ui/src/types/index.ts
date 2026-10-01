@@ -120,6 +120,25 @@ export interface AdminWordRow {
   createdAt?: number
   updatedAt?: number
   deletedAt?: number | null
+  // Where the definition first came from, and when an admin last edited or
+  // approved it (absent = never) -- ADR-045. An AI row no admin has edited is
+  // hidden from users who can't use AI.
+  source?: 'ecdict' | 'ai'
+  adminEditedAt?: number | null
+  // AI rows only: the model's own 0-10 confidence and the prompt version.
+  aiQuality?: number
+  aiPromptVersion?: string
+  // Users who have the word in their vocabulary, and the lookups they made of
+  // it. loadCount above is not maintained and is always 0; these are real.
+  users?: number
+  lookups?: number
+}
+
+// GET /api/admin/ai-words (ADR-045): the AI-made definitions waiting for an
+// admin, busiest first. `total` counts every match, not just this page.
+export interface AdminAiWordsPage {
+  words: AdminWordRow[]
+  total: number
 }
 
 // GET /api/admin/ecdict/:word (ADR-021): the matched ECDICT stardict row plus

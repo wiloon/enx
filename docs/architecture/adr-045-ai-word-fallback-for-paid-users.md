@@ -109,7 +109,7 @@ ADR-030 早就把「AI 兜底」设计成链尾，但它的存储与计费方案
    - **⚠️ 诚实说明这道闸门的能力边界。** 让模型给自己的输出打分，**能挡住乱码和明显的非词，挡不住「一个像样但不存在的词，模型自信地编了释义」**。所以不能只靠分数，叠加四道缓解：
      1. 输入门槛（Decision 4）把可入库的输入限制在「词形」。
      2. `source='ai'` 的行**永久带 AI 标记**展示（Decision 10），用户知道它不是词典权威内容。
-     3. 管理员在 ADR-021 的词典维护页按 `source='ai'` 且 `admin_edited_at IS NULL` 筛选、按 `load_count` 排序，修订或删除；用户可经 ADR-026 的入口报告。**⚠️ ADR-021 现在只有查看、删除、从 ECDICT 重新同步，没有「编辑词条文本」的接口**，所以要新增 `PUT /api/admin/words/:word`，它写 `chinese` / `pronunciation` 并设 `admin_edited_at`。`sync-from-ecdict` 把行重置回 ECDICT 内容时，同时把 `admin_edited_at` 清空。
+     3. 管理员在 ADR-021 的词典维护页按 `source='ai'` 且 `admin_edited_at IS NULL` 筛选（`GET /api/admin/ai-words`），**按使用量排序：先看有多少用户把它放进了生词本（`user_dicts`），再看查询次数之和**；`words.load_count` 没有任何地方在更新、恒为 0，不能用；管理员修订、确认（文本不变地保存一次）或删除；用户可经 ADR-026 的入口报告。**⚠️ ADR-021 现在只有查看、删除、从 ECDICT 重新同步，没有「编辑词条文本」的接口**，所以要新增 `PUT /api/admin/words/:word`，它写 `chinese` / `pronunciation` 并设 `admin_edited_at`。`sync-from-ecdict` 把行重置回 ECDICT 内容时，同时把 `admin_edited_at` 清空。
      4. **按用户限制每日「写入 `words`」的次数**（Decision 8），一个账号无法批量灌入。
    - **`source` 与 `admin_edited_at` 是两个正交的字段**（维护者的设计）：`source` 记录词**最初**从哪来（ECDICT 或 AI），`admin_edited_at` 记录管理员**是否改过**。一行 AI 释义被管理员改过，仍然是 `source='ai'`、`admin_edited_at` 非空；ECDICT 词条被管理员订正，是 `source='ecdict'`、`admin_edited_at` 非空。这比把「管理员」当成第三种来源更好：来源信息不丢，审阅状态单独可查。
    - **打分要对模型说清楚含义：`quality` 是「你对这条释义**正确**有多大把握」，不是「值不值得缓存」。** 并明确允许它回答「不是词」或「我不认识这个词」。模型对「这是乱码 / 拼写错误」通常判断得很可靠；真正容易出错的是**真实但生僻的词被给了一条自信的错误释义**，这是任何用 LLM 做词典都有的风险，分数只能部分缓解，主要靠 AI 标记、用户报告与管理员筛查。

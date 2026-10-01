@@ -300,3 +300,120 @@ func TestInsertWordRefusesAWordThatIsAlreadyThere(t *testing.T) {
 		t.Fatalf("Id = %q: a caller must never hold an id that was not persisted", again.Id)
 	}
 }
+
+// seedAIWord adds an AI-made words row, with one user_dicts row per entry of
+// lookups (each value is that user's query_count).
+func seedAIWord(t *testing.T, id, english string, createdAt int64, editedAt *int64, lookups ...int) {
+	t.Helper()
+	db := sqlitex.DB
+	quality, version := 9, "v1"
+	if err := db.Create(&Word{
+		Id: id, English: english, Chinese: "n. " + english, Source: WordSourceAI,
+		AIQuality: &quality, AIPromptVersion: &version,
+		AdminEditedAt: editedAt, CreatedAt: createdAt, UpdatedAt: createdAt,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for i, count := range lookups {
+		if err := db.Create(&UserDict{UserId: english + string(rune('a'+i)), WordId: id, QueryCount: count, CreatedAt: 1, UpdatedAt: 1}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestAdminWordUsageCountsUsersAndLookups(t *testing.T) {
+	newTestDB(t)
+	seedAIWord(t, "w1", "rizzler", 1, nil, 3, 5, 1)
+
+	usage, err := AdminWordUsage("w1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage != (WordUsage{Users: 3, Lookups: 9}) {
+		t.Fatalf("usage = %+v, want 3 users and 9 lookups", usage)
+	}
+	// A word nobody has looked up is not an error.
+	if usage, err := AdminWordUsage("nobody"); err != nil || usage != (WordUsage{}) {
+		t.Fatalf("usage of an unused word = %+v, %v", usage, err)
+	}
+}
+
+func TestAdminListAIWordsIsTheUnreviewedQueueBusiestFirst(t *testing.T) {
+	newTestDB(t)
+	edited := time.Now().UnixMilli()
+	seedAIWord(t, "w-quiet", "quiet", 300, nil)                // no users
+	seedAIWord(t, "w-busy", "busy", 100, nil, 4, 4, 4)         // 3 users, 12 lookups
+	seedAIWord(t, "w-heavy", "heavy", 200, nil, 50)            // 1 user, 50 lookups
+	seedAIWord(t, "w-wide", "wide", 150, nil, 1, 1, 1)         // 3 users, 3 lookups
+	seedAIWord(t, "w-reviewed", "reviewed", 50, &edited, 9, 9) // already reviewed: not in the queue
+	if err := sqlitex.DB.Create(&Word{Id: "w-ecdict", English: "plain", Chinese: "平常", Source: WordSourceECDICT, CreatedAt: 1, UpdatedAt: 1}).Error; err != nil {
+		t.Fatal(err)
+	}
+	gone := edited
+	if err := sqlitex.DB.Create(&Word{Id: "w-gone", English: "gone", Chinese: "没了", Source: WordSourceAI, CreatedAt: 1, UpdatedAt: 1, DeletedAt: &gone}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	rows, total, err := AdminListAIWords(false, 50, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, r := range rows {
+		got = append(got, r.Id)
+	}
+	// Most users first, then most lookups, then newest.
+	want := []string{"w-busy", "w-wide", "w-heavy", "w-quiet"}
+	if len(got) != len(want) || total != int64(len(want)) {
+		t.Fatalf("queue = %v (total %d), want %v", got, total, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("queue = %v, want %v", got, want)
+		}
+	}
+	if rows[0].Users != 3 || rows[0].Lookups != 12 || rows[0].Word.AIQuality == nil || *rows[0].Word.AIQuality != 9 {
+		t.Fatalf("first row = %+v, want its usage and provenance filled in", rows[0])
+	}
+}
+
+func TestAdminListAIWordsReviewedListsOnlyEditedRows(t *testing.T) {
+	newTestDB(t)
+	edited := time.Now().UnixMilli()
+	seedAIWord(t, "w-open", "open", 1, nil)
+	seedAIWord(t, "w-done", "done", 2, &edited)
+
+	rows, total, err := AdminListAIWords(true, 50, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Id != "w-done" || total != 1 {
+		t.Fatalf("reviewed = %+v (total %d), want only w-done", rows, total)
+	}
+	if rows[0].AdminEditedAt == nil {
+		t.Fatal("a reviewed row should carry when it was edited")
+	}
+}
+
+func TestAdminListAIWordsPagesAndTotalCountsEverything(t *testing.T) {
+	newTestDB(t)
+	for i, name := range []string{"aa", "bb", "cc", "dd", "ee"} {
+		seedAIWord(t, "w-"+name, name, int64(i+1), nil)
+	}
+
+	first, total, err := AdminListAIWords(false, 2, 0)
+	if err != nil || len(first) != 2 || total != 5 {
+		t.Fatalf("page 1 = %d rows, total %d, %v; want 2 rows of 5", len(first), total, err)
+	}
+	last, _, err := AdminListAIWords(false, 2, 4)
+	if err != nil || len(last) != 1 {
+		t.Fatalf("last page = %d rows, %v; want 1", len(last), err)
+	}
+	if first[0].Id == last[0].Id || first[1].Id == last[0].Id {
+		t.Fatal("pages overlap")
+	}
+	beyond, total, err := AdminListAIWords(false, 2, 50)
+	if err != nil || len(beyond) != 0 || total != 5 {
+		t.Fatalf("beyond the end = %d rows, total %d, %v", len(beyond), total, err)
+	}
+}

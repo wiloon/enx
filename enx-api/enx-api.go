@@ -514,6 +514,7 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	adminDict.Use(middleware.RequireAdmin())
 	{
 		adminDict.GET("/words/:word", handlers.AdminGetWord)
+		adminDict.GET("/ai-words", handlers.AdminListAIWords)
 		adminDict.PUT("/words/:word", handlers.AdminEditWord)
 		adminDict.DELETE("/words/:word", handlers.AdminDeleteWord)
 		adminDict.GET("/ecdict/:word", handlers.AdminGetEcdict)

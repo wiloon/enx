@@ -77,6 +77,58 @@ func AdminSyncWordFromEcdict(english, chinese, pronunciation string) (*Word, err
 	return row, nil
 }
 
+// WordUsage is how much a words row is used: Users is how many users have it
+// in their vocabulary and Lookups the lookups they have made of it, summed.
+// words.load_count is not maintained (nothing increments it), so this is
+// the real signal for "which words matter", read from user_dicts.
+type WordUsage struct {
+	Users   int64
+	Lookups int64
+}
+
+// AdminWordUsage returns the usage of the words row wordID.
+func AdminWordUsage(wordID string) (WordUsage, error) {
+	var usage WordUsage
+	err := sqlitex.DB.Raw(`
+		SELECT COUNT(*) AS users, COALESCE(SUM(query_count), 0) AS lookups
+		FROM user_dicts WHERE word_id = ?`, wordID).Scan(&usage).Error
+	return usage, err
+}
+
+// AIWordRow is an AI-made words row for the review queue, with its usage.
+type AIWordRow struct {
+	Word
+	Users   int64
+	Lookups int64
+}
+
+// AdminListAIWords lists live AI-made words rows. reviewed false is the
+// queue: rows no admin has edited yet, which users without AI cannot see.
+// reviewed true lists the ones an admin has edited or approved. The busiest
+// come first -- most users, then most lookups, then newest -- so the words
+// that matter most are reviewed first. total counts every row the filter
+// matches, not just this page.
+func AdminListAIWords(reviewed bool, limit, offset int) (rows []AIWordRow, total int64, err error) {
+	editedFilter := "w.admin_edited_at IS NULL"
+	if reviewed {
+		editedFilter = "w.admin_edited_at IS NOT NULL"
+	}
+	where := "w.source = ? AND w.deleted_at IS NULL AND " + editedFilter
+
+	if err = sqlitex.DB.Raw("SELECT COUNT(*) FROM words w WHERE "+where, WordSourceAI).Scan(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err = sqlitex.DB.Raw(`
+		SELECT w.*, COUNT(ud.user_id) AS users, COALESCE(SUM(ud.query_count), 0) AS lookups
+		FROM words w
+		LEFT JOIN user_dicts ud ON ud.word_id = w.id
+		WHERE `+where+`
+		GROUP BY w.id
+		ORDER BY users DESC, lookups DESC, w.created_at DESC
+		LIMIT ? OFFSET ?`, WordSourceAI, limit, offset).Scan(&rows).Error
+	return rows, total, err
+}
+
 // ErrWordNotFound: AdminEditWord found no live words row to edit.
 var ErrWordNotFound = errors.New("repo: no live words row for that word")
 
