@@ -6,6 +6,7 @@ package adapters
 
 import (
 	"context"
+	"errors"
 
 	"enx-api/dictionary"
 	"enx-api/ecdict"
@@ -49,14 +50,19 @@ type Ecdict struct{}
 
 func (Ecdict) Available() bool { return ecdict.IsAvailable() }
 
-func (Ecdict) Lookup(ctx context.Context, english string) (dictionary.Entry, bool) {
-	d := ecdict.Query(ctx, english)
-	if d == nil {
-		return dictionary.Entry{}, false
+func (Ecdict) Lookup(ctx context.Context, english string) (dictionary.Entry, error) {
+	row, _, err := ecdict.Find(ctx, english)
+	switch {
+	case errors.Is(err, ecdict.ErrNotFound):
+		return dictionary.Entry{}, dictionary.ErrNotInDictionary
+	case errors.Is(err, ecdict.ErrTimeout):
+		return dictionary.Entry{}, dictionary.ErrExternalTimeout
+	case err != nil:
+		return dictionary.Entry{}, err
 	}
 	return dictionary.Entry{
-		English:       d.English,
-		Chinese:       d.Chinese,
-		Pronunciation: d.Pronunciation,
-	}, true
+		English:       row.Word,
+		Chinese:       row.Translation,
+		Pronunciation: row.Phonetic,
+	}, nil
 }

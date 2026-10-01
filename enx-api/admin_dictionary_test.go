@@ -9,14 +9,12 @@ import (
 
 	"enx-api/clerktest"
 	"enx-api/ecdict"
+	"enx-api/ecdict/ecdicttest"
 	"enx-api/utils"
 	"enx-api/utils/sqlitex"
 
-	"github.com/glebarez/sqlite"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/spf13/viper"
-	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
 )
 
 const (
@@ -62,24 +60,10 @@ func adminDictEnv(t *testing.T) (baseURL string, adminToken, plainToken string) 
 
 func seedEcdict(t *testing.T) {
 	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "ecdict-admin-e2e.db")
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{Logger: gormlogger.Default.LogMode(gormlogger.Silent)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec(`CREATE TABLE stardict (word TEXT PRIMARY KEY, sw TEXT, phonetic TEXT, translation TEXT, exchange TEXT)`).Error; err != nil {
-		t.Fatal(err)
-	}
-	rows := [][]any{
-		{"hello", "hello", "/həˈloʊ/", "int. 你好；喂", ""},
-		{"run", "run", "/rʌn/", "v. 跑；奔跑\nn. 奔跑", "i:running/d:ran"},
-	}
-	for _, r := range rows {
-		if err := db.Exec(`INSERT INTO stardict (word, sw, phonetic, translation, exchange) VALUES (?, ?, ?, ?, ?)`, r...).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-	ecdict.Init(dbPath)
+	ecdict.Init(ecdicttest.Create(t,
+		ecdicttest.Row{Word: "hello", Sw: "hello", Phonetic: "/həˈloʊ/", Translation: "int. 你好；喂"},
+		ecdicttest.Row{Word: "run", Sw: "run", Phonetic: "/rʌn/", Translation: "v. 跑；奔跑\nn. 奔跑", Exchange: "i:running/d:ran"},
+	))
 	if !ecdict.IsAvailable() {
 		t.Fatal("ECDICT not available after Init")
 	}

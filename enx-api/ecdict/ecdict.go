@@ -2,8 +2,8 @@ package ecdict
 
 import (
 	"context"
-	"enx-api/enx"
 	"enx-api/utils/logger"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -11,6 +11,7 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	gormlogger "gorm.io/gorm/logger"
 )
 
@@ -77,12 +78,21 @@ func UnavailableMessage() string {
 	return defaultUnavailableReason
 }
 
-// queryTimeout bounds each ECDICT lookup. The stardict table has no index on
-// sw/exchange, so the fallback scans below can occasionally take much longer
-// than the typical few-millisecond exact-match hit; without a deadline a slow
-// scan blocks the request indefinitely (observed hanging past Kong's 60s
-// upstream timeout with no way for the handler to recover).
-const queryTimeout = 3 * time.Second
+// queryTimeout bounds each ECDICT lookup. A word ECDICT doesn't know runs
+// every fallback step, and the exchange step scans the whole table (it has
+// no index); without a deadline a slow scan could block the request
+// indefinitely (observed hanging past Kong's 60s upstream timeout). A var so
+// tests can shorten it.
+var queryTimeout = 3 * time.Second
+
+var (
+	// ErrNotFound: no fallback step matched; ECDICT doesn't know the word.
+	ErrNotFound = errors.New("ecdict: word not found")
+	// ErrTimeout: the lookup gave up after queryTimeout without an answer.
+	ErrTimeout = errors.New("ecdict: lookup timed out")
+	// ErrUnavailable: ECDICT is not configured or could not be opened.
+	ErrUnavailable = errors.New("ecdict: unavailable")
+)
 
 // StardictRow is a raw row of the ECDICT `stardict` table. The admin
 // maintenance page (ADR-021) needs every column, unlike enx.Dictionary which
@@ -95,22 +105,28 @@ type StardictRow struct {
 	Exchange    string `json:"exchange"`
 }
 
-type rawResult struct {
+type findResult struct {
 	entry     stardict
 	matchedBy string
-	ok        bool
+	err       error
 }
 
-// LookupRaw runs the same fallback chain as the user lookup path -- exact →
-// case-insensitive → sw (strip-word) → exchange (inflections) -- but returns
-// the raw stardict row and which strategy matched, and does NOT go through
-// metering. It is the single query implementation; Query is a thin adapter.
-func LookupRaw(ctx context.Context, word string) (row StardictRow, matchedBy string, found bool) {
+// Find runs the fallback chain -- exact (stardict.word is COLLATE NOCASE, so
+// any case) -> sw (strip-word) -> exchange (inflections) -- and reports which
+// step matched ("exact", "sw", "exchange"). It returns ErrNotFound when no
+// step matches, ErrTimeout after queryTimeout, ErrUnavailable when ECDICT is
+// not configured, ctx's error when the caller gave up, and any other
+// database error as is: a failure is never reported as "not found". It does
+// not meter.
+func Find(ctx context.Context, word string) (row StardictRow, matchedBy string, err error) {
 	if !IsAvailable() {
-		return StardictRow{}, "", false
+		return StardictRow{}, "", ErrUnavailable
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
+	// The lookup goroutine below may outlive this call; it keeps its own
+	// handle rather than reading the package-level db later.
+	conn := db
+	lookupCtx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 
 	// The sqlite driver's context cancellation is best-effort: under
@@ -119,93 +135,109 @@ func LookupRaw(ctx context.Context, word string) (row StardictRow, matchedBy str
 	// goroutine guarantees we return on time regardless of whether the
 	// underlying scan actually stops; the goroutine just finishes on its own
 	// later and its result is dropped.
-	resultCh := make(chan rawResult, 1)
+	resultCh := make(chan findResult, 1)
 	go func() {
-		entry, matchedBy, ok := lookupEntry(ctx, word)
-		resultCh <- rawResult{entry, matchedBy, ok}
+		entry, matchedBy, err := lookupEntry(lookupCtx, conn, word)
+		resultCh <- findResult{entry, matchedBy, err}
 	}()
 
+	var res findResult
 	select {
-	case res := <-resultCh:
-		if !res.ok {
-			logger.Debugf("ECDICT: word not found: %s", word)
-			return StardictRow{}, "", false
-		}
-		logger.Debugf("ECDICT hit (%s): %s -> %s", res.matchedBy, word, res.entry.Translation)
+	case res = <-resultCh:
+	case <-lookupCtx.Done():
+		res.err = lookupCtx.Err()
+	}
+
+	switch {
+	case res.err == nil:
 		return StardictRow{
 			Word:        res.entry.Word,
 			Sw:          res.entry.Sw,
 			Phonetic:    res.entry.Phonetic,
 			Translation: res.entry.Translation,
 			Exchange:    res.entry.Exchange,
-		}, res.matchedBy, true
-	case <-ctx.Done():
-		logger.Warnf("ECDICT: query exceeded %s, giving up: %s", queryTimeout, word)
-		return StardictRow{}, "", false
+		}, res.matchedBy, nil
+	case errors.Is(res.err, ErrNotFound):
+		return StardictRow{}, "", ErrNotFound
+	case ctx.Err() != nil:
+		// The caller gave up (request canceled or its own deadline).
+		return StardictRow{}, "", ctx.Err()
+	case errors.Is(res.err, context.DeadlineExceeded):
+		logger.Warnf("ECDICT: lookup exceeded %s, giving up: %s", queryTimeout, word)
+		return StardictRow{}, "", ErrTimeout
+	default:
+		logger.Errorf("ECDICT: lookup of %s failed: %v", word, res.err)
+		return StardictRow{}, "", res.err
 	}
 }
 
-func Query(ctx context.Context, words string) *enx.Dictionary {
-	row, _, ok := LookupRaw(ctx, words)
-	if !ok {
-		return nil
-	}
-	return &enx.Dictionary{
-		English:       row.Word,
-		Chinese:       row.Translation,
-		Pronunciation: row.Phonetic,
-	}
+// LookupRaw is Find for callers that only need found-or-not (the admin
+// maintenance page, ADR-021).
+func LookupRaw(ctx context.Context, word string) (row StardictRow, matchedBy string, found bool) {
+	row, matchedBy, err := Find(ctx, word)
+	return row, matchedBy, err == nil
 }
 
-// lookupEntry: exact word → case-insensitive word → sw (strip-word) → exchange
-// (inflections). matchedBy names the strategy that hit ("exact" / "lower" /
-// "sw" / "exchange"), empty when nothing matched.
-func lookupEntry(ctx context.Context, words string) (entry stardict, matchedBy string, found bool) {
-	dbc := db.WithContext(ctx)
+// lookupEntry runs the fallback chain on conn. It returns ErrNotFound when
+// nothing matches, and any other error (database, ctx) as is.
+func lookupEntry(ctx context.Context, conn *gorm.DB, word string) (stardict, string, error) {
+	dbc := conn.WithContext(ctx)
+	var entry stardict
 
-	if err := dbc.Where("word = ?", words).First(&entry).Error; err == nil {
-		return entry, "exact", true
-	}
-	if ctx.Err() != nil {
-		return stardict{}, "", false
-	}
-	if err := dbc.Where("LOWER(word) = LOWER(?)", words).First(&entry).Error; err == nil {
-		return entry, "lower", true
-	}
-	if ctx.Err() != nil {
-		return stardict{}, "", false
+	// stardict.word is COLLATE NOCASE: this exact match is already
+	// case-insensitive, through the word index. (A LOWER(word) = LOWER(?)
+	// step used to follow; it could never match anything this one missed,
+	// and it scanned all 3.4M rows.)
+	if err := first(dbc.Where("word = ?", word), &entry); err != errMiss {
+		return entry, "exact", err
 	}
 
-	sw := stripWord(words)
-	if sw != "" {
-		if err := dbc.Where("sw = ?", sw).First(&entry).Error; err == nil {
-			return entry, "sw", true
-		}
-		if ctx.Err() != nil {
-			return stardict{}, "", false
+	if sw := stripWord(word); sw != "" {
+		if err := first(dbc.Where("sw = ?", sw), &entry); err != errMiss {
+			return entry, "sw", err
 		}
 	}
 
-	for _, pattern := range exchangePatterns(words) {
-		if err := dbc.Where("exchange LIKE ?", pattern).First(&entry).Error; err == nil {
-			return entry, "exchange", true
-		}
-		if ctx.Err() != nil {
-			return stardict{}, "", false
+	// Inflections: the forms are in the unindexed exchange column, so this
+	// is a full scan. One scan covers all three patterns; the ORDER BY keeps
+	// the earlier one-query-per-pattern precedence (pattern order, then
+	// word), so the same headword wins.
+	if word != "" {
+		p := exchangePatterns(word)
+		q := dbc.Where("exchange LIKE ? OR exchange LIKE ? OR exchange LIKE ?", p[0], p[1], p[2]).
+			Clauses(clause.OrderBy{Expression: clause.Expr{
+				SQL:                "CASE WHEN exchange LIKE ? THEN 0 WHEN exchange LIKE ? THEN 1 ELSE 2 END, word",
+				Vars:               []interface{}{p[0], p[1]},
+				WithoutParentheses: true,
+			}})
+		if err := q.Limit(1).Find(&entry); err.Error != nil {
+			return stardict{}, "", err.Error
+		} else if err.RowsAffected > 0 {
+			return entry, "exchange", nil
 		}
 	}
 
-	return stardict{}, "", false
+	return stardict{}, "", ErrNotFound
 }
 
-func exchangePatterns(words string) []string {
-	if words == "" {
-		return nil
+// errMiss marks "this step matched nothing, try the next".
+var errMiss = errors.New("no match")
+
+// first fetches one row; gorm's ErrRecordNotFound becomes errMiss, any other
+// error (database, ctx) is returned as is.
+func first(q *gorm.DB, dest *stardict) error {
+	err := q.First(dest).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return errMiss
 	}
+	return err
+}
+
+func exchangePatterns(word string) []string {
 	return []string{
-		"%:" + words + "/%",
-		"%/" + words + "/%",
-		"%:" + words,
+		"%:" + word + "/%",
+		"%/" + word + "/%",
+		"%:" + word,
 	}
 }
 

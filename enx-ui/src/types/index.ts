@@ -105,7 +105,8 @@ export interface AdminWordRow {
 }
 
 // GET /api/admin/ecdict/:word (ADR-021): the matched ECDICT stardict row plus
-// which fallback strategy hit ("exact" | "lower" | "sw" | "exchange").
+// which fallback strategy hit ("exact" | "sw" | "exchange"; "exact" is
+// case-insensitive, stardict.word being COLLATE NOCASE).
 export interface AdminEcdictRow {
   found: boolean
   matchedBy?: string

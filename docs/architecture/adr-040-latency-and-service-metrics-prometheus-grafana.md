@@ -68,7 +68,7 @@ OTel 能顺带做 tracing，但当前只有一个 Go 服务、没有跨服务调
 
 **查词**
 
-- `enx_dictionary_lookup_duration_seconds{source}` —— 直方图，`source ∈ {local, ecdict, miss}`（`miss` = words 与 ECDICT 都没有）。度量范围是**整个查词 handler**（含 `words` 查询、配额计量、ECDICT、回写 `words`），即服务端视角下用户等的时间。桶：5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s。
+- `enx_dictionary_lookup_duration_seconds{source}` —— 直方图，`source ∈ {local, ecdict, miss, timeout, error}`：`miss` = ECDICT 确认没有这个词；`timeout` = ECDICT 超过 3 秒没答复；`error` = 数据库出错或用户已离开（请求被取消）。后两种对用户而言同样是"没有释义"，但分开记，`miss` 的比例才只反映词典覆盖率。度量范围是**整个查词 handler**（含 `words` 查询、配额计量、ECDICT、回写 `words`），即服务端视角下用户等的时间。桶：5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s。
 - 同一直方图的 `_count` 按 `source` 相除即是命中率 / miss 率，长期替代 `dictsample`（`dictsample` 按 ADR-030 原计划删除，不在本 ADR 范围内删）。
 - 配额拒绝（429）、ECDICT 不可用（503）不进这个直方图——它们没有完成一次查词——而体现在 HTTP 指标的状态码上。
 
@@ -185,3 +185,4 @@ Grafana dashboard 的 JSON 放进 `w10n-config` 的 `infra/homelab/k8s/observabi
 | 2026-09-29 | 查词入口、路由、请求日志、AI 装饰位置按已合并代码更新 | #64/#69/#70/#72 在本 ADR 起草后合并 |
 | 2026-09-29 | 去掉 `enx_clerk_jwks_fetch_total`，Clerk 只保留校验耗时直方图并列出 outcome；写明 Stripe、SQLite 指标的标签取值 | `keyfunc` 不暴露 JWKS 拉取回调；实现时确定了具体取值 |
 | 2026-09-30 | Decision 7：进程指标的面板用 `job="enx-api"` 筛选，两个采集器统一这个 job 名 | `go_*` / `process_*` 是通用指标名，不按 job 筛会混进集群里其他 Go 服务 |
+| 2026-10-01 | 查词来源加 `timeout`、`error` | 原先超时、出错、请求取消都记成 `miss`，混淆了词典覆盖率（一次 ECDICT 超时被当成 miss 显示为 3 秒） |
