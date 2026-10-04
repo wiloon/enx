@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-03
 related: adr-039（按站点自动启用，本 ADR 给它补上状态反馈）、adr-010 / adr-011 / adr-019（`showProcessingIndicator`，本 ADR 将其删除）、adr-047（Onboarding，负责教用户认识角标）
 ---

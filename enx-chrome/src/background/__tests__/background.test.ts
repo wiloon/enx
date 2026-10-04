@@ -1142,6 +1142,29 @@ describe('background auto-enable wiring (adr-039)', () => {
     })
   })
 
+  // adr-046 Decision 7: the page stays untouched, but the badge says why.
+  it('marks the tab "!" when signed out on a granted site', async () => {
+    granted('https://www.infoq.com/*')
+    setClerkSession(null)
+    expect(
+      await ask({ origin: 'https://www.infoq.com', frameId: 0, tab: { id: 4 } })
+    ).toEqual({ success: true, autoEnable: false })
+    expect(chrome.action.setBadgeText).toHaveBeenCalledWith({
+      tabId: 4,
+      text: '!',
+    })
+    expect(chrome.action.setTitle).toHaveBeenCalledWith({
+      tabId: 4,
+      title: 'Sign in to Catglish to use learning mode on this site.',
+    })
+  })
+
+  it('leaves the badge alone on a site that was not granted', async () => {
+    setClerkSession(null)
+    await ask({ origin: 'https://www.infoq.com', frameId: 0, tab: { id: 4 } })
+    expect(chrome.action.setBadgeText).not.toHaveBeenCalled()
+  })
+
   // The origin comes from Chrome's sender info, never from the message body.
   it('uses the sender origin, not a claimed one', async () => {
     granted('https://www.infoq.com/*')
@@ -1259,5 +1282,111 @@ describe('handleGetWords (paragraph-init method)', () => {
 
     expect((await handleGetWords('hello')).success).toBe(false)
     expect(calls().map(c => c.method)).toEqual(['QUERY'])
+  })
+})
+
+// adr-046: the toolbar badge, per tab.
+describe('background learning-mode badge (adr-046)', () => {
+  const listener = onMessageListener
+  // Captured at collection time, before any beforeEach resetAllMocks().
+  const onTabUpdated = (chrome.tabs.onUpdated.addListener as jest.Mock).mock
+    .calls[0]?.[0] as (
+    tabId: number,
+    changeInfo: chrome.tabs.OnUpdatedInfo
+  ) => void
+
+  const send = (request: unknown, sender: unknown) =>
+    new Promise<Record<string, unknown>>(resolve => {
+      listener(request, sender, resolve as (r: unknown) => void)
+    })
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    ;(chrome.runtime.getManifest as jest.Mock).mockReturnValue({
+      name: 'Catglish',
+    })
+    ;(chrome.action.getUserSettings as jest.Mock).mockResolvedValue({
+      isOnToolbar: true,
+    })
+    ;(chrome.storage.local.get as jest.Mock).mockResolvedValue({})
+    ;(chrome.storage.local.set as jest.Mock).mockResolvedValue(undefined)
+  })
+
+  it('sets the badge on the sending tab', async () => {
+    const response = await send(
+      { type: 'learningModeStatus', status: { status: 'processing' } },
+      { tab: { id: 9 }, frameId: 0 }
+    )
+    expect(response).toMatchObject({ success: true })
+    expect(chrome.action.setBadgeText).toHaveBeenCalledWith({
+      tabId: 9,
+      text: '…',
+    })
+  })
+
+  it.each([
+    ['a subframe', { tab: { id: 9 }, frameId: 3 }],
+    ['a sender without a tab', { frameId: 0 }],
+  ])('ignores a status from %s', async (_name, sender) => {
+    const response = await send(
+      { type: 'learningModeStatus', status: { status: 'ready' } },
+      sender
+    )
+    expect(response).toMatchObject({ success: false })
+    expect(chrome.action.setBadgeText).not.toHaveBeenCalled()
+  })
+
+  it('ignores an unknown status', async () => {
+    const response = await send(
+      { type: 'learningModeStatus', status: { status: 'bogus' } },
+      { tab: { id: 9 }, frameId: 0 }
+    )
+    expect(response).toMatchObject({ success: false })
+    expect(chrome.action.setBadgeText).not.toHaveBeenCalled()
+  })
+
+  it('asks the page to show the pin hint when ready and unpinned', async () => {
+    ;(chrome.action.getUserSettings as jest.Mock).mockResolvedValue({
+      isOnToolbar: false,
+    })
+    expect(
+      await send(
+        { type: 'learningModeStatus', status: { status: 'ready' } },
+        { tab: { id: 9 }, frameId: 0 }
+      )
+    ).toEqual({ success: true, showPinHint: true })
+  })
+
+  it('does not ask about pinning before the article is ready', async () => {
+    ;(chrome.action.getUserSettings as jest.Mock).mockResolvedValue({
+      isOnToolbar: false,
+    })
+    expect(
+      await send(
+        { type: 'learningModeStatus', status: { status: 'processing' } },
+        { tab: { id: 9 }, frameId: 0 }
+      )
+    ).toEqual({ success: true, showPinHint: false })
+  })
+
+  it('records "Don\'t show again"', async () => {
+    await send({ type: 'pinHintDismissed' }, { tab: { id: 9 }, frameId: 0 })
+    expect(chrome.storage.local.set).toHaveBeenCalledWith({
+      'enx-pin-hint': { shown: 0, dismissed: true },
+    })
+  })
+
+  it('clears the tab badge when the tab starts loading a page', async () => {
+    ;(chrome.action.setBadgeText as jest.Mock).mockResolvedValue(undefined)
+    onTabUpdated(9, { status: 'loading' })
+    expect(chrome.action.setBadgeText).toHaveBeenCalledWith({
+      tabId: 9,
+      text: '',
+    })
+  })
+
+  it('leaves the badge alone on other tab updates', () => {
+    onTabUpdated(9, { status: 'complete' })
+    expect(chrome.action.setBadgeText).not.toHaveBeenCalled()
   })
 })

@@ -48,7 +48,6 @@ export interface SiteAdapter {
    * placeholder, not yet implemented.
    */
   clickBinding?: 'bubble' | 'documentCapture'
-  showProcessingIndicator: boolean
 }
 
 // Field-for-field equal to today's hard-coded behavior. Every whitelisted
@@ -58,7 +57,6 @@ export const DEFAULT_ADAPTER: SiteAdapter = {
   matches: () => true,
   minTextLength: 100,
   contentVolatility: 'static',
-  showProcessingIndicator: true,
 }
 
 // --- X (Twitter) -----------------------------------------------------------
@@ -141,7 +139,6 @@ const X_ADAPTER: SiteAdapter = {
   focusedNodeResolver: pickFocusedTweet,
   contentVolatility: 'spa',
   clickBinding: 'bubble',
-  showProcessingIndicator: false,
 }
 
 // --- enx-ui Reader (ADR-019) ---------------------------------------------
@@ -178,7 +175,6 @@ const READER_ADAPTER: SiteAdapter = {
   minTextLength: 1,
   contentVolatility: 'static',
   clickBinding: 'bubble',
-  showProcessingIndicator: false,
 }
 
 // Non-default adapters, checked in order.

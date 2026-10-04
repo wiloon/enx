@@ -4,6 +4,7 @@ export default {
   setupFiles: ['<rootDir>/jest.polyfills.js'],
   setupFilesAfterEnv: ['<rootDir>/src/test/setup.ts'],
   moduleNameMapper: {
+    '\\.css\\?inline$': '<rootDir>/src/test/inlineStyleMock.js',
     '\\.css$': '<rootDir>/src/test/styleMock.js',
     // Vite-only import.meta.env reader -> process.env stub (see buildEnv.ts)
     '^(\\.|@/config)/buildEnv$': '<rootDir>/src/test/buildEnvStub.ts',

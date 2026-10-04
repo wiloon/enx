@@ -1,5 +1,7 @@
 // Core data types for ENX extension
 
+import type { LearningModeStatus } from '@/lib/learningModeStatus'
+
 export interface WordData {
   Key: string
   English: string
@@ -70,6 +72,8 @@ export interface ContentMessage {
     | 'submitPageReport'
     | 'savePage'
     | 'shouldAutoEnable'
+    | 'learningModeStatus'
+    | 'pinHintDismissed'
   word?: string
   words?: string
   paragraph?: string
@@ -105,6 +109,9 @@ export interface ContentMessage {
   // The URL is sent as the browser has it; enx-api normalizes it (drops the
   // fragment, credentials and tracking parameters) and returns what it stored.
   savedPage?: { url: string; title: string }
+  // Set on 'learningModeStatus' (adr-046): what the toolbar badge should show
+  // for the sending tab.
+  status?: LearningModeStatus
 }
 
 // The L0 half of ADR-028's metric set. The other columns of `daily_stats`
@@ -121,6 +128,9 @@ export interface BackgroundResponse {
   // Set by 'shouldAutoEnable' (adr-039): this page's site is one the user
   // chose "Always enable on this site" for, and they are signed in.
   autoEnable?: boolean
+  // Set by 'learningModeStatus' (adr-046 Decision 6): the toolbar icon is not
+  // pinned and the "pin Catglish" hint has shows left.
+  showPinHint?: boolean
   error?: string
   ecp?: WordData
   wordProperties?: Record<string, WordData>
