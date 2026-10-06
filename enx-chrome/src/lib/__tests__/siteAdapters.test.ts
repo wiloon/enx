@@ -27,7 +27,6 @@ describe('resolveSiteAdapter', () => {
     expect(DEFAULT_ADAPTER).toMatchObject({
       minTextLength: 100,
       contentVolatility: 'static',
-      showProcessingIndicator: true,
     })
     expect(DEFAULT_ADAPTER.contentSelector).toBeUndefined()
     expect(DEFAULT_ADAPTER.focusedNodeResolver).toBeUndefined()
@@ -77,7 +76,6 @@ describe('resolveSiteAdapter', () => {
       )
       expect(x.contentVolatility).toBe('spa')
       expect(x.clickBinding).toBe('bubble')
-      expect(x.showProcessingIndicator).toBe(false)
       expect(x.minTextLength).toBe(1)
     })
   })
@@ -306,7 +304,6 @@ describe('READER_ADAPTER (enx-ui paste-text reader)', () => {
     expect(reader.contentSelector).toBe('#enx-reader-article')
     expect(reader.contentVolatility).toBe('static')
     expect(reader.clickBinding).toBe('bubble')
-    expect(reader.showProcessingIndicator).toBe(false)
     expect(reader.minTextLength).toBe(1)
   })
 })

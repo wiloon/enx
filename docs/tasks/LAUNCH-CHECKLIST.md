@@ -12,7 +12,7 @@
 
 ## 「上线」的定义
 
-在一个**公网可达的生产域名**上，真实用户可以：注册 → 用 Google / GitHub / 邮箱登录 → 订阅或购买积分 → 使用 AI 翻译并按 token 扣积分 → 退订 / 权限收回 —— 这条链路端到端跑通，Chrome 扩展在 Web Store 上架，官网能让访客在不安装不注册的前提下看懂产品。达到这个状态才能开始 YouTube / X 推广。
+在一个**公网可达的生产域名**上，真实用户可以：注册 → 用 Google / GitHub 登录（邮箱注册登录已关闭，见 adr-048） → 订阅或购买积分 → 使用 AI 翻译并按 token 扣积分 → 退订 / 权限收回 —— 这条链路端到端跑通，Chrome 扩展在 Web Store 上架，官网能让访客在不安装不注册的前提下看懂产品。达到这个状态才能开始 YouTube / X 推广。
 
 当前 homelab（`enx.wiloon.lab` / `enx-api.wiloon.lab`，局域网）已跑着 Clerk dev 实例 + Stripe Sandbox + 三档订阅代码结构 + token 计费代码，但**付费链路的关键数值全是 0，从未真实联调过**。
 
@@ -81,7 +81,7 @@
 
 - [ ] **3.1** homelab webhook 转发恢复：`enx-stripe-cli` pod（`w10n-config/infra/homelab/k8s/enx/deployment-stripe-cli.yaml`）此前卡在 Nexus 镜像封锁（冷却到 2026-08-27）。确认 pod 已 Running，并把 stripe-cli 日志里的真实 `whsec_...` 回填进 `enx-stripe` Secret 的 `webhook_secret`（当前是占位 `whsec_placeholder`），`kubectl rollout restart deployment/enx-api -n enx`。命令见 `w10n-config/infra/homelab/k8s/enx/README.md`「stripe-cli 转发部署」。
   - ⚠️ 该密钥每次 pod 重启都会变（stripe-cli 限制），切到生产固定 endpoint 后无此问题。
-- [ ] **3.2** homelab 完整闭环冒烟：注册 → Clerk 登录（Google / GitHub / 邮箱各一遍）→ 订阅某档 → 积分到账（webhook `invoice.paid` → `GrantSubscription`）→ 用 AI 翻译，确认按 token 扣积分（查 `credit_transactions`）→ 积分耗尽返回 402 → 充值 → 余额增加 → Customer Portal 退订 → `status` 变更、权限收回。
+- [ ] **3.2** homelab 完整闭环冒烟：注册 → Clerk 登录（Google / GitHub 各一遍；确认登录页没有邮箱入口）→ 订阅某档 → 积分到账（webhook `invoice.paid` → `GrantSubscription`）→ 用 AI 翻译，确认按 token 扣积分（查 `credit_transactions`）→ 积分耗尽返回 402 → 充值 → 余额增加 → Customer Portal 退订 → `status` 变更、权限收回。
 - [ ] **3.3** 建 Live（生产）Stripe workspace：目前只有 Sandbox。用 OpenTofu workspace 区分（`infra/stripe/opentofu/enx/` 已按此设计），Live 那份配置在切换收费时建。
 
 ---

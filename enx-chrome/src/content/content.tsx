@@ -20,6 +20,10 @@ import {
   failureMessage,
 } from '@/lib/enableOutcome'
 import { stampExtensionPresence } from '@/lib/extensionPresence'
+import {
+  runWithStatus,
+  type LearningModeStatus,
+} from '@/lib/learningModeStatus'
 import { maybeAutoEnable } from './autoEnable'
 import { nearestElement, referenceLineHeight } from '@/lib/rangeUtils'
 import {
@@ -48,6 +52,7 @@ import {
   type AiLookupDeps,
 } from '@/lib/aiLookupFlow'
 import SidePanelTranslateIcon from '@/components/icons/SidePanelTranslateIcon'
+import PinHint from '@/components/PinHint'
 import tailwindCss from '@/index.css?inline'
 
 console.log('ENX Content script loaded')
@@ -57,11 +62,7 @@ console.log('ENX Content script loaded')
 // our shadow roots, so a var() here would resolve against the host page and
 // come back empty. Literals, kept in step with index.css by hand -- and kept
 // together here rather than buried in the cssText blocks that use them.
-const BRAND_HUE = 200 // keep in step with --brand-hue in index.css
-
 const HOST_PAGE_COLORS = {
-  brand: `oklch(0.55 0.13 ${BRAND_HUE})`, // mirrors --color-brand
-  brandShadow: `oklch(0.55 0.13 ${BRAND_HUE} / 30%)`,
   destructive: 'oklch(0.577 0.245 27.325)', // mirrors --color-destructive
   // ADR-025, the sentence a word click opened the panel for. The one warm
   // accent in the system, and intentionally so: it is a transient locator on
@@ -122,6 +123,73 @@ type OverlayElement = HTMLElement & {
   popover: string
   showPopover: () => void
   hidePopover: () => void
+}
+
+// Content is rendered inside a shadow root so Tailwind classes can't leak
+// into (or be overridden by) the host page's styles.
+const mountShadowRoot = (host: HTMLElement): Root => {
+  ensureTailwindPropertyRegistrations()
+  const shadowRoot = host.attachShadow({ mode: 'open' })
+  const styleTag = document.createElement('style')
+  styleTag.textContent = tailwindCss
+  shadowRoot.appendChild(styleTag)
+
+  const mountPoint = document.createElement('div')
+  shadowRoot.appendChild(mountPoint)
+  return createRoot(mountPoint)
+}
+
+// adr-046 Decision 6: "pin Catglish to your toolbar", in the top layer near
+// the toolbar side of the viewport -- never inside the article.
+let pinHintOverlay: OverlayElement | null = null
+
+const hidePinHint = () => {
+  const overlay = pinHintOverlay
+  if (!overlay) return
+  pinHintOverlay = null
+  overlay.hidePopover()
+  overlay.remove()
+}
+
+const showPinHint = () => {
+  if (pinHintOverlay) return
+  const overlay = document.createElement('div') as OverlayElement
+  overlay.popover = 'manual'
+  overlay.className = 'enx-pin-hint'
+  overlay.style.cssText = `
+    position: fixed;
+    inset: 12px 12px auto auto;
+    padding: 0;
+    border: none;
+    background: transparent;
+    margin: 0;
+  `
+  const root = mountShadowRoot(overlay)
+  const close = () => {
+    root.unmount()
+    hidePinHint()
+  }
+  root.render(
+    <PinHint
+      onClose={close}
+      onDontShowAgain={() => {
+        void sendToBackground({ type: 'pinHintDismissed' })
+        close()
+      }}
+    />
+  )
+  document.body.appendChild(overlay)
+  overlay.showPopover()
+  pinHintOverlay = overlay
+}
+
+// adr-046: learning mode's state goes to the toolbar badge, via background.
+const reportStatus = (status: LearningModeStatus) => {
+  void sendToBackground({ type: 'learningModeStatus', status }).then(
+    response => {
+      if (response.showPinHint) showPinHint()
+    }
+  )
 }
 
 // Positions `overlay` against `reference` with Floating UI and keeps it there
@@ -206,17 +274,7 @@ const createAnchoredOverlay = (
     margin: 0;
   `
 
-  // Content is rendered inside a shadow root so Tailwind classes can't leak
-  // into (or be overridden by) the host page's styles.
-  ensureTailwindPropertyRegistrations()
-  const shadowRoot = overlay.attachShadow({ mode: 'open' })
-  const styleTag = document.createElement('style')
-  styleTag.textContent = tailwindCss
-  shadowRoot.appendChild(styleTag)
-
-  const mountPoint = document.createElement('div')
-  shadowRoot.appendChild(mountPoint)
-  const root = createRoot(mountPoint)
+  const root = mountShadowRoot(overlay)
 
   let stopPositioning: (() => void) | null = null
   const mount = () => {
@@ -676,7 +734,7 @@ const showSessionExpiredMessage = (isLoginError = false) => {
 // run superseded by a newer tweet switch abandons instead of highlighting
 // stale content.
 const processArticleContent = async (
-  opts: { isCurrent?: () => boolean } = {}
+  opts: { isCurrent?: () => boolean; onArticleFound?: () => void } = {}
 ): Promise<EnableOutcome> => {
   const isSpaRebuild = opts.isCurrent !== undefined
   const stale = () => isSpaRebuild && !opts.isCurrent!()
@@ -708,6 +766,9 @@ const processArticleContent = async (
     }
 
     console.log(`Article node(s) found: ${articleNodes.length}`, articleNodes)
+    // adr-046: only now is there an article to prepare -- earlier failures
+    // (home and list pages) never flash the "processing" badge.
+    opts.onArticleFound?.()
 
     const collectedTextNodes = articleNodes.flatMap(node =>
       WordProcessor.collectTextNodes(node)
@@ -876,12 +937,6 @@ const processArticleContent = async (
       void sendToBackground({ type: 'reportReadingProgress', delta })
     })
 
-    // The completion indicator is the one structural DOM insert; adapters
-    // that own a React tree opt out (ADR-010).
-    if (haveWords && adapter.showProcessingIndicator) {
-      addProcessingCompleteIndicator(articleNodes[0])
-    }
-
     console.log('✅ Article processing completed successfully')
     return haveWords ? ENABLE_OK : failed('lookup-failed')
   } catch (error) {
@@ -962,66 +1017,6 @@ const clearArticleRoots = () => {
     root.removeEventListener('click', handleArticleClick)
   )
   articleRoots = []
-}
-
-// Add processing complete indicator to the article
-const addProcessingCompleteIndicator = (articleNode: Element) => {
-  // Remove any existing indicator
-  const existingIndicator = document.getElementById('enx-processing-complete')
-  if (existingIndicator) {
-    existingIndicator.remove()
-  }
-
-  // Create the indicator element
-  const indicator = document.createElement('div')
-  indicator.id = 'enx-processing-complete'
-  // Inserted inside the article: keep its text out of word lookup/highlighting.
-  indicator.dataset.enxUi = ''
-  indicator.style.cssText = `
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    background: ${HOST_PAGE_COLORS.brand};
-    color: white;
-    padding: 8px 12px;
-    border-radius: 20px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 12px;
-    font-weight: 500;
-    margin-bottom: 16px;
-    box-shadow: 0 2px 8px ${HOST_PAGE_COLORS.brandShadow};
-    animation: slideInFromTop 0.5s ease-out;
-    z-index: 1000;
-  `
-
-  indicator.innerHTML = `
-    <svg style="width: 14px; height: 14px; margin-right: 6px;" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-    Article processed • Click words for translation
-  `
-
-  // Add CSS animation
-  const style = document.createElement('style')
-  style.textContent = `
-    @keyframes slideInFromTop {
-      from {
-        transform: translateY(-20px);
-        opacity: 0;
-      }
-      to {
-        transform: translateY(0);
-        opacity: 1;
-      }
-    }
-  `
-  if (!document.head.querySelector('style[data-enx-animations]')) {
-    style.setAttribute('data-enx-animations', 'true')
-    document.head.appendChild(style)
-  }
-
-  // Insert at the beginning of the article
-  articleNode.insertBefore(indicator, articleNode.firstChild)
 }
 
 // Shows a lightweight overlay carrying only the sentencePanelHint text, no
@@ -1228,15 +1223,7 @@ const showSelectionTranslateButton = (
     margin: 0;
   `
 
-  ensureTailwindPropertyRegistrations()
-  const shadowRoot = overlay.attachShadow({ mode: 'open' })
-  const styleTag = document.createElement('style')
-  styleTag.textContent = tailwindCss
-  shadowRoot.appendChild(styleTag)
-
-  const mountPoint = document.createElement('div')
-  shadowRoot.appendChild(mountPoint)
-  const root = createRoot(mountPoint)
+  const root = mountShadowRoot(overlay)
   selectionButtonRoot = root
 
   const handleClick = () => {
@@ -1396,8 +1383,14 @@ const getSpaRebuilder = () => {
       WordProcessor.clearHighlights()
       clearArticleRoots()
       hideCurrentOverlay()
+      reportStatus({ status: 'off' })
     },
-    rebuild: isCurrent => processArticleContent({ isCurrent }).then(() => {}),
+    rebuild: isCurrent =>
+      runWithStatus(
+        onArticleFound => processArticleContent({ isCurrent, onArticleFound }),
+        reportStatus,
+        isCurrent
+      ).then(() => {}),
   })
   return spaRebuilderInstance
 }
@@ -1431,8 +1424,11 @@ const enableEnx = async (): Promise<EnableOutcome> => {
   // The initial processing run also rides the SPA generation counter so it
   // is abandoned if the user switches tweets before its backend call
   // returns (otherwise it could paint the old tweet after teardown).
-  const outcome = await processArticleContent(
-    isSpa ? { isCurrent: getSpaRebuilder().makeIsCurrent() } : {}
+  const isCurrent = isSpa ? getSpaRebuilder().makeIsCurrent() : undefined
+  const outcome = await runWithStatus(
+    onArticleFound => processArticleContent({ isCurrent, onArticleFound }),
+    reportStatus,
+    isCurrent
   )
 
   if (outcome.ok) {
@@ -1466,17 +1462,12 @@ const disableEnx = () => {
   // Hide overlay
   hideCurrentOverlay()
 
-  // Remove processing complete indicator
-  const indicator = document.getElementById('enx-processing-complete')
-  if (indicator) {
-    indicator.remove()
-  }
-
   // Drop the highlights and the click listener (ADR-011 Decision 1): no
   // element unwrapping, no reflow.
   WordProcessor.clearHighlights()
   activeSentenceHighlightCleanup?.() // ADR-025: also drops its click/timeout listeners
   clearArticleRoots()
+  reportStatus({ status: 'off' })
 }
 
 // The enable path shared by the popup's enxRun and adr-039 auto-enable.
@@ -1554,6 +1545,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       // Disable ENX functionality if it's currently enabled
       if (isEnxEnabled) {
         disableEnx()
+        reportStatus({ status: 'error', reason: 'session-expired' })
       }
       sendResponse({ success: true })
       break

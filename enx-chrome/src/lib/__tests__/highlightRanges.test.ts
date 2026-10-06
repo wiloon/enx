@@ -174,12 +174,11 @@ describe('WordProcessor.buildHighlightRanges', () => {
   })
 
   it("skips the extension's own UI inserted into the article", () => {
-    // The "Article processed • Click words for translation" indicator is
-    // appended inside the article after the first paint; a later rebuild
-    // (e.g. after a lookup) must not highlight words in it.
+    // Anything the extension marks with data-enx-ui (e.g. the session
+    // notice) must not have its words highlighted by a later rebuild.
     document.body.innerHTML = `
       <p>the endgame is here</p>
-      <div id="enx-processing-complete" data-enx-ui>Click the endgame</div>
+      <div data-enx-ui>Click the endgame</div>
     `
     WordProcessor.rebuildHighlights(document.body, {
       endgame: wd({ LoadCount: 4 }),

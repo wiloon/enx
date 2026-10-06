@@ -58,6 +58,10 @@ if (typeof globalThis.CSS === 'undefined') {
     onClicked: {
       addListener: jest.fn(),
     },
+    setBadgeText: jest.fn(),
+    setBadgeBackgroundColor: jest.fn(),
+    setTitle: jest.fn(),
+    getUserSettings: jest.fn(),
   },
   contextMenus: {
     create: jest.fn(),
@@ -108,6 +112,10 @@ if (typeof globalThis.CSS === 'undefined') {
     get: jest.fn(),
     update: jest.fn(),
     remove: jest.fn(),
+    onUpdated: {
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+    },
   },
   scripting: {
     executeScript: jest.fn(),

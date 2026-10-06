@@ -155,7 +155,7 @@ onMessageExternal(message, sender, sendResponse):
 
 - `matches`: `location.hostname` ∈ enx-ui host 集合。
 - `pageSupport`: `location.pathname` 以 `/reader` 开头 → `null`（支持）；否则返回英文提示串（enx-ui 的 `/lookup`、`/rephrase`、`/billing` 等页不是给扩展读的，content script 会注入但 `enxRun` 到这里被挡下）。
-- `contentSelector: '#enx-reader-article'`、`minTextLength: 1`、`contentVolatility: 'static'`、`showProcessingIndicator: false`、`clickBinding: 'bubble'`。
+- `contentSelector: '#enx-reader-article'`、`minTextLength: 1`、`contentVolatility: 'static'`、`showProcessingIndicator: false`（adr-046 已删除该字段）、`clickBinding: 'bubble'`。
 
 ### 6. 不做
 

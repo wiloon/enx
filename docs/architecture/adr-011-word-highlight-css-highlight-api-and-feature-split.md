@@ -248,7 +248,7 @@ contentVolatility: 'static' | 'spa' | 'streaming'
 
 - 删除 `highlightStrategy: 'innerHTML' | 'inPlace'` 字段和 `HighlightStrategy` 类型 —— 只剩一种高亮方式，不需要这个维度。
 - 删除 `DEFAULT_ADAPTER` 和 `X_ADAPTER` 的 `highlightStrategy`。
-- `X_ADAPTER` 的 `showProcessingIndicator: false` 保留（提示条仍是结构性 `insertBefore`，与 React 冲突）；`minTextLength` / `contentSelector` / `focusedNodeResolver` / `pageSupport` 全部保留。
+- `X_ADAPTER` 的 `showProcessingIndicator: false` 保留（提示条仍是结构性 `insertBefore`，与 React 冲突；2026-10-04 adr-046 已删除提示条与该字段）；`minTextLength` / `contentSelector` / `focusedNodeResolver` / `pageSupport` 全部保留。
 - `focusedNodeResolver`（`pickFocusedTweet`）保留但按实测（`adr-010-phase2-dom-readiness.md` §3）修正判据：判据①（focused `<article>` 的 `tabindex="-1"`）可靠，保留为主；判据③（focused article 内无 `/status/` 链接）**已证伪**——主推文 article 里就有 permalink / 引用推文的 `/status/` 链接，删除；判据②（字号）不稳（长推文正文实测 17px 而非预期 ~23px），降为弱兜底或一并删除。另外带引用推文时 `div[data-testid="tweetText"]` 会在**同一个** `article[tabindex="-1"]` 内匹配 2 个（正文 + 被引用正文），需在 focused article 内取 **DOM 顺序第一个** `tweetText`。Phase 2 的自动重建会让会话页 / 引用页常触发这条路径，随本 ADR 一并修。
 - 加 `clickBinding?: 'bubble' | 'documentCapture'`，缺省 `'bubble'`（本次只落 `'bubble'`）。
 - 加 `contentVolatility: 'static' | 'spa' | 'streaming'`（见 F 节），决定挂哪些 observer。`DEFAULT_ADAPTER` = `'static'`，`X_ADAPTER` = `'spa'`。本次实现 `'static'`（靠 `enxRun` 重新武装）和 `'spa'`（Navigation API 重建，见 Decision 6）两个分支；`'streaming'` 的 `MutationObserver` + `IntersectionObserver` 分支按 ADR-010 Phase 3/4 落地，字段先就位。

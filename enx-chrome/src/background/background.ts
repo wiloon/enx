@@ -24,6 +24,8 @@ import {
   type StatsDelta,
 } from './statsReporter'
 import { reconcileAutoEnableScripts, shouldAutoEnable } from './autoEnable'
+import { applyStatus, dismissPinHint, maybeAskToPin, resetTab } from './badge'
+import type { LearningModeStatus } from '@/lib/learningModeStatus'
 
 console.log('ENX Background script loaded')
 console.log('🌐 Config environment:', config.environment)
@@ -413,14 +415,54 @@ chrome.runtime.onStartup.addListener(reconcileAutoEnable)
 chrome.runtime.onInstalled.addListener(reconcileAutoEnable)
 
 // The page's origin comes from Chrome's sender info, never from the message.
-// Signed out, auto-enabling would only put a session notice on every page.
+// Signed out, auto-enabling would only put a session notice on every page, so
+// it answers false -- but the badge says why (adr-046 Decision 7).
 const handleShouldAutoEnable = async (
   sender: chrome.runtime.MessageSender
 ): Promise<boolean> => {
   const origin = sender.origin ?? sender.tab?.url
   if (!(await shouldAutoEnable(origin))) return false
-  return isSignedIn()
+  if (await isSignedIn()) return true
+  const tabId = topFrameTabId(sender)
+  if (tabId !== undefined) {
+    await applyStatus(tabId, { status: 'error', reason: 'signed-out' })
+  }
+  return false
 }
+
+// adr-046: the badge belongs to the tab, so only its top frame may set it,
+// and the tab comes from Chrome's sender info, never from the message.
+const topFrameTabId = (
+  sender: chrome.runtime.MessageSender
+): number | undefined => (sender.frameId === 0 ? sender.tab?.id : undefined)
+
+const LEARNING_MODE_STATUSES = new Set(['off', 'processing', 'ready', 'error'])
+
+const handleLearningModeStatus = async (
+  status: LearningModeStatus | undefined,
+  sender: chrome.runtime.MessageSender
+): Promise<{ success: boolean; showPinHint?: boolean; error?: string }> => {
+  const tabId = topFrameTabId(sender)
+  if (tabId === undefined) {
+    return { success: false, error: 'Not a top-level tab frame' }
+  }
+  if (!status || !LEARNING_MODE_STATUSES.has(status.status)) {
+    return { success: false, error: 'Unknown learning mode status' }
+  }
+  await applyStatus(tabId, status)
+  // Decision 6: an unpinned icon hides the badge; ask once it has news.
+  const showPinHint = status.status === 'ready' && (await maybeAskToPin())
+  return { success: true, showPinHint }
+}
+
+// Decision 4: Chrome keeps a per-tab badge across navigations, so drop it
+// when the tab starts loading; the new page's content script reports afresh.
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status !== 'loading') return
+  resetTab(tabId).catch(error =>
+    console.debug('badge: reset failed (tab gone?)', error)
+  )
+})
 
 // Trigger path② (spec §3.2): right-click the toolbar icon -> menu item ->
 // open the Side Panel directly. Independent of the left-click default_popup
@@ -564,6 +606,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             success: true,
             autoEnable: await handleShouldAutoEnable(sender),
           }
+
+        case 'learningModeStatus':
+          return await handleLearningModeStatus(request.status, sender)
+
+        case 'pinHintDismissed':
+          await dismissPinHint()
+          return { success: true }
 
         case 'hello':
           return { success: true, message: 'Hello from ENX background!' }

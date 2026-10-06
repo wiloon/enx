@@ -258,6 +258,8 @@ flex 容器修复（`content.tsx:563-577`）在 `inPlace` 分支保留：它只�
 
 `addProcessingCompleteIndicator`（`content.tsx:622`，会 `insertBefore` 进正文容器）在 `showProcessingIndicator: false` 时整个跳过——它是本次唯一一处**结构性**插入，留着必然与 React 冲突。X 上用户看到下划线出现即可确认生效。
 
+> 2026-10-04 修订：adr-046 删除了 `addProcessingCompleteIndicator` 与 `showProcessingIndicator` 字段，学习模式状态改由扩展图标角标表达，所有站点的正文里都不再插入提示条。
+
 下划线颜色经 `getTextDecoration()`（§1.4）：`#FFFFFF` 哨兵 → `text-decoration: none`，只有需要复习的词才画彩色线。`innerHTML` 与 `inPlace` 两条路径统一走这个函数。
 
 ### 5. 换行导致的词粘连（依赖前提 §2.3）

@@ -37,7 +37,7 @@ export class WordProcessor {
   static readonly LOOKUP_EXCLUDED_SELECTORS = [
     '[data-testid="markdown-code-block"]',
     // The extension's own UI inserted into the page (content.tsx sets
-    // data-enx-ui on it), e.g. the "Article processed" indicator.
+    // data-enx-ui on it), e.g. the session-expired notice.
     '[data-enx-ui]',
   ]
 
