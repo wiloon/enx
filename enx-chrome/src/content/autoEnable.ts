@@ -1,7 +1,9 @@
 // adr-039 Decision 4: on a site the user chose "Always enable on this site"
 // for, turn learning mode on at page load. Unlike the popup button, every
 // failure here is silent -- the same origin has home and list pages with no
-// article, and nobody asked for an error on those.
+// article, and nobody asked for an error on those. On an SPA site learning
+// mode stays armed after such a failure so the next in-page navigation can
+// still pick an article up (adr-033).
 
 import type { EnableOutcome } from '@/lib/enableOutcome'
 
@@ -14,7 +16,20 @@ export interface AutoEnableDeps {
   enable: () => Promise<EnableOutcome>
   /** Tear learning mode back down, leaving the page as it was. */
   disable: () => void
+  /**
+   * True on an SPA site, where enabling also listens for in-page navigations
+   * and re-runs on each one (ADR-011 Decision 6). There a failed first run --
+   * no article open yet -- is not the end: the next navigation may bring one.
+   */
+  keepsWatching: () => boolean
 }
+
+// A signed-out session fails every later run the same way, so it is the one
+// failure an SPA site still rolls back on.
+const shouldRollBack = (
+  outcome: EnableOutcome & { ok: false },
+  keepsWatching: boolean
+): boolean => !keepsWatching || outcome.reason === 'session-expired'
 
 export async function maybeAutoEnable(deps: AutoEnableDeps): Promise<void> {
   let granted = false
@@ -29,8 +44,14 @@ export async function maybeAutoEnable(deps: AutoEnableDeps): Promise<void> {
   try {
     const outcome = await deps.enable()
     if (!outcome.ok) {
-      console.debug(`auto-enable: rolled back (${outcome.reason})`)
-      deps.disable()
+      if (shouldRollBack(outcome, deps.keepsWatching())) {
+        console.debug(`auto-enable: rolled back (${outcome.reason})`)
+        deps.disable()
+      } else {
+        console.debug(
+          `auto-enable: ${outcome.reason}; waiting for the next navigation`
+        )
+      }
     }
   } catch (error) {
     console.debug('auto-enable: rolled back after an error', error)

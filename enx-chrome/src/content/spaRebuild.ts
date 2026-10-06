@@ -5,12 +5,12 @@
 // manual re-enable.
 //
 // The orchestration (`createSpaRebuilder`) is pure -- every DOM / adapter /
-// network touch is an injected dependency -- and the concrete X
-// implementations of those deps (`isSupportedPage`, `waitForTweetReady`)
-// and the navigate filter (`shouldHandleTweetNavigate`) sit beside it, each
-// unit-testable.
+// network touch is an injected dependency -- and the concrete
+// implementations of those deps (`isSupportedPage`, `waitForContentReady`,
+// driven by the adapter's readySelector) and the navigate filter
+// (`shouldHandleTweetNavigate`) sit beside it, each unit-testable.
 
-import { resolveSiteAdapter, X_CONTENT_SELECTORS } from '@/lib/siteAdapters'
+import { resolveSiteAdapter } from '@/lib/siteAdapters'
 
 export interface SpaRebuilderDeps {
   /** Is the destination URL still a supported page for this adapter? */
@@ -83,20 +83,20 @@ export function isSupportedPage(url: string): boolean {
   }
 }
 
-const TWEET_READY_SELECTOR = X_CONTENT_SELECTORS.map(
-  selector => `article[tabindex="-1"] ${selector}`
-).join(', ')
-const TWEET_READY_DEBOUNCE_MS = 100
-const TWEET_READY_TIMEOUT_MS = 2000
+const READY_DEBOUNCE_MS = 100
+export const READY_TIMEOUT_MS = 2000
 
-// Resolves once the new tweet's text has settled: the readiness selector
-// matches with non-empty text and then stays quiet for the debounce window
-// (ADR-011 Decision 6.2 -- adr-010-phase2-dom-readiness.md settled that
-// article[tabindex="-1"] is the only reliable signal; never document.title
-// or aria-live, and take the last match during the ~750ms handoff). Always
-// resolves, never rejects: a 2s timeout falls through to a best-effort
-// rebuild.
-export function waitForTweetReady(isCurrent: () => boolean): Promise<void> {
+// Resolves once `readySelector` matches with non-empty text and then stays
+// quiet for the debounce window (ADR-011 Decision 6.2). The last match wins,
+// for X's ~750ms handoff where the outgoing and incoming tweets coexist.
+// Always resolves, never rejects: the timeout falls through to a best-effort
+// run. An adapter without a readiness selector has nothing to wait for.
+export function waitForContentReady(
+  readySelector: string | undefined,
+  isCurrent: () => boolean,
+  timeoutMs: number = READY_TIMEOUT_MS
+): Promise<void> {
+  if (!readySelector) return Promise.resolve()
   return new Promise<void>(resolve => {
     let debounce: ReturnType<typeof setTimeout> | undefined
     const finish = () => {
@@ -107,11 +107,11 @@ export function waitForTweetReady(isCurrent: () => boolean): Promise<void> {
     }
     const check = () => {
       if (!isCurrent()) return finish()
-      const matches = document.querySelectorAll(TWEET_READY_SELECTOR)
+      const matches = document.querySelectorAll(readySelector)
       const last = matches[matches.length - 1]
       if (last && (last.textContent || '').trim().length > 0) {
         clearTimeout(debounce)
-        debounce = setTimeout(finish, TWEET_READY_DEBOUNCE_MS)
+        debounce = setTimeout(finish, READY_DEBOUNCE_MS)
       }
     }
     const observer = new MutationObserver(check)
@@ -120,7 +120,7 @@ export function waitForTweetReady(isCurrent: () => boolean): Promise<void> {
       subtree: true,
       characterData: true,
     })
-    const timeout = setTimeout(finish, TWEET_READY_TIMEOUT_MS)
+    const timeout = setTimeout(finish, timeoutMs)
     check() // maybe already ready
   })
 }

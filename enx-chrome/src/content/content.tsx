@@ -29,7 +29,7 @@ import { nearestElement, referenceLineHeight } from '@/lib/rangeUtils'
 import {
   createSpaRebuilder,
   isSupportedPage,
-  waitForTweetReady,
+  waitForContentReady,
 } from './spaRebuild'
 import {
   getWordHighlightEnabled,
@@ -839,8 +839,8 @@ const processArticleContent = async (
           throw new Error('SESSION_EXPIRED')
         } else if (attempt < 2) {
           // Retry once on failure (handles cold service worker or transient errors)
-          console.warn(
-            `⚠️ Chunk failed (attempt ${attempt}), retrying...`,
+          console.log(
+            `Chunk failed (attempt ${attempt}), retrying...`,
             response.error
           )
           await sendChunkWithRetry(chunk, attempt + 1)
@@ -855,10 +855,7 @@ const processArticleContent = async (
           throw error
         }
         if (attempt < 2) {
-          console.warn(
-            `⚠️ Chunk error (attempt ${attempt}), retrying...`,
-            error
-          )
+          console.log(`Chunk error (attempt ${attempt}), retrying...`, error)
           await sendChunkWithRetry(chunk, attempt + 1)
         } else {
           console.error(`❌ Chunk error after ${attempt} attempts:`, error)
@@ -1371,14 +1368,27 @@ const handleTextSelection = (event: MouseEvent) => {
 }
 
 // --- SPA in-page navigation auto-rebuild (ADR-011 Decision 6) --------------
-// isSupportedPage / waitForTweetReady / shouldHandleTweetNavigate + the
+// isSupportedPage / waitForContentReady / shouldHandleTweetNavigate + the
 // factory all live in ./spaRebuild; here we only wire the concrete deps.
+
+// The first run after page load waits longer than an in-page switch: on RSSX
+// the open Article only renders after the feed list, the feed and the article
+// itself have been fetched.
+const INITIAL_READY_TIMEOUT_MS = 8000
+
+const isSpaPage = () =>
+  resolveSiteAdapter(window.location).contentVolatility === 'spa' &&
+  !!window.navigation
 
 let spaRebuilderInstance: ReturnType<typeof createSpaRebuilder> | null = null
 const getSpaRebuilder = () => {
   spaRebuilderInstance ??= createSpaRebuilder({
     isPageSupported: isSupportedPage,
-    waitForContentReady: waitForTweetReady,
+    waitForContentReady: isCurrent =>
+      waitForContentReady(
+        resolveSiteAdapter(window.location).readySelector,
+        isCurrent
+      ),
     teardown: () => {
       WordProcessor.clearHighlights()
       clearArticleRoots()
@@ -1412,11 +1422,9 @@ const enableEnx = async (): Promise<EnableOutcome> => {
   document.addEventListener('mousedown', handleGlobalMouseDown)
   document.addEventListener('selectionchange', handleSelectionChangeForButton)
 
-  // On a 'spa' site (X), re-run automatically when the user switches tweets
-  // in-page (ADR-011 Decision 6). Static sites reload + re-inject anyway.
-  const isSpa =
-    resolveSiteAdapter(window.location).contentVolatility === 'spa' &&
-    !!window.navigation
+  // On a 'spa' site (X, RSSX), re-run automatically when the user switches
+  // content in-page (ADR-011 Decision 6). Static sites reload + re-inject.
+  const isSpa = isSpaPage()
   if (isSpa) {
     getSpaRebuilder().start(window.navigation!)
   }
@@ -1425,6 +1433,16 @@ const enableEnx = async (): Promise<EnableOutcome> => {
   // is abandoned if the user switches tweets before its backend call
   // returns (otherwise it could paint the old tweet after teardown).
   const isCurrent = isSpa ? getSpaRebuilder().makeIsCurrent() : undefined
+  // An SPA renders its content after document_end (the auto-enable moment),
+  // so wait for it as a navigation would. Resolves at once if it is there.
+  if (isCurrent) {
+    await waitForContentReady(
+      resolveSiteAdapter(window.location).readySelector,
+      isCurrent,
+      INITIAL_READY_TIMEOUT_MS
+    )
+    if (!isCurrent()) return ENABLE_OK
+  }
   const outcome = await runWithStatus(
     onArticleFound => processArticleContent({ isCurrent, onArticleFound }),
     reportStatus,
@@ -1434,9 +1452,10 @@ const enableEnx = async (): Promise<EnableOutcome> => {
   if (outcome.ok) {
     console.log('✅ ENX enabled successfully with article processing')
   } else {
-    console.warn(
-      `⚠️ ENX enabled but article processing failed: ${outcome.reason}`
-    )
+    // An expected outcome (no article on this page, ...), already shown in
+    // the popup / badge -- not an extension error, so not console.warn,
+    // which chrome://extensions collects as one.
+    console.log(`ENX enabled but article processing failed: ${outcome.reason}`)
   }
 
   return outcome
@@ -1605,6 +1624,7 @@ void maybeAutoEnable({
     !resolveSiteAdapter(window.location).pageSupport?.(window.location),
   enable: runLearningMode,
   disable: disableEnx,
+  keepsWatching: isSpaPage,
 })
 
 console.log('ENX Content script ready')

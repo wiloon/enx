@@ -3,10 +3,9 @@
 // to process, how volatile the content is, and whether to show the
 // completion indicator (ADR-010, ADR-011 Decision 4).
 //
-// resolveSiteAdapter() returns DEFAULT_ADAPTER for every site currently in
-// manifest.json's content-script whitelist; its field values reproduce
-// today's behavior field-for-field, so those sites must see no observable
-// change. Only X (a React SPA) needs a non-default adapter.
+// resolveSiteAdapter() returns DEFAULT_ADAPTER for ordinary article sites;
+// its field values reproduce the original hard-coded behavior field-for-field.
+// Only X, the enx-ui Reader and the RSSX Reader need their own adapter.
 
 // The subset of a Location the adapters read. Both `window.location` and a
 // `URL` (from a Navigation API destination) satisfy it.
@@ -43,6 +42,12 @@ export interface SiteAdapter {
    */
   contentVolatility: 'static' | 'spa' | 'streaming'
   /**
+   * 'spa' only: matches once the page's content has rendered. Learning mode
+   * waits for it (non-empty, then quiet) before processing, both on the
+   * initial run and after every in-page navigation (ADR-011 Decision 6.2).
+   */
+  readySelector?: string
+  /**
    * Where the delegated click-to-lookup listener binds (ADR-011 Decision 2 /
    * ADR-010 Options F3). Defaults to 'bubble'; 'documentCapture' is a
    * placeholder, not yet implemented.
@@ -78,6 +83,13 @@ export const X_CONTENT_SELECTORS = [
   X_ARTICLE_BODY_SELECTOR,
 ]
 export const X_CONTENT_SELECTOR = X_CONTENT_SELECTORS.join(', ')
+
+// adr-010-phase2-dom-readiness.md settled that article[tabindex="-1"] (the
+// opened tweet) is the only reliable readiness signal -- never document.title
+// or aria-live.
+export const X_READY_SELECTOR = X_CONTENT_SELECTORS.map(
+  selector => `article[tabindex="-1"] ${selector}`
+).join(', ')
 
 // From the div[data-testid="tweetText"] nodes on a tweet-detail page (which
 // can also include ancestor tweets, the author's self-thread, and a quoted
@@ -138,6 +150,7 @@ const X_ADAPTER: SiteAdapter = {
   minTextLength: 1,
   focusedNodeResolver: pickFocusedTweet,
   contentVolatility: 'spa',
+  readySelector: X_READY_SELECTOR,
   clickBinding: 'bubble',
 }
 
@@ -177,8 +190,28 @@ const READER_ADAPTER: SiteAdapter = {
   clickBinding: 'bubble',
 }
 
+// --- RSSX Reader (ADR-033) ------------------------------------------------
+// A Vue SPA: picking an Article swaps the reading pane in place and rewrites
+// the query string with router.replace, which the Navigation API reports as
+// a navigate event. The Reader renders exactly one <article> -- the open one
+// (title + Feed body) -- and only while one is open; the feed and article
+// columns are <section>s. So plain semantic HTML is the whole contract.
+
+const RSSX_HOSTS = new Set(['rssx-lab.wiloon.com'])
+
+const RSSX_ADAPTER: SiteAdapter = {
+  name: 'rssx',
+  matches: location => RSSX_HOSTS.has(location.host),
+  contentSelector: 'article',
+  // A Feed may carry only a title and a one-line summary.
+  minTextLength: 1,
+  contentVolatility: 'spa',
+  readySelector: 'article',
+  clickBinding: 'bubble',
+}
+
 // Non-default adapters, checked in order.
-const ADAPTERS: SiteAdapter[] = [X_ADAPTER, READER_ADAPTER]
+const ADAPTERS: SiteAdapter[] = [X_ADAPTER, READER_ADAPTER, RSSX_ADAPTER]
 
 export function resolveSiteAdapter(location: PageLocation): SiteAdapter {
   return ADAPTERS.find(adapter => adapter.matches(location)) ?? DEFAULT_ADAPTER
