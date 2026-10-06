@@ -4,6 +4,7 @@
 // build time (`vite build --mode homelab|production`), so nothing here is
 // hardcoded per deployment.
 
+import { parseHanCharLimit } from '@/lib/articleLanguage'
 import { readBuildEnv } from './buildEnv'
 import {
   applyOverrides,
@@ -24,6 +25,8 @@ export interface EnvConfig {
   clerkSyncHost: string
   // Origins allowed on the web -> extension channel (ADR-019).
   uiOrigins: string[]
+  // An article body with more Chinese characters than this is not processed.
+  hanCharLimit: number
   environment: TargetName
 }
 
@@ -52,6 +55,7 @@ export const config: EnvConfig = {
   clerkPublishableKey: target.clerkPublishableKey,
   clerkSyncHost: target.clerkSyncHost,
   uiOrigins: target.uiOrigins,
+  hanCharLimit: parseHanCharLimit(getEnvValue('VITE_HAN_CHAR_LIMIT')),
   environment: target.name,
 }
 

@@ -12,6 +12,8 @@ export type EnableFailureReason =
   | 'no-article-node'
   /** Content was found but held no English words. */
   | 'no-words'
+  /** The article is Chinese (articleLanguage.ts): skipped on purpose. */
+  | 'not-english'
   /** The word backend returned no data for the page. */
   | 'lookup-failed'
   /** The sign-in session expired (the page already shows its own notice). */
@@ -42,6 +44,8 @@ const FAILURE_MESSAGES: Record<EnableFailureReason, string> = {
   'no-article-node':
     "Catglish couldn't find any readable text on this page. This page layout isn't supported yet.",
   'no-words': 'No English words to highlight were found on this page.',
+  'not-english':
+    "This article isn't in English, so Catglish leaves it as it is.",
   'lookup-failed':
     "Catglish couldn't load word data for this page. Check your connection and try again.",
   'session-expired': 'Your session has expired. Please sign in again.',

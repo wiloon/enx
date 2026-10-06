@@ -4,7 +4,12 @@
 
 type EnvModule = typeof import('../env')
 
-const BUILD_ENV_KEYS = ['VITE_ENV', 'MODE', 'VITE_API_BASE_URL'] as const
+const BUILD_ENV_KEYS = [
+  'VITE_ENV',
+  'MODE',
+  'VITE_API_BASE_URL',
+  'VITE_HAN_CHAR_LIMIT',
+] as const
 
 const loadEnv = (
   buildEnv: Partial<Record<(typeof BUILD_ENV_KEYS)[number], string>>
@@ -122,5 +127,15 @@ describe('API URL override in a production build', () => {
 
     await env.setApiBaseUrl('https://api.catglish.com')
     expect(await env.getApiBaseUrl()).toBe('https://api.catglish.com')
+  })
+})
+
+describe('Chinese-article limit (VITE_HAN_CHAR_LIMIT)', () => {
+  it('defaults to 20', () => {
+    expect(loadEnv({}).config.hanCharLimit).toBe(20)
+  })
+
+  it('takes the build env value', () => {
+    expect(loadEnv({ VITE_HAN_CHAR_LIMIT: '5' }).config.hanCharLimit).toBe(5)
   })
 })

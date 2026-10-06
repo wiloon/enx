@@ -54,6 +54,8 @@ import {
 import SidePanelTranslateIcon from '@/components/icons/SidePanelTranslateIcon'
 import PinHint from '@/components/PinHint'
 import tailwindCss from '@/index.css?inline'
+import { config } from '@/config/env'
+import { isChineseArticle } from '@/lib/articleLanguage'
 
 console.log('ENX Content script loaded')
 
@@ -785,6 +787,11 @@ const processArticleContent = async (
             .map(node => WordProcessor.cleanArticleText(node))
             .join(' ')
         : collectedTextNodes.map(n => n.textContent || '').join(' ')
+    if (isChineseArticle(textContent, config.hanCharLimit)) {
+      console.log('Chinese article, not processed')
+      return failed('not-english')
+    }
+
     const words = WordProcessor.extractWords(textContent)
 
     if (words.length === 0) {
