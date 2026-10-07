@@ -14,6 +14,7 @@ const ALL_REASONS: EnableFailureReason[] = [
   'session-expired',
   'error',
   'injection-blocked',
+  'not-english',
 ]
 
 describe('enableOutcome', () => {

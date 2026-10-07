@@ -2,9 +2,11 @@ import {
   resolveSiteAdapter,
   pickFocusedTweet,
   X_CONTENT_SELECTOR,
+  X_READY_SELECTOR,
   DEFAULT_ADAPTER,
   PageLocation,
 } from '@/lib/siteAdapters'
+import { WordProcessor } from '@/lib/wordProcessor'
 
 // `host` includes the port (as on window.location); hostname drops it.
 const loc = (host: string, pathname: string): PageLocation => ({
@@ -305,5 +307,55 @@ describe('READER_ADAPTER (enx-ui paste-text reader)', () => {
     expect(reader.contentVolatility).toBe('static')
     expect(reader.clickBinding).toBe('bubble')
     expect(reader.minTextLength).toBe(1)
+  })
+})
+
+describe('RSSX adapter (ADR-033 reading pane)', () => {
+  const rssx = resolveSiteAdapter(loc('rssx-lab.wiloon.com', '/'))
+
+  it('matches the host that serves the RSSX Reader', () => {
+    expect(rssx.name).toBe('rssx')
+  })
+
+  // The Reader swaps the open Article in place (router.replace), so learning
+  // mode has to re-run on every in-page navigation, as on X.
+  it('is an SPA adapter with a readiness selector', () => {
+    expect(rssx.contentVolatility).toBe('spa')
+    expect(rssx.readySelector).toBeDefined()
+  })
+
+  // The Reader renders exactly one <article>: the open one. The feed and
+  // article columns are <section>s and stay out of scope.
+  it('processes only the open <article>, not the columns around it', () => {
+    document.body.innerHTML = `
+      <section class="article-column"><div>A long article list row title here</div></section>
+      <section class="reading-pane">
+        <article><h1>Title</h1><div>Short feed body.</div></article>
+      </section>`
+    const nodes = WordProcessor.getArticleNodes({
+      contentSelector: rssx.contentSelector,
+      minTextLength: rssx.minTextLength,
+    })
+    expect(nodes).toHaveLength(1)
+    expect(nodes[0].tagName).toBe('ARTICLE')
+  })
+
+  it('finds nothing while the reading pane is empty', () => {
+    document.body.innerHTML = `
+      <section class="reading-pane"><p>Select an article to read</p></section>`
+    expect(document.querySelector(rssx.readySelector!)).toBeNull()
+    expect(
+      WordProcessor.getArticleNodes({
+        contentSelector: rssx.contentSelector,
+        minTextLength: rssx.minTextLength,
+      })
+    ).toEqual([])
+  })
+})
+
+describe('X adapter readiness selector', () => {
+  it('waits for the focused tweet or X Article body', () => {
+    const x = resolveSiteAdapter(loc('x.com', '/u/status/1'))
+    expect(x.readySelector).toBe(X_READY_SELECTOR)
   })
 })

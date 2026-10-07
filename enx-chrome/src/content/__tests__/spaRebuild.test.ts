@@ -2,10 +2,11 @@ import {
   createSpaRebuilder,
   isSupportedPage,
   shouldHandleTweetNavigate,
-  waitForTweetReady,
+  waitForContentReady,
   SpaRebuilderDeps,
   NavigationLike,
 } from '@/content/spaRebuild'
+import { X_READY_SELECTOR } from '@/lib/siteAdapters'
 
 const deferred = () => {
   let resolve!: () => void
@@ -180,7 +181,7 @@ describe('isSupportedPage', () => {
   })
 })
 
-describe('waitForTweetReady', () => {
+describe('waitForContentReady', () => {
   beforeEach(() => {
     jest.useFakeTimers()
     document.body.innerHTML = ''
@@ -194,7 +195,7 @@ describe('waitForTweetReady', () => {
       '<article tabindex="-1"><div data-testid="tweetText">a new tweet</div></article>')
 
   it('resolves ~one debounce after the readiness selector appears', async () => {
-    const p = waitForTweetReady(() => true)
+    const p = waitForContentReady(X_READY_SELECTOR, () => true)
     let done = false
     p.then(() => {
       done = true
@@ -211,7 +212,7 @@ describe('waitForTweetReady', () => {
   })
 
   it('also treats an X Article body as ready (no tweetText on an Article page)', async () => {
-    const p = waitForTweetReady(() => true)
+    const p = waitForContentReady(X_READY_SELECTOR, () => true)
     let done = false
     p.then(() => {
       done = true
@@ -226,7 +227,7 @@ describe('waitForTweetReady', () => {
   })
 
   it('resolves via the 2s timeout when readiness never appears', async () => {
-    const p = waitForTweetReady(() => true)
+    const p = waitForContentReady(X_READY_SELECTOR, () => true)
     let done = false
     p.then(() => {
       done = true
@@ -241,13 +242,57 @@ describe('waitForTweetReady', () => {
 
   it('does not wait when already superseded (isCurrent false from the start)', async () => {
     ready() // selector matches, but the run is stale
-    const p = waitForTweetReady(() => false)
+    const p = waitForContentReady(X_READY_SELECTOR, () => false)
     let done = false
     p.then(() => {
       done = true
     })
     await Promise.resolve()
     // The synchronous initial check() sees !isCurrent() and finishes.
+    expect(done).toBe(true)
+  })
+
+  // The initial run on page load waits longer than an in-page switch: RSSX
+  // fetches the feed list, the feed and then the article before the body
+  // exists.
+  it('honours a longer timeout passed by the caller', async () => {
+    const p = waitForContentReady(X_READY_SELECTOR, () => true, 5000)
+    let done = false
+    p.then(() => {
+      done = true
+    })
+    jest.advanceTimersByTime(2500)
+    await Promise.resolve()
+    expect(done).toBe(false)
+    jest.advanceTimersByTime(2501)
+    await Promise.resolve()
+    expect(done).toBe(true)
+  })
+
+  it('resolves at once for an adapter without a readiness selector', async () => {
+    let done = false
+    waitForContentReady(undefined, () => true).then(() => {
+      done = true
+    })
+    await Promise.resolve()
+    expect(done).toBe(true)
+  })
+
+  it('an empty match does not count as ready', async () => {
+    const p = waitForContentReady('article', () => true)
+    let done = false
+    p.then(() => {
+      done = true
+    })
+    document.body.innerHTML = '<article>   </article>'
+    await Promise.resolve()
+    jest.advanceTimersByTime(500)
+    await Promise.resolve()
+    expect(done).toBe(false)
+    document.body.innerHTML = '<article><h1>Now loaded</h1></article>'
+    await Promise.resolve()
+    jest.advanceTimersByTime(110)
+    await Promise.resolve()
     expect(done).toBe(true)
   })
 })

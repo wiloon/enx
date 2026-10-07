@@ -7,6 +7,7 @@ function deps(overrides: Partial<Parameters<typeof maybeAutoEnable>[0]> = {}) {
     isPageSupported: jest.fn(() => true),
     enable: jest.fn(async () => ENABLE_OK),
     disable: jest.fn(),
+    keepsWatching: jest.fn(() => false),
     ...overrides,
   }
 }
@@ -59,5 +60,32 @@ describe('maybeAutoEnable (adr-039 Decision 4)', () => {
     })
     await expect(maybeAutoEnable(d)).resolves.toBeUndefined()
     expect(d.disable).toHaveBeenCalledTimes(1)
+  })
+
+  // adr-033: on an SPA site (RSSX) the first page load often has no article
+  // open yet. Rolling back would also stop the navigation listener, so the
+  // article the user opens next would never be processed.
+  describe('on an SPA site that keeps watching navigations', () => {
+    it.each(['no-article-node', 'no-words', 'lookup-failed', 'error'] as const)(
+      'stays enabled after %s',
+      async reason => {
+        const d = deps({
+          enable: jest.fn(async () => failed(reason)),
+          keepsWatching: jest.fn(() => true),
+        })
+        await maybeAutoEnable(d)
+        expect(d.disable).not.toHaveBeenCalled()
+      }
+    )
+
+    // Signed out: every later article would fail the same way.
+    it('still rolls back when the session expired', async () => {
+      const d = deps({
+        enable: jest.fn(async () => failed('session-expired')),
+        keepsWatching: jest.fn(() => true),
+      })
+      await maybeAutoEnable(d)
+      expect(d.disable).toHaveBeenCalledTimes(1)
+    })
   })
 })
