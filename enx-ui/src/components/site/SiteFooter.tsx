@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { SITE } from '@/lib/site'
+import LogoMark from './LogoMark'
 
 export default function SiteFooter() {
   const year = new Date().getFullYear()
@@ -8,10 +9,7 @@ export default function SiteFooter() {
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-12 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">
         <div>
           <div className="flex items-center gap-2 font-semibold">
-            <span
-              aria-hidden
-              className="inline-block h-4 w-4 rounded-full bg-brand"
-            />
+            <LogoMark className="h-5 w-5 shrink-0" />
             {SITE.name}
           </div>
           <p className="mt-2 text-sm text-muted-foreground">

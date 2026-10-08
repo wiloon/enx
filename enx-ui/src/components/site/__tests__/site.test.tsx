@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { SITE } from '@/lib/site'
 import { SUBSCRIPTION_PLANS } from '@/lib/plans'
 
@@ -141,6 +141,11 @@ describe('SiteFooter', () => {
     }
   })
 
+  it('shows the logo mark next to the product name', () => {
+    render(<SiteFooter />)
+    expect(screen.getByTestId('logo-mark')).toBeInTheDocument()
+  })
+
   it('links to the public pricing page', () => {
     render(<SiteFooter />)
     expect(screen.getByRole('link', { name: 'Pricing' })).toHaveAttribute(
@@ -157,6 +162,13 @@ describe('SiteHeader', () => {
       'href',
       '/'
     )
+  })
+
+  it('draws the logo mark beside the name, hidden from assistive tech', () => {
+    render(<SiteHeader />)
+    const home = screen.getByRole('link', { name: /Catglish Beta/ })
+    const mark = within(home).getByTestId('logo-mark')
+    expect(mark).toHaveAttribute('aria-hidden')
   })
 
   it('drops the badge when no stage is set', () => {
