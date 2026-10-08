@@ -11,11 +11,15 @@ import {
 const base = JSON.parse(
   readFileSync(join(__dirname, '../../manifest.json'), 'utf8')
 )
+const pkg = JSON.parse(
+  readFileSync(join(__dirname, '../../package.json'), 'utf8')
+)
 
 // buildManifest returns an open-ended Manifest (most keys are `unknown`); these
 // are the fields this file reads, all present in manifest.json.
 interface StampedManifest {
   name: string
+  version: string
   host_permissions: string[]
   content_scripts: { matches: string[] }[]
   externally_connectable: { matches: string[] }
@@ -23,7 +27,7 @@ interface StampedManifest {
 }
 
 const stamp = (target: Target): StampedManifest =>
-  buildManifest(base, target) as unknown as StampedManifest
+  buildManifest(base, target, pkg.version) as unknown as StampedManifest
 
 describe('manifest stamping (ADR-019)', () => {
   const targetNames: TargetName[] = ['development', 'homelab', 'production']
@@ -135,5 +139,44 @@ describe('manifest stamping (ADR-019)', () => {
     expect(serialized).not.toContain('enx.wiloon.lab')
     expect(serialized).not.toContain('enx-api.wiloon')
     expect(base.externally_connectable.matches).toEqual([])
+  })
+
+  // package.json is the one place the version is written; the Web Store and
+  // Chrome's auto-update read the stamped manifest, the UI reads
+  // __APP_VERSION__ (also from package.json), so the two can't drift.
+  it.each(targetNames)('stamps the package.json version (%s)', name => {
+    expect(stamp(TARGETS[name]).version).toBe(pkg.version)
+  })
+
+  it('keeps the version out of the static manifest', () => {
+    expect(base).not.toHaveProperty('version')
+  })
+
+  // Chrome accepts 1-4 dot-separated integers, each 0-65535, no leading
+  // zeros and no pre-release suffix such as "-beta".
+  it('uses a version Chrome accepts', () => {
+    expect(pkg.version).toMatch(/^(0|[1-9]\d{0,4})(\.(0|[1-9]\d{0,4})){0,3}$/)
+    for (const part of pkg.version.split('.')) {
+      expect(Number(part)).toBeLessThanOrEqual(65535)
+    }
+  })
+
+  // Every permission is justified one by one on the Web Store's Privacy tab,
+  // and an unused one is a common rejection reason. Adding one is a review
+  // decision, not a drive-by: update this list and the store justification
+  // together. (`identity` was the Cognito-era launchWebAuthFlow; Clerk signs
+  // in through the website and needs `cookies` instead.)
+  it('requests exactly the permissions the Web Store listing justifies', () => {
+    expect([...base.permissions].sort()).toEqual(
+      [
+        'activeTab',
+        'contextMenus',
+        'cookies',
+        'notifications',
+        'scripting',
+        'sidePanel',
+        'storage',
+      ].sort()
+    )
   })
 })

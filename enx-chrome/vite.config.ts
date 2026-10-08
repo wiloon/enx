@@ -13,7 +13,8 @@ import {
   TARGETS,
 } from './src/config/targets.ts'
 
-// Read version from package.json
+// The single source of the extension version: stamped into the manifest
+// (buildManifest) and exposed to the UI as __APP_VERSION__.
 const packageJson = JSON.parse(readFileSync('./package.json', 'utf-8'))
 const version = packageJson.version
 
@@ -37,7 +38,9 @@ export default defineConfig(({ mode }) => {
     plugins: [
       tailwindcss(),
       react(),
-      crx({ manifest: buildManifest(manifest, target) as typeof manifest }),
+      crx({
+        manifest: buildManifest(manifest, target, version) as typeof manifest,
+      }),
     ],
     define: {
       __APP_VERSION__: JSON.stringify(version),

@@ -1,6 +1,7 @@
 // Build-time manifest stamping: manifest.json holds everything that is the same
 // in every deployment, and this fills in the deployment-specific origins from
-// the selected target (see targets.ts). Called from vite.config.ts.
+// the selected target (see targets.ts) and the version from package.json.
+// Called from vite.config.ts.
 
 import { clerkFrontendApiHost, type Target } from './targets.ts'
 
@@ -17,7 +18,11 @@ interface Manifest {
 
 const unique = (values: string[]): string[] => [...new Set(values)]
 
-export function buildManifest(base: Manifest, target: Target): Manifest {
+export function buildManifest(
+  base: Manifest,
+  target: Target,
+  version: string
+): Manifest {
   const uiPatterns = target.uiOrigins.map(origin => `${origin}/*`)
   const clerkHost = clerkFrontendApiHost(target.clerkPublishableKey)
 
@@ -47,6 +52,9 @@ export function buildManifest(base: Manifest, target: Target): Manifest {
   return {
     ...base,
     name: `${base.name as string}${nameSuffix}`,
+    // package.json is the single source of the version (it also feeds
+    // __APP_VERSION__), so the two can never disagree.
+    version,
     host_permissions: hostPermissions,
     content_scripts: contentScripts,
     // ADR-019: exactly the enx-ui origins, never more.
