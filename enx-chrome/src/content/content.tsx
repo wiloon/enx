@@ -463,7 +463,7 @@ const showWordPopover = async (word: string, reference: Range) => {
       // also expose other session keys (e.g. the OAuth verifier) to content
       // scripts running on arbitrary third-party pages. This call never
       // triggers chrome.sidePanel.open() and never touches
-      // PENDING_SENTENCE_STORAGE_KEY, so it can't force the panel open or
+      // the pending-sentence key, so it can't force the panel open or
       // trigger sentence translation.
       sendToBackground({
         type: 'recordPageWordLookup',

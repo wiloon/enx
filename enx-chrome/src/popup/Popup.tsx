@@ -17,6 +17,7 @@ import {
 import { PageReportPayload, sanitizePageUrl } from '@/lib/pageReport'
 import { saveOutcome } from '@/lib/pageSave'
 import { initSentry } from '@/lib/sentry'
+import { openActiveTabSidePanel } from '@/lib/sidePanel'
 import { errorAtom, userAtom } from '@/store/atoms'
 import { ClerkProvider, SignOutButton, useUser } from '@clerk/chrome-extension'
 import {
@@ -240,13 +241,10 @@ function SignedInBody({
   // content script's click through runtime.sendMessage (trigger path③). Kept
   // as an explicit button rather than switching openPanelOnActionClick, so
   // popup.html (and its login/logout flow) stays reachable by left-clicking
-  // the toolbar icon.
+  // the toolbar icon. Opens the current tab's own panel (ADR-050).
   const handleOpenSentencePanel = async () => {
     try {
-      const win = await chrome.windows.getCurrent()
-      if (win.id !== undefined) {
-        await chrome.sidePanel.open({ windowId: win.id })
-      }
+      await openActiveTabSidePanel()
     } catch (err) {
       console.error('Failed to open side panel from popup:', err)
     }

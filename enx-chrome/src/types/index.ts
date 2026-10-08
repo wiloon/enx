@@ -141,10 +141,10 @@ export interface BackgroundResponse {
   status?: number
   // Set by the 'openSentencePanel' handler: true when the Side Panel is
   // showing the pending sentence -- either chrome.sidePanel.open() succeeded,
-  // or the panel was already open for this window (detected via
+  // or the tab's own panel was already open (detected via
   // chrome.runtime.getContexts) and picks up the new context through its
   // storage.onChanged listener. False means the caller should fall back to
-  // the "click the toolbar ENX icon" hint (the click's user gesture didn't
+  // the "click the toolbar icon" hint (the click's user gesture didn't
   // survive being forwarded through runtime.sendMessage -- see
   // TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md §3.2 trigger path③).
   panelOpened?: boolean
@@ -166,11 +166,8 @@ export interface BackgroundResponse {
   why?: string
 }
 
-// chrome.storage.session key holding the sentence the Side Panel should show.
-// Shared constant so content.tsx/background.ts (writers) and SidePanel.tsx
-// (reader) can't drift apart on the key name.
-export const PENDING_SENTENCE_STORAGE_KEY = 'enx-pending-sentence'
-
+// What a tab's Side Panel should show, stored in chrome.storage.session under
+// pendingSentenceKey(tabId) (src/lib/sidePanel.ts, ADR-050).
 export interface PendingSentenceContext {
   sentence: string
   word: string
@@ -185,13 +182,12 @@ export interface PendingSentenceContext {
   createdAt: number
 }
 
-// chrome.storage.session key holding the most recent word looked up via the
-// page's word popover. Overwritten on every lookup (no history kept) -- see
-// docs/architecture/adr-006-page-word-lookup-in-sidepanel.md. Unlike
-// PENDING_SENTENCE_STORAGE_KEY, writing this key never triggers sentence
-// translation and never forces the Side Panel open.
-export const LATEST_PAGE_WORD_STORAGE_KEY = 'enx-latest-page-word'
-
+// The most recent word looked up via the page's word popover, stored under
+// latestPageWordKey(tabId) (src/lib/sidePanel.ts, ADR-050). Overwritten on
+// every lookup (no history kept) -- see
+// docs/architecture/adr-006-page-word-lookup-in-sidepanel.md. Unlike the
+// pending sentence, writing it never triggers sentence translation and never
+// forces the Side Panel open.
 export interface LatestPageWordLookup {
   word: string
   ecp: WordData

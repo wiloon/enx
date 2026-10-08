@@ -3,13 +3,7 @@
 
 import { createClerkClient } from '@clerk/chrome-extension/client'
 import { config, getApiBaseUrl } from '@/config/env'
-import {
-  LATEST_PAGE_WORD_STORAGE_KEY,
-  LatestPageWordLookup,
-  PENDING_SENTENCE_STORAGE_KEY,
-  PendingSentenceContext,
-  WordData,
-} from '@/types'
+import { LatestPageWordLookup, PendingSentenceContext, WordData } from '@/types'
 import {
   heartbeat,
   readSwLog,
@@ -26,6 +20,12 @@ import {
 import { reconcileAutoEnableScripts, shouldAutoEnable } from './autoEnable'
 import { applyStatus, dismissPinHint, maybeAskToPin, resetTab } from './badge'
 import type { LearningModeStatus } from '@/lib/learningModeStatus'
+import {
+  latestPageWordKey,
+  openTabSidePanel,
+  panelTabIdFromUrl,
+  pendingSentenceKey,
+} from '@/lib/sidePanel'
 
 console.log('ENX Background script loaded')
 console.log('🌐 Config environment:', config.environment)
@@ -465,17 +465,37 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 })
 
 // Trigger path② (spec §3.2): right-click the toolbar icon -> menu item ->
-// open the Side Panel directly. Independent of the left-click default_popup
-// behavior (trigger path①), so it can't interfere with login/logout.
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+// open the current tab's own Side Panel (ADR-050). Independent of the
+// left-click default_popup behavior (trigger path①), so it can't interfere
+// with login/logout. Not async: open() has to run inside the menu click's
+// user gesture, before any await.
+chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId !== 'enx-open-sentence-panel') return
-  if (tab?.windowId === undefined) return
+  if (tab?.id === undefined) return
 
-  try {
-    await chrome.sidePanel.open({ windowId: tab.windowId })
-  } catch (error) {
+  openTabSidePanel(tab.id).catch(error =>
     console.error('Failed to open side panel from context menu:', error)
-  }
+  )
+})
+
+// ADR-050: no window-wide Side Panel. The manifest declares no default_path;
+// this also switches off any global panel an older version left registered,
+// so Chrome's side panel menu can't open an ENX panel that belongs to no tab.
+// Every panel is a tab-specific one, registered by openTabSidePanel().
+chrome.sidePanel
+  .setOptions({ enabled: false })
+  .catch(error =>
+    console.warn('Failed to disable the window-wide side panel:', error)
+  )
+
+// A tab's panel goes away with the tab; drop what it was showing too, so
+// storage.session doesn't accumulate one entry per tab ever read in.
+chrome.tabs.onRemoved.addListener(tabId => {
+  chrome.storage.session
+    .remove([pendingSentenceKey(tabId), latestPageWordKey(tabId)])
+    .catch(error =>
+      console.warn('Failed to clear side panel state for closed tab:', error)
+    )
 })
 
 // Handle extension icon clicks
@@ -527,6 +547,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         case 'openSentencePanel':
           return await handleOpenSentencePanel(
+            sender.tab?.id,
             request.word || '',
             request.sentence || request.word || '',
             request.sourceUrl || '',
@@ -536,6 +557,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         case 'recordPageWordLookup':
           return await handleRecordPageWordLookup(
+            sender.tab?.id,
             request.word || '',
             request.ecp
           )
@@ -1094,14 +1116,14 @@ const handleTranslateWordInContext = async (
 // Best-effort chrome.sidePanel.open() for trigger path③, called synchronously
 // from the onMessage listener so it runs inside the user gesture Chrome
 // forwards with a content-script runtime.sendMessage -- any `await` before
-// open() spends that gesture. Resolves true if the panel opened (or was
-// already open: open() on an open panel is a harmless no-op), false if the
-// gesture didn't forward, so the caller can fall back to trigger paths①/②
-// (toolbar icon / right-click menu), which read the same persisted context.
+// open() spends that gesture. Opens the sending tab's own panel (ADR-050).
+// Resolves true if the panel opened (or was already open: open() on an open
+// panel is a harmless no-op), false if the gesture didn't forward, so the
+// caller can fall back to trigger paths①/② (toolbar icon popup button /
+// right-click menu), which read the same persisted context.
 const openSentencePanelForGesture = (tabId?: number): Promise<boolean> => {
   if (tabId === undefined) return Promise.resolve(false)
-  return chrome.sidePanel
-    .open({ tabId })
+  return openTabSidePanel(tabId)
     .then(() => true)
     .catch(error => {
       console.warn(
@@ -1116,22 +1138,22 @@ const openSentencePanelForGesture = (tabId?: number): Promise<boolean> => {
 // context, then report whether openSentencePanelForGesture() (fired earlier by
 // the onMessage listener) managed to open the panel.
 //
-// If the Side Panel is *already* open we don't need a user gesture at all:
-// SidePanel.tsx re-reads PENDING_SENTENCE_STORAGE_KEY on storage.onChanged and
-// refreshes in place (spec §4.6). We detect that via chrome.runtime.getContexts
-// (Chrome 116+) and report panelOpened:true so the caller suppresses the
-// "click the toolbar icon" hint.
-const isSidePanelOpen = async (): Promise<boolean> => {
+// If the tab's Side Panel is *already* open we don't need a user gesture at
+// all: SidePanel.tsx re-reads the tab's pending-sentence key on
+// storage.onChanged and refreshes in place (spec §4.6). We detect that via
+// chrome.runtime.getContexts (Chrome 116+) and report panelOpened:true so the
+// caller suppresses the "click the toolbar icon" hint.
+const isSidePanelOpen = async (tabId: number): Promise<boolean> => {
   try {
     // Query everything and match in JS rather than passing contextTypes as a
-    // filter: chrome.runtime.ContextType can be undefined at runtime. We also
-    // don't gate on the context's windowId -- it's unreliable across Chrome
-    // builds and frequently doesn't match sender.tab.windowId. A cross-window
-    // false positive only means another window's open panel also refreshes,
-    // which is harmless.
+    // filter: chrome.runtime.ContextType can be undefined at runtime. A
+    // panel's tab is read from its own URL (ADR-050), so another tab's open
+    // panel doesn't count.
     const contexts = (await chrome.runtime.getContexts?.({})) ?? []
     return contexts.some(
-      c => c.contextType === ('SIDE_PANEL' as chrome.runtime.ContextType)
+      c =>
+        c.contextType === ('SIDE_PANEL' as chrome.runtime.ContextType) &&
+        panelTabIdFromUrl(c.documentUrl) === tabId
     )
   } catch (error) {
     console.warn('isSidePanelOpen: getContexts() failed:', error)
@@ -1140,12 +1162,16 @@ const isSidePanelOpen = async (): Promise<boolean> => {
 }
 
 const handleOpenSentencePanel = async (
+  tabId: number | undefined,
   word: string,
   sentence: string,
   sourceUrl: string,
   phrase?: string,
   panelOpening?: Promise<boolean>
 ) => {
+  // A panel belongs to a tab (ADR-050); without one there's nowhere to show it.
+  if (tabId === undefined) return { success: false, error: 'No sender tab' }
+
   const context: PendingSentenceContext = {
     word,
     sentence,
@@ -1153,7 +1179,7 @@ const handleOpenSentencePanel = async (
     sourceUrl,
     createdAt: Date.now(),
   }
-  await chrome.storage.session.set({ [PENDING_SENTENCE_STORAGE_KEY]: context })
+  await chrome.storage.session.set({ [pendingSentenceKey(tabId)]: context })
 
   // The onMessage listener already fired sidePanel.open() inside the forwarded
   // gesture; await its outcome here. Fall back to a getContexts() probe in case
@@ -1162,7 +1188,7 @@ const handleOpenSentencePanel = async (
   // needed.
   let panelOpened = panelOpening ? await panelOpening : false
   if (!panelOpened) {
-    panelOpened = await isSidePanelOpen()
+    panelOpened = await isSidePanelOpen(tabId)
   }
 
   return { success: true, panelOpened }
@@ -1173,15 +1199,21 @@ const handleOpenSentencePanel = async (
 // (no access unless the background grants TRUSTED_AND_UNTRUSTED_CONTEXTS,
 // which would also expose other session keys like the OAuth verifier to
 // arbitrary web pages), so this proxies the write the same way
-// handleOpenSentencePanel does for PENDING_SENTENCE_STORAGE_KEY. Overwrite
-// only -- no history -- and deliberately never touches
-// PENDING_SENTENCE_STORAGE_KEY or calls chrome.sidePanel.open().
-const handleRecordPageWordLookup = async (word: string, ecp?: WordData) => {
+// handleOpenSentencePanel does for the pending-sentence key. Written under the
+// sending tab's key (ADR-050), so only that tab's panel shows it. Overwrite
+// only -- no history -- and deliberately never touches the pending-sentence
+// key or calls chrome.sidePanel.open().
+const handleRecordPageWordLookup = async (
+  tabId: number | undefined,
+  word: string,
+  ecp?: WordData
+) => {
+  if (tabId === undefined) return { success: false, error: 'No sender tab' }
   if (!word || !ecp)
     return { success: false, error: 'Missing word or dictionary data' }
 
   const lookup: LatestPageWordLookup = { word, ecp, createdAt: Date.now() }
-  await chrome.storage.session.set({ [LATEST_PAGE_WORD_STORAGE_KEY]: lookup })
+  await chrome.storage.session.set({ [latestPageWordKey(tabId)]: lookup })
 
   return { success: true }
 }
