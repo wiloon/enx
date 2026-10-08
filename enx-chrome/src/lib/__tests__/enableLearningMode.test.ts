@@ -1,4 +1,7 @@
-import { enableLearningModeOnTab } from '@/lib/enableLearningMode'
+import {
+  enableLearningModeOnTab,
+  getLearningModeStatusOnTab,
+} from '@/lib/enableLearningMode'
 
 const noReceiverError = () =>
   new Error('Could not establish connection. Receiving end does not exist.')
@@ -106,5 +109,44 @@ describe('enableLearningModeOnTab', () => {
       error: "Catglish can't run on this page.",
     })
     expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('getLearningModeStatusOnTab', () => {
+  beforeEach(() => {
+    jest.resetAllMocks()
+  })
+
+  it("asks the tab's top frame and returns its status", async () => {
+    ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue({
+      status: { status: 'ready' },
+    })
+
+    const result = await getLearningModeStatusOnTab(7)
+
+    expect(result).toEqual({ status: 'ready' })
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      7,
+      { action: 'getLearningModeStatus' },
+      { frameId: 0 }
+    )
+  })
+
+  it('treats a tab with no content script as off, without injecting one', async () => {
+    ;(chrome.tabs.sendMessage as jest.Mock).mockRejectedValue(
+      noReceiverError()
+    )
+
+    expect(await getLearningModeStatusOnTab(7)).toEqual({ status: 'off' })
+    expect(chrome.scripting.executeScript).not.toHaveBeenCalled()
+  })
+
+  it('treats a content script that does not know the action as off', async () => {
+    ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue({
+      success: false,
+      error: 'Unknown action',
+    })
+
+    expect(await getLearningModeStatusOnTab(7)).toEqual({ status: 'off' })
   })
 })

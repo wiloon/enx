@@ -186,7 +186,10 @@ const showPinHint = () => {
 }
 
 // adr-046: learning mode's state goes to the toolbar badge, via background.
+// The last one is also kept so the popup can show it when it opens.
+let currentStatus: LearningModeStatus = { status: 'off' }
 const reportStatus = (status: LearningModeStatus) => {
+  currentStatus = status
   void sendToBackground({ type: 'learningModeStatus', status }).then(
     response => {
       if (response.showPinHint) showPinHint()
@@ -1555,6 +1558,10 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     case 'enxStop':
       disableEnx()
       sendResponse({ success: true })
+      break
+
+    case 'getLearningModeStatus':
+      sendResponse({ status: currentStatus })
       break
 
     case 'getPageInfo':

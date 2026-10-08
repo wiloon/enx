@@ -10,7 +10,10 @@ import PageReportPrompt, {
 import PageSavePrompt, { PageSaveStatus } from '@/components/PageSavePrompt'
 import { config } from '@/config/env'
 import { isReportableFailure, EnableFailureReason } from '@/lib/enableOutcome'
-import { enableLearningModeOnTab } from '@/lib/enableLearningMode'
+import {
+  enableLearningModeOnTab,
+  getLearningModeStatusOnTab,
+} from '@/lib/enableLearningMode'
 import { PageReportPayload, sanitizePageUrl } from '@/lib/pageReport'
 import { saveOutcome } from '@/lib/pageSave'
 import { initSentry } from '@/lib/sentry'
@@ -104,6 +107,27 @@ function SignedInBody({
   const [learningStatus, setLearningStatus] = useState<
     'idle' | 'processing' | 'completed'
   >('idle')
+
+  // Start from the page's real state: an auto-enabled site, or a page enabled
+  // from an earlier popup, is already on before this button is ever clicked.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const [tab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      })
+      if (!tab?.id) return
+      const { status } = await getLearningModeStatusOnTab(tab.id)
+      if (cancelled) return
+      // Not 'processing': the popup would never hear it finish and the
+      // button would stay disabled.
+      if (status === 'ready') setLearningStatus('completed')
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const displayName =
     user?.fullName ||
