@@ -93,6 +93,12 @@ homelab 那套不能管生产：Tekton 推的是集群内 Nexus（外网拉不�
 
 主机侧逻辑在 `enx-deploy.sh`（Ansible 分发）而不是 workflow 里：**回滚是 SSH 上去跑 `sudo enx-deploy.sh <旧 tag>`，不依赖 GitHub 可用。**
 
+#### 6a. 版本号（2026-10-07 补充）
+
+- **api + ui 的版本号就是 git tag**（workflow 用 tag 名给两个镜像打标，api 经 `-ldflags` 注入）。`enx-ui/package.json` 的 `version` 不参与发布。
+- **阶段**：`v0.0.x` = 内测前（到 `v0.0.14` 为止）；**`v0.1.0` 起 = Beta / 内部测试**，修 bug 升 patch（`v0.1.1`），加功能升 minor（`v0.2.0`）；**去掉 Beta 标志那天发 `v1.0.0`**。
+- **Chrome 扩展的版本号独立管理**，不跟 api/ui 的 tag 走：唯一来源是 `enx-chrome/package.json`，构建时由 `buildManifest` 盖进 manifest（`manifest.json` 里不写 `version`，有测试守着）。扩展每次发布都要过 Web Store 审核，节奏和服务端不同，不该为了对齐数字白提交一次审核。阶段与上面一致：`0.1.0` 起 Beta，正式上线 `1.0.0`；每次上传必须比上一次大，只能是 1–4 段纯数字（不能带 `-beta`）。
+
 ### 7. 生产从空库起
 
 不从 homelab 迁 `enx.db`（那里只有作者自测数据）。ECDICT `stardict.db`（~850MB）由部署脚本**从上游 release 直接下载**、版本固定在 `1.0.28`——不从 homelab 拷，也不打进镜像（打进去等于每次 pull 多背 850MB，换一个一年变一次的文件）。

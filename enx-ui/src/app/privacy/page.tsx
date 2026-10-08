@@ -97,11 +97,13 @@ export default function PrivacyPolicyPage() {
           ]}
         />
         <p>
-          The extension requests permission for all websites because you may
-          want to read English on any of them, and it cannot know in advance
-          which. That permission is not a statement that we collect anything
-          from those sites. The address, title and full text of a page are never
-          sent to our servers and never stored.
+          Installing the extension does not give it access to every website. It
+          asks you for access <Term>one site at a time</Term>, and only when you
+          choose to have Catglish switch on automatically on that site; you can
+          take that access back at any time in Chrome&rsquo;s extension
+          settings. The address, title and full text of a page are never sent to
+          our servers and never stored, unless you press &ldquo;Send
+          report&rdquo; on a page Catglish could not read (see below).
         </p>
       </Section>
 
