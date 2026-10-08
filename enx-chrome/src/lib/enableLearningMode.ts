@@ -1,4 +1,5 @@
 import { failureMessage } from '@/lib/enableOutcome'
+import type { LearningModeStatus } from '@/lib/learningModeStatus'
 
 export interface EnxRunResponse {
   success: boolean
@@ -78,4 +79,23 @@ async function sendEnxRunWithRetry(tabId: number): Promise<EnxRunResponse> {
   // useful to a user, so this becomes the generic failure reason rather
   // than propagating "Receiving end does not exist" verbatim.
   return { success: false, reason: 'error', error: failureMessage('error') }
+}
+
+// What learning mode is doing on the tab right now, so the popup's button
+// matches a page that was auto-enabled (adr-039) or enabled from an earlier
+// popup. Only the top frame owns the status, as with the badge. A tab with no
+// content script, or one the browser won't message, is simply off.
+export async function getLearningModeStatusOnTab(
+  tabId: number
+): Promise<LearningModeStatus> {
+  try {
+    const response = await chrome.tabs.sendMessage(
+      tabId,
+      { action: 'getLearningModeStatus' },
+      { frameId: 0 }
+    )
+    return response?.status ?? { status: 'off' }
+  } catch {
+    return { status: 'off' }
+  }
 }
