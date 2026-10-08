@@ -81,6 +81,8 @@ Chrome 要求 `chrome.sidePanel.open()` 必须响应"用户手势"，且**该 AP
 
 **Draft 版 A1 方案（登录后动态切换 `chrome.sidePanel.setPanelBehavior({openPanelOnActionClick: true})`）已废弃**：该方案会让 `popup.html`（含登出入口）在登录后无法再通过点图标访问，Review 认为这个取舍不必要——下面四条路径叠加即可覆盖所有场景，且不需要牺牲 `popup.html` 的图标入口。
 
+> **2026-10-08 修订（[ADR-050](../architecture/adr-050-tab-scoped-side-panel.md)）**：侧边栏改为标签页级别面板（`setOptions({ tabId, path })` 后 `open({ tabId })`），不再有全局面板，三条打开路径都打开当前标签页的面板；§3.3 的存储 key 改为按标签页拆分（`enx-pending-sentence:<tabId>`）。下表保留原始设计，以 ADR-050 为准。
+
 四条触发路径（不互斥，任意一条成功即可，待处理上下文见 §3.3 始终先落盘）：
 
 | 路径 | 触发方式 | 可靠性 | 说明 |

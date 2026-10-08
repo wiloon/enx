@@ -20,11 +20,14 @@ import { snapToWordBounds } from '@/lib/wordSegment'
 import { sendMessageToBackground } from '@/services/api'
 import { config } from '@/config/env'
 import {
+  latestPageWordKey,
+  panelTabIdFromUrl,
+  pendingSentenceKey,
+} from '@/lib/sidePanel'
+import {
   BackgroundResponse,
   ContentMessage,
-  LATEST_PAGE_WORD_STORAGE_KEY,
   LatestPageWordLookup,
-  PENDING_SENTENCE_STORAGE_KEY,
   PendingSentenceContext,
 } from '@/types'
 
@@ -706,6 +709,10 @@ function SentenceBlock({
 }
 
 function SidePanelContent() {
+  // The tab this panel belongs to, written into its URL by whoever opened it
+  // (ADR-050). Undefined only for a stray panel with no owning tab -- that
+  // one stays on the empty state and reads no tab's keys.
+  const [tabId] = useState(() => panelTabIdFromUrl(window.location.href))
   // The unified, newest-on-top history list (ADR-023): word/phrase cards
   // that arrived without an owning sentence (page clicks, ADR-006; main-page
   // phrase drag-select, ADR-008) sit at the top level; a sentence
@@ -765,22 +772,25 @@ function SidePanelContent() {
   // and the user clicks "整句翻译" on another word on the page, this fires
   // with the new context and a new SentenceEntry is prepended in place -- no
   // need to re-trigger sidePanel.open() (spec §3.3/§4.6). Initial mount-time
-  // read is handled below, combined with LATEST_PAGE_WORD_STORAGE_KEY, so
-  // whichever of the two actually happened more recently wins (ADR-006).
+  // read is handled below, combined with the latest page word, so whichever
+  // of the two actually happened more recently wins (ADR-006). Only this
+  // panel's own tab's keys count (ADR-050).
   useEffect(() => {
+    if (tabId === undefined) return
+    const key = pendingSentenceKey(tabId)
     const listener = (
       changes: { [key: string]: chrome.storage.StorageChange },
       areaName: string
     ) => {
       if (areaName !== 'session') return
-      const change = changes[PENDING_SENTENCE_STORAGE_KEY]
+      const change = changes[key]
       if (change?.newValue) {
         setPendingContext(change.newValue as PendingSentenceContext)
       }
     }
     chrome.storage.onChanged.addListener(listener)
     return () => chrome.storage.onChanged.removeListener(listener)
-  }, [])
+  }, [tabId])
 
   // Mirrors a word looked up via the page's word popover into a top-level
   // card (ADR-006). Merges the already-fetched WordData directly -- no
@@ -803,33 +813,37 @@ function SidePanelContent() {
   }, [])
 
   useEffect(() => {
+    if (tabId === undefined) return
+    const key = latestPageWordKey(tabId)
     const listener = (
       changes: { [key: string]: chrome.storage.StorageChange },
       areaName: string
     ) => {
       if (areaName !== 'session') return
-      const change = changes[LATEST_PAGE_WORD_STORAGE_KEY]
+      const change = changes[key]
       if (change?.newValue) {
         mergePageWordLookup(change.newValue as LatestPageWordLookup)
       }
     }
     chrome.storage.onChanged.addListener(listener)
     return () => chrome.storage.onChanged.removeListener(listener)
-  }, [mergePageWordLookup])
+  }, [tabId, mergePageWordLookup])
 
   // One-time mount read of both storage keys together: whichever actually
   // happened more recently (by createdAt) wins, since the two independent
   // `.get()` calls above would otherwise race and let whichever Promise
   // settles last clobber the other regardless of real chronological order.
   useEffect(() => {
+    if (tabId === undefined) return
+    const sentenceKey = pendingSentenceKey(tabId)
+    const wordKey = latestPageWordKey(tabId)
     Promise.all([
-      chrome.storage.session.get(PENDING_SENTENCE_STORAGE_KEY),
-      chrome.storage.session.get(LATEST_PAGE_WORD_STORAGE_KEY),
+      chrome.storage.session.get(sentenceKey),
+      chrome.storage.session.get(wordKey),
     ]).then(([sentenceResult, wordResult]) => {
-      const sentence = sentenceResult[PENDING_SENTENCE_STORAGE_KEY] as
+      const sentence = sentenceResult[sentenceKey] as
         PendingSentenceContext | undefined
-      const word = wordResult[LATEST_PAGE_WORD_STORAGE_KEY] as
-        LatestPageWordLookup | undefined
+      const word = wordResult[wordKey] as LatestPageWordLookup | undefined
 
       if (word && (!sentence || word.createdAt > sentence.createdAt)) {
         mergePageWordLookup(word)

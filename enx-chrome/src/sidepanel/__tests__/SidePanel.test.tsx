@@ -27,12 +27,15 @@ jest.mock('@/services/api', () => ({
 }))
 
 import { sendMessageToBackground } from '@/services/api'
-import {
-  BackgroundResponse,
-  LATEST_PAGE_WORD_STORAGE_KEY,
-  PENDING_SENTENCE_STORAGE_KEY,
-} from '@/types'
+import { BackgroundResponse } from '@/types'
+import { latestPageWordKey, pendingSentenceKey } from '@/lib/sidePanel'
 import SidePanel from '../SidePanel'
+
+// ADR-050: the panel belongs to the tab named in its URL and only reads that
+// tab's keys. Every test below runs as the panel of tab 7.
+const PANEL_TAB_ID = 7
+const PENDING_SENTENCE_STORAGE_KEY = pendingSentenceKey(PANEL_TAB_ID)
+const LATEST_PAGE_WORD_STORAGE_KEY = latestPageWordKey(PANEL_TAB_ID)
 
 const mockSendMessage = sendMessageToBackground as jest.Mock
 
@@ -98,6 +101,7 @@ describe('SidePanel', () => {
 
   beforeEach(() => {
     jest.clearAllMocks()
+    window.history.replaceState({}, '', `/sidepanel.html?tabId=${PANEL_TAB_ID}`)
     storageChangeListeners = []
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
     ;(chrome.storage.onChanged.addListener as jest.Mock).mockImplementation(
@@ -108,6 +112,40 @@ describe('SidePanel', () => {
     ;(chrome.storage.onChanged.removeListener as jest.Mock).mockImplementation(
       () => {}
     )
+  })
+
+  it("ignores another tab's sentence (ADR-050)", async () => {
+    render(<SidePanel />)
+    await screen.findByTestId('sidepanel-empty-state')
+
+    act(() => {
+      fireStorageChange(
+        {
+          [pendingSentenceKey(8)]: {
+            newValue: {
+              sentence: SENTENCE,
+              word: 'great',
+              sourceUrl: 'https://example.com/other-tab',
+              createdAt: Date.now(),
+            },
+          },
+        },
+        'session'
+      )
+    })
+
+    expect(screen.getByTestId('sidepanel-empty-state')).toBeInTheDocument()
+    expect(mockSendMessage).not.toHaveBeenCalled()
+  })
+
+  it('shows the empty state and reads nothing without an owning tab (ADR-050)', async () => {
+    window.history.replaceState({}, '', '/sidepanel.html')
+    render(<SidePanel />)
+
+    expect(
+      await screen.findByTestId('sidepanel-empty-state')
+    ).toBeInTheDocument()
+    expect(chrome.storage.session.get).not.toHaveBeenCalled()
   })
 
   it('shows the empty state when there is no pending sentence context (spec §4.1)', async () => {

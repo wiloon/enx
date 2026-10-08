@@ -88,6 +88,13 @@ export default defineConfig(({ mode }) => {
       // the never-used Web3 wallet buttons behind a dynamic import; Sentry). The
       // 500 kB default just adds noise here -- ADR-015.
       chunkSizeWarningLimit: 1000,
+      rollupOptions: {
+        // crxjs only bundles the pages the manifest names. ADR-050 dropped
+        // side_panel.default_path (no window-wide panel), so the Side Panel
+        // page -- opened per tab via chrome.sidePanel.setOptions -- is listed
+        // here instead.
+        input: { sidepanel: 'sidepanel.html' },
+      },
     },
   }
 })

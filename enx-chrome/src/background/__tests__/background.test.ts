@@ -519,7 +519,8 @@ describe('background onMessage / openWebSignIn (ADR-020)', () => {
 
 // ADR-008: the phrase-in-context lookup reuses the 'openSentencePanel'
 // message/handler, just with an extra `phrase` field threaded through to
-// PendingSentenceContext.
+// PendingSentenceContext. ADR-050: the context is stored under the sending
+// tab's own key, and the panel opened is that tab's own panel.
 describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)', () => {
   const listener = onMessageListener
 
@@ -527,6 +528,7 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
     jest.resetAllMocks()
     setClerkSession('clerk-session-jwt')
     ;(chrome.storage.session.set as jest.Mock).mockResolvedValue(undefined)
+    ;(chrome.sidePanel.setOptions as jest.Mock).mockResolvedValue(undefined)
     ;(chrome.sidePanel.open as jest.Mock).mockResolvedValue(undefined)
   })
 
@@ -548,7 +550,7 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
     expect(response).toEqual({ success: true, panelOpened: true })
     expect(chrome.storage.session.set).toHaveBeenCalledWith(
       expect.objectContaining({
-        'enx-pending-sentence': expect.objectContaining({
+        'enx-pending-sentence:7': expect.objectContaining({
           word: '',
           phrase: 'hunt down emails',
           sentence: 'I had to hunt down emails and draft outreach.',
@@ -580,6 +582,11 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
     })
 
     expect(response).toEqual({ success: true, panelOpened: true })
+    expect(chrome.sidePanel.setOptions).toHaveBeenCalledWith({
+      tabId: 7,
+      path: 'sidepanel.html?tabId=7',
+      enabled: true,
+    })
     expect(chrome.sidePanel.open).toHaveBeenCalledWith({ tabId: 7 })
     expect(calls).toEqual(['sidePanel.open', 'storage.session.set'])
   })
@@ -592,7 +599,10 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
     )
     ;(chrome.runtime.getContexts as jest.Mock).mockResolvedValue([
       { contextType: 'BACKGROUND' },
-      { contextType: 'SIDE_PANEL', windowId: 999 },
+      {
+        contextType: 'SIDE_PANEL',
+        documentUrl: 'chrome-extension://test/sidepanel.html?tabId=7',
+      },
     ])
 
     const response = await new Promise(resolve => {
@@ -638,6 +648,35 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
     expect(response).toEqual({ success: true, panelOpened: false })
   })
 
+  it("reports panelOpened:false when only another tab's panel is open", async () => {
+    ;(chrome.sidePanel.open as jest.Mock).mockRejectedValue(
+      new Error(
+        'sidePanel.open() may only be called in response to a user gesture'
+      )
+    )
+    ;(chrome.runtime.getContexts as jest.Mock).mockResolvedValue([
+      {
+        contextType: 'SIDE_PANEL',
+        documentUrl: 'chrome-extension://test/sidepanel.html?tabId=8',
+      },
+    ])
+
+    const response = await new Promise(resolve => {
+      listener(
+        {
+          type: 'openSentencePanel',
+          word: 'great',
+          sentence: 'Cats are great pets.',
+          sourceUrl: 'https://example.com/post',
+        },
+        { tab: { id: 7 } },
+        resolve
+      )
+    })
+
+    expect(response).toEqual({ success: true, panelOpened: false })
+  })
+
   it('leaves phrase undefined for the existing whole-sentence/single-word callers', async () => {
     const response = await new Promise(resolve => {
       listener(
@@ -655,7 +694,7 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
     expect(response).toEqual({ success: true, panelOpened: true })
     expect(chrome.storage.session.set).toHaveBeenCalledWith(
       expect.objectContaining({
-        'enx-pending-sentence': expect.objectContaining({
+        'enx-pending-sentence:7': expect.objectContaining({
           word: 'great',
           phrase: undefined,
         }),
@@ -1388,5 +1427,99 @@ describe('background learning-mode badge (adr-046)', () => {
   it('leaves the badge alone on other tab updates', () => {
     onTabUpdated(9, { status: 'complete' })
     expect(chrome.action.setBadgeText).not.toHaveBeenCalled()
+  })
+})
+
+// ADR-050: the Side Panel only ever exists as a tab-specific panel, and
+// everything it shows is keyed by the tab it belongs to.
+describe('background tab-scoped Side Panel (ADR-050)', () => {
+  const listener = onMessageListener
+  // Captured at collection time, before any beforeEach resetAllMocks().
+  const onTabRemoved = (chrome.tabs.onRemoved.addListener as jest.Mock).mock
+    .calls[0]?.[0] as (tabId: number) => void
+  const onMenuClicked = (chrome.contextMenus.onClicked.addListener as jest.Mock)
+    .mock.calls[0]?.[0] as (
+    info: { menuItemId: string },
+    tab?: { id?: number; windowId?: number }
+  ) => void
+  const globalSetOptionsCalls = (
+    chrome.sidePanel.setOptions as jest.Mock
+  ).mock.calls.slice()
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    ;(chrome.storage.session.set as jest.Mock).mockResolvedValue(undefined)
+    ;(chrome.storage.session.remove as jest.Mock).mockResolvedValue(undefined)
+  })
+
+  it('disables the window-wide panel when the service worker starts', () => {
+    expect(globalSetOptionsCalls).toContainEqual([{ enabled: false }])
+  })
+
+  it("opens the clicked tab's own panel from the toolbar-icon menu, synchronously", () => {
+    ;(chrome.sidePanel.setOptions as jest.Mock).mockResolvedValue(undefined)
+    ;(chrome.sidePanel.open as jest.Mock).mockResolvedValue(undefined)
+
+    onMenuClicked(
+      { menuItemId: 'enx-open-sentence-panel' },
+      { id: 7, windowId: 3 }
+    )
+
+    // No await before this point: open() must already have been called,
+    // inside the menu click's user gesture.
+    expect(chrome.sidePanel.setOptions).toHaveBeenCalledWith({
+      tabId: 7,
+      path: 'sidepanel.html?tabId=7',
+      enabled: true,
+    })
+    expect(chrome.sidePanel.open).toHaveBeenCalledWith({ tabId: 7 })
+  })
+
+  it('ignores other menu items and menu clicks without a tab', () => {
+    onMenuClicked({ menuItemId: 'something-else' }, { id: 7 })
+    onMenuClicked({ menuItemId: 'enx-open-sentence-panel' }, undefined)
+    expect(chrome.sidePanel.open).not.toHaveBeenCalled()
+  })
+
+  it("mirrors a page word lookup into the sending tab's key", async () => {
+    const ecp = { English: 'great', Chinese: 'adj. 很好的' }
+    const response = await new Promise(resolve => {
+      listener(
+        { type: 'recordPageWordLookup', word: 'great', ecp },
+        { tab: { id: 7 } },
+        resolve
+      )
+    })
+
+    expect(response).toEqual({ success: true })
+    expect(chrome.storage.session.set).toHaveBeenCalledWith({
+      'enx-latest-page-word:7': expect.objectContaining({ word: 'great', ecp }),
+    })
+  })
+
+  it('drops a page word lookup from a sender without a tab', async () => {
+    const response = await new Promise(resolve => {
+      listener(
+        {
+          type: 'recordPageWordLookup',
+          word: 'great',
+          ecp: { English: 'great' },
+        },
+        {},
+        resolve
+      )
+    })
+
+    expect(response).toMatchObject({ success: false })
+    expect(chrome.storage.session.set).not.toHaveBeenCalled()
+  })
+
+  it("forgets a closed tab's panel state", async () => {
+    expect(onTabRemoved).toBeDefined()
+    onTabRemoved(7)
+    expect(chrome.storage.session.remove).toHaveBeenCalledWith([
+      'enx-pending-sentence:7',
+      'enx-latest-page-word:7',
+    ])
   })
 })
