@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/joho/godotenv"
-	jww "github.com/spf13/jwalterweatherman"
 	"github.com/spf13/viper"
 )
 
@@ -31,9 +30,6 @@ func isTestEnv() bool {
 }
 
 func viperInitInternal() {
-	jww.SetLogThreshold(jww.LevelTrace)
-	jww.SetStdoutThreshold(jww.LevelTrace)
-
 	// Set defaults so the app works without any config file
 	viper.SetDefault("enx.port", 8091)
 	viper.SetDefault("enx.dev-mode", false)
@@ -116,10 +112,9 @@ func viperInitInternal() {
 	_ = viper.BindEnv("sentence-translate.openrouter.rephrase-model", "SENTENCE_TRANSLATE_OPENROUTER_REPHRASE_MODEL")
 
 	// Stripe billing (see docs/tasks/TASK-SPEC-enx-billing-stripe-subscription.md).
-	// publishable-key and price lookup_keys are non-secret and live in
-	// config.toml; STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET are env-var
-	// only, never written to config.toml.
-	viper.SetDefault("stripe.publishable-key", "")
+	// Price lookup_keys are non-secret and live in config.toml;
+	// STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET are env-var only, never
+	// written to config.toml.
 	// Three subscription tiers (2026-08-26 decision) -- see config.toml's
 	// [stripe.price] comment.
 	viper.SetDefault("stripe.price.pro", "enx_pro_monthly")
