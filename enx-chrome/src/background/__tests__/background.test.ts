@@ -184,6 +184,89 @@ describe('background makeApiRequest / Clerk session token', () => {
     })
   })
 
+  describe('gateway 503 replay', () => {
+    const kong503 = () =>
+      jsonResponse(
+        503,
+        { message: 'failure to get a peer from the ring-balancer' },
+        false
+      )
+
+    beforeEach(() => jest.useFakeTimers())
+    afterEach(() => jest.useRealTimers())
+
+    it('replays a request the gateway refused until enx-api is back', async () => {
+      ;(global.fetch as jest.Mock)
+        .mockResolvedValueOnce(kong503())
+        .mockResolvedValueOnce(kong503())
+        .mockResolvedValueOnce(jsonResponse(200, { chinese: '缺点' }))
+
+      const pending = makeApiRequest('/api/translate/sentence', {
+        method: 'POST',
+      })
+      await jest.runAllTimersAsync()
+
+      expect(await pending).toEqual({
+        success: true,
+        data: { chinese: '缺点' },
+      })
+      expect(global.fetch).toHaveBeenCalledTimes(3)
+    })
+
+    it('gives up after its retries with the readable message', async () => {
+      ;(global.fetch as jest.Mock).mockResolvedValue(kong503())
+
+      const pending = makeApiRequest('/api/translate/sentence', {
+        method: 'POST',
+      })
+      await jest.runAllTimersAsync()
+
+      expect(await pending).toEqual({
+        success: false,
+        error: 'Service temporarily unavailable. Please retry.',
+        status: 503,
+      })
+      expect(global.fetch).toHaveBeenCalledTimes(3)
+    })
+
+    it.each([
+      [
+        'a 503 enx-api wrote itself',
+        jsonResponse(
+          503,
+          { success: false, message: 'Dictionary unavailable' },
+          false
+        ),
+      ],
+      [
+        'a gateway 502 (enx-api may have handled it)',
+        jsonResponse(
+          502,
+          { message: 'An invalid response from upstream' },
+          false
+        ),
+      ],
+      [
+        'a gateway 504 (enx-api may have handled it)',
+        jsonResponse(
+          504,
+          { message: 'The upstream server is timing out' },
+          false
+        ),
+      ],
+    ])('does not replay %s', async (_name, response) => {
+      ;(global.fetch as jest.Mock).mockResolvedValue(response)
+
+      const pending = makeApiRequest('/api/translate/sentence', {
+        method: 'POST',
+      })
+      await jest.runAllTimersAsync()
+      await pending
+
+      expect(global.fetch).toHaveBeenCalledTimes(1)
+    })
+  })
+
   it('retries getToken() when the session is present but the first mint blips', async () => {
     // The dev-instance JWT mint (Frontend API round-trip) can fail transiently
     // even with an active session -- retry rather than fall through to a 401.
@@ -446,13 +529,51 @@ describe('background onMessage / defineWordWithAI (ADR-045)', () => {
     [502, 'AI lookup failed'],
   ])('passes a %i through with its status', async (status, message) => {
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
-      jsonResponse(status, { message }, false)
+      jsonResponse(status, { success: false, message }, false)
     )
 
     const response = await call({ type: 'defineWordWithAI', word: 'rizzler' })
 
     expect(response).toEqual({ success: false, error: message, status })
   })
+
+  it.each([
+    [
+      'Kong with no healthy upstream',
+      503,
+      { message: 'failure to get a peer from the ring-balancer' },
+    ],
+    ['an HTML gateway page', 502, '<html>Bad Gateway</html>'],
+    [
+      'a gateway timeout',
+      504,
+      { message: 'The upstream server is timing out' },
+    ],
+  ])(
+    'replaces the raw text of %s with a readable message',
+    async (_name, status, body) => {
+      const response = jsonResponse(status, body, false)
+      if (typeof body === 'string') {
+        response.json = async () => {
+          throw new SyntaxError('Unexpected token <')
+        }
+      }
+      ;(global.fetch as jest.Mock).mockResolvedValue(response)
+      jest.useFakeTimers()
+      try {
+        const pending = call({ type: 'defineWordWithAI', word: 'rizzler' })
+        await jest.runAllTimersAsync()
+
+        expect(await pending).toEqual({
+          success: false,
+          error: 'Service temporarily unavailable. Please retry.',
+          status,
+        })
+      } finally {
+        jest.useRealTimers()
+      }
+    }
+  )
 
   it('reports session expiry on a 401', async () => {
     ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
