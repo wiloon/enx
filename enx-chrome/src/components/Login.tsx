@@ -2,7 +2,8 @@ import { useUser } from '@clerk/chrome-extension'
 import { errorAtom } from '@/store/atoms'
 import { useAtom } from 'jotai'
 import { useEffect, type ReactNode } from 'react'
-import { AcademicCapIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
+import { ArrowRightIcon } from '@heroicons/react/24/outline'
+import CatglishLogo from '@/components/CatglishLogo'
 
 interface LoginProps {
   onLoginSuccess?: () => void
@@ -53,9 +54,7 @@ export default function Login({ onLoginSuccess, children }: LoginProps) {
   return (
     <div className="px-4 py-7">
       <div className="flex flex-col items-center text-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand text-brand-foreground shadow-lg shadow-brand/20">
-          <AcademicCapIcon className="h-7 w-7" />
-        </div>
+        <CatglishLogo className="h-14 w-14 rounded-2xl shadow-lg shadow-brand/20" />
         <h2 className="mt-4 text-base font-semibold text-foreground">
           Sign in to Catglish
         </h2>

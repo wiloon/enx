@@ -1,4 +1,5 @@
 import DebugPanel from '@/components/DebugPanel'
+import CatglishLogo from '@/components/CatglishLogo'
 import Login from '@/components/Login'
 import { useAutoEnableSite } from '@/hooks/useAutoEnableSite'
 import { useInitializeStorage } from '@/hooks/useInitializeStorage'
@@ -21,7 +22,6 @@ import { openActiveTabSidePanel } from '@/lib/sidePanel'
 import { errorAtom, userAtom } from '@/store/atoms'
 import { ClerkProvider, SignOutButton, useUser } from '@clerk/chrome-extension'
 import {
-  AcademicCapIcon,
   ArrowRightOnRectangleIcon,
   BookOpenIcon,
   CheckCircleIcon,
@@ -93,9 +93,7 @@ function Header() {
 
   return (
     <header className="flex items-center gap-2.5 border-b border-border bg-background px-4 py-3">
-      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-brand-foreground">
-        <AcademicCapIcon className="h-[18px] w-[18px]" />
-      </div>
+      <CatglishLogo className="h-8 w-8 shrink-0" />
       <div className="flex-1 leading-tight">
         <p className="text-sm font-semibold text-foreground">Catglish</p>
         <p className="text-[11px] text-muted-foreground">
