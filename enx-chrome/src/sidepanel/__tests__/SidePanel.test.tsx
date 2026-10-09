@@ -243,6 +243,105 @@ describe('SidePanel', () => {
     )
   })
 
+  it('shows one failure shared by the sentence and its anchor word once, and its Retry recovers both', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: SENTENCE,
+        word: 'great',
+        sourceUrl: '',
+        createdAt: 1,
+      },
+    })
+    let apiDown = true
+    mockSendMessage.mockImplementation(
+      async (message: { type: string; word?: string }) => {
+        if (apiDown) {
+          return {
+            success: false,
+            error: 'Service temporarily unavailable. Please retry.',
+            status: 503,
+          }
+        }
+        if (message.type === 'translateSentence') {
+          return { success: true, chinese: '猫是很棒的宠物。' }
+        }
+        if (message.type === 'translateWordInContext') {
+          return { success: true, chinese: '很棒的' }
+        }
+        if (message.type === 'getOneWord') {
+          return {
+            success: true,
+            ecp: { English: 'great', Chinese: 'a. 伟大的', Pronunciation: '' },
+          }
+        }
+        return { success: false }
+      }
+    )
+
+    render(<SidePanel />)
+
+    expect(await screen.findByTestId('sidepanel-error')).toHaveTextContent(
+      'Service temporarily unavailable. Please retry.'
+    )
+    await screen.findByTestId('sidepanel-card-great')
+    await waitFor(() =>
+      expect(
+        screen.getAllByText('Service temporarily unavailable. Please retry.')
+      ).toHaveLength(1)
+    )
+
+    apiDown = false
+    await userEvent.click(screen.getByTestId('sidepanel-retry-sentence'))
+
+    expect(await screen.findByTestId('sidepanel-chinese')).toHaveTextContent(
+      '猫是很棒的宠物。'
+    )
+    expect(
+      await within(screen.getByTestId('sidepanel-card-great')).findByText(
+        '很棒的'
+      )
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(/temporarily unavailable/)
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows a word card failure once when its dictionary and AI halves fail alike', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: SENTENCE,
+        word: '',
+        sourceUrl: '',
+        createdAt: 1,
+      },
+    })
+    mockSendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'translateSentence') {
+        return { success: true, chinese: '猫是很棒的宠物。' }
+      }
+      return {
+        success: false,
+        error: 'Service temporarily unavailable. Please retry.',
+        status: 503,
+      }
+    })
+
+    render(<SidePanel />)
+    await screen.findByTestId('sidepanel-chinese')
+    selectWord('great')
+
+    const errorRow = await screen.findByTestId('sidepanel-context-error-great')
+    expect(errorRow).toHaveTextContent(
+      'Service temporarily unavailable. Please retry.'
+    )
+    expect(
+      within(errorRow).getByTestId('sidepanel-retry-context-great')
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByTestId('sidepanel-dictionary-error-great')
+    ).not.toBeInTheDocument()
+  })
+
   it('shows an upgrade link instead of the raw message when sentence translation fails with 402 (insufficient AI credit)', async () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {

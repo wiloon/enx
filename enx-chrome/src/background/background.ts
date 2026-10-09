@@ -221,6 +221,16 @@ export type ApiRequestResult = {
   status?: number
 }
 
+const GATEWAY_ERROR_STATUSES = new Set([502, 503, 504])
+// Waits before replaying a request the gateway answered 503 on its own, e.g.
+// Kong with no ready enx-api pod during a Recreate redeploy (a few seconds).
+// Only 503: the request never reached enx-api, so a replay cannot charge AI
+// credit or bump a Query Count twice. A gateway 502/504 can come after
+// enx-api already handled the request, so those are not replayed.
+export const GATEWAY_RETRY_DELAYS_MS = [500, 1500]
+export const SERVICE_UNAVAILABLE_MESSAGE =
+  'Service temporarily unavailable. Please retry.'
+
 // API request helper
 export const makeApiRequest = async (
   endpoint: string,
@@ -230,15 +240,17 @@ export const makeApiRequest = async (
   // cold boot can report how long this instance had been gone (swlog.ts).
   void heartbeat()
 
-  // Up to two attempts: if the first gets a 401 while we *did* send a token,
-  // it's almost always an expired session JWT served from clerk-js's cache
-  // (see getSessionToken) -- force a fresh mint and replay once before
-  // concluding the session is gone. `forceRefresh` stays false for the retry
-  // when we had no token to begin with (nothing to refresh -> real 401).
+  // Two kinds of replay. A 401 while we *did* send a token is almost always
+  // an expired session JWT served from clerk-js's cache (see
+  // getSessionToken) -- force a fresh mint and replay once before concluding
+  // the session is gone; `forceRefresh` stays false when we had no token to
+  // begin with (nothing to refresh -> real 401). A gateway 503 (see
+  // GATEWAY_RETRY_DELAYS_MS) is replayed after a short wait.
   let forceRefresh = false
+  let gatewayRetries = 0
 
   try {
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    for (let attempt = 1; ; attempt++) {
       const API_BASE_URL = await getApiBaseUrl()
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -288,7 +300,7 @@ export const makeApiRequest = async (
             'warn'
           )
 
-          if (attempt === 1 && token) {
+          if (!forceRefresh && token) {
             swlog('retrying once with a force-refreshed Clerk token', 'warn')
             forceRefresh = true
             continue
@@ -300,13 +312,35 @@ export const makeApiRequest = async (
 
         // Try to get error details from response body
         let errorMessage = `HTTP ${response.status}: ${response.statusText}`
+        let fromApi = false
         try {
           const errorData = await response.json()
           if (errorData.error || errorData.message) {
             errorMessage = errorData.error || errorData.message
           }
+          fromApi = 'success' in errorData || 'error' in errorData
         } catch {
           // Ignore JSON parsing errors, use default message
+        }
+
+        // A 502/503/504 that enx-api did not write itself came from the
+        // gateway in front of it (Kong's "failure to get a peer from the
+        // ring-balancer" during a homelab redeploy, a Cloudflare/nginx HTML
+        // page in production). Its text means nothing to a reader.
+        if (GATEWAY_ERROR_STATUSES.has(response.status) && !fromApi) {
+          if (
+            response.status === 503 &&
+            gatewayRetries < GATEWAY_RETRY_DELAYS_MS.length
+          ) {
+            const delay = GATEWAY_RETRY_DELAYS_MS[gatewayRetries++]
+            swlog(
+              `gateway 503 from ${endpoint}, retry ${gatewayRetries} in ${delay}ms`,
+              'warn'
+            )
+            await new Promise(resolve => setTimeout(resolve, delay))
+            continue
+          }
+          errorMessage = SERVICE_UNAVAILABLE_MESSAGE
         }
 
         // Returned directly (not thrown) so response.status survives into
@@ -323,9 +357,6 @@ export const makeApiRequest = async (
       console.log('API response data:', data)
       return { success: true, data }
     }
-
-    // Loop always returns or throws; this satisfies the type checker.
-    throw new Error('Session expired')
   } catch (error) {
     console.error('API request failed:', error)
 

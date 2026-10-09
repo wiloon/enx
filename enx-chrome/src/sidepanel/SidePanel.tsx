@@ -340,6 +340,17 @@ function PhraseConfirmButton({
   )
 }
 
+// What an AI-call error row says: a 402 is the user's credit running out,
+// which reads better as that than as the server's own wording.
+function contextErrorDisplay(
+  message: string | undefined,
+  httpStatus: number | undefined
+): string | undefined {
+  return httpStatus === HTTP_INSUFFICIENT_CREDIT
+    ? 'Not enough AI translation credit'
+    : message
+}
+
 // One word/phrase card: headline (word + phonetic + play + Query Count),
 // dismiss button, error rows, and the meaning block (AI in-context gloss over
 // the generic dictionary meaning). Shared by the top-level list and every
@@ -351,14 +362,37 @@ function WordCard({
   onToggleExpand,
   onRemove,
   onRetryContext,
+  shownAbove,
 }: {
   card: WordCardData
   expanded: boolean
   onToggleExpand: () => void
   onRemove: () => void
   onRetryContext: () => void
+  // Error text the owning sentence already shows, with a Retry that also
+  // covers this card -- a row repeating it would be the same failure twice.
+  shownAbove?: string
 }) {
   const phonetic = formatPhonetic(card.pronunciation)
+  // One failure (the API down for a moment) fails the dictionary and the AI
+  // halves alike; show its message once. The context row is the one kept:
+  // its Retry redoes the dictionary too when that never loaded.
+  const contextErrorText =
+    card.contextStatus === 'error'
+      ? contextErrorDisplay(card.contextError, card.contextErrorHttpStatus)
+      : undefined
+  const dictionaryErrorText =
+    card.dictionaryStatus === 'error'
+      ? card.dictionaryErrorHttpStatus === HTTP_QUOTA_EXCEEDED
+        ? "You've used up today's free lookups"
+        : card.dictionaryError
+      : undefined
+  const showContextError =
+    contextErrorText !== undefined && contextErrorText !== shownAbove
+  const showDictionaryError =
+    dictionaryErrorText !== undefined &&
+    dictionaryErrorText !== shownAbove &&
+    dictionaryErrorText !== contextErrorText
   const dictLong =
     !!card.dictionaryChinese &&
     (card.dictionaryChinese.length > 40 ||
@@ -429,16 +463,12 @@ function WordCard({
       {/* Kept off the headline row: an error (e.g. session expiry) read as a
           real translation there. Its own row + retry button makes it
           obviously an error and recoverable. */}
-      {card.contextStatus === 'error' && (
+      {showContextError && (
         <div
           className="flex items-center justify-between gap-2 text-destructive text-xs bg-destructive/10 rounded-sm px-2 py-1 mt-2"
           data-testid={`sidepanel-context-error-${card.word}`}
         >
-          <span className="flex-1">
-            {card.contextErrorHttpStatus === HTTP_INSUFFICIENT_CREDIT
-              ? 'Not enough AI translation credit'
-              : card.contextError}
-          </span>
+          <span className="flex-1">{contextErrorText}</span>
           {card.contextErrorHttpStatus === HTTP_INSUFFICIENT_CREDIT && (
             <UpgradeLink className="text-destructive hover:text-destructive/80 font-medium whitespace-nowrap underline" />
           )}
@@ -456,16 +486,12 @@ function WordCard({
 
       {/* Dictionary half's own error row -- 429 means the free daily lookup
           quota (TASK-SPEC §4.2) was hit, distinct from a generic failure. */}
-      {card.dictionaryStatus === 'error' && (
+      {showDictionaryError && (
         <div
           className="flex items-center justify-between gap-2 text-destructive text-xs bg-destructive/10 rounded-sm px-2 py-1 mt-2"
           data-testid={`sidepanel-dictionary-error-${card.word}`}
         >
-          <span className="flex-1">
-            {card.dictionaryErrorHttpStatus === HTTP_QUOTA_EXCEEDED
-              ? "You've used up today's free lookups"
-              : card.dictionaryError}
-          </span>
+          <span className="flex-1">{dictionaryErrorText}</span>
           {card.dictionaryErrorHttpStatus === HTTP_QUOTA_EXCEEDED && (
             <UpgradeLink className="text-destructive hover:text-destructive/80 font-medium whitespace-nowrap underline" />
           )}
@@ -547,6 +573,7 @@ function SentenceBlock({
   onPhraseConfirm,
   onRemoveWord,
   onRetryContext,
+  onRetrySentence,
 }: {
   entry: SentenceEntry
   expandedWords: Set<string>
@@ -559,6 +586,7 @@ function SentenceBlock({
   ) => void
   onRemoveWord: (sentenceId: string, word: string) => void
   onRetryContext: (sentenceId: string, word: string) => void
+  onRetrySentence: (sentenceId: string) => void
 }) {
   const sentenceRef = useRef<HTMLParagraphElement>(null)
   // A 2+-word selection in the sentence is a phrase lookup, but it costs an AI
@@ -569,6 +597,11 @@ function SentenceBlock({
     rect: { bottom: number; left: number } | null
   } | null>(null)
   const clearPendingPhrase = useCallback(() => setPendingPhrase(null), [])
+
+  const sentenceErrorText =
+    entry.status === 'error'
+      ? contextErrorDisplay(entry.errorMessage, entry.errorHttpStatus)
+      : undefined
 
   // Total words in the sentence -- invariant per entry, so a selection that
   // spans them all is "the whole sentence" and the top status area already
@@ -663,15 +696,23 @@ function SentenceBlock({
           </div>
         )}
         {entry.status === 'error' && (
-          <div className="text-destructive" data-testid="sidepanel-error">
-            {entry.errorHttpStatus === HTTP_INSUFFICIENT_CREDIT ? (
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span>Not enough AI translation credit</span>
-                <UpgradeLink />
-              </div>
-            ) : (
-              entry.errorMessage
+          <div
+            className="flex items-center justify-between gap-2 flex-wrap text-destructive"
+            data-testid="sidepanel-error"
+          >
+            <span className="flex-1">{sentenceErrorText}</span>
+            {entry.errorHttpStatus === HTTP_INSUFFICIENT_CREDIT && (
+              <UpgradeLink />
             )}
+            <button
+              type="button"
+              data-testid="sidepanel-retry-sentence"
+              onClick={() => onRetrySentence(entry.id)}
+              className="text-destructive hover:text-destructive/80 font-medium whitespace-nowrap"
+              title="Retry"
+            >
+              Retry
+            </button>
           </div>
         )}
         {entry.status === 'loaded' && (
@@ -691,6 +732,7 @@ function SentenceBlock({
               onToggleExpand={() => onToggleExpand(card.word)}
               onRemove={() => onRemoveWord(entry.id, card.word)}
               onRetryContext={() => onRetryContext(entry.id, card.word)}
+              shownAbove={sentenceErrorText}
             />
           ))}
         </div>
@@ -1002,6 +1044,51 @@ function SidePanelContent() {
     [fetchWordContext]
   )
 
+  // Whole-sentence translation for SentenceEntry `id`, filled in when it
+  // resolves. `isCancelled` lets the creating effect drop a response that
+  // arrives after its cleanup ran.
+  const translateSentence = useCallback(
+    (
+      id: string,
+      sentence: string,
+      isCancelled: () => boolean = () => false
+    ) => {
+      const patchSentence = (patch: Partial<SentenceEntry>) =>
+        setEntries(prev =>
+          prev.map(e =>
+            e.kind === 'sentence' && e.id === id ? { ...e, ...patch } : e
+          )
+        )
+
+      sendMessageToBackground<BackgroundResponse>({
+        type: 'translateSentence',
+        sentence,
+      } satisfies ContentMessage)
+        .then(response => {
+          if (isCancelled()) return
+          if (response.success && response.chinese) {
+            patchSentence({ chinese: response.chinese, status: 'loaded' })
+          } else {
+            patchSentence({
+              errorMessage: response.error || 'Translation service unavailable',
+              errorHttpStatus: response.status,
+              status: 'error',
+            })
+          }
+        })
+        .catch(error => {
+          if (isCancelled()) return
+          console.error('SidePanel: sentence translation failed', error)
+          patchSentence({
+            errorMessage: 'Translation service unavailable',
+            errorHttpStatus: undefined,
+            status: 'error',
+          })
+        })
+    },
+    []
+  )
+
   // Re-translate whenever a new sentence context arrives (and it isn't a
   // phrase context -- see the effect below for that). Prepends a new
   // SentenceEntry and fills it in as the translation resolves. Keyed on
@@ -1040,51 +1127,7 @@ function SidePanelContent() {
     if (anchorWord) seedAnchorWord(id, anchorWord, sentence)
 
     let cancelled = false
-
-    sendMessageToBackground<BackgroundResponse>({
-      type: 'translateSentence',
-      sentence,
-    } satisfies ContentMessage)
-      .then(response => {
-        if (cancelled) return
-        if (response.success && response.chinese) {
-          const chinese = response.chinese
-          setEntries(prev =>
-            prev.map(e =>
-              e.kind === 'sentence' && e.id === id
-                ? { ...e, chinese, status: 'loaded' }
-                : e
-            )
-          )
-        } else {
-          const errorMessage =
-            response.error || 'Translation service unavailable'
-          const errorHttpStatus = response.status
-          setEntries(prev =>
-            prev.map(e =>
-              e.kind === 'sentence' && e.id === id
-                ? { ...e, errorMessage, errorHttpStatus, status: 'error' }
-                : e
-            )
-          )
-        }
-      })
-      .catch(error => {
-        if (cancelled) return
-        console.error('SidePanel: sentence translation failed', error)
-        setEntries(prev =>
-          prev.map(e =>
-            e.kind === 'sentence' && e.id === id
-              ? {
-                  ...e,
-                  errorMessage: 'Translation service unavailable',
-                  errorHttpStatus: undefined,
-                  status: 'error',
-                }
-              : e
-          )
-        )
-      })
+    translateSentence(id, sentence, () => cancelled)
 
     return () => {
       cancelled = true
@@ -1198,6 +1241,30 @@ function SidePanelContent() {
     [entries, fetchContextTranslation, fetchWordContext]
   )
 
+  // The sentence's error row is the only one shown for a failure its words
+  // share (WordCard `shownAbove`), so its Retry redoes those words as well.
+  const handleRetrySentence = useCallback(
+    (sentenceId: string) => {
+      const entry = entries.find(
+        (e): e is SentenceEntry => e.kind === 'sentence' && e.id === sentenceId
+      )
+      if (!entry) return
+      setEntries(prev =>
+        prev.map(e =>
+          e.kind === 'sentence' && e.id === sentenceId
+            ? { ...e, status: 'loading', errorMessage: '' }
+            : e
+        )
+      )
+      translateSentence(entry.id, entry.sentence)
+      for (const card of entry.words) {
+        if (card.contextStatus === 'error' || card.dictionaryStatus === 'error')
+          handleRetryContextTranslation(entry.id, card.word)
+      }
+    },
+    [entries, translateSentence, handleRetryContextTranslation]
+  )
+
   // A single-word selection inside a sentence's own rendered original
   // (ADR-017) -- always nested into that entry's `words` (`sentenceId` is
   // always defined here; only page clicks and main-page phrases populate the
@@ -1276,6 +1343,7 @@ function SidePanelContent() {
             }
             onRemoveWord={handleRemoveCard}
             onRetryContext={handleRetryContextTranslation}
+            onRetrySentence={handleRetrySentence}
           />
         ) : (
           <WordCard
