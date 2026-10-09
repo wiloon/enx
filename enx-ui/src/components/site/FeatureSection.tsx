@@ -11,7 +11,8 @@ const FEATURES: Feature[] = [
   {
     title: 'Word highlight while you read',
     body: "Words worth reviewing get a colored underline, graded by how far along you are with each one. It's a toggle — turn it off and the page is clean, click-to-look-up still works.",
-    imageAlt: 'An article with new words underlined in different colors',
+    imageAlt:
+      'An article with looked-up words underlined in shades of one color',
   },
   {
     title: 'Click any word for its meaning',

@@ -16,7 +16,7 @@ export const dynamic = 'force-static'
 export const metadata: Metadata = {
   title: 'Catglish — AI-assisted English reading in your browser',
   description:
-    'Catglish underlines the words worth learning as you read English online, explains any word you click, and translates whole sentences on demand.',
+    'Catglish explains any word you click as you read English online, translates whole sentences on demand, and underlines the words you have looked up wherever they come back.',
 }
 
 export default function LandingPage() {

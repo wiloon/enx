@@ -7,6 +7,11 @@ jest.mock('@clerk/nextjs', () => ({
   useAuth: () => mockUseAuth(),
 }))
 
+const mockExtensionStatus = jest.fn(() => 'not-installed')
+jest.mock('@/hooks/useExtensionStatus', () => ({
+  useExtensionStatus: () => mockExtensionStatus(),
+}))
+
 import HeaderAuthLinks from '../HeaderAuthLinks'
 import Hero from '../Hero'
 import DemoVideo from '../DemoVideo'
@@ -25,7 +30,10 @@ jest.mock('@/lib/site', () => {
 // tests swap in other strings, so widen to `string` as well as dropping readonly.
 const mutableSite = SITE as unknown as Record<keyof typeof SITE, string>
 const original = { ...SITE }
-afterEach(() => Object.assign(mutableSite, original))
+afterEach(() => {
+  Object.assign(mutableSite, original)
+  mockExtensionStatus.mockReturnValue('not-installed')
+})
 
 describe('HeaderAuthLinks', () => {
   beforeEach(() => mockUseAuth.mockReturnValue({ isSignedIn: false }))
@@ -36,11 +44,11 @@ describe('HeaderAuthLinks', () => {
     expect(link).toHaveAttribute('href', '/app')
   })
 
-  it('shows "Open App" when Clerk reports a signed-in viewer', async () => {
+  it('shows "Go to app" when Clerk reports a signed-in viewer', async () => {
     mockUseAuth.mockReturnValue({ isSignedIn: true })
     render(<HeaderAuthLinks />)
     expect(
-      await screen.findByRole('link', { name: 'Open App' })
+      await screen.findByRole('link', { name: 'Go to app' })
     ).toBeInTheDocument()
   })
 })
@@ -53,6 +61,26 @@ describe('Hero', () => {
     expect(
       screen.getByRole('link', { name: /see how it works/i })
     ).toHaveAttribute('href', '#how-it-works')
+  })
+
+  it('keeps the store CTA while extension detection is pending', () => {
+    mockExtensionStatus.mockReturnValue('unknown')
+    render(<Hero />)
+    expect(
+      screen.getByRole('link', { name: /add to chrome/i })
+    ).toHaveAttribute('href', SITE.chromeWebStoreUrl)
+  })
+
+  it('swaps the store CTA for "Go to app" when the extension is installed', () => {
+    mockExtensionStatus.mockReturnValue('installed')
+    render(<Hero />)
+    expect(
+      screen.queryByRole('link', { name: /add to chrome/i })
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Go to app' })).toHaveAttribute(
+      'href',
+      SITE.appPath
+    )
   })
 
   it('quotes the cheapest plan from plans.ts and links to /pricing', () => {
@@ -189,11 +217,25 @@ describe('SiteHeader', () => {
     )
   })
 
-  it('links to the GitHub repository', () => {
+  it('links to the GitHub repository from the nav, in a new tab', () => {
     render(<SiteHeader />)
-    expect(screen.getByRole('link', { name: 'GitHub' })).toHaveAttribute(
+    const link = screen.getByRole('link', { name: 'GitHub' })
+    expect(link).toHaveAttribute('href', SITE.githubUrl)
+    expect(link).toHaveAttribute('target', '_blank')
+  })
+
+  it('shows "Add to Chrome" until the extension is detected as installed', () => {
+    const { unmount } = render(<SiteHeader />)
+    expect(screen.getByRole('link', { name: 'Add to Chrome' })).toHaveAttribute(
       'href',
-      SITE.githubUrl
+      SITE.chromeWebStoreUrl
     )
+    unmount()
+
+    mockExtensionStatus.mockReturnValue('installed')
+    render(<SiteHeader />)
+    expect(
+      screen.queryByRole('link', { name: 'Add to Chrome' })
+    ).not.toBeInTheDocument()
   })
 })

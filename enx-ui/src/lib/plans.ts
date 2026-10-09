@@ -64,7 +64,7 @@ export const FREE_PLAN = {
   name: 'Free',
   priceLabel: '$0',
   features: [
-    'Underlines the words worth learning on any English page',
+    'Underlines the words you have looked up, on any English page',
     `Click any word for its dictionary meaning, ${FREE_DAILY_LOOKUPS} lookups a day`,
     'Vocabulary list and review built from what you look up',
   ],

@@ -9,7 +9,7 @@ const noopSubscribe = () => () => {}
 
 // Client island (ADR-013 Decision 5): the only auth-aware part of the
 // otherwise-static marketing header. Renders a stable label until mounted to
-// avoid a hydration mismatch, then swaps in "Open App" for a signed-in viewer.
+// avoid a hydration mismatch, then swaps in "Go to app →" for a signed-in viewer.
 // Auth state comes from Clerk (ADR-015).
 export default function HeaderAuthLinks() {
   // false during SSR and hydration, true after: the "mounted" flag without a
@@ -21,14 +21,20 @@ export default function HeaderAuthLinks() {
   )
   const { isSignedIn } = useAuth()
 
-  const label = mounted && isSignedIn ? 'Open App' : 'Sign in'
+  const signedIn = mounted && isSignedIn
 
   return (
     <Link
       href={SITE.appPath}
-      className="text-sm font-medium text-foreground/70 transition-colors hover:text-foreground"
+      className="whitespace-nowrap text-sm font-medium text-foreground/70 transition-colors hover:text-foreground"
     >
-      {label}
+      {signedIn ? (
+        <>
+          Go to app <span aria-hidden="true">→</span>
+        </>
+      ) : (
+        'Sign in'
+      )}
     </Link>
   )
 }

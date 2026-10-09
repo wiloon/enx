@@ -37,7 +37,7 @@ export default function SiteFooter() {
             </li>
             <li>
               <Link href={SITE.appPath} className="hover:text-foreground">
-                Open App
+                Go to app
               </Link>
             </li>
           </ul>
