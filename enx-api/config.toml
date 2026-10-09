@@ -2,24 +2,8 @@
 dev-mode = true
 port = 8091
 
-[data-service]
-address = "localhost:50051"
-
-[mysql]
-address = "mysql.wiloon.com:3306"
-
-[sync]
-# minute
-duration = 60
-
-[news]
-expire-time = "-720h"
-gc-duration = "24h"
-
 [log]
 level = "debug"
-path = "/data/rssx/logs/"
-file-name = "rssx.log"
 
 [ecdict]
 db_path = ""
@@ -109,11 +93,8 @@ model = "gemini-3.6-flash"
 rephrase-model = ""
 base-url = "https://generativelanguage.googleapis.com/v1beta/openai"
 
-[stripe]
-# Publishable key is designed to be public and safe to check in.
-# STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET are env-var only, never here
-# (same convention as KIMI_API_KEY / RESEND_API_KEY).
-publishable-key = ""
+# [stripe]: STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET are env-var only, never
+# here (same convention as KIMI_API_KEY / RESEND_API_KEY).
 
 [stripe.price]
 # Stripe Price lookup_keys, not raw Price IDs. lookup_keys are stable across
