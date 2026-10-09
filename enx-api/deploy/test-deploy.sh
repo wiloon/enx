@@ -38,7 +38,7 @@ echo "2. Testing version detection:"
 VERSION=${1:-$(git describe --tags --always --dirty 2>/dev/null || echo "dev")}
 GIT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
 GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
-BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')
+BUILD_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
 echo "   Version: $VERSION"
 echo "   Git Commit: $GIT_COMMIT"
