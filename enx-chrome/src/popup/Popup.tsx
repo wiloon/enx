@@ -368,10 +368,10 @@ function SignedInBody({
         </span>
         <span className="min-w-0 flex-1 leading-tight">
           <span className="block text-sm font-medium text-foreground">
-            Highlight new words while reading
+            Highlight looked-up words
           </span>
           <span className="block text-[11px] text-muted-foreground">
-            Underline words worth reviewing
+            Underline the words you&apos;ve looked up
           </span>
         </span>
         <span className="relative inline-flex shrink-0 items-center">

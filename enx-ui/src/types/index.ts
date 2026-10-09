@@ -174,6 +174,36 @@ export interface AdminPageReport {
 // documents per user (oldest evicted on write) -- all enforced server-side.
 // Editing a document (ADR-022 Addendum) bumps `updatedAt` and resets the
 // TTL; lists sort by `updatedAt`, not `createdAt`.
+// GET /api/me/words: one word the user looked up in an article (a
+// user_dicts row), including the ones marked known.
+export type WordListStatus = 'all' | 'learning' | 'known'
+
+export interface WordListEntry {
+  english: string
+  chinese: string
+  pronunciation: string
+  queryCount: number
+  known: boolean
+  firstLookedUpAt: string
+  // Moves on a lookup and on marking a word known: "last touched".
+  updatedAt: string
+}
+
+export interface WordListPage {
+  total: number
+  words: WordListEntry[]
+}
+
+// GET /api/saved-pages (ADR-032): a page the user saved from the extension
+// popup. URL and title only.
+export interface SavedPage {
+  id: string
+  url: string
+  title: string
+  host: string
+  createdAt: string
+}
+
 export interface ReaderDocumentSummary {
   id: string
   createdAt: string

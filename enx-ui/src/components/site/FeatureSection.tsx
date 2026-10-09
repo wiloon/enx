@@ -10,13 +10,13 @@ export interface Feature {
 const FEATURES: Feature[] = [
   {
     title: 'Word highlight while you read',
-    body: "Words worth reviewing get a colored underline, graded by how far along you are with each one. It's a toggle — turn it off and the page is clean, click-to-look-up still works.",
+    body: "Words you've looked up get a colored underline wherever they appear again, fading the more often you've looked each one up. It's a toggle — turn it off and the page is clean, click-to-look-up still works.",
     imageAlt:
       'An article with looked-up words underlined in shades of one color',
   },
   {
     title: 'Click any word for its meaning',
-    body: "Click a word in the text and a popup shows its definition, IPA, how many times you've looked it up, and its review status. No setup — it follows learning mode.",
+    body: "Click a word in the text and a popup shows its definition, IPA, how many times you've looked it up, and whether you've marked it known. No setup — it follows learning mode.",
     imageAlt: 'A word lookup popup over an English article',
   },
   {

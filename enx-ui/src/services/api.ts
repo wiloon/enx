@@ -10,6 +10,7 @@ import {
   PreferenceChanges,
   PreferencesData,
   ReaderDocument,
+  SavedPage,
   ReaderDocumentSummary,
   RephraseData,
   StatsOverview,
@@ -17,6 +18,8 @@ import {
   StatsSeries,
   VersionData,
   WordData,
+  WordListPage,
+  WordListStatus,
 } from '@/types'
 
 export type SubscriptionPlan = 'pro' | 'pro-plus' | 'max'
@@ -284,6 +287,31 @@ export class ApiService {
     return this.makeRequest('/api/reader/documents', {
       method: 'POST',
       body: JSON.stringify({ content }),
+    })
+  }
+
+  async listMyWords(params: {
+    status: WordListStatus
+    q?: string
+    limit?: number
+    offset?: number
+  }): Promise<ApiResponse<WordListPage>> {
+    const query = new URLSearchParams({ status: params.status })
+    if (params.q) query.set('q', params.q)
+    if (params.limit !== undefined) query.set('limit', String(params.limit))
+    if (params.offset !== undefined) query.set('offset', String(params.offset))
+    return this.makeRequest(`/api/me/words?${query}`)
+  }
+
+  async listSavedPages(): Promise<ApiResponse<{ pages: SavedPage[] }>> {
+    return this.makeRequest('/api/saved-pages')
+  }
+
+  async deleteSavedPage(
+    id: string
+  ): Promise<ApiResponse<{ success: boolean }>> {
+    return this.makeRequest(`/api/saved-pages/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
     })
   }
 

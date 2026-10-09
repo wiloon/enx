@@ -66,7 +66,7 @@ export const FREE_PLAN = {
   features: [
     'Underlines the words you have looked up, on any English page',
     `Click any word for its dictionary meaning, ${FREE_DAILY_LOOKUPS} lookups a day`,
-    'Vocabulary list and review built from what you look up',
+    'A word list built from what you look up',
   ],
   note: 'AI translation uses credits, which come with a plan or a top-up.',
 } as const
