@@ -33,7 +33,6 @@ func setupEcdictWith(t *testing.T, rows ...stardictRow) {
 func setupReviewTest(t *testing.T, rows ...stardictRow) {
 	t.Helper()
 	setupQuotaTestDB(t)
-	setQuotaLimit(t, 0)
 	setupEcdictWith(t, rows...)
 	gin.SetMode(gin.TestMode)
 }

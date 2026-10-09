@@ -11,6 +11,7 @@ import (
 	"enx-api/config"
 	"enx-api/dictionary"
 	"enx-api/dictionary/adapters"
+	"enx-api/dictsample"
 	"enx-api/ecdict"
 	"enx-api/email"
 	"enx-api/entitlement"
@@ -75,6 +76,7 @@ func main() {
 	}
 
 	ecdict.Init(cfg.Ecdict.DBPath)
+	dictsample.SetEnabled(cfg.Ecdict.Sampling)
 
 	go runReaderDocumentCleanup()
 	go runStatsIngestLogCleanup()
@@ -344,7 +346,7 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 		CallsPerDay:    cfg.Credits.Trial.CallsPerDay,
 	}, nil))
 
-	dictionaryService := dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, dictionary.QuotaMeter{}, entitlements)
+	dictionaryService := dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, dictionary.QuotaMeter{Limits: cfg.Stripe.Quota}, entitlements)
 	preferencesService := preferences.NewService(prefadapters.Table{}, entitlements)
 
 	// The AI word fallback (ADR-045) is a second request after a lookup

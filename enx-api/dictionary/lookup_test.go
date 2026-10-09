@@ -2,13 +2,13 @@ package dictionary
 
 import (
 	"context"
+	"enx-api/config"
 	"errors"
 	"testing"
 
 	"enx-api/utils/sqlitex"
 
 	"github.com/glebarez/sqlite"
-	"github.com/spf13/viper"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
@@ -27,16 +27,8 @@ func setupTestDB(t *testing.T) {
 	sqlitex.DB = db
 }
 
-func setQuotaLimits(t *testing.T, free, subscribed int64) {
-	t.Helper()
-	for key, value := range map[string]int64{
-		"stripe.quota.dictionary-lookup-daily-free":       free,
-		"stripe.quota.dictionary-lookup-daily-subscribed": subscribed,
-	} {
-		previous := viper.Get(key)
-		viper.Set(key, value)
-		t.Cleanup(func() { viper.Set(key, previous) })
-	}
+func quotaLimits(free, subscribed int64) config.StripeQuota {
+	return config.StripeQuota{DictionaryLookupDailyFree: free, DictionaryLookupDailySubscribed: subscribed}
 }
 
 func quotaRowCount(t *testing.T, userID string) int64 {
@@ -51,17 +43,17 @@ func quotaRowCount(t *testing.T, userID string) int64 {
 
 func TestMeterLookupEnforcesQuotaForFreeUser(t *testing.T) {
 	setupTestDB(t)
-	setQuotaLimits(t, 2, 0)
+	limits := quotaLimits(2, 0)
 	userID := "u-" + t.Name()
 	ctx := context.Background()
 
-	if err := MeterLookup(ctx, userID); err != nil {
+	if err := MeterLookup(ctx, userID, limits); err != nil {
 		t.Fatalf("lookup 1: %v", err)
 	}
-	if err := MeterLookup(ctx, userID); err != nil {
+	if err := MeterLookup(ctx, userID, limits); err != nil {
 		t.Fatalf("lookup 2: %v", err)
 	}
-	if err := MeterLookup(ctx, userID); !errors.Is(err, ErrQuotaExceeded) {
+	if err := MeterLookup(ctx, userID, limits); !errors.Is(err, ErrQuotaExceeded) {
 		t.Fatalf("lookup 3: got %v, want ErrQuotaExceeded", err)
 	}
 }
@@ -71,12 +63,12 @@ func TestMeterLookupEnforcesQuotaForFreeUser(t *testing.T) {
 // can never produce any usage to look at.
 func TestMeterLookupCountsWithNoLimitConfigured(t *testing.T) {
 	setupTestDB(t)
-	setQuotaLimits(t, 0, 0)
+	limits := quotaLimits(0, 0)
 	userID := "u-" + t.Name()
 	ctx := context.Background()
 
 	for i := 0; i < 5; i++ {
-		if err := MeterLookup(ctx, userID); err != nil {
+		if err := MeterLookup(ctx, userID, limits); err != nil {
 			t.Fatalf("lookup %d: an unset limit must not block, got %v", i, err)
 		}
 	}
@@ -90,15 +82,15 @@ func TestMeterLookupCountsWithNoLimitConfigured(t *testing.T) {
 // limit is suppressing (ADR-029 Options C2).
 func TestMeterLookupKeepsCountingPastTheLimit(t *testing.T) {
 	setupTestDB(t)
-	setQuotaLimits(t, 1, 0)
+	limits := quotaLimits(1, 0)
 	userID := "u-" + t.Name()
 	ctx := context.Background()
 
-	if err := MeterLookup(ctx, userID); err != nil {
+	if err := MeterLookup(ctx, userID, limits); err != nil {
 		t.Fatalf("lookup 1: %v", err)
 	}
 	for i := 2; i <= 4; i++ {
-		if err := MeterLookup(ctx, userID); !errors.Is(err, ErrQuotaExceeded) {
+		if err := MeterLookup(ctx, userID, limits); !errors.Is(err, ErrQuotaExceeded) {
 			t.Fatalf("lookup %d: got %v, want ErrQuotaExceeded", i, err)
 		}
 	}
@@ -110,7 +102,7 @@ func TestMeterLookupKeepsCountingPastTheLimit(t *testing.T) {
 
 func TestMeterLookupAppliesTheSubscribedTier(t *testing.T) {
 	setupTestDB(t)
-	setQuotaLimits(t, 1, 100) // free tier deliberately tiny
+	limits := quotaLimits(1, 100) // free tier deliberately tiny
 	userID := "u-" + t.Name()
 	ctx := context.Background()
 
@@ -125,7 +117,7 @@ func TestMeterLookupAppliesTheSubscribedTier(t *testing.T) {
 	}
 
 	for i := 0; i < 5; i++ {
-		if err := MeterLookup(ctx, userID); err != nil {
+		if err := MeterLookup(ctx, userID, limits); err != nil {
 			t.Fatalf("lookup %d: subscriber is under their own tier, got %v", i, err)
 		}
 	}
@@ -142,7 +134,7 @@ func TestMeterLookupAppliesTheSubscribedTier(t *testing.T) {
 // keep counting (ADR-029 Options G2).
 func TestMeterLookupTreatsSubscriberCheckFailureAsSubscriber(t *testing.T) {
 	setupTestDB(t)
-	setQuotaLimits(t, 1, 100)
+	limits := quotaLimits(1, 100)
 	userID := "u-" + t.Name()
 	ctx := context.Background()
 
@@ -151,7 +143,7 @@ func TestMeterLookupTreatsSubscriberCheckFailureAsSubscriber(t *testing.T) {
 	}
 
 	for i := 0; i < 5; i++ {
-		if err := MeterLookup(ctx, userID); err != nil {
+		if err := MeterLookup(ctx, userID, limits); err != nil {
 			t.Fatalf("lookup %d: subscriber-check failure should fail open, got %v", i, err)
 		}
 	}
@@ -165,7 +157,7 @@ func TestMeterLookupTreatsSubscriberCheckFailureAsSubscriber(t *testing.T) {
 // Fail open: allow the lookup.
 func TestMeterLookupFailsOpenWhenQuotaStoreUnavailable(t *testing.T) {
 	setupTestDB(t)
-	setQuotaLimits(t, 1, 0)
+	limits := quotaLimits(1, 0)
 	userID := "u-" + t.Name()
 	ctx := context.Background()
 
@@ -174,7 +166,7 @@ func TestMeterLookupFailsOpenWhenQuotaStoreUnavailable(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		if err := MeterLookup(ctx, userID); err != nil {
+		if err := MeterLookup(ctx, userID, limits); err != nil {
 			t.Fatalf("lookup %d: quota-store failure should fail open, got %v", i, err)
 		}
 	}
@@ -182,7 +174,7 @@ func TestMeterLookupFailsOpenWhenQuotaStoreUnavailable(t *testing.T) {
 
 func TestMeterLookupPastDueSubscriberIsNotExempt(t *testing.T) {
 	setupTestDB(t)
-	setQuotaLimits(t, 1, 0)
+	limits := quotaLimits(1, 0)
 	userID := "u-" + t.Name()
 	ctx := context.Background()
 
@@ -196,10 +188,10 @@ func TestMeterLookupPastDueSubscriberIsNotExempt(t *testing.T) {
 		t.Fatalf("seed subscription: %v", err)
 	}
 
-	if err := MeterLookup(ctx, userID); err != nil {
+	if err := MeterLookup(ctx, userID, limits); err != nil {
 		t.Fatalf("lookup 1: %v", err)
 	}
-	if err := MeterLookup(ctx, userID); !errors.Is(err, ErrQuotaExceeded) {
+	if err := MeterLookup(ctx, userID, limits); !errors.Is(err, ErrQuotaExceeded) {
 		t.Fatalf("lookup 2: got %v, want ErrQuotaExceeded (past_due is not active)", err)
 	}
 }
@@ -207,18 +199,15 @@ func TestMeterLookupPastDueSubscriberIsNotExempt(t *testing.T) {
 // The pre-ADR-029 key keeps working as the free tier for one release.
 func TestMeterLookupFallsBackToTheSupersededQuotaKey(t *testing.T) {
 	setupTestDB(t)
-	setQuotaLimits(t, 0, 0)
-	previous := viper.Get("stripe.quota.dictionary-lookup-daily")
-	viper.Set("stripe.quota.dictionary-lookup-daily", 1)
-	t.Cleanup(func() { viper.Set("stripe.quota.dictionary-lookup-daily", previous) })
+	limits := config.StripeQuota{DictionaryLookupDaily: 1}
 
 	userID := "u-" + t.Name()
 	ctx := context.Background()
 
-	if err := MeterLookup(ctx, userID); err != nil {
+	if err := MeterLookup(ctx, userID, limits); err != nil {
 		t.Fatalf("lookup 1: %v", err)
 	}
-	if err := MeterLookup(ctx, userID); !errors.Is(err, ErrQuotaExceeded) {
+	if err := MeterLookup(ctx, userID, limits); !errors.Is(err, ErrQuotaExceeded) {
 		t.Fatalf("lookup 2: got %v, want ErrQuotaExceeded from the superseded key", err)
 	}
 }

@@ -5,8 +5,7 @@
 // the dictionary (Decision 8) -- today both questions are answered by
 // guesswork because nothing records what the dictionary fails to resolve.
 //
-// It is deliberately a leaf package depending only on the logger and
-// viper: it exists to be DELETED WHOLE once the two-week sample is in.
+// It is deliberately a leaf package depending only on the logger: it exists to be DELETED WHOLE once the two-week sample is in.
 // Nothing should grow a dependency on it, and no behaviour should ever
 // branch on what it records.
 //
@@ -33,10 +32,9 @@ package dictsample
 
 import (
 	"strings"
+	"sync/atomic"
 
 	"enx-api/utils/logger"
-
-	"github.com/spf13/viper"
 )
 
 // Source names the layer that answered a lookup.
@@ -49,11 +47,18 @@ const (
 	SourceProbe  Source = "probe"  // not looked up at all, recorded for offline matching
 )
 
+var enabled atomic.Bool
+
+// SetEnabled switches sampling on or off; main sets it from ecdict.sampling
+// at startup. A package switch rather than an injected dependency, because
+// the package is scaffolding to be deleted whole (see the package comment).
+func SetEnabled(on bool) { enabled.Store(on) }
+
 // Enabled reports whether sampling is on. It is off by default: this is
 // measurement scaffolding, and a deploy that forgets to turn it off
 // should cost nothing.
 func Enabled() bool {
-	return viper.GetBool("ecdict.sampling")
+	return enabled.Load()
 }
 
 // Word records one dictionary lookup and which layer answered it.

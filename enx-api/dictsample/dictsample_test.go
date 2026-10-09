@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	"github.com/spf13/viper"
 )
 
 // capture swaps the log sink for the duration of a test and returns the
@@ -23,9 +21,9 @@ func capture(t *testing.T) *[]string {
 
 func enable(t *testing.T, on bool) {
 	t.Helper()
-	prev := viper.GetBool("ecdict.sampling")
-	viper.Set("ecdict.sampling", on)
-	t.Cleanup(func() { viper.Set("ecdict.sampling", prev) })
+	prev := Enabled()
+	SetEnabled(on)
+	t.Cleanup(func() { SetEnabled(prev) })
 }
 
 // The whole package must be inert until switched on -- it ships disabled
