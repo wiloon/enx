@@ -310,6 +310,60 @@ describe('background makeApiRequest / Clerk session token', () => {
     )
   })
 
+  it('collapses parallel lookups after a cold start onto one session re-sync (#15)', async () => {
+    // A page load fires several lookups at once into a just-woken worker
+    // whose first Clerk client has no session yet. They must share one
+    // rebuild instead of each nulling and rebuilding the client.
+    __resetClerkClientCacheForTests()
+    let created = 0
+    ;(createClerkClient as jest.Mock).mockImplementation(async () => {
+      created++
+      return {
+        session:
+          created === 1
+            ? null
+            : { getToken: jest.fn(async () => 'recovered-jwt') },
+      }
+    })
+    ;(global.fetch as jest.Mock).mockImplementation(async () =>
+      jsonResponse(200, { English: 'test' })
+    )
+
+    const results = await Promise.all(
+      Array.from({ length: 5 }, (_, i) =>
+        makeApiRequest(`/api/translate?word=w${i}`)
+      )
+    )
+
+    expect(results.every(r => r.success)).toBe(true)
+    for (const [, requestInit] of (global.fetch as jest.Mock).mock.calls) {
+      expect(requestInit.headers.Authorization).toBe('Bearer recovered-jwt')
+    }
+    expect(created).toBe(2)
+  })
+
+  it('starts a fresh re-sync for a call made after a failed one settled', async () => {
+    // The shared re-sync must not pin "signed out" forever: once it settles,
+    // the next call gets its own attempt (e.g. the user signed in meanwhile).
+    __resetClerkClientCacheForTests()
+    let signedIn = false
+    ;(createClerkClient as jest.Mock).mockImplementation(async () => ({
+      session: signedIn ? { getToken: jest.fn(async () => 'later-jwt') } : null,
+    }))
+    ;(global.fetch as jest.Mock).mockImplementation(async () =>
+      jsonResponse(200, {})
+    )
+    await makeApiRequest('/api/me')
+
+    signedIn = true
+    await makeApiRequest('/api/me')
+
+    const [, firstInit] = (global.fetch as jest.Mock).mock.calls[0]
+    const [, secondInit] = (global.fetch as jest.Mock).mock.calls[1]
+    expect(firstInit.headers.Authorization).toBeUndefined()
+    expect(secondInit.headers.Authorization).toBe('Bearer later-jwt')
+  })
+
   it('reports a real session expiry when the retried client is also empty', async () => {
     setClerkSession(null)
     ;(createClerkClient as jest.Mock).mockImplementationOnce(async () => ({
