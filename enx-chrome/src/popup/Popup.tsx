@@ -2,12 +2,13 @@ import DebugPanel from '@/components/DebugPanel'
 import Login from '@/components/Login'
 import { useAutoEnableSite } from '@/hooks/useAutoEnableSite'
 import { useInitializeStorage } from '@/hooks/useInitializeStorage'
+import { useSavedPage } from '@/hooks/useSavedPage'
 import { useWordHighlightEnabled } from '@/hooks/useWordHighlightEnabled'
 import '@/index.css'
 import PageReportPrompt, {
   PageReportStatus,
 } from '@/components/PageReportPrompt'
-import PageSavePrompt, { PageSaveStatus } from '@/components/PageSavePrompt'
+import SaveLinkCard from '@/components/SaveLinkCard'
 import { config } from '@/config/env'
 import { isReportableFailure, EnableFailureReason } from '@/lib/enableOutcome'
 import {
@@ -15,7 +16,6 @@ import {
   getLearningModeStatusOnTab,
 } from '@/lib/enableLearningMode'
 import { PageReportPayload, sanitizePageUrl } from '@/lib/pageReport'
-import { saveOutcome } from '@/lib/pageSave'
 import { initSentry } from '@/lib/sentry'
 import { openActiveTabSidePanel } from '@/lib/sidePanel'
 import { errorAtom, userAtom } from '@/store/atoms'
@@ -23,19 +23,41 @@ import { ClerkProvider, SignOutButton, useUser } from '@clerk/chrome-extension'
 import {
   AcademicCapIcon,
   ArrowRightOnRectangleIcon,
-  BookmarkIcon,
   BookOpenIcon,
   CheckCircleIcon,
   ChevronRightIcon,
   Cog6ToothIcon,
   GlobeAltIcon,
-  LanguageIcon,
   SparklesIcon,
 } from '@heroicons/react/24/outline'
 import { Provider, useAtom, useSetAtom } from 'jotai'
 import { useEffect, useState } from 'react'
 
 initSentry()
+
+// heroicons has no side-panel glyph: a window whose right column is filled,
+// drawn in the same 24px / 1.5 stroke style as the outline set.
+function SidePanelIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      aria-hidden="true"
+      className={className}
+    >
+      <path
+        d="M14.25 4.5h4.5A2.25 2.25 0 0 1 21 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-4.5z"
+        fill="currentColor"
+        fillOpacity={0.3}
+        stroke="none"
+      />
+      <rect x="3" y="4.5" width="18" height="15" rx="2.25" />
+      <path d="M14.25 4.5v15" />
+    </svg>
+  )
+}
 
 // Mirror the Clerk session into userAtom (ADR-015) so the rest of the popup
 // (DebugPanel, etc.) can keep reading user.isLoggedIn / user.username.
@@ -158,48 +180,9 @@ function SignedInBody({
     }
   }
 
-  // Saving (收藏) the current page is a separate, explicit action: the user
-  // sees the address and title first and nothing is sent until they confirm
-  // (ADR-032 Decision 4).
-  const [saveCandidate, setSaveCandidate] = useState<{
-    url: string
-    title: string
-  } | null>(null)
-  const [saveStatus, setSaveStatus] = useState<PageSaveStatus>('idle')
-  const [savedUrl, setSavedUrl] = useState<string | undefined>()
-  const [saveError, setSaveError] = useState<string | undefined>()
-
-  const handleStartSave = async () => {
-    setError(null)
-    setSaveStatus('idle')
-    setSavedUrl(undefined)
-    setSaveError(undefined)
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-    if (!tab?.url || !/^https?:\/\//.test(tab.url)) {
-      setSaveCandidate(null)
-      setError('Only web pages can be saved.')
-      return
-    }
-    setSaveCandidate({ url: tab.url, title: tab.title ?? '' })
-  }
-
-  const handleConfirmSave = async () => {
-    if (!saveCandidate) return
-    setSaveStatus('saving')
-    try {
-      const result = await chrome.runtime.sendMessage({
-        type: 'savePage',
-        savedPage: saveCandidate,
-      })
-      const outcome = saveOutcome(result)
-      setSaveStatus(outcome.status)
-      setSavedUrl(outcome.savedUrl)
-      setSaveError(outcome.errorMessage)
-    } catch {
-      setSaveStatus('failed')
-      setSaveError(undefined)
-    }
-  }
+  // Saving (收藏) the current tab's link: one click, with the address in view
+  // (ADR-032 Decision 4/4a).
+  const savedPage = useSavedPage(user?.id)
 
   const handleEnableLearning = async () => {
     setLearningStatus('processing')
@@ -316,77 +299,6 @@ function SignedInBody({
             : 'Enable learning mode'}
       </button>
 
-      {saveCandidate ? (
-        <PageSavePrompt
-          url={saveCandidate.url}
-          title={saveCandidate.title}
-          status={saveStatus}
-          savedUrl={savedUrl}
-          errorMessage={saveError}
-          onSave={handleConfirmSave}
-          onCancel={() => setSaveCandidate(null)}
-        />
-      ) : (
-        <button
-          type="button"
-          data-testid="popup-save-page"
-          onClick={handleStartSave}
-          className="flex w-full items-center gap-3 rounded-xl bg-background px-3 py-2.5 text-left shadow-xs ring-1 ring-border transition hover:ring-brand/50"
-        >
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-muted text-brand">
-            <BookmarkIcon className="h-[18px] w-[18px]" />
-          </span>
-          <span className="min-w-0 flex-1 leading-tight">
-            <span className="block text-sm font-medium text-foreground">
-              Save this page
-            </span>
-            <span className="block text-[11px] text-muted-foreground">
-              Add it to your Saved list
-            </span>
-          </span>
-        </button>
-      )}
-
-      <button
-        type="button"
-        data-testid="popup-open-sentence-panel"
-        onClick={handleOpenSentencePanel}
-        className="flex w-full items-center gap-3 rounded-xl bg-background px-3 py-2.5 text-left shadow-xs ring-1 ring-border transition hover:ring-brand/50"
-      >
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-muted text-brand">
-          <LanguageIcon className="h-[18px] w-[18px]" />
-        </span>
-        <span className="flex-1 text-sm font-medium text-foreground">
-          Sentence translation panel
-        </span>
-        <ChevronRightIcon className="h-4 w-4 text-muted-foreground" />
-      </button>
-
-      <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-background px-3 py-2.5 shadow-xs ring-1 ring-border">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-muted text-brand">
-          <BookOpenIcon className="h-[18px] w-[18px]" />
-        </span>
-        <span className="min-w-0 flex-1 leading-tight">
-          <span className="block text-sm font-medium text-foreground">
-            Highlight looked-up words
-          </span>
-          <span className="block text-[11px] text-muted-foreground">
-            Underline the words you&apos;ve looked up
-          </span>
-        </span>
-        <span className="relative inline-flex shrink-0 items-center">
-          <input
-            type="checkbox"
-            data-testid="popup-word-highlight-toggle"
-            checked={wordHighlightEnabled}
-            onChange={e => setWordHighlightEnabled(e.target.checked)}
-            className="peer sr-only"
-          />
-          <span className="block h-5 w-9 rounded-full bg-border transition peer-checked:bg-brand peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-1" />
-          <span className="pointer-events-none absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-background shadow-sm transition peer-checked:translate-x-4" />
-        </span>
-      </label>
-
       {/* adr-039: only on pages whose site can be auto-enabled. */}
       {autoEnableSite.site && (
         <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-background px-3 py-2.5 shadow-xs ring-1 ring-border">
@@ -413,6 +325,58 @@ function SignedInBody({
             <span className="pointer-events-none absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-background shadow-sm transition peer-checked:translate-x-4" />
           </span>
         </label>
+      )}
+
+      <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-background px-3 py-2.5 shadow-xs ring-1 ring-border">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-muted text-brand">
+          <BookOpenIcon className="h-[18px] w-[18px]" />
+        </span>
+        <span className="min-w-0 flex-1 leading-tight">
+          <span className="block text-sm font-medium text-foreground">
+            Highlight looked-up words
+          </span>
+          <span className="block text-[11px] text-muted-foreground">
+            Underline the words you&apos;ve looked up
+          </span>
+        </span>
+        <span className="relative inline-flex shrink-0 items-center">
+          <input
+            type="checkbox"
+            data-testid="popup-word-highlight-toggle"
+            checked={wordHighlightEnabled}
+            onChange={e => setWordHighlightEnabled(e.target.checked)}
+            className="peer sr-only"
+          />
+          <span className="block h-5 w-9 rounded-full bg-border transition peer-checked:bg-brand peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-1" />
+          <span className="pointer-events-none absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-background shadow-sm transition peer-checked:translate-x-4" />
+        </span>
+      </label>
+
+      <button
+        type="button"
+        data-testid="popup-open-sentence-panel"
+        onClick={handleOpenSentencePanel}
+        className="flex w-full items-center gap-3 rounded-xl bg-background px-3 py-2.5 text-left shadow-xs ring-1 ring-border transition hover:ring-brand/50"
+      >
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-muted text-brand">
+          <SidePanelIcon className="h-[18px] w-[18px]" />
+        </span>
+        <span className="flex-1 text-sm font-medium text-foreground">
+          Open side panel
+        </span>
+        <ChevronRightIcon className="h-4 w-4 text-muted-foreground" />
+      </button>
+
+      {savedPage.tab && (
+        <SaveLinkCard
+          url={savedPage.tab.url}
+          saved={savedPage.saved !== null}
+          busy={savedPage.busy}
+          error={savedPage.error}
+          savedListUrl={`${config.frontendBaseUrl}/saved`}
+          onSave={() => void savedPage.save()}
+          onRemove={() => void savedPage.remove()}
+        />
       )}
     </div>
   )

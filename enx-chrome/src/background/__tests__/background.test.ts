@@ -945,6 +945,50 @@ describe('background onMessage / savePage (ADR-032)', () => {
   })
 })
 
+describe('background onMessage / removeSavedPage (ADR-032 Decision 4a)', () => {
+  const listener = onMessageListener
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    setClerkSession('clerk-session-jwt')
+    ;(global.fetch as jest.Mock) = jest.fn()
+  })
+
+  const send = (request: unknown): Promise<unknown> =>
+    new Promise(resolve => listener(request, {}, resolve))
+
+  it('DELETEs the saved page by id and sends no page address', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(200, { success: true })
+    )
+
+    const response = await send({ type: 'removeSavedPage', savedPageId: 'p1' })
+
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toMatch(/\/api\/saved-pages\/p1$/)
+    expect(init.method).toBe('DELETE')
+    expect(init.body).toBeUndefined()
+    expect(response).toMatchObject({ success: true })
+  })
+
+  it('passes a 404 through so the popup can tell the page is already gone', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(404, { success: false, message: 'saved page not found' })
+    )
+
+    const response = await send({ type: 'removeSavedPage', savedPageId: 'p1' })
+
+    expect(response).toMatchObject({ success: false, status: 404 })
+  })
+
+  it('rejects a request with no id without calling the API', async () => {
+    const response = await send({ type: 'removeSavedPage' })
+
+    expect(response).toEqual({ success: false, error: 'Missing saved page' })
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+})
+
 describe('background onMessageExternal (ADR-019 web -> extension channel)', () => {
   const external = onMessageExternalListener
 

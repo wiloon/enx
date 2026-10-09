@@ -571,6 +571,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'savePage':
           return await handleSavePage(request.savedPage)
 
+        case 'removeSavedPage':
+          return await handleRemoveSavedPage(request.savedPageId)
+
         case 'translateSentence':
           return await handleTranslateSentence(request.sentence || '')
 
@@ -1288,6 +1291,13 @@ const handleSavePage = async (page?: { url: string; title: string }) => {
   return await makeApiRequest('/api/saved-pages', {
     method: 'POST',
     body: JSON.stringify({ url: page.url, title: page.title }),
+  })
+}
+
+const handleRemoveSavedPage = async (id?: string) => {
+  if (!id) return { success: false, error: 'Missing saved page' }
+  return await makeApiRequest(`/api/saved-pages/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
   })
 }
 

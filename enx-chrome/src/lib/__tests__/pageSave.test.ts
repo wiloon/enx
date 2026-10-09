@@ -1,7 +1,7 @@
 import { saveOutcome } from '@/lib/pageSave'
 
 describe('saveOutcome', () => {
-  it('reports a newly saved page with the address the server actually stored', () => {
+  it('keeps the id and the address the server actually stored', () => {
     expect(
       saveOutcome({
         success: true,
@@ -16,28 +16,24 @@ describe('saveOutcome', () => {
         },
       })
     ).toEqual({
-      status: 'saved',
-      savedUrl: 'https://www.infoq.com/articles/kube',
+      ok: true,
+      page: { id: 'p1', url: 'https://www.infoq.com/articles/kube' },
     })
   })
 
-  it('reports a page that was already saved as already-saved, not as newly saved', () => {
+  it('treats a page that was already saved as saved', () => {
     expect(
       saveOutcome({
         success: true,
         data: {
           success: true,
           created: false,
-          page: {
-            id: 'p1',
-            url: 'https://www.infoq.com/articles/kube',
-            title: 'Kube',
-          },
+          page: { id: 'p1', url: 'https://www.infoq.com/articles/kube' },
         },
       })
     ).toEqual({
-      status: 'already-saved',
-      savedUrl: 'https://www.infoq.com/articles/kube',
+      ok: true,
+      page: { id: 'p1', url: 'https://www.infoq.com/articles/kube' },
     })
   })
 
@@ -49,7 +45,7 @@ describe('saveOutcome', () => {
         error: 'You can save up to 1000 pages. Delete some to save more.',
       })
     ).toEqual({
-      status: 'failed',
+      ok: false,
       errorMessage: 'You can save up to 1000 pages. Delete some to save more.',
     })
   })
@@ -62,8 +58,15 @@ describe('saveOutcome', () => {
         error: 'Your session has expired. Please login again.',
       })
     ).toEqual({
-      status: 'failed',
+      ok: false,
       errorMessage: 'Your session has expired. Please login again.',
+    })
+  })
+
+  it('reports a success reply with no page as failed rather than saved', () => {
+    expect(saveOutcome({ success: true, data: { success: true } })).toEqual({
+      ok: false,
+      errorMessage: undefined,
     })
   })
 })
