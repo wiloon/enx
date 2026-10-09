@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"enx-api/middleware"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,14 +14,18 @@ import (
 	"enx-api/utils/sqlitex"
 
 	"github.com/gin-gonic/gin"
-	"github.com/spf13/viper"
 )
 
 // adminRequest drives GrantCredits with the caller's Clerk user id on the
 // context (what middleware.ClerkAuth sets).
 func adminRequest(t *testing.T, callerClerkID, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	h := NewHandler(nil, "https://example.com", "whsec_test", nil)
+	return adminRequestWith(t, middleware.NewAdminAllowlist([]string{"user_admin"}), callerClerkID, body)
+}
+
+func adminRequestWith(t *testing.T, admins middleware.AdminAllowlist, callerClerkID, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	h := NewHandler(nil, "https://example.com", "whsec_test", nil).WithAdmins(admins)
 	router := gin.New()
 	router.POST("/api/admin/credits/grant", func(c *gin.Context) {
 		c.Set("clerk_user_id", callerClerkID)
@@ -35,9 +40,6 @@ func adminRequest(t *testing.T, callerClerkID, body string) *httptest.ResponseRe
 }
 
 func TestGrantCredits_ForbiddenForNonAdmin(t *testing.T) {
-	viper.Set("admin.clerk-user-ids", []string{"user_admin"})
-	defer viper.Set("admin.clerk-user-ids", nil)
-
 	w := adminRequest(t, "user_notadmin", `{"email":"a@b.com","amount":100}`)
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403, body=%s", w.Code, w.Body.String())
@@ -45,18 +47,13 @@ func TestGrantCredits_ForbiddenForNonAdmin(t *testing.T) {
 }
 
 func TestGrantCredits_ForbiddenWhenAllowlistEmpty(t *testing.T) {
-	viper.Set("admin.clerk-user-ids", nil)
-
-	w := adminRequest(t, "user_anyone", `{"email":"a@b.com","amount":100}`)
+	w := adminRequestWith(t, middleware.AdminAllowlist{}, "user_anyone", `{"email":"a@b.com","amount":100}`)
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403, body=%s", w.Code, w.Body.String())
 	}
 }
 
 func TestGrantCredits_BadRequest(t *testing.T) {
-	viper.Set("admin.clerk-user-ids", []string{"user_admin"})
-	defer viper.Set("admin.clerk-user-ids", nil)
-
 	for _, body := range []string{
 		`{"amount":100}`,                  // missing email
 		`{"email":"a@b.com"}`,             // missing amount
@@ -72,9 +69,6 @@ func TestGrantCredits_BadRequest(t *testing.T) {
 }
 
 func TestGrantCredits_UserNotFound(t *testing.T) {
-	viper.Set("admin.clerk-user-ids", []string{"user_admin"})
-	defer viper.Set("admin.clerk-user-ids", nil)
-
 	w := adminRequest(t, "user_admin", `{"email":"nobody@nowhere.example","amount":100}`)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404, body=%s", w.Code, w.Body.String())
@@ -82,9 +76,6 @@ func TestGrantCredits_UserNotFound(t *testing.T) {
 }
 
 func TestGrantCredits_HappyPath(t *testing.T) {
-	viper.Set("admin.clerk-user-ids", []string{"user_admin"})
-	defer viper.Set("admin.clerk-user-ids", nil)
-
 	u := &enx.User{Id: "admin-grant-target-1", Name: "grantee", Email: "grantee@example.com", Status: "active"}
 	if err := sqlitex.DB.Create(u).Error; err != nil {
 		t.Fatalf("seed user: %v", err)
@@ -127,9 +118,6 @@ func TestGrantCredits_HappyPath(t *testing.T) {
 }
 
 func TestGrantCredits_IdempotencyKeyIsUnique(t *testing.T) {
-	viper.Set("admin.clerk-user-ids", []string{"user_admin"})
-	defer viper.Set("admin.clerk-user-ids", nil)
-
 	u := &enx.User{Id: "admin-grant-target-2", Name: "grantee2", Email: "grantee2@example.com", Status: "active"}
 	if err := sqlitex.DB.Create(u).Error; err != nil {
 		t.Fatalf("seed user: %v", err)

@@ -7,6 +7,7 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"enx-api/config"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -14,7 +15,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/spf13/viper"
 )
 
 // Env holds a running JWKS server plus the config a Clerk validator needs.
@@ -69,11 +69,10 @@ func NewEnv(t *testing.T) *Env {
 	}
 }
 
-// ApplyViper configures viper so setupRouter() uses this test Clerk environment.
-func (env *Env) ApplyViper() {
-	viper.Set("clerk.issuer", env.Issuer)
-	viper.Set("clerk.authorized-parties", env.AuthorizedParties)
-	viper.Set("clerk.jwks-url", env.JWKSURL)
+// Config is the Clerk configuration that makes setupRouter accept this test
+// environment's tokens.
+func (env *Env) Config() config.Clerk {
+	return config.Clerk{Issuer: env.Issuer, AuthorizedParties: env.AuthorizedParties, JWKSURL: env.JWKSURL}
 }
 
 // SignSessionToken returns a signed RS256 Clerk-like session token. Missing

@@ -317,7 +317,8 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	router.GET("/version", handlers.GetVersion)
 	router.GET("/api/version", handlers.GetVersionSimple)
 
-	clerkAuth := middleware.ClerkAuth(middleware.ClerkConfigFromViper(), m)
+	admins := middleware.NewAdminAllowlist(cfg.Admin.ClerkUserIDs)
+	clerkAuth := middleware.ClerkAuth(middleware.ClerkConfigFrom(cfg.Clerk), m)
 
 	// Word lookup (ADR-018): the dictionary domain service over the words
 	// table and ECDICT, plus the per-user review log.
@@ -438,7 +439,7 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 		logger.Warnf("billing disabled: %v", stripeErr)
 		stripeClient = nil
 	}
-	billingHandler := billing.NewHandler(stripeClient, cfg.App.FrontendBaseURL, cfg.Stripe.WebhookSecret, m)
+	billingHandler := billing.NewHandler(stripeClient, cfg.App.FrontendBaseURL, cfg.Stripe.WebhookSecret, m).WithAdmins(admins)
 
 	// Authenticated APIs (Clerk session JWT). enx-chrome and enx-ui call only
 	// these /api routes; nothing is registered twice at the root.
@@ -468,7 +469,7 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	}
 
 	// /api/me — requires authentication (Clerk session JWT)
-	apiGroup.GET("/me", handlers.GetMe)
+	apiGroup.GET("/me", handlers.GetMe(admins))
 
 	// Server-side user preferences (ADR-044): the AI word fallback switch and
 	// its one-time notice. Defaults and editability follow the user's payment
@@ -527,7 +528,7 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	// ADMIN_CLERK_USER_IDS allowlist). Deliberately not on the user lookup
 	// path -- raw rows, no metering, no ECDICT backfill.
 	adminDict := apiGroup.Group("/admin")
-	adminDict.Use(middleware.RequireAdmin())
+	adminDict.Use(admins.Require())
 	{
 		adminDict.GET("/words/:word", handlers.AdminGetWord)
 		adminDict.GET("/ai-words", handlers.AdminListAIWords)

@@ -115,7 +115,7 @@ func TestGinModeFollowsLogLevel(t *testing.T) {
 func TestPreferencesRoutesRequireAuthentication(t *testing.T) {
 	utils.ViperInit()
 	gin.SetMode(gin.TestMode)
-	router := setupRouter(config.Default(), metrics.New())
+	router := setupRouter(clerkConfig(t), metrics.New())
 
 	registered := map[string]bool{}
 	for _, r := range router.Routes() {
@@ -138,7 +138,7 @@ func TestPreferencesRoutesRequireAuthentication(t *testing.T) {
 func TestWordListRouteRequiresAuthentication(t *testing.T) {
 	utils.ViperInit()
 	gin.SetMode(gin.TestMode)
-	router := setupRouter(config.Default(), metrics.New())
+	router := setupRouter(clerkConfig(t), metrics.New())
 
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/me/words", nil))

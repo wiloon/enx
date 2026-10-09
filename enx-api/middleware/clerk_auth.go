@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"enx-api/config"
 	"enx-api/enx"
 	"enx-api/utils/logger"
 	"net/http"
@@ -10,7 +11,6 @@ import (
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/spf13/viper"
 )
 
 // clerkClockLeeway is how far a Clerk session token's exp/nbf/iat may be off
@@ -35,13 +35,9 @@ type ClerkConfig struct {
 	JWKSURL string
 }
 
-// ClerkConfigFromViper loads Clerk settings from viper / env.
-func ClerkConfigFromViper() ClerkConfig {
-	return ClerkConfig{
-		Issuer:            viper.GetString("clerk.issuer"),
-		AuthorizedParties: viper.GetStringSlice("clerk.authorized-parties"),
-		JWKSURL:           viper.GetString("clerk.jwks-url"),
-	}
+// ClerkConfigFrom maps the clerk.* config onto ClerkConfig.
+func ClerkConfigFrom(c config.Clerk) ClerkConfig {
+	return ClerkConfig{Issuer: c.Issuer, AuthorizedParties: c.AuthorizedParties, JWKSURL: c.JWKSURL}
 }
 
 func (cfg ClerkConfig) jwksURL() string {

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"enx-api/middleware"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
-	"github.com/spf13/viper"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
@@ -38,7 +38,7 @@ func getMe(userID, clerkUserID string) *httptest.ResponseRecorder {
 		c.Set("user_id", userID)
 	}
 	c.Set("clerk_user_id", clerkUserID)
-	GetMe(c)
+	GetMe(middleware.NewAdminAllowlist([]string{"user_admin"}))(c)
 	return w
 }
 
@@ -47,8 +47,6 @@ func TestGetMe(t *testing.T) {
 	if err := sqlitex.DB.Create(&sqlitex.User{Id: "u1", ClerkUserID: "user_admin", Name: "Ann", Email: "ann@example.com", Status: "active"}).Error; err != nil {
 		t.Fatal(err)
 	}
-	viper.Set("admin.clerk-user-ids", []string{"user_admin"})
-	t.Cleanup(func() { viper.Set("admin.clerk-user-ids", nil) })
 
 	if w := getMe("", ""); w.Code != http.StatusUnauthorized {
 		t.Fatalf("no user in context: status %d, want 401", w.Code)

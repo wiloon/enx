@@ -5,22 +5,31 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/spf13/viper"
 )
 
-// IsAdminClerkUser reports whether the given Clerk user id (`sub`) is in the
-// ADMIN_CLERK_USER_IDS allowlist (viper key `admin.clerk-user-ids`). An empty
-// allowlist means nobody is admin -- the admin endpoints are effectively off.
+// AdminAllowlist is the ADMIN_CLERK_USER_IDS allowlist (config
+// admin.clerk-user-ids) of Clerk user ids (`sub`) allowed to call the admin
+// endpoints. The zero value, like an empty list, admits nobody -- the admin
+// endpoints are then effectively off.
 //
 // This is deliberately not a roles system (ADR-021): with a single admin
 // (the repo owner) an env allowlist is proportional. Migrate to Clerk
 // publicMetadata when a second admin, a churning list, or a second role
-// appears -- the change is confined to this file plus GetMe's isAdmin.
-func IsAdminClerkUser(clerkUserID string) bool {
+// appears -- the change is confined to this type plus GetMe's isAdmin.
+type AdminAllowlist struct {
+	ids []string
+}
+
+func NewAdminAllowlist(clerkUserIDs []string) AdminAllowlist {
+	return AdminAllowlist{ids: clerkUserIDs}
+}
+
+// Contains reports whether clerkUserID is an admin.
+func (a AdminAllowlist) Contains(clerkUserID string) bool {
 	if clerkUserID == "" {
 		return false
 	}
-	for _, id := range viper.GetStringSlice("admin.clerk-user-ids") {
+	for _, id := range a.ids {
 		if strings.TrimSpace(id) == clerkUserID {
 			return true
 		}
@@ -28,12 +37,12 @@ func IsAdminClerkUser(clerkUserID string) bool {
 	return false
 }
 
-// RequireAdmin aborts with 403 unless the request's Clerk user id (set by
-// ClerkAuth as "clerk_user_id") is in the admin allowlist. Mount it after
+// Require aborts with 403 unless the request's Clerk user id (set by
+// ClerkAuth as "clerk_user_id") is in the allowlist. Mount it after
 // ClerkAuth.
-func RequireAdmin() gin.HandlerFunc {
+func (a AdminAllowlist) Require() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !IsAdminClerkUser(c.GetString("clerk_user_id")) {
+		if !a.Contains(c.GetString("clerk_user_id")) {
 			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "admin access required"})
 			c.Abort()
 			return

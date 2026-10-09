@@ -14,11 +14,9 @@ import (
 	"enx-api/config"
 	"enx-api/ecdict"
 	"enx-api/ecdict/ecdicttest"
-	"enx-api/utils"
 	"enx-api/utils/sqlitex"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/spf13/viper"
 )
 
 const (
@@ -47,12 +45,8 @@ func adminDictEnvWithConfig(t *testing.T, cfg *config.Config) (baseURL string, a
 	t.Helper()
 
 	env := clerktest.NewEnv(t)
-	utils.ViperInit()
-	env.ApplyViper()
-
-	// viper.Set outranks the bound ADMIN_CLERK_USER_IDS env var.
-	viper.Set("admin.clerk-user-ids", []string{adminSub})
-	t.Cleanup(func() { viper.Set("admin.clerk-user-ids", nil) })
+	cfg.Clerk = env.Config()
+	cfg.Admin.ClerkUserIDs = []string{adminSub}
 
 	dbPath := filepath.Join(t.TempDir(), "enx-admin-dict.db")
 	if err := os.Setenv("DB_PATH", dbPath); err != nil {

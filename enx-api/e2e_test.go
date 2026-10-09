@@ -16,7 +16,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/spf13/viper"
 )
 
 // e2eServer creates a real httptest.Server backed by the full application router.
@@ -30,10 +29,19 @@ func e2eServer(t *testing.T, cfg *config.Config) (*httptest.Server, func()) {
 	return ts, func() { ts.Close() }
 }
 
+// clerkConfig is the default config with Clerk pointed at a local test JWKS,
+// so /api answers 401 to a missing token rather than 503 (Clerk unconfigured).
+func clerkConfig(t *testing.T) *config.Config {
+	t.Helper()
+	cfg := config.Default()
+	cfg.Clerk = clerktest.NewEnv(t).Config()
+	return cfg
+}
+
 // TestE2E_UnauthenticatedAccessRejected verifies that protected endpoints
 // return 401 when no Bearer token is provided.
 func TestE2E_UnauthenticatedAccessRejected(t *testing.T) {
-	ts, done := e2eServer(t, config.Default())
+	ts, done := e2eServer(t, clerkConfig(t))
 	defer done()
 
 	client := ts.Client()
@@ -63,8 +71,8 @@ func TestE2E_UnauthenticatedAccessRejected(t *testing.T) {
 
 func TestE2E_ClerkGetMe(t *testing.T) {
 	env := clerktest.NewEnv(t)
-	utils.ViperInit()
-	env.ApplyViper()
+	cfg := config.Default()
+	cfg.Clerk = env.Config()
 
 	dbPath := filepath.Join(t.TempDir(), "enx-e2e.db")
 	if err := os.Setenv("DB_PATH", dbPath); err != nil {
@@ -88,7 +96,7 @@ func TestE2E_ClerkGetMe(t *testing.T) {
 		"name":  "e2e-clerk-user",
 	})
 
-	ts, done := e2eServer(t, config.Default())
+	ts, done := e2eServer(t, cfg)
 	defer done()
 
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/api/me", nil)
@@ -124,12 +132,11 @@ func TestE2E_ClerkGetMe(t *testing.T) {
 
 func TestE2E_ClerkGetMe_IsAdminReflectsAllowlist(t *testing.T) {
 	env := clerktest.NewEnv(t)
-	utils.ViperInit()
-	env.ApplyViper()
+	cfg := config.Default()
+	cfg.Clerk = env.Config()
 
 	sub := "user_e2egetme_admin"
-	viper.Set("admin.clerk-user-ids", []string{sub})
-	t.Cleanup(func() { viper.Set("admin.clerk-user-ids", nil) })
+	cfg.Admin.ClerkUserIDs = []string{sub}
 
 	dbPath := filepath.Join(t.TempDir(), "enx-e2e-admin.db")
 	if err := os.Setenv("DB_PATH", dbPath); err != nil {
@@ -140,7 +147,7 @@ func TestE2E_ClerkGetMe_IsAdminReflectsAllowlist(t *testing.T) {
 
 	token := env.SignSessionToken(t, jwt.MapClaims{"sub": sub, "email": "admin-me@example.com", "name": "admin-me"})
 
-	ts, done := e2eServer(t, config.Default())
+	ts, done := e2eServer(t, cfg)
 	defer done()
 
 	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/me", nil)
@@ -162,8 +169,8 @@ func TestE2E_ClerkGetMe_IsAdminReflectsAllowlist(t *testing.T) {
 
 func TestE2E_AdminPageReportsRequiresAdmin(t *testing.T) {
 	env := clerktest.NewEnv(t)
-	utils.ViperInit()
-	env.ApplyViper()
+	cfg := config.Default()
+	cfg.Clerk = env.Config()
 
 	dbPath := filepath.Join(t.TempDir(), "enx-e2e-page-reports.db")
 	if err := os.Setenv("DB_PATH", dbPath); err != nil {
@@ -177,7 +184,7 @@ func TestE2E_AdminPageReportsRequiresAdmin(t *testing.T) {
 		"sub": sub, "email": "user@example.com", "name": "not-admin",
 	})
 
-	ts, done := e2eServer(t, config.Default())
+	ts, done := e2eServer(t, cfg)
 	defer done()
 
 	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/admin/page-reports", nil)
@@ -191,15 +198,18 @@ func TestE2E_AdminPageReportsRequiresAdmin(t *testing.T) {
 		t.Fatalf("status = %d, want 403 for non-admin", resp.StatusCode)
 	}
 
-	viper.Set("admin.clerk-user-ids", []string{sub})
-	t.Cleanup(func() { viper.Set("admin.clerk-user-ids", nil) })
+	// The same user on a server that lists them as admin.
+	adminCfg := *cfg
+	adminCfg.Admin.ClerkUserIDs = []string{sub}
+	adminTS, adminDone := e2eServer(t, &adminCfg)
+	defer adminDone()
 
 	adminToken := env.SignSessionToken(t, jwt.MapClaims{
 		"sub": sub, "email": "admin@example.com", "name": "admin",
 	})
-	req2, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/admin/page-reports", nil)
+	req2, _ := http.NewRequest(http.MethodGet, adminTS.URL+"/api/admin/page-reports", nil)
 	req2.Header.Set("Authorization", "Bearer "+adminToken)
-	resp2, err := ts.Client().Do(req2)
+	resp2, err := adminTS.Client().Do(req2)
 	if err != nil {
 		t.Fatalf("GET /api/admin/page-reports as admin: %v", err)
 	}
@@ -220,8 +230,8 @@ func TestE2E_AdminPageReportsRequiresAdmin(t *testing.T) {
 // through the whole router -- CORS, Clerk auth, logging -- to paragraph-init.
 func TestE2E_ParagraphInitOverQuery(t *testing.T) {
 	env := clerktest.NewEnv(t)
-	utils.ViperInit()
-	env.ApplyViper()
+	cfg := config.Default()
+	cfg.Clerk = env.Config()
 	if err := os.Setenv("DB_PATH", filepath.Join(t.TempDir(), "enx-query.db")); err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +241,7 @@ func TestE2E_ParagraphInitOverQuery(t *testing.T) {
 	}
 	token := env.SignSessionToken(t, jwt.MapClaims{"sub": "user_e2equery001", "email": "e2e-query@example.com", "name": "e2e-query"})
 
-	ts, done := e2eServer(t, config.Default())
+	ts, done := e2eServer(t, cfg)
 	defer done()
 
 	for _, method := range []string{"QUERY", http.MethodPost} {
@@ -261,8 +271,8 @@ func TestE2E_ParagraphInitOverQuery(t *testing.T) {
 // cache -- and in the HTTP counters under its route template.
 func TestE2E_LookupMetrics(t *testing.T) {
 	env := clerktest.NewEnv(t)
-	utils.ViperInit()
-	env.ApplyViper()
+	cfg := config.Default()
+	cfg.Clerk = env.Config()
 	if err := os.Setenv("DB_PATH", filepath.Join(t.TempDir(), "enx-metrics.db")); err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +282,7 @@ func TestE2E_LookupMetrics(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	m := metrics.New()
-	ts := httptest.NewServer(setupRouter(config.Default(), m))
+	ts := httptest.NewServer(setupRouter(cfg, m))
 	defer ts.Close()
 
 	for i := 0; i < 2; i++ {
