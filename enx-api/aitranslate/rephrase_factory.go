@@ -2,11 +2,10 @@ package aitranslate
 
 import (
 	"context"
+	"enx-api/config"
 	"fmt"
 
 	"enx-api/aitranslate/rephrase"
-
-	"github.com/spf13/viper"
 )
 
 // NewRephraser builds the rephrase.Rephraser for the configured
@@ -18,12 +17,12 @@ import (
 // unset, the caller logs and disables the feature; if the provider IS set
 // but can't be built or doesn't support rephrase, that's a
 // misconfiguration and the caller should fail fast.
-func NewRephraser(ctx context.Context) (rephrase.Rephraser, error) {
-	translator, err := New(ctx)
+func NewRephraser(ctx context.Context, cfg config.SentenceTranslate) (rephrase.Rephraser, error) {
+	translator, err := New(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	return asRephraser(translator, viper.GetString("sentence-translate.provider"))
+	return asRephraser(translator, cfg.Provider)
 }
 
 func asRephraser(t Translator, provider string) (rephrase.Rephraser, error) {

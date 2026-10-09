@@ -4,7 +4,6 @@ import (
 	"context"
 	"enx-api/ailimit"
 	"enx-api/aitranslate"
-	"enx-api/aitranslate/aicfg"
 	"enx-api/aitranslate/worddef"
 	"enx-api/billing"
 	"enx-api/billing/credit"
@@ -42,7 +41,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/spf13/viper"
 )
 
 func main() {
@@ -86,7 +84,7 @@ func main() {
 
 	port := cfg.Enx.Port
 	listenAddress := fmt.Sprintf(":%d", port)
-	srv := newServer(listenAddress, router)
+	srv := newServer(listenAddress, router, cfg.SentenceTranslate.RequestTimeout)
 
 	idleConnectionsClosed := make(chan struct{})
 	go func() {
@@ -141,8 +139,8 @@ const (
 // newServer builds the HTTP server. Extracted from main() so the timeout
 // coupling below is reachable from a test.
 //
-// WriteTimeout is derived from aicfg.RequestTimeout() instead of being its
-// own constant because the two are not independent: Go's WriteTimeout starts
+// WriteTimeout is derived from the AI provider's request timeout
+// (sentence-translate.request-timeout) instead of being its own constant because the two are not independent: Go's WriteTimeout starts
 // when the request header is read and covers body read, handler execution and
 // response write, so a WriteTimeout below the provider timeout means the
 // server tears the connection down while its own handler is still waiting on
@@ -156,10 +154,8 @@ const (
 // to 60s for MiniMax's M-series "thinking" models, silently putting every
 // 30-60s translation in the billed-but-undelivered window. Deriving it means
 // raising SENTENCE_TRANSLATE_REQUEST_TIMEOUT can no longer reopen that gap.
-//
-// Callers must run utils.ViperInit() first: aicfg.RequestTimeout() reads viper.
-func newServer(addr string, handler http.Handler) *http.Server {
-	writeTimeout := aicfg.RequestTimeout() + writeTimeoutHeadroom
+func newServer(addr string, handler http.Handler, providerTimeout time.Duration) *http.Server {
+	writeTimeout := providerTimeout + writeTimeoutHeadroom
 	if writeTimeout < minWriteTimeout {
 		writeTimeout = minWriteTimeout
 	}
@@ -364,16 +360,16 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	// missing, that's a deliberate misconfiguration and must fail fast rather
 	// than silently serving a broken endpoint (see
 	// docs/tasks/TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md §4.4).
-	sentenceTranslator, sentenceTranslateErr := aitranslate.New(context.Background())
+	sentenceTranslator, sentenceTranslateErr := aitranslate.New(context.Background(), cfg.SentenceTranslate)
 	if sentenceTranslateErr != nil {
-		if provider := viper.GetString("sentence-translate.provider"); provider != "" {
+		if provider := cfg.SentenceTranslate.Provider; provider != "" {
 			logger.Errorf("sentence-translate.provider=%q is configured but failed to initialize: %v", provider, sentenceTranslateErr)
 			os.Exit(1)
 		}
 		logger.Warnf("sentence translation disabled: %v", sentenceTranslateErr)
 		sentenceTranslator = nil
 	} else {
-		sentenceTranslator = aitranslate.Instrument(sentenceTranslator, viper.GetString("sentence-translate.provider"), m)
+		sentenceTranslator = aitranslate.Instrument(sentenceTranslator, cfg.SentenceTranslate.Provider, m)
 	}
 
 	// The AI word fallback (ADR-045) rides on the same provider, but only a
@@ -403,7 +399,7 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 				logger.Warnf("AI word lookup is off: stripe.costs.define-word has no price")
 			}
 		} else {
-			logger.Warnf("AI word lookup is off: provider %q does not implement DefineWord", viper.GetString("sentence-translate.provider"))
+			logger.Warnf("AI word lookup is off: provider %q does not implement DefineWord", cfg.SentenceTranslate.Provider)
 		}
 	}
 
@@ -416,16 +412,16 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	// Rephrase (ADR-012) reuses the same provider as sentence translation,
 	// but the provider must also implement rephrase support. Same
 	// "unconfigured is not fatal, misconfigured is" contract as above.
-	rephraser, rephraseErr := aitranslate.NewRephraser(context.Background())
+	rephraser, rephraseErr := aitranslate.NewRephraser(context.Background(), cfg.SentenceTranslate)
 	if rephraseErr != nil {
-		if provider := viper.GetString("sentence-translate.provider"); provider != "" {
+		if provider := cfg.SentenceTranslate.Provider; provider != "" {
 			logger.Errorf("sentence-translate.provider=%q is configured but rephrase failed to initialize: %v", provider, rephraseErr)
 			os.Exit(1)
 		}
 		logger.Warnf("rephrase disabled: %v", rephraseErr)
 		rephraser = nil
 	} else {
-		rephraser = aitranslate.InstrumentRephraser(rephraser, viper.GetString("sentence-translate.provider"), m)
+		rephraser = aitranslate.InstrumentRephraser(rephraser, cfg.SentenceTranslate.Provider, m)
 	}
 	rephraseHandler := aitranslate.NewRephraseHandler(
 		rephraser,

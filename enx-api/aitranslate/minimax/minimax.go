@@ -7,15 +7,15 @@ package minimax
 
 import (
 	"context"
+	"enx-api/config"
 	"fmt"
 	"strings"
+	"time"
 
-	"enx-api/aitranslate/aicfg"
 	"enx-api/aitranslate/aiusage"
 	"enx-api/utils/logger"
 
 	"github.com/go-resty/resty/v2"
-	"github.com/spf13/viper"
 )
 
 const (
@@ -39,17 +39,17 @@ type MiniMax struct {
 // and the MINIMAX_API_KEY environment variable. It returns an error
 // immediately if the API key is missing, so a "provider = minimax"
 // misconfiguration is caught at startup rather than on the first request.
-func New() (*MiniMax, error) {
-	apiKey := viper.GetString("sentence-translate.minimax.api-key")
+func New(c config.MiniMax, timeout time.Duration) (*MiniMax, error) {
+	apiKey := c.APIKey
 	if apiKey == "" {
 		return nil, fmt.Errorf("minimax: MINIMAX_API_KEY is not set")
 	}
 
-	model := viper.GetString("sentence-translate.minimax.model")
+	model := c.Model
 	if model == "" {
 		model = defaultModel
 	}
-	baseURL := viper.GetString("sentence-translate.minimax.base-url")
+	baseURL := c.BaseURL
 	if baseURL == "" {
 		baseURL = defaultBaseURL
 	}
@@ -58,8 +58,8 @@ func New() (*MiniMax, error) {
 		apiKey:  apiKey,
 		model:   model,
 		baseURL: baseURL,
-		groupID: viper.GetString("sentence-translate.minimax.group-id"),
-		client:  resty.New().SetTimeout(aicfg.RequestTimeout()),
+		groupID: c.GroupID,
+		client:  resty.New().SetTimeout(timeout),
 	}, nil
 }
 

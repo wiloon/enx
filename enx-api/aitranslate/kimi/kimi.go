@@ -4,14 +4,14 @@ package kimi
 
 import (
 	"context"
+	"enx-api/config"
 	"fmt"
+	"time"
 
-	"enx-api/aitranslate/aicfg"
 	"enx-api/aitranslate/aiusage"
 	"enx-api/utils/logger"
 
 	"github.com/go-resty/resty/v2"
-	"github.com/spf13/viper"
 )
 
 const (
@@ -46,17 +46,17 @@ func (k *Kimi) modelForRephrase() string {
 // and the KIMI_API_KEY environment variable. It returns an error immediately
 // if the API key is missing, so a "provider = kimi" misconfiguration is
 // caught at startup rather than on the first request.
-func New() (*Kimi, error) {
-	apiKey := viper.GetString("sentence-translate.kimi.api-key")
+func New(c config.OpenAICompatible, timeout time.Duration) (*Kimi, error) {
+	apiKey := c.APIKey
 	if apiKey == "" {
 		return nil, fmt.Errorf("kimi: KIMI_API_KEY is not set")
 	}
 
-	model := viper.GetString("sentence-translate.kimi.model")
+	model := c.Model
 	if model == "" {
 		model = defaultModel
 	}
-	baseURL := viper.GetString("sentence-translate.kimi.base-url")
+	baseURL := c.BaseURL
 	if baseURL == "" {
 		baseURL = defaultBaseURL
 	}
@@ -64,9 +64,9 @@ func New() (*Kimi, error) {
 	return &Kimi{
 		apiKey:        apiKey,
 		model:         model,
-		rephraseModel: viper.GetString("sentence-translate.kimi.rephrase-model"),
+		rephraseModel: c.RephraseModel,
 		baseURL:       baseURL,
-		client:        resty.New().SetTimeout(aicfg.RequestTimeout()),
+		client:        resty.New().SetTimeout(timeout),
 	}, nil
 }
 

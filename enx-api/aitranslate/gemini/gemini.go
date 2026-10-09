@@ -7,15 +7,15 @@ package gemini
 
 import (
 	"context"
+	"enx-api/config"
 	"fmt"
 	"strings"
+	"time"
 
-	"enx-api/aitranslate/aicfg"
 	"enx-api/aitranslate/aiusage"
 	"enx-api/utils/logger"
 
 	"github.com/go-resty/resty/v2"
-	"github.com/spf13/viper"
 )
 
 const (
@@ -51,17 +51,17 @@ func (g *Gemini) modelForRephrase() string {
 // and the GEMINI_API_KEY environment variable. It returns an error
 // immediately if the API key is missing, so a "provider = gemini"
 // misconfiguration is caught at startup rather than on the first request.
-func New() (*Gemini, error) {
-	apiKey := viper.GetString("sentence-translate.gemini.api-key")
+func New(c config.OpenAICompatible, timeout time.Duration) (*Gemini, error) {
+	apiKey := c.APIKey
 	if apiKey == "" {
 		return nil, fmt.Errorf("gemini: GEMINI_API_KEY is not set")
 	}
 
-	model := viper.GetString("sentence-translate.gemini.model")
+	model := c.Model
 	if model == "" {
 		model = defaultModel
 	}
-	baseURL := viper.GetString("sentence-translate.gemini.base-url")
+	baseURL := c.BaseURL
 	if baseURL == "" {
 		baseURL = defaultBaseURL
 	}
@@ -70,9 +70,9 @@ func New() (*Gemini, error) {
 	return &Gemini{
 		apiKey:        apiKey,
 		model:         model,
-		rephraseModel: viper.GetString("sentence-translate.gemini.rephrase-model"),
+		rephraseModel: c.RephraseModel,
 		baseURL:       baseURL,
-		client:        resty.New().SetTimeout(aicfg.RequestTimeout()),
+		client:        resty.New().SetTimeout(timeout),
 	}, nil
 }
 
