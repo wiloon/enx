@@ -1,0 +1,68 @@
+name: enx-api CI
+
+# Lint and unit tests for enx-api on every PR that touches it, and on main.
+# Integration tests (//go:build integration) are not run here: they need the
+# ECDICT database and a real app database. Run them locally with
+# `task test-integration`.
+
+on:
+  pull_request:
+    paths:
+      - 'enx-api/**'
+      - '.github/workflows/enx-api-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'enx-api/**'
+      - '.github/workflows/enx-api-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: enx-api-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: enx-api
+
+jobs:
+  lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: enx-api/go.mod
+          cache-dependency-path: enx-api/go.sum
+      # goinstall builds golangci-lint with the Go above: a prebuilt binary
+      # made with an older Go refuses to lint a go 1.27 module. Keep the
+      # version in step with GOLANGCI_LINT_VERSION in enx-api/Taskfile.yml.
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.14.0
+          install-mode: goinstall
+          working-directory: enx-api
+      - name: golangci-lint (integration build tag)
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.14.0
+          install-mode: goinstall
+          working-directory: enx-api
+          args: --build-tags=integration
+
+  test:
+    name: go test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: enx-api/go.mod
+          cache-dependency-path: enx-api/go.sum
+      - run: go vet ./...
+      # Compiles the integration tests without running them.
+      - run: go vet -tags=integration ./...
+      - run: go test ./...

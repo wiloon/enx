@@ -10,6 +10,8 @@ vars:
     sh: git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown"
   BUILD_TIME:
     sh: date -u '+%Y-%m-%dT%H:%M:%SZ'
+  # Keep in step with .github/workflows/enx-api-ci.yml.
+  GOLANGCI_LINT_VERSION: v2.14.0
 
 env:
   # Default to the shared local ECDICT copy (`task ecdict:download` at the
@@ -175,15 +177,12 @@ tasks:
       - go test -v {{.PKG}}
 
   lint:
-    desc: Run linters (requires golangci-lint)
+    desc: Run golangci-lint (.golangci.yml) at the version CI uses; nothing to install
     cmds:
-      - |
-        if ! command -v golangci-lint &> /dev/null; then
-          echo "golangci-lint is not installed. Please install it first."
-          echo "Install brew install golangci-lint"
-          exit 1
-        fi
-      - golangci-lint run
+      # go run builds it with this module's Go toolchain: a prebuilt binary
+      # made with an older Go refuses to lint a go 1.27 module.
+      - go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}} run ./...
+      - go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}} run --build-tags=integration ./...
 
   fmt:
     desc: Format code
@@ -374,6 +373,7 @@ tasks:
     cmds:
       - task fmt
       - task vet
+      - task lint
       - task test
       - echo "All checks passed!"
 

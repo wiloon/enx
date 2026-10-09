@@ -29,7 +29,7 @@ type resendRequest struct {
 }
 
 func (s *Sender) send(to, subject, htmlBody string) error {
-	apiKey := s.cfg.APIKey
+	apiKey := s.cfg.APIKey.Reveal()
 	if apiKey == "" {
 		logger.Warnf("resend.api-key is not set, skipping email to %s", to)
 		return nil

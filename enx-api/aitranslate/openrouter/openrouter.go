@@ -73,7 +73,7 @@ func (o *OpenRouter) modelForRephrase() string {
 // "provider = openrouter" misconfiguration is caught at startup rather than
 // on the first request.
 func New(c config.OpenAICompatible, timeout time.Duration) (*OpenRouter, error) {
-	apiKey := c.APIKey
+	apiKey := c.APIKey.Reveal()
 	if apiKey == "" {
 		return nil, fmt.Errorf("openrouter: OPENROUTER_API_KEY is not set")
 	}

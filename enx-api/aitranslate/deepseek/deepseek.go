@@ -50,7 +50,7 @@ func (d *DeepSeek) modelForRephrase() string {
 // immediately if the API key is missing, so a "provider = deepseek"
 // misconfiguration is caught at startup rather than on the first request.
 func New(c config.OpenAICompatible, timeout time.Duration) (*DeepSeek, error) {
-	apiKey := c.APIKey
+	apiKey := c.APIKey.Reveal()
 	if apiKey == "" {
 		return nil, fmt.Errorf("deepseek: DEEPSEEK_API_KEY is not set")
 	}

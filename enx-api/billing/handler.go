@@ -47,7 +47,7 @@ func NewHandler(sc *stripeSDK.Client, frontendBaseURL string, stripe config.Stri
 	return &Handler{
 		sc:              sc,
 		frontendBaseURL: frontendBaseURL,
-		webhookSecret:   stripe.WebhookSecret,
+		webhookSecret:   stripe.WebhookSecret.Reveal(),
 		prices:          stripe.Price,
 		credits:         stripe.Credits,
 		webhooks:        webhooks,

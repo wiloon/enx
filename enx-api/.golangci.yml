@@ -1,0 +1,23 @@
+version: "2"
+
+# Run with `task lint`, which pins the same version CI uses.
+linters:
+  # Deliberately not "standard" yet: errcheck and staticcheck report ~56
+  # pre-existing findings (mostly unchecked errors in tests). Enable them in
+  # a cleanup of their own rather than letting them block every PR.
+  default: none
+  enable:
+    - depguard
+    - govet
+  settings:
+    depguard:
+      rules:
+        # Issue #45: configuration is read once, by enx-api/config, into a
+        # typed Config that packages receive through their constructors.
+        viper-only-in-config:
+          files:
+            - "$all"
+            - "!**/enx-api/config/*.go"
+          deny:
+            - pkg: github.com/spf13/viper
+              desc: read configuration through enx-api/config (issue #45)

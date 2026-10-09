@@ -40,7 +40,7 @@ type MiniMax struct {
 // immediately if the API key is missing, so a "provider = minimax"
 // misconfiguration is caught at startup rather than on the first request.
 func New(c config.MiniMax, timeout time.Duration) (*MiniMax, error) {
-	apiKey := c.APIKey
+	apiKey := c.APIKey.Reveal()
 	if apiKey == "" {
 		return nil, fmt.Errorf("minimax: MINIMAX_API_KEY is not set")
 	}
