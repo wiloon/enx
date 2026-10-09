@@ -319,7 +319,7 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	router.GET("/api/version", handlers.GetVersionSimple)
 
 	admins := middleware.NewAdminAllowlist(cfg.Admin.ClerkUserIDs)
-	clerkAuth := middleware.ClerkAuth(middleware.ClerkConfigFrom(cfg.Clerk), m)
+	clerkAuth := middleware.ClerkAuth(middleware.ClerkConfigFrom(cfg.Clerk, cfg.User), m)
 
 	// Word lookup (ADR-018): the dictionary domain service over the words
 	// table and ECDICT, plus the per-user review log.

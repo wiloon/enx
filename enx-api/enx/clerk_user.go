@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/spf13/viper"
 )
 
 // NewUserHook runs once, right after a local user is provisioned -- e.g. to
@@ -31,15 +30,18 @@ func GetUserByClerkUserID(clerkUserID string) *User {
 	return &user
 }
 
-// GetOrCreateByClerkUserID finds or auto-provisions a local user for a Clerk identity.
-func GetOrCreateByClerkUserID(clerkUserID, email, name string) (string, error) {
+// GetOrCreateByClerkUserID finds or auto-provisions a local user for a Clerk
+// identity. An existing user's last_login_time is re-written only when it is
+// older than lastLoginUpdateInterval (user.last-login-update-interval), since
+// this runs on every authenticated request (docs/PERF_FIRST_QUERY_LATENCY.md).
+func GetOrCreateByClerkUserID(clerkUserID, email, name string, lastLoginUpdateInterval time.Duration) (string, error) {
 	if clerkUserID == "" {
 		return "", fmt.Errorf("empty clerk user id")
 	}
 	existing := GetUserByClerkUserID(clerkUserID)
 	if existing.Id != "" {
 		now := time.Now()
-		if now.Sub(existing.LastLoginTime) >= viper.GetDuration("user.last-login-update-interval") {
+		if now.Sub(existing.LastLoginTime) >= lastLoginUpdateInterval {
 			_ = sqlitex.DB.Model(existing).Updates(map[string]interface{}{
 				"last_login_time": now,
 				"updated_at":      now,

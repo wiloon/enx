@@ -33,11 +33,19 @@ type ClerkConfig struct {
 	AuthorizedParties []string
 	// JWKSURL overrides the default `<issuer>/.well-known/jwks.json` endpoint (tests only).
 	JWKSURL string
+	// LastLoginUpdateInterval throttles the last_login_time write for a
+	// returning user (user.last-login-update-interval).
+	LastLoginUpdateInterval time.Duration
 }
 
-// ClerkConfigFrom maps the clerk.* config onto ClerkConfig.
-func ClerkConfigFrom(c config.Clerk) ClerkConfig {
-	return ClerkConfig{Issuer: c.Issuer, AuthorizedParties: c.AuthorizedParties, JWKSURL: c.JWKSURL}
+// ClerkConfigFrom maps the clerk.* and user.* config onto ClerkConfig.
+func ClerkConfigFrom(c config.Clerk, u config.User) ClerkConfig {
+	return ClerkConfig{
+		Issuer:                  c.Issuer,
+		AuthorizedParties:       c.AuthorizedParties,
+		JWKSURL:                 c.JWKSURL,
+		LastLoginUpdateInterval: u.LastLoginUpdateInterval,
+	}
 }
 
 func (cfg ClerkConfig) jwksURL() string {
@@ -157,7 +165,7 @@ func ClerkAuth(cfg ClerkConfig, obs AuthObserver) gin.HandlerFunc {
 		email, _ := claims["email"].(string)
 		name, _ := claims["name"].(string)
 
-		userID, err := enx.GetOrCreateByClerkUserID(sub, email, name)
+		userID, err := enx.GetOrCreateByClerkUserID(sub, email, name, cfg.LastLoginUpdateInterval)
 		if err != nil {
 			logger.Errorf("ClerkAuth: provision user clerk_user_id=%s: %v", sub, err)
 			observe(authProvisionError, start)
