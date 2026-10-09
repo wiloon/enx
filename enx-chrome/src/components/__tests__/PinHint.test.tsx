@@ -21,7 +21,7 @@ describe('PinHint', () => {
   it('asks the user to pin Catglish', () => {
     setup()
     expect(screen.getByTestId('pin-hint')).toHaveTextContent(
-      'Pin Catglish to your toolbar to see when learning mode is ready.'
+      "Pin Catglish to your toolbar to see when it's on."
     )
   })
 

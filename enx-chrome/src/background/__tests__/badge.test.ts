@@ -43,7 +43,7 @@ describe('applyStatus', () => {
     })
     expect(chrome.action.setTitle).toHaveBeenCalledWith({
       tabId: 7,
-      title: expect.stringContaining('learning mode is on'),
+      title: expect.stringContaining('Catglish is on'),
     })
   })
 

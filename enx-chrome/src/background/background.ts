@@ -811,7 +811,7 @@ const handleSignedInReturn = async (): Promise<{
       type: 'basic',
       iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
       title: 'Signed in to Catglish',
-      message: 'You can keep reading — learning mode is ready.',
+      message: 'You can keep reading — Catglish is ready.',
     })
   } catch {
     // Notifications turned off by the user or the OS.

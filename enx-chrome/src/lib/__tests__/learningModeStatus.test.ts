@@ -46,7 +46,7 @@ describe('badgeFor (adr-046 Decision 1)', () => {
   it('asks a signed-out user to sign in (Decision 7)', () => {
     expect(badgeFor({ status: 'error', reason: 'signed-out' })).toMatchObject({
       text: '!',
-      title: 'Sign in to Catglish to use learning mode on this site.',
+      title: 'Sign in to use Catglish on this site.',
     })
   })
 })

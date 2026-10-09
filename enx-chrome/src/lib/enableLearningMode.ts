@@ -81,6 +81,18 @@ async function sendEnxRunWithRetry(tabId: number): Promise<EnxRunResponse> {
   return { success: false, reason: 'error', error: failureMessage('error') }
 }
 
+// Turns learning mode off and leaves the page as it was: the highlights are
+// CSS Custom Highlights (ADR-011), so clearing them unwraps nothing. Sent to
+// every frame, as enxRun is. A tab with no content script has nothing on,
+// so it is left alone rather than injected into.
+export async function disableLearningModeOnTab(tabId: number): Promise<void> {
+  try {
+    await chrome.tabs.sendMessage(tabId, { action: 'enxStop' })
+  } catch (err) {
+    if (!isNoReceiverError(err)) throw err
+  }
+}
+
 // What learning mode is doing on the tab right now, so the popup's button
 // matches a page that was auto-enabled (adr-039) or enabled from an earlier
 // popup. Only the top frame owns the status, as with the badge. A tab with no

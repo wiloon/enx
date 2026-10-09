@@ -30,7 +30,7 @@ export default function PinHint({
       className="flex w-72 items-start gap-2 rounded-lg bg-background px-3 py-2.5 text-xs text-foreground shadow-lg ring-1 ring-border"
     >
       <div className="flex-1 space-y-2">
-        <p>Pin Catglish to your toolbar to see when learning mode is ready.</p>
+        <p>Pin Catglish to your toolbar to see when it&apos;s on.</p>
         <button
           type="button"
           onClick={onDontShowAgain}

@@ -16,7 +16,7 @@ const FEATURES: Feature[] = [
   },
   {
     title: 'Click any word for its meaning',
-    body: "Click a word in the text and a popup shows its definition, IPA, how many times you've looked it up, and whether you've marked it known. No setup — it follows learning mode.",
+    body: "Click a word in the text and a popup shows its definition, IPA, how many times you've looked it up, and whether you've marked it known. No setup — it works whenever Catglish is on.",
     imageAlt: 'A word lookup popup over an English article',
   },
   {

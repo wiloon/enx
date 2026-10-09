@@ -1413,7 +1413,7 @@ describe('background auto-enable wiring (adr-039)', () => {
     })
     expect(chrome.action.setTitle).toHaveBeenCalledWith({
       tabId: 4,
-      title: 'Sign in to Catglish to use learning mode on this site.',
+      title: 'Sign in to use Catglish on this site.',
     })
   })
 

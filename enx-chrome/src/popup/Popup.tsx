@@ -1,5 +1,8 @@
 import DebugPanel from '@/components/DebugPanel'
 import CatglishLogo from '@/components/CatglishLogo'
+import LearningModeCard, {
+  type LearningModeCardStatus,
+} from '@/components/LearningModeCard'
 import Login from '@/components/Login'
 import { useAutoEnableSite } from '@/hooks/useAutoEnableSite'
 import { useInitializeStorage } from '@/hooks/useInitializeStorage'
@@ -13,6 +16,7 @@ import SaveLinkCard from '@/components/SaveLinkCard'
 import { config } from '@/config/env'
 import { isReportableFailure, EnableFailureReason } from '@/lib/enableOutcome'
 import {
+  disableLearningModeOnTab,
   enableLearningModeOnTab,
   getLearningModeStatusOnTab,
 } from '@/lib/enableLearningMode'
@@ -24,11 +28,9 @@ import { ClerkProvider, SignOutButton, useUser } from '@clerk/chrome-extension'
 import {
   ArrowRightOnRectangleIcon,
   BookOpenIcon,
-  CheckCircleIcon,
   ChevronRightIcon,
   Cog6ToothIcon,
   GlobeAltIcon,
-  SparklesIcon,
 } from '@heroicons/react/24/outline'
 import { Provider, useAtom, useSetAtom } from 'jotai'
 import { useEffect, useState } from 'react'
@@ -125,9 +127,8 @@ function SignedInBody({
   const { user } = useUser()
   const autoEnableSite = useAutoEnableSite()
   const [error, setError] = useAtom(errorAtom)
-  const [learningStatus, setLearningStatus] = useState<
-    'idle' | 'processing' | 'completed'
-  >('idle')
+  const [learningStatus, setLearningStatus] =
+    useState<LearningModeCardStatus>('off')
 
   // Start from the page's real state: an auto-enabled site, or a page enabled
   // from an earlier popup, is already on before this button is ever clicked.
@@ -143,7 +144,7 @@ function SignedInBody({
       if (cancelled) return
       // Not 'processing': the popup would never hear it finish and the
       // button would stay disabled.
-      if (status === 'ready') setLearningStatus('completed')
+      if (status === 'ready') setLearningStatus('on')
     })()
     return () => {
       cancelled = true
@@ -183,7 +184,7 @@ function SignedInBody({
   const savedPage = useSavedPage(user?.id)
 
   const handleEnableLearning = async () => {
-    setLearningStatus('processing')
+    setLearningStatus('enabling')
     setError(null)
     setReportCandidate(null)
     setReportStatus('idle')
@@ -204,16 +205,36 @@ function SignedInBody({
         if (reason && isReportableFailure(reason) && url) {
           setReportCandidate({ url, reason, adapter: response.adapter ?? '' })
         }
-        throw new Error(response?.error || 'Failed to enable learning mode')
+        throw new Error(response?.error || "Couldn't turn on Catglish")
       }
-      setLearningStatus('completed')
+      setLearningStatus('on')
     } catch (e) {
       // enableLearningModeOnTab already turns "no content script yet" into an
       // inject-and-retry, so anything still thrown here is a genuine failure
       // (no active tab, or the injected/retried enxRun call itself rejected).
       const message = e instanceof Error ? e.message : ''
-      setError(message || 'Cannot enable learning mode on this page')
-      setLearningStatus('idle')
+      setError(message || "Couldn't turn on Catglish on this page")
+      setLearningStatus('off')
+    }
+  }
+
+  // Leaves the page as it was before learning mode, without a reload. On an
+  // auto-enabled site this lasts until the next page load; the site toggle
+  // below is what stops it for good.
+  const handleTurnOffLearning = async () => {
+    setLearningStatus('turning-off')
+    setError(null)
+    try {
+      const [tab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      })
+      if (tab?.id) await disableLearningModeOnTab(tab.id)
+      setLearningStatus('off')
+    } catch (e) {
+      const message = e instanceof Error ? e.message : ''
+      setError(message || "Couldn't turn off Catglish on this page")
+      setLearningStatus('on')
     }
   }
 
@@ -279,23 +300,11 @@ function SignedInBody({
         />
       )}
 
-      <button
-        type="button"
-        onClick={handleEnableLearning}
-        disabled={learningStatus === 'processing'}
-        className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-2.5 text-sm font-semibold text-brand-foreground shadow-md shadow-brand/25 transition hover:brightness-105 active:scale-[0.99] disabled:opacity-60"
-      >
-        {learningStatus === 'completed' ? (
-          <CheckCircleIcon className="h-[18px] w-[18px]" />
-        ) : (
-          <SparklesIcon className="h-[18px] w-[18px]" />
-        )}
-        {learningStatus === 'processing'
-          ? 'Enabling…'
-          : learningStatus === 'completed'
-            ? 'Learning mode enabled'
-            : 'Enable learning mode'}
-      </button>
+      <LearningModeCard
+        status={learningStatus}
+        onEnable={handleEnableLearning}
+        onTurnOff={handleTurnOffLearning}
+      />
 
       {/* adr-039: only on pages whose site can be auto-enabled. */}
       {autoEnableSite.site && (
