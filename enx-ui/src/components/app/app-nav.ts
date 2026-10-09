@@ -1,7 +1,9 @@
 import {
   AlertTriangle,
   BarChart3,
+  Bookmark,
   BookOpen,
+  BookText,
   ClipboardCheck,
   CreditCard,
   Globe,
@@ -28,6 +30,10 @@ export const NAV_MAIN: NavItem[] = [
   { label: 'Word Lookup', href: '/lookup', icon: Search },
   { label: 'Rephrase', href: '/rephrase', icon: Sparkles },
   { label: 'Reader', href: '/reader', icon: BookOpen },
+  // The words looked up in articles (user_dicts), and the pages saved from
+  // the extension popup (ADR-032).
+  { label: 'Word List', href: '/words', icon: BookText },
+  { label: 'Saved Pages', href: '/saved', icon: Bookmark },
 ]
 
 // Reading insights — daily / weekly / monthly stats and charts live under here

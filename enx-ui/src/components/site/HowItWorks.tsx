@@ -12,7 +12,7 @@ const STEPS = [
   {
     n: 3,
     title: 'Just read',
-    body: 'Click to look up, select to translate. Words you look up are saved for review and stay underlined wherever they reappear.',
+    body: 'Click to look up, select to translate. Words you look up go into your word list and stay underlined wherever they reappear.',
   },
 ]
 

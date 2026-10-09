@@ -131,3 +131,17 @@ func TestPreferencesRoutesRequireAuthentication(t *testing.T) {
 		}
 	}
 }
+
+// The word list is the user's own data: the route sits behind the session
+// check like the rest of /api/me.
+func TestWordListRouteRequiresAuthentication(t *testing.T) {
+	utils.ViperInit()
+	gin.SetMode(gin.TestMode)
+	router := setupRouter(metrics.New())
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/me/words", nil))
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("GET /api/me/words without credentials: status %d, want 401", w.Code)
+	}
+}

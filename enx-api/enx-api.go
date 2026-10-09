@@ -31,6 +31,7 @@ import (
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
 	wordCount "enx-api/word"
+	"enx-api/wordlist"
 	"errors"
 	"fmt"
 	"net/http"
@@ -479,6 +480,10 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	preferencesHandler := handlers.NewPreferencesHandler(preferencesService)
 	apiGroup.GET("/me/preferences", preferencesHandler.Get)
 	apiGroup.PUT("/me/preferences", preferencesHandler.Update)
+
+	// The user's word list: every word they looked up in an article,
+	// including the ones marked known. Read-only, not on the metered path.
+	apiGroup.GET("/me/words", wordlist.ListHandler)
 
 	// Billing (Stripe) — requires authentication (Clerk session JWT).
 	apiGroup.POST("/billing/checkout/subscription", billingHandler.CheckoutSubscription)
