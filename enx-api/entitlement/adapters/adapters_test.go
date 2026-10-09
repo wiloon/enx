@@ -3,7 +3,9 @@ package adapters
 import (
 	"context"
 	"testing"
+	"time"
 
+	"enx-api/billing/credit"
 	"enx-api/utils/sqlitex"
 
 	"github.com/glebarez/sqlite"
@@ -19,7 +21,7 @@ func setupBillingDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&sqlitex.Subscription{}, &sqlitex.CreditAccount{}); err != nil {
+	if err := db.AutoMigrate(&sqlitex.Subscription{}, &sqlitex.CreditAccount{}, &sqlitex.CreditTransaction{}); err != nil {
 		t.Fatal(err)
 	}
 	sqlitex.DB = db
@@ -64,6 +66,23 @@ func TestBillingTopupBalance(t *testing.T) {
 		}
 		if got != want {
 			t.Errorf("TopupBalance(%q) = %d, want %d", user, got, want)
+		}
+	}
+}
+
+func TestBillingTrialBalance(t *testing.T) {
+	setupBillingDB(t)
+	ctx := context.Background()
+	if _, err := credit.GrantTrial(ctx, "trialist", 100, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	for user, want := range map[string]int64{"trialist": 100, "nobody": 0} {
+		got, err := Billing{}.TrialBalance(ctx, user)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("TrialBalance(%q) = %d, want %d", user, got, want)
 		}
 	}
 }

@@ -44,6 +44,10 @@ export interface BillingSubscription {
 export interface BillingCredits {
   subscriptionBalance: number
   topupBalance: number
+  // The sign-up trial (ADR-048): 0 once spent or expired.
+  trialBalance: number
+  // Unix seconds; null for an account that never had a trial.
+  trialExpiresAt: number | null
 }
 
 export interface BillingMeData {

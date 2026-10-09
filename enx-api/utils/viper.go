@@ -192,6 +192,16 @@ func viperInitInternal() {
 	_ = viper.BindEnv("ai-word.cache-writes-per-day", "AI_WORD_CACHE_WRITES_PER_DAY")
 	viper.SetDefault("ai-word.call-timeout", "45s")
 	_ = viper.BindEnv("ai-word.call-timeout", "AI_WORD_CALL_TIMEOUT")
+	// Sign-up trial (ADR-048): amount 0 switches trials off; the two call
+	// ceilings apply only to trial-only users, 0 = no ceiling.
+	viper.SetDefault("credits.trial.amount", 100)
+	_ = viper.BindEnv("credits.trial.amount", "CREDITS_TRIAL_AMOUNT")
+	viper.SetDefault("credits.trial.ttl-days", 7)
+	_ = viper.BindEnv("credits.trial.ttl-days", "CREDITS_TRIAL_TTL_DAYS")
+	viper.SetDefault("credits.trial.calls-per-minute", 5)
+	_ = viper.BindEnv("credits.trial.calls-per-minute", "CREDITS_TRIAL_CALLS_PER_MINUTE")
+	viper.SetDefault("credits.trial.calls-per-day", 30)
+	_ = viper.BindEnv("credits.trial.calls-per-day", "CREDITS_TRIAL_CALLS_PER_DAY")
 	// Daily dictionary lookup ceilings per tier (ADR-029). 0 = count but
 	// never block, the opposite fail-direction from costs/credits -- see
 	// config.toml's [stripe.quota] comment.

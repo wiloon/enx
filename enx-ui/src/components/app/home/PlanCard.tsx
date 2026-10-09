@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight } from 'lucide-react'
 import { apiService } from '@/services/api'
+import { totalCredits, trialSummary } from '@/lib/credits'
 import { subscriptionStatusLabel } from '@/lib/plans'
 import { SITE } from '@/lib/site'
 import { tileClass } from './tile'
@@ -34,7 +35,8 @@ export default function PlanCard() {
   if (isError || !data) return null
 
   const { subscription, credits } = data
-  const total = credits.subscriptionBalance + credits.topupBalance
+  const total = totalCredits(credits)
+  const trial = trialSummary(credits)
 
   return (
     <Link href="/billing" className={tileClass}>
@@ -58,6 +60,9 @@ export default function PlanCard() {
         {credits.subscriptionBalance.toLocaleString()} from plan ·{' '}
         {credits.topupBalance.toLocaleString()} topped up
       </span>
+      {trial && (
+        <span className="mt-1 text-xs text-muted-foreground">{trial}</span>
+      )}
     </Link>
   )
 }

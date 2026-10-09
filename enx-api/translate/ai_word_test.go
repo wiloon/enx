@@ -124,6 +124,8 @@ func TestAIWordErrorMapping(t *testing.T) {
 		{"not entitled", dictionary.ErrNotEntitled, http.StatusForbidden, "not_entitled"},
 		{"insufficient credit", dictionary.ErrInsufficientCredit, http.StatusPaymentRequired, "insufficient_credit"},
 		{"rate limited", dictionary.ErrRateLimited, http.StatusTooManyRequests, "rate_limited"},
+		{"trial daily limit", dictionary.ErrTrialLimitedPerDay, http.StatusTooManyRequests, "trial_limit_day"},
+		{"trial per-minute limit", dictionary.ErrTrialLimitedPerMinute, http.StatusTooManyRequests, "trial_limit_minute"},
 		{"not available", dictionary.ErrAIUnavailable, http.StatusServiceUnavailable, "ai_unavailable"},
 		{"model failed", dictionary.ErrAIFailed, http.StatusBadGateway, "ai_failed"},
 		{"anything else", errors.New("secret database detail"), http.StatusBadGateway, "ai_failed"},

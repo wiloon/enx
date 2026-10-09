@@ -1,4 +1,4 @@
-package dictionary
+package ailimit
 
 import (
 	"testing"
@@ -16,7 +16,7 @@ func newClock() *fakeClock {
 
 func TestMemoryLimiterCallsPerMinute(t *testing.T) {
 	clock := newClock()
-	l := NewMemoryLimiter(AILimits{CallsPerMinute: 2}, clock.now)
+	l := NewMemoryLimiter(Limits{CallsPerMinute: 2}, clock.now)
 
 	if !l.AllowCall("u1") || !l.AllowCall("u1") {
 		t.Fatal("the first two calls should pass")
@@ -35,7 +35,7 @@ func TestMemoryLimiterCallsPerMinute(t *testing.T) {
 
 func TestMemoryLimiterCallsPerDayRollOverAtUTCMidnight(t *testing.T) {
 	clock := newClock()
-	l := NewMemoryLimiter(AILimits{CallsPerDay: 2}, clock.now)
+	l := NewMemoryLimiter(Limits{CallsPerDay: 2}, clock.now)
 
 	l.AllowCall("u1")
 	clock.advance(2 * time.Minute) // outside any per-minute window
@@ -52,7 +52,7 @@ func TestMemoryLimiterCallsPerDayRollOverAtUTCMidnight(t *testing.T) {
 
 func TestMemoryLimiterARefusedCallIsNotCounted(t *testing.T) {
 	clock := newClock()
-	l := NewMemoryLimiter(AILimits{CallsPerMinute: 1, CallsPerDay: 2}, clock.now)
+	l := NewMemoryLimiter(Limits{CallsPerMinute: 1, CallsPerDay: 2}, clock.now)
 
 	l.AllowCall("u1")
 	for i := 0; i < 5; i++ {
@@ -66,7 +66,7 @@ func TestMemoryLimiterARefusedCallIsNotCounted(t *testing.T) {
 
 func TestMemoryLimiterCacheWritesPerDay(t *testing.T) {
 	clock := newClock()
-	l := NewMemoryLimiter(AILimits{CacheWritesPerDay: 2}, clock.now)
+	l := NewMemoryLimiter(Limits{CacheWritesPerDay: 2}, clock.now)
 
 	if !l.AllowCacheWrite("u1") || !l.AllowCacheWrite("u1") {
 		t.Fatal("the first two writes should pass")
@@ -84,7 +84,7 @@ func TestMemoryLimiterCacheWritesPerDay(t *testing.T) {
 }
 
 func TestMemoryLimiterZeroMeansNoLimit(t *testing.T) {
-	l := NewMemoryLimiter(AILimits{}, newClock().now)
+	l := NewMemoryLimiter(Limits{}, newClock().now)
 	for i := 0; i < 1000; i++ {
 		if !l.AllowCall("u1") || !l.AllowCacheWrite("u1") {
 			t.Fatalf("an unconfigured limit blocked at %d", i)
@@ -94,7 +94,7 @@ func TestMemoryLimiterZeroMeansNoLimit(t *testing.T) {
 
 func TestMemoryLimiterForgetsIdleUsers(t *testing.T) {
 	clock := newClock()
-	l := NewMemoryLimiter(AILimits{CallsPerDay: 5}, clock.now)
+	l := NewMemoryLimiter(Limits{CallsPerDay: 5}, clock.now)
 	for i := 0; i < pruneAbove; i++ {
 		l.AllowCall(string(rune('a'+i%26)) + string(rune(i)))
 	}

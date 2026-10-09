@@ -76,7 +76,6 @@ describe('lookupWithAi', () => {
 
   it.each([
     [402, 'credit'],
-    [429, 'rate-limited'],
     [403, 'not-entitled'],
     [502, 'unavailable'],
     [503, 'unavailable'],
@@ -85,6 +84,20 @@ describe('lookupWithAi', () => {
     send.mockResolvedValue({ success: false, status, error: 'x' })
 
     expect(await lookupWithAi('rizzler')).toEqual({ kind: 'error', reason })
+  })
+
+  // A 429 is either the AI lookup's own rate limit or the sign-up trial's
+  // daily limit (ADR-048); the server's message says which, so it is kept.
+  it('keeps the server message on a 429', async () => {
+    const message =
+      "You've reached today's trial limit. Try again tomorrow, or subscribe for more."
+    send.mockResolvedValue({ success: false, status: 429, error: message })
+
+    expect(await lookupWithAi('rizzler')).toEqual({
+      kind: 'error',
+      reason: 'rate-limited',
+      message,
+    })
   })
 
   it('treats a message that never got an answer as unavailable', async () => {

@@ -157,6 +157,23 @@ describe('runAiLookup', () => {
     expect(deps.onDefined).not.toHaveBeenCalled()
   })
 
+  it("passes the server's message on with the error", async () => {
+    lookup.mockResolvedValue({
+      kind: 'error',
+      reason: 'rate-limited',
+      message: "You've reached today's trial limit.",
+    })
+    const { store, deps } = setup()
+
+    await runAiLookup('rizzler', { auto: false }, deps)
+
+    expect(store.get(aiLookupAtom)).toEqual({
+      status: 'error',
+      reason: 'rate-limited',
+      message: "You've reached today's trial limit.",
+    })
+  })
+
   it('hands an expired session to the content script and shows nothing', async () => {
     lookup.mockResolvedValue({ kind: 'session-expired' })
     const { deps } = setup()

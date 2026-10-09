@@ -92,6 +92,10 @@ func respondAIError(c *gin.Context, err error) {
 		c.JSON(http.StatusPaymentRequired, gin.H{"success": false, "code": "insufficient_credit", "message": "Insufficient credit. Please add credit or subscribe."})
 	case errors.Is(err, dictionary.ErrRateLimited):
 		c.JSON(http.StatusTooManyRequests, gin.H{"success": false, "code": "rate_limited", "message": "Too many AI lookups. Please try again in a moment."})
+	case errors.Is(err, dictionary.ErrTrialLimitedPerDay):
+		c.JSON(http.StatusTooManyRequests, gin.H{"success": false, "code": "trial_limit_day", "message": "You've reached today's trial limit. Try again tomorrow, or subscribe for more."})
+	case errors.Is(err, dictionary.ErrTrialLimitedPerMinute):
+		c.JSON(http.StatusTooManyRequests, gin.H{"success": false, "code": "trial_limit_minute", "message": "Too many requests. Please wait a minute and try again."})
 	case errors.Is(err, dictionary.ErrAIUnavailable):
 		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "code": "ai_unavailable", "message": "AI lookup is not available right now."})
 	case errors.Is(err, dictionary.ErrEcdictUnavailable):

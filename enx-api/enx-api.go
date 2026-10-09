@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"enx-api/ailimit"
 	"enx-api/aitranslate"
 	"enx-api/aitranslate/aicfg"
 	"enx-api/aitranslate/worddef"
@@ -319,6 +320,19 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	// preferences, whose editability follows the same rule.
 	entitlements := entitlement.NewService(entadapters.Billing{})
 
+	// Sign-up trial (ADR-048): every new account gets the trial credits, and
+	// users whose AI access comes from the trial alone are held to its call
+	// rate on every AI feature.
+	enx.SetNewUserHook(billing.TrialGrant{
+		Amount:  viper.GetInt64("credits.trial.amount"),
+		TTL:     time.Duration(viper.GetInt("credits.trial.ttl-days")) * 24 * time.Hour,
+		Observe: m.ObserveTrialGrant,
+	})
+	trialGate := ailimit.NewTrialGate(entitlements, ailimit.NewMemoryLimiter(ailimit.Limits{
+		CallsPerMinute: viper.GetInt("credits.trial.calls-per-minute"),
+		CallsPerDay:    viper.GetInt("credits.trial.calls-per-day"),
+	}, nil))
+
 	dictionaryService := dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, dictionary.QuotaMeter{}, entitlements)
 	preferencesService := preferences.NewService(prefadapters.Table{}, entitlements)
 
@@ -364,7 +378,7 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 					},
 					Feature: "lookup_word_ai",
 				},
-				dictionary.NewMemoryLimiter(dictionary.AILimits{
+				ailimit.NewMemoryLimiter(ailimit.Limits{
 					CallsPerMinute:    viper.GetInt("ai-word.calls-per-minute"),
 					CallsPerDay:       viper.GetInt("ai-word.calls-per-day"),
 					CacheWritesPerDay: viper.GetInt("ai-word.cache-writes-per-day"),
@@ -375,6 +389,7 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 					CallTimeout:   viper.GetDuration("ai-word.call-timeout"),
 				},
 			)
+			dictionaryService.LimitTrial(trialGate)
 			if !dictionaryService.AIConfigured() {
 				logger.Warnf("AI word lookup is off: stripe.costs.define-word has no price")
 			}
@@ -391,7 +406,7 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 			WeightOut: viper.GetInt64("stripe.costs.translate.weight-out"),
 			Divisor:   viper.GetInt64("stripe.costs.translate.divisor"),
 		},
-	)
+	).WithTrialGate(trialGate)
 
 	// Rephrase (ADR-012) reuses the same provider as sentence translation,
 	// but the provider must also implement rephrase support. Same
@@ -415,7 +430,7 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 			WeightOut: viper.GetInt64("stripe.costs.rephrase.weight-out"),
 			Divisor:   viper.GetInt64("stripe.costs.rephrase.divisor"),
 		},
-	)
+	).WithTrialGate(trialGate)
 
 	// Stripe billing is likewise optional: without STRIPE_SECRET_KEY (a local
 	// dev box, or a deployment that hasn't set the secret yet), billing

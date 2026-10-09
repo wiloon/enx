@@ -12,6 +12,8 @@ type fakeSource struct {
 	subscribedErr error
 	topupErr      error
 	topupReads    int
+	trial         int64
+	trialErr      error
 }
 
 func (f *fakeSource) IsActiveSubscriber(context.Context, string) (bool, error) {
@@ -21,6 +23,10 @@ func (f *fakeSource) IsActiveSubscriber(context.Context, string) (bool, error) {
 func (f *fakeSource) TopupBalance(context.Context, string) (int64, error) {
 	f.topupReads++
 	return f.topup, f.topupErr
+}
+
+func (f *fakeSource) TrialBalance(context.Context, string) (int64, error) {
+	return f.trial, f.trialErr
 }
 
 func TestStatus(t *testing.T) {
@@ -34,6 +40,10 @@ func TestStatus(t *testing.T) {
 		{"top-up only", fakeSource{topup: 50}, Status{CanUseAI: true}},
 		{"neither", fakeSource{}, Status{}},
 		{"overdrawn top-up and no subscription", fakeSource{topup: -3}, Status{}},
+		{"trial only", fakeSource{trial: 100}, Status{CanUseAI: true, TrialOnly: true}},
+		{"trial and top-up", fakeSource{trial: 100, topup: 5}, Status{CanUseAI: true}},
+		{"trial and subscription", fakeSource{subscribed: true, trial: 100}, Status{Subscribed: true, CanUseAI: true}},
+		{"expired or spent trial", fakeSource{trial: 0}, Status{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			src := tc.src

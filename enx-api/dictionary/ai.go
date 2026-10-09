@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"time"
 
+	"enx-api/ailimit"
 	"enx-api/utils/logger"
 )
 
@@ -31,6 +32,11 @@ var (
 	ErrNotEntitled = errors.New("dictionary: user may not use AI lookups")
 	// ErrRateLimited: the user is over a per-minute or daily AI limit.
 	ErrRateLimited = errors.New("dictionary: AI lookup rate limit reached")
+	// ErrTrialLimitedPerDay / ErrTrialLimitedPerMinute: a user whose AI
+	// access comes from the sign-up trial alone is over the trial's call
+	// rate (ADR-048 Decision 7).
+	ErrTrialLimitedPerDay    = errors.New("dictionary: trial daily AI limit reached")
+	ErrTrialLimitedPerMinute = errors.New("dictionary: trial per-minute AI limit reached")
 	// ErrInsufficientCredit: the user has no credit left to spend.
 	ErrInsufficientCredit = errors.New("dictionary: insufficient credit for an AI lookup")
 	// ErrAIFailed: the model call itself failed. Nothing is charged.
@@ -106,11 +112,18 @@ type AIConfig struct {
 	CallTimeout time.Duration
 }
 
+// TrialGate holds trial-only users to the trial's call rate; production is
+// an *ailimit.TrialGate.
+type TrialGate interface {
+	Check(ctx context.Context, userID string) ailimit.Verdict
+}
+
 type aiFallback struct {
-	definer WordDefiner
-	billing AIBilling
-	limiter AILimiter
-	cfg     AIConfig
+	definer   WordDefiner
+	billing   AIBilling
+	limiter   AILimiter
+	trialGate TrialGate
+	cfg       AIConfig
 }
 
 // EnableAI switches the AI word fallback on. Without it DefineWithAI returns
@@ -120,6 +133,14 @@ func (s *Service) EnableAI(definer WordDefiner, billing AIBilling, limiter AILim
 		cfg.CallTimeout = 45 * time.Second
 	}
 	s.ai = &aiFallback{definer: definer, billing: billing, limiter: limiter, cfg: cfg}
+}
+
+// LimitTrial turns on the trial call-rate limit for the AI fallback. Call it
+// after EnableAI; without it no trial limit applies.
+func (s *Service) LimitTrial(gate TrialGate) {
+	if s.ai != nil {
+		s.ai.trialGate = gate
+	}
 }
 
 // AIConfigured reports whether the AI fallback can run at all: a definer is
@@ -169,6 +190,14 @@ func (s *Service) DefineWithAI(ctx context.Context, english, userID string) (Res
 	}
 	if balance < 1 {
 		return Result{}, ErrInsufficientCredit
+	}
+	if s.ai.trialGate != nil {
+		switch s.ai.trialGate.Check(ctx, userID) {
+		case ailimit.LimitedPerDay:
+			return Result{}, ErrTrialLimitedPerDay
+		case ailimit.LimitedPerMinute:
+			return Result{}, ErrTrialLimitedPerMinute
+		}
 	}
 
 	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.ai.cfg.CallTimeout)

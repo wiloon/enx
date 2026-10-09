@@ -34,6 +34,8 @@ export type AiLookupState =
   | {
       status: 'error'
       reason: 'credit' | 'rate-limited' | 'not-entitled' | 'unavailable'
+      // Shown instead of the reason's stock text when the server said more.
+      message?: string
     }
 
 export const aiLookupAtom = atom<AiLookupState>({ status: 'idle' })

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"enx-api/ailimit"
 	"enx-api/aitranslate/sentenceword"
 	"enx-api/aitranslate/wordcontext"
 	"enx-api/billing/credit"
@@ -55,6 +56,38 @@ type Handler struct {
 	translator Translator
 	ledger     TokenLedger
 	pricing    credit.TokenPricing
+	trialGate  CallGate
+}
+
+// CallGate holds trial-only users to the trial's call rate (ADR-048
+// Decision 7); production is an *ailimit.TrialGate.
+type CallGate interface {
+	Check(ctx context.Context, userID string) ailimit.Verdict
+}
+
+// WithTrialGate turns on the trial call-rate limit. Without it no call is
+// rate-limited.
+func (h *Handler) WithTrialGate(gate CallGate) *Handler {
+	h.trialGate = gate
+	return h
+}
+
+// refuseOverTrialLimit writes a 429 and returns true when gate refuses
+// userID's call. It runs after the balance pre-check, so a user who can't
+// pay is told so and doesn't use up a trial slot.
+func refuseOverTrialLimit(c *gin.Context, gate CallGate, userID string) bool {
+	if gate == nil {
+		return false
+	}
+	switch gate.Check(c.Request.Context(), userID) {
+	case ailimit.LimitedPerDay:
+		c.JSON(http.StatusTooManyRequests, gin.H{"success": false, "message": "You've reached today's trial limit. Try again tomorrow, or subscribe for more."})
+		return true
+	case ailimit.LimitedPerMinute:
+		c.JSON(http.StatusTooManyRequests, gin.H{"success": false, "message": "Too many requests. Please wait a minute and try again."})
+		return true
+	}
+	return false
 }
 
 func NewHandler(translator Translator, ledger TokenLedger, pricing credit.TokenPricing) *Handler {
@@ -89,6 +122,9 @@ func (h *Handler) billedCall(c *gin.Context, feature string, fn func(ctx context
 	}
 	if balance < 1 {
 		c.JSON(http.StatusPaymentRequired, gin.H{"success": false, "message": "Insufficient credit. Please add credit or subscribe."})
+		return false
+	}
+	if refuseOverTrialLimit(c, h.trialGate, userID) {
 		return false
 	}
 

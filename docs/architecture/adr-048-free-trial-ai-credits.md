@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-03
-related: adr-009（两池积分账本，本 ADR 加第三个池）、adr-012 / adr-014（按 token 结算的 `Settle`）、adr-045（AI 单词兜底，试用期内一并开放）、adr-047（Onboarding 第 3 步的侧边栏 AI 翻译依赖本 ADR）
+related: adr-051（邀请注册在试用池上叠加奖励）、adr-009（两池积分账本，本 ADR 加第三个池）、adr-012 / adr-014（按 token 结算的 `Settle`）、adr-045（AI 单词兜底，试用期内一并开放）、adr-047（Onboarding 第 3 步的侧边栏 AI 翻译依赖本 ADR）
 ---
 
-# ADR-048：新账号一次性发放 100 试用积分，独立积分池、14 天过期、扣费时最先扣
+# ADR-048：新账号一次性发放 100 试用积分，独立积分池、7 天过期、扣费时最先扣
 
 adr-047 的引导要让新用户在示例文章里体验侧边栏 AI 翻译。但 AI 功能只看积分：`entitlement.CanUseAI` 为「有订阅，或 top-up 余额 > 0」，`credit.Balance` 是订阅池 + top-up 池；免费用户两个池都是 0，一点就 402。想让新用户体验 AI，就得先给积分。AI 调用有真实成本，额度必须可控。
 
@@ -34,7 +34,7 @@ adr-047 的引导要让新用户在示例文章里体验侧边栏 AI 翻译。�
    ```toml
    [credits.trial]
    amount = 100              # 0 = 不发试用（关闭开关）
-   ttl-days = 14
+   ttl-days = 7              # 2026-10-08 由 14 改为 7；邀请注册的用户另见 adr-051
    calls-per-minute = 5      # 试用用户每分钟最多几次 AI 调用；0 = 不限
    calls-per-day = 30        # 试用用户每个 UTC 日最多几次 AI 调用；0 = 不限
    ```
@@ -56,14 +56,14 @@ adr-047 的引导要让新用户在示例文章里体验侧边栏 AI 翻译。�
 
    **第二层：使用端，防单个试用账号短时间烧光、或被脚本调用。**
    - **只对「试用用户」生效**：`entitlement.Status` 新增 `TrialOnly`，条件是没有订阅、top-up ≤ 0、有效试用余额 > 0，也就是 AI 权限完全来自试用。订阅和充值用户不受这两个限制。
-   - **每分钟次数**（`calls-per-minute`）挡脚本和连点；**每天次数**（`calls-per-day`）把 100 积分摊到多天，不让一个账号一天用完。按现在的计价权重（`[stripe.costs.translate]`），一次整句翻译大约 1 积分，100 积分约等于 100 次调用；每天 30 次意味着试用至少要 4 天才能用完。
+   - **每分钟次数**（`calls-per-minute`）挡脚本和连点；**每天次数**（`calls-per-day`）把 100 积分摊到多天，不让一个账号一天用完。按现在的计价权重（`[stripe.costs.translate]`），一次整句翻译大约 1 积分，100 积分约等于 100 次调用；每天 30 次意味着试用至少要 4 天才能用完，7 天的有效期内用得完。
    - **复用 adr-045 的 `dictionary.MemoryLimiter`**（`dictionary/ai_limiter.go`，已有每分钟和每日计数，0 表示不限）：把它挪到一个不属于某个功能的包（例如 `ailimit`），AI 单词兜底和试用限制各用一个实例，配置互相独立。
    - **在哪里检查**：所有 AI 功能调用前都会先查余额，只有两个入口（`aitranslate/token_ledger.go` 与 `dictionary/adapters/adapters.go` 的 `Balance`）。试用限制就挂在这两处：`TrialOnly` 且限流器不放行时，返回 429，不调模型、不扣积分。
    - 计数在进程内存里，服务重启会清零，只会多放过几次调用。它是安全阀，不是记账系统；真正的成本上限仍然是 100 积分本身。
    - 429 的提示文案（英文 UI）：`You've reached today's trial limit. Try again tomorrow, or subscribe for more.`；每分钟超限时提示稍后再试。
 
    **两层之间的关系**：第一层提高「造一个试用账号」的成本，第二层封住「每个试用账号能花多少、花多快」：每个账号终生最多 100 积分、每天最多 `calls-per-day` 次调用。成本因此与「攻击者能造多少个 Google / GitHub 账号」成正比，而那一部分由 Google、GitHub 和 Clerk 承担。
-8. **展示**：`GET /billing/me` 的 `credits` 增加 `trialBalance`（有效值）和 `trialExpiresAt`。enx-ui 的 billing 页与侧边栏的余额处显示「100 trial credits · expires Oct 17」这类文案（英文 UI）。
+8. **展示**：`GET /billing/me` 的 `credits` 增加 `trialBalance`（有效值）和 `trialExpiresAt`。enx-ui 的 billing 页与侧边栏的余额处显示「100 trial credits · expires Oct 15」这类文案（英文 UI）。
 
 ## 实现要点（给实现者 / AFK agent）
 
@@ -87,8 +87,8 @@ adr-047 的引导要让新用户在示例文章里体验侧边栏 AI 翻译。�
 ## Consequences
 
 - 新用户在 Onboarding 里能真正用到 AI，而不是第一次点 AI 就碰到付费墙。
-- 100 积分 / 14 天是**未校准的初值**：积分与真实成本的换算比例（`[stripe.costs.*]`）还是占位值（LAUNCH-CHECKLIST §1.2）。生产环境跑一段时间、有了真实的 `cost=` 日志之后，与订阅、充值档位的积分数一起重新定。目前的判断是：真实成本很低，现有付费档给的积分偏少，校准时大概率上调，试用额度随之调整。
+- 100 积分 / 7 天是**未校准的初值**：积分与真实成本的换算比例（`[stripe.costs.*]`）还是占位值（LAUNCH-CHECKLIST §1.2）。生产环境跑一段时间、有了真实的 `cost=` 日志之后，与订阅、充值档位的积分数一起重新定。目前的判断是：真实成本很低，现有付费档给的积分偏少，校准时大概率上调，试用额度随之调整。
 - 账本从两个池变成三个池，`Settle` 的原子 UPDATE 更复杂；它是唯一的扣费入口，正确性靠上面的并发测试兜住。
-- 发放时机选在账号创建时，而不是第一次使用 AI 时：实现最简单，代价是只注册不用的账号也会拿到一份（之后在 14 天后自然过期），因为有第二层限制，这部分不产生成本，只是账面上多一笔会过期的赠送。
+- 发放时机选在账号创建时，而不是第一次使用 AI 时：实现最简单，代价是只注册不用的账号也会拿到一份（之后在 7 天后自然过期），因为有第二层限制，这部分不产生成本，只是账面上多一笔会过期的赠送。
 - 没有 Google / GitHub 账号、或不愿用它们登录的用户暂时无法注册。目标用户（会装 Chrome 扩展读英文文章的人）绝大多数有其中之一，现阶段可以接受。
 - 没有全站发放上限，所以无法从配置算出「单日最坏成本」；真遇到批量造号，靠指标发现、靠 `amount = 0` 止损。

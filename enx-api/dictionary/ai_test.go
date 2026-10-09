@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"enx-api/ailimit"
 )
 
 type fakeDefiner struct {
@@ -431,5 +433,51 @@ func TestValidAIWord(t *testing.T) {
 		if got := ValidAIWord(word); got != want {
 			t.Errorf("ValidAIWord(%q) = %v, want %v", word, got, want)
 		}
+	}
+}
+
+type fakeTrialGate struct {
+	verdict ailimit.Verdict
+	checks  int
+}
+
+func (g *fakeTrialGate) Check(context.Context, string) ailimit.Verdict {
+	g.checks++
+	return g.verdict
+}
+
+func TestDefineWithAITrialLimited(t *testing.T) {
+	for _, tc := range []struct {
+		verdict ailimit.Verdict
+		want    error
+	}{
+		{ailimit.LimitedPerDay, ErrTrialLimitedPerDay},
+		{ailimit.LimitedPerMinute, ErrTrialLimitedPerMinute},
+	} {
+		t.Run(tc.verdict.String(), func(t *testing.T) {
+			env := newAIEnv()
+			env.svc.LimitTrial(&fakeTrialGate{verdict: tc.verdict})
+
+			if _, err := env.define("rizzler"); !errors.Is(err, tc.want) {
+				t.Fatalf("err = %v, want %v", err, tc.want)
+			}
+			if len(env.definer.calls) != 0 || len(env.billing.settled) != 0 {
+				t.Fatal("a trial-limited user must not trigger a model call or be billed")
+			}
+		})
+	}
+}
+
+func TestDefineWithAIBrokeUserDoesNotUseTrialSlot(t *testing.T) {
+	env := newAIEnv()
+	env.billing.balance = 0
+	gate := &fakeTrialGate{}
+	env.svc.LimitTrial(gate)
+
+	if _, err := env.define("rizzler"); !errors.Is(err, ErrInsufficientCredit) {
+		t.Fatalf("err = %v, want ErrInsufficientCredit", err)
+	}
+	if gate.checks != 0 {
+		t.Fatalf("trial gate checks = %d, want 0", gate.checks)
 	}
 }

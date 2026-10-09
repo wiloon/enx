@@ -221,6 +221,18 @@ calls-per-day = 200
 cache-writes-per-day = 50
 call-timeout = "45s"
 
+[credits.trial]
+# One-off sign-up trial (ADR-048): every new account gets `amount` credits
+# that expire after `ttl-days`, spent before the paid pools. amount = 0
+# switches trials off (the safe direction: no grant, no cost). The two call
+# ceilings apply only to users whose AI access comes from the trial alone;
+# 0 = no ceiling. Override with CREDITS_TRIAL_AMOUNT / _TTL_DAYS /
+# _CALLS_PER_MINUTE / _CALLS_PER_DAY.
+amount = 100
+ttl-days = 7
+calls-per-minute = 5
+calls-per-day = 30
+
 [stripe.quota]
 # Daily dictionary lookup ceilings, one per tier (ADR-029). Everyone is
 # counted; the tier only decides the number. 0 means "count, but never

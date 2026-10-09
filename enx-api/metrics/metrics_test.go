@@ -175,6 +175,16 @@ func TestObserveAuthAndWebhook(t *testing.T) {
 	}
 }
 
+func TestObserveTrialGrant(t *testing.T) {
+	m := New()
+	m.ObserveTrialGrant()
+	m.ObserveTrialGrant()
+
+	if out := exposition(t, m); !strings.Contains(out, "enx_trial_grants_total 2") {
+		t.Errorf("exposition lacks enx_trial_grants_total 2")
+	}
+}
+
 // A statement that fails because SQLite is busy is counted as a read or a
 // write; other errors are not.
 func TestInstrumentDBCountsBusyErrors(t *testing.T) {

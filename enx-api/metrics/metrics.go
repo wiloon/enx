@@ -40,6 +40,7 @@ type Metrics struct {
 	clerkVerify    *prometheus.HistogramVec
 	stripeWebhooks *prometheus.CounterVec
 	sqliteBusy     *prometheus.CounterVec
+	trialGrants    prometheus.Counter
 }
 
 // New builds the metrics on a fresh registry, with the Go runtime and
@@ -83,12 +84,16 @@ func New() *Metrics {
 			Name: "enx_sqlite_busy_total",
 			Help: "SQL statements that failed because SQLite was busy or locked, by read/write.",
 		}, []string{"op"}),
+		trialGrants: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "enx_trial_grants_total",
+			Help: "Sign-up trial credit grants made (ADR-048).",
+		}),
 	}
 	m.registry.MustRegister(
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 		m.httpRequests, m.httpDuration, m.lookupDuration, m.aiDuration, m.aiTokens,
-		m.clerkVerify, m.stripeWebhooks, m.sqliteBusy,
+		m.clerkVerify, m.stripeWebhooks, m.sqliteBusy, m.trialGrants,
 	)
 	return m
 }
@@ -163,6 +168,12 @@ func (m *Metrics) ObserveAuth(outcome string, elapsed time.Duration) {
 // narrowed to the handled types (billing does that).
 func (m *Metrics) ObserveWebhook(eventType, outcome string) {
 	m.stripeWebhooks.WithLabelValues(eventType, outcome).Inc()
+}
+
+// ObserveTrialGrant records one sign-up trial grant, so an abnormal number
+// of new accounts shows up on the dashboard (ADR-048 Decision 7).
+func (m *Metrics) ObserveTrialGrant() {
+	m.trialGrants.Inc()
 }
 
 // InstrumentDB counts statements on db that fail because SQLite is busy or

@@ -10,7 +10,8 @@ import (
 )
 
 // Balance returns userID's total spendable credit -- the sum of the
-// subscription and top-up pools. Token-metered features (ADR-012) call it
+// subscription and top-up pools plus the trial pool while it is unexpired
+// (ADR-048). Token-metered features (ADR-012) call it
 // before invoking the AI provider and reject the request with 402 when it
 // is below 1. The value can be negative: a Settle whose actual token cost
 // overran the top-up pool leaves it there until the next top-up.
@@ -26,5 +27,5 @@ func Balance(ctx context.Context, userID string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return account.SubscriptionBalance + account.TopupBalance, nil
+	return account.SubscriptionBalance + account.TopupBalance + effectiveTrial(account, now()), nil
 }

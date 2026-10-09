@@ -18,7 +18,12 @@ const PORTAL_URL = 'https://billing.stripe.test/p/session/bps_test_123'
 
 const freeUser: BillingMeData = {
   subscription: { status: 'none', plan: '', currentPeriodEnd: 0 },
-  credits: { subscriptionBalance: 0, topupBalance: 0 },
+  credits: {
+    subscriptionBalance: 0,
+    topupBalance: 0,
+    trialBalance: 0,
+    trialExpiresAt: null,
+  },
 }
 
 const activeProPlus: BillingMeData = {
@@ -27,7 +32,12 @@ const activeProPlus: BillingMeData = {
     plan: 'pro-plus',
     currentPeriodEnd: 1893456000,
   },
-  credits: { subscriptionBalance: 1200, topupBalance: 300 },
+  credits: {
+    subscriptionBalance: 1200,
+    topupBalance: 300,
+    trialBalance: 0,
+    trialExpiresAt: null,
+  },
 }
 
 const pastDue: BillingMeData = {
@@ -36,7 +46,12 @@ const pastDue: BillingMeData = {
     plan: 'pro',
     currentPeriodEnd: 1893456000,
   },
-  credits: { subscriptionBalance: 0, topupBalance: 40 },
+  credits: {
+    subscriptionBalance: 0,
+    topupBalance: 40,
+    trialBalance: 0,
+    trialExpiresAt: null,
+  },
 }
 
 const CORS = {

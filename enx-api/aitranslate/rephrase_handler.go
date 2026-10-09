@@ -25,6 +25,13 @@ type RephraseHandler struct {
 	rephraser rephrase.Rephraser
 	ledger    TokenLedger
 	pricing   credit.TokenPricing
+	trialGate CallGate
+}
+
+// WithTrialGate turns on the trial call-rate limit (see Handler.WithTrialGate).
+func (h *RephraseHandler) WithTrialGate(gate CallGate) *RephraseHandler {
+	h.trialGate = gate
+	return h
 }
 
 func NewRephraseHandler(rephraser rephrase.Rephraser, ledger TokenLedger, pricing credit.TokenPricing) *RephraseHandler {
@@ -74,6 +81,9 @@ func (h *RephraseHandler) Rephrase(c *gin.Context) {
 	}
 	if balance < 1 {
 		c.JSON(http.StatusPaymentRequired, gin.H{"success": false, "message": "Insufficient credits. Top up or subscribe to continue."})
+		return
+	}
+	if refuseOverTrialLimit(c, h.trialGate, userID) {
 		return
 	}
 
