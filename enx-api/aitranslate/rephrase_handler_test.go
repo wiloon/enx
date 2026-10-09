@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"enx-api/ailimit"
 	"enx-api/aitranslate/rephrase"
 	"enx-api/billing/credit"
 
@@ -276,5 +277,19 @@ func TestRephraseHandlerCostFloorsAtOne(t *testing.T) {
 	}
 	if len(ledger.settleCalls) != 1 || ledger.settleCalls[0].cost != 1 {
 		t.Fatalf("cost should floor at 1, got %+v", ledger.settleCalls)
+	}
+}
+
+func TestRephraseHandlerTrialLimitReturns429(t *testing.T) {
+	rp := &fakeRephraser{result: okResult()}
+	ledger := &fakeRephraseLedger{balance: 100}
+	h := NewRephraseHandler(rp, ledger, testPricing).WithTrialGate(&fakeGate{verdict: ailimit.LimitedPerDay})
+	w := doRephrase(t, h, `{"input":"帮我看下这个"}`)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("status: got %d want 429, body=%s", w.Code, w.Body.String())
+	}
+	if rp.callCount != 0 || len(ledger.settleCalls) != 0 {
+		t.Fatal("a limited call must not reach the provider or be billed")
 	}
 }

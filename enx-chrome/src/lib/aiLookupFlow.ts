@@ -68,7 +68,11 @@ export const runAiLookup = async (
       deps.onSessionExpired()
       return
     case 'error':
-      store.set(aiLookupAtom, { status: 'error', reason: outcome.reason })
+      store.set(aiLookupAtom, {
+        status: 'error',
+        reason: outcome.reason,
+        ...(outcome.message ? { message: outcome.message } : {}),
+      })
   }
 }
 

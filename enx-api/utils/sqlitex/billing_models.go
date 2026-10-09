@@ -26,7 +26,11 @@ type CreditAccount struct {
 	SubscriptionBalance int64  `gorm:"column:subscription_balance;not null;default:0"`
 	TopupBalance        int64  `gorm:"column:topup_balance;not null;default:0"`
 	PeriodEnd           int64  `gorm:"column:period_end"` // Unix seconds; reset by the renewal webhook
-	UpdatedAt           int64  `gorm:"column:updated_at;not null"`
+	// TrialBalance is the one-off sign-up trial (ADR-048). It counts only
+	// while now < TrialExpiresAt; nil means no trial was ever granted.
+	TrialBalance   int64  `gorm:"column:trial_balance;not null;default:0"`
+	TrialExpiresAt *int64 `gorm:"column:trial_expires_at"` // Unix seconds
+	UpdatedAt      int64  `gorm:"column:updated_at;not null"`
 }
 
 func (CreditAccount) TableName() string {
@@ -38,7 +42,7 @@ func (CreditAccount) TableName() string {
 type CreditTransaction struct {
 	Id            string  `gorm:"column:id;primaryKey"`
 	UserId        string  `gorm:"column:user_id;index"`
-	Type          string  `gorm:"column:type;not null"` // GRANT_SUBSCRIPTION | GRANT_TOPUP | CONSUME | EXPIRE
+	Type          string  `gorm:"column:type;not null"` // GRANT_SUBSCRIPTION | GRANT_TOPUP | GRANT_TRIAL | CONSUME | SETTLE | REFUND | EXPIRE
 	Amount        int64   `gorm:"column:amount;not null"`
 	BalanceAfter  int64   `gorm:"column:balance_after;not null"`
 	StripeEventId *string `gorm:"column:stripe_event_id;uniqueIndex"` // nil for CONSUME rows; set for webhook-triggered GRANT rows (idempotency key)

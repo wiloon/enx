@@ -16,6 +16,9 @@ export type AiLookupOutcome =
   | {
       kind: 'error'
       reason: 'credit' | 'rate-limited' | 'not-entitled' | 'unavailable'
+      // The server's own words, kept for a 429: it is either the AI lookup's
+      // rate limit or the sign-up trial's daily limit (ADR-048).
+      message?: string
     }
 
 // Defines `word` with AI. Only the word is sent -- never the sentence or the
@@ -46,7 +49,9 @@ export const lookupWithAi = async (word: string): Promise<AiLookupOutcome> => {
     case 402:
       return { kind: 'error', reason: 'credit' }
     case 429:
-      return { kind: 'error', reason: 'rate-limited' }
+      return response.error
+        ? { kind: 'error', reason: 'rate-limited', message: response.error }
+        : { kind: 'error', reason: 'rate-limited' }
     case 403:
       return { kind: 'error', reason: 'not-entitled' }
     default:

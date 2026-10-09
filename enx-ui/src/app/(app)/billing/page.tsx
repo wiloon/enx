@@ -12,6 +12,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import PriceCard from '@/components/site/PriceCard'
+import { trialSummary } from '@/lib/credits'
 import { apiService, SubscriptionPlan, TopupTier } from '@/services/api'
 import {
   SUBSCRIPTION_CREDITS_RULE,
@@ -125,6 +126,11 @@ export default function BillingPage() {
                   {data.credits.topupBalance}
                 </div>
               </div>
+              {trialSummary(data.credits) && (
+                <div className="col-span-2 text-muted-foreground">
+                  {trialSummary(data.credits)}
+                </div>
+              )}
             </div>
           )}
         </CardContent>

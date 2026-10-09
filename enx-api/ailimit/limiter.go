@@ -1,26 +1,29 @@
-package dictionary
+// Package ailimit holds the in-memory safety valves on AI spend: the per-user
+// call and cache-write ceilings of the AI word fallback (ADR-045) and the
+// trial users' call-rate limits (ADR-048).
+package ailimit
 
 import (
 	"sync"
 	"time"
 )
 
-// AILimits are the ceilings MemoryLimiter enforces. A zero value means no
+// Limits are the ceilings MemoryLimiter enforces. A zero value means no
 // ceiling of that kind, so a limit left unconfigured never blocks anyone; the
 // real values come from configuration (ADR-045 Decision 8) and are starting
 // guesses to be tuned from usage.
-type AILimits struct {
+type Limits struct {
 	CallsPerMinute    int
 	CallsPerDay       int
 	CacheWritesPerDay int
 }
 
-// MemoryLimiter is an AILimiter that counts in process memory. It is a
+// MemoryLimiter is a dictionary.AILimiter that counts in process memory. It is a
 // safety valve, not an accounting system: the counts start over when the
 // server restarts, which only ever lets a few more calls through.
 type MemoryLimiter struct {
 	mu     sync.Mutex
-	limits AILimits
+	limits Limits
 	now    func() time.Time
 	users  map[string]*aiUsage
 }
@@ -37,7 +40,7 @@ const pruneAbove = 4096
 
 // NewMemoryLimiter returns a limiter enforcing limits. now is the clock; nil
 // means time.Now.
-func NewMemoryLimiter(limits AILimits, now func() time.Time) *MemoryLimiter {
+func NewMemoryLimiter(limits Limits, now func() time.Time) *MemoryLimiter {
 	if now == nil {
 		now = time.Now
 	}
@@ -81,6 +84,12 @@ func hasCallSince(calls []time.Time, since time.Time) bool {
 }
 
 func (l *MemoryLimiter) AllowCall(userID string) bool {
+	return l.Decide(userID) == Allowed
+}
+
+// Decide is AllowCall that also says which ceiling refused the call. A
+// refused call is not counted.
+func (l *MemoryLimiter) Decide(userID string) Verdict {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
@@ -95,15 +104,15 @@ func (l *MemoryLimiter) AllowCall(userID string) bool {
 	}
 	u.recentCalls = kept
 
-	if l.limits.CallsPerMinute > 0 && len(u.recentCalls) >= l.limits.CallsPerMinute {
-		return false
-	}
 	if l.limits.CallsPerDay > 0 && u.calls >= l.limits.CallsPerDay {
-		return false
+		return LimitedPerDay
+	}
+	if l.limits.CallsPerMinute > 0 && len(u.recentCalls) >= l.limits.CallsPerMinute {
+		return LimitedPerMinute
 	}
 	u.recentCalls = append(u.recentCalls, now)
 	u.calls++
-	return true
+	return Allowed
 }
 
 func (l *MemoryLimiter) AllowCacheWrite(userID string) bool {

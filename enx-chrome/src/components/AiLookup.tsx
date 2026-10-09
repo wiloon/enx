@@ -85,7 +85,7 @@ export function AiMissPanel({ onLookup }: { onLookup: () => void }) {
       return (
         <div data-testid="word-popover-ai-error" className="space-y-1">
           <p className="text-sm text-destructive">
-            {errorMessage(state.reason)}
+            {state.message || errorMessage(state.reason)}
           </p>
           {(state.reason === 'credit' || state.reason === 'not-entitled') && (
             <a

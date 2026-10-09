@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"enx-api/ailimit"
 	"enx-api/aitranslate/sentenceword"
 	"enx-api/aitranslate/wordcontext"
 	"enx-api/billing/credit"
@@ -385,5 +386,58 @@ func TestSentenceWithWordHandlerMissingFields(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status: got %d want 400, body=%s", w.Code, w.Body.String())
+	}
+}
+
+type fakeGate struct {
+	verdict ailimit.Verdict
+	checks  int
+}
+
+func (g *fakeGate) Check(context.Context, string) ailimit.Verdict {
+	g.checks++
+	return g.verdict
+}
+
+// A trial-only user over the trial's call rate (ADR-048 Decision 7) gets a
+// 429 before the provider is called, and is not billed.
+func TestHandlerTrialLimitReturns429(t *testing.T) {
+	for _, tc := range []struct {
+		verdict ailimit.Verdict
+		message string
+	}{
+		{ailimit.LimitedPerDay, "You've reached today's trial limit. Try again tomorrow, or subscribe for more."},
+		{ailimit.LimitedPerMinute, "Too many requests. Please wait a minute and try again."},
+	} {
+		t.Run(tc.verdict.String(), func(t *testing.T) {
+			tr := &fakeTranslator{chinese: "unused", usage: usageCosting2}
+			ledger := &fakeTokenLedger{balance: 100}
+			h := NewHandler(tr, ledger, tokenTestPricing).WithTrialGate(&fakeGate{verdict: tc.verdict})
+			w := doPost(t, h, `{"sentence":"Hello world"}`)
+
+			if w.Code != http.StatusTooManyRequests {
+				t.Fatalf("status: got %d want 429, body=%s", w.Code, w.Body.String())
+			}
+			var body map[string]any
+			_ = json.Unmarshal(w.Body.Bytes(), &body)
+			if body["message"] != tc.message {
+				t.Fatalf("message = %q, want %q", body["message"], tc.message)
+			}
+			if tr.callCount != 0 || len(ledger.settleCalls) != 0 {
+				t.Fatal("a limited call must not reach the provider or be billed")
+			}
+		})
+	}
+}
+
+// The balance pre-check runs first: a broke trial user is told to pay, and
+// the refused call doesn't use up a trial slot.
+func TestHandlerBrokeUserGets402WithoutUsingTrialSlot(t *testing.T) {
+	gate := &fakeGate{verdict: ailimit.Allowed}
+	h := NewHandler(&fakeTranslator{chinese: "unused"}, &fakeTokenLedger{balance: 0}, tokenTestPricing).WithTrialGate(gate)
+	w := doPost(t, h, `{"sentence":"Hello world"}`)
+
+	if w.Code != http.StatusPaymentRequired || gate.checks != 0 {
+		t.Fatalf("status=%d gate checks=%d, want 402 and 0", w.Code, gate.checks)
 	}
 }

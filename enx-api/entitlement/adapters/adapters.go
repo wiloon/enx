@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 
+	"enx-api/billing/credit"
 	"enx-api/utils/sqlitex"
 
 	"gorm.io/gorm"
@@ -35,4 +36,10 @@ func (Billing) TopupBalance(ctx context.Context, userID string) (int64, error) {
 		return 0, err
 	}
 	return account.TopupBalance, nil
+}
+
+// TrialBalance returns userID's spendable sign-up trial credit (ADR-048).
+func (Billing) TrialBalance(ctx context.Context, userID string) (int64, error) {
+	balance, _, err := credit.Trial(ctx, userID)
+	return balance, err
 }

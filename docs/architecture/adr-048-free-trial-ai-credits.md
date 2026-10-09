@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-03
 related: adr-051（邀请注册在试用池上叠加奖励）、adr-009（两池积分账本，本 ADR 加第三个池）、adr-012 / adr-014（按 token 结算的 `Settle`）、adr-045（AI 单词兜底，试用期内一并开放）、adr-047（Onboarding 第 3 步的侧边栏 AI 翻译依赖本 ADR）
 ---

@@ -1,6 +1,7 @@
 package enx
 
 import (
+	"context"
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
 	"fmt"
@@ -10,6 +11,18 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/viper"
 )
+
+// NewUserHook runs once, right after a local user is provisioned -- e.g. to
+// grant the sign-up trial (ADR-048 Decision 3). main wires it, so enx does
+// not import billing.
+type NewUserHook interface {
+	NewUser(ctx context.Context, userID string) error
+}
+
+var newUserHook NewUserHook
+
+// SetNewUserHook installs the hook; nil removes it.
+func SetNewUserHook(h NewUserHook) { newUserHook = h }
 
 // GetUserByClerkUserID looks up a user by their Clerk user id (`sub` claim).
 func GetUserByClerkUserID(clerkUserID string) *User {
@@ -61,5 +74,12 @@ func GetOrCreateByClerkUserID(clerkUserID, email, name string) (string, error) {
 		return "", err
 	}
 	logger.Infof("provisioned clerk user clerk_user_id=%s id=%s name=%s", clerkUserID, u.Id, resolvedName)
+	if newUserHook != nil {
+		// The account exists either way; a failed hook is logged, never
+		// turned into a failed sign-in.
+		if err := newUserHook.NewUser(context.Background(), u.Id); err != nil {
+			logger.Errorf("new-user hook failed for user %s: %v", u.Id, err)
+		}
+	}
 	return u.Id, nil
 }

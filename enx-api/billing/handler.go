@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 
+	"enx-api/billing/credit"
 	"enx-api/enx"
 	"enx-api/middleware"
 	"enx-api/utils/logger"
@@ -177,8 +178,20 @@ func (h *Handler) Me(c *gin.Context) {
 		status = "none"
 	}
 
-	var credit sqlitex.CreditAccount
-	sqlitex.DB.Where("user_id = ?", userID).First(&credit)
+	var account sqlitex.CreditAccount
+	sqlitex.DB.Where("user_id = ?", userID).First(&account)
+
+	// The trial pool reports its spendable value: 0 once expired (ADR-048
+	// Decision 8). trialExpiresAt is null for an account never granted one.
+	trialBalance, trialExpires, err := credit.Trial(c.Request.Context(), userID)
+	if err != nil {
+		logger.Errorf("billing: read trial for %s: %v", userID, err)
+	}
+	var trialExpiresAt *int64
+	if !trialExpires.IsZero() {
+		unix := trialExpires.Unix()
+		trialExpiresAt = &unix
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -188,8 +201,10 @@ func (h *Handler) Me(c *gin.Context) {
 			"currentPeriodEnd": sub.CurrentPeriodEnd,
 		},
 		"credits": gin.H{
-			"subscriptionBalance": credit.SubscriptionBalance,
-			"topupBalance":        credit.TopupBalance,
+			"subscriptionBalance": account.SubscriptionBalance,
+			"topupBalance":        account.TopupBalance,
+			"trialBalance":        trialBalance,
+			"trialExpiresAt":      trialExpiresAt,
 		},
 	})
 }

@@ -1,6 +1,8 @@
 package enx
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -113,5 +115,52 @@ func TestGetOrCreateByClerkUserID_SkipsLastLoginUpdateWithinInterval(t *testing.
 	after := GetUserByID(id)
 	if !after.LastLoginTime.Equal(before.LastLoginTime) {
 		t.Errorf("expected LastLoginTime unchanged within throttle interval: before=%v after=%v", before.LastLoginTime, after.LastLoginTime)
+	}
+}
+
+type recordingHook struct {
+	userIDs []string
+	err     error
+}
+
+func (h *recordingHook) NewUser(_ context.Context, userID string) error {
+	h.userIDs = append(h.userIDs, userID)
+	return h.err
+}
+
+func withNewUserHook(t *testing.T, h NewUserHook) {
+	t.Helper()
+	SetNewUserHook(h)
+	t.Cleanup(func() { SetNewUserHook(nil) })
+}
+
+// The new-user hook (ADR-048 Decision 3) fires once, when the account is
+// created, and not on later sign-ins.
+func TestGetOrCreateByClerkUserID_NewUserHookFiresOnlyOnCreate(t *testing.T) {
+	newUserTestDB(t)
+	hook := &recordingHook{}
+	withNewUserHook(t, hook)
+
+	id, err := GetOrCreateByClerkUserID("user_hook1", "h@example.com", "H")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := GetOrCreateByClerkUserID("user_hook1", "h@example.com", "H"); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(hook.userIDs) != 1 || hook.userIDs[0] != id {
+		t.Fatalf("hook calls = %v, want exactly [%s]", hook.userIDs, id)
+	}
+}
+
+// A failing hook (e.g. the trial grant) must not fail the sign-in.
+func TestGetOrCreateByClerkUserID_FailingHookDoesNotFailSignIn(t *testing.T) {
+	newUserTestDB(t)
+	withNewUserHook(t, &recordingHook{err: errors.New("ledger down")})
+
+	id, err := GetOrCreateByClerkUserID("user_hook2", "", "")
+	if err != nil || id == "" {
+		t.Fatalf("got id=%q err=%v, want a provisioned user", id, err)
 	}
 }

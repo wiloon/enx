@@ -10,10 +10,15 @@ type Status struct {
 	// Subscribed: the user has an active subscription (ADR-029's "subscribed"
 	// tier).
 	Subscribed bool
-	// CanUseAI: the user may use AI features -- an active subscription, or a
-	// top-up balance above zero. This matches how the existing AI features
-	// are gated: they look at credit, not at the subscription.
+	// CanUseAI: the user may use AI features -- an active subscription, a
+	// top-up balance above zero, or an unexpired sign-up trial with credits
+	// left (ADR-048). This matches how the existing AI features are gated:
+	// they look at credit, not at the subscription.
 	CanUseAI bool
+	// TrialOnly: the user's AI access comes from the trial alone -- no
+	// subscription, no positive top-up. Only these users are held to the
+	// trial's call-rate limits (ADR-048 Decision 7).
+	TrialOnly bool
 }
 
 // Source reads the payment facts Status is derived from.
@@ -22,6 +27,9 @@ type Source interface {
 	// TopupBalance is the user's top-up credit balance; it can be negative
 	// (billing/credit.Settle lets a settled call overdraw it).
 	TopupBalance(ctx context.Context, userID string) (int64, error)
+	// TrialBalance is the user's spendable trial credit: zero once the
+	// trial has expired.
+	TrialBalance(ctx context.Context, userID string) (int64, error)
 }
 
 // Service derives a user's Status from a Source.
@@ -54,5 +62,12 @@ func (s *Service) Status(ctx context.Context, userID string) (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
-	return Status{CanUseAI: topup > 0}, nil
+	if topup > 0 {
+		return Status{CanUseAI: true}, nil
+	}
+	trial, err := s.source.TrialBalance(ctx, userID)
+	if err != nil {
+		return Status{}, err
+	}
+	return Status{CanUseAI: trial > 0, TrialOnly: trial > 0}, nil
 }

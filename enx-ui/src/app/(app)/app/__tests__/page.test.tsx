@@ -76,7 +76,12 @@ beforeEach(() => {
     success: true,
     data: {
       subscription: { status: 'active', plan: 'pro', currentPeriodEnd: 0 },
-      credits: { subscriptionBalance: 1000, topupBalance: 240 },
+      credits: {
+        subscriptionBalance: 1000,
+        topupBalance: 240,
+        trialBalance: 0,
+        trialExpiresAt: null,
+      },
     },
   })
 })

@@ -166,6 +166,14 @@ describe('a lookup that found nothing', () => {
   )
 })
 
+it('on a rate-limited error, shows the server message when there is one', () => {
+  const message =
+    "You've reached today's trial limit. Try again tomorrow, or subscribe for more."
+  renderPopover({ ai: { status: 'error', reason: 'rate-limited', message } })
+
+  expect(screen.getByTestId('word-popover-ai-error')).toHaveTextContent(message)
+})
+
 describe('a definition', () => {
   it('has no AI badge when it came from the dictionary', () => {
     renderPopover({ current: word({ Chinese: 'v. 跑', Origin: 'ecdict' }) })

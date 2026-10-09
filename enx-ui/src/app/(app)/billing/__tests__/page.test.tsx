@@ -31,7 +31,12 @@ beforeEach(() => {
     success: true,
     data: {
       subscription: { status: 'none', plan: '', currentPeriodEnd: 0 },
-      credits: { subscriptionBalance: 0, topupBalance: 0 },
+      credits: {
+        subscriptionBalance: 0,
+        topupBalance: 0,
+        trialBalance: 0,
+        trialExpiresAt: null,
+      },
     },
   })
 })
@@ -73,4 +78,25 @@ it('switches to one-time credits, which a free user can buy', async () => {
   fireEvent.click(buyButtons[0])
   expect(api.createTopupCheckout).toHaveBeenCalledWith('small')
   expect(await screen.findByText('stop before redirect')).toBeInTheDocument()
+})
+
+it('shows the sign-up trial and when it expires', async () => {
+  const expires = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+  api.getBillingMe.mockResolvedValue({
+    success: true,
+    data: {
+      subscription: { status: 'none', plan: '', currentPeriodEnd: 0 },
+      credits: {
+        subscriptionBalance: 0,
+        topupBalance: 0,
+        trialBalance: 100,
+        trialExpiresAt: expires,
+      },
+    },
+  })
+  renderPage()
+
+  expect(
+    await screen.findByText(/^100 trial credits · expires /)
+  ).toBeInTheDocument()
 })
