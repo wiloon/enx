@@ -135,6 +135,39 @@ type StripePrice struct {
 	CreditsTopupLarge  string `mapstructure:"credits-topup-large"`
 }
 
+// Subscription is the lookup_key for a subscription plan ("pro",
+// "pro-plus", "max"); "" for any other plan.
+func (p StripePrice) Subscription(plan string) string {
+	switch plan {
+	case "pro":
+		return p.Pro
+	case "pro-plus":
+		return p.ProPlus
+	case "max":
+		return p.Max
+	}
+	return ""
+}
+
+// Topup is the lookup_key for a credit top-up tier ("small", "medium",
+// "large"); "" for any other tier.
+func (p StripePrice) Topup(tier string) string {
+	switch tier {
+	case "small":
+		return p.CreditsTopupSmall
+	case "medium":
+		return p.CreditsTopupMedium
+	case "large":
+		return p.CreditsTopupLarge
+	}
+	return ""
+}
+
+// SubscriptionPlans maps each subscription plan to its lookup_key.
+func (p StripePrice) SubscriptionPlans() map[string]string {
+	return map[string]string{"pro": p.Pro, "pro-plus": p.ProPlus, "max": p.Max}
+}
+
 // StripeCredits is the credits granted per grant event. 0 means "not
 // configured": the ledger rejects a grant of 0, so it fails closed.
 type StripeCredits struct {
@@ -144,6 +177,33 @@ type StripeCredits struct {
 	TopupSmall          int64 `mapstructure:"topup-small"`
 	TopupMedium         int64 `mapstructure:"topup-medium"`
 	TopupLarge          int64 `mapstructure:"topup-large"`
+}
+
+// Subscription is the credits a subscription plan grants per period; 0 for
+// an unknown plan, which the ledger rejects like an unconfigured one.
+func (c StripeCredits) Subscription(plan string) int64 {
+	switch plan {
+	case "pro":
+		return c.SubscriptionPro
+	case "pro-plus":
+		return c.SubscriptionProPlus
+	case "max":
+		return c.SubscriptionMax
+	}
+	return 0
+}
+
+// Topup is the credits a top-up tier grants; 0 for an unknown tier.
+func (c StripeCredits) Topup(tier string) int64 {
+	switch tier {
+	case "small":
+		return c.TopupSmall
+	case "medium":
+		return c.TopupMedium
+	case "large":
+		return c.TopupLarge
+	}
+	return 0
 }
 
 type StripeCosts struct {

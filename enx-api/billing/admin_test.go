@@ -25,7 +25,7 @@ func adminRequest(t *testing.T, callerClerkID, body string) *httptest.ResponseRe
 
 func adminRequestWith(t *testing.T, admins middleware.AdminAllowlist, callerClerkID, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	h := NewHandler(nil, "https://example.com", "whsec_test", nil).WithAdmins(admins)
+	h := NewHandler(nil, "https://example.com", testStripe(), nil).WithAdmins(admins)
 	router := gin.New()
 	router.POST("/api/admin/credits/grant", func(c *gin.Context) {
 		c.Set("clerk_user_id", callerClerkID)

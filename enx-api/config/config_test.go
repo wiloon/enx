@@ -573,3 +573,55 @@ func TestStatsIngestLogTTL(t *testing.T) {
 		t.Errorf("LogTTL() = %v, want 168h", got)
 	}
 }
+
+func TestStripeLookupsByPlanAndTier(t *testing.T) {
+	price := StripePrice{Pro: "p", ProPlus: "pp", Max: "m", CreditsTopupSmall: "s", CreditsTopupMedium: "md", CreditsTopupLarge: "l"}
+	credits := StripeCredits{SubscriptionPro: 1, SubscriptionProPlus: 2, SubscriptionMax: 3, TopupSmall: 4, TopupMedium: 5, TopupLarge: 6}
+
+	for plan, want := range map[string]struct {
+		key     string
+		credits int64
+	}{"pro": {"p", 1}, "pro-plus": {"pp", 2}, "max": {"m", 3}} {
+		if got := price.Subscription(plan); got != want.key {
+			t.Errorf("Subscription(%q) = %q, want %q", plan, got, want.key)
+		}
+		if got := credits.Subscription(plan); got != want.credits {
+			t.Errorf("credits.Subscription(%q) = %d, want %d", plan, got, want.credits)
+		}
+		if got := price.SubscriptionPlans()[plan]; got != want.key {
+			t.Errorf("SubscriptionPlans()[%q] = %q, want %q", plan, got, want.key)
+		}
+	}
+	for tier, want := range map[string]struct {
+		key     string
+		credits int64
+	}{"small": {"s", 4}, "medium": {"md", 5}, "large": {"l", 6}} {
+		if got := price.Topup(tier); got != want.key {
+			t.Errorf("Topup(%q) = %q, want %q", tier, got, want.key)
+		}
+		if got := credits.Topup(tier); got != want.credits {
+			t.Errorf("credits.Topup(%q) = %d, want %d", tier, got, want.credits)
+		}
+	}
+}
+
+// An unknown plan or tier resolves to nothing, as the dynamic viper key did:
+// an empty lookup_key and 0 credits, both of which the callers reject.
+func TestStripeLookupsRejectUnknownPlanOrTier(t *testing.T) {
+	price := Default().Stripe.Price
+	credits := StripeCredits{SubscriptionPro: 1, TopupSmall: 1}
+	for _, name := range []string{"", "free", "PRO", "pro ", "credits-topup-small", "topup-small"} {
+		if got := price.Subscription(name); got != "" {
+			t.Errorf("Subscription(%q) = %q, want empty", name, got)
+		}
+		if got := price.Topup(name); got != "" {
+			t.Errorf("Topup(%q) = %q, want empty", name, got)
+		}
+		if got := credits.Subscription(name); got != 0 {
+			t.Errorf("credits.Subscription(%q) = %d, want 0", name, got)
+		}
+		if got := credits.Topup(name); got != 0 {
+			t.Errorf("credits.Topup(%q) = %d, want 0", name, got)
+		}
+	}
+}

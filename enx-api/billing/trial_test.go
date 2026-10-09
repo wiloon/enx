@@ -48,7 +48,7 @@ func TestMeReportsTrial(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h := NewHandler(nil, "https://example.com", "whsec_test", nil)
+	h := NewHandler(nil, "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodGet, "/billing/me", h.Me, userID, ``)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())
@@ -72,7 +72,7 @@ func TestMeReportsTrial(t *testing.T) {
 }
 
 func TestMeTrialExpiresAtIsNullWithoutTrial(t *testing.T) {
-	h := NewHandler(nil, "https://example.com", "whsec_test", nil)
+	h := NewHandler(nil, "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodGet, "/billing/me", h.Me, "u-me-no-trial", ``)
 	var body struct {
 		Credits map[string]any `json:"credits"`

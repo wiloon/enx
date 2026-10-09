@@ -5,6 +5,7 @@
 package billing
 
 import (
+	"enx-api/config"
 	"io"
 	"net/http"
 
@@ -17,7 +18,6 @@ import (
 	billingstripe "enx-api/billing/stripe"
 
 	"github.com/gin-gonic/gin"
-	"github.com/spf13/viper"
 	stripeSDK "github.com/stripe/stripe-go/v86"
 )
 
@@ -28,6 +28,8 @@ type Handler struct {
 	sc              *stripeSDK.Client
 	frontendBaseURL string
 	webhookSecret   string
+	prices          config.StripePrice
+	credits         config.StripeCredits
 	webhooks        WebhookObserver
 	// admins gates GrantCredits; the zero value admits nobody.
 	admins middleware.AdminAllowlist
@@ -39,8 +41,17 @@ type WebhookObserver interface {
 	ObserveWebhook(eventType, outcome string)
 }
 
-func NewHandler(sc *stripeSDK.Client, frontendBaseURL, webhookSecret string, webhooks WebhookObserver) *Handler {
-	return &Handler{sc: sc, frontendBaseURL: frontendBaseURL, webhookSecret: webhookSecret, webhooks: webhooks}
+// NewHandler builds the billing handler. stripe supplies the webhook secret,
+// the price lookup_keys and the credit amounts; sc may be nil (billing off).
+func NewHandler(sc *stripeSDK.Client, frontendBaseURL string, stripe config.Stripe, webhooks WebhookObserver) *Handler {
+	return &Handler{
+		sc:              sc,
+		frontendBaseURL: frontendBaseURL,
+		webhookSecret:   stripe.WebhookSecret,
+		prices:          stripe.Price,
+		credits:         stripe.Credits,
+		webhooks:        webhooks,
+	}
 }
 
 // WithAdmins sets who may call GrantCredits.
@@ -83,7 +94,7 @@ func (h *Handler) CheckoutSubscription(c *gin.Context) {
 		return
 	}
 
-	lookupKey := viper.GetString("stripe.price." + req.Plan)
+	lookupKey := h.prices.Subscription(req.Plan)
 	session, err := billingstripe.CreateCheckoutSession(c.Request.Context(), h.sc, billingstripe.CheckoutSessionParams{
 		PriceLookupKey:    lookupKey,
 		Mode:              "subscription",
@@ -126,7 +137,7 @@ func (h *Handler) CheckoutTopup(c *gin.Context) {
 	// No subscription is required: AI translate is unlocked by any credit
 	// balance, whether it came from a subscription or a top-up (2026-08-26
 	// decision, LAUNCH-CHECKLIST 2.1).
-	lookupKey := viper.GetString("stripe.price.credits-topup-" + req.Tier)
+	lookupKey := h.prices.Topup(req.Tier)
 	session, err := billingstripe.CreateCheckoutSession(c.Request.Context(), h.sc, billingstripe.CheckoutSessionParams{
 		PriceLookupKey:    lookupKey,
 		Mode:              "payment",
