@@ -36,7 +36,7 @@ mkdir -p "$OUTPUT_DIR"
 VERSION=${1:-$(git describe --tags --always --dirty 2>/dev/null || echo "dev")}
 GIT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
 GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
-BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')
+BUILD_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
 echo "Building with version information:"
 echo "  Version: $VERSION"
@@ -57,10 +57,10 @@ fi
 # Build the application
 echo "Building enx-api..."
 CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build \
-    -ldflags "-X enx-server/version.Version=$VERSION \
-               -X enx-server/version.GitCommit=$GIT_COMMIT \
-               -X enx-server/version.GitBranch=$GIT_BRANCH \
-               -X enx-server/version.BuildTime=$BUILD_TIME" \
+    -ldflags "-X enx-api/version.Version=$VERSION \
+               -X enx-api/version.GitCommit=$GIT_COMMIT \
+               -X enx-api/version.GitBranch=$GIT_BRANCH \
+               -X enx-api/version.BuildTime=$BUILD_TIME" \
     -o ${OUTPUT_DIR}/${package_name} enx-api.go
 
 # Generate checksum file

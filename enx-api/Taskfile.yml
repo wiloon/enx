@@ -9,7 +9,7 @@ vars:
   GIT_BRANCH:
     sh: git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown"
   BUILD_TIME:
-    sh: date -u '+%Y-%m-%d_%H:%M:%S_UTC'
+    sh: date -u '+%Y-%m-%dT%H:%M:%SZ'
 
 env:
   # Default to the shared local ECDICT copy (`task ecdict:download` at the
@@ -63,7 +63,7 @@ tasks:
     desc: Build for development (without version injection)
     cmds:
       - echo "Building {{.APP_NAME}} for development..."
-      - go build -o {{.APP_NAME}} .
+      - go build -tags nomsgpack -o {{.APP_NAME}} .
       - echo "Build completed! Binary{{.APP_NAME}}"
 
   build:
@@ -74,7 +74,7 @@ tasks:
       - echo "Git Commit{{.GIT_COMMIT}}"
       - echo "Git Branch{{.GIT_BRANCH}}"
       - echo "Build Time{{.BUILD_TIME}}"
-      - go build -ldflags "-X enx-server/version.Version={{.VERSION}} -X enx-server/version.GitCommit={{.GIT_COMMIT}} -X enx-server/version.GitBranch={{.GIT_BRANCH}} -X enx-server/version.BuildTime={{.BUILD_TIME}}" -o {{.APP_NAME}} .
+      - go build -tags nomsgpack -ldflags "-X enx-api/version.Version={{.VERSION}} -X enx-api/version.GitCommit={{.GIT_COMMIT}} -X enx-api/version.GitBranch={{.GIT_BRANCH}} -X enx-api/version.BuildTime={{.BUILD_TIME}}" -o {{.APP_NAME}} .
       - echo "Build completed successfully!"
 
   build-version:
@@ -90,7 +90,7 @@ tasks:
       - echo "Git Commit{{.GIT_COMMIT}}"
       - echo "Git Branch{{.GIT_BRANCH}}"
       - echo "Build Time{{.BUILD_TIME}}"
-      - go build -ldflags "-X enx-server/version.Version={{.VERSION}} -X enx-server/version.GitCommit={{.GIT_COMMIT}} -X enx-server/version.GitBranch={{.GIT_BRANCH}} -X enx-server/version.BuildTime={{.BUILD_TIME}}" -o {{.APP_NAME}} .
+      - go build -tags nomsgpack -ldflags "-X enx-api/version.Version={{.VERSION}} -X enx-api/version.GitCommit={{.GIT_COMMIT}} -X enx-api/version.GitBranch={{.GIT_BRANCH}} -X enx-api/version.BuildTime={{.BUILD_TIME}}" -o {{.APP_NAME}} .
       - echo "Build completed with version {{.VERSION}}!"
 
   run:

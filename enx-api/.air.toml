@@ -11,7 +11,7 @@ tmp_dir = "tmp"
   # makes every signed-in request 503 "auth service unavailable".
   args_bin = ["-c", "config.toml"]
   entrypoint = ["./tmp/enx-api"]
-  cmd = "go build -o ./tmp/enx-api ."
+  cmd = "go build -tags nomsgpack -o ./tmp/enx-api ."
   delay = 1000
   exclude_dir = ["assets", "tmp", "vendor", "testdata", "deploy", "test", "examples"]
   exclude_file = []

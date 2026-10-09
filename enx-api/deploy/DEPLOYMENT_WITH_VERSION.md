@@ -73,10 +73,10 @@ You can override the version by passing it as the first argument:
 The build process now includes version injection:
 
 ```bash
-go build -ldflags "-X enx-server/version.Version=$VERSION \
-                   -X enx-server/version.GitCommit=$GIT_COMMIT \
-                   -X enx-server/version.GitBranch=$GIT_BRANCH \
-                   -X enx-server/version.BuildTime=$BUILD_TIME" \
+go build -ldflags "-X enx-api/version.Version=$VERSION \
+                   -X enx-api/version.GitCommit=$GIT_COMMIT \
+                   -X enx-api/version.GitBranch=$GIT_BRANCH \
+                   -X enx-api/version.BuildTime=$BUILD_TIME" \
          -o enx-api enx-api.go
 ```
 

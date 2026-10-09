@@ -38,7 +38,7 @@ echo "2. Testing version detection:"
 VERSION=${1:-$(git describe --tags --always --dirty 2>/dev/null || echo "dev")}
 GIT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
 GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
-BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')
+BUILD_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
 echo "   Version: $VERSION"
 echo "   Git Commit: $GIT_COMMIT"
@@ -49,10 +49,10 @@ echo ""
 # Test build command generation
 echo "3. Testing build command generation:"
 BUILD_CMD="CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build"
-BUILD_CMD="$BUILD_CMD -ldflags \"-X enx-server/version.Version=$VERSION"
-BUILD_CMD="$BUILD_CMD -X enx-server/version.GitCommit=$GIT_COMMIT"
-BUILD_CMD="$BUILD_CMD -X enx-server/version.GitBranch=$GIT_BRANCH"
-BUILD_CMD="$BUILD_CMD -X enx-server/version.BuildTime=$BUILD_TIME\""
+BUILD_CMD="$BUILD_CMD -ldflags \"-X enx-api/version.Version=$VERSION"
+BUILD_CMD="$BUILD_CMD -X enx-api/version.GitCommit=$GIT_COMMIT"
+BUILD_CMD="$BUILD_CMD -X enx-api/version.GitBranch=$GIT_BRANCH"
+BUILD_CMD="$BUILD_CMD -X enx-api/version.BuildTime=$BUILD_TIME\""
 BUILD_CMD="$BUILD_CMD -o ${OUTPUT_DIR}/enx-api enx-api.go"
 
 echo "   Build command:"
