@@ -1,23 +1,18 @@
 // Turns the reply to a 'savePage' message (the background's ApiRequestResult)
-// into what the popup shows (ADR-032).
+// into what the popup keeps (ADR-032).
 
-import type { PageSaveStatus } from '@/components/PageSavePrompt'
 import type { ApiRequestResult } from '@/background/background'
+import type { SavedPageRef } from '@/lib/savedPagesStore'
 
-export interface SaveOutcome {
-  status: PageSaveStatus
-  /** The address enx-api actually stored (normalized). */
-  savedUrl?: string
-  errorMessage?: string
-}
+export type SaveOutcome =
+  { ok: true; page: SavedPageRef } | { ok: false; errorMessage?: string }
 
+// Saving a page that is already saved is a success too: enx-api answers 200
+// with the existing page, and either way the page is now on the list.
 export function saveOutcome(result: ApiRequestResult): SaveOutcome {
-  if (!result.success) {
-    return { status: 'failed', errorMessage: result.error }
+  const page = result.data?.page
+  if (!result.success || !page?.id || !page?.url) {
+    return { ok: false, errorMessage: result.error }
   }
-  const savedUrl = result.data?.page?.url
-  return {
-    status: result.data?.created === false ? 'already-saved' : 'saved',
-    savedUrl,
-  }
+  return { ok: true, page: { id: String(page.id), url: String(page.url) } }
 }

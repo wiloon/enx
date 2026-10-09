@@ -71,6 +71,7 @@ export interface ContentMessage {
     | 'reportReadingProgress'
     | 'submitPageReport'
     | 'savePage'
+    | 'removeSavedPage'
     | 'shouldAutoEnable'
     | 'learningModeStatus'
     | 'pinHintDismissed'
@@ -109,6 +110,9 @@ export interface ContentMessage {
   // The URL is sent as the browser has it; enx-api normalizes it (drops the
   // fragment, credentials and tracking parameters) and returns what it stored.
   savedPage?: { url: string; title: string }
+  // Set on 'removeSavedPage' (ADR-032 Decision 4a): enx-api's id for the
+  // saved page. Only the id is sent, never the tab's address.
+  savedPageId?: string
   // Set on 'learningModeStatus' (adr-046): what the toolbar badge should show
   // for the sending tab.
   status?: LearningModeStatus
