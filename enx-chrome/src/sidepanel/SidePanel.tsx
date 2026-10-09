@@ -632,15 +632,6 @@ function SentenceBlock({
       className="space-y-3 rounded-lg border border-border bg-muted p-3"
     >
       <div>
-        {entry.sourceUrl && (
-          <div
-            className="text-xs text-muted-foreground mb-1 truncate"
-            title={entry.sourceUrl}
-            data-testid="sidepanel-source-url"
-          >
-            {entry.sourceUrl}
-          </div>
-        )}
         <p
           ref={sentenceRef}
           className="text-foreground leading-relaxed select-text"

@@ -181,6 +181,26 @@ describe('SidePanel', () => {
     )
   })
 
+  it('does not show the source URL above the original sentence (the panel is per-tab)', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: 'Cats are great pets.',
+        word: '',
+        sourceUrl: 'https://example.com/article',
+        createdAt: 1,
+      },
+    })
+    mockSendMessage.mockResolvedValue({
+      success: true,
+      chinese: '猫是很棒的宠物。',
+    })
+
+    render(<SidePanel />)
+
+    await screen.findByTestId('sidepanel-sentence')
+    expect(screen.queryByText('https://example.com/article')).toBeNull()
+  })
+
   it('renders the original sentence as selectable plain text, not per-word buttons (ADR-017)', async () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {
