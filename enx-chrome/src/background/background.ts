@@ -60,6 +60,7 @@ const getClerk = (): Promise<ClerkClient> => {
 // starting point must flush it explicitly.
 export const __resetClerkClientCacheForTests = (): void => {
   clerkClientPromise = null
+  syncedClerkInFlight = null
 }
 
 // Mitigation for a false "session expired": homelab still runs Clerk's
@@ -83,7 +84,25 @@ export const __resetClerkClientCacheForTests = (): void => {
 const SESSION_SYNC_RETRY_DELAYS_MS =
   config.environment === 'test' ? [0, 0, 0] : [200, 500, 1000]
 
-const getSyncedClerk = async (): Promise<ClerkClient> => {
+// Single-flight (#15): a page load fires many lookups at once into a
+// just-woken worker. Without this, each caller runs its own retry loop and
+// they interleave at the `await`, every one nulling and rebuilding
+// `clerkClientPromise` -- N overlapping clerk.load() round-trips per retry
+// round, enough to trip dev-instance rate limiting. Concurrent callers now
+// share one sync; it is cleared once settled, so a later call (e.g. after the
+// user signs in) gets a fresh attempt instead of a pinned "signed out".
+let syncedClerkInFlight: Promise<ClerkClient> | null = null
+
+const getSyncedClerk = (): Promise<ClerkClient> => {
+  if (!syncedClerkInFlight) {
+    syncedClerkInFlight = syncClerk().finally(() => {
+      syncedClerkInFlight = null
+    })
+  }
+  return syncedClerkInFlight
+}
+
+const syncClerk = async (): Promise<ClerkClient> => {
   let clerk = await getClerk()
   if (clerk.session) return clerk
 
