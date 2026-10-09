@@ -19,12 +19,23 @@ type submitRequest struct {
 	ExtVersion string `json:"extVersion"`
 }
 
-// SubmitHandler handles POST /api/page-reports.
+// AdminNotifier tells the admin about a newly recorded report (ADR-010
+// Decision 12): *email.Sender in production.
+type AdminNotifier interface {
+	NotifyAdminPageReport(r email.PageReportNotify) error
+}
+
+// SubmitHandler handles POST /api/page-reports, notifying the admin of each
+// newly recorded report.
 //
 // Not on the metered path: it looks up no words, calls no model and touches
 // no credits, so it sits outside ADR-018's single metering seam (same as the
 // stats and admin endpoints).
-func SubmitHandler(c *gin.Context) {
+func SubmitHandler(notifier AdminNotifier) gin.HandlerFunc {
+	return func(c *gin.Context) { submit(c, notifier) }
+}
+
+func submit(c *gin.Context, notifier AdminNotifier) {
 	var req submitRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid request body"})
@@ -51,7 +62,7 @@ func SubmitHandler(c *gin.Context) {
 
 	if recorded {
 		pageURL, host, _ := SanitizeURL(req.URL)
-		if notifyErr := email.NotifyAdminPageReport(email.PageReportNotify{
+		if notifyErr := notifier.NotifyAdminPageReport(email.PageReportNotify{
 			URL:        pageURL,
 			Host:       host,
 			Reason:     req.Reason,

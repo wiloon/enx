@@ -4,18 +4,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spf13/viper"
+	"enx-api/config"
 )
 
 // With resend.api-key or resend.admin-to unset, notify must skip the network
 // call and return nil — best-effort, optional side effect (ADR-010 Decision 12).
 func TestNotifyAdminPageReportSkipsWithoutAPIKey(t *testing.T) {
-	viper.Set("resend.api-key", "")
-	viper.Set("resend.admin-to", "admin@example.com")
-	defer viper.Set("resend.api-key", nil)
-	defer viper.Set("resend.admin-to", nil)
+	sender := NewSender(config.Resend{AdminTo: "admin@example.com"})
 
-	err := NotifyAdminPageReport(PageReportNotify{
+	err := sender.NotifyAdminPageReport(PageReportNotify{
 		URL: "https://x.com/a/status/1", Host: "x.com", Reason: "no-words",
 		Adapter: "x", ExtVersion: "1.0.0", CreatedAt: time.UnixMilli(0).UTC(),
 	})
@@ -25,12 +22,9 @@ func TestNotifyAdminPageReportSkipsWithoutAPIKey(t *testing.T) {
 }
 
 func TestNotifyAdminPageReportSkipsWithoutAdminTo(t *testing.T) {
-	viper.Set("resend.api-key", "re_test")
-	viper.Set("resend.admin-to", "")
-	defer viper.Set("resend.api-key", nil)
-	defer viper.Set("resend.admin-to", nil)
+	sender := NewSender(config.Resend{APIKey: "re_test"})
 
-	err := NotifyAdminPageReport(PageReportNotify{
+	err := sender.NotifyAdminPageReport(PageReportNotify{
 		URL: "https://x.com/a/status/1", Host: "x.com", Reason: "error",
 		Adapter: "x", ExtVersion: "1.0.0", CreatedAt: time.Now(),
 	})

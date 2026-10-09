@@ -12,6 +12,7 @@ import (
 	"enx-api/dictionary"
 	"enx-api/dictionary/adapters"
 	"enx-api/ecdict"
+	"enx-api/email"
 	"enx-api/entitlement"
 	entadapters "enx-api/entitlement/adapters"
 	"enx-api/enx"
@@ -508,7 +509,7 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	// User-confirmed "this page didn't work" reports (ADR-010 Decision 8).
 	// The one endpoint that stores a (sanitized) URL, so the extension only
 	// calls it after the user clicks to confirm. Not on the metered path.
-	apiGroup.POST("/page-reports", pagereport.SubmitHandler)
+	apiGroup.POST("/page-reports", pagereport.SubmitHandler(email.NewSender(cfg.Resend)))
 
 	// Pages the user chose to save (ADR-032): URL + title only, readable and
 	// editable by that user alone -- there is deliberately no admin route.

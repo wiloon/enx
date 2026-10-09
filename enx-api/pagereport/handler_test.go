@@ -8,16 +8,31 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+
+	"enx-api/email"
 )
 
+// recordingNotifier remembers every admin notification instead of emailing.
+type recordingNotifier struct{ sent []email.PageReportNotify }
+
+func (n *recordingNotifier) NotifyAdminPageReport(r email.PageReportNotify) error {
+	n.sent = append(n.sent, r)
+	return nil
+}
+
 func post(t *testing.T, userID, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	return postWith(t, &recordingNotifier{}, userID, body)
+}
+
+func postWith(t *testing.T, notifier AdminNotifier, userID, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.POST("/api/page-reports", func(c *gin.Context) {
 		c.Set("user_id", userID)
 		c.Next()
-	}, SubmitHandler)
+	}, SubmitHandler(notifier))
 	req := httptest.NewRequest(http.MethodPost, "/api/page-reports", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -95,5 +110,23 @@ func TestListHandlerReturnsNewestReports(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("seeded report not in list: %+v", resp.Reports)
+	}
+}
+
+// Only a newly recorded report reaches the admin; a duplicate inside the
+// dedupe window does not send a second email.
+func TestSubmitHandlerNotifiesTheAdminOncePerRecordedReport(t *testing.T) {
+	user := "u-" + t.Name()
+	body := `{"url":"https://x.com/a/status/2?s=20","reason":"no-article-node","adapter":"x","extVersion":"1.0.1"}`
+	notifier := &recordingNotifier{}
+
+	postWith(t, notifier, user, body)
+	postWith(t, notifier, user, body)
+
+	if len(notifier.sent) != 1 {
+		t.Fatalf("notifications = %d, want 1", len(notifier.sent))
+	}
+	if got := notifier.sent[0]; got.Host != "x.com" || got.Reason != "no-article-node" || got.URL == "" {
+		t.Errorf("notification = %+v, want the sanitized report for x.com", got)
 	}
 }

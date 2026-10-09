@@ -8,8 +8,18 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
-	"github.com/spf13/viper"
+
+	"enx-api/config"
 )
+
+// Sender sends mail through Resend, configured by resend.*.
+type Sender struct {
+	cfg config.Resend
+}
+
+func NewSender(cfg config.Resend) *Sender {
+	return &Sender{cfg: cfg}
+}
 
 type resendRequest struct {
 	From    string   `json:"from"`
@@ -18,14 +28,14 @@ type resendRequest struct {
 	HTML    string   `json:"html"`
 }
 
-func sendEmail(to, subject, htmlBody string) error {
-	apiKey := viper.GetString("resend.api-key")
+func (s *Sender) send(to, subject, htmlBody string) error {
+	apiKey := s.cfg.APIKey
 	if apiKey == "" {
 		logger.Warnf("resend.api-key is not set, skipping email to %s", to)
 		return nil
 	}
 
-	from := viper.GetString("resend.from")
+	from := s.cfg.From
 
 	client := resty.New()
 	resp, err := client.R().
@@ -63,8 +73,8 @@ type PageReportNotify struct {
 
 // NotifyAdminPageReport emails the configured admin when a user records a
 // new page report. Best-effort: missing API key or admin-to skips with nil.
-func NotifyAdminPageReport(r PageReportNotify) error {
-	to := viper.GetString("resend.admin-to")
+func (s *Sender) NotifyAdminPageReport(r PageReportNotify) error {
+	to := s.cfg.AdminTo
 	if to == "" {
 		logger.Warnf("resend.admin-to is not set, skipping page-report notify")
 		return nil
@@ -89,5 +99,5 @@ func NotifyAdminPageReport(r PageReportNotify) error {
 		html.EscapeString(r.ExtVersion),
 		html.EscapeString(when),
 	)
-	return sendEmail(to, subject, htmlBody)
+	return s.send(to, subject, htmlBody)
 }
