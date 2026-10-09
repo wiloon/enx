@@ -87,6 +87,16 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
+func TestDefaultMatchesLoadWithNothingSet(t *testing.T) {
+	isolate(t)
+	if got, want := Default(), loadDefaults(t); !reflect.DeepEqual(got, want) {
+		t.Errorf("Default() = %+v\nLoad(\"\") = %+v", got, want)
+	}
+	if err := Default().Validate(); err != nil {
+		t.Errorf("Default().Validate() = %v", err)
+	}
+}
+
 // Regression guard: viper.AutomaticEnv() used to be enabled, which made
 // "user.last-login-update-interval" resolve to $USER's shadow ("") instead of
 // its "5m" default.

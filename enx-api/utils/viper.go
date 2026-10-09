@@ -3,8 +3,6 @@ package utils
 import (
 	"enx-api/utils/logger"
 	"flag"
-	"os"
-	"strings"
 	"sync"
 
 	"github.com/joho/godotenv"
@@ -17,16 +15,6 @@ func ViperInit() {
 	viperInitOnce.Do(func() {
 		viperInitInternal()
 	})
-}
-
-// isTestEnv checks if we're running under 'go test'
-func isTestEnv() bool {
-	for _, arg := range os.Args {
-		if strings.HasPrefix(arg, "-test.") {
-			return true
-		}
-	}
-	return false
 }
 
 func viperInitInternal() {
@@ -236,14 +224,11 @@ func viperInitInternal() {
 		logger.Infof("loaded .env file")
 	}
 
-	// Optionally load a TOML config file — not required in k8s
-	// In test environment, skip command-line flag parsing to avoid conflicts with testing flags
+	// Optionally load a TOML config file — not required in k8s. main defines
+	// and parses -c (config.Load reads the same file); tests define no -c.
 	configFileValue := ""
-	if !isTestEnv() && !flag.Parsed() {
-		// Not in test environment, safe to define and parse flags
-		configFile := flag.String("c", "", "config file path (e.g., config-e2e.toml)")
-		flag.Parse()
-		configFileValue = *configFile
+	if f := flag.Lookup("c"); f != nil {
+		configFileValue = f.Value.String()
 	}
 
 	if configFileValue != "" {

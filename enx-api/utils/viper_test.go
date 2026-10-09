@@ -7,13 +7,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-func TestIsTestEnv(t *testing.T) {
-	// go test always injects -test.* flags into os.Args.
-	if !isTestEnv() {
-		t.Error("expected isTestEnv to report true when running under go test")
-	}
-}
-
 // TestViperInitSetsDefaults exercises ViperInit end to end on the
 // pure-defaults path. ViperInit is guarded by sync.Once, so this must be the
 // only test in the package that calls it.

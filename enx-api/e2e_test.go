@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"enx-api/clerktest"
+	"enx-api/config"
 	"enx-api/metrics"
 	"enx-api/utils"
 	"enx-api/utils/sqlitex"
@@ -20,11 +21,11 @@ import (
 
 // e2eServer creates a real httptest.Server backed by the full application router.
 // The returned cleanup function must be called when the test is done.
-func e2eServer(t *testing.T) (*httptest.Server, func()) {
+func e2eServer(t *testing.T, cfg *config.Config) (*httptest.Server, func()) {
 	t.Helper()
 	utils.ViperInit()
 	gin.SetMode(gin.TestMode)
-	router := setupRouter(metrics.New())
+	router := setupRouter(cfg, metrics.New())
 	ts := httptest.NewServer(router)
 	return ts, func() { ts.Close() }
 }
@@ -32,7 +33,7 @@ func e2eServer(t *testing.T) (*httptest.Server, func()) {
 // TestE2E_UnauthenticatedAccessRejected verifies that protected endpoints
 // return 401 when no Bearer token is provided.
 func TestE2E_UnauthenticatedAccessRejected(t *testing.T) {
-	ts, done := e2eServer(t)
+	ts, done := e2eServer(t, config.Default())
 	defer done()
 
 	client := ts.Client()
@@ -87,7 +88,7 @@ func TestE2E_ClerkGetMe(t *testing.T) {
 		"name":  "e2e-clerk-user",
 	})
 
-	ts, done := e2eServer(t)
+	ts, done := e2eServer(t, config.Default())
 	defer done()
 
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/api/me", nil)
@@ -139,7 +140,7 @@ func TestE2E_ClerkGetMe_IsAdminReflectsAllowlist(t *testing.T) {
 
 	token := env.SignSessionToken(t, jwt.MapClaims{"sub": sub, "email": "admin-me@example.com", "name": "admin-me"})
 
-	ts, done := e2eServer(t)
+	ts, done := e2eServer(t, config.Default())
 	defer done()
 
 	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/me", nil)
@@ -176,7 +177,7 @@ func TestE2E_AdminPageReportsRequiresAdmin(t *testing.T) {
 		"sub": sub, "email": "user@example.com", "name": "not-admin",
 	})
 
-	ts, done := e2eServer(t)
+	ts, done := e2eServer(t, config.Default())
 	defer done()
 
 	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/admin/page-reports", nil)
@@ -230,7 +231,7 @@ func TestE2E_ParagraphInitOverQuery(t *testing.T) {
 	}
 	token := env.SignSessionToken(t, jwt.MapClaims{"sub": "user_e2equery001", "email": "e2e-query@example.com", "name": "e2e-query"})
 
-	ts, done := e2eServer(t)
+	ts, done := e2eServer(t, config.Default())
 	defer done()
 
 	for _, method := range []string{"QUERY", http.MethodPost} {
@@ -271,7 +272,7 @@ func TestE2E_LookupMetrics(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	m := metrics.New()
-	ts := httptest.NewServer(setupRouter(m))
+	ts := httptest.NewServer(setupRouter(config.Default(), m))
 	defer ts.Close()
 
 	for i := 0; i < 2; i++ {

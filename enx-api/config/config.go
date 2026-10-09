@@ -257,11 +257,7 @@ func Load(path string) (*Config, error) {
 	}
 
 	var cfg Config
-	err := v.UnmarshalExact(&cfg, viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
-		mapstructure.StringToTimeDurationHookFunc(),
-		splitOnWhitespace,
-	)))
-	if err != nil {
+	if err := v.UnmarshalExact(&cfg, decodeHook); err != nil {
 		return nil, fmt.Errorf("config: %w", err)
 	}
 	cfg.File = v.ConfigFileUsed()
@@ -271,6 +267,23 @@ func Load(path string) (*Config, error) {
 	}
 	return &cfg, nil
 }
+
+// Default is the configuration with nothing but the defaults: no file, no
+// environment. Tests start from it and set the fields they care about.
+func Default() *Config {
+	v := viper.New()
+	setDefaults(v)
+	var cfg Config
+	if err := v.UnmarshalExact(&cfg, decodeHook); err != nil {
+		panic(fmt.Sprintf("config: defaults do not decode: %v", err))
+	}
+	return &cfg
+}
+
+var decodeHook = viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+	mapstructure.StringToTimeDurationHookFunc(),
+	splitOnWhitespace,
+))
 
 // splitOnWhitespace decodes a string into a []string by splitting on
 // whitespace. viper's default hook splits on commas, but the deployments set

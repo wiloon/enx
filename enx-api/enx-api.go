@@ -9,6 +9,7 @@ import (
 	"enx-api/billing"
 	"enx-api/billing/credit"
 	billingstripe "enx-api/billing/stripe"
+	"enx-api/config"
 	"enx-api/dictionary"
 	"enx-api/dictionary/adapters"
 	"enx-api/ecdict"
@@ -33,6 +34,7 @@ import (
 	wordCount "enx-api/word"
 	"enx-api/wordlist"
 	"errors"
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -46,14 +48,25 @@ import (
 func main() {
 	fmt.Println("enx-api start...")
 
+	configFile := flag.String("c", "", "config file path (e.g., config-e2e.toml)")
+	flag.Parse()
+	// A config mistake stops the process here instead of falling back
+	// silently (#45). The logger is not up yet: it needs log.level.
+	cfg, err := config.Load(*configFile)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	utils.ViperInit()
-	devMode := viper.GetBool("enx.dev-mode")
-	fmt.Println("devMode:", devMode)
+	fmt.Println("devMode:", cfg.Enx.DevMode)
 
 	// Console only (docker/k8s collect stdout). The level comes from
 	// log.level / LOG_LEVEL, default info.
-	logLevel := viper.GetString("log.level")
+	logLevel := cfg.Log.Level
 	logger.Init("CONSOLE", logLevel, "enx-api")
+	if cfg.File != "" {
+		logger.Infof("loaded config file: %s", cfg.File)
+	}
 	gin.SetMode(ginMode(logLevel))
 	m := metrics.New()
 	sqlitex.InitWithLogLevel(logLevel)
@@ -62,17 +75,16 @@ func main() {
 		logger.Errorf("metrics: sqlite instrumentation: %v", err)
 	}
 
-	ecdictDbPath := viper.GetString("ecdict.db_path")
-	ecdict.Init(ecdictDbPath)
+	ecdict.Init(cfg.Ecdict.DBPath)
 
 	go runReaderDocumentCleanup()
 	go runStatsIngestLogCleanup()
 	go runPageReportCleanup()
 
-	go serveMetrics(viper.GetString("metrics.addr"), m)
-	router := setupRouter(m)
+	go serveMetrics(cfg.Metrics.Addr, m)
+	router := setupRouter(cfg, m)
 
-	port := viper.GetInt("enx.port")
+	port := cfg.Enx.Port
 	listenAddress := fmt.Sprintf(":%d", port)
 	srv := newServer(listenAddress, router)
 
@@ -242,7 +254,7 @@ func ginMode(logLevel string) string {
 	return gin.ReleaseMode
 }
 
-func setupRouter(m *metrics.Metrics) *gin.Engine {
+func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	router := gin.New()
 
 	// Metrics and the request log wrap Recovery, so a recovered panic is
@@ -325,13 +337,13 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	// users whose AI access comes from the trial alone are held to its call
 	// rate on every AI feature.
 	enx.SetNewUserHook(billing.TrialGrant{
-		Amount:  viper.GetInt64("credits.trial.amount"),
-		TTL:     time.Duration(viper.GetInt("credits.trial.ttl-days")) * 24 * time.Hour,
+		Amount:  cfg.Credits.Trial.Amount,
+		TTL:     time.Duration(cfg.Credits.Trial.TTLDays) * 24 * time.Hour,
 		Observe: m.ObserveTrialGrant,
 	})
 	trialGate := ailimit.NewTrialGate(entitlements, ailimit.NewMemoryLimiter(ailimit.Limits{
-		CallsPerMinute: viper.GetInt("credits.trial.calls-per-minute"),
-		CallsPerDay:    viper.GetInt("credits.trial.calls-per-day"),
+		CallsPerMinute: cfg.Credits.Trial.CallsPerMinute,
+		CallsPerDay:    cfg.Credits.Trial.CallsPerDay,
 	}, nil))
 
 	dictionaryService := dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, dictionary.QuotaMeter{}, entitlements)
@@ -372,22 +384,18 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 			dictionaryService.EnableAI(
 				adapters.AIDefiner{Definer: definer},
 				adapters.TokenBilling{
-					Pricing: credit.TokenPricing{
-						WeightIn:  viper.GetInt64("stripe.costs.define-word.weight-in"),
-						WeightOut: viper.GetInt64("stripe.costs.define-word.weight-out"),
-						Divisor:   viper.GetInt64("stripe.costs.define-word.divisor"),
-					},
+					Pricing: tokenPricing(cfg.Stripe.Costs.DefineWord),
 					Feature: "lookup_word_ai",
 				},
 				ailimit.NewMemoryLimiter(ailimit.Limits{
-					CallsPerMinute:    viper.GetInt("ai-word.calls-per-minute"),
-					CallsPerDay:       viper.GetInt("ai-word.calls-per-day"),
-					CacheWritesPerDay: viper.GetInt("ai-word.cache-writes-per-day"),
+					CallsPerMinute:    cfg.AIWord.CallsPerMinute,
+					CallsPerDay:       cfg.AIWord.CallsPerDay,
+					CacheWritesPerDay: cfg.AIWord.CacheWritesPerDay,
 				}, nil),
 				dictionary.AIConfig{
-					MinQuality:    viper.GetInt("ai-word.min-quality"),
+					MinQuality:    cfg.AIWord.MinQuality,
 					PromptVersion: worddef.PromptVersion,
-					CallTimeout:   viper.GetDuration("ai-word.call-timeout"),
+					CallTimeout:   cfg.AIWord.CallTimeout,
 				},
 			)
 			dictionaryService.LimitTrial(trialGate)
@@ -402,11 +410,7 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	sentenceHandler := aitranslate.NewHandler(
 		sentenceTranslator,
 		aitranslate.DefaultTokenLedger,
-		credit.TokenPricing{
-			WeightIn:  viper.GetInt64("stripe.costs.translate.weight-in"),
-			WeightOut: viper.GetInt64("stripe.costs.translate.weight-out"),
-			Divisor:   viper.GetInt64("stripe.costs.translate.divisor"),
-		},
+		tokenPricing(cfg.Stripe.Costs.Translate),
 	).WithTrialGate(trialGate)
 
 	// Rephrase (ADR-012) reuses the same provider as sentence translation,
@@ -426,23 +430,19 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	rephraseHandler := aitranslate.NewRephraseHandler(
 		rephraser,
 		aitranslate.DefaultTokenLedger,
-		credit.TokenPricing{
-			WeightIn:  viper.GetInt64("stripe.costs.rephrase.weight-in"),
-			WeightOut: viper.GetInt64("stripe.costs.rephrase.weight-out"),
-			Divisor:   viper.GetInt64("stripe.costs.rephrase.divisor"),
-		},
+		tokenPricing(cfg.Stripe.Costs.Rephrase),
 	).WithTrialGate(trialGate)
 
 	// Stripe billing is likewise optional: without STRIPE_SECRET_KEY (a local
 	// dev box, or a deployment that hasn't set the secret yet), billing
 	// endpoints stay disabled (503) rather than the server failing to start.
 	// See docs/tasks/TASK-SPEC-enx-billing-stripe-subscription.md.
-	stripeClient, stripeErr := billingstripe.New(viper.GetString("stripe.secret-key"))
+	stripeClient, stripeErr := billingstripe.New(cfg.Stripe.SecretKey)
 	if stripeErr != nil {
 		logger.Warnf("billing disabled: %v", stripeErr)
 		stripeClient = nil
 	}
-	billingHandler := billing.NewHandler(stripeClient, viper.GetString("app.frontend-base-url"), viper.GetString("stripe.webhook-secret"), m)
+	billingHandler := billing.NewHandler(stripeClient, cfg.App.FrontendBaseURL, cfg.Stripe.WebhookSecret, m)
 
 	// Authenticated APIs (Clerk session JWT). enx-chrome and enx-ui call only
 	// these /api routes; nothing is registered twice at the root.
@@ -552,6 +552,10 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	router.POST("/billing/webhook", billingHandler.Webhook)
 
 	return router
+}
+
+func tokenPricing(p config.TokenPrice) credit.TokenPricing {
+	return credit.TokenPricing{WeightIn: p.WeightIn, WeightOut: p.WeightOut, Divisor: p.Divisor}
 }
 
 // serveMetrics serves /metrics on its own listener (ADR-040): never the

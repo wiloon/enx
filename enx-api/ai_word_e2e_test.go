@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"enx-api/config"
 	"enx-api/utils/sqlitex"
 
 	"github.com/spf13/viper"
@@ -37,16 +38,15 @@ func aiWordEnv(t *testing.T, modelReply string) (base, creditedToken, freeToken,
 		"sentence-translate.provider":          "deepseek",
 		"sentence-translate.deepseek.api-key":  "test-key",
 		"sentence-translate.deepseek.base-url": model.URL,
-		"stripe.costs.define-word.weight-in":   1,
-		"stripe.costs.define-word.weight-out":  3,
-		"stripe.costs.define-word.divisor":     3000,
 	} {
 		viper.Set(key, value)
 		key := key
 		t.Cleanup(func() { viper.Set(key, nil) })
 	}
 
-	base, adminToken, plainToken := adminDictEnv(t)
+	cfg := noTrialConfig()
+	cfg.Stripe.Costs.DefineWord = config.TokenPrice{WeightIn: 1, WeightOut: 3, Divisor: 3000}
+	base, adminToken, plainToken := adminDictEnvWithConfig(t, cfg)
 	t.Cleanup(func() {
 		sqlitex.DB.Exec("DELETE FROM words WHERE english IN (?, ?)", "rizzler", "zzzword")
 		sqlitex.DB.Exec("DELETE FROM credit_accounts")
