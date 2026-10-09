@@ -110,7 +110,8 @@ func TestUserEnvVarDoesNotShadowUserKeys(t *testing.T) {
 }
 
 // envVars is every environment variable the app reads, copied from the
-// BindEnv calls in utils/viper.go plus DB_PATH (read by sqlitex before #45).
+// BindEnv calls of the former utils/viper.go plus DB_PATH (read by sqlitex
+// before #45).
 // Deliberately not derived from envBindings: dropping a binding there must
 // fail this test.
 var envVars = map[string]string{

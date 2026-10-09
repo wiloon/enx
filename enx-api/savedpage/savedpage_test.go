@@ -12,14 +12,12 @@ import (
 	"unicode/utf8"
 
 	"enx-api/urlnorm"
-	"enx-api/utils"
 	"enx-api/utils/sqlitex"
 )
 
 func TestMain(m *testing.M) {
 	dbPath := filepath.Join(os.TempDir(), "enx-savedpage-test.db")
 	os.Remove(dbPath)
-	utils.ViperInit()
 	sqlitex.Init(dbPath)
 	os.Exit(m.Run())
 }

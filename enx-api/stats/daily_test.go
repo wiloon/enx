@@ -8,14 +8,12 @@ import (
 	"time"
 
 	"enx-api/config"
-	"enx-api/utils"
 	"enx-api/utils/sqlitex"
 )
 
 func TestMain(m *testing.M) {
 	dbPath := filepath.Join(os.TempDir(), "enx-stats-test.db")
 	os.Remove(dbPath)
-	utils.ViperInit()
 	sqlitex.Init(dbPath)
 	os.Exit(m.Run())
 }

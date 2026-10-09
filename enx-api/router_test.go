@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"enx-api/metrics"
-	"enx-api/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -17,7 +16,6 @@ import (
 // endpoint is registered once, under /api. A second copy at the root was a
 // leftover from before the /api prefix and doubled every route label.
 func TestLookupRoutesAreRegisteredOnlyUnderAPI(t *testing.T) {
-	utils.ViperInit()
 	gin.SetMode(gin.TestMode)
 
 	registered := map[string]bool{}
@@ -49,7 +47,6 @@ func TestLookupRoutesAreRegisteredOnlyUnderAPI(t *testing.T) {
 // Routes with no remaining caller are gone: DELETE /api/word/:word moved to
 // the admin group, and /api/wrap had no client at all.
 func TestRemovedRoutesAreNotRegistered(t *testing.T) {
-	utils.ViperInit()
 	gin.SetMode(gin.TestMode)
 
 	for _, r := range setupRouter(config.Default(), metrics.New()).Routes() {
@@ -63,7 +60,6 @@ func TestRemovedRoutesAreNotRegistered(t *testing.T) {
 // ADR-041: paragraph-init takes its paragraph in a body via QUERY (default)
 // or POST (fallback); the GET form stays until old extensions are gone.
 func TestParagraphInitRoutes(t *testing.T) {
-	utils.ViperInit()
 	gin.SetMode(gin.TestMode)
 
 	registered := map[string]bool{}
@@ -79,7 +75,6 @@ func TestParagraphInitRoutes(t *testing.T) {
 
 // A cross-origin QUERY is preflighted; the preflight must allow it.
 func TestCORSPreflightAllowsQuery(t *testing.T) {
-	utils.ViperInit()
 	gin.SetMode(gin.TestMode)
 
 	w := httptest.NewRecorder()
@@ -113,7 +108,6 @@ func TestGinModeFollowsLogLevel(t *testing.T) {
 // ADR-044: the preference routes exist under /api and sit behind the session
 // check -- a request with no credentials never reaches the handler.
 func TestPreferencesRoutesRequireAuthentication(t *testing.T) {
-	utils.ViperInit()
 	gin.SetMode(gin.TestMode)
 	router := setupRouter(clerkConfig(t), metrics.New())
 
@@ -136,7 +130,6 @@ func TestPreferencesRoutesRequireAuthentication(t *testing.T) {
 // The word list is the user's own data: the route sits behind the session
 // check like the rest of /api/me.
 func TestWordListRouteRequiresAuthentication(t *testing.T) {
-	utils.ViperInit()
 	gin.SetMode(gin.TestMode)
 	router := setupRouter(clerkConfig(t), metrics.New())
 

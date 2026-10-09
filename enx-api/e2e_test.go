@@ -5,7 +5,6 @@ import (
 	"enx-api/clerktest"
 	"enx-api/config"
 	"enx-api/metrics"
-	"enx-api/utils"
 	"enx-api/utils/sqlitex"
 	"net/http"
 	"net/http/httptest"
@@ -21,7 +20,6 @@ import (
 // The returned cleanup function must be called when the test is done.
 func e2eServer(t *testing.T, cfg *config.Config) (*httptest.Server, func()) {
 	t.Helper()
-	utils.ViperInit()
 	gin.SetMode(gin.TestMode)
 	router := setupRouter(cfg, metrics.New())
 	ts := httptest.NewServer(router)

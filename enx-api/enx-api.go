@@ -57,7 +57,6 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	utils.ViperInit()
 	fmt.Println("devMode:", cfg.Enx.DevMode)
 
 	// Console only (docker/k8s collect stdout). The level comes from

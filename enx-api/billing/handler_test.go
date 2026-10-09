@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"enx-api/utils"
 	"enx-api/utils/sqlitex"
 
 	"github.com/gin-gonic/gin"
@@ -19,7 +18,6 @@ import (
 func TestMain(m *testing.M) {
 	dbPath := filepath.Join(os.TempDir(), "enx-billing-handler-test.db")
 	os.Remove(dbPath)
-	utils.ViperInit()
 	sqlitex.Init(dbPath)
 	gin.SetMode(gin.TestMode)
 	os.Exit(m.Run())

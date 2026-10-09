@@ -10,14 +10,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"enx-api/utils"
 	"enx-api/utils/sqlitex"
 )
 
 func TestMain(m *testing.M) {
 	dbPath := filepath.Join(os.TempDir(), "enx-wordlist-test.db")
 	os.Remove(dbPath)
-	utils.ViperInit()
 	sqlitex.Init(dbPath)
 	os.Exit(m.Run())
 }
