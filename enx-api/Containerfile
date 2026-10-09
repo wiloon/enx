@@ -1,9 +1,9 @@
-FROM golang:1.26.0 AS build
+FROM golang:1.27.2 AS base
 ENV GO111MODULE=on
 ENV CGO_ENABLED=0
 ENV GOOS=linux
 # Module proxy. Homelab CI (pipeline-build-enx-api.yaml) overrides this with the
-# in-cluster Nexus go-group URL over plain HTTP -- golang:1.26.0 does not trust
+# in-cluster Nexus go-group URL over plain HTTP -- golang:1.27.2 does not trust
 # the internal *.wiloon.com CA that Kong serves on https://nexus.wiloon.com --
 # so `go mod download` hits the local cache. A bare `docker build` falls back to
 # the public CN mirror. The goproxy.cn entry and ,direct suffix also let the
@@ -20,6 +20,24 @@ WORKDIR /workdir
 COPY enx-api/go.mod enx-api/go.sum ./
 RUN go mod download
 
+# Compile every dependency (std included) into GOCACHE in a layer of its own,
+# so a code-only change recompiles just enx-api's packages (~4s CPU) instead
+# of all ~540 (~75s CPU, the bulk being modernc.org/sqlite and stripe-go).
+#
+# The list needs the source to compute, but only the list goes into the build
+# stage: Kaniko keys the cache on the copied file's content, so the prebuild
+# layer stays a cache hit until the dependency set itself changes.
+FROM base AS deplist
+COPY enx-api/ .
+RUN go list -tags nomsgpack -deps \
+      -f '{{with .Module}}{{if not .Main}}{{$.ImportPath}}{{end}}{{else}}{{.ImportPath}}{{end}}' . \
+    | sort > /deps.txt
+
+FROM base AS build
+COPY --from=deplist /deps.txt /deps.txt
+# Same -trimpath and -tags as the final build: both are part of the cache key.
+RUN go build -trimpath -tags nomsgpack $(cat /deps.txt)
+
 COPY enx-api/ .
 ARG VERSION=dev
 ARG GIT_COMMIT=unknown
@@ -28,7 +46,9 @@ ARG BUILD_TIME=unknown
 # No `-a`: it forced a rebuild of every package including the standard library
 # for zero benefit here. `-trimpath` + `-s -w` shrink the binary (faster push /
 # pull) and make the build more reproducible (steadier cache hits).
-RUN go build -trimpath -ldflags "-s -w -X enx-api/version.Version=$VERSION -X enx-api/version.GitCommit=$GIT_COMMIT -X enx-api/version.GitBranch=$GIT_BRANCH -X enx-api/version.BuildTime=$BUILD_TIME" enx-api.go
+# `nomsgpack` drops gin's MessagePack binding (github.com/ugorji/go/codec, the
+# slowest package to compile); enx-api never binds or renders msgpack.
+RUN go build -trimpath -tags nomsgpack -ldflags "-s -w -X enx-api/version.Version=$VERSION -X enx-api/version.GitCommit=$GIT_COMMIT -X enx-api/version.GitBranch=$GIT_BRANCH -X enx-api/version.BuildTime=$BUILD_TIME" enx-api.go
 
 FROM alpine:3.21.3 AS prod
 COPY --from=build /workdir/enx-api /usr/local/bin/

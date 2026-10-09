@@ -57,10 +57,10 @@ fi
 # Build the application
 echo "Building enx-api..."
 CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build \
-    -ldflags "-X enx-server/version.Version=$VERSION \
-               -X enx-server/version.GitCommit=$GIT_COMMIT \
-               -X enx-server/version.GitBranch=$GIT_BRANCH \
-               -X enx-server/version.BuildTime=$BUILD_TIME" \
+    -ldflags "-X enx-api/version.Version=$VERSION \
+               -X enx-api/version.GitCommit=$GIT_COMMIT \
+               -X enx-api/version.GitBranch=$GIT_BRANCH \
+               -X enx-api/version.BuildTime=$BUILD_TIME" \
     -o ${OUTPUT_DIR}/${package_name} enx-api.go
 
 # Generate checksum file

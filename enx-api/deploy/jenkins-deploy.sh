@@ -33,10 +33,10 @@ echo "building"
 
 # sqlite requires the cgo, build with version information
 CGO_ENABLED=1 GOPROXY=http://192.168.50.63:4000 go build -v \
-    -ldflags "-X enx-server/version.Version=$VERSION \
-               -X enx-server/version.GitCommit=$GIT_COMMIT \
-               -X enx-server/version.GitBranch=$GIT_BRANCH \
-               -X enx-server/version.BuildTime=$BUILD_TIME" \
+    -ldflags "-X enx-api/version.Version=$VERSION \
+               -X enx-api/version.GitCommit=$GIT_COMMIT \
+               -X enx-api/version.GitBranch=$GIT_BRANCH \
+               -X enx-api/version.BuildTime=$BUILD_TIME" \
     -o ${package_name} enx-api.go
 
 ls -lh ${package_name}

@@ -80,10 +80,10 @@ make version
 ### Manual Build
 
 ```bash
-go build -ldflags "-X enx-server/version.Version=1.0.0 \
-                   -X enx-server/version.GitCommit=$(git rev-parse HEAD) \
-                   -X enx-server/version.GitBranch=$(git rev-parse --abbrev-ref HEAD) \
-                   -X enx-server/version.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')" \
+go build -ldflags "-X enx-api/version.Version=1.0.0 \
+                   -X enx-api/version.GitCommit=$(git rev-parse HEAD) \
+                   -X enx-api/version.GitBranch=$(git rev-parse --abbrev-ref HEAD) \
+                   -X enx-api/version.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')" \
          -o enx-api .
 ```
 
