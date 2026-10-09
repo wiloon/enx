@@ -1,4 +1,5 @@
 import {
+  disableLearningModeOnTab,
   enableLearningModeOnTab,
   getLearningModeStatusOnTab,
 } from '@/lib/enableLearningMode'
@@ -133,9 +134,7 @@ describe('getLearningModeStatusOnTab', () => {
   })
 
   it('treats a tab with no content script as off, without injecting one', async () => {
-    ;(chrome.tabs.sendMessage as jest.Mock).mockRejectedValue(
-      noReceiverError()
-    )
+    ;(chrome.tabs.sendMessage as jest.Mock).mockRejectedValue(noReceiverError())
 
     expect(await getLearningModeStatusOnTab(7)).toEqual({ status: 'off' })
     expect(chrome.scripting.executeScript).not.toHaveBeenCalled()
@@ -148,5 +147,39 @@ describe('getLearningModeStatusOnTab', () => {
     })
 
     expect(await getLearningModeStatusOnTab(7)).toEqual({ status: 'off' })
+  })
+})
+
+describe('disableLearningModeOnTab', () => {
+  beforeEach(() => {
+    jest.resetAllMocks()
+  })
+
+  it('sends enxStop to every frame of the tab, as enxRun reaches them', async () => {
+    ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue({ success: true })
+
+    await disableLearningModeOnTab(7)
+
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(1)
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(7, {
+      action: 'enxStop',
+    })
+  })
+
+  it('treats a tab with no content script as already off, without injecting one', async () => {
+    ;(chrome.tabs.sendMessage as jest.Mock).mockRejectedValue(noReceiverError())
+
+    await expect(disableLearningModeOnTab(7)).resolves.toBeUndefined()
+    expect(chrome.scripting.executeScript).not.toHaveBeenCalled()
+  })
+
+  it('passes any other messaging failure on to the caller', async () => {
+    ;(chrome.tabs.sendMessage as jest.Mock).mockRejectedValue(
+      new Error('No tab with id: 7')
+    )
+
+    await expect(disableLearningModeOnTab(7)).rejects.toThrow(
+      'No tab with id: 7'
+    )
   })
 })
