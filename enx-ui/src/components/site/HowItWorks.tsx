@@ -6,8 +6,8 @@ const STEPS = [
   },
   {
     n: 2,
-    title: 'Turn on learning mode',
-    body: 'Click the Catglish icon on any English page.',
+    title: 'Read with Catglish',
+    body: 'On any English page, click the Catglish icon, then Read with Catglish.',
   },
   {
     n: 3,

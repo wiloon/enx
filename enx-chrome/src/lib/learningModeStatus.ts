@@ -34,8 +34,7 @@ export const BADGE_BRAND_COLOR = '#00878F'
 export const BADGE_PROCESSING_COLOR = '#D97706' // amber: "in progress"
 export const BADGE_ERROR_COLOR = '#DC2626'
 
-const SIGNED_OUT_TITLE =
-  'Sign in to Catglish to use learning mode on this site.'
+const SIGNED_OUT_TITLE = 'Sign in to use Catglish on this site.'
 
 const errorTitle = (reason: LearningModeErrorReason): string =>
   reason === 'signed-out' ? SIGNED_OUT_TITLE : failureMessage(reason)
@@ -56,7 +55,7 @@ export function badgeFor(status: LearningModeStatus): BadgeAppearance {
       return {
         text: '✓',
         color: BADGE_BRAND_COLOR,
-        title: 'Catglish: learning mode is on. Click any word to look it up.',
+        title: 'Catglish is on. Click any word to look it up.',
       }
     case 'error':
       return {

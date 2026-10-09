@@ -51,7 +51,7 @@
         "default": "Ctrl+Shift+E",
         "mac": "Command+Shift+E"
       },
-      "description": "Toggle Catglish learning mode"
+      "description": "Open Catglish"
     }
   }
 }
