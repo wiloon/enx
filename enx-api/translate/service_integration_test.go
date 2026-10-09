@@ -7,20 +7,22 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"enx-api/config"
 	"enx-api/ecdict"
-	"enx-api/utils"
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
 
 	"github.com/gin-gonic/gin"
-	"github.com/spf13/viper"
 )
 
 func TestMain(m *testing.M) {
 	logger.Init("CONSOLE", "debug", "enx-api-test")
-	utils.ViperInit()
-	sqlitex.Init()
-	ecdict.Init(viper.GetString("ecdict.db_path"))
+	cfg, err := config.Load("")
+	if err != nil {
+		panic(err)
+	}
+	sqlitex.Init(cfg.DB.Path)
+	ecdict.Init(cfg.Ecdict.DBPath)
 	m.Run()
 }
 

@@ -2,7 +2,6 @@ package repo
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -68,10 +67,7 @@ func TestWordStatesByEnglishChunks(t *testing.T) {
 // The lookup must stay an index search: a table scan per paragraph is the
 // cost this query exists to avoid.
 func TestWordStatesByEnglishUsesTheEnglishIndex(t *testing.T) {
-	if err := os.Setenv("DB_PATH", filepath.Join(t.TempDir(), "plan.db")); err != nil {
-		t.Fatal(err)
-	}
-	sqlitex.Init() // the real schema, including idx_words_english
+	sqlitex.Init(filepath.Join(t.TempDir(), "plan.db")) // the real schema, including idx_words_english
 
 	var plan []struct{ Detail string }
 	if err := sqlitex.DB.Raw("EXPLAIN QUERY PLAN "+wordStatesSQL, "u1", []string{"a", "b"}).Scan(&plan).Error; err != nil {

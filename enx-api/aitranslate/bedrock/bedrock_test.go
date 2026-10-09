@@ -2,8 +2,10 @@ package bedrock
 
 import (
 	"context"
+	"enx-api/config"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
@@ -127,7 +129,17 @@ func TestTranslateSentenceNoTextContent(t *testing.T) {
 }
 
 func TestNewRequiresModelID(t *testing.T) {
-	if _, err := New(context.Background()); err == nil {
+	if _, err := New(context.Background(), config.Bedrock{}, time.Second); err == nil {
 		t.Fatal("expected error when sentence-translate.bedrock.model-id is not set")
+	}
+}
+
+func TestNewTakesItsSettingsFromConfig(t *testing.T) {
+	got, err := New(context.Background(), config.Bedrock{Region: "us-east-1", ModelID: "model-x"}, 7*time.Second)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if got.modelID != "model-x" || got.timeout != 7*time.Second {
+		t.Errorf("modelID, timeout = %q, %v; want model-x, 7s", got.modelID, got.timeout)
 	}
 }

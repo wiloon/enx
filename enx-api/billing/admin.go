@@ -5,7 +5,6 @@ import (
 
 	"enx-api/billing/credit"
 	"enx-api/enx"
-	"enx-api/middleware"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
@@ -17,7 +16,7 @@ import (
 // (credit.GrantTopup), just triggered manually -- for testing on homelab and
 // for support comps in production.
 func (h *Handler) GrantCredits(c *gin.Context) {
-	if !middleware.IsAdminClerkUser(c.GetString("clerk_user_id")) {
+	if !h.admins.Contains(c.GetString("clerk_user_id")) {
 		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "admin access required"})
 		return
 	}

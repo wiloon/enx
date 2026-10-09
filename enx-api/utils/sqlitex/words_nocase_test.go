@@ -33,8 +33,7 @@ var englishNoCase = regexp.MustCompile("(?i)`?english`?[^,]*COLLATE NOCASE")
 // ADR-043: words.english matches ECDICT's stardict.word -- case-insensitive
 // and unique, so a word has one row whatever its case.
 func TestInitWordsEnglishIsCaseInsensitiveAndUnique(t *testing.T) {
-	t.Setenv("DB_PATH", filepath.Join(t.TempDir(), "enx.db"))
-	Init()
+	Init(filepath.Join(t.TempDir(), "enx.db"))
 
 	if !englishNoCase.MatchString(wordsDDL(t)) {
 		t.Fatalf("words.english is not COLLATE NOCASE: %s", wordsDDL(t))
@@ -79,8 +78,7 @@ func TestInitMigratesCaseSensitiveWords(t *testing.T) {
 	sqlDB, _ := old.DB()
 	sqlDB.Close()
 
-	t.Setenv("DB_PATH", path)
-	Init()
+	Init(path)
 
 	if !englishNoCase.MatchString(wordsDDL(t)) {
 		t.Fatalf("words not rebuilt with COLLATE NOCASE: %s", wordsDDL(t))
@@ -101,7 +99,7 @@ func TestInitMigratesCaseSensitiveWords(t *testing.T) {
 	if err := DB.Exec(`INSERT INTO words (id, english, created_at, updated_at) VALUES ('w3', 'run', 1, 1)`).Error; err != nil {
 		t.Fatal(err)
 	}
-	Init()
+	Init(path)
 	if n := count(t, "words"); n != 1 {
 		t.Fatalf("second start: %d words, want the row written after the migration", n)
 	}

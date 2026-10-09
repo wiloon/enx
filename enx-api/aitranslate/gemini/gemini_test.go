@@ -3,6 +3,7 @@ package gemini
 import (
 	"bytes"
 	"context"
+	"enx-api/config"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -136,7 +137,30 @@ func TestTranslateWordInContextNon200(t *testing.T) {
 }
 
 func TestNewRequiresAPIKey(t *testing.T) {
-	if _, err := New(); err == nil {
+	if _, err := New(config.OpenAICompatible{}, time.Second); err == nil {
 		t.Fatal("expected error when GEMINI_API_KEY is not set")
+	}
+}
+
+func TestNewTakesItsSettingsFromConfig(t *testing.T) {
+	got, err := New(config.OpenAICompatible{APIKey: "key", BaseURL: "https://example.test/v1", Model: "m1"}, 7*time.Second)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if got.apiKey != "key" || got.baseURL != "https://example.test/v1" || got.model != "m1" {
+		t.Errorf("New() = %+v, want the configured key, base URL and model", got)
+	}
+	if timeout := got.client.GetClient().Timeout; timeout != 7*time.Second {
+		t.Errorf("client timeout = %v, want 7s", timeout)
+	}
+}
+
+func TestNewFallsBackToDefaultModelAndBaseURL(t *testing.T) {
+	got, err := New(config.OpenAICompatible{APIKey: "key"}, time.Second)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if got.model != defaultModel || got.baseURL != defaultBaseURL {
+		t.Errorf("model, baseURL = %q, %q; want %q, %q", got.model, got.baseURL, defaultModel, defaultBaseURL)
 	}
 }

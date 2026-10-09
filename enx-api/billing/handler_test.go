@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"enx-api/utils"
 	"enx-api/utils/sqlitex"
 
 	"github.com/gin-gonic/gin"
@@ -19,9 +18,7 @@ import (
 func TestMain(m *testing.M) {
 	dbPath := filepath.Join(os.TempDir(), "enx-billing-handler-test.db")
 	os.Remove(dbPath)
-	os.Setenv("DB_PATH", dbPath)
-	utils.ViperInit()
-	sqlitex.Init()
+	sqlitex.Init(dbPath)
 	gin.SetMode(gin.TestMode)
 	os.Exit(m.Run())
 }
@@ -47,7 +44,7 @@ func doRequest(t *testing.T, method, path string, handler gin.HandlerFunc, userI
 }
 
 func TestCheckoutSubscriptionNotConfigured(t *testing.T) {
-	h := NewHandler(nil, "https://example.com", "whsec_test", nil)
+	h := NewHandler(nil, "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodPost, "/billing/checkout/subscription", h.CheckoutSubscription, "u1", `{"plan":"monthly"}`)
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status: got %d want 503, body=%s", w.Code, w.Body.String())
@@ -55,7 +52,7 @@ func TestCheckoutSubscriptionNotConfigured(t *testing.T) {
 }
 
 func TestCheckoutTopupNotConfigured(t *testing.T) {
-	h := NewHandler(nil, "https://example.com", "whsec_test", nil)
+	h := NewHandler(nil, "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodPost, "/billing/checkout/topup", h.CheckoutTopup, "u1", `{"tier":"small"}`)
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status: got %d want 503, body=%s", w.Code, w.Body.String())
@@ -63,7 +60,7 @@ func TestCheckoutTopupNotConfigured(t *testing.T) {
 }
 
 func TestPortalNotConfigured(t *testing.T) {
-	h := NewHandler(nil, "https://example.com", "whsec_test", nil)
+	h := NewHandler(nil, "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodPost, "/billing/portal", h.Portal, "u1", ``)
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status: got %d want 503, body=%s", w.Code, w.Body.String())
@@ -78,7 +75,7 @@ func fakeConfiguredClient() *stripeSDK.Client {
 }
 
 func TestCheckoutSubscriptionInvalidPlan(t *testing.T) {
-	h := NewHandler(fakeConfiguredClient(), "https://example.com", "whsec_test", nil)
+	h := NewHandler(fakeConfiguredClient(), "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodPost, "/billing/checkout/subscription", h.CheckoutSubscription, "u1", `{"plan":"lifetime"}`)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status: got %d want 400, body=%s", w.Code, w.Body.String())
@@ -86,7 +83,7 @@ func TestCheckoutSubscriptionInvalidPlan(t *testing.T) {
 }
 
 func TestCheckoutTopupInvalidTier(t *testing.T) {
-	h := NewHandler(fakeConfiguredClient(), "https://example.com", "whsec_test", nil)
+	h := NewHandler(fakeConfiguredClient(), "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodPost, "/billing/checkout/topup", h.CheckoutTopup, "u1", `{"tier":"huge"}`)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status: got %d want 400, body=%s", w.Code, w.Body.String())
@@ -96,7 +93,7 @@ func TestCheckoutTopupInvalidTier(t *testing.T) {
 // The pre-2026-08-26 plan values ("monthly"/"annual") must no longer
 // validate: the three-tier refactor replaced them with "pro"/"pro-plus"/"max".
 func TestCheckoutSubscriptionRejectsLegacyPlanValues(t *testing.T) {
-	h := NewHandler(fakeConfiguredClient(), "https://example.com", "whsec_test", nil)
+	h := NewHandler(fakeConfiguredClient(), "https://example.com", testStripe(), nil)
 	for _, plan := range []string{"monthly", "annual"} {
 		w := doRequest(t, http.MethodPost, "/billing/checkout/subscription", h.CheckoutSubscription, "u1", `{"plan":"`+plan+`"}`)
 		if w.Code != http.StatusBadRequest {
@@ -143,7 +140,7 @@ func TestCheckoutTopupWithoutSubscriptionCreatesPaymentSession(t *testing.T) {
 	seedUser(t, userID)
 
 	var form url.Values
-	h := NewHandler(fakeStripeClient(t, func(f url.Values) { form = f }), "https://example.com", "whsec_test", nil)
+	h := NewHandler(fakeStripeClient(t, func(f url.Values) { form = f }), "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodPost, "/billing/checkout/topup", h.CheckoutTopup, userID, `{"tier":"small"}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())
@@ -179,7 +176,7 @@ func seedUser(t *testing.T, userID string) {
 }
 
 func TestPortalNoBillingAccountYet(t *testing.T) {
-	h := NewHandler(fakeConfiguredClient(), "https://example.com", "whsec_test", nil)
+	h := NewHandler(fakeConfiguredClient(), "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodPost, "/billing/portal", h.Portal, "u-never-checked-out", ``)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("status: got %d want 404, body=%s", w.Code, w.Body.String())
@@ -187,7 +184,7 @@ func TestPortalNoBillingAccountYet(t *testing.T) {
 }
 
 func TestMeDefaultsForUnknownUser(t *testing.T) {
-	h := NewHandler(nil, "https://example.com", "whsec_test", nil)
+	h := NewHandler(nil, "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodGet, "/billing/me", h.Me, "u-brand-new", ``)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())
@@ -221,7 +218,7 @@ func TestMeReflectsExistingRows(t *testing.T) {
 		t.Fatalf("seed credit account: %v", err)
 	}
 
-	h := NewHandler(nil, "https://example.com", "whsec_test", nil)
+	h := NewHandler(nil, "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodGet, "/billing/me", h.Me, userID, ``)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())

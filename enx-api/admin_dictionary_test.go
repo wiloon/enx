@@ -5,19 +5,17 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"enx-api/clerktest"
+	"enx-api/config"
 	"enx-api/ecdict"
 	"enx-api/ecdict/ecdicttest"
-	"enx-api/utils"
 	"enx-api/utils/sqlitex"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/spf13/viper"
 )
 
 const (
@@ -29,35 +27,28 @@ const (
 // database seeded with a couple of rows, and adminSub in the admin allowlist.
 func adminDictEnv(t *testing.T) (baseURL string, adminToken, plainToken string) {
 	t.Helper()
-	return adminDictEnvWithTrial(t, nil)
+	return adminDictEnvWithConfig(t, noTrialConfig())
 }
 
-// adminDictEnvWithTrial is adminDictEnv with the sign-up trial amount set;
-// nil means no trial.
-func adminDictEnvWithTrial(t *testing.T, trialAmount *int64) (baseURL string, adminToken, plainToken string) {
+// noTrialConfig is the default config without the sign-up trial (ADR-048):
+// most of these tests rely on a new user having no credit. Tests of the trial
+// turn it back on.
+func noTrialConfig() *config.Config {
+	cfg := config.Default()
+	cfg.Credits.Trial.Amount = 0
+	return cfg
+}
+
+// adminDictEnvWithConfig is adminDictEnv on the given config.
+func adminDictEnvWithConfig(t *testing.T, cfg *config.Config) (baseURL string, adminToken, plainToken string) {
 	t.Helper()
 
 	env := clerktest.NewEnv(t)
-	utils.ViperInit()
-	env.ApplyViper()
-
-	// viper.Set outranks the bound ADMIN_CLERK_USER_IDS env var.
-	viper.Set("admin.clerk-user-ids", []string{adminSub})
-	t.Cleanup(func() { viper.Set("admin.clerk-user-ids", nil) })
-	// No sign-up trial (ADR-048) by default: these tests rely on a new user
-	// having no credit. Tests of the trial turn it back on.
-	if trialAmount == nil {
-		viper.Set("credits.trial.amount", 0)
-	} else {
-		viper.Set("credits.trial.amount", *trialAmount)
-	}
-	t.Cleanup(func() { viper.Set("credits.trial.amount", nil) })
+	cfg.Clerk = env.Config()
+	cfg.Admin.ClerkUserIDs = []string{adminSub}
 
 	dbPath := filepath.Join(t.TempDir(), "enx-admin-dict.db")
-	if err := os.Setenv("DB_PATH", dbPath); err != nil {
-		t.Fatalf("set DB_PATH: %v", err)
-	}
-	sqlitex.Init()
+	sqlitex.Init(dbPath)
 	if sqlitex.DB == nil {
 		t.Fatal("sqlitex.DB is nil after Init")
 	}
@@ -68,7 +59,7 @@ func adminDictEnvWithTrial(t *testing.T, trialAmount *int64) (baseURL string, ad
 
 	seedEcdict(t)
 
-	ts, done := e2eServer(t)
+	ts, done := e2eServer(t, cfg)
 	t.Cleanup(done)
 
 	adminToken = env.SignSessionToken(t, jwt.MapClaims{"sub": adminSub, "email": "admin@example.com", "name": "admin"})

@@ -12,15 +12,15 @@ package openrouter
 
 import (
 	"context"
+	"enx-api/config"
 	"fmt"
 	"strings"
+	"time"
 
-	"enx-api/aitranslate/aicfg"
 	"enx-api/aitranslate/aiusage"
 	"enx-api/utils/logger"
 
 	"github.com/go-resty/resty/v2"
-	"github.com/spf13/viper"
 )
 
 const (
@@ -72,17 +72,17 @@ func (o *OpenRouter) modelForRephrase() string {
 // variable. It returns an error immediately if the API key is missing, so a
 // "provider = openrouter" misconfiguration is caught at startup rather than
 // on the first request.
-func New() (*OpenRouter, error) {
-	apiKey := viper.GetString("sentence-translate.openrouter.api-key")
+func New(c config.OpenAICompatible, timeout time.Duration) (*OpenRouter, error) {
+	apiKey := c.APIKey
 	if apiKey == "" {
 		return nil, fmt.Errorf("openrouter: OPENROUTER_API_KEY is not set")
 	}
 
-	model := viper.GetString("sentence-translate.openrouter.model")
+	model := c.Model
 	if model == "" {
 		model = defaultModel
 	}
-	baseURL := viper.GetString("sentence-translate.openrouter.base-url")
+	baseURL := c.BaseURL
 	if baseURL == "" {
 		baseURL = defaultBaseURL
 	}
@@ -91,9 +91,9 @@ func New() (*OpenRouter, error) {
 	return &OpenRouter{
 		apiKey:        apiKey,
 		model:         model,
-		rephraseModel: viper.GetString("sentence-translate.openrouter.rephrase-model"),
+		rephraseModel: c.RephraseModel,
 		baseURL:       baseURL,
-		client:        resty.New().SetTimeout(aicfg.RequestTimeout()),
+		client:        resty.New().SetTimeout(timeout),
 	}, nil
 }
 

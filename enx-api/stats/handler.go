@@ -2,6 +2,7 @@ package stats
 
 import (
 	"context"
+	"enx-api/config"
 	"errors"
 	"net/http"
 	"strconv"
@@ -63,7 +64,11 @@ type ingestRequest struct {
 // Not on the metered path: this endpoint looks up no words, calls no model
 // and touches no credits, so it sits outside ADR-018's single metering seam,
 // same as the admin (ADR-021) and feedback (ADR-026) endpoints.
-func IngestHandler(c *gin.Context) {
+func IngestHandler(limits config.StatsIngest) gin.HandlerFunc {
+	return func(c *gin.Context) { ingest(c, limits) }
+}
+
+func ingest(c *gin.Context, limits config.StatsIngest) {
 	var req ingestRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid request body"})
@@ -85,7 +90,7 @@ func IngestHandler(c *gin.Context) {
 			SentenceTranslations: req.Delta.SentenceTranslations,
 			ContextLookups:       req.Delta.ContextLookups,
 		},
-	}, time.Now())
+	}, time.Now(), limits.MaxWordsPerReport)
 	if err != nil {
 		if errors.Is(err, ErrInvalidDate) || errors.Is(err, ErrMissingEventID) {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})

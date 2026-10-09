@@ -13,7 +13,11 @@ import (
 // reflects the ADMIN_CLERK_USER_IDS allowlist (ADR-021) and is the only
 // signal enx-ui uses to decide whether to render the admin navigation; the
 // allowlist itself stays server-side.
-func GetMe(c *gin.Context) {
+func GetMe(admins middleware.AdminAllowlist) gin.HandlerFunc {
+	return func(c *gin.Context) { serveMe(c, admins) }
+}
+
+func serveMe(c *gin.Context, admins middleware.AdminAllowlist) {
 	userID := middleware.GetUserIDFromContext(c)
 	if userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Unauthorized"})
@@ -29,6 +33,6 @@ func GetMe(c *gin.Context) {
 		"name":    user.Name,
 		"email":   user.Email,
 		"status":  user.Status,
-		"isAdmin": middleware.IsAdminClerkUser(c.GetString("clerk_user_id")),
+		"isAdmin": admins.Contains(c.GetString("clerk_user_id")),
 	})
 }

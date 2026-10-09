@@ -2,8 +2,10 @@ package middleware
 
 import (
 	"enx-api/clerktest"
+	"enx-api/config"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 
@@ -186,5 +188,16 @@ func TestClerkAuth_OPTIONSAllowed(t *testing.T) {
 	}
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want 204", w.Code)
+	}
+}
+
+func TestClerkConfigFrom(t *testing.T) {
+	got := ClerkConfigFrom(
+		config.Clerk{Issuer: "https://iss", AuthorizedParties: []string{"a", "b"}, JWKSURL: "https://jwks"},
+		config.User{LastLoginUpdateInterval: 5 * time.Minute},
+	)
+	want := ClerkConfig{Issuer: "https://iss", AuthorizedParties: []string{"a", "b"}, JWKSURL: "https://jwks", LastLoginUpdateInterval: 5 * time.Minute}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ClerkConfigFrom() = %+v, want %+v", got, want)
 	}
 }

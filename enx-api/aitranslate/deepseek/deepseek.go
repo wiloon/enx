@@ -6,14 +6,14 @@ package deepseek
 
 import (
 	"context"
+	"enx-api/config"
 	"fmt"
+	"time"
 
-	"enx-api/aitranslate/aicfg"
 	"enx-api/aitranslate/aiusage"
 	"enx-api/utils/logger"
 
 	"github.com/go-resty/resty/v2"
-	"github.com/spf13/viper"
 )
 
 const (
@@ -49,17 +49,17 @@ func (d *DeepSeek) modelForRephrase() string {
 // and the DEEPSEEK_API_KEY environment variable. It returns an error
 // immediately if the API key is missing, so a "provider = deepseek"
 // misconfiguration is caught at startup rather than on the first request.
-func New() (*DeepSeek, error) {
-	apiKey := viper.GetString("sentence-translate.deepseek.api-key")
+func New(c config.OpenAICompatible, timeout time.Duration) (*DeepSeek, error) {
+	apiKey := c.APIKey
 	if apiKey == "" {
 		return nil, fmt.Errorf("deepseek: DEEPSEEK_API_KEY is not set")
 	}
 
-	model := viper.GetString("sentence-translate.deepseek.model")
+	model := c.Model
 	if model == "" {
 		model = defaultModel
 	}
-	baseURL := viper.GetString("sentence-translate.deepseek.base-url")
+	baseURL := c.BaseURL
 	if baseURL == "" {
 		baseURL = defaultBaseURL
 	}
@@ -67,9 +67,9 @@ func New() (*DeepSeek, error) {
 	return &DeepSeek{
 		apiKey:        apiKey,
 		model:         model,
-		rephraseModel: viper.GetString("sentence-translate.deepseek.rephrase-model"),
+		rephraseModel: c.RephraseModel,
 		baseURL:       baseURL,
-		client:        resty.New().SetTimeout(aicfg.RequestTimeout()),
+		client:        resty.New().SetTimeout(timeout),
 	}, nil
 }
 

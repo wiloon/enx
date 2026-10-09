@@ -10,16 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"enx-api/utils"
 	"enx-api/utils/sqlitex"
 )
 
 func TestMain(m *testing.M) {
 	dbPath := filepath.Join(os.TempDir(), "enx-pagereport-test.db")
 	os.Remove(dbPath)
-	os.Setenv("DB_PATH", dbPath)
-	utils.ViperInit()
-	sqlitex.Init()
+	sqlitex.Init(dbPath)
 	os.Exit(m.Run())
 }
 

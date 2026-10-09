@@ -6,10 +6,9 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/spf13/viper"
 )
 
-func TestIsAdminClerkUser(t *testing.T) {
+func TestAdminAllowlistContains(t *testing.T) {
 	tests := []struct {
 		name        string
 		configured  []string
@@ -24,18 +23,16 @@ func TestIsAdminClerkUser(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			viper.Set("admin.clerk-user-ids", tt.configured)
-			defer viper.Set("admin.clerk-user-ids", nil)
-			if got := IsAdminClerkUser(tt.clerkUserID); got != tt.want {
-				t.Fatalf("IsAdminClerkUser(%q) = %v, want %v", tt.clerkUserID, got, tt.want)
+			if got := NewAdminAllowlist(tt.configured).Contains(tt.clerkUserID); got != tt.want {
+				t.Fatalf("Contains(%q) = %v, want %v", tt.clerkUserID, got, tt.want)
 			}
 		})
 	}
 }
 
-// requireAdminResult drives RequireAdmin with clerkUserID already on the
+// requireAdminResult drives admins.Require with clerkUserID already on the
 // context (what ClerkAuth sets) and reports the resulting status code.
-func requireAdminResult(t *testing.T, setClerkID bool, clerkUserID string) int {
+func requireAdminResult(t *testing.T, admins AdminAllowlist, setClerkID bool, clerkUserID string) int {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -44,7 +41,7 @@ func requireAdminResult(t *testing.T, setClerkID bool, clerkUserID string) int {
 			c.Set("clerk_user_id", clerkUserID)
 		}
 		c.Next()
-	}, RequireAdmin(), func(c *gin.Context) {
+	}, admins.Require(), func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
 
@@ -55,29 +52,22 @@ func requireAdminResult(t *testing.T, setClerkID bool, clerkUserID string) int {
 
 func TestRequireAdmin(t *testing.T) {
 	t.Run("no clerk id on context -> 403", func(t *testing.T) {
-		viper.Set("admin.clerk-user-ids", []string{"user_admin"})
-		defer viper.Set("admin.clerk-user-ids", nil)
-		if got := requireAdminResult(t, false, ""); got != http.StatusForbidden {
+		if got := requireAdminResult(t, NewAdminAllowlist([]string{"user_admin"}), false, ""); got != http.StatusForbidden {
 			t.Fatalf("status = %d, want 403", got)
 		}
 	})
 	t.Run("clerk id not in allowlist -> 403", func(t *testing.T) {
-		viper.Set("admin.clerk-user-ids", []string{"user_admin"})
-		defer viper.Set("admin.clerk-user-ids", nil)
-		if got := requireAdminResult(t, true, "user_someone_else"); got != http.StatusForbidden {
+		if got := requireAdminResult(t, NewAdminAllowlist([]string{"user_admin"}), true, "user_someone_else"); got != http.StatusForbidden {
 			t.Fatalf("status = %d, want 403", got)
 		}
 	})
 	t.Run("empty allowlist -> 403 even for a real user", func(t *testing.T) {
-		viper.Set("admin.clerk-user-ids", nil)
-		if got := requireAdminResult(t, true, "user_admin"); got != http.StatusForbidden {
+		if got := requireAdminResult(t, AdminAllowlist{}, true, "user_admin"); got != http.StatusForbidden {
 			t.Fatalf("status = %d, want 403", got)
 		}
 	})
 	t.Run("clerk id in allowlist -> passes through", func(t *testing.T) {
-		viper.Set("admin.clerk-user-ids", []string{"user_admin"})
-		defer viper.Set("admin.clerk-user-ids", nil)
-		if got := requireAdminResult(t, true, "user_admin"); got != http.StatusOK {
+		if got := requireAdminResult(t, NewAdminAllowlist([]string{"user_admin"}), true, "user_admin"); got != http.StatusOK {
 			t.Fatalf("status = %d, want 200", got)
 		}
 	})

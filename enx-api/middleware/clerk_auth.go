@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"enx-api/config"
 	"enx-api/enx"
 	"enx-api/utils/logger"
 	"net/http"
@@ -10,7 +11,6 @@ import (
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/spf13/viper"
 )
 
 // clerkClockLeeway is how far a Clerk session token's exp/nbf/iat may be off
@@ -33,14 +33,18 @@ type ClerkConfig struct {
 	AuthorizedParties []string
 	// JWKSURL overrides the default `<issuer>/.well-known/jwks.json` endpoint (tests only).
 	JWKSURL string
+	// LastLoginUpdateInterval throttles the last_login_time write for a
+	// returning user (user.last-login-update-interval).
+	LastLoginUpdateInterval time.Duration
 }
 
-// ClerkConfigFromViper loads Clerk settings from viper / env.
-func ClerkConfigFromViper() ClerkConfig {
+// ClerkConfigFrom maps the clerk.* and user.* config onto ClerkConfig.
+func ClerkConfigFrom(c config.Clerk, u config.User) ClerkConfig {
 	return ClerkConfig{
-		Issuer:            viper.GetString("clerk.issuer"),
-		AuthorizedParties: viper.GetStringSlice("clerk.authorized-parties"),
-		JWKSURL:           viper.GetString("clerk.jwks-url"),
+		Issuer:                  c.Issuer,
+		AuthorizedParties:       c.AuthorizedParties,
+		JWKSURL:                 c.JWKSURL,
+		LastLoginUpdateInterval: u.LastLoginUpdateInterval,
 	}
 }
 
@@ -161,7 +165,7 @@ func ClerkAuth(cfg ClerkConfig, obs AuthObserver) gin.HandlerFunc {
 		email, _ := claims["email"].(string)
 		name, _ := claims["name"].(string)
 
-		userID, err := enx.GetOrCreateByClerkUserID(sub, email, name)
+		userID, err := enx.GetOrCreateByClerkUserID(sub, email, name, cfg.LastLoginUpdateInterval)
 		if err != nil {
 			logger.Errorf("ClerkAuth: provision user clerk_user_id=%s: %v", sub, err)
 			observe(authProvisionError, start)

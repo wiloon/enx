@@ -14,7 +14,8 @@ import (
 	"enx-api/utils/sqlitex"
 
 	"github.com/gin-gonic/gin"
-	"github.com/spf13/viper"
+
+	"enx-api/config"
 )
 
 // ErrEcdictUnavailable is returned when ECDICT is not configured.
@@ -25,11 +26,13 @@ var ErrEcdictUnavailable = errors.New("ecdict unavailable")
 var ErrQuotaExceeded = quota.ErrQuotaExceeded
 
 // QuotaMeter is the production Meter: MeterLookup's daily quota plus the
-// learning-statistics count.
-type QuotaMeter struct{}
+// learning-statistics count, under the stripe.quota.* ceilings.
+type QuotaMeter struct {
+	Limits config.StripeQuota
+}
 
-func (QuotaMeter) Charge(ctx context.Context, userID string) error {
-	return MeterLookup(ctx, userID)
+func (m QuotaMeter) Charge(ctx context.Context, userID string) error {
+	return MeterLookup(ctx, userID, m.Limits)
 }
 
 // MeterLookup charges one dictionary lookup against the caller's daily quota
@@ -48,8 +51,8 @@ func (QuotaMeter) Charge(ctx context.Context, userID string) error {
 // (allow) -- a paying user is never 429'd by a DB blip (#18), and a real
 // definition is never hidden behind "quota error" (#17). Only a genuine
 // ErrQuotaExceeded is returned.
-func MeterLookup(ctx context.Context, userID string) error {
-	limit := resolveLookupLimit(userID)
+func MeterLookup(ctx context.Context, userID string, limits config.StripeQuota) error {
+	limit := resolveLookupLimit(userID, limits)
 
 	now := time.Now()
 	count, err := quota.IncrementLookup(ctx, userID, now)
@@ -81,7 +84,7 @@ func MeterLookup(ctx context.Context, userID string) error {
 
 // resolveLookupLimit returns userID's daily lookup ceiling. 0 means "count,
 // but never block" -- the state the service launches in (ADR-029 Decision 4).
-func resolveLookupLimit(userID string) int64 {
+func resolveLookupLimit(userID string, limits config.StripeQuota) int64 {
 	subscribed, err := isActiveSubscriber(userID)
 	if err != nil {
 		// #18: a DB blip must never downgrade a paying user into a 429, so
@@ -90,26 +93,19 @@ func resolveLookupLimit(userID string) int64 {
 		subscribed = true
 	}
 	if subscribed {
-		return viper.GetInt64("stripe.quota.dictionary-lookup-daily-subscribed")
+		return limits.DictionaryLookupDailySubscribed
 	}
-	return freeLookupLimit()
-}
-
-var legacyQuotaKeyWarning sync.Once
-
-func freeLookupLimit() int64 {
-	if limit := viper.GetInt64("stripe.quota.dictionary-lookup-daily-free"); limit > 0 {
-		return limit
-	}
-	// Pre-ADR-029 single-tier key, honoured for one release.
-	if legacy := viper.GetInt64("stripe.quota.dictionary-lookup-daily"); legacy > 0 {
+	// The pre-ADR-029 single-tier key is honoured for one release.
+	limit, legacy := limits.FreeDailyLookupLimit()
+	if legacy {
 		legacyQuotaKeyWarning.Do(func() {
 			logger.Warnf("config: stripe.quota.dictionary-lookup-daily is deprecated, use stripe.quota.dictionary-lookup-daily-free")
 		})
-		return legacy
 	}
-	return 0
+	return limit
 }
+
+var legacyQuotaKeyWarning sync.Once
 
 func isActiveSubscriber(userID string) (bool, error) {
 	var count int64

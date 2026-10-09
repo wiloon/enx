@@ -4,14 +4,16 @@ import (
 	"context"
 	"enx-api/ailimit"
 	"enx-api/aitranslate"
-	"enx-api/aitranslate/aicfg"
 	"enx-api/aitranslate/worddef"
 	"enx-api/billing"
 	"enx-api/billing/credit"
 	billingstripe "enx-api/billing/stripe"
+	"enx-api/config"
 	"enx-api/dictionary"
 	"enx-api/dictionary/adapters"
+	"enx-api/dictsample"
 	"enx-api/ecdict"
+	"enx-api/email"
 	"enx-api/entitlement"
 	entadapters "enx-api/entitlement/adapters"
 	"enx-api/enx"
@@ -33,6 +35,7 @@ import (
 	wordCount "enx-api/word"
 	"enx-api/wordlist"
 	"errors"
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -40,41 +43,50 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/spf13/viper"
 )
 
 func main() {
 	fmt.Println("enx-api start...")
 
-	utils.ViperInit()
-	devMode := viper.GetBool("enx.dev-mode")
-	fmt.Println("devMode:", devMode)
+	configFile := flag.String("c", "", "config file path (e.g., config-e2e.toml)")
+	flag.Parse()
+	// A config mistake stops the process here instead of falling back
+	// silently (#45). The logger is not up yet: it needs log.level.
+	cfg, err := config.Load(*configFile)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Println("devMode:", cfg.Enx.DevMode)
 
 	// Console only (docker/k8s collect stdout). The level comes from
 	// log.level / LOG_LEVEL, default info.
-	logLevel := viper.GetString("log.level")
+	logLevel := cfg.Log.Level
 	logger.Init("CONSOLE", logLevel, "enx-api")
+	if cfg.File != "" {
+		logger.Infof("loaded config file: %s", cfg.File)
+	}
 	gin.SetMode(ginMode(logLevel))
 	m := metrics.New()
-	sqlitex.InitWithLogLevel(logLevel)
+	sqlitex.InitWithLogLevel(cfg.DB.Path, logLevel)
 	if err := m.InstrumentDB(sqlitex.DB); err != nil {
 		// Losing the busy counter must not stop the API.
 		logger.Errorf("metrics: sqlite instrumentation: %v", err)
 	}
 
-	ecdictDbPath := viper.GetString("ecdict.db_path")
-	ecdict.Init(ecdictDbPath)
+	ecdict.Init(cfg.Ecdict.DBPath)
+	dictsample.SetEnabled(cfg.Ecdict.Sampling)
 
 	go runReaderDocumentCleanup()
-	go runStatsIngestLogCleanup()
+	go runStatsIngestLogCleanup(cfg.Stats.Ingest.LogTTL())
 	go runPageReportCleanup()
 
-	go serveMetrics(viper.GetString("metrics.addr"), m)
-	router := setupRouter(m)
+	go serveMetrics(cfg.Metrics.Addr, m)
+	router := setupRouter(cfg, m)
 
-	port := viper.GetInt("enx.port")
+	port := cfg.Enx.Port
 	listenAddress := fmt.Sprintf(":%d", port)
-	srv := newServer(listenAddress, router)
+	srv := newServer(listenAddress, router, cfg.SentenceTranslate.RequestTimeout)
 
 	idleConnectionsClosed := make(chan struct{})
 	go func() {
@@ -129,8 +141,8 @@ const (
 // newServer builds the HTTP server. Extracted from main() so the timeout
 // coupling below is reachable from a test.
 //
-// WriteTimeout is derived from aicfg.RequestTimeout() instead of being its
-// own constant because the two are not independent: Go's WriteTimeout starts
+// WriteTimeout is derived from the AI provider's request timeout
+// (sentence-translate.request-timeout) instead of being its own constant because the two are not independent: Go's WriteTimeout starts
 // when the request header is read and covers body read, handler execution and
 // response write, so a WriteTimeout below the provider timeout means the
 // server tears the connection down while its own handler is still waiting on
@@ -144,10 +156,8 @@ const (
 // to 60s for MiniMax's M-series "thinking" models, silently putting every
 // 30-60s translation in the billed-but-undelivered window. Deriving it means
 // raising SENTENCE_TRANSLATE_REQUEST_TIMEOUT can no longer reopen that gap.
-//
-// Callers must run utils.ViperInit() first: aicfg.RequestTimeout() reads viper.
-func newServer(addr string, handler http.Handler) *http.Server {
-	writeTimeout := aicfg.RequestTimeout() + writeTimeoutHeadroom
+func newServer(addr string, handler http.Handler, providerTimeout time.Duration) *http.Server {
+	writeTimeout := providerTimeout + writeTimeoutHeadroom
 	if writeTimeout < minWriteTimeout {
 		writeTimeout = minWriteTimeout
 	}
@@ -190,9 +200,9 @@ func runReaderDocumentCleanup() {
 // rows (ADR-028 Decision 5). Only the dedup log is purged -- daily_stats is
 // the user's own history and is never deleted. Mirrors the reader cleanup:
 // once on start so a restart doesn't leave a backlog, then hourly.
-func runStatsIngestLogCleanup() {
+func runStatsIngestLogCleanup(ttl time.Duration) {
 	purge := func() {
-		deleted, err := stats.PurgeIngestLog(context.Background(), time.Now())
+		deleted, err := stats.PurgeIngestLog(context.Background(), time.Now(), ttl)
 		if err != nil {
 			logger.Errorf("stats: purge ingest log failed: %v", err)
 			return
@@ -242,7 +252,7 @@ func ginMode(logLevel string) string {
 	return gin.ReleaseMode
 }
 
-func setupRouter(m *metrics.Metrics) *gin.Engine {
+func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	router := gin.New()
 
 	// Metrics and the request log wrap Recovery, so a recovered panic is
@@ -309,7 +319,8 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	router.GET("/version", handlers.GetVersion)
 	router.GET("/api/version", handlers.GetVersionSimple)
 
-	clerkAuth := middleware.ClerkAuth(middleware.ClerkConfigFromViper(), m)
+	admins := middleware.NewAdminAllowlist(cfg.Admin.ClerkUserIDs)
+	clerkAuth := middleware.ClerkAuth(middleware.ClerkConfigFrom(cfg.Clerk, cfg.User), m)
 
 	// Word lookup (ADR-018): the dictionary domain service over the words
 	// table and ECDICT, plus the per-user review log.
@@ -325,16 +336,16 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	// users whose AI access comes from the trial alone are held to its call
 	// rate on every AI feature.
 	enx.SetNewUserHook(billing.TrialGrant{
-		Amount:  viper.GetInt64("credits.trial.amount"),
-		TTL:     time.Duration(viper.GetInt("credits.trial.ttl-days")) * 24 * time.Hour,
+		Amount:  cfg.Credits.Trial.Amount,
+		TTL:     time.Duration(cfg.Credits.Trial.TTLDays) * 24 * time.Hour,
 		Observe: m.ObserveTrialGrant,
 	})
 	trialGate := ailimit.NewTrialGate(entitlements, ailimit.NewMemoryLimiter(ailimit.Limits{
-		CallsPerMinute: viper.GetInt("credits.trial.calls-per-minute"),
-		CallsPerDay:    viper.GetInt("credits.trial.calls-per-day"),
+		CallsPerMinute: cfg.Credits.Trial.CallsPerMinute,
+		CallsPerDay:    cfg.Credits.Trial.CallsPerDay,
 	}, nil))
 
-	dictionaryService := dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, dictionary.QuotaMeter{}, entitlements)
+	dictionaryService := dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, dictionary.QuotaMeter{Limits: cfg.Stripe.Quota}, entitlements)
 	preferencesService := preferences.NewService(prefadapters.Table{}, entitlements)
 
 	// The AI word fallback (ADR-045) is a second request after a lookup
@@ -352,16 +363,16 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	// missing, that's a deliberate misconfiguration and must fail fast rather
 	// than silently serving a broken endpoint (see
 	// docs/tasks/TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md §4.4).
-	sentenceTranslator, sentenceTranslateErr := aitranslate.New(context.Background())
+	sentenceTranslator, sentenceTranslateErr := aitranslate.New(context.Background(), cfg.SentenceTranslate)
 	if sentenceTranslateErr != nil {
-		if provider := viper.GetString("sentence-translate.provider"); provider != "" {
+		if provider := cfg.SentenceTranslate.Provider; provider != "" {
 			logger.Errorf("sentence-translate.provider=%q is configured but failed to initialize: %v", provider, sentenceTranslateErr)
 			os.Exit(1)
 		}
 		logger.Warnf("sentence translation disabled: %v", sentenceTranslateErr)
 		sentenceTranslator = nil
 	} else {
-		sentenceTranslator = aitranslate.Instrument(sentenceTranslator, viper.GetString("sentence-translate.provider"), m)
+		sentenceTranslator = aitranslate.Instrument(sentenceTranslator, cfg.SentenceTranslate.Provider, m)
 	}
 
 	// The AI word fallback (ADR-045) rides on the same provider, but only a
@@ -372,22 +383,18 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 			dictionaryService.EnableAI(
 				adapters.AIDefiner{Definer: definer},
 				adapters.TokenBilling{
-					Pricing: credit.TokenPricing{
-						WeightIn:  viper.GetInt64("stripe.costs.define-word.weight-in"),
-						WeightOut: viper.GetInt64("stripe.costs.define-word.weight-out"),
-						Divisor:   viper.GetInt64("stripe.costs.define-word.divisor"),
-					},
+					Pricing: tokenPricing(cfg.Stripe.Costs.DefineWord),
 					Feature: "lookup_word_ai",
 				},
 				ailimit.NewMemoryLimiter(ailimit.Limits{
-					CallsPerMinute:    viper.GetInt("ai-word.calls-per-minute"),
-					CallsPerDay:       viper.GetInt("ai-word.calls-per-day"),
-					CacheWritesPerDay: viper.GetInt("ai-word.cache-writes-per-day"),
+					CallsPerMinute:    cfg.AIWord.CallsPerMinute,
+					CallsPerDay:       cfg.AIWord.CallsPerDay,
+					CacheWritesPerDay: cfg.AIWord.CacheWritesPerDay,
 				}, nil),
 				dictionary.AIConfig{
-					MinQuality:    viper.GetInt("ai-word.min-quality"),
+					MinQuality:    cfg.AIWord.MinQuality,
 					PromptVersion: worddef.PromptVersion,
-					CallTimeout:   viper.GetDuration("ai-word.call-timeout"),
+					CallTimeout:   cfg.AIWord.CallTimeout,
 				},
 			)
 			dictionaryService.LimitTrial(trialGate)
@@ -395,54 +402,46 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 				logger.Warnf("AI word lookup is off: stripe.costs.define-word has no price")
 			}
 		} else {
-			logger.Warnf("AI word lookup is off: provider %q does not implement DefineWord", viper.GetString("sentence-translate.provider"))
+			logger.Warnf("AI word lookup is off: provider %q does not implement DefineWord", cfg.SentenceTranslate.Provider)
 		}
 	}
 
 	sentenceHandler := aitranslate.NewHandler(
 		sentenceTranslator,
 		aitranslate.DefaultTokenLedger,
-		credit.TokenPricing{
-			WeightIn:  viper.GetInt64("stripe.costs.translate.weight-in"),
-			WeightOut: viper.GetInt64("stripe.costs.translate.weight-out"),
-			Divisor:   viper.GetInt64("stripe.costs.translate.divisor"),
-		},
+		tokenPricing(cfg.Stripe.Costs.Translate),
 	).WithTrialGate(trialGate)
 
 	// Rephrase (ADR-012) reuses the same provider as sentence translation,
 	// but the provider must also implement rephrase support. Same
 	// "unconfigured is not fatal, misconfigured is" contract as above.
-	rephraser, rephraseErr := aitranslate.NewRephraser(context.Background())
+	rephraser, rephraseErr := aitranslate.NewRephraser(context.Background(), cfg.SentenceTranslate)
 	if rephraseErr != nil {
-		if provider := viper.GetString("sentence-translate.provider"); provider != "" {
+		if provider := cfg.SentenceTranslate.Provider; provider != "" {
 			logger.Errorf("sentence-translate.provider=%q is configured but rephrase failed to initialize: %v", provider, rephraseErr)
 			os.Exit(1)
 		}
 		logger.Warnf("rephrase disabled: %v", rephraseErr)
 		rephraser = nil
 	} else {
-		rephraser = aitranslate.InstrumentRephraser(rephraser, viper.GetString("sentence-translate.provider"), m)
+		rephraser = aitranslate.InstrumentRephraser(rephraser, cfg.SentenceTranslate.Provider, m)
 	}
 	rephraseHandler := aitranslate.NewRephraseHandler(
 		rephraser,
 		aitranslate.DefaultTokenLedger,
-		credit.TokenPricing{
-			WeightIn:  viper.GetInt64("stripe.costs.rephrase.weight-in"),
-			WeightOut: viper.GetInt64("stripe.costs.rephrase.weight-out"),
-			Divisor:   viper.GetInt64("stripe.costs.rephrase.divisor"),
-		},
+		tokenPricing(cfg.Stripe.Costs.Rephrase),
 	).WithTrialGate(trialGate)
 
 	// Stripe billing is likewise optional: without STRIPE_SECRET_KEY (a local
 	// dev box, or a deployment that hasn't set the secret yet), billing
 	// endpoints stay disabled (503) rather than the server failing to start.
 	// See docs/tasks/TASK-SPEC-enx-billing-stripe-subscription.md.
-	stripeClient, stripeErr := billingstripe.New(viper.GetString("stripe.secret-key"))
+	stripeClient, stripeErr := billingstripe.New(cfg.Stripe.SecretKey)
 	if stripeErr != nil {
 		logger.Warnf("billing disabled: %v", stripeErr)
 		stripeClient = nil
 	}
-	billingHandler := billing.NewHandler(stripeClient, viper.GetString("app.frontend-base-url"), viper.GetString("stripe.webhook-secret"), m)
+	billingHandler := billing.NewHandler(stripeClient, cfg.App.FrontendBaseURL, cfg.Stripe, m).WithAdmins(admins)
 
 	// Authenticated APIs (Clerk session JWT). enx-chrome and enx-ui call only
 	// these /api routes; nothing is registered twice at the root.
@@ -472,7 +471,7 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	}
 
 	// /api/me — requires authentication (Clerk session JWT)
-	apiGroup.GET("/me", handlers.GetMe)
+	apiGroup.GET("/me", handlers.GetMe(admins))
 
 	// Server-side user preferences (ADR-044): the AI word fallback switch and
 	// its one-time notice. Defaults and editability follow the user's payment
@@ -504,14 +503,14 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	// Reading statistics (ADR-028). Deliberately NOT on the metered path:
 	// these look up no words, call no model and touch no credits, so they
 	// sit outside ADR-018's single metering seam (same as admin/ADR-021).
-	apiGroup.POST("/stats/ingest", stats.IngestHandler)
+	apiGroup.POST("/stats/ingest", stats.IngestHandler(cfg.Stats.Ingest))
 	apiGroup.GET("/stats/overview", stats.OverviewHandler)
 	apiGroup.GET("/stats/series", stats.SeriesHandler)
 
 	// User-confirmed "this page didn't work" reports (ADR-010 Decision 8).
 	// The one endpoint that stores a (sanitized) URL, so the extension only
 	// calls it after the user clicks to confirm. Not on the metered path.
-	apiGroup.POST("/page-reports", pagereport.SubmitHandler)
+	apiGroup.POST("/page-reports", pagereport.SubmitHandler(email.NewSender(cfg.Resend)))
 
 	// Pages the user chose to save (ADR-032): URL + title only, readable and
 	// editable by that user alone -- there is deliberately no admin route.
@@ -531,7 +530,7 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	// ADMIN_CLERK_USER_IDS allowlist). Deliberately not on the user lookup
 	// path -- raw rows, no metering, no ECDICT backfill.
 	adminDict := apiGroup.Group("/admin")
-	adminDict.Use(middleware.RequireAdmin())
+	adminDict.Use(admins.Require())
 	{
 		adminDict.GET("/words/:word", handlers.AdminGetWord)
 		adminDict.GET("/ai-words", handlers.AdminListAIWords)
@@ -552,6 +551,10 @@ func setupRouter(m *metrics.Metrics) *gin.Engine {
 	router.POST("/billing/webhook", billingHandler.Webhook)
 
 	return router
+}
+
+func tokenPricing(p config.TokenPrice) credit.TokenPricing {
+	return credit.TokenPricing{WeightIn: p.WeightIn, WeightOut: p.WeightOut, Divisor: p.Divisor}
 }
 
 // serveMetrics serves /metrics on its own listener (ADR-040): never the

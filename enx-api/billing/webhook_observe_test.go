@@ -41,10 +41,12 @@ func postWebhook(t *testing.T, h *Handler, secret, eventType, object string, sig
 // the earliest signal that a payment did not turn into credits.
 func TestWebhookReportsOutcome(t *testing.T) {
 	const secret = "whsec_observe"
-	viperSet(t, "stripe.credits.topup-large", 9)
-	viperSet(t, "stripe.credits.topup-medium", 0) // unconfigured: dispatch fails
+	stripe := testStripe()
+	stripe.WebhookSecret = secret
+	stripe.Credits.TopupLarge = 9
+	stripe.Credits.TopupMedium = 0 // unconfigured: dispatch fails
 	obs := &recordedWebhooks{}
-	h := NewHandler(fakeConfiguredClient(), "https://example.com", secret, obs)
+	h := NewHandler(fakeConfiguredClient(), "https://example.com", stripe, obs)
 
 	topup := func(tier string) string {
 		return `{"id": "cs_` + tier + `", "client_reference_id": "u-` + t.Name() + `", "customer": "cus_1", "metadata": {"type": "topup", "tier": "` + tier + `"}}`

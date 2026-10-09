@@ -11,7 +11,6 @@ import (
 	billingstripe "enx-api/billing/stripe"
 	"enx-api/utils/sqlitex"
 
-	"github.com/spf13/viper"
 	stripeSDK "github.com/stripe/stripe-go/v86"
 	"gorm.io/gorm"
 )
@@ -78,7 +77,7 @@ func (h *Handler) handleCheckoutSessionCompleted(ctx context.Context, event stri
 
 	if session.Metadata["type"] == "topup" {
 		tier := session.Metadata["tier"]
-		amount := viper.GetInt64("stripe.credits.topup-" + tier)
+		amount := h.credits.Topup(tier)
 		if amount <= 0 {
 			return fmt.Errorf("checkout.session.completed %s: stripe.credits.topup-%s is not configured (or tier metadata missing)", session.ID, tier)
 		}
@@ -136,12 +135,7 @@ func (h *Handler) handleInvoicePaid(ctx context.Context, event stripeSDK.Event) 
 		priceID = line.Pricing.PriceDetails.Price.ID
 	}
 
-	tierLookupKeys := map[string]string{
-		"pro":      viper.GetString("stripe.price.pro"),
-		"pro-plus": viper.GetString("stripe.price.pro-plus"),
-		"max":      viper.GetString("stripe.price.max"),
-	}
-	plan, err := billingstripe.SubscriptionTierForPrice(ctx, h.sc, priceID, tierLookupKeys)
+	plan, err := billingstripe.SubscriptionTierForPrice(ctx, h.sc, priceID, h.prices.SubscriptionPlans())
 	if err != nil {
 		return fmt.Errorf("invoice.paid %s: resolve plan for price %q: %w", inv.ID, priceID, err)
 	}
@@ -149,7 +143,7 @@ func (h *Handler) handleInvoicePaid(ctx context.Context, event stripeSDK.Event) 
 		return fmt.Errorf("invoice.paid %s: price %q matches no configured subscription tier", inv.ID, priceID)
 	}
 
-	amount := viper.GetInt64("stripe.credits.subscription-" + plan)
+	amount := h.credits.Subscription(plan)
 	if err := credit.GrantSubscription(ctx, userID, amount, time.Unix(inv.PeriodEnd, 0), event.ID); err != nil {
 		return err
 	}

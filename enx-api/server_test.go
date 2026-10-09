@@ -1,12 +1,8 @@
 package main
 
 import (
-	"enx-api/aitranslate/aicfg"
-	"enx-api/utils"
 	"testing"
 	"time"
-
-	"github.com/spf13/viper"
 )
 
 // TestNewServerWriteTimeoutExceedsProviderTimeout is the regression test for a
@@ -20,10 +16,9 @@ import (
 // number": the invariant is the relationship between the two values, not any
 // particular duration.
 func TestNewServerWriteTimeoutExceedsProviderTimeout(t *testing.T) {
-	utils.ViperInit()
-
-	srv := newServer(":0", nil)
-	if provider := aicfg.RequestTimeout(); srv.WriteTimeout <= provider {
+	const provider = 60 * time.Second // the default
+	srv := newServer(":0", nil, provider)
+	if srv.WriteTimeout <= provider {
 		t.Fatalf("WriteTimeout (%v) must be strictly greater than the provider request timeout (%v): "+
 			"the server would abort billed AI requests mid-flight", srv.WriteTimeout, provider)
 	}
@@ -34,31 +29,24 @@ func TestNewServerWriteTimeoutExceedsProviderTimeout(t *testing.T) {
 // SENTENCE_TRANSLATE_REQUEST_TIMEOUT, and that the floor keeps a tiny
 // configured timeout from shrinking the server's own budget.
 func TestNewServerWriteTimeoutTracksConfiguredProviderTimeout(t *testing.T) {
-	utils.ViperInit()
-
-	const key = "sentence-translate.request-timeout"
-	original := viper.Get(key)
-	t.Cleanup(func() { viper.Set(key, original) })
-
 	for _, tc := range []struct {
 		name     string
-		provider string
+		provider time.Duration
 		want     time.Duration
 	}{
-		{name: "default", provider: "60s", want: 60*time.Second + writeTimeoutHeadroom},
-		{name: "raised", provider: "180s", want: 180*time.Second + writeTimeoutHeadroom},
-		{name: "tiny value hits the floor", provider: "1s", want: minWriteTimeout},
+		{name: "default", provider: 60 * time.Second, want: 60*time.Second + writeTimeoutHeadroom},
+		{name: "raised", provider: 180 * time.Second, want: 180*time.Second + writeTimeoutHeadroom},
+		{name: "tiny value hits the floor", provider: time.Second, want: minWriteTimeout},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			viper.Set(key, tc.provider)
-
-			srv := newServer(":0", nil)
+			t.Parallel()
+			srv := newServer(":0", nil, tc.provider)
 			if srv.WriteTimeout != tc.want {
 				t.Errorf("provider timeout %s: WriteTimeout = %v, want %v", tc.provider, srv.WriteTimeout, tc.want)
 			}
-			if provider := aicfg.RequestTimeout(); srv.WriteTimeout <= provider {
+			if srv.WriteTimeout <= tc.provider {
 				t.Errorf("provider timeout %s: WriteTimeout (%v) must exceed provider timeout (%v)",
-					tc.provider, srv.WriteTimeout, provider)
+					tc.provider, srv.WriteTimeout, tc.provider)
 			}
 		})
 	}
@@ -68,9 +56,7 @@ func TestNewServerWriteTimeoutTracksConfiguredProviderTimeout(t *testing.T) {
 // meant to touch, so a future change to the WriteTimeout derivation cannot
 // quietly take them with it.
 func TestNewServerLeavesOtherTimeoutsAlone(t *testing.T) {
-	utils.ViperInit()
-
-	srv := newServer(":0", nil)
+	srv := newServer(":0", nil, 60*time.Second)
 	if want := 10 * time.Second; srv.ReadHeaderTimeout != want {
 		t.Errorf("ReadHeaderTimeout = %v, want %v", srv.ReadHeaderTimeout, want)
 	}

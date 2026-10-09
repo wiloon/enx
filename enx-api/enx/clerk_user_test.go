@@ -5,14 +5,12 @@ import (
 	"errors"
 	"testing"
 	"time"
-
-	"github.com/spf13/viper"
 )
 
 func TestGetOrCreateByClerkUserID_EmptyID(t *testing.T) {
 	newUserTestDB(t)
 
-	if _, err := GetOrCreateByClerkUserID("", "a@b.com", "alice"); err == nil {
+	if _, err := GetOrCreateByClerkUserID("", "a@b.com", "alice", time.Nanosecond); err == nil {
 		t.Fatal("expected an error for an empty clerk user id")
 	}
 }
@@ -20,7 +18,7 @@ func TestGetOrCreateByClerkUserID_EmptyID(t *testing.T) {
 func TestGetOrCreateByClerkUserID_ProvisionsNewUser(t *testing.T) {
 	newUserTestDB(t)
 
-	id, err := GetOrCreateByClerkUserID("user_abc123", "alice@example.com", "Alice Doe")
+	id, err := GetOrCreateByClerkUserID("user_abc123", "alice@example.com", "Alice Doe", time.Nanosecond)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -46,7 +44,7 @@ func TestGetOrCreateByClerkUserID_ProvisionsNewUser(t *testing.T) {
 func TestGetOrCreateByClerkUserID_NameFromEmailWhenNameEmpty(t *testing.T) {
 	newUserTestDB(t)
 
-	id, err := GetOrCreateByClerkUserID("user_noname", "derived.name@example.com", "")
+	id, err := GetOrCreateByClerkUserID("user_noname", "derived.name@example.com", "", time.Nanosecond)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -58,7 +56,7 @@ func TestGetOrCreateByClerkUserID_NameFromEmailWhenNameEmpty(t *testing.T) {
 func TestGetOrCreateByClerkUserID_FallsBackToIDForName(t *testing.T) {
 	newUserTestDB(t)
 
-	id, err := GetOrCreateByClerkUserID("user_xyz789", "", "")
+	id, err := GetOrCreateByClerkUserID("user_xyz789", "", "", time.Nanosecond)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -71,10 +69,8 @@ func TestGetOrCreateByClerkUserID_FallsBackToIDForName(t *testing.T) {
 
 func TestGetOrCreateByClerkUserID_Idempotent(t *testing.T) {
 	newUserTestDB(t)
-	viper.Set("user.last-login-update-interval", 0)
-	defer viper.Set("user.last-login-update-interval", nil)
 
-	first, err := GetOrCreateByClerkUserID("user_existing", "alice@example.com", "Alice")
+	first, err := GetOrCreateByClerkUserID("user_existing", "alice@example.com", "Alice", time.Nanosecond)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -82,7 +78,7 @@ func TestGetOrCreateByClerkUserID_Idempotent(t *testing.T) {
 	before := GetUserByID(first)
 	time.Sleep(2 * time.Millisecond)
 
-	second, err := GetOrCreateByClerkUserID("user_existing", "alice@example.com", "Alice")
+	second, err := GetOrCreateByClerkUserID("user_existing", "alice@example.com", "Alice", time.Nanosecond)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -98,17 +94,15 @@ func TestGetOrCreateByClerkUserID_Idempotent(t *testing.T) {
 
 func TestGetOrCreateByClerkUserID_SkipsLastLoginUpdateWithinInterval(t *testing.T) {
 	newUserTestDB(t)
-	viper.Set("user.last-login-update-interval", "1h")
-	defer viper.Set("user.last-login-update-interval", nil)
 
-	id, err := GetOrCreateByClerkUserID("user_throttled", "bob@example.com", "Bob")
+	id, err := GetOrCreateByClerkUserID("user_throttled", "bob@example.com", "Bob", time.Hour)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	before := GetUserByID(id)
 	time.Sleep(2 * time.Millisecond)
 
-	if _, err := GetOrCreateByClerkUserID("user_throttled", "bob@example.com", "Bob"); err != nil {
+	if _, err := GetOrCreateByClerkUserID("user_throttled", "bob@example.com", "Bob", time.Hour); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -141,11 +135,11 @@ func TestGetOrCreateByClerkUserID_NewUserHookFiresOnlyOnCreate(t *testing.T) {
 	hook := &recordingHook{}
 	withNewUserHook(t, hook)
 
-	id, err := GetOrCreateByClerkUserID("user_hook1", "h@example.com", "H")
+	id, err := GetOrCreateByClerkUserID("user_hook1", "h@example.com", "H", time.Nanosecond)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := GetOrCreateByClerkUserID("user_hook1", "h@example.com", "H"); err != nil {
+	if _, err := GetOrCreateByClerkUserID("user_hook1", "h@example.com", "H", time.Nanosecond); err != nil {
 		t.Fatal(err)
 	}
 
@@ -159,7 +153,7 @@ func TestGetOrCreateByClerkUserID_FailingHookDoesNotFailSignIn(t *testing.T) {
 	newUserTestDB(t)
 	withNewUserHook(t, &recordingHook{err: errors.New("ledger down")})
 
-	id, err := GetOrCreateByClerkUserID("user_hook2", "", "")
+	id, err := GetOrCreateByClerkUserID("user_hook2", "", "", time.Nanosecond)
 	if err != nil || id == "" {
 		t.Fatalf("got id=%q err=%v, want a provisioned user", id, err)
 	}

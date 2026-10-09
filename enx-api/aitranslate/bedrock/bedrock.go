@@ -10,9 +10,10 @@ package bedrock
 
 import (
 	"context"
+	"enx-api/config"
 	"fmt"
+	"time"
 
-	"enx-api/aitranslate/aicfg"
 	"enx-api/aitranslate/aiusage"
 	"enx-api/utils/logger"
 
@@ -20,7 +21,6 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
-	"github.com/spf13/viper"
 )
 
 const systemPrompt = "You are a professional English-to-Chinese translator. " +
@@ -36,6 +36,7 @@ type converseClient interface {
 type Bedrock struct {
 	client  converseClient
 	modelID string
+	timeout time.Duration
 }
 
 // New builds a Bedrock translator from config.toml (sentence-translate.bedrock.*)
@@ -45,14 +46,14 @@ type Bedrock struct {
 // the first request. It cannot verify the credentials actually have
 // bedrock:InvokeModel permission or that model access has been granted for
 // model-id — those surface as an error from the first TranslateSentence call.
-func New(ctx context.Context) (*Bedrock, error) {
-	modelID := viper.GetString("sentence-translate.bedrock.model-id")
+func New(ctx context.Context, c config.Bedrock, timeout time.Duration) (*Bedrock, error) {
+	modelID := c.ModelID
 	if modelID == "" {
 		return nil, fmt.Errorf("bedrock: sentence-translate.bedrock.model-id is not set")
 	}
 
 	var optFns []func(*awsconfig.LoadOptions) error
-	if region := viper.GetString("sentence-translate.bedrock.region"); region != "" {
+	if region := c.Region; region != "" {
 		optFns = append(optFns, awsconfig.WithRegion(region))
 	}
 
@@ -67,6 +68,7 @@ func New(ctx context.Context) (*Bedrock, error) {
 	return &Bedrock{
 		client:  bedrockruntime.NewFromConfig(cfg),
 		modelID: modelID,
+		timeout: timeout,
 	}, nil
 }
 
@@ -75,7 +77,7 @@ func (b *Bedrock) TranslateSentence(ctx context.Context, sentence string) (strin
 }
 
 func (b *Bedrock) converse(ctx context.Context, feature, systemPrompt, userContent string) (string, aiusage.Usage, error) {
-	callCtx, cancel := context.WithTimeout(ctx, aicfg.RequestTimeout())
+	callCtx, cancel := context.WithTimeout(ctx, b.timeout)
 	defer cancel()
 
 	out, err := b.client.Converse(callCtx, &bedrockruntime.ConverseInput{

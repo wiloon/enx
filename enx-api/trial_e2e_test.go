@@ -4,9 +4,8 @@ import (
 	"net/http"
 	"testing"
 
+	"enx-api/config"
 	"enx-api/utils/sqlitex"
-
-	"github.com/spf13/viper"
 )
 
 // ADR-048 end to end: a brand-new account gets the trial at sign-in, can use
@@ -14,21 +13,13 @@ import (
 // to the trial's daily call limit.
 func TestE2E_SignUpTrial(t *testing.T) {
 	model := fakeDeepSeek(t, confidentReply)
-	for key, value := range map[string]any{
-		"sentence-translate.provider":          "deepseek",
-		"sentence-translate.deepseek.api-key":  "test-key",
-		"sentence-translate.deepseek.base-url": model.URL,
-		"stripe.costs.define-word.weight-in":   1,
-		"stripe.costs.define-word.weight-out":  3,
-		"stripe.costs.define-word.divisor":     3000,
-		"credits.trial.calls-per-day":          1,
-	} {
-		viper.Set(key, value)
-		key := key
-		t.Cleanup(func() { viper.Set(key, nil) })
-	}
-	trial := int64(100)
-	base, _, token := adminDictEnvWithTrial(t, &trial)
+	cfg := config.Default()
+	cfg.Credits.Trial.Amount = 100
+	cfg.Credits.Trial.CallsPerDay = 1
+	cfg.Stripe.Costs.DefineWord = config.TokenPrice{WeightIn: 1, WeightOut: 3, Divisor: 3000}
+	cfg.SentenceTranslate.Provider = "deepseek"
+	cfg.SentenceTranslate.DeepSeek = config.OpenAICompatible{APIKey: "test-key", BaseURL: model.URL}
+	base, _, token := adminDictEnvWithConfig(t, cfg)
 	t.Cleanup(func() {
 		sqlitex.DB.Exec("DELETE FROM words WHERE english IN (?, ?)", "rizzler", "zzzword")
 		sqlitex.DB.Exec("DELETE FROM credit_accounts")

@@ -2,6 +2,7 @@ package translate
 
 import (
 	"context"
+	"enx-api/config"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,7 +15,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
-	"github.com/spf13/viper"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
@@ -42,24 +42,17 @@ type noAI struct{}
 func (noAI) CanUseAI(context.Context, string) (bool, error) { return false, nil }
 
 // newTestHandler wires the production dictionary service and review log
-// over whatever sqlitex.DB and ECDICT the test has set up.
+// over whatever sqlitex.DB and ECDICT the test has set up, with no lookup
+// ceiling (lookups are counted, never blocked).
 func newTestHandler() *Handler {
-	return NewHandler(
-		dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, dictionary.QuotaMeter{}, noAI{}),
-		repo.ReviewLog{},
-	)
+	return newTestHandlerWithQuota(config.StripeQuota{})
 }
 
-func setQuotaLimit(t *testing.T, limit int64) {
-	t.Helper()
-	for key, value := range map[string]int64{
-		"stripe.quota.dictionary-lookup-daily-free":       limit,
-		"stripe.quota.dictionary-lookup-daily-subscribed": 0,
-	} {
-		prev := viper.Get(key)
-		viper.Set(key, value)
-		t.Cleanup(func() { viper.Set(key, prev) })
-	}
+func newTestHandlerWithQuota(limits config.StripeQuota) *Handler {
+	return NewHandler(
+		dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, dictionary.QuotaMeter{Limits: limits}, noAI{}),
+		repo.ReviewLog{},
+	)
 }
 
 func translateCtx(word, userID string) (*gin.Context, *httptest.ResponseRecorder) {
@@ -74,7 +67,7 @@ func translateCtx(word, userID string) (*gin.Context, *httptest.ResponseRecorder
 // daily quota (ADR-018 B2). Today the local-hit path bypasses the meter.
 func TestTranslateWordMetersLocalCacheHit(t *testing.T) {
 	setupQuotaTestDB(t)
-	setQuotaLimit(t, 1)
+	h := newTestHandlerWithQuota(config.StripeQuota{DictionaryLookupDailyFree: 1})
 	gin.SetMode(gin.TestMode)
 
 	zh := "机缘巧合"
@@ -86,13 +79,13 @@ func TestTranslateWordMetersLocalCacheHit(t *testing.T) {
 	}
 
 	c1, w1 := translateCtx("serendipity", "u-local")
-	newTestHandler().translateWord(c1, "serendipity")
+	h.translateWord(c1, "serendipity")
 	if w1.Code != http.StatusOK {
 		t.Fatalf("lookup 1: got %d, want 200 (body=%s)", w1.Code, w1.Body.String())
 	}
 
 	c2, w2 := translateCtx("serendipity", "u-local")
-	newTestHandler().translateWord(c2, "serendipity")
+	h.translateWord(c2, "serendipity")
 	if w2.Code != http.StatusTooManyRequests {
 		t.Fatalf("lookup 2: got %d, want 429 -- a local cache hit must count against the quota", w2.Code)
 	}

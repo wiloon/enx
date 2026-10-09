@@ -47,15 +47,13 @@ func TestAsRephraserAcceptsProviderWithSupport(t *testing.T) {
 }
 
 func TestNewRephraserUnconfiguredProvider(t *testing.T) {
-	withProvider(t, "")
-	if _, err := NewRephraser(context.Background()); err == nil {
+	if _, err := NewRephraser(context.Background(), provider("")); err == nil {
 		t.Fatal("expected an error when sentence-translate.provider is unset")
 	}
 }
 
 func TestNewRephraserKimiMissingAPIKey(t *testing.T) {
-	withProvider(t, "kimi")
-	if _, err := NewRephraser(context.Background()); err == nil {
+	if _, err := NewRephraser(context.Background(), provider("kimi")); err == nil {
 		t.Fatal("expected an error when KIMI_API_KEY is not set")
 	}
 }
