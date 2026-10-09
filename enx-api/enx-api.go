@@ -69,7 +69,7 @@ func main() {
 	}
 	gin.SetMode(ginMode(logLevel))
 	m := metrics.New()
-	sqlitex.InitWithLogLevel(logLevel)
+	sqlitex.InitWithLogLevel(cfg.DB.Path, logLevel)
 	if err := m.InstrumentDB(sqlitex.DB); err != nil {
 		// Losing the busy counter must not stop the API.
 		logger.Errorf("metrics: sqlite instrumentation: %v", err)

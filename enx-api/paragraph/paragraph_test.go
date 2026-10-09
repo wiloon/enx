@@ -5,16 +5,19 @@ package paragraph
 
 import (
 	"context"
+	"enx-api/config"
 	"enx-api/enx"
-	"enx-api/utils"
 	"enx-api/utils/sqlitex"
 	"fmt"
 	"testing"
 )
 
 func init() {
-	utils.ViperInit()
-	sqlitex.Init()
+	cfg, err := config.Load("")
+	if err != nil {
+		panic(err)
+	}
+	sqlitex.Init(cfg.DB.Path)
 }
 
 func TestParagraph0(t *testing.T) {

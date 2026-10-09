@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -49,10 +48,7 @@ func adminDictEnvWithConfig(t *testing.T, cfg *config.Config) (baseURL string, a
 	cfg.Admin.ClerkUserIDs = []string{adminSub}
 
 	dbPath := filepath.Join(t.TempDir(), "enx-admin-dict.db")
-	if err := os.Setenv("DB_PATH", dbPath); err != nil {
-		t.Fatalf("set DB_PATH: %v", err)
-	}
-	sqlitex.Init()
+	sqlitex.Init(dbPath)
 	if sqlitex.DB == nil {
 		t.Fatal("sqlitex.DB is nil after Init")
 	}

@@ -19,9 +19,8 @@ import (
 func TestMain(m *testing.M) {
 	dbPath := filepath.Join(os.TempDir(), "enx-billing-handler-test.db")
 	os.Remove(dbPath)
-	os.Setenv("DB_PATH", dbPath)
 	utils.ViperInit()
-	sqlitex.Init()
+	sqlitex.Init(dbPath)
 	gin.SetMode(gin.TestMode)
 	os.Exit(m.Run())
 }

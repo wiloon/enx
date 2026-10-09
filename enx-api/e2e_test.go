@@ -9,7 +9,6 @@ import (
 	"enx-api/utils/sqlitex"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -75,10 +74,7 @@ func TestE2E_ClerkGetMe(t *testing.T) {
 	cfg.Clerk = env.Config()
 
 	dbPath := filepath.Join(t.TempDir(), "enx-e2e.db")
-	if err := os.Setenv("DB_PATH", dbPath); err != nil {
-		t.Fatalf("set DB_PATH: %v", err)
-	}
-	sqlitex.Init()
+	sqlitex.Init(dbPath)
 	if sqlitex.DB == nil {
 		t.Fatal("sqlitex.DB is nil after Init")
 	}
@@ -139,10 +135,7 @@ func TestE2E_ClerkGetMe_IsAdminReflectsAllowlist(t *testing.T) {
 	cfg.Admin.ClerkUserIDs = []string{sub}
 
 	dbPath := filepath.Join(t.TempDir(), "enx-e2e-admin.db")
-	if err := os.Setenv("DB_PATH", dbPath); err != nil {
-		t.Fatalf("set DB_PATH: %v", err)
-	}
-	sqlitex.Init()
+	sqlitex.Init(dbPath)
 	t.Cleanup(func() { sqlitex.DB.Exec("DELETE FROM users WHERE clerk_user_id = ?", sub) })
 
 	token := env.SignSessionToken(t, jwt.MapClaims{"sub": sub, "email": "admin-me@example.com", "name": "admin-me"})
@@ -173,10 +166,7 @@ func TestE2E_AdminPageReportsRequiresAdmin(t *testing.T) {
 	cfg.Clerk = env.Config()
 
 	dbPath := filepath.Join(t.TempDir(), "enx-e2e-page-reports.db")
-	if err := os.Setenv("DB_PATH", dbPath); err != nil {
-		t.Fatalf("set DB_PATH: %v", err)
-	}
-	sqlitex.Init()
+	sqlitex.Init(dbPath)
 
 	sub := "user_e2epage_reports"
 	t.Cleanup(func() { sqlitex.DB.Exec("DELETE FROM users WHERE clerk_user_id = ?", sub) })
@@ -232,10 +222,7 @@ func TestE2E_ParagraphInitOverQuery(t *testing.T) {
 	env := clerktest.NewEnv(t)
 	cfg := config.Default()
 	cfg.Clerk = env.Config()
-	if err := os.Setenv("DB_PATH", filepath.Join(t.TempDir(), "enx-query.db")); err != nil {
-		t.Fatal(err)
-	}
-	sqlitex.Init()
+	sqlitex.Init(filepath.Join(t.TempDir(), "enx-query.db"))
 	if err := sqlitex.DB.Create(&sqlitex.Word{Id: "w-morning", English: "morning", CreatedAt: 1, UpdatedAt: 1}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -273,10 +260,7 @@ func TestE2E_LookupMetrics(t *testing.T) {
 	env := clerktest.NewEnv(t)
 	cfg := config.Default()
 	cfg.Clerk = env.Config()
-	if err := os.Setenv("DB_PATH", filepath.Join(t.TempDir(), "enx-metrics.db")); err != nil {
-		t.Fatal(err)
-	}
-	sqlitex.Init()
+	sqlitex.Init(filepath.Join(t.TempDir(), "enx-metrics.db"))
 	seedEcdict(t)
 	token := env.SignSessionToken(t, jwt.MapClaims{"sub": "user_e2emetrics001", "email": "e2e-metrics@example.com", "name": "e2e-metrics"})
 

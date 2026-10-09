@@ -17,9 +17,8 @@ import (
 func TestMain(m *testing.M) {
 	dbPath := filepath.Join(os.TempDir(), "enx-wordlist-test.db")
 	os.Remove(dbPath)
-	os.Setenv("DB_PATH", dbPath)
 	utils.ViperInit()
-	sqlitex.Init()
+	sqlitex.Init(dbPath)
 	os.Exit(m.Run())
 }
 

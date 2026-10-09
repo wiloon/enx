@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"time"
 
@@ -99,25 +98,15 @@ func (SyncState) TableName() string {
 	return "sync_state"
 }
 
-// Init opens the database with full SQL logging, as tests and tools expect.
-func Init() {
-	InitWithLogLevel("debug")
+// Init opens the database at dbPath with full SQL logging, as tests and
+// tools expect.
+func Init(dbPath string) {
+	InitWithLogLevel(dbPath, "debug")
 }
 
-// InitWithLogLevel opens the database, deriving the SQL log level from the
-// application log level (see SQLLogLevel).
-func InitWithLogLevel(level string) {
-	// Read database path from environment variable or use default
-	dbPath := os.Getenv("DB_PATH")
-	if dbPath == "" {
-		// Default path based on OS
-		//goland:noinspection GoBoolExpressions
-		if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
-			dbPath = "/var/lib/enx-api/enx.db"
-		} else if runtime.GOOS == "windows" {
-			dbPath = "C:\\workspace\\apps\\enx\\enx.db"
-		}
-	}
+// InitWithLogLevel opens the database at dbPath (config db.path), deriving
+// the SQL log level from the application log level (see SQLLogLevel).
+func InitWithLogLevel(dbPath, level string) {
 	newLogger := logger.New(
 		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
 		logger.Config{

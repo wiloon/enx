@@ -8,7 +8,6 @@ import (
 	"enx-api/utils/sqlitex"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -21,10 +20,7 @@ func initClerkIntegrationDB(t *testing.T) {
 	t.Helper()
 	logger.Init("CONSOLE", "debug", "enx-api-test")
 	dbPath := filepath.Join(t.TempDir(), "enx-test.db")
-	if err := os.Setenv("DB_PATH", dbPath); err != nil {
-		t.Fatalf("set DB_PATH: %v", err)
-	}
-	sqlitex.Init()
+	sqlitex.Init(dbPath)
 	if sqlitex.DB == nil {
 		t.Fatal("sqlitex.DB is nil after Init")
 	}

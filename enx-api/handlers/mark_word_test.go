@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -32,10 +31,7 @@ func markWordRequest(t *testing.T, userID, english string) *httptest.ResponseRec
 // second unknown word toggled the first one's state back off, and the
 // phantom row inflated the user's vocabulary total in /api/stats/overview.
 func TestMarkWordNotInDictionaryWritesNoUserDictRow(t *testing.T) {
-	if err := os.Setenv("DB_PATH", filepath.Join(t.TempDir(), "enx-mark.db")); err != nil {
-		t.Fatalf("set DB_PATH: %v", err)
-	}
-	sqlitex.Init()
+	sqlitex.Init(filepath.Join(t.TempDir(), "enx-mark.db"))
 	gin.SetMode(gin.TestMode)
 
 	userID := "u-" + t.Name()
@@ -55,10 +51,7 @@ func TestMarkWordNotInDictionaryWritesNoUserDictRow(t *testing.T) {
 }
 
 func TestMarkWordInDictionaryMarksAcquainted(t *testing.T) {
-	if err := os.Setenv("DB_PATH", filepath.Join(t.TempDir(), "enx-mark.db")); err != nil {
-		t.Fatalf("set DB_PATH: %v", err)
-	}
-	sqlitex.Init()
+	sqlitex.Init(filepath.Join(t.TempDir(), "enx-mark.db"))
 	gin.SetMode(gin.TestMode)
 
 	wordID := "w-" + t.Name()
@@ -83,10 +76,7 @@ func TestMarkWordInDictionaryMarksAcquainted(t *testing.T) {
 // Marking twice flips the word back to "learning", and the toggle never
 // touches the lookup count.
 func TestMarkWordTogglesAndKeepsQueryCount(t *testing.T) {
-	if err := os.Setenv("DB_PATH", filepath.Join(t.TempDir(), "enx-mark.db")); err != nil {
-		t.Fatalf("set DB_PATH: %v", err)
-	}
-	sqlitex.Init()
+	sqlitex.Init(filepath.Join(t.TempDir(), "enx-mark.db"))
 	gin.SetMode(gin.TestMode)
 
 	wordID := "w-" + t.Name()

@@ -20,8 +20,7 @@ func init() {
 // init() is not the one these tests end up using.
 func setupIntegrationDB(t *testing.T) {
 	t.Helper()
-	t.Setenv("DB_PATH", filepath.Join(t.TempDir(), "enx.db"))
-	sqlitex.Init()
+	sqlitex.Init(filepath.Join(t.TempDir(), "enx.db"))
 }
 
 func TestSaveDuplicateEnglish_UniqueConstraintPreventsDuplicate(t *testing.T) {

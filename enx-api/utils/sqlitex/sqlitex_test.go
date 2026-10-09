@@ -41,9 +41,8 @@ func TestTableNames(t *testing.T) {
 
 func TestInitCreatesDatabaseAndMigratesSchema(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "enx-sqlitex-init-test.db")
-	t.Setenv("DB_PATH", dbPath)
 
-	Init()
+	Init(dbPath)
 
 	if DB == nil {
 		t.Fatal("expected Init to set the package-level DB")
@@ -69,9 +68,8 @@ func TestInitCreatesDatabaseAndMigratesSchema(t *testing.T) {
 // credit ledger's concurrent writers depend on (see the comment in Init).
 func TestInitAppliesDSNPragmas(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "enx-sqlitex-pragma-test.db")
-	t.Setenv("DB_PATH", dbPath)
 
-	Init()
+	Init(dbPath)
 
 	if DB == nil {
 		t.Fatal("expected Init to set the package-level DB")
@@ -105,9 +103,8 @@ func TestInitAppliesDSNPragmas(t *testing.T) {
 
 func TestInitCreatesMissingParentDirectory(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "nested", "dir", "enx.db")
-	t.Setenv("DB_PATH", dbPath)
 
-	Init()
+	Init(dbPath)
 
 	if DB == nil {
 		t.Fatal("expected Init to set the package-level DB even with a missing parent dir")
@@ -121,8 +118,7 @@ func TestInitCreatesMissingParentDirectory(t *testing.T) {
 // no inline "--" comments in its sqlite_master DDL, so it should return nil
 // immediately without attempting the rebuild.
 func TestMigrateWordsEnglishNoCaseNoopWhenMigrated(t *testing.T) {
-	t.Setenv("DB_PATH", filepath.Join(t.TempDir(), "enx-repair-test.db"))
-	Init()
+	Init(filepath.Join(t.TempDir(), "enx-repair-test.db"))
 
 	if err := migrateWordsEnglishNoCase(); err != nil {
 		t.Errorf("unexpected error on an already-migrated words table: %v", err)
