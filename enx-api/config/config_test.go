@@ -567,3 +567,9 @@ func valueByKey(t *testing.T, v reflect.Value, key string) reflect.Value {
 	}
 	return v
 }
+
+func TestStatsIngestLogTTL(t *testing.T) {
+	if got := (StatsIngest{LogTTLDays: 7}).LogTTL(); got != 7*24*time.Hour {
+		t.Errorf("LogTTL() = %v, want 168h", got)
+	}
+}

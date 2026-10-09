@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"enx-api/config"
 	"enx-api/utils"
 	"enx-api/utils/sqlitex"
 )
@@ -22,13 +23,16 @@ func TestMain(m *testing.M) {
 
 var now = time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC)
 
+// limits are the production defaults.
+var limits = config.Default().Stats.Ingest
+
 func report(id, date string, d Delta) Report {
 	return Report{ClientEventID: id, LocalDate: date, UTCOffsetMinutes: 480, Delta: d}
 }
 
 func mustIngest(t *testing.T, userID string, r Report) bool {
 	t.Helper()
-	applied, err := Ingest(context.Background(), userID, r, now)
+	applied, err := Ingest(context.Background(), userID, r, now, limits.MaxWordsPerReport)
 	if err != nil {
 		t.Fatalf("Ingest(%s): %v", r.ClientEventID, err)
 	}
@@ -73,34 +77,37 @@ func TestIngestIsIdempotentPerClientEventID(t *testing.T) {
 func TestIngestRejectsImplausibleLocalDate(t *testing.T) {
 	user := "u-" + t.Name()
 	for _, date := range []string{"2026-09-20", "2026-09-01", "not-a-date", ""} {
-		if _, err := Ingest(context.Background(), user, report("x"+date, date, Delta{WordsRead: 1}), now); err == nil {
+		if _, err := Ingest(context.Background(), user, report("x"+date, date, Delta{WordsRead: 1}), now, limits.MaxWordsPerReport); err == nil {
 			t.Fatalf("date %q should have been rejected", date)
 		}
 	}
 	// One day either side of the UTC date is a real timezone, not a forgery.
 	for _, date := range []string{"2026-09-15", "2026-09-17"} {
-		if _, err := Ingest(context.Background(), user, report("ok"+date, date, Delta{WordsRead: 1}), now); err != nil {
+		if _, err := Ingest(context.Background(), user, report("ok"+date, date, Delta{WordsRead: 1}), now, limits.MaxWordsPerReport); err != nil {
 			t.Fatalf("date %q should have been accepted: %v", date, err)
 		}
 	}
 }
 
 func TestIngestRequiresEventID(t *testing.T) {
-	if _, err := Ingest(context.Background(), "u", report("", "2026-09-16", Delta{WordsRead: 1}), now); err != ErrMissingEventID {
+	if _, err := Ingest(context.Background(), "u", report("", "2026-09-16", Delta{WordsRead: 1}), now, limits.MaxWordsPerReport); err != ErrMissingEventID {
 		t.Fatalf("want ErrMissingEventID, got %v", err)
 	}
 }
 
 func TestIngestClampsAndDropsNegatives(t *testing.T) {
 	user := "u-" + t.Name()
-	mustIngest(t, user, report("huge", "2026-09-16", Delta{
-		WordsRead:   maxWordsPerReport() + 1_000_000,
+	const wordCap = 1000
+	if _, err := Ingest(context.Background(), user, report("huge", "2026-09-16", Delta{
+		WordsRead:   wordCap + 1_000_000,
 		WordLookups: -5,
-	}))
+	}), now, wordCap); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
 
 	got := day(t, user, "2026-09-16")
-	if got.WordsRead != maxWordsPerReport() {
-		t.Fatalf("words_read = %d, want the cap %d", got.WordsRead, maxWordsPerReport())
+	if got.WordsRead != wordCap {
+		t.Fatalf("words_read = %d, want the cap %d", got.WordsRead, wordCap)
 	}
 	if got.WordLookups != 0 {
 		t.Fatalf("a negative delta must not subtract, got %d", got.WordLookups)
@@ -146,14 +153,14 @@ func TestPurgeIngestLogKeepsRecentRows(t *testing.T) {
 	mustIngest(t, user, report("fresh-"+user, "2026-09-16", Delta{WordsRead: 10}))
 
 	// Nothing to purge yet.
-	if deleted, err := PurgeIngestLog(context.Background(), now); err != nil || deleted != 0 {
+	if deleted, err := PurgeIngestLog(context.Background(), now, limits.LogTTL()); err != nil || deleted != 0 {
 		t.Fatalf("PurgeIngestLog early: deleted=%d err=%v", deleted, err)
 	}
 
 	// Past the TTL the dedup row goes, and a replay is applied again -- that
 	// is the accepted trade: the TTL only has to outlive the retry window.
-	later := now.Add(IngestLogTTL() + time.Hour)
-	if _, err := PurgeIngestLog(context.Background(), later); err != nil {
+	later := now.Add(limits.LogTTL() + time.Hour)
+	if _, err := PurgeIngestLog(context.Background(), later, limits.LogTTL()); err != nil {
 		t.Fatalf("PurgeIngestLog late: %v", err)
 	}
 	var remaining int64

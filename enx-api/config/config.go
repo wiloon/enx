@@ -217,6 +217,11 @@ type StatsIngest struct {
 	LogTTLDays        int   `mapstructure:"log-ttl-days"`
 }
 
+// LogTTL is how long a deduplication row is kept.
+func (s StatsIngest) LogTTL() time.Duration {
+	return time.Duration(s.LogTTLDays) * 24 * time.Hour
+}
+
 type User struct {
 	LastLoginUpdateInterval time.Duration `mapstructure:"last-login-update-interval"`
 }

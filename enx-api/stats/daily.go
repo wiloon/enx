@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/spf13/viper"
 	"gorm.io/gorm"
 
 	"enx-api/utils/sqlitex"
@@ -30,13 +29,8 @@ const DateLayout = "2006-01-02"
 // A report covers one reading session, so even a pathological session is
 // orders of magnitude below this; the cap exists to stop a bug or a hand-
 // rolled request from writing a number that would wreck the y-axis forever.
-// Words get their own, larger, configurable cap.
+// Words get their own, larger cap: stats.ingest.max-words-per-report.
 const maxCountPerReport = 10000
-
-const (
-	defaultMaxWordsPerReport = 50000
-	defaultIngestLogTTLDays  = 7
-)
 
 // maxLocalDateSkewDays bounds how far a reported local date may sit from the
 // server's UTC date. Real UTC offsets span -12h..+14h, so an honest local
@@ -73,22 +67,6 @@ type Report struct {
 	Delta            Delta
 }
 
-func maxWordsPerReport() int64 {
-	if v := viper.GetInt64("stats.ingest.max-words-per-report"); v > 0 {
-		return v
-	}
-	return defaultMaxWordsPerReport
-}
-
-// IngestLogTTL is how long a deduplication row is kept.
-func IngestLogTTL() time.Duration {
-	days := viper.GetInt("stats.ingest.log-ttl-days")
-	if days <= 0 {
-		days = defaultIngestLogTTLDays
-	}
-	return time.Duration(days) * 24 * time.Hour
-}
-
 // clamp folds a single metric into [0, max]. Negative deltas are not a
 // supported concept -- counters only go up -- so a negative value is a bug on
 // the client and is dropped rather than allowed to rewrite history.
@@ -102,10 +80,9 @@ func clamp(v, max int64) int64 {
 	return v
 }
 
-func (d Delta) clamped() Delta {
-	words := maxWordsPerReport()
+func (d Delta) clamped(maxWordsPerReport int64) Delta {
 	return Delta{
-		WordsRead:            clamp(d.WordsRead, words),
+		WordsRead:            clamp(d.WordsRead, maxWordsPerReport),
 		ArticlesRead:         clamp(d.ArticlesRead, maxCountPerReport),
 		WordLookups:          clamp(d.WordLookups, maxCountPerReport),
 		NewWords:             clamp(d.NewWords, maxCountPerReport),
@@ -142,7 +119,7 @@ func ValidateLocalDate(date string, now time.Time) (time.Time, error) {
 // they could commit separately, a crash between them would either lose a
 // session's data permanently (log written, counters not -- the retry would be
 // deduplicated away) or double-count it.
-func Ingest(ctx context.Context, userID string, r Report, now time.Time) (applied bool, err error) {
+func Ingest(ctx context.Context, userID string, r Report, now time.Time, maxWordsPerReport int64) (applied bool, err error) {
 	if userID == "" {
 		return false, errors.New("stats: missing user id")
 	}
@@ -153,7 +130,7 @@ func Ingest(ctx context.Context, userID string, r Report, now time.Time) (applie
 		return false, err
 	}
 
-	delta := r.Delta.clamped()
+	delta := r.Delta.clamped(maxWordsPerReport)
 	if delta.isEmpty() {
 		// Nothing to add. Still a success: the client can drop the report.
 		return false, nil
@@ -229,8 +206,8 @@ func AddLookup(ctx context.Context, userID, localDate string, offsetMinutes int)
 // PurgeIngestLog deletes deduplication rows older than the TTL and returns
 // how many went. daily_stats itself is never purged -- it is the user's own
 // history and is tiny (one row per day).
-func PurgeIngestLog(ctx context.Context, now time.Time) (int64, error) {
-	cutoff := now.Add(-IngestLogTTL()).UnixMilli()
+func PurgeIngestLog(ctx context.Context, now time.Time, ttl time.Duration) (int64, error) {
+	cutoff := now.Add(-ttl).UnixMilli()
 	res := sqlitex.DB.WithContext(ctx).
 		Where("created_at < ?", cutoff).
 		Delete(&sqlitex.StatsIngestLog{})

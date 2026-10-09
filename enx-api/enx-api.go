@@ -79,7 +79,7 @@ func main() {
 	dictsample.SetEnabled(cfg.Ecdict.Sampling)
 
 	go runReaderDocumentCleanup()
-	go runStatsIngestLogCleanup()
+	go runStatsIngestLogCleanup(cfg.Stats.Ingest.LogTTL())
 	go runPageReportCleanup()
 
 	go serveMetrics(cfg.Metrics.Addr, m)
@@ -201,9 +201,9 @@ func runReaderDocumentCleanup() {
 // rows (ADR-028 Decision 5). Only the dedup log is purged -- daily_stats is
 // the user's own history and is never deleted. Mirrors the reader cleanup:
 // once on start so a restart doesn't leave a backlog, then hourly.
-func runStatsIngestLogCleanup() {
+func runStatsIngestLogCleanup(ttl time.Duration) {
 	purge := func() {
-		deleted, err := stats.PurgeIngestLog(context.Background(), time.Now())
+		deleted, err := stats.PurgeIngestLog(context.Background(), time.Now(), ttl)
 		if err != nil {
 			logger.Errorf("stats: purge ingest log failed: %v", err)
 			return
@@ -504,7 +504,7 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	// Reading statistics (ADR-028). Deliberately NOT on the metered path:
 	// these look up no words, call no model and touch no credits, so they
 	// sit outside ADR-018's single metering seam (same as admin/ADR-021).
-	apiGroup.POST("/stats/ingest", stats.IngestHandler)
+	apiGroup.POST("/stats/ingest", stats.IngestHandler(cfg.Stats.Ingest))
 	apiGroup.GET("/stats/overview", stats.OverviewHandler)
 	apiGroup.GET("/stats/series", stats.SeriesHandler)
 
