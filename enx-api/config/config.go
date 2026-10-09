@@ -42,6 +42,27 @@ type Config struct {
 	File string `mapstructure:"-"`
 }
 
+// Secret is a config value that must not reach a log: an API key or a
+// signing secret. Printing it (%v, %+v, %#v, %s) or encoding it (JSON, zap)
+// shows "[redacted]" when set and "" when empty, so dumping a Config is safe.
+// Reveal returns the value itself, for the one place that sends it.
+type Secret string
+
+const redacted = "[redacted]"
+
+func (s Secret) Reveal() string { return string(s) }
+
+func (s Secret) String() string {
+	if s == "" {
+		return ""
+	}
+	return redacted
+}
+
+func (s Secret) GoString() string { return `config.Secret("` + s.String() + `")` }
+
+func (s Secret) MarshalText() ([]byte, error) { return []byte(s.String()), nil }
+
 type Enx struct {
 	Port    int  `mapstructure:"port"`
 	DevMode bool `mapstructure:"dev-mode"`
@@ -65,7 +86,7 @@ type Ecdict struct {
 }
 
 type Resend struct {
-	APIKey  string `mapstructure:"api-key"`
+	APIKey  Secret `mapstructure:"api-key"`
 	From    string `mapstructure:"from"`
 	AdminTo string `mapstructure:"admin-to"`
 }
@@ -98,14 +119,14 @@ type SentenceTranslate struct {
 // OpenAICompatible is the shape shared by kimi, deepseek, gemini and
 // openrouter. RephraseModel empty means "use Model".
 type OpenAICompatible struct {
-	APIKey        string `mapstructure:"api-key"`
+	APIKey        Secret `mapstructure:"api-key"`
 	BaseURL       string `mapstructure:"base-url"`
 	Model         string `mapstructure:"model"`
 	RephraseModel string `mapstructure:"rephrase-model"`
 }
 
 type MiniMax struct {
-	APIKey  string `mapstructure:"api-key"`
+	APIKey  Secret `mapstructure:"api-key"`
 	BaseURL string `mapstructure:"base-url"`
 	Model   string `mapstructure:"model"`
 	GroupID string `mapstructure:"group-id"`
@@ -117,8 +138,8 @@ type Bedrock struct {
 }
 
 type Stripe struct {
-	SecretKey     string        `mapstructure:"secret-key"`
-	WebhookSecret string        `mapstructure:"webhook-secret"`
+	SecretKey     Secret        `mapstructure:"secret-key"`
+	WebhookSecret Secret        `mapstructure:"webhook-secret"`
 	Price         StripePrice   `mapstructure:"price"`
 	Credits       StripeCredits `mapstructure:"credits"`
 	Costs         StripeCosts   `mapstructure:"costs"`

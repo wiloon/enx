@@ -52,7 +52,7 @@ func (g *Gemini) modelForRephrase() string {
 // immediately if the API key is missing, so a "provider = gemini"
 // misconfiguration is caught at startup rather than on the first request.
 func New(c config.OpenAICompatible, timeout time.Duration) (*Gemini, error) {
-	apiKey := c.APIKey
+	apiKey := c.APIKey.Reveal()
 	if apiKey == "" {
 		return nil, fmt.Errorf("gemini: GEMINI_API_KEY is not set")
 	}

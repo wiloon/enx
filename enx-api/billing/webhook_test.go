@@ -371,7 +371,7 @@ func TestWebhookEndpointValidSignatureDispatches(t *testing.T) {
 	// network call here: the topup dispatch path doesn't touch the Stripe
 	// API at all, only credit.GrantTopup + the local DB.
 	stripe := testStripe()
-	stripe.WebhookSecret = secret
+	stripe.WebhookSecret = config.Secret(secret)
 	stripe.Credits.TopupLarge = 9
 	h := NewHandler(fakeConfiguredClient(), "https://example.com", stripe, nil)
 	router := gin.New()

@@ -1,6 +1,8 @@
 package config
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -201,6 +203,8 @@ func TestEnvVarsPopulateTheirFields(t *testing.T) {
 			switch field.Type {
 			case reflect.TypeOf(""):
 				value, want = "from-"+env, "from-"+env
+			case reflect.TypeOf(Secret("")):
+				value, want = "from-"+env, Secret("from-"+env)
 			case reflect.TypeOf(0), reflect.TypeOf(int64(0)):
 				value = "7"
 				want = reflect.ValueOf(7).Convert(field.Type).Interface()
@@ -624,5 +628,44 @@ func TestStripeLookupsRejectUnknownPlanOrTier(t *testing.T) {
 		if got := credits.Topup(name); got != 0 {
 			t.Errorf("credits.Topup(%q) = %d, want 0", name, got)
 		}
+	}
+}
+
+func TestSecretIsRedactedWhenPrintedOrEncoded(t *testing.T) {
+	const key = "sk_live_should_never_be_logged"
+	cfg := Default()
+	cfg.Stripe.SecretKey = key
+	cfg.Stripe.WebhookSecret = key
+	cfg.Resend.APIKey = key
+	cfg.SentenceTranslate.DeepSeek.APIKey = key
+	cfg.SentenceTranslate.MiniMax.APIKey = key
+
+	asJSON, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, out := range map[string]string{
+		"%v":   fmt.Sprintf("%v", cfg),
+		"%+v":  fmt.Sprintf("%+v", *cfg),
+		"%#v":  fmt.Sprintf("%#v", *cfg),
+		"%s":   fmt.Sprintf("%s", cfg.Stripe.SecretKey),
+		"json": string(asJSON),
+	} {
+		if strings.Contains(out, key) {
+			t.Errorf("%s leaks the secret: %s", name, out)
+		}
+		if !strings.Contains(out, "[redacted]") {
+			t.Errorf("%s does not show the secret as [redacted]: %s", name, out)
+		}
+	}
+}
+
+func TestSecretRevealAndEmpty(t *testing.T) {
+	if got := Secret("k").Reveal(); got != "k" {
+		t.Errorf("Reveal() = %q, want k", got)
+	}
+	// An unset secret prints as empty, so "is it configured?" stays readable.
+	if got := fmt.Sprint(Secret("")); got != "" {
+		t.Errorf("empty secret prints as %q, want empty", got)
 	}
 }

@@ -436,7 +436,7 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	// dev box, or a deployment that hasn't set the secret yet), billing
 	// endpoints stay disabled (503) rather than the server failing to start.
 	// See docs/tasks/TASK-SPEC-enx-billing-stripe-subscription.md.
-	stripeClient, stripeErr := billingstripe.New(cfg.Stripe.SecretKey)
+	stripeClient, stripeErr := billingstripe.New(cfg.Stripe.SecretKey.Reveal())
 	if stripeErr != nil {
 		logger.Warnf("billing disabled: %v", stripeErr)
 		stripeClient = nil

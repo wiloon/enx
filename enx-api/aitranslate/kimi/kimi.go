@@ -47,7 +47,7 @@ func (k *Kimi) modelForRephrase() string {
 // if the API key is missing, so a "provider = kimi" misconfiguration is
 // caught at startup rather than on the first request.
 func New(c config.OpenAICompatible, timeout time.Duration) (*Kimi, error) {
-	apiKey := c.APIKey
+	apiKey := c.APIKey.Reveal()
 	if apiKey == "" {
 		return nil, fmt.Errorf("kimi: KIMI_API_KEY is not set")
 	}
