@@ -1,5 +1,4 @@
 import DebugPanel from '@/components/DebugPanel'
-import CatglishLogo from '@/components/CatglishLogo'
 import LearningModeCard, {
   type LearningModeCardStatus,
 } from '@/components/LearningModeCard'
@@ -9,6 +8,7 @@ import { useInitializeStorage } from '@/hooks/useInitializeStorage'
 import { useSavedPage } from '@/hooks/useSavedPage'
 import { useWordHighlightEnabled } from '@/hooks/useWordHighlightEnabled'
 import '@/index.css'
+import PopupHeader from '@/components/PopupHeader'
 import PageReportPrompt, {
   PageReportStatus,
 } from '@/components/PageReportPrompt'
@@ -29,7 +29,6 @@ import {
   ArrowRightOnRectangleIcon,
   BookOpenIcon,
   ChevronRightIcon,
-  Cog6ToothIcon,
   GlobeAltIcon,
 } from '@heroicons/react/24/outline'
 import { Provider, useAtom, useSetAtom } from 'jotai'
@@ -86,33 +85,6 @@ function ClerkUserSync() {
   }, [isLoaded, isSignedIn, user, setUser])
 
   return null
-}
-
-function Header() {
-  const openOptions = () => {
-    chrome.runtime.openOptionsPage()
-  }
-
-  return (
-    <header className="flex items-center gap-2.5 border-b border-border bg-background px-4 py-3">
-      <CatglishLogo className="h-8 w-8 shrink-0" />
-      <div className="flex-1 leading-tight">
-        <p className="text-sm font-semibold text-foreground">Catglish</p>
-        <p className="text-[11px] text-muted-foreground">
-          English Reading Assistant
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={openOptions}
-        title="Settings"
-        aria-label="Settings"
-        className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
-      >
-        <Cog6ToothIcon className="h-[18px] w-[18px]" />
-      </button>
-    </header>
-  )
 }
 
 interface SignedInBodyProps {
@@ -402,7 +374,7 @@ function PopupContent() {
   return (
     <div className="w-[340px] bg-muted font-sans text-foreground antialiased">
       <ClerkUserSync />
-      <Header />
+      <PopupHeader />
       <div className="min-h-[180px]">
         <Login onLoginSuccess={handleLoginSuccess}>
           <SignedInBody
