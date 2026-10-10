@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import { SITE } from '@/lib/site'
 import { SUBSCRIPTION_PLANS } from '@/lib/plans'
 
-const mockUseAuth = jest.fn(() => ({ isSignedIn: false }))
+const mockUseAuth = jest.fn(() => ({ isLoaded: true, isSignedIn: false }))
 jest.mock('@clerk/nextjs', () => ({
   useAuth: () => mockUseAuth(),
 }))
@@ -36,7 +36,18 @@ afterEach(() => {
 })
 
 describe('HeaderAuthLinks', () => {
-  beforeEach(() => mockUseAuth.mockReturnValue({ isSignedIn: false }))
+  beforeEach(() =>
+    mockUseAuth.mockReturnValue({ isLoaded: true, isSignedIn: false })
+  )
+
+  it('shows a spinner, not "Sign in", while Clerk is still loading', () => {
+    mockUseAuth.mockReturnValue({ isLoaded: false, isSignedIn: false })
+    render(<HeaderAuthLinks />)
+    expect(screen.getByRole('status')).toHaveAccessibleName(
+      'Checking sign-in status'
+    )
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
+  })
 
   it('shows "Sign in" pointing at /app when signed out', async () => {
     render(<HeaderAuthLinks />)
@@ -45,7 +56,7 @@ describe('HeaderAuthLinks', () => {
   })
 
   it('shows "Go to app" when Clerk reports a signed-in viewer', async () => {
-    mockUseAuth.mockReturnValue({ isSignedIn: true })
+    mockUseAuth.mockReturnValue({ isLoaded: true, isSignedIn: true })
     render(<HeaderAuthLinks />)
     expect(
       await screen.findByRole('link', { name: 'Go to app' })
