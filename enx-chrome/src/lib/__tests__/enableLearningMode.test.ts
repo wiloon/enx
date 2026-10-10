@@ -98,18 +98,30 @@ describe('enableLearningModeOnTab', () => {
     ;(chrome.tabs.sendMessage as jest.Mock).mockRejectedValueOnce(
       new Error('Could not establish connection. Receiving end does not exist.')
     )
+    const browserError = new Error('Cannot access a chrome:// URL')
     ;(chrome.scripting.executeScript as jest.Mock).mockRejectedValue(
-      new Error('Cannot access a chrome:// URL')
+      browserError
     )
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
 
-    const result = await enableLearningModeOnTab(7)
+    try {
+      const result = await enableLearningModeOnTab(7)
 
-    expect(result).toEqual({
-      success: false,
-      reason: 'injection-blocked',
-      error: "Catglish can't run on this page.",
-    })
-    expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(1)
+      expect(result).toEqual({
+        success: false,
+        reason: 'injection-blocked',
+        error: "Catglish can't run on this page.",
+      })
+      expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(1)
+      // The popup shows only the generic line; the browser's own reason
+      // must reach the console so the cause can be diagnosed.
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('injection blocked on tab 7'),
+        browserError
+      )
+    } finally {
+      warn.mockRestore()
+    }
   })
 })
 

@@ -38,12 +38,18 @@ export async function enableLearningModeOnTab(
 
   try {
     await injectContentScript(tabId)
-  } catch {
+  } catch (error) {
     // The browser itself refused the injection (chrome://, the Web Store,
     // a PDF viewer, ...) -- no retry can help, so this is a distinct,
     // permanent failure reason (adr-034 Decision 2), not the generic
     // "reload the extension" text that only fit the old always-injected
-    // whitelist.
+    // whitelist. The popup only shows the generic line, so the browser's
+    // own reason (lost activeTab grant, restricted URL, ...) goes to the
+    // console -- without it there is no telling these cases apart.
+    console.warn(
+      `[ENX] content script injection blocked on tab ${tabId}:`,
+      error
+    )
     return {
       success: false,
       reason: 'injection-blocked',
