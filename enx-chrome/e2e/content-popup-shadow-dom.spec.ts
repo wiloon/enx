@@ -118,6 +118,38 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     )
   })
 
+  test('§4.1: speaker plays the word on a popup opened from a selection', async ({
+    page,
+  }) => {
+    // A double-click leaves the word selected. The speaker's mouseup used to
+    // reach handleTextSelection with that selection still live, so it re-ran
+    // the lookup and swapped the overlay before the click landed: the query
+    // count went up and nothing played.
+    const audioRequests: string[] = []
+    await page.route('**/dict.youdao.com/dictvoice*', route => {
+      audioRequests.push(route.request().url())
+      return route.fulfill({ status: 200, contentType: 'audio/mpeg', body: '' })
+    })
+
+    const [word] = await getHighlightedWords(page)
+    await page.mouse.dblclick(word.x, word.y)
+    const popup = page.locator('#enx-anchored-overlay')
+    const play = popup.locator(
+      '[data-testid="word-popover-play-pronunciation"]'
+    )
+    await expect(play).toBeVisible()
+    await popup.evaluate(el => el.setAttribute('data-e2e-marker', 'first'))
+
+    await play.click()
+
+    await expect.poll(() => audioRequests.length).toBeGreaterThan(0)
+    expect(audioRequests[0]).toContain(
+      `audio=${encodeURIComponent(word.text)}`
+    )
+    // Still the overlay the double-click opened, not a fresh lookup's.
+    await expect(popup).toHaveAttribute('data-e2e-marker', 'first')
+  })
+
   test('§4.1: sessionExpired response still triggers the session-expired notification', async ({
     page,
     context,

@@ -1335,6 +1335,12 @@ const handleTextSelection = (event: MouseEvent) => {
   // node that was already replaced, and onTrigger never fires.
   const target = event.target as Node
   if (selectionButtonOverlay && selectionButtonOverlay.contains(target)) return
+  // Same for a click inside the word overlay (its speaker, Mark Known, ...):
+  // when the overlay was opened from a selection (double-click, drag over one
+  // word), that selection is still live, so this handler would re-run the
+  // lookup (bumping the query count) and replace the overlay between mouseup
+  // and click -- the button's onClick never runs, so the speaker stays silent.
+  if (currentOverlay && currentOverlay.contains(target)) return
 
   hideSelectionTranslateButton()
 
