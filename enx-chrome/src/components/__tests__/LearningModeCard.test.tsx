@@ -59,4 +59,20 @@ describe('LearningModeCard', () => {
 
     expect(screen.getByRole('button', { name: 'Turning off…' })).toBeDisabled()
   })
+
+  // jsdom has no layout, so pin the shared fixed-height class instead: without
+  // it the card grows on enable and everything below it jumps.
+  it.each<LearningModeCardStatus>(['off', 'enabling', 'on', 'turning-off'])(
+    'keeps the same fixed height while %s',
+    status => {
+      setup(status)
+
+      const root =
+        status === 'on' || status === 'turning-off'
+          ? screen.getByTestId('learning-mode-card')
+          : screen.getByTestId('learning-mode-enable')
+      expect(root).toHaveClass('h-13')
+      expect(root).not.toHaveClass('py-2.5')
+    }
+  )
 })
