@@ -1,4 +1,6 @@
 import {
+  closeTabSidePanel,
+  isTabSidePanelOpen,
   latestPageWordKey,
   openActiveTabSidePanel,
   openTabSidePanel,
@@ -14,6 +16,7 @@ describe('sidePanel (ADR-050)', () => {
     jest.resetAllMocks()
     ;(chrome.sidePanel.setOptions as jest.Mock).mockResolvedValue(undefined)
     ;(chrome.sidePanel.open as jest.Mock).mockResolvedValue(undefined)
+    ;(chrome.sidePanel.close as jest.Mock).mockResolvedValue(undefined)
   })
 
   it('carries the owning tab in the panel path', () => {
@@ -96,5 +99,43 @@ describe('sidePanel (ADR-050)', () => {
     await openActiveTabSidePanel()
 
     expect(chrome.sidePanel.open).not.toHaveBeenCalled()
+  })
+
+  describe('isTabSidePanelOpen', () => {
+    const getContexts = chrome.runtime.getContexts as jest.Mock
+
+    it("is true when the tab's own panel is live", async () => {
+      getContexts.mockResolvedValue([
+        {
+          contextType: 'SIDE_PANEL',
+          documentUrl: 'chrome-extension://abc/sidepanel.html?tabId=42',
+        },
+      ])
+      await expect(isTabSidePanelOpen(42)).resolves.toBe(true)
+    })
+
+    it("ignores another tab's panel and non-panel contexts", async () => {
+      getContexts.mockResolvedValue([
+        {
+          contextType: 'SIDE_PANEL',
+          documentUrl: 'chrome-extension://abc/sidepanel.html?tabId=7',
+        },
+        {
+          contextType: 'POPUP',
+          documentUrl: 'chrome-extension://abc/popup.html?tabId=42',
+        },
+      ])
+      await expect(isTabSidePanelOpen(42)).resolves.toBe(false)
+    })
+
+    it('treats a getContexts() failure as closed', async () => {
+      getContexts.mockRejectedValue(new Error('boom'))
+      await expect(isTabSidePanelOpen(42)).resolves.toBe(false)
+    })
+  })
+
+  it("closes the tab's own panel", async () => {
+    await closeTabSidePanel(42)
+    expect(chrome.sidePanel.close).toHaveBeenCalledWith({ tabId: 42 })
   })
 })

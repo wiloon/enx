@@ -71,7 +71,10 @@ if (typeof globalThis.CSS === 'undefined') {
   },
   sidePanel: {
     open: jest.fn(),
+    close: jest.fn(async () => undefined),
     setOptions: jest.fn(async () => undefined),
+    onOpened: { addListener: jest.fn(), removeListener: jest.fn() },
+    onClosed: { addListener: jest.fn(), removeListener: jest.fn() },
   },
   windows: {
     getCurrent: jest.fn(),
