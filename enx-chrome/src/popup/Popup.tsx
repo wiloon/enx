@@ -3,6 +3,7 @@ import LearningModeCard, {
   type LearningModeCardStatus,
 } from '@/components/LearningModeCard'
 import Login from '@/components/Login'
+import { useActiveTabSidePanel } from '@/hooks/useActiveTabSidePanel'
 import { useAutoEnableSite } from '@/hooks/useAutoEnableSite'
 import { useInitializeStorage } from '@/hooks/useInitializeStorage'
 import { useSavedPage } from '@/hooks/useSavedPage'
@@ -22,7 +23,6 @@ import {
 } from '@/lib/enableLearningMode'
 import { PageReportPayload, sanitizePageUrl } from '@/lib/pageReport'
 import { initSentry } from '@/lib/sentry'
-import { openActiveTabSidePanel } from '@/lib/sidePanel'
 import { errorAtom, userAtom } from '@/store/atoms'
 import { ClerkProvider, SignOutButton, useUser } from '@clerk/chrome-extension'
 import {
@@ -98,6 +98,13 @@ function SignedInBody({
 }: SignedInBodyProps) {
   const { user } = useUser()
   const autoEnableSite = useAutoEnableSite()
+  // Trigger path① (spec §3.2): a click inside the popup is a real, unforwarded
+  // user gesture, so sidePanel.open() here is reliable -- unlike forwarding a
+  // content script's click through runtime.sendMessage (trigger path③). Kept
+  // as an explicit button rather than switching openPanelOnActionClick, so
+  // popup.html (and its login/logout flow) stays reachable by left-clicking
+  // the toolbar icon. Toggles the current tab's own panel (ADR-050).
+  const sidePanel = useActiveTabSidePanel()
   const [error, setError] = useAtom(errorAtom)
   const [learningStatus, setLearningStatus] =
     useState<LearningModeCardStatus>('off')
@@ -207,20 +214,6 @@ function SignedInBody({
       const message = e instanceof Error ? e.message : ''
       setError(message || "Couldn't turn off Catglish on this page")
       setLearningStatus('on')
-    }
-  }
-
-  // Trigger path① (spec §3.2): a click inside the popup is a real, unforwarded
-  // user gesture, so sidePanel.open() here is reliable -- unlike forwarding a
-  // content script's click through runtime.sendMessage (trigger path③). Kept
-  // as an explicit button rather than switching openPanelOnActionClick, so
-  // popup.html (and its login/logout flow) stays reachable by left-clicking
-  // the toolbar icon. Opens the current tab's own panel (ADR-050).
-  const handleOpenSentencePanel = async () => {
-    try {
-      await openActiveTabSidePanel()
-    } catch (err) {
-      console.error('Failed to open side panel from popup:', err)
     }
   }
 
@@ -334,14 +327,15 @@ function SignedInBody({
       <button
         type="button"
         data-testid="popup-open-sentence-panel"
-        onClick={handleOpenSentencePanel}
+        aria-pressed={sidePanel.open}
+        onClick={() => void sidePanel.toggle()}
         className="flex w-full items-center gap-3 rounded-xl bg-background px-3 py-2.5 text-left shadow-xs ring-1 ring-border transition hover:ring-brand/50"
       >
         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-muted text-brand">
           <SidePanelIcon className="h-[18px] w-[18px]" />
         </span>
         <span className="flex-1 text-sm font-medium text-foreground">
-          Open side panel
+          {sidePanel.open ? 'Close side panel' : 'Open side panel'}
         </span>
         <ChevronRightIcon className="h-4 w-4 text-muted-foreground" />
       </button>

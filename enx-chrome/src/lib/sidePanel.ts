@@ -50,3 +50,28 @@ export const openActiveTabSidePanel = async (): Promise<void> => {
   if (tab?.id === undefined) return
   await openTabSidePanel(tab.id)
 }
+
+// Whether the given tab's own panel is open right now. Chrome has no direct
+// query for this, so it looks for a live SIDE_PANEL context whose URL names
+// the tab (ADR-050): another tab's open panel doesn't count. Matched in JS
+// rather than passing contextTypes as a filter, since
+// chrome.runtime.ContextType can be undefined at runtime.
+export const isTabSidePanelOpen = async (tabId: number): Promise<boolean> => {
+  try {
+    const contexts = (await chrome.runtime.getContexts?.({})) ?? []
+    return contexts.some(
+      c =>
+        c.contextType === ('SIDE_PANEL' as chrome.runtime.ContextType) &&
+        panelTabIdFromUrl(c.documentUrl) === tabId
+    )
+  } catch (error) {
+    console.warn('isTabSidePanelOpen: getContexts() failed:', error)
+    return false
+  }
+}
+
+// Closes the tab's own panel (Chrome 141+); a no-op when it isn't open.
+// Unlike open(), close() needs no user gesture. The tab's panel stays
+// registered, so openTabSidePanel() reopens it later.
+export const closeTabSidePanel = (tabId: number): Promise<void> =>
+  chrome.sidePanel.close({ tabId })

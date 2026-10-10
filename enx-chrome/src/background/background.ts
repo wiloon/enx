@@ -23,7 +23,7 @@ import type { LearningModeStatus } from '@/lib/learningModeStatus'
 import {
   latestPageWordKey,
   openTabSidePanel,
-  panelTabIdFromUrl,
+  isTabSidePanelOpen,
   pendingSentenceKey,
 } from '@/lib/sidePanel'
 
@@ -1194,26 +1194,8 @@ const openSentencePanelForGesture = (tabId?: number): Promise<boolean> => {
 // If the tab's Side Panel is *already* open we don't need a user gesture at
 // all: SidePanel.tsx re-reads the tab's pending-sentence key on
 // storage.onChanged and refreshes in place (spec §4.6). We detect that via
-// chrome.runtime.getContexts (Chrome 116+) and report panelOpened:true so the
-// caller suppresses the "click the toolbar icon" hint.
-const isSidePanelOpen = async (tabId: number): Promise<boolean> => {
-  try {
-    // Query everything and match in JS rather than passing contextTypes as a
-    // filter: chrome.runtime.ContextType can be undefined at runtime. A
-    // panel's tab is read from its own URL (ADR-050), so another tab's open
-    // panel doesn't count.
-    const contexts = (await chrome.runtime.getContexts?.({})) ?? []
-    return contexts.some(
-      c =>
-        c.contextType === ('SIDE_PANEL' as chrome.runtime.ContextType) &&
-        panelTabIdFromUrl(c.documentUrl) === tabId
-    )
-  } catch (error) {
-    console.warn('isSidePanelOpen: getContexts() failed:', error)
-    return false
-  }
-}
-
+// chrome.runtime.getContexts (isTabSidePanelOpen) and report panelOpened:true
+// so the caller suppresses the "click the toolbar icon" hint.
 const handleOpenSentencePanel = async (
   tabId: number | undefined,
   word: string,
@@ -1241,7 +1223,7 @@ const handleOpenSentencePanel = async (
   // needed.
   let panelOpened = panelOpening ? await panelOpening : false
   if (!panelOpened) {
-    panelOpened = await isSidePanelOpen(tabId)
+    panelOpened = await isTabSidePanelOpen(tabId)
   }
 
   return { success: true, panelOpened }
