@@ -5,6 +5,10 @@
 
 import { CheckCircleIcon, SparklesIcon } from '@heroicons/react/24/outline'
 
+// Both states share one fixed height (the "on" card's 32px icon plus py-2.5),
+// so turning Catglish on or off doesn't shift everything below the card.
+const CARD_HEIGHT = 'h-13'
+
 export type LearningModeCardStatus = 'off' | 'enabling' | 'on' | 'turning-off'
 
 interface LearningModeCardProps {
@@ -23,7 +27,7 @@ export default function LearningModeCard({
       <div
         role="status"
         data-testid="learning-mode-card"
-        className="flex items-center gap-3 rounded-xl bg-brand-muted px-3 py-2.5 ring-1 ring-brand/40"
+        className={`flex ${CARD_HEIGHT} items-center gap-3 rounded-xl bg-brand-muted px-3 ring-1 ring-brand/40`}
       >
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand text-brand-foreground">
           <CheckCircleIcon className="h-[18px] w-[18px]" />
@@ -55,7 +59,7 @@ export default function LearningModeCard({
       data-testid="learning-mode-enable"
       onClick={onEnable}
       disabled={status === 'enabling'}
-      className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-2.5 text-sm font-semibold text-brand-foreground shadow-md shadow-brand/25 transition hover:brightness-105 active:scale-[0.99] disabled:opacity-60"
+      className={`flex ${CARD_HEIGHT} w-full items-center justify-center gap-2 rounded-xl bg-brand text-sm font-semibold text-brand-foreground shadow-md shadow-brand/25 transition hover:brightness-105 active:scale-[0.99] disabled:opacity-60`}
     >
       <SparklesIcon className="h-[18px] w-[18px]" />
       {status === 'enabling' ? 'Enabling…' : 'Read with Catglish'}
