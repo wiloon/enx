@@ -1,3 +1,4 @@
+import { useAuth } from '@clerk/chrome-extension'
 import CatglishLogo from '@/components/CatglishLogo'
 import { config } from '@/config/env'
 import {
@@ -6,13 +7,22 @@ import {
 } from '@heroicons/react/24/outline'
 
 /**
- * The popup's top bar. The logo and product name together are one link to the
- * main site, signed in or not: a plain new-tab link (Chrome closes the popup
- * as the tab takes focus, which is fine since the user is leaving it). The
+ * The popup's top bar. The logo and product name together are one link: to
+ * the app home (/app) for a signed-in user, who has already installed the
+ * extension and gains nothing from the marketing page, and to the main site
+ * otherwise, including while Clerk is still loading. A plain new-tab link
+ * (Chrome closes the popup as the tab takes focus, which is fine since the
+ * user is leaving it). The
  * hover background and the trailing arrow are there because a logo in a
  * popup otherwise reads as decoration.
  */
 export default function PopupHeader() {
+  const { isLoaded, isSignedIn } = useAuth()
+  const href =
+    isLoaded && isSignedIn
+      ? `${config.frontendBaseUrl}/app`
+      : config.frontendBaseUrl
+
   const openOptions = () => {
     chrome.runtime.openOptionsPage()
   }
@@ -20,7 +30,7 @@ export default function PopupHeader() {
   return (
     <header className="flex items-center gap-2 border-b border-border bg-background py-1.5 pl-2 pr-4">
       <a
-        href={config.frontendBaseUrl}
+        href={href}
         target="_blank"
         rel="noopener noreferrer"
         title="Open Catglish"
