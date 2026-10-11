@@ -90,6 +90,9 @@ export interface ContentMessage {
   // ADR-007 drag-select-sentence translation).
   phrase?: string
   sourceUrl?: string
+  // Set on 'openSentencePanel': the page's wordCache entries for the
+  // sentence's words, passed through to PendingSentenceContext (ADR-053).
+  wordStates?: Record<string, WordData>
   // Set on 'recordPageWordLookup': the already-fetched dictionary result to
   // mirror into the Side Panel (ADR-006), avoiding a second getOneWord call.
   ecp?: WordData
@@ -184,6 +187,19 @@ export interface PendingSentenceContext {
   phrase?: string
   sourceUrl: string
   createdAt: number
+  // The page's wordCache entries for the words in `sentence`, keyed by
+  // lower-cased word, so the panel can underline the sentence original the
+  // way the page does (ADR-053). Absent when the page had none to give.
+  wordStates?: Record<string, WordData>
+}
+
+// Side Panel -> content script (ADR-053 Decision 4): a single word was
+// looked up in the panel, so the page should record its new review stage
+// in wordCache and repaint its underlines.
+export interface PanelWordLookupMessage {
+  action: 'panelWordLookup'
+  word: string
+  ecp: WordData
 }
 
 // The most recent word looked up via the page's word popover, stored under

@@ -602,7 +602,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             request.sentence || request.word || '',
             request.sourceUrl || '',
             request.phrase || undefined,
-            sentencePanelOpening
+            sentencePanelOpening,
+            request.wordStates
           )
 
         case 'recordPageWordLookup':
@@ -1202,7 +1203,8 @@ const handleOpenSentencePanel = async (
   sentence: string,
   sourceUrl: string,
   phrase?: string,
-  panelOpening?: Promise<boolean>
+  panelOpening?: Promise<boolean>,
+  wordStates?: Record<string, WordData>
 ) => {
   // A panel belongs to a tab (ADR-050); without one there's nowhere to show it.
   if (tabId === undefined) return { success: false, error: 'No sender tab' }
@@ -1213,6 +1215,7 @@ const handleOpenSentencePanel = async (
     phrase,
     sourceUrl,
     createdAt: Date.now(),
+    wordStates,
   }
   await chrome.storage.session.set({ [pendingSentenceKey(tabId)]: context })
 

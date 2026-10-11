@@ -12,6 +12,10 @@ import {
   size,
 } from '@floating-ui/dom'
 import { WordProcessor } from '@/lib/wordProcessor'
+import {
+  reviewBucketHighlightCss,
+  sentenceWordStates,
+} from '@/lib/wordHighlight'
 import { resolveSiteAdapter } from '@/lib/siteAdapters'
 import {
   ENABLE_OK,
@@ -35,7 +39,12 @@ import {
   getWordHighlightEnabled,
   onWordHighlightEnabledChange,
 } from '@/config/preferences'
-import { BackgroundResponse, ContentMessage, WordData } from '../types'
+import {
+  BackgroundResponse,
+  ContentMessage,
+  PanelWordLookupMessage,
+  WordData,
+} from '../types'
 import { contentScriptStore } from './contentAtoms'
 import { noteWordInteraction, startArticle } from './readingTracker'
 import {
@@ -363,6 +372,7 @@ const showWordPopover = async (word: string, reference: Range) => {
         word,
         sentence,
         sourceUrl: window.location.href,
+        wordStates: sentenceWordStates(sentence, wordCache),
       })
 
       if (response.success && !response.panelOpened) {
@@ -1075,6 +1085,7 @@ const triggerSelectionTranslation = async (
       word: '',
       sentence: selectedText,
       sourceUrl: window.location.href,
+      wordStates: sentenceWordStates(selectedText, wordCache),
     })
 
     if (response.success && !response.panelOpened) {
@@ -1523,6 +1534,17 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   console.log('Content script received message:', request)
 
   switch (request.action) {
+    // ADR-053 Decision 4: a word looked up in this tab's Side Panel. Record
+    // its new review stage and repaint, same as a lookup on the page itself.
+    // refreshHighlights() is a no-op while ENX isn't running on the page.
+    case 'panelWordLookup': {
+      const { word, ecp } = request as PanelWordLookupMessage
+      wordCache[word.toLowerCase()] = ecp
+      void refreshHighlights()
+      sendResponse({ success: true })
+      break
+    }
+
     case 'enxRun': {
       // ADR-010 Decision 1: an adapter can match the host but declare the
       // current page out of scope (X list/timeline pages vs a tweet detail
@@ -1598,19 +1620,13 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
 // ::highlight() rules for each review-stage bucket (ADR-011 Decision 1 /
 // E1). CSS.highlights registers which Ranges are in bucket N; these rules
-// paint them, using the palette that lives with REVIEW_BUCKET_COUNT in
-// WordProcessor. No cursor or :hover rule -- the article is untouched and
-// every word is clickable, so there's nothing to hint at.
+// paint them, using the palette shared with the Side Panel
+// (wordHighlight.ts, ADR-053). No cursor or :hover rule -- the article is
+// untouched and every word is clickable, so there's nothing to hint at.
 const highlightStyles = document.createElement('style')
 highlightStyles.setAttribute('data-enx-highlight-styles', 'true')
 highlightStyles.textContent =
-  WordProcessor.HIGHLIGHT_BUCKET_COLORS.map(
-    (color, i) =>
-      `::highlight(${WordProcessor.HIGHLIGHT_NAME_PREFIX}${i + 1}) {` +
-      ` text-decoration-line: underline;` +
-      ` text-decoration-color: ${color};` +
-      ` text-decoration-thickness: 1px; }`
-  ).join('\n') +
+  reviewBucketHighlightCss() +
   // ADR-025: background wash for the sentence a word click most recently
   // opened the sentence panel for -- a different visual channel
   // (background, not underline) so it reads distinctly from review buckets.

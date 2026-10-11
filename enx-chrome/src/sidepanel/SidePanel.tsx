@@ -1,10 +1,10 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from 'react'
 import '@/index.css'
 import {
@@ -17,8 +17,19 @@ import { initSentry } from '@/lib/sentry'
 import { formatPhonetic } from '@/lib/phonetic'
 import { playPronunciation } from '@/lib/pronunciation'
 import { snapToWordBounds } from '@/lib/wordSegment'
+import {
+  HIGHLIGHT_NAME_PREFIX,
+  reviewBucketHighlightCss,
+  sentenceHighlightSpans,
+  type CharSpan,
+  type SentenceHighlightSpans,
+} from '@/lib/wordHighlight'
 import { sendMessageToBackground } from '@/services/api'
 import { config } from '@/config/env'
+import {
+  WORD_HIGHLIGHT_KEY,
+  getWordHighlightEnabled,
+} from '@/config/preferences'
 import {
   latestPageWordKey,
   panelTabIdFromUrl,
@@ -28,7 +39,9 @@ import {
   BackgroundResponse,
   ContentMessage,
   LatestPageWordLookup,
+  PanelWordLookupMessage,
   PendingSentenceContext,
+  WordData,
 } from '@/types'
 
 initSentry()
@@ -90,7 +103,8 @@ interface SentenceEntry {
   sourceUrl?: string
   sentence: string
   // The word the user clicked on the page before opening the panel
-  // (ADR-014), highlighted via <mark> in the rendered original. Empty for a
+  // (ADR-014), marked with the enx-sp-anchor highlight in the rendered
+  // original (ADR-053). Empty for a
   // drag-selected sentence (ADR-007) -- no anchor word.
   clickedWord: string
   status: Status
@@ -127,40 +141,70 @@ function UpgradeLink({ className }: { className?: string }) {
   )
 }
 
-const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+// The sentence original's word-level marks (ADR-053): the anchor word's
+// background and the review-stage underlines are CSS Custom Highlight API
+// Ranges over the sentence's single text node, never elements -- the same
+// mechanism and palette as the page (ADR-011). The panel is its own
+// document, so it reuses the page's enx-hl-N names without clashing.
+const ANCHOR_HIGHLIGHT_NAME = 'enx-sp-anchor'
 
-// A sentence's original renders as plain selectable text (ADR-017): no
-// per-word elements, so a drag-select can run across words and clicks resolve
-// by character offset. The one bit of markup is a <mark> around every
-// occurrence of the word the user clicked on the page before opening the
-// panel (ADR-014), so they can see which word the auto-seeded card belongs
-// to. <mark> wraps the same text run, so it doesn't affect selection offsets.
-const renderSentence = (sentence: string, clickedWord: string): ReactNode => {
-  if (!clickedWord) return sentence
-  const re = new RegExp(`\\b${escapeRegExp(clickedWord)}\\b`, 'gi')
-  const parts: ReactNode[] = []
-  let last = 0
-  let m: RegExpExecArray | null
-  while ((m = re.exec(sentence)) !== null) {
-    if (m.index > last) parts.push(sentence.slice(last, m.index))
-    parts.push(
-      <mark
-        key={m.index}
-        data-clicked-word="true"
-        className="bg-brand/15 text-foreground font-medium rounded-sm px-0.5"
-      >
-        {m[0]}
-      </mark>
-    )
-    last = m.index + m[0].length
+const sidePanelHighlightStyles = document.createElement('style')
+sidePanelHighlightStyles.setAttribute('data-enx-highlight-styles', 'true')
+sidePanelHighlightStyles.textContent =
+  reviewBucketHighlightCss() +
+  `\n::highlight(${ANCHOR_HIGHLIGHT_NAME}) {` +
+  ` background-color: color-mix(in oklab, var(--color-brand) 15%, transparent); }`
+if (!document.head.querySelector('style[data-enx-highlight-styles]')) {
+  document.head.appendChild(sidePanelHighlightStyles)
+}
+
+// Replaces every sentence-original highlight in the panel with Ranges built
+// from `sentences` (each one's text node plus the spans to mark in it).
+// Rebuilt in full after each render: React may have swapped the text nodes,
+// which leaves any earlier Range pointing at a detached node.
+const applySentenceHighlights = (
+  sentences: { node: Text; spans: SentenceHighlightSpans }[]
+) => {
+  for (const name of [...CSS.highlights.keys()]) {
+    if (
+      name === ANCHOR_HIGHLIGHT_NAME ||
+      name.startsWith(HIGHLIGHT_NAME_PREFIX)
+    ) {
+      CSS.highlights.delete(name)
+    }
   }
-  if (last < sentence.length) parts.push(sentence.slice(last))
-  return parts
+
+  const toRange = (node: Text, { start, end }: CharSpan) => {
+    const range = document.createRange()
+    range.setStart(node, start)
+    range.setEnd(node, end)
+    return range
+  }
+  const anchor: Range[] = []
+  const buckets = new Map<number, Range[]>()
+  for (const { node, spans } of sentences) {
+    anchor.push(...spans.anchor.map(span => toRange(node, span)))
+    for (const [bucket, bucketSpans] of spans.buckets) {
+      const ranges = buckets.get(bucket) ?? []
+      ranges.push(...bucketSpans.map(span => toRange(node, span)))
+      buckets.set(bucket, ranges)
+    }
+  }
+
+  if (anchor.length > 0) {
+    CSS.highlights.set(ANCHOR_HIGHLIGHT_NAME, new Highlight(...anchor))
+  }
+  for (const [bucket, ranges] of buckets) {
+    CSS.highlights.set(
+      `${HIGHLIGHT_NAME_PREFIX}${bucket}`,
+      new Highlight(...ranges)
+    )
+  }
 }
 
 // Character offset of a (node, offset) selection boundary within `root`'s
 // text, computed by measuring the flattened text before it. Works regardless
-// of how the text is split into nodes (e.g. by a <mark>), and is testable in
+// of how the text is split into nodes, and is testable in
 // jsdom since Range.toString() is implemented there.
 const boundaryCharOffset = (
   root: HTMLElement,
@@ -669,9 +713,10 @@ function SentenceBlock({
           ref={sentenceRef}
           className="text-foreground leading-relaxed select-text"
           data-testid="sidepanel-sentence"
+          data-entry-id={entry.id}
           onMouseUp={handleSentenceSelection}
         >
-          {renderSentence(entry.sentence, entry.clickedWord)}
+          {entry.sentence}
         </p>
         {pendingPhrase && (
           <PhraseConfirmButton
@@ -775,6 +820,32 @@ function SidePanelContent() {
   // the default 3-line clamp. Keyed by word only (not by scope) -- shared
   // across the top-level list and every sentence's nested list.
   const [expandedWords, setExpandedWords] = useState<Set<string>>(new Set())
+  // What the panel knows about each word's review stage, keyed by
+  // lower-cased word like the page's wordCache (ADR-053 Decision 3). Drives
+  // the underlines in every sentence original.
+  const [wordStates, setWordStates] = useState<Record<string, WordData>>({})
+  // The "highlight vocabulary while reading" preference governs the
+  // underlines here as on the page (ADR-053 Decision 5), live. The anchor
+  // word isn't vocabulary highlighting and ignores it.
+  const [underlinesOn, setUnderlinesOn] = useState(true)
+  useEffect(() => {
+    let cancelled = false
+    void getWordHighlightEnabled().then(enabled => {
+      if (!cancelled) setUnderlinesOn(enabled)
+    })
+    const listener = (
+      changes: { [key: string]: chrome.storage.StorageChange },
+      areaName: string
+    ) => {
+      if (areaName !== 'local' || !(WORD_HIGHLIGHT_KEY in changes)) return
+      setUnderlinesOn(changes[WORD_HIGHLIGHT_KEY].newValue !== false)
+    }
+    chrome.storage.onChanged.addListener(listener)
+    return () => {
+      cancelled = true
+      chrome.storage.onChanged.removeListener(listener)
+    }
+  }, [])
 
   const toggleExpanded = useCallback((word: string) => {
     setExpandedWords(prev => {
@@ -833,6 +904,9 @@ function SidePanelContent() {
   // an existing sentence entry is simply left alone.
   const mergePageWordLookup = useCallback((lookup: LatestPageWordLookup) => {
     const word = lookup.word.toLowerCase()
+    // The page already knows this word's new stage; only the panel's
+    // underlines need it (ADR-053 Decision 3), so no message goes back.
+    setWordStates(prev => ({ ...prev, [word]: lookup.ecp }))
     setEntries(prev =>
       reorderOrInsertCard(prev, undefined, word, () => ({
         word,
@@ -937,6 +1011,26 @@ function SidePanelContent() {
     []
   )
 
+  // A single word looked up in the panel (ADR-053 Decision 3/4): its new
+  // review stage underlines it here, and the page is told so its own
+  // wordCache and underlines catch up without a reload. No content script
+  // on the tab (ENX not enabled there, or the tab navigated away) is fine:
+  // the server already counted the lookup, so the next page that enables
+  // ENX underlines the word anyway.
+  const recordWordLookup = useCallback(
+    (word: string, ecp: WordData) => {
+      setWordStates(prev => ({ ...prev, [word.toLowerCase()]: ecp }))
+      if (tabId === undefined) return
+      const message: PanelWordLookupMessage = {
+        action: 'panelWordLookup',
+        word: word.toLowerCase(),
+        ecp,
+      }
+      chrome.tabs.sendMessage(tabId, message).catch(() => {})
+    },
+    [tabId]
+  )
+
   // Fetches the dictionary half of a card (pronunciation + ECDICT Chinese +
   // Query Count) via the same getOneWord lookup the page's word popup uses,
   // and resolves with the looked-up Chinese definition (or undefined on
@@ -954,6 +1048,9 @@ function SidePanelContent() {
         word,
       } satisfies ContentMessage)
         .then(response => {
+          if (response.success && response.ecp) {
+            recordWordLookup(word, response.ecp)
+          }
           setEntries(prev =>
             patchCard(prev, sentenceId, word, {
               pronunciation: response.success
@@ -985,7 +1082,7 @@ function SidePanelContent() {
           return undefined
         })
     },
-    []
+    [recordWordLookup]
   )
 
   // The single entry point for "look up a word's dictionary AND context
@@ -1013,7 +1110,7 @@ function SidePanelContent() {
   // this fires independently of the sentence's own whole-sentence
   // translation (they must not block each other). The entry is usually
   // brand new when this runs, so there's usually no existing card at this
-  // scope -- EXCEPT the entry (and its <mark>-highlighted anchor word)
+  // scope -- EXCEPT the entry (and its highlighted anchor word)
   // render synchronously just before this runs, so in principle the user
   // could click that highlighted word (handleWordClick) in the same tick.
   // Guard against that race the same way the pre-ADR-023 version did: if a
@@ -1104,7 +1201,11 @@ function SidePanelContent() {
 
     // pendingContext is an external event (a message from the content
     // script), so turning it into a new entry here is intended.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    const carriedStates = pendingContext.wordStates
+    if (carriedStates) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setWordStates(prev => ({ ...prev, ...carriedStates }))
+    }
     setEntries(prev => [
       {
         kind: 'sentence',
@@ -1297,6 +1398,33 @@ function SidePanelContent() {
     [entries, fetchWordContext]
   )
 
+  // Re-mark every sentence original after each render (ADR-053): the
+  // anchor word and the review-stage underlines are Highlight API Ranges,
+  // so they're rebuilt from `entries` against whatever text nodes React
+  // just committed.
+  const listRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const sentences: { node: Text; spans: SentenceHighlightSpans }[] = []
+    for (const entry of entries) {
+      if (entry.kind !== 'sentence') continue
+      const el = listRef.current?.querySelector(
+        `[data-entry-id="${CSS.escape(entry.id)}"]`
+      )
+      const node = el?.firstChild
+      if (!(node instanceof Text)) continue
+      sentences.push({
+        node,
+        spans: sentenceHighlightSpans(
+          entry.sentence,
+          entry.clickedWord,
+          wordStates,
+          underlinesOn
+        ),
+      })
+    }
+    applySentenceHighlights(sentences)
+  }, [entries, wordStates, underlinesOn])
+
   // The guided hint only makes sense when the panel has shown nothing at
   // all yet.
   if (entries.length === 0) {
@@ -1313,7 +1441,7 @@ function SidePanelContent() {
   }
 
   return (
-    <div className="p-4 space-y-4 text-sm">
+    <div ref={listRef} className="p-4 space-y-4 text-sm">
       <div className="flex items-center justify-end">
         <button
           type="button"
