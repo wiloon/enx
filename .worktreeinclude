@@ -1,0 +1,5 @@
+# Gitignored files Claude Code copies into every new worktree it creates.
+# See AGENTS.md "Worktree by default".
+enx-api/.env
+enx-chrome/.env
+enx-ui/.env.local

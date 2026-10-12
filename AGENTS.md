@@ -1,5 +1,15 @@
 # AI Agents
 
+## Worktree by default
+
+Another agent may be working in the main checkout at the same time. A session that will change files does its work in a git worktree:
+
+- **New task:** before the first file change, create a worktree branched from `origin/main` (in Claude Code, the `EnterWorktree` tool) and rename its branch to the usual `feat/…`, `fix/…`, `docs/…` form.
+- **Continuing an existing branch:** work where that branch is already checked out, or add a worktree for it.
+- **Read-only sessions** (questions, code reading, reviews) stay in the main checkout.
+- **Env files:** Claude Code copies the files listed in `.worktreeinclude` into new worktrees. Other tools copy `enx-api/.env`, `enx-chrome/.env` and `enx-ui/.env.local` from the main checkout by hand.
+- **After the PR merges:** remove the worktree and delete its local branch.
+
 ## Before the first code change
 
 Read [.ai/instructions.md](.ai/instructions.md) before the first code change of a session. Unlike this file it is **not** loaded automatically. It holds the language rules, the DDD layering with examples, the ECDICT read-only rules and the testing rules. [.ai/contributions.md](.ai/contributions.md) is the history of past AI work; read it when a change touches an area whose past lessons matter.
