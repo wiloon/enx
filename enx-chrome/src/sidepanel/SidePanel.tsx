@@ -146,6 +146,8 @@ function UpgradeLink({ className }: { className?: string }) {
 // Ranges over the sentence's single text node, never elements -- the same
 // mechanism and palette as the page (ADR-011). The panel is its own
 // document, so it reuses the page's enx-hl-N names without clashing.
+// The anchor wash is brand, not the page's yellow sentence wash: each colour
+// has one job (ADR-054).
 const ANCHOR_HIGHLIGHT_NAME = 'enx-sp-anchor'
 
 const sidePanelHighlightStyles = document.createElement('style')
@@ -153,7 +155,7 @@ sidePanelHighlightStyles.setAttribute('data-enx-highlight-styles', 'true')
 sidePanelHighlightStyles.textContent =
   reviewBucketHighlightCss() +
   `\n::highlight(${ANCHOR_HIGHLIGHT_NAME}) {` +
-  ` background-color: color-mix(in oklab, var(--color-brand) 15%, transparent); }`
+  ` background-color: color-mix(in oklab, var(--color-brand) 25%, transparent); }`
 if (!document.head.querySelector('style[data-enx-highlight-styles]')) {
   document.head.appendChild(sidePanelHighlightStyles)
 }
