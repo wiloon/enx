@@ -2,6 +2,15 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-10-12: Archive and remove enx-api-java
+
+**Agent**: Claude Code
+**Task**: Remove the Java/Spring Boot learning backend (`enx-api-java/`, out of routing since the Clerk cutover, ADR-015) without losing it. Decision recorded in ADR-057.
+
+**Solution**: Tagged the last main commit containing the directory as `archive/enx-api-java-final`, extracted it with history (`git filter-repo --subdirectory-filter`) into the public repo wiloon/enx-api-java and archived that repo. Then `git rm -r enx-api-java`, dropped the root `Taskfile.yml` `java:*`/`tekton:build:java-api` tasks and README entries, and marked `TASK-SPEC-enx-api-java.md` Superseded and `TASK-SPEC-enx-api-gateway-v1.md` Shelved. The Tekton pipeline/task and homelab Taskfile task were removed from w10n-config in a separate PR. Historical ADRs, handoffs and weekly notes were left as written.
+
+**Restore**: `git checkout archive/enx-api-java-final -- enx-api-java`, or browse wiloon/enx-api-java.
+
 ## 2026-10-01: Archive and remove enx-sync
 
 **Agent**: Claude Code

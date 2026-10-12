@@ -21,7 +21,6 @@ This is a monorepo containing multiple sub-projects:
 | Project | Description | Technology |
 |---------|-------------|------------|
 | **[enx-api](enx-api/)** | Backend API server (Go) | Go, Gin, SQLite |
-| **[enx-api-java](enx-api-java/)** | Backend API server (Java, dual-stack) | Java 26, Spring Boot 4.1, Gradle |
 | **[enx-chrome](enx-chrome/)** | Chrome browser extension | TypeScript, React, Vite |
 | **[enx-ui](enx-ui/)** | Web UI (future) | Next.js, React |
 | **[mock-api](mock-api/)** | Mock API server for testing | Node.js |
@@ -31,7 +30,6 @@ This is a monorepo containing multiple sub-projects:
 ### Prerequisites
 
 - Go (see [enx-api/go.mod](enx-api/go.mod))
-- Java 26 + Gradle 9.6 (see [enx-api-java](enx-api-java/))
 - Node.js 25+ (managed by fnm)
 - pnpm
 - SQLite 3
@@ -47,9 +45,6 @@ task ecdict:download
 
 # Start API server
 task api:start
-
-# Start Java API (port 8092, requires COGNITO_* env)
-task java:run
 
 # Start Chrome extension development
 task dev-chrome

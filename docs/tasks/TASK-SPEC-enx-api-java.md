@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Draft — 2026-06-21 |
+| **状态** | Superseded — 2026-10-12：Java 后端已移出仓库（[ADR-057](../architecture/adr-057-remove-enx-api-java.md)）；代码见 tag `archive/enx-api-java-final` 与 wiloon/enx-api-java（已归档） |
 | **类型** | SDD Task Spec（Spec 驱动实现；实现前以本文为准，实现后同步更新状态与验收清单） |
 | **目标** | 在 `enx` monorepo 新增 **Java + Spring Boot** REST API 子项目，与现有 **Go (`enx-api`)** 同时在 K8s 中运行（不同 Pod）；通过 **Kong Ingress** 按 URL 分流；首阶段完成 **1 个 API 从 Go 迁移至 Java**（`POST /api/log`） |
 | **非目标** | 不重写全部 Go API；首阶段 **不**在 Java 实现 `/api/version`、`/ping`；不引入新数据库（Java 不访问 SQLite）；不修改 enx-chrome / enx-ui 的业务逻辑；不做 enx-sync 改造 |
