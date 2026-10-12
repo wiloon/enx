@@ -1,7 +1,7 @@
 ---
-status: draft（待 review）
+status: done -- 采用方案 2，决策见 adr-055
 date: 2026-10-11
-related: adr-031（生产部署拓扑：同一镜像跑 homelab 和生产）
+related: adr-055（本实验的决策）、adr-031（生产部署拓扑：同一镜像跑 homelab 和生产）
 ---
 
 # RUNBOOK：在 homelab 用 Cloud Native Buildpacks 构建 enx-ui（实验）
@@ -178,3 +178,24 @@ Heroku 方案体积不达标的原因：buildpack 决定哪些 layer 进镜像�
 ### 代价
 
 这个方案的 buildpack 是自己维护的：Node 下载、pnpm 安装、standalone 整理都写在 `bin/build` 里，本质上是把 Containerfile 的多阶段逻辑换成 buildpack 格式。调试中就遇到了 Containerfile 方案里不会有的问题：layer 缓存元数据的格式、Corepack 与 Nexus 的兼容性。Heroku 方案里"由 buildpack 维护者负责 Node 生态细节"的好处，在这里没有了。
+
+## 落地（ADR-055）
+
+方案 2 定为正式方案，实验代码整理成：
+
+- `enx-ui/cnb/images.conf`：builder 和 run image 按 digest 固定，只此一处（不叫 `images.env`：根 `.gitignore` 忽略 `*.env`）。
+- `enx-ui/cnb/build.sh`：唯一的构建入口，homelab Tekton 和 GitHub Actions 都在固定的 builder 里执行它；`enx-ui/cnb/docker-build.sh` 是 GitHub Actions 用的包装（本地 Docker daemon 模式）。
+- w10n-config：`cnb-resolve-builder` 从仓库读 builder 作为 step 镜像，`cnb-build` 执行 `build.sh`；`build-enx-ui` Pipeline 直接换成 CNB。
+- `deploy-prod.yml`：daemon 模式构建 → smoke → 推 ECR `enx-ui`；缓存在新建的可变 ECR 仓库 `enx-ui-cnb-cache`。
+- `enx-ui-ci.yml`：PR 上同样构建 + smoke，不推送。
+- 方案 1 的 `Procfile`、`heroku-postbuild`、`engines.node`、`turbopackAdditionalRoots` 没有带进正式分支 `feat/enx-ui-cnb-build`。Next 16.4.0 升级单独合并（PR #138）。
+
+验证（2026-10-12）：
+
+| 项 | 结果 |
+| --- | --- |
+| homelab 构建 + 部署（`build-enx-ui-cnb-gzr74`，`5d09914`） | ✅ 4 分 19 秒（缓存仓库改名后第一次，冷缓存）；ArgoCD 同步后 enx-ui 跑 CNB 镜像，ingress 上 `/`、`/pricing`、`/reader`、`/icon.svg` 200 |
+| GitHub Actions（PR #139 的 `enx-ui CI`） | ✅ 1 分 10 秒；daemon 模式构建、smoke test 通过；镜像解压后 197 MB |
+| 生产主机兼容性 | ✅ systemd 单元没有覆盖启动命令、没有挂载目录，`-p 127.0.0.1:3000:3000` + 健康检查不受影响，不用改 |
+| ECR 登录 / 缓存 / 推送 | 待第一次 release tag 验证；需先 `tofu apply` 建 `enx-ui-cnb-cache` |
+| homelab 手动检查（登录、`/reader`、`/stats`、图片） | 待作者执行 |

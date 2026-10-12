@@ -51,7 +51,7 @@ enx-ui 镜像一直由 `enx-ui/Containerfile` 构建：homelab 用 Tekton + Kani
 
 5. **运行时不变**：镜像仍与环境无关，所有部署相关的值在运行时读取（ADR-019）。生产主机的 systemd 单元和 homelab 的 Deployment 都没有覆盖启动命令、没有挂载目录，所以入口换成 CNB launcher、运行用户从 root 换成 1002 都不需要改它们。监听地址仍由 `HOSTNAME`/`PORT` 决定，和 Containerfile 镜像相同。
 
-6. **Containerfile 暂时保留**：生产第一次用 CNB 镜像发布成功之后，删除 `enx-ui/Containerfile`、`enx-ui/.dockerignore` 和 homelab 的 Kaniko 流水线。
+6. **切换顺序**：homelab 的 `build-enx-ui` Pipeline 直接换成 CNB（w10n-config `task-cnb-build.yaml`、`pipeline-build-enx-ui.yaml`），`task deploy:homelab:ui` 用法不变。`enx-ui/Containerfile` 和 `enx-ui/.dockerignore` 暂时保留，生产第一次用 CNB 镜像发布成功之后再删除。
 
 7. **范围**：只管 enx-ui。enx-api 改用 ko 另议。
 
