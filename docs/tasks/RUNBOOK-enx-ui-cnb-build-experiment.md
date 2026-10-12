@@ -199,3 +199,15 @@ Heroku 方案体积不达标的原因：buildpack 决定哪些 layer 进镜像�
 | 生产主机兼容性 | ✅ systemd 单元没有覆盖启动命令、没有挂载目录，`-p 127.0.0.1:3000:3000` + 健康检查不受影响，不用改 |
 | ECR 登录 / 缓存 / 推送 | 待第一次 release tag 验证；需先 `tofu apply` 建 `enx-ui-cnb-cache` |
 | homelab 手动检查（登录、`/reader`、`/stats`、图片） | 待作者执行 |
+
+稳定性（2026-10-12，`feat/enx-ui-cnb-build`，只构建不部署，依次执行、热缓存）：
+
+| 次数 | PipelineRun | 结果 | 总耗时 |
+| --- | --- | --- | --- |
+| 1 | `build-enx-ui-cnb-xx6xk` | ✅ | 3 分 19 秒 |
+| 2 | `build-enx-ui-cnb-ds7l9` | ✅ | 3 分 24 秒 |
+| 3 | `build-enx-ui-cnb-ktcxb` | ✅ | 3 分 22 秒 |
+| 4 | `build-enx-ui-cnb-5bfjn` | ✅ | 3 分 21 秒 |
+| 5 | `build-enx-ui-cnb-7twmm` | ✅ | 3 分 23 秒 |
+
+5 次全部成功，没有网络类失败，耗时稳定在 3 分 20 秒左右（含 `cnb-resolve-builder` 约 12 秒）。改 lockfile 时的耗时没有单独测：缓存的 pnpm store 失效时，耗时接近冷缓存那次（4 分 19 秒）。
