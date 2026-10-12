@@ -210,4 +210,4 @@ Heroku 方案体积不达标的原因：buildpack 决定哪些 layer 进镜像�
 | 4 | `build-enx-ui-cnb-5bfjn` | ✅ | 3 分 21 秒 |
 | 5 | `build-enx-ui-cnb-7twmm` | ✅ | 3 分 23 秒 |
 
-5 次全部成功，没有网络类失败，耗时稳定在 3 分 20 秒左右（含 `cnb-resolve-builder` 约 12 秒）。改 lockfile 时的耗时没有单独测：缓存的 pnpm store 失效时，耗时接近冷缓存那次（4 分 19 秒）。
+5 次全部成功，没有网络类失败，耗时稳定在 3 分 20 秒左右（含 `cnb-resolve-builder` 约 12 秒）。改 lockfile 时的耗时没有单独测。pnpm store 按包缓存，改 lockfile 只需下载新增的包，预计不会超过冷缓存那次（4 分 19 秒）。
