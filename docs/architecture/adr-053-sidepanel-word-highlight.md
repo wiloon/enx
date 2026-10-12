@@ -46,17 +46,25 @@ related: adr-011（主窗口 CSS Custom Highlight API 下划线，本 ADR 把同
 
 6. **只给单词画线，不给短语。** 侧边栏划选短语、主窗口划词翻译都不产生下划线；短语卡片的查询不写进状态表，也不发 `panelWordLookup`。两处划选逻辑的统一另议，不在本 ADR 范围内。
 
+7. **「标为已认识」用乐观广播。** content script 点 Mark Known 后**先**改 `wordCache`、去掉主窗口下划线，**再**发 `markAcquainted` 给 background。`chrome.runtime.sendMessage` 会投递给所有扩展页面，侧边栏也收得到：它监听这条消息，立即把该词的 `AlreadyAcquainted` 置 1，下划线随之消失。
+
+   - **只有 background 回复。** 一条消息只有第一个 `sendResponse` 送达发送方。侧边栏的监听器既不调用 `sendResponse`，也不 `return true`，否则会抢走本该由 background 在调用 `/api/mark` 之后给出的回复。
+   - **失败不回滚、不重试。** API 失败的代价只是下次读文章时这个词又带下划线，用户可以再标一次。`/api/mark` 现在是**切换**（`ToggleAcquainted`），「服务端已写入、回复丢失」时重试会把词翻回「不认识」，所以接口改成幂等的「设为已认识 / 设为不认识」之前不做重试（另开 issue）。
+   - 不按标签页过滤：下划线状态属于词，任何标签页的侧边栏都应去掉。
+
 ## Consequences
 
 - 侧边栏查了某个词，主窗口里所有这个词都画线（整页范围，与主窗口点词一致）。
 - 锚点词外观从「浅底 + 加粗 + 圆角」变成「浅底」，与下划线视觉上仍分得清。
 - `getSelectionCharRange` 面对的原句永远只有一个文本节点，ADR-017 Revisit 里「加了逐词标记后偏移算错」的风险消失。
 - `SidePanel.test.tsx` 里断言 `data-clicked-word` 的用例改为断言 `CSS.highlights.get('enx-sp-anchor')` 的 Range。jsdom 没有 Highlight API，`src/test/setup.ts` 已有 shim（ADR-011），单元测试能断言「注册了哪些 Range、各在哪一档」；真实绘制靠 Playwright e2e（`word-highlight-toggle.spec.ts` 已是这种写法）。
-- 主窗口「标为已认识」不经过 ADR-006 镜像，已打开的侧边栏不会立即去掉该词的下划线，下次该词在面板里更新状态时才同步。v1 接受。
+- 主窗口「标为已认识」从「等 API 成功再去下划线」改为乐观更新：先去掉，再调 API（Decision 7）。
+- 后续方向：所有改变词状态的操作（主窗口查词、侧边栏查词、标为已认识、AI 兜底）可以收敛到同一个「词状态变化」通知。本 ADR 不做。
 
 ## 测试
 
 - `reviewBucket.ts`：从 `WordProcessor` 现有用例迁过来，行为不变（characterization）。
 - 侧边栏 Range 构建：给定句子 + 状态表 + 锚点词，断言每个档位、`enx-sp-anchor` 的 Range 文本；开关关闭时没有 `enx-hl-*`；短语查询不改状态表。
 - content script：收到 `panelWordLookup` 后 `wordCache` 更新并重建高亮；没有 `articleRoots` 时什么都不做。
-- e2e：主窗口整句翻译 → 侧边栏原句有与主窗口一致的下划线；侧边栏点一个新词 → 主窗口 `CSS.highlights` 里多出该词的 Range。
+- 侧边栏收到 `markAcquainted` 后该词下划线消失，且不调用 `sendResponse`、不返回 `true`。
+- e2e：主窗口整句翻译 → 侧边栏原句有与主窗口一致的下划线；侧边栏点一个新词 → 主窗口 `CSS.highlights` 里多出该词的 Range；主窗口标为已认识 → 侧边栏去掉该词下划线。
