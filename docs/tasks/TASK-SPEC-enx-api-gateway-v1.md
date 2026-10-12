@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Draft — 2026-06-21 |
+| **状态** | Shelved — 2026-10-12：触发原因「Go + Java 多后端长期共存」已不成立，Java 后端已移除（[ADR-057](../architecture/adr-057-remove-enx-api-java.md)）。若重启，先按单一 Go 后端重写本 Spec |
 | **类型** | SDD Task Spec（未来架构；**不在** `TASK-SPEC-enx-api-java.md` 范围内） |
 | **前置** | 建议先完成 [TASK-SPEC-enx-api-java.md](./TASK-SPEC-enx-api-java.md)（Java 双栈落地）；本 Spec 是对 **全站 URL 与网关** 的重构 |
 | **目标** | 建立 **OpenAPI 驱动的公开契约** `/api/v1/...`；**Kong** 负责对外路径、版本入口、重写与多后端聚合；**Go/Java 后端** 只注册 **域内资源路径**（无 `/api`、无 `v1`）；内外路径差异在 OpenAPI 与 Ingress 中显式文档化 |

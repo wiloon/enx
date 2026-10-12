@@ -1,6 +1,0 @@
-enx:
-  cognito:
-    region: us-east-1
-    user-pool-id: test-pool
-    client-id: test-ui-client
-    chrome-client-id: test-chrome-client
