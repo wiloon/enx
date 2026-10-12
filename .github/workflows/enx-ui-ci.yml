@@ -1,0 +1,39 @@
+name: enx-ui CI
+
+# Builds the enx-ui image exactly as a release does (ADR-055: enx-ui/cnb/
+# build.sh in the builder pinned in enx-ui/cnb/images.conf) and smoke-tests
+# it with runtime env vars only. Nothing is pushed: no registry, no cache,
+# no AWS credentials, so this also runs on PRs from any branch.
+
+on:
+  pull_request:
+    paths:
+      - 'enx-ui/**'
+      - '.github/workflows/enx-ui-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'enx-ui/**'
+      - '.github/workflows/enx-ui-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    name: Build image (CNB) and smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        env:
+          ENX_NPM_REGISTRY: https://registry.npmjs.org/
+        run: enx-ui/cnb/docker-build.sh enx-ui:ci
+
+      - name: Smoke test (runtime config only)
+        run: SMOKE_IMAGE=enx-ui:ci enx-ui/scripts/smoke-runtime.sh
+
+      - name: Image size
+        run: docker image inspect enx-ui:ci --format '{{.Size}}' | awk '{printf "enx-ui:ci %.1f MB (uncompressed)\n", $1/1e6}'

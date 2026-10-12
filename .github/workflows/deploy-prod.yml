@@ -132,8 +132,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-buildx-action@v3
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -141,46 +139,37 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
+        id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # Build once into the local daemon and smoke-test THAT image with runtime
-      # env vars only, before anything is pushed: a build-time config leak
-      # (see enx-ui/scripts/smoke-runtime.sh) fails here instead of on the host.
+      # ADR-055: the same enx-ui/cnb/build.sh as homelab Tekton, inside the
+      # builder pinned in enx-ui/cnb/images.conf. Built into the local daemon
+      # and smoke-tested with runtime env vars only before anything is pushed:
+      # a build-time config leak (see enx-ui/scripts/smoke-runtime.sh) fails
+      # here instead of on the host.
       - name: Build (local, for smoke test)
-        uses: docker/build-push-action@v6
-        with:
-          context: enx-ui
-          file: enx-ui/Containerfile
-          load: true
-          push: false
-          tags: enx-ui:smoke
+        env:
           # The committed .npmrc default (nexus.wiloon.com) only resolves on
           # the homelab LAN/wg tunnel -- same reasoning as GOPROXY above for
-          # build-api. Without this the pnpm install hangs on pnpm's own
-          # fetch-retry backoff (up to ~10min per package) instead of failing
-          # fast.
-          build-args: |
-            NPM_REGISTRY=https://registry.npmjs.org/
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # build-api.
+          ENX_NPM_REGISTRY: https://registry.npmjs.org/
+          # enx-ui itself is IMMUTABLE; the cache lives in its own MUTABLE
+          # repo (w10n-config infra/aws/opentofu/ec2-tokyo/ecr.tf).
+          ENX_CACHE_IMAGE: ${{ steps.ecr.outputs.registry }}/enx-ui-cnb-cache:latest
+        run: |
+          # The lifecycle reads registry credentials itself, not ~/.docker.
+          token=$(aws ecr get-login-password --region "$AWS_REGION")
+          export CNB_REGISTRY_AUTH="{\"${{ steps.ecr.outputs.registry }}\": \"Basic $(printf 'AWS:%s' "$token" | base64 -w0)\"}"
+          enx-ui/cnb/docker-build.sh enx-ui:smoke
 
       - name: Smoke test (runtime config only)
         run: SMOKE_IMAGE=enx-ui:smoke enx-ui/scripts/smoke-runtime.sh
 
-      # Same inputs as above (including build-args, so the cache actually
-      # hits), so this is served from the layer cache.
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: enx-ui
-          file: enx-ui/Containerfile
-          push: true
-          tags: |
-            ${{ env.UI_IMAGE }}:${{ needs.version.outputs.tag }}
-          build-args: |
-            NPM_REGISTRY=https://registry.npmjs.org/
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      # Push exactly the image that was smoke-tested.
+      - name: Push
+        run: |
+          docker tag enx-ui:smoke "$UI_IMAGE:${{ needs.version.outputs.tag }}"
+          docker push "$UI_IMAGE:${{ needs.version.outputs.tag }}"
 
   # ---------------------------------------------------------------------
   # Deploy. All the logic lives in /usr/local/bin/enx-deploy.sh on the host

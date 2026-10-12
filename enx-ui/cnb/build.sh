@@ -33,8 +33,11 @@ LAYERS=$WORK/layers
 PLATFORM=$WORK/platform
 BUILDPACKS=$WORK/buildpacks
 mkdir -p "$LAYERS" "$PLATFORM/env" "$BUILDPACKS"
-# The lifecycle drops to the CNB user for the build phase when run as root.
-[ "$(id -u)" = 0 ] && chown -R "${CNB_USER_ID:-1000}:${CNB_GROUP_ID:-1000}" "$WORK"
+# Run as root (docker-build.sh, for the daemon socket), the lifecycle drops to
+# the CNB user for the build phase, which writes into the app and work dirs.
+if [ "$(id -u)" = 0 ]; then
+  chown -R "${CNB_USER_ID:-1000}:${CNB_GROUP_ID:-1000}" "$WORK" "$ENX_APP_DIR"
+fi
 
 # project.toml [[io.buildpacks.build.env]] -> platform env files (what `pack`
 # does; the bare lifecycle does not). Handles the one-line name/value form.
