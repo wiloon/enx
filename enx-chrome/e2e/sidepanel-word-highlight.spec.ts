@@ -130,4 +130,27 @@ test.describe('Side Panel word underlines (ADR-053)', () => {
       .toContain(fresh!.toLowerCase())
     expect((await highlightTexts(panel)).underlined).toContain(fresh)
   })
+
+  test('marking a word acquainted on the page drops its underline in the panel', async ({
+    page,
+  }) => {
+    const anchorKey = anchorWord.toLowerCase()
+    await expect
+      .poll(async () =>
+        (await highlightTexts(panel)).underlined.map(w => w.toLowerCase())
+      )
+      .toContain(anchorKey)
+
+    // The anchor is still the page's first underlined word.
+    await clickWordAndWaitForPopup(page, 0)
+    await page
+      .locator('#enx-anchored-overlay [data-testid="word-popover-mark-known"]')
+      .click()
+
+    await expect
+      .poll(async () =>
+        (await highlightTexts(panel)).underlined.map(w => w.toLowerCase())
+      )
+      .not.toContain(anchorKey)
+  })
 })

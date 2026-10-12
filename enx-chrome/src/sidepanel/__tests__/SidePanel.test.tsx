@@ -2037,5 +2037,34 @@ describe('SidePanel', () => {
 
       await waitFor(() => expect(highlightTexts('enx-hl-1')).toEqual([]))
     })
+
+    // ADR-053 optimistic broadcast: the page's markAcquainted message reaches
+    // every extension page; the panel only listens, background alone replies.
+    it('drops the underline as soon as the page marks the word acquainted, without replying', async () => {
+      openSentence({ cats: wordState('cats', 1) })
+      mockSendMessage.mockResolvedValue({ success: true, chinese: '译文' })
+
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-chinese')
+      await waitFor(() => expect(highlightTexts('enx-hl-1')).toEqual(['Cats']))
+
+      const sendResponse = jest.fn()
+      let keepsChannelOpen: unknown
+      act(() => {
+        for (const [listener] of (
+          chrome.runtime.onMessage.addListener as jest.Mock
+        ).mock.calls) {
+          keepsChannelOpen = listener(
+            { type: 'markAcquainted', word: 'Cats' },
+            { tab: { id: PANEL_TAB_ID } },
+            sendResponse
+          )
+        }
+      })
+
+      await waitFor(() => expect(highlightTexts('enx-hl-1')).toEqual([]))
+      expect(sendResponse).not.toHaveBeenCalled()
+      expect(keepsChannelOpen).toBeUndefined()
+    })
   })
 })
