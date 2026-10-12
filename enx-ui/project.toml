@@ -1,0 +1,40 @@
+# Cloud Native Buildpacks project descriptor for enx-ui (ADR-055).
+#
+# Only the build-time environment lives here; cnb/build.sh turns these entries
+# into lifecycle platform env. The builder and run image are pinned in
+# cnb/images.env, the buildpack itself is cnb/nextjs-standalone.
+#
+# Deployment-specific values are NOT set here: the image is configured at
+# runtime (src/lib/runtimeEnv.ts), so one image runs in homelab and in
+# production. The npm registry is not set here either: each CI passes its own
+# (homelab: the in-cluster Nexus group; GitHub Actions: registry.npmjs.org).
+
+[_]
+schema-version = "0.2"
+
+# Routing constants that are identical in every deployment, a dummy Clerk
+# secret that clerkMiddleware() needs during `next build` (the real one arrives
+# at runtime), and no telemetry.
+[[io.buildpacks.build.env]]
+name = "NEXT_PUBLIC_CLERK_SIGN_IN_URL"
+value = "/sign-in"
+
+[[io.buildpacks.build.env]]
+name = "NEXT_PUBLIC_CLERK_SIGN_UP_URL"
+value = "/sign-up"
+
+[[io.buildpacks.build.env]]
+name = "NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL"
+value = "/app"
+
+[[io.buildpacks.build.env]]
+name = "NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL"
+value = "/app"
+
+[[io.buildpacks.build.env]]
+name = "CLERK_SECRET_KEY"
+value = "sk_test_build_time_placeholder_only"
+
+[[io.buildpacks.build.env]]
+name = "NEXT_TELEMETRY_DISABLED"
+value = "1"

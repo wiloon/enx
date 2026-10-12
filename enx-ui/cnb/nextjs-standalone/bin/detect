@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Pass for a pnpm Next.js app (package.json + pnpm-lock.yaml + next.config.*).
+set -euo pipefail
+[ -f package.json ] && [ -f pnpm-lock.yaml ] && ls next.config.* >/dev/null 2>&1
