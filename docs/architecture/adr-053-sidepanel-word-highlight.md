@@ -25,7 +25,7 @@ related: adr-011（主窗口 CSS Custom Highlight API 下划线，本 ADR 把同
 
 1. **侧边栏原句只渲染纯文本，一个文本节点。** 删掉 `renderSentence` 的 `<mark>` 包裹。所有词级标记都是注册到侧边栏 document 的 `CSS.highlights` 里的 Range：
    - `enx-hl-1` … `enx-hl-N`：生词下划线，分档、颜色、`::highlight()` 规则与主窗口完全一致（侧边栏是独立 document，同名不冲突）；
-   - `enx-sp-anchor`：锚点词，背景色 `brand/15`，与今天 `<mark>` 的底色相同，不加粗、无圆角。
+   - `enx-sp-anchor`：锚点词，背景色 `brand/15`，与今天 `<mark>` 的底色相同，不加粗、无圆角（后由 ADR-054 加深到 25%）。
 
    两者叠在同一个词上时，背景和下划线是不同属性，同时显示。
 
