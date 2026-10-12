@@ -42,7 +42,7 @@ enx-api 满足 ko 的前提：`CGO_ENABLED=0`（SQLite 用的是纯 Go 的 moder
 
    Tekton 用一个小 Task 从仓库读出 `ENX_GO_IMAGE` 作为 step 镜像（和 ADR-055 的 `cnb-resolve-builder` 同一个做法，实现时把它泛化成按键名读取）。GitHub Actions 直接读这个文件。
 
-4. **构建参数**放在 `enx-api/.ko.yaml`：`-trimpath`、`-tags nomsgpack`、`-ldflags "-s -w -X enx-api/version.*"`，版本信息从环境变量（`VERSION`、`GIT_COMMIT`、`GIT_BRANCH`、`BUILD_TIME`）读取，和现在的 Containerfile 一致。只构建 `linux/amd64`。
+4. **构建参数**放在 `enx-api/.ko.yaml`：`-trimpath`、`-tags nomsgpack`、`-ldflags "-s -w -X enx-api/version.*"`，版本信息从环境变量（`VERSION`、`GIT_COMMIT`、`GIT_BRANCH`、`BUILD_TIME`）读取，和现在的 Containerfile 一致。只构建 `linux/amd64`。不额外推 SBOM（`--sbom=none`），registry 里只有镜像本身。
 
 5. **两个环境只允许这些参数不同**：
 
@@ -59,6 +59,7 @@ enx-api 满足 ko 的前提：`CGO_ENABLED=0`（SQLite 用的是纯 Go 的 moder
    - **homelab**：Deployment 加 `securityContext`：`runAsUser: 1002`、`runAsGroup: 1001`、`fsGroup: 1001`、`fsGroupChangePolicy: OnRootMismatch`，由 kubelet 在挂载 `enx-api-data` 时修正属主。
    - **生产**：Ansible（`install-enx-prod.yml`）把 `/var/lib/enx-api` 改为 `1002:1001`。现在（2026-10-12）生产还没有真实用户数据，所以不需要"停服 → chown → 启动"的迁移步骤，下次跑 Ansible 时改好即可。备份脚本以 root 读取数据库，不受影响。
    - **ECDICT 可读**：homelab 的 `stardict.db` 是 `0644`、目录 `0755`，1002 可读。生产的 `/var/lib/enx-ecdict` 目录现在是 `root 0750`，1002 进不去，Ansible 要改成 `0755`（文件已经是 `0644`）。
+   - **`/tmp` 要挂一个可写目录**：基础镜像里的 `/tmp` 是 `root 0755`，1002 写不进去。SQLite 在大排序、VACUUM 时会写临时文件，所以 homelab 在 `/tmp` 挂 emptyDir，生产 `nerdctl run` 加 `--tmpfs /tmp`。
    - **ECDICT 的只读是逻辑上的约束**：程序以 `mode=ro` 打开，挂载也是只读，但不额外追求机制上的只读。homelab 的 `fsGroup` 会对 Pod 里所有卷生效，可能顺带改掉 ECDICT 文件的属组和权限位，内容不变，这是可以接受的。
 
 7. **验证**：homelab 先 `deploy=false` 构建，再部署，检查 `/ping`、登录、查词、`/metrics`（9091）。GitHub 上加一个 PR CI：用同一个脚本 `--push=false` 构建，确认生产这条路径能走通。

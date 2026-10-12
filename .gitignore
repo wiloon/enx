@@ -26,7 +26,6 @@ chrome-enx/public
 .vscode
 enx-chrome/node_modules
 enx-chrome/dist
-enx-api/build
 mock-api/node_modules
 
 # npm lock file (we use pnpm)

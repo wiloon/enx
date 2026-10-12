@@ -66,3 +66,26 @@ jobs:
       # Compiles the integration tests without running them.
       - run: go vet -tags=integration ./...
       - run: go test ./...
+
+  image:
+    name: ko image build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # ADR-056: the same enx-api/build/build.sh as homelab Tekton and the
+      # production release, in the golang image pinned in build/build.conf.
+      # Builds only; nothing is pushed.
+      - id: conf
+        run: echo "go-image=$(sed -n 's/^ENX_GO_IMAGE=//p' build/build.conf)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/enx-api-go
+          key: enx-api-go-${{ steps.conf.outputs.go-image }}-${{ hashFiles('enx-api/go.sum') }}
+          restore-keys: enx-api-go-${{ steps.conf.outputs.go-image }}-
+      - name: Build
+        env:
+          ENX_PUSH: "0"
+          VERSION: ci
+          GIT_COMMIT: ${{ github.sha }}
+          GIT_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: build/docker-build.sh ci.invalid/enx-api:ci
