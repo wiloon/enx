@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# Build a Next.js `output: 'standalone'` app and leave only what the server
+# needs at runtime:
+#
+#   layers/node      build+cache   full Node.js tarball (npm, corepack) for the build
+#   layers/pnpm      build+cache   pnpm, the version pinned in packageManager
+#   layers/store     cache         pnpm content-addressable store
+#   layers/runtime   launch+cache  just bin/node -- the only runtime layer
+#   app dir                        replaced by the contents of .next/standalone
+#
+# node_modules stays inside the app dir during the build, so Turbopack never
+# has to follow a symlink out of the project root.
+#
+# Platform env (npm/pnpm registry, NEXT_PUBLIC_*, ...) is applied to this
+# process by the lifecycle (buildpack.toml leaves clear-env at false).
+set -euo pipefail
+
+LAYERS=$CNB_LAYERS_DIR
+APP=$PWD
+
+step() { echo "---> $*"; }
+
+NODE_VERSION=$(tr -d ' \n' < .node-version)
+NODE_DIST=node-v${NODE_VERSION}-linux-x64
+
+write_layer_toml() { # name build launch cache [metadata-version]
+  cat > "$LAYERS/$1.toml" <<EOF
+[types]
+build = $2
+launch = $3
+cache = $4
+
+[metadata]
+version = "${5:-}"
+EOF
+}
+
+cached_version() { # name -> version recorded in a restored layer's metadata
+  # The lifecycle re-serialises restored layer TOML (indented keys).
+  sed -n 's/^[[:space:]]*version = "\(.*\)"/\1/p' "$LAYERS/$1.toml" 2>/dev/null | head -1
+}
+
+# --- Node.js for the build ------------------------------------------------------
+if [ "$(cached_version node)" = "$NODE_VERSION" ] && [ -x "$LAYERS/node/bin/node" ]; then
+  step "Reusing Node.js $NODE_VERSION"
+else
+  step "Downloading Node.js $NODE_VERSION"
+  rm -rf "$LAYERS/node" && mkdir -p "$LAYERS/node"
+  # Bounded: a stalled nodejs.org transfer once held a build for 17 minutes.
+  # To a file, not a pipe: a retried transfer restarts from byte 0.
+  curl -fsSL --connect-timeout 15 --max-time 180 --retry 3 --retry-all-errors \
+    -o /tmp/node.tar.gz "https://nodejs.org/dist/v${NODE_VERSION}/${NODE_DIST}.tar.gz"
+  tar -xzf /tmp/node.tar.gz -C "$LAYERS/node" --strip-components=1
+  rm -f /tmp/node.tar.gz
+fi
+write_layer_toml node true false true "$NODE_VERSION"
+export PATH="$LAYERS/node/bin:$PATH"
+
+# --- Node.js for the runtime: the binary alone ----------------------------------
+if [ "$(cached_version runtime)" = "$NODE_VERSION" ] && [ -x "$LAYERS/runtime/bin/node" ]; then
+  step "Reusing runtime layer (node $NODE_VERSION)"
+else
+  rm -rf "$LAYERS/runtime" && mkdir -p "$LAYERS/runtime/bin" "$LAYERS/runtime/env.launch"
+  cp "$LAYERS/node/bin/node" "$LAYERS/runtime/bin/node"
+  printf 'production' > "$LAYERS/runtime/env.launch/NODE_ENV.default"
+fi
+write_layer_toml runtime false true true "$NODE_VERSION"
+
+# --- pnpm, the exact version from package.json's packageManager -----------------
+# Same as the Containerfile: `npm install -g` the pinned version through the
+# configured registry. (Corepack's pnpm 12 launcher then fetches its platform
+# binary on its own and fails on the Nexus packument: no `integrity` field.)
+PNPM_SPEC=$(node -p "require('./package.json').packageManager")
+if [ "$(cached_version pnpm)" = "$PNPM_SPEC" ] && [ -x "$LAYERS/pnpm/bin/pnpm" ]; then
+  step "Reusing $PNPM_SPEC"
+else
+  step "Installing $PNPM_SPEC"
+  rm -rf "$LAYERS/pnpm" && mkdir -p "$LAYERS/pnpm"
+  npm install -g --prefix "$LAYERS/pnpm" "$PNPM_SPEC"
+fi
+write_layer_toml pnpm true false true "$PNPM_SPEC"
+export PATH="$LAYERS/pnpm/bin:$PATH"
+step "pnpm $(pnpm --version)"
+
+# --- dependencies -----------------------------------------------------------------
+mkdir -p "$LAYERS/store"
+write_layer_toml store false false true
+step "pnpm install --frozen-lockfile"
+pnpm install --frozen-lockfile --store-dir "$LAYERS/store/v"
+
+# --- build ----------------------------------------------------------------------------
+step "pnpm run build"
+pnpm run build
+
+# --- keep only the standalone server --------------------------------------------
+step "Assembling the standalone app"
+OUT=$(mktemp -d)
+mv .next/standalone/* .next/standalone/.next "$OUT"/
+cp -r .next/static "$OUT/.next/static"
+cp -r public "$OUT/public"
+# The runtime user (1002 in ubuntu-noble-run-tiny) differs from the build user:
+# let it write Next's runtime cache (image optimisation, ISR).
+mkdir -p "$OUT/.next/cache" && chmod 0777 "$OUT/.next/cache"
+find "$APP" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+mv "$OUT"/* "$OUT"/.next "$APP"/
+rmdir "$OUT"
+
+# No shell in the run image: exec node directly.
+cat > "$LAYERS/launch.toml" <<'EOF'
+[[processes]]
+type = "web"
+command = ["node", "server.js"]
+default = true
+EOF
+
+step "App dir now holds: $(ls -A "$APP" | tr '\n' ' ')"

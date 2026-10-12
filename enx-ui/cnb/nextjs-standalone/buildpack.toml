@@ -1,0 +1,17 @@
+# A minimal Cloud Native Buildpack for enx-ui: builds the Next.js standalone
+# output and ships ONLY that plus the `node` binary -- the CNB counterpart of
+# the Containerfile's multi-stage build. EXPERIMENT, see
+# docs/tasks/RUNBOOK-enx-ui-cnb-build-experiment.md ("方案 2").
+#
+# Runs on an Ubuntu 24.04 build image (heroku/builder:24's) and targets the
+# Paketo ubuntu-noble-run-tiny run image (glibc, ~11 MB, no shell).
+api = "0.10"
+
+[buildpack]
+id = "enx/nextjs-standalone"
+version = "0.1.0"
+name = "enx Next.js standalone"
+
+[[targets]]
+os = "linux"
+arch = "amd64"
