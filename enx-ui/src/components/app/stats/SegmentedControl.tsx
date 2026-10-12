@@ -19,7 +19,7 @@ export default function SegmentedControl<T extends string>({
   name: string
   label: string
   value: T
-  options: { value: T; label: string }[]
+  options: { value: T; label: string; title?: string }[]
   onChange: (value: T) => void
 }) {
   return (
@@ -33,6 +33,7 @@ export default function SegmentedControl<T extends string>({
         return (
           <label
             key={option.value}
+            title={option.title}
             className={cn(
               'cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
               selected

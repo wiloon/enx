@@ -28,6 +28,7 @@ beforeEach(() => {
     data: { id: 'doc-1' },
   })
   sessionStorage.clear()
+  localStorage.clear()
 })
 
 function paste(text: string) {
@@ -302,5 +303,60 @@ describe('persistence (ADR-022)', () => {
       screen.getAllByRole('link', { name: 'My Documents' })[0]
     ).toHaveAttribute('href', '/reader/history')
     expect(screen.getByRole('button', { name: 'New' })).toBeInTheDocument()
+  })
+})
+
+describe('reading width', () => {
+  function articleContainer() {
+    return document.querySelector('#enx-reader-article')!.parentElement!
+  }
+
+  it('defaults to Medium (896px) for a first-time reader', async () => {
+    render(<ReaderPage />)
+    paste('Some text.')
+    await clickRead()
+
+    expect(screen.getByRole('radio', { name: 'Medium' })).toBeChecked()
+    expect(articleContainer()).toHaveClass('max-w-4xl')
+  })
+
+  it('switches width and remembers the choice', async () => {
+    render(<ReaderPage />)
+    paste('Some text.')
+    await clickRead()
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Full' }))
+
+    expect(articleContainer()).toHaveClass('max-w-none')
+    expect(articleContainer()).not.toHaveClass('max-w-4xl')
+    expect(localStorage.getItem('enx.reader.width')).toBe('full')
+  })
+
+  it('restores the remembered width on the next visit', async () => {
+    localStorage.setItem('enx.reader.width', 'wide')
+    render(<ReaderPage />)
+    paste('Some text.')
+    await clickRead()
+
+    expect(screen.getByRole('radio', { name: 'Wide' })).toBeChecked()
+    expect(articleContainer()).toHaveClass('max-w-6xl')
+  })
+
+  it('ignores an unknown stored value', async () => {
+    localStorage.setItem('enx.reader.width', 'huge')
+    render(<ReaderPage />)
+    paste('Some text.')
+    await clickRead()
+
+    expect(articleContainer()).toHaveClass('max-w-4xl')
+  })
+
+  it('applies the width to the paste editor too', () => {
+    localStorage.setItem('enx.reader.width', 'narrow')
+    render(<ReaderPage />)
+
+    expect(
+      screen.getByLabelText(/paste english text/i).closest('.max-w-2xl')
+    ).not.toBeNull()
   })
 })

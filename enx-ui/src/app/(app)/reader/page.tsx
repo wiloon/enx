@@ -11,6 +11,16 @@ import { useExtensionStatus } from '@/hooks/useExtensionStatus'
 import { apiService } from '@/services/api'
 import { consumeReaderDocument } from '@/lib/readerSession'
 import { MAX_CONTENT_LENGTH } from './constants'
+import SegmentedControl from '@/components/app/stats/SegmentedControl'
+import { cn } from '@/lib/utils'
+import {
+  DEFAULT_READER_WIDTH,
+  READER_WIDTHS,
+  type ReaderWidth,
+  loadReaderWidth,
+  readerWidthClass,
+  saveReaderWidth,
+} from './width'
 
 // Split pasted plain text into paragraphs on blank lines; keep newlines
 // inside a paragraph (rendered with `white-space: pre-wrap`).
@@ -37,7 +47,22 @@ export default function ReaderPage() {
   const [saveStatus, setSaveStatus] = useState<
     'idle' | 'saving' | 'saved' | 'error'
   >('idle')
+  const [width, setWidth] = useState<ReaderWidth>(DEFAULT_READER_WIDTH)
   const extensionStatus = useExtensionStatus()
+
+  // Restore the remembered width after mount; reading localStorage during
+  // render would mismatch the server-rendered default.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setWidth(loadReaderWidth())
+  }, [])
+
+  const handleWidthChange = (next: ReaderWidth) => {
+    setWidth(next)
+    saveReaderWidth(next)
+  }
+
+  const containerClass = cn('mx-auto w-full p-6', readerWidthClass(width))
 
   const paragraphs = useMemo(
     () => (article ? toParagraphs(article) : []),
@@ -101,7 +126,7 @@ export default function ReaderPage() {
     const storeUrl = webStoreUrl()
 
     return (
-      <div className="container mx-auto max-w-2xl p-6 space-y-4">
+      <div className={cn(containerClass, 'space-y-4')}>
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/40 px-4 py-2.5">
           <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-muted-foreground">
@@ -113,7 +138,18 @@ export default function ReaderPage() {
               {saveStatus === 'error' && "Couldn't save (still readable)"}
             </span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <SegmentedControl
+              name="reader-width"
+              label="Reading width"
+              value={width}
+              options={READER_WIDTHS.map((w) => ({
+                value: w.value,
+                label: w.label,
+                title: w.hint,
+              }))}
+              onChange={handleWidthChange}
+            />
             <Link
               href="/reader/history"
               className="text-sm font-medium text-muted-foreground underline-offset-4 hover:underline"
@@ -170,7 +206,7 @@ export default function ReaderPage() {
         )}
         <article
           id="enx-reader-article"
-          className="prose max-w-none whitespace-pre-wrap text-base leading-7"
+          className="prose max-w-none whitespace-pre-wrap text-[17px] leading-7"
         >
           {paragraphs.map((p, i) => (
             <p key={i} className="mb-4">
@@ -183,7 +219,7 @@ export default function ReaderPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-2xl">
+    <div className={containerClass}>
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Reader</CardTitle>
