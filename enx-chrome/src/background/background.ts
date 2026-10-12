@@ -249,6 +249,10 @@ const GATEWAY_ERROR_STATUSES = new Set([502, 503, 504])
 export const GATEWAY_RETRY_DELAYS_MS = [500, 1500]
 export const SERVICE_UNAVAILABLE_MESSAGE =
   'Service temporarily unavailable. Please retry.'
+// Shown when fetch itself fails (offline, DNS, host unreachable). The target
+// URL and the Options hint are for developers, so they go to swlog instead.
+export const NETWORK_ERROR_MESSAGE =
+  "Couldn't connect to Catglish. Check your internet connection and try again."
 
 // API request helper
 export const makeApiRequest = async (
@@ -393,13 +397,14 @@ export const makeApiRequest = async (
       error instanceof TypeError &&
       error.message.includes('Failed to fetch')
     ) {
-      // Surface the target URL: "internet connection" is usually wrong -- more
-      // often the Lab API host is unreachable or Options points at a dead URL.
+      // In development the cause is usually the Lab API host being down or
+      // Options pointing at a dead URL; keep that detail in the log.
       const apiUrl = await getApiBaseUrl().catch(() => '(unknown)')
-      return {
-        success: false,
-        error: `Unable to reach translation API at ${apiUrl}. Check Options → Active API, and that the host is reachable.`,
-      }
+      swlog(
+        `network failure reaching ${apiUrl}${endpoint} -- check Options → Active API`,
+        'warn'
+      )
+      return { success: false, error: NETWORK_ERROR_MESSAGE }
     }
 
     return {

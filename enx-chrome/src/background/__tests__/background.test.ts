@@ -53,6 +53,7 @@ import { createClerkClient } from '@clerk/chrome-extension/client'
 import { getApiBaseUrl } from '@/config/env'
 import {
   makeApiRequest,
+  NETWORK_ERROR_MESSAGE,
   handleGetWords,
   __resetClerkClientCacheForTests,
   __resetParagraphMethodForTests,
@@ -1530,6 +1531,15 @@ describe('handleGetWords (paragraph-init method)', () => {
     expect((await handleGetWords('hello')).success).toBe(false)
     await handleGetWords('world')
     expect(calls().map(c => c.method)).toEqual(['QUERY', 'POST', 'QUERY'])
+  })
+
+  it('tells the reader to check their connection when the API is unreachable', async () => {
+    ;(global.fetch as jest.Mock)
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+    const result = await handleGetWords('hello')
+    expect(result).toEqual({ success: false, error: NETWORK_ERROR_MESSAGE })
   })
 
   it.each([
