@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-12
 related: adr-055（enx-ui 改用 CNB：一个构建脚本、版本固定在一处，本 ADR 沿用同一套做法）、adr-031（生产部署拓扑：同一镜像跑 homelab 和生产，§6a 版本号规则）、adr-040（服务指标，9091 端口）
 ---
@@ -25,7 +25,7 @@ enx-api 满足 ko 的前提：`CGO_ENABLED=0`（SQLite 用的是纯 Go 的 moder
 
 - **继续用 Kaniko + Containerfile**：上游已归档，且慢。否决。
 - **Containerfile + BuildKit**：用 `RUN --mount=type=cache` 缓存 Go 的构建缓存，速度能接近 ko。但要在 homelab 常驻 `buildkitd`，还要维护多阶段 Containerfile 和 `deplist` 这类绕缓存的技巧。否决。
-- **CNB（Paketo Go buildpack）**：能构建，但要维护 builder、run image 和 buildpack 三样东西，换来的东西 ko 也能给（非 root、无特权）。对 Go 来说 ko 更直接。否决。
+- **CNB（Paketo Go buildpack）**：能构建，好处是和 enx-ui 共用同一套 CNB 流水线（builder、run image 这套维护成本 enx-ui 已经在付了）。否决的原因：Go 由 Paketo 的 go-dist buildpack 提供，只能用 Paketo 发布过的版本，升级 Go 要等它跟进；而 ko 用的是我们自己固定的 golang 镜像。CNB 的 lifecycle 有多个阶段，builder 镜像几百 MB，比 ko 重。如果为了摆脱 Paketo 的版本限制而自写 Go buildpack（像 enx-ui 那样），做出来的东西基本就是 ko。
 - **ko 的默认基础镜像 `cgr.dev/chainguard/static`**：约 0.6 MB，自带 CA 证书和时区数据，运行用户 65532。homelab 的 Nexus 有 cgr.dev 代理（`cgr-proxy`，集群内 8085 端口；ko 自己拉基础镜像，要显式指向它），技术上可用。没选它：Chainguard 免费版只提供 `latest` 一个 tag，只能按 digest 固定；运行用户也和 enx-ui 的镜像不同。改用 Paketo 的 `ubuntu-noble-run-static`：和 enx-ui 的 run image 同一系列、同一个运行用户（1002:1001），走现有的 Nexus Docker Hub 代理。两者大小相当，以后要换成本很低。
 - **生产直接用 `ko-build/setup-ko` action**：ko 和 Go 的版本会由 action 和 runner 决定，与 homelab 不一致。否决，两边都在 `build.conf` 固定的 golang 镜像里运行同一个脚本。
 
@@ -57,12 +57,13 @@ enx-api 满足 ko 的前提：`CGO_ENABLED=0`（SQLite 用的是纯 Go 的 moder
 
 6. **运行用户从 root 换成 1002:1001**，数据目录的属主要跟着迁移。enx-api 运行时只写 `/var/lib/enx-api`（SQLite `enx.db` 及其 WAL 文件），ECDICT 以只读方式挂载：
    - **homelab**：Deployment 加 `securityContext`：`runAsUser: 1002`、`runAsGroup: 1001`、`fsGroup: 1001`、`fsGroupChangePolicy: OnRootMismatch`，由 kubelet 在挂载 `enx-api-data` 时修正属主。
-   - **生产**：Ansible（`install-enx-prod.yml`）在首次 ko 发布前把 `/var/lib/enx-api` 改为 `1002:1001`。备份脚本以 root 读取数据库，不受影响。
-   - 两边都要确认 ECDICT 文件对 1002 可读。
+   - **生产**：Ansible（`install-enx-prod.yml`）把 `/var/lib/enx-api` 改为 `1002:1001`。现在（2026-10-12）生产还没有真实用户数据，所以不需要"停服 → chown → 启动"的迁移步骤，下次跑 Ansible 时改好即可。备份脚本以 root 读取数据库，不受影响。
+   - **ECDICT 可读**：homelab 的 `stardict.db` 是 `0644`、目录 `0755`，1002 可读。生产的 `/var/lib/enx-ecdict` 目录现在是 `root 0750`，1002 进不去，Ansible 要改成 `0755`（文件已经是 `0644`）。
+   - **ECDICT 的只读是逻辑上的约束**：程序以 `mode=ro` 打开，挂载也是只读，但不额外追求机制上的只读。homelab 的 `fsGroup` 会对 Pod 里所有卷生效，可能顺带改掉 ECDICT 文件的属组和权限位，内容不变，这是可以接受的。
 
 7. **验证**：homelab 先 `deploy=false` 构建，再部署，检查 `/ping`、登录、查词、`/metrics`（9091）。GitHub 上加一个 PR CI：用同一个脚本 `--push=false` 构建，确认生产这条路径能走通。
 
-8. **切换顺序**：homelab 的 `build-enx-api` Pipeline 直接换成 ko，`task deploy:homelab:api` 用法不变。`enx-api/Containerfile` 保留到生产第一次用 ko 发布成功之后再删除。
+8. **切换顺序**：homelab 的 `build-enx-api` Pipeline 和生产的发布 workflow（`deploy-prod.yml` 的 `build-api`）在同一次改动里都换成 ko，`task deploy:homelab:api` 用法不变。生产的第一次 ko 发布就是 v0.1.0；发布成功后删除 `enx-api/Containerfile`。
 
 9. **范围**：只管 enx-api。enx-api-java 和 homelab 上其他还在用 Kaniko 的项目不在此列。
 
@@ -71,7 +72,7 @@ enx-api 满足 ko 的前提：`CGO_ENABLED=0`（SQLite 用的是纯 Go 的 moder
 - **预计好处**（估算，未实测）：homelab 只改代码时构建从约 10 分钟降到 2 分钟以内（clone 约 10 秒、ko 构建 30–60 秒、推送约 10 秒、gitops 约 25 秒）；镜像比现在的 alpine 版小约 4 MB；不需要特权，以非 root 运行；homelab 和生产的构建定义完全相同。
 - **代价**：
   - 运行用户和数据目录属主的迁移，两边各要改一处，生产只有第一次需要；
-  - 镜像里没有 shell，排查问题要用 `kubectl debug` 或临时 pod。`cmd/reset-password` 现在本来就不在镜像里，不受影响；
+  - 镜像里没有 shell，排查问题要挂一个临时容器：homelab 用 `kubectl debug -it <pod> --image=busybox --target=enx-api`，生产在主机上用 nerdctl 起一个共享 PID/网络/卷的 busybox 容器。`cmd/reset-password` 现在本来就不在镜像里，不受影响；
   - homelab 多一个长期存在的 Go 缓存 PVC。它是 RWO 的，同一时间只能有一个 enx-api 构建；现在也是串行构建，影响不大。
 - **升级流程**：
   - Go：改 `go.mod` 的同时改 `build.conf` 的 `ENX_GO_IMAGE`；
