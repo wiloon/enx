@@ -4,7 +4,7 @@
 # The single build entry point for every environment: homelab Tekton
 # (w10n-config task-cnb-build.yaml) and GitHub Actions (deploy-prod.yml,
 # enx-ui-ci.yml) both run THIS script inside ENX_CNB_BUILDER_IMAGE from
-# cnb/images.env. Environments differ only in the ENX_* inputs below.
+# cnb/images.conf. Environments differ only in the ENX_* inputs below.
 #
 # Required:
 #   ENX_APP_DIR       enx-ui source dir, writable by the CNB user (uid 1000)
@@ -25,8 +25,8 @@ set -euo pipefail
 
 : "${ENX_APP_DIR:?}" "${ENX_IMAGE:?}"
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-# shellcheck source=images.env
-. "$HERE/images.env"
+# shellcheck source=images.conf
+. "$HERE/images.conf"
 
 WORK=${ENX_WORK_DIR:-/tmp/enx-cnb}
 LAYERS=$WORK/layers

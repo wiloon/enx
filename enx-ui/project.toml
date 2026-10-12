@@ -2,7 +2,7 @@
 #
 # Only the build-time environment lives here; cnb/build.sh turns these entries
 # into lifecycle platform env. The builder and run image are pinned in
-# cnb/images.env, the buildpack itself is cnb/nextjs-standalone.
+# cnb/images.conf, the buildpack itself is cnb/nextjs-standalone.
 #
 # Deployment-specific values are NOT set here: the image is configured at
 # runtime (src/lib/runtimeEnv.ts), so one image runs in homelab and in
