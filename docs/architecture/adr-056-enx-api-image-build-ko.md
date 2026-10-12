@@ -26,7 +26,7 @@ enx-api 满足 ko 的前提：`CGO_ENABLED=0`（SQLite 用的是纯 Go 的 moder
 - **继续用 Kaniko + Containerfile**：上游已归档，且慢。否决。
 - **Containerfile + BuildKit**：用 `RUN --mount=type=cache` 缓存 Go 的构建缓存，速度能接近 ko。但要在 homelab 常驻 `buildkitd`，还要维护多阶段 Containerfile 和 `deplist` 这类绕缓存的技巧。否决。
 - **CNB（Paketo Go buildpack）**：能构建，但要维护 builder、run image 和 buildpack 三样东西，换来的东西 ko 也能给（非 root、无特权）。对 Go 来说 ko 更直接。否决。
-- **ko 用默认基础镜像 `cgr.dev/chainguard/static`**：homelab 的 Nexus 没有 cgr.dev 的代理（ko 自己拉基础镜像，节点上的 containerd 镜像加速对它不起作用），要走公网。否决，改用 Paketo 的 `ubuntu-noble-run-static`：和 enx-ui 的 run image 同一系列，能通过现有的 Nexus Docker Hub 代理拉取。
+- **ko 的默认基础镜像 `cgr.dev/chainguard/static`**：约 0.6 MB，自带 CA 证书和时区数据，运行用户 65532。homelab 的 Nexus 有 cgr.dev 代理（`cgr-proxy`，集群内 8085 端口；ko 自己拉基础镜像，要显式指向它），技术上可用。没选它：Chainguard 免费版只提供 `latest` 一个 tag，只能按 digest 固定；运行用户也和 enx-ui 的镜像不同。改用 Paketo 的 `ubuntu-noble-run-static`：和 enx-ui 的 run image 同一系列、同一个运行用户（1002:1001），走现有的 Nexus Docker Hub 代理。两者大小相当，以后要换成本很低。
 - **生产直接用 `ko-build/setup-ko` action**：ko 和 Go 的版本会由 action 和 runner 决定，与 homelab 不一致。否决，两边都在 `build.conf` 固定的 golang 镜像里运行同一个脚本。
 
 ## Decision
