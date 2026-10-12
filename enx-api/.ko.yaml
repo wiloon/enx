@@ -1,0 +1,22 @@
+# ko build settings for enx-api (ADR-056). Run through build/build.sh, which
+# supplies the base image (build/build.conf) and the version env vars below.
+defaultPlatforms:
+  - linux/amd64
+
+builds:
+  - id: enx-api
+    main: .
+    env:
+      - CGO_ENABLED=0
+    # -trimpath and -s -w shrink the binary and make builds reproducible.
+    # `nomsgpack` drops gin's MessagePack binding (github.com/ugorji/go/codec,
+    # the slowest package to compile); enx-api never binds or renders msgpack.
+    flags:
+      - -trimpath
+      - -tags=nomsgpack
+    ldflags:
+      - -s -w
+      - -X enx-api/version.Version={{.Env.VERSION}}
+      - -X enx-api/version.GitCommit={{.Env.GIT_COMMIT}}
+      - -X enx-api/version.GitBranch={{.Env.GIT_BRANCH}}
+      - -X enx-api/version.BuildTime={{.Env.BUILD_TIME}}

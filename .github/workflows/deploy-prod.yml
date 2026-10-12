@@ -85,34 +85,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-buildx-action@v3
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # Writes the ECR credentials to ~/.docker/config.json, which ko reads.
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
+      # ADR-056: Go build and module caches, keyed on the pinned golang image
+      # and go.sum, so a code-only release recompiles just enx-api.
+      - id: conf
+        run: echo "go-image=$(sed -n 's/^ENX_GO_IMAGE=//p' enx-api/build/build.conf)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
         with:
-          context: .
-          file: enx-api/Containerfile
-          push: true
+          path: ~/.cache/enx-api-go
+          key: enx-api-go-${{ steps.conf.outputs.go-image }}-${{ hashFiles('enx-api/go.sum') }}
+          restore-keys: enx-api-go-${{ steps.conf.outputs.go-image }}-
+
+      # The same enx-api/build/build.sh as homelab Tekton, in the golang image
+      # pinned in enx-api/build/build.conf. ko pushes the image itself.
+      - name: Build and push
+        env:
           # Public proxy: the in-cluster Nexus the homelab build uses is not
           # reachable from a GitHub runner.
-          build-args: |
-            GOPROXY=https://proxy.golang.org,direct
-            VERSION=${{ needs.version.outputs.tag }}
-            GIT_COMMIT=${{ github.sha }}
-            GIT_BRANCH=${{ github.ref_name }}
-          tags: |
-            ${{ env.API_IMAGE }}:${{ needs.version.outputs.tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          GOPROXY: https://proxy.golang.org,direct
+          VERSION: ${{ needs.version.outputs.tag }}
+          GIT_COMMIT: ${{ github.sha }}
+          GIT_BRANCH: ${{ github.ref_name }}
+        run: enx-api/build/docker-build.sh "$API_IMAGE:${{ needs.version.outputs.tag }}"
 
   # ---------------------------------------------------------------------
   # enx-ui: environment-agnostic since the runtime-config change -- the
