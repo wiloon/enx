@@ -1,5 +1,13 @@
 import { WordData } from '@/types'
 import { nearestElement } from '@/lib/rangeUtils'
+import {
+  HIGHLIGHT_BUCKET_COLORS,
+  HIGHLIGHT_NAME_PREFIX,
+  REVIEW_BUCKET_COUNT,
+  isReviewable,
+  reviewBucket,
+  tokenizeWords,
+} from '@/lib/wordHighlight'
 
 // Single source of truth for article extraction / word highlighting.
 // content.tsx and its tests import this instead of keeping their own copies.
@@ -41,28 +49,11 @@ export class WordProcessor {
     '[data-enx-ui]',
   ]
 
-  // CSS Custom Highlight API registry names, one per review stage
-  // (ADR-011 Decision 1 / E1). The underline colour for each stage lives
-  // here too so the count and the palette stay in one place -- the content
-  // script generates the ::highlight() rules from HIGHLIGHT_BUCKET_COLORS.
-  //
-  // An ordinal ramp: one hue, lightness rising monotonically, so a reader can
-  // tell stage order from the colour alone. The previous red/orange/yellow/
-  // green/blue scale could not be ordered by eye, and it spent five hues on a
-  // single encoding, leaving nothing of the wheel for the rest of the UI.
-  // Violet is deliberately none of link-blue, marker-yellow, success-green or
-  // error-red, so an underline never impersonates one of those.
-  // Literal colours, not tokens: these rules are injected into the host page's
-  // document, which has none of our custom properties.
-  static readonly HIGHLIGHT_NAME_PREFIX = 'enx-hl-'
-  static readonly HIGHLIGHT_BUCKET_COLORS: readonly string[] = [
-    'oklch(0.45 0.13 305)', // 1 - very new, most prominent
-    'oklch(0.53 0.13 305)', // 2
-    'oklch(0.61 0.12 305)', // 3
-    'oklch(0.69 0.1 305)', // 4
-    'oklch(0.77 0.08 305)', // 5 - nearly known, faintest
-  ]
-  static readonly REVIEW_BUCKET_COUNT = this.HIGHLIGHT_BUCKET_COLORS.length
+  // Review-stage highlight names and palette (ADR-011 Decision 1 / E1),
+  // shared with the Side Panel via wordHighlight.ts (ADR-053).
+  static readonly HIGHLIGHT_NAME_PREFIX = HIGHLIGHT_NAME_PREFIX
+  static readonly HIGHLIGHT_BUCKET_COLORS = HIGHLIGHT_BUCKET_COLORS
+  static readonly REVIEW_BUCKET_COUNT = REVIEW_BUCKET_COUNT
 
   // Marks the sentence a word-click just opened the sentence panel for
   // (ADR-025), so the user can find it again after returning from the side
@@ -71,12 +62,6 @@ export class WordProcessor {
   // change on practically any lookup), which would silently clear this one
   // out from under an unrelated highlight refresh if it shared the prefix.
   static readonly ACTIVE_SENTENCE_HIGHLIGHT_NAME = 'enx-active-sentence'
-
-  // One shared word segmenter -- construction isn't free and tokenizeWords
-  // runs once per text node.
-  private static readonly wordSegmenter = new Intl.Segmenter('en', {
-    granularity: 'word',
-  })
 
   static extractWords(text: string): string[] {
     if (!text || text.trim() === '') return []
@@ -100,33 +85,12 @@ export class WordProcessor {
       .map(word => word.toLowerCase())
   }
 
-  // Whether a word is still worth reviewing (and so worth highlighting).
-  // False for words the user has marked acquainted, words tagged as a known
-  // part of speech, and words never actually looked up (LoadCount 0).
   static isReviewable(wordData: WordData): boolean {
-    return (
-      wordData.AlreadyAcquainted !== 1 &&
-      wordData.WordType !== 1 &&
-      wordData.LoadCount !== 0
-    )
+    return isReviewable(wordData)
   }
 
-  // Which review-stage bucket a word belongs to (1 = most recently learned,
-  // REVIEW_BUCKET_COUNT = nearly known), or null when it shouldn't be
-  // highlighted at all. Replaces the ~31-step continuous hue with a handful
-  // of stages (ADR-011 E1); the "don't highlight" sentinel disappears
-  // because those words simply produce no Range. Boundaries are a first
-  // pass, tuned later against real articles -- keep the count of branches
-  // equal to REVIEW_BUCKET_COUNT.
   static reviewBucket(wordData: WordData): number | null {
-    if (!this.isReviewable(wordData)) return null
-
-    const count = wordData.LoadCount
-    if (count <= 2) return 1
-    if (count <= 5) return 2
-    if (count <= 10) return 3
-    if (count <= 18) return 4
-    return this.REVIEW_BUCKET_COUNT
+    return reviewBucket(wordData)
   }
 
   // The eligible-text-node filter, shared by word extraction and highlight
@@ -182,44 +146,6 @@ export class WordProcessor {
   // underline is painted over Ranges, not written as elements.
   // ---------------------------------------------------------------------------
 
-  private static readonly ALPHA_SEGMENT = /^[A-Za-z]+$/
-
-  // Splits `text` into word tokens with their offsets, aligned with the keys
-  // extractWords() produces (which is what wordDict is keyed by). ICU word
-  // segmentation is the base; two adjustments make the tokens line up:
-  //   - drop segments with no ASCII letter (numbers, symbols) -- extractWords
-  //     rejects them too;
-  //   - rejoin `-<word>` runs so "well-known" / "state-of-the-art" stay whole
-  //     (ICU splits on the hyphen), but ONLY across letter-only segments, so
-  //     "COVID-19" / "Catch-22" tokenize to "covid" / "catch" -- which is
-  //     exactly what extractWords' letter-bounded pattern yields.
-  private static tokenizeWords(
-    text: string
-  ): { word: string; start: number; end: number }[] {
-    if (!text) return []
-    const segments = [...this.wordSegmenter.segment(text)]
-    const tokens: { word: string; start: number; end: number }[] = []
-
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i]
-      if (!seg.isWordLike || !/[a-zA-Z]/.test(seg.segment)) continue
-
-      let end = seg.index + seg.segment.length
-      while (
-        segments[i + 1]?.segment === '-' &&
-        segments[i + 1].index === end &&
-        segments[i + 2]?.index === end + 1 &&
-        this.ALPHA_SEGMENT.test(segments[i + 2].segment)
-      ) {
-        end = segments[i + 2].index + segments[i + 2].segment.length
-        i += 2
-      }
-
-      tokens.push({ word: text.slice(seg.index, end), start: seg.index, end })
-    }
-    return tokens
-  }
-
   // A DOM Range spanning `token` within `node` (a text node).
   private static rangeForToken(
     node: Node,
@@ -240,7 +166,7 @@ export class WordProcessor {
     if (node.nodeType !== Node.TEXT_NODE) return null
     if (this.isInExcludedSubtree(node)) return null
 
-    const token = this.tokenizeWords(node.textContent || '').find(
+    const token = tokenizeWords(node.textContent || '').find(
       t => offset >= t.start && offset <= t.end
     )
     return token ? this.rangeForToken(node, token) : null
@@ -257,7 +183,7 @@ export class WordProcessor {
     if (Object.keys(wordDict).length === 0) return buckets
 
     for (const node of textNodes) {
-      for (const token of this.tokenizeWords(node.textContent || '')) {
+      for (const token of tokenizeWords(node.textContent || '')) {
         const data = wordDict[token.word.toLowerCase()]
         if (!data) continue
         const bucket = this.reviewBucket(data)

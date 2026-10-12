@@ -29,6 +29,7 @@ jest.mock('@/services/api', () => ({
 import { sendMessageToBackground } from '@/services/api'
 import { BackgroundResponse } from '@/types'
 import { latestPageWordKey, pendingSentenceKey } from '@/lib/sidePanel'
+import { WORD_HIGHLIGHT_KEY } from '@/config/preferences'
 import SidePanel from '../SidePanel'
 
 // ADR-050: the panel belongs to the tab named in its URL and only reads that
@@ -84,6 +85,11 @@ const selectWord = (
   fireEvent.mouseUp(el)
 }
 
+// The text of every Range registered under a CSS.highlights name (ADR-053:
+// the sentence original's marks are Highlight API Ranges, not elements).
+const highlightTexts = (name: string): string[] =>
+  [...(CSS.highlights.get(name) ?? [])].map(range => range.toString())
+
 type StorageChangeListener = (
   changes: { [key: string]: chrome.storage.StorageChange },
   areaName: string
@@ -103,7 +109,10 @@ describe('SidePanel', () => {
     jest.clearAllMocks()
     window.history.replaceState({}, '', `/sidepanel.html?tabId=${PANEL_TAB_ID}`)
     storageChangeListeners = []
+    CSS.highlights.clear()
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
+    ;(chrome.storage.local.get as jest.Mock).mockResolvedValue({})
+    ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
     ;(chrome.storage.onChanged.addListener as jest.Mock).mockImplementation(
       (listener: StorageChangeListener) => {
         storageChangeListeners.push(listener)
@@ -1511,11 +1520,9 @@ describe('SidePanel', () => {
       render(<SidePanel />)
 
       const sentence = await screen.findByTestId('sidepanel-sentence')
-      const highlighted = Array.from(
-        sentence.querySelectorAll('[data-clicked-word="true"]')
-      )
-      expect(highlighted).toHaveLength(2)
-      highlighted.forEach(el => expect(el).toHaveTextContent('great'))
+      expect(highlightTexts('enx-sp-anchor')).toEqual(['great', 'great'])
+      // ADR-053 Decision 1: the original stays one plain text node.
+      expect(sentence.childNodes).toHaveLength(1)
     })
 
     // The dictionary lookup is optional context for the AI call, not a
@@ -1591,8 +1598,7 @@ describe('SidePanel', () => {
       expect(
         screen.queryByTestId('sidepanel-sentence-words')
       ).not.toBeInTheDocument()
-      const sentence = screen.getByTestId('sidepanel-sentence')
-      expect(sentence.querySelector('[data-clicked-word]')).toBeNull()
+      expect(highlightTexts('enx-sp-anchor')).toEqual([])
     })
   })
 
@@ -1877,6 +1883,188 @@ describe('SidePanel', () => {
           'sidepanel-sentence-words'
         )
       ).not.toBeInTheDocument()
+    })
+  })
+
+  describe('review-stage underlines in the sentence original (ADR-053)', () => {
+    const wordState = (english: string, loadCount: number) => ({
+      Key: english,
+      English: english,
+      Pronunciation: '',
+      Chinese: '',
+      LoadCount: loadCount,
+      AlreadyAcquainted: 0,
+      WordType: 0,
+    })
+
+    const openSentence = (wordStates?: Record<string, unknown>) => {
+      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+        [PENDING_SENTENCE_STORAGE_KEY]: {
+          sentence: SENTENCE,
+          word: '',
+          sourceUrl: '',
+          createdAt: 1,
+          wordStates,
+        },
+      })
+    }
+
+    it('underlines the words the page already had looked up', async () => {
+      openSentence({ cats: wordState('cats', 1), pets: wordState('pets', 7) })
+      mockSendMessage.mockResolvedValue({ success: true, chinese: '译文' })
+
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-sentence')
+
+      expect(highlightTexts('enx-hl-1')).toEqual(['Cats'])
+      expect(highlightTexts('enx-hl-3')).toEqual(['pets'])
+    })
+
+    const lookUpGreat = () => {
+      mockSendMessage.mockImplementation(async (message: { type: string }) => {
+        if (message.type === 'getOneWord') {
+          return { success: true, ecp: wordState('great', 1) }
+        }
+        return { success: true, chinese: '译文' }
+      })
+    }
+
+    it('underlines a word once it is looked up in the sentence', async () => {
+      openSentence()
+      lookUpGreat()
+
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-chinese')
+      selectWord('great')
+
+      await waitFor(() => expect(highlightTexts('enx-hl-1')).toEqual(['great']))
+    })
+
+    it('tells the page to underline a word looked up in the sentence', async () => {
+      openSentence()
+      lookUpGreat()
+
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-chinese')
+      selectWord('great')
+
+      await waitFor(() =>
+        expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(PANEL_TAB_ID, {
+          action: 'panelWordLookup',
+          word: 'great',
+          ecp: wordState('great', 1),
+        })
+      )
+    })
+
+    it('neither underlines nor tells the page about a phrase lookup', async () => {
+      const user = userEvent.setup()
+      openSentence()
+      lookUpGreat()
+
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-chinese')
+      selectWord('great pets')
+      await user.click(await screen.findByTestId('sidepanel-phrase-confirm'))
+      await screen.findByTestId('sidepanel-card-great pets')
+
+      expect(highlightTexts('enx-hl-1')).toEqual([])
+      expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('underlines a word the page looked up while the panel is open', async () => {
+      openSentence()
+      mockSendMessage.mockResolvedValue({ success: true, chinese: '译文' })
+
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-chinese')
+      act(() => {
+        fireStorageChange(
+          {
+            [LATEST_PAGE_WORD_STORAGE_KEY]: {
+              newValue: {
+                word: 'pets',
+                ecp: wordState('pets', 1),
+                createdAt: 2,
+              },
+            },
+          },
+          'session'
+        )
+      })
+
+      await waitFor(() => expect(highlightTexts('enx-hl-1')).toEqual(['pets']))
+    })
+
+    it('keeps the anchor but drops the underlines when the highlight preference is off', async () => {
+      ;(chrome.storage.local.get as jest.Mock).mockResolvedValue({
+        [WORD_HIGHLIGHT_KEY]: false,
+      })
+      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+        [PENDING_SENTENCE_STORAGE_KEY]: {
+          sentence: SENTENCE,
+          word: 'great',
+          sourceUrl: '',
+          createdAt: 1,
+          wordStates: { cats: wordState('cats', 1) },
+        },
+      })
+      mockSendMessage.mockResolvedValue({ success: true, chinese: '译文' })
+
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-chinese')
+
+      await waitFor(() =>
+        expect(highlightTexts('enx-sp-anchor')).toEqual(['great'])
+      )
+      expect(highlightTexts('enx-hl-1')).toEqual([])
+    })
+
+    it('applies a highlight preference flip without a reload', async () => {
+      openSentence({ cats: wordState('cats', 1) })
+      mockSendMessage.mockResolvedValue({ success: true, chinese: '译文' })
+
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-chinese')
+      await waitFor(() => expect(highlightTexts('enx-hl-1')).toEqual(['Cats']))
+
+      act(() => {
+        fireStorageChange(
+          { [WORD_HIGHLIGHT_KEY]: { oldValue: true, newValue: false } },
+          'local'
+        )
+      })
+
+      await waitFor(() => expect(highlightTexts('enx-hl-1')).toEqual([]))
+    })
+
+    // ADR-053 optimistic broadcast: the page's markAcquainted message reaches
+    // every extension page; the panel only listens, background alone replies.
+    it('drops the underline as soon as the page marks the word acquainted, without replying', async () => {
+      openSentence({ cats: wordState('cats', 1) })
+      mockSendMessage.mockResolvedValue({ success: true, chinese: '译文' })
+
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-chinese')
+      await waitFor(() => expect(highlightTexts('enx-hl-1')).toEqual(['Cats']))
+
+      const sendResponse = jest.fn()
+      let keepsChannelOpen: unknown
+      act(() => {
+        for (const [listener] of (
+          chrome.runtime.onMessage.addListener as jest.Mock
+        ).mock.calls) {
+          keepsChannelOpen = listener(
+            { type: 'markAcquainted', word: 'Cats' },
+            { tab: { id: PANEL_TAB_ID } },
+            sendResponse
+          )
+        }
+      })
+
+      await waitFor(() => expect(highlightTexts('enx-hl-1')).toEqual([]))
+      expect(sendResponse).not.toHaveBeenCalled()
+      expect(keepsChannelOpen).toBeUndefined()
     })
   })
 })
