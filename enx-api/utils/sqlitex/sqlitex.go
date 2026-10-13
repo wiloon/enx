@@ -1,6 +1,7 @@
 package sqlitex
 
 import (
+	"enx-api/ecdict"
 	zapLog "enx-api/utils/logger"
 	"log"
 	"os"
@@ -202,6 +203,38 @@ func InitWithLogLevel(dbPath, level string) {
 	} else if result.RowsAffected > 0 {
 		zapLog.Infof("backfilled updated_at for %d existing reader_documents rows", result.RowsAffected)
 	}
+
+	if err := cleanCachedEcdictPhonetics(); err != nil {
+		zapLog.Errorf("failed to repair cached ECDICT phonetics: %v", err)
+	}
+}
+
+// cleanCachedEcdictPhonetics applies ecdict.CleanPhonetic to the words rows
+// cached before that repair existed, which still carry ECDICT's corrupted
+// long schwa (`ju:ni'v\\:sәli`). Only rows containing a backslash are read,
+// so once they are repaired this is a single query that finds nothing.
+func cleanCachedEcdictPhonetics() error {
+	var rows []Word
+	if err := DB.Select("id", "pronunciation").
+		Where("instr(pronunciation, ?) > 0", `\`).Find(&rows).Error; err != nil {
+		return err
+	}
+	fixed := 0
+	for _, w := range rows {
+		clean := ecdict.CleanPhonetic(*w.Pronunciation)
+		if clean == *w.Pronunciation {
+			continue
+		}
+		if err := DB.Model(&Word{}).Where("id = ?", w.Id).
+			UpdateColumn("pronunciation", clean).Error; err != nil {
+			return err
+		}
+		fixed++
+	}
+	if fixed > 0 {
+		zapLog.Infof("repaired the ECDICT phonetic of %d cached words", fixed)
+	}
+	return nil
 }
 
 // repairUserDictsTableDDLIfNeeded rebuilds user_dicts without the inline "--"

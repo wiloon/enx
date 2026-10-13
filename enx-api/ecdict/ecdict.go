@@ -153,7 +153,7 @@ func Find(ctx context.Context, word string) (row StardictRow, matchedBy string, 
 		return StardictRow{
 			Word:        res.entry.Word,
 			Sw:          res.entry.Sw,
-			Phonetic:    res.entry.Phonetic,
+			Phonetic:    CleanPhonetic(res.entry.Phonetic),
 			Translation: res.entry.Translation,
 			Exchange:    res.entry.Exchange,
 		}, res.matchedBy, nil
