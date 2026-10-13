@@ -105,14 +105,14 @@ export default function WordPopover({
   return (
     <div
       ref={rootRef}
-      className="bg-background rounded-lg shadow-xl border border-border p-3 w-full outline-hidden"
+      className="bg-background rounded-lg shadow-xl border border-border p-3 w-full outline-hidden flex flex-col min-h-0"
       tabIndex={-1}
       onKeyDown={handleKeyDown}
     >
       {/* Header: word + phonetic + play + query count all on one line */}
       <div
         data-testid="word-popover-header"
-        className="flex justify-between items-center gap-2 mb-2"
+        className="flex justify-between items-center gap-2 mb-2 shrink-0"
       >
         <div className="flex flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
           <h3 className="text-lg font-bold text-foreground leading-tight">
@@ -160,7 +160,12 @@ export default function WordPopover({
         </button>
       </div>
 
-      <div data-testid="word-popover-content">
+      {/* Only this part scrolls when the overlay is short of room; the
+          header above and the actions below always stay in view. */}
+      <div
+        data-testid="word-popover-content"
+        className="min-h-0 overflow-y-auto"
+      >
         {/* Loading state */}
         {isTranslating && (
           <div className="space-y-3">
@@ -220,8 +225,10 @@ export default function WordPopover({
             )}
           </div>
         )}
+      </div>
 
-        {/* Action buttons */}
+      {/* Action buttons */}
+      <div className="shrink-0">
         <div className="flex justify-between items-center mt-3 pt-2 border-t border-border">
           <div className="flex items-center gap-3">
             <a
