@@ -1502,6 +1502,160 @@ describe('SidePanel', () => {
       )
     })
 
+    // ADR-023 addendum: "click a word on the page, then 整句翻译 from its
+    // popover" used to leave two cards for the same word side by side -- the
+    // top-level page-lookup card and the sentence's nested anchor card.
+    describe('absorbing the page-lookup card just before it', () => {
+      const pageLookup = (word: string, chinese: string, createdAt: number) =>
+        act(() => {
+          fireStorageChange(
+            {
+              [LATEST_PAGE_WORD_STORAGE_KEY]: {
+                newValue: {
+                  word,
+                  ecp: {
+                    English: word,
+                    Chinese: chinese,
+                    Pronunciation: `/${word}/`,
+                    LoadCount: 3,
+                  },
+                  createdAt,
+                },
+              },
+            },
+            'session'
+          )
+        })
+
+      const openSentenceFrom = (word: string, createdAt: number) =>
+        act(() => {
+          fireStorageChange(
+            {
+              [PENDING_SENTENCE_STORAGE_KEY]: {
+                newValue: {
+                  sentence: SENTENCE,
+                  word,
+                  sourceUrl: '',
+                  createdAt,
+                },
+              },
+            },
+            'session'
+          )
+        })
+
+      beforeEach(() => {
+        mockSendMessage.mockImplementation(
+          async (message: { type: string; word?: string }) => {
+            if (message.type === 'translateSentence') {
+              return { success: true, chinese: '猫是很棒的宠物。' }
+            }
+            if (message.type === 'getOneWord') {
+              return {
+                success: true,
+                ecp: {
+                  English: message.word,
+                  Chinese: `${message.word}释义(重新查询)`,
+                  Pronunciation: `/${message.word}/`,
+                },
+              }
+            }
+            if (message.type === 'translateWordInContext') {
+              return { success: true, chinese: `${message.word}在这句里的意思` }
+            }
+            return { success: false }
+          }
+        )
+      })
+
+      it('moves the card into the sentence instead of leaving a duplicate on top', async () => {
+        render(<SidePanel />)
+        await screen.findByTestId('sidepanel-empty-state')
+
+        pageLookup('great', 'great页面释义', 1)
+        await screen.findByTestId('sidepanel-card-great')
+        openSentenceFrom('great', 2)
+
+        await waitFor(() =>
+          expect(
+            screen.getByTestId('sidepanel-sentence-words')
+          ).toHaveTextContent('great在这句里的意思')
+        )
+        const cards = screen.getAllByTestId('sidepanel-card-great')
+        expect(cards).toHaveLength(1)
+        expect(
+          within(screen.getByTestId('sidepanel-sentence-words')).getByTestId(
+            'sidepanel-card-great'
+          )
+        ).toHaveTextContent('great页面释义')
+      })
+
+      it('reuses its dictionary data and only fetches the in-sentence meaning', async () => {
+        render(<SidePanel />)
+        await screen.findByTestId('sidepanel-empty-state')
+
+        pageLookup('great', 'great页面释义', 1)
+        await screen.findByTestId('sidepanel-card-great')
+        openSentenceFrom('great', 2)
+
+        await waitFor(() =>
+          expect(mockSendMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+              type: 'translateWordInContext',
+              word: 'great',
+              sentence: SENTENCE,
+              dictionaryChinese: 'great页面释义',
+            })
+          )
+        )
+        expect(mockSendMessage).not.toHaveBeenCalledWith(
+          expect.objectContaining({ type: 'getOneWord' })
+        )
+      })
+
+      it('leaves a same-word card alone when another entry sits between them', async () => {
+        render(<SidePanel />)
+        await screen.findByTestId('sidepanel-empty-state')
+
+        pageLookup('great', 'great页面释义', 1)
+        await screen.findByTestId('sidepanel-card-great')
+        pageLookup('pets', 'pets页面释义', 2)
+        await screen.findByTestId('sidepanel-card-pets')
+        openSentenceFrom('great', 3)
+
+        await waitFor(() =>
+          expect(
+            screen.getByTestId('sidepanel-sentence-words')
+          ).toHaveTextContent('great释义(重新查询)')
+        )
+        expect(screen.getAllByTestId('sidepanel-card-great')).toHaveLength(2)
+        expect(screen.getByTestId('sidepanel-card-pets')).toBeInTheDocument()
+      })
+
+      it('leaves the card on top when the sentence was opened from a different word', async () => {
+        render(<SidePanel />)
+        await screen.findByTestId('sidepanel-empty-state')
+
+        pageLookup('cats', 'cats页面释义', 1)
+        await screen.findByTestId('sidepanel-card-cats')
+        openSentenceFrom('great', 2)
+
+        await waitFor(() =>
+          expect(
+            screen.getByTestId('sidepanel-sentence-words')
+          ).toHaveTextContent('great在这句里的意思')
+        )
+        expect(screen.getByTestId('sidepanel-card-cats')).toHaveTextContent(
+          'cats页面释义'
+        )
+        expect(
+          within(screen.getByTestId('sidepanel-sentence-words')).queryByTestId(
+            'sidepanel-card-cats'
+          )
+        ).not.toBeInTheDocument()
+      })
+    })
+
     it('highlights every occurrence of the clicked word in the original', async () => {
       ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
         [PENDING_SENTENCE_STORAGE_KEY]: {

@@ -329,6 +329,27 @@ const removeCard = (
   )
 }
 
+// The top-level page-lookup card a new SentenceEntry should absorb (ADR-023
+// addendum): the user clicked `word` on the page, then sent its sentence to
+// the panel from the same popover, so the newest entry is that word's
+// dictionary-only card. Moving it into the sentence avoids two cards for
+// the same word side by side and a second getOneWord. Only the very first
+// entry counts -- an older lookup of the same word is its own history.
+const adjacentPageCard = (
+  entries: PanelEntry[],
+  word: string
+): ({ kind: 'word' } & WordCardData) | undefined => {
+  const first = entries[0]
+  if (
+    first?.kind === 'word' &&
+    first.word === word &&
+    first.dictionaryStatus === 'loaded' &&
+    first.contextStatus === 'none'
+  )
+    return first
+  return undefined
+}
+
 // -----------------------------------------------------------------------
 
 // The confirm affordance for an in-panel phrase selection (ADR-017 D2): a
@@ -1227,6 +1248,9 @@ function SidePanelContent() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setWordStates(prev => ({ ...prev, ...carriedStates }))
     }
+    const absorbed = clickedWord
+      ? adjacentPageCard(entriesRef.current, clickedWord)
+      : undefined
     setEntries(prev => [
       {
         kind: 'sentence',
@@ -1238,15 +1262,37 @@ function SidePanelContent() {
         chinese: '',
         errorMessage: '',
         errorHttpStatus: undefined,
-        words: [],
+        words: absorbed
+          ? [
+              {
+                word: absorbed.word,
+                pronunciation: absorbed.pronunciation,
+                loadCount: absorbed.loadCount,
+                dictionaryChinese: absorbed.dictionaryChinese,
+                dictionaryStatus: absorbed.dictionaryStatus,
+                contextStatus: 'loading',
+              },
+            ]
+          : [],
       },
-      ...prev,
+      ...prev.filter(e => e !== absorbed),
     ])
 
-    // The anchor word's dictionary-first lookup is entirely independent of
-    // the whole-sentence translation below -- neither should block the
-    // other -- so it fires here, not inside that request's .then().
-    if (anchorWord) seedAnchorWord(id, anchorWord, sentence)
+    // The anchor word's lookup is entirely independent of the
+    // whole-sentence translation below -- neither should block the other --
+    // so it fires here, not inside that request's .then(). An absorbed
+    // page card already has its dictionary half, so only the in-sentence
+    // meaning is fetched, fed that definition (dictionary-first).
+    if (absorbed) {
+      fetchContextTranslation(
+        clickedWord,
+        sentence,
+        id,
+        absorbed.dictionaryChinese
+      )
+    } else if (anchorWord) {
+      seedAnchorWord(id, anchorWord, sentence)
+    }
 
     let cancelled = false
     translateSentence(id, sentence, () => cancelled)
