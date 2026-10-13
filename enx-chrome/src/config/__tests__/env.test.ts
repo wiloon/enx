@@ -9,6 +9,8 @@ const BUILD_ENV_KEYS = [
   'MODE',
   'VITE_API_BASE_URL',
   'VITE_HAN_CHAR_LIMIT',
+  'VITE_BUILD_COMMIT',
+  'VITE_BUILD_TIME',
 ] as const
 
 const loadEnv = (
@@ -44,6 +46,23 @@ beforeEach(() => {
 afterEach(() => {
   for (const key of BUILD_ENV_KEYS) delete process.env[key]
   jest.restoreAllMocks()
+})
+
+describe('build stamp', () => {
+  it('carries the commit and build time vite.config.ts stamped', () => {
+    const { config } = loadEnv({
+      VITE_BUILD_COMMIT: '1a2b3c4',
+      VITE_BUILD_TIME: '2026-10-13T08:05:00.000Z',
+    })
+    expect(config.buildCommit).toBe('1a2b3c4')
+    expect(config.builtAt).toBe('2026-10-13T08:05:00.000Z')
+  })
+
+  it('has neither in an unstamped build', () => {
+    const { config } = loadEnv({})
+    expect(config.buildCommit).toBeUndefined()
+    expect(config.builtAt).toBeUndefined()
+  })
 })
 
 describe('build target selection', () => {

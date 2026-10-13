@@ -10,6 +10,7 @@ import { useSavedPage } from '@/hooks/useSavedPage'
 import { useWordHighlightEnabled } from '@/hooks/useWordHighlightEnabled'
 import '@/index.css'
 import PopupHeader from '@/components/PopupHeader'
+import PopupVersion from '@/components/PopupVersion'
 import PageReportPrompt, {
   PageReportStatus,
 } from '@/components/PageReportPrompt'
@@ -366,6 +367,16 @@ function PopupContent() {
           <DebugPanel />
         </div>
       )}
+      {/* Outside Login, so a signed-out user can still read it off. */}
+      <PopupVersion
+        build={{
+          version: chrome.runtime.getManifest().version,
+          environment: config.environment,
+          commit: config.buildCommit,
+          builtAt: config.builtAt,
+        }}
+        copy={text => navigator.clipboard.writeText(text)}
+      />
     </div>
   )
 }

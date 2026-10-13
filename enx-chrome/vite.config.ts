@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 import { defineConfig, loadEnv } from 'vite'
 import manifest from './manifest.json' with { type: 'json' }
-import { gitVersion } from './scripts/version.mjs'
+import { gitCommit, gitVersion } from './scripts/version.mjs'
 import { buildManifest } from './src/config/manifest.ts'
 import {
   applyOverrides,
@@ -17,6 +17,9 @@ import {
 // §6a, src/config/version.ts): stamped into the manifest (buildManifest) and
 // exposed to the UI as __APP_VERSION__.
 const version = gitVersion()
+// Shown beside the version in the popup footer's hover title (PopupVersion).
+const commit = gitCommit()
+const builtAt = new Date().toISOString()
 
 export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.
@@ -65,6 +68,11 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_ENX_UI_ORIGINS': JSON.stringify(
         target.uiOrigins.join(',')
       ),
+      'import.meta.env.VITE_BUILD_TIME': JSON.stringify(builtAt),
+      // No git, no commit: leave it undefined rather than stamp "null".
+      ...(commit && {
+        'import.meta.env.VITE_BUILD_COMMIT': JSON.stringify(commit),
+      }),
     },
     // Ensure VITE_ prefixed env vars are exposed
     envPrefix: 'VITE_',
