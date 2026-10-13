@@ -25,7 +25,7 @@ export function resetVersionCache(): void {
 }
 
 function versionTitle(v: VersionData): string {
-  const parts = [`commit ${v.commit.slice(0, 7)}`]
+  const parts = [`commit ${v.commit}`]
   if (v.build_time && v.build_time !== 'unknown') {
     parts.push(`built ${v.build_time}`)
   }
