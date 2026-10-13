@@ -108,6 +108,22 @@ type PanelEntry = ({ kind: 'word' } & WordCardData) | SentenceEntry
 
 句子内选词全程仍是 `SidePanel.tsx` 组件内闭环（同 ADR-017 Decision 4），只是查询结果的落点从「prepend 到顶层 `definitions`」改成「upsert 进所在 `SentenceEntry.words`」。正文点词路径（ADR-014 的 `LATEST_PAGE_WORD_STORAGE_KEY`）的传输机制不变，只改 `mergePageWordLookup` 消费它之后的落点与副作用（Decision 4）。
 
+### 7. 补充（2026-10-13）：整句翻译吸收紧挨着的同词顶层卡片
+
+**问题。** 侧边栏开着时，用户在正文点一个词，顶层多出一张只有词典释义的卡片（Decision 4）；接着在同一个浮层上点「整句翻译」，新的 `SentenceEntry` 又按 ADR-014 给锚点词建一张嵌套卡片，并重新 `getOneWord`。结果是同一个词的两张卡片挨在一起，词典也多查了一次（多计一次 Query Count）。嵌套卡片是顶层卡片的超集（词典释义 + 本句释义），顶层那张已经没有用处。
+
+**决定。** 新建带锚点词的 `SentenceEntry` 时，如果顶层**第一条** entry 正好是这个词的正文查词卡片（`kind: 'word'`、同一个词、`dictionaryStatus: 'loaded'`、`contextStatus: 'none'`），就把它**挪进**这条句子的 `words`，不再留在顶层：
+
+- 复用它的词典数据（释义、音标、Query Count），不再调 `getOneWord`；
+- 只补调 `translateWordInContext`，带上这份词典释义（dictionary-first 不变）；
+- 只看第一条 entry。中间隔着别的 entry 的同词卡片是另一段历史，保留不动，句子照常新建嵌套卡片；
+- 不满足条件（不是这个词、还没加载完、出错、是短语卡）时，行为和以前一样，走 `seedAnchorWord`；
+- 划词整句（ADR-007，没有锚点词）不受影响。
+
+**与 Decision B2 的关系。** B2 拒绝的是「正文点的词归属于哪条**历史**句子」这种猜测。这里方向相反，而且没有歧义：句子本身就是从这个词的浮层发出来的，锚点词就是 `pendingContext.word`，顶层第一条就是刚才那次点击。所以 B2 依然成立：正文点词照样只进顶层，不去匹配历史句子。
+
+实现在 `SidePanel.tsx` 的 `adjacentPageCard` 和建句子的 effect 里；测试见 `SidePanel.test.tsx` 的 `absorbing the page-lookup card just before it`。
+
 ---
 
 ## Rationale
