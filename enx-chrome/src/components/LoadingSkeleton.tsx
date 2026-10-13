@@ -9,6 +9,10 @@ import { useEffect, useState } from 'react'
 // The bars keep their space from the first render but stay hidden for
 // `delayMs`, so a fast answer (a cache hit) never flashes them and the card
 // doesn't change height when they appear. The label is read out at once.
+//
+// The bars are a translucent tint of the text color, not bg-muted: the side
+// panel's sentence entry is bg-muted itself, and bars of the same gray
+// vanished into it.
 export const SKELETON_DELAY_MS = 150
 
 interface LoadingSkeletonProps {
@@ -43,7 +47,7 @@ export default function LoadingSkeleton({
         className={`space-y-2 animate-pulse ${shown ? '' : 'invisible'}`}
       >
         {lines.map((width, i) => (
-          <div key={i} className={`h-4 rounded-sm bg-muted ${width}`} />
+          <div key={i} className={`h-4 rounded-sm bg-foreground/10 ${width}`} />
         ))}
       </div>
     </div>

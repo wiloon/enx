@@ -30,6 +30,16 @@ describe('LoadingSkeleton', () => {
     expect(document.querySelector('.animate-spin')).toBeNull()
   })
 
+  // The side panel's sentence entry is bg-muted; same-gray bars vanished.
+  it('tints the bars so they show on a muted background', () => {
+    render(<LoadingSkeleton label="Translating..." delayMs={0} />)
+
+    for (const bar of screen.getByTestId('loading-skeleton-bars').children) {
+      expect(bar).toHaveClass('bg-foreground/10')
+      expect(bar).not.toHaveClass('bg-muted')
+    }
+  })
+
   it('shows the bars at once with no delay', () => {
     render(<LoadingSkeleton label="Translating..." delayMs={0} />)
 
