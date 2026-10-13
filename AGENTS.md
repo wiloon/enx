@@ -8,7 +8,7 @@ Another agent may be working in the main checkout at the same time. A session th
 - **Continuing an existing branch:** work where that branch is already checked out, or add a worktree for it.
 - **Read-only sessions** (questions, code reading, reviews) stay in the main checkout.
 - **Env files:** Claude Code copies the files listed in `.worktreeinclude` into new worktrees. Other tools copy `enx-api/.env`, `enx-chrome/.env` and `enx-ui/.env.local` from the main checkout by hand.
-- **After the PR merges:** remove the worktree and delete its local branch.
+- **After the PR merges:** remove the worktree and delete its local branch. Then, in the main checkout, switch to `main` and run `git pull --ff-only`. Do this yourself; don't just tell the user that local `main` is behind. Claude Code's `ExitWorktree` treats a branch merged by a merge commit as unmerged. Check with `git merge-base --is-ancestor <commit> origin/main`, then remove the worktree with `discard_changes: true`.
 
 ## Before the first code change
 
