@@ -1,7 +1,7 @@
 ---
 status: proposed
 date: 2026-10-12
-related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-029（`dictionary_lookup_quota` 计数与拦截分离）、adr-028（`daily_stats`，用户本地日）、adr-040（Prometheus 指标、Grafana Cloud、标签基数红线）、adr-049（管理员用户页）、issue #21（配额行清理）
+related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-029（`dictionary_lookup_quota` 计数与拦截分离）、adr-028（`daily_stats`，用户本地日）、adr-040（Prometheus 指标、Grafana Cloud、标签基数红线）、adr-049（管理员用户页）、issue #21（配额行清理，已因本 ADR 关闭）、issue #146（实现）
 ---
 
 # ADR-058：活跃用户的定义与统计——按查词算，数据复用配额表，Grafana 看板展示当前值与完整历史
@@ -26,7 +26,7 @@ related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-029�
 ### 2. 存储：复用 `dictionary_lookup_quota`，长期保留
 
 - 这张表已经是「每个用户每个 UTC 日一行」，正好是活跃数据，**不新建表**。
-- **它的行必须长期保留。** 这与 issue #21（按 7–30 天删除旧行）冲突：删掉就再也算不出历史上的 DAU / MAU。#21 改为「不删除」，按 #21 自己的估算，1000 个活跃用户一年约 18 MB，SQLite 承受得起。将来确实需要清理时，先把按日汇总写进一张汇总表再删明细，那时另起 ADR。
+- **它的行必须长期保留。** 这与 issue #21（按 7–30 天删除旧行）冲突：删掉就再也算不出历史上的 DAU / MAU。#21 已关闭，不再删除，按 #21 自己的估算，1000 个活跃用户一年约 18 MB，SQLite 承受得起。将来确实需要清理时，先把按日汇总写进一张汇总表再删明细，那时另起 ADR。
 - 给 `date` 列加索引（主键是 `(user_id, date)`，按日期范围查会全表扫描）。
 
 ### 3. 当前数字：Prometheus gauge
@@ -96,7 +96,7 @@ enx-api 新增三个 gauge，加进 ADR-040 的指标清单：
 ## Consequences
 
 - 「活跃」只有一个口径：查词。看板、运营讨论、将来的管理员页面都用这个定义；改口径要修订本 ADR。
-- 配额表从「临时计数」变成「长期数据」：#21 需要按本 ADR 修改或关闭；以后任何改动 `dictionary_lookup_quota` 的写法、日界或清理策略的变更，都要考虑活跃统计。
+- 配额表从「临时计数」变成「长期数据」：#21 已关闭；以后任何改动 `dictionary_lookup_quota` 的写法、日界或清理策略的变更，都要考虑活跃统计。
 - 测试账号（e2e、开发者自己）会算进数字。用户量小的时候影响明显，可在看板上注明；需要时再加排除名单配置。
 - 时间序列只增加 7 条，对 Grafana Cloud 免费额度没有影响。
 - 主 API 多了一个不走 Clerk 的接口。它只在设置了 `OPS_STATS_TOKEN` 时存在，只返回汇总数字；生产部署模板要新增这个变量，Grafana Cloud 和 homelab Grafana 各配一个 Infinity 数据源。
