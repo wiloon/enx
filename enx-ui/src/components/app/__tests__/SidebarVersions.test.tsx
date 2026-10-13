@@ -28,11 +28,14 @@ beforeEach(() => {
   mockDetectExtension.mockResolvedValue({ installed: false })
 })
 
-it('shows the product version with the short commit on hover', async () => {
+it('shows the product version with the full commit on hover', async () => {
   render(<SidebarVersions />)
 
   const line = await screen.findByText('Catglish v0.0.7')
-  expect(line).toHaveAttribute('title', 'commit e7e5cb6')
+  expect(line).toHaveAttribute(
+    'title',
+    'commit e7e5cb6acd4f200d23325e977f04501404bb259c'
+  )
 })
 
 it('adds the build time to the hover text when the API knows it', async () => {
@@ -48,7 +51,7 @@ it('adds the build time to the hover text when the API knows it', async () => {
 
   expect(await screen.findByText('Catglish v0.0.8')).toHaveAttribute(
     'title',
-    'commit abcdef1 · built 2026-09-27T10:00:00Z'
+    'commit abcdef123 · built 2026-09-27T10:00:00Z'
   )
 })
 
