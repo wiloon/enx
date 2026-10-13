@@ -17,6 +17,11 @@ export const currentWordAtom = atom<WordData | null>(null)
 export const isLoadingAtom = atom(false)
 export const isTranslatingAtom = atom(false)
 
+// The popup's sign-out is in flight. clerk-js clears the user before its
+// server call returns, so useUser() reports isLoaded: false meanwhile; this
+// tells the auth gate to say "Signing out…" instead of "Loading…".
+export const signingOutAtom = atom(false)
+
 // Error state
 export const errorAtom = atom<string | null>(null)
 

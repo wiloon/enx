@@ -43,3 +43,31 @@ test.describe('Popup - signed in', () => {
     ).toHaveCount(0)
   })
 })
+
+test.describe('Popup - sign out', () => {
+  test.skip(!loginAvailable, LOGIN_SKIP_REASON)
+
+  test('signs out in place, without reloading the popup', async ({
+    page,
+    extensionId,
+    signedIn: _signedIn,
+  }) => {
+    await openPopup(page, extensionId)
+    const signOut = page.getByRole('button', { name: 'Sign out' })
+    await expect(signOut).toBeVisible({ timeout: 15_000 })
+
+    // A reload would make Clerk start over (reload clerk-js, refetch the
+    // environment and client) before the sign-in card could show.
+    let navigations = 0
+    page.on('framenavigated', frame => {
+      if (frame === page.mainFrame()) navigations++
+    })
+
+    await signOut.click()
+
+    await expect(
+      page.getByRole('button', { name: 'Sign in on the website' })
+    ).toBeVisible({ timeout: 15_000 })
+    expect(navigations).toBe(0)
+  })
+})

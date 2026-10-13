@@ -1,6 +1,6 @@
 import { useUser } from '@clerk/chrome-extension'
-import { errorAtom } from '@/store/atoms'
-import { useAtom } from 'jotai'
+import { errorAtom, signingOutAtom } from '@/store/atoms'
+import { useAtom, useAtomValue } from 'jotai'
 import { useEffect, type ReactNode } from 'react'
 import { ArrowRightIcon } from '@heroicons/react/24/outline'
 import CatglishLogo from '@/components/CatglishLogo'
@@ -18,6 +18,7 @@ interface LoginProps {
 export default function Login({ onLoginSuccess, children }: LoginProps) {
   const { isLoaded, isSignedIn } = useUser()
   const [error] = useAtom(errorAtom)
+  const signingOut = useAtomValue(signingOutAtom)
 
   useEffect(() => {
     if (isLoaded && isSignedIn) {
@@ -29,7 +30,7 @@ export default function Login({ onLoginSuccess, children }: LoginProps) {
     return (
       <div className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-muted-foreground">
         <span className="h-4 w-4 animate-spin rounded-full border-2 border-border border-t-muted-foreground" />
-        Loading…
+        {signingOut ? 'Signing out…' : 'Loading…'}
       </div>
     )
   }
