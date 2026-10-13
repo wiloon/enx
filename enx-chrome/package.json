@@ -1,6 +1,5 @@
 {
   "name": "enx-chrome-extension",
-  "version": "0.1.1",
   "description": "Chrome extension for English learning with React, TypeScript, and Jotai",
   "type": "module",
   "scripts": {
@@ -10,7 +9,7 @@
     "build:dev": "tsc -p tsconfig.app.json && vite build --mode development",
     "build:prod": "tsc -p tsconfig.app.json && vite build --mode production",
     "build:e2e": "tsc -p tsconfig.app.json && VITE_ENX_UI_ORIGINS=http://localhost:3000,http://localhost:8765 vite build --mode development --outDir dist-e2e",
-    "package:webstore": "pnpm build:prod && node scripts/package-webstore.mjs",
+    "package:webstore": "node scripts/version.mjs --release && pnpm build:prod && node scripts/package-webstore.mjs",
     "preview": "vite preview",
     "test": "jest",
     "test:watch": "jest --watch",

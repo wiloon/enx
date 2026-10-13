@@ -97,7 +97,26 @@ homelab 那套不能管生产：Tekton 推的是集群内 Nexus（外网拉不�
 
 - **api + ui 的版本号就是 git tag**（workflow 用 tag 名给两个镜像打标，api 经 `-ldflags` 注入）。`enx-ui/package.json` 的 `version` 不参与发布。
 - **阶段**：`v0.0.x` = 内测前（到 `v0.0.14` 为止）；**`v0.1.0` 起 = Beta / 内部测试**，修 bug 升 patch（`v0.1.1`），加功能升 minor（`v0.2.0`）；**去掉 Beta 标志那天发 `v1.0.0`**。
-- **Chrome 扩展的版本号独立管理**，不跟 api/ui 的 tag 走：唯一来源是 `enx-chrome/package.json`，构建时由 `buildManifest` 盖进 manifest（`manifest.json` 里不写 `version`，有测试守着）。扩展每次发布都要过 Web Store 审核，节奏和服务端不同，不该为了对齐数字白提交一次审核。阶段与上面一致：`0.1.0` 起 Beta，正式上线 `1.0.0`；每次上传必须比上一次大，只能是 1–4 段纯数字（不能带 `-beta`）。
+- **Chrome 扩展的版本号独立管理**，不跟 api/ui 的 tag 走。扩展每次发布都要过 Web Store 审核，节奏和服务端不同，不该为了对齐数字白提交一次审核。阶段与上面一致：`0.1.0` 起 Beta，正式上线 `1.0.0`；每次上传必须比上一次大，只能是 1–4 段纯数字（不能带 `-beta`）。版本号从哪来见 6b。
+
+#### 6b. 扩展版本号改由 git tag 决定（2026-10-13 补充，取代 6a 里"唯一来源是 `enx-chrome/package.json`"）
+
+**背景。** 6a 让扩展版本号写在 `enx-chrome/package.json`，api/ui 却用 tag，一个仓库两套做法；手改文件也容易忘。三个产品在同一个仓库，需要一种按组件区分的 tag。
+
+**决策。**
+
+- **tag 前缀按组件区分，用全名不用缩写：** `v*` 继续代表 api + ui（一起发，理由见上面"一个 tag 同时发 api 和 ui"）；扩展用 **`chrome-v*`**，如 `chrome-v0.1.2`。这是 monorepo 的常见做法（release-please 的 `<component>-v<version>`）。不用 `F`/`B`/`E` 这类单字母前缀：读不懂，也没有工具认。`deploy-prod.yml` 只匹配 `v*`，`chrome-v*` 不会触发服务端部署。
+- **构建时从 tag 取版本号**（`enx-chrome/src/config/version.ts` + `scripts/version.mjs`，`vite.config.ts` 调用）：对 `git describe --tags --long --match 'chrome-v*'` 的结果去掉前缀，盖进 manifest 和 `__APP_VERSION__`。
+  - 正好在 tag 上：tag 的版本，`0.1.2`。
+  - tag 之后 N 个提交：第四段记提交数，`0.1.2.5`。开发版排在它所基于的发布版之后，也不会和发布版同号。tag 本身已用满四段时保持原样。
+  - 没有 `chrome-v*` tag（浅克隆、新仓库）：`0.0.0`。CI 里要构建发布包须 `fetch-depth: 0` 并拉 tag。
+  - tag 带前缀但版本不合 Chrome 规则（如 `chrome-v0.1.2-beta`）：构建直接失败，不让坏版本号进包。
+- **只有发布版能打商店包：** `pnpm package:webstore`（`task package-webstore`）要求 HEAD 正好在 `chrome-v*` tag 上，且 `dist-production/` 的版本与 tag 一致，否则拒绝。
+- **`enx-chrome/package.json` 不再写 `version`**，有测试守着，防止有人写回去造成两个来源。
+
+**发版流程：** 在要发布的提交上 `git tag chrome-v0.1.2 && git push origin chrome-v0.1.2` → `task package-webstore` → 上传 `dist-webstore/catglish-0.1.2.zip`。
+
+**迁移：** 改动前最后一个手写版本是 `0.1.1`（PR #154）。在该提交 `fef4f70` 补打 `chrome-v0.1.1`，后续发布从 `chrome-v0.1.2` 起。
 
 ### 7. 生产从空库起
 

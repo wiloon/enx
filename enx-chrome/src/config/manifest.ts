@@ -1,6 +1,7 @@
 // Build-time manifest stamping: manifest.json holds everything that is the same
 // in every deployment, and this fills in the deployment-specific origins from
-// the selected target (see targets.ts) and the version from package.json.
+// the selected target (see targets.ts) and the version from git tags
+// (see version.ts).
 // Called from vite.config.ts.
 
 import { clerkFrontendApiHost, type Target } from './targets.ts'
@@ -52,8 +53,8 @@ export function buildManifest(
   return {
     ...base,
     name: `${base.name as string}${nameSuffix}`,
-    // package.json is the single source of the version (it also feeds
-    // __APP_VERSION__), so the two can never disagree.
+    // The same tag-derived version also feeds __APP_VERSION__, so the two can
+    // never disagree.
     version,
     host_permissions: hostPermissions,
     content_scripts: contentScripts,
