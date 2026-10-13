@@ -72,7 +72,7 @@ enx-api 新增三个 gauge，加进 ADR-040 的指标清单：
 
 ### 5. 看板：一张「ENX Users」
 
-按 ADR-040 Decision 7 的约定：JSON 放在 `w10n-config` 的 `infra/homelab/k8s/observability/grafana/dashboards/`，登记进 `DASHBOARDS.md`，`task grafana:push` 推到 homelab，同一份 JSON 导入 Grafana Cloud；面板文字用英文；数据源用变量（Prometheus 用 `${datasource}`，Infinity 用 `${stats_api}`），不写死 UID。
+按 ADR-040 Decision 7 的约定：JSON 放在 `w10n-config` 的 `infra/homelab/k8s/observability/grafana/dashboards/`，登记进 `infra/homelab/k8s/observability/DASHBOARDS.md`，`task grafana:push` 推到 homelab，同一份 JSON 导入 Grafana Cloud；面板文字用英文；数据源用变量（Prometheus 用 `${datasource}`，Infinity 用 `${stats_api}`），不写死 UID。
 
 | 行 | 面板 | 类型 | 数据源 |
 | -- | ---- | ---- | ------ |
