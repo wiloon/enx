@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ReaderPage from '../page'
-import { MAX_CONTENT_LENGTH } from '../constants'
+import { MAX_CONTENT_LENGTH, SAMPLE_TEXT } from '../constants'
 import { apiService } from '@/services/api'
 import { setRuntimeEnv } from '@/test/runtimeEnv'
 
@@ -8,11 +9,15 @@ jest.mock('@/services/api', () => ({
   apiService: {
     createReaderDocument: jest.fn(),
     updateReaderDocument: jest.fn(),
+    listReaderDocuments: jest.fn(),
+    getReaderDocument: jest.fn(),
   },
 }))
 
 const mockCreateReaderDocument = apiService.createReaderDocument as jest.Mock
 const mockUpdateReaderDocument = apiService.updateReaderDocument as jest.Mock
+const mockListReaderDocuments = apiService.listReaderDocuments as jest.Mock
+const mockGetReaderDocument = apiService.getReaderDocument as jest.Mock
 
 beforeEach(() => {
   ;(global as unknown as { chrome?: unknown }).chrome = undefined
@@ -27,9 +32,26 @@ beforeEach(() => {
     success: true,
     data: { id: 'doc-1' },
   })
+  mockListReaderDocuments.mockReset()
+  mockListReaderDocuments.mockResolvedValue({
+    success: true,
+    data: { documents: [] },
+  })
+  mockGetReaderDocument.mockReset()
   sessionStorage.clear()
   localStorage.clear()
 })
+
+function renderPage() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={client}>
+      <ReaderPage />
+    </QueryClientProvider>
+  )
+}
 
 function paste(text: string) {
   fireEvent.change(screen.getByLabelText(/paste english text/i), {
@@ -42,14 +64,14 @@ function paste(text: string) {
 // doesn't leak past the test as an "update not wrapped in act" warning.
 async function clickRead() {
   await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Read' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start reading' }))
   })
 }
 
-it('disables the Read button until text is entered', () => {
-  render(<ReaderPage />)
+it('disables the Start reading button until text is entered', () => {
+  renderPage()
 
-  const button = screen.getByRole('button', { name: 'Read' })
+  const button = screen.getByRole('button', { name: 'Start reading' })
   expect(button).toBeDisabled()
 
   paste('Hello world.')
@@ -57,7 +79,7 @@ it('disables the Read button until text is entered', () => {
 })
 
 it('renders the pasted text as paragraphs split on blank lines', async () => {
-  render(<ReaderPage />)
+  renderPage()
   paste('First paragraph.\n\nSecond paragraph.')
   await clickRead()
 
@@ -70,11 +92,13 @@ it('renders the pasted text as paragraphs split on blank lines', async () => {
   expect(paragraphs[1]).toHaveTextContent('Second paragraph.')
 
   // The editor is replaced by the reading view.
-  expect(screen.queryByRole('button', { name: 'Read' })).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Start reading' })
+  ).not.toBeInTheDocument()
 })
 
 it('returns to the editor with the text intact via Edit', async () => {
-  render(<ReaderPage />)
+  renderPage()
   paste('Keep me.')
   await clickRead()
 
@@ -101,7 +125,7 @@ describe('enabling learning mode via the extension', () => {
     )
 
   it('notifies the extension once the article is rendered, not before', async () => {
-    render(<ReaderPage />)
+    renderPage()
     paste('Some text.')
     expect(enableCalls()).toHaveLength(0)
 
@@ -112,7 +136,7 @@ describe('enabling learning mode via the extension', () => {
   })
 
   it('re-notifies the extension when the same text is re-submitted after an edit', async () => {
-    render(<ReaderPage />)
+    renderPage()
     paste('One.')
     await clickRead()
     fireEvent.click(screen.getByRole('button', { name: 'Edit text' }))
@@ -135,7 +159,7 @@ describe('extension install prompt', () => {
     })
     ;(global as unknown as { chrome?: unknown }).chrome = undefined
 
-    render(<ReaderPage />)
+    renderPage()
     await read()
 
     const link = await screen.findByRole('link', { name: /install/i })
@@ -153,7 +177,7 @@ describe('extension install prompt', () => {
       },
     }
 
-    render(<ReaderPage />)
+    renderPage()
     await read()
 
     await waitFor(() =>
@@ -169,7 +193,7 @@ describe('extension install prompt', () => {
   it('can be dismissed', async () => {
     ;(global as unknown as { chrome?: unknown }).chrome = undefined
 
-    render(<ReaderPage />)
+    renderPage()
     await read()
 
     fireEvent.click(await screen.findByRole('button', { name: /dismiss/i }))
@@ -181,24 +205,16 @@ describe('extension install prompt', () => {
 })
 
 describe('persistence (ADR-022)', () => {
-  it('links to the "My Documents" history page', () => {
-    render(<ReaderPage />)
-    expect(screen.getByRole('link', { name: 'My Documents' })).toHaveAttribute(
-      'href',
-      '/reader/history'
-    )
-  })
-
-  it('disables Read when pasted text exceeds the character limit', () => {
-    render(<ReaderPage />)
+  it('disables Start reading when pasted text exceeds the character limit', () => {
+    renderPage()
 
     paste('x'.repeat(MAX_CONTENT_LENGTH + 1))
 
-    expect(screen.getByRole('button', { name: 'Read' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Start reading' })).toBeDisabled()
   })
 
   it('saves the article on submit and shows a saved indicator', async () => {
-    render(<ReaderPage />)
+    renderPage()
     paste('Save me.')
 
     await clickRead()
@@ -213,7 +229,7 @@ describe('persistence (ADR-022)', () => {
       error: 'network error',
     })
 
-    render(<ReaderPage />)
+    renderPage()
     paste('Still readable.')
 
     await clickRead()
@@ -231,7 +247,7 @@ describe('persistence (ADR-022)', () => {
       JSON.stringify({ content: 'From history.' })
     )
 
-    render(<ReaderPage />)
+    renderPage()
 
     expect(document.querySelector('#enx-reader-article')).toHaveTextContent(
       'From history.'
@@ -241,7 +257,7 @@ describe('persistence (ADR-022)', () => {
   })
 
   it('editing and re-reading a just-created document updates it instead of creating a second one', async () => {
-    render(<ReaderPage />)
+    renderPage()
     paste('First version.')
     await clickRead()
     expect(mockCreateReaderDocument).toHaveBeenCalledTimes(1)
@@ -262,7 +278,7 @@ describe('persistence (ADR-022)', () => {
       'enx-reader-open-doc',
       JSON.stringify({ id: 'doc-from-history', content: 'Original.' })
     )
-    render(<ReaderPage />)
+    renderPage()
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit text' }))
     paste('Edited.')
@@ -276,7 +292,7 @@ describe('persistence (ADR-022)', () => {
   })
 
   it('"New" starts a genuinely separate document, not an update', async () => {
-    render(<ReaderPage />)
+    renderPage()
     paste('First document.')
     await clickRead()
     expect(mockCreateReaderDocument).toHaveBeenCalledTimes(1)
@@ -295,7 +311,7 @@ describe('persistence (ADR-022)', () => {
   })
 
   it('shows a "My Documents" link and a "New" button in reading mode too', async () => {
-    render(<ReaderPage />)
+    renderPage()
     paste('Some text.')
     await clickRead()
 
@@ -312,7 +328,7 @@ describe('reading width', () => {
   }
 
   it('defaults to Medium (896px) for a first-time reader', async () => {
-    render(<ReaderPage />)
+    renderPage()
     paste('Some text.')
     await clickRead()
 
@@ -321,7 +337,7 @@ describe('reading width', () => {
   })
 
   it('switches width and remembers the choice', async () => {
-    render(<ReaderPage />)
+    renderPage()
     paste('Some text.')
     await clickRead()
 
@@ -334,7 +350,7 @@ describe('reading width', () => {
 
   it('restores the remembered width on the next visit', async () => {
     localStorage.setItem('enx.reader.width', 'wide')
-    render(<ReaderPage />)
+    renderPage()
     paste('Some text.')
     await clickRead()
 
@@ -344,19 +360,170 @@ describe('reading width', () => {
 
   it('ignores an unknown stored value', async () => {
     localStorage.setItem('enx.reader.width', 'huge')
-    render(<ReaderPage />)
+    renderPage()
     paste('Some text.')
     await clickRead()
 
     expect(articleContainer()).toHaveClass('max-w-4xl')
   })
 
-  it('applies the width to the paste editor too', () => {
-    localStorage.setItem('enx.reader.width', 'narrow')
-    render(<ReaderPage />)
+  it('keeps the paste editor at its own width', () => {
+    localStorage.setItem('enx.reader.width', 'full')
+    renderPage()
 
     expect(
-      screen.getByLabelText(/paste english text/i).closest('.max-w-2xl')
+      screen.getByLabelText(/paste english text/i).closest('.max-w-3xl')
     ).not.toBeNull()
+  })
+})
+
+describe('landing page', () => {
+  it('explains what Reader is for', () => {
+    renderPage()
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Reader' })
+    ).toBeInTheDocument()
+    expect(screen.getByText(/an AI chat\s+reply, a PDF/)).toBeInTheDocument()
+  })
+
+  it('fills the editor with a sample, and hides the button once there is text', () => {
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Try a sample' }))
+
+    expect(screen.getByLabelText(/paste english text/i)).toHaveValue(
+      SAMPLE_TEXT
+    )
+    expect(
+      screen.queryByRole('button', { name: 'Try a sample' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('states the privacy terms instead of an empty counter', () => {
+    renderPage()
+    expect(
+      screen.getByText(
+        'Only you can see it. Deleted automatically after 7 days.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/characters/)).not.toBeInTheDocument()
+  })
+
+  it('shows the character count, with its unit, near the limit', () => {
+    renderPage()
+    paste('x'.repeat(MAX_CONTENT_LENGTH * 0.95))
+    expect(
+      screen.getByText(
+        `${(MAX_CONTENT_LENGTH * 0.95).toLocaleString()} / ${MAX_CONTENT_LENGTH.toLocaleString()} characters`
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('warns before reading that the extension is required when it is missing', async () => {
+    setRuntimeEnv({
+      ENX_EXTENSION_WEB_STORE_URL:
+        'https://chromewebstore.google.com/detail/enx',
+    })
+    renderPage()
+
+    expect(
+      await screen.findByText(/Reader needs the Catglish Chrome extension/)
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Install the extension' })
+    ).toHaveAttribute('href', 'https://chromewebstore.google.com/detail/enx')
+  })
+
+  it('does not warn when the extension is installed', async () => {
+    setRuntimeEnv({ ENX_EXTENSION_ID: 'test-ext-id' })
+    const sendMessage = jest.fn((_id, _m, cb) => cb({ ok: true, version: '1' }))
+    ;(global as unknown as { chrome?: unknown }).chrome = {
+      runtime: { sendMessage },
+    }
+    renderPage()
+
+    await waitFor(() => expect(sendMessage).toHaveBeenCalled())
+    expect(
+      screen.queryByText(/Reader needs the Catglish Chrome extension/)
+    ).not.toBeInTheDocument()
+  })
+})
+
+describe('recent documents', () => {
+  const docs = [1, 2, 3, 4].map((n) => ({
+    id: `doc-${n}`,
+    createdAt: '2026-10-10T12:00:00Z',
+    updatedAt: '2026-10-10T12:00:00Z',
+    preview: `Preview ${n}`,
+  }))
+
+  it('lists the three newest with a link to all documents', async () => {
+    mockListReaderDocuments.mockResolvedValue({
+      success: true,
+      data: { documents: docs },
+    })
+    renderPage()
+
+    expect(await screen.findByText('Preview 1')).toBeInTheDocument()
+    expect(screen.getByText('Preview 3')).toBeInTheDocument()
+    expect(screen.queryByText('Preview 4')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'View all' })).toHaveAttribute(
+      'href',
+      '/reader/history'
+    )
+  })
+
+  it('hides the section when there are none', async () => {
+    renderPage()
+    await waitFor(() => expect(mockListReaderDocuments).toHaveBeenCalled())
+    expect(screen.queryByText('Recent')).not.toBeInTheDocument()
+  })
+
+  it('opens a recent document without saving it again, and edits update it', async () => {
+    mockListReaderDocuments.mockResolvedValue({
+      success: true,
+      data: { documents: docs },
+    })
+    mockGetReaderDocument.mockResolvedValue({
+      success: true,
+      data: { id: 'doc-2', content: 'Second document body.' },
+    })
+    renderPage()
+
+    await act(async () => {
+      fireEvent.click(await screen.findByText('Preview 2'))
+    })
+
+    expect(mockGetReaderDocument).toHaveBeenCalledWith('doc-2')
+    expect(document.querySelector('#enx-reader-article')).toHaveTextContent(
+      'Second document body.'
+    )
+    expect(mockCreateReaderDocument).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit text' }))
+    paste('Edited body.')
+    await clickRead()
+    expect(mockUpdateReaderDocument).toHaveBeenCalledWith(
+      'doc-2',
+      'Edited body.'
+    )
+  })
+
+  it('stays on the editor and shows the error when opening fails', async () => {
+    mockListReaderDocuments.mockResolvedValue({
+      success: true,
+      data: { documents: docs },
+    })
+    mockGetReaderDocument.mockResolvedValue({
+      success: false,
+      error: 'document not found',
+    })
+    renderPage()
+
+    await act(async () => {
+      fireEvent.click(await screen.findByText('Preview 1'))
+    })
+
+    expect(await screen.findByText('document not found')).toBeInTheDocument()
+    expect(screen.getByLabelText(/paste english text/i)).toBeInTheDocument()
   })
 })

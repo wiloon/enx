@@ -2,15 +2,16 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Pencil } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useQuery } from '@tanstack/react-query'
+import { FileText, Lock, Pencil, Puzzle } from 'lucide-react'
+import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { requestReaderMode, webStoreUrl } from '@/lib/enxExtension'
 import { useExtensionStatus } from '@/hooks/useExtensionStatus'
 import { apiService } from '@/services/api'
 import { consumeReaderDocument } from '@/lib/readerSession'
-import { MAX_CONTENT_LENGTH } from './constants'
+import { MAX_CONTENT_LENGTH, SAMPLE_TEXT } from './constants'
 import SegmentedControl from '@/components/app/stats/SegmentedControl'
 import { cn } from '@/lib/utils'
 import {
@@ -31,6 +32,14 @@ function toParagraphs(text: string): string[] {
     .filter(Boolean)
 }
 
+const RECENT_LIMIT = 3
+
+const HOW_IT_WORKS = [
+  'Copy text from anywhere',
+  'Paste it below',
+  'Click a word or sentence',
+]
+
 export default function ReaderPage() {
   const [draft, setDraft] = useState('')
   const [article, setArticle] = useState<string | null>(null)
@@ -49,6 +58,18 @@ export default function ReaderPage() {
   >('idle')
   const [width, setWidth] = useState<ReaderWidth>(DEFAULT_READER_WIDTH)
   const extensionStatus = useExtensionStatus()
+  const [openingId, setOpeningId] = useState<string | null>(null)
+  const [openError, setOpenError] = useState<string | null>(null)
+
+  // Shares the My Documents page's cache, so a delete there shows up here.
+  const recent = useQuery({
+    queryKey: ['reader-documents'],
+    queryFn: async () => {
+      const resp = await apiService.listReaderDocuments()
+      if (resp.success && resp.data) return resp.data.documents
+      throw new Error(resp.error || 'Failed to load documents')
+    },
+  })
 
   // Restore the remembered width after mount; reading localStorage during
   // render would mismatch the server-rendered default.
@@ -93,6 +114,24 @@ export default function ReaderPage() {
     setArticle(null)
     setDocumentId(null)
     setSaveStatus('idle')
+  }
+
+  // A document from the Recent list: already saved, so open it like the My
+  // Documents hand-off does -- render it and keep its id for later edits.
+  const handleOpenRecent = async (id: string) => {
+    setOpenError(null)
+    setOpeningId(id)
+    const resp = await apiService.getReaderDocument(id)
+    setOpeningId(null)
+    if (!resp.success || !resp.data) {
+      setOpenError(resp.error || 'Failed to open document')
+      return
+    }
+    setDraft(resp.data.content)
+    setDocumentId(resp.data.id)
+    setSaveStatus('saved')
+    setArticle(resp.data.content)
+    setReadSeq((n) => n + 1)
   }
 
   // Reopening a document from "My Documents" (history page): it's already
@@ -218,42 +257,145 @@ export default function ReaderPage() {
     )
   }
 
+  // The paste screen keeps one width of its own: the reading-width setting
+  // is for the article, not for this form.
+  const recentDocuments = recent.data?.slice(0, RECENT_LIMIT) ?? []
+  const storeUrl = webStoreUrl()
+  const nearLimit = draft.length >= MAX_CONTENT_LENGTH * 0.9
+
   return (
-    <div className={containerClass}>
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Reader</CardTitle>
-          <Link
-            href="/reader/history"
-            className="text-sm font-medium text-muted-foreground underline-offset-4 hover:underline"
-          >
-            My Documents
-          </Link>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <form className="space-y-2" onSubmit={handleSubmit}>
+    <div className="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
+      <div>
+        <h2 className="text-2xl font-bold">Reader</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          For English text you can&apos;t look up where it is: an AI chat reply,
+          a PDF, or a site where the extension doesn&apos;t work well. Paste it
+          here and read it with Catglish.
+        </p>
+      </div>
+
+      <ol className="grid gap-3 text-sm sm:grid-cols-3">
+        {HOW_IT_WORKS.map((step, i) => (
+          <li key={step} className="flex items-start gap-2">
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
+              {i + 1}
+            </span>
+            <span className="text-muted-foreground">{step}</span>
+          </li>
+        ))}
+      </ol>
+
+      {extensionStatus === 'not-installed' && (
+        <div
+          role="note"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+          <p className="flex items-start gap-2">
+            <Puzzle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span>
+              Reader needs the Catglish Chrome extension. Without it, the text
+              shows up here but you can&apos;t click words to translate them.
+            </span>
+          </p>
+          {storeUrl && (
+            <Button asChild size="sm" variant="outline">
+              <a href={storeUrl} target="_blank" rel="noopener noreferrer">
+                Install the extension
+              </a>
+            </Button>
+          )}
+        </div>
+      )}
+
+      <Card className="py-0">
+        <form className="space-y-3 p-4 sm:p-6" onSubmit={handleSubmit}>
+          <div className="flex min-h-8 items-center justify-between gap-2">
             <Label htmlFor="reader-input">Paste English text</Label>
-            <textarea
-              id="reader-input"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              rows={10}
-              maxLength={MAX_CONTENT_LENGTH}
-              placeholder="Paste an article or a passage to read and look up words."
-              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">
-                {draft.length.toLocaleString()} /{' '}
-                {MAX_CONTENT_LENGTH.toLocaleString()} · saved for 7 days
-              </span>
+            {draft.length === 0 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setDraft(SAMPLE_TEXT)}
+              >
+                Try a sample
+              </Button>
+            )}
+          </div>
+          <textarea
+            id="reader-input"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            maxLength={MAX_CONTENT_LENGTH}
+            placeholder="Paste an AI reply, an article or any passage here."
+            className="field-sizing-content max-h-[60vh] min-h-56 w-full resize-none overflow-y-auto rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Lock className="size-3.5" aria-hidden="true" />
+              Only you can see it. Deleted automatically after 7 days.
+            </p>
+            <div className="flex items-center gap-3">
+              {nearLimit && (
+                <span
+                  className={cn(
+                    'text-xs',
+                    draft.length > MAX_CONTENT_LENGTH
+                      ? 'text-red-600'
+                      : 'text-muted-foreground'
+                  )}
+                >
+                  {draft.length.toLocaleString()} /{' '}
+                  {MAX_CONTENT_LENGTH.toLocaleString()} characters
+                </span>
+              )}
               <Button type="submit" disabled={!canRead}>
-                Read
+                Start reading
               </Button>
             </div>
-          </form>
-        </CardContent>
+          </div>
+        </form>
       </Card>
+
+      {recentDocuments.length > 0 && (
+        <section className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium">Recent</h3>
+            <Link
+              href="/reader/history"
+              className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            >
+              View all
+            </Link>
+          </div>
+          <ul className="divide-y divide-border rounded-lg border">
+            {recentDocuments.map((doc) => (
+              <li key={doc.id}>
+                <button
+                  type="button"
+                  onClick={() => handleOpenRecent(doc.id)}
+                  disabled={openingId !== null}
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/50 disabled:opacity-50"
+                >
+                  <FileText
+                    className="size-4 shrink-0 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 flex-1 truncate text-sm">
+                    {openingId === doc.id
+                      ? 'Opening…'
+                      : doc.preview || 'Untitled'}
+                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {new Date(doc.updatedAt).toLocaleDateString()}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {openError && <p className="text-sm text-red-600">{openError}</p>}
+        </section>
+      )}
     </div>
   )
 }
