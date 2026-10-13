@@ -142,6 +142,10 @@ export interface BackgroundResponse {
   ecp?: WordData
   wordProperties?: Record<string, WordData>
   sessionExpired?: boolean
+  // Set by the content script's own sender, never by the background: this
+  // tab's script was cut off by an extension reload or update and the page
+  // has to be reloaded (lib/extensionContext.ts).
+  extensionUpdated?: boolean
   // HTTP status of a failed request, when there was one -- 402 (insufficient
   // AI credit) and 429 (daily dictionary quota exceeded) get distinct UI
   // treatment in SidePanel.tsx instead of a generic error message.
