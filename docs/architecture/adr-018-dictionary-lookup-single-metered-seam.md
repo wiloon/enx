@@ -233,7 +233,7 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 
 ### 2026-09-29：查词改为注入依赖的领域服务
 
-按 `.ai/instructions.md` 的 DDD 要求，把上一条的 `dictionary.Resolve` 包级函数改成 `dictionary.Service`：
+按 `AGENTS.md` 的 DDD 要求，把上一条的 `dictionary.Resolve` 包级函数改成 `dictionary.Service`：
 
 - `dictionary` 包只定义领域对象和三个接口：`WordStore`（应用自己的 `words` 缓存）、`ExternalDictionary`（只读外部词典，今天是 ECDICT，ADR-030 的多源链会加更多）、`Meter`（每日配额）。`NewService(words, external, meter)` 注入依赖；`Service.Resolve` 的单元测试全部用内存假实现，不碰数据库。
 - 生产实现在 `dictionary/adapters`：`WordsTable`（`repo` + `enx.Word`）和 `Ecdict`（`ecdict`）；`dictionary.QuotaMeter` 包装原来的 `MeterLookup`。适配器不放进 `repo/`，是因为依赖链 `dictionary → stats → middleware → enx → repo` 会让 `repo` 引用 `dictionary` 时形成循环。

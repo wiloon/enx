@@ -244,7 +244,7 @@ cost = ceil((PromptTokens * WeightIn + CompletionTokens * WeightOut) / Divisor) 
 
 **请求流程**：
 
-1. **预检**：`bal, err := credit.Balance(ctx, userID)`。`err` → 502。`bal < 1` → 402 `{"success": false, "message": "Insufficient credits. Top up or subscribe to continue."}`（英文 UI 文案，见 `.ai/instructions.md`；**不**沿用 `aitranslate/handler.go` 现有的中文文案）。
+1. **预检**：`bal, err := credit.Balance(ctx, userID)`。`err` → 502。`bal < 1` → 402 `{"success": false, "message": "Insufficient credits. Top up or subscribe to continue."}`（英文 UI 文案，见 `AGENTS.md`；**不**沿用 `aitranslate/handler.go` 现有的中文文案）。
    > 不按输入长度预估门槛——设计意图就是「让一次请求可以冲进负数，之后挡住」。并发下多个请求可能同时过预检、把 **topup 池** 扣得更负，接受（破坏范围有界：每个请求就一次 AI 调用，且 200 字上限封了单次成本）。subscription 池不受影响——`Settle` 的原子 UPDATE 保证它永不为负。
 2. **调用 provider**：`result, err := rephraser.Rephrase(ctx, input)`。
 3. **失败路径**（`err != nil`，或 JSON 解析失败 / `Idiomatic` 空 / `alternatives` 空）→ **不调 `Settle`**（用户没拿到结果就不付费；provider 侧那点 token 成本我们自己吃）→ 502。
@@ -265,7 +265,7 @@ cost = ceil((PromptTokens * WeightIn + CompletionTokens * WeightOut) / Divisor) 
 
 ### 6. enx-ui 页面
 
-**UI 文案一律用英文**（见 `.ai/instructions.md` Language Requirements）；唯一的例外是 `notes` 的内容——那是给中文用户看的学习注解，本来就是中文（见已确认决策 #4 与 Decision 3）。
+**UI 文案一律用英文**（见 `AGENTS.md` Language Requirements）；唯一的例外是 `notes` 的内容——那是给中文用户看的学习注解，本来就是中文（见已确认决策 #4 与 Decision 3）。
 
 - **路由**：`enx-ui/src/app/rephrase/page.tsx`（`'use client'`）。
 - **交互**：多行 `textarea` + 字符计数（按 Unicode 码点 `[...input].length` 计，与后端 rune 一致；**超过** 200 时禁用提交并提示——正好 200 字可提交，跟后端 `> 200 → 400` 对齐）+ 提交按钮 `Rephrase`（`@tanstack/react-query` 的 `useMutation`——有成本的动作，不是 `useQuery`；进行中禁用按钮并显示 loading 文案）。
@@ -306,7 +306,7 @@ cost = ceil((PromptTokens * WeightIn + CompletionTokens * WeightOut) / Divisor) 
 
 `CONTEXT.md` 已新增「### 界面功能（enx-ui）」小节，收录术语「**地道表达（idiomatic rephrasing）**」，`_Avoid_`：翻译 / 直译、提示词生成 / prompt generation。
 
-### 8. 测试（`.ai/instructions.md` 的强制测试要求）
+### 8. 测试（`AGENTS.md` 的强制测试要求）
 
 - **`credit.TokenPricing`**（`pricing_test.go`，纯单元）：`Priced()` 的 5 种配置；`Cost()` 的 ceil / 下限取 1 / in-out 权重 —— token→credit 的算术边界在这里钉死。
 - **`RephraseHandler`**：`fakeRephraseLedger` + `fakeRephraser` 纯单元测试（照 `aitranslate/handler_test.go`），覆盖：
