@@ -64,7 +64,7 @@ enx-api 满足 ko 的前提：`CGO_ENABLED=0`（SQLite 用的是纯 Go 的 moder
 
 7. **验证**：homelab 先 `deploy=false` 构建，再部署，检查 `/ping`、登录、查词、`/metrics`（9091）。GitHub 上加一个 PR CI：用同一个脚本 `--push=false` 构建，确认生产这条路径能走通。
 
-8. **切换顺序**：homelab 的 `build-enx-api` Pipeline 和生产的发布 workflow（`deploy-prod.yml` 的 `build-api`）在同一次改动里都换成 ko，`task deploy:homelab:api` 用法不变。生产的第一次 ko 发布就是 v0.1.0；发布成功后删除 `enx-api/Containerfile`。
+8. **切换顺序**：homelab 的 `build-enx-api` Pipeline 和生产的发布 workflow（`deploy-prod.yml` 的 `build-api`）在同一次改动里都换成 ko，`task deploy:homelab:api` 用法不变。生产的第一次 ko 发布就是 v0.1.0；发布成功后删除 `enx-api/Containerfile`。（已完成：v0.1.0 于 2026-10-13 发布到生产，以 1002:1001 运行；Containerfile 随后删除。）
 
 9. **范围**：只管 enx-api。enx-api-java 和 homelab 上其他还在用 Kaniko 的项目不在此列。
 
