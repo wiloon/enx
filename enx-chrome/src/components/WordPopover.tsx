@@ -11,6 +11,7 @@ import {
   currentWordAtom,
   isTranslatingAtom,
   errorAtom,
+  errorNeedsReloadAtom,
   sentencePanelHintAtom,
 } from '@/store/atoms'
 import { formatPhonetic } from '@/lib/phonetic'
@@ -23,6 +24,9 @@ interface WordPopoverProps {
   onOpenSentencePanel: () => void
   // The "Look up with AI" button after a lookup that found nothing (ADR-045).
   onAiLookup?: () => void
+  // The "Reload page" button under an error that only a reload fixes (an
+  // extension reload or update cut this tab's script off).
+  onReloadPage?: () => void
   // 'hint': renders only the sentencePanelHint text, no dictionary UI.
   // Used by the drag-select translation flow (ADR-007 Decision §4) when
   // there's nothing to define -- either the selection was rejected for
@@ -36,11 +40,13 @@ export default function WordPopover({
   onMarkAcquainted,
   onOpenSentencePanel,
   onAiLookup = () => {},
+  onReloadPage = () => window.location.reload(),
   variant = 'dictionary',
 }: WordPopoverProps) {
   const [currentWord] = useAtom(currentWordAtom)
   const [isTranslating] = useAtom(isTranslatingAtom)
   const [error] = useAtom(errorAtom)
+  const [errorNeedsReload] = useAtom(errorNeedsReloadAtom)
   const [sentencePanelHint] = useAtom(sentencePanelHintAtom)
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -176,6 +182,16 @@ export default function WordPopover({
             className="p-3 bg-destructive/10 border border-destructive/25 rounded-sm mb-3"
           >
             <p className="text-destructive text-sm">{error}</p>
+            {errorNeedsReload && (
+              <button
+                data-testid="word-popover-reload-page"
+                type="button"
+                onClick={onReloadPage}
+                className="mt-2 px-3 py-1 text-xs font-medium rounded-sm bg-brand text-brand-foreground hover:bg-brand/90"
+              >
+                Reload page
+              </button>
+            )}
           </div>
         )}
 

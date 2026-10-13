@@ -51,6 +51,7 @@ import {
   currentWordAtom,
   isTranslatingAtom,
   errorAtom,
+  errorNeedsReloadAtom,
   sentencePanelHintAtom,
 } from '@/store/atoms'
 import WordPopover from '@/components/WordPopover'
@@ -65,6 +66,10 @@ import PinHint from '@/components/PinHint'
 import tailwindCss from '@/index.css?inline'
 import { config } from '@/config/env'
 import { isChineseArticle } from '@/lib/articleLanguage'
+import {
+  LOOKUP_FAILED_MESSAGE,
+  sendRuntimeMessage,
+} from '@/lib/extensionContext'
 
 console.log('ENX Content script loaded')
 
@@ -123,11 +128,7 @@ let overlayEventCleanup: (() => void) | null = null
 const sendToBackground = (
   message: ContentMessage
 ): Promise<BackgroundResponse> => {
-  return new Promise(resolve => {
-    chrome.runtime.sendMessage(message, response => {
-      resolve(response || { success: false, error: 'No response' })
-    })
-  })
+  return sendRuntimeMessage(message)
 }
 
 type OverlayElement = HTMLElement & {
@@ -442,6 +443,7 @@ const showWordPopover = async (word: string, reference: Range) => {
   contentScriptStore.set(currentWordAtom, null)
   contentScriptStore.set(isTranslatingAtom, true)
   contentScriptStore.set(errorAtom, null)
+  contentScriptStore.set(errorNeedsReloadAtom, false)
   contentScriptStore.set(sentencePanelHintAtom, null)
   resetAiLookup(contentScriptStore)
 
@@ -500,14 +502,17 @@ const showWordPopover = async (word: string, reference: Range) => {
       const errorMessage = response.error || 'Translation service unavailable'
       console.error('Translation failed:', errorMessage)
       contentScriptStore.set(errorAtom, errorMessage)
+      contentScriptStore.set(
+        errorNeedsReloadAtom,
+        response.extensionUpdated === true
+      )
       contentScriptStore.set(isTranslatingAtom, false)
     }
   } catch (error) {
     console.error('Error fetching word translation:', error)
-    contentScriptStore.set(
-      errorAtom,
-      'Connection failed. Please check your internet connection.'
-    )
+    // sendToBackground never rejects, so this is a bug in handling the
+    // answer, not a network failure.
+    contentScriptStore.set(errorAtom, LOOKUP_FAILED_MESSAGE)
     contentScriptStore.set(isTranslatingAtom, false)
   }
 }

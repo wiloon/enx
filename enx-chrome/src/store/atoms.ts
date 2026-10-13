@@ -20,6 +20,10 @@ export const isTranslatingAtom = atom(false)
 // Error state
 export const errorAtom = atom<string | null>(null)
 
+// The word popup's error is "reload this page" (lib/extensionContext.ts), so
+// it offers a Reload page button.
+export const errorNeedsReloadAtom = atom(false)
+
 // The AI word fallback inside the word popup (ADR-045): what a lookup that
 // found nothing offers, and where an AI lookup stands.
 export type AiLookupState =
