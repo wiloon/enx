@@ -1,4 +1,4 @@
-import { crx } from '@crxjs/vite-plugin'
+import { crx, type ManifestV3Export } from '@crxjs/vite-plugin'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
@@ -39,7 +39,13 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       react(),
       crx({
-        manifest: buildManifest(manifest, target, version) as typeof manifest,
+        // Cast to crx's own type: `typeof manifest` lacks `version`, which
+        // only exists once buildManifest has stamped it.
+        manifest: buildManifest(
+          manifest,
+          target,
+          version
+        ) as unknown as ManifestV3Export,
       }),
     ],
     define: {
