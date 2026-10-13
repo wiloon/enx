@@ -6,7 +6,13 @@
  *
  * Writes dist-webstore/catglish-<version>.zip.
  *
- * The one thing this does that a plain `zip -r` does not: it STRIPS the
+ * It only packages a release: HEAD must sit exactly on a chrome-v* tag and
+ * the build in dist-production/ must carry that tag's version (ADR-031 §6a).
+ * A build between tags gets a four-segment dev version such as 0.1.2.5,
+ * which must never reach the store -- a later real 0.1.3 would still upload,
+ * but the store would have shipped an untagged build in between.
+ *
+ * The other thing this does that a plain `zip -r` does not: it STRIPS the
  * top-level "key" field from the manifest.
  *
  * Why that matters. enx-chrome/manifest.json ships a fixed `key` so that an
@@ -41,6 +47,7 @@ import {
 } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { releaseVersion } from './version.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const dist = join(root, 'dist-production')
@@ -65,6 +72,20 @@ cpSync(dist, stageDir, { recursive: true })
 const manifest = JSON.parse(
   readFileSync(join(stageDir, 'manifest.json'), 'utf8')
 )
+const release = releaseVersion()
+if (!release) {
+  console.error('HEAD is not on a chrome-v* tag; only releases are packaged.')
+  console.error('Tag the release first, e.g. git tag chrome-v0.1.2')
+  process.exit(1)
+}
+if (manifest.version !== release) {
+  console.error(
+    `dist-production/ is version ${manifest.version}, but HEAD is tagged ` +
+      `chrome-v${release}. Rebuild with \`pnpm build:prod\`.`
+  )
+  process.exit(1)
+}
+
 const hadKey = Object.prototype.hasOwnProperty.call(manifest, 'key')
 delete manifest.key
 writeFileSync(

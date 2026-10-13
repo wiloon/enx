@@ -1,10 +1,10 @@
 import { crx } from '@crxjs/vite-plugin'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { defineConfig, loadEnv } from 'vite'
 import manifest from './manifest.json' with { type: 'json' }
+import { gitVersion } from './scripts/version.mjs'
 import { buildManifest } from './src/config/manifest.ts'
 import {
   applyOverrides,
@@ -13,10 +13,10 @@ import {
   TARGETS,
 } from './src/config/targets.ts'
 
-// The single source of the extension version: stamped into the manifest
-// (buildManifest) and exposed to the UI as __APP_VERSION__.
-const packageJson = JSON.parse(readFileSync('./package.json', 'utf-8'))
-const version = packageJson.version
+// The extension version comes from the nearest chrome-v* git tag (ADR-031
+// §6a, src/config/version.ts): stamped into the manifest (buildManifest) and
+// exposed to the UI as __APP_VERSION__.
+const version = gitVersion()
 
 export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.

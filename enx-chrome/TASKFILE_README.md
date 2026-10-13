@@ -241,12 +241,18 @@ task check
 
 ### Creating a release
 
+The version comes from git tags, not from a file (ADR-031 §6b). Tag the
+commit you are releasing, then package it:
+
 ```bash
-# Update version in package.json first
-task pack
+git tag chrome-v0.1.2 && git push origin chrome-v0.1.2
+task package-webstore
 ```
 
-This creates a zip file ready for Chrome Web Store.
+This writes `dist-webstore/catglish-0.1.2.zip` for the Chrome Web Store. It
+refuses to run unless HEAD is exactly on a `chrome-v*` tag. Builds between
+tags get a dev version such as `0.1.2.5` (five commits past the tag);
+`task version` shows the current one.
 
 ## CI/CD
 

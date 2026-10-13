@@ -5,7 +5,8 @@ vars:
   # Use project Node from .node-version (Node.js 24 LTS via fnm)
   FNM_EXEC: fnm exec --using=.node-version --
   VERSION:
-    sh: fnm exec --using=.node-version -- node -p "require('./package.json').version"
+    # From the nearest chrome-v* git tag (ADR-031 §6a), not package.json.
+    sh: fnm exec --using=.node-version -- node scripts/version.mjs
 
 tasks:
   ensure-node:
