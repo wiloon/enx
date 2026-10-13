@@ -125,6 +125,44 @@ func TestMigrateWordsEnglishNoCaseNoopWhenMigrated(t *testing.T) {
 	}
 }
 
+// Words cached from ECDICT before ecdict.CleanPhonetic existed get their
+// corrupted long schwa repaired; every other row, updated_at included, is
+// left alone.
+func TestCleanCachedEcdictPhonetics(t *testing.T) {
+	Init(filepath.Join(t.TempDir(), "enx-phonetic-test.db"))
+
+	pron := func(s string) *string { return &s }
+	rows := []Word{
+		{Id: "w1", English: "universally", Pronunciation: pron(`ju:ni'v\\:sәli`), CreatedAt: 1, UpdatedAt: 1},
+		{Id: "w2", English: "nurse", Pronunciation: pron("nә:s"), CreatedAt: 1, UpdatedAt: 1},
+		{Id: "w3", English: "nothing", CreatedAt: 1, UpdatedAt: 1},
+	}
+	if err := DB.Create(&rows).Error; err != nil {
+		t.Fatalf("seed words: %v", err)
+	}
+
+	if err := cleanCachedEcdictPhonetics(); err != nil {
+		t.Fatalf("cleanCachedEcdictPhonetics: %v", err)
+	}
+
+	want := map[string]*string{"w1": pron("ju:ni'vә:sәli"), "w2": pron("nә:s"), "w3": nil}
+	for id, wantPron := range want {
+		var w Word
+		if err := DB.First(&w, "id = ?", id).Error; err != nil {
+			t.Fatalf("read %s: %v", id, err)
+		}
+		switch {
+		case wantPron == nil && w.Pronunciation != nil:
+			t.Errorf("%s pronunciation = %q, want NULL", id, *w.Pronunciation)
+		case wantPron != nil && (w.Pronunciation == nil || *w.Pronunciation != *wantPron):
+			t.Errorf("%s pronunciation = %v, want %q", id, w.Pronunciation, *wantPron)
+		}
+		if w.UpdatedAt != 1 {
+			t.Errorf("%s updated_at = %d, want it untouched", id, w.UpdatedAt)
+		}
+	}
+}
+
 // Only debug traces every statement; production (info) keeps slow queries
 // and errors.
 func TestSQLLogLevel(t *testing.T) {
