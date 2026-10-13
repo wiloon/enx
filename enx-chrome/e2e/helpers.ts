@@ -334,7 +334,13 @@ export async function mockBackendFetch(
           // the requested paragraph) using canned data, so whatever text is
           // actually on the test page gets highlighted -- rather than
           // hardcoding a word list that has to match the fixture's prose.
-          const paragraph = new URL(url).searchParams.get('paragraph') ?? ''
+          // The paragraph travels in the QUERY/POST body (ADR-041); the
+          // query string is the deprecated GET form.
+          const paragraph =
+            typeof init?.body === 'string'
+              ? ((JSON.parse(init.body) as { paragraph?: string }).paragraph ??
+                '')
+              : (new URL(url).searchParams.get('paragraph') ?? '')
           const words = paragraph.split(/[^a-zA-Z']+/).filter(Boolean)
           const body: Record<string, unknown> = {}
           for (const w of words) {

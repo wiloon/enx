@@ -84,3 +84,34 @@ export function seedVocabulary(dbPath = process.env.E2E_DB_PATH): void {
     db.close()
   }
 }
+
+/**
+ * Makes `word` one the E2E user has never looked up (query_count 0), so the
+ * page stops underlining it after a reload. seedVocabulary marks every fixture
+ * word as looked up; a test that needs an un-underlined word makes its own.
+ */
+export function forgetWord(
+  word: string,
+  dbPath = process.env.E2E_DB_PATH
+): void {
+  if (!dbPath)
+    throw new Error('E2E_DB_PATH is not set (see playwright.config.ts)')
+
+  const db = new DatabaseSync(dbPath)
+  try {
+    db.exec('PRAGMA busy_timeout = 10000')
+    const { changes } = db
+      .prepare(
+        `UPDATE user_dicts SET query_count = 0, updated_at = ?
+         WHERE word_id = (SELECT id FROM words WHERE english = ?)`
+      )
+      .run(Date.now(), word.toLowerCase())
+    if (changes !== 1) {
+      throw new Error(
+        `forgetWord: expected one user_dicts row for "${word}", updated ${changes}`
+      )
+    }
+  } finally {
+    db.close()
+  }
+}

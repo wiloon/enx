@@ -173,6 +173,67 @@ describe('WordProcessor.extractSentenceContext', () => {
     expect(result?.sentence).not.toContain('Developers')
   })
 
+  describe('headings', () => {
+    it('returns the whole heading when it sits in no block container', () => {
+      document.body.innerHTML = `<article><h2>${wrap('Understanding')} Software Development</h2></article>`
+      const el = document.querySelector<HTMLElement>('.w')!
+
+      expect(
+        WordProcessor.extractSentenceContext(
+          rangeOverElement(el),
+          'Understanding'
+        )?.sentence
+      ).toBe('Understanding Software Development')
+    })
+
+    // A minified or framework-rendered page has no whitespace between the
+    // heading and the paragraph, so the wrapper's text glues them together
+    // and sentence segmentation can't tell where the heading ends.
+    it('keeps the heading apart from the next paragraph when markup has no whitespace between them', () => {
+      document.body.innerHTML = `<div><h2>Understanding Software ${wrap('Development')}</h2><p>Software development is hard. It takes time.</p></div>`
+      const el = document.querySelector<HTMLElement>('.w')!
+
+      expect(
+        WordProcessor.extractSentenceContext(
+          rangeOverElement(el),
+          'Development'
+        )?.sentence
+      ).toBe('Understanding Software Development')
+    })
+
+    it('returns a heading shorter than the container length threshold', () => {
+      document.body.innerHTML = `<div><h3>${wrap('Conclusion')}</h3><p>Some long enough paragraph text follows here.</p></div>`
+      const el = document.querySelector<HTMLElement>('.w')!
+
+      expect(
+        WordProcessor.extractSentenceContext(rangeOverElement(el), 'Conclusion')
+          ?.sentence
+      ).toBe('Conclusion')
+    })
+
+    it('returns the whole heading even when it holds sentence punctuation', () => {
+      document.body.innerHTML = `<h1>What is ${wrap('DDD')}? A short primer</h1>`
+      const el = document.querySelector<HTMLElement>('.w')!
+
+      const ctx = WordProcessor.extractSentenceContext(
+        rangeOverElement(el),
+        'DDD'
+      )
+      expect(ctx?.sentence).toBe('What is DDD? A short primer')
+      expect(ctx?.range?.toString()).toBe('What is DDD? A short primer')
+    })
+
+    it('leaves a paragraph next to a heading split as before', () => {
+      document.body.innerHTML = `<div><h2>Understanding Software Development</h2><p>Software development is ${wrap('hard')}. It takes time.</p></div>`
+      const el = document.querySelector<HTMLElement>('.w')!
+
+      expect(
+        WordProcessor.extractSentenceContext(rangeOverElement(el), 'hard')
+          ?.sentence
+      ).toBe('Software development is hard.')
+    })
+  })
+
   it('returns null when no ancestor container qualifies as a sentence container', () => {
     document.body.innerHTML = wrap('orphan')
     const el = document.querySelector<HTMLElement>('.w')!

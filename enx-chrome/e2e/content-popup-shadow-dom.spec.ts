@@ -143,9 +143,7 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     await play.click()
 
     await expect.poll(() => audioRequests.length).toBeGreaterThan(0)
-    expect(audioRequests[0]).toContain(
-      `audio=${encodeURIComponent(word.text)}`
-    )
+    expect(audioRequests[0]).toContain(`audio=${encodeURIComponent(word.text)}`)
     // Still the overlay the double-click opened, not a fresh lookup's.
     await expect(popup).toHaveAttribute('data-e2e-marker', 'first')
   })
@@ -331,10 +329,16 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     const CYCLES = 50
     for (let i = WARMUP; i < WARMUP + CYCLES; i++) await openAndClose(i)
 
+    // The toolbar pin hint (ADR-046) is meant to stay up in a fresh profile;
+    // only overlays opened by a lookup count as residue.
     expect(
-      await page.evaluate(() => document.querySelectorAll('[popover]').length),
+      await page.evaluate(() =>
+        [...document.querySelectorAll('[popover]:not(.enx-pin-hint)')].map(
+          el => el.id || el.className || el.tagName
+        )
+      ),
       'no residual popover elements after all cycles'
-    ).toBe(0)
+    ).toEqual([])
 
     await cdp.send('HeapProfiler.collectGarbage')
     const heapAfter = await page.evaluate(
