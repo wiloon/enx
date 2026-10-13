@@ -368,7 +368,20 @@ export class WordProcessor {
   // ancestor whose text is long enough to plausibly contain a full sentence.
   // Mirrors getArticleNodes()'s ">20/100/500 chars" style thresholds, just
   // at paragraph granularity instead of article granularity.
+  // A heading is one self-contained unit: it is returned whole, never split
+  // into sentences, and never measured against the 20-character minimum
+  // ("Conclusion" is a real heading). Without this a heading in no block
+  // container came back as just the clicked word, and one in a wrapper div
+  // was glued to the next paragraph when the markup had no whitespace
+  // between them -- textContent has no line break there.
+  private static readonly HEADING_SELECTOR = 'h1, h2, h3, h4, h5, h6'
+
   private static findSentenceContainer(startNode: Node): Element | null {
+    const heading = nearestElement(startNode)?.closest(this.HEADING_SELECTOR)
+    if (heading) return heading
+
+    // The minimum length skips small wrappers (a div around one link or tag,
+    // a short menu item) on the way up to the element holding the prose.
     const blockSelector = 'p, li, blockquote, td, div'
     let current = nearestElement(startNode)?.closest(blockSelector) || null
 
@@ -468,6 +481,21 @@ export class WordProcessor {
     return masked.length === fullText.length ? masked : fullText
   }
 
+  // The whole container as the sentence, its range trimmed of surrounding
+  // whitespace the same way a segmented sentence's is.
+  private static wholeContainerContext(
+    container: Element,
+    fullText: string
+  ): { sentence: string; sentenceIndex: number; range: Range | null } {
+    const start = fullText.length - fullText.trimStart().length
+    const end = fullText.trimEnd().length
+    return {
+      sentence: fullText.trim(),
+      sentenceIndex: 0,
+      range: this.rangeFromContainerOffsets(container, start, end),
+    }
+  }
+
   // From a Range marking where the user clicked or started a selection,
   // locates the sentence it belongs to. Returns null only when no plausible
   // sentence container can be found at all; once a container is found,
@@ -489,6 +517,10 @@ export class WordProcessor {
 
     const fullText = container.textContent || ''
     if (fullText.trim().length === 0) return null
+
+    if (container.matches(this.HEADING_SELECTOR)) {
+      return this.wholeContainerContext(container, fullText)
+    }
 
     // Inline <code>/<pre> spans (e.g. `<?start>`, `<?end>`) hold literal
     // syntax whose punctuation ICU's sentence-break rules mistake for real

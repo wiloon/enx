@@ -14,6 +14,7 @@ import {
   getHighlightedWords,
   waitForContentScript,
 } from './helpers'
+import { forgetWord } from './seed'
 
 const TEST_PAGE_PATH = '/test-page.html'
 
@@ -109,26 +110,35 @@ test.describe('Side Panel word underlines (ADR-053)', () => {
 
   test('a word looked up in the panel is underlined on the page', async ({
     page,
+    extensionId,
   }) => {
     const sentence = await panel.getByTestId('sidepanel-sentence').innerText()
-    const pageUnderlined = new Set(
-      (await getHighlightedWords(page)).map(w => w.text.toLowerCase())
-    )
-    // A word the page doesn't underline yet, so the assertion can't pass
-    // vacuously. Every run looks one up, so the dev user can run out.
-    const fresh = sentence
+    const word = sentence
       .split(/[^A-Za-z]+/)
-      .find(w => w.length > 3 && !pageUnderlined.has(w.toLowerCase()))
-    test.skip(!fresh, 'every word in the sentence is already underlined')
+      .find(w => w.length > 3 && w.toLowerCase() !== anchorWord.toLowerCase())
+    expect(word, `a second word to look up in "${sentence}"`).toBeTruthy()
 
-    await selectWordInPanel(panel, fresh!)
+    // Every fixture word is seeded as looked up, so nothing on the page is
+    // un-underlined. Un-look this one and reload so the page drops its
+    // underline -- otherwise the assertion below would pass vacuously.
+    forgetWord(word!)
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await enableLearningMode(page, extensionId)
+    await waitForContentScript(page)
+    await expect
+      .poll(async () =>
+        (await getHighlightedWords(page)).map(w => w.text.toLowerCase())
+      )
+      .not.toContain(word!.toLowerCase())
+
+    await selectWordInPanel(panel, word!)
 
     await expect
       .poll(async () =>
         (await getHighlightedWords(page)).map(w => w.text.toLowerCase())
       )
-      .toContain(fresh!.toLowerCase())
-    expect((await highlightTexts(panel)).underlined).toContain(fresh)
+      .toContain(word!.toLowerCase())
+    expect((await highlightTexts(panel)).underlined).toContain(word)
   })
 
   test('marking a word acquainted on the page drops its underline in the panel', async ({
