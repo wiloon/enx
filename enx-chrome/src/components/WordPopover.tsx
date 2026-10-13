@@ -7,6 +7,7 @@ import {
 } from '@heroicons/react/20/solid'
 import SidePanelTranslateIcon from '@/components/icons/SidePanelTranslateIcon'
 import { AiBadge, AiMissPanel, AiNotice } from '@/components/AiLookup'
+import LoadingSkeleton from '@/components/LoadingSkeleton'
 import {
   currentWordAtom,
   isTranslatingAtom,
@@ -168,16 +169,10 @@ export default function WordPopover({
       >
         {/* Loading state */}
         {isTranslating && (
-          <div className="space-y-3">
-            <div className="animate-pulse">
-              <div className="h-4 bg-muted rounded-sm w-3/4 mb-2"></div>
-              <div className="h-4 bg-muted rounded-sm w-1/2"></div>
-            </div>
-            <div className="text-center text-muted-foreground text-sm">
-              <span className="inline-block animate-spin mr-2">⏳</span>
-              Loading translation...
-            </div>
-          </div>
+          <LoadingSkeleton
+            label="Loading translation"
+            testId="word-popover-loading"
+          />
         )}
 
         {/* Error state */}

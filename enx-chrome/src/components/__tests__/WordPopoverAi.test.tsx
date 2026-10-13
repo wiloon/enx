@@ -117,6 +117,11 @@ describe('a lookup that found nothing', () => {
     expect(screen.getByTestId('word-popover-ai-loading')).toHaveTextContent(
       'Not in the dictionary. Asking AI…'
     )
+    // A pulse, never a spin: a rotating box overflows the card's
+    // scrolling body and flashes a scrollbar.
+    const loading = screen.getByTestId('word-popover-ai-loading')
+    expect(loading.querySelector('.animate-spin')).toBeNull()
+    expect(loading.querySelector('svg.animate-pulse')).not.toBeNull()
     expect(screen.queryByTestId('word-popover-ai-lookup')).toBeNull()
   })
 

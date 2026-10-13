@@ -26,6 +26,7 @@ import {
 } from '@/lib/wordHighlight'
 import { sendMessageToBackground } from '@/services/api'
 import { config } from '@/config/env'
+import LoadingSkeleton from '@/components/LoadingSkeleton'
 import {
   WORD_HIGHLIGHT_KEY,
   getWordHighlightEnabled,
@@ -574,10 +575,7 @@ function WordCard({
         card.dictionaryChinese) && (
         <div className="mt-1.5 space-y-1">
           {card.contextStatus === 'loading' && (
-            <p className="text-muted-foreground text-sm">
-              <span className="inline-block animate-spin mr-1">⏳</span>
-              Translating...
-            </p>
+            <LoadingSkeleton label="Translating..." lines={['w-2/3']} />
           )}
           {card.contextStatus === 'loaded' && (
             <p className="text-sm text-brand">
@@ -755,13 +753,11 @@ function SentenceBlock({
 
       <div className="border-t border-border pt-3">
         {entry.status === 'loading' && (
-          <div
-            className="text-muted-foreground"
-            data-testid="sidepanel-loading"
-          >
-            <span className="inline-block animate-spin mr-2">⏳</span>
-            Translating...
-          </div>
+          <LoadingSkeleton
+            label="Translating..."
+            lines={['w-full', 'w-5/6', 'w-2/3']}
+            testId="sidepanel-loading"
+          />
         )}
         {entry.status === 'error' && (
           <div

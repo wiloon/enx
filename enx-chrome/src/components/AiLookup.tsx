@@ -33,10 +33,15 @@ export function AiMissPanel({ onLookup }: { onLookup: () => void }) {
       return (
         <p
           data-testid="word-popover-ai-loading"
-          className="text-sm text-muted-foreground"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground"
           role="status"
         >
-          <span className="inline-block animate-spin mr-2">⏳</span>
+          {/* Pulses rather than spins: a rotating box pokes out of the
+              card's scrolling body and flashes a scrollbar. */}
+          <SparklesIcon
+            className="h-4 w-4 shrink-0 text-brand animate-pulse"
+            aria-hidden="true"
+          />
           Not in the dictionary. Asking AI…
         </p>
       )
