@@ -1,6 +1,8 @@
 // The popup's save card (ADR-032 Decision 4). It always shows the exact
-// address that would be saved, so one click is the whole confirmation; once
-// saved, the same card offers Remove. The copy says "link", not "page":
+// address that would be saved, so one click on Save is the whole
+// confirmation; once saved, the same card offers Remove. The address sits on
+// one line, cut with an ellipsis, and shows in full on hover. Save is a
+// filled button of its own, so the card reads as an action, not a label. The copy says "link", not "page":
 // enx-api keeps the address and title, never the page's content.
 
 import { BookmarkIcon } from '@heroicons/react/24/outline'
@@ -31,7 +33,7 @@ export default function SaveLinkCard({
     <span
       data-testid="save-link-url"
       title={url}
-      className="mt-1 line-clamp-2 block break-all font-mono text-[10.5px] leading-snug text-muted-foreground"
+      className="mt-0.5 block truncate font-mono text-[10.5px] leading-snug text-muted-foreground"
     >
       {url}
     </span>
@@ -84,27 +86,34 @@ export default function SaveLinkCard({
   }
 
   return (
-    <div>
-      <button
-        type="button"
-        data-testid="save-link-card"
-        onClick={onSave}
-        disabled={busy !== null}
-        className="flex w-full items-start gap-3 rounded-xl bg-background px-3 py-2.5 text-left shadow-xs ring-1 ring-border transition hover:ring-brand/50 disabled:opacity-60"
-      >
+    <div
+      data-testid="save-link-card"
+      className="rounded-xl bg-background px-3 py-2.5 shadow-xs ring-1 ring-border"
+    >
+      <div className="flex items-center gap-3">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-muted text-brand">
           <BookmarkIcon className="h-[18px] w-[18px]" />
         </span>
         <span className="min-w-0 flex-1 leading-tight">
           <span className="block text-sm font-medium text-foreground">
-            {busy === 'saving' ? 'Saving…' : 'Save link'}
+            Save this link
           </span>
           <span className="block text-[11px] text-muted-foreground">
-            Saves the link and title, not the page content
+            Link and title only, not the page content
           </span>
           {address}
         </span>
-      </button>
+        <button
+          type="button"
+          data-testid="save-link-save"
+          onClick={onSave}
+          disabled={busy !== null}
+          className="flex shrink-0 items-center gap-1 rounded-lg bg-brand px-2.5 py-1.5 text-xs font-semibold text-brand-foreground shadow-sm shadow-brand/25 transition hover:brightness-105 active:scale-[0.97] disabled:opacity-60"
+        >
+          <BookmarkSolidIcon className="h-3.5 w-3.5" />
+          {busy === 'saving' ? 'Saving…' : 'Save'}
+        </button>
+      </div>
       {errorLine}
     </div>
   )

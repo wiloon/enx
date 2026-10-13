@@ -27,17 +27,26 @@ describe('SaveLinkCard', () => {
     const { onSave } = setup()
 
     expect(screen.getByTestId('save-link-url')).toHaveTextContent(URL_SHOWN)
-    expect(screen.getByText('Save link')).toBeInTheDocument()
+    expect(screen.getByText('Save this link')).toBeInTheDocument()
     expect(
-      screen.getByText('Saves the link and title, not the page content')
+      screen.getByText('Link and title only, not the page content')
     ).toBeInTheDocument()
     expect(onSave).not.toHaveBeenCalled()
   })
 
-  it('saves with a single click, with no confirmation step', () => {
+  it('keeps a long address on one line and shows it in full on hover', () => {
+    const longUrl = `https://www.infoq.com/news/2026/10/x/?${'utm_term=a&'.repeat(20)}`
+    setup({ url: longUrl })
+
+    const address = screen.getByTestId('save-link-url')
+    expect(address).toHaveClass('truncate')
+    expect(address).toHaveAttribute('title', longUrl)
+  })
+
+  it('saves with a single click on its Save button, with no confirmation step', () => {
     const { onSave } = setup()
 
-    fireEvent.click(screen.getByTestId('save-link-card'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(onSave).toHaveBeenCalledTimes(1)
   })
@@ -46,7 +55,7 @@ describe('SaveLinkCard', () => {
     setup({ busy: 'saving' })
 
     expect(screen.getByText('Saving…')).toBeInTheDocument()
-    expect(screen.getByTestId('save-link-card')).toBeDisabled()
+    expect(screen.getByTestId('save-link-save')).toBeDisabled()
   })
 
   it('once saved, says so and offers Remove', () => {
