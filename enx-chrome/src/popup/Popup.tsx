@@ -14,6 +14,7 @@ import PageReportPrompt, {
   PageReportStatus,
 } from '@/components/PageReportPrompt'
 import SaveLinkCard from '@/components/SaveLinkCard'
+import SignOutButton from '@/components/SignOutButton'
 import { config } from '@/config/env'
 import { isReportableFailure, EnableFailureReason } from '@/lib/enableOutcome'
 import {
@@ -24,9 +25,8 @@ import {
 import { PageReportPayload, sanitizePageUrl } from '@/lib/pageReport'
 import { initSentry } from '@/lib/sentry'
 import { errorAtom, userAtom } from '@/store/atoms'
-import { ClerkProvider, SignOutButton, useUser } from '@clerk/chrome-extension'
+import { ClerkProvider, useUser } from '@clerk/chrome-extension'
 import {
-  ArrowRightOnRectangleIcon,
   BookOpenIcon,
   ChevronRightIcon,
   GlobeAltIcon,
@@ -231,23 +231,7 @@ function SignedInBody({
             {email || 'Signed in'}
           </p>
         </div>
-        {/*
-          `redirectUrl` defaults to "/" in <SignOutButton>, which after sign-out
-          navigates the popup to chrome-extension://<id>/ -- a directory with no
-          index, so Chrome shows ERR_FILE_NOT_FOUND. It also shadows the
-          ClerkProvider `afterSignOutUrl`, so set it here explicitly back to the
-          popup page.
-        */}
-        <SignOutButton redirectUrl="/popup.html">
-          <button
-            type="button"
-            title="Sign out"
-            aria-label="Sign out"
-            className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
-          >
-            <ArrowRightOnRectangleIcon className="h-[18px] w-[18px]" />
-          </button>
-        </SignOutButton>
+        <SignOutButton />
       </div>
 
       {error && (
