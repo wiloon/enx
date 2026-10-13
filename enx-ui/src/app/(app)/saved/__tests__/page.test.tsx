@@ -98,5 +98,7 @@ it('keeps the page and shows the error when deleting fails', async () => {
 it('explains how to save a page when there are none', async () => {
   mockList.mockResolvedValue({ success: true, data: { pages: [] } })
   renderPage()
-  expect(await screen.findByText(/No saved pages yet/)).toBeInTheDocument()
+  expect(await screen.findByText('No saved pages yet')).toBeInTheDocument()
+  // One hint only: the page subtitle no longer repeats the instructions.
+  expect(screen.getAllByText(/Save this page/)).toHaveLength(1)
 })
