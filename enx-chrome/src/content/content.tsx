@@ -9,8 +9,8 @@ import {
   offset,
   flip,
   shift,
-  size,
 } from '@floating-ui/dom'
+import { positionAnchoredOverlay } from '@/lib/overlayPositioning'
 import { WordProcessor } from '@/lib/wordProcessor'
 import {
   reviewBucketHighlightCss,
@@ -139,7 +139,7 @@ type OverlayElement = HTMLElement & {
 
 // Content is rendered inside a shadow root so Tailwind classes can't leak
 // into (or be overridden by) the host page's styles.
-const mountShadowRoot = (host: HTMLElement): Root => {
+const mountShadowRoot = (host: HTMLElement, mountPointStyle = ''): Root => {
   ensureTailwindPropertyRegistrations()
   const shadowRoot = host.attachShadow({ mode: 'open' })
   const styleTag = document.createElement('style')
@@ -147,6 +147,7 @@ const mountShadowRoot = (host: HTMLElement): Root => {
   shadowRoot.appendChild(styleTag)
 
   const mountPoint = document.createElement('div')
+  mountPoint.style.cssText = mountPointStyle
   shadowRoot.appendChild(mountPoint)
   return createRoot(mountPoint)
 }
@@ -227,31 +228,9 @@ const attachOverlayPositioning = (
   }
 
   const update = () => {
-    computePosition(virtualReference, overlay, {
-      strategy: 'fixed',
-      // 'top' keeps the overlay over already-read text, not the upcoming
-      // sentence; flip/shift keep it on screen; offset re-measures the line
-      // height each tick so the "clear a line" gap (ADR-005) stays right if
-      // the font/zoom changes while it's open; size caps the height.
-      placement: 'top',
-      middleware: [
-        offset(() => referenceLineHeight(reference)),
-        flip(),
-        shift({ padding: 8 }),
-        size({
-          padding: 8,
-          apply({ availableHeight }) {
-            // Whichever is smaller: 60% of the viewport (so the overlay never
-            // dominates the screen) or the room in the chosen direction.
-            const cap = Math.floor(window.innerHeight * 0.6)
-            overlay.style.maxHeight = `${Math.min(cap, Math.floor(availableHeight))}px`
-          },
-        }),
-      ],
-    }).then(({ x, y }) => {
-      overlay.style.left = `${x}px`
-      overlay.style.top = `${y}px`
-    })
+    void positionAnchoredOverlay(virtualReference, overlay, () =>
+      referenceLineHeight(reference)
+    )
   }
 
   return autoUpdate(virtualReference, overlay, update)
@@ -282,6 +261,8 @@ const createAnchoredOverlay = (
     min-width: 400px;
     max-width: 480px;
     max-height: 60vh;
+    display: flex;
+    flex-direction: column;
     overflow-y: auto;
     padding: 0;
     border: none;
@@ -289,7 +270,13 @@ const createAnchoredOverlay = (
     margin: 0;
   `
 
-  const root = mountShadowRoot(overlay)
+  // The flex chain (host -> mount point -> card) hands the host's max-height
+  // down to the card, so when it must shrink only the card's body scrolls and
+  // its header and buttons stay in view.
+  const root = mountShadowRoot(
+    overlay,
+    'display: flex; flex-direction: column; min-height: 0;'
+  )
 
   let stopPositioning: (() => void) | null = null
   const mount = () => {
