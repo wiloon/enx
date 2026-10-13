@@ -1,5 +1,7 @@
 # Adding New Website Support to ENX
 
+> **Partly stale.** Written before ADR-034 (on-demand injection and generic content detection) and the site adapters in `enx-chrome/src/lib/siteAdapters`. Check both before following the manifest steps below.
+
 ## Document Information
 
 | Field | Value |

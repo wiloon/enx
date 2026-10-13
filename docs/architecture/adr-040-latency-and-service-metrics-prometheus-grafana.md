@@ -99,7 +99,7 @@ OTel 能顺带做 tracing，但当前只有一个 Go 服务、没有跨服务调
 
 - 一个 Gin 中间件负责**所有计时**，挂在 `middleware.RequestLog` 旁边：记录 HTTP 指标；若 handler 在 context 里设置了查词来源（`c.Set(metrics.LookupSourceKey, "local"|"ecdict"|"miss")`），同时记一条 `enx_dictionary_lookup_duration_seconds`。`translate.Handler` 只需在拿到 `Resolve` 的结果后加一行 `c.Set(metrics.LookupSourceKey, …)`，不用自己掐表。
 - AI 用**装饰器**：在 `main` 组装处给 `Translator` 和 `Rephraser` 各包一层，对每个接口方法计时、记 token、归类 outcome（`context.DeadlineExceeded` → `timeout`）。provider 实现零改动，新 provider 自动覆盖。
-- 新包 `enx-api/metrics` 持有指标定义与注册（用自有 `prometheus.Registry`，不用全局默认，便于测试隔离），以 `*metrics.Metrics` 的形式经构造函数注入到需要的地方（`.ai/instructions.md` 的 DDD 约定）。
+- 新包 `enx-api/metrics` 持有指标定义与注册（用自有 `prometheus.Registry`，不用全局默认，便于测试隔离），以 `*metrics.Metrics` 的形式经构造函数注入到需要的地方（`AGENTS.md` 的 DDD 约定）。
 
 ### 3. 标签基数红线
 

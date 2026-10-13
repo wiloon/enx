@@ -203,7 +203,7 @@ tasks.named<org.springframework.boot.gradle.tasks.bundling.BootBuildImage>("boot
 
 ### 4.8 架构：DDD 分层（与 Go `enx-api` 对齐）
 
-与 [.ai/instructions.md](../../.ai/instructions.md) 中 Go 后端 DDD 约定一致，Java 侧按 **四层** 组织包结构：
+与 [AGENTS.md](../../AGENTS.md) 中 Go 后端 DDD 约定一致，Java 侧按 **四层** 组织包结构：
 
 | 层 | Java 包 | 职责 | Go 对应 |
 | --- | --- | --- | --- |
@@ -687,7 +687,7 @@ enx-api-java/
 
 1. **实现前**：以本文 Spec 为唯一需求来源；若发现契约与代码不符，**先改 Spec** 再改代码。
 2. **实现中**：按 §7 顺序提交；**Ingress 指向 Java 的 `/api/log` 必须与 Go 删除同批或之后**，避免 404。
-3. **实现后**：勾选 §8 验收清单；将文首 **状态** 更新为 `Done — YYYY-MM-DD`；在 `enx/.ai/contributions.md` 追加简要记录（可选）。
+3. **实现后**：勾选 §8 验收清单；将文首 **状态** 更新为 `Done — YYYY-MM-DD`；在 `docs/agents/contributions.md` 追加简要记录（可选）。
 
 ---
 

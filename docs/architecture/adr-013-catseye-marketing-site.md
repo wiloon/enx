@@ -15,7 +15,7 @@
 
 1. **enx-ui 同时作为 Catseye 官网**：在同一个 Next.js 应用里划出「营销区」（免登录）和「应用区」（现有的登录后功能），不新建独立仓库 / 独立部署。
 2. **对外品牌名 = `Catseye`**：官网标题、logo、文案统一用 `Catseye`。`ENX` / `enx` 仅作代码与内部文档的代号（`CONTEXT.md`、`enx-api`、`enx-chrome` 等仓库名不改）。
-3. **英文单语**：不做 i18n、不加语言切换器（`relingo` 有语言切换，本站**不抄这一条**）。`<html lang="en">`（已是现状）。UI 文案全英文，符合 `.ai/instructions.md`。
+3. **英文单语**：不做 i18n、不加语言切换器（`relingo` 有语言切换，本站**不抄这一条**）。`<html lang="en">`（已是现状）。UI 文案全英文，符合 `AGENTS.md`。
 4. **v1 范围 = 精简首页**：单页 `/`，从上到下：站点顶栏 → Hero → **演示视频占位** → 核心功能 → 工作原理（3 步）→ 安装 → 结尾 CTA → 页脚。**不做** `/features` 独立页、`/pricing`、`/docs`、`/changelog`、FAQ、隐私条款页——这些留到后续 ADR / 迭代。
 5. **结构 = route group 分层 + 静态渲染**：`(marketing)` route group 走 SSG（`force-static`），`(app)` route group 保留现有客户端鉴权行为。同一套 `enx-ui` 构建与部署。
 6. **演示视频这一版只放占位**：预留一个 16:9 容器 + 海报图 + 播放控件；视频文件（或托管链接）后补，通过一个常量开关接入，不阻塞官网上线。
@@ -33,7 +33,7 @@
 - **设计 token**：`src/app/globals.css` 已有整套 shadcn 语义 token（`--background` / `--primary` / `--muted` / `--card` …，中性灰色板，`--radius: 0.625rem`），并有 `.dark` 变体的完整重定义，但**没有** `next-themes` / 主题切换器接线。
 - **构建**：`next.config.ts` 用 `output: "standalone"`。**没有** enx-ui 专属的 `Taskfile` / `Dockerfile` / 部署 workflow——部署方式未在仓库里固化（`.github/workflows/` 下只有 `deploy-enx-api.yml`）。
 - **API 基址**：`src/services/api.ts` 用 `NEXT_PUBLIC_API_BASE_URL`，默认 `https://enx-api.wiloon.lab`。
-- **测试**：Jest（jsdom）+ RTL 单测，Playwright E2E。`.ai/instructions.md` 规定任何功能性改动**必须**配自动化测试。
+- **测试**：Jest（jsdom）+ RTL 单测，Playwright E2E。`AGENTS.md` 规定任何功能性改动**必须**配自动化测试。
 
 ### 为什么做官网
 
@@ -237,7 +237,7 @@ export const SITE = {
 
 `/features` 独立页、`/pricing`、`/docs`（Nextra）、`/changelog`、FAQ 页、Privacy / Terms 页、`/compare` 或 `/vs/<competitor>` 独立对比页（v1 只做首页内嵌的一张对照表，见 Decision 3）、i18n / 语言切换、暗色切换器、testimonials（没有真实用户评价，不放假的）、邮件订阅 / newsletter。
 
-### 9. 测试（`.ai/instructions.md` 强制要求）
+### 9. 测试（`AGENTS.md` 强制要求）
 
 **单元（Jest + RTL，`src/**/__tests__/` 或就近）**：
 
@@ -257,7 +257,7 @@ export const SITE = {
 - 现有任何「访问 `/` 期望登录表单 / dashboard」的 spec → 改成访问 `/app`。
 - 登录流程 spec：登录后落在 `/app`。
 
-**验证**：新测试必须先失败再实现（`.ai/instructions.md` 的 vacuous-pass 检查）。
+**验证**：新测试必须先失败再实现（`AGENTS.md` 的 vacuous-pass 检查）。
 
 ### 10. 术语（CONTEXT.md）
 
