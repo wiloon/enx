@@ -516,18 +516,15 @@ describe('SidePanel', () => {
       // §3.7 2026-08-03 version which discarded it.
       expect(definitions).toHaveTextContent('cats的通用词典释义')
       expect(definitions).toHaveTextContent('great的通用词典释义')
-      // Query Count is now shown as a magnifying-glass icon + number, with
-      // "Query Count: N" as the hover title rather than visible text.
-      expect(
-        within(screen.getByTestId('sidepanel-card-cats')).getByTitle(
-          'Query Count: 3'
-        )
-      ).toBeInTheDocument()
-      expect(
-        within(screen.getByTestId('sidepanel-card-great')).getByTitle(
-          'Query Count: 3'
-        )
-      ).toBeInTheDocument()
+      // The lookup count reads as a compact "3×"; the full wording lives in
+      // the hover title and, for screen readers, in visually hidden text.
+      for (const word of ['cats', 'great']) {
+        const count = within(
+          screen.getByTestId(`sidepanel-card-${word}`)
+        ).getByTitle('Looked up 3 times')
+        expect(count).toHaveTextContent('3×')
+        expect(count).toHaveTextContent('Looked up 3 times')
+      }
     })
 
     // Newest click ('great') renders above the earlier one ('cats').
@@ -1109,6 +1106,106 @@ describe('SidePanel', () => {
       expect(card).not.toHaveTextContent('Translating...')
     })
     expect(mockSendMessage).not.toHaveBeenCalled()
+  })
+
+  describe('Clear with undo', () => {
+    const lookUpOnPage = (word: string, createdAt: number) =>
+      act(() => {
+        fireStorageChange(
+          {
+            [LATEST_PAGE_WORD_STORAGE_KEY]: {
+              newValue: {
+                word,
+                ecp: { English: word, Chinese: `${word}的释义`, LoadCount: 1 },
+                createdAt,
+              },
+            },
+          },
+          'session'
+        )
+      })
+
+    afterEach(() => {
+      jest.useRealTimers()
+    })
+
+    it('empties the list and brings it back on Undo', async () => {
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-empty-state')
+      lookUpOnPage('troy', 1)
+      await screen.findByTestId('sidepanel-card-troy')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+      expect(
+        screen.queryByTestId('sidepanel-card-troy')
+      ).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+      expect(screen.getByTestId('sidepanel-card-troy')).toHaveTextContent(
+        'troy的释义'
+      )
+    })
+
+    it('stops offering Undo after a few seconds', async () => {
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-empty-state')
+      lookUpOnPage('troy', 1)
+      await screen.findByTestId('sidepanel-card-troy')
+
+      jest.useFakeTimers()
+      fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+      expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument()
+      act(() => {
+        jest.advanceTimersByTime(6000)
+      })
+      expect(
+        screen.queryByRole('button', { name: 'Undo' })
+      ).not.toBeInTheDocument()
+    })
+
+    it('drops the Undo offer once a new lookup arrives', async () => {
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-empty-state')
+      lookUpOnPage('troy', 1)
+      await screen.findByTestId('sidepanel-card-troy')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+      lookUpOnPage('argues', 2)
+      await screen.findByTestId('sidepanel-card-argues')
+      // Empty again, still within the Undo window: the old list must not
+      // come back as an offer.
+      fireEvent.click(screen.getByTestId('sidepanel-remove-argues'))
+
+      expect(
+        screen.queryByRole('button', { name: 'Undo' })
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByTestId('sidepanel-card-troy')
+      ).not.toBeInTheDocument()
+    })
+  })
+
+  it('says "1 time", not "1 times", for a word looked up once', async () => {
+    render(<SidePanel />)
+    await screen.findByTestId('sidepanel-empty-state')
+
+    act(() => {
+      fireStorageChange(
+        {
+          [LATEST_PAGE_WORD_STORAGE_KEY]: {
+            newValue: {
+              word: 'troy',
+              ecp: { English: 'troy', Chinese: '金衡', LoadCount: 1 },
+              createdAt: 1,
+            },
+          },
+        },
+        'session'
+      )
+    })
+
+    const card = await screen.findByTestId('sidepanel-card-troy')
+    expect(within(card).getByTitle('Looked up 1 time')).toHaveTextContent('1×')
   })
 
   it('keeps the sentence (and its nested in-sentence word) visible when a page word lookup arrives afterwards (ADR-023, fixes the previous "sentence disappears" bug)', async () => {
