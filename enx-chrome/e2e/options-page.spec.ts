@@ -60,7 +60,7 @@ test.describe('Options Page', () => {
 
     // Should be default (dev, staging, or prod)
     expect(value).toMatch(
-      /http:\/\/localhost:8090|https:\/\/enx\.wiloon\.com|https:\/\/enx-api\.wiloon\.com/
+      /http:\/\/localhost:8091|https:\/\/enx\.wiloon\.com|https:\/\/enx-api\.wiloon\.com/
     )
   })
 
@@ -91,7 +91,7 @@ test.describe('Options Page', () => {
     // Should show default URL
     const value = await apiInput.inputValue()
     expect(value).toMatch(
-      /http:\/\/localhost:8090|https:\/\/enx\.wiloon\.com|https:\/\/enx-api\.wiloon\.com/
+      /http:\/\/localhost:8091|https:\/\/enx\.wiloon\.com|https:\/\/enx-api\.wiloon\.com/
     )
   })
 })

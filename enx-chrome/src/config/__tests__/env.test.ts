@@ -76,6 +76,12 @@ describe('build target selection', () => {
     expect(config.apiBaseUrl).toBe('https://api.catglish.com')
   })
 
+  it('points the development build at the local enx-api (`port` in enx-api/config.toml)', () => {
+    const { config } = loadEnv({ MODE: 'development' })
+    expect(config.environment).toBe('development')
+    expect(config.apiBaseUrl).toBe('http://localhost:8091')
+  })
+
   it('falls back to the homelab target for an unknown mode', () => {
     expect(loadEnv({ MODE: 'nonsense' }).config.environment).toBe('homelab')
   })

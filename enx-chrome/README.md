@@ -147,7 +147,7 @@ The `task dev-chrome` command starts a Chrome instance with the extension pre-lo
 
 ### Building
 
-Build for local development (uses `localhost:8090` API):
+Build for local development (uses `localhost:8091` API):
 
 ```bash
 task build-dev
@@ -233,7 +233,7 @@ For detailed task documentation, see [TASKFILE_README.md](./TASKFILE_README.md)
 The build target decides which URLs are compiled into the bundle and the
 manifest (see `src/config/targets.ts`):
 
-- **Development** (`task build-dev`): `http://localhost:8090`
+- **Development** (`task build-dev`): `http://localhost:8091`
 - **Homelab** (`task build`): `https://enx-api.wiloon.lab`
 - **Production** (`task build-prod`): `https://enx-api.wiloon.com`
 

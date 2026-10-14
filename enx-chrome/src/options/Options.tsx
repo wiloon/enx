@@ -146,12 +146,12 @@ function OptionsContent() {
                 id="apiUrl"
                 value={customUrl}
                 onChange={e => setCustomUrl(e.target.value)}
-                placeholder="http://localhost:8090"
+                placeholder="http://localhost:8091"
                 className="w-full px-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-transparent"
               />
               <p className="mt-2 text-sm text-muted-foreground">
                 Enter the base URL of your Catglish API server (e.g.,
-                http://localhost:8090)
+                http://localhost:8091)
               </p>
             </div>
 

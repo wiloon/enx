@@ -59,7 +59,7 @@ task watch
 | ---------------- | --------------------- | --------------------------------------------- |
 | `task watch`     | **Local development** | ✅ Recommended - auto-rebuild + manual reload |
 | `task build`     | One-time build        | Same as watch but no auto-rebuild             |
-| `task build-dev` | Alias for build       | Uses local API (`localhost:8090`)             |
+| `task build-dev` | Alias for build       | Uses local API (`localhost:8091`)             |
 | `task dev`       | ⚠️ Not recommended    | May cause "cannot connect" errors             |
 
 ## Technical Details

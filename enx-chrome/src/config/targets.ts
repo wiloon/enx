@@ -40,7 +40,8 @@ const LOCAL_UI_ORIGIN = 'http://localhost:3000'
 export const TARGETS: Record<TargetName, Target> = {
   development: {
     name: 'development',
-    apiBaseUrl: 'http://localhost:8090',
+    // enx-api's dev server (`port` in enx-api/config.toml).
+    apiBaseUrl: 'http://localhost:8091',
     frontendBaseUrl: LOCAL_UI_ORIGIN,
     clerkPublishableKey: DEV_CLERK_PUBLISHABLE_KEY,
     clerkSyncHost: LOCAL_UI_ORIGIN,

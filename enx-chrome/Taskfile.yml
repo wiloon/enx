@@ -56,30 +56,33 @@ tasks:
       - '{{.FNM_EXEC}} pnpm exec vite build --mode homelab --watch'
 
   dev-chrome:
-    desc: Start Chrome with extension and auto-rebuild (all-in-one development mode)
+    desc: Start Chromium with the extension and auto-rebuild (usage - task dev-chrome [TARGET=homelab|dev] [URL=...])
+    vars:
+      TARGET: '{{.TARGET | default "homelab"}}'
+      VITE_MODE: '{{if eq .TARGET "dev"}}development{{else}}homelab{{end}}'
     cmds:
       - echo "🚀 Starting development environment..."
       - echo "  1. Building extension..."
       - task: ensure-node
-      - '{{.FNM_EXEC}} pnpm exec vite build --mode homelab'
+      - '{{.FNM_EXEC}} pnpm exec vite build --mode {{.VITE_MODE}}'
       - echo "  2. Starting watch mode in background..."
       - echo "  3. Launching Chromium with extension..."
       - echo ""
       - echo "📝 After code changes:"
-      - echo "   - Watch mode will auto-rebuild to dist-homelab/"
+      - echo "   - Watch mode will auto-rebuild to dist-{{.VITE_MODE}}/"
       - echo "   - Manually reload extension in chrome://extensions/"
       - echo "   - Or use Extensions Reloader extension for auto-reload"
       - echo ""
       - |
         # Start watch mode in background
-        fnm exec --using=.node-version -- pnpm exec vite build --mode homelab --watch > /tmp/enx-watch.log 2>&1 &
+        fnm exec --using=.node-version -- pnpm exec vite build --mode {{.VITE_MODE}} --watch > /tmp/enx-watch.log 2>&1 &
         WATCH_PID=$!
         echo "📝 Watch mode running (PID: $WATCH_PID)"
         echo "📝 Watch logs: /tmp/enx-watch.log"
         echo ""
 
         # Start Chromium (this blocks until Chrome closes)
-        node dev-chrome.mjs "{{.URL | default "https://www.infoq.com/"}}"
+        node dev-chrome.mjs --target {{.TARGET}} "{{.URL | default "https://www.infoq.com/"}}"
 
         # Cleanup after Chrome closes
         echo ""
@@ -88,10 +91,10 @@ tasks:
         echo "✅ Development environment stopped"
 
   dev-chrome-only:
-    desc: Start Chrome only (without watch mode)
+    desc: Start Chromium with an already built extension, no watch mode (usage - task dev-chrome-only [TARGET=homelab|dev] [URL=...])
     cmds:
       - |
-        node dev-chrome.mjs "{{.URL | default "https://www.infoq.com/"}}"
+        node dev-chrome.mjs --target {{.TARGET | default "homelab"}} "{{.URL | default "https://www.infoq.com/"}}"
 
   dev-chrome-manual:
     desc: Start Chrome manually (requires manual extension loading)
@@ -133,11 +136,11 @@ tasks:
       - echo "Build completed! Output in dist-production/"
 
   build-dev:
-    desc: Build extension for local development (API -> http://localhost:8090)
+    desc: Build extension for local development (API -> http://localhost:8091)
     cmds:
       - task: ensure-node
       - echo "Building {{.EXT_NAME}} for local development..."
-      - echo "API URL{{":"}} http{{":"}}//localhost{{":"}}8090"
+      - echo "API URL{{":"}} http{{":"}}//localhost{{":"}}8091"
       # --mode development loads .env.development (VITE_ENV=development). Without
       # it `vite build` runs in homelab mode -> enx-api.wiloon.lab.
       - '{{.FNM_EXEC}} pnpm run build:dev'

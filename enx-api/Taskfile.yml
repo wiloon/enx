@@ -307,8 +307,19 @@ tasks:
           fi
         fi
 
-        # Also try to kill any remaining air or enx-api processes
-        pkill -f "air.*enx-api" && echo "✅ Killed remaining air processes" || true
+        # Also stop air started from any other checkout (main or another
+        # worktree: only one runs at a time). Its command line is just "air",
+        # so pick it out by working directory.
+        for PID in $(pgrep -x air || true); do
+          CWD=$(lsof -a -p $PID -d cwd -Fn 2>/dev/null | sed -n 's/^n//p')
+          case "$CWD" in
+            */enx-api)
+              echo "🛑 Stopping air from $CWD (PID: $PID)..."
+              /bin/kill $PID || true
+              STOPPED=1
+              ;;
+          esac
+        done
         pkill -f "enx-api/tmp/enx-api" && echo "✅ Killed remaining enx-api processes" || true
 
         # Wait for port 8091 (`port` in config.toml) to be released (up to 5 seconds)
