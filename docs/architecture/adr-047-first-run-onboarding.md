@@ -41,7 +41,7 @@ A、B 的区别只是「进来时扩展装没装」，页面能直接探测到�
    0. **安装扩展**（只在探测到未安装时出现）：「Add to Chrome」按钮在新标签页打开 Chrome Web Store。页面可见时每 2 秒发一次 `enx:status`，探测到安装后自动勾上（同时扩展会把用户切回这个标签页，见 Decision 1）。非 Chromium 浏览器给出「Catglish needs Chrome」说明。
    1. **登录**：已登录则勾上；未登录时给 Sign in / Sign up，登录回跳回到 `/welcome`（沿用 adr-020 的 `src=extension` 回跳机制，目标改成 `/welcome`）。
    2. **固定图标**（可跳过）：一张示意图，展示「点拼图图标 → 点 Catglish 旁的图钉」。页面在这一步可见时每 2 秒向扩展查询 `isOnToolbar`，固定后自动勾上。点「Skip」直接进入下一步；跳过的人之后由 adr-046 Decision 6 的固定提示最多再提醒两次，本 ADR 不另做计数。
-   3. **读一篇示例文章**：一个按钮打开 `/reader`，预填一段内置的示例英文短文（约 150–250 词，写在 enx-ui 里，挑几个中等难度的词让下划线有东西可画），并经 adr-019 的 `enx:enable-reader` 自动启用学习模式。这一步分两个小项：
+   3. **读一篇示例文章**：一个按钮打开示例文章页 `/reader/sample`（Decision 8），页面经 adr-019 的 `enx:enable-reader` 自动启用学习模式。这一步分两个小项：
       - **点词查词**：用户亲眼看到角标从 `…` 变成 `✓`，然后点一个词看到释义。`/welcome` 上同时放一张角标图例（adr-046 Decision 1 的四个状态：无角标 / `…` / `✓` / `!`，字符 + 颜色 + 一句话含义）作为说明。
       - **侧边栏 AI 翻译**：提示用户拖选一句话（adr-007），在侧边栏看到整句 AI 翻译。这会消耗 AI 积分，免费用户的试用积分见 adr-048；积分不足时侧边栏显示现有的额度提示，这一小项不阻塞完成。
 3. **完成**：三步都勾上（或第 2 步被跳过）后写入 `onboardingCompleted`，显示「You're all set」和两条后续提示：打开任意英文文章点 Catglish 图标启用；在常读的站点上用 popup 里的「Always enable on this site」（adr-039）。之后用户**主动**打开 `/welcome`（不带 `src=install`）时直接显示完成态和图例，图例因此兼作日后的「角标说明」页面。
@@ -49,14 +49,22 @@ A、B 的区别只是「进来时扩展装没装」，页面能直接探测到�
 5. **第 3 步怎么判断完成**：复用 adr-028 的 `daily_stats.word_lookups`（服务端、按用户累加，经现有 stats 接口可读）：累计查词数 > 0 就勾上。不新增事件类型、不新增表。注意 adr-028 的上报是扩展侧攒批的增量，查完词后可能要过一会儿才反映出来；`/welcome` 在用户从 `/reader` 回来（页面重新可见）时重新查询一次即可，不追求实时。
 6. **与 Home 清单的关系**：adr-027 的 `OnboardingChecklist` 与 `/welcome` 共用一个步骤模型（`onboardingSteps({ installed, signedIn, isOnToolbar, hasLookedUp, pinSkipped })` 纯函数）。Home 清单是同一套步骤的精简版（零阅读用户在 Home 上看到，点任一步跳 `/welcome`）。文案与图例只写一份。
 7. **不做的事（v1）**：不做产品导览式的页面遮罩高亮；不收集引导漏斗指标（需要时按 adr-040 再加）；不做 `setUninstallURL` 的卸载反馈页；不在引导里设置词汇水平或高亮偏好。
+8. **示例文章是 enx-ui 内置的固定公开页 `/reader/sample`**（2026-10-13 修订；原方案是打开 `/reader` 并预填正文）：
+   - 正文是写在 enx-ui 代码里的一篇英文短文（约 200 词，大众话题，几个中等难度的词，并自然带上撇号词、连字符词、句首大写词和多个段落，方便同时当测试素材）。全站只有这一篇。
+   - 页面直接以阅读态渲染，结构与 `/reader` 的阅读态相同（`#enx-reader-article`），所以扩展的 Reader 适配器（`/reader/*`）不用改。
+   - **不登录也能看**：放在 `(app)` 布局之外。查词仍要登录扩展，那是扩展自己的提示。
+   - **不写后端**：不创建 Reader 文档，所以不受 adr-022 的 7 天删除影响，也不占「My Documents」的名额。
+   - 同一篇文章两用：引导第 3 步，以及本地开发的 `task dev:verify` 默认打开页（在 worktree 里验证扩展时有固定的东西可点）。
+   - `/reader` 空白页上的「Try a sample」改为链接到 `/reader/sample`，不再把示例文本填进粘贴框（那样会被保存成一篇用户文档）。
+   - 否决的替代：让用户把 N 篇 Reader 文档标为永久保留——那是另一个面向用户的功能（配额、存储、UI），而且内容存在数据库里、各环境不同，做不到「固定、跟代码一起版本化」。
 
 ## 实现要点（给实现者 / AFK agent）
 
 - enx-chrome：`background.ts` 的 `onInstalled` 在 `install` 时 `chrome.tabs.create({ url: welcomeUrl })`；`onMessageExternal` 加 `enx:status`（`getUserSettings()` 取 `isOnToolbar`）。单测：`install` 且没有 `/welcome` 标签页时新开、已有时切回该标签页不新开，`update` 不打开；`enx:status` 只响应 `ENX_UI_ORIGINS`、返回 `isOnToolbar`。
 - enx-api：`preferences` 注册表加 `onboardingCompleted`（布尔，默认 false，不可在设置页编辑）；单测覆盖默认值与写入。
-- enx-ui：新路由 `src/app/(app)/welcome/page.tsx` 或公开路由（登录前也要能看，取决于 `(app)` 布局是否强制登录——实现时先确认，未登录必须能看到第 1 步）；`src/lib/enxExtension.ts` 加 `extensionStatus()`；`src/lib/onboarding.ts` 放 `onboardingSteps` 纯函数，`OnboardingChecklist` 改用它；角标图例组件 `BadgeLegend`。`/reader` 支持「示例文章」入口（预填内置短文，不需要用户粘贴）。
+- enx-ui：新路由 `src/app/(app)/welcome/page.tsx` 或公开路由（登录前也要能看，取决于 `(app)` 布局是否强制登录——实现时先确认，未登录必须能看到第 1 步）；`src/lib/enxExtension.ts` 加 `extensionStatus()`；`src/lib/onboarding.ts` 放 `onboardingSteps` 纯函数，`OnboardingChecklist` 改用它；角标图例组件 `BadgeLegend`。示例文章页 `src/app/reader/sample/page.tsx`（在 `(app)` 组外，公开；Decision 8）。
 - 单测（Vitest/Jest，随 enx-ui 现有配置）：`onboardingSteps` 各状态组合；`/welcome` 已登录 + 已固定 + 已查词时直接显示完成态；固定步骤可跳过；`extensionStatus` 超时返回未安装。
-- e2e（adr-037 / enx-ui e2e）：已登录用户打开 `/welcome` 看到第 1 步已勾；示例文章按钮打开 `/reader` 并预填正文。
+- e2e（adr-037 / enx-ui e2e）：已登录用户打开 `/welcome` 看到第 1 步已勾；未登录打开 `/reader/sample` 直接看到文章正文，不跳登录页。
 - **人工验证项**：真实 Chrome 中全新安装扩展 → 自动打开 `/welcome` → 登录回跳回 `/welcome` → 固定图标后第 2 步自动勾上 → 示例文章里看到角标 `…` → `✓`、点词出释义 → 第 3 步勾上。
 
 ## Consequences

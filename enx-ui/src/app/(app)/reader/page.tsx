@@ -11,7 +11,8 @@ import { requestReaderMode, webStoreUrl } from '@/lib/enxExtension'
 import { useExtensionStatus } from '@/hooks/useExtensionStatus'
 import { apiService } from '@/services/api'
 import { consumeReaderDocument } from '@/lib/readerSession'
-import { MAX_CONTENT_LENGTH, SAMPLE_TEXT } from './constants'
+import { MAX_CONTENT_LENGTH } from './constants'
+import { toParagraphs } from '@/lib/readerText'
 import SegmentedControl from '@/components/app/stats/SegmentedControl'
 import { cn } from '@/lib/utils'
 import {
@@ -22,15 +23,6 @@ import {
   readerWidthClass,
   saveReaderWidth,
 } from './width'
-
-// Split pasted plain text into paragraphs on blank lines; keep newlines
-// inside a paragraph (rendered with `white-space: pre-wrap`).
-function toParagraphs(text: string): string[] {
-  return text
-    .split(/\n\s*\n/)
-    .map((block) => block.trim())
-    .filter(Boolean)
-}
 
 const RECENT_LIMIT = 3
 
@@ -312,13 +304,8 @@ export default function ReaderPage() {
           <div className="flex min-h-8 items-center justify-between gap-2">
             <Label htmlFor="reader-input">Paste English text</Label>
             {draft.length === 0 && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setDraft(SAMPLE_TEXT)}
-              >
-                Try a sample
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/reader/sample">Try a sample</Link>
               </Button>
             )}
           </div>

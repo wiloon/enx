@@ -51,7 +51,7 @@ task dev-chrome
 
 # Try the current checkout (e.g. a worktree) end to end: restart enx-api and
 # enx-ui from it, build its extension against them, and open Chromium with it
-task dev:verify            # URL=/app for another page
+task dev:verify            # opens /reader/sample; URL=/app for another page
 ```
 
 `dev:verify` needs Chromium (`brew install --cask chromium`): Google Chrome ignores `--load-extension` since version 137. Every checkout shares one Chromium profile (`~/.local/share/enx/chrome-dev-profile`), so you sign in once.
