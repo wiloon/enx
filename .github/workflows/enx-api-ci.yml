@@ -32,21 +32,21 @@ jobs:
     name: golangci-lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: enx-api/go.mod
           cache-dependency-path: enx-api/go.sum
       # goinstall builds golangci-lint with the Go above: a prebuilt binary
       # made with an older Go refuses to lint a go 1.27 module. Keep the
       # version in step with GOLANGCI_LINT_VERSION in enx-api/Taskfile.yml.
-      - uses: golangci/golangci-lint-action@v8
+      - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.14.0
           install-mode: goinstall
           working-directory: enx-api
       - name: golangci-lint (integration build tag)
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.14.0
           install-mode: goinstall
@@ -57,8 +57,8 @@ jobs:
     name: go test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: enx-api/go.mod
           cache-dependency-path: enx-api/go.sum
@@ -71,13 +71,13 @@ jobs:
     name: ko image build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # ADR-056: the same enx-api/build/build.sh as homelab Tekton and the
       # production release, in the golang image pinned in build/build.conf.
       # Builds only; nothing is pushed.
       - id: conf
         run: echo "go-image=$(sed -n 's/^ENX_GO_IMAGE=//p' build/build.conf)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/enx-api-go
           key: enx-api-go-${{ steps.conf.outputs.go-image }}-${{ hashFiles('enx-api/go.sum') }}
