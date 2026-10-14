@@ -28,6 +28,10 @@ export interface EnvConfig {
   // An article body with more Chinese characters than this is not processed.
   hanCharLimit: number
   environment: TargetName
+  // Stamped by vite.config.ts for the popup footer; absent under Jest.
+  buildCommit?: string
+  /** ISO 8601 */
+  builtAt?: string
 }
 
 const getEnvValue = (key: string, defaultValue?: string): string | undefined =>
@@ -57,6 +61,8 @@ export const config: EnvConfig = {
   uiOrigins: target.uiOrigins,
   hanCharLimit: parseHanCharLimit(getEnvValue('VITE_HAN_CHAR_LIMIT')),
   environment: target.name,
+  buildCommit: getEnvValue('VITE_BUILD_COMMIT'),
+  builtAt: getEnvValue('VITE_BUILD_TIME'),
 }
 
 // For debugging

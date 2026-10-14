@@ -42,6 +42,11 @@ export function gitVersion() {
   )
 }
 
+/** HEAD's short commit hash, or null outside a git checkout. */
+export function gitCommit() {
+  return git(['rev-parse', '--short', 'HEAD'])
+}
+
 /** The release version when HEAD is exactly on a chrome-v* tag, else null. */
 export function releaseVersion() {
   const tag = git([

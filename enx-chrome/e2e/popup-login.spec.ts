@@ -23,6 +23,27 @@ test.describe('Popup - Clerk sign-in', () => {
   })
 })
 
+test.describe('Popup - version footer', () => {
+  test('shows the installed version, signed out too, with build details on hover', async ({
+    page,
+    extensionId,
+  }) => {
+    await openPopup(page, extensionId)
+    const version = await page.evaluate(
+      () => chrome.runtime.getManifest().version
+    )
+
+    const footer = page.getByRole('button', { name: `v${version}` })
+    await expect(footer).toBeVisible()
+    await expect(footer).toHaveAttribute(
+      'title',
+      new RegExp(
+        `^Catglish v${version.replace(/\./g, '\\.')} .*\\nCommit [0-9a-f]{7,}\\nBuilt `
+      )
+    )
+  })
+})
+
 test.describe('Popup - signed in', () => {
   // Skipped at describe level so the signedIn fixture never runs without
   // credentials (a skip inside the test body would run after fixtures).
