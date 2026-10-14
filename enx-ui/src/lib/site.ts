@@ -19,8 +19,10 @@ export const SITE = {
   stage: 'Beta',
 
   // Demo video slot (ADR-013 Decision 6). Empty => poster + "Demo coming soon".
-  demoVideoUrl: '',
-  demoPoster: '/marketing/demo-poster.svg',
+  // Served from the catglish-media R2 bucket (w10n-config, catglish/r2.tf),
+  // not the repo: a new cut is uploaded under a new -vN key and changed here.
+  demoVideoUrl: 'https://media.catglish.com/demo/demo-full-v1.mp4',
+  demoPoster: 'https://media.catglish.com/demo/demo-poster-v1.jpg',
 
   appPath: '/app',
 } as const

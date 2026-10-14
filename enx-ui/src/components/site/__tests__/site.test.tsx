@@ -115,13 +115,51 @@ describe('DemoVideo', () => {
     expect(container.querySelector('iframe')).toBeNull()
   })
 
-  it('renders a <video> with preload="none" and a poster for an mp4 url', () => {
-    mutableSite.demoVideoUrl = 'https://example.com/demo.mp4'
-    const { container } = render(<DemoVideo />)
-    const video = container.querySelector('video')
-    expect(video).not.toBeNull()
-    expect(video).toHaveAttribute('preload', 'none')
-    expect(video).toHaveAttribute('poster', SITE.demoPoster)
+  describe('with an mp4 url', () => {
+    let play: jest.SpyInstance
+    const setReducedMotion = (reduce: boolean) => {
+      window.matchMedia = jest.fn().mockImplementation((query: string) => ({
+        matches: reduce && query === '(prefers-reduced-motion: reduce)',
+        media: query,
+      }))
+    }
+
+    beforeEach(() => {
+      mutableSite.demoVideoUrl = 'https://example.com/demo.mp4'
+      // jsdom has no media playback; play() would throw "not implemented".
+      play = jest
+        .spyOn(HTMLMediaElement.prototype, 'play')
+        .mockResolvedValue(undefined)
+    })
+    afterEach(() => play.mockRestore())
+
+    it('renders a <video> with preload="none" and a poster', () => {
+      setReducedMotion(false)
+      const { container } = render(<DemoVideo />)
+      const video = container.querySelector('video')
+      expect(video).not.toBeNull()
+      expect(video).toHaveAttribute('preload', 'none')
+      expect(video).toHaveAttribute('poster', SITE.demoPoster)
+    })
+
+    it('plays muted, looped and inline with no controls', () => {
+      setReducedMotion(false)
+      const { container } = render(<DemoVideo />)
+      const video = container.querySelector('video') as HTMLVideoElement
+      expect(play).toHaveBeenCalled()
+      expect(video.muted).toBe(true)
+      expect(video.loop).toBe(true)
+      expect(video).toHaveAttribute('playsinline')
+      expect(video).not.toHaveAttribute('controls')
+    })
+
+    it('stays on the poster with controls under prefers-reduced-motion', () => {
+      setReducedMotion(true)
+      const { container } = render(<DemoVideo />)
+      const video = container.querySelector('video') as HTMLVideoElement
+      expect(play).not.toHaveBeenCalled()
+      expect(video).toHaveAttribute('controls')
+    })
   })
 })
 
