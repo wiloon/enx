@@ -1185,6 +1185,57 @@ describe('SidePanel', () => {
     })
   })
 
+  it('counts the top-level history items, not the words nested in a sentence', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: 'Cats are great pets.',
+        word: '',
+        sourceUrl: '',
+        createdAt: 1,
+      },
+    })
+    mockSendMessage.mockImplementation(
+      async (message: { type: string; word?: string }) => {
+        if (message.type === 'translateSentence') {
+          return { success: true, chinese: '猫是很棒的宠物。' }
+        }
+        if (message.type === 'translateWordInContext') {
+          return { success: true, chinese: '猫' }
+        }
+        if (message.type === 'getOneWord') {
+          return {
+            success: true,
+            ecp: { English: message.word, Chinese: '猫', LoadCount: 1 },
+          }
+        }
+        return { success: false }
+      }
+    )
+
+    render(<SidePanel />)
+    await screen.findByTestId('sidepanel-sentence')
+    selectWord('Cats')
+    await screen.findByTestId('sidepanel-card-cats')
+    expect(screen.getByText('History · 1')).toBeInTheDocument()
+
+    act(() => {
+      fireStorageChange(
+        {
+          [LATEST_PAGE_WORD_STORAGE_KEY]: {
+            newValue: {
+              word: 'troy',
+              ecp: { English: 'troy', Chinese: '金衡', LoadCount: 1 },
+              createdAt: 2,
+            },
+          },
+        },
+        'session'
+      )
+    })
+    await screen.findByTestId('sidepanel-card-troy')
+    expect(screen.getByText('History · 2')).toBeInTheDocument()
+  })
+
   it('says "1 time", not "1 times", for a word looked up once', async () => {
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-empty-state')
