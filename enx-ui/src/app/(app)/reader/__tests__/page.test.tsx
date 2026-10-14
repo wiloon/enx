@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ReaderPage from '../page'
-import { MAX_CONTENT_LENGTH, SAMPLE_TEXT } from '../constants'
+import { MAX_CONTENT_LENGTH } from '../constants'
 import { apiService } from '@/services/api'
 import { setRuntimeEnv } from '@/test/runtimeEnv'
 
@@ -386,15 +386,16 @@ describe('landing page', () => {
     expect(screen.getByText(/an AI chat\s+reply, a PDF/)).toBeInTheDocument()
   })
 
-  it('fills the editor with a sample, and hides the button once there is text', () => {
+  it('links to the sample article, and hides the link once there is text', () => {
     renderPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Try a sample' }))
-
-    expect(screen.getByLabelText(/paste english text/i)).toHaveValue(
-      SAMPLE_TEXT
+    expect(screen.getByRole('link', { name: 'Try a sample' })).toHaveAttribute(
+      'href',
+      '/reader/sample'
     )
+
+    paste('Hello world.')
     expect(
-      screen.queryByRole('button', { name: 'Try a sample' })
+      screen.queryByRole('link', { name: 'Try a sample' })
     ).not.toBeInTheDocument()
   })
 

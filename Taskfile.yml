@@ -205,9 +205,9 @@ tasks:
       - task: ui:stop
 
   dev:verify:
-    desc: "Try this checkout (e.g. a worktree) in a browser: restart enx-api and enx-ui from it (replacing any other checkout's), build its extension, and open Chromium with that build on http://localhost:3000. URL=/app for another page, TARGET=homelab to load the homelab build instead"
+    desc: "Try this checkout (e.g. a worktree) in a browser: restart enx-api and enx-ui from it (replacing any other checkout's), build its extension, and open Chromium with that build on the sample article (http://localhost:3000/reader/sample). URL=/app for another page, TARGET=homelab to load the homelab build instead"
     vars:
-      URL: '{{.URL | default "/"}}'
+      URL: '{{.URL | default "/reader/sample"}}'
       TARGET: '{{.TARGET | default "dev"}}'
     preconditions:
       - sh: '[ "{{.TARGET}}" = dev ] || [ "{{.TARGET}}" = homelab ]'
