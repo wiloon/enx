@@ -60,7 +60,7 @@ task watch
 # Start dev server (⚠️  May have issues with Chrome extensions)
 task dev
 
-# Build for local development (uses localhost:8090 API)
+# Build for local development (uses localhost:8091 API)
 task build-dev
 
 # Build for production (uses production API)
@@ -196,7 +196,7 @@ The extension uses different API endpoints based on the environment:
 
 ### Default Environments
 
-- **Development** (`task build-dev`): `http://localhost:8090` - connects to local API server
+- **Development** (`task build-dev`): `http://localhost:8091` - connects to local API server
 - **Homelab** (`task build`): `https://enx-api.wiloon.lab` - homelab k8s deployment
 - **Production** (`task build-prod`, `task package-webstore`): `https://enx-api.wiloon.com`
 

@@ -14,7 +14,7 @@ into both the runtime config (`src/config/env.ts`) and the generated
 
 | Target        | Build command                               | API                          | UI                       |
 | ------------- | ------------------------------------------- | ---------------------------- | ------------------------ |
-| `development` | `task build-dev`                            | `http://localhost:8090`      | `http://localhost:3000`  |
+| `development` | `task build-dev`                            | `http://localhost:8091`      | `http://localhost:3000`  |
 | `homelab`     | `task build`                                | `https://enx-api.wiloon.lab` | `https://enx.wiloon.lab` |
 | `production`  | `task build-prod` / `task package-webstore` | `https://enx-api.wiloon.com` | `https://enx.wiloon.com` |
 
@@ -27,7 +27,7 @@ Individual values can be overridden per build without editing the table:
 **File**: `.env`
 
 ```bash
-# Force development environment (http://localhost:8090)
+# Force development environment (http://localhost:8091)
 VITE_ENV=development
 ```
 
@@ -61,7 +61,7 @@ The extension can save a custom API URL in Chrome Storage at runtime, which has 
 
 2. In the "API URL Configuration" section:
    - Click the "Local (Development)" preset button
-   - Or manually enter `http://localhost:8090`
+   - Or manually enter `http://localhost:8091`
    - Click "Save" to save
 
 3. Re-login to the extension
@@ -71,7 +71,7 @@ The extension can save a custom API URL in Chrome Storage at runtime, which has 
 Run in the console:
 
 ```javascript
-chrome.storage.local.set({ apiBaseUrl: 'http://localhost:8090' })
+chrome.storage.local.set({ apiBaseUrl: 'http://localhost:8091' })
 ```
 
 ## Verify Current API Address
@@ -81,7 +81,7 @@ chrome.storage.local.set({ apiBaseUrl: 'http://localhost:8090' })
 Open Chrome DevTools, switch to the extension's background page or Popup page, and check the logs:
 
 ```
-[ENX Config] Environment: development, API: http://localhost:8090
+[ENX Config] Environment: development, API: http://localhost:8091
 ```
 
 ### Check Options Page
@@ -89,8 +89,8 @@ Open Chrome DevTools, switch to the extension's background page or Popup page, a
 Open the extension's options page, in the "Current Environment" section you can see:
 
 - Mode: development
-- Default API: <http://localhost:8090>
-- Active API: <http://localhost:8090>
+- Default API: <http://localhost:8091>
+- Active API: <http://localhost:8091>
 
 ## Permission Configuration
 
@@ -98,7 +98,7 @@ Host permissions for local API have been added in `manifest.json`:
 
 ```json
 "host_permissions": [
-  "http://localhost:8090/*",
+  "http://localhost:8091/*",
   "https://enx-dev.wiloon.com/*",
   "https://enx.wiloon.com/*"
 ]
@@ -137,7 +137,7 @@ VITE_ENV=production
 ### Q: How to confirm requests are being sent to the local API?
 
 1. Check requests in the Network tab of Chrome DevTools
-2. Confirm the request URL is `http://localhost:8090/api/login`
+2. Confirm the request URL is `http://localhost:8091/api/login`
 3. Check the logs of the local API server
 
 ## Development Workflow
@@ -160,13 +160,13 @@ VITE_ENV=production
 
 4. Reload the extension in Chrome
 
-5. Test login functionality and confirm requests are sent to `http://localhost:8090`
+5. Test login functionality and confirm requests are sent to `http://localhost:8091`
 
 ## Login Testing
 
 ```bash
 # The extension will send a request like this
-curl 'http://localhost:8090/api/login' \
+curl 'http://localhost:8091/api/login' \
   -H 'Content-Type: application/json' \
   --data-raw '{"username":"wiloon","password":"haCahpro"}'
 ```

@@ -138,7 +138,7 @@
           document.getElementById('env').textContent = `${mode} (VITE_ENV: ${viteEnv})`
 
           // 根据环境显示默认 API
-          let defaultApi = 'http://localhost:8090' // development
+          let defaultApi = 'http://localhost:8091' // development
           if (mode === 'production') {
             defaultApi = 'https://enx.wiloon.com'
           } else if (viteEnv === 'staging') {
@@ -169,8 +169,8 @@
 
       async function setLocalApi() {
         try {
-          await chrome.storage.local.set({ apiBaseUrl: 'http://localhost:8090' })
-          showOutput('✅ 已设置为本地 API (http://localhost:8090)。请重新加载扩展。', 'success')
+          await chrome.storage.local.set({ apiBaseUrl: 'http://localhost:8091' })
+          showOutput('✅ 已设置为本地 API (http://localhost:8091)。请重新加载扩展。', 'success')
           await checkConfig()
         } catch (error) {
           showOutput(`❌ 设置失败: ${error.message}`, 'error')

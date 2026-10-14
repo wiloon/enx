@@ -139,7 +139,7 @@ tasks:
         mv "$tmp/stardict.db" "$dest/stardict.db"
         echo "✅ ECDICT downloaded: $dest/stardict.db"
 
-  chrome:build:
+  chrome:build:homelab:
     desc: Build enx-chrome extension to dist-homelab/ (connects to enx-api.wiloon.lab)
     dir: enx-chrome
     cmds:
@@ -147,6 +147,13 @@ tasks:
       # stale dist-homelab/ that Chrome keeps loading.
       - rm -rf dist-homelab
       - task build
+
+  chrome:build:dev:
+    desc: Build enx-chrome extension to dist-development/ (connects to the local enx-api on localhost:8091 and enx-ui on localhost:3000)
+    dir: enx-chrome
+    cmds:
+      - rm -rf dist-development
+      - task build-dev
 
   chrome:build:prod:
     desc: Build enx-chrome extension to dist-production/ (connects to api.catglish.com)
@@ -197,6 +204,41 @@ tasks:
       - task: api:stop
       - task: ui:stop
 
+  dev:verify:
+    desc: "Try this checkout (e.g. a worktree) in a browser: restart enx-api and enx-ui from it (replacing any other checkout's), build its extension, and open Chromium with that build on http://localhost:3000. URL=/app for another page, TARGET=homelab to load the homelab build instead"
+    vars:
+      URL: '{{.URL | default "/"}}'
+      TARGET: '{{.TARGET | default "dev"}}'
+    preconditions:
+      - sh: '[ "{{.TARGET}}" = dev ] || [ "{{.TARGET}}" = homelab ]'
+        msg: 'TARGET must be dev or homelab, got "{{.TARGET}}"'
+    cmds:
+      # A fresh worktree has no node_modules yet.
+      - task: deps:ui
+      - task: deps:chrome
+      - task: api:run
+        vars: { MODE: bg }
+      - task: ui:run
+        vars: { MODE: bg }
+      - task: 'chrome:build:{{.TARGET}}'
+      - cd enx-chrome && node dev-chrome.mjs --target {{.TARGET}} --detach 'http://localhost:3000{{.URL}}'
+
+  deps:ui:
+    internal: true
+    dir: enx-ui
+    cmds:
+      - '{{.FNM_UI}} pnpm install --frozen-lockfile'
+    status:
+      - test -d node_modules
+
+  deps:chrome:
+    internal: true
+    dir: enx-chrome
+    cmds:
+      - fnm exec --using=.node-version -- pnpm install --frozen-lockfile
+    status:
+      - test -d node_modules
+
   stop:dev:
     desc: Stop all development services
     cmds:
@@ -244,7 +286,7 @@ tasks:
     desc: Build all projects
     cmds:
       - task: build:api
-      - task: chrome:build
+      - task: chrome:build:homelab
       - task: build:ui
 
   build:api:
@@ -280,7 +322,7 @@ tasks:
       # Tekton builds origin's commit, the extension builds the local tree:
       # pull first so both are on the same code.
       - git -C {{.ROOT_DIR}} pull --ff-only
-      - task: chrome:build
+      - task: chrome:build:homelab
       - task tekton-deploy-enx REV={{.REV}} FORCE={{.FORCE | default "false"}} ENX_DIR={{.ROOT_DIR}}
 
   deploy:homelab:api:

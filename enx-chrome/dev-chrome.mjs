@@ -7,21 +7,45 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-const pathToExtension = path.join(__dirname, 'dist-homelab')
-const url = process.argv[2] || 'https://www.infoq.com/'
-const userDataDir = path.join(__dirname, '.chrome-dev-profile')
-const tmpExtensionDir = '/tmp/enx-chrome-ext'
+// Usage: node dev-chrome.mjs [--target homelab|dev] [--detach] [URL]
+//   --target  which build to load: dist-homelab/ (default) or dist-development/
+//   --detach  return once Chromium is up instead of waiting for it to close
+const TARGET_DIRS = { homelab: 'dist-homelab', dev: 'dist-development' }
+let target = 'homelab'
+let detach = false
+let url = 'https://www.infoq.com/'
+const args = process.argv.slice(2)
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--target') target = args[++i]
+  else if (args[i] === '--detach') detach = true
+  else url = args[i]
+}
+if (!TARGET_DIRS[target]) {
+  console.error(
+    `❌ Unknown --target "${target}". Use one of: ${Object.keys(TARGET_DIRS).join(', ')}`
+  )
+  process.exit(2)
+}
+
+const pathToExtension = path.join(__dirname, TARGET_DIRS[target])
+// One profile for every worktree, so the Clerk sign-in survives switching
+// worktrees. Each run replaces the extension it loads.
+const userDataDir = path.join(
+  os.homedir(),
+  '.local/share/enx/chrome-dev-profile'
+)
+const tmpExtensionDir = `/tmp/enx-chrome-ext-${target}`
 const isMac = os.platform() === 'darwin'
 
 // Verify extension directory exists and has manifest.json
 if (!fs.existsSync(pathToExtension)) {
   console.error('❌ Extension directory not found:', pathToExtension)
-  console.log('💡 Run "task build" first to build the extension')
+  console.log(`💡 Run "task chrome:build:${target}" (repo root) first`)
   process.exit(1)
 }
 if (!fs.existsSync(path.join(pathToExtension, 'manifest.json'))) {
   console.error('❌ manifest.json not found in:', pathToExtension)
-  console.log('💡 Run "task build" first to build the extension')
+  console.log(`💡 Run "task chrome:build:${target}" (repo root) first`)
   process.exit(1)
 }
 
@@ -99,6 +123,21 @@ const chromeArgs = [
   url,
 ]
 
+// A Chromium already running on this profile would swallow the new launch
+// (it just opens a window) and keep the extension it loaded at startup.
+// Quit it first so the fresh build is the one that loads.
+const profileFlag = `user-data-dir=${userDataDir}`
+const isRunning = () =>
+  spawnSync('pgrep', ['-f', profileFlag], { stdio: 'ignore' }).status === 0
+if (isRunning()) {
+  console.log('🛑 Closing the Chromium already running on the dev profile...')
+  spawnSync('pkill', ['-f', profileFlag])
+  for (let i = 0; i < 20 && isRunning(); i++) {
+    spawnSync('sleep', ['0.5'])
+  }
+  if (isRunning()) spawnSync('pkill', ['-9', '-f', profileFlag])
+}
+
 let chromeProcess
 if (isMac) {
   // Use 'open -a' on macOS so Chromium gets proper network entitlements
@@ -108,7 +147,7 @@ if (isMac) {
     [
       '-a',
       '/Applications/Chromium.app',
-      '--wait-apps',
+      ...(detach ? [] : ['--wait-apps']),
       '--new',
       '--args',
       ...chromeArgs,
@@ -116,13 +155,27 @@ if (isMac) {
     { stdio: 'inherit' }
   )
 } else {
-  chromeProcess = spawn(chromiumBin, chromeArgs, { stdio: 'inherit' })
+  chromeProcess = spawn(chromiumBin, chromeArgs, {
+    stdio: detach ? 'ignore' : 'inherit',
+    detached: detach,
+  })
+  if (detach) chromeProcess.unref()
 }
 
-chromeProcess.on('exit', () => {
-  console.log('👋 Browser closed')
-  process.exit(0)
-})
+if (detach) {
+  // Without --wait-apps, `open` returns as soon as Chromium is launched.
+  const done = code => {
+    console.log('✅ Chromium started; close it yourself when done')
+    process.exit(code ?? 0)
+  }
+  if (isMac) chromeProcess.on('exit', done)
+  else done(0)
+} else {
+  chromeProcess.on('exit', () => {
+    console.log('👋 Browser closed')
+    process.exit(0)
+  })
+}
 
 process.on('SIGINT', () => {
   console.log('\n👋 Stopping Chromium...')

@@ -22,12 +22,17 @@ stop_server() {
   pid=$(lsof -ti "tcp:${PORT}" -sTCP:LISTEN 2>/dev/null | head -1 || true)
   [ -z "$pid" ] && return 0
 
-  # Only kill our own dev server, never whatever else is on the port.
+  # Kill an enx-ui dev server from any checkout (main or another worktree:
+  # only one runs at a time), never whatever else is on the port.
   cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p')
-  if [ "$cwd" != "$PWD" ]; then
-    echo "❌ Port ${PORT} is held by PID ${pid} (cwd: ${cwd:-unknown}), not this enx-ui. Stop it first." >&2
-    exit 1
-  fi
+  case "$cwd" in
+    */enx-ui) ;;
+    *)
+      echo "❌ Port ${PORT} is held by PID ${pid} (cwd: ${cwd:-unknown}), not an enx-ui. Stop it first." >&2
+      exit 1
+      ;;
+  esac
+  [ "$cwd" != "$PWD" ] && echo "↪️  Replacing the enx-ui dev server from ${cwd}"
 
   # `next dev` and its next-server child share a process group; killing the
   # group also lets the pnpm wrappers above it exit.

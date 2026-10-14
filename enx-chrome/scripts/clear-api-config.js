@@ -13,7 +13,7 @@
     await chrome.storage.local.remove(['apiBaseUrl'])
 
     console.log('✅ API 配置已清除，将使用默认配置')
-    console.log('📝 开发环境默认: http://localhost:8090')
+    console.log('📝 开发环境默认: http://localhost:8091')
     console.log('🔄 请重新加载扩展或刷新页面')
 
     // 验证清除成功
