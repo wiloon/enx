@@ -1571,7 +1571,8 @@ function SidePanelContent() {
 
   return (
     <div ref={listRef} className="px-4 pb-4 text-sm">
-      <PanelToolbar label="History">
+      {/* Top-level entries only: a sentence's nested words belong to it. */}
+      <PanelToolbar label={`History · ${entries.length}`}>
         <button
           type="button"
           data-testid="sidepanel-clear-all"
