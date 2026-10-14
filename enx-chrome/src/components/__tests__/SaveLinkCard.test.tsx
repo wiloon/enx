@@ -34,25 +34,16 @@ describe('SaveLinkCard', () => {
     expect(onSave).not.toHaveBeenCalled()
   })
 
-  it('keeps a long address on one line and describes it in full with its own tooltip', () => {
+  it('keeps a long address on one line and shows it in full as the native hover text', () => {
     const longUrl = `https://www.infoq.com/news/2026/10/x/?${'utm_term=a&'.repeat(20)}`
     setup({ url: longUrl })
 
     const address = screen.getByTestId('save-link-url')
     expect(address).toHaveClass('truncate')
-    // Not the native title: Chrome's popup only shows that over the
-    // ellipsis, so the whole line gets a tooltip of its own instead.
-    expect(address).not.toHaveAttribute('title')
-    expect(address).toHaveAccessibleDescription(longUrl)
-    expect(screen.getByRole('tooltip', { hidden: true })).toHaveTextContent(
-      longUrl
-    )
-  })
-
-  it('can reach the full address from the keyboard', () => {
-    setup()
-
-    expect(screen.getByTestId('save-link-url')).toHaveAttribute('tabindex', '0')
+    expect(address).toHaveAttribute('title', longUrl)
+    expect(
+      screen.queryByRole('tooltip', { hidden: true })
+    ).not.toBeInTheDocument()
   })
 
   it('saves with a single click on its Save button, with no confirmation step', () => {
