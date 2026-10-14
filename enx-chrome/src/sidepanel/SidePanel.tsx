@@ -1,4 +1,5 @@
 import {
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -8,7 +9,7 @@ import {
 } from 'react'
 import '@/index.css'
 import {
-  ArrowPathRoundedSquareIcon,
+  ChartBarIcon,
   MagnifyingGlassIcon,
   SpeakerWaveIcon,
   XMarkIcon,
@@ -419,7 +420,13 @@ function contextErrorDisplay(
     : message
 }
 
-// One word/phrase card: headline (word + phonetic + play + Query Count),
+// The lookup count's full wording: the hover title and the screen-reader
+// text behind the compact "7×" the card shows.
+function lookupCountLabel(count: number): string {
+  return `Looked up ${count} ${count === 1 ? 'time' : 'times'}`
+}
+
+// One word/phrase card: headline (word + phonetic + play + lookup count),
 // dismiss button, error rows, and the meaning block (AI in-context gloss over
 // the generic dictionary meaning). Shared by the top-level list and every
 // SentenceEntry's nested `words` list (ADR-023) -- rendering doesn't care
@@ -431,6 +438,7 @@ function WordCard({
   onRemove,
   onRetryContext,
   shownAbove,
+  nested = false,
 }: {
   card: WordCardData
   expanded: boolean
@@ -440,6 +448,10 @@ function WordCard({
   // Error text the owning sentence already shows, with a Retry that also
   // covers this card -- a row repeating it would be the same failure twice.
   shownAbove?: string
+  // Looked up inside a sentence entry: drawn as a teal rule hanging off the
+  // sentence rather than a second card inside the sentence's card, so it
+  // reads as "belongs to this sentence" and keeps the width (ADR-023).
+  nested?: boolean
 }) {
   const phonetic = formatPhonetic(card.pronunciation)
   // One failure (the API down for a moment) fails the dictionary and the AI
@@ -468,10 +480,14 @@ function WordCard({
 
   return (
     <div
-      className="group relative rounded-lg border border-border bg-background px-3 py-2.5 hover:bg-muted"
+      className={
+        nested
+          ? 'group relative border-l-2 border-brand/40 py-0.5 pl-3 hover:border-brand'
+          : 'group relative rounded-lg border border-border bg-background px-3 py-2.5 hover:bg-muted'
+      }
       data-testid={`sidepanel-card-${card.word}`}
     >
-      {/* Headline: word + phonetic + play + Query Count on one row. The
+      {/* Headline: word + phonetic + play + lookup count on one row. The
           contextual meaning is NOT here -- it's in the meaning block below
           with a 本句 tag so it reads as "this word, in this sentence" rather
           than competing with the phonetic for the same line. */}
@@ -504,14 +520,12 @@ function WordCard({
 
         {card.loadCount !== undefined && (
           <span
-            className="inline-flex items-center gap-0.5 text-xs text-muted-foreground ml-auto whitespace-nowrap"
-            title={`Query Count: ${card.loadCount}`}
+            className="inline-flex items-center gap-0.5 text-xs text-muted-foreground ml-auto whitespace-nowrap tabular-nums"
+            title={lookupCountLabel(card.loadCount)}
           >
-            <ArrowPathRoundedSquareIcon
-              className="h-3.5 w-3.5"
-              aria-hidden="true"
-            />
-            {card.loadCount}
+            <ChartBarIcon className="h-3.5 w-3.5" aria-hidden="true" />
+            <span aria-hidden="true">{card.loadCount}×</span>
+            <span className="sr-only">{lookupCountLabel(card.loadCount)}</span>
           </span>
         )}
       </div>
@@ -621,6 +635,26 @@ function WordCard({
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// How long Clear keeps the removed list around for Undo.
+const CLEAR_UNDO_MS = 5000
+
+// The slim row above the list: what the list is on the left, its one action
+// on the right. Sticky, so Clear (or Undo) stays reachable in a long list.
+function PanelToolbar({
+  label,
+  children,
+}: {
+  label: string
+  children: ReactNode
+}) {
+  return (
+    <div className="sticky top-0 z-10 -mx-4 mb-1 flex h-8 items-center justify-between bg-background px-4 text-xs text-muted-foreground">
+      <span>{label}</span>
+      {children}
     </div>
   )
 }
@@ -797,6 +831,7 @@ function SentenceBlock({
               onRemove={() => onRemoveWord(entry.id, card.word)}
               onRetryContext={() => onRetryContext(entry.id, card.word)}
               shownAbove={sentenceErrorText}
+              nested
             />
           ))}
         </div>
@@ -839,6 +874,19 @@ function SidePanelContent() {
   // the default 3-line clamp. Keyed by word only (not by scope) -- shared
   // across the top-level list and every sentence's nested list.
   const [expandedWords, setExpandedWords] = useState<Set<string>>(new Set())
+  // What Clear just removed, kept for a few seconds so Undo can put it back.
+  const [cleared, setCleared] = useState<{
+    entries: PanelEntry[]
+    expandedWords: Set<string>
+  } | null>(null)
+  useEffect(() => {
+    if (!cleared) return
+    const timer = setTimeout(() => setCleared(null), CLEAR_UNDO_MS)
+    return () => clearTimeout(timer)
+  }, [cleared])
+  // A lookup after Clear starts a fresh list; Undo would mix the two.
+  // Adjusted during render rather than in an effect, as React recommends.
+  if (cleared && entries.length > 0) setCleared(null)
   // What the panel knows about each word's review stage, keyed by
   // lower-cased word like the page's wordCache (ADR-053 Decision 3). Drives
   // the underlines in every sentence original.
@@ -1492,63 +1540,84 @@ function SidePanelContent() {
   // all yet.
   if (entries.length === 0) {
     return (
-      <div
-        className="p-4 text-muted-foreground text-sm"
-        data-testid="sidepanel-empty-state"
-      >
-        Click any highlighted word in the page text, then click the
-        sentence-translation icon in the popup. The full English sentence and
-        its Chinese translation will appear here.
+      <div className="px-4 pb-4 text-sm">
+        {cleared && (
+          <PanelToolbar label="Cleared">
+            <button
+              type="button"
+              data-testid="sidepanel-undo-clear"
+              onClick={() => {
+                setEntries(cleared.entries)
+                setExpandedWords(cleared.expandedWords)
+                setCleared(null)
+              }}
+              className="font-medium text-brand hover:text-brand/80"
+            >
+              Undo
+            </button>
+          </PanelToolbar>
+        )}
+        <div
+          className={`text-muted-foreground ${cleared ? '' : 'pt-4'}`}
+          data-testid="sidepanel-empty-state"
+        >
+          Click any highlighted word in the page text, then click the
+          sentence-translation icon in the popup. The full English sentence and
+          its Chinese translation will appear here.
+        </div>
       </div>
     )
   }
 
   return (
-    <div ref={listRef} className="p-4 space-y-4 text-sm">
-      <div className="flex items-center justify-end">
+    <div ref={listRef} className="px-4 pb-4 text-sm">
+      <PanelToolbar label="History">
         <button
           type="button"
           data-testid="sidepanel-clear-all"
           onClick={() => {
+            setCleared({ entries, expandedWords })
             setEntries([])
             setExpandedWords(new Set())
           }}
-          className="text-xs text-muted-foreground hover:text-destructive"
+          className="hover:text-destructive"
         >
           Clear
         </button>
-      </div>
+      </PanelToolbar>
 
-      {entries.map(entry =>
-        entry.kind === 'sentence' ? (
-          <SentenceBlock
-            key={entry.id}
-            entry={entry}
-            expandedWords={expandedWords}
-            onToggleExpand={toggleExpanded}
-            onWordClick={(sentenceId, sentence, word) =>
-              handleWordClick(word, sentence, sentenceId)
-            }
-            onPhraseConfirm={(sentenceId, sentence, phrase) =>
-              upsertPhraseCard(phrase, sentence, sentenceId)
-            }
-            onRemoveWord={handleRemoveCard}
-            onRetryContext={handleRetryContextTranslation}
-            onRetrySentence={handleRetrySentence}
-          />
-        ) : (
-          <WordCard
-            key={entry.word}
-            card={entry}
-            expanded={expandedWords.has(entry.word)}
-            onToggleExpand={() => toggleExpanded(entry.word)}
-            onRemove={() => handleRemoveCard(undefined, entry.word)}
-            onRetryContext={() =>
-              handleRetryContextTranslation(undefined, entry.word)
-            }
-          />
-        )
-      )}
+      <div className="space-y-3">
+        {entries.map(entry =>
+          entry.kind === 'sentence' ? (
+            <SentenceBlock
+              key={entry.id}
+              entry={entry}
+              expandedWords={expandedWords}
+              onToggleExpand={toggleExpanded}
+              onWordClick={(sentenceId, sentence, word) =>
+                handleWordClick(word, sentence, sentenceId)
+              }
+              onPhraseConfirm={(sentenceId, sentence, phrase) =>
+                upsertPhraseCard(phrase, sentence, sentenceId)
+              }
+              onRemoveWord={handleRemoveCard}
+              onRetryContext={handleRetryContextTranslation}
+              onRetrySentence={handleRetrySentence}
+            />
+          ) : (
+            <WordCard
+              key={entry.word}
+              card={entry}
+              expanded={expandedWords.has(entry.word)}
+              onToggleExpand={() => toggleExpanded(entry.word)}
+              onRemove={() => handleRemoveCard(undefined, entry.word)}
+              onRetryContext={() =>
+                handleRetryContextTranslation(undefined, entry.word)
+              }
+            />
+          )
+        )}
+      </div>
     </div>
   )
 }
