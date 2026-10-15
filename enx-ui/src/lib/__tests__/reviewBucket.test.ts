@@ -1,11 +1,20 @@
+import path from 'node:path'
 import { REVIEW_BUCKET_COLORS, reviewBucket } from '../reviewBucket'
-// The extension's copy is the source this one was taken from. Importing it
-// here, in a test only, keeps the two from drifting apart without making
-// enx-ui's build depend on enx-chrome.
-import {
-  HIGHLIGHT_BUCKET_COLORS,
-  reviewBucket as extensionReviewBucket,
-} from '../../../../enx-chrome/src/lib/wordHighlight'
+
+// The extension's copy is the source this one was taken from; comparing the
+// two keeps them from drifting apart. It is loaded at run time, not imported:
+// the image build (CNB) gets enx-ui/ alone and `next build` type-checks test
+// files too, so a static import of ../enx-chrome fails the build.
+const { HIGHLIGHT_BUCKET_COLORS, reviewBucket: extensionReviewBucket } =
+  jest.requireActual<{
+    HIGHLIGHT_BUCKET_COLORS: readonly string[]
+    reviewBucket: (word: {
+      English: string
+      LoadCount: number
+      AlreadyAcquainted: number
+      WordType: number
+    }) => number | null
+  }>(path.join(__dirname, '../../../../enx-chrome/src/lib/wordHighlight'))
 
 describe('reviewBucket', () => {
   it('puts a word into the stage its lookup count reaches', () => {
@@ -31,7 +40,7 @@ describe('reviewBucket', () => {
             LoadCount: count,
             AlreadyAcquainted: known ? 1 : 0,
             WordType: 0,
-          } as Parameters<typeof extensionReviewBucket>[0])
+          })
         )
       }
     }
