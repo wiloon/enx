@@ -161,6 +161,12 @@ tasks:
     cmds:
       - task build-prod
 
+  chrome:release:
+    desc: 'Release the extension to production: tag origin/main as chrome-v<version> and push; GitHub Actions attaches the store zip to a GitHub Release (task chrome:release -- 0.1.2)'
+    dir: enx-chrome
+    cmds:
+      - task release -- {{.CLI_ARGS}}
+
   dev:chrome:
     desc: Start Chrome browser with extension (auto-reload)
     dir: enx-chrome
