@@ -37,6 +37,13 @@ describe('ApiService word list and saved pages', () => {
     expect(calledUrl()).toBe('http://localhost:8090/api/me/words?status=all')
   })
 
+  it('DELETEs one word from the word list, encoded', async () => {
+    await service.removeMyWord("o'clock/x")
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toBe("http://localhost:8090/api/me/words/o'clock%2Fx")
+    expect(init.method).toBe('DELETE')
+  })
+
   it('GETs /api/saved-pages', async () => {
     await service.listSavedPages()
     expect(calledUrl()).toBe('http://localhost:8090/api/saved-pages')

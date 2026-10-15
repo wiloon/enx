@@ -1,15 +1,23 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  useInfiniteQuery,
+  useQueryClient,
+  type InfiniteData,
+} from '@tanstack/react-query'
+import { Trash2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { apiService } from '@/services/api'
-import type { WordListStatus } from '@/types'
+import type { WordListPage as WordListData, WordListStatus } from '@/types'
 
 const PAGE_SIZE = 50
+// How long a removed word can still be brought back with Undo before the
+// removal is sent to the server.
+const UNDO_MS = 5000
 
 const FILTERS: { value: WordListStatus; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -34,6 +42,69 @@ export default function WordListPage() {
   const [status, setStatus] = useState<WordListStatus>('all')
   const [search, setSearch] = useState('')
   const q = useDebounced(search.trim(), 300)
+  // The word the user just removed: hidden from the list while the Undo
+  // offer is open.
+  const [pending, setPending] = useState<string | null>(null)
+  const [removeError, setRemoveError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+
+  // Sends the removal. If the server refuses, the word shows up again.
+  const commit = useCallback(
+    async (english: string) => {
+      const settle = () =>
+        setPending((current) => (current === english ? null : current))
+      const resp = await apiService.removeMyWord(english)
+      if (!resp.success) {
+        setRemoveError(resp.error || 'Failed to remove the word')
+        settle()
+        return
+      }
+      // Drop the word from every cached filter and search, so no other view
+      // of the list still shows it.
+      queryClient.setQueriesData<InfiniteData<WordListData>>(
+        { queryKey: ['word-list'] },
+        (cached) => {
+          const has = cached?.pages.some((p) =>
+            p.words.some((w) => w.english === english)
+          )
+          if (!cached || !has) return cached
+          return {
+            ...cached,
+            pages: cached.pages.map((p) => ({
+              total: p.total - 1,
+              words: p.words.filter((w) => w.english !== english),
+            })),
+          }
+        }
+      )
+      settle()
+    },
+    [queryClient]
+  )
+
+  useEffect(() => {
+    if (!pending) return
+    const timer = setTimeout(() => commit(pending), UNDO_MS)
+    return () => clearTimeout(timer)
+  }, [pending, commit])
+
+  // Leaving the page ends the undo offer, not the removal.
+  const pendingRef = useRef(pending)
+  useEffect(() => {
+    pendingRef.current = pending
+  }, [pending])
+  useEffect(
+    () => () => {
+      if (pendingRef.current) commit(pendingRef.current)
+    },
+    [commit]
+  )
+
+  const remove = (english: string) => {
+    setRemoveError(null)
+    if (pending && pending !== english) commit(pending)
+    setPending(english)
+  }
 
   const {
     data,
@@ -61,8 +132,12 @@ export default function WordListPage() {
     },
   })
 
-  const words = data?.pages.flatMap((p) => p.words) ?? []
-  const total = data?.pages[0]?.total
+  const words = (data?.pages.flatMap((p) => p.words) ?? []).filter(
+    (w) => w.english !== pending
+  )
+  const loadedTotal = data?.pages[0]?.total
+  const total =
+    loadedTotal === undefined ? undefined : loadedTotal - (pending ? 1 : 0)
 
   return (
     <div className="container mx-auto p-6 max-w-3xl">
@@ -107,6 +182,12 @@ export default function WordListPage() {
               className="sm:max-w-56"
             />
           </div>
+
+          {removeError && (
+            <p role="alert" className="text-sm text-red-600">
+              {removeError}
+            </p>
+          )}
 
           {total !== undefined && (
             <p className="text-xs text-muted-foreground">
@@ -165,6 +246,17 @@ export default function WordListPage() {
                     </div>
                     <div>{new Date(w.updatedAt).toLocaleDateString()}</div>
                   </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Remove ${w.english} from your word list`}
+                    title="Remove from list"
+                    onClick={() => remove(w.english)}
+                    className="shrink-0 text-muted-foreground"
+                  >
+                    <Trash2 aria-hidden="true" />
+                  </Button>
                 </li>
               ))}
             </ul>
@@ -185,6 +277,25 @@ export default function WordListPage() {
           )}
         </CardContent>
       </Card>
+
+      {pending && (
+        <div
+          role="status"
+          className="fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-sm items-center justify-between gap-3 rounded-md border border-border bg-background px-4 py-2 text-sm shadow-lg"
+        >
+          <span className="min-w-0 truncate">
+            Removed <span className="font-medium">{pending}</span>
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setPending(null)}
+          >
+            Undo
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
