@@ -481,8 +481,10 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	apiGroup.PUT("/me/preferences", preferencesHandler.Update)
 
 	// The user's word list: every word they looked up in an article,
-	// including the ones marked known. Read-only, not on the metered path.
+	// including the ones marked known. Not on the metered path; removing a
+	// word puts it back to never looked up.
 	apiGroup.GET("/me/words", wordlist.ListHandler)
+	apiGroup.DELETE("/me/words/:english", wordlist.RemoveHandler)
 
 	// Billing (Stripe) — requires authentication (Clerk session JWT).
 	apiGroup.POST("/billing/checkout/subscription", billingHandler.CheckoutSubscription)

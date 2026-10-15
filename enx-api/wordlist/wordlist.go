@@ -1,7 +1,7 @@
 // Package wordlist reads back a user's word list: every word they have looked
 // up in an article (a user_dicts row), including the ones since marked known.
-// Read-only -- rows are written by the lookup path (repo.RecordWordLookup) and
-// by marking a word known (POST /api/mark).
+// Rows are written by the lookup path (repo.RecordWordLookup) and by marking a
+// word known (POST /api/mark); this package only reads them or removes them.
 package wordlist
 
 import (
@@ -161,4 +161,15 @@ func List(ctx context.Context, userID string, q Query) (Page, error) {
 		}
 	}
 	return Page{Total: total, Entries: entries}, nil
+}
+
+// Remove takes english off userID's word list by deleting its user_dicts row,
+// so the word is back to never looked up: no lookup count, not known, not
+// underlined. Daily stats already reported for it stay as they were.
+func Remove(ctx context.Context, userID, english string) error {
+	return sqlitex.DB.WithContext(ctx).Exec(`
+		DELETE FROM user_dicts
+		WHERE user_id = ?
+		  AND word_id IN (SELECT id FROM words WHERE english = ?)`,
+		userID, english).Error
 }

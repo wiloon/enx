@@ -1,4 +1,5 @@
 import {
+  act,
   render,
   screen,
   fireEvent,
@@ -11,7 +12,7 @@ import { apiService } from '@/services/api'
 import type { WordListEntry } from '@/types'
 
 jest.mock('@/services/api', () => ({
-  apiService: { listMyWords: jest.fn() },
+  apiService: { listMyWords: jest.fn(), removeMyWord: jest.fn() },
 }))
 
 const mockList = apiService.listMyWords as jest.Mock
@@ -157,4 +158,117 @@ it('shows the error when the list cannot be loaded', async () => {
   expect(
     await screen.findByText('could not load your word list')
   ).toBeInTheDocument()
+})
+
+describe('removing a word', () => {
+  const mockRemove = apiService.removeMyWord as jest.Mock
+
+  beforeEach(() => {
+    jest.useFakeTimers()
+    mockList.mockResolvedValue({
+      success: true,
+      data: {
+        total: 2,
+        words: [
+          entry({ english: 'ephemeral' }),
+          entry({ english: 'meticulous' }),
+        ],
+      },
+    })
+    mockRemove.mockResolvedValue({ success: true, data: { success: true } })
+  })
+
+  afterEach(() => jest.useRealTimers())
+
+  const listed = () =>
+    within(screen.getByRole('list'))
+      .getAllByRole('listitem')
+      .map((li) => li.querySelector('.font-medium')?.textContent)
+
+  async function clickRemove(english: string) {
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: `Remove ${english} from your word list`,
+      })
+    )
+  }
+
+  it('hides the word at once and offers to undo', async () => {
+    renderPage()
+    await clickRemove('ephemeral')
+
+    expect(listed()).toEqual(['meticulous'])
+    expect(screen.getByRole('status')).toHaveTextContent('Removed ephemeral')
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument()
+    expect(screen.getByText('1 word')).toBeInTheDocument()
+    expect(mockRemove).not.toHaveBeenCalled()
+  })
+
+  it('puts the word back on Undo and never removes it', async () => {
+    renderPage()
+    await clickRemove('ephemeral')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    await act(() => jest.advanceTimersByTimeAsync(10_000))
+
+    expect(listed()).toEqual(['ephemeral', 'meticulous'])
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(mockRemove).not.toHaveBeenCalled()
+  })
+
+  it('removes the word for good once the undo offer runs out', async () => {
+    renderPage()
+    await clickRemove('ephemeral')
+
+    await act(() => jest.advanceTimersByTimeAsync(4_999))
+    expect(mockRemove).not.toHaveBeenCalled()
+    await act(() => jest.advanceTimersByTimeAsync(1))
+
+    expect(mockRemove).toHaveBeenCalledTimes(1)
+    expect(mockRemove).toHaveBeenCalledWith('ephemeral')
+    await waitFor(() =>
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    )
+    expect(listed()).toEqual(['meticulous'])
+    expect(screen.getByText('1 word')).toBeInTheDocument()
+  })
+
+  it('puts the word back and says so when the server will not remove it', async () => {
+    mockRemove.mockResolvedValue({
+      success: false,
+      error: 'could not remove the word',
+    })
+    renderPage()
+    await clickRemove('ephemeral')
+
+    await act(() => jest.advanceTimersByTimeAsync(5_000))
+
+    expect(
+      await screen.findByText('could not remove the word')
+    ).toBeInTheDocument()
+    expect(listed()).toEqual(['ephemeral', 'meticulous'])
+    expect(screen.getByText('2 words')).toBeInTheDocument()
+  })
+
+  it('removes the first word straight away when a second one is removed', async () => {
+    renderPage()
+    await clickRemove('ephemeral')
+    await clickRemove('meticulous')
+
+    expect(mockRemove).toHaveBeenCalledWith('ephemeral')
+    expect(screen.getByRole('status')).toHaveTextContent('Removed meticulous')
+    await waitFor(() =>
+      expect(screen.queryByRole('list')).not.toBeInTheDocument()
+    )
+    expect(screen.getByText('0 words')).toBeInTheDocument()
+  })
+
+  it('still removes the word when the user leaves the page before it is sent', async () => {
+    const { unmount } = renderPage()
+    await clickRemove('ephemeral')
+
+    unmount()
+
+    expect(mockRemove).toHaveBeenCalledWith('ephemeral')
+  })
 })

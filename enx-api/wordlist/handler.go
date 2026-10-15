@@ -86,3 +86,15 @@ func intParam(c *gin.Context, name string) (int, error) {
 	}
 	return n, nil
 }
+
+// RemoveHandler handles DELETE /api/me/words/:english.
+func RemoveHandler(c *gin.Context) {
+	userID := middleware.GetUserIDFromContext(c)
+	english := c.Param("english")
+	if err := Remove(c.Request.Context(), userID, english); err != nil {
+		logger.Errorf("wordlist: remove %q failed for user %s: %v", english, userID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not remove the word"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}

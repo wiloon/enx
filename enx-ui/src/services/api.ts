@@ -303,6 +303,16 @@ export class ApiService {
     return this.makeRequest(`/api/me/words?${query}`)
   }
 
+  // Puts the word back to never looked up. Removing a word that is not on
+  // the list succeeds too, so a retry is safe.
+  async removeMyWord(
+    english: string
+  ): Promise<ApiResponse<{ success: boolean }>> {
+    return this.makeRequest(`/api/me/words/${encodeURIComponent(english)}`, {
+      method: 'DELETE',
+    })
+  }
+
   async listSavedPages(): Promise<ApiResponse<{ pages: SavedPage[] }>> {
     return this.makeRequest('/api/saved-pages')
   }
