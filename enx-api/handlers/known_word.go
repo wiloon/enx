@@ -12,20 +12,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// MarkWord handles POST /api/mark: toggle whether the caller already knows a
-// word. The response is the word with its review state after the toggle.
-func MarkWord(c *gin.Context) {
-	word := enx.Word{}
-	if err := c.BindJSON(&word); err != nil {
-		logger.Errorf("MarkWord: bind JSON: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid request body",
-		})
-		return
-	}
-	word.Key = strings.ToLower(word.English)
+// SetWordKnown handles PUT /api/me/words/:english/known: the caller already
+// knows the word. Idempotent, so the extension may retry it.
+func SetWordKnown(c *gin.Context) { setWordKnown(c, true) }
 
+// ClearWordKnown handles DELETE /api/me/words/:english/known: the caller is
+// still learning the word. Idempotent, so the extension may retry it.
+func ClearWordKnown(c *gin.Context) { setWordKnown(c, false) }
+
+// setWordKnown responds with the word and the caller's review state for it
+// after the change.
+func setWordKnown(c *gin.Context, known bool) {
 	userId := middleware.GetUserIDFromContext(c)
 	if userId == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -35,28 +32,32 @@ func MarkWord(c *gin.Context) {
 		return
 	}
 
-	row := repo.GetWordByEnglish(word.English)
-	word.Id = row.Id
-	word.Chinese = row.Chinese
-	word.Pronunciation = row.Pronunciation
+	english := c.Param("english")
+	row := repo.GetWordByEnglish(english)
+	word := enx.Word{
+		Id:            row.Id,
+		English:       english,
+		Key:           strings.ToLower(english),
+		Chinese:       row.Chinese,
+		Pronunciation: row.Pronunciation,
+	}
 
 	// A word with no `words` row (e.g. one ECDICT doesn't know) has no id to
 	// key a user_dicts row on. Writing one with an empty word_id would make
-	// every such word share that single row -- marking a second one toggled
-	// the first back off -- and the phantom row would count towards the
-	// user's vocabulary. Nothing is lost by skipping the write: paragraph-init
-	// never reads acquainted state for an id-less word anyway.
+	// every such word share that single row, and the phantom row would count
+	// towards the user's vocabulary. Nothing is lost by skipping the write:
+	// paragraph-init never reads acquainted state for an id-less word anyway.
 	if word.Id == "" {
 		c.JSON(http.StatusOK, word)
 		return
 	}
 
-	qc, acquainted, err := repo.ToggleAcquainted(userId, word.Id)
+	qc, acquainted, err := repo.SetAcquainted(userId, word.Id, known)
 	if err != nil {
-		logger.Errorf("MarkWord: toggle %s for %s: %v", word.English, userId, err)
+		logger.Errorf("setWordKnown: set %s known=%v for %s: %v", word.English, known, userId, err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "Failed to mark word",
+			"message": "Failed to update the word",
 		})
 		return
 	}

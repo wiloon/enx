@@ -54,6 +54,7 @@ import { getApiBaseUrl } from '@/config/env'
 import {
   makeApiRequest,
   NETWORK_ERROR_MESSAGE,
+  SERVICE_UNAVAILABLE_MESSAGE,
   handleGetWords,
   __resetClerkClientCacheForTests,
   __resetParagraphMethodForTests,
@@ -268,6 +269,114 @@ describe('background makeApiRequest / Clerk session token', () => {
     })
   })
 
+  // #133: an idempotent call opts in to retry, so a reply lost after enx-api
+  // wrote (or an enx-api 5xx) doesn't drop the user's action.
+  describe('retry option for idempotent calls', () => {
+    beforeEach(() => {
+      jest.useFakeTimers()
+      // resetAllMocks() wipes the env mock's implementation too.
+      ;(getApiBaseUrl as jest.Mock).mockResolvedValue('http://localhost:8090')
+    })
+    afterEach(() => jest.useRealTimers())
+
+    const run = async (retry?: boolean) => {
+      const pending = makeApiRequest(
+        '/api/me/words/cat/known',
+        { method: 'PUT' },
+        retry === undefined ? undefined : { retry }
+      )
+      await jest.runAllTimersAsync()
+      return pending
+    }
+
+    it('retries a network failure', async () => {
+      ;(global.fetch as jest.Mock)
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce(jsonResponse(200, { AlreadyAcquainted: 1 }))
+
+      expect(await run(true)).toEqual({
+        success: true,
+        data: { AlreadyAcquainted: 1 },
+      })
+      expect(global.fetch).toHaveBeenCalledTimes(2)
+    })
+
+    it.each([
+      [
+        'a 500 enx-api wrote',
+        jsonResponse(500, { success: false, message: 'db locked' }, false),
+      ],
+      [
+        'a gateway 504 (the write may have landed; replaying is safe)',
+        jsonResponse(504, { message: 'upstream timed out' }, false),
+      ],
+    ])('retries %s', async (_name, failure) => {
+      ;(global.fetch as jest.Mock)
+        .mockResolvedValueOnce(failure)
+        .mockResolvedValueOnce(jsonResponse(200, { AlreadyAcquainted: 1 }))
+
+      expect(await run(true)).toEqual({
+        success: true,
+        data: { AlreadyAcquainted: 1 },
+      })
+      expect(global.fetch).toHaveBeenCalledTimes(2)
+    })
+
+    it.each([
+      [
+        'an enx-api 500',
+        () =>
+          Promise.resolve(
+            jsonResponse(500, { success: false, message: 'db locked' }, false)
+          ),
+        { success: false, error: 'db locked', status: 500 },
+      ],
+      [
+        'a gateway 503',
+        () => Promise.resolve(jsonResponse(503, { message: 'no peer' }, false)),
+        { success: false, error: SERVICE_UNAVAILABLE_MESSAGE, status: 503 },
+      ],
+      [
+        'a network failure',
+        () => Promise.reject(new TypeError('Failed to fetch')),
+        { success: false, error: NETWORK_ERROR_MESSAGE },
+      ],
+    ])('gives up on %s after two retries', async (_name, reply, want) => {
+      ;(global.fetch as jest.Mock).mockImplementation(reply)
+
+      expect(await run(true)).toEqual(want)
+      expect(global.fetch).toHaveBeenCalledTimes(3)
+    })
+
+    it('does not retry a 4xx answer', async () => {
+      ;(global.fetch as jest.Mock).mockResolvedValue(
+        jsonResponse(404, { success: false, message: 'not found' }, false)
+      )
+
+      expect(await run(true)).toMatchObject({ success: false, status: 404 })
+      expect(global.fetch).toHaveBeenCalledTimes(1)
+    })
+
+    it.each([
+      [
+        'an enx-api 500',
+        () =>
+          Promise.resolve(
+            jsonResponse(500, { success: false, message: 'db locked' }, false)
+          ),
+      ],
+      [
+        'a network failure',
+        () => Promise.reject(new TypeError('Failed to fetch')),
+      ],
+    ])('does not retry %s without the option', async (_name, reply) => {
+      ;(global.fetch as jest.Mock).mockImplementation(reply)
+
+      expect((await run()).success).toBe(false)
+      expect(global.fetch).toHaveBeenCalledTimes(1)
+    })
+  })
+
   it('retries getToken() when the session is present but the first mint blips', async () => {
     // The dev-instance JWT mint (Frontend API round-trip) can fail transiently
     // even with an active session -- retry rather than fall through to a 401.
@@ -376,6 +485,47 @@ describe('background makeApiRequest / Clerk session token', () => {
 
     const [, requestInit] = (global.fetch as jest.Mock).mock.calls[0]
     expect(requestInit.headers.Authorization).toBeUndefined()
+  })
+})
+
+// #133: Mark Known always means "set to known", so it sends the idempotent
+// PUT and may retry it.
+describe('background onMessage / markAcquainted', () => {
+  beforeEach(() => {
+    jest.resetAllMocks()
+    jest.useFakeTimers()
+    setClerkSession('clerk-session-jwt')
+    ;(getApiBaseUrl as jest.Mock).mockResolvedValue('http://localhost:8090')
+    ;(global.fetch as jest.Mock) = jest.fn()
+  })
+  afterEach(() => jest.useRealTimers())
+
+  const markKnown = async (word: string) => {
+    const pending = new Promise(resolve => {
+      onMessageListener({ type: 'markAcquainted', word }, {}, resolve)
+    })
+    await jest.runAllTimersAsync()
+    return pending
+  }
+
+  it('sends PUT /api/me/words/:english/known with the word path-encoded', async () => {
+    const state = { English: "don't", LoadCount: 2, AlreadyAcquainted: 1 }
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(200, state))
+
+    expect(await markKnown(" don't ")).toEqual({ success: true, ecp: state })
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toBe("http://localhost:8090/api/me/words/don't/known")
+    expect(init.method).toBe('PUT')
+  })
+
+  it('retries when the reply is lost', async () => {
+    const state = { English: 'cat', LoadCount: 0, AlreadyAcquainted: 1 }
+    ;(global.fetch as jest.Mock)
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(jsonResponse(200, state))
+
+    expect(await markKnown('cat')).toEqual({ success: true, ecp: state })
+    expect(global.fetch).toHaveBeenCalledTimes(2)
   })
 })
 
@@ -1545,24 +1695,63 @@ describe('handleGetWords (paragraph-init method)', () => {
     }
   )
 
-  it('keeps using QUERY when the POST retry fails too (e.g. the API is down)', async () => {
-    ;(global.fetch as jest.Mock)
-      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-      .mockResolvedValueOnce(jsonResponse(200, { data: {} }))
+  // #133: paragraph-init only reads word states, so its POST may retry. The
+  // QUERY attempt doesn't: a network that blocks QUERY would wait out every
+  // retry before falling back to POST.
+  it('retries the POST, not the QUERY, after a network failure', async () => {
+    jest.useFakeTimers()
+    try {
+      ;(global.fetch as jest.Mock)
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce(jsonResponse(200, { data: {} }))
 
-    expect((await handleGetWords('hello')).success).toBe(false)
-    await handleGetWords('world')
-    expect(calls().map(c => c.method)).toEqual(['QUERY', 'POST', 'QUERY'])
+      const pending = handleGetWords('hello')
+      await jest.runAllTimersAsync()
+
+      expect((await pending).success).toBe(true)
+      expect(calls().map(c => c.method)).toEqual(['QUERY', 'POST', 'POST'])
+    } finally {
+      jest.useRealTimers()
+    }
   })
 
-  it('tells the reader to check their connection when the API is unreachable', async () => {
-    ;(global.fetch as jest.Mock)
-      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+  describe('while the API is unreachable', () => {
+    beforeEach(() => {
+      jest.useFakeTimers()
+      ;(global.fetch as jest.Mock).mockRejectedValue(
+        new TypeError('Failed to fetch')
+      )
+    })
+    afterEach(() => jest.useRealTimers())
 
-    const result = await handleGetWords('hello')
-    expect(result).toEqual({ success: false, error: NETWORK_ERROR_MESSAGE })
+    const getWords = async (paragraph: string) => {
+      const pending = handleGetWords(paragraph)
+      await jest.runAllTimersAsync()
+      return pending
+    }
+
+    it('keeps using QUERY when the POST fails too', async () => {
+      expect((await getWords('hello')).success).toBe(false)
+      ;(global.fetch as jest.Mock).mockResolvedValue(
+        jsonResponse(200, { data: {} })
+      )
+      await getWords('world')
+      expect(calls().map(c => c.method)).toEqual([
+        'QUERY',
+        'POST',
+        'POST',
+        'POST',
+        'QUERY',
+      ])
+    })
+
+    it('tells the reader to check their connection', async () => {
+      expect(await getWords('hello')).toEqual({
+        success: false,
+        error: NETWORK_ERROR_MESSAGE,
+      })
+    })
   })
 
   it.each([

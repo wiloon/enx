@@ -32,7 +32,8 @@ func TestLookupRoutesAreRegisteredOnlyUnderAPI(t *testing.T) {
 		"POST /translate/sentence-with-word",
 		"POST /rephrase",
 		"GET /load-count",
-		"POST /mark",
+		"PUT /me/words/:english/known",
+		"DELETE /me/words/:english/known",
 	} {
 		if registered[route] {
 			t.Errorf("%s is registered at the root; it should exist only under /api", route)
@@ -45,13 +46,14 @@ func TestLookupRoutesAreRegisteredOnlyUnderAPI(t *testing.T) {
 }
 
 // Routes with no remaining caller are gone: DELETE /api/word/:word moved to
-// the admin group, and /api/wrap had no client at all.
+// the admin group, /api/wrap had no client at all, and the toggle POST
+// /api/mark gave way to PUT/DELETE /api/me/words/:english/known (#133).
 func TestRemovedRoutesAreNotRegistered(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	for _, r := range setupRouter(config.Default(), metrics.New()).Routes() {
 		switch r.Method + " " + r.Path {
-		case "DELETE /api/word/:word", "GET /api/wrap":
+		case "DELETE /api/word/:word", "GET /api/wrap", "POST /api/mark":
 			t.Errorf("%s %s is still registered", r.Method, r.Path)
 		}
 	}
@@ -137,5 +139,19 @@ func TestWordListRouteRequiresAuthentication(t *testing.T) {
 	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/me/words", nil))
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("GET /api/me/words without credentials: status %d, want 401", w.Code)
+	}
+}
+
+// Marking a word known is the user's own data, behind the session check.
+func TestWordKnownRoutesRequireAuthentication(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := setupRouter(clerkConfig(t), metrics.New())
+
+	for _, method := range []string{http.MethodPut, http.MethodDelete} {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(method, "/api/me/words/hello/known", nil))
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("%s /api/me/words/hello/known without credentials: status %d, want 401", method, w.Code)
+		}
 	}
 }

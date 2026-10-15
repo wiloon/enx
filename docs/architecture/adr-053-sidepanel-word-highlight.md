@@ -48,8 +48,8 @@ related: adr-011（主窗口 CSS Custom Highlight API 下划线，本 ADR 把同
 
 7. **「标为已认识」用乐观广播。** content script 点 Mark Known 后**先**改 `wordCache`、去掉主窗口下划线，**再**发 `markAcquainted` 给 background。`chrome.runtime.sendMessage` 会投递给所有扩展页面，侧边栏也收得到：它监听这条消息，立即把该词的 `AlreadyAcquainted` 置 1，下划线随之消失。
 
-   - **只有 background 回复。** 一条消息只有第一个 `sendResponse` 送达发送方。侧边栏的监听器既不调用 `sendResponse`，也不 `return true`，否则会抢走本该由 background 在调用 `/api/mark` 之后给出的回复。
-   - **失败不回滚、不重试。** API 失败的代价只是下次读文章时这个词又带下划线，用户可以再标一次。`/api/mark` 现在是**切换**（`ToggleAcquainted`），「服务端已写入、回复丢失」时重试会把词翻回「不认识」，所以接口改成幂等的「设为已认识 / 设为不认识」之前不做重试（另开 issue）。
+   - **只有 background 回复。** 一条消息只有第一个 `sendResponse` 送达发送方。侧边栏的监听器既不调用 `sendResponse`，也不 `return true`，否则会抢走本该由 background 在调用 API 之后给出的回复。
+   - **失败不回滚，由 background 重试。** 接口是幂等的 `PUT /api/me/words/:english/known`（#133 取代了原来会切换状态的 `POST /api/mark`），background 遇到网络错误或 5xx 会退避重试两次。重试仍失败的代价只是下次读文章时这个词又带下划线，用户可以再标一次。
    - 不按标签页过滤：下划线状态属于词，任何标签页的侧边栏都应去掉。
 
 ## Consequences

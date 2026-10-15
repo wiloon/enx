@@ -165,7 +165,7 @@ func TestLocalHitOnAcquaintedWordResetsItAndIncrements(t *testing.T) {
 	assertResponse(t, resp, id, 4, 0)
 }
 
-// MarkWord on a never-looked-up word creates the row with query_count 0 and
+// Marking a never-looked-up word known creates the row with query_count 0 and
 // acquainted 1; the first lookup afterwards must still reset and count.
 func TestLocalHitAfterMarkWithoutPriorLookup(t *testing.T) {
 	setupReviewTest(t)

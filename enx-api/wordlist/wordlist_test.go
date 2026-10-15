@@ -127,8 +127,8 @@ func TestMarkingAWordKnownLeavesItsLastLookupTime(t *testing.T) {
 		t.Fatalf("find word: %v", err)
 	}
 
-	if _, _, err := repo.ToggleAcquainted(user, word.Id); err != nil {
-		t.Fatalf("ToggleAcquainted: %v", err)
+	if _, _, err := repo.SetAcquainted(user, word.Id, true); err != nil {
+		t.Fatalf("SetAcquainted: %v", err)
 	}
 
 	got, err := List(context.Background(), user, Query{Status: StatusAll})

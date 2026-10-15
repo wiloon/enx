@@ -1,7 +1,7 @@
 // Package wordlist reads back a user's word list: every word they have looked
 // up in an article (a user_dicts row), including the ones since marked known.
 // Rows are written by the lookup path (repo.RecordWordLookup) and by marking a
-// word known (POST /api/mark); this package only reads them or removes them.
+// word known (PUT /api/me/words/:english/known); this package only reads them or removes them.
 package wordlist
 
 import (
