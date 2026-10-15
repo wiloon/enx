@@ -77,7 +77,7 @@ model = "MiniMax-Text-01"
 base-url = "https://api.minimax.io/v1"
 
 [sentence-translate.deepseek]
-model = "deepseek-chat"
+model = "deepseek-flash"
 # rephrase-model (mirrors kimi's): rephrase-only override. Empty = use `model`.
 rephrase-model = ""
 # One unified endpoint -- unlike MiniMax/Kimi, DeepSeek has no separate

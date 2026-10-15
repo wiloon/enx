@@ -17,10 +17,11 @@ import (
 )
 
 const (
-	// deepseek-chat is DeepSeek-V3, a non-reasoning model -- no <think>
-	// block to strip from translation output, unlike a "thinking" model
-	// (e.g. deepseek-reasoner, or MiniMax's M-series) would produce.
-	defaultModel   = "deepseek-chat"
+	// deepseek-flash is DeepSeek-V4.1-Flash (2026-09-10). The older
+	// deepseek-chat / deepseek-reasoner names were due to retire on
+	// 2026-07-24. Flash thinks by default; chat() turns that off, see
+	// thinkingDisabled.
+	defaultModel   = "deepseek-flash"
 	defaultBaseURL = "https://api.deepseek.com"
 
 	systemPrompt = "You are a professional English-to-Chinese translator. " +
@@ -82,7 +83,18 @@ type chatRequest struct {
 	Model       string        `json:"model"`
 	Messages    []chatMessage `json:"messages"`
 	Temperature float64       `json:"temperature"`
+	Thinking    thinking      `json:"thinking"`
 }
+
+// thinking is DeepSeek's thinking-mode switch
+// (https://api-docs.deepseek.com/guides/thinking_mode). It defaults to on,
+// which makes a one-line translation several times slower and ignores
+// temperature, so every request sends thinkingDisabled.
+type thinking struct {
+	Type string `json:"type"`
+}
+
+var thinkingDisabled = thinking{Type: "disabled"}
 
 // usage mirrors the OpenAI-compatible "usage" object DeepSeek's Chat
 // Completions API returns alongside every response.
@@ -127,6 +139,7 @@ func (d *DeepSeek) chat(ctx context.Context, feature, model string, temperature 
 				{Role: "user", Content: userContent},
 			},
 			Temperature: temperature,
+			Thinking:    thinkingDisabled,
 		}).
 		SetResult(&result).
 		Post(d.baseURL + "/chat/completions")
