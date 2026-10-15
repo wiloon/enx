@@ -28,7 +28,15 @@ export interface Target {
    * channel (ADR-019). Kept in one list so the two can't drift apart.
    */
   uiOrigins: string[]
+  /**
+   * Other sites that get the content script in this build only. The RSSX
+   * reader (ADR-033) lives on a LAN host, so only the homelab and dev builds
+   * list it; the store build stays off private domains.
+   */
+  contentScriptOrigins: string[]
 }
+
+const RSSX_LAB_ORIGIN = 'https://rssx-lab.wiloon.com'
 
 // Clerk *development* instance (rational-deer-4450). A production build should
 // override it with VITE_CLERK_PUBLISHABLE_KEY once a prod instance exists.
@@ -46,6 +54,7 @@ export const TARGETS: Record<TargetName, Target> = {
     clerkPublishableKey: DEV_CLERK_PUBLISHABLE_KEY,
     clerkSyncHost: LOCAL_UI_ORIGIN,
     uiOrigins: [LOCAL_UI_ORIGIN],
+    contentScriptOrigins: [RSSX_LAB_ORIGIN],
   },
   homelab: {
     name: 'homelab',
@@ -56,6 +65,7 @@ export const TARGETS: Record<TargetName, Target> = {
     // The homelab build doubles as the day-to-day dev build, so it keeps the
     // localhost origin; the production build deliberately does not.
     uiOrigins: [LOCAL_UI_ORIGIN, 'https://enx.wiloon.lab'],
+    contentScriptOrigins: [RSSX_LAB_ORIGIN],
   },
   production: {
     name: 'production',
@@ -73,6 +83,7 @@ export const TARGETS: Record<TargetName, Target> = {
     // https://catglish.com here the extension never sees the session.
     clerkSyncHost: 'https://clerk.catglish.com',
     uiOrigins: ['https://catglish.com'],
+    contentScriptOrigins: [],
   },
   test: {
     name: 'test',
@@ -81,6 +92,7 @@ export const TARGETS: Record<TargetName, Target> = {
     clerkPublishableKey: DEV_CLERK_PUBLISHABLE_KEY,
     clerkSyncHost: LOCAL_UI_ORIGIN,
     uiOrigins: [LOCAL_UI_ORIGIN],
+    contentScriptOrigins: [],
   },
 }
 

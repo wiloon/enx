@@ -140,7 +140,26 @@ describe('manifest stamping (ADR-019)', () => {
     const serialized = JSON.stringify(base)
     expect(serialized).not.toContain('enx.wiloon.lab')
     expect(serialized).not.toContain('enx-api.wiloon')
+    expect(serialized).not.toContain('rssx-lab.wiloon.com')
     expect(base.externally_connectable.matches).toEqual([])
+  })
+
+  // ADR-033: rssx-lab.wiloon.com resolves to a LAN address, so only the
+  // homelab and dev builds may auto-inject there. In the store build it would
+  // only add a private domain to the install-time permission warning.
+  it.each(['development', 'homelab'] as TargetName[])(
+    'auto-injects on the RSSX reader in the %s build',
+    name => {
+      expect(stamp(TARGETS[name]).content_scripts[0].matches).toContain(
+        'https://rssx-lab.wiloon.com/*'
+      )
+    }
+  )
+
+  it('keeps the RSSX reader out of the production build', () => {
+    expect(JSON.stringify(stamp(TARGETS.production))).not.toContain(
+      'rssx-lab.wiloon.com'
+    )
   })
 
   // The version comes from chrome-v* git tags (ADR-031 §6a, version.ts); the
