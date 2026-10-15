@@ -17,7 +17,15 @@ import {
   utcOffsetMinutes,
   type StatsDelta,
 } from './statsReporter'
-import { reconcileAutoEnableScripts, shouldAutoEnable } from './autoEnable'
+import {
+  enableOnNewlyGrantedSite,
+  reconcileAutoEnableScripts,
+  shouldAutoEnable,
+} from './autoEnable'
+import {
+  enableLearningModeOnTab,
+  getLearningModeStatusOnTab,
+} from '@/lib/enableLearningMode'
 import { applyStatus, dismissPinHint, maybeAskToPin, resetTab } from './badge'
 import type { LearningModeStatus } from '@/lib/learningModeStatus'
 import {
@@ -463,7 +471,16 @@ const reconcileAutoEnable = () =>
   reconcileAutoEnableScripts().catch(error =>
     console.error('Failed to reconcile auto-enable scripts:', error)
   )
-chrome.permissions.onAdded.addListener(reconcileAutoEnable)
+chrome.permissions.onAdded.addListener(async added => {
+  await reconcileAutoEnable()
+  await enableOnNewlyGrantedSite(added ?? {}, {
+    isSignedIn,
+    getStatus: getLearningModeStatusOnTab,
+    enable: enableLearningModeOnTab,
+  }).catch(error =>
+    console.error('Failed to turn on a newly granted site:', error)
+  )
+})
 chrome.permissions.onRemoved.addListener(reconcileAutoEnable)
 chrome.runtime.onStartup.addListener(reconcileAutoEnable)
 // Covers updates too: the hashed content-script bundle is renamed.

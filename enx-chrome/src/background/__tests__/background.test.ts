@@ -1455,6 +1455,29 @@ describe('background auto-enable wiring (adr-039)', () => {
       expect.objectContaining({ matches: ['https://www.infoq.com/*'] }),
     ])
   })
+
+  // The popup closes under the permission dialog; the page it was opened on
+  // is turned on without a second trip to the popup.
+  it('turns learning mode on in the active tab of a newly granted site', async () => {
+    granted('https://www.infoq.com/*')
+    ;(chrome.tabs.query as jest.Mock).mockResolvedValue([
+      { id: 7, url: 'https://www.infoq.com/articles/foo' },
+    ])
+    ;(chrome.tabs.sendMessage as jest.Mock).mockImplementation(
+      async (_tabId, message) =>
+        message.action === 'getLearningModeStatus'
+          ? { status: { status: 'off' } }
+          : { success: true }
+    )
+
+    await (
+      onPermissionsAdded as (p: chrome.permissions.Permissions) => unknown
+    )({ origins: ['https://www.infoq.com/*'] })
+
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(7, {
+      action: 'enxRun',
+    })
+  })
 })
 
 // ADR-041: paragraph-init sends page text in a body, via QUERY by default and
