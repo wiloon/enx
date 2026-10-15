@@ -2,6 +2,15 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-10-14: Turn on the current page when "Always enable on this site" is granted
+
+**Agent**: Claude Code
+**Task**: Chrome's permission dialog closes the popup, so after granting a site the user had to reopen the popup to press "Read with Catglish".
+
+**Solution**: `permissions.onAdded` in the background now also calls `enableOnNewlyGrantedSite` (`enx-chrome/src/background/autoEnable.ts`): for the active tab of each window on the newly granted site, if signed in and learning mode is off, it runs the same `enableLearningModeOnTab` as the popup button. Recorded in ADR-039 Decision 4.
+
+**Lesson (dev tooling)**: the first manual tests "failed" because the dev Chromium ran a stale background bundle. Chromium caches the extension's service worker in the profile (`Default/Service Worker/ScriptCache`); while `manifest.json`'s version stays the same it keeps running the cached bundle after a rebuild, even though `service-worker-loader.js` on disk points at the new one. `dev-chrome.mjs` now deletes that directory before launch. When a background change seems to do nothing in the dev browser, check which `background.ts-*.js` the worker actually executed (CDP `Debugger.scriptParsed` on the service_worker target) before debugging the code. A previously granted optional origin is re-granted with no dialog after `permissions.remove`, which makes the grant path scriptable: call `chrome.permissions.request` from an extension page via CDP `Runtime.evaluate` with `userGesture: true`.
+
 ## 2026-10-12: Archive and remove enx-api-java
 
 **Agent**: Claude Code

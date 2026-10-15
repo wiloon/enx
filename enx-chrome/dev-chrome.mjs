@@ -138,6 +138,16 @@ if (isRunning()) {
   if (isRunning()) spawnSync('pkill', ['-9', '-f', profileFlag])
 }
 
+// Chromium keeps the extension's service worker in the profile's script cache
+// and, while the manifest version stays the same, goes on running that old
+// background bundle after a rebuild -- the new loader file is read, but the
+// worker it imports is the cached one. Dropping the cache makes the fresh
+// build's background the one that runs.
+fs.rmSync(path.join(userDataDir, 'Default', 'Service Worker'), {
+  recursive: true,
+  force: true,
+})
+
 let chromeProcess
 if (isMac) {
   // Use 'open -a' on macOS so Chromium gets proper network entitlements
