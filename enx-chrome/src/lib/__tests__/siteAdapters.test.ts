@@ -359,3 +359,59 @@ describe('X adapter readiness selector', () => {
     expect(x.readySelector).toBe(X_READY_SELECTOR)
   })
 })
+
+describe('Wikipedia adapter', () => {
+  // Trimmed from en.wikipedia.org/wiki/Cat (2026-10-15): the reference list
+  // holds <a class="external text"> links with long titles, and the language
+  // menu outside the article names languages in Chinese characters.
+  const longTitle =
+    'The domestic cat is a small carnivorous mammal kept as a pet, a long reference title from a cited source'
+  const renderWikipediaPage = () => {
+    document.body.innerHTML = `
+      <div class="mw-page-container">
+        <div id="p-lang-btn">
+          <ul>
+            <li><a lang="zh">中文</a></li><li><a lang="yue">粵語</a></li>
+            <li><a lang="lzh">文言</a></li><li><a lang="wuu">吴语</a></li>
+            <li><a lang="nan">閩南語</a></li><li><a lang="ja">日本語</a></li>
+            <li><a lang="hak">客家語</a></li><li><a lang="gan">贛語</a></li>
+            <li><a lang="zh-classical">古文漢語</a></li>
+          </ul>
+        </div>
+        <div id="mw-content-text">
+          <div class="mw-parser-output">
+            <p>The cat is a small domesticated carnivorous mammal. It is the only domesticated species of the family Felidae.</p>
+            <ol class="references">
+              <li><a class="external text" href="https://example.org/1">${longTitle}</a></li>
+              <li><a class="external text" href="https://example.org/2">${longTitle}</a></li>
+            </ol>
+          </div>
+        </div>
+      </div>`
+  }
+
+  it('matches every Wikipedia language and the mobile site', () => {
+    for (const host of [
+      'en.wikipedia.org',
+      'en.m.wikipedia.org',
+      'de.wikipedia.org',
+    ]) {
+      expect(resolveSiteAdapter(loc(host, '/wiki/Cat')).name).toBe('wikipedia')
+    }
+    expect(resolveSiteAdapter(loc('wikipedia.org.evil.net', '/')).name).toBe(
+      'default'
+    )
+  })
+
+  it('processes the article body, not the reference links or the language menu', () => {
+    renderWikipediaPage()
+    const wikipedia = resolveSiteAdapter(loc('en.wikipedia.org', '/wiki/Cat'))
+    const nodes = WordProcessor.getArticleNodes({
+      contentSelector: wikipedia.contentSelector,
+      minTextLength: wikipedia.minTextLength,
+    })
+    expect(nodes).toHaveLength(1)
+    expect(nodes[0].className).toBe('mw-parser-output')
+    expect(nodes[0].textContent).not.toContain('中文')
+  })
+})
