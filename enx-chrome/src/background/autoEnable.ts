@@ -9,6 +9,7 @@ import {
   sitePatternFor,
   type AutoEnableManifest,
 } from '@/lib/autoEnableSite'
+import type { LearningModeStatus } from '@/lib/learningModeStatus'
 
 const SCRIPT_ID_PREFIX = 'auto-enable:'
 
@@ -67,6 +68,39 @@ export async function reconcileAutoEnableScripts(): Promise<void> {
         persistAcrossSessions: true,
       }))
     )
+  }
+}
+
+export interface EnableOnGrantDeps {
+  isSignedIn: () => Promise<boolean>
+  getStatus: (tabId: number) => Promise<LearningModeStatus>
+  enable: (tabId: number) => Promise<unknown>
+}
+
+// The popup usually closes under Chrome's permission dialog, so the page the
+// user was on gets turned on here, as if they had then pressed "Read with
+// Catglish" -- sparing them a second trip to the popup.
+export async function enableOnNewlyGrantedSite(
+  added: chrome.permissions.Permissions,
+  deps: EnableOnGrantDeps
+): Promise<void> {
+  const m = manifest()
+  const sites = new Set(
+    (added.origins ?? []).filter(
+      pattern => isSitePattern(pattern) && !isRequiredHost(pattern, m)
+    )
+  )
+  // Signed out, shouldAutoEnable says no too: enabling would only show a
+  // session notice.
+  if (sites.size === 0 || !(await deps.isSignedIn())) return
+
+  const tabs = await chrome.tabs.query({ active: true })
+  for (const tab of tabs) {
+    const site = sitePatternFor(tab.url)
+    if (tab.id === undefined || !site || !sites.has(site)) continue
+    // A page already on (or still processing) would be torn down and re-run.
+    if ((await deps.getStatus(tab.id)).status !== 'off') continue
+    await deps.enable(tab.id)
   }
 }
 

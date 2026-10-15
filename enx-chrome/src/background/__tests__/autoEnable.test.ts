@@ -1,4 +1,5 @@
 import {
+  enableOnNewlyGrantedSite,
   grantedAutoEnableSites,
   reconcileAutoEnableScripts,
   shouldAutoEnable,
@@ -164,5 +165,80 @@ describe('shouldAutoEnable (adr-039 Decision 4)', () => {
   it('is false for a missing origin', async () => {
     granted('https://www.infoq.com/*')
     expect(await shouldAutoEnable(undefined)).toBe(false)
+  })
+})
+
+// The popup closes under Chrome's permission dialog, so without this the user
+// had to reopen it just to press "Read with Catglish" on the page in front of
+// them.
+describe('enableOnNewlyGrantedSite', () => {
+  const tabs = chrome.tabs as unknown as { query: jest.Mock }
+
+  function deps(
+    overrides: Partial<Parameters<typeof enableOnNewlyGrantedSite>[1]> = {}
+  ) {
+    return {
+      isSignedIn: jest.fn().mockResolvedValue(true),
+      getStatus: jest.fn().mockResolvedValue({ status: 'off' }),
+      enable: jest.fn().mockResolvedValue({ success: true }),
+      ...overrides,
+    }
+  }
+
+  it('turns learning mode on in the active tab of the site just granted', async () => {
+    tabs.query.mockResolvedValue([
+      { id: 7, url: 'https://www.infoq.com/articles/foo' },
+    ])
+    const d = deps()
+
+    await enableOnNewlyGrantedSite({ origins: ['https://www.infoq.com/*'] }, d)
+
+    expect(d.enable).toHaveBeenCalledWith(7)
+  })
+
+  it('leaves a page that is already on alone', async () => {
+    tabs.query.mockResolvedValue([
+      { id: 7, url: 'https://www.infoq.com/articles/foo' },
+    ])
+    const d = deps({
+      getStatus: jest.fn().mockResolvedValue({ status: 'ready' }),
+    })
+
+    await enableOnNewlyGrantedSite({ origins: ['https://www.infoq.com/*'] }, d)
+
+    expect(d.enable).not.toHaveBeenCalled()
+  })
+
+  it('does nothing while signed out', async () => {
+    tabs.query.mockResolvedValue([
+      { id: 7, url: 'https://www.infoq.com/articles/foo' },
+    ])
+    const d = deps({ isSignedIn: jest.fn().mockResolvedValue(false) })
+
+    await enableOnNewlyGrantedSite({ origins: ['https://www.infoq.com/*'] }, d)
+
+    expect(d.enable).not.toHaveBeenCalled()
+  })
+
+  it('skips active tabs on other sites', async () => {
+    tabs.query.mockResolvedValue([
+      { id: 7, url: 'https://www.infoq.com/articles/foo' },
+      { id: 8, url: 'https://example.com/' },
+    ])
+    const d = deps()
+
+    await enableOnNewlyGrantedSite({ origins: ['https://www.infoq.com/*'] }, d)
+
+    expect(d.enable).toHaveBeenCalledTimes(1)
+    expect(d.enable).toHaveBeenCalledWith(7)
+  })
+
+  it('ignores a grant that is not a single site', async () => {
+    tabs.query.mockResolvedValue([{ id: 7, url: 'https://www.infoq.com/' }])
+    const d = deps()
+
+    await enableOnNewlyGrantedSite({ origins: ['https://*/*'] }, d)
+
+    expect(d.enable).not.toHaveBeenCalled()
   })
 })
