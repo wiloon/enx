@@ -377,7 +377,7 @@ export async function mockBackendFetch(
           )
         }
 
-        if (url.includes('/api/mark')) {
+        if (/\/api\/me\/words\/[^/]+\/known$/.test(url)) {
           return new Response(
             JSON.stringify({ ...wordData, AlreadyAcquainted: 1 }),
             { status: 200, headers: { 'Content-Type': 'application/json' } }

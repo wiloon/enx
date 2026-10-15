@@ -308,9 +308,9 @@ const showWordPopover = async (word: string, reference: Range) => {
   // Optimistic broadcast (ADR-053): the underline goes at once, here and --
   // because runtime.sendMessage reaches every extension page -- in the Side
   // Panel, which hears the same markAcquainted message. Background alone
-  // replies, once the API call is done. A failed call is left as is: the
-  // word is simply underlined again on a later page, where the user can mark
-  // it again (no retry while /api/mark is a toggle).
+  // replies, once the API call (an idempotent PUT that background retries,
+  // #133) is done. A call that still fails is left as is: the word is simply
+  // underlined again on a later page, where the user can mark it again.
   const handleMarkAcquainted = async (englishWord: string) => {
     const cached = wordCache[englishWord.toLowerCase()]
     const updated: WordData = cached

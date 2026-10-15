@@ -19,22 +19,43 @@ func TestRecordWordLookup(t *testing.T) {
 	}
 }
 
-func TestToggleAcquainted(t *testing.T) {
+func TestSetAcquainted(t *testing.T) {
 	newTestDB(t)
 
-	// No row yet: known, with no lookups.
-	if qc, acq, err := ToggleAcquainted("u1", "w1"); err != nil || qc != 0 || acq != 1 {
-		t.Fatalf("first toggle: got %d/%d/%v, want 0/1/nil", qc, acq, err)
+	// No row yet: known, with no lookups. Setting it again leaves it known,
+	// so a retried request can't undo it.
+	for i := 1; i <= 2; i++ {
+		if qc, acq, err := SetAcquainted("u1", "w1", true); err != nil || qc != 0 || acq != 1 {
+			t.Fatalf("set known %d: got %d/%d/%v, want 0/1/nil", i, qc, acq, err)
+		}
 	}
 	if _, _, err := RecordWordLookup("u1", "w1"); err != nil {
 		t.Fatal(err)
 	}
-	// The lookup reset it to learning (count 1); toggling keeps the count.
-	if qc, acq, err := ToggleAcquainted("u1", "w1"); err != nil || qc != 1 || acq != 1 {
-		t.Fatalf("second toggle: got %d/%d/%v, want 1/1/nil", qc, acq, err)
+	// The lookup reset it to learning (count 1); setting it keeps the count.
+	if qc, acq, err := SetAcquainted("u1", "w1", true); err != nil || qc != 1 || acq != 1 {
+		t.Fatalf("set known after lookup: got %d/%d/%v, want 1/1/nil", qc, acq, err)
 	}
-	if qc, acq, err := ToggleAcquainted("u1", "w1"); err != nil || qc != 1 || acq != 0 {
-		t.Fatalf("third toggle: got %d/%d/%v, want 1/0/nil", qc, acq, err)
+	for i := 1; i <= 2; i++ {
+		if qc, acq, err := SetAcquainted("u1", "w1", false); err != nil || qc != 1 || acq != 0 {
+			t.Fatalf("set not known %d: got %d/%d/%v, want 1/0/nil", i, qc, acq, err)
+		}
+	}
+}
+
+// Setting a word the user never touched to not known reports the learning
+// state with no lookups and writes no row: a row would put a word the user
+// never looked up into their Word List and vocabulary totals.
+func TestSetAcquaintedFalseWithoutRowWritesNothing(t *testing.T) {
+	db := newTestDB(t)
+
+	if qc, acq, err := SetAcquainted("u1", "w1", false); err != nil || qc != 0 || acq != 0 {
+		t.Fatalf("got %d/%d/%v, want 0/0/nil", qc, acq, err)
+	}
+	var rows int64
+	db.Model(&UserDict{}).Count(&rows)
+	if rows != 0 {
+		t.Fatalf("user_dicts rows = %d, want 0", rows)
 	}
 }
 

@@ -262,10 +262,25 @@ export const SERVICE_UNAVAILABLE_MESSAGE =
 export const NETWORK_ERROR_MESSAGE =
   "Couldn't connect to Catglish. Check your internet connection and try again."
 
+// Waits before replaying a call that opted in with `{ retry: true }` (#133).
+// Only idempotent calls may opt in: they can be replayed after a network
+// failure or any 5xx, even when enx-api already handled the first attempt.
+// Lookups (GET /api/word/:word bumps a Query Count, #136) and AI calls (spend
+// credit) must not.
+export const IDEMPOTENT_RETRY_DELAYS_MS = [500, 1500]
+
+export interface ApiRequestPolicy {
+  retry?: boolean
+}
+
+const isNetworkFailure = (error: unknown): boolean =>
+  error instanceof TypeError && error.message.includes('Failed to fetch')
+
 // API request helper
 export const makeApiRequest = async (
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  { retry = false }: ApiRequestPolicy = {}
 ): Promise<ApiRequestResult> => {
   // An API call proves the worker is alive; refresh the heartbeat so the next
   // cold boot can report how long this instance had been gone (swlog.ts).
@@ -279,6 +294,20 @@ export const makeApiRequest = async (
   // GATEWAY_RETRY_DELAYS_MS) is replayed after a short wait.
   let forceRefresh = false
   let gatewayRetries = 0
+  let idempotentRetries = 0
+  // Waits and reports true while an opted-in call has retries left.
+  const waitToRetry = async (reason: string): Promise<boolean> => {
+    if (!retry || idempotentRetries >= IDEMPOTENT_RETRY_DELAYS_MS.length) {
+      return false
+    }
+    const delay = IDEMPOTENT_RETRY_DELAYS_MS[idempotentRetries++]
+    swlog(
+      `${reason} from ${endpoint}, retry ${idempotentRetries} in ${delay}ms`,
+      'warn'
+    )
+    await new Promise(resolve => setTimeout(resolve, delay))
+    return true
+  }
 
   try {
     for (let attempt = 1; ; attempt++) {
@@ -308,10 +337,18 @@ export const makeApiRequest = async (
         )
       }
 
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        ...options,
-        headers,
-      })
+      let response: Response
+      try {
+        response = await fetch(`${API_BASE_URL}${endpoint}`, {
+          ...options,
+          headers,
+        })
+      } catch (error) {
+        if (isNetworkFailure(error) && (await waitToRetry('network failure'))) {
+          continue
+        }
+        throw error
+      }
 
       console.log(
         `API response status: ${response.status} ${response.statusText}`
@@ -341,6 +378,13 @@ export const makeApiRequest = async (
           throw new Error('Session expired')
         }
 
+        if (
+          response.status >= 500 &&
+          (await waitToRetry(`HTTP ${response.status}`))
+        ) {
+          continue
+        }
+
         // Try to get error details from response body
         let errorMessage = `HTTP ${response.status}: ${response.statusText}`
         let fromApi = false
@@ -359,7 +403,9 @@ export const makeApiRequest = async (
         // ring-balancer" during a homelab redeploy, a Cloudflare/nginx HTML
         // page in production). Its text means nothing to a reader.
         if (GATEWAY_ERROR_STATUSES.has(response.status) && !fromApi) {
+          // An opted-in call already spent its own retries above.
           if (
+            !retry &&
             response.status === 503 &&
             gatewayRetries < GATEWAY_RETRY_DELAYS_MS.length
           ) {
@@ -401,10 +447,7 @@ export const makeApiRequest = async (
     }
 
     // Network errors
-    if (
-      error instanceof TypeError &&
-      error.message.includes('Failed to fetch')
-    ) {
+    if (isNetworkFailure(error)) {
       // In development the cause is usually the Lab API host being down or
       // Options pointing at a dead URL; keep that detail in the log.
       const apiUrl = await getApiBaseUrl().catch(() => '(unknown)')
@@ -989,20 +1032,24 @@ export const handleGetWords = async (paragraph: string) => {
     return { success: false, error: 'No paragraph provided' }
   }
 
+  // A pure read, so the POST may retry (#133). QUERY doesn't: on a network
+  // that blocks it, retries would only delay the fallback to POST below.
   const body = JSON.stringify({ paragraph })
-  let response = await makeApiRequest('/api/paragraph-init', {
-    method: paragraphInitMethod,
-    body,
-  })
+  let response = await makeApiRequest(
+    '/api/paragraph-init',
+    { method: paragraphInitMethod, body },
+    { retry: paragraphInitMethod === 'POST' }
+  )
   if (paragraphInitMethod === 'QUERY' && queryMethodBlocked(response)) {
     swlog(
       `paragraph-init: QUERY did not get through (${response.status ?? 'network error'}), retrying with POST`,
       'warn'
     )
-    response = await makeApiRequest('/api/paragraph-init', {
-      method: 'POST',
-      body,
-    })
+    response = await makeApiRequest(
+      '/api/paragraph-init',
+      { method: 'POST', body },
+      { retry: true }
+    )
     // Only a POST that worked proves this network needs it; a failing POST
     // (say, the API is down) must not pin the worker to POST.
     if (response.success) {
@@ -1055,12 +1102,12 @@ const handleMarkAcquainted = async (word: string, userId: number) => {
     }
   }
 
-  const response = await makeApiRequest('/api/mark', {
-    method: 'POST',
-    body: JSON.stringify({
-      English: word.trim(),
-    }),
-  })
+  // Idempotent (#133): a retry after a lost reply can't undo the mark.
+  const response = await makeApiRequest(
+    `/api/me/words/${encodeURIComponent(word.trim())}/known`,
+    { method: 'PUT' },
+    { retry: true }
+  )
 
   console.log('handleMarkAcquainted: API response', response)
   console.log(

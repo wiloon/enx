@@ -467,7 +467,6 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 		apiGroup.POST("/translate/sentence-with-word", sentenceHandler.TranslateSentenceWithWord)
 		apiGroup.POST("/rephrase", rephraseHandler.Rephrase)
 		apiGroup.GET("/load-count", wordCount.LoadCount)
-		apiGroup.POST("/mark", handlers.MarkWord)
 	}
 
 	// /api/me — requires authentication (Clerk session JWT)
@@ -485,6 +484,9 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	// word puts it back to never looked up.
 	apiGroup.GET("/me/words", wordlist.ListHandler)
 	apiGroup.DELETE("/me/words/:english", wordlist.RemoveHandler)
+	// Mark Known (#133): idempotent, so the extension can retry it.
+	apiGroup.PUT("/me/words/:english/known", handlers.SetWordKnown)
+	apiGroup.DELETE("/me/words/:english/known", handlers.ClearWordKnown)
 
 	// Billing (Stripe) — requires authentication (Clerk session JWT).
 	apiGroup.POST("/billing/checkout/subscription", billingHandler.CheckoutSubscription)
