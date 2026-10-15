@@ -90,7 +90,6 @@ static getArticleNode(): Element | null {
     '.post-content',               // Generic blog posts
     '.single-post__container',     // Microsoft Research
     '#EMAIL_CONTAINER',            // NY Times newsletters
-    '.text',                       // TingRoom
     'article',                     // Semantic HTML5
     '.content',                    // Generic content
     '.entry-content',              // WordPress/blogs

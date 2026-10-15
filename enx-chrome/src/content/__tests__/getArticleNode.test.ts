@@ -47,6 +47,22 @@ describe('WordProcessor.getArticleNodes', () => {
     expect(nodes).toHaveLength(1)
   })
 
+  it('does not take links styled class="text" for the article', () => {
+    // Wikipedia's references are <a class="external text">; a long title
+    // used to win over the real article body.
+    document.body.innerHTML = `
+      <div id="body">
+        <p>${'Article prose with enough text to pass the length threshold. '.repeat(10)}</p>
+        <a class="external text" href="/ref">${'A long cited source title. '.repeat(5)}</a>
+      </div>
+    `
+
+    const nodes = WordProcessor.getArticleNodes()
+
+    expect(nodes).toHaveLength(1)
+    expect(nodes[0].id).toBe('body')
+  })
+
   it('should fall back to the largest text container when no selector matches', () => {
     document.body.innerHTML = `
       <div>${'Fallback content with enough text to pass the length threshold. '.repeat(10)}</div>

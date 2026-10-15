@@ -5,7 +5,8 @@
 //
 // resolveSiteAdapter() returns DEFAULT_ADAPTER for ordinary article sites;
 // its field values reproduce the original hard-coded behavior field-for-field.
-// Only X, the enx-ui Reader and the RSSX Reader need their own adapter.
+// Only X, the enx-ui Reader, the RSSX Reader and Wikipedia need their own
+// adapter.
 
 // The subset of a Location the adapters read. Both `window.location` and a
 // `URL` (from a Navigation API destination) satisfy it.
@@ -210,8 +211,30 @@ const RSSX_ADAPTER: SiteAdapter = {
   clickBinding: 'bubble',
 }
 
+// --- Wikipedia ------------------------------------------------------------
+// The generic selectors and the largest-text fallback both miss here: the
+// fallback takes the whole page, whose language menu (中文, 粵語, ...) trips
+// the Chinese-article check. The article body is the parser output inside
+// #mw-content-text, the same on the desktop and mobile (.m.) sites.
+
+const WIKIPEDIA_HOST = /(^|\.)wikipedia\.org$/
+
+const WIKIPEDIA_ADAPTER: SiteAdapter = {
+  name: 'wikipedia',
+  matches: location => WIKIPEDIA_HOST.test(location.hostname),
+  contentSelector: '#mw-content-text .mw-parser-output',
+  minTextLength: 100,
+  contentVolatility: 'static',
+  clickBinding: 'bubble',
+}
+
 // Non-default adapters, checked in order.
-const ADAPTERS: SiteAdapter[] = [X_ADAPTER, READER_ADAPTER, RSSX_ADAPTER]
+const ADAPTERS: SiteAdapter[] = [
+  X_ADAPTER,
+  READER_ADAPTER,
+  RSSX_ADAPTER,
+  WIKIPEDIA_ADAPTER,
+]
 
 export function resolveSiteAdapter(location: PageLocation): SiteAdapter {
   return ADAPTERS.find(adapter => adapter.matches(location)) ?? DEFAULT_ADAPTER

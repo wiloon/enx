@@ -291,7 +291,6 @@ export class WordProcessor {
           '.post-content', // Blog posts
           '.single-post__container', // Microsoft Research
           '#EMAIL_CONTAINER', // NY Times
-          '.text', // TingRoom
           '#lesson-main-content', // Anthropic Skilljar
           '.sjwc-lesson-content-item', // Anthropic Skilljar (inner)
           'article', // Semantic HTML5
