@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -40,7 +41,7 @@ type listJSON struct {
 		QueryCount      int    `json:"queryCount"`
 		Known           bool   `json:"known"`
 		FirstLookedUpAt string `json:"firstLookedUpAt"`
-		UpdatedAt       string `json:"updatedAt"`
+		LastLookedUpAt  string `json:"lastLookedUpAt"`
 	} `json:"words"`
 }
 
@@ -64,8 +65,8 @@ func TestListHandlerReturnsTheFilteredPageAndTotal(t *testing.T) {
 	if word.English != "wlh-known" || word.Chinese != "会" || word.QueryCount != 9 || !word.Known {
 		t.Fatalf("word = %+v", word)
 	}
-	if word.FirstLookedUpAt != "2026-10-01T09:00:00Z" || word.UpdatedAt != "2026-10-01T09:00:00Z" {
-		t.Fatalf("times = %q / %q, want RFC 3339 UTC", word.FirstLookedUpAt, word.UpdatedAt)
+	if word.FirstLookedUpAt != "2026-10-01T09:00:00Z" || word.LastLookedUpAt != "2026-10-01T09:00:00Z" {
+		t.Fatalf("times = %q / %q, want RFC 3339 UTC", word.FirstLookedUpAt, word.LastLookedUpAt)
 	}
 }
 
@@ -79,8 +80,26 @@ func TestListHandlerEncodesAnEmptyListAsAnArray(t *testing.T) {
 	}
 }
 
+func TestListHandlerSortsByLookupCountMostFirst(t *testing.T) {
+	user := "u-" + t.Name()
+	insert(t, user, seed{english: "wls-once", count: 1, createdAt: day, updatedAt: day.Add(3 * time.Hour)})
+	insert(t, user, seed{english: "wls-often", count: 9, createdAt: day, updatedAt: day})
+	insert(t, user, seed{english: "wls-twice-old", count: 2, createdAt: day, updatedAt: day.Add(time.Hour)})
+	insert(t, user, seed{english: "wls-twice-new", count: 2, createdAt: day, updatedAt: day.Add(2 * time.Hour)})
+
+	got := list(t, user, "?sort=lookups")
+
+	var order []string
+	for _, w := range got.Words {
+		order = append(order, w.English)
+	}
+	if want := []string{"wls-often", "wls-twice-new", "wls-twice-old", "wls-once"}; !equal(order, want) {
+		t.Fatalf("order = %v, want %v", order, want)
+	}
+}
+
 func TestListHandlerRejectsBadParameters(t *testing.T) {
-	for _, query := range []string{"?status=mastered", "?limit=ten", "?offset=1.5"} {
+	for _, query := range []string{"?status=mastered", "?limit=ten", "?offset=1.5", "?sort=alphabetical"} {
 		w := get(t, "u-"+t.Name(), query)
 		if w.Code != http.StatusBadRequest {
 			t.Errorf("%s: status %d, want 400", query, w.Code)
@@ -102,9 +121,9 @@ func remove(t *testing.T, userID, english string) *httptest.ResponseRecorder {
 	return w
 }
 
-func list(t *testing.T, userID string) listJSON {
+func list(t *testing.T, userID, query string) listJSON {
 	t.Helper()
-	w := get(t, userID, "")
+	w := get(t, userID, query)
 	var got listJSON
 	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v body=%s", err, w.Body.String())
@@ -121,7 +140,7 @@ func TestRemoveHandlerTakesTheWordOffTheList(t *testing.T) {
 		t.Fatalf("status %d body=%s, want 200", w.Code, w.Body.String())
 	}
 
-	got := list(t, user)
+	got := list(t, user, "")
 	if got.Total != 1 || len(got.Words) != 1 || got.Words[0].English != "wlr-kept" {
 		t.Fatalf("list after remove = %+v, want only wlr-kept", got)
 	}
@@ -145,7 +164,7 @@ func TestRemoveHandlerLeavesOtherUsersAlone(t *testing.T) {
 		t.Fatalf("status %d, want 200", w.Code)
 	}
 
-	got := list(t, other)
+	got := list(t, other, "")
 	if got.Total != 1 || got.Words[0].English != "wlr-shared" || got.Words[0].QueryCount != 5 {
 		t.Fatalf("other user's list = %+v, want wlr-shared untouched", got)
 	}
@@ -159,7 +178,7 @@ func TestRemoveHandlerMatchesTheWordInAnyCase(t *testing.T) {
 		t.Fatalf("status %d, want 200", w.Code)
 	}
 
-	if got := list(t, user); got.Total != 0 {
+	if got := list(t, user, ""); got.Total != 0 {
 		t.Fatalf("list after remove = %+v, want empty", got)
 	}
 }

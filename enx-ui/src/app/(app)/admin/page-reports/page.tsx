@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { apiService } from '@/services/api'
 import type { AdminPageReport } from '@/types'
+import PageHeader from '@/components/app/PageHeader'
 
 function formatWhen(ms: number): string {
   if (!ms) return '—'
@@ -28,14 +29,11 @@ export default function AdminPageReportsPage() {
   })
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Page reports</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Learning-mode failures users confirmed sending. Sanitized URL only —
-          no page content. Newest first.
-        </p>
-      </div>
+    <div className="mx-auto max-w-5xl space-y-6 p-6 md:p-8">
+      <PageHeader
+        title="Page reports"
+        description="Learning-mode failures users confirmed sending. Sanitized URL only — no page content. Newest first."
+      />
 
       <Card>
         <CardHeader>

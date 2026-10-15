@@ -177,6 +177,8 @@ export interface AdminPageReport {
 // GET /api/me/words: one word the user looked up in an article (a
 // user_dicts row), including the ones marked known.
 export type WordListStatus = 'all' | 'learning' | 'known'
+// recent: last looked up first; lookups: most looked up first.
+export type WordListSort = 'recent' | 'lookups'
 
 export interface WordListEntry {
   english: string
@@ -185,8 +187,15 @@ export interface WordListEntry {
   queryCount: number
   known: boolean
   firstLookedUpAt: string
-  // Moves on a lookup and on marking a word known: "last touched".
-  updatedAt: string
+  // Only a lookup moves it; marking a word known does not.
+  lastLookedUpAt: string
+}
+
+// POST /api/mark answers with the word after the toggle.
+export interface MarkedWord {
+  English: string
+  AlreadyAcquainted: number
+  LoadCount: number
 }
 
 export interface WordListPage {

@@ -149,7 +149,7 @@ test.describe('/billing', () => {
     await page.goto('/billing')
 
     await expect(
-      page.getByRole('heading', { name: 'Subscription & Credits' })
+      page.getByRole('heading', { level: 1, name: 'Billing' })
     ).toBeVisible()
     await expect(page.getByText('Free user')).toBeVisible()
 
@@ -343,7 +343,7 @@ test.describe('/billing/success', () => {
       )
     ).toBeVisible()
     await expect(
-      page.getByRole('link', { name: 'Back to Subscription & Credits' })
+      page.getByRole('link', { name: 'Back to Billing' })
     ).toHaveAttribute('href', '/billing')
   })
 })
@@ -359,7 +359,7 @@ test.describe('/billing/cancel', () => {
       page.getByText('Checkout was canceled and you were not charged.')
     ).toBeVisible()
     await expect(
-      page.getByRole('link', { name: 'Back to Subscription & Credits' })
+      page.getByRole('link', { name: 'Back to Billing' })
     ).toHaveAttribute('href', '/billing')
   })
 })

@@ -12,10 +12,15 @@ import { apiService } from '@/services/api'
 import type { WordListEntry } from '@/types'
 
 jest.mock('@/services/api', () => ({
-  apiService: { listMyWords: jest.fn(), removeMyWord: jest.fn() },
+  apiService: {
+    listMyWords: jest.fn(),
+    removeMyWord: jest.fn(),
+    markWord: jest.fn(),
+  },
 }))
 
 const mockList = apiService.listMyWords as jest.Mock
+const mockMark = apiService.markWord as jest.Mock
 
 function entry(over: Partial<WordListEntry>): WordListEntry {
   return {
@@ -25,7 +30,7 @@ function entry(over: Partial<WordListEntry>): WordListEntry {
     queryCount: 1,
     known: false,
     firstLookedUpAt: '2026-10-01T09:00:00Z',
-    updatedAt: '2026-10-01T09:00:00Z',
+    lastLookedUpAt: '2026-10-01T09:00:00Z',
     ...over,
   }
 }
@@ -42,6 +47,26 @@ function renderPage() {
 }
 
 beforeEach(() => jest.clearAllMocks())
+
+// The word of each row, top to bottom.
+const listed = () =>
+  within(screen.getByRole('list'))
+    .getAllByRole('listitem')
+    .map((li) => li.querySelector('.font-medium')?.textContent)
+
+const row = (english: string) =>
+  within(screen.getByRole('list'))
+    .getAllByRole('listitem')
+    .find((li) => li.querySelector('.font-medium')?.textContent === english)!
+
+// The row's "⋯" menu, opened from the keyboard the way Radix expects.
+async function chooseAction(english: string, action: string) {
+  const trigger = await screen.findByRole('button', {
+    name: `More actions for ${english}`,
+  })
+  fireEvent.keyDown(trigger, { key: 'Enter' })
+  fireEvent.click(await screen.findByRole('menuitem', { name: action }))
+}
 
 it('lists each word with its definition, lookup count and known badge', async () => {
   mockList.mockResolvedValue({
@@ -63,8 +88,8 @@ it('lists each word with its definition, lookup count and known badge', async ()
   renderPage()
 
   expect(await screen.findByText('ephemeral')).toBeInTheDocument()
-  expect(screen.getByText('Looked up 3 times')).toBeInTheDocument()
-  expect(screen.getByText('Looked up 1 time')).toBeInTheDocument()
+  expect(screen.getByTitle('Looked up 3 times')).toHaveTextContent('3')
+  expect(screen.getByTitle('Looked up 1 time')).toHaveTextContent('1')
   expect(screen.getByText('adj. 一丝不苟的')).toBeInTheDocument()
   const items = within(screen.getByRole('list')).getAllByRole('listitem')
   expect(within(items[0]).queryByText('Known')).not.toBeInTheDocument()
@@ -72,6 +97,7 @@ it('lists each word with its definition, lookup count and known badge', async ()
   expect(screen.getByText('2 words')).toBeInTheDocument()
   expect(mockList).toHaveBeenCalledWith({
     status: 'all',
+    sort: 'recent',
     q: undefined,
     limit: 50,
     offset: 0,
@@ -97,6 +123,67 @@ it('refetches with the chosen filter', async () => {
   expect(
     await screen.findByText('No words marked as known yet.')
   ).toBeInTheDocument()
+})
+
+it('sorts by lookup count on request', async () => {
+  mockList.mockResolvedValue({ success: true, data: { total: 0, words: [] } })
+  renderPage()
+  await screen.findByText('0 words')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Most looked up' }))
+
+  await waitFor(() =>
+    expect(mockList).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort: 'lookups', offset: 0 })
+    )
+  )
+  expect(
+    screen.getByRole('button', { name: 'Most looked up' })
+  ).toHaveAttribute('aria-pressed', 'true')
+})
+
+it('says when a word was last looked up, with both dates on hover', async () => {
+  jest.useFakeTimers({ now: new Date('2026-10-15T12:00:00Z') })
+  try {
+    mockList.mockResolvedValue({
+      success: true,
+      data: {
+        total: 1,
+        words: [
+          entry({
+            firstLookedUpAt: '2026-10-01T12:00:00Z',
+            lastLookedUpAt: '2026-10-12T12:00:00Z',
+          }),
+        ],
+      },
+    })
+    renderPage()
+
+    const label = await screen.findByText('3 days ago')
+    expect(label).toHaveAttribute(
+      'title',
+      expect.stringMatching(
+        /^Last looked up Oct 12, 2026, .+\nFirst looked up Oct 1, 2026$/
+      )
+    )
+  } finally {
+    jest.useRealTimers()
+  }
+})
+
+it('shows the whole definition when a word is opened', async () => {
+  mockList.mockResolvedValue({
+    success: true,
+    data: { total: 1, words: [entry({ english: 'ephemeral' })] },
+  })
+  renderPage()
+
+  const word = await screen.findByRole('button', { name: /^ephemeral/ })
+  expect(word).toHaveAttribute('aria-expanded', 'false')
+  fireEvent.click(word)
+  expect(word).toHaveAttribute('aria-expanded', 'true')
+  fireEvent.click(word)
+  expect(word).toHaveAttribute('aria-expanded', 'false')
 })
 
 it('searches once the user stops typing', async () => {
@@ -180,18 +267,7 @@ describe('removing a word', () => {
 
   afterEach(() => jest.useRealTimers())
 
-  const listed = () =>
-    within(screen.getByRole('list'))
-      .getAllByRole('listitem')
-      .map((li) => li.querySelector('.font-medium')?.textContent)
-
-  async function clickRemove(english: string) {
-    fireEvent.click(
-      await screen.findByRole('button', {
-        name: `Remove ${english} from your word list`,
-      })
-    )
-  }
+  const clickRemove = (english: string) => chooseAction(english, 'Remove')
 
   it('hides the word at once and offers to undo', async () => {
     renderPage()
@@ -270,5 +346,87 @@ describe('removing a word', () => {
     unmount()
 
     expect(mockRemove).toHaveBeenCalledWith('ephemeral')
+  })
+})
+
+describe('marking a word known', () => {
+  const words = [
+    entry({ english: 'ephemeral', queryCount: 2 }),
+    entry({ english: 'meticulous', queryCount: 4 }),
+  ]
+
+  beforeEach(() => {
+    mockList.mockResolvedValue({ success: true, data: { total: 2, words } })
+  })
+
+  it('badges the word known and leaves it where it was', async () => {
+    mockMark.mockResolvedValue({
+      success: true,
+      data: { English: 'ephemeral', AlreadyAcquainted: 1, LoadCount: 2 },
+    })
+    renderPage()
+
+    await chooseAction('ephemeral', 'Mark as known')
+
+    expect(mockMark).toHaveBeenCalledWith('ephemeral')
+    await waitFor(() =>
+      expect(within(row('ephemeral')).getByText('Known')).toBeInTheDocument()
+    )
+    expect(listed()).toEqual(['ephemeral', 'meticulous'])
+  })
+
+  it('offers to mark a known word as learning again', async () => {
+    mockList.mockResolvedValue({
+      success: true,
+      data: { total: 1, words: [entry({ english: 'ephemeral', known: true })] },
+    })
+    mockMark.mockResolvedValue({
+      success: true,
+      data: { English: 'ephemeral', AlreadyAcquainted: 0, LoadCount: 1 },
+    })
+    renderPage()
+
+    await chooseAction('ephemeral', 'Mark as learning')
+
+    await waitFor(() =>
+      expect(
+        within(row('ephemeral')).queryByText('Known')
+      ).not.toBeInTheDocument()
+    )
+  })
+
+  it('takes the word out of the Learning view once it is known', async () => {
+    mockMark.mockResolvedValue({
+      success: true,
+      data: { English: 'ephemeral', AlreadyAcquainted: 1, LoadCount: 2 },
+    })
+    renderPage()
+    await screen.findByText('2 words')
+    fireEvent.click(screen.getByRole('button', { name: 'Learning' }))
+    await waitFor(() =>
+      expect(mockList).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: 'learning' })
+      )
+    )
+
+    await chooseAction('ephemeral', 'Mark as known')
+
+    await waitFor(() => expect(listed()).toEqual(['meticulous']))
+    expect(screen.getByText('1 word')).toBeInTheDocument()
+  })
+
+  it('says so and changes nothing when the server will not mark it', async () => {
+    mockMark.mockResolvedValue({
+      success: false,
+      error: 'Failed to mark word',
+    })
+    renderPage()
+
+    await chooseAction('ephemeral', 'Mark as known')
+
+    expect(await screen.findByText('Failed to mark word')).toBeInTheDocument()
+    expect(
+      within(row('ephemeral')).queryByText('Known')
+    ).not.toBeInTheDocument()
   })
 })

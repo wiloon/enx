@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
-import { FileText, Lock, Pencil, Puzzle } from 'lucide-react'
+import { FileText, Pencil, Puzzle, ShieldCheck } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -23,6 +23,7 @@ import {
   readerWidthClass,
   saveReaderWidth,
 } from './width'
+import PageHeader from '@/components/app/PageHeader'
 
 const RECENT_LIMIT = 3
 
@@ -257,14 +258,10 @@ export default function ReaderPage() {
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
-      <div>
-        <h2 className="text-2xl font-bold">Reader</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          For English text you can&apos;t look up where it is: an AI chat reply,
-          a PDF, or a site where the extension doesn&apos;t work well. Paste it
-          here and read it with Catglish.
-        </p>
-      </div>
+      <PageHeader
+        title="Reader"
+        description="For English text you can't look up where it is: an AI chat reply, a PDF, or a site where the extension doesn't work well. Paste it here and read it with Catglish."
+      />
 
       <ol className="grid gap-3 text-sm sm:grid-cols-3">
         {HOW_IT_WORKS.map((step, i) => (
@@ -319,7 +316,7 @@ export default function ReaderPage() {
           />
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Lock className="size-3.5" aria-hidden="true" />
+              <ShieldCheck className="size-3.5" aria-hidden="true" />
               Only you can see it. Deleted automatically after 7 days.
             </p>
             <div className="flex items-center gap-3">

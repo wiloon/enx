@@ -69,6 +69,7 @@ All three sub-projects keep the domain apart from the machinery around it:
 | [docs/agents/enx-api-design.md](docs/agents/enx-api-design.md) | adding an enx-api domain service, repository or entity |
 | [docs/agents/logging.md](docs/agents/logging.md) | adding or changing enx-api log lines |
 | [docs/agents/adding-website-support.md](docs/agents/adding-website-support.md) | making the extension work on a new website |
+| [docs/agents/icons.md](docs/agents/icons.md) | placing or changing an icon in enx-ui or enx-chrome |
 | [docs/agents/contributions.md](docs/agents/contributions.md) | a change touches an area whose past lessons matter; add an entry after significant work |
 
 ## Agent skills

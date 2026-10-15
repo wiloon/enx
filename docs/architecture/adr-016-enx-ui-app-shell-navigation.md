@@ -12,6 +12,7 @@
 ## 已确认的决策（2026-09-05，用户确认）
 
 1. **布局 = 左侧边栏主导航 + 顶栏**。侧边栏放主导航（Home / Word Lookup / Rephrase）、下面一组 Insights（Reading Stats）、底部一组账户类（Billing）。顶栏放当前页面标题 + 用户名 + Sign out。移动端侧边栏收成汉堡 + 抽屉。
+   - **2026-10-15 补充：顶栏不再显示页面标题。** 各页面自己也有大标题，同一个名字在顶栏和页面里各出现一次。另外几个页面自己也用了 `<h1>`，一页里有两个 `<h1>`。现在改为：顶栏只放移动端汉堡、用户名和 Sign out；每个页面用 `src/components/app/PageHeader.tsx` 放唯一的 `<h1>`（加可选的说明文字和右侧操作），标题文字和侧边栏菜单名一致。当前在哪一页由侧边栏的高亮表示。`navTitleForPath` 随之删除。
 2. **手写轻量 App Shell，不引入 shadcn 官方 `sidebar` 组件**。后者会带 `sheet` / `tooltip` / `separator` / `skeleton` / `use-mobile` 一串依赖，对当前 5 个导航项偏重。`globals.css` 里 scaffold 时已带的整套 `--sidebar-*` 语义 token 直接用上。
 3. **导航文案全英文**（对齐 ADR-013 决策 3 全站英文单语、以及现有 lookup/rephrase 页）。`/billing` 页内既有的中文正文本次不动，是独立的后续清理项。
 4. **登录门禁上提到 `(app)/layout.tsx`**。此前只有 `/app`（经 `AuthWrapper`）有门禁，`/lookup`、`/rephrase`、`/billing` 全靠 API 401 兜底。上提后整个 `(app)` 子树统一门禁。行为不变：`isLoading` → spinner，`!isAuthenticated` → `<RedirectToSignIn />`。

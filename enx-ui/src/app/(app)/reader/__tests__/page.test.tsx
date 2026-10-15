@@ -381,7 +381,7 @@ describe('landing page', () => {
   it('explains what Reader is for', () => {
     renderPage()
     expect(
-      screen.getByRole('heading', { level: 2, name: 'Reader' })
+      screen.getByRole('heading', { level: 1, name: 'Reader' })
     ).toBeInTheDocument()
     expect(screen.getByText(/an AI chat\s+reply, a PDF/)).toBeInTheDocument()
   })

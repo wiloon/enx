@@ -166,6 +166,10 @@ func RecordWordLookup(userId, wordId string) (queryCount int, alreadyAcquainted 
 // ToggleAcquainted flips userId's "already know this word" flag for wordId
 // in one statement: a word with no user_dicts row yet becomes known with
 // query_count 0. It returns the row's state afterwards.
+//
+// It leaves updated_at alone: updated_at is the last lookup, which only
+// RecordWordLookup moves, so marking a word known doesn't reorder the Word
+// List (ADR-027 Decision 7, 2026-10-15 note).
 func ToggleAcquainted(userId, wordId string) (queryCount int, alreadyAcquainted int, err error) {
 	now := time.Now().UnixMilli()
 	var row UserDict
@@ -173,8 +177,7 @@ func ToggleAcquainted(userId, wordId string) (queryCount int, alreadyAcquainted 
 		INSERT INTO user_dicts (user_id, word_id, query_count, already_acquainted, created_at, updated_at)
 		VALUES (?, ?, 0, 1, ?, ?)
 		ON CONFLICT (user_id, word_id) DO UPDATE SET
-			already_acquainted = 1 - COALESCE(already_acquainted, 0),
-			updated_at = excluded.updated_at
+			already_acquainted = 1 - COALESCE(already_acquainted, 0)
 		RETURNING query_count, already_acquainted`,
 		userId, wordId, now, now).Scan(&row).Error
 	return row.QueryCount, row.AlreadyAcquainted, err

@@ -3,7 +3,10 @@
 // states look different at a glance and a stray click can't re-run the page.
 // The copy is about reading with the tool at hand, not a "learning" chore.
 
-import { CheckCircleIcon, SparklesIcon } from '@heroicons/react/24/outline'
+import {
+  CheckCircleIcon,
+  CursorArrowRaysIcon,
+} from '@heroicons/react/24/outline'
 
 // Both states share one fixed height (the "on" card's 32px icon plus py-2.5),
 // so turning Catglish on or off doesn't shift everything below the card.
@@ -61,7 +64,7 @@ export default function LearningModeCard({
       disabled={status === 'enabling'}
       className={`flex ${CARD_HEIGHT} w-full items-center justify-center gap-2 rounded-xl bg-brand text-sm font-semibold text-brand-foreground shadow-md shadow-brand/25 transition hover:brightness-105 active:scale-[0.99] disabled:opacity-60`}
     >
-      <SparklesIcon className="h-[18px] w-[18px]" />
+      <CursorArrowRaysIcon className="h-[18px] w-[18px]" />
       {status === 'enabling' ? 'Enabling…' : 'Read with Catglish'}
     </button>
   )

@@ -4,10 +4,12 @@ import {
   ArrowPathRoundedSquareIcon,
   BookOpenIcon,
   SpeakerWaveIcon,
+  XMarkIcon,
 } from '@heroicons/react/20/solid'
 import SidePanelTranslateIcon from '@/components/icons/SidePanelTranslateIcon'
 import { AiBadge, AiMissPanel, AiNotice } from '@/components/AiLookup'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
+import { lookupCountLabel } from '@/lib/lookupCount'
 import {
   currentWordAtom,
   isTranslatingAtom,
@@ -85,10 +87,11 @@ export default function WordPopover({
           <button
             data-testid="word-popover-close"
             onClick={onClose}
-            className="text-muted-foreground hover:text-destructive text-xl leading-none ml-2"
+            className="text-muted-foreground hover:text-destructive ml-2"
             title="Close"
+            aria-label="Close"
           >
-            ×
+            <XMarkIcon className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
         {sentencePanelHint && (
@@ -141,23 +144,27 @@ export default function WordPopover({
           {currentWord?.LoadCount !== undefined && (
             <span
               className="inline-flex items-center gap-0.5 text-xs text-muted-foreground"
-              title={`Query Count: ${currentWord.LoadCount}`}
+              title={lookupCountLabel(currentWord.LoadCount)}
             >
               <ArrowPathRoundedSquareIcon
                 className="h-3 w-3"
                 aria-hidden="true"
               />
-              {currentWord.LoadCount}
+              <span aria-hidden="true">{currentWord.LoadCount}</span>
+              <span className="sr-only">
+                {lookupCountLabel(currentWord.LoadCount)}
+              </span>
             </span>
           )}
         </div>
         <button
           data-testid="word-popover-close"
           onClick={onClose}
-          className="text-muted-foreground hover:text-destructive text-xl leading-none ml-1 shrink-0"
+          className="text-muted-foreground hover:text-destructive ml-1 shrink-0"
           title="Close"
+          aria-label="Close"
         >
-          ×
+          <XMarkIcon className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
 

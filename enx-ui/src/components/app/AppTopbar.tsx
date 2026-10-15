@@ -1,19 +1,17 @@
 'use client'
 
 import { Menu } from 'lucide-react'
-import { usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
-import { navTitleForPath } from './app-nav'
 
-// App-shell top bar (ADR-016): current-page title on the left (plus the
-// drawer toggle on mobile), user identity and sign-out on the right.
+// App-shell top bar (ADR-016): the drawer toggle on mobile, user identity and
+// sign-out on the right. No page title: each page names itself with
+// PageHeader, and the sidebar marks where you are (ADR-016, 2026-10-15 note).
 export default function AppTopbar({
   onOpenSidebar,
 }: {
   onOpenSidebar: () => void
 }) {
-  const pathname = usePathname()
   const { user, logout } = useAuth()
 
   return (
@@ -26,8 +24,6 @@ export default function AppTopbar({
       >
         <Menu aria-hidden className="h-5 w-5" />
       </button>
-
-      <h1 className="text-sm font-semibold">{navTitleForPath(pathname)}</h1>
 
       <div className="ml-auto flex items-center gap-3">
         {user?.username && (

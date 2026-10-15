@@ -39,6 +39,29 @@ func ParseStatus(s string) (Status, error) {
 	return "", ErrInvalidStatus
 }
 
+// Sort orders the list.
+type Sort string
+
+const (
+	SortRecent  Sort = "recent"  // last looked up first
+	SortLookups Sort = "lookups" // most looked up first, then last looked up
+)
+
+// ErrInvalidSort is returned by ParseSort for anything but the two sorts
+// above.
+var ErrInvalidSort = errors.New("wordlist: invalid sort")
+
+// ParseSort reads a sort query parameter; empty means SortRecent.
+func ParseSort(s string) (Sort, error) {
+	switch Sort(s) {
+	case "", SortRecent:
+		return SortRecent, nil
+	case SortLookups:
+		return SortLookups, nil
+	}
+	return "", ErrInvalidSort
+}
+
 const (
 	DefaultLimit = 50
 	MaxLimit     = 200
@@ -49,6 +72,7 @@ const (
 type Query struct {
 	Status Status
 	Search string
+	Sort   Sort
 	Limit  int
 	Offset int
 }
@@ -68,9 +92,9 @@ func (q Query) normalize() Query {
 
 // Entry is one word on the list.
 //
-// UpdatedAt is user_dicts.updated_at, which moves on a lookup AND on marking a
-// word known (the same caveat as Home's "Recent words", ADR-028 Decision 7),
-// so it is "last touched", not strictly "last looked up".
+// LastLookedUpAt is user_dicts.updated_at, which only a lookup moves; marking
+// a word known leaves it alone (ADR-027 Decision 7, 2026-10-15 note). Rows
+// marked known before that date may carry the time of the mark instead.
 type Entry struct {
 	English         string
 	Chinese         string
@@ -78,7 +102,7 @@ type Entry struct {
 	QueryCount      int
 	Known           bool
 	FirstLookedUpAt time.Time
-	UpdatedAt       time.Time
+	LastLookedUpAt  time.Time
 }
 
 // Page is a slice of the list plus the size of the whole filtered list.
@@ -97,10 +121,17 @@ type row struct {
 	UpdatedAt     int64
 }
 
+func orderBy(s Sort) string {
+	if s == SortLookups {
+		return "ud.query_count DESC, ud.updated_at DESC, w.english ASC"
+	}
+	return "ud.updated_at DESC, w.english ASC"
+}
+
 // likeEscaper makes a search term literal inside LIKE ... ESCAPE '\'.
 var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
-// List returns one page of userID's word list, most recently touched first.
+// List returns one page of userID's word list, most recently looked up first.
 //
 // Definitions are shown for every row the user has, AI-made ones included,
 // as Home's "Recent words" already does: the user only has the row because
@@ -141,7 +172,7 @@ func List(ctx context.Context, userID string, q Query) (Page, error) {
 		        ud.already_acquainted AS known,
 		        ud.created_at AS created_at,
 		        ud.updated_at AS updated_at`).
-		Order("ud.updated_at DESC, w.english ASC").
+		Order(orderBy(q.Sort)).
 		Limit(q.Limit).
 		Offset(q.Offset).
 		Scan(&rows).Error; err != nil {
@@ -157,7 +188,7 @@ func List(ctx context.Context, userID string, q Query) (Page, error) {
 			QueryCount:      r.QueryCount,
 			Known:           r.Known == 1,
 			FirstLookedUpAt: time.UnixMilli(r.CreatedAt).UTC(),
-			UpdatedAt:       time.UnixMilli(r.UpdatedAt).UTC(),
+			LastLookedUpAt:  time.UnixMilli(r.UpdatedAt).UTC(),
 		}
 	}
 	return Page{Total: total, Entries: entries}, nil

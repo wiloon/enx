@@ -516,13 +516,15 @@ describe('SidePanel', () => {
       // §3.7 2026-08-03 version which discarded it.
       expect(definitions).toHaveTextContent('cats的通用词典释义')
       expect(definitions).toHaveTextContent('great的通用词典释义')
-      // The lookup count reads as a compact "3×"; the full wording lives in
-      // the hover title and, for screen readers, in visually hidden text.
+      // The lookup count reads as the repeat icon and a bare "3", as in the
+      // word popover; the full wording lives in the hover title and, for
+      // screen readers, in visually hidden text.
       for (const word of ['cats', 'great']) {
         const count = within(
           screen.getByTestId(`sidepanel-card-${word}`)
         ).getByTitle('Looked up 3 times')
-        expect(count).toHaveTextContent('3×')
+        expect(count).toHaveTextContent('3')
+        expect(count).not.toHaveTextContent('×')
         expect(count).toHaveTextContent('Looked up 3 times')
       }
     })
@@ -1256,7 +1258,7 @@ describe('SidePanel', () => {
     })
 
     const card = await screen.findByTestId('sidepanel-card-troy')
-    expect(within(card).getByTitle('Looked up 1 time')).toHaveTextContent('1×')
+    expect(within(card).getByTitle('Looked up 1 time')).toHaveTextContent('1')
   })
 
   it('keeps the sentence (and its nested in-sentence word) visible when a page word lookup arrives afterwards (ADR-023, fixes the previous "sentence disappears" bug)', async () => {

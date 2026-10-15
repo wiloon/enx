@@ -2,10 +2,10 @@ import {
   AlertTriangle,
   BarChart3,
   Bookmark,
-  BookOpen,
   BookText,
   ClipboardCheck,
   CreditCard,
+  FileText,
   Globe,
   Home,
   Search,
@@ -29,7 +29,7 @@ export const NAV_MAIN: NavItem[] = [
   { label: 'Home', href: '/app', icon: Home },
   { label: 'Word Lookup', href: '/lookup', icon: Search },
   { label: 'Rephrase', href: '/rephrase', icon: Sparkles },
-  { label: 'Reader', href: '/reader', icon: BookOpen },
+  { label: 'Reader', href: '/reader', icon: FileText },
   // The words looked up in articles (user_dicts), and the pages saved from
   // the extension popup (ADR-032).
   { label: 'Word List', href: '/words', icon: BookText },
@@ -76,13 +76,4 @@ export function isNavItemActive(pathname: string, href: string): boolean {
   // light up "Back to site" everywhere. Only an exact match counts.
   if (href === '/') return pathname === '/'
   return pathname === href || pathname.startsWith(href + '/')
-}
-
-// The label to show in the topbar for the current route (longest matching
-// href wins), falling back to the product name.
-export function navTitleForPath(pathname: string): string {
-  const match = [...ALL_NAV]
-    .filter((item) => isNavItemActive(pathname, item.href))
-    .sort((a, b) => b.href.length - a.href.length)[0]
-  return match?.label ?? 'Catglish'
 }
