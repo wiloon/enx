@@ -27,7 +27,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "matches": [],
       "js": ["src/content/content.tsx"],
       "run_at": "document_end"
     }

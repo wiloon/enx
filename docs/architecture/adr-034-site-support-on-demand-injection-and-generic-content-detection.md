@@ -127,3 +127,11 @@
 - **按需注入路径的实现成本远超预期**（例如与现有 popup → `sendMessage` 链路耦合过深、CSP 导致大量站点注入失败）：可以先退回方案 A 应急（继续维护白名单），同时保留本 ADR 作为长期方向，不必推翻。
 - **链接密度过滤在实测中误判率过高**（例如相当比例的主流新闻站点识别不到正文，或非文章页大量误触发）：重新评估是否要引入 Readability.js 的更完整信号集（关键词匹配、段落密度等），而不是止步于单一的链接密度过滤——引入方式仍是「借用信号，不借用它的 HTML 清洗输出」，见 Rationale 对整体引入该库的排除理由。
 - **8 个静态站点移出白名单后，现场注入的延迟成为明显投诉来源**（例如注入 + 处理耗时肉眼可感知的卡顿）：重新评估是否要为「用户常读的几个站点」提供某种可选的预注入机制（例如按用户自己维护的一份本地列表，而非集中维护的产品白名单），把延迟换回去。
+
+## 修订（2026-10-15）：X 不再常驻注入
+
+本 ADR 当初给 X 保留常驻白名单，理由是 SPA 路由切换后要重跑。这段监听在 content script 里面，只要注入一次（弹窗按需注入，或 [adr-039](adr-039-per-site-auto-enable-learning-mode.md) 的 "Always enable on this site" 动态注册）就一直有效，常驻注入并不需要。而常驻注入会让 `x.com` / `twitter.com` 出现在安装时的权限提示里。
+
+所以 `manifest.json` 的 `content_scripts[0].matches` 已清空，X 和其他站点一样：点弹窗按钮走 `activeTab` 按需注入，或者用户选 "Always enable on this site" 后页面加载时自动开启。已在 X 上授权过的用户，扩展更新时 `onInstalled` 会跑 `reconcileAutoEnableScripts`，把 `x.com` 注册成动态脚本，无需迁移。
+
+enx-ui（ADR-019 的 Reader 需要常驻的 content script 接收 `enxRun`）和 RSSX（adr-033）的常驻注入不变。

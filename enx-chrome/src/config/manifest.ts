@@ -66,7 +66,7 @@ export function buildManifest(
     // ADR-019: exactly the enx-ui origins, never more.
     externally_connectable: { matches: uiPatterns },
     // adr-034: content_scripts[0].matches only lists the sites that need
-    // persistent auto-injection now (X/RSSX/enx-ui). CRXJS's content-script
+    // persistent auto-injection now (RSSX/enx-ui). CRXJS's content-script
     // loader dynamically imports the real bundle, and CRXJS scopes that
     // dynamic import's web_accessible_resources entry to
     // content_scripts[0].matches too (verified by inspecting the built
