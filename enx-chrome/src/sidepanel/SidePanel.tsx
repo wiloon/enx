@@ -9,12 +9,13 @@ import {
 } from 'react'
 import '@/index.css'
 import {
-  ChartBarIcon,
+  ArrowPathRoundedSquareIcon,
   MagnifyingGlassIcon,
   SpeakerWaveIcon,
   XMarkIcon,
 } from '@heroicons/react/20/solid'
 import { initSentry } from '@/lib/sentry'
+import { lookupCountLabel } from '@/lib/lookupCount'
 import { formatPhonetic } from '@/lib/phonetic'
 import { playPronunciation } from '@/lib/pronunciation'
 import { snapToWordBounds } from '@/lib/wordSegment'
@@ -420,12 +421,6 @@ function contextErrorDisplay(
     : message
 }
 
-// The lookup count's full wording: the hover title and the screen-reader
-// text behind the compact "7×" the card shows.
-function lookupCountLabel(count: number): string {
-  return `Looked up ${count} ${count === 1 ? 'time' : 'times'}`
-}
-
 // One word/phrase card: headline (word + phonetic + play + lookup count),
 // dismiss button, error rows, and the meaning block (AI in-context gloss over
 // the generic dictionary meaning). Shared by the top-level list and every
@@ -523,8 +518,11 @@ function WordCard({
             className="inline-flex items-center gap-0.5 text-xs text-muted-foreground ml-auto whitespace-nowrap tabular-nums"
             title={lookupCountLabel(card.loadCount)}
           >
-            <ChartBarIcon className="h-3.5 w-3.5" aria-hidden="true" />
-            <span aria-hidden="true">{card.loadCount}×</span>
+            <ArrowPathRoundedSquareIcon
+              className="h-3.5 w-3.5"
+              aria-hidden="true"
+            />
+            <span aria-hidden="true">{card.loadCount}</span>
             <span className="sr-only">{lookupCountLabel(card.loadCount)}</span>
           </span>
         )}
