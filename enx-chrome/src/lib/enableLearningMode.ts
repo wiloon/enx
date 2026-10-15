@@ -15,7 +15,7 @@ function isNoReceiverError(err: unknown): boolean {
 }
 
 // The declarative content_scripts[0] registered in the manifest is the same
-// bundle X/RSSX/enx-ui get auto-injected -- reading its `js` path here keeps
+// bundle RSSX/enx-ui get auto-injected -- reading its `js` path here keeps
 // this in sync with whatever the build tool named the hashed output file,
 // instead of hardcoding a path that would drift on every build.
 async function injectContentScript(tabId: number): Promise<void> {

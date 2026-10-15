@@ -156,6 +156,19 @@ describe('manifest stamping (ADR-019)', () => {
     }
   )
 
+  // X gets no static content script: it would put x.com and twitter.com in
+  // the install-time permission warning. Like any other site it is turned on
+  // from the popup (activeTab) or by "Always enable on this site" (adr-039).
+  it.each(targetNames)('does not auto-inject on X in the %s build', name => {
+    const manifest = stamp(TARGETS[name])
+    const patterns = [
+      ...manifest.content_scripts.flatMap(script => script.matches),
+      ...manifest.host_permissions,
+    ]
+    expect(patterns).not.toContain('https://x.com/*')
+    expect(patterns).not.toContain('https://twitter.com/*')
+  })
+
   it('keeps the RSSX reader out of the production build', () => {
     expect(JSON.stringify(stamp(TARGETS.production))).not.toContain(
       'rssx-lab.wiloon.com'

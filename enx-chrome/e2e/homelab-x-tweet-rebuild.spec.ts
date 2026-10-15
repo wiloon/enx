@@ -38,6 +38,11 @@ const TWEET_URL = process.env.ENX_X_TWEET_URL || ''
 
 test.describe('Homelab - X tweet-switch auto-rebuild', () => {
   test.skip(!HOMELAB, 'set ENX_HOMELAB=1 to run homelab E2E')
+  // x.com no longer gets a static content script, and enableLearningMode
+  // only messages an already-injected one. Injecting on demand needs the
+  // activeTab grant from a real toolbar click or an "Always enable" host
+  // permission, neither of which Playwright can give. Check X by hand.
+  test.skip(true, 'x.com is injected on demand; Playwright cannot grant it')
 
   test('switching to another tweet rebuilds highlights with no full navigation', async ({
     page,
