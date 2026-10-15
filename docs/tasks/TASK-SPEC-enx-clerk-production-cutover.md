@@ -66,7 +66,7 @@ ADR-015 把认证从 Cognito 迁到 Clerk，**代码已完成并上了 homelab**
 - [ ] `VITE_CLERK_PUBLISHABLE_KEY` → `pk_live_...`（写进 `.env.production`）
 - [ ] `clerkSyncHost` → 生产网站域名
 - [ ] Clerk 的 `host_permissions` **无需手改**：由 publishable key 解码得出，换 key 后 manifest 自动跟着变
-- [ ] `task package-webstore`（`--mode production`）重新打包上架
+- [ ] `task package-prod`（`--mode production`）重新打包上架
 
 ### 5. 验证
 

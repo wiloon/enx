@@ -1,0 +1,76 @@
+name: enx-chrome release
+
+# Production releases of the extension are tag-driven (ADR-031 §6a):
+#
+#   task release -- 0.1.2   (in enx-chrome/)  ->  pushes tag chrome-v0.1.2
+#   chrome-v* tag push                       ->  this workflow
+#
+# It runs the checks, builds the production zip (`pnpm package:prod`) and
+# attaches it to a GitHub Release named after the tag. Uploading the zip to
+# the Chrome Web Store is done by hand from that release.
+#
+# No secrets: the production Clerk publishable key is public and committed in
+# enx-chrome/.env.production.
+
+on:
+  push:
+    tags:
+      - "chrome-v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: enx-chrome-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish the store zip
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: enx-chrome
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The version is read from `git describe --match 'chrome-v*'`, which
+          # needs the history and the tags, not a shallow clone.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: enx-chrome/.node-version
+
+      - name: Enable pnpm (corepack, packageManager in package.json)
+        run: corepack enable
+
+      # The committed .npmrc points at the homelab Nexus, which GitHub runners
+      # can't reach.
+      - name: Install
+        run: pnpm install --frozen-lockfile --registry=https://registry.npmjs.org/
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build the production zip
+        run: pnpm package:prod
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#chrome-v}"
+          zip="dist-webstore/catglish-${version}.zip"
+          test -f "$zip"
+          (cd dist-webstore && sha256sum "catglish-${version}.zip" > "catglish-${version}.zip.sha256")
+          # --latest=false: the repo's "Latest release" badge stays with the
+          # api/ui v* releases, not the extension.
+          gh release create "$GITHUB_REF_NAME" "$zip" "${zip}.sha256" \
+            --title "Catglish extension ${version}" \
+            --notes "Production build of the Catglish Chrome extension ${version}. Upload \`catglish-${version}.zip\` to the Chrome Web Store (Package → Upload new package)." \
+            --latest=false

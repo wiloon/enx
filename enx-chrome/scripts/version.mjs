@@ -8,7 +8,7 @@
  *                                       # HEAD is not exactly on a chrome-v* tag
  *
  * vite.config.ts imports gitVersion() from here; the Taskfile and
- * package-webstore.mjs run it.
+ * package-prod.mjs run it.
  */
 
 import { execFileSync } from 'node:child_process'

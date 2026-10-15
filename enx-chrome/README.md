@@ -220,7 +220,8 @@ For detailed task documentation, see [TASKFILE_README.md](./TASKFILE_README.md)
 - `task dev` - Start development server with hot reload
 - `task build` - Build extension for the homelab deployment
 - `task build-prod` - Build extension for production
-- `task package-webstore` - Production build + Chrome Web Store zip
+- `task release -- 0.1.2` - Tag a production release; CI builds the Chrome Web Store zip into a GitHub Release
+- `task package-prod` - Build the same production zip locally (HEAD must be on a `chrome-v*` tag)
 - `task test` - Run tests
 - `task lint` - Lint code
 - `task format` - Format code

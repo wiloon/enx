@@ -1,6 +1,7 @@
 import {
   FALLBACK_VERSION,
   isChromeVersion,
+  isNewerVersion,
   versionFromDescribe,
   versionFromTag,
 } from '../version'
@@ -73,5 +74,26 @@ describe('versionFromDescribe', () => {
     expect(() => versionFromDescribe('chrome-v1.0-beta-2-g1a2b3c4')).toThrow(
       /not a Chrome extension version/
     )
+  })
+})
+
+// The store refuses an upload that is not higher than the last one, so
+// `task release` checks this before it pushes a tag.
+describe('isNewerVersion', () => {
+  it.each([
+    ['0.1.2', '0.1.1'],
+    ['0.1.10', '0.1.9'],
+    ['0.2', '0.1.9.9'],
+    ['1.0.0', '0.9'],
+  ])('%s is newer than %s', (candidate, latest) => {
+    expect(isNewerVersion(candidate, latest)).toBe(true)
+  })
+
+  it.each([
+    ['0.1.1', '0.1.1'],
+    ['0.1', '0.1.0'],
+    ['0.1.9', '0.1.10'],
+  ])('%s is not newer than %s', (candidate, latest) => {
+    expect(isNewerVersion(candidate, latest)).toBe(false)
   })
 })

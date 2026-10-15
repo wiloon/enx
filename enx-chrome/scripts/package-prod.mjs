@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 /**
- * Build a Chrome Web Store upload package.
+ * Build the production package, the zip that is uploaded to the Chrome Web
+ * Store.
  *
- *   pnpm build:prod && node scripts/package-webstore.mjs
+ *   pnpm package:prod    # or: task package-prod
+ *
+ * .github/workflows/enx-chrome-release.yml runs this for every chrome-v* tag
+ * (`task release`) and attaches the zip to a GitHub Release.
  *
  * Writes dist-webstore/catglish-<version>.zip.
  *

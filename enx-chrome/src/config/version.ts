@@ -72,3 +72,17 @@ export function versionFromDescribe(describe: string | null): string {
   }
   return devVersion
 }
+
+/**
+ * True when `candidate` sorts after `latest` the way Chrome compares
+ * versions: segment by segment as numbers, a missing segment counting as 0.
+ */
+export function isNewerVersion(candidate: string, latest: string): boolean {
+  const a = candidate.split('.').map(Number)
+  const b = latest.split('.').map(Number)
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const diff = (a[i] ?? 0) - (b[i] ?? 0)
+    if (diff !== 0) return diff > 0
+  }
+  return false
+}

@@ -16,7 +16,7 @@ into both the runtime config (`src/config/env.ts`) and the generated
 | ------------- | ------------------------------------------- | ---------------------------- | ------------------------ |
 | `development` | `task build-dev`                            | `http://localhost:8091`      | `http://localhost:3000`  |
 | `homelab`     | `task build`                                | `https://enx-api.wiloon.lab` | `https://enx.wiloon.lab` |
-| `production`  | `task build-prod` / `task package-webstore` | `https://enx-api.wiloon.com` | `https://enx.wiloon.com` |
+| `production`  | `task build-prod` / `task package-prod` | `https://enx-api.wiloon.com` | `https://enx.wiloon.com` |
 
 Individual values can be overridden per build without editing the table:
 `VITE_API_BASE_URL`, `VITE_FRONTEND_BASE_URL`, `VITE_CLERK_PUBLISHABLE_KEY`,
