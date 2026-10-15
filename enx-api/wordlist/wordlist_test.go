@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"enx-api/repo"
 	"enx-api/utils/sqlitex"
 )
 
@@ -110,8 +111,36 @@ func TestListReturnsTheUsersWordsMostRecentlyTouchedFirst(t *testing.T) {
 	if mid.Chinese != "中" || mid.QueryCount != 7 || !mid.Known {
 		t.Fatalf("entry = %+v, want chinese 中, count 7, known", mid)
 	}
-	if !mid.FirstLookedUpAt.Equal(day) || !mid.UpdatedAt.Equal(day.Add(time.Hour)) {
-		t.Fatalf("times = %v / %v, want %v / %v", mid.FirstLookedUpAt, mid.UpdatedAt, day, day.Add(time.Hour))
+	if !mid.FirstLookedUpAt.Equal(day) || !mid.LastLookedUpAt.Equal(day.Add(time.Hour)) {
+		t.Fatalf("times = %v / %v, want %v / %v", mid.FirstLookedUpAt, mid.LastLookedUpAt, day, day.Add(time.Hour))
+	}
+}
+
+// Marking a word known is not a lookup: the word keeps its last-lookup time
+// and its place in the list.
+func TestMarkingAWordKnownLeavesItsLastLookupTime(t *testing.T) {
+	user := "u-" + t.Name()
+	insert(t, user, seed{english: "wl-marked", count: 2, createdAt: day, updatedAt: day})
+	insert(t, user, seed{english: "wl-later", count: 1, createdAt: day, updatedAt: day.Add(time.Hour)})
+	var word sqlitex.Word
+	if err := sqlitex.DB.Where("english = ?", "wl-marked").First(&word).Error; err != nil {
+		t.Fatalf("find word: %v", err)
+	}
+
+	if _, _, err := repo.ToggleAcquainted(user, word.Id); err != nil {
+		t.Fatalf("ToggleAcquainted: %v", err)
+	}
+
+	got, err := List(context.Background(), user, Query{Status: StatusAll})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if want := []string{"wl-later", "wl-marked"}; !equal(englishOf(got.Entries), want) {
+		t.Fatalf("order = %v, want %v", englishOf(got.Entries), want)
+	}
+	marked := got.Entries[1]
+	if !marked.Known || !marked.LastLookedUpAt.Equal(day) {
+		t.Fatalf("marked = %+v, want known with last lookup %v", marked, day)
 	}
 }
 

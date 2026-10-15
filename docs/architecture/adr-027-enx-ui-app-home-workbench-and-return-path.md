@@ -221,6 +221,7 @@ brand: "bg-brand text-brand-foreground shadow-xs hover:bg-brand/90",
 
 - `today` / `week` / `sparkline` 来自 ADR-028 的 `daily_stats`；`vocab` / `recent` 来自 `user_dicts`（当前快照，不走 `daily_stats`）。
 - `recent` = `user_dicts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 8` join `words`。**注意 `updated_at` 的真实语义**：`repo.UpsertUserDict` 在查词**和**标记「已认识」两条路径上都会 bump 它，所以严格说这是「最近有交互的词」而不是「最近查的词」。UI 文案用 **Recent words** 而不是 "Recently looked up"，避免声明一件不完全成立的事。
+  - **2026-10-15 补充：`updated_at` 改为只随查词移动。** 标记「已认识」（`repo.ToggleAcquainted`）不再 bump 它，于是 `updated_at` 就是「最后一次查询时间」。起因：Word List（`/words`）要显示每个词的最后查询时间，还要能在列表里直接标记「已认识」；如果标记也 bump 时间，被标记的词会跳到列表顶部，显示的日期也不是查询日期。Word List 接口的字段因此改名为 `lastLookedUpAt`。这之前标记过的行，时间仍是当时标记的时间，无法回补，影响很小。Home 的 **Recent words** 文案保留不变。
 - **`overview` 里不再有任何配额字段**。剩余免费额度走 `GET /api/billing/me`，显示在套餐小卡里（见 Decision 10）。
 - `vocab` 两条计数走 `COUNT(*)`，`user_dicts` 已有 `(user_id, word_id)` 主键；若首页出现慢查询再考虑 `(user_id, updated_at)` 索引，不预先加。
 - 端点注册在 `apiGroup`（`clerkAuth`）下，**不进** `authGroup` 的查词路径，注释里写明它在 ADR-018 计量 seam 之外。

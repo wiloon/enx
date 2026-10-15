@@ -23,13 +23,22 @@ describe('ApiService word list and saved pages', () => {
   it('GETs /api/me/words with the filter, search and paging', async () => {
     await service.listMyWords({
       status: 'known',
+      sort: 'lookups',
       q: 'eph',
       limit: 50,
       offset: 100,
     })
     expect(calledUrl()).toBe(
-      'http://localhost:8090/api/me/words?status=known&q=eph&limit=50&offset=100'
+      'http://localhost:8090/api/me/words?status=known&sort=lookups&q=eph&limit=50&offset=100'
     )
+  })
+
+  it('POSTs the word to /api/mark to toggle whether it is known', async () => {
+    await service.markWord('ephemeral')
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toBe('http://localhost:8090/api/mark')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body)).toEqual({ English: 'ephemeral' })
   })
 
   it('leaves out the optional word-list parameters it was not given', async () => {

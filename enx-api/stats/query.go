@@ -36,10 +36,9 @@ type Vocab struct {
 
 // RecentWord is one entry of Home's "Recent words".
 //
-// Ordered by user_dicts.updated_at, which repo.UpsertUserDict bumps on a
-// lookup AND on marking a word known -- so this is "words I touched
-// recently", not strictly "words I looked up recently". The UI says "Recent
-// words" for exactly that reason (ADR-028 Decision 7).
+// Ordered by user_dicts.updated_at, the last lookup: since 2026-10-15
+// marking a word known no longer moves it (ADR-027 Decision 7, 2026-10-15
+// note), so these are the words most recently looked up.
 type RecentWord struct {
 	English    string `json:"english"`
 	Chinese    string `json:"chinese"`

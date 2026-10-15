@@ -19,10 +19,10 @@ type entryResponse struct {
 	QueryCount      int    `json:"queryCount"`
 	Known           bool   `json:"known"`
 	FirstLookedUpAt string `json:"firstLookedUpAt"`
-	UpdatedAt       string `json:"updatedAt"`
+	LastLookedUpAt  string `json:"lastLookedUpAt"`
 }
 
-// ListHandler handles GET /api/me/words?status=all|learning|known&q=&limit=&offset=.
+// ListHandler handles GET /api/me/words?status=all|learning|known&sort=recent|lookups&q=&limit=&offset=.
 //
 // Not on the metered path: it reads the user's own rows and looks nothing up,
 // so it sits outside ADR-018's single metering seam.
@@ -30,6 +30,11 @@ func ListHandler(c *gin.Context) {
 	status, err := ParseStatus(c.Query("status"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "status must be all, learning or known"})
+		return
+	}
+	sort, err := ParseSort(c.Query("sort"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "sort must be recent or lookups"})
 		return
 	}
 	limit, err := intParam(c, "limit")
@@ -47,6 +52,7 @@ func ListHandler(c *gin.Context) {
 	page, err := List(c.Request.Context(), userID, Query{
 		Status: status,
 		Search: c.Query("q"),
+		Sort:   sort,
 		Limit:  limit,
 		Offset: offset,
 	})
@@ -65,7 +71,7 @@ func ListHandler(c *gin.Context) {
 			QueryCount:      e.QueryCount,
 			Known:           e.Known,
 			FirstLookedUpAt: e.FirstLookedUpAt.Format(time.RFC3339),
-			UpdatedAt:       e.UpdatedAt.Format(time.RFC3339),
+			LastLookedUpAt:  e.LastLookedUpAt.Format(time.RFC3339),
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "total": page.Total, "words": out})

@@ -19,7 +19,9 @@ import {
   VersionData,
   WordData,
   WordListPage,
+  WordListSort,
   WordListStatus,
+  MarkedWord,
 } from '@/types'
 
 export type SubscriptionPlan = 'pro' | 'pro-plus' | 'max'
@@ -292,11 +294,13 @@ export class ApiService {
 
   async listMyWords(params: {
     status: WordListStatus
+    sort?: WordListSort
     q?: string
     limit?: number
     offset?: number
   }): Promise<ApiResponse<WordListPage>> {
     const query = new URLSearchParams({ status: params.status })
+    if (params.sort) query.set('sort', params.sort)
     if (params.q) query.set('q', params.q)
     if (params.limit !== undefined) query.set('limit', String(params.limit))
     if (params.offset !== undefined) query.set('offset', String(params.offset))
@@ -310,6 +314,16 @@ export class ApiService {
   ): Promise<ApiResponse<{ success: boolean }>> {
     return this.makeRequest(`/api/me/words/${encodeURIComponent(english)}`, {
       method: 'DELETE',
+    })
+  }
+
+  // Toggles whether the user knows the word (the endpoint the extension's
+  // "Mark as acquainted" uses). It is a toggle, not a set: read the state
+  // back from the answer rather than assuming it.
+  async markWord(english: string): Promise<ApiResponse<MarkedWord>> {
+    return this.makeRequest('/api/mark', {
+      method: 'POST',
+      body: JSON.stringify({ English: english }),
     })
   }
 
