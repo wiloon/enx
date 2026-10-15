@@ -143,9 +143,9 @@ describe('site footer', () => {
 
 describe('launch blockers', () => {
   // A TODO shipped into a published policy is worse than a missing page: it
-  // names no entity while looking like it does. This test is meant to FAIL
-  // until the placeholders in lib/legal.ts are filled in.
-  it.failing('has no unfilled placeholders left in lib/legal.ts', () => {
+  // names no entity while looking like it does. Every placeholder in
+  // lib/legal.ts must stay filled.
+  it('has no unfilled placeholders left in lib/legal.ts', () => {
     const unfilled = Object.entries(LEGAL)
       .filter(([, v]) => typeof v === 'string' && v.startsWith('TODO'))
       .map(([k]) => k)
