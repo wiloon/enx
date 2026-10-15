@@ -83,11 +83,12 @@ export default defineConfig({
     {
       // Backend API server (enx-api); set ECDICT_DB_PATH to a local ECDICT
       // SQLite file for translation tests. Never reused: an enx-api already on
-      // :8090 is the developer's, with their real database. `-c config.toml`
+      // that port is the developer's, with their real database. The port is
+      // the one dist-e2e calls (the development target). `-c config.toml`
       // pins the repo config: without it viper checks /usr/local/etc/enx/ and
       // ~/.enx/ first, and a stale config there (no [clerk] section) makes
       // every signed-in request fail with 503 "auth service unavailable".
-      command: `cd ../enx-api && ENX_PORT=8090 ENX_DEV_MODE=true DB_PATH=${process.env.E2E_DB_PATH} ECDICT_DB_PATH=\${ECDICT_DB_PATH:-} go run . -c config.toml`,
+      command: `cd ../enx-api && ENX_PORT=${new URL(API_ORIGIN).port} ENX_DEV_MODE=true DB_PATH=${process.env.E2E_DB_PATH} ECDICT_DB_PATH=\${ECDICT_DB_PATH:-} go run . -c config.toml`,
       url: `${API_ORIGIN}/api/version`,
       reuseExistingServer: false,
       timeout: 60000, // `go run` compiles first
