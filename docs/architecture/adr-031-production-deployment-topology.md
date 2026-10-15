@@ -111,10 +111,10 @@ homelab 那套不能管生产：Tekton 推的是集群内 Nexus（外网拉不�
   - tag 之后 N 个提交：第四段记提交数，`0.1.2.5`。开发版排在它所基于的发布版之后，也不会和发布版同号。tag 本身已用满四段时保持原样。
   - 没有 `chrome-v*` tag（浅克隆、新仓库）：`0.0.0`。CI 里要构建发布包须 `fetch-depth: 0` 并拉 tag。
   - tag 带前缀但版本不合 Chrome 规则（如 `chrome-v0.1.2-beta`）：构建直接失败，不让坏版本号进包。
-- **只有发布版能打商店包：** `pnpm package:webstore`（`task package-webstore`）要求 HEAD 正好在 `chrome-v*` tag 上，且 `dist-production/` 的版本与 tag 一致，否则拒绝。
+- **只有发布版能打商店包：** `pnpm package:prod`（`task package-prod`）要求 HEAD 正好在 `chrome-v*` tag 上，且 `dist-production/` 的版本与 tag 一致，否则拒绝。
 - **`enx-chrome/package.json` 不再写 `version`**，有测试守着，防止有人写回去造成两个来源。
 
-**发版流程：** 在要发布的提交上 `git tag chrome-v0.1.2 && git push origin chrome-v0.1.2` → `task package-webstore` → 上传 `dist-webstore/catglish-0.1.2.zip`。
+**发版流程：** 在 `enx-chrome/` 里运行 `task release -- 0.1.2`，给 `origin/main` 打 `chrome-v0.1.2` 并推送 → `.github/workflows/enx-chrome-release.yml` 跑测试和 `pnpm package:prod`，把 `catglish-0.1.2.zip` 挂到同名 GitHub Release → 下载后手动上传 Chrome Web Store。本地也能用 `task package-prod` 打同样的包。
 
 **迁移：** 改动前最后一个手写版本是 `0.1.1`（PR #154）。在该提交 `fef4f70` 补打 `chrome-v0.1.1`，后续发布从 `chrome-v0.1.2` 起。
 

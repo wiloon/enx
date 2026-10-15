@@ -282,12 +282,18 @@ tasks:
       - cd dist-homelab && zip -r ../{{.EXT_NAME}}-v{{.VERSION}}.zip .
       - echo "Package created {{.EXT_NAME}}-v{{.VERSION}}.zip"
 
-  package-webstore:
-    desc: Build for production and create the Chrome Web Store upload zip
+  release:
+    desc: 'Release to production: tag origin/main as chrome-v<version> and push; CI builds the store zip (task release -- 0.1.2)'
+    cmds:
+      - task: ensure-node
+      - '{{.FNM_EXEC}} node scripts/release.mjs {{.CLI_ARGS}}'
+
+  package-prod:
+    desc: Build the production Chrome Web Store zip locally (HEAD must be on a chrome-v* tag; CI does this on release)
     cmds:
       - task: ensure-node
       - echo "Packaging {{.EXT_NAME}} v{{.VERSION}} for the Chrome Web Store (production)..."
-      - '{{.FNM_EXEC}} pnpm run package:webstore'
+      - '{{.FNM_EXEC}} pnpm run package:prod'
 
   version:
     desc: Show extension version

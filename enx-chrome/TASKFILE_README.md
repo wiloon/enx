@@ -198,7 +198,7 @@ The extension uses different API endpoints based on the environment:
 
 - **Development** (`task build-dev`): `http://localhost:8091` - connects to local API server
 - **Homelab** (`task build`): `https://enx-api.wiloon.lab` - homelab k8s deployment
-- **Production** (`task build-prod`, `task package-webstore`): `https://enx-api.wiloon.com`
+- **Production** (`task build-prod`, `task package-prod`): `https://enx-api.wiloon.com`
 
 The URLs live in `src/config/targets.ts` and are injected into both the bundle
 and the generated `manifest.json` at build time.
@@ -241,16 +241,21 @@ task check
 
 ### Creating a release
 
-The version comes from git tags, not from a file (ADR-031 §6b). Tag the
-commit you are releasing, then package it:
+The version comes from git tags, not from a file (ADR-031 §6b). To release,
+tag `origin/main` and push the tag:
 
 ```bash
-git tag chrome-v0.1.2 && git push origin chrome-v0.1.2
-task package-webstore
+task release -- 0.1.2
 ```
 
-This writes `dist-webstore/catglish-0.1.2.zip` for the Chrome Web Store. It
-refuses to run unless HEAD is exactly on a `chrome-v*` tag. Builds between
+The `chrome-v0.1.2` tag starts the `enx-chrome release` GitHub Actions
+workflow, which runs the tests and attaches `catglish-0.1.2.zip` to the
+`chrome-v0.1.2` GitHub Release. Download it from there and upload it to the
+Chrome Web Store.
+
+To build the same zip locally, check out the tag and run `task package-prod`.
+It writes `dist-webstore/catglish-0.1.2.zip` and refuses to run unless HEAD
+is exactly on a `chrome-v*` tag. Builds between
 tags get a dev version such as `0.1.2.5` (five commits past the tag);
 `task version` shows the current one.
 

@@ -25,6 +25,7 @@ export function buildManifest(
   version: string
 ): Manifest {
   const uiPatterns = target.uiOrigins.map(origin => `${origin}/*`)
+  const sitePatterns = target.contentScriptOrigins.map(origin => `${origin}/*`)
   const clerkHost = clerkFrontendApiHost(target.clerkPublishableKey)
 
   // So a non-production build is recognisable in chrome://extensions and in the
@@ -45,7 +46,11 @@ export function buildManifest(
     index === 0
       ? {
           ...script,
-          matches: unique([...(script.matches ?? []), ...uiPatterns]),
+          matches: unique([
+            ...(script.matches ?? []),
+            ...sitePatterns,
+            ...uiPatterns,
+          ]),
         }
       : script
   )
