@@ -55,7 +55,7 @@ test('shows a row’s menu only while the row is hovered', async ({ page }) => {
   await page.getByText('consolidate').hover()
   await expect(menu).toHaveCSS('opacity', '1')
 
-  await page.getByRole('heading', { name: 'Word List', level: 2 }).hover()
+  await page.getByRole('heading', { name: 'Word List', level: 1 }).hover()
   await expect(menu).toHaveCSS('opacity', '0')
 })
 

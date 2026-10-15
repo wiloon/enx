@@ -21,6 +21,7 @@ import {
   TOPUP_TIERS,
   subscriptionStatusLabel,
 } from '@/lib/plans'
+import PageHeader from '@/components/app/PageHeader'
 
 type BillingTab = 'subscription' | 'topup'
 
@@ -85,8 +86,11 @@ export default function BillingPage() {
         : 'secondary'
 
   return (
-    <div className="container mx-auto p-6 max-w-3xl space-y-6">
-      <h1 className="text-2xl font-bold">Subscription &amp; Credits</h1>
+    <div className="container mx-auto max-w-3xl space-y-6 p-6 md:p-8">
+      <PageHeader
+        title="Billing"
+        description="Your subscription and credit balance."
+      />
 
       <Card>
         <CardHeader>

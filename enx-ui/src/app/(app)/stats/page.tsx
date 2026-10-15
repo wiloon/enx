@@ -14,6 +14,7 @@ import {
   seriesWindow,
 } from '@/lib/statsWindow'
 import type { StatsPeriod, StatsPoint } from '@/types'
+import PageHeader from '@/components/app/PageHeader'
 
 // Reading Stats (ADR-028 Decision 6/7). One chart, two switches above it:
 // the bucket size (day / week / month / year) and the measure. It used to be
@@ -129,22 +130,19 @@ export default function ReadingStatsPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-6 md:p-8">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-bold">Reading Stats</h2>
-          <p className="text-sm text-muted-foreground">
-            The same measures at four zoom levels — switch the bucket rather
-            than the page.
-          </p>
-        </div>
-        <SegmentedControl
-          name="stats-period"
-          label="Bucket size"
-          value={period}
-          options={PERIODS}
-          onChange={setPeriod}
-        />
-      </div>
+      <PageHeader
+        title="Reading Stats"
+        description="The same measures at four zoom levels — switch the bucket rather than the page."
+        actions={
+          <SegmentedControl
+            name="stats-period"
+            label="Bucket size"
+            value={period}
+            options={PERIODS}
+            onChange={setPeriod}
+          />
+        }
+      />
 
       <Card>
         <CardHeader className="gap-3">

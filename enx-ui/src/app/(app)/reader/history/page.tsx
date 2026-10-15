@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Trash2 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { apiService } from '@/services/api'
 import { stashReaderDocument } from '@/lib/readerSession'
+import PageHeader from '@/components/app/PageHeader'
 
 export default function ReaderHistoryPage() {
   const router = useRouter()
@@ -54,23 +55,21 @@ export default function ReaderHistoryPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-2xl">
+    <div className="container mx-auto max-w-2xl space-y-4 p-6 md:p-8">
+      <Link
+        href="/reader"
+        aria-label="Back to Reader"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="size-4" aria-hidden="true" />
+        Reader
+      </Link>
+      <PageHeader
+        title="My Documents"
+        description="Pasted articles are kept for 7 days, up to 50 at a time."
+      />
       <Card>
-        <CardHeader className="flex flex-row items-center gap-2">
-          <Link
-            href="/reader"
-            className="text-muted-foreground hover:text-foreground"
-            aria-label="Back to Reader"
-          >
-            <ArrowLeft className="size-5" aria-hidden="true" />
-          </Link>
-          <CardTitle>My Documents</CardTitle>
-        </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Pasted articles are kept for 7 days, up to 50 at a time.
-          </p>
-
           {isLoading && (
             <div className="text-center py-8 text-muted-foreground">
               Loading…

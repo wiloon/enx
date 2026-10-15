@@ -2,11 +2,12 @@
 
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { apiService } from '@/services/api'
 import { useIsAdmin } from '@/hooks/useIsAdmin'
 import WordSearchForm from './WordSearchForm'
 import WordResultCard from './WordResultCard'
+import PageHeader from '@/components/app/PageHeader'
 
 export default function WordLookupPage() {
   const [searchWord, setSearchWord] = useState('')
@@ -53,11 +54,12 @@ export default function WordLookupPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-2xl">
+    <div className="container mx-auto max-w-2xl space-y-4 p-6 md:p-8">
+      <PageHeader
+        title="Word Lookup"
+        description="Look up an English word without opening a page."
+      />
       <Card>
-        <CardHeader>
-          <CardTitle>Word Lookup</CardTitle>
-        </CardHeader>
         <CardContent className="space-y-6">
           <WordSearchForm
             value={searchWord}

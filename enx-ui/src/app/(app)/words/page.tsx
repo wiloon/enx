@@ -26,6 +26,7 @@ import type {
   WordListSort,
   WordListStatus,
 } from '@/types'
+import PageHeader from '@/components/app/PageHeader'
 
 const PAGE_SIZE = 50
 // How long a removed word can still be brought back with Undo before the
@@ -217,14 +218,10 @@ export default function WordListPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-6 md:p-8">
-      <div>
-        <h2 className="text-2xl font-bold">Word List</h2>
-        <p className="text-sm text-muted-foreground">
-          Every word you have looked up while reading, including the ones you
-          already know. The dot matches the word&apos;s underline on the page:
-          the fewer lookups, the darker it is.
-        </p>
-      </div>
+      <PageHeader
+        title="Word List"
+        description="Every word you have looked up while reading, including the ones you already know. The dot matches the word's underline on the page: the fewer lookups, the darker it is."
+      />
 
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <Segmented
@@ -356,6 +353,7 @@ function WordRow({
   onRemove: () => void
 }) {
   const bucket = reviewBucket(w)
+  const lookupCountLabel = `Looked up ${w.queryCount} ${w.queryCount === 1 ? 'time' : 'times'}`
   return (
     <li className="group flex items-start gap-3 py-3">
       <span
@@ -394,12 +392,15 @@ function WordRow({
         )}
       </button>
       <div className="flex shrink-0 items-center gap-3 pt-0.5 text-xs text-muted-foreground">
+        {/* The same icon, number and wording as the extension's word popover
+            and Side Panel card. */}
         <span
           className="inline-flex items-center gap-1 tabular-nums"
-          title={`Looked up ${w.queryCount} ${w.queryCount === 1 ? 'time' : 'times'}`}
+          title={lookupCountLabel}
         >
           <Repeat className="size-3" aria-hidden="true" />
-          {w.queryCount}
+          <span aria-hidden="true">{w.queryCount}</span>
+          <span className="sr-only">{lookupCountLabel}</span>
         </span>
         <span title={lookupTimesTitle(w.firstLookedUpAt, w.lastLookedUpAt)}>
           {lastLookedUpLabel(w.lastLookedUpAt, now)}

@@ -2,12 +2,13 @@
 
 import { useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { apiService } from '@/services/api'
 import { RephraseData } from '@/types'
+import PageHeader from '@/components/app/PageHeader'
 
 const MAX_CHARS = 200
 
@@ -87,11 +88,12 @@ export default function RephrasePage() {
   const result = mutation.data
 
   return (
-    <div className="container mx-auto p-6 max-w-2xl">
+    <div className="container mx-auto max-w-2xl space-y-4 p-6 md:p-8">
+      <PageHeader
+        title="Rephrase"
+        description="Turn Chinese or rough English into idiomatic workplace English."
+      />
       <Card>
-        <CardHeader>
-          <CardTitle>Idiomatic Phrasing</CardTitle>
-        </CardHeader>
         <CardContent className="space-y-6">
           <form onSubmit={handleSubmit} className="space-y-2">
             <Label htmlFor="rephrase-input">

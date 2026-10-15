@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { apiService } from '@/services/api'
 import type { SavedPage } from '@/types'
+import PageHeader from '@/components/app/PageHeader'
 
 // Pages saved from the extension popup's "Save this page" (ADR-032): URL and
 // title only, newest first.
@@ -40,13 +41,10 @@ export default function SavedPagesPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-6 md:p-8">
-      <div>
-        <h2 className="text-2xl font-bold">Saved Pages</h2>
-        <p className="text-sm text-muted-foreground">
-          Articles you saved to come back to. Only the address and title are
-          kept.
-        </p>
-      </div>
+      <PageHeader
+        title="Saved Pages"
+        description="Articles you saved to come back to. Only the address and title are kept."
+      />
 
       {isLoading && (
         <div className="py-8 text-center text-sm text-muted-foreground">

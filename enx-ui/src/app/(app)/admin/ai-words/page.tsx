@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import WordEditor from '@/components/admin/WordEditor'
 import { apiService } from '@/services/api'
 import type { AdminWordRow } from '@/types'
+import PageHeader from '@/components/app/PageHeader'
 
 const PAGE_SIZE = 25
 
@@ -50,12 +51,16 @@ export default function AdminAiWordsPage() {
   return (
     <div className="mx-auto max-w-4xl p-6 md:p-8">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold">AI Definitions</h2>
-        <p className="text-muted-foreground">
-          Definitions the AI wrote for words neither the <code>words</code>{' '}
-          table nor ECDICT had. Until you edit or approve one, only users who
-          can use AI can see it. Busiest first.
-        </p>
+        <PageHeader
+          title="AI definitions"
+          description={
+            <>
+              Definitions the AI wrote for words neither the <code>words</code>{' '}
+              table nor ECDICT had. Until you edit or approve one, only users
+              who can use AI can see it. Busiest first.
+            </>
+          }
+        />
       </div>
 
       <div role="tablist" className="mb-4 flex gap-2">

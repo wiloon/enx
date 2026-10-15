@@ -15,11 +15,14 @@ beforeEach(() => {
   jest.clearAllMocks()
 })
 
-it('shows the current page title from the nav config', () => {
+// The page's own heading (PageHeader) names the page; repeating it in the
+// bar would show the title twice.
+it('leaves the page title to the page', () => {
   mockPathname.mockReturnValue('/rephrase')
   render(<AppTopbar onOpenSidebar={jest.fn()} />)
 
-  expect(screen.getByRole('heading', { name: 'Rephrase' })).toBeInTheDocument()
+  expect(screen.queryByRole('heading')).not.toBeInTheDocument()
+  expect(screen.queryByText('Rephrase')).not.toBeInTheDocument()
 })
 
 it('signs the user out', () => {

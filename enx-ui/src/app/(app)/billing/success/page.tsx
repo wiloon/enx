@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 
 // Stripe redirects here after a successful Checkout (see
 // billing/handler.go's SuccessURL). This page does NOT itself confirm the
@@ -11,10 +11,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 // success before the ledger has actually been updated.
 export default function BillingSuccessPage() {
   return (
-    <div className="container mx-auto p-6 max-w-md">
+    <div className="container mx-auto max-w-md p-6 md:p-8">
       <Card>
         <CardHeader>
-          <CardTitle>Payment submitted</CardTitle>
+          <h1 className="leading-none font-semibold">Payment submitted</h1>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-muted-foreground">
@@ -22,9 +22,7 @@ export default function BillingSuccessPage() {
             balance usually update within a few seconds.
           </p>
           <Link href="/billing">
-            <Button className="w-full">
-              Back to Subscription &amp; Credits
-            </Button>
+            <Button className="w-full">Back to Billing</Button>
           </Link>
         </CardContent>
       </Card>

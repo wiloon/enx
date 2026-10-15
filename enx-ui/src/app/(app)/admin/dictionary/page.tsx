@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { apiService } from '@/services/api'
 import WordEditor from '@/components/admin/WordEditor'
 import type { AdminEcdictRow, AdminWordRow } from '@/types'
+import PageHeader from '@/components/app/PageHeader'
 
 type Consistency =
   | { kind: 'loading' }
@@ -191,13 +192,17 @@ export default function AdminDictionaryPage() {
   return (
     <div className="mx-auto max-w-4xl p-6 md:p-8">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold">Dictionary Maintenance</h2>
-        <p className="text-muted-foreground">
-          Compare a word&apos;s <code>words</code>-table entry against ECDICT
-          and, if they diverge, copy ECDICT&apos;s data onto the{' '}
-          <code>words</code> row. The <code>words</code> table is a shared cache
-          — a sync affects every user&apos;s next lookup.
-        </p>
+        <PageHeader
+          title="Dictionary"
+          description={
+            <>
+              Compare a word&apos;s <code>words</code>-table entry against
+              ECDICT and, if they diverge, copy ECDICT&apos;s data onto the{' '}
+              <code>words</code> row. The <code>words</code> table is a shared
+              cache — a sync affects every user&apos;s next lookup.
+            </>
+          }
+        />
       </div>
 
       <form onSubmit={submit} className="mb-6 flex items-end gap-3">

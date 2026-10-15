@@ -23,6 +23,7 @@ import {
   readerWidthClass,
   saveReaderWidth,
 } from './width'
+import PageHeader from '@/components/app/PageHeader'
 
 const RECENT_LIMIT = 3
 
@@ -257,14 +258,10 @@ export default function ReaderPage() {
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
-      <div>
-        <h2 className="text-2xl font-bold">Reader</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          For English text you can&apos;t look up where it is: an AI chat reply,
-          a PDF, or a site where the extension doesn&apos;t work well. Paste it
-          here and read it with Catglish.
-        </p>
-      </div>
+      <PageHeader
+        title="Reader"
+        description="For English text you can't look up where it is: an AI chat reply, a PDF, or a site where the extension doesn't work well. Paste it here and read it with Catglish."
+      />
 
       <ol className="grid gap-3 text-sm sm:grid-cols-3">
         {HOW_IT_WORKS.map((step, i) => (

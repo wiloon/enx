@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { apiService } from '@/services/api'
 import type { PreferencesData } from '@/types'
+import PageHeader from '@/components/app/PageHeader'
 
 const PREFERENCES_KEY = ['preferences']
 
@@ -49,8 +50,8 @@ export default function SettingsPage() {
     : (aiFallback?.effective ?? false)
 
   return (
-    <div className="container mx-auto p-6 max-w-3xl space-y-6">
-      <h1 className="text-2xl font-bold">Settings</h1>
+    <div className="container mx-auto max-w-3xl space-y-6 p-6 md:p-8">
+      <PageHeader title="Settings" />
 
       <Card>
         <CardHeader>

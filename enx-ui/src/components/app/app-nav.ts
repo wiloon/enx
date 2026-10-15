@@ -77,12 +77,3 @@ export function isNavItemActive(pathname: string, href: string): boolean {
   if (href === '/') return pathname === '/'
   return pathname === href || pathname.startsWith(href + '/')
 }
-
-// The label to show in the topbar for the current route (longest matching
-// href wins), falling back to the product name.
-export function navTitleForPath(pathname: string): string {
-  const match = [...ALL_NAV]
-    .filter((item) => isNavItemActive(pathname, item.href))
-    .sort((a, b) => b.href.length - a.href.length)[0]
-  return match?.label ?? 'Catglish'
-}

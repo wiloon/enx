@@ -9,6 +9,7 @@ import OnboardingChecklist from '@/components/app/home/OnboardingChecklist'
 import PlanCard from '@/components/app/home/PlanCard'
 import QuickTiles from '@/components/app/home/QuickTiles'
 import StatStrip from '@/components/app/home/StatStrip'
+import PageHeader from '@/components/app/PageHeader'
 
 // App home (ADR-027): a status-driven workbench, not a directory of features
 // -- the sidebar already navigates. Two forms, picked by whether this user
@@ -46,10 +47,14 @@ export default function AppHome() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6 md:p-8">
-      <h2 className="text-2xl font-bold">
-        {hasData ? 'Welcome back' : 'Welcome'}
-        {name}!
-      </h2>
+      <PageHeader
+        title={
+          <>
+            {hasData ? 'Welcome back' : 'Welcome'}
+            {name}!
+          </>
+        }
+      />
 
       {showOnboarding ? (
         <OnboardingChecklist status={extensionStatus} />
