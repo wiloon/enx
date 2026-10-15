@@ -75,6 +75,18 @@ describe('Privacy Policy', () => {
       screen.getAllByText(new RegExp(LEGAL.privacyEmail)).length
     ).toBeGreaterThan(0)
   })
+
+  // ADR-032 Decision 8: "Save this link" keeps the page's address and title
+  // on our server (saved_pages). Without this the policy contradicts both the
+  // code and the Web Store's "Web history" disclosure.
+  it('discloses that a page you save keeps its address and title until you delete it', () => {
+    render(<PrivacyPolicyPage />)
+
+    expect(
+      screen.getByText(/The address and title of each page you save/)
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/The one exception/)).not.toBeInTheDocument()
+  })
 })
 
 describe('Terms of Service', () => {
@@ -90,6 +102,15 @@ describe('Terms of Service', () => {
     render(<TermsPage />)
 
     expect(screen.getByText(/renew automatically/)).toBeInTheDocument()
+  })
+
+  // ADR-032 Decision 8: we keep a link, not the article, so a saved page
+  // only reopens while the original site still serves it.
+  it('says a saved page is only a link that depends on the original site', () => {
+    render(<TermsPage />)
+    expect(
+      screen.getByText(/A page you save is kept as a link/)
+    ).toBeInTheDocument()
   })
 })
 
@@ -199,6 +220,18 @@ describe('bilingual legal pages', () => {
   it('marks the Chinese pages as Chinese for screen readers and search engines', () => {
     const { container } = render(<PrivacyPolicyZhPage />)
     expect(container.querySelector('main')).toHaveAttribute('lang', 'zh-Hans')
+  })
+
+  it('discloses saved pages in the Chinese privacy policy too', () => {
+    render(<PrivacyPolicyZhPage />)
+
+    expect(screen.getByText(/你保存的每个页面的网址和标题/)).toBeInTheDocument()
+    expect(screen.queryByText(/唯一的例外/)).not.toBeInTheDocument()
+  })
+
+  it('says a saved page is only a link in the Chinese terms too', () => {
+    render(<TermsZhPage />)
+    expect(screen.getByText(/你保存的页面只是一个链接/)).toBeInTheDocument()
   })
 
   it('keeps the "no company" framing in Chinese too', () => {

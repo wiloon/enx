@@ -13,6 +13,8 @@ import { SITE } from '@/lib/site'
 // has to change with it. The load-bearing ones:
 //   - "we never store the address or title of a page"  -> stats/daily.go,
 //     which has no such column, and ADR-028 Decision 10
+//   - ...except a page you save                         -> enx-api
+//     savedpage/ (saved_pages: url, title, host, created_at), ADR-032
 //   - the sub-processor list                           -> lib/legal.ts
 //   - the AI provider named                            -> the deployment's
 //     SENTENCE_TRANSLATE_PROVIDER
@@ -58,6 +60,11 @@ export default function PrivacyPolicyPage() {
               store <Term>which pages</Term> you read them on.
             </>,
             <>
+              When you press <Term>Save</Term> on a page, we keep that
+              page&rsquo;s address and title in your saved list, until you
+              delete it.
+            </>,
+            <>
               When you ask for a sentence translation, that sentence is sent to
               an AI model run by <Term>{AI_PROVIDER.name}</Term>, in{' '}
               {AI_PROVIDER.location}. We do not keep a copy.
@@ -92,7 +99,11 @@ export default function PrivacyPolicyPage() {
             </>,
             <>
               a sentence or phrase you <Term>select</Term> and ask to have
-              translated.
+              translated;
+            </>,
+            <>
+              the address and title of the page, only when you press{' '}
+              <Term>Save</Term> to keep it in your saved list.
             </>,
           ]}
         />
@@ -101,9 +112,10 @@ export default function PrivacyPolicyPage() {
           asks you for access <Term>one site at a time</Term>, and only when you
           choose to have Catglish switch on automatically on that site; you can
           take that access back at any time in Chrome&rsquo;s extension
-          settings. The address, title and full text of a page are never sent to
-          our servers and never stored, unless you press &ldquo;Send
-          report&rdquo; on a page Catglish could not read (see below).
+          settings. The full text of a page is never sent to our servers. Its
+          address and title are never sent or stored either, unless you press
+          &ldquo;Save&rdquo; to keep the page, or &ldquo;Send report&rdquo; on a
+          page Catglish could not read (see below).
         </p>
       </Section>
 
@@ -133,6 +145,11 @@ export default function PrivacyPolicyPage() {
                   'Text you paste into the Reader',
                   'So you can come back to it',
                   '7 days, then deleted automatically (most recent 50 documents)',
+                ],
+                [
+                  'The address and title of each page you save, and when you saved it',
+                  'Your saved list on catglish.com, so you can come back to a page on any device',
+                  'Until you delete it (at most 1,000 pages)',
                 ],
                 [
                   'Daily totals: words read, articles read, words looked up',
@@ -169,8 +186,8 @@ export default function PrivacyPolicyPage() {
       <Section heading="What we deliberately do not store">
         <p>
           The reading statistics are built from day-level totals only. Apart
-          from the one exception described below, there is no column anywhere in
-          our database for any of the following, so there is nothing to hand
+          from the two exceptions described below, there is no column anywhere
+          in our database for any of the following, so there is nothing to hand
           over, leak or subpoena:
         </p>
         <List
@@ -182,22 +199,35 @@ export default function PrivacyPolicyPage() {
             'Your location, or any device fingerprint',
           ]}
         />
+        <p>Both exceptions are pages you hand us yourself, one at a time.</p>
         <p>
-          The one exception is a report you send yourself. When Catglish cannot
-          process a page, the extension offers to send us that page&apos;s
-          address. It shows you exactly what would be sent, and sends nothing
-          unless you press &quot;Send report&quot;. The address is cut down to
-          the site and path — no query string, no fragment, no login details —
-          and parts of the path that look like personal identifiers, such as an
-          email address or a long token, are replaced with a placeholder. We
-          keep it, together with the reason the page failed and your account
-          identifier, for 90 days and for no more than your 50 most recent
-          reports. It is used only to fix support for that page — never for
-          statistics or profiling.
+          The first is a page you save. When you press &ldquo;Save&rdquo; in the
+          extension, we keep that page&rsquo;s address and title, and when you
+          saved it, in your saved list. Before it is stored, login details, the
+          part after &ldquo;#&rdquo; and tracking parameters (such as{' '}
+          <code>utm_source</code>) are removed from the address. We do not keep
+          the page&rsquo;s text. Our app has no screen that lets anyone but you
+          browse your saved list. You can edit or delete any saved page on the
+          Saved Pages page of catglish.com, and it is kept until you do. Pages
+          you only read, without pressing &ldquo;Save&rdquo;, are not recorded
+          anywhere on our side: your browsing history is never uploaded.
         </p>
         <p>
-          Apart from a report you send, which article you were reading is
-          something your own browser knows and our servers never learn.
+          The second is a report you send yourself. When Catglish cannot process
+          a page, the extension offers to send us that page&apos;s address. It
+          shows you exactly what would be sent, and sends nothing unless you
+          press &quot;Send report&quot;. The address is cut down to the site and
+          path — no query string, no fragment, no login details — and parts of
+          the path that look like personal identifiers, such as an email address
+          or a long token, are replaced with a placeholder. We keep it, together
+          with the reason the page failed and your account identifier, for 90
+          days and for no more than your 50 most recent reports. It is used only
+          to fix support for that page — never for statistics or profiling.
+        </p>
+        <p>
+          Apart from a page you save and a report you send, which article you
+          were reading is something your own browser knows and our servers never
+          learn.
         </p>
       </Section>
 

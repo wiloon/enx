@@ -158,6 +158,12 @@ export default function TermsPage() {
           only to store and display it back to you, and to process it to provide
           the features you use. We delete it after 7 days automatically.
         </p>
+        <p>
+          A page you save is kept as a link: its address and title, not its
+          text. Reopening it depends on the original site still serving that
+          page. You can delete a saved page at any time, and your saved pages
+          are deleted with your account.
+        </p>
       </Section>
 
       <Section heading="9. Our intellectual property">
