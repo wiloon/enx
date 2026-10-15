@@ -29,14 +29,15 @@ const (
 	// current catalog before relying on this default.
 	//
 	// DeepSeek, not a Western vendor, is a deliberate choice here (2026-09):
-	// pinned to the dated v4-flash slug rather than a "latest" alias so the
-	// served model doesn't change under us. NOTE this reopens the
+	// pinned to a versioned slug rather than a "latest" alias so the served
+	// model doesn't change under us. v4.1-flash since 2026-10: DeepSeek
+	// retired V4-Flash on 2026-09-10. NOTE this reopens the
 	// data-processor question LAUNCH-CHECKLIST §6.2/§6.2c settled by keeping
 	// production Bedrock/Claude-only -- routing through OpenRouter does not
 	// avoid PIPL/sub-processor disclosure for DeepSeek, it only changes the
 	// transport. legal.ts must be updated to disclose DeepSeek as a
 	// sub-processor before this ships to real users.
-	defaultModel   = "deepseek/deepseek-v4-flash"
+	defaultModel   = "deepseek/deepseek-v4.1-flash"
 	defaultBaseURL = "https://openrouter.ai/api/v1"
 
 	// Sent on every request per OpenRouter's own convention (not required,
@@ -106,7 +107,19 @@ type chatRequest struct {
 	Model       string        `json:"model"`
 	Messages    []chatMessage `json:"messages"`
 	Temperature float64       `json:"temperature"`
+	Reasoning   reasoning     `json:"reasoning"`
 }
+
+// reasoning is OpenRouter's reasoning switch
+// (https://openrouter.ai/docs/use-cases/reasoning-tokens). Models that
+// support reasoning use it by default (deepseek-v4.1-flash: effort high),
+// which makes a one-line translation several times slower, so every request
+// sends reasoningDisabled. A model whose reasoning is mandatory rejects it.
+type reasoning struct {
+	Enabled bool `json:"enabled"`
+}
+
+var reasoningDisabled = reasoning{Enabled: false}
 
 // usage mirrors the OpenAI-compatible "usage" object OpenRouter returns
 // alongside every response, regardless of which upstream vendor served it.
@@ -151,6 +164,7 @@ func (o *OpenRouter) chat(ctx context.Context, feature, model string, temperatur
 				{Role: "user", Content: userContent},
 			},
 			Temperature: temperature,
+			Reasoning:   reasoningDisabled,
 		}).
 		SetResult(&result).
 		Post(o.baseURL + "/chat/completions")
