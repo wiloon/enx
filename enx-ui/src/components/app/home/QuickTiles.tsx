@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { BookOpen, ChevronRight, Search, Sparkles } from 'lucide-react'
+import { ChevronRight, FileText, Search, Sparkles } from 'lucide-react'
 import { tileClass } from './tile'
 
 // The compact feature entries. They used to be the whole of /app as four
@@ -9,7 +9,7 @@ import { tileClass } from './tile'
 const TILES = [
   { label: 'Word Lookup', href: '/lookup', icon: Search },
   { label: 'Rephrase', href: '/rephrase', icon: Sparkles },
-  { label: 'Reader', href: '/reader', icon: BookOpen },
+  { label: 'Reader', href: '/reader', icon: FileText },
 ]
 
 export default function QuickTiles() {

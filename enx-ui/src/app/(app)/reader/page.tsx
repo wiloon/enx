@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
-import { FileText, Lock, Pencil, Puzzle } from 'lucide-react'
+import { FileText, Pencil, Puzzle, ShieldCheck } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -316,7 +316,7 @@ export default function ReaderPage() {
           />
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Lock className="size-3.5" aria-hidden="true" />
+              <ShieldCheck className="size-3.5" aria-hidden="true" />
               Only you can see it. Deleted automatically after 7 days.
             </p>
             <div className="flex items-center gap-3">

@@ -4,6 +4,7 @@ import {
   ArrowPathRoundedSquareIcon,
   BookOpenIcon,
   SpeakerWaveIcon,
+  XMarkIcon,
 } from '@heroicons/react/20/solid'
 import SidePanelTranslateIcon from '@/components/icons/SidePanelTranslateIcon'
 import { AiBadge, AiMissPanel, AiNotice } from '@/components/AiLookup'
@@ -86,10 +87,11 @@ export default function WordPopover({
           <button
             data-testid="word-popover-close"
             onClick={onClose}
-            className="text-muted-foreground hover:text-destructive text-xl leading-none ml-2"
+            className="text-muted-foreground hover:text-destructive ml-2"
             title="Close"
+            aria-label="Close"
           >
-            ×
+            <XMarkIcon className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
         {sentencePanelHint && (
@@ -158,10 +160,11 @@ export default function WordPopover({
         <button
           data-testid="word-popover-close"
           onClick={onClose}
-          className="text-muted-foreground hover:text-destructive text-xl leading-none ml-1 shrink-0"
+          className="text-muted-foreground hover:text-destructive ml-1 shrink-0"
           title="Close"
+          aria-label="Close"
         >
-          ×
+          <XMarkIcon className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
 

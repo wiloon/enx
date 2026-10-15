@@ -28,9 +28,9 @@ import { initSentry } from '@/lib/sentry'
 import { errorAtom, userAtom } from '@/store/atoms'
 import { ClerkProvider, useUser } from '@clerk/chrome-extension'
 import {
-  BookOpenIcon,
   ChevronRightIcon,
   GlobeAltIcon,
+  UnderlineIcon,
 } from '@heroicons/react/24/outline'
 import { Provider, useAtom, useSetAtom } from 'jotai'
 import { useEffect, useState } from 'react'
@@ -286,7 +286,7 @@ function SignedInBody({
 
       <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-background px-3 py-2.5 shadow-xs ring-1 ring-border">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-muted text-brand">
-          <BookOpenIcon className="h-[18px] w-[18px]" />
+          <UnderlineIcon className="h-[18px] w-[18px]" />
         </span>
         <span className="min-w-0 flex-1 leading-tight">
           <span className="block text-sm font-medium text-foreground">

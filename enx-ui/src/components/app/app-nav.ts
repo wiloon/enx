@@ -2,10 +2,10 @@ import {
   AlertTriangle,
   BarChart3,
   Bookmark,
-  BookOpen,
   BookText,
   ClipboardCheck,
   CreditCard,
+  FileText,
   Globe,
   Home,
   Search,
@@ -29,7 +29,7 @@ export const NAV_MAIN: NavItem[] = [
   { label: 'Home', href: '/app', icon: Home },
   { label: 'Word Lookup', href: '/lookup', icon: Search },
   { label: 'Rephrase', href: '/rephrase', icon: Sparkles },
-  { label: 'Reader', href: '/reader', icon: BookOpen },
+  { label: 'Reader', href: '/reader', icon: FileText },
   // The words looked up in articles (user_dicts), and the pages saved from
   // the extension popup (ADR-032).
   { label: 'Word List', href: '/words', icon: BookText },
