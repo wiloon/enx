@@ -58,7 +58,7 @@ related: adr-009（两池积分账本、Stripe webhook）、adr-021（管理员�
    - **实现时须用 Stripe CLI 的真实事件确认**这两个字段在 stripe-go v86 里的位置。
 7. **扣回规则**：`credit.Clawback(ctx, paymentIntentID, amountRefunded, amountCaptured, stripeEventID)`。
    - 按 `payment_intent` 找发放行。找不到就**不扣**：记 error 日志，给管理员发邮件（复用 `RESEND_ADMIN_TO`，和 page report 通知走同一个 email 包），webhook 返回 200，不让 Stripe 重试好几天。
-   - 应扣总数 = `floor(发放积分 × amount_refunded ÷ amount_captured)`。`charge.refunded` 里的 `amount_refunded` 是累计值，所以本次扣回 = 应扣总数 − 这条发放行已有扣回行的合计。部分退款多次触发时结果正确，全额退款就是全部扣回。
+   - 应扣总数 = `floor(发放积分 × amount_refunded ÷ amount_captured)`。`charge.refunded` 里的 `amount_refunded` 是累计值，所以本次扣回 = 应扣总数 − 这条发放行已有扣回行的合计。部分退款多次触发时结果正确，全额退款就是全部扣回。本次扣回**不小于 0**：Stripe 不保证事件顺序，全额退款的事件可能先于更早那次部分退款的事件到达，晚到的那次只能扣 0，不能反过来加回积分。
    - **充值发放**：从 `topup_balance` 扣，可以扣成负数（与 `Settle` 一致）。负余额时 `CanUseAI` 为假，用户以后再充值会先抵掉欠的部分。
    - **订阅发放**：只有当这条发放行是该用户**最近一条** `GRANT_SUBSCRIPTION` 时，才从 `subscription_balance` 扣，扣到 0 为止。更早周期的积分已经被下一期覆盖，扣回 0，但仍写一行流水留痕。
    - 新流水类型 **`CLAWBACK`**，`Amount` 为负（与 `SETTLE` 的符号约定一致）。**不复用已有的 `REFUND`**：`REFUND` 的意思是「AI 调用失败，把扣掉的积分还给用户」，方向正好相反。
@@ -66,7 +66,7 @@ related: adr-009（两池积分账本、Stripe webhook）、adr-021（管理员�
    - 余额更新、写流水在同一个事务里。
    - 试用池（adr-048）不是付款发放，不参与扣回。
 8. **订阅付款被退款时，立即取消订阅**（用户 2026-10-16 决定）：
-   - 触发条件：扣回找到的发放行是 `GRANT_SUBSCRIPTION`，且该用户 `subscriptions.status` 仍是生效状态（`active` / `trialing` / `past_due`）。全额和部分退款都触发；只想补偿一部分、又要保留订阅时，管理员改用 `GRANT_ADMIN` 补积分，不要在 Stripe 里退款。
+   - 触发条件：扣回找到的发放行是 `GRANT_SUBSCRIPTION`，且 Stripe 上这个订阅的**实时状态**（取回订阅对象，与 `syncSubscriptionState` 同一理由：事件乱序时本地 `subscriptions.status` 可能是旧的）仍是生效状态（`active` / `trialing` / `past_due`）。全额和部分退款都触发；只想补偿一部分、又要保留订阅时，管理员改用 `GRANT_ADMIN` 补积分，不要在 Stripe 里退款。
    - 动作：用 `stripe_subscription_id` 调 Stripe 的 cancel subscription 接口**立即取消**（不是 `cancel_at_period_end`），不按比例退款（`prorate=false`）、不出最终账单（`invoice_now=false`）：钱已经由这次退款处理过了。
    - 本地状态不在这里改：Stripe 随后发来的 `customer.subscription.deleted` 由现有 handler 处理，订阅状态只有一个写入路径。
    - 先扣回、后取消。取消调用失败时 webhook 返回 500，让 Stripe 重试；重试时扣回因幂等不重复，只重做取消。Stripe 回复「订阅已经取消」视为成功。
@@ -148,7 +148,7 @@ related: adr-009（两池积分账本、Stripe webhook）、adr-021（管理员�
    - Stripe 链接按 key 前缀区分 live 和 test；没有 customer id 时不给链接
    - 30 天查词（来自 `lookup_events`，按 UTC 日期分组，没有查词的日子补 0）和 AI 消耗的汇总
 4. **路由**（`router_test.go` 风格）：三个新 GET、挪过来的 grant 接口和新的 deduct 接口，非管理员一律 403、未登录 401。
-5. **集成测试**（`//go:build integration`）：真实库跑一遍「充值 → 消耗 → 部分退款 → 全额退款」，流水和余额对得上；管理员接口返回的累计数与之一致。
+5. **端到端测试**：经签名的 `/billing/webhook` 在真实 SQLite 上跑一遍「充值 → 消耗 → 部分退款 → 全额退款」，流水和余额对得上；管理员接口返回的累计数与之一致。不依赖外部服务，放在普通测试套件里（不加 `//go:build integration`），CI 每次都跑。
 6. **enx-ui**：列表和详情页的组件测试（现有 `admin/__tests__` 风格）；送积分、扣积分表单原因为空时不能提交；扣积分要先确认。
 7. **人工验证**（homelab，Stripe test mode）：
    - 充一笔 → 在 Stripe 后台部分退款 → 管理员页看到 `CLAWBACK` 行和变化后的余额 → 再全额退款 → 余额回到充值前（扣掉期间消耗之后可能为负）
