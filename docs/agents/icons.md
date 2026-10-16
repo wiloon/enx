@@ -39,7 +39,7 @@ Before placing an icon, find its concept below and use that row's icon. A concep
 | Edit | `PencilIcon` | `Pencil` | Reader "Edit text" |
 | Explanation | `InformationCircleIcon` | `Info` | Reading Stats footnote |
 | Open the navigation drawer | — | `Menu` | top bar on mobile |
-| Admin: dictionary / AI definitions / page reports | — | `Wrench` / `ClipboardCheck` / `AlertTriangle` | admin nav |
+| Admin: dictionary / AI definitions / page reports / users | — | `Wrench` / `ClipboardCheck` / `AlertTriangle` / `Users` | admin nav |
 
 ## Style
 

@@ -11,6 +11,7 @@ import {
   Search,
   Settings,
   Sparkles,
+  Users,
   Wrench,
   type LucideIcon,
 } from 'lucide-react'
@@ -60,6 +61,8 @@ export const NAV_ADMIN: NavItem[] = [
   // AI-made definitions waiting for review (ADR-045).
   { label: 'AI definitions', href: '/admin/ai-words', icon: ClipboardCheck },
   { label: 'Page reports', href: '/admin/page-reports', icon: AlertTriangle },
+  // Accounts, balances and the credit ledger (ADR-049).
+  { label: 'Users', href: '/admin/users', icon: Users },
 ]
 
 export const ALL_NAV: NavItem[] = [
