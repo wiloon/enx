@@ -198,6 +198,51 @@ func TestCreateCheckoutSession(t *testing.T) {
 	})
 }
 
+func TestCancelSubscriptionNow(t *testing.T) {
+	t.Run("cancels now with no proration and no final invoice", func(t *testing.T) {
+		var method, path, prorate, invoiceNow string
+		sc := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			method, path = r.Method, r.URL.Path
+			if err := r.ParseForm(); err != nil {
+				t.Fatalf("failed to parse form: %v", err)
+			}
+			prorate, invoiceNow = r.Form.Get("prorate"), r.Form.Get("invoice_now")
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"id":"sub_1","object":"subscription","status":"canceled"}`))
+		})
+
+		if err := CancelSubscriptionNow(context.Background(), sc, "sub_1"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if method != http.MethodDelete || path != "/v1/subscriptions/sub_1" || prorate != "false" || invoiceNow != "false" {
+			t.Errorf("got %s %s prorate=%q invoice_now=%q, want DELETE /v1/subscriptions/sub_1 prorate=false invoice_now=false", method, path, prorate, invoiceNow)
+		}
+	})
+
+	// What the sandbox answers for a second cancel (2026-10-16).
+	t.Run("an already canceled subscription counts as done", func(t *testing.T) {
+		sc := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"error":{"code":"resource_missing","message":"No such subscription: 'sub_1'","param":"id","type":"invalid_request_error"}}`))
+		})
+		if err := CancelSubscriptionNow(context.Background(), sc, "sub_1"); err != nil {
+			t.Fatalf("got %v, want nil", err)
+		}
+	})
+
+	t.Run("other errors are returned", func(t *testing.T) {
+		sc := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"error":{"type":"api_error","message":"boom"}}`))
+		})
+		if err := CancelSubscriptionNow(context.Background(), sc, "sub_1"); err == nil {
+			t.Fatal("got nil, want an error")
+		}
+	})
+}
+
 func TestCreatePortalSession(t *testing.T) {
 	var sawCustomer, sawReturnURL string
 	sc := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {

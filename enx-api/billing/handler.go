@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"enx-api/billing/credit"
+	"enx-api/email"
 	"enx-api/enx"
 	"enx-api/middleware"
 	"enx-api/utils/logger"
@@ -31,6 +32,20 @@ type Handler struct {
 	prices          config.StripePrice
 	credits         config.StripeCredits
 	webhooks        WebhookObserver
+	// refunds hears about refunds that matched no grant; nil logs only.
+	refunds RefundNotifier
+}
+
+// RefundNotifier tells the admin about a refund ENX could not match to a
+// credit grant (ADR-049 Decision 7): *email.Sender in production.
+type RefundNotifier interface {
+	NotifyAdminUnmatchedRefund(r email.UnmatchedRefundNotify) error
+}
+
+// WithRefundNotifier sets who hears about unmatched refunds.
+func (h *Handler) WithRefundNotifier(n RefundNotifier) *Handler {
+	h.refunds = n
+	return h
 }
 
 // WebhookObserver hears the outcome of every Stripe webhook delivery:

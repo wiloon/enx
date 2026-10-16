@@ -66,3 +66,18 @@ func TestWebhookReportsOutcome(t *testing.T) {
 		t.Fatalf("observed %q, want %q", obs.got, want)
 	}
 }
+
+// ADR-049: refunds get their own series, not "other".
+func TestWebhookReportsChargeRefundedByName(t *testing.T) {
+	const secret = "whsec_observe"
+	stripe := testStripe()
+	stripe.WebhookSecret = secret
+	obs := &recordedWebhooks{}
+	h := NewHandler(fakeConfiguredClient(), "https://example.com", stripe, obs)
+
+	postWebhook(t, h, secret, "charge.refunded", `{"id": "ch_x", "payment_intent": "pi_`+t.Name()+`", "amount_captured": 100, "amount_refunded": 100}`, true)
+
+	if len(obs.got) != 1 || !strings.HasPrefix(obs.got[0], "charge.refunded ") {
+		t.Fatalf("observed %q, want one charge.refunded delivery", obs.got)
+	}
+}
