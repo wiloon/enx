@@ -63,7 +63,7 @@ CREATE INDEX idx_lookup_events_at      ON lookup_events (at);
 
 ### 3. GET 读释义，POST 记查词次数（#136）
 
-| | `GET /api/word/:word`（及 `GET /api/translate?word=`） | `POST /api/me/words/:english/lookups`（新） |
+| | `GET /api/word/:word`（及 `GET /api/translate?word=`） | `POST /api/me/word-lookups`（新，body `{"wordId"}`） |
 | ---- | ---- | ---- |
 | 查词事件 / 配额 | 写一行，超额返回 429 | 不写，不扣配额 |
 | `user_dicts.query_count` | 不动 | +1，并清掉「认识」标记（`repo.RecordWordLookup` 原样搬过来）；查词次数**继续累加，不清零** |
@@ -167,7 +167,7 @@ CREATE INDEX idx_lookup_events_at      ON lookup_events (at);
 
 - 保留期 N 默认 90 天（第二轮改为可配置）。
 - 复习档位由客户端按「当前次数 + 1」先显示，不等 POST。
-- POST 路径 `POST /api/me/words/:english/lookups`。
+- POST 路径 `POST /api/me/word-lookups`，按词的 id 记（第三轮修订，原定 `POST /api/me/words/:english/lookups`）。
 - 上线当天配额从 0 重新数：生产尚无用户，无影响。
 - 保留 `outcome`，被 429 的请求也写事件。
 - AI 兜底查词的查词次数也由客户端发同一个 POST 记录（Decision 3 最后一条）。
@@ -185,3 +185,10 @@ CREATE INDEX idx_lookup_events_at      ON lookup_events (at);
 - 订阅档配额 20000，不再是 0；免费档 200 兼引导付费，上线后按数据调整（WIL-176）（Decision 6）。
 - Side Panel 的简化随 #136 一起做（Decision 7）。
 - 不做数据回填或迁移（Decision 5）。
+
+## 修订（2026-10-15，第三轮，实现 #136 时）
+
+- **POST 改为按词的 id 记：`POST /api/me/word-lookups`，body `{"wordId": "…"}`**（Decision 3）。GET 可能把词形归到原形（点 "ran"，返回 "run" 那一行的 `Id` 和 `English`），按点击的原词找 `words` 行会 404。客户端直接回传 GET 返回的 `Id`，服务端不再归一化。路径不放在 `/me/words/` 下：gin 不允许同一层的路径参数换名字（那一层已经是 `:english`）。id 不存在仍返回 404。
+- **两档配额启动时都必须大于 0**，否则拒绝启动（Decision 6）：新代码里 0 不再是「不拦截」，而是「一次都不让查」，漏配会让所有人 429。代码默认值改为 200 / 20000；已废弃的单档键 `stripe.quota.dictionary-lookup-daily` 一并删除。
+- **每日汇总的范围**（Decision 4）：每小时跑一次，覆盖「保留期截止日 + 2 天」到「UTC 昨天」的本地日。上界保证任何时区的用户，「本地昨天」之前的日子都已在 `daily_stats` 里；下界避开明细已开始被删除的日子，免得重跑时用剩下的明细把计数算小。
+- **Side Panel 只为在面板里点的词发 POST**（Decision 7）：句子的锚点词（查词浮层已经记过）和重试都不发。

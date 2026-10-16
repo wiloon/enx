@@ -64,10 +64,10 @@ func TestRepairUserDictsTableDDL(t *testing.T) {
 	}
 
 	// AutoMigrate now completes and reaches the billing models.
-	if err := db.AutoMigrate(&UserDict{}, &Subscription{}, &CreditAccount{}, &CreditTransaction{}, &DictionaryLookupQuota{}); err != nil {
+	if err := db.AutoMigrate(&UserDict{}, &Subscription{}, &CreditAccount{}, &CreditTransaction{}, &LookupEvent{}); err != nil {
 		t.Fatalf("AutoMigrate after repair: %v", err)
 	}
-	for _, tbl := range []string{"subscriptions", "credit_accounts", "credit_transactions", "dictionary_lookup_quota"} {
+	for _, tbl := range []string{"subscriptions", "credit_accounts", "credit_transactions", "lookup_events"} {
 		var n int64
 		if err := db.Raw(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?`, tbl).Scan(&n).Error; err != nil {
 			t.Fatal(err)

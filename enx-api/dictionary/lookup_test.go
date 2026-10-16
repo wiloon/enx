@@ -2,212 +2,238 @@ package dictionary
 
 import (
 	"context"
-	"enx-api/config"
 	"errors"
 	"testing"
+	"time"
 
-	"enx-api/utils/sqlitex"
-
-	"github.com/glebarez/sqlite"
-	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
+	"enx-api/config"
+	"enx-api/stats"
 )
 
-func setupTestDB(t *testing.T) {
-	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
-		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
-	})
-	if err != nil {
-		t.Fatal(err)
+// fakeLookupEvents is an in-memory lookup event log.
+type fakeLookupEvents struct {
+	events   []LookupEvent
+	countErr error
+	addErr   error
+}
+
+func (f *fakeLookupEvents) CountSince(_ context.Context, userID string, since time.Time) (int64, error) {
+	if f.countErr != nil {
+		return 0, f.countErr
 	}
-	if err := db.AutoMigrate(&sqlitex.Word{}, &sqlitex.Subscription{}, &sqlitex.DictionaryLookupQuota{}, &sqlitex.DailyStat{}); err != nil {
-		t.Fatal(err)
+	var n int64
+	for _, e := range f.events {
+		if e.UserID == userID && !e.At.Before(since) {
+			n++
+		}
 	}
-	sqlitex.DB = db
+	return n, nil
+}
+
+func (f *fakeLookupEvents) Add(_ context.Context, e LookupEvent) error {
+	if f.addErr != nil {
+		return f.addErr
+	}
+	f.events = append(f.events, e)
+	return nil
+}
+
+func (f *fakeLookupEvents) outcomes() []LookupOutcome {
+	var out []LookupOutcome
+	for _, e := range f.events {
+		out = append(out, e.Outcome)
+	}
+	return out
+}
+
+// fakeSubscriptions says which users have an active subscription.
+type fakeSubscriptions struct {
+	active map[string]bool
+	err    error
+}
+
+func (f fakeSubscriptions) IsActiveSubscriber(_ context.Context, userID string) (bool, error) {
+	return f.active[userID], f.err
 }
 
 func quotaLimits(free, subscribed int64) config.StripeQuota {
 	return config.StripeQuota{DictionaryLookupDailyFree: free, DictionaryLookupDailySubscribed: subscribed}
 }
 
-func quotaRowCount(t *testing.T, userID string) int64 {
+var noon = time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+
+func newTestMeter(events *fakeLookupEvents, subs fakeSubscriptions, limits config.StripeQuota, now *time.Time) *QuotaMeter {
+	return NewQuotaMeter(events, subs, limits, func() time.Time { return *now })
+}
+
+func chargeN(t *testing.T, m *QuotaMeter, userID string, n int) []error {
 	t.Helper()
-	var count int64
-	sqlitex.DB.Model(&sqlitex.DictionaryLookupQuota{}).
-		Where("user_id = ?", userID).
-		Select("COALESCE(SUM(count), 0)").
-		Scan(&count)
-	return count
+	var errs []error
+	for i := 0; i < n; i++ {
+		errs = append(errs, m.Charge(context.Background(), userID))
+	}
+	return errs
 }
 
-func TestMeterLookupEnforcesQuotaForFreeUser(t *testing.T) {
-	setupTestDB(t)
-	limits := quotaLimits(2, 0)
-	userID := "u-" + t.Name()
-	ctx := context.Background()
+func TestQuotaRejectsTheLookupPastTheLimitAndRecordsIt(t *testing.T) {
+	events := &fakeLookupEvents{}
+	now := noon
+	m := newTestMeter(events, fakeSubscriptions{}, quotaLimits(2, 20000), &now)
 
-	if err := MeterLookup(ctx, userID, limits); err != nil {
+	errs := chargeN(t, m, "u1", 3)
+
+	if errs[0] != nil || errs[1] != nil {
+		t.Fatalf("first two lookups: %v, want allowed", errs[:2])
+	}
+	if !errors.Is(errs[2], ErrQuotaExceeded) {
+		t.Fatalf("third lookup: %v, want ErrQuotaExceeded", errs[2])
+	}
+	want := []LookupOutcome{OutcomeAllowed, OutcomeAllowed, OutcomeRejected}
+	if got := events.outcomes(); len(got) != 3 || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+		t.Fatalf("events %v, want %v", got, want)
+	}
+}
+
+// The quota counts requests, rejected ones included (ADR-029 C2): once over,
+// a user stays over for the rest of the UTC day.
+func TestQuotaCountsRejectedLookupsTowardTheLimit(t *testing.T) {
+	events := &fakeLookupEvents{}
+	now := noon
+	m := newTestMeter(events, fakeSubscriptions{}, quotaLimits(2, 20000), &now)
+
+	errs := chargeN(t, m, "u1", 5)
+
+	for i, err := range errs[2:] {
+		if !errors.Is(err, ErrQuotaExceeded) {
+			t.Fatalf("lookup %d: %v, want ErrQuotaExceeded", i+3, err)
+		}
+	}
+	if len(events.events) != 5 {
+		t.Fatalf("%d events, want 5 (every request is recorded)", len(events.events))
+	}
+}
+
+func TestQuotaResetsAtUTCMidnight(t *testing.T) {
+	events := &fakeLookupEvents{}
+	now := time.Date(2026, 10, 15, 23, 59, 0, 0, time.UTC)
+	m := newTestMeter(events, fakeSubscriptions{}, quotaLimits(1, 20000), &now)
+
+	if err := m.Charge(context.Background(), "u1"); err != nil {
+		t.Fatalf("lookup before midnight: %v", err)
+	}
+	now = time.Date(2026, 10, 16, 0, 0, 0, 0, time.UTC)
+	if err := m.Charge(context.Background(), "u1"); err != nil {
+		t.Fatalf("first lookup of the new UTC day: %v, want allowed", err)
+	}
+}
+
+// The local day (here +08:00, already the 16th) does not move the quota day.
+func TestQuotaDayIsUTCWhateverTheUsersTimeZone(t *testing.T) {
+	events := &fakeLookupEvents{}
+	now := time.Date(2026, 10, 15, 20, 0, 0, 0, time.UTC) // 04:00 on the 16th in Beijing
+	m := newTestMeter(events, fakeSubscriptions{}, quotaLimits(1, 20000), &now)
+	ctx := stats.WithOffset(context.Background(), 480)
+
+	if err := m.Charge(ctx, "u1"); err != nil {
 		t.Fatalf("lookup 1: %v", err)
 	}
-	if err := MeterLookup(ctx, userID, limits); err != nil {
-		t.Fatalf("lookup 2: %v", err)
-	}
-	if err := MeterLookup(ctx, userID, limits); !errors.Is(err, ErrQuotaExceeded) {
-		t.Fatalf("lookup 3: got %v, want ErrQuotaExceeded", err)
+	if err := m.Charge(ctx, "u1"); !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("lookup 2 on the same UTC day: %v, want ErrQuotaExceeded", err)
 	}
 }
 
-// The whole point of ADR-029: with no limit configured, lookups must still
-// be counted -- otherwise "launch with it off, set a number from real usage"
-// can never produce any usage to look at.
-func TestMeterLookupCountsWithNoLimitConfigured(t *testing.T) {
-	setupTestDB(t)
-	limits := quotaLimits(0, 0)
-	userID := "u-" + t.Name()
-	ctx := context.Background()
+func TestQuotaRecordsTheTimeAndTheUsersOffset(t *testing.T) {
+	events := &fakeLookupEvents{}
+	now := noon
+	m := newTestMeter(events, fakeSubscriptions{}, quotaLimits(200, 20000), &now)
 
-	for i := 0; i < 5; i++ {
-		if err := MeterLookup(ctx, userID, limits); err != nil {
-			t.Fatalf("lookup %d: an unset limit must not block, got %v", i, err)
-		}
+	_ = m.Charge(stats.WithOffset(context.Background(), 480), "u1")
+	_ = m.Charge(context.Background(), "u1")
+
+	if len(events.events) != 2 {
+		t.Fatalf("%d events, want 2", len(events.events))
 	}
-
-	if got := quotaRowCount(t, userID); got != 5 {
-		t.Fatalf("counted %d lookups, want 5", got)
+	if e := events.events[0]; e.UserID != "u1" || !e.At.Equal(noon) || e.TZOffsetMinutes != 480 {
+		t.Fatalf("event %+v, want u1 at noon with offset 480", e)
 	}
-}
-
-// Rejected requests keep counting, so the overflow shows how much demand the
-// limit is suppressing (ADR-029 Options C2).
-func TestMeterLookupKeepsCountingPastTheLimit(t *testing.T) {
-	setupTestDB(t)
-	limits := quotaLimits(1, 0)
-	userID := "u-" + t.Name()
-	ctx := context.Background()
-
-	if err := MeterLookup(ctx, userID, limits); err != nil {
-		t.Fatalf("lookup 1: %v", err)
-	}
-	for i := 2; i <= 4; i++ {
-		if err := MeterLookup(ctx, userID, limits); !errors.Is(err, ErrQuotaExceeded) {
-			t.Fatalf("lookup %d: got %v, want ErrQuotaExceeded", i, err)
-		}
-	}
-
-	if got := quotaRowCount(t, userID); got != 4 {
-		t.Fatalf("counted %d lookups, want 4 (rejected requests count too)", got)
+	if e := events.events[1]; e.TZOffsetMinutes != 0 {
+		t.Fatalf("event without a time zone header has offset %d, want 0", e.TZOffsetMinutes)
 	}
 }
 
-func TestMeterLookupAppliesTheSubscribedTier(t *testing.T) {
-	setupTestDB(t)
-	limits := quotaLimits(1, 100) // free tier deliberately tiny
-	userID := "u-" + t.Name()
-	ctx := context.Background()
+func TestQuotaGivesSubscribersTheirOwnCeiling(t *testing.T) {
+	events := &fakeLookupEvents{}
+	now := noon
+	subs := fakeSubscriptions{active: map[string]bool{"paid": true}}
+	m := newTestMeter(events, subs, quotaLimits(1, 3), &now)
 
-	if err := sqlitex.DB.Create(&sqlitex.Subscription{
-		UserId:           userID,
-		StripeCustomerId: "cus_1",
-		Status:           "active",
-		CreatedAt:        1,
-		UpdatedAt:        1,
-	}).Error; err != nil {
-		t.Fatalf("seed subscription: %v", err)
+	errs := chargeN(t, m, "paid", 4)
+
+	if errs[1] != nil || errs[2] != nil {
+		t.Fatalf("subscriber lookups 2-3: %v, want allowed past the free ceiling", errs[1:3])
 	}
-
-	for i := 0; i < 5; i++ {
-		if err := MeterLookup(ctx, userID, limits); err != nil {
-			t.Fatalf("lookup %d: subscriber is under their own tier, got %v", i, err)
-		}
-	}
-
-	// Subscribers are counted now too -- that's what makes per-user usage
-	// data exist for everyone (ADR-029 Decision 1).
-	if got := quotaRowCount(t, userID); got != 5 {
-		t.Fatalf("counted %d lookups for a subscriber, want 5", got)
+	if !errors.Is(errs[3], ErrQuotaExceeded) {
+		t.Fatalf("subscriber lookup 4: %v, want ErrQuotaExceeded at the subscribed ceiling", errs[3])
 	}
 }
 
-// A failing subscription lookup must not silently demote a paying user to
-// the free tier and 429 them (#18). Fail open to the highest tier -- but
-// keep counting (ADR-029 Options G2).
-func TestMeterLookupTreatsSubscriberCheckFailureAsSubscriber(t *testing.T) {
-	setupTestDB(t)
-	limits := quotaLimits(1, 100)
-	userID := "u-" + t.Name()
-	ctx := context.Background()
+// #18: an unreadable subscription must not demote a paying user to the free
+// tier, so it resolves to the subscribed ceiling.
+func TestQuotaTreatsAFailedSubscriptionCheckAsSubscribed(t *testing.T) {
+	events := &fakeLookupEvents{}
+	now := noon
+	subs := fakeSubscriptions{err: errors.New("db locked")}
+	m := newTestMeter(events, subs, quotaLimits(1, 20000), &now)
 
-	if err := sqlitex.DB.Migrator().DropTable(&sqlitex.Subscription{}); err != nil {
-		t.Fatalf("drop subscriptions table: %v", err)
-	}
-
-	for i := 0; i < 5; i++ {
-		if err := MeterLookup(ctx, userID, limits); err != nil {
-			t.Fatalf("lookup %d: subscriber-check failure should fail open, got %v", i, err)
-		}
-	}
-
-	if got := quotaRowCount(t, userID); got != 5 {
-		t.Fatalf("counted %d lookups, want 5 (fail-open still counts)", got)
-	}
-}
-
-// A failing quota store must not block a dictionary lookup (#17, ADR-018 E2).
-// Fail open: allow the lookup.
-func TestMeterLookupFailsOpenWhenQuotaStoreUnavailable(t *testing.T) {
-	setupTestDB(t)
-	limits := quotaLimits(1, 0)
-	userID := "u-" + t.Name()
-	ctx := context.Background()
-
-	if err := sqlitex.DB.Migrator().DropTable(&sqlitex.DictionaryLookupQuota{}); err != nil {
-		t.Fatalf("drop quota table: %v", err)
-	}
-
-	for i := 0; i < 3; i++ {
-		if err := MeterLookup(ctx, userID, limits); err != nil {
-			t.Fatalf("lookup %d: quota-store failure should fail open, got %v", i, err)
+	for i, err := range chargeN(t, m, "u1", 3) {
+		if err != nil {
+			t.Fatalf("lookup %d: %v, want allowed under the subscribed ceiling", i+1, err)
 		}
 	}
 }
 
-func TestMeterLookupPastDueSubscriberIsNotExempt(t *testing.T) {
-	setupTestDB(t)
-	limits := quotaLimits(1, 0)
-	userID := "u-" + t.Name()
-	ctx := context.Background()
-
-	if err := sqlitex.DB.Create(&sqlitex.Subscription{
-		UserId:           userID,
-		StripeCustomerId: "cus_2",
-		Status:           "past_due",
-		CreatedAt:        1,
-		UpdatedAt:        1,
-	}).Error; err != nil {
-		t.Fatalf("seed subscription: %v", err)
-	}
-
-	if err := MeterLookup(ctx, userID, limits); err != nil {
-		t.Fatalf("lookup 1: %v", err)
-	}
-	if err := MeterLookup(ctx, userID, limits); !errors.Is(err, ErrQuotaExceeded) {
-		t.Fatalf("lookup 2: got %v, want ErrQuotaExceeded (past_due is not active)", err)
+// #17/#18, ADR-029 E2: a store failure never costs a user their definition.
+func TestQuotaFailsOpenWhenTheEventStoreFails(t *testing.T) {
+	now := noon
+	for name, events := range map[string]*fakeLookupEvents{
+		"count fails":  {countErr: errors.New("db locked")},
+		"insert fails": {addErr: errors.New("db locked")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := newTestMeter(events, fakeSubscriptions{}, quotaLimits(1, 20000), &now)
+			for i, err := range chargeN(t, m, "u1", 3) {
+				if err != nil {
+					t.Fatalf("lookup %d: %v, want allowed", i+1, err)
+				}
+			}
+		})
 	}
 }
 
-// The pre-ADR-029 key keeps working as the free tier for one release.
-func TestMeterLookupFallsBackToTheSupersededQuotaKey(t *testing.T) {
-	setupTestDB(t)
-	limits := config.StripeQuota{DictionaryLookupDaily: 1}
+// Fail-open is for a store that can't answer, not for a user already over:
+// once the count says over, a failed event write still answers 429.
+func TestQuotaStillRejectsAnOverLimitLookupWhenTheEventWriteFails(t *testing.T) {
+	now := noon
+	events := &fakeLookupEvents{events: []LookupEvent{
+		{UserID: "u1", At: noon.Add(-time.Hour), Outcome: OutcomeAllowed},
+	}}
+	m := newTestMeter(events, fakeSubscriptions{}, quotaLimits(1, 20000), &now)
+	events.addErr = errors.New("db locked")
 
-	userID := "u-" + t.Name()
-	ctx := context.Background()
-
-	if err := MeterLookup(ctx, userID, limits); err != nil {
-		t.Fatalf("lookup 1: %v", err)
+	if err := m.Charge(context.Background(), "u1"); !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("got %v, want ErrQuotaExceeded", err)
 	}
-	if err := MeterLookup(ctx, userID, limits); !errors.Is(err, ErrQuotaExceeded) {
-		t.Fatalf("lookup 2: got %v, want ErrQuotaExceeded from the superseded key", err)
+}
+
+func TestQuotaCountsEachUserApart(t *testing.T) {
+	events := &fakeLookupEvents{}
+	now := noon
+	m := newTestMeter(events, fakeSubscriptions{}, quotaLimits(1, 20000), &now)
+
+	if err := m.Charge(context.Background(), "u1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Charge(context.Background(), "u2"); err != nil {
+		t.Fatalf("another user's first lookup: %v, want allowed", err)
 	}
 }

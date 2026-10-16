@@ -13,6 +13,7 @@ import {
   isWordHighlighted,
   mockBackendFetch,
   waitForContentScript,
+  wordLookupPosts,
 } from './helpers'
 
 // Covers TASK-SPEC-enx-chrome-word-popup-react.md §4.1 (viewport-edge
@@ -364,5 +365,34 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
 
     expect(consoleIssues, consoleIssues.join('\n')).toHaveLength(0)
     expect(unmountLogCount).toBe(WARMUP + CYCLES)
+  })
+})
+
+// ADR-059 Decision 3: the lookup GET only reads the query count; the click
+// adds one with a single POST, and the popover shows the new count without
+// waiting for it.
+test.describe('Word popup - query count', () => {
+  test.skip(!loginAvailable, LOGIN_SKIP_REASON)
+
+  test('a click shows one more lookup at once and records it with one POST', async ({
+    context,
+    page,
+    extensionId,
+    signedIn: _signedIn,
+  }) => {
+    await mockBackendFetch(context, {
+      wordData: { Id: 'w-stub', LoadCount: 3, AlreadyAcquainted: 0 },
+    })
+    await page.goto('/test-page.html', { waitUntil: 'domcontentloaded' })
+    await enableLearningMode(page, extensionId)
+    await waitForContentScript(page)
+
+    const popup = page.locator('#enx-anchored-overlay')
+    await clickHighlightedWord(page, 0)
+    await expect(popup.getByText('Looked up 4 times')).toBeAttached()
+
+    await expect
+      .poll(() => wordLookupPosts(context))
+      .toEqual([{ wordId: 'w-stub' }])
   })
 })

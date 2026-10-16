@@ -176,13 +176,19 @@ func InitWithLogLevel(dbPath, level string) {
 	// Auto-migrate database schema
 	zapLog.Info("running database auto-migration...")
 	err = DB.AutoMigrate(&User{}, &Word{}, &UserDict{}, &Session{}, &SyncState{},
-		&Subscription{}, &CreditAccount{}, &CreditTransaction{}, &DictionaryLookupQuota{},
+		&Subscription{}, &CreditAccount{}, &CreditTransaction{}, &LookupEvent{},
 		&ReaderDocument{}, &DailyStat{}, &StatsIngestLog{}, &PageReport{}, &SavedPage{},
 		&UserPreference{})
 	if err != nil {
 		zapLog.Errorf("failed to auto-migrate database: %v", err)
 	} else {
 		zapLog.Info("database auto-migration completed successfully")
+	}
+
+	// ADR-059 Decision 5: lookup_events replaced the per-day quota counter.
+	// Pre-launch, so its rows are dropped, not migrated.
+	if err := DB.Migrator().DropTable("dictionary_lookup_quota"); err != nil {
+		zapLog.Errorf("failed to drop dictionary_lookup_quota: %v", err)
 	}
 
 	// One-time data migration: existing users (created before email verification was added)

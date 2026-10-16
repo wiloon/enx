@@ -4,88 +4,117 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"sync"
 	"time"
 
-	"enx-api/billing/quota"
+	"enx-api/config"
 	"enx-api/ecdict"
 	"enx-api/stats"
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
 
 	"github.com/gin-gonic/gin"
-
-	"enx-api/config"
 )
 
 // ErrEcdictUnavailable is returned when ECDICT is not configured.
 var ErrEcdictUnavailable = errors.New("ecdict unavailable")
 
-// ErrQuotaExceeded is quota.ErrQuotaExceeded, re-exported so callers only
-// need to import this package (matches ErrEcdictUnavailable's pattern).
-var ErrQuotaExceeded = quota.ErrQuotaExceeded
+// ErrQuotaExceeded is returned when a user has used up today's dictionary
+// lookups. Callers map it to HTTP 429.
+var ErrQuotaExceeded = errors.New("dictionary: daily lookup limit exceeded")
 
-// QuotaMeter is the production Meter: MeterLookup's daily quota plus the
-// learning-statistics count, under the stripe.quota.* ceilings.
+// LookupOutcome is what the daily quota decided for one lookup request.
+type LookupOutcome string
+
+const (
+	OutcomeAllowed  LookupOutcome = "allowed"
+	OutcomeRejected LookupOutcome = "rejected" // answered with a 429
+)
+
+// LookupEvent is one lookup request (ADR-059 Decision 1): who, when, the
+// caller's UTC offset at the time, and the quota's verdict. Never which word
+// or which page.
+type LookupEvent struct {
+	UserID          string
+	At              time.Time
+	TZOffsetMinutes int
+	Outcome         LookupOutcome
+}
+
+// LookupEventStore is the lookup event log: the lookup_events table.
+type LookupEventStore interface {
+	// CountSince counts userID's events at or after since, rejected ones
+	// included.
+	CountSince(ctx context.Context, userID string, since time.Time) (int64, error)
+	Add(ctx context.Context, e LookupEvent) error
+}
+
+// Subscriptions says whether a user is on the subscribed quota tier.
+type Subscriptions interface {
+	IsActiveSubscriber(ctx context.Context, userID string) (bool, error)
+}
+
+// QuotaMeter is the production Meter. Every charge writes one lookup event,
+// and the daily quota is the count of the user's events since UTC midnight
+// (ADR-059 Decision 2, ADR-029).
 type QuotaMeter struct {
-	Limits config.StripeQuota
+	events LookupEventStore
+	subs   Subscriptions
+	limits config.StripeQuota
+	now    func() time.Time
 }
 
-func (m QuotaMeter) Charge(ctx context.Context, userID string) error {
-	return MeterLookup(ctx, userID, m.Limits)
+func NewQuotaMeter(events LookupEventStore, subs Subscriptions, limits config.StripeQuota, now func() time.Time) *QuotaMeter {
+	return &QuotaMeter{events: events, subs: subs, limits: limits, now: now}
 }
 
-// MeterLookup charges one dictionary lookup against the caller's daily quota
-// (ADR-018 B2): every resolved lookup counts, whether it came from the local
-// words cache or from ECDICT, so callers that serve a word from cache still
-// call this.
+// Charge counts userID's events today (UTC), decides this request's outcome
+// from that count, and records the request as one event. Rejected requests
+// are recorded and counted too (ADR-029 C2): the quota counts requests.
 //
-// Everyone is metered; subscribers just get a much higher ceiling (ADR-029
-// Decision 1). Counting and blocking are separate steps: the count always
-// happens, the comparison only when a limit is configured, so the service
-// can run with counting on and blocking off until there is enough usage data
-// to pick real numbers.
+// Count and insert are two statements with no transaction, so two
+// concurrent requests can both see a count under the limit and both be
+// allowed. One or two lookups over is acceptable for a cap on a
+// near-zero-cost operation, and it keeps the write lock off the COUNT.
 //
-// The quota is a usage cap on a near-zero-cost operation, not a paywall, so
-// it fails open (E2): a quota-store hiccup logs a warning and returns nil
-// (allow) -- a paying user is never 429'd by a DB blip (#18), and a real
-// definition is never hidden behind "quota error" (#17). Only a genuine
-// ErrQuotaExceeded is returned.
-func MeterLookup(ctx context.Context, userID string, limits config.StripeQuota) error {
-	limit := resolveLookupLimit(userID, limits)
+// It fails open (ADR-029 E2, #17, #18): when the count can't be read, it
+// logs a warning and allows the lookup. A failed event write is only
+// logged; the outcome still follows the count, so a user who is over the
+// limit gets ErrQuotaExceeded either way. That is the only error returned.
+func (m *QuotaMeter) Charge(ctx context.Context, userID string) error {
+	now := m.now().UTC()
+	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 
-	now := time.Now()
-	count, err := quota.IncrementLookup(ctx, userID, now)
+	count, err := m.events.CountSince(ctx, userID, midnight)
 	if err != nil {
-		logger.Warnf("dictionary: quota count failed for user %s, allowing lookup: %v", userID, err)
+		logger.Warnf("dictionary: lookup quota count failed for user %s, allowing lookup: %v", userID, err)
 		return nil
 	}
-	if limit > 0 && count > limit {
-		return ErrQuotaExceeded
+	outcome := OutcomeAllowed
+	if count+1 > m.limit(ctx, userID) {
+		outcome = OutcomeRejected
 	}
 
-	// Also file this lookup under the user's own local day, for the learning
-	// statistics (ADR-029 Decision 7a). This is the same event the quota
-	// counter just recorded, deliberately counted twice under two different
-	// definitions of "a day" and of "a lookup":
-	//
-	//   dictionary_lookup_quota — UTC day, counts REQUESTS (rejected ones
-	//     too). Adversarial view: what is this account consuming?
-	//   daily_stats            — the user's local day, counts SERVED
-	//     lookups. Learning view: how much did I actually learn today?
-	//
-	// Their numbers are expected not to match (ADR-029 Decision 6). This one
-	// is best-effort: statistics must never cost a user their definition.
-	if err := stats.AddLookup(ctx, userID, stats.LocalDateFromContext(ctx, now), stats.OffsetFromContext(ctx)); err != nil {
-		logger.Warnf("dictionary: stats lookup count failed for user %s: %v", userID, err)
+	err = m.events.Add(ctx, LookupEvent{
+		UserID:          userID,
+		At:              now,
+		TZOffsetMinutes: stats.OffsetFromContext(ctx),
+		Outcome:         outcome,
+	})
+	if err != nil {
+		// The count already answered: a lost event only makes the count one
+		// short, it never lets an over-limit lookup through.
+		logger.Warnf("dictionary: lookup event write failed for user %s (outcome %s): %v", userID, outcome, err)
+	}
+	if outcome == OutcomeRejected {
+		return ErrQuotaExceeded
 	}
 	return nil
 }
 
-// resolveLookupLimit returns userID's daily lookup ceiling. 0 means "count,
-// but never block" -- the state the service launches in (ADR-029 Decision 4).
-func resolveLookupLimit(userID string, limits config.StripeQuota) int64 {
-	subscribed, err := isActiveSubscriber(userID)
+// limit is userID's daily lookup ceiling. Both tiers have one (ADR-059
+// Decision 6), and config validation keeps them positive.
+func (m *QuotaMeter) limit(ctx context.Context, userID string) int64 {
+	subscribed, err := m.subs.IsActiveSubscriber(ctx, userID)
 	if err != nil {
 		// #18: a DB blip must never downgrade a paying user into a 429, so
 		// an unreadable subscription resolves to the highest tier.
@@ -93,19 +122,10 @@ func resolveLookupLimit(userID string, limits config.StripeQuota) int64 {
 		subscribed = true
 	}
 	if subscribed {
-		return limits.DictionaryLookupDailySubscribed
+		return m.limits.DictionaryLookupDailySubscribed
 	}
-	// The pre-ADR-029 single-tier key is honoured for one release.
-	limit, legacy := limits.FreeDailyLookupLimit()
-	if legacy {
-		legacyQuotaKeyWarning.Do(func() {
-			logger.Warnf("config: stripe.quota.dictionary-lookup-daily is deprecated, use stripe.quota.dictionary-lookup-daily-free")
-		})
-	}
-	return limit
+	return m.limits.DictionaryLookupDailyFree
 }
-
-var legacyQuotaKeyWarning sync.Once
 
 func isActiveSubscriber(userID string) (bool, error) {
 	var count int64

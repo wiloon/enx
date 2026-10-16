@@ -28,7 +28,7 @@ type fakeReviewLog struct {
 	calls             int
 }
 
-func (f *fakeReviewLog) RecordWordLookup(string, string) (int, int, error) {
+func (f *fakeReviewLog) ReviewState(string, string) (int, int, error) {
 	f.calls++
 	return f.count, f.acquainted, f.err
 }
@@ -61,7 +61,7 @@ func TestHandlerMapsResolverErrorsToStatus(t *testing.T) {
 		reviews := &fakeReviewLog{}
 		code, _ := serve(t, NewHandler(fakeResolver{err: tc.err}, reviews), "run")
 		if code != tc.want || reviews.calls != 0 {
-			t.Errorf("%v: got %d with %d review writes, want %d and none", tc.err, code, reviews.calls, tc.want)
+			t.Errorf("%v: got %d with %d review reads, want %d and none", tc.err, code, reviews.calls, tc.want)
 		}
 	}
 }
@@ -72,7 +72,7 @@ func TestHandlerReportsReviewCounts(t *testing.T) {
 
 	code, resp := serve(t, NewHandler(fakeResolver{res: res}, reviews), "run")
 	if code != http.StatusOK || resp.Id != "w1" || resp.Chinese != "v. 跑" || resp.LoadCount != 4 || reviews.calls != 1 {
-		t.Fatalf("got %d %+v with %d review writes, want 200, w1, LoadCount 4, one write", code, resp, reviews.calls)
+		t.Fatalf("got %d %+v with %d review reads, want 200, w1, LoadCount 4, one read", code, resp, reviews.calls)
 	}
 }
 
@@ -82,11 +82,11 @@ func TestHandlerSkipsReviewLogOnMiss(t *testing.T) {
 
 	code, resp := serve(t, NewHandler(fakeResolver{res: res}, reviews), "zzxqv")
 	if code != http.StatusOK || resp.Id != "" || reviews.calls != 0 {
-		t.Fatalf("got %d %+v with %d review writes, want 200, no id, no writes", code, resp, reviews.calls)
+		t.Fatalf("got %d %+v with %d review reads, want 200, no id, no reads", code, resp, reviews.calls)
 	}
 }
 
-// A failed review write still answers with the definition.
+// A failed review read still answers with the definition.
 func TestHandlerAnswersWhenReviewLogFails(t *testing.T) {
 	reviews := &fakeReviewLog{err: errors.New("locked")}
 	res := dictionary.Result{ID: "w1", English: "run", Chinese: "v. 跑", Source: dictionary.SourceLocal}

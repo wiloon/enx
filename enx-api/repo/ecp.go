@@ -137,17 +137,30 @@ func GetUserWordQueryCount(wordId, userId string) (queryCount int, alreadyAcquai
 	return userDict.QueryCount, userDict.AlreadyAcquainted, true
 }
 
-// ReviewLog exposes RecordWordLookup as the translate handler's ReviewLog.
+// WordExists reports whether wordId is a words row that is not deleted.
+func WordExists(wordId string) (bool, error) {
+	var n int64
+	err := sqlitex.DB.Model(&Word{}).Where("id = ? AND deleted_at IS NULL", wordId).Count(&n).Error
+	return n > 0, err
+}
+
+// ReviewLog is the translate handler's read-only view of a user's review
+// state for a word.
 type ReviewLog struct{}
 
-func (ReviewLog) RecordWordLookup(userId, wordId string) (int, int, error) {
-	return RecordWordLookup(userId, wordId)
+// ReviewState is userId's current query count and known flag for wordId;
+// both are 0 when the user has never looked it up or marked it.
+func (ReviewLog) ReviewState(userId, wordId string) (int, int, error) {
+	qc, acquainted, _ := GetUserWordQueryCount(wordId, userId)
+	return qc, acquainted, nil
 }
 
 // RecordWordLookup counts one lookup of wordId by userId for the review
 // system: the first lookup starts query_count at 1, a repeat adds 1, and
-// looking up a word the user had marked as known puts it back into review.
-// It is a single statement, so concurrent lookups can't lose an increment.
+// looking up a word the user had marked as known puts it back into review
+// without resetting the count. It is a single statement, so concurrent
+// lookups can't lose an increment. POST /api/me/word-lookups is its only
+// caller (ADR-059 Decision 3).
 func RecordWordLookup(userId, wordId string) (queryCount int, alreadyAcquainted int, err error) {
 	now := time.Now().UnixMilli()
 	var row UserDict

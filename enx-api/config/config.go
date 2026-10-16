@@ -242,27 +242,12 @@ type TokenPrice struct {
 	Divisor   int64 `mapstructure:"divisor"`
 }
 
-// StripeQuota is the daily dictionary lookup ceiling per tier (ADR-029).
-// 0 means "count, but never block": it fails open, unlike costs and credits.
+// StripeQuota is the daily dictionary lookup ceiling per tier (ADR-029,
+// ADR-059 Decision 6). Both must be positive: there is no "never block"
+// value any more.
 type StripeQuota struct {
 	DictionaryLookupDailyFree       int64 `mapstructure:"dictionary-lookup-daily-free"`
 	DictionaryLookupDailySubscribed int64 `mapstructure:"dictionary-lookup-daily-subscribed"`
-	// DictionaryLookupDaily is the superseded single-tier key; read it
-	// through FreeDailyLookupLimit.
-	DictionaryLookupDaily int64 `mapstructure:"dictionary-lookup-daily"`
-}
-
-// FreeDailyLookupLimit is the free tier's ceiling. It falls back to the
-// superseded single-tier key when -free is unset; legacy reports that it did,
-// so the caller can warn about the deprecated key.
-func (q StripeQuota) FreeDailyLookupLimit() (limit int64, legacy bool) {
-	if q.DictionaryLookupDailyFree > 0 {
-		return q.DictionaryLookupDailyFree, false
-	}
-	if q.DictionaryLookupDaily > 0 {
-		return q.DictionaryLookupDaily, true
-	}
-	return 0, false
 }
 
 // AIWord tunes the AI word fallback (ADR-045). The per-user ceilings use
@@ -289,7 +274,22 @@ type Trial struct {
 }
 
 type Stats struct {
-	Ingest StatsIngest `mapstructure:"ingest"`
+	Ingest       StatsIngest       `mapstructure:"ingest"`
+	LookupEvents StatsLookupEvents `mapstructure:"lookup-events"`
+}
+
+// Bounds of stats.lookup-events.retention-days (ADR-059 Decision 4). 31:
+// WAU and MAU look back 30 days. 100: the privacy policy promises lookup
+// events are kept at most 100 days -- change the policy before this.
+const (
+	MinLookupEventRetentionDays = 31
+	MaxLookupEventRetentionDays = 100
+)
+
+// StatsLookupEvents is how long lookup events are kept before only their
+// daily rollup remains.
+type StatsLookupEvents struct {
+	RetentionDays int `mapstructure:"retention-days"`
 }
 
 // StatsIngest guards reading statistics ingest (ADR-028 Decision 9).
@@ -386,10 +386,10 @@ func splitOnWhitespace(from, to reflect.Type, data any) (any, error) {
 // Validate reports every malformed value at once. Durations must parse (the
 // decoder already rejects one that does not); negative numbers and durations
 // are never meaningful. The four keys whose 0 used to fall back silently to a
-// default must be positive. Intentional zeros stay valid: Stripe credits and
-// costs at 0 mean "not configured, fail closed", Stripe quotas at 0 mean
-// "count but never block", and the AI word and trial ceilings at 0 mean "no
-// ceiling".
+// default must be positive, and so must both lookup quota ceilings (ADR-059
+// Decision 6). Intentional zeros stay valid: Stripe credits and costs at 0
+// mean "not configured, fail closed", and the AI word and trial ceilings at
+// 0 mean "no ceiling".
 func (c *Config) Validate() error {
 	var errs []error
 	positive := func(key string, ok bool) {
@@ -429,9 +429,13 @@ func (c *Config) Validate() error {
 		notNegative("stripe.costs."+name+".divisor", p.Divisor >= 0)
 	}
 	q := c.Stripe.Quota
-	notNegative("stripe.quota.dictionary-lookup-daily-free", q.DictionaryLookupDailyFree >= 0)
-	notNegative("stripe.quota.dictionary-lookup-daily-subscribed", q.DictionaryLookupDailySubscribed >= 0)
-	notNegative("stripe.quota.dictionary-lookup-daily", q.DictionaryLookupDaily >= 0)
+	positive("stripe.quota.dictionary-lookup-daily-free", q.DictionaryLookupDailyFree > 0)
+	positive("stripe.quota.dictionary-lookup-daily-subscribed", q.DictionaryLookupDailySubscribed > 0)
+
+	if d := c.Stats.LookupEvents.RetentionDays; d < MinLookupEventRetentionDays || d > MaxLookupEventRetentionDays {
+		errs = append(errs, fmt.Errorf("config: stats.lookup-events.retention-days %d is outside %d-%d",
+			d, MinLookupEventRetentionDays, MaxLookupEventRetentionDays))
+	}
 
 	w := c.AIWord
 	if w.MinQuality < 0 || w.MinQuality > 10 {
@@ -514,13 +518,10 @@ func setDefaults(v *viper.Viper) {
 		v.SetDefault("stripe.costs."+feature+".weight-out", 0)
 		v.SetDefault("stripe.costs."+feature+".divisor", 0)
 	}
-	// Daily dictionary lookup ceilings per tier (ADR-029). 0 = count but
-	// never block, the opposite fail-direction from costs/credits -- see
-	// config.toml's [stripe.quota] comment.
-	v.SetDefault("stripe.quota.dictionary-lookup-daily-free", 0)
-	v.SetDefault("stripe.quota.dictionary-lookup-daily-subscribed", 0)
-	// Superseded single-tier key, read as a fallback for -free.
-	v.SetDefault("stripe.quota.dictionary-lookup-daily", 0)
+	// Daily dictionary lookup ceilings per tier (ADR-029, ADR-059 Decision
+	// 6): free is the product limit, subscribed a backstop against scripts.
+	v.SetDefault("stripe.quota.dictionary-lookup-daily-free", 200)
+	v.SetDefault("stripe.quota.dictionary-lookup-daily-subscribed", 20000)
 
 	// AI word fallback tuning (ADR-045). Starting guesses, to be tuned from
 	// usage: a definition is cached only at or above min-quality (0-10), and
@@ -543,6 +544,9 @@ func setDefaults(v *viper.Viper) {
 	// row is kept, which only needs to outlive the client's retry window.
 	v.SetDefault("stats.ingest.max-words-per-report", 50000)
 	v.SetDefault("stats.ingest.log-ttl-days", 7)
+	// Lookup events are kept this many days, then only their daily rollup
+	// (ADR-059 Decision 4). Validated against 31-100.
+	v.SetDefault("stats.lookup-events.retention-days", 90)
 
 	// Throttle for last_login_time/updated_at writes on every authenticated
 	// request (see docs/PERF_FIRST_QUERY_LATENCY.md) — only re-write when the
@@ -657,8 +661,9 @@ var envBindings = map[string]string{
 	"credits.trial.calls-per-minute": "CREDITS_TRIAL_CALLS_PER_MINUTE",
 	"credits.trial.calls-per-day":    "CREDITS_TRIAL_CALLS_PER_DAY",
 
-	"stats.ingest.max-words-per-report": "STATS_INGEST_MAX_WORDS_PER_REPORT",
-	"stats.ingest.log-ttl-days":         "STATS_INGEST_LOG_TTL_DAYS",
+	"stats.ingest.max-words-per-report":  "STATS_INGEST_MAX_WORDS_PER_REPORT",
+	"stats.ingest.log-ttl-days":          "STATS_INGEST_LOG_TTL_DAYS",
+	"stats.lookup-events.retention-days": "STATS_LOOKUP_EVENTS_RETENTION_DAYS",
 
 	"user.last-login-update-interval": "USER_LAST_LOGIN_UPDATE_INTERVAL",
 }

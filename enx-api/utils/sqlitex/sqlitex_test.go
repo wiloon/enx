@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/glebarez/sqlite"
+	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
@@ -20,17 +22,17 @@ func TestTableNames(t *testing.T) {
 		{name: "Subscription", table: (Subscription{}).TableName()},
 		{name: "CreditAccount", table: (CreditAccount{}).TableName()},
 		{name: "CreditTransaction", table: (CreditTransaction{}).TableName()},
-		{name: "DictionaryLookupQuota", table: (DictionaryLookupQuota{}).TableName()},
+		{name: "LookupEvent", table: (LookupEvent{}).TableName()},
 	}
 	want := map[string]string{
-		"Word":                  "words",
-		"UserDict":              "user_dicts",
-		"Session":               "sessions",
-		"SyncState":             "sync_state",
-		"Subscription":          "subscriptions",
-		"CreditAccount":         "credit_accounts",
-		"CreditTransaction":     "credit_transactions",
-		"DictionaryLookupQuota": "dictionary_lookup_quota",
+		"Word":              "words",
+		"UserDict":          "user_dicts",
+		"Session":           "sessions",
+		"SyncState":         "sync_state",
+		"Subscription":      "subscriptions",
+		"CreditAccount":     "credit_accounts",
+		"CreditTransaction": "credit_transactions",
+		"LookupEvent":       "lookup_events",
 	}
 	for _, c := range cases {
 		if c.table != want[c.name] {
@@ -50,7 +52,7 @@ func TestInitCreatesDatabaseAndMigratesSchema(t *testing.T) {
 
 	for _, table := range []string{
 		"users", "words", "user_dicts", "sessions", "sync_state",
-		"subscriptions", "credit_accounts", "credit_transactions", "dictionary_lookup_quota",
+		"subscriptions", "credit_accounts", "credit_transactions", "lookup_events",
 	} {
 		if !DB.Migrator().HasTable(table) {
 			t.Errorf("expected AutoMigrate to create table %q", table)
@@ -59,6 +61,28 @@ func TestInitCreatesDatabaseAndMigratesSchema(t *testing.T) {
 
 	if _, err := os.Stat(dbPath); err != nil {
 		t.Errorf("expected the db file to exist at %s: %v", dbPath, err)
+	}
+}
+
+// ADR-059 Decision 5: lookup_events replaced dictionary_lookup_quota, and an
+// existing database's quota table is dropped, not migrated.
+func TestInitDropsTheOldLookupQuotaTable(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "enx-sqlitex-drop-quota-test.db")
+	old, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := old.Exec(`CREATE TABLE dictionary_lookup_quota (user_id TEXT, date TEXT, count INTEGER)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if sqlDB, err := old.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
+
+	Init(dbPath)
+
+	if DB.Migrator().HasTable("dictionary_lookup_quota") {
+		t.Fatal("dictionary_lookup_quota still exists after Init")
 	}
 }
 

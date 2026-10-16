@@ -529,6 +529,67 @@ describe('background onMessage / markAcquainted', () => {
   })
 })
 
+// ADR-059 Decision 3: the lookup GET only reads, so it may retry; the POST
+// that adds to the query count is not idempotent and never retries.
+describe('background onMessage / lookups and the query count', () => {
+  beforeEach(() => {
+    jest.resetAllMocks()
+    jest.useFakeTimers()
+    setClerkSession('clerk-session-jwt')
+    ;(getApiBaseUrl as jest.Mock).mockResolvedValue('http://localhost:8090')
+    ;(global.fetch as jest.Mock) = jest.fn()
+  })
+  afterEach(() => jest.useRealTimers())
+
+  const send = async (message: object) => {
+    const pending = new Promise(resolve => {
+      onMessageListener(message, {}, resolve)
+    })
+    await jest.runAllTimersAsync()
+    return pending
+  }
+
+  it('retries a lookup whose reply was lost', async () => {
+    const ecp = { Id: 'w1', English: 'cat', Chinese: 'n. 猫', LoadCount: 2 }
+    ;(global.fetch as jest.Mock)
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(jsonResponse(200, ecp))
+
+    expect(await send({ type: 'getOneWord', word: 'cat' })).toEqual({
+      success: true,
+      ecp,
+    })
+    expect(global.fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('records a lookup with POST /api/me/word-lookups and the word id', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(200, { queryCount: 3, alreadyAcquainted: 0 })
+    )
+
+    await send({ type: 'recordWordLookup', wordId: 'w1' })
+
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toBe('http://localhost:8090/api/me/word-lookups')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body)).toEqual({ wordId: 'w1' })
+  })
+
+  it.each([
+    [
+      'a network failure',
+      () => Promise.reject(new TypeError('Failed to fetch')),
+    ],
+    ['a 500', () => Promise.resolve(jsonResponse(500, {}))],
+  ])('does not retry recording a lookup after %s', async (_name, reply) => {
+    ;(global.fetch as jest.Mock).mockImplementation(reply)
+
+    await send({ type: 'recordWordLookup', wordId: 'w1' })
+
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('background onMessage / validateSession', () => {
   const listener = onMessageListener
 

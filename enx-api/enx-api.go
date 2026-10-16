@@ -78,7 +78,7 @@ func main() {
 	dictsample.SetEnabled(cfg.Ecdict.Sampling)
 
 	go runReaderDocumentCleanup()
-	go runStatsIngestLogCleanup(cfg.Stats.Ingest.LogTTL())
+	go runStatsIngestLogCleanup(cfg.Stats.Ingest.LogTTL(), cfg.Stats.LookupEvents.RetentionDays)
 	go runPageReportCleanup()
 
 	go serveMetrics(cfg.Metrics.Addr, m)
@@ -197,18 +197,26 @@ func runReaderDocumentCleanup() {
 }
 
 // runStatsIngestLogCleanup periodically deletes expired stats deduplication
-// rows (ADR-028 Decision 5). Only the dedup log is purged -- daily_stats is
-// the user's own history and is never deleted. Mirrors the reader cleanup:
-// once on start so a restart doesn't leave a backlog, then hourly.
-func runStatsIngestLogCleanup(ttl time.Duration) {
+// rows (ADR-028 Decision 5), and rolls lookup events up into
+// daily_stats.word_lookups before deleting the ones past their retention
+// (ADR-059 Decision 4). daily_stats is the user's own history and is never
+// deleted. Mirrors the reader cleanup: once on start so a restart doesn't
+// leave a backlog, then hourly; the rollup overwrites, so rerunning it is
+// harmless.
+func runStatsIngestLogCleanup(ttl time.Duration, lookupEventRetentionDays int) {
 	purge := func() {
 		deleted, err := stats.PurgeIngestLog(context.Background(), time.Now(), ttl)
 		if err != nil {
 			logger.Errorf("stats: purge ingest log failed: %v", err)
-			return
-		}
-		if deleted > 0 {
+		} else if deleted > 0 {
 			logger.Infof("stats: purged %d expired ingest-log row(s)", deleted)
+		}
+
+		deleted, err = stats.RollupLookupEvents(context.Background(), time.Now(), lookupEventRetentionDays)
+		if err != nil {
+			logger.Errorf("stats: lookup event rollup failed: %v", err)
+		} else if deleted > 0 {
+			logger.Infof("stats: deleted %d lookup event(s) past retention", deleted)
 		}
 	}
 
@@ -345,7 +353,8 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 		CallsPerDay:    cfg.Credits.Trial.CallsPerDay,
 	}, nil))
 
-	dictionaryService := dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, dictionary.QuotaMeter{Limits: cfg.Stripe.Quota}, entitlements)
+	lookupQuota := dictionary.NewQuotaMeter(adapters.LookupEvents{}, entadapters.Billing{}, cfg.Stripe.Quota, time.Now)
+	dictionaryService := dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, lookupQuota, entitlements)
 	preferencesService := preferences.NewService(prefadapters.Table{}, entitlements)
 
 	// The AI word fallback (ADR-045) is a second request after a lookup
@@ -447,8 +456,9 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	// these /api routes; nothing is registered twice at the root.
 	apiGroup := router.Group("/api")
 	apiGroup.Use(clerkAuth)
-	// Carries X-Enx-Tz-Offset down to dictionary.MeterLookup so a lookup is
-	// counted under the caller's own day (ADR-029 Decision 7a).
+	// Carries X-Enx-Tz-Offset down to dictionary.QuotaMeter, which stores it
+	// on each lookup event so the event's local day is known (ADR-059
+	// Decision 1).
 	apiGroup.Use(stats.TZOffsetMiddleware())
 	{
 		// get words query count by paragraph
@@ -487,6 +497,10 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	// Mark Known (#133): idempotent, so the extension can retry it.
 	apiGroup.PUT("/me/words/:english/known", handlers.SetWordKnown)
 	apiGroup.DELETE("/me/words/:english/known", handlers.ClearWordKnown)
+	// One click-to-lookup's query count +1 (ADR-059 Decision 3). By word id,
+	// so an inflection counts against the headword the lookup resolved to.
+	// Not metered, not idempotent: the extension never retries it.
+	apiGroup.POST("/me/word-lookups", handlers.RecordWordLookup)
 
 	// Billing (Stripe) — requires authentication (Clerk session JWT).
 	apiGroup.POST("/billing/checkout/subscription", billingHandler.CheckoutSubscription)

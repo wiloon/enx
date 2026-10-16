@@ -52,6 +52,7 @@ function setup(overrides: Partial<AiLookupDeps> = {}) {
     isCurrent: jest.fn(() => true),
     onDefined: jest.fn(),
     onSessionExpired: jest.fn(),
+    recordLookup: jest.fn(),
     ...overrides,
   } satisfies AiLookupDeps
   return { store, deps }
@@ -126,7 +127,46 @@ describe('runAiLookup', () => {
       Origin: 'ai',
     })
     expect(store.get(aiLookupAtom)).toEqual({ status: 'found' })
-    expect(deps.onDefined).toHaveBeenCalledWith(defined)
+    expect(deps.onDefined).toHaveBeenCalledWith(
+      expect.objectContaining({ Chinese: 'n. 很有魅力的人', Origin: 'ai' })
+    )
+  })
+
+  // ADR-059 Decision 3: the AI lookup is a click-to-lookup like any other,
+  // counted by the client's one POST, shown one lookup on at once.
+  it('records the lookup of a stored definition once and shows it counted', async () => {
+    lookup.mockResolvedValue({ kind: 'found', word: defined })
+    const { store, deps } = setup()
+
+    await runAiLookup('rizzler', { auto: false }, deps)
+
+    expect(deps.recordLookup).toHaveBeenCalledTimes(1)
+    expect(deps.recordLookup).toHaveBeenCalledWith('w1')
+    expect(store.get(currentWordAtom)).toMatchObject({ LoadCount: 1 })
+    expect(deps.onDefined).toHaveBeenCalledWith(
+      expect.objectContaining({ LoadCount: 1, AlreadyAcquainted: 0 })
+    )
+  })
+
+  it('records nothing for a definition that was not stored', async () => {
+    lookup.mockResolvedValue({
+      kind: 'found',
+      word: { ...defined, Id: undefined },
+    })
+    const { deps } = setup()
+
+    await runAiLookup('rizzler', { auto: false }, deps)
+
+    expect(deps.recordLookup).not.toHaveBeenCalled()
+  })
+
+  it('records nothing once the popup has moved on to another word', async () => {
+    lookup.mockResolvedValue({ kind: 'found', word: defined })
+    const { deps } = setup({ isCurrent: jest.fn(() => false) })
+
+    await runAiLookup('rizzler', { auto: false }, deps)
+
+    expect(deps.recordLookup).not.toHaveBeenCalled()
   })
 
   it('shows "loading" while the request is out', async () => {

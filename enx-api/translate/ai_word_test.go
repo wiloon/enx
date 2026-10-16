@@ -29,10 +29,11 @@ type fakePolicy struct{ canUse, auto bool }
 
 func (p fakePolicy) Fallback(context.Context, string) (bool, bool) { return p.canUse, p.auto }
 
-type fakeReviews struct{ recorded []string }
+// fakeReviews answers every word's review state as 3 lookups, not known.
+type fakeReviews struct{ read []string }
 
-func (r *fakeReviews) RecordWordLookup(_, wordID string) (int, int, error) {
-	r.recorded = append(r.recorded, wordID)
+func (r *fakeReviews) ReviewState(_, wordID string) (int, int, error) {
+	r.read = append(r.read, wordID)
 	return 3, 0, nil
 }
 
@@ -59,7 +60,9 @@ func decode(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
 	return body
 }
 
-func TestAIWordReturnsTheDefinitionAndRecordsItInTheVocabulary(t *testing.T) {
+// The answer carries the word's current review state; the query count is
+// left to the client's POST /api/me/word-lookups (ADR-059 Decision 3).
+func TestAIWordReturnsTheDefinitionAndTheCurrentReviewState(t *testing.T) {
 	ai := &fakeAI{res: dictionary.Result{ID: "w1", English: "rizzler", Chinese: "n. 很有魅力的人", Source: dictionary.SourceAI, Origin: dictionary.OriginAI}}
 	reviews := &fakeReviews{}
 	h := NewHandler(nil, reviews).WithAI(ai, fakePolicy{})
@@ -74,8 +77,8 @@ func TestAIWordReturnsTheDefinitionAndRecordsItInTheVocabulary(t *testing.T) {
 	if body["found"] != true || word["Chinese"] != "n. 很有魅力的人" || word["Origin"] != "ai" || word["LoadCount"] != float64(3) {
 		t.Fatalf("body = %+v", body)
 	}
-	if len(reviews.recorded) != 1 || reviews.recorded[0] != "w1" {
-		t.Fatalf("review log = %v, want the word recorded", reviews.recorded)
+	if len(reviews.read) != 1 || reviews.read[0] != "w1" {
+		t.Fatalf("review state read for %v, want w1", reviews.read)
 	}
 	if len(ai.words) != 1 || ai.words[0] != "Rizzler" {
 		t.Fatalf("defined %v, want the word normalised the way a lookup does", ai.words)
@@ -83,8 +86,8 @@ func TestAIWordReturnsTheDefinitionAndRecordsItInTheVocabulary(t *testing.T) {
 }
 
 // A definition the AI was not confident enough to store has no row: it is
-// shown, but there is nothing to put in the vocabulary.
-func TestAIWordWithoutARowIsNotRecorded(t *testing.T) {
+// shown, but there is no review state to read.
+func TestAIWordWithoutARowHasNoReviewState(t *testing.T) {
 	ai := &fakeAI{res: dictionary.Result{English: "rizzler", Chinese: "n. 很有魅力的人", Source: dictionary.SourceAI, Origin: dictionary.OriginAI}}
 	reviews := &fakeReviews{}
 	h := NewHandler(nil, reviews).WithAI(ai, fakePolicy{})
@@ -94,8 +97,8 @@ func TestAIWordWithoutARowIsNotRecorded(t *testing.T) {
 	if body := decode(t, w); body["found"] != true {
 		t.Fatalf("body = %+v, want the definition shown", body)
 	}
-	if len(reviews.recorded) != 0 {
-		t.Fatalf("review log = %v, want nothing recorded for a word with no row", reviews.recorded)
+	if len(reviews.read) != 0 {
+		t.Fatalf("review state read for %v, want nothing for a word with no row", reviews.read)
 	}
 }
 

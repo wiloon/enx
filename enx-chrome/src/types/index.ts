@@ -3,6 +3,9 @@
 import type { LearningModeStatus } from '@/lib/learningModeStatus'
 
 export interface WordData {
+  // The words row id; absent on a miss, and on an AI definition that was not
+  // stored. Recording a lookup needs it (ADR-059 Decision 3).
+  Id?: string
   Key: string
   English: string
   Pronunciation: string
@@ -60,6 +63,7 @@ export interface ContentMessage {
     | 'getOneWord'
     | 'getWords'
     | 'markAcquainted'
+    | 'recordWordLookup'
     | 'enxRun'
     | 'login'
     | 'logout'
@@ -76,6 +80,8 @@ export interface ContentMessage {
     | 'learningModeStatus'
     | 'pinHintDismissed'
   word?: string
+  // Set on 'recordWordLookup': the words row id the lookup answered with.
+  wordId?: string
   words?: string
   paragraph?: string
   userId?: number
@@ -94,7 +100,8 @@ export interface ContentMessage {
   // sentence's words, passed through to PendingSentenceContext (ADR-053).
   wordStates?: Record<string, WordData>
   // Set on 'recordPageWordLookup': the already-fetched dictionary result to
-  // mirror into the Side Panel (ADR-006), avoiding a second getOneWord call.
+  // mirror into the Side Panel (ADR-006). A mirrored card shows this lookup;
+  // it never records it a second time.
   ecp?: WordData
   // Set on 'translateWordInContext': that word's dictionary definition,
   // looked up by the caller BEFORE sending this message (dictionary-first),

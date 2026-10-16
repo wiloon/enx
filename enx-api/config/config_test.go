@@ -72,7 +72,9 @@ func TestLoadDefaults(t *testing.T) {
 		// Unpriced and unconfigured by default: the features fail closed.
 		{"stripe.credits.subscription-pro", cfg.Stripe.Credits.SubscriptionPro, int64(0)},
 		{"stripe.costs.rephrase.divisor", cfg.Stripe.Costs.Rephrase.Divisor, int64(0)},
-		{"stripe.quota.dictionary-lookup-daily-free", cfg.Stripe.Quota.DictionaryLookupDailyFree, int64(0)},
+		// Both tiers have a real ceiling (ADR-059 Decision 6).
+		{"stripe.quota.dictionary-lookup-daily-free", cfg.Stripe.Quota.DictionaryLookupDailyFree, int64(200)},
+		{"stripe.quota.dictionary-lookup-daily-subscribed", cfg.Stripe.Quota.DictionaryLookupDailySubscribed, int64(20000)},
 		{"ai-word.min-quality", cfg.AIWord.MinQuality, 8},
 		{"ai-word.call-timeout", cfg.AIWord.CallTimeout, 45 * time.Second},
 		{"credits.trial.amount", cfg.Credits.Trial.Amount, int64(100)},
@@ -80,6 +82,7 @@ func TestLoadDefaults(t *testing.T) {
 		{"credits.trial.calls-per-day", cfg.Credits.Trial.CallsPerDay, 30},
 		{"stats.ingest.max-words-per-report", cfg.Stats.Ingest.MaxWordsPerReport, int64(50000)},
 		{"stats.ingest.log-ttl-days", cfg.Stats.Ingest.LogTTLDays, 7},
+		{"stats.lookup-events.retention-days", cfg.Stats.LookupEvents.RetentionDays, 90},
 		{"user.last-login-update-interval", cfg.User.LastLoginUpdateInterval, 5 * time.Minute},
 	}
 	for _, c := range checks {
@@ -186,12 +189,13 @@ var envVars = map[string]string{
 	"CREDITS_TRIAL_CALLS_PER_DAY":                     "credits.trial.calls-per-day",
 	"STATS_INGEST_MAX_WORDS_PER_REPORT":               "stats.ingest.max-words-per-report",
 	"STATS_INGEST_LOG_TTL_DAYS":                       "stats.ingest.log-ttl-days",
+	"STATS_LOOKUP_EVENTS_RETENTION_DAYS":              "stats.lookup-events.retention-days",
 	"USER_LAST_LOGIN_UPDATE_INTERVAL":                 "user.last-login-update-interval",
 }
 
 // TestEnvVarsPopulateTheirFields sets each env var to a value no default has
-// and checks it reaches its field. ENX_PORT is the one int value with a range
-// rule; 7 is a valid port.
+// and checks it reaches its field. 7 is a valid port; the lookup event
+// retention, the other int with a range rule, gets 42.
 func TestEnvVarsPopulateTheirFields(t *testing.T) {
 	for env, key := range envVars {
 		t.Run(env, func(t *testing.T) {
@@ -200,22 +204,11 @@ func TestEnvVarsPopulateTheirFields(t *testing.T) {
 
 			var value string
 			var want any
-			switch field.Type {
-			case reflect.TypeOf(""):
-				value, want = "from-"+env, "from-"+env
-			case reflect.TypeOf(Secret("")):
-				value, want = "from-"+env, Secret("from-"+env)
-			case reflect.TypeOf(0), reflect.TypeOf(int64(0)):
-				value = "7"
-				want = reflect.ValueOf(7).Convert(field.Type).Interface()
-			case reflect.TypeOf(false):
-				value, want = "true", true
-			case reflect.TypeOf(time.Duration(0)):
-				value, want = "7s", 7*time.Second
-			case reflect.TypeOf([]string{}):
-				value, want = "a b", []string{"a", "b"}
+			switch {
+			case key == "stats.lookup-events.retention-days":
+				value, want = "42", 42
 			default:
-				t.Fatalf("no test value for %s (%s)", key, field.Type)
+				value, want = testValue(t, key, field.Type, env)
 			}
 			t.Setenv(env, value)
 
@@ -228,6 +221,27 @@ func TestEnvVarsPopulateTheirFields(t *testing.T) {
 	}
 }
 
+// testValue is a value no default has for a field of type typ.
+func testValue(t *testing.T, key string, typ reflect.Type, env string) (value string, want any) {
+	t.Helper()
+	switch typ {
+	case reflect.TypeOf(""):
+		return "from-" + env, "from-" + env
+	case reflect.TypeOf(Secret("")):
+		return "from-" + env, Secret("from-" + env)
+	case reflect.TypeOf(0), reflect.TypeOf(int64(0)):
+		return "7", reflect.ValueOf(7).Convert(typ).Interface()
+	case reflect.TypeOf(false):
+		return "true", true
+	case reflect.TypeOf(time.Duration(0)):
+		return "7s", 7 * time.Second
+	case reflect.TypeOf([]string{}):
+		return "a b", []string{"a", "b"}
+	}
+	t.Fatalf("no test value for %s (%s)", key, typ)
+	return "", nil
+}
+
 // fileOnlyKeys are the fields that deliberately have no env var.
 var fileOnlyKeys = map[string]bool{
 	// Stripe lookup_keys are the same in every deployment; the defaults suffice.
@@ -237,8 +251,6 @@ var fileOnlyKeys = map[string]bool{
 	"stripe.price.credits-topup-small":  true,
 	"stripe.price.credits-topup-medium": true,
 	"stripe.price.credits-topup-large":  true,
-	// Superseded key, kept only as a fallback for config files.
-	"stripe.quota.dictionary-lookup-daily": true,
 }
 
 // TestEveryFieldHasAnEnvVar: the image ships no config.toml, so a field with
@@ -410,6 +422,31 @@ func TestLoadRejects(t *testing.T) {
 			wantErr: "ai-word.min-quality",
 		},
 		{
+			name:    "lookup event retention below the 31 days WAU/MAU need",
+			env:     map[string]string{"STATS_LOOKUP_EVENTS_RETENTION_DAYS": "30"},
+			wantErr: "stats.lookup-events.retention-days",
+		},
+		{
+			name:    "lookup event retention above the privacy policy's 100 days",
+			env:     map[string]string{"STATS_LOOKUP_EVENTS_RETENTION_DAYS": "101"},
+			wantErr: "stats.lookup-events.retention-days",
+		},
+		{
+			name:    "zero free lookup ceiling",
+			env:     map[string]string{"STRIPE_QUOTA_DICTIONARY_LOOKUP_DAILY_FREE": "0"},
+			wantErr: "stripe.quota.dictionary-lookup-daily-free must be positive",
+		},
+		{
+			name:    "zero subscribed lookup ceiling",
+			env:     map[string]string{"STRIPE_QUOTA_DICTIONARY_LOOKUP_DAILY_SUBSCRIBED": "0"},
+			wantErr: "stripe.quota.dictionary-lookup-daily-subscribed must be positive",
+		},
+		{
+			name:    "the superseded single-tier quota key",
+			toml:    "[stripe.quota]\ndictionary-lookup-daily = 50\n",
+			wantErr: "dictionary-lookup-daily",
+		},
+		{
 			name:    "port out of range",
 			env:     map[string]string{"ENX_PORT": "70000"},
 			wantErr: "enx.port",
@@ -470,52 +507,19 @@ func TestLoadUnparseableSearchedFileFails(t *testing.T) {
 }
 
 // Zeros that mean something must still load: Stripe credits and costs at 0
-// are "not configured, fail closed", quotas at 0 are "count but never block",
-// and 0 switches the trial and the AI word ceilings off.
+// are "not configured, fail closed", and 0 switches the trial and the AI word
+// ceilings off. Lookup quotas are not among them (ADR-059 Decision 6).
 func TestLoadAcceptsIntentionalZeros(t *testing.T) {
 	isolate(t)
 	for env, key := range envVars {
 		if strings.HasPrefix(key, "stripe.credits.") || strings.HasPrefix(key, "stripe.costs.") ||
-			strings.HasPrefix(key, "stripe.quota.") || strings.HasPrefix(key, "credits.trial.") ||
+			strings.HasPrefix(key, "credits.trial.") ||
 			strings.HasPrefix(key, "ai-word.") {
 			t.Setenv(env, "0")
 		}
 	}
 	if _, err := Load(""); err != nil {
 		t.Fatalf("Load: %v", err)
-	}
-}
-
-func TestFreeDailyLookupLimit(t *testing.T) {
-	cases := []struct {
-		name       string
-		quota      StripeQuota
-		wantLimit  int64
-		wantLegacy bool
-	}{
-		{"free key set", StripeQuota{DictionaryLookupDailyFree: 200, DictionaryLookupDaily: 50}, 200, false},
-		{"only the superseded key", StripeQuota{DictionaryLookupDaily: 50}, 50, true},
-		{"neither: never block", StripeQuota{}, 0, false},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			limit, legacy := c.quota.FreeDailyLookupLimit()
-			if limit != c.wantLimit || legacy != c.wantLegacy {
-				t.Errorf("FreeDailyLookupLimit() = (%d, %v), want (%d, %v)", limit, legacy, c.wantLimit, c.wantLegacy)
-			}
-		})
-	}
-}
-
-func TestLegacyQuotaKeyLoadsFromFile(t *testing.T) {
-	isolate(t)
-	path := writeTOML(t, "[stripe.quota]\ndictionary-lookup-daily = 50\n")
-	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if limit, legacy := cfg.Stripe.Quota.FreeDailyLookupLimit(); limit != 50 || !legacy {
-		t.Errorf("FreeDailyLookupLimit() = (%d, %v), want (50, true)", limit, legacy)
 	}
 }
 

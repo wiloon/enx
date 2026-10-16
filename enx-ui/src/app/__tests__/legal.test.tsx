@@ -54,6 +54,19 @@ describe('Privacy Policy', () => {
     ).toBeInTheDocument()
   })
 
+  // ADR-059: lookup events carry a timestamp, the one record finer than a
+  // calendar day. The policy promises a ceiling (100 days), not the
+  // configured retention, and must not still claim "nothing finer".
+  it('discloses lookup events and their 100-day ceiling', () => {
+    render(<PrivacyPolicyPage />)
+
+    expect(
+      screen.getByText(/the time and time zone of each word lookup/)
+    ).toBeInTheDocument()
+    expect(screen.getByText(/At most 100 days/)).toBeInTheDocument()
+    expect(screen.queryByText(/nothing finer/)).toBeNull()
+  })
+
   it('says a person runs this, not a company', () => {
     render(<PrivacyPolicyPage />)
 
@@ -227,6 +240,16 @@ describe('bilingual legal pages', () => {
 
     expect(screen.getByText(/你保存的每个页面的网址和标题/)).toBeInTheDocument()
     expect(screen.queryByText(/唯一的例外/)).not.toBeInTheDocument()
+  })
+
+  it('discloses lookup events in the Chinese privacy policy too', () => {
+    render(<PrivacyPolicyZhPage />)
+
+    expect(screen.getByText(/每次查词的时间和时区/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/最多保留 100 天，之后自动删除/)
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/没有更细的/)).toBeNull()
   })
 
   it('says a saved page is only a link in the Chinese terms too', () => {

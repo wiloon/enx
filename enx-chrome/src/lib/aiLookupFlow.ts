@@ -9,6 +9,7 @@ import {
   lookupWithAi,
   shouldShowAiNotice,
 } from '@/lib/aiLookup'
+import { countLookup, type RecordLookup } from '@/lib/queryCount'
 import type { WordData } from '@/types'
 
 type Store = ReturnType<typeof createStore>
@@ -23,6 +24,8 @@ export type AiLookupDeps = {
   // remember it, refresh highlights, mirror it into the side panel.
   onDefined: (word: WordData) => void
   onSessionExpired: () => void
+  // Sends the one POST that counts this click-to-lookup (ADR-059).
+  recordLookup: RecordLookup
 }
 
 // Called with the response to a lookup. A miss that carries AIFallback either
@@ -54,10 +57,12 @@ export const runAiLookup = async (
 
   switch (outcome.kind) {
     case 'found': {
-      // The definition replaces the empty miss in the popup.
-      store.set(currentWordAtom, { ...outcome.word })
+      // The definition replaces the empty miss in the popup. The miss had
+      // no word to count; a stored definition does (ADR-059 Decision 3).
+      const word = countLookup(outcome.word, deps.recordLookup)
+      store.set(currentWordAtom, word)
       store.set(aiLookupAtom, { status: 'found' })
-      deps.onDefined(outcome.word)
+      deps.onDefined(word)
       await showNoticeOnce(auto, deps)
       return
     }

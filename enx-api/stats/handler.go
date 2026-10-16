@@ -154,7 +154,7 @@ func SeriesHandler(c *gin.Context) {
 		return
 	}
 
-	points, err := GetSeries(c.Request.Context(), userID, period, from, to)
+	points, err := GetSeries(c.Request.Context(), userID, period, from, to, LocalDateFor(now, OffsetFromRequest(c)))
 	if err != nil {
 		logger.Errorf("stats: series failed for user %s: %v", userID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not load statistics"})
@@ -196,9 +196,9 @@ func OffsetFromContext(ctx context.Context) int {
 }
 
 // TZOffsetMiddleware copies TZOffsetHeader onto the request context so code
-// far from the HTTP layer -- dictionary.MeterLookup, which sees only a
-// context.Context -- can file a count under the caller's own day without
-// every function in between growing a date parameter.
+// far from the HTTP layer -- dictionary.QuotaMeter, which sees only a
+// context.Context -- can record the caller's offset on a lookup event without
+// every function in between growing a parameter.
 func TZOffsetMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Request = c.Request.WithContext(WithOffset(c.Request.Context(), OffsetFromRequest(c)))

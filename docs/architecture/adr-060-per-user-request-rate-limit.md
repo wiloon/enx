@@ -72,7 +72,7 @@ Retry-After: 2
   - enx-chrome 和 enx-ui 的错误判断改成看 `code`；遇到 `too_many_requests` 显示上面的 message，**不**显示配额用完或 "Session Expired"，也不引导去 /billing。
   - 没有 `code` 的 429 仍按旧逻辑当作配额用完，兼容还没升级的服务端。
 - **后台重试必须遵守 `Retry-After`。** `paragraph-init` 的分块重试（`sendChunkWithRetry`）和统计上报（`statsReporter.ts`，429 已被当作可重试）碰到 `too_many_requests` 时，至少等 `Retry-After` 秒再试，不能立即重试，否则只会一直撞限。
-- **例外：记查词次数的 POST 不重试。** ADR-059 的 `POST /api/me/words/:english/lookups` 同样在限流范围内，一次点词查词是 GET 加 POST，用两个令牌（Decision 3 的「每次点击 1～4 个」已算进去）。它不幂等，ADR-059 规定失败不重试；收到 `too_many_requests` 也一样直接放弃，这次查词少记一次。
+- **例外：记查词次数的 POST 不重试。** ADR-059 的 `POST /api/me/word-lookups` 同样在限流范围内，一次点词查词是 GET 加 POST，用两个令牌（Decision 3 的「每次点击 1～4 个」已算进去）。它不幂等，ADR-059 规定失败不重试；收到 `too_many_requests` 也一样直接放弃，这次查词少记一次。
 
 ### 5. 存储与清理：进程内存，闲置的桶定期删除
 

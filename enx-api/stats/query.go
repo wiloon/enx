@@ -103,8 +103,15 @@ func GetOverview(ctx context.Context, userID, localDate string, now time.Time) (
 	if err != nil {
 		return nil, err
 	}
-	week, err := sumRange(ctx, userID, weekStart(day).Format(DateLayout), localDate)
+	if err := withLiveLookups(ctx, userID, localDate, localDate, localDate, &today); err != nil {
+		return nil, err
+	}
+	monday := weekStart(day).Format(DateLayout)
+	week, err := sumRange(ctx, userID, monday, localDate)
 	if err != nil {
+		return nil, err
+	}
+	if err := withLiveLookups(ctx, userID, monday, localDate, localDate, &week); err != nil {
 		return nil, err
 	}
 	sparkline, err := getSparkline(ctx, userID, day)
@@ -249,8 +256,9 @@ func nextBucket(d time.Time, p Period) time.Time {
 }
 
 // GetSeries returns one point per bucket between from and to, inclusive,
-// with empty buckets zero-filled (same reason as the sparkline).
-func GetSeries(ctx context.Context, userID string, p Period, from, to time.Time) ([]Point, error) {
+// with empty buckets zero-filled (same reason as the sparkline). today is the
+// user's local date: its lookups and yesterday's are counted live.
+func GetSeries(ctx context.Context, userID string, p Period, from, to time.Time, today string) ([]Point, error) {
 	if to.Before(from) {
 		from, to = to, from
 	}
@@ -290,16 +298,27 @@ func GetSeries(ctx context.Context, userID string, p Period, from, to time.Time)
 		return points, nil
 	}
 
-	for _, r := range rows {
-		d, err := time.Parse(DateLayout, r.Date)
+	bucketOf := func(date string) (*Totals, bool) {
+		d, err := time.Parse(DateLayout, date)
 		if err != nil {
-			continue
+			return nil, false
 		}
 		i, ok := idx[bucketStart(d, p).Format(DateLayout)]
 		if !ok {
-			continue // outside the capped window
+			return nil, false // outside the capped window
 		}
-		t := &points[i].Totals
+		return &points[i].Totals, true
+	}
+
+	live := liveFrom(today)
+	for _, r := range rows {
+		t, ok := bucketOf(r.Date)
+		if !ok {
+			continue
+		}
+		if r.Date >= live {
+			r.WordLookups = 0 // counted live below
+		}
 		t.WordsRead += r.WordsRead
 		t.ArticlesRead += r.ArticlesRead
 		t.WordLookups += r.WordLookups
@@ -308,6 +327,18 @@ func GetSeries(ctx context.Context, userID string, p Period, from, to time.Time)
 		t.PhraseLookups += r.PhraseLookups
 		t.SentenceTranslations += r.SentenceTranslations
 		t.ContextLookups += r.ContextLookups
+	}
+
+	if lastDay := to.Format(DateLayout); live <= lastDay {
+		counts, err := liveLookups(ctx, userID, max(live, start.Format(DateLayout)), lastDay)
+		if err != nil {
+			return nil, err
+		}
+		for date, n := range counts {
+			if t, ok := bucketOf(date); ok {
+				t.WordLookups += n
+			}
+		}
 	}
 	return points, nil
 }

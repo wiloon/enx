@@ -215,20 +215,15 @@ calls-per-minute = 5
 calls-per-day = 30
 
 [stripe.quota]
-# Daily dictionary lookup ceilings, one per tier (ADR-029). Everyone is
-# counted; the tier only decides the number. 0 means "count, but never
-# block" -- unlike the cost/credit values above, an unconfigured quota fails
-# open, because failing closed would break the free-tier hook for everyone
-# (see w10n-config/enx/monetization.md).
+# Daily dictionary lookup ceilings, one per tier (ADR-029, ADR-059 Decision
+# 6). Everyone is counted against a UTC day; the tier only decides the
+# number. Both must be positive -- the service refuses to start otherwise.
 #
-# `-free` is 200 (2026-09-29): generous on purpose -- a heavy reading day is
-# well under that, so it only stops scripts and bulk scraping. The number is
-# published on the /pricing page (enx-ui/src/lib/plans.ts FREE_DAILY_LOOKUPS);
-# change both together. `-subscribed` stays 0 for now; it is an abuse
-# ceiling, not a product tier -- set it high enough that normal use never
-# reaches it.
-#
-# Superseded key `dictionary-lookup-daily` still works as a fallback for
-# `-free` for one release.
+# `-free` is 200 (2026-09-29): the product limit, and the point where a free
+# user is offered an upgrade. The number is published on the /pricing page
+# (enx-ui/src/lib/plans.ts FREE_DAILY_LOOKUPS); change both together.
+# `-subscribed` is a backstop against scripts, not a product tier: normal
+# use never reaches it. Both are starting values, tuned from lookup_events
+# after launch (Linear WIL-176).
 dictionary-lookup-daily-free = 200
-dictionary-lookup-daily-subscribed = 0
+dictionary-lookup-daily-subscribed = 20000

@@ -253,7 +253,8 @@ func TestResolveMiss(t *testing.T) {
 	}
 }
 
-// Not cached and no external dictionary: unavailable, and not charged.
+// Not cached and no external dictionary: unavailable, and still charged --
+// the quota counts requests (ADR-059 Decision 2).
 func TestResolveUncachedWordWithoutExternalDictionary(t *testing.T) {
 	svc, _, external, meter := newTestService()
 	external.unavailable = true
@@ -261,21 +262,23 @@ func TestResolveUncachedWordWithoutExternalDictionary(t *testing.T) {
 	if _, err := svc.Resolve(context.Background(), "run", "u1"); !errors.Is(err, ErrEcdictUnavailable) {
 		t.Fatalf("got %v, want ErrEcdictUnavailable", err)
 	}
-	if meter.charged != 0 {
-		t.Fatalf("charged=%d, want 0", meter.charged)
+	if meter.charged != 1 {
+		t.Fatalf("charged=%d, want 1", meter.charged)
 	}
 }
 
-// Over quota: the external dictionary is never queried.
-func TestResolveQuotaExceededSkipsExternalLookup(t *testing.T) {
-	svc, _, external, meter := newTestService()
+// Over quota: neither the words table nor the external dictionary is read
+// (ADR-059 Decision 2).
+func TestResolveQuotaExceededReadsNoDictionary(t *testing.T) {
+	svc, words, external, meter := newTestService()
+	words.seed("id-run", run)
 	meter.limit, meter.charged = 1, 1 // the quota is already used up
 
 	if _, err := svc.Resolve(context.Background(), "run", "u1"); !errors.Is(err, ErrQuotaExceeded) {
 		t.Fatalf("got %v, want ErrQuotaExceeded", err)
 	}
-	if len(external.queried) != 0 {
-		t.Fatalf("external queried %v, want none", external.queried)
+	if len(words.finds) != 0 || len(external.queried) != 0 {
+		t.Fatalf("words finds=%v external queried=%v, want neither read", words.finds, external.queried)
 	}
 }
 

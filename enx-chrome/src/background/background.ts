@@ -263,10 +263,12 @@ export const NETWORK_ERROR_MESSAGE =
   "Couldn't connect to Catglish. Check your internet connection and try again."
 
 // Waits before replaying a call that opted in with `{ retry: true }` (#133).
-// Only idempotent calls may opt in: they can be replayed after a network
+// Only calls safe to repeat may opt in: they can be replayed after a network
 // failure or any 5xx, even when enx-api already handled the first attempt.
-// Lookups (GET /api/word/:word bumps a Query Count, #136) and AI calls (spend
-// credit) must not.
+// The lookup GET qualifies: it only reads the Query Count, and a replay
+// costs at most one more lookup against the daily quota (ADR-059 Decision
+// 3). POST /api/me/word-lookups (adds to the Query Count) and AI calls
+// (spend credit) must not.
 export const IDEMPOTENT_RETRY_DELAYS_MS = [500, 1500]
 
 export interface ApiRequestPolicy {
@@ -660,6 +662,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'markAcquainted':
           return await handleMarkAcquainted(request.word, request.userId)
 
+        case 'recordWordLookup':
+          return await handleRecordWordLookup(request.wordId || '')
+
         case 'openSentencePanel':
           return await handleOpenSentencePanel(
             sender.tab?.id,
@@ -947,6 +952,21 @@ chrome.runtime.onMessageExternal.addListener(
 // <SignOutButton/> (ADR-015); the service worker just reads the synced session.
 
 // Handle get one word translation
+// One click-to-lookup's +1 to the word's Query Count (ADR-059 Decision 3).
+// Never retried: it is not idempotent, and a lost one only leaves the count
+// one short. Callers don't wait for it (lib/queryCount.ts).
+const handleRecordWordLookup = async (wordId: string) => {
+  if (!wordId) return { success: false, error: 'No word id provided' }
+  const response = await makeApiRequest('/api/me/word-lookups', {
+    method: 'POST',
+    body: JSON.stringify({ wordId }),
+  })
+  if (!response.success) {
+    swlog(`recordWordLookup ${wordId} failed: ${response.error}`, 'warn')
+  }
+  return { success: response.success }
+}
+
 const handleGetOneWord = async (word: string) => {
   if (!word || word.trim() === '') {
     return { success: false, error: 'No word provided' }
@@ -954,7 +974,13 @@ const handleGetOneWord = async (word: string) => {
 
   console.log('Handling getOneWord request for:', word)
   const encodedWord = encodeURIComponent(word.trim())
-  const response = await makeApiRequest(`/api/translate?word=${encodedWord}`)
+  // Read-only, so safe to replay (ADR-059 Decision 3): the click's one
+  // recordWordLookup is what counts it.
+  const response = await makeApiRequest(
+    `/api/translate?word=${encodedWord}`,
+    {},
+    { retry: true }
+  )
 
   console.log('API response for word translation:', response)
 

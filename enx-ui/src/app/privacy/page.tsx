@@ -15,6 +15,9 @@ import { SITE } from '@/lib/site'
 //     which has no such column, and ADR-028 Decision 10
 //   - ...except a page you save                         -> enx-api
 //     savedpage/ (saved_pages: url, title, host, created_at), ADR-032
+//   - lookup events: time and offset, no word or page,  -> enx-api
+//     at most 100 days                                     lookup_events,
+//     config stats.lookup-events.retention-days (capped at 100), ADR-059
 //   - the sub-processor list                           -> lib/legal.ts
 //   - the AI provider named                            -> the deployment's
 //     SENTENCE_TRANSLATE_PROVIDER
@@ -157,6 +160,11 @@ export default function PrivacyPolicyPage() {
                   'As long as your account exists',
                 ],
                 [
+                  'Lookup events: the time and time zone of each word lookup — never which word, and never on which page',
+                  'Your daily lookup limit, the lookup counts on your Reading Stats page, and counting how many people use Catglish each day',
+                  'At most 100 days, then deleted automatically; only the daily lookup counts remain',
+                ],
+                [
                   'The address of a page Catglish could not read — only if you press "Send report" in the extension',
                   'So we can fix support for that page',
                   '90 days, then deleted automatically (most recent 50 reports)',
@@ -195,7 +203,7 @@ export default function PrivacyPolicyPage() {
             'The address (URL) of any page you read',
             'The domain or title of any page you read',
             'The text of any page you read',
-            'The time of day you read anything — totals are per calendar day, nothing finer',
+            'The time of day you read anything — reading totals are per calendar day. The one finer record is the time of each word lookup, kept at most 100 days (see the table above)',
             'Your location, or any device fingerprint',
           ]}
         />

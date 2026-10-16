@@ -15,12 +15,16 @@ package sqlitex
 // Which article they read is a client-side concept that never leaves the
 // extension.
 //
-// Date is the USER'S LOCAL day, reported by the client, and deliberately
-// differs from dictionary_lookup_quota's UTC day. The two answer different
-// questions: this one is "how much did I learn today", which has to line up
-// with the user's own sense of a day; the quota is an adversarial cap, and a
-// local boundary could be reset by changing the device clock (ADR-029
-// Decision 6). The two tables' numbers are expected NOT to match.
+// Date is the USER'S LOCAL day, and deliberately differs from the daily
+// lookup quota's UTC day. The two answer different questions: this one is
+// "how much did I learn today", which has to line up with the user's own
+// sense of a day; the quota is an adversarial cap, and a local boundary
+// could be reset by changing the device clock (ADR-029 Decision 6). Their
+// numbers are expected NOT to match.
+//
+// WordLookups is written only by stats.RollupLookupEvents, from
+// lookup_events; the last two local days are read from the events directly
+// (ADR-059 Decision 4).
 type DailyStat struct {
 	UserID string `gorm:"column:user_id;primaryKey"`
 	Date   string `gorm:"column:date;primaryKey"` // YYYY-MM-DD in the user's local time
@@ -57,4 +61,28 @@ type StatsIngestLog struct {
 
 func (StatsIngestLog) TableName() string {
 	return "stats_ingest_log"
+}
+
+// LookupEvent is one dictionary lookup request (ADR-059 Decision 1). The
+// daily lookup quota, the lookup counts in /stats and active users are all
+// derived from this table.
+//
+// No word, URL or page is stored: which word was looked up is already in
+// user_dicts, and an event only has to be counted. Rows are kept for
+// stats.lookup-events.retention-days (at most 100, the privacy-policy
+// promise), then rolled up into daily_stats.word_lookups and deleted.
+type LookupEvent struct {
+	UserID string `gorm:"column:user_id;not null;index:idx_lookup_events_user_at,priority:1"`
+	// UTC Unix milliseconds.
+	At int64 `gorm:"column:at;not null;index:idx_lookup_events_user_at,priority:2;index:idx_lookup_events_at"`
+	// The caller's UTC offset for this lookup (Beijing +480), from
+	// X-Enx-Tz-Offset; 0 without the header. The event's local day is the
+	// date of At + TZOffsetMinutes.
+	TZOffsetMinutes int `gorm:"column:tz_offset_minutes;not null"`
+	// "allowed" or "rejected" (answered with a 429).
+	Outcome string `gorm:"column:outcome;not null"`
+}
+
+func (LookupEvent) TableName() string {
+	return "lookup_events"
 }
