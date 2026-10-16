@@ -28,8 +28,8 @@ func TestWordsInWordNotInDB(t *testing.T) {
 	if !ok {
 		t.Fatal(`expected key "morning" to be present`)
 	}
-	if got.LoadCount != 0 || got.AlreadyAcquainted != 0 {
-		t.Errorf("expected a fresh word to have LoadCount=0 AlreadyAcquainted=0, got %+v", got)
+	if got.LoadCount != 0 || got.Known {
+		t.Errorf("expected a fresh word to have LoadCount=0 Known=false, got %+v", got)
 	}
 }
 
@@ -39,7 +39,7 @@ func TestWordsInWordWithExistingUserDict(t *testing.T) {
 	if err := db.Create(&repo.Word{Id: "id-morning", English: "morning", CreatedAt: now, UpdatedAt: now}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Create(&repo.UserDict{UserId: "u1", WordId: "id-morning", QueryCount: 2, AlreadyAcquainted: 1, CreatedAt: now, UpdatedAt: now}).Error; err != nil {
+	if err := db.Create(&repo.UserDict{UserId: "u1", WordId: "id-morning", QueryCount: 2, Known: true, CreatedAt: now, UpdatedAt: now}).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -51,8 +51,8 @@ func TestWordsInWordWithExistingUserDict(t *testing.T) {
 	if got.LoadCount != 2 {
 		t.Errorf("LoadCount = %d, want 2", got.LoadCount)
 	}
-	if got.AlreadyAcquainted != 1 {
-		t.Errorf("AlreadyAcquainted = %d, want 1", got.AlreadyAcquainted)
+	if !got.Known {
+		t.Error("Known = false, want true")
 	}
 }
 

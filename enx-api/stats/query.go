@@ -173,7 +173,7 @@ func getVocab(ctx context.Context, userID string) (Vocab, error) {
 	err := sqlitex.DB.WithContext(ctx).
 		Table("user_dicts").
 		Select(`COUNT(*) AS total,
-		        COALESCE(SUM(CASE WHEN already_acquainted = 1 THEN 1 ELSE 0 END), 0) AS mastered`).
+		        COALESCE(SUM(CASE WHEN known = 1 THEN 1 ELSE 0 END), 0) AS mastered`).
 		Where("user_id = ?", userID).
 		Scan(&v).Error
 	return v, err

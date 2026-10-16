@@ -23,7 +23,7 @@ type Resolver interface {
 // production. It is read-only on purpose: the lookup endpoints never change
 // the query count, POST /api/me/word-lookups does (ADR-059 Decision 3).
 type ReviewLog interface {
-	ReviewState(userID, wordID string) (queryCount int, alreadyAcquainted int, err error)
+	ReviewState(userID, wordID string) (queryCount int, known bool, err error)
 }
 
 // AIDefiner defines a word the dictionaries lack: dictionary.Service in
@@ -120,14 +120,14 @@ func (h *Handler) translateWord(c *gin.Context, raw string) {
 	// so it never adds to the query count (ADR-059 Decision 3). A miss has
 	// no persisted word and so no state.
 	if word.Id != "" {
-		qc, acquainted, err := h.reviews.ReviewState(userId, word.Id)
+		qc, known, err := h.reviews.ReviewState(userId, word.Id)
 		if err != nil {
 			// The definition is still worth answering with; the counts
 			// stay at zero for this response.
 			logger.Errorf("read review state of %s for %s: %v", word.English, userId, err)
 		} else {
 			word.LoadCount = qc
-			word.AlreadyAcquainted = acquainted
+			word.Known = known
 		}
 	}
 

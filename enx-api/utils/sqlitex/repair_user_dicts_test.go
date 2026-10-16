@@ -82,7 +82,7 @@ func TestRepairUserDictsTableDDL(t *testing.T) {
 	if err := db.Raw(`SELECT * FROM user_dicts WHERE user_id='u1' AND word_id='w1'`).Scan(&ud).Error; err != nil {
 		t.Fatal(err)
 	}
-	if ud.QueryCount != 3 || ud.AlreadyAcquainted != 1 || ud.CreatedAt != 100 || ud.UpdatedAt != 200 {
+	if ud.QueryCount != 3 || !ud.Known || ud.CreatedAt != 100 || ud.UpdatedAt != 200 {
 		t.Fatalf("row not preserved: %+v", ud)
 	}
 

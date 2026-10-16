@@ -49,11 +49,11 @@ func RecordWordLookup(c *gin.Context) {
 		return
 	}
 
-	qc, acquainted, err := repo.RecordWordLookup(userId, req.WordID)
+	qc, known, err := repo.RecordWordLookup(userId, req.WordID)
 	if err != nil {
 		logger.Errorf("RecordWordLookup: record %s for %s: %v", req.WordID, userId, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to record the lookup"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"queryCount": qc, "alreadyAcquainted": acquainted})
+	c.JSON(http.StatusOK, gin.H{"queryCount": qc, "known": known})
 }

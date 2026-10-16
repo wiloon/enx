@@ -51,17 +51,13 @@ func insert(t *testing.T, userID string, s seed) {
 	if err := sqlitex.DB.Create(&word).Error; err != nil {
 		t.Fatalf("insert word %q: %v", s.english, err)
 	}
-	known := 0
-	if s.known {
-		known = 1
-	}
 	dict := sqlitex.UserDict{
-		UserId:            userID,
-		WordId:            word.Id,
-		QueryCount:        s.count,
-		AlreadyAcquainted: known,
-		CreatedAt:         s.createdAt.UnixMilli(),
-		UpdatedAt:         s.updatedAt.UnixMilli(),
+		UserId:     userID,
+		WordId:     word.Id,
+		QueryCount: s.count,
+		Known:      s.known,
+		CreatedAt:  s.createdAt.UnixMilli(),
+		UpdatedAt:  s.updatedAt.UnixMilli(),
 	}
 	if err := sqlitex.DB.Create(&dict).Error; err != nil {
 		t.Fatalf("insert user_dict %q: %v", s.english, err)
@@ -127,8 +123,8 @@ func TestMarkingAWordKnownLeavesItsLastLookupTime(t *testing.T) {
 		t.Fatalf("find word: %v", err)
 	}
 
-	if _, _, err := repo.SetAcquainted(user, word.Id, true); err != nil {
-		t.Fatalf("SetAcquainted: %v", err)
+	if _, _, err := repo.SetKnown(user, word.Id, true); err != nil {
+		t.Fatalf("SetKnown: %v", err)
 	}
 
 	got, err := List(context.Background(), user, Query{Status: StatusAll})

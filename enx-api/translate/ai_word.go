@@ -72,12 +72,12 @@ func (h *Handler) AIWord(c *gin.Context) {
 	// with POST /api/me/word-lookups (ADR-059 Decision 3); one the AI was
 	// not confident enough to store has no row and does not.
 	if word.Id != "" {
-		qc, acquainted, err := h.reviews.ReviewState(userID, word.Id)
+		qc, known, err := h.reviews.ReviewState(userID, word.Id)
 		if err != nil {
 			logger.Errorf("read review state of AI word %s for %s: %v", word.English, userID, err)
 		} else {
 			word.LoadCount = qc
-			word.AlreadyAcquainted = acquainted
+			word.Known = known
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"found": true, "word": word})

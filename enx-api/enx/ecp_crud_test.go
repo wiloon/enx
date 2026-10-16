@@ -121,7 +121,7 @@ func TestWordSaveDuplicateEnglishReturnsErrorAndKeepsIdEmpty(t *testing.T) {
 func TestWordFindQueryCount(t *testing.T) {
 	db := newEcpTestDB(t)
 	now := time.Now().UnixMilli()
-	if err := db.Create(&repo.UserDict{UserId: "u1", WordId: "w1", QueryCount: 5, AlreadyAcquainted: 1, CreatedAt: now, UpdatedAt: now}).Error; err != nil {
+	if err := db.Create(&repo.UserDict{UserId: "u1", WordId: "w1", QueryCount: 5, Known: true, CreatedAt: now, UpdatedAt: now}).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -133,7 +133,7 @@ func TestWordFindQueryCount(t *testing.T) {
 	if w.LoadCount != 5 {
 		t.Errorf("LoadCount = %d, want 5", w.LoadCount)
 	}
-	if w.AlreadyAcquainted != 1 {
-		t.Errorf("AlreadyAcquainted = %d, want 1", w.AlreadyAcquainted)
+	if !w.Known {
+		t.Error("Known = false, want true")
 	}
 }

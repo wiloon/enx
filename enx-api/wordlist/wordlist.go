@@ -20,8 +20,8 @@ type Status string
 
 const (
 	StatusAll      Status = "all"
-	StatusLearning Status = "learning" // already_acquainted = 0
-	StatusKnown    Status = "known"    // already_acquainted = 1
+	StatusLearning Status = "learning" // known = 0
+	StatusKnown    Status = "known"    // known = 1
 )
 
 // ErrInvalidStatus is returned by ParseStatus for anything but the three
@@ -146,9 +146,9 @@ func List(ctx context.Context, userID string, q Query) (Page, error) {
 			Where("ud.user_id = ? AND w.deleted_at IS NULL", userID)
 		switch q.Status {
 		case StatusLearning:
-			db = db.Where("ud.already_acquainted = 0")
+			db = db.Where("ud.known = 0")
 		case StatusKnown:
-			db = db.Where("ud.already_acquainted = 1")
+			db = db.Where("ud.known = 1")
 		}
 		if s := strings.TrimSpace(q.Search); s != "" {
 			// SQLite's LIKE is case-insensitive for ASCII, matching
@@ -169,7 +169,7 @@ func List(ctx context.Context, userID string, q Query) (Page, error) {
 		        COALESCE(w.chinese, '') AS chinese,
 		        COALESCE(w.pronunciation, '') AS pronunciation,
 		        ud.query_count AS query_count,
-		        ud.already_acquainted AS known,
+		        ud.known,
 		        ud.created_at AS created_at,
 		        ud.updated_at AS updated_at`).
 		Order(orderBy(q.Sort)).

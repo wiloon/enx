@@ -13,8 +13,8 @@ import (
 )
 
 type wordLookupResponse struct {
-	QueryCount        int `json:"queryCount"`
-	AlreadyAcquainted int `json:"alreadyAcquainted"`
+	QueryCount int  `json:"queryCount"`
+	Known      bool `json:"known"`
 }
 
 // postWordLookup sends POST /api/me/word-lookups with body as userID and
@@ -47,26 +47,26 @@ func recordLookupOf(t *testing.T, userID, wordID string) wordLookupResponse {
 	return resp
 }
 
-func seedReview(t *testing.T, userID, wordID string, queryCount, acquainted int) {
+func seedReview(t *testing.T, userID, wordID string, queryCount int, known bool) {
 	t.Helper()
 	if err := sqlitex.DB.Create(&sqlitex.UserDict{
 		UserId: userID, WordId: wordID, QueryCount: queryCount,
-		AlreadyAcquainted: acquainted, CreatedAt: 1, UpdatedAt: 1,
+		Known: known, CreatedAt: 1, UpdatedAt: 1,
 	}).Error; err != nil {
 		t.Fatalf("seed user_dict: %v", err)
 	}
 }
 
-func reviewOf(t *testing.T, userID, wordID string) (queryCount, acquainted int, found bool) {
+func reviewOf(t *testing.T, userID, wordID string) (queryCount int, known bool, found bool) {
 	t.Helper()
 	var rows []sqlitex.UserDict
 	if err := sqlitex.DB.Where("user_id = ? AND word_id = ?", userID, wordID).Find(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
 	if len(rows) == 0 {
-		return 0, 0, false
+		return 0, false, false
 	}
-	return rows[0].QueryCount, rows[0].AlreadyAcquainted, true
+	return rows[0].QueryCount, rows[0].Known, true
 }
 
 func TestWordLookupFirstTimeStartsTheQueryCountAtOne(t *testing.T) {
@@ -75,18 +75,18 @@ func TestWordLookupFirstTimeStartsTheQueryCountAtOne(t *testing.T) {
 
 	resp := recordLookupOf(t, "u1", id)
 
-	if resp.QueryCount != 1 || resp.AlreadyAcquainted != 0 {
+	if resp.QueryCount != 1 || resp.Known {
 		t.Fatalf("response %+v, want queryCount 1, not known", resp)
 	}
-	if qc, ac, _ := reviewOf(t, "u1", id); qc != 1 || ac != 0 {
-		t.Fatalf("user_dicts %d/%d, want 1/0", qc, ac)
+	if qc, ac, _ := reviewOf(t, "u1", id); qc != 1 || ac {
+		t.Fatalf("user_dicts %d/%v, want 1/false", qc, ac)
 	}
 }
 
 func TestWordLookupKeepsAccumulating(t *testing.T) {
 	setupKnownTest(t)
 	id := seedKnownWord(t, "serendipity")
-	seedReview(t, "u1", id, 3, 0)
+	seedReview(t, "u1", id, 3, false)
 
 	recordLookupOf(t, "u1", id)
 	resp := recordLookupOf(t, "u1", id)
@@ -101,11 +101,11 @@ func TestWordLookupKeepsAccumulating(t *testing.T) {
 func TestWordLookupOfAKnownWordClearsKnownAndKeepsTheCount(t *testing.T) {
 	setupKnownTest(t)
 	id := seedKnownWord(t, "serendipity")
-	seedReview(t, "u1", id, 7, 1)
+	seedReview(t, "u1", id, 7, true)
 
 	resp := recordLookupOf(t, "u1", id)
 
-	if resp.QueryCount != 8 || resp.AlreadyAcquainted != 0 {
+	if resp.QueryCount != 8 || resp.Known {
 		t.Fatalf("response %+v, want queryCount 8, not known", resp)
 	}
 }
@@ -113,12 +113,12 @@ func TestWordLookupOfAKnownWordClearsKnownAndKeepsTheCount(t *testing.T) {
 func TestWordLookupOnlyTouchesTheCallersRow(t *testing.T) {
 	setupKnownTest(t)
 	id := seedKnownWord(t, "serendipity")
-	seedReview(t, "u2", id, 7, 1)
+	seedReview(t, "u2", id, 7, true)
 
 	recordLookupOf(t, "u1", id)
 
-	if qc, ac, _ := reviewOf(t, "u2", id); qc != 7 || ac != 1 {
-		t.Fatalf("another user's row %d/%d, want 7/1 untouched", qc, ac)
+	if qc, ac, _ := reviewOf(t, "u2", id); qc != 7 || !ac {
+		t.Fatalf("another user's row %d/%v, want 7/true untouched", qc, ac)
 	}
 }
 

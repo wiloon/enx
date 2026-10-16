@@ -24,8 +24,8 @@ type Word struct {
 	Key string
 
 	// 0: false, 1: true
-	AlreadyAcquainted int
-	LoadCount         int
+	Known     bool
+	LoadCount int
 	// 0: default: normal type
 	// 1: raw: this word would not be translated
 	WordType int
@@ -107,11 +107,11 @@ func (word *Word) SetEnglishField(english string) {
 	}
 }
 func (word *Word) FindQueryCount(userId string) int {
-	qc, acquainted, _ := repo.GetUserWordQueryCount(word.Id, userId)
+	qc, known, _ := repo.GetUserWordQueryCount(word.Id, userId)
 	logger.Debugf("find query count, word id: %s, word: %s, user_id: %s, query count: %d",
 		word.Id, word.English, userId, qc)
 	word.LoadCount = qc
-	word.AlreadyAcquainted = acquainted
+	word.Known = known
 	return qc
 }
 

@@ -23,14 +23,15 @@ func (f fakeResolver) Resolve(context.Context, string, string) (dictionary.Resul
 }
 
 type fakeReviewLog struct {
-	count, acquainted int
-	err               error
-	calls             int
+	count int
+	known bool
+	err   error
+	calls int
 }
 
-func (f *fakeReviewLog) ReviewState(string, string) (int, int, error) {
+func (f *fakeReviewLog) ReviewState(string, string) (int, bool, error) {
 	f.calls++
-	return f.count, f.acquainted, f.err
+	return f.count, f.known, f.err
 }
 
 func serve(t *testing.T, h *Handler, word string) (int, lookupResponse) {

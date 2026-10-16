@@ -63,8 +63,8 @@ func seedTextWords(t *testing.T) {
 	}
 	for _, ud := range []repo.UserDict{
 		{UserId: "u1", WordId: "id-morning", QueryCount: 4},
-		{UserId: "u1", WordId: "id-dog", QueryCount: 2, AlreadyAcquainted: 1},
-		{UserId: "u2", WordId: "id-assassins", QueryCount: 9, AlreadyAcquainted: 1},
+		{UserId: "u1", WordId: "id-dog", QueryCount: 2, Known: true},
+		{UserId: "u2", WordId: "id-assassins", QueryCount: 9, Known: true},
 	} {
 		ud.CreatedAt, ud.UpdatedAt = 1, 1
 		if err := db.Create(&ud).Error; err != nil {
@@ -74,9 +74,10 @@ func seedTextWords(t *testing.T) {
 }
 
 type wantWord struct {
-	english, id           string
-	loadCount, acquainted int
-	wordType              int
+	english, id string
+	loadCount   int
+	known       bool
+	wordType    int
 }
 
 func checkWords(t *testing.T, got map[string]Word, want map[string]wantWord) {
@@ -95,9 +96,9 @@ func checkWords(t *testing.T, got map[string]Word, want map[string]wantWord) {
 			continue
 		}
 		if g.English != w.english || g.Id != w.id || g.LoadCount != w.loadCount ||
-			g.AlreadyAcquainted != w.acquainted || g.WordType != w.wordType || g.Raw != key {
-			t.Errorf("key %q: got English=%q Id=%q LoadCount=%d Acquainted=%d WordType=%d Raw=%q; want %+v",
-				key, g.English, g.Id, g.LoadCount, g.AlreadyAcquainted, g.WordType, g.Raw, w)
+			g.Known != w.known || g.WordType != w.wordType || g.Raw != key {
+			t.Errorf("key %q: got English=%q Id=%q LoadCount=%d Known=%v WordType=%d Raw=%q; want %+v",
+				key, g.English, g.Id, g.LoadCount, g.Known, g.WordType, g.Raw, w)
 		}
 		if g.Chinese != "" || g.Pronunciation != "" {
 			t.Errorf("key %q: definition fields should stay empty, got %q / %q", key, g.Chinese, g.Pronunciation)
@@ -112,11 +113,11 @@ func TestWordsInReviewStatePerUser(t *testing.T) {
 		"Good":      {english: "Good"},
 		"morning":   {english: "morning", id: "id-morning", loadCount: 4},
 		"Assassins": {english: "Assassins", id: "id-assassins"},
-		"dog's":     {english: "dog", id: "id-dog", loadCount: 2, acquainted: 1},
+		"dog's":     {english: "dog", id: "id-dog", loadCount: 2, known: true},
 	})
 	// Another user's review rows never leak.
 	checkWords(t, wordsIn(t, "Assassins", "u2"), map[string]wantWord{
-		"Assassins": {english: "Assassins", id: "id-assassins", loadCount: 9, acquainted: 1},
+		"Assassins": {english: "Assassins", id: "id-assassins", loadCount: 9, known: true},
 	})
 }
 

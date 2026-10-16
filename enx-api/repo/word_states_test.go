@@ -21,7 +21,7 @@ func TestWordStatesByEnglish(t *testing.T) {
 		db.Create(&w)
 	}
 	for _, ud := range []UserDict{
-		{UserId: "u1", WordId: "w1", QueryCount: 3, AlreadyAcquainted: 1},
+		{UserId: "u1", WordId: "w1", QueryCount: 3, Known: true},
 		{UserId: "u2", WordId: "w2", QueryCount: 7},
 	} {
 		ud.CreatedAt, ud.UpdatedAt = 1, 1
@@ -39,7 +39,7 @@ func TestWordStatesByEnglish(t *testing.T) {
 		got[s.Id] = s
 	}
 	want := map[string]WordState{
-		"w1": {Id: "w1", English: "Run", QueryCount: 3, AlreadyAcquainted: 1},
+		"w1": {Id: "w1", English: "Run", QueryCount: 3, Known: true},
 		"w2": {Id: "w2", English: "walk"}, // u2's row is not u1's
 		"w4": {Id: "w4", English: "don't"},
 	}

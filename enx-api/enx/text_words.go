@@ -10,10 +10,10 @@ import (
 
 // WordState is a cached word with one user's review state for it.
 type WordState struct {
-	ID                string
-	English           string
-	QueryCount        int
-	AlreadyAcquainted int
+	ID         string
+	English    string
+	QueryCount int
+	Known      bool
 }
 
 // WordStateStore reads cached words together with a user's review state.
@@ -34,7 +34,7 @@ func (RepoWordStates) FindByEnglish(_ context.Context, userID string, englishes 
 	}
 	states := make([]WordState, len(rows))
 	for i, r := range rows {
-		states[i] = WordState{ID: r.Id, English: r.English, QueryCount: r.QueryCount, AlreadyAcquainted: r.AlreadyAcquainted}
+		states[i] = WordState{ID: r.Id, English: r.English, QueryCount: r.QueryCount, Known: r.Known}
 	}
 	return states, nil
 }
@@ -97,7 +97,7 @@ func (s *TextWords) In(ctx context.Context, paragraph, userID string) (map[strin
 		if st, ok := byKey[strings.ToLower(w.English)]; ok {
 			w.Id = st.ID
 			w.LoadCount = st.QueryCount
-			w.AlreadyAcquainted = st.AlreadyAcquainted
+			w.Known = st.Known
 			words[raw] = w
 		}
 	}
