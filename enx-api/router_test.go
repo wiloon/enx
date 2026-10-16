@@ -157,6 +157,36 @@ func TestWordKnownRoutesRequireAuthentication(t *testing.T) {
 	}
 }
 
+// The ops user-stats endpoint is for Grafana, which has no Clerk session: it
+// takes the OPS_STATS_TOKEN bearer instead, and is absent without one
+// (ADR-058 Decision 4).
+func TestOpsUserStatsRouteUsesTheOpsTokenNotClerk(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	reversed := "/api/ops/user-stats/daily?from=2026-10-16&to=2026-10-15"
+	request := func(cfg *config.Config, auth string) int {
+		req := httptest.NewRequest(http.MethodGet, reversed, nil)
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		w := httptest.NewRecorder()
+		setupRouter(cfg, metrics.New()).ServeHTTP(w, req)
+		return w.Code
+	}
+
+	cfg := clerkConfig(t)
+	if got := request(cfg, "Bearer anything"); got != http.StatusNotFound {
+		t.Errorf("without OPS_STATS_TOKEN: status %d, want 404", got)
+	}
+
+	cfg.Ops.StatsToken = "ops-token"
+	if got := request(cfg, "Bearer ops-token"); got != http.StatusBadRequest {
+		t.Errorf("with the token and a reversed range: status %d, want 400 from the handler", got)
+	}
+	if got := request(cfg, "Bearer wrong"); got != http.StatusUnauthorized {
+		t.Errorf("with a wrong token: status %d, want 401", got)
+	}
+}
+
 // Recording a lookup writes the user's own query count, behind the session
 // check.
 func TestWordLookupRouteRequiresAuthentication(t *testing.T) {

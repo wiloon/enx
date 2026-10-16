@@ -88,6 +88,10 @@ OTel 能顺带做 tracing，但当前只有一个 Go 服务、没有跨服务调
 - `enx_stripe_webhook_total{event_type, outcome}` —— 付了钱没生效的唯一早期信号。`event_type` 只记我们处理的那几种，其余归 `other`，签名校验失败的记为 `unknown`（未验证的 payload 里的类型不可信）；`outcome ∈ {ok, error, bad_signature}`。
 - `enx_sqlite_busy_total{op}` —— `SQLITE_BUSY` / `SQLITE_LOCKED` / `database is locked` 的出现次数（`op ∈ {read, write, raw}`，经 GORM 回调统计）。单写者在用户增长后最先出问题的地方。
 
+**用户量（ADR-058）**
+
+- `enx_users_total`、`enx_active_users{window}`、`enx_new_users{window}` —— gauge，`window ∈ {1d, 7d, 30d}`，即截至今天（UTC，含今天）最近 1 / 7 / 30 个 UTC 日。活跃 = 查过词（含被 429 的），从 `lookup_events` 现算；结果缓存 5 分钟，查询失败时这几条不出现、其余指标照常（ADR-059）。只看当前数字和近 14 天；长期曲线走 `GET /api/ops/user-stats/daily`。
+
 **进程与主机**
 
 - Go 运行时与进程指标：`client_golang` 默认 collector 自带（内存、GC、goroutine、fd）。

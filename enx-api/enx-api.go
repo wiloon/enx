@@ -29,6 +29,7 @@ import (
 	"enx-api/savedpage"
 	"enx-api/stats"
 	"enx-api/translate"
+	"enx-api/userstats"
 	"enx-api/utils"
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
@@ -77,8 +78,13 @@ func main() {
 	ecdict.Init(cfg.Ecdict.DBPath)
 	dictsample.SetEnabled(cfg.Ecdict.Sampling)
 
+	// Users, new users and active users (ADR-058): the gauges read it live,
+	// the hourly job rolls finished days up.
+	userStats := userstats.NewService(repo.UserStats{}, time.Now)
+	m.RegisterUserStats(userStats, time.Now)
+
 	go runReaderDocumentCleanup()
-	go runStatsIngestLogCleanup(cfg.Stats.Ingest.LogTTL(), cfg.Stats.LookupEvents.RetentionDays)
+	go runStatsIngestLogCleanup(cfg.Stats.Ingest.LogTTL(), cfg.Stats.LookupEvents.RetentionDays, userStats)
 	go runPageReportCleanup()
 
 	go serveMetrics(cfg.Metrics.Addr, m)
@@ -197,13 +203,11 @@ func runReaderDocumentCleanup() {
 }
 
 // runStatsIngestLogCleanup periodically deletes expired stats deduplication
-// rows (ADR-028 Decision 5), and rolls lookup events up into
-// daily_stats.word_lookups before deleting the ones past their retention
-// (ADR-059 Decision 4). daily_stats is the user's own history and is never
-// deleted. Mirrors the reader cleanup: once on start so a restart doesn't
-// leave a backlog, then hourly; the rollup overwrites, so rerunning it is
-// harmless.
-func runStatsIngestLogCleanup(ttl time.Duration, lookupEventRetentionDays int) {
+// rows (ADR-028 Decision 5) and runs the lookup event job. daily_stats and
+// active_users_daily are history and are never deleted. Mirrors the reader
+// cleanup: once on start so a restart doesn't leave a backlog, then hourly;
+// both rollups are safe to rerun.
+func runStatsIngestLogCleanup(ttl time.Duration, lookupEventRetentionDays int, activeUsers *userstats.Service) {
 	purge := func() {
 		deleted, err := stats.PurgeIngestLog(context.Background(), time.Now(), ttl)
 		if err != nil {
@@ -212,12 +216,7 @@ func runStatsIngestLogCleanup(ttl time.Duration, lookupEventRetentionDays int) {
 			logger.Infof("stats: purged %d expired ingest-log row(s)", deleted)
 		}
 
-		deleted, err = stats.RollupLookupEvents(context.Background(), time.Now(), lookupEventRetentionDays)
-		if err != nil {
-			logger.Errorf("stats: lookup event rollup failed: %v", err)
-		} else if deleted > 0 {
-			logger.Infof("stats: deleted %d lookup event(s) past retention", deleted)
-		}
+		runLookupEventJob(context.Background(), time.Now(), lookupEventRetentionDays, activeUsers)
 	}
 
 	purge()
@@ -225,6 +224,27 @@ func runStatsIngestLogCleanup(ttl time.Duration, lookupEventRetentionDays int) {
 	defer ticker.Stop()
 	for range ticker.C {
 		purge()
+	}
+}
+
+// runLookupEventJob is the daily lookup-event job (ADR-059 Decision 4): it
+// rolls finished UTC days up into active_users_daily, then rolls local days
+// up into daily_stats.word_lookups and deletes the events past retention.
+// A failed active-users rollup skips the deletion, so no event leaves before
+// it has been counted.
+func runLookupEventJob(ctx context.Context, now time.Time, retentionDays int, activeUsers *userstats.Service) {
+	if days, err := activeUsers.Rollup(ctx, retentionDays); err != nil {
+		logger.Errorf("userstats: active users rollup failed, lookup events kept: %v", err)
+		return
+	} else if days > 0 {
+		logger.Infof("userstats: rolled up active users for %d day(s)", days)
+	}
+
+	deleted, err := stats.RollupLookupEvents(ctx, now, retentionDays)
+	if err != nil {
+		logger.Errorf("stats: lookup event rollup failed: %v", err)
+	} else if deleted > 0 {
+		logger.Infof("stats: deleted %d lookup event(s) past retention", deleted)
 	}
 }
 
@@ -567,6 +587,14 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	// must match the endpoint registered in infra/stripe/opentofu/enx
 	// (w10n-config): enx-api.wiloon.lab/billing/webhook, no /api prefix.
 	router.POST("/billing/webhook", billingHandler.Webhook)
+
+	// Site-wide user numbers for Grafana's Infinity datasource (ADR-058
+	// Decision 4). Not in apiGroup: Grafana has no Clerk session and presents
+	// the OPS_STATS_TOKEN bearer instead; without the token the handler
+	// answers 404. Counts only, no user ids.
+	userStatsDaily := userstats.NewDailyHandler(
+		userstats.NewService(repo.UserStats{}, time.Now), cfg.Ops.StatsToken.Reveal(), time.Now)
+	router.GET("/api/ops/user-stats/daily", userStatsDaily.Serve)
 
 	return router
 }
