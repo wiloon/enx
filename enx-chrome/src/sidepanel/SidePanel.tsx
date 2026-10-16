@@ -27,6 +27,7 @@ import {
   type SentenceHighlightSpans,
 } from '@/lib/wordHighlight'
 import { sendMessageToBackground } from '@/services/api'
+import { countLookup, type RecordLookup } from '@/lib/queryCount'
 import { config } from '@/config/env'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
 import {
@@ -332,12 +333,21 @@ const removeCard = (
   )
 }
 
+// Counts a word clicked in the panel on the server, without waiting
+// (lib/queryCount.ts).
+const countOnServer: RecordLookup = wordId => {
+  void sendMessageToBackground({
+    type: 'recordWordLookup',
+    wordId,
+  } satisfies ContentMessage).catch(() => {})
+}
+
 // The top-level page-lookup card a new SentenceEntry should absorb (ADR-023
 // addendum): the user clicked `word` on the page, then sent its sentence to
 // the panel from the same popover, so the newest entry is that word's
 // dictionary-only card. Moving it into the sentence avoids two cards for
-// the same word side by side and a second getOneWord. Only the very first
-// entry counts -- an older lookup of the same word is its own history.
+// the same word side by side. Only the very first entry counts -- an older
+// lookup of the same word is its own history.
 const adjacentPageCard = (
   entries: PanelEntry[],
   word: string
@@ -1099,7 +1109,7 @@ function SidePanelContent() {
   // review stage underlines it here, and the page is told so its own
   // wordCache and underlines catch up without a reload. No content script
   // on the tab (ENX not enabled there, or the tab navigated away) is fine:
-  // the server already counted the lookup, so the next page that enables
+  // the click was counted on the server, so the next page that enables
   // ENX underlines the word anyway.
   const recordWordLookup = useCallback(
     (word: string, ecp: WordData) => {
@@ -1119,31 +1129,35 @@ function SidePanelContent() {
   // Query Count) via the same getOneWord lookup the page's word popup uses,
   // and resolves with the looked-up Chinese definition (or undefined on
   // failure/no entry) so callers can feed it into a subsequent
-  // dictionary-first AI call (see fetchWordContext below).
-  // NOTE: getOneWord increments the server-side Query Count, so callers must
-  // only run this once per word -- never for a card that already has it.
+  // dictionary-first AI call (see fetchWordContext below). getOneWord only
+  // reads, so this may run as often as needed (ADR-059 Decision 7).
+  // `counts` is true only for a word clicked in the panel: that click is a
+  // lookup and is counted once (lib/queryCount.ts). A card for a word the
+  // page's popover already looked up -- a sentence's anchor word, a retry --
+  // must not count it again.
   const fetchDictionary = useCallback(
     (
       word: string,
-      sentenceId: string | undefined
+      sentenceId: string | undefined,
+      counts: boolean
     ): Promise<string | undefined> => {
       return sendMessageToBackground<BackgroundResponse>({
         type: 'getOneWord',
         word,
       } satisfies ContentMessage)
         .then(response => {
-          if (response.success && response.ecp) {
-            recordWordLookup(word, response.ecp)
+          const ecp =
+            response.success && response.ecp && counts
+              ? countLookup(response.ecp, countOnServer)
+              : response.ecp
+          if (response.success && ecp) {
+            recordWordLookup(word, ecp)
           }
           setEntries(prev =>
             patchCard(prev, sentenceId, word, {
-              pronunciation: response.success
-                ? response.ecp?.Pronunciation
-                : undefined,
-              dictionaryChinese: response.success
-                ? response.ecp?.Chinese
-                : undefined,
-              loadCount: response.success ? response.ecp?.LoadCount : undefined,
+              pronunciation: response.success ? ecp?.Pronunciation : undefined,
+              dictionaryChinese: response.success ? ecp?.Chinese : undefined,
+              loadCount: response.success ? ecp?.LoadCount : undefined,
               dictionaryStatus: response.success ? 'loaded' : 'error',
               dictionaryError: response.success
                 ? undefined
@@ -1153,7 +1167,7 @@ function SidePanelContent() {
                 : response.status,
             })
           )
-          return response.success ? response.ecp?.Chinese : undefined
+          return response.success ? ecp?.Chinese : undefined
         })
         .catch(() => {
           setEntries(prev =>
@@ -1179,8 +1193,13 @@ function SidePanelContent() {
   // phrase (ADR-008) has no dictionary entry and skips this entirely,
   // calling fetchContextTranslation directly instead.
   const fetchWordContext = useCallback(
-    (word: string, sentence: string, sentenceId: string | undefined) => {
-      fetchDictionary(word, sentenceId).then(dictionaryChinese => {
+    (
+      word: string,
+      sentence: string,
+      sentenceId: string | undefined,
+      counts: boolean
+    ) => {
+      fetchDictionary(word, sentenceId, counts).then(dictionaryChinese => {
         fetchContextTranslation(word, sentence, sentenceId, dictionaryChinese)
       })
     },
@@ -1199,8 +1218,7 @@ function SidePanelContent() {
   // could click that highlighted word (handleWordClick) in the same tick.
   // Guard against that race the same way the pre-ADR-023 version did: if a
   // card already exists, just reorder it -- never re-seed/re-fetch (would
-  // double the Query Count and double-charge the AI call for the same
-  // word).
+  // double-charge the AI call for the same word).
   const seedAnchorWord = useCallback(
     (sentenceId: string, rawWord: string, sentence: string) => {
       const word = rawWord.toLowerCase()
@@ -1220,7 +1238,8 @@ function SidePanelContent() {
           contextStatus: 'loading',
         }))
       )
-      fetchWordContext(word, sentence, sentenceId)
+      // The page's popover already counted this word's lookup.
+      fetchWordContext(word, sentence, sentenceId, false)
     },
     [fetchWordContext]
   )
@@ -1396,7 +1415,7 @@ function SidePanelContent() {
   // dictionary half is doing: a phrase card (dictionaryStatus 'none') has no
   // dictionary to redo, so just retry the AI call alone; a card whose
   // dictionary already loaded reuses that definition rather than re-running
-  // getOneWord (would double the Query Count); anything else (dictionary
+  // getOneWord (no need to fetch it twice); anything else (dictionary
   // itself never resolved, e.g. also hit the same session expiry) redoes
   // the whole dictionary-first chain.
   const handleRetryContextTranslation = useCallback(
@@ -1446,7 +1465,8 @@ function SidePanelContent() {
           contextError: undefined,
         })
       )
-      fetchWordContext(word, sentence, sentenceId)
+      // A retry redoes a lookup, it is not a new one.
+      fetchWordContext(word, sentence, sentenceId, false)
     },
     [entries, fetchContextTranslation, fetchWordContext]
   )
@@ -1502,7 +1522,8 @@ function SidePanelContent() {
           contextStatus: 'loading',
         }))
       )
-      fetchWordContext(word, sentence, sentenceId)
+      // A click in the panel is a lookup of its own: count it.
+      fetchWordContext(word, sentence, sentenceId, true)
     },
     [entries, fetchWordContext]
   )

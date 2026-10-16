@@ -29,6 +29,7 @@ import {
   type LearningModeStatus,
 } from '@/lib/learningModeStatus'
 import { maybeAutoEnable } from './autoEnable'
+import { countLookup, type RecordLookup } from '@/lib/queryCount'
 import { nearestElement, referenceLineHeight } from '@/lib/rangeUtils'
 import {
   createSpaRebuilder,
@@ -129,6 +130,11 @@ const sendToBackground = (
   message: ContentMessage
 ): Promise<BackgroundResponse> => {
   return sendRuntimeMessage(message)
+}
+
+// Counts a popover lookup on the server, without waiting (lib/queryCount.ts).
+const recordLookup: RecordLookup = wordId => {
+  void sendToBackground({ type: 'recordWordLookup', wordId })
 }
 
 type OverlayElement = HTMLElement & {
@@ -408,6 +414,7 @@ const showWordPopover = async (word: string, reference: Range) => {
       overlay.hidePopover()
       showSessionExpiredMessage()
     },
+    recordLookup,
   }
   const handleAiLookup = () => {
     const current = contentScriptStore.get(currentWordAtom)
@@ -453,8 +460,9 @@ const showWordPopover = async (word: string, reference: Range) => {
     if (response.success && response.ecp) {
       // The raw ECDICT phonetic field is kept as-is here; formatPhonetic()
       // (src/lib/phonetic.ts) normalises it at render time in WordPopover and
-      // the Side Panel, so both surfaces show the same shape.
-      const wordData: WordData = { ...response.ecp }
+      // the Side Panel, so both surfaces show the same shape. This click is
+      // one lookup: counted on the server once, shown counted at once.
+      const wordData: WordData = countLookup({ ...response.ecp }, recordLookup)
 
       contentScriptStore.set(currentWordAtom, wordData)
       contentScriptStore.set(isTranslatingAtom, false)
