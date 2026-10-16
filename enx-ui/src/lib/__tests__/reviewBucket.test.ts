@@ -11,7 +11,7 @@ const { HIGHLIGHT_BUCKET_COLORS, reviewBucket: extensionReviewBucket } =
     reviewBucket: (word: {
       English: string
       LoadCount: number
-      AlreadyAcquainted: number
+      Known: boolean
       WordType: number
     }) => number | null
   }>(path.join(__dirname, '../../../../enx-chrome/src/lib/wordHighlight'))
@@ -38,7 +38,7 @@ describe('reviewBucket', () => {
           extensionReviewBucket({
             English: 'x',
             LoadCount: count,
-            AlreadyAcquainted: known ? 1 : 0,
+            Known: known,
             WordType: 0,
           })
         )

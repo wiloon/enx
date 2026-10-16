@@ -318,7 +318,7 @@ export class ApiService {
   }
 
   // Toggles whether the user knows the word (the endpoint the extension's
-  // "Mark as acquainted" uses). It is a toggle, not a set: read the state
+  // "Mark as known" uses). It is a toggle, not a set: read the state
   // back from the answer rather than assuming it.
   async markWord(english: string): Promise<ApiResponse<MarkedWord>> {
     return this.makeRequest('/api/mark', {

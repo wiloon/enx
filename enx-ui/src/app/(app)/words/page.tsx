@@ -163,7 +163,7 @@ export default function WordListPage() {
       setActionError(resp.error || 'Failed to mark the word')
       return
     }
-    const known = resp.data.AlreadyAcquainted === 1
+    const known = resp.data.Known
     for (const [key, cached] of queryClient.getQueriesData<
       InfiniteData<WordListData>
     >({ queryKey: ['word-list'] })) {

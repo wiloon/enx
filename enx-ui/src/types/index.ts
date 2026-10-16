@@ -28,7 +28,7 @@ export interface WordData {
   Pronunciation: string
   Chinese: string
   LoadCount: number
-  AlreadyAcquainted: number
+  Known: boolean
   WordType: number
 }
 
@@ -194,7 +194,7 @@ export interface WordListEntry {
 // POST /api/mark answers with the word after the toggle.
 export interface MarkedWord {
   English: string
-  AlreadyAcquainted: number
+  Known: boolean
   LoadCount: number
 }
 

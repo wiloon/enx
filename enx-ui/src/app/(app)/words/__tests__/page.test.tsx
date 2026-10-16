@@ -362,7 +362,7 @@ describe('marking a word known', () => {
   it('badges the word known and leaves it where it was', async () => {
     mockMark.mockResolvedValue({
       success: true,
-      data: { English: 'ephemeral', AlreadyAcquainted: 1, LoadCount: 2 },
+      data: { English: 'ephemeral', Known: true, LoadCount: 2 },
     })
     renderPage()
 
@@ -382,7 +382,7 @@ describe('marking a word known', () => {
     })
     mockMark.mockResolvedValue({
       success: true,
-      data: { English: 'ephemeral', AlreadyAcquainted: 0, LoadCount: 1 },
+      data: { English: 'ephemeral', Known: false, LoadCount: 1 },
     })
     renderPage()
 
@@ -398,7 +398,7 @@ describe('marking a word known', () => {
   it('takes the word out of the Learning view once it is known', async () => {
     mockMark.mockResolvedValue({
       success: true,
-      data: { English: 'ephemeral', AlreadyAcquainted: 1, LoadCount: 2 },
+      data: { English: 'ephemeral', Known: true, LoadCount: 2 },
     })
     renderPage()
     await screen.findByText('2 words')

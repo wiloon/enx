@@ -9,7 +9,7 @@ const data: WordData = {
   Pronunciation: 'rʌn',
   Chinese: 'v. 跑',
   LoadCount: 3,
-  AlreadyAcquainted: 0,
+  Known: false,
   WordType: 0,
 }
 
