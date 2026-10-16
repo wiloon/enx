@@ -80,7 +80,10 @@ CREATE INDEX idx_lookup_events_at      ON lookup_events (at);
 
 ### 4. 保留期与汇总：N 天，默认 90
 
-保留天数是配置项，`stats.lookup-events.retention-days`，环境变量 `STATS_LOOKUP_EVENTS_RETENTION_DAYS`，默认 90；启动时校验必须大于 30（否则算不出 MAU），不合法就拒绝启动，与其他 `stats.*` 配置的校验方式一致。
+保留天数是配置项，`stats.lookup-events.retention-days`，环境变量 `STATS_LOOKUP_EVENTS_RETENTION_DAYS`，默认 90；启动时校验必须在 **31–100** 之间，不合法就拒绝启动，与其他 `stats.*` 配置的校验方式一致。
+
+- 下限 31：WAU / MAU 要回看 30 天。
+- 上限 100：隐私政策对外承诺「查词事件最多保留 100 天」。政策写的是上限而不是具体天数，运维在上限内调整不必改政策；上限写进代码校验，配错了服务起不来，不会悄悄违背政策。要超过 100 天，必须先改隐私政策，再改这个上限。
 
 一个每日任务按顺序做三件事：
 
@@ -146,11 +149,15 @@ CREATE INDEX idx_lookup_events_at      ON lookup_events (at);
 
 ## Consequences
 
-- **推翻 ADR-028 Options B1**（否决事件表）。当时的两条理由：体量——按现在几百用户的规模，一年最多几百万行，SQLite 加索引承受得起，且只留 90 天；隐私——不存词、不存页面，毫秒明细只存 90 天，长期只剩按天数字。ADR-028 Decision 10 改为「长期数据只有按天聚合；查词事件的时间明细最多保留 90 天」。
+- **推翻 ADR-028 Options B1**（否决事件表）。当时的两条理由：体量——按现在几百用户的规模，一年最多几百万行，SQLite 加索引承受得起，且只留 90 天；隐私——不存词、不存页面，毫秒明细只存 90 天，长期只剩按天数字。ADR-028 Decision 10 改为「长期数据只有按天聚合；查词事件的时间明细最多保留 100 天」（默认 90）。
 - **修订 ADR-029**：配额的数据源从 `dictionary_lookup_quota` 改为 `lookup_events`；口径（UTC 日、请求数、含 429、出错放行）不变；订阅档不再是 0；免费档上限兼有引导付费的作用（ADR-029 文末「2026-10-15 修订」）。
-- **配置要改**：`enx-api/config.toml` 的 `stripe.quota.dictionary-lookup-daily-subscribed` 从 0 改为 20000（随 #136 实现提交）；生产、homelab 的部署模板若用 `STRIPE_QUOTA_DICTIONARY_LOOKUP_DAILY_*` 覆盖过，也要同步。新增 `STATS_LOOKUP_EVENTS_RETENTION_DAYS`。
+- **配置要改**（随 #136 实现一起改，核对于 2026-10-15）：
+  - `enx-api/config.toml`：`stripe.quota.dictionary-lookup-daily-subscribed` 从 0 改为 20000。homelab 的 `w10n-config/infra/homelab/k8s/enx/deployment.yaml` 只用环境变量覆盖了免费档（200），订阅档走这里的默认值。
+  - 生产：`w10n-config/infra/aws/ansible/ec2-tokyo/templates/enx-api-prod.env.j2`（Ansible）里 `STRIPE_QUOTA_DICTIONARY_LOOKUP_DAILY_SUBSCRIBED=0`，改为 20000，并更新它上方「0 = count but do not block」的注释。
+  - 免费档 200 同时出现在 enx-ui `/pricing`（`enx-ui/src/lib/plans.ts` 的 `FREE_DAILY_LOOKUPS`），以后按 WIL-176 调整时三处一起改。付费档在定价页上写的是「A much higher daily lookup limit」，改成 20000 不用改文案。
+  - `STATS_LOOKUP_EVENTS_RETENTION_DAYS` 不必在部署里设置，用默认 90。
 - **修订 ADR-058 Decision 2 / 4**：活跃用户不再复用配额表，改为事件现算加 `active_users_daily` 汇总；#146 按本 ADR 实现，gauge 和按天接口的口径不变。
-- **隐私政策补一句**：记录每次查词的时间（保留 90 天，之后只保留按天的次数），不记录查了哪个词、在哪个页面。
+- **隐私政策补一行**（随 #136 实现一起改，功能上线时政策同步生效）：在 enx-ui `/privacy` 和 `/zh/privacy` 的数据保留表里加「查词事件：每次查词的时间与时区，不含查了哪个词、在哪个页面；最多保留 100 天，之后只保留按天的查词次数」。写上限 100 天，不写具体的 N（Decision 4）。
 - **体量**：每次查词一行，约 60–80 字节加两个索引。1000 个活跃用户、每人每天 50 次、留 90 天，约 450 万行、几百 MB；到那个规模再看是否缩短保留期或把 `user_id` 换成整数 id。
 - **扩展要改**：查词变成两个请求。GET 返回后，客户端直接按「当前次数 + 1、清掉认识标记」渲染查词浮层的复习档位和单词高亮颜色，同时发 POST，**不等 POST 返回**。这条规则放在 enx-chrome 的 `src/lib/`，带单元测试；POST 失败时界面已经显示的档位不回退，下次查词以服务端为准。
 - **令牌桶限流另起 issue / ADR（#185）**：对所有已登录接口用同一套宽松规则（例如每用户每秒 5 次、突发 20），正常人碰不到；它管速度，每日配额管总量（Decision 6）。
@@ -169,7 +176,7 @@ CREATE INDEX idx_lookup_events_at      ON lookup_events (at);
 
 ## 修订（2026-10-15，第二轮）
 
-- 保留天数改为配置项 `STATS_LOOKUP_EVENTS_RETENTION_DAYS`，默认 90，必须大于 30（Decision 4）。
+- 保留天数改为配置项 `STATS_LOOKUP_EVENTS_RETENTION_DAYS`，默认 90，允许 31–100；隐私政策写「最多 100 天」（Decision 4）。
 - 配额先 `COUNT` 再 `INSERT`，不用事务（Decision 2）。
 - 先算配额再查词库，超额不读 `words` / ECDICT（Decision 2）。
 - rejected 事件不设条数上限，脚本由令牌桶 #185 挡（Decision 2）。
