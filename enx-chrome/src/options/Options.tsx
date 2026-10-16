@@ -205,8 +205,8 @@ function OptionsContent() {
               </span>
               <span className="block text-sm text-muted-foreground">
                 Underlines the words you&apos;ve looked up, wherever they
-                appear. Turn off for a clean page —
-                you can still click any word to look it up.
+                appear. Turn off for a clean page — you can still click any word
+                to look it up.
               </span>
             </span>
           </label>
