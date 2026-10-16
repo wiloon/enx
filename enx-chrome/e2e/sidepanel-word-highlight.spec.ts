@@ -141,7 +141,7 @@ test.describe('Side Panel word underlines (ADR-053)', () => {
     expect((await highlightTexts(panel)).underlined).toContain(word)
   })
 
-  test('marking a word acquainted on the page drops its underline in the panel', async ({
+  test('marking a word known on the page drops its underline in the panel', async ({
     page,
   }) => {
     const anchorKey = anchorWord.toLowerCase()

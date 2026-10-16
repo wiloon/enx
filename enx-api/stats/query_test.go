@@ -22,7 +22,7 @@ func seedWord(t *testing.T, userID, id, english, chinese string, updatedAt int64
 	// test is about untestable. (Same trap ReaderDocument documents by
 	// renaming its column-backing field to LastEditedAt.)
 	if err := sqlitex.DB.Exec(
-		`INSERT INTO user_dicts (user_id, word_id, query_count, already_acquainted, created_at, updated_at)
+		`INSERT INTO user_dicts (user_id, word_id, query_count, known, created_at, updated_at)
 		 VALUES (?, ?, 2, 0, ?, ?)`,
 		userID, id, updatedAt, updatedAt,
 	).Error; err != nil {
@@ -113,8 +113,8 @@ func TestGetOverviewVocabAndRecentWords(t *testing.T) {
 
 	if err := sqlitex.DB.Model(&sqlitex.UserDict{}).
 		Where("user_id = ? AND word_id = ?", user, "w-"+user+"-1").
-		Update("already_acquainted", 1).Error; err != nil {
-		t.Fatalf("mark acquainted: %v", err)
+		Update("known", 1).Error; err != nil {
+		t.Fatalf("mark known: %v", err)
 	}
 
 	ov, err := GetOverview(context.Background(), user, "2026-09-16", now)

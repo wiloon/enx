@@ -64,12 +64,12 @@ export default function WordResultCard({
             <div className="text-lg">
               <span
                 className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                  data.AlreadyAcquainted === 1
+                  data.Known
                     ? 'bg-green-100 text-green-800'
                     : 'bg-gray-100 text-gray-800'
                 }`}
               >
-                {data.AlreadyAcquainted === 1 ? 'Mastered' : 'Learning'}
+                {data.Known ? 'Mastered' : 'Learning'}
               </span>
             </div>
           </div>

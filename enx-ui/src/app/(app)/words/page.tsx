@@ -152,18 +152,18 @@ export default function WordListPage() {
     setPending(english)
   }
 
-  // /api/mark is a toggle: the answer, not the menu item chosen, says
-  // whether the word is known now.
-  const toggleKnown = async (english: string) => {
+  // Sets the word to the state the menu item names. The request is
+  // idempotent (#133), and the answer says where the word ended up.
+  const setKnown = async (english: string, known: boolean) => {
     setActionError(null)
     setMarking(english)
-    const resp = await apiService.markWord(english)
+    const resp = await apiService.setWordKnown(english, known)
     setMarking(null)
     if (!resp.success || !resp.data) {
       setActionError(resp.error || 'Failed to mark the word')
       return
     }
-    const known = resp.data.AlreadyAcquainted === 1
+    const nowKnown = resp.data.Known
     for (const [key, cached] of queryClient.getQueriesData<
       InfiniteData<WordListData>
     >({ queryKey: ['word-list'] })) {
@@ -171,7 +171,7 @@ export default function WordListPage() {
       const viewStatus = key[1] as WordListStatus
       queryClient.setQueryData(
         key,
-        withKnown(cached, viewStatus, english, known)
+        withKnown(cached, viewStatus, english, nowKnown)
       )
     }
     // A view the word newly belongs in picks it up when it is next shown.
@@ -292,7 +292,7 @@ export default function WordListPage() {
                 setExpanded((e) => (e === w.english ? null : w.english))
               }
               marking={marking === w.english}
-              onToggleKnown={() => toggleKnown(w.english)}
+              onToggleKnown={() => setKnown(w.english, !w.known)}
               onRemove={() => remove(w.english)}
             />
           ))}

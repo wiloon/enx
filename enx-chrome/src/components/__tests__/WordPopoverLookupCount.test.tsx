@@ -21,7 +21,7 @@ it('shows how many times the word was looked up', () => {
     Chinese: 'int. 你好',
     Pronunciation: '',
     LoadCount: 3,
-    AlreadyAcquainted: 0,
+    Known: false,
     WordType: 0,
   } as WordData)
   render(
@@ -29,7 +29,7 @@ it('shows how many times the word was looked up', () => {
       <WordPopover
         word="hello"
         onClose={jest.fn()}
-        onMarkAcquainted={jest.fn()}
+        onMarkKnown={jest.fn()}
         onOpenSentencePanel={jest.fn()}
         onReloadPage={jest.fn()}
       />

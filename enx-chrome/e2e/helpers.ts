@@ -300,7 +300,7 @@ export async function mockBackendFetch(
       Pronunciation: string
       Chinese: string
       LoadCount: number
-      AlreadyAcquainted: number
+      Known: boolean
       WordType: number
     }>
     translateFails?: boolean
@@ -316,7 +316,7 @@ export async function mockBackendFetch(
     Pronunciation: '[stʌb]',
     Chinese: '存根',
     LoadCount: 1,
-    AlreadyAcquainted: 0,
+    Known: false,
     WordType: 0,
     ...options.wordData,
   }
@@ -388,17 +388,17 @@ export async function mockBackendFetch(
           return new Response(
             JSON.stringify({
               queryCount: wordData.LoadCount + 1,
-              alreadyAcquainted: 0,
+              known: false,
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } }
           )
         }
 
         if (/\/api\/me\/words\/[^/]+\/known$/.test(url)) {
-          return new Response(
-            JSON.stringify({ ...wordData, AlreadyAcquainted: 1 }),
-            { status: 200, headers: { 'Content-Type': 'application/json' } }
-          )
+          return new Response(JSON.stringify({ ...wordData, Known: true }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
         }
 
         return realFetch(input, init)

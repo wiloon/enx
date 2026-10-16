@@ -63,7 +63,7 @@ Tests for word highlighting logic including:
 Integration tests for the complete word highlighting flow:
 
 - Full sentence processing
-- Multiple word types (known, unknown, acquainted)
+- Multiple word types (learning, unknown, known)
 - Integration with word data structures
 
 ## Running All Tests

@@ -15,7 +15,7 @@ it("keeps enx-ui's Word List stages in step with the underline", () => {
       const word = {
         English: 'x',
         LoadCount: count,
-        AlreadyAcquainted: known ? 1 : 0,
+        Known: known,
         WordType: 0,
       } as WordData
       expect(wordListBucket({ queryCount: count, known })).toBe(

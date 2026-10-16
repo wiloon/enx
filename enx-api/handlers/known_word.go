@@ -46,13 +46,13 @@ func setWordKnown(c *gin.Context, known bool) {
 	// key a user_dicts row on. Writing one with an empty word_id would make
 	// every such word share that single row, and the phantom row would count
 	// towards the user's vocabulary. Nothing is lost by skipping the write:
-	// paragraph-init never reads acquainted state for an id-less word anyway.
+	// paragraph-init never reads known state for an id-less word anyway.
 	if word.Id == "" {
 		c.JSON(http.StatusOK, word)
 		return
 	}
 
-	qc, acquainted, err := repo.SetAcquainted(userId, word.Id, known)
+	qc, isKnown, err := repo.SetKnown(userId, word.Id, known)
 	if err != nil {
 		logger.Errorf("setWordKnown: set %s known=%v for %s: %v", word.English, known, userId, err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -62,6 +62,6 @@ func setWordKnown(c *gin.Context, known bool) {
 		return
 	}
 	word.LoadCount = qc
-	word.AlreadyAcquainted = acquainted
+	word.Known = isKnown
 	c.JSON(http.StatusOK, word)
 }

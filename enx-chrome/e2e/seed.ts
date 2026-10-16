@@ -69,7 +69,7 @@ export function seedVocabulary(dbPath = process.env.E2E_DB_PATH): void {
     )
     const upsertUserDict = db.prepare(
       `INSERT OR REPLACE INTO user_dicts
-         (user_id, word_id, query_count, already_acquainted, created_at, updated_at)
+         (user_id, word_id, query_count, known, created_at, updated_at)
        VALUES (?, (SELECT id FROM words WHERE english = ?), ?, 0, ?, ?)`
     )
 

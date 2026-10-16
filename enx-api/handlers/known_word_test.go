@@ -14,9 +14,9 @@ import (
 )
 
 type knownResponse struct {
-	English           string
-	LoadCount         int
-	AlreadyAcquainted int
+	English   string
+	LoadCount int
+	Known     bool
 }
 
 // knownRequest sends method (PUT or DELETE) to /api/me/words/:english/known
@@ -66,18 +66,18 @@ func TestKnownPutAndDeleteAreIdempotent(t *testing.T) {
 
 	steps := []struct {
 		method string
-		want   int
+		want   bool
 	}{
-		{http.MethodPut, 1},
-		{http.MethodPut, 1},
-		{http.MethodDelete, 0},
-		{http.MethodDelete, 0},
-		{http.MethodPut, 1},
+		{http.MethodPut, true},
+		{http.MethodPut, true},
+		{http.MethodDelete, false},
+		{http.MethodDelete, false},
+		{http.MethodPut, true},
 	}
 	for i, s := range steps {
 		code, resp := knownRequest(t, s.method, userID, "zzqxknown")
-		if code != http.StatusOK || resp.AlreadyAcquainted != s.want || resp.LoadCount != 5 || resp.English != "zzqxknown" {
-			t.Fatalf("step %d %s: status %d, response %+v; want acquainted %d, LoadCount 5", i+1, s.method, code, resp, s.want)
+		if code != http.StatusOK || resp.Known != s.want || resp.LoadCount != 5 || resp.English != "zzqxknown" {
+			t.Fatalf("step %d %s: status %d, response %+v; want known %v, LoadCount 5", i+1, s.method, code, resp, s.want)
 		}
 	}
 }
@@ -89,15 +89,15 @@ func TestKnownPutResolvesCaseAndApostrophe(t *testing.T) {
 	userID := "u-" + t.Name()
 	wordID := seedKnownWord(t, "don't")
 
-	if code, resp := knownRequest(t, http.MethodPut, userID, "Don't"); code != http.StatusOK || resp.AlreadyAcquainted != 1 {
+	if code, resp := knownRequest(t, http.MethodPut, userID, "Don't"); code != http.StatusOK || !resp.Known {
 		t.Fatalf("status %d, response %+v; want known", code, resp)
 	}
 	var ud sqlitex.UserDict
 	if err := sqlitex.DB.Where("user_id = ? AND word_id = ?", userID, wordID).First(&ud).Error; err != nil {
 		t.Fatalf("load user_dicts row: %v", err)
 	}
-	if ud.AlreadyAcquainted != 1 {
-		t.Fatalf("already_acquainted = %d, want 1", ud.AlreadyAcquainted)
+	if !ud.Known {
+		t.Fatal("known not stored")
 	}
 }
 

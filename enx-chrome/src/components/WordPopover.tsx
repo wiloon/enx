@@ -23,7 +23,7 @@ import { playPronunciation } from '@/lib/pronunciation'
 interface WordPopoverProps {
   word: string
   onClose: () => void
-  onMarkAcquainted: (word: string) => void
+  onMarkKnown: (word: string) => void
   onOpenSentencePanel: () => void
   // The "Look up with AI" button after a lookup that found nothing (ADR-045).
   onAiLookup?: () => void
@@ -40,7 +40,7 @@ interface WordPopoverProps {
 export default function WordPopover({
   word,
   onClose,
-  onMarkAcquainted,
+  onMarkKnown,
   onOpenSentencePanel,
   onAiLookup = () => {},
   onReloadPage = () => window.location.reload(),
@@ -64,7 +64,7 @@ export default function WordPopover({
     if (e.key === 'Escape') {
       onClose()
     } else if (e.key === 'Enter' && currentWord) {
-      onMarkAcquainted(currentWord.English)
+      onMarkKnown(currentWord.English)
     }
   }
 
@@ -219,11 +219,9 @@ export default function WordPopover({
             )}
             <AiNotice />
 
-            {/* Acquainted status */}
-            {currentWord.AlreadyAcquainted === 1 && (
-              <div className="text-success text-sm font-medium">
-                ✓ Already acquainted
-              </div>
+            {/* Known status */}
+            {currentWord.Known && (
+              <div className="text-success text-sm font-medium">✓ Known</div>
             )}
           </div>
         )}
@@ -254,12 +252,12 @@ export default function WordPopover({
             </button>
           </div>
 
-          {currentWord && currentWord.AlreadyAcquainted !== 1 && (
+          {currentWord && !currentWord.Known && (
             <button
               data-testid="word-popover-mark-known"
-              onClick={() => onMarkAcquainted(currentWord.English)}
+              onClick={() => onMarkKnown(currentWord.English)}
               className="bg-brand hover:bg-brand/90 text-brand-foreground text-sm px-3 py-1 rounded-sm transition-colors"
-              title="Mark as acquainted"
+              title="Mark as known"
             >
               ✓ Know It
             </button>

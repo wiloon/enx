@@ -29,7 +29,7 @@ const miss = (fallback?: { CanUse: boolean; Auto: boolean }): WordData => ({
   Pronunciation: '',
   Chinese: '',
   LoadCount: 0,
-  AlreadyAcquainted: 0,
+  Known: false,
   WordType: 0,
   ...(fallback ? { AIFallback: fallback } : {}),
 })
@@ -144,7 +144,7 @@ describe('runAiLookup', () => {
     expect(deps.recordLookup).toHaveBeenCalledWith('w1')
     expect(store.get(currentWordAtom)).toMatchObject({ LoadCount: 1 })
     expect(deps.onDefined).toHaveBeenCalledWith(
-      expect.objectContaining({ LoadCount: 1, AlreadyAcquainted: 0 })
+      expect.objectContaining({ LoadCount: 1, Known: false })
     )
   })
 

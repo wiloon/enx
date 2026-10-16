@@ -33,12 +33,18 @@ describe('ApiService word list and saved pages', () => {
     )
   })
 
-  it('POSTs the word to /api/mark to toggle whether it is known', async () => {
-    await service.markWord('ephemeral')
+  it('PUTs /api/me/words/:english/known to mark a word known, encoded', async () => {
+    await service.setWordKnown("o'clock/x", true)
     const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
-    expect(url).toBe('http://localhost:8090/api/mark')
-    expect(init.method).toBe('POST')
-    expect(JSON.parse(init.body)).toEqual({ English: 'ephemeral' })
+    expect(url).toBe("http://localhost:8090/api/me/words/o'clock%2Fx/known")
+    expect(init.method).toBe('PUT')
+  })
+
+  it('DELETEs /api/me/words/:english/known to mark a word learning again', async () => {
+    await service.setWordKnown('ephemeral', false)
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toBe('http://localhost:8090/api/me/words/ephemeral/known')
+    expect(init.method).toBe('DELETE')
   })
 
   it('leaves out the optional word-list parameters it was not given', async () => {

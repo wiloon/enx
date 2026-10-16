@@ -1633,7 +1633,7 @@ describe('SidePanel', () => {
           Chinese: 'great词典',
           Pronunciation: '/greɪt/',
           LoadCount: 1,
-          AlreadyAcquainted: 0,
+          Known: false,
           WordType: 0,
         },
       })
@@ -2253,7 +2253,7 @@ describe('SidePanel', () => {
       Pronunciation: '',
       Chinese: '',
       LoadCount: loadCount,
-      AlreadyAcquainted: 0,
+      Known: false,
       WordType: 0,
     })
 
@@ -2398,9 +2398,9 @@ describe('SidePanel', () => {
       await waitFor(() => expect(highlightTexts('enx-hl-1')).toEqual([]))
     })
 
-    // ADR-053 optimistic broadcast: the page's markAcquainted message reaches
+    // ADR-053 optimistic broadcast: the page's markKnown message reaches
     // every extension page; the panel only listens, background alone replies.
-    it('drops the underline as soon as the page marks the word acquainted, without replying', async () => {
+    it('drops the underline as soon as the page marks the word known, without replying', async () => {
       openSentence({ cats: wordState('cats', 1) })
       mockSendMessage.mockResolvedValue({ success: true, chinese: '译文' })
 
@@ -2415,7 +2415,7 @@ describe('SidePanel', () => {
           chrome.runtime.onMessage.addListener as jest.Mock
         ).mock.calls) {
           keepsChannelOpen = listener(
-            { type: 'markAcquainted', word: 'Cats' },
+            { type: 'markKnown', word: 'Cats' },
             { tab: { id: PANEL_TAB_ID } },
             sendResponse
           )

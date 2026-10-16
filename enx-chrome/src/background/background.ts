@@ -682,8 +682,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'getWords':
           return await handleGetWords(request.paragraph)
 
-        case 'markAcquainted':
-          return await handleMarkAcquainted(request.word, request.userId)
+        case 'markKnown':
+          return await handleMarkKnown(request.word, request.userId)
 
         case 'recordWordLookup':
           return await handleRecordWordLookup(request.wordId || '')
@@ -1135,21 +1135,21 @@ export const handleGetWords = async (paragraph: string) => {
   }
 }
 
-// Handle mark word as acquainted
-const handleMarkAcquainted = async (word: string, userId: number) => {
+// Handle mark word as known
+const handleMarkKnown = async (word: string, userId: number) => {
   if (!word) {
-    console.error('handleMarkAcquainted: Missing word', { word })
+    console.error('handleMarkKnown: Missing word', { word })
     return { success: false, error: 'Missing word' }
   }
 
-  console.log('handleMarkAcquainted: Marking word as acquainted', {
+  console.log('handleMarkKnown: Marking word as known', {
     word: word.trim(),
     userId,
   })
 
   // Check if we have a Clerk session (synced from the website).
   if (!(await isSignedIn())) {
-    console.error('handleMarkAcquainted: no Clerk session')
+    console.error('handleMarkKnown: no Clerk session')
     return {
       success: false,
       error: 'Session expired. Please click the extension icon to login again.',
@@ -1164,16 +1164,16 @@ const handleMarkAcquainted = async (word: string, userId: number) => {
     { retry: true }
   )
 
-  console.log('handleMarkAcquainted: API response', response)
+  console.log('handleMarkKnown: API response', response)
   console.log(
-    'handleMarkAcquainted: API response data structure:',
+    'handleMarkKnown: API response data structure:',
     JSON.stringify(response.data, null, 2)
   )
 
   if (response.success) {
-    console.log('handleMarkAcquainted: Word marked successfully')
+    console.log('handleMarkKnown: Word marked successfully')
     console.log(
-      'handleMarkAcquainted: Returning ecp data:',
+      'handleMarkKnown: Returning ecp data:',
       response.data?.ecp || response.data
     )
     return {
@@ -1181,7 +1181,7 @@ const handleMarkAcquainted = async (word: string, userId: number) => {
       ecp: response.data?.ecp || response.data,
     }
   } else {
-    console.error('handleMarkAcquainted: Failed to mark word', response.error)
+    console.error('handleMarkKnown: Failed to mark word', response.error)
     // Pass through session expiry flag
     return {
       success: false,

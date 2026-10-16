@@ -83,8 +83,8 @@ CREATE TABLE IF NOT EXISTS user_dicts (
     -- Query statistics
     query_count INTEGER DEFAULT 0,
     
-    -- Familiarity flag: 0 = learning, 1 = already acquainted
-    already_acquainted INTEGER DEFAULT 0,
+    -- Marked known by the user: 0 = learning, 1 = known
+    known INTEGER DEFAULT 0,
     
     -- Timestamps (Unix milliseconds for P2P sync)
     created_at INTEGER NOT NULL,

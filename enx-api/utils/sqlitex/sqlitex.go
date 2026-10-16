@@ -66,12 +66,12 @@ func (Word) TableName() string {
 }
 
 type UserDict struct {
-	UserId            string `gorm:"column:user_id;primaryKey"`
-	WordId            string `gorm:"column:word_id;primaryKey"`
-	QueryCount        int    `gorm:"column:query_count;default:0"`
-	AlreadyAcquainted int    `gorm:"column:already_acquainted;default:0"`
-	CreatedAt         int64  `gorm:"column:created_at;not null"`
-	UpdatedAt         int64  `gorm:"column:updated_at;not null"`
+	UserId     string `gorm:"column:user_id;primaryKey"`
+	WordId     string `gorm:"column:word_id;primaryKey"`
+	QueryCount int    `gorm:"column:query_count;default:0"`
+	Known      bool   `gorm:"column:known;default:false"`
+	CreatedAt  int64  `gorm:"column:created_at;not null"`
+	UpdatedAt  int64  `gorm:"column:updated_at;not null"`
 }
 
 func (UserDict) TableName() string {
@@ -173,6 +173,12 @@ func InitWithLogLevel(dbPath, level string) {
 		zapLog.Errorf("failed to repair user_dicts table DDL: %v", err)
 	}
 
+	// #135: AutoMigrate never renames a column; it would add an empty known
+	// next to already_acquainted. So the rename runs first.
+	if err := renameUserDictsKnownColumn(); err != nil {
+		zapLog.Errorf("failed to rename user_dicts.already_acquainted to known: %v", err)
+	}
+
 	// Auto-migrate database schema
 	zapLog.Info("running database auto-migration...")
 	err = DB.AutoMigrate(&User{}, &Word{}, &UserDict{}, &Session{}, &SyncState{},
@@ -264,12 +270,12 @@ func repairUserDictsTableDDLIfNeeded() error {
 				user_id TEXT NOT NULL,
 				word_id TEXT NOT NULL,
 				query_count INTEGER DEFAULT 0,
-				already_acquainted INTEGER DEFAULT 0,
+				known INTEGER DEFAULT 0,
 				created_at INTEGER NOT NULL,
 				updated_at INTEGER NOT NULL,
 				PRIMARY KEY (user_id, word_id)
 			)`,
-			`INSERT INTO user_dicts__clean (user_id, word_id, query_count, already_acquainted, created_at, updated_at)
+			`INSERT INTO user_dicts__clean (user_id, word_id, query_count, known, created_at, updated_at)
 			 SELECT user_id, word_id,
 			        COALESCE(query_count, 0),
 			        COALESCE(already_acquainted, 0),
@@ -289,6 +295,17 @@ func repairUserDictsTableDDLIfNeeded() error {
 		}
 		return nil
 	})
+}
+
+// renameUserDictsKnownColumn renames user_dicts.already_acquainted to known
+// in place (#135). The 0/1 values stay as they are: GORM reads them as a bool.
+// A fresh database, or one already renamed, is left untouched.
+func renameUserDictsKnownColumn() error {
+	if !DB.Migrator().HasColumn("user_dicts", "already_acquainted") {
+		return nil
+	}
+	zapLog.Info("renaming user_dicts.already_acquainted to known")
+	return DB.Exec(`ALTER TABLE user_dicts RENAME COLUMN already_acquainted TO known`).Error
 }
 
 // SQLLogLevel maps the application log level to GORM's. Every statement is

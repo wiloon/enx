@@ -15,7 +15,7 @@ const wd = (overrides: Partial<WordData> = {}): WordData => ({
   Pronunciation: '',
   Chinese: '来',
   LoadCount: 5,
-  AlreadyAcquainted: 0,
+  Known: false,
   WordType: 0,
   ...overrides,
 })
@@ -52,7 +52,7 @@ describe('review-stage palette', () => {
 
 describe('WordProcessor.reviewBucket', () => {
   it('returns null for words that should not be highlighted', () => {
-    expect(WordProcessor.reviewBucket(wd({ AlreadyAcquainted: 1 }))).toBeNull()
+    expect(WordProcessor.reviewBucket(wd({ Known: true }))).toBeNull()
     expect(WordProcessor.reviewBucket(wd({ WordType: 1 }))).toBeNull()
     expect(WordProcessor.reviewBucket(wd({ LoadCount: 0 }))).toBeNull()
   })
@@ -94,7 +94,7 @@ describe('WordProcessor.buildHighlightRanges', () => {
     const buckets = WordProcessor.buildHighlightRanges(
       textNodesUnder(document.body),
       {
-        endgame: wd({ AlreadyAcquainted: 1 }), // rejected
+        endgame: wd({ Known: true }), // rejected
         clearly: wd({ LoadCount: 0 }), // rejected
         // "known" / "here" not in dict
       }

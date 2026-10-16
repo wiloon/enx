@@ -48,11 +48,11 @@ func seedWord(t *testing.T, english string) string {
 	return id
 }
 
-func seedUserDict(t *testing.T, userID, wordID string, queryCount, acquainted int) {
+func seedUserDict(t *testing.T, userID, wordID string, queryCount int, known bool) {
 	t.Helper()
 	if err := sqlitex.DB.Create(&sqlitex.UserDict{
 		UserId: userID, WordId: wordID, QueryCount: queryCount,
-		AlreadyAcquainted: acquainted, CreatedAt: 1, UpdatedAt: 1,
+		Known: known, CreatedAt: 1, UpdatedAt: 1,
 	}).Error; err != nil {
 		t.Fatalf("seed user_dict: %v", err)
 	}
@@ -90,11 +90,11 @@ func countUserDicts(t *testing.T, userID string) int64 {
 }
 
 type lookupResponse struct {
-	Id                string
-	English           string
-	Chinese           string
-	LoadCount         int
-	AlreadyAcquainted int
+	Id        string
+	English   string
+	Chinese   string
+	LoadCount int
+	Known     bool
 }
 
 func lookup(t *testing.T, raw, userID string) lookupResponse {
@@ -111,23 +111,23 @@ func lookup(t *testing.T, raw, userID string) lookupResponse {
 	return resp
 }
 
-func assertReview(t *testing.T, userID, wordID string, wantCount, wantAcquainted int) {
+func assertReview(t *testing.T, userID, wordID string, wantCount int, wantKnown bool) {
 	t.Helper()
 	row, found := userDictRow(t, userID, wordID)
 	if !found {
 		t.Fatalf("user_dicts row for %s missing", wordID)
 	}
-	if row.QueryCount != wantCount || row.AlreadyAcquainted != wantAcquainted {
-		t.Fatalf("user_dicts: got query_count=%d acquainted=%d, want %d/%d",
-			row.QueryCount, row.AlreadyAcquainted, wantCount, wantAcquainted)
+	if row.QueryCount != wantCount || row.Known != wantKnown {
+		t.Fatalf("user_dicts: got query_count=%d known=%v, want %d/%v",
+			row.QueryCount, row.Known, wantCount, wantKnown)
 	}
 }
 
-func assertResponse(t *testing.T, resp lookupResponse, wantID string, wantCount, wantAcquainted int) {
+func assertResponse(t *testing.T, resp lookupResponse, wantID string, wantCount int, wantKnown bool) {
 	t.Helper()
-	if resp.Id != wantID || resp.LoadCount != wantCount || resp.AlreadyAcquainted != wantAcquainted {
-		t.Fatalf("response: got id=%q LoadCount=%d AlreadyAcquainted=%d, want %q/%d/%d",
-			resp.Id, resp.LoadCount, resp.AlreadyAcquainted, wantID, wantCount, wantAcquainted)
+	if resp.Id != wantID || resp.LoadCount != wantCount || resp.Known != wantKnown {
+		t.Fatalf("response: got id=%q LoadCount=%d Known=%v, want %q/%d/%v",
+			resp.Id, resp.LoadCount, resp.Known, wantID, wantCount, wantKnown)
 	}
 }
 
@@ -138,24 +138,24 @@ func assertResponse(t *testing.T, resp lookupResponse, wantID string, wantCount,
 func TestLookupAnswersWithTheCurrentReviewStateAndLeavesItAlone(t *testing.T) {
 	setupReviewTest(t)
 	id := seedWord(t, "serendipity")
-	seedUserDict(t, "u1", id, 3, 1)
+	seedUserDict(t, "u1", id, 3, true)
 
 	resp := lookup(t, "serendipity", "u1")
 
-	assertResponse(t, resp, id, 3, 1)
-	assertReview(t, "u1", id, 3, 1)
+	assertResponse(t, resp, id, 3, true)
+	assertReview(t, "u1", id, 3, true)
 }
 
 func TestRepeatedLookupsLeaveTheQueryCountUnchanged(t *testing.T) {
 	setupReviewTest(t)
 	id := seedWord(t, "serendipity")
-	seedUserDict(t, "u1", id, 3, 0)
+	seedUserDict(t, "u1", id, 3, false)
 
 	lookup(t, "serendipity", "u1")
 	resp := lookup(t, "serendipity", "u1")
 
-	assertResponse(t, resp, id, 3, 0)
-	assertReview(t, "u1", id, 3, 0)
+	assertResponse(t, resp, id, 3, false)
+	assertReview(t, "u1", id, 3, false)
 }
 
 func TestLookupOfANeverLookedUpWordWritesNoReviewRow(t *testing.T) {
@@ -164,7 +164,7 @@ func TestLookupOfANeverLookedUpWordWritesNoReviewRow(t *testing.T) {
 
 	resp := lookup(t, "serendipity", "u1")
 
-	assertResponse(t, resp, id, 0, 0)
+	assertResponse(t, resp, id, 0, false)
 	if n := countUserDicts(t, "u1"); n != 0 {
 		t.Fatalf("user_dicts rows: got %d, want 0", n)
 	}
@@ -175,22 +175,22 @@ func TestLookupOfANeverLookedUpWordWritesNoReviewRow(t *testing.T) {
 func TestLookupIsCaseInsensitive(t *testing.T) {
 	setupReviewTest(t)
 	id := seedWord(t, "serendipity")
-	seedUserDict(t, "u1", id, 2, 0)
+	seedUserDict(t, "u1", id, 2, false)
 
 	resp := lookup(t, "Serendipity", "u1")
 
-	assertResponse(t, resp, id, 2, 0)
+	assertResponse(t, resp, id, 2, false)
 }
 
 func TestLookupReadsOnlyTheCallersReviewState(t *testing.T) {
 	setupReviewTest(t)
 	id := seedWord(t, "serendipity")
-	seedUserDict(t, "u2", id, 7, 1)
+	seedUserDict(t, "u2", id, 7, true)
 
 	resp := lookup(t, "serendipity", "u1")
 
-	assertResponse(t, resp, id, 0, 0)
-	assertReview(t, "u2", id, 7, 1)
+	assertResponse(t, resp, id, 0, false)
+	assertReview(t, "u2", id, 7, true)
 }
 
 func TestEcdictFillCachesTheWordWithoutAReviewRow(t *testing.T) {
@@ -199,7 +199,7 @@ func TestEcdictFillCachesTheWordWithoutAReviewRow(t *testing.T) {
 	resp := lookup(t, "quixotic", "u1")
 
 	id := wordIDByEnglish(t, "quixotic")
-	assertResponse(t, resp, id, 0, 0)
+	assertResponse(t, resp, id, 0, false)
 	if resp.Chinese != "a. 不切实际的" {
 		t.Fatalf("chinese: got %q", resp.Chinese)
 	}
@@ -227,10 +227,10 @@ func TestMissInBothSourcesWritesNoReviewRow(t *testing.T) {
 func TestInflectionAnswersWithTheHeadwordsIdAndReviewState(t *testing.T) {
 	setupReviewTest(t, stardictRow{Word: "run", Sw: "run", Translation: "v. 跑", Exchange: "p:ran/d:run/i:running/3:runs"})
 	id := seedWord(t, "run")
-	seedUserDict(t, "u1", id, 5, 1)
+	seedUserDict(t, "u1", id, 5, true)
 
 	resp := lookup(t, "ran", "u1")
 
-	assertResponse(t, resp, id, 5, 1)
-	assertReview(t, "u1", id, 5, 1)
+	assertResponse(t, resp, id, 5, true)
+	assertReview(t, "u1", id, 5, true)
 }

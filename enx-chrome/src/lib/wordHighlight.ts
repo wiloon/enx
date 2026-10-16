@@ -39,12 +39,10 @@ export const reviewBucketHighlightCss = (): string =>
   ).join('\n')
 
 // Whether a word is still worth reviewing (and so worth highlighting).
-// False for words the user has marked acquainted, words tagged as a known
+// False for words the user has marked known, words tagged as a known
 // part of speech, and words never actually looked up (LoadCount 0).
 export const isReviewable = (wordData: WordData): boolean =>
-  wordData.AlreadyAcquainted !== 1 &&
-  wordData.WordType !== 1 &&
-  wordData.LoadCount !== 0
+  !wordData.Known && wordData.WordType !== 1 && wordData.LoadCount !== 0
 
 // Which review-stage bucket a word belongs to (1 = most recently learned,
 // REVIEW_BUCKET_COUNT = nearly known), or null when it shouldn't be

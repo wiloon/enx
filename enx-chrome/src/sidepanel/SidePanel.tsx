@@ -905,19 +905,17 @@ function SidePanelContent() {
   // lower-cased word like the page's wordCache (ADR-053 Decision 3). Drives
   // the underlines in every sentence original.
   const [wordStates, setWordStates] = useState<Record<string, WordData>>({})
-  // Optimistic broadcast (ADR-053): the page's markAcquainted request to
+  // Optimistic broadcast (ADR-053): the page's markKnown request to
   // background reaches every extension page, this panel included. The panel
   // drops the underline at once, as the page does, without waiting for the
   // API. It only listens: background is the one replier, and a reply (or a
   // `return true`) from here would take the page's single response slot.
   useEffect(() => {
     const listener = (message: { type?: string; word?: string }) => {
-      if (message.type !== 'markAcquainted' || !message.word) return
+      if (message.type !== 'markKnown' || !message.word) return
       const word = message.word.toLowerCase()
       setWordStates(prev =>
-        prev[word]
-          ? { ...prev, [word]: { ...prev[word], AlreadyAcquainted: 1 } }
-          : prev
+        prev[word] ? { ...prev, [word]: { ...prev[word], Known: true } } : prev
       )
     }
     chrome.runtime.onMessage.addListener(listener)

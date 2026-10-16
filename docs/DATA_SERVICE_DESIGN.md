@@ -132,7 +132,7 @@ data-service behavior (background daemon):
 **Why user_dicts moved to data-service:**
 - **Before**: INTEGER word_id incompatible with UUID-based words table
 - **After**: TEXT word_id (UUID), consistent with words table
-- **Benefit**: Learning progress (`query_count`, `already_acquainted`) syncs across all devices
+- **Benefit**: Learning progress (`query_count`, `known`) syncs across all devices
 
 ## ⚡ Critical Design Decision
 
@@ -2160,7 +2160,7 @@ db, _ := gorm.Open(sqlite.Open("/var/lib/enx-api/enx.db"))
 // Example: Mark word as learned
 db.Model(&UserDict{}).
    Where("user_id = ? AND word_id = ?", userId, wordId).
-   Update("already_acquainted", 1)
+   Update("known", true)
 
 // data-service runs in background, periodically syncs changes
 // No interaction needed from enx-api for sync

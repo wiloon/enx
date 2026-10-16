@@ -37,13 +37,13 @@ const (
 )
 
 type UserDict struct {
-	UserId            string    `gorm:"column:user_id;primaryKey"`
-	WordId            string    `gorm:"column:word_id;primaryKey"`
-	QueryCount        int       `gorm:"column:query_count;default:0"`
-	AlreadyAcquainted int       `gorm:"column:already_acquainted;default:0"`
-	CreatedAt         int64     `gorm:"column:created_at"`
-	UpdatedAt         int64     `gorm:"column:updated_at"`
-	UpdateTime        time.Time `gorm:"-"` // For compatibility
+	UserId     string    `gorm:"column:user_id;primaryKey"`
+	WordId     string    `gorm:"column:word_id;primaryKey"`
+	QueryCount int       `gorm:"column:query_count;default:0"`
+	Known      bool      `gorm:"column:known;default:false"`
+	CreatedAt  int64     `gorm:"column:created_at"`
+	UpdatedAt  int64     `gorm:"column:updated_at"`
+	UpdateTime time.Time `gorm:"-"` // For compatibility
 }
 
 func (UserDict) TableName() string {
@@ -121,20 +121,20 @@ func FindWordForLookup(english string, includeAI bool) *Word {
 	return word
 }
 
-// GetUserWordQueryCount gets a user's query count and acquainted flag for a
+// GetUserWordQueryCount gets a user's query count and known flag for a
 // word via GORM. found reports whether a user_dicts row actually exists --
-// callers must not infer existence from queryCount/alreadyAcquainted being
-// zero, since a legitimately existing row (e.g. a word just unmarked via
-// UserDict.Mark) can have both fields at zero.
-func GetUserWordQueryCount(wordId, userId string) (queryCount int, alreadyAcquainted int, found bool) {
+// callers must not infer existence from queryCount/known being
+// zero or false, since a legitimately existing row (e.g. a word just
+// unmarked) can have both.
+func GetUserWordQueryCount(wordId, userId string) (queryCount int, known bool, found bool) {
 	userDict := &UserDict{}
 	err := sqlitex.DB.Where("user_id = ? AND word_id = ?", userId, wordId).First(userDict).Error
 	if err != nil {
 		logger.Debugf("user dict not found: user_id=%s, word_id=%s, error: %v", userId, wordId, err)
-		return 0, 0, false
+		return 0, false, false
 	}
 
-	return userDict.QueryCount, userDict.AlreadyAcquainted, true
+	return userDict.QueryCount, userDict.Known, true
 }
 
 // WordExists reports whether wordId is a words row that is not deleted.
@@ -149,10 +149,10 @@ func WordExists(wordId string) (bool, error) {
 type ReviewLog struct{}
 
 // ReviewState is userId's current query count and known flag for wordId;
-// both are 0 when the user has never looked it up or marked it.
-func (ReviewLog) ReviewState(userId, wordId string) (int, int, error) {
-	qc, acquainted, _ := GetUserWordQueryCount(wordId, userId)
-	return qc, acquainted, nil
+// 0 and false when the user has never looked it up or marked it.
+func (ReviewLog) ReviewState(userId, wordId string) (int, bool, error) {
+	qc, known, _ := GetUserWordQueryCount(wordId, userId)
+	return qc, known, nil
 }
 
 // RecordWordLookup counts one lookup of wordId by userId for the review
@@ -161,22 +161,22 @@ func (ReviewLog) ReviewState(userId, wordId string) (int, int, error) {
 // without resetting the count. It is a single statement, so concurrent
 // lookups can't lose an increment. POST /api/me/word-lookups is its only
 // caller (ADR-059 Decision 3).
-func RecordWordLookup(userId, wordId string) (queryCount int, alreadyAcquainted int, err error) {
+func RecordWordLookup(userId, wordId string) (queryCount int, known bool, err error) {
 	now := time.Now().UnixMilli()
 	var row UserDict
 	err = sqlitex.DB.Raw(`
-		INSERT INTO user_dicts (user_id, word_id, query_count, already_acquainted, created_at, updated_at)
+		INSERT INTO user_dicts (user_id, word_id, query_count, known, created_at, updated_at)
 		VALUES (?, ?, 1, 0, ?, ?)
 		ON CONFLICT (user_id, word_id) DO UPDATE SET
 			query_count = COALESCE(query_count, 0) + 1,
-			already_acquainted = 0,
+			known = 0,
 			updated_at = excluded.updated_at
-		RETURNING query_count, already_acquainted`,
+		RETURNING query_count, known`,
 		userId, wordId, now, now).Scan(&row).Error
-	return row.QueryCount, row.AlreadyAcquainted, err
+	return row.QueryCount, row.Known, err
 }
 
-// SetAcquainted sets userId's "already know this word" flag for wordId and
+// SetKnown sets userId's "already know this word" flag for wordId and
 // returns the row's state afterwards. It is idempotent, so a client can
 // retry it. Setting a word known that has no user_dicts row yet creates one
 // with query_count 0; setting it not known writes nothing when there is no
@@ -185,33 +185,33 @@ func RecordWordLookup(userId, wordId string) (queryCount int, alreadyAcquainted 
 // It leaves updated_at alone: updated_at is the last lookup, which only
 // RecordWordLookup moves, so marking a word known doesn't reorder the Word
 // List (ADR-027 Decision 7, 2026-10-15 note).
-func SetAcquainted(userId, wordId string, known bool) (queryCount int, alreadyAcquainted int, err error) {
+func SetKnown(userId, wordId string, known bool) (queryCount int, isKnown bool, err error) {
 	var row UserDict
 	if !known {
 		err = sqlitex.DB.Raw(`
-			UPDATE user_dicts SET already_acquainted = 0
+			UPDATE user_dicts SET known = 0
 			WHERE user_id = ? AND word_id = ?
-			RETURNING query_count, already_acquainted`,
+			RETURNING query_count, known`,
 			userId, wordId).Scan(&row).Error
-		return row.QueryCount, row.AlreadyAcquainted, err
+		return row.QueryCount, row.Known, err
 	}
 	now := time.Now().UnixMilli()
 	err = sqlitex.DB.Raw(`
-		INSERT INTO user_dicts (user_id, word_id, query_count, already_acquainted, created_at, updated_at)
+		INSERT INTO user_dicts (user_id, word_id, query_count, known, created_at, updated_at)
 		VALUES (?, ?, 0, 1, ?, ?)
 		ON CONFLICT (user_id, word_id) DO UPDATE SET
-			already_acquainted = 1
-		RETURNING query_count, already_acquainted`,
+			known = 1
+		RETURNING query_count, known`,
 		userId, wordId, now, now).Scan(&row).Error
-	return row.QueryCount, row.AlreadyAcquainted, err
+	return row.QueryCount, row.Known, err
 }
 
 // WordState is a words row with one user's review state for it.
 type WordState struct {
-	Id                string
-	English           string
-	QueryCount        int
-	AlreadyAcquainted int
+	Id         string
+	English    string
+	QueryCount int
+	Known      bool
 }
 
 // wordStatesSQL takes the user id and a list of canonical englishes;
@@ -219,7 +219,7 @@ type WordState struct {
 const wordStatesSQL = `
 	SELECT w.id, w.english,
 		COALESCE(ud.query_count, 0) AS query_count,
-		COALESCE(ud.already_acquainted, 0) AS already_acquainted
+		COALESCE(ud.known, 0) AS known
 	FROM words w
 	LEFT JOIN user_dicts ud ON ud.word_id = w.id AND ud.user_id = ?
 	WHERE w.english IN ? AND +w.deleted_at IS NULL`

@@ -314,21 +314,21 @@ const showWordPopover = async (word: string, reference: Range) => {
 
   // Optimistic broadcast (ADR-053): the underline goes at once, here and --
   // because runtime.sendMessage reaches every extension page -- in the Side
-  // Panel, which hears the same markAcquainted message. Background alone
+  // Panel, which hears the same markKnown message. Background alone
   // replies, once the API call (an idempotent PUT that background retries,
   // #133) is done. A call that still fails is left as is: the word is simply
   // underlined again on a later page, where the user can mark it again.
-  const handleMarkAcquainted = async (englishWord: string) => {
+  const handleMarkKnown = async (englishWord: string) => {
     const cached = wordCache[englishWord.toLowerCase()]
     const updated: WordData = cached
-      ? { ...cached, AlreadyAcquainted: 1 }
+      ? { ...cached, Known: true }
       : {
           Key: englishWord,
           English: englishWord,
           Pronunciation: '',
           Chinese: '',
           LoadCount: 0,
-          AlreadyAcquainted: 1,
+          Known: true,
           WordType: 0,
         }
     wordCache[englishWord.toLowerCase()] = updated
@@ -338,14 +338,14 @@ const showWordPopover = async (word: string, reference: Range) => {
 
     try {
       const response = await sendToBackground({
-        type: 'markAcquainted',
+        type: 'markKnown',
         word: englishWord,
       })
       if (!response.success) {
-        console.warn('Marking word as acquainted failed:', response.error)
+        console.warn('Marking word as known failed:', response.error)
       }
     } catch (error) {
-      console.error('Error marking word as acquainted:', error)
+      console.error('Error marking word as known:', error)
     }
   }
 
@@ -427,7 +427,7 @@ const showWordPopover = async (word: string, reference: Range) => {
       <WordPopover
         word={word}
         onClose={() => overlay.hidePopover()}
-        onMarkAcquainted={handleMarkAcquainted}
+        onMarkKnown={handleMarkKnown}
         onOpenSentencePanel={handleOpenSentencePanel}
         onAiLookup={handleAiLookup}
       />
@@ -627,7 +627,7 @@ const hideCurrentOverlay = () => {
 
 // Re-derive the ENX highlights from the current wordCache + DOM, or clear
 // them if the "highlight vocabulary while reading" preference is off
-// (ADR-011 Decision 3). Called after a lookup / mark-acquainted (a word may
+// (ADR-011 Decision 3). Called after a lookup / mark-known (a word may
 // change review bucket), a SPA tweet switch, and a preference flip. There's
 // no DOM to touch, so a full rebuild is cheap enough on a user action.
 const refreshHighlights = async () => {
@@ -1036,7 +1036,7 @@ const showSelectionHint = (hint: string, reference: Range) => {
         word=""
         variant="hint"
         onClose={() => overlay.hidePopover()}
-        onMarkAcquainted={() => {}}
+        onMarkKnown={() => {}}
         onOpenSentencePanel={() => {}}
       />
     </Provider>
