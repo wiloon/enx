@@ -11,6 +11,7 @@ const ALL_REASONS: EnableFailureReason[] = [
   'no-article-node',
   'no-words',
   'lookup-failed',
+  'rate-limited',
   'session-expired',
   'error',
   'injection-blocked',
@@ -33,6 +34,14 @@ describe('enableOutcome', () => {
       // AGENTS.md: user-facing copy is English, never Chinese.
       expect(message).not.toMatch(/[一-鿿]/)
     }
+  })
+
+  // ADR-060: the request rate limit is "wait a moment", not a broken
+  // connection or a used-up quota.
+  it('tells a rate-limited reader to wait and try again', () => {
+    expect(failureMessage('rate-limited')).toBe(
+      'Too many requests. Please wait a moment and try again.'
+    )
   })
 
   it('flags only layout / exception failures as reportable', () => {

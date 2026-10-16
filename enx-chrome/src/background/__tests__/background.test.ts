@@ -80,11 +80,17 @@ const onMessageExternalListener = (
   sendResponse: (response: unknown) => void
 ) => boolean | void
 
-function jsonResponse(status: number, body: unknown, ok = status < 400) {
+function jsonResponse(
+  status: number,
+  body: unknown,
+  ok = status < 400,
+  headers: Record<string, string> = {}
+) {
   return {
     ok,
     status,
     statusText: ok ? 'OK' : 'Unauthorized',
+    headers: new Headers(headers),
     json: async () => body,
     text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
   }
@@ -183,6 +189,34 @@ describe('background makeApiRequest / Clerk session token', () => {
       success: false,
       error: 'Insufficient credit. Please add credit or subscribe.',
       status: 402,
+    })
+  })
+
+  // ADR-060 Decision 4: callers tell the 429s apart by code, and wait
+  // Retry-After before trying again.
+  it("passes a 429's code and Retry-After through", async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(
+        429,
+        {
+          success: false,
+          code: 'too_many_requests',
+          message:
+            'Too many requests. Please slow down and try again in a moment.',
+        },
+        false,
+        { 'Retry-After': '2' }
+      )
+    )
+
+    const result = await makeApiRequest('/api/translate?word=cat')
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Too many requests. Please slow down and try again in a moment.',
+      status: 429,
+      code: 'too_many_requests',
+      retryAfterMs: 2000,
     })
   })
 
@@ -562,6 +596,24 @@ describe('background onMessage / lookups and the query count', () => {
     expect(global.fetch).toHaveBeenCalledTimes(2)
   })
 
+  it("passes a lookup 429's code through to the caller", async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(
+        429,
+        { code: 'too_many_requests', message: 'Too many requests.' },
+        false,
+        { 'Retry-After': '1' }
+      )
+    )
+
+    expect(await send({ type: 'getOneWord', word: 'cat' })).toEqual({
+      success: false,
+      error: 'Too many requests.',
+      status: 429,
+      code: 'too_many_requests',
+    })
+  })
+
   it('records a lookup with POST /api/me/word-lookups and the word id', async () => {
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
       jsonResponse(200, { queryCount: 3, alreadyAcquainted: 0 })
@@ -581,6 +633,16 @@ describe('background onMessage / lookups and the query count', () => {
       () => Promise.reject(new TypeError('Failed to fetch')),
     ],
     ['a 500', () => Promise.resolve(jsonResponse(500, {}))],
+    // ADR-060 Decision 4: not even after waiting Retry-After.
+    [
+      'a rate-limit 429',
+      () =>
+        Promise.resolve(
+          jsonResponse(429, { code: 'too_many_requests' }, false, {
+            'Retry-After': '1',
+          })
+        ),
+    ],
   ])('does not retry recording a lookup after %s', async (_name, reply) => {
     ;(global.fetch as jest.Mock).mockImplementation(reply)
 
@@ -1823,6 +1885,30 @@ describe('handleGetWords (paragraph-init method)', () => {
 
     expect((await handleGetWords('hello')).success).toBe(false)
     expect(calls().map(c => c.method)).toEqual(['QUERY'])
+  })
+
+  // ADR-060 Decision 4: the content script's chunk retry waits Retry-After.
+  it("passes a rate-limit 429's code and Retry-After to the content script", async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(
+        429,
+        {
+          success: false,
+          code: 'too_many_requests',
+          message: 'Too many requests.',
+        },
+        false,
+        { 'Retry-After': '2' }
+      )
+    )
+
+    expect(await handleGetWords('hello')).toEqual({
+      success: false,
+      error: 'Too many requests.',
+      status: 429,
+      code: 'too_many_requests',
+      retryAfterMs: 2000,
+    })
   })
 })
 

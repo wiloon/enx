@@ -16,6 +16,9 @@ export type EnableFailureReason =
   | 'not-english'
   /** The word backend returned no data for the page. */
   | 'lookup-failed'
+  /** No word data loaded because the request rate limit kept refusing
+   *  (ADR-060), even after waiting Retry-After. */
+  | 'rate-limited'
   /** The sign-in session expired (the page already shows its own notice). */
   | 'session-expired'
   /** An unexpected exception. */
@@ -48,6 +51,7 @@ const FAILURE_MESSAGES: Record<EnableFailureReason, string> = {
     "This article isn't in English, so Catglish leaves it as it is.",
   'lookup-failed':
     "Catglish couldn't load word data for this page. Check your connection and try again.",
+  'rate-limited': 'Too many requests. Please wait a moment and try again.',
   'session-expired': 'Your session has expired. Please sign in again.',
   error: 'Something went wrong while processing this page.',
   'injection-blocked': "Catglish can't run on this page.",

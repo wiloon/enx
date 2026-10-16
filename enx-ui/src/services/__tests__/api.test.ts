@@ -62,4 +62,26 @@ describe('ApiService auth token', () => {
     expect(result).toEqual({ success: false, error: 'Session expired' })
     expect(global.fetch).toHaveBeenCalledTimes(1)
   })
+
+  // ADR-060 Decision 4: the request rate limit's 429 says to slow down in
+  // the server's own words -- never "Session expired", never a retry.
+  it('shows a rate-limit 429 in the server message without retrying', async () => {
+    service.setTokenGetter(jest.fn().mockResolvedValue('clerk-session-jwt'))
+    ;(global.fetch as jest.Mock).mockResolvedValue(
+      jsonResponse(429, {
+        success: false,
+        code: 'too_many_requests',
+        message:
+          'Too many requests. Please slow down and try again in a moment.',
+      })
+    )
+
+    const result = await service.getMe()
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Too many requests. Please slow down and try again in a moment.',
+    })
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+  })
 })

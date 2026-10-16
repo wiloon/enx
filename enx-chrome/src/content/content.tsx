@@ -23,6 +23,7 @@ import {
   failed,
   failureMessage,
 } from '@/lib/enableOutcome'
+import { fetchWordChunk, type WordChunkDeps } from '@/lib/wordChunk'
 import { stampExtensionPresence } from '@/lib/extensionPresence'
 import {
   runWithStatus,
@@ -838,57 +839,15 @@ const processArticleContent = async (
     // Process words in chunks
     const chunkSize = 200 // Process in smaller chunks for better performance
     let processedChunks = 0
-
-    const sendChunkWithRetry = async (
-      chunk: string[],
-      attempt = 1
-    ): Promise<void> => {
-      const paragraph = chunk.join(' ')
-      try {
-        const response = await sendToBackground({
-          type: 'getWords',
-          paragraph,
-        })
-
-        // A newer tweet switch landed while this request was in flight --
-        // stop so we don't cache/paint for a tweet the user has left.
-        if (stale()) return
-
-        if (response.success && response.wordProperties) {
-          // Check if wordProperties is wrapped in a 'data' field
-          const actualWordData =
-            response.wordProperties.data || response.wordProperties
-          Object.assign(wordCache, actualWordData)
-          processedChunks++
-          console.log(
-            `✅ Chunk ${processedChunks}: ${Object.keys(actualWordData).length} words cached`
-          )
-        } else if (response.sessionExpired) {
-          throw new Error('SESSION_EXPIRED')
-        } else if (attempt < 2) {
-          // Retry once on failure (handles cold service worker or transient errors)
-          console.log(
-            `Chunk failed (attempt ${attempt}), retrying...`,
-            response.error
-          )
-          await sendChunkWithRetry(chunk, attempt + 1)
-        } else {
-          console.error(
-            `❌ Chunk failed after ${attempt} attempts:`,
-            response.error
-          )
-        }
-      } catch (error) {
-        if (error instanceof Error && error.message === 'SESSION_EXPIRED') {
-          throw error
-        }
-        if (attempt < 2) {
-          console.log(`Chunk error (attempt ${attempt}), retrying...`, error)
-          await sendChunkWithRetry(chunk, attempt + 1)
-        } else {
-          console.error(`❌ Chunk error after ${attempt} attempts:`, error)
-        }
-      }
+    // Some chunk was still refused by the request rate limit after waiting
+    // (ADR-060): if the page ends up with no word data, that is why.
+    let rateLimited = false
+    const chunkDeps: WordChunkDeps = {
+      send: paragraph => sendToBackground({ type: 'getWords', paragraph }),
+      sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
+      // A newer tweet switch landed while a request was in flight -- stop so
+      // we don't cache/paint for a tweet the user has left.
+      isStale: stale,
     }
 
     if (allCached) {
@@ -904,16 +863,29 @@ const processArticleContent = async (
           `📦 Processing chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(uniqueWords.length / chunkSize)}: ${chunk.length} words`
         )
 
-        try {
-          await sendChunkWithRetry(chunk)
-        } catch (error) {
-          if (error instanceof Error && error.message === 'SESSION_EXPIRED') {
+        const result = await fetchWordChunk(chunk, chunkDeps)
+        switch (result.kind) {
+          case 'ok':
+            Object.assign(wordCache, result.words)
+            processedChunks++
+            console.log(
+              `✅ Chunk ${processedChunks}: ${Object.keys(result.words).length} words cached`
+            )
+            break
+          case 'session-expired':
             console.log('Session expired during word processing')
             showSessionExpiredMessage()
             return failed('session-expired')
-          }
-          console.error('Error processing word chunk:', error)
-          // Continue processing other chunks
+          case 'stale':
+            return ENABLE_OK
+          case 'rate-limited':
+            rateLimited = true
+            console.error('❌ Chunk still rate-limited after waiting')
+            break
+          case 'failed':
+            // Continue processing other chunks
+            console.error('❌ Chunk failed after its retry')
+            break
         }
       }
     }
@@ -963,7 +935,8 @@ const processArticleContent = async (
     })
 
     console.log('✅ Article processing completed successfully')
-    return haveWords ? ENABLE_OK : failed('lookup-failed')
+    if (haveWords) return ENABLE_OK
+    return failed(rateLimited ? 'rate-limited' : 'lookup-failed')
   } catch (error) {
     console.error('Error processing article:', error)
     return failed('error')

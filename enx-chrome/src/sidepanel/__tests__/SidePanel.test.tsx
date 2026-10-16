@@ -466,6 +466,62 @@ describe('SidePanel', () => {
     ).toHaveAttribute('href', 'http://localhost:3000/billing')
   })
 
+  // ADR-060 Decision 4: the request rate limit's 429 is not the quota. It
+  // says to slow down, and does not send the user to billing.
+  it.each([
+    [
+      'the request rate limit',
+      'too_many_requests',
+      'Too many requests. Please slow down and try again in a moment.',
+      'Too many requests. Please slow down and try again in a moment.',
+      false,
+    ],
+    [
+      'the daily quota, by its code',
+      'lookup_quota_exceeded',
+      'Daily dictionary lookup limit reached.',
+      "You've used up today's free lookups",
+      true,
+    ],
+  ])(
+    'tells a 429 from %s by its code',
+    async (_name, code, error, shown, upgrade) => {
+      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+        [PENDING_SENTENCE_STORAGE_KEY]: {
+          sentence: 'Cats are great pets.',
+          word: '',
+          sourceUrl: '',
+          createdAt: 1,
+        },
+      })
+      mockSendMessage.mockImplementation(async (message: { type: string }) => {
+        if (message.type === 'translateSentence') {
+          return { success: true, chinese: '猫是很棒的宠物。' }
+        }
+        if (message.type === 'translateWordInContext') {
+          return { success: true, chinese: '很棒的' }
+        }
+        if (message.type === 'getOneWord') {
+          return { success: false, error, status: 429, code }
+        }
+        return { success: false }
+      })
+
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-sentence')
+      selectWord('great')
+
+      const errorRow = await screen.findByTestId(
+        'sidepanel-dictionary-error-great'
+      )
+      expect(errorRow).toHaveTextContent(shown)
+      expect(errorRow).not.toHaveTextContent(/session expired/i)
+      expect(
+        within(errorRow).queryByText('Subscribe / add credit') !== null
+      ).toBe(upgrade)
+    }
+  )
+
   it('appends word cards on click instead of replacing the previous one, newest on top (spec §3.9/§4.5)', async () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {

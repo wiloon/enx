@@ -157,6 +157,11 @@ export interface BackgroundResponse {
   // AI credit) and 429 (daily dictionary quota exceeded) get distinct UI
   // treatment in SidePanel.tsx instead of a generic error message.
   status?: number
+  // The failed response's `code`: which 429 it is (lib/rateLimit.ts,
+  // ADR-060 Decision 4).
+  code?: string
+  // How long the server asked us to wait before retrying (Retry-After).
+  retryAfterMs?: number
   // Set by the 'openSentencePanel' handler: true when the Side Panel is
   // showing the pending sentence -- either chrome.sidePanel.open() succeeded,
   // or the tab's own panel was already open (detected via
