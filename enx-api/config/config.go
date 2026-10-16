@@ -35,6 +35,7 @@ type Config struct {
 	Stripe            Stripe            `mapstructure:"stripe"`
 	AIWord            AIWord            `mapstructure:"ai-word"`
 	Credits           Credits           `mapstructure:"credits"`
+	RateLimit         RateLimit         `mapstructure:"rate-limit"`
 	Stats             Stats             `mapstructure:"stats"`
 	User              User              `mapstructure:"user"`
 	Ops               Ops               `mapstructure:"ops"`
@@ -268,6 +269,14 @@ type AIWord struct {
 	CallTimeout       time.Duration `mapstructure:"call-timeout"`
 }
 
+// RateLimit is the per-user request rate limit on signed-in routes
+// (ADR-060): a token bucket refilling RequestsPerSecond, holding Burst.
+// RequestsPerSecond 0 switches it off.
+type RateLimit struct {
+	RequestsPerSecond float64 `mapstructure:"requests-per-second"`
+	Burst             int     `mapstructure:"burst"`
+}
+
 type Credits struct {
 	Trial Trial `mapstructure:"trial"`
 }
@@ -460,6 +469,12 @@ func (c *Config) Validate() error {
 	notNegative("credits.trial.calls-per-minute", t.CallsPerMinute >= 0)
 	notNegative("credits.trial.calls-per-day", t.CallsPerDay >= 0)
 
+	rl := c.RateLimit
+	notNegative("rate-limit.requests-per-second", rl.RequestsPerSecond >= 0)
+	if rl.RequestsPerSecond > 0 {
+		positive("rate-limit.burst", rl.Burst > 0)
+	}
+
 	return errors.Join(errs...)
 }
 
@@ -546,6 +561,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("credits.trial.ttl-days", 7)
 	v.SetDefault("credits.trial.calls-per-minute", 5)
 	v.SetDefault("credits.trial.calls-per-day", 30)
+
+	// Per-user request rate limit (ADR-060 Decision 3). Starting values, to
+	// be tuned from enx_rate_limited_total; 0 req/s switches it off.
+	v.SetDefault("rate-limit.requests-per-second", 5)
+	v.SetDefault("rate-limit.burst", 60)
 
 	// Reading statistics ingest guards (ADR-028 Decision 9). The word cap
 	// bounds a single session report; the TTL is how long a deduplication
@@ -671,6 +691,9 @@ var envBindings = map[string]string{
 	"credits.trial.ttl-days":         "CREDITS_TRIAL_TTL_DAYS",
 	"credits.trial.calls-per-minute": "CREDITS_TRIAL_CALLS_PER_MINUTE",
 	"credits.trial.calls-per-day":    "CREDITS_TRIAL_CALLS_PER_DAY",
+
+	"rate-limit.requests-per-second": "RATE_LIMIT_REQUESTS_PER_SECOND",
+	"rate-limit.burst":               "RATE_LIMIT_BURST",
 
 	"stats.ingest.max-words-per-report":  "STATS_INGEST_MAX_WORDS_PER_REPORT",
 	"stats.ingest.log-ttl-days":          "STATS_INGEST_LOG_TTL_DAYS",

@@ -71,6 +71,7 @@ export function badgeFor(status: LearningModeStatus): BadgeAppearance {
 // the badge empty; a manual enable already explains them in the popup.
 const ACTIONABLE: ReadonlySet<EnableFailureReason> = new Set([
   'lookup-failed',
+  'rate-limited',
   'session-expired',
   'error',
 ])

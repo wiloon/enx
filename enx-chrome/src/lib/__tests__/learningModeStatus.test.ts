@@ -56,15 +56,17 @@ describe('statusForOutcome (adr-046 Decision 3)', () => {
     expect(statusForOutcome(ENABLE_OK)).toEqual({ status: 'ready' })
   })
 
-  it.each(['lookup-failed', 'session-expired', 'error'] as const)(
-    'is an error for the actionable failure %s',
-    reason => {
-      expect(statusForOutcome(failed(reason))).toEqual({
-        status: 'error',
-        reason,
-      })
-    }
-  )
+  it.each([
+    'lookup-failed',
+    'rate-limited',
+    'session-expired',
+    'error',
+  ] as const)('is an error for the actionable failure %s', reason => {
+    expect(statusForOutcome(failed(reason))).toEqual({
+      status: 'error',
+      reason,
+    })
+  })
 
   it.each(['unsupported-page', 'no-article-node', 'no-words'] as const)(
     'is off for %s, which the user cannot act on',

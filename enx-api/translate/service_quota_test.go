@@ -2,6 +2,7 @@ package translate
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -94,6 +95,13 @@ func TestTranslateWordAtTheLimitAnswers429AndRecordsARejectedEvent(t *testing.T)
 	h.translateWord(c2, "serendipity")
 	if w2.Code != http.StatusTooManyRequests {
 		t.Fatalf("lookup 2: got %d, want 429 -- a local cache hit must count against the quota", w2.Code)
+	}
+	// The code tells the clients this 429 from the request rate limit's
+	// (ADR-060 Decision 4).
+	var body map[string]any
+	_ = json.Unmarshal(w2.Body.Bytes(), &body)
+	if body["code"] != "lookup_quota_exceeded" {
+		t.Fatalf("code = %v, want lookup_quota_exceeded", body["code"])
 	}
 
 	var outcomes []string

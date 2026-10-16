@@ -401,14 +401,16 @@ func (g *fakeGate) Check(context.Context, string) ailimit.Verdict {
 }
 
 // A trial-only user over the trial's call rate (ADR-048 Decision 7) gets a
-// 429 before the provider is called, and is not billed.
+// 429 before the provider is called, and is not billed. Its code tells the
+// clients it apart from the other 429s (ADR-060 Decision 4).
 func TestHandlerTrialLimitReturns429(t *testing.T) {
 	for _, tc := range []struct {
 		verdict ailimit.Verdict
+		code    string
 		message string
 	}{
-		{ailimit.LimitedPerDay, "You've reached today's trial limit. Try again in "},
-		{ailimit.LimitedPerMinute, "Too many requests. Please wait a minute and try again."},
+		{ailimit.LimitedPerDay, "trial_limit_day", "You've reached today's trial limit. Try again in "},
+		{ailimit.LimitedPerMinute, "trial_limit_minute", "Too many requests. Please wait a minute and try again."},
 	} {
 		t.Run(tc.verdict.String(), func(t *testing.T) {
 			tr := &fakeTranslator{chinese: "unused", usage: usageCosting2}
@@ -423,6 +425,9 @@ func TestHandlerTrialLimitReturns429(t *testing.T) {
 			_ = json.Unmarshal(w.Body.Bytes(), &body)
 			if msg, _ := body["message"].(string); !strings.HasPrefix(msg, tc.message) {
 				t.Fatalf("message = %q, want it to start with %q", msg, tc.message)
+			}
+			if body["code"] != tc.code {
+				t.Fatalf("code = %v, want %q", body["code"], tc.code)
 			}
 			if tr.callCount != 0 || len(ledger.settleCalls) != 0 {
 				t.Fatal("a limited call must not reach the provider or be billed")

@@ -82,10 +82,10 @@ func refuseOverTrialLimit(c *gin.Context, gate CallGate, userID string) bool {
 	}
 	switch gate.Check(c.Request.Context(), userID) {
 	case ailimit.LimitedPerDay:
-		c.JSON(http.StatusTooManyRequests, gin.H{"success": false, "message": ailimit.DayLimitMessage(time.Now())})
+		c.JSON(http.StatusTooManyRequests, gin.H{"success": false, "code": "trial_limit_day", "message": ailimit.DayLimitMessage(time.Now())})
 		return true
 	case ailimit.LimitedPerMinute:
-		c.JSON(http.StatusTooManyRequests, gin.H{"success": false, "message": "Too many requests. Please wait a minute and try again."})
+		c.JSON(http.StatusTooManyRequests, gin.H{"success": false, "code": "trial_limit_minute", "message": "Too many requests. Please wait a minute and try again."})
 		return true
 	}
 	return false

@@ -148,4 +148,29 @@ describe('enqueueReport', () => {
     expect(request).toHaveBeenCalledTimes(1)
     expect(queue().map(r => r.clientEventId)).toEqual(['a', 'b'])
   })
+
+  // ADR-060 Decision 4: a report the request rate limit refused is not sent
+  // again before Retry-After has passed -- by the next report or the next
+  // worker wake-up alike.
+  it('holds a rate-limited report until Retry-After has passed', async () => {
+    const t0 = new Date('2026-10-16T09:00:00Z')
+    const rateLimited = jest.fn(
+      async (_endpoint: string, _options: RequestInit) => ({
+        success: false,
+        status: 429,
+        code: 'too_many_requests',
+        retryAfterMs: 2000,
+      })
+    )
+    await enqueueReport({ wordsRead: 100 }, rateLimited, t0)
+
+    const request = ok()
+    await flushQueue(request, new Date(t0.getTime() + 1999))
+    expect(request).not.toHaveBeenCalled()
+    expect(queue()).toHaveLength(1)
+
+    await flushQueue(request, new Date(t0.getTime() + 2000))
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(queue()).toHaveLength(0)
+  })
 })

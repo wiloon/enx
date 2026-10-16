@@ -28,6 +28,7 @@ import {
 } from '@/lib/wordHighlight'
 import { sendMessageToBackground } from '@/services/api'
 import { countLookup, type RecordLookup } from '@/lib/queryCount'
+import { isLookupQuotaExceeded } from '@/lib/rateLimit'
 import { config } from '@/config/env'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
 import {
@@ -69,11 +70,12 @@ interface WordCardData {
   loadCount?: number
   dictionaryChinese?: string
   dictionaryStatus: FetchStatus | 'none'
-  // Set when dictionaryStatus is 'error'. dictionaryErrorHttpStatus, when
-  // 429, means the free daily lookup quota was exceeded (TASK-SPEC §4.2) --
-  // rendered with an upgrade link instead of the generic message.
+  // Set when dictionaryStatus is 'error'. The status and code tell the
+  // daily lookup quota (TASK-SPEC §4.2; rendered with an upgrade link) from
+  // the request rate limit (ADR-060; the server's own message) -- both 429.
   dictionaryError?: string
   dictionaryErrorHttpStatus?: number
+  dictionaryErrorCode?: string
   contextChinese?: string
   // One short clause explaining why contextChinese differs from
   // dictionaryChinese, when the model judged the gap worth flagging. Empty
@@ -125,7 +127,6 @@ type PanelEntry = ({ kind: 'word' } & WordCardData) | SentenceEntry
 // dictionary/lookup.go). Kept as named constants so the render logic below
 // reads as intent, not magic numbers.
 const HTTP_INSUFFICIENT_CREDIT = 402
-const HTTP_QUOTA_EXCEEDED = 429
 
 // Opens enx-ui's billing page in a new browser tab (not chrome.tabs.create,
 // which needs an extension-privileged context the Side Panel's rendered
@@ -466,9 +467,13 @@ function WordCard({
     card.contextStatus === 'error'
       ? contextErrorDisplay(card.contextError, card.contextErrorHttpStatus)
       : undefined
+  const quotaExceeded = isLookupQuotaExceeded({
+    status: card.dictionaryErrorHttpStatus,
+    code: card.dictionaryErrorCode,
+  })
   const dictionaryErrorText =
     card.dictionaryStatus === 'error'
-      ? card.dictionaryErrorHttpStatus === HTTP_QUOTA_EXCEEDED
+      ? quotaExceeded
         ? "You've used up today's free lookups"
         : card.dictionaryError
       : undefined
@@ -574,15 +579,16 @@ function WordCard({
         </div>
       )}
 
-      {/* Dictionary half's own error row -- 429 means the free daily lookup
-          quota (TASK-SPEC §4.2) was hit, distinct from a generic failure. */}
+      {/* Dictionary half's own error row -- the free daily lookup quota
+          (TASK-SPEC §4.2) gets an upgrade link; any other failure, the
+          request rate limit's 429 included, shows its own message. */}
       {showDictionaryError && (
         <div
           className="flex items-center justify-between gap-2 text-destructive text-xs bg-destructive/10 rounded-sm px-2 py-1 mt-2"
           data-testid={`sidepanel-dictionary-error-${card.word}`}
         >
           <span className="flex-1">{dictionaryErrorText}</span>
-          {card.dictionaryErrorHttpStatus === HTTP_QUOTA_EXCEEDED && (
+          {quotaExceeded && (
             <UpgradeLink className="text-destructive hover:text-destructive/80 font-medium whitespace-nowrap underline" />
           )}
         </div>
@@ -1165,6 +1171,7 @@ function SidePanelContent() {
               dictionaryErrorHttpStatus: response.success
                 ? undefined
                 : response.status,
+              dictionaryErrorCode: response.success ? undefined : response.code,
             })
           )
           return response.success ? ecp?.Chinese : undefined
@@ -1175,6 +1182,7 @@ function SidePanelContent() {
               dictionaryStatus: 'error',
               dictionaryError: 'Dictionary lookup failed',
               dictionaryErrorHttpStatus: undefined,
+              dictionaryErrorCode: undefined,
             })
           )
           return undefined

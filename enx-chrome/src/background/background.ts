@@ -246,6 +246,19 @@ export type ApiRequestResult = {
   // /billing instead of just showing "translation failed" (TASK-SPEC
   // §4.1/§4.2, Phase 4).
   status?: number
+  // The failed response's own `code`, when enx-api gave one. The 429s are
+  // told apart by it, not by status (ADR-060 Decision 4): too_many_requests
+  // (request rate limit), lookup_quota_exceeded, trial_limit_day/_minute,
+  // rate_limited (AI lookups).
+  code?: string
+  // Retry-After, in milliseconds, when the response carried one.
+  retryAfterMs?: number
+}
+
+// Retry-After in seconds (the only form enx-api sends), as milliseconds.
+const retryAfterMs = (response: Response): number | undefined => {
+  const seconds = Number(response.headers?.get('Retry-After'))
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined
 }
 
 const GATEWAY_ERROR_STATUSES = new Set([502, 503, 504])
@@ -390,11 +403,13 @@ export const makeApiRequest = async (
         // Try to get error details from response body
         let errorMessage = `HTTP ${response.status}: ${response.statusText}`
         let fromApi = false
+        let code: string | undefined
         try {
           const errorData = await response.json()
           if (errorData.error || errorData.message) {
             errorMessage = errorData.error || errorData.message
           }
+          if (typeof errorData.code === 'string') code = errorData.code
           fromApi = 'success' in errorData || 'error' in errorData
         } catch {
           // Ignore JSON parsing errors, use default message
@@ -426,7 +441,15 @@ export const makeApiRequest = async (
         // ApiRequestResult -- the catch block below only handles genuine
         // exceptions (network failure, session expiry) that never got a
         // real HTTP status.
-        return { success: false, error: errorMessage, status: response.status }
+        const failure: ApiRequestResult = {
+          success: false,
+          error: errorMessage,
+          status: response.status,
+        }
+        if (code) failure.code = code
+        const wait = retryAfterMs(response)
+        if (wait !== undefined) failure.retryAfterMs = wait
+        return failure
       }
 
       if (forceRefresh) {
@@ -1023,12 +1046,14 @@ const handleGetOneWord = async (word: string) => {
     }
   } else {
     console.error('API request failed:', response.error)
-    // Pass through session expiry flag and status (e.g. 429 daily quota)
+    // Pass through session expiry flag, status and code (a 429 is the daily
+    // quota or the request rate limit, told apart by code -- ADR-060)
     return {
       success: false,
       error: response.error || 'Translation service error',
       sessionExpired: response.sessionExpired,
       status: response.status,
+      code: response.code,
     }
   }
 }
@@ -1097,11 +1122,15 @@ export const handleGetWords = async (paragraph: string) => {
       wordProperties: response.data,
     }
   } else {
-    // Pass through session expiry flag
+    // Pass through session expiry, and what a 429 is and how long it asks
+    // to wait (ADR-060): the chunk retry in lib/wordChunk.ts needs both
     return {
       success: false,
       error: response.error,
       sessionExpired: response.sessionExpired,
+      status: response.status,
+      code: response.code,
+      retryAfterMs: response.retryAfterMs,
     }
   }
 }

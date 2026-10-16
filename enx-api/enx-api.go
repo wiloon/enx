@@ -25,6 +25,7 @@ import (
 	"enx-api/preferences"
 	prefadapters "enx-api/preferences/adapters"
 	"enx-api/reader"
+	"enx-api/ratelimit"
 	"enx-api/repo"
 	"enx-api/savedpage"
 	"enx-api/stats"
@@ -476,6 +477,13 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	// these /api routes; nothing is registered twice at the root.
 	apiGroup := router.Group("/api")
 	apiGroup.Use(clerkAuth)
+	// Per-user request rate limit (ADR-060): right after clerkAuth, which
+	// puts the local user id in the context; a refused request does no
+	// further work.
+	apiGroup.Use(middleware.RateLimit(ratelimit.NewMemoryLimiter(ratelimit.Limits{
+		RequestsPerSecond: cfg.RateLimit.RequestsPerSecond,
+		Burst:             cfg.RateLimit.Burst,
+	}, nil), m))
 	// Carries X-Enx-Tz-Offset down to dictionary.QuotaMeter, which stores it
 	// on each lookup event so the event's local day is known (ADR-059
 	// Decision 1).

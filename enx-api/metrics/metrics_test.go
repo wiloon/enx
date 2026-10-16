@@ -185,6 +185,25 @@ func TestObserveTrialGrant(t *testing.T) {
 	}
 }
 
+// ADR-060 Decision 6: refusals by the request rate limit, by route
+// template -- never by user.
+func TestObserveRateLimited(t *testing.T) {
+	m := New()
+	m.ObserveRateLimited("/api/word/:word")
+	m.ObserveRateLimited("/api/word/:word")
+	m.ObserveRateLimited("/api/paragraph-init")
+
+	out := exposition(t, m)
+	for _, want := range []string{
+		`enx_rate_limited_total{route="/api/word/:word"} 2`,
+		`enx_rate_limited_total{route="/api/paragraph-init"} 1`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("exposition lacks %q", want)
+		}
+	}
+}
+
 // A statement that fails because SQLite is busy is counted as a read or a
 // write; other errors are not.
 func TestInstrumentDBCountsBusyErrors(t *testing.T) {

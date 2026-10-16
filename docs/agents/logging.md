@@ -93,6 +93,9 @@ returns:
 - The client IP is not logged (behind Cloudflare it is not the user's
   anyway), nor are headers.
 - CORS preflights (`OPTIONS`) are not logged.
+- Optional fields: `lookup_source` on a word lookup (ADR-040), and
+  `rate_limited: true` on a request the per-user rate limit refused
+  (ADR-060), which tells it from a quota 429.
 
 Handlers do not log the request or response themselves; they log only
 what the request line cannot show (a failed dependency, an admin action).

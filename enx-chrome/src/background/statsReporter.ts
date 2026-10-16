@@ -17,6 +17,7 @@
 //     number from a double-count.
 
 import type { ApiRequestResult } from './background'
+import { isRequestRateLimited } from '@/lib/rateLimit'
 
 /** Pending reports, oldest first. */
 export const STATS_QUEUE_STORAGE_KEY = 'enx-stats-queue'
@@ -49,6 +50,9 @@ export type QueuedReport = {
   utcOffsetMinutes: number
   delta: StatsDelta
   attempts: number
+  /** Epoch ms before which this report is not sent again: the request rate
+   *  limit's Retry-After (ADR-060 Decision 4). */
+  notBefore?: number
 }
 
 /**
@@ -119,7 +123,7 @@ export async function enqueueReport(
   const queue = await readQueue()
   queue.push(report)
   await writeQueue(queue.slice(-MAX_QUEUED_REPORTS))
-  await flushQueue(request)
+  await flushQueue(request, now)
 }
 
 /**
@@ -129,16 +133,24 @@ export async function enqueueReport(
  * malformed body) -- resending it would just fail again, so it is dropped.
  * Everything else is transient and gets `MAX_ATTEMPTS` tries before it is
  * dropped too. Stopping at the first transient failure keeps reports in
- * order and avoids hammering an API that is plainly down.
+ * order and avoids hammering an API that is plainly down. A report the
+ * request rate limit refused waits out its Retry-After at the head.
  */
 export async function flushQueue(
-  request: (endpoint: string, options: RequestInit) => Promise<ApiRequestResult>
+  request: (
+    endpoint: string,
+    options: RequestInit
+  ) => Promise<ApiRequestResult>,
+  now: Date = new Date()
 ): Promise<void> {
   let queue = await readQueue()
   if (queue.length === 0) return
 
   while (queue.length > 0) {
     const report = queue[0]
+    if (report.notBefore !== undefined && now.getTime() < report.notBefore) {
+      return
+    }
     const result = await request('/api/stats/ingest', {
       method: 'POST',
       body: JSON.stringify({
@@ -168,6 +180,9 @@ export async function flushQueue(
     }
 
     report.attempts += 1
+    if (isRequestRateLimited(result)) {
+      report.notBefore = now.getTime() + (result.retryAfterMs ?? 1000)
+    }
     if (report.attempts >= MAX_ATTEMPTS) {
       console.warn(
         `stats: giving up on report ${report.clientEventId} after ${report.attempts} attempts`

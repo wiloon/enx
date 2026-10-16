@@ -10,7 +10,8 @@ import (
 
 // RequestLog writes one structured line per request once it has been
 // handled: method, route, status, duration and the caller's user id, plus
-// lookup_source when a word lookup tagged one (ADR-040). The route is gin's
+// lookup_source when a word lookup tagged one (ADR-040) and rate_limited
+// when RateLimit refused the request (ADR-060). The route is gin's
 // template ("/api/word/:word"), never the raw path, because
 // the path carries what the user looked up. CORS preflights are skipped.
 // Pass logger.Infow as log.
@@ -36,6 +37,9 @@ func RequestLog(log func(msg string, keysAndValues ...interface{})) gin.HandlerF
 		}
 		if source := c.GetString(metrics.LookupSourceKey); source != "" {
 			fields = append(fields, "lookup_source", source)
+		}
+		if c.GetBool(RateLimitedKey) {
+			fields = append(fields, "rate_limited", true)
 		}
 		log("request", fields...)
 	}

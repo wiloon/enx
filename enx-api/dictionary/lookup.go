@@ -158,8 +158,11 @@ func RespondQuotaExceeded(c *gin.Context, userID string) {
 	if subscribed, err := isActiveSubscriber(userID); err == nil && subscribed {
 		message = "Daily dictionary lookup limit reached. That is unusually high for a subscription -- please contact support."
 	}
+	// The code tells the clients this 429 from the request rate limit's
+	// too_many_requests (ADR-060 Decision 4).
 	c.JSON(http.StatusTooManyRequests, gin.H{
 		"success": false,
+		"code":    "lookup_quota_exceeded",
 		"message": message,
 	})
 }

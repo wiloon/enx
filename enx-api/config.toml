@@ -202,6 +202,15 @@ calls-per-day = 200
 cache-writes-per-day = 50
 call-timeout = "45s"
 
+[rate-limit]
+# Per-user request rate limit on every signed-in /api route (ADR-060): a token
+# bucket per user that holds `burst` requests and refills
+# `requests-per-second`. Starting values -- tune from enx_rate_limited_total.
+# requests-per-second = 0 switches it off. Override with
+# RATE_LIMIT_REQUESTS_PER_SECOND / RATE_LIMIT_BURST.
+requests-per-second = 5
+burst = 60
+
 [credits.trial]
 # One-off sign-up trial (ADR-048): every new account gets `amount` credits
 # that expire after `ttl-days`, spent before the paid pools. amount = 0
