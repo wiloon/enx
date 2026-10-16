@@ -87,6 +87,7 @@ OTel 能顺带做 tracing，但当前只有一个 Go 服务、没有跨服务调
 - `enx_clerk_verify_duration_seconds{outcome}` —— 每次 Clerk token 校验的耗时与结果，`outcome ∈ {ok, missing_token, expired, invalid, unauthorized_party, provision_error, unavailable}`。鉴权失败在用户那里表现为「会话过期」，非常难从用户描述反推。（起草时还列了 `enx_clerk_jwks_fetch_total`；JWKS 由 `keyfunc` 在内部拉取和缓存，不提供拉取回调，改它的存储层不值得。JWKS 刷新会走网络，直接表现为这个直方图的耗时尖峰，所以不单列。）
 - `enx_stripe_webhook_total{event_type, outcome}` —— 付了钱没生效的唯一早期信号。`event_type` 只记我们处理的那几种，其余归 `other`，签名校验失败的记为 `unknown`（未验证的 payload 里的类型不可信）；`outcome ∈ {ok, error, bad_signature}`。
 - `enx_sqlite_busy_total{op}` —— `SQLITE_BUSY` / `SQLITE_LOCKED` / `database is locked` 的出现次数（`op ∈ {read, write, raw}`，经 GORM 回调统计）。单写者在用户增长后最先出问题的地方。
+- `enx_rate_limited_total{route}` —— 被按用户请求限流（ADR-060）拒绝的请求数，`route` 同 `enx_http_requests_total`。`enx_http_requests_total{status="429"}` 分不清限流和配额，所以单独计；用户身份不进标签，是谁被限查请求日志的 `rate_limited`。
 
 **用户量（ADR-058）**
 
@@ -190,3 +191,4 @@ Grafana dashboard 的 JSON 放进 `w10n-config` 的 `infra/homelab/k8s/observabi
 | 2026-09-29 | 去掉 `enx_clerk_jwks_fetch_total`，Clerk 只保留校验耗时直方图并列出 outcome；写明 Stripe、SQLite 指标的标签取值 | `keyfunc` 不暴露 JWKS 拉取回调；实现时确定了具体取值 |
 | 2026-09-30 | Decision 7：进程指标的面板用 `job="enx-api"` 筛选，两个采集器统一这个 job 名 | `go_*` / `process_*` 是通用指标名，不按 job 筛会混进集群里其他 Go 服务 |
 | 2026-10-01 | 查词来源加 `timeout`、`error` | 原先超时、出错、请求取消都记成 `miss`，混淆了词典覆盖率（一次 ECDICT 超时被当成 miss 显示为 3 秒） |
+| 2026-10-16 | 加 `enx_rate_limited_total{route}`；请求日志行可带 `rate_limited` | ADR-060 Decision 6 |

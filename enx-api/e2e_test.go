@@ -296,3 +296,57 @@ func TestE2E_LookupMetrics(t *testing.T) {
 		t.Error("/metrics contains the looked-up word")
 	}
 }
+
+// ADR-060 Decision 2: the request rate limit sits on the signed-in /api
+// routes, after clerkAuth; unauthenticated routes are not in it.
+func TestE2E_SignedInRequestsAreRateLimitedPerUser(t *testing.T) {
+	env := clerktest.NewEnv(t)
+	cfg := config.Default()
+	cfg.Clerk = env.Config()
+	cfg.RateLimit = config.RateLimit{RequestsPerSecond: 0.01, Burst: 2}
+
+	sqlitex.Init(filepath.Join(t.TempDir(), "enx-e2e-ratelimit.db"))
+	sub := "user_e2eratelimit"
+	t.Cleanup(func() { sqlitex.DB.Exec("DELETE FROM users WHERE clerk_user_id = ?", sub) })
+	token := env.SignSessionToken(t, jwt.MapClaims{"sub": sub, "email": "rate@example.com", "name": "rate"})
+
+	ts, done := e2eServer(t, cfg)
+	defer done()
+
+	do := func(path, bearer string) *http.Response {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodGet, ts.URL+path, nil)
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		resp, err := ts.Client().Do(req)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		resp.Body.Close()
+		return resp
+	}
+
+	// Unauthenticated routes and 401s never touch the bucket.
+	for i := 0; i < 5; i++ {
+		if resp := do("/ping", ""); resp.StatusCode != http.StatusOK {
+			t.Fatalf("/ping %d: status %d, want 200", i, resp.StatusCode)
+		}
+		if resp := do("/api/me", ""); resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("unsigned /api/me %d: status %d, want 401", i, resp.StatusCode)
+		}
+	}
+
+	for i := 0; i < 2; i++ {
+		if resp := do("/api/me", token); resp.StatusCode != http.StatusOK {
+			t.Fatalf("signed-in request %d: status %d, want 200", i+1, resp.StatusCode)
+		}
+	}
+	resp := do("/api/me", token)
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("third signed-in request: status %d, want 429", resp.StatusCode)
+	}
+	if resp.Header.Get("Retry-After") == "" {
+		t.Fatal("429 without Retry-After")
+	}
+}

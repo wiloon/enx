@@ -41,6 +41,7 @@ type Metrics struct {
 	stripeWebhooks *prometheus.CounterVec
 	sqliteBusy     *prometheus.CounterVec
 	trialGrants    prometheus.Counter
+	rateLimited    *prometheus.CounterVec
 }
 
 // New builds the metrics on a fresh registry, with the Go runtime and
@@ -88,12 +89,16 @@ func New() *Metrics {
 			Name: "enx_trial_grants_total",
 			Help: "Sign-up trial credit grants made (ADR-048).",
 		}),
+		rateLimited: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "enx_rate_limited_total",
+			Help: "Requests refused by the per-user request rate limit (ADR-060), by route template.",
+		}, []string{"route"}),
 	}
 	m.registry.MustRegister(
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 		m.httpRequests, m.httpDuration, m.lookupDuration, m.aiDuration, m.aiTokens,
-		m.clerkVerify, m.stripeWebhooks, m.sqliteBusy, m.trialGrants,
+		m.clerkVerify, m.stripeWebhooks, m.sqliteBusy, m.trialGrants, m.rateLimited,
 	)
 	return m
 }
@@ -174,6 +179,13 @@ func (m *Metrics) ObserveWebhook(eventType, outcome string) {
 // of new accounts shows up on the dashboard (ADR-048 Decision 7).
 func (m *Metrics) ObserveTrialGrant() {
 	m.trialGrants.Inc()
+}
+
+// ObserveRateLimited records one request the per-user request rate limit
+// refused (middleware.RateLimit). route is gin's template, so the label set
+// stays bounded; who was refused is on the request log line, not here.
+func (m *Metrics) ObserveRateLimited(route string) {
+	m.rateLimited.WithLabelValues(route).Inc()
 }
 
 // InstrumentDB counts statements on db that fail because SQLite is busy or

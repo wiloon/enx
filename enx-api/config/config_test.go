@@ -84,6 +84,9 @@ func TestLoadDefaults(t *testing.T) {
 		{"stats.ingest.log-ttl-days", cfg.Stats.Ingest.LogTTLDays, 7},
 		{"stats.lookup-events.retention-days", cfg.Stats.LookupEvents.RetentionDays, 90},
 		{"user.last-login-update-interval", cfg.User.LastLoginUpdateInterval, 5 * time.Minute},
+		// On by default, local development included (ADR-060 Decision 3).
+		{"rate-limit.requests-per-second", cfg.RateLimit.RequestsPerSecond, 5.0},
+		{"rate-limit.burst", cfg.RateLimit.Burst, 60},
 	}
 	for _, c := range checks {
 		if c.got != c.want {
@@ -191,6 +194,8 @@ var envVars = map[string]string{
 	"STATS_INGEST_LOG_TTL_DAYS":                       "stats.ingest.log-ttl-days",
 	"STATS_LOOKUP_EVENTS_RETENTION_DAYS":              "stats.lookup-events.retention-days",
 	"USER_LAST_LOGIN_UPDATE_INTERVAL":                 "user.last-login-update-interval",
+	"RATE_LIMIT_REQUESTS_PER_SECOND":                  "rate-limit.requests-per-second",
+	"RATE_LIMIT_BURST":                                "rate-limit.burst",
 	"OPS_STATS_TOKEN":                                 "ops.stats-token",
 }
 
@@ -232,6 +237,8 @@ func testValue(t *testing.T, key string, typ reflect.Type, env string) (value st
 		return "from-" + env, Secret("from-" + env)
 	case reflect.TypeOf(0), reflect.TypeOf(int64(0)):
 		return "7", reflect.ValueOf(7).Convert(typ).Interface()
+	case reflect.TypeOf(0.0):
+		return "7.5", 7.5
 	case reflect.TypeOf(false):
 		return "true", true
 	case reflect.TypeOf(time.Duration(0)):
@@ -418,6 +425,16 @@ func TestLoadRejects(t *testing.T) {
 			wantErr: "ai-word.call-timeout must not be negative",
 		},
 		{
+			name:    "negative request rate limit",
+			env:     map[string]string{"RATE_LIMIT_REQUESTS_PER_SECOND": "-1"},
+			wantErr: "rate-limit.requests-per-second must not be negative",
+		},
+		{
+			name:    "rate limit on with an empty bucket",
+			env:     map[string]string{"RATE_LIMIT_BURST": "0"},
+			wantErr: "rate-limit.burst must be positive",
+		},
+		{
 			name:    "AI word quality above 10",
 			env:     map[string]string{"AI_WORD_MIN_QUALITY": "11"},
 			wantErr: "ai-word.min-quality",
@@ -508,14 +525,15 @@ func TestLoadUnparseableSearchedFileFails(t *testing.T) {
 }
 
 // Zeros that mean something must still load: Stripe credits and costs at 0
-// are "not configured, fail closed", and 0 switches the trial and the AI word
-// ceilings off. Lookup quotas are not among them (ADR-059 Decision 6).
+// are "not configured, fail closed", and 0 switches the trial, the AI word
+// ceilings and the request rate limit off. Lookup quotas are not among them (ADR-059 Decision 6).
 func TestLoadAcceptsIntentionalZeros(t *testing.T) {
 	isolate(t)
 	for env, key := range envVars {
 		if strings.HasPrefix(key, "stripe.credits.") || strings.HasPrefix(key, "stripe.costs.") ||
 			strings.HasPrefix(key, "credits.trial.") ||
-			strings.HasPrefix(key, "ai-word.") {
+			strings.HasPrefix(key, "ai-word.") ||
+			key == "rate-limit.requests-per-second" {
 			t.Setenv(env, "0")
 		}
 	}
