@@ -37,19 +37,34 @@ tasks:
 
   grant-credits:
     desc: |
-      Admin: grant top-up credits to a user by email (ADR-014/ADR-015).
-      Usage: task grant-credits USER=you@example.com AMOUNT=5000 TOKEN=<clerk-jwt> [REASON="..."] [API=https://enx-api.wiloon.lab]
+      Admin: grant top-up credits to a user by email, recorded as GRANT_ADMIN (ADR-049).
+      Usage: task grant-credits USER=you@example.com AMOUNT=5000 REASON="..." TOKEN=<clerk-jwt> [API=https://enx-api.wiloon.lab]
       TOKEN is the caller's Clerk session JWT -- in the browser console on the
       site: `await window.Clerk.session.getToken()`. The caller's Clerk user id
       must be in the server's ADMIN_CLERK_USER_IDS.
     vars:
       API: '{{.API | default "https://enx-api.wiloon.lab"}}'
-      REASON: '{{.REASON | default "manual grant"}}'
     requires:
-      vars: [USER, AMOUNT, TOKEN]
+      vars: [USER, AMOUNT, REASON, TOKEN]
     cmds:
       - |
         curl -sS -X POST "{{.API}}/api/admin/credits/grant" \
+          -H "Authorization: Bearer {{.TOKEN}}" \
+          -H "Content-Type: application/json" \
+          -d '{"email":"{{.USER}}","amount":{{.AMOUNT}},"reason":"{{.REASON}}"}'
+        echo
+
+  deduct-credits:
+    desc: |
+      Admin: deduct top-up credits from a user by email, recorded as DEDUCT_ADMIN;
+      the balance may go negative (ADR-049). Same arguments as grant-credits.
+    vars:
+      API: '{{.API | default "https://enx-api.wiloon.lab"}}'
+    requires:
+      vars: [USER, AMOUNT, REASON, TOKEN]
+    cmds:
+      - |
+        curl -sS -X POST "{{.API}}/api/admin/credits/deduct" \
           -H "Authorization: Bearer {{.TOKEN}}" \
           -H "Content-Type: application/json" \
           -d '{"email":"{{.USER}}","amount":{{.AMOUNT}},"reason":"{{.REASON}}"}'

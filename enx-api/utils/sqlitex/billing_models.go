@@ -42,11 +42,12 @@ func (CreditAccount) TableName() string {
 type CreditTransaction struct {
 	Id            string  `gorm:"column:id;primaryKey"`
 	UserId        string  `gorm:"column:user_id;index"`
-	Type          string  `gorm:"column:type;not null"` // GRANT_SUBSCRIPTION | GRANT_TOPUP | GRANT_TRIAL | CONSUME | SETTLE | REFUND | EXPIRE
+	Type          string  `gorm:"column:type;not null"` // GRANT_SUBSCRIPTION | GRANT_TOPUP | GRANT_TRIAL | GRANT_ADMIN | DEDUCT_ADMIN | CONSUME | SETTLE | REFUND | EXPIRE
 	Amount        int64   `gorm:"column:amount;not null"`
 	BalanceAfter  int64   `gorm:"column:balance_after;not null"`
 	StripeEventId *string `gorm:"column:stripe_event_id;uniqueIndex"` // nil for CONSUME rows; set for webhook-triggered GRANT rows (idempotency key)
 	Feature       string  `gorm:"column:feature"`
+	Note          string  `gorm:"column:note"` // free text: the admin's reason on GRANT_ADMIN / DEDUCT_ADMIN rows (ADR-049)
 	CreatedAt     int64   `gorm:"column:created_at;not null"`
 }
 
