@@ -292,6 +292,9 @@ export async function mockBackendFetch(
   context: BrowserContext,
   options: {
     wordData?: Partial<{
+      // Set it to have the lookup counted: the client then sends
+      // POST /api/me/word-lookups, recorded for wordLookupPosts().
+      Id: string
       Key: string
       English: string
       Pronunciation: string
@@ -377,6 +380,20 @@ export async function mockBackendFetch(
           )
         }
 
+        if (url.includes('/api/me/word-lookups')) {
+          const posts = ((
+            self as unknown as Record<string, unknown>
+          ).__enxWordLookupPosts ??= []) as unknown[]
+          posts.push(JSON.parse(String(init?.body ?? '{}')))
+          return new Response(
+            JSON.stringify({
+              queryCount: wordData.LoadCount + 1,
+              alreadyAcquainted: 0,
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          )
+        }
+
         if (/\/api\/me\/words\/[^/]+\/known$/.test(url)) {
           return new Response(
             JSON.stringify({ ...wordData, AlreadyAcquainted: 1 }),
@@ -388,6 +405,21 @@ export async function mockBackendFetch(
       }
     },
     { wordData, translateFails, translateSessionExpired }
+  )
+}
+
+/**
+ * The bodies of the POST /api/me/word-lookups requests the service worker
+ * sent under mockBackendFetch, in order.
+ */
+export async function wordLookupPosts(
+  context: BrowserContext
+): Promise<unknown[]> {
+  const [sw] = context.serviceWorkers()
+  return sw.evaluate(
+    () =>
+      ((self as unknown as Record<string, unknown>).__enxWordLookupPosts ??
+        []) as unknown[]
   )
 }
 
