@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-10-15
-related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-028（阅读统计 `daily_stats`，Options B1 否决过事件表、Decision 10 不存时间戳）、adr-029（配额 UTC 日、计数与拦截分离、Decision 6 两表口径分裂）、adr-058（活跃用户复用配额表并长期保留）、issue #136（查词不幂等）、#133（可选重试，PR #184）、#146（活跃用户实现）
+related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-028（阅读统计 `daily_stats`，Options B1 否决过事件表、Decision 10 不存时间戳）、adr-029（配额 UTC 日、计数与拦截分离、Decision 6 两表口径分裂）、adr-058（活跃用户复用配额表并长期保留）、issue #136（查词不幂等）、#133（可选重试，PR #184）、#146（活跃用户实现）、#185（令牌桶限流）、#187（复习档位）、Linear WIL-176（调整免费配额）
 ---
 
 # ADR-059：查词事件表取代两个查词计数器；读释义（GET）与记查词次数（POST）分开
@@ -53,8 +53,12 @@ CREATE INDEX idx_lookup_events_at      ON lookup_events (at);
 | 查词统计（`/stats`、Home） | `COUNT(*) WHERE user_id=? AND outcome='allowed'`，按 `at + tz_offset_minutes` 的日期分组 | 用户本地日 |
 | 活跃用户（ADR-058） | `COUNT(DISTINCT user_id)`，按 UTC 日 / 最近 7 天 / 最近 30 天 | UTC |
 
-- **配额：先写事件，再数。** `INSERT` 与 `COUNT` 放在同一个事务里，数到的个数包含刚写的这一行，超过上限就返回 429，这一行的 `outcome` 记为 `rejected`（或在同一事务内改成 `rejected`）。这和现在「先计数、再比较」等价。
-- **出错放行不变**（ADR-029 E2、#17/#18）：事件写失败只记 warning，照常返回释义。
+- **配额：先数，再写，不用事务。** 先 `COUNT` 今天的事件（含 rejected，口径同 ADR-029 C2：请求数），`COUNT + 1` 超过上限就 `outcome = 'rejected'`，否则 `allowed`，然后 `INSERT` 一行，`outcome` 一次写对。两条语句各自提交：两个并发请求可能都数到上限前的同一个数而都放行，多给一两次额度，可以接受；换来的是代码简单、写锁不包住 `COUNT`。
+- **COUNT 的开销**：走 `(user_id, at)` 索引的一段范围，最多是当天上限那么多个索引条目，微秒级，不读表本身。
+- **先算配额，再查词库。** `MeterLookup` 移到 `Resolve` 的最前面：超额的请求只写一行 rejected 事件就返回 429，不读 `words`、不查 ECDICT。现在 `Resolve` 先 `findCached` 再扣配额，超额请求也会读一次库，本 ADR 改掉这个顺序。代价：ECDICT 不可用（503）的请求也会先计一次配额，按「请求数」口径这本来就该算。
+- **被拒绝的事件不设条数上限。** 脚本刷接口时，每个 rejected 请求都会写一行；速度由令牌桶（#185）压住，不在配额里另做截断。
+- **出错放行不变**（ADR-029 E2、#17/#18）：`COUNT` 或 `INSERT` 失败只记 warning，按放行处理，照常返回释义。
+- **两档都有上限，都要 `COUNT`**：免费 200、订阅 20000（Decision 6）；不再有「0 = 不拦截」的档位，订阅用户也不跳过 `COUNT`。
 - ADR-029 Decision 6 的「两种日界」照旧，只是不再需要两张表：同一行事件同时带 `at`（UTC）和这次查词的时区偏移。
 
 ### 3. GET 读释义，POST 记查词次数（#136）
@@ -62,23 +66,30 @@ CREATE INDEX idx_lookup_events_at      ON lookup_events (at);
 | | `GET /api/word/:word`（及 `GET /api/translate?word=`） | `POST /api/me/words/:english/lookups`（新） |
 | ---- | ---- | ---- |
 | 查词事件 / 配额 | 写一行，超额返回 429 | 不写，不扣配额 |
-| `user_dicts.query_count` | 不动 | +1，并清掉「认识」标记（`repo.RecordWordLookup` 原样搬过来） |
+| `user_dicts.query_count` | 不动 | +1，并清掉「认识」标记（`repo.RecordWordLookup` 原样搬过来）；查词次数**继续累加，不清零** |
 | 返回 | 释义 + 该词**当前**的查词次数与「认识」状态（只读） | 加完之后的查词次数与「认识」状态 |
 | 重试 | 用 #133 的 `{ retry: true }` | 不重试；失败就少记一次 |
 
-- **GET 重试会让配额和查词统计多算一次，这是接受的。** 两者都只是用量和体感数字，多一次无伤大雅；能重试换来的是读释义在网络抖动下不失败。所以 GET 是「可以安全重试」，不是严格幂等——写在这里，免得以后被当成 bug 修掉。
-- **POST 只在 GET 成功且词有 `words` 行（`id` 非空）时发**，一次点击查词只发一次。「一次查词只发一次 POST」的规则放进 enx-chrome 的 `src/lib/`，带单元测试；Side Panel 现在防止重复调 `getOneWord` 的那段改为防止重复发 POST。
+- **GET 重试会让配额和查词统计多算一次，这是接受的。** 两者都只是用量和体感数字，多一次无伤大雅；能重试换来的是读释义在网络抖动下不失败。所以 GET 是「安全、可以重试」，不是严格幂等——写在这里，免得以后被当成 bug 修掉。要做到严格幂等得加查词 ID 去重（见 Considered Options），成本与收益不对等。
+- **GET 为什么还返回「认识」状态**：查词浮层要据此显示「已认识」标记还是 Mark Known 按钮，单词高亮要据此决定画不画下划线（`wordHighlight.ts` 的 `isReviewable`）。
+- **已认识的词再被查一次**：清掉「认识」标记、回到复习，查词次数照常 +1、不清零——次数是「一共查过几次」这个事实，生词本按它排序、管理员统计对它求和。这样的词会按累计次数落进靠后（颜色最淡）的复习档位，这是复习模型怎么分档的问题，另见 #187，不在本 ADR 里改。
+- **POST 只在 GET 成功且词有 `words` 行（`id` 非空）时发**，一次点击查词只发一次。「一次查词只发一次 POST」的规则放进 enx-chrome 的 `src/lib/`，带单元测试。
 - **POST 不重试的理由**：它不幂等，重试会重复计数；少记一次只让词晚一点升档。
 - **POST 不扣配额**：配额是产品规则（每天能查多少个词），一次查词只算一次，就算在 GET 上。滥用防护交给另起的令牌桶限流（不在本 ADR 范围，见 Consequences）。
 - **AI 兜底查词**（`POST /api/dictionary/ai-word`，ADR-044/045）现在也会调 `RecordWordLookup`。改为同样的规则：它只负责出释义和扣积分，查词次数由客户端在成功后发同一个 POST 记录。这样查词次数只有一个写入口。
 
-### 4. 保留期与汇总：N = 90 天
+### 4. 保留期与汇总：N 天，默认 90
 
-明细只留 90 天，一个每日任务做两件事：
+保留天数是配置项，`stats.lookup-events.retention-days`，环境变量 `STATS_LOOKUP_EVENTS_RETENTION_DAYS`，默认 90；启动时校验必须在 **31–100** 之间，不合法就拒绝启动，与其他 `stats.*` 配置的校验方式一致。
+
+- 下限 31：WAU / MAU 要回看 30 天。
+- 上限 100：隐私政策对外承诺「查词事件最多保留 100 天」。政策写的是上限而不是具体天数，运维在上限内调整不必改政策；上限写进代码校验，配错了服务起不来，不会悄悄违背政策。要超过 100 天，必须先改隐私政策，再改这个上限。
+
+一个每日任务按顺序做三件事：
 
 1. **查词统计汇总**：对已经结束、且仍在保留期内的本地日，把 `allowed` 事件的个数**覆盖写入** `daily_stats.word_lookups`（覆盖而不是累加，任务重跑也不会算错）。
-2. **活跃用户汇总**：对已经结束的 UTC 日，把 DAU / WAU / MAU 写入新表 `active_users_daily(date, dau, wau, mau)`。WAU / MAU 要回看 30 天，所以 N 必须大于 30。
-3. 然后删除 `at` 早于 90 天前的事件。
+2. **活跃用户汇总**：对已经结束的 UTC 日，把 DAU / WAU / MAU 写入新表 `active_users_daily(date, dau, wau, mau)`。
+3. 然后删除 `at` 早于 N 天前的事件。先汇总后删除，删掉的明细都已经进了汇总。
 
 读的一侧：
 
@@ -87,12 +98,36 @@ CREATE INDEX idx_lookup_events_at      ON lookup_events (at);
 - **活跃用户**：今天的 gauge 从事件现算；ADR-058 Decision 4 的按天历史接口读 `active_users_daily`，今天这一行现算。
 - 清理任务与 ADR-028 的 `stats_ingest_log` TTL 清理复用同一个 goroutine。
 
-### 5. 迁移
+### 5. 迁移：不回填
 
-- 上线前把现有 `dictionary_lookup_quota` 的行回填进 `active_users_daily`（只有 DAU 准确；WAU / MAU 按回填数据算），然后删表。生产库 2026-10-14 刚重置过，历史很短。
-- `daily_stats.word_lookups` 的已有值保留，就是汇总结果；上线后今天和昨天改从事件算。
-- **上线当天的配额从 0 重新数**（事件表是空的）：用户当天多得一份额度，可以接受，不做回填。
-- `quota.IncrementLookup`、`stats.AddLookup` 删除；`translate` 两个 handler 不再调 `RecordWordLookup`。
+生产环境目前只有开发者自己在用，不做任何数据回填或迁移：
+
+- 直接删除 `dictionary_lookup_quota`，不回填 `active_users_daily`；活跃用户的历史从上线那天开始。
+- `daily_stats.word_lookups` 的已有值原样保留；上线后今天和昨天从事件算。
+- 上线当天的配额从 0 重新数。
+- `quota.IncrementLookup`、`stats.AddLookup` 删除；`translate` 两个 handler 和 `ai-word` 不再调 `RecordWordLookup`。
+
+### 6. 每日配额的两种作用与两档数值
+
+令牌桶（#185）管**速度**（每秒几次），每日配额管**总量**（一天几次）。只有令牌桶，一个每秒 5 次的脚本跑满一天也能打 43 万次；两层一起用才是常见做法。在这个分工下，同一个每日配额对两档用户的作用不同：
+
+| | 免费 | 订阅 |
+| ---- | ---- | ---- |
+| 作用 | 产品规则，兼引导付费：撞到上限时提示升级（ADR-029 修订） | 总量兜底：正常人到不了，到了多半是脚本 |
+| 初始上限 | 200 | 20000 |
+| 429 文案 | 提示升级 Pro | 「这不正常，请联系客服」（已有，`dictionary.RespondQuotaExceeded`） |
+
+- 订阅档从「0 = 只计数、不拦截」改为 20000，两档都有真实上限，也都有数据可看。
+- 不再细分更多付费档的配额：查词几乎没有成本，付费档之间的差别用 AI 积分体现；真出现某档用户被每日上限卡住，再加档。
+- 两个数值都是初始值。上线运行一段时间后按 `lookup_events` 的分布调整，免费档的目标是让 10–20% 的活跃免费用户偶尔撞到上限（Linear WIL-176）。
+
+### 7. Side Panel 随 #136 一起简化
+
+不另开 issue，在 #136 的实现里一起改；拆开做会留下一个两边对不上的中间版本。
+
+- `SidePanel.tsx` 里「getOneWord 会加查词次数，每个词只能调一次」的注释和限制删掉：GET 可以随便调，重新渲染、重新拉取都没有副作用。
+- 剩下要守住的只有「一次点击查词只发一次 POST」：从查词浮层镜像过来的卡片不再发 POST，在 Side Panel 里点的词才发。
+- `adjacentPageCard` 保留：它防的是同一个词出现两张并排的卡片，是界面需求；只是注释里「避免第二次 getOneWord」这个理由不再成立，改掉。
 
 ## Considered Options
 
@@ -106,21 +141,31 @@ CREATE INDEX idx_lookup_events_at      ON lookup_events (at);
   - 客户端生成 lookup ID、服务端去重：一个请求搞定，但要多一张去重表、多一套 TTL 清理，只为保住一个「少记一次也无所谓」的计数。否决。
   - 不拆，查词永不重试：读释义是最常用的操作，网络一抖就失败，体验最差。否决。
 - **POST 也扣配额**（把配额当 API 限流用）：每次查词消耗两份额度，免费上限得翻倍，「每天能查多少个词」也说不清了。限流是令牌桶的事。否决。
+- **配额的 INSERT 与 COUNT 放进一个事务**：数字更准，但配额本来就容许差一两次，事务只增加代码和持锁时间。否决（Decision 2）。
+- **超额后每天只记有限条 rejected 事件**：能防脚本把表灌满，但要多一份内存状态；速度交给令牌桶就够了。否决。
+- **已认识的词再被查时清零查词次数**：能让它回到最显眼的复习档位，但抹掉了「查过几次」的历史。档位问题应该改分档规则（#187）。否决。
+- **订阅用户不设上限（0）**：没有总量兜底，令牌桶下一个脚本一天也能打几十万次；也没有数据可看。否决，改为 20000。
+- **更多付费档、各自不同的配额**：查词近乎零成本，付费档差异用 AI 积分体现更合适；档位越多定价页越难讲清楚。否决，有需要再加。
 
 ## Consequences
 
-- **推翻 ADR-028 Options B1**（否决事件表）。当时的两条理由：体量——按现在几百用户的规模，一年最多几百万行，SQLite 加索引承受得起，且只留 90 天；隐私——不存词、不存页面，毫秒明细只存 90 天，长期只剩按天数字。ADR-028 Decision 10 改为「长期数据只有按天聚合；查词事件的时间明细最多保留 90 天」。
-- **修订 ADR-029**：配额的数据源从 `dictionary_lookup_quota` 改为 `lookup_events`；口径（UTC 日、请求数、含 429、出错放行）不变。
+- **推翻 ADR-028 Options B1**（否决事件表）。当时的两条理由：体量——按现在几百用户的规模，一年最多几百万行，SQLite 加索引承受得起，且只留 90 天；隐私——不存词、不存页面，毫秒明细只存 90 天，长期只剩按天数字。ADR-028 Decision 10 改为「长期数据只有按天聚合；查词事件的时间明细最多保留 100 天」（默认 90）。
+- **修订 ADR-029**：配额的数据源从 `dictionary_lookup_quota` 改为 `lookup_events`；口径（UTC 日、请求数、含 429、出错放行）不变；订阅档不再是 0；免费档上限兼有引导付费的作用（ADR-029 文末「2026-10-15 修订」）。
+- **配置要改**（随 #136 实现一起改，核对于 2026-10-15）：
+  - `enx-api/config.toml`：`stripe.quota.dictionary-lookup-daily-subscribed` 从 0 改为 20000。homelab 的 `w10n-config/infra/homelab/k8s/enx/deployment.yaml` 只用环境变量覆盖了免费档（200），订阅档走这里的默认值。
+  - 生产：`w10n-config/infra/aws/ansible/ec2-tokyo/templates/enx-api-prod.env.j2`（Ansible）里 `STRIPE_QUOTA_DICTIONARY_LOOKUP_DAILY_SUBSCRIBED=0`，改为 20000，并更新它上方「0 = count but do not block」的注释。
+  - 免费档 200 同时出现在 enx-ui `/pricing`（`enx-ui/src/lib/plans.ts` 的 `FREE_DAILY_LOOKUPS`），以后按 WIL-176 调整时三处一起改。付费档在定价页上写的是「A much higher daily lookup limit」，改成 20000 不用改文案。
+  - `STATS_LOOKUP_EVENTS_RETENTION_DAYS` 不必在部署里设置，用默认 90。
 - **修订 ADR-058 Decision 2 / 4**：活跃用户不再复用配额表，改为事件现算加 `active_users_daily` 汇总；#146 按本 ADR 实现，gauge 和按天接口的口径不变。
-- **隐私政策补一句**：记录每次查词的时间（保留 90 天，之后只保留按天的次数），不记录查了哪个词、在哪个页面。
+- **隐私政策补一行**（随 #136 实现一起改，功能上线时政策同步生效）：在 enx-ui `/privacy` 和 `/zh/privacy` 的数据保留表里加「查词事件：每次查词的时间与时区，不含查了哪个词、在哪个页面；最多保留 100 天，之后只保留按天的查词次数」。写上限 100 天，不写具体的 N（Decision 4）。
 - **体量**：每次查词一行，约 60–80 字节加两个索引。1000 个活跃用户、每人每天 50 次、留 90 天，约 450 万行、几百 MB；到那个规模再看是否缩短保留期或把 `user_id` 换成整数 id。
 - **扩展要改**：查词变成两个请求。GET 返回后，客户端直接按「当前次数 + 1、清掉认识标记」渲染查词浮层的复习档位和单词高亮颜色，同时发 POST，**不等 POST 返回**。这条规则放在 enx-chrome 的 `src/lib/`，带单元测试；POST 失败时界面已经显示的档位不回退，下次查词以服务端为准。
-- **令牌桶限流另起 issue / ADR**：对所有已登录接口用同一套宽松规则（例如每用户每秒 5 次、突发 20），正常人碰不到；与配额分开，配额只是产品规则。
-- **术语**：Accepted 后在 `CONTEXT.md` 加「查词事件」，并写明「查词次数」只由「记查词次数」的 POST 增加。
+- **令牌桶限流另起 issue / ADR（#185）**：对所有已登录接口用同一套宽松规则（例如每用户每秒 5 次、突发 20），正常人碰不到；它管速度，每日配额管总量（Decision 6）。
+- **术语**：`CONTEXT.md` 新增「查词计量」一节：查词次数、查词事件、每日查词配额。
 
 ## 已确认（2026-10-15）
 
-- 保留期 N = 90 天。
+- 保留期 N 默认 90 天（第二轮改为可配置）。
 - 复习档位由客户端按「当前次数 + 1」先显示，不等 POST。
 - POST 路径 `POST /api/me/words/:english/lookups`。
 - 上线当天配额从 0 重新数：生产尚无用户，无影响。
@@ -128,3 +173,15 @@ CREATE INDEX idx_lookup_events_at      ON lookup_events (at);
 - AI 兜底查词的查词次数也由客户端发同一个 POST 记录（Decision 3 最后一条）。
 - 令牌桶限流：#185。
 - 事件存 UTC 毫秒时间戳加这次查词的时区偏移；不另存「用户当前时区」，也不专门处理用户跨时区查词。
+
+## 修订（2026-10-15，第二轮）
+
+- 保留天数改为配置项 `STATS_LOOKUP_EVENTS_RETENTION_DAYS`，默认 90，允许 31–100；隐私政策写「最多 100 天」（Decision 4）。
+- 配额先 `COUNT` 再 `INSERT`，不用事务（Decision 2）。
+- 先算配额再查词库，超额不读 `words` / ECDICT（Decision 2）。
+- rejected 事件不设条数上限，脚本由令牌桶 #185 挡（Decision 2）。
+- 已认识的词再被查：清掉认识标记，查词次数继续累加；档位问题见 #187（Decision 3）。
+- GET 不做严格幂等，不加查词 ID（Decision 3）。
+- 订阅档配额 20000，不再是 0；免费档 200 兼引导付费，上线后按数据调整（WIL-176）（Decision 6）。
+- Side Panel 的简化随 #136 一起做（Decision 7）。
+- 不做数据回填或迁移（Decision 5）。

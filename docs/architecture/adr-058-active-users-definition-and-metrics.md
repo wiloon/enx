@@ -6,6 +6,8 @@ related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-029�
 
 # ADR-058：活跃用户的定义与统计——按查词算，数据复用配额表，Grafana 看板展示当前值与完整历史
 
+> **2026-10-15 修订（[ADR-059](adr-059-lookup-event-log-and-get-post-split.md)）**：Decision 2 / 4 的数据源改变。活跃用户不再复用 `dictionary_lookup_quota`（该表删除），改为从 `lookup_events` 现算当天，历史读每日汇总表 `active_users_daily(date, dau, wau, mau)`；明细只保留 N 天（默认 90）。「活跃 = 当天查过词，含被 429 的」这一口径和 gauge、按天接口的字段都不变。#146 按 ADR-059 实现。
+
 上线后要回答几个运营问题：一共有多少用户、每天 / 每周 / 每月有多少人在用。现在答不上来：ADR-040 的指标全是运维指标，ADR-028 的阅读统计是给单个用户自己看的，ADR-049 的管理员用户页还没实现。
 
 `users.last_login_time` 看起来能用（每次带登录态的请求都会按间隔刷新它），但它只保留最近一次时间：能算出「当前」有多少人 30 天内来过，却画不出过去每天的曲线。而且打开扩展弹窗、后台自动刷新 token 也会刷新它，并不代表这个人在用 ENX 学英语。
