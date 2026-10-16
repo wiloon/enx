@@ -37,6 +37,7 @@ type Config struct {
 	Credits           Credits           `mapstructure:"credits"`
 	Stats             Stats             `mapstructure:"stats"`
 	User              User              `mapstructure:"user"`
+	Ops               Ops               `mapstructure:"ops"`
 
 	// File is the config file that was read, "" when none was.
 	File string `mapstructure:"-"`
@@ -103,6 +104,13 @@ type Clerk struct {
 
 type Admin struct {
 	ClerkUserIDs []string `mapstructure:"clerk-user-ids"`
+}
+
+// Ops is the operator-facing endpoints outside Clerk (ADR-058 Decision 4).
+type Ops struct {
+	// StatsToken is the bearer token Grafana presents to
+	// GET /api/ops/user-stats/daily. Empty turns the endpoint off (404).
+	StatsToken Secret `mapstructure:"stats-token"`
 }
 
 type SentenceTranslate struct {
@@ -552,6 +560,9 @@ func setDefaults(v *viper.Viper) {
 	// request (see docs/PERF_FIRST_QUERY_LATENCY.md) — only re-write when the
 	// previous value is older than this interval.
 	v.SetDefault("user.last-login-update-interval", "5m")
+
+	// Unset: the ops user-stats endpoint is off (ADR-058 Decision 4).
+	v.SetDefault("ops.stats-token", "")
 }
 
 // bindEnv binds each key to an explicit environment variable.
@@ -664,6 +675,9 @@ var envBindings = map[string]string{
 	"stats.ingest.max-words-per-report":  "STATS_INGEST_MAX_WORDS_PER_REPORT",
 	"stats.ingest.log-ttl-days":          "STATS_INGEST_LOG_TTL_DAYS",
 	"stats.lookup-events.retention-days": "STATS_LOOKUP_EVENTS_RETENTION_DAYS",
+
+	// Bearer token for GET /api/ops/user-stats/daily (Grafana Infinity).
+	"ops.stats-token": "OPS_STATS_TOKEN",
 
 	"user.last-login-update-interval": "USER_LAST_LOGIN_UPDATE_INTERVAL",
 }

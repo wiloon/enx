@@ -86,3 +86,17 @@ type LookupEvent struct {
 func (LookupEvent) TableName() string {
 	return "lookup_events"
 }
+
+// ActiveUsersDay is one finished UTC day's site-wide active users, rolled up
+// from lookup_events before they expire (ADR-058, ADR-059 Decision 4). Only
+// counts: no user id. History starts the day this table shipped.
+type ActiveUsersDay struct {
+	Date string `gorm:"column:date;primaryKey"` // UTC YYYY-MM-DD
+	DAU  int64  `gorm:"column:dau;not null"`
+	WAU  int64  `gorm:"column:wau;not null"` // the 7 UTC days ending with Date
+	MAU  int64  `gorm:"column:mau;not null"` // the 30 UTC days ending with Date
+}
+
+func (ActiveUsersDay) TableName() string {
+	return "active_users_daily"
+}

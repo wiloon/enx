@@ -191,6 +191,7 @@ var envVars = map[string]string{
 	"STATS_INGEST_LOG_TTL_DAYS":                       "stats.ingest.log-ttl-days",
 	"STATS_LOOKUP_EVENTS_RETENTION_DAYS":              "stats.lookup-events.retention-days",
 	"USER_LAST_LOGIN_UPDATE_INTERVAL":                 "user.last-login-update-interval",
+	"OPS_STATS_TOKEN":                                 "ops.stats-token",
 }
 
 // TestEnvVarsPopulateTheirFields sets each env var to a value no default has
