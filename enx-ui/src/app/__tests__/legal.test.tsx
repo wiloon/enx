@@ -252,6 +252,22 @@ describe('bilingual legal pages', () => {
     expect(screen.queryByText(/没有更细的/)).toBeNull()
   })
 
+  // ADR-049 Decision 14: the operator can look at account and billing data.
+  it('says the operator may view account and billing data, in both languages', () => {
+    const en = render(<PrivacyPolicyPage />)
+    expect(
+      screen.getByText(
+        /may view your account and billing data for customer support and accounting/
+      )
+    ).toBeInTheDocument()
+    en.unmount()
+
+    render(<PrivacyPolicyZhPage />)
+    expect(
+      screen.getByText(/为客服和账务目的，可以查看你的账号与账单数据/)
+    ).toBeInTheDocument()
+  })
+
   it('says a saved page is only a link in the Chinese terms too', () => {
     render(<TermsZhPage />)
     expect(screen.getByText(/你保存的页面只是一个链接/)).toBeInTheDocument()
