@@ -488,6 +488,10 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	// Mark Known (#133): idempotent, so the extension can retry it.
 	apiGroup.PUT("/me/words/:english/known", handlers.SetWordKnown)
 	apiGroup.DELETE("/me/words/:english/known", handlers.ClearWordKnown)
+	// One click-to-lookup's query count +1 (ADR-059 Decision 3). By word id,
+	// so an inflection counts against the headword the lookup resolved to.
+	// Not metered, not idempotent: the extension never retries it.
+	apiGroup.POST("/me/word-lookups", handlers.RecordWordLookup)
 
 	// Billing (Stripe) — requires authentication (Clerk session JWT).
 	apiGroup.POST("/billing/checkout/subscription", billingHandler.CheckoutSubscription)

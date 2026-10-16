@@ -13,10 +13,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// Characterization tests for the per-user review bookkeeping translateWord
-// does on every lookup (#22): user_dicts.QueryCount drives the review bucket
-// and so the underline colour in enx-chrome. They pin today's behaviour so
-// the ADR-018 deep-seam refactor can move the lookup code safely.
+// Tests for the per-user review state translateWord answers with (#22):
+// user_dicts.QueryCount drives the review bucket and so the underline colour
+// in enx-chrome.
 
 type stardictRow = ecdicttest.Row
 
@@ -132,99 +131,81 @@ func assertResponse(t *testing.T, resp lookupResponse, wantID string, wantCount,
 	}
 }
 
-func TestLocalHitFirstLookupSeedsQueryCountOne(t *testing.T) {
-	setupReviewTest(t)
-	id := seedWord(t, "serendipity")
+// The lookup GET reads the review state and never writes it (ADR-059
+// Decision 3): POST /api/me/word-lookups is the only thing that adds to the
+// query count, so a retried GET can't move a word's review bucket.
 
-	resp := lookup(t, "serendipity", "u1")
-
-	assertReview(t, "u1", id, 1, 0)
-	assertResponse(t, resp, id, 1, 0)
-}
-
-func TestLocalHitRepeatLookupIncrementsQueryCount(t *testing.T) {
-	setupReviewTest(t)
-	id := seedWord(t, "serendipity")
-	seedUserDict(t, "u1", id, 3, 0)
-
-	resp := lookup(t, "serendipity", "u1")
-
-	assertReview(t, "u1", id, 4, 0)
-	assertResponse(t, resp, id, 4, 0)
-}
-
-// Looking up a word the user marked as known puts it back in the review pool.
-func TestLocalHitOnAcquaintedWordResetsItAndIncrements(t *testing.T) {
+func TestLookupAnswersWithTheCurrentReviewStateAndLeavesItAlone(t *testing.T) {
 	setupReviewTest(t)
 	id := seedWord(t, "serendipity")
 	seedUserDict(t, "u1", id, 3, 1)
 
 	resp := lookup(t, "serendipity", "u1")
 
-	assertReview(t, "u1", id, 4, 0)
-	assertResponse(t, resp, id, 4, 0)
+	assertResponse(t, resp, id, 3, 1)
+	assertReview(t, "u1", id, 3, 1)
 }
 
-// Marking a never-looked-up word known creates the row with query_count 0 and
-// acquainted 1; the first lookup afterwards must still reset and count.
-func TestLocalHitAfterMarkWithoutPriorLookup(t *testing.T) {
+func TestRepeatedLookupsLeaveTheQueryCountUnchanged(t *testing.T) {
 	setupReviewTest(t)
 	id := seedWord(t, "serendipity")
-	seedUserDict(t, "u1", id, 0, 1)
+	seedUserDict(t, "u1", id, 3, 0)
+
+	lookup(t, "serendipity", "u1")
+	resp := lookup(t, "serendipity", "u1")
+
+	assertResponse(t, resp, id, 3, 0)
+	assertReview(t, "u1", id, 3, 0)
+}
+
+func TestLookupOfANeverLookedUpWordWritesNoReviewRow(t *testing.T) {
+	setupReviewTest(t)
+	id := seedWord(t, "serendipity")
 
 	resp := lookup(t, "serendipity", "u1")
 
-	assertReview(t, "u1", id, 1, 0)
-	assertResponse(t, resp, id, 1, 0)
+	assertResponse(t, resp, id, 0, 0)
+	if n := countUserDicts(t, "u1"); n != 0 {
+		t.Fatalf("user_dicts rows: got %d, want 0", n)
+	}
 }
 
 // The local words lookup falls back to a case-insensitive match; the review
-// row is keyed on the stored word, not on what the user typed.
-func TestLocalHitIsCaseInsensitive(t *testing.T) {
+// state is the stored word's, not what the user typed.
+func TestLookupIsCaseInsensitive(t *testing.T) {
 	setupReviewTest(t)
 	id := seedWord(t, "serendipity")
+	seedUserDict(t, "u1", id, 2, 0)
 
 	resp := lookup(t, "Serendipity", "u1")
 
-	assertReview(t, "u1", id, 1, 0)
-	assertResponse(t, resp, id, 1, 0)
+	assertResponse(t, resp, id, 2, 0)
 }
 
-func TestLookupOnlyTouchesTheCallersRow(t *testing.T) {
+func TestLookupReadsOnlyTheCallersReviewState(t *testing.T) {
 	setupReviewTest(t)
 	id := seedWord(t, "serendipity")
 	seedUserDict(t, "u2", id, 7, 1)
 
-	lookup(t, "serendipity", "u1")
+	resp := lookup(t, "serendipity", "u1")
 
-	assertReview(t, "u1", id, 1, 0)
+	assertResponse(t, resp, id, 0, 0)
 	assertReview(t, "u2", id, 7, 1)
 }
 
-func TestEcdictFillCachesWordAndSeedsQueryCountOne(t *testing.T) {
+func TestEcdictFillCachesTheWordWithoutAReviewRow(t *testing.T) {
 	setupReviewTest(t, stardictRow{Word: "quixotic", Sw: "quixotic", Phonetic: "kwɪkˈsɒtɪk", Translation: "a. 不切实际的"})
 
 	resp := lookup(t, "quixotic", "u1")
 
 	id := wordIDByEnglish(t, "quixotic")
-	assertReview(t, "u1", id, 1, 0)
-	assertResponse(t, resp, id, 1, 0)
+	assertResponse(t, resp, id, 0, 0)
 	if resp.Chinese != "a. 不切实际的" {
 		t.Fatalf("chinese: got %q", resp.Chinese)
 	}
-}
-
-// Once ECDICT has filled the words cache, the next lookup of the same word is
-// a local hit and counts on from the seeded 1.
-func TestEcdictFillThenRepeatLookupIsLocalHit(t *testing.T) {
-	setupReviewTest(t, stardictRow{Word: "quixotic", Sw: "quixotic", Translation: "a. 不切实际的"})
-
-	lookup(t, "quixotic", "u1")
-	resp := lookup(t, "quixotic", "u1")
-
-	id := wordIDByEnglish(t, "quixotic")
-	assertReview(t, "u1", id, 2, 0)
-	assertResponse(t, resp, id, 2, 0)
+	if n := countUserDicts(t, "u1"); n != 0 {
+		t.Fatalf("user_dicts rows: got %d, want 0", n)
+	}
 }
 
 func TestMissInBothSourcesWritesNoReviewRow(t *testing.T) {
@@ -241,25 +222,15 @@ func TestMissInBothSourcesWritesNoReviewRow(t *testing.T) {
 }
 
 // Looking up an inflection ("ran") resolves via ECDICT's exchange column to
-// its headword ("run"). When "run" is already cached and the user has been
-// reviewing it, the lookup should count on like any other repeat lookup.
-func TestInflectionOfCachedHeadwordKeepsReviewProgress(t *testing.T) {
+// its headword ("run"). The answer carries the headword's id and review
+// state: the id the client then records the lookup against.
+func TestInflectionAnswersWithTheHeadwordsIdAndReviewState(t *testing.T) {
 	setupReviewTest(t, stardictRow{Word: "run", Sw: "run", Translation: "v. 跑", Exchange: "p:ran/d:run/i:running/3:runs"})
 	id := seedWord(t, "run")
 	seedUserDict(t, "u1", id, 5, 1)
 
 	resp := lookup(t, "ran", "u1")
 
-	assertReview(t, "u1", id, 6, 0)
-	assertResponse(t, resp, id, 6, 0)
-}
-
-func TestInflectionOfCachedHeadwordSeedsNewReviewRow(t *testing.T) {
-	setupReviewTest(t, stardictRow{Word: "run", Sw: "run", Translation: "v. 跑", Exchange: "p:ran/d:run/i:running/3:runs"})
-	id := seedWord(t, "run")
-
-	resp := lookup(t, "ran", "u1")
-
-	assertReview(t, "u1", id, 1, 0)
-	assertResponse(t, resp, id, 1, 0)
+	assertResponse(t, resp, id, 5, 1)
+	assertReview(t, "u1", id, 5, 1)
 }

@@ -65,12 +65,14 @@ func (h *Handler) AIWord(c *gin.Context) {
 	word.Pronunciation = res.Pronunciation
 	word.Origin = string(res.Origin)
 
-	// Like any lookup, a word with a row joins the user's vocabulary; one the
-	// AI was not confident enough to store has no row and does not.
+	// The word's current review state, as the lookup GET answers it. A word
+	// with a row joins the vocabulary when the client records the lookup
+	// with POST /api/me/word-lookups (ADR-059 Decision 3); one the AI was
+	// not confident enough to store has no row and does not.
 	if word.Id != "" {
-		qc, acquainted, err := h.reviews.RecordWordLookup(userID, word.Id)
+		qc, acquainted, err := h.reviews.ReviewState(userID, word.Id)
 		if err != nil {
-			logger.Errorf("record AI lookup of %s for %s: %v", word.English, userID, err)
+			logger.Errorf("read review state of AI word %s for %s: %v", word.English, userID, err)
 		} else {
 			word.LoadCount = qc
 			word.AlreadyAcquainted = acquainted

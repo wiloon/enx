@@ -34,6 +34,7 @@ func TestLookupRoutesAreRegisteredOnlyUnderAPI(t *testing.T) {
 		"GET /load-count",
 		"PUT /me/words/:english/known",
 		"DELETE /me/words/:english/known",
+		"POST /me/word-lookups",
 	} {
 		if registered[route] {
 			t.Errorf("%s is registered at the root; it should exist only under /api", route)
@@ -153,5 +154,18 @@ func TestWordKnownRoutesRequireAuthentication(t *testing.T) {
 		if w.Code != http.StatusUnauthorized {
 			t.Errorf("%s /api/me/words/hello/known without credentials: status %d, want 401", method, w.Code)
 		}
+	}
+}
+
+// Recording a lookup writes the user's own query count, behind the session
+// check.
+func TestWordLookupRouteRequiresAuthentication(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := setupRouter(clerkConfig(t), metrics.New())
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/me/word-lookups", strings.NewReader(`{"wordId":"w1"}`)))
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("POST /api/me/word-lookups without credentials: status %d, want 401", w.Code)
 	}
 }

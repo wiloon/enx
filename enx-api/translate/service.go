@@ -19,10 +19,11 @@ type Resolver interface {
 	Resolve(ctx context.Context, english, userID string) (dictionary.Result, error)
 }
 
-// ReviewLog records a user's lookup of a word for the review system:
-// repo.ReviewLog in production.
+// ReviewLog reads a user's review state for a word: repo.ReviewLog in
+// production. It is read-only on purpose: the lookup endpoints never change
+// the query count, POST /api/me/word-lookups does (ADR-059 Decision 3).
 type ReviewLog interface {
-	RecordWordLookup(userID, wordID string) (queryCount int, alreadyAcquainted int, err error)
+	ReviewState(userID, wordID string) (queryCount int, alreadyAcquainted int, err error)
 }
 
 // AIDefiner defines a word the dictionaries lack: dictionary.Service in
@@ -115,13 +116,15 @@ func (h *Handler) translateWord(c *gin.Context, raw string) {
 	word.Pronunciation = res.Pronunciation
 	word.Origin = string(res.Origin)
 
-	// Review bookkeeping needs a persisted word: nothing to count on a miss.
+	// The word's current review state, read only: this GET may be retried,
+	// so it never adds to the query count (ADR-059 Decision 3). A miss has
+	// no persisted word and so no state.
 	if word.Id != "" {
-		qc, acquainted, err := h.reviews.RecordWordLookup(userId, word.Id)
+		qc, acquainted, err := h.reviews.ReviewState(userId, word.Id)
 		if err != nil {
 			// The definition is still worth answering with; the counts
 			// stay at zero for this response.
-			logger.Errorf("record lookup of %s for %s: %v", word.English, userId, err)
+			logger.Errorf("read review state of %s for %s: %v", word.English, userId, err)
 		} else {
 			word.LoadCount = qc
 			word.AlreadyAcquainted = acquainted
