@@ -210,6 +210,21 @@ func TestQuotaFailsOpenWhenTheEventStoreFails(t *testing.T) {
 	}
 }
 
+// Fail-open is for a store that can't answer, not for a user already over:
+// once the count says over, a failed event write still answers 429.
+func TestQuotaStillRejectsAnOverLimitLookupWhenTheEventWriteFails(t *testing.T) {
+	now := noon
+	events := &fakeLookupEvents{events: []LookupEvent{
+		{UserID: "u1", At: noon.Add(-time.Hour), Outcome: OutcomeAllowed},
+	}}
+	m := newTestMeter(events, fakeSubscriptions{}, quotaLimits(1, 20000), &now)
+	events.addErr = errors.New("db locked")
+
+	if err := m.Charge(context.Background(), "u1"); !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("got %v, want ErrQuotaExceeded", err)
+	}
+}
+
 func TestQuotaCountsEachUserApart(t *testing.T) {
 	events := &fakeLookupEvents{}
 	now := noon

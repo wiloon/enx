@@ -76,8 +76,10 @@ func NewQuotaMeter(events LookupEventStore, subs Subscriptions, limits config.St
 // allowed. One or two lookups over is acceptable for a cap on a
 // near-zero-cost operation, and it keeps the write lock off the COUNT.
 //
-// It fails open (ADR-029 E2, #17, #18): a store error logs a warning and
-// allows the lookup. Only a genuine ErrQuotaExceeded is returned.
+// It fails open (ADR-029 E2, #17, #18): when the count can't be read, it
+// logs a warning and allows the lookup. A failed event write is only
+// logged; the outcome still follows the count, so a user who is over the
+// limit gets ErrQuotaExceeded either way. That is the only error returned.
 func (m *QuotaMeter) Charge(ctx context.Context, userID string) error {
 	now := m.now().UTC()
 	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
@@ -99,8 +101,9 @@ func (m *QuotaMeter) Charge(ctx context.Context, userID string) error {
 		Outcome:         outcome,
 	})
 	if err != nil {
-		logger.Warnf("dictionary: lookup event write failed for user %s, allowing lookup: %v", userID, err)
-		return nil
+		// The count already answered: a lost event only makes the count one
+		// short, it never lets an over-limit lookup through.
+		logger.Warnf("dictionary: lookup event write failed for user %s (outcome %s): %v", userID, outcome, err)
 	}
 	if outcome == OutcomeRejected {
 		return ErrQuotaExceeded
