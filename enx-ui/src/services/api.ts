@@ -317,14 +317,16 @@ export class ApiService {
     })
   }
 
-  // Toggles whether the user knows the word (the endpoint the extension's
-  // "Mark as known" uses). It is a toggle, not a set: read the state
-  // back from the answer rather than assuming it.
-  async markWord(english: string): Promise<ApiResponse<MarkedWord>> {
-    return this.makeRequest('/api/mark', {
-      method: 'POST',
-      body: JSON.stringify({ English: english }),
-    })
+  // Marks the word known (PUT) or learning again (DELETE), the same
+  // idempotent endpoint the extension uses (#133).
+  async setWordKnown(
+    english: string,
+    known: boolean
+  ): Promise<ApiResponse<MarkedWord>> {
+    return this.makeRequest(
+      `/api/me/words/${encodeURIComponent(english)}/known`,
+      { method: known ? 'PUT' : 'DELETE' }
+    )
   }
 
   async listSavedPages(): Promise<ApiResponse<{ pages: SavedPage[] }>> {

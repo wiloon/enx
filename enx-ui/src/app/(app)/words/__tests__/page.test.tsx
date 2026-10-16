@@ -15,12 +15,12 @@ jest.mock('@/services/api', () => ({
   apiService: {
     listMyWords: jest.fn(),
     removeMyWord: jest.fn(),
-    markWord: jest.fn(),
+    setWordKnown: jest.fn(),
   },
 }))
 
 const mockList = apiService.listMyWords as jest.Mock
-const mockMark = apiService.markWord as jest.Mock
+const mockSetKnown = apiService.setWordKnown as jest.Mock
 
 function entry(over: Partial<WordListEntry>): WordListEntry {
   return {
@@ -360,7 +360,7 @@ describe('marking a word known', () => {
   })
 
   it('badges the word known and leaves it where it was', async () => {
-    mockMark.mockResolvedValue({
+    mockSetKnown.mockResolvedValue({
       success: true,
       data: { English: 'ephemeral', Known: true, LoadCount: 2 },
     })
@@ -368,7 +368,7 @@ describe('marking a word known', () => {
 
     await chooseAction('ephemeral', 'Mark as known')
 
-    expect(mockMark).toHaveBeenCalledWith('ephemeral')
+    expect(mockSetKnown).toHaveBeenCalledWith('ephemeral', true)
     await waitFor(() =>
       expect(within(row('ephemeral')).getByText('Known')).toBeInTheDocument()
     )
@@ -380,13 +380,15 @@ describe('marking a word known', () => {
       success: true,
       data: { total: 1, words: [entry({ english: 'ephemeral', known: true })] },
     })
-    mockMark.mockResolvedValue({
+    mockSetKnown.mockResolvedValue({
       success: true,
       data: { English: 'ephemeral', Known: false, LoadCount: 1 },
     })
     renderPage()
 
     await chooseAction('ephemeral', 'Mark as learning')
+
+    expect(mockSetKnown).toHaveBeenCalledWith('ephemeral', false)
 
     await waitFor(() =>
       expect(
@@ -396,7 +398,7 @@ describe('marking a word known', () => {
   })
 
   it('takes the word out of the Learning view once it is known', async () => {
-    mockMark.mockResolvedValue({
+    mockSetKnown.mockResolvedValue({
       success: true,
       data: { English: 'ephemeral', Known: true, LoadCount: 2 },
     })
@@ -416,7 +418,7 @@ describe('marking a word known', () => {
   })
 
   it('says so and changes nothing when the server will not mark it', async () => {
-    mockMark.mockResolvedValue({
+    mockSetKnown.mockResolvedValue({
       success: false,
       error: 'Failed to mark word',
     })
