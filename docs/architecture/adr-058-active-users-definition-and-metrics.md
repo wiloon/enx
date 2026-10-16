@@ -93,6 +93,11 @@ enx-api 新增三个 gauge，加进 ADR-040 的指标清单：
 - **新建 `user_activity_daily` 表**：和配额表内容几乎一样，等于每次查词多写一行。否决。
 - **长期曲线只靠 Prometheus**：Grafana Cloud 免费版只保留 14 天，要看更长就得付费升级或做 recording rule 降采样，而且上线前的数据补不回来。按天接口从明细现算，任何时候都能重画完整历史。否决。
 - **在 Grafana 里直接连 SQLite**：生产库在 EC2 上，Grafana Cloud 访问不到；为此开放数据库端口不值得。否决。
+- **第三方统计（2026-10-16 补记）**：
+  - **Umami**：面向网站，可以从扩展 background POST `/api/send` 记自定义事件。但访客靠 IP + UA + 轮换盐的哈希区分，对不上 ENX 账号，也没法按「查过词」定义活跃。否决。
+  - **PostHog / Mixpanel / Amplitude / GA4（Measurement Protocol）**：DAU/WAU/MAU、留存、漏斗开箱即用。但活跃口径需要的数据已经在服务端（`lookup_events`）；客户端上报会被广告拦截、网络失败丢事件，数字与配额、计费对不上；MV3 不允许远程代码，SDK 要打包或改 `fetch`；把账号 ID 交给第三方要改隐私政策和 Chrome Web Store 数据用途声明。否决 v1。
+  - **Chrome Web Store 开发者后台**：免费、零开发，有周活跃安装数、安装/卸载、地区、版本。它按安装、按周统计，不按账号，不替代本 ADR，可以同时参考。
+  - 以后要回答服务端看不到的问题（登录转化、弹窗到查词的漏斗、按周留存）时，优先考虑可自托管的 PostHog，事件尽量从 enx-api 服务端发；那是对本 ADR 口径的扩展，另起 ADR。
 - **只在管理员页面（ADR-049）展示**：可以，但那个页面还没做，而 Grafana 本来就在看服务指标，趋势图、时间范围这些也是现成的。v1 先用 Grafana，管理员页面以后可以复用同一个 repo 查询和按天接口。
 
 ## Consequences
