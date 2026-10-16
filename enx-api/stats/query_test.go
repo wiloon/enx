@@ -142,7 +142,7 @@ func TestGetSeriesBucketsAndZeroFills(t *testing.T) {
 
 	from := time.Date(2026, 9, 14, 0, 0, 0, 0, time.UTC)
 	to := time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC)
-	points, err := GetSeries(ctx, user, PeriodWeek, from, to)
+	points, err := GetSeries(ctx, user, PeriodWeek, from, to, "2026-09-28")
 	if err != nil {
 		t.Fatalf("GetSeries: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestGetSeriesDayBuckets(t *testing.T) {
 	seedDay(t, user, "2026-09-15", 42)
 	points, err := GetSeries(context.Background(), user, PeriodDay,
 		time.Date(2026, 9, 14, 0, 0, 0, 0, time.UTC),
-		time.Date(2026, 9, 16, 0, 0, 0, 0, time.UTC))
+		time.Date(2026, 9, 16, 0, 0, 0, 0, time.UTC), "2026-09-16")
 	if err != nil {
 		t.Fatalf("GetSeries: %v", err)
 	}

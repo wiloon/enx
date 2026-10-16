@@ -78,7 +78,7 @@ func main() {
 	dictsample.SetEnabled(cfg.Ecdict.Sampling)
 
 	go runReaderDocumentCleanup()
-	go runStatsIngestLogCleanup(cfg.Stats.Ingest.LogTTL())
+	go runStatsIngestLogCleanup(cfg.Stats.Ingest.LogTTL(), cfg.Stats.LookupEvents.RetentionDays)
 	go runPageReportCleanup()
 
 	go serveMetrics(cfg.Metrics.Addr, m)
@@ -197,18 +197,26 @@ func runReaderDocumentCleanup() {
 }
 
 // runStatsIngestLogCleanup periodically deletes expired stats deduplication
-// rows (ADR-028 Decision 5). Only the dedup log is purged -- daily_stats is
-// the user's own history and is never deleted. Mirrors the reader cleanup:
-// once on start so a restart doesn't leave a backlog, then hourly.
-func runStatsIngestLogCleanup(ttl time.Duration) {
+// rows (ADR-028 Decision 5), and rolls lookup events up into
+// daily_stats.word_lookups before deleting the ones past their retention
+// (ADR-059 Decision 4). daily_stats is the user's own history and is never
+// deleted. Mirrors the reader cleanup: once on start so a restart doesn't
+// leave a backlog, then hourly; the rollup overwrites, so rerunning it is
+// harmless.
+func runStatsIngestLogCleanup(ttl time.Duration, lookupEventRetentionDays int) {
 	purge := func() {
 		deleted, err := stats.PurgeIngestLog(context.Background(), time.Now(), ttl)
 		if err != nil {
 			logger.Errorf("stats: purge ingest log failed: %v", err)
-			return
-		}
-		if deleted > 0 {
+		} else if deleted > 0 {
 			logger.Infof("stats: purged %d expired ingest-log row(s)", deleted)
+		}
+
+		deleted, err = stats.RollupLookupEvents(context.Background(), time.Now(), lookupEventRetentionDays)
+		if err != nil {
+			logger.Errorf("stats: lookup event rollup failed: %v", err)
+		} else if deleted > 0 {
+			logger.Infof("stats: deleted %d lookup event(s) past retention", deleted)
 		}
 	}
 
@@ -448,8 +456,9 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	// these /api routes; nothing is registered twice at the root.
 	apiGroup := router.Group("/api")
 	apiGroup.Use(clerkAuth)
-	// Carries X-Enx-Tz-Offset down to dictionary.MeterLookup so a lookup is
-	// counted under the caller's own day (ADR-029 Decision 7a).
+	// Carries X-Enx-Tz-Offset down to dictionary.QuotaMeter, which stores it
+	// on each lookup event so the event's local day is known (ADR-059
+	// Decision 1).
 	apiGroup.Use(stats.TZOffsetMiddleware())
 	{
 		// get words query count by paragraph

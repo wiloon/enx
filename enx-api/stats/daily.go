@@ -3,12 +3,14 @@
 //
 // Two properties define this package and are easy to break by accident:
 //
-//  1. It stores day-grained aggregates only -- no URL, host, title, article
-//     id or wall-clock timestamp. Which article a user read is a client-side
-//     concept that never reaches the server (ADR-028 Decision 4/10).
-//  2. Dates are the USER'S LOCAL day, supplied by the client, not UTC. That
-//     is deliberate and deliberately different from dictionary_lookup_quota
-//     (ADR-029 Decision 6); the two tables' numbers are expected not to match.
+//  1. Its long-term data is day-grained aggregates only -- no URL, host,
+//     title, article id or wall-clock timestamp. Which article a user read
+//     is a client-side concept that never reaches the server (ADR-028
+//     Decision 4/10). The one exception is lookup_events, timestamped and
+//     kept at most 100 days before only its daily rollup remains (ADR-059).
+//  2. Dates are the USER'S LOCAL day, not UTC. That is deliberately
+//     different from the daily lookup quota's UTC day (ADR-029 Decision 6),
+//     so the quota and the lookup statistics are expected not to match.
 package stats
 
 import (
@@ -184,23 +186,6 @@ func Ingest(ctx context.Context, userID string, r Report, now time.Time, maxWord
 		return false, err
 	}
 	return applied, nil
-}
-
-// AddLookup records one dictionary lookup on userID's local day. This is the
-// server-side L1 counter (ADR-029 Decision 7a): every lookup already passes
-// through dictionary.MeterLookup, so counting there makes the numerator of
-// "lookups per 1k words" exact and independent of the client's report queue.
-// Best-effort by contract -- the caller must never fail a lookup over it.
-func AddLookup(ctx context.Context, userID, localDate string, offsetMinutes int) error {
-	if userID == "" || localDate == "" {
-		return errors.New("stats: missing user id or date")
-	}
-	return sqlitex.DB.WithContext(ctx).Exec(
-		`INSERT INTO daily_stats (user_id, date, utc_offset_minutes, word_lookups)
-		 VALUES (?, ?, ?, 1)
-		 ON CONFLICT(user_id, date) DO UPDATE SET word_lookups = word_lookups + 1`,
-		userID, localDate, offsetMinutes,
-	).Error
 }
 
 // PurgeIngestLog deletes deduplication rows older than the TTL and returns

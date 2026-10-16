@@ -15,12 +15,16 @@ package sqlitex
 // Which article they read is a client-side concept that never leaves the
 // extension.
 //
-// Date is the USER'S LOCAL day, reported by the client, and deliberately
-// differs from dictionary_lookup_quota's UTC day. The two answer different
-// questions: this one is "how much did I learn today", which has to line up
-// with the user's own sense of a day; the quota is an adversarial cap, and a
-// local boundary could be reset by changing the device clock (ADR-029
-// Decision 6). The two tables' numbers are expected NOT to match.
+// Date is the USER'S LOCAL day, and deliberately differs from the daily
+// lookup quota's UTC day. The two answer different questions: this one is
+// "how much did I learn today", which has to line up with the user's own
+// sense of a day; the quota is an adversarial cap, and a local boundary
+// could be reset by changing the device clock (ADR-029 Decision 6). Their
+// numbers are expected NOT to match.
+//
+// WordLookups is written only by stats.RollupLookupEvents, from
+// lookup_events; the last two local days are read from the events directly
+// (ADR-059 Decision 4).
 type DailyStat struct {
 	UserID string `gorm:"column:user_id;primaryKey"`
 	Date   string `gorm:"column:date;primaryKey"` // YYYY-MM-DD in the user's local time

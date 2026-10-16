@@ -123,28 +123,6 @@ func TestIngestIgnoresEmptyDelta(t *testing.T) {
 	}
 }
 
-func TestAddLookupCountsUnderTheGivenLocalDay(t *testing.T) {
-	user := "u-" + t.Name()
-	ctx := context.Background()
-	for i := 0; i < 3; i++ {
-		if err := AddLookup(ctx, user, "2026-09-16", 480); err != nil {
-			t.Fatalf("AddLookup: %v", err)
-		}
-	}
-	if got := day(t, user, "2026-09-16").WordLookups; got != 3 {
-		t.Fatalf("word_lookups = %d, want 3", got)
-	}
-
-	// The same instant is a different local day either side of the date line,
-	// which is exactly why the client's offset decides the bucket.
-	if err := AddLookup(ctx, user, "2026-09-17", -720); err != nil {
-		t.Fatalf("AddLookup: %v", err)
-	}
-	if got := day(t, user, "2026-09-17").WordLookups; got != 1 {
-		t.Fatalf("next day word_lookups = %d, want 1", got)
-	}
-}
-
 func TestPurgeIngestLogKeepsRecentRows(t *testing.T) {
 	user := "u-" + t.Name()
 	mustIngest(t, user, report("fresh-"+user, "2026-09-16", Delta{WordsRead: 10}))
