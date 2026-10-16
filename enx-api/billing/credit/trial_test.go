@@ -191,3 +191,27 @@ func TestSettleOverrunSpillsFromTrialThroughToTopup(t *testing.T) {
 			acc.TrialBalance, acc.SubscriptionBalance, acc.TopupBalance)
 	}
 }
+
+// A user whose AI access comes from the trial alone never goes into debt:
+// the part of a charge the trial can't cover is written off, so top-up stays
+// at zero and the ledger records only what was actually taken.
+func TestSettleWritesOffTrialOnlyOverrun(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	mustGrantTrial(t, userID, 3, time.Hour)
+
+	if err := Settle(ctx, userID, "translate_sentence", 10); err != nil {
+		t.Fatalf("Settle: %v", err)
+	}
+
+	acc := loadAccount(t, userID)
+	if acc.TrialBalance != 0 || acc.SubscriptionBalance != 0 || acc.TopupBalance != 0 {
+		t.Fatalf("got trial=%d subscription=%d topup=%d, want 0/0/0",
+			acc.TrialBalance, acc.SubscriptionBalance, acc.TopupBalance)
+	}
+	var rows []sqlitex.CreditTransaction
+	sqlitex.DB.Where("user_id = ? AND type = ?", userID, TypeSettle).Find(&rows)
+	if len(rows) != 1 || rows[0].Amount != -3 || rows[0].BalanceAfter != 0 {
+		t.Fatalf("SETTLE rows = %+v, want one row of -3 with balance 0", rows)
+	}
+}
