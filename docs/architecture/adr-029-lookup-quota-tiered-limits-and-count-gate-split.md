@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | **已实现 — 2026-09-16**（代码 + 配置 + 文案全部落地；两档默认值仍为 0 = 「计数开、拦截关」，具体数值等上线后的真实用量）。修订两份已 Accepted 的 ADR 的具体决策，并修正 `LAUNCH-CHECKLIST` §1.5 里一个**无法自洽的上线计划**（见 Context）。**Decision 7a（L1 改服务端记 + 时区头）不在本次实现范围**，它属于 ADR-028 落地时的选型。 |
+| **状态** | **2026-10-15 部分被 [ADR-059](adr-059-lookup-event-log-and-get-post-split.md) 修订**（数据源、两档上限、免费档兼引导付费，见文末）。 **已实现 — 2026-09-16**（代码 + 配置 + 文案全部落地；两档默认值仍为 0 = 「计数开、拦截关」，具体数值等上线后的真实用量）。修订两份已 Accepted 的 ADR 的具体决策，并修正 `LAUNCH-CHECKLIST` §1.5 里一个**无法自洽的上线计划**（见 Context）。**Decision 7a（L1 改服务端记 + 时区头）不在本次实现范围**，它属于 ADR-028 落地时的选型。 |
 | **日期** | 2026-09-16 |
 | **关联 Spec** | [`docs/tasks/TASK-SPEC-enx-billing-stripe-subscription.md`](../tasks/TASK-SPEC-enx-billing-stripe-subscription.md) §1.4 / §4.2（配额表与拦截语义，本 ADR 改动其口径） |
 | **关联 ADR** | [`adr-009-billing-stripe-subscription-and-ai-credits.md`](adr-009-billing-stripe-subscription-and-ai-credits.md)（**修订其决策 6**「免费用户每日上限值待定；**订阅用户不限量**」→ 改为分档上限，订阅档高到正常用户碰不到，但**存在**）、[`adr-018-dictionary-lookup-single-metered-seam.md`](adr-018-dictionary-lookup-single-metered-seam.md)（**修订其决策 2「订阅用户跳过」、决策 8「`limit <= 0` 维持无限语义」**；其决策 5 的 fail-open 策略**保留但改写**：失败时用最高档而不是「跳过计量」，#18「付费用户不被 DB 抖动降级 429」的不变量继续成立）、[`adr-028-reading-stats-what-to-measure.md`](adr-028-reading-stats-what-to-measure.md)（本 ADR 让 `dictionary_lookup_quota` 第一次成为**全体用户**的每日查词计数器，028 Context 里「该表对订阅用户偏斜」的描述随之修订，L1 的数据来源可改为服务端，见 Decision 7）、[`adr-027-enx-ui-app-home-workbench-and-return-path.md`](adr-027-enx-ui-app-home-workbench-and-return-path.md)（剩余额度的显示方式随之改为**状态驱动**，见 Decision 8） |
@@ -288,3 +288,18 @@ dictionary-lookup-daily-subscribed = 0
 - 如果有订阅用户真的撞到 `subscribed` 上限，且集中在某一个 plan → 重新评估 Options E2（按 plan 分档）。
 - 如果配额行数或每次查词的额外写入成为 SQLite 的瓶颈 → 评估批量写 / Redis 计数器（ADR-009 已把「Redis / DynamoDB 做配额计数器」列在 P2）。
 - 如果 Decision 7a 落地后发现时区头的漏带率很高 → 退回 ADR-028 的客户端上报方案（7b）。
+
+---
+
+## 2026-10-15 修订（ADR-059）
+
+以下几处被 [`adr-059`](adr-059-lookup-event-log-and-get-post-split.md) 改写，正文保留原样作为当时的记录：
+
+- **数据源**：配额不再存 `dictionary_lookup_quota`，改为数 `lookup_events` 里当天（UTC）的事件。口径不变：UTC 日、按请求数、被 429 的也算、出错放行（Options G 与 Decision 2 仍然成立）。Decision 6 的两种日界由同一行事件的 `at` 与 `tz_offset_minutes` 承担。
+- **原子性**（Options D）：改为先 `COUNT` 再 `INSERT`、不用事务。边界处可能多放行一两次，与 D2 的取舍同类。
+- **两档都有真实上限**：订阅档从 0（只计数、不拦截）改为 **20000**，免费档 **200**；Decision 4「带着计数开、拦截关上线」到此结束。
+- **配额的定位**：原文多处强调「配额是用量上限，不是 paywall」。现在改为：
+  - **免费档兼有引导付费的作用**：上限不刻意放宽，撞到时 429 提示升级；上线后按数据把免费上限调到让 10–20% 的活跃免费用户偶尔撞到（Linear WIL-176）。这兑现了上面 Revisit Trigger 的第一条。
+  - **订阅档是总量兜底**：与令牌桶限流（#185，管速度）配合，挡住一天几十万次的脚本。
+  - **出错放行不变**：即使免费档有引导付费的意图，配额存储出错时仍然放行，不因数据库抖动拒绝服务。
+- **Out of Scope「按 plan 细分四档」**：仍不做，付费档差异用 AI 积分体现（ADR-059 Decision 6）。
