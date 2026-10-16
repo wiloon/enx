@@ -103,7 +103,7 @@ Add the following cases to the unit test suite (using the existing JSDOM + Jest 
 ```typescript
 describe('Code block exclusion', () => {
   const wordDict = {
-    yaml: { LoadCount: 5, AlreadyAcquainted: 0, WordType: 0, ... },
+    yaml: { LoadCount: 5, Known: false, WordType: 0, ... },
   }
 
   it('should NOT highlight words inside <code>', () => {
