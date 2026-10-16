@@ -151,6 +151,18 @@ func TestAIWordErrorMapping(t *testing.T) {
 	}
 }
 
+// The daily trial limit says how long until it resets, not "tomorrow"
+// (ADR-048 Decision 7).
+func TestAIWordTrialDailyLimitSaysHoursUntilReset(t *testing.T) {
+	h := NewHandler(nil, &fakeReviews{}).WithAI(&fakeAI{err: dictionary.ErrTrialLimitedPerDay}, fakePolicy{})
+
+	w := post(t, h.AIWord, "u1", `{"word":"rizzler"}`)
+	want := "You've reached today's trial limit. Try again in "
+	if msg, _ := decode(t, w)["message"].(string); !strings.HasPrefix(msg, want) {
+		t.Fatalf("message = %q, want it to start with %q", msg, want)
+	}
+}
+
 func TestAIWordECDICTUnavailableUsesTheDictionaryNotice(t *testing.T) {
 	h := NewHandler(nil, &fakeReviews{}).WithAI(&fakeAI{err: dictionary.ErrEcdictUnavailable}, fakePolicy{})
 

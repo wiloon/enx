@@ -36,8 +36,9 @@ type StatusSource interface {
 
 // TrialGate holds users whose AI access comes from the sign-up trial alone
 // to the trial's call rate (ADR-048 Decision 7); everyone else passes
-// untouched. It runs before the credit pre-check, so a refused call costs
-// nothing. A nil *TrialGate allows everything.
+// untouched. Callers check it after the credit pre-check and before the
+// model call, so a broke user is told to pay without using up a slot and a
+// refused call costs nothing. A nil *TrialGate allows everything.
 type TrialGate struct {
 	status  StatusSource
 	limiter *MemoryLimiter

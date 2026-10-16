@@ -3,6 +3,7 @@ package aitranslate
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"enx-api/ailimit"
 	"enx-api/aitranslate/sentenceword"
@@ -81,7 +82,7 @@ func refuseOverTrialLimit(c *gin.Context, gate CallGate, userID string) bool {
 	}
 	switch gate.Check(c.Request.Context(), userID) {
 	case ailimit.LimitedPerDay:
-		c.JSON(http.StatusTooManyRequests, gin.H{"success": false, "message": "You've reached today's trial limit. Try again tomorrow, or subscribe for more."})
+		c.JSON(http.StatusTooManyRequests, gin.H{"success": false, "message": ailimit.DayLimitMessage(time.Now())})
 		return true
 	case ailimit.LimitedPerMinute:
 		c.JSON(http.StatusTooManyRequests, gin.H{"success": false, "message": "Too many requests. Please wait a minute and try again."})

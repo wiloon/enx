@@ -24,6 +24,7 @@ adr-047 的引导要让新用户在示例文章里体验侧边栏 AI 翻译。�
    - 发放时机：**账号创建时**。Clerk 中间件调用 `enx.GetOrCreateByClerkUserID`，创建分支之后调用一个注入的「新用户」钩子（接口，由 `main` 接到 `GrantTrial`），`enx` 包不 import billing。已存在的账号不补发。
 4. **扣费顺序：试用 → 订阅 → top-up**：
    - `Settle` 在同一条原子 UPDATE 里先从**有效**试用余额扣（不会扣成负数），剩下的再按现有逻辑走订阅池（不低于 0）、top-up 池（可以变成负数）。
+   - **试用用户超出的部分免掉**（2026-10-16 决定）：每次 AI 调用的花费要调完才知道，试用余额不够付最后一次调用是常态。如果这次扣费用到了试用池，而 top-up 余额 ≤ 0，那么试用池和订阅池付不了的部分直接免掉，top-up 保持原值，不变成负数。否则这个从没付过钱的用户会背上欠款，第一次充值时被吃掉一部分，看起来像计费错误。通常只免掉最后一次调用的超出部分；几次调用同时在路上时，每次的超出部分都会免掉，最多受每分钟次数限制。试用扣到 0 之后，`CanUseAI` 为假，就不能再用了。top-up > 0 的付费用户不受影响，照旧可以扣成负数。`SETTLE` 流水的金额记实际扣掉的积分，不是这次调用的成本。
    - 在同一个事务里，如果试用已过期而 `trial_balance > 0`，把它清零并写一条 `EXPIRE` 流水（`ledger.go` 里 `TypeExpire` 已定义但从未用过）。过期但再没扣过费的账号，剩余积分留在列里；因为第 2 条已经不计入，所以无害，v1 不做定时清扫。
 5. **余额与权限**：
    - `credit.Balance` = 订阅池 + top-up 池 + 有效试用余额。
@@ -57,10 +58,14 @@ adr-047 的引导要让新用户在示例文章里体验侧边栏 AI 翻译。�
    **第二层：使用端，防单个试用账号短时间烧光、或被脚本调用。**
    - **只对「试用用户」生效**：`entitlement.Status` 新增 `TrialOnly`，条件是没有订阅、top-up ≤ 0、有效试用余额 > 0，也就是 AI 权限完全来自试用。订阅和充值用户不受这两个限制。
    - **每分钟次数**（`calls-per-minute`）挡脚本和连点；**每天次数**（`calls-per-day`）把 100 积分摊到多天，不让一个账号一天用完。按现在的计价权重（`[stripe.costs.translate]`），一次整句翻译大约 1 积分，100 积分约等于 100 次调用；每天 30 次意味着试用至少要 4 天才能用完，7 天的有效期内用得完。
-   - **复用 adr-045 的 `dictionary.MemoryLimiter`**（`dictionary/ai_limiter.go`，已有每分钟和每日计数，0 表示不限）：把它挪到一个不属于某个功能的包（例如 `ailimit`），AI 单词兜底和试用限制各用一个实例，配置互相独立。
-   - **在哪里检查**：所有 AI 功能调用前都会先查余额，只有两个入口（`aitranslate/token_ledger.go` 与 `dictionary/adapters/adapters.go` 的 `Balance`）。试用限制就挂在这两处：`TrialOnly` 且限流器不放行时，返回 429，不调模型、不扣积分。
+   - **复用 adr-045 的限流器**：原来的 `dictionary.MemoryLimiter`（每分钟和每日计数，0 表示不限）已挪到不属于某个功能的 `ailimit` 包（`ailimit/limiter.go`）。AI 单词兜底和试用限制各用一个实例，配置互相独立。
+   - **在哪里检查**：`ailimit.TrialGate`（`ailimit/trial.go`）先问 `entitlement` 是不是 `TrialOnly`，是才交给限流器，在 `main` 里接到三个 AI 入口：
+     - 整句翻译与地道表达：`aitranslate` 两个 handler 的 `WithTrialGate`，在 `refuseOverTrialLimit` 里检查；
+     - AI 单词兜底：`dictionary.Service.LimitTrial`。
+     
+     三处都在余额预检**之后**、调模型**之前**检查：没钱的用户直接拿到 402，不占试用次数；被拒的调用不调模型、不扣积分。
    - 计数在进程内存里，服务重启会清零，只会多放过几次调用。它是安全阀，不是记账系统；真正的成本上限仍然是 100 积分本身。
-   - 429 的提示文案（英文 UI）：`You've reached today's trial limit. Try again tomorrow, or subscribe for more.`；每分钟超限时提示稍后再试。
+   - 429 的提示文案（英文 UI）：每日超限是 `You've reached today's trial limit. Try again in N hours, or subscribe for more.`，N 是离 UTC 零点（计数重置）还有几个小时，向上取整（`ailimit.DayLimitMessage`）。不写 "tomorrow"，因为 UTC 零点对每个时区的用户是不同的钟点，北京是早上 8 点，美国是下午。每分钟超限时提示稍后再试。错误码是 `trial_limit_day` / `trial_limit_minute`；`aitranslate` 的两处 429 还没带错误码，由 adr-060 补上。
 
    **两层之间的关系**：第一层提高「造一个试用账号」的成本，第二层封住「每个试用账号能花多少、花多快」：每个账号终生最多 100 积分、每天最多 `calls-per-day` 次调用。成本因此与「攻击者能造多少个 Google / GitHub 账号」成正比，而那一部分由 Google、GitHub 和 Clerk 承担。
 8. **展示**：`GET /billing/me` 的 `credits` 增加 `trialBalance`（有效值）和 `trialExpiresAt`。enx-ui 的 billing 页与侧边栏的余额处显示「100 trial credits · expires Oct 15」这类文案（英文 UI）。
@@ -78,6 +83,8 @@ adr-047 的引导要让新用户在示例文章里体验侧边栏 AI 翻译。�
   - 试用限制：`TrialOnly` 用户超过每分钟 / 每日次数时返回 429，且不调模型、不扣费；订阅用户、top-up > 0 的用户不受限；`calls-per-* = 0` 时不限；限流器从 `dictionary` 挪走后，adr-045 的单词兜底限制行为不变（现有测试照常通过）。
   - `Balance` 不计入已过期的试用余额。
   - `Settle` 先扣试用、再扣订阅、最后扣 top-up；试用不会变负；扣费时如果已过期，清零并写 `EXPIRE` 流水；并发两次 `Settle` 总扣费正确。
+  - 只有试用的用户扣超时，超出部分免掉：top-up 保持 0，`SETTLE` 流水只记实际扣掉的积分；top-up > 0 的用户照旧扣成负数。
+  - 每日超限的 429 文案按离 UTC 零点的小时数给出 `Try again in N hours`。
   - `entitlement`：只有试用余额时 `CanUseAI` 为真、`Subscribed` 为假；过期后两者都为假。
   - 中间件：钩子只在创建分支调用；钩子返回错误时请求照常通过。
   - `/billing/me` 返回 `trialBalance`、`trialExpiresAt`。
@@ -90,5 +97,7 @@ adr-047 的引导要让新用户在示例文章里体验侧边栏 AI 翻译。�
 - 100 积分 / 7 天是**未校准的初值**：积分与真实成本的换算比例（`[stripe.costs.*]`）还是占位值（LAUNCH-CHECKLIST §1.2）。生产环境跑一段时间、有了真实的 `cost=` 日志之后，与订阅、充值档位的积分数一起重新定。目前的判断是：真实成本很低，现有付费档给的积分偏少，校准时大概率上调，试用额度随之调整。
 - 账本从两个池变成三个池，`Settle` 的原子 UPDATE 更复杂；它是唯一的扣费入口，正确性靠上面的并发测试兜住。
 - 发放时机选在账号创建时，而不是第一次使用 AI 时：实现最简单，代价是只注册不用的账号也会拿到一份（之后在 7 天后自然过期），因为有第二层限制，这部分不产生成本，只是账面上多一笔会过期的赠送。
+- 账号创建时发放失败（钩子只记日志，不让登录失败），这个账号就再也拿不到试用，没有补发。概率很低，接受（2026-10-16 确认）；adr-051 的邀请认领会顺带补发。
+- 试用用户扣超的部分由我们承担，每个账号一般只有最后一次（并发时几次）调用的超出部分。
 - 没有 Google / GitHub 账号、或不愿用它们登录的用户暂时无法注册。目标用户（会装 Chrome 扩展读英文文章的人）绝大多数有其中之一，现阶段可以接受。
 - 没有全站发放上限，所以无法从配置算出「单日最坏成本」；真遇到批量造号，靠指标发现、靠 `amount = 0` 止损。

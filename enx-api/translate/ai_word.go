@@ -3,7 +3,9 @@ package translate
 import (
 	"errors"
 	"net/http"
+	"time"
 
+	"enx-api/ailimit"
 	"enx-api/dictionary"
 	"enx-api/enx"
 	"enx-api/middleware"
@@ -95,7 +97,7 @@ func respondAIError(c *gin.Context, err error) {
 	case errors.Is(err, dictionary.ErrRateLimited):
 		c.JSON(http.StatusTooManyRequests, gin.H{"success": false, "code": "rate_limited", "message": "Too many AI lookups. Please try again in a moment."})
 	case errors.Is(err, dictionary.ErrTrialLimitedPerDay):
-		c.JSON(http.StatusTooManyRequests, gin.H{"success": false, "code": "trial_limit_day", "message": "You've reached today's trial limit. Try again tomorrow, or subscribe for more."})
+		c.JSON(http.StatusTooManyRequests, gin.H{"success": false, "code": "trial_limit_day", "message": ailimit.DayLimitMessage(time.Now())})
 	case errors.Is(err, dictionary.ErrTrialLimitedPerMinute):
 		c.JSON(http.StatusTooManyRequests, gin.H{"success": false, "code": "trial_limit_minute", "message": "Too many requests. Please wait a minute and try again."})
 	case errors.Is(err, dictionary.ErrAIUnavailable):

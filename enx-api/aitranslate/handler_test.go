@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"enx-api/ailimit"
@@ -406,7 +407,7 @@ func TestHandlerTrialLimitReturns429(t *testing.T) {
 		verdict ailimit.Verdict
 		message string
 	}{
-		{ailimit.LimitedPerDay, "You've reached today's trial limit. Try again tomorrow, or subscribe for more."},
+		{ailimit.LimitedPerDay, "You've reached today's trial limit. Try again in "},
 		{ailimit.LimitedPerMinute, "Too many requests. Please wait a minute and try again."},
 	} {
 		t.Run(tc.verdict.String(), func(t *testing.T) {
@@ -420,8 +421,8 @@ func TestHandlerTrialLimitReturns429(t *testing.T) {
 			}
 			var body map[string]any
 			_ = json.Unmarshal(w.Body.Bytes(), &body)
-			if body["message"] != tc.message {
-				t.Fatalf("message = %q, want %q", body["message"], tc.message)
+			if msg, _ := body["message"].(string); !strings.HasPrefix(msg, tc.message) {
+				t.Fatalf("message = %q, want it to start with %q", msg, tc.message)
 			}
 			if tr.callCount != 0 || len(ledger.settleCalls) != 0 {
 				t.Fatal("a limited call must not reach the provider or be billed")
