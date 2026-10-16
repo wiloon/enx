@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-15
 related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-028（阅读统计 `daily_stats`，Options B1 否决过事件表、Decision 10 不存时间戳）、adr-029（配额 UTC 日、计数与拦截分离、Decision 6 两表口径分裂）、adr-058（活跃用户复用配额表并长期保留）、issue #136（查词不幂等）、#133（可选重试，PR #184）、#146（活跃用户实现）
 ---
