@@ -24,6 +24,16 @@ _Avoid_: SSO、单点登录
 enx-ui 的一个中转页。扩展发起的网站登录（`/sign-in?src=extension`）登录成功后落到这里；它经「网页→扩展」通道发 `enx:signed-in`，扩展据此关掉这个 tab、切回用户原来的标签页、发登录成功通知。普通 web 访客直接打开它无害（扩展不在场即 no-op）。见 adr-020。
 _Avoid_: 登录成功页、callback 页
 
+### 用量与防护（enx-api）
+
+**每日查词配额（daily lookup quota）**：
+一个用户一个 UTC 日内能查多少次词，免费与付费额度不同。是产品规则，不是防护机制。超出时返回 429，错误码 `lookup_quota_exceeded`。见 adr-018、adr-029。
+_Avoid_: 限流、rate limit（那是下面的请求限流）
+
+**请求限流（request rate limit）**：
+按用户限制已登录请求的**速度**，所有已登录接口共用一条宽松规则，不分套餐，只拦脚本、不拦正常阅读的人。超出时返回 429、`Retry-After`，错误码 `too_many_requests`。见 adr-060。
+_Avoid_: 配额、quota（那是上面的每日查词配额）、throttling
+
 ### 阅读辅助功能（enx-chrome）
 
 **学习模式（learning mode）**：
