@@ -136,21 +136,25 @@ func (s *Service) findCached(ctx context.Context, english, userID string) (strin
 
 // Resolve turns a normalized English word into its definition: the local
 // words table first (AI-made definitions only for users who may use AI), then
-// the external dictionary, caching an external hit in the words table. Every resolution is metered against userID's daily
-// quota, whichever source answers (ADR-018 B2).
+// the external dictionary, caching an external hit in the words table.
+//
+// Every request is metered against userID's daily quota before anything is
+// read (ADR-018 B2, ADR-059 Decision 2): an over-limit request reads neither
+// the words table nor the external dictionary, and a request that ends in
+// ErrEcdictUnavailable has still been counted.
 //
 // Besides a WordStore read error, it returns only the sentinels
 // ErrEcdictUnavailable (not cached, and no external dictionary configured)
 // and ErrQuotaExceeded.
 func (s *Service) Resolve(ctx context.Context, english, userID string) (Result, error) {
+	if err := s.meter.Charge(ctx, userID); err != nil {
+		return Result{}, err
+	}
 	id, cached, ok, err := s.findCached(ctx, english, userID)
 	if err != nil {
 		return Result{}, err
 	}
 	if ok {
-		if err := s.meter.Charge(ctx, userID); err != nil {
-			return Result{}, err
-		}
 		// ADR-030 Decision 0 ②: a local hit belongs in the miss-rate
 		// denominator too.
 		dictsample.Word(english, dictsample.SourceLocal)
@@ -166,9 +170,6 @@ func (s *Service) Resolve(ctx context.Context, english, userID string) (Result, 
 
 	if !s.external.Available() {
 		return Result{}, ErrEcdictUnavailable
-	}
-	if err := s.meter.Charge(ctx, userID); err != nil {
-		return Result{}, err
 	}
 	res := s.fromExternal(ctx, english)
 	switch res.Source {

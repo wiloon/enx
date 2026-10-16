@@ -345,7 +345,8 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 		CallsPerDay:    cfg.Credits.Trial.CallsPerDay,
 	}, nil))
 
-	dictionaryService := dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, dictionary.QuotaMeter{Limits: cfg.Stripe.Quota}, entitlements)
+	lookupQuota := dictionary.NewQuotaMeter(adapters.LookupEvents{}, entadapters.Billing{}, cfg.Stripe.Quota, time.Now)
+	dictionaryService := dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, lookupQuota, entitlements)
 	preferencesService := preferences.NewService(prefadapters.Table{}, entitlements)
 
 	// The AI word fallback (ADR-045) is a second request after a lookup

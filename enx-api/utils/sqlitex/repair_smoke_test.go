@@ -48,7 +48,7 @@ func TestInitHandlesCommentedP2PWordsTable(t *testing.T) {
 	if ddl := wordsDDL(t); strings.Contains(ddl, "--") || !englishNoCase.MatchString(ddl) {
 		t.Fatalf("words not rebuilt cleanly: %s", ddl)
 	}
-	for _, table := range []string{"subscriptions", "credit_accounts", "credit_transactions", "dictionary_lookup_quota"} {
+	for _, table := range []string{"subscriptions", "credit_accounts", "credit_transactions", "lookup_events"} {
 		if !DB.Migrator().HasTable(table) {
 			t.Errorf("AutoMigrate stopped before %s", table)
 		}

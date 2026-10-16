@@ -53,26 +53,3 @@ type CreditTransaction struct {
 func (CreditTransaction) TableName() string {
 	return "credit_transactions"
 }
-
-// DictionaryLookupQuota counts dictionary lookup requests per user per UTC
-// day -- every user, subscribed or not, gets a row (ADR-029). Two things
-// readers get wrong:
-//
-//   - Count may exceed the user's limit: requests that were rejected with a
-//     429 are still counted, because the overflow is the demand the limit
-//     suppressed.
-//   - It will not match daily_stats (ADR-028), which counts user actions on
-//     the user's local day. This table counts requests on the UTC day, so a
-//     day's allowance cannot be reset by changing the device clock.
-//
-// Rows before the ADR-029 rollout mean something narrower (free users only,
-// and only while a limit was configured) -- watch that boundary in trends.
-type DictionaryLookupQuota struct {
-	UserId string `gorm:"column:user_id;primaryKey"`
-	Date   string `gorm:"column:date;primaryKey"` // YYYY-MM-DD, UTC
-	Count  int64  `gorm:"column:count;not null;default:0"`
-}
-
-func (DictionaryLookupQuota) TableName() string {
-	return "dictionary_lookup_quota"
-}

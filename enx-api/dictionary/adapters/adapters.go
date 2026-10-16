@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"enx-api/aitranslate"
 	"enx-api/aitranslate/worddef"
@@ -17,7 +18,25 @@ import (
 	"enx-api/preferences"
 	"enx-api/repo"
 	"enx-api/utils/logger"
+	"enx-api/utils/sqlitex"
 )
+
+// LookupEvents is the dictionary.LookupEventStore backed by the
+// lookup_events table.
+type LookupEvents struct{}
+
+func (LookupEvents) CountSince(ctx context.Context, userID string, since time.Time) (int64, error) {
+	return repo.CountLookupEventsSince(ctx, userID, since.UnixMilli())
+}
+
+func (LookupEvents) Add(ctx context.Context, e dictionary.LookupEvent) error {
+	return repo.AddLookupEvent(ctx, sqlitex.LookupEvent{
+		UserID:          e.UserID,
+		At:              e.At.UnixMilli(),
+		TZOffsetMinutes: e.TZOffsetMinutes,
+		Outcome:         string(e.Outcome),
+	})
+}
 
 // WordsTable is the dictionary.WordStore backed by the words table.
 type WordsTable struct{}

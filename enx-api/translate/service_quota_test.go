@@ -2,13 +2,15 @@ package translate
 
 import (
 	"context"
-	"enx-api/config"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"enx-api/config"
 	"enx-api/dictionary"
 	"enx-api/dictionary/adapters"
+	entadapters "enx-api/entitlement/adapters"
 	"enx-api/repo"
 	"enx-api/utils/sqlitex"
 
@@ -29,7 +31,7 @@ func setupQuotaTestDB(t *testing.T) {
 	}
 	if err := db.AutoMigrate(
 		&sqlitex.Word{}, &sqlitex.UserDict{},
-		&sqlitex.Subscription{}, &sqlitex.DictionaryLookupQuota{}, &sqlitex.DailyStat{},
+		&sqlitex.Subscription{}, &sqlitex.LookupEvent{}, &sqlitex.DailyStat{},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -42,15 +44,18 @@ type noAI struct{}
 func (noAI) CanUseAI(context.Context, string) (bool, error) { return false, nil }
 
 // newTestHandler wires the production dictionary service and review log
-// over whatever sqlitex.DB and ECDICT the test has set up, with no lookup
-// ceiling (lookups are counted, never blocked).
+// over whatever sqlitex.DB and ECDICT the test has set up, with the default
+// lookup ceilings.
 func newTestHandler() *Handler {
-	return newTestHandlerWithQuota(config.StripeQuota{})
+	return newTestHandlerWithQuota(config.StripeQuota{
+		DictionaryLookupDailyFree: 200, DictionaryLookupDailySubscribed: 20000,
+	})
 }
 
 func newTestHandlerWithQuota(limits config.StripeQuota) *Handler {
+	meter := dictionary.NewQuotaMeter(adapters.LookupEvents{}, entadapters.Billing{}, limits, time.Now)
 	return NewHandler(
-		dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, dictionary.QuotaMeter{Limits: limits}, noAI{}),
+		dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, meter, noAI{}),
 		repo.ReviewLog{},
 	)
 }
@@ -64,10 +69,11 @@ func translateCtx(word, userID string) (*gin.Context, *httptest.ResponseRecorder
 }
 
 // A word already in the local `words` cache still counts against the free
-// daily quota (ADR-018 B2). Today the local-hit path bypasses the meter.
-func TestTranslateWordMetersLocalCacheHit(t *testing.T) {
+// daily quota (ADR-018 B2), and the rejected request is recorded as a
+// lookup event too (ADR-059 Decision 1).
+func TestTranslateWordAtTheLimitAnswers429AndRecordsARejectedEvent(t *testing.T) {
 	setupQuotaTestDB(t)
-	h := newTestHandlerWithQuota(config.StripeQuota{DictionaryLookupDailyFree: 1})
+	h := newTestHandlerWithQuota(config.StripeQuota{DictionaryLookupDailyFree: 1, DictionaryLookupDailySubscribed: 20000})
 	gin.SetMode(gin.TestMode)
 
 	zh := "机缘巧合"
@@ -88,5 +94,11 @@ func TestTranslateWordMetersLocalCacheHit(t *testing.T) {
 	h.translateWord(c2, "serendipity")
 	if w2.Code != http.StatusTooManyRequests {
 		t.Fatalf("lookup 2: got %d, want 429 -- a local cache hit must count against the quota", w2.Code)
+	}
+
+	var outcomes []string
+	sqlitex.DB.Model(&sqlitex.LookupEvent{}).Where("user_id = ?", "u-local").Order("rowid").Pluck("outcome", &outcomes)
+	if len(outcomes) != 2 || outcomes[0] != "allowed" || outcomes[1] != "rejected" {
+		t.Fatalf("lookup events %v, want [allowed rejected]", outcomes)
 	}
 }
