@@ -29,7 +29,7 @@ const defaultRespond: Responder = message => {
             Chinese: '狐狸',
             Pronunciation: '',
             LoadCount: 1,
-            AlreadyAcquainted: 0,
+            Known: false,
             WordType: 0,
           },
         },

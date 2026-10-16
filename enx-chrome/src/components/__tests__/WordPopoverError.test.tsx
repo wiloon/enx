@@ -20,7 +20,7 @@ function renderPopover(error: string, needsReload: boolean) {
       <WordPopover
         word="hello"
         onClose={jest.fn()}
-        onMarkAcquainted={jest.fn()}
+        onMarkKnown={jest.fn()}
         onOpenSentencePanel={jest.fn()}
         onReloadPage={onReloadPage}
       />

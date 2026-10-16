@@ -11,7 +11,7 @@ export interface WordData {
   Pronunciation: string
   Chinese: string
   LoadCount: number
-  AlreadyAcquainted: number
+  Known: boolean
   WordType: number
   // Where the definition first came from; absent on a miss (ADR-045). "ai"
   // marks a definition a model wrote rather than the dictionary.
@@ -62,7 +62,7 @@ export interface ContentMessage {
   type:
     | 'getOneWord'
     | 'getWords'
-    | 'markAcquainted'
+    | 'markKnown'
     | 'recordWordLookup'
     | 'enxRun'
     | 'login'

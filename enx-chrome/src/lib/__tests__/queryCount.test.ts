@@ -9,7 +9,7 @@ const word = (over: Partial<WordData> = {}): WordData => ({
   Pronunciation: 'rʌn',
   Chinese: 'v. 跑',
   LoadCount: 2,
-  AlreadyAcquainted: 0,
+  Known: false,
   WordType: 0,
   ...over,
 })
@@ -31,13 +31,10 @@ describe('countLookup (ADR-059 Decision 3)', () => {
   })
 
   it('takes a known word back into review', () => {
-    const shown = countLookup(
-      word({ LoadCount: 7, AlreadyAcquainted: 1 }),
-      jest.fn()
-    )
+    const shown = countLookup(word({ LoadCount: 7, Known: true }), jest.fn())
 
     expect(shown.LoadCount).toBe(8)
-    expect(shown.AlreadyAcquainted).toBe(0)
+    expect(shown.Known).toBe(false)
   })
 
   it('underlines a word on its first lookup, in the first review bucket', () => {
@@ -48,7 +45,7 @@ describe('countLookup (ADR-059 Decision 3)', () => {
   })
 
   it('underlines a known word again once it is looked up', () => {
-    const known = word({ LoadCount: 2, AlreadyAcquainted: 1 })
+    const known = word({ LoadCount: 2, Known: true })
     expect(reviewBucket(known)).toBeNull()
 
     expect(reviewBucket(countLookup(known, jest.fn()))).toBe(2)

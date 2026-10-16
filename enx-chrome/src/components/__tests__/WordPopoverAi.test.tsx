@@ -26,7 +26,7 @@ const word = (overrides: Partial<WordData> = {}): WordData => ({
   Pronunciation: '',
   Chinese: '',
   LoadCount: 0,
-  AlreadyAcquainted: 0,
+  Known: false,
   WordType: 0,
   ...overrides,
 })
@@ -56,7 +56,7 @@ function renderPopover({
       <WordPopover
         word="rizzler"
         onClose={jest.fn()}
-        onMarkAcquainted={jest.fn()}
+        onMarkKnown={jest.fn()}
         onOpenSentencePanel={jest.fn()}
         onAiLookup={onAiLookup}
       />

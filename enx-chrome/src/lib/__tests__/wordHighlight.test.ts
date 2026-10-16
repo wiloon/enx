@@ -10,7 +10,7 @@ const word = (
   Pronunciation: '',
   Chinese: '',
   LoadCount: 1,
-  AlreadyAcquainted: 0,
+  Known: false,
   WordType: 0,
   ...overrides,
 })
@@ -53,12 +53,12 @@ describe('sentenceHighlightSpans', () => {
     expect(spans.anchor).toEqual([{ start: 4, end: 7 }])
   })
 
-  it('does not underline acquainted, never-looked-up or unknown words', () => {
+  it('does not underline known, never-looked-up or unknown words', () => {
     const { buckets } = sentenceHighlightSpans(
       sentence,
       '',
       {
-        cat: word('cat', { AlreadyAcquainted: 1 }),
+        cat: word('cat', { Known: true }),
         sat: word('sat', { LoadCount: 0 }),
       },
       true

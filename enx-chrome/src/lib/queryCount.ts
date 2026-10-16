@@ -22,5 +22,5 @@ export type RecordLookup = (wordId: string) => void
 export const countLookup = (word: WordData, record: RecordLookup): WordData => {
   if (!word.Id) return word
   record(word.Id)
-  return { ...word, LoadCount: (word.LoadCount ?? 0) + 1, AlreadyAcquainted: 0 }
+  return { ...word, LoadCount: (word.LoadCount ?? 0) + 1, Known: false }
 }

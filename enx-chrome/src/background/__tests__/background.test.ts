@@ -326,11 +326,11 @@ describe('background makeApiRequest / Clerk session token', () => {
     it('retries a network failure', async () => {
       ;(global.fetch as jest.Mock)
         .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-        .mockResolvedValueOnce(jsonResponse(200, { AlreadyAcquainted: 1 }))
+        .mockResolvedValueOnce(jsonResponse(200, { Known: true }))
 
       expect(await run(true)).toEqual({
         success: true,
-        data: { AlreadyAcquainted: 1 },
+        data: { Known: true },
       })
       expect(global.fetch).toHaveBeenCalledTimes(2)
     })
@@ -347,11 +347,11 @@ describe('background makeApiRequest / Clerk session token', () => {
     ])('retries %s', async (_name, failure) => {
       ;(global.fetch as jest.Mock)
         .mockResolvedValueOnce(failure)
-        .mockResolvedValueOnce(jsonResponse(200, { AlreadyAcquainted: 1 }))
+        .mockResolvedValueOnce(jsonResponse(200, { Known: true }))
 
       expect(await run(true)).toEqual({
         success: true,
-        data: { AlreadyAcquainted: 1 },
+        data: { Known: true },
       })
       expect(global.fetch).toHaveBeenCalledTimes(2)
     })
@@ -524,7 +524,7 @@ describe('background makeApiRequest / Clerk session token', () => {
 
 // #133: Mark Known always means "set to known", so it sends the idempotent
 // PUT and may retry it.
-describe('background onMessage / markAcquainted', () => {
+describe('background onMessage / markKnown', () => {
   beforeEach(() => {
     jest.resetAllMocks()
     jest.useFakeTimers()
@@ -536,14 +536,14 @@ describe('background onMessage / markAcquainted', () => {
 
   const markKnown = async (word: string) => {
     const pending = new Promise(resolve => {
-      onMessageListener({ type: 'markAcquainted', word }, {}, resolve)
+      onMessageListener({ type: 'markKnown', word }, {}, resolve)
     })
     await jest.runAllTimersAsync()
     return pending
   }
 
   it('sends PUT /api/me/words/:english/known with the word path-encoded', async () => {
-    const state = { English: "don't", LoadCount: 2, AlreadyAcquainted: 1 }
+    const state = { English: "don't", LoadCount: 2, Known: true }
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(200, state))
 
     expect(await markKnown(" don't ")).toEqual({ success: true, ecp: state })
@@ -553,7 +553,7 @@ describe('background onMessage / markAcquainted', () => {
   })
 
   it('retries when the reply is lost', async () => {
-    const state = { English: 'cat', LoadCount: 0, AlreadyAcquainted: 1 }
+    const state = { English: 'cat', LoadCount: 0, Known: true }
     ;(global.fetch as jest.Mock)
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
       .mockResolvedValueOnce(jsonResponse(200, state))
@@ -616,7 +616,7 @@ describe('background onMessage / lookups and the query count', () => {
 
   it('records a lookup with POST /api/me/word-lookups and the word id', async () => {
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
-      jsonResponse(200, { queryCount: 3, alreadyAcquainted: 0 })
+      jsonResponse(200, { queryCount: 3, known: false })
     )
 
     await send({ type: 'recordWordLookup', wordId: 'w1' })

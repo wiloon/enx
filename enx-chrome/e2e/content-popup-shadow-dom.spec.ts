@@ -36,7 +36,7 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
           Pronunciation: '[stʌb]',
           Chinese: '存根',
           LoadCount: 3,
-          AlreadyAcquainted: 0,
+          Known: false,
         },
       })
       await page.goto('/test-page.html', { waitUntil: 'domcontentloaded' })
@@ -381,7 +381,7 @@ test.describe('Word popup - query count', () => {
     signedIn: _signedIn,
   }) => {
     await mockBackendFetch(context, {
-      wordData: { Id: 'w-stub', LoadCount: 3, AlreadyAcquainted: 0 },
+      wordData: { Id: 'w-stub', LoadCount: 3, Known: false },
     })
     await page.goto('/test-page.html', { waitUntil: 'domcontentloaded' })
     await enableLearningMode(page, extensionId)
