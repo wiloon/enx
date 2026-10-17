@@ -32,8 +32,8 @@ type ClawbackResult struct {
 // Clawback takes back the credits a refunded payment bought.
 // amountRefunded is Stripe's cumulative charge.amount_refunded and
 // amountCaptured its charge.amount_captured, both in the smallest currency
-// unit.
-func Clawback(ctx context.Context, paymentIntentID string, amountRefunded, amountCaptured int64, stripeEventID string) (ClawbackResult, error) {
+// unit. note is stored on the ledger row; the webhook names the charge.
+func Clawback(ctx context.Context, paymentIntentID string, amountRefunded, amountCaptured int64, stripeEventID, note string) (ClawbackResult, error) {
 	if amountCaptured <= 0 || amountRefunded < 0 || amountRefunded > amountCaptured {
 		return ClawbackResult{}, fmt.Errorf("credit: Clawback(%s): refunded %d of captured %d is not a valid refund", paymentIntentID, amountRefunded, amountCaptured)
 	}
@@ -111,6 +111,7 @@ func Clawback(ctx context.Context, paymentIntentID string, amountRefunded, amoun
 			BalanceAfter:         balanceAfter,
 			StripeEventId:        &stripeEventID,
 			RelatedTransactionId: &grant.Id,
+			Note:                 note,
 			CreatedAt:            now,
 		})
 	})

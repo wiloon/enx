@@ -298,3 +298,31 @@ func TestWebhookChargeRefundedClawsBackATopup(t *testing.T) {
 		t.Fatalf("topup = %d, want 0 after a full refund", account.TopupBalance)
 	}
 }
+
+// ADR-049 Decision 1: a clawback row's note names the Stripe charge, so the
+// admin ledger can be matched to the refund in the Stripe Dashboard.
+func TestWebhookChargeRefundedNotesTheChargeOnTheClawbackRow(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	pi := "pi_" + t.Name()
+	stripe := testStripe()
+	stripe.Credits.TopupSmall = 300
+	h := NewHandler(nil, "https://example.com", stripe, nil)
+
+	if err := h.dispatchWebhookEvent(ctx, topupCheckoutEvent("evt-cs-"+t.Name(), userID, pi)); err != nil {
+		t.Fatalf("checkout: %v", err)
+	}
+	refundEventID := "evt-refund-" + t.Name()
+	if err := h.dispatchWebhookEvent(ctx, chargeRefundedEvent(refundEventID, pi, 150, 499)); err != nil {
+		t.Fatalf("charge.refunded: %v", err)
+	}
+
+	var row sqlitex.CreditTransaction
+	if err := sqlitex.DB.Where("user_id = ? AND type = ?", userID, credit.TypeClawback).First(&row).Error; err != nil {
+		t.Fatalf("clawback row: %v", err)
+	}
+	want := "Stripe charge ch_" + refundEventID + ", 150 of 499 refunded"
+	if row.Note != want {
+		t.Fatalf("note = %q, want %q", row.Note, want)
+	}
+}

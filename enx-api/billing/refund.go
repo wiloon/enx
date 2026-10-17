@@ -28,7 +28,8 @@ func (h *Handler) handleChargeRefunded(ctx context.Context, event stripeSDK.Even
 		paymentIntentID = charge.PaymentIntent.ID
 	}
 
-	result, err := credit.Clawback(ctx, paymentIntentID, charge.AmountRefunded, charge.AmountCaptured, event.ID)
+	note := fmt.Sprintf("Stripe charge %s, %d of %d refunded", charge.ID, charge.AmountRefunded, charge.AmountCaptured)
+	result, err := credit.Clawback(ctx, paymentIntentID, charge.AmountRefunded, charge.AmountCaptured, event.ID, note)
 	if errors.Is(err, credit.ErrGrantNotFound) {
 		// Retrying won't make a grant appear, so succeed and tell a human.
 		logger.Errorf("charge.refunded %s: no credit grant for payment intent %q (charge %s); nothing clawed back", event.ID, paymentIntentID, charge.ID)
