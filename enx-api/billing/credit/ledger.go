@@ -51,7 +51,9 @@ const (
 // credit doesn't carry over month to month (ADR-009 Decision 5/D2), and
 // advances period_end. Idempotent on stripeEventID: a Stripe webhook retry
 // for an event already recorded in credit_transactions is a no-op.
-func GrantSubscription(ctx context.Context, userID string, amount int64, periodEnd time.Time, stripeEventID string) error {
+// paymentIntentID ("" when there is none, e.g. a 0-amount invoice) lets a
+// later refund find this grant (ADR-049 Decision 6).
+func GrantSubscription(ctx context.Context, userID string, amount int64, periodEnd time.Time, stripeEventID, paymentIntentID string) error {
 	if stripeEventID == "" {
 		return fmt.Errorf("credit: GrantSubscription requires a non-empty stripeEventID")
 	}
@@ -87,13 +89,14 @@ func GrantSubscription(ctx context.Context, userID string, amount int64, periodE
 		}
 
 		return insertLedgerRow(tx, sqlitex.CreditTransaction{
-			Id:            uuid.New().String(),
-			UserId:        userID,
-			Type:          TypeGrantSubscription,
-			Amount:        amount,
-			BalanceAfter:  amount,
-			StripeEventId: &stripeEventID,
-			CreatedAt:     now,
+			Id:                    uuid.New().String(),
+			UserId:                userID,
+			Type:                  TypeGrantSubscription,
+			Amount:                amount,
+			BalanceAfter:          amount,
+			StripeEventId:         &stripeEventID,
+			StripePaymentIntentId: optional(paymentIntentID),
+			CreatedAt:             now,
 		})
 	})
 }
@@ -101,8 +104,8 @@ func GrantSubscription(ctx context.Context, userID string, amount int64, periodE
 // GrantTopup is called from the checkout.session.completed webhook for a
 // top-up purchase: it adds amount to topup_balance, which never expires
 // (ADR-009 Decision 5/D2). Idempotent on stripeEventID, same as
-// GrantSubscription.
-func GrantTopup(ctx context.Context, userID string, amount int64, stripeEventID string) error {
+// GrantSubscription. paymentIntentID is recorded as for GrantSubscription.
+func GrantTopup(ctx context.Context, userID string, amount int64, stripeEventID, paymentIntentID string) error {
 	if stripeEventID == "" {
 		return fmt.Errorf("credit: GrantTopup requires a non-empty stripeEventID")
 	}
@@ -136,13 +139,14 @@ func GrantTopup(ctx context.Context, userID string, amount int64, stripeEventID 
 		}
 
 		return insertLedgerRow(tx, sqlitex.CreditTransaction{
-			Id:            uuid.New().String(),
-			UserId:        userID,
-			Type:          TypeGrantTopup,
-			Amount:        amount,
-			BalanceAfter:  account.TopupBalance,
-			StripeEventId: &stripeEventID,
-			CreatedAt:     now,
+			Id:                    uuid.New().String(),
+			UserId:                userID,
+			Type:                  TypeGrantTopup,
+			Amount:                amount,
+			BalanceAfter:          account.TopupBalance,
+			StripeEventId:         &stripeEventID,
+			StripePaymentIntentId: optional(paymentIntentID),
+			CreatedAt:             now,
 		})
 	})
 }
@@ -168,4 +172,12 @@ func eventAlreadyProcessed(tx *gorm.DB, stripeEventID string) (bool, error) {
 
 func insertLedgerRow(tx *gorm.DB, txn sqlitex.CreditTransaction) error {
 	return tx.Create(&txn).Error
+}
+
+// optional maps "" to NULL for nullable string columns.
+func optional(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

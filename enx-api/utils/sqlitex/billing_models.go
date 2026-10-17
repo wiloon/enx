@@ -42,11 +42,16 @@ func (CreditAccount) TableName() string {
 type CreditTransaction struct {
 	Id            string  `gorm:"column:id;primaryKey"`
 	UserId        string  `gorm:"column:user_id;index"`
-	Type          string  `gorm:"column:type;not null"` // GRANT_SUBSCRIPTION | GRANT_TOPUP | GRANT_TRIAL | GRANT_ADMIN | DEDUCT_ADMIN | CONSUME | SETTLE | REFUND | EXPIRE
+	Type          string  `gorm:"column:type;not null"` // GRANT_SUBSCRIPTION | GRANT_TOPUP | GRANT_TRIAL | GRANT_ADMIN | DEDUCT_ADMIN | CLAWBACK | CONSUME | SETTLE | REFUND | EXPIRE
 	Amount        int64   `gorm:"column:amount;not null"`
 	BalanceAfter  int64   `gorm:"column:balance_after;not null"`
 	StripeEventId *string `gorm:"column:stripe_event_id;uniqueIndex"` // nil for CONSUME rows; set for webhook-triggered GRANT rows (idempotency key)
 	Feature       string  `gorm:"column:feature"`
+	// StripePaymentIntentId is the payment behind a GRANT_TOPUP or
+	// GRANT_SUBSCRIPTION row, so a refund can find what it paid for (ADR-049).
+	StripePaymentIntentId *string `gorm:"column:stripe_payment_intent_id;index"`
+	// RelatedTransactionId points a CLAWBACK row at the grant it claws back.
+	RelatedTransactionId *string `gorm:"column:related_transaction_id"`
 	Note          string  `gorm:"column:note"` // free text: the admin's reason on GRANT_ADMIN / DEDUCT_ADMIN rows (ADR-049)
 	CreatedAt     int64   `gorm:"column:created_at;not null"`
 }

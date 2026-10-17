@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -424,23 +425,71 @@ func testStripe() config.Stripe {
 // else, so tests control what "Stripe's current state" is.
 func fakeStripe(t *testing.T, subs map[string]string) *stripeSDK.Client {
 	t.Helper()
+	return (&stripeFake{subs: subs}).client(t)
+}
+
+// stripeFake is a local stand-in for the Stripe API. subs answers
+// GET /v1/subscriptions/{id} (id -> JSON body); invoicePayments answers
+// GET /v1/invoice_payments?invoice= (invoice id -> payment intent id);
+// DELETE /v1/subscriptions/{id} cancels, recorded in canceled, or fails with
+// a 500 while cancelFails is set. Anything else 404s.
+type stripeFake struct {
+	subs            map[string]string
+	invoicePayments map[string]string
+	cancelFails     bool
+
+	mu       sync.Mutex
+	canceled []string
+}
+
+func (f *stripeFake) canceledIDs() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.canceled...)
+}
+
+func (f *stripeFake) client(t *testing.T) *stripeSDK.Client {
+	t.Helper()
+	notFound := func(w http.ResponseWriter, what string) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"type":"invalid_request_error","code":"resource_missing","message":"No such ` + what + `"}}`))
+	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/v1/prices" {
+		switch {
+		case r.URL.Path == "/v1/prices":
 			// Price lookup by lookup_key, as SubscriptionTierForPrice does:
 			// lookup key "enx_<x>" maps to price id "price_<x>".
 			key := strings.TrimPrefix(r.URL.Query().Get("lookup_keys[0]"), "enx_")
 			_, _ = w.Write([]byte(`{"object":"list","url":"/v1/prices","has_more":false,"data":[{"id":"price_` + key + `","object":"price"}]}`))
-			return
+		case r.URL.Path == "/v1/invoice_payments":
+			// Shape of the sandbox response captured for ADR-049.
+			var data string
+			if pi, ok := f.invoicePayments[r.URL.Query().Get("invoice")]; ok {
+				data = `{"id":"inpay_1","object":"invoice_payment","status":"paid","is_default":true,` +
+					`"payment":{"type":"payment_intent","payment_intent":"` + pi + `"}}`
+			}
+			_, _ = w.Write([]byte(`{"object":"list","url":"/v1/invoice_payments","has_more":false,"data":[` + data + `]}`))
+		case strings.HasPrefix(r.URL.Path, "/v1/subscriptions/"):
+			id := strings.TrimPrefix(r.URL.Path, "/v1/subscriptions/")
+			body, ok := f.subs[id]
+			switch {
+			case !ok:
+				notFound(w, "subscription")
+			case r.Method == http.MethodDelete && f.cancelFails:
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"error":{"type":"api_error","message":"boom"}}`))
+			case r.Method == http.MethodDelete:
+				f.mu.Lock()
+				f.canceled = append(f.canceled, id)
+				f.mu.Unlock()
+				_, _ = w.Write([]byte(body))
+			default:
+				_, _ = w.Write([]byte(body))
+			}
+		default:
+			notFound(w, "resource")
 		}
-		id := strings.TrimPrefix(r.URL.Path, "/v1/subscriptions/")
-		body, ok := subs[id]
-		if r.Method != http.MethodGet || !ok {
-			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte(`{"error":{"type":"invalid_request_error","message":"No such subscription"}}`))
-			return
-		}
-		_, _ = w.Write([]byte(body))
 	}))
 	t.Cleanup(server.Close)
 

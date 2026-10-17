@@ -23,7 +23,7 @@ func TestGrantSubscriptionResetsNotAdds(t *testing.T) {
 	userID := "u-" + t.Name()
 	mustGrantSubscription(t, userID, 50, 0)
 	// Simulate unused credit left over from last month, then renewal.
-	if err := GrantSubscription(ctx, userID, 30, time.Now().Add(30*24*time.Hour), "evt-renewal-2"); err != nil {
+	if err := GrantSubscription(ctx, userID, 30, time.Now().Add(30*24*time.Hour), "evt-renewal-2", ""); err != nil {
 		t.Fatalf("GrantSubscription: %v", err)
 	}
 
@@ -38,7 +38,7 @@ func TestGrantSubscriptionIdempotent(t *testing.T) {
 	userID := "u-" + t.Name()
 	periodEnd := time.Now().Add(30 * 24 * time.Hour)
 
-	if err := GrantSubscription(ctx, userID, 20, periodEnd, "evt-dup-1"); err != nil {
+	if err := GrantSubscription(ctx, userID, 20, periodEnd, "evt-dup-1", ""); err != nil {
 		t.Fatalf("first GrantSubscription: %v", err)
 	}
 	// Simulate a Stripe webhook retry of the same event, after the user has
@@ -46,7 +46,7 @@ func TestGrantSubscriptionIdempotent(t *testing.T) {
 	if err := Settle(ctx, userID, "translate_sentence", 5); err != nil {
 		t.Fatalf("Settle: %v", err)
 	}
-	if err := GrantSubscription(ctx, userID, 20, periodEnd, "evt-dup-1"); err != nil {
+	if err := GrantSubscription(ctx, userID, 20, periodEnd, "evt-dup-1", ""); err != nil {
 		t.Fatalf("retried GrantSubscription: %v", err)
 	}
 
@@ -60,13 +60,13 @@ func TestGrantTopupAddsAndIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 
-	if err := GrantTopup(ctx, userID, 10, "evt-topup-1"); err != nil {
+	if err := GrantTopup(ctx, userID, 10, "evt-topup-1", ""); err != nil {
 		t.Fatalf("first GrantTopup: %v", err)
 	}
-	if err := GrantTopup(ctx, userID, 7, "evt-topup-2"); err != nil {
+	if err := GrantTopup(ctx, userID, 7, "evt-topup-2", ""); err != nil {
 		t.Fatalf("second GrantTopup: %v", err)
 	}
-	if err := GrantTopup(ctx, userID, 7, "evt-topup-2"); err != nil {
+	if err := GrantTopup(ctx, userID, 7, "evt-topup-2", ""); err != nil {
 		t.Fatalf("retried GrantTopup: %v", err)
 	}
 
@@ -86,7 +86,7 @@ func TestConsumeConcurrentIdempotentGrantsExactlyOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_ = GrantTopup(ctx, userID, 10, "evt-racing-topup")
+			_ = GrantTopup(ctx, userID, 10, "evt-racing-topup", "")
 		}()
 	}
 	wg.Wait()
@@ -100,11 +100,11 @@ func TestConsumeConcurrentIdempotentGrantsExactlyOnce(t *testing.T) {
 func mustGrantSubscription(t *testing.T, userID string, subAmount, topupAmount int64) {
 	t.Helper()
 	ctx := context.Background()
-	if err := GrantSubscription(ctx, userID, subAmount, time.Now().Add(30*24*time.Hour), "evt-setup-"+userID+"-sub"); err != nil {
+	if err := GrantSubscription(ctx, userID, subAmount, time.Now().Add(30*24*time.Hour), "evt-setup-"+userID+"-sub", ""); err != nil {
 		t.Fatalf("setup GrantSubscription: %v", err)
 	}
 	if topupAmount > 0 {
-		if err := GrantTopup(ctx, userID, topupAmount, "evt-setup-"+userID+"-topup"); err != nil {
+		if err := GrantTopup(ctx, userID, topupAmount, "evt-setup-"+userID+"-topup", ""); err != nil {
 			t.Fatalf("setup GrantTopup: %v", err)
 		}
 	}

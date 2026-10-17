@@ -471,7 +471,8 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 		logger.Warnf("billing disabled: %v", stripeErr)
 		stripeClient = nil
 	}
-	billingHandler := billing.NewHandler(stripeClient, cfg.App.FrontendBaseURL, cfg.Stripe, m)
+	billingHandler := billing.NewHandler(stripeClient, cfg.App.FrontendBaseURL, cfg.Stripe, m).
+		WithRefundNotifier(email.NewSender(cfg.Resend))
 
 	// Authenticated APIs (Clerk session JWT). enx-chrome and enx-ui call only
 	// these /api routes; nothing is registered twice at the root.

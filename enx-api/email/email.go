@@ -101,3 +101,42 @@ func (s *Sender) NotifyAdminPageReport(r PageReportNotify) error {
 	)
 	return s.send(to, subject, htmlBody)
 }
+
+// UnmatchedRefundNotify is the fields shown in the admin email for a Stripe
+// refund that matched no credit grant (ADR-049 Decision 7).
+type UnmatchedRefundNotify struct {
+	EventID         string
+	ChargeID        string
+	PaymentIntentID string
+	AmountRefunded  int64 // cumulative, smallest currency unit
+	Currency        string
+}
+
+// NotifyAdminUnmatchedRefund emails the configured admin that a refund took
+// no credits back because ENX has no grant for its payment intent.
+// Best-effort like NotifyAdminPageReport: no admin-to skips with nil.
+func (s *Sender) NotifyAdminUnmatchedRefund(r UnmatchedRefundNotify) error {
+	to := s.cfg.AdminTo
+	if to == "" {
+		logger.Warnf("resend.admin-to is not set, skipping unmatched-refund notify")
+		return nil
+	}
+
+	subject := fmt.Sprintf("Catglish refund matched no credits: %s", r.PaymentIntentID)
+	htmlBody := fmt.Sprintf(
+		"<p>A Stripe refund arrived, but no credit grant recorded its payment, so no credits were taken back. "+
+			"Check the user in Stripe and adjust their credits by hand if needed.</p>"+
+			"<ul>"+
+			"<li><strong>Payment intent:</strong> %s</li>"+
+			"<li><strong>Charge:</strong> %s</li>"+
+			"<li><strong>Refunded so far:</strong> %d %s (smallest unit)</li>"+
+			"<li><strong>Event:</strong> %s</li>"+
+			"</ul>",
+		html.EscapeString(r.PaymentIntentID),
+		html.EscapeString(r.ChargeID),
+		r.AmountRefunded,
+		html.EscapeString(r.Currency),
+		html.EscapeString(r.EventID),
+	)
+	return s.send(to, subject, htmlBody)
+}

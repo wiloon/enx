@@ -9,6 +9,7 @@ import (
 
 	"enx-api/billing/credit"
 	billingstripe "enx-api/billing/stripe"
+	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
 
 	stripeSDK "github.com/stripe/stripe-go/v86"
@@ -19,7 +20,7 @@ import (
 // docs/tasks/TASK-SPEC-enx-billing-stripe-subscription.md §3.1 for the
 // event -> action table this implements. Event types not in that table are
 // not an error: the webhook endpoint itself is scoped in OpenTofu to only
-// the 5 event types below (see infra/stripe/opentofu/enx, w10n-config), so
+// the 6 event types below (see infra/stripe/opentofu/enx, w10n-config), so
 // this default case is a safety net more than an expected path.
 func (h *Handler) dispatchWebhookEvent(ctx context.Context, event stripeSDK.Event) error {
 	switch event.Type {
@@ -32,6 +33,8 @@ func (h *Handler) dispatchWebhookEvent(ctx context.Context, event stripeSDK.Even
 		return h.handleSubscriptionChanged(ctx, event)
 	case stripeSDK.EventTypeInvoicePaymentFailed:
 		return h.handleInvoicePaymentFailed(ctx, event)
+	case stripeSDK.EventTypeChargeRefunded:
+		return h.handleChargeRefunded(ctx, event)
 	default:
 		return nil
 	}
@@ -45,7 +48,8 @@ func webhookEventLabel(t stripeSDK.EventType) string {
 		stripeSDK.EventTypeInvoicePaid,
 		stripeSDK.EventTypeCustomerSubscriptionUpdated,
 		stripeSDK.EventTypeCustomerSubscriptionDeleted,
-		stripeSDK.EventTypeInvoicePaymentFailed:
+		stripeSDK.EventTypeInvoicePaymentFailed,
+		stripeSDK.EventTypeChargeRefunded:
 		return string(t)
 	default:
 		return "other"
@@ -84,7 +88,11 @@ func (h *Handler) handleCheckoutSessionCompleted(ctx context.Context, event stri
 		if err := upsertSubscription(userID, customerID, "", "", "", 0); err != nil {
 			return err
 		}
-		return credit.GrantTopup(ctx, userID, amount, event.ID)
+		var paymentIntentID string
+		if session.PaymentIntent != nil {
+			paymentIntentID = session.PaymentIntent.ID
+		}
+		return credit.GrantTopup(ctx, userID, amount, event.ID, paymentIntentID)
 	}
 
 	var subscriptionID string
@@ -143,8 +151,20 @@ func (h *Handler) handleInvoicePaid(ctx context.Context, event stripeSDK.Event) 
 		return fmt.Errorf("invoice.paid %s: price %q matches no configured subscription tier", inv.ID, priceID)
 	}
 
+	// The payment intent lets a later refund find this grant (ADR-049). A
+	// 0-amount invoice has none. A lookup failure still grants: the paying
+	// user gets their credits, and a refund would then reach the admin as
+	// unmatched.
+	var paymentIntentID string
+	if inv.AmountPaid > 0 {
+		paymentIntentID, err = billingstripe.InvoicePaymentIntent(ctx, h.sc, inv.ID)
+		if err != nil {
+			logger.Errorf("invoice.paid %s: %v; granting without a payment intent", inv.ID, err)
+		}
+	}
+
 	amount := h.credits.Subscription(plan)
-	if err := credit.GrantSubscription(ctx, userID, amount, time.Unix(inv.PeriodEnd, 0), event.ID); err != nil {
+	if err := credit.GrantSubscription(ctx, userID, amount, time.Unix(inv.PeriodEnd, 0), event.ID, paymentIntentID); err != nil {
 		return err
 	}
 
