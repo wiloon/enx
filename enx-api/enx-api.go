@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"enx-api/ailimit"
+	"enx-api/adminuser"
 	"enx-api/aitranslate"
 	"enx-api/aitranslate/worddef"
 	"enx-api/billing"
@@ -587,6 +588,13 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 		// Page reports (ADR-010 Decision 11): read-only queue of user-confirmed
 		// learning-mode failures. Not on the metered path.
 		adminDict.GET("/page-reports", pagereport.ListHandler)
+		// Users and billing (ADR-049 Decision 11): accounts, balances and
+		// usage counts only, never saved pages or looked-up words.
+		adminUsers := adminuser.NewHandler(adminuser.NewService(repo.AdminUsers{Now: time.Now},
+			strings.HasPrefix(cfg.Stripe.SecretKey.Reveal(), "sk_live_"), time.Now))
+		adminDict.GET("/users", adminUsers.List)
+		adminDict.GET("/users/:id", adminUsers.Detail)
+		adminDict.GET("/users/:id/transactions", adminUsers.Transactions)
 	}
 
 	// Stripe webhook — deliberately NOT in apiGroup/authGroup: Stripe can't
