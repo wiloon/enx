@@ -31,8 +31,6 @@ type Handler struct {
 	prices          config.StripePrice
 	credits         config.StripeCredits
 	webhooks        WebhookObserver
-	// admins gates GrantCredits; the zero value admits nobody.
-	admins middleware.AdminAllowlist
 }
 
 // WebhookObserver hears the outcome of every Stripe webhook delivery:
@@ -52,12 +50,6 @@ func NewHandler(sc *stripeSDK.Client, frontendBaseURL string, stripe config.Stri
 		credits:         stripe.Credits,
 		webhooks:        webhooks,
 	}
-}
-
-// WithAdmins sets who may call GrantCredits.
-func (h *Handler) WithAdmins(admins middleware.AdminAllowlist) *Handler {
-	h.admins = admins
-	return h
 }
 
 func (h *Handler) observeWebhook(eventType, outcome string) {

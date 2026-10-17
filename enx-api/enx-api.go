@@ -471,7 +471,7 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 		logger.Warnf("billing disabled: %v", stripeErr)
 		stripeClient = nil
 	}
-	billingHandler := billing.NewHandler(stripeClient, cfg.App.FrontendBaseURL, cfg.Stripe, m).WithAdmins(admins)
+	billingHandler := billing.NewHandler(stripeClient, cfg.App.FrontendBaseURL, cfg.Stripe, m)
 
 	// Authenticated APIs (Clerk session JWT). enx-chrome and enx-ui call only
 	// these /api routes; nothing is registered twice at the root.
@@ -568,16 +568,15 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	apiGroup.DELETE("/saved-pages/:id", savedpage.DeleteHandler)
 	apiGroup.DELETE("/saved-pages", savedpage.DeleteAllHandler)
 
-	// Admin: grant top-up credits to any user by email. Gated by the
-	// ADMIN_CLERK_USER_IDS allowlist inside the handler (on top of clerkAuth).
-	apiGroup.POST("/admin/credits/grant", billingHandler.GrantCredits)
-
-	// Admin: dictionary maintenance (ADR-021). Gated by RequireAdmin (same
-	// ADMIN_CLERK_USER_IDS allowlist). Deliberately not on the user lookup
-	// path -- raw rows, no metering, no ECDICT backfill.
+	// Admin routes, gated by RequireAdmin (ADMIN_CLERK_USER_IDS allowlist).
 	adminDict := apiGroup.Group("/admin")
 	adminDict.Use(admins.Require())
 	{
+		// Credits by email, with a required reason (ADR-049 Decision 2/3).
+		adminDict.POST("/credits/grant", billingHandler.GrantCredits)
+		adminDict.POST("/credits/deduct", billingHandler.DeductCredits)
+		// Dictionary maintenance (ADR-021). Deliberately not on the user
+		// lookup path -- raw rows, no metering, no ECDICT backfill.
 		adminDict.GET("/words/:word", handlers.AdminGetWord)
 		adminDict.GET("/ai-words", handlers.AdminListAIWords)
 		adminDict.PUT("/words/:word", handlers.AdminEditWord)

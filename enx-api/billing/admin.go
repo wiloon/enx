@@ -1,29 +1,41 @@
 package billing
 
 import (
+	"context"
 	"net/http"
+	"strings"
 
 	"enx-api/billing/credit"
 	"enx-api/enx"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 // GrantCredits handles POST /api/admin/credits/grant: an admin adds top-up
-// credits to any user by email. Same ledger path as a Stripe top-up
-// (credit.GrantTopup), just triggered manually -- for testing on homelab and
-// for support comps in production.
+// credits to any user by email, recorded as GRANT_ADMIN with the reason
+// (ADR-049 Decision 2) -- for testing on homelab and for support comps in
+// production. Mount behind clerkAuth + RequireAdmin.
 func (h *Handler) GrantCredits(c *gin.Context) {
-	if !h.admins.Contains(c.GetString("clerk_user_id")) {
-		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "admin access required"})
-		return
-	}
+	adjustCredits(c, "GrantCredits", "granted", credit.GrantAdmin)
+}
 
-	var req grantCreditsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "email and a positive amount are required"})
+// DeductCredits handles POST /api/admin/credits/deduct: an admin takes
+// top-up credits from any user by email, recorded as DEDUCT_ADMIN with the
+// reason; the balance may go negative (ADR-049 Decision 3). Mount behind
+// clerkAuth + RequireAdmin.
+func (h *Handler) DeductCredits(c *gin.Context) {
+	adjustCredits(c, "DeductCredits", "deducted", credit.DeductAdmin)
+}
+
+// adjustCredits is the shared body of GrantCredits and DeductCredits: resolve
+// the user by email, apply the ledger change, answer with the new balance.
+func adjustCredits(c *gin.Context, name, verb string, apply func(ctx context.Context, userID string, amount int64, note string) error) {
+	var req adjustCreditsRequest
+	err := c.ShouldBindJSON(&req)
+	req.Reason = strings.TrimSpace(req.Reason)
+	if err != nil || req.Reason == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "email, a positive amount and a reason are required"})
 		return
 	}
 
@@ -33,37 +45,35 @@ func (h *Handler) GrantCredits(c *gin.Context) {
 		return
 	}
 
-	// credit.GrantTopup dedups on this key like a Stripe event id; use a fresh
-	// one per call so repeated admin grants each land.
-	eventID := "admin-grant-" + uuid.NewString()
-	if err := credit.GrantTopup(c.Request.Context(), user.Id, req.Amount, eventID); err != nil {
-		logger.Errorf("admin GrantCredits: GrantTopup(user=%s amount=%d) failed: %v", user.Id, req.Amount, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to grant credits"})
+	ctx := c.Request.Context()
+	if err := apply(ctx, user.Id, req.Amount, req.Reason); err != nil {
+		logger.Errorf("admin %s(user=%s amount=%d) failed: %v", name, user.Id, req.Amount, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to update credits"})
 		return
 	}
 
-	balance, err := credit.Balance(c.Request.Context(), user.Id)
+	balance, err := credit.Balance(ctx, user.Id)
 	if err != nil {
-		logger.Errorf("admin GrantCredits: Balance(user=%s) failed: %v", user.Id, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "granted, but failed to read new balance"})
+		logger.Errorf("admin %s: Balance(user=%s) failed: %v", name, user.Id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "credits updated, but failed to read new balance"})
 		return
 	}
 
-	logger.Infof("admin GrantCredits: %s granted %d credits to user=%s (email=%s reason=%q), new balance=%d",
-		c.GetString("clerk_user_id"), req.Amount, user.Id, user.Email, req.Reason, balance)
+	logger.Infof("admin %s: %s %s %d credits for user=%s (email=%s reason=%q), new balance=%d",
+		name, c.GetString("clerk_user_id"), verb, req.Amount, user.Id, user.Email, req.Reason, balance)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"userId":  user.Id,
 		"email":   user.Email,
-		"granted": req.Amount,
+		verb:      req.Amount,
 		"balance": balance,
 		"reason":  req.Reason,
 	})
 }
 
-type grantCreditsRequest struct {
+type adjustCreditsRequest struct {
 	Email  string `json:"email" binding:"required,email"`
 	Amount int64  `json:"amount" binding:"required,gt=0"`
-	Reason string `json:"reason"`
+	Reason string `json:"reason" binding:"required"`
 }
