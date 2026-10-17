@@ -42,7 +42,6 @@ func Init(to, level, projectName string) {
 		// file
 		fileEncoder := getEncoder()
 
-		//goland:noinspection GoBoolExpressions
 		switch runtime.GOOS {
 		case "linux":
 			logFilePath = fmt.Sprintf("/var/log/%s/%s.log", projectName, level)
