@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { LegalPage, List, Section, Term } from '@/components/site/LegalPage'
+import { LegalPage, Section, Term } from '@/components/site/LegalPage'
 import { LEGAL } from '@/lib/legal'
 import { SITE } from '@/lib/site'
 
@@ -34,21 +34,19 @@ export default function RefundPolicyZhPage() {
           取消后你的访问权限保留到已付费周期结束 ——
           你从不会损失已经付过钱的时间。
         </p>
-        <p>另有两种情形，我们会在窗口之外退款，且不需要你据理力争：</p>
-        <List
-          items={[
-            <>
-              <Term>你没预料到的续费。</Term>
-              如果你本打算取消却被续费扣款，且该周期内你并未使用服务，
-              写信给我们，我们会退款。
-            </>,
-            <>
-              <Term>长时间停机。</Term>
-              如果 {SITE.name} 在你已付费的周期内有相当一部分时间不可用，
-              我们会退还这一部分。
-            </>,
-          ]}
-        />
+        <p>
+          <Term>你没预料到的续费。</Term>
+          如果你本打算取消却被续费扣款，且该周期内你并未使用服务，
+          写信给我们，我们会在窗口之外退款，且不需要你据理力争。
+        </p>
+        <p>
+          <Term>长时间停机。</Term>
+          如果 {SITE.name} 在你已付费的周期内有相当一部分时间不可用，
+          我们会给你的账户补发积分作为补偿。
+        </p>
+        <p>
+          订阅扣款一经退款，该订阅随即结束。所以停机以积分补偿：你的订阅得以保留。
+        </p>
       </Section>
 
       <Section heading="积分">
