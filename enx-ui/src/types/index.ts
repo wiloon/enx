@@ -158,6 +158,79 @@ export interface AdminEcdictRow {
   exchange?: string
 }
 
+// GET /api/admin/users (ADR-049 Decision 11). Balances and totals are
+// credits; money amounts stay in Stripe. Times are RFC 3339 UTC.
+export type AdminUserSort = 'created' | 'last_login' | 'balance'
+
+export interface AdminUserSummary {
+  id: string
+  email: string
+  name: string
+  createdAt: string | null
+  lastLoginAt: string | null
+  plan: string
+  subscriptionStatus: string
+  balances: {
+    subscription: number
+    topup: number
+    // 0 once the trial has expired.
+    trial: number
+    trialExpiresAt: string | null
+    total: number
+  }
+  totals: {
+    paid: number
+    gifted: number
+    trial: number
+    consumed: number
+    clawedBack: number
+  }
+  hadClawback: boolean
+}
+
+export interface AdminUsersPage {
+  users: AdminUserSummary[]
+  total: number
+}
+
+// GET /api/admin/users/:id
+export interface AdminUserDetail {
+  user: AdminUserSummary & {
+    stripeCustomerId: string
+    stripeDashboardUrl: string
+  }
+  // The last 30 UTC days, oldest first, zero-filled.
+  dailyLookups: { date: string; count: number }[]
+  // Last 30 days, most spent first.
+  aiSpend: { feature: string; credits: number }[]
+}
+
+// GET /api/admin/users/:id/transactions, newest first. `next` is the cursor
+// for the following page, '' on the last one.
+export interface AdminLedgerEntry {
+  id: string
+  type: string
+  amount: number
+  balanceAfter: number
+  feature: string
+  note: string
+  createdAt: string
+  // stripe | admin | refund | trial | referral | ai | other
+  source: string
+}
+
+export interface AdminLedgerPage {
+  transactions: AdminLedgerEntry[]
+  next: string
+}
+
+// POST /api/admin/credits/grant and /deduct.
+export interface AdminCreditAdjustment {
+  email: string
+  amount: number
+  reason: string
+}
+
 // GET /api/admin/page-reports (ADR-010 Decision 11): newest page reports first.
 export interface AdminPageReport {
   id: string

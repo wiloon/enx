@@ -1,7 +1,12 @@
 import {
   AdminAiWordsPage,
+  AdminCreditAdjustment,
   AdminEcdictRow,
+  AdminLedgerPage,
   AdminPageReport,
+  AdminUserDetail,
+  AdminUserSort,
+  AdminUsersPage,
   AdminWordRow,
   ApiResponse,
   BillingMeData,
@@ -229,6 +234,51 @@ export class ApiService {
     ApiResponse<{ success: boolean; reports: AdminPageReport[] }>
   > {
     return this.makeRequest('/api/admin/page-reports')
+  }
+
+  // The users page (ADR-049 Decision 11): search by email, sort, page.
+  async adminListUsers(query: {
+    q: string
+    sort: AdminUserSort
+    limit: number
+    offset: number
+  }): Promise<ApiResponse<AdminUsersPage>> {
+    const params = new URLSearchParams({
+      q: query.q,
+      sort: query.sort,
+      limit: String(query.limit),
+      offset: String(query.offset),
+    })
+    return this.makeRequest(`/api/admin/users?${params}`)
+  }
+
+  async adminGetUser(id: string): Promise<ApiResponse<AdminUserDetail>> {
+    return this.makeRequest(`/api/admin/users/${encodeURIComponent(id)}`)
+  }
+
+  // One page of the user's credit ledger, newest first; `before` is the
+  // previous page's `next`.
+  async adminListUserTransactions(
+    id: string,
+    before: string
+  ): Promise<ApiResponse<AdminLedgerPage>> {
+    const params = new URLSearchParams({ limit: '50' })
+    if (before) params.set('before', before)
+    return this.makeRequest(
+      `/api/admin/users/${encodeURIComponent(id)}/transactions?${params}`
+    )
+  }
+
+  // Admin grant / deduction (ADR-049 Decisions 2-3), both from the top-up
+  // pool; the reason is kept on the ledger row.
+  async adminAdjustCredits(
+    direction: 'grant' | 'deduct',
+    body: AdminCreditAdjustment
+  ): Promise<ApiResponse<{ success: boolean; balance: number }>> {
+    return this.makeRequest(`/api/admin/credits/${direction}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
   }
 
   async lookupWord(word: string): Promise<ApiResponse<WordData>> {
