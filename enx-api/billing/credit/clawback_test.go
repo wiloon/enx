@@ -20,7 +20,7 @@ func TestClawbackFullTopupRefundTakesAllGrantedCredits(t *testing.T) {
 		t.Fatalf("GrantTopup: %v", err)
 	}
 
-	got, err := Clawback(ctx, pi, 499, 499, "evt-refund-"+t.Name())
+	got, err := Clawback(ctx, pi, 499, 499, "evt-refund-"+t.Name(), "")
 	if err != nil {
 		t.Fatalf("Clawback: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestClawbackLatestSubscriptionGrantTakesSubscriptionPoolDownToZero(t *testi
 		t.Fatalf("Settle: %v", err)
 	}
 
-	got, err := Clawback(ctx, pi, 300, 300, "evt-refund-"+t.Name())
+	got, err := Clawback(ctx, pi, 300, 300, "evt-refund-"+t.Name(), "")
 	if err != nil {
 		t.Fatalf("Clawback: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestClawbackOlderSubscriptionGrantTakesNothingButIsRecorded(t *testing.T) {
 		t.Fatalf("renewal GrantSubscription: %v", err)
 	}
 
-	got, err := Clawback(ctx, oldPI, 300, 300, "evt-refund-"+t.Name())
+	got, err := Clawback(ctx, oldPI, 300, 300, "evt-refund-"+t.Name(), "")
 	if err != nil {
 		t.Fatalf("Clawback: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestClawbackTopupMayGoNegativeAndLeavesTrialAlone(t *testing.T) {
 		t.Fatalf("Settle: %v", err)
 	}
 
-	if _, err := Clawback(ctx, pi, 499, 499, "evt-refund-"+t.Name()); err != nil {
+	if _, err := Clawback(ctx, pi, 499, 499, "evt-refund-"+t.Name(), ""); err != nil {
 		t.Fatalf("Clawback: %v", err)
 	}
 
@@ -135,10 +135,10 @@ func TestClawbackOutOfOrderPartialRefundTakesNothing(t *testing.T) {
 		t.Fatalf("GrantTopup: %v", err)
 	}
 
-	if _, err := Clawback(ctx, pi, 499, 499, "evt-refund-2-"+t.Name()); err != nil {
+	if _, err := Clawback(ctx, pi, 499, 499, "evt-refund-2-"+t.Name(), ""); err != nil {
 		t.Fatalf("full-refund Clawback: %v", err)
 	}
-	late, err := Clawback(ctx, pi, 150, 499, "evt-refund-1-"+t.Name())
+	late, err := Clawback(ctx, pi, 150, 499, "evt-refund-1-"+t.Name(), "")
 	if err != nil || late.Amount != 0 {
 		t.Fatalf("late partial Clawback = %+v, %v; want 0 taken", late, err)
 	}
@@ -162,7 +162,7 @@ func TestClawbackConcurrentRefundEventsTakeTheGrantOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := Clawback(ctx, pi, refunded, 499, fmt.Sprintf("evt-refund-%d-%s", i, t.Name())); err != nil {
+			if _, err := Clawback(ctx, pi, refunded, 499, fmt.Sprintf("evt-refund-%d-%s", i, t.Name()), ""); err != nil {
 				t.Errorf("Clawback(%d): %v", refunded, err)
 			}
 		}()
@@ -182,7 +182,7 @@ func TestClawbackRejectsNothingCapturedWithoutTakingAnything(t *testing.T) {
 		t.Fatalf("GrantTopup: %v", err)
 	}
 
-	if _, err := Clawback(ctx, pi, 0, 0, "evt-refund-"+t.Name()); err == nil {
+	if _, err := Clawback(ctx, pi, 0, 0, "evt-refund-"+t.Name(), ""); err == nil {
 		t.Fatal("Clawback with amount_captured=0 = nil, want an error")
 	}
 	if acc := loadAccount(t, userID); acc.TopupBalance != 300 {
@@ -191,7 +191,7 @@ func TestClawbackRejectsNothingCapturedWithoutTakingAnything(t *testing.T) {
 }
 
 func TestClawbackUnknownPaymentIntentIsGrantNotFound(t *testing.T) {
-	_, err := Clawback(context.Background(), "pi_never_granted_"+t.Name(), 100, 100, "evt-refund-"+t.Name())
+	_, err := Clawback(context.Background(), "pi_never_granted_"+t.Name(), 100, 100, "evt-refund-"+t.Name(), "")
 	if !errors.Is(err, ErrGrantNotFound) {
 		t.Fatalf("Clawback = %v, want ErrGrantNotFound", err)
 	}
@@ -206,11 +206,11 @@ func TestClawbackReplayOfSameEventTakesNothingMore(t *testing.T) {
 	if err := GrantTopup(ctx, userID, 300, "evt-grant-"+t.Name(), pi); err != nil {
 		t.Fatalf("GrantTopup: %v", err)
 	}
-	if _, err := Clawback(ctx, pi, 150, 499, "evt-refund-"+t.Name()); err != nil {
+	if _, err := Clawback(ctx, pi, 150, 499, "evt-refund-"+t.Name(), ""); err != nil {
 		t.Fatalf("Clawback: %v", err)
 	}
 
-	replay, err := Clawback(ctx, pi, 150, 499, "evt-refund-"+t.Name())
+	replay, err := Clawback(ctx, pi, 150, 499, "evt-refund-"+t.Name(), "")
 	if err != nil {
 		t.Fatalf("replayed Clawback: %v", err)
 	}
@@ -231,12 +231,12 @@ func TestClawbackPartialRefundsTakeTheDifferenceEachTime(t *testing.T) {
 	}
 
 	// $1.50 of $4.99: floor(300 × 150 / 499) = 90.
-	first, err := Clawback(ctx, pi, 150, 499, "evt-refund-1-"+t.Name())
+	first, err := Clawback(ctx, pi, 150, 499, "evt-refund-1-"+t.Name(), "")
 	if err != nil || first.Amount != 90 {
 		t.Fatalf("first Clawback = %+v, %v; want 90", first, err)
 	}
 	// Then the rest (amount_refunded is cumulative): 300 − 90 = 210.
-	second, err := Clawback(ctx, pi, 499, 499, "evt-refund-2-"+t.Name())
+	second, err := Clawback(ctx, pi, 499, 499, "evt-refund-2-"+t.Name(), "")
 	if err != nil || second.Amount != 210 {
 		t.Fatalf("second Clawback = %+v, %v; want 210", second, err)
 	}
