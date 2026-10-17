@@ -42,7 +42,7 @@ related: adr-009（两池积分账本、Stripe webhook）、adr-021（管理员�
 1. `credit_transactions` 增加三列，均可为空，由现有 AutoMigrate 增加，不需要手写迁移：
    - `stripe_payment_intent_id`：Stripe 付款发放（`GRANT_TOPUP`、`GRANT_SUBSCRIPTION`）时记下对应的 payment intent；其他行为空。加普通索引。
    - `related_transaction_id`：扣回行指向它扣回的那条发放行。
-   - `note`：自由文本。管理员赠送和扣减存 `reason`，扣回行存退款 id。
+   - `note`：自由文本。管理员赠送和扣减存 `reason`，扣回行存被退款的 charge id 和累计退款额（如 `Stripe charge ch_…, 150 of 499 refunded`）：`charge.refunded` 默认不带 refund 对象，charge id 足以在 Stripe Dashboard 里找到这次退款。
 2. 新增流水类型 **`GRANT_ADMIN`**：管理员赠送改为 `credit.GrantAdmin(ctx, userID, amount, note)`。积分进**充值池**（和现在一样，永不过期），只是类型不同、`note` 存原因。`POST /api/admin/credits/grant` 的 `reason` 改为必填。
 3. 新增流水类型 **`DEDUCT_ADMIN`**：管理员扣减，`credit.DeductAdmin(ctx, userID, amount, note)`。传入正数，流水 `Amount` 记负数（与 `SETTLE`、`CLAWBACK` 的符号约定一致）；从**充值池**扣，可以扣成负数（与 `Settle` 一致）；`amount ≤ 0` 或 `note` 为空时报错。用途：纠正送错的积分、冷静期后退款时手动扣回邀请奖励（adr-051 第 6 条），以及第 8 条不自动处理的争议。
 4. **不迁移历史数据**：截至 2026-10-16 没有真实付费，生产库已重置过，没有需要从 `GRANT_TOPUP` 改成 `GRANT_ADMIN` 的旧行。
@@ -163,6 +163,6 @@ related: adr-009（两池积分账本、Stripe webhook）、adr-021（管理员�
 - 赠送和付费分开记账以后，「付费获得的积分」才能用来估算收入和成本；`GRANT_TRIAL`（adr-048）和 adr-051 的邀请积分也各自单独成类型。
 - 退款以后，用户的充值池可能变成负数，这个用户的 AI 功能会被关掉，直到再次充值抵平。退款都是管理员在 Stripe 后台主动操作的，管理员如果不想让用户背负负余额，可以只退一部分，或者退款后用 `GRANT_ADMIN` 补平。
 - 订阅退款只扣当期积分；如果退款发生在下一期已经开始之后，用户可能已经用掉了当期积分，这部分不追。用户少、退款罕见，可以接受。
-- 在 Stripe 里退订阅的钱就等于取消订阅，没有「退一部分钱、继续订阅」的路径；要补偿又保留订阅，只能送积分。管理员在 Stripe 后台退款前要知道这一点。
+- 在 Stripe 里退订阅的钱就等于取消订阅，没有「退一部分钱、继续订阅」的路径；要补偿又保留订阅，只能送积分。管理员在 Stripe 后台退款前要知道这一点。退款政策据此写明：订阅扣款一经退款订阅即结束，长时间停机以补发积分补偿，不退部分款项（2026-10-17 用户决定）。
 - webhook 多处理一种事件；`invoice.paid` 多一次 Stripe API 调用（取 payment intent），订阅退款多一次（取消订阅）。会影响 adr-040 的 webhook 延迟指标，但量很小。
 - 流水表多了三列，以后新的流水类型可以直接用 `note` 和 `related_transaction_id`，不用再改表。
