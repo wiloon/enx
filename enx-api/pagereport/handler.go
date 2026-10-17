@@ -44,7 +44,7 @@ func submit(c *gin.Context, notifier AdminNotifier) {
 
 	userID := middleware.GetUserIDFromContext(c)
 	now := time.Now()
-	recorded, err := Submit(c.Request.Context(), userID, Input{
+	recorded, err := Submit(c.Request.Context(), userID, Input{ //nolint:staticcheck // S1016: keep the request DTO decoupled from Input
 		URL:        req.URL,
 		Reason:     req.Reason,
 		Adapter:    req.Adapter,

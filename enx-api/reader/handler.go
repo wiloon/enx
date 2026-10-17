@@ -51,7 +51,7 @@ func ListDocumentsHandler(c *gin.Context) {
 
 	summaries := make([]documentSummaryResponse, len(docs))
 	for i, d := range docs {
-		summaries[i] = documentSummaryResponse{ID: d.ID, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt, Preview: d.Preview}
+		summaries[i] = documentSummaryResponse{ID: d.ID, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt, Preview: d.Preview} //nolint:staticcheck // S1016: keep the response DTO decoupled from DocumentSummary
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "documents": summaries})

@@ -17,7 +17,7 @@ import (
 
 func TestMain(m *testing.M) {
 	dbPath := filepath.Join(os.TempDir(), "enx-billing-handler-test.db")
-	os.Remove(dbPath)
+	_ = os.Remove(dbPath)
 	sqlitex.Init(dbPath)
 	gin.SetMode(gin.TestMode)
 	os.Exit(m.Run())
@@ -111,13 +111,13 @@ func fakeStripeClient(t *testing.T, onSession func(form url.Values)) *stripeSDK.
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/prices":
-			w.Write([]byte(`{"object":"list","url":"/v1/prices","has_more":false,"data":[{"id":"price_topup_small","object":"price"}]}`))
+			_, _ = w.Write([]byte(`{"object":"list","url":"/v1/prices","has_more":false,"data":[{"id":"price_topup_small","object":"price"}]}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/checkout/sessions":
 			if err := r.ParseForm(); err != nil {
 				t.Errorf("parse session form: %v", err)
 			}
 			onSession(r.PostForm)
-			w.Write([]byte(`{"id":"cs_test_1","object":"checkout.session","url":"https://checkout.stripe.test/c/pay/cs_test_1"}`))
+			_, _ = w.Write([]byte(`{"id":"cs_test_1","object":"checkout.session","url":"https://checkout.stripe.test/c/pay/cs_test_1"}`))
 		default:
 			t.Errorf("unexpected Stripe call: %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)

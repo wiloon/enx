@@ -72,7 +72,9 @@ func TestSaveHandlerCreatesThenReportsAnExistingPage(t *testing.T) {
 		Created bool     `json:"created"`
 		Page    pageJSON `json:"page"`
 	}
-	json.Unmarshal(w.Body.Bytes(), &again)
+	if err := json.Unmarshal(w.Body.Bytes(), &again); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
 	if again.Created || again.Page.ID != created.Page.ID {
 		t.Fatalf("saving again: %+v, want created=false and the same page", again)
 	}
@@ -130,7 +132,9 @@ func TestListHandlerReturnsOnlyTheCallersPagesNewestFirst(t *testing.T) {
 func TestListHandlerReturnsAnEmptyArrayNotNull(t *testing.T) {
 	w := request(t, http.MethodGet, "/api/saved-pages", "/api/saved-pages", ListHandler, "u-"+t.Name(), "")
 	var raw map[string]json.RawMessage
-	json.Unmarshal(w.Body.Bytes(), &raw)
+	if err := json.Unmarshal(w.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
 	if string(raw["pages"]) != "[]" {
 		t.Fatalf(`"pages" is %s, want [] so clients can iterate without a null check`, raw["pages"])
 	}
@@ -166,7 +170,9 @@ func TestUpdateHandlerEditsAndMapsFailuresToStatusCodes(t *testing.T) {
 		Success bool     `json:"success"`
 		Page    pageJSON `json:"page"`
 	}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
 	if !resp.Success || resp.Page.ID != page.ID || resp.Page.Title != "my note" || resp.Page.URL != "https://example.com/b" {
 		t.Fatalf("unexpected response: %+v", resp)
 	}
@@ -209,7 +215,9 @@ func TestDeleteHandlerRemovesOnlyTheCallersPage(t *testing.T) {
 	var resp struct {
 		Pages []pageJSON `json:"pages"`
 	}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
 	if len(resp.Pages) != 0 {
 		t.Fatalf("page still listed after delete: %+v", resp.Pages)
 	}
@@ -226,7 +234,9 @@ func TestDeleteAllHandlerClearsTheCallersListAndReportsHowMany(t *testing.T) {
 		Success bool  `json:"success"`
 		Deleted int64 `json:"deleted"`
 	}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
 	if w.Code != http.StatusOK || !resp.Success || resp.Deleted != 2 {
 		t.Fatalf("status %d resp=%+v, want 200 and deleted=2", w.Code, resp)
 	}
@@ -276,7 +286,9 @@ func TestATooLongURLGetsAClearMessageOnSaveAndEdit(t *testing.T) {
 		var resp struct {
 			Message string `json:"message"`
 		}
-		json.Unmarshal(w.Body.Bytes(), &resp)
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
 		return resp.Message
 	}
 

@@ -2,13 +2,9 @@ version: "2"
 
 # Run with `task lint`, which pins the same version CI uses.
 linters:
-  # Deliberately not "standard" yet: errcheck and staticcheck report ~56
-  # pre-existing findings (mostly unchecked errors in tests). Enable them in
-  # a cleanup of their own rather than letting them block every PR.
-  default: none
+  default: standard
   enable:
     - depguard
-    - govet
   settings:
     depguard:
       rules:

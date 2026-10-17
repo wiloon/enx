@@ -41,7 +41,7 @@ func TestInitHandlesCommentedP2PWordsTable(t *testing.T) {
 		}
 	}
 	sqlDB, _ := db.DB()
-	sqlDB.Close()
+	_ = sqlDB.Close()
 
 	Init(path)
 

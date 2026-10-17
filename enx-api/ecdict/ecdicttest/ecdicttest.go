@@ -52,7 +52,7 @@ func Create(t testing.TB, rows ...Row) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatal(err)
 	}

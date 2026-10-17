@@ -94,11 +94,11 @@ func (word *Word) SetEnglishField(english string) {
 	// ADR-043: the lookup key uses straight apostrophes ("don’t" -> "don't").
 	english = repo.CanonicalEnglish(english)
 	if strings.Contains(english, "'s") {
-		tmpKey := strings.Replace(english, "'s", "", -1)
+		tmpKey := strings.ReplaceAll(english, "'s", "")
 		word.English = tmpKey
 		word.Key = strings.ToLower(tmpKey)
 	} else if strings.Contains(english, "’s") {
-		tmpKey := strings.Replace(english, "’s", "", -1)
+		tmpKey := strings.ReplaceAll(english, "’s", "")
 		word.English = tmpKey
 		word.Key = strings.ToLower(tmpKey)
 	} else {

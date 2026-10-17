@@ -58,7 +58,7 @@ func TestE2E_UnauthenticatedAccessRejected(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s %s request failed: %v", ep.method, ep.path, err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		if resp.StatusCode != http.StatusUnauthorized {
 			t.Errorf("%s %s: expected 401, got %d", ep.method, ep.path, resp.StatusCode)
@@ -103,7 +103,7 @@ func TestE2E_ClerkGetMe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /api/me: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
@@ -147,7 +147,7 @@ func TestE2E_ClerkGetMe_IsAdminReflectsAllowlist(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /api/me: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var body map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
@@ -181,7 +181,7 @@ func TestE2E_AdminPageReportsRequiresAdmin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /api/admin/page-reports: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403 for non-admin", resp.StatusCode)
 	}
@@ -201,7 +201,7 @@ func TestE2E_AdminPageReportsRequiresAdmin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /api/admin/page-reports as admin: %v", err)
 	}
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 	if resp2.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200 for admin", resp2.StatusCode)
 	}
@@ -244,7 +244,7 @@ func TestE2E_ParagraphInitOverQuery(t *testing.T) {
 			Data map[string]struct{ Id string }
 		}
 		err = json.NewDecoder(resp.Body).Decode(&body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil || resp.StatusCode != http.StatusOK || body.Data["morning"].Id != "w-morning" {
 			t.Fatalf("%s: status %d, err %v, body %+v; want 200 with morning -> w-morning", method, resp.StatusCode, err, body)
 		}
@@ -274,7 +274,7 @@ func TestE2E_LookupMetrics(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("lookup %d: status %d", i+1, resp.StatusCode)
 		}
@@ -323,7 +323,7 @@ func TestE2E_SignedInRequestsAreRateLimitedPerUser(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return resp
 	}
 

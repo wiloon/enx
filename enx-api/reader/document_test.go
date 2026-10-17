@@ -16,7 +16,7 @@ import (
 
 func TestMain(m *testing.M) {
 	dbPath := filepath.Join(os.TempDir(), "enx-reader-document-test.db")
-	os.Remove(dbPath)
+	_ = os.Remove(dbPath)
 	sqlitex.Init(dbPath)
 	os.Exit(m.Run())
 }

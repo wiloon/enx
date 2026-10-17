@@ -15,7 +15,7 @@ import (
 
 func TestMain(m *testing.M) {
 	dbPath := filepath.Join(os.TempDir(), "enx-pagereport-test.db")
-	os.Remove(dbPath)
+	_ = os.Remove(dbPath)
 	sqlitex.Init(dbPath)
 	os.Exit(m.Run())
 }
@@ -154,8 +154,12 @@ func TestPurgeExpiredRemovesOnlyOldRows(t *testing.T) {
 	user := "u-" + t.Name()
 	now := time.Now()
 
-	Submit(ctx, user, input("https://x.com/a/status/1"), now.Add(-retention-time.Hour))
-	Submit(ctx, user, input("https://x.com/a/status/2"), now)
+	if _, err := Submit(ctx, user, input("https://x.com/a/status/1"), now.Add(-retention-time.Hour)); err != nil {
+		t.Fatalf("Submit old: %v", err)
+	}
+	if _, err := Submit(ctx, user, input("https://x.com/a/status/2"), now); err != nil {
+		t.Fatalf("Submit new: %v", err)
+	}
 
 	deleted, err := PurgeExpired(ctx, now)
 	if err != nil || deleted < 1 {

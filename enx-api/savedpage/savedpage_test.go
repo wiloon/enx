@@ -17,7 +17,7 @@ import (
 
 func TestMain(m *testing.M) {
 	dbPath := filepath.Join(os.TempDir(), "enx-savedpage-test.db")
-	os.Remove(dbPath)
+	_ = os.Remove(dbPath)
 	sqlitex.Init(dbPath)
 	os.Exit(m.Run())
 }
@@ -201,9 +201,13 @@ func TestDeleteAllRemovesOnlyThatUsersPages(t *testing.T) {
 	ctx := context.Background()
 	alice, bob := "u-alice-"+t.Name(), "u-bob-"+t.Name()
 	for i := 0; i < 3; i++ {
-		Save(ctx, alice, Input{URL: fmt.Sprintf("https://example.com/a%d", i)}, time.Now())
+		if _, _, err := Save(ctx, alice, Input{URL: fmt.Sprintf("https://example.com/a%d", i)}, time.Now()); err != nil {
+			t.Fatalf("Save alice %d: %v", i, err)
+		}
 	}
-	Save(ctx, bob, Input{URL: "https://example.com/b"}, time.Now())
+	if _, _, err := Save(ctx, bob, Input{URL: "https://example.com/b"}, time.Now()); err != nil {
+		t.Fatalf("Save bob: %v", err)
+	}
 
 	deleted, err := DeleteAll(ctx, alice)
 	if err != nil || deleted != 3 {
@@ -257,7 +261,9 @@ func TestOwnerCanEditTheURL(t *testing.T) {
 func TestEditingTheURLToAnAlreadySavedPageIsRejected(t *testing.T) {
 	ctx := context.Background()
 	user := "u-" + t.Name()
-	Save(ctx, user, Input{URL: "https://example.com/taken", Title: "taken"}, time.Now())
+	if _, _, err := Save(ctx, user, Input{URL: "https://example.com/taken", Title: "taken"}, time.Now()); err != nil {
+		t.Fatalf("Save taken: %v", err)
+	}
 	other, _, _ := Save(ctx, user, Input{URL: "https://example.com/other", Title: "other"}, time.Now().Add(time.Second))
 
 	_, err := Update(ctx, user, other.ID, Patch{URL: strPtr("https://example.com/taken")})

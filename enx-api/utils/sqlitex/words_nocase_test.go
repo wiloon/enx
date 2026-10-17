@@ -76,7 +76,7 @@ func TestInitMigratesCaseSensitiveWords(t *testing.T) {
 		}
 	}
 	sqlDB, _ := old.DB()
-	sqlDB.Close()
+	_ = sqlDB.Close()
 
 	Init(path)
 

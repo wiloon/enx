@@ -18,8 +18,11 @@ func TestMemoryLimiterCallsPerMinute(t *testing.T) {
 	clock := newClock()
 	l := NewMemoryLimiter(Limits{CallsPerMinute: 2}, clock.now)
 
-	if !l.AllowCall("u1") || !l.AllowCall("u1") {
-		t.Fatal("the first two calls should pass")
+	if !l.AllowCall("u1") {
+		t.Fatal("the first call should pass")
+	}
+	if !l.AllowCall("u1") {
+		t.Fatal("the second call should pass")
 	}
 	if l.AllowCall("u1") {
 		t.Fatal("a third call within the minute should be refused")
@@ -68,8 +71,11 @@ func TestMemoryLimiterCacheWritesPerDay(t *testing.T) {
 	clock := newClock()
 	l := NewMemoryLimiter(Limits{CacheWritesPerDay: 2}, clock.now)
 
-	if !l.AllowCacheWrite("u1") || !l.AllowCacheWrite("u1") {
-		t.Fatal("the first two writes should pass")
+	if !l.AllowCacheWrite("u1") {
+		t.Fatal("the first write should pass")
+	}
+	if !l.AllowCacheWrite("u1") {
+		t.Fatal("the second write should pass")
 	}
 	if l.AllowCacheWrite("u1") {
 		t.Fatal("a third write today should be refused")

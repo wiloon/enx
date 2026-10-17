@@ -68,7 +68,7 @@ func TestPriceForLookupKey(t *testing.T) {
 				t.Errorf("expected lookup_keys[0]=pro-monthly, got %q", got)
 			}
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(priceListResponse("price_123")))
+			_, _ = w.Write([]byte(priceListResponse("price_123")))
 		})
 
 		price, err := PriceForLookupKey(context.Background(), sc, "pro-monthly")
@@ -83,7 +83,7 @@ func TestPriceForLookupKey(t *testing.T) {
 	t.Run("no matching price returns an error", func(t *testing.T) {
 		sc := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(priceListResponse()))
+			_, _ = w.Write([]byte(priceListResponse()))
 		})
 
 		_, err := PriceForLookupKey(context.Background(), sc, "missing-key")
@@ -95,7 +95,7 @@ func TestPriceForLookupKey(t *testing.T) {
 	t.Run("API error is propagated", func(t *testing.T) {
 		sc := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`{"error":{"message":"boom","type":"api_error"}}`))
+			_, _ = w.Write([]byte(`{"error":{"message":"boom","type":"api_error"}}`))
 		})
 
 		_, err := PriceForLookupKey(context.Background(), sc, "pro-monthly")
@@ -112,14 +112,14 @@ func TestCreateCheckoutSession(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			switch {
 			case r.Method == http.MethodGet && r.URL.Path == "/v1/prices":
-				w.Write([]byte(priceListResponse("price_123")))
+				_, _ = w.Write([]byte(priceListResponse("price_123")))
 			case r.Method == http.MethodPost && r.URL.Path == "/v1/checkout/sessions":
 				if err := r.ParseForm(); err != nil {
 					t.Fatalf("failed to parse form: %v", err)
 				}
 				sawCustomer = r.PostForm.Get("customer")
 				sawCustomerEmail = r.PostForm.Get("customer_email")
-				w.Write([]byte(`{"id":"cs_test_123","object":"checkout.session","url":"https://checkout.stripe.com/cs_test_123"}`))
+				_, _ = w.Write([]byte(`{"id":"cs_test_123","object":"checkout.session","url":"https://checkout.stripe.com/cs_test_123"}`))
 			default:
 				t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 			}
@@ -154,13 +154,13 @@ func TestCreateCheckoutSession(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			switch {
 			case r.Method == http.MethodGet && r.URL.Path == "/v1/prices":
-				w.Write([]byte(priceListResponse("price_123")))
+				_, _ = w.Write([]byte(priceListResponse("price_123")))
 			case r.Method == http.MethodPost && r.URL.Path == "/v1/checkout/sessions":
 				if err := r.ParseForm(); err != nil {
 					t.Fatalf("failed to parse form: %v", err)
 				}
 				sawCustomerEmail = r.PostForm.Get("customer_email")
-				w.Write([]byte(`{"id":"cs_test_456","object":"checkout.session"}`))
+				_, _ = w.Write([]byte(`{"id":"cs_test_456","object":"checkout.session"}`))
 			default:
 				t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 			}
@@ -185,7 +185,7 @@ func TestCreateCheckoutSession(t *testing.T) {
 	t.Run("propagates the price lookup error", func(t *testing.T) {
 		sc := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(priceListResponse()))
+			_, _ = w.Write([]byte(priceListResponse()))
 		})
 
 		_, err := CreateCheckoutSession(context.Background(), sc, CheckoutSessionParams{
@@ -210,7 +210,7 @@ func TestCreatePortalSession(t *testing.T) {
 		sawCustomer = r.PostForm.Get("customer")
 		sawReturnURL = r.PostForm.Get("return_url")
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":"bps_test_123","object":"billing_portal.session","url":"https://billing.stripe.com/bps_test_123"}`))
+		_, _ = w.Write([]byte(`{"id":"bps_test_123","object":"billing_portal.session","url":"https://billing.stripe.com/bps_test_123"}`))
 	})
 
 	session, err := CreatePortalSession(context.Background(), sc, "cus_123", "https://example.com/account")
@@ -245,10 +245,10 @@ func TestSubscriptionTierForPrice(t *testing.T) {
 			lookupKey := r.URL.Query().Get("lookup_keys[0]")
 			w.Header().Set("Content-Type", "application/json")
 			if id, ok := priceIDByLookupKey[lookupKey]; ok {
-				w.Write([]byte(priceListResponse(id)))
+				_, _ = w.Write([]byte(priceListResponse(id)))
 				return
 			}
-			w.Write([]byte(priceListResponse()))
+			_, _ = w.Write([]byte(priceListResponse()))
 		}
 	}
 

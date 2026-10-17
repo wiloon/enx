@@ -43,9 +43,10 @@ func Init(to, level, projectName string) {
 		fileEncoder := getEncoder()
 
 		//goland:noinspection GoBoolExpressions
-		if runtime.GOOS == "linux" {
+		switch runtime.GOOS {
+		case "linux":
 			logFilePath = fmt.Sprintf("/var/log/%s/%s.log", projectName, level)
-		} else if runtime.GOOS == "windows" {
+		case "windows":
 			logFilePath = fmt.Sprintf("C:\\%s\\%s.log", projectName, level)
 		}
 		writer := zapcore.AddSync(&lumberjack.Logger{

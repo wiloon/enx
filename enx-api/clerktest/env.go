@@ -43,8 +43,8 @@ func NewEnv(t *testing.T) *Env {
 			"kid": kid,
 			"use": "sig",
 			"alg": "RS256",
-			"n":   base64.RawURLEncoding.EncodeToString(key.PublicKey.N.Bytes()),
-			"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.PublicKey.E)).Bytes()),
+			"n":   base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
+			"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes()),
 		}},
 	}
 	body, err := json.Marshal(jwks)

@@ -153,7 +153,7 @@ func TestDefineWithAILowQualityDoesNotSpendACacheWrite(t *testing.T) {
 	env := newAIEnv()
 	env.definer.def.Quality = 3
 
-	env.define("rizzler")
+	_, _ = env.define("rizzler") // only the cache-write count matters here
 	if env.limiter.writes != 0 {
 		t.Fatalf("cache writes counted = %d, want 0 for a definition that was never going to be stored", env.limiter.writes)
 	}

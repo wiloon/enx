@@ -58,7 +58,7 @@ func SaveHandler(c *gin.Context) {
 	}
 
 	userID := middleware.GetUserIDFromContext(c)
-	page, created, err := Save(c.Request.Context(), userID, Input{
+	page, created, err := Save(c.Request.Context(), userID, Input{ //nolint:staticcheck // S1016: keep the request DTO decoupled from Input
 		URL:   req.URL,
 		Title: req.Title,
 	}, time.Now())
@@ -125,7 +125,7 @@ func UpdateHandler(c *gin.Context) {
 	}
 
 	userID := middleware.GetUserIDFromContext(c)
-	page, err := Update(c.Request.Context(), userID, c.Param("id"), Patch{URL: req.URL, Title: req.Title})
+	page, err := Update(c.Request.Context(), userID, c.Param("id"), Patch{URL: req.URL, Title: req.Title}) //nolint:staticcheck // S1016: keep the request DTO decoupled from Patch
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrNotFound):
