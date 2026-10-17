@@ -52,7 +52,7 @@ func TestE2E_AdminUsers_ListDetailAndLedger(t *testing.T) {
 	if err := credit.GrantAdmin(ctx, userID, 25, "support comp"); err != nil {
 		t.Fatalf("GrantAdmin: %v", err)
 	}
-	if _, err := credit.Clawback(ctx, "pi_"+t.Name(), 150, 499, "evt-refund-"+t.Name()); err != nil {
+	if _, err := credit.Clawback(ctx, "pi_"+t.Name(), 150, 499, "evt-refund-"+t.Name(), ""); err != nil {
 		t.Fatalf("Clawback: %v", err)
 	}
 	today := time.Now().UTC()
