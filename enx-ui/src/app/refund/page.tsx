@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { LegalPage, List, Section, Term } from '@/components/site/LegalPage'
+import { LegalPage, Section, Term } from '@/components/site/LegalPage'
 import { LEGAL } from '@/lib/legal'
 import { SITE } from '@/lib/site'
 
@@ -42,23 +42,21 @@ export default function RefundPolicyPage() {
           have already paid for — you never lose time you paid for.
         </p>
         <p>
-          Two exceptions where we will refund outside the window, without you
-          having to argue for it:
+          <Term>A renewal you did not expect.</Term> If you were charged for a
+          renewal you meant to cancel and you have not used the service in that
+          period, write to us and we will refund it, outside the window and
+          without you having to argue for it.
         </p>
-        <List
-          items={[
-            <>
-              <Term>A renewal you did not expect.</Term> If you were charged for
-              a renewal you meant to cancel and you have not used the service in
-              that period, write to us and we will refund it.
-            </>,
-            <>
-              <Term>Extended downtime.</Term> If {SITE.name} is unavailable for
-              a significant part of a period you paid for, we will refund that
-              part.
-            </>,
-          ]}
-        />
+        <p>
+          <Term>Extended downtime.</Term> If {SITE.name} is unavailable for a
+          significant part of a period you paid for, we will add credits to your
+          account to make up for it.
+        </p>
+        <p>
+          Refunding a subscription charge also ends that subscription, straight
+          away. That is why downtime is made up in credits: you keep your
+          subscription.
+        </p>
       </Section>
 
       <Section heading="Credits">

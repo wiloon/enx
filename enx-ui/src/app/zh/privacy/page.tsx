@@ -280,6 +280,10 @@ export default function PrivacyPolicyZhPage() {
           你注册使用即表示对此单独同意。我们不出售个人信息，也不与广告商或数据经纪商共享。
           仅在法律强制要求、或为防止服务被滥用时，我们才会披露数据。
         </p>
+        <p>
+          {SITE.name}{' '}
+          的运营方为客服和账务目的，可以查看你的账号与账单数据，包括邮箱、套餐、积分余额和积分流水。
+        </p>
       </Section>
 
       <Section heading="支付">

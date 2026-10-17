@@ -147,6 +147,22 @@ describe('Refund Policy', () => {
     ).toBeInTheDocument()
   })
 
+  // ADR-049 Decision 8: refunding a subscription charge cancels the
+  // subscription, so downtime is made up in credits, not money.
+  it('makes up for downtime in credits, and says a refund ends the subscription', () => {
+    render(<RefundPolicyPage />)
+
+    expect(
+      screen.getByText(/we will add credits to your account to make up for it/)
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /Refunding a subscription charge also ends that subscription/
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/we will refund that\s+part/)).toBeNull()
+  })
+
   it('does not claim to override local consumer law', () => {
     render(<RefundPolicyPage />)
 
@@ -250,6 +266,43 @@ describe('bilingual legal pages', () => {
       screen.getByText(/最多保留 100 天，之后自动删除/)
     ).toBeInTheDocument()
     expect(screen.queryByText(/没有更细的/)).toBeNull()
+  })
+
+  // ADR-049 Decision 14: the operator can look at account and billing data.
+  it('says the operator may view account and billing data, in both languages', () => {
+    const en = render(<PrivacyPolicyPage />)
+    expect(
+      screen.getByText(
+        /may view your account and billing data for customer support and accounting/
+      )
+    ).toBeInTheDocument()
+    en.unmount()
+
+    render(<PrivacyPolicyZhPage />)
+    expect(
+      screen.getByText(/为客服和账务目的，可以查看你的账号与账单数据/)
+    ).toBeInTheDocument()
+  })
+
+  it('makes up for downtime in credits in the Chinese refund policy and terms too', () => {
+    const refund = render(<RefundPolicyZhPage />)
+    expect(screen.getByText(/我们会给你的账户补发积分/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/订阅扣款一经退款，该订阅随即结束/)
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/我们会退还这一部分/)).toBeNull()
+    refund.unmount()
+
+    const en = render(<TermsPage />)
+    expect(
+      screen.getByText(/Extended paid downtime is made up in credits/)
+    ).toBeInTheDocument()
+    en.unmount()
+
+    render(<TermsZhPage />)
+    expect(
+      screen.getByText(/付费期间的长时间停机以补发积分的方式补偿/)
+    ).toBeInTheDocument()
   })
 
   it('says a saved page is only a link in the Chinese terms too', () => {

@@ -180,7 +180,7 @@ export default function TermsPage() {
           We aim to keep {SITE.name} running, but we do not promise it will be
           uninterrupted or error-free. We may take it down for maintenance, and
           depend on third-party providers who may have outages of their own.
-          Extended paid downtime is handled as a refund under the Refund Policy.
+          Extended paid downtime is made up in credits under the Refund Policy.
         </p>
       </Section>
 

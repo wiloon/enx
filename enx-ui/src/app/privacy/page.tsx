@@ -310,6 +310,11 @@ export default function PrivacyPolicyPage() {
           or data brokers. We may disclose data if we are legally required to,
           or to protect the service against abuse.
         </p>
+        <p>
+          The operator of {SITE.name} may view your account and billing data for
+          customer support and accounting: your email address, plan, credit
+          balance and credit history.
+        </p>
       </Section>
 
       <Section heading="Payments">
