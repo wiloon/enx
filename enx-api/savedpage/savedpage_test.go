@@ -17,7 +17,7 @@ import (
 
 func TestMain(m *testing.M) {
 	dbPath := filepath.Join(os.TempDir(), "enx-savedpage-test.db")
-	os.Remove(dbPath)
+	_ = os.Remove(dbPath)
 	sqlitex.Init(dbPath)
 	os.Exit(m.Run())
 }
@@ -168,8 +168,8 @@ func TestResavingAnExistingPageAtTheLimitStillSucceeds(t *testing.T) {
 func TestOwnerCanDeleteASavedPage(t *testing.T) {
 	ctx := context.Background()
 	user := "u-" + t.Name()
-	keep, _, _ := Save(ctx, user, Input{URL: "https://example.com/keep", Title: "keep"}, time.Now())
-	drop, _, _ := Save(ctx, user, Input{URL: "https://example.com/drop", Title: "drop"}, time.Now().Add(time.Second))
+	keep := mustSave(t, ctx, user, Input{URL: "https://example.com/keep", Title: "keep"}, time.Now())
+	drop := mustSave(t, ctx, user, Input{URL: "https://example.com/drop", Title: "drop"}, time.Now().Add(time.Second))
 
 	if err := Delete(ctx, user, drop.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
@@ -184,7 +184,7 @@ func TestOwnerCanDeleteASavedPage(t *testing.T) {
 func TestDeleteCannotTouchAnotherUsersPageOrAMissingOne(t *testing.T) {
 	ctx := context.Background()
 	alice, mallory := "u-alice-"+t.Name(), "u-mallory-"+t.Name()
-	page, _, _ := Save(ctx, alice, Input{URL: "https://example.com/private", Title: "private"}, time.Now())
+	page := mustSave(t, ctx, alice, Input{URL: "https://example.com/private", Title: "private"}, time.Now())
 
 	if err := Delete(ctx, mallory, page.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Delete of another user's page: err=%v, want ErrNotFound", err)
@@ -201,9 +201,13 @@ func TestDeleteAllRemovesOnlyThatUsersPages(t *testing.T) {
 	ctx := context.Background()
 	alice, bob := "u-alice-"+t.Name(), "u-bob-"+t.Name()
 	for i := 0; i < 3; i++ {
-		Save(ctx, alice, Input{URL: fmt.Sprintf("https://example.com/a%d", i)}, time.Now())
+		if _, _, err := Save(ctx, alice, Input{URL: fmt.Sprintf("https://example.com/a%d", i)}, time.Now()); err != nil {
+			t.Fatalf("Save alice %d: %v", i, err)
+		}
 	}
-	Save(ctx, bob, Input{URL: "https://example.com/b"}, time.Now())
+	if _, _, err := Save(ctx, bob, Input{URL: "https://example.com/b"}, time.Now()); err != nil {
+		t.Fatalf("Save bob: %v", err)
+	}
 
 	deleted, err := DeleteAll(ctx, alice)
 	if err != nil || deleted != 3 {
@@ -219,10 +223,20 @@ func TestDeleteAllRemovesOnlyThatUsersPages(t *testing.T) {
 
 func strPtr(s string) *string { return &s }
 
+// mustSave saves a page a test needs as a fixture and stops the test if that fails.
+func mustSave(t *testing.T, ctx context.Context, userID string, in Input, now time.Time) Page {
+	t.Helper()
+	page, _, err := Save(ctx, userID, in, now)
+	if err != nil {
+		t.Fatalf("Save(%q): %v", in.URL, err)
+	}
+	return page
+}
+
 func TestOwnerCanEditTheTitle(t *testing.T) {
 	ctx := context.Background()
 	user := "u-" + t.Name()
-	page, _, _ := Save(ctx, user, Input{URL: "https://example.com/a", Title: "old"}, time.Now())
+	page := mustSave(t, ctx, user, Input{URL: "https://example.com/a", Title: "old"}, time.Now())
 
 	updated, err := Update(ctx, user, page.ID, Patch{Title: strPtr("my own note")})
 	if err != nil {
@@ -240,7 +254,7 @@ func TestOwnerCanEditTheTitle(t *testing.T) {
 func TestOwnerCanEditTheURL(t *testing.T) {
 	ctx := context.Background()
 	user := "u-" + t.Name()
-	page, _, _ := Save(ctx, user, Input{URL: "https://example.com/a", Title: "t"}, time.Now())
+	page := mustSave(t, ctx, user, Input{URL: "https://example.com/a", Title: "t"}, time.Now())
 
 	updated, err := Update(ctx, user, page.ID, Patch{URL: strPtr("https://www.infoq.com/articles/new-home")})
 	if err != nil {
@@ -257,8 +271,10 @@ func TestOwnerCanEditTheURL(t *testing.T) {
 func TestEditingTheURLToAnAlreadySavedPageIsRejected(t *testing.T) {
 	ctx := context.Background()
 	user := "u-" + t.Name()
-	Save(ctx, user, Input{URL: "https://example.com/taken", Title: "taken"}, time.Now())
-	other, _, _ := Save(ctx, user, Input{URL: "https://example.com/other", Title: "other"}, time.Now().Add(time.Second))
+	if _, _, err := Save(ctx, user, Input{URL: "https://example.com/taken", Title: "taken"}, time.Now()); err != nil {
+		t.Fatalf("Save taken: %v", err)
+	}
+	other := mustSave(t, ctx, user, Input{URL: "https://example.com/other", Title: "other"}, time.Now().Add(time.Second))
 
 	_, err := Update(ctx, user, other.ID, Patch{URL: strPtr("https://example.com/taken")})
 	if !errors.Is(err, ErrDuplicate) {
@@ -279,7 +295,7 @@ func TestEditingTheURLToAnAlreadySavedPageIsRejected(t *testing.T) {
 func TestEditCannotTouchAnotherUsersPageOrAMissingOne(t *testing.T) {
 	ctx := context.Background()
 	alice, mallory := "u-alice-"+t.Name(), "u-mallory-"+t.Name()
-	page, _, _ := Save(ctx, alice, Input{URL: "https://example.com/private", Title: "private"}, time.Now())
+	page := mustSave(t, ctx, alice, Input{URL: "https://example.com/private", Title: "private"}, time.Now())
 
 	if _, err := Update(ctx, mallory, page.ID, Patch{Title: strPtr("hijacked")}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Update of another user's page: err=%v, want ErrNotFound", err)
@@ -326,7 +342,7 @@ func TestSavingSomethingThatIsNotAWebPageIsRejected(t *testing.T) {
 func TestEditedURLsAreNormalizedAndValidatedLikeSavedOnes(t *testing.T) {
 	ctx := context.Background()
 	user := "u-" + t.Name()
-	page, _, _ := Save(ctx, user, Input{URL: "https://example.com/a", Title: "t"}, time.Now())
+	page := mustSave(t, ctx, user, Input{URL: "https://example.com/a", Title: "t"}, time.Now())
 
 	updated, err := Update(ctx, user, page.ID, Patch{URL: strPtr("https://Example.com/b?id=1&utm_source=x#frag")})
 	if err != nil || updated.URL != "https://example.com/b?id=1" {

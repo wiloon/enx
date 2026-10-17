@@ -372,7 +372,7 @@ func TestAdminListAIWordsIsTheUnreviewedQueueBusiestFirst(t *testing.T) {
 			t.Fatalf("queue = %v, want %v", got, want)
 		}
 	}
-	if rows[0].Users != 3 || rows[0].Lookups != 12 || rows[0].Word.AIQuality == nil || *rows[0].Word.AIQuality != 9 {
+	if rows[0].Users != 3 || rows[0].Lookups != 12 || rows[0].AIQuality == nil || *rows[0].AIQuality != 9 {
 		t.Fatalf("first row = %+v, want its usage and provenance filled in", rows[0])
 	}
 }

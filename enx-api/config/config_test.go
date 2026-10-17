@@ -24,7 +24,7 @@ func isolate(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	for _, env := range envBindings {
 		t.Setenv(env, "")
-		os.Unsetenv(env)
+		_ = os.Unsetenv(env)
 	}
 }
 
@@ -210,8 +210,8 @@ func TestEnvVarsPopulateTheirFields(t *testing.T) {
 
 			var value string
 			var want any
-			switch {
-			case key == "stats.lookup-events.retention-days":
+			switch key {
+			case "stats.lookup-events.retention-days":
 				value, want = "42", 42
 			default:
 				value, want = testValue(t, key, field.Type, env)
@@ -671,7 +671,7 @@ func TestSecretIsRedactedWhenPrintedOrEncoded(t *testing.T) {
 		"%v":   fmt.Sprintf("%v", cfg),
 		"%+v":  fmt.Sprintf("%+v", *cfg),
 		"%#v":  fmt.Sprintf("%#v", *cfg),
-		"%s":   fmt.Sprintf("%s", cfg.Stripe.SecretKey),
+		"%s":   fmt.Sprintf("%s", cfg.Stripe.SecretKey), //nolint:staticcheck // S1025: the test checks that the %s verb redacts a Secret
 		"json": string(asJSON),
 	} {
 		if strings.Contains(out, key) {
