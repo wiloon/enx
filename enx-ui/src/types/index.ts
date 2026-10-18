@@ -55,6 +55,36 @@ export interface BillingMeData {
   credits: BillingCredits
 }
 
+// Invite links (ADR-051), mirroring enx-api handlers/referral.go. Times are
+// Unix seconds.
+export interface ReferralPendingReward {
+  amount: number
+  dueAt: number
+}
+
+// GET /api/referral/me
+export interface ReferralMeData {
+  code: string
+  link: string
+  invited: number
+  paid: number
+  pendingRewards: ReferralPendingReward[]
+  totalEarned: number
+}
+
+// POST /api/referral/claim. bonus 0 and trialExpiresAt null when the invitee
+// bonus is switched off.
+export interface ReferralClaimData {
+  bonus: number
+  trialExpiresAt: number | null
+}
+
+// GET /api/referral/offer: what an invitee gets, for the landing page.
+export interface ReferralOffer {
+  credits: number
+  days: number
+}
+
 // GET/PUT /api/me/preferences (enx-api preferences, ADR-044). `value` is the
 // user's explicit choice (null = unset, the default applies); `effective` is
 // what the server acts on, with the default and the user's entitlement
