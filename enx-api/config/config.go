@@ -278,7 +278,25 @@ type RateLimit struct {
 }
 
 type Credits struct {
-	Trial Trial `mapstructure:"trial"`
+	Trial    Trial    `mapstructure:"trial"`
+	Referral Referral `mapstructure:"referral"`
+}
+
+// Referral is the invite-link credits (ADR-051 Decision 7). 0 switches the
+// matching grant off. The values are estimates, to be calibrated.
+type Referral struct {
+	// InviteeBonus is added to the invitee's trial pool on top of ADR-048's
+	// trial; InviteeTTLDays is how long that trial lasts from sign-up.
+	InviteeBonus   int64 `mapstructure:"invitee-bonus"`
+	InviteeTTLDays int   `mapstructure:"invitee-ttl-days"`
+	// The referrer's reward for the invitee's first payment: a fixed amount
+	// for a subscription, a percentage of the credits for a top-up.
+	ReferrerRewardSubscription int64 `mapstructure:"referrer-reward-subscription"`
+	ReferrerRewardTopupPercent int64 `mapstructure:"referrer-reward-topup-percent"`
+	// RewardDelayDays is the cooling-off period before the reward is paid.
+	RewardDelayDays int `mapstructure:"reward-delay-days"`
+	// ClaimWindowHours is how long after sign-up an invite can be claimed.
+	ClaimWindowHours int `mapstructure:"claim-window-hours"`
 }
 
 // Trial is the sign-up trial (ADR-048). Amount 0 switches trials off; the
@@ -469,6 +487,16 @@ func (c *Config) Validate() error {
 	notNegative("credits.trial.calls-per-minute", t.CallsPerMinute >= 0)
 	notNegative("credits.trial.calls-per-day", t.CallsPerDay >= 0)
 
+	r := c.Credits.Referral
+	notNegative("credits.referral.invitee-bonus", r.InviteeBonus >= 0)
+	notNegative("credits.referral.invitee-ttl-days", r.InviteeTTLDays >= 0)
+	notNegative("credits.referral.referrer-reward-subscription", r.ReferrerRewardSubscription >= 0)
+	if p := r.ReferrerRewardTopupPercent; p < 0 || p > 100 {
+		errs = append(errs, fmt.Errorf("config: credits.referral.referrer-reward-topup-percent %d is outside 0-100", p))
+	}
+	notNegative("credits.referral.reward-delay-days", r.RewardDelayDays >= 0)
+	notNegative("credits.referral.claim-window-hours", r.ClaimWindowHours >= 0)
+
 	rl := c.RateLimit
 	notNegative("rate-limit.requests-per-second", rl.RequestsPerSecond >= 0)
 	if rl.RequestsPerSecond > 0 {
@@ -561,6 +589,15 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("credits.trial.ttl-days", 7)
 	v.SetDefault("credits.trial.calls-per-minute", 5)
 	v.SetDefault("credits.trial.calls-per-day", 30)
+
+	// Referral credits (ADR-051 Decision 7): estimated values, to be
+	// calibrated after internal testing. 0 switches each grant off.
+	v.SetDefault("credits.referral.invitee-bonus", 100)
+	v.SetDefault("credits.referral.invitee-ttl-days", 14)
+	v.SetDefault("credits.referral.referrer-reward-subscription", 300)
+	v.SetDefault("credits.referral.referrer-reward-topup-percent", 20)
+	v.SetDefault("credits.referral.reward-delay-days", 14)
+	v.SetDefault("credits.referral.claim-window-hours", 24)
 
 	// Per-user request rate limit (ADR-060 Decision 3). Starting values, to
 	// be tuned from enx_rate_limited_total; 0 req/s switches it off.
@@ -691,6 +728,13 @@ var envBindings = map[string]string{
 	"credits.trial.ttl-days":         "CREDITS_TRIAL_TTL_DAYS",
 	"credits.trial.calls-per-minute": "CREDITS_TRIAL_CALLS_PER_MINUTE",
 	"credits.trial.calls-per-day":    "CREDITS_TRIAL_CALLS_PER_DAY",
+
+	"credits.referral.invitee-bonus":                 "CREDITS_REFERRAL_INVITEE_BONUS",
+	"credits.referral.invitee-ttl-days":              "CREDITS_REFERRAL_INVITEE_TTL_DAYS",
+	"credits.referral.referrer-reward-subscription":  "CREDITS_REFERRAL_REFERRER_REWARD_SUBSCRIPTION",
+	"credits.referral.referrer-reward-topup-percent": "CREDITS_REFERRAL_REFERRER_REWARD_TOPUP_PERCENT",
+	"credits.referral.reward-delay-days":             "CREDITS_REFERRAL_REWARD_DELAY_DAYS",
+	"credits.referral.claim-window-hours":            "CREDITS_REFERRAL_CLAIM_WINDOW_HOURS",
 
 	"rate-limit.requests-per-second": "RATE_LIMIT_REQUESTS_PER_SECOND",
 	"rate-limit.burst":               "RATE_LIMIT_BURST",

@@ -27,6 +27,8 @@ import (
 	prefadapters "enx-api/preferences/adapters"
 	"enx-api/reader"
 	"enx-api/ratelimit"
+	"enx-api/referral"
+	refadapters "enx-api/referral/adapters"
 	"enx-api/repo"
 	"enx-api/savedpage"
 	"enx-api/stats"
@@ -46,6 +48,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	stripeSDK "github.com/stripe/stripe-go/v86"
 )
 
 func main() {
@@ -88,6 +91,13 @@ func main() {
 	go runReaderDocumentCleanup()
 	go runStatsIngestLogCleanup(cfg.Stats.Ingest.LogTTL(), cfg.Stats.LookupEvents.RetentionDays, userStats)
 	go runPageReportCleanup()
+	// Referrer rewards need Stripe to check each payment for a refund or
+	// dispute; without it they stay pending until it is configured.
+	if sc, err := billingstripe.New(cfg.Stripe.SecretKey.Reveal()); err == nil {
+		go runReferralRewards(newReferralService(cfg, sc, m))
+	} else {
+		logger.Warnf("referral rewards job off: %v", err)
+	}
 
 	go serveMetrics(cfg.Metrics.Addr, m)
 	router := setupRouter(cfg, m)
@@ -472,8 +482,13 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 		logger.Warnf("billing disabled: %v", stripeErr)
 		stripeClient = nil
 	}
+	// Invite links (ADR-051): the webhook reports each payment, the claim
+	// and summary endpoints sit behind clerkAuth, the offer is public.
+	referrals := newReferralService(cfg, stripeClient, m)
+	referralHandler := handlers.NewReferralHandler(referrals, cfg.App.FrontendBaseURL)
 	billingHandler := billing.NewHandler(stripeClient, cfg.App.FrontendBaseURL, cfg.Stripe, m).
-		WithRefundNotifier(email.NewSender(cfg.Resend))
+		WithRefundNotifier(email.NewSender(cfg.Resend)).
+		WithFirstPaymentRecorder(referrals)
 
 	// Authenticated APIs (Clerk session JWT). enx-chrome and enx-ui call only
 	// these /api routes; nothing is registered twice at the root.
@@ -537,6 +552,11 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	apiGroup.POST("/billing/checkout/topup", billingHandler.CheckoutTopup)
 	apiGroup.POST("/billing/portal", billingHandler.Portal)
 	apiGroup.GET("/billing/me", billingHandler.Me)
+
+	// Invite links (ADR-051): the user's code and invites, and claiming an
+	// invite in the first hours after sign-up.
+	apiGroup.GET("/referral/me", referralHandler.Me)
+	apiGroup.POST("/referral/claim", referralHandler.Claim)
 
 	// Reader (ADR-022): enx-ui's pasted-text documents. 20,000-char limit and
 	// 50-document-per-user cap are enforced in reader.CreateDocument; 7-day
@@ -604,6 +624,11 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	// (w10n-config): enx-api.wiloon.lab/billing/webhook, no /api prefix.
 	router.POST("/billing/webhook", billingHandler.Webhook)
 
+	// What an invitee gets, for enx-ui's signed-out /invite/<code> landing
+	// page (ADR-051 Decision 8). Not in apiGroup: no session yet. Config
+	// numbers only, nothing about any user.
+	router.GET("/api/referral/offer", referralHandler.Offer)
+
 	// Site-wide user numbers for Grafana's Infinity datasource (ADR-058
 	// Decision 4). Not in apiGroup: Grafana has no Clerk session and presents
 	// the OPS_STATS_TOKEN bearer instead; without the token the handler
@@ -613,6 +638,56 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 	router.GET("/api/ops/user-stats/daily", userStatsDaily.Serve)
 
 	return router
+}
+
+// newReferralService builds the invite-link service (ADR-051). sc may be nil
+// (billing off): claims still work, rewards then stay pending.
+func newReferralService(cfg *config.Config, sc *stripeSDK.Client, m *metrics.Metrics) *referral.Service {
+	var payments referral.PaymentChecker
+	if sc != nil {
+		payments = refadapters.Stripe{Client: sc}
+	}
+	const day = 24 * time.Hour
+	r := cfg.Credits.Referral
+	policy := referral.FixedPolicy{
+		TrialAmount:                cfg.Credits.Trial.Amount,
+		TrialTTL:                   time.Duration(cfg.Credits.Trial.TTLDays) * day,
+		InviteeBonus:               r.InviteeBonus,
+		InviteeTTL:                 time.Duration(r.InviteeTTLDays) * day,
+		ReferrerRewardSubscription: r.ReferrerRewardSubscription,
+		ReferrerRewardTopupPercent: r.ReferrerRewardTopupPercent,
+		RewardDelay:                time.Duration(r.RewardDelayDays) * day,
+		ClaimWindow:                time.Duration(r.ClaimWindowHours) * time.Hour,
+	}
+	return referral.NewService(repo.ReferralCodes{}, repo.Referrals{}, repo.ReferralAccounts{},
+		refadapters.Ledger{}, payments, time.Now, policy).WithObserver(m)
+}
+
+// runReferralRewards settles the referrer rewards that are due (ADR-051
+// Decision 5). Mirrors the cleanups: once on start, then hourly; a row
+// Stripe could not answer for is retried on the next run, and the ledger's
+// idempotency key keeps reruns and parallel instances from paying twice.
+func runReferralRewards(svc *referral.Service) {
+	settle := func() {
+		run, err := svc.PayDueRewards(context.Background())
+		if err != nil {
+			logger.Errorf("referral: pay due rewards failed: %v", err)
+			return
+		}
+		for _, err := range run.Errors {
+			logger.Warnf("referral: reward left pending for the next run: %v", err)
+		}
+		if run.Rewarded > 0 || run.Forfeited > 0 {
+			logger.Infof("referral: %d reward(s) paid, %d forfeited", run.Rewarded, run.Forfeited)
+		}
+	}
+
+	settle()
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for range ticker.C {
+		settle()
+	}
 }
 
 func tokenPricing(p config.TokenPrice) credit.TokenPricing {

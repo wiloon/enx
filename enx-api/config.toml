@@ -223,6 +223,24 @@ ttl-days = 7
 calls-per-minute = 5
 calls-per-day = 30
 
+[credits.referral]
+# Invite-link credits (ADR-051). The invitee who claims a code within
+# `claim-window-hours` of sign-up gets `invitee-bonus` trial credits on top of
+# the trial above, and the trial lasts `invitee-ttl-days` from sign-up. The
+# referrer is rewarded once, for the invitee's first payment, after
+# `reward-delay-days` with no refund or dispute: a fixed amount for a
+# subscription, a percentage of the credits for a top-up. 0 switches each
+# grant off. Estimated values, to be calibrated. Override with
+# CREDITS_REFERRAL_INVITEE_BONUS / _INVITEE_TTL_DAYS /
+# _REFERRER_REWARD_SUBSCRIPTION / _REFERRER_REWARD_TOPUP_PERCENT /
+# _REWARD_DELAY_DAYS / _CLAIM_WINDOW_HOURS.
+invitee-bonus = 100
+invitee-ttl-days = 14
+referrer-reward-subscription = 300
+referrer-reward-topup-percent = 20
+reward-delay-days = 14
+claim-window-hours = 24
+
 [stripe.quota]
 # Daily dictionary lookup ceilings, one per tier (ADR-029, ADR-059 Decision
 # 6). Everyone is counted against a UTC day; the tier only decides the

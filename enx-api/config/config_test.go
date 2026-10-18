@@ -80,6 +80,13 @@ func TestLoadDefaults(t *testing.T) {
 		{"credits.trial.amount", cfg.Credits.Trial.Amount, int64(100)},
 		{"credits.trial.ttl-days", cfg.Credits.Trial.TTLDays, 7},
 		{"credits.trial.calls-per-day", cfg.Credits.Trial.CallsPerDay, 30},
+		// Referral credits (ADR-051 Decision 7): estimates, calibrated later.
+		{"credits.referral.invitee-bonus", cfg.Credits.Referral.InviteeBonus, int64(100)},
+		{"credits.referral.invitee-ttl-days", cfg.Credits.Referral.InviteeTTLDays, 14},
+		{"credits.referral.referrer-reward-subscription", cfg.Credits.Referral.ReferrerRewardSubscription, int64(300)},
+		{"credits.referral.referrer-reward-topup-percent", cfg.Credits.Referral.ReferrerRewardTopupPercent, int64(20)},
+		{"credits.referral.reward-delay-days", cfg.Credits.Referral.RewardDelayDays, 14},
+		{"credits.referral.claim-window-hours", cfg.Credits.Referral.ClaimWindowHours, 24},
 		{"stats.ingest.max-words-per-report", cfg.Stats.Ingest.MaxWordsPerReport, int64(50000)},
 		{"stats.ingest.log-ttl-days", cfg.Stats.Ingest.LogTTLDays, 7},
 		{"stats.lookup-events.retention-days", cfg.Stats.LookupEvents.RetentionDays, 90},
@@ -190,6 +197,12 @@ var envVars = map[string]string{
 	"CREDITS_TRIAL_TTL_DAYS":                          "credits.trial.ttl-days",
 	"CREDITS_TRIAL_CALLS_PER_MINUTE":                  "credits.trial.calls-per-minute",
 	"CREDITS_TRIAL_CALLS_PER_DAY":                     "credits.trial.calls-per-day",
+	"CREDITS_REFERRAL_INVITEE_BONUS":                  "credits.referral.invitee-bonus",
+	"CREDITS_REFERRAL_INVITEE_TTL_DAYS":               "credits.referral.invitee-ttl-days",
+	"CREDITS_REFERRAL_REFERRER_REWARD_SUBSCRIPTION":   "credits.referral.referrer-reward-subscription",
+	"CREDITS_REFERRAL_REFERRER_REWARD_TOPUP_PERCENT":  "credits.referral.referrer-reward-topup-percent",
+	"CREDITS_REFERRAL_REWARD_DELAY_DAYS":              "credits.referral.reward-delay-days",
+	"CREDITS_REFERRAL_CLAIM_WINDOW_HOURS":             "credits.referral.claim-window-hours",
 	"STATS_INGEST_MAX_WORDS_PER_REPORT":               "stats.ingest.max-words-per-report",
 	"STATS_INGEST_LOG_TTL_DAYS":                       "stats.ingest.log-ttl-days",
 	"STATS_LOOKUP_EVENTS_RETENTION_DAYS":              "stats.lookup-events.retention-days",
@@ -465,6 +478,21 @@ func TestLoadRejects(t *testing.T) {
 			wantErr: "dictionary-lookup-daily",
 		},
 		{
+			name:    "negative referral bonus",
+			env:     map[string]string{"CREDITS_REFERRAL_INVITEE_BONUS": "-1"},
+			wantErr: "credits.referral.invitee-bonus must not be negative",
+		},
+		{
+			name:    "negative referral claim window",
+			env:     map[string]string{"CREDITS_REFERRAL_CLAIM_WINDOW_HOURS": "-1"},
+			wantErr: "credits.referral.claim-window-hours must not be negative",
+		},
+		{
+			name:    "referral top-up reward above 100 percent",
+			env:     map[string]string{"CREDITS_REFERRAL_REFERRER_REWARD_TOPUP_PERCENT": "101"},
+			wantErr: "credits.referral.referrer-reward-topup-percent",
+		},
+		{
 			name:    "port out of range",
 			env:     map[string]string{"ENX_PORT": "70000"},
 			wantErr: "enx.port",
@@ -531,7 +559,7 @@ func TestLoadAcceptsIntentionalZeros(t *testing.T) {
 	isolate(t)
 	for env, key := range envVars {
 		if strings.HasPrefix(key, "stripe.credits.") || strings.HasPrefix(key, "stripe.costs.") ||
-			strings.HasPrefix(key, "credits.trial.") ||
+			strings.HasPrefix(key, "credits.trial.") || strings.HasPrefix(key, "credits.referral.") ||
 			strings.HasPrefix(key, "ai-word.") ||
 			key == "rate-limit.requests-per-second" {
 			t.Setenv(env, "0")

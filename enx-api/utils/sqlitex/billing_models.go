@@ -42,7 +42,7 @@ func (CreditAccount) TableName() string {
 type CreditTransaction struct {
 	Id            string  `gorm:"column:id;primaryKey"`
 	UserId        string  `gorm:"column:user_id;index"`
-	Type          string  `gorm:"column:type;not null"` // GRANT_SUBSCRIPTION | GRANT_TOPUP | GRANT_TRIAL | GRANT_ADMIN | DEDUCT_ADMIN | CLAWBACK | CONSUME | SETTLE | REFUND | EXPIRE
+	Type          string  `gorm:"column:type;not null"` // GRANT_SUBSCRIPTION | GRANT_TOPUP | GRANT_TRIAL | GRANT_REFERRAL_BONUS | GRANT_REFERRAL_REWARD | GRANT_ADMIN | DEDUCT_ADMIN | CLAWBACK | CONSUME | SETTLE | REFUND | EXPIRE
 	Amount        int64   `gorm:"column:amount;not null"`
 	BalanceAfter  int64   `gorm:"column:balance_after;not null"`
 	StripeEventId *string `gorm:"column:stripe_event_id;uniqueIndex"` // nil for CONSUME rows; set for webhook-triggered GRANT rows (idempotency key)

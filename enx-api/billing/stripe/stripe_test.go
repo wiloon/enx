@@ -208,7 +208,7 @@ func TestCancelSubscriptionNow(t *testing.T) {
 			}
 			prorate, invoiceNow = r.Form.Get("prorate"), r.Form.Get("invoice_now")
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"id":"sub_1","object":"subscription","status":"canceled"}`))
+			_, _ = w.Write([]byte(`{"id":"sub_1","object":"subscription","status":"canceled"}`))
 		})
 
 		if err := CancelSubscriptionNow(context.Background(), sc, "sub_1"); err != nil {
@@ -224,7 +224,7 @@ func TestCancelSubscriptionNow(t *testing.T) {
 		sc := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte(`{"error":{"code":"resource_missing","message":"No such subscription: 'sub_1'","param":"id","type":"invalid_request_error"}}`))
+			_, _ = w.Write([]byte(`{"error":{"code":"resource_missing","message":"No such subscription: 'sub_1'","param":"id","type":"invalid_request_error"}}`))
 		})
 		if err := CancelSubscriptionNow(context.Background(), sc, "sub_1"); err != nil {
 			t.Fatalf("got %v, want nil", err)
@@ -235,7 +235,7 @@ func TestCancelSubscriptionNow(t *testing.T) {
 		sc := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`{"error":{"type":"api_error","message":"boom"}}`))
+			_, _ = w.Write([]byte(`{"error":{"type":"api_error","message":"boom"}}`))
 		})
 		if err := CancelSubscriptionNow(context.Background(), sc, "sub_1"); err == nil {
 			t.Fatal("got nil, want an error")
