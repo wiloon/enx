@@ -15,6 +15,9 @@ import {
   PreferenceChanges,
   PreferencesData,
   ReaderDocument,
+  ReferralClaimData,
+  ReferralMeData,
+  ReferralOffer,
   SavedPage,
   ReaderDocumentSummary,
   RephraseData,
@@ -319,6 +322,25 @@ export class ApiService {
 
   async createPortalSession(): Promise<ApiResponse<CheckoutSessionData>> {
     return this.makeRequest('/api/billing/portal', { method: 'POST' })
+  }
+
+  // Invite links (ADR-051): the user's code and how their invites are doing.
+  async getReferralMe(): Promise<ApiResponse<ReferralMeData>> {
+    return this.makeRequest('/api/referral/me')
+  }
+
+  // Claims an invite; a refusal (409) comes back as a failure with the
+  // server's message.
+  async claimReferral(code: string): Promise<ApiResponse<ReferralClaimData>> {
+    return this.makeRequest('/api/referral/claim', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    })
+  }
+
+  // Needs no sign-in: what an invitee gets, for the landing page.
+  async getReferralOffer(): Promise<ApiResponse<ReferralOffer>> {
+    return this.makeRequest('/api/referral/offer')
   }
 
   // Rephrase Chinese / mixed / rough English into idiomatic workplace

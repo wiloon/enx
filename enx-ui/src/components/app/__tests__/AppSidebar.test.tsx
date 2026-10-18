@@ -35,10 +35,24 @@ it('renders every navigation destination', () => {
     'Reading Stats',
     'Settings',
     'Billing',
+    'Invite friends',
     'Back to site',
   ]) {
     expect(screen.getByRole('link', { name: label })).toBeInTheDocument()
   }
+})
+
+// ADR-051 Decision 8: the invite page sits right after Billing.
+it('lists Invite friends after Billing, linking to /invite', () => {
+  mockPathname.mockReturnValue('/app')
+  render(<AppSidebar />)
+
+  const labels = screen.getAllByRole('link').map((l) => l.textContent?.trim())
+  expect(labels.indexOf('Invite friends')).toBe(labels.indexOf('Billing') + 1)
+  expect(screen.getByRole('link', { name: 'Invite friends' })).toHaveAttribute(
+    'href',
+    '/invite'
+  )
 })
 
 // "Back to site" points at '/', which is a prefix of every route, so the

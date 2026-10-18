@@ -33,47 +33,50 @@ func effectiveTrial(account sqlitex.CreditAccount, at time.Time) int64 {
 // the configured "trials off" switch, not an error. granted reports whether
 // this call made the grant.
 func GrantTrial(ctx context.Context, userID string, amount int64, ttl time.Duration) (granted bool, err error) {
-	if amount <= 0 {
-		return false, nil
-	}
-	key := "trial:" + userID
-
 	err = sqlitex.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		already, err := eventAlreadyProcessed(tx, key)
-		if err != nil || already {
-			return err
-		}
-
-		at := now()
-		nowMs := at.UnixMilli()
-		if err := ensureAccount(tx, userID, nowMs); err != nil {
-			return err
-		}
-		if err := tx.Model(&sqlitex.CreditAccount{}).
-			Where("user_id = ?", userID).
-			Updates(map[string]interface{}{
-				"trial_balance":    amount,
-				"trial_expires_at": at.Add(ttl).Unix(),
-				"updated_at":       nowMs,
-			}).Error; err != nil {
-			return err
-		}
-
-		granted = true
-		return insertLedgerRow(tx, sqlitex.CreditTransaction{
-			Id:            uuid.New().String(),
-			UserId:        userID,
-			Type:          TypeGrantTrial,
-			Amount:        amount,
-			BalanceAfter:  amount,
-			StripeEventId: &key,
-			CreatedAt:     nowMs,
-		})
+		granted, err = grantTrial(tx, userID, amount, ttl, now())
+		return err
 	})
 	if err != nil {
 		return false, err
 	}
 	return granted, nil
+}
+
+// grantTrial is GrantTrial inside the caller's transaction.
+func grantTrial(tx *gorm.DB, userID string, amount int64, ttl time.Duration, at time.Time) (bool, error) {
+	if amount <= 0 {
+		return false, nil
+	}
+	key := "trial:" + userID
+	already, err := eventAlreadyProcessed(tx, key)
+	if err != nil || already {
+		return false, err
+	}
+
+	nowMs := at.UnixMilli()
+	if err := ensureAccount(tx, userID, nowMs); err != nil {
+		return false, err
+	}
+	if err := tx.Model(&sqlitex.CreditAccount{}).
+		Where("user_id = ?", userID).
+		Updates(map[string]interface{}{
+			"trial_balance":    amount,
+			"trial_expires_at": at.Add(ttl).Unix(),
+			"updated_at":       nowMs,
+		}).Error; err != nil {
+		return false, err
+	}
+
+	return true, insertLedgerRow(tx, sqlitex.CreditTransaction{
+		Id:            uuid.New().String(),
+		UserId:        userID,
+		Type:          TypeGrantTrial,
+		Amount:        amount,
+		BalanceAfter:  amount,
+		StripeEventId: &key,
+		CreatedAt:     nowMs,
+	})
 }
 
 // Trial returns userID's spendable trial credit and when it expires; the

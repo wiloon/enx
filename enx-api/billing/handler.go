@@ -5,6 +5,7 @@
 package billing
 
 import (
+	"context"
 	"enx-api/config"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"enx-api/email"
 	"enx-api/enx"
 	"enx-api/middleware"
+	"enx-api/referral"
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
 
@@ -34,6 +36,22 @@ type Handler struct {
 	webhooks        WebhookObserver
 	// refunds hears about refunds that matched no grant; nil logs only.
 	refunds RefundNotifier
+	// payments hears about every paid top-up and subscription invoice, for
+	// referral rewards; nil records nothing.
+	payments FirstPaymentRecorder
+}
+
+// FirstPaymentRecorder notes a payment for ADR-051's referrer reward:
+// *referral.Service in production. It decides itself whether the payment is
+// the user's first.
+type FirstPaymentRecorder interface {
+	RecordFirstPayment(ctx context.Context, userID string, p referral.FirstPayment) error
+}
+
+// WithFirstPaymentRecorder sets who hears about payments.
+func (h *Handler) WithFirstPaymentRecorder(r FirstPaymentRecorder) *Handler {
+	h.payments = r
+	return h
 }
 
 // RefundNotifier tells the admin about a refund ENX could not match to a

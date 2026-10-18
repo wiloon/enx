@@ -76,6 +76,28 @@ func TestParagraphInitRoutes(t *testing.T) {
 	}
 }
 
+// ADR-051: the invite API. me and claim need a session; the offer is for the
+// signed-out landing page.
+func TestReferralRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	registered := map[string]bool{}
+	for _, r := range setupRouter(config.Default(), metrics.New()).Routes() {
+		registered[r.Method+" "+r.Path] = true
+	}
+	for _, route := range []string{"GET /api/referral/me", "POST /api/referral/claim", "GET /api/referral/offer"} {
+		if !registered[route] {
+			t.Errorf("%s is not registered", route)
+		}
+	}
+
+	w := httptest.NewRecorder()
+	setupRouter(config.Default(), metrics.New()).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/referral/offer", nil))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"credits":200`) || !strings.Contains(w.Body.String(), `"days":14`) {
+		t.Fatalf("signed-out GET /api/referral/offer = %d %s, want 200 with the default 200 credits / 14 days", w.Code, w.Body.String())
+	}
+}
+
 // A cross-origin QUERY is preflighted; the preflight must allow it.
 func TestCORSPreflightAllowsQuery(t *testing.T) {
 	gin.SetMode(gin.TestMode)

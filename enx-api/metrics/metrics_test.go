@@ -185,6 +185,28 @@ func TestObserveTrialGrant(t *testing.T) {
 	}
 }
 
+// ADR-051 Decision 9: invite claims by result, rewards by outcome.
+func TestObserveReferrals(t *testing.T) {
+	m := New()
+	m.ObserveReferralClaim("ok")
+	m.ObserveReferralClaim("ok")
+	m.ObserveReferralClaim("own_code")
+	m.ObserveReferralReward("rewarded")
+	m.ObserveReferralReward("forfeited")
+
+	out := exposition(t, m)
+	for _, want := range []string{
+		`enx_referral_claims_total{result="ok"} 2`,
+		`enx_referral_claims_total{result="own_code"} 1`,
+		`enx_referral_rewards_total{result="rewarded"} 1`,
+		`enx_referral_rewards_total{result="forfeited"} 1`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("exposition lacks %q", want)
+		}
+	}
+}
+
 // ADR-060 Decision 6: refusals by the request rate limit, by route
 // template -- never by user.
 func TestObserveRateLimited(t *testing.T) {

@@ -5,6 +5,7 @@ import { ClerkProvider } from '@clerk/nextjs'
 import './globals.css'
 import QueryProvider from '@/providers/QueryProvider'
 import ApiAuthBridge from '@/providers/ApiAuthBridge'
+import ReferralClaimer from '@/providers/ReferralClaimer'
 import RuntimeEnvScript from '@/providers/RuntimeEnvScript'
 
 // Nothing may be prerendered: a statically rendered page would freeze the
@@ -37,6 +38,7 @@ export default function RootLayout({
         >
           <QueryProvider>
             <ApiAuthBridge />
+            <ReferralClaimer />
             {children}
           </QueryProvider>
         </body>

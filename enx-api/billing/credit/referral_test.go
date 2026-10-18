@@ -1,0 +1,126 @@
+package credit
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"enx-api/utils/sqlitex"
+)
+
+// Referral credits (ADR-051): the invitee's bonus goes into the trial pool,
+// the referrer's reward into the top-up pool.
+
+func TestGrantReferralBonusAddsToTrialAndExtendsExpiry(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	start := time.Now().Truncate(time.Second)
+	setClock(t, start)
+	mustGrantTrial(t, userID, 100, 7*24*time.Hour)
+
+	want := start.Add(14 * 24 * time.Hour)
+	expires, err := GrantReferralBonus(ctx, userID, ReferralBonus{Amount: 100, ExpiresAt: want})
+	if err != nil {
+		t.Fatalf("GrantReferralBonus: %v", err)
+	}
+	if !expires.Equal(want) {
+		t.Fatalf("trialExpiresAt = %v, want %v", expires, want)
+	}
+	acc := loadAccount(t, userID)
+	if acc.TrialBalance != 200 || acc.TrialExpiresAt == nil || *acc.TrialExpiresAt != want.Unix() {
+		t.Fatalf("got trial=%d expires=%v, want 200 / %d", acc.TrialBalance, acc.TrialExpiresAt, want.Unix())
+	}
+	var rows []sqlitex.CreditTransaction
+	sqlitex.DB.Where("user_id = ? AND type = ?", userID, TypeGrantReferralBonus).Find(&rows)
+	if len(rows) != 1 || rows[0].Amount != 100 || rows[0].BalanceAfter != 200 ||
+		rows[0].StripeEventId == nil || *rows[0].StripeEventId != "referral-bonus:"+userID {
+		t.Fatalf("GRANT_REFERRAL_BONUS rows = %+v, want one row of 100 keyed referral-bonus:<id>", rows)
+	}
+}
+
+func TestGrantReferralBonusKeepsALaterExpiry(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	start := time.Now().Truncate(time.Second)
+	setClock(t, start)
+	mustGrantTrial(t, userID, 100, 30*24*time.Hour)
+
+	expires, err := GrantReferralBonus(ctx, userID, ReferralBonus{Amount: 100, ExpiresAt: start.Add(14 * 24 * time.Hour)})
+	if err != nil {
+		t.Fatalf("GrantReferralBonus: %v", err)
+	}
+	if want := start.Add(30 * 24 * time.Hour); !expires.Equal(want) {
+		t.Fatalf("trialExpiresAt = %v, want the existing %v", expires, want)
+	}
+}
+
+func TestGrantReferralBonusIsIdempotentPerInvitee(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	mustGrantTrial(t, userID, 100, 7*24*time.Hour)
+	bonus := ReferralBonus{Amount: 100, ExpiresAt: time.Now().Add(14 * 24 * time.Hour)}
+
+	if _, err := GrantReferralBonus(ctx, userID, bonus); err != nil {
+		t.Fatalf("GrantReferralBonus: %v", err)
+	}
+	if _, err := GrantReferralBonus(ctx, userID, bonus); err != nil {
+		t.Fatalf("replayed GrantReferralBonus: %v", err)
+	}
+	if acc := loadAccount(t, userID); acc.TrialBalance != 200 {
+		t.Fatalf("trial = %d, want 200 (a replay grants nothing)", acc.TrialBalance)
+	}
+}
+
+func TestGrantReferralBonusIssuesAMissingTrialFirst(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	start := time.Now().Truncate(time.Second)
+	setClock(t, start)
+
+	_, err := GrantReferralBonus(ctx, userID, ReferralBonus{
+		Amount: 100, ExpiresAt: start.Add(14 * 24 * time.Hour),
+		TrialAmount: 100, TrialTTL: 7 * 24 * time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("GrantReferralBonus: %v", err)
+	}
+	if acc := loadAccount(t, userID); acc.TrialBalance != 200 {
+		t.Fatalf("trial = %d, want 200 (trial 100 + bonus 100)", acc.TrialBalance)
+	}
+	var count int64
+	sqlitex.DB.Model(&sqlitex.CreditTransaction{}).Where("user_id = ? AND type = ?", userID, TypeGrantTrial).Count(&count)
+	if count != 1 {
+		t.Fatalf("GRANT_TRIAL rows = %d, want 1", count)
+	}
+	// The trial is still once per account.
+	if granted, _ := GrantTrial(ctx, userID, 100, time.Hour); granted {
+		t.Fatal("GrantTrial granted again after the backfill")
+	}
+}
+
+func TestGrantReferralRewardAddsToTopupWithoutAPaymentIntent(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	mustGrantSubscription(t, userID, 1, 40)
+
+	if err := GrantReferralReward(ctx, userID, 300, "referral-reward:invitee-1"); err != nil {
+		t.Fatalf("GrantReferralReward: %v", err)
+	}
+	if err := GrantReferralReward(ctx, userID, 300, "referral-reward:invitee-1"); err != nil {
+		t.Fatalf("replayed GrantReferralReward: %v", err)
+	}
+	if acc := loadAccount(t, userID); acc.TopupBalance != 340 {
+		t.Fatalf("topup = %d, want 340 (granted once)", acc.TopupBalance)
+	}
+	var rows []sqlitex.CreditTransaction
+	sqlitex.DB.Where("user_id = ? AND type = ?", userID, TypeGrantReferralReward).Find(&rows)
+	if len(rows) != 1 || rows[0].Amount != 300 || rows[0].BalanceAfter != 340 || rows[0].StripePaymentIntentId != nil {
+		t.Fatalf("GRANT_REFERRAL_REWARD rows = %+v, want one row of 300 with no payment intent", rows)
+	}
+}
+
+func TestGrantReferralRewardRejectsANonPositiveAmount(t *testing.T) {
+	if err := GrantReferralReward(context.Background(), "u-"+t.Name(), 0, "referral-reward:x"); err == nil {
+		t.Fatal("GrantReferralReward(0) succeeded, want an error")
+	}
+}

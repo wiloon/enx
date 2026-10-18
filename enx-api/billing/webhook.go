@@ -9,6 +9,7 @@ import (
 
 	"enx-api/billing/credit"
 	billingstripe "enx-api/billing/stripe"
+	"enx-api/referral"
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
 
@@ -92,7 +93,16 @@ func (h *Handler) handleCheckoutSessionCompleted(ctx context.Context, event stri
 		if session.PaymentIntent != nil {
 			paymentIntentID = session.PaymentIntent.ID
 		}
-		return credit.GrantTopup(ctx, userID, amount, event.ID, paymentIntentID)
+		if err := credit.GrantTopup(ctx, userID, amount, event.ID, paymentIntentID); err != nil {
+			return err
+		}
+		// No payment intent means nothing was charged (a 100% discount).
+		if paymentIntentID != "" {
+			h.recordFirstPayment(ctx, event, userID, referral.FirstPayment{
+				Kind: referral.KindTopup, PaymentIntentID: paymentIntentID, Credits: amount,
+			})
+		}
+		return nil
 	}
 
 	var subscriptionID string
@@ -167,6 +177,11 @@ func (h *Handler) handleInvoicePaid(ctx context.Context, event stripeSDK.Event) 
 	if err := credit.GrantSubscription(ctx, userID, amount, time.Unix(inv.PeriodEnd, 0), event.ID, paymentIntentID); err != nil {
 		return err
 	}
+	if inv.AmountPaid > 0 {
+		h.recordFirstPayment(ctx, event, userID, referral.FirstPayment{
+			Kind: referral.KindSubscription, PaymentIntentID: paymentIntentID, InvoiceID: inv.ID, Credits: amount,
+		})
+	}
 
 	if err := updateSubscriptionBySubscriptionID(subscriptionID, map[string]interface{}{
 		"plan":       plan,
@@ -175,6 +190,21 @@ func (h *Handler) handleInvoicePaid(ctx context.Context, event stripeSDK.Event) 
 		return err
 	}
 	return h.syncSubscriptionState(ctx, subscriptionID)
+}
+
+// recordFirstPayment hands a paid event to the referral domain (ADR-051
+// Decision 5), timed at the event. A failure only logs: failing the webhook
+// would make Stripe retry an event whose credits are already granted.
+func (h *Handler) recordFirstPayment(ctx context.Context, event stripeSDK.Event, userID string, p referral.FirstPayment) {
+	if h.payments == nil {
+		return
+	}
+	if event.Created > 0 {
+		p.PaidAt = time.Unix(event.Created, 0)
+	}
+	if err := h.payments.RecordFirstPayment(ctx, userID, p); err != nil {
+		logger.Errorf("%s %s: record first payment of user %s for referrals: %v", event.Type, event.ID, userID, err)
+	}
 }
 
 // handleSubscriptionChanged handles customer.subscription.updated and

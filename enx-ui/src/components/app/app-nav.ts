@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   CreditCard,
   FileText,
+  Gift,
   Globe,
   Home,
   Search,
@@ -48,6 +49,8 @@ export const NAV_INSIGHTS: NavItem[] = [
 export const NAV_FOOTER: NavItem[] = [
   { label: 'Settings', href: '/settings', icon: Settings },
   { label: 'Billing', href: '/billing', icon: CreditCard },
+  // Invite links (ADR-051 Decision 8).
+  { label: 'Invite friends', href: '/invite', icon: Gift },
   // Back to the marketing site (ADR-027 decision 4). Same Next.js app, so it
   // is a plain in-app link, not an external one.
   { label: 'Back to site', href: '/', icon: Globe },

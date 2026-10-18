@@ -302,3 +302,23 @@ func TestListTotalsSplitPaidGiftedTrialAndConsumed(t *testing.T) {
 		t.Fatalf("hadClawback=%v balance=%d, want true and 80 (100 − 20, no trial)", got.HadClawback, got.Balance)
 	}
 }
+
+// ADR-051: invite credits are gifts, not purchases or the sign-up trial.
+func TestListTotalsCountReferralCreditsAsGifted(t *testing.T) {
+	store := &fakeStore{
+		accounts: []Account{{UserID: "u1", Email: "a@example.com"}},
+		ledger: []Transaction{
+			row("u1", "GRANT_TRIAL", 100),
+			row("u1", "GRANT_REFERRAL_BONUS", 100),
+			row("u1", "GRANT_REFERRAL_REWARD", 300),
+			row("u1", "GRANT_ADMIN", 5),
+		},
+	}
+	page, err := NewService(store, false, func() time.Time { return now }).List(context.Background(), ListParams{})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if got, want := page.Users[0].Totals, (Totals{Gifted: 405, Trial: 100}); got != want {
+		t.Fatalf("totals = %+v, want %+v", got, want)
+	}
+}

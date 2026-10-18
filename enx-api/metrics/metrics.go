@@ -42,6 +42,8 @@ type Metrics struct {
 	sqliteBusy     *prometheus.CounterVec
 	trialGrants    prometheus.Counter
 	rateLimited    *prometheus.CounterVec
+	referralClaims *prometheus.CounterVec
+	referralReward *prometheus.CounterVec
 }
 
 // New builds the metrics on a fresh registry, with the Go runtime and
@@ -93,12 +95,21 @@ func New() *Metrics {
 			Name: "enx_rate_limited_total",
 			Help: "Requests refused by the per-user request rate limit (ADR-060), by route template.",
 		}, []string{"route"}),
+		referralClaims: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "enx_referral_claims_total",
+			Help: "Invite claims (ADR-051), by result: ok or the refusal reason.",
+		}, []string{"result"}),
+		referralReward: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "enx_referral_rewards_total",
+			Help: "Referrer rewards settled (ADR-051), by result: rewarded or forfeited.",
+		}, []string{"result"}),
 	}
 	m.registry.MustRegister(
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 		m.httpRequests, m.httpDuration, m.lookupDuration, m.aiDuration, m.aiTokens,
 		m.clerkVerify, m.stripeWebhooks, m.sqliteBusy, m.trialGrants, m.rateLimited,
+		m.referralClaims, m.referralReward,
 	)
 	return m
 }
@@ -186,6 +197,18 @@ func (m *Metrics) ObserveTrialGrant() {
 // stays bounded; who was refused is on the request log line, not here.
 func (m *Metrics) ObserveRateLimited(route string) {
 	m.rateLimited.WithLabelValues(route).Inc()
+}
+
+// ObserveReferralClaim records one invite claim: "ok" or the refusal reason
+// (a fixed set, from the referral package).
+func (m *Metrics) ObserveReferralClaim(result string) {
+	m.referralClaims.WithLabelValues(result).Inc()
+}
+
+// ObserveReferralReward records one settled referrer reward: "rewarded" or
+// "forfeited". The total shows the standing gift liability (ADR-051).
+func (m *Metrics) ObserveReferralReward(result string) {
+	m.referralReward.WithLabelValues(result).Inc()
 }
 
 // InstrumentDB counts statements on db that fail because SQLite is busy or

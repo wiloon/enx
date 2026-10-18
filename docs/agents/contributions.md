@@ -2,6 +2,15 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-10-18: Referral credits — ADR-051 / issue #198
+
+**Agent**: Claude Code
+**Task**: Invite links: the invitee's claim bonus in the trial pool, the referrer's reward for the invitee's first payment after a cooling-off period.
+
+**Solution**: Domain package `enx-api/referral/` (claim rules, first-payment recording, `PayDueRewards`) on injected interfaces; SQL in `repo/referral.go`; ledger writes `credit.GrantReferralBonus` / `credit.GrantReferralReward` in `billing/credit`; Stripe check in `billing/stripe/charge.go`; wiring in `referral/adapters` and `main` (hourly `runReferralRewards`). enx-ui keeps its rules in `src/lib/referral.ts`; `ReferralClaimer` in the root layout makes the claim.
+
+**Lesson (enx-api layering)**: a domain package that `repo/` imports cannot hold its own gin handler if that handler imports `middleware`: `middleware` → `enx` → `repo` → the domain package is a cycle. `adminuser/handler.go` gets away with it because it never touches `middleware`. Put such a handler in `handlers/` behind a small service interface, as `handlers/referral.go` and `handlers/preferences.go` do.
+
 ## 2026-10-14: Turn on the current page when "Always enable on this site" is granted
 
 **Agent**: Claude Code
