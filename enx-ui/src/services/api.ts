@@ -31,6 +31,11 @@ import {
   WordListStatus,
   MarkedWord,
 } from '@/types'
+import {
+  ACCOUNT_DISABLED_MESSAGE,
+  type AdminUserAction,
+  isAccountDisabled,
+} from '@/lib/account'
 
 export type SubscriptionPlan = 'pro' | 'pro-plus' | 'max'
 export type TopupTier = 'small' | 'medium' | 'large'
@@ -59,6 +64,10 @@ export class ApiService {
   private baseUrl: string = ''
   private accessToken: string = ''
   private tokenGetter?: TokenGetter
+  // Set by the first account_disabled answer (ADR-062 Decision 5): from then
+  // on nothing is sent, so nothing retries, and the app shows the notice.
+  private accountDisabled = false
+  private disabledListeners = new Set<() => void>()
 
   constructor(baseUrl?: string) {
     if (baseUrl) {
@@ -82,6 +91,23 @@ export class ApiService {
     this.baseUrl = url
   }
 
+  isAccountDisabled(): boolean {
+    return this.accountDisabled
+  }
+
+  // Calls listener when the account turns out to be disabled; returns the
+  // unsubscribe.
+  onAccountDisabled(listener: () => void): () => void {
+    this.disabledListeners.add(listener)
+    return () => this.disabledListeners.delete(listener)
+  }
+
+  private markAccountDisabled() {
+    if (this.accountDisabled) return
+    this.accountDisabled = true
+    this.disabledListeners.forEach((listener) => listener())
+  }
+
   private async authToken(): Promise<string> {
     if (this.tokenGetter) {
       try {
@@ -98,6 +124,9 @@ export class ApiService {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
+    if (this.accountDisabled) {
+      return { success: false, error: ACCOUNT_DISABLED_MESSAGE }
+    }
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -125,6 +154,9 @@ export class ApiService {
           throw new Error('Session expired')
         }
         const errorBody = await response.json().catch(() => null)
+        if (isAccountDisabled(response.status, errorBody)) {
+          this.markAccountDisabled()
+        }
         // A 5xx without a message of its own (e.g. enx-api unreachable behind
         // the proxy) gets a hint the reader can act on instead of "HTTP 500:".
         const message =
@@ -152,6 +184,18 @@ export class ApiService {
 
   async getMe(): Promise<ApiResponse<MeData>> {
     return this.makeRequest('/api/me')
+  }
+
+  // Deletes the signed-in user's account for good (ADR-062), confirmed by
+  // their email. A refusal (an active subscription, a mismatched email)
+  // comes back as a failure with the server's message.
+  async deleteMyAccount(
+    email: string
+  ): Promise<ApiResponse<{ success: boolean }>> {
+    return this.makeRequest('/api/me', {
+      method: 'DELETE',
+      body: JSON.stringify({ email }),
+    })
   }
 
   // Per-user settings kept on the server (ADR-044); the extension reads and
@@ -276,6 +320,31 @@ export class ApiService {
     if (before) params.set('before', before)
     return this.makeRequest(
       `/api/admin/users/${encodeURIComponent(id)}/transactions?${params}`
+    )
+  }
+
+  // The admin's account actions (ADR-062): sign the user out everywhere,
+  // disable or re-enable them.
+  async adminUserAction(
+    id: string,
+    action: AdminUserAction
+  ): Promise<ApiResponse<{ success: boolean }>> {
+    return this.makeRequest(
+      `/api/admin/users/${encodeURIComponent(id)}/${action}`,
+      { method: 'POST' }
+    )
+  }
+
+  // Deletes the account; resetTrial (test accounts only) also lets the email
+  // get the sign-up trial again.
+  async adminDeleteUser(
+    id: string,
+    options: { resetTrial: boolean }
+  ): Promise<ApiResponse<{ success: boolean }>> {
+    const query = options.resetTrial ? '?resetTrial=true' : ''
+    return this.makeRequest(
+      `/api/admin/users/${encodeURIComponent(id)}${query}`,
+      { method: 'DELETE' }
     )
   }
 

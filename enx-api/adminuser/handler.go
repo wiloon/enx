@@ -120,6 +120,7 @@ func summaryJSON(u UserSummary) gin.H {
 		"id":                 u.UserID,
 		"email":              u.Email,
 		"name":               u.Name,
+		"status":             u.Status,
 		"createdAt":          timeOrNil(u.CreatedAt),
 		"lastLoginAt":        timeOrNil(u.LastLoginAt),
 		"plan":               u.Plan,

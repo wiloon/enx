@@ -87,7 +87,12 @@ const (
 	authUnauthorizedParty = "unauthorized_party"
 	authProvisionError    = "provision_error"
 	authUnavailable       = "unavailable"
+	authDisabled          = "account_disabled"
 )
+
+// AccountDisabled is the users.status of an account the admin disabled
+// (ADR-062 Decision 5; account.StatusDisabled).
+const AccountDisabled = "disabled"
 
 // ClerkAuth validates Clerk session-token JWTs and provisions local users.
 // obs, when not nil, hears how every check ended.
@@ -165,7 +170,7 @@ func ClerkAuth(cfg ClerkConfig, obs AuthObserver) gin.HandlerFunc {
 		email, _ := claims["email"].(string)
 		name, _ := claims["name"].(string)
 
-		userID, err := enx.GetOrCreateByClerkUserID(sub, email, name, cfg.LastLoginUpdateInterval)
+		user, err := enx.GetOrCreateClerkUser(sub, email, name, cfg.LastLoginUpdateInterval)
 		if err != nil {
 			logger.Errorf("ClerkAuth: provision user clerk_user_id=%s: %v", sub, err)
 			observe(authProvisionError, start)
@@ -174,9 +179,22 @@ func ClerkAuth(cfg ClerkConfig, obs AuthObserver) gin.HandlerFunc {
 			return
 		}
 
-		observe(authOK, start)
 		c.Set("clerk_user_id", sub)
-		c.Set("user_id", userID)
+		c.Set("user_id", user.Id)
+		// ADR-062 Decision 5: Clerk bans a disabled account, but a token
+		// minted before the ban (or a failed ban) still reaches us.
+		if user.Status == AccountDisabled {
+			observe(authDisabled, start)
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"code":    "account_disabled",
+				"message": "This account has been disabled.",
+			})
+			c.Abort()
+			return
+		}
+
+		observe(authOK, start)
 		c.Next()
 	}
 }

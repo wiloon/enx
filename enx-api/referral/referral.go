@@ -26,8 +26,9 @@ const (
 	StatusRewarded Status = "rewarded"
 	// StatusForfeited: the payment was refunded or disputed; no reward.
 	StatusForfeited Status = "forfeited"
-	// StatusNoReward: the first payment is recorded, but the reward for its
-	// kind was configured off (0) at the time.
+	// StatusNoReward: the first payment is recorded, but no reward is due:
+	// the reward for its kind was configured off (0) at the time, or the
+	// referral's rewards were blocked at claim time (RewardsBlocked).
 	StatusNoReward Status = "no_reward"
 )
 
@@ -47,6 +48,9 @@ type Referral struct {
 	Code       string
 	ClaimedAt  time.Time
 	Status     Status
+	// RewardsBlocked: the invitee's email had a trial on an earlier,
+	// deleted account (ADR-062 Decision 3), so neither side is rewarded.
+	RewardsBlocked bool
 
 	// FirstPayment is nil until the invitee pays.
 	FirstPayment *FirstPayment
@@ -110,6 +114,10 @@ type AccountRepo interface {
 	CreatedAt(ctx context.Context, userID string) (time.Time, error)
 	// HasPaid reports whether the user ever bought credits.
 	HasPaid(ctx context.Context, userID string) (bool, error)
+	// TrialUsedByAnotherAccount reports whether the user's email was granted
+	// the sign-up trial by a different account (ADR-062 Decision 3): this
+	// is a deleted account signed up again.
+	TrialUsedByAnotherAccount(ctx context.Context, userID string) (bool, error)
 }
 
 // Bonus is the invitee's claim grant.

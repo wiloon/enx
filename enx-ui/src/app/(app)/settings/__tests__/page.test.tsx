@@ -8,7 +8,18 @@ jest.mock('@/services/api', () => ({
   apiService: {
     getPreferences: jest.fn(),
     updatePreferences: jest.fn(),
+    getMe: jest.fn(),
+    deleteMyAccount: jest.fn(),
   },
+}))
+
+const mockLogout = jest.fn()
+jest.mock('@/hooks/useAuth', () => ({
+  useAuth: () => ({
+    isAuthenticated: true,
+    isLoading: false,
+    logout: mockLogout,
+  }),
 }))
 
 const api = apiService as jest.Mocked<typeof apiService>
@@ -41,6 +52,16 @@ const aiSwitch = () =>
 
 beforeEach(() => {
   jest.resetAllMocks()
+  api.getMe.mockResolvedValue({
+    success: true,
+    data: {
+      id: 'u1',
+      name: 'me',
+      email: 'me@example.com',
+      status: 'active',
+      isAdmin: false,
+    },
+  })
 })
 
 it('shows the switch on for a subscriber, whose default is on', async () => {
@@ -128,6 +149,85 @@ it('reports a failure to load the settings', async () => {
 
   expect(await screen.findByText('Session expired')).toBeInTheDocument()
   expect(screen.queryByRole('switch')).toBeNull()
+})
+
+describe('deleting the account (ADR-062)', () => {
+  beforeEach(() => {
+    api.getPreferences.mockResolvedValue({ success: true, data: subscriber })
+  })
+
+  const emailBox = () => screen.findByLabelText('Type your email to confirm')
+  const deleteButton = () =>
+    screen.getByRole('button', { name: 'Delete my account' })
+
+  it('says what is lost and what to do first', async () => {
+    renderPage()
+    await emailBox()
+
+    expect(
+      screen.getByText(/remaining trial, subscription and top-up credits/)
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/will not get trial credits or invite rewards/)
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Refund Policy' })).toHaveAttribute(
+      'href',
+      '/refund'
+    )
+    expect(screen.getByRole('link', { name: 'Billing' })).toHaveAttribute(
+      'href',
+      '/billing'
+    )
+  })
+
+  it('stays disabled until the account email is typed', async () => {
+    renderPage()
+    const box = await emailBox()
+    expect(deleteButton()).toBeDisabled()
+
+    fireEvent.change(box, { target: { value: 'you@example.com' } })
+    expect(deleteButton()).toBeDisabled()
+
+    fireEvent.change(box, { target: { value: ' Me@Example.com ' } })
+    await waitFor(() => expect(deleteButton()).toBeEnabled())
+  })
+
+  it('deletes the account and signs out', async () => {
+    api.deleteMyAccount.mockResolvedValue({
+      success: true,
+      data: { success: true },
+    })
+    renderPage()
+    const box = await emailBox()
+    fireEvent.change(box, { target: { value: 'me@example.com' } })
+    await waitFor(() => expect(deleteButton()).toBeEnabled())
+
+    fireEvent.click(deleteButton())
+
+    await waitFor(() =>
+      expect(api.deleteMyAccount).toHaveBeenCalledWith('me@example.com')
+    )
+    await waitFor(() => expect(mockLogout).toHaveBeenCalled())
+  })
+
+  it('shows why a deletion was refused and stays signed in', async () => {
+    api.deleteMyAccount.mockResolvedValue({
+      success: false,
+      error:
+        'Cancel your subscription on the Billing page before deleting your account.',
+    })
+    renderPage()
+    const box = await emailBox()
+    fireEvent.change(box, { target: { value: 'me@example.com' } })
+    await waitFor(() => expect(deleteButton()).toBeEnabled())
+
+    fireEvent.click(deleteButton())
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Cancel your subscription on the Billing page'
+    )
+    expect(mockLogout).not.toHaveBeenCalled()
+  })
 })
 
 it('tells the user only the word is sent, not the sentence', async () => {

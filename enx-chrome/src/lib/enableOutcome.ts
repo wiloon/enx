@@ -5,6 +5,8 @@
 // them. A typed outcome lets the popup say something useful and lets us
 // notice which pages we cannot handle.
 
+import { ACCOUNT_DISABLED_MESSAGE } from '@/lib/accountDisabled'
+
 export type EnableFailureReason =
   /** The adapter matched the host but declared this page out of scope. */
   | 'unsupported-page'
@@ -21,6 +23,8 @@ export type EnableFailureReason =
   | 'rate-limited'
   /** The sign-in session expired (the page already shows its own notice). */
   | 'session-expired'
+  /** The admin disabled the account (ADR-062 Decision 5). */
+  | 'account-disabled'
   /** An unexpected exception. */
   | 'error'
   /** The browser refused to run our script on this page (chrome://, the
@@ -53,6 +57,7 @@ const FAILURE_MESSAGES: Record<EnableFailureReason, string> = {
     "Catglish couldn't load word data for this page. Check your connection and try again.",
   'rate-limited': 'Too many requests. Please wait a moment and try again.',
   'session-expired': 'Your session has expired. Please sign in again.',
+  'account-disabled': ACCOUNT_DISABLED_MESSAGE,
   error: 'Something went wrong while processing this page.',
   'injection-blocked': "Catglish can't run on this page.",
 }

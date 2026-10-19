@@ -103,6 +103,24 @@ describe('fetchWordChunk', () => {
     expect(sent).toHaveLength(1)
   })
 
+  // ADR-062 Decision 5: a disabled account stays disabled; no retry.
+  it('does not retry a disabled account', async () => {
+    const { d, sent } = deps([
+      {
+        success: false,
+        error: 'This account has been disabled.',
+        status: 403,
+        code: 'account_disabled',
+      },
+      ok,
+    ])
+
+    expect(await fetchWordChunk(['cat'], d)).toEqual({
+      kind: 'account-disabled',
+    })
+    expect(sent).toHaveLength(1)
+  })
+
   it('stops when a newer run took over while the chunk was in flight', async () => {
     const { d, sent } = deps([{ success: false }, ok])
     d.isStale = () => true

@@ -268,6 +268,32 @@ describe('bilingual legal pages', () => {
     expect(screen.queryByText(/没有更细的/)).toBeNull()
   })
 
+  // ADR-062 Decision 9: what deleting an account removes, what it keeps
+  // (the ledger, Stripe's records, the email HMAC) and why.
+  it('explains what account deletion removes and keeps, in both languages', () => {
+    const en = render(<PrivacyPolicyPage />)
+    expect(
+      screen.getByRole('heading', { name: 'Deleting your account' })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/delete your account at any time on the Settings page/)
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/A keyed hash \(HMAC\) of your email address/)
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/credit ledger and your subscription records/)
+    ).toBeInTheDocument()
+    en.unmount()
+
+    render(<PrivacyPolicyZhPage />)
+    expect(
+      screen.getByRole('heading', { name: '注销账号' })
+    ).toBeInTheDocument()
+    expect(screen.getByText(/邮箱地址的带密钥哈希（HMAC）/)).toBeInTheDocument()
+    expect(screen.getByText(/积分账本和订阅记录/)).toBeInTheDocument()
+  })
+
   // ADR-049 Decision 14: the operator can look at account and billing data.
   it('says the operator may view account and billing data, in both languages', () => {
     const en = render(<PrivacyPolicyPage />)

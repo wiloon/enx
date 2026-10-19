@@ -73,6 +73,7 @@ const ACTIONABLE: ReadonlySet<EnableFailureReason> = new Set([
   'lookup-failed',
   'rate-limited',
   'session-expired',
+  'account-disabled',
   'error',
 ])
 

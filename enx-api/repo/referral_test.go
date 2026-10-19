@@ -140,6 +140,23 @@ func TestReferralsMarkForfeited(t *testing.T) {
 	}
 }
 
+func TestReferralsKeepRewardsBlocked(t *testing.T) {
+	newReferralDB(t)
+	ctx := context.Background()
+	refs := Referrals{}
+	_, _ = refs.Insert(ctx, referral.Referral{InviteeID: "bob", ReferrerID: "alice", Code: "A", ClaimedAt: refT0,
+		Status: referral.StatusClaimed, RewardsBlocked: true})
+	_, _ = refs.Insert(ctx, referral.Referral{InviteeID: "carol", ReferrerID: "alice", Code: "A", ClaimedAt: refT0,
+		Status: referral.StatusClaimed})
+
+	if got, _, _ := refs.Get(ctx, "bob"); !got.RewardsBlocked {
+		t.Fatalf("bob = %+v, want rewards blocked", got)
+	}
+	if got, _, _ := refs.Get(ctx, "carol"); got.RewardsBlocked {
+		t.Fatalf("carol = %+v, want rewards not blocked", got)
+	}
+}
+
 func TestReferralsByReferrer(t *testing.T) {
 	newReferralDB(t)
 	ctx := context.Background()

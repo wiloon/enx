@@ -16,6 +16,8 @@ func TestE2E_SignUpTrial(t *testing.T) {
 	cfg := config.Default()
 	cfg.Credits.Trial.Amount = 100
 	cfg.Credits.Trial.CallsPerDay = 1
+	// No HMAC key, no trial (ADR-062 Decision 3).
+	cfg.Account.EmailHMACKey = "e2e-hmac-key"
 	cfg.Stripe.Costs.DefineWord = config.TokenPrice{WeightIn: 1, WeightOut: 3, Divisor: 3000}
 	cfg.SentenceTranslate.Provider = "deepseek"
 	cfg.SentenceTranslate.DeepSeek = config.OpenAICompatible{APIKey: "test-key", BaseURL: model.URL}

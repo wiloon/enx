@@ -31,6 +31,7 @@ type Config struct {
 	App               App               `mapstructure:"app"`
 	Clerk             Clerk             `mapstructure:"clerk"`
 	Admin             Admin             `mapstructure:"admin"`
+	Account           Account           `mapstructure:"account"`
 	SentenceTranslate SentenceTranslate `mapstructure:"sentence-translate"`
 	Stripe            Stripe            `mapstructure:"stripe"`
 	AIWord            AIWord            `mapstructure:"ai-word"`
@@ -101,6 +102,17 @@ type Clerk struct {
 	Issuer            string   `mapstructure:"issuer"`
 	AuthorizedParties []string `mapstructure:"authorized-parties"`
 	JWKSURL           string   `mapstructure:"jwks-url"`
+	// SecretKey is the Clerk Backend API key (ADR-062 Decision 8), used only
+	// to delete, ban, unban and sign out users. Empty leaves those actions
+	// off (503); everything else works without it.
+	SecretKey Secret `mapstructure:"secret-key"`
+}
+
+// Account is account deletion and the trial grant record (ADR-062).
+type Account struct {
+	// EmailHMACKey keys the HMAC of each email in trial_grants. It must never
+	// be rotated once live: every existing record would stop matching.
+	EmailHMACKey Secret `mapstructure:"email-hmac-key"`
 }
 
 type Admin struct {
@@ -658,6 +670,11 @@ var envBindings = map[string]string{
 	"clerk.issuer":             "CLERK_ISSUER",
 	"clerk.authorized-parties": "CLERK_AUTHORIZED_PARTIES",
 	"clerk.jwks-url":           "CLERK_JWKS_URL",
+	// Clerk Backend API key (ADR-062): homelab mounts it from the enx-clerk
+	// Secret, prod reads it from /opt/enx/enx-api.env.
+	"clerk.secret-key": "CLERK_SECRET_KEY",
+	// ADR-062 Decision 3: the trial grant record's email HMAC key.
+	"account.email-hmac-key": "ACCOUNT_EMAIL_HMAC_KEY",
 	// Space-separated Clerk user ids allowed to call POST /api/admin/*.
 	// Empty => admin endpoints are effectively off.
 	"admin.clerk-user-ids": "ADMIN_CLERK_USER_IDS",

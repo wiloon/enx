@@ -876,6 +876,9 @@ const processArticleContent = async (
             console.log('Session expired during word processing')
             showSessionExpiredMessage()
             return failed('session-expired')
+          case 'account-disabled':
+            // ADR-062: every later chunk would be refused the same way.
+            return failed('account-disabled')
           case 'stale':
             return ENABLE_OK
           case 'rate-limited':

@@ -16,7 +16,7 @@ func TestGrantTrialCountsTowardBalance(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 
-	granted, err := GrantTrial(ctx, userID, 100, 7*24*time.Hour)
+	granted, err := GrantTrial(ctx, userID, "email-"+userID, 100, 7*24*time.Hour)
 	if err != nil {
 		t.Fatalf("GrantTrial: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestGrantTrialOnlyOncePerAccount(t *testing.T) {
 		t.Fatalf("Settle: %v", err)
 	}
 
-	granted, err := GrantTrial(ctx, userID, 100, time.Hour)
+	granted, err := GrantTrial(ctx, userID, "email-"+userID, 100, time.Hour)
 	if err != nil {
 		t.Fatalf("second GrantTrial: %v", err)
 	}
@@ -53,11 +53,59 @@ func TestGrantTrialOnlyOncePerAccount(t *testing.T) {
 	}
 }
 
+// ADR-062 Decision 3: one trial per email, across deleted accounts.
+func TestGrantTrialRecordsTheEmailAndSkipsItForAnotherAccount(t *testing.T) {
+	ctx := context.Background()
+	first, second := "u-"+t.Name()+"-1", "u-"+t.Name()+"-2"
+	email := "hmac-" + t.Name()
+
+	if granted, err := GrantTrial(ctx, first, email, 100, time.Hour); err != nil || !granted {
+		t.Fatalf("first GrantTrial = %v, %v; want true", granted, err)
+	}
+	var grant sqlitex.TrialGrant
+	if err := sqlitex.DB.Where("email_hmac = ?", email).First(&grant).Error; err != nil || grant.UserId != first {
+		t.Fatalf("trial grant record = %+v, %v; want one for %s", grant, err, first)
+	}
+
+	granted, err := GrantTrial(ctx, second, email, 100, time.Hour)
+	if err != nil || granted {
+		t.Fatalf("GrantTrial for the same email = %v, %v; want false, nil", granted, err)
+	}
+	if got, _ := Balance(ctx, second); got != 0 {
+		t.Fatalf("Balance = %d, want 0 for an email that already had a trial", got)
+	}
+}
+
+// The migration backfills a record for every existing user, including one
+// whose sign-up trial failed: that account still gets its own trial.
+func TestGrantTrialGrantsWhenTheRecordIsTheAccountsOwn(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	email := "hmac-" + t.Name()
+	sqlitex.DB.Create(&sqlitex.TrialGrant{EmailHmac: email, UserId: userID, GrantedAt: 1})
+
+	if granted, err := GrantTrial(ctx, userID, email, 100, time.Hour); err != nil || !granted {
+		t.Fatalf("GrantTrial = %v, %v; want true for the record's own account", granted, err)
+	}
+}
+
+func TestGrantTrialWithoutAnEmailGrantsNothing(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	granted, err := GrantTrial(ctx, userID, "", 100, time.Hour)
+	if err != nil || granted {
+		t.Fatalf("GrantTrial without an email = %v, %v; want false, nil", granted, err)
+	}
+	if got, _ := Balance(ctx, userID); got != 0 {
+		t.Fatalf("Balance = %d, want 0", got)
+	}
+}
+
 func TestGrantTrialZeroAmountIsOff(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 
-	granted, err := GrantTrial(ctx, userID, 0, time.Hour)
+	granted, err := GrantTrial(ctx, userID, "email-"+userID, 0, time.Hour)
 	if err != nil || granted {
 		t.Fatalf("GrantTrial(0) = %v, %v; want false, nil", granted, err)
 	}
@@ -145,7 +193,7 @@ func TestSettleConcurrentKeepsTrialNonNegativeAndLosesNothing(t *testing.T) {
 
 func mustGrantTrial(t *testing.T, userID string, amount int64, ttl time.Duration) {
 	t.Helper()
-	if _, err := GrantTrial(context.Background(), userID, amount, ttl); err != nil {
+	if _, err := GrantTrial(context.Background(), userID, "email-"+userID, amount, ttl); err != nil {
 		t.Fatalf("setup GrantTrial: %v", err)
 	}
 }

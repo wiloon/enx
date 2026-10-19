@@ -21,7 +21,7 @@ func newLedgerDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&sqlitex.CreditAccount{}, &sqlitex.CreditTransaction{}); err != nil {
+	if err := db.AutoMigrate(&sqlitex.CreditAccount{}, &sqlitex.CreditTransaction{}, &sqlitex.TrialGrant{}); err != nil {
 		t.Fatal(err)
 	}
 	prev := sqlitex.DB
@@ -33,7 +33,7 @@ func TestLedgerGrantsTheInviteeBonusIntoTheTrialPool(t *testing.T) {
 	newLedgerDB(t)
 	expires := time.Now().Add(14 * 24 * time.Hour).Truncate(time.Second)
 
-	got, err := Ledger{}.GrantInviteeBonus(context.Background(), "bob", referral.Bonus{
+	got, err := ledger.GrantInviteeBonus(context.Background(), "bob", referral.Bonus{
 		Amount: 100, ExpiresAt: expires, TrialAmount: 100, TrialTTL: 7 * 24 * time.Hour,
 	})
 	if err != nil {
@@ -47,11 +47,18 @@ func TestLedgerGrantsTheInviteeBonusIntoTheTrialPool(t *testing.T) {
 	if acc.TrialBalance != 200 {
 		t.Fatalf("trial = %d, want 200 (backfilled trial + bonus)", acc.TrialBalance)
 	}
+	var grant sqlitex.TrialGrant
+	if err := sqlitex.DB.First(&grant).Error; err != nil || grant.EmailHmac != "h:bob" || grant.UserId != "bob" {
+		t.Fatalf("trial grant record = %+v, %v; want bob's email HMAC", grant, err)
+	}
 }
+
+// ledger looks every user's email HMAC up as "h:<user id>".
+var ledger = Ledger{EmailHMAC: func(_ context.Context, userID string) (string, error) { return "h:" + userID, nil }}
 
 func TestLedgerGrantsTheReferrerRewardIntoTheTopupPool(t *testing.T) {
 	newLedgerDB(t)
-	if err := (Ledger{}).GrantReferrerReward(context.Background(), "alice", 300, "referral-reward:bob"); err != nil {
+	if err := ledger.GrantReferrerReward(context.Background(), "alice", 300, "referral-reward:bob"); err != nil {
 		t.Fatalf("GrantReferrerReward: %v", err)
 	}
 	var acc sqlitex.CreditAccount

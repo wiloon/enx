@@ -79,7 +79,7 @@ func TestGrantReferralBonusIssuesAMissingTrialFirst(t *testing.T) {
 
 	_, err := GrantReferralBonus(ctx, userID, ReferralBonus{
 		Amount: 100, ExpiresAt: start.Add(14 * 24 * time.Hour),
-		TrialAmount: 100, TrialTTL: 7 * 24 * time.Hour,
+		TrialAmount: 100, TrialTTL: 7 * 24 * time.Hour, EmailHMAC: "email-" + userID,
 	})
 	if err != nil {
 		t.Fatalf("GrantReferralBonus: %v", err)
@@ -93,7 +93,7 @@ func TestGrantReferralBonusIssuesAMissingTrialFirst(t *testing.T) {
 		t.Fatalf("GRANT_TRIAL rows = %d, want 1", count)
 	}
 	// The trial is still once per account.
-	if granted, _ := GrantTrial(ctx, userID, 100, time.Hour); granted {
+	if granted, _ := GrantTrial(ctx, userID, "email-"+userID, 100, time.Hour); granted {
 		t.Fatal("GrantTrial granted again after the backfill")
 	}
 }

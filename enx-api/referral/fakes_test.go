@@ -117,12 +117,17 @@ func (f *fakeReferrals) MarkForfeited(_ context.Context, inviteeID, reason strin
 }
 
 type fakeAccounts struct {
-	created map[string]time.Time
-	paid    map[string]bool
+	created        map[string]time.Time
+	paid           map[string]bool
+	trialElsewhere map[string]bool
 }
 
 func newFakeAccounts() *fakeAccounts {
-	return &fakeAccounts{created: map[string]time.Time{}, paid: map[string]bool{}}
+	return &fakeAccounts{created: map[string]time.Time{}, paid: map[string]bool{}, trialElsewhere: map[string]bool{}}
+}
+
+func (f *fakeAccounts) TrialUsedByAnotherAccount(_ context.Context, userID string) (bool, error) {
+	return f.trialElsewhere[userID], nil
 }
 
 func (f *fakeAccounts) CreatedAt(_ context.Context, userID string) (time.Time, error) {

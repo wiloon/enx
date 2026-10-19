@@ -196,6 +196,8 @@ export interface AdminUserSummary {
   id: string
   email: string
   name: string
+  // users.status: 'active', or 'disabled' by an admin (ADR-062).
+  status: string
   createdAt: string | null
   lastLoginAt: string | null
   plan: string

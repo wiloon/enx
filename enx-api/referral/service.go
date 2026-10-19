@@ -167,13 +167,21 @@ func (s *Service) claim(ctx context.Context, inviteeID, code string) (ClaimResul
 		return ClaimResult{}, &ClaimError{ReasonAlreadyPaid}
 	}
 
+	// A deleted account signed up again links the referral as usual but
+	// earns nothing on either side (ADR-062 Decision 3); otherwise deleting
+	// and re-registering would farm the referrer reward.
+	blocked, err := s.accounts.TrialUsedByAnotherAccount(ctx, inviteeID)
+	if err != nil {
+		return ClaimResult{}, err
+	}
+
 	// The bonus is granted before the referral is stored. Its idempotency
 	// key is per invitee, so a claim that then loses a race to a concurrent
 	// claim (or fails to store) has granted nothing the winner or a retry
 	// would not have; the reverse order could store a referral whose bonus
 	// a retry can no longer reach.
 	var res ClaimResult
-	if terms.InviteeBonus > 0 {
+	if terms.InviteeBonus > 0 && !blocked {
 		expires, err := s.credits.GrantInviteeBonus(ctx, inviteeID, Bonus{
 			Amount:      terms.InviteeBonus,
 			ExpiresAt:   created.Add(terms.InviteeTTL),
@@ -188,6 +196,7 @@ func (s *Service) claim(ctx context.Context, inviteeID, code string) (ClaimResul
 
 	inserted, err := s.referrals.Insert(ctx, Referral{
 		InviteeID: inviteeID, ReferrerID: referrerID, Code: code, ClaimedAt: now, Status: StatusClaimed,
+		RewardsBlocked: blocked,
 	})
 	if err != nil {
 		return ClaimResult{}, err
@@ -239,7 +248,7 @@ func (s *Service) RecordFirstPayment(ctx context.Context, userID string, p First
 		p.PaidAt = s.now()
 	}
 	reward := Reward{Status: StatusPending, Amount: amount, DueAt: p.PaidAt.Add(terms.RewardDelay)}
-	if amount <= 0 {
+	if amount <= 0 || r.RewardsBlocked {
 		reward = Reward{Status: StatusNoReward}
 	}
 	_, err = s.referrals.RecordFirstPayment(ctx, userID, p, reward)

@@ -11,6 +11,7 @@ import { ArrowLeft, ExternalLink } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import PageHeader from '@/components/app/PageHeader'
+import AccountActions from '@/components/admin/AccountActions'
 import AdjustCreditsForm from '@/components/admin/AdjustCreditsForm'
 import CreditBalance from '@/components/admin/CreditBalance'
 import {
@@ -24,7 +25,8 @@ import { apiService } from '@/services/api'
 import type { AdminUserDetail } from '@/types'
 
 // One user's account, usage and credit ledger (ADR-049 Decision 11), with
-// the admin grant and deduction forms (Decisions 2-3).
+// the admin grant and deduction forms (Decisions 2-3) and the account
+// actions: sign out, disable, delete (ADR-062).
 export default function AdminUserPage() {
   const { id } = useParams<{ id: string }>()
 
@@ -184,6 +186,26 @@ function UserDetail({ detail }: { detail: AdminUserDetail }) {
       </Card>
 
       <Ledger userId={user.id} />
+
+      <Card role="region" aria-labelledby="account-title">
+        <CardHeader>
+          <CardTitle id="account-title" className="text-base">
+            Account
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AccountActions
+            userId={user.id}
+            email={user.email}
+            status={user.status}
+            onChanged={() =>
+              queryClient.invalidateQueries({
+                queryKey: ['admin-user', user.id],
+              })
+            }
+          />
+        </CardContent>
+      </Card>
     </>
   )
 }

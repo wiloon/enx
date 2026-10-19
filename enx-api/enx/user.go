@@ -92,6 +92,14 @@ func (u *User) Activate() error {
 	}).Error
 }
 
+// SetStatus sets users.status: "active" or "disabled" (ADR-062 Decision 5).
+func (u *User) SetStatus(status string) error {
+	return sqlitex.DB.Model(u).Updates(map[string]interface{}{
+		"status":     status,
+		"updated_at": time.Now(),
+	}).Error
+}
+
 // SetVerificationToken assigns a new verification token and expiry.
 func (u *User) SetVerificationToken(token string, expiresAt time.Time) error {
 	return sqlitex.DB.Model(u).Updates(map[string]interface{}{

@@ -15,9 +15,11 @@ import (
 // Account is one user with their subscription and credit balances, as
 // stored. A user is a users row with a Clerk id (ADR-049 Decision 15).
 type Account struct {
-	UserID             string
-	Email              string
-	Name               string
+	UserID string
+	Email  string
+	Name   string
+	// Status is users.status: "active", or "disabled" (ADR-062).
+	Status             string
 	CreatedAt          time.Time
 	LastLoginAt        time.Time
 	Plan               string

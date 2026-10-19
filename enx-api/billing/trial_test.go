@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,10 +14,10 @@ import (
 func TestTrialGrantGrantsOnceAndCountsIt(t *testing.T) {
 	ctx := context.Background()
 	grants := 0
-	g := TrialGrant{Amount: 100, TTL: 7 * 24 * time.Hour, Observe: func() { grants++ }}
+	g := TrialGrant{Amount: 100, TTL: 7 * 24 * time.Hour, EmailHMAC: fakeHMAC, Observe: func() { grants++ }}
 
 	for i := 0; i < 2; i++ {
-		if err := g.NewUser(ctx, "u-trial-hook"); err != nil {
+		if err := g.NewUser(ctx, "u-trial-hook", "hook@example.com"); err != nil {
 			t.Fatalf("NewUser: %v", err)
 		}
 	}
@@ -31,9 +32,9 @@ func TestTrialGrantGrantsOnceAndCountsIt(t *testing.T) {
 
 func TestTrialGrantZeroAmountGrantsNothing(t *testing.T) {
 	ctx := context.Background()
-	g := TrialGrant{Amount: 0, TTL: time.Hour, Observe: func() { t.Fatal("a zero-amount trial must not be counted") }}
+	g := TrialGrant{Amount: 0, TTL: time.Hour, EmailHMAC: fakeHMAC, Observe: func() { t.Fatal("a zero-amount trial must not be counted") }}
 
-	if err := g.NewUser(ctx, "u-trial-off"); err != nil {
+	if err := g.NewUser(ctx, "u-trial-off", "off@example.com"); err != nil {
 		t.Fatalf("NewUser: %v", err)
 	}
 	if got, _ := credit.Balance(ctx, "u-trial-off"); got != 0 {
@@ -41,10 +42,49 @@ func TestTrialGrantZeroAmountGrantsNothing(t *testing.T) {
 	}
 }
 
+// ADR-062 Decision 3: the email decides, so a second account with the same
+// email (case and spaces aside, which the HMAC folds) gets no trial.
+func TestTrialGrantSkipsAnEmailThatAlreadyHadATrial(t *testing.T) {
+	ctx := context.Background()
+	hmac := func(email string) string { return "h:" + strings.ToLower(strings.TrimSpace(email)) }
+	g := TrialGrant{Amount: 100, TTL: time.Hour, EmailHMAC: hmac}
+
+	if err := g.NewUser(ctx, "u-trial-email-1", "again@example.com"); err != nil {
+		t.Fatalf("NewUser: %v", err)
+	}
+	if err := g.NewUser(ctx, "u-trial-email-2", " Again@Example.com "); err != nil {
+		t.Fatalf("NewUser: %v", err)
+	}
+	if got, _ := credit.Balance(ctx, "u-trial-email-2"); got != 0 {
+		t.Fatalf("Balance = %d, want 0 for a re-registered email", got)
+	}
+}
+
+func TestTrialGrantWithoutAnEmailGrantsNothing(t *testing.T) {
+	ctx := context.Background()
+	g := TrialGrant{Amount: 100, TTL: time.Hour, EmailHMAC: fakeHMAC,
+		Observe: func() { t.Fatal("no email, no trial") }}
+
+	if err := g.NewUser(ctx, "u-trial-no-email", ""); err != nil {
+		t.Fatalf("NewUser: %v", err)
+	}
+	if got, _ := credit.Balance(ctx, "u-trial-no-email"); got != 0 {
+		t.Fatalf("Balance = %d, want 0", got)
+	}
+}
+
+// fakeHMAC stands in for account.EmailHMAC: "" for a blank email.
+func fakeHMAC(email string) string {
+	if strings.TrimSpace(email) == "" {
+		return ""
+	}
+	return "h:" + email
+}
+
 func TestMeReportsTrial(t *testing.T) {
 	userID := "u-me-trial"
 	before := time.Now()
-	if _, err := credit.GrantTrial(context.Background(), userID, 100, 7*24*time.Hour); err != nil {
+	if _, err := credit.GrantTrial(context.Background(), userID, "h:"+userID, 100, 7*24*time.Hour); err != nil {
 		t.Fatal(err)
 	}
 

@@ -144,6 +144,8 @@ var envVars = map[string]string{
 	"CLERK_ISSUER":                                    "clerk.issuer",
 	"CLERK_AUTHORIZED_PARTIES":                        "clerk.authorized-parties",
 	"CLERK_JWKS_URL":                                  "clerk.jwks-url",
+	"CLERK_SECRET_KEY":                                "clerk.secret-key",
+	"ACCOUNT_EMAIL_HMAC_KEY":                          "account.email-hmac-key",
 	"ADMIN_CLERK_USER_IDS":                            "admin.clerk-user-ids",
 	"SENTENCE_TRANSLATE_PROVIDER":                     "sentence-translate.provider",
 	"SENTENCE_TRANSLATE_REQUEST_TIMEOUT":              "sentence-translate.request-timeout",

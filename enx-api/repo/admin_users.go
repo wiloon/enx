@@ -25,6 +25,7 @@ type accountRow struct {
 	ID                  string
 	Email               string
 	Name                string
+	UserStatus          string
 	CreatedAt           time.Time
 	LastLoginTime       time.Time
 	Plan                sql.NullString
@@ -41,6 +42,7 @@ func (r accountRow) account() adminuser.Account {
 		UserID:              r.ID,
 		Email:               r.Email,
 		Name:                r.Name,
+		Status:              r.UserStatus,
 		CreatedAt:           r.CreatedAt,
 		LastLoginAt:         r.LastLoginTime,
 		Plan:                r.Plan.String,
@@ -57,7 +59,7 @@ func (r accountRow) account() adminuser.Account {
 	return a
 }
 
-const accountColumns = `u.id, u.email, u.name, u.created_at, u.last_login_time,
+const accountColumns = `u.id, u.email, u.name, u.status AS user_status, u.created_at, u.last_login_time,
 	s.plan, s.status, s.stripe_customer_id,
 	a.subscription_balance, a.topup_balance, a.trial_balance, a.trial_expires_at`
 
