@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -42,6 +43,13 @@ func noTrialConfig() *config.Config {
 // adminDictEnvWithConfig is adminDictEnv on the given config.
 func adminDictEnvWithConfig(t *testing.T, cfg *config.Config) (baseURL string, adminToken, plainToken string) {
 	t.Helper()
+	return adminDictEnvServed(t, cfg, e2eServer)
+}
+
+// adminDictEnvServed is adminDictEnvWithConfig with the server started by
+// serve, for tests that wire the router differently (e.g. a fake Stripe).
+func adminDictEnvServed(t *testing.T, cfg *config.Config, serve func(*testing.T, *config.Config) (*httptest.Server, func())) (baseURL string, adminToken, plainToken string) {
+	t.Helper()
 
 	env := clerktest.NewEnv(t)
 	cfg.Clerk = env.Config()
@@ -59,7 +67,7 @@ func adminDictEnvWithConfig(t *testing.T, cfg *config.Config) (baseURL string, a
 
 	seedEcdict(t)
 
-	ts, done := e2eServer(t, cfg)
+	ts, done := serve(t, cfg)
 	t.Cleanup(done)
 
 	adminToken = env.SignSessionToken(t, jwt.MapClaims{"sub": adminSub, "email": "admin@example.com", "name": "admin"})
