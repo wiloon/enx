@@ -112,13 +112,33 @@ func TestGetOrCreateByClerkUserID_SkipsLastLoginUpdateWithinInterval(t *testing.
 	}
 }
 
+// The middleware reads the status from the same lookup to reject a disabled
+// account (ADR-062 Decision 5).
+func TestGetOrCreateClerkUser_ReturnsTheStatus(t *testing.T) {
+	newUserTestDB(t)
+
+	u, err := GetOrCreateClerkUser("user_status", "s@example.com", "S", time.Nanosecond)
+	if err != nil || u.Status != "active" {
+		t.Fatalf("new user = %+v, %v; want status active", u, err)
+	}
+	if err := GetUserByID(u.Id).SetStatus("disabled"); err != nil {
+		t.Fatal(err)
+	}
+	again, err := GetOrCreateClerkUser("user_status", "s@example.com", "S", time.Nanosecond)
+	if err != nil || again.Id != u.Id || again.Status != "disabled" {
+		t.Fatalf("existing user = %+v, %v; want %s disabled", again, err, u.Id)
+	}
+}
+
 type recordingHook struct {
 	userIDs []string
+	emails  []string
 	err     error
 }
 
-func (h *recordingHook) NewUser(_ context.Context, userID string) error {
+func (h *recordingHook) NewUser(_ context.Context, userID, email string) error {
 	h.userIDs = append(h.userIDs, userID)
+	h.emails = append(h.emails, email)
 	return h.err
 }
 
@@ -145,6 +165,9 @@ func TestGetOrCreateByClerkUserID_NewUserHookFiresOnlyOnCreate(t *testing.T) {
 
 	if len(hook.userIDs) != 1 || hook.userIDs[0] != id {
 		t.Fatalf("hook calls = %v, want exactly [%s]", hook.userIDs, id)
+	}
+	if hook.emails[0] != "h@example.com" {
+		t.Fatalf("hook email = %q, want the token's email", hook.emails[0])
 	}
 }
 

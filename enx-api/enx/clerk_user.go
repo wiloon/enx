@@ -12,10 +12,10 @@ import (
 )
 
 // NewUserHook runs once, right after a local user is provisioned -- e.g. to
-// grant the sign-up trial (ADR-048 Decision 3). main wires it, so enx does
-// not import billing.
+// grant the sign-up trial (ADR-048 Decision 3), which is once per email
+// (ADR-062). main wires it, so enx does not import billing.
 type NewUserHook interface {
-	NewUser(ctx context.Context, userID string) error
+	NewUser(ctx context.Context, userID, email string) error
 }
 
 var newUserHook NewUserHook
@@ -35,8 +35,18 @@ func GetUserByClerkUserID(clerkUserID string) *User {
 // older than lastLoginUpdateInterval (user.last-login-update-interval), since
 // this runs on every authenticated request (docs/PERF_FIRST_QUERY_LATENCY.md).
 func GetOrCreateByClerkUserID(clerkUserID, email, name string, lastLoginUpdateInterval time.Duration) (string, error) {
+	u, err := GetOrCreateClerkUser(clerkUserID, email, name, lastLoginUpdateInterval)
+	if err != nil {
+		return "", err
+	}
+	return u.Id, nil
+}
+
+// GetOrCreateClerkUser is GetOrCreateByClerkUserID returning the whole user,
+// so the caller can check its status without a second query.
+func GetOrCreateClerkUser(clerkUserID, email, name string, lastLoginUpdateInterval time.Duration) (*User, error) {
 	if clerkUserID == "" {
-		return "", fmt.Errorf("empty clerk user id")
+		return nil, fmt.Errorf("empty clerk user id")
 	}
 	existing := GetUserByClerkUserID(clerkUserID)
 	if existing.Id != "" {
@@ -47,7 +57,7 @@ func GetOrCreateByClerkUserID(clerkUserID, email, name string, lastLoginUpdateIn
 				"updated_at":      now,
 			}).Error
 		}
-		return existing.Id, nil
+		return existing, nil
 	}
 
 	resolvedName := name
@@ -73,15 +83,15 @@ func GetOrCreateByClerkUserID(clerkUserID, email, name string, lastLoginUpdateIn
 		LastLoginTime: time.Now(),
 	}
 	if err := u.Create(); err != nil {
-		return "", err
+		return nil, err
 	}
 	logger.Infof("provisioned clerk user clerk_user_id=%s id=%s name=%s", clerkUserID, u.Id, resolvedName)
 	if newUserHook != nil {
 		// The account exists either way; a failed hook is logged, never
 		// turned into a failed sign-in.
-		if err := newUserHook.NewUser(context.Background(), u.Id); err != nil {
+		if err := newUserHook.NewUser(context.Background(), u.Id, email); err != nil {
 			logger.Errorf("new-user hook failed for user %s: %v", u.Id, err)
 		}
 	}
-	return u.Id, nil
+	return u, nil
 }

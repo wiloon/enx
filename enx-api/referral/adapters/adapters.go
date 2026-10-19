@@ -13,17 +13,26 @@ import (
 	stripeSDK "github.com/stripe/stripe-go/v86"
 )
 
-// Ledger is referral.CreditGranter over billing/credit.
-type Ledger struct{}
+// Ledger is referral.CreditGranter over billing/credit. EmailHMAC looks up
+// the invitee's email HMAC (repo.TrialGrants.EmailHMACOf), which the trial
+// the bonus may issue first needs (ADR-062 Decision 3).
+type Ledger struct {
+	EmailHMAC func(ctx context.Context, userID string) (string, error)
+}
 
 var _ referral.CreditGranter = Ledger{}
 
-func (Ledger) GrantInviteeBonus(ctx context.Context, inviteeID string, b referral.Bonus) (time.Time, error) {
+func (l Ledger) GrantInviteeBonus(ctx context.Context, inviteeID string, b referral.Bonus) (time.Time, error) {
+	emailHMAC, err := l.EmailHMAC(ctx, inviteeID)
+	if err != nil {
+		return time.Time{}, err
+	}
 	return credit.GrantReferralBonus(ctx, inviteeID, credit.ReferralBonus{
 		Amount:      b.Amount,
 		ExpiresAt:   b.ExpiresAt,
 		TrialAmount: b.TrialAmount,
 		TrialTTL:    b.TrialTTL,
+		EmailHMAC:   emailHMAC,
 	})
 }
 

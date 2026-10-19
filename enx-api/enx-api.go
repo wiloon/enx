@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"enx-api/account"
+	accountadapters "enx-api/account/adapters"
 	"enx-api/ailimit"
 	"enx-api/adminuser"
 	"enx-api/aitranslate"
@@ -79,6 +81,8 @@ func main() {
 		// Losing the busy counter must not stop the API.
 		logger.Errorf("metrics: sqlite instrumentation: %v", err)
 	}
+
+	backfillTrialGrants(cfg)
 
 	ecdict.Init(cfg.Ecdict.DBPath)
 	dictsample.SetEnabled(cfg.Ecdict.Sampling)
@@ -308,6 +312,23 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 // setupRouterWithStripe is setupRouter on the given Stripe client (nil turns
 // billing off). End-to-end tests hand in a client backed by a local fake.
 func setupRouterWithStripe(cfg *config.Config, m *metrics.Metrics, stripeClient *stripeSDK.Client) *gin.Engine {
+	return setupRouterWithClients(cfg, m, stripeClient, clerkBackend(cfg.Clerk))
+}
+
+// clerkBackend is the Clerk Backend API client (ADR-062 Decision 8); nil
+// without CLERK_SECRET_KEY, which leaves deletion, disabling and signing out
+// off (503) and everything else working.
+func clerkBackend(c config.Clerk) account.Clerk {
+	if c.SecretKey == "" {
+		logger.Warnf("account deletion, disable and session revoke are off: CLERK_SECRET_KEY is not set")
+		return nil
+	}
+	return accountadapters.NewClerk(c.SecretKey.Reveal())
+}
+
+// setupRouterWithClients is setupRouterWithStripe with the Clerk Backend API
+// client given too (nil: not configured).
+func setupRouterWithClients(cfg *config.Config, m *metrics.Metrics, stripeClient *stripeSDK.Client, clerk account.Clerk) *gin.Engine {
 	router := gin.New()
 
 	// Metrics and the request log wrap Recovery, so a recovered panic is
@@ -390,10 +411,14 @@ func setupRouterWithStripe(cfg *config.Config, m *metrics.Metrics, stripeClient 
 	// Sign-up trial (ADR-048): every new account gets the trial credits, and
 	// users whose AI access comes from the trial alone are held to its call
 	// rate on every AI feature.
+	// The trial is once per email too (ADR-062 Decision 3), checked against
+	// the trial grant record by the email's HMAC.
+	emailHMAC := account.NewEmailHMAC(cfg.Account.EmailHMACKey.Reveal())
 	enx.SetNewUserHook(billing.TrialGrant{
-		Amount:  cfg.Credits.Trial.Amount,
-		TTL:     time.Duration(cfg.Credits.Trial.TTLDays) * 24 * time.Hour,
-		Observe: m.ObserveTrialGrant,
+		Amount:    cfg.Credits.Trial.Amount,
+		TTL:       time.Duration(cfg.Credits.Trial.TTLDays) * 24 * time.Hour,
+		EmailHMAC: emailHMAC.Of,
+		Observe:   m.ObserveTrialGrant,
 	})
 	trialGate := ailimit.NewTrialGate(entitlements, ailimit.NewMemoryLimiter(ailimit.Limits{
 		CallsPerMinute: cfg.Credits.Trial.CallsPerMinute,
@@ -533,6 +558,13 @@ func setupRouterWithStripe(cfg *config.Config, m *metrics.Metrics, stripeClient 
 	// /api/me — requires authentication (Clerk session JWT)
 	apiGroup.GET("/me", handlers.GetMe(admins))
 
+	// Account deletion, disable and session revoke (ADR-062). One Delete
+	// serves the user's own (DELETE /api/me) and the admin's.
+	accountHandler := handlers.NewAccountHandler(account.NewService(
+		repo.Accounts{}, repo.TrialGrants{Hash: emailHMAC.Of}, clerk,
+		accountadapters.Subscriptions{Stripe: stripeClient}, admins, emailHMAC, time.Now))
+	apiGroup.DELETE("/me", accountHandler.DeleteMe)
+
 	// Server-side user preferences (ADR-044): the AI word fallback switch and
 	// its one-time notice. Defaults and editability follow the user's payment
 	// state (ADR-045 Decision 14).
@@ -621,6 +653,12 @@ func setupRouterWithStripe(cfg *config.Config, m *metrics.Metrics, stripeClient 
 		adminDict.GET("/users", adminUsers.List)
 		adminDict.GET("/users/:id", adminUsers.Detail)
 		adminDict.GET("/users/:id/transactions", adminUsers.Transactions)
+		// ADR-062 Decision 4-7: the admin's account actions. An account in
+		// ADMIN_CLERK_USER_IDS can be neither disabled nor deleted.
+		adminDict.POST("/users/:id/revoke-sessions", accountHandler.RevokeSessions)
+		adminDict.POST("/users/:id/disable", accountHandler.Disable)
+		adminDict.POST("/users/:id/enable", accountHandler.Enable)
+		adminDict.DELETE("/users/:id", accountHandler.Delete)
 	}
 
 	// Stripe webhook — deliberately NOT in apiGroup/authGroup: Stripe can't
@@ -665,8 +703,32 @@ func newReferralService(cfg *config.Config, sc *stripeSDK.Client, m *metrics.Met
 		RewardDelay:                time.Duration(r.RewardDelayDays) * day,
 		ClaimWindow:                time.Duration(r.ClaimWindowHours) * time.Hour,
 	}
-	return referral.NewService(repo.ReferralCodes{}, repo.Referrals{}, repo.ReferralAccounts{},
-		refadapters.Ledger{}, payments, time.Now, policy).WithObserver(m)
+	// A deleted account signed up again gets no invite rewards (ADR-062
+	// Decision 3), judged by the trial grant record.
+	trials := repo.TrialGrants{Hash: account.NewEmailHMAC(cfg.Account.EmailHMACKey.Reveal()).Of}
+	return referral.NewService(repo.ReferralCodes{}, repo.Referrals{}, repo.ReferralAccounts{Trials: trials},
+		refadapters.Ledger{EmailHMAC: trials.EmailHMACOf}, payments, time.Now, policy).WithObserver(m)
+}
+
+// backfillTrialGrants records every existing user's email in trial_grants
+// (ADR-062 Decision 3's migration), so an account from before the table
+// existed cannot be deleted and signed up again for a second trial. It runs
+// on every start: a record already there is kept, and a key set later still
+// gets its backfill.
+func backfillTrialGrants(cfg *config.Config) {
+	h := account.NewEmailHMAC(cfg.Account.EmailHMACKey.Reveal())
+	if !h.Configured() {
+		logger.Warnf("account.email-hmac-key (ACCOUNT_EMAIL_HMAC_KEY) is not set: no sign-up trial or invitee bonus is granted until it is")
+		return
+	}
+	added, err := repo.TrialGrants{Hash: h.Of}.Backfill(context.Background(), time.Now())
+	if err != nil {
+		logger.Errorf("trial grants backfill failed after %d record(s): %v", added, err)
+		return
+	}
+	if added > 0 {
+		logger.Infof("trial grants backfill: recorded %d existing email(s)", added)
+	}
 }
 
 // runReferralRewards settles the referrer rewards that are due (ADR-051

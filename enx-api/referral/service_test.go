@@ -297,6 +297,46 @@ func TestOfferWithTheBonusOffFallsBackToTheTrial(t *testing.T) {
 	}
 }
 
+// --- an email that already had a trial (ADR-062 Decision 3) ---
+
+func TestClaimByAReRegisteredEmailLinksTheReferralButGrantsNoBonus(t *testing.T) {
+	h := newHarness(t)
+	code := h.referrer(t, "alice")
+	h.invitee("bob")
+	h.accounts.trialElsewhere["bob"] = true
+
+	res, err := h.svc.Claim(context.Background(), "bob", code)
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	if res.Bonus != 0 || len(h.credits.bonuses) != 0 {
+		t.Fatalf("result = %+v, bonus grants = %d; want no bonus", res, len(h.credits.bonuses))
+	}
+	r, ok := h.referrals.rows["bob"]
+	if !ok || r.ReferrerID != "alice" || !r.RewardsBlocked {
+		t.Fatalf("referral = %+v (stored %v), want alice's with rewards blocked", r, ok)
+	}
+}
+
+func TestFirstPaymentOfABlockedReferralQueuesNoReferrerReward(t *testing.T) {
+	h := newHarness(t)
+	code := h.referrer(t, "alice")
+	h.invitee("bob")
+	h.accounts.trialElsewhere["bob"] = true
+	if _, err := h.svc.Claim(context.Background(), "bob", code); err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+
+	if err := h.svc.RecordFirstPayment(context.Background(), "bob", FirstPayment{
+		Kind: KindSubscription, InvoiceID: "in_1", Credits: 500, PaidAt: t0,
+	}); err != nil {
+		t.Fatalf("RecordFirstPayment: %v", err)
+	}
+	if r := h.referrals.rows["bob"]; r.Status != StatusNoReward || r.RewardAmount != 0 || r.FirstPayment == nil {
+		t.Fatalf("referral = %+v, want the payment recorded as no_reward", r)
+	}
+}
+
 // --- recording the first payment ---
 
 func TestRecordFirstPaymentForASubscription(t *testing.T) {

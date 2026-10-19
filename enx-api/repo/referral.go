@@ -68,6 +68,7 @@ func (Referrals) Insert(ctx context.Context, r referral.Referral) (bool, error) 
 		Code:           r.Code,
 		ClaimedAt:      r.ClaimedAt.UnixMilli(),
 		Status:         string(r.Status),
+		RewardsBlocked: r.RewardsBlocked,
 		UpdatedAt:      r.ClaimedAt.UnixMilli(),
 	})
 	return res.RowsAffected == 1, res.Error
@@ -150,15 +151,16 @@ func toReferrals(rows []sqlitex.Referral) []referral.Referral {
 
 func toReferral(row sqlitex.Referral) referral.Referral {
 	r := referral.Referral{
-		InviteeID:     row.InviteeUserId,
-		ReferrerID:    row.ReferrerUserId,
-		Code:          row.Code,
-		ClaimedAt:     time.UnixMilli(row.ClaimedAt).UTC(),
-		Status:        referral.Status(row.Status),
-		RewardAmount:  row.RewardAmount,
-		ForfeitReason: row.ForfeitReason,
-		RewardDueAt:   fromMillis(row.RewardDueAt),
-		RewardedAt:    fromMillis(row.RewardedAt),
+		InviteeID:      row.InviteeUserId,
+		ReferrerID:     row.ReferrerUserId,
+		Code:           row.Code,
+		ClaimedAt:      time.UnixMilli(row.ClaimedAt).UTC(),
+		Status:         referral.Status(row.Status),
+		RewardsBlocked: row.RewardsBlocked,
+		RewardAmount:   row.RewardAmount,
+		ForfeitReason:  row.ForfeitReason,
+		RewardDueAt:    fromMillis(row.RewardDueAt),
+		RewardedAt:     fromMillis(row.RewardedAt),
 	}
 	if row.FirstPaymentKind != nil {
 		r.FirstPayment = &referral.FirstPayment{
@@ -194,8 +196,15 @@ func nullable(s string) any {
 	return s
 }
 
-// ReferralAccounts is referral.AccountRepo over users and the credit ledger.
-type ReferralAccounts struct{}
+// ReferralAccounts is referral.AccountRepo over users, the credit ledger and
+// trial_grants.
+type ReferralAccounts struct {
+	Trials TrialGrants
+}
+
+func (a ReferralAccounts) TrialUsedByAnotherAccount(ctx context.Context, userID string) (bool, error) {
+	return a.Trials.TrialUsedByAnotherAccount(ctx, userID)
+}
 
 var _ referral.AccountRepo = ReferralAccounts{}
 

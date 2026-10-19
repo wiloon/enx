@@ -23,6 +23,10 @@ type Referral struct {
 	ClaimedAt      int64  `gorm:"column:claimed_at;not null"`
 	// Status: claimed | pending | rewarded | forfeited | no_reward
 	Status string `gorm:"column:status;not null;index:idx_referrals_due,priority:1"`
+	// RewardsBlocked: set at claim time when the invitee's email had a
+	// trial on a deleted account (ADR-062 Decision 3); the first payment
+	// then records no_reward.
+	RewardsBlocked bool `gorm:"column:rewards_blocked;not null;default:false"`
 
 	FirstPaymentKind      *string `gorm:"column:first_payment_kind"` // subscription | topup
 	FirstPaymentIntentId  *string `gorm:"column:first_payment_intent_id"`

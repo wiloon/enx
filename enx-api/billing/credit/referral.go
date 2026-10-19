@@ -31,6 +31,9 @@ type ReferralBonus struct {
 	// account never got it (e.g. its sign-up hook failed).
 	TrialAmount int64
 	TrialTTL    time.Duration
+	// EmailHMAC is the invitee's email HMAC, for that trial's once-per-email
+	// check (ADR-062); "" issues no trial.
+	EmailHMAC string
 }
 
 // GrantReferralBonus adds b.Amount to userID's trial pool and moves its
@@ -51,7 +54,7 @@ func GrantReferralBonus(ctx context.Context, userID string, b ReferralBonus) (tr
 			return err
 		}
 		if !already {
-			if _, err := grantTrial(tx, userID, b.TrialAmount, b.TrialTTL, at); err != nil {
+			if _, err := grantTrial(tx, userID, b.EmailHMAC, b.TrialAmount, b.TrialTTL, at); err != nil {
 				return err
 			}
 		}

@@ -21,7 +21,7 @@ func setupBillingDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&sqlitex.Subscription{}, &sqlitex.CreditAccount{}, &sqlitex.CreditTransaction{}); err != nil {
+	if err := db.AutoMigrate(&sqlitex.Subscription{}, &sqlitex.CreditAccount{}, &sqlitex.CreditTransaction{}, &sqlitex.TrialGrant{}); err != nil {
 		t.Fatal(err)
 	}
 	sqlitex.DB = db
@@ -73,7 +73,7 @@ func TestBillingTopupBalance(t *testing.T) {
 func TestBillingTrialBalance(t *testing.T) {
 	setupBillingDB(t)
 	ctx := context.Background()
-	if _, err := credit.GrantTrial(ctx, "trialist", 100, time.Hour); err != nil {
+	if _, err := credit.GrantTrial(ctx, "trialist", "h:trialist", 100, time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	for user, want := range map[string]int64{"trialist": 100, "nobody": 0} {
