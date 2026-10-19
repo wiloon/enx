@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-19
 related: adr-055（enx-ui 用 CNB 构建）、adr-056（enx-api 用 ko 构建）、adr-031（生产部署拓扑）
 ---
