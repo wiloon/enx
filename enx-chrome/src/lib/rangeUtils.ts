@@ -8,26 +8,30 @@
 export const nearestElement = (node: Node): Element | null =>
   node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement
 
-// Height of one line of text at the range's start, used as the popup's
-// vertical offset so its edge clears the line the clicked word sits on
-// (ADR-005). Prefer the range's own line-box height; fall back to the
-// computed line-height, then font-size * 1.2, then a fixed default.
+// Line pitch at the range's start, used as the popup's vertical offset so
+// its bottom edge clears the whole line above the clicked word (ADR-005).
+// The range's rect is only the glyph box (~font-size * 1.15), so on a page
+// with loose line spacing it alone lets the card cut into that line; take
+// the larger of it and the computed line-height (font-size * 1.2 when
+// `normal`), with a fixed default when neither resolves.
 export const referenceLineHeight = (range: Range): number => {
-  // getClientRects isn't implemented on jsdom's Range (tests exercise the
-  // fallback ladder below); guard so this stays callable there.
+  // getClientRects isn't implemented on jsdom's Range; guard so this stays
+  // callable there.
   const rectHeight =
     typeof range.getClientRects === 'function'
-      ? range.getClientRects()[0]?.height
-      : undefined
-  if (rectHeight && rectHeight > 0) return Math.ceil(rectHeight)
+      ? (range.getClientRects()[0]?.height ?? 0)
+      : 0
 
+  let styleHeight = 0
   const el = nearestElement(range.startContainer)
   if (el) {
     const style = window.getComputedStyle(el)
     const lineHeight = parseFloat(style.lineHeight)
-    if (!Number.isNaN(lineHeight)) return Math.ceil(lineHeight)
     const fontSize = parseFloat(style.fontSize)
-    if (!Number.isNaN(fontSize)) return Math.ceil(fontSize * 1.2)
+    if (!Number.isNaN(lineHeight)) styleHeight = lineHeight
+    else if (!Number.isNaN(fontSize)) styleHeight = fontSize * 1.2
   }
-  return 20
+
+  const height = Math.max(rectHeight, styleHeight)
+  return height > 0 ? Math.ceil(height) : 20
 }
