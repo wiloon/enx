@@ -63,6 +63,8 @@ CREATE INDEX idx_lookup_events_at      ON lookup_events (at);
 
 ### 3. GET 读释义，POST 记查词次数（#136）
 
+> **adr-061 修订**：扩展命中本地词典缓存时不发 GET，POST 带 `fromCache: true`，由 POST 扣配额、写查词事件。一次点击查词仍然只计量一次。
+
 | | `GET /api/word/:word`（及 `GET /api/translate?word=`） | `POST /api/me/word-lookups`（新，body `{"wordId"}`） |
 | ---- | ---- | ---- |
 | 查词事件 / 配额 | 写一行，超额返回 429 | 不写，不扣配额 |

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-19
 related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-029（每日查词配额是产品规则，失败放行）、adr-045（AI 兜底释义）、adr-059（查词事件；GET 读释义并计量，POST 记查词次数）、adr-060（请求限流）、issue #212（同一页面重复点词不重查）
 ---
@@ -57,7 +57,7 @@ related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-029�
 | POST 返回 | 扩展怎么做 |
 | ---- | ---- |
 | 200 `{queryCount, known}` | 把返回的查词次数和「认识」状态补到浮层上，画单词高亮，同步到 Side Panel |
-| 429 `lookup_quota_exceeded` | 释义留在屏幕上，提示配额已用完、可以升级；查词次数和高亮不变 |
+| 429 `lookup_quota_exceeded` | 释义留在屏幕上，在释义**下方**加一条提示，复用现在超额时的英文文案和升级链接（不替换整个浮层）；查词次数和高亮不变 |
 | 429 `too_many_requests`（ADR-060） | 释义留在屏幕上，与现在被限流时一样提示 |
 | 401 | 与现在一样，提示会话过期 |
 | 404（缓存里的 `Id` 在服务端已不存在，例如生产库重置过） | 释义留在屏幕上；删掉这一条缓存，在后台发 GET 拿到新的 `Id` 和词条，再用新 `Id` 发 POST，把查词次数补到浮层上 |
