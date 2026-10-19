@@ -10,7 +10,7 @@ related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-029�
 
 我们决定：
 
-- **扩展在 `chrome.storage.local` 里缓存词典释义**，只存词典本身的字段，不存用户状态。所有站点、所有标签页共用一份，浏览器重启后还在，30 天过期。
+- **扩展在后台 Service Worker 的 IndexedDB 里缓存词典释义**，只存词典本身的字段，不存用户状态。所有站点、所有标签页共用一份，浏览器重启后还在，30 天过期。
 - **命中缓存时立刻显示缓存里的释义，不发 GET；同时异步发 POST，并带上 `fromCache: true`。** 服务端看到这个标记，就替这次查词扣每日查词配额、写查词事件，然后照常给查词次数加一，返回新的查词次数和「认识」状态。超额时 POST 返回 429，释义照样留在屏幕上，扩展只提示配额已用完。
 
 ## Decision
@@ -26,13 +26,15 @@ related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-029�
 - 键是点击的词形，trim 并转成小写。GET 可能把词形归到原形（点 "ran"，返回 "run" 那一行），缓存按点击的词形存，"ran" 和 "run" 可以各存一条、指向同一个 `Id`。
 - 词典数据对所有用户都一样，没有隐私问题，所以缓存**不按用户分开**。
 
-### 2. 存在哪：`chrome.storage.local`，由后台 Service Worker 管
+### 2. 存在哪：后台 Service Worker 的 IndexedDB
 
+- 用 IndexedDB，因为淘汰要找「最久没用过的一条」（Decision 5），这需要按时间排序。IndexedDB 可以给 `lastUsedAt` 建索引，沿索引一下就能取到最旧的一条；`chrome.storage.local` 只是键值对，只能按键读写，找最旧的一条要读出全部条目。
 - 不用 `window.localStorage`：在 content script 里，它属于**当前网站**（比如 infoq.com），换个站点就读不到，网站自己的脚本还能读写、清空它。Service Worker 里则根本没有 `localStorage`。
-- 不用 IndexedDB：几千条小对象，`chrome.storage.local` 足够，不值得多一套 API。
+- **IndexedDB 必须在后台 Service Worker 里打开**，这时它才属于扩展。content script 里打开的 IndexedDB 属于网页，问题与 `localStorage` 一样。
 - 后台 Service Worker 是唯一读写缓存的地方。主窗口查词浮层和 Side Panel 本来就通过后台的 `getOneWord` 查词，缓存放在那里，两边都能用上。#212（同一页面重复点词不重查）也由这份缓存覆盖，不再单独让 content script 的 `wordCache` 走点击流程。
-- 每个词一个键：`dictCache:v1:<词>` → `{ entry, cachedAt, lastUsedAt }`。读写一条只碰一个键，不用每次读写整个缓存对象。
-- 键名带格式版本号 `v1`。缓存格式变了，或者词典有一次大的整体更新，就把版本号加一；旧前缀的键在下一次清理时删掉（Decision 5）。
+- 数据库 `enx-dictionary-cache`，一个对象仓库 `entries`：主键是词（Decision 1 的键），值为 `{ word, entry, cachedAt, lastUsedAt }`，在 `lastUsedAt` 上建一个索引。
+- 数据库带版本号。缓存格式变了，或者词典有一次大的整体更新，就把版本号加一，在升级回调（`onupgradeneeded`）里清空 `entries`。升级在扩展更新后第一次打开数据库时发生，不需要另外安排清理。
+- 原生 API 写起来啰嗦，可以用很小的封装库 `idb`，实现时定。单元测试用 `fake-indexeddb`。
 - 缓存逻辑（命中、过期、淘汰、写不写入）放在 `src/lib/` 里，存储作为参数传进去，用假的存储做单元测试（AGENTS.md「I/O enters through the constructor or the parameter list」）。
 
 ### 3. 一次点击查词怎么走
@@ -83,22 +85,23 @@ related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-029�
 
 **容量：最多 5000 条，单条超过 1 KB 不缓存。**
 
-- `chrome.storage.local` 默认上限 10 MB，而且扩展其他数据（`swlog`、统计上报、服务端设置等）也存在里面。缓存的上限按 10 MB 的一半来算，不能把它占满。
-- 本地 ECDICT 里常用词（`frq` 前 2 万）的释义加音标平均不到 100 字节，最长不到 400 字节；算上 JSON 和时间戳，一条大约 300 字节，5000 条约 1.5 MB。单条上限 1 KB，最坏情况也只有 5 MB。
+- IndexedDB 不占 `chrome.storage.local` 的 10 MB，用的是浏览器给扩展的存储池，大得多。上限照样设，为的是不占用户太多磁盘：按 5 MB 以内来算，即 `chrome.storage.local` 默认上限的一半。
+- 本地 ECDICT 里常用词（`frq` 前 2 万）的释义加音标平均不到 100 字节，最长不到 400 字节；算上字段名和时间戳，一条大约 300 字节，5000 条约 1.5 MB。单条上限 1 KB，最坏情况也只有 5 MB。
 - 不申请 `unlimitedStorage` 权限：用不到，而且多一项权限会让安装页多一行提示。
 
 **淘汰：满了就用新条目替换最久没用过的那一条。**
 
-- 不到 5000 条时直接写入。已经有 5000 条时，删掉 `lastUsedAt` 最早的一条，再写入新的，条目数保持 5000，不做批量清理。
+- 写入新词时，在同一个读写事务里：`count()` 不到 5000 就直接写入；已经有 5000 条，就沿 `lastUsedAt` 索引打开游标，删掉第一条（最久没用过的），再写入新的。条目数严格保持在 5000 以内，不做批量清理，也不需要定时任务。
+- 已经在缓存里的词（比如过期后被 GET 刷新）直接覆盖，不触发淘汰。
+- 用一个事务包住「数、删、写」，两次查词同时写入时也不会超出上限。
 - 过期的条目不专门清理：再被点到时当作没命中，GET 的结果覆盖它；一直没人点的，`lastUsedAt` 自然最早，会先被替换掉。
-- `chrome.storage.local` 只能按键读写，不能按 `lastUsedAt` 排序，所以满了的时候要读出全部条目（约 1.5 MB）找最旧的一条。这只在「没命中且已满」时发生，释义已经由 GET 显示出来，替换在后台做，用户不用等；不另外维护索引。
-- Service Worker 启动时顺便删掉旧版本前缀的键。
+- Service Worker 启动时不做任何清理。MV3 的 Service Worker 一天要被唤醒几十上百次，每次都可能有用户在等它处理点词。
 - 按最近使用时间替换（LRU），不按使用频率（LFU）：按频率删要在本地另外记次数，而一个去年查过 20 次、早就会了的词会一直占着位置。最近用过的词更可能再被点到；词的使用频率服务端已经有了（查词次数），本地不再记一份。
 - 写入失败（比如存储满了）只记 `swlog`，不影响这次查词。
 
 ### 6. 登出时尽力清空
 
-- 用户主动登出时，删掉所有 `dictCache:` 键。删除失败不处理，不重试：缓存里没有用户数据，留下来也没有影响。
+- 用户主动登出时，清空 `entries`。删除失败不处理，不重试：缓存里没有用户数据，留下来也没有影响。
 - 换账号、会话过期不清空。
 
 ## Considered Options
@@ -109,6 +112,7 @@ related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-029�
 - **超过上限时批量删到 4500 条**：少做几次清理，但要多一套阈值。一进一出更简单，存储大小也一直不变。否决（用户 2026-10-19 定）。
 - **连用户状态（查词次数、「认识」）也缓存**：命中时可以一个请求都不发。但别的设备、enx-ui 都会改用户状态，缓存很快就和服务端对不上，单词高亮会画错。否决。
 - **用 HTTP 缓存（GET 加 `Cache-Control`）**：GET 有副作用（计量），响应里还带每个用户的查词次数，不能交给浏览器缓存。否决。
+- **用 `chrome.storage.local`**：扩展已经在用，不用多一套 API。但它只能按键读写，找最旧的一条要读出全部条目，要么每次写满都全量读一遍，要么每天用 `chrome.alarms` 定时清理（还要多申请一个权限）。否决（用户 2026-10-19 定）。
 - **只在内存里缓存（#212 原来的方案）**：只能覆盖同一个标签页、同一次页面加载。被本 ADR 包含。
 
 ## Consequences
@@ -117,6 +121,6 @@ related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-029�
 - **超额的免费用户还能看到自己缓存过的词的释义。** 这是有意的（Decision 3），配额照样计数、照样提示。
 - **先上线 enx-api，再发扩展。** 新扩展遇到旧 enx-api 时，旧 POST 会忽略 `fromCache`，命中缓存的查词就不计配额、不进统计。
 - ADR-059 Decision 3 的表格里「POST：查词事件 / 配额：不写，不扣配额」要改成「带 `fromCache: true` 时写」。实现时一并更新 `handlers/word_lookup.go` 的注释（「It is not a lookup request either: no quota, no lookup event.」）。
-- 管理员在数据库里更正了某个词的释义，扩展最多 30 天后才会显示新释义。需要立即生效时，把 Decision 2 的版本号加一，所有缓存一起作废。
+- 管理员在数据库里更正了某个词的释义，扩展最多 30 天后才会显示新释义。需要立即生效时，把 Decision 2 的数据库版本号加一，所有缓存一起作废。
 - 生产库被重置时（例如录 Demo 前清空 `enx.db`），旧缓存里的 `Id` 都会失效，POST 返回 404，扩展删掉这条缓存、改走 GET，自动恢复。
 - 实现另开 issue，#212 并入那个 issue。
