@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-19
 related: adr-009（两池积分账本）、adr-012（Settle 事后扣费）、adr-048（试用积分与 `EXPIRE`）、adr-049（管理员流水时间线、`GRANT_ADMIN` / `DEDUCT_ADMIN` 的 `note`）、adr-051（邀请积分）、adr-062（注销账号时账本保留）、WIL-186（查词句子复习，不在本 ADR 范围）
 ---
