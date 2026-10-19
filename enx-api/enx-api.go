@@ -293,6 +293,21 @@ func ginMode(logLevel string) string {
 }
 
 func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
+	// Stripe billing is optional, like sentence translation: without STRIPE_SECRET_KEY (a local
+	// dev box, or a deployment that hasn't set the secret yet), billing
+	// endpoints stay disabled (503) rather than the server failing to start.
+	// See docs/tasks/TASK-SPEC-enx-billing-stripe-subscription.md.
+	stripeClient, stripeErr := billingstripe.New(cfg.Stripe.SecretKey.Reveal())
+	if stripeErr != nil {
+		logger.Warnf("billing disabled: %v", stripeErr)
+		stripeClient = nil
+	}
+	return setupRouterWithStripe(cfg, m, stripeClient)
+}
+
+// setupRouterWithStripe is setupRouter on the given Stripe client (nil turns
+// billing off). End-to-end tests hand in a client backed by a local fake.
+func setupRouterWithStripe(cfg *config.Config, m *metrics.Metrics, stripeClient *stripeSDK.Client) *gin.Engine {
 	router := gin.New()
 
 	// Metrics and the request log wrap Recovery, so a recovered panic is
@@ -473,15 +488,6 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 		tokenPricing(cfg.Stripe.Costs.Rephrase),
 	).WithTrialGate(trialGate)
 
-	// Stripe billing is likewise optional: without STRIPE_SECRET_KEY (a local
-	// dev box, or a deployment that hasn't set the secret yet), billing
-	// endpoints stay disabled (503) rather than the server failing to start.
-	// See docs/tasks/TASK-SPEC-enx-billing-stripe-subscription.md.
-	stripeClient, stripeErr := billingstripe.New(cfg.Stripe.SecretKey.Reveal())
-	if stripeErr != nil {
-		logger.Warnf("billing disabled: %v", stripeErr)
-		stripeClient = nil
-	}
 	// Invite links (ADR-051): the webhook reports each payment, the claim
 	// and summary endpoints sit behind clerkAuth, the offer is public.
 	referrals := newReferralService(cfg, stripeClient, m)

@@ -2,6 +2,15 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-10-18: Refund end-to-end tests — ADR-049 / issue #209
+
+**Agent**: Claude Code
+**Task**: Drive top-up → consume → partial → full refund, and a subscription refund, through the real router; ledger, balances and admin totals agree after every step.
+
+**Solution**: `enx-api/refund_e2e_test.go`. Stripe events go to `/billing/webhook` signed with `webhook.GenerateTestSignedPayload`; consumption is a real `/api/dictionary/ai-word` call against `fakeDeepSeek`; state is read back from the three `/api/admin/users` endpoints. The Stripe API is a local fake handed in through `setupRouterWithStripe`; `setupRouter` still builds the client from the secret key.
+
+**Lesson (ledger)**: `balance_after` means different things by row type. GRANT and CLAWBACK rows record their own pool, SETTLE records the spendable total (`settle.go`). That only shows once a user holds two pools, so a test with only a top-up pool won't catch it.
+
 ## 2026-10-18: Referral credits — ADR-051 / issue #198
 
 **Agent**: Claude Code
