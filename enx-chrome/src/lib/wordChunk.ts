@@ -2,6 +2,7 @@
 // unique words, one after another. This is one chunk's request and its retry
 // rule, kept apart from content.tsx so it runs on fakes.
 
+import { isAccountDisabled } from '@/lib/accountDisabled'
 import { isRequestRateLimited } from '@/lib/rateLimit'
 import type { BackgroundResponse, WordData } from '@/types'
 
@@ -18,6 +19,8 @@ export type WordChunkResult =
   | { kind: 'session-expired' }
   /** Still refused by the request rate limit after waiting (ADR-060). */
   | { kind: 'rate-limited' }
+  /** The admin disabled the account (ADR-062): retrying cannot help. */
+  | { kind: 'account-disabled' }
   | { kind: 'failed' }
   | { kind: 'stale' }
 
@@ -51,6 +54,9 @@ export async function fetchWordChunk(
       return { kind: 'ok', words: wrapped.data || response.wordProperties }
     }
     if (response?.sessionExpired) return { kind: 'session-expired' }
+    if (response && isAccountDisabled(response)) {
+      return { kind: 'account-disabled' }
+    }
 
     if (response && isRequestRateLimited(response)) {
       last = { kind: 'rate-limited' }

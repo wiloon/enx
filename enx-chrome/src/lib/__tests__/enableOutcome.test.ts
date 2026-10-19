@@ -13,6 +13,7 @@ const ALL_REASONS: EnableFailureReason[] = [
   'lookup-failed',
   'rate-limited',
   'session-expired',
+  'account-disabled',
   'error',
   'injection-blocked',
   'not-english',
@@ -41,6 +42,13 @@ describe('enableOutcome', () => {
   it('tells a rate-limited reader to wait and try again', () => {
     expect(failureMessage('rate-limited')).toBe(
       'Too many requests. Please wait a moment and try again.'
+    )
+  })
+
+  // ADR-062 Decision 5: enx-ui and the extension show the same message.
+  it('tells a disabled account so', () => {
+    expect(failureMessage('account-disabled')).toBe(
+      'This account has been disabled.'
     )
   })
 
