@@ -43,7 +43,10 @@ related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-029�
 
 - **一次点击查词**（主窗口点词、Side Panel 里点句中的词）：算一次查词，按下面的流程发 POST。
 - **只读拉取**（「翻译整句」后 Side Panel 为句子的锚点词建卡片、加载失败后点 Retry）：不算新的查词，命中缓存就直接用缓存里的释义，不发任何请求；查词次数用页面随句子一起发来的 `wordStates`（浮层刚查过这个词，里面有最新的次数）。没命中时与现在一样发 GET，结果写进缓存，不发 POST。
-- 后台的 `getOneWord` 消息带上「算不算一次查词」的参数，两种用法走同一个缓存，不另开消息类型。
+- 读释义和记次数仍是两条独立的后台消息，与现在一样：
+  - `getOneWord` 只读释义：先查缓存，没命中再发 GET 并写入缓存。返回值多一个 `fromCache`，说明释义是不是来自缓存。它不知道、也不管这次算不算查词。
+  - `recordWordLookup` 只记次数：发 POST。调用方根据 `getOneWord` 返回的 `fromCache` 决定带不带 `fromCache: true`。
+  - 「点击查词要记次数、只读拉取不记」由调用方决定，规则放在 `src/lib/`（现在的 `countLookup`），不做成 `getOneWord` 的参数。
 
 **命中缓存**（有这个键，且没过期）：
 
