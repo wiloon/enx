@@ -35,6 +35,9 @@ import {
 export type SubscriptionPlan = 'pro' | 'pro-plus' | 'max'
 export type TopupTier = 'small' | 'medium' | 'large'
 
+const SERVER_ERROR_MESSAGE =
+  'Something went wrong on our end. Refresh the page, or try again in a few minutes.'
+
 type TokenGetter = () => Promise<string | null | undefined>
 
 // The caller's own calendar day as YYYY-MM-DD. toISOString() would give the
@@ -122,10 +125,14 @@ export class ApiService {
           throw new Error('Session expired')
         }
         const errorBody = await response.json().catch(() => null)
+        // A 5xx without a message of its own (e.g. enx-api unreachable behind
+        // the proxy) gets a hint the reader can act on instead of "HTTP 500:".
         const message =
           errorBody?.error ||
           errorBody?.message ||
-          `HTTP ${response.status}: ${response.statusText}`
+          (response.status >= 500
+            ? SERVER_ERROR_MESSAGE
+            : `HTTP ${response.status}: ${response.statusText}`)
         throw new Error(message)
       }
 
