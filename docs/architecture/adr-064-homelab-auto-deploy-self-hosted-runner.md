@@ -43,6 +43,7 @@ related: adr-055（enx-ui 用 CNB 构建）、adr-056（enx-api 用 ko 构建）
    - 读出 `enx-api`、`enx-ui` 两个 Deployment 正在运行的镜像 SHA；
    - 用 GitHub compare API（`GITHUB_TOKEN` 鉴权，不需要 checkout）判断这个 SHA 到 `GITHUB_SHA` 之间有没有改到 `enx-api/` 或 `enx-ui/`。没改到的服务跳过，比如只改了文档的合并，两个服务都不构建；
    - 如果正在运行的 SHA 不是 main 的祖先（比如之前手动部署过一个 feature 分支），就无论改了哪些路径都重新构建，让 homelab 回到 main；
+     用户在 homelab 上测 feature 分支时，如果 agent 合并了别的 PR，测试环境会被换回 main。用户接受这个行为（2026-10-20），不加暂停开关。以后真要加，用 GitHub 仓库变量（比如 `HOMELAB_DEPLOY_PAUSED`），在 workflow 的 job 上写 `if:` 判断，`gh variable set` 就能切换，不用改集群；暂停期间合并的 commit 不会补部署，恢复后手动跑一次 `task deploy:homelab REV=main`；
    - 用和现在相同的 PipelineRun 模板创建 PipelineRun，等它结束，PipelineRun 失败则 job 失败。
 
 5. **最小权限**：runner Pod 的 ServiceAccount 只有两项权限：在 `tekton-pipelines` 命名空间里创建和读取 PipelineRun，在 `enx` 命名空间里读取 Deployment 和 ReplicaSet（`rollout status` 需要）。runner 所在的命名空间加 NetworkPolicy，出站只放行 DNS、k8s API 和用户的 HTTP 代理，不能访问内网其他地址。访问 GitHub 和 Telegram 都走这个代理，listener 和 runner Pod 都配上 `HTTPS_PROXY` 和 `NO_PROXY`（集群内地址不走代理）。
@@ -95,7 +96,3 @@ related: adr-055（enx-ui 用 CNB 构建）、adr-056（enx-api 用 ko 构建）
 - **连续合并两个 PR**：只部署最后一个。
 - **构建失败**：job 失败，commit 显示 ❌，用户收到 GitHub 的邮件，Telegram 收到写明失败步骤的消息。
 - **Telegram 通知**：每次部署都收到开始和结束两条消息；结束消息在 Deployment 滚动更新完成之后才发，不是在 PipelineRun 结束时发。
-
-## 待定问题
-
-- **手动部署的 feature 分支会被覆盖**：按 Decision 4，main 一有合并，homelab 就回到 main。如果用户正在 homelab 上测一个 feature 分支，同时 agent 合并了别的 PR，测试环境会被换掉。是接受这个行为，还是加一个"暂停自动部署"的开关（比如在集群里放一个 annotation 或 ConfigMap），待用户决定。
