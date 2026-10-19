@@ -23,11 +23,11 @@ related: adr-015（Clerk 认证）、adr-048（试用积分，幂等键 `trial:<
    - **有续费中的订阅时拒绝删除**：先在 `/billing` 取消订阅，再注销。本地 `subscriptions` 表没有记 `cancel_at_period_end`，已取消但还没到期的订阅状态仍是 active，所以本地状态是 active 时，删除流程向 Stripe 查这个订阅；只有 `cancel_at_period_end` 为假（还会续费）时才拒绝。这样就不必在删除流程里处理取消订阅、按比例退款这些问题。管理员删除也遵守这条规则。
    - **执行顺序**：先写试用发放记录（幂等），再删 Clerk 用户，最后在一个事务里删本地数据。Clerk 调用失败时整体中止、返回错误，本地数据不动。本地事务失败时 Clerk 用户已经删了，但用户也登不上来了，残留的本地数据由管理员重试删除来清理（删除流程对「Clerk 用户已不存在」视为成功）。
 
-3. **试用发放记录（trial grant record）按邮箱的 HMAC 记录，不随账号删除。** 新建表 `trial_grants(email_hmac PRIMARY KEY, granted_at)`：
+3. **试用发放记录（trial grant record）按邮箱的 HMAC 记录，不随账号删除。** 新建表 `trial_grants(email_hmac PRIMARY KEY, user_id, granted_at)`，`user_id` 是领取试用的那个本地用户身份（不透明 UUID，账号删除后也保留）：
    - `email_hmac = HMAC-SHA256(key, lower(trim(email)))`。密钥来自新配置项 `account.email-hmac-key`（环境变量 `ACCOUNT_EMAIL_HMAC_KEY`），**一经上线就不能轮换**，轮换会让所有已有记录失效。不直接用 SHA-256，是因为邮箱的取值范围小，拿常见邮箱字典就能撞出明文。
    - 邮箱取自 session token 里的 `email` claim，也就是 `GetOrCreateByClerkUserID` 已经拿到的那个邮箱。不额外调用 Clerk API。
    - `GrantTrial` 发放试用之前先查这张表：查到就不发；没查到就在发放的同一个事务里写入一条记录。原来的 `trial:<userID>` 幂等键保留不变。
-   - adr-051 的认领也查这张表：邮箱已经领过试用的新账号认领邀请码时，邀请关系照常建立，但**邀请人和被邀请人的奖励都不发**。被邀请人奖励在认领时直接跳过；`referrals` 新增一列 `rewards_blocked`，认领时写为真，之后记录首笔付款时把状态记为现有的 `no_reward`，邀请人奖励也不发。否则注销再注册就成了用小号给自己刷邀请人奖励的办法。`no_reward` 原本只表示「付款当时该类奖励被配置为 0」，现在多一个来源，代码注释要一起改。
+   - adr-051 的认领也查这张表：**有这个邮箱的记录、且记录里的 `user_id` 不是当前账号**，说明这个邮箱以前的账号领过试用（新账号自己在创建时写下的记录不算）。这样的账号认领邀请码时，邀请关系照常建立，但**邀请人和被邀请人的奖励都不发**。被邀请人奖励在认领时直接跳过；`referrals` 新增一列 `rewards_blocked`，认领时写为真，之后记录首笔付款时把状态记为现有的 `no_reward`，邀请人奖励也不发。否则注销再注册就成了用小号给自己刷邀请人奖励的办法。`no_reward` 原本只表示「付款当时该类奖励被配置为 0」，现在多一个来源，代码注释要一起改。
    - **邮箱为空时不发试用**（fail closed），并打一条警告日志。我们只开放 Google 和 GitHub 登录（adr-048），正常情况下一定有邮箱。
    - 迁移时用现有 `users.email` 回填这张表，已有用户注销后再注册同样拿不到试用。
    - **第一版只记邮箱**。同一个人先用 Google 登录、再用相同邮箱的 GitHub 登录时，Clerk 会按已验证邮箱把 GitHub 关联到同一个 Clerk 用户上（见 Verification），本来就是同一个账号；即使注销之后再换 provider 登录，邮箱 HMAC 也能命中。在 GitHub 上改了邮箱再来注册的情况拦不住，到时再加上 OAuth provider 的账号 ID（Google `sub`、GitHub 数字 id）。
