@@ -1,0 +1,60 @@
+name: enx-chrome CI
+
+# Lint, unit tests, typecheck and the production build of the extension on
+# every PR that touches enx-chrome (including Renovate dependency PRs), and on
+# main. Releases are a separate, tag-driven workflow (enx-chrome-release.yml).
+#
+# e2e (Playwright) is not run here: the signed-in cases need Clerk dev keys
+# and a running enx-api + enx-ui (docs/agents/testing.md).
+
+on:
+  pull_request:
+    paths:
+      - 'enx-chrome/**'
+      - '.github/workflows/enx-chrome-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'enx-chrome/**'
+      - '.github/workflows/enx-chrome-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: enx-chrome-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: enx-chrome
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: enx-chrome/.node-version
+
+      - name: Enable pnpm (corepack, packageManager in package.json)
+        run: corepack enable
+
+      # The committed .npmrc points at the homelab Nexus, which GitHub runners
+      # can't reach.
+      - name: Install
+        run: pnpm install --frozen-lockfile --registry=https://registry.npmjs.org/
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      # tsc -p tsconfig.app.json + vite build with the committed
+      # .env.production, the same build the store zip is made from.
+      - name: Typecheck and build
+        run: pnpm build:prod
