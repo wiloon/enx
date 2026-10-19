@@ -16,6 +16,18 @@ _Avoid_: user id（单说时含糊）、账号、login id
 第三方身份服务里的用户标识（当前是 Clerk 的 `user_xxx`）。ENX 只用它认出「登录的是谁」并映射到某个本地用户身份，不用它键任何业务数据。`users` 表存一列做这个映射。见 adr-015（此前是 Cognito 的 `sub`，见 adr-004）。
 _Avoid_: sub、cognito sub、clerk id（口头）
 
+**注销账号（account deletion）**：
+删除一个本地用户身份及其全部数据，同时删除对应的外部认证身份。由用户自助发起，或由管理员发起。账本和试用发放记录保留。注销后用同一邮箱重新注册，得到的是一个新的本地用户身份。见 adr-062。
+_Avoid_: 软删除、停用（那是禁用）
+
+**禁用账号（disabled account）**：
+管理员让一个账号不能登录、不能调用任何接口，可以解除，数据不动。与撤销会话（让所有设备下线、账号照常可用）不同。见 adr-062。
+_Avoid_: 封号、拉黑、ban（口头可以，代码里用 disabled）
+
+**试用发放记录（trial grant record）**：
+某个邮箱领取过试用积分的记录，按邮箱的 HMAC 存储，不随账号注销而删除，用来保证一个邮箱只领一次试用和被邀请人奖励。见 adr-062。
+_Avoid_: trial claim（「认领」专指 adr-051 的邀请码认领）
+
 **会话同步（session sync）**：
 用户在 Catseye 网站登录后，打开浏览器扩展即为登录态、无需在扩展里再登一次。靠 `@clerk/chrome-extension` 的 `syncHost` 指向网站域名实现。见 adr-015。登录动作的收尾（扩展打开网站登录 tab、登完关掉中转页 `/extension/connected` 并把用户切回原来在读的页面）见 adr-020。
 _Avoid_: SSO、单点登录
