@@ -139,7 +139,7 @@ enx-ui 的一个页面（`/reader`）。用户粘贴一段英文纯文本、提�
 _Avoid_: 文章导入、reader mode（浏览器自带阅读模式）、粘贴翻译、article import
 
 **示例文章（sample article）**：
-enx-ui 内置的唯一一篇英文短文，在 `/reader/sample` 以 Reader 的阅读态展示，不登录也能看。它不是任何用户的 Reader 文档，不保存、不过期。用于首次使用引导里「读一篇示例文章」那一步，也是本地开发验证扩展时的固定页面。见 adr-047 Decision 8。
+enx-ui 内置的唯一一篇英文短文，在 `/reader/sample` 以 Reader 的阅读态展示，不登录也能看。它不是任何用户的 Reader 文档，不保存、不过期。同一篇正文也嵌在首次使用引导 `/welcome` 页内，在那里不自动启用学习模式、由用户自己点图标启用；`/reader/sample` 也是本地开发验证扩展时的固定页面。见 adr-047 Decision 2、8。
 _Avoid_: 演示文章、demo article、测试页（它面向真实用户）、sample text（那是旧的预填文本）
 
 ### 查词计量（跨组件）
