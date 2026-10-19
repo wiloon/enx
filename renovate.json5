@@ -1,0 +1,81 @@
+// Renovate: dependency update PRs for enx-api, enx-ui and enx-chrome.
+// Nothing is auto-merged; every PR waits for CI and a human merge.
+// Major updates (and new Go / Node minors) wait for approval on the
+// Dependency Dashboard issue before a PR is opened.
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: ['config:recommended', ':dependencyDashboard'],
+  timezone: 'Asia/Shanghai',
+  schedule: ['before 9am on monday'],
+  prConcurrentLimit: 5,
+  labels: ['dependencies'],
+  // Mock translation API for e2e tests; never shipped.
+  ignorePaths: ['**/node_modules/**', 'mock-api/**'],
+  // Same supply-chain guard as minimumReleaseAge in the pnpm-workspace.yaml
+  // files: pnpm refuses a version less than a day old, so Renovate must not
+  // propose one.
+  minimumReleaseAge: '1 day',
+  // The committed .npmrc files point at the homelab Nexus, which Renovate's
+  // runners can't reach. With npmrcMerge left false this replaces them.
+  npmrc: 'registry=https://registry.npmjs.org/',
+  postUpdateOptions: ['gomodTidy'],
+  packageRules: [
+    {
+      matchFileNames: ['enx-api/**'],
+      matchUpdateTypes: ['minor', 'patch', 'digest'],
+      groupName: 'enx-api dependencies',
+    },
+    {
+      matchFileNames: ['enx-ui/**'],
+      matchUpdateTypes: ['minor', 'patch', 'digest'],
+      groupName: 'enx-ui dependencies',
+    },
+    {
+      matchFileNames: ['enx-chrome/**'],
+      matchUpdateTypes: ['minor', 'patch', 'digest'],
+      groupName: 'enx-chrome dependencies',
+    },
+    {
+      matchManagers: ['github-actions'],
+      groupName: 'GitHub Actions',
+    },
+    // The golang build image and the go directive in go.mod move together
+    // (enx-api/build/build.conf).
+    {
+      matchDepNames: ['go', 'docker.io/library/golang'],
+      groupName: 'Go toolchain',
+    },
+    {
+      matchUpdateTypes: ['major'],
+      dependencyDashboardApproval: true,
+    },
+    // A new Go or Node minor is a toolchain change, not a routine bump.
+    {
+      matchDepNames: ['go', 'docker.io/library/golang', 'node'],
+      matchUpdateTypes: ['minor'],
+      dependencyDashboardApproval: true,
+    },
+  ],
+  customManagers: [
+    // Build images pinned by digest, with the tag in the comment above
+    // (ADR-055, ADR-056):
+    //   # golang:1.27.2 -- ...
+    //   ENX_GO_IMAGE=docker.io/library/golang@sha256:...
+    {
+      customType: 'regex',
+      managerFilePatterns: ['/^enx-ui/cnb/images\\.conf$/', '/^enx-api/build/build\\.conf$/'],
+      matchStrings: [
+        '#\\s*\\S+?:(?<currentValue>\\S+)\\s+--[^\\n]*\\n(?:#[^\\n]*\\n)*[A-Z_]+_IMAGE=(?<depName>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})',
+      ],
+      datasourceTemplate: 'docker',
+    },
+    // ko, run as a Go module (`go run github.com/google/ko@$ENX_KO_VERSION`).
+    {
+      customType: 'regex',
+      managerFilePatterns: ['/^enx-api/build/build\\.conf$/'],
+      matchStrings: ['ENX_KO_VERSION=(?<currentValue>v\\S+)'],
+      depNameTemplate: 'github.com/google/ko',
+      datasourceTemplate: 'go',
+    },
+  ],
+}
