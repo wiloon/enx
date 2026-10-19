@@ -24,7 +24,7 @@ related: adr-055（enx-ui 用 CNB 构建）、adr-056（enx-api 用 ko 构建）
 
 - **A. 集群里放一个 CronJob，每 2–3 分钟轮询一次 main**：只有出站流量，完全不运行仓库里的代码，安全上最简单。代价是 1–3 分钟延迟，失败了也没有现成的通知渠道。没有选它，是因为想要合并后立即触发，并且让 commit 上直接显示部署结果（✅/❌）。如果 C 的维护成本太高，A 是退路。
 - **B. Tekton Triggers EventListener + GitHub webhook**：秒级触发，组件已经装好。但要通过 Cloudflare Tunnel 之类的方式把 EventListener 暴露到公网，多一个入站入口要维护。否决。
-- **C. 集群里的自托管 runner（选它）**：runner 主动连 GitHub 拉 job，只有出站流量，秒级触发。部署结果直接显示在 commit 和 Actions 页面上，失败时 GitHub 会发邮件。
+- **C. 集群里的自托管 runner（选它）**：runner 和 GitHub 之间保持 HTTPS 长轮询（每次约 50 秒，超时就重连），只有出站流量。job 一进队列就能收到，不用等下一次轮询。从合并到开始构建预计在一分钟以内，主要花在 GitHub 创建 workflow run 和 runner Pod 启动上，实现后实测。部署结果直接显示在 commit 和 Actions 页面上，失败时 GitHub 会发邮件。
 - **GitHub 托管的 runner 远程调用集群**：需要把 k8s API 暴露到公网。否决。
 - **在 runner 上直接构建镜像**：会和 Tekton 重复一套构建逻辑，runner 还得有构建权限。否决，runner 只负责触发。
 
@@ -45,9 +45,16 @@ related: adr-055（enx-ui 用 CNB 构建）、adr-056（enx-api 用 ko 构建）
    - 如果正在运行的 SHA 不是 main 的祖先（比如之前手动部署过一个 feature 分支），就无论改了哪些路径都重新构建，让 homelab 回到 main；
    - 用和现在相同的 PipelineRun 模板创建 PipelineRun，等它结束，PipelineRun 失败则 job 失败。
 
-5. **最小权限**：runner Pod 的 ServiceAccount 只有两项权限：在 `tekton-pipelines` 命名空间里创建和读取 PipelineRun，在 `enx` 命名空间里读取 Deployment。runner 所在的命名空间加 NetworkPolicy，出站只放行 DNS、k8s API 和访问 GitHub 必经的地址，不能访问内网其他地址。
+5. **最小权限**：runner Pod 的 ServiceAccount 只有两项权限：在 `tekton-pipelines` 命名空间里创建和读取 PipelineRun，在 `enx` 命名空间里读取 Deployment 和 ReplicaSet（`rollout status` 需要）。runner 所在的命名空间加 NetworkPolicy，出站只放行 DNS、k8s API 和用户的 HTTP 代理，不能访问内网其他地址。访问 GitHub 和 Telegram 都走这个代理，listener 和 runner Pod 都配上 `HTTPS_PROXY` 和 `NO_PROXY`（集群内地址不走代理）。
 
-6. **手动入口保留**：`task deploy:homelab REV=<分支>` 继续用来部署 feature 分支；Chrome 扩展照旧在本机构建（`chrome:build:homelab`），不进这条自动流程。
+   **kubectl 用镜像卷（image volume）挂进 runner Pod**：Pod 里声明一个 `image` 类型的卷，指向按 digest 固定的 `registry.k8s.io/kubectl` 镜像，kubelet 把这个镜像的文件系统只读挂到 runner 容器里。镜像经 Nexus 代理拉取，每个节点只拉一次，runner 启动时不下载、不复制，也不用自己构建 runner 镜像。集群是 v1.37，`ImageVolume` 特性已启用（2026-10-19 查过 apiserver 的 `kubernetes_feature_enabled`）；各节点的 containerd 是否支持，实现时实测。不支持的话，退回自己构建一个带 kubectl 的 runner 镜像。
+
+6. **Telegram 通知**：部署脚本在两个时间点发消息，复用集群里共享的 `telegram-bot` Secret（`notifications` 命名空间，用 Reflector 反射到 runner 所在的命名空间）：
+   - **开始**：commit 短 SHA、commit 标题、这次要构建哪些服务；全部跳过时也发一条，写明跳过的原因；
+   - **结束**：成功是指 ArgoCD 已经同步、Deployment 的镜像 tag 等于这次的 SHA、`kubectl rollout status` 完成，不是 PipelineRun 跑完就算。失败要写明失败在哪一步（构建、同步或滚动更新），附 Actions 页面的链接。等待 ArgoCD 同步要设超时（暂定 15 分钟），超时也算失败。
+   - 正在跑的 job 如果被取消，或者 runner Pod 自己挂了，就收不到结束通知。这种情况靠 GitHub 的失败邮件兜底。
+
+7. **手动入口保留**：`task deploy:homelab REV=<分支>` 继续用来部署 feature 分支；Chrome 扩展照旧在本机构建（`chrome:build:homelab`），不进这条自动流程。
 
 ## 安全模型
 
@@ -74,10 +81,11 @@ related: adr-055（enx-ui 用 CNB 构建）、adr-056（enx-api 用 ko 构建）
 | # | 谁做 | 内容 |
 |---|------|------|
 | 1 | 用户 | 创建 GitHub App（仓库权限：Administration 读写、Metadata 只读），只安装到 `wiloon/enx`；把 App ID、Installation ID、私钥手动创建成集群里的 Secret |
-| 2 | AI | w10n-config：ARC controller 和 runner scale set 的 ArgoCD Application，hook 脚本和部署脚本的 ConfigMap，RBAC，NetworkPolicy |
-| 3 | AI | enx：`deploy-homelab.yml` |
-| 4 | AI | `gh api` 把 fork PR 审批策略改为 `all_external_contributors` |
-| 5 | 用户 + AI | 按下面的「验证」逐条确认 |
+| 2 | 用户 | 提供 HTTP 代理的地址，以及应该放进 `NO_PROXY` 的地址 |
+| 3 | AI | w10n-config：ARC controller 和 runner scale set 的 ArgoCD Application，hook 脚本和部署脚本的 ConfigMap，RBAC，NetworkPolicy；把 runner 所在的命名空间加进 `telegram-bot` 的 Reflector annotation，并同步更新 `secret.yaml.example` |
+| 4 | AI | enx：`deploy-homelab.yml` |
+| 5 | AI | `gh api` 把 fork PR 审批策略改为 `all_external_contributors` |
+| 6 | 用户 + AI | 按下面的「验证」逐条确认 |
 
 ## 验证
 
@@ -85,10 +93,9 @@ related: adr-055（enx-ui 用 CNB 构建）、adr-056（enx-api 用 ko 构建）
 - **只改文档的合并**：两个服务都跳过，job 成功。
 - **只改 `enx-api/` 的合并**：只构建 enx-api；ArgoCD 同步之后，Deployment 的镜像 tag 等于这次合并的 SHA。
 - **连续合并两个 PR**：只部署最后一个。
-- **构建失败**：job 失败，commit 显示 ❌，用户收到 GitHub 的邮件。
+- **构建失败**：job 失败，commit 显示 ❌，用户收到 GitHub 的邮件，Telegram 收到写明失败步骤的消息。
+- **Telegram 通知**：每次部署都收到开始和结束两条消息；结束消息在 Deployment 滚动更新完成之后才发，不是在 PipelineRun 结束时发。
 
 ## 待定问题
 
-- **runner 怎么访问 GitHub**：w10n-config 的 `task-update-gitops` 提到过 homelab 通过 xray 访问 github.com。runner 的 listener 要和 GitHub 保持长连接，可能需要配 `HTTPS_PROXY`；具体要放行哪些地址，实现时实测确定。
 - **手动部署的 feature 分支会被覆盖**：按 Decision 4，main 一有合并，homelab 就回到 main。如果用户正在 homelab 上测一个 feature 分支，同时 agent 合并了别的 PR，测试环境会被换掉。是接受这个行为，还是加一个"暂停自动部署"的开关（比如在集群里放一个 annotation 或 ConfigMap），待用户决定。
-- **kubectl 从哪来**：官方 runner 镜像里没有 kubectl。可以用 initContainer 从固定版本的 `registry.k8s.io/kubectl` 镜像里复制，也可以自己构建一个 runner 镜像。倾向前者，不用多维护一个镜像。
