@@ -34,7 +34,7 @@ related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-029�
 - 后台 Service Worker 是唯一读写缓存的地方。主窗口查词浮层和 Side Panel 本来就通过后台的 `getOneWord` 查词，缓存放在那里，两边都能用上。#212（同一页面重复点词不重查）也由这份缓存覆盖，不再单独让 content script 的 `wordCache` 走点击流程。
 - 数据库 `enx-dictionary-cache`，一个对象仓库 `entries`：主键是词（Decision 1 的键），值为 `{ word, entry, cachedAt, lastUsedAt }`，在 `lastUsedAt` 上建一个索引。
 - 数据库带版本号。缓存格式变了，或者词典有一次大的整体更新，就把版本号加一，在升级回调（`onupgradeneeded`）里清空 `entries`。升级在扩展更新后第一次打开数据库时发生，不需要另外安排清理。
-- 原生 API 写起来啰嗦，可以用很小的封装库 `idb`，实现时定。单元测试用 `fake-indexeddb`。
+- 用封装库 `idb`（Jake Archibald 维护，ISC 许可，零依赖，打包后约 1 KB，周下载量约 1500 万）。原生 IndexedDB 是回调式的，「数、删、写」放进一个事务要手写一层 Promise 封装；`idb` 正好就是这层薄封装，能直接 `await`，还带 TypeScript 类型。单元测试用 `fake-indexeddb`（开发依赖）。
 - 缓存逻辑（命中、过期、淘汰、写不写入）放在 `src/lib/` 里，存储作为参数传进去，用假的存储做单元测试（AGENTS.md「I/O enters through the constructor or the parameter list」）。
 
 ### 3. 一次点击查词怎么走
