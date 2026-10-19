@@ -26,6 +26,7 @@ function summary(over: Partial<AdminUserSummary>): AdminUserSummary {
     id: 'u1',
     email: 'reader@example.com',
     name: 'Reader',
+    status: 'active',
     createdAt: '2026-10-01T08:00:00Z',
     lastLoginAt: '2026-10-15T09:30:00Z',
     plan: 'pro',

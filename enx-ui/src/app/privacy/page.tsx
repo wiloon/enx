@@ -21,6 +21,8 @@ import { SITE } from '@/lib/site'
 //   - the sub-processor list                           -> lib/legal.ts
 //   - the AI provider named                            -> the deployment's
 //     SENTENCE_TRANSLATE_PROVIDER
+//   - what account deletion removes and keeps          -> enx-api
+//     repo/account.go personalTables, trial_grants, ADR-062
 export const dynamic = 'force-static'
 
 export const metadata: Metadata = {
@@ -350,9 +352,10 @@ export default function PrivacyPolicyPage() {
               billing history are all visible in the app.
             </>,
             <>
-              <Term>Delete your data.</Term> Email {LEGAL.privacyEmail} and we
-              will delete your account and everything attached to it. Billing
-              records may be retained where tax law requires it.
+              <Term>Delete your data.</Term> Delete your account yourself on the
+              Settings page, or email {LEGAL.privacyEmail} and we will do it for
+              you. See &ldquo;Deleting your account&rdquo; below for what is
+              removed and what is kept.
             </>,
             <>
               <Term>Export your data.</Term> Ask at {LEGAL.privacyEmail} and we
@@ -370,6 +373,44 @@ export default function PrivacyPolicyPage() {
           including to correct your data, to object to processing, or to
           complain to a data protection authority. Write to {LEGAL.privacyEmail}{' '}
           and we will honour those requests regardless of where you are.
+        </p>
+      </Section>
+
+      <Section heading="Deleting your account">
+        <p>
+          You can delete your account at any time on the Settings page. The
+          deletion is immediate and permanent: your sign-in account, your word
+          list, reading statistics, lookup events, saved pages, reader
+          documents, settings and invite code are erased, not hidden.
+        </p>
+        <p>We keep three things, none of which names you:</p>
+        <List
+          items={[
+            <>
+              <Term>Your credit ledger and your subscription records.</Term>{' '}
+              Financial records must be kept for accounting and tax. Once your
+              account is gone they are tied only to a random identifier, with no
+              name or email attached.
+            </>,
+            <>
+              <Term>Stripe&apos;s records</Term> of your payments, which Stripe
+              keeps under its own policy.
+            </>,
+            <>
+              <Term>
+                A keyed hash (HMAC) of your email address, and the random
+                identifier of the account it belonged to.
+              </Term>{' '}
+              Signing up again with the same email does not give a second free
+              trial or invite reward; this hash is how we tell. It cannot be
+              turned back into your email address.
+            </>,
+          ]}
+        />
+        <p>
+          Any credits left in the account are forfeited when it is deleted. If
+          you want a refund, ask for it under our Refund Policy before you
+          delete the account.
         </p>
       </Section>
 

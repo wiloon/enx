@@ -10,8 +10,10 @@ import AdminUserPage from '../page'
 import { apiService } from '@/services/api'
 import type { AdminLedgerEntry, AdminUserDetail } from '@/types'
 
+const mockPush = jest.fn()
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'u1' }),
+  useRouter: () => ({ push: mockPush }),
 }))
 
 jest.mock('@/services/api', () => ({
@@ -19,6 +21,8 @@ jest.mock('@/services/api', () => ({
     adminGetUser: jest.fn(),
     adminListUserTransactions: jest.fn(),
     adminAdjustCredits: jest.fn(),
+    adminUserAction: jest.fn(),
+    adminDeleteUser: jest.fn(),
   },
 }))
 
@@ -42,6 +46,7 @@ function detail(
       id: 'u1',
       email: 'reader@example.com',
       name: 'Reader',
+      status: 'active',
       createdAt: '2026-10-01T08:00:00Z',
       lastLoginAt: '2026-10-15T09:30:00Z',
       plan: 'pro',
@@ -268,6 +273,132 @@ it('reloads the balances and the ledger after an admin grant', async () => {
     email: 'reader@example.com',
     amount: 25,
     reason: 'support comp',
+  })
+})
+
+describe('account actions (ADR-062)', () => {
+  const mockAction = apiService.adminUserAction as jest.Mock
+  const mockDelete = apiService.adminDeleteUser as jest.Mock
+
+  beforeEach(() => {
+    window.confirm = jest.fn(() => true)
+    mockAction.mockResolvedValue(ok({}))
+    mockDelete.mockResolvedValue(ok({}))
+  })
+
+  const accountRegion = () => screen.findByRole('region', { name: 'Account' })
+
+  it('disables an active account after confirming, and reloads it', async () => {
+    renderPage()
+    const account = await accountRegion()
+    expect(within(account).getByText('Active')).toBeInTheDocument()
+
+    fireEvent.click(
+      within(account).getByRole('button', { name: 'Disable account' })
+    )
+
+    await waitFor(() =>
+      expect(mockAction).toHaveBeenCalledWith('u1', 'disable')
+    )
+    expect(window.confirm).toHaveBeenCalled()
+    await waitFor(() => expect(mockGetUser).toHaveBeenCalledTimes(2))
+  })
+
+  it('does nothing when the confirmation is declined', async () => {
+    window.confirm = jest.fn(() => false)
+    renderPage()
+    const account = await accountRegion()
+
+    fireEvent.click(
+      within(account).getByRole('button', { name: 'Disable account' })
+    )
+    fireEvent.click(
+      within(account).getByRole('button', { name: 'Delete account' })
+    )
+
+    expect(mockAction).not.toHaveBeenCalled()
+    expect(mockDelete).not.toHaveBeenCalled()
+  })
+
+  it('offers to enable a disabled account', async () => {
+    mockGetUser.mockResolvedValue(ok(detail({ status: 'disabled' })))
+    renderPage()
+    const account = await accountRegion()
+    expect(within(account).getByText('Disabled')).toBeInTheDocument()
+
+    fireEvent.click(
+      within(account).getByRole('button', { name: 'Enable account' })
+    )
+
+    await waitFor(() => expect(mockAction).toHaveBeenCalledWith('u1', 'enable'))
+  })
+
+  it('signs the user out everywhere and says so', async () => {
+    renderPage()
+    const account = await accountRegion()
+
+    fireEvent.click(
+      within(account).getByRole('button', { name: 'Sign out everywhere' })
+    )
+
+    await waitFor(() =>
+      expect(mockAction).toHaveBeenCalledWith('u1', 'revoke-sessions')
+    )
+    expect(
+      await within(account).findByText('Signed out on every device.')
+    ).toBeInTheDocument()
+  })
+
+  it('deletes without resetting the trial by default, then goes back to the list', async () => {
+    renderPage()
+    const account = await accountRegion()
+    const reset = within(account).getByRole('checkbox', {
+      name: /Allow the trial again/,
+    })
+    expect(reset).not.toBeChecked()
+    expect(within(account).getByText(/test accounts only/)).toBeInTheDocument()
+
+    fireEvent.click(
+      within(account).getByRole('button', { name: 'Delete account' })
+    )
+
+    await waitFor(() =>
+      expect(mockDelete).toHaveBeenCalledWith('u1', { resetTrial: false })
+    )
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/admin/users'))
+  })
+
+  it('resets the trial when the box is ticked', async () => {
+    renderPage()
+    const account = await accountRegion()
+
+    fireEvent.click(
+      within(account).getByRole('checkbox', { name: /Allow the trial again/ })
+    )
+    fireEvent.click(
+      within(account).getByRole('button', { name: 'Delete account' })
+    )
+
+    await waitFor(() =>
+      expect(mockDelete).toHaveBeenCalledWith('u1', { resetTrial: true })
+    )
+  })
+
+  it('shows why an action failed', async () => {
+    mockAction.mockResolvedValue({
+      success: false,
+      error: 'An admin account cannot be disabled or deleted.',
+    })
+    renderPage()
+    const account = await accountRegion()
+
+    fireEvent.click(
+      within(account).getByRole('button', { name: 'Disable account' })
+    )
+
+    expect(await within(account).findByRole('alert')).toHaveTextContent(
+      'An admin account cannot be disabled or deleted.'
+    )
   })
 })
 

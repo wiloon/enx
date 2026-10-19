@@ -8,6 +8,7 @@ import { Switch } from '@/components/ui/switch'
 import { apiService } from '@/services/api'
 import type { PreferencesData } from '@/types'
 import PageHeader from '@/components/app/PageHeader'
+import DeleteAccountCard from '@/components/app/DeleteAccountCard'
 
 const PREFERENCES_KEY = ['preferences']
 
@@ -109,6 +110,8 @@ export default function SettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      <DeleteAccountCard />
     </div>
   )
 }
