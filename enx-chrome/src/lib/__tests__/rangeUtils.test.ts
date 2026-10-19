@@ -26,6 +26,29 @@ describe('referenceLineHeight', () => {
   // jsdom has no layout, so getClientRects() is empty -- these exercise the
   // fallback ladder, which is the part with real branching.
 
+  // The range's rect is only the glyph box (~font-size * 1.15). On a page
+  // with loose line spacing the line pitch is taller, and a gap of just the
+  // glyph height lets the card cut into the line above the word.
+  it('uses the line pitch when the line-height is taller than the range rect', () => {
+    document.body.innerHTML =
+      '<p id="p" style="line-height: 48px; font-size: 26px">hello world</p>'
+    const p = document.getElementById('p')!
+    const range = document.createRange()
+    range.selectNodeContents(p)
+    range.getClientRects = () => [{ height: 30 }] as unknown as DOMRectList
+    expect(referenceLineHeight(range)).toBe(48)
+  })
+
+  it('keeps the range rect height when it is taller than the line-height', () => {
+    document.body.innerHTML =
+      '<p id="p" style="line-height: 16px; font-size: 20px">hello world</p>'
+    const p = document.getElementById('p')!
+    const range = document.createRange()
+    range.selectNodeContents(p)
+    range.getClientRects = () => [{ height: 23 }] as unknown as DOMRectList
+    expect(referenceLineHeight(range)).toBe(23)
+  })
+
   it('falls back to the computed line-height of the range start element', () => {
     document.body.innerHTML =
       '<p id="p" style="line-height: 30px">hello world</p>'
