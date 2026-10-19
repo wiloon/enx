@@ -84,4 +84,25 @@ describe('ApiService auth token', () => {
     })
     expect(global.fetch).toHaveBeenCalledTimes(1)
   })
+
+  // A 5xx with no message of its own (e.g. enx-api unreachable while the
+  // proxy forwards to it) shows a hint the reader can act on, not "HTTP 500:".
+  it('shows a try-again hint for a server error without a message', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: '',
+      json: async () => {
+        throw new SyntaxError('Unexpected end of JSON input')
+      },
+    })
+
+    const result = await service.getMe()
+
+    expect(result).toEqual({
+      success: false,
+      error:
+        'Something went wrong on our end. Refresh the page, or try again in a few minutes.',
+    })
+  })
 })
