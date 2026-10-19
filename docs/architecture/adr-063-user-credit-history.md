@@ -33,12 +33,13 @@ related: adr-009（两池积分账本）、adr-012（Settle 事后扣费）、ad
 7. **`credit_transactions` 新增可空列 `total_balance_after`**：写这一行时，三个池的可用积分合计，算法和 `Settle` 的 `spendable` 一样（未过期的试用池 + 订阅池（负数按 0 算）+ 充值池，充值池可以是负数）。写入集中在 `insertLedgerRow`：同一个事务里，余额更新完以后读一次账户，算出合计再写行，各个 `Grant*` / `Settle` / `Clawback` 不用各自去算。原来的 `balance_after` 保持按池记录，语义不变，只给管理员排查用。
 8. **订阅续费前，先把上一期的剩余记一行 `EXPIRE`。** `GrantSubscription` 覆盖 `subscription_balance` 之前，如果旧余额大于 0，在同一个事务里先写一行 `EXPIRE`：`feature = "subscription"`，`amount` 为负的旧余额。这样「上期剩余作废」和「本期发放」各占一行，每一行的 `amount` 都等于 `total_balance_after` 的变化量。用户界面上，`feature = "trial"` 的 `EXPIRE` 显示为 "Trial credits expired"，`feature = "subscription"` 的显示为 "Unused subscription credits expired"。
 9. **试用过期仍然懒写入，但改为任何一次写流水之前都先结算。** 现在只有 `Settle` 会先调用 `expireTrial`。如果试用过期后用户先充了值，充值那一行的合计余额已经不含试用（`effectiveTrial` 为 0），之后 `Settle` 再补写的 `EXPIRE` 行却带着负数金额，这两行就对不上了。所以每个会写流水的事务都先调用 `expireTrial`，再更新余额。`EXPIRE` 行的时间戳仍然是写入时刻，不改成真正的到期时间：时间线按写入顺序排，改了时间反而会出现乱序。
-10. **不回填老数据。** 订阅被覆盖掉的那部分没有任何记录，老行的合计余额算不准，所以 `total_balance_after` 留空，页面显示 "—"。生产库 2026-10-14 重置过，受影响的行很少。
+10. **每小时清扫一次过期的试用积分。** 只靠第 9 条的话，用户试用到期后如果再也没有写流水的操作，就永远不会出现 `EXPIRE` 行：积分历史最后一行的合计余额还是过期前的数，页面顶部的当前余额却已经是 0。所以 enx-api 新增一个后台任务，和 `runReferralRewards` 等现有任务一样，启动时跑一次，之后每小时跑一次：找出 `trial_expires_at` 已过、`trial_balance > 0` 的账户，逐个在事务里调用 `expireTrial`。这样 `EXPIRE` 行最多比真正的到期时间晚一小时。第 9 条仍然保留，用来兜住到期后、清扫之前恰好有写操作的情况。`expireTrial` 的 UPDATE 以刚读到的余额为条件，清扫任务和写操作并发、或者多个实例同时清扫，都只会写出一行。单个账户失败只记日志，下一轮重试。
+11. **不回填老数据。** 订阅被覆盖掉的那部分没有任何记录，老行的合计余额算不准，所以 `total_balance_after` 留空，页面显示 "—"。生产库 2026-10-14 重置过，受影响的行很少。
 
 ### 四、按天聚合 AI 消耗
 
-11. **数据库里仍然逐笔记录；界面把同一天、同一类型的 AI 消耗合并成一行**，例如 "Oct 19 · Word translation ×37 · −74"，点开能看到每一笔。合并是 enx-ui `src/lib/` 里的纯函数，输入已加载的流水行，输出分组。分组跨分页边界时，加载下一页后合并进同一组。只合并 `SETTLE` / `CONSUME`；`REFUND` 和其他类型照常逐行显示。聚合行的「变动后余额」取组内最后一笔（最早时间在下，最新在上，取最新那笔）。
-12. **注销账号**沿用 adr-062：账本保留，只带不透明的 user id。流水里没有单词和句子，不用额外清理。
+12. **数据库里仍然逐笔记录；界面把同一天、同一类型的 AI 消耗合并成一行**，例如 "Oct 19 · Word translation ×37 · −74"，点开能看到每一笔。合并是 enx-ui `src/lib/` 里的纯函数，输入已加载的流水行，输出分组。分组跨分页边界时，加载下一页后合并进同一组。只合并 `SETTLE` / `CONSUME`；`REFUND` 和其他类型照常逐行显示。聚合行的「变动后余额」取组内最后一笔（最早时间在下，最新在上，取最新那笔）。
+13. **注销账号**沿用 adr-062：账本保留，只带不透明的 user id。流水里没有单词和句子，不用额外清理。
 
 ## Considered Options
 
@@ -66,6 +67,7 @@ related: adr-009（两池积分账本）、adr-012（Settle 事后扣费）、ad
 ## Consequences
 
 - 用户能自己查积分去向，管理员在客服对话里看到的和用户看到的是同一个列表。
+- 试用过期的 `EXPIRE` 行最多晚一小时出现，不再等用户下一次用 AI；enx-api 多一个每小时运行的后台任务。
 - 订阅用户每次续费会多一行 `EXPIRE`（上期有剩余时）。管理员页 adr-049 的累计数里，`EXPIRE` 以前只来自试用，现在也会来自订阅，`sourceOf` 需要按 `feature` 区分。
 - 以后新增流水类型，只要经过 `insertLedgerRow` 就自动带上合计余额；标签在共用的一处添加，两个页面同时生效。
 - 老行显示 "—"，直到用户的流水完全是新数据为止。
@@ -76,6 +78,7 @@ related: adr-009（两池积分账本）、adr-012（Settle 事后扣费）、ad
    - 依次执行「试用发放 → 充值 → AI 消耗 → 订阅发放 → 订阅续费 → 管理员扣减 → 退款扣回」，每一行的 `amount` 等于相邻两行 `total_balance_after` 之差。
    - 续费时旧订阅余额 > 0，写出 `EXPIRE`（`feature = "subscription"`）；旧余额为 0 时不写。
    - 试用过期后，第一次写流水的是充值（不是 `Settle`）：先写出 `EXPIRE`，再写充值行，两行都满足上一条的等式。
+   - 清扫任务：试用已过期且有余额的账户写出一行 `EXPIRE`，余额清零；未过期、余额为 0、已清扫过的账户不写；清扫和 `Settle` 并发时只有一行 `EXPIRE`。
    - `direction=in` / `out` 的筛选和游标分页正确；金额为 0 的行只出现在不筛选的结果里。
    - `GET /api/me/credits/transactions` 只返回当前用户的行，不返回第 5 条列出的内部字段，只有管理员类型的行带 `note`。
 2. **enx-ui 单测**：聚合纯函数（同一天同一类型合并、跨页合并、`REFUND` 不合并、余额取最新一笔）；标签映射（每个 `feature` 和两种 `EXPIRE`）；`total_balance_after` 为空时显示 "—"。
