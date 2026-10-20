@@ -24,7 +24,10 @@ import {
   failureMessage,
 } from '@/lib/enableOutcome'
 import { fetchWordChunk, type WordChunkDeps } from '@/lib/wordChunk'
-import { stampExtensionPresence } from '@/lib/extensionPresence'
+import {
+  stampExtensionPresence,
+  stampLearningMode,
+} from '@/lib/extensionPresence'
 import {
   runWithStatus,
   type LearningModeStatus,
@@ -208,6 +211,7 @@ const showPinHint = () => {
 let currentStatus: LearningModeStatus = { status: 'off' }
 const reportStatus = (status: LearningModeStatus) => {
   currentStatus = status
+  stampLearningMode(document, window.location, status)
   void sendToBackground({ type: 'learningModeStatus', status }).then(
     response => {
       if (response.showPinHint) showPinHint()

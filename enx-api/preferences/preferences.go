@@ -24,6 +24,10 @@ const (
 	// the looked-up word is sent to an AI provider (ADR-045 Decision 10).
 	// Not tied to payment state.
 	AIWordFallbackNoticeAck Key = "aiWordFallbackNoticeAck"
+	// OnboardingCompleted: the user finished or skipped the first-run guide
+	// on /welcome (ADR-047 Decision 1a). Written by the page, not shown on
+	// the settings page. Not tied to payment state.
+	OnboardingCompleted Key = "onboardingCompleted"
 )
 
 var (
@@ -77,6 +81,10 @@ var registry = map[Key]definition{
 		gatedByEditable: true,
 	},
 	AIWordFallbackNoticeAck: {
+		defaultValue: func(entitlement.Status) bool { return false },
+		editable:     func(entitlement.Status) bool { return true },
+	},
+	OnboardingCompleted: {
 		defaultValue: func(entitlement.Status) bool { return false },
 		editable:     func(entitlement.Status) bool { return true },
 	},

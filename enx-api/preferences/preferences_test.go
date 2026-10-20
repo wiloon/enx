@@ -122,6 +122,23 @@ func TestNoticeAckIsNotTiedToPayment(t *testing.T) {
 	}
 }
 
+func TestOnboardingCompletedDefaultsOffAndIsWritable(t *testing.T) {
+	for _, status := range []entitlement.Status{subscriber, topupOnly, free} {
+		got := get(t, newFakeStore(), status, OnboardingCompleted)
+		if got.Value != nil || got.Effective || !got.Editable {
+			t.Fatalf("status %+v: view = %+v, want unset, effective false, writable", status, got)
+		}
+	}
+	store := newFakeStore()
+	svc := NewService(store, fakeEnt{status: free})
+	if err := svc.Update(context.Background(), "u1", map[string]*bool{"onboardingCompleted": ptr(true)}); err != nil {
+		t.Fatal(err)
+	}
+	if got := get(t, store, free, OnboardingCompleted); !got.Effective {
+		t.Fatal("a free user's completed onboarding should be effective")
+	}
+}
+
 func TestUpdateStoresAndClears(t *testing.T) {
 	store := newFakeStore()
 	svc := NewService(store, fakeEnt{status: subscriber})

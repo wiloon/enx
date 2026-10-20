@@ -34,6 +34,7 @@ import {
   isTabSidePanelOpen,
   pendingSentenceKey,
 } from '@/lib/sidePanel'
+import { welcomeTabAction, welcomeUrlPattern } from '@/lib/welcomeTab'
 
 console.log('ENX Background script loaded')
 console.log('🌐 Config environment:', config.environment)
@@ -493,6 +494,23 @@ export const makeApiRequest = async (
   }
 }
 
+// ADR-047 Decision 1: a fresh install lands on enx-ui's /welcome. A user who
+// came from /welcome to the store still has it open, so switch back to it.
+const openWelcomePage = async (reason: string): Promise<void> => {
+  const uiOrigin = config.frontendBaseUrl
+  const tabs =
+    reason === 'install'
+      ? await chrome.tabs.query({ url: welcomeUrlPattern(uiOrigin) })
+      : []
+  const action = welcomeTabAction(reason, uiOrigin, tabs)
+  if (action.kind === 'open') {
+    await chrome.tabs.create({ url: action.url })
+  } else if (action.kind === 'focus') {
+    await chrome.tabs.update(action.tabId, { active: true })
+    await chrome.windows.update(action.windowId, { focused: true })
+  }
+}
+
 // Handle extension installation
 chrome.runtime.onInstalled.addListener(async details => {
   console.log('ENX Extension installed:', details.reason)
@@ -507,6 +525,10 @@ chrome.runtime.onInstalled.addListener(async details => {
   } else if (details.reason === 'update') {
     console.log('ENX Extension updated')
   }
+
+  await openWelcomePage(details.reason).catch(error =>
+    console.error('Failed to open /welcome:', error)
+  )
 
   // Warm the Clerk client (syncs the session from the website via syncHost).
   void getClerk()
@@ -918,7 +940,7 @@ const handleSignedInReturn = async (): Promise<{
 // ADR-019 / ADR-020: the one web -> extension channel. Only enx-ui's own
 // origins can reach it (also enforced by manifest `externally_connectable`,
 // stamped from the same target config at build time), and the vocabulary is a
-// fixed three-word list -- no message transits an internal content-script action.
+// fixed four-word list -- no message transits an internal content-script action.
 const ENX_UI_ORIGINS = new Set(config.uiOrigins)
 
 chrome.runtime.onMessageExternal.addListener(
@@ -933,6 +955,20 @@ chrome.runtime.onMessageExternal.addListener(
     if (type === 'enx:ping') {
       sendResponse({ ok: true, version: chrome.runtime.getManifest().version })
       return false
+    }
+
+    // ADR-047 Decision 4: read-only, for /welcome's checklist. Signed-in
+    // state comes from the page's own Clerk, not from here.
+    if (type === 'enx:status') {
+      void (async () => {
+        const { isOnToolbar } = await chrome.action.getUserSettings()
+        sendResponse({
+          ok: true,
+          version: chrome.runtime.getManifest().version,
+          isOnToolbar,
+        })
+      })()
+      return true
     }
 
     if (type === 'enx:enable-reader') {

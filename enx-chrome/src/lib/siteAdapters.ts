@@ -158,7 +158,7 @@ const X_ADAPTER: SiteAdapter = {
 // --- enx-ui Reader (ADR-019) ---------------------------------------------
 // enx-ui's /reader page renders user-pasted plain text into
 // #enx-reader-article; the extension treats it like a whitelisted article
-// site, but only on the /reader route. The app's other pages (/lookup,
+// site, but only on the /reader routes and /welcome. The app's other pages (/lookup,
 // /rephrase, /billing, ...) load the content script too (the manifest
 // whitelists the whole origin) but are not meant to be read here.
 
@@ -180,8 +180,11 @@ export function isEnxUiHost(location: PageLocation): boolean {
 const READER_ADAPTER: SiteAdapter = {
   name: 'reader',
   matches: isEnxUiHost,
+  // /welcome embeds the sample article (ADR-047 Decision 5).
   pageSupport: location =>
-    location.pathname === '/reader' || location.pathname.startsWith('/reader/')
+    location.pathname === '/reader' ||
+    location.pathname.startsWith('/reader/') ||
+    location.pathname === '/welcome'
       ? null
       : 'Catglish only works on the Reader page here. Paste text into the Reader and submit first.',
   contentSelector: '#enx-reader-article',
