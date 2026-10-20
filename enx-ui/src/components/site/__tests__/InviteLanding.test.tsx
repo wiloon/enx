@@ -12,7 +12,7 @@ const mockUseAuth = jest.fn()
 jest.mock('@/hooks/useAuth', () => ({ useAuth: () => mockUseAuth() }))
 
 jest.mock('@/hooks/useExtensionStatus', () => ({
-  useExtensionStatus: () => 'unknown',
+  useExtensionStatus: () => 'not-installed',
 }))
 
 const api = apiService as jest.Mocked<typeof apiService>

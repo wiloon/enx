@@ -74,12 +74,15 @@ describe('Hero', () => {
     ).toHaveAttribute('href', '#how-it-works')
   })
 
-  it('keeps the store CTA while extension detection is pending', () => {
+  it('offers neither the store CTA nor "Go to app" while extension detection is pending', () => {
     mockExtensionStatus.mockReturnValue('unknown')
     render(<Hero />)
     expect(
-      screen.getByRole('link', { name: /add to chrome/i })
-    ).toHaveAttribute('href', SITE.chromeWebStoreUrl)
+      screen.queryByRole('link', { name: /add to chrome/i })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: 'Go to app' })
+    ).not.toBeInTheDocument()
   })
 
   it('swaps the store CTA for "Go to app" when the extension is installed', () => {
@@ -282,6 +285,14 @@ describe('SiteHeader', () => {
     unmount()
 
     mockExtensionStatus.mockReturnValue('installed')
+    render(<SiteHeader />)
+    expect(
+      screen.queryByRole('link', { name: 'Add to Chrome' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('offers no "Add to Chrome" link while the extension check is pending', () => {
+    mockExtensionStatus.mockReturnValue('unknown')
     render(<SiteHeader />)
     expect(
       screen.queryByRole('link', { name: 'Add to Chrome' })
