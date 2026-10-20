@@ -36,12 +36,10 @@ import {
   type AdminUserAction,
   isAccountDisabled,
 } from '@/lib/account'
+import { UNREACHABLE_MESSAGE, apiErrorMessage } from '@/lib/apiErrors'
 
 export type SubscriptionPlan = 'pro' | 'pro-plus' | 'max'
 export type TopupTier = 'small' | 'medium' | 'large'
-
-const SERVER_ERROR_MESSAGE =
-  'Something went wrong on our end. Refresh the page, or try again in a few minutes.'
 
 type TokenGetter = () => Promise<string | null | undefined>
 
@@ -147,24 +145,24 @@ export class ApiService {
       const response = await fetch(`${this.baseUrl}${endpoint}`, {
         ...options,
         headers,
+      }).catch((error) => {
+        console.error('API request got no answer:', error)
+        throw new Error(UNREACHABLE_MESSAGE)
       })
 
       if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Session expired')
-        }
         const errorBody = await response.json().catch(() => null)
+        const friendly = apiErrorMessage(response.status, errorBody)
+        if (friendly) {
+          throw new Error(friendly)
+        }
         if (isAccountDisabled(response.status, errorBody)) {
           this.markAccountDisabled()
         }
-        // A 5xx without a message of its own (e.g. enx-api unreachable behind
-        // the proxy) gets a hint the reader can act on instead of "HTTP 500:".
         const message =
           errorBody?.error ||
           errorBody?.message ||
-          (response.status >= 500
-            ? SERVER_ERROR_MESSAGE
-            : `HTTP ${response.status}: ${response.statusText}`)
+          `HTTP ${response.status}: ${response.statusText}`
         throw new Error(message)
       }
 
