@@ -1,0 +1,32 @@
+name: Deploy homelab
+
+# Deploys every push to main to homelab (ADR-064). The job runs on the
+# homelab-deploy runner in the homelab cluster; the runner's job-started hook
+# refuses any job that is not this file on a push to main, and the deploy
+# logic lives in the cluster (w10n-config infra/homelab/k8s/arc/runners/
+# deploy-enx.sh), not here.
+#
+# The runner's hook pins this file's path: renaming it stops deploys.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One deploy at a time. A merge during a deploy waits; of several waiting,
+# GitHub keeps only the newest.
+concurrency:
+  group: homelab-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: homelab-deploy
+    timeout-minutes: 60
+    steps:
+      - name: Build and roll out changed services
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: /opt/homelab-deploy/deploy-enx.sh
