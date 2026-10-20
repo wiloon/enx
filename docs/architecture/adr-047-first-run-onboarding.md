@@ -45,18 +45,18 @@ A、B 的区别只是「进来时扩展装没装」，页面能直接探测到�
    - **已完成标记**：adr-044 的服务端偏好加一个布尔键 `onboardingCompleted`（与 `aiWordFallbackNoticeAck` 同类，用户不可在设置里编辑）。引导到达完成态、或用户点「Skip setup」时写入 true。
    - **既有用户不需要迁移**：`onboardingCompleted` 为真，**或**累计查词数 > 0，都视为老用户。
    - **已登录、经安装进入 `/welcome?src=install`**（同一浏览器重装时网站登录态还在）：老用户直接跳到 `/app`，带一句「Catglish extension connected」，不显示步骤。
-   - **未登录进入 `/welcome`**（换电脑）：页面先只显示「Welcome to Catglish — sign in to get started」。这一屏对新老用户都成立，老用户本来也必须重新登录扩展；登录回跳后按上一条判断，老用户直接去 `/app`。
+   - **未登录进入 `/welcome`**（换电脑）：页面先只显示「Welcome to Catglish — sign in to get started」，步骤只有第 0 步（扩展未安装时）和登录，旁边照常放示例文章；不显示固定图标和试一次。这一屏对新老用户都成立，老用户本来也必须重新登录扩展；登录回跳后按上一条判断，老用户直接去 `/app`。
    - 因此老用户最多看到一次本来就需要的登录页，看不到任何引导步骤。
    - 判断不了的情况（例如用户换电脑后不登录、直接关掉）就让引导出现一次：这种情况概率低，代价只是多看一页。**每一步都显示「Skip setup」**，点了即写入 `onboardingCompleted`（已登录时）并去 `/app`。
 2. **步骤**（全部按真实状态显示勾选，不按顺序锁定；文案全英文）：
    0. **安装扩展**（只在探测到未安装时出现）：「Add to Chrome」按钮在新标签页打开 Chrome Web Store。链接取现有的运行时配置 `ENX_EXTENSION_WEB_STORE_URL`；扩展上架前它为空，按钮显示为不可点的「Coming soon to the Chrome Web Store」（与 `OnboardingChecklist` 现有的空链接处理一致），上架后填上配置即可，不改代码。页面可见时每 2 秒发一次 `enx:status`，探测到安装后自动勾上（同时扩展会把用户切回这个标签页，见 Decision 1）。非 Chromium 浏览器给出「Catglish needs Chrome」说明。安装过程本身由商店页面完成，不需要截图或视频；产品演示视频已在官网首页。
-   1. **登录**：已登录则勾上；未登录时给 Sign in / Sign up，登录回跳回到 `/welcome`（沿用 adr-020 的 `src=extension` 回跳机制，目标改成 `/welcome`）。
-   2. **固定图标**（可跳过）：一张示意图，展示「点拼图图标 → 点 Catglish 旁的图钉」（静态图片，用本地构建的扩展截取，放在 enx-ui 的 `public/` 下）。页面在这一步可见时每 2 秒经 `enx:status` 查询 `isOnToolbar`，固定后自动勾上；进来时已固定（包括被 Chrome 自动固定的用户）则直接是勾上的。点「Skip」直接进入下一步；跳过的人之后由 adr-046 Decision 6 的固定提示最多再提醒两次，本 ADR 不另做计数。
+   1. **登录**：已登录则勾上；未登录时给 Sign in / Sign up，登录回跳回到 `/welcome`（用 Clerk 的 `redirect_url`，保留 `?src=install`；不用 adr-020 的 `src=extension`，它会把用户送到 `/extension/connected`）。
+   2. **固定图标**（可跳过）：一张示意图，展示「点拼图图标 → 点 Catglish 旁的图钉」（静态图片，用本地构建的扩展截取，放在 enx-ui 的 `public/` 下；第一版先用手绘示意图 `public/onboarding/pin-icon.svg`，截图后替换）。页面在这一步可见、且未跳过时每 2 秒经 `enx:status` 查询 `isOnToolbar`，固定后自动勾上；进来时已固定（包括被 Chrome 自动固定的用户）则直接是勾上的。点「Skip」直接进入下一步；跳过的人之后由 adr-046 Decision 6 的固定提示最多再提醒两次，本 ADR 不另做计数。
    3. **在示例文章上试一次**：`/welcome` 页内直接渲染示例文章（与 `/reader/sample` 同一份 `SAMPLE_ARTICLE`，容器同为 `#enx-reader-article`），**不调用 `requestReaderMode()`**。两个小项：
       - **启用**：提示「Click the Catglish icon in your toolbar, then *Read with Catglish*」。扩展启用学习模式后在 `<html>` 上写 `data-enx-learning="on"`（Decision 4a），页面观察到即勾上，提示换成下一项。
-      - **点一个词**：提示「Click any word in the article」。累计查词数 > 0 即勾上（现有 stats 接口；页面可见时每几秒重查一次，直到勾上）。
+      - **点一个词**：提示「Click any word in the article」。累计查词数 > 0 即勾上（现有 stats 接口 `/api/stats/overview` 的 `vocab.total`，即词表条目数，与 Home 同一信号；用户删过词时会少算。页面可见时每几秒重查一次，直到勾上）。
       - 用户未登录扩展时点「Read with Catglish」会得到扩展自己的登录提示；第 1 步本来就在前面，不另做处理。
-3. **完成**：第 3 步两项都勾上后写入 `onboardingCompleted`，显示「You're all set」，然后放手：
+3. **完成**：第 3 步两项都勾上后写入 `onboardingCompleted`，显示「You're all set」，然后放手。固定图标没做也没跳过不影响完成；完成态一旦出现就保持，之后关掉学习模式也不回到步骤列表：
    - 一句话：在任意英文文章页点 Catglish 图标 →「Read with Catglish」即可。
    - **推荐站点**：一组可以马上去读的英文站点链接（新标签页打开）。清单写在 enx-ui 一个常量里，按需增删；入选条件是**免登录、无付费墙、正文结构普通、实测学习模式可用**。初始候选：InfoQ（infoq.com）、Anthropic News（anthropic.com/news）、BBC News、The Guardian、AP News、NPR、Wikipedia（扩展有专门适配器）。实现时逐个在真实 Chrome 里验证，不能用的移出清单。
    - 不介绍侧边栏、角标、「Always enable on this site」：这些留给用户自己发现，或写进日后的帮助文档。
@@ -64,7 +64,7 @@ A、B 的区别只是「进来时扩展装没装」，页面能直接探测到�
 4. **新的网页 → 扩展消息 `enx:status`**：返回 `{ ok, version, isOnToolbar }`。与 `enx:ping` 一样只认 `ENX_UI_ORIGINS` 来源，只读，不改任何状态。登录状态由网页自己的 Clerk 得出，不经扩展。`enx:ping` 保留不动（Home、`/reader` 在用）。
 4a. **学习模式状态标记 `data-enx-learning`**：与 adr-019 的 `data-enx-extension` 版本戳同一机制、同一限制（只在 enx-ui 页面上写）：content script 在本页学习模式启用成功后写 `<html data-enx-learning="on">`，关闭（`enxStop`）时移除。只是给 enx-ui 页面看的只读信号，不参与扩展内部逻辑。
 5. **自动启用由页面决定，不由 URL 决定**：enx-ui 上的学习模式自动启用一直是页面主动发 `enx:enable-reader`（adr-019）。`/reader` 提交后与 `/reader/sample` 保持自动启用；`/welcome` 不发。Reader 适配器（`siteAdapters.ts` 的 `pageSupport`）现在只放行 `/reader` 与 `/reader/*`，需加上 `/welcome`。
-6. **与 Home 清单的关系**：adr-027 的 `OnboardingChecklist` 与 `/welcome` 共用一个步骤模型（`onboardingSteps({ installed, signedIn, isOnToolbar, pinSkipped, learningEnabled, hasLookedUp })` 纯函数，放 `src/lib/onboarding.ts`）。Home 清单是同一套步骤的精简版（零阅读用户在 Home 上看到，点任一步跳 `/welcome`）；它现在第 3 步链接的是 `/reader` 粘贴页，改为指向 `/welcome`。文案只写一份。
+6. **与 Home 清单的关系**：adr-027 的 `OnboardingChecklist` 与 `/welcome` 共用一个步骤模型（`onboardingSteps({ installed, signedIn, isOnToolbar, pinSkipped, learningEnabled, hasLookedUp })` 纯函数，放 `src/lib/onboarding.ts`）。Home 清单是同一套步骤的精简版（零阅读用户在 Home 上看到，点任一步跳 `/welcome`；省掉登录和固定图标：Home 在登录之后，固定状态只有 `/welcome` 会去问扩展。每个界面显示哪些步骤也由 `onboarding.ts` 决定）；它现在第 3 步链接的是 `/reader` 粘贴页，改为指向 `/welcome`。文案只写一份。
 7. **不做的事**：不选母语；不演示侧边栏整句翻译；不做角标图例；不做产品导览式的页面遮罩高亮；不收集引导漏斗指标（需要时按 adr-040 再加）；不做 `setUninstallURL` 的卸载反馈页；不在引导里设置词汇水平或高亮偏好；不放视频（官网首页已有）。
 8. **示例文章是 enx-ui 内置的固定公开文章**（2026-10-13 修订）：
    - 正文是写在 enx-ui 代码里的一篇英文短文（`src/lib/sampleArticle.ts`，约 200 词，大众话题，几个中等难度的词，并自然带上撇号词、连字符词、句首大写词和多个段落，方便同时当测试素材）。全站只有这一篇。

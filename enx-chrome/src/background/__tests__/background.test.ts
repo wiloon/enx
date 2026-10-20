@@ -1467,6 +1467,50 @@ describe('background onMessageExternal (ADR-019 web -> extension channel)', () =
     expect(response).toEqual({ ok: true, version: '1.2.3' })
   })
 
+  // ADR-047 Decision 4: /welcome ticks "Pin the icon" from this.
+  it('answers enx:status with the version and whether the icon is pinned', async () => {
+    ;(chrome.action.getUserSettings as jest.Mock).mockResolvedValue({
+      isOnToolbar: true,
+    })
+    expect(await call({ type: 'enx:status' })).toEqual({
+      ok: true,
+      version: '1.2.3',
+      isOnToolbar: true,
+    })
+    ;(chrome.action.getUserSettings as jest.Mock).mockResolvedValue({
+      isOnToolbar: false,
+    })
+    expect(await call({ type: 'enx:status' })).toEqual({
+      ok: true,
+      version: '1.2.3',
+      isOnToolbar: false,
+    })
+  })
+
+  it('still answers enx:status when Chrome cannot report the toolbar setting', async () => {
+    ;(chrome.action.getUserSettings as jest.Mock).mockRejectedValue(
+      new Error('unsupported')
+    )
+    expect(await call({ type: 'enx:status' })).toEqual({
+      ok: true,
+      version: '1.2.3',
+      isOnToolbar: false,
+    })
+  })
+
+  it('drops enx:status from an origin that is not an enx-ui origin', async () => {
+    const sendResponse = jest.fn()
+    const keptOpen = external(
+      { type: 'enx:status' },
+      { origin: 'https://evil.example' } as chrome.runtime.MessageSender,
+      sendResponse
+    )
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(keptOpen).toBe(false)
+    expect(sendResponse).not.toHaveBeenCalled()
+    expect(chrome.action.getUserSettings).not.toHaveBeenCalled()
+  })
+
   it('runs enxRun on the sender tab for enx:enable-reader when signed in', async () => {
     const response = await call({ type: 'enx:enable-reader' })
     expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(7, {
@@ -2109,5 +2153,50 @@ describe('background tab-scoped Side Panel (ADR-050)', () => {
       'enx-pending-sentence:7',
       'enx-latest-page-word:7',
     ])
+  })
+})
+
+// ADR-047 Decision 1: install opens, or switches back to, /welcome.
+describe('background onInstalled opens /welcome (ADR-047)', () => {
+  // Captured at collection time, before any beforeEach resetAllMocks().
+  const onInstalled = (chrome.runtime.onInstalled.addListener as jest.Mock).mock
+    .calls[0][0] as (details: { reason: string }) => Promise<void>
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    __resetClerkClientCacheForTests()
+    setClerkSession('clerk-session-jwt')
+    ;(chrome.storage.local.set as jest.Mock).mockResolvedValue(undefined)
+    ;(chrome.tabs.create as jest.Mock).mockResolvedValue({ id: 5 })
+    ;(chrome.tabs.update as jest.Mock).mockResolvedValue(undefined)
+    ;(chrome.windows.update as jest.Mock).mockResolvedValue(undefined)
+  })
+
+  it('opens /welcome?src=install on install when no /welcome tab is open', async () => {
+    ;(chrome.tabs.query as jest.Mock).mockResolvedValue([])
+    await onInstalled({ reason: 'install' })
+    expect(chrome.tabs.query).toHaveBeenCalledWith({
+      url: 'http://localhost:3000/welcome*',
+    })
+    expect(chrome.tabs.create).toHaveBeenCalledWith({
+      url: 'http://localhost:3000/welcome?src=install',
+    })
+  })
+
+  it('switches back to the open /welcome tab without opening another', async () => {
+    ;(chrome.tabs.query as jest.Mock).mockResolvedValue([
+      { id: 11, windowId: 3, url: 'http://localhost:3000/welcome' },
+    ])
+    await onInstalled({ reason: 'install' })
+    expect(chrome.tabs.create).not.toHaveBeenCalled()
+    expect(chrome.tabs.update).toHaveBeenCalledWith(11, { active: true })
+    expect(chrome.windows.update).toHaveBeenCalledWith(3, { focused: true })
+  })
+
+  it('opens nothing on update', async () => {
+    ;(chrome.tabs.query as jest.Mock).mockResolvedValue([])
+    await onInstalled({ reason: 'update' })
+    expect(chrome.tabs.create).not.toHaveBeenCalled()
+    expect(chrome.tabs.update).not.toHaveBeenCalled()
   })
 })

@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { SAMPLE_ARTICLE } from '@/lib/sampleArticle'
-import { toParagraphs } from '@/lib/readerText'
+import SampleArticle from '@/components/reader/SampleArticle'
 import { requestReaderMode, webStoreUrl } from '@/lib/enxExtension'
 import { useExtensionStatus } from '@/hooks/useExtensionStatus'
 
@@ -39,17 +38,7 @@ export default function SampleArticlePage() {
           to click any word on this page for its definition.
         </p>
       )}
-      <h1 className="text-2xl font-bold">{SAMPLE_ARTICLE.title}</h1>
-      <article
-        id="enx-reader-article"
-        className="prose max-w-none whitespace-pre-wrap text-[17px] leading-7"
-      >
-        {toParagraphs(SAMPLE_ARTICLE.text).map((p, i) => (
-          <p key={i} className="mb-4">
-            {p}
-          </p>
-        ))}
-      </article>
+      <SampleArticle />
     </div>
   )
 }

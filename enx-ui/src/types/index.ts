@@ -96,7 +96,11 @@ export interface PreferenceView {
   editable: boolean
 }
 
-export type PreferenceKey = 'aiWordFallback' | 'aiWordFallbackNoticeAck'
+export type PreferenceKey =
+  | 'aiWordFallback'
+  | 'aiWordFallbackNoticeAck'
+  // ADR-047: written by /welcome, never shown on the settings page.
+  | 'onboardingCompleted'
 
 export type PreferencesData = Record<PreferenceKey, PreferenceView>
 

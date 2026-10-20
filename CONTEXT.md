@@ -49,7 +49,7 @@ _Avoid_: 配额、quota（那是上面的每日查词配额）、throttling
 ### 阅读辅助功能（enx-chrome）
 
 **学习模式（learning mode）**：
-用户在某个页面上启用 ENX 后的状态。由工具栏弹窗（popup）的「Enable Learning Mode」开启（发 `enxRun`），`enxStop` 关闭。启用后整篇取词、查词、并激活下面的交互。这是 **enx-chrome** 的概念；移动端见下文「原生阅读视图」。
+用户在某个页面上启用 ENX 后的状态。由工具栏弹窗（popup）的「Read with Catglish」开启（发 `enxRun`），`enxStop` 关闭。启用后整篇取词、查词、并激活下面的交互。这是 **enx-chrome** 的概念；移动端见下文「原生阅读视图」。
 _Avoid_: 阅读模式、reading mode（二者易与浏览器 Reader View 或移动端原生阅读视图混淆）
 
 **点击查词（click-to-lookup）**：

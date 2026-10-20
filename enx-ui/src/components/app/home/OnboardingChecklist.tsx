@@ -2,61 +2,39 @@
 
 import Link from 'next/link'
 import { Check, Circle } from 'lucide-react'
-import { SITE } from '@/lib/site'
-import { webStoreUrl } from '@/lib/enxExtension'
+import { homeChecklistSteps } from '@/lib/onboarding'
 import type { ExtensionStatus } from '@/hooks/useExtensionStatus'
 
 // What a brand-new user sees instead of the workbench (ADR-027 decision 1,
-// form one): three steps, not a feature list. Step 3 stays unchecked here by
-// construction -- this form only renders when the user has read nothing yet.
+// form one). The same steps as /welcome, shortened (ADR-047 Decision 6).
+// Every open step leads to /welcome, where it is done.
 export default function OnboardingChecklist({
   status,
 }: {
   status: ExtensionStatus
 }) {
-  const installed = status === 'installed'
-  const storeUrl = webStoreUrl()
+  // Until the extension check answers, the install step would flash in or out.
+  if (status === 'unknown') return null
+  const steps = homeChecklistSteps(status === 'installed')
 
   return (
     <section className="rounded-lg border bg-card p-5 text-card-foreground">
-      <h3 className="text-sm font-semibold">Get started in three steps</h3>
+      <h3 className="text-sm font-semibold">Get started</h3>
       <ol className="mt-4 space-y-4">
-        <Step done={installed} index={1}>
-          {installed ? (
-            <span>{SITE.name} is installed</span>
-          ) : storeUrl ? (
-            <a
-              href={storeUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium text-brand underline-offset-4 hover:underline"
-            >
-              Add {SITE.name} to Chrome
-            </a>
-          ) : (
-            <span>Add {SITE.name} to Chrome</span>
-          )}
-        </Step>
-
-        <Step done={false} index={2}>
-          <span>
-            Open any English page and turn {SITE.name} on — words worth learning
-            get underlined, and any word you click is explained.
-          </span>
-        </Step>
-
-        <Step done={false} index={3}>
-          <span>
-            Finish your first article. No English page at hand?{' '}
-            <Link
-              href="/reader"
-              className="font-medium text-brand underline-offset-4 hover:underline"
-            >
-              Paste some text instead
-            </Link>
-            .
-          </span>
-        </Step>
+        {steps.map((step, i) => (
+          <Step key={step.id} done={step.status === 'done'} index={i + 1}>
+            {step.status === 'done' ? (
+              <span>{step.title}</span>
+            ) : (
+              <Link
+                href="/welcome"
+                className="font-medium text-brand underline-offset-4 hover:underline"
+              >
+                {step.title}
+              </Link>
+            )}
+          </Step>
+        ))}
       </ol>
     </section>
   )

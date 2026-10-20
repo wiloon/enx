@@ -292,8 +292,20 @@ describe('READER_ADAPTER (enx-ui paste-text reader)', () => {
       expect(reader.pageSupport!(loc('enx.wiloon.com', '/reader'))).toBeNull()
     })
 
+    // ADR-047 Decision 5: the sample article is embedded in /welcome.
+    it('allows /welcome', () => {
+      expect(reader.pageSupport!(loc('enx.wiloon.com', '/welcome'))).toBeNull()
+    })
+
     it('rejects every other enx-ui page with a message', () => {
-      for (const path of ['/', '/app', '/lookup', '/rephrase', '/billing']) {
+      for (const path of [
+        '/',
+        '/app',
+        '/lookup',
+        '/rephrase',
+        '/billing',
+        '/welcomes',
+      ]) {
         expect(reader.pageSupport!(loc('enx.wiloon.com', path))).toEqual(
           expect.stringMatching(/reader/i)
         )
