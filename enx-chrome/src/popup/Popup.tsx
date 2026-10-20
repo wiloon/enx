@@ -5,7 +5,6 @@ import LearningModeCard, {
 import Login from '@/components/Login'
 import { useActiveTabSidePanel } from '@/hooks/useActiveTabSidePanel'
 import { useAutoEnableSite } from '@/hooks/useAutoEnableSite'
-import { useInitializeStorage } from '@/hooks/useInitializeStorage'
 import { useSavedPage } from '@/hooks/useSavedPage'
 import { useWordHighlightEnabled } from '@/hooks/useWordHighlightEnabled'
 import '@/index.css'
@@ -361,8 +360,6 @@ function SignedInBody({
 function PopupContent() {
   const { enabled: wordHighlightEnabled, setEnabled: setWordHighlightEnabled } =
     useWordHighlightEnabled()
-
-  useInitializeStorage()
 
   const handleLoginSuccess = () => {
     console.log('Login successful')
