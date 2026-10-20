@@ -1,5 +1,6 @@
 import {
   learningModeShortcut,
+  openShortcutSettings,
   runLearningModeCommand,
   TOGGLE_LEARNING_MODE_COMMAND,
   type LearningModeCommandDeps,
@@ -243,5 +244,18 @@ describe('learningModeShortcut', () => {
 
   it('reports unbound when the command is missing', () => {
     expect(learningModeShortcut([popupCommand])).toEqual({ bound: false })
+  })
+})
+
+// The popup's "Set a shortcut" link, when the toggle is unbound.
+describe('openShortcutSettings', () => {
+  it("opens Chrome's extension shortcuts page in a new tab", async () => {
+    const tabs = { create: jest.fn().mockResolvedValue({}) }
+
+    await openShortcutSettings(tabs)
+
+    expect(tabs.create).toHaveBeenCalledWith({
+      url: 'chrome://extensions/shortcuts',
+    })
   })
 })

@@ -30,6 +30,16 @@ export function learningModeShortcut(
   return key ? { bound: true, key } : { bound: false }
 }
 
+// Where Chrome lets the user bind or change an extension's shortcut. A link
+// can't open a chrome:// page from an extension page; chrome.tabs.create can.
+const SHORTCUT_SETTINGS_URL = 'chrome://extensions/shortcuts'
+
+export async function openShortcutSettings(tabs: {
+  create: (properties: { url: string }) => Promise<unknown>
+}): Promise<void> {
+  await tabs.create({ url: SHORTCUT_SETTINGS_URL })
+}
+
 export interface LearningModeCommandDeps {
   getStatus: (tabId: number) => Promise<LearningModeStatus>
   isSignedIn: () => Promise<boolean>

@@ -25,6 +25,7 @@ import {
 } from '@/lib/enableLearningMode'
 import {
   learningModeShortcut,
+  openShortcutSettings,
   type LearningModeShortcut,
 } from '@/lib/learningModeCommand'
 import { isLearningModeOn } from '@/lib/learningModeStatus'
@@ -92,11 +93,6 @@ function ClerkUserSync() {
 
   return null
 }
-
-// Where Chrome lets the user bind or change an extension's shortcut (#230). A
-// link can't open a chrome:// page from an extension page; chrome.tabs.create
-// can.
-const SHORTCUT_SETTINGS_URL = 'chrome://extensions/shortcuts'
 
 interface SignedInBodyProps {
   wordHighlightEnabled: boolean
@@ -275,9 +271,7 @@ function SignedInBody({
         shortcut={shortcut}
         onEnable={handleEnableLearning}
         onTurnOff={handleTurnOffLearning}
-        onSetShortcut={() =>
-          void chrome.tabs.create({ url: SHORTCUT_SETTINGS_URL })
-        }
+        onSetShortcut={() => void openShortcutSettings(chrome.tabs)}
       />
 
       {/* adr-039: only on pages whose site can be auto-enabled. */}
