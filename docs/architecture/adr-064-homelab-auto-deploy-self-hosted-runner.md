@@ -30,7 +30,7 @@ related: adr-055（enx-ui 用 CNB 构建）、adr-056（enx-api 用 ko 构建）
 
 ## Decision
 
-1. **workflow**：在 enx 新增 `.github/workflows/deploy-homelab.yml`，只由 `on: push: branches: [main]` 触发，`runs-on` 用一个专用 label（暂定 `homelab-deploy`）。设置 `concurrency: homelab-deploy`、`cancel-in-progress: false`：同一时间只部署一次。短时间内连着合并几个 PR 时，GitHub 只保留最新的那一个排队 run，相当于自动合并成一次部署。`permissions` 只给 `contents: read`。
+1. **workflow**：在 enx 新增 `.github/workflows/deploy-homelab.yml`，只由 `on: push: branches: [main]` 触发，`runs-on: homelab-deploy`（ARC 的 runner scale set 用名字匹配 `runs-on`）。设置 `concurrency: homelab-deploy`、`cancel-in-progress: false`：同一时间只部署一次。短时间内连着合并几个 PR 时，GitHub 只保留最新的那一个排队 run，相当于自动合并成一次部署。`permissions` 只给 `contents: read`。
 
 2. **runner**：用 actions-runner-controller 的 runner scale set（`gha-runner-scale-set`），由 w10n-config 里的 ArgoCD Application 管理。
    - **注册在仓库级**，只服务 `wiloon/enx`。
@@ -46,9 +46,9 @@ related: adr-055（enx-ui 用 CNB 构建）、adr-056（enx-api 用 ko 构建）
      用户在 homelab 上测 feature 分支时，如果 agent 合并了别的 PR，测试环境会被换回 main。用户接受这个行为（2026-10-20），不加暂停开关。以后真要加，用 GitHub 仓库变量（比如 `HOMELAB_DEPLOY_PAUSED`），在 workflow 的 job 上写 `if:` 判断，`gh variable set` 就能切换，不用改集群；暂停期间合并的 commit 不会补部署，恢复后手动跑一次 `task deploy:homelab REV=main`；
    - 用和现在相同的 PipelineRun 模板创建 PipelineRun，等它结束，PipelineRun 失败则 job 失败。
 
-5. **最小权限**：runner Pod 的 ServiceAccount 只有两项权限：在 `tekton-pipelines` 命名空间里创建和读取 PipelineRun，在 `enx` 命名空间里读取 Deployment 和 ReplicaSet（`rollout status` 需要）。runner 所在的命名空间加 NetworkPolicy，出站只放行 DNS、k8s API 和用户的 HTTP 代理，不能访问内网其他地址。访问 GitHub 和 Telegram 都走这个代理，listener 和 runner Pod 都配上 `HTTPS_PROXY` 和 `NO_PROXY`（集群内地址不走代理）。
+5. **最小权限**：runner Pod 的 ServiceAccount 只有两项权限：在 `tekton-pipelines` 命名空间里创建和读取 PipelineRun，在 `enx` 命名空间里读取 Deployment 和 ReplicaSet（`rollout status` 需要）。runner 所在的命名空间加 NetworkPolicy，出站只放行 DNS、k8s API 和公网的 443 端口，不能访问内网其他地址和集群里的其他服务。不配 HTTP 代理：集群节点的默认网关本身就是透明代理，2026-10-20 在集群里起 Pod 实测，不配代理也能直接访问 GitHub API、Actions 的服务地址和 Telegram。
 
-   **kubectl 用镜像卷（image volume）挂进 runner Pod**：Pod 里声明一个 `image` 类型的卷，指向按 digest 固定的 `registry.k8s.io/kubectl` 镜像，kubelet 把这个镜像的文件系统只读挂到 runner 容器里。镜像经 Nexus 代理拉取，每个节点只拉一次，runner 启动时不下载、不复制，也不用自己构建 runner 镜像。集群是 v1.37，`ImageVolume` 特性已启用（2026-10-19 查过 apiserver 的 `kubernetes_feature_enabled`）；各节点的 containerd 是否支持，实现时实测。不支持的话，退回自己构建一个带 kubectl 的 runner 镜像。
+   **kubectl 用镜像卷（image volume）挂进 runner Pod**：Pod 里声明一个 `image` 类型的卷，指向按 digest 固定的 `registry.k8s.io/kubectl` 镜像，kubelet 把这个镜像的文件系统只读挂到 runner 容器里。镜像经 Nexus 代理拉取，每个节点只拉一次，runner 启动时不下载、不复制，也不用自己构建 runner 镜像。集群是 v1.37，`ImageVolume` 特性已启用（2026-10-19 查过 apiserver 的 `kubernetes_feature_enabled`）；各节点是 containerd 2.4，2026-10-20 实测镜像卷可用，kubectl 在 `/opt/kubectl/bin/kubectl`。
 
 6. **Telegram 通知**：部署脚本在两个时间点发消息，复用集群里共享的 `telegram-bot` Secret（`notifications` 命名空间，用 Reflector 反射到 runner 所在的命名空间）：
    - **开始**：commit 短 SHA、commit 标题、这次要构建哪些服务；全部跳过时也发一条，写明跳过的原因；
@@ -82,15 +82,14 @@ related: adr-055（enx-ui 用 CNB 构建）、adr-056（enx-api 用 ko 构建）
 | # | 谁做 | 内容 |
 |---|------|------|
 | 1 | 用户 | 创建 GitHub App（仓库权限：Administration 读写、Metadata 只读），只安装到 `wiloon/enx`；把 App ID、Installation ID、私钥手动创建成集群里的 Secret |
-| 2 | 用户 | 提供 HTTP 代理的地址，以及应该放进 `NO_PROXY` 的地址 |
-| 3 | AI | w10n-config：ARC controller 和 runner scale set 的 ArgoCD Application，hook 脚本和部署脚本的 ConfigMap，RBAC，NetworkPolicy；把 runner 所在的命名空间加进 `telegram-bot` 的 Reflector annotation，并同步更新 `secret.yaml.example` |
-| 4 | AI | enx：`deploy-homelab.yml` |
-| 5 | AI | `gh api` 把 fork PR 审批策略改为 `all_external_contributors` |
-| 6 | 用户 + AI | 按下面的「验证」逐条确认 |
+| 2 | AI | w10n-config：ARC controller 和 runner scale set 的 ArgoCD Application，hook 脚本和部署脚本的 ConfigMap，RBAC，NetworkPolicy；把 runner 所在的命名空间加进 `telegram-bot` 的 Reflector annotation，并同步更新 `secret.yaml.example` |
+| 3 | AI | enx：`deploy-homelab.yml` |
+| 4 | AI | `gh api` 把 fork PR 审批策略改为 `all_external_contributors` |
+| 5 | 用户 + AI | 按下面的「验证」逐条确认 |
 
 ## 验证
 
-- **hook 拒绝非 main 的 job**：从 fork 或者临时分支提一个 PR，里面带一个 `runs-on: [self-hosted, homelab-deploy]` 的 workflow，并由用户批准运行。预期结果：job 在 "Set up runner" 这一步失败，日志里能看到 hook 的拒绝信息，PR 里的任何 step 都没有执行。验证完删掉这个分支。
+- **hook 拒绝非 main 的 job**：从 fork 或者临时分支提一个 PR，里面带一个 `runs-on: homelab-deploy` 的 workflow，并由用户批准运行。预期结果：job 在 "Set up runner" 这一步失败，日志里能看到 hook 的拒绝信息，PR 里的任何 step 都没有执行。验证完删掉这个分支。
 - **只改文档的合并**：两个服务都跳过，job 成功。
 - **只改 `enx-api/` 的合并**：只构建 enx-api；ArgoCD 同步之后，Deployment 的镜像 tag 等于这次合并的 SHA。
 - **连续合并两个 PR**：只部署最后一个。
