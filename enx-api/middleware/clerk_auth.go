@@ -90,6 +90,15 @@ const (
 	authDisabled          = "account_disabled"
 )
 
+// AuthRejectedKey is the gin context key ClerkAuth sets to the outcome of a
+// rejected token, and RejectedAZPKey to the token's azp when that origin is
+// not authorized; RequestLog puts both on the request line, so a 401 says
+// why without debug logging.
+const (
+	AuthRejectedKey = "enx.auth_rejected"
+	RejectedAZPKey  = "enx.rejected_azp"
+)
+
 // AccountDisabled is the users.status of an account the admin disabled
 // (ADR-062 Decision 5; account.StatusDisabled).
 const AccountDisabled = "disabled"
@@ -127,6 +136,7 @@ func ClerkAuth(cfg ClerkConfig, obs AuthObserver) gin.HandlerFunc {
 		start := time.Now()
 		reject := func(outcome, msg string) {
 			observe(outcome, start)
+			c.Set(AuthRejectedKey, outcome)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": msg})
 			c.Abort()
 		}
@@ -157,6 +167,7 @@ func ClerkAuth(cfg ClerkConfig, obs AuthObserver) gin.HandlerFunc {
 		}
 
 		if !v.authorizedPartyAllowed(claims) {
+			c.Set(RejectedAZPKey, claims["azp"])
 			reject(authUnauthorizedParty, "invalid token")
 			return
 		}

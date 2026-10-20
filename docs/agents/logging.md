@@ -93,9 +93,12 @@ returns:
 - The client IP is not logged (behind Cloudflare it is not the user's
   anyway), nor are headers.
 - CORS preflights (`OPTIONS`) are not logged.
-- Optional fields: `lookup_source` on a word lookup (ADR-040), and
+- Optional fields: `lookup_source` on a word lookup (ADR-040),
   `rate_limited: true` on a request the per-user rate limit refused
-  (ADR-060), which tells it from a quota 429.
+  (ADR-060), which tells it from a quota 429, and `auth_rejected` (the
+  `ClerkAuth` outcome, e.g. `missing_token`, `expired`,
+  `unauthorized_party`) on a 401, with `azp` when the token came from an
+  origin missing from `CLERK_AUTHORIZED_PARTIES`.
 
 Handlers do not log the request or response themselves; they log only
 what the request line cannot show (a failed dependency, an admin action).
