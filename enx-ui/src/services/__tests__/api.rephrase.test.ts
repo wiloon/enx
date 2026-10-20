@@ -64,6 +64,8 @@ describe('ApiService.rephrase', () => {
     const result = await service.rephrase('帮我看下这个')
 
     expect(result.success).toBe(false)
-    expect(result.error).toBe('Rephrase service unavailable.')
+    expect(result.error).toBe(
+      'Rephrase service unavailable. If this keeps happening, contact support@catglish.com.'
+    )
   })
 })

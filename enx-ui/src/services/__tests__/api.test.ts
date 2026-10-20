@@ -53,14 +53,84 @@ describe('ApiService auth token', () => {
     expect(init.headers.Authorization).toBeUndefined()
   })
 
-  it('surfaces "Session expired" on a 401 without retrying', async () => {
-    service.setTokenGetter(jest.fn().mockResolvedValue('stale-jwt'))
-    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
+  // Clerk hands out a fresh token on every call, so a rejected token from a
+  // signed-in reader is our fault (e.g. the site's origin missing from the
+  // API's authorized parties), not an expired session.
+  it('points a rejected sign-in to support, not to "Session expired"', async () => {
+    service.setTokenGetter(jest.fn().mockResolvedValue('clerk-session-jwt'))
+    ;(global.fetch as jest.Mock).mockResolvedValue(
+      jsonResponse(401, { error: 'invalid token' })
+    )
 
     const result = await service.getMe()
 
-    expect(result).toEqual({ success: false, error: 'Session expired' })
+    expect(result).toEqual({
+      success: false,
+      error:
+        "We couldn't verify your sign-in. Refresh the page; if this keeps happening, contact support@catglish.com.",
+    })
     expect(global.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('asks the reader to refresh when the server says the token expired', async () => {
+    service.setTokenGetter(jest.fn().mockResolvedValue('stale-jwt'))
+    ;(global.fetch as jest.Mock).mockResolvedValue(
+      jsonResponse(401, { error: 'token expired' })
+    )
+
+    const result = await service.getMe()
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Your session has expired. Refresh the page to sign in again.',
+    })
+  })
+
+  // The auth middleware's 5xx bodies ({"error": "internal server error"},
+  // {"error": "auth service unavailable"}) are internal wording.
+  it('hides an internal 5xx error string behind a contact-support hint', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValue(
+      jsonResponse(500, { error: 'internal server error' })
+    )
+
+    const result = await service.getMe()
+
+    expect(result).toEqual({
+      success: false,
+      error:
+        'Something went wrong on our end. Refresh the page, or try again in a few minutes. If this keeps happening, contact support@catglish.com.',
+    })
+  })
+
+  it("keeps a handler's own 5xx message and adds a contact-support hint", async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValue(
+      jsonResponse(502, {
+        success: false,
+        message: 'failed to create checkout session',
+      })
+    )
+
+    const result = await service.createTopupCheckout('small')
+
+    expect(result).toEqual({
+      success: false,
+      error:
+        'Failed to create checkout session. If this keeps happening, contact support@catglish.com.',
+    })
+  })
+
+  it("says the API can't be reached when the request never gets an answer", async () => {
+    ;(global.fetch as jest.Mock).mockRejectedValue(
+      new TypeError('Failed to fetch')
+    )
+
+    const result = await service.getMe()
+
+    expect(result).toEqual({
+      success: false,
+      error:
+        "Can't reach Catglish right now. Check your connection and try again.",
+    })
   })
 
   // ADR-060 Decision 4: the request rate limit's 429 says to slow down in
@@ -102,7 +172,7 @@ describe('ApiService auth token', () => {
     expect(result).toEqual({
       success: false,
       error:
-        'Something went wrong on our end. Refresh the page, or try again in a few minutes.',
+        'Something went wrong on our end. Refresh the page, or try again in a few minutes. If this keeps happening, contact support@catglish.com.',
     })
   })
 })
