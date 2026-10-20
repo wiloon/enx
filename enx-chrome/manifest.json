@@ -49,6 +49,13 @@
         "mac": "Command+Shift+E"
       },
       "description": "Open Catglish"
+    },
+    "toggle-learning-mode": {
+      "suggested_key": {
+        "default": "Alt+C",
+        "mac": "Alt+C"
+      },
+      "description": "Turn Catglish on or off on this page"
     }
   }
 }

@@ -23,9 +23,11 @@ import {
   shouldAutoEnable,
 } from './autoEnable'
 import {
+  disableLearningModeOnTab,
   enableLearningModeOnTab,
   getLearningModeStatusOnTab,
 } from '@/lib/enableLearningMode'
+import { runLearningModeCommand } from '@/lib/learningModeCommand'
 import { applyStatus, dismissPinHint, maybeAskToPin, resetTab } from './badge'
 import type { LearningModeStatus } from '@/lib/learningModeStatus'
 import {
@@ -660,6 +662,19 @@ chrome.tabs.onRemoved.addListener(tabId => {
     .catch(error =>
       console.warn('Failed to clear side panel state for closed tab:', error)
     )
+})
+
+// #230: Alt+C (or whatever the user bound) turns learning mode on or off on
+// the current tab. The command grants activeTab, as opening the popup does.
+chrome.commands.onCommand.addListener((command, tab) => {
+  runLearningModeCommand(command, tab?.id, {
+    getStatus: getLearningModeStatusOnTab,
+    enable: enableLearningModeOnTab,
+    disable: disableLearningModeOnTab,
+    report: applyStatus,
+  }).catch(error =>
+    console.error('Failed to toggle learning mode from the shortcut:', error)
+  )
 })
 
 // Handle extension icon clicks

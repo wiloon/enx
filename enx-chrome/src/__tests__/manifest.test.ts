@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { buildManifest } from '../config/manifest'
+import { TOGGLE_LEARNING_MODE_COMMAND } from '../lib/learningModeCommand'
 import {
   clerkFrontendApiHost,
   TARGETS,
@@ -190,6 +191,20 @@ describe('manifest stamping (ADR-019)', () => {
   // silently disagree with the tag.
   it('keeps the version out of package.json', () => {
     expect(pkg).not.toHaveProperty('version')
+  })
+
+  // #230: Alt+C toggles learning mode with the popup closed. The command's
+  // name is what background.ts listens for, so it comes from the same
+  // constant. Opening the popup keeps its own shortcut.
+  it('suggests Alt+C for the learning mode toggle and keeps the popup shortcut', () => {
+    expect(base.commands[TOGGLE_LEARNING_MODE_COMMAND]).toEqual({
+      suggested_key: { default: 'Alt+C', mac: 'Alt+C' },
+      description: 'Turn Catglish on or off on this page',
+    })
+    expect(base.commands._execute_action.suggested_key).toEqual({
+      default: 'Ctrl+Shift+E',
+      mac: 'Command+Shift+E',
+    })
   })
 
   // Every permission is justified one by one on the Web Store's Privacy tab,

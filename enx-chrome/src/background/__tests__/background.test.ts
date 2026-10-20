@@ -2200,3 +2200,30 @@ describe('background onInstalled opens /welcome (ADR-047)', () => {
     expect(chrome.tabs.update).not.toHaveBeenCalled()
   })
 })
+
+// #230: the toggle itself is learningModeCommand.ts; this only checks the
+// worker hands it the shortcut's tab.
+describe('background learning mode shortcut', () => {
+  const onCommand = (chrome.commands.onCommand.addListener as jest.Mock).mock
+    .calls[0]?.[0] as (command: string, tab?: { id?: number }) => void
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+  })
+
+  it('turns learning mode off on the shortcut tab when it is on', async () => {
+    ;(chrome.tabs.sendMessage as jest.Mock).mockImplementation(
+      async (_tabId: number, message: { action: string }) =>
+        message.action === 'getLearningModeStatus'
+          ? { status: { status: 'ready' } }
+          : undefined
+    )
+
+    onCommand('toggle-learning-mode', { id: 9 })
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(9, {
+      action: 'enxStop',
+    })
+  })
+})
