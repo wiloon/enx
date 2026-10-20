@@ -66,6 +66,12 @@ export function badgeFor(status: LearningModeStatus): BadgeAppearance {
   }
 }
 
+// Whether turning learning mode off means anything yet. Not 'processing':
+// enxStop can't cancel a run still preparing the article, so the popup's
+// button and the shortcut (#230) both wait for it to finish.
+export const isLearningModeOn = (status: LearningModeStatus): boolean =>
+  status.status === 'ready'
+
 // Failures the user can act on (sign in again, check the network, retry).
 // The rest -- a home page, a layout we don't know, nothing English -- leave
 // the badge empty; a manual enable already explains them in the popup.

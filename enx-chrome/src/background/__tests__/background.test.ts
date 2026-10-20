@@ -51,6 +51,7 @@ jest.mock('@clerk/chrome-extension/client', () => ({
 
 import { createClerkClient } from '@clerk/chrome-extension/client'
 import { getApiBaseUrl } from '@/config/env'
+import { TOGGLE_LEARNING_MODE_COMMAND } from '@/lib/learningModeCommand'
 import {
   makeApiRequest,
   NETWORK_ERROR_MESSAGE,
@@ -2205,7 +2206,7 @@ describe('background onInstalled opens /welcome (ADR-047)', () => {
 // worker hands it the shortcut's tab.
 describe('background learning mode shortcut', () => {
   const onCommand = (chrome.commands.onCommand.addListener as jest.Mock).mock
-    .calls[0]?.[0] as (command: string, tab?: { id?: number }) => void
+    .calls[0]?.[0] as (command: string, tab?: { id?: number }) => Promise<void>
 
   beforeEach(() => {
     jest.resetAllMocks()
@@ -2219,8 +2220,7 @@ describe('background learning mode shortcut', () => {
           : undefined
     )
 
-    onCommand('toggle-learning-mode', { id: 9 })
-    await new Promise(resolve => setTimeout(resolve, 10))
+    await onCommand(TOGGLE_LEARNING_MODE_COMMAND, { id: 9 })
 
     expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(9, {
       action: 'enxStop',

@@ -14,10 +14,6 @@ import type { LearningModeShortcut } from '@/lib/learningModeCommand'
 // so turning Catglish on or off doesn't shift everything below the card.
 const CARD_HEIGHT = 'h-13'
 
-// Where Chrome lets the user bind or change an extension's shortcut. A link
-// can't open a chrome:// page from an extension page; chrome.tabs.create can.
-const SHORTCUT_SETTINGS_URL = 'chrome://extensions/shortcuts'
-
 export type LearningModeCardStatus = 'off' | 'enabling' | 'on' | 'turning-off'
 
 interface LearningModeCardProps {
@@ -26,6 +22,8 @@ interface LearningModeCardProps {
   shortcut?: LearningModeShortcut
   onEnable: () => void
   onTurnOff: () => void
+  /** Opens Chrome's page for binding the shortcut. */
+  onSetShortcut: () => void
 }
 
 function ShortcutKey({ shortcut }: { shortcut?: LearningModeShortcut }) {
@@ -104,9 +102,7 @@ export default function LearningModeCard(props: LearningModeCardProps) {
           <button
             type="button"
             data-testid="learning-mode-set-shortcut"
-            onClick={() =>
-              void chrome.tabs.create({ url: SHORTCUT_SETTINGS_URL })
-            }
+            onClick={props.onSetShortcut}
             className="flex items-center gap-1 px-1 text-[11px] text-muted-foreground transition hover:text-foreground"
           >
             Set a shortcut

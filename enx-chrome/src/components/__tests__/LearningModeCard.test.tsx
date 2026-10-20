@@ -10,15 +10,17 @@ const setup = (
 ) => {
   const onEnable = jest.fn()
   const onTurnOff = jest.fn()
+  const onSetShortcut = jest.fn()
   render(
     <LearningModeCard
       status={status}
       shortcut={shortcut}
       onEnable={onEnable}
       onTurnOff={onTurnOff}
+      onSetShortcut={onSetShortcut}
     />
   )
-  return { onEnable, onTurnOff }
+  return { onEnable, onTurnOff, onSetShortcut }
 }
 
 describe('LearningModeCard', () => {
@@ -119,14 +121,12 @@ describe('LearningModeCard', () => {
       }
     )
 
-    it('opens Chrome\'s shortcut settings from "Set a shortcut"', () => {
-      const { onEnable } = setup('off', unbound)
+    it('asks to set a shortcut from "Set a shortcut", without enabling', () => {
+      const { onEnable, onSetShortcut } = setup('off', unbound)
 
       fireEvent.click(screen.getByRole('button', { name: /Set a shortcut/ }))
 
-      expect(chrome.tabs.create).toHaveBeenCalledWith({
-        url: 'chrome://extensions/shortcuts',
-      })
+      expect(onSetShortcut).toHaveBeenCalledTimes(1)
       expect(onEnable).not.toHaveBeenCalled()
     })
 

@@ -5,6 +5,7 @@
 import type { EnxRunResponse } from '@/lib/enableLearningMode'
 import { failed, type EnableFailureReason } from '@/lib/enableOutcome'
 import {
+  isLearningModeOn,
   statusForOutcome,
   type LearningModeStatus,
 } from '@/lib/learningModeStatus'
@@ -31,12 +32,13 @@ export function learningModeShortcut(
 
 export interface LearningModeCommandDeps {
   getStatus: (tabId: number) => Promise<LearningModeStatus>
+  isSignedIn: () => Promise<boolean>
   enable: (tabId: number) => Promise<EnxRunResponse>
   disable: (tabId: number) => Promise<void>
-  /** Puts a status on the tab's badge (adr-046). */
-  report: (tabId: number, status: LearningModeStatus) => Promise<void>
+  showOnBadge: (tabId: number, status: LearningModeStatus) => Promise<void>
 }
 
+/** What the key did; only the tests read it. */
 export type LearningModeCommandResult =
   'enabled' | 'disabled' | 'failed' | 'ignored'
 
@@ -49,26 +51,39 @@ export async function runLearningModeCommand(
     return 'ignored'
   }
 
-  // 'processing' counts as on: pressing the key again means "stop". A failed
-  // run ('error') is off, so the key retries, as the popup's button does.
-  const { status } = await deps.getStatus(tabId)
-  if (status === 'ready' || status === 'processing') {
+  // A press while the article is still being prepared does nothing: enxStop
+  // can't cancel that run, which would then paint and report ready on a page
+  // that believes it is off. A failed run ('error') is off, so the key
+  // retries, as the popup's button does.
+  const status = await deps.getStatus(tabId)
+  if (status.status === 'processing') return 'ignored'
+  if (isLearningModeOn(status)) {
     await deps.disable(tabId)
     return 'disabled'
   }
 
+  // The popup has no enable button signed out; the badge says why, as on a
+  // granted auto-enable site (adr-046 Decision 7).
+  if (!(await deps.isSignedIn())) {
+    await deps.showOnBadge(tabId, { status: 'error', reason: 'signed-out' })
+    return 'failed'
+  }
+
   // With the popup closed there is no error line to show, so a failure goes
   // to the badge, as statusForOutcome would put it after any run: `!` for
-  // what the user can act on, empty for a page Catglish can't read.
+  // what the user can act on, empty for a page Catglish can't read. For a
+  // failure after the article was found, the content script's runWithStatus
+  // has already written this same status; writing it again is harmless, and
+  // nothing else reports injection-blocked, a throw or unsupported-page.
   let reason: EnableFailureReason
   try {
     const response = await deps.enable(tabId)
     if (response?.success) return 'enabled'
-    reason = (response?.reason as EnableFailureReason | undefined) ?? 'error'
+    reason = response?.reason ?? 'error'
   } catch (error) {
     console.warn(`[ENX] shortcut could not enable tab ${tabId}:`, error)
     reason = 'error'
   }
-  await deps.report(tabId, statusForOutcome(failed(reason)))
+  await deps.showOnBadge(tabId, statusForOutcome(failed(reason)))
   return 'failed'
 }

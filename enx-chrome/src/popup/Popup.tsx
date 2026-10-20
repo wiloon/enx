@@ -17,7 +17,7 @@ import PageReportPrompt, {
 import SaveLinkCard from '@/components/SaveLinkCard'
 import SignOutButton from '@/components/SignOutButton'
 import { config } from '@/config/env'
-import { isReportableFailure, EnableFailureReason } from '@/lib/enableOutcome'
+import { isReportableFailure } from '@/lib/enableOutcome'
 import {
   disableLearningModeOnTab,
   enableLearningModeOnTab,
@@ -27,6 +27,7 @@ import {
   learningModeShortcut,
   type LearningModeShortcut,
 } from '@/lib/learningModeCommand'
+import { isLearningModeOn } from '@/lib/learningModeStatus'
 import { PageReportPayload, sanitizePageUrl } from '@/lib/pageReport'
 import { initSentry } from '@/lib/sentry'
 import { errorAtom, userAtom } from '@/store/atoms'
@@ -92,6 +93,11 @@ function ClerkUserSync() {
   return null
 }
 
+// Where Chrome lets the user bind or change an extension's shortcut (#230). A
+// link can't open a chrome:// page from an extension page; chrome.tabs.create
+// can.
+const SHORTCUT_SETTINGS_URL = 'chrome://extensions/shortcuts'
+
 interface SignedInBodyProps {
   wordHighlightEnabled: boolean
   setWordHighlightEnabled: (value: boolean) => void
@@ -134,11 +140,11 @@ function SignedInBody({
         currentWindow: true,
       })
       if (!tab?.id) return
-      const { status } = await getLearningModeStatusOnTab(tab.id)
+      const status = await getLearningModeStatusOnTab(tab.id)
       if (cancelled) return
       // Not 'processing': the popup would never hear it finish and the
       // button would stay disabled.
-      if (status === 'ready') setLearningStatus('on')
+      if (isLearningModeOn(status)) setLearningStatus('on')
     })()
     return () => {
       cancelled = true
@@ -194,7 +200,7 @@ function SignedInBody({
       if (!response?.success) {
         // Only failures that say "this page's layout defeated us" are worth
         // offering; a network error or expired session is not the page's fault.
-        const reason = response?.reason as EnableFailureReason | undefined
+        const reason = response?.reason
         const url = sanitizePageUrl(tab.url)
         if (reason && isReportableFailure(reason) && url) {
           setReportCandidate({ url, reason, adapter: response.adapter ?? '' })
@@ -269,6 +275,9 @@ function SignedInBody({
         shortcut={shortcut}
         onEnable={handleEnableLearning}
         onTurnOff={handleTurnOffLearning}
+        onSetShortcut={() =>
+          void chrome.tabs.create({ url: SHORTCUT_SETTINGS_URL })
+        }
       />
 
       {/* adr-039: only on pages whose site can be auto-enabled. */}

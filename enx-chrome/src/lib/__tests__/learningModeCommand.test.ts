@@ -16,7 +16,8 @@ const makeDeps = (
     getStatus: jest.fn().mockResolvedValue(status),
     enable: jest.fn().mockResolvedValue({ success: true }),
     disable: jest.fn().mockResolvedValue(undefined),
-    report: jest.fn().mockResolvedValue(undefined),
+    isSignedIn: jest.fn().mockResolvedValue(true),
+    showOnBadge: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   }
   return deps
@@ -37,7 +38,7 @@ describe('runLearningModeCommand', () => {
     expect(result).toBe('enabled')
     expect(deps.enable).toHaveBeenCalledWith(TAB_ID)
     expect(deps.disable).not.toHaveBeenCalled()
-    expect(deps.report).not.toHaveBeenCalled()
+    expect(deps.showOnBadge).not.toHaveBeenCalled()
   })
 
   it('turns learning mode off when it is on', async () => {
@@ -54,15 +55,60 @@ describe('runLearningModeCommand', () => {
     expect(deps.enable).not.toHaveBeenCalled()
   })
 
-  // Pressing the key again while the article is still being prepared means
-  // "stop", not "start over".
-  it('turns learning mode off while the page is still processing', async () => {
+  // enxStop can't cancel a run still preparing the article: it would finish,
+  // paint and report ready with the page believing it is off. So the key
+  // waits, as the popup does, rather than stopping or starting over.
+  it('does nothing while the page is still processing', async () => {
     const deps = makeDeps({ status: 'processing' })
 
-    await runLearningModeCommand(TOGGLE_LEARNING_MODE_COMMAND, TAB_ID, deps)
+    const result = await runLearningModeCommand(
+      TOGGLE_LEARNING_MODE_COMMAND,
+      TAB_ID,
+      deps
+    )
 
-    expect(deps.disable).toHaveBeenCalledWith(TAB_ID)
+    expect(result).toBe('ignored')
+    expect(deps.disable).not.toHaveBeenCalled()
     expect(deps.enable).not.toHaveBeenCalled()
+    expect(deps.showOnBadge).not.toHaveBeenCalled()
+  })
+
+  // The popup offers no enable button signed out. The key says why on the
+  // badge, as a granted auto-enable site does (adr-046 Decision 7).
+  it('asks to sign in on the badge instead of enabling when signed out', async () => {
+    const deps = makeDeps(
+      { status: 'off' },
+      { isSignedIn: jest.fn().mockResolvedValue(false) }
+    )
+
+    const result = await runLearningModeCommand(
+      TOGGLE_LEARNING_MODE_COMMAND,
+      TAB_ID,
+      deps
+    )
+
+    expect(result).toBe('failed')
+    expect(deps.enable).not.toHaveBeenCalled()
+    expect(deps.showOnBadge).toHaveBeenCalledWith(TAB_ID, {
+      status: 'error',
+      reason: 'signed-out',
+    })
+  })
+
+  it('still turns learning mode off when signed out', async () => {
+    const deps = makeDeps(
+      { status: 'ready' },
+      { isSignedIn: jest.fn().mockResolvedValue(false) }
+    )
+
+    const result = await runLearningModeCommand(
+      TOGGLE_LEARNING_MODE_COMMAND,
+      TAB_ID,
+      deps
+    )
+
+    expect(result).toBe('disabled')
+    expect(deps.disable).toHaveBeenCalledWith(TAB_ID)
   })
 
   it('retries after a failed run, as the popup button does', async () => {
@@ -94,7 +140,7 @@ describe('runLearningModeCommand', () => {
     )
 
     expect(result).toBe('failed')
-    expect(deps.report).toHaveBeenCalledWith(TAB_ID, {
+    expect(deps.showOnBadge).toHaveBeenCalledWith(TAB_ID, {
       status: 'error',
       reason: 'error',
     })
@@ -120,7 +166,7 @@ describe('runLearningModeCommand', () => {
     )
 
     expect(result).toBe('failed')
-    expect(deps.report).toHaveBeenCalledWith(TAB_ID, { status: 'off' })
+    expect(deps.showOnBadge).toHaveBeenCalledWith(TAB_ID, { status: 'off' })
   })
 
   it('shows `!` when enabling throws', async () => {
@@ -137,7 +183,7 @@ describe('runLearningModeCommand', () => {
     )
 
     expect(result).toBe('failed')
-    expect(deps.report).toHaveBeenCalledWith(TAB_ID, {
+    expect(deps.showOnBadge).toHaveBeenCalledWith(TAB_ID, {
       status: 'error',
       reason: 'error',
     })

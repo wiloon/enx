@@ -666,16 +666,20 @@ chrome.tabs.onRemoved.addListener(tabId => {
 
 // #230: Alt+C (or whatever the user bound) turns learning mode on or off on
 // the current tab. The command grants activeTab, as opening the popup does.
-chrome.commands.onCommand.addListener((command, tab) => {
+// Returns the run so tests can await it; Chrome ignores the value.
+chrome.commands.onCommand.addListener((command, tab) =>
   runLearningModeCommand(command, tab?.id, {
     getStatus: getLearningModeStatusOnTab,
+    isSignedIn,
     enable: enableLearningModeOnTab,
     disable: disableLearningModeOnTab,
-    report: applyStatus,
-  }).catch(error =>
-    console.error('Failed to toggle learning mode from the shortcut:', error)
-  )
-})
+    showOnBadge: applyStatus,
+  })
+    .then(() => undefined)
+    .catch(error =>
+      console.error('Failed to toggle learning mode from the shortcut:', error)
+    )
+)
 
 // Handle extension icon clicks
 chrome.action.onClicked.addListener(async tab => {
