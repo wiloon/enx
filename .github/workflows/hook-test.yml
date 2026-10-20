@@ -1,0 +1,7 @@
+name: hook refusal test (ADR-064, delete me)
+on: pull_request
+jobs:
+  probe:
+    runs-on: homelab-deploy
+    steps:
+      - run: echo "THIS STEP MUST NEVER RUN"
