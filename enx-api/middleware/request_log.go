@@ -11,7 +11,8 @@ import (
 // RequestLog writes one structured line per request once it has been
 // handled: method, route, status, duration and the caller's user id, plus
 // lookup_source when a word lookup tagged one (ADR-040) and rate_limited
-// when RateLimit refused the request (ADR-060). The route is gin's
+// when RateLimit refused the request (ADR-060), and auth_rejected (plus azp
+// for an unauthorized origin) when ClerkAuth turned the token away. The route is gin's
 // template ("/api/word/:word"), never the raw path, because
 // the path carries what the user looked up. CORS preflights are skipped.
 // Pass logger.Infow as log.
@@ -40,6 +41,12 @@ func RequestLog(log func(msg string, keysAndValues ...interface{})) gin.HandlerF
 		}
 		if c.GetBool(RateLimitedKey) {
 			fields = append(fields, "rate_limited", true)
+		}
+		if outcome := c.GetString(AuthRejectedKey); outcome != "" {
+			fields = append(fields, "auth_rejected", outcome)
+		}
+		if azp := c.GetString(RejectedAZPKey); azp != "" {
+			fields = append(fields, "azp", azp)
 		}
 		log("request", fields...)
 	}

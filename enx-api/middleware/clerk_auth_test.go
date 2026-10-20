@@ -201,3 +201,55 @@ func TestClerkConfigFrom(t *testing.T) {
 		t.Errorf("ClerkConfigFrom() = %+v, want %+v", got, want)
 	}
 }
+
+// authLogLine sends one request through RequestLog + ClerkAuth, as apiGroup
+// wires them, and returns the request line it wrote.
+func authLogLine(t *testing.T, cfg ClerkConfig, authHeader string) map[string]interface{} {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	var lines []logLine
+	r := gin.New()
+	r.Use(RequestLog(recordLog(&lines)))
+	r.Use(ClerkAuth(cfg, nil))
+	r.GET("/api/me", func(c *gin.Context) { c.Status(http.StatusOK) })
+	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	if authHeader != "" {
+		req.Header.Set("Authorization", authHeader)
+	}
+	r.ServeHTTP(httptest.NewRecorder(), req)
+	if len(lines) != 1 {
+		t.Fatalf("got %d log lines, want 1", len(lines))
+	}
+	return lines[0].fields
+}
+
+// A sign-in from an origin missing from CLERK_AUTHORIZED_PARTIES is a 401 on
+// every call; the request line names the origin so the log alone shows which
+// one to add (2026-10-20: www.catglish.com).
+func TestClerkAuth_UnauthorizedPartyIsNamedOnTheRequestLogLine(t *testing.T) {
+	env, cfg := testClerkEnv(t)
+	token := env.SignSessionToken(t, jwt.MapClaims{
+		"sub": "user_wrongazp",
+		"azp": "https://www.not-my-origin.example",
+	})
+
+	f := authLogLine(t, cfg, "Bearer "+token)
+
+	if f["status"] != http.StatusUnauthorized || f["auth_rejected"] != "unauthorized_party" ||
+		f["azp"] != "https://www.not-my-origin.example" {
+		t.Fatalf("line = %+v, want 401, auth_rejected=unauthorized_party, the azp", f)
+	}
+}
+
+func TestClerkAuth_RejectReasonIsOnTheRequestLogLine(t *testing.T) {
+	_, cfg := testClerkEnv(t)
+
+	f := authLogLine(t, cfg, "")
+
+	if f["auth_rejected"] != "missing_token" {
+		t.Fatalf("line = %+v, want auth_rejected=missing_token", f)
+	}
+	if _, ok := f["azp"]; ok {
+		t.Fatalf("line carries azp without one to report: %+v", f)
+	}
+}
