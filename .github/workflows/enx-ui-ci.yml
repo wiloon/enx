@@ -60,9 +60,15 @@ jobs:
       - name: Build
         env:
           ENX_NPM_REGISTRY: https://registry.npmjs.org/
+          # Proves the version is baked into the image (#51); the smoke test
+          # reads it back without passing it to the container.
+          ENX_VERSION: ci-${{ github.sha }}
+          ENX_GIT_COMMIT: ${{ github.sha }}
         run: enx-ui/cnb/docker-build.sh enx-ui:ci
 
       - name: Smoke test (runtime config only)
+        env:
+          SMOKE_VERSION: ci-${{ github.sha }}
         run: SMOKE_IMAGE=enx-ui:ci enx-ui/scripts/smoke-runtime.sh
 
       - name: Image size

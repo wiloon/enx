@@ -28,34 +28,51 @@ beforeEach(() => {
   mockDetectExtension.mockResolvedValue({ installed: false })
 })
 
-it('shows the product version with the full commit on hover', async () => {
+it("shows the UI's own baked-in version with its commit and build time on hover", async () => {
+  setRuntimeEnv({
+    ENX_VERSION: 'v0.0.7',
+    ENX_GIT_COMMIT: 'e7e5cb6acd4f200d23325e977f04501404bb259c',
+    ENX_BUILD_TIME: '2026-10-20T06:00:00Z',
+  })
   render(<SidebarVersions />)
 
   const line = await screen.findByText('Catglish v0.0.7')
   expect(line).toHaveAttribute(
     'title',
+    'commit e7e5cb6acd4f200d23325e977f04501404bb259c · built 2026-10-20T06:00:00Z'
+  )
+  await screen.findByText('Extension not installed')
+  expect(screen.queryByText(/^API /)).not.toBeInTheDocument()
+})
+
+it('flags the API version when only one side was deployed', async () => {
+  setRuntimeEnv({ ENX_VERSION: 'v0.0.8', ENX_GIT_COMMIT: 'abcdef123' })
+  render(<SidebarVersions />)
+
+  expect(await screen.findByText('Catglish v0.0.8')).toBeInTheDocument()
+  expect(await screen.findByText('API v0.0.7')).toHaveAttribute(
+    'title',
     'commit e7e5cb6acd4f200d23325e977f04501404bb259c'
   )
 })
 
-it('adds the build time to the hover text when the API knows it', async () => {
-  mockGetVersion.mockResolvedValue({
-    success: true,
-    data: {
-      version: 'v0.0.8',
-      commit: 'abcdef123',
-      build_time: '2026-09-27T10:00:00Z',
-    },
-  })
+it("falls back to the API's version when the UI has none (dev server)", async () => {
   render(<SidebarVersions />)
 
-  expect(await screen.findByText('Catglish v0.0.8')).toHaveAttribute(
-    'title',
-    'commit abcdef123 · built 2026-09-27T10:00:00Z'
-  )
+  expect(await screen.findByText('Catglish v0.0.7')).toBeInTheDocument()
 })
 
-it('hides the product version when the API call fails', async () => {
+it('still shows the UI version when the API call fails', async () => {
+  setRuntimeEnv({ ENX_VERSION: 'v0.0.8' })
+  mockGetVersion.mockResolvedValue({ success: false, error: 'HTTP 502' })
+  render(<SidebarVersions />)
+
+  await screen.findByText('Extension not installed')
+  expect(screen.getByText('Catglish v0.0.8')).toBeInTheDocument()
+  expect(screen.queryByText(/^API /)).not.toBeInTheDocument()
+})
+
+it('hides the product version when neither version is known', async () => {
   mockGetVersion.mockResolvedValue({ success: false, error: 'HTTP 502' })
   render(<SidebarVersions />)
 

@@ -12,6 +12,12 @@
 export type RuntimeEnv = {
   ENX_EXTENSION_ID: string
   ENX_EXTENSION_WEB_STORE_URL: string
+  // Stamped into the image at build time (cnb/build.sh), not set per
+  // deployment: a version is per-image, so this keeps one image running
+  // anywhere. Empty on a dev server.
+  ENX_VERSION: string
+  ENX_GIT_COMMIT: string
+  ENX_BUILD_TIME: string
 }
 
 export const RUNTIME_ENV_GLOBAL = '__ENX_ENV__'
@@ -20,6 +26,9 @@ export function serverRuntimeEnv(): RuntimeEnv {
   return {
     ENX_EXTENSION_ID: process.env.ENX_EXTENSION_ID ?? '',
     ENX_EXTENSION_WEB_STORE_URL: process.env.ENX_EXTENSION_WEB_STORE_URL ?? '',
+    ENX_VERSION: process.env.ENX_VERSION ?? '',
+    ENX_GIT_COMMIT: process.env.ENX_GIT_COMMIT ?? '',
+    ENX_BUILD_TIME: process.env.ENX_BUILD_TIME ?? '',
   }
 }
 

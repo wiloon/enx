@@ -5,7 +5,8 @@
 #
 #   enx-ui/cnb/docker-build.sh enx-ui:smoke
 #
-# Passed through to build.sh when set: ENX_CACHE_IMAGE, ENX_NPM_REGISTRY.
+# Passed through to build.sh when set: ENX_CACHE_IMAGE, ENX_NPM_REGISTRY,
+# ENX_VERSION, ENX_GIT_COMMIT, ENX_BUILD_TIME.
 # Registry credentials for the cache image: CNB_REGISTRY_AUTH
 # ({"<registry>": "Basic <base64 user:pass>"}), read by the lifecycle itself.
 set -euo pipefail
@@ -34,6 +35,9 @@ docker run --rm -u root \
   -e ENX_DAEMON=1 \
   -e ENX_CACHE_IMAGE="${ENX_CACHE_IMAGE:-}" \
   -e ENX_NPM_REGISTRY="${ENX_NPM_REGISTRY:-}" \
+  -e ENX_VERSION="${ENX_VERSION:-}" \
+  -e ENX_GIT_COMMIT="${ENX_GIT_COMMIT:-}" \
+  -e ENX_BUILD_TIME="${ENX_BUILD_TIME:-}" \
   -e CNB_REGISTRY_AUTH="${CNB_REGISTRY_AUTH:-}" \
   "$ENX_CNB_BUILDER_IMAGE" \
   bash /workspace/app/cnb/build.sh

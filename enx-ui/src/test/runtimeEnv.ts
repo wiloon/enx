@@ -5,6 +5,9 @@ export function setRuntimeEnv(values: Partial<RuntimeEnv>): void {
   ;(window as unknown as Record<string, RuntimeEnv>)[RUNTIME_ENV_GLOBAL] = {
     ENX_EXTENSION_ID: '',
     ENX_EXTENSION_WEB_STORE_URL: '',
+    ENX_VERSION: '',
+    ENX_GIT_COMMIT: '',
+    ENX_BUILD_TIME: '',
     ...values,
   }
 }
