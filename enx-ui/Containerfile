@@ -53,6 +53,12 @@ RUN pnpm build
 FROM node:24-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+# This build's version, read at runtime by src/lib/runtimeEnv.ts (#51). Per
+# image, not per deployment, so one image still runs anywhere.
+ARG ENX_VERSION=
+ARG ENX_GIT_COMMIT=
+ARG ENX_BUILD_TIME=
+ENV ENX_VERSION=$ENX_VERSION ENX_GIT_COMMIT=$ENX_GIT_COMMIT ENX_BUILD_TIME=$ENX_BUILD_TIME
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public

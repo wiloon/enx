@@ -126,9 +126,8 @@ export interface RephraseData {
   notes: string[]
 }
 
-// GET /api/version (enx-api GetVersionSimple), stamped via ldflags at build.
-// enx-api and enx-ui ship from one tag, so the sidebar shows this as the
-// product version. Baking the tag into the enx-ui image instead is #51.
+// A build's version: enx-api's GET /api/version (GetVersionSimple, stamped via
+// ldflags), or enx-ui's own, baked into its image (lib/buildVersion.ts).
 export interface VersionData {
   version: string
   commit: string

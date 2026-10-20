@@ -121,8 +121,8 @@ jobs:
   # enx-ui: environment-agnostic since the runtime-config change -- the
   # publishable key, API host, site URL and extension id are all read from the
   # container's env at request time (next.config.ts rewrites + runtimeEnv.ts),
-  # never inlined at build time. This build takes no deployment-specific args,
-  # and the resulting image is interchangeable with the homelab one.
+  # never inlined at build time. This build takes no deployment-specific args
+  # (only its own version, #51), so the image runs in homelab as well.
   # ---------------------------------------------------------------------
   build-ui:
     name: Build enx-ui
@@ -159,6 +159,9 @@ jobs:
           # enx-ui itself is IMMUTABLE; the cache lives in its own MUTABLE
           # repo (w10n-config infra/aws/opentofu/ec2-tokyo/ecr.tf).
           ENX_CACHE_IMAGE: ${{ steps.ecr.outputs.registry }}/enx-ui-cnb-cache:latest
+          # Shown in the app sidebar (#51).
+          ENX_VERSION: ${{ needs.version.outputs.tag }}
+          ENX_GIT_COMMIT: ${{ github.sha }}
         run: |
           # The lifecycle reads registry credentials itself, not ~/.docker.
           token=$(aws ecr get-login-password --region "$AWS_REGION")
@@ -166,6 +169,8 @@ jobs:
           enx-ui/cnb/docker-build.sh enx-ui:smoke
 
       - name: Smoke test (runtime config only)
+        env:
+          SMOKE_VERSION: ${{ needs.version.outputs.tag }}
         run: SMOKE_IMAGE=enx-ui:smoke enx-ui/scripts/smoke-runtime.sh
 
       # Push exactly the image that was smoke-tested.

@@ -20,6 +20,9 @@
 #   ENX_DAEMON=1      write the image to the local Docker daemon instead of a
 #                     registry (needs /var/run/docker.sock; run as root)
 #   ENX_REPORT        where to copy the lifecycle report.toml
+#   ENX_VERSION, ENX_GIT_COMMIT, ENX_BUILD_TIME  this build's tag, commit and
+#                     time (default: now), baked into the image's launch env
+#                     and shown in the app sidebar (#51)
 #   ENX_WORK_DIR      scratch dir for layers/platform (default: /tmp/enx-cnb)
 set -euo pipefail
 
@@ -57,6 +60,16 @@ if [ -n "${ENX_NPM_REGISTRY:-}" ]; then
   printf '%s' "$ENX_NPM_REGISTRY" > "$PLATFORM/env/pnpm_config_registry"
   echo "build env: npm/pnpm registry = $ENX_NPM_REGISTRY"
 fi
+
+# The build's own version: the buildpack copies these into the image's launch
+# env. Per image, not per deployment, so one image still runs anywhere.
+ENX_BUILD_TIME=${ENX_BUILD_TIME:-$(date -u '+%Y-%m-%dT%H:%M:%SZ')}
+for name in ENX_VERSION ENX_GIT_COMMIT ENX_BUILD_TIME; do
+  if [ -n "${!name:-}" ]; then
+    printf '%s' "${!name}" > "$PLATFORM/env/$name"
+    echo "build env: $name = ${!name}"
+  fi
+done
 
 # The repo's buildpack, laid out as the lifecycle expects
 # (<dir>/<id with / -> _>/<version>/), as the only group in the order.

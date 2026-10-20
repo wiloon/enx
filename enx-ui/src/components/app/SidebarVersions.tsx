@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { SITE } from '@/lib/site'
 import { detectExtension, webStoreUrl } from '@/lib/enxExtension'
+import { runtimeEnv } from '@/lib/runtimeEnv'
+import { sidebarVersionLines, uiBuildVersion } from '@/lib/buildVersion'
 import { apiService } from '@/services/api'
 import type { VersionData } from '@/types'
 
@@ -24,26 +26,19 @@ export function resetVersionCache(): void {
   versionRequest = undefined
 }
 
-function versionTitle(v: VersionData): string {
-  const parts = [`commit ${v.commit}`]
-  if (v.build_time && v.build_time !== 'unknown') {
-    parts.push(`built ${v.build_time}`)
-  }
-  return parts.join(' · ')
-}
-
-// Small print at the foot of the app sidebar: the product version (enx-api
-// and enx-ui ship from one tag, so /api/version stands for both until #51)
-// and the ENX Chrome extension's own version, read over the ADR-019 channel.
-// Each line stays hidden until its check resolves, and on failure.
+// Small print at the foot of the app sidebar: the product version (enx-ui's
+// own, baked into its image; enx-api's too when it runs a different build,
+// see lib/buildVersion.ts) and the ENX Chrome extension's own version, read
+// over the ADR-019 channel. Each line stays hidden until its check resolves,
+// and on failure.
 export default function SidebarVersions() {
-  const [version, setVersion] = useState<VersionData | null>(null)
+  const [apiVersion, setApiVersion] = useState<VersionData | null>(null)
   const [extension, setExtension] = useState<ExtensionInfo | null>(null)
 
   useEffect(() => {
     let cancelled = false
     loadVersion().then((v) => {
-      if (!cancelled) setVersion(v)
+      if (!cancelled) setApiVersion(v)
     })
     detectExtension().then((e) => {
       if (!cancelled) setExtension(e)
@@ -54,14 +49,20 @@ export default function SidebarVersions() {
   }, [])
 
   const storeUrl = webStoreUrl()
+  const ui = uiBuildVersion({
+    ENX_VERSION: runtimeEnv('ENX_VERSION'),
+    ENX_GIT_COMMIT: runtimeEnv('ENX_GIT_COMMIT'),
+    ENX_BUILD_TIME: runtimeEnv('ENX_BUILD_TIME'),
+  })
+  const versionLines = sidebarVersionLines(SITE.name, ui, apiVersion)
 
   return (
     <div className="flex flex-col gap-0.5 px-3 pt-2 text-xs text-sidebar-foreground/40">
-      {version && (
-        <span title={versionTitle(version)}>
-          {SITE.name} {version.version}
+      {versionLines.map((line) => (
+        <span key={line.label} title={line.title}>
+          {line.label}
         </span>
-      )}
+      ))}
       {extension?.installed && <span>Extension {extension.version ?? ''}</span>}
       {extension &&
         !extension.installed &&

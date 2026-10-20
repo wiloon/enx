@@ -19,7 +19,10 @@
 #   SMOKE_IMAGE=enx-ui:smoke scripts/smoke-runtime.sh   # run a built container image (CI)
 #
 # Env: SMOKE_PORT (default 3999), SMOKE_TIMEOUT seconds to wait for the server
-# (default 120), CONTAINER_CLI (docker|podman, image mode only).
+# (default 120), CONTAINER_CLI (docker|podman, image mode only), SMOKE_VERSION
+# the ENX_VERSION the image was built with (#51): checked in the served HTML;
+# never passed to the container, so it must come from the image itself
+# (standalone mode sets it, standing in for the image's launch env).
 set -euo pipefail
 
 PORT="${SMOKE_PORT:-3999}"
@@ -76,7 +79,7 @@ else
     NODE_ENV=production PORT="$PORT" \
     CLERK_PUBLISHABLE_KEY="$PK" CLERK_SECRET_KEY="$SK" \
     API_BASE_URL="$API_BASE_URL" SITE_URL="$SITE_URL" \
-    ENX_EXTENSION_ID="$EXT_ID" \
+    ENX_EXTENSION_ID="$EXT_ID" ENX_VERSION="${SMOKE_VERSION:-}" \
     node server.js) >"$LOG" 2>&1 &
   PID=$!
 fi
@@ -108,6 +111,12 @@ if [ -z "$CID" ] && grep -q "Missing publishableKey" "$LOG"; then
 fi
 
 echo "✅ smoke: GET / -> 200, runtime key and extension id served"
+
+if [ -n "${SMOKE_VERSION:-}" ]; then
+  grep -q "\"ENX_VERSION\":\"${SMOKE_VERSION}\"" "$BODY" \
+    || fail "HTML does not carry the image's ENX_VERSION (${SMOKE_VERSION})"
+  echo "✅ smoke: image version ${SMOKE_VERSION} served"
+fi
 
 # The API relay must follow the container's API_BASE_URL, not a value frozen at
 # build time (next.config rewrites() froze it once: production would have

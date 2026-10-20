@@ -6,6 +6,7 @@
 #   layers/pnpm      build+cache   pnpm, the version pinned in packageManager
 #   layers/store     cache         pnpm content-addressable store
 #   layers/runtime   launch+cache  just bin/node -- the only runtime layer
+#   layers/version   launch        ENX_VERSION etc. in the launch env (#51)
 #   app dir                        replaced by the contents of .next/standalone
 #
 # node_modules stays inside the app dir during the build, so Turbopack never
@@ -65,6 +66,18 @@ else
   printf 'production' > "$LAYERS/runtime/env.launch/NODE_ENV.default"
 fi
 write_layer_toml runtime false true true "$NODE_VERSION"
+
+# --- this build's version, read at runtime by src/lib/runtimeEnv.ts -----------
+# cnb/build.sh passes it as platform env; the launch env carries it into the
+# image. Not cached: every build stamps its own.
+rm -rf "$LAYERS/version" && mkdir -p "$LAYERS/version/env.launch"
+for name in ENX_VERSION ENX_GIT_COMMIT ENX_BUILD_TIME; do
+  if [ -n "${!name:-}" ]; then
+    printf '%s' "${!name}" > "$LAYERS/version/env.launch/$name.override"
+  fi
+done
+write_layer_toml version false true false
+step "Version: ${ENX_VERSION:-unset} (commit ${ENX_GIT_COMMIT:-unset}, built ${ENX_BUILD_TIME:-unset})"
 
 # --- pnpm, the exact version from package.json's packageManager -----------------
 # Same as the Containerfile: `npm install -g` the pinned version through the
