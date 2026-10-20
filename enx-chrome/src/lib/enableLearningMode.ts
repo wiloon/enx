@@ -1,9 +1,9 @@
-import { failureMessage } from '@/lib/enableOutcome'
+import { failureMessage, type EnableFailureReason } from '@/lib/enableOutcome'
 import type { LearningModeStatus } from '@/lib/learningModeStatus'
 
 export interface EnxRunResponse {
   success: boolean
-  reason?: string
+  reason?: EnableFailureReason
   error?: string
   adapter?: string
 }

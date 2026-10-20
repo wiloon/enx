@@ -63,6 +63,12 @@ if (typeof globalThis.CSS === 'undefined') {
     setTitle: jest.fn(),
     getUserSettings: jest.fn(),
   },
+  commands: {
+    getAll: jest.fn(async () => []),
+    onCommand: {
+      addListener: jest.fn(),
+    },
+  },
   contextMenus: {
     create: jest.fn(),
     onClicked: {
