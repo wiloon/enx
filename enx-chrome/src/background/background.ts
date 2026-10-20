@@ -496,13 +496,15 @@ export const makeApiRequest = async (
 
 // ADR-047 Decision 1: a fresh install lands on enx-ui's /welcome. A user who
 // came from /welcome to the store still has it open, so switch back to it.
-const openWelcomePage = async (reason: string): Promise<void> => {
-  const uiOrigin = config.frontendBaseUrl
+const openWelcomePage = async (
+  reason: chrome.runtime.InstalledDetails['reason']
+): Promise<void> => {
+  const base = config.frontendBaseUrl
   const tabs =
     reason === 'install'
-      ? await chrome.tabs.query({ url: welcomeUrlPattern(uiOrigin) })
+      ? await chrome.tabs.query({ url: welcomeUrlPattern(base) })
       : []
-  const action = welcomeTabAction(reason, uiOrigin, tabs)
+  const action = welcomeTabAction(reason, base, tabs)
   if (action.kind === 'open') {
     await chrome.tabs.create({ url: action.url })
   } else if (action.kind === 'focus') {
@@ -961,7 +963,12 @@ chrome.runtime.onMessageExternal.addListener(
     // state comes from the page's own Clerk, not from here.
     if (type === 'enx:status') {
       void (async () => {
-        const { isOnToolbar } = await chrome.action.getUserSettings()
+        // Answer even if Chrome can't say: the page reads a missing answer
+        // as "not installed".
+        const isOnToolbar = await chrome.action
+          .getUserSettings()
+          .then(settings => settings.isOnToolbar)
+          .catch(() => false)
         sendResponse({
           ok: true,
           version: chrome.runtime.getManifest().version,

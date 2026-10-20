@@ -111,6 +111,18 @@ it('starts the checklist with installing when the extension is missing', async (
   ).toHaveAttribute('href', '/welcome')
 })
 
+it('holds the checklist until the extension check has answered', async () => {
+  mockOverview.mockResolvedValue(overview())
+  mockExtensionStatus.mockReturnValue('unknown')
+
+  renderPage()
+
+  await waitFor(() => expect(mockOverview).toHaveBeenCalled())
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  expect(screen.queryByText('Get started')).not.toBeInTheDocument()
+  expect(screen.queryByText('Today')).not.toBeInTheDocument()
+})
+
 it('leads a returning user with their own numbers, not a document list', async () => {
   mockOverview.mockResolvedValue(
     overview({

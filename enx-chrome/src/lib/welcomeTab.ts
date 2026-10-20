@@ -14,8 +14,13 @@ export type WelcomeTabAction =
   | { kind: 'open'; url: string }
   | { kind: 'focus'; tabId: number; windowId: number }
 
-export const welcomeUrlPattern = (uiOrigin: string): string =>
-  `${uiOrigin}/welcome*`
+// frontendBaseUrl may carry a path or trailing slash; tabs are matched on
+// the origin alone.
+const originOf = (frontendBaseUrl: string): string =>
+  new URL(frontendBaseUrl).origin
+
+export const welcomeUrlPattern = (frontendBaseUrl: string): string =>
+  `${originOf(frontendBaseUrl)}/welcome*`
 
 const isWelcomePage = (url: string | undefined, uiOrigin: string): boolean => {
   if (!url) return false
@@ -28,11 +33,12 @@ const isWelcomePage = (url: string | undefined, uiOrigin: string): boolean => {
 }
 
 export function welcomeTabAction(
-  reason: string,
-  uiOrigin: string,
+  reason: chrome.runtime.InstalledDetails['reason'],
+  frontendBaseUrl: string,
   tabs: TabInfo[]
 ): WelcomeTabAction {
   if (reason !== 'install') return { kind: 'none' }
+  const uiOrigin = originOf(frontendBaseUrl)
   const existing = tabs.find(
     tab =>
       tab.id !== undefined &&

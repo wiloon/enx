@@ -35,39 +35,56 @@ function runtime(): ExternalRuntime | undefined {
     ?.runtime
 }
 
-export type PingResult = { installed: boolean; version?: string }
-
-// Round-trips `enx:ping` through the extension. Resolves { installed: false }
-// when there is no messaging bridge, the extension does not answer, or the
-// call times out.
-export function pingExtension(timeoutMs = 2000): Promise<PingResult> {
+// One round-trip to the extension. Resolves `fallback` when there is no
+// messaging bridge, the extension does not answer or reports an error, or
+// the call times out; otherwise the parsed response.
+function sendExternal<T>(
+  type: string,
+  parse: (response: object) => T,
+  fallback: T,
+  timeoutMs: number
+): Promise<T> {
   const rt = runtime()
   const id = extensionId()
   const send = rt?.sendMessage
-  if (!id || !send) return Promise.resolve({ installed: false })
+  if (!id || !send) return Promise.resolve(fallback)
 
-  return new Promise<PingResult>((resolve) => {
+  return new Promise<T>((resolve) => {
     let settled = false
-    const done = (result: PingResult) => {
+    const done = (result: T) => {
       if (settled) return
       settled = true
       clearTimeout(timer)
       resolve(result)
     }
-    const timer = setTimeout(() => done({ installed: false }), timeoutMs)
+    const timer = setTimeout(() => done(fallback), timeoutMs)
 
     try {
-      send(id, { type: 'enx:ping' }, (response) => {
+      send(id, { type }, (response) => {
         if (rt?.lastError || !response || typeof response !== 'object') {
-          return done({ installed: false })
+          return done(fallback)
         }
-        const r = response as { ok?: boolean; version?: string }
-        done({ installed: r.ok === true, version: r.version })
+        done(parse(response))
       })
     } catch {
-      done({ installed: false })
+      done(fallback)
     }
   })
+}
+
+export type PingResult = { installed: boolean; version?: string }
+
+// Round-trips `enx:ping` through the extension.
+export function pingExtension(timeoutMs = 2000): Promise<PingResult> {
+  return sendExternal<PingResult>(
+    'enx:ping',
+    (response) => {
+      const r = response as { ok?: boolean; version?: string }
+      return { installed: r.ok === true, version: r.version }
+    },
+    { installed: false },
+    timeoutMs
+  )
 }
 
 export type StatusResult = {
@@ -76,46 +93,26 @@ export type StatusResult = {
   isOnToolbar: boolean
 }
 
-const NOT_INSTALLED: StatusResult = { installed: false, isOnToolbar: false }
-
 // ADR-047 Decision 4: `enx:status` is `enx:ping` plus whether the toolbar
 // icon is pinned, which only the extension can read. /welcome polls it.
 export function extensionStatus(timeoutMs = 2000): Promise<StatusResult> {
-  const rt = runtime()
-  const id = extensionId()
-  const send = rt?.sendMessage
-  if (!id || !send) return Promise.resolve(NOT_INSTALLED)
-
-  return new Promise<StatusResult>((resolve) => {
-    let settled = false
-    const done = (result: StatusResult) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      resolve(result)
-    }
-    const timer = setTimeout(() => done(NOT_INSTALLED), timeoutMs)
-
-    try {
-      send(id, { type: 'enx:status' }, (response) => {
-        if (rt?.lastError || !response || typeof response !== 'object') {
-          return done(NOT_INSTALLED)
-        }
-        const r = response as {
-          ok?: boolean
-          version?: string
-          isOnToolbar?: boolean
-        }
-        done({
-          installed: r.ok === true,
-          version: r.version,
-          isOnToolbar: r.isOnToolbar === true,
-        })
-      })
-    } catch {
-      done(NOT_INSTALLED)
-    }
-  })
+  return sendExternal<StatusResult>(
+    'enx:status',
+    (response) => {
+      const r = response as {
+        ok?: boolean
+        version?: string
+        isOnToolbar?: boolean
+      }
+      return {
+        installed: r.ok === true,
+        version: r.version,
+        isOnToolbar: r.isOnToolbar === true,
+      }
+    },
+    { installed: false, isOnToolbar: false },
+    timeoutMs
+  )
 }
 
 // Fast path first: the content script stamps the running version onto <html>
@@ -163,30 +160,10 @@ export type SignedInReturnResult = {
 export function notifySignedIn(
   timeoutMs = 4000
 ): Promise<SignedInReturnResult | null> {
-  const rt = runtime()
-  const id = extensionId()
-  const send = rt?.sendMessage
-  if (!id || !send) return Promise.resolve(null)
-
-  return new Promise<SignedInReturnResult | null>((resolve) => {
-    let settled = false
-    const done = (result: SignedInReturnResult | null) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      resolve(result)
-    }
-    const timer = setTimeout(() => done(null), timeoutMs)
-
-    try {
-      send(id, { type: 'enx:signed-in' }, (response) => {
-        if (rt?.lastError || !response || typeof response !== 'object') {
-          return done(null)
-        }
-        done(response as SignedInReturnResult)
-      })
-    } catch {
-      done(null)
-    }
-  })
+  return sendExternal<SignedInReturnResult | null>(
+    'enx:signed-in',
+    (response) => response as SignedInReturnResult,
+    null,
+    timeoutMs
+  )
 }

@@ -1,4 +1,4 @@
-import { welcomeTabAction } from '../welcomeTab'
+import { welcomeTabAction, welcomeUrlPattern } from '../welcomeTab'
 
 const UI = 'https://catglish.com'
 
@@ -37,6 +37,16 @@ describe('welcomeTabAction (ADR-047 Decision 1)', () => {
       tabId: 9,
       windowId: 3,
     })
+  })
+
+  it('treats a base URL with a trailing slash as the same origin', () => {
+    const tabs = [{ id: 4, windowId: 2, url: 'https://catglish.com/welcome' }]
+    expect(welcomeTabAction('install', `${UI}/`, tabs).kind).toBe('focus')
+    expect(welcomeTabAction('install', `${UI}/`, [])).toEqual({
+      kind: 'open',
+      url: 'https://catglish.com/welcome?src=install',
+    })
+    expect(welcomeUrlPattern(`${UI}/`)).toBe('https://catglish.com/welcome*')
   })
 
   it('does nothing on update', () => {

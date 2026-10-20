@@ -1487,6 +1487,17 @@ describe('background onMessageExternal (ADR-019 web -> extension channel)', () =
     })
   })
 
+  it('still answers enx:status when Chrome cannot report the toolbar setting', async () => {
+    ;(chrome.action.getUserSettings as jest.Mock).mockRejectedValue(
+      new Error('unsupported')
+    )
+    expect(await call({ type: 'enx:status' })).toEqual({
+      ok: true,
+      version: '1.2.3',
+      isOnToolbar: false,
+    })
+  })
+
   it('drops enx:status from an origin that is not an enx-ui origin', async () => {
     const sendResponse = jest.fn()
     const keptOpen = external(
@@ -2148,8 +2159,8 @@ describe('background tab-scoped Side Panel (ADR-050)', () => {
 // ADR-047 Decision 1: install opens, or switches back to, /welcome.
 describe('background onInstalled opens /welcome (ADR-047)', () => {
   // Captured at collection time, before any beforeEach resetAllMocks().
-  const onInstalled = (chrome.runtime.onInstalled.addListener as jest.Mock)
-    .mock.calls[0][0] as (details: { reason: string }) => Promise<void>
+  const onInstalled = (chrome.runtime.onInstalled.addListener as jest.Mock).mock
+    .calls[0][0] as (details: { reason: string }) => Promise<void>
 
   beforeEach(() => {
     jest.resetAllMocks()

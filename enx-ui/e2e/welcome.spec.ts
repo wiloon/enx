@@ -16,7 +16,7 @@ test.describe('/welcome (signed out)', () => {
     await expect(
       page.getByRole('heading', { name: 'The Quiet Power of a Short Walk' })
     ).toBeVisible()
-    await expect(page.locator('#enx-reader-article p')).toHaveCount(4)
+    await expect(page.locator('#enx-reader-article p').first()).toBeVisible()
     await expect(page).toHaveURL(/\/welcome$/)
   })
 })

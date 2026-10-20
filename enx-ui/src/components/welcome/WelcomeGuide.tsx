@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, Circle, CircleSlash } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useExtensionStatusPoll } from '@/hooks/useExtensionStatusPoll'
@@ -11,6 +11,7 @@ import { useLearningModeMark } from '@/hooks/useLearningModeMark'
 import { apiService } from '@/services/api'
 import { isChromium, webStoreUrl } from '@/lib/enxExtension'
 import {
+  onboardingComplete,
   onboardingSteps,
   welcomeLanding,
   type OnboardingStep,
@@ -21,9 +22,9 @@ import { SITE } from '@/lib/site'
 import SampleArticle from '@/components/reader/SampleArticle'
 import { Button } from '@/components/ui/button'
 
-// How often /welcome re-reads the user's lookups while waiting for the first
-// word click (ADR-047 Decision 2, step 3).
-const LOOKUP_POLL_MS = 2000
+// How often /welcome asks the extension for its status and re-reads the
+// user's lookups while waiting on a step (ADR-047 Decision 2).
+const POLL_MS = 2000
 
 const FINAL_LANDINGS: ReadonlySet<WelcomeLanding> = new Set([
   'steps',
@@ -37,13 +38,14 @@ const FINAL_LANDINGS: ReadonlySet<WelcomeLanding> = new Set([
 // other site.
 export default function WelcomeGuide({
   fromInstall,
+  pollMs = POLL_MS,
 }: {
   fromInstall: boolean
+  pollMs?: number
 }) {
   const router = useRouter()
   const { isLoading, isAuthenticated } = useAuth()
   const signedIn = isLoading ? undefined : isAuthenticated
-  const extension = useExtensionStatusPoll()
   const learningEnabled = useLearningModeMark()
   const [pinSkipped, setPinSkipped] = useState(false)
 
@@ -72,7 +74,7 @@ export default function WelcomeGuide({
       preferences.data?.onboardingCompleted?.effective ||
       (query.state.data?.vocab.total ?? 0) > 0
         ? false
-        : LOOKUP_POLL_MS,
+        : pollMs,
   })
 
   // A failed read counts as "new user": the guide shows once more, which is
@@ -98,25 +100,54 @@ export default function WelcomeGuide({
   if (locked === null && FINAL_LANDINGS.has(computed)) setLocked(computed)
   const landing = locked ?? computed
 
-  const progress = onboardingSteps({
-    installed: extension?.installed ?? false,
-    signedIn: signedIn === true,
-    isOnToolbar: extension?.isOnToolbar ?? false,
-    pinSkipped,
+  // Once finished, stays finished: turning learning mode off afterwards must
+  // not bring the steps back.
+  const [reachedDone, setReachedDone] = useState(false)
+  const complete = onboardingComplete({
     learningEnabled,
     hasLookedUp: hasLookedUp ?? false,
   })
+  if (!reachedDone && landing === 'steps' && complete) setReachedDone(true)
+  const finished = landing === 'done' || reachedDone
+
+  const extension = useExtensionStatusPoll({
+    enabled: !finished && landing !== 'app',
+    watchToolbar: landing === 'steps' && !pinSkipped,
+    intervalMs: pollMs,
+  })
+
+  const progress = onboardingSteps(
+    {
+      installed: extension?.installed ?? false,
+      signedIn: signedIn === true,
+      isOnToolbar: extension?.isOnToolbar ?? false,
+      pinSkipped,
+      learningEnabled,
+      hasLookedUp: hasLookedUp ?? false,
+    },
+    landing === 'sign-in' ? 'signed-out' : 'full'
+  )
+
+  const queryClient = useQueryClient()
+  // Later visits in this session must see the flag, not the cached answer.
+  const refreshPreferences = () =>
+    queryClient.invalidateQueries({ queryKey: ['preferences'] })
 
   const recordCompleted = useMutation({
-    mutationFn: () =>
-      apiService.updatePreferences({ onboardingCompleted: true }),
+    mutationFn: async () => {
+      const resp = await apiService.updatePreferences({
+        onboardingCompleted: true,
+      })
+      if (!resp.success) throw new Error(resp.error || 'Failed to save')
+      return resp
+    },
+    retry: 1,
+    onSettled: refreshPreferences,
   })
-  const finished =
-    landing === 'done' || (landing === 'steps' && progress.complete)
   const { mutate: record, isIdle: notYetRecorded } = recordCompleted
   useEffect(() => {
-    if (landing === 'steps' && progress.complete && notYetRecorded) record()
-  }, [landing, progress.complete, notYetRecorded, record])
+    if (reachedDone && notYetRecorded) record()
+  }, [reachedDone, notYetRecorded, record])
 
   // Home's ExtensionBanner then reads "Catglish extension connected".
   useEffect(() => {
@@ -125,12 +156,28 @@ export default function WelcomeGuide({
 
   const skipSetup = async () => {
     if (signedIn) {
+      // A failed write still leaves: the guide showing once more is the
+      // cheap mistake (Decision 1a).
       await apiService.updatePreferences({ onboardingCompleted: true })
+      await refreshPreferences()
     }
     router.push('/app')
   }
 
   const returnTo = fromInstall ? '/welcome?src=install' : '/welcome'
+
+  // Until the extension has answered, whether the install step belongs in
+  // the list is unknown; guessing either way makes it flash.
+  const stepList = (steps: OnboardingStep[]) =>
+    extension === undefined ? (
+      <Loading />
+    ) : (
+      <StepList
+        steps={steps}
+        returnTo={returnTo}
+        onSkipPin={() => setPinSkipped(true)}
+      />
+    )
 
   return (
     <div className="mx-auto grid w-full max-w-6xl gap-10 p-6 md:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] md:p-10">
@@ -142,29 +189,20 @@ export default function WelcomeGuide({
             <h1 className="text-2xl font-bold">
               Welcome to {SITE.name} — sign in to get started
             </h1>
-            <StepList
-              steps={progress.steps.filter(
-                (s) => s.id === 'install' || s.id === 'sign-in'
-              )}
-              returnTo={returnTo}
-              onSkipPin={() => setPinSkipped(true)}
-            />
+            {stepList(progress.steps)}
             <SkipSetup onClick={skipSetup} />
           </>
         ) : landing === 'steps' ? (
           <>
             <h1 className="text-2xl font-bold">Welcome to {SITE.name}</h1>
-            <StepList
-              steps={progress.steps}
-              returnTo={returnTo}
-              onSkipPin={() => setPinSkipped(true)}
-            />
+            {stepList(progress.steps)}
             <SkipSetup onClick={skipSetup} />
           </>
         ) : (
           <>
             <h1 className="text-2xl font-bold">Welcome to {SITE.name}</h1>
-            <p className="text-sm text-muted-foreground">Loading…</p>
+            <Loading />
+            <SkipSetup onClick={skipSetup} />
           </>
         )}
       </section>
@@ -272,7 +310,7 @@ function StepDetail({
               illustration from public/, nothing to optimize */}
           <img
             src="/onboarding/pin-icon.svg"
-            alt="Chrome toolbar: click the puzzle-piece icon, then the pin next to Catglish"
+            alt={`Chrome toolbar: click the puzzle-piece icon, then the pin next to ${SITE.name}`}
             width={360}
             height={200}
             className="w-full max-w-sm rounded-md border"
@@ -312,6 +350,10 @@ function InstallButton() {
       )}
     </div>
   )
+}
+
+function Loading() {
+  return <p className="text-sm text-muted-foreground">Loading…</p>
 }
 
 function SkipSetup({ onClick }: { onClick: () => void }) {

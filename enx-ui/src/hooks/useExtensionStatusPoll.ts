@@ -2,19 +2,29 @@
 
 import { useEffect, useState } from 'react'
 import { extensionStatus, type StatusResult } from '@/lib/enxExtension'
+import { extensionStatusSettled } from '@/lib/onboarding'
 
 const same = (a: StatusResult | undefined, b: StatusResult) =>
   a?.installed === b.installed && a?.isOnToolbar === b.isOnToolbar
 
 // ADR-047 Decision 2: /welcome asks the extension every couple of seconds
 // while the page is visible, so installing or pinning ticks its step without
-// a reload. Stops once both are true; undefined until the first answer.
-export function useExtensionStatusPoll(
-  intervalMs = 2000
-): StatusResult | undefined {
+// a reload. Asks nothing while `enabled` is false, and stops once nothing it
+// watches can change (see extensionStatusSettled). Undefined until the first
+// answer.
+export function useExtensionStatusPoll({
+  enabled = true,
+  watchToolbar = true,
+  intervalMs = 2000,
+}: {
+  enabled?: boolean
+  watchToolbar?: boolean
+  intervalMs?: number
+} = {}): StatusResult | undefined {
   const [status, setStatus] = useState<StatusResult>()
 
   useEffect(() => {
+    if (!enabled) return
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | undefined
 
@@ -30,7 +40,7 @@ export function useExtensionStatusPoll(
             Boolean(document.documentElement.dataset.enxExtension),
         }
         setStatus((prev) => (same(prev, next) ? prev : next))
-        if (next.installed && next.isOnToolbar) return
+        if (extensionStatusSettled(next, watchToolbar)) return
       }
       timer = setTimeout(tick, intervalMs)
     }
@@ -40,7 +50,7 @@ export function useExtensionStatusPoll(
       cancelled = true
       clearTimeout(timer)
     }
-  }, [intervalMs])
+  }, [enabled, watchToolbar, intervalMs])
 
   return status
 }

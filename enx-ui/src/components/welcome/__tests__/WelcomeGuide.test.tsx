@@ -78,13 +78,19 @@ function signedIn() {
   mockAuth.mockReturnValue({ isLoading: false, isAuthenticated: true })
 }
 
-function renderGuide(fromInstall = false) {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+// Polls run every 20 ms here instead of every 2 s.
+const POLL_MS = 20
+
+function newClient() {
+  return new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retryDelay: 0 } },
   })
+}
+
+function renderGuide(fromInstall = false, client = newClient()) {
   return render(
     <QueryClientProvider client={client}>
-      <WelcomeGuide fromInstall={fromInstall} />
+      <WelcomeGuide fromInstall={fromInstall} pollMs={POLL_MS} />
     </QueryClientProvider>
   )
 }
@@ -126,6 +132,15 @@ it('shows a signed-out visitor sign-in and the sample article, and no later step
     screen.getByRole('heading', { name: 'The Quiet Power of a Short Walk' })
   ).toBeInTheDocument()
   expect(screen.queryByText('Pin the Catglish icon')).not.toBeInTheDocument()
+})
+
+it('never flashes the install step at a visitor who has the extension', async () => {
+  installExtension()
+  renderGuide()
+
+  expect(screen.queryByText('Add Catglish to Chrome')).not.toBeInTheDocument()
+  await screen.findByRole('link', { name: 'Sign in' })
+  expect(screen.queryByText('Add Catglish to Chrome')).not.toBeInTheDocument()
 })
 
 it('brings an installing visitor back to /welcome?src=install after sign-in', async () => {
@@ -204,6 +219,39 @@ it('lets the user skip pinning', async () => {
   ).toBeInTheDocument()
 })
 
+const statusCalls = () =>
+  sendMessage.mock.calls.filter(([, message]) => message.type === 'enx:status')
+    .length
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, POLL_MS * 5))
+
+it('stops asking the extension for its status once the pin step is skipped', async () => {
+  signedIn()
+  installExtension()
+  renderGuide()
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Skip' }))
+  await settle()
+  const afterSkip = statusCalls()
+  await settle()
+
+  expect(statusCalls()).toBe(afterSkip)
+})
+
+it('does not poll the extension on the finished page', async () => {
+  signedIn()
+  installExtension()
+  mockOverview.mockResolvedValue(overview(12))
+  renderGuide()
+
+  await screen.findByRole('heading', { name: "You're all set" })
+  await settle()
+  const onArrival = statusCalls()
+  await settle()
+
+  expect(statusCalls()).toBe(onArrival)
+})
+
 it('ticks "Read with Catglish" when the extension marks the page', async () => {
   signedIn()
   installExtension()
@@ -227,18 +275,15 @@ it('ticks "Read with Catglish" when the extension marks the page', async () => {
 
 it('finishes once learning mode is on and a word is looked up, and records it', async () => {
   signedIn()
-  installExtension({ isOnToolbar: true })
+  // Not pinned and not skipped: pinning never gates finishing.
+  installExtension()
   // New user on arrival; the lookup lands while they are on the page.
   mockOverview.mockResolvedValueOnce(overview(0)).mockResolvedValue(overview(1))
   document.documentElement.setAttribute('data-enx-learning', 'on')
   renderGuide(true)
 
   expect(
-    await screen.findByRole(
-      'heading',
-      { name: "You're all set" },
-      { timeout: 5000 }
-    )
+    await screen.findByRole('heading', { name: "You're all set" })
   ).toBeInTheDocument()
   expect(mockUpdatePreferences).toHaveBeenCalledWith({
     onboardingCompleted: true,
@@ -246,8 +291,61 @@ it('finishes once learning mode is on and a word is looked up, and records it', 
   // A new user who just finished stays here, even though they arrived from
   // an install and now have a lookup.
   expect(replace).not.toHaveBeenCalled()
-  // Waits on one real lookup poll (2 s).
-}, 10_000)
+})
+
+it('stays finished when learning mode is turned off afterwards', async () => {
+  signedIn()
+  installExtension({ isOnToolbar: true })
+  mockOverview.mockResolvedValueOnce(overview(0)).mockResolvedValue(overview(1))
+  document.documentElement.setAttribute('data-enx-learning', 'on')
+  renderGuide()
+
+  await screen.findByRole('heading', { name: "You're all set" })
+  act(() => {
+    document.documentElement.removeAttribute('data-enx-learning')
+  })
+
+  await new Promise((resolve) => setTimeout(resolve, POLL_MS * 3))
+  expect(
+    screen.getByRole('heading', { name: "You're all set" })
+  ).toBeInTheDocument()
+})
+
+it('tries once more when recording the finish fails', async () => {
+  signedIn()
+  installExtension()
+  mockOverview.mockResolvedValueOnce(overview(0)).mockResolvedValue(overview(1))
+  mockUpdatePreferences
+    .mockResolvedValueOnce({ success: false, error: 'Network error' })
+    .mockResolvedValue(preferences(true))
+  document.documentElement.setAttribute('data-enx-learning', 'on')
+  renderGuide()
+
+  await screen.findByRole('heading', { name: "You're all set" })
+  await waitFor(() => expect(mockUpdatePreferences).toHaveBeenCalledTimes(2))
+})
+
+it('shows the finished page on a later visit in the same session after "Skip setup"', async () => {
+  signedIn()
+  installExtension()
+  // Like the server: once written, the flag reads back as set.
+  mockUpdatePreferences.mockImplementation(async () => {
+    mockPreferences.mockResolvedValue(preferences(true))
+    return preferences(true)
+  })
+  const client = newClient()
+  const first = renderGuide(false, client)
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Skip setup' }))
+  await waitFor(() => expect(push).toHaveBeenCalledWith('/app'))
+  first.unmount()
+
+  renderGuide(false, client)
+
+  expect(
+    await screen.findByRole('heading', { name: "You're all set" })
+  ).toBeInTheDocument()
+})
 
 it('shows a returning user who opens /welcome the finished page with recommended sites', async () => {
   signedIn()
@@ -272,6 +370,17 @@ it('sends a returning user who just installed straight to /app', async () => {
   renderGuide(true)
 
   await waitFor(() => expect(replace).toHaveBeenCalledWith('/app'))
+})
+
+it('offers "Skip setup" while the user\'s history is still loading', async () => {
+  signedIn()
+  installExtension()
+  mockPreferences.mockReturnValue(new Promise(() => {}))
+  renderGuide()
+
+  expect(
+    await screen.findByRole('button', { name: 'Skip setup' })
+  ).toBeInTheDocument()
 })
 
 it('records "Skip setup" and goes to /app', async () => {

@@ -1,4 +1,5 @@
 import {
+  homeChecklistSteps,
   onboardingSteps,
   welcomeLanding,
   type OnboardingState,
@@ -123,6 +124,18 @@ describe('onboardingSteps (ADR-047 Decision 2)', () => {
     expect(progress.current).toBeNull()
   })
 
+  it('is complete without the pin step, which never gates finishing', () => {
+    const progress = onboardingSteps({
+      ...fresh,
+      installed: true,
+      signedIn: true,
+      learningEnabled: true,
+      hasLookedUp: true,
+    })
+    expect(progress.complete).toBe(true)
+    expect(progress.current).toBe('pin')
+  })
+
   it('is not complete while signed out, whatever else is ticked', () => {
     const progress = onboardingSteps({
       ...fresh,
@@ -133,10 +146,30 @@ describe('onboardingSteps (ADR-047 Decision 2)', () => {
     expect(progress.complete).toBe(false)
     expect(progress.current).toBe('sign-in')
   })
+})
 
-  it('gives every step its English copy', () => {
-    for (const step of onboardingSteps(fresh).steps) {
-      expect(step.title).toMatch(/^[A-Z]/)
-    }
+describe('the steps each screen shows', () => {
+  const ids = (steps: { id: string }[]) => steps.map((s) => s.id)
+
+  it('shows a signed-out visitor only installing and signing in', () => {
+    expect(ids(onboardingSteps(fresh, 'signed-out').steps)).toEqual([
+      'install',
+      'sign-in',
+    ])
+    expect(
+      ids(onboardingSteps({ ...fresh, installed: true }, 'signed-out').steps)
+    ).toEqual(['sign-in'])
+  })
+
+  it('leaves sign-in and pinning off the Home checklist (Decision 6)', () => {
+    expect(ids(homeChecklistSteps(false))).toEqual([
+      'install',
+      'enable',
+      'look-up',
+    ])
+    expect(ids(homeChecklistSteps(true))).toEqual(['enable', 'look-up'])
+    expect(homeChecklistSteps(true).every((s) => s.status === 'todo')).toBe(
+      true
+    )
   })
 })
