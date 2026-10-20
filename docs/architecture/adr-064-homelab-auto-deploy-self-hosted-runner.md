@@ -95,3 +95,22 @@ related: adr-055（enx-ui 用 CNB 构建）、adr-056（enx-api 用 ko 构建）
 - **连续合并两个 PR**：只部署最后一个。
 - **构建失败**：job 失败，commit 显示 ❌，用户收到 GitHub 的邮件，Telegram 收到写明失败步骤的消息。
 - **Telegram 通知**：每次部署都收到开始和结束两条消息；结束消息在 Deployment 滚动更新完成之后才发，不是在 PipelineRun 结束时发。
+
+## 实测（2026-10-20，PR #233 合并即首次部署）
+
+从合并（02:29:56 UTC）算起：
+
+| 时间点 | 耗时 |
+| --- | --- |
+| GitHub 创建 workflow run | 3 秒 |
+| runner Pod 领到 job（节点上已有 runner 镜像缓存） | 15 秒 |
+| 两个 PipelineRun 创建完成，开始构建 | 25 秒 |
+| 构建完成（enx-api / enx-ui） | 5 分 50 秒 / 6 分 12 秒 |
+| ArgoCD 同步、两个 Deployment 滚动更新完成，job 结束 | 11 分 2 秒 |
+
+触发本身不到半分钟，大头是构建和等 ArgoCD 同步。ArgoCD 默认每 3 分钟轮询一次 Git，所以构建完成后到开始同步可能要等几分钟。
+
+runner 镜像有 543 MB，节点上没有缓存时第一次拉取约 4.5 分钟（k8s-21 实测），会算进那一次部署的耗时。
+
+hook 拒绝测试见临时 PR #232（run 39358601961）：`pull_request` 触发的 job 在 "Set up runner" 失败，PR 里的 step 没有执行。
+
