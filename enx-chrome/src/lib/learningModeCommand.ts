@@ -12,6 +12,23 @@ import {
 /** The manifest's `commands` key; keep the two in step. */
 export const TOGGLE_LEARNING_MODE_COMMAND = 'toggle-learning-mode'
 
+/** What the popup shows for the toggle's key. */
+export type LearningModeShortcut =
+  { bound: true; key: string } | { bound: false }
+
+// Alt+C is only suggested: Chrome leaves the command unbound (an empty
+// shortcut) when another extension or Chrome already holds the key, and the
+// user can rebind it, so the popup never assumes "Alt+C". `key` is Chrome's
+// own string: ⌥C on a Mac, Alt+C elsewhere.
+export function learningModeShortcut(
+  commands: ReadonlyArray<{ name?: string; shortcut?: string }>
+): LearningModeShortcut {
+  const key = commands.find(
+    command => command.name === TOGGLE_LEARNING_MODE_COMMAND
+  )?.shortcut
+  return key ? { bound: true, key } : { bound: false }
+}
+
 export interface LearningModeCommandDeps {
   getStatus: (tabId: number) => Promise<LearningModeStatus>
   enable: (tabId: number) => Promise<EnxRunResponse>
@@ -21,10 +38,7 @@ export interface LearningModeCommandDeps {
 }
 
 export type LearningModeCommandResult =
-  | 'enabled'
-  | 'disabled'
-  | 'failed'
-  | 'ignored'
+  'enabled' | 'disabled' | 'failed' | 'ignored'
 
 export async function runLearningModeCommand(
   command: string,

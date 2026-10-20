@@ -1,4 +1,5 @@
 import {
+  learningModeShortcut,
   runLearningModeCommand,
   TOGGLE_LEARNING_MODE_COMMAND,
   type LearningModeCommandDeps,
@@ -164,5 +165,37 @@ describe('runLearningModeCommand', () => {
 
     expect(result).toBe('ignored')
     expect(deps.enable).not.toHaveBeenCalled()
+  })
+})
+
+// The suggested key is only a suggestion: Chrome leaves the command unbound
+// when Alt+C is taken, and the user can rebind it. The popup shows whatever
+// chrome.commands.getAll() reports.
+describe('learningModeShortcut', () => {
+  const popupCommand = {
+    name: '_execute_action',
+    shortcut: 'Ctrl+Shift+E',
+  }
+
+  it('reports the key Chrome bound to the toggle', () => {
+    expect(
+      learningModeShortcut([
+        popupCommand,
+        { name: 'toggle-learning-mode', shortcut: '⌥C' },
+      ])
+    ).toEqual({ bound: true, key: '⌥C' })
+  })
+
+  it('reports unbound when Chrome left the shortcut empty', () => {
+    expect(
+      learningModeShortcut([
+        popupCommand,
+        { name: 'toggle-learning-mode', shortcut: '' },
+      ])
+    ).toEqual({ bound: false })
+  })
+
+  it('reports unbound when the command is missing', () => {
+    expect(learningModeShortcut([popupCommand])).toEqual({ bound: false })
   })
 })

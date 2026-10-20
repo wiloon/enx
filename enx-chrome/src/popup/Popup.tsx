@@ -23,6 +23,10 @@ import {
   enableLearningModeOnTab,
   getLearningModeStatusOnTab,
 } from '@/lib/enableLearningMode'
+import {
+  learningModeShortcut,
+  type LearningModeShortcut,
+} from '@/lib/learningModeCommand'
 import { PageReportPayload, sanitizePageUrl } from '@/lib/pageReport'
 import { initSentry } from '@/lib/sentry'
 import { errorAtom, userAtom } from '@/store/atoms'
@@ -109,6 +113,16 @@ function SignedInBody({
   const [error, setError] = useAtom(errorAtom)
   const [learningStatus, setLearningStatus] =
     useState<LearningModeCardStatus>('off')
+  const [shortcut, setShortcut] = useState<LearningModeShortcut>()
+
+  // Read on every open: the user may have rebound the key, or Chrome may have
+  // left it unbound because Alt+C was taken (#230).
+  useEffect(() => {
+    chrome.commands
+      .getAll()
+      .then(commands => setShortcut(learningModeShortcut(commands)))
+      .catch(error => console.warn('Failed to read the shortcut:', error))
+  }, [])
 
   // Start from the page's real state: an auto-enabled site, or a page enabled
   // from an earlier popup, is already on before this button is ever clicked.
@@ -252,6 +266,7 @@ function SignedInBody({
 
       <LearningModeCard
         status={learningStatus}
+        shortcut={shortcut}
         onEnable={handleEnableLearning}
         onTurnOff={handleTurnOffLearning}
       />

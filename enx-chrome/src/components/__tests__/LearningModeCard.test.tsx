@@ -1,14 +1,19 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import type { LearningModeShortcut } from '@/lib/learningModeCommand'
 import LearningModeCard, {
   type LearningModeCardStatus,
 } from '../LearningModeCard'
 
-const setup = (status: LearningModeCardStatus) => {
+const setup = (
+  status: LearningModeCardStatus,
+  shortcut?: LearningModeShortcut
+) => {
   const onEnable = jest.fn()
   const onTurnOff = jest.fn()
   render(
     <LearningModeCard
       status={status}
+      shortcut={shortcut}
       onEnable={onEnable}
       onTurnOff={onTurnOff}
     />
@@ -75,4 +80,65 @@ describe('LearningModeCard', () => {
       expect(root).not.toHaveClass('py-2.5')
     }
   )
+
+  // #230: the key that toggles learning mode with the popup closed, as
+  // Chrome reports it -- never a hard-coded "Alt+C".
+  describe('shortcut', () => {
+    const bound: LearningModeShortcut = { bound: true, key: '⌥C' }
+    const unbound: LearningModeShortcut = { bound: false }
+
+    it('shows the bound key inside the enable button', () => {
+      setup('off', bound)
+
+      expect(screen.getByTestId('learning-mode-enable')).toHaveTextContent(
+        /Read with Catglish\s*⌥C/
+      )
+      expect(screen.queryByText('Set a shortcut')).not.toBeInTheDocument()
+    })
+
+    it('shows the bound key on Turn off too, since it toggles both ways', () => {
+      setup('on', bound)
+
+      expect(screen.getByTestId('learning-mode-turn-off')).toHaveTextContent(
+        /Turn off\s*⌥C/
+      )
+      expect(screen.queryByText('Set a shortcut')).not.toBeInTheDocument()
+    })
+
+    it.each<LearningModeCardStatus>(['off', 'on'])(
+      'offers "Set a shortcut" outside the button when unbound (%s)',
+      status => {
+        setup(status, unbound)
+
+        const link = screen.getByRole('button', { name: /Set a shortcut/ })
+        const control = screen.getByTestId(
+          status === 'on' ? 'learning-mode-card' : 'learning-mode-enable'
+        )
+        expect(control).not.toContainElement(link)
+        expect(screen.queryByText('⌥C')).not.toBeInTheDocument()
+      }
+    )
+
+    it('opens Chrome\'s shortcut settings from "Set a shortcut"', () => {
+      const { onEnable } = setup('off', unbound)
+
+      fireEvent.click(screen.getByRole('button', { name: /Set a shortcut/ }))
+
+      expect(chrome.tabs.create).toHaveBeenCalledWith({
+        url: 'chrome://extensions/shortcuts',
+      })
+      expect(onEnable).not.toHaveBeenCalled()
+    })
+
+    // Until chrome.commands.getAll() answers, show neither, so the link
+    // doesn't flash for a user whose key is bound.
+    it('shows neither the key nor the link before the binding is known', () => {
+      setup('off')
+
+      expect(screen.getByTestId('learning-mode-enable')).toHaveTextContent(
+        /^Read with Catglish$/
+      )
+      expect(screen.queryByText('Set a shortcut')).not.toBeInTheDocument()
+    })
+  })
 })

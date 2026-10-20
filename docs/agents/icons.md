@@ -30,7 +30,7 @@ Before placing an icon, find its concept below and use that row's icon. A concep
 | Needs a plan (paywalled) | `LockClosedIcon` | `Lock` | "Look up with AI" without credits |
 | Private to you | `ShieldCheckIcon` | `ShieldCheck` | Reader's "Only you can see it" note |
 | A website | `GlobeAltIcon` | `Globe` | popup "Always enable on this site"; "Back to site" nav |
-| Opens in a new tab | `ArrowTopRightOnSquareIcon` | `ExternalLink` | popup header link to the site |
+| Opens in a new tab | `ArrowTopRightOnSquareIcon` | `ExternalLink` | popup header link to the site; popup "Set a shortcut" |
 | Next step, go on | `ArrowRightIcon` | `ArrowRight` | sign-in button |
 | Row leads somewhere | `ChevronRightIcon` | `ChevronRight` | popup "Open side panel", Home tiles |
 | The extension itself | `PuzzlePieceIcon` | `Puzzle` | Reader's "needs the extension" notice |
