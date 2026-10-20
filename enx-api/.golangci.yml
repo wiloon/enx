@@ -10,10 +10,10 @@ linters:
       rules:
         # Issue #45: configuration is read once, by enx-api/config, into a
         # typed Config that packages receive through their constructors.
-        viper-only-in-config:
+        koanf-only-in-config:
           files:
             - "$all"
             - "!**/enx-api/config/*.go"
           deny:
-            - pkg: github.com/spf13/viper
+            - pkg: github.com/knadh/koanf
               desc: read configuration through enx-api/config (issue #45)

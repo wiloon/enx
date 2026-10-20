@@ -112,7 +112,7 @@ func TestDefaultMatchesLoadWithNothingSet(t *testing.T) {
 	}
 }
 
-// Regression guard: viper.AutomaticEnv() used to be enabled, which made
+// Regression guard: viper's AutomaticEnv() used to be enabled, which made
 // "user.last-login-update-interval" resolve to $USER's shadow ("") instead of
 // its "5m" default.
 func TestUserEnvVarDoesNotShadowUserKeys(t *testing.T) {
@@ -121,6 +121,38 @@ func TestUserEnvVarDoesNotShadowUserKeys(t *testing.T) {
 
 	if got := loadDefaults(t).User.LastLoginUpdateInterval; got != 5*time.Minute {
 		t.Errorf("user.last-login-update-interval = %v, want 5m", got)
+	}
+}
+
+// An env var set to "" counts as unset: k8s manifests and .env templates
+// carry empty placeholders, and they must not override a default.
+func TestEmptyEnvVarKeepsDefault(t *testing.T) {
+	isolate(t)
+	t.Setenv("ENX_PORT", "")
+	t.Setenv("LOG_LEVEL", "")
+
+	cfg := loadDefaults(t)
+	if cfg.Enx.Port != 8091 {
+		t.Errorf("enx.port = %d, want the 8091 default", cfg.Enx.Port)
+	}
+	if cfg.Log.Level != "info" {
+		t.Errorf("log.level = %q, want the info default", cfg.Log.Level)
+	}
+}
+
+// A searched-for file is reported by its absolute path, so the startup log
+// says which of the search directories won.
+func TestLoadSearchedPathIsAbsolute(t *testing.T) {
+	isolate(t)
+	if err := os.WriteFile("config.toml", []byte("[enx]\nport = 9003\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !filepath.IsAbs(cfg.File) || filepath.Base(cfg.File) != "config.toml" {
+		t.Errorf("File = %q, want an absolute path to config.toml", cfg.File)
 	}
 }
 
@@ -388,6 +420,12 @@ func TestLoadRejects(t *testing.T) {
 			name:    "key from another provider's shape",
 			toml:    "[sentence-translate.kimi]\ngroup-id = \"g\"\n",
 			wantErr: "group-id",
+		},
+		{
+			// koanf keeps key case; viper folded "Port" onto "port".
+			name:    "key in another case",
+			toml:    "[enx]\nPort = 8091\n",
+			wantErr: "Port",
 		},
 		{
 			name:    "malformed duration",
