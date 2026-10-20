@@ -1,4 +1,9 @@
-import { detectExtension, notifySignedIn } from '../enxExtension'
+import {
+  detectExtension,
+  extensionStatus,
+  isChromium,
+  notifySignedIn,
+} from '../enxExtension'
 import { setRuntimeEnv } from '@/test/runtimeEnv'
 
 type SendMessage = jest.Mock
@@ -75,6 +80,75 @@ describe('notifySignedIn (ADR-020)', () => {
     } finally {
       jest.useRealTimers()
     }
+  })
+})
+
+describe('extensionStatus (ADR-047 Decision 4)', () => {
+  it('reports the extension and whether its icon is pinned', async () => {
+    const sendMessage = jest.fn((_id, _msg, cb) =>
+      cb({ ok: true, version: '2.0.0', isOnToolbar: true })
+    )
+    installChrome(sendMessage)
+
+    await expect(extensionStatus()).resolves.toEqual({
+      installed: true,
+      version: '2.0.0',
+      isOnToolbar: true,
+    })
+    expect(sendMessage).toHaveBeenCalledWith(
+      'test-ext-id',
+      { type: 'enx:status' },
+      expect.any(Function)
+    )
+  })
+
+  it('reports not installed when the extension never answers (timeout)', async () => {
+    jest.useFakeTimers()
+    try {
+      installChrome(jest.fn())
+
+      const result = extensionStatus(1000)
+      jest.advanceTimersByTime(1000)
+
+      await expect(result).resolves.toEqual({
+        installed: false,
+        isOnToolbar: false,
+      })
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('reports not installed without a messaging bridge', async () => {
+    await expect(extensionStatus()).resolves.toEqual({
+      installed: false,
+      isOnToolbar: false,
+    })
+  })
+})
+
+describe('isChromium', () => {
+  it('tells Chrome and Edge from Firefox and Safari by user agent', () => {
+    expect(
+      isChromium(
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'
+      )
+    ).toBe(true)
+    expect(
+      isChromium(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0'
+      )
+    ).toBe(true)
+    expect(
+      isChromium(
+        'Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0'
+      )
+    ).toBe(false)
+    expect(
+      isChromium(
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15'
+      )
+    ).toBe(false)
   })
 })
 

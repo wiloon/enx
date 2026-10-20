@@ -86,19 +86,29 @@ beforeEach(() => {
   })
 })
 
-it('walks a user with no data through the three onboarding steps', async () => {
+// ADR-047 Decision 6: the same steps as /welcome, each leading there.
+it('walks a user with no data through the onboarding steps on /welcome', async () => {
   mockOverview.mockResolvedValue(overview())
 
   renderPage()
 
+  expect(await screen.findByText('Get started')).toBeInTheDocument()
+  expect(screen.queryByText('Add Catglish to Chrome')).not.toBeInTheDocument()
   expect(
-    await screen.findByText('Get started in three steps')
-  ).toBeInTheDocument()
-  expect(screen.getByText('Catglish is installed')).toBeInTheDocument()
-  expect(
-    screen.getByRole('link', { name: 'Paste some text instead' })
-  ).toBeInTheDocument()
+    screen.getByRole('link', { name: 'Click any word in the article' })
+  ).toHaveAttribute('href', '/welcome')
   expect(screen.queryByText('Today')).not.toBeInTheDocument()
+})
+
+it('starts the checklist with installing when the extension is missing', async () => {
+  mockOverview.mockResolvedValue(overview())
+  mockExtensionStatus.mockReturnValue('not-installed')
+
+  renderPage()
+
+  expect(
+    await screen.findByRole('link', { name: 'Add Catglish to Chrome' })
+  ).toHaveAttribute('href', '/welcome')
 })
 
 it('leads a returning user with their own numbers, not a document list', async () => {
@@ -118,9 +128,7 @@ it('leads a returning user with their own numbers, not a document list', async (
   expect(screen.getByText('1,200')).toBeInTheDocument()
   expect(screen.getByText('14')).toBeInTheDocument()
   expect(screen.getByText('312')).toBeInTheDocument()
-  expect(
-    screen.queryByText('Get started in three steps')
-  ).not.toBeInTheDocument()
+  expect(screen.queryByText('Get started')).not.toBeInTheDocument()
   expect(screen.queryByText('Continue reading')).not.toBeInTheDocument()
 })
 
@@ -170,9 +178,7 @@ it('keeps a stats failure from blanking the rest of Home', async () => {
     await screen.findByRole('link', { name: 'Reader' })
   ).toBeInTheDocument()
   await waitFor(() =>
-    expect(
-      screen.queryByText('Get started in three steps')
-    ).not.toBeInTheDocument()
+    expect(screen.queryByText('Get started')).not.toBeInTheDocument()
   )
   expect(screen.queryByText('Today')).not.toBeInTheDocument()
 })

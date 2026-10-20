@@ -28,7 +28,11 @@ const ack = { value: null, effective: false, editable: true }
 
 const prefs = (
   aiWordFallback: PreferencesData['aiWordFallback']
-): PreferencesData => ({ aiWordFallback, aiWordFallbackNoticeAck: ack })
+): PreferencesData => ({
+  aiWordFallback,
+  aiWordFallbackNoticeAck: ack,
+  onboardingCompleted: ack,
+})
 
 const subscriber = prefs({ value: null, effective: true, editable: true })
 const topupOnly = prefs({ value: null, effective: false, editable: true })

@@ -15,6 +15,12 @@ export function webStoreUrl(): string {
   return runtimeEnv('ENX_EXTENSION_WEB_STORE_URL')
 }
 
+// The extension runs only in Chromium browsers (Chrome, Edge, ...), whose
+// user agents all carry "Chrome/". /welcome tells everyone else up front.
+export function isChromium(userAgent: string): boolean {
+  return /\bChrome\//.test(userAgent)
+}
+
 type ExternalRuntime = {
   sendMessage?: (
     extensionId: string,
@@ -60,6 +66,54 @@ export function pingExtension(timeoutMs = 2000): Promise<PingResult> {
       })
     } catch {
       done({ installed: false })
+    }
+  })
+}
+
+export type StatusResult = {
+  installed: boolean
+  version?: string
+  isOnToolbar: boolean
+}
+
+const NOT_INSTALLED: StatusResult = { installed: false, isOnToolbar: false }
+
+// ADR-047 Decision 4: `enx:status` is `enx:ping` plus whether the toolbar
+// icon is pinned, which only the extension can read. /welcome polls it.
+export function extensionStatus(timeoutMs = 2000): Promise<StatusResult> {
+  const rt = runtime()
+  const id = extensionId()
+  const send = rt?.sendMessage
+  if (!id || !send) return Promise.resolve(NOT_INSTALLED)
+
+  return new Promise<StatusResult>((resolve) => {
+    let settled = false
+    const done = (result: StatusResult) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(result)
+    }
+    const timer = setTimeout(() => done(NOT_INSTALLED), timeoutMs)
+
+    try {
+      send(id, { type: 'enx:status' }, (response) => {
+        if (rt?.lastError || !response || typeof response !== 'object') {
+          return done(NOT_INSTALLED)
+        }
+        const r = response as {
+          ok?: boolean
+          version?: string
+          isOnToolbar?: boolean
+        }
+        done({
+          installed: r.ok === true,
+          version: r.version,
+          isOnToolbar: r.isOnToolbar === true,
+        })
+      })
+    } catch {
+      done(NOT_INSTALLED)
     }
   })
 }

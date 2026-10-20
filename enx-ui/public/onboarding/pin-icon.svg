@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="200" viewBox="0 0 360 200" role="img" aria-labelledby="t">
+  <title id="t">Chrome toolbar: click the puzzle-piece icon, then the pin next to Catglish</title>
+  <rect x="0" y="0" width="360" height="200" rx="10" fill="#f1f3f4"/>
+  <!-- toolbar -->
+  <rect x="12" y="14" width="336" height="36" rx="18" fill="#ffffff" stroke="#dadce0"/>
+  <text x="32" y="37" font-family="sans-serif" font-size="13" fill="#5f6368">catglish.com/welcome</text>
+  <!-- puzzle-piece button -->
+  <circle cx="318" cy="32" r="14" fill="#e8f0fe" stroke="#1a73e8" stroke-width="2"/>
+  <path d="M311 27h4a3 3 0 0 1 6 0h4v5a3 3 0 0 1 0 6v5h-14z" fill="none" stroke="#1a73e8" stroke-width="1.8" stroke-linejoin="round"/>
+  <text x="270" y="72" font-family="sans-serif" font-size="12" font-weight="bold" fill="#1a73e8">1</text>
+  <!-- extensions menu -->
+  <rect x="150" y="80" width="198" height="104" rx="8" fill="#ffffff" stroke="#dadce0"/>
+  <text x="164" y="104" font-family="sans-serif" font-size="13" font-weight="bold" fill="#202124">Extensions</text>
+  <rect x="160" y="118" width="178" height="40" rx="6" fill="#f8f9fa"/>
+  <circle cx="180" cy="138" r="10" fill="#00878F"/>
+  <text x="198" y="143" font-family="sans-serif" font-size="13" fill="#202124">Catglish</text>
+  <!-- pin -->
+  <circle cx="314" cy="138" r="13" fill="#e8f0fe" stroke="#1a73e8" stroke-width="2"/>
+  <path d="M310 131h8l-1 5 3 3h-12l3-3z M314 139v7" fill="none" stroke="#1a73e8" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+  <text x="290" y="176" font-family="sans-serif" font-size="12" font-weight="bold" fill="#1a73e8">2</text>
+</svg>
