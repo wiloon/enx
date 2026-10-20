@@ -16,7 +16,6 @@ jest.mock('@/config/env', () => ({
     ],
     environment: 'test',
   },
-  getApiBaseUrl: jest.fn(async () => 'http://localhost:8090'),
 }))
 
 // Fake Clerk client (ADR-015): the background mints a session JWT via
@@ -50,7 +49,6 @@ jest.mock('@clerk/chrome-extension/client', () => ({
 }))
 
 import { createClerkClient } from '@clerk/chrome-extension/client'
-import { getApiBaseUrl } from '@/config/env'
 import {
   makeApiRequest,
   NETWORK_ERROR_MESSAGE,
@@ -309,7 +307,6 @@ describe('background makeApiRequest / Clerk session token', () => {
     beforeEach(() => {
       jest.useFakeTimers()
       // resetAllMocks() wipes the env mock's implementation too.
-      ;(getApiBaseUrl as jest.Mock).mockResolvedValue('http://localhost:8090')
     })
     afterEach(() => jest.useRealTimers())
 
@@ -529,7 +526,6 @@ describe('background onMessage / markKnown', () => {
     jest.resetAllMocks()
     jest.useFakeTimers()
     setClerkSession('clerk-session-jwt')
-    ;(getApiBaseUrl as jest.Mock).mockResolvedValue('http://localhost:8090')
     ;(global.fetch as jest.Mock) = jest.fn()
   })
   afterEach(() => jest.useRealTimers())
@@ -570,7 +566,6 @@ describe('background onMessage / lookups and the query count', () => {
     jest.resetAllMocks()
     jest.useFakeTimers()
     setClerkSession('clerk-session-jwt')
-    ;(getApiBaseUrl as jest.Mock).mockResolvedValue('http://localhost:8090')
     ;(global.fetch as jest.Mock) = jest.fn()
   })
   afterEach(() => jest.useRealTimers())
@@ -719,7 +714,6 @@ describe('background onMessage / getPreferences and updatePreferences (ADR-044)'
     jest.resetAllMocks()
     __resetClerkClientCacheForTests()
     setClerkSession('clerk-session-jwt')
-    ;(getApiBaseUrl as jest.Mock).mockResolvedValue('http://localhost:8090')
     ;(chrome.storage.local.remove as jest.Mock).mockResolvedValue(undefined)
     ;(chrome.tabs.query as jest.Mock).mockResolvedValue([{ id: 1 }])
     ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
@@ -811,7 +805,6 @@ describe('background onMessage / defineWordWithAI (ADR-045)', () => {
     jest.resetAllMocks()
     __resetClerkClientCacheForTests()
     setClerkSession('clerk-session-jwt')
-    ;(getApiBaseUrl as jest.Mock).mockResolvedValue('http://localhost:8090')
     ;(chrome.storage.local.remove as jest.Mock).mockResolvedValue(undefined)
     ;(chrome.tabs.query as jest.Mock).mockResolvedValue([{ id: 1 }])
     ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
@@ -1761,7 +1754,6 @@ describe('handleGetWords (paragraph-init method)', () => {
     setClerkSession('clerk-session-jwt')
     __resetParagraphMethodForTests()
     // resetAllMocks() wipes the env mock's implementation too.
-    ;(getApiBaseUrl as jest.Mock).mockResolvedValue('http://localhost:8090')
     ;(chrome.storage.local.remove as jest.Mock).mockResolvedValue(undefined)
     ;(chrome.tabs.query as jest.Mock).mockResolvedValue([{ id: 1 }])
     ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)

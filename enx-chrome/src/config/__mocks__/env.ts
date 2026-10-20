@@ -7,17 +7,3 @@ export const config = {
   uiOrigins: ['http://localhost:3000'],
   environment: 'test' as const,
 }
-
-export const apiBaseUrlOverrideAllowed = true
-
-export const getApiBaseUrl = async (): Promise<string> => {
-  return config.apiBaseUrl
-}
-
-export const setApiBaseUrl = async (_url: string): Promise<void> => {
-  // Mock implementation
-}
-
-export const resetApiBaseUrl = async (): Promise<void> => {
-  // Mock implementation
-}

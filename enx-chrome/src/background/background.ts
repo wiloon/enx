@@ -2,7 +2,7 @@
 // Note: Sentry initialization is skipped in service worker context to avoid import issues
 
 import { createClerkClient } from '@clerk/chrome-extension/client'
-import { config, getApiBaseUrl } from '@/config/env'
+import { config } from '@/config/env'
 import { LatestPageWordLookup, PendingSentenceContext, WordData } from '@/types'
 import {
   heartbeat,
@@ -326,7 +326,6 @@ export const makeApiRequest = async (
 
   try {
     for (let attempt = 1; ; attempt++) {
-      const API_BASE_URL = await getApiBaseUrl()
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         // Every call carries the user's UTC offset so the server can file
@@ -354,7 +353,7 @@ export const makeApiRequest = async (
 
       let response: Response
       try {
-        response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        response = await fetch(`${config.apiBaseUrl}${endpoint}`, {
           ...options,
           headers,
         })
@@ -473,11 +472,10 @@ export const makeApiRequest = async (
 
     // Network errors
     if (isNetworkFailure(error)) {
-      // In development the cause is usually the Lab API host being down or
-      // Options pointing at a dead URL; keep that detail in the log.
-      const apiUrl = await getApiBaseUrl().catch(() => '(unknown)')
+      // In development the cause is usually the build's API host being down;
+      // keep that detail in the log.
       swlog(
-        `network failure reaching ${apiUrl}${endpoint} -- check Options → Active API`,
+        `network failure reaching ${config.apiBaseUrl}${endpoint} -- is the API server up?`,
         'warn'
       )
       return { success: false, error: NETWORK_ERROR_MESSAGE }

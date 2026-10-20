@@ -1,6 +1,5 @@
 // User preferences kept in chrome.storage.local, read from the content
-// script, popup and options page alike. Modelled on config/env.ts's
-// getApiBaseUrl / setApiBaseUrl (ADR-011 Decision 3 / D1).
+// script, popup and options page alike (ADR-011 Decision 3 / D1).
 
 export const WORD_HIGHLIGHT_KEY = 'enx-word-highlight-enabled'
 

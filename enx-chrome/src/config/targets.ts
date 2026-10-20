@@ -1,9 +1,10 @@
 // Single source of truth for every deployment-specific URL in the extension.
 //
-// Imported twice, on purpose:
-//   - build time  : vite.config.ts picks a target from the Vite mode / VITE_ENV
-//                   and stamps it into the generated manifest (see manifest.ts)
-//   - run time    : src/config/env.ts re-reads the values Vite injected
+// Build time only: vite.config.ts picks a target from the Vite mode / VITE_ENV
+// (resolveBuildTarget), stamps it into the generated manifest (manifest.ts) and
+// into the bundle (stampedEnv -> `define`). At run time src/config/env.ts reads
+// the stamped values back and never indexes TARGETS, so a bundle carries only
+// its own target. Runtime code must not import TARGETS.
 //
 // Keep this file free of `import.meta` / `process` so it stays loadable from
 // the Vite config (Node) and from Jest (CommonJS) as well as the browser.
@@ -139,6 +140,34 @@ export function applyOverrides(
       env.VITE_CLERK_PUBLISHABLE_KEY || target.clerkPublishableKey,
     clerkSyncHost: env.VITE_CLERK_SYNC_HOST || target.clerkSyncHost,
     uiOrigins,
+  }
+}
+
+/**
+ * The target a build is stamped with: VITE_ENV, else the Vite mode, picks the
+ * entry (homelab if neither is known), then the per-URL overrides apply.
+ */
+export function resolveBuildTarget(
+  mode: string,
+  env: Record<string, string | undefined>
+): Target {
+  const name =
+    resolveTargetName(env.VITE_ENV) ?? resolveTargetName(mode) ?? DEFAULT_TARGET
+  return applyOverrides(TARGETS[name], env)
+}
+
+/**
+ * The build env keys a target is stamped into (vite.config.ts `define`), which
+ * src/config/env.ts reads back at run time.
+ */
+export function stampedEnv(target: Target): Record<string, string> {
+  return {
+    VITE_ENV: target.name,
+    VITE_API_BASE_URL: target.apiBaseUrl,
+    VITE_FRONTEND_BASE_URL: target.frontendBaseUrl,
+    VITE_CLERK_PUBLISHABLE_KEY: target.clerkPublishableKey,
+    VITE_CLERK_SYNC_HOST: target.clerkSyncHost,
+    VITE_ENX_UI_ORIGINS: target.uiOrigins.join(','),
   }
 }
 

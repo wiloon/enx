@@ -1,7 +1,6 @@
 import { atom } from 'jotai'
 import { WordData } from '@/types'
 import { createUserAtom } from '@/lib/storageAtoms'
-import { config } from '@/config/env'
 
 // Demo counter (keeping for hello world demo)
 export const countAtom = atom(0)
@@ -64,9 +63,6 @@ export const sentencePanelHintAtom = atom<string | null>(null)
 
 // Extension enable state
 export const extensionEnabledAtom = atom(false)
-
-// API base URL (can be configured)
-export const apiBaseUrlAtom = atom<string>(config.apiBaseUrl)
 
 // Word cache for better performance
 export const wordCacheAtom = atom<Record<string, WordData>>({})
