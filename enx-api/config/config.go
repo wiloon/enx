@@ -1,9 +1,10 @@
 // Package config reads enx-api's configuration once, at startup, into a typed
-// Config (issue #45). It is the only package that talks to viper: everything
-// else receives the sub-struct it needs through its constructor.
+// Config (issue #45). It is the only package that talks to koanf (issue #46,
+// ADR-065): everything else receives the sub-struct it needs through its
+// constructor.
 //
-// Sources, lowest precedence first: the defaults set in Load, an optional
-// TOML file, then the environment variables bound in Load. Production and
+// Sources, lowest precedence first: defaults(), an optional TOML file, then
+// the environment variables in envBindings. Production and
 // homelab ship no config file, so an env var that is not bound here can never
 // reach the app -- TestEveryFieldHasAnEnvVar guards against that.
 package config
@@ -11,6 +12,8 @@ package config
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
@@ -18,7 +21,9 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/joho/godotenv"
-	"github.com/spf13/viper"
+	"github.com/knadh/koanf/parsers/toml/v2"
+	"github.com/knadh/koanf/providers/confmap"
+	"github.com/knadh/koanf/v2"
 )
 
 type Config struct {
@@ -366,60 +371,125 @@ type User struct {
 func Load(path string) (*Config, error) {
 	_ = godotenv.Load()
 
-	v := viper.New()
-	setDefaults(v)
-	bindEnv(v)
+	k := koanf.New(".")
+	if err := k.Load(confmap.Provider(defaults(), "."), nil); err != nil {
+		return nil, fmt.Errorf("config: defaults: %w", err)
+	}
 
-	if path != "" {
-		v.SetConfigFile(path)
-		if err := v.ReadInConfig(); err != nil {
-			return nil, fmt.Errorf("config: read %s: %w", path, err)
+	file := path
+	if file == "" {
+		file = searchConfigFile()
+	}
+	if file != "" {
+		m, err := readTOML(file)
+		if err != nil {
+			return nil, fmt.Errorf("config: read %s: %w", file, err)
 		}
-	} else {
-		v.SetConfigName("config")
-		v.SetConfigType("toml")
-		v.AddConfigPath("/usr/local/etc/enx/")
-		v.AddConfigPath("$HOME/.enx")
-		v.AddConfigPath(".")
-		if err := v.ReadInConfig(); err != nil {
-			var notFound viper.ConfigFileNotFoundError
-			if !errors.As(err, &notFound) {
-				return nil, fmt.Errorf("config: read %s: %w", v.ConfigFileUsed(), err)
-			}
+		if err := k.Load(confmap.Provider(m, ""), nil); err != nil {
+			return nil, fmt.Errorf("config: read %s: %w", file, err)
 		}
 	}
 
-	var cfg Config
-	if err := v.UnmarshalExact(&cfg, decodeHook); err != nil {
+	if err := k.Load(confmap.Provider(envValues(), "."), nil); err != nil {
+		return nil, fmt.Errorf("config: environment: %w", err)
+	}
+
+	cfg, err := decode(k)
+	if err != nil {
 		return nil, fmt.Errorf("config: %w", err)
 	}
-	cfg.File = v.ConfigFileUsed()
+	cfg.File = file
 
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	return &cfg, nil
+	return cfg, nil
 }
 
 // Default is the configuration with nothing but the defaults: no file, no
 // environment. Tests start from it and set the fields they care about.
 func Default() *Config {
-	v := viper.New()
-	setDefaults(v)
-	var cfg Config
-	if err := v.UnmarshalExact(&cfg, decodeHook); err != nil {
+	k := koanf.New(".")
+	if err := k.Load(confmap.Provider(defaults(), "."), nil); err != nil {
+		panic(fmt.Sprintf("config: defaults do not load: %v", err))
+	}
+	cfg, err := decode(k)
+	if err != nil {
 		panic(fmt.Sprintf("config: defaults do not decode: %v", err))
 	}
-	return &cfg
+	return cfg
 }
 
-var decodeHook = viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
-	mapstructure.StringToTimeDurationHookFunc(),
-	splitOnWhitespace,
-))
+// searchDirs are where Load looks for config.toml when no -c is given, first
+// match wins.
+func searchDirs() []string {
+	dirs := []string{"/usr/local/etc/enx"}
+	if home, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs, filepath.Join(home, ".enx"))
+	}
+	return append(dirs, ".")
+}
+
+// searchConfigFile is the absolute path of the first config.toml in
+// searchDirs, "" when there is none.
+func searchConfigFile() string {
+	for _, dir := range searchDirs() {
+		p, err := filepath.Abs(filepath.Join(dir, "config.toml"))
+		if err != nil {
+			continue
+		}
+		if info, err := os.Stat(p); err == nil && !info.IsDir() {
+			return p
+		}
+	}
+	return ""
+}
+
+func readTOML(path string) (map[string]any, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return toml.Parser().Unmarshal(b)
+}
+
+// envValues is every bound environment variable that is set to something.
+// An empty variable counts as unset, so an empty placeholder in a manifest or
+// .env does not override the default.
+func envValues() map[string]any {
+	m := map[string]any{}
+	for key, env := range envBindings {
+		if v := os.Getenv(env); v != "" {
+			m[key] = v
+		}
+	}
+	return m
+}
+
+// decode fills a Config from k. Unknown keys are an error, so a typo in
+// config.toml stops the process instead of being ignored. Input is weakly
+// typed because environment values are all strings ("9001" -> int).
+func decode(k *koanf.Koanf) (*Config, error) {
+	var cfg Config
+	err := k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{
+		Tag: "mapstructure",
+		DecoderConfig: &mapstructure.DecoderConfig{
+			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				mapstructure.StringToTimeDurationHookFunc(),
+				splitOnWhitespace,
+			),
+			ErrorUnused:      true,
+			WeaklyTypedInput: true,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
 
 // splitOnWhitespace decodes a string into a []string by splitting on
-// whitespace. viper's default hook splits on commas, but the deployments set
+// whitespace. The usual decode hook splits on commas, but the deployments set
 // CLERK_AUTHORIZED_PARTIES and ADMIN_CLERK_USER_IDS space-separated; split on
 // commas, every signed-in request would fail Clerk's azp check (401). A TOML
 // array is already a slice and does not pass through here.
@@ -525,133 +595,129 @@ func defaultDBPath() string {
 	return "/var/lib/enx-api/enx.db"
 }
 
-// setDefaults is the single source of truth for defaults: the app works with
+// defaults is the single source of truth for defaults: the app works with
 // no config file at all.
-func setDefaults(v *viper.Viper) {
-	v.SetDefault("enx.port", 8091)
-	v.SetDefault("enx.dev-mode", false)
-	v.SetDefault("db.path", defaultDBPath())
+func defaults() map[string]any {
+	d := map[string]any{}
+	set := func(key string, value any) { d[key] = value }
+
+	set("enx.port", 8091)
+	set("enx.dev-mode", false)
+	set("db.path", defaultDBPath())
 	// Production ships no config.toml, so this default is what it runs at;
 	// the repo's config.toml sets debug for local development.
-	v.SetDefault("log.level", "info")
+	set("log.level", "info")
 	// ADR-040: the /metrics listener. Loopback by default; homelab (k8s)
 	// sets 0.0.0.0:9091 so the in-cluster Prometheus can reach the pod.
-	v.SetDefault("metrics.addr", "127.0.0.1:9091")
+	set("metrics.addr", "127.0.0.1:9091")
 
-	v.SetDefault("ecdict.db_path", "")
+	set("ecdict.db_path", "")
 	// ADR-030 Decision 0: temporary lookup sampling (see the dictsample
 	// package). Off by default -- it is measurement scaffolding with an
 	// expiry date, and a deploy that forgets to disable it should cost
 	// nothing.
-	v.SetDefault("ecdict.sampling", false)
+	set("ecdict.sampling", false)
 
-	v.SetDefault("resend.api-key", "")
-	v.SetDefault("resend.from", "Catglish <no-reply@catglish.com>")
-	v.SetDefault("resend.admin-to", "")
-	v.SetDefault("app.frontend-base-url", "https://enx.wiloon.lab")
+	set("resend.api-key", "")
+	set("resend.from", "Catglish <no-reply@catglish.com>")
+	set("resend.admin-to", "")
+	set("app.frontend-base-url", "https://enx.wiloon.lab")
 
-	v.SetDefault("sentence-translate.provider", "")
+	set("sentence-translate.provider", "")
 	// Per-call provider API timeout. 60s: MiniMax's M-series models "think"
 	// before the first response byte, so the original hard-coded 10s timed
 	// out on rephrase.
-	v.SetDefault("sentence-translate.request-timeout", "60s")
+	set("sentence-translate.request-timeout", "60s")
 
 	// Three subscription tiers (2026-08-26 decision) -- see config.toml's
 	// [stripe.price] comment.
-	v.SetDefault("stripe.price.pro", "enx_pro_monthly")
-	v.SetDefault("stripe.price.pro-plus", "enx_pro_plus_monthly")
-	v.SetDefault("stripe.price.max", "enx_max_monthly")
-	v.SetDefault("stripe.price.credits-topup-small", "enx_credits_topup_small")
-	v.SetDefault("stripe.price.credits-topup-medium", "enx_credits_topup_medium")
-	v.SetDefault("stripe.price.credits-topup-large", "enx_credits_topup_large")
+	set("stripe.price.pro", "enx_pro_monthly")
+	set("stripe.price.pro-plus", "enx_pro_plus_monthly")
+	set("stripe.price.max", "enx_max_monthly")
+	set("stripe.price.credits-topup-small", "enx_credits_topup_small")
+	set("stripe.price.credits-topup-medium", "enx_credits_topup_medium")
+	set("stripe.price.credits-topup-large", "enx_credits_topup_large")
 	// Credit amounts default to 0 (= "not configured"); billing/credit.Consume
 	// and GrantSubscription/GrantTopup deliberately reject 0 rather than
 	// silently under-crediting, see config.toml's [stripe.credits] comment.
-	v.SetDefault("stripe.credits.subscription-pro", 0)
-	v.SetDefault("stripe.credits.subscription-pro-plus", 0)
-	v.SetDefault("stripe.credits.subscription-max", 0)
-	v.SetDefault("stripe.credits.topup-small", 0)
-	v.SetDefault("stripe.credits.topup-medium", 0)
-	v.SetDefault("stripe.credits.topup-large", 0)
+	set("stripe.credits.subscription-pro", 0)
+	set("stripe.credits.subscription-pro-plus", 0)
+	set("stripe.credits.subscription-max", 0)
+	set("stripe.credits.topup-small", 0)
+	set("stripe.credits.topup-medium", 0)
+	set("stripe.credits.topup-large", 0)
 	// Token pricing (ADR-014, ADR-012, ADR-045) defaults to 0 so an
 	// unconfigured deployment fails closed; k8s (no config.toml) sets the
 	// values via env.
 	for _, feature := range []string{"translate", "rephrase", "define-word"} {
-		v.SetDefault("stripe.costs."+feature+".weight-in", 0)
-		v.SetDefault("stripe.costs."+feature+".weight-out", 0)
-		v.SetDefault("stripe.costs."+feature+".divisor", 0)
+		set("stripe.costs."+feature+".weight-in", 0)
+		set("stripe.costs."+feature+".weight-out", 0)
+		set("stripe.costs."+feature+".divisor", 0)
 	}
 	// Daily dictionary lookup ceilings per tier (ADR-029, ADR-059 Decision
 	// 6): free is the product limit, subscribed a backstop against scripts.
-	v.SetDefault("stripe.quota.dictionary-lookup-daily-free", 200)
-	v.SetDefault("stripe.quota.dictionary-lookup-daily-subscribed", 20000)
+	set("stripe.quota.dictionary-lookup-daily-free", 200)
+	set("stripe.quota.dictionary-lookup-daily-subscribed", 20000)
 
 	// AI word fallback tuning (ADR-045). Starting guesses, to be tuned from
 	// usage: a definition is cached only at or above min-quality (0-10), and
 	// the three ceilings are per user.
-	v.SetDefault("ai-word.min-quality", 8)
-	v.SetDefault("ai-word.calls-per-minute", 6)
-	v.SetDefault("ai-word.calls-per-day", 200)
-	v.SetDefault("ai-word.cache-writes-per-day", 50)
-	v.SetDefault("ai-word.call-timeout", "45s")
+	set("ai-word.min-quality", 8)
+	set("ai-word.calls-per-minute", 6)
+	set("ai-word.calls-per-day", 200)
+	set("ai-word.cache-writes-per-day", 50)
+	set("ai-word.call-timeout", "45s")
 
 	// Sign-up trial (ADR-048): amount 0 switches trials off; the two call
 	// ceilings apply only to trial-only users, 0 = no ceiling.
-	v.SetDefault("credits.trial.amount", 100)
-	v.SetDefault("credits.trial.ttl-days", 7)
-	v.SetDefault("credits.trial.calls-per-minute", 5)
-	v.SetDefault("credits.trial.calls-per-day", 30)
+	set("credits.trial.amount", 100)
+	set("credits.trial.ttl-days", 7)
+	set("credits.trial.calls-per-minute", 5)
+	set("credits.trial.calls-per-day", 30)
 
 	// Referral credits (ADR-051 Decision 7): estimated values, to be
 	// calibrated after internal testing. 0 switches each grant off.
-	v.SetDefault("credits.referral.invitee-bonus", 100)
-	v.SetDefault("credits.referral.invitee-ttl-days", 14)
-	v.SetDefault("credits.referral.referrer-reward-subscription", 300)
-	v.SetDefault("credits.referral.referrer-reward-topup-percent", 20)
-	v.SetDefault("credits.referral.reward-delay-days", 14)
-	v.SetDefault("credits.referral.claim-window-hours", 24)
+	set("credits.referral.invitee-bonus", 100)
+	set("credits.referral.invitee-ttl-days", 14)
+	set("credits.referral.referrer-reward-subscription", 300)
+	set("credits.referral.referrer-reward-topup-percent", 20)
+	set("credits.referral.reward-delay-days", 14)
+	set("credits.referral.claim-window-hours", 24)
 
 	// Per-user request rate limit (ADR-060 Decision 3). Starting values, to
 	// be tuned from enx_rate_limited_total; 0 req/s switches it off.
-	v.SetDefault("rate-limit.requests-per-second", 5)
-	v.SetDefault("rate-limit.burst", 60)
+	set("rate-limit.requests-per-second", 5)
+	set("rate-limit.burst", 60)
 
 	// Reading statistics ingest guards (ADR-028 Decision 9). The word cap
 	// bounds a single session report; the TTL is how long a deduplication
 	// row is kept, which only needs to outlive the client's retry window.
-	v.SetDefault("stats.ingest.max-words-per-report", 50000)
-	v.SetDefault("stats.ingest.log-ttl-days", 7)
+	set("stats.ingest.max-words-per-report", 50000)
+	set("stats.ingest.log-ttl-days", 7)
 	// Lookup events are kept this many days, then only their daily rollup
 	// (ADR-059 Decision 4). Validated against 31-100.
-	v.SetDefault("stats.lookup-events.retention-days", 90)
+	set("stats.lookup-events.retention-days", 90)
 
 	// Throttle for last_login_time/updated_at writes on every authenticated
 	// request (see docs/PERF_FIRST_QUERY_LATENCY.md) — only re-write when the
 	// previous value is older than this interval.
-	v.SetDefault("user.last-login-update-interval", "5m")
+	set("user.last-login-update-interval", "5m")
 
 	// Unset: the ops user-stats endpoint is off (ADR-058 Decision 4).
-	v.SetDefault("ops.stats-token", "")
+	set("ops.stats-token", "")
+	return d
 }
 
-// bindEnv binds each key to an explicit environment variable.
-//
-// Deliberately not calling v.AutomaticEnv(): it makes viper treat ANY
-// top-level key segment as shadowed by an identically-named
-// (case-insensitive) OS env var, even one nobody meant to bind -- e.g.
-// "user.last-login-update-interval" silently resolved to "" instead of its
-// "5m" default, because $USER is set in virtually every shell/container.
+// envBindings is the only way an environment variable reaches the config:
+// there is no automatic KEY_NAME -> key.name mapping. viper's AutomaticEnv()
+// used to shadow ANY top-level key segment with an identically-named OS env
+// var, e.g. "user.last-login-update-interval" silently resolved to "" because
+// $USER is set in virtually every shell/container.
 // TestUserEnvVarDoesNotShadowUserKeys is the regression test.
 //
-// API keys and secrets are env-only, never written to config.toml.
-func bindEnv(v *viper.Viper) {
-	for key, env := range envBindings {
-		_ = v.BindEnv(key, env)
-	}
-}
-
-// envBindings maps each config key to its environment variable. Every key a
-// containerised deployment needs must be here: the image ships no config.toml.
+// Every key a containerised deployment needs must be here: the image ships no
+// config.toml. API keys and secrets are env-only, never written to
+// config.toml.
 var envBindings = map[string]string{
 	"enx.port":        "ENX_PORT",
 	"enx.dev-mode":    "ENX_DEV_MODE",
