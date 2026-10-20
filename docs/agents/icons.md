@@ -22,6 +22,8 @@ Before placing an icon, find its concept below and use that row's icon. A concep
 | Saved page | `BookmarkIcon` (outline = not saved, solid = saved) | `Bookmark` | popup Save card, Saved Pages |
 | Reading stats | `ChartBarIcon` | `BarChart3` | Reading Stats nav |
 | Done, on, known | `CheckIcon` / `CheckCircleIcon` (status) | `Check` | "Catglish is on", Mark as known, onboarding steps |
+| A step still to do | — | `Circle` | onboarding steps on `/welcome` and Home |
+| A step the user skipped | — | `CircleSlash` | "Pin the Catglish icon" on `/welcome` after Skip |
 | Back to learning | `ArrowUturnLeftIcon` | `Undo2` | Mark as learning |
 | Delete something kept (server data) | `TrashIcon` | `Trash2` | Remove from Word List, delete a saved page or document |
 | Close or dismiss something transient | `XMarkIcon` | `X` | close the word popover, remove a Side Panel card (cards are not persisted, ADR-023) |
