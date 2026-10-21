@@ -59,8 +59,15 @@ func CreateCheckoutSession(ctx context.Context, sc *stripeSDK.Client, p Checkout
 	}
 	if p.Customer != "" {
 		params.Customer = stripeSDK.String(p.Customer)
-	} else if p.CustomerEmail != "" {
-		params.CustomerEmail = stripeSDK.String(p.CustomerEmail)
+	} else {
+		if p.CustomerEmail != "" {
+			params.CustomerEmail = stripeSDK.String(p.CustomerEmail)
+		}
+		// Subscription mode always creates a customer; payment mode only
+		// does when asked, and Stripe rejects this field in subscription mode.
+		if p.Mode == "payment" {
+			params.CustomerCreation = stripeSDK.String("always")
+		}
 	}
 
 	return sc.V1CheckoutSessions.Create(ctx, params)

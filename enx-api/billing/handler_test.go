@@ -162,6 +162,26 @@ func TestCheckoutTopupWithoutSubscriptionCreatesPaymentSession(t *testing.T) {
 	}
 }
 
+// Stripe makes no customer for a payment-mode session unless asked, and the
+// webhook needs one to record the user<->customer mapping.
+func TestCheckoutTopupFirstTimeBuyerAsksStripeToCreateACustomer(t *testing.T) {
+	userID := "u-" + t.Name()
+	seedUser(t, userID)
+
+	var form url.Values
+	h := NewHandler(fakeStripeClient(t, func(f url.Values) { form = f }), "https://example.com", testStripe(), nil)
+	w := doRequest(t, http.MethodPost, "/billing/checkout/topup", h.CheckoutTopup, userID, `{"tier":"small"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())
+	}
+	if got := form.Get("customer_creation"); got != "always" {
+		t.Errorf("customer_creation: got %q want always", got)
+	}
+	if got := form.Get("customer_email"); got != userID+"@example.com" {
+		t.Errorf("customer_email: got %q want %s@example.com", got, userID)
+	}
+}
+
 // seedUser creates the minimal users row enx.GetUserByID needs -- CheckoutTopup
 // and CheckoutSubscription both 401 on an unknown user before reaching any
 // billing-specific logic.

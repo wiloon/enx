@@ -65,6 +65,35 @@ func TestHandleCheckoutSessionCompletedTopupGrantsCredits(t *testing.T) {
 	}
 }
 
+// A one-time payment Checkout Session has no customer unless Stripe was told
+// to create one, which is how a first-time buyer's top-up arrived in
+// production. The credits are what they paid for, so they still land.
+func TestHandleCheckoutSessionCompletedTopupWithoutCustomerGrantsCredits(t *testing.T) {
+	userID := "u-" + t.Name()
+	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeCheckoutSessionCompleted, `{
+		"id": "cs_topup_nocus",
+		"client_reference_id": "`+userID+`",
+		"customer": null,
+		"payment_intent": "pi_topup_nocus",
+		"metadata": {"type": "topup", "tier": "small"}
+	}`)
+
+	stripe := testStripe()
+	stripe.Credits.TopupSmall = 5
+	h := NewHandler(nil, "https://example.com", stripe, nil)
+	if err := h.dispatchWebhookEvent(context.Background(), event); err != nil {
+		t.Fatalf("dispatchWebhookEvent: %v", err)
+	}
+
+	var credit sqlitex.CreditAccount
+	if err := sqlitex.DB.Where("user_id = ?", userID).First(&credit).Error; err != nil {
+		t.Fatalf("load credit_accounts: %v", err)
+	}
+	if credit.TopupBalance != 5 {
+		t.Fatalf("got topup_balance=%d, want 5", credit.TopupBalance)
+	}
+}
+
 func TestHandleCheckoutSessionCompletedTopupUnconfiguredAmount(t *testing.T) {
 	userID := "u-" + t.Name()
 	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeCheckoutSessionCompleted, `{
