@@ -1,6 +1,10 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Volume2 } from 'lucide-react'
+import { Card } from '@/components/ui/card'
+import LookupCount from '@/components/app/LookupCount'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
+import { formatPhonetic } from '@/lib/phonetic'
+import { playPronunciation } from '@/lib/pronunciation'
 import { WordData } from '@/types'
 
 interface WordResultCardProps {
@@ -15,66 +19,57 @@ export default function WordResultCard({
   onClear,
   clearing = false,
 }: WordResultCardProps) {
+  const phonetic = formatPhonetic(data.Pronunciation)
+
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-2xl">{data.English}</CardTitle>
+    <Card className="gap-0 py-0">
+      <div className="flex items-start justify-between gap-4 px-6 pt-6">
+        <div className="min-w-0 space-y-1">
+          <h2 className="text-3xl font-semibold tracking-tight break-words">
+            {data.English}
+          </h2>
+          <div className="flex items-center gap-1 text-muted-foreground">
+            {phonetic && <span>{phonetic}</span>}
+            {/* Same icon and hint as the extension's word popover. */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => playPronunciation(data.English)}
+              aria-label="Play pronunciation"
+              title="Play pronunciation"
+              className="size-8 text-muted-foreground hover:text-foreground"
+            >
+              <Volume2 aria-hidden="true" />
+            </Button>
+          </div>
+        </div>
         {onClear && (
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             onClick={onClear}
             disabled={clearing}
-            className="text-red-600 border-red-300 hover:bg-red-50"
+            className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
           >
             {clearing ? 'Clearing...' : 'Clear'}
           </Button>
         )}
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <Label className="text-sm font-medium text-gray-600">Word ID</Label>
-            <div className="text-lg font-mono break-all">{data.Id}</div>
-          </div>
+      </div>
 
-          <div>
-            <Label className="text-sm font-medium text-gray-600">
-              Chinese Translation
-            </Label>
-            <div className="text-lg font-medium">{data.Chinese}</div>
-          </div>
+      {data.Chinese && (
+        <p className="px-6 pt-4 pb-6 text-lg leading-relaxed whitespace-pre-line">
+          {data.Chinese}
+        </p>
+      )}
 
-          <div>
-            <Label className="text-sm font-medium text-gray-600">
-              IPA Pronunciation
-            </Label>
-            <div className="text-lg font-mono">{data.Pronunciation}</div>
-          </div>
-
-          <div>
-            <Label className="text-sm font-medium text-gray-600">
-              Lookup Count
-            </Label>
-            <div className="text-lg">{data.LoadCount}</div>
-          </div>
-
-          <div>
-            <Label className="text-sm font-medium text-gray-600">Status</Label>
-            <div className="text-lg">
-              <span
-                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                  data.Known
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-gray-100 text-gray-800'
-                }`}
-              >
-                {data.Known ? 'Mastered' : 'Learning'}
-              </span>
-            </div>
-          </div>
-        </div>
-      </CardContent>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t px-6 py-3 text-xs text-muted-foreground">
+        <Badge variant={data.Known ? 'default' : 'secondary'}>
+          {data.Known ? 'Mastered' : 'Learning'}
+        </Badge>
+        <LookupCount count={data.LoadCount} />
+        <span className="ml-auto truncate font-mono">ID {data.Id}</span>
+      </div>
     </Card>
   )
 }

@@ -16,7 +16,7 @@ Before placing an icon, find its concept below and use that row's icon. A concep
 | External dictionary (Youdao) | `BookOpenIcon` | `BookOpen` | word popover "Youdao" button |
 | Reader (pasted text, a document) | `DocumentTextIcon` | `FileText` | Reader nav and tile, Reader document rows |
 | Word List | — | `BookText` | Word List nav |
-| Pronunciation | `SpeakerWaveIcon` | `Volume2` | word popover, Side Panel card |
+| Pronunciation | `SpeakerWaveIcon` | `Volume2` | word popover, Side Panel card, Word Lookup |
 | Translate the sentence in the Side Panel | `SidePanelTranslateIcon` (custom) | — | word popover, selection hint |
 | Open the Side Panel | `SidePanelIcon` (custom, `Popup.tsx`) | — | popup |
 | Saved page | `BookmarkIcon` (outline = not saved, solid = saved) | `Bookmark` | popup Save card, Saved Pages |
