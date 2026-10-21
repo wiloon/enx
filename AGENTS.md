@@ -65,6 +65,7 @@ All three sub-projects keep the domain apart from the machinery around it:
 
 | File | Read it when |
 |------|--------------|
+| [docs/agents/principles.md](docs/agents/principles.md) | reviewing or revising an issue or ADR; deciding something an issue or ADR leaves open; the owner just settled a decision (propose it as a principle) |
 | [docs/agents/testing.md](docs/agents/testing.md) | choosing a test type, running e2e, signing in for e2e |
 | [docs/agents/enx-api-design.md](docs/agents/enx-api-design.md) | adding an enx-api domain service, repository or entity |
 | [docs/agents/logging.md](docs/agents/logging.md) | adding or changing enx-api log lines |
