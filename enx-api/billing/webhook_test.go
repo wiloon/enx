@@ -59,9 +59,12 @@ func TestHandleCheckoutSessionCompletedTopupGrantsCredits(t *testing.T) {
 	if err := h.dispatchWebhookEvent(context.Background(), event); err != nil {
 		t.Fatalf("retried dispatchWebhookEvent: %v", err)
 	}
-	sqlitex.DB.Where("user_id = ?", userID).First(&credit)
-	if credit.TopupBalance != 5 {
-		t.Fatalf("after retry got topup_balance=%d, want still 5 (idempotent)", credit.TopupBalance)
+	var retried sqlitex.CreditAccount
+	if err := sqlitex.DB.Where("user_id = ?", userID).First(&retried).Error; err != nil {
+		t.Fatalf("reload credit_accounts: %v", err)
+	}
+	if retried.TopupBalance != 5 {
+		t.Fatalf("after retry got topup_balance=%d, want still 5 (idempotent)", retried.TopupBalance)
 	}
 }
 
@@ -139,7 +142,9 @@ func TestHandleCheckoutSessionCompletedTopupUnknownTier(t *testing.T) {
 		t.Fatalf("dispatchWebhookEvent = %v, want a not-configured error", err)
 	}
 	var count int64
-	sqlitex.DB.Model(&sqlitex.CreditAccount{}).Where("user_id = ?", userID).Count(&count)
+	if err := sqlitex.DB.Model(&sqlitex.CreditAccount{}).Where("user_id = ?", userID).Count(&count).Error; err != nil {
+		t.Fatalf("count credit_accounts: %v", err)
+	}
 	if count != 0 {
 		t.Fatalf("an unknown tier created a credit account")
 	}
@@ -182,7 +187,9 @@ func TestHandleSubscriptionUpdatedSetsStatusAndPeriodEndFromStripe(t *testing.T)
 	}
 
 	var sub sqlitex.Subscription
-	sqlitex.DB.Where("user_id = ?", userID).First(&sub)
+	if err := sqlitex.DB.Where("user_id = ?", userID).First(&sub).Error; err != nil {
+		t.Fatalf("load subscriptions: %v", err)
+	}
 	if sub.Status != "past_due" || sub.CurrentPeriodEnd != 1700000000 {
 		t.Fatalf("got status=%q current_period_end=%d, want past_due/1700000000", sub.Status, sub.CurrentPeriodEnd)
 	}
@@ -207,7 +214,9 @@ func TestHandleSubscriptionUpdatedStaleEventAfterDeletionStaysCanceled(t *testin
 	}
 
 	var sub sqlitex.Subscription
-	sqlitex.DB.Where("user_id = ?", userID).First(&sub)
+	if err := sqlitex.DB.Where("user_id = ?", userID).First(&sub).Error; err != nil {
+		t.Fatalf("load subscriptions: %v", err)
+	}
 	if sub.Status != "canceled" {
 		t.Fatalf("got status=%q, want canceled", sub.Status)
 	}
@@ -231,7 +240,9 @@ func TestHandleCheckoutSessionCompletedUsesLiveStatus(t *testing.T) {
 	}
 
 	var sub sqlitex.Subscription
-	sqlitex.DB.Where("user_id = ?", userID).First(&sub)
+	if err := sqlitex.DB.Where("user_id = ?", userID).First(&sub).Error; err != nil {
+		t.Fatalf("load subscriptions: %v", err)
+	}
 	if sub.Status != "canceled" {
 		t.Fatalf("got status=%q, want canceled", sub.Status)
 	}
@@ -260,7 +271,9 @@ func TestHandleSubscriptionEventStripeErrorIsAnError(t *testing.T) {
 	}
 
 	var sub sqlitex.Subscription
-	sqlitex.DB.Where("user_id = ?", userID).First(&sub)
+	if err := sqlitex.DB.Where("user_id = ?", userID).First(&sub).Error; err != nil {
+		t.Fatalf("load subscriptions: %v", err)
+	}
 	if sub.Status != "active" {
 		t.Fatalf("got status=%q, want the row untouched (active)", sub.Status)
 	}
@@ -278,7 +291,9 @@ func TestHandleSubscriptionDeletedSetsCanceled(t *testing.T) {
 	}
 
 	var sub sqlitex.Subscription
-	sqlitex.DB.Where("user_id = ?", userID).First(&sub)
+	if err := sqlitex.DB.Where("user_id = ?", userID).First(&sub).Error; err != nil {
+		t.Fatalf("load subscriptions: %v", err)
+	}
 	if sub.Status != "canceled" {
 		t.Fatalf("got status=%q, want canceled", sub.Status)
 	}
@@ -299,7 +314,9 @@ func TestHandleInvoicePaymentFailedSetsPastDue(t *testing.T) {
 	}
 
 	var sub sqlitex.Subscription
-	sqlitex.DB.Where("user_id = ?", userID).First(&sub)
+	if err := sqlitex.DB.Where("user_id = ?", userID).First(&sub).Error; err != nil {
+		t.Fatalf("load subscriptions: %v", err)
+	}
 	if sub.Status != "past_due" {
 		t.Fatalf("got status=%q, want past_due", sub.Status)
 	}
@@ -325,7 +342,9 @@ func TestHandleInvoicePaidGrantsCreditsAndSyncsState(t *testing.T) {
 	}
 
 	var sub sqlitex.Subscription
-	sqlitex.DB.Where("user_id = ?", userID).First(&sub)
+	if err := sqlitex.DB.Where("user_id = ?", userID).First(&sub).Error; err != nil {
+		t.Fatalf("load subscriptions: %v", err)
+	}
 	if sub.Status != "active" || sub.Plan != "pro-plus" || sub.CurrentPeriodEnd != 1800000000 {
 		t.Fatalf("got status=%q plan=%q current_period_end=%d, want active/pro-plus/1800000000", sub.Status, sub.Plan, sub.CurrentPeriodEnd)
 	}

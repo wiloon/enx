@@ -105,7 +105,9 @@ func TestGrantCredits_RecordsGrantAdminWithReason(t *testing.T) {
 	}
 
 	var rows []sqlitex.CreditTransaction
-	sqlitex.DB.Where("user_id = ?", u.Id).Find(&rows)
+	if err := sqlitex.DB.Where("user_id = ?", u.Id).Find(&rows).Error; err != nil {
+		t.Fatalf("load credit_transactions: %v", err)
+	}
 	if len(rows) != 1 || rows[0].Type != credit.TypeGrantAdmin || rows[0].Note != "homelab test" {
 		t.Fatalf("ledger rows = %+v, want one GRANT_ADMIN row noted \"homelab test\"", rows)
 	}
@@ -117,7 +119,10 @@ func TestGrantCredits_RepeatedGrantsEachLand(t *testing.T) {
 	adminRequest(t, grantPath, `{"email":"grantee2@example.com","amount":100,"reason":"r"}`)
 	adminRequest(t, grantPath, `{"email":"grantee2@example.com","amount":100,"reason":"r"}`)
 
-	bal, _ := credit.Balance(context.Background(), u.Id)
+	bal, err := credit.Balance(context.Background(), u.Id)
+	if err != nil {
+		t.Fatalf("Balance: %v", err)
+	}
 	if bal != 200 {
 		t.Fatalf("two grants of 100 -> balance %d, want 200", bal)
 	}
@@ -142,7 +147,9 @@ func TestDeductCredits_RecordsDeductAdminAndMayGoNegative(t *testing.T) {
 	}
 
 	var rows []sqlitex.CreditTransaction
-	sqlitex.DB.Where("user_id = ?", u.Id).Find(&rows)
+	if err := sqlitex.DB.Where("user_id = ?", u.Id).Find(&rows).Error; err != nil {
+		t.Fatalf("load credit_transactions: %v", err)
+	}
 	if len(rows) != 1 || rows[0].Type != credit.TypeDeductAdmin || rows[0].Amount != -40 || rows[0].Note != "granted twice" {
 		t.Fatalf("ledger rows = %+v, want one DEDUCT_ADMIN -40 row noted \"granted twice\"", rows)
 	}

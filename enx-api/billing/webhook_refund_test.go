@@ -112,7 +112,9 @@ func TestWebhookChargeRefundedClawsBackASubscriptionPeriod(t *testing.T) {
 	}
 
 	var account sqlitex.CreditAccount
-	sqlitex.DB.Where("user_id = ?", userID).First(&account)
+	if err := sqlitex.DB.Where("user_id = ?", userID).First(&account).Error; err != nil {
+		t.Fatalf("load credit_accounts: %v", err)
+	}
 	if account.SubscriptionBalance != 0 {
 		t.Fatalf("subscription = %d, want 0 after the period's payment was refunded", account.SubscriptionBalance)
 	}
@@ -161,7 +163,9 @@ func TestWebhookChargeRefundedRetriesAFailedCancelWithoutClawingTwice(t *testing
 		t.Fatalf("canceled = %v, want [%s]", got, subID)
 	}
 	var clawbacks int64
-	sqlitex.DB.Model(&sqlitex.CreditTransaction{}).Where("user_id = ? AND type = ?", userID, "CLAWBACK").Count(&clawbacks)
+	if err := sqlitex.DB.Model(&sqlitex.CreditTransaction{}).Where("user_id = ? AND type = ?", userID, "CLAWBACK").Count(&clawbacks).Error; err != nil {
+		t.Fatalf("count CLAWBACK rows: %v", err)
+	}
 	if clawbacks != 1 {
 		t.Fatalf("CLAWBACK rows = %d, want 1", clawbacks)
 	}
@@ -232,7 +236,9 @@ func TestWebhookRefundStoryTopupSpendPartialThenFullRefund(t *testing.T) {
 	h := NewHandler(fakeConfiguredClient(), "https://example.com", stripe, nil)
 	balance := func() int64 {
 		var account sqlitex.CreditAccount
-		sqlitex.DB.Where("user_id = ?", userID).First(&account)
+		if err := sqlitex.DB.Where("user_id = ?", userID).First(&account).Error; err != nil {
+			t.Fatalf("load credit_accounts: %v", err)
+		}
 		return account.TopupBalance
 	}
 	refund := func(eventID string, refunded int64) int {
@@ -266,7 +272,9 @@ func TestWebhookRefundStoryTopupSpendPartialThenFullRefund(t *testing.T) {
 	}
 
 	var rows []sqlitex.CreditTransaction
-	sqlitex.DB.Where("user_id = ?", userID).Order("created_at, rowid").Find(&rows)
+	if err := sqlitex.DB.Where("user_id = ?", userID).Order("created_at, rowid").Find(&rows).Error; err != nil {
+		t.Fatalf("load credit_transactions: %v", err)
+	}
 	var story []string
 	for _, r := range rows {
 		story = append(story, r.Type+" "+strconv.FormatInt(r.Amount, 10)+" → "+strconv.FormatInt(r.BalanceAfter, 10))
@@ -293,7 +301,9 @@ func TestWebhookChargeRefundedClawsBackATopup(t *testing.T) {
 	}
 
 	var account sqlitex.CreditAccount
-	sqlitex.DB.Where("user_id = ?", userID).First(&account)
+	if err := sqlitex.DB.Where("user_id = ?", userID).First(&account).Error; err != nil {
+		t.Fatalf("load credit_accounts: %v", err)
+	}
 	if account.TopupBalance != 0 {
 		t.Fatalf("topup = %d, want 0 after a full refund", account.TopupBalance)
 	}

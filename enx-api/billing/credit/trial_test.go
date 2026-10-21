@@ -48,7 +48,11 @@ func TestGrantTrialOnlyOncePerAccount(t *testing.T) {
 	if granted {
 		t.Fatal("granted = true on a second call, want false")
 	}
-	if got, _ := Balance(ctx, userID); got != 60 {
+	got, err := Balance(ctx, userID)
+	if err != nil {
+		t.Fatalf("Balance: %v", err)
+	}
+	if got != 60 {
 		t.Fatalf("Balance = %d, want 60 (the spent trial is not topped back up)", got)
 	}
 }
@@ -71,7 +75,11 @@ func TestGrantTrialRecordsTheEmailAndSkipsItForAnotherAccount(t *testing.T) {
 	if err != nil || granted {
 		t.Fatalf("GrantTrial for the same email = %v, %v; want false, nil", granted, err)
 	}
-	if got, _ := Balance(ctx, second); got != 0 {
+	got, err := Balance(ctx, second)
+	if err != nil {
+		t.Fatalf("Balance: %v", err)
+	}
+	if got != 0 {
 		t.Fatalf("Balance = %d, want 0 for an email that already had a trial", got)
 	}
 }
@@ -82,7 +90,9 @@ func TestGrantTrialGrantsWhenTheRecordIsTheAccountsOwn(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	email := "hmac-" + t.Name()
-	sqlitex.DB.Create(&sqlitex.TrialGrant{EmailHmac: email, UserId: userID, GrantedAt: 1})
+	if err := sqlitex.DB.Create(&sqlitex.TrialGrant{EmailHmac: email, UserId: userID, GrantedAt: 1}).Error; err != nil {
+		t.Fatalf("seed trial_grants: %v", err)
+	}
 
 	if granted, err := GrantTrial(ctx, userID, email, 100, time.Hour); err != nil || !granted {
 		t.Fatalf("GrantTrial = %v, %v; want true for the record's own account", granted, err)
@@ -96,7 +106,11 @@ func TestGrantTrialWithoutAnEmailGrantsNothing(t *testing.T) {
 	if err != nil || granted {
 		t.Fatalf("GrantTrial without an email = %v, %v; want false, nil", granted, err)
 	}
-	if got, _ := Balance(ctx, userID); got != 0 {
+	got, err := Balance(ctx, userID)
+	if err != nil {
+		t.Fatalf("Balance: %v", err)
+	}
+	if got != 0 {
 		t.Fatalf("Balance = %d, want 0", got)
 	}
 }
@@ -109,7 +123,11 @@ func TestGrantTrialZeroAmountIsOff(t *testing.T) {
 	if err != nil || granted {
 		t.Fatalf("GrantTrial(0) = %v, %v; want false, nil", granted, err)
 	}
-	if got, _ := Balance(ctx, userID); got != 0 {
+	got, err := Balance(ctx, userID)
+	if err != nil {
+		t.Fatalf("Balance: %v", err)
+	}
+	if got != 0 {
 		t.Fatalf("Balance = %d, want 0", got)
 	}
 }
@@ -122,7 +140,11 @@ func TestBalanceIgnoresExpiredTrial(t *testing.T) {
 
 	setClock(t, time.Now().Add(time.Hour+time.Second))
 
-	if got, _ := Balance(ctx, userID); got != 5 {
+	got, err := Balance(ctx, userID)
+	if err != nil {
+		t.Fatalf("Balance: %v", err)
+	}
+	if got != 5 {
 		t.Fatalf("Balance = %d, want 5 (expired trial not counted)", got)
 	}
 }
@@ -143,7 +165,9 @@ func TestSettleAfterExpiryForfeitsTrialAndRecordsExpire(t *testing.T) {
 		t.Fatalf("got trial=%d subscription=%d, want 0/6 (expired trial not spent)", acc.TrialBalance, acc.SubscriptionBalance)
 	}
 	var rows []sqlitex.CreditTransaction
-	sqlitex.DB.Where("user_id = ? AND type = ?", userID, TypeExpire).Find(&rows)
+	if err := sqlitex.DB.Where("user_id = ? AND type = ?", userID, TypeExpire).Find(&rows).Error; err != nil {
+		t.Fatalf("load EXPIRE rows: %v", err)
+	}
 	if len(rows) != 1 || rows[0].Amount != -30 {
 		t.Fatalf("EXPIRE rows = %+v, want one row of -30", rows)
 	}
@@ -152,7 +176,9 @@ func TestSettleAfterExpiryForfeitsTrialAndRecordsExpire(t *testing.T) {
 		t.Fatalf("second Settle: %v", err)
 	}
 	var count int64
-	sqlitex.DB.Model(&sqlitex.CreditTransaction{}).Where("user_id = ? AND type = ?", userID, TypeExpire).Count(&count)
+	if err := sqlitex.DB.Model(&sqlitex.CreditTransaction{}).Where("user_id = ? AND type = ?", userID, TypeExpire).Count(&count).Error; err != nil {
+		t.Fatalf("count EXPIRE rows: %v", err)
+	}
 	if count != 1 {
 		t.Fatalf("EXPIRE rows after a second Settle = %d, want still 1", count)
 	}
@@ -258,7 +284,9 @@ func TestSettleWritesOffTrialOnlyOverrun(t *testing.T) {
 			acc.TrialBalance, acc.SubscriptionBalance, acc.TopupBalance)
 	}
 	var rows []sqlitex.CreditTransaction
-	sqlitex.DB.Where("user_id = ? AND type = ?", userID, TypeSettle).Find(&rows)
+	if err := sqlitex.DB.Where("user_id = ? AND type = ?", userID, TypeSettle).Find(&rows).Error; err != nil {
+		t.Fatalf("load SETTLE rows: %v", err)
+	}
 	if len(rows) != 1 || rows[0].Amount != -3 || rows[0].BalanceAfter != 0 {
 		t.Fatalf("SETTLE rows = %+v, want one row of -3 with balance 0", rows)
 	}
