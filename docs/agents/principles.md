@@ -1,0 +1,27 @@
+# Owner principles
+
+The owner's (wiloon's) standing decisions. An agent that reviews or revises an issue or ADR, or meets a choice an issue or ADR leaves open, settles it from these principles, the ADRs, `AGENTS.md` and the code, and cites what it used. A question none of them settles goes to the owner, with the options and a recommendation.
+
+Only the owner edits this file. Agents propose a principle in a PR for the owner to merge.
+
+## Always the owner's call
+
+Unless a principle below already settles it:
+
+- Product behaviour a user sees, and pricing.
+- Money and credit semantics: what is charged, granted, refunded or clawed back, beyond fixing an obvious bug.
+- Deleting or migrating production data.
+- Security trade-offs.
+- Reversing a decision an accepted ADR records.
+
+## Principles
+
+Entry format: `- **P-N short name** (YYYY-MM-DD, source): the rule. Why: the reason.` Numbers are never reused; a retired principle is struck through with the date and why.
+
+### Product
+
+- **P-1 No P2P sync** (2026-09-17, enx-sync suspended): new designs sync through enx-api only; peer-to-peer sync is not an option to weigh. Why: the P2P approach was abandoned.
+
+### Technology
+
+### Process
