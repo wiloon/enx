@@ -7,15 +7,15 @@ The UI is everything a user sees and touches: enx-ui (the marketing site and the
 Brand colour leads (P-6): design every element around the Catglish brand teal, and reach for a neutral only where nothing should draw the eye.
 
 - **The palette.** `--brand-hue: 200` defines the brand; every brand shade, light and dark, derives from it. It lives in `enx-ui/src/app/globals.css` and `enx-chrome/src/index.css`, and the two values stay equal. Hue 200 keeps Catglish clear of the 239–270 band where Quizlet, Readwise, Anki, Busuu and Rosetta Stone sit (ADR-013, as revised).
-- **Tokens only.** Take every colour from the theme tokens: in enx-ui `src/app/globals.css` (`bg-brand`, `text-brand`, `text-muted-foreground`, `text-destructive`, `bg-muted`, `border-input`, …), in enx-chrome `src/index.css` (`brand`, `brand-muted`, `success`, …). They carry the dark theme. Raw palette classes (`text-gray-500`, `text-red-600`) stay light in dark mode; replace any you find on a page you touch. A colour with no token yet gets one in the same change, in both files when both sub-projects need it.
+- **Tokens only.** Take every colour from the theme tokens: in enx-ui `src/app/globals.css` (`bg-brand`, `text-brand`, `text-muted-foreground`, `text-destructive`, `bg-muted`, `border-input`, …), in enx-chrome `src/index.css` (`brand`, `brand-muted`, `success`, …). enx-ui's tokens carry the dark theme; the extension has no dark theme yet. Raw palette classes (`text-gray-500`, `text-red-600`) stay light in dark mode; replace any you find on a page you touch. A colour with no token yet gets one in the same change, in both files when both sub-projects need it.
 - **Action hierarchy.** A screen's primary action is its one solid `brand` button. Secondary actions are `outline`, tertiary `ghost`. Links, selected and active states, progress and icon accents use `brand` (or its muted tint for a background).
-- **Meaning colours.** `destructive` red marks a delete or a real failure; amber marks a warning (a signed-out state, a missing extension); `success` green marks "known". Each keeps its one meaning.
+- **Meaning colours.** `destructive` red marks a delete or a real failure; amber marks a warning (a signed-out state, a missing extension); `success` green marks "known". Each keeps its one meaning. Neither CSS file has an amber token, so the next amber use adds a `warning` token (the "no token yet" rule above). `success` exists only in enx-chrome; enx-ui has no `success` token yet.
 - **Migrate on touch.** Near-black `default` buttons and other off-brand accents are legacy. A change that touches a page or surface moves that page's colours to this scheme in the same PR; untouched pages wait their turn.
 - **On the host page** (enx-chrome marks inside someone else's site) colours follow ADR-054: warm yellow for a temporary location, the purple underline ramp for review stages only, brand for emphasis inside our own surfaces.
 
 ## Interaction
 
-Every control answers the hand: hover, pressed (`active:`) and `focus-visible` states, and a disabled look while it can't run. For buttons these come from `buttonVariants` in `src/components/ui/button.tsx`; a custom control supplies its own.
+Every control answers the hand: hover, pressed (`active:`) and `focus-visible` states, and a disabled look while it can't run. In enx-ui, `buttonVariants` in `src/components/ui/button.tsx` gives buttons hover, `focus-visible` and disabled, but no pressed state yet; add `active:` to a control you touch. enx-chrome has no `buttonVariants`, so its controls supply all of their own states.
 
 ## enx-ui app pages
 
