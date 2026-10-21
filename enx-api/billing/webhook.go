@@ -76,9 +76,6 @@ func (h *Handler) handleCheckoutSessionCompleted(ctx context.Context, event stri
 	if session.Customer != nil {
 		customerID = session.Customer.ID
 	}
-	if customerID == "" {
-		return fmt.Errorf("checkout.session.completed %s: missing customer", session.ID)
-	}
 
 	if session.Metadata["type"] == "topup" {
 		tier := session.Metadata["tier"]
@@ -86,8 +83,13 @@ func (h *Handler) handleCheckoutSessionCompleted(ctx context.Context, event stri
 		if amount <= 0 {
 			return fmt.Errorf("checkout.session.completed %s: stripe.credits.topup-%s is not configured (or tier metadata missing)", session.ID, tier)
 		}
-		if err := upsertSubscription(userID, customerID, "", "", "", 0); err != nil {
-			return err
+		// A payment-mode session created without customer_creation=always
+		// carries no customer. The credits are still owed; there is just no
+		// mapping to record (stripe_customer_id is NOT NULL and unique).
+		if customerID != "" {
+			if err := upsertSubscription(userID, customerID, "", "", "", 0); err != nil {
+				return err
+			}
 		}
 		var paymentIntentID string
 		if session.PaymentIntent != nil {
@@ -105,6 +107,9 @@ func (h *Handler) handleCheckoutSessionCompleted(ctx context.Context, event stri
 		return nil
 	}
 
+	if customerID == "" {
+		return fmt.Errorf("checkout.session.completed %s: missing customer", session.ID)
+	}
 	var subscriptionID string
 	if session.Subscription != nil {
 		subscriptionID = session.Subscription.ID
