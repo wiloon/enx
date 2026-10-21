@@ -1,3 +1,5 @@
+// enx-ui/src/lib/pronunciation.ts is a copy of this file; change both together.
+//
 // Youdao's dictvoice endpoint returns real human recordings and needs no API
 // key, but it's an unofficial endpoint that can go down or rate-limit. The
 // Web Speech API is the fallback: lower quality but built into the browser,

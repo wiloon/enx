@@ -1,6 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import WordResultCard from '../WordResultCard'
 import { WordData } from '@/types'
+import { playPronunciation } from '@/lib/pronunciation'
+
+jest.mock('@/lib/pronunciation', () => ({ playPronunciation: jest.fn() }))
 
 const data: WordData = {
   Id: 'w1',
@@ -25,4 +28,26 @@ it('shows Clear for admins and calls onClear', () => {
   render(<WordResultCard data={data} onClear={onClear} />)
   fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
   expect(onClear).toHaveBeenCalledTimes(1)
+})
+
+it('plays the word when the speaker button is clicked', () => {
+  render(<WordResultCard data={data} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Play pronunciation' }))
+  expect(playPronunciation).toHaveBeenCalledWith('run')
+})
+
+it('shows the IPA between slashes even when ECDICT brackets it', () => {
+  render(<WordResultCard data={{ ...data, Pronunciation: '[rʌn]' }} />)
+  expect(screen.getByText('/rʌn/')).toBeInTheDocument()
+})
+
+it('keeps the word id as a small footnote, not a labelled field', () => {
+  render(<WordResultCard data={data} />)
+  expect(screen.queryByText('Word ID')).not.toBeInTheDocument()
+  expect(screen.getByText('ID w1')).toBeInTheDocument()
+})
+
+it('says how many times the word was looked up', () => {
+  render(<WordResultCard data={data} />)
+  expect(screen.getByTitle('Looked up 3 times')).toBeInTheDocument()
 })

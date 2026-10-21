@@ -1,3 +1,5 @@
+// enx-ui/src/lib/phonetic.ts is a copy of this file; change both together.
+
 /**
  * Normalises an ECDICT `phonetic` field for display.
  *
