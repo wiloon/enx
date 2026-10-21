@@ -248,7 +248,8 @@ var envVars = map[string]string{
 
 // TestEnvVarsPopulateTheirFields sets each env var to a value no default has
 // and checks it reaches its field. 7 is a valid port; the lookup event
-// retention, the other int with a range rule, gets 42.
+// retention, the other int with a range rule, gets 42. The Clerk issuer must
+// be a URL and the secret key needs an sk_test_ prefix to match it.
 func TestEnvVarsPopulateTheirFields(t *testing.T) {
 	for env, key := range envVars {
 		t.Run(env, func(t *testing.T) {
@@ -260,6 +261,12 @@ func TestEnvVarsPopulateTheirFields(t *testing.T) {
 			switch key {
 			case "stats.lookup-events.retention-days":
 				value, want = "42", 42
+			case "clerk.issuer":
+				value = "https://from-clerk-issuer.clerk.accounts.dev"
+				want = value
+			case "clerk.secret-key":
+				value = "sk_test_from-" + env
+				want = Secret(value)
 			default:
 				value, want = testValue(t, key, field.Type, env)
 			}
