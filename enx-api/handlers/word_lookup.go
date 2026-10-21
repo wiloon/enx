@@ -1,28 +1,49 @@
 package handlers
 
 import (
+	"context"
+	"errors"
 	"net/http"
 
+	"enx-api/dictionary"
 	"enx-api/middleware"
-	"enx-api/repo"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
 )
 
 type wordLookupRequest struct {
-	WordID string `json:"wordId"`
+	WordID    string `json:"wordId"`
+	FromCache bool   `json:"fromCache"`
 }
 
-// RecordWordLookup handles POST /api/me/word-lookups: the caller looked up
-// the word with this id, so its query count goes up by one and it leaves
-// "known" (ADR-059 Decision 3). The extension sends it once per
-// click-to-lookup, after the lookup GET answered with a word id.
+// WordLookupRecorder is the slice of dictionary.WordLookups the handler uses.
+type WordLookupRecorder interface {
+	Record(ctx context.Context, userID, wordID string, fromCache bool) (queryCount int, known bool, err error)
+}
+
+// WordLookupHandler serves POST /api/me/word-lookups.
+type WordLookupHandler struct {
+	lookups WordLookupRecorder
+}
+
+func NewWordLookupHandler(lookups WordLookupRecorder) *WordLookupHandler {
+	return &WordLookupHandler{lookups: lookups}
+}
+
+// Record handles POST /api/me/word-lookups: the caller looked up the word
+// with this id, so its query count goes up by one and it leaves "known"
+// (ADR-059 Decision 3). The extension sends it once per click-to-lookup,
+// after the lookup GET answered with a word id, or after its local
+// dictionary cache did.
 //
 // It is the only writer of the query count. It is not idempotent and not
-// retried; a lost one leaves the count one short. It is not a lookup
-// request either: no quota, no lookup event.
-func RecordWordLookup(c *gin.Context) {
+// retried; a lost one leaves the count one short. With fromCache it is also
+// the click's lookup request: it charges the daily quota and writes the
+// lookup event the skipped GET would have (ADR-061 Decision 4), answering
+// the GET's 429 when the quota is used up. Without it, no quota and no
+// lookup event: the GET already charged the click.
+func (h *WordLookupHandler) Record(c *gin.Context) {
 	userId := middleware.GetUserIDFromContext(c)
 	if userId == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -38,19 +59,15 @@ func RecordWordLookup(c *gin.Context) {
 		return
 	}
 
-	exists, err := repo.WordExists(req.WordID)
-	if err != nil {
-		logger.Errorf("RecordWordLookup: find word %s: %v", req.WordID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to record the lookup"})
-		return
-	}
-	if !exists {
+	qc, known, err := h.lookups.Record(c.Request.Context(), userId, req.WordID, req.FromCache)
+	switch {
+	case errors.Is(err, dictionary.ErrWordNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Word not found"})
 		return
-	}
-
-	qc, known, err := repo.RecordWordLookup(userId, req.WordID)
-	if err != nil {
+	case errors.Is(err, dictionary.ErrQuotaExceeded):
+		dictionary.RespondQuotaExceeded(c, userId)
+		return
+	case err != nil:
 		logger.Errorf("RecordWordLookup: record %s for %s: %v", req.WordID, userId, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to record the lookup"})
 		return
