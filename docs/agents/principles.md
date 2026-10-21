@@ -2,7 +2,9 @@
 
 The owner's (wiloon's) standing decisions. An agent that reviews or revises an issue or ADR, or meets a choice an issue or ADR leaves open, settles it from these principles, the ADRs, `AGENTS.md` and the code, and cites what it used. A question none of them settles goes to the owner, with the options and a recommendation.
 
-Only the owner edits this file. Agents propose a principle in a PR for the owner to merge.
+Every owner intervention is a chance to grow this file: when the owner answers a question, settles a decision or corrects a PR, check whether the answer generalises beyond the case at hand (it would settle similar choices next time) and isn't here yet, and propose it.
+
+Changes need the owner's approval. In an interactive session, propose the entry and edit the file once the owner agrees. An unattended agent drafts the entry for a PR the owner merges or closes.
 
 ## Always the owner's call
 
