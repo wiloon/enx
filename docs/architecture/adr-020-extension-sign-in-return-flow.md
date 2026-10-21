@@ -93,7 +93,7 @@ Clerk `forceRedirectUrl` → `/extension/connected`，页面显示「✓ 已登�
 - 新增 `src/app/extension/connected/page.tsx`（`'use client'`）：显示「登录成功 · 正在返回…」，兜底文案「如果你是从扩展进来的，可以关闭本页回到刚才的标签页」。`useEffect` 里调 `enxExtension.ts` 新增的 `notifySignedIn()`（`send(id, { type: 'enx:signed-in' }, () => void rt?.lastError)`，扩展没装即 no-op）。
 - `sign-in` 页读到 `?src=extension` 时把 `forceRedirectUrl` 设为 `/extension/connected`（否则维持默认跳转）。`/extension/connected` 是同域路径，Clerk allowed redirect origins 默认已覆盖。
 
-### CONTEXT.md
+### GLOSSARY.md
 
 「会话同步」词条补一句：登录动作的收尾（关登录 tab、切回原页面）见 adr-020；或新增「登录回跳页（`/extension/connected`）」词条。
 

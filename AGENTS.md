@@ -23,7 +23,7 @@ The `mattpocock-skills` plugin is installed. Run the matching skill rather than 
 |------|-------|
 | Any code change: feature or bug fix | `tdd` |
 | Something broken, throwing or slow, cause unknown | `diagnosing-bugs` |
-| An ADR, a `CONTEXT.md` term, naming a domain concept | `domain-modeling` |
+| An ADR, a `GLOSSARY.md` term, naming a domain concept | `domain-modeling` |
 | Designing a module's interface or where a seam goes | `codebase-design` |
 | Stress-testing a plan before building it | `grilling` |
 | Answering a design question with throwaway code | `prototype` |
@@ -47,7 +47,7 @@ Test types, where tests live, commands and e2e sign-in: [docs/agents/testing.md]
 
 All three sub-projects keep the domain apart from the machinery around it:
 
-- **Ubiquitous language.** Name types, functions, tests and UI states with the terms in [CONTEXT.md](CONTEXT.md) and the ADRs. A missing or fuzzy term goes through `domain-modeling` before it spreads into code.
+- **Ubiquitous language.** Name types, functions, tests and UI states with the terms in [GLOSSARY.md](GLOSSARY.md) and the ADRs. A missing or fuzzy term goes through `domain-modeling` before it spreads into code.
 - **A domain core free of frameworks and I/O.** Business rules (what counts as a lookup, when a word is known, how credits are spent, where an overlay goes) live in plain modules that import no HTTP, SQL, React, `chrome.*`, `fetch` or DOM globals. In enx-api that is the domain packages; in enx-ui and enx-chrome it is `src/lib/` (e.g. `wordHighlight.ts`, `aiLookupFlow.ts`, `credits.ts`).
 - **I/O enters through the constructor or the parameter list.** Repositories, API clients, `chrome.*` wrappers, storage and the browser's geometry are passed in, so the core runs in unit tests on fakes (`overlayPositioning.ts` takes the Floating UI platform).
 - **Edges stay thin.** Gin handlers, React components, the content script, the background worker and the side panel translate events into domain calls and results into responses or rendering. A rule found inside one is moved out into the core.
@@ -85,6 +85,6 @@ Default canonical vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `
 
 ### Domain docs
 
-Single-context layout: one root `CONTEXT.md` (created lazily) plus ADRs in `docs/architecture/`. See `docs/agents/domain.md`. A new ADR takes the next number unused on **every** branch and worktree (`git fetch && git log --all --name-only --format= -- docs/architecture | sort -u`), not just on `main`.
+Single-context layout: one root `GLOSSARY.md` (created lazily) plus ADRs in `docs/architecture/`. See `docs/agents/domain.md`. A new ADR takes the next number unused on **every** branch and worktree (`git fetch && git log --all --name-only --format= -- docs/architecture | sort -u`), not just on `main`.
 
 **TASK-SPEC is optional**: an ADR Decision plus TDD is enough unless the work needs a long multi-phase checklist. Details in `docs/agents/domain.md` §ADR vs TASK-SPEC.

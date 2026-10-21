@@ -76,7 +76,7 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 | A1. 现状：`dictionary.Lookup` = ECDICT-only 包装，「先查本地」留在 caller | `fillFromEcdict` 判 `word.Id` 提前返回，本地命中的词绕过配额 | seam 太浅；配额漏在本地命中路径上（今天所有真实查词都命中这条）|
 | **A2.（部分采用）「一个计量点」立刻做，「深 seam」推迟** | **本次**：抽 `dictionary.MeterLookup(ctx, userID)`，所有查词路径（`Lookup` 的 ECDICT 分支 + `fillFromEcdict` 的本地命中分支）都调它 → 计量收敛到一个函数、B2 达成。**推迟**：把本地 `words` 查询也搬进 `dictionary.Lookup`（让 caller 只说「查这个词」）——因为 `translateWord` 的本地查询紧挨着 `user_dicts.QueryCount` 复习计数记账，而**那段记账零测试覆盖**，盲改风险大 | 计量收敛 + `/ecdict` 已删 + 单 caller，已经消掉「某条路径漏计量」的风险；深 seam 的额外收益（应用层完全不碰本地/ECDICT 之分）等它值得的时候再做，见 Revisit |
 
-**`QueryCount` 复习计数无论如何不进 seam**：`translateWord` 在本地命中时会 `user_dicts.QueryCount++`（并在标过「已掌握」时翻回未掌握）——这是复习系统的熟悉度追踪（CONTEXT.md「复习档位」），跟「把词解析成释义」是两个 concern。
+**`QueryCount` 复习计数无论如何不进 seam**：`translateWord` 在本地命中时会 `user_dicts.QueryCount++`（并在标过「已掌握」时翻回未掌握）——这是复习系统的熟悉度追踪（GLOSSARY.md「复习档位」），跟「把词解析成释义」是两个 concern。
 
 ### B. 计量口径：去重 vs 不去重，缓存命中算不算
 

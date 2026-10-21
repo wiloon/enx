@@ -299,12 +299,12 @@ cost = ceil((PromptTokens * WeightIn + CompletionTokens * WeightOut) / Divisor) 
   }
   ```
 
-- **`AuthWrapper.tsx`**：`grid` 里加一张卡片，标题 `Idiomatic Phrasing`（英文 UI 文案），一句英文描述，`<Link href="/rephrase">`。（「地道表达」是这个功能在 `CONTEXT.md` / ADR 里的中文术语名，不是界面上显示的文字。）
+- **`AuthWrapper.tsx`**：`grid` 里加一张卡片，标题 `Idiomatic Phrasing`（英文 UI 文案），一句英文描述，`<Link href="/rephrase">`。（「地道表达」是这个功能在 `GLOSSARY.md` / ADR 里的中文术语名，不是界面上显示的文字。）
 - **v1 不持久化**输入 / 输出历史（Decision F2）。
 
-### 7. 术语（CONTEXT.md）
+### 7. 术语（GLOSSARY.md）
 
-`CONTEXT.md` 已新增「### 界面功能（enx-ui）」小节，收录术语「**地道表达（idiomatic rephrasing）**」，`_Avoid_`：翻译 / 直译、提示词生成 / prompt generation。
+`GLOSSARY.md` 已新增「### 界面功能（enx-ui）」小节，收录术语「**地道表达（idiomatic rephrasing）**」，`_Avoid_`：翻译 / 直译、提示词生成 / prompt generation。
 
 ### 8. 测试（`AGENTS.md` 的强制测试要求）
 

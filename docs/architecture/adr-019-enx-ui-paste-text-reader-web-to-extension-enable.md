@@ -55,7 +55,7 @@
 | 方案 | 说明 | 结论 |
 | --- | --- | --- |
 | **B1.（采用）`externally_connectable` + `onMessageExternal`**：reader 页渲染完发 `chrome.runtime.sendMessage(EXT_ID, {type:'enx:enable-reader'})`；background 校验 `sender.origin` 后对该 tab 跑 `enxRun` | 标准 MV3 网页↔扩展做法，origin 白名单收紧 | origin 限定在 enx-ui 的确切域；扩展 ID 因 manifest 有固定 `key` 而稳定，可硬编码进 enx-ui 配置 |
-| B2. 给 reader host 配 `SiteAdapter { autoEnable: true }`，content script 一识别是 reader 页就自动进学习模式 | 无需网页↔扩展消息 | 打破 CONTEXT.md「学习模式 = 用户在某页显式启用」的处处 opt-in 一致性；且 content script 在客户端渲染前的 `document_end` 就注入，「识别是 reader 页」还得等 SPA 内容出现，时序更绕。**否决** |
+| B2. 给 reader host 配 `SiteAdapter { autoEnable: true }`，content script 一识别是 reader 页就自动进学习模式 | 无需网页↔扩展消息 | 打破 GLOSSARY.md「学习模式 = 用户在某页显式启用」的处处 opt-in 一致性；且 content script 在客户端渲染前的 `document_end` 就注入，「识别是 reader 页」还得等 SPA 内容出现，时序更绕。**否决** |
 | B3. 纯手动 | 见 A3 | **否决** |
 
 ### C. 消息协议：复用 `enxRun` 还是新建外部专用动作

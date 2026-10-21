@@ -14,7 +14,7 @@
 ## 已确认的决策（2026-09-02，用户确认）
 
 1. **enx-ui 同时作为 Catseye 官网**：在同一个 Next.js 应用里划出「营销区」（免登录）和「应用区」（现有的登录后功能），不新建独立仓库 / 独立部署。
-2. **对外品牌名 = `Catseye`**：官网标题、logo、文案统一用 `Catseye`。`ENX` / `enx` 仅作代码与内部文档的代号（`CONTEXT.md`、`enx-api`、`enx-chrome` 等仓库名不改）。
+2. **对外品牌名 = `Catseye`**：官网标题、logo、文案统一用 `Catseye`。`ENX` / `enx` 仅作代码与内部文档的代号（`GLOSSARY.md`、`enx-api`、`enx-chrome` 等仓库名不改）。
 3. **英文单语**：不做 i18n、不加语言切换器（`relingo` 有语言切换，本站**不抄这一条**）。`<html lang="en">`（已是现状）。UI 文案全英文，符合 `AGENTS.md`。
 4. **v1 范围 = 精简首页**：单页 `/`，从上到下：站点顶栏 → Hero → **演示视频占位** → 核心功能 → 工作原理（3 步）→ 安装 → 结尾 CTA → 页脚。**不做** `/features` 独立页、`/pricing`、`/docs`、`/changelog`、FAQ、隐私条款页——这些留到后续 ADR / 迭代。
 5. **结构 = route group 分层 + 静态渲染**：`(marketing)` route group 走 SSG（`force-static`），`(app)` route group 保留现有客户端鉴权行为。同一套 `enx-ui` 构建与部署。
@@ -160,7 +160,7 @@ src/app/
 | — | `SiteHeader` | 左：`Catseye` 字标 + logo。中/右：锚点导航 `Features` `How it works` `Install`（v1 是同页锚点，不是独立路由）。最右：`<HeaderAuthLinks />`（client island）+ 主 CTA `Add to Chrome`。 | 见 Decision 5 |
 | 1 | `Hero` | H1 一句话价值主张 + 副标题 + 双 CTA（`Add to Chrome` 主、`See how it works` 次锚点）+ 产品截图。 | 文案见「内容清单」 |
 | 2 | `DemoVideo` | **预留位**。居中 16:9（`aspect-video`）容器，海报图 + 播放按钮。读 `DEMO_VIDEO_URL`：空→海报 + `Demo coming soon` 字样；非空→`<video controls preload="none" poster>`，YouTube 链接则渲染点击加载的 facade。 | 见 Decision 6 |
-| 3 | `FeatureSection` ×N | 核心功能，左右图文交替。v1 覆盖：**Word highlight while you read** / **Click any word for its meaning** / **Select a sentence to translate it** / **Idiomatic phrasing**（对应 CONTEXT.md 术语：单词高亮 / 点击查词 / 划词整句翻译 / 地道表达）。每块：小标题 + 1–2 句说明 + 截图或 GIF（`alt` 必填）。 | 术语用 CONTEXT.md 的英文侧 |
+| 3 | `FeatureSection` ×N | 核心功能，左右图文交替。v1 覆盖：**Word highlight while you read** / **Click any word for its meaning** / **Select a sentence to translate it** / **Idiomatic phrasing**（对应 GLOSSARY.md 术语：单词高亮 / 点击查词 / 划词整句翻译 / 地道表达）。每块：小标题 + 1–2 句说明 + 截图或 GIF（`alt` 必填）。 | 术语用 GLOSSARY.md 的英文侧 |
 | 4 | `HowItWorks` | 3 步：`1. Add the extension` → `2. Turn on learning mode on any English page` → `3. Read — new words get underlined, click to look up, select to translate`。每步一句 + 小图标（`lucide-react`）。 | |
 | 5 | `Comparison` | 竞品对照能力矩阵（见下方「竞品对照」小节）。 | 采用 H1 |
 | 6 | `InstallCTA` | `Add to Chrome` 大按钮（Chrome Web Store 链接）。Edge / Firefox 暂标 `Coming soon` 或隐藏（用常量控制）。 | |
@@ -259,9 +259,9 @@ export const SITE = {
 
 **验证**：新测试必须先失败再实现（`AGENTS.md` 的 vacuous-pass 检查）。
 
-### 10. 术语（CONTEXT.md）
+### 10. 术语（GLOSSARY.md）
 
-`CONTEXT.md` 顶部产品描述可补一句「对外品牌名 Catseye（见 adr-010）」。新增一条术语（放在合适的小节）：
+`GLOSSARY.md` 顶部产品描述可补一句「对外品牌名 Catseye（见 adr-010）」。新增一条术语（放在合适的小节）：
 
 > **营销区（marketing area）**：`enx-ui` 里 `(marketing)` route group 下的免登录静态页面（官网）。与「应用区」`(app)`（登录后功能）相对。营销区固定浅色、静态渲染、英文单语。
 > _Avoid_: 落地页（单指首页时可用 landing page）、官网首页 ≠ 应用首页
