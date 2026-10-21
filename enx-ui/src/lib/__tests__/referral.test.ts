@@ -121,13 +121,74 @@ describe('claimStoredReferral', () => {
     const storage = memoryStorage()
     storeReferralCode(storage, 'ABCDEFGH', NOW)
     const log = jest.spyOn(console, 'info').mockImplementation(() => {})
-    const claim = jest
-      .fn()
-      .mockResolvedValue({ success: false, error: 'No such invite code.' })
+    const claim = jest.fn().mockResolvedValue({
+      success: false,
+      error: 'No such invite code.',
+      status: 409,
+    })
 
     expect(await claimStoredReferral(storage, claim, NOW)).toBeNull()
     expect(storage.getItem(REFERRAL_STORAGE_KEY)).toBeNull()
     expect(log).toHaveBeenCalled()
+    log.mockRestore()
+  })
+
+  it('keeps the code for the next try when the server fails', async () => {
+    const storage = memoryStorage()
+    storeReferralCode(storage, 'ABCDEFGH', NOW)
+    const log = jest.spyOn(console, 'info').mockImplementation(() => {})
+    const claim = jest.fn().mockResolvedValue({
+      success: false,
+      error: 'Something went wrong on our end.',
+      status: 500,
+    })
+
+    expect(await claimStoredReferral(storage, claim, NOW)).toBeNull()
+    expect(readReferralCode(storage, NOW)).toBe('ABCDEFGH')
+    log.mockRestore()
+  })
+
+  it('keeps the code for the next try when the session has expired', async () => {
+    const storage = memoryStorage()
+    storeReferralCode(storage, 'ABCDEFGH', NOW)
+    const log = jest.spyOn(console, 'info').mockImplementation(() => {})
+    const claim = jest.fn().mockResolvedValue({
+      success: false,
+      error: 'Your session has expired.',
+      status: 401,
+    })
+
+    expect(await claimStoredReferral(storage, claim, NOW)).toBeNull()
+    expect(readReferralCode(storage, NOW)).toBe('ABCDEFGH')
+    log.mockRestore()
+  })
+
+  it('keeps the code for the next try when the request was rate-limited', async () => {
+    const storage = memoryStorage()
+    storeReferralCode(storage, 'ABCDEFGH', NOW)
+    const log = jest.spyOn(console, 'info').mockImplementation(() => {})
+    const claim = jest.fn().mockResolvedValue({
+      success: false,
+      error: 'Too many requests.',
+      status: 429,
+    })
+
+    expect(await claimStoredReferral(storage, claim, NOW)).toBeNull()
+    expect(readReferralCode(storage, NOW)).toBe('ABCDEFGH')
+    log.mockRestore()
+  })
+
+  it('keeps the code for the next try when the server cannot be reached', async () => {
+    const storage = memoryStorage()
+    storeReferralCode(storage, 'ABCDEFGH', NOW)
+    const log = jest.spyOn(console, 'info').mockImplementation(() => {})
+    const claim = jest.fn().mockResolvedValue({
+      success: false,
+      error: "Can't reach Catglish right now.",
+    })
+
+    expect(await claimStoredReferral(storage, claim, NOW)).toBeNull()
+    expect(readReferralCode(storage, NOW)).toBe('ABCDEFGH')
     log.mockRestore()
   })
 

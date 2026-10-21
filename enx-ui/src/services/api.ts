@@ -125,6 +125,7 @@ export class ApiService {
     if (this.accountDisabled) {
       return { success: false, error: ACCOUNT_DISABLED_MESSAGE }
     }
+    let status: number | undefined
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -151,6 +152,7 @@ export class ApiService {
       })
 
       if (!response.ok) {
+        status = response.status
         const errorBody = await response.json().catch(() => null)
         const friendly = apiErrorMessage(response.status, errorBody)
         if (friendly) {
@@ -176,6 +178,7 @@ export class ApiService {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
+        status,
       }
     }
   }

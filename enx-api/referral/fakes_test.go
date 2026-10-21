@@ -44,7 +44,8 @@ func (f *fakeCodes) Insert(_ context.Context, userID, code string, _ time.Time) 
 }
 
 type fakeReferrals struct {
-	rows map[string]Referral
+	rows      map[string]Referral
+	insertErr error
 }
 
 func newFakeReferrals() *fakeReferrals { return &fakeReferrals{rows: map[string]Referral{}} }
@@ -55,6 +56,9 @@ func (f *fakeReferrals) Get(_ context.Context, inviteeID string) (Referral, bool
 }
 
 func (f *fakeReferrals) Insert(_ context.Context, r Referral) (bool, error) {
+	if f.insertErr != nil {
+		return false, f.insertErr
+	}
 	if _, ok := f.rows[r.InviteeID]; ok {
 		return false, nil
 	}

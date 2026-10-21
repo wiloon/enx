@@ -68,6 +68,7 @@ describe('ApiService auth token', () => {
       success: false,
       error:
         "We couldn't verify your sign-in. Refresh the page; if this keeps happening, contact support@catglish.com.",
+      status: 401,
     })
     expect(global.fetch).toHaveBeenCalledTimes(1)
   })
@@ -83,6 +84,7 @@ describe('ApiService auth token', () => {
     expect(result).toEqual({
       success: false,
       error: 'Your session has expired. Refresh the page to sign in again.',
+      status: 401,
     })
   })
 
@@ -99,6 +101,7 @@ describe('ApiService auth token', () => {
       success: false,
       error:
         'Something went wrong on our end. Refresh the page, or try again in a few minutes. If this keeps happening, contact support@catglish.com.',
+      status: 500,
     })
   })
 
@@ -116,6 +119,7 @@ describe('ApiService auth token', () => {
       success: false,
       error:
         'Failed to create checkout session. If this keeps happening, contact support@catglish.com.',
+      status: 502,
     })
   })
 
@@ -151,6 +155,7 @@ describe('ApiService auth token', () => {
     expect(result).toEqual({
       success: false,
       error: 'Too many requests. Please slow down and try again in a moment.',
+      status: 429,
     })
     expect(global.fetch).toHaveBeenCalledTimes(1)
   })
@@ -173,6 +178,7 @@ describe('ApiService auth token', () => {
       success: false,
       error:
         'Something went wrong on our end. Refresh the page, or try again in a few minutes. If this keeps happening, contact support@catglish.com.',
+      status: 500,
     })
   })
 })
