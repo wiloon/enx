@@ -118,24 +118,25 @@
 
 ---
 
-## 2026-10-20 补充：每个请求同步用户资料，邮箱必填且唯一（#211）
+## 2026-10-20 补充：每个请求同步用户资料，邮箱必填，身份只认 Clerk User ID（#211）
 
 起因：#211 要在 enx-ui 的账户菜单和 `/account` 页显示名字、邮箱、头像和本地用户 ID。这些字段统一从 `GET /api/me`（即 `users` 表）读，不从 Clerk 会话读，这样以后换掉 Clerk，`users` 表仍是完整的记录。为此改了本 ADR 的几处约定：
 
 1. **session token 加第三个自定义 claim：`image_url`（`{{user.image_url}}`）。** 「实现范围概览」里 Clerk 控制台那一行的两个 claim 变成三个，dev 和生产实例都要配。enx-api 把它存进 `users.avatar_url`。存的是 Clerk CDN 上的 URL，不是图片本身；换认证服务后，下一次登录会写入新服务的 URL。
-2. **邮箱、名字、头像在每个已认证请求上比对，有变化才写库，不再只在首次开通时取。** `GetOrCreateClerkUser` 本来就在每个已认证请求上运行，比对在内存里做。已有用户的 token 里这三项只要非空、且与 `users` 里的值不同，就更新；空值不覆盖已存的值；没有变化就不写库。这次同步不受 `last_login_time` 的节流间隔限制。邮箱写库前先去掉首尾空格，判空也在去空格之后，大小写保持 token 里的原样。
+2. **邮箱、名字、头像在每个已认证请求上比对，有变化才写库，不再只在首次开通时取。** `GetOrCreateClerkUser` 本来就在每个已认证请求上运行，比对在内存里做。已有用户的 token 里这三项只要非空、且与 `users` 里的值不同，就更新（邮箱不查重，见第 4 条）；空值不覆盖已存的值；没有变化就不写库。这次同步不受 `last_login_time` 的节流间隔限制。邮箱写库前先去掉首尾空格，判空也在去空格之后，大小写保持 token 里的原样。
 3. **没有邮箱的新用户不开通。** 经 Google 或 GitHub 登录后，Clerk 用户一定有主邮箱；token 里 `email` 为空，只能是 claim 漏配或配错。此时 enx-api 不建用户，返回 **403**（`code: email_required`），并记 error 日志和单独的认证指标。不用 401：两个客户端都把 401 当成会话失效，enx-chrome 会强制刷新 token 重试，再弹 "Session expired"，用户重新登录还是同样的错误，而 "contact support" 的提示根本显示不出来。403 加 `code` 与 ADR-062 的 `account_disabled` 同一模式，客户端不会自动重试，并显示服务端给的 message。原来的做法是建一个空邮箱用户，结果他悄悄拿不到试用积分（ADR-062），管理员按邮箱也找不到他（ADR-049）。已有用户的 token 邮箱为空时照常放行。
-4. **`users.email` 不区分大小写唯一。** 索引 `idx_users_email_lower ON users (lower(email))`，由 AutoMigrate 建；写库前已去掉首尾空格（第 2 条），所以带空格的邮箱绕不过它，和 ADR-062 HMAC 用的 `lower(trim(email))` 也对得上。**失败模式：** 如果某个库里已有大小写不同的重复邮箱、或不止一个空邮箱，建索引会失败，而 AutoMigrate 遇到错误就整个中止，排在 `User` 之后的 model 都不会迁移，只留一条 error 日志，服务照常启动。碰到这种情况要清理数据，不要去掉索引。上线前在 homelab 和生产库上各查一次 `email = ''` 和重复邮箱，结果都应为 0。新用户或已有用户的邮箱与另一个本地用户冲突时，按下面的规则处理。
-   **邮箱冲突的处理。** 新建用户、或已有用户同步邮箱时，如果这个邮箱已属于另一个本地用户（下称旧行），enx-api 拿旧行的 `clerk_user_id` 去查 Clerk Backend API。在同一个 Clerk 实例里一个邮箱只属于一个用户，用户改邮箱时 Clerk user id 不变，所以查询结果能分清两种情况：
-   - **Clerk 里查不到旧行的用户**：旧行是注销没删完的残留（ADR-062 先删 Clerk、再删本地，本地失败要重试），或者有人在 Clerk 后台直接删了用户。enx-api 按 ADR-062 的删除流程删掉旧行的本地数据，再继续本次请求。删除流程拒绝删除时（例如旧行还有会续费的订阅），不自动处理，返回 409（`code: email_in_use`），交给管理员。
-   - **Clerk 里旧行的用户还在，邮箱已经不是这个**：他在 Clerk 改了邮箱，只是之后还没访问过 enx，本地没同步。enx-api 把旧行的邮箱更新为 Clerk 返回的当前邮箱，再继续本次请求。
-   - **Clerk 里旧行的用户还在，邮箱仍是这个**：按 Clerk 的规则不应出现。返回 409（`code: email_in_use`），记 error 日志，带上两个本地用户 ID。
-   - **调用 Clerk 失败**：返回 503，客户端可以重试，不当作冲突处理。
+4. **本地用户只按 Clerk User ID 认定，`users.email` 不做唯一性判断。** Clerk User ID 相同就是同一个本地用户，不同就新建一个，即使邮箱和某个已有行相同。邮箱只是 Clerk 用户的一个属性：Clerk 自己保证同一实例内邮箱唯一（[`createUser()`](https://clerk.com/docs/reference/backend/user/create-user)：each address must be unique across your instance），一个用户又可以有多个邮箱、随时修改，所以它会变，不是身份。Clerk 的 [Sync Clerk data to your app](https://clerk.com/docs/guides/development/webhooks/syncing) 也是让本地按 Clerk ID 查用户，不要求应用层再做邮箱唯一。
 
-   409 的提示文案让用户联系客服。管理员处理时，先在 Clerk 后台核对两个用户，再在 Admin Users 页删除或修正旧行。运维规则：删除用户一律走 enx 的删除流程，不在 Clerk 后台直接删。
+   本地出现同邮箱的两行，只有两种来源，旧的那行都是过期数据：Clerk 用户已删但本地行残留（ADR-062 先删 Clerk、再删本地，本地失败要重试；或有人在 Clerk 后台直接删了用户），或者老用户在 Clerk 改了邮箱、还没同步，别人注册时用了他的旧邮箱。**代码不删除也不改绑旧行**，登录路径不调用 Clerk Backend API。旧行由管理员处理：重试 ADR-062 的删除，或在 Admin Users 页处理。已有用户同步邮箱时也就没有冲突可言，非空且有变化就直接写入（第 2 条）。
 
-   这套判断的前提是 enx 只对接一个 Clerk 实例。将来切换实例或换掉 Clerk 时，所有用户的外部 ID 都会变，旧 ID 一律查不到，上面第一种情况会把每个老用户都当成残留删掉。所以切换必须先做一次按邮箱改绑 `clerk_user_id`（或新服务的对应列）的数据迁移，不能靠登录时的这套逻辑。
-这样 ADR-062 按邮箱发试用、ADR-049 管理员按邮箱查用户，都只会对应一个本地用户。
+   曾考虑过的做法：给 `lower(email)` 建唯一索引，冲突时查 Clerk 判断旧行是残留还是已改邮箱，残留就自动删除。否决原因：它会在别人的登录请求里硬删一个用户的全部数据；`CLERK_SECRET_KEY` 一旦误配成别的实例，每次都会查不到，老用户被成批删除，无法挽回；而它防的只是过期数据，代价不对等。
+
+   去掉唯一性的影响：
+   - ADR-062 的一邮箱一试用不受影响：发放记录在 `trial_grants`，按邮箱 HMAC，不读 `users.email`。注销后用同一邮箱重新注册仍拿不到试用积分。
+   - 按邮箱找用户可能命中多行。管理员按邮箱加减积分（`billing/admin.go`，现在用 `GetUserByEmail` 取第一行）改为命中多个时拒绝并列出候选，或改用按本地用户 ID 精确查找（#211）。ADR-049 的管理员搜索返回多行属正常，列表应显示状态和最后登录时间，方便认出残留行。
+   - 按邮箱搜索需要性能时，可以给 `lower(email)` 加普通（非唯一）索引。
+   - 残留行的自动发现（订阅 Clerk 的 `user.deleted` webhook 打标记，或管理页按「Clerk 中已不存在」筛选）以后再做。
+   - 登录路径不使用 `CLERK_SECRET_KEY`。它只服务 ADR-062 的注销、禁用和撤销会话；生产环境强制配置并校验它属于正确的实例，见 #250。
 5. **界面上只出现本地用户 ID。** Clerk user id 只在 enx-api 内部用来映射本地用户（Rationale 第 8 点），不进任何 API 返回，enx-ui 也不保留它。用户报给客服的 ID 是 `users.Id`。
 
 ---
