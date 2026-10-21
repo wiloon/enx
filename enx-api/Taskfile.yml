@@ -200,9 +200,9 @@ tasks:
       - go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}} run --build-tags=integration ./...
 
   fmt:
-    desc: Format code
+    desc: Format code with the formatters in .golangci.yml (gofmt, goimports), at the version CI uses
     cmds:
-      - go fmt ./...
+      - go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}} fmt ./...
 
   vet:
     desc: Run go vet

@@ -52,8 +52,8 @@ type CreditTransaction struct {
 	StripePaymentIntentId *string `gorm:"column:stripe_payment_intent_id;index"`
 	// RelatedTransactionId points a CLAWBACK row at the grant it claws back.
 	RelatedTransactionId *string `gorm:"column:related_transaction_id"`
-	Note          string  `gorm:"column:note"` // free text: the admin's reason on GRANT_ADMIN / DEDUCT_ADMIN rows (ADR-049)
-	CreatedAt     int64   `gorm:"column:created_at;not null"`
+	Note                 string  `gorm:"column:note"` // free text: the admin's reason on GRANT_ADMIN / DEDUCT_ADMIN rows (ADR-049)
+	CreatedAt            int64   `gorm:"column:created_at;not null"`
 }
 
 func (CreditTransaction) TableName() string {

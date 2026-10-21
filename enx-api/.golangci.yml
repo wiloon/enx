@@ -17,3 +17,10 @@ linters:
           deny:
             - pkg: github.com/knadh/koanf
               desc: read configuration through enx-api/config (issue #45)
+
+# Don't set goimports.local-prefixes: the module path "enx-api" has no dot,
+# so stdlib and enx-api/... imports share one sorted block (issue #205).
+formatters:
+  enable:
+    - gofmt
+    - goimports
