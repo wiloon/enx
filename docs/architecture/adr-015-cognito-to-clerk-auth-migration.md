@@ -55,7 +55,7 @@
 5. **比方案 B（自己直连）少写一大块**：session 签发/刷新/吊销/JWKS 管理、邮箱密码体系、GitHub OAuth 第二遍——这些 Clerk 全包。enx-api 回到「只验 JWT 的资源服务器」这个它一直擅长的角色。
 6. **比方案 D（Logto）**：扩展体验 + Next.js DX 明显更好，能立刻兑现本次的核心诉求。Logto 的省钱/不锁定优势在用户量小时还用不上；真到那个量级，Clerk 也提供标准 JWT + headless API + 用户导出，二次迁到 Logto/自建不是死路（保留为 Revisit）。
 7. **`users` 表用 provider 命名的单列 `clerk_user_id`，不做通用 `external_auth_id` + `auth_provider`**。从 enx-api 看只有一个 IdP——Google / GitHub / 邮箱密码全在 Clerk 内部，enx-api 面对的是单一 issuer、单一 `sub` 命名空间（`user_xxx`）；「支持多种登录方式」是 Clerk 的职责，不该泄漏进库结构。`auth_provider` 会是每行都等于 `'clerk'` 的死列。迁出成本也不因它降低：真到「迁 Logto / 自建」那天是一场带 identity 重映射的迁移，无论有没有这列都要写脚本；届时加一列并把存量行默认 `'clerk'` 是分钟级 migration。形状上也与历史（`cognito_sub`，同为 provider 命名的单列）对称，本次 schema 改动收敛为「列改名 + backfill 逻辑替换」。
-8. **enx-api 按 Clerk session token 的 `sub`（= Clerk user id `user_xxx`）键本地用户，每请求 `GetOrCreateByClerkUserId`——不用 `external_id` claim**。这是 Clerk 官方后端 pattern（[manual JWT verification](https://clerk.com/docs/guides/sessions/manual-jwt-verification)：验 RS256 签名 + JWKS、查 `exp`/`nbf`、校 `azp`，用 `sub` 认人）。Clerk 的 `external_id` 是给「从旧系统迁入 Clerk 时携带旧 id 便于对账」用的**反方向**字段；本次是硬切、无旧用户、无旧 id，`external_id` 无用武之地。若走 ADR 初稿设想的「把本地 `users.Id` 塞进 `external_id`」，得先开通本地用户 → 调 Clerk Backend API 回写该用户 `external_id` → 后续 token 才带上，另加一条首次登录（token 还没有 `external_id`）的 fallback 分支——纯成本、在 ≈0 用户规模下零收益。首次开通所需的邮箱/用户名走上面 Clerk 控制台加的两个自定义 claim。JWT 验签沿用现有 `keyfunc` + `golang-jwt` 手写路径（与 `cognito_auth.go` 同构、已有测试覆盖），不引入 `clerk-sdk-go`。
+8. **enx-api 按 Clerk session token 的 `sub`（= Clerk user id `user_xxx`）键本地用户，每请求 `GetOrCreateByClerkUserId`——不用 `external_id` claim**。这是 Clerk 官方后端 pattern（[manual JWT verification](https://clerk.com/docs/guides/sessions/manual-jwt-verification)：验 RS256 签名 + JWKS、查 `exp`/`nbf`、校 `azp`，用 `sub` 认人）。Clerk 的 `external_id` 是给「从旧系统迁入 Clerk 时携带旧 id 便于对账」用的**反方向**字段；本次是硬切、无旧用户、无旧 id，`external_id` 无用武之地。若走 ADR 初稿设想的「把本地 `users.Id` 塞进 `external_id`」，得先开通本地用户 → 调 Clerk Backend API 回写该用户 `external_id` → 后续 token 才带上，另加一条首次登录（token 还没有 `external_id`）的 fallback 分支——纯成本、在 ≈0 用户规模下零收益。首次开通所需的邮箱/用户名走上面 Clerk 控制台加的两个自定义 claim（2026-10-20 起改为每次登录都同步，并加了头像 claim，见文末补充）。JWT 验签沿用现有 `keyfunc` + `golang-jwt` 手写路径（与 `cognito_auth.go` 同构、已有测试覆盖），不引入 `clerk-sdk-go`。
 
 ---
 
@@ -91,7 +91,7 @@
 
 | 组件 | 改动 |
 | --- | --- |
-| **Clerk 控制台** | 建 application；开 Google + GitHub social connections；生产实例填自己的 Google OAuth client、GitHub OAuth app 凭证；**Customize session token 里加 `email`（`{{user.primary_email_address}}`）+ `name`（`{{user.full_name}}`）两个自定义 claim**（供 enx-api 首次开通用户时取邮箱/名，parity 于现在从 Cognito token 读 `email`/`username`）；设 `azp` 允许的 origin 列表（enx-ui 域名 + 扩展 id）；配 `clerk.catseye.xxx` 域名。**不配 `external_id`**——见 Rationale 第 8 点 |
+| **Clerk 控制台** | 建 application；开 Google + GitHub social connections；生产实例填自己的 Google OAuth client、GitHub OAuth app 凭证；**Customize session token 里加 `email`（`{{user.primary_email_address}}`）+ `name`（`{{user.full_name}}`）两个自定义 claim**（供 enx-api 首次开通用户时取邮箱/名，parity 于现在从 Cognito token 读 `email`/`username`）（2026-10-20 起加第三个 claim `image_url`，见文末补充）；设 `azp` 允许的 origin 列表（enx-ui 域名 + 扩展 id）；配 `clerk.catseye.xxx` 域名。**不配 `external_id`**——见 Rationale 第 8 点 |
 | **enx-ui** | 装 `@clerk/nextjs`；`<ClerkProvider>` 包 layout；`LoginForm` → `<SignIn />`；`useAuth` 改用 Clerk hooks；`ApiService` 的 token 取 `getToken()`；删 `src/lib/cognito.ts`、`/auth/callback`、三个 password 占位页 |
 | **enx-chrome** | 装 `@clerk/chrome-extension`；`<ClerkProvider syncHost="https://catseye.xxx">`；`Login.tsx` 用 Clerk 组件/hooks；background 用 Clerk 的 SW 支持取 token；删 `src/lib/cognito.ts` + 手写 PKCE/交换；`manifest.json` 的 `host_permissions` / CSP 按 Clerk 文档调 |
 | **enx-api** | `middleware/cognito_auth.go` → `clerk_auth.go`：验 Clerk JWKS + issuer + `azp`（直接替换，不保留 Cognito 分支）；`enx.GetOrCreateByCognitoSub` → `GetOrCreateByClerkUserId`（按 token `sub` 键，邮箱/名取自定义 claim，见 Rationale 第 8 点）；`users` 表把 `cognito_sub` 列改成 `clerk_user_id`（单列，见 Rationale 第 7 点）；`GetUserIDFromContext` 不变（仍返回本地 UUID） |
@@ -115,6 +115,18 @@
 - 加购项（按需）：Enhanced Authentication +$100/月（SAML、自定义 session token 等）、Enhanced B2B SaaS +$100/月。
 
 **对 Catseye 的意味**：上线 + 推广初期完全在免费额度内。真正开始付费是 MAU 破 1 万之后——那时候产品已经有付费信号，$25/月 + 按量对已验证的业务不是负担；若不想要这个天花板，届时按 Revisit 切 Logto 自托管。
+
+---
+
+## 2026-10-20 补充：每次登录同步用户资料，邮箱必填且唯一（#211）
+
+起因：#211 要在 enx-ui 的账户菜单和 `/account` 页显示名字、邮箱、头像和本地用户 ID。这些字段统一从 `GET /api/me`（即 `users` 表）读，不从 Clerk 会话读，这样以后换掉 Clerk，`users` 表仍是完整的记录。为此改了本 ADR 的几处约定：
+
+1. **session token 加第三个自定义 claim：`image_url`（`{{user.image_url}}`）。** 「实现范围概览」里 Clerk 控制台那一行的两个 claim 变成三个，dev 和生产实例都要配。enx-api 把它存进 `users.avatar_url`。存的是 Clerk CDN 上的 URL，不是图片本身；换认证服务后，下一次登录会写入新服务的 URL。
+2. **邮箱、名字、头像每次登录都同步，不再只在首次开通时取。** 已有用户的 token 里这三项只要非空、且与 `users` 里的值不同，就更新；空值不覆盖已存的值；没有变化就不写库。这次同步不受 `last_login_time` 的节流间隔限制。
+3. **没有邮箱的新用户不开通。** 经 Google 或 GitHub 登录后，Clerk 用户一定有主邮箱；token 里 `email` 为空，只能是 claim 漏配或配错。此时 enx-api 不建用户，返回 401（`code: email_required`），并记 error 日志和单独的认证指标。原来的做法是建一个空邮箱用户，结果他悄悄拿不到试用积分（ADR-062），管理员按邮箱也找不到他（ADR-049）。已有用户的 token 邮箱为空时照常放行。
+4. **`users.email` 不区分大小写唯一。** 索引 `idx_users_email_lower ON users (lower(email))`，由 AutoMigrate 建。新用户的邮箱已属于另一个本地用户时，返回 409（`code: email_in_use`）；已有用户同步时遇到这种冲突，保留原邮箱、记 warn 日志，请求照常通过。这样 ADR-062 按邮箱发试用、ADR-049 管理员按邮箱查用户，都只会对应一个本地用户。
+5. **界面上只出现本地用户 ID。** Clerk user id 只在 enx-api 内部用来映射本地用户（Rationale 第 8 点），不进任何 API 返回，enx-ui 也不保留它。用户报给客服的 ID 是 `users.Id`。
 
 ---
 
