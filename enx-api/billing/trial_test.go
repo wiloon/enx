@@ -22,7 +22,11 @@ func TestTrialGrantGrantsOnceAndCountsIt(t *testing.T) {
 		}
 	}
 
-	if got, _ := credit.Balance(ctx, "u-trial-hook"); got != 100 {
+	got, err := credit.Balance(ctx, "u-trial-hook")
+	if err != nil {
+		t.Fatalf("Balance: %v", err)
+	}
+	if got != 100 {
 		t.Fatalf("Balance = %d, want 100", got)
 	}
 	if grants != 1 {
@@ -37,7 +41,11 @@ func TestTrialGrantZeroAmountGrantsNothing(t *testing.T) {
 	if err := g.NewUser(ctx, "u-trial-off", "off@example.com"); err != nil {
 		t.Fatalf("NewUser: %v", err)
 	}
-	if got, _ := credit.Balance(ctx, "u-trial-off"); got != 0 {
+	got, err := credit.Balance(ctx, "u-trial-off")
+	if err != nil {
+		t.Fatalf("Balance: %v", err)
+	}
+	if got != 0 {
 		t.Fatalf("Balance = %d, want 0", got)
 	}
 }
@@ -55,7 +63,11 @@ func TestTrialGrantSkipsAnEmailThatAlreadyHadATrial(t *testing.T) {
 	if err := g.NewUser(ctx, "u-trial-email-2", " Again@Example.com "); err != nil {
 		t.Fatalf("NewUser: %v", err)
 	}
-	if got, _ := credit.Balance(ctx, "u-trial-email-2"); got != 0 {
+	got, err := credit.Balance(ctx, "u-trial-email-2")
+	if err != nil {
+		t.Fatalf("Balance: %v", err)
+	}
+	if got != 0 {
 		t.Fatalf("Balance = %d, want 0 for a re-registered email", got)
 	}
 }
@@ -68,7 +80,11 @@ func TestTrialGrantWithoutAnEmailGrantsNothing(t *testing.T) {
 	if err := g.NewUser(ctx, "u-trial-no-email", ""); err != nil {
 		t.Fatalf("NewUser: %v", err)
 	}
-	if got, _ := credit.Balance(ctx, "u-trial-no-email"); got != 0 {
+	got, err := credit.Balance(ctx, "u-trial-no-email")
+	if err != nil {
+		t.Fatalf("Balance: %v", err)
+	}
+	if got != 0 {
 		t.Fatalf("Balance = %d, want 0", got)
 	}
 }

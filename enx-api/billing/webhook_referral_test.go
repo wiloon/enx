@@ -138,7 +138,9 @@ func TestAReferralFailureStillSucceedsTheWebhook(t *testing.T) {
 		t.Fatalf("checkout.session.completed = %v, want success despite the referral failure", err)
 	}
 	var account sqlitex.CreditAccount
-	sqlitex.DB.Where("user_id = ?", userID).First(&account)
+	if err := sqlitex.DB.Where("user_id = ?", userID).First(&account).Error; err != nil {
+		t.Fatalf("load credit_accounts: %v", err)
+	}
 	if account.TopupBalance != 300 {
 		t.Fatalf("topup = %d, want the payer's 300 granted", account.TopupBalance)
 	}
@@ -165,8 +167,12 @@ func TestAnInviteeRefundLeavesTheReferrersRewardAlone(t *testing.T) {
 	}
 
 	var inv, ref sqlitex.CreditAccount
-	sqlitex.DB.Where("user_id = ?", invitee).First(&inv)
-	sqlitex.DB.Where("user_id = ?", referrer).First(&ref)
+	if err := sqlitex.DB.Where("user_id = ?", invitee).First(&inv).Error; err != nil {
+		t.Fatalf("load invitee credit_accounts: %v", err)
+	}
+	if err := sqlitex.DB.Where("user_id = ?", referrer).First(&ref).Error; err != nil {
+		t.Fatalf("load referrer credit_accounts: %v", err)
+	}
 	if inv.TopupBalance != 0 || ref.TopupBalance != 60 {
 		t.Fatalf("invitee topup = %d, referrer topup = %d; want 0 and an untouched 60", inv.TopupBalance, ref.TopupBalance)
 	}

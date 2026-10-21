@@ -31,7 +31,9 @@ func TestGrantReferralBonusAddsToTrialAndExtendsExpiry(t *testing.T) {
 		t.Fatalf("got trial=%d expires=%v, want 200 / %d", acc.TrialBalance, acc.TrialExpiresAt, want.Unix())
 	}
 	var rows []sqlitex.CreditTransaction
-	sqlitex.DB.Where("user_id = ? AND type = ?", userID, TypeGrantReferralBonus).Find(&rows)
+	if err := sqlitex.DB.Where("user_id = ? AND type = ?", userID, TypeGrantReferralBonus).Find(&rows).Error; err != nil {
+		t.Fatalf("load GRANT_REFERRAL_BONUS rows: %v", err)
+	}
 	if len(rows) != 1 || rows[0].Amount != 100 || rows[0].BalanceAfter != 200 ||
 		rows[0].StripeEventId == nil || *rows[0].StripeEventId != "referral-bonus:"+userID {
 		t.Fatalf("GRANT_REFERRAL_BONUS rows = %+v, want one row of 100 keyed referral-bonus:<id>", rows)
@@ -88,12 +90,18 @@ func TestGrantReferralBonusIssuesAMissingTrialFirst(t *testing.T) {
 		t.Fatalf("trial = %d, want 200 (trial 100 + bonus 100)", acc.TrialBalance)
 	}
 	var count int64
-	sqlitex.DB.Model(&sqlitex.CreditTransaction{}).Where("user_id = ? AND type = ?", userID, TypeGrantTrial).Count(&count)
+	if err := sqlitex.DB.Model(&sqlitex.CreditTransaction{}).Where("user_id = ? AND type = ?", userID, TypeGrantTrial).Count(&count).Error; err != nil {
+		t.Fatalf("count GRANT_TRIAL rows: %v", err)
+	}
 	if count != 1 {
 		t.Fatalf("GRANT_TRIAL rows = %d, want 1", count)
 	}
 	// The trial is still once per account.
-	if granted, _ := GrantTrial(ctx, userID, "email-"+userID, 100, time.Hour); granted {
+	granted, err := GrantTrial(ctx, userID, "email-"+userID, 100, time.Hour)
+	if err != nil {
+		t.Fatalf("GrantTrial: %v", err)
+	}
+	if granted {
 		t.Fatal("GrantTrial granted again after the backfill")
 	}
 }
@@ -113,7 +121,9 @@ func TestGrantReferralRewardAddsToTopupWithoutAPaymentIntent(t *testing.T) {
 		t.Fatalf("topup = %d, want 340 (granted once)", acc.TopupBalance)
 	}
 	var rows []sqlitex.CreditTransaction
-	sqlitex.DB.Where("user_id = ? AND type = ?", userID, TypeGrantReferralReward).Find(&rows)
+	if err := sqlitex.DB.Where("user_id = ? AND type = ?", userID, TypeGrantReferralReward).Find(&rows).Error; err != nil {
+		t.Fatalf("load GRANT_REFERRAL_REWARD rows: %v", err)
+	}
 	if len(rows) != 1 || rows[0].Amount != 300 || rows[0].BalanceAfter != 340 || rows[0].StripePaymentIntentId != nil {
 		t.Fatalf("GRANT_REFERRAL_REWARD rows = %+v, want one row of 300 with no payment intent", rows)
 	}
