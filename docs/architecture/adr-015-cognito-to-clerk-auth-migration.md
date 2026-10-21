@@ -136,7 +136,7 @@
    - 按邮箱找用户可能命中多行。管理员按邮箱加减积分（`billing/admin.go`，现在用 `GetUserByEmail` 取第一行）改为命中多个时拒绝并列出候选，或改用按本地用户 ID 精确查找（#211）。ADR-049 的管理员搜索返回多行属正常，列表应显示状态和最后登录时间，方便认出残留行。
    - 按邮箱搜索需要性能时，可以给 `lower(email)` 加普通（非唯一）索引。
    - 残留行的自动发现（订阅 Clerk 的 `user.deleted` webhook 打标记，或管理页按「Clerk 中已不存在」筛选）以后再做。
-   - 登录路径不使用 `CLERK_SECRET_KEY`。它只服务 ADR-062 的注销、禁用和撤销会话；生产环境（`clerk.issuer` 的域名不在 `.clerk.accounts.dev` 下）强制配置；启动时校验 key 的 live/test 前缀与 issuer 的实例类型一致（生产配 `sk_live_`，dev 实例配 `sk_test_`），前缀不认识的 key 在任何环境都拒绝启动。前缀只能区分 live 和 test，证明不了是哪一个实例；真正核对实例身份要在启动时调 Clerk Backend API，不在 #250 范围内。见 #250。
+   - 登录路径不使用 `CLERK_SECRET_KEY`。它只服务 ADR-062 的注销、禁用和撤销会话；生产环境（`clerk.issuer` 的主机名（`Hostname()`，小写、去端口）不在 `.clerk.accounts.dev` 下）强制配置；issuer 非空但解析不出主机名时拒绝启动，不当作生产也不当作 dev；启动时校验 key 的 live/test 前缀与 issuer 的实例类型一致（生产配 `sk_live_`，dev 实例配 `sk_test_`），前缀不认识的 key 在任何环境都拒绝启动。前缀只能区分 live 和 test，证明不了是哪一个实例；真正核对实例身份要在启动时调 Clerk Backend API，不在 #250 范围内。见 #250。
 5. **界面上只出现本地用户 ID。** Clerk user id 只在 enx-api 内部用来映射本地用户（Rationale 第 8 点），不进任何 API 返回，enx-ui 也不保留它。用户报给客服的 ID 是 `users.Id`。
 
 ---
@@ -144,6 +144,7 @@
 ## 修订记录
 
 - 2026-10-21（#250 spec review）：补充第 4 条最后一项关于 `CLERK_SECRET_KEY` 的约定。原文「校验它属于正确的实例」承诺过头：前缀只能校验 live/test 与 issuer 的实例类型一致，不能识别具体实例。改为写明生产环境的判定规则（issuer 域名不在 `.clerk.accounts.dev` 下）、前缀校验的范围，以及实例身份核对不在范围内。
+- 2026-10-21（#250 spec review 第 2 轮）：生产判定改为比较 issuer 的 `Hostname()`（小写、去端口），避免 `:443` 或大小写导致误判；issuer 非空但没有主机名（不可解析、缺 scheme）时启动失败。原规则下空主机名会被当成生产。
 
 ---
 
