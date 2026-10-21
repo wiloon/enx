@@ -224,6 +224,9 @@ func TestCreateCheckoutSession(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
+			if form == nil {
+				t.Fatal("checkout session request not sent")
+			}
 			if _, ok := form["customer_creation"]; ok {
 				t.Errorf("expected no customer_creation, got %q", form.Get("customer_creation"))
 			}
