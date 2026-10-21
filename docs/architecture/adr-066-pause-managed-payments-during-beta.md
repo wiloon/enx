@@ -21,4 +21,5 @@ related: adr-035/036（国内版）、Linear WIL-189（重开任务）、WIL-120
 - 暂停期间的增值税、销售税由我们自己负责。内测期交易量小，大部分来自大陆用户，接受这个风险。
 - 拒付由我们自己举证。拒付率高了不仅 Stripe 会限制账户，也会影响重开：Managed Payments 的准入条件里有"历史拒付率低"。
 - **暂停期间产生的订阅不会迁进 Managed Payments**（[update-checkout](https://docs.stripe.com/payments/managed-payments/update-checkout)：现有订阅不符合条件），重开后它们仍由我们当卖家。
-- `enx-api/billing/stripe/checkout.go` 一直没传 `managed_payments` 参数，依赖账号默认值。暂停期间结账要收税，需要加 `automatic_tax`；重开时要去掉，因为 Managed Payments 不允许这个参数。
+- 暂停期间不加 `automatic_tax`。Stripe Tax 只在已登记的税区收税，我们一个税区都没登记，加了也是每笔算出 0。Managed Payments 不允许这个参数，带着它重开会让结账直接报错。等交易量大到要在某地注册税号时，再登记并加上它。
+- `enx-api/billing/stripe/checkout.go` 一直没传 `managed_payments` 参数，依赖账号默认值，所以这次暂停和重开都只动 Dashboard，不改代码。
