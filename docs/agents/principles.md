@@ -27,3 +27,5 @@ Entry format: `- **P-N short name** (YYYY-MM-DD, source): the rule. Why: the rea
 ### Technology
 
 ### Process
+
+- **P-2 A PR does its issue** (2026-10-21, #254): a PR carries only what its issue asks for. Unrelated problems found while implementing or reviewing stay out of it: a nit or small cleanup goes into the PR's follow-up issue (label `follow-up`), a real bug gets its own issue (`needs-triage`). Why: small PRs keep reviews focused, and side findings are recorded instead of lost.
