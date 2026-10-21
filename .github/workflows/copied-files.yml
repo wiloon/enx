@@ -1,0 +1,32 @@
+name: Copied files
+
+# enx-ui keeps copies of a few enx-chrome modules (see
+# .github/scripts/check-copied-files.sh). Runs when either side changes, so an
+# edit to one copy alone fails here instead of drifting.
+
+on:
+  pull_request:
+    paths:
+      - 'enx-chrome/src/lib/**'
+      - 'enx-ui/src/lib/**'
+      - '.github/scripts/check-copied-files.sh'
+      - '.github/workflows/copied-files.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'enx-chrome/src/lib/**'
+      - 'enx-ui/src/lib/**'
+      - '.github/scripts/check-copied-files.sh'
+      - '.github/workflows/copied-files.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Copies match their originals
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - run: .github/scripts/check-copied-files.sh

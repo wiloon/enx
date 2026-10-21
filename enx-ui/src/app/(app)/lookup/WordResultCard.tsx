@@ -1,5 +1,6 @@
-import { Repeat, Volume2 } from 'lucide-react'
+import { Volume2 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
+import LookupCount from '@/components/app/LookupCount'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatPhonetic } from '@/lib/phonetic'
@@ -19,7 +20,6 @@ export default function WordResultCard({
   clearing = false,
 }: WordResultCardProps) {
   const phonetic = formatPhonetic(data.Pronunciation)
-  const lookupCountLabel = `Looked up ${data.LoadCount} ${data.LoadCount === 1 ? 'time' : 'times'}`
 
   return (
     <Card className="gap-0 py-0">
@@ -67,16 +67,7 @@ export default function WordResultCard({
         <Badge variant={data.Known ? 'default' : 'secondary'}>
           {data.Known ? 'Mastered' : 'Learning'}
         </Badge>
-        {/* The same icon, number and wording as the Word List and the
-            extension's word popover. */}
-        <span
-          className="inline-flex items-center gap-1 tabular-nums"
-          title={lookupCountLabel}
-        >
-          <Repeat className="size-3" aria-hidden="true" />
-          <span aria-hidden="true">{data.LoadCount}</span>
-          <span className="sr-only">{lookupCountLabel}</span>
-        </span>
+        <LookupCount count={data.LoadCount} />
         <span className="ml-auto truncate font-mono">ID {data.Id}</span>
       </div>
     </Card>

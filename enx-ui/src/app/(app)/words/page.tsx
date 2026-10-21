@@ -6,7 +6,8 @@ import {
   useQueryClient,
   type InfiniteData,
 } from '@tanstack/react-query'
-import { Check, MoreHorizontal, Repeat, Trash2, Undo2 } from 'lucide-react'
+import { Check, MoreHorizontal, Trash2, Undo2 } from 'lucide-react'
+import LookupCount from '@/components/app/LookupCount'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -353,7 +354,6 @@ function WordRow({
   onRemove: () => void
 }) {
   const bucket = reviewBucket(w)
-  const lookupCountLabel = `Looked up ${w.queryCount} ${w.queryCount === 1 ? 'time' : 'times'}`
   return (
     <li className="group flex items-start gap-3 py-3">
       <span
@@ -392,16 +392,7 @@ function WordRow({
         )}
       </button>
       <div className="flex shrink-0 items-center gap-3 pt-0.5 text-xs text-muted-foreground">
-        {/* The same icon, number and wording as the extension's word popover
-            and Side Panel card. */}
-        <span
-          className="inline-flex items-center gap-1 tabular-nums"
-          title={lookupCountLabel}
-        >
-          <Repeat className="size-3" aria-hidden="true" />
-          <span aria-hidden="true">{w.queryCount}</span>
-          <span className="sr-only">{lookupCountLabel}</span>
-        </span>
+        <LookupCount count={w.queryCount} />
         <span title={lookupTimesTitle(w.firstLookedUpAt, w.lastLookedUpAt)}>
           {lastLookedUpLabel(w.lastLookedUpAt, now)}
         </span>
