@@ -93,7 +93,9 @@ func TestHandleCheckoutSessionCompletedTopupWithoutCustomerGrantsCredits(t *test
 		t.Fatalf("got topup_balance=%d, want 5", credit.TopupBalance)
 	}
 	var subscriptions int64
-	sqlitex.DB.Model(&sqlitex.Subscription{}).Where("user_id = ?", userID).Count(&subscriptions)
+	if err := sqlitex.DB.Model(&sqlitex.Subscription{}).Where("user_id = ?", userID).Count(&subscriptions).Error; err != nil {
+		t.Fatalf("count subscriptions: %v", err)
+	}
 	if subscriptions != 0 {
 		t.Fatalf("got %d subscriptions rows, want none without a customer", subscriptions)
 	}
