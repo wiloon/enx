@@ -297,8 +297,9 @@ func (h *Handler) Webhook(c *gin.Context) {
 
 // existingStripeCustomerID looks up a user's Stripe customer id, if a
 // subscriptions row already exists for them (from a prior checkout).
-// Returns "" for a first-time buyer -- CreateCheckoutSession then falls
-// back to CustomerEmail and lets Stripe create the customer.
+// Returns "" for a first-time buyer -- CreateCheckoutSession then prefills
+// CustomerEmail, and Stripe creates the customer: subscription mode always
+// does, payment mode only because it sends customer_creation=always.
 func existingStripeCustomerID(userID string) string {
 	var sub sqlitex.Subscription
 	if err := sqlitex.DB.Where("user_id = ?", userID).First(&sub).Error; err != nil {

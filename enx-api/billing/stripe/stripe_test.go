@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -181,6 +182,53 @@ func TestCreateCheckoutSession(t *testing.T) {
 			t.Errorf("expected customer_email=user@example.com, got %q", sawCustomerEmail)
 		}
 	})
+
+	// Stripe rejects customer_creation in subscription mode, and a session
+	// for an existing customer has nothing to create.
+	customerCreationAbsent := []struct {
+		name     string
+		mode     string
+		customer string
+	}{
+		{"sends no customer_creation in subscription mode without a customer", "subscription", ""},
+		{"sends no customer_creation in payment mode with an existing customer", "payment", "cus_existing"},
+	}
+	for _, tc := range customerCreationAbsent {
+		t.Run(tc.name, func(t *testing.T) {
+			var form url.Values
+			sc := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case r.Method == http.MethodGet && r.URL.Path == "/v1/prices":
+					_, _ = w.Write([]byte(priceListResponse("price_123")))
+				case r.Method == http.MethodPost && r.URL.Path == "/v1/checkout/sessions":
+					if err := r.ParseForm(); err != nil {
+						t.Fatalf("failed to parse form: %v", err)
+					}
+					form = r.PostForm
+					_, _ = w.Write([]byte(`{"id":"cs_test_789","object":"checkout.session"}`))
+				default:
+					t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+				}
+			})
+
+			_, err := CreateCheckoutSession(context.Background(), sc, CheckoutSessionParams{
+				PriceLookupKey:    "pro-monthly",
+				Mode:              tc.mode,
+				ClientReferenceID: "user_1",
+				CustomerEmail:     "user@example.com",
+				Customer:          tc.customer,
+				SuccessURL:        "https://example.com/success",
+				CancelURL:         "https://example.com/cancel",
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if _, ok := form["customer_creation"]; ok {
+				t.Errorf("expected no customer_creation, got %q", form.Get("customer_creation"))
+			}
+		})
+	}
 
 	t.Run("propagates the price lookup error", func(t *testing.T) {
 		sc := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
