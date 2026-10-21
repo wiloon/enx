@@ -244,6 +244,33 @@ func TestClaimRefusals(t *testing.T) {
 	}
 }
 
+func TestClaimThatFailsToStoreTheReferralIsCompletedByARetry(t *testing.T) {
+	h := newHarness(t)
+	code := h.referrer(t, "alice")
+	h.invitee("bob")
+	dbDown := errors.New("database is locked")
+	h.referrals.insertErr = dbDown
+
+	if _, err := h.svc.Claim(context.Background(), "bob", code); !errors.Is(err, dbDown) {
+		t.Fatalf("first Claim error = %v, want %v", err, dbDown)
+	}
+
+	h.referrals.insertErr = nil
+	res, err := h.svc.Claim(context.Background(), "bob", code)
+	if err != nil {
+		t.Fatalf("retried Claim: %v", err)
+	}
+	if res.Bonus != 100 {
+		t.Fatalf("retried result = %+v, want bonus 100", res)
+	}
+	if r, ok := h.referrals.rows["bob"]; !ok || r.ReferrerID != "alice" {
+		t.Fatalf("referral = %+v (stored %v), want bob claimed alice's code", r, ok)
+	}
+	if len(h.credits.bonuses) != 1 {
+		t.Fatalf("bonus grants = %d, want 1 across both attempts", len(h.credits.bonuses))
+	}
+}
+
 func TestClaimWithTheBonusOffStillRecordsTheReferral(t *testing.T) {
 	h := newHarness(t)
 	h.terms.InviteeBonus = 0
