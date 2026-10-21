@@ -7,7 +7,7 @@ import type {
 
 // Invite links (ADR-051 Decision 2): the /invite/<code> landing page keeps
 // the code in localStorage until the visitor is signed in, then the app
-// claims it once and forgets it, whatever the outcome.
+// claims it and forgets it once the server has given a final answer.
 
 export const REFERRAL_STORAGE_KEY = 'enx.referral'
 
@@ -82,18 +82,43 @@ export function offerMessage(offer: ReferralOffer): string {
   return `Join via this link and get ${offer.credits.toLocaleString('en-US')} free AI credits (valid for ${offer.days} days).`
 }
 
-// Claims the stored code, if any, and clears it whatever happens. Returns
-// the toast to show, or null. A refusal is only logged: the user did
-// nothing wrong and can do nothing about it.
+// 4xx answers given before the claim ran: no session, or the request rate
+// limit (ADR-060). A later try can still succeed.
+const CLAIM_NOT_RUN = new Set([401, 429])
+
+// Whether a claim answer is final: it succeeded, or the server refused it
+// with a 4xx that a retry cannot change. A 5xx, a CLAIM_NOT_RUN status or
+// no answer at all is not.
+function claimSettled(resp: ApiResponse<ReferralClaimData>): boolean {
+  if (resp.success) return true
+  const { status } = resp
+  return (
+    status !== undefined &&
+    status >= 400 &&
+    status < 500 &&
+    !CLAIM_NOT_RUN.has(status)
+  )
+}
+
+// Claims the stored code, if any, and clears it once the answer is final;
+// otherwise the code stays for the next page load or sign-in to retry,
+// bounded by REFERRAL_TTL_MS and the server's claim window. Returns the
+// toast to show, or null. A refusal is only logged: the user did nothing
+// wrong and can do nothing about it.
 export async function claimStoredReferral(
   storage: Storage,
   claim: (code: string) => Promise<ApiResponse<ReferralClaimData>>,
   now: number = Date.now()
 ): Promise<string | null> {
   const code = readReferralCode(storage, now)
-  clearReferralCode(storage)
-  if (code === null) return null
+  if (code === null) {
+    clearReferralCode(storage)
+    return null
+  }
   const resp = await claim(code)
+  if (claimSettled(resp)) {
+    clearReferralCode(storage)
+  }
   if (!resp.success || !resp.data) {
     console.info('Invite not claimed:', resp.error)
     return null

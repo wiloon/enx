@@ -65,12 +65,15 @@ it('clears the code and shows nothing when the claim is refused', async () => {
   api.claimReferral.mockResolvedValue({
     success: false,
     error: 'This account has already claimed an invite.',
+    status: 409,
   })
 
   renderClaimer()
 
   await waitFor(() => expect(api.claimReferral).toHaveBeenCalled())
-  expect(window.localStorage.getItem(REFERRAL_STORAGE_KEY)).toBeNull()
+  await waitFor(() =>
+    expect(window.localStorage.getItem(REFERRAL_STORAGE_KEY)).toBeNull()
+  )
   expect(screen.queryByRole('status')).toBeNull()
 })
 

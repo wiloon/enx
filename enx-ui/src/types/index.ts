@@ -19,6 +19,8 @@ export interface ApiResponse<T = unknown> {
   data?: T
   error?: string
   message?: string
+  // The HTTP status of a non-2xx answer; absent when no answer came back.
+  status?: number
 }
 
 export interface WordData {
