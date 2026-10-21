@@ -582,8 +582,11 @@ func setupRouterWithClients(cfg *config.Config, m *metrics.Metrics, stripeClient
 	apiGroup.DELETE("/me/words/:english/known", handlers.ClearWordKnown)
 	// One click-to-lookup's query count +1 (ADR-059 Decision 3). By word id,
 	// so an inflection counts against the headword the lookup resolved to.
-	// Not metered, not idempotent: the extension never retries it.
-	apiGroup.POST("/me/word-lookups", handlers.RecordWordLookup)
+	// Metered only for a lookup answered from the extension's local cache
+	// (fromCache, ADR-061 Decision 4). Not idempotent: the extension never
+	// retries it.
+	wordLookupHandler := handlers.NewWordLookupHandler(dictionary.NewWordLookups(adapters.QueryCounts{}, lookupQuota))
+	apiGroup.POST("/me/word-lookups", wordLookupHandler.Record)
 
 	// Billing (Stripe) — requires authentication (Clerk session JWT).
 	apiGroup.POST("/billing/checkout/subscription", billingHandler.CheckoutSubscription)
