@@ -23,6 +23,7 @@ Entry format: `- **P-N short name** (YYYY-MM-DD, source): the rule. Why: the rea
 ### Product
 
 - **P-1 No P2P sync** (2026-09-17, enx-sync suspended): new designs sync through enx-api only; peer-to-peer sync is not an option to weigh. Why: the P2P approach was abandoned.
+- **P-6 Brand colour leads the UI** (2026-10-21, #274): everything a user sees, in enx-ui (site and app) and enx-chrome (popup, side panel, word popover), is coloured around the Catglish brand teal; a new or restyled element starts from the brand palette, not a component library's neutral default. A change that touches a page or surface brings that page onto the brand palette in the same PR; untouched pages wait their turn. The rules are in [ui-design.md](ui-design.md). Why: the brand colour is how people recognise Catglish, and screens left in library defaults look like someone else's product.
 
 ### Technology
 

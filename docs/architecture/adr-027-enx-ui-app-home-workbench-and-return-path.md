@@ -180,6 +180,8 @@ brand: "bg-brand text-brand-foreground shadow-xs hover:bg-brand/90",
 
 本次只在 Home 落地；`/lookup`、`/rephrase`、`/reader`、`/billing` 的按钮迁移是独立的跟进项，不在本 ADR 范围（见 Out of Scope）。
 
+> **2026-10-21 修订（用户确认，[P-6](../agents/principles.md)）**：上面「`default`（中性近黑）保留给『既不是品牌主张也不是次要』的中性场景」**不准确，作废**。所有用户看得到的界面（enx-ui 与 enx-chrome）配色都围绕品牌色设计，近黑 `default` 按钮属于遗留样式；改到哪个页面，就在同一个 PR 里把那个页面迁到品牌配色，没改到的页面暂不追溯。按钮层级（一屏一个实心 `brand` 主操作，其次 `outline`、`ghost`）不变。现行规则以 [`docs/agents/ui-design.md`](../agents/ui-design.md) 的 Colour 一节为准。`/lookup` 的迁移随 #274 一起做。
+
 ### 4. 补上回营销站的两个入口
 
 - `app-nav.ts` 的 `NAV_FOOTER` 加一项：`{ label: 'Back to site', href: '/', icon: Globe }`，排在 Billing 之后。
