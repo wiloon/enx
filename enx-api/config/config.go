@@ -12,6 +12,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -109,8 +110,61 @@ type Clerk struct {
 	JWKSURL           string   `mapstructure:"jwks-url"`
 	// SecretKey is the Clerk Backend API key (ADR-062 Decision 8), used only
 	// to delete, ban, unban and sign out users. Empty leaves those actions
-	// off (503); everything else works without it.
+	// off (503); everything else works without it. A production issuer
+	// requires it (Validate).
 	SecretKey Secret `mapstructure:"secret-key"`
+}
+
+// clerkDevDomain hosts every Clerk development instance; a production
+// instance is served from its own domain (https://clerk.<site domain>).
+const clerkDevDomain = "clerk.accounts.dev"
+
+// issuerHostname is the issuer's lower-cased hostname without a port, ""
+// when the issuer is empty or has none (no scheme, unparseable).
+func (c Clerk) issuerHostname() string {
+	u, err := url.Parse(c.Issuer)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(u.Hostname())
+}
+
+// IsProductionInstance reports whether the issuer is a Clerk production
+// instance: a hostname outside clerk.accounts.dev. An empty or malformed
+// issuer is not production.
+func (c Clerk) IsProductionInstance() bool {
+	host := c.issuerHostname()
+	return host != "" && host != clerkDevDomain && !strings.HasSuffix(host, "."+clerkDevDomain)
+}
+
+// validate checks the issuer is a URL and the secret key matches the
+// issuer's instance type. Messages never include the key.
+func (c Clerk) validate() []error {
+	var errs []error
+	host := c.issuerHostname()
+	if c.Issuer != "" && host == "" {
+		errs = append(errs, fmt.Errorf("config: clerk.issuer %q has no hostname; want a URL such as https://clerk.example.com", c.Issuer))
+	}
+
+	key := c.SecretKey.Reveal()
+	const live, test = "sk_live_", "sk_test_"
+	switch {
+	case key == "":
+		if c.IsProductionInstance() {
+			errs = append(errs, errors.New("config: clerk.secret-key (CLERK_SECRET_KEY) is required with a production clerk.issuer"))
+		}
+	case strings.TrimSpace(key) != key:
+		errs = append(errs, errors.New("config: clerk.secret-key has leading or trailing whitespace"))
+	case !strings.HasPrefix(key, live) && !strings.HasPrefix(key, test):
+		errs = append(errs, errors.New("config: clerk.secret-key does not start with sk_live_ or sk_test_"))
+	case host == "":
+		// No issuer to take an instance type from.
+	case c.IsProductionInstance() && !strings.HasPrefix(key, live):
+		errs = append(errs, errors.New("config: clerk.secret-key is a sk_test_ key but clerk.issuer is a production instance; want sk_live_"))
+	case !c.IsProductionInstance() && !strings.HasPrefix(key, test):
+		errs = append(errs, errors.New("config: clerk.secret-key is a sk_live_ key but clerk.issuer is a development instance; want sk_test_"))
+	}
+	return errs
 }
 
 // Account is account deletion and the trial grant record (ADR-062).
@@ -506,7 +560,8 @@ func splitOnWhitespace(from, to reflect.Type, data any) (any, error) {
 // default must be positive, and so must both lookup quota ceilings (ADR-059
 // Decision 6). Intentional zeros stay valid: Stripe credits and costs at 0
 // mean "not configured, fail closed", and the AI word and trial ceilings at
-// 0 mean "no ceiling".
+// 0 mean "no ceiling". The Clerk issuer and secret key must agree on the
+// instance type (Clerk.validate).
 func (c *Config) Validate() error {
 	var errs []error
 	positive := func(key string, ok bool) {
@@ -584,6 +639,8 @@ func (c *Config) Validate() error {
 	if rl.RequestsPerSecond > 0 {
 		positive("rate-limit.burst", rl.Burst > 0)
 	}
+
+	errs = append(errs, c.Clerk.validate()...)
 
 	return errors.Join(errs...)
 }
