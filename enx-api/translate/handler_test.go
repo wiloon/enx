@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"enx-api/dictionary"
@@ -95,6 +96,33 @@ func TestHandlerAnswersWhenReviewLogFails(t *testing.T) {
 	code, resp := serve(t, NewHandler(fakeResolver{res: res}, reviews), "run")
 	if code != http.StatusOK || resp.Chinese != "v. 跑" || resp.LoadCount != 0 {
 		t.Fatalf("got %d %+v, want 200 with the definition and LoadCount 0", code, resp)
+	}
+}
+
+// ADR-040: a completed lookup tells the client which source answered it, on
+// both lookup routes, so a client can tell a timeout from a miss.
+func TestLookupRoutesSendTheSource(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, source := range []dictionary.Source{
+		dictionary.SourceLocal, dictionary.SourceEcdict, dictionary.SourceMiss,
+		dictionary.SourceTimeout, dictionary.SourceError,
+	} {
+		h := NewHandler(fakeResolver{res: dictionary.Result{English: "run", Source: source}}, &fakeReviewLog{})
+		r := gin.New()
+		r.Use(func(c *gin.Context) { c.Set("user_id", "u1") })
+		r.GET("/api/translate", h.Translate)
+		r.GET("/api/word/:word", h.TranslateByWord)
+		for _, path := range []string{"/api/translate?word=run", "/api/word/run"} {
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+			var body map[string]any
+			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+				t.Fatalf("%s (%s): %v: %s", path, source, err, w.Body)
+			}
+			if w.Code != http.StatusOK || body["Source"] != string(source) {
+				t.Errorf("%s: got %d Source=%v, want 200 Source=%q", path, w.Code, body["Source"], source)
+			}
+		}
 	}
 }
 

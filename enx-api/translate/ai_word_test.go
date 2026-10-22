@@ -77,6 +77,10 @@ func TestAIWordReturnsTheDefinitionAndTheCurrentReviewState(t *testing.T) {
 	if body["found"] != true || word["Chinese"] != "n. 很有魅力的人" || word["Origin"] != "ai" || word["LoadCount"] != float64(3) {
 		t.Fatalf("body = %+v", body)
 	}
+	// Source is the lookup source (ADR-040); the AI word answer has none.
+	if _, ok := word["Source"]; ok {
+		t.Fatalf("word = %+v, want no Source", word)
+	}
 	if len(reviews.read) != 1 || reviews.read[0] != "w1" {
 		t.Fatalf("review state read for %v, want w1", reviews.read)
 	}
