@@ -79,7 +79,9 @@ const (
 
 // ListQuery is a page of the users list as the store reads it.
 type ListQuery struct {
-	Email  string // substring match; "" matches everyone
+	// Query matches an email substring or an exact user id; "" matches
+	// everyone.
+	Query  string
 	Sort   Sort
 	Limit  int
 	Offset int
@@ -126,7 +128,7 @@ type UserSummary struct {
 
 // ListParams is the admin's request for a page of users.
 type ListParams struct {
-	Email  string
+	Query  string
 	Sort   Sort
 	Limit  int
 	Offset int
@@ -180,7 +182,7 @@ func (s *Service) List(ctx context.Context, p ListParams) (Page, error) {
 	default:
 		return Page{}, ErrInvalidSort
 	}
-	q := ListQuery{Email: p.Email, Sort: p.Sort, Limit: clampLimit(p.Limit), Offset: max(p.Offset, 0)}
+	q := ListQuery{Query: p.Query, Sort: p.Sort, Limit: clampLimit(p.Limit), Offset: max(p.Offset, 0)}
 	accounts, total, err := s.store.ListAccounts(ctx, q)
 	if err != nil {
 		return Page{}, err
