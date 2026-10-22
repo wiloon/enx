@@ -19,6 +19,8 @@ const me: MeData = {
   email: 'admin@example.com',
   status: 'active',
   isAdmin: true,
+  avatarUrl: '',
+  createdAt: '2026-01-01T00:00:00Z',
 }
 
 function summary(over: Partial<AdminUserSummary>): AdminUserSummary {

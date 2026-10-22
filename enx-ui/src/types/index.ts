@@ -149,6 +149,10 @@ export interface MeData {
   email: string
   status: string
   isAdmin: boolean
+  // Empty when Clerk sent no picture; then the UI shows initials.
+  avatarUrl: string
+  // RFC 3339, UTC.
+  createdAt: string
 }
 
 // GET /api/admin/words/:word (ADR-021): the raw words-table row, tombstones

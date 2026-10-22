@@ -35,8 +35,9 @@ Before placing an icon, find its concept below and use that row's icon. A concep
 | Row leads somewhere | `ChevronRightIcon` | `ChevronRight` | popup "Open side panel", Home tiles |
 | The extension itself | `PuzzlePieceIcon` | `Puzzle` | Reader's "needs the extension" notice |
 | Settings | `Cog6ToothIcon` | `Settings` | popup header, Settings nav |
-| Billing | `CreditCardIcon` | `CreditCard` | Billing nav |
-| Sign out | `ArrowRightOnRectangleIcon` | — | popup |
+| Billing | `CreditCardIcon` | `CreditCard` | account menu "Billing" |
+| Your account (no picture yet) | `UserCircleIcon` | `CircleUser` | account menu "Account" item; avatar placeholder while the profile loads |
+| Sign out | `ArrowRightOnRectangleIcon` | `LogOut` | popup; account menu |
 | More actions | `EllipsisHorizontalIcon` | `MoreHorizontal` | Word List row menu |
 | Edit | `PencilIcon` | `Pencil` | Reader "Edit text" |
 | Explanation | `InformationCircleIcon` | `Info` | Reading Stats footnote |
