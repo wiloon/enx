@@ -122,8 +122,8 @@
 
 起因：#211 要在 enx-ui 的账户菜单和 `/account` 页显示名字、邮箱、头像和本地用户 ID。这些字段统一从 `GET /api/me`（即 `users` 表）读，不从 Clerk 会话读，这样以后换掉 Clerk，`users` 表仍是完整的记录。为此改了本 ADR 的几处约定：
 
-1. **session token 加第三个自定义 claim：`image_url`（`{{user.image_url}}`）。** 「实现范围概览」里 Clerk 控制台那一行的两个 claim 变成三个，dev 和生产实例都要配。enx-api 把它存进 `users.avatar_url`。存的是 Clerk CDN 上的 URL，不是图片本身；换认证服务后，下一次登录会写入新服务的 URL。
-2. **邮箱、名字、头像在每个已认证请求上比对，有变化才写库，不再只在首次开通时取。** `GetOrCreateClerkUser` 本来就在每个已认证请求上运行，比对在内存里做。已有用户的 token 里这三项只要非空、且与 `users` 里的值不同，就更新（邮箱不查重，见第 4 条）；空值不覆盖已存的值；没有变化就不写库。这次同步不受 `last_login_time` 的节流间隔限制。邮箱写库前先去掉首尾空格，判空也在去空格之后，大小写保持 token 里的原样。
+1. **session token 加第三个自定义 claim：`image_url`（`{{user.image_url}}`）。** 「实现范围概览」里 Clerk 控制台那一行的两个 claim 变成三个，dev 和生产实例都要配。enx-api 把它存进 `users.avatar_url`。存的是 Clerk CDN 上的 URL，不是图片本身；非空 URL 包括 Clerk 生成的默认头像，照常保存和显示，不新增 `has_image` claim 或清空头像的规则（[Clerk User 文档](https://clerk.com/docs/reference/backend/types/backend-user) 区分 `hasImage` 与 `imageUrl`）；换认证服务后，下一次登录会写入新服务的 URL。
+2. **邮箱、名字、头像在每个已认证请求上比对，有变化才写库，不再只在首次开通时取。** `GetOrCreateClerkUser` 本来就在每个已认证请求上运行，比对在内存里做。已有用户的 token 里这三项只要非空、且与 `users` 里的值不同，就更新（邮箱不查重，见第 4 条）；空值不覆盖已存的值；没有变化就不写库。这次同步不受 `last_login_time` 的节流间隔限制。邮箱写库前先去掉首尾空格，判空也在去空格之后，大小写保持 token 里的原样。已有用户资料同步写入失败时，记录含本地用户 ID 和数据库错误的可恢复故障日志，不记录 token 或资料值，继续使用已存资料完成认证，下个已认证请求再比对重试；禁用状态检查照常执行，不把未保存的 claim 当成已持久化资料返回。新用户建行失败仍属开通失败。
 3. **没有邮箱的新用户不开通。** 经 Google 或 GitHub 登录后，Clerk 用户一定有主邮箱；token 里 `email` 为空，只能是 claim 漏配或配错。此时 enx-api 不建用户，返回 **403**（`code: email_required`），并记 error 日志和单独的认证指标。不用 401：两个客户端都把 401 当成会话失效，enx-chrome 会强制刷新 token 重试，再弹 "Session expired"，用户重新登录还是同样的错误，而 "contact support" 的提示根本显示不出来。403 加 `code` 与 ADR-062 的 `account_disabled` 同一模式，客户端不会自动重试，并显示服务端给的 message。原来的做法是建一个空邮箱用户，结果他悄悄拿不到试用积分（ADR-062），管理员按邮箱也找不到他（ADR-049）。已有用户的 token 邮箱为空时照常放行。
 4. **本地用户只按 Clerk User ID 认定，`users.email` 不做唯一性判断。** Clerk User ID 相同就是同一个本地用户，不同就新建一个，即使邮箱和某个已有行相同。邮箱只是 Clerk 用户的一个属性：Clerk 自己保证同一实例内邮箱唯一（[`createUser()`](https://clerk.com/docs/reference/backend/user/create-user)：each address must be unique across your instance），一个用户又可以有多个邮箱、随时修改，所以它会变，不是身份。Clerk 的 [Sync Clerk data to your app](https://clerk.com/docs/guides/development/webhooks/syncing) 也是让本地按 Clerk ID 查用户，不要求应用层再做邮箱唯一。
 
@@ -131,9 +131,13 @@
 
    曾考虑过的做法：给 `lower(email)` 建唯一索引，冲突时查 Clerk 判断旧行是残留还是已改邮箱，残留就自动删除。否决原因：它会在别人的登录请求里硬删一个用户的全部数据；`CLERK_SECRET_KEY` 一旦误配成别的实例，每次都会查不到，老用户被成批删除，无法挽回；而它防的只是过期数据，代价不对等。
 
+   **2026-10-22 所有者批准（#211）：生产 `users` 表显式重建。** `name` 与 `email` 都只是资料属性，不唯一；同一改动移除两列的 GORM `unique` 标签。生产已有真实用户，不得丢失任何行或值。仅在表定义或索引仍有这两列之一的单列唯一性时，在 AutoMigrate 之前执行迁移；新库和已迁移库不操作。先用 `VACUUM INTO` 在数据库旁写 `<database-file>.pre-users-rebuild-<timestamp>` 备份；备份失败则不重建并停止启动。按 [SQLite 官方流程](https://www.sqlite.org/lang_altertable.html#otheralter)，在同一专用连接上保存外键设置、在事务外关闭外键；一个事务内创建 `users_new`、按列名复制所有列、删除旧表、将新表改名为 `users`、恢复其他索引和触发器（包括 `clerk_user_id` 唯一索引），保留其他约束和依赖视图、引用，绝不先重命名旧表。提交前核对原表的行数和 ID 集合，并要求 `PRAGMA foreign_key_check` 无结果；失败则回滚并停止启动，提交或回滚后恢复原外键设置，恢复失败也停止启动。用户 UUID、所有字段值及积分、试用、查词等关联记录全部保留，不删除、合并或改绑用户。实现须验证备份失败不重建、全量数据保留、Clerk ID 仍唯一、邮箱和名字可重复、重复运行无操作、中途失败回滚以及后续 AutoMigrate 正常执行；实现 PR 的 `Before release` 写明生产重建及实际备份文件，所有者保留至发布验证完成。
+
+   **2026-10-22 第 2 轮澄清（#211）：以线上 DDL 为准并向启动入口返回失败。** 检测覆盖列内 `UNIQUE`、未命名和命名的单列 `UNIQUE(col)` 约束及单独创建的单列唯一索引，识别 SQL 标识符引号和大小写；`users_new` 从实时建表 SQL 只移除邮箱、名字的单列唯一性，保留旧列、类型、默认值及其他约束，不以当前 GORM 模型重建旧表。恢复索引时排除这两列的单列唯一索引及无 SQL 的 `sqlite_autoindex_*`（保留约束的自动索引由 SQLite 生成）。无法安全识别或重写时在重建前返回错误并停止启动。测试覆盖上述历史形式、独立唯一索引和所有者提供的生产 `.schema users`；生产 DDL 提供归入实现 PR 的 `Before release`（P-3）。迁移错误经 `InitWithLogLevel` 的 `error` 返回值传到主入口，主入口记录错误并退出 1，早于 AutoMigrate（迁移失败时）及后台任务和监听；目录、打开数据库和 AutoMigrate 失败也返回错误。测试和工具的 `Init` 包装器遇错 panic。用启动顺序和进程退出检查证明失败不会继续运行。
+
    去掉唯一性的影响：
    - ADR-062 的一邮箱一试用不受影响：发放记录在 `trial_grants`，按邮箱 HMAC，不读 `users.email`。注销后用同一邮箱重新注册仍拿不到试用积分。
-   - 按邮箱找用户可能命中多行。管理员按邮箱加减积分（`billing/admin.go`，现在用 `GetUserByEmail` 取第一行）改为命中多个时拒绝并列出候选，或改用按本地用户 ID 精确查找（#211）。ADR-049 的管理员搜索返回多行属正常，列表应显示状态和最后登录时间，方便认出残留行。
+   - 按邮箱找用户可能命中多行。管理员按邮箱加减积分（`billing/admin.go`，现在用 `GetUserByEmail` 取第一行）改为命中多个时拒绝并列出候选，或改用按本地用户 ID 精确查找（#211）。请求必须且只能提供 `userId`、`email` 之一，否则返回 400；不存在返回 404；邮箱命中多个返回 409（`ambiguous_email`）及候选本地 ID、状态、最后登录时间，不改积分。详情页的赠送和扣减表单发送已选用户的本地 `userId`，邮箱仅用于展示；积分池、流水和扣减确认沿用 ADR-049。ADR-049 的管理员搜索返回多行属正常，列表应显示状态和最后登录时间，方便认出残留行。
    - 按邮箱搜索需要性能时，可以给 `lower(email)` 加普通（非唯一）索引。
    - 残留行的自动发现（订阅 Clerk 的 `user.deleted` webhook 打标记，或管理页按「Clerk 中已不存在」筛选）以后再做。
    - 登录路径不使用 `CLERK_SECRET_KEY`。它只服务 ADR-062 的注销、禁用和撤销会话；生产环境（`clerk.issuer` 的主机名（`Hostname()`，小写、去端口）不在 `.clerk.accounts.dev` 下）强制配置；issuer 非空但解析不出主机名时拒绝启动，不当作生产也不当作 dev；启动时校验 key 的 live/test 前缀与 issuer 的实例类型一致（生产配 `sk_live_`，dev 实例配 `sk_test_`），前缀不认识的 key 在任何环境都拒绝启动。前缀只能区分 live 和 test，证明不了是哪一个实例；真正核对实例身份要在启动时调 Clerk Backend API，不在 #250 范围内。见 #250。
@@ -142,6 +146,12 @@
 ---
 
 ## 修订记录
+
+- 2026-10-22（#211 spec review 第 2 轮）：补全旧版 SQLite 唯一性形式、实时 DDL 无损重建及无法解析时停止启动，明确初始化错误返回与进程退出，避免仅用新模型测试而漏迁生产约束；澄清既有 `image_url` 决策包括服务商默认头像。
+
+- 2026-10-22（#211 所有者答复，第 1 轮）：所有者批准移除生产 `users` 的邮箱和名字唯一约束；补充先备份、按 SQLite 官方流程原子重建、提交前校验、无损保留与失败停止启动的约定，解除迁移待审批状态。
+
+- 2026-10-22（#211 spec review 第 1 轮）：明确已有用户资料同步失败时沿用已存资料并重试，保留禁用检查；明确管理员加减积分的互斥选择器和详情页按本地 ID 提交，避免同邮箱时误选用户。生产 `users` 唯一约束的显式重建方案当时提交所有者审批；批准后的约定见下条。
 
 - 2026-10-21（#250 spec review）：补充第 4 条最后一项关于 `CLERK_SECRET_KEY` 的约定。原文「校验它属于正确的实例」承诺过头：前缀只能校验 live/test 与 issuer 的实例类型一致，不能识别具体实例。改为写明生产环境的判定规则（issuer 域名不在 `.clerk.accounts.dev` 下）、前缀校验的范围，以及实例身份核对不在范围内。
 - 2026-10-21（#250 spec review 第 2 轮）：生产判定改为比较 issuer 的 `Hostname()`（小写、去端口），避免 `:443` 或大小写导致误判；issuer 非空但没有主机名（不可解析、缺 scheme）时启动失败。原规则下空主机名会被当成生产。

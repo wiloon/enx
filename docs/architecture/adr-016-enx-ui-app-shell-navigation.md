@@ -11,12 +11,13 @@
 
 ## 已确认的决策（2026-09-05，用户确认）
 
-1. **布局 = 左侧边栏主导航 + 顶栏**。侧边栏放主导航（Home / Word Lookup / Rephrase）、下面一组 Insights（Reading Stats）、底部一组账户类（Billing）。顶栏放当前页面标题 + 用户名 + Sign out。移动端侧边栏收成汉堡 + 抽屉。
-   - **2026-10-15 补充：顶栏不再显示页面标题。** 各页面自己也有大标题，同一个名字在顶栏和页面里各出现一次。另外几个页面自己也用了 `<h1>`，一页里有两个 `<h1>`。现在改为：顶栏只放移动端汉堡、用户名和 Sign out；每个页面用 `src/components/app/PageHeader.tsx` 放唯一的 `<h1>`（加可选的说明文字和右侧操作），标题文字和侧边栏菜单名一致。当前在哪一页由侧边栏的高亮表示。`navTitleForPath` 随之删除。
+1. **布局 = 左侧边栏主导航 + 顶栏**。侧边栏放主导航（Home / Word Lookup / Rephrase）、下面一组 Insights（Reading Stats）、底部 Settings / Invite friends / Back to site。顶栏放移动端汉堡和账户菜单（见下方修订）。移动端侧边栏收成汉堡 + 抽屉。
+   - **2026-10-15 补充：顶栏不再显示页面标题。** 各页面自己也有大标题，同一个名字在顶栏和页面里各出现一次。另外几个页面自己也用了 `<h1>`，一页里有两个 `<h1>`。现在改为：顶栏只放移动端汉堡和账户菜单（2026-10-22，#211，替换用户名和独立 Sign out）；每个页面用 `src/components/app/PageHeader.tsx` 放唯一的 `<h1>`（加可选的说明文字和右侧操作），标题文字和侧边栏菜单名一致。当前在哪一页由侧边栏的高亮表示。`navTitleForPath` 随之删除。
+   - **2026-10-22 补充（#211）：账户菜单与只读账户页。** 顶栏账户菜单入口在移动端始终可见；非空头像 URL 显示头像（包括 Clerk 生成的默认头像），URL 缺失或加载失败显示首字母；不按是否上传照片区分，名字从 `sm` 起显示。菜单头显示头像、名字和邮箱，菜单项为 Account（`/account`）、Billing（`/billing`）、Sign out。资料统一读 `GET /api/me`（ADR-015）；请求等待或失败时入口与菜单头显示占位，Sign out 仍直接调用 Clerk 登出，不等待 enx-api。Billing 从侧边栏移入账户菜单，Account 也只在账户菜单中。`/account` 挂在 `(app)` 下，只读展示 Profile（头像、名字、邮箱、注册时间）、可复制且供客服使用的本地用户 ID、链接 `/billing` 的套餐积分摘要、可复制邀请链接和 `/invite` 入口；不提供资料编辑或 Manage account。侧边栏底部为 Settings / Invite friends / Back to site。
 2. **手写轻量 App Shell，不引入 shadcn 官方 `sidebar` 组件**。后者会带 `sheet` / `tooltip` / `separator` / `skeleton` / `use-mobile` 一串依赖，对当前 5 个导航项偏重。`globals.css` 里 scaffold 时已带的整套 `--sidebar-*` 语义 token 直接用上。
 3. **导航文案全英文**（对齐 ADR-013 决策 3 全站英文单语、以及现有 lookup/rephrase 页）。`/billing` 页内既有的中文正文本次不动，是独立的后续清理项。
 4. **登录门禁上提到 `(app)/layout.tsx`**。此前只有 `/app`（经 `AuthWrapper`）有门禁，`/lookup`、`/rephrase`、`/billing` 全靠 API 401 兜底。上提后整个 `(app)` 子树统一门禁。行为不变：`isLoading` → spinner，`!isAuthenticated` → `<RedirectToSignIn />`。
-5. **导航配置化**：`src/components/app/app-nav.ts` 三个数组（`NAV_MAIN` / `NAV_INSIGHTS` / `NAV_FOOTER`）是唯一事实源，侧边栏、抽屉、顶栏标题都读它。**加一个分区 = 加一行**。
+5. **导航配置化**：`src/components/app/app-nav.ts` 三个数组（`NAV_MAIN` / `NAV_INSIGHTS` / `NAV_FOOTER`）是唯一事实源，侧边栏和抽屉读它；顶栏不读页面标题。账户菜单单独承载 Account 和 Billing。**加一个侧边栏分区 = 加一行**；账户菜单入口不加到侧边栏。
 6. **本次范围 = 骨架 + 占位**。`/stats` 只放一个占位页（Daily / Weekly / Monthly 三张「Charts coming soon」卡），证明 shell 能承载未来分区。真实图表、图表库选型、`enx-api` 统计端点都留到后续 ADR（`globals.css` 已有 `--chart-1..5` token 备用）。
 
 ---
@@ -104,9 +105,9 @@ src/app/
 
 ### 3. `src/components/app/`
 
-- **`app-nav.ts`**：`NAV_MAIN` / `NAV_INSIGHTS` / `NAV_FOOTER` 三数组（`{label, href, icon}`）+ `isNavItemActive(pathname, href)`（`href` 或其子路由都算 active）+ `navTitleForPath(pathname)`（最长匹配的 `label`，回退 `'Catseye'`）。
+- **`app-nav.ts`**：`NAV_MAIN` / `NAV_INSIGHTS` / `NAV_FOOTER` 三数组（`{label, href, icon}`）+ `isNavItemActive(pathname, href)`（`href` 或其子路由都算 active）；`navTitleForPath` 已随顶栏标题删除。
 - **`AppSidebar.tsx`**：logo（同 `SiteHeader` 的 `bg-brand` 圆点 + 站名）+ 三组导航，`NAV_FOOTER` 推到底（`mt-auto`），组间细分隔线。active 项 `bg-sidebar-accent` + `aria-current="page"`。接 `onNavigate?` 供抽屉关闭。
-- **`AppTopbar.tsx`**：移动端汉堡（`md:hidden`）+ `navTitleForPath` 标题 + 用户名 + `Sign out`（`useAuth().logout()`，已 `redirectUrl: '/'`）。sticky + `backdrop-blur`。
+- **`AppTopbar.tsx`**：移动端汉堡（`md:hidden`）+ 账户菜单，不显示页面标题；具体行为见已确认决策第 1 条的 #211 补充。sticky + `backdrop-blur`。
 - **`AppShell.tsx`**：桌面 `w-64` 固定侧栏（`hidden md:block`，`sticky top-0 h-screen`）+ 右侧 `AppTopbar` + `<main>{children}</main>`；移动端侧栏变遮罩抽屉，`useState` 控开合，`usePathname` 变则关。不触发 `alert/confirm`。
 
 ### 4. `/app` 概览页
@@ -124,7 +125,7 @@ src/app/
 ### 7. 测试
 
 - `src/components/app/__tests__/AppSidebar.test.tsx`：渲染出全部导航项；`/rephrase` 时只有 Rephrase `aria-current="page"`；`/stats/weekly` 时 Reading Stats 高亮；`onNavigate` 点击回调。
-- `src/components/app/__tests__/AppTopbar.test.tsx`：标题取自 nav 配置；Sign out 调 `logout`；汉堡调 `onOpenSidebar`。
+- `src/components/app/__tests__/AppTopbar.test.tsx`：账户菜单导航和登出、资料等待或失败仍可登出；汉堡调 `onOpenSidebar`。菜单定位和移动端可见性用真实浏览器验证。
 - `src/app/(app)/__tests__/layout.test.tsx`（承接删掉的 `AuthWrapper.test.tsx`）：signed-out → `redirect-to-sign-in` 且无内联 `<SignIn>`；`isLoading` → Loading；signed-in → shell + children。
 - `src/app/(app)/stats/__tests__/page.test.tsx`：Daily/Weekly/Monthly 都在。
 - `src/__tests__/clerk-routing.test.ts` 不变量（`<SignIn>` 只在 catch-all 里）继续成立。
@@ -137,6 +138,12 @@ src/app/
 - `src/components/AuthWrapper.tsx` 及其测试删除。
 - `/lookup`、`/rephrase`、`/billing`、`/stats` 首次获得客户端登录门禁（此前无）。
 - `src/app/` 下三范式并存的边界写进本 ADR：静态营销（`/`）／Clerk catch-all（`sign-in`、`sign-up`）／client 门禁 shell（`(app)/`）。
-- 未来加应用页 = 在 `src/app/(app)/` 下建目录 + 往 `app-nav.ts` 加一行。
+- 未来加应用页 = 在 `src/app/(app)/` 下建目录；按入口所属位置加入侧边栏或账户菜单。
 - 遗留清理项（不阻塞本 ADR）：`/billing`、`/billing/success`、`/billing/cancel` 页内中文文案与 ADR-013 决策 3 的全站英文不一致；`HelloWorld.tsx` 已无引用。
 - 后续 ADR：`/stats` 的真实实现——`enx-api` 统计端点、图表库选型、单页 tab vs 多路由（见 Options D）、深浅色主题切换器（ADR-013 决策 G 仍挂起）。
+
+## 修订记录
+
+- 2026-10-22（#211 spec review 第 2 轮）：澄清头像按 URL 显示，包含 Clerk 默认头像；沿用 ADR-015 的单一 `image_url` claim 和空值不覆盖规则，首字母用于 URL 缺失或图片加载失败。
+
+- 2026-10-22（#211）：账户菜单替换顶栏用户名和独立 Sign out，替换 2026-10-15 补充中的旧描述；Billing 移出侧边栏，新增仅从账户菜单进入的只读 `/account`。资料来源和登出等待行为与 ADR-015 对齐。
