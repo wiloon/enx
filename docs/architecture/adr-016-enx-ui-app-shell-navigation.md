@@ -13,7 +13,7 @@
 
 1. **布局 = 左侧边栏主导航 + 顶栏**。侧边栏放主导航（Home / Word Lookup / Rephrase）、下面一组 Insights（Reading Stats）、底部 Settings / Invite friends / Back to site。顶栏放移动端汉堡和账户菜单（见下方修订）。移动端侧边栏收成汉堡 + 抽屉。
    - **2026-10-15 补充：顶栏不再显示页面标题。** 各页面自己也有大标题，同一个名字在顶栏和页面里各出现一次。另外几个页面自己也用了 `<h1>`，一页里有两个 `<h1>`。现在改为：顶栏只放移动端汉堡和账户菜单（2026-10-22，#211，替换用户名和独立 Sign out）；每个页面用 `src/components/app/PageHeader.tsx` 放唯一的 `<h1>`（加可选的说明文字和右侧操作），标题文字和侧边栏菜单名一致。当前在哪一页由侧边栏的高亮表示。`navTitleForPath` 随之删除。
-   - **2026-10-22 补充（#211）：账户菜单与只读账户页。** 顶栏账户菜单入口在移动端始终可见；有头像显示头像，缺失或加载失败显示首字母，名字从 `sm` 起显示。菜单头显示头像、名字和邮箱，菜单项为 Account（`/account`）、Billing（`/billing`）、Sign out。资料统一读 `GET /api/me`（ADR-015）；请求等待或失败时入口与菜单头显示占位，Sign out 仍直接调用 Clerk 登出，不等待 enx-api。Billing 从侧边栏移入账户菜单，Account 也只在账户菜单中。`/account` 挂在 `(app)` 下，只读展示 Profile（头像、名字、邮箱、注册时间）、可复制且供客服使用的本地用户 ID、链接 `/billing` 的套餐积分摘要、可复制邀请链接和 `/invite` 入口；不提供资料编辑或 Manage account。侧边栏底部为 Settings / Invite friends / Back to site。
+   - **2026-10-22 补充（#211）：账户菜单与只读账户页。** 顶栏账户菜单入口在移动端始终可见；非空头像 URL 显示头像（包括 Clerk 生成的默认头像），URL 缺失或加载失败显示首字母；不按是否上传照片区分，名字从 `sm` 起显示。菜单头显示头像、名字和邮箱，菜单项为 Account（`/account`）、Billing（`/billing`）、Sign out。资料统一读 `GET /api/me`（ADR-015）；请求等待或失败时入口与菜单头显示占位，Sign out 仍直接调用 Clerk 登出，不等待 enx-api。Billing 从侧边栏移入账户菜单，Account 也只在账户菜单中。`/account` 挂在 `(app)` 下，只读展示 Profile（头像、名字、邮箱、注册时间）、可复制且供客服使用的本地用户 ID、链接 `/billing` 的套餐积分摘要、可复制邀请链接和 `/invite` 入口；不提供资料编辑或 Manage account。侧边栏底部为 Settings / Invite friends / Back to site。
 2. **手写轻量 App Shell，不引入 shadcn 官方 `sidebar` 组件**。后者会带 `sheet` / `tooltip` / `separator` / `skeleton` / `use-mobile` 一串依赖，对当前 5 个导航项偏重。`globals.css` 里 scaffold 时已带的整套 `--sidebar-*` 语义 token 直接用上。
 3. **导航文案全英文**（对齐 ADR-013 决策 3 全站英文单语、以及现有 lookup/rephrase 页）。`/billing` 页内既有的中文正文本次不动，是独立的后续清理项。
 4. **登录门禁上提到 `(app)/layout.tsx`**。此前只有 `/app`（经 `AuthWrapper`）有门禁，`/lookup`、`/rephrase`、`/billing` 全靠 API 401 兜底。上提后整个 `(app)` 子树统一门禁。行为不变：`isLoading` → spinner，`!isAuthenticated` → `<RedirectToSignIn />`。
@@ -143,5 +143,7 @@ src/app/
 - 后续 ADR：`/stats` 的真实实现——`enx-api` 统计端点、图表库选型、单页 tab vs 多路由（见 Options D）、深浅色主题切换器（ADR-013 决策 G 仍挂起）。
 
 ## 修订记录
+
+- 2026-10-22（#211 spec review 第 2 轮）：澄清头像按 URL 显示，包含 Clerk 默认头像；沿用 ADR-015 的单一 `image_url` claim 和空值不覆盖规则，首字母用于 URL 缺失或图片加载失败。
 
 - 2026-10-22（#211）：账户菜单替换顶栏用户名和独立 Sign out，替换 2026-10-15 补充中的旧描述；Billing 移出侧边栏，新增仅从账户菜单进入的只读 `/account`。资料来源和登出等待行为与 ADR-015 对齐。
