@@ -14,6 +14,7 @@ const guardedMethods = ['error', 'warn']
 const originalConsole = Object.fromEntries(
   guardedMethods.map((method) => [method, console[method]])
 )
+let unexpectedConsoleCalls = []
 const guardWrappers = Object.fromEntries(
   guardedMethods.map((method) => [
     method,
@@ -23,7 +24,6 @@ const guardWrappers = Object.fromEntries(
     },
   ])
 )
-let unexpectedConsoleCalls = []
 
 function installConsoleGuard() {
   for (const method of guardedMethods) {
@@ -58,7 +58,10 @@ afterEach(() => {
 })
 
 afterAll(async () => {
-  // Let callbacks already queued by the last test run before checking.
+  // Let callbacks already queued by the last test run before checking. This
+  // yields a single macrotask only: a console.error or console.warn scheduled
+  // to fire after it (a later timer, a promise chain that outlasts it) misses
+  // the final check and may be lost when the environment tears down.
   await new Promise((resolve) => realSetTimeout(resolve, 0))
   flushUnexpectedConsoleCalls("after this file's last test")
 })
