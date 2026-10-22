@@ -123,7 +123,7 @@
 起因：#211 要在 enx-ui 的账户菜单和 `/account` 页显示名字、邮箱、头像和本地用户 ID。这些字段统一从 `GET /api/me`（即 `users` 表）读，不从 Clerk 会话读，这样以后换掉 Clerk，`users` 表仍是完整的记录。为此改了本 ADR 的几处约定：
 
 1. **session token 加第三个自定义 claim：`image_url`（`{{user.image_url}}`）。** 「实现范围概览」里 Clerk 控制台那一行的两个 claim 变成三个，dev 和生产实例都要配。enx-api 把它存进 `users.avatar_url`。存的是 Clerk CDN 上的 URL，不是图片本身；换认证服务后，下一次登录会写入新服务的 URL。
-2. **邮箱、名字、头像在每个已认证请求上比对，有变化才写库，不再只在首次开通时取。** `GetOrCreateClerkUser` 本来就在每个已认证请求上运行，比对在内存里做。已有用户的 token 里这三项只要非空、且与 `users` 里的值不同，就更新（邮箱不查重，见第 4 条）；空值不覆盖已存的值；没有变化就不写库。这次同步不受 `last_login_time` 的节流间隔限制。邮箱写库前先去掉首尾空格，判空也在去空格之后，大小写保持 token 里的原样。
+2. **邮箱、名字、头像在每个已认证请求上比对，有变化才写库，不再只在首次开通时取。** `GetOrCreateClerkUser` 本来就在每个已认证请求上运行，比对在内存里做。已有用户的 token 里这三项只要非空、且与 `users` 里的值不同，就更新（邮箱不查重，见第 4 条）；空值不覆盖已存的值；没有变化就不写库。这次同步不受 `last_login_time` 的节流间隔限制。邮箱写库前先去掉首尾空格，判空也在去空格之后，大小写保持 token 里的原样。已有用户资料同步写入失败时，记录含本地用户 ID 和数据库错误的可恢复故障日志，不记录 token 或资料值，继续使用已存资料完成认证，下个已认证请求再比对重试；禁用状态检查照常执行，不把未保存的 claim 当成已持久化资料返回。新用户建行失败仍属开通失败。
 3. **没有邮箱的新用户不开通。** 经 Google 或 GitHub 登录后，Clerk 用户一定有主邮箱；token 里 `email` 为空，只能是 claim 漏配或配错。此时 enx-api 不建用户，返回 **403**（`code: email_required`），并记 error 日志和单独的认证指标。不用 401：两个客户端都把 401 当成会话失效，enx-chrome 会强制刷新 token 重试，再弹 "Session expired"，用户重新登录还是同样的错误，而 "contact support" 的提示根本显示不出来。403 加 `code` 与 ADR-062 的 `account_disabled` 同一模式，客户端不会自动重试，并显示服务端给的 message。原来的做法是建一个空邮箱用户，结果他悄悄拿不到试用积分（ADR-062），管理员按邮箱也找不到他（ADR-049）。已有用户的 token 邮箱为空时照常放行。
 4. **本地用户只按 Clerk User ID 认定，`users.email` 不做唯一性判断。** Clerk User ID 相同就是同一个本地用户，不同就新建一个，即使邮箱和某个已有行相同。邮箱只是 Clerk 用户的一个属性：Clerk 自己保证同一实例内邮箱唯一（[`createUser()`](https://clerk.com/docs/reference/backend/user/create-user)：each address must be unique across your instance），一个用户又可以有多个邮箱、随时修改，所以它会变，不是身份。Clerk 的 [Sync Clerk data to your app](https://clerk.com/docs/guides/development/webhooks/syncing) 也是让本地按 Clerk ID 查用户，不要求应用层再做邮箱唯一。
 
@@ -133,7 +133,7 @@
 
    去掉唯一性的影响：
    - ADR-062 的一邮箱一试用不受影响：发放记录在 `trial_grants`，按邮箱 HMAC，不读 `users.email`。注销后用同一邮箱重新注册仍拿不到试用积分。
-   - 按邮箱找用户可能命中多行。管理员按邮箱加减积分（`billing/admin.go`，现在用 `GetUserByEmail` 取第一行）改为命中多个时拒绝并列出候选，或改用按本地用户 ID 精确查找（#211）。ADR-049 的管理员搜索返回多行属正常，列表应显示状态和最后登录时间，方便认出残留行。
+   - 按邮箱找用户可能命中多行。管理员按邮箱加减积分（`billing/admin.go`，现在用 `GetUserByEmail` 取第一行）改为命中多个时拒绝并列出候选，或改用按本地用户 ID 精确查找（#211）。请求必须且只能提供 `userId`、`email` 之一，否则返回 400；不存在返回 404；邮箱命中多个返回 409（`ambiguous_email`）及候选本地 ID、状态、最后登录时间，不改积分。详情页的赠送和扣减表单发送已选用户的本地 `userId`，邮箱仅用于展示；积分池、流水和扣减确认沿用 ADR-049。ADR-049 的管理员搜索返回多行属正常，列表应显示状态和最后登录时间，方便认出残留行。
    - 按邮箱搜索需要性能时，可以给 `lower(email)` 加普通（非唯一）索引。
    - 残留行的自动发现（订阅 Clerk 的 `user.deleted` webhook 打标记，或管理页按「Clerk 中已不存在」筛选）以后再做。
    - 登录路径不使用 `CLERK_SECRET_KEY`。它只服务 ADR-062 的注销、禁用和撤销会话；生产环境（`clerk.issuer` 的主机名（`Hostname()`，小写、去端口）不在 `.clerk.accounts.dev` 下）强制配置；issuer 非空但解析不出主机名时拒绝启动，不当作生产也不当作 dev；启动时校验 key 的 live/test 前缀与 issuer 的实例类型一致（生产配 `sk_live_`，dev 实例配 `sk_test_`），前缀不认识的 key 在任何环境都拒绝启动。前缀只能区分 live 和 test，证明不了是哪一个实例；真正核对实例身份要在启动时调 Clerk Backend API，不在 #250 范围内。见 #250。
@@ -142,6 +142,8 @@
 ---
 
 ## 修订记录
+
+- 2026-10-22（#211 spec review 第 1 轮）：明确已有用户资料同步失败时沿用已存资料并重试，保留禁用检查；明确管理员加减积分的互斥选择器和详情页按本地 ID 提交，避免同邮箱时误选用户。生产 `users` 唯一约束的显式重建方案仍待所有者批准，本文不授权该迁移。
 
 - 2026-10-21（#250 spec review）：补充第 4 条最后一项关于 `CLERK_SECRET_KEY` 的约定。原文「校验它属于正确的实例」承诺过头：前缀只能校验 live/test 与 issuer 的实例类型一致，不能识别具体实例。改为写明生产环境的判定规则（issuer 域名不在 `.clerk.accounts.dev` 下）、前缀校验的范围，以及实例身份核对不在范围内。
 - 2026-10-21（#250 spec review 第 2 轮）：生产判定改为比较 issuer 的 `Hostname()`（小写、去端口），避免 `:443` 或大小写导致误判；issuer 非空但没有主机名（不可解析、缺 scheme）时启动失败。原规则下空主机名会被当成生产。
