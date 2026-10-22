@@ -33,6 +33,7 @@ describe('ApiService account actions (ADR-062)', () => {
   })
 
   it('surfaces the server message when the deletion is refused', async () => {
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
     ;(global.fetch as jest.Mock).mockResolvedValue(
       jsonResponse(
         {
@@ -47,6 +48,10 @@ describe('ApiService account actions (ADR-062)', () => {
     expect(resp.success).toBe(false)
     expect(resp.error).toBe(
       'Cancel your subscription on the Billing page first.'
+    )
+    expect(errorLog).toHaveBeenCalledWith(
+      'API request failed:',
+      expect.any(Error)
     )
   })
 
@@ -82,6 +87,7 @@ describe('ApiService and a disabled account (ADR-062 Decision 5)', () => {
   })
 
   it('reports account_disabled once and returns the message', async () => {
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
     ;(global.fetch as jest.Mock) = jest.fn().mockResolvedValue(
       jsonResponse(
         {
@@ -101,9 +107,14 @@ describe('ApiService and a disabled account (ADR-062 Decision 5)', () => {
     expect(resp.error).toBe(ACCOUNT_DISABLED_MESSAGE)
     expect(service.isAccountDisabled()).toBe(true)
     expect(listener).toHaveBeenCalledTimes(1)
+    expect(errorLog).toHaveBeenCalledWith(
+      'API request failed:',
+      expect.any(Error)
+    )
   })
 
   it('does not treat another 403 as a disabled account', async () => {
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
     ;(global.fetch as jest.Mock) = jest
       .fn()
       .mockResolvedValue(
@@ -111,9 +122,14 @@ describe('ApiService and a disabled account (ADR-062 Decision 5)', () => {
       )
     await service.getMe()
     expect(service.isAccountDisabled()).toBe(false)
+    expect(errorLog).toHaveBeenCalledWith(
+      'API request failed:',
+      expect.any(Error)
+    )
   })
 
   it('stops calling the server once the account is disabled', async () => {
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
     ;(global.fetch as jest.Mock) = jest.fn().mockResolvedValue(
       jsonResponse(
         {
@@ -129,5 +145,9 @@ describe('ApiService and a disabled account (ADR-062 Decision 5)', () => {
 
     expect(global.fetch).toHaveBeenCalledTimes(1)
     expect(resp.error).toBe(ACCOUNT_DISABLED_MESSAGE)
+    expect(errorLog).toHaveBeenCalledWith(
+      'API request failed:',
+      expect.any(Error)
+    )
   })
 })

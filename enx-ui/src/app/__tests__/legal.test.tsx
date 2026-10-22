@@ -13,6 +13,12 @@ jest.mock('@clerk/nextjs', () => ({
   useAuth: () => ({ isSignedIn: false }),
 }))
 
+// The header's Chrome Store button asks whether the extension is installed;
+// the real check resolves after render and has nothing to do with these pages.
+jest.mock('@/hooks/useExtensionStatus', () => ({
+  useExtensionStatus: () => 'not-installed',
+}))
+
 // These pages are representations to users and to two review processes, so
 // the tests are about the claims being present and internally consistent --
 // not about layout.

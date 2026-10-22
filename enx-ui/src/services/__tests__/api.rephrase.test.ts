@@ -38,6 +38,7 @@ describe('ApiService.rephrase', () => {
   })
 
   it('surfaces the backend message on a 402 insufficient-credits response', async () => {
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
       jsonResponse(402, {
         success: false,
@@ -51,9 +52,14 @@ describe('ApiService.rephrase', () => {
     expect(result.error).toBe(
       'Insufficient credits. Top up or subscribe to continue.'
     )
+    expect(errorLog).toHaveBeenCalledWith(
+      'API request failed:',
+      expect.any(Error)
+    )
   })
 
   it('surfaces the backend message on a 502 service-unavailable response', async () => {
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
       jsonResponse(502, {
         success: false,
@@ -66,6 +72,10 @@ describe('ApiService.rephrase', () => {
     expect(result.success).toBe(false)
     expect(result.error).toBe(
       'Rephrase service unavailable. If this keeps happening, contact support@catglish.com.'
+    )
+    expect(errorLog).toHaveBeenCalledWith(
+      'API request failed:',
+      expect.any(Error)
     )
   })
 })

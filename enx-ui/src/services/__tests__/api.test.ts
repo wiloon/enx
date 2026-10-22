@@ -44,19 +44,23 @@ describe('ApiService auth token', () => {
   })
 
   it('sends no Authorization header when the token getter throws', async () => {
-    service.setTokenGetter(jest.fn().mockRejectedValue(new Error('clerk down')))
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const clerkError = new Error('clerk down')
+    service.setTokenGetter(jest.fn().mockRejectedValue(clerkError))
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(200, {}))
 
     await service.getMe()
 
     const [, init] = (global.fetch as jest.Mock).mock.calls[0]
     expect(init.headers.Authorization).toBeUndefined()
+    expect(errorLog).toHaveBeenCalledWith('Clerk getToken failed:', clerkError)
   })
 
   // Clerk hands out a fresh token on every call, so a rejected token from a
   // signed-in reader is our fault (e.g. the site's origin missing from the
   // API's authorized parties), not an expired session.
   it('points a rejected sign-in to support, not to "Session expired"', async () => {
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
     service.setTokenGetter(jest.fn().mockResolvedValue('clerk-session-jwt'))
     ;(global.fetch as jest.Mock).mockResolvedValue(
       jsonResponse(401, { error: 'invalid token' })
@@ -71,9 +75,14 @@ describe('ApiService auth token', () => {
       status: 401,
     })
     expect(global.fetch).toHaveBeenCalledTimes(1)
+    expect(errorLog).toHaveBeenCalledWith(
+      'API request failed:',
+      expect.any(Error)
+    )
   })
 
   it('asks the reader to refresh when the server says the token expired', async () => {
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
     service.setTokenGetter(jest.fn().mockResolvedValue('stale-jwt'))
     ;(global.fetch as jest.Mock).mockResolvedValue(
       jsonResponse(401, { error: 'token expired' })
@@ -86,11 +95,16 @@ describe('ApiService auth token', () => {
       error: 'Your session has expired. Refresh the page to sign in again.',
       status: 401,
     })
+    expect(errorLog).toHaveBeenCalledWith(
+      'API request failed:',
+      expect.any(Error)
+    )
   })
 
   // The auth middleware's 5xx bodies ({"error": "internal server error"},
   // {"error": "auth service unavailable"}) are internal wording.
   it('hides an internal 5xx error string behind a contact-support hint', async () => {
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
     ;(global.fetch as jest.Mock).mockResolvedValue(
       jsonResponse(500, { error: 'internal server error' })
     )
@@ -103,9 +117,14 @@ describe('ApiService auth token', () => {
         'Something went wrong on our end. Refresh the page, or try again in a few minutes. If this keeps happening, contact support@catglish.com.',
       status: 500,
     })
+    expect(errorLog).toHaveBeenCalledWith(
+      'API request failed:',
+      expect.any(Error)
+    )
   })
 
   it("keeps a handler's own 5xx message and adds a contact-support hint", async () => {
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
     ;(global.fetch as jest.Mock).mockResolvedValue(
       jsonResponse(502, {
         success: false,
@@ -121,12 +140,16 @@ describe('ApiService auth token', () => {
         'Failed to create checkout session. If this keeps happening, contact support@catglish.com.',
       status: 502,
     })
+    expect(errorLog).toHaveBeenCalledWith(
+      'API request failed:',
+      expect.any(Error)
+    )
   })
 
   it("says the API can't be reached when the request never gets an answer", async () => {
-    ;(global.fetch as jest.Mock).mockRejectedValue(
-      new TypeError('Failed to fetch')
-    )
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const networkError = new TypeError('Failed to fetch')
+    ;(global.fetch as jest.Mock).mockRejectedValue(networkError)
 
     const result = await service.getMe()
 
@@ -135,11 +158,16 @@ describe('ApiService auth token', () => {
       error:
         "Can't reach Catglish right now. Check your connection and try again.",
     })
+    expect(errorLog).toHaveBeenCalledWith(
+      'API request got no answer:',
+      networkError
+    )
   })
 
   // ADR-060 Decision 4: the request rate limit's 429 says to slow down in
   // the server's own words -- never "Session expired", never a retry.
   it('shows a rate-limit 429 in the server message without retrying', async () => {
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
     service.setTokenGetter(jest.fn().mockResolvedValue('clerk-session-jwt'))
     ;(global.fetch as jest.Mock).mockResolvedValue(
       jsonResponse(429, {
@@ -158,11 +186,16 @@ describe('ApiService auth token', () => {
       status: 429,
     })
     expect(global.fetch).toHaveBeenCalledTimes(1)
+    expect(errorLog).toHaveBeenCalledWith(
+      'API request failed:',
+      expect.any(Error)
+    )
   })
 
   // A 5xx with no message of its own (e.g. enx-api unreachable while the
   // proxy forwards to it) shows a hint the reader can act on, not "HTTP 500:".
   it('shows a try-again hint for a server error without a message', async () => {
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
     ;(global.fetch as jest.Mock).mockResolvedValue({
       ok: false,
       status: 500,
@@ -180,5 +213,9 @@ describe('ApiService auth token', () => {
         'Something went wrong on our end. Refresh the page, or try again in a few minutes. If this keeps happening, contact support@catglish.com.',
       status: 500,
     })
+    expect(errorLog).toHaveBeenCalledWith(
+      'API request failed:',
+      expect.any(Error)
+    )
   })
 })

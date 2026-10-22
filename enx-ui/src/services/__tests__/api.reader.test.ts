@@ -35,6 +35,7 @@ describe('ApiService reader documents', () => {
   })
 
   it('surfaces the backend message when content is too long', async () => {
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
       jsonResponse(400, {
         success: false,
@@ -46,6 +47,10 @@ describe('ApiService reader documents', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toBe('reader: content exceeds maximum length')
+    expect(errorLog).toHaveBeenCalledWith(
+      'API request failed:',
+      expect.any(Error)
+    )
   })
 
   it('GETs the document list from /api/reader/documents', async () => {
@@ -86,6 +91,7 @@ describe('ApiService reader documents', () => {
   })
 
   it('returns a failure when a document is not found', async () => {
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
       jsonResponse(404, { success: false, message: 'document not found' })
     )
@@ -94,6 +100,10 @@ describe('ApiService reader documents', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toBe('document not found')
+    expect(errorLog).toHaveBeenCalledWith(
+      'API request failed:',
+      expect.any(Error)
+    )
   })
 
   it('PUTs revised content to update a document in place', async () => {

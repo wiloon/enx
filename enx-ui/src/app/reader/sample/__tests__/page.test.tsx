@@ -49,8 +49,9 @@ it('asks the extension to enable learning mode on this tab', async () => {
   )
 })
 
-it('shows the sample article in the Reader article element, one paragraph per block', () => {
+it('shows the sample article in the Reader article element, one paragraph per block', async () => {
   const { container } = render(<SampleArticlePage />)
+  await screen.findByText(/Install the Catglish extension/)
 
   expect(
     screen.getByRole('heading', {

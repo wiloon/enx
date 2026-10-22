@@ -301,7 +301,9 @@ it('stays finished when learning mode is turned off afterwards', async () => {
   renderGuide()
 
   await screen.findByRole('heading', { name: "You're all set" })
-  act(() => {
+  // Async act: the attribute change reaches React through a MutationObserver
+  // callback, which runs after the synchronous part of act has returned.
+  await act(async () => {
     document.documentElement.removeAttribute('data-enx-learning')
   })
 

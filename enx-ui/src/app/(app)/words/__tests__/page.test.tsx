@@ -65,7 +65,11 @@ async function chooseAction(english: string, action: string) {
     name: `More actions for ${english}`,
   })
   fireEvent.keyDown(trigger, { key: 'Enter' })
-  fireEvent.click(await screen.findByRole('menuitem', { name: action }))
+  const item = await screen.findByRole('menuitem', { name: action })
+  // Async act: the item's handler awaits the server before it updates state.
+  await act(async () => {
+    fireEvent.click(item)
+  })
 }
 
 it('lists each word with its definition, lookup count and known badge', async () => {

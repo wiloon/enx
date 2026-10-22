@@ -103,7 +103,11 @@ it('closes the drawer when a link is chosen', () => {
   const onNavigate = jest.fn()
   render(<AppSidebar onNavigate={onNavigate} />)
 
-  screen.getByRole('link', { name: 'Word Lookup' }).click()
+  const link = screen.getByRole('link', { name: 'Word Lookup' })
+  // jsdom can't navigate and logs an error when a click would; React's own
+  // click handler still runs.
+  link.addEventListener('click', (e) => e.preventDefault())
+  link.click()
   expect(onNavigate).toHaveBeenCalled()
 })
 
