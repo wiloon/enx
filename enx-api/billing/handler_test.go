@@ -182,6 +182,59 @@ func TestCheckoutTopupFirstTimeBuyerAsksStripeToCreateACustomer(t *testing.T) {
 	}
 }
 
+// A second live subscription would overwrite the first one's id in the
+// user's single subscriptions row, orphaning it while Stripe keeps billing.
+func TestCheckoutSubscriptionRefusesUserWithLiveSubscription(t *testing.T) {
+	for _, status := range []string{"active", "trialing", "past_due"} {
+		t.Run(status, func(t *testing.T) {
+			userID := "u-" + t.Name()
+			seedUser(t, userID)
+			seedSubscription(t, userID, "cus_"+userID, "sub_"+userID, status, 1700000000)
+
+			h := NewHandler(fakeStripeClient(t, func(url.Values) {
+				t.Error("checkout session created for a user with a live subscription")
+			}), "https://example.com", testStripe(), nil)
+			w := doRequest(t, http.MethodPost, "/billing/checkout/subscription", h.CheckoutSubscription, userID, `{"plan":"pro"}`)
+			if w.Code != http.StatusConflict {
+				t.Fatalf("status: got %d want 409, body=%s", w.Code, w.Body.String())
+			}
+			if !bytes.Contains(w.Body.Bytes(), []byte(`"message":"You already have a subscription. Manage it from the billing portal."`)) {
+				t.Fatalf("expected portal message, got %s", w.Body.String())
+			}
+		})
+	}
+}
+
+// A user whose subscription ended, or who never had one, can subscribe.
+func TestCheckoutSubscriptionAllowsUserWithoutLiveSubscription(t *testing.T) {
+	cases := []struct {
+		name   string
+		status string // "" seeds no subscriptions row
+	}{
+		{"canceled", "canceled"},
+		{"no row", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			userID := "u-" + t.Name()
+			seedUser(t, userID)
+			if tc.status != "" {
+				seedSubscription(t, userID, "cus_"+userID, "sub_"+userID, tc.status, 1700000000)
+			}
+
+			var form url.Values
+			h := NewHandler(fakeStripeClient(t, func(f url.Values) { form = f }), "https://example.com", testStripe(), nil)
+			w := doRequest(t, http.MethodPost, "/billing/checkout/subscription", h.CheckoutSubscription, userID, `{"plan":"pro"}`)
+			if w.Code != http.StatusOK {
+				t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())
+			}
+			if got := form.Get("mode"); got != "subscription" {
+				t.Errorf("mode: got %q want subscription", got)
+			}
+		})
+	}
+}
+
 // seedUser creates the minimal users row enx.GetUserByID needs -- CheckoutTopup
 // and CheckoutSubscription both 401 on an unknown user before reaching any
 // billing-specific logic.

@@ -80,6 +80,47 @@ it('switches to one-time credits, which a free user can buy', async () => {
   expect(await screen.findByText('stop before redirect')).toBeInTheDocument()
 })
 
+describe.each(['past_due', 'trialing'])(
+  'a user whose subscription is %s',
+  (status) => {
+    beforeEach(() => {
+      api.getBillingMe.mockResolvedValue({
+        success: true,
+        data: {
+          subscription: { status, plan: 'pro', currentPeriodEnd: 0 },
+          credits: {
+            subscriptionBalance: 0,
+            topupBalance: 0,
+            trialBalance: 0,
+            trialExpiresAt: null,
+          },
+        },
+      })
+    })
+
+    it('cannot start a second subscription', async () => {
+      renderPage()
+
+      const buttons = await screen.findAllByRole('button', {
+        name: 'Subscribed',
+      })
+      expect(buttons).toHaveLength(3)
+      buttons.forEach((b) => expect(b).toBeDisabled())
+      expect(screen.queryByRole('button', { name: 'Subscribe' })).toBeNull()
+    })
+
+    it('can manage the subscription in the billing portal', async () => {
+      renderPage()
+
+      expect(
+        await screen.findByRole('button', {
+          name: 'Manage subscription / billing',
+        })
+      ).toBeEnabled()
+    })
+  }
+)
+
 it('shows the sign-up trial and when it expires', async () => {
   const expires = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
   api.getBillingMe.mockResolvedValue({

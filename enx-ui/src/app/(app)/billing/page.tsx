@@ -19,6 +19,7 @@ import {
   SUBSCRIPTION_PLANS,
   TOPUP_CREDITS_RULE,
   TOPUP_TIERS,
+  hasLiveSubscription,
   subscriptionStatusLabel,
 } from '@/lib/plans'
 import PageHeader from '@/components/app/PageHeader'
@@ -77,7 +78,7 @@ export default function BillingPage() {
     goToCheckout('portal', () => apiService.createPortalSession())
 
   const status = data?.subscription.status ?? 'none'
-  const isActive = status === 'active'
+  const isSubscribed = hasLiveSubscription(status)
   const badgeVariant =
     status === 'active'
       ? 'default'
@@ -138,7 +139,7 @@ export default function BillingPage() {
             </div>
           )}
         </CardContent>
-        {(status === 'active' || status === 'past_due') && (
+        {isSubscribed && (
           <CardFooter>
             <Button
               variant="outline"
@@ -206,11 +207,11 @@ export default function BillingPage() {
                   <Button
                     className="w-full"
                     onClick={() => handleSubscribe(option.plan)}
-                    disabled={isActive || redirecting !== null}
+                    disabled={isSubscribed || redirecting !== null}
                   >
                     {redirecting === `subscription-${option.plan}`
                       ? 'Redirecting...'
-                      : isActive
+                      : isSubscribed
                         ? 'Subscribed'
                         : 'Subscribe'}
                   </Button>

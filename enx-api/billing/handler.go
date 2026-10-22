@@ -7,6 +7,7 @@ package billing
 import (
 	"context"
 	"enx-api/config"
+	"errors"
 	"io"
 	"net/http"
 
@@ -22,6 +23,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	stripeSDK "github.com/stripe/stripe-go/v86"
+	"gorm.io/gorm"
 )
 
 // Handler wraps a Stripe SDK client (which may be nil if STRIPE_SECRET_KEY
@@ -116,6 +118,17 @@ func (h *Handler) CheckoutSubscription(c *gin.Context) {
 	user := enx.GetUserByID(userID)
 	if user.Id == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "user not found"})
+		return
+	}
+
+	var sub sqlitex.Subscription
+	if err := sqlitex.DB.Where("user_id = ?", userID).First(&sub).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		logger.Errorf("billing: load subscription for %s: %v", userID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to load subscription"})
+		return
+	}
+	if hasLiveSubscription(sub) {
+		c.JSON(http.StatusConflict, gin.H{"success": false, "message": "You already have a subscription. Manage it from the billing portal."})
 		return
 	}
 
