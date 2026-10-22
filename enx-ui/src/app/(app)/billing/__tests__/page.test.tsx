@@ -56,6 +56,51 @@ it('shows the monthly subscription tab by default', async () => {
   await waitFor(() => expect(screen.getByText('Free user')).toBeInTheDocument())
 })
 
+it('makes Subscribe the brand button and marks the selected tab in brand', async () => {
+  renderPage()
+  await waitFor(() => expect(screen.getByText('Free user')).toBeInTheDocument())
+
+  screen
+    .getAllByRole('button', { name: 'Subscribe' })
+    .forEach((b) => expect(b).toHaveClass('bg-brand'))
+  expect(screen.getByRole('tab', { name: 'Monthly subscription' })).toHaveClass(
+    'text-brand'
+  )
+  expect(screen.getByRole('tab', { name: 'One-time credits' })).not.toHaveClass(
+    'text-brand'
+  )
+
+  fireEvent.click(screen.getByRole('tab', { name: 'One-time credits' }))
+
+  expect(screen.getByRole('tab', { name: 'One-time credits' })).toHaveClass(
+    'text-brand'
+  )
+  expect(
+    screen.getByRole('tab', { name: 'Monthly subscription' })
+  ).not.toHaveClass('text-brand')
+})
+
+it('shows an active subscription with a brand badge', async () => {
+  api.getBillingMe.mockResolvedValue({
+    success: true,
+    data: {
+      subscription: { status: 'active', plan: 'pro', currentPeriodEnd: 0 },
+      credits: {
+        subscriptionBalance: 0,
+        topupBalance: 0,
+        trialBalance: 0,
+        trialExpiresAt: null,
+      },
+    },
+  })
+  renderPage()
+
+  const badge = await screen.findByText(/Pro/, {
+    selector: '[data-slot=badge]',
+  })
+  expect(badge).toHaveClass('bg-brand')
+})
+
 it('switches to one-time credits, which a free user can buy', async () => {
   api.createTopupCheckout.mockResolvedValue({
     success: false,
@@ -79,6 +124,47 @@ it('switches to one-time credits, which a free user can buy', async () => {
   expect(api.createTopupCheckout).toHaveBeenCalledWith('small')
   expect(await screen.findByText('stop before redirect')).toBeInTheDocument()
 })
+
+describe.each(['past_due', 'trialing'])(
+  'a user whose subscription is %s',
+  (status) => {
+    beforeEach(() => {
+      api.getBillingMe.mockResolvedValue({
+        success: true,
+        data: {
+          subscription: { status, plan: 'pro', currentPeriodEnd: 0 },
+          credits: {
+            subscriptionBalance: 0,
+            topupBalance: 0,
+            trialBalance: 0,
+            trialExpiresAt: null,
+          },
+        },
+      })
+    })
+
+    it('cannot start a second subscription', async () => {
+      renderPage()
+
+      const buttons = await screen.findAllByRole('button', {
+        name: 'Subscribed',
+      })
+      expect(buttons).toHaveLength(3)
+      buttons.forEach((b) => expect(b).toBeDisabled())
+      expect(screen.queryByRole('button', { name: 'Subscribe' })).toBeNull()
+    })
+
+    it('can manage the subscription in the billing portal', async () => {
+      renderPage()
+
+      expect(
+        await screen.findByRole('button', {
+          name: 'Manage subscription / billing',
+        })
+      ).toBeEnabled()
+    })
+  }
+)
 
 it('shows the sign-up trial and when it expires', async () => {
   const expires = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60

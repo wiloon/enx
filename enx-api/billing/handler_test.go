@@ -2,6 +2,7 @@ package billing
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	stripeSDK "github.com/stripe/stripe-go/v86"
+	"gorm.io/gorm"
 )
 
 func TestMain(m *testing.M) {
@@ -180,6 +182,94 @@ func TestCheckoutTopupFirstTimeBuyerAsksStripeToCreateACustomer(t *testing.T) {
 	if got := form.Get("customer_email"); got != userID+"@example.com" {
 		t.Errorf("customer_email: got %q want %s@example.com", got, userID)
 	}
+}
+
+// A second live subscription would overwrite the first one's id in the
+// user's single subscriptions row, orphaning it while Stripe keeps billing.
+func TestCheckoutSubscriptionRefusesUserWithLiveSubscription(t *testing.T) {
+	for _, status := range []string{"active", "trialing", "past_due"} {
+		t.Run(status, func(t *testing.T) {
+			userID := "u-" + t.Name()
+			seedUser(t, userID)
+			seedSubscription(t, userID, "cus_"+userID, "sub_"+userID, status, 1700000000)
+
+			h := NewHandler(fakeStripeClient(t, func(url.Values) {
+				t.Error("checkout session created for a user with a live subscription")
+			}), "https://example.com", testStripe(), nil)
+			w := doRequest(t, http.MethodPost, "/billing/checkout/subscription", h.CheckoutSubscription, userID, `{"plan":"pro"}`)
+			if w.Code != http.StatusConflict {
+				t.Fatalf("status: got %d want 409, body=%s", w.Code, w.Body.String())
+			}
+			if !bytes.Contains(w.Body.Bytes(), []byte(`"message":"You already have a subscription. Manage it from the billing portal."`)) {
+				t.Fatalf("expected portal message, got %s", w.Body.String())
+			}
+		})
+	}
+}
+
+// A user whose subscription ended, or who never had one, can subscribe.
+func TestCheckoutSubscriptionAllowsUserWithoutLiveSubscription(t *testing.T) {
+	cases := []struct {
+		name   string
+		status string // "" seeds no subscriptions row
+	}{
+		{"canceled", "canceled"},
+		{"no row", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			userID := "u-" + t.Name()
+			seedUser(t, userID)
+			if tc.status != "" {
+				seedSubscription(t, userID, "cus_"+userID, "sub_"+userID, tc.status, 1700000000)
+			}
+
+			var form url.Values
+			h := NewHandler(fakeStripeClient(t, func(f url.Values) { form = f }), "https://example.com", testStripe(), nil)
+			w := doRequest(t, http.MethodPost, "/billing/checkout/subscription", h.CheckoutSubscription, userID, `{"plan":"pro"}`)
+			if w.Code != http.StatusOK {
+				t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())
+			}
+			if got := form.Get("mode"); got != "subscription" {
+				t.Errorf("mode: got %q want subscription", got)
+			}
+		})
+	}
+}
+
+// Without the subscription row the handler can't tell whether one is live, so
+// it must not risk a second subscription by checking out anyway.
+func TestCheckoutSubscriptionFailsWhenSubscriptionLookupFails(t *testing.T) {
+	userID := "u-subscription-lookup-fails"
+	seedUser(t, userID)
+	failSubscriptionQueries(t)
+
+	h := NewHandler(fakeStripeClient(t, func(url.Values) {
+		t.Error("checkout session created although the subscription lookup failed")
+	}), "https://example.com", testStripe(), nil)
+	w := doRequest(t, http.MethodPost, "/billing/checkout/subscription", h.CheckoutSubscription, userID, `{"plan":"pro"}`)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status: got %d want 500, body=%s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"message":"failed to load subscription"`)) {
+		t.Fatalf("expected load failure message, got %s", w.Body.String())
+	}
+}
+
+// failSubscriptionQueries makes every read of the subscriptions table fail
+// for the rest of the test; other tables still answer.
+func failSubscriptionQueries(t *testing.T) {
+	t.Helper()
+	const name = "test:fail-subscription-queries"
+	err := sqlitex.DB.Callback().Query().Before("gorm:query").Register(name, func(tx *gorm.DB) {
+		if tx.Statement.Table == "subscriptions" {
+			_ = tx.AddError(errors.New("disk I/O error"))
+		}
+	})
+	if err != nil {
+		t.Fatalf("register callback: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlitex.DB.Callback().Query().Remove(name) })
 }
 
 // seedUser creates the minimal users row enx.GetUserByID needs -- CheckoutTopup

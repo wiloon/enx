@@ -19,6 +19,7 @@ import {
   SUBSCRIPTION_PLANS,
   TOPUP_CREDITS_RULE,
   TOPUP_TIERS,
+  hasLiveSubscription,
   subscriptionStatusLabel,
 } from '@/lib/plans'
 import PageHeader from '@/components/app/PageHeader'
@@ -77,10 +78,10 @@ export default function BillingPage() {
     goToCheckout('portal', () => apiService.createPortalSession())
 
   const status = data?.subscription.status ?? 'none'
-  const isActive = status === 'active'
+  const isSubscribed = hasLiveSubscription(status)
   const badgeVariant =
     status === 'active'
-      ? 'default'
+      ? 'brand'
       : status === 'past_due'
         ? 'destructive'
         : 'secondary'
@@ -138,7 +139,7 @@ export default function BillingPage() {
             </div>
           )}
         </CardContent>
-        {(status === 'active' || status === 'past_due') && (
+        {isSubscribed && (
           <CardFooter>
             <Button
               variant="outline"
@@ -173,9 +174,9 @@ export default function BillingPage() {
             aria-selected={tab === t.id}
             aria-controls={`billing-panel-${t.id}`}
             onClick={() => setTab(t.id)}
-            className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+            className={`rounded-md px-4 py-1.5 text-sm font-medium transition-all active:scale-[0.97] motion-reduce:active:scale-100 ${
               tab === t.id
-                ? 'bg-background text-foreground shadow-sm'
+                ? 'bg-background text-brand shadow-sm'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -205,12 +206,13 @@ export default function BillingPage() {
                 action={
                   <Button
                     className="w-full"
+                    variant="brand"
                     onClick={() => handleSubscribe(option.plan)}
-                    disabled={isActive || redirecting !== null}
+                    disabled={isSubscribed || redirecting !== null}
                   >
                     {redirecting === `subscription-${option.plan}`
                       ? 'Redirecting...'
-                      : isActive
+                      : isSubscribed
                         ? 'Subscribed'
                         : 'Subscribe'}
                   </Button>
