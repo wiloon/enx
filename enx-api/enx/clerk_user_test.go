@@ -1,8 +1,10 @@
 package enx
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,8 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
+	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 func TestGetOrCreateByClerkUserID_EmptyID(t *testing.T) {
@@ -344,8 +348,12 @@ func TestGetOrCreateClerkUser_SyncWriteFailureKeepsTheStoredProfile(t *testing.T
 	}
 	core, logs := observer.New(zap.DebugLevel)
 	t.Cleanup(logger.Swap(zap.New(core).Sugar()))
+	var sqlLog bytes.Buffer
+	db := sqlitex.DB
+	sqlitex.DB = db.Session(&gorm.Session{Logger: gormlogger.New(log.New(&sqlLog, "", 0), gormlogger.Config{LogLevel: sqlitex.SQLLogLevel("warn")})})
+	t.Cleanup(func() { sqlitex.DB = db })
 
-	got, err := GetOrCreateClerkUser("user_fail", ClerkProfile{Email: "secret-new@example.com", Name: "Secret New"}, time.Hour)
+	got, err := GetOrCreateClerkUser("user_fail", ClerkProfile{Email: "secret-new@example.com", Name: "Secret New", ImageURL: "https://img.example.com/secret.png"}, time.Hour)
 	if err != nil {
 		t.Fatalf("sync failure failed the sign-in: %v", err)
 	}
@@ -356,8 +364,14 @@ func TestGetOrCreateClerkUser_SyncWriteFailureKeepsTheStoredProfile(t *testing.T
 	if len(errs) != 1 || !strings.Contains(errs[0].Message, u.Id) || !strings.Contains(errs[0].Message, "disk full") {
 		t.Fatalf("error logs = %+v, want one naming the user id and the database error", errs)
 	}
-	if strings.Contains(errs[0].Message, "secret-new") || strings.Contains(errs[0].Message, "Secret New") {
+	if strings.Contains(errs[0].Message, "secret") || strings.Contains(errs[0].Message, "Secret") {
 		t.Fatalf("log %q carries profile values", errs[0].Message)
+	}
+	if !strings.Contains(sqlLog.String(), "disk full") {
+		t.Fatalf("SQL log %q does not report the failed update", sqlLog.String())
+	}
+	if strings.Contains(sqlLog.String(), "secret") || strings.Contains(sqlLog.String(), "Secret") {
+		t.Fatalf("SQL log %q carries profile values", sqlLog.String())
 	}
 
 	if err := sqlitex.DB.Exec(`DROP TRIGGER refuse_profile`).Error; err != nil {

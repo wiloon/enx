@@ -324,7 +324,9 @@ func TestUsersRebuild_RemovesProfileUniquenessFromEveryHistoricalForm(t *testing
 				t.Fatalf("schema objects changed:\nbefore %v\nafter  %v", kept, afterSchema)
 			}
 			var violations []map[string]any
-			db.Raw("PRAGMA foreign_key_check").Scan(&violations)
+			if err := db.Raw("PRAGMA foreign_key_check").Scan(&violations).Error; err != nil {
+				t.Fatal(err)
+			}
 			if len(violations) != 0 {
 				t.Fatalf("foreign key violations: %v", violations)
 			}
@@ -370,6 +372,47 @@ func TestUsersRebuild_BackupHoldsTheOriginalTable(t *testing.T) {
 	}
 }
 
+// AUTOINCREMENT never hands out an id it handed out before, even a deleted
+// one; the rebuild must not reset that.
+func TestUsersRebuild_KeepsTheAutoincrementHighWaterMark(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		db    func(t *testing.T) *gorm.DB
+		after string
+	}{
+		{"highest id deleted", func(t *testing.T) *gorm.DB {
+			_, db := newFixture(t, usersFixtures[1].ddl)
+			return db
+		}, "DELETE FROM users WHERE id = 500"},
+		{"every row deleted", func(t *testing.T) *gorm.DB {
+			db := openFixture(t, filepath.Join(t.TempDir(), "enx.db"), "")
+			execAll(t, db, "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, email TEXT UNIQUE, password TEXT)")
+			return db
+		}, "DELETE FROM users"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := tc.db(t)
+			execAll(t, db,
+				"INSERT INTO users (id, name, email, password) VALUES (500, 'Gone', 'gone@example.com', 'x')",
+				tc.after,
+			)
+
+			if _, err := (usersRebuild{now: rebuildClock}).run(db); err != nil {
+				t.Fatal(err)
+			}
+
+			execAll(t, db, "INSERT INTO users (name, email, password) VALUES ('Next', 'next@example.com', 'x')")
+			var next int64
+			if err := db.Raw("SELECT id FROM users WHERE name = 'Next'").Scan(&next).Error; err != nil {
+				t.Fatal(err)
+			}
+			if next <= 500 {
+				t.Fatalf("next id = %d, want above the deleted 500", next)
+			}
+		})
+	}
+}
+
 // assertUntouched checks that a failed run left users exactly as it was.
 func assertUntouched(t *testing.T, db *gorm.DB, ddl, data string, schema []string) {
 	t.Helper()
@@ -386,7 +429,9 @@ func assertUntouched(t *testing.T, db *gorm.DB, ddl, data string, schema []strin
 		t.Fatalf("uniqueness = %v, want the original [email name]", got)
 	}
 	var leftover int64
-	db.Raw("SELECT count(*) FROM sqlite_schema WHERE name = 'users_new'").Scan(&leftover)
+	if err := db.Raw("SELECT count(*) FROM sqlite_schema WHERE name = 'users_new'").Scan(&leftover).Error; err != nil {
+		t.Fatal(err)
+	}
 	if leftover != 0 {
 		t.Fatal("users_new left behind")
 	}
@@ -444,7 +489,9 @@ func TestUsersRebuild_FailuresRollBackAndRestoreForeignKeys(t *testing.T) {
 				}
 				assertUntouched(t, db, ddl, data, schema)
 				var got int
-				db.Raw("PRAGMA foreign_keys").Scan(&got)
+				if err := db.Raw("PRAGMA foreign_keys").Scan(&got).Error; err != nil {
+					t.Fatal(err)
+				}
 				if got != fk {
 					t.Fatalf("foreign_keys = %d after the failure, want %d", got, fk)
 				}
@@ -464,7 +511,9 @@ func TestUsersRebuild_RestoresForeignKeysAfterSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	var fk int
-	db.Raw("PRAGMA foreign_keys").Scan(&fk)
+	if err := db.Raw("PRAGMA foreign_keys").Scan(&fk).Error; err != nil {
+		t.Fatal(err)
+	}
 	if fk != 1 {
 		t.Fatalf("foreign_keys = %d, want it back on", fk)
 	}
@@ -683,7 +732,9 @@ func TestInit_FailedRebuildStopsBeforeAutoMigrate(t *testing.T) {
 	}
 	check := openFixture(t, path, "")
 	var tables int64
-	check.Raw("SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name != 'users'").Scan(&tables)
+	if err := check.Raw("SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name != 'users'").Scan(&tables).Error; err != nil {
+		t.Fatal(err)
+	}
 	if tables != 0 {
 		t.Fatalf("%d tables created after the failure, want AutoMigrate not to have run", tables)
 	}

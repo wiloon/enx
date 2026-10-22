@@ -1,6 +1,7 @@
 package sqlitex
 
 import (
+	"context"
 	"enx-api/ecdict"
 	zapLog "enx-api/utils/logger"
 	"fmt"
@@ -318,6 +319,23 @@ func renameUserDictsKnownColumn() error {
 	}
 	zapLog.Info("renaming user_dicts.already_acquainted to known")
 	return DB.Exec(`ALTER TABLE user_dicts RENAME COLUMN already_acquainted TO known`).Error
+}
+
+// WithoutLoggedValues returns db whose SQL log shows its statements with `?`
+// in place of every bound value, for writes of personal data such as a
+// user's email, name or avatar URL.
+func WithoutLoggedValues(db *gorm.DB) *gorm.DB {
+	return db.Session(&gorm.Session{Logger: valuesHidden{db.Logger}})
+}
+
+type valuesHidden struct{ logger.Interface }
+
+func (l valuesHidden) LogMode(level logger.LogLevel) logger.Interface {
+	return valuesHidden{l.Interface.LogMode(level)}
+}
+
+func (valuesHidden) ParamsFilter(_ context.Context, sql string, _ ...interface{}) (string, []interface{}) {
+	return sql, nil
 }
 
 // SQLLogLevel maps the application log level to GORM's. Every statement is

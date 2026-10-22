@@ -140,7 +140,7 @@ func syncProfile(u *User, p ClerkProfile) {
 		return
 	}
 	now := time.Now()
-	if err := sqlitex.DB.Model(&User{}).Where("id = ?", u.Id).Updates(map[string]interface{}{
+	if err := sqlitex.WithoutLoggedValues(sqlitex.DB).Model(&User{}).Where("id = ?", u.Id).Updates(map[string]interface{}{
 		"email":      email,
 		"name":       name,
 		"avatar_url": avatar,

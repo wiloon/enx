@@ -444,6 +444,10 @@ func (r usersRebuild) rebuild(conn *gorm.DB, plan *usersPlan) (err error) {
 		if err := verifySameUsers(tx); err != nil {
 			return err
 		}
+		seq, err := usersSequence(tx)
+		if err != nil {
+			return err
+		}
 		for i := len(plan.dependents) - 1; i >= 0; i-- {
 			d := plan.dependents[i]
 			if err := tx.Exec(fmt.Sprintf("DROP %s %s", strings.ToUpper(d.Type), quoteIdent(d.Name))).Error; err != nil {
@@ -455,6 +459,15 @@ func (r usersRebuild) rebuild(conn *gorm.DB, plan *usersPlan) (err error) {
 		}
 		if err := tx.Exec(`ALTER TABLE users_new RENAME TO users`).Error; err != nil {
 			return fmt.Errorf("rename users_new: %w", err)
+		}
+		if seq != nil {
+			res := tx.Exec(`UPDATE sqlite_sequence SET seq = max(seq, ?) WHERE name = 'users'`, *seq)
+			if res.Error != nil {
+				return fmt.Errorf("restore users' AUTOINCREMENT sequence: %w", res.Error)
+			}
+			if res.RowsAffected != 1 {
+				return errors.New("restore users' AUTOINCREMENT sequence: the rebuilt users has none")
+			}
 		}
 		if err := r.step(stepRenamed, tx); err != nil {
 			return err
@@ -488,6 +501,26 @@ func (r usersRebuild) rebuild(conn *gorm.DB, plan *usersPlan) (err error) {
 		}
 		return nil
 	})
+}
+
+// usersSequence reads users' AUTOINCREMENT high-water mark, which DROP TABLE
+// deletes; nil when users has none.
+func usersSequence(tx *gorm.DB) (*int64, error) {
+	var tables int64
+	if err := tx.Raw(`SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = 'sqlite_sequence'`).Scan(&tables).Error; err != nil {
+		return nil, fmt.Errorf("read users' AUTOINCREMENT sequence: %w", err)
+	}
+	if tables == 0 {
+		return nil, nil
+	}
+	var seqs []int64
+	if err := tx.Raw(`SELECT seq FROM sqlite_sequence WHERE name = 'users'`).Scan(&seqs).Error; err != nil {
+		return nil, fmt.Errorf("read users' AUTOINCREMENT sequence: %w", err)
+	}
+	if len(seqs) == 0 {
+		return nil, nil
+	}
+	return &seqs[0], nil
 }
 
 // verifySameUsers checks that users_new holds the same number of rows and
