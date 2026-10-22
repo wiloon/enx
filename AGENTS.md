@@ -88,4 +88,4 @@ Default canonical vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `
 
 Single-context layout: one root `GLOSSARY.md` (created lazily) plus ADRs in `docs/architecture/`. See `docs/agents/domain.md`. A new ADR takes the next number unused on **every** branch and worktree (`git fetch && git log --all --name-only --format= -- docs/architecture | sort -u`), not just on `main`.
 
-**TASK-SPEC is optional**: an ADR Decision plus TDD is enough unless the work needs a long multi-phase checklist. Details in `docs/agents/domain.md` §ADR vs TASK-SPEC.
+**Decisions go in ADRs, work goes in GitHub issues.** A multi-phase checklist is the issue's task list (or sub-issues). `docs/tasks/TASK-SPEC-*.md` are history. Details in `docs/agents/domain.md` §Where things get written.
