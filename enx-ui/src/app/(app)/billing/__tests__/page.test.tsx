@@ -166,6 +166,53 @@ describe.each(['past_due', 'trialing'])(
   }
 )
 
+function respondWithStatus(status: string) {
+  api.getBillingMe.mockResolvedValue({
+    success: true,
+    data: {
+      subscription: { status, plan: 'pro', currentPeriodEnd: 0 },
+      credits: {
+        subscriptionBalance: 0,
+        topupBalance: 0,
+        trialBalance: 0,
+        trialExpiresAt: null,
+      },
+    },
+  })
+}
+
+it('says a trialing subscription is starting, not a free user', async () => {
+  respondWithStatus('trialing')
+  renderPage()
+
+  expect(
+    await screen.findByText('Subscription starting', {
+      selector: '[data-slot=badge]',
+    })
+  ).toBeInTheDocument()
+  expect(screen.queryByText('Free user')).toBeNull()
+  const buttons = screen.getAllByRole('button', { name: 'Subscribed' })
+  expect(buttons).toHaveLength(3)
+  buttons.forEach((b) => expect(b).toBeDisabled())
+})
+
+it.each([
+  ['trialing', 'Subscription starting', 'bg-secondary'],
+  ['incomplete', 'Payment incomplete', 'bg-destructive'],
+  ['unpaid', 'Subscription unpaid', 'bg-destructive'],
+])(
+  'shows a %s subscription as %j with a %s badge',
+  async (status, label, badgeClass) => {
+    respondWithStatus(status)
+    renderPage()
+
+    const badge = await screen.findByText(label, {
+      selector: '[data-slot=badge]',
+    })
+    expect(badge).toHaveClass(badgeClass)
+  }
+)
+
 it('shows the sign-up trial and when it expires', async () => {
   const expires = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
   api.getBillingMe.mockResolvedValue({

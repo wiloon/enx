@@ -20,10 +20,10 @@ permissions:
   contents: read
 
 jobs:
-  # Lint and unit tests. The image build below typechecks (next build) but
-  # runs neither.
+  # Typecheck, lint and unit tests. The image build below typechecks too
+  # (next build), but this job fails on a type error directly.
   check:
-    name: Lint and test
+    name: Typecheck, lint and test
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -43,6 +43,9 @@ jobs:
       # can't reach.
       - name: Install
         run: pnpm install --frozen-lockfile --registry=https://registry.npmjs.org/
+
+      - name: Typecheck
+        run: pnpm typecheck
 
       - name: Lint
         run: pnpm lint
