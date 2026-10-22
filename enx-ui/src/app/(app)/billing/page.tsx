@@ -81,7 +81,7 @@ export default function BillingPage() {
   const isSubscribed = hasLiveSubscription(status)
   const badgeVariant =
     status === 'active'
-      ? 'default'
+      ? 'brand'
       : status === 'past_due'
         ? 'destructive'
         : 'secondary'
@@ -174,9 +174,9 @@ export default function BillingPage() {
             aria-selected={tab === t.id}
             aria-controls={`billing-panel-${t.id}`}
             onClick={() => setTab(t.id)}
-            className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+            className={`rounded-md px-4 py-1.5 text-sm font-medium transition-all active:scale-[0.97] motion-reduce:active:scale-100 ${
               tab === t.id
-                ? 'bg-background text-foreground shadow-sm'
+                ? 'bg-background text-brand shadow-sm'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -206,6 +206,7 @@ export default function BillingPage() {
                 action={
                   <Button
                     className="w-full"
+                    variant="brand"
                     onClick={() => handleSubscribe(option.plan)}
                     disabled={isSubscribed || redirecting !== null}
                   >

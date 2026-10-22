@@ -190,6 +190,46 @@ test.describe('/billing', () => {
     ).toHaveCount(0)
   })
 
+  test('Subscribe, the selected tab and the active badge are brand coloured', async ({
+    page,
+  }) => {
+    await stubBilling(page, {
+      me: () => ({ status: 200, body: activeProPlus }),
+    })
+    await page.goto('/billing')
+    await expect(page.getByText('Pro+ member')).toBeVisible()
+
+    const brand = await page.evaluate(() => {
+      const probe = document.createElement('div')
+      probe.style.color = 'var(--brand)'
+      document.body.append(probe)
+      const colour = getComputedStyle(probe).color
+      probe.remove()
+      return colour
+    })
+    const css = (locator: ReturnType<Page['locator']>, prop: string) =>
+      locator.evaluate(
+        (el, p) => getComputedStyle(el).getPropertyValue(p),
+        prop
+      )
+
+    expect(
+      await css(
+        page.getByRole('button', { name: 'Subscribed', exact: true }).first(),
+        'background-color'
+      )
+    ).toBe(brand)
+    expect(
+      await css(
+        page.getByRole('tab', { name: 'Monthly subscription' }),
+        'color'
+      )
+    ).toBe(brand)
+    expect(await css(page.getByText('Pro+ member'), 'background-color')).toBe(
+      brand
+    )
+  })
+
   test('active subscriber sees balances, the portal button, and disabled subscribe buttons', async ({
     page,
   }) => {

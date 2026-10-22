@@ -2,6 +2,7 @@ package billing
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	stripeSDK "github.com/stripe/stripe-go/v86"
+	"gorm.io/gorm"
 )
 
 func TestMain(m *testing.M) {
@@ -233,6 +235,41 @@ func TestCheckoutSubscriptionAllowsUserWithoutLiveSubscription(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Without the subscription row the handler can't tell whether one is live, so
+// it must not risk a second subscription by checking out anyway.
+func TestCheckoutSubscriptionFailsWhenSubscriptionLookupFails(t *testing.T) {
+	userID := "u-subscription-lookup-fails"
+	seedUser(t, userID)
+	failSubscriptionQueries(t)
+
+	h := NewHandler(fakeStripeClient(t, func(url.Values) {
+		t.Error("checkout session created although the subscription lookup failed")
+	}), "https://example.com", testStripe(), nil)
+	w := doRequest(t, http.MethodPost, "/billing/checkout/subscription", h.CheckoutSubscription, userID, `{"plan":"pro"}`)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status: got %d want 500, body=%s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"message":"failed to load subscription"`)) {
+		t.Fatalf("expected load failure message, got %s", w.Body.String())
+	}
+}
+
+// failSubscriptionQueries makes every read of the subscriptions table fail
+// for the rest of the test; other tables still answer.
+func failSubscriptionQueries(t *testing.T) {
+	t.Helper()
+	const name = "test:fail-subscription-queries"
+	err := sqlitex.DB.Callback().Query().Before("gorm:query").Register(name, func(tx *gorm.DB) {
+		if tx.Statement.Table == "subscriptions" {
+			_ = tx.AddError(errors.New("disk I/O error"))
+		}
+	})
+	if err != nil {
+		t.Fatalf("register callback: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlitex.DB.Callback().Query().Remove(name) })
 }
 
 // seedUser creates the minimal users row enx.GetUserByID needs -- CheckoutTopup
