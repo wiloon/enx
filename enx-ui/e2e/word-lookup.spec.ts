@@ -97,6 +97,84 @@ test('records the lookup once, by the word id the lookup answered with', async (
   expect(recorded).toEqual([{ wordId: scratchpad.Id }])
 })
 
+// The colour a theme token paints, resolved by the browser the same way it
+// resolves the element's own colour.
+const tokenColour = (page: Page, token: string) =>
+  page.evaluate((t) => {
+    const probe = document.createElement('span')
+    probe.style.color = `var(${t})`
+    document.body.appendChild(probe)
+    const colour = getComputedStyle(probe).color
+    probe.remove()
+    return colour
+  }, token)
+
+test('says the dictionary did not answer in the error colour, on a phone, with nothing to count', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 800 })
+  const recorded = await lookUp(page, {
+    ...scratchpad,
+    Id: '',
+    Chinese: '',
+    Source: 'timeout',
+  })
+
+  const message = page.getByText(
+    "The dictionary didn't answer. Please look it up again."
+  )
+  await expect(message).toBeVisible()
+  expect(await message.evaluate((el) => getComputedStyle(el).color)).toBe(
+    await tokenColour(page, '--destructive')
+  )
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth
+    )
+  ).toBeLessThanOrEqual(0)
+  await expect(page.getByText(/No data found/)).toHaveCount(0)
+  await expect(page.getByTitle(/^Looked up/)).toHaveCount(0)
+  expect(recorded).toEqual([])
+})
+
+test('shows an admin the lookup source on the id line, muted, on a phone', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 800 })
+  await page.route('**/api/me', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: 'admin',
+        name: 'Admin',
+        email: 'admin@example.com',
+        status: 'active',
+        isAdmin: true,
+      }),
+    })
+  )
+  await lookUp(page, { ...scratchpad, Source: 'local' })
+
+  const source = page.getByTitle('Lookup source')
+  const id = page.getByText(`ID ${scratchpad.Id}`)
+  await expect(source).toHaveText('local')
+  await expect(id).toBeVisible()
+  const [s, i] = [await source.boundingBox(), await id.boundingBox()]
+  expect(Math.abs(s!.y + s!.height / 2 - (i!.y + i!.height / 2))).toBeLessThan(
+    2
+  )
+  expect(s!.x).toBeLessThan(i!.x)
+  expect(await source.evaluate((el) => getComputedStyle(el).color)).toBe(
+    await tokenColour(page, '--muted-foreground')
+  )
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth
+    )
+  ).toBeLessThanOrEqual(0)
+})
+
 test('shows Look Up pressed while the mouse is held down on it', async ({
   page,
 }) => {

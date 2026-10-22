@@ -11,12 +11,15 @@ interface WordResultCardProps {
   // Admin-only: omit it and the Clear button is not rendered.
   onClear?: () => void
   clearing?: boolean
+  // Admin-only: the lookup source to show beside the id (ADR-040).
+  source?: string | null
 }
 
 export default function WordResultCard({
   data,
   onClear,
   clearing = false,
+  source,
 }: WordResultCardProps) {
   const phonetic = formatPhonetic(data.Pronunciation)
 
@@ -64,7 +67,14 @@ export default function WordResultCard({
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t px-6 py-3 text-xs text-muted-foreground">
         <LookupCount count={data.LoadCount} />
-        <span className="ml-auto truncate font-mono">ID {data.Id}</span>
+        <span className="ml-auto flex min-w-0 items-center gap-3">
+          {source && (
+            <span title="Lookup source" className="text-muted-foreground">
+              {source}
+            </span>
+          )}
+          <span className="truncate font-mono">ID {data.Id}</span>
+        </span>
       </div>
     </Card>
   )

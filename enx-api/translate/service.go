@@ -115,6 +115,7 @@ func (h *Handler) translateWord(c *gin.Context, raw string) {
 	word.Chinese = res.Chinese
 	word.Pronunciation = res.Pronunciation
 	word.Origin = string(res.Origin)
+	word.Source = string(res.Source)
 
 	// The word's current review state, read only: this GET may be retried,
 	// so it never adds to the query count (ADR-059 Decision 3). A miss has

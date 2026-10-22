@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiService } from '@/services/api'
 import { useIsAdmin } from '@/hooks/useIsAdmin'
 import { countLookup } from '@/lib/queryCount'
+import { classifyLookupAnswer, shownLookupSource } from '@/lib/lookupAnswer'
 import WordSearchForm from './WordSearchForm'
 import WordResultCard from './WordResultCard'
 import PageHeader from '@/components/app/PageHeader'
@@ -33,9 +34,10 @@ export default function WordLookupPage() {
       if (!response.success || !response.data) {
         throw new Error(response.error || 'Failed to look up the word')
       }
-      // No definition is a miss: nothing to show and nothing to count.
-      if (!response.data.Chinese) return null
-      return countLookup(response.data, recordLookup)
+      // Only a definition is shown and counted.
+      const kind = classifyLookupAnswer(response.data)
+      if (kind !== 'result') return { kind } as const
+      return { kind, word: countLookup(response.data, recordLookup) } as const
     },
   })
   const currentWord = lookup.variables ?? ''
@@ -91,15 +93,22 @@ export default function WordLookupPage() {
         </div>
       )}
 
-      {lookup.isSuccess && lookup.data && (
+      {lookup.data?.kind === 'result' && (
         <WordResultCard
-          data={lookup.data}
+          data={lookup.data.word}
           onClear={isAdmin ? handleClear : undefined}
           clearing={clearing}
+          source={isAdmin ? shownLookupSource(lookup.data.word.Source) : null}
         />
       )}
 
-      {lookup.isSuccess && !lookup.data && (
+      {lookup.data?.kind === 'no-answer' && (
+        <div className="py-8 text-center text-sm text-destructive">
+          The dictionary didn&apos;t answer. Please look it up again.
+        </div>
+      )}
+
+      {lookup.data?.kind === 'miss' && (
         <div className="py-8 text-center text-sm text-muted-foreground">
           No data found for &quot;{currentWord}&quot;
         </div>

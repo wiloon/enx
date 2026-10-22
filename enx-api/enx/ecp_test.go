@@ -1,7 +1,9 @@
 package enx
 
 import (
+	"encoding/json"
 	"enx-api/repo"
+	"strings"
 	"testing"
 )
 
@@ -101,6 +103,18 @@ func TestSetEnglishStraightensApostrophes(t *testing.T) {
 		if w.English != want[0] || w.Raw != want[1] {
 			t.Errorf("SetEnglish(%q): English=%q Raw=%q, want %q / %q", raw, w.English, w.Raw, want[0], want[1])
 		}
+	}
+}
+
+// ADR-040: Source belongs to a lookup answer; a Word serialized without a
+// lookup behind it leaves the field out.
+func TestWordWithoutASourceOmitsIt(t *testing.T) {
+	b, err := json.Marshal(Word{English: "run"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), `"Source"`) {
+		t.Fatalf("got %s, want no Source", b)
 	}
 }
 

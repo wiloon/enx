@@ -32,6 +32,10 @@ export interface WordData {
   LoadCount: number
   Known: boolean
   WordType: number
+  // Which source answered the lookup GET (ADR-040): "local", "ecdict",
+  // "miss", "timeout" or "error". Absent from an older API, and other
+  // values may arrive from a newer one.
+  Source?: string
 }
 
 // Mirrors GET /api/billing/me (enx-api/billing/handler.go Me). Status is

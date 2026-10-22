@@ -62,6 +62,7 @@ function submit(word: string) {
 
 beforeEach(() => {
   jest.clearAllMocks()
+  mockLookup.mockReset()
   mockIsAdmin.mockReturnValue({ isAdmin: false, isLoading: false })
   mockRecord.mockResolvedValue(recorded)
 })
@@ -257,6 +258,83 @@ it('holds the card’s place with a skeleton while the lookup is pending', async
   expect(button).toBeDisabled()
   expect(screen.getByTestId('word-result-skeleton')).toBeInTheDocument()
   expect(screen.queryByText('Looking up word...')).not.toBeInTheDocument()
+})
+
+it.each(['timeout', 'error'])(
+  'says the dictionary did not answer in the error colour after a 200 %s, with nothing to count',
+  async (Source) => {
+    mockIsAdmin.mockReturnValue({ isAdmin: true, isLoading: false })
+    mockLookup.mockResolvedValue(found({ ...run, Chinese: '', Id: '', Source }))
+    renderPage()
+
+    submit('run')
+
+    const shown = await screen.findByText(
+      "The dictionary didn't answer. Please look it up again."
+    )
+    expect(shown).toHaveClass('text-destructive')
+    expect(screen.queryByText(/No data found/)).not.toBeInTheDocument()
+    expect(screen.queryByTitle(/^Looked up/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Clear' })
+    ).not.toBeInTheDocument()
+    expect(mockRecord).not.toHaveBeenCalled()
+  }
+)
+
+it.each(['miss', undefined, 'later', 'local'])(
+  'keeps "No data found" for a miss with Source %s',
+  async (Source) => {
+    mockLookup.mockResolvedValue(found({ ...run, Chinese: '', Id: '', Source }))
+    renderPage()
+
+    submit('qwzx')
+
+    expect(await screen.findByText('No data found for "qwzx"')).toHaveClass(
+      'text-muted-foreground'
+    )
+  }
+)
+
+describe('lookup source', () => {
+  it.each(['local', 'ecdict'])('shows %s to an admin', async (Source) => {
+    mockIsAdmin.mockReturnValue({ isAdmin: true, isLoading: false })
+    mockLookup.mockResolvedValue(found({ ...run, Source }))
+    renderPage()
+
+    submit('run')
+
+    expect(await screen.findByTitle('Lookup source')).toHaveTextContent(
+      new RegExp(`^${Source}$`)
+    )
+  })
+
+  it.each(['local', 'ecdict'])(
+    'does not show %s to an ordinary user',
+    async (Source) => {
+      mockLookup.mockResolvedValue(found({ ...run, Source }))
+      renderPage()
+
+      submit('run')
+
+      expect(await screen.findByText('v. 跑')).toBeInTheDocument()
+      expect(screen.queryByTitle('Lookup source')).not.toBeInTheDocument()
+    }
+  )
+
+  it.each([undefined, 'later', 'miss', 'timeout'])(
+    'shows nothing to an admin for Source %s',
+    async (Source) => {
+      mockIsAdmin.mockReturnValue({ isAdmin: true, isLoading: false })
+      mockLookup.mockResolvedValue(found({ ...run, Source }))
+      renderPage()
+
+      submit('run')
+
+      expect(await screen.findByText('v. 跑')).toBeInTheDocument()
+      expect(screen.queryByTitle('Lookup source')).not.toBeInTheDocument()
+    }
+  )
 })
 
 it('removes the card after an admin clears the word', async () => {

@@ -35,6 +35,11 @@ type Word struct {
 	// lookup behind it don't grow a field.
 	Origin string `json:"Origin,omitempty"`
 
+	// Which source answered this lookup: "local" (the words table),
+	// "ecdict", "miss", "timeout" or "error" (ADR-040). Set only on a lookup
+	// answer; not the same thing as Origin.
+	Source string `json:"Source,omitempty"`
+
 	// What the AI fallback offers after a lookup found nothing (ADR-045).
 	// Present only on such a miss, and only when the fallback is set up.
 	AIFallback *AIFallback `json:"AIFallback,omitempty"`
