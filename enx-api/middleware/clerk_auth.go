@@ -4,6 +4,7 @@ import (
 	"enx-api/config"
 	"enx-api/enx"
 	"enx-api/utils/logger"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -88,6 +89,7 @@ const (
 	authProvisionError    = "provision_error"
 	authUnavailable       = "unavailable"
 	authDisabled          = "account_disabled"
+	authEmailRequired     = "email_required"
 )
 
 // AuthRejectedKey is the gin context key ClerkAuth sets to the outcome of a
@@ -180,8 +182,23 @@ func ClerkAuth(cfg ClerkConfig, obs AuthObserver) gin.HandlerFunc {
 
 		email, _ := claims["email"].(string)
 		name, _ := claims["name"].(string)
+		imageURL, _ := claims["image_url"].(string)
 
-		user, err := enx.GetOrCreateClerkUser(sub, enx.ClerkProfile{Email: email, Name: name}, cfg.LastLoginUpdateInterval)
+		user, err := enx.GetOrCreateClerkUser(sub, enx.ClerkProfile{Email: email, Name: name, ImageURL: imageURL}, cfg.LastLoginUpdateInterval)
+		if errors.Is(err, enx.ErrNoEmail) {
+			// ADR-015 2026-10-20 note §3: the email claim is missing or
+			// broken. 403, not 401: both clients read 401 as an expired
+			// session and would never show this message.
+			logger.Errorf("ClerkAuth: no email claim for new user clerk_user_id=%s; check the session token's email claim", sub)
+			observe(authEmailRequired, start)
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"code":    "email_required",
+				"message": "Your account has no email address. Please contact support.",
+			})
+			c.Abort()
+			return
+		}
 		if err != nil {
 			logger.Errorf("ClerkAuth: provision user clerk_user_id=%s: %v", sub, err)
 			observe(authProvisionError, start)
