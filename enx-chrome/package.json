@@ -11,6 +11,7 @@
     "build:e2e": "tsc -p tsconfig.app.json && VITE_ENX_UI_ORIGINS=http://localhost:3000,http://localhost:8765 vite build --mode development --outDir dist-e2e",
     "package:prod": "node scripts/version.mjs --release && pnpm build:prod && node scripts/package-prod.mjs",
     "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.app.json",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:e2e": "playwright test",
