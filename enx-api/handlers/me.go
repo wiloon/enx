@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"time"
 
 	"enx-api/enx"
 	"enx-api/middleware"
@@ -29,10 +30,12 @@ func serveMe(c *gin.Context, admins middleware.AdminAllowlist) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"id":      user.Id,
-		"name":    user.Name,
-		"email":   user.Email,
-		"status":  user.Status,
-		"isAdmin": admins.Contains(c.GetString("clerk_user_id")),
+		"id":        user.Id,
+		"name":      user.Name,
+		"email":     user.Email,
+		"avatarUrl": user.AvatarUrl,
+		"createdAt": user.CreateTime.UTC().Format(time.RFC3339),
+		"status":    user.Status,
+		"isAdmin":   admins.Contains(c.GetString("clerk_user_id")),
 	})
 }

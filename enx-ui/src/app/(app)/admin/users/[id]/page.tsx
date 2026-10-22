@@ -171,6 +171,7 @@ function UserDetail({ detail }: { detail: AdminUserDetail }) {
         </CardHeader>
         <CardContent>
           <AdjustCreditsForm
+            userId={user.id}
             email={user.email}
             topupBalance={user.balances.topup}
             onAdjusted={() => {

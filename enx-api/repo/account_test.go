@@ -15,7 +15,9 @@ import (
 func newAccountDB(t *testing.T) {
 	t.Helper()
 	prev := sqlitex.DB
-	sqlitex.InitWithLogLevel(filepath.Join(t.TempDir(), "account.db"), "warn")
+	if err := sqlitex.InitWithLogLevel(filepath.Join(t.TempDir(), "account.db"), "warn"); err != nil {
+		t.Fatal(err)
+	}
 	if sqlitex.DB == nil || sqlitex.DB == prev {
 		t.Fatal("sqlitex.DB was not opened")
 	}

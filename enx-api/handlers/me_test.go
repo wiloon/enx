@@ -5,7 +5,9 @@ import (
 	"enx-api/middleware"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"enx-api/utils/sqlitex"
 
@@ -67,6 +69,35 @@ func TestGetMe(t *testing.T) {
 		if w.Code != http.StatusOK || body["id"] != "u1" || body["email"] != "ann@example.com" || body["isAdmin"] != tc.admin {
 			t.Fatalf("clerk %s: status %d body %+v, want 200 with isAdmin %v", tc.clerkID, w.Code, body, tc.admin)
 		}
+	}
+}
+
+// #211: the account menu and /account read the join date and avatar from
+// /api/me, never from the Clerk session; the Clerk user id stays out.
+func TestGetMe_ReturnsJoinDateAndAvatarButNoClerkID(t *testing.T) {
+	setupUsersDB(t)
+	joined := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	if err := sqlitex.DB.Create(&sqlitex.User{
+		Id: "u1", ClerkUserID: "user_secret", Name: "Ann", Email: "ann@example.com", Status: "active",
+		AvatarUrl: "https://img.clerk.com/ann.png", CreatedAt: joined,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	w := getMe("u1", "user_secret")
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != http.StatusOK || body["avatarUrl"] != "https://img.clerk.com/ann.png" {
+		t.Fatalf("status %d body %+v, want 200 with the avatar URL", w.Code, body)
+	}
+	created, _ := body["createdAt"].(string)
+	if at, err := time.Parse(time.RFC3339, created); err != nil || !at.Equal(joined) {
+		t.Fatalf("createdAt = %q, want %s", created, joined.Format(time.RFC3339))
+	}
+	if strings.Contains(w.Body.String(), "user_secret") {
+		t.Fatalf("body carries the Clerk user id: %s", w.Body.String())
 	}
 }
 

@@ -34,7 +34,6 @@ it('renders every navigation destination', () => {
     'Reader',
     'Reading Stats',
     'Settings',
-    'Billing',
     'Invite friends',
     'Back to site',
   ]) {
@@ -42,17 +41,29 @@ it('renders every navigation destination', () => {
   }
 })
 
-// ADR-051 Decision 8: the invite page sits right after Billing.
-it('lists Invite friends after Billing, linking to /invite', () => {
+// Billing and Account live in the top bar's account menu (#211); the
+// footer keeps the app-wide utilities.
+it('ends with Settings, Invite friends and Back to site', () => {
   mockPathname.mockReturnValue('/app')
   render(<AppSidebar />)
 
   const labels = screen.getAllByRole('link').map((l) => l.textContent?.trim())
-  expect(labels.indexOf('Invite friends')).toBe(labels.indexOf('Billing') + 1)
+  const footer = labels.slice(labels.indexOf('Settings'))
+  expect(footer.slice(0, 3)).toEqual([
+    'Settings',
+    'Invite friends',
+    'Back to site',
+  ])
   expect(screen.getByRole('link', { name: 'Invite friends' })).toHaveAttribute(
     'href',
     '/invite'
   )
+  expect(
+    screen.queryByRole('link', { name: 'Billing' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('link', { name: 'Account' })
+  ).not.toBeInTheDocument()
 })
 
 // "Back to site" points at '/', which is a prefix of every route, so the

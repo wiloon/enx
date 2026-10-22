@@ -73,9 +73,9 @@ const clerkUsersU = "u.clerk_user_id IS NOT NULL AND u.clerk_user_id != ''"
 func (s AdminUsers) ListAccounts(ctx context.Context, q adminuser.ListQuery) ([]adminuser.Account, int64, error) {
 	where := clerkUsersU
 	var args []any
-	if q.Email != "" {
-		where += ` AND u.email LIKE ? ESCAPE '\'`
-		args = append(args, "%"+escapeLike(q.Email)+"%")
+	if q.Query != "" {
+		where += ` AND (u.email LIKE ? ESCAPE '\' OR u.id = ?)`
+		args = append(args, "%"+escapeLike(q.Query)+"%", q.Query)
 	}
 
 	var total int64

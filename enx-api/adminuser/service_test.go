@@ -21,7 +21,7 @@ type fakeStore struct {
 func (f *fakeStore) ListAccounts(_ context.Context, q ListQuery) ([]Account, int64, error) {
 	var matched []Account
 	for _, a := range f.accounts {
-		if strings.Contains(a.Email, q.Email) {
+		if strings.Contains(a.Email, q.Query) {
 			matched = append(matched, a)
 		}
 	}
@@ -108,7 +108,7 @@ func TestListPageBounds(t *testing.T) {
 		{"defaults", ListParams{}, ListQuery{Sort: SortCreated, Limit: 50}},
 		{"limit capped", ListParams{Limit: 500}, ListQuery{Sort: SortCreated, Limit: 200}},
 		{"negative offset", ListParams{Offset: -3, Limit: 10}, ListQuery{Sort: SortCreated, Limit: 10}},
-		{"email and sort pass through", ListParams{Email: "ex", Sort: SortBalance, Offset: 50}, ListQuery{Email: "ex", Sort: SortBalance, Limit: 50, Offset: 50}},
+		{"query and sort pass through", ListParams{Query: "ex", Sort: SortBalance, Offset: 50}, ListQuery{Query: "ex", Sort: SortBalance, Limit: 50, Offset: 50}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := &recordingStore{}
@@ -130,7 +130,7 @@ func TestListRejectsUnknownSort(t *testing.T) {
 }
 
 func TestListEmptyResultIsAnEmptyPage(t *testing.T) {
-	page, err := NewService(&fakeStore{}, false, func() time.Time { return now }).List(context.Background(), ListParams{Email: "nobody"})
+	page, err := NewService(&fakeStore{}, false, func() time.Time { return now }).List(context.Background(), ListParams{Query: "nobody"})
 	if err != nil || len(page.Users) != 0 || page.Total != 0 {
 		t.Fatalf("List = %+v, %v; want an empty page", page, err)
 	}

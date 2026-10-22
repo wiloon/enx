@@ -19,6 +19,7 @@ function renderForm(topupBalance = 20) {
   render(
     <QueryClientProvider client={client}>
       <AdjustCreditsForm
+        userId="u_reader"
         email="reader@example.com"
         topupBalance={topupBalance}
         onAdjusted={onAdjusted}
@@ -45,7 +46,8 @@ beforeEach(() => {
   })
 })
 
-// ADR-049 Decision 2.
+// ADR-049 Decision 2. The user is named by their enx ID, never by email:
+// two accounts can share an email (#211).
 it('grants credits with the reason and reports the new balance', async () => {
   const { onAdjusted } = renderForm()
 
@@ -56,7 +58,7 @@ it('grants credits with the reason and reports the new balance', async () => {
     'Granted 25 credits. New balance: 605.'
   )
   expect(mockAdjust).toHaveBeenCalledWith('grant', {
-    email: 'reader@example.com',
+    userId: 'u_reader',
     amount: 25,
     reason: 'support comp',
   })
@@ -97,7 +99,7 @@ it('asks before deducting, warning that the top-up balance goes negative', async
     'Deducted 50 credits. New balance: 605.'
   )
   expect(mockAdjust).toHaveBeenCalledWith('deduct', {
-    email: 'reader@example.com',
+    userId: 'u_reader',
     amount: 50,
     reason: 'chargeback',
   })

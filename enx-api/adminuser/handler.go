@@ -29,7 +29,7 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 	page, err := h.svc.List(c.Request.Context(), ListParams{
-		Email: c.Query("q"), Sort: Sort(c.Query("sort")), Limit: limit, Offset: offset,
+		Query: c.Query("q"), Sort: Sort(c.Query("sort")), Limit: limit, Offset: offset,
 	})
 	if errors.Is(err, ErrInvalidSort) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "sort must be created, last_login or balance"})

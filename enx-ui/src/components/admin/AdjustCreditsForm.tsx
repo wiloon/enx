@@ -12,12 +12,15 @@ type Direction = 'grant' | 'deduct'
 
 // Admin grant and deduction for one user (ADR-049 Decisions 2-3). Both go
 // through the top-up pool and keep the reason on the ledger row. A deduction
-// asks first, and says so when it would leave the pool below zero.
+// asks first, and says so when it would leave the pool below zero. The
+// request names the user by their enx ID; the email is only shown.
 export default function AdjustCreditsForm({
+  userId,
   email,
   topupBalance,
   onAdjusted,
 }: {
+  userId: string
   email: string
   topupBalance: number
   onAdjusted: () => void
@@ -35,7 +38,7 @@ export default function AdjustCreditsForm({
       reason: string
     }) => {
       const resp = await apiService.adminAdjustCredits(vars.direction, {
-        email,
+        userId,
         amount: vars.amount,
         reason: vars.reason,
       })

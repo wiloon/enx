@@ -13,7 +13,6 @@ export const useAuth = () => {
 
   const user: User | null = clerkUser
     ? {
-        id: clerkUser.id,
         username:
           clerkUser.fullName ||
           clerkUser.username ||

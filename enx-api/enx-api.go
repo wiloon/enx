@@ -76,7 +76,13 @@ func main() {
 	}
 	gin.SetMode(ginMode(logLevel))
 	m := metrics.New()
-	sqlitex.InitWithLogLevel(cfg.DB.Path, logLevel)
+	// A database that failed to open or migrate (e.g. the #211 users
+	// rebuild) stops the process before any job, listener or backfill runs.
+	if err := sqlitex.InitWithLogLevel(cfg.DB.Path, logLevel); err != nil {
+		logger.Errorf("database initialisation failed: %v", err)
+		logger.Sync()
+		os.Exit(1)
+	}
 	if err := m.InstrumentDB(sqlitex.DB); err != nil {
 		// Losing the busy counter must not stop the API.
 		logger.Errorf("metrics: sqlite instrumentation: %v", err)

@@ -4,7 +4,6 @@ import {
   Bookmark,
   BookText,
   ClipboardCheck,
-  CreditCard,
   FileText,
   Gift,
   Globe,
@@ -44,11 +43,11 @@ export const NAV_INSIGHTS: NavItem[] = [
   { label: 'Reading Stats', href: '/stats', icon: BarChart3 },
 ]
 
-// Account / utility items, pinned to the bottom of the sidebar so they don't
-// compete with the primary navigation.
+// Utility items, pinned to the bottom of the sidebar so they don't compete
+// with the primary navigation. Account and Billing live in the top bar's
+// account menu (#211).
 export const NAV_FOOTER: NavItem[] = [
   { label: 'Settings', href: '/settings', icon: Settings },
-  { label: 'Billing', href: '/billing', icon: CreditCard },
   // Invite links (ADR-051 Decision 8).
   { label: 'Invite friends', href: '/invite', icon: Gift },
   // Back to the marketing site (ADR-027 decision 4). Same Next.js app, so it
