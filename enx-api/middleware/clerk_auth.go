@@ -181,7 +181,7 @@ func ClerkAuth(cfg ClerkConfig, obs AuthObserver) gin.HandlerFunc {
 		email, _ := claims["email"].(string)
 		name, _ := claims["name"].(string)
 
-		user, err := enx.GetOrCreateClerkUser(sub, email, name, cfg.LastLoginUpdateInterval)
+		user, err := enx.GetOrCreateClerkUser(sub, enx.ClerkProfile{Email: email, Name: name}, cfg.LastLoginUpdateInterval)
 		if err != nil {
 			logger.Errorf("ClerkAuth: provision user clerk_user_id=%s: %v", sub, err)
 			observe(authProvisionError, start)

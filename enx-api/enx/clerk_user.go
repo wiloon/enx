@@ -30,12 +30,20 @@ func GetUserByClerkUserID(clerkUserID string) *User {
 	return &user
 }
 
+// ClerkProfile is what a session token's custom claims say about the user:
+// email, name and image_url (ADR-015, 2026-10-20 note).
+type ClerkProfile struct {
+	Email    string
+	Name     string
+	ImageURL string
+}
+
 // GetOrCreateByClerkUserID finds or auto-provisions a local user for a Clerk
 // identity. An existing user's last_login_time is re-written only when it is
 // older than lastLoginUpdateInterval (user.last-login-update-interval), since
 // this runs on every authenticated request (docs/PERF_FIRST_QUERY_LATENCY.md).
-func GetOrCreateByClerkUserID(clerkUserID, email, name string, lastLoginUpdateInterval time.Duration) (string, error) {
-	u, err := GetOrCreateClerkUser(clerkUserID, email, name, lastLoginUpdateInterval)
+func GetOrCreateByClerkUserID(clerkUserID string, p ClerkProfile, lastLoginUpdateInterval time.Duration) (string, error) {
+	u, err := GetOrCreateClerkUser(clerkUserID, p, lastLoginUpdateInterval)
 	if err != nil {
 		return "", err
 	}
@@ -44,7 +52,7 @@ func GetOrCreateByClerkUserID(clerkUserID, email, name string, lastLoginUpdateIn
 
 // GetOrCreateClerkUser is GetOrCreateByClerkUserID returning the whole user,
 // so the caller can check its status without a second query.
-func GetOrCreateClerkUser(clerkUserID, email, name string, lastLoginUpdateInterval time.Duration) (*User, error) {
+func GetOrCreateClerkUser(clerkUserID string, p ClerkProfile, lastLoginUpdateInterval time.Duration) (*User, error) {
 	if clerkUserID == "" {
 		return nil, fmt.Errorf("empty clerk user id")
 	}
@@ -60,6 +68,7 @@ func GetOrCreateClerkUser(clerkUserID, email, name string, lastLoginUpdateInterv
 		return existing, nil
 	}
 
+	email, name := p.Email, p.Name
 	resolvedName := name
 	if resolvedName == "" && email != "" {
 		if at := strings.Index(email, "@"); at > 0 {
