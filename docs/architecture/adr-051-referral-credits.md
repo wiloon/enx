@@ -26,7 +26,7 @@ adr-048 给每个新账号 100 试用积分、7 天过期。我们想借用户�
    - 链接形如 `https://catglish.com/invite/<code>`，是 enx-ui 的落地页。
 2. **把邀请码带到注册之后**：
    - 落地页把 `code` 存进 localStorage（键 `enx.referral`，带写入时间，7 天后视为失效），然后引导用户登录并安装扩展。
-   - enx-ui 发现「已登录 + localStorage 里有 code」时，调用 `POST /referral/claim {code}`；无论成功还是失败都清掉 localStorage（失败原因只写日志，不打扰用户）。
+   - enx-ui 发现「已登录 + localStorage 里有 code」时，调用 `POST /referral/claim {code}`；只在服务端给出最终答复（成功，或重试也改变不了的 4xx）后才清掉 localStorage，并且只在存着的 code 仍是这次认领的那个时才清（认领途中又打开了另一个邀请链接，新的 code 要留下）。5xx、401、429 或没有响应时保留 code，下次加载或登录再试。失败原因只写日志，不打扰用户。
    - 在扩展里先注册的用户，在认领窗口内再打开一次邀请链接就能认领。
 3. **认领条件**（`POST /referral/claim`，全部满足才算数，否则返回 409 并给出原因码）：
    - 被邀请人的账号创建时间在 `claim-window-hours`（默认 24 小时）以内；

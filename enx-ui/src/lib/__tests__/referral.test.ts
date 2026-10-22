@@ -7,6 +7,7 @@ import {
   readReferralCode,
   storeReferralCode,
 } from '../referral'
+import type { ApiResponse, ReferralClaimData } from '@/types'
 
 // An in-memory Storage, so the rules run without a browser.
 function memoryStorage(): Storage {
@@ -202,6 +203,67 @@ describe('claimStoredReferral', () => {
 
     expect(await claimStoredReferral(storage, claim, NOW)).toBeNull()
     expect(storage.getItem(REFERRAL_STORAGE_KEY)).toBeNull()
+  })
+
+  describe('when another invite link is opened while the claim is in flight', () => {
+    // A claim whose answer the test hands over after changing storage.
+    function pendingClaim() {
+      let answer!: (resp: ApiResponse<ReferralClaimData>) => void
+      const claim = jest.fn(
+        () =>
+          new Promise<ApiResponse<ReferralClaimData>>((resolve) => {
+            answer = resolve
+          })
+      )
+      return {
+        claim,
+        answer: (resp: ApiResponse<ReferralClaimData>) => answer(resp),
+      }
+    }
+
+    it('keeps the newer code when the first claim is refused', async () => {
+      const storage = memoryStorage()
+      storeReferralCode(storage, 'AAAAAAAA', NOW)
+      const log = jest.spyOn(console, 'info').mockImplementation(() => {})
+      const { claim, answer } = pendingClaim()
+
+      const claiming = claimStoredReferral(storage, claim, NOW)
+      storeReferralCode(storage, 'BBBBBBBB', NOW + 1)
+      answer({ success: false, error: 'No such invite code.', status: 409 })
+      await claiming
+
+      expect(claim).toHaveBeenCalledWith('AAAAAAAA')
+      expect(readReferralCode(storage, NOW + 1)).toBe('BBBBBBBB')
+      log.mockRestore()
+    })
+
+    it('keeps the newer code when the first claim succeeds', async () => {
+      const storage = memoryStorage()
+      storeReferralCode(storage, 'AAAAAAAA', NOW)
+      const { claim, answer } = pendingClaim()
+
+      const claiming = claimStoredReferral(storage, claim, NOW)
+      storeReferralCode(storage, 'BBBBBBBB', NOW + 1)
+      answer({ success: true, data: { bonus: 0, trialExpiresAt: null } })
+      await claiming
+
+      expect(readReferralCode(storage, NOW + 1)).toBe('BBBBBBBB')
+    })
+
+    it('clears the code when the same link was stored again', async () => {
+      const storage = memoryStorage()
+      storeReferralCode(storage, 'AAAAAAAA', NOW)
+      const log = jest.spyOn(console, 'info').mockImplementation(() => {})
+      const { claim, answer } = pendingClaim()
+
+      const claiming = claimStoredReferral(storage, claim, NOW)
+      storeReferralCode(storage, 'AAAAAAAA', NOW + 1)
+      answer({ success: false, error: 'Already claimed.', status: 409 })
+      await claiming
+
+      expect(storage.getItem(REFERRAL_STORAGE_KEY)).toBeNull()
+      log.mockRestore()
+    })
   })
 
   it('drops an expired code without claiming it', async () => {

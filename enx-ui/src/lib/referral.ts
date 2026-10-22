@@ -36,6 +36,12 @@ export function readReferralCode(
   storage: Storage,
   now: number = Date.now()
 ): string | null {
+  const value = readStoredReferral(storage)
+  if (value === null) return null
+  return now - value.savedAt < REFERRAL_TTL_MS ? value.code : null
+}
+
+function readStoredReferral(storage: Storage): StoredReferral | null {
   const raw = storage.getItem(REFERRAL_STORAGE_KEY)
   if (!raw) return null
   try {
@@ -43,7 +49,7 @@ export function readReferralCode(
     if (typeof value.code !== 'string' || typeof value.savedAt !== 'number') {
       return null
     }
-    return now - value.savedAt < REFERRAL_TTL_MS ? value.code : null
+    return { code: value.code, savedAt: value.savedAt }
   } catch {
     return null
   }
@@ -51,6 +57,15 @@ export function readReferralCode(
 
 export function clearReferralCode(storage: Storage): void {
   storage.removeItem(REFERRAL_STORAGE_KEY)
+}
+
+// Clears the stored code only if it is still `code`: another invite link
+// opened meanwhile has replaced it, and that newer code must survive.
+// Expiry plays no part; the same code stored again is still cleared.
+function clearReferralCodeIf(storage: Storage, code: string): void {
+  if (readStoredReferral(storage)?.code === code) {
+    clearReferralCode(storage)
+  }
 }
 
 // "+100 bonus credits from your invite · expires Oct 15", or null when the
@@ -100,8 +115,9 @@ function claimSettled(resp: ApiResponse<ReferralClaimData>): boolean {
   )
 }
 
-// Claims the stored code, if any, and clears it once the answer is final;
-// otherwise the code stays for the next page load or sign-in to retry,
+// Claims the stored code, if any, and clears it once the answer is final,
+// unless a newer code has replaced it during the claim; otherwise the code
+// stays for the next page load or sign-in to retry,
 // bounded by REFERRAL_TTL_MS and the server's claim window. Returns the
 // toast to show, or null. A refusal is only logged: the user did nothing
 // wrong and can do nothing about it.
@@ -117,7 +133,7 @@ export async function claimStoredReferral(
   }
   const resp = await claim(code)
   if (claimSettled(resp)) {
-    clearReferralCode(storage)
+    clearReferralCodeIf(storage, code)
   }
   if (!resp.success || !resp.data) {
     console.info('Invite not claimed:', resp.error)
