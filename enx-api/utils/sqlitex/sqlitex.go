@@ -3,6 +3,7 @@ package sqlitex
 import (
 	"enx-api/ecdict"
 	zapLog "enx-api/utils/logger"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -20,10 +21,12 @@ var DB *gorm.DB
 // Define models for AutoMigrate
 // These are minimal struct definitions for table creation
 type User struct {
-	Id                  string    `gorm:"column:id;primaryKey"`
-	ClerkUserID         string    `gorm:"column:clerk_user_id;uniqueIndex"`
-	Name                string    `gorm:"column:name;unique"`
-	Email               string    `gorm:"column:email;unique"`
+	Id          string `gorm:"column:id;primaryKey"`
+	ClerkUserID string `gorm:"column:clerk_user_id;uniqueIndex"`
+	// Profile attributes, not identity keys: neither is unique (ADR-015,
+	// 2026-10-20 note §4). A user is its Clerk user id.
+	Name                string    `gorm:"column:name"`
+	Email               string    `gorm:"column:email"`
 	Password            string    `gorm:"column:password"`
 	Status              string    `gorm:"column:status;default:pending"`
 	VerificationToken   string    `gorm:"column:verification_token"`
@@ -101,14 +104,18 @@ func (SyncState) TableName() string {
 }
 
 // Init opens the database at dbPath with full SQL logging, as tests and
-// tools expect.
+// tools expect. It panics when initialisation fails, so no caller carries on
+// with a broken database.
 func Init(dbPath string) {
-	InitWithLogLevel(dbPath, "debug")
+	if err := InitWithLogLevel(dbPath, "debug"); err != nil {
+		panic(err)
+	}
 }
 
 // InitWithLogLevel opens the database at dbPath (config db.path), deriving
-// the SQL log level from the application log level (see SQLLogLevel).
-func InitWithLogLevel(dbPath, level string) {
+// the SQL log level from the application log level (see SQLLogLevel), and
+// migrates it. An error means the database must not be used: main exits.
+func InitWithLogLevel(dbPath, level string) error {
 	newLogger := logger.New(
 		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
 		logger.Config{
@@ -122,8 +129,7 @@ func InitWithLogLevel(dbPath, level string) {
 	// Ensure database directory exists
 	dbDir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dbDir, 0755); err != nil {
-		zapLog.Errorf("failed to create database directory %s: %v", dbDir, err)
-		return
+		return fmt.Errorf("create database directory %s: %w", dbDir, err)
 	}
 
 	var err error
@@ -151,8 +157,13 @@ func InitWithLogLevel(dbPath, level string) {
 		Logger: newLogger,
 	})
 	if err != nil {
-		zapLog.Errorf("failed to init db: %s, error: %v", dbPath, err)
-		return
+		return fmt.Errorf("open database %s: %w", dbPath, err)
+	}
+
+	// ADR-015 (2026-10-20 note §4): users.email and users.name are not
+	// unique. A failure here stops startup before AutoMigrate touches users.
+	if _, err := rebuildUsersWithoutProfileUniqueness(DB); err != nil {
+		return err
 	}
 
 	// ADR-043: rebuild a case-sensitive words table (clearing words and
@@ -187,10 +198,9 @@ func InitWithLogLevel(dbPath, level string) {
 		&ReaderDocument{}, &DailyStat{}, &StatsIngestLog{}, &PageReport{}, &SavedPage{},
 		&UserPreference{}, &ActiveUsersDay{}, &ReferralCode{}, &Referral{}, &TrialGrant{})
 	if err != nil {
-		zapLog.Errorf("failed to auto-migrate database: %v", err)
-	} else {
-		zapLog.Info("database auto-migration completed successfully")
+		return fmt.Errorf("auto-migrate database: %w", err)
 	}
+	zapLog.Info("database auto-migration completed successfully")
 
 	// ADR-059 Decision 5: lookup_events replaced the per-day quota counter.
 	// Pre-launch, so its rows are dropped, not migrated.
@@ -220,6 +230,7 @@ func InitWithLogLevel(dbPath, level string) {
 	if err := cleanCachedEcdictPhonetics(); err != nil {
 		zapLog.Errorf("failed to repair cached ECDICT phonetics: %v", err)
 	}
+	return nil
 }
 
 // cleanCachedEcdictPhonetics applies ecdict.CleanPhonetic to the words rows
