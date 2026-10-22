@@ -62,6 +62,14 @@ func Init(to, level, projectName string) {
 	sugaredLogger.Infof("zap logger init, level: %s, to: %s, path: %s", level, to, logFilePath)
 }
 
+// Swap routes the package-level functions to l until restore runs, so a test
+// in another package can read what was logged.
+func Swap(l Logger) (restore func()) {
+	prev := sugaredLogger
+	sugaredLogger = l
+	return func() { sugaredLogger = prev }
+}
+
 func GetLogger() Logger {
 	if sugaredLogger != nil {
 		return sugaredLogger
