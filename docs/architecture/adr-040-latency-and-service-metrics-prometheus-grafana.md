@@ -78,7 +78,7 @@ OTel 能顺带做 tracing，但当前只有一个 Go 服务、没有跨服务调
 
 `Source` 发给所有用户，但 `/lookup` 只给管理员显示 `local` / `ecdict`，作为 ID 旁的小号弱化辅助信息。`Origin` 表示释义最初来自 ECDICT 还是 AI，与本次是否命中服务端缓存无关；本次不在 `/lookup` 新增 Origin 展示或 AI 兜底（ADR-045 v1 范围不变）。
 
-为兼容独立部署，enx-ui 先判断是否有 `Chinese`：有释义就显示结果，不受 Source 影响；无释义且 Source 为 `timeout` / `error` 时显示词典未答复与 Retry，其他情况（含缺失或未知 Source）保持未命中展示。失败文案使用 `text-destructive`。Retry 重查失败请求的词，每次 GET 照常扣配额、写事件；只有成功拿到释义和 Id 后才发一次记查词次数的 POST，POST 不重试（ADR-059 Decision 3）。非 200 或网络失败是否新增 Retry 由 #278 的待确认产品问题决定，本节不预先扩展其行为。
+为兼容独立部署，enx-ui 先判断是否有 `Chinese`：有释义就显示结果，不受 Source 影响；无释义且 Source 为 `timeout` / `error` 时显示词典未答复与 Retry，其他情况（含缺失或未知 Source）保持未命中展示。失败文案使用 `text-destructive`。Retry 重查失败请求的词，每次 GET 照常扣配额、写事件；只有成功拿到释义和 Id 后才发一次记查词次数的 POST，POST 不重试（ADR-059 Decision 3）。按所有者在 #278 于 2026-10-22 的决定，HTTP 502、HTTP 503 与网络失败也提供同一 Retry，保留既有错误文案；429、401、禁用账号及其他失败不提供 Retry。Retry 使用失败请求提交的词，查词进行中禁用并防止重复触发；不自动重试 GET。网络失败不代表请求未到服务端，客户端不能据此判断是否已计量。
 
 **AI**
 
@@ -201,3 +201,4 @@ Grafana dashboard 的 JSON 放进 `w10n-config` 的 `infra/homelab/k8s/observabi
 | 2026-10-01 | 查词来源加 `timeout`、`error` | 原先超时、出错、请求取消都记成 `miss`，混淆了词典覆盖率（一次 ECDICT 超时被当成 miss 显示为 3 秒） |
 | 2026-10-16 | 加 `enx_rate_limited_total{route}`；请求日志行可带 `rate_limited` | ADR-060 Decision 6 |
 | 2026-10-22 | #278：补充 Source 响应契约、兼容规则及管理员展示范围 | 让未命中与词典超时/失败可区分，澄清 Source 与 Origin、浏览器缓存的边界；重试沿用 ADR-059 计量规则 |
+| 2026-10-22 | #278：确认 HTTP 502、503 与网络失败的 Retry 范围 | 所有者选择统一瞬时查词失败的恢复操作；保留错误文案、鉴权与禁用账号处理，沿用现有计量语义 |
