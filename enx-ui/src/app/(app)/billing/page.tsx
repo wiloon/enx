@@ -20,6 +20,7 @@ import {
   TOPUP_CREDITS_RULE,
   TOPUP_TIERS,
   hasLiveSubscription,
+  subscriptionBadgeVariant,
   subscriptionStatusLabel,
 } from '@/lib/plans'
 import PageHeader from '@/components/app/PageHeader'
@@ -79,12 +80,7 @@ export default function BillingPage() {
 
   const status = data?.subscription.status ?? 'none'
   const isSubscribed = hasLiveSubscription(status)
-  const badgeVariant =
-    status === 'active'
-      ? 'brand'
-      : status === 'past_due'
-        ? 'destructive'
-        : 'secondary'
+  const badgeVariant = subscriptionBadgeVariant(status)
 
   return (
     <div className="container mx-auto max-w-3xl space-y-6 p-6 md:p-8">

@@ -127,16 +127,43 @@ const PLAN_NAMES: Record<string, string> = {
   max: 'Max',
 }
 
+// Only `active` carries subscriber benefits (ADR-029), so the other live
+// statuses name the billing state, never the plan. `trialing` is not a plan
+// trial: checkout sets no trial period, and the sign-up trial credits
+// (ADR-048) are shown separately.
 export function subscriptionStatusLabel(status: string, plan?: string): string {
   const planName = (plan && PLAN_NAMES[plan]) || 'Pro'
   switch (status) {
     case 'active':
       return `${planName} member`
+    case 'trialing':
+      return 'Subscription starting'
     case 'past_due':
       return 'Subscription past due'
+    case 'incomplete':
+      return 'Payment incomplete'
+    case 'unpaid':
+      return 'Subscription unpaid'
     case 'canceled':
       return 'Canceled'
     default:
       return 'Free user'
+  }
+}
+
+export type SubscriptionBadgeVariant = 'brand' | 'secondary' | 'destructive'
+
+export function subscriptionBadgeVariant(
+  status: string
+): SubscriptionBadgeVariant {
+  switch (status) {
+    case 'active':
+      return 'brand'
+    case 'past_due':
+    case 'incomplete':
+    case 'unpaid':
+      return 'destructive'
+    default:
+      return 'secondary'
   }
 }

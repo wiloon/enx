@@ -35,8 +35,9 @@ export interface WordData {
 }
 
 // Mirrors GET /api/billing/me (enx-api/billing/handler.go Me). Status is
-// "none" | "active" | "past_due" | "canceled" -- see ADR-009's subscriptions
-// table, aligned with Stripe's own subscription.status values.
+// Stripe's raw subscription.status string (e.g. "active", "trialing",
+// "past_due", "incomplete", "unpaid", "canceled"), or "none" for a user who
+// never subscribed. Other Stripe values can arrive too, so it stays a string.
 export interface BillingSubscription {
   status: string
   plan: string
