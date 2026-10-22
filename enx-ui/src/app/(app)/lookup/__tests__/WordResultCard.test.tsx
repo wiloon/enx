@@ -51,3 +51,9 @@ it('says how many times the word was looked up', () => {
   render(<WordResultCard data={data} />)
   expect(screen.getByTitle('Looked up 3 times')).toBeInTheDocument()
 })
+
+it('has no Known badge: a counted lookup always leaves the word in review', () => {
+  render(<WordResultCard data={data} />)
+  expect(screen.queryByText('Learning')).not.toBeInTheDocument()
+  expect(screen.queryByText('Mastered')).not.toBeInTheDocument()
+})

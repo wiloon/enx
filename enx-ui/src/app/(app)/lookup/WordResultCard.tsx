@@ -1,7 +1,6 @@
 import { Volume2 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import LookupCount from '@/components/app/LookupCount'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatPhonetic } from '@/lib/phonetic'
 import { playPronunciation } from '@/lib/pronunciation'
@@ -38,7 +37,7 @@ export default function WordResultCard({
               onClick={() => playPronunciation(data.English)}
               aria-label="Play pronunciation"
               title="Play pronunciation"
-              className="size-8 text-muted-foreground hover:text-foreground"
+              className="size-8 text-muted-foreground hover:text-brand"
             >
               <Volume2 aria-hidden="true" />
             </Button>
@@ -64,9 +63,6 @@ export default function WordResultCard({
       )}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t px-6 py-3 text-xs text-muted-foreground">
-        <Badge variant={data.Known ? 'default' : 'secondary'}>
-          {data.Known ? 'Mastered' : 'Learning'}
-        </Badge>
         <LookupCount count={data.LoadCount} />
         <span className="ml-auto truncate font-mono">ID {data.Id}</span>
       </div>
