@@ -1,7 +1,9 @@
 import {
   REFERRAL_STORAGE_KEY,
+  type ReferralClaimContext,
   claimStoredReferral,
   claimToast,
+  createReferralClaimRunner,
   offerMessage,
   pendingRewardLabel,
   readReferralCode,
@@ -274,5 +276,218 @@ describe('claimStoredReferral', () => {
     expect(await claimStoredReferral(storage, claim, NOW + 8 * DAY)).toBeNull()
     expect(claim).not.toHaveBeenCalled()
     expect(storage.getItem(REFERRAL_STORAGE_KEY)).toBeNull()
+  })
+})
+
+describe('createReferralClaimRunner', () => {
+  const BONUS = { success: true, data: { bonus: 100, trialExpiresAt: null } }
+  const REFUSED = { success: false, error: 'No such invite code.', status: 409 }
+  const SERVER_ERROR = {
+    success: false,
+    error: 'Something went wrong.',
+    status: 500,
+  }
+
+  // claimReferral answering one call at a time, when the test says so, and
+  // recording how many calls were in flight at once.
+  function deferredClaims() {
+    const answers: Array<{
+      resolve: (resp: ApiResponse<ReferralClaimData>) => void
+      reject: (err: unknown) => void
+    }> = []
+    let inFlight = 0
+    let maxInFlight = 0
+    const claim = jest.fn(() =>
+      new Promise<ApiResponse<ReferralClaimData>>((resolve, reject) => {
+        inFlight++
+        maxInFlight = Math.max(maxInFlight, inFlight)
+        answers.push({ resolve, reject })
+      }).finally(() => {
+        inFlight--
+      })
+    )
+    const settle = async () => {
+      for (let i = 0; i < 10; i++) await Promise.resolve()
+    }
+    return {
+      claim,
+      maxInFlight: () => maxInFlight,
+      answer: async (n: number, resp: ApiResponse<ReferralClaimData>) => {
+        answers[n].resolve(resp)
+        await settle()
+      },
+      fail: async (n: number, err: unknown) => {
+        answers[n].reject(err)
+        await settle()
+      },
+    }
+  }
+
+  function setup() {
+    const storage = memoryStorage()
+    const claims = deferredClaims()
+    const onBonus = jest.fn()
+    const runner = createReferralClaimRunner()
+    runner.setContext({ storage, claim: claims.claim, onBonus })
+    return {
+      storage,
+      claims,
+      onBonus,
+      runner,
+      setContext: (next: ReferralClaimContext | null) =>
+        runner.setContext(next),
+      store: (code: string) => storeReferralCode(storage, code),
+    }
+  }
+
+  beforeEach(() => {
+    jest.spyOn(console, 'info').mockImplementation(() => {})
+  })
+  afterEach(() => {
+    jest.restoreAllMocks()
+  })
+
+  it('claims the latest stored code after the active claim settles, not during it', async () => {
+    const { storage, claims, onBonus, runner, store } = setup()
+    store('AAAAAAAA')
+    runner.trigger()
+    store('BBBBBBBB')
+    runner.trigger()
+    expect(claims.claim).toHaveBeenCalledTimes(1)
+
+    await claims.answer(0, REFUSED)
+    expect(claims.claim.mock.calls).toEqual([['AAAAAAAA'], ['BBBBBBBB']])
+    await claims.answer(1, BONUS)
+
+    expect(onBonus).toHaveBeenCalledTimes(1)
+    expect(onBonus).toHaveBeenCalledWith('+100 bonus credits from your invite')
+    expect(storage.getItem(REFERRAL_STORAGE_KEY)).toBeNull()
+  })
+
+  it('makes one call when nothing triggers during it, even if the server fails', async () => {
+    const { storage, claims, runner, store } = setup()
+    store('AAAAAAAA')
+    runner.trigger()
+
+    await claims.answer(0, SERVER_ERROR)
+
+    expect(claims.claim).toHaveBeenCalledTimes(1)
+    expect(readReferralCode(storage)).toBe('AAAAAAAA')
+  })
+
+  it('retries the same code once when it is reopened during a claim that fails', async () => {
+    const { storage, claims, runner, store } = setup()
+    store('AAAAAAAA')
+    runner.trigger()
+    store('AAAAAAAA')
+    runner.trigger()
+
+    await claims.answer(0, SERVER_ERROR)
+    expect(claims.claim.mock.calls).toEqual([['AAAAAAAA'], ['AAAAAAAA']])
+    await claims.answer(1, SERVER_ERROR)
+
+    expect(claims.claim).toHaveBeenCalledTimes(2)
+    expect(readReferralCode(storage)).toBe('AAAAAAAA')
+  })
+
+  it('makes no follow-up call when the reopened code got a final answer', async () => {
+    const { storage, claims, runner, store } = setup()
+    store('AAAAAAAA')
+    runner.trigger()
+    store('AAAAAAAA')
+    runner.trigger()
+
+    await claims.answer(0, REFUSED)
+
+    expect(claims.claim).toHaveBeenCalledTimes(1)
+    expect(storage.getItem(REFERRAL_STORAGE_KEY)).toBeNull()
+  })
+
+  it('coalesces triggers during a claim into one follow-up for the newest code', async () => {
+    const { claims, runner, store } = setup()
+    store('AAAAAAAA')
+    runner.trigger()
+    runner.trigger()
+    store('BBBBBBBB')
+    runner.trigger()
+    store('CCCCCCCC')
+    runner.trigger()
+
+    await claims.answer(0, REFUSED)
+    expect(claims.claim.mock.calls).toEqual([['AAAAAAAA'], ['CCCCCCCC']])
+
+    store('DDDDDDDD')
+    runner.trigger()
+    await claims.answer(1, REFUSED)
+    expect(claims.claim.mock.calls).toEqual([
+      ['AAAAAAAA'],
+      ['CCCCCCCC'],
+      ['DDDDDDDD'],
+    ])
+    await claims.answer(2, REFUSED)
+
+    expect(claims.claim).toHaveBeenCalledTimes(3)
+    expect(claims.maxInFlight()).toBe(1)
+  })
+
+  it('makes no follow-up call when there is no current context, and claims on the next trigger', async () => {
+    const { storage, claims, onBonus, runner, setContext, store } = setup()
+    store('AAAAAAAA')
+    runner.trigger()
+    store('BBBBBBBB')
+    runner.trigger()
+    setContext(null)
+
+    await claims.answer(0, REFUSED)
+    expect(claims.claim).toHaveBeenCalledTimes(1)
+    expect(readReferralCode(storage)).toBe('BBBBBBBB')
+
+    setContext({ storage, claim: claims.claim, onBonus })
+    runner.trigger()
+    expect(claims.claim).toHaveBeenLastCalledWith('BBBBBBBB')
+    expect(claims.claim).toHaveBeenCalledTimes(2)
+  })
+
+  it('uses the claim wiring current when the follow-up starts', async () => {
+    const { storage, claims, onBonus, runner, setContext, store } = setup()
+    store('AAAAAAAA')
+    runner.trigger()
+    runner.trigger()
+    const otherSession = jest.fn().mockResolvedValue(BONUS)
+    setContext({ storage, claim: otherSession, onBonus })
+
+    await claims.answer(0, SERVER_ERROR)
+
+    expect(claims.claim).toHaveBeenCalledTimes(1)
+    expect(otherSession).toHaveBeenCalledWith('AAAAAAAA')
+  })
+
+  it('reports the bonus of a claim that settles after its context is gone', async () => {
+    const { claims, onBonus, runner, setContext, store } = setup()
+    store('AAAAAAAA')
+    runner.trigger()
+    setContext(null)
+
+    await claims.answer(0, BONUS)
+
+    expect(onBonus).toHaveBeenCalledWith('+100 bonus credits from your invite')
+  })
+
+  it('recovers from a claim that throws: keeps the code and runs the pending follow-up', async () => {
+    const error = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const { storage, claims, runner, store } = setup()
+    store('AAAAAAAA')
+    runner.trigger()
+    runner.trigger()
+
+    await claims.fail(0, new Error('boom'))
+
+    expect(error).toHaveBeenCalled()
+    expect(readReferralCode(storage)).toBe('AAAAAAAA')
+    expect(claims.claim).toHaveBeenCalledTimes(2)
+    await claims.fail(1, new Error('boom again'))
+
+    runner.trigger()
+    expect(claims.claim).toHaveBeenCalledTimes(3)
   })
 })
