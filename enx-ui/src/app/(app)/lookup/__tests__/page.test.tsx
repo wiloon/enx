@@ -145,7 +145,7 @@ it('says no data was found on a miss and counts nothing', async () => {
   expect(
     await screen.findByText('No data found for "qwzx"')
   ).toBeInTheDocument()
-  expect(screen.queryByText('ID')).not.toBeInTheDocument()
+  expect(screen.queryByTitle(/^Looked up/)).not.toBeInTheDocument()
   expect(mockRecord).not.toHaveBeenCalled()
 })
 
