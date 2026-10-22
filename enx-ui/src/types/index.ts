@@ -269,12 +269,12 @@ export interface AdminLedgerPage {
   next: string
 }
 
-// POST /api/admin/credits/grant and /deduct.
-export interface AdminCreditAdjustment {
-  email: string
-  amount: number
-  reason: string
-}
+// POST /api/admin/credits/grant and /deduct. The user is chosen by exactly
+// one of userId or email; an email that more than one user has is refused
+// with 409 ambiguous_email.
+export type AdminCreditAdjustment = { amount: number; reason: string } & (
+  { userId: string; email?: never } | { email: string; userId?: never }
+)
 
 // GET /api/admin/page-reports (ADR-010 Decision 11): newest page reports first.
 export interface AdminPageReport {

@@ -269,8 +269,9 @@ it('reloads the balances and the ledger after an admin grant', async () => {
 
   await waitFor(() => expect(mockGetUser).toHaveBeenCalledTimes(2))
   await waitFor(() => expect(mockLedger).toHaveBeenCalledTimes(2))
+  // By this user's enx ID: another account may share the email (#211).
   expect(apiService.adminAdjustCredits).toHaveBeenCalledWith('grant', {
-    email: 'reader@example.com',
+    userId: 'u1',
     amount: 25,
     reason: 'support comp',
   })
