@@ -33,18 +33,17 @@ When your output names a domain concept (in an issue title, a refactor proposal,
 
 If the concept you need isn't in the glossary yet, that's a signal: either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
 
-## ADR vs TASK-SPEC vs coding (not a Matt gate)
+## Where things get written
 
-Matt skills (`domain-modeling`, architecture, TDD) do **not** require a `docs/tasks/TASK-SPEC-*.md` before coding.
+The repo follows the Matt skills: three artifacts, nothing else.
 
 | Artifact | When |
 | --- | --- |
 | **`GLOSSARY.md` term** | A word got sharp; write it down |
-| **ADR** | Hard to reverse + surprising without context + real trade-off (all three) |
-| **GitHub issue** | Track work / triage (`docs/agents/issue-tracker.md`) |
-| **`TASK-SPEC-*.md`** | **Optional** long implementation note when an ADR alone would be unreadably huge (billing cutover, multi-phase infra). Precedent: [adr-012](../architecture/adr-012-enx-ui-idiomatic-rephrasing.md) Decision 10 and [adr-015](../architecture/adr-015-cognito-to-clerk-auth-migration.md) ship from the ADR + TDD with no coding-time TASK-SPEC |
+| **ADR** (`domain-modeling`) | Hard to reverse + surprising without context + real trade-off (all three) |
+| **GitHub issue** | The work itself: steps, acceptance, multi-phase checklists as the issue's task list or sub-issues (`docs/agents/issue-tracker.md`) |
 
-If an older ADR says「配套 TASK-SPEC 留到编码阶段再写」, treat that as historical habit, not a mandatory step. Prefer amending the ADR's Decision (or a short GitHub issue) over inventing a TASK-SPEC just to unlock coding.
+An ADR Decision plus `tdd` is enough to start coding. `docs/tasks/TASK-SPEC-*.md` files are history: when you touch their area, move anything still live into the ADR or an issue. An older ADR that says「配套 TASK-SPEC 留到编码阶段再写」 is satisfied by an issue.
 
 ## Flag ADR conflicts
 
