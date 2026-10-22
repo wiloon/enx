@@ -126,6 +126,7 @@ export class ApiService {
       return { success: false, error: ACCOUNT_DISABLED_MESSAGE }
     }
     let status: number | undefined
+    let networkFailure = false
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -148,6 +149,7 @@ export class ApiService {
         headers,
       }).catch((error) => {
         console.error('API request got no answer:', error)
+        networkFailure = true
         throw new Error(UNREACHABLE_MESSAGE)
       })
 
@@ -179,6 +181,7 @@ export class ApiService {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
         status,
+        ...(networkFailure ? { networkFailure } : {}),
       }
     }
   }

@@ -21,6 +21,9 @@ export interface ApiResponse<T = unknown> {
   message?: string
   // The HTTP status of a non-2xx answer; absent when no answer came back.
   status?: number
+  // Set only when fetch itself got no answer. A missing status alone does
+  // not mean that: a disabled account or a broken 2xx body has none either.
+  networkFailure?: boolean
 }
 
 export interface WordData {
@@ -32,6 +35,10 @@ export interface WordData {
   LoadCount: number
   Known: boolean
   WordType: number
+  // Which source answered the lookup GET (ADR-040): "local", "ecdict",
+  // "miss", "timeout" or "error". Absent from an older API, and other
+  // values may arrive from a newer one.
+  Source?: string
 }
 
 // Mirrors GET /api/billing/me (enx-api/billing/handler.go Me). Status is

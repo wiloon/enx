@@ -27,13 +27,14 @@ test.beforeEach(async ({ signedIn }) => {
 
 // Looks the word up with the API mocked; returns the bodies of the
 // POST /api/me/word-lookups the page sent, so no request reaches a real API.
-async function lookUp(page: Page, word: WordData) {
+// Each lookup GET takes the next of answers, the last one repeating.
+async function lookUp(page: Page, word: WordData, answers = [word]) {
   const recorded: unknown[] = []
   await page.route('**/api/word/**', (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(word),
+      body: JSON.stringify(answers.length > 1 ? answers.shift() : answers[0]),
     })
   )
   await page.route('**/api/me/word-lookups', (route) => {
@@ -95,6 +96,86 @@ test('records the lookup once, by the word id the lookup answered with', async (
 
   await expect(page.getByTitle('Looked up 1 time')).toBeVisible()
   expect(recorded).toEqual([{ wordId: scratchpad.Id }])
+})
+
+// The colour a theme token paints, resolved by the browser the same way it
+// resolves the element's own colour.
+const tokenColour = (page: Page, token: string) =>
+  page.evaluate((t) => {
+    const probe = document.createElement('span')
+    probe.style.color = `var(${t})`
+    document.body.appendChild(probe)
+    const colour = getComputedStyle(probe).color
+    probe.remove()
+    return colour
+  }, token)
+
+test('says the dictionary did not answer in the error colour, and Retry brings the word', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 800 })
+  const recorded = await lookUp(page, scratchpad, [
+    { ...scratchpad, Id: '', Chinese: '', Source: 'timeout' },
+    scratchpad,
+  ])
+
+  const message = page.getByText(
+    "The dictionary didn't answer. Please try again."
+  )
+  await expect(message).toBeVisible()
+  expect(await message.evaluate((el) => getComputedStyle(el).color)).toBe(
+    await tokenColour(page, '--destructive')
+  )
+  const retry = page.getByRole('button', { name: 'Retry' })
+  await expect(retry).toBeInViewport()
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth
+    )
+  ).toBeLessThanOrEqual(0)
+
+  await retry.click()
+  await expect(page.getByText('便签簿,中间结果暂存器')).toBeVisible()
+  await expect(page.getByTitle('Looked up 1 time')).toBeVisible()
+  expect(recorded).toEqual([{ wordId: scratchpad.Id }])
+})
+
+test('shows an admin the lookup source on the id line, muted, on a phone', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 800 })
+  await page.route('**/api/me', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: 'admin',
+        name: 'Admin',
+        email: 'admin@example.com',
+        status: 'active',
+        isAdmin: true,
+      }),
+    })
+  )
+  await lookUp(page, { ...scratchpad, Source: 'local' })
+
+  const source = page.getByTitle('Lookup source')
+  const id = page.getByText(`ID ${scratchpad.Id}`)
+  await expect(source).toHaveText('local')
+  await expect(id).toBeVisible()
+  const [s, i] = [await source.boundingBox(), await id.boundingBox()]
+  expect(Math.abs(s!.y + s!.height / 2 - (i!.y + i!.height / 2))).toBeLessThan(
+    2
+  )
+  expect(s!.x).toBeLessThan(i!.x)
+  expect(await source.evaluate((el) => getComputedStyle(el).color)).toBe(
+    await tokenColour(page, '--muted-foreground')
+  )
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth
+    )
+  ).toBeLessThanOrEqual(0)
 })
 
 test('shows Look Up pressed while the mouse is held down on it', async ({

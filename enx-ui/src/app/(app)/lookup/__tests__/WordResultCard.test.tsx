@@ -47,6 +47,19 @@ it('keeps the word id as a small footnote, not a labelled field', () => {
   expect(screen.getByText('ID w1')).toBeInTheDocument()
 })
 
+it('shows the lookup source it is given in the footer, beside the id', () => {
+  render(<WordResultCard data={data} source="ecdict" />)
+  const source = screen.getByTitle('Lookup source')
+  expect(source).toHaveTextContent(/^ecdict$/)
+  expect(source).toHaveClass('text-muted-foreground')
+  expect(source.parentElement).toContainElement(screen.getByText('ID w1'))
+})
+
+it('shows no lookup source when none is given', () => {
+  render(<WordResultCard data={{ ...data, Source: 'local' }} />)
+  expect(screen.queryByTitle('Lookup source')).not.toBeInTheDocument()
+})
+
 it('says how many times the word was looked up', () => {
   render(<WordResultCard data={data} />)
   expect(screen.getByTitle('Looked up 3 times')).toBeInTheDocument()
