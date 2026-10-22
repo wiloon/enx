@@ -141,3 +141,59 @@ export async function claimStoredReferral(
   }
   return claimToast(resp.data)
 }
+
+// What a claim attempt runs against: the storage holding the code, the API
+// call, and where a bonus toast goes.
+export type ReferralClaimContext = {
+  storage: Storage
+  claim: (code: string) => Promise<ApiResponse<ReferralClaimData>>
+  onBonus: (toast: string) => void
+}
+
+export type ReferralClaimRunner = {
+  trigger: () => void
+  setContext: (context: ReferralClaimContext | null) => void
+}
+
+// Runs claimStoredReferral at most one at a time. A trigger during a claim
+// is not dropped: all triggers received during one attempt make a single
+// follow-up attempt once it settles, which reads whatever code is stored by
+// then. Each attempt uses the context set when it starts; the context is
+// null while the claimer is unmounted or signed out, so no follow-up runs
+// then and the next trigger reads storage as usual. Settling alone never
+// schedules a retry.
+export function createReferralClaimRunner(): ReferralClaimRunner {
+  let current: ReferralClaimContext | null = null
+  let running = false
+  let pending = false
+
+  const run = async (context: ReferralClaimContext) => {
+    running = true
+    try {
+      const toast = await claimStoredReferral(context.storage, context.claim)
+      if (toast) context.onBonus(toast)
+    } catch (err) {
+      console.error('Invite claim failed:', err)
+    } finally {
+      running = false
+    }
+    if (pending) {
+      pending = false
+      trigger()
+    }
+  }
+
+  const trigger = () => {
+    if (running) {
+      pending = true
+      return
+    }
+    if (current !== null) void run(current)
+  }
+
+  const setContext = (context: ReferralClaimContext | null) => {
+    current = context
+  }
+
+  return { trigger, setContext }
+}

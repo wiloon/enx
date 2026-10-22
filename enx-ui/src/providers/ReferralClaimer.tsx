@@ -1,10 +1,13 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-import { claimStoredReferral, REFERRAL_STORED_EVENT } from '@/lib/referral'
+import {
+  createReferralClaimRunner,
+  REFERRAL_STORED_EVENT,
+} from '@/lib/referral'
 import { apiService } from '@/services/api'
 
 // Claims the invite code the /invite/<code> landing page stored, as soon as
@@ -16,29 +19,27 @@ export default function ReferralClaimer() {
   const { isAuthenticated } = useAuth()
   const queryClient = useQueryClient()
   const [toast, setToast] = useState<string | null>(null)
-  const claiming = useRef(false)
+  // Outlives effect re-runs, so a sign-in during a claim queues behind it.
+  const [runner] = useState(createReferralClaimRunner)
 
   useEffect(() => {
     if (!isAuthenticated) return
-    const claim = async () => {
-      if (claiming.current) return
-      claiming.current = true
-      try {
-        const message = await claimStoredReferral(window.localStorage, (code) =>
-          apiService.claimReferral(code)
-        )
-        if (message) {
-          setToast(message)
-          void queryClient.invalidateQueries({ queryKey: ['billing-me'] })
-        }
-      } finally {
-        claiming.current = false
-      }
+    runner.setContext({
+      storage: window.localStorage,
+      claim: (code) => apiService.claimReferral(code),
+      onBonus: (message) => {
+        setToast(message)
+        void queryClient.invalidateQueries({ queryKey: ['billing-me'] })
+      },
+    })
+    runner.trigger()
+    window.addEventListener(REFERRAL_STORED_EVENT, runner.trigger)
+    return () => {
+      // No follow-up claim while signed out or unmounted.
+      runner.setContext(null)
+      window.removeEventListener(REFERRAL_STORED_EVENT, runner.trigger)
     }
-    void claim()
-    window.addEventListener(REFERRAL_STORED_EVENT, claim)
-    return () => window.removeEventListener(REFERRAL_STORED_EVENT, claim)
-  }, [isAuthenticated, queryClient])
+  }, [isAuthenticated, queryClient, runner])
 
   if (!toast) return null
   return (
