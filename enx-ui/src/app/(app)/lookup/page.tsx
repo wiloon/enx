@@ -1,42 +1,50 @@
 'use client'
 
 import { useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiService } from '@/services/api'
 import { useIsAdmin } from '@/hooks/useIsAdmin'
+import { countLookup } from '@/lib/queryCount'
 import WordSearchForm from './WordSearchForm'
 import WordResultCard from './WordResultCard'
 import PageHeader from '@/components/app/PageHeader'
 
 export default function WordLookupPage() {
   const [searchWord, setSearchWord] = useState('')
-  const [currentWord, setCurrentWord] = useState('')
   const [clearing, setClearing] = useState(false)
   const queryClient = useQueryClient()
   const { isAdmin } = useIsAdmin()
 
-  const {
-    data: wordData,
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: ['word-lookup', currentWord],
-    queryFn: async () => {
-      if (!currentWord) return null
-      const response = await apiService.lookupWord(currentWord)
-      if (response.success) {
-        return response.data
+  // Fire and forget. Once it settles, either way, the pages that show the
+  // query count and the vocabulary count read the server again.
+  const recordLookup = (wordId: string) => {
+    const refresh = () => {
+      void queryClient.invalidateQueries({ queryKey: ['word-list'] })
+      void queryClient.invalidateQueries({ queryKey: ['stats-overview'] })
+    }
+    void apiService.recordWordLookup(wordId).then(refresh, refresh)
+  }
+
+  // A mutation, not a query: every submit is a lookup that counts, so
+  // nothing is cached and nothing refetches on its own.
+  const lookup = useMutation({
+    mutationFn: async (word: string) => {
+      const response = await apiService.lookupWord(word)
+      if (!response.success || !response.data) {
+        throw new Error(response.error || 'Failed to look up the word')
       }
-      throw new Error(response.error || 'Failed to lookup word')
+      // No definition is a miss: nothing to show and nothing to count.
+      if (!response.data.Chinese) return null
+      return countLookup(response.data, recordLookup)
     },
-    enabled: !!currentWord,
   })
+  const currentWord = lookup.variables ?? ''
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
-    if (searchWord.trim()) {
-      setCurrentWord(searchWord.trim().toLowerCase())
-    }
+    if (lookup.isPending) return
+    const word = searchWord.trim().toLowerCase()
+    if (word) lookup.mutate(word)
   }
 
   const handleClear = async () => {
@@ -44,8 +52,7 @@ export default function WordLookupPage() {
     setClearing(true)
     try {
       await apiService.deleteWord(currentWord)
-      queryClient.removeQueries({ queryKey: ['word-lookup', currentWord] })
-      setCurrentWord('')
+      lookup.reset()
       setSearchWord('')
     } finally {
       setClearing(false)
@@ -62,29 +69,37 @@ export default function WordLookupPage() {
         value={searchWord}
         onChange={setSearchWord}
         onSearch={handleSearch}
+        pending={lookup.isPending}
       />
 
-      {isLoading && (
-        <div className="py-8 text-center text-sm text-muted-foreground">
-          Looking up word...
+      {lookup.isPending && (
+        <div
+          data-testid="word-result-skeleton"
+          className="animate-pulse space-y-4 rounded-xl border p-6"
+          aria-hidden="true"
+        >
+          <div className="h-8 w-40 rounded bg-muted" />
+          <div className="h-4 w-24 rounded bg-muted" />
+          <div className="h-6 w-full rounded bg-muted" />
+          <div className="h-4 w-1/2 rounded bg-muted" />
         </div>
       )}
 
-      {error && (
+      {lookup.isError && (
         <div className="py-8 text-center text-sm text-destructive">
-          Error: {error instanceof Error ? error.message : 'Unknown error'}
+          {lookup.error.message}
         </div>
       )}
 
-      {wordData && (
+      {lookup.isSuccess && lookup.data && (
         <WordResultCard
-          data={wordData}
+          data={lookup.data}
           onClear={isAdmin ? handleClear : undefined}
           clearing={clearing}
         />
       )}
 
-      {currentWord && !isLoading && !error && !wordData && (
+      {lookup.isSuccess && !lookup.data && (
         <div className="py-8 text-center text-sm text-muted-foreground">
           No data found for &quot;{currentWord}&quot;
         </div>

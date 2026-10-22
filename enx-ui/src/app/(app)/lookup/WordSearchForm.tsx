@@ -7,12 +7,15 @@ interface WordSearchFormProps {
   value: string
   onChange: (value: string) => void
   onSearch: (e: React.FormEvent) => void
+  // A lookup is in flight.
+  pending?: boolean
 }
 
 export default function WordSearchForm({
   value,
   onChange,
   onSearch,
+  pending = false,
 }: WordSearchFormProps) {
   return (
     <form onSubmit={onSearch} className="flex gap-2">
@@ -36,8 +39,19 @@ export default function WordSearchForm({
           className="h-11 pl-9 text-base"
         />
       </div>
-      <Button type="submit" className="h-11 px-5">
-        Look Up
+      <Button
+        type="submit"
+        variant="brand"
+        disabled={pending}
+        className="h-11 px-5"
+      >
+        {pending && (
+          <span
+            className="size-4 animate-spin rounded-full border-2 border-brand-foreground/30 border-t-brand-foreground"
+            aria-hidden="true"
+          />
+        )}
+        {pending ? 'Looking up…' : 'Look Up'}
       </Button>
     </form>
   )

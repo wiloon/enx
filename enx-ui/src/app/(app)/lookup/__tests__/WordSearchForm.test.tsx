@@ -13,3 +13,24 @@ it('searches once when Enter is pressed in the box', () => {
 
   expect(onSearch).toHaveBeenCalledTimes(1)
 })
+
+it('makes Look Up the screen’s brand button', () => {
+  render(<WordSearchForm value="run" onChange={() => {}} onSearch={() => {}} />)
+  expect(screen.getByRole('button', { name: 'Look Up' })).toHaveClass(
+    'bg-brand'
+  )
+})
+
+it('disables the button and says what is happening while a lookup is pending', () => {
+  render(
+    <WordSearchForm
+      value="run"
+      onChange={() => {}}
+      onSearch={() => {}}
+      pending
+    />
+  )
+  const button = screen.getByRole('button', { name: 'Looking up…' })
+  expect(button).toBeDisabled()
+  expect(button.querySelector('.animate-spin')).toBeInTheDocument()
+})

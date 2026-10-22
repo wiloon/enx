@@ -365,6 +365,18 @@ export class ApiService {
     return this.makeRequest<WordData>(`/api/word/${encodeURIComponent(word)}`)
   }
 
+  // Adds one to the query count of the word a lookup answered with
+  // (ADR-059 Decision 3). No fromCache: the lookup GET already charged the
+  // daily quota and wrote the lookup event.
+  async recordWordLookup(
+    wordId: string
+  ): Promise<ApiResponse<{ queryCount: number; known: boolean }>> {
+    return this.makeRequest('/api/me/word-lookups', {
+      method: 'POST',
+      body: JSON.stringify({ wordId }),
+    })
+  }
+
   // Admin-only (ADR-021): drops the shared words row and every user's review
   // row for it; the next lookup re-fills the word from ECDICT.
   async deleteWord(
