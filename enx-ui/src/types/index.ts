@@ -21,9 +21,6 @@ export interface ApiResponse<T = unknown> {
   message?: string
   // The HTTP status of a non-2xx answer; absent when no answer came back.
   status?: number
-  // Set only when fetch itself got no answer. A missing status alone does
-  // not mean that: a disabled account or a broken 2xx body has none either.
-  networkFailure?: boolean
 }
 
 export interface WordData {

@@ -260,173 +260,30 @@ it('holds the card’s place with a skeleton while the lookup is pending', async
   expect(screen.queryByText('Looking up word...')).not.toBeInTheDocument()
 })
 
-const NO_ANSWER = "The dictionary didn't answer. Please try again."
-
-const failures: [string, ApiResponse<WordData>, string][] = [
-  [
-    'a 200 timeout',
-    found({ ...run, Chinese: '', Id: '', Source: 'timeout' }),
-    NO_ANSWER,
-  ],
-  [
-    'a 200 error',
-    found({ ...run, Chinese: '', Id: '', Source: 'error' }),
-    NO_ANSWER,
-  ],
-  [
-    'an HTTP 502',
-    {
-      success: false,
-      error: 'Dictionary lookup failed. Contact support.',
-      status: 502,
-    },
-    'Dictionary lookup failed. Contact support.',
-  ],
-  [
-    'an HTTP 503',
-    { success: false, error: 'Dictionary unavailable.', status: 503 },
-    'Dictionary unavailable.',
-  ],
-  [
-    'a network failure',
-    {
-      success: false,
-      error: "Can't reach Catglish right now.",
-      networkFailure: true,
-    },
-    "Can't reach Catglish right now.",
-  ],
-]
-
-const retryButton = () => screen.getByRole('button', { name: 'Retry' })
-
-describe.each(failures)('after %s', (_, failure, message) => {
-  it('says so in the error colour and offers Retry, with nothing to count', async () => {
+it.each(['timeout', 'error'])(
+  'says the dictionary did not answer in the error colour after a 200 %s, with nothing to count',
+  async (Source) => {
     mockIsAdmin.mockReturnValue({ isAdmin: true, isLoading: false })
-    mockLookup.mockResolvedValue(failure)
+    mockLookup.mockResolvedValue(found({ ...run, Chinese: '', Id: '', Source }))
     renderPage()
 
     submit('run')
 
-    const shown = await screen.findByText(message)
+    const shown = await screen.findByText(
+      "The dictionary didn't answer. Please look it up again."
+    )
     expect(shown).toHaveClass('text-destructive')
-    expect(retryButton()).toBeEnabled()
     expect(screen.queryByText(/No data found/)).not.toBeInTheDocument()
     expect(screen.queryByTitle(/^Looked up/)).not.toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'Clear' })
     ).not.toBeInTheDocument()
     expect(mockRecord).not.toHaveBeenCalled()
-  })
-
-  it('retries the submitted word even after the input has changed', async () => {
-    mockLookup.mockResolvedValueOnce(failure).mockResolvedValueOnce(found(run))
-    renderPage()
-
-    submit('Run')
-    await screen.findByText(message)
-    fireEvent.change(screen.getByLabelText('Enter English word'), {
-      target: { value: 'walk' },
-    })
-    fireEvent.click(retryButton())
-
-    expect(await screen.findByText('v. 跑')).toBeInTheDocument()
-    expect(mockLookup).toHaveBeenNthCalledWith(2, 'run')
-  })
-
-  it('sends one GET for a double click and offers no Retry while it is pending', async () => {
-    mockLookup
-      .mockResolvedValueOnce(failure)
-      .mockReturnValueOnce(new Promise(() => {}))
-    renderPage()
-
-    submit('run')
-    await screen.findByText(message)
-    const retry = retryButton()
-    fireEvent.click(retry)
-    fireEvent.click(retry)
-
-    await screen.findByRole('button', { name: 'Looking up…' })
-    expect(
-      screen.queryByRole('button', { name: 'Retry', hidden: false })
-    ).toBeNull()
-    expect(mockLookup).toHaveBeenCalledTimes(2)
-  })
-
-  it('counts the lookup once when Retry brings a definition with an id', async () => {
-    mockLookup.mockResolvedValueOnce(failure).mockResolvedValueOnce(found(run))
-    renderPage()
-
-    submit('run')
-    await screen.findByText(message)
-    fireEvent.click(retryButton())
-
-    expect(await screen.findByTitle('Looked up 4 times')).toBeInTheDocument()
-    expect(mockRecord).toHaveBeenCalledTimes(1)
-    expect(mockRecord).toHaveBeenCalledWith('w-run')
-  })
-
-  it('shows a definition without an id after Retry, without counting it', async () => {
-    mockLookup
-      .mockResolvedValueOnce(failure)
-      .mockResolvedValueOnce(found({ ...run, Id: '' }))
-    renderPage()
-
-    submit('run')
-    await screen.findByText(message)
-    fireEvent.click(retryButton())
-
-    expect(await screen.findByText('v. 跑')).toBeInTheDocument()
-    expect(mockRecord).not.toHaveBeenCalled()
-  })
-
-  it('counts nothing when Retry fails again, and offers Retry again', async () => {
-    mockLookup.mockResolvedValue(failure)
-    renderPage()
-
-    submit('run')
-    await screen.findByText(message)
-    fireEvent.click(retryButton())
-
-    await waitFor(() => expect(mockLookup).toHaveBeenCalledTimes(2))
-    expect(await screen.findByText(message)).toBeInTheDocument()
-    expect(retryButton()).toBeEnabled()
-    expect(mockRecord).not.toHaveBeenCalled()
-  })
-})
-
-it.each<[string, ApiResponse<WordData>]>([
-  [
-    'a 429',
-    { success: false, error: 'Daily lookup limit reached.', status: 429 },
-  ],
-  [
-    'a 401',
-    { success: false, error: 'Your session has expired.', status: 401 },
-  ],
-  [
-    'a disabled account',
-    { success: false, error: 'This account has been disabled.' },
-  ],
-  ['a 500', { success: false, error: 'Something went wrong.', status: 500 }],
-  ['a 504', { success: false, error: 'Gateway timeout.', status: 504 }],
-  ['a broken answer', { success: false, error: 'Unexpected token' }],
-])('offers no Retry after %s', async (_, response) => {
-  mockLookup.mockResolvedValue(response)
-  renderPage()
-
-  submit('run')
-
-  expect(await screen.findByText(response.error!)).toHaveClass(
-    'text-destructive'
-  )
-  expect(
-    screen.queryByRole('button', { name: 'Retry' })
-  ).not.toBeInTheDocument()
-})
+  }
+)
 
 it.each(['miss', undefined, 'later', 'local'])(
-  'keeps "No data found" without Retry for a miss with Source %s',
+  'keeps "No data found" for a miss with Source %s',
   async (Source) => {
     mockLookup.mockResolvedValue(found({ ...run, Chinese: '', Id: '', Source }))
     renderPage()
@@ -436,9 +293,6 @@ it.each(['miss', undefined, 'later', 'local'])(
     expect(await screen.findByText('No data found for "qwzx"')).toHaveClass(
       'text-muted-foreground'
     )
-    expect(
-      screen.queryByRole('button', { name: 'Retry' })
-    ).not.toBeInTheDocument()
   }
 )
 

@@ -1,17 +1,11 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiService } from '@/services/api'
 import { useIsAdmin } from '@/hooks/useIsAdmin'
 import { countLookup } from '@/lib/queryCount'
-import {
-  LookupFailure,
-  canRetryLookup,
-  classifyLookupAnswer,
-  shownLookupSource,
-} from '@/lib/lookupAnswer'
-import { Button } from '@/components/ui/button'
+import { classifyLookupAnswer, shownLookupSource } from '@/lib/lookupAnswer'
 import WordSearchForm from './WordSearchForm'
 import WordResultCard from './WordResultCard'
 import PageHeader from '@/components/app/PageHeader'
@@ -19,9 +13,6 @@ import PageHeader from '@/components/app/PageHeader'
 export default function WordLookupPage() {
   const [searchWord, setSearchWord] = useState('')
   const [clearing, setClearing] = useState(false)
-  // Set from the moment a lookup starts until it settles, so a second click
-  // before the page re-renders sends nothing.
-  const inFlight = useRef(false)
   const queryClient = useQueryClient()
   const { isAdmin } = useIsAdmin()
 
@@ -41,37 +32,21 @@ export default function WordLookupPage() {
     mutationFn: async (word: string) => {
       const response = await apiService.lookupWord(word)
       if (!response.success || !response.data) {
-        throw new LookupFailure(
-          response.error || 'Failed to look up the word',
-          { status: response.status, networkFailure: response.networkFailure }
-        )
+        throw new Error(response.error || 'Failed to look up the word')
       }
       // Only a definition is shown and counted.
       const kind = classifyLookupAnswer(response.data)
       if (kind !== 'result') return { kind } as const
       return { kind, word: countLookup(response.data, recordLookup) } as const
     },
-    onSettled: () => {
-      inFlight.current = false
-    },
   })
   const currentWord = lookup.variables ?? ''
 
-  const startLookup = (word: string) => {
-    if (inFlight.current || lookup.isPending) return
-    inFlight.current = true
-    lookup.mutate(word)
-  }
-
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
+    if (lookup.isPending) return
     const word = searchWord.trim().toLowerCase()
-    if (word) startLookup(word)
-  }
-
-  // The word the failed lookup was sent for, not what the input says now.
-  const handleRetry = () => {
-    if (lookup.variables) startLookup(lookup.variables)
+    if (word) lookup.mutate(word)
   }
 
   const handleClear = async () => {
@@ -85,18 +60,6 @@ export default function WordLookupPage() {
       setClearing(false)
     }
   }
-
-  const retryButton = (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      onClick={handleRetry}
-      disabled={lookup.isPending}
-    >
-      Retry
-    </Button>
-  )
 
   return (
     <div className="container mx-auto max-w-2xl space-y-6 p-6 md:p-8">
@@ -125,11 +88,8 @@ export default function WordLookupPage() {
       )}
 
       {lookup.isError && (
-        <div className="flex flex-col items-center gap-3 py-8">
-          <p className="text-center text-sm text-destructive">
-            {lookup.error.message}
-          </p>
-          {canRetryLookup(lookup.error) && retryButton}
+        <div className="py-8 text-center text-sm text-destructive">
+          {lookup.error.message}
         </div>
       )}
 
@@ -143,11 +103,8 @@ export default function WordLookupPage() {
       )}
 
       {lookup.data?.kind === 'no-answer' && (
-        <div className="flex flex-col items-center gap-3 py-8">
-          <p className="text-center text-sm text-destructive">
-            The dictionary didn&apos;t answer. Please try again.
-          </p>
-          {retryButton}
+        <div className="py-8 text-center text-sm text-destructive">
+          The dictionary didn&apos;t answer. Please look it up again.
         </div>
       )}
 

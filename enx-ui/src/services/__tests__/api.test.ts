@@ -157,7 +157,6 @@ describe('ApiService auth token', () => {
       success: false,
       error:
         "Can't reach Catglish right now. Check your connection and try again.",
-      networkFailure: true,
     })
     expect(errorLog).toHaveBeenCalledWith(
       'API request got no answer:',

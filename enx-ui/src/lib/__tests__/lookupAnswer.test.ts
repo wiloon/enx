@@ -1,9 +1,4 @@
-import {
-  LookupFailure,
-  canRetryLookup,
-  classifyLookupAnswer,
-  shownLookupSource,
-} from '../lookupAnswer'
+import { classifyLookupAnswer, shownLookupSource } from '../lookupAnswer'
 import type { WordData } from '@/types'
 
 const run: WordData = {
@@ -55,33 +50,4 @@ describe('shownLookupSource', () => {
       expect(shownLookupSource(source)).toBeNull()
     }
   )
-})
-
-describe('canRetryLookup', () => {
-  it.each([502, 503])('offers Retry for HTTP %s', (status) => {
-    expect(canRetryLookup(new LookupFailure('Down', { status }))).toBe(true)
-  })
-
-  it('offers Retry for a network failure', () => {
-    expect(
-      canRetryLookup(new LookupFailure('Unreachable', { networkFailure: true }))
-    ).toBe(true)
-  })
-
-  it.each([400, 401, 402, 404, 429, 500, 504])(
-    'offers no Retry for HTTP %s',
-    (status) => {
-      expect(canRetryLookup(new LookupFailure('No', { status }))).toBe(false)
-    }
-  )
-
-  it('offers no Retry for a failure with no status that is not a network failure', () => {
-    expect(canRetryLookup(new LookupFailure('Account disabled', {}))).toBe(
-      false
-    )
-  })
-
-  it('offers no Retry for any other error', () => {
-    expect(canRetryLookup(new Error('boom'))).toBe(false)
-  })
 })

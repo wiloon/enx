@@ -27,14 +27,13 @@ test.beforeEach(async ({ signedIn }) => {
 
 // Looks the word up with the API mocked; returns the bodies of the
 // POST /api/me/word-lookups the page sent, so no request reaches a real API.
-// Each lookup GET takes the next of answers, the last one repeating.
-async function lookUp(page: Page, word: WordData, answers = [word]) {
+async function lookUp(page: Page, word: WordData) {
   const recorded: unknown[] = []
   await page.route('**/api/word/**', (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(answers.length > 1 ? answers.shift() : answers[0]),
+      body: JSON.stringify(word),
     })
   )
   await page.route('**/api/me/word-lookups', (route) => {
@@ -110,34 +109,32 @@ const tokenColour = (page: Page, token: string) =>
     return colour
   }, token)
 
-test('says the dictionary did not answer in the error colour, and Retry brings the word', async ({
+test('says the dictionary did not answer in the error colour, on a phone, with nothing to count', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 800 })
-  const recorded = await lookUp(page, scratchpad, [
-    { ...scratchpad, Id: '', Chinese: '', Source: 'timeout' },
-    scratchpad,
-  ])
+  const recorded = await lookUp(page, {
+    ...scratchpad,
+    Id: '',
+    Chinese: '',
+    Source: 'timeout',
+  })
 
   const message = page.getByText(
-    "The dictionary didn't answer. Please try again."
+    "The dictionary didn't answer. Please look it up again."
   )
   await expect(message).toBeVisible()
   expect(await message.evaluate((el) => getComputedStyle(el).color)).toBe(
     await tokenColour(page, '--destructive')
   )
-  const retry = page.getByRole('button', { name: 'Retry' })
-  await expect(retry).toBeInViewport()
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth
     )
   ).toBeLessThanOrEqual(0)
-
-  await retry.click()
-  await expect(page.getByText('便签簿,中间结果暂存器')).toBeVisible()
-  await expect(page.getByTitle('Looked up 1 time')).toBeVisible()
-  expect(recorded).toEqual([{ wordId: scratchpad.Id }])
+  await expect(page.getByText(/No data found/)).toHaveCount(0)
+  await expect(page.getByTitle(/^Looked up/)).toHaveCount(0)
+  expect(recorded).toEqual([])
 })
 
 test('shows an admin the lookup source on the id line, muted, on a phone', async ({
