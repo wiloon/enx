@@ -76,6 +76,14 @@ func GetUserByEmail(email string) *User {
 	return &user
 }
 
+// GetUsersByEmail returns every user with exactly this email: users.email
+// is not unique (ADR-015, 2026-10-20 note §4).
+func GetUsersByEmail(email string) ([]User, error) {
+	var users []User
+	err := sqlitex.DB.Where("email = ?", email).Order("created_at, id").Find(&users).Error
+	return users, err
+}
+
 // GetUserByID looks up a user by their ID.
 func GetUserByID(id string) *User {
 	user := User{}
