@@ -68,8 +68,17 @@ async function clickRead() {
   })
 }
 
-it('disables the Start reading button until text is entered', () => {
+// On mount the page asks whether the extension is installed, and the answer
+// lands after render. Without the extension, the editor ends up warning that
+// Reader needs it and the reading view offers to install it.
+const editorSettled = () =>
+  screen.findByText(/Reader needs the Catglish Chrome extension/)
+const readingViewSettled = () =>
+  screen.findByRole('button', { name: 'Dismiss' })
+
+it('disables the Start reading button until text is entered', async () => {
   renderPage()
+  await editorSettled()
 
   const button = screen.getByRole('button', { name: 'Start reading' })
   expect(button).toBeDisabled()
@@ -205,8 +214,9 @@ describe('extension install prompt', () => {
 })
 
 describe('persistence (ADR-022)', () => {
-  it('disables Start reading when pasted text exceeds the character limit', () => {
+  it('disables Start reading when pasted text exceeds the character limit', async () => {
     renderPage()
+    await editorSettled()
 
     paste('x'.repeat(MAX_CONTENT_LENGTH + 1))
 
@@ -241,13 +251,14 @@ describe('persistence (ADR-022)', () => {
     )
   })
 
-  it('opens a saved document from the history handoff without re-saving it', () => {
+  it('opens a saved document from the history handoff without re-saving it', async () => {
     sessionStorage.setItem(
       'enx-reader-open-doc',
       JSON.stringify({ content: 'From history.' })
     )
 
     renderPage()
+    await readingViewSettled()
 
     expect(document.querySelector('#enx-reader-article')).toHaveTextContent(
       'From history.'
@@ -367,9 +378,10 @@ describe('reading width', () => {
     expect(articleContainer()).toHaveClass('max-w-4xl')
   })
 
-  it('keeps the paste editor at its own width', () => {
+  it('keeps the paste editor at its own width', async () => {
     localStorage.setItem('enx.reader.width', 'full')
     renderPage()
+    await editorSettled()
 
     expect(
       screen.getByLabelText(/paste english text/i).closest('.max-w-3xl')
@@ -378,16 +390,18 @@ describe('reading width', () => {
 })
 
 describe('landing page', () => {
-  it('explains what Reader is for', () => {
+  it('explains what Reader is for', async () => {
     renderPage()
+    await editorSettled()
     expect(
       screen.getByRole('heading', { level: 1, name: 'Reader' })
     ).toBeInTheDocument()
     expect(screen.getByText(/an AI chat\s+reply, a PDF/)).toBeInTheDocument()
   })
 
-  it('links to the sample article, and hides the link once there is text', () => {
+  it('links to the sample article, and hides the link once there is text', async () => {
     renderPage()
+    await editorSettled()
     expect(screen.getByRole('link', { name: 'Try a sample' })).toHaveAttribute(
       'href',
       '/reader/sample'
@@ -399,8 +413,9 @@ describe('landing page', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('states the privacy terms instead of an empty counter', () => {
+  it('states the privacy terms instead of an empty counter', async () => {
     renderPage()
+    await editorSettled()
     expect(
       screen.getByText(
         'Only you can see it. Deleted automatically after 7 days.'
@@ -409,8 +424,9 @@ describe('landing page', () => {
     expect(screen.queryByText(/characters/)).not.toBeInTheDocument()
   })
 
-  it('shows the character count, with its unit, near the limit', () => {
+  it('shows the character count, with its unit, near the limit', async () => {
     renderPage()
+    await editorSettled()
     paste('x'.repeat(MAX_CONTENT_LENGTH * 0.95))
     expect(
       screen.getByText(
@@ -490,8 +506,9 @@ describe('recent documents', () => {
     })
     renderPage()
 
+    const preview = await screen.findByText('Preview 2')
     await act(async () => {
-      fireEvent.click(await screen.findByText('Preview 2'))
+      fireEvent.click(preview)
     })
 
     expect(mockGetReaderDocument).toHaveBeenCalledWith('doc-2')
@@ -520,8 +537,9 @@ describe('recent documents', () => {
     })
     renderPage()
 
+    const preview = await screen.findByText('Preview 1')
     await act(async () => {
-      fireEvent.click(await screen.findByText('Preview 1'))
+      fireEvent.click(preview)
     })
 
     expect(await screen.findByText('document not found')).toBeInTheDocument()

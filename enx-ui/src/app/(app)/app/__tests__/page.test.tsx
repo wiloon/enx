@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import AppHome from '../page'
 import { apiService } from '@/services/api'
@@ -118,7 +118,8 @@ it('holds the checklist until the extension check has answered', async () => {
   renderPage()
 
   await waitFor(() => expect(mockOverview).toHaveBeenCalled())
-  await new Promise((resolve) => setTimeout(resolve, 20))
+  // Inside act, so the overview's arrival renders before the assertions.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)))
   expect(screen.queryByText('Get started')).not.toBeInTheDocument()
   expect(screen.queryByText('Today')).not.toBeInTheDocument()
 })

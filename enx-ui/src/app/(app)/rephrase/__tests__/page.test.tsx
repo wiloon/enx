@@ -188,4 +188,7 @@ it('copies a rendering to the clipboard', async () => {
   expect(writeText).toHaveBeenCalledWith(
     'Could you review this when you get a chance?'
   )
+  expect(
+    await screen.findByRole('button', { name: 'Copied' })
+  ).toBeInTheDocument()
 })

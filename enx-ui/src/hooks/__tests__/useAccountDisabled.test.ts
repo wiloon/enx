@@ -3,6 +3,7 @@ import { apiService } from '@/services/api'
 import { useAccountDisabled } from '../useAccountDisabled'
 
 it('turns true when enx-api answers account_disabled', async () => {
+  const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
   ;(global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
     ok: false,
     status: 403,
@@ -21,4 +22,8 @@ it('turns true when enx-api answers account_disabled', async () => {
   })
 
   expect(result.current).toBe(true)
+  expect(errorLog).toHaveBeenCalledWith(
+    'API request failed:',
+    expect.any(Error)
+  )
 })

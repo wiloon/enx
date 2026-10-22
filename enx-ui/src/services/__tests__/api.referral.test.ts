@@ -51,6 +51,7 @@ describe('ApiService referral calls (ADR-051)', () => {
   })
 
   it('surfaces a refused claim as a failure', async () => {
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
       jsonResponse(409, {
         success: false,
@@ -62,26 +63,37 @@ describe('ApiService referral calls (ADR-051)', () => {
     expect(result.success).toBe(false)
     expect(result.error).toBe("You can't claim your own invite.")
     expect(result.status).toBe(409)
+    expect(errorLog).toHaveBeenCalledWith(
+      'API request failed:',
+      expect.any(Error)
+    )
   })
 
   it('carries the status of a failed claim', async () => {
-    jest.spyOn(console, 'error').mockImplementation(() => {})
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
       jsonResponse(500, { error: 'internal' })
     )
     const result = await service.claimReferral('ABCDEFGH')
     expect(result.success).toBe(false)
     expect(result.status).toBe(500)
+    expect(errorLog).toHaveBeenCalledWith(
+      'API request failed:',
+      expect.any(Error)
+    )
   })
 
   it('has no status when the claim got no answer', async () => {
-    jest.spyOn(console, 'error').mockImplementation(() => {})
-    ;(global.fetch as jest.Mock).mockRejectedValueOnce(
-      new TypeError('Failed to fetch')
-    )
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const networkError = new TypeError('Failed to fetch')
+    ;(global.fetch as jest.Mock).mockRejectedValueOnce(networkError)
     const result = await service.claimReferral('ABCDEFGH')
     expect(result.success).toBe(false)
     expect(result.status).toBeUndefined()
+    expect(errorLog).toHaveBeenCalledWith(
+      'API request got no answer:',
+      networkError
+    )
   })
 
   it('GETs /api/referral/offer', async () => {
