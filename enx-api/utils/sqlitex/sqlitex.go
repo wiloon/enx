@@ -33,6 +33,7 @@ type User struct {
 	CreatedAt           time.Time `gorm:"column:created_at"`
 	UpdatedAt           time.Time `gorm:"column:updated_at"`
 	LastLoginTime       time.Time `gorm:"column:last_login_time"`
+	AvatarUrl           string    `gorm:"column:avatar_url"`
 }
 
 type Word struct {

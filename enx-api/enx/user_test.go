@@ -1,6 +1,8 @@
 package enx
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -191,5 +193,27 @@ func TestUserUpdatePasswordClearsResetToken(t *testing.T) {
 	loginOld := &User{Name: "alice", Password: "old-password"}
 	if loginOld.Login() {
 		t.Error("expected login with the old password to fail")
+	}
+}
+
+// #211: the join date travels as createdAt; the Clerk user id never leaves
+// enx-api.
+func TestUserJSONNamesTheJoinDateCreatedAtAndHidesTheClerkID(t *testing.T) {
+	b, err := json.Marshal(User{Id: "u1", ClerkUserID: "user_secret", CreateTime: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got["createdAt"]; !ok {
+		t.Errorf("JSON %s has no createdAt", b)
+	}
+	if _, ok := got["create_time"]; ok {
+		t.Errorf("JSON %s still carries create_time", b)
+	}
+	if strings.Contains(string(b), "user_secret") {
+		t.Errorf("JSON %s carries the Clerk user id", b)
 	}
 }

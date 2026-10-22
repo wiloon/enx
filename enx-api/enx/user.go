@@ -20,9 +20,10 @@ type User struct {
 	TokenExpiresAt      time.Time `json:"-" gorm:"column:token_expires_at"`
 	ResetToken          string    `json:"-" gorm:"column:reset_token"`
 	ResetTokenExpiresAt time.Time `json:"-" gorm:"column:reset_token_expires_at"`
-	CreateTime          time.Time `json:"create_time" gorm:"column:created_at"`
+	CreateTime          time.Time `json:"createdAt" gorm:"column:created_at"`
 	UpdateTime          time.Time `json:"update_time" gorm:"column:updated_at"`
 	LastLoginTime       time.Time `json:"last_login_time" gorm:"column:last_login_time"`
+	AvatarUrl           string    `json:"avatarUrl" gorm:"column:avatar_url"`
 }
 
 func (u *User) Login() bool {
