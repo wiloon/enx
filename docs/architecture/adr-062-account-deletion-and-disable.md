@@ -21,7 +21,7 @@ related: adr-015（Clerk 认证）、adr-048（试用积分，幂等键 `trial:<
 2. **两个入口共用同一条删除流程**（`account` 领域服务里的 `Delete`，Clerk、Stripe 和仓储都通过接口注入）：
    - **用户自助注销**：enx-ui 的 `/settings` 页面，要求用户输入自己的邮箱来确认。剩余的试用、订阅、充值积分全部作废，注销流程本身不退款；要退款的用户必须在注销**之前**走 adr-049 的退款流程，两条流程相互独立。确认文案写明这两点。接口为 `DELETE /api/me`。
    - **管理员删除**：在 `/admin/users/:id` 页面操作，接口为 `DELETE /api/admin/users/:id`，可以带 `resetTrial=true`（见第 4 条）。
-   - **有续费中的订阅或未解决冲突时拒绝删除**：2026-10-23 所有者确认按 ADR-067 查询用户所属的全部订阅，不只查当前 accepted 指针；存在 open 订阅冲突就拒绝删除，并显示 `Contact an administrator to resolve your subscription issue before deleting your account.`。即使标 resolved，任何仍会续费的所属订阅也须先取消；普通 accepted 可从 `/billing` 的 Portal 操作，异常订阅由管理员在 Stripe 处理。未由 Stripe 权威确认 canceled/incomplete_expired 的全部所属订阅均须实时查询，包括本地 unpaid/incomplete/未知或滞后状态；终态证据受版本重验，不明确时重查。确认不再续费才放行，任何查询错误（含不明确的 resource_missing）不能放行，不能只凭缓存/人工备注判定取消。正常订阅已设置 `cancel_at_period_end` 时沿用原有允许注销规则。管理员删除同样受限；不在注销中自动取消或退款。并发接受/分类与注销须受同一持久删除屏障协调。注销前打开的充值/订阅 Checkout 注销后才付款时，保存财务上下文并进入 needs_attention、可靠告警，不重建用户/余额/奖励/接受指针，不自动退款取消或关联同邮箱新账号；删除进行中的付款等待持久结果，中止后才重新验证处理。具体见 ADR-067 和 #297。
+   - **有续费中的订阅或未解决冲突时拒绝删除**：2026-10-23 所有者确认按 ADR-067 查询用户所属的全部订阅，不只查当前 accepted 指针；存在 open 订阅冲突就拒绝删除，并显示 `Contact an administrator to resolve your subscription issue before deleting your account.`。即使标 resolved，任何仍会续费的所属订阅也须先取消；普通 accepted 可从 `/billing` 的 Portal 操作；若有降档 schedule，Portal 不支持取消，`/billing` 与用户/管理员注销拒绝须指导先选当前有效档位撤销降档、真正 release schedule，再到 Portal 取消（英文文案及恢复约束见 ADR-067）。不在注销流程自动取消排期/订阅；release 后仍须确认不再续费才允许注销，期末取消资格照旧。异常订阅由管理员在 Stripe 处理。未由 Stripe 权威确认 canceled/incomplete_expired 的全部所属订阅均须实时查询，包括本地 unpaid/incomplete/未知或滞后状态；终态证据受版本重验，不明确时重查。确认不再续费才放行，任何查询错误（含不明确的 resource_missing）不能放行，不能只凭缓存/人工备注判定取消。正常订阅已设置 `cancel_at_period_end` 时沿用原有允许注销规则。管理员删除同样受限；不在注销中自动取消或退款。并发接受/分类与注销须受同一持久删除屏障协调。注销前打开的充值/订阅 Checkout 注销后才付款时，保存财务上下文并进入 needs_attention、可靠告警，不重建用户/余额/奖励/接受指针，不自动退款取消或关联同邮箱新账号；删除进行中的付款等待持久结果，中止后才重新验证处理。具体见 ADR-067 和 #297。
    - **执行顺序**：先写试用发放记录（幂等），再删 Clerk 用户，最后在一个事务里删本地数据。Clerk 调用失败时整体中止、返回错误，本地数据不动。本地事务失败时 Clerk 用户已经删了，但用户也登不上来了，残留的本地数据由管理员重试删除来清理（删除流程对「Clerk 用户已不存在」视为成功）。
 
 3. **试用发放记录（trial grant record）按邮箱的 HMAC 记录，不随账号删除。** 新建表 `trial_grants(email_hmac PRIMARY KEY, user_id, granted_at)`，`user_id` 是领取试用的那个本地用户身份（不透明 UUID，账号删除后也保留）：
@@ -82,3 +82,5 @@ related: adr-015（Clerk 认证）、adr-048（试用积分，幂等键 `trial:<
 - 2026-10-23（#297、ADR-067）：未解决订阅冲突阻止用户和管理员注销并提示联系管理员；resolved 不绕过实时续费检查。财务 webhook 原始 payload、重复 deliveries 与 events 注销后保留，明确修订旧匿名留存假设，并更新隐私告知要求。
 
 - 2026-10-23（#297 round 3）：补齐 unpaid/incomplete 与滞后状态的权威续费检查，明确注销后完成 Checkout 的人工终态，遵循不重建用户/余额的既定删除屏障。
+
+- 2026-10-23（#297 round 5）：补齐降档 schedule 阻止 Portal 取消时的既有自助退出路径，保持原续费/期末取消注销资格，不增加自动取消。

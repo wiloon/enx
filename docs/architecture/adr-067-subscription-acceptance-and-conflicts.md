@@ -41,6 +41,15 @@ worker 的可调正 duration 默认值在 #297 明确为 `stripe.webhook.poll-in
 - 降档在下一期生效（例如 Stripe subscription schedule），本期权益/积分不变，下期按低档正常发放；保存排期并恢复，维持同一 Subscription ID。乱序事件不能撤回已确认的改档、重复补积分或把补差额覆盖成整期发放。
 - 任何所属 conflict 仍 open，或 resolved 但 Stripe 仍可计费时，阻止新 Checkout，返回 409 并指向 billing support；即使 accepted A 已结束也一样。Stripe 查询失败可重试且不放行。resolved 备注不证明停止计费。
 
+## 改档操作的完成与失效恢复
+
+- 改档操作状态与 webhook event 状态分开。非终态为 preparing（持久请求及外部调用恢复）、pending_payment（等待升级付款/应用）、scheduled（等待降档边界）、reconciling（核实结果及完成必要效果）。终态为 applied、expired、voided、canceled、superseded；保留终态原因、完成时间、invoice/schedule ID、Stripe pending_update.expires_at 和恢复版本。只有仍有效的非终态操作参与 round 4 重叠阻断；终态历史不占用改档资格，也不清空账本幂等键。
+- applied 升级要求同一持久操作的 invoice 已付款且 Stripe 已应用匹配更新；invoice.paid、pending_update_applied 或查询任一单独先到都只触发核实，不能单凭 pending_update 存在认定失败、消失认定成功。完成已有差额效果后才结束，幂等键仍以原操作/invoice 为准。降档在约定边界核实匹配 phase/price 才 applied；正常积分仍只由已验证的 invoice.paid 发放，schedule.completed 本身不发积分。
+- Stripe 权威确认升级到期/丢弃且原 invoice 已 void、未付款及未应用时，分别以 expired/voided 结束，保留原有效档位/积分。选择当前有效档位撤销降档或 Stripe 外部 release 排期时，核实排期解除且未应用目标档位后记 canceled，清除未来降档展示；不据 release 事件撤回已生效降档。subscription 实际结束、未执行的改档已不能应用时记 superseded；schedule.canceled 通常同时结束订阅，必须核实生命周期，不能只当撤销排期。外部更新丢弃原升级同样核实原 invoice/操作；未经 ENX 授权的新 price 仍按未授权改档隔离，不能借结束旧操作接受新权益。
+- worker 明确支持 customer.subscription.pending_update_applied、customer.subscription.pending_update_expired、invoice.voided、subscription_schedule.updated/released/canceled/completed/aborted，结合既有 customer.subscription.updated/deleted、invoice.paid/payment_failed 处理，不能把这些当 ignored。按版本解释并由持久 invoice/schedule/subscription 关联到操作；未知归属先恢复依赖，超期转可靠人工告警。
+- 启动及每次既有 5s poll 批量领取到期的非终态改档操作，另存 next_attempt、attempts/error 与带 fencing token 的 lease，复用既有超时和 5s–15m 退避；即使无 webhook 也读取当前 subscription、原 invoice、schedule 恢复。改档资格请求先核实已有操作，Stripe I/O 后按 billing/operation revision 条件提交；并发/乱序事件不能重开终态或影响后来的操作。expires_at 是核实时点，不是仅凭本地时钟清锁或自动重发升级的授权。查询失败持续重试；无法证明付款/应用/作废结果时保留阻断并在既有依赖期限后可靠告警，不能猜测无付款。已确认终态立即释放普通 pending 阻断；删除、冲突、期末取消及健康状态检查仍有效。
+- #297 round 5 待所有者确认：未付款升级是否增加立即取消动作（通过原操作 invoice void），或只提供付款/等待 Stripe expires_at 的指引。本段不授权新增 void endpoint，也不把「取消」默认为仅等待；所有者 round 4 的重叠规则保持，具体用户动作待答复。
+
 ## Portal 边界与发票分类
 
 - 从 schema cutover 起，每次 Portal session 显式传入专用 configuration ID，要求 `features.subscription_update.enabled=false`；配置为 `stripe.portal-configuration-id` / `STRIPE_PORTAL_CONFIGURATION_ID`。billing 启动及创建 session 前核实配置在当前 account/mode 有效且禁用改档；缺失、查询失败或不安全时不创建 session，返回可重试配置错误，不回退 Dashboard default。保留既有取消、付款方式及发票功能，改档由 ENX 发起。实现时同步修正 subscription.go、stripe/portal.go、plans.ts 的旧注释/文案。配置准备及旧 Portal 入口禁用交 #297 Before release，按 P-3 交接。
@@ -77,7 +86,7 @@ worker 的可调正 duration 默认值在 #297 明确为 `stripe.webhook.poll-in
 
 ## 注销与财务留存
 
-- 所有者已确认：存在 `open` 的订阅冲突就拒绝用户和管理员删除，提示 `Contact an administrator to resolve your subscription issue before deleting your account.`；不能只检查 accepted 指针。即使冲突标 resolved，仍会续费的所属订阅也必须先取消，查询 Stripe 失败不能放行。普通 accepted 的自助取消入口沿用 Billing Portal；异常订阅由管理员处理。
+- 所有者已确认：存在 `open` 的订阅冲突就拒绝用户和管理员删除，提示 `Contact an administrator to resolve your subscription issue before deleting your account.`；不能只检查 accepted 指针。即使冲突标 resolved，仍会续费的所属订阅也必须先取消，查询 Stripe 失败不能放行。普通 accepted 的自助取消入口沿用 Billing Portal；若仍有 ENX 降档 schedule，Portal 无法取消，/billing 及用户/管理员注销拒绝消息须指引先选择当前有效档位撤销降档，再到 Portal 取消订阅。撤销必须真正 release schedule（保留订阅和当前权益），仅清本地标记或删除未来 phase 不足；核实 release 后才展示可取消入口，失败可重试。续费拒绝消息为 `Withdraw your scheduled downgrade by selecting your current plan in Billing, then cancel your subscription in the billing portal before deleting your account.`。此路径不自动取消订阅、不要求管理员介入；普通取消经 Stripe 确认后沿用原期末取消/注销资格。异常订阅仍由管理员处理。
 - 注销检查不能以本地 active/trialing/past_due 三状态筛掉 unpaid/incomplete 或未知/滞后状态：每份未由 Stripe 权威确认 canceled/incomplete_expired 的所属订阅都查实时续费，终态证据也受版本重验；不明确的 resource_missing 和其他查询错误阻止注销，不能猜测已结束。保留 cancel_at_period_end 的既有资格。
 - 删除资格与并发接受/分类共用持久协调机制：建立删除屏障后停止接受新订阅和发放新权益；用户硬删除后仍保留屏障的不透明本地身份和 deleted 终态（不含姓名/邮箱），使迟到 metadata 不被当作临时缺映射或重建账户的理由；发现并发新增未解决冲突或仍续费订阅则中止删除。后续 webhook 仍保存财务历史，不能用 metadata 或历史映射重建已删用户/余额。管理员标 resolved 不能绕过实时续费检查。
 - 注销前已打开的 Checkout 在注销后收款（充值或订阅），保存付款/Customer/订阅上下文，event 进入 `needs_attention`、reason `payment_after_account_deletion` 并可靠告警；不发积分/邀请奖励、不建余额/用户/接受指针、不自动退款取消，也不绑定同邮箱新账号。删除屏障期间付款等待持久删除结果；仅删除中止且重新验证资格才正常处理。删除后旧退款只做可恢复财务审计，不重建余额。
@@ -102,8 +111,11 @@ ADR-064 会在 main 合并后自动部署。#297 的 characterization/fixture �
 
 - 2026-10-23（#297 round 4）：封闭 Portal 绕过服务端改档规则的入口，明确未授权 price 与 invoice 分类/line 来源；落实所有者重叠请求、撤销降档与期末取消规则，防止未付款改档及重复整期发放。cutover 已须实施 Portal 边界和未知改档隔离，不能等待后续改档 PR。
 
+- 2026-10-23（#297 round 5）：补齐改档终态、所需事件及无 webhook 的定期核实，避免失效操作永久阻断；按既有撤销降档决定说明 schedule release 后再 Portal 取消/注销的路径。未付款升级的立即取消动作仍交所有者确认。
+
 ## 参考
 
 - [Stripe webhook 顺序、重复与异步处理](https://docs.stripe.com/webhooks#event-ordering)
 - [Stripe metadata 传递规则](https://docs.stripe.com/metadata#set-metadata-indirectly)
 - [Stripe 支付确认后应用改档](https://docs.stripe.com/billing/subscriptions/pending-updates)
+- [Stripe Portal 的 subscription schedule 限制](https://docs.stripe.com/customer-management#limitations)
