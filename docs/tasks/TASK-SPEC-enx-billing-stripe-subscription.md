@@ -1,5 +1,7 @@
 # TASK-SPEC: Stripe 订阅 + AI 积分 + 免费查词配额
 
+> **历史记录（2026-10-23）**：本文描述旧实现。当前 webhook 接收/异步处理、Subscription ID 主键、用户接受关联及 Customer 拆分已由 [ADR-067](../architecture/adr-067-subscription-acceptance-and-conflicts.md) 和 [#297](https://github.com/wiloon/enx/issues/297) 修订；下文用户主键的 `subscriptions` 表和同步 webhook 流程不能作为新实现要求。充值流水与余额仍须保全。
+
 | 字段 | 值 |
 | --- | --- |
 | **状态** | Draft — 2026-08-12 |

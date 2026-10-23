@@ -4,7 +4,7 @@
 | --- | --- |
 | **状态** | Proposed — 2026-08-12 |
 | **日期** | 2026-08-12 |
-| **关联 Spec** | [`TASK-SPEC-enx-billing-stripe-subscription.md`](../tasks/TASK-SPEC-enx-billing-stripe-subscription.md)（本 ADR 的实现细节：表结构、API 端点、分阶段计划） |
+| **关联 Spec** | [`TASK-SPEC-enx-billing-stripe-subscription.md`](../tasks/TASK-SPEC-enx-billing-stripe-subscription.md)（历史实现记录；当前 webhook 与订阅改造见 [#297](https://github.com/wiloon/enx/issues/297) 和 ADR-067） |
 | **关联 ADR** | [`adr-004-no-aws-amplify-hand-rolled-cognito.md`](adr-004-no-aws-amplify-hand-rolled-cognito.md)（本决策复用 Cognito `sub` 作为用户身份，与现有 `users.cognito_sub` 映射一致） |
 
 ---
@@ -62,14 +62,15 @@ enx 目前完全免费：`words`/ECDICT 词典查询和 `aitranslate` 包下的�
 
 ## Decision
 
-1. **订阅支付**（采用 A1）：Stripe Checkout，`mode=subscription`。创建 Checkout Session 时把本地 `users.id`（不是 Cognito sub，走现有 `users` 表的 UUID 主键，与 `cognito_sub` 已经是唯一映射）放进 `client_reference_id`。
+1. **订阅支付**（采用 A1）：Stripe Checkout，`mode=subscription`。创建 Checkout Session 时把本地 `users.id`（ENX UUID，不是外部认证身份）放进 `client_reference_id`，同时通过 `subscription_data.metadata.enx_user_id` 写入 Subscription。二者分别关联 Checkout 与订阅对象，不能假定所有 webhook 都直接携带本地用户身份；2026-10-23 的身份恢复与订阅接受关系见 [ADR-067](adr-067-subscription-acceptance-and-conflicts.md)。
 2. **充值**（一次性购买积分）：Stripe Checkout，`mode=payment`，metadata 标记为充值订单以区分订阅 Checkout。
-3. **订阅/充值状态以 Stripe webhook 为准**，不依赖前端跳转回调：
+3. **订阅/充值状态以 Stripe webhook 为准**，不依赖前端跳转回调。2026-10-23 按 [ADR-067](adr-067-subscription-acceptance-and-conflicts.md) 修订为验签后持久保存每次 delivery 和唯一 event，提交后确认 `2xx`，业务由数据库 worker 异步、幂等、可恢复地执行；关联暂缺进入等待重试。下列是业务处理职责，不是 HTTP 接收内同步完成的顺序：
    - `checkout.session.completed` → 建立/更新 `users.id` ↔ `stripe_customer_id` 映射；如果是充值订单，加充值积分
-   - `invoice.paid`（订阅续费）→ 发放当月 `subscription_balance`，同时清零上月剩余（不结转）
+   - `invoice.paid`（首次订阅与续费）→ 对已接受订阅发放对应周期的 `subscription_balance`（不结转）；冲突订阅不发积分，迟到旧事件不能回退当前周期，见 ADR-067。
    - `customer.subscription.updated` / `customer.subscription.deleted` → 更新订阅状态
    - `invoice.payment_failed` → 标记逾期
-   - Webhook endpoint（`POST /billing/webhook`，具体路由见 TASK-SPEC）**不挂 `cognitoAuth` 中间件**，靠 Stripe 签名密钥验证；密钥走环境变量（`STRIPE_WEBHOOK_SECRET`），遵循现有 `KIMI_API_KEY` 之类密钥不进 `config.toml` 的惯例
+   - Webhook endpoint（`POST /billing/webhook`，具体路由见 TASK-SPEC）**不挂用户登录认证中间件**，靠 Stripe 签名密钥验证；密钥走环境变量（`STRIPE_WEBHOOK_SECRET`），遵循现有 `KIMI_API_KEY` 之类密钥不进 `config.toml` 的惯例
+   - Stripe Customer 归属独立保存，`subscriptions` 以 Subscription ID 为主键保存全部订阅，`users.accepted_subscription_id` 表示当前接受关系；当前以用户为主键且兼存仅充值 Customer 的旧表需要保全数据迁移，见 #297。
 4. **AI 调用计费**（采用 B1）：`TranslateSentence`、`TranslateWordInContext` 各定一个固定积分成本，具体数值待产品侧定价决策（不在本 ADR 内确定）。未来若加输入量级差异大的功能（比如整段翻译），单独为该功能定更高固定档位，不升级到 token 计费。
 5. **积分建模**（采用 D2）：双积分池，扣费用条件更新保证正确性：
    ```sql
