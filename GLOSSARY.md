@@ -171,12 +171,20 @@ _Avoid_: 配额（单说时可能指 AI 积分）、限流、rate limit
 ### Subscription acceptance (enx-api)
 
 **Accepted subscription**:
-The Stripe subscription ENX recognizes for a local user identity. At most one accepted subscription may be live for that user; a subscription conflict never replaces it. See ADR-067.
+A Stripe subscription ENX has accepted for a local user identity. At most one is current and live for that user; a formerly accepted subscription remains part of the billing history after a normal replacement. See ADR-067.
 _Avoid_: winning subscription, primary subscription
 
 **Subscription conflict**:
-A durable exception for a different live Stripe subscription competing with a user's accepted live subscription. It grants no credits; recording its manual resolution preserves the rejection. See ADR-067.
+A different live Stripe subscription rejected because it competes with a user's accepted live subscription. It still belongs to that user, grants no credits, and stays rejected after manual resolution; an unresolved conflict prevents account deletion. See ADR-067.
 _Avoid_: duplicate payment, failed webhook, orphan subscription (these do not define the classification)
+
+**Stripe webhook delivery**:
+One receipt of a Stripe event by ENX, including repeated receipts of the same event. The complete receipt history is retained as financial evidence after account deletion. See ADR-067.
+_Avoid_: event (a distinct event can be delivered more than once)
+
+**Stripe webhook event**:
+A distinct Stripe notification ENX has durably received and tracks through processing. Repeated deliveries refer to the same event; missing subscription attribution can be temporary rather than a subscription conflict. See ADR-067.
+_Avoid_: subscription (one subscription produces many events), payment (not every event describes a payment)
 
 ### 邀请（enx-api / enx-ui）
 

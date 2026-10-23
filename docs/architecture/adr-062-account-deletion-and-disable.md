@@ -13,7 +13,7 @@ related: adr-015（Clerk 认证）、adr-048（试用积分，幂等键 `trial:<
 ## Decision
 
 1. **注销账号（account deletion）是硬删除，不是软删除。** 删掉这个本地用户身份下的所有数据（生词本、查词事件、阅读统计、收藏、偏好、阅读器文档、邀请码等），删掉 `users` 行，再通过 Clerk Backend API 删掉对应的 Clerk 用户（同时撤销该用户的全部会话）。下面两类数据保留：
-   - **账本**：`credit_transactions`、`subscriptions` 以及 adr-051 的 `referrals` 行，财务记录要留存。这些行只带一个不透明的 UUID，`users` 行删掉后，它们就对不上任何个人信息。
+   - **账本与财务接收历史**：`credit_transactions`、`subscriptions`、独立 Stripe Customer 关联、adr-051 的 `referrals`，以及 ADR-067 的 `stripe_webhook_deliveries` / `stripe_webhook_events` 保留。**2026-10-23 所有者修订**：原始 webhook payload 和每次重复接收记录注销后也保留，可能含邮箱、姓名等 Stripe 提供的数据；因此原先「留存数据只有不透明 UUID、无法再关联个人信息」的保证不再适用于这些财务原文。它们不加入 personalTables，不随 users 行级联删除；访问仅限必要的管理员用途，普通个人业务数据仍硬删除。
    - **试用发放记录**：见第 3 条。
    Stripe 那边的 customer 和付款记录也不删。
    邀请人已注销时，尚未发放的邀请人奖励按 adr-051 第 5 条作废（`referrer_deleted`）；发奖与本地删除并发时也不得重建已删除的余额行。
@@ -21,7 +21,7 @@ related: adr-015（Clerk 认证）、adr-048（试用积分，幂等键 `trial:<
 2. **两个入口共用同一条删除流程**（`account` 领域服务里的 `Delete`，Clerk、Stripe 和仓储都通过接口注入）：
    - **用户自助注销**：enx-ui 的 `/settings` 页面，要求用户输入自己的邮箱来确认。剩余的试用、订阅、充值积分全部作废，注销流程本身不退款；要退款的用户必须在注销**之前**走 adr-049 的退款流程，两条流程相互独立。确认文案写明这两点。接口为 `DELETE /api/me`。
    - **管理员删除**：在 `/admin/users/:id` 页面操作，接口为 `DELETE /api/admin/users/:id`，可以带 `resetTrial=true`（见第 4 条）。
-   - **有续费中的订阅时拒绝删除**：先在 `/billing` 取消订阅，再注销。本地 `subscriptions` 表没有记 `cancel_at_period_end`，已取消但还没到期的订阅状态仍是 active，所以本地状态是 active 时，删除流程向 Stripe 查这个订阅；只有 `cancel_at_period_end` 为假（还会续费）时才拒绝。这样就不必在删除流程里处理取消订阅、按比例退款这些问题。管理员删除也遵守这条规则。
+   - **有续费中的订阅或未解决冲突时拒绝删除**：2026-10-23 所有者确认按 ADR-067 查询用户所属的全部订阅，不只查当前 accepted 指针；存在 open 订阅冲突就拒绝删除，并显示 `Contact an administrator to resolve your subscription issue before deleting your account.`。即使标 resolved，任何仍会续费的所属订阅也须先取消；普通 accepted 可从 `/billing` 的 Portal 操作，异常订阅由管理员在 Stripe 处理。Stripe 实时查询确认不再续费才放行，查询失败不能放行，不能只凭缓存/人工备注判定取消。正常订阅已设置 `cancel_at_period_end` 时沿用原有允许注销规则。管理员删除同样受限；不在注销中自动取消或退款。并发接受/分类与注销须受同一持久删除屏障协调，具体见 ADR-067 和 #297。
    - **执行顺序**：先写试用发放记录（幂等），再删 Clerk 用户，最后在一个事务里删本地数据。Clerk 调用失败时整体中止、返回错误，本地数据不动。本地事务失败时 Clerk 用户已经删了，但用户也登不上来了，残留的本地数据由管理员重试删除来清理（删除流程对「Clerk 用户已不存在」视为成功）。
 
 3. **试用发放记录（trial grant record）按邮箱的 HMAC 记录，不随账号删除。** 新建表 `trial_grants(email_hmac PRIMARY KEY, user_id, granted_at)`，`user_id` 是领取试用的那个本地用户身份（不透明 UUID，账号删除后也保留）：
@@ -48,7 +48,7 @@ related: adr-015（Clerk 认证）、adr-048（试用积分，幂等键 `trial:<
 
 8. **enx-api 新增 Clerk Backend API 的密钥**（`CLERK_SECRET_KEY`）。现在 enx-api 只用 JWKS 公钥验证 token，没有调用过 Clerk 的后台接口。本 ADR 有四处要调用：删除用户（自助注销和管理员删除）、ban、unban、撤销会话。enx-api 里只在 `account` 包注入的 Clerk 客户端里用到它。homelab 和生产环境的密钥模板要在 w10n-config 里加上。
 
-9. **隐私政策**（enx-ui `/privacy`）补一段说明：注销后删除哪些数据，保留哪些数据（账本、Stripe 记录、为防止重复领取赠送而保留的邮箱 HMAC），以及保留的理由。
+9. **隐私政策**（enx-ui `/privacy`）说明注销后删除哪些数据、保留哪些数据及理由：账本、Stripe Customer/订阅记录、包含潜在个人信息的原始财务 webhook 与重复接收历史、事件处理记录，以及防止重复领取赠送的邮箱 HMAC。2026-10-23 的 webhook 原文留存例外必须明确告知，不能继续承诺注销后所有留存数据均已匿名。
 
 ## Considered Options
 
@@ -78,3 +78,5 @@ related: adr-015（Clerk 认证）、adr-048（试用积分，幂等键 `trial:<
 ## 修订记录
 
 - 2026-10-22（#245）：明确保留邀请关系不代表继续向已注销邀请人发奖，待发奖励作废并由账本事务防止并发注销后重建余额；规则见 adr-051 第 5 条。
+
+- 2026-10-23（#297、ADR-067）：未解决订阅冲突阻止用户和管理员注销并提示联系管理员；resolved 不绕过实时续费检查。财务 webhook 原始 payload、重复 deliveries 与 events 注销后保留，明确修订旧匿名留存假设，并更新隐私告知要求。
