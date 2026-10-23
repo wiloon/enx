@@ -25,6 +25,7 @@ export function buildManifest(
   version: string
 ): Manifest {
   const uiPatterns = target.uiOrigins.map(origin => `${origin}/*`)
+  const rssxPatterns = target.rssxOrigins.map(origin => `${origin}/*`)
   const sitePatterns = target.contentScriptOrigins.map(origin => `${origin}/*`)
   const clerkHost = clerkFrontendApiHost(target.clerkPublishableKey)
 
@@ -40,6 +41,9 @@ export function buildManifest(
     `${target.apiBaseUrl}/*`,
     ...uiPatterns,
     ...(clerkHost ? [`https://${clerkHost}/*`] : []),
+    // The E2E helpers read the fixture tab's URL (ADR-037); RSSX needs no
+    // host permission to receive the content script.
+    ...sitePatterns,
   ])
 
   const contentScripts = (base.content_scripts ?? []).map((script, index) =>
@@ -48,6 +52,7 @@ export function buildManifest(
           ...script,
           matches: unique([
             ...(script.matches ?? []),
+            ...rssxPatterns,
             ...sitePatterns,
             ...uiPatterns,
           ]),

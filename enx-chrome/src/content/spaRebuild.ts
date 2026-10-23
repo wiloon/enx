@@ -10,7 +10,7 @@
 // driven by the adapter's readySelector) and the navigate filter
 // (`shouldHandleTweetNavigate`) sit beside it, each unit-testable.
 
-import { resolveSiteAdapter } from '@/lib/siteAdapters'
+import { resolveSiteAdapter, type SiteOrigins } from '@/lib/siteAdapters'
 
 export interface SpaRebuilderDeps {
   /** Is the destination URL still a supported page for this adapter? */
@@ -73,10 +73,10 @@ export function shouldHandleTweetNavigate(event: NavigateEvent): boolean {
 // Is `url` still a supported page for whatever adapter matches it? Used to
 // stop silently when the user navigates off a tweet (to a profile, the home
 // timeline). Returns true for any URL the default adapter matches.
-export function isSupportedPage(url: string): boolean {
+export function isSupportedPage(url: string, origins: SiteOrigins): boolean {
   try {
     const loc = new URL(url)
-    const adapter = resolveSiteAdapter(loc)
+    const adapter = resolveSiteAdapter(loc, origins)
     return !adapter.pageSupport || adapter.pageSupport(loc) == null
   } catch {
     return false

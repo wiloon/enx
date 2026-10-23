@@ -166,18 +166,36 @@ describe('shouldHandleTweetNavigate', () => {
 })
 
 describe('isSupportedPage', () => {
+  const SITES = {
+    uiOrigins: ['https://catglish.com'],
+    rssxOrigins: [],
+  }
+
   it('true for a tweet detail URL, false for an X list page', () => {
-    expect(isSupportedPage('https://x.com/jack/status/20')).toBe(true)
-    expect(isSupportedPage('https://x.com/home')).toBe(false)
-    expect(isSupportedPage('https://x.com/jack')).toBe(false)
+    expect(isSupportedPage('https://x.com/jack/status/20', SITES)).toBe(true)
+    expect(isSupportedPage('https://x.com/home', SITES)).toBe(false)
+    expect(isSupportedPage('https://x.com/jack', SITES)).toBe(false)
   })
 
   it('true for any non-X URL (default adapter has no pageSupport gate)', () => {
-    expect(isSupportedPage('https://www.infoq.com/articles/x')).toBe(true)
+    expect(isSupportedPage('https://www.infoq.com/articles/x', SITES)).toBe(
+      true
+    )
+  })
+
+  // #231: the Reader gate applies only on the build's own enx-ui origins.
+  it('gates enx-ui pages by the build origins it is given', () => {
+    expect(isSupportedPage('https://catglish.com/lookup', SITES)).toBe(false)
+    expect(
+      isSupportedPage('https://catglish.com/lookup', {
+        uiOrigins: ['https://enx.wiloon.lab'],
+        rssxOrigins: [],
+      })
+    ).toBe(true)
   })
 
   it('false for an unparseable URL', () => {
-    expect(isSupportedPage('not a url')).toBe(false)
+    expect(isSupportedPage('not a url', SITES)).toBe(false)
   })
 })
 

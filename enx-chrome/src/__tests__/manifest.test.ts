@@ -4,6 +4,7 @@ import { buildManifest } from '../config/manifest'
 import { TOGGLE_LEARNING_MODE_COMMAND } from '../lib/learningModeCommand'
 import {
   clerkFrontendApiHost,
+  resolveBuildTarget,
   TARGETS,
   type Target,
   type TargetName,
@@ -169,6 +170,66 @@ describe('manifest stamping (ADR-019)', () => {
     expect(patterns).not.toContain('https://x.com/*')
     expect(patterns).not.toContain('https://twitter.com/*')
   })
+
+  // #231: the RSSX reader is a content-script site only -- no install-time
+  // host permission and no web -> extension channel.
+  it.each(['development', 'homelab'] as TargetName[])(
+    'gives the RSSX reader no host permission or external channel in the %s build',
+    name => {
+      const manifest = stamp(TARGETS[name])
+      expect(manifest.host_permissions).not.toContain(
+        'https://rssx-lab.wiloon.com/*'
+      )
+      expect(manifest.externally_connectable.matches).not.toContain(
+        'https://rssx-lab.wiloon.com/*'
+      )
+    }
+  )
+
+  // ADR-037: the E2E build injects into the fixture origin through
+  // VITE_CONTENT_SCRIPT_ORIGINS. Its helpers read tab URLs there, so it keeps
+  // a host permission, but it is never an enx-ui origin.
+  it('injects into and grants a generic content-script origin without an external channel', () => {
+    const manifest = stamp(
+      resolveBuildTarget('development', {
+        VITE_CONTENT_SCRIPT_ORIGINS: 'http://localhost:8765',
+      })
+    )
+    expect(manifest.content_scripts[0].matches).toContain(
+      'http://localhost:8765/*'
+    )
+    expect(manifest.host_permissions).toContain('http://localhost:8765/*')
+    expect(manifest.externally_connectable.matches).toEqual([
+      'http://localhost:3000/*',
+    ])
+  })
+
+  // Splitting the RSSX list off the generic one must not change what a
+  // release build asks for at install time.
+  it.each([
+    [
+      'production',
+      [
+        'https://api.catglish.com/*',
+        'https://catglish.com/*',
+        'https://rational-deer-4450.clerk.accounts.dev/*',
+      ],
+    ],
+    [
+      'homelab',
+      [
+        'https://enx-api.wiloon.lab/*',
+        'http://localhost:3000/*',
+        'https://enx.wiloon.lab/*',
+        'https://rational-deer-4450.clerk.accounts.dev/*',
+      ],
+    ],
+  ] as [TargetName, string[]][])(
+    'keeps the %s host permissions',
+    (name, hostPermissions) => {
+      expect(stamp(TARGETS[name]).host_permissions).toEqual(hostPermissions)
+    }
+  )
 
   it('keeps the RSSX reader out of the production build', () => {
     expect(JSON.stringify(stamp(TARGETS.production))).not.toContain(

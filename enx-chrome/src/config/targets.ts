@@ -30,9 +30,17 @@ export interface Target {
    */
   uiOrigins: string[]
   /**
-   * Other sites that get the content script in this build only. The RSSX
-   * reader (ADR-033) lives on a LAN host, so only the homelab and dev builds
-   * list it; the store build stays off private domains.
+   * RSSX Reader origins (ADR-033): they get the content script and the RSSX
+   * site adapter, but no host permission or external messaging. The reader
+   * lives on a LAN host, so only the homelab and dev builds list it; the store
+   * build stays off private domains.
+   */
+  rssxOrigins: string[]
+  /**
+   * Generic sites that get the content script (and a host permission) in this
+   * build only. They stay ordinary sites: no Reader or RSSX adapter, no
+   * enx-ui stamps. Empty in every declared target; the E2E build fills it
+   * through VITE_CONTENT_SCRIPT_ORIGINS (ADR-037).
    */
   contentScriptOrigins: string[]
 }
@@ -55,7 +63,8 @@ export const TARGETS: Record<TargetName, Target> = {
     clerkPublishableKey: DEV_CLERK_PUBLISHABLE_KEY,
     clerkSyncHost: LOCAL_UI_ORIGIN,
     uiOrigins: [LOCAL_UI_ORIGIN],
-    contentScriptOrigins: [RSSX_LAB_ORIGIN],
+    rssxOrigins: [RSSX_LAB_ORIGIN],
+    contentScriptOrigins: [],
   },
   homelab: {
     name: 'homelab',
@@ -66,7 +75,8 @@ export const TARGETS: Record<TargetName, Target> = {
     // The homelab build doubles as the day-to-day dev build, so it keeps the
     // localhost origin; the production build deliberately does not.
     uiOrigins: [LOCAL_UI_ORIGIN, 'https://enx.wiloon.lab'],
-    contentScriptOrigins: [RSSX_LAB_ORIGIN],
+    rssxOrigins: [RSSX_LAB_ORIGIN],
+    contentScriptOrigins: [],
   },
   production: {
     name: 'production',
@@ -84,6 +94,7 @@ export const TARGETS: Record<TargetName, Target> = {
     // https://catglish.com here the extension never sees the session.
     clerkSyncHost: 'https://clerk.catglish.com',
     uiOrigins: ['https://catglish.com'],
+    rssxOrigins: [],
     contentScriptOrigins: [],
   },
   test: {
@@ -93,6 +104,7 @@ export const TARGETS: Record<TargetName, Target> = {
     clerkPublishableKey: DEV_CLERK_PUBLISHABLE_KEY,
     clerkSyncHost: LOCAL_UI_ORIGIN,
     uiOrigins: [LOCAL_UI_ORIGIN],
+    rssxOrigins: [],
     contentScriptOrigins: [],
   },
 }
@@ -126,12 +138,6 @@ export function applyOverrides(
   target: Target,
   env: Record<string, string | undefined>
 ): Target {
-  const uiOrigins = env.VITE_ENX_UI_ORIGINS
-    ? env.VITE_ENX_UI_ORIGINS.split(',')
-        .map(origin => origin.trim())
-        .filter(Boolean)
-    : target.uiOrigins
-
   return {
     ...target,
     apiBaseUrl: env.VITE_API_BASE_URL || target.apiBaseUrl,
@@ -139,8 +145,21 @@ export function applyOverrides(
     clerkPublishableKey:
       env.VITE_CLERK_PUBLISHABLE_KEY || target.clerkPublishableKey,
     clerkSyncHost: env.VITE_CLERK_SYNC_HOST || target.clerkSyncHost,
-    uiOrigins,
+    uiOrigins: originList(env.VITE_ENX_UI_ORIGINS) ?? target.uiOrigins,
+    contentScriptOrigins:
+      originList(env.VITE_CONTENT_SCRIPT_ORIGINS) ??
+      target.contentScriptOrigins,
   }
+}
+
+// A comma-separated override, or undefined when unset or empty.
+function originList(value: string | undefined): string[] | undefined {
+  return value
+    ? value
+        .split(',')
+        .map(origin => origin.trim())
+        .filter(Boolean)
+    : undefined
 }
 
 /**
@@ -168,6 +187,7 @@ export function stampedEnv(target: Target): Record<string, string> {
     VITE_CLERK_PUBLISHABLE_KEY: target.clerkPublishableKey,
     VITE_CLERK_SYNC_HOST: target.clerkSyncHost,
     VITE_ENX_UI_ORIGINS: target.uiOrigins.join(','),
+    VITE_RSSX_ORIGINS: target.rssxOrigins.join(','),
   }
 }
 

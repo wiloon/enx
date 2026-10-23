@@ -12,10 +12,20 @@
 // `URL` (from a Navigation API destination) satisfy it.
 export type PageLocation = Pick<Location, 'host' | 'hostname' | 'pathname'>
 
+/**
+ * The selected build target's own sites (targets.ts `uiOrigins` /
+ * `rssxOrigins`), handed in by the content script: this module never reads
+ * the build config, so a build recognises only the sites it declares (#231).
+ */
+export interface SiteOrigins {
+  uiOrigins: string[]
+  rssxOrigins: string[]
+}
+
 export interface SiteAdapter {
   name: string
   /** Host-level match against the page location. */
-  matches: (location: PageLocation) => boolean
+  matches: (location: PageLocation, origins: SiteOrigins) => boolean
   /**
    * Page-level gate evaluated after `matches` succeeds. Returns a user-facing
    * string when this specific page is out of scope (e.g. an X timeline or
@@ -162,24 +172,30 @@ const X_ADAPTER: SiteAdapter = {
 // /rephrase, /billing, ...) load the content script too (the manifest
 // whitelists the whole origin) but are not meant to be read here.
 
-// Matched against `host`, so the port counts: dev enx-ui is localhost:3000,
-// and other localhost servers (e.g. the E2E fixture pages on :8765) are
-// ordinary sites, not the Reader.
-const ENX_UI_HOSTS = new Set([
-  'localhost:3000',
-  'enx.wiloon.lab',
-  'enx.wiloon.com',
-  'catglish.com',
-])
+// Matched exactly against `host`, so the port counts: dev enx-ui is
+// localhost:3000, and other localhost servers (e.g. the E2E fixture pages on
+// :8765) are ordinary sites, not the Reader.
+function isHostOf(location: PageLocation, origins: string[]): boolean {
+  return origins.some(origin => {
+    try {
+      return new URL(origin).host === location.host
+    } catch {
+      return false
+    }
+  })
+}
 
-/** True when the page is served by enx-ui (dev, homelab, or prod). */
-export function isEnxUiHost(location: PageLocation): boolean {
-  return ENX_UI_HOSTS.has(location.host)
+/** True when the page is served by one of this build's enx-ui origins. */
+export function isEnxUiHost(
+  location: PageLocation,
+  uiOrigins: string[]
+): boolean {
+  return isHostOf(location, uiOrigins)
 }
 
 const READER_ADAPTER: SiteAdapter = {
   name: 'reader',
-  matches: isEnxUiHost,
+  matches: (location, origins) => isEnxUiHost(location, origins.uiOrigins),
   // /welcome embeds the sample article (ADR-047 Decision 5).
   pageSupport: location =>
     location.pathname === '/reader' ||
@@ -201,11 +217,9 @@ const READER_ADAPTER: SiteAdapter = {
 // (title + Feed body) -- and only while one is open; the feed and article
 // columns are <section>s. So plain semantic HTML is the whole contract.
 
-const RSSX_HOSTS = new Set(['rssx-lab.wiloon.com'])
-
 const RSSX_ADAPTER: SiteAdapter = {
   name: 'rssx',
-  matches: location => RSSX_HOSTS.has(location.host),
+  matches: (location, origins) => isHostOf(location, origins.rssxOrigins),
   contentSelector: 'article',
   // A Feed may carry only a title and a one-line summary.
   minTextLength: 1,
@@ -239,6 +253,12 @@ const ADAPTERS: SiteAdapter[] = [
   WIKIPEDIA_ADAPTER,
 ]
 
-export function resolveSiteAdapter(location: PageLocation): SiteAdapter {
-  return ADAPTERS.find(adapter => adapter.matches(location)) ?? DEFAULT_ADAPTER
+export function resolveSiteAdapter(
+  location: PageLocation,
+  origins: SiteOrigins
+): SiteAdapter {
+  return (
+    ADAPTERS.find(adapter => adapter.matches(location, origins)) ??
+    DEFAULT_ADAPTER
+  )
 }

@@ -8,7 +8,7 @@
     "build:homelab": "pnpm build",
     "build:dev": "tsc -p tsconfig.app.json && vite build --mode development",
     "build:prod": "tsc -p tsconfig.app.json && vite build --mode production",
-    "build:e2e": "tsc -p tsconfig.app.json && VITE_ENX_UI_ORIGINS=http://localhost:3000,http://localhost:8765 vite build --mode development --outDir dist-e2e",
+    "build:e2e": "tsc -p tsconfig.app.json && VITE_ENX_UI_ORIGINS=http://localhost:3000 VITE_CONTENT_SCRIPT_ORIGINS=http://localhost:8765 vite build --mode development --outDir dist-e2e",
     "package:prod": "node scripts/version.mjs --release && pnpm build:prod && node scripts/package-prod.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.app.json",

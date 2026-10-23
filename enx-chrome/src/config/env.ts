@@ -18,8 +18,11 @@ export interface EnvConfig {
   // extension" works without a second sign-in.
   clerkPublishableKey: string
   clerkSyncHost: string
-  // Origins allowed on the web -> extension channel (ADR-019).
+  // enx-ui origins: the web -> extension channel (ADR-019), the Reader
+  // adapter and the data-enx-* stamps.
   uiOrigins: string[]
+  // RSSX Reader origins (ADR-033) that get the RSSX site adapter.
+  rssxOrigins: string[]
   // An article body with more Chinese characters than this is not processed.
   hanCharLimit: number
   environment: TargetName
@@ -51,6 +54,7 @@ export const config: EnvConfig = {
   clerkPublishableKey: stamped('VITE_CLERK_PUBLISHABLE_KEY'),
   clerkSyncHost: stamped('VITE_CLERK_SYNC_HOST'),
   uiOrigins: stamped('VITE_ENX_UI_ORIGINS').split(',').filter(Boolean),
+  rssxOrigins: stamped('VITE_RSSX_ORIGINS').split(',').filter(Boolean),
   hanCharLimit: parseHanCharLimit(readBuildEnv('VITE_HAN_CHAR_LIMIT')),
   environment,
   buildCommit: readBuildEnv('VITE_BUILD_COMMIT'),

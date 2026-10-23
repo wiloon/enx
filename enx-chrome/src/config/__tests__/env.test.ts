@@ -80,6 +80,14 @@ describe('build target', () => {
     })
   })
 
+  it.each([
+    ['homelab', ['https://rssx-lab.wiloon.com']],
+    ['development', ['https://rssx-lab.wiloon.com']],
+    ['production', []],
+  ])('carries the RSSX origins of the %s build only', (mode, rssxOrigins) => {
+    expect(loadEnv({ MODE: mode }).config.rssxOrigins).toEqual(rssxOrigins)
+  })
+
   it('falls back to the homelab target for an unknown mode', () => {
     expect(loadEnv({ MODE: 'nonsense' }).config.environment).toBe('homelab')
   })
