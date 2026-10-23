@@ -133,7 +133,12 @@ func (c Clerk) issuerHostname() string {
 // instance: a hostname outside clerk.accounts.dev. An empty or malformed
 // issuer is not production.
 func (c Clerk) IsProductionInstance() bool {
-	host := c.issuerHostname()
+	return isProductionHost(c.issuerHostname())
+}
+
+// isProductionHost reports whether an issuer hostname, as issuerHostname
+// returns it, belongs to a Clerk production instance.
+func isProductionHost(host string) bool {
 	return host != "" && host != clerkDevDomain && !strings.HasSuffix(host, "."+clerkDevDomain)
 }
 
@@ -148,21 +153,24 @@ func (c Clerk) validate() []error {
 
 	key := c.SecretKey.Reveal()
 	const live, test = "sk_live_", "sk_test_"
+	production := isProductionHost(host)
 	switch {
 	case key == "":
-		if c.IsProductionInstance() {
+		if production {
 			errs = append(errs, errors.New("config: clerk.secret-key (CLERK_SECRET_KEY) is required with a production clerk.issuer"))
 		}
 	case strings.TrimSpace(key) != key:
 		errs = append(errs, errors.New("config: clerk.secret-key has leading or trailing whitespace"))
 	case !strings.HasPrefix(key, live) && !strings.HasPrefix(key, test):
 		errs = append(errs, errors.New("config: clerk.secret-key does not start with sk_live_ or sk_test_"))
+	case key == live || key == test:
+		errs = append(errs, errors.New("config: clerk.secret-key has nothing after its prefix"))
 	case host == "":
 		// No issuer to take an instance type from.
-	case c.IsProductionInstance() && !strings.HasPrefix(key, live):
-		errs = append(errs, errors.New("config: clerk.secret-key is a sk_test_ key but clerk.issuer is a production instance; want sk_live_"))
-	case !c.IsProductionInstance() && !strings.HasPrefix(key, test):
-		errs = append(errs, errors.New("config: clerk.secret-key is a sk_live_ key but clerk.issuer is a development instance; want sk_test_"))
+	case production && !strings.HasPrefix(key, live):
+		errs = append(errs, errors.New("config: clerk.secret-key is an sk_test_ key but clerk.issuer is a production instance; want sk_live_"))
+	case !production && !strings.HasPrefix(key, test):
+		errs = append(errs, errors.New("config: clerk.secret-key is an sk_live_ key but clerk.issuer is a development instance; want sk_test_"))
 	}
 	return errs
 }
