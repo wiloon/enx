@@ -179,7 +179,7 @@ _Avoid_: 推荐人、上线 / 下线、inviter
 _Avoid_: 绑定、兑换（像是兑换码）
 
 **冷静期 / 作废（cooling-off / forfeited）**：
-冷静期是被邀请人第一笔付款之后、邀请人奖励发放之前的等待时间。冷静期结束时这笔付款有退款或争议，奖励就作废，不再发放。作废是奖励的状态，不是扣回：奖励从未发出过。见 adr-051。
+The cooling-off period is the wait between the invitee’s first payment and the referrer’s reward. An unpaid reward is forfeited if the payment is refunded or disputed, or the referrer’s local user identity has been deleted. Forfeiture is a reward state: the reward is not paid. It differs from clawback of credits already granted. See adr-051 and adr-062.
 _Avoid_: 扣回、clawback（那是 adr-049 对已发放积分的操作）
 
 ### 移动端（enx-ios，Phase 1）

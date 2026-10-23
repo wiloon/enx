@@ -50,9 +50,11 @@ adr-048 给每个新账号 100 试用积分、7 天过期。我们想借用户�
      - 第一笔是**订阅**：`referrer-reward-subscription`（默认 300）。
      - 第一笔是**充值**：`floor(first_payment_credits × referrer-reward-topup-percent / 100)`，默认 20%，例如小档 300 积分 → 60。
    - **发放**：enx-api 进程内的每小时任务（与现有 `runReaderCleanup` 等同样的 ticker 写法：启动时跑一次，之后每小时一次）找出 `reward_due_at <= now` 且还没处理的行，逐行：
-     1. `first_payment_intent_id` 为空时，用 `first_payment_invoice_id` 向 Stripe 查出 payment intent 并写回这一行。查不到就跳过这行，下个小时重试。
-     2. 向 Stripe 查这笔 payment intent 的 charge。只要有退款（`amount_refunded > 0`）或争议（dispute），就把这行标记为 `forfeited`（作废，不发奖励），原因写进行里。
-     3. 否则调用新函数 `credit.GrantReferralReward(ctx, referrerID, reward_amount, "referral-reward:<inviteeID>")`：进 top-up 池，流水类型是新的 `GRANT_REFERRAL_REWARD`，在流水上和用户自己买的 top-up 区分开；行标记为 `rewarded`，记下 `rewarded_at`。
+     1. 先检查邀请人的本地用户身份是否仍存在；已注销则标记为 `forfeited`，原因为 `referrer_deleted`，不查询 Stripe、不发积分（adr-062 第 1 条）。查询失败保持 pending，下次重试。禁用不等于注销，本条不改变禁用账号的既有发奖行为。
+     2. `first_payment_intent_id` 为空时，用 `first_payment_invoice_id` 向 Stripe 查出 payment intent 并写回这一行。查不到就跳过这行，下个小时重试。
+     3. 向 Stripe 查这笔 payment intent 的 charge。只要有退款（`amount_refunded > 0`）或争议（dispute），就把这行标记为 `forfeited`（作废，不发奖励），原因写进行里。
+     4. 否则调用新函数 `credit.GrantReferralReward(ctx, referrerID, reward_amount, "referral-reward:<inviteeID>")`：进 top-up 池，流水类型是新的 `GRANT_REFERRAL_REWARD`，在流水上和用户自己买的 top-up 区分开；行标记为 `rewarded`，记下 `rewarded_at`。
+        - 发放函数必须在账本事务内、创建余额行之前再次检查 `users` 行；首次发放时用户已不存在则返回明确的「用户不存在」结果，由 referral 领域服务将奖励作废为 `referrer_deleted`。适配器把账本结果转换为领域结果，领域核心不依赖账本包。检查与入账必须和本地删除事务串行化，不能仅依赖事务外的预检查；数据库错误保持 pending 并重试。若发放先提交，随后删除会清除余额；若删除先提交，发放不得重建余额或写入新的奖励流水。已处理幂等键仍不重复发放，保留的历史流水不改写。
         - **不用 `GrantTopup`**：它写的类型是 `GRANT_TOPUP`。
         - **这条流水的 `stripe_payment_intent_id` 必须留空**：adr-049 的 `Clawback` 按 payment intent 找发放行。如果奖励行也带着被邀请人那笔付款的 payment intent，被邀请人以后退款时，扣回可能落到邀请人身上。
      - 幂等键保证任务重跑、多实例同时跑都不会重复发；Stripe 查询失败就跳过这行，下个小时重试。
@@ -100,6 +102,7 @@ adr-048 给每个新账号 100 试用积分、7 天过期。我们想借用户�
 - 到期发奖：
   - 未到 `reward_due_at` 不发；
   - 到期且无退款、无争议 → 邀请人 top-up 增加，流水类型是 `GRANT_REFERRAL_REWARD`，`stripe_payment_intent_id` 为空；
+  - 邀请人已注销 → `forfeited`，原因为 `referrer_deleted`，不查询 Stripe、不发放；预检查后注销也不能由账本重建余额；
   - 有部分或全额退款、或有争议 → `forfeited`，不发；
   - payment intent 为空 → 用 invoice id 补查后照常判断；补查失败 → 这行保持待处理，下次重试；
   - Stripe 查询失败 → 这行保持待处理，下次重试；
@@ -128,3 +131,5 @@ adr-048 给每个新账号 100 试用积分、7 天过期。我们想借用户�
 ## 修订记录
 
 - 2026-10-22（#291）：明确认领期间落地页事件与登录触发的串行补跑、同码重开和停止条件，修复既有触发被丢弃的规格缺口；保持最终答复清码、未决保留及认领资格与奖励规则不变。
+
+- 2026-10-22（#245）：补齐已注销邀请人的待发奖励作废规则，明确先检查身份、账本事务内复查及并发删除的串行化约束，避免注销后重建余额；不改变禁用账号的既有行为。
