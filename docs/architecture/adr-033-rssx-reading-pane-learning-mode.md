@@ -18,7 +18,7 @@ adr-019 的 `externally_connectable` 是唯一的「网页→扩展」通道，�
 
 ## Decision
 
-在 RSSX 这个 host 上：
+在所选构建 target 的 `rssxOrigins` 声明的 RSSX host 上（按 URL 的 `.host` 匹配，保留端口）：
 
 - 内容脚本把安装态写到页面上，包括 Catglish 是否已登录。Reader 用它显示三种状态：未安装、已安装未登录、可用。不走 `enx:ping`。
 - 阅读区里有一篇打开的 Article 时，扩展自己启用学习模式；这篇被换掉时再跑一次。
@@ -35,7 +35,7 @@ adr-019 的 `externally_connectable` 是唯一的「网页→扩展」通道，�
 
 ## Consequences
 
-- 内容脚本的 match 必须是真正提供 Reader 的源。今天是 `rssx-lab.wiloon.com`。host 变了，match 要在同一次改动里跟上。
+- `rssxOrigins` 同时生成内容脚本 matches 和构建期适配器识别配置；通用 `contentScriptOrigins` 仅控制注入，不代表 RSSX。development / homelab 声明 `https://rssx-lab.wiloon.com`，production / test 为空。production 在该 host 上走普通站点处理，用户仍可按普通站点规则授予权限。host 变了，修改对应 target 即可让注入与识别一起更新。
 - 换一篇 Article 必须重跑学习模式，否则新正文没有点击查词，或上一次包好的词被 Vue 重绘清掉。
 - 查词仍走 Catglish 的登录态和查词配额。这里不新增词典，也不新增计费路径。
 
@@ -46,3 +46,7 @@ adr-019 的 `externally_connectable` 是唯一的「网页→扩展」通道，�
 - 首次启用也先等正文（最长 8 秒）：页面加载完时 RSSX 还在请求文章。
 - adr-039 自动启用在 SPA 站点上首轮没找到文章时不回滚，继续监听导航；只有 `session-expired` 仍然回滚。
 - 学习模式由用户在 RSSX 上授予的「Always enable on this site」触发；安装态写到页面上那部分尚未实现。
+
+## 修订记录
+
+- 2026-10-23（#231）：落实 owner 的按构建环境隔离站点适配决定，以专用 `rssxOrigins` 同源生成注入与 RSSX 识别，避免把 E2E fixture 等通用注入站点误认作 RSSX；不扩展网页消息通道或 RSSX 安装态实现范围。

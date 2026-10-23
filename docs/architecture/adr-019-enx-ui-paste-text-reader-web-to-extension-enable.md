@@ -124,8 +124,8 @@
 
 ### 3. enx-chrome：manifest
 
-- `content_scripts.matches` 增加 enx-ui 的 origin：`http://localhost:3000/*`、`https://enx.wiloon.lab/*`、`https://enx.wiloon.com/*`（最终品牌域待 LAUNCH-CHECKLIST §0.1 敲定后补）。
-- 新增顶层 `externally_connectable`，`matches` **只**列上面这几个确切 origin——**不用** `*://*/*`。
+- `content_scripts.matches` 与 `externally_connectable.matches` 均从所选构建 target 的 `uiOrigins` 生成确切 origin patterns。production 为 `https://catglish.com`，homelab 为 `http://localhost:3000` 与 `https://enx.wiloon.lab`，development / test 为 `http://localhost:3000`。未声明的旧域名 `enx.wiloon.com` 不保留。
+- `externally_connectable` 只含该 target 的 UI origins；RSSX 与通用内容脚本注入源不进入这个通道。
 
 ### 4. enx-chrome：background 新增 `chrome.runtime.onMessageExternal` 处理器
 
@@ -153,7 +153,7 @@ onMessageExternal(message, sender, sendResponse):
 
 `src/lib/siteAdapters.ts` 的 `ADAPTERS` 数组（在 `X_ADAPTER` 旁）：
 
-- `matches`: `location.hostname` ∈ enx-ui host 集合。
+- `matches`: `location.host` ∈ 所选 target 的 `uiOrigins` 经 URL 解析所得 `.host` 集合，保留端口区别；同一输入也控制 `data-enx-extension` 与 `data-enx-learning` 标记。站点识别通过参数或工厂接收配置，领域模块不导入运行时环境配置。
 - `pageSupport`: `location.pathname` 以 `/reader` 开头 → `null`（支持）；否则返回英文提示串（enx-ui 的 `/lookup`、`/rephrase`、`/billing` 等页不是给扩展读的，content script 会注入但 `enxRun` 到这里被挡下）。
 - `contentSelector: '#enx-reader-article'`、`minTextLength: 1`、`contentVolatility: 'static'`、`showProcessingIndicator: false`（adr-046 已删除该字段）、`clickBinding: 'bubble'`。
 
@@ -208,3 +208,7 @@ onMessageExternal(message, sender, sendResponse):
 - **深链探测 / 精确到「装了但被禁用」「装了旧版本要升级」的分级引导**——本次只分「装了 / 没装」两态。
 - **`content.tsx` 浮层逻辑抽共享包**——只有真要做 A2 时才值得。
 - **生产品牌域名决策**（LAUNCH-CHECKLIST §0.1，独立阻塞项）。
+
+## 修订记录
+
+- 2026-10-23（#231）：落实 owner 的单一构建目标决定，将 Reader 识别、安装态/学习模式标记与 manifest 的 UI 源统一到所选 `uiOrigins`，保留端口区别并移除未声明的旧域名；其他 Reader 页面规则不变。
