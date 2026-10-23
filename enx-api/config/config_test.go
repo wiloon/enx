@@ -249,7 +249,7 @@ var envVars = map[string]string{
 // TestEnvVarsPopulateTheirFields sets each env var to a value no default has
 // and checks it reaches its field. 7 is a valid port; the lookup event
 // retention, the other int with a range rule, gets 42. The Clerk issuer must
-// be a URL and the secret key needs an sk_test_ prefix to match it.
+// be a URL and the secret key needs a known (sk_test_) prefix.
 func TestEnvVarsPopulateTheirFields(t *testing.T) {
 	for env, key := range envVars {
 		t.Run(env, func(t *testing.T) {

@@ -115,6 +115,21 @@ func TestValidateRejectsAKeyWithAnUnknownPrefix(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsAKeyWithNothingAfterItsPrefix(t *testing.T) {
+	for _, issuer := range []string{devIssuer, prodIssuer, ""} {
+		for _, key := range []Secret{"sk_live_", "sk_test_"} {
+			err := validateClerk(issuer, key)
+			if err == nil {
+				t.Errorf("issuer %q, key %q: Validate() = nil, want an error", issuer, key.Reveal())
+				continue
+			}
+			if !strings.Contains(err.Error(), "clerk.secret-key has nothing after its prefix") {
+				t.Errorf("issuer %q, key %q: error = %v, want it to say clerk.secret-key has nothing after its prefix", issuer, key.Reveal(), err)
+			}
+		}
+	}
+}
+
 func TestValidateAcceptsMatchingClerkSettings(t *testing.T) {
 	cases := []struct {
 		name   string
