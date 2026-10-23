@@ -14,7 +14,6 @@
 | UI 组件  | [Radix UI](https://www.radix-ui.com)                                       | -      |
 | 状态管理 | [Jotai](https://jotai.org)                                                 | ^2     |
 | 数据请求 | [TanStack Query](https://tanstack.com/query)                               | ^5     |
-| 表单     | [React Hook Form](https://react-hook-form.com) + [Zod](https://zod.dev)    | -      |
 | 图标     | [Lucide React](https://lucide.dev)                                         | -      |
 | 错误监控 | [Sentry](https://sentry.io)                                                | ^9     |
 | 测试     | [Jest](https://jestjs.io) + [Testing Library](https://testing-library.com) | -      |
