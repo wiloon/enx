@@ -30,6 +30,12 @@ jobs:
     name: Lint, test and build
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # The committed .npmrc points at the homelab Nexus, which GitHub runners
+    # can't reach. Set as env, not --registry: pnpm 12's launcher downloads
+    # its platform binary from the .npmrc registry before it reads the flags.
+    env:
+      npm_config_registry: https://registry.npmjs.org/
+      pnpm_config_registry: https://registry.npmjs.org/
     defaults:
       run:
         working-directory: enx-chrome
@@ -43,10 +49,8 @@ jobs:
       - name: Enable pnpm (corepack, packageManager in package.json)
         run: corepack enable
 
-      # The committed .npmrc points at the homelab Nexus, which GitHub runners
-      # can't reach.
       - name: Install
-        run: pnpm install --frozen-lockfile --registry=https://registry.npmjs.org/
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
         run: pnpm lint
