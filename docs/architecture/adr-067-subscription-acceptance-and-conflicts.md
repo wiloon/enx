@@ -48,7 +48,9 @@ worker 的可调正 duration 默认值在 #297 明确为 `stripe.webhook.poll-in
 - Stripe 权威确认升级到期/丢弃且原 invoice 已 void、未付款及未应用时，分别以 expired/voided 结束，保留原有效档位/积分。选择当前有效档位撤销降档或 Stripe 外部 release 排期时，核实排期解除且未应用目标档位后记 canceled，清除未来降档展示；不据 release 事件撤回已生效降档。subscription 实际结束、未执行的改档已不能应用时记 superseded；schedule.canceled 通常同时结束订阅，必须核实生命周期，不能只当撤销排期。外部更新丢弃原升级同样核实原 invoice/操作；未经 ENX 授权的新 price 仍按未授权改档隔离，不能借结束旧操作接受新权益。
 - worker 明确支持 customer.subscription.pending_update_applied、customer.subscription.pending_update_expired、invoice.voided、subscription_schedule.updated/released/canceled/completed/aborted，结合既有 customer.subscription.updated/deleted、invoice.paid/payment_failed 处理，不能把这些当 ignored。按版本解释并由持久 invoice/schedule/subscription 关联到操作；未知归属先恢复依赖，超期转可靠人工告警。
 - 启动及每次既有 5s poll 批量领取到期的非终态改档操作，另存 next_attempt、attempts/error 与带 fencing token 的 lease，复用既有超时和 5s–15m 退避；即使无 webhook 也读取当前 subscription、原 invoice、schedule 恢复。改档资格请求先核实已有操作，Stripe I/O 后按 billing/operation revision 条件提交；并发/乱序事件不能重开终态或影响后来的操作。expires_at 是核实时点，不是仅凭本地时钟清锁或自动重发升级的授权。查询失败持续重试；无法证明付款/应用/作废结果时保留阻断并在既有依赖期限后可靠告警，不能猜测无付款。已确认终态立即释放普通 pending 阻断；删除、冲突、期末取消及健康状态检查仍有效。
-- #297 round 5 待所有者确认：未付款升级是否增加立即取消动作（通过原操作 invoice void），或只提供付款/等待 Stripe expires_at 的指引。本段不授权新增 void endpoint，也不把「取消」默认为仅等待；所有者 round 4 的重叠规则保持，具体用户动作待答复。
+- 所有者 #297 round 5 已选择 B：提供认证的「Cancel pending upgrade」自助动作和 /billing 控件，立即取消本人持久操作关联的未付款升级，不等待到期、不要求管理员。服务端从当前本地用户所属操作解析原 invoice 及 account/mode，不接受任意 invoice ID 作为授权；未认证或他人操作不产生 Stripe 修改。此动作恢复现有操作，不受该操作自身 pending 锁的 409 阻断，也不取消底层订阅。
+- Stripe I/O 前持久保存取消意图、原操作/invoice、稳定 void 幂等键及恢复进度，与 billing/operation revision 和 fencing claim 协调。先核实 invoice 付款与订阅应用状态，再仅对该已定稿未付款 invoice 请求 void；预读不能消除付款竞态。void 成功、错误或超时后均核实权威结果并条件提交。若付款/应用获胜，按既有支付确认规则完成一次升级效果，返回实际状态，不报告取消成功、不退款或撤回权益、不另选 invoice；不明确结果保持 reconciling，重试并按既有期限可靠告警。
+- 只有确认原 invoice 已 void、未付款、对应更新已丢弃且未应用，才记 canceled、reason user_requested，并与解除 pending 锁同事务提交；Subscription ID、原有效档位、余额和到期不变，不补积分，其他资格满足即可立即再次改档。重复请求返回原操作结果；已取消/到期/作废操作不影响后来的操作。仅收到请求或本地取消标志不能解锁。启动/轮询和 invoice/subscription 事件恢复 void 前后及本地提交前的崩溃，不依赖重投；自动到期仍作兜底。/billing 与 409 指引提供付款及取消入口并显示真实进度/结果；完整改档切片包含此能力后才开放升级。
 
 ## Portal 边界与发票分类
 
@@ -111,7 +113,9 @@ ADR-064 会在 main 合并后自动部署。#297 的 characterization/fixture �
 
 - 2026-10-23（#297 round 4）：封闭 Portal 绕过服务端改档规则的入口，明确未授权 price 与 invoice 分类/line 来源；落实所有者重叠请求、撤销降档与期末取消规则，防止未付款改档及重复整期发放。cutover 已须实施 Portal 边界和未知改档隔离，不能等待后续改档 PR。
 
-- 2026-10-23（#297 round 5）：补齐改档终态、所需事件及无 webhook 的定期核实，避免失效操作永久阻断；按既有撤销降档决定说明 schedule release 后再 Portal 取消/注销的路径。未付款升级的立即取消动作仍交所有者确认。
+- 2026-10-23（#297 round 5）：补齐改档终态、所需事件及无 webhook 的定期核实，避免失效操作永久阻断；按既有撤销降档决定说明 schedule release 后再 Portal 取消/注销的路径。当时未决的未付款升级立即取消动作由下条所有者答复确定。
+
+- 2026-10-23（#297 round 5 所有者答复）：所有者选择 B，授权认证自助取消未付款升级；补齐持久取消意图、原 invoice void、付款竞态与崩溃恢复及确认后解锁，替换未决 A/B 选择，保持原订阅和积分规则。
 
 ## 参考
 
@@ -119,3 +123,5 @@ ADR-064 会在 main 合并后自动部署。#297 的 characterization/fixture �
 - [Stripe metadata 传递规则](https://docs.stripe.com/metadata#set-metadata-indirectly)
 - [Stripe 支付确认后应用改档](https://docs.stripe.com/billing/subscriptions/pending-updates)
 - [Stripe Portal 的 subscription schedule 限制](https://docs.stripe.com/customer-management#limitations)
+
+- [Stripe invoice void API](https://docs.stripe.com/api/invoices/void)
