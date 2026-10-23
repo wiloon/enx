@@ -66,11 +66,13 @@ enx 目前完全免费：`words`/ECDICT 词典查询和 `aitranslate` 包下的�
 2. **充值**（一次性购买积分）：Stripe Checkout，`mode=payment`，metadata 标记为充值订单以区分订阅 Checkout。
 3. **订阅/充值状态以 Stripe webhook 为准**，不依赖前端跳转回调。2026-10-23 按 [ADR-067](adr-067-subscription-acceptance-and-conflicts.md) 修订为验签后持久保存每次 delivery 和唯一 event，提交后确认 `2xx`，业务由数据库 worker 异步、幂等、可恢复地执行；关联暂缺进入等待重试。下列是业务处理职责，不是 HTTP 接收内同步完成的顺序：
    - `checkout.session.completed` → 建立/更新 `users.id` ↔ `stripe_customer_id` 映射；如果是充值订单，加充值积分
-   - `invoice.paid`（首次订阅与续费）→ 对已接受订阅发放对应周期的 `subscription_balance`（不结转）；冲突订阅不发积分，迟到旧事件不能回退当前周期，见 ADR-067。
+   - `invoice.paid`（首次订阅与续费）→ 对当前接受订阅的新周期发放 `subscription_balance`（不结转），保存订阅/周期/invoice 入池来源；迟到历史/旧周期记录购得积分及 PaymentIntent、实际入池 0，不能覆盖当前池。升级 proration invoice 只按下条补差额，不能整期发放；冲突订阅不发积分，见 ADR-067。
    - `customer.subscription.updated` / `customer.subscription.deleted` → 更新订阅状态
    - `invoice.payment_failed` → 标记逾期
    - Webhook endpoint（`POST /billing/webhook`，具体路由见 TASK-SPEC）**不挂用户登录认证中间件**，靠 Stripe 签名密钥验证；密钥走环境变量（`STRIPE_WEBHOOK_SECRET`），遵循现有 `KIMI_API_KEY` 之类密钥不进 `config.toml` 的惯例
    - Stripe Customer 归属独立保存，`subscriptions` 以 Subscription ID 为主键保存全部订阅，`users.accepted_subscription_id` 表示当前接受关系；当前以用户为主键且兼存仅充值 Customer 的旧表需要保全数据迁移，见 #297。
+   - **所有者 2026-10-23（#297 round 3）补充**：已实际结束的订阅在无阻断冲突时允许任意已提供档位重新购买并自动接受新 ID；健康 active 订阅升降档保留同一 ID，不取消重买，同档不重复购买。升档差额支付成功才启用高档，并一次补 `floor((新档每期积分 - 旧档每期积分) × 原周期剩余比例)`，余额及到期不变；失败维持原档/积分。降档下期才改档及发新档正常积分。改档操作及付款/周期来源持久幂等恢复，详见 ADR-067。
+   - open 或仍可计费的 conflict 阻止新购买，即使 accepted 已结束；服务器先查资格并给 billing support 入口，独立可靠通知管理员，不依赖用户反馈。保留 ADR-066 的内测付款配置，本次不启用额外付费流量。
 4. **AI 调用计费**（采用 B1）：`TranslateSentence`、`TranslateWordInContext` 各定一个固定积分成本，具体数值待产品侧定价决策（不在本 ADR 内确定）。未来若加输入量级差异大的功能（比如整段翻译），单独为该功能定更高固定档位，不升级到 token 计费。
 5. **积分建模**（采用 D2）：双积分池，扣费用条件更新保证正确性：
    ```sql
@@ -129,3 +131,7 @@ enx 目前完全免费：`words`/ECDICT 词典查询和 `aitranslate` 包下的�
 ## References
 
 - `enx-monetization.md`（私有仓库 w10n-config 内，不公开链接；本 ADR 之前的完整设计讨论记录，含定价数字草案）
+
+## 修订记录
+
+- 2026-10-23（#297 round 3）：落实所有者正常重购、同订阅升降档及补差额规则；明确正常周期与 proration 发放分流及周期来源，避免乱序付款重置当前余额。
