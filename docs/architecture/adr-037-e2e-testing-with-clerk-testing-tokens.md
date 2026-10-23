@@ -47,7 +47,7 @@ Clerk 官方给 E2E 的方案是 `@clerk/testing`：`clerkSetup()` 在全局 set
 
 ## Decision
 
-1. **扩展的 E2E 构建变体 `dist-e2e`。** `pnpm build:e2e` = `development` target（API `localhost:8090`，`syncHost`/enx-ui `localhost:3000`），外加用 `VITE_ENX_UI_ORIGINS` 把 fixture 服务器 `http://localhost:8765` 并入 UI origins，使内容脚本常驻注入测试页。**这是对 `uiOrigins` 语义的有意借用**：8765 同时拿到了 `externally_connectable` 和 host permission，只在这个测试构建里成立，任何发布构建都不带。`fixtures.ts` 改为加载 `dist-e2e`，缺失时报错提示先构建，而不是悄悄加载别的目录。
+1. **扩展的 E2E 构建变体 `dist-e2e`。** `pnpm build:e2e` = `development` target，API 经本地测试配置指向 `localhost:8090`，`syncHost`/enx-ui 为 `localhost:3000`。设置 `VITE_ENX_UI_ORIGINS=http://localhost:3000`，另用构建期 `VITE_CONTENT_SCRIPT_ORIGINS=http://localhost:8765` 把 fixture 服务器加入通用 `contentScriptOrigins`，使内容脚本常驻注入测试页。8765 是普通站点，不是 Reader 或 RSSX：不加入 `uiOrigins`、`rssxOrigins` 或 `externally_connectable`，也不写 enx-ui 的安装态与学习模式标记。保留现有权限策略，不为 fixture 增加独立的 host permission。这个测试构建参数不进入发布产物。`fixtures.ts` 加载 `dist-e2e`，缺失时报错提示先构建，而不是悄悄加载别的目录。
 2. **Playwright 起本地三件套，永不指向 homelab。** enx-api 用每次运行独立的临时 `DB_PATH`（不复用开发机的 `/var/lib/enx-api/enx.db`），Clerk issuer / `azp` 允许列表沿用 `config.toml` 默认值（已含 `http://localhost:3000` 和扩展 ID `chrome-extension://combdcldlodkikjfhjbdbogjlfmnbjkf`）。enx-ui 只在提供了登录凭据时才启动（它自己也需要 `CLERK_SECRET_KEY`），`API_BASE_URL` 指向本地 enx-api。
 3. **登录走 `@clerk/testing`，按用例登录。** 全局 setup project 调 `clerkSetup()`；需要登录的用例通过 `signedIn` fixture：在 `localhost:3000` 上 `clerk.signIn({ page, emailAddress: E2E_CLERK_USER_EMAIL })`，再轮询扩展后台的 `validateSession`，直到扩展确认已同步到会话。不用 `storageState` 复用登录态：扩展测试用的是 `launchPersistentContext`（加载扩展的唯一方式），每条用例一个全新临时 profile；ticket 登录只需一次 Backend API 调用，按用例登录的代价可以接受，换来用例之间零共享状态。
 4. **缺凭据时显式 skip，不假装通过。** 需要登录的用例在 `CLERK_SECRET_KEY` 或 `E2E_CLERK_USER_EMAIL` 缺失时 `test.skip` 并写明原因；不需要登录的用例（options 页、未登录 popup）任何环境都能跑。测试用户用 Clerk 测试邮箱格式（`xxx+clerk_test@...`，验证码固定 `424242`），只建在 dev 实例。密钥只从环境变量读，不进仓库、不进 `.env` 模板以外的任何文件。
@@ -64,3 +64,7 @@ Clerk 官方给 E2E 的方案是 `@clerk/testing`：`clerkSetup()` 在全局 set
 - 不需要登录的用例：本地可跑（`pnpm build:e2e && pnpm test:e2e`）。
 - 需要登录的用例：`CLERK_SECRET_KEY=sk_test_... E2E_CLERK_USER_EMAIL=e2e+clerk_test@example.com pnpm test:e2e`。首次需在 Clerk dashboard（dev 实例 rational-deer-4450）建这个用户。
 - **enx-ui 也用同一套（2026-09-28）**：`enx-ui/e2e/fixtures.ts` 提供同名 `signedIn` fixture（`clerkSetup()` 按 worker 取 Testing Token，`clerk.signIn()` 在 `/` 上登录，不涉及扩展同步），`billing.spec.ts` 所有用例先登录、账单 API 仍用 `page.route` 桩掉；缺凭据时整份 skip。运行：`set -a; . ./.env.local; set +a; E2E_CLERK_USER_EMAIL=e2e+clerk_test@example.com pnpm test:e2e`（`playwright.config.ts` 的 `webServer.env` 会用占位 key 覆盖 `.env.local`，所以必须先 export）。测试用户 `e2e+clerk_test@example.com` 已在 dev 实例建好。
+
+## 修订记录
+
+- 2026-10-23（#231）：依照 owner 已确定的「Reader 识别来自所选 target 的 `uiOrigins`」，把 fixture 注入从借用 UI origins 改为独立的构建期通用注入列表，保持 fixture 普通站点行为与本 ADR 的真实登录测试方案。
