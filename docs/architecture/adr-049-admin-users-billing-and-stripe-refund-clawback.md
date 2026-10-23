@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-10-07
-updated: 2026-10-16（删去历史迁移与回填；新增管理员扣减、订阅退款时取消订阅；跟进 adr-048 / adr-051 / adr-059）
+updated: 2026-10-23（#297：持久处理、当前积分池来源及原订阅退款归属）
 related: adr-009（两池积分账本、Stripe webhook）、adr-021（管理员白名单与 enx-ui 管理页）、adr-032（保存的页面没有管理员路由）、adr-048（试用积分，已实现；`GRANT_TRIAL` 与本 ADR 的流水类型并列）、adr-051（邀请积分，未实现；依赖本 ADR 的管理员扣减）、adr-059（查词事件表，取代 `dictionary_lookup_quota`）
 ---
 
@@ -59,17 +59,17 @@ related: adr-009（两池积分账本、Stripe webhook）、adr-021（管理员�
    - 订阅：`invoice.paid` 的 payload 默认不带 payment intent，由 handler 通过 Stripe 的 invoice payments 接口取当期这张 invoice 的 payment intent，再传给 `GrantSubscription`。拿不到时（比如 0 元 invoice）照常发放，该列留空。
    - **实现时须用 Stripe CLI 的真实事件确认**这两个字段在 stripe-go v86 里的位置。
 7. **扣回规则**：`credit.Clawback(ctx, paymentIntentID, amountRefunded, amountCaptured, stripeEventID)`。
-   - 按 `payment_intent` 找发放行。找不到就**不扣**：记 error 日志，给管理员发邮件（复用 `RESEND_ADMIN_TO`，和 page report 通知走同一个 email 包），通过 ADR-067 的持久人工事项与待发邮件记录处理，不重复扣积分；HTTP 接收已在入库后确认，不能只记日志后丢掉通知。
+   - 按 `payment_intent` 找原发放/升级补差额及其 invoice、订阅与周期。可能早于发放的退款先按 ADR-067 等待依赖，超期或明确无法匹配才转 needs_attention；不从当前用户指针猜。找不到就**不扣**：记 error 日志，给管理员发邮件（复用 `RESEND_ADMIN_TO`，和 page report 通知走同一个 email 包），通过 ADR-067 的持久人工事项与待发邮件记录处理，不重复扣积分；HTTP 接收已在入库后确认，不能只记日志后丢掉通知。
    - 应扣总数 = `floor(发放积分 × amount_refunded ÷ amount_captured)`。`charge.refunded` 里的 `amount_refunded` 是累计值，所以本次扣回 = 应扣总数 − 这条发放行已有扣回行的合计。部分退款多次触发时结果正确，全额退款就是全部扣回。本次扣回**不小于 0**：Stripe 不保证事件顺序，全额退款的事件可能先于更早那次部分退款的事件到达，晚到的那次只能扣 0，不能反过来加回积分。
    - **充值发放**：从 `topup_balance` 扣，可以扣成负数（与 `Settle` 一致）。负余额时 `CanUseAI` 为假，用户以后再充值会先抵掉欠的部分。
-   - **订阅发放**：只有当这条发放行是该用户**最近一条** `GRANT_SUBSCRIPTION` 时，才从 `subscription_balance` 扣，扣到 0 为止。更早周期的积分已经被下一期覆盖，扣回 0，但仍写一行流水留痕。
+   - **订阅发放/升级补差额**：只有原付款实际入池、其 Subscription ID/周期与余额当前来源一致，才从 `subscription_balance` 扣，扣到 0 为止。不能用 created_at/rowid 最新发放代替当前周期。被后期或新订阅覆盖、以及迟到未入池的发放扣回 0，仍写流水留痕；保留购得积分、实际入池及 PaymentIntent 关联。#297 的升级补差额沿用同一比例累计规则，不因此另发整期积分。
    - 新流水类型 **`CLAWBACK`**，`Amount` 为负（与 `SETTLE` 的符号约定一致）。**不复用已有的 `REFUND`**：`REFUND` 的意思是「AI 调用失败，把扣掉的积分还给用户」，方向正好相反。
    - 幂等：`stripe_event_id` 写这次 `charge.refunded` 的 event id，沿用唯一索引，重放无副作用。
    - 余额更新、写流水在同一个事务里。
    - 试用池（adr-048）不是付款发放，不参与扣回。
 8. **订阅付款被退款时，立即取消订阅**（用户 2026-10-16 决定）：
-   - 触发条件：扣回找到的发放行是 `GRANT_SUBSCRIPTION`，且 Stripe 上这个订阅的**实时状态**（取回订阅对象，与 `syncSubscriptionState` 同一理由：事件乱序时本地 `subscriptions.status` 可能是旧的）仍是生效状态（`active` / `trialing` / `past_due`）。全额和部分退款都触发；只想补偿一部分、又要保留订阅时，管理员改用 `GRANT_ADMIN` 补积分，不要在 Stripe 里退款。
-   - 动作：用 `stripe_subscription_id` 调 Stripe 的 cancel subscription 接口**立即取消**（不是 `cancel_at_period_end`），不按比例退款（`prorate=false`）、不出最终账单（`invoice_now=false`）：钱已经由这次退款处理过了。
+   - 触发条件：扣回找到的是订阅付款发放（含 #297 的升级补差额），且 Stripe 上这个订阅的**实时状态**（取回订阅对象，与 `syncSubscriptionState` 同一理由：事件乱序时本地 `subscriptions.status` 可能是旧的）仍是生效状态（`active` / `trialing` / `past_due`）。全额和部分退款都触发；只想补偿一部分、又要保留订阅时，管理员改用 `GRANT_ADMIN` 补积分，不要在 Stripe 里退款。
+   - 动作：用**原发放关联的** `stripe_subscription_id`（不是用户当前另一份 accepted）调 Stripe 的 cancel subscription 接口**立即取消**（不是 `cancel_at_period_end`），不按比例退款（`prorate=false`）、不出最终账单（`invoice_now=false`）：钱已经由这次退款处理过了。
    - 本地状态不在这里改：Stripe 随后发来的 `customer.subscription.deleted` 由现有 handler 处理，订阅状态只有一个写入路径。
    - 先扣回、后取消。取消调用失败时保留事件处理进度，由 ENX worker 重试；重试时扣回因幂等不重复，只重做取消。Stripe 回复「订阅已经取消」视为成功。
    - 充值发放被退款时不碰订阅。
@@ -131,17 +131,17 @@ related: adr-009（两池积分账本、Stripe webhook）、adr-021（管理员�
      - 两次部分退款（累计 30%、再到 100%）合计扣回全部，每次都按差额扣
      - 同一 event id 重放无副作用
      - 充值池可以扣成负数
-     - 最近一期的订阅发放扣到 0 为止；更早一期的订阅发放扣 0，但仍写流水
+     - 当前池来源的订阅/周期发放及升级补差额按比例扣到 0；迟到旧发放不能成为当前来源，更早/未入池发放扣 0 但写流水
      - 试用池不受影响
      - 找不到发放行时返回一个可识别的错误（例如 `ErrGrantNotFound`），不改余额
      - 返回值告诉调用方发放行是订阅还是充值（第 8 条要用）
      - 并发两次不同 event 的扣回，合计正确
 2. **webhook**（现有 `webhook_test.go` 风格）：
    - `charge.refunded` 分派到 `Clawback`
-   - `ErrGrantNotFound` 时返回 200 并调用管理员通知（通知接口注入，测试用 fake）
-   - 订阅发放被退款、订阅仍生效：调用 `SubscriptionCanceller`，参数是该用户的 `stripe_subscription_id`；订阅已取消或没有订阅：不调用
+   - 接收持久化后返回 2xx；`ErrGrantNotFound` 先等待可恢复依赖，超期转 needs_attention 与 pending 告警同事务，通知失败/重启可恢复，管理员重试不重发（通知接口注入，测试用 fake）
+   - 订阅发放被退款、订阅仍生效：调用 `SubscriptionCanceller`，参数是原付款关联的 `stripe_subscription_id`，不能取消该用户另一份当前订阅；订阅已取消或没有订阅：不调用
    - 充值发放被退款：不调用 `SubscriptionCanceller`
-   - 取消失败返回 500；重放同一事件时不再扣回、只重试取消；Stripe 回「已取消」视为成功
+   - 接收已持久确认 2xx；取消失败由内部任务重试，不再扣回、只重试取消；Stripe 回「已取消」视为成功
    - `webhookEventLabel` 认识新事件
    - checkout 和 invoice 两条发放路径把 payment intent 传下去
 3. **`adminuser.Service`**（fake 仓储）：
@@ -173,3 +173,4 @@ related: adr-009（两池积分账本、Stripe webhook）、adr-021（管理员�
 ## 2026-10-23 修订（#297）
 
 - 按 ADR-067 持久接管退款事件，将接收确认后的失败恢复交给 ENX worker；退款调查通过原始发放/PaymentIntent 及关联订阅，不能把竞争订阅或历史订阅的退款错误作用于用户当前另一份 accepted 订阅。原有比例扣回、部分退款、零金额与立即取消参数保持。
+- 2026-10-23（#297 round 3）：将「最近插入的订阅发放」澄清为实际当前池的订阅/周期来源，修复迟到历史发放及退款错扣/错取消；按所有者确认的升级补差额保留付款归属与原有退款政策，补齐 unmatched 告警持久状态。

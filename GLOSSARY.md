@@ -175,7 +175,7 @@ A Stripe subscription ENX has accepted for a local user identity. At most one is
 _Avoid_: winning subscription, primary subscription
 
 **Subscription conflict**:
-A different live Stripe subscription rejected because it competes with a user's accepted live subscription. It still belongs to that user, grants no credits, and stays rejected after manual resolution; an unresolved conflict prevents account deletion. See ADR-067.
+A different live Stripe subscription rejected because it competes with a user's accepted live subscription. It still belongs to that user, grants no credits, and stays rejected after manual resolution; an unresolved conflict prevents account deletion and new subscription checkout. A resolved conflict that remains billable still blocks a new checkout; resolution does not mean Stripe billing has stopped. See ADR-067.
 _Avoid_: duplicate payment, failed webhook, orphan subscription (these do not define the classification)
 
 **Stripe webhook delivery**:
