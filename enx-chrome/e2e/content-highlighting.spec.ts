@@ -35,6 +35,26 @@ test.describe('Content Script - Word Highlighting', () => {
     expect(count).toBeGreaterThan(0)
   })
 
+  // #231: the fixture origin gets the content script through
+  // VITE_CONTENT_SCRIPT_ORIGINS but is not an enx-ui origin, so it stays an
+  // ordinary site: no Reader gate and neither data-enx-* stamp.
+  test('keeps the fixture page an ordinary site without enx-ui stamps', async ({
+    page,
+    extensionId,
+  }) => {
+    await page.goto('/test-page.html', {
+      waitUntil: 'domcontentloaded',
+    })
+
+    await enableLearningMode(page, extensionId)
+    await waitForContentScript(page)
+
+    expect(await getHighlightedWordsCount(page)).toBeGreaterThan(0)
+    const html = page.locator('html')
+    await expect(html).not.toHaveAttribute('data-enx-extension')
+    await expect(html).not.toHaveAttribute('data-enx-learning')
+  })
+
   test('should not highlight words when learning mode is disabled', async ({
     page,
   }) => {

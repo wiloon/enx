@@ -6,12 +6,7 @@ import { defineConfig, loadEnv } from 'vite'
 import manifest from './manifest.json' with { type: 'json' }
 import { gitCommit, gitVersion } from './scripts/version.mjs'
 import { buildManifest } from './src/config/manifest.ts'
-import {
-  applyOverrides,
-  DEFAULT_TARGET,
-  resolveTargetName,
-  TARGETS,
-} from './src/config/targets.ts'
+import { resolveBuildTarget, stampedEnv } from './src/config/targets.ts'
 
 // The extension version comes from the nearest chrome-v* git tag (ADR-031
 // §6a, src/config/version.ts): stamped into the manifest (buildManifest) and
@@ -27,10 +22,11 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
   // Which deployment this build points at: `vite build --mode production`
-  // (or VITE_ENV=production) -> enx.wiloon.com, `--mode homelab` -> wiloon.lab.
-  const targetName =
-    resolveTargetName(env.VITE_ENV) ?? resolveTargetName(mode) ?? DEFAULT_TARGET
-  const target = applyOverrides(TARGETS[targetName], env)
+  // (or VITE_ENV=production) -> catglish.com, `--mode homelab` -> wiloon.lab.
+  // Resolved here, at build time, and stamped into the bundle through `define`
+  // below, so the bundle carries only this target -- never the whole table.
+  const target = resolveBuildTarget(mode, env)
+  const targetName = target.name
 
   console.log('🔧 Vite Config - mode:', mode)
   console.log('🔧 Vite Config - target:', targetName)
@@ -53,20 +49,13 @@ export default defineConfig(({ mode }) => {
     ],
     define: {
       __APP_VERSION__: JSON.stringify(version),
-      // The runtime side of the target table (src/config/env.ts reads these).
-      'import.meta.env.VITE_ENV': JSON.stringify(targetName),
-      'import.meta.env.VITE_API_BASE_URL': JSON.stringify(target.apiBaseUrl),
-      'import.meta.env.VITE_FRONTEND_BASE_URL': JSON.stringify(
-        target.frontendBaseUrl
-      ),
-      'import.meta.env.VITE_CLERK_PUBLISHABLE_KEY': JSON.stringify(
-        target.clerkPublishableKey
-      ),
-      'import.meta.env.VITE_CLERK_SYNC_HOST': JSON.stringify(
-        target.clerkSyncHost
-      ),
-      'import.meta.env.VITE_ENX_UI_ORIGINS': JSON.stringify(
-        target.uiOrigins.join(',')
+      // The selected target, the only one the bundle sees (src/config/env.ts
+      // reads these back).
+      ...Object.fromEntries(
+        Object.entries(stampedEnv(target)).map(([key, value]) => [
+          `import.meta.env.${key}`,
+          JSON.stringify(value),
+        ])
       ),
       'import.meta.env.VITE_BUILD_TIME': JSON.stringify(builtAt),
       // No git, no commit: leave it undefined rather than stamp "null".

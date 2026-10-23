@@ -16,7 +16,7 @@ import {
   reviewBucketHighlightCss,
   sentenceWordStates,
 } from '@/lib/wordHighlight'
-import { resolveSiteAdapter } from '@/lib/siteAdapters'
+import { resolveSiteAdapter, type SiteOrigins } from '@/lib/siteAdapters'
 import {
   ENABLE_OK,
   EnableOutcome,
@@ -78,6 +78,12 @@ import {
 
 console.log('ENX Content script loaded')
 
+// The sites this build adapts to: only the selected target's (#231).
+const siteOrigins: SiteOrigins = {
+  uiOrigins: config.uiOrigins,
+  rssxOrigins: config.rssxOrigins,
+}
+
 // Colours for the elements we inject straight into the host page. These cannot
 // use the tokens from index.css: that stylesheet is only ever attached inside
 // our shadow roots, so a var() here would resolve against the host page and
@@ -115,6 +121,7 @@ function ensureTailwindPropertyRegistrations() {
 stampExtensionPresence(
   document,
   window.location,
+  config.uiOrigins,
   chrome.runtime.getManifest().version
 )
 
@@ -211,7 +218,7 @@ const showPinHint = () => {
 let currentStatus: LearningModeStatus = { status: 'off' }
 const reportStatus = (status: LearningModeStatus) => {
   currentStatus = status
-  stampLearningMode(document, window.location, status)
+  stampLearningMode(document, window.location, config.uiOrigins, status)
   void sendToBackground({ type: 'learningModeStatus', status }).then(
     response => {
       if (response.showPinHint) showPinHint()
@@ -780,7 +787,7 @@ const processArticleContent = async (
   try {
     console.log('Processing article content...')
 
-    const adapter = resolveSiteAdapter(window.location)
+    const adapter = resolveSiteAdapter(window.location, siteOrigins)
     console.log(`Site adapter: ${adapter.name} (${adapter.contentVolatility})`)
 
     const articleNodes = WordProcessor.getArticleNodes({
@@ -1392,16 +1399,16 @@ const handleTextSelection = (event: MouseEvent) => {
 const INITIAL_READY_TIMEOUT_MS = 8000
 
 const isSpaPage = () =>
-  resolveSiteAdapter(window.location).contentVolatility === 'spa' &&
-  !!window.navigation
+  resolveSiteAdapter(window.location, siteOrigins).contentVolatility ===
+    'spa' && !!window.navigation
 
 let spaRebuilderInstance: ReturnType<typeof createSpaRebuilder> | null = null
 const getSpaRebuilder = () => {
   spaRebuilderInstance ??= createSpaRebuilder({
-    isPageSupported: isSupportedPage,
+    isPageSupported: url => isSupportedPage(url, siteOrigins),
     waitForContentReady: isCurrent =>
       waitForContentReady(
-        resolveSiteAdapter(window.location).readySelector,
+        resolveSiteAdapter(window.location, siteOrigins).readySelector,
         isCurrent
       ),
     teardown: () => {
@@ -1452,7 +1459,7 @@ const enableEnx = async (): Promise<EnableOutcome> => {
   // so wait for it as a navigation would. Resolves at once if it is there.
   if (isCurrent) {
     await waitForContentReady(
-      resolveSiteAdapter(window.location).readySelector,
+      resolveSiteAdapter(window.location, siteOrigins).readySelector,
       isCurrent,
       INITIAL_READY_TIMEOUT_MS
     )
@@ -1538,7 +1545,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       // current page out of scope (X list/timeline pages vs a tweet detail
       // page). Abort with the adapter's message rather than silently doing
       // nothing.
-      const adapter = resolveSiteAdapter(window.location)
+      const adapter = resolveSiteAdapter(window.location, siteOrigins)
       const unsupportedReason = adapter.pageSupport?.(window.location)
       if (unsupportedReason) {
         sendResponse({
@@ -1645,7 +1652,9 @@ void maybeAutoEnable({
   askBackground: async () =>
     (await sendToBackground({ type: 'shouldAutoEnable' })).autoEnable === true,
   isPageSupported: () =>
-    !resolveSiteAdapter(window.location).pageSupport?.(window.location),
+    !resolveSiteAdapter(window.location, siteOrigins).pageSupport?.(
+      window.location
+    ),
   enable: runLearningMode,
   disable: disableEnx,
   keepsWatching: isSpaPage,

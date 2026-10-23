@@ -236,20 +236,15 @@ manifest (see `src/config/targets.ts`):
 
 - **Development** (`task build-dev`): `http://localhost:8091`
 - **Homelab** (`task build`): `https://enx-api.wiloon.lab`
-- **Production** (`task build-prod`): `https://enx-api.wiloon.com`
+- **Production** (`task build-prod`): `https://api.catglish.com`
 
-You can still change the API endpoint at runtime in the extension's Options page:
-
-1. Right-click extension icon → Options
-2. Select or enter your desired API URL
-3. Click "Save"
-
-For more details, see [API_CONFIG_README.md](./API_CONFIG_README.md)
+Only the selected target is bundled, and there is no runtime switch: to use
+another API server, rebuild with `VITE_API_BASE_URL` set. For more details, see [API_CONFIG_README.md](./API_CONFIG_README.md)
 
 ## Extension Structure
 
 - `src/popup/` - Popup UI components (login, controls)
-- `src/options/` - Options page components (settings, API configuration)
+- `src/options/` - Options page components (settings, build environment)
 - `src/background/` - Background service worker (session management)
 - `src/content/` - Content script (word highlighting, translation popup)
 - `src/components/` - Shared React components
@@ -340,17 +335,11 @@ If you can't connect to the API:
 1. **Verify API URL**:
    - Right-click extension icon → Options
    - Check "Current Environment" section
-   - Ensure correct API URL is configured
+   - The API URL is the build's; rebuild for another one
 
 2. **For local development**:
-   - Ensure `.env` has `VITE_ENV=development`
-   - Start local API server on port 8090
-   - Clear Chrome Storage if needed (see [QUICK_FIX.md](./QUICK_FIX.md))
-
-3. **Test API connection**:
-   - Open `chrome-extension://YOUR_ID/config-check.html`
-   - Click "Refresh Configuration"
-   - Verify API URL is correct
+   - Build with `task build-dev` (or `.env` has `VITE_ENV=development`)
+   - Start the local API server on port 8091
 
 For more details, see [API_CONFIG_README.md](./API_CONFIG_README.md)
 

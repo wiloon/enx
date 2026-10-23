@@ -147,10 +147,6 @@ test.describe('Homelab - Cognito login', () => {
     )
 
     await openPopup(page, extensionId)
-    await page.evaluate(
-      apiBaseUrl => chrome.storage.local.set({ apiBaseUrl }),
-      API_BASE_URL
-    )
 
     // Clicking "Sign in" triggers action:cognitoSignIn in the service worker,
     // which calls launchWebAuthFlow -> a new window/page appears.

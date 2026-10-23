@@ -8,9 +8,10 @@ import { isEnxUiHost, PageLocation } from './siteAdapters'
 export function stampExtensionPresence(
   doc: Document,
   location: PageLocation,
+  uiOrigins: string[],
   version: string
 ): void {
-  if (!isEnxUiHost(location)) return
+  if (!isEnxUiHost(location, uiOrigins)) return
   doc.documentElement.dataset.enxExtension = version
 }
 
@@ -20,9 +21,10 @@ export function stampExtensionPresence(
 export function stampLearningMode(
   doc: Document,
   location: PageLocation,
+  uiOrigins: string[],
   status: LearningModeStatus
 ): void {
-  if (!isEnxUiHost(location)) return
+  if (!isEnxUiHost(location, uiOrigins)) return
   if (status.status === 'ready') {
     doc.documentElement.dataset.enxLearning = 'on'
   } else {

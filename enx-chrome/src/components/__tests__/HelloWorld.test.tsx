@@ -4,9 +4,6 @@ jest.mock('@/config/env', () => ({
     apiBaseUrl: 'http://localhost:8090',
     environment: 'test',
   },
-  getApiBaseUrl: jest.fn().mockResolvedValue('http://localhost:8090'),
-  setApiBaseUrl: jest.fn().mockResolvedValue(undefined),
-  resetApiBaseUrl: jest.fn().mockResolvedValue(undefined),
 }))
 
 import { fireEvent, render, screen } from '@testing-library/react'

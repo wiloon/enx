@@ -1,146 +1,64 @@
 # API Configuration Guide
 
-## Configuration Locations
+The API server, website and Clerk instance an extension build talks to are
+fixed when it is built. There is no runtime switch: the Options page only shows
+what the build was made for.
 
-The Chrome extension's API address can be configured in the following locations:
-
-### 1. Build Target Table (Primary Configuration)
+## Build Target Table
 
 **File**: `src/config/targets.ts`
 
-One entry per deployment, selected by the Vite mode at build time and stamped
-into both the runtime config (`src/config/env.ts`) and the generated
-`manifest.json` (`src/config/manifest.ts`):
+One entry per deployment. `vite.config.ts` picks the entry from the Vite mode
+(or `VITE_ENV`) at build time, applies any overrides, and stamps the result
+into the generated `manifest.json` (`src/config/manifest.ts`) and into the
+bundle, where `src/config/env.ts` reads it. Only the selected target ends up in
+the bundle; a production package carries none of the development or homelab
+values.
 
 | Target        | Build command                           | API                          | UI                       |
 | ------------- | --------------------------------------- | ---------------------------- | ------------------------ |
 | `development` | `task build-dev`                        | `http://localhost:8091`      | `http://localhost:3000`  |
 | `homelab`     | `task build`                            | `https://enx-api.wiloon.lab` | `https://enx.wiloon.lab` |
-| `production`  | `task build-prod` / `task package-prod` | `https://enx-api.wiloon.com` | `https://enx.wiloon.com` |
+| `production`  | `task build-prod` / `task package-prod` | `https://api.catglish.com`   | `https://catglish.com`   |
+
+## Overrides
 
 Individual values can be overridden per build without editing the table:
 `VITE_API_BASE_URL`, `VITE_FRONTEND_BASE_URL`, `VITE_CLERK_PUBLISHABLE_KEY`,
-`VITE_CLERK_SYNC_HOST`, `VITE_ENX_UI_ORIGINS` (comma-separated).
-
-### 2. .env File (Force Specific Environment)
-
-**File**: `.env`
+`VITE_CLERK_SYNC_HOST`, `VITE_ENX_UI_ORIGINS` and `VITE_CONTENT_SCRIPT_ORIGINS`
+(both comma-separated). Set them in the environment or in a `.env` /
+`.env.[mode]` file:
 
 ```bash
-# Force development environment (http://localhost:8091)
+VITE_API_BASE_URL=http://192.168.50.71:8090 task build
+```
+
+`VITE_ENV` in `.env` forces a target regardless of the mode:
+
+```bash
 VITE_ENV=development
 ```
 
-### 3. Chrome Storage (Runtime Override)
+## Site Recognition
 
-The extension can save a custom API URL in Chrome Storage at runtime, which has the highest priority.
+Each target also declares the sites the content script adapts to, and only the
+selected target's lists reach the build:
 
-## How to Use Local API
+- `uiOrigins`: enx-ui. Its pages get the content script, the Reader adapter
+  (`/reader`, `/welcome`), the web -> extension channel
+  (`externally_connectable`) and the `data-enx-extension` /
+  `data-enx-learning` stamps on `<html>`. Matched by exact host, port included.
+- `rssxOrigins`: the RSSX Reader (homelab and development only). These pages get
+  the content script and the RSSX adapter, but no host permission and no
+  external channel.
+- `contentScriptOrigins`: generic sites that get the content script and a host
+  permission but stay ordinary sites. Empty in every target; the E2E build sets
+  it to the fixture server with `VITE_CONTENT_SCRIPT_ORIGINS`.
 
-### Method 1: Using .env File (Recommended)
+A production build therefore treats the homelab, localhost and RSSX hosts as
+ordinary sites.
 
-1. Ensure the project root directory has a `.env` file with the following content:
-
-   ```bash
-   VITE_ENV=development
-   ```
-
-2. Restart the development server:
-
-   ```bash
-   task dev
-   ```
-
-3. Reload the extension (on chrome://extensions page)
-
-### Method 2: Using Extension Options Page
-
-1. Open the extension's options page in Chrome:
-   - Right-click the extension icon → Select "Options"
-   - Or visit `chrome-extension://<extension-id>/options.html`
-
-2. In the "API URL Configuration" section:
-   - Click the "Local (Development)" preset button
-   - Or manually enter `http://localhost:8091`
-   - Click "Save" to save
-
-3. Re-login to the extension
-
-### Method 3: Programmatic Setup
-
-Run in the console:
-
-```javascript
-chrome.storage.local.set({ apiBaseUrl: 'http://localhost:8091' })
-```
-
-## Verify Current API Address
-
-### Check Console Logs
-
-Open Chrome DevTools, switch to the extension's background page or Popup page, and check the logs:
-
-```
-[ENX Config] Environment: development, API: http://localhost:8091
-```
-
-### Check Options Page
-
-Open the extension's options page, in the "Current Environment" section you can see:
-
-- Mode: development
-- Default API: <http://localhost:8091>
-- Active API: <http://localhost:8091>
-
-## Permission Configuration
-
-Host permissions for local API have been added in `manifest.json`:
-
-```json
-"host_permissions": [
-  "http://localhost:8091/*",
-  "https://enx-dev.wiloon.com/*",
-  "https://enx.wiloon.com/*"
-]
-```
-
-## Frequently Asked Questions
-
-### Q: Why does the extension still access the remote API after running task dev?
-
-**Possible reasons**:
-
-1. **Chrome Storage has a previously saved API address**
-   - Solution: Click "Reset to Default" on the options page
-   - Or clear Chrome Storage: `chrome.storage.local.clear()`
-
-2. **Missing or incorrect .env file**
-   - Solution: Ensure the `.env` file exists and contains `VITE_ENV=development`
-
-3. **Extension not reloaded**
-   - Solution: Click the "Reload" button for the extension on chrome://extensions page
-
-### Q: How to switch to staging/production environment?
-
-**Method 1**: Modify the `.env` file
-
-```bash
-# Staging environment
-VITE_ENV=staging
-
-# Production environment
-VITE_ENV=production
-```
-
-**Method 2**: Select the corresponding preset URL on the options page
-
-### Q: How to confirm requests are being sent to the local API?
-
-1. Check requests in the Network tab of Chrome DevTools
-2. Confirm the request URL is `http://localhost:8091/api/login`
-3. Check the logs of the local API server
-
-## Development Workflow
+## Using a Local API
 
 1. Start the local API server:
 
@@ -149,26 +67,30 @@ VITE_ENV=production
    task dev  # or task run
    ```
 
-2. Ensure the `.env` file exists and is configured for development
-
-3. Start the Chrome extension development server:
+2. Build the extension against it, then reload it on `chrome://extensions`:
 
    ```bash
    cd enx-chrome
-   task dev
+   task build-dev
    ```
 
-4. Reload the extension in Chrome
+To point a homelab build at another API server instead, rebuild with
+`VITE_API_BASE_URL` (see Overrides).
 
-5. Test login functionality and confirm requests are sent to `http://localhost:8091`
+## Verify the Current API Address
 
-## Login Testing
+- **Console:** the background, popup and options pages log
+  `[ENX Config] Environment: development, API: http://localhost:8091`.
+- **Options page:** the "Current Environment" section shows the mode and the
+  API server of this build.
 
-```bash
-# The extension will send a request like this
-curl 'http://localhost:8091/api/login' \
-  -H 'Content-Type: application/json' \
-  --data-raw '{"username":"wiloon","password":"haCahpro"}'
-```
+## Frequently Asked Questions
 
-Ensure the local API server is running on port 8090 and can respond to this request.
+### Q: Why does the extension still access the remote API after running `task dev`?
+
+The build target, not Chrome Storage, decides the API server. Check that the
+build you loaded is the one you expect (`dist-development` vs `dist-homelab`)
+and that `.env` does not set `VITE_ENV` or `VITE_API_BASE_URL` to something
+else. Then reload the extension on `chrome://extensions`.
+
+A `apiBaseUrl` key left in `chrome.storage.local` by older versions is ignored.

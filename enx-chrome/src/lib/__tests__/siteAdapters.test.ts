@@ -5,6 +5,7 @@ import {
   X_READY_SELECTOR,
   DEFAULT_ADAPTER,
   PageLocation,
+  SiteOrigins,
 } from '@/lib/siteAdapters'
 import { WordProcessor } from '@/lib/wordProcessor'
 
@@ -15,14 +16,28 @@ const loc = (host: string, pathname: string): PageLocation => ({
   pathname,
 })
 
+// The site recognition each build is stamped with (targets.ts, #231).
+const HOMELAB: SiteOrigins = {
+  uiOrigins: ['http://localhost:3000', 'https://enx.wiloon.lab'],
+  rssxOrigins: ['https://rssx-lab.wiloon.com'],
+}
+const DEVELOPMENT: SiteOrigins = {
+  uiOrigins: ['http://localhost:3000'],
+  rssxOrigins: ['https://rssx-lab.wiloon.com'],
+}
+const PRODUCTION: SiteOrigins = {
+  uiOrigins: ['https://catglish.com'],
+  rssxOrigins: [],
+}
+
 describe('resolveSiteAdapter', () => {
   it('returns the default adapter for whitelisted article sites', () => {
-    expect(resolveSiteAdapter(loc('claude.com', '/blog/some-post'))).toBe(
-      DEFAULT_ADAPTER
-    )
-    expect(resolveSiteAdapter(loc('www.infoq.com', '/articles/x'))).toBe(
-      DEFAULT_ADAPTER
-    )
+    expect(
+      resolveSiteAdapter(loc('claude.com', '/blog/some-post'), HOMELAB)
+    ).toBe(DEFAULT_ADAPTER)
+    expect(
+      resolveSiteAdapter(loc('www.infoq.com', '/articles/x'), HOMELAB)
+    ).toBe(DEFAULT_ADAPTER)
   })
 
   it('default adapter reproduces today behavior field-for-field', () => {
@@ -43,17 +58,23 @@ describe('resolveSiteAdapter', () => {
       'www.x.com',
       'mobile.twitter.com',
     ]) {
-      expect(resolveSiteAdapter(loc(host, '/user/status/1')).name).toBe('x')
+      expect(
+        resolveSiteAdapter(loc(host, '/user/status/1'), HOMELAB).name
+      ).toBe('x')
     }
   })
 
   it('does not match hosts that merely end in a similar string', () => {
-    expect(resolveSiteAdapter(loc('notx.com', '/a')).name).toBe('default')
-    expect(resolveSiteAdapter(loc('x.com.evil.net', '/a')).name).toBe('default')
+    expect(resolveSiteAdapter(loc('notx.com', '/a'), HOMELAB).name).toBe(
+      'default'
+    )
+    expect(resolveSiteAdapter(loc('x.com.evil.net', '/a'), HOMELAB).name).toBe(
+      'default'
+    )
   })
 
   describe('X adapter pageSupport gate', () => {
-    const x = resolveSiteAdapter(loc('x.com', '/'))
+    const x = resolveSiteAdapter(loc('x.com', '/'), HOMELAB)
 
     it('allows a tweet detail page', () => {
       expect(x.pageSupport!(loc('x.com', '/jack/status/20'))).toBeNull()
@@ -262,39 +283,87 @@ describe('pickFocusedTweet', () => {
 // only on the /reader route (the app's other pages -- lookup, rephrase,
 // billing -- are not meant to be read by the extension).
 describe('READER_ADAPTER (enx-ui paste-text reader)', () => {
-  it('matches the enx-ui hosts (dev, homelab, prod)', () => {
-    for (const host of ['localhost:3000', 'enx.wiloon.lab', 'enx.wiloon.com']) {
-      expect(resolveSiteAdapter(loc(host, '/reader')).name).toBe('reader')
+  // #231: the build target's uiOrigins decide which hosts are enx-ui.
+  it.each([
+    ['homelab', HOMELAB, ['localhost:3000', 'enx.wiloon.lab']],
+    ['development', DEVELOPMENT, ['localhost:3000']],
+    ['production', PRODUCTION, ['catglish.com']],
+  ] as [string, SiteOrigins, string[]][])(
+    'matches the enx-ui hosts of the %s build',
+    (_, origins, hosts) => {
+      for (const host of hosts) {
+        expect(resolveSiteAdapter(loc(host, '/reader'), origins).name).toBe(
+          'reader'
+        )
+      }
+    }
+  )
+
+  it('leaves the other builds enx-ui hosts as ordinary sites', () => {
+    for (const host of ['localhost:3000', 'enx.wiloon.lab']) {
+      expect(resolveSiteAdapter(loc(host, '/reader'), PRODUCTION).name).toBe(
+        'default'
+      )
+    }
+    expect(
+      resolveSiteAdapter(loc('catglish.com', '/reader'), HOMELAB).name
+    ).toBe('default')
+  })
+
+  // No target declares the legacy host any more.
+  it('does not match the undeclared enx.wiloon.com', () => {
+    for (const origins of [HOMELAB, DEVELOPMENT, PRODUCTION]) {
+      expect(
+        resolveSiteAdapter(loc('enx.wiloon.com', '/reader'), origins).name
+      ).toBe('default')
     }
   })
 
-  it('does not match other localhost ports', () => {
+  it('tells localhost ports apart', () => {
     // E2E fixture pages are served from localhost:8765; they are ordinary
     // article pages, not enx-ui.
     expect(
-      resolveSiteAdapter(loc('localhost:8765', '/test-page.html')).name
+      resolveSiteAdapter(loc('localhost:8765', '/reader'), DEVELOPMENT).name
     ).toBe('default')
+    const fixtureOnly = {
+      uiOrigins: ['http://localhost:8765'],
+      rssxOrigins: [],
+    }
+    expect(
+      resolveSiteAdapter(loc('localhost:3000', '/reader'), fixtureOnly).name
+    ).toBe('default')
+    expect(
+      resolveSiteAdapter(loc('localhost:8765', '/reader'), fixtureOnly).name
+    ).toBe('reader')
   })
 
-  it('does not match unrelated hosts', () => {
-    expect(resolveSiteAdapter(loc('www.infoq.com', '/reader')).name).toBe(
-      'default'
-    )
-    expect(
-      resolveSiteAdapter(loc('enx.wiloon.com.evil.net', '/reader')).name
-    ).toBe('default')
+  it('does not match unrelated or lookalike hosts', () => {
+    for (const host of [
+      'www.infoq.com',
+      'catglish.com.evil.net',
+      'evilcatglish.com',
+      'www.catglish.com',
+      'enx.wiloon.lab.evil.net',
+    ]) {
+      expect(resolveSiteAdapter(loc(host, '/reader'), PRODUCTION).name).toBe(
+        'default'
+      )
+      expect(resolveSiteAdapter(loc(host, '/reader'), HOMELAB).name).toBe(
+        'default'
+      )
+    }
   })
 
   describe('pageSupport gate', () => {
-    const reader = resolveSiteAdapter(loc('enx.wiloon.com', '/reader'))
+    const reader = resolveSiteAdapter(loc('enx.wiloon.lab', '/reader'), HOMELAB)
 
     it('allows the /reader route', () => {
-      expect(reader.pageSupport!(loc('enx.wiloon.com', '/reader'))).toBeNull()
+      expect(reader.pageSupport!(loc('enx.wiloon.lab', '/reader'))).toBeNull()
     })
 
     // ADR-047 Decision 5: the sample article is embedded in /welcome.
     it('allows /welcome', () => {
-      expect(reader.pageSupport!(loc('enx.wiloon.com', '/welcome'))).toBeNull()
+      expect(reader.pageSupport!(loc('enx.wiloon.lab', '/welcome'))).toBeNull()
     })
 
     it('rejects every other enx-ui page with a message', () => {
@@ -306,7 +375,7 @@ describe('READER_ADAPTER (enx-ui paste-text reader)', () => {
         '/billing',
         '/welcomes',
       ]) {
-        expect(reader.pageSupport!(loc('enx.wiloon.com', path))).toEqual(
+        expect(reader.pageSupport!(loc('enx.wiloon.lab', path))).toEqual(
           expect.stringMatching(/reader/i)
         )
       }
@@ -314,7 +383,7 @@ describe('READER_ADAPTER (enx-ui paste-text reader)', () => {
   })
 
   it('pins a dedicated content container and treats it as static', () => {
-    const reader = resolveSiteAdapter(loc('enx.wiloon.com', '/reader'))
+    const reader = resolveSiteAdapter(loc('enx.wiloon.lab', '/reader'), HOMELAB)
     expect(reader.contentSelector).toBe('#enx-reader-article')
     expect(reader.contentVolatility).toBe('static')
     expect(reader.clickBinding).toBe('bubble')
@@ -323,7 +392,27 @@ describe('READER_ADAPTER (enx-ui paste-text reader)', () => {
 })
 
 describe('RSSX adapter (ADR-033 reading pane)', () => {
-  const rssx = resolveSiteAdapter(loc('rssx-lab.wiloon.com', '/'))
+  // #231: only the builds that declare the RSSX origin adapt to it.
+  it.each([
+    ['homelab', HOMELAB, 'rssx'],
+    ['development', DEVELOPMENT, 'rssx'],
+    ['production', PRODUCTION, 'default'],
+  ] as [string, SiteOrigins, string][])(
+    'resolves rssx-lab.wiloon.com by the %s build origins',
+    (_, origins, name) => {
+      expect(
+        resolveSiteAdapter(loc('rssx-lab.wiloon.com', '/'), origins).name
+      ).toBe(name)
+    }
+  )
+
+  it('does not match a lookalike RSSX host', () => {
+    expect(
+      resolveSiteAdapter(loc('rssx-lab.wiloon.com.evil.net', '/'), HOMELAB).name
+    ).toBe('default')
+  })
+
+  const rssx = resolveSiteAdapter(loc('rssx-lab.wiloon.com', '/'), HOMELAB)
 
   it('matches the host that serves the RSSX Reader', () => {
     expect(rssx.name).toBe('rssx')
@@ -367,7 +456,7 @@ describe('RSSX adapter (ADR-033 reading pane)', () => {
 
 describe('X adapter readiness selector', () => {
   it('waits for the focused tweet or X Article body', () => {
-    const x = resolveSiteAdapter(loc('x.com', '/u/status/1'))
+    const x = resolveSiteAdapter(loc('x.com', '/u/status/1'), HOMELAB)
     expect(x.readySelector).toBe(X_READY_SELECTOR)
   })
 })
@@ -408,16 +497,21 @@ describe('Wikipedia adapter', () => {
       'en.m.wikipedia.org',
       'de.wikipedia.org',
     ]) {
-      expect(resolveSiteAdapter(loc(host, '/wiki/Cat')).name).toBe('wikipedia')
+      expect(resolveSiteAdapter(loc(host, '/wiki/Cat'), HOMELAB).name).toBe(
+        'wikipedia'
+      )
     }
-    expect(resolveSiteAdapter(loc('wikipedia.org.evil.net', '/')).name).toBe(
-      'default'
-    )
+    expect(
+      resolveSiteAdapter(loc('wikipedia.org.evil.net', '/'), HOMELAB).name
+    ).toBe('default')
   })
 
   it('processes the article body, not the reference links or the language menu', () => {
     renderWikipediaPage()
-    const wikipedia = resolveSiteAdapter(loc('en.wikipedia.org', '/wiki/Cat'))
+    const wikipedia = resolveSiteAdapter(
+      loc('en.wikipedia.org', '/wiki/Cat'),
+      HOMELAB
+    )
     const nodes = WordProcessor.getArticleNodes({
       contentSelector: wikipedia.contentSelector,
       minTextLength: wikipedia.minTextLength,

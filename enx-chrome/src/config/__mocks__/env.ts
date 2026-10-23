@@ -5,19 +5,6 @@ export const config = {
   clerkPublishableKey: 'pk_test_x',
   clerkSyncHost: 'http://localhost:3000',
   uiOrigins: ['http://localhost:3000'],
+  rssxOrigins: [] as string[],
   environment: 'test' as const,
-}
-
-export const apiBaseUrlOverrideAllowed = true
-
-export const getApiBaseUrl = async (): Promise<string> => {
-  return config.apiBaseUrl
-}
-
-export const setApiBaseUrl = async (_url: string): Promise<void> => {
-  // Mock implementation
-}
-
-export const resetApiBaseUrl = async (): Promise<void> => {
-  // Mock implementation
 }
