@@ -89,6 +89,69 @@ func TestSubscriptionsRenewing(t *testing.T) {
 	}
 }
 
+// Characterization for #297, whose deletion check asks Stripe about every
+// subscription not known to have ended: today only a local active, trialing
+// or past_due row reaches Stripe, so an unpaid or incomplete one (which
+// Stripe may still bill) never counts as renewing.
+func TestSubscriptionsRenewingSkipsStripeForUnpaidAndIncompleteRows(t *testing.T) {
+	newSubscriptionsDB(t)
+	seedSubscription(t, "unpaid", "unpaid", "sub_unpaid")
+	seedSubscription(t, "incomplete", "incomplete", "sub_incomplete")
+	calls := 0
+	subs := Subscriptions{Stripe: fakeStripe(t, map[string]string{
+		"sub_unpaid":     `"status":"active","cancel_at_period_end":false`,
+		"sub_incomplete": `"status":"active","cancel_at_period_end":false`,
+	}, &calls)}
+
+	for _, user := range []string{"unpaid", "incomplete"} {
+		got, err := subs.Renewing(context.Background(), user)
+		if err != nil || got {
+			t.Errorf("%s: Renewing = %v, %v; want false, nil", user, got, err)
+		}
+	}
+	if calls != 0 {
+		t.Errorf("Stripe calls = %d, want 0", calls)
+	}
+}
+
+// Characterization for #297, under which a resource_missing answer blocks
+// deletion: today Stripe not knowing a locally live subscription reads as
+// not renewing.
+func TestSubscriptionsRenewingTreatsAMissingStripeSubscriptionAsEnded(t *testing.T) {
+	newSubscriptionsDB(t)
+	seedSubscription(t, "gone", "active", "sub_gone")
+	calls := 0
+	subs := Subscriptions{Stripe: fakeStripe(t, map[string]string{}, &calls)}
+
+	got, err := subs.Renewing(context.Background(), "gone")
+	if err != nil || got {
+		t.Fatalf("Renewing = %v, %v; want false, nil", got, err)
+	}
+	if calls != 1 {
+		t.Fatalf("Stripe calls = %d, want 1", calls)
+	}
+}
+
+// A locally live row whose subscription Stripe reports as ended is not
+// renewing, whatever cancel_at_period_end says.
+func TestSubscriptionsRenewingTrustsStripeWhenItSaysEnded(t *testing.T) {
+	newSubscriptionsDB(t)
+	seedSubscription(t, "canceled", "active", "sub_canceled")
+	seedSubscription(t, "expired", "past_due", "sub_expired")
+	calls := 0
+	subs := Subscriptions{Stripe: fakeStripe(t, map[string]string{
+		"sub_canceled": `"status":"canceled","cancel_at_period_end":false`,
+		"sub_expired":  `"status":"incomplete_expired","cancel_at_period_end":false`,
+	}, &calls)}
+
+	for _, user := range []string{"canceled", "expired"} {
+		got, err := subs.Renewing(context.Background(), user)
+		if err != nil || got {
+			t.Errorf("%s: Renewing = %v, %v; want false, nil", user, got, err)
+		}
+	}
+}
+
 func TestSubscriptionsWithoutStripeFailsForALiveSubscription(t *testing.T) {
 	newSubscriptionsDB(t)
 	seedSubscription(t, "renews", "active", "sub_renews")
