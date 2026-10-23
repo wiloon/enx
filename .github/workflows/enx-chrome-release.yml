@@ -45,7 +45,7 @@ jobs:
           # needs the history and the tags, not a shallow clone.
           fetch-depth: 0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: enx-chrome/.node-version
 
