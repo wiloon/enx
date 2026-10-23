@@ -168,6 +168,16 @@ _Avoid_: 在线用户、登录用户（`last_login_time` 不是活跃口径）
 一个用户一个 UTC 日内最多能发多少次查词请求，按订阅档位不同。对免费用户是产品上限、兼引导付费；对订阅用户是防脚本的总量兜底。管总量，不管速度（速度是限流的事）。见 adr-029、adr-059。
 _Avoid_: 配额（单说时可能指 AI 积分）、限流、rate limit
 
+### Subscription acceptance (enx-api)
+
+**Accepted subscription**:
+The Stripe subscription ENX recognizes for a local user identity. At most one accepted subscription may be live for that user; a subscription conflict never replaces it. See ADR-067.
+_Avoid_: winning subscription, primary subscription
+
+**Subscription conflict**:
+A durable exception for a different live Stripe subscription competing with a user's accepted live subscription. It grants no credits; recording its manual resolution preserves the rejection. See ADR-067.
+_Avoid_: duplicate payment, failed webhook, orphan subscription (these do not define the classification)
+
 ### 邀请（enx-api / enx-ui）
 
 **邀请人 / 被邀请人（referrer / invitee）**：
