@@ -37,7 +37,7 @@ type Referral struct {
 	// RewardAmount is fixed when the first payment is recorded.
 	RewardAmount  int64  `gorm:"column:reward_amount;not null;default:0"`
 	RewardDueAt   *int64 `gorm:"column:reward_due_at;index:idx_referrals_due,priority:2"`
-	ForfeitReason string `gorm:"column:forfeit_reason"` // refunded | disputed
+	ForfeitReason string `gorm:"column:forfeit_reason"` // refunded | disputed | referrer_deleted
 	RewardedAt    *int64 `gorm:"column:rewarded_at"`
 	UpdatedAt     int64  `gorm:"column:updated_at;not null"`
 }

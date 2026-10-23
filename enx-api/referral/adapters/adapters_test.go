@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -21,7 +22,7 @@ func newLedgerDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&sqlitex.CreditAccount{}, &sqlitex.CreditTransaction{}, &sqlitex.TrialGrant{}); err != nil {
+	if err := db.AutoMigrate(&sqlitex.User{}, &sqlitex.CreditAccount{}, &sqlitex.CreditTransaction{}, &sqlitex.TrialGrant{}); err != nil {
 		t.Fatal(err)
 	}
 	prev := sqlitex.DB
@@ -58,6 +59,9 @@ var ledger = Ledger{EmailHMAC: func(_ context.Context, userID string) (string, e
 
 func TestLedgerGrantsTheReferrerRewardIntoTheTopupPool(t *testing.T) {
 	newLedgerDB(t)
+	if err := sqlitex.DB.Create(&sqlitex.User{Id: "alice", ClerkUserID: "user_alice", Name: "alice"}).Error; err != nil {
+		t.Fatal(err)
+	}
 	if err := ledger.GrantReferrerReward(context.Background(), "alice", 300, "referral-reward:bob"); err != nil {
 		t.Fatalf("GrantReferrerReward: %v", err)
 	}
@@ -65,5 +69,20 @@ func TestLedgerGrantsTheReferrerRewardIntoTheTopupPool(t *testing.T) {
 	sqlitex.DB.Where("user_id = ?", "alice").First(&acc)
 	if acc.TopupBalance != 300 {
 		t.Fatalf("topup = %d, want 300", acc.TopupBalance)
+	}
+}
+
+func TestLedgerReportsADeletedReferrerAsTheReferralSentinel(t *testing.T) {
+	newLedgerDB(t)
+	ctx := context.Background()
+
+	err := ledger.GrantReferrerReward(ctx, "ghost", 300, "referral-reward:bob")
+	if !errors.Is(err, referral.ErrReferrerDeleted) {
+		t.Fatalf("GrantReferrerReward to a missing user = %v, want referral.ErrReferrerDeleted", err)
+	}
+
+	err = ledger.GrantReferrerReward(ctx, "ghost", 0, "referral-reward:carol")
+	if err == nil || errors.Is(err, referral.ErrReferrerDeleted) {
+		t.Fatalf("GrantReferrerReward of 0 = %v, want an ordinary error", err)
 	}
 }

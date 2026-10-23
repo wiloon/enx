@@ -1,7 +1,8 @@
 // Package referral is the invite-link domain (ADR-051): every user has an
 // invite code; a new account that claims one soon after sign-up gets bonus
 // trial credits, and the referrer is rewarded once, for the invitee's first
-// payment, after a cooling-off period with no refund or dispute.
+// payment, after a cooling-off period with no refund or dispute, provided
+// the referrer has not deleted their account by then.
 //
 // The rules live in Service. Storage, the credit ledger, Stripe, the clock
 // and the configured numbers come in through the interfaces below, so the
@@ -10,6 +11,7 @@ package referral
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -24,7 +26,9 @@ const (
 	StatusPending Status = "pending"
 	// StatusRewarded: the referrer got the reward.
 	StatusRewarded Status = "rewarded"
-	// StatusForfeited: the payment was refunded or disputed; no reward.
+	// StatusForfeited: the payment was refunded or disputed, or the
+	// referrer deleted their account (ForfeitReason referrer_deleted); no
+	// reward.
 	StatusForfeited Status = "forfeited"
 	// StatusNoReward: the first payment is recorded, but no reward is due:
 	// the reward for its kind was configured off (0) at the time, or the
@@ -118,6 +122,9 @@ type AccountRepo interface {
 	// the sign-up trial by a different account (ADR-062 Decision 3): this
 	// is a deleted account signed up again.
 	TrialUsedByAnotherAccount(ctx context.Context, userID string) (bool, error)
+	// Exists reports whether the user's account is still there: a disabled
+	// account exists, a deleted one (ADR-062) does not.
+	Exists(ctx context.Context, userID string) (bool, error)
 }
 
 // Bonus is the invitee's claim grant.
@@ -137,9 +144,14 @@ type CreditGranter interface {
 	// per invitee, and returns the trial's expiry.
 	GrantInviteeBonus(ctx context.Context, inviteeID string, b Bonus) (trialExpiresAt time.Time, err error)
 	// GrantReferrerReward adds amount to the referrer's top-up pool,
-	// idempotent on key.
+	// idempotent on key. It returns ErrReferrerDeleted, granting nothing,
+	// when the referrer's account is gone by the time the grant runs.
 	GrantReferrerReward(ctx context.Context, referrerID string, amount int64, key string) error
 }
+
+// ErrReferrerDeleted: the referrer deleted their account, so the reward has
+// no account to go into and is forfeited (ADR-051 Decision 5).
+var ErrReferrerDeleted = errors.New("referral: the referrer's account was deleted")
 
 // ChargeState is what Stripe says happened to a payment after it succeeded.
 type ChargeState struct {

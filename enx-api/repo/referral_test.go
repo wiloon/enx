@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"enx-api/account"
 	"enx-api/referral"
 	"enx-api/utils/sqlitex"
 
@@ -208,6 +209,36 @@ func TestReferralAccounts(t *testing.T) {
 		if paid, _ := accounts.HasPaid(ctx, user); !paid {
 			t.Fatalf("HasPaid after %s = false", typ)
 		}
+	}
+}
+
+func TestReferralAccountsExistsUntilTheAccountIsDeleted(t *testing.T) {
+	newAccountDB(t)
+	ctx := context.Background()
+	seedAccount(t, "alice", "alice@example.com")
+	seedAccount(t, "dora", "dora@example.com")
+	if err := (Accounts{}).SetStatus(ctx, "dora", account.StatusDisabled); err != nil {
+		t.Fatal(err)
+	}
+	accounts := ReferralAccounts{}
+
+	for _, id := range []string{"alice", "dora"} {
+		if ok, err := accounts.Exists(ctx, id); err != nil || !ok {
+			t.Fatalf("Exists(%s) = %v, %v; want true (a disabled account still exists)", id, ok, err)
+		}
+	}
+	if err := (Accounts{}).DeleteData(ctx, "alice"); err != nil {
+		t.Fatalf("DeleteData: %v", err)
+	}
+	if ok, err := accounts.Exists(ctx, "alice"); err != nil || ok {
+		t.Fatalf("Exists after deletion = %v, %v; want false", ok, err)
+	}
+
+	if err := sqlitex.DB.Migrator().DropTable(&sqlitex.User{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := accounts.Exists(ctx, "dora"); err == nil {
+		t.Fatal("Exists without a users table succeeded, want the lookup error")
 	}
 }
 

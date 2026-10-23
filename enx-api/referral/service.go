@@ -264,9 +264,10 @@ type RewardRun struct {
 	Errors    []error
 }
 
-// PayDueRewards settles every reward that is due: forfeited when Stripe
-// shows a refund or dispute, otherwise paid into the referrer's top-up pool.
-// A row Stripe or the ledger cannot answer for stays pending.
+// PayDueRewards settles every reward that is due: forfeited when the
+// referrer deleted their account or Stripe shows a refund or dispute,
+// otherwise paid into the referrer's top-up pool. A row storage, Stripe or
+// the ledger cannot answer for stays pending.
 func (s *Service) PayDueRewards(ctx context.Context) (RewardRun, error) {
 	if s.payments == nil {
 		return RewardRun{}, errors.New("referral: no payment checker (Stripe is not configured)")
@@ -293,7 +294,19 @@ func (s *Service) PayDueRewards(ctx context.Context) (RewardRun, error) {
 	return run, nil
 }
 
+// forfeitReferrerDeleted is the forfeit reason when the referrer deleted
+// their account before the reward was paid.
+const forfeitReferrerDeleted = "referrer_deleted"
+
 func (s *Service) settle(ctx context.Context, r Referral) (Status, error) {
+	exists, err := s.accounts.Exists(ctx, r.ReferrerID)
+	if err != nil {
+		return "", fmt.Errorf("check the referrer %s exists: %w", r.ReferrerID, err)
+	}
+	if !exists {
+		return s.forfeit(ctx, r, forfeitReferrerDeleted)
+	}
+
 	pi := r.FirstPayment.PaymentIntentID
 	if pi == "" {
 		if r.FirstPayment.InvoiceID == "" {
@@ -321,13 +334,21 @@ func (s *Service) settle(ctx context.Context, r Referral) (Status, error) {
 		if charge.Disputed {
 			reason = "disputed"
 		}
-		return StatusForfeited, s.referrals.MarkForfeited(ctx, r.InviteeID, reason, s.now())
+		return s.forfeit(ctx, r, reason)
 	}
 
-	if err := s.credits.GrantReferrerReward(ctx, r.ReferrerID, r.RewardAmount, "referral-reward:"+r.InviteeID); err != nil {
+	err = s.credits.GrantReferrerReward(ctx, r.ReferrerID, r.RewardAmount, "referral-reward:"+r.InviteeID)
+	if errors.Is(err, ErrReferrerDeleted) {
+		return s.forfeit(ctx, r, forfeitReferrerDeleted)
+	}
+	if err != nil {
 		return "", err
 	}
 	return StatusRewarded, s.referrals.MarkRewarded(ctx, r.InviteeID, s.now())
+}
+
+func (s *Service) forfeit(ctx context.Context, r Referral, reason string) (Status, error) {
+	return StatusForfeited, s.referrals.MarkForfeited(ctx, r.InviteeID, reason, s.now())
 }
 
 // PendingReward is a reward waiting for its due date.
