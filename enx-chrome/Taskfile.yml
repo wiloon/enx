@@ -126,7 +126,7 @@ tasks:
       - echo "Build completed! Output in dist-homelab/"
 
   build-prod:
-    desc: Build extension for production (API -> enx-api.wiloon.com)
+    desc: Build extension for production (API -> api.catglish.com)
     cmds:
       - task: ensure-node
       - echo "Building {{.EXT_NAME}} v{{.VERSION}} (production)..."

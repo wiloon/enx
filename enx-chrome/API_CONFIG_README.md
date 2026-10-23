@@ -25,8 +25,9 @@ values.
 
 Individual values can be overridden per build without editing the table:
 `VITE_API_BASE_URL`, `VITE_FRONTEND_BASE_URL`, `VITE_CLERK_PUBLISHABLE_KEY`,
-`VITE_CLERK_SYNC_HOST`, `VITE_ENX_UI_ORIGINS` (comma-separated). Set them in the
-environment or in a `.env` / `.env.[mode]` file:
+`VITE_CLERK_SYNC_HOST`, `VITE_ENX_UI_ORIGINS` and `VITE_CONTENT_SCRIPT_ORIGINS`
+(both comma-separated). Set them in the environment or in a `.env` /
+`.env.[mode]` file:
 
 ```bash
 VITE_API_BASE_URL=http://192.168.50.71:8090 task build
@@ -37,6 +38,25 @@ VITE_API_BASE_URL=http://192.168.50.71:8090 task build
 ```bash
 VITE_ENV=development
 ```
+
+## Site Recognition
+
+Each target also declares the sites the content script adapts to, and only the
+selected target's lists reach the build:
+
+- `uiOrigins`: enx-ui. Its pages get the content script, the Reader adapter
+  (`/reader`, `/welcome`), the web -> extension channel
+  (`externally_connectable`) and the `data-enx-extension` /
+  `data-enx-learning` stamps on `<html>`. Matched by exact host, port included.
+- `rssxOrigins`: the RSSX Reader (homelab and development only). These pages get
+  the content script and the RSSX adapter, but no host permission and no
+  external channel.
+- `contentScriptOrigins`: generic sites that get the content script and a host
+  permission but stay ordinary sites. Empty in every target; the E2E build sets
+  it to the fixture server with `VITE_CONTENT_SCRIPT_ORIGINS`.
+
+A production build therefore treats the homelab, localhost and RSSX hosts as
+ordinary sites.
 
 ## Using a Local API
 

@@ -341,11 +341,6 @@ If you can't connect to the API:
    - Build with `task build-dev` (or `.env` has `VITE_ENV=development`)
    - Start the local API server on port 8091
 
-3. **Test API connection**:
-   - Open `chrome-extension://YOUR_ID/config-check.html`
-   - Click "Refresh Configuration"
-   - Verify API URL is correct
-
 For more details, see [API_CONFIG_README.md](./API_CONFIG_README.md)
 
 ### Cognito sign-in errors

@@ -198,7 +198,7 @@ The extension uses different API endpoints based on the environment:
 
 - **Development** (`task build-dev`): `http://localhost:8091` - connects to local API server
 - **Homelab** (`task build`): `https://enx-api.wiloon.lab` - homelab k8s deployment
-- **Production** (`task build-prod`, `task package-prod`): `https://enx-api.wiloon.com`
+- **Production** (`task build-prod`, `task package-prod`): `https://api.catglish.com`
 
 The URLs live in `src/config/targets.ts` and are injected into both the bundle
 and the generated `manifest.json` at build time.
@@ -221,17 +221,8 @@ VITE_ENV=production
 VITE_API_BASE_URL=http://192.168.50.71:8090
 ```
 
-### Runtime Configuration
-
-Users can also override the API URL at runtime through Chrome storage:
-
-```javascript
-// In console of extension background page
-chrome.storage.local.set({ apiBaseUrl: 'http://custom-server:8090' })
-
-// Reset to default
-chrome.storage.local.remove('apiBaseUrl')
-```
+There is no runtime switch: each build talks only to the target it was built
+for (see [API_CONFIG_README.md](./API_CONFIG_README.md)).
 
 ### Before committing
 
