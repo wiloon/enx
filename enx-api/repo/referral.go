@@ -216,6 +216,14 @@ func (ReferralAccounts) CreatedAt(ctx context.Context, userID string) (time.Time
 	return u.CreatedAt, nil
 }
 
+// Exists: deletion removes the users row (Accounts.DeleteData); a disabled
+// user keeps it.
+func (ReferralAccounts) Exists(ctx context.Context, userID string) (bool, error) {
+	var n int64
+	err := sqlitex.DB.WithContext(ctx).Model(&sqlitex.User{}).Where("id = ?", userID).Count(&n).Error
+	return n > 0, err
+}
+
 // HasPaid: a top-up or subscription grant is the ledger's record of a
 // payment. Trials, referral bonuses and admin grants are not.
 func (ReferralAccounts) HasPaid(ctx context.Context, userID string) (bool, error) {

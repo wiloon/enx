@@ -4,6 +4,7 @@ package adapters
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"enx-api/billing/credit"
@@ -37,7 +38,11 @@ func (l Ledger) GrantInviteeBonus(ctx context.Context, inviteeID string, b refer
 }
 
 func (Ledger) GrantReferrerReward(ctx context.Context, referrerID string, amount int64, key string) error {
-	return credit.GrantReferralReward(ctx, referrerID, amount, key)
+	err := credit.GrantReferralReward(ctx, referrerID, amount, key)
+	if errors.Is(err, credit.ErrNoUser) {
+		return referral.ErrReferrerDeleted
+	}
+	return err
 }
 
 // Stripe is referral.PaymentChecker over the Stripe API.

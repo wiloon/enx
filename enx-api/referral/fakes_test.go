@@ -44,8 +44,9 @@ func (f *fakeCodes) Insert(_ context.Context, userID, code string, _ time.Time) 
 }
 
 type fakeReferrals struct {
-	rows      map[string]Referral
-	insertErr error
+	rows       map[string]Referral
+	insertErr  error
+	forfeitErr error
 }
 
 func newFakeReferrals() *fakeReferrals { return &fakeReferrals{rows: map[string]Referral{}} }
@@ -114,16 +115,29 @@ func (f *fakeReferrals) MarkRewarded(_ context.Context, inviteeID string, at tim
 }
 
 func (f *fakeReferrals) MarkForfeited(_ context.Context, inviteeID, reason string, _ time.Time) error {
+	if f.forfeitErr != nil {
+		return f.forfeitErr
+	}
 	r := f.rows[inviteeID]
 	r.Status, r.ForfeitReason = StatusForfeited, reason
 	f.rows[inviteeID] = r
 	return nil
 }
 
+// fakeAccounts: a user exists while it has a creation time.
 type fakeAccounts struct {
 	created        map[string]time.Time
 	paid           map[string]bool
 	trialElsewhere map[string]bool
+	existsErr      error
+}
+
+func (f *fakeAccounts) Exists(_ context.Context, userID string) (bool, error) {
+	if f.existsErr != nil {
+		return false, f.existsErr
+	}
+	_, ok := f.created[userID]
+	return ok, nil
 }
 
 func newFakeAccounts() *fakeAccounts {
@@ -164,6 +178,10 @@ type fakeCredits struct {
 	rewards    []rewardCall
 	keys       map[string]bool
 	rewardFail bool
+	// rewardErr, when set, is what every reward grant returns.
+	rewardErr error
+	// rewardAttempts counts reward grants called, failed ones included.
+	rewardAttempts int
 }
 
 func newFakeCredits() *fakeCredits { return &fakeCredits{keys: map[string]bool{}} }
@@ -178,6 +196,10 @@ func (f *fakeCredits) GrantInviteeBonus(_ context.Context, inviteeID string, b B
 }
 
 func (f *fakeCredits) GrantReferrerReward(_ context.Context, referrerID string, amount int64, key string) error {
+	f.rewardAttempts++
+	if f.rewardErr != nil {
+		return f.rewardErr
+	}
 	if f.rewardFail {
 		return errors.New("ledger down")
 	}
@@ -193,9 +215,12 @@ func (f *fakeCredits) GrantReferrerReward(_ context.Context, referrerID string, 
 type fakePayments struct {
 	invoices map[string]string
 	charges  map[string]ChargeState
+	// calls counts questions asked of Stripe, either method.
+	calls int
 }
 
 func (f *fakePayments) InvoicePaymentIntent(_ context.Context, invoiceID string) (string, error) {
+	f.calls++
 	pi, ok := f.invoices[invoiceID]
 	if !ok {
 		return "", errors.New("stripe: no such invoice")
@@ -204,6 +229,7 @@ func (f *fakePayments) InvoicePaymentIntent(_ context.Context, invoiceID string)
 }
 
 func (f *fakePayments) Charge(_ context.Context, paymentIntentID string) (ChargeState, error) {
+	f.calls++
 	c, ok := f.charges[paymentIntentID]
 	if !ok {
 		return ChargeState{}, errors.New("stripe: unavailable")

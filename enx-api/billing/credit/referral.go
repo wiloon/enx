@@ -2,6 +2,7 @@ package credit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -20,6 +21,10 @@ const (
 	// GRANT_TOPUP: the referrer bought nothing.
 	TypeGrantReferralReward = "GRANT_REFERRAL_REWARD"
 )
+
+// ErrNoUser: the user has no users row (the account was deleted), so there
+// is no account to credit.
+var ErrNoUser = errors.New("credit: no such user")
 
 // ReferralBonus is the invitee's claim grant.
 type ReferralBonus struct {
@@ -108,7 +113,9 @@ func GrantReferralBonus(ctx context.Context, userID string, b ReferralBonus) (tr
 // expires. Idempotent on key ("referral-reward:<inviteeID>"). The row
 // deliberately carries no payment intent: ADR-049's Clawback finds grants
 // by payment intent, and the invitee's later refund must not reach the
-// referrer.
+// referrer. A referrer with no users row gets ErrNoUser and nothing is
+// written; the check runs inside the transaction so that it serializes with
+// the account's deletion.
 func GrantReferralReward(ctx context.Context, referrerID string, amount int64, key string) error {
 	if key == "" {
 		return fmt.Errorf("credit: GrantReferralReward requires a non-empty key")
@@ -121,6 +128,13 @@ func GrantReferralReward(ctx context.Context, referrerID string, amount int64, k
 		already, err := eventAlreadyProcessed(tx, key)
 		if err != nil || already {
 			return err
+		}
+		var users int64
+		if err := tx.Model(&sqlitex.User{}).Where("id = ?", referrerID).Count(&users).Error; err != nil {
+			return err
+		}
+		if users == 0 {
+			return ErrNoUser
 		}
 
 		nowMs := time.Now().UnixMilli()

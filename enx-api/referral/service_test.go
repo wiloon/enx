@@ -3,6 +3,7 @@ package referral
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -638,6 +639,119 @@ func TestAConfigChangeKeepsTheRecordedReward(t *testing.T) {
 	}
 	if h.credits.rewards[0].Amount != 60 {
 		t.Fatalf("reward = %d, want the recorded 60", h.credits.rewards[0].Amount)
+	}
+}
+
+// wantForfeitedForDeletion checks one run that forfeited bob's reward because
+// alice, the referrer, is gone.
+func wantForfeitedForDeletion(t *testing.T, h *harness, run RewardRun) {
+	t.Helper()
+	if run.Forfeited != 1 || run.Rewarded != 0 || run.Retry != 0 {
+		t.Fatalf("run = %+v, want one forfeited and nothing else", run)
+	}
+	r := h.referrals.rows["bob"]
+	if r.Status != StatusForfeited || r.ForfeitReason != "referrer_deleted" {
+		t.Fatalf("referral = %+v, want forfeited (referrer_deleted)", r)
+	}
+	if len(h.credits.rewards) != 0 {
+		t.Fatalf("rewards = %+v, want nothing granted", h.credits.rewards)
+	}
+	if len(h.observer.rewards) != 1 || h.observer.rewards[0] != "forfeited" {
+		t.Fatalf("reward metrics = %v, want one forfeited", h.observer.rewards)
+	}
+}
+
+func TestADeletedReferrersRewardIsForfeitedWithoutAskingStripeOrTheLedger(t *testing.T) {
+	cases := map[string]func(t *testing.T, h *harness){
+		"paid with a payment intent": func(t *testing.T, h *harness) {
+			paidTopup(t, h)
+			h.payments.charges["pi_bob"] = ChargeState{}
+			h.now = t0.Add(14 * day)
+		},
+		// Stripe could not even resolve the invoice: deletion still wins.
+		"invoice not resolved": func(t *testing.T, h *harness) { paidSubscriptionWithoutIntent(t, h) },
+	}
+	for name, setup := range cases {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			setup(t, h)
+			delete(h.accounts.created, "alice")
+
+			run, err := h.svc.PayDueRewards(context.Background())
+			if err != nil {
+				t.Fatalf("PayDueRewards: %v", err)
+			}
+			wantForfeitedForDeletion(t, h, run)
+			if h.payments.calls != 0 || h.credits.rewardAttempts != 0 {
+				t.Fatalf("Stripe asked %d times, ledger %d times; want neither", h.payments.calls, h.credits.rewardAttempts)
+			}
+		})
+	}
+}
+
+func TestAReferrerDeletedAfterTheCheckForfeitsWhenTheLedgerSaysSo(t *testing.T) {
+	h := newHarness(t)
+	paidTopup(t, h)
+	h.payments.charges["pi_bob"] = ChargeState{}
+	h.now = t0.Add(14 * day)
+	h.credits.rewardErr = fmt.Errorf("grant: %w", ErrReferrerDeleted)
+
+	run, err := h.svc.PayDueRewards(context.Background())
+	if err != nil {
+		t.Fatalf("PayDueRewards: %v", err)
+	}
+	wantForfeitedForDeletion(t, h, run)
+}
+
+func TestADeletedReferrerStaysPendingWhenStorageCannotAnswer(t *testing.T) {
+	cases := map[string]func(h *harness){
+		"existence lookup fails": func(h *harness) { h.accounts.existsErr = errors.New("users table locked") },
+		"marking forfeited fails after the check": func(h *harness) {
+			delete(h.accounts.created, "alice")
+			h.referrals.forfeitErr = errors.New("referrals table locked")
+		},
+		"marking forfeited fails after the ledger": func(h *harness) {
+			h.credits.rewardErr = ErrReferrerDeleted
+			h.referrals.forfeitErr = errors.New("referrals table locked")
+		},
+	}
+	for name, setup := range cases {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			paidTopup(t, h)
+			h.payments.charges["pi_bob"] = ChargeState{}
+			h.now = t0.Add(14 * day)
+			setup(h)
+
+			run, err := h.svc.PayDueRewards(context.Background())
+			if err != nil {
+				t.Fatalf("PayDueRewards: %v", err)
+			}
+			if run.Retry != 1 || len(run.Errors) != 1 || run.Rewarded != 0 || run.Forfeited != 0 {
+				t.Fatalf("run = %+v, want one row to retry and nothing settled", run)
+			}
+			if r := h.referrals.rows["bob"]; r.Status != StatusPending {
+				t.Fatalf("status = %s, want pending for a retry next hour", r.Status)
+			}
+			if len(h.credits.rewards) != 0 || len(h.observer.rewards) != 0 {
+				t.Fatalf("rewards %+v, metrics %v; want nothing", h.credits.rewards, h.observer.rewards)
+			}
+		})
+	}
+}
+
+func TestAnExistenceLookupErrorAsksNeitherStripeNorTheLedger(t *testing.T) {
+	h := newHarness(t)
+	paidTopup(t, h)
+	h.payments.charges["pi_bob"] = ChargeState{}
+	h.now = t0.Add(14 * day)
+	h.accounts.existsErr = errors.New("users table locked")
+
+	if _, err := h.svc.PayDueRewards(context.Background()); err != nil {
+		t.Fatalf("PayDueRewards: %v", err)
+	}
+	if h.payments.calls != 0 || h.credits.rewardAttempts != 0 {
+		t.Fatalf("Stripe asked %d times, ledger %d times; want neither", h.payments.calls, h.credits.rewardAttempts)
 	}
 }
 

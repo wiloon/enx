@@ -155,6 +155,9 @@ func TestAnInviteeRefundLeavesTheReferrersRewardAlone(t *testing.T) {
 	stripe.Credits.TopupSmall = 300
 	h := NewHandler(nil, "https://example.com", stripe, nil)
 	ctx := context.Background()
+	if err := sqlitex.DB.Create(&sqlitex.User{Id: referrer, ClerkUserID: "clerk_" + referrer, Name: referrer}).Error; err != nil {
+		t.Fatalf("seed the referrer's users row: %v", err)
+	}
 
 	if err := h.dispatchWebhookEvent(ctx, topupCheckoutEvent("evt-buy-"+t.Name(), invitee, pi)); err != nil {
 		t.Fatalf("checkout.session.completed: %v", err)
