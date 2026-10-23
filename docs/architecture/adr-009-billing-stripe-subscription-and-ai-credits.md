@@ -72,6 +72,7 @@ enx 目前完全免费：`words`/ECDICT 词典查询和 `aitranslate` 包下的�
    - Webhook endpoint（`POST /billing/webhook`，具体路由见 TASK-SPEC）**不挂用户登录认证中间件**，靠 Stripe 签名密钥验证；密钥走环境变量（`STRIPE_WEBHOOK_SECRET`），遵循现有 `KIMI_API_KEY` 之类密钥不进 `config.toml` 的惯例
    - Stripe Customer 归属独立保存，`subscriptions` 以 Subscription ID 为主键保存全部订阅，`users.accepted_subscription_id` 表示当前接受关系；当前以用户为主键且兼存仅充值 Customer 的旧表需要保全数据迁移，见 #297。
    - **所有者 2026-10-23（#297 round 3）补充**：已实际结束的订阅在无阻断冲突时允许任意已提供档位重新购买并自动接受新 ID；健康 active 订阅升降档保留同一 ID，不取消重买，同档不重复购买。升档差额支付成功才启用高档，并一次补 `floor((新档每期积分 - 旧档每期积分) × 原周期剩余比例)`，余额及到期不变；失败维持原档/积分。降档下期才改档及发新档正常积分。改档操作及付款/周期来源持久幂等恢复，详见 ADR-067。
+   - **#297 round 4**：Portal 仅保留既有取消/付款方式/发票能力，每次 session 显式使用禁用 subscription_update 的已验证配置；同 ID 改档由 ENX 发起。无 ENX 操作的 price 变化与调整发票转持久人工调查，不改变有效档位/积分，后续续期也不绕过验证。按 API version 的 billing_reason 分正常周期与操作补差额，档位/周期取经验证的 recurring item line，不取 lines[0]；详见 ADR-067「Portal 边界与发票分类」。重叠请求按所有者 round 4：期末取消时先撤销取消；有降档排期选当前有效档位则撤销排期，其余 pending/排期改档返回 409 普通自助指引，无需管理员。
    - open 或仍可计费的 conflict 阻止新购买，即使 accepted 已结束；服务器先查资格并给 billing support 入口，独立可靠通知管理员，不依赖用户反馈。保留 ADR-066 的内测付款配置，本次不启用额外付费流量。
 4. **AI 调用计费**（采用 B1）：`TranslateSentence`、`TranslateWordInContext` 各定一个固定积分成本，具体数值待产品侧定价决策（不在本 ADR 内确定）。未来若加输入量级差异大的功能（比如整段翻译），单独为该功能定更高固定档位，不升级到 token 计费。
 5. **积分建模**（采用 D2）：双积分池，扣费用条件更新保证正确性：
@@ -135,3 +136,5 @@ enx 目前完全免费：`words`/ECDICT 词典查询和 `aitranslate` 包下的�
 ## 修订记录
 
 - 2026-10-23（#297 round 3）：落实所有者正常重购、同订阅升降档及补差额规则；明确正常周期与 proration 发放分流及周期来源，避免乱序付款重置当前余额。
+
+- 2026-10-23（#297 round 4）：明确 Portal 禁用改档、发票分类及未授权改档隔离，并落实所有者重叠请求规则，确保支付确认与差额积分语义只有一个入口。
