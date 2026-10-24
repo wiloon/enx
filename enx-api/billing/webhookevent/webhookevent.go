@@ -1,6 +1,7 @@
 // Package webhookevent holds the rules for durably received Stripe webhook
-// events (ADR-067): which endpoint an event belongs to, how its Event ID is
-// scoped, and the timing of worker retries and dependency waits. It is pure:
+// events (ADR-067): what receipt reads from a payload, which endpoint an
+// event belongs to, how its Event ID is scoped, how the worker handles each
+// event type, and the timing of worker retries and dependency waits. It is pure:
 // callers bring the configured key, the discovered account, the clock and the
 // configured durations.
 package webhookevent
