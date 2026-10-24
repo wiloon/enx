@@ -22,6 +22,10 @@ const (
 type Ref struct {
 	Kind Kind
 	ID   string
+	// AccountID and Livemode scope an event attention alert's Event ID; a
+	// subscription's alerts leave them empty.
+	AccountID string
+	Livemode  bool
 }
 
 // Content is what an alert's mail is composed from: EventAttention,
