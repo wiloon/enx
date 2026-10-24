@@ -3,7 +3,8 @@
 // event belongs to, how its Event ID is scoped, how the worker handles each
 // event type, and the timing of worker retries and dependency waits. It is pure:
 // callers bring the configured key, the discovered account, the clock and the
-// configured durations.
+// configured durations. Worker runs these rules over a TaskStore and a
+// Handler the caller supplies.
 package webhookevent
 
 import (
