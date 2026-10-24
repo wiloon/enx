@@ -205,3 +205,13 @@ _Avoid_: 扣回、clawback（那是 adr-049 对已发放积分的操作）
 **原生阅读视图（native reader view）**：
 iOS App 在 WKWebView 打开目标页之后，由用户点击按钮触发本机只读抽正文，再用 **UIKit `UITextView` + TextKit 2**（经 `UIViewRepresentable` 嵌在 SwiftUI 里）展示正文的界面。高亮与**点击查词**在原生层完成，不在 WebView 内完成；不以本地 WebView 渲染抽出的正文。与桌面扩展的「学习模式」不是同一概念；也不等同于 Safari 等系统 Reader View 产品。见 adr-042 Decision 11。
 _Avoid_: 学习模式（那是 enx-chrome 术语）、阅读模式（口语；指的就是本词条，文档里不用）、reader mode、查词浮层（那是扩展组件）、点词翻译（应说点击查词）
+
+### Subscription billing
+
+**Subscription tier (订阅档位)**:
+A set of service entitlements offered by ENX, such as Pro, Pro+ or Max. Billing the same tier monthly or annually changes its payment interval rather than defining a new tier.
+_Avoid_: price (the charge for a tier), subscription (the customer's ongoing relationship)
+
+**Plan change (改档)**:
+Moving an existing subscription from one subscription tier to another. An upgrade and a downgrade change the tier within that continuing subscription.
+_Avoid_: repurchase (a new subscription after the previous one ends)

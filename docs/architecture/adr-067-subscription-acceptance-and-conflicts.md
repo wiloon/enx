@@ -35,6 +35,7 @@ worker 的可调正 duration 默认值在 #297 明确为 `stripe.webhook.poll-in
 以下是所有者在 #297 的 2026-10-23 round 3 答复，取代「现有订阅一律找管理员」的笼统规则：
 
 - accepted A 在 Stripe 实际已结束（canceled/incomplete_expired）且无阻断冲突时，允许同档或其他已提供档位重新购买并自动接受 B，保留 A 历史。已安排期末取消仍未结束。
+- 商品建模遵循 Stripe 官方建议：Pro、Pro+、Max 权益不同，保留不同 Product；同档未来的月付/年付属于该 Product 下的不同 Price，不为 Portal 功能限制而合并三个档位。改档替换现有 subscription item 的 price，可跨 Product，保留 Subscription ID；必须指定现有 item，避免同时新增第二项收费。期末跨 Product 降档使用 Stripe Subscription Schedules；Portal 自带的期末降档只支持同 Product 的限制，不是 Subscriptions API 的通用限制。
 - 健康 active 订阅升降档更新同一 Subscription ID 的 price，不取消后重买；没有待处理操作时，同一当前有效档位请求为 no-op，不新建 Checkout。服务端在创建 Checkout 或发起改档前检查删除屏障、所属冲突与 Stripe 资格，不能只禁用按钮。其他不健康但可计费状态不能据此新买第二份订阅。
 - 升档收取按剩余周期折算的差额，支付成功才启用高档并补 `floor((新档每期积分 - 旧档每期积分) × 剩余周期比例)`，保留余额及周期末。比例使用同一次持久改档操作的原周期起止与 Stripe proration timestamp：`clamp((period_end - proration_timestamp)/(period_end - period_start), 0, 1)`，重试复用，不按 webhook 到达时刻重算。支付失败/未确认维持原档及积分。proration invoice 不能再触发整期发放。
 - 改档操作先持久化旧/新档、周期、折算时刻、invoice/付款引用、幂等键和恢复进度；用 billing revision 协调并发，Stripe 请求独立幂等。可用时用 payment-contingent pending update（`payment_behavior=pending_if_incomplete`、`proration_behavior=always_invoice`），保留 billing anchor；不支持的支付方式安全失败并给支持入口，不能先启用未付款套餐。不改变付款方式配置。
@@ -54,7 +55,7 @@ worker 的可调正 duration 默认值在 #297 明确为 `stripe.webhook.poll-in
 
 ## Portal 边界与发票分类
 
-- 从 schema cutover 起，每次 Portal session 显式传入专用 configuration ID，要求 `features.subscription_update.enabled=false`；配置为 `stripe.portal-configuration-id` / `STRIPE_PORTAL_CONFIGURATION_ID`。billing 启动及创建 session 前核实配置在当前 account/mode 有效且禁用改档；缺失、查询失败或不安全时不创建 session，返回可重试配置错误，不回退 Dashboard default。保留既有取消、付款方式及发票功能，改档由 ENX 发起。实现时同步修正 subscription.go、stripe/portal.go、plans.ts 的旧注释/文案。配置准备及旧 Portal 入口禁用交 #297 Before release，按 P-3 交接。
+- 使用 Stripe 现成托管 Portal，不自建取消、付款方式或发票界面。`stripe.portal-configuration-id` / `STRIPE_PORTAL_CONFIGURATION_ID` 是可选覆盖：未设置时按当前 API key 的 account/mode 查询 `active=true,is_default=true` 的默认配置；显式指定时只读取该配置，失败不能改选默认。两条路径都验证配置 active 且 `features.subscription_update.enabled=false`，找不到、结果不唯一、查询失败或不安全都不创建 session，返回可重试错误。每次 session 显式传入本次核实的 configuration ID，避免默认值在校验与打开之间变更而改选未校验配置。billing 启动做同样检查。默认配置可以满足要求，不强制另建专用配置；取消、付款方式及发票功能须在 Stripe 配置并实测。改档由 ENX 按既定资格、支付和积分规则发起；这属于 ENX 当前集成边界，不是 Stripe 禁止 Portal 改档的通用要求。配置准备及旧 Portal 入口限制按 P-3 交接。
 - ENX 有效档位与 Stripe 观察到的 price 分别保存。accepted 的 price 变化无匹配持久 ENX 改档操作时（包括旧 Portal session 或 Dashboard 修改），event 进入 needs_attention、可靠告警，不改有效档位、不发积分/邀请奖励；后续 renewal 也不能把未授权 price 合法化。仍保存生命周期/取消与观察上下文，不自动回改 Stripe price、退款或取消。迁移以已验证旧数据初始化有效档位，不伪造历史改档操作。
 - 每个支持的 API version adapter 先规范 billing_reason、subscription/item、price、line period 与 proration。仅 subscription_create/subscription_cycle 是正常周期候选，还须通过归属/接受及有效档位或已到期 ENX 降档排期验证。subscription_update 必须匹配持久改档操作及 invoice/付款身份；已付款升级仅补该操作差额，绝不整期发放。其他/缺失 reason、无匹配操作或含糊/不符 price 转 needs_attention、可靠邮件，不改档、不发积分/邀请奖励。可恢复的操作/invoice 关联竞态先等待恢复，超过依赖期限才人工处理；非订阅 invoice 与 conflict 沿用各自路径。
 - 正常周期由对应 subscription item 的非 proration recurring line 确定档位/周期，必要时读取全部 invoice line 分页，验证配置 price 与 ENX 有效档位/该边界到期的降档。不能按 lines[0]、金额正负、总额或今天可变的 subscription price 推断历史档位。缺失/含糊周期转人工。update invoice 按操作保存的旧新 item price、周期/折算来源匹配，不依赖 credit/charge line 顺序，两条 line 不各自发积分。
@@ -117,6 +118,8 @@ ADR-064 会在 main 合并后自动部署。#297 的 characterization/fixture �
 
 - 2026-10-23（#297 round 5 所有者答复）：所有者选择 B，授权认证自助取消未付款升级；补齐持久取消意图、原 invoice void、付款竞态与崩溃恢复及确认后解锁，替换未决 A/B 选择，保持原订阅和积分规则。
 
+- 2026-10-23（#297 / #336，所有者要求对齐 Stripe 官方模型）：保留不同权益档位的独立 Product、同 Subscription 替换 Price；允许校验后的 Stripe 默认 Portal 配置，显式 ID 降为可选覆盖。替代 round 4 的专用配置必填要求，不改变支付成功及应用确认、差额积分、期末降档或异常处理规则。
+
 ## 参考
 
 - [Stripe webhook 顺序、重复与异步处理](https://docs.stripe.com/webhooks#event-ordering)
@@ -125,3 +128,7 @@ ADR-064 会在 main 合并后自动部署。#297 的 characterization/fixture �
 - [Stripe Portal 的 subscription schedule 限制](https://docs.stripe.com/customer-management#limitations)
 
 - [Stripe invoice void API](https://docs.stripe.com/api/invoices/void)
+- [Stripe Product 与 Price 的官方建模](https://docs.stripe.com/products-prices/how-products-and-prices-work#model-your-product-catalog)
+- [Stripe 修改现有订阅价格](https://docs.stripe.com/billing/subscriptions/change-price)
+- [Stripe 默认 Portal 配置查询](https://docs.stripe.com/api/customer_portal/configurations/list)
+- [Stripe Portal Session 的可选 configuration 参数](https://docs.stripe.com/api/customer_portal/sessions/create)

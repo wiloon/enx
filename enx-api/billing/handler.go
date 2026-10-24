@@ -204,8 +204,8 @@ func (h *Handler) CheckoutTopup(c *gin.Context) {
 // Portal handles POST /billing/portal. Requires the user to already have a
 // Stripe customer (established by a prior checkout), since the Customer
 // Portal has nothing to manage otherwise. The session always uses the
-// configured Portal configuration, checked first: with none, or one that
-// allows plan changes, no session is opened (ADR-067).
+// explicit or default Portal configuration, checked first. An unavailable or
+// unsafe configuration never creates a session (ADR-067).
 func (h *Handler) Portal(c *gin.Context) {
 	if h.sc == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "billing is not configured"})
@@ -219,13 +219,14 @@ func (h *Handler) Portal(c *gin.Context) {
 		return
 	}
 
-	if err := billingstripe.CheckPortalConfiguration(c.Request.Context(), h.sc, h.portalConfigurationID); err != nil {
+	configurationID, err := billingstripe.ResolvePortalConfiguration(c.Request.Context(), h.sc, h.portalConfigurationID)
+	if err != nil {
 		logger.Errorf("billing: portal refused: %v", err)
 		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "The billing portal is unavailable right now. Please try again later."})
 		return
 	}
 
-	session, err := billingstripe.CreatePortalSession(c.Request.Context(), h.sc, customerID, h.portalConfigurationID, h.frontendBaseURL+"/billing")
+	session, err := billingstripe.CreatePortalSession(c.Request.Context(), h.sc, customerID, configurationID, h.frontendBaseURL+"/billing")
 	if err != nil {
 		logger.Errorf("billing: create portal session failed: %v", err)
 		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "failed to create portal session"})

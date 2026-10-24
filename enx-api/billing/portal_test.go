@@ -17,6 +17,8 @@ type portalFake struct {
 	configJSON   string
 	configStatus int
 	configReads  []string
+	defaultJSON  string
+	defaultReads []url.Values
 	sessions     []url.Values
 }
 
@@ -25,6 +27,18 @@ func (f *portalFake) client(t *testing.T) *stripeSDK.Client {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/billing_portal/configurations":
+			f.defaultReads = append(f.defaultReads, r.URL.Query())
+			if f.configStatus != 0 && f.configStatus != http.StatusOK {
+				w.WriteHeader(f.configStatus)
+				_, _ = w.Write([]byte(`{"error":{"type":"invalid_request_error","message":"Unavailable"}}`))
+				return
+			}
+			data := f.defaultJSON
+			if data == "" {
+				data = `{"object":"list","has_more":false,"data":[]}`
+			}
+			_, _ = w.Write([]byte(data))
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/billing_portal/configurations/"):
 			f.configReads = append(f.configReads, strings.TrimPrefix(r.URL.Path, "/v1/billing_portal/configurations/"))
 			if f.configStatus != 0 && f.configStatus != http.StatusOK {
@@ -77,6 +91,9 @@ func TestPortalOpensTheSessionUnderTheConfiguredUpdateDisabledConfiguration(t *t
 	if len(fake.sessions) != 1 {
 		t.Fatalf("sessions created = %d, want 1", len(fake.sessions))
 	}
+	if len(fake.defaultReads) != 0 {
+		t.Fatalf("explicit override queried Stripe defaults: %v", fake.defaultReads)
+	}
 	form := fake.sessions[0]
 	if got := form.Get("configuration"); got != "bpc_safe" {
 		t.Errorf("configuration = %q, want bpc_safe", got)
@@ -89,9 +106,30 @@ func TestPortalOpensTheSessionUnderTheConfiguredUpdateDisabledConfiguration(t *t
 	}
 }
 
-// Without a configuration ENX has checked, no session is created: Stripe
-// would otherwise fall back to the Dashboard default, which may allow plan
-// changes. The user gets a retryable error.
+// Stripe's default configuration is usable when it satisfies the same policy.
+// Bind the session to the checked ID rather than leaving Stripe to choose again.
+func TestPortalUsesTheCheckedDefaultWithoutAnExplicitConfigurationID(t *testing.T) {
+	userID := "u-" + t.Name()
+	seedSubscription(t, userID, "cus_"+userID, "sub_"+userID, "active", 1700000000)
+	defaultConfig := strings.Replace(safePortalConfiguration, `"active":true`, `"active":true,"is_default":true`, 1)
+	fake := &portalFake{defaultJSON: `{"object":"list","has_more":false,"data":[` + defaultConfig + `]}`}
+	cfg := testStripe()
+	cfg.PortalConfigurationID = ""
+	h := NewHandler(fake.client(t), "https://example.com", cfg, nil)
+	w := doRequest(t, http.MethodPost, "/billing/portal", h.Portal, userID, ``)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s, want 200", w.Code, w.Body.String())
+	}
+	if len(fake.defaultReads) != 1 || fake.defaultReads[0].Get("is_default") != "true" || fake.defaultReads[0].Get("active") != "true" {
+		t.Fatalf("default configuration queries = %v, want one active/default query", fake.defaultReads)
+	}
+	if len(fake.sessions) != 1 || fake.sessions[0].Get("configuration") != "bpc_safe" {
+		t.Fatalf("sessions = %v, want one session pinned to bpc_safe", fake.sessions)
+	}
+}
+
+// Both explicit and default configurations must be verified. Failed explicit
+// overrides never fall back to a potentially different default configuration.
 func TestPortalRefusesWithoutASafeConfiguration(t *testing.T) {
 	cases := []struct {
 		name            string
@@ -99,7 +137,9 @@ func TestPortalRefusesWithoutASafeConfiguration(t *testing.T) {
 		fake            portalFake
 		wantReads       int
 	}{
-		{name: "none configured", configurationID: "", wantReads: 0},
+		{name: "no active default", configurationID: "", wantReads: 0},
+		{name: "default lookup fails", configurationID: "", fake: portalFake{configStatus: http.StatusForbidden}, wantReads: 0},
+		{name: "unsafe default", configurationID: "", fake: portalFake{defaultJSON: `{"object":"list","has_more":false,"data":[{"id":"bpc_default","active":true,"is_default":true,"features":{"subscription_update":{"enabled":true}}}]}`}, wantReads: 0},
 		{name: "subscription updates enabled", configurationID: "bpc_updates", fake: portalFake{configJSON: updatesPortalConfiguration}, wantReads: 1},
 		{name: "Stripe can't read it", configurationID: "bpc_safe", fake: portalFake{configStatus: http.StatusInternalServerError}, wantReads: 1},
 	}
@@ -122,6 +162,9 @@ func TestPortalRefusesWithoutASafeConfiguration(t *testing.T) {
 			}
 			if len(fake.configReads) != tc.wantReads {
 				t.Errorf("configuration reads = %d, want %d", len(fake.configReads), tc.wantReads)
+			}
+			if tc.configurationID != "" && len(fake.defaultReads) != 0 {
+				t.Errorf("explicit override failure fell back to default: %v", fake.defaultReads)
 			}
 			if len(fake.sessions) != 0 {
 				t.Errorf("sessions created = %d, want none", len(fake.sessions))

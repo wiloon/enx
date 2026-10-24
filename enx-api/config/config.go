@@ -228,9 +228,9 @@ type Bedrock struct {
 type Stripe struct {
 	SecretKey     Secret `mapstructure:"secret-key"`
 	WebhookSecret Secret `mapstructure:"webhook-secret"`
-	// PortalConfigurationID names the Customer Portal configuration every
-	// Portal session uses. It must have subscription updates disabled: ENX
-	// alone changes tiers (ADR-067). Empty leaves the Portal off.
+	// PortalConfigurationID optionally overrides Stripe's default Portal
+	// configuration. Either choice is checked before opening a session and
+	// must have subscription updates disabled (ADR-067).
 	PortalConfigurationID string        `mapstructure:"portal-configuration-id"`
 	Price                 StripePrice   `mapstructure:"price"`
 	Credits               StripeCredits `mapstructure:"credits"`

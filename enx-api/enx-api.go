@@ -741,23 +741,25 @@ func backfillTrialGrants(cfg *config.Config) {
 	}
 }
 
+// checkPortalConfigurationAtStartup reports at startup whether the Customer
+// Portal can open: POST /billing/portal checks the same configuration again
+// before every session. An empty override resolves Stripe's active default;
+// missing or unsafe configurations still refuse sessions (ADR-067).
+func checkPortalConfigurationAtStartup(sc *stripeSDK.Client, configurationID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	resolvedID, err := billingstripe.ResolvePortalConfiguration(ctx, sc, configurationID)
+	if err != nil {
+		logger.Errorf("billing: Customer Portal sessions are refused until the default or configured Portal configuration is active with subscription updates disabled: %v", err)
+		return
+	}
+	logger.Infof("billing: Customer Portal configuration %s has subscription updates disabled", resolvedID)
+}
+
 // runReferralRewards settles the referrer rewards that are due (ADR-051
 // Decision 5). Mirrors the cleanups: once on start, then hourly; a row
 // Stripe could not answer for is retried on the next run, and the ledger's
 // idempotency key keeps reruns and parallel instances from paying twice.
-// checkPortalConfigurationAtStartup reports at startup whether the Customer
-// Portal can open: POST /billing/portal checks the same configuration again
-// before every session and refuses while it is missing or unsafe (ADR-067).
-func checkPortalConfigurationAtStartup(sc *stripeSDK.Client, configurationID string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := billingstripe.CheckPortalConfiguration(ctx, sc, configurationID); err != nil {
-		logger.Errorf("billing: Customer Portal sessions are refused until STRIPE_PORTAL_CONFIGURATION_ID names an active configuration with subscription updates disabled: %v", err)
-		return
-	}
-	logger.Infof("billing: Customer Portal configuration %s has subscription updates disabled", configurationID)
-}
-
 func runReferralRewards(svc *referral.Service) {
 	settle := func() {
 		run, err := svc.PayDueRewards(context.Background())
