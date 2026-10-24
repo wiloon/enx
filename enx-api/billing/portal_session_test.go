@@ -22,16 +22,20 @@ const (
 	sessionURL        = "https://billing.stripe.com/p/session/test"
 	sessionChangeConf = "bpc_change"
 	sessionRestrConf  = "bpc_restricted"
+	sessionUserID     = "user_1"
 )
 
 var sessionTierPrices = map[string]string{"pro": "price_pro", "pro-plus": "price_pro_plus", "max": "price_max"}
 
+// sessionStore records the users whose ownership was read.
 type sessionStore struct {
-	owner portalsession.Owner
-	err   error
+	owner   portalsession.Owner
+	err     error
+	userIDs []string
 }
 
-func (s *sessionStore) Owner(context.Context, string) (portalsession.Owner, error) {
+func (s *sessionStore) Owner(_ context.Context, userID string) (portalsession.Owner, error) {
+	s.userIDs = append(s.userIDs, userID)
 	return s.owner, s.err
 }
 
@@ -103,8 +107,8 @@ func serveSession(t *testing.T, store *sessionStore, stripe *sessionStripe, path
 	gin.SetMode(gin.TestMode)
 	h := NewPortalSessionHandler(portalsession.New(store, stripe, sessionReturnURL))
 	router := gin.New()
-	router.POST("/api/billing/portal", setUserID("user_1"), h.Home)
-	router.POST("/api/billing/portal/plan-change", setUserID("user_1"), h.PlanChange)
+	router.POST("/api/billing/portal", setUserID(sessionUserID), h.Home)
+	router.POST("/api/billing/portal/plan-change", setUserID(sessionUserID), h.PlanChange)
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -117,12 +121,16 @@ func serveSession(t *testing.T, store *sessionStore, stripe *sessionStripe, path
 }
 
 func TestThePortalHomeAnswersTheSessionURL(t *testing.T) {
+	store := &sessionStore{owner: proSubscriber()}
 	stripe := &sessionStripe{subs: activePro}
 
-	code, resp := serveSession(t, &sessionStore{owner: proSubscriber()}, stripe, "/api/billing/portal", "")
+	code, resp := serveSession(t, store, stripe, "/api/billing/portal", "")
 
 	if code != http.StatusOK || !resp.Success || resp.URL != sessionURL {
 		t.Fatalf("status = %d, %+v; want 200 with the session URL", code, resp)
+	}
+	if want := []string{sessionUserID}; !reflect.DeepEqual(store.userIDs, want) {
+		t.Errorf("ownership read for %q, want the signed-in user %q", store.userIDs, want)
 	}
 	want := []portalsession.Session{{CustomerID: "cus_a", ConfigurationID: sessionChangeConf, ReturnURL: sessionReturnURL}}
 	if !reflect.DeepEqual(stripe.sessions, want) {
@@ -158,12 +166,16 @@ func TestAPortalHomeForAUserWithNoStripeCustomerIsAnswered404(t *testing.T) {
 }
 
 func TestAPlanChangeAnswersTheSubscriptionUpdateConfirmDeepLink(t *testing.T) {
+	store := &sessionStore{owner: proSubscriber()}
 	stripe := &sessionStripe{subs: activePro}
 
-	code, resp := serveSession(t, &sessionStore{owner: proSubscriber()}, stripe, "/api/billing/portal/plan-change", `{"tier":"max"}`)
+	code, resp := serveSession(t, store, stripe, "/api/billing/portal/plan-change", `{"tier":"max"}`)
 
 	if code != http.StatusOK || !resp.Success || resp.URL != sessionURL {
 		t.Fatalf("status = %d, %+v; want 200 with the session URL", code, resp)
+	}
+	if want := []string{sessionUserID}; !reflect.DeepEqual(store.userIDs, want) {
+		t.Errorf("ownership read for %q, want the signed-in user %q", store.userIDs, want)
 	}
 	want := []portalsession.Session{{
 		CustomerID:      "cus_a",
