@@ -54,6 +54,21 @@ func TestDecide(t *testing.T) {
 			want: Decision{Outcome: Accept},
 		},
 		{
+			name: "no replacement is accepted while an owned conflict is still open",
+			obs:  Observation{IncomingID: "sub_c", IncomingStatus: "active", AcceptedID: "sub_a", AcceptedStatus: "canceled", BlockingConflict: true},
+			want: Decision{Outcome: MarkConflict, Reason: ReasonBlockedByConflict, ConflictWith: "sub_a"},
+		},
+		{
+			name: "nothing is accepted while a resolved conflict is still billable",
+			obs:  Observation{IncomingID: "sub_c", IncomingStatus: "active", BlockingConflict: true},
+			want: Decision{Outcome: MarkConflict, Reason: ReasonBlockedByConflict},
+		},
+		{
+			name: "a subscription competing with a live accepted one is a plain conflict even when another blocks",
+			obs:  Observation{IncomingID: "sub_c", IncomingStatus: "active", AcceptedID: "sub_a", AcceptedStatus: "active", BlockingConflict: true},
+			want: Decision{Outcome: MarkConflict, Reason: ReasonCompetesWithAccepted, ConflictWith: "sub_a"},
+		},
+		{
 			name: "an unclassified subscription that already ended is stale, whatever is accepted",
 			obs:  Observation{IncomingID: "sub_b", IncomingStatus: "canceled", AcceptedID: "sub_a", AcceptedStatus: "active"},
 			want: Decision{Outcome: MarkStale},
@@ -86,6 +101,11 @@ func TestDecide(t *testing.T) {
 		{
 			name: "nothing is accepted while the account is being deleted",
 			obs:  Observation{IncomingID: "sub_b", IncomingStatus: "active", Deletion: DeletionInProgress},
+			want: Decision{Outcome: WaitForDeletion},
+		},
+		{
+			name: "an ended subscription during deletion waits rather than turning stale",
+			obs:  Observation{IncomingID: "sub_b", IncomingStatus: "canceled", Deletion: DeletionInProgress},
 			want: Decision{Outcome: WaitForDeletion},
 		},
 		{

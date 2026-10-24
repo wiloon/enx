@@ -37,6 +37,10 @@ type Observation struct {
 	AcceptedID             string
 	AcceptedStatus         string
 	Deletion               Deletion
+	// BlockingConflict: the owner has a conflict that is still open, or
+	// resolved but still billable in Stripe. Read under the same revision
+	// check as the accepted pointer.
+	BlockingConflict bool
 }
 
 // Outcome is what to do with the incoming subscription.
@@ -65,6 +69,7 @@ const (
 // Reasons for MarkConflict and NeedsAttention.
 const (
 	ReasonCompetesWithAccepted        = "competes_with_accepted"
+	ReasonBlockedByConflict           = "blocked_by_open_conflict"
 	ReasonPaymentAfterAccountDeletion = "payment_after_account_deletion"
 	ReasonUnrecognizedStatus          = "unrecognized_subscription_status"
 )
@@ -98,15 +103,21 @@ func Ended(status string) bool {
 // deletion is in progress nothing is accepted; after it, a payment needs
 // attention. An unclassified subscription that already ended is stale. A
 // live one is accepted when nothing is accepted or the accepted one has
-// ended, and is a conflict while the accepted one is still billable. A status
-// outside Stripe's billable and ended sets is never guessed at.
+// ended, unless a blocking conflict remains; it is a conflict while the
+// accepted one is still billable. A status outside Stripe's billable and
+// ended sets is never guessed at.
 func Decide(o Observation) Decision {
+	// Replay and Unchanged hold during deletion too. What happens to paid
+	// invoices of classified subscriptions during or after deletion (ADR-067
+	// §注销与财务留存) belongs to the invoice and credit path, not to Decide.
 	if o.AcceptedID != "" && o.IncomingID == o.AcceptedID {
 		return Decision{Outcome: Replay}
 	}
 	if o.IncomingClassification != Unclassified {
 		return Decision{Outcome: Unchanged}
 	}
+	// The deletion gate comes before the stale check: during deletion every
+	// unclassified subscription is decided again once deletion settles.
 	switch o.Deletion {
 	case DeletionInProgress:
 		return Decision{Outcome: WaitForDeletion}
@@ -121,9 +132,13 @@ func Decide(o Observation) Decision {
 	}
 	switch {
 	case o.AcceptedID == "", Ended(o.AcceptedStatus):
+		if o.BlockingConflict {
+			return Decision{Outcome: MarkConflict, Reason: ReasonBlockedByConflict, ConflictWith: o.AcceptedID}
+		}
 		return Decision{Outcome: Accept}
 	case Billable(o.AcceptedStatus):
 		return Decision{Outcome: MarkConflict, Reason: ReasonCompetesWithAccepted, ConflictWith: o.AcceptedID}
 	}
+	// The accepted subscription's status is neither billable nor ended.
 	return Decision{Outcome: NeedsAttention, Reason: ReasonUnrecognizedStatus}
 }
