@@ -108,8 +108,7 @@ export const TOPUP_TIERS: TopupOption[] = [
 
 // Stripe subscription statuses in which Stripe can still bill the user. Must
 // match enx-api/billing/subscription.go, which refuses a second subscription
-// checkout for them. The billing portal handles payment, invoices and
-// cancellation but not plan changes (ADR-067); those go through support.
+// checkout for them: the user manages the live one in the billing portal.
 const LIVE_SUBSCRIPTION_STATUSES = new Set([
   'active',
   'trialing',
