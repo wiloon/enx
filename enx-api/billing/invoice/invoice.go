@@ -33,6 +33,13 @@ type Invoice struct {
 	ID             string
 	BillingReason  string
 	SubscriptionID string
+	CustomerID     string
+	// AmountPaid is in the currency's smallest unit; zero for a free period.
+	AmountPaid int64
+	// MetadataUserID is enx_user_id in the invoice's snapshot of its
+	// subscription's metadata, which ENX's Checkout sets server-side; "" for
+	// a subscription created without it.
+	MetadataUserID string
 	Lines          []Line
 	LinesComplete  bool
 }
