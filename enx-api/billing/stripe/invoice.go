@@ -82,6 +82,29 @@ func PaidInvoicesOfSubscription(ctx context.Context, sc *stripeSDK.Client, subsc
 	return paid, nil
 }
 
+// BackfillClient is Stripe as the legacy provenance backfill sees it: it
+// serves legacyprovenance.Stripe.
+type BackfillClient struct {
+	sc *stripeSDK.Client
+}
+
+// NewBackfillClient returns a BackfillClient over sc.
+func NewBackfillClient(sc *stripeSDK.Client) *BackfillClient {
+	return &BackfillClient{sc: sc}
+}
+
+// PaidInvoicesOfPaymentIntent are the invoices paymentIntentID paid, as the
+// package-level PaidInvoicesOfPaymentIntent reads them.
+func (c *BackfillClient) PaidInvoicesOfPaymentIntent(ctx context.Context, paymentIntentID string) ([]invoice.Invoice, error) {
+	return PaidInvoicesOfPaymentIntent(ctx, c.sc, paymentIntentID)
+}
+
+// PaidInvoicesOfSubscription are the paid invoices of subscriptionID, as
+// the package-level PaidInvoicesOfSubscription reads them.
+func (c *BackfillClient) PaidInvoicesOfSubscription(ctx context.Context, subscriptionID string) ([]invoice.Invoice, error) {
+	return PaidInvoicesOfSubscription(ctx, c.sc, subscriptionID)
+}
+
 // withLines normalizes src, reading its lines from /v1/invoices/{id}/lines
 // so no page is left unread.
 func withLines(ctx context.Context, sc *stripeSDK.Client, src *stripeSDK.Invoice) (invoice.Invoice, error) {

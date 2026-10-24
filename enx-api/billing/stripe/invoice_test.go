@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"enx-api/billing/invoice"
+	"enx-api/billing/legacyprovenance"
 
 	stripeSDK "github.com/stripe/stripe-go/v86"
 )
@@ -104,6 +105,44 @@ func TestPaidInvoicesOfSubscriptionReadsEveryLineOfItsPaidInvoices(t *testing.T)
 	}
 	if want := []invoice.Invoice{wantInvoice}; !reflect.DeepEqual(got, want) {
 		t.Errorf("PaidInvoicesOfSubscription = %+v, want %+v", got, want)
+	}
+}
+
+var _ legacyprovenance.Stripe = (*BackfillClient)(nil)
+
+func TestTheBackfillClientReadsThePaidInvoicesOfAPaymentIntentAndOfASubscription(t *testing.T) {
+	sc := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/invoice_payments":
+			if r.URL.Query().Get("payment[payment_intent]") != "pi_1" {
+				t.Errorf("invoice payments listed for %q, want pi_1", r.URL.Query().Get("payment[payment_intent]"))
+			}
+			_, _ = w.Write([]byte(`{"object":"list","url":"/v1/invoice_payments","has_more":false,"data":[` +
+				`{"id":"inpay_1","object":"invoice_payment","status":"paid","invoice":` + invoiceObject + `,` +
+				`"payment":{"type":"payment_intent","payment_intent":"pi_1"}}]}`))
+		case "/v1/invoices":
+			if r.URL.Query().Get("subscription") != "sub_1" {
+				t.Errorf("invoices listed for %q, want sub_1", r.URL.Query().Get("subscription"))
+			}
+			_, _ = w.Write([]byte(`{"object":"list","url":"/v1/invoices","has_more":false,"data":[` + invoiceObject + `]}`))
+		case "/v1/invoices/in_1/lines":
+			serveInvoiceLines(t, w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	client := NewBackfillClient(sc)
+	ctx := context.Background()
+	want := []invoice.Invoice{wantInvoice}
+
+	byPaymentIntent, err := client.PaidInvoicesOfPaymentIntent(ctx, "pi_1")
+	if err != nil || !reflect.DeepEqual(byPaymentIntent, want) {
+		t.Errorf("PaidInvoicesOfPaymentIntent = %+v, %v; want %+v", byPaymentIntent, err, want)
+	}
+	bySubscription, err := client.PaidInvoicesOfSubscription(ctx, "sub_1")
+	if err != nil || !reflect.DeepEqual(bySubscription, want) {
+		t.Errorf("PaidInvoicesOfSubscription = %+v, %v; want %+v", bySubscription, err, want)
 	}
 }
 
