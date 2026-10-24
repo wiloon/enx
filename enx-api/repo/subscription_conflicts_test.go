@@ -332,6 +332,64 @@ func TestSubscriptionConflictsSaveResolutionWritesOnlyTheResolutionAtTheVersionR
 	}
 }
 
+func seedBillingOwner(t *testing.T, userID string, billingVersion int64) {
+	t.Helper()
+	if err := sqlitex.DB.Exec("INSERT INTO users (id, billing_version) VALUES (?, ?)", userID, billingVersion).Error; err != nil {
+		t.Fatalf("seed user %s: %v", userID, err)
+	}
+}
+
+func ownerBillingVersion(t *testing.T, userID string) int64 {
+	t.Helper()
+	var v int64
+	if err := sqlitex.DB.Raw("SELECT billing_version FROM users WHERE id = ?", userID).Scan(&v).Error; err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
+
+// A resolution changes the owner's purchase eligibility, so a decision
+// that read the owner before it must not apply after it.
+func TestSubscriptionConflictsSaveResolutionMovesTheOwnersBillingRevisionOn(t *testing.T) {
+	newSubscriptionConflictDB(t)
+	seedBillingOwner(t, "user_1", 7)
+	seedBillingOwner(t, "user_2", 4)
+	seedSubscription(t, openConflict("sub_b", discoveredT0))
+	ctx := context.Background()
+	store := SubscriptionConflicts{}
+	res := conflict.Resolution{Status: conflict.Resolved, ResolverID: "admin_1", ResolvedAt: discoveredT0.Add(2 * time.Hour), Notes: "Refunded in Stripe."}
+
+	if err := store.SaveResolution(ctx, conflictadmin.ResolutionSave{SubscriptionID: "sub_b", Version: 1, Resolution: res}); err != nil {
+		t.Fatalf("SaveResolution: %v", err)
+	}
+	if v := ownerBillingVersion(t, "user_1"); v != 8 {
+		t.Errorf("owner's billing_version = %d after the resolution, want 8", v)
+	}
+	if v := ownerBillingVersion(t, "user_2"); v != 4 {
+		t.Errorf("another user's billing_version = %d, want unchanged 4", v)
+	}
+	saved, err := store.Conflict(ctx, "sub_b")
+	if err != nil {
+		t.Fatalf("Conflict: %v", err)
+	}
+
+	other := res
+	other.Notes = "Cancelled in Stripe."
+	if err := store.SaveResolution(ctx, conflictadmin.ResolutionSave{SubscriptionID: "sub_b", Version: 1, Resolution: other}); !errors.Is(err, conflictadmin.ErrStale) {
+		t.Fatalf("SaveResolution at the old version = %v, want conflictadmin.ErrStale", err)
+	}
+	if v := ownerBillingVersion(t, "user_1"); v != 8 {
+		t.Errorf("owner's billing_version = %d after a stale save, want unchanged 8", v)
+	}
+	after, err := store.Conflict(ctx, "sub_b")
+	if err != nil {
+		t.Fatalf("Conflict: %v", err)
+	}
+	if after.Version != saved.Version || after.Conflict.Resolution.Notes != res.Notes {
+		t.Errorf("after the stale save = %+v, want unchanged %+v", after, saved)
+	}
+}
+
 func TestSubscriptionConflictsAnAdministratorsResolutionStandsAndARepeatChangesNothing(t *testing.T) {
 	newSubscriptionConflictDB(t)
 	seedSubscription(t, openConflict("sub_b", discoveredT0))

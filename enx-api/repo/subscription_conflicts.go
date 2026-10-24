@@ -9,6 +9,8 @@ import (
 	"enx-api/billing/conflictadmin"
 	"enx-api/billing/webhookevent"
 	"enx-api/utils/sqlitex"
+
+	"gorm.io/gorm"
 )
 
 // SubscriptionConflicts is conflictadmin.Store over the subscriptions rows
@@ -124,23 +126,33 @@ func (SubscriptionConflicts) Events(ctx context.Context, subscriptionID string) 
 }
 
 // SaveResolution writes s.Resolution to the conflict row and moves its
-// version on, only while the row is still at s.Version; otherwise it
-// returns conflictadmin.ErrStale, and the service's next read tells a moved
-// row from a missing one. Ownership, classification, the support request and
-// the alerts stay as they are, so a pending alert is still sent.
+// version and its owner's billing revision on, only while the row is still
+// at s.Version; otherwise it returns conflictadmin.ErrStale, and the
+// service's next read tells a moved row from a missing one. The resolution
+// changes the owner's purchase eligibility, so a decision that read the
+// owner before it cannot apply after it. Ownership, classification, the
+// support request and the alerts stay as they are, so a pending alert is
+// still sent.
 func (SubscriptionConflicts) SaveResolution(ctx context.Context, s conflictadmin.ResolutionSave) error {
-	res := sqlitex.DB.WithContext(ctx).Exec("UPDATE `subscriptions` SET `conflict_status` = ?, `conflict_resolver_id` = ?, `conflict_resolved_at` = ?, "+
-		"`conflict_notes` = ?, `version` = `version` + 1, `updated_at` = ? "+
-		"WHERE `stripe_subscription_id` = ? AND `classification` = ? AND `version` = ?",
-		string(s.Resolution.Status), s.Resolution.ResolverID, unixMilliOrNil(s.Resolution.ResolvedAt), s.Resolution.Notes,
-		time.Now().UnixMilli(), s.SubscriptionID, classificationConflict, s.Version)
-	if res.Error != nil {
-		return fmt.Errorf("save subscription conflict resolution: %w", res.Error)
-	}
-	if res.RowsAffected == 0 {
-		return conflictadmin.ErrStale
-	}
-	return nil
+	return sqlitex.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Exec("UPDATE `subscriptions` SET `conflict_status` = ?, `conflict_resolver_id` = ?, `conflict_resolved_at` = ?, "+
+			"`conflict_notes` = ?, `version` = `version` + 1, `updated_at` = ? "+
+			"WHERE `stripe_subscription_id` = ? AND `classification` = ? AND `version` = ?",
+			string(s.Resolution.Status), s.Resolution.ResolverID, unixMilliOrNil(s.Resolution.ResolvedAt), s.Resolution.Notes,
+			time.Now().UnixMilli(), s.SubscriptionID, classificationConflict, s.Version)
+		if res.Error != nil {
+			return fmt.Errorf("save subscription conflict resolution: %w", res.Error)
+		}
+		if res.RowsAffected == 0 {
+			return conflictadmin.ErrStale
+		}
+		if err := tx.Exec("UPDATE `users` SET `billing_version` = `billing_version` + 1 "+
+			"WHERE `id` = (SELECT `user_id` FROM `subscriptions` WHERE `stripe_subscription_id` = ?)",
+			s.SubscriptionID).Error; err != nil {
+			return fmt.Errorf("move subscription conflict owner's billing revision on: %w", err)
+		}
+		return nil
+	})
 }
 
 func (r conflictRow) conflict() conflictadmin.Conflict {
