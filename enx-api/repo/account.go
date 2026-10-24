@@ -37,7 +37,8 @@ func (Accounts) SetStatus(ctx context.Context, userID string, status account.Sta
 
 // personalTables are the tables whose rows a deletion removes, each with its
 // user id column. Kept on purpose: credit_transactions, subscriptions and
-// referrals (the ledger), trial_grants (the email HMAC), and
+// referrals (the ledger), trial_grants (the email HMAC),
+// account_deletion_gates (ADR-067's retained deletion gate), and
 // active_users_daily (counts, no user ids).
 var personalTables = []struct{ table, column string }{
 	{"user_dicts", "user_id"},

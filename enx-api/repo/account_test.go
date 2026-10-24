@@ -86,6 +86,25 @@ func TestAccountsDeleteDataRemovesPersonalRowsAndKeepsTheLedger(t *testing.T) {
 	}
 }
 
+func TestAccountsDeleteDataKeepsTheDeletionGate(t *testing.T) {
+	newAccountDB(t)
+	if _, err := sqlitex.MigrateDeletionGates(sqlitex.DB); err != nil {
+		t.Fatal(err)
+	}
+	seedAccount(t, "alice", "alice@example.com")
+	if err := sqlitex.DB.Exec("INSERT INTO account_deletion_gates (user_id, state, started_at, updated_at) VALUES ('alice', 'in_progress', 1, 1)").Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := (Accounts{}).DeleteData(context.Background(), "alice"); err != nil {
+		t.Fatalf("DeleteData: %v", err)
+	}
+
+	if n := countRows(t, "account_deletion_gates", "user_id", "alice"); n != 1 {
+		t.Errorf("account_deletion_gates: %d row(s) of alice, want the gate kept after the hard deletion", n)
+	}
+}
+
 func TestAccountsGetAndSetStatus(t *testing.T) {
 	newAccountDB(t)
 	ctx := context.Background()
