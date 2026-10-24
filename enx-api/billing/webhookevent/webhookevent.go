@@ -38,13 +38,11 @@ var (
 // LivemodeForAPIKey is the mode the configured Stripe API key expects:
 // sk_live_/rk_live_ are live, sk_test_/rk_test_ are test.
 func LivemodeForAPIKey(key string) (bool, error) {
-	for prefix, livemode := range map[string]bool{
-		"sk_live_": true, "rk_live_": true,
-		"sk_test_": false, "rk_test_": false,
-	} {
-		if strings.HasPrefix(key, prefix) {
-			return livemode, nil
-		}
+	switch {
+	case strings.HasPrefix(key, "sk_live_"), strings.HasPrefix(key, "rk_live_"):
+		return true, nil
+	case strings.HasPrefix(key, "sk_test_"), strings.HasPrefix(key, "rk_test_"):
+		return false, nil
 	}
 	return false, ErrUnknownKeyPrefix
 }
@@ -91,6 +89,9 @@ func (e Endpoint) Scope(eventID string) Scope {
 func Backoff(attempt int, minDelay, maxDelay time.Duration) time.Duration {
 	delay := minDelay
 	for i := 1; i < attempt && delay < maxDelay; i++ {
+		if delay > maxDelay/2 {
+			return maxDelay
+		}
 		delay *= 2
 	}
 	return min(delay, maxDelay)

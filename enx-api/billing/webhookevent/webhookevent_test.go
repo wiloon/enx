@@ -2,6 +2,7 @@ package webhookevent
 
 import (
 	"errors"
+	"math"
 	"testing"
 	"time"
 )
@@ -92,6 +93,13 @@ func TestBackoff(t *testing.T) {
 		if got := Backoff(tc.attempt, minDelay, maxDelay); got != tc.want {
 			t.Errorf("Backoff(%d) = %v, want %v", tc.attempt, got, tc.want)
 		}
+	}
+}
+
+func TestBackoffSaturatesAtAHugeCap(t *testing.T) {
+	const maxDelay = time.Duration(math.MaxInt64)
+	if got := Backoff(100, 5*time.Second, maxDelay); got != maxDelay {
+		t.Errorf("Backoff(100) = %v, want %v", got, maxDelay)
 	}
 }
 

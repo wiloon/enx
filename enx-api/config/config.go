@@ -639,18 +639,21 @@ func (c *Config) Validate() error {
 	positive("stripe.quota.dictionary-lookup-daily-subscribed", q.DictionaryLookupDailySubscribed > 0)
 
 	wh := c.Stripe.Webhook
-	for key, d := range map[string]time.Duration{
-		"poll-interval":               wh.PollInterval,
-		"lease-duration":              wh.LeaseDuration,
-		"operation-timeout":           wh.OperationTimeout,
-		"backoff-min":                 wh.BackoffMin,
-		"backoff-max":                 wh.BackoffMax,
-		"dependency-wait-deadline":    wh.DependencyWaitDeadline,
-		"notification-poll-interval":  wh.NotificationPollInterval,
-		"notification-timeout":        wh.NotificationTimeout,
-		"notification-lease-duration": wh.NotificationLeaseDuration,
+	for _, kv := range []struct {
+		key string
+		d   time.Duration
+	}{
+		{"poll-interval", wh.PollInterval},
+		{"lease-duration", wh.LeaseDuration},
+		{"operation-timeout", wh.OperationTimeout},
+		{"backoff-min", wh.BackoffMin},
+		{"backoff-max", wh.BackoffMax},
+		{"dependency-wait-deadline", wh.DependencyWaitDeadline},
+		{"notification-poll-interval", wh.NotificationPollInterval},
+		{"notification-timeout", wh.NotificationTimeout},
+		{"notification-lease-duration", wh.NotificationLeaseDuration},
 	} {
-		positive("stripe.webhook."+key, d > 0)
+		positive("stripe.webhook."+kv.key, kv.d > 0)
 	}
 	if wh.BackoffMin > wh.BackoffMax {
 		errs = append(errs, errors.New("config: stripe.webhook.backoff-min must not exceed stripe.webhook.backoff-max"))
