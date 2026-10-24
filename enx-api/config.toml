@@ -109,6 +109,11 @@ base-url = "https://generativelanguage.googleapis.com/v1beta/openai"
 # Both keep period-end cancellation, payment-method update and invoices. A
 # missing, unsafe or unreadable configuration returns 503, never falling back
 # to the other. Sessions always use the checked configuration ID.
+#
+# [stripe.webhook] tunes the durable webhook worker (ADR-067); the defaults in
+# defaults() in config/config.go suffice. Each key binds STRIPE_WEBHOOK_<KEY>
+# (uppercase, underscores). Timeouts must be shorter than their leases and
+# backoff-min must not exceed backoff-max.
 
 [stripe.price]
 # Stripe Price lookup_keys, not raw Price IDs. lookup_keys are stable across

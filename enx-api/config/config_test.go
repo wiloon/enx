@@ -75,6 +75,16 @@ func TestLoadDefaults(t *testing.T) {
 		// Both tiers have a real ceiling (ADR-059 Decision 6).
 		{"stripe.quota.dictionary-lookup-daily-free", cfg.Stripe.Quota.DictionaryLookupDailyFree, int64(200)},
 		{"stripe.quota.dictionary-lookup-daily-subscribed", cfg.Stripe.Quota.DictionaryLookupDailySubscribed, int64(20000)},
+		// Webhook worker timing (ADR-067, #297).
+		{"stripe.webhook.poll-interval", cfg.Stripe.Webhook.PollInterval, 5 * time.Second},
+		{"stripe.webhook.lease-duration", cfg.Stripe.Webhook.LeaseDuration, 2 * time.Minute},
+		{"stripe.webhook.operation-timeout", cfg.Stripe.Webhook.OperationTimeout, 30 * time.Second},
+		{"stripe.webhook.backoff-min", cfg.Stripe.Webhook.BackoffMin, 5 * time.Second},
+		{"stripe.webhook.backoff-max", cfg.Stripe.Webhook.BackoffMax, 15 * time.Minute},
+		{"stripe.webhook.dependency-wait-deadline", cfg.Stripe.Webhook.DependencyWaitDeadline, 24 * time.Hour},
+		{"stripe.webhook.notification-poll-interval", cfg.Stripe.Webhook.NotificationPollInterval, time.Hour},
+		{"stripe.webhook.notification-timeout", cfg.Stripe.Webhook.NotificationTimeout, 30 * time.Second},
+		{"stripe.webhook.notification-lease-duration", cfg.Stripe.Webhook.NotificationLeaseDuration, 2 * time.Minute},
 		{"ai-word.min-quality", cfg.AIWord.MinQuality, 8},
 		{"ai-word.call-timeout", cfg.AIWord.CallTimeout, 45 * time.Second},
 		{"credits.trial.amount", cfg.Credits.Trial.Amount, int64(100)},
@@ -224,6 +234,15 @@ var envVars = map[string]string{
 	"STRIPE_COSTS_DEFINE_WORD_DIVISOR":                "stripe.costs.define-word.divisor",
 	"STRIPE_QUOTA_DICTIONARY_LOOKUP_DAILY_FREE":       "stripe.quota.dictionary-lookup-daily-free",
 	"STRIPE_QUOTA_DICTIONARY_LOOKUP_DAILY_SUBSCRIBED": "stripe.quota.dictionary-lookup-daily-subscribed",
+	"STRIPE_WEBHOOK_POLL_INTERVAL":                    "stripe.webhook.poll-interval",
+	"STRIPE_WEBHOOK_LEASE_DURATION":                   "stripe.webhook.lease-duration",
+	"STRIPE_WEBHOOK_OPERATION_TIMEOUT":                "stripe.webhook.operation-timeout",
+	"STRIPE_WEBHOOK_BACKOFF_MIN":                      "stripe.webhook.backoff-min",
+	"STRIPE_WEBHOOK_BACKOFF_MAX":                      "stripe.webhook.backoff-max",
+	"STRIPE_WEBHOOK_DEPENDENCY_WAIT_DEADLINE":         "stripe.webhook.dependency-wait-deadline",
+	"STRIPE_WEBHOOK_NOTIFICATION_POLL_INTERVAL":       "stripe.webhook.notification-poll-interval",
+	"STRIPE_WEBHOOK_NOTIFICATION_TIMEOUT":             "stripe.webhook.notification-timeout",
+	"STRIPE_WEBHOOK_NOTIFICATION_LEASE_DURATION":      "stripe.webhook.notification-lease-duration",
 	"AI_WORD_MIN_QUALITY":                             "ai-word.min-quality",
 	"AI_WORD_CALLS_PER_MINUTE":                        "ai-word.calls-per-minute",
 	"AI_WORD_CALLS_PER_DAY":                           "ai-word.calls-per-day",
@@ -251,7 +270,8 @@ var envVars = map[string]string{
 // TestEnvVarsPopulateTheirFields sets each env var to a value no default has
 // and checks it reaches its field. 7 is a valid port; the lookup event
 // retention, the other int with a range rule, gets 42. The Clerk issuer must
-// be a URL and the secret key needs a known (sk_test_) prefix.
+// be a URL and the secret key needs a known (sk_test_) prefix. A webhook
+// lease must outlast its 30s timeout, so it gets 7m.
 func TestEnvVarsPopulateTheirFields(t *testing.T) {
 	for env, key := range envVars {
 		t.Run(env, func(t *testing.T) {
@@ -269,6 +289,8 @@ func TestEnvVarsPopulateTheirFields(t *testing.T) {
 			case "clerk.secret-key":
 				value = "sk_test_from-" + env
 				want = Secret(value)
+			case "stripe.webhook.lease-duration", "stripe.webhook.notification-lease-duration":
+				value, want = "7m", 7*time.Minute
 			default:
 				value, want = testValue(t, key, field.Type, env)
 			}
@@ -520,6 +542,36 @@ func TestLoadRejects(t *testing.T) {
 			name:    "zero subscribed lookup ceiling",
 			env:     map[string]string{"STRIPE_QUOTA_DICTIONARY_LOOKUP_DAILY_SUBSCRIBED": "0"},
 			wantErr: "stripe.quota.dictionary-lookup-daily-subscribed must be positive",
+		},
+		{
+			name:    "zero webhook poll interval",
+			env:     map[string]string{"STRIPE_WEBHOOK_POLL_INTERVAL": "0s"},
+			wantErr: "stripe.webhook.poll-interval must be positive",
+		},
+		{
+			name:    "negative dependency wait deadline",
+			env:     map[string]string{"STRIPE_WEBHOOK_DEPENDENCY_WAIT_DEADLINE": "-1h"},
+			wantErr: "stripe.webhook.dependency-wait-deadline must be positive",
+		},
+		{
+			name:    "zero notification poll interval",
+			env:     map[string]string{"STRIPE_WEBHOOK_NOTIFICATION_POLL_INTERVAL": "0s"},
+			wantErr: "stripe.webhook.notification-poll-interval must be positive",
+		},
+		{
+			name:    "webhook backoff minimum above its maximum",
+			env:     map[string]string{"STRIPE_WEBHOOK_BACKOFF_MIN": "20m"},
+			wantErr: "stripe.webhook.backoff-min must not exceed stripe.webhook.backoff-max",
+		},
+		{
+			name:    "webhook operation timeout as long as its lease",
+			env:     map[string]string{"STRIPE_WEBHOOK_OPERATION_TIMEOUT": "2m"},
+			wantErr: "stripe.webhook.operation-timeout must be shorter than stripe.webhook.lease-duration",
+		},
+		{
+			name:    "notification timeout longer than its lease",
+			env:     map[string]string{"STRIPE_WEBHOOK_NOTIFICATION_LEASE_DURATION": "10s"},
+			wantErr: "stripe.webhook.notification-timeout must be shorter than stripe.webhook.notification-lease-duration",
 		},
 		{
 			name:    "the superseded single-tier quota key",
