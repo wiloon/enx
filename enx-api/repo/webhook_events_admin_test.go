@@ -145,7 +145,11 @@ func TestWebhookEventsAnOperatorRetryRequeuesTheEventAndKeepsItsSentAlert(t *tes
 	if task.Alert.State != "sent" || task.Alert.Attempts != 1 || !task.Alert.SentAt.Equal(sentAt) {
 		t.Errorf("alert after the retry = %+v, want still sent at %s", task.Alert, sentAt)
 	}
-	if listed, _ := svc.List(ctx, "", 0, 0); len(listed) != 0 {
+	listed, err := svc.List(ctx, "", 0, 0)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(listed) != 0 {
 		t.Errorf("needs_attention list after the retry = %v, want empty", listedIDs(listed))
 	}
 	if _, err := svc.Retry(ctx, "evt_1"); !errors.Is(err, eventadmin.ErrNotRetryable) {
