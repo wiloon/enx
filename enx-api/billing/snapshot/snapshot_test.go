@@ -13,10 +13,11 @@ import (
 
 // Sandbox objects in billing/testdata/stripe-plan-change.
 const (
-	pricePro     = "price_1UTxL2D98PEpzR2E1f73d4Ln"
-	priceProPlus = "price_1UTxL2D98PEpzR2E4lt7hGCN"
-	priceMax     = "price_1UTxL2D98PEpzR2EokCgl4jd"
-	sandboxSub   = "sub_1UU03ID98PEpzR2EJ2kjpqD1"
+	pricePro        = "price_1UTxL2D98PEpzR2E1f73d4Ln"
+	priceProPlus    = "price_1UTxL2D98PEpzR2E4lt7hGCN"
+	priceMax        = "price_1UTxL2D98PEpzR2EokCgl4jd"
+	sandboxSub      = "sub_1UU03ID98PEpzR2EJ2kjpqD1"
+	sandboxCustomer = "cus_VV03wKkovxzzTP"
 )
 
 var testTime = time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
@@ -74,12 +75,14 @@ func TestSnapshotRecordsTheLiveStripeStateAndTheItemsTier(t *testing.T) {
 	// carried the news.
 	state := eligibility.Live{Status: "active", CurrentPeriodEnd: 1795507901, HasSchedule: true}
 	store := &fakeStore{subs: map[string]Subscription{sandboxSub: {Known: true, Version: 7}}}
-	stripe := &fakeStripe{live: map[string]Live{sandboxSub: liveOn(priceMax, state)}}
+	live := liveOn(priceMax, state)
+	live.CustomerID = sandboxCustomer
+	stripe := &fakeStripe{live: map[string]Live{sandboxSub: live}}
 
 	got := NewHandler(store, stripe, tierForPrice).Handle(context.Background(), task("subscription_schedule.created", sandboxSub))
 
 	want := webhookevent.Result{Step: webhookevent.Handled, Effects: Effects{
-		SubscriptionID: sandboxSub, Known: true, Version: 7,
+		SubscriptionID: sandboxSub, Known: true, Version: 7, CustomerID: sandboxCustomer,
 		State: state, PriceID: priceMax, Tier: "max",
 	}}
 	if !reflect.DeepEqual(got, want) {

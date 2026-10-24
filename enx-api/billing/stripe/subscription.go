@@ -20,8 +20,8 @@ func RetrieveSubscription(ctx context.Context, sc *stripeSDK.Client, subscriptio
 }
 
 // SubscriptionSnapshot reads the live state a subscription snapshot records
-// (ADR-067): status, scheduled cancellation, pending update, attached
-// schedule, and each item's Price and current period end. Any error,
+// (ADR-067): status, Customer, scheduled cancellation, pending update,
+// attached schedule, and each item's Price and current period end. Any error,
 // resource_missing included, is returned: it never proves the subscription
 // ended.
 func SubscriptionSnapshot(ctx context.Context, sc *stripeSDK.Client, subscriptionID string) (snapshot.Live, error) {
@@ -36,6 +36,9 @@ func SubscriptionSnapshot(ctx context.Context, sc *stripeSDK.Client, subscriptio
 		PendingUpdate:     sub.PendingUpdate != nil,
 		HasSchedule:       sub.Schedule != nil && sub.Schedule.ID != "",
 	}}
+	if sub.Customer != nil {
+		live.CustomerID = sub.Customer.ID
+	}
 	if sub.Items == nil {
 		return live, nil
 	}
