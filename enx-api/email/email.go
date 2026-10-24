@@ -1,10 +1,13 @@
 package email
 
 import (
+	"context"
 	"enx-api/utils/logger"
+	"errors"
 	"fmt"
 	"html"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -14,18 +17,66 @@ import (
 
 // Sender sends mail through Resend, configured by resend.*.
 type Sender struct {
-	cfg config.Resend
+	cfg      config.Resend
+	endpoint string
 }
 
 func NewSender(cfg config.Resend) *Sender {
-	return &Sender{cfg: cfg}
+	return &Sender{cfg: cfg, endpoint: resendEndpoint}
 }
+
+const resendEndpoint = "https://api.resend.com/emails"
 
 type resendRequest struct {
 	From    string   `json:"from"`
 	To      []string `json:"to"`
 	Subject string   `json:"subject"`
-	HTML    string   `json:"html"`
+	HTML    string   `json:"html,omitempty"`
+	Text    string   `json:"text,omitempty"`
+}
+
+// ErrAlertMailNotConfigured: resend.api-key, resend.from or resend.admin-to
+// is unset, so a durable admin alert cannot be sent and stays pending.
+var ErrAlertMailNotConfigured = errors.New("email: admin alert mail is not configured")
+
+// SendAdminAlert sends a durable billing alert (ADR-067) to resend.admin-to
+// as plain text. Unlike the best-effort notifications, missing
+// configuration, a provider error and the ctx deadline are all errors: only
+// a nil return means Resend confirmed the send.
+func (s *Sender) SendAdminAlert(ctx context.Context, subject, text string) error {
+	apiKey := s.cfg.APIKey.Reveal()
+	var missing []string
+	if apiKey == "" {
+		missing = append(missing, "resend.api-key")
+	}
+	if s.cfg.From == "" {
+		missing = append(missing, "resend.from")
+	}
+	if s.cfg.AdminTo == "" {
+		missing = append(missing, "resend.admin-to")
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("%w: %s unset", ErrAlertMailNotConfigured, strings.Join(missing, ", "))
+	}
+
+	resp, err := resty.New().R().
+		SetContext(ctx).
+		SetHeader("Authorization", "Bearer "+apiKey).
+		SetHeader("Content-Type", "application/json").
+		SetBody(resendRequest{
+			From:    s.cfg.From,
+			To:      []string{s.cfg.AdminTo},
+			Subject: subject,
+			Text:    text,
+		}).
+		Post(s.endpoint)
+	if err != nil {
+		return fmt.Errorf("resend HTTP request failed: %w", err)
+	}
+	if resp.StatusCode() != http.StatusOK && resp.StatusCode() != http.StatusCreated && resp.StatusCode() != http.StatusAccepted {
+		return fmt.Errorf("resend returned status %d", resp.StatusCode())
+	}
+	return nil
 }
 
 func (s *Sender) send(to, subject, htmlBody string) error {
@@ -47,7 +98,7 @@ func (s *Sender) send(to, subject, htmlBody string) error {
 			Subject: subject,
 			HTML:    htmlBody,
 		}).
-		Post("https://api.resend.com/emails")
+		Post(s.endpoint)
 
 	if err != nil {
 		return fmt.Errorf("resend HTTP request failed: %w", err)
