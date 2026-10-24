@@ -33,9 +33,9 @@ worker 的可调正 duration 默认值在 #297 明确为 `stripe.webhook.poll-in
 ## 正常重新购买与购买阻断
 
 - accepted A 在 Stripe 实际已结束（canceled/incomplete_expired）且无阻断冲突时，允许同档或其他已提供档位重新购买并自动接受 B，保留 A 历史。已安排期末取消（`cancel_at_period_end=true` 或 flexible billing mode 下 `cancel_at` 不晚于本期末）仍未结束。
-- 有健康 live accepted 订阅时，不为改档新建 Checkout；改档走下节的 Stripe Portal。服务端在创建 Checkout 或改档 Portal session 前检查删除屏障、所属冲突与 Stripe 资格，不能只禁用按钮。其他不健康但可计费状态不能据此新买第二份订阅。
+- 有健康 live accepted 订阅时，不为改档新建 Checkout；改档走下节的 Stripe Portal。「健康」指 Stripe 实时状态为 `active`（Checkout 不提供试用，`trialing` 不算健康）。服务端在创建 Checkout 或改档 Portal session 前检查删除屏障、所属冲突与 Stripe 资格，不能只禁用按钮。其他不健康但可计费状态（`past_due`、`unpaid`、`incomplete` 等）不能据此新买第二份订阅，也不能改档：档位按钮改为打开 Portal 首页让用户补付或换卡，恢复 `active` 后才可改档。
 - 任何所属 conflict 仍 open，或 resolved 但 Stripe 仍可计费时，阻止新 Checkout 与改档入口，返回 409 并指向 billing support；即使 accepted A 已结束也一样。Stripe 查询失败可重试且不放行。resolved 备注不证明停止计费。
-- 被阻断用户（删除屏障生效中，或有上条所述冲突）仍可打开 Portal 首页（/billing「管理订阅」）取消订阅、换卡、看发票，但该 session 一律用关闭改档的受限 Portal 配置创建（所有者 2026-10-24 选择），不能靠 Portal 首页绕过改档阻断。是否阻断在创建每个 Portal session 前由服务端判定；判定所需查询失败时不创建 session，返回可重试错误。
+- 被阻断用户（删除屏障生效中，有上条所述冲突，或 accepted 订阅可计费但不健康）仍可打开 Portal 首页（/billing「管理订阅」）取消订阅、换卡、看发票，但该 session 一律用关闭改档的受限 Portal 配置创建（所有者 2026-10-24 选择），不能靠 Portal 首页绕过改档阻断。是否阻断在创建每个 Portal session 前由服务端判定；判定所需查询失败时不创建 session，返回可重试错误。
 
 ## 改档由 Stripe Customer Portal 完成
 
@@ -57,7 +57,7 @@ worker 的可调正 duration 默认值在 #297 明确为 `stripe.webhook.poll-in
 
 - 只有 `invoice.paid` 改变订阅积分，按事件 API 版本规范 `billing_reason`、subscription/item、price、line period 与 proration 后分类：
   - `subscription_create`、`subscription_cycle`：正常周期发放，档位/周期取对应 subscription item 的非 proration recurring line 的 Price（必要时读取全部 invoice line 分页），重置为该档整期积分。降档后的第一张续费发票按新档位发放。Subscription Schedule 换期开出的发票可能标为 `subscription_update`：该 item 没有 proration line、只有一条覆盖整期的非 proration recurring line 时，不论 reason 都按正常周期发放。
-  - `subscription_update`：升档补差积分，一张发票至多一次。旧/新档位取该 item 的负额与正额 proration line 的 Price；剩余比例 `clamp((line.period.end - line.period.start) / (周期 end - 周期 start), 0, 1)`，补 `floor((新档每期积分 - 旧档每期积分) × 剩余比例)`。分子取正额 proration line 的周期；分母的周期取同一 Subscription ID 已保存的正常发放中 period end 等于该 proration line period end 的那一期，不读 Stripe 当前 item 周期（续费后它已是下一期）、不读 `proration_details`。尚无该正常发放时事件进入 `waiting_dependency`，依赖到达后算出相同结果；积分池已切到该订阅更晚的周期时，只记零效果补差（保留财务记录、实际入池 0），与迟到的正常发票相同。同一周期多次升档各自按自己的新旧差额与同一分母补差。余额与到期不变，不重置积分池，不发整期积分。不依赖 line 顺序，不按 lines[0]、金额正负或总额推断档位。新档积分不高于旧档（配置漂移导致的立即降档等）时不补不扣，转 needs_attention 可靠告警。
+  - `subscription_update`：升档补差积分，一张发票至多一次。旧/新档位取该 item 的负额与正额 proration line 的 Price；剩余比例 `clamp((line.period.end - line.period.start) / (周期 end - 周期 start), 0, 1)`，补 `floor((新档每期积分 - 旧档每期积分) × 剩余比例)`。分子取正额 proration line 的周期；分母的周期取同一 Subscription ID 已保存的正常发放中 period end 等于该 proration line period end 的那一期，不读 Stripe 当前 item 周期（续费后它已是下一期）、不读 `proration_details`。尚无该正常发放时事件进入 `waiting_dependency`，依赖到达后算出相同结果（不健康订阅不能改档，所以本期续费未付而升档已付只剩 session 创建后状态才变化的竞态，超期按等待期限转 needs_attention）；积分池已切到该订阅更晚的周期时，只记零效果补差（保留财务记录、实际入池 0），与迟到的正常发票相同。同一周期多次升档各自按自己的新旧差额与同一分母补差。余额与到期不变，不重置积分池，不发整期积分。不依赖 line 顺序，不按 lines[0]、金额正负或总额推断档位。新档积分不高于旧档（配置漂移导致的立即降档等）时不补不扣，转 needs_attention 可靠告警。
   - 其他/缺失 reason、无法识别或含糊的 line/price 转 needs_attention、可靠邮件，不发积分/邀请奖励。非订阅 invoice 与 conflict 沿用各自路径。
 - `invoice.payment_failed`、`customer.subscription.pending_update_applied`/`pending_update_expired`、`invoice.voided`、`subscription_schedule.*` 与 `customer.subscription.updated`/`deleted` 只同步订阅状态快照（含当前 Price、是否有 pending_update/排期/期末取消），不发放或扣回积分；它们是明确支持的类型，不记 ignored。升档在付款发票与应用事件之间的先后不影响结果：积分只看已付款的 `subscription_update` 发票。
 - 升档补差积分与正常发放各自按发票业务幂等（同一 scoped invoice 至多一次），不能只靠 Event ID；迟到事件不能把补差额覆盖成整期发放，也不能重复补。
@@ -80,6 +80,7 @@ worker 的可调正 duration 默认值在 #297 明确为 `stripe.webhook.poll-in
 - 当前代码在 `subscriptions` 中还保存仅充值用户的 Customer 映射（Subscription ID 为空），实际充值流水与余额在 `credit_transactions` 和 `credit_accounts`。改主键前把所有 Customer 归属迁入独立 `stripe_customers` 关系，一份 Customer 一行，以本地用户身份关联；一人可以有多个 Stripe Customer，不把 Customer 唯一到一人只能一条。
 - 无 live accepted 时可使用用户正常的 Customer 关联；有 live accepted 时 Portal 与后续 Checkout 优先使用该订阅的 Customer。充值完成只补充 Customer 归属，不覆盖 live accepted 的 Customer。并发操作和迁移都保留此规则。
 - 只有真实 Subscription ID 的旧行迁入新 `subscriptions`，不为仅充值用户虚构订阅。迁移保留全部充值余额、原积分流水、Event ID/PaymentIntent ID 及退款关联。原子、可重复的数据库迁移取代仅靠 AutoMigrate 改主键；迁移边界和演练在 #297，不在运行中直接删旧表试错。
+- 旧 `GRANT_SUBSCRIPTION` 流水没有 Subscription ID、invoice 与周期起点，升档补差分母找不到同期正常发放。数据库迁移本身不调用 Stripe；迁移后、worker 处理订阅发票前，一次性、可重复的回填任务为每份迁入的真实订阅中「当前积分池来自旧流水」的那条发放，经其 PaymentIntent（零金额时经该订阅 period end 等于 `credit_accounts.period_end` 的 paid invoice）从 Stripe 读取 invoice，取 recurring line 的周期，仅当周期 end 等于 `credit_accounts.period_end` 时补记来源（Subscription ID、invoice、周期起止），不改金额、余额或流水。回填失败可重试；Stripe 无法唯一确定时不猜，标为无来源旧发放，该期升档发票直接 needs_attention（reason `legacy_grant_without_period`）并可靠告警。更早的旧流水不回填，只作历史/退款审计。生产尚未开放内测，影响限于 sandbox/homelab 数据。
 
 ## 管理员处理与邮件
 
@@ -124,6 +125,8 @@ ADR-064 会在 main 合并后自动部署。#297 的 characterization/fixture �
 - 2026-10-23（所有者，Stripe 原生改档）：sandbox 实测确认 Portal 升档付款确认后才生效、跨 Product 降档可期末生效、Portal 可撤销降档并可取消带排期的订阅。所有者据此决定：改档全部经 Stripe Portal，ENX 不保存改档操作，只按 `invoice.paid` 的 billing_reason 发正常积分或升档补差积分；补差比例取 proration line 周期；降档下期生效；第一版不做主动取消待付款升级（#338）；Portal 改档不临时关闭，与 cutover 同一 PR 上线。取代 round 3–5 的 ENX 自建改档操作、重叠 409、未授权改档隔离、取消待付款升级及撤销降档后再取消的注销指引；吸收 #336 的独立 Product 建模与可选 configuration 覆盖，改为要求改档开启的安全配置。
 
 - 2026-10-24（#297 round 7，含所有者答复）：升档补差的分母改取已保存的同期正常发放，补齐依赖等待、续费后零效果与同期多次升档；Portal 配置要求只允许改 Price、数量固定为 1；Schedule 换期发票按整期 line 识别为正常发放，并要求实现前用 test clock 实测深链接与降档续费发票；所有者选择 (b)，被阻断用户的 Portal session 用关闭改档的受限配置。
+
+- 2026-10-24（#297 round 8）：定义「健康」为 Stripe `active`；其他可计费状态按所有者 round 3「健康订阅可自助改档」与 round 7 (b) 归入受限 Portal 配置，只能补付/换卡/取消，避免续费未付时升档补差无分母。迁移后一次性从 Stripe 回填当前周期旧发放的来源，无法确定时该期升档转人工。
 
 ## 参考
 
