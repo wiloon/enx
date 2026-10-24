@@ -3,6 +3,10 @@ package stripe
 import (
 	"context"
 	"errors"
+	"fmt"
+
+	"enx-api/billing/eligibility"
+	"enx-api/billing/snapshot"
 
 	stripeSDK "github.com/stripe/stripe-go/v86"
 )
@@ -13,6 +17,36 @@ import (
 // payload can be stale by the time it is processed.
 func RetrieveSubscription(ctx context.Context, sc *stripeSDK.Client, subscriptionID string) (*stripeSDK.Subscription, error) {
 	return sc.V1Subscriptions.Retrieve(ctx, subscriptionID, nil)
+}
+
+// SubscriptionSnapshot reads the live state a subscription snapshot records
+// (ADR-067): status, scheduled cancellation, pending update, attached
+// schedule, and each item's Price and current period end. Any error,
+// resource_missing included, is returned: it never proves the subscription
+// ended.
+func SubscriptionSnapshot(ctx context.Context, sc *stripeSDK.Client, subscriptionID string) (snapshot.Live, error) {
+	sub, err := sc.V1Subscriptions.Retrieve(ctx, subscriptionID, nil)
+	if err != nil {
+		return snapshot.Live{}, fmt.Errorf("billing/stripe: retrieve subscription %s: %w", subscriptionID, err)
+	}
+	live := snapshot.Live{Live: eligibility.Live{
+		Status:            string(sub.Status),
+		CancelAtPeriodEnd: sub.CancelAtPeriodEnd,
+		CancelAt:          sub.CancelAt,
+		PendingUpdate:     sub.PendingUpdate != nil,
+		HasSchedule:       sub.Schedule != nil && sub.Schedule.ID != "",
+	}}
+	if sub.Items == nil {
+		return live, nil
+	}
+	live.ItemsComplete = !sub.Items.HasMore
+	for _, item := range sub.Items.Data {
+		if item.Price != nil {
+			live.PriceIDs = append(live.PriceIDs, item.Price.ID)
+		}
+		live.CurrentPeriodEnd = max(live.CurrentPeriodEnd, item.CurrentPeriodEnd)
+	}
+	return live, nil
 }
 
 // CancelSubscriptionNow ends a subscription immediately, with no proration
