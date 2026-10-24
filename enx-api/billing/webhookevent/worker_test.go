@@ -13,8 +13,9 @@ import (
 )
 
 // fakeTaskStore keeps tasks in memory and saves with the conditional write
-// a repository does: on the status, attempts and claim token read. Effects
-// are applied only when that write succeeds, as in one transaction.
+// a repository does: on the status, attempts and claim token read, keeping
+// the stored alert's progress. Effects are applied only when that write
+// succeeds, as in one transaction.
 type fakeTaskStore struct {
 	mu           sync.Mutex
 	tasks        map[Scope]StoredTask
@@ -72,6 +73,7 @@ func (s *fakeTaskStore) Save(_ context.Context, scope Scope, read, next Task, ef
 		}
 		s.applied = append(s.applied, effects)
 	}
+	next.Alert = AlertToSave(cur.Task.Alert, next.Alert)
 	cur.Task = next
 	s.tasks[scope] = cur
 	return nil
@@ -394,6 +396,37 @@ func TestWorkerCommitsNothingAfterAnotherWorkerTookOverItsClaim(t *testing.T) {
 	}
 }
 
+func TestWorkerKeepsAnAlertTheNotifierSentWhileItHandled(t *testing.T) {
+	now := t0.Add(time.Second)
+	raised := alert.Alert{State: alert.Pending, NextAttemptAt: t0}
+	ev := newStored("evt_1", "invoice.paid", "sub_a")
+	ev.Task = Task{Type: "invoice.paid", SubscriptionID: "sub_a", Status: NeedsAttention, Attempts: 1, LastError: "unknown_price", NextAttemptAt: t0, Alert: raised}
+	retried, err := RetryByOperator(ev.Task, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev.Task = retried
+	store := newFakeTaskStore(ev)
+	sent := alert.Alert{State: alert.Sent, Attempts: 1, SentAt: now}
+	h := &fakeHandler{handle: func(context.Context, StoredTask) Result {
+		store.mu.Lock()
+		cur := store.tasks[ev.Scope]
+		cur.Task.Alert = sent
+		store.tasks[ev.Scope] = cur
+		store.mu.Unlock()
+		return Result{Step: Unrecoverable, Reason: "unknown_price"}
+	}}
+
+	report := pass(t, store, h, now)
+
+	if report != (WorkerReport{NeedsAttention: 1}) {
+		t.Errorf("report = %+v, want needs attention again", report)
+	}
+	if got := store.get(ev.Scope); got.Status != NeedsAttention || got.Alert != sent {
+		t.Errorf("task = %+v, want needs attention with the alert still sent", got)
+	}
+}
+
 func TestWorkerRequeuesWhenItsEffectsCannotCommit(t *testing.T) {
 	ev := newStored("evt_1", "invoice.paid", "sub_a")
 	store := newFakeTaskStore(ev)
@@ -512,5 +545,27 @@ func TestWorkerRunsAStartupPassThenAPassPerTick(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("Run did not stop when its context was cancelled")
+	}
+}
+
+func TestWorkerStopsWhenItsTicksClose(t *testing.T) {
+	store := newFakeTaskStore()
+	w := NewWorker(store, &fakeHandler{}, workerSettings, clockAt(t0), workerTokens("w"))
+	ticks := make(chan time.Time)
+	close(ticks)
+	var passes atomic.Int64
+	done := make(chan struct{})
+	go func() {
+		w.Run(context.Background(), ticks, func(WorkerReport, error) { passes.Add(1) })
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatalf("Run kept going after its ticks closed (%d passes)", passes.Load())
+	}
+	if passes.Load() != 1 {
+		t.Errorf("passes = %d, want only the startup pass", passes.Load())
 	}
 }

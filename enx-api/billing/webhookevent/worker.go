@@ -36,6 +36,9 @@ type TaskStore interface {
 	// worker whose claim was taken over can commit neither its effects nor
 	// its outcome. Any other error leaves the task and its effects as they
 	// were, including a revalidation failure of the effects themselves.
+	// The condition leaves out the alert, which the notifier updates
+	// independently: Save writes AlertToSave(stored, next.Alert), so a
+	// worker never undoes a send or a claim the notifier recorded.
 	Save(ctx context.Context, scope Scope, read, next Task, effects Effects) error
 }
 
@@ -122,15 +125,18 @@ func NewWorker(store TaskStore, handler Handler, settings WorkerSettings, now fu
 }
 
 // Run makes a startup pass, then a pass on every tick, until ctx is done.
-// The caller feeds ticks from its poll ticker and from wake-ups. report
-// gets each pass's outcome.
+// The caller feeds ticks from its poll ticker and from wake-ups, and may
+// also stop Run by closing ticks. report gets each pass's outcome.
 func (w *Worker) Run(ctx context.Context, ticks <-chan time.Time, report func(WorkerReport, error)) {
 	report(w.Pass(ctx))
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticks:
+		case _, ok := <-ticks:
+			if !ok {
+				return
+			}
 			report(w.Pass(ctx))
 		}
 	}
