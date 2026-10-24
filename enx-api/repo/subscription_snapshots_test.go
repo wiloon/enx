@@ -277,7 +277,7 @@ func TestWebhookEventsSaveCommitsASnapshotWithItsTaskOrNeither(t *testing.T) {
 func TestApplyWebhookEffectsRefusesEffectsItHasNoApplierFor(t *testing.T) {
 	newSubscriptionConflictDB(t)
 
-	err := sqlitex.DB.Transaction(func(tx *gorm.DB) error { return ApplyWebhookEffects(tx, grantEffect{invoice: "in_1"}) })
+	err := sqlitex.DB.Transaction(func(tx *gorm.DB) error { return ApplyWebhookEffects(tx, sandboxScope, grantEffect{invoice: "in_1"}) })
 
 	if err == nil {
 		t.Error("ApplyWebhookEffects of an unknown effect = nil, want an error")

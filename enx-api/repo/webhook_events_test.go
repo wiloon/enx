@@ -184,7 +184,7 @@ func newGrantApplier(t *testing.T, fail error) EffectApplier {
 	if err := sqlitex.DB.Exec("CREATE TABLE test_grants (invoice text NOT NULL)").Error; err != nil {
 		t.Fatal(err)
 	}
-	return func(tx *gorm.DB, effects webhookevent.Effects) error {
+	return func(tx *gorm.DB, _ webhookevent.Scope, effects webhookevent.Effects) error {
 		g, ok := effects.(grantEffect)
 		if !ok {
 			return errors.New("unexpected effects")

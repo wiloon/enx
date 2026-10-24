@@ -46,6 +46,10 @@ const (
 	ReasonCancellationPending = "subscription_cancellation_pending"
 )
 
+// ErrStale: what Effects.Observed says was read changed before Save, so the
+// clawback was not applied.
+var ErrStale = errors.New("billing/chargerefunded: refund's billing records changed since they were read")
+
 // Pool is the credit pool a grant went into.
 type Pool string
 
@@ -106,7 +110,7 @@ type Stripe interface {
 // Observed is what a decision read. Save applies the Effects only while the
 // owner's billing revision, the grant's clawback total and, for a clawback
 // from the subscription pool, the subscription balance are still these;
-// otherwise it changes nothing and the worker retries.
+// otherwise it changes nothing, returns ErrStale and the worker retries.
 type Observed struct {
 	UserID              string
 	Revision            int64
