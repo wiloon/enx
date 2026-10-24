@@ -1,0 +1,215 @@
+{
+  "id": "evt_1UU04dD98PEpzR2ED5az2ypw",
+  "object": "event",
+  "api_version": "2026-07-29.dahlia",
+  "created": 1792829586,
+  "data": {
+    "object": {
+      "id": "in_1UU04aD98PEpzR2EYc1T1jny",
+      "object": "invoice",
+      "account_country": "HK",
+      "account_name": "Starlabrys sandbox",
+      "account_tax_ids": null,
+      "amount_due": 516,
+      "amount_overpaid": 0,
+      "amount_paid": 516,
+      "amount_remaining": 0,
+      "amount_shipping": 0,
+      "application": null,
+      "attempt_count": 1,
+      "attempted": true,
+      "auto_advance": false,
+      "automatic_tax": {
+        "disabled_reason": null,
+        "enabled": false,
+        "liability": null,
+        "provider": null,
+        "status": null
+      },
+      "automatically_finalizes_at": null,
+      "billing_reason": "subscription_update",
+      "collection_method": "charge_automatically",
+      "created": 1794125501,
+      "currency": "usd",
+      "custom_fields": null,
+      "customer": "cus_VV03wKkovxzzTP",
+      "customer_account": null,
+      "customer_address": null,
+      "customer_email": null,
+      "customer_name": "enx 297 deeplink test",
+      "customer_phone": null,
+      "customer_shipping": null,
+      "customer_tax_exempt": "none",
+      "customer_tax_ids": [],
+      "default_payment_method": null,
+      "default_source": null,
+      "default_tax_rates": [],
+      "description": null,
+      "discounts": [],
+      "due_date": null,
+      "effective_at": 1794125501,
+      "ending_balance": 0,
+      "footer": null,
+      "from_invoice": null,
+      "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1U7uRuD98PEpzR2E/test_YWNjdF8xVTd1UnVEOThQRXB6UjJFLF9WVjA0V2RCeFZtV280Q1dzV1BZZ1pmdXhnMVlhNzBWLDE4MzM3MDM4Nw0200jMnSns1v?s=ap",
+      "invoice_pdf": "https://pay.stripe.com/invoice/acct_1U7uRuD98PEpzR2E/test_YWNjdF8xVTd1UnVEOThQRXB6UjJFLF9WVjA0V2RCeFZtV280Q1dzV1BZZ1pmdXhnMVlhNzBWLDE4MzM3MDM4Nw0200jMnSns1v/pdf?s=ap",
+      "issuer": {
+        "type": "self"
+      },
+      "last_finalization_error": null,
+      "latest_revision": null,
+      "lines": {
+        "object": "list",
+        "data": [
+          {
+            "id": "il_1UZRCTD98PEpzR2E18QAmK0Y",
+            "object": "line_item",
+            "amount": -516,
+            "currency": "usd",
+            "description": "Unused time on Catglish Pro+ after 08 Nov 2026",
+            "discount_amounts": [],
+            "discountable": false,
+            "discounts": [],
+            "invoice": "in_1UU04aD98PEpzR2EYc1T1jny",
+            "livemode": false,
+            "metadata": {},
+            "parent": {
+              "invoice_item_details": null,
+              "subscription_item_details": {
+                "invoice_item": "ii_1UU04aD98PEpzR2EULS3QZlq",
+                "proration": true,
+                "proration_details": {
+                  "credited_items": {
+                    "invoice": "in_1UU03xD98PEpzR2EApWpiDtx",
+                    "invoice_line_items": [
+                      "il_1UXcokD98PEpzR2EnggoLtiX"
+                    ]
+                  }
+                },
+                "subscription": "sub_1UU03ID98PEpzR2EJ2kjpqD1",
+                "subscription_item": "si_VV03M7jaX9ltGc"
+              },
+              "type": "subscription_item_details"
+            },
+            "period": {
+              "end": 1795507901,
+              "start": 1794125501
+            },
+            "pretax_credit_amounts": [],
+            "pricing": {
+              "price_details": {
+                "price": "price_1UTxL2D98PEpzR2E4lt7hGCN",
+                "product": "prod_V8pMrUbRGcWtz6"
+              },
+              "type": "price_details",
+              "unit_amount_decimal": null
+            },
+            "quantity": 1,
+            "quantity_decimal": "1",
+            "subtotal": -516,
+            "taxes": []
+          },
+          {
+            "id": "il_1UZRCUD98PEpzR2EGmJLgjdx",
+            "object": "line_item",
+            "amount": 1032,
+            "currency": "usd",
+            "description": "Remaining time on Catglish Max after 08 Nov 2026",
+            "discount_amounts": [],
+            "discountable": false,
+            "discounts": [],
+            "invoice": "in_1UU04aD98PEpzR2EYc1T1jny",
+            "livemode": false,
+            "metadata": {},
+            "parent": {
+              "invoice_item_details": null,
+              "subscription_item_details": {
+                "invoice_item": "ii_1UU04aD98PEpzR2EWPAcSJ4i",
+                "proration": true,
+                "proration_details": {
+                  "credited_items": null
+                },
+                "subscription": "sub_1UU03ID98PEpzR2EJ2kjpqD1",
+                "subscription_item": "si_VV03M7jaX9ltGc"
+              },
+              "type": "subscription_item_details"
+            },
+            "period": {
+              "end": 1795507901,
+              "start": 1794125501
+            },
+            "pretax_credit_amounts": [],
+            "pricing": {
+              "price_details": {
+                "price": "price_1UTxL2D98PEpzR2EokCgl4jd",
+                "product": "prod_V8pMXM05nOkxQS"
+              },
+              "type": "price_details",
+              "unit_amount_decimal": null
+            },
+            "quantity": 1,
+            "quantity_decimal": "1",
+            "subtotal": 1032,
+            "taxes": []
+          }
+        ],
+        "has_more": false,
+        "total_count": 2,
+        "url": "/v1/invoices/in_1UU04aD98PEpzR2EYc1T1jny/lines"
+      },
+      "livemode": false,
+      "metadata": {},
+      "next_payment_attempt": null,
+      "number": "T7UTSAC5-0003",
+      "on_behalf_of": null,
+      "parent": {
+        "quote_details": null,
+        "subscription_details": {
+          "metadata": {
+            "enx_experiment": "297"
+          },
+          "subscription": "sub_1UU03ID98PEpzR2EJ2kjpqD1"
+        },
+        "type": "subscription_details"
+      },
+      "payment_settings": {
+        "default_mandate": null,
+        "payment_method_options": null,
+        "payment_method_types": null
+      },
+      "period_end": 1794125501,
+      "period_start": 1792829501,
+      "post_payment_credit_notes_amount": 0,
+      "pre_payment_credit_notes_amount": 0,
+      "receipt_number": null,
+      "rendering": null,
+      "shipping_cost": null,
+      "shipping_details": null,
+      "starting_balance": 0,
+      "statement_descriptor": null,
+      "status": "paid",
+      "status_transitions": {
+        "finalized_at": 1794125501,
+        "marked_uncollectible_at": null,
+        "paid_at": 1794125501,
+        "voided_at": null
+      },
+      "subtotal": 516,
+      "subtotal_excluding_tax": 516,
+      "test_clock": "clock_1UU03GD98PEpzR2ENtKjXd4I",
+      "total": 516,
+      "total_discount_amounts": [],
+      "total_excluding_tax": 516,
+      "total_pretax_credit_amounts": [],
+      "total_taxes": [],
+      "webhooks_delivered_at": null
+    }
+  },
+  "livemode": false,
+  "pending_webhooks": 0,
+  "request": {
+    "id": null,
+    "idempotency_key": "3f42e40a-afb8-44ba-b8bc-7b29934eddcf"
+  },
+  "type": "invoice.paid"
+}
