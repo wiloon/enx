@@ -21,9 +21,10 @@ import (
 )
 
 // newSubscriptionConflictDB opens a temporary database as the cutover leaves
-// it: the legacy billing schema migrated by MigrateSubscriptionOwnership,
-// and the receipt tables of MigrateWebhookReceipts.
-func newSubscriptionConflictDB(t *testing.T) {
+// it: the legacy billing schema, with the rows of the named
+// testdata/billing-legacy fixtures, migrated by MigrateSubscriptionOwnership,
+// MigrateWebhookReceipts and MigrateCreditProvenance.
+func newSubscriptionConflictDB(t *testing.T, fixtures ...string) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "enx.db")), &gorm.Config{
 		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
@@ -37,20 +38,22 @@ func newSubscriptionConflictDB(t *testing.T) {
 	}
 	sqlDB.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	raw, err := os.ReadFile("../testdata/billing-legacy/schema.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var lines []string
-	for _, line := range strings.Split(string(raw), "\n") {
-		if !strings.HasPrefix(strings.TrimSpace(line), "--") {
-			lines = append(lines, line)
+	for _, name := range append([]string{"schema.sql"}, fixtures...) {
+		raw, err := os.ReadFile(filepath.Join("../testdata/billing-legacy", name))
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	for _, stmt := range strings.Split(strings.Join(lines, "\n"), ";") {
-		if stmt = strings.TrimSpace(stmt); stmt != "" {
-			if err := db.Exec(stmt).Error; err != nil {
-				t.Fatalf("legacy schema: %v", err)
+		var lines []string
+		for _, line := range strings.Split(string(raw), "\n") {
+			if !strings.HasPrefix(strings.TrimSpace(line), "--") {
+				lines = append(lines, line)
+			}
+		}
+		for _, stmt := range strings.Split(strings.Join(lines, "\n"), ";") {
+			if stmt = strings.TrimSpace(stmt); stmt != "" {
+				if err := db.Exec(stmt).Error; err != nil {
+					t.Fatalf("legacy %s: %v", name, err)
+				}
 			}
 		}
 	}
@@ -58,6 +61,9 @@ func newSubscriptionConflictDB(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := sqlitex.MigrateWebhookReceipts(db); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sqlitex.MigrateCreditProvenance(db); err != nil {
 		t.Fatal(err)
 	}
 	prev := sqlitex.DB
