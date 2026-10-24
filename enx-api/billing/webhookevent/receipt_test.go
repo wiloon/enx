@@ -63,6 +63,22 @@ func TestReceiveKeepsTheReferencesOfTheBusinessObject(t *testing.T) {
 			References{SubscriptionID: sub, CustomerID: cus},
 		},
 		{
+			"a schedule updated on release names its released subscription",
+			fixture(t, "12-subscription_schedule.updated-released.json"),
+			References{SubscriptionID: sub, CustomerID: cus},
+		},
+		{
+			"a released schedule names its released subscription",
+			fixture(t, "13-subscription_schedule.released-released.json"),
+			References{SubscriptionID: sub, CustomerID: cus},
+		},
+		{
+			"a released schedule with an expanded released subscription",
+			[]byte(`{"id":"evt_rs","object":"event","type":"subscription_schedule.released","created":1,"api_version":"2026-08-26.dahlia","livemode":false,
+				"data":{"object":{"object":"subscription_schedule","id":"sub_sched_1","customer":"cus_1","subscription":null,"released_subscription":{"id":"sub_1","object":"subscription"}}}}`),
+			References{SubscriptionID: "sub_1", CustomerID: "cus_1"},
+		},
+		{
 			"a subscription checkout",
 			[]byte(`{"id":"evt_cs","object":"event","type":"checkout.session.completed","created":1,"api_version":"2026-08-26.dahlia","livemode":false,
 				"data":{"object":{"object":"checkout.session","id":"cs_1","customer":"cus_1","subscription":"sub_1","payment_intent":null,"client_reference_id":"user-1"}}}`),

@@ -111,12 +111,15 @@ func Receive(e Endpoint, payload []byte) (Receipt, error) {
 // expandable field is either an ID or an expanded object with an id.
 func dahliaReferences(object json.RawMessage) References {
 	var o struct {
-		Object        string          `json:"object"`
-		ID            string          `json:"id"`
-		Customer      json.RawMessage `json:"customer"`
-		Subscription  json.RawMessage `json:"subscription"`
-		PaymentIntent json.RawMessage `json:"payment_intent"`
-		Parent        *struct {
+		Object       string          `json:"object"`
+		ID           string          `json:"id"`
+		Customer     json.RawMessage `json:"customer"`
+		Subscription json.RawMessage `json:"subscription"`
+		// A released schedule has no subscription; it names the one it
+		// released here instead.
+		ReleasedSubscription json.RawMessage `json:"released_subscription"`
+		PaymentIntent        json.RawMessage `json:"payment_intent"`
+		Parent               *struct {
 			SubscriptionDetails *struct {
 				Subscription json.RawMessage `json:"subscription"`
 			} `json:"subscription_details"`
@@ -131,6 +134,9 @@ func dahliaReferences(object json.RawMessage) References {
 		refs.SubscriptionID = o.ID
 	case "subscription_schedule":
 		refs.SubscriptionID = expandableID(o.Subscription)
+		if refs.SubscriptionID == "" {
+			refs.SubscriptionID = expandableID(o.ReleasedSubscription)
+		}
 	case "invoice":
 		refs.InvoiceID = o.ID
 		if o.Parent != nil && o.Parent.SubscriptionDetails != nil {
