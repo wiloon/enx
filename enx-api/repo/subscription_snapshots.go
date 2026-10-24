@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"enx-api/billing/chargerefunded"
 	"enx-api/billing/snapshot"
 	"enx-api/billing/webhookevent"
 	"enx-api/utils/sqlitex"
@@ -33,10 +34,12 @@ func (SubscriptionSnapshots) Subscription(ctx context.Context, subscriptionID st
 
 // ApplyWebhookEffects is the EffectApplier the webhook event worker's
 // TaskStore commits a handled event's effects with.
-func ApplyWebhookEffects(tx *gorm.DB, effects webhookevent.Effects) error {
+func ApplyWebhookEffects(tx *gorm.DB, scope webhookevent.Scope, effects webhookevent.Effects) error {
 	switch e := effects.(type) {
 	case snapshot.Effects:
 		return ApplySnapshot(tx, e)
+	case chargerefunded.Effects:
+		return ApplyClawback(tx, scope, e)
 	}
 	return fmt.Errorf("no applier for webhook effects %T", effects)
 }

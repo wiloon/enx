@@ -13,10 +13,10 @@ import (
 	"gorm.io/gorm"
 )
 
-// EffectApplier applies a handled event's webhookevent.Effects inside tx,
-// the transaction that saves the event's task. An error rolls the task
+// EffectApplier applies scope's handled event's webhookevent.Effects inside
+// tx, the transaction that saves the event's task. An error rolls the task
 // back with them.
-type EffectApplier func(tx *gorm.DB, effects webhookevent.Effects) error
+type EffectApplier func(tx *gorm.DB, scope webhookevent.Scope, effects webhookevent.Effects) error
 
 // WebhookEvents is webhookevent.TaskStore over the stripe_webhook_events
 // rows WebhookReceipts creates (ADR-067).
@@ -244,7 +244,7 @@ func (s WebhookEvents) Save(ctx context.Context, scope webhookevent.Scope, read,
 		if s.apply == nil {
 			return fmt.Errorf("save webhook event task: no applier for effects %T", effects)
 		}
-		if err := s.apply(tx, effects); err != nil {
+		if err := s.apply(tx, scope, effects); err != nil {
 			return fmt.Errorf("apply webhook event effects: %w", err)
 		}
 		return nil
