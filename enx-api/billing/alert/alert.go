@@ -2,8 +2,8 @@
 // administrator alerts (ADR-067 §管理员处理与邮件): an event that needs
 // attention, a subscription conflict found, and a user's billing-support
 // request each carry one alert with this state. It is pure: the caller
-// stores the returned state with a conditional write on the claim token it
-// read, and sends the mail outside any database transaction.
+// stores the returned state with a conditional write on the state it read
+// (Store.Save), and sends the mail outside any database transaction.
 //
 // Only a provider-confirmed send marks an alert sent. A pending alert is
 // never abandoned, however often it fails; the notifier retries it at
