@@ -2,15 +2,6 @@
 
 This document records significant contributions made with AI assistance.
 
-## 2026-10-23: Checked Stripe default Portal configuration — #297 / #336
-
-**Agent**: Codex
-**Task**: Align the preparatory Portal boundary with Stripe's standard configuration model.
-
-**Solution**: Resolve the active default configuration when no explicit override is set, validate the same policy on both paths, and pin the resulting ID into each Portal session. Explicit lookup failures never fall back to a different configuration. Updated ADR-067/009 and the subscription vocabulary while preserving the different-Product tier model and existing payment/credit decisions.
-
-**Lesson**: Stripe's optional session configuration is compatible with a checked default; requiring an operator-supplied ID is not necessary. Validate first and pass that exact ID to avoid choosing a different default between the read and session creation. Product tiers and monthly/annual Price variants are separate domain concepts; Portal-specific limitations do not define the Product model.
-
 ## 2026-10-18: Refund end-to-end tests — ADR-049 / issue #209
 
 **Agent**: Claude Code
