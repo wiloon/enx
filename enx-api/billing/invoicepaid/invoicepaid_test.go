@@ -429,24 +429,38 @@ func TestInvoicesOfClassifiedSubscriptionsThatGrantNothing(t *testing.T) {
 }
 
 func TestTheDeletionGateStopsAcceptanceAndGrants(t *testing.T) {
+	// After deletion a new subscription's verified ownership is retained as
+	// financial context, with no classification, grant or referral.
+	retained := Effects{
+		Observed:    Observed{SubscriptionID: sandboxSub, OwnerUserID: "user_1", Revision: 3},
+		Attribution: &Attribution{UserID: "user_1", CustomerID: sandboxCus},
+	}
 	cases := []struct {
 		name     string
 		deletion acceptance.Deletion
 		step     webhookevent.Step
 		reason   string
+		// newEffects are the new subscription's effects, nil for none.
+		newEffects any
 	}{
-		{"deletion in progress waits", acceptance.DeletionInProgress, webhookevent.MissingDependency, ReasonDeletionInProgress},
-		{"a payment after deletion needs attention", acceptance.DeletionCompleted, webhookevent.Unrecoverable, acceptance.ReasonPaymentAfterAccountDeletion},
+		{"deletion in progress waits", acceptance.DeletionInProgress, webhookevent.MissingDependency, ReasonDeletionInProgress, nil},
+		{"a payment after deletion needs attention", acceptance.DeletionCompleted, webhookevent.Unrecoverable, acceptance.ReasonPaymentAfterAccountDeletion, retained},
 	}
 	for _, tc := range cases {
 		t.Run("new subscription: "+tc.name, func(t *testing.T) {
-			store, stripe := firstInvoice(t, Owner{Deletion: tc.deletion}, map[string]string{sandboxSub: "active"})
+			store, stripe := firstInvoice(t, Owner{Revision: 3, Deletion: tc.deletion}, map[string]string{sandboxSub: "active"})
 
 			r := handle(t, store, stripe)
 
 			wantStep(t, r, tc.step, tc.reason)
-			if r.Effects != nil {
-				t.Fatalf("effects = %#v, want none", r.Effects)
+			if tc.newEffects == nil {
+				if r.Effects != nil {
+					t.Fatalf("effects = %#v, want none", r.Effects)
+				}
+				return
+			}
+			if got := effects(t, r); !reflect.DeepEqual(got, tc.newEffects) {
+				t.Fatalf("effects =\n%s\nwant\n%s", describe(got), describe(tc.newEffects.(Effects)))
 			}
 		})
 		t.Run("accepted subscription: "+tc.name, func(t *testing.T) {

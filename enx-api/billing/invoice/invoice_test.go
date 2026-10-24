@@ -190,6 +190,19 @@ func TestDecodeEventReadsThePaymentAndItsTrustedOwner(t *testing.T) {
 		}
 	})
 
+	t.Run("an expanded Customer", func(t *testing.T) {
+		edited := []byte(replaceOnce(t, string(payload),
+			`"customer": "cus_VV03wKkovxzzTP"`,
+			`"customer": {"id": "cus_VV03wKkovxzzTP", "object": "customer"}`))
+		inv, err := DecodeEvent(edited)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if inv.CustomerID != "cus_VV03wKkovxzzTP" {
+			t.Fatalf("customer = %q, want cus_VV03wKkovxzzTP", inv.CustomerID)
+		}
+	})
+
 	t.Run("line metadata is not the subscription's", func(t *testing.T) {
 		edited := []byte(replaceOnce(t, string(payload),
 			"\"metadata\": {\n              \"enx_experiment\": \"297\"",

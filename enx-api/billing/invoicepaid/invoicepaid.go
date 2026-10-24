@@ -66,7 +66,8 @@ type Owner struct {
 	// AcceptedID is the owner's accepted subscription, "" when none.
 	AcceptedID string
 	// Revision is the owner's billing revision; every acceptance-relevant
-	// write changes it.
+	// write changes it, and so does every change to the pool's provenance
+	// or to a stored grant's Source, which credit decisions read.
 	Revision int64
 	Deletion acceptance.Deletion
 	// Owned is every subscription the owner owns, with its conflict
@@ -120,7 +121,9 @@ type Observed struct {
 }
 
 // Attribution records the subscription's owner, creating its row if ENX had
-// none.
+// none. It never creates the user: after the owner's account deletion it
+// only retains the subscription and Customer as financial context
+// (ADR-067 §注销与财务留存).
 type Attribution struct {
 	UserID     string
 	CustomerID string
@@ -196,7 +199,8 @@ func NewHandler(store Store, stripe Stripe, plans Plans, now func() time.Time) *
 // conflict with a pending alert, or marked stale; conflicts grant nothing,
 // and a paid invoice of a stale subscription needs attention. While the
 // owner's deletion is in progress nothing is accepted or granted; after it
-// the payment needs attention. Otherwise the invoice records its grant, and
+// the payment needs attention, retaining only a new subscription's
+// ownership. Otherwise the invoice records its grant, and
 // the pool takes it only as creditperiod allows.
 func (h *Handler) Handle(ctx context.Context, s webhookevent.StoredTask) webhookevent.Result {
 	payload, err := h.store.Payload(ctx, s.Scope)
@@ -287,6 +291,9 @@ func (h *Handler) Handle(ctx context.Context, s webhookevent.StoredTask) webhook
 		case acceptance.WaitForDeletion:
 			return webhookevent.Result{Step: webhookevent.MissingDependency, Reason: ReasonDeletionInProgress}
 		default:
+			if d.Reason == acceptance.ReasonPaymentAfterAccountDeletion && e.Attribution != nil {
+				return unrecoverable(d.Reason, e)
+			}
 			return unrecoverable(d.Reason, nil)
 		}
 	default:
