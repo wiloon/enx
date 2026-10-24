@@ -23,7 +23,7 @@ import (
 // newSubscriptionConflictDB opens a temporary database as the cutover leaves
 // it: the legacy billing schema, with the rows of the named
 // testdata/billing-legacy fixtures, migrated by MigrateSubscriptionOwnership,
-// MigrateWebhookReceipts and MigrateCreditProvenance.
+// MigrateWebhookReceipts, MigrateCreditProvenance and MigrateDeletionGates.
 func newSubscriptionConflictDB(t *testing.T, fixtures ...string) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "enx.db")), &gorm.Config{
@@ -64,6 +64,9 @@ func newSubscriptionConflictDB(t *testing.T, fixtures ...string) {
 		t.Fatal(err)
 	}
 	if _, err := sqlitex.MigrateCreditProvenance(db); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sqlitex.MigrateDeletionGates(db); err != nil {
 		t.Fatal(err)
 	}
 	prev := sqlitex.DB
