@@ -12,13 +12,16 @@ import (
 	"time"
 )
 
-// Status is a Stripe webhook event's processing state. ADR-067 also names
-// pending, processing, processed and ignored.
+// Status is a Stripe webhook event's processing state (ADR-067).
 type Status string
 
 const (
+	Pending           Status = "pending"
+	Processing        Status = "processing"
 	WaitingDependency Status = "waiting_dependency"
+	Processed         Status = "processed"
 	NeedsAttention    Status = "needs_attention"
+	Ignored           Status = "ignored"
 )
 
 var (
