@@ -346,7 +346,7 @@ func TestCreatePortalSession(t *testing.T) {
 		_, _ = w.Write([]byte(`{"id":"bps_test_123","object":"billing_portal.session","url":"https://billing.stripe.com/bps_test_123"}`))
 	})
 
-	session, err := CreatePortalSession(context.Background(), sc, "cus_123", "bpc_no_updates", "https://example.com/account")
+	session, err := CreatePortalSession(context.Background(), sc, "cus_123", "bpc_checked", "https://example.com/account")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -359,8 +359,8 @@ func TestCreatePortalSession(t *testing.T) {
 	if sawReturnURL != "https://example.com/account" {
 		t.Errorf("expected return_url=https://example.com/account, got %q", sawReturnURL)
 	}
-	if sawConfiguration != "bpc_no_updates" {
-		t.Errorf("expected configuration=bpc_no_updates, got %q", sawConfiguration)
+	if sawConfiguration != "bpc_checked" {
+		t.Errorf("expected configuration=bpc_checked, got %q", sawConfiguration)
 	}
 }
 
