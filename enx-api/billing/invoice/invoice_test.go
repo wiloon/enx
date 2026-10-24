@@ -161,6 +161,62 @@ func TestDecodeEventRefusesUnsupportedVersionsAndOtherObjects(t *testing.T) {
 	})
 }
 
+func TestDecodeEventReadsThePaymentAndItsTrustedOwner(t *testing.T) {
+	payload, err := os.ReadFile(filepath.Join("..", "testdata", "stripe-plan-change", "02-invoice.paid-subscription_create.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("a Sandbox invoice without ENX metadata", func(t *testing.T) {
+		inv, err := DecodeEvent(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if inv.CustomerID != "cus_VV03wKkovxzzTP" || inv.AmountPaid != 399 || inv.MetadataUserID != "" {
+			t.Fatalf("got customer %q, amount paid %d, metadata user %q; want cus_VV03wKkovxzzTP, 399 and none", inv.CustomerID, inv.AmountPaid, inv.MetadataUserID)
+		}
+	})
+
+	t.Run("the subscription metadata snapshot names the ENX user", func(t *testing.T) {
+		edited := []byte(replaceOnce(t, string(payload),
+			"\"subscription_details\": {\n          \"metadata\": {\n            \"enx_experiment\": \"297\"",
+			"\"subscription_details\": {\n          \"metadata\": {\n            \"enx_user_id\": \"user_1\""))
+		inv, err := DecodeEvent(edited)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if inv.MetadataUserID != "user_1" {
+			t.Fatalf("metadata user = %q, want user_1", inv.MetadataUserID)
+		}
+	})
+
+	t.Run("an expanded Customer", func(t *testing.T) {
+		edited := []byte(replaceOnce(t, string(payload),
+			`"customer": "cus_VV03wKkovxzzTP"`,
+			`"customer": {"id": "cus_VV03wKkovxzzTP", "object": "customer"}`))
+		inv, err := DecodeEvent(edited)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if inv.CustomerID != "cus_VV03wKkovxzzTP" {
+			t.Fatalf("customer = %q, want cus_VV03wKkovxzzTP", inv.CustomerID)
+		}
+	})
+
+	t.Run("line metadata is not the subscription's", func(t *testing.T) {
+		edited := []byte(replaceOnce(t, string(payload),
+			"\"metadata\": {\n              \"enx_experiment\": \"297\"",
+			"\"metadata\": {\n              \"enx_user_id\": \"user_1\""))
+		inv, err := DecodeEvent(edited)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if inv.MetadataUserID != "" {
+			t.Fatalf("metadata user = %q, want none", inv.MetadataUserID)
+		}
+	})
+}
+
 // ADR-067: floor((new - old) * remaining share), the share being the
 // positive proration line's period over the stored normal grant's period.
 func TestUpgradeTopUpCredits(t *testing.T) {

@@ -36,9 +36,13 @@ type dahliaInvoice struct {
 	ID            string `json:"id"`
 	Object        string `json:"object"`
 	BillingReason string `json:"billing_reason"`
-	Parent        *struct {
+	// Customer is expandable: an ID or an object with an id.
+	Customer   json.RawMessage `json:"customer"`
+	AmountPaid int64           `json:"amount_paid"`
+	Parent     *struct {
 		SubscriptionDetails *struct {
-			Subscription string `json:"subscription"`
+			Subscription string            `json:"subscription"`
+			Metadata     map[string]string `json:"metadata"`
 		} `json:"subscription_details"`
 	} `json:"parent"`
 	Lines struct {
@@ -91,9 +95,16 @@ func DecodeEvent(payload []byte) (Invoice, error) {
 	if src.Object != "invoice" {
 		return Invoice{}, fmt.Errorf("%w: object %q", ErrNotAnInvoiceEvent, src.Object)
 	}
-	inv := Invoice{ID: src.ID, BillingReason: src.BillingReason, LinesComplete: !src.Lines.HasMore}
+	inv := Invoice{
+		ID:            src.ID,
+		BillingReason: src.BillingReason,
+		CustomerID:    expandableID(src.Customer),
+		AmountPaid:    src.AmountPaid,
+		LinesComplete: !src.Lines.HasMore,
+	}
 	if src.Parent != nil && src.Parent.SubscriptionDetails != nil {
 		inv.SubscriptionID = src.Parent.SubscriptionDetails.Subscription
+		inv.MetadataUserID = src.Parent.SubscriptionDetails.Metadata[MetadataUserIDKey]
 	}
 	for _, l := range src.Lines.Data {
 		line := Line{ID: l.ID, Amount: l.Amount, Period: Period{Start: l.Period.Start, End: l.Period.End}}
@@ -107,4 +118,22 @@ func DecodeEvent(payload []byte) (Invoice, error) {
 		inv.Lines = append(inv.Lines, line)
 	}
 	return inv, nil
+}
+
+// MetadataUserIDKey is the subscription metadata key ENX's Checkout sets to
+// the local user ID (subscription_data.metadata).
+const MetadataUserIDKey = "enx_user_id"
+
+func expandableID(field json.RawMessage) string {
+	var id string
+	if json.Unmarshal(field, &id) == nil {
+		return id
+	}
+	var expanded struct {
+		ID string `json:"id"`
+	}
+	if json.Unmarshal(field, &expanded) == nil {
+		return expanded.ID
+	}
+	return ""
 }
