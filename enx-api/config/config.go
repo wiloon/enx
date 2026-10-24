@@ -240,6 +240,24 @@ type Stripe struct {
 	Credits                         StripeCredits `mapstructure:"credits"`
 	Costs                           StripeCosts   `mapstructure:"costs"`
 	Quota                           StripeQuota   `mapstructure:"quota"`
+	Webhook                         StripeWebhook `mapstructure:"webhook"`
+}
+
+// StripeWebhook is the timing of the durable webhook worker and its admin
+// notifications (ADR-067). Each timeout must be shorter than its lease, so a
+// claim cannot expire while its own operation may still commit.
+type StripeWebhook struct {
+	PollInterval     time.Duration `mapstructure:"poll-interval"`
+	LeaseDuration    time.Duration `mapstructure:"lease-duration"`
+	OperationTimeout time.Duration `mapstructure:"operation-timeout"`
+	BackoffMin       time.Duration `mapstructure:"backoff-min"`
+	BackoffMax       time.Duration `mapstructure:"backoff-max"`
+	// DependencyWaitDeadline runs from an event's first dependency wait;
+	// redelivery, restarts and retries never reset it.
+	DependencyWaitDeadline    time.Duration `mapstructure:"dependency-wait-deadline"`
+	NotificationPollInterval  time.Duration `mapstructure:"notification-poll-interval"`
+	NotificationTimeout       time.Duration `mapstructure:"notification-timeout"`
+	NotificationLeaseDuration time.Duration `mapstructure:"notification-lease-duration"`
 }
 
 // StripePrice holds Stripe Price lookup_keys, not Price IDs.
@@ -620,6 +638,30 @@ func (c *Config) Validate() error {
 	positive("stripe.quota.dictionary-lookup-daily-free", q.DictionaryLookupDailyFree > 0)
 	positive("stripe.quota.dictionary-lookup-daily-subscribed", q.DictionaryLookupDailySubscribed > 0)
 
+	wh := c.Stripe.Webhook
+	for key, d := range map[string]time.Duration{
+		"poll-interval":               wh.PollInterval,
+		"lease-duration":              wh.LeaseDuration,
+		"operation-timeout":           wh.OperationTimeout,
+		"backoff-min":                 wh.BackoffMin,
+		"backoff-max":                 wh.BackoffMax,
+		"dependency-wait-deadline":    wh.DependencyWaitDeadline,
+		"notification-poll-interval":  wh.NotificationPollInterval,
+		"notification-timeout":        wh.NotificationTimeout,
+		"notification-lease-duration": wh.NotificationLeaseDuration,
+	} {
+		positive("stripe.webhook."+key, d > 0)
+	}
+	if wh.BackoffMin > wh.BackoffMax {
+		errs = append(errs, errors.New("config: stripe.webhook.backoff-min must not exceed stripe.webhook.backoff-max"))
+	}
+	if wh.OperationTimeout >= wh.LeaseDuration {
+		errs = append(errs, errors.New("config: stripe.webhook.operation-timeout must be shorter than stripe.webhook.lease-duration"))
+	}
+	if wh.NotificationTimeout >= wh.NotificationLeaseDuration {
+		errs = append(errs, errors.New("config: stripe.webhook.notification-timeout must be shorter than stripe.webhook.notification-lease-duration"))
+	}
+
 	if d := c.Stats.LookupEvents.RetentionDays; d < MinLookupEventRetentionDays || d > MaxLookupEventRetentionDays {
 		errs = append(errs, fmt.Errorf("config: stats.lookup-events.retention-days %d is outside %d-%d",
 			d, MinLookupEventRetentionDays, MaxLookupEventRetentionDays))
@@ -731,6 +773,16 @@ func defaults() map[string]any {
 	// 6): free is the product limit, subscribed a backstop against scripts.
 	set("stripe.quota.dictionary-lookup-daily-free", 200)
 	set("stripe.quota.dictionary-lookup-daily-subscribed", 20000)
+	// Durable webhook worker timing (ADR-067, #297).
+	set("stripe.webhook.poll-interval", "5s")
+	set("stripe.webhook.lease-duration", "2m")
+	set("stripe.webhook.operation-timeout", "30s")
+	set("stripe.webhook.backoff-min", "5s")
+	set("stripe.webhook.backoff-max", "15m")
+	set("stripe.webhook.dependency-wait-deadline", "24h")
+	set("stripe.webhook.notification-poll-interval", "1h")
+	set("stripe.webhook.notification-timeout", "30s")
+	set("stripe.webhook.notification-lease-duration", "2m")
 
 	// AI word fallback tuning (ADR-045). Starting guesses, to be tuned from
 	// usage: a definition is cached only at or above min-quality (0-10), and
@@ -875,6 +927,16 @@ var envBindings = map[string]string{
 
 	"stripe.quota.dictionary-lookup-daily-free":       "STRIPE_QUOTA_DICTIONARY_LOOKUP_DAILY_FREE",
 	"stripe.quota.dictionary-lookup-daily-subscribed": "STRIPE_QUOTA_DICTIONARY_LOOKUP_DAILY_SUBSCRIBED",
+
+	"stripe.webhook.poll-interval":               "STRIPE_WEBHOOK_POLL_INTERVAL",
+	"stripe.webhook.lease-duration":              "STRIPE_WEBHOOK_LEASE_DURATION",
+	"stripe.webhook.operation-timeout":           "STRIPE_WEBHOOK_OPERATION_TIMEOUT",
+	"stripe.webhook.backoff-min":                 "STRIPE_WEBHOOK_BACKOFF_MIN",
+	"stripe.webhook.backoff-max":                 "STRIPE_WEBHOOK_BACKOFF_MAX",
+	"stripe.webhook.dependency-wait-deadline":    "STRIPE_WEBHOOK_DEPENDENCY_WAIT_DEADLINE",
+	"stripe.webhook.notification-poll-interval":  "STRIPE_WEBHOOK_NOTIFICATION_POLL_INTERVAL",
+	"stripe.webhook.notification-timeout":        "STRIPE_WEBHOOK_NOTIFICATION_TIMEOUT",
+	"stripe.webhook.notification-lease-duration": "STRIPE_WEBHOOK_NOTIFICATION_LEASE_DURATION",
 
 	"ai-word.min-quality":          "AI_WORD_MIN_QUALITY",
 	"ai-word.calls-per-minute":     "AI_WORD_CALLS_PER_MINUTE",
