@@ -188,6 +188,18 @@ func RetryByOperator(t Task, now time.Time) (Task, error) {
 	return t, nil
 }
 
+// AlertToSave is the alert a task save leaves stored, given the one stored
+// now and the one the saved task carries. Delivery progress belongs to the
+// notifier, which records it with its own conditional write, so a task save
+// never overwrites it: it only raises an alert where none was raised yet.
+// The store applies this in the same atomic write as the task.
+func AlertToSave(stored, next alert.Alert) alert.Alert {
+	if stored.State != "" {
+		return stored
+	}
+	return next
+}
+
 func escalate(t Task, now time.Time, reason string) Task {
 	t = release(t)
 	t.Status = NeedsAttention

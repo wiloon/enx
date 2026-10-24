@@ -347,3 +347,27 @@ func TestRetryByOperator(t *testing.T) {
 		}
 	})
 }
+
+func TestAlertToSave(t *testing.T) {
+	raised := alert.Alert{State: alert.Pending, NextAttemptAt: t0}
+	claimed := alert.Alert{State: alert.Pending, NextAttemptAt: t0, ClaimToken: "notifier", ClaimExpiresAt: t0.Add(lease)}
+	failed := alert.Alert{State: alert.Pending, Attempts: 1, LastError: "resend: 500", NextAttemptAt: t0.Add(time.Hour)}
+	sent := alert.Alert{State: alert.Sent, Attempts: 1, SentAt: t0.Add(time.Minute)}
+	for _, tc := range []struct {
+		name         string
+		stored, next alert.Alert
+		want         alert.Alert
+	}{
+		{"a task save raises an alert where none was raised", alert.Alert{}, raised, raised},
+		{"a task save without an alert raises none", alert.Alert{}, alert.Alert{}, alert.Alert{}},
+		{"a sent alert stays sent", sent, raised, sent},
+		{"a notifier's claim stays", claimed, raised, claimed},
+		{"a failed send's retry time stays", failed, raised, failed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := AlertToSave(tc.stored, tc.next); got != tc.want {
+				t.Errorf("AlertToSave = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
