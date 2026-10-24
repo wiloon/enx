@@ -56,7 +56,7 @@ func (r usersRebuild) run(db *gorm.DB) (string, error) {
 		return "", err
 	}
 
-	backup, err := backupDatabase(db, r.now())
+	backup, err := backupDatabase(db, backupSuffix, r.now())
 	if err != nil {
 		return "", fmt.Errorf("users rebuild: backup failed, users left as they are: %w", err)
 	}
@@ -381,8 +381,9 @@ func constraintKey(ix indexInfo) string {
 	return fmt.Sprintf("%s/%v/%v/%s", ix.origin, ix.unique, ix.partial, strings.Join(ix.cols, ","))
 }
 
-// backupDatabase writes a VACUUM INTO copy next to the main database file.
-func backupDatabase(db *gorm.DB, at time.Time) (string, error) {
+// backupDatabase writes a VACUUM INTO copy next to the main database file,
+// named by suffix and the time.
+func backupDatabase(db *gorm.DB, suffix string, at time.Time) (string, error) {
 	var files []struct {
 		Name string
 		File string
@@ -399,7 +400,7 @@ func backupDatabase(db *gorm.DB, at time.Time) (string, error) {
 	if main == "" {
 		return "", errors.New("the database has no file to back up")
 	}
-	path := main + backupSuffix + at.UTC().Format("20060102T150405Z")
+	path := main + suffix + at.UTC().Format("20060102T150405Z")
 	if _, err := os.Stat(path); err == nil {
 		return "", fmt.Errorf("%s already exists", path)
 	}
