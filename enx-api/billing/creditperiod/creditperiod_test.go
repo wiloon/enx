@@ -8,15 +8,15 @@ import (
 )
 
 var (
-	may    = invoice.Period{Start: 1000, End: 2000}
-	june   = invoice.Period{Start: 2000, End: 3000}
-	april  = invoice.Period{Start: 0, End: 1000}
-	bMay   = invoice.Period{Start: 1500, End: 4500}
-	aMay   = Source{SubscriptionID: "sub_a", Period: may}
-	aJune  = Source{SubscriptionID: "sub_a", Period: june}
-	aApril = Source{SubscriptionID: "sub_a", Period: april}
-	bFirst = Source{SubscriptionID: "sub_b", Period: bMay}
-	aYear  = Source{SubscriptionID: "sub_a", Period: invoice.Period{Start: 0, End: 10000}}
+	may     = invoice.Period{Start: 1000, End: 2000}
+	june    = invoice.Period{Start: 2000, End: 3000}
+	april   = invoice.Period{Start: 0, End: 1000}
+	bLonger = invoice.Period{Start: 1500, End: 4500}
+	aMay    = Source{SubscriptionID: "sub_a", Period: may}
+	aJune   = Source{SubscriptionID: "sub_a", Period: june}
+	aApril  = Source{SubscriptionID: "sub_a", Period: april}
+	bFirst  = Source{SubscriptionID: "sub_b", Period: bLonger}
+	aYear   = Source{SubscriptionID: "sub_a", Period: invoice.Period{Start: 0, End: 10000}}
 )
 
 func TestNormalGrant(t *testing.T) {
@@ -159,6 +159,14 @@ func TestUpgradeTopUp(t *testing.T) {
 			want: Effect{Outcome: NeedsAttention, Reason: ReasonLegacyGrantWithoutPeriod},
 		},
 		{
+			name: "an upgrade over a migrated pool Stripe could not pin down needs attention without waiting for a grant the lookup cannot find",
+			in: Upgrade{
+				Pool:     Pool{Source: Source{SubscriptionID: "sub_a", Period: invoice.Period{End: 2000}}, WithoutPeriod: true},
+				Accepted: true, SubscriptionID: "sub_a", Line: half, FromCredits: 100, ToCredits: 300,
+			},
+			want: Effect{Outcome: NeedsAttention, Reason: ReasonLegacyGrantWithoutPeriod},
+		},
+		{
 			name: "nothing is decided before the legacy provenance backfill finishes",
 			in:   Upgrade{Pool: Pool{BackfillPending: true}, Accepted: true, SubscriptionID: "sub_a", Line: half, FromCredits: 100, ToCredits: 300},
 			want: Effect{Outcome: WaitDependency, Reason: ReasonBackfillPending},
@@ -278,6 +286,13 @@ func TestClawback(t *testing.T) {
 			want:   Effect{Outcome: NeedsAttention, Reason: ReasonLegacyGrantWithoutPeriod},
 		},
 		{
+			name:   "a refund of a migrated grant Stripe could not pin down takes nothing once the pool has a later period",
+			pool:   Pool{Source: aJune},
+			grant:  Grant{WithoutPeriod: true, Applied: 100},
+			refund: Refund{Refunded: 500, Captured: 500, Balance: 100},
+			want:   Effect{Outcome: RecordOnly},
+		},
+		{
 			name:   "nothing is decided before the legacy provenance backfill finishes",
 			pool:   Pool{BackfillPending: true},
 			grant:  Grant{Applied: 100},
@@ -304,8 +319,8 @@ func TestClawbackRefusesAnInvalidRefund(t *testing.T) {
 		{Refunded: -1, Captured: 100},
 		{Refunded: 200, Captured: 100},
 	} {
-		if _, err := Clawback(Pool{Source: aMay}, Grant{Source: aMay, Applied: 100}, r); err == nil {
-			t.Errorf("Clawback with %+v succeeded, want an error", r)
+		if _, err := Clawback(Pool{Source: aMay}, Grant{Source: aMay, Applied: 100}, r); !errors.Is(err, ErrInvalidRefund) {
+			t.Errorf("Clawback with %+v: err = %v, want ErrInvalidRefund", r, err)
 		}
 	}
 }

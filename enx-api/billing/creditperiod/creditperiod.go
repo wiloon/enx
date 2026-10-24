@@ -88,6 +88,10 @@ type Effect struct {
 // belongs to another subscription.
 var ErrGrantOfAnotherSubscription = errors.New("billing/creditperiod: normal grant belongs to another subscription")
 
+// ErrInvalidRefund: the refund handed to Clawback is not a valid cumulative
+// refund of its charge.
+var ErrInvalidRefund = errors.New("billing/creditperiod: not a valid refund")
+
 // NormalGrant decides a paid normal-period invoice buying credits for grant.
 // accepted reports whether grant's subscription is the owner's current
 // accepted one. It resets the pool only for the accepted subscription's
@@ -112,7 +116,9 @@ func NormalGrant(pool Pool, grant Source, accepted bool, credits int64) Effect {
 
 // Upgrade is a paid subscription_update invoice classified as upgrade top-up
 // credits. PeriodGrant is the stored normal grant of SubscriptionID whose
-// period ends where Line ends, nil when there is none yet.
+// period ends where Line ends, nil when there is none yet. A migrated pool
+// without a period that matches the line is enough to need attention; the
+// lookup cannot find its grant.
 type Upgrade struct {
 	Pool           Pool
 	Accepted       bool
@@ -136,6 +142,9 @@ func UpgradeTopUp(u Upgrade) (Effect, error) {
 	}
 	if u.Pool.BackfillPending {
 		return Effect{Outcome: WaitDependency, Reason: ReasonBackfillPending}, nil
+	}
+	if u.Pool.WithoutPeriod && u.Pool.Source.SubscriptionID == u.SubscriptionID && u.Pool.Source.Period.End == u.Line.End {
+		return Effect{Outcome: NeedsAttention, Reason: ReasonLegacyGrantWithoutPeriod}, nil
 	}
 	if u.PeriodGrant == nil {
 		return Effect{Outcome: WaitDependency, Reason: ReasonNormalGrantMissing}, nil
@@ -174,15 +183,17 @@ type Refund struct {
 // cumulative proportional share (ADR-049) minus earlier clawbacks, never
 // handing credits back and never taking the pool below zero. Any other grant
 // records a zero-effect clawback, so a historical or unapplied grant cannot
-// debit a replacement. The error reports an invalid refund.
+// debit a replacement. A migrated grant Stripe could not pin down needs
+// attention only while a migrated pool without a period may still come from
+// it. The error reports an invalid refund.
 func Clawback(pool Pool, grant Grant, r Refund) (Effect, error) {
 	if r.Captured <= 0 || r.Refunded < 0 || r.Refunded > r.Captured {
-		return Effect{}, fmt.Errorf("billing/creditperiod: refunded %d of captured %d is not a valid refund", r.Refunded, r.Captured)
+		return Effect{}, fmt.Errorf("%w: refunded %d of captured %d", ErrInvalidRefund, r.Refunded, r.Captured)
 	}
 	if pool.BackfillPending {
 		return Effect{Outcome: WaitDependency, Reason: ReasonBackfillPending}, nil
 	}
-	if grant.WithoutPeriod {
+	if grant.WithoutPeriod && pool.WithoutPeriod {
 		return Effect{Outcome: NeedsAttention, Reason: ReasonLegacyGrantWithoutPeriod}, nil
 	}
 	if grant.Applied <= 0 || grant.Source == (Source{}) || grant.Source != pool.Source {
