@@ -11,7 +11,7 @@ import (
 )
 
 func subscriptionObject(itemsHasMore string) string {
-	return `{"id":"sub_1","object":"subscription","status":"active",` +
+	return `{"id":"sub_1","object":"subscription","status":"active","customer":"cus_1",` +
 		`"cancel_at":1795507901,"cancel_at_period_end":false,` +
 		`"pending_update":{"expires_at":1792900000,"subscription_items":[]},` +
 		`"schedule":"sub_sched_1",` +
@@ -39,7 +39,7 @@ func TestSubscriptionSnapshotReadsTheLiveState(t *testing.T) {
 			Status: "active", CancelAt: 1795507901, CurrentPeriodEnd: 1795507901,
 			PendingUpdate: true, HasSchedule: true,
 		},
-		PriceIDs: []string{"price_max"}, ItemsComplete: true,
+		CustomerID: "cus_1", PriceIDs: []string{"price_max"}, ItemsComplete: true,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("SubscriptionSnapshot = %+v, want %+v", got, want)

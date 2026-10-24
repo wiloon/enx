@@ -16,10 +16,15 @@ package snapshot
 
 import (
 	"context"
+	"errors"
 
 	"enx-api/billing/eligibility"
 	"enx-api/billing/webhookevent"
 )
+
+// ErrStale: the subscription row changed, or was created, since Handle read
+// it, so the refresh was not applied.
+var ErrStale = errors.New("billing/snapshot: subscription changed since it was read")
 
 // Reasons this package adds.
 const (
@@ -38,6 +43,8 @@ const (
 // Live is a subscription's live Stripe state.
 type Live struct {
 	eligibility.Live
+	// CustomerID is the subscription's Stripe Customer.
+	CustomerID string
 	// PriceIDs are the Prices of the subscription's items, in Stripe's order.
 	PriceIDs []string
 	// ItemsComplete is false when Stripe has more items than it returned.
@@ -65,11 +72,15 @@ type Stripe interface {
 // Effects refresh one subscription's snapshot. Save applies them only while
 // the row is still at Version, or still absent when Known is false; a row
 // ENX had none of is created with no owner and no classification. Otherwise
-// it changes nothing and the worker retries.
+// it changes nothing, returns ErrStale and the worker retries.
 type Effects struct {
 	SubscriptionID string
 	Known          bool
 	Version        int64
+	// CustomerID is the subscription's Stripe Customer, recorded on a row
+	// ENX creates. A Stripe subscription never changes Customer, so an
+	// existing row keeps its own.
+	CustomerID string
 	// State is the live Stripe state: status, scheduled cancellation, current
 	// period end, pending update and attached schedule.
 	State eligibility.Live
@@ -120,7 +131,7 @@ func (h *Handler) Handle(ctx context.Context, s webhookevent.StoredTask) webhook
 		return webhookevent.Result{Step: webhookevent.Unrecoverable, Reason: ReasonUnknownPrice}
 	}
 	return webhookevent.Result{Step: webhookevent.Handled, Effects: Effects{
-		SubscriptionID: id, Known: sub.Known, Version: sub.Version,
+		SubscriptionID: id, Known: sub.Known, Version: sub.Version, CustomerID: live.CustomerID,
 		State: live.Live, PriceID: priceID, Tier: tier,
 	}}
 }
