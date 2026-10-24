@@ -151,6 +151,11 @@ func TestABlockedUsersPortalHomeUsesTheRestrictedConfiguration(t *testing.T) {
 			owner: subscriber(),
 			subs:  map[string]Subscription{"sub_a": on("sub_a", pricePro, eligibility.Live{Status: "past_due"})},
 		},
+		{
+			name:  "an unpaid accepted subscription",
+			owner: subscriber(),
+			subs:  map[string]Subscription{"sub_a": on("sub_a", pricePro, eligibility.Live{Status: "unpaid"})},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stripe := &fakeStripe{subs: tc.subs}
@@ -323,6 +328,7 @@ func TestATierCardOpensThePortalHomeWhileStripeHoldsAChangeOrThePaymentNeedsReco
 		{name: "a period-end cancellation", live: eligibility.Live{Status: "active", CancelAtPeriodEnd: true}, wantConfig: planChangeConfig},
 		{name: "a flexible-mode cancel_at by period end", live: eligibility.Live{Status: "active", CancelAt: 1795507901, CurrentPeriodEnd: 1795507901}, wantConfig: planChangeConfig},
 		{name: "a past-due payment, restricted", live: eligibility.Live{Status: "past_due"}, wantConfig: restrictedConfig},
+		{name: "an unpaid subscription, restricted", live: eligibility.Live{Status: "unpaid"}, wantConfig: restrictedConfig},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stripe := &fakeStripe{subs: map[string]Subscription{"sub_a": on("sub_a", pricePro, tc.live)}}
