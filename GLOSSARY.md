@@ -186,6 +186,18 @@ _Avoid_: event (a distinct event can be delivered more than once)
 A distinct Stripe notification ENX has durably received and tracks through processing. Repeated deliveries refer to the same event; missing subscription attribution can be temporary rather than a subscription conflict. See ADR-067.
 _Avoid_: subscription (one subscription produces many events), payment (not every event describes a payment)
 
+**Subscription tier (订阅档位)**:
+A set of service entitlements ENX offers, such as Pro, Pro+ or Max. Paying for the same tier monthly or annually changes its billing interval, not the tier.
+_Avoid_: price (what a tier costs), plan (ambiguous between tier and price)
+
+**Plan change (改档)**:
+Moving a continuing subscription from one subscription tier to another, keeping the same subscription. The customer makes it in Stripe's Customer Portal; ENX only reacts to what Stripe reports. An upgrade takes effect once its prorated charge is paid; a downgrade takes effect at the next billing period. See ADR-067.
+_Avoid_: repurchase (a new subscription after the previous one ended), plan-change operation (ENX keeps no such record)
+
+**Upgrade top-up credits (升档补差积分)**:
+The subscription credits added once when a paid upgrade takes effect: the difference between the two tiers' per-period credits, scaled by the share of the billing period still left. Balance and credit expiry are otherwise unchanged. See ADR-067.
+_Avoid_: top-up (a one-time credit purchase), full-period grant (only a new billing period grants that)
+
 ### 邀请（enx-api / enx-ui）
 
 **邀请人 / 被邀请人（referrer / invitee）**：
