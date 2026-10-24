@@ -95,11 +95,20 @@ base-url = "https://generativelanguage.googleapis.com/v1beta/openai"
 
 # [stripe]: STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET are env-var only, never
 # here (same convention as KIMI_API_KEY / RESEND_API_KEY).
-# STRIPE_PORTAL_CONFIGURATION_ID (stripe.portal-configuration-id) optionally
-# overrides the Stripe account/mode's default Customer Portal configuration.
-# With no override, ENX resolves the active default. Either choice must have
-# subscription updates disabled (ADR-067); missing/unsafe/unreadable
-# configurations return 503. Sessions always use the checked configuration ID.
+# Customer Portal configurations (ADR-067), both defined by w10n-config
+# portal-config.py:
+# - STRIPE_PORTAL_CONFIGURATION_ID (stripe.portal-configuration-id) optionally
+#   overrides the plan-change configuration; with no override ENX resolves the
+#   account/mode's single active default. It must allow only Price switching
+#   among exactly the tier Prices, with always_invoice upgrades and period-end
+#   downgrades.
+# - STRIPE_PORTAL_RESTRICTED_CONFIGURATION_ID
+#   (stripe.portal-restricted-configuration-id) optionally overrides the
+#   configuration for blocked users; with no override ENX resolves the single
+#   active one with metadata enx_portal=restricted. It must have switching off.
+# Both keep period-end cancellation, payment-method update and invoices. A
+# missing, unsafe or unreadable configuration returns 503, never falling back
+# to the other. Sessions always use the checked configuration ID.
 
 [stripe.price]
 # Stripe Price lookup_keys, not raw Price IDs. lookup_keys are stable across

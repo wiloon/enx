@@ -116,7 +116,13 @@ func (f *legacyStripeFake) client(t *testing.T) *stripeSDK.Client {
 			f.checkoutCustomer = r.PostForm.Get("customer")
 			_, _ = w.Write([]byte(`{"id":"cs_legacy","object":"checkout.session","url":"https://checkout.stripe.test/cs_legacy"}`))
 		case r.URL.Path == "/v1/billing_portal/configurations/bpc_legacy":
-			_, _ = w.Write([]byte(`{"id":"bpc_legacy","object":"billing_portal.configuration","active":true,"features":{"subscription_update":{"enabled":false}}}`))
+			// Every tier's lookup_key resolves to price_pro above.
+			_, _ = w.Write([]byte(`{"id":"bpc_legacy","object":"billing_portal.configuration","active":true,"features":{` + legacyPortalFeatures +
+				`,"subscription_update":{"enabled":true,"default_allowed_updates":["price"],"proration_behavior":"always_invoice",` +
+				`"schedule_at_period_end":{"conditions":[{"type":"decreasing_item_amount"}]},"products":[{"product":"prod_pro","prices":["price_pro"]}]}}}`))
+		case r.URL.Path == "/v1/billing_portal/configurations/bpc_legacy_restricted":
+			_, _ = w.Write([]byte(`{"id":"bpc_legacy_restricted","object":"billing_portal.configuration","active":true,"features":{` + legacyPortalFeatures +
+				`,"subscription_update":{"enabled":false}}}`))
 		case r.URL.Path == "/v1/billing_portal/sessions":
 			_ = r.ParseForm()
 			f.portalCustomer = r.PostForm.Get("customer")
@@ -132,6 +138,8 @@ func (f *legacyStripeFake) client(t *testing.T) *stripeSDK.Client {
 	})
 	return stripeSDK.NewClient("sk_test_legacy", stripeSDK.WithBackends(&stripeSDK.Backends{API: backend}))
 }
+
+const legacyPortalFeatures = `"invoice_history":{"enabled":true},"payment_method_update":{"enabled":true},"subscription_cancel":{"enabled":true,"mode":"at_period_end"}`
 
 // legacyReaderView is what each subscription reader answers for one user.
 type legacyReaderView struct {
@@ -191,6 +199,7 @@ func readLegacyView(t *testing.T, userID string, fake *legacyStripeFake, sc *str
 
 	stripe := config.Default().Stripe
 	stripe.PortalConfigurationID = "bpc_legacy"
+	stripe.PortalRestrictedConfigurationID = "bpc_legacy_restricted"
 	h := billing.NewHandler(sc, "https://example.com", stripe, nil)
 	serve := func(method, path string, handler gin.HandlerFunc, body string) *httptest.ResponseRecorder {
 		router := gin.New()

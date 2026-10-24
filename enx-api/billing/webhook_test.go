@@ -468,6 +468,17 @@ func seedSubscription(t *testing.T, userID, customerID, subscriptionID, status s
 	}
 }
 
+// seedTopupOnlyCustomer stores a Customer with no subscription, as a top-up
+// checkout leaves it.
+func seedTopupOnlyCustomer(t *testing.T, userID, customerID string) {
+	t.Helper()
+	now := time.Now().UnixMilli()
+	row := sqlitex.Subscription{UserId: userID, StripeCustomerId: customerID, CreatedAt: now, UpdatedAt: now}
+	if err := sqlitex.DB.Create(&row).Error; err != nil {
+		t.Fatalf("seed top-up customer: %v", err)
+	}
+}
+
 // testStripe is the default Stripe config with the test webhook secret.
 func testStripe() config.Stripe {
 	stripe := config.Default().Stripe

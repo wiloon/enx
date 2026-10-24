@@ -105,7 +105,7 @@ func main() {
 	// dispute; without it they stay pending until it is configured.
 	if sc, err := billingstripe.New(cfg.Stripe.SecretKey.Reveal()); err == nil {
 		go runReferralRewards(newReferralService(cfg, sc, m))
-		go checkPortalConfigurationAtStartup(sc, cfg.Stripe.PortalConfigurationID)
+		go checkPortalConfigurationsAtStartup(sc, cfg.Stripe)
 	} else {
 		logger.Warnf("referral rewards job off: %v", err)
 	}
@@ -741,19 +741,28 @@ func backfillTrialGrants(cfg *config.Config) {
 	}
 }
 
-// checkPortalConfigurationAtStartup reports at startup whether the Customer
-// Portal can open: POST /billing/portal checks the same configuration again
-// before every session. An empty override resolves Stripe's active default;
-// missing or unsafe configurations still refuse sessions (ADR-067).
-func checkPortalConfigurationAtStartup(sc *stripeSDK.Client, configurationID string) {
+// checkPortalConfigurationsAtStartup reports at startup whether each
+// Customer Portal configuration can open sessions: POST /billing/portal
+// checks the one it uses again before every session (ADR-067).
+func checkPortalConfigurationsAtStartup(sc *stripeSDK.Client, stripe config.Stripe) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	resolvedID, err := billingstripe.ResolvePortalConfiguration(ctx, sc, configurationID)
-	if err != nil {
-		logger.Errorf("billing: Customer Portal sessions are refused until the default or configured Portal configuration is active with subscription updates disabled: %v", err)
-		return
+	tierPrices, err := billingstripe.TierPriceIDs(ctx, sc, stripe.Price.SubscriptionPlans())
+	if err == nil {
+		var id string
+		id, err = billingstripe.ResolvePlanChangePortalConfiguration(ctx, sc, stripe.PortalConfigurationID, tierPrices)
+		if err == nil {
+			logger.Infof("billing: plan-change Customer Portal configuration %s is safe", id)
+		}
 	}
-	logger.Infof("billing: Customer Portal configuration %s has subscription updates disabled", resolvedID)
+	if err != nil {
+		logger.Errorf("billing: Customer Portal sessions for unblocked users are refused until the plan-change configuration is safe: %v", err)
+	}
+	if id, err := billingstripe.ResolveRestrictedPortalConfiguration(ctx, sc, stripe.PortalRestrictedConfigurationID); err != nil {
+		logger.Errorf("billing: Customer Portal sessions for blocked users are refused until the restricted configuration is safe: %v", err)
+	} else {
+		logger.Infof("billing: restricted Customer Portal configuration %s is safe", id)
+	}
 }
 
 // runReferralRewards settles the referrer rewards that are due (ADR-051

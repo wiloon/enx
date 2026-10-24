@@ -8,6 +8,7 @@ import (
 	"context"
 	"enx-api/config"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -33,12 +34,14 @@ type Handler struct {
 	sc              *stripeSDK.Client
 	frontendBaseURL string
 	webhookSecret   string
-	// portalConfigurationID is the update-disabled Customer Portal
-	// configuration every Portal session must use (ADR-067).
-	portalConfigurationID string
-	prices                config.StripePrice
-	credits               config.StripeCredits
-	webhooks              WebhookObserver
+	// portalConfigurationID and portalRestrictedConfigurationID optionally
+	// override the plan-change and restricted Customer Portal configurations
+	// (ADR-067); "" resolves them in Stripe.
+	portalConfigurationID           string
+	portalRestrictedConfigurationID string
+	prices                          config.StripePrice
+	credits                         config.StripeCredits
+	webhooks                        WebhookObserver
 	// refunds hears about refunds that matched no grant; nil logs only.
 	refunds RefundNotifier
 	// payments hears about every paid top-up and subscription invoice, for
@@ -81,13 +84,14 @@ type WebhookObserver interface {
 // the price lookup_keys and the credit amounts; sc may be nil (billing off).
 func NewHandler(sc *stripeSDK.Client, frontendBaseURL string, stripe config.Stripe, webhooks WebhookObserver) *Handler {
 	return &Handler{
-		sc:                    sc,
-		frontendBaseURL:       frontendBaseURL,
-		webhookSecret:         stripe.WebhookSecret.Reveal(),
-		portalConfigurationID: stripe.PortalConfigurationID,
-		prices:                stripe.Price,
-		credits:               stripe.Credits,
-		webhooks:              webhooks,
+		sc:                              sc,
+		frontendBaseURL:                 frontendBaseURL,
+		webhookSecret:                   stripe.WebhookSecret.Reveal(),
+		portalConfigurationID:           stripe.PortalConfigurationID,
+		portalRestrictedConfigurationID: stripe.PortalRestrictedConfigurationID,
+		prices:                          stripe.Price,
+		credits:                         stripe.Credits,
+		webhooks:                        webhooks,
 	}
 }
 
@@ -132,7 +136,7 @@ func (h *Handler) CheckoutSubscription(c *gin.Context) {
 		return
 	}
 	if hasLiveSubscription(sub) {
-		c.JSON(http.StatusConflict, gin.H{"success": false, "message": "You already have a subscription. To change your plan, contact support. You can cancel it or update your payment method in the billing portal."})
+		c.JSON(http.StatusConflict, gin.H{"success": false, "message": "You already have a subscription. Manage it from the billing portal."})
 		return
 	}
 
@@ -203,9 +207,11 @@ func (h *Handler) CheckoutTopup(c *gin.Context) {
 
 // Portal handles POST /billing/portal. Requires the user to already have a
 // Stripe customer (established by a prior checkout), since the Customer
-// Portal has nothing to manage otherwise. The session always uses the
-// explicit or default Portal configuration, checked first. An unavailable or
-// unsafe configuration never creates a session (ADR-067).
+// Portal has nothing to manage otherwise. A blocked user's session uses the
+// restricted configuration, everyone else's the plan-change one; either is
+// checked first and pinned on the session. A failed lookup or a missing or
+// unsafe configuration creates no session, and neither configuration stands
+// in for the other (ADR-067).
 func (h *Handler) Portal(c *gin.Context) {
 	if h.sc == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "billing is not configured"})
@@ -219,7 +225,7 @@ func (h *Handler) Portal(c *gin.Context) {
 		return
 	}
 
-	configurationID, err := billingstripe.ResolvePortalConfiguration(c.Request.Context(), h.sc, h.portalConfigurationID)
+	configurationID, err := h.portalConfigurationFor(c.Request.Context(), userID)
 	if err != nil {
 		logger.Errorf("billing: portal refused: %v", err)
 		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "The billing portal is unavailable right now. Please try again later."})
@@ -234,6 +240,31 @@ func (h *Handler) Portal(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "url": session.URL})
+}
+
+// portalConfigurationFor decides from the subscription's live Stripe status
+// whether userID is blocked, then resolves and checks that configuration.
+func (h *Handler) portalConfigurationFor(ctx context.Context, userID string) (string, error) {
+	var sub sqlitex.Subscription
+	if err := sqlitex.DB.Where("user_id = ?", userID).First(&sub).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", fmt.Errorf("load subscription for %s: %w", userID, err)
+	}
+	liveStatus := ""
+	if sub.StripeSubscriptionId != nil && *sub.StripeSubscriptionId != "" {
+		live, err := billingstripe.RetrieveSubscription(ctx, h.sc, *sub.StripeSubscriptionId)
+		if err != nil {
+			return "", fmt.Errorf("read subscription %s: %w", *sub.StripeSubscriptionId, err)
+		}
+		liveStatus = string(live.Status)
+	}
+	if portalRestricted(liveStatus) {
+		return billingstripe.ResolveRestrictedPortalConfiguration(ctx, h.sc, h.portalRestrictedConfigurationID)
+	}
+	tierPrices, err := billingstripe.TierPriceIDs(ctx, h.sc, h.prices.SubscriptionPlans())
+	if err != nil {
+		return "", err
+	}
+	return billingstripe.ResolvePlanChangePortalConfiguration(ctx, h.sc, h.portalConfigurationID, tierPrices)
 }
 
 // Me handles GET /billing/me: current subscription status + credit
