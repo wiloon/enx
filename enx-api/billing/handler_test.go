@@ -200,8 +200,10 @@ func TestCheckoutSubscriptionRefusesUserWithLiveSubscription(t *testing.T) {
 			if w.Code != http.StatusConflict {
 				t.Fatalf("status: got %d want 409, body=%s", w.Code, w.Body.String())
 			}
-			if !bytes.Contains(w.Body.Bytes(), []byte(`"message":"You already have a subscription. Manage it from the billing portal."`)) {
-				t.Fatalf("expected portal message, got %s", w.Body.String())
+			// The Portal no longer changes plans (ADR-067), so the copy must
+			// not send the user there to do it.
+			if !bytes.Contains(w.Body.Bytes(), []byte(`"message":"You already have a subscription. To change your plan, contact support. You can cancel it or update your payment method in the billing portal."`)) {
+				t.Fatalf("expected the plan-change support message, got %s", w.Body.String())
 			}
 		})
 	}

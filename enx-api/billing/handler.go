@@ -33,9 +33,12 @@ type Handler struct {
 	sc              *stripeSDK.Client
 	frontendBaseURL string
 	webhookSecret   string
-	prices          config.StripePrice
-	credits         config.StripeCredits
-	webhooks        WebhookObserver
+	// portalConfigurationID is the update-disabled Customer Portal
+	// configuration every Portal session must use (ADR-067).
+	portalConfigurationID string
+	prices                config.StripePrice
+	credits               config.StripeCredits
+	webhooks              WebhookObserver
 	// refunds hears about refunds that matched no grant; nil logs only.
 	refunds RefundNotifier
 	// payments hears about every paid top-up and subscription invoice, for
@@ -78,12 +81,13 @@ type WebhookObserver interface {
 // the price lookup_keys and the credit amounts; sc may be nil (billing off).
 func NewHandler(sc *stripeSDK.Client, frontendBaseURL string, stripe config.Stripe, webhooks WebhookObserver) *Handler {
 	return &Handler{
-		sc:              sc,
-		frontendBaseURL: frontendBaseURL,
-		webhookSecret:   stripe.WebhookSecret.Reveal(),
-		prices:          stripe.Price,
-		credits:         stripe.Credits,
-		webhooks:        webhooks,
+		sc:                    sc,
+		frontendBaseURL:       frontendBaseURL,
+		webhookSecret:         stripe.WebhookSecret.Reveal(),
+		portalConfigurationID: stripe.PortalConfigurationID,
+		prices:                stripe.Price,
+		credits:               stripe.Credits,
+		webhooks:              webhooks,
 	}
 }
 
@@ -128,7 +132,7 @@ func (h *Handler) CheckoutSubscription(c *gin.Context) {
 		return
 	}
 	if hasLiveSubscription(sub) {
-		c.JSON(http.StatusConflict, gin.H{"success": false, "message": "You already have a subscription. Manage it from the billing portal."})
+		c.JSON(http.StatusConflict, gin.H{"success": false, "message": "You already have a subscription. To change your plan, contact support. You can cancel it or update your payment method in the billing portal."})
 		return
 	}
 
@@ -142,6 +146,8 @@ func (h *Handler) CheckoutSubscription(c *gin.Context) {
 		SuccessURL:        h.frontendBaseURL + "/billing/success?session_id={CHECKOUT_SESSION_ID}",
 		CancelURL:         h.frontendBaseURL + "/billing/cancel",
 		Metadata:          map[string]string{"type": "subscription", "plan": req.Plan},
+		// ADR-067: events about the Subscription can name its ENX owner.
+		SubscriptionMetadata: map[string]string{"enx_user_id": userID},
 	})
 	if err != nil {
 		logger.Errorf("billing: create subscription checkout session failed: %v", err)
@@ -197,7 +203,9 @@ func (h *Handler) CheckoutTopup(c *gin.Context) {
 
 // Portal handles POST /billing/portal. Requires the user to already have a
 // Stripe customer (established by a prior checkout), since the Customer
-// Portal has nothing to manage otherwise.
+// Portal has nothing to manage otherwise. The session always uses the
+// configured Portal configuration, checked first: with none, or one that
+// allows plan changes, no session is opened (ADR-067).
 func (h *Handler) Portal(c *gin.Context) {
 	if h.sc == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "billing is not configured"})
@@ -211,7 +219,13 @@ func (h *Handler) Portal(c *gin.Context) {
 		return
 	}
 
-	session, err := billingstripe.CreatePortalSession(c.Request.Context(), h.sc, customerID, h.frontendBaseURL+"/billing")
+	if err := billingstripe.CheckPortalConfiguration(c.Request.Context(), h.sc, h.portalConfigurationID); err != nil {
+		logger.Errorf("billing: portal refused: %v", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "The billing portal is unavailable right now. Please try again later."})
+		return
+	}
+
+	session, err := billingstripe.CreatePortalSession(c.Request.Context(), h.sc, customerID, h.portalConfigurationID, h.frontendBaseURL+"/billing")
 	if err != nil {
 		logger.Errorf("billing: create portal session failed: %v", err)
 		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "failed to create portal session"})

@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"testing"
 	"time"
 
@@ -306,59 +305,9 @@ func TestLegacyWebhookRefusesASignedEventFromAnotherAPIVersion(t *testing.T) {
 	}
 }
 
-// fakePortalClient answers POST /v1/billing_portal/sessions and hands the
-// session-create form to onSession.
-func fakePortalClient(t *testing.T, onSession func(form url.Values)) *stripeSDK.Client {
-	t.Helper()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.Method != http.MethodPost || r.URL.Path != "/v1/billing_portal/sessions" {
-			t.Errorf("unexpected Stripe call: %s %s", r.Method, r.URL.Path)
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		if err := r.ParseForm(); err != nil {
-			t.Errorf("parse portal session form: %v", err)
-		}
-		onSession(r.PostForm)
-		_, _ = w.Write([]byte(`{"id":"bps_1","object":"billing_portal.session","url":"https://billing.stripe.test/p/session/bps_1"}`))
-	}))
-	t.Cleanup(server.Close)
-	backend := stripeSDK.GetBackendWithConfig(stripeSDK.APIBackend, &stripeSDK.BackendConfig{
-		URL: stripeSDK.String(server.URL), HTTPClient: server.Client(), MaxNetworkRetries: stripeSDK.Int64(0),
-	})
-	return stripeSDK.NewClient("sk_test_fake", stripeSDK.WithBackends(&stripeSDK.Backends{API: backend}))
-}
-
-// Portal opens a session for the Customer in the user's row and names no
-// Portal configuration, so Stripe applies the Dashboard default (which may
-// allow plan changes).
-func TestLegacyPortalOpensTheRowsCustomerWithTheDefaultConfiguration(t *testing.T) {
-	userID := "u-" + t.Name()
-	seedSubscription(t, userID, "cus_"+userID, "sub_"+userID, "active", 1700000000)
-
-	var form url.Values
-	h := NewHandler(fakePortalClient(t, func(f url.Values) { form = f }), "https://example.com", testStripe(), nil)
-	w := doRequest(t, http.MethodPost, "/billing/portal", h.Portal, userID, ``)
-
-	if w.Code != http.StatusOK || !bytes.Contains(w.Body.Bytes(), []byte(`"url":"https://billing.stripe.test/p/session/bps_1"`)) {
-		t.Fatalf("status = %d body = %s, want 200 with the session url", w.Code, w.Body.String())
-	}
-	if got := form.Get("customer"); got != "cus_"+userID {
-		t.Errorf("customer = %q, want cus_%s", got, userID)
-	}
-	if got := form.Get("return_url"); got != "https://example.com/billing" {
-		t.Errorf("return_url = %q, want https://example.com/billing", got)
-	}
-	if _, ok := form["configuration"]; ok {
-		t.Errorf("configuration = %q, want none sent", form.Get("configuration"))
-	}
-}
-
-// A subscription Checkout reuses the Customer in the user's row (here a
-// top-up-only buyer's) and attributes the purchase only through
-// client_reference_id: nothing is written to the Subscription's metadata.
-func TestLegacySubscriptionCheckoutReusesTheRowsCustomerAndSetsNoSubscriptionMetadata(t *testing.T) {
+// A subscription Checkout reuses the Customer in the user's row, here a
+// top-up-only buyer's.
+func TestLegacySubscriptionCheckoutReusesTheRowsCustomer(t *testing.T) {
 	userID := "u-" + t.Name()
 	seedUser(t, userID)
 	row := sqlitex.Subscription{UserId: userID, StripeCustomerId: "cus_topup_" + userID, Status: "none", CreatedAt: 1, UpdatedAt: 1}
@@ -375,13 +324,5 @@ func TestLegacySubscriptionCheckoutReusesTheRowsCustomerAndSetsNoSubscriptionMet
 
 	if got := form.Get("customer"); got != "cus_topup_"+userID {
 		t.Errorf("customer = %q, want the row's cus_topup_%s", got, userID)
-	}
-	if got := form.Get("client_reference_id"); got != userID {
-		t.Errorf("client_reference_id = %q, want %q", got, userID)
-	}
-	for key := range form {
-		if strings.HasPrefix(key, "subscription_data") {
-			t.Errorf("%s = %q, want no subscription_data sent", key, form.Get(key))
-		}
 	}
 }

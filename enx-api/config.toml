@@ -95,6 +95,10 @@ base-url = "https://generativelanguage.googleapis.com/v1beta/openai"
 
 # [stripe]: STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET are env-var only, never
 # here (same convention as KIMI_API_KEY / RESEND_API_KEY).
+# STRIPE_PORTAL_CONFIGURATION_ID (stripe.portal-configuration-id) names the
+# Customer Portal configuration, per Stripe account and mode, so it is set
+# per deployment too. It must be active with subscription updates disabled
+# (ADR-067); while it is unset or unsafe, POST /billing/portal answers 503.
 
 [stripe.price]
 # Stripe Price lookup_keys, not raw Price IDs. lookup_keys are stable across

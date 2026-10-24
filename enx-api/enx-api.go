@@ -105,6 +105,7 @@ func main() {
 	// dispute; without it they stay pending until it is configured.
 	if sc, err := billingstripe.New(cfg.Stripe.SecretKey.Reveal()); err == nil {
 		go runReferralRewards(newReferralService(cfg, sc, m))
+		go checkPortalConfigurationAtStartup(sc, cfg.Stripe.PortalConfigurationID)
 	} else {
 		logger.Warnf("referral rewards job off: %v", err)
 	}
@@ -744,6 +745,19 @@ func backfillTrialGrants(cfg *config.Config) {
 // Decision 5). Mirrors the cleanups: once on start, then hourly; a row
 // Stripe could not answer for is retried on the next run, and the ledger's
 // idempotency key keeps reruns and parallel instances from paying twice.
+// checkPortalConfigurationAtStartup reports at startup whether the Customer
+// Portal can open: POST /billing/portal checks the same configuration again
+// before every session and refuses while it is missing or unsafe (ADR-067).
+func checkPortalConfigurationAtStartup(sc *stripeSDK.Client, configurationID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := billingstripe.CheckPortalConfiguration(ctx, sc, configurationID); err != nil {
+		logger.Errorf("billing: Customer Portal sessions are refused until STRIPE_PORTAL_CONFIGURATION_ID names an active configuration with subscription updates disabled: %v", err)
+		return
+	}
+	logger.Infof("billing: Customer Portal configuration %s has subscription updates disabled", configurationID)
+}
+
 func runReferralRewards(svc *referral.Service) {
 	settle := func() {
 		run, err := svc.PayDueRewards(context.Background())

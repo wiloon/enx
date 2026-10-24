@@ -15,8 +15,9 @@ var billableStatuses = map[string]bool{
 
 // hasLiveSubscription reports whether sub is a subscription Stripe can still
 // bill. The subscriptions table tracks one subscription per user, so a user
-// with a live one must change plans or fix payment in the Customer Portal
-// rather than start a second checkout.
+// with a live one must not start a second checkout. They fix payment or
+// cancel in the Customer Portal; the Portal does not change plans (ADR-067),
+// so a plan change goes through support until ENX offers it.
 func hasLiveSubscription(sub sqlitex.Subscription) bool {
 	return sub.StripeSubscriptionId != nil && billableStatuses[sub.Status]
 }

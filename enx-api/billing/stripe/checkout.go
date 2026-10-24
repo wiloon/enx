@@ -37,6 +37,9 @@ type CheckoutSessionParams struct {
 	SuccessURL        string
 	CancelURL         string
 	Metadata          map[string]string // e.g. {"type": "topup"} to distinguish from a subscription checkout (TASK-SPEC §3.1)
+	// SubscriptionMetadata is copied onto the Subscription a subscription-mode
+	// session creates (subscription_data.metadata); ignored in payment mode.
+	SubscriptionMetadata map[string]string
 }
 
 // CreateCheckoutSession creates a Stripe-hosted Checkout Session for either
@@ -56,6 +59,11 @@ func CreateCheckoutSession(ctx context.Context, sc *stripeSDK.Client, p Checkout
 			{Price: stripeSDK.String(price.ID), Quantity: stripeSDK.Int64(1)},
 		},
 		Metadata: p.Metadata,
+	}
+	if p.Mode == "subscription" && len(p.SubscriptionMetadata) > 0 {
+		params.SubscriptionData = &stripeSDK.CheckoutSessionCreateSubscriptionDataParams{
+			Metadata: p.SubscriptionMetadata,
+		}
 	}
 	if p.Customer != "" {
 		params.Customer = stripeSDK.String(p.Customer)
