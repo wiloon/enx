@@ -383,40 +383,57 @@ func TestARefundOfAnOldGrantWithNoSubscriptionNeedsAttentionWithoutCancelling(t 
 	wantCancelled(t, stripe)
 }
 
-func TestProvenanceTheRefundCannotPinDownChangesNothing(t *testing.T) {
-	migrated := creditperiod.Source{SubscriptionID: "sub_a", Period: invoice.Period{End: 2000}}
-	cases := []struct {
-		name   string
-		pool   creditperiod.Pool
-		grant  creditperiod.Grant
-		step   webhookevent.Step
-		reason string
-	}{
-		{
-			name:   "the legacy provenance backfill has not finished",
-			pool:   creditperiod.Pool{BackfillPending: true},
-			grant:  creditperiod.Grant{Source: aMay, Applied: 1000},
-			step:   webhookevent.MissingDependency,
-			reason: creditperiod.ReasonBackfillPending,
-		},
-		{
-			name:   "a migrated grant Stripe could not pin down may still supply the pool",
-			pool:   creditperiod.Pool{Source: migrated, WithoutPeriod: true},
-			grant:  creditperiod.Grant{Source: migrated, WithoutPeriod: true, Applied: 1000},
-			step:   webhookevent.Unrecoverable,
-			reason: creditperiod.ReasonLegacyGrantWithoutPeriod,
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			stripe := &fakeStripe{statuses: map[string]string{"sub_a": "active"}}
-			g := subscriptionGrant(c.grant.Source, c.grant.Applied)
-			g.Period = c.grant
-			r := handle(storeWith(t, refundedCharge(2000, 2000), g, Owner{Revision: 7, Pool: c.pool, SubscriptionBalance: 600}), stripe)
+func TestARefundBeforeTheLegacyBackfillWaitsWithoutEffects(t *testing.T) {
+	stripe := &fakeStripe{statuses: map[string]string{"sub_a": "active"}}
+	owner := Owner{Revision: 7, Pool: creditperiod.Pool{BackfillPending: true}, SubscriptionBalance: 600}
+	r := handle(storeWith(t, refundedCharge(2000, 2000), subscriptionGrant(aMay, 1000), owner), stripe)
 
-			wantStep(t, r, c.step, c.reason)
+	wantStep(t, r, webhookevent.MissingDependency, creditperiod.ReasonBackfillPending)
+	wantNoEffects(t, r)
+	wantCancelled(t, stripe)
+}
+
+// A migrated grant Stripe could not pin to a period may still supply the
+// pool, so no credits are taken on a guess; its subscription is known, so it
+// is still ended.
+func TestALegacyGrantWithoutPeriodTakesNothingButEndsItsSubscription(t *testing.T) {
+	migrated := creditperiod.Source{SubscriptionID: "sub_a", Period: invoice.Period{End: 2000}}
+	legacyStore := func(t *testing.T) *fakeStore {
+		g := subscriptionGrant(migrated, 1000)
+		g.Period.WithoutPeriod = true
+		owner := Owner{Revision: 7, Pool: creditperiod.Pool{Source: migrated, WithoutPeriod: true}, SubscriptionBalance: 600}
+		return storeWith(t, refundedCharge(2000, 2000), g, owner)
+	}
+
+	t.Run("the cancellation succeeds", func(t *testing.T) {
+		stripe := &fakeStripe{statuses: map[string]string{"sub_a": "active"}}
+		r := handle(legacyStore(t), stripe)
+
+		wantStep(t, r, webhookevent.Unrecoverable, creditperiod.ReasonLegacyGrantWithoutPeriod)
+		wantNoEffects(t, r)
+		wantCancelled(t, stripe, "sub_a")
+	})
+
+	for _, c := range []struct {
+		name   string
+		stripe *fakeStripe
+	}{
+		{name: "the status lookup fails", stripe: &fakeStripe{statusErr: errors.New("stripe: 503")}},
+		{name: "the cancellation fails", stripe: &fakeStripe{statuses: map[string]string{"sub_a": "active"}, cancelErr: errors.New("stripe: 503")}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			store := legacyStore(t)
+			r := handle(store, c.stripe)
+
+			wantStep(t, r, webhookevent.Transient, ReasonCancellationPending+": stripe: 503")
 			wantNoEffects(t, r)
-			wantCancelled(t, stripe)
+
+			stripe := &fakeStripe{statuses: map[string]string{"sub_a": "active"}}
+			r = handle(store, stripe)
+
+			wantStep(t, r, webhookevent.Unrecoverable, creditperiod.ReasonLegacyGrantWithoutPeriod)
+			wantNoEffects(t, r)
+			wantCancelled(t, stripe, "sub_a")
 		})
 	}
 }

@@ -156,7 +156,9 @@ func NewHandler(store Store, stripe Stripe) *Handler {
 // it the clawback is recorded with nothing taken. Clawback first, then
 // cancellation (ADR-049 Decision 8): a subscription grant's own
 // subscription is ended in Stripe while it is still live; when that fails,
-// the clawback commits with a retry that only cancels.
+// the clawback commits with a retry that only cancels. A grant whose credits
+// need investigation takes nothing, but its known subscription is still
+// ended, with retries, before the refund needs attention.
 func (h *Handler) Handle(ctx context.Context, s webhookevent.StoredTask) webhookevent.Result {
 	payload, err := h.store.Payload(ctx, s.Scope)
 	if err != nil {
@@ -185,36 +187,56 @@ func (h *Handler) Handle(ctx context.Context, s webhookevent.StoredTask) webhook
 	}
 
 	var effects any
+	done := webhookevent.Result{Step: webhookevent.Handled}
 	if !recorded {
-		e, result, ok := h.clawback(ctx, ch, grant)
-		if !ok {
+		e, result, outcome := h.clawback(ctx, ch, grant)
+		switch outcome {
+		case clawbackDecided:
+			effects = e
+			done.Effects = e
+		case clawbackNeedsAttention:
+			done = result
+		default:
 			return result
 		}
-		effects = e
 	}
 
 	if grant.Pool != PoolSubscription {
-		return webhookevent.Result{Step: webhookevent.Handled, Effects: effects}
+		return done
 	}
 	subscriptionID := grant.Period.Source.SubscriptionID
 	if subscriptionID == "" {
+		if done.Step == webhookevent.Unrecoverable {
+			return done
+		}
 		return unrecoverable(ReasonRefundedSubscriptionUnknown, effects)
 	}
 	if err := h.cancel(ctx, subscriptionID); err != nil {
 		return webhookevent.Result{Step: webhookevent.Transient, Reason: ReasonCancellationPending + ": " + err.Error(), Effects: effects}
 	}
-	return webhookevent.Result{Step: webhookevent.Handled, Effects: effects}
+	return done
 }
 
-// clawback decides what the refund takes from grant. ok is false when the
-// refund cannot be clawed back now; result then says why.
-func (h *Handler) clawback(ctx context.Context, ch Charge, grant Grant) (e Effects, result webhookevent.Result, ok bool) {
+type clawbackOutcome int
+
+const (
+	// clawbackDecided: the Effects say what the refund takes.
+	clawbackDecided clawbackOutcome = iota
+	// clawbackStopped: the refund cannot be decided now; the result says why.
+	clawbackStopped
+	// clawbackNeedsAttention: the credits need investigation and nothing is
+	// taken on a guess, but the refunded subscription is still ended first.
+	clawbackNeedsAttention
+)
+
+// clawback decides what the refund takes from grant.
+func (h *Handler) clawback(ctx context.Context, ch Charge, grant Grant) (e Effects, result webhookevent.Result, outcome clawbackOutcome) {
 	owner, err := h.store.Owner(ctx, grant.UserID)
 	if err != nil {
-		return Effects{}, transient(err), false
+		return Effects{}, transient(err), clawbackStopped
 	}
 	if owner.Deletion == acceptance.DeletionInProgress {
-		return Effects{}, webhookevent.Result{Step: webhookevent.MissingDependency, Reason: ReasonDeletionInProgress}, false
+		return Effects{}, webhookevent.Result{Step: webhookevent.MissingDependency, Reason: ReasonDeletionInProgress}, clawbackStopped
 	}
 	e = Effects{
 		Observed: Observed{UserID: grant.UserID, Revision: owner.Revision, GrantID: grant.ID, Taken: grant.Taken},
@@ -226,28 +248,28 @@ func (h *Handler) clawback(ctx context.Context, ch Charge, grant Grant) (e Effec
 	// After deletion the refund is financial audit only: no balance exists
 	// to take from, and none is recreated.
 	if owner.Deletion == acceptance.DeletionCompleted {
-		return e, webhookevent.Result{}, true
+		return e, webhookevent.Result{}, clawbackDecided
 	}
 
 	if grant.Pool != PoolSubscription {
 		e.Clawback.Credits = max(grant.Credits*ch.Refunded/ch.Captured-grant.Taken, 0)
-		return e, webhookevent.Result{}, true
+		return e, webhookevent.Result{}, clawbackDecided
 	}
 	effect, err := creditperiod.Clawback(owner.Pool, grant.Period, creditperiod.Refund{
 		Refunded: ch.Refunded, Captured: ch.Captured, AlreadyTaken: grant.Taken, Balance: owner.SubscriptionBalance,
 	})
 	if err != nil {
-		return Effects{}, unrecoverable(ReasonMalformedCharge, nil), false
+		return Effects{}, unrecoverable(ReasonMalformedCharge, nil), clawbackStopped
 	}
 	switch effect.Outcome {
 	case creditperiod.WaitDependency:
-		return Effects{}, webhookevent.Result{Step: webhookevent.MissingDependency, Reason: effect.Reason}, false
+		return Effects{}, webhookevent.Result{Step: webhookevent.MissingDependency, Reason: effect.Reason}, clawbackStopped
 	case creditperiod.NeedsAttention:
-		return Effects{}, unrecoverable(effect.Reason, nil), false
+		return Effects{}, unrecoverable(effect.Reason, nil), clawbackNeedsAttention
 	}
 	e.Observed.SubscriptionBalance = owner.SubscriptionBalance
 	e.Clawback.Credits = effect.Credits
-	return e, webhookevent.Result{}, true
+	return e, webhookevent.Result{}, clawbackDecided
 }
 
 // cancel ends the refunded subscription in Stripe while its live status is
