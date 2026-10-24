@@ -4,9 +4,10 @@
 // could not find its denominator. For each migrated real subscription whose
 // pool still comes from such a grant, the backfill reads the paid invoices
 // Stripe links to that grant and pins the grant to the one invoice whose
-// recurring line ends at credit_accounts.period_end. It is pure: the caller
-// reads Stripe, and writes only the provenance, never amounts, balances or
-// ledger rows.
+// recurring line ends at credit_accounts.period_end. Pin is the pure rule;
+// Backfill is the job that runs it over a Store and Stripe passed in, and
+// writes only the provenance and its completion marker, never amounts,
+// balances or ledger rows.
 package legacyprovenance
 
 import (
