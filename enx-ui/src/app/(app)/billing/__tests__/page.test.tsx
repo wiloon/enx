@@ -163,6 +163,24 @@ describe.each(['past_due', 'trialing'])(
         })
       ).toBeEnabled()
     })
+
+    // The billing portal no longer changes plans (ADR-067), so the page
+    // sends a plan change to support instead.
+    it('sends a plan change to support, not the billing portal', async () => {
+      renderPage()
+
+      expect(
+        await screen.findByText(
+          (_, el) =>
+            el?.tagName === 'P' &&
+            el.textContent ===
+              'The billing portal lets you update your payment method, see invoices or cancel. To change your plan, email support@catglish.com.'
+        )
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('link', { name: 'support@catglish.com' })
+      ).toHaveAttribute('href', 'mailto:support@catglish.com')
+    })
   }
 )
 

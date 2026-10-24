@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/card'
 import PriceCard from '@/components/site/PriceCard'
 import { trialSummary } from '@/lib/credits'
+import { LEGAL } from '@/lib/legal'
 import { apiService, SubscriptionPlan, TopupTier } from '@/services/api'
 import {
   SUBSCRIPTION_CREDITS_RULE,
@@ -136,7 +137,7 @@ export default function BillingPage() {
           )}
         </CardContent>
         {isSubscribed && (
-          <CardFooter>
+          <CardFooter className="flex-col items-start gap-3">
             <Button
               variant="outline"
               onClick={handleManageBilling}
@@ -146,6 +147,17 @@ export default function BillingPage() {
                 ? 'Redirecting...'
                 : 'Manage subscription / billing'}
             </Button>
+            <p className="text-sm text-muted-foreground">
+              The billing portal lets you update your payment method, see
+              invoices or cancel. To change your plan, email{' '}
+              <a
+                href={`mailto:${LEGAL.contactEmail}`}
+                className="text-brand underline-offset-4 hover:underline"
+              >
+                {LEGAL.contactEmail}
+              </a>
+              .
+            </p>
           </CardFooter>
         )}
       </Card>
