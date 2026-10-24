@@ -35,6 +35,7 @@ worker 的可调正 duration 默认值在 #297 明确为 `stripe.webhook.poll-in
 - accepted A 在 Stripe 实际已结束（canceled/incomplete_expired）且无阻断冲突时，允许同档或其他已提供档位重新购买并自动接受 B，保留 A 历史。已安排期末取消（`cancel_at_period_end=true` 或 flexible billing mode 下 `cancel_at` 不晚于本期末）仍未结束。
 - 有健康 live accepted 订阅时，不为改档新建 Checkout；改档走下节的 Stripe Portal。服务端在创建 Checkout 或改档 Portal session 前检查删除屏障、所属冲突与 Stripe 资格，不能只禁用按钮。其他不健康但可计费状态不能据此新买第二份订阅。
 - 任何所属 conflict 仍 open，或 resolved 但 Stripe 仍可计费时，阻止新 Checkout 与改档入口，返回 409 并指向 billing support；即使 accepted A 已结束也一样。Stripe 查询失败可重试且不放行。resolved 备注不证明停止计费。
+- 被阻断用户（删除屏障生效中，或有上条所述冲突）仍可打开 Portal 首页（/billing「管理订阅」）取消订阅、换卡、看发票，但该 session 一律用关闭改档的受限 Portal 配置创建（所有者 2026-10-24 选择），不能靠 Portal 首页绕过改档阻断。是否阻断在创建每个 Portal session 前由服务端判定；判定所需查询失败时不创建 session，返回可重试错误。
 
 ## 改档由 Stripe Customer Portal 完成
 
@@ -45,14 +46,18 @@ worker 的可调正 duration 默认值在 #297 明确为 `stripe.webhook.poll-in
 - **降档**：Portal 配置 `schedule_at_period_end.conditions=[decreasing_item_amount]`。跨 Product 降档同样安排在本期末，由 Portal 创建 Subscription Schedule；本期档位、权益和积分不变，不退款、不开发票；下期续费发票按新档位收费。实测与 Stripe 文档「Portal 期末降档仅限同 Product」的说法不符，以实测为准，上线前在 live 再核实一次。
 - **撤销降档与取消订阅**：Portal 自带「Cancel scheduled update」（release 排期）。有 Portal 自建排期时，Portal 仍可取消订阅：它 release 排期并设置期末取消。ENX 不提供撤销降档入口，也不要求先撤销降档再取消。
 - **ENX 入口**：/billing 的档位卡片对已订阅用户显示改档按钮。点击后服务端检查资格，再创建 `flow_data.type=subscription_update_confirm` 的 Portal session（指定现有 item 与目标 Price），用户在 Stripe 确认页付款或确认降档后回到 /billing。当前档位不显示改档按钮。订阅已有 `pending_update`、Subscription Schedule 或期末取消时，按钮改为打开 Portal 首页，让用户在 Stripe 处理现有变更。/billing 的权益说明与 Stripe Product description（Portal 选档页显示）使用同一文案和积分数值，二者与 enx-api 的积分配置同时修改。
-- **Portal 配置校验**：`stripe.portal-configuration-id` / `STRIPE_PORTAL_CONFIGURATION_ID` 是可选覆盖；未设置时按当前 API key 的 account/mode 查询 `active=true,is_default=true` 的默认配置，显式指定时只读该配置，失败不改选默认。两条路径都要求：active；`subscription_update.enabled=true`、`proration_behavior=always_invoice`、含 `decreasing_item_amount` 期末条件；可选 Price 恰为 ENX 配置的订阅档位 Price；保留取消（期末）、付款方式与发票功能。不符合、找不到、结果不唯一或查询失败都不创建 session，返回可重试错误；billing 启动做同样检查并记日志。每次 session 显式传入本次核实的 configuration ID。配置准备按 P-3 交接。
+- **Portal 配置校验**：ENX 使用两份 Portal 配置，都由 w10n-config `infra/stripe/opentofu/enx/portal-config.py` 统一定义（sandbox 与 live 同一份定义，按 lookup_key 取 Price）：
+  - **改档配置**：账户默认配置。`stripe.portal-configuration-id` / `STRIPE_PORTAL_CONFIGURATION_ID` 是可选覆盖；未设置时按当前 API key 的 account/mode 查询 `active=true,is_default=true` 的默认配置，显式指定时只读该配置，失败不改选默认。要求：active；`subscription_update.enabled=true`、`proration_behavior=always_invoice`、含 `decreasing_item_amount` 期末条件；`default_allowed_updates` 恰为 `[price]`（不允许改数量或优惠码：一个用户同一时刻只有一份订阅、数量为 1）；`products[]` 每项只列该档位 ENX 配置的 Price 且 `adjustable_quantity.enabled=false`，全部条目的 Price 恰为 ENX 配置的订阅档位 Price；保留取消（期末）、付款方式与发票功能。
+  - **受限配置**：给被阻断用户的 Portal session 用。`stripe.portal-restricted-configuration-id` / `STRIPE_PORTAL_RESTRICTED_CONFIGURATION_ID` 是可选覆盖；未设置时查询 `active=true` 且 metadata `enx_portal=restricted` 的配置，须恰好一份。要求：active；`subscription_update.enabled=false`；保留取消（期末）、付款方式与发票功能。
+  - 两份都在 billing 启动时检查并记日志；创建 session 时按阻断判定选其一并核实，显式传入该 configuration ID。不符合、找不到、结果不唯一或查询失败都不创建 session，返回可重试错误，不改用另一份。配置准备按 P-3 交接。
+- **上线前实测**：sandbox 实测只走过 Portal 自带的选档页。实现发票分类前，用 test clock 在 sandbox 再跑一次：经 ENX 深链接（`subscription_update_confirm`）升档与降档，确认同样遵守 `always_invoice` 与期末降档；推进到期末，记录降档后第一张续费发票的 `billing_reason` 与 line。升档发票与这张续费发票保存为分类测试的版本化 fixture。
 - **价格来源**：accepted 订阅的有效档位就是 Stripe 订阅 item 当前 Price 对应的档位，ENX 不另存「授权改档」。订阅换到 ENX 配置之外的 Price（例如 Dashboard 误操作）时 event 进入 needs_attention 并可靠告警，不改档位、不发积分/邀请奖励，也不自动改回 Stripe。
 
 ## 积分随 Stripe 事件调整
 
 - 只有 `invoice.paid` 改变订阅积分，按事件 API 版本规范 `billing_reason`、subscription/item、price、line period 与 proration 后分类：
-  - `subscription_create`、`subscription_cycle`：正常周期发放，档位/周期取对应 subscription item 的非 proration recurring line 的 Price（必要时读取全部 invoice line 分页），重置为该档整期积分。降档后的第一张续费发票自然按新档位发放。
-  - `subscription_update`：升档补差积分，一张发票至多一次。旧/新档位取该 item 的负额与正额 proration line 的 Price；剩余比例取正额 proration line 的周期：`clamp((line.period.end - line.period.start) / (item 本期 end - item 本期 start), 0, 1)`，补 `floor((新档每期积分 - 旧档每期积分) × 剩余比例)`。余额与到期不变，不重置积分池，不发整期积分。不依赖 line 顺序，不按 lines[0]、金额正负或总额推断档位。新档积分不高于旧档（配置漂移导致的立即降档等）时不补不扣，转 needs_attention 可靠告警。
+  - `subscription_create`、`subscription_cycle`：正常周期发放，档位/周期取对应 subscription item 的非 proration recurring line 的 Price（必要时读取全部 invoice line 分页），重置为该档整期积分。降档后的第一张续费发票按新档位发放。Subscription Schedule 换期开出的发票可能标为 `subscription_update`：该 item 没有 proration line、只有一条覆盖整期的非 proration recurring line 时，不论 reason 都按正常周期发放。
+  - `subscription_update`：升档补差积分，一张发票至多一次。旧/新档位取该 item 的负额与正额 proration line 的 Price；剩余比例 `clamp((line.period.end - line.period.start) / (周期 end - 周期 start), 0, 1)`，补 `floor((新档每期积分 - 旧档每期积分) × 剩余比例)`。分子取正额 proration line 的周期；分母的周期取同一 Subscription ID 已保存的正常发放中 period end 等于该 proration line period end 的那一期，不读 Stripe 当前 item 周期（续费后它已是下一期）、不读 `proration_details`。尚无该正常发放时事件进入 `waiting_dependency`，依赖到达后算出相同结果；积分池已切到该订阅更晚的周期时，只记零效果补差（保留财务记录、实际入池 0），与迟到的正常发票相同。同一周期多次升档各自按自己的新旧差额与同一分母补差。余额与到期不变，不重置积分池，不发整期积分。不依赖 line 顺序，不按 lines[0]、金额正负或总额推断档位。新档积分不高于旧档（配置漂移导致的立即降档等）时不补不扣，转 needs_attention 可靠告警。
   - 其他/缺失 reason、无法识别或含糊的 line/price 转 needs_attention、可靠邮件，不发积分/邀请奖励。非订阅 invoice 与 conflict 沿用各自路径。
 - `invoice.payment_failed`、`customer.subscription.pending_update_applied`/`pending_update_expired`、`invoice.voided`、`subscription_schedule.*` 与 `customer.subscription.updated`/`deleted` 只同步订阅状态快照（含当前 Price、是否有 pending_update/排期/期末取消），不发放或扣回积分；它们是明确支持的类型，不记 ignored。升档在付款发票与应用事件之间的先后不影响结果：积分只看已付款的 `subscription_update` 发票。
 - 升档补差积分与正常发放各自按发票业务幂等（同一 scoped invoice 至多一次），不能只靠 Event ID；迟到事件不能把补差额覆盖成整期发放，也不能重复补。
@@ -102,6 +107,7 @@ ADR-064 会在 main 合并后自动部署。#297 的 characterization/fixture �
 - 保存全部订阅、单独指向当前 accepted；不再用用户主键覆盖 Stripe 事实，也不另建重复的 conflict 订阅模型。代价是现有主键/Customer 混用必须迁移。
 - 采用数据库任务与轮询，不引入独立消息队列，不建设通用通知平台。财务副作用仍用独立幂等约束，而不是依靠处理标记宣称 exactly-once。
 - 改档用 Stripe Portal 原生能力，不自建：放弃 ENX 持久改档操作、重叠请求 409 规则与主动取消待付款升级（#338 备查），换来付款失败、3DS、排期与撤销都由 Stripe 处理、ENX 代码路径大幅减少。代价是改档交互受 Portal 能力约束，积分只能事后从发票推导，且需校验 Portal 配置防止被改成不安全设置。
+- 被阻断用户用第二份关闭改档的 Portal 配置，而不是只在 ENX 隐藏改档按钮：ADR 要求服务端阻断，Portal 首页本身就能改档。代价是多维护、多校验一份 Stripe 配置。
 
 ## 修订记录
 
@@ -116,6 +122,8 @@ ADR-064 会在 main 合并后自动部署。#297 的 characterization/fixture �
 - 2026-10-23（#297 round 5 所有者答复）：所有者选择 B，授权认证自助取消未付款升级；补齐持久取消意图、原 invoice void、付款竞态与崩溃恢复及确认后解锁，替换未决 A/B 选择，保持原订阅和积分规则。
 
 - 2026-10-23（所有者，Stripe 原生改档）：sandbox 实测确认 Portal 升档付款确认后才生效、跨 Product 降档可期末生效、Portal 可撤销降档并可取消带排期的订阅。所有者据此决定：改档全部经 Stripe Portal，ENX 不保存改档操作，只按 `invoice.paid` 的 billing_reason 发正常积分或升档补差积分；补差比例取 proration line 周期；降档下期生效；第一版不做主动取消待付款升级（#338）；Portal 改档不临时关闭，与 cutover 同一 PR 上线。取代 round 3–5 的 ENX 自建改档操作、重叠 409、未授权改档隔离、取消待付款升级及撤销降档后再取消的注销指引；吸收 #336 的独立 Product 建模与可选 configuration 覆盖，改为要求改档开启的安全配置。
+
+- 2026-10-24（#297 round 7，含所有者答复）：升档补差的分母改取已保存的同期正常发放，补齐依赖等待、续费后零效果与同期多次升档；Portal 配置要求只允许改 Price、数量固定为 1；Schedule 换期发票按整期 line 识别为正常发放，并要求实现前用 test clock 实测深链接与降档续费发票；所有者选择 (b)，被阻断用户的 Portal session 用关闭改档的受限配置。
 
 ## 参考
 
