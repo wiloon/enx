@@ -106,6 +106,11 @@ func (m subscriptionOwnership) run(db *gorm.DB) (SubscriptionOwnershipResult, er
 // subscriptionOwnershipApplied reports whether schema_migrations records the
 // migration.
 func subscriptionOwnershipApplied(db *gorm.DB) (bool, error) {
+	return migrationApplied(db, SubscriptionOwnershipVersion)
+}
+
+// migrationApplied reports whether schema_migrations records version.
+func migrationApplied(db *gorm.DB, version string) (bool, error) {
 	var tables int64
 	if err := db.Raw("SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = 'schema_migrations'").Scan(&tables).Error; err != nil {
 		return false, fmt.Errorf("read schema_migrations: %w", err)
@@ -114,7 +119,7 @@ func subscriptionOwnershipApplied(db *gorm.DB) (bool, error) {
 		return false, nil
 	}
 	var marks int64
-	if err := db.Raw("SELECT count(*) FROM `schema_migrations` WHERE `version` = ?", SubscriptionOwnershipVersion).Scan(&marks).Error; err != nil {
+	if err := db.Raw("SELECT count(*) FROM `schema_migrations` WHERE `version` = ?", version).Scan(&marks).Error; err != nil {
 		return false, fmt.Errorf("read schema_migrations: %w", err)
 	}
 	return marks > 0, nil
@@ -286,7 +291,7 @@ func (m subscriptionOwnership) migrate(tx *gorm.DB) (SubscriptionOwnershipResult
 	res := SubscriptionOwnershipResult{Applied: true}
 
 	if err := execEach(tx,
-		"CREATE TABLE IF NOT EXISTS `schema_migrations` (`version` text NOT NULL,`applied_at` integer NOT NULL,PRIMARY KEY (`version`))",
+		schemaMigrationsDDL,
 		"CREATE TABLE `stripe_customers` (`stripe_customer_id` text NOT NULL,`user_id` text NOT NULL,`created_at` integer NOT NULL,PRIMARY KEY (`stripe_customer_id`))",
 		"CREATE INDEX `idx_stripe_customers_user_id` ON `stripe_customers`(`user_id`)",
 		"INSERT INTO `stripe_customers` (`stripe_customer_id`, `user_id`, `created_at`) SELECT `stripe_customer_id`, `user_id`, `created_at` FROM `subscriptions`",
@@ -346,6 +351,10 @@ func (m subscriptionOwnership) migrate(tx *gorm.DB) (SubscriptionOwnershipResult
 	}
 	return res, nil
 }
+
+// schemaMigrationsDDL is the marker table every versioned migration records
+// itself in.
+const schemaMigrationsDDL = "CREATE TABLE IF NOT EXISTS `schema_migrations` (`version` text NOT NULL,`applied_at` integer NOT NULL,PRIMARY KEY (`version`))"
 
 func execEach(tx *gorm.DB, stmts ...string) error {
 	for _, s := range stmts {
