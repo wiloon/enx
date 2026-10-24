@@ -34,3 +34,22 @@ func TestHasLiveSubscription(t *testing.T) {
 		})
 	}
 }
+
+// ADR-067: only Stripe active is healthy; any other billable status blocks
+// plan changes, so its Portal sessions use the restricted configuration.
+func TestPortalRestricted(t *testing.T) {
+	for status, want := range map[string]bool{
+		"active":             false,
+		"trialing":           true,
+		"past_due":           true,
+		"incomplete":         true,
+		"unpaid":             true,
+		"canceled":           false,
+		"incomplete_expired": false,
+		"":                   false,
+	} {
+		if got := portalRestricted(status); got != want {
+			t.Errorf("portalRestricted(%q) = %v, want %v", status, got, want)
+		}
+	}
+}

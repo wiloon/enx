@@ -233,6 +233,42 @@ func TestCreateCheckoutSession(t *testing.T) {
 		})
 	}
 
+	// ADR-067: the Subscription object carries its ENX owner, so events about
+	// it can be attributed without the Checkout Session.
+	t.Run("puts subscription metadata on the subscription it creates", func(t *testing.T) {
+		var form url.Values
+		sc := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/v1/prices":
+				_, _ = w.Write([]byte(priceListResponse("price_123")))
+			case r.Method == http.MethodPost && r.URL.Path == "/v1/checkout/sessions":
+				if err := r.ParseForm(); err != nil {
+					t.Fatalf("failed to parse form: %v", err)
+				}
+				form = r.PostForm
+				_, _ = w.Write([]byte(`{"id":"cs_test_meta","object":"checkout.session"}`))
+			default:
+				t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		})
+
+		_, err := CreateCheckoutSession(context.Background(), sc, CheckoutSessionParams{
+			PriceLookupKey:       "pro-monthly",
+			Mode:                 "subscription",
+			ClientReferenceID:    "user_1",
+			SuccessURL:           "https://example.com/success",
+			CancelURL:            "https://example.com/cancel",
+			SubscriptionMetadata: map[string]string{"enx_user_id": "user_1"},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := form.Get("subscription_data[metadata][enx_user_id]"); got != "user_1" {
+			t.Errorf("subscription_data[metadata][enx_user_id] = %q, want user_1", got)
+		}
+	})
+
 	t.Run("propagates the price lookup error", func(t *testing.T) {
 		sc := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -295,7 +331,7 @@ func TestCancelSubscriptionNow(t *testing.T) {
 }
 
 func TestCreatePortalSession(t *testing.T) {
-	var sawCustomer, sawReturnURL string
+	var sawCustomer, sawReturnURL, sawConfiguration string
 	sc := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/billing_portal/sessions" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
@@ -305,11 +341,12 @@ func TestCreatePortalSession(t *testing.T) {
 		}
 		sawCustomer = r.PostForm.Get("customer")
 		sawReturnURL = r.PostForm.Get("return_url")
+		sawConfiguration = r.PostForm.Get("configuration")
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id":"bps_test_123","object":"billing_portal.session","url":"https://billing.stripe.com/bps_test_123"}`))
 	})
 
-	session, err := CreatePortalSession(context.Background(), sc, "cus_123", "https://example.com/account")
+	session, err := CreatePortalSession(context.Background(), sc, "cus_123", "bpc_checked", "https://example.com/account")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -321,6 +358,9 @@ func TestCreatePortalSession(t *testing.T) {
 	}
 	if sawReturnURL != "https://example.com/account" {
 		t.Errorf("expected return_url=https://example.com/account, got %q", sawReturnURL)
+	}
+	if sawConfiguration != "bpc_checked" {
+		t.Errorf("expected configuration=bpc_checked, got %q", sawConfiguration)
 	}
 }
 

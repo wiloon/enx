@@ -20,3 +20,10 @@ var billableStatuses = map[string]bool{
 func hasLiveSubscription(sub sqlitex.Subscription) bool {
 	return sub.StripeSubscriptionId != nil && billableStatuses[sub.Status]
 }
+
+// portalRestricted reports whether a Portal session must use the restricted
+// configuration, given the subscription's live Stripe status ("" for none):
+// billable but not healthy, and only active is healthy (ADR-067).
+func portalRestricted(liveStatus string) bool {
+	return billableStatuses[liveStatus] && liveStatus != "active"
+}

@@ -205,6 +205,8 @@ var envVars = map[string]string{
 	"SENTENCE_TRANSLATE_OPENROUTER_REPHRASE_MODEL":    "sentence-translate.openrouter.rephrase-model",
 	"STRIPE_SECRET_KEY":                               "stripe.secret-key",
 	"STRIPE_WEBHOOK_SECRET":                           "stripe.webhook-secret",
+	"STRIPE_PORTAL_CONFIGURATION_ID":                  "stripe.portal-configuration-id",
+	"STRIPE_PORTAL_RESTRICTED_CONFIGURATION_ID":       "stripe.portal-restricted-configuration-id",
 	"STRIPE_CREDITS_SUBSCRIPTION_PRO":                 "stripe.credits.subscription-pro",
 	"STRIPE_CREDITS_SUBSCRIPTION_PRO_PLUS":            "stripe.credits.subscription-pro-plus",
 	"STRIPE_CREDITS_SUBSCRIPTION_MAX":                 "stripe.credits.subscription-max",

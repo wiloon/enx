@@ -226,12 +226,20 @@ type Bedrock struct {
 }
 
 type Stripe struct {
-	SecretKey     Secret        `mapstructure:"secret-key"`
-	WebhookSecret Secret        `mapstructure:"webhook-secret"`
-	Price         StripePrice   `mapstructure:"price"`
-	Credits       StripeCredits `mapstructure:"credits"`
-	Costs         StripeCosts   `mapstructure:"costs"`
-	Quota         StripeQuota   `mapstructure:"quota"`
+	SecretKey     Secret `mapstructure:"secret-key"`
+	WebhookSecret Secret `mapstructure:"webhook-secret"`
+	// PortalConfigurationID optionally overrides Stripe's default Portal
+	// configuration, the plan-change one. Either choice is checked against
+	// ADR-067's plan-change policy before every session.
+	PortalConfigurationID string `mapstructure:"portal-configuration-id"`
+	// PortalRestrictedConfigurationID optionally overrides the configuration
+	// tagged enx_portal=restricted, used for blocked users' sessions (plan
+	// switching off, ADR-067).
+	PortalRestrictedConfigurationID string        `mapstructure:"portal-restricted-configuration-id"`
+	Price                           StripePrice   `mapstructure:"price"`
+	Credits                         StripeCredits `mapstructure:"credits"`
+	Costs                           StripeCosts   `mapstructure:"costs"`
+	Quota                           StripeQuota   `mapstructure:"quota"`
 }
 
 // StripePrice holds Stripe Price lookup_keys, not Price IDs.
@@ -841,8 +849,10 @@ var envBindings = map[string]string{
 	"sentence-translate.openrouter.model":          "SENTENCE_TRANSLATE_OPENROUTER_MODEL",
 	"sentence-translate.openrouter.rephrase-model": "SENTENCE_TRANSLATE_OPENROUTER_REPHRASE_MODEL",
 
-	"stripe.secret-key":     "STRIPE_SECRET_KEY",
-	"stripe.webhook-secret": "STRIPE_WEBHOOK_SECRET",
+	"stripe.secret-key":                         "STRIPE_SECRET_KEY",
+	"stripe.webhook-secret":                     "STRIPE_WEBHOOK_SECRET",
+	"stripe.portal-configuration-id":            "STRIPE_PORTAL_CONFIGURATION_ID",
+	"stripe.portal-restricted-configuration-id": "STRIPE_PORTAL_RESTRICTED_CONFIGURATION_ID",
 	// The credit amounts MUST be settable by env: without a binding a
 	// containerised deployment was stuck at the 0 default -- a successful
 	// subscription granted nothing and every aitranslate request then 502'd.
