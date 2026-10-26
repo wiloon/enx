@@ -346,55 +346,7 @@ func setupRouterWithClients(cfg *config.Config, m *metrics.Metrics, stripeClient
 	router.Use(middleware.RequestLog(logger.Infow))
 	router.Use(gin.Recovery())
 
-	// Custom CORS middleware to support chrome-extension origins
-	router.Use(func(c *gin.Context) {
-		origin := c.GetHeader("Origin")
-
-		// List of allowed origins
-		allowedOrigins := []string{
-			"http://localhost:3000",
-			"https://enx.wiloon.lab",
-			"https://enx.wiloon.com",
-		}
-
-		// Check if origin is allowed or is a chrome extension
-		isAllowed := false
-		for _, allowedOrigin := range allowedOrigins {
-			if origin == allowedOrigin {
-				isAllowed = true
-				break
-			}
-		}
-
-		// Also allow browser extensions. strings.HasPrefix, not a slice: any
-		// Origin shorter than the slice bound panicked here, and browsers do
-		// send short ones (literal "null" for sandboxed iframes and file://
-		// documents). The "://" is part of the prefix so the match can't be
-		// satisfied by an origin that merely starts with the scheme name.
-		if !isAllowed && (strings.HasPrefix(origin, "chrome-extension://") || strings.HasPrefix(origin, "moz-extension://")) {
-			isAllowed = true
-		}
-
-		if isAllowed {
-			c.Header("Access-Control-Allow-Origin", origin)
-			c.Header("Access-Control-Allow-Credentials", "true")
-			c.Header("Access-Control-Allow-Methods", "GET, POST, QUERY, OPTIONS, PUT, DELETE")
-			// X-Enx-Tz-Offset is read by stats.TZOffsetMiddleware (ADR-029
-			// Decision 7a); without it here, preflight rejects the header and
-			// the whole cross-origin request fails once a client starts sending it.
-			c.Header("Access-Control-Allow-Headers", "Origin, Authorization, X-Session-ID, X-User-ID, Content-Type, Cookie, X-Enx-Tz-Offset")
-			c.Header("Access-Control-Expose-Headers", "Content-Length")
-			c.Header("Access-Control-Max-Age", "43200") // 12 hours
-		}
-
-		// Handle preflight requests
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-
-		c.Next()
-	})
+	router.Use(middleware.CORS(cfg.Clerk.AuthorizedParties))
 
 	router.GET("/ping", handlers.Ping)
 

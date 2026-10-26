@@ -104,9 +104,11 @@ func TestCORSPreflightAllowsQuery(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodOptions, "/api/paragraph-init", nil)
-	req.Header.Set("Origin", "chrome-extension://abcdefghijklmnop")
+	req.Header.Set("Origin", "chrome-extension://combdcldlodkikjfhjbdbogjlfmnbjkf")
 	req.Header.Set("Access-Control-Request-Method", "QUERY")
-	setupRouter(config.Default(), metrics.New()).ServeHTTP(w, req)
+	cfg := config.Default()
+	cfg.Clerk.AuthorizedParties = []string{"chrome-extension://combdcldlodkikjfhjbdbogjlfmnbjkf"}
+	setupRouter(cfg, metrics.New()).ServeHTTP(w, req)
 
 	if !strings.Contains(w.Header().Get("Access-Control-Allow-Methods"), "QUERY") {
 		t.Fatalf("Access-Control-Allow-Methods = %q, want QUERY listed", w.Header().Get("Access-Control-Allow-Methods"))
@@ -219,5 +221,34 @@ func TestWordLookupRouteRequiresAuthentication(t *testing.T) {
 	router.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/me/word-lookups", strings.NewReader(`{"wordId":"w1"}`)))
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("POST /api/me/word-lookups without credentials: status %d, want 401", w.Code)
+	}
+}
+
+func TestCORSUsesOnlyConfiguredChromeExtensions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := config.Default()
+	cfg.Clerk.AuthorizedParties = []string{"chrome-extension://configured-id", "https://catglish.com", "moz-extension://configured-id"}
+	router := setupRouter(cfg, metrics.New())
+	for _, origin := range []string{"chrome-extension://configured-id", "chrome-extension://combdcldlodkikjfhjbdbogjlfmnbjkf", "chrome-extension://other", "moz-extension://configured-id", "https://enx.wiloon.com", "https://enx.wiloon.lab", "http://localhost:3000", "https://catglish.com", "null", ""} {
+		t.Run(origin, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/ping", nil)
+			req.Header.Set("Origin", origin)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200", w.Code)
+			}
+			if origin == "chrome-extension://configured-id" {
+				if got := w.Header().Get("Access-Control-Allow-Origin"); got != origin {
+					t.Errorf("allowed origin = %q, want %q", got, origin)
+				}
+			} else {
+				for key, value := range w.Header() {
+					if strings.HasPrefix(key, "Access-Control-") {
+						t.Errorf("unexpected %s: %q", key, value)
+					}
+				}
+			}
+		})
 	}
 }
