@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-10-08
-updated: 2026-10-22（#291：明确认领期间触发的串行补跑）；2026-10-17（对齐已实现的 adr-049：奖励流水不带 payment intent、订阅首付存 invoice id；落地页数值由 API 下发；`/invite` 入口；数值按预估先实现）
+updated: 2026-10-26（#315：账本已发的奖励优先于作废，作废行可按账本对账为已发）；2026-10-22（#291：明确认领期间触发的串行补跑）；2026-10-17（对齐已实现的 adr-049：奖励流水不带 payment intent、订阅首付存 invoice id；落地页数值由 API 下发；`/invite` 入口；数值按预估先实现）
 related: adr-048（试用积分池；本 ADR 在它上面叠加邀请奖励，依赖它先实现）、adr-009（top-up 池）、adr-049（已实现：退款自动扣回 `Clawback` 按 payment intent 匹配发放行，管理员扣减 `DEDUCT_ADMIN`）、adr-040（Prometheus 指标）
 ---
 
@@ -49,8 +49,9 @@ adr-048 给每个新账号 100 试用积分、7 天过期。我们想借用户�
    - **奖励数额**在记录时算好并写进行里（`reward_amount`），之后改配置不影响已经在排队的奖励：
      - 第一笔是**订阅**：`referrer-reward-subscription`（默认 300）。
      - 第一笔是**充值**：`floor(first_payment_credits × referrer-reward-topup-percent / 100)`，默认 20%，例如小档 300 积分 → 60。
-   - **发放**：enx-api 进程内的每小时任务（与现有 `runReaderCleanup` 等同样的 ticker 写法：启动时跑一次，之后每小时一次）找出 `reward_due_at <= now` 且还没处理的行，逐行：
-     1. 先检查邀请人的本地用户身份是否仍存在；已注销则标记为 `forfeited`，原因为 `referrer_deleted`，不查询 Stripe、不发积分（adr-062 第 1 条）。查询失败保持 pending，下次重试。禁用不等于注销，本条不改变禁用账号的既有发奖行为。
+   - **发放**：enx-api 进程内的每小时任务（与现有 `runReaderCleanup` 等同样的 ticker 写法：启动时跑一次，之后每小时一次）找出 `reward_due_at <= now` 且还没处理的行，再加上**已作废但账本里已有奖励幂等键**的行（对账，见下文「账本已发即为事实」），逐行：
+     0. 先问账本：幂等键 `referral-reward:<inviteeID>` 是否已处理。已处理就直接把行标记为 `rewarded`（不再发放、不查身份、不查 Stripe）；查询失败保持原状，下次重试。只有账本里没有这个键，才继续下面的检查。
+     1. 检查邀请人的本地用户身份是否仍存在；已注销则标记为 `forfeited`，原因为 `referrer_deleted`，不查询 Stripe、不发积分（adr-062 第 1 条）。查询失败保持 pending，下次重试。禁用不等于注销，本条不改变禁用账号的既有发奖行为。
      2. `first_payment_intent_id` 为空时，用 `first_payment_invoice_id` 向 Stripe 查出 payment intent 并写回这一行。查不到就跳过这行，下个小时重试。
      3. 向 Stripe 查这笔 payment intent 的 charge。只要有退款（`amount_refunded > 0`）或争议（dispute），就把这行标记为 `forfeited`（作废，不发奖励），原因写进行里。
      4. 否则调用新函数 `credit.GrantReferralReward(ctx, referrerID, reward_amount, "referral-reward:<inviteeID>")`：进 top-up 池，流水类型是新的 `GRANT_REFERRAL_REWARD`，在流水上和用户自己买的 top-up 区分开；行标记为 `rewarded`，记下 `rewarded_at`。
@@ -58,6 +59,8 @@ adr-048 给每个新账号 100 试用积分、7 天过期。我们想借用户�
         - **不用 `GrantTopup`**：它写的类型是 `GRANT_TOPUP`。
         - **这条流水的 `stripe_payment_intent_id` 必须留空**：adr-049 的 `Clawback` 按 payment intent 找发放行。如果奖励行也带着被邀请人那笔付款的 payment intent，被邀请人以后退款时，扣回可能落到邀请人身上。
      - 幂等键保证任务重跑、多实例同时跑都不会重复发；Stripe 查询失败就跳过这行，下个小时重试。
+     - **账本已发即为事实**（2026-10-26 owner 决定，#315）：奖励流水一旦提交，它优先于第 1、3 步的作废判断。发放提交后 `rewarded` 标记失败，下一轮在第 0 步直接补记 `rewarded`，即使期间邀请人已注销或被邀请人已退款 / 争议；这只改行的状态，不重新发放，不违反 adr-062 第 1 条（不为已注销账号重建余额）。冷静期后退款仍按第 6 条处理，不自动扣回。
+     - **多实例重叠**：两轮任务可能同时处理同一行（一轮已发放、另一轮在发放前读到「未发」后作废）。不加行锁，靠状态规则自愈：`rewarded` 永不改变；`forfeited` 只能由第 0 步改成 `rewarded`（账本有这个键时），并清掉作废原因；`forfeited` 不能由其他路径改写，`pending` 才能被作废。到期查询带上「已作废但账本有键」的行，所以被重叠作废的已发奖励、以及补记 `rewarded` 再次失败的行，都会在下一轮修正。修正前最多有一个周期的不一致，`enx_referral_rewards_total` 会先记一次 `forfeited`、再记一次 `rewarded`。幂等键字符串只在 referral 领域里构造一次，账本查询、发放和到期查询都用它。
    - 记录失败只写日志，不能让 webhook 失败。webhook 失败会让 Stripe 重试，而付款方自己的积分已经发过了。
 6. **不做扣回**：
    - 冷静期内退款：adr-049 自动扣回被邀请人自己的积分（订阅还会被取消）；本 ADR 的到期任务查到退款后把奖励标记为 `forfeited`。两者互不干扰。
@@ -107,6 +110,9 @@ adr-048 给每个新账号 100 试用积分、7 天过期。我们想借用户�
   - payment intent 为空 → 用 invoice id 补查后照常判断；补查失败 → 这行保持待处理，下次重试；
   - Stripe 查询失败 → 这行保持待处理，下次重试；
   - 任务重跑不重复发。
+  - 账本已有奖励键（未注销、未退款的行同样适用）→ 直接 `rewarded`，不再发放、不查 Stripe；上面三条作废规则只适用于账本里还没有这个键的行。
+  - 恢复路径：发放提交、`rewarded` 标记失败，随后邀请人注销或被邀请人退款 / 争议，下一轮 → `rewarded`，账本仍只有一条 `GRANT_REFERRAL_REWARD`；恢复时 `rewarded` 标记再次失败 → 行保持原状，再下一轮仍能修正；账本查询失败 → 保持原状并计一次重试。
+  - 多实例重叠（用真实 repo，按确定顺序回放）：发放已提交后行被作废 → 下一轮的到期查询能取到它并改为 `rewarded`；账本无键的 `forfeited` 行不被取到；`rewarded` 行不会被作废或改写。
 - 与 adr-049 不串账：奖励发出后，被邀请人那笔付款的 `charge.refunded` 只扣被邀请人，不动邀请人的奖励。
 - 配置改动不影响已经记录的 `reward_amount`；`referrer-reward-* = 0` 时不记录奖励。
 - 记录失败时，webhook 仍返回成功，付款方自己的积分不受影响。
@@ -133,3 +139,5 @@ adr-048 给每个新账号 100 试用积分、7 天过期。我们想借用户�
 - 2026-10-22（#291）：明确认领期间落地页事件与登录触发的串行补跑、同码重开和停止条件，修复既有触发被丢弃的规格缺口；保持最终答复清码、未决保留及认领资格与奖励规则不变。
 
 - 2026-10-22（#245）：补齐已注销邀请人的待发奖励作废规则，明确先检查身份、账本事务内复查及并发删除的串行化约束，避免注销后重建余额；不改变禁用账号的既有行为。
+
+- 2026-10-26（#315）：第 5 条发放加第 0 步「先问账本」，账本已发的奖励优先于注销 / 退款 / 争议作废（owner 决定）；`forfeited` 允许在账本有键时改为 `rewarded`，到期查询带上这类行，用于修复「发放后标记失败」和多实例重叠作废，不加行锁；补充对应测试要点。
