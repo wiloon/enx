@@ -131,6 +131,8 @@ export class ApiService {
       return { success: false, error: ACCOUNT_DISABLED_MESSAGE }
     }
     let status: number | undefined
+    let reason: string | undefined
+    let subscriptionId: string | undefined
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -159,6 +161,9 @@ export class ApiService {
       if (!response.ok) {
         status = response.status
         const errorBody = await response.json().catch(() => null)
+        if (typeof errorBody?.reason === 'string') reason = errorBody.reason
+        if (typeof errorBody?.subscriptionId === 'string')
+          subscriptionId = errorBody.subscriptionId
         const friendly = apiErrorMessage(response.status, errorBody)
         if (friendly) {
           throw new Error(friendly)
@@ -184,6 +189,8 @@ export class ApiService {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
         status,
+        ...(reason !== undefined && { reason }),
+        ...(subscriptionId !== undefined && { subscriptionId }),
       }
     }
   }
@@ -435,6 +442,18 @@ export class ApiService {
 
   async createPortalSession(): Promise<ApiResponse<CheckoutSessionData>> {
     return this.makeRequest('/api/billing/portal', { method: 'POST' })
+  }
+
+  // Opens Stripe's plan-change confirmation (or the Portal home when Stripe
+  // already holds a change) for a subscribed user (#424). A 409 carries a
+  // `reason` (and, for a conflict, maybe a `subscriptionId`) on the response.
+  async createPlanChangeSession(
+    plan: SubscriptionPlan
+  ): Promise<ApiResponse<CheckoutSessionData>> {
+    return this.makeRequest('/api/billing/portal/plan-change', {
+      method: 'POST',
+      body: JSON.stringify({ tier: plan }),
+    })
   }
 
   // Invite links (ADR-051): the user's code and how their invites are doing.

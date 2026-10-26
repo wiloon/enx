@@ -121,6 +121,22 @@ export function hasLiveSubscription(status: string): boolean {
   return LIVE_SUBSCRIPTION_STATUSES.has(status)
 }
 
+export type PlanCardAction = 'subscribe' | 'current' | 'change' | 'portal_home'
+
+// What a tier card offers, from the locally stored subscription (#424). A
+// display hint only: the server rechecks eligibility against Stripe. Live
+// statuses other than `active` go to the restricted portal on every card, with
+// no plan switching (ADR-067).
+export function planCardAction(
+  status: string,
+  plan: string,
+  cardPlan: SubscriptionPlan
+): PlanCardAction {
+  if (!hasLiveSubscription(status)) return 'subscribe'
+  if (status !== 'active') return 'portal_home'
+  return plan === cardPlan ? 'current' : 'change'
+}
+
 const PLAN_NAMES: Record<string, string> = {
   pro: 'Pro',
   'pro-plus': 'Pro+',
