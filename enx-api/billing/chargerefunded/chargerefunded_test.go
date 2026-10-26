@@ -142,6 +142,7 @@ func subscriptionGrant(source creditperiod.Source, applied int64) Grant {
 
 func storeWith(t *testing.T, object any, g Grant, owner Owner) *fakeStore {
 	t.Helper()
+	g.Revision = owner.Revision
 	return &fakeStore{
 		payload: payload(t, "2026-08-26.dahlia", object),
 		grants:  map[string]Grant{paymentID: g},
@@ -436,6 +437,21 @@ func TestALegacyGrantWithoutPeriodTakesNothingButEndsItsSubscription(t *testing.
 			wantCancelled(t, stripe, "sub_a")
 		})
 	}
+}
+
+func TestAGrantReadAtAnotherRevisionThanTheOwnerRetriesWithoutEffects(t *testing.T) {
+	stripe := &fakeStripe{statuses: map[string]string{"sub_a": "active"}}
+	owner := Owner{Revision: 8, Pool: creditperiod.Pool{Source: aMay}, SubscriptionBalance: 600}
+	store := storeWith(t, refundedCharge(2000, 2000), subscriptionGrant(aMay, 1000), owner)
+	g := store.grants[paymentID]
+	g.Revision = 7
+	store.grants[paymentID] = g
+
+	r := handle(store, stripe)
+
+	wantStep(t, r, webhookevent.Transient, ErrStale.Error())
+	wantNoEffects(t, r)
+	wantCancelled(t, stripe)
 }
 
 func TestDuringDeletionTheRefundWaitsWithoutEffects(t *testing.T) {

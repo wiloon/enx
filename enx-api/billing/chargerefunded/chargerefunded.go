@@ -46,6 +46,10 @@ const (
 	ReasonCancellationPending = "subscription_cancellation_pending"
 )
 
+// ErrStale: what Effects.Observed says was read changed before Save, so the
+// clawback was not applied.
+var ErrStale = errors.New("billing/chargerefunded: refund's billing records changed since they were read")
+
 // Pool is the credit pool a grant went into.
 type Pool string
 
@@ -61,6 +65,9 @@ type Grant struct {
 	ID     string
 	UserID string
 	Pool   Pool
+	// Revision is the owner's billing revision read in the same snapshot as
+	// the grant's provenance. A later Owner read must still match it.
+	Revision int64
 	// Credits is what a top-up granted. Subscription grants use Period.
 	Credits int64
 	// Period is a subscription grant's provenance: its subscription and
@@ -87,7 +94,8 @@ type Store interface {
 	// Payload is the event's original payload.
 	Payload(ctx context.Context, scope webhookevent.Scope) ([]byte, error)
 	// GrantForPaymentIntent is the grant the PaymentIntent paid for; found is
-	// false when none is recorded yet.
+	// false when none is recorded yet. Its Revision and provenance must come
+	// from the same snapshot.
 	GrantForPaymentIntent(ctx context.Context, paymentIntentID string) (g Grant, found bool, err error)
 	// ClawbackRecorded reports whether this event's clawback is already
 	// recorded, by an earlier attempt whose cancellation failed.
@@ -106,7 +114,7 @@ type Stripe interface {
 // Observed is what a decision read. Save applies the Effects only while the
 // owner's billing revision, the grant's clawback total and, for a clawback
 // from the subscription pool, the subscription balance are still these;
-// otherwise it changes nothing and the worker retries.
+// otherwise it changes nothing, returns ErrStale and the worker retries.
 type Observed struct {
 	UserID              string
 	Revision            int64
@@ -234,6 +242,9 @@ func (h *Handler) clawback(ctx context.Context, ch Charge, grant Grant) (e Effec
 	owner, err := h.store.Owner(ctx, grant.UserID)
 	if err != nil {
 		return Effects{}, transient(err), clawbackStopped
+	}
+	if owner.Revision != grant.Revision {
+		return Effects{}, transient(ErrStale), clawbackStopped
 	}
 	if owner.Deletion == acceptance.DeletionInProgress {
 		return Effects{}, webhookevent.Result{Step: webhookevent.MissingDependency, Reason: ReasonDeletionInProgress}, clawbackStopped
