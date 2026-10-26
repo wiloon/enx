@@ -331,7 +331,7 @@ test.describe('/billing', () => {
       me: () => ({ status: 200, body: freeUser }),
       checkoutSubscription: () => ({
         status: 503,
-        body: { error: 'Checkout is temporarily unavailable' },
+        body: { message: 'Checkout is temporarily unavailable' },
       }),
     })
 
@@ -343,8 +343,45 @@ test.describe('/billing', () => {
     await button.click()
 
     await expect(
-      page.getByText('Checkout is temporarily unavailable')
+      page
+        .getByRole('main')
+        .getByText(
+          'Checkout is temporarily unavailable. If this keeps happening, contact support@catglish.com.',
+          { exact: true }
+        )
     ).toBeVisible()
+    await expect(page).toHaveURL(/\/billing$/)
+    await expect(button).toBeEnabled()
+  })
+
+  test('an internal checkout error shows generic recovery guidance', async ({
+    page,
+  }) => {
+    await stubBilling(page, {
+      me: () => ({ status: 200, body: freeUser }),
+      checkoutSubscription: () => ({
+        status: 503,
+        body: { error: 'stripe upstream connection failed' },
+      }),
+    })
+
+    await page.goto('/billing')
+    const button = card(page, 'Catglish Pro+').getByRole('button', {
+      name: 'Subscribe',
+      exact: true,
+    })
+    await button.click()
+
+    const billing = page.getByRole('main')
+    await expect(
+      billing.getByText(
+        'Something went wrong on our end. Refresh the page, or try again in a few minutes. If this keeps happening, contact support@catglish.com.',
+        { exact: true }
+      )
+    ).toBeVisible()
+    await expect(
+      billing.getByText('stripe upstream connection failed', { exact: true })
+    ).toHaveCount(0)
     await expect(page).toHaveURL(/\/billing$/)
     await expect(button).toBeEnabled()
   })
@@ -355,16 +392,19 @@ test.describe('/billing', () => {
     await stubBilling(page, {
       me: () => ({
         status: 500,
-        body: { error: 'Billing is temporarily unavailable' },
+        body: { message: 'Billing is temporarily unavailable' },
       }),
     })
 
     await page.goto('/billing')
-    // Scoped to <main>: the Next dev error overlay repeats the same message.
+    const status = card(page, 'Current status')
     await expect(
-      page.getByRole('main').getByText('Billing is temporarily unavailable')
+      status.getByText(
+        'Billing is temporarily unavailable. If this keeps happening, contact support@catglish.com.',
+        { exact: true }
+      )
     ).toBeVisible()
-    await expect(page.getByText('Free user')).toHaveCount(0)
+    await expect(status.getByText('Free user', { exact: true })).toHaveCount(0)
   })
 })
 
