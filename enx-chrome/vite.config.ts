@@ -59,9 +59,16 @@ export default defineConfig(({ mode }) => {
       ),
       'import.meta.env.VITE_BUILD_TIME': JSON.stringify(builtAt),
       // No git, no commit: leave it undefined rather than stamp "null".
-      ...(commit && {
-        'import.meta.env.VITE_BUILD_COMMIT': JSON.stringify(commit),
-      }),
+      'import.meta.env.VITE_BUILD_COMMIT':
+        commit === null ? 'undefined' : JSON.stringify(commit),
+      'import.meta.env.VITE_SENTRY_DSN':
+        env.VITE_SENTRY_DSN === undefined
+          ? 'undefined'
+          : JSON.stringify(env.VITE_SENTRY_DSN),
+      'import.meta.env.VITE_HAN_CHAR_LIMIT':
+        env.VITE_HAN_CHAR_LIMIT === undefined
+          ? 'undefined'
+          : JSON.stringify(env.VITE_HAN_CHAR_LIMIT),
     },
     // Ensure VITE_ prefixed env vars are exposed
     envPrefix: 'VITE_',

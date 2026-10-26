@@ -3,11 +3,11 @@
 // loading env.ts inside jest.isolateModules. Like vite.config.ts, the stub
 // resolves the target and stamps it (stampedEnv); MODE defaults to 'test', the
 // way Vite always sets MODE for a real build.
+import type { BuildEnvKey } from '@/config/buildEnv'
 import { resolveBuildTarget, stampedEnv } from '@/config/targets'
 
-export const readBuildEnv = (key: string): string | undefined => {
+export const readBuildEnv = (key: BuildEnvKey): string | undefined => {
   const mode = process.env.MODE ?? 'test'
-  if (key === 'MODE') return mode
   return (
     stampedEnv(resolveBuildTarget(mode, process.env))[key] ?? process.env[key]
   )
