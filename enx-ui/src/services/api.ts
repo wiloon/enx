@@ -37,6 +37,11 @@ import {
   isAccountDisabled,
 } from '@/lib/account'
 import { UNREACHABLE_MESSAGE, apiErrorMessage } from '@/lib/apiErrors'
+import {
+  BILLING_SUPPORT_FAILED_MESSAGE,
+  parseBillingSupportAnswer,
+  type BillingSupportAnswer,
+} from '@/lib/billingSupport'
 
 export type SubscriptionPlan = 'pro' | 'pro-plus' | 'max'
 export type TopupTier = 'small' | 'medium' | 'large'
@@ -407,6 +412,25 @@ export class ApiService {
       method: 'POST',
       body: JSON.stringify({ tier }),
     })
+  }
+
+  // Sends a billing-support message about a blocked subscription. A repeated
+  // submission answers with the first request, which still stands. A 200
+  // without the stored request counts as a failure.
+  async submitBillingSupport(
+    subscriptionId: string,
+    message: string
+  ): Promise<ApiResponse<BillingSupportAnswer>> {
+    const resp = await this.makeRequest<unknown>('/api/billing/support', {
+      method: 'POST',
+      body: JSON.stringify({ subscriptionId, message }),
+    })
+    if (!resp.success)
+      return { success: false, error: resp.error, status: resp.status }
+    const answer = parseBillingSupportAnswer(resp.data)
+    if (!answer)
+      return { success: false, error: BILLING_SUPPORT_FAILED_MESSAGE }
+    return { success: true, data: answer }
   }
 
   async createPortalSession(): Promise<ApiResponse<CheckoutSessionData>> {
