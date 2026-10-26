@@ -27,6 +27,33 @@ beforeEach(() => {
 })
 
 describe('BillingSupportForm', () => {
+  it('groups the borderless message field and controls in one focusable composer surface', () => {
+    render(<BillingSupportForm subscriptionId="sub_1" />)
+    const composer = textbox().parentElement
+    expect(composer).toHaveClass(
+      'rounded-xl',
+      'border',
+      'bg-card',
+      'shadow-xs',
+      'focus-within:ring-2',
+      'focus-within:ring-ring'
+    )
+    expect(composer).toContainElement(button())
+    expect(textbox()).toHaveClass('border-0')
+    expect(textbox()).not.toHaveClass(
+      'border',
+      'shadow-xs',
+      'focus-visible:ring-2'
+    )
+    type('a'.repeat(1800))
+    expect(composer).toContainElement(screen.getByText(/1,800 \/ 2,000/))
+  })
+
+  it('uses the solid brand style for its primary action', () => {
+    render(<BillingSupportForm subscriptionId="sub_1" />)
+    expect(button()).toHaveClass('bg-brand', 'text-brand-foreground')
+  })
+
   it('sends the message for its subscription and shows the answer instead of the form', async () => {
     render(<BillingSupportForm subscriptionId="sub_1" />)
     type('please help')

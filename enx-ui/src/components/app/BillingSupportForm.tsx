@@ -71,29 +71,35 @@ export default function BillingSupportForm({
   return (
     <form className="space-y-3" onSubmit={submit}>
       <Label htmlFor="billing-support-message">Message to support</Label>
-      <textarea
-        id="billing-support-message"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        disabled={pending}
-        placeholder="Tell us what you need help with."
-        className="field-sizing-content max-h-[60vh] min-h-32 w-full resize-none overflow-y-auto rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      />
-      <div className="flex flex-wrap items-center justify-end gap-3">
-        {length >= BILLING_SUPPORT_NEAR_LIMIT && (
-          <span
-            className={cn(
-              'text-xs',
-              overLimit ? 'text-destructive' : 'text-muted-foreground'
-            )}
+      <div className="rounded-xl border bg-card shadow-xs focus-within:ring-2 focus-within:ring-ring">
+        <textarea
+          id="billing-support-message"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          disabled={pending}
+          placeholder="Tell us what you need help with."
+          className="field-sizing-content max-h-[60vh] min-h-32 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-2 text-base outline-none"
+        />
+        <div className="flex flex-wrap items-center justify-end gap-3 px-3 pb-3">
+          {length >= BILLING_SUPPORT_NEAR_LIMIT && (
+            <span
+              className={cn(
+                'text-xs',
+                overLimit ? 'text-destructive' : 'text-muted-foreground'
+              )}
+            >
+              {length.toLocaleString('en-US')} /{' '}
+              {BILLING_SUPPORT_MAX_LENGTH.toLocaleString('en-US')} characters
+            </span>
+          )}
+          <Button
+            variant="brand"
+            type="submit"
+            disabled={blank || overLimit || pending}
           >
-            {length.toLocaleString('en-US')} /{' '}
-            {BILLING_SUPPORT_MAX_LENGTH.toLocaleString('en-US')} characters
-          </span>
-        )}
-        <Button type="submit" disabled={blank || overLimit || pending}>
-          {pending ? 'Sending...' : 'Send message'}
-        </Button>
+            {pending ? 'Sending...' : 'Send message'}
+          </Button>
+        </div>
       </div>
       {error && (
         <p role="alert" className="text-sm text-destructive">
