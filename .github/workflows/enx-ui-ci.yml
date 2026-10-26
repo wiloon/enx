@@ -9,11 +9,13 @@ on:
   pull_request:
     paths:
       - 'enx-ui/**'
+      - 'enx-api/config.toml'
       - '.github/workflows/enx-ui-ci.yml'
   push:
     branches: [main]
     paths:
       - 'enx-ui/**'
+      - 'enx-api/config.toml'
       - '.github/workflows/enx-ui-ci.yml'
 
 permissions:
