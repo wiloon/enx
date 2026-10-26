@@ -60,3 +60,7 @@ func (s Stripe) Charge(ctx context.Context, paymentIntentID string) (referral.Ch
 	refunded, disputed, err := billingstripe.PaymentRefundedOrDisputed(ctx, s.Client, paymentIntentID)
 	return referral.ChargeState{Refunded: refunded, Disputed: disputed}, err
 }
+
+func (Ledger) RewardGranted(ctx context.Context, key string) (bool, error) {
+	return credit.RewardGranted(ctx, key)
+}

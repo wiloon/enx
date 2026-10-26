@@ -206,3 +206,24 @@ func TestGrantReferralRewardRejectsANonPositiveAmount(t *testing.T) {
 		t.Fatal("GrantReferralReward(0) succeeded, want an error")
 	}
 }
+
+func TestRewardGrantedReportsTheCommittedKey(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	key := "referral-reward:" + userID
+	seedUser(t, userID)
+	if granted, err := RewardGranted(ctx, key); err != nil || granted {
+		t.Fatalf("before grant = %v, %v", granted, err)
+	}
+	if err := GrantReferralReward(ctx, userID, 60, key); err != nil {
+		t.Fatal(err)
+	}
+	if granted, err := RewardGranted(ctx, key); err != nil || !granted {
+		t.Fatalf("after grant = %v, %v", granted, err)
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := RewardGranted(ctx, key); err == nil {
+		t.Fatal("canceled lookup succeeded")
+	}
+}

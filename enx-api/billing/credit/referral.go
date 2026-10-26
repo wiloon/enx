@@ -164,3 +164,8 @@ func GrantReferralReward(ctx context.Context, referrerID string, amount int64, k
 		})
 	})
 }
+
+// RewardGranted reports whether the ledger has processed key.
+func RewardGranted(ctx context.Context, key string) (bool, error) {
+	return eventAlreadyProcessed(sqlitex.DB.WithContext(ctx), key)
+}
