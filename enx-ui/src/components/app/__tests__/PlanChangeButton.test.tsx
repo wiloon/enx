@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import PlanChangeButton from '../PlanChangeButton'
 import { UNREACHABLE_MESSAGE } from '@/lib/apiErrors'
 import { LEGAL } from '@/lib/legal'
@@ -176,12 +176,15 @@ describe('PlanChangeButton', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(FALLBACK)
   })
 
-  it('sends one request for a double click and shows the pending state', async () => {
+  it('sends one request for two clicks before the pending state renders', async () => {
     let resolve: (v: unknown) => void = () => {}
     mockCreate.mockReturnValue(new Promise((r) => (resolve = r)))
     render(<PlanChangeButton plan="max" />)
-    fireEvent.click(button())
-    fireEvent.click(button())
+    act(() => {
+      fireEvent.click(button())
+      expect(button()).toBeEnabled()
+      fireEvent.click(button())
+    })
     expect(mockCreate).toHaveBeenCalledTimes(1)
     expect(button()).toHaveTextContent('Opening…')
     expect(button()).toBeDisabled()
