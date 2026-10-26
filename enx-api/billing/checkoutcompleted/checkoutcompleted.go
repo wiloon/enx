@@ -38,6 +38,8 @@ const (
 	// ReasonTopUpCreditsUnset: the top-up's tier has no credits configured,
 	// or the session names no tier.
 	ReasonTopUpCreditsUnset = "topup_credits_not_configured"
+	// ReasonTopUpPaymentNotSettled: the top-up has no settled payment.
+	ReasonTopUpPaymentNotSettled = "topup_payment_not_settled"
 	// ReasonDeletionInProgress: the payer's account deletion is in progress;
 	// decide again once it completes or aborts.
 	ReasonDeletionInProgress = "deletion_in_progress"
@@ -176,6 +178,9 @@ func (h *Handler) Handle(ctx context.Context, s webhookevent.StoredTask) webhook
 	case cs.TopUp():
 		if credits = h.topUpCredits[cs.Metadata["tier"]]; credits <= 0 {
 			return unrecoverable(ReasonTopUpCreditsUnset, nil)
+		}
+		if cs.PaymentStatus != "paid" && cs.PaymentStatus != "no_payment_required" {
+			return unrecoverable(ReasonTopUpPaymentNotSettled, nil)
 		}
 		recorded, err := h.store.TopUpRecorded(ctx, cs.ID)
 		if err != nil {

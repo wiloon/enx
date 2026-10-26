@@ -35,7 +35,8 @@ func topUpSession() session {
 	return session{
 		"id": sessionID, "object": "checkout.session", "mode": "payment",
 		"client_reference_id": "user_1", "customer": customer, "payment_intent": "pi_1",
-		"subscription": nil, "metadata": map[string]string{"type": "topup", "tier": "small"},
+		"payment_status": "paid",
+		"subscription":   nil, "metadata": map[string]string{"type": "topup", "tier": "small"},
 	}
 }
 
@@ -162,7 +163,7 @@ func TestTopUpGrantsItsTierCreditsAndRecordsTheCustomer(t *testing.T) {
 func TestTopUpWithoutACustomerOrACharge(t *testing.T) {
 	// A payment-mode session without customer creation has no Customer to
 	// record; a 100% discount charges nothing and is no referral payment.
-	store := storeWith(t, topUpSession().with("customer", nil).with("payment_intent", nil))
+	store := storeWith(t, topUpSession().with("customer", nil).with("payment_intent", nil).with("payment_status", "no_payment_required"))
 	r := handle(store)
 
 	wantStep(t, r, webhookevent.Handled, "")
@@ -213,7 +214,7 @@ func TestTopUpOfATierWithoutCreditsNeedsAttention(t *testing.T) {
 }
 
 func TestSubscriptionCheckoutRecordsItsAssociationAndCustomerWithoutCredits(t *testing.T) {
-	r := handle(storeWith(t, subscriptionSession()))
+	r := handle(storeWith(t, subscriptionSession().with("payment_status", "unpaid")))
 
 	wantStep(t, r, webhookevent.Handled, "")
 	wantEffects(t, r, Effects{
@@ -399,6 +400,36 @@ func TestStoreFailuresRetryWithoutEffects(t *testing.T) {
 			r := handle(store)
 
 			wantStep(t, r, webhookevent.Transient, "database is locked")
+			if r.Effects != nil {
+				t.Fatalf("effects = %#v, want none", r.Effects)
+			}
+		})
+	}
+}
+
+func TestDecodeEventReadsPaymentStatus(t *testing.T) {
+	for _, version := range []string{"2026-07-29.dahlia", "2026-08-26.dahlia"} {
+		t.Run(version, func(t *testing.T) {
+			s, err := DecodeEvent(payload(t, version, topUpSession().with("payment_status", "paid")))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if s.PaymentStatus != "paid" {
+				t.Fatalf("payment status = %q, want paid", s.PaymentStatus)
+			}
+		})
+	}
+}
+
+func TestUnsettledTopUpNeedsAttentionWithoutEffects(t *testing.T) {
+	for _, status := range []string{"unpaid", "", "unknown", "missing"} {
+		t.Run(status, func(t *testing.T) {
+			object := topUpSession().with("payment_status", status)
+			if status == "missing" {
+				delete(object, "payment_status")
+			}
+			r := handle(storeWith(t, object))
+			wantStep(t, r, webhookevent.Unrecoverable, "topup_payment_not_settled")
 			if r.Effects != nil {
 				t.Fatalf("effects = %#v, want none", r.Effects)
 			}
