@@ -20,6 +20,10 @@ export interface ApiResponse<T = unknown> {
   message?: string
   // The HTTP status of a non-2xx answer; absent when no answer came back.
   status?: number
+  // Machine-readable cause and blocking subscription of a non-2xx answer, when
+  // the body carries them as strings (the plan-change 409s, #424).
+  reason?: string
+  subscriptionId?: string
 }
 
 export interface WordData {
