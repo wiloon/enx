@@ -45,8 +45,9 @@ func (ChargeRefunds) GrantForPaymentIntent(ctx context.Context, paymentIntentID 
 		Applied              *int64
 		Revision             int64
 	}
-	// Backfill updates provenance and billing_version atomically. Read both
-	// in one statement so Owner cannot pair old provenance with a new revision.
+	// Backfill (legacy_provenance.go) bumps billing_version together with the
+	// provenance it records. Read both in one statement so Owner cannot pair
+	// old provenance with a new revision.
 	if err := db.Raw("SELECT t.`id`, t.`user_id`, t.`type`, t.`amount`, t.`stripe_subscription_id`, t.`period_start`, t.`period_end`, "+
 		"t.`without_period`, t.`applied`, COALESCE(u.`billing_version`, 0) AS revision FROM `credit_transactions` t "+
 		"LEFT JOIN `users` u ON u.`id` = t.`user_id` WHERE t.`stripe_payment_intent_id` = ? AND t.`type` IN (?, ?)",
