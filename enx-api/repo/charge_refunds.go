@@ -43,9 +43,13 @@ func (ChargeRefunds) GrantForPaymentIntent(ctx context.Context, paymentIntentID 
 		PeriodEnd            *int64
 		WithoutPeriod        bool
 		Applied              *int64
+		Revision             int64
 	}
-	if err := db.Raw("SELECT `id`, `user_id`, `type`, `amount`, `stripe_subscription_id`, `period_start`, `period_end`, "+
-		"`without_period`, `applied` FROM `credit_transactions` WHERE `stripe_payment_intent_id` = ? AND `type` IN (?, ?)",
+	// Backfill updates provenance and billing_version atomically. Read both
+	// in one statement so Owner cannot pair old provenance with a new revision.
+	if err := db.Raw("SELECT t.`id`, t.`user_id`, t.`type`, t.`amount`, t.`stripe_subscription_id`, t.`period_start`, t.`period_end`, "+
+		"t.`without_period`, t.`applied`, COALESCE(u.`billing_version`, 0) AS revision FROM `credit_transactions` t "+
+		"LEFT JOIN `users` u ON u.`id` = t.`user_id` WHERE t.`stripe_payment_intent_id` = ? AND t.`type` IN (?, ?)",
 		paymentIntentID, typeGrantTopUp, typeGrantSubscription).Scan(&rows).Error; err != nil {
 		return chargerefunded.Grant{}, false, fmt.Errorf("read grant of %s: %w", paymentIntentID, err)
 	}
@@ -67,6 +71,7 @@ func (ChargeRefunds) GrantForPaymentIntent(ctx context.Context, paymentIntentID 
 		}
 		g.Period.Source = grantSource(r.StripeSubscriptionID, r.PeriodStart, r.PeriodEnd)
 	}
+	g.Revision = r.Revision
 	var err error
 	if g.Taken, err = clawedBack(db, r.ID); err != nil {
 		return chargerefunded.Grant{}, false, err

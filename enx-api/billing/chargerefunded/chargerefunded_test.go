@@ -142,6 +142,7 @@ func subscriptionGrant(source creditperiod.Source, applied int64) Grant {
 
 func storeWith(t *testing.T, object any, g Grant, owner Owner) *fakeStore {
 	t.Helper()
+	g.Revision = owner.Revision
 	return &fakeStore{
 		payload: payload(t, "2026-08-26.dahlia", object),
 		grants:  map[string]Grant{paymentID: g},

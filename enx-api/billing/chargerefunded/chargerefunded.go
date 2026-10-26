@@ -65,6 +65,9 @@ type Grant struct {
 	ID     string
 	UserID string
 	Pool   Pool
+	// Revision is the owner's billing revision read in the same snapshot as
+	// the grant's provenance. A later Owner read must still match it.
+	Revision int64
 	// Credits is what a top-up granted. Subscription grants use Period.
 	Credits int64
 	// Period is a subscription grant's provenance: its subscription and
@@ -91,7 +94,8 @@ type Store interface {
 	// Payload is the event's original payload.
 	Payload(ctx context.Context, scope webhookevent.Scope) ([]byte, error)
 	// GrantForPaymentIntent is the grant the PaymentIntent paid for; found is
-	// false when none is recorded yet.
+	// false when none is recorded yet. Its Revision and provenance must come
+	// from the same snapshot.
 	GrantForPaymentIntent(ctx context.Context, paymentIntentID string) (g Grant, found bool, err error)
 	// ClawbackRecorded reports whether this event's clawback is already
 	// recorded, by an earlier attempt whose cancellation failed.
@@ -238,6 +242,9 @@ func (h *Handler) clawback(ctx context.Context, ch Charge, grant Grant) (e Effec
 	owner, err := h.store.Owner(ctx, grant.UserID)
 	if err != nil {
 		return Effects{}, transient(err), clawbackStopped
+	}
+	if owner.Revision != grant.Revision {
+		return Effects{}, transient(ErrStale), clawbackStopped
 	}
 	if owner.Deletion == acceptance.DeletionInProgress {
 		return Effects{}, webhookevent.Result{Step: webhookevent.MissingDependency, Reason: ReasonDeletionInProgress}, clawbackStopped
