@@ -52,6 +52,7 @@ func newHarness(t *testing.T) *harness {
 		},
 		now: t0,
 	}
+	h.referrals.rewardKeys = h.credits.keys
 	h.svc = NewService(h.codes, h.referrals, h.accounts, h.credits, h.payments,
 		func() time.Time { return h.now }, mutablePolicy{&h.terms}).WithObserver(h.observer)
 	return h
@@ -661,7 +662,7 @@ func wantForfeitedForDeletion(t *testing.T, h *harness, run RewardRun) {
 	}
 }
 
-func TestADeletedReferrersRewardIsForfeitedWithoutAskingStripeOrTheLedger(t *testing.T) {
+func TestADeletedReferrersUngrantedRewardIsForfeitedWithoutAskingStripeOrGranting(t *testing.T) {
 	cases := map[string]func(t *testing.T, h *harness){
 		"paid with a payment intent": func(t *testing.T, h *harness) {
 			paidTopup(t, h)
@@ -740,7 +741,7 @@ func TestADeletedReferrerStaysPendingWhenStorageCannotAnswer(t *testing.T) {
 	}
 }
 
-func TestAnExistenceLookupErrorAsksNeitherStripeNorTheLedger(t *testing.T) {
+func TestAnExistenceLookupErrorDoesNotAskStripeOrGrant(t *testing.T) {
 	h := newHarness(t)
 	paidTopup(t, h)
 	h.payments.charges["pi_bob"] = ChargeState{}
@@ -796,5 +797,98 @@ func TestMeForANewUserCreatesTheCode(t *testing.T) {
 	}
 	if got.Code == "" || got.Invited != 0 || got.Pending == nil {
 		t.Fatalf("summary = %+v, want a code, zero counts and an empty pending list", got)
+	}
+}
+
+func TestAnAlreadyGrantedRewardWinsOverForfeitChecks(t *testing.T) {
+	for _, scenario := range []string{"deleted", "refunded", "disputed", "clean"} {
+		t.Run(scenario, func(t *testing.T) {
+			h := newHarness(t)
+			paidTopup(t, h)
+			h.now = t0.Add(14 * day)
+			if err := h.credits.GrantReferrerReward(context.Background(), "alice", 60, "referral-reward:bob"); err != nil {
+				t.Fatal(err)
+			}
+			switch scenario {
+			case "deleted":
+				delete(h.accounts.created, "alice")
+			case "refunded":
+				h.payments.charges["pi_bob"] = ChargeState{Refunded: true}
+			case "disputed":
+				h.payments.charges["pi_bob"] = ChargeState{Disputed: true}
+			}
+			run, err := h.svc.PayDueRewards(context.Background())
+			if err != nil || run.Rewarded != 1 || run.Forfeited != 0 || run.Retry != 0 {
+				t.Fatalf("run = %+v, %v; want rewarded", run, err)
+			}
+			if r := h.referrals.rows["bob"]; r.Status != StatusRewarded || !r.RewardedAt.Equal(h.now) {
+				t.Fatalf("referral = %+v", r)
+			}
+			if h.payments.calls != 0 || h.credits.rewardAttempts != 1 || len(h.credits.rewards) != 1 {
+				t.Fatalf("Stripe calls %d, grant attempts %d, rewards %+v", h.payments.calls, h.credits.rewardAttempts, h.credits.rewards)
+			}
+		})
+	}
+}
+
+func TestACommittedRewardRecoversAfterRepeatedStatusWriteFailures(t *testing.T) {
+	for _, scenario := range []string{"deleted", "refunded", "disputed"} {
+		t.Run(scenario, func(t *testing.T) {
+			h := newHarness(t)
+			paidTopup(t, h)
+			h.now = t0.Add(14 * day)
+			h.payments.charges["pi_bob"] = ChargeState{}
+			h.referrals.rewardedErr = errors.New("status write failed")
+			ctx := context.Background()
+			run, err := h.svc.PayDueRewards(ctx)
+			if err != nil || run.Retry != 1 || len(run.Errors) != 1 || h.referrals.rows["bob"].Status != StatusPending || len(h.credits.rewards) != 1 {
+				t.Fatalf("first pass = %+v, %v, row %+v, grants %+v", run, err, h.referrals.rows["bob"], h.credits.rewards)
+			}
+			switch scenario {
+			case "deleted":
+				delete(h.accounts.created, "alice")
+			case "refunded":
+				h.payments.charges["pi_bob"] = ChargeState{Refunded: true}
+			case "disputed":
+				h.payments.charges["pi_bob"] = ChargeState{Disputed: true}
+			}
+			run, err = h.svc.PayDueRewards(ctx)
+			if err != nil || run.Retry != 1 || len(run.Errors) != 1 || run.Rewarded != 0 || run.Forfeited != 0 || h.referrals.rows["bob"].Status != StatusPending {
+				t.Fatalf("second pass = %+v, %v, row %+v", run, err, h.referrals.rows["bob"])
+			}
+			h.referrals.rewardedErr = nil
+			run, err = h.svc.PayDueRewards(ctx)
+			if err != nil || run.Rewarded != 1 || run.Retry != 0 || run.Forfeited != 0 || h.referrals.rows["bob"].Status != StatusRewarded {
+				t.Fatalf("recovery = %+v, %v, row %+v", run, err, h.referrals.rows["bob"])
+			}
+			if len(h.credits.rewards) != 1 || h.credits.rewardAttempts != 1 || h.payments.calls != 1 {
+				t.Fatalf("grants %+v, attempts %d, Stripe calls %d", h.credits.rewards, h.credits.rewardAttempts, h.payments.calls)
+			}
+		})
+	}
+}
+
+func TestALedgerLookupErrorLeavesTheRewardForRetry(t *testing.T) {
+	for _, status := range []Status{StatusPending, StatusForfeited} {
+		t.Run(string(status), func(t *testing.T) {
+			h := newHarness(t)
+			paidTopup(t, h)
+			h.now = t0.Add(14 * day)
+			delete(h.accounts.created, "alice")
+			if status == StatusForfeited {
+				h.credits.keys["referral-reward:bob"] = true
+				if err := h.referrals.MarkForfeited(context.Background(), "bob", "refunded", h.now); err != nil {
+					t.Fatal(err)
+				}
+			}
+			h.credits.lookupErr = errors.New("ledger unavailable")
+			run, err := h.svc.PayDueRewards(context.Background())
+			if err != nil || run.Retry != 1 || len(run.Errors) != 1 || !errors.Is(run.Errors[0], h.credits.lookupErr) || run.Forfeited != 0 || run.Rewarded != 0 {
+				t.Fatalf("run = %+v, %v", run, err)
+			}
+			if h.referrals.rows["bob"].Status != status || h.credits.rewardAttempts != 0 || h.payments.calls != 0 {
+				t.Fatalf("row %+v, attempts %d, Stripe calls %d", h.referrals.rows["bob"], h.credits.rewardAttempts, h.payments.calls)
+			}
+		})
 	}
 }

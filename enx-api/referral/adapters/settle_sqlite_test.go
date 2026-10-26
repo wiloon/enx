@@ -138,3 +138,178 @@ func TestAReferrerDeletedAfterTheGrantCommitsLosesTheBalanceButKeepsTheLedger(t 
 		t.Fatalf("alice has %d reward ledger row(s), want the committed one kept", n)
 	}
 }
+
+func TestOverlappingPassCanMarkAGrantedButForfeitedRewardAsRewarded(t *testing.T) {
+	newFileDB(t)
+	seedDueReward(t)
+	ctx := context.Background()
+	refs := repo.Referrals{}
+	// Both passes read pending before B grants; A then forfeits its stale row.
+	for range 2 {
+		rows, err := refs.DueRewards(ctx, settleAt, "referral-reward:")
+		if err != nil || len(rows) != 1 {
+			t.Fatalf("initial due = %+v, %v", rows, err)
+		}
+	}
+	if err := ledger.GrantReferrerReward(ctx, "alice", 60, "referral-reward:bob"); err != nil {
+		t.Fatal(err)
+	}
+	if err := (repo.Accounts{}).DeleteData(ctx, "alice"); err != nil {
+		t.Fatal(err)
+	}
+	if err := refs.MarkForfeited(ctx, "bob", "referrer_deleted", settleAt); err != nil {
+		t.Fatal(err)
+	}
+	r, ok, err := refs.Get(ctx, "bob")
+	if err != nil || !ok || r.Status != referral.StatusForfeited {
+		t.Fatalf("A forfeits = %+v, %v, %v", r, ok, err)
+	}
+	if err := refs.MarkRewarded(ctx, "bob", settleAt); err != nil {
+		t.Fatal(err)
+	}
+	r, ok, err = refs.Get(ctx, "bob")
+	if err != nil || !ok || r.Status != referral.StatusRewarded || r.ForfeitReason != "" || !r.RewardedAt.Equal(settleAt) {
+		t.Fatalf("B settles = %+v, %v, %v", r, ok, err)
+	}
+	if n := count(t, "credit_transactions", "type = ?", credit.TypeGrantReferralReward); n != 1 {
+		t.Fatalf("reward ledger rows = %d", n)
+	}
+	if n := count(t, "credit_accounts", "user_id = ?", "alice"); n != 0 {
+		t.Fatalf("recreated %d balances", n)
+	}
+}
+
+func TestOverlappingPassIsReconciledOnTheNextRunAfterAStatusWriteFails(t *testing.T) {
+	newFileDB(t)
+	seedDueReward(t)
+	ctx := context.Background()
+	refs := repo.Referrals{}
+	for range 2 {
+		rows, err := refs.DueRewards(ctx, settleAt, "referral-reward:")
+		if err != nil || len(rows) != 1 {
+			t.Fatalf("initial due = %+v, %v", rows, err)
+		}
+	}
+	if err := ledger.GrantReferrerReward(ctx, "alice", 60, "referral-reward:bob"); err != nil {
+		t.Fatal(err)
+	}
+	if err := (repo.Accounts{}).DeleteData(ctx, "alice"); err != nil {
+		t.Fatal(err)
+	}
+	if err := refs.MarkForfeited(ctx, "bob", "referrer_deleted", settleAt); err != nil {
+		t.Fatal(err)
+	}
+	// B never writes rewarded, as if its status write failed.
+	rows, err := refs.DueRewards(ctx, settleAt, "referral-reward:")
+	if err != nil || len(rows) != 1 || rows[0].Status != referral.StatusForfeited {
+		t.Fatalf("reconciliation due = %+v, %v", rows, err)
+	}
+	refsWithFailure := &failingRewardWrites{ReferralRepo: refs, fail: true}
+	svc := referral.NewService(repo.ReferralCodes{}, refsWithFailure, repo.ReferralAccounts{}, ledger, cleanCharge{}, func() time.Time { return settleAt }, referral.FixedPolicy{})
+	failed, err := svc.PayDueRewards(ctx)
+	if err != nil || failed.Retry != 1 || len(failed.Errors) != 1 || failed.Rewarded != 0 || failed.Forfeited != 0 {
+		t.Fatalf("failed reconciliation = %+v, %v", failed, err)
+	}
+	stillForfeited, ok, err := refs.Get(ctx, "bob")
+	if err != nil || !ok || stillForfeited.Status != referral.StatusForfeited || stillForfeited.ForfeitReason != "referrer_deleted" {
+		t.Fatalf("failed reconciliation row = %+v, %v, %v", stillForfeited, ok, err)
+	}
+	run := payDueRewards(t, cleanCharge{onCharge: func() { t.Error("recovery asked Stripe") }})
+	if run.Rewarded != 1 || run.Forfeited != 0 || run.Retry != 0 {
+		t.Fatalf("recovery = %+v", run)
+	}
+	r, ok, err := refs.Get(ctx, "bob")
+	if err != nil || !ok || r.Status != referral.StatusRewarded || r.ForfeitReason != "" {
+		t.Fatalf("reconciled = %+v, %v, %v", r, ok, err)
+	}
+	if n := count(t, "credit_transactions", "type = ?", credit.TypeGrantReferralReward); n != 1 {
+		t.Fatalf("reward ledger rows = %d", n)
+	}
+	if n := count(t, "credit_accounts", "user_id = ?", "alice"); n != 0 {
+		t.Fatalf("recreated %d balances", n)
+	}
+}
+
+// failingRewardWrites simulates the independent status write failing after
+// the real ledger transaction has committed.
+type failingRewardWrites struct {
+	referral.ReferralRepo
+	fail bool
+}
+
+func (r *failingRewardWrites) MarkRewarded(ctx context.Context, id string, at time.Time) error {
+	if r.fail {
+		return errors.New("status write unavailable")
+	}
+	return r.ReferralRepo.MarkRewarded(ctx, id, at)
+}
+
+type changedCharge struct{ state referral.ChargeState }
+
+func (changedCharge) InvoicePaymentIntent(context.Context, string) (string, error) {
+	return "", errors.New("unexpected invoice lookup")
+}
+func (c changedCharge) Charge(context.Context, string) (referral.ChargeState, error) {
+	return c.state, nil
+}
+
+func TestCommittedLedgerRewardSurvivesRepeatedStatusWriteFailures(t *testing.T) {
+	for _, scenario := range []string{"deleted", "refunded", "disputed"} {
+		t.Run(scenario, func(t *testing.T) {
+			newFileDB(t)
+			seedDueReward(t)
+			ctx := context.Background()
+			refs := &failingRewardWrites{ReferralRepo: repo.Referrals{}, fail: true}
+			svc := referral.NewService(repo.ReferralCodes{}, refs, repo.ReferralAccounts{}, ledger, cleanCharge{}, func() time.Time { return settleAt }, referral.FixedPolicy{})
+			run, err := svc.PayDueRewards(ctx)
+			if err != nil || run.Retry != 1 || len(run.Errors) != 1 {
+				t.Fatalf("first pass = %+v, %v", run, err)
+			}
+			var state referral.ChargeState
+			switch scenario {
+			case "deleted":
+				if err := (repo.Accounts{}).DeleteData(ctx, "alice"); err != nil {
+					t.Fatal(err)
+				}
+			case "refunded":
+				state.Refunded = true
+			case "disputed":
+				state.Disputed = true
+			}
+			svc = referral.NewService(repo.ReferralCodes{}, refs, repo.ReferralAccounts{}, ledger, changedCharge{state}, func() time.Time { return settleAt }, referral.FixedPolicy{})
+			run, err = svc.PayDueRewards(ctx)
+			if err != nil || run.Retry != 1 || len(run.Errors) != 1 || run.Forfeited != 0 || run.Rewarded != 0 {
+				t.Fatalf("failed recovery = %+v, %v", run, err)
+			}
+			r, ok, err := refs.Get(ctx, "bob")
+			if err != nil || !ok || r.Status != referral.StatusPending {
+				t.Fatalf("failed recovery row = %+v, %v, %v", r, ok, err)
+			}
+			refs.fail = false
+			run, err = svc.PayDueRewards(ctx)
+			if err != nil || run.Rewarded != 1 || run.Retry != 0 || run.Forfeited != 0 {
+				t.Fatalf("recovery = %+v, %v", run, err)
+			}
+			r, ok, err = refs.Get(ctx, "bob")
+			if err != nil || !ok || r.Status != referral.StatusRewarded {
+				t.Fatalf("recovered row = %+v, %v, %v", r, ok, err)
+			}
+			if n := count(t, "credit_transactions", "type = ?", credit.TypeGrantReferralReward); n != 1 {
+				t.Fatalf("reward ledger rows = %d", n)
+			}
+			if scenario == "deleted" {
+				if n := count(t, "credit_accounts", "user_id = ?", "alice"); n != 0 {
+					t.Fatalf("recreated %d balances", n)
+				}
+			} else {
+				var account sqlitex.CreditAccount
+				if err := sqlitex.DB.Where("user_id = ?", "alice").First(&account).Error; err != nil {
+					t.Fatal(err)
+				}
+				if account.TopupBalance != 60 {
+					t.Fatalf("reward balance = %d, want 60", account.TopupBalance)
+				}
+			}
+		})
+	}
+}

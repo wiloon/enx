@@ -44,9 +44,11 @@ func (f *fakeCodes) Insert(_ context.Context, userID, code string, _ time.Time) 
 }
 
 type fakeReferrals struct {
-	rows       map[string]Referral
-	insertErr  error
-	forfeitErr error
+	rows        map[string]Referral
+	rewardKeys  map[string]bool
+	insertErr   error
+	forfeitErr  error
+	rewardedErr error
 }
 
 func newFakeReferrals() *fakeReferrals { return &fakeReferrals{rows: map[string]Referral{}} }
@@ -89,10 +91,10 @@ func (f *fakeReferrals) RecordFirstPayment(_ context.Context, inviteeID string, 
 	return true, nil
 }
 
-func (f *fakeReferrals) DueRewards(_ context.Context, at time.Time) ([]Referral, error) {
+func (f *fakeReferrals) DueRewards(_ context.Context, at time.Time, rewardKeyPrefix string) ([]Referral, error) {
 	var out []Referral
 	for _, r := range f.rows {
-		if r.Status == StatusPending && !r.RewardDueAt.After(at) {
+		if (r.Status == StatusPending && !r.RewardDueAt.After(at)) || (r.Status == StatusForfeited && f.rewardKeys[rewardKeyPrefix+r.InviteeID]) {
 			out = append(out, r)
 		}
 	}
@@ -108,7 +110,14 @@ func (f *fakeReferrals) SetPaymentIntent(_ context.Context, inviteeID, paymentIn
 }
 
 func (f *fakeReferrals) MarkRewarded(_ context.Context, inviteeID string, at time.Time) error {
+	if f.rewardedErr != nil {
+		return f.rewardedErr
+	}
 	r := f.rows[inviteeID]
+	if r.Status != StatusPending && r.Status != StatusForfeited {
+		return nil
+	}
+	r.ForfeitReason = ""
 	r.Status, r.RewardedAt = StatusRewarded, at
 	f.rows[inviteeID] = r
 	return nil
@@ -119,6 +128,9 @@ func (f *fakeReferrals) MarkForfeited(_ context.Context, inviteeID, reason strin
 		return f.forfeitErr
 	}
 	r := f.rows[inviteeID]
+	if r.Status != StatusPending {
+		return nil
+	}
 	r.Status, r.ForfeitReason = StatusForfeited, reason
 	f.rows[inviteeID] = r
 	return nil
@@ -180,6 +192,7 @@ type fakeCredits struct {
 	rewardFail bool
 	// rewardErr, when set, is what every reward grant returns.
 	rewardErr error
+	lookupErr error
 	// rewardAttempts counts reward grants called, failed ones included.
 	rewardAttempts int
 }
@@ -245,4 +258,8 @@ type recordingObserver struct {
 func (o *recordingObserver) ObserveReferralClaim(result string) { o.claims = append(o.claims, result) }
 func (o *recordingObserver) ObserveReferralReward(result string) {
 	o.rewards = append(o.rewards, result)
+}
+
+func (f *fakeCredits) RewardGranted(_ context.Context, key string) (bool, error) {
+	return f.keys[key], f.lookupErr
 }

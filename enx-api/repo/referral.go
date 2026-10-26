@@ -105,10 +105,11 @@ func (Referrals) RecordFirstPayment(ctx context.Context, inviteeID string, p ref
 	return res.RowsAffected == 1, res.Error
 }
 
-func (Referrals) DueRewards(ctx context.Context, at time.Time) ([]referral.Referral, error) {
+func (Referrals) DueRewards(ctx context.Context, at time.Time, rewardKeyPrefix string) ([]referral.Referral, error) {
 	var rows []sqlitex.Referral
 	if err := sqlitex.DB.WithContext(ctx).
-		Where("status = ? AND reward_due_at <= ?", string(referral.StatusPending), at.UnixMilli()).
+		Where("(status = ? AND reward_due_at <= ?) OR (status = ? AND EXISTS (SELECT 1 FROM credit_transactions WHERE stripe_event_id = ? || referrals.invitee_user_id))",
+			string(referral.StatusPending), at.UnixMilli(), string(referral.StatusForfeited), rewardKeyPrefix).
 		Order("reward_due_at").Find(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -121,12 +122,14 @@ func (Referrals) SetPaymentIntent(ctx context.Context, inviteeID, paymentIntentI
 		Updates(map[string]any{"first_payment_intent_id": paymentIntentID, "updated_at": time.Now().UnixMilli()}).Error
 }
 
-// MarkRewarded and MarkForfeited only settle a pending row, so a settled
-// reward never flips.
+// MarkRewarded reconciles pending or forfeited rows after a committed grant.
+// An already rewarded row never changes.
 func (Referrals) MarkRewarded(ctx context.Context, inviteeID string, at time.Time) error {
-	return settleReferral(ctx, inviteeID, map[string]any{
-		"status": string(referral.StatusRewarded), "rewarded_at": at.UnixMilli(), "updated_at": at.UnixMilli(),
-	})
+	return sqlitex.DB.WithContext(ctx).Model(&sqlitex.Referral{}).
+		Where("invitee_user_id = ? AND status IN ?", inviteeID, []string{string(referral.StatusPending), string(referral.StatusForfeited)}).
+		Updates(map[string]any{
+			"status": string(referral.StatusRewarded), "rewarded_at": at.UnixMilli(), "updated_at": at.UnixMilli(), "forfeit_reason": "",
+		}).Error
 }
 
 func (Referrals) MarkForfeited(ctx context.Context, inviteeID, reason string, at time.Time) error {

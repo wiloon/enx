@@ -94,10 +94,10 @@ func TestReferralsLifecycle(t *testing.T) {
 		t.Fatalf("after payment = %+v (%+v)", got, got.FirstPayment)
 	}
 
-	if rows, _ := refs.DueRewards(ctx, due.Add(-time.Second)); len(rows) != 0 {
+	if rows, _ := refs.DueRewards(ctx, due.Add(-time.Second), "referral-reward:"); len(rows) != 0 {
 		t.Fatalf("due before the date = %+v", rows)
 	}
-	rows, err := refs.DueRewards(ctx, due)
+	rows, err := refs.DueRewards(ctx, due, "referral-reward:")
 	if err != nil || len(rows) != 1 || rows[0].InviteeID != "bob" {
 		t.Fatalf("DueRewards = %+v, %v", rows, err)
 	}
@@ -113,7 +113,7 @@ func TestReferralsLifecycle(t *testing.T) {
 		t.Fatalf("after reward = %+v", got)
 	}
 	// Settled rows are no longer due, and a late forfeit cannot undo a reward.
-	if rows, _ := refs.DueRewards(ctx, due); len(rows) != 0 {
+	if rows, _ := refs.DueRewards(ctx, due, "referral-reward:"); len(rows) != 0 {
 		t.Fatalf("due after reward = %+v", rows)
 	}
 	if err := refs.MarkForfeited(ctx, "bob", "refunded", due); err != nil {

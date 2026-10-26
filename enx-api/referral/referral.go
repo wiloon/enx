@@ -105,11 +105,14 @@ type ReferralRepo interface {
 	// RecordFirstPayment stores p and reward on the invitee's referral
 	// unless it already has a first payment; recorded is false then.
 	RecordFirstPayment(ctx context.Context, inviteeID string, p FirstPayment, reward Reward) (recorded bool, err error)
-	// DueRewards lists the pending referrals whose reward is due at at.
-	DueRewards(ctx context.Context, at time.Time) ([]Referral, error)
+	// DueRewards lists due pending referrals and forfeited referrals with a
+	// committed ledger key (rewardKeyPrefix + inviteeID) to reconcile.
+	DueRewards(ctx context.Context, at time.Time, rewardKeyPrefix string) ([]Referral, error)
 	SetPaymentIntent(ctx context.Context, inviteeID, paymentIntentID string) error
-	// MarkRewarded and MarkForfeited settle a pending referral.
+	// MarkRewarded settles pending or forfeited referrals after a committed
+	// grant, clearing the forfeit reason. Rewarded rows never change.
 	MarkRewarded(ctx context.Context, inviteeID string, at time.Time) error
+	// MarkForfeited only settles pending referrals.
 	MarkForfeited(ctx context.Context, inviteeID, reason string, at time.Time) error
 }
 
@@ -140,6 +143,8 @@ type Bonus struct {
 
 // CreditGranter is the credit ledger.
 type CreditGranter interface {
+	// RewardGranted reports whether the ledger has processed the reward key.
+	RewardGranted(ctx context.Context, key string) (bool, error)
 	// GrantInviteeBonus adds the bonus to the invitee's trial pool, once
 	// per invitee, and returns the trial's expiry.
 	GrantInviteeBonus(ctx context.Context, inviteeID string, b Bonus) (trialExpiresAt time.Time, err error)
