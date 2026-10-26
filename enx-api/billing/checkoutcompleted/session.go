@@ -29,6 +29,7 @@ type Session struct {
 	ID string
 	// Mode is "payment" or "subscription".
 	Mode              string
+	PaymentStatus     string
 	ClientReferenceID string
 	CustomerID        string
 	SubscriptionID    string
@@ -57,6 +58,7 @@ func DecodeEvent(payload []byte) (Session, error) {
 				ID                string            `json:"id"`
 				Object            string            `json:"object"`
 				Mode              string            `json:"mode"`
+				PaymentStatus     string            `json:"payment_status"`
 				ClientReferenceID string            `json:"client_reference_id"`
 				Customer          json.RawMessage   `json:"customer"`
 				Subscription      json.RawMessage   `json:"subscription"`
@@ -78,6 +80,7 @@ func DecodeEvent(payload []byte) (Session, error) {
 	s := Session{
 		ID:                o.ID,
 		Mode:              o.Mode,
+		PaymentStatus:     o.PaymentStatus,
 		ClientReferenceID: o.ClientReferenceID,
 		CustomerID:        expandableID(o.Customer),
 		SubscriptionID:    expandableID(o.Subscription),
