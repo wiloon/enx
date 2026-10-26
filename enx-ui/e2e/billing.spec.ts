@@ -16,6 +16,8 @@ import type { BillingMeData } from '@/types'
 const CHECKOUT_URL = 'https://checkout.stripe.test/c/pay/cs_test_123'
 const PORTAL_URL = 'https://billing.stripe.test/p/session/bps_test_123'
 
+const SUPPORT_HINT = 'If this keeps happening, contact support@catglish.com.'
+
 const freeUser: BillingMeData = {
   subscription: { status: 'none', plan: '', currentPeriodEnd: 0 },
   credits: {
@@ -345,10 +347,9 @@ test.describe('/billing', () => {
     await expect(
       page
         .getByRole('main')
-        .getByText(
-          'Checkout is temporarily unavailable. If this keeps happening, contact support@catglish.com.',
-          { exact: true }
-        )
+        .getByText(`Checkout is temporarily unavailable. ${SUPPORT_HINT}`, {
+          exact: true,
+        })
     ).toBeVisible()
     await expect(page).toHaveURL(/\/billing$/)
     await expect(button).toBeEnabled()
@@ -375,7 +376,7 @@ test.describe('/billing', () => {
     const billing = page.getByRole('main')
     await expect(
       billing.getByText(
-        'Something went wrong on our end. Refresh the page, or try again in a few minutes. If this keeps happening, contact support@catglish.com.',
+        `Something went wrong on our end. Refresh the page, or try again in a few minutes. ${SUPPORT_HINT}`,
         { exact: true }
       )
     ).toBeVisible()
@@ -399,10 +400,9 @@ test.describe('/billing', () => {
     await page.goto('/billing')
     const status = card(page, 'Current status')
     await expect(
-      status.getByText(
-        'Billing is temporarily unavailable. If this keeps happening, contact support@catglish.com.',
-        { exact: true }
-      )
+      status.getByText(`Billing is temporarily unavailable. ${SUPPORT_HINT}`, {
+        exact: true,
+      })
     ).toBeVisible()
     await expect(status.getByText('Free user', { exact: true })).toHaveCount(0)
   })
