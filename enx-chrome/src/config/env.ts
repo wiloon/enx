@@ -6,7 +6,7 @@
 // It must not import TARGETS, or every target ships in every build (#231).
 
 import { parseHanCharLimit } from '@/lib/articleLanguage'
-import { readBuildEnv } from './buildEnv'
+import { readBuildEnv, type BuildEnvKey } from './buildEnv'
 import { resolveTargetName, type TargetName } from './targets'
 
 export interface EnvConfig {
@@ -33,7 +33,7 @@ export interface EnvConfig {
 }
 
 // A value vite.config.ts always stamps; missing means a broken build setup.
-const stamped = (key: string): string => {
+const stamped = (key: BuildEnvKey): string => {
   const value = readBuildEnv(key)
   if (value === undefined) {
     throw new Error(`[ENX Config] ${key} was not stamped by vite.config.ts`)
@@ -43,7 +43,7 @@ const stamped = (key: string): string => {
 
 const environment = resolveTargetName(stamped('VITE_ENV'))
 if (!environment) {
-  throw new Error(`[ENX Config] Unknown VITE_ENV: ${stamped('VITE_ENV')}`)
+  throw new Error(`[ENX Config] Unknown VITE_ENV value: ${stamped('VITE_ENV')}`)
 }
 
 // The API server is fixed per build: there is no runtime override (a stale
