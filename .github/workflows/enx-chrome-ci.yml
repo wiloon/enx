@@ -1,5 +1,7 @@
 name: enx-chrome CI
 
+# Local mirror: `task ci:chrome`. A check added here must be added there too.
+
 # Lint, unit tests, typecheck and the production build of the extension on
 # every PR that touches enx-chrome (including Renovate dependency PRs), and on
 # main. Releases are a separate, tag-driven workflow (enx-chrome-release.yml).

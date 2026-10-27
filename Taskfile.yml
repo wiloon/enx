@@ -509,6 +509,96 @@ tasks:
   # ===========================================
   # CI/CD
   # ===========================================
+  #
+  # One local task per CI workflow, so a push can be checked before CI sees it.
+  # Each task mirrors the code checks of its workflow, in the same order and
+  # with the same flags: a mirrored check added to one side must be added to
+  # the other. Each workflow carries a comment naming its task.
+  #
+  # Prerequisites: go, fnm with the Node in each project's .node-version
+  # (`fnm install` there) and Corepack enabled for that Node (`corepack enable`)
+  # so pnpm resolves to the packageManager version in package.json.
+  #
+  # `task ci` runs all four; `task ci:changed` runs only those a branch needs.
+
+  ci:
+    desc: Run every CI code check locally (ci:api, ci:ui, ci:chrome, ci:copied-files), stopping on the first failure
+    cmds:
+      - task: ci:api
+      - task: ci:ui
+      - task: ci:chrome
+      - task: ci:copied-files
+
+  ci:changed:
+    desc: "Run only the ci:* tasks whose workflow path filter matches the COMMITTED changes in BASE...HEAD (usage - task ci:changed [BASE=origin/main] [DRY_RUN=1 to only print the selection]). Uncommitted and untracked files are ignored; run `git fetch origin main` first, this task does not fetch"
+    silent: true
+    env:
+      CI_BASE: '{{.BASE | default "origin/main"}}'
+      CI_DRY_RUN: '{{.DRY_RUN | default "0"}}'
+    cmds:
+      - bash .github/scripts/ci-changed.sh "$CI_BASE"
+
+  ci:api:
+    desc: "Mirror .github/workflows/enx-api-ci.yml (vet, vet with integration tag, test, golangci-lint with default then integration tags)"
+    # Mirrors .github/workflows/enx-api-ci.yml (lint and test jobs). A check
+    # added to one side must be added to the other. The workflow's "ko image
+    # build" job (enx-api/build/docker-build.sh) is CI-only: it needs Docker
+    # (ADR-056). The lint and test jobs run independently in CI; here they run
+    # in sequence, test first.
+    dir: enx-api
+    cmds:
+      - go vet ./...
+      - go vet -tags=integration ./...
+      - go test ./...
+      # enx-api's lint task runs golangci-lint at CI's version, default tags
+      # first and then --build-tags=integration.
+      - task lint
+
+  ci:ui:
+    desc: "Mirror .github/workflows/enx-ui-ci.yml (install, typecheck, lint, test, plus a local build)"
+    # Mirrors the "check" job of .github/workflows/enx-ui-ci.yml. A check
+    # added to one side must be added to the other. The workflow's image job
+    # (enx-ui/cnb/docker-build.sh and the smoke test, ADR-055) is CI-only: it
+    # needs Docker.
+    #
+    # LOCAL-ONLY EXCEPTION: the final `pnpm build` is not a CI step. It is a
+    # local stand-in for the compilation inside the CNB image build, not
+    # equivalent image or smoke-test coverage.
+    dir: enx-ui
+    env:
+      # Same registry as CI: the committed .npmrc points at the homelab Nexus,
+      # and pnpm 12's launcher reads the env before the flags.
+      npm_config_registry: https://registry.npmjs.org/
+      pnpm_config_registry: https://registry.npmjs.org/
+    cmds:
+      - '{{.FNM_UI}} pnpm install --frozen-lockfile'
+      - '{{.FNM_UI}} pnpm typecheck'
+      - '{{.FNM_UI}} pnpm lint'
+      - '{{.FNM_UI}} pnpm test'
+      - '{{.FNM_UI}} pnpm build'
+
+  ci:chrome:
+    desc: "Mirror .github/workflows/enx-chrome-ci.yml (install, lint, test, production build)"
+    # Mirrors .github/workflows/enx-chrome-ci.yml. A check added to one side
+    # must be added to the other. This replaces the extension's old `task ci`,
+    # whose build was the homelab build, not CI's build:prod.
+    dir: enx-chrome
+    env:
+      # Same registry as CI (see ci:ui).
+      npm_config_registry: https://registry.npmjs.org/
+      pnpm_config_registry: https://registry.npmjs.org/
+    cmds:
+      - fnm exec --using=.node-version -- pnpm install --frozen-lockfile
+      - fnm exec --using=.node-version -- pnpm lint
+      - fnm exec --using=.node-version -- pnpm test
+      - fnm exec --using=.node-version -- pnpm build:prod
+
+  ci:copied-files:
+    desc: "Mirror .github/workflows/copied-files.yml (enx-ui's copies of enx-chrome modules match)"
+    # Mirrors .github/workflows/copied-files.yml. A check added to one side
+    # must be added to the other.
+    cmds:
+      - .github/scripts/check-copied-files.sh
 
   # ===========================================
   # Database
