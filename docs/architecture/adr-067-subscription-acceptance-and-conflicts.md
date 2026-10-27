@@ -87,7 +87,7 @@ worker 的可调正 duration 默认值在 #297 明确为 `stripe.webhook.poll-in
 - 系统自动记录、通知；取消竞争订阅、调查原始 Stripe 数据和退款由管理员手动执行。冲突与持续无法关联的事件有可查询的持久人工事项；普通重复投递不重复产生事项/告警。event 告警与 subscription conflict 告警都走同一启动/每小时恢复驱动，管理员重试不重发已确认告警。
 - 使用现有邮件服务的可靠 adapter，pending 状态与异常分类同事务保存；API key、sender、管理员收件人缺失或提供方失败都记错误并重试。worker 启动和每小时处理待发邮件，有发送超时、到期领取、尝试次数/最后错误；仅提供方确认成功标记 sent。发送后确认前崩溃允许少量重复，日常 webhook 重放不刷邮件；解决异常不丢待发告警。
 - 现有 `/api/page-reports` 要求页面 URL，不是任意账务反馈。阻断的 `/billing` 提供 billing-support 表单；新增认证的 `POST /api/billing/support` 只接受当前用户所属 conflict、非空至多 2000 字符消息。首条消息/时间与独立的 support 告警 pending 状态同事务保存于该订阅，邮件复用 Resend 的可靠恢复；每个用户/conflict 只通知一次，重复点击返回既有结果，不重新发邮件。自动发现告警不依赖用户反馈。此支持入口是所有者要求的产品工作，不扩大成通用反馈平台。
-- 改档入口因 `subscription_conflict` 返回 409 时，同时返回当前用户所属、导致阻断的 conflict 的 `subscriptionId`，供 /billing 将其传给上述支持表单；不能用 accepted 订阅 ID 代替。存在多份阻断冲突时，返回其中一份，采用稳定的 Subscription ID 排序选择；支持提交仍须独立核实归属与 conflict 分类。#424 的未挂载组件允许该字段缺失以兼容当前响应，#297 cutover 必须补齐此上下文后再挂载支持表单。此为既有支持入口的数据交接，不改变阻断或支持请求规则。
+- 改档入口因 `subscription_conflict` 返回 409 时，同时返回当前用户所属、导致阻断的 conflict 的 `subscriptionId`，供 /billing 将其传给上述支持表单；不能用 accepted 订阅 ID 代替。存在多份阻断冲突时，返回其中一份，按 Subscription ID 字典序选最小值，且不依赖存储返回顺序：候选只含 open 冲突（即使已结束）及 resolved 但 Stripe 实时仍可计费的冲突。resolved 且实时状态未知的不作候选；没有已知阻断者而存在未知状态时，仍返回可重试错误。删除屏障优先，其 409 不携带 `subscriptionId`；支持提交仍须独立核实归属与 conflict 分类。#424 的未挂载组件允许该字段缺失以兼容当前响应，#297 cutover 必须补齐此上下文后再挂载支持表单。此为既有支持入口的数据交接，不改变阻断或支持请求规则。
 - 沿用 #297 的管理员查询/解决 API 意图，查询订阅冲突与关联 event/delivery，无需建同名表或新增用户端财务操作 UI。解决操作认证、幂等、有非空备注与操作者/时间；`resolved` 仅表示管理员记录调查结果，不自动证明已取消或退款。worker 失败和超期等待可被管理员发现；原始 payload 仅限必要的管理员访问，不写入普通日志。
 
 ## 注销与财务留存
@@ -130,6 +130,8 @@ ADR-064 会在 main 合并后自动部署。#297 的 characterization/fixture �
 - 2026-10-24（#297 round 8）：定义「健康」为 Stripe `active`；其他可计费状态按所有者 round 3「健康订阅可自助改档」与 round 7 (b) 归入受限 Portal 配置，只能补付/换卡/取消，避免续费未付时升档补差无分母。迁移后一次性从 Stripe 回填当前周期旧发放的来源，无法确定时该期升档转人工。
 
 - 2026-10-26（#424 spec round 1）：补齐改档冲突响应到既有 billing-support 表单的所属冲突 ID 交接，避免误用 accepted ID 或无法提交支持请求；保留服务端归属校验与 #297 同次上线边界。
+
+- 2026-10-26（#426 spec round 2）：明确阻断冲突 ID 只在实际阻断候选中按字典序选择，保留未知实时状态的重试语义与删除屏障优先级，补齐 eligibility 到 Portal 响应的数据交接，避免依赖存储顺序或误传非阻断订阅。
 
 ## 参考
 
