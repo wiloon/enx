@@ -44,13 +44,13 @@ jobs:
       # version in step with GOLANGCI_LINT_VERSION in enx-api/Taskfile.yml.
       - uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.14.0
+          version: v2.15.0
           install-mode: goinstall
           working-directory: enx-api
       - name: golangci-lint (integration build tag)
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.14.0
+          version: v2.15.0
           install-mode: goinstall
           working-directory: enx-api
           args: --build-tags=integration
