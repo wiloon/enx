@@ -39,6 +39,7 @@ type Config struct {
 	Admin             Admin             `mapstructure:"admin"`
 	Account           Account           `mapstructure:"account"`
 	SentenceTranslate SentenceTranslate `mapstructure:"sentence-translate"`
+	Billing           Billing           `mapstructure:"billing"`
 	Stripe            Stripe            `mapstructure:"stripe"`
 	AIWord            AIWord            `mapstructure:"ai-word"`
 	Credits           Credits           `mapstructure:"credits"`
@@ -223,6 +224,10 @@ type MiniMax struct {
 type Bedrock struct {
 	Region  string `mapstructure:"region"`
 	ModelID string `mapstructure:"model-id"`
+}
+
+type Billing struct {
+	Cutover bool `mapstructure:"cutover"`
 }
 
 type Stripe struct {
@@ -749,6 +754,7 @@ func defaults() map[string]any {
 
 	// Three subscription tiers (2026-08-26 decision) -- see config.toml's
 	// [stripe.price] comment.
+	set("billing.cutover", false)
 	set("stripe.price.pro", "enx_pro_monthly")
 	set("stripe.price.pro-plus", "enx_pro_plus_monthly")
 	set("stripe.price.max", "enx_max_monthly")
@@ -904,6 +910,7 @@ var envBindings = map[string]string{
 	"sentence-translate.openrouter.model":          "SENTENCE_TRANSLATE_OPENROUTER_MODEL",
 	"sentence-translate.openrouter.rephrase-model": "SENTENCE_TRANSLATE_OPENROUTER_REPHRASE_MODEL",
 
+	"billing.cutover":                           "BILLING_CUTOVER",
 	"stripe.secret-key":                         "STRIPE_SECRET_KEY",
 	"stripe.webhook-secret":                     "STRIPE_WEBHOOK_SECRET",
 	"stripe.portal-configuration-id":            "STRIPE_PORTAL_CONFIGURATION_ID",
