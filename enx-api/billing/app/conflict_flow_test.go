@@ -21,6 +21,90 @@ type recordingMailer struct {
 	mails []alert.Mail
 }
 
+func TestMountedPlanChangeHandsTheSmallestBlockingConflictToSupport(t *testing.T) {
+	r := newRig(t, "topup-only.sql")
+	if err := sqlitex.DB.AutoMigrate(&sqlitex.Referral{}); err != nil {
+		t.Fatal(err)
+	}
+	r.stripe.portalSafe.Store(true)
+	r.start(t)
+	eventually(t, "endpoint discovery", func() bool { return r.a.identity.Endpoint().AccountID != "" })
+	process := func(id, kind, object string) {
+		t.Helper()
+		if code := r.deliver(t, id, kind, object); code != http.StatusOK {
+			t.Fatalf("%s receipt = %d, want 200", id, code)
+		}
+		r.tickers.tick(testPoll)
+		eventually(t, id+" processing", func() bool {
+			status, _ := eventStatus(t, id)
+			return status == "processed"
+		})
+	}
+	// Create the larger conflict first: selection must follow the ID,
+	// rather than discovery order or the accepted subscription pointer.
+	for _, sub := range []string{"sub_recovery", "sub_conflict_a", "sub_conflict"} {
+		process("evt_checkout_"+sub, "checkout.session.completed", `{"object":"checkout.session","id":"cs_`+sub+`","mode":"subscription","client_reference_id":"u_topup","customer":"cus_topup","subscription":"`+sub+`","payment_status":"paid"}`)
+		invoice := strings.NewReplacer("sub_recovery", sub, "in_checkout", "in_"+sub).Replace(paidInvoice)
+		process("evt_invoice_"+sub, "invoice.paid", invoice)
+	}
+	post := func(path, user, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-User", user)
+		rec := httptest.NewRecorder()
+		r.router.ServeHTTP(rec, req)
+		return rec
+	}
+	rec := post("/api/billing/portal/plan-change", "u_topup", `{"tier":"max"}`)
+	var blocked struct {
+		Success        bool
+		Reason         string
+		SubscriptionID string `json:"subscriptionId"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &blocked); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusConflict || blocked.Success || blocked.Reason != "subscription_conflict" || blocked.SubscriptionID != "sub_conflict" {
+		t.Fatalf("plan change = %d: %s, want 409 naming sub_conflict", rec.Code, rec.Body.String())
+	}
+	if n := r.stripe.sessionsMade.Load(); n != 0 {
+		t.Fatalf("blocked plan change created %d Stripe sessions", n)
+	}
+	body := `{"subscriptionId":"` + blocked.SubscriptionID + `","message":"Please help with my subscriptions."}`
+	// The support edge independently checks ownership and classification.
+	if rec := post("/api/billing/support", "another_user", body); rec.Code != http.StatusNotFound {
+		t.Fatalf("another user's support request = %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec := post("/api/billing/support", "u_topup", `{"subscriptionId":"sub_recovery","message":"Help"}`); rec.Code != http.StatusNotFound {
+		t.Fatalf("accepted subscription support = %d: %s", rec.Code, rec.Body.String())
+	}
+	rec = post("/api/billing/support", "u_topup", body)
+	var support struct {
+		Success bool
+		Request struct {
+			Message string
+			SentAt  string
+		} `json:"supportRequest"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &support); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusOK || !support.Success || support.Request.Message != "Please help with my subscriptions." || support.Request.SentAt == "" {
+		t.Fatalf("support handoff = %d: %s", rec.Code, rec.Body.String())
+	}
+	var saved struct {
+		Message string
+		State   string
+	}
+	if err := sqlitex.DB.Raw("SELECT support_message AS message, support_alert_state AS state FROM subscriptions WHERE stripe_subscription_id = ?", blocked.SubscriptionID).Scan(&saved).Error; err != nil {
+		t.Fatal(err)
+	}
+	if saved.Message != support.Request.Message || saved.State != "pending" {
+		t.Fatalf("persisted support = %+v, want submitted message and pending alert", saved)
+	}
+}
+
 func (m *recordingMailer) SendAdminAlert(_ context.Context, subject, text string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -144,6 +144,8 @@ func (f *fakeStripe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"id":"bps_1","object":"billing_portal.session","url":"https://billing.example.test/session"}`))
 	case r.URL.Path == "/v1/subscriptions/sub_recovery":
 		_, _ = w.Write([]byte(`{"id":"sub_recovery","object":"subscription","status":"active"}`))
+	case r.URL.Path == "/v1/subscriptions/sub_conflict_a":
+		_, _ = w.Write([]byte(`{"id":"sub_conflict_a","object":"subscription","status":"active"}`))
 	case r.URL.Path == "/v1/subscriptions/sub_conflict":
 		_, _ = w.Write([]byte(`{"id":"sub_conflict","object":"subscription","status":"active"}`))
 	case strings.HasPrefix(r.URL.Path, "/v1/invoice"):
