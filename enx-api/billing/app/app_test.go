@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -75,46 +74,6 @@ func testDeps(client *stripeSDK.Client) Deps {
 		Now:             time.Now,
 		NewToken:        nextToken,
 	}
-}
-
-// fakeTickers hands out one hand-driven channel per interval and counts the
-// tickers stopped.
-type fakeTickers struct {
-	mu      sync.Mutex
-	chans   map[time.Duration]chan time.Time
-	stopped int
-}
-
-func newFakeTickers() *fakeTickers { return &fakeTickers{chans: map[time.Duration]chan time.Time{}} }
-
-func (f *fakeTickers) Ticker(d time.Duration) (<-chan time.Time, func()) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	ch, ok := f.chans[d]
-	if !ok {
-		ch = make(chan time.Time, 8)
-		f.chans[d] = ch
-	}
-	return ch, func() {
-		f.mu.Lock()
-		f.stopped++
-		f.mu.Unlock()
-	}
-}
-
-func (f *fakeTickers) tick(d time.Duration) {
-	f.mu.Lock()
-	ch, ok := f.chans[d]
-	f.mu.Unlock()
-	if ok {
-		ch <- time.Now()
-	}
-}
-
-func (f *fakeTickers) stoppedCount() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.stopped
 }
 
 func TestNewRejectsLocalMisconfigurationBeforeAnyStripeCall(t *testing.T) {
