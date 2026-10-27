@@ -55,7 +55,7 @@ read_filters() {
   awk -v file="$file" '
     function fail(msg) { print "ci-changed: " file ": " msg > "/dev/stderr"; bad = 1; exit 1 }
     /^on:[ \t]*$/ { in_on = 1; next }
-    in_on && /^[^ \t#]/ { in_on = 0 }
+    in_on && /^[^ \t#]/ { in_on = 0; in_pr = 0; in_paths = 0 }
     in_on && /^  [a-z_]+:/ { in_pr = ($0 ~ /^  pull_request:[ \t]*$/); in_paths = 0; if (in_pr) seen_pr = 1; next }
     in_pr && /^    paths-ignore:/ { fail("paths-ignore is not supported") }
     in_pr && /^    paths:[ \t]*$/ { in_paths = 1; seen_paths = 1; next }
@@ -68,7 +68,7 @@ read_filters() {
       sub(/\047[ \t]*$/, "", pat)
       stripped = pat
       sub(/\/\*\*$/, "", stripped)
-      if (stripped ~ /[*?\[\]!{}]/ || stripped == "") fail("unsupported path pattern: " pat)
+      if (stripped ~ /[*?\[\]!{}+\\]/ || stripped == "") fail("unsupported path pattern: " pat)
       print pat
     }
     END {
