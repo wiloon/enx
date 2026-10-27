@@ -33,8 +33,14 @@ func (SubscriptionSnapshots) Subscription(ctx context.Context, subscriptionID st
 }
 
 // ApplyWebhookEffects is the EffectApplier the webhook event worker's
-// TaskStore commits a handled event's effects with.
+// TaskStore commits a handled event's effects with. It applies a Checkout's
+// first-payment handoff only through WebhookEffects, which carries the
+// referral terms.
 func ApplyWebhookEffects(tx *gorm.DB, scope webhookevent.Scope, effects webhookevent.Effects) error {
+	return WebhookEffects{}.Apply(tx, scope, effects)
+}
+
+func applySnapshotOrClawback(tx *gorm.DB, scope webhookevent.Scope, effects webhookevent.Effects) error {
 	switch e := effects.(type) {
 	case snapshot.Effects:
 		return ApplySnapshot(tx, e)

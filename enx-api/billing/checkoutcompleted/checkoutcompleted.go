@@ -23,6 +23,10 @@ import (
 	"enx-api/referral"
 )
 
+// ErrStale: what Effects.Observed says was read changed before Save, or the
+// top-up was granted meanwhile, so nothing was applied and the worker retries.
+var ErrStale = errors.New("billing/checkoutcompleted: checkout's billing records changed since they were read")
+
 // Reasons this package adds to the ones of the rules it applies.
 const (
 	// ReasonMalformedCheckout: the payload of a supported version is not a
