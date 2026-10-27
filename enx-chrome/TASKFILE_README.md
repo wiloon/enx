@@ -252,11 +252,16 @@ tags get a dev version such as `0.1.2.5` (five commits past the tag);
 
 ## CI/CD
 
+The extension has no `task ci` of its own. From the **repository root** run:
+
 ```bash
-task ci
+task ci:chrome
 ```
 
-Runs the complete CI workflow: install → lint → test → build
+It mirrors `.github/workflows/enx-chrome-ci.yml`: install (frozen lockfile) →
+lint → test → `pnpm build:prod`, under the Node in `.node-version`. To run
+only the checks your committed changes need, commit, `git fetch origin main`,
+then `task ci:changed` (see `docs/TASKFILE_README.md`).
 
 ## Tips
 

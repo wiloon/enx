@@ -39,7 +39,7 @@ These rules hold for all code: enx-api, enx-ui and enx-chrome alike.
 - **One test per behaviour, not per function.** Every behaviour a change adds or alters gets a test that asserts on outputs and visible effects, so a refactor that keeps the behaviour keeps the tests green. Config, build and docs-only changes need none.
 - **Coverage before refactoring.** Measure it first (`go test -cover`, `pnpm test -- --coverage`). Where behaviour is uncovered, write characterization tests that pin today's behaviour, then refactor. Precedent: #22 went in before the ADR-018 deep seam.
 - **jsdom locks logic only.** It has no layout, no painting and no colours. Layout, positioning, overflow, scrollbars, colour and animation need Playwright in a real browser. Where Playwright can't run them, the PR lists manual checks, and your reply says plainly what you did not see in a browser.
-- **Done means:** the sub-project's suite, typecheck, lint and build pass. Every skipped test (e.g. e2e without Clerk credentials) is named in the PR.
+- **Done means:** commit your changes, run `git fetch origin main`, then `task ci:changed` passes. It runs the CI code checks (suite, typecheck, lint, build) of every workflow your committed changes touch; uncommitted files are not considered, and the image builds stay CI-only. Every skipped test (e.g. e2e without Clerk credentials) is named in the PR.
 
 Test types, where tests live, commands and e2e sign-in: [docs/agents/testing.md](docs/agents/testing.md).
 

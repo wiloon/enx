@@ -343,15 +343,6 @@ tasks:
       - echo "1. Go to chrome{{":"}}//extensions"
       - echo "2. Click the reload button on {{.EXT_NAME}}"
 
-  ci:
-    desc: CI/CD workflow (install, lint, test, build)
-    cmds:
-      - task install
-      - task lint
-      - task test
-      - task build
-      - echo "CI workflow completed successfully!"
-
   open-chrome:
     desc: Open Chrome extensions page
     cmds:

@@ -922,7 +922,7 @@ export async function enableLearningMode(page: Page, extensionId: string) {
 - `task setup` - Complete setup (install + build)
 - `task reload` - Rebuild and remind to reload extension
 - `task open-chrome` - Open Chrome extensions page
-- `task ci` - Complete CI/CD workflow
+- `task ci` - Complete CI/CD workflow (removed in #461; run `task ci:chrome` from the repository root, whose build is CI's `build:prod`)
 
 **Benefits**:
 

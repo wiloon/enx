@@ -1,5 +1,7 @@
 name: Copied files
 
+# Local mirror: `task ci:copied-files`. A check added here must be added there too.
+
 # enx-ui keeps copies of a few enx-chrome modules (see
 # .github/scripts/check-copied-files.sh). Runs when either side changes, so an
 # edit to one copy alone fails here instead of drifting.

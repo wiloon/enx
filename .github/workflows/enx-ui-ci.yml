@@ -1,5 +1,7 @@
 name: enx-ui CI
 
+# Local mirror: `task ci:ui`. A check added here must be added there too.
+
 # Builds the enx-ui image exactly as a release does (ADR-055: enx-ui/cnb/
 # build.sh in the builder pinned in enx-ui/cnb/images.conf) and smoke-tests
 # it with runtime env vars only. Nothing is pushed: no registry, no cache,

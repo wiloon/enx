@@ -149,14 +149,38 @@ task mock-api
 
 ### 9. CI/CD
 
+Each `ci:*` task runs the code checks of one CI workflow, in CI's order and
+with CI's flags. A check added to a workflow must be added to its task, and the
+other way round.
+
 ```bash
-# Complete CI workflow (install, lint, test, build)
+# Every CI code check, stopping on the first failure
 task ci
 
-# Individual project CI workflows
-task ci-api
-task ci-chrome
+# One workflow at a time
+task ci:api           # enx-api-ci.yml: vet, test, golangci-lint
+task ci:ui            # enx-ui-ci.yml: install, typecheck, lint, test, plus a local build
+task ci:chrome        # enx-chrome-ci.yml: install, lint, test, build:prod
+task ci:copied-files  # copied-files.yml
+
+# Only the tasks the branch needs: commit, fetch, then select by path filter
+git fetch origin main
+task ci:changed                  # BASE defaults to origin/main
+task ci:changed BASE=origin/main
 ```
+
+- `ci:changed` reads each workflow's `on.pull_request.paths` filter and diffs
+  `BASE...HEAD`. Only **committed** changes count; uncommitted and untracked
+  files are ignored. It does not fetch, so a stale `origin/main` selects from
+  a stale base. It prints BASE, HEAD and their merge-base first.
+- Container image builds (enx-api `build/docker-build.sh`, enx-ui CNB build
+  and smoke test) are CI-only because they need Docker. `ci:ui` runs
+  `pnpm build` as a local stand-in for the compilation inside the image build,
+  not as equivalent coverage (ADR-055, ADR-056).
+- Needs `go`, `fnm` with each project's `.node-version` installed, and
+  Corepack enabled (`corepack enable`) so pnpm matches `packageManager`.
+- The extension has no `task ci` of its own: run `task ci:chrome` from the
+  repository root.
 
 ## How It Works
 
@@ -236,11 +260,9 @@ task test
 task ci
 ```
 
-This will:
-1. Install all dependencies
-2. Lint all code
-3. Run all tests
-4. Build all projects
+This runs `ci:api`, `ci:ui`, `ci:chrome` and `ci:copied-files` in turn and
+stops at the first failure (see section 9). To run only what a branch's
+committed changes need: `git fetch origin main`, then `task ci:changed`.
 
 ### Fresh Start
 

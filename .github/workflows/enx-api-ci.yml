@@ -1,5 +1,7 @@
 name: enx-api CI
 
+# Local mirror: `task ci:api`. A check added here must be added there too.
+
 # Lint and unit tests for enx-api on every PR that touches it, and on main.
 # Integration tests (//go:build integration) are not run here: they need the
 # ECDICT database and a real app database. Run them locally with
