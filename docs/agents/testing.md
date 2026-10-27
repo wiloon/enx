@@ -34,6 +34,8 @@ Each sub-project's `Taskfile.yml` and `package.json` are the source of truth. Th
 
 ## E2E and Clerk sign-in
 
+For enx-chrome server startup failures, read `test-results/servers/*.log`; filter a run with `--reporter=line`.
+
 Signed-in e2e uses Clerk's official testing package, `@clerk/testing`, against the **development** instance (ADR-037): `clerkSetup()` gets a Testing Token that gets past bot detection, and `clerk.signIn()` signs a test user in with a sign-in ticket, skipping the email code. There is no test-only auth bypass in product code, by design (ADR-037 option A, rejected).
 
 - Needs `CLERK_SECRET_KEY` (dev instance, `sk_test_…`; `clerkSetup` refuses a production key) and `E2E_CLERK_USER_EMAIL=e2e+clerk_test@example.com` (already created in the dev instance).
