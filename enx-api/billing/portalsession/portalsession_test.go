@@ -317,6 +317,34 @@ func TestThePlanChangeIsRefusedWhenTheRulesRefuseIt(t *testing.T) {
 	}
 }
 
+func TestABlockedPlanChangeCarriesTheSmallestBlockingSubscriptionIDOnlyForAConflict(t *testing.T) {
+	healthy := map[string]Subscription{"sub_a": on("sub_a", pricePro, active)}
+	conflicted := subscriber(
+		eligibility.Owned{ID: "sub_z", Conflict: eligibility.ConflictOpen, StoredStatus: "active"},
+		eligibility.Owned{ID: "sub_b", Conflict: eligibility.ConflictOpen, StoredStatus: "canceled"},
+	)
+	deleting := conflicted
+	deleting.Deletion = acceptance.DeletionInProgress
+
+	for _, tc := range []struct {
+		name  string
+		owner Owner
+		want  string
+	}{
+		{name: "a conflict names the smallest blocker, not the accepted subscription", owner: conflicted, want: "sub_b"},
+		{name: "deletion takes precedence and names none", owner: deleting, want: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := New(&fakeStore{owner: tc.owner}, &fakeStripe{subs: healthy}, returnURL).PlanChange(context.Background(), "u1", "max")
+
+			var blocked *BlockedError
+			if !errors.As(err, &blocked) || blocked.SubscriptionID != tc.want {
+				t.Fatalf("PlanChange error = %v, want BlockedError with SubscriptionID %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestATierCardOpensThePortalHomeWhileStripeHoldsAChangeOrThePaymentNeedsRecovery(t *testing.T) {
 	for _, tc := range []struct {
 		name       string

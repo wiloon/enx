@@ -55,8 +55,8 @@ func TestPortalSessionOwnersReturnsConflictsOfAnEndedAcceptedSubscriptionForTheC
 			owned := append([]eligibility.Owned(nil), got.Owned...)
 			owned[1].Live = tc.live
 			blocked, err := eligibility.BlockingConflict(owned)
-			if err != nil || !blocked {
-				t.Errorf("BlockingConflict = %v, %v, want blocked", blocked, err)
+			if err != nil || blocked != tc.want.ID {
+				t.Errorf("BlockingConflict = %q, %v, want %q", blocked, err, tc.want.ID)
 			}
 		})
 	}

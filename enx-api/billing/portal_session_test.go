@@ -100,6 +100,8 @@ type sessionResponse struct {
 	Message string `json:"message"`
 	Reason  string `json:"reason"`
 	URL     string `json:"url"`
+	// SubscriptionID is nil when the response omits subscriptionId.
+	SubscriptionID *string `json:"subscriptionId"`
 }
 
 func serveSession(t *testing.T, store *sessionStore, stripe *sessionStripe, path, body string) (int, sessionResponse) {
@@ -248,6 +250,36 @@ func TestARefusedPlanChangeCreatesNoSession(t *testing.T) {
 				t.Errorf("sessions = %+v, want none", stripe.sessions)
 			}
 		})
+	}
+}
+
+func TestASubscriptionConflictRefusalNamesTheBlockingSubscriptionNotTheAcceptedOne(t *testing.T) {
+	owner := proSubscriber(
+		eligibility.Owned{ID: "sub_z", Conflict: eligibility.ConflictOpen, StoredStatus: "active"},
+		eligibility.Owned{ID: "sub_b", Conflict: eligibility.ConflictOpen, StoredStatus: "canceled"},
+	)
+
+	code, resp := serveSession(t, &sessionStore{owner: owner}, &sessionStripe{subs: activePro}, "/api/billing/portal/plan-change", `{"tier":"max"}`)
+
+	if code != http.StatusConflict || resp.Reason != "subscription_conflict" {
+		t.Fatalf("status = %d, %+v; want 409 subscription_conflict", code, resp)
+	}
+	if resp.SubscriptionID == nil || *resp.SubscriptionID != "sub_b" {
+		t.Errorf("subscriptionId = %v, want sub_b", resp.SubscriptionID)
+	}
+}
+
+func TestADeletionRefusalTakesPrecedenceAndOmitsTheSubscriptionID(t *testing.T) {
+	owner := proSubscriber(eligibility.Owned{ID: "sub_b", Conflict: eligibility.ConflictOpen, StoredStatus: "active"})
+	owner.Deletion = acceptance.DeletionInProgress
+
+	code, resp := serveSession(t, &sessionStore{owner: owner}, &sessionStripe{subs: activePro}, "/api/billing/portal/plan-change", `{"tier":"max"}`)
+
+	if code != http.StatusConflict || resp.Reason != "deletion_in_progress" {
+		t.Fatalf("status = %d, %+v; want 409 deletion_in_progress", code, resp)
+	}
+	if resp.SubscriptionID != nil {
+		t.Errorf("subscriptionId = %q, want it omitted", *resp.SubscriptionID)
 	}
 }
 

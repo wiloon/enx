@@ -115,13 +115,13 @@ func TestTierEntry(t *testing.T) {
 		},
 		{
 			name:    "a blocking conflict blocks a plan change",
-			account: Account{BlockingConflict: true, Accepted: accepted("pro", "active")},
+			account: Account{BlockingConflictID: "sub_b", Accepted: accepted("pro", "active")},
 			tier:    "max",
 			want:    Entry{Kind: EntryBlocked, Reason: ReasonSubscriptionConflict},
 		},
 		{
 			name:    "a blocking conflict blocks repurchase after the accepted subscription ended",
-			account: Account{BlockingConflict: true, Accepted: accepted("pro", "canceled")},
+			account: Account{BlockingConflictID: "sub_b", Accepted: accepted("pro", "canceled")},
 			tier:    "pro",
 			want:    Entry{Kind: EntryBlocked, Reason: ReasonSubscriptionConflict},
 		},
@@ -148,7 +148,7 @@ func TestPortalRestricted(t *testing.T) {
 		{name: "an unpaid subscriber gets the restricted configuration", account: Account{Accepted: accepted("pro", "unpaid")}, want: true},
 		{name: "an unrecognized status gets the restricted configuration", account: Account{Accepted: accepted("pro", "paused")}, want: true},
 		{name: "the deletion gate restricts a healthy subscriber", account: Account{Deletion: acceptance.DeletionInProgress, Accepted: accepted("pro", "active")}, want: true},
-		{name: "a blocking conflict restricts a healthy subscriber", account: Account{BlockingConflict: true, Accepted: accepted("pro", "active")}, want: true},
+		{name: "a blocking conflict restricts a healthy subscriber", account: Account{BlockingConflictID: "sub_b", Accepted: accepted("pro", "active")}, want: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -163,16 +163,16 @@ func TestBlockingConflict(t *testing.T) {
 	cases := []struct {
 		name    string
 		owned   []Owned
-		want    bool
+		want    string
 		wantErr error
 	}{
-		{name: "no conflict", owned: []Owned{{ID: "sub_a", Live: live("active")}}, want: false},
-		{name: "an open conflict blocks even after Stripe ended it", owned: []Owned{{ID: "sub_b", Conflict: ConflictOpen, Live: live("canceled")}}, want: true},
-		{name: "an open conflict blocks without a live lookup", owned: []Owned{{ID: "sub_b", Conflict: ConflictOpen}}, want: true},
-		{name: "a resolved conflict still billable blocks", owned: []Owned{{ID: "sub_b", Conflict: ConflictResolved, Live: live("past_due")}}, want: true},
-		{name: "a resolved conflict with a period-end cancellation still blocks while billable", owned: []Owned{{ID: "sub_b", Conflict: ConflictResolved, Live: &Live{Status: "active", CancelAtPeriodEnd: true}}}, want: true},
-		{name: "a resolved conflict Stripe canceled does not block", owned: []Owned{{ID: "sub_b", Conflict: ConflictResolved, Live: live("canceled")}}, want: false},
-		{name: "a resolved conflict stored as canceled does not block", owned: []Owned{{ID: "sub_b", Conflict: ConflictResolved, StoredStatus: "canceled"}}, want: false},
+		{name: "no conflict", owned: []Owned{{ID: "sub_a", Live: live("active")}}, want: ""},
+		{name: "an open conflict blocks even after Stripe ended it", owned: []Owned{{ID: "sub_b", Conflict: ConflictOpen, Live: live("canceled")}}, want: "sub_b"},
+		{name: "an open conflict blocks without a live lookup", owned: []Owned{{ID: "sub_b", Conflict: ConflictOpen}}, want: "sub_b"},
+		{name: "a resolved conflict still billable blocks", owned: []Owned{{ID: "sub_b", Conflict: ConflictResolved, Live: live("past_due")}}, want: "sub_b"},
+		{name: "a resolved conflict with a period-end cancellation still blocks while billable", owned: []Owned{{ID: "sub_b", Conflict: ConflictResolved, Live: &Live{Status: "active", CancelAtPeriodEnd: true}}}, want: "sub_b"},
+		{name: "a resolved conflict Stripe canceled does not block", owned: []Owned{{ID: "sub_b", Conflict: ConflictResolved, Live: live("canceled")}}, want: ""},
+		{name: "a resolved conflict stored as canceled does not block", owned: []Owned{{ID: "sub_b", Conflict: ConflictResolved, StoredStatus: "canceled"}}, want: ""},
 		{name: "a resolved conflict whose live state is unknown fails closed", owned: []Owned{{ID: "sub_b", Conflict: ConflictResolved, StoredStatus: "active"}}, wantErr: ErrLiveStateUnknown},
 		{
 			name: "a known blocking conflict wins over another's unknown state",
@@ -180,7 +180,27 @@ func TestBlockingConflict(t *testing.T) {
 				{ID: "sub_b", Conflict: ConflictResolved, StoredStatus: "active"},
 				{ID: "sub_c", Conflict: ConflictOpen},
 			},
-			want: true,
+			want: "sub_c",
+		},
+		{
+			name: "the smallest blocking ID wins whatever the store order",
+			owned: []Owned{
+				{ID: "sub_z", Conflict: ConflictOpen},
+				{ID: "sub_m", Conflict: ConflictResolved, Live: live("active")},
+				{ID: "sub_c", Conflict: ConflictResolved, Live: live("canceled")},
+				{ID: "sub_d", Conflict: ConflictResolved, StoredStatus: "active"},
+				{ID: "sub_n", Conflict: ConflictOpen, Live: live("canceled")},
+			},
+			want: "sub_m",
+		},
+		{
+			name: "ended, unconflicted and unknown rows are no candidates",
+			owned: []Owned{
+				{ID: "sub_a", Conflict: NoConflict, Live: live("active")},
+				{ID: "sub_b", Conflict: ConflictResolved, Live: live("canceled")},
+				{ID: "sub_c", Conflict: ConflictResolved, StoredStatus: "active"},
+			},
+			wantErr: ErrLiveStateUnknown,
 		},
 	}
 	for _, tc := range cases {
@@ -190,7 +210,7 @@ func TestBlockingConflict(t *testing.T) {
 				t.Fatalf("BlockingConflict error = %v, want %v", err, tc.wantErr)
 			}
 			if got != tc.want {
-				t.Fatalf("BlockingConflict = %v, want %v", got, tc.want)
+				t.Fatalf("BlockingConflict = %q, want %q", got, tc.want)
 			}
 		})
 	}

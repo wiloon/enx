@@ -79,8 +79,12 @@ func portalSessionFailure(c *gin.Context, action, userID string, err error) {
 	case errors.As(err, &blocked) && blocked.Reason == eligibility.ReasonDeletionInProgress:
 		planChangeRefused(c, blocked.Reason, "Your account is being deleted, so your plan can't be changed.")
 	case errors.As(err, &blocked):
-		planChangeRefused(c, eligibility.ReasonSubscriptionConflict,
-			"Your subscription needs an administrator's attention before you can change plans. Contact billing support.")
+		c.JSON(http.StatusConflict, gin.H{
+			"success":        false,
+			"reason":         eligibility.ReasonSubscriptionConflict,
+			"message":        "Your subscription needs an administrator's attention before you can change plans. Contact billing support.",
+			"subscriptionId": blocked.SubscriptionID,
+		})
 	case errors.Is(err, portalsession.ErrNotAPlanChange):
 		planChangeRefused(c, "not_a_plan_change",
 			"There is no plan change to make: you are already on this plan, or you have no active subscription to change.")

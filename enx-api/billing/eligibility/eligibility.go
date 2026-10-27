@@ -115,37 +115,42 @@ func Deletion(owned []Owned) DeletionVerdict {
 	return DeletionAllowed
 }
 
-// BlockingConflict reports whether an owned conflict blocks new Checkout and
-// plan changes: one still open, even after Stripe ended it, or one resolved
-// but still billable in Stripe. A resolution note proves nothing about
-// billing. A resolved conflict whose live state is unknown is
-// ErrLiveStateUnknown, unless another conflict already blocks.
-func BlockingConflict(owned []Owned) (bool, error) {
-	unknown := false
+// BlockingConflict returns the ID of the owned conflict that blocks new
+// Checkout and plan changes, "" when none does. A blocker is one still open,
+// even after Stripe ended it, or one resolved but still billable in Stripe;
+// a resolution note proves nothing about billing. The smallest blocking ID
+// wins, whatever the order of owned. A resolved conflict whose live state is
+// unknown is no candidate: it is ErrLiveStateUnknown, unless another
+// conflict already blocks.
+func BlockingConflict(owned []Owned) (string, error) {
+	blocking, unknown := "", false
 	for _, o := range owned {
+		isBlocker := false
 		switch {
 		case o.Conflict == NoConflict:
 		case o.Conflict == ConflictOpen:
-			return true, nil
+			isBlocker = true
 		case o.Live != nil:
-			if acceptance.Billable(o.Live.Status) {
-				return true, nil
-			}
+			isBlocker = acceptance.Billable(o.Live.Status)
 		case NeedsLiveLookup(o):
 			unknown = true
 		}
+		if isBlocker && (blocking == "" || o.ID < blocking) {
+			blocking = o.ID
+		}
 	}
-	if unknown {
-		return false, ErrLiveStateUnknown
+	if blocking == "" && unknown {
+		return "", ErrLiveStateUnknown
 	}
-	return false, nil
+	return blocking, nil
 }
 
 // Account is what the entry rules need to know about the user.
 type Account struct {
 	Deletion acceptance.Deletion
-	// BlockingConflict is BlockingConflict's answer.
-	BlockingConflict bool
+	// BlockingConflictID is BlockingConflict's answer: the blocking owned
+	// subscription, "" when none blocks.
+	BlockingConflictID string
 	// Accepted is the accepted subscription; nil when there is none. Its
 	// Live state must have been read; a failed lookup is a retryable error
 	// before any entry is decided.
@@ -201,7 +206,7 @@ func TierEntry(a Account, tier string) Entry {
 	switch {
 	case a.Deletion != acceptance.NoDeletion:
 		return Entry{Kind: EntryBlocked, Reason: ReasonDeletionInProgress}
-	case a.BlockingConflict:
+	case a.BlockingConflictID != "":
 		return Entry{Kind: EntryBlocked, Reason: ReasonSubscriptionConflict}
 	case a.Accepted == nil, acceptance.Ended(a.Accepted.Live.Status):
 		return Entry{Kind: EntryCheckout}
@@ -224,7 +229,7 @@ func TierEntry(a Account, tier string) Entry {
 // subscription is neither healthy nor ended.
 func PortalRestricted(a Account) bool {
 	switch {
-	case a.Deletion != acceptance.NoDeletion, a.BlockingConflict:
+	case a.Deletion != acceptance.NoDeletion, a.BlockingConflictID != "":
 		return true
 	case a.Accepted == nil:
 		return false
