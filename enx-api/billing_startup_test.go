@@ -13,9 +13,7 @@ import (
 func TestBillingDatabaseStartupAppliesMigrationsWhenEnabled(t *testing.T) {
 	restoreBillingDatabase(t)
 	path := filepath.Join(t.TempDir(), "billing.db")
-	previous := sqlitex.DB
-	err := initializeBillingDatabase(path, "error", true)
-	closeNewBillingDatabase(t, previous)
+	err := openBillingDatabase(t, func() error { return initializeBillingDatabase(path, "error", true) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,9 +23,7 @@ func TestBillingDatabaseStartupAppliesMigrationsWhenEnabled(t *testing.T) {
 func TestBillingDatabaseStartupLeavesLegacySchemaWhenDisabled(t *testing.T) {
 	restoreBillingDatabase(t)
 	path := filepath.Join(t.TempDir(), "billing.db")
-	previous := sqlitex.DB
-	err := initializeBillingDatabase(path, "error", false)
-	closeNewBillingDatabase(t, previous)
+	err := openBillingDatabase(t, func() error { return initializeBillingDatabase(path, "error", false) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,9 +35,7 @@ func TestBillingDatabaseStartupLeavesLegacySchemaWhenDisabled(t *testing.T) {
 func TestBillingDatabaseStartupMigratesLegacyFixture(t *testing.T) {
 	restoreBillingDatabase(t)
 	path := filepath.Join(t.TempDir(), "legacy.db")
-	previous := sqlitex.DB
-	err := sqlitex.InitWithLogLevel(path, "error")
-	closeNewBillingDatabase(t, previous)
+	err := openBillingDatabase(t, func() error { return sqlitex.InitWithLogLevel(path, "error") })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,9 +44,7 @@ func TestBillingDatabaseStartupMigratesLegacyFixture(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	previous = sqlitex.DB
-	err = initializeBillingDatabase(path, "error", true)
-	closeNewBillingDatabase(t, previous)
+	err = openBillingDatabase(t, func() error { return initializeBillingDatabase(path, "error", true) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,6 +69,14 @@ func restoreBillingDatabase(t *testing.T) {
 	t.Helper()
 	previous := sqlitex.DB
 	t.Cleanup(func() { sqlitex.DB = previous })
+}
+
+func openBillingDatabase(t *testing.T, open func() error) error {
+	t.Helper()
+	previous := sqlitex.DB
+	err := open()
+	closeNewBillingDatabase(t, previous)
+	return err
 }
 
 func closeNewBillingDatabase(t *testing.T, previous *gorm.DB) {
@@ -107,5 +107,4 @@ func assertBillingMigrationOrder(t *testing.T) {
 	if !reflect.DeepEqual(versions, want) {
 		t.Fatalf("migration order = %v, want %v", versions, want)
 	}
-
 }
