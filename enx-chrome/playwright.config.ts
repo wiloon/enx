@@ -16,6 +16,14 @@ process.env.E2E_DB_PATH ??= join(
   'enx.db'
 )
 
+// Keep server logs outside Playwright's per-run artifact cleanup.
+const serverCommand = (name: string, command: string) => {
+  if (process.env.E2E_SERVER_LOGS === '1') return command
+  const log = join(process.cwd(), 'test-results', 'servers', `${name}.log`)
+  const quotedLog = `'${log.replaceAll("'", "'\\''")}'`
+  return `mkdir -p "$(dirname ${quotedLog})" && ( ${command} ) >${quotedLog} 2>&1 || { status=$?; tail -n 50 ${quotedLog} >&2; exit $status; }`
+}
+
 /**
  * Playwright configuration for ENX Chrome Extension E2E tests (ADR-037).
  *
@@ -76,7 +84,7 @@ export default defineConfig({
   ],
 
   // Folder for test artifacts such as screenshots, videos, traces, etc.
-  outputDir: 'test-results/',
+  outputDir: 'test-results/artifacts/',
 
   // Run your local dev server before starting the tests
   webServer: [
@@ -88,7 +96,7 @@ export default defineConfig({
       // pins the repo config: without it viper checks /usr/local/etc/enx/ and
       // ~/.enx/ first, and a stale config there (no [clerk] section) makes
       // every signed-in request fail with 503 "auth service unavailable".
-      command: `cd ../enx-api && ENX_PORT=${new URL(API_ORIGIN).port} ENX_DEV_MODE=true DB_PATH=${process.env.E2E_DB_PATH} ECDICT_DB_PATH=\${ECDICT_DB_PATH:-} go run . -c config.toml`,
+      command: serverCommand('enx-api', `cd ../enx-api && ENX_PORT=${new URL(API_ORIGIN).port} ENX_DEV_MODE=true DB_PATH=${process.env.E2E_DB_PATH} ECDICT_DB_PATH=\${ECDICT_DB_PATH:-} go run . -c config.toml`),
       url: `${API_ORIGIN}/api/version`,
       reuseExistingServer: false,
       timeout: 60000, // `go run` compiles first
@@ -104,7 +112,7 @@ export default defineConfig({
             // own process group, so Playwright's teardown (kill the shell's
             // group) orphaned `next`, which kept the stdio pipes open and
             // hung the run forever after the last test.
-            command: `cd ../enx-ui && API_BASE_URL=${API_ORIGIN} exec ./node_modules/.bin/next dev --turbopack`,
+            command: serverCommand('enx-ui', `cd ../enx-ui && API_BASE_URL=${API_ORIGIN} exec ./node_modules/.bin/next dev --turbopack`),
             url: UI_ORIGIN,
             reuseExistingServer: !process.env.CI,
             timeout: 120000,
