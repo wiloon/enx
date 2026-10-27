@@ -47,6 +47,9 @@ var (
 // (eligibility.ReasonDeletionInProgress or ReasonSubscriptionConflict).
 type BlockedError struct {
 	Reason string
+	// SubscriptionID is the blocking owned conflict's subscription; set only
+	// for ReasonSubscriptionConflict.
+	SubscriptionID string
 }
 
 func (e *BlockedError) Error() string { return ErrBlocked.Error() + ": " + e.Reason }
@@ -168,7 +171,11 @@ func (s *Service) PlanChange(ctx context.Context, userID, tier string) (string, 
 	entry := eligibility.TierEntry(a.account, tier)
 	switch entry.Kind {
 	case eligibility.EntryBlocked:
-		return "", &BlockedError{Reason: entry.Reason}
+		blocked := &BlockedError{Reason: entry.Reason}
+		if entry.Reason == eligibility.ReasonSubscriptionConflict {
+			blocked.SubscriptionID = a.account.BlockingConflictID
+		}
+		return "", blocked
 	case eligibility.EntryCheckout, eligibility.EntryCurrentTier:
 		return "", ErrNotAPlanChange
 	case eligibility.EntryPortalHome:
@@ -233,7 +240,7 @@ func (s *Service) assess(ctx context.Context, owner Owner) (assessment, error) {
 		if err != nil {
 			return a, unavailable(err)
 		}
-		a.account.BlockingConflict = blocking
+		a.account.BlockingConflictID = blocking
 	}
 	if owner.AcceptedID != "" {
 		sub, err := s.stripe.Subscription(ctx, owner.AcceptedID)

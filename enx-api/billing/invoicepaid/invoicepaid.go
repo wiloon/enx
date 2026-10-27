@@ -397,9 +397,11 @@ func (h *Handler) decide(ctx context.Context, incomingID string, owner Owner) (a
 		}
 		owned[i] = s
 	}
-	if o.BlockingConflict, err = eligibility.BlockingConflict(owned); err != nil {
+	blocking, err := eligibility.BlockingConflict(owned)
+	if err != nil {
 		return acceptance.Decision{}, err
 	}
+	o.BlockingConflict = blocking != ""
 	return acceptance.Decide(o), nil
 }
 
