@@ -243,3 +243,40 @@ func TestInitRejectsBillingMigrationsBeforeWriting(t *testing.T) {
 		})
 	}
 }
+
+func TestCutoverInitPreservesMigratedBillingSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "billing.db")
+	if err := InitWithLogLevel(path, "error"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := MigrateWebhookReceipts(DB); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := MigrateSubscriptionOwnership(DB); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := MigrateCreditProvenance(DB); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := MigrateDeletionGates(DB); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"sub_one", "sub_two"} {
+		if err := DB.Exec("INSERT INTO subscriptions (stripe_subscription_id, stripe_customer_id, status, created_at, updated_at) VALUES (?, 'cus_shared', 'active', 1, 1)", id).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := InitForBillingCutover(path, "error"); err != nil {
+		t.Fatal(err)
+	}
+	var count int64
+	if err := DB.Raw("SELECT count(*) FROM subscriptions WHERE stripe_customer_id = 'cus_shared'").Scan(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("got %d subscriptions, want 2", count)
+	}
+	if err := DB.Exec("INSERT INTO subscriptions (stripe_subscription_id, stripe_customer_id, status, created_at, updated_at) VALUES ('sub_three', 'cus_shared', 'active', 1, 1)").Error; err != nil {
+		t.Fatalf("customer must remain non-unique: %v", err)
+	}
+}

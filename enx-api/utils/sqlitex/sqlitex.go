@@ -121,6 +121,16 @@ func InitWithLogLevel(dbPath, level string) error {
 	if err := rejectBillingMigrations(dbPath); err != nil {
 		return err
 	}
+	return initDatabase(dbPath, level)
+}
+
+// InitForBillingCutover opens a database while preserving versioned billing schemas.
+// The caller must run the billing migrations before using the new pipeline.
+func InitForBillingCutover(dbPath, level string) error {
+	return initDatabase(dbPath, level)
+}
+
+func initDatabase(dbPath, level string) error {
 	newLogger := logger.New(
 		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
 		logger.Config{
@@ -198,10 +208,24 @@ func InitWithLogLevel(dbPath, level string) error {
 
 	// Auto-migrate database schema
 	zapLog.Info("running database auto-migration...")
-	err = DB.AutoMigrate(&User{}, &Word{}, &UserDict{}, &Session{}, &SyncState{},
-		&Subscription{}, &CreditAccount{}, &CreditTransaction{}, &LookupEvent{},
+	ownership, err := migrationApplied(DB, SubscriptionOwnershipVersion)
+	if err != nil {
+		return err
+	}
+	provenance, err := migrationApplied(DB, CreditProvenanceVersion)
+	if err != nil {
+		return err
+	}
+	models := []any{&Word{}, &UserDict{}, &Session{}, &SyncState{}, &LookupEvent{},
 		&ReaderDocument{}, &DailyStat{}, &StatsIngestLog{}, &PageReport{}, &SavedPage{},
-		&UserPreference{}, &ActiveUsersDay{}, &ReferralCode{}, &Referral{}, &TrialGrant{})
+		&UserPreference{}, &ActiveUsersDay{}, &ReferralCode{}, &Referral{}, &TrialGrant{}}
+	if !ownership {
+		models = append(models, &User{}, &Subscription{})
+	}
+	if !provenance {
+		models = append(models, &CreditAccount{}, &CreditTransaction{})
+	}
+	err = DB.AutoMigrate(models...)
 	if err != nil {
 		return fmt.Errorf("auto-migrate database: %w", err)
 	}
