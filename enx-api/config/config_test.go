@@ -213,6 +213,7 @@ var envVars = map[string]string{
 	"SENTENCE_TRANSLATE_OPENROUTER_BASE_URL":          "sentence-translate.openrouter.base-url",
 	"SENTENCE_TRANSLATE_OPENROUTER_MODEL":             "sentence-translate.openrouter.model",
 	"SENTENCE_TRANSLATE_OPENROUTER_REPHRASE_MODEL":    "sentence-translate.openrouter.rephrase-model",
+	"BILLING_CUTOVER":                                 "billing.cutover",
 	"STRIPE_SECRET_KEY":                               "stripe.secret-key",
 	"STRIPE_WEBHOOK_SECRET":                           "stripe.webhook-secret",
 	"STRIPE_PORTAL_CONFIGURATION_ID":                  "stripe.portal-configuration-id",
@@ -819,5 +820,16 @@ func TestSecretRevealAndEmpty(t *testing.T) {
 	// An unset secret prints as empty, so "is it configured?" stays readable.
 	if got := fmt.Sprint(Secret("")); got != "" {
 		t.Errorf("empty secret prints as %q, want empty", got)
+	}
+}
+
+func TestBillingCutoverEnvironmentOverride(t *testing.T) {
+	isolate(t)
+	if loadDefaults(t).Billing.Cutover {
+		t.Fatal("cutover defaults to enabled")
+	}
+	t.Setenv("BILLING_CUTOVER", "true")
+	if !loadDefaults(t).Billing.Cutover {
+		t.Fatal("BILLING_CUTOVER did not enable cutover")
 	}
 }
