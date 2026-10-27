@@ -28,6 +28,11 @@ import (
 	"enx-api/referral"
 )
 
+// ErrStale: what Effects.Observed says was read changed before Save, or the
+// invoice's grant was recorded meanwhile, or the owner's deletion began, so
+// nothing was applied and the worker retries.
+var ErrStale = errors.New("billing/invoicepaid: the invoice's billing records changed since they were read")
+
 // Reasons this package adds to the ones of the rules it applies.
 const (
 	// ReasonNotASubscriptionInvoice: a one-off invoice keeps its
