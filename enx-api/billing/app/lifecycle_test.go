@@ -144,6 +144,8 @@ func (f *fakeStripe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"id":"bps_1","object":"billing_portal.session","url":"https://billing.example.test/session"}`))
 	case r.URL.Path == "/v1/subscriptions/sub_recovery":
 		_, _ = w.Write([]byte(`{"id":"sub_recovery","object":"subscription","status":"active"}`))
+	case r.URL.Path == "/v1/subscriptions/sub_conflict":
+		_, _ = w.Write([]byte(`{"id":"sub_conflict","object":"subscription","status":"active"}`))
 	case strings.HasPrefix(r.URL.Path, "/v1/invoice"):
 		if f.invoicesFail.Load() {
 			fail()
@@ -191,11 +193,17 @@ type rig struct {
 
 func newRig(t *testing.T, fixtures ...string) *rig {
 	t.Helper()
+	return newRigWithDeps(t, func(*Deps) {}, fixtures...)
+}
+
+func newRigWithDeps(t *testing.T, configure func(*Deps), fixtures ...string) *rig {
+	t.Helper()
 	newBillingDB(t, fixtures...)
 	r := &rig{stripe: &fakeStripe{}, tickers: newFakeTickers(), reports: &reports{}}
 	d := testDeps(newTestClient(t, r.stripe.ServeHTTP))
 	d.Ticker = r.tickers.Ticker
 	d.Report = r.reports.report
+	configure(&d)
 	a, err := New(d)
 	if err != nil {
 		t.Fatal(err)
