@@ -15,7 +15,7 @@ func TestMigrateBillingCutoverAppliesMigrationsInOrderAndIsIdempotent(t *testing
 	if err := DB.Raw("SELECT version FROM schema_migrations ORDER BY rowid").Scan(&versions).Error; err != nil {
 		t.Fatal(err)
 	}
-	want := []string{WebhookReceiptsVersion, SubscriptionOwnershipVersion, CreditProvenanceVersion, DeletionGatesVersion}
+	want := billingMigrationVersions
 	if !reflect.DeepEqual(versions, want) {
 		t.Fatalf("migration order = %v, want %v", versions, want)
 	}

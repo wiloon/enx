@@ -124,8 +124,11 @@ func InitWithLogLevel(dbPath, level string) error {
 	return initDatabase(dbPath, level)
 }
 
-// InitForBillingCutover opens a database while preserving versioned billing schemas.
-// The caller must run the billing migrations before using the new pipeline.
+// InitForBillingCutover skips the legacy startup reject guard to preserve
+// versioned billing schemas (ADR-067 §部署边界). On fresh or legacy databases
+// it still creates the legacy subscriptions table until
+// MigrateSubscriptionOwnership rebuilds it. The caller must run the billing
+// migrations before using the new pipeline.
 func InitForBillingCutover(dbPath, level string) error {
 	return initDatabase(dbPath, level)
 }
@@ -417,6 +420,8 @@ func migrateWordsEnglishNoCase() error {
 
 // rejectBillingMigrations checks the existing database without writing before
 // legacy startup opens it with WAL or runs any migrations.
+// Old callers cannot use the migrated schema, and migrated data cannot be
+// rolled back to the old binary (ADR-067 §部署边界; #297 §Existing-data migration).
 func rejectBillingMigrations(path string) error {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil
@@ -437,7 +442,7 @@ func rejectBillingMigrations(path string) error {
 		return fmt.Errorf("inspect billing schema: %w", err)
 	}
 	defer func() { _ = sqlDB.Close() }()
-	for _, version := range []string{WebhookReceiptsVersion, SubscriptionOwnershipVersion, CreditProvenanceVersion, DeletionGatesVersion} {
+	for _, version := range billingMigrationVersions {
 		applied, err := migrationApplied(db, version)
 		if err != nil {
 			return fmt.Errorf("inspect billing schema: %w", err)

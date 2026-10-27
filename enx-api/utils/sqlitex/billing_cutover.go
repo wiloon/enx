@@ -2,7 +2,10 @@ package sqlitex
 
 import "gorm.io/gorm"
 
-// MigrateBillingCutover applies the ADR-067 migrations in deployment order.
+var billingMigrationVersions = []string{WebhookReceiptsVersion, SubscriptionOwnershipVersion, CreditProvenanceVersion, DeletionGatesVersion}
+
+// MigrateBillingCutover applies the migrations in the deployment order specified
+// by ADR-067 §部署边界 and #297 §Existing-data migration.
 // Each migration records its own completion and can be safely retried.
 func MigrateBillingCutover(db *gorm.DB) error {
 	if _, err := MigrateWebhookReceipts(db); err != nil {

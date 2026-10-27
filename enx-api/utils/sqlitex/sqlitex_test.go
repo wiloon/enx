@@ -206,7 +206,7 @@ func TestSQLLogLevel(t *testing.T) {
 }
 
 func TestInitRejectsBillingMigrationsBeforeWriting(t *testing.T) {
-	for _, version := range []string{WebhookReceiptsVersion, SubscriptionOwnershipVersion, CreditProvenanceVersion, DeletionGatesVersion} {
+	for _, version := range billingMigrationVersions {
 		t.Run(version, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "migrated.db")
 			db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
