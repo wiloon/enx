@@ -530,10 +530,11 @@ tasks:
       - task: ci:copied-files
 
   ci:changed:
-    desc: "Run only the ci:* tasks whose workflow path filter matches the COMMITTED changes in BASE...HEAD (usage - task ci:changed [BASE=origin/main]). Uncommitted and untracked files are ignored; run `git fetch origin main` first, this task does not fetch"
+    desc: "Run only the ci:* tasks whose workflow path filter matches the COMMITTED changes in BASE...HEAD (usage - task ci:changed [BASE=origin/main] [DRY_RUN=1 to only print the selection]). Uncommitted and untracked files are ignored; run `git fetch origin main` first, this task does not fetch"
     silent: true
     env:
       CI_BASE: '{{.BASE | default "origin/main"}}'
+      CI_DRY_RUN: '{{.DRY_RUN | default "0"}}'
     cmds:
       - bash .github/scripts/ci-changed.sh "$CI_BASE"
 

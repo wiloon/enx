@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Runs the root Taskfile's ci:* tasks whose workflow path filter matches the
 # files changed between BASE and HEAD (usage: ci-changed.sh [BASE], default
-# origin/main). `task ci:changed BASE=<ref>` calls it.
+# origin/main). `task ci:changed BASE=<ref>` calls it. With CI_DRY_RUN=1
+# (`task ci:changed DRY_RUN=1`) it prints the selection and runs nothing.
 #
 # Only committed changes count: the diff is `git diff --name-only BASE...HEAD`,
 # so uncommitted and untracked files are ignored. It does not fetch; run
@@ -12,8 +13,7 @@
 # syntax is what the workflows use today: exact paths and `dir/**`, as
 # single-quoted list items. Anything else fails instead of selecting nothing.
 #
-# CI_TASK_CMD overrides the `task` command used to run a selected task (the
-# selection tests stub it). Needs git, bash and awk; no yq.
+# Needs git, bash and awk; no yq.
 set -euo pipefail
 
 # "task workflow" pairs, in the order the tasks run.
@@ -31,8 +31,8 @@ die() {
 
 cd "$(dirname "$0")/../.."
 
+dry_run="${CI_DRY_RUN:-0}"
 base="${1:-origin/main}"
-task_cmd="${CI_TASK_CMD:-task}"
 
 base_id=$(git rev-parse --verify --quiet "${base}^{commit}") ||
   die "cannot resolve BASE '$base'. Fetch it first (git fetch origin main) or pass an existing ref."
@@ -110,7 +110,12 @@ if [ ${#selected[@]} -eq 0 ]; then
   exit 0
 fi
 
+if [ "$dry_run" = 1 ]; then
+  echo "Dry run: ${selected[*]} not run."
+  exit 0
+fi
+
 for task in "${selected[@]}"; do
   echo "==> $task"
-  $task_cmd "$task"
+  task "$task"
 done
