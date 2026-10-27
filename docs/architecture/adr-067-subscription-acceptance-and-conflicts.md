@@ -64,6 +64,8 @@ worker 的可调正 duration 默认值在 #297 明确为 `stripe.webhook.poll-in
 
 ## 用户关联与乱序恢复
 
+- Checkout 的可信关联从已处理的 `checkout.session.completed` event 的 first delivery 原始 payload 中读取 `client_reference_id`，按 `first_received_at`、`event_id` 取最早一条；不新增关联列，event 完成与关联效果同事务提交。只有关联、尚无订阅快照时，新建行保存真实 Subscription ID 与 payload 的 Customer ID，`user_id = NULL`、`classification` 为空、`status = none`，其余字段沿用 schema 默认值（包括初始 `version = 1`）；`none` 仅表示尚未读取 Stripe 状态，不授予权益或占用 accepted 指针，后续 invoice/订阅事件再完成归属和分类。
+
 - 服务端创建订阅 Checkout 时同时写 `client_reference_id = users.id` 与 `subscription_data.metadata.enx_user_id = users.id`。前者关联 Checkout Session，后者写入 Subscription；普通 Session metadata 不会自动复制。订阅事件读取对象 metadata，订阅发票按事件 API 版本读取订阅 metadata 快照或通过关联对象取得。退款等事件不保证直接携带用户 ID，仍需按已有业务标识查询。两处用户标识矛盾时转人工，不能覆盖归属。
 - 对已有订阅、缺 metadata 或 invoice-before-checkout 的事件，用可信 Checkout 关联/已有记录恢复；暂时缺失进入 `waiting_dependency`，不因本地查不到订阅立即认定冲突或永久放弃正常付款。较晚 Checkout/订阅关联建立后恢复同一订阅的事件，并重新验证原子接受结果。metadata 只解决身份，不绕过竞争订阅判定。
 - 无法恢复可信关联的 invoice（包括 Stripe 已结束订阅的正金额/零金额 paid invoice）持久进入 `needs_attention`，可靠邮件通知管理员，不自动发新积分或邀请奖励。已知历史 accepted 的合法付款沿用现有权益规则，不因当前指针变化被当成未知；晚到的旧状态/周期事件不得覆盖新订阅或将当前积分周期回退。未知 ended 的非付款事件也保留处理结果与原因，不静默丢弃。

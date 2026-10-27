@@ -44,13 +44,24 @@ func (ReferralCodes) Insert(ctx context.Context, userID, code string, at time.Ti
 }
 
 // Referrals is referral.ReferralRepo over referrals (ADR-051).
-type Referrals struct{}
+type Referrals struct {
+	// tx, when set, is the transaction Get and RecordFirstPayment run in
+	// (the webhook effects' first-payment handoff); otherwise the shared DB.
+	tx *gorm.DB
+}
 
 var _ referral.ReferralRepo = Referrals{}
 
-func (Referrals) Get(ctx context.Context, inviteeID string) (referral.Referral, bool, error) {
+func (r Referrals) conn(ctx context.Context) *gorm.DB {
+	if r.tx != nil {
+		return r.tx.WithContext(ctx)
+	}
+	return sqlitex.DB.WithContext(ctx)
+}
+
+func (r Referrals) Get(ctx context.Context, inviteeID string) (referral.Referral, bool, error) {
 	var row sqlitex.Referral
-	err := sqlitex.DB.WithContext(ctx).Where("invitee_user_id = ?", inviteeID).First(&row).Error
+	err := r.conn(ctx).Where("invitee_user_id = ?", inviteeID).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return referral.Referral{}, false, nil
 	}
@@ -85,7 +96,7 @@ func (Referrals) ByReferrer(ctx context.Context, referrerID string) ([]referral.
 
 // RecordFirstPayment writes only to a row with no first payment yet, so of a
 // renewal, a replay or two racing webhooks only the first one lands.
-func (Referrals) RecordFirstPayment(ctx context.Context, inviteeID string, p referral.FirstPayment, reward referral.Reward) (bool, error) {
+func (r Referrals) RecordFirstPayment(ctx context.Context, inviteeID string, p referral.FirstPayment, reward referral.Reward) (bool, error) {
 	updates := map[string]any{
 		"first_payment_kind":       string(p.Kind),
 		"first_payment_intent_id":  nullable(p.PaymentIntentID),
@@ -99,7 +110,7 @@ func (Referrals) RecordFirstPayment(ctx context.Context, inviteeID string, p ref
 	if !reward.DueAt.IsZero() {
 		updates["reward_due_at"] = reward.DueAt.UnixMilli()
 	}
-	res := sqlitex.DB.WithContext(ctx).Model(&sqlitex.Referral{}).
+	res := r.conn(ctx).Model(&sqlitex.Referral{}).
 		Where("invitee_user_id = ? AND first_payment_kind IS NULL", inviteeID).
 		Updates(updates)
 	return res.RowsAffected == 1, res.Error
