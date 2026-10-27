@@ -1,0 +1,394 @@
+//go:build integration
+
+package app
+
+import (
+	"bytes"
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"enx-api/utils/sqlitex"
+
+	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
+	"github.com/stripe/stripe-go/v86/webhook"
+	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
+)
+
+// newBillingDB opens a temporary database as the cutover leaves it, with the
+// rows of the named testdata/billing-legacy fixtures, and makes it the
+// package-wide one.
+func newBillingDB(t *testing.T, fixtures ...string) {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "enx.db")), &gorm.Config{
+		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	for _, name := range append([]string{"schema.sql"}, fixtures...) {
+		raw, err := os.ReadFile(filepath.Join("../../testdata/billing-legacy", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var lines []string
+		for _, line := range strings.Split(string(raw), "\n") {
+			if !strings.HasPrefix(strings.TrimSpace(line), "--") {
+				lines = append(lines, line)
+			}
+		}
+		for _, stmt := range strings.Split(strings.Join(lines, "\n"), ";") {
+			if stmt = strings.TrimSpace(stmt); stmt != "" {
+				if err := db.Exec(stmt).Error; err != nil {
+					t.Fatalf("legacy %s: %v", name, err)
+				}
+			}
+		}
+	}
+	if _, err := sqlitex.MigrateSubscriptionOwnership(db); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sqlitex.MigrateWebhookReceipts(db); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sqlitex.MigrateCreditProvenance(db); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sqlitex.MigrateDeletionGates(db); err != nil {
+		t.Fatal(err)
+	}
+	prev := sqlitex.DB
+	sqlitex.DB = db
+	t.Cleanup(func() { sqlitex.DB = prev })
+}
+
+// fakeStripe is the Stripe API as the startup sequence sees it; each flag
+// makes one part of it fail.
+type fakeStripe struct {
+	accountFails atomic.Bool
+	pricesFail   atomic.Bool
+	invoicesFail atomic.Bool
+	accountCalls atomic.Int64
+	sessionsMade atomic.Int64
+}
+
+func (f *fakeStripe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	fail := func() {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":{"message":"down"}}`))
+	}
+	switch {
+	case r.URL.Path == "/v1/account":
+		f.accountCalls.Add(1)
+		if f.accountFails.Load() {
+			fail()
+			return
+		}
+		_, _ = w.Write([]byte(`{"id":"acct_1","object":"account"}`))
+	case r.URL.Path == "/v1/prices":
+		if f.pricesFail.Load() {
+			fail()
+			return
+		}
+		key := r.URL.Query().Get("lookup_keys[0]")
+		_, _ = w.Write([]byte(`{"object":"list","url":"/v1/prices","has_more":false,"data":[{"id":"price_` + key + `","object":"price"}]}`))
+	case strings.HasPrefix(r.URL.Path, "/v1/billing_portal/configurations"):
+		fail()
+	case strings.HasPrefix(r.URL.Path, "/v1/billing_portal/sessions"):
+		f.sessionsMade.Add(1)
+		fail()
+	case strings.HasPrefix(r.URL.Path, "/v1/invoice"):
+		if f.invoicesFail.Load() {
+			fail()
+			return
+		}
+		_, _ = w.Write([]byte(`{"object":"list","url":"` + r.URL.Path + `","has_more":false,"data":[]}`))
+	default:
+		fail()
+	}
+}
+
+type reports struct {
+	mu    sync.Mutex
+	steps []string
+}
+
+func (r *reports) report(step string, _ error) {
+	r.mu.Lock()
+	r.steps = append(r.steps, step)
+	r.mu.Unlock()
+}
+
+func (r *reports) count(step string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, s := range r.steps {
+		if s == step {
+			n++
+		}
+	}
+	return n
+}
+
+// rig is a started assembly over fake Stripe, a fake clock-less ticker set and a
+// migrated database.
+type rig struct {
+	stripe  *fakeStripe
+	tickers *fakeTickers
+	reports *reports
+	a       *Assembly
+	router  *gin.Engine
+	cancel  context.CancelFunc
+}
+
+func newRig(t *testing.T, fixtures ...string) *rig {
+	t.Helper()
+	newBillingDB(t, fixtures...)
+	r := &rig{stripe: &fakeStripe{}, tickers: newFakeTickers(), reports: &reports{}}
+	d := testDeps(newTestClient(t, r.stripe.ServeHTTP))
+	d.Ticker = r.tickers.Ticker
+	d.Report = r.reports.report
+	a, err := New(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.a = a
+	gin.SetMode(gin.TestMode)
+	r.router = gin.New()
+	api := r.router.Group("/api", func(c *gin.Context) { c.Set("user_id", c.GetHeader("X-User")) })
+	admin := api.Group("/admin", func(c *gin.Context) {
+		if c.GetHeader("X-Admin") == "" {
+			c.AbortWithStatus(http.StatusForbidden)
+		}
+	})
+	a.Mount(api, admin, r.router)
+	return r
+}
+
+func (r *rig) start(t *testing.T) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	r.cancel = cancel
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-r.a.Done():
+		case <-time.After(5 * time.Second):
+			t.Error("the assembly's goroutines did not stop")
+		}
+	})
+	begun := time.Now()
+	if err := r.a.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(begun) > time.Second {
+		t.Errorf("Start took %v, want it to return promptly", time.Since(begun))
+	}
+}
+
+// deliver posts a signed event and returns the HTTP status.
+func (r *rig) deliver(t *testing.T, eventID, eventType, object string) int {
+	t.Helper()
+	payload := `{"id":"` + eventID + `","object":"event","type":"` + eventType + `","created":1790000000,` +
+		`"api_version":"2026-08-26.dahlia","livemode":false,"data":{"object":` + object + `}}`
+	signed := webhook.GenerateTestSignedPayload(&webhook.UnsignedPayload{
+		Payload: []byte(payload), Secret: testWebhookSecre, Timestamp: time.Now(),
+	})
+	req := httptest.NewRequest(http.MethodPost, "/billing/webhook", bytes.NewReader(signed.Payload))
+	req.Header.Set("Stripe-Signature", signed.Header)
+	rec := httptest.NewRecorder()
+	r.router.ServeHTTP(rec, req)
+	return rec.Code
+}
+
+func eventStatus(t *testing.T, eventID string) (status string, attempts int64) {
+	t.Helper()
+	var row struct {
+		Status   string
+		Attempts int64
+	}
+	if err := sqlitex.DB.Raw("SELECT status, attempts FROM stripe_webhook_events WHERE event_id = ?", eventID).Scan(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	return row.Status, row.Attempts
+}
+
+func countRows(t *testing.T, table string) int64 {
+	t.Helper()
+	var n int64
+	if err := sqlitex.DB.Raw("SELECT count(*) FROM " + table).Scan(&n).Error; err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func eventually(t *testing.T, what string, ok func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if ok() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", what)
+}
+
+const ignorableObject = `{"object":"customer","id":"cus_1"}`
+
+func TestReceiptAnswers503UntilDiscoverySucceedsOnARetryTick(t *testing.T) {
+	r := newRig(t)
+	r.stripe.accountFails.Store(true)
+	r.start(t)
+	eventually(t, "the first discovery attempt", func() bool { return r.reports.count("endpoint discovery") >= 1 })
+
+	if code := r.deliver(t, "evt_early", "customer.created", ignorableObject); code != http.StatusServiceUnavailable {
+		t.Fatalf("receipt before discovery = %d, want 503", code)
+	}
+	if n := countRows(t, "stripe_webhook_deliveries") + countRows(t, "stripe_webhook_events"); n != 0 {
+		t.Fatalf("%d rows written before discovery, want none", n)
+	}
+
+	r.stripe.accountFails.Store(false)
+	r.tickers.tick(testPoll)
+	eventually(t, "receipt to accept a delivery", func() bool {
+		return r.deliver(t, "evt_late", "customer.created", ignorableObject) == http.StatusOK
+	})
+	if n := countRows(t, "stripe_webhook_deliveries"); n < 1 {
+		t.Errorf("deliveries = %d, want at least 1", n)
+	}
+}
+
+func TestATierPriceFailureLeavesTheWorkerStoppedUntilRecovery(t *testing.T) {
+	r := newRig(t)
+	r.stripe.pricesFail.Store(true)
+	r.start(t)
+	eventually(t, "the failed price resolution report", func() bool { return r.reports.count("tier price resolution") >= 1 })
+
+	if code := r.deliver(t, "evt_queued", "customer.created", ignorableObject); code != http.StatusOK {
+		t.Fatalf("receipt with prices unresolved = %d, want 200", code)
+	}
+	if status, attempts := eventStatus(t, "evt_queued"); status != "pending" || attempts != 0 {
+		t.Fatalf("queued event = %s/%d, want untouched pending/0", status, attempts)
+	}
+
+	r.stripe.pricesFail.Store(false)
+	r.tickers.tick(testPoll)
+	eventually(t, "the worker to process the queued event", func() bool {
+		status, _ := eventStatus(t, "evt_queued")
+		return status == "ignored"
+	})
+}
+
+func TestAnUnsafePortalIsReportedWhileReceiptAndWorkerProceed(t *testing.T) {
+	r := newRig(t)
+	// The fake serves no Portal configuration, which the check must report.
+	r.start(t)
+	eventually(t, "the portal report", func() bool { return r.reports.count("portal plan-change configuration") >= 1 })
+
+	if code := r.deliver(t, "evt_ok", "customer.created", ignorableObject); code != http.StatusOK {
+		t.Fatalf("receipt = %d, want 200", code)
+	}
+	r.tickers.tick(testPoll)
+	eventually(t, "the worker to process the event", func() bool {
+		status, _ := eventStatus(t, "evt_ok")
+		return status == "ignored"
+	})
+	if n := r.stripe.sessionsMade.Load(); n != 0 {
+		t.Errorf("%d Portal sessions created, want 0", n)
+	}
+}
+
+func TestABackfillFailureGatesInvoicesWhileOtherEventsProgressUntilARetryTickSucceeds(t *testing.T) {
+	// subscribed.sql leaves one legacy grant without provenance.
+	r := newRig(t, "subscribed.sql")
+	r.stripe.invoicesFail.Store(true)
+	r.start(t)
+	eventually(t, "the failed backfill report", func() bool { return r.reports.count("legacy provenance backfill") >= 1 })
+
+	if code := r.deliver(t, "evt_inv", "invoice.paid", `{"object":"invoice","id":"in_1","customer":"cus_subscribed","parent":{"subscription_details":{"subscription":"sub_subscribed"}}}`); code != http.StatusOK {
+		t.Fatalf("invoice receipt = %d", code)
+	}
+	if code := r.deliver(t, "evt_other", "customer.created", ignorableObject); code != http.StatusOK {
+		t.Fatalf("other receipt = %d", code)
+	}
+	r.tickers.tick(testPoll)
+	eventually(t, "the other event to progress", func() bool {
+		status, _ := eventStatus(t, "evt_other")
+		return status == "ignored"
+	})
+	if status, attempts := eventStatus(t, "evt_inv"); status != "pending" || attempts != 0 {
+		t.Fatalf("gated invoice = %s/%d, want untouched pending/0", status, attempts)
+	}
+
+	r.stripe.invoicesFail.Store(false)
+	r.tickers.tick(testPoll)
+	eventually(t, "the backfill marker and the invoice to be claimed", func() bool {
+		_, attempts := eventStatus(t, "evt_inv")
+		return attempts > 0
+	})
+}
+
+func TestCancellationStopsEveryGoroutineAndTicker(t *testing.T) {
+	r := newRig(t)
+	r.start(t)
+	eventually(t, "the startup sequence", func() bool { return r.a.identity.Endpoint().AccountID != "" })
+
+	r.cancel()
+	select {
+	case <-r.a.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("goroutines still running after cancellation")
+	}
+	if n := r.tickers.stoppedCount(); n != 2 {
+		t.Errorf("stopped tickers = %d, want the poll and the notifier ticker", n)
+	}
+}
+
+func TestStartRunsOnce(t *testing.T) {
+	r := newRig(t)
+	r.start(t)
+	if err := r.a.Start(context.Background()); err == nil {
+		t.Fatal("second Start succeeded, want an error")
+	}
+}
+
+func TestMountedAdminRoutesServeAnAdminAndRefuseAnyoneElse(t *testing.T) {
+	r := newRig(t, "subscribed.sql")
+	r.start(t)
+	eventually(t, "endpoint discovery", func() bool { return r.a.identity.Endpoint().AccountID != "" })
+	get := func(path string, headers map[string]string) int {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		rec := httptest.NewRecorder()
+		r.router.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	for _, path := range []string{"/api/admin/subscription-conflicts", "/api/admin/webhook-events"} {
+		if code := get(path, map[string]string{"X-User": "u1", "X-Admin": "1"}); code != http.StatusOK {
+			t.Errorf("GET %s as admin = %d, want 200", path, code)
+		}
+		if code := get(path, map[string]string{"X-User": "u1"}); code != http.StatusForbidden {
+			t.Errorf("GET %s as non-admin = %d, want 403", path, code)
+		}
+	}
+}
