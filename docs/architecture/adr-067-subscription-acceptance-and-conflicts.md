@@ -80,6 +80,8 @@ worker 的可调正 duration 默认值在 #297 明确为 `stripe.webhook.poll-in
 - 当前代码在 `subscriptions` 中还保存仅充值用户的 Customer 映射（Subscription ID 为空），实际充值流水与余额在 `credit_transactions` 和 `credit_accounts`。改主键前把所有 Customer 归属迁入独立 `stripe_customers` 关系，一份 Customer 一行，以本地用户身份关联；一人可以有多个 Stripe Customer，不把 Customer 唯一到一人只能一条。
 - 无 live accepted 时可使用用户正常的 Customer 关联；有 live accepted 时 Portal 与后续 Checkout 优先使用该订阅的 Customer。充值完成只补充 Customer 归属，不覆盖 live accepted 的 Customer。并发操作和迁移都保留此规则。
 - 只有真实 Subscription ID 的旧行迁入新 `subscriptions`，不为仅充值用户虚构订阅。迁移保留全部充值余额、原积分流水、Event ID/PaymentIntent ID 及退款关联。原子、可重复的数据库迁移取代仅靠 AutoMigrate 改主键；迁移边界和演练在 #297，不在运行中直接删旧表试错。
+- 所有者在 #426 round 2 答复中选择 A：cutover 前已发放的一次性充值不由新路径按 Checkout Session 去重。旧 `GRANT_TOPUP` 只有 Event ID/PaymentIntent ID，没有持久 webhook event/Checkout Session 关联；保留原流水和 Event ID 唯一性，接受以不同 Event ID 人工重放旧充值时可能再次发放。迁移不新增 Checkout Session 列或索引，不从 Stripe 恢复旧关联，也不为旧重放新增人工处理路径。所有者确认生产没有真实用户或订阅，只有测试用户的一次已发放充值，cutover 前也不预期有真实用户；旧 webhook 已返回 2xx，风险限于人工重发给测试账户重复发放。
+- 上述例外仅适用于 cutover 前的旧充值。cutover 后同一 Checkout Session 无论 Event ID 如何都至多发放一次：在所配置 endpoint account/mode 内，以 `stripe_webhook_events.checkout_session_id` 查 event，并以 event ID 关联 `credit_transactions.stripe_event_id` 的 `GRANT_TOPUP`。effects/task 同一事务中再次检查该业务键，发放时即使 Customer 归属未变也须从 `Effects.Observed.Revision` 条件递增付款用户的 `billing_version`；版本过期不提交效果或任务完成并重试。事务内重查还覆盖重复查询后、读取 Owner 前另一发放已提交的竞态，不能只靠版本栅栏；保留 Event ID 唯一性。
 - 旧 `GRANT_SUBSCRIPTION` 流水没有 Subscription ID、invoice 与周期起点，升档补差分母找不到同期正常发放。数据库迁移本身不调用 Stripe；迁移后、worker 处理订阅发票前，一次性、可重复的回填任务为每份迁入的真实订阅中「当前积分池来自旧流水」的那条发放，经其 PaymentIntent（零金额时经该订阅 period end 等于 `credit_accounts.period_end` 的 paid invoice）从 Stripe 读取 invoice，取 recurring line 的周期，仅当周期 end 等于 `credit_accounts.period_end` 时补记来源（Subscription ID、invoice、周期起止），不改金额、余额或流水。回填失败可重试；Stripe 无法唯一确定时不猜，标为无来源旧发放，该期升档发票直接 needs_attention（reason `legacy_grant_without_period`）并可靠告警。更早的旧流水不回填，只作历史/退款审计。生产尚未开放内测，影响限于 sandbox/homelab 数据。
 
 ## 管理员处理与邮件
@@ -87,7 +89,7 @@ worker 的可调正 duration 默认值在 #297 明确为 `stripe.webhook.poll-in
 - 系统自动记录、通知；取消竞争订阅、调查原始 Stripe 数据和退款由管理员手动执行。冲突与持续无法关联的事件有可查询的持久人工事项；普通重复投递不重复产生事项/告警。event 告警与 subscription conflict 告警都走同一启动/每小时恢复驱动，管理员重试不重发已确认告警。
 - 使用现有邮件服务的可靠 adapter，pending 状态与异常分类同事务保存；API key、sender、管理员收件人缺失或提供方失败都记错误并重试。worker 启动和每小时处理待发邮件，有发送超时、到期领取、尝试次数/最后错误；仅提供方确认成功标记 sent。发送后确认前崩溃允许少量重复，日常 webhook 重放不刷邮件；解决异常不丢待发告警。
 - 现有 `/api/page-reports` 要求页面 URL，不是任意账务反馈。阻断的 `/billing` 提供 billing-support 表单；新增认证的 `POST /api/billing/support` 只接受当前用户所属 conflict、非空至多 2000 字符消息。首条消息/时间与独立的 support 告警 pending 状态同事务保存于该订阅，邮件复用 Resend 的可靠恢复；每个用户/conflict 只通知一次，重复点击返回既有结果，不重新发邮件。自动发现告警不依赖用户反馈。此支持入口是所有者要求的产品工作，不扩大成通用反馈平台。
-- 改档入口因 `subscription_conflict` 返回 409 时，同时返回当前用户所属、导致阻断的 conflict 的 `subscriptionId`，供 /billing 将其传给上述支持表单；不能用 accepted 订阅 ID 代替。存在多份阻断冲突时，返回其中一份，采用稳定的 Subscription ID 排序选择；支持提交仍须独立核实归属与 conflict 分类。#424 的未挂载组件允许该字段缺失以兼容当前响应，#297 cutover 必须补齐此上下文后再挂载支持表单。此为既有支持入口的数据交接，不改变阻断或支持请求规则。
+- 改档入口因 `subscription_conflict` 返回 409 时，同时返回当前用户所属、导致阻断的 conflict 的 `subscriptionId`，供 /billing 将其传给上述支持表单；不能用 accepted 订阅 ID 代替。存在多份阻断冲突时，返回其中一份，按 Subscription ID 字典序选最小值，且不依赖存储返回顺序：候选只含 open 冲突（即使已结束）及 resolved 但 Stripe 实时仍可计费的冲突。resolved 且实时状态未知的不作候选；没有已知阻断者而存在未知状态时，仍返回可重试错误。删除屏障优先，其 409 不携带 `subscriptionId`；支持提交仍须独立核实归属与 conflict 分类。#424 的未挂载组件允许该字段缺失以兼容当前响应，#297 cutover 必须补齐此上下文后再挂载支持表单。此为既有支持入口的数据交接，不改变阻断或支持请求规则。
 - 沿用 #297 的管理员查询/解决 API 意图，查询订阅冲突与关联 event/delivery，无需建同名表或新增用户端财务操作 UI。解决操作认证、幂等、有非空备注与操作者/时间；`resolved` 仅表示管理员记录调查结果，不自动证明已取消或退款。worker 失败和超期等待可被管理员发现；原始 payload 仅限必要的管理员访问，不写入普通日志。
 
 ## 注销与财务留存
@@ -130,6 +132,10 @@ ADR-064 会在 main 合并后自动部署。#297 的 characterization/fixture �
 - 2026-10-24（#297 round 8）：定义「健康」为 Stripe `active`；其他可计费状态按所有者 round 3「健康订阅可自助改档」与 round 7 (b) 归入受限 Portal 配置，只能补付/换卡/取消，避免续费未付时升档补差无分母。迁移后一次性从 Stripe 回填当前周期旧发放的来源，无法确定时该期升档转人工。
 
 - 2026-10-26（#424 spec round 1）：补齐改档冲突响应到既有 billing-support 表单的所属冲突 ID 交接，避免误用 accepted ID 或无法提交支持请求；保留服务端归属校验与 #297 同次上线边界。
+
+- 2026-10-26（#426 spec round 2）：明确阻断冲突 ID 只在实际阻断候选中按字典序选择，保留未知实时状态的重试语义与删除屏障优先级，补齐 eligibility 到 Portal 响应的数据交接，避免依赖存储顺序或误传非阻断订阅。
+
+- 2026-10-26（#426 spec round 2 所有者答复）：选择 A，明确旧测试充值不按 Checkout Session 去重并接受人工重放风险，保持迁移不变、不新增 Stripe 恢复或人工处理路径；记录 cutover 后的会话查询、版本栅栏与事务内重查，区分旧数据例外和新充值的幂等保证。
 
 ## 参考
 
