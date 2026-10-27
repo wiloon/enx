@@ -176,6 +176,17 @@ func (w WebhookEffects) applyCheckoutCompleted(tx *gorm.DB, scope webhookevent.S
 	if revision != o.Revision {
 		return checkoutcompleted.ErrStale
 	}
+	// Association evidence can survive deletion, but financial effects cannot.
+	// Recheck the gate inside the same transaction as the grant and task save.
+	if e.TopUp != nil || e.FirstPayment != nil {
+		deletion, err := deletionState(tx, o.UserID)
+		if err != nil {
+			return err
+		}
+		if !userExists || deletion != acceptance.NoDeletion {
+			return checkoutcompleted.ErrStale
+		}
+	}
 	if o.CustomerID != "" {
 		owner, err := customerOwner(tx, o.CustomerID)
 		if err != nil {

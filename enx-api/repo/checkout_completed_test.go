@@ -1,3 +1,5 @@
+//go:build integration
+
 package repo
 
 import (
@@ -320,8 +322,8 @@ func TestApplyCheckoutCompletedCreatesAnUnattributedSubscriptionAndWakesItsWaiti
 	}
 
 	got, ok := readSnapshot(t, "sub_new")
-	if !ok || !got.Unowned || got.StripeCustomerID != "cus_n" || got.Classification != "" {
-		t.Errorf("row = %+v, %t; want an unowned, unclassified row for cus_n", got, ok)
+	if !ok || !got.Unowned || got.StripeCustomerID != "cus_n" || got.Classification != "" || got.Status != "none" {
+		t.Errorf("row = %+v, %t; want an unowned, unclassified row for cus_n with status none", got, ok)
 	}
 	next := map[string]int64{}
 	var rows []struct {
@@ -358,5 +360,47 @@ func TestWebhookEventsSaveRollsTheTaskBackWhenACheckoutEffectFails(t *testing.T)
 	}
 	if st := unfinished(t, store)["evt_1"].Task.Status; st == webhookevent.Processed {
 		t.Errorf("task status = %s, want it not completed", st)
+	}
+}
+
+func TestCheckoutSaveRejectsDeletionAfterTheRevisionZeroDecision(t *testing.T) {
+	for _, state := range []string{"absent_without_gate", "in_progress", "deleted"} {
+		t.Run(state, func(t *testing.T) {
+			newCheckoutDB(t, "topup-only.sql")
+			store := NewWebhookEvents(WebhookEffects{Referral: referralTerms}.Apply)
+			read := claimedTask(t, store)
+			owner, err := (CheckoutCompleted{}).Owner(context.Background(), "u_topup")
+			if err != nil || owner.Revision != 0 || owner.Deletion != acceptance.NoDeletion {
+				t.Fatalf("owner before deletion = %+v, %v", owner, err)
+			}
+			effects := topUpEffects(owner.Revision, "cs_race")
+			if state != "absent_without_gate" {
+				if err := sqlitex.DB.Exec("INSERT INTO account_deletion_gates (user_id, state, started_at, updated_at) VALUES (?, ?, 1, 1)", "u_topup", state).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			if state != "in_progress" {
+				execAll(t, "DELETE FROM credit_accounts WHERE user_id = 'u_topup'", "DELETE FROM users WHERE id = 'u_topup'")
+			}
+			next := read
+			next.Status = webhookevent.Processed
+			err = store.Save(context.Background(), sandboxScope, read, next, effects)
+			if !errors.Is(err, checkoutcompleted.ErrStale) {
+				t.Errorf("Save = %v, want ErrStale", err)
+			}
+			if n := topUpGrants(t, "u_topup"); n != 1 {
+				t.Errorf("grants = %d, want only the legacy grant", n)
+			}
+			if state == "in_progress" {
+				if got := readBalances(t, "u_topup"); got.TopupBalance != 300 {
+					t.Errorf("balance = %d, want 300", got.TopupBalance)
+				}
+			} else if n := countRows(t, "credit_accounts", "user_id", "u_topup"); n != 0 {
+				t.Errorf("credit accounts = %d, want no recreated account", n)
+			}
+			if got := unfinished(t, store)["evt_1"].Task; got.Status != read.Status || got.ClaimToken != read.ClaimToken {
+				t.Errorf("task = %+v, want original claim %+v", got, read)
+			}
+		})
 	}
 }
