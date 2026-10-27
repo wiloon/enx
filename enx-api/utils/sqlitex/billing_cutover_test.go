@@ -6,6 +6,20 @@ import (
 	"testing"
 )
 
+func TestBillingMigrationVersionsMatchRecordedOrder(t *testing.T) {
+	Init(filepath.Join(t.TempDir(), "billing.db"))
+	if err := MigrateBillingCutover(DB); err != nil {
+		t.Fatal(err)
+	}
+	var versions []string
+	if err := DB.Raw("SELECT version FROM schema_migrations ORDER BY rowid").Scan(&versions).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(versions, billingMigrationVersions) {
+		t.Fatalf("recorded migration order = %v, billingMigrationVersions = %v", versions, billingMigrationVersions)
+	}
+}
+
 func TestMigrateBillingCutoverAppliesMigrationsInOrderAndIsIdempotent(t *testing.T) {
 	Init(filepath.Join(t.TempDir(), "billing.db"))
 	if err := MigrateBillingCutover(DB); err != nil {
