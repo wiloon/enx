@@ -229,3 +229,133 @@ func TestMountedSecondLiveSubscriptionKeepsAcceptedCreditsAndSendsOneConflictAle
 		t.Fatalf("ledger rows = %d, want the legacy top-up and accepted invoice only", n)
 	}
 }
+
+func TestMountedAdminDetailResolveAndRetryServeAnAdminAndRefuseAnyoneElse(t *testing.T) {
+	r := newRig(t, "topup-only.sql")
+	if err := sqlitex.DB.AutoMigrate(&sqlitex.Referral{}); err != nil {
+		t.Fatal(err)
+	}
+	r.stripe.portalSafe.Store(true)
+	r.start(t)
+	eventually(t, "endpoint discovery", func() bool { return r.a.identity.Endpoint().AccountID != "" })
+	process := func(id, kind, object string) {
+		t.Helper()
+		if code := r.deliver(t, id, kind, object); code != http.StatusOK {
+			t.Fatalf("%s receipt = %d, want 200", id, code)
+		}
+		r.tickers.tick(testPoll)
+		eventually(t, id+" processing", func() bool {
+			status, _ := eventStatus(t, id)
+			return status == "processed"
+		})
+	}
+	for _, sub := range []string{"sub_recovery", "sub_conflict"} {
+		process("evt_checkout_"+sub, "checkout.session.completed", `{"object":"checkout.session","id":"cs_`+sub+`","mode":"subscription","client_reference_id":"u_topup","customer":"cus_topup","subscription":"`+sub+`","payment_status":"paid"}`)
+		process("evt_invoice_"+sub, "invoice.paid", strings.NewReplacer("sub_recovery", sub, "in_checkout", "in_"+sub).Replace(paidInvoice))
+	}
+	do := func(method, path, body string, admin bool) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-User", "operator")
+		if admin {
+			req.Header.Set("X-Admin", "1")
+		}
+		rec := httptest.NewRecorder()
+		r.router.ServeHTTP(rec, req)
+		return rec
+	}
+	conflictPath := alert.AdminSubscriptionConflictsPath + "/sub_conflict"
+	eventPath := alert.AdminWebhookEventsPath + "/evt_invoice_sub_conflict"
+
+	// A processed event cannot be retried; park it as needing attention.
+	if err := sqlitex.DB.Exec("UPDATE stripe_webhook_events SET status = 'needs_attention' WHERE event_id = 'evt_invoice_sub_conflict'").Error; err != nil {
+		t.Fatal(err)
+	}
+	// Every method and path is refused to a non-admin before any handler runs.
+	resolveBody := `{"status":"resolved","notes":"Cancelled the duplicate in Stripe."}`
+	for _, c := range []struct{ method, path, body string }{
+		{http.MethodGet, conflictPath, ""},
+		{http.MethodPatch, conflictPath, resolveBody},
+		{http.MethodGet, eventPath, ""},
+		{http.MethodPost, eventPath + "/retry", ""},
+	} {
+		if rec := do(c.method, c.path, c.body, false); rec.Code != http.StatusForbidden {
+			t.Errorf("%s %s as non-admin = %d, want 403", c.method, c.path, rec.Code)
+		}
+	}
+	if status, _ := eventStatus(t, "evt_invoice_sub_conflict"); status != "needs_attention" {
+		t.Fatalf("a refused retry changed the event to %q", status)
+	}
+
+	rec := do(http.MethodGet, conflictPath, "", true)
+	var detail struct {
+		Success  bool
+		Conflict struct {
+			SubscriptionID string `json:"subscriptionId"`
+			Status         string
+		}
+		Events []struct {
+			EventID string `json:"eventId"`
+		}
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusOK || !detail.Success || detail.Conflict.SubscriptionID != "sub_conflict" || detail.Conflict.Status != "open" || len(detail.Events) == 0 {
+		t.Fatalf("conflict detail = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resolved struct {
+		Success    bool
+		Resolution struct {
+			Status     string
+			ResolvedBy string `json:"resolvedBy"`
+			Notes      string
+		}
+	}
+	for range 2 { // repeating the same resolution is a no-op
+		rec = do(http.MethodPatch, conflictPath, resolveBody, true)
+		if err := json.Unmarshal(rec.Body.Bytes(), &resolved); err != nil {
+			t.Fatal(err)
+		}
+		if rec.Code != http.StatusOK || !resolved.Success || resolved.Resolution.Status != "resolved" || resolved.Resolution.ResolvedBy != "operator" || resolved.Resolution.Notes != "Cancelled the duplicate in Stripe." {
+			t.Fatalf("resolve = %d: %s", rec.Code, rec.Body.String())
+		}
+	}
+	if rec = do(http.MethodPatch, conflictPath, `{"status":"resolved","notes":"Other notes"}`, true); rec.Code != http.StatusConflict {
+		t.Fatalf("resolve with different notes = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(http.MethodGet, eventPath, "", true)
+	var event struct {
+		Success bool
+		Event   struct {
+			EventID string `json:"eventId"`
+			Status  string
+		}
+		Deliveries []struct{ ID string }
+		Payload    struct{ ID string }
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &event); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusOK || !event.Success || event.Event.EventID != "evt_invoice_sub_conflict" || event.Event.Status != "needs_attention" || len(event.Deliveries) != 1 || event.Payload.ID != "evt_invoice_sub_conflict" {
+		t.Fatalf("event detail = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(http.MethodPost, eventPath+"/retry", "", true)
+	if err := json.Unmarshal(rec.Body.Bytes(), &event); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusOK || !event.Success || event.Event.Status != "pending" {
+		t.Fatalf("retry = %d: %s", rec.Code, rec.Body.String())
+	}
+	if status, _ := eventStatus(t, "evt_invoice_sub_conflict"); status != "pending" {
+		t.Fatalf("persisted status after retry = %q, want pending", status)
+	}
+	// Only an event that needs attention can be retried.
+	if rec = do(http.MethodPost, eventPath+"/retry", "", true); rec.Code != http.StatusConflict {
+		t.Fatalf("second retry = %d: %s", rec.Code, rec.Body.String())
+	}
+}
