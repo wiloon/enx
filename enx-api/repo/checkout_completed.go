@@ -9,6 +9,7 @@ import (
 	"enx-api/billing/acceptance"
 	"enx-api/billing/chargerefunded"
 	"enx-api/billing/checkoutcompleted"
+	"enx-api/billing/invoicepaid"
 	"enx-api/billing/webhookevent"
 	"enx-api/referral"
 	"enx-api/utils/sqlitex"
@@ -76,20 +77,29 @@ func (CheckoutCompleted) Subscription(ctx context.Context, subscriptionID string
 	if err != nil || !sub.Known {
 		return checkoutcompleted.Subscription{}, err
 	}
+	if sub.CheckoutUserID, err = checkoutAssociationUser(db, subscriptionID); err != nil {
+		return checkoutcompleted.Subscription{}, err
+	}
+	return sub, nil
+}
+
+// checkoutAssociationUser is the client_reference_id of the earliest processed
+// checkout.session.completed event that names subscriptionID, "" when none.
+func checkoutAssociationUser(db *gorm.DB, subscriptionID string) (string, error) {
 	var payloads [][]byte
 	if err := db.Raw("SELECT d.`payload` FROM `stripe_webhook_events` e JOIN `stripe_webhook_deliveries` d ON d.`id` = e.`first_delivery_id` "+
 		"WHERE e.`subscription_id` = ? AND e.`type` = 'checkout.session.completed' AND e.`status` = ? "+
 		"ORDER BY e.`first_received_at`, e.`event_id` LIMIT 1", subscriptionID, string(webhookevent.Processed)).Scan(&payloads).Error; err != nil {
-		return checkoutcompleted.Subscription{}, fmt.Errorf("read Checkout association of %s: %w", subscriptionID, err)
+		return "", fmt.Errorf("read Checkout association of %s: %w", subscriptionID, err)
 	}
-	if len(payloads) > 0 {
-		cs, err := checkoutcompleted.DecodeEvent(payloads[0])
-		if err != nil {
-			return checkoutcompleted.Subscription{}, fmt.Errorf("read Checkout association of %s: %w", subscriptionID, err)
-		}
-		sub.CheckoutUserID = cs.ClientReferenceID
+	if len(payloads) == 0 {
+		return "", nil
 	}
-	return sub, nil
+	cs, err := checkoutcompleted.DecodeEvent(payloads[0])
+	if err != nil {
+		return "", fmt.Errorf("read Checkout association of %s: %w", subscriptionID, err)
+	}
+	return cs.ClientReferenceID, nil
 }
 
 // checkoutSubscriptionRow reads whether ENX has subscriptionID's row, with its owner
@@ -149,6 +159,8 @@ func (w WebhookEffects) Apply(tx *gorm.DB, scope webhookevent.Scope, effects web
 	switch e := effects.(type) {
 	case checkoutcompleted.Effects:
 		return w.applyCheckoutCompleted(tx, scope, e)
+	case invoicepaid.Effects:
+		return w.applyInvoicePaid(tx, scope, e)
 	}
 	return applySnapshotOrClawback(tx, scope, effects)
 }
@@ -248,13 +260,19 @@ func (w WebhookEffects) applyCheckoutCompleted(tx *gorm.DB, scope webhookevent.S
 		}
 	}
 	if p := e.FirstPayment; p != nil {
-		if w.Referral == nil {
-			return errors.New("record first payment: no referral terms configured")
-		}
-		svc := referral.NewService(nil, Referrals{tx: tx}, nil, nil, nil, w.now, w.Referral)
-		if err := svc.RecordFirstPayment(tx.Statement.Context, o.UserID, *p); err != nil {
-			return fmt.Errorf("record first payment of %s: %w", o.UserID, err)
-		}
+		return w.recordFirstPayment(tx, o.UserID, *p)
+	}
+	return nil
+}
+
+// recordFirstPayment hands p to the referral domain inside tx.
+func (w WebhookEffects) recordFirstPayment(tx *gorm.DB, userID string, p referral.FirstPayment) error {
+	if w.Referral == nil {
+		return errors.New("record first payment: no referral terms configured")
+	}
+	svc := referral.NewService(nil, Referrals{tx: tx}, nil, nil, nil, w.now, w.Referral)
+	if err := svc.RecordFirstPayment(tx.Statement.Context, userID, p); err != nil {
+		return fmt.Errorf("record first payment of %s: %w", userID, err)
 	}
 	return nil
 }
