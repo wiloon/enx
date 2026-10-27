@@ -5,6 +5,7 @@ package repo
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -432,10 +433,16 @@ func TestApplyInvoicePaidAttributionDoesNotOverwriteACustomerOwner(t *testing.T)
 		Attribution: &invoicepaid.Attribution{UserID: "u_topup", CustomerID: "cus_free"},
 	}
 
-	_ = applyInvoice(t, "evt_a", e)
+	if err := applyInvoice(t, "evt_a", e); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
 
-	if owner, _ := (CheckoutCompleted{}).CustomerOwner(context.Background(), "cus_free"); owner != "u_else" {
-		t.Errorf("owner of cus_free = %q, want it left with u_else", owner)
+	got, ok := readSnapshot(t, "sub_free")
+	if !ok || got.Unowned || got.UserID != "u_topup" || got.StripeCustomerID != "cus_free" {
+		t.Errorf("subscription = %+v, %t; want attribution to u_topup with cus_free committed", got, ok)
+	}
+	if owner, err := (CheckoutCompleted{}).CustomerOwner(context.Background(), "cus_free"); err != nil || owner != "u_else" {
+		t.Errorf("owner of cus_free = %q, %v; want it left with u_else", owner, err)
 	}
 }
 
@@ -489,11 +496,14 @@ func TestWebhookEventsSaveRollsTheTaskBackWhenAnInvoiceEffectFails(t *testing.T)
 	// handoff fails after the grant was written.
 	store := NewWebhookEvents(ApplyWebhookEffects)
 	read := claimedTask(t, store)
-	next := read
-	next.Status = webhookevent.Processed
+	before := unfinished(t, store)["evt_1"].Task
+	next, err := webhookevent.Complete(read, "tok_a", receiptT0.Add(2*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	if err := store.Save(context.Background(), sandboxScope, read, next, normalGrantEffects(0, "in_1")); err == nil {
-		t.Fatal("Save = nil, want the failed handoff")
+	if err := store.Save(context.Background(), sandboxScope, read, next, normalGrantEffects(0, "in_1")); err == nil || err.Error() != "apply webhook event effects: record first payment: no referral terms configured" {
+		t.Fatalf("Save = %v, want the first-payment handoff to fail because no referral terms are configured", err)
 	}
 
 	if got := poolBalanceOf(t, "u_topup"); got != 0 {
@@ -506,7 +516,10 @@ func TestWebhookEventsSaveRollsTheTaskBackWhenAnInvoiceEffectFails(t *testing.T)
 	if err := sqlitex.DB.Raw("SELECT classification FROM subscriptions WHERE stripe_subscription_id = 'sub_new'").Scan(&class).Error; err != nil || class != "" {
 		t.Errorf("classification = %q, %v; want the acceptance rolled back", class, err)
 	}
-	if st := unfinished(t, store)["evt_1"].Task.Status; st == webhookevent.Processed {
-		t.Errorf("task status = %s, want it not completed", st)
+	if v := billingVersion(t, "u_topup"); v != 0 {
+		t.Errorf("billing_version = %d, want unchanged 0", v)
+	}
+	if got, ok := unfinished(t, store)["evt_1"]; !ok || !reflect.DeepEqual(got.Task, before) {
+		t.Errorf("task = %+v, present = %t; want unchanged %+v", got.Task, ok, before)
 	}
 }
