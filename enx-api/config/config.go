@@ -752,9 +752,10 @@ func defaults() map[string]any {
 	// out on rephrase.
 	set("sentence-translate.request-timeout", "60s")
 
+	set("billing.cutover", false)
+
 	// Three subscription tiers (2026-08-26 decision) -- see config.toml's
 	// [stripe.price] comment.
-	set("billing.cutover", false)
 	set("stripe.price.pro", "enx_pro_monthly")
 	set("stripe.price.pro-plus", "enx_pro_plus_monthly")
 	set("stripe.price.max", "enx_max_monthly")
@@ -910,7 +911,8 @@ var envBindings = map[string]string{
 	"sentence-translate.openrouter.model":          "SENTENCE_TRANSLATE_OPENROUTER_MODEL",
 	"sentence-translate.openrouter.rephrase-model": "SENTENCE_TRANSLATE_OPENROUTER_REPHRASE_MODEL",
 
-	"billing.cutover":                           "BILLING_CUTOVER",
+	"billing.cutover": "BILLING_CUTOVER",
+
 	"stripe.secret-key":                         "STRIPE_SECRET_KEY",
 	"stripe.webhook-secret":                     "STRIPE_WEBHOOK_SECRET",
 	"stripe.portal-configuration-id":            "STRIPE_PORTAL_CONFIGURATION_ID",
