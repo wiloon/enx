@@ -5,6 +5,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -85,6 +86,7 @@ type fakeStripe struct {
 	invoicesFail atomic.Bool
 	accountCalls atomic.Int64
 	sessionsMade atomic.Int64
+	portalSafe   atomic.Bool
 }
 
 func (f *fakeStripe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -109,10 +111,39 @@ func (f *fakeStripe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		key := r.URL.Query().Get("lookup_keys[0]")
 		_, _ = w.Write([]byte(`{"object":"list","url":"/v1/prices","has_more":false,"data":[{"id":"price_` + key + `","object":"price"}]}`))
 	case strings.HasPrefix(r.URL.Path, "/v1/billing_portal/configurations"):
-		fail()
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"object": "list", "has_more": false, "data": []any{map[string]any{
+				"id": "bpc_plan", "object": "billing_portal.configuration", "active": true, "is_default": true,
+				"features": map[string]any{
+					"subscription_cancel":   map[string]any{"enabled": true, "mode": "at_period_end"},
+					"payment_method_update": map[string]any{"enabled": true},
+					"invoice_history":       map[string]any{"enabled": true},
+					"subscription_update": map[string]any{
+						"enabled": f.portalSafe.Load(), "proration_behavior": "always_invoice",
+						"default_allowed_updates": []string{"price"},
+						"schedule_at_period_end":  map[string]any{"conditions": []any{map[string]any{"type": "decreasing_item_amount"}}},
+						"products": []any{
+							map[string]any{"product": "prod_pro", "prices": []string{"price_pro_m"}},
+							map[string]any{"product": "prod_pp", "prices": []string{"price_pp_m"}},
+							map[string]any{"product": "prod_max", "prices": []string{"price_max_m"}},
+						},
+					},
+				},
+			}},
+		})
 	case strings.HasPrefix(r.URL.Path, "/v1/billing_portal/sessions"):
 		f.sessionsMade.Add(1)
-		fail()
+		if err := r.ParseForm(); err != nil {
+			fail()
+			return
+		}
+		if r.Form.Get("customer") != "cus_topup" || r.Form.Get("configuration") != "bpc_plan" || r.Form.Get("return_url") != "https://app.example.test/billing" {
+			fail()
+			return
+		}
+		_, _ = w.Write([]byte(`{"id":"bps_1","object":"billing_portal.session","url":"https://billing.example.test/session"}`))
+	case r.URL.Path == "/v1/subscriptions/sub_recovery":
+		_, _ = w.Write([]byte(`{"id":"sub_recovery","object":"subscription","status":"active"}`))
 	case strings.HasPrefix(r.URL.Path, "/v1/invoice"):
 		if f.invoicesFail.Load() {
 			fail()
@@ -277,12 +308,12 @@ func TestReceiptAnswers503UntilDiscoverySucceedsOnARetryTick(t *testing.T) {
 }
 
 func TestATierPriceFailureLeavesTheWorkerStoppedUntilRecovery(t *testing.T) {
-	r := newRig(t)
+	r := newRig(t, "topup-only.sql")
 	r.stripe.pricesFail.Store(true)
 	r.start(t)
 	eventually(t, "the failed price resolution report", func() bool { return r.reports.count("tier price resolution") >= 1 })
 
-	if code := r.deliver(t, "evt_queued", "customer.created", ignorableObject); code != http.StatusOK {
+	if code := r.deliver(t, "evt_queued", "invoice.paid", `{"object":"invoice","id":"in_recovery","customer":"cus_topup","billing_reason":"subscription_create","amount_paid":0,"parent":{"subscription_details":{"subscription":"sub_recovery","metadata":{"enx_user_id":"u_topup"}}},"lines":{"has_more":false,"data":[{"id":"il_recovery","amount":0,"parent":{"subscription_item_details":{"subscription":"sub_recovery","subscription_item":"si_recovery","proration":false}},"pricing":{"price_details":{"price":"price_pp_m"}},"period":{"start":1790000000,"end":1800000000}}]}}`); code != http.StatusOK {
 		t.Fatalf("receipt with prices unresolved = %d, want 200", code)
 	}
 	if status, attempts := eventStatus(t, "evt_queued"); status != "pending" || attempts != 0 {
@@ -293,13 +324,30 @@ func TestATierPriceFailureLeavesTheWorkerStoppedUntilRecovery(t *testing.T) {
 	r.tickers.tick(testPoll)
 	eventually(t, "the worker to process the queued event", func() bool {
 		status, _ := eventStatus(t, "evt_queued")
-		return status == "ignored"
+		return status == "processed"
 	})
+	var grant struct {
+		Tier   string
+		Amount int64
+	}
+	if err := sqlitex.DB.Raw("SELECT tier, amount FROM credit_transactions WHERE stripe_invoice_id = 'in_recovery'").Scan(&grant).Error; err != nil {
+		t.Fatal(err)
+	}
+	if grant.Tier != "pro-plus" || grant.Amount != 5000 {
+		t.Fatalf("recovered invoice grant = %+v, want pro-plus/5000", grant)
+	}
+	var balance int64
+	if err := sqlitex.DB.Raw("SELECT subscription_balance FROM credit_accounts WHERE user_id = 'u_topup'").Scan(&balance).Error; err != nil {
+		t.Fatal(err)
+	}
+	if balance != 5000 {
+		t.Errorf("subscription balance = %d, want 5000", balance)
+	}
 }
 
 func TestAnUnsafePortalIsReportedWhileReceiptAndWorkerProceed(t *testing.T) {
-	r := newRig(t)
-	// The fake serves no Portal configuration, which the check must report.
+	r := newRig(t, "topup-only.sql")
+	// The fake starts with unsafe Portal plan switching.
 	r.start(t)
 	eventually(t, "the portal report", func() bool { return r.reports.count("portal plan-change configuration") >= 1 })
 
@@ -311,8 +359,25 @@ func TestAnUnsafePortalIsReportedWhileReceiptAndWorkerProceed(t *testing.T) {
 		status, _ := eventStatus(t, "evt_ok")
 		return status == "ignored"
 	})
+	portal := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/billing/portal", nil)
+		req.Header.Set("X-User", "u_topup")
+		rec := httptest.NewRecorder()
+		r.router.ServeHTTP(rec, req)
+		return rec
+	}
+	if rec := portal(); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unsafe Portal = %d: %s, want 503", rec.Code, rec.Body.String())
+	}
 	if n := r.stripe.sessionsMade.Load(); n != 0 {
 		t.Errorf("%d Portal sessions created, want 0", n)
+	}
+	r.stripe.portalSafe.Store(true)
+	if rec := portal(); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "https://billing.example.test/session") {
+		t.Fatalf("recovered Portal = %d: %s, want session URL", rec.Code, rec.Body.String())
+	}
+	if n := r.stripe.sessionsMade.Load(); n != 1 {
+		t.Errorf("Portal sessions after recovery = %d, want 1", n)
 	}
 }
 
