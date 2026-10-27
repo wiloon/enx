@@ -204,3 +204,42 @@ func TestSQLLogLevel(t *testing.T) {
 		}
 	}
 }
+
+func TestInitRejectsBillingMigrationsBeforeWriting(t *testing.T) {
+	for _, version := range []string{WebhookReceiptsVersion, SubscriptionOwnershipVersion, CreditProvenanceVersion, DeletionGatesVersion} {
+		t.Run(version, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "migrated.db")
+			db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Exec(schemaMigrationsDDL).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Exec("INSERT INTO schema_migrations VALUES (?, 1)", version).Error; err != nil {
+				t.Fatal(err)
+			}
+			sqlDB, err := db.DB()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := sqlDB.Close(); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := InitWithLogLevel(path, "error"); err == nil {
+				t.Fatal("expected migrated database to be rejected")
+			}
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(before) != string(after) {
+				t.Fatal("database changed during rejected startup")
+			}
+		})
+	}
+}

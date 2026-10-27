@@ -6,6 +6,7 @@ import (
 	zapLog "enx-api/utils/logger"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -117,6 +118,9 @@ func Init(dbPath string) {
 // the SQL log level from the application log level (see SQLLogLevel), and
 // migrates it. An error means the database must not be used: main exits.
 func InitWithLogLevel(dbPath, level string) error {
+	if err := rejectBillingMigrations(dbPath); err != nil {
+		return err
+	}
 	newLogger := logger.New(
 		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
 		logger.Config{
@@ -385,4 +389,38 @@ func migrateWordsEnglishNoCase() error {
 		// Dropping the table drops its indexes, idx_words_english_lower too.
 		return tx.Exec(`DROP TABLE words`).Error
 	})
+}
+
+// rejectBillingMigrations checks the existing database without writing before
+// legacy startup opens it with WAL or runs any migrations.
+func rejectBillingMigrations(path string) error {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("inspect database: %w", err)
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("resolve database path: %w", err)
+	}
+	u := url.URL{Scheme: "file", Path: abs, RawQuery: "mode=ro"}
+	db, err := gorm.Open(sqlite.Open(u.String()), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		return fmt.Errorf("inspect billing schema: %w", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("inspect billing schema: %w", err)
+	}
+	defer func() { _ = sqlDB.Close() }()
+	for _, version := range []string{WebhookReceiptsVersion, SubscriptionOwnershipVersion, CreditProvenanceVersion, DeletionGatesVersion} {
+		applied, err := migrationApplied(db, version)
+		if err != nil {
+			return fmt.Errorf("inspect billing schema: %w", err)
+		}
+		if applied {
+			return fmt.Errorf("billing migration %s is present; legacy billing cannot start on a migrated database", version)
+		}
+	}
+	return nil
 }
