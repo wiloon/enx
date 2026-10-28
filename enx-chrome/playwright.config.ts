@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test'
 import { mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { fileURLToPath } from 'url'
 import {
   API_ORIGIN,
   FIXTURE_ORIGIN,
@@ -19,7 +20,7 @@ process.env.E2E_DB_PATH ??= join(
 // Keep server logs outside Playwright's per-run artifact cleanup.
 const serverCommand = (name: string, command: string) => {
   if (process.env.E2E_SERVER_LOGS === '1') return command
-  const log = join(process.cwd(), 'test-results', 'servers', `${name}.log`)
+  const log = fileURLToPath(new URL(`./test-results/servers/${name}.log`, import.meta.url))
   const quotedLog = `'${log.replaceAll("'", "'\\''")}'`
   return `mkdir -p "$(dirname ${quotedLog})" && ( ${command} ) >${quotedLog} 2>&1 || { status=$?; tail -n 50 ${quotedLog} >&2; exit $status; }`
 }
