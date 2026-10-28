@@ -103,7 +103,7 @@ func assertBillingMigrationOrder(t *testing.T) {
 	if err := sqlitex.DB.Raw("SELECT version FROM schema_migrations ORDER BY rowid").Scan(&versions).Error; err != nil {
 		t.Fatal(err)
 	}
-	want := []string{sqlitex.WebhookReceiptsVersion, sqlitex.SubscriptionOwnershipVersion, sqlitex.CreditProvenanceVersion, sqlitex.DeletionGatesVersion}
+	want := sqlitex.BillingMigrationVersions()
 	if !reflect.DeepEqual(versions, want) {
 		t.Fatalf("migration order = %v, want %v", versions, want)
 	}

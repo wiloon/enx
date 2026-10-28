@@ -4,6 +4,11 @@ import "gorm.io/gorm"
 
 var billingMigrationVersions = []string{WebhookReceiptsVersion, SubscriptionOwnershipVersion, CreditProvenanceVersion, DeletionGatesVersion}
 
+// BillingMigrationVersions returns the startup migration order as an independent slice.
+func BillingMigrationVersions() []string {
+	return append([]string(nil), billingMigrationVersions...)
+}
+
 // MigrateBillingCutover applies the migrations in the deployment order specified
 // by ADR-067 §部署边界 and #297 §Existing-data migration.
 // Each migration records its own completion and can be safely retried.

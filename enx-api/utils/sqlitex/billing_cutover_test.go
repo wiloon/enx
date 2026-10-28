@@ -6,6 +6,21 @@ import (
 	"testing"
 )
 
+func TestBillingMigrationVersionsReturnsIndependentStartupOrder(t *testing.T) {
+	versions := BillingMigrationVersions()
+	if !reflect.DeepEqual(versions, billingMigrationVersions) {
+		t.Fatalf("versions = %v, want startup order %v", versions, billingMigrationVersions)
+	}
+	if len(versions) == 0 {
+		t.Fatal("startup migration order is empty")
+	}
+	original := billingMigrationVersions[0]
+	versions[0] = "changed"
+	if billingMigrationVersions[0] != original {
+		t.Fatal("changing returned versions changed startup order")
+	}
+}
+
 func TestMigrateBillingCutoverAppliesMigrationsInOrderAndIsIdempotent(t *testing.T) {
 	Init(filepath.Join(t.TempDir(), "billing.db"))
 	if err := MigrateBillingCutover(DB); err != nil {
