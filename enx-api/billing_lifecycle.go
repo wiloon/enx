@@ -12,8 +12,8 @@ type billingLifecycle struct {
 	done   <-chan struct{}
 }
 
-func startBillingLifecycle(assembly billingAssemblyLifecycle) (*billingLifecycle, error) {
-	ctx, cancel := context.WithCancel(context.Background())
+func startBillingLifecycle(parent context.Context, assembly billingAssemblyLifecycle) (*billingLifecycle, error) {
+	ctx, cancel := context.WithCancel(parent)
 	if err := assembly.Start(ctx); err != nil {
 		cancel()
 		return nil, err

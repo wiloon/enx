@@ -215,18 +215,12 @@ func initDatabase(dbPath, level string) error {
 	if err != nil {
 		return err
 	}
-	provenance, err := migrationApplied(DB, CreditProvenanceVersion)
-	if err != nil {
-		return err
-	}
 	models := []any{&Word{}, &UserDict{}, &Session{}, &SyncState{}, &LookupEvent{},
 		&ReaderDocument{}, &DailyStat{}, &StatsIngestLog{}, &PageReport{}, &SavedPage{},
-		&UserPreference{}, &ActiveUsersDay{}, &ReferralCode{}, &Referral{}, &TrialGrant{}}
+		&UserPreference{}, &ActiveUsersDay{}, &ReferralCode{}, &Referral{}, &TrialGrant{},
+		&User{}, &CreditAccount{}, &CreditTransaction{}}
 	if !ownership {
-		models = append(models, &User{}, &Subscription{})
-	}
-	if !provenance {
-		models = append(models, &CreditAccount{}, &CreditTransaction{})
+		models = append(models, &Subscription{})
 	}
 	err = DB.AutoMigrate(models...)
 	if err != nil {
@@ -448,7 +442,7 @@ func rejectBillingMigrations(path string) error {
 			return fmt.Errorf("inspect billing schema: %w", err)
 		}
 		if applied {
-			return fmt.Errorf("billing migration %s is present; legacy billing cannot start on a migrated database", version)
+			return fmt.Errorf("billing migration %s is present; legacy billing cannot start on a migrated database: enable BILLING_CUTOVER or restore the pre-migration backup", version)
 		}
 	}
 	return nil

@@ -1,8 +1,8 @@
 // Package app is the billing composition root (ADR-067): it assembles the
 // durable webhook receipt, worker, notifier, legacy provenance backfill and
 // the billing HTTP edges from their parts, and runs the remote startup
-// sequence. It sits above billing and repo, so it may import both. Nothing
-// calls it from main yet; the #297 cutover connects it.
+// sequence. It sits above billing and repo, so it may import both. The
+// application startup connects it when BILLING_CUTOVER is enabled.
 package app
 
 import (

@@ -35,16 +35,8 @@ func TestBillingDatabaseStartupLeavesLegacySchemaWhenDisabled(t *testing.T) {
 func TestBillingDatabaseStartupMigratesLegacyFixture(t *testing.T) {
 	restoreBillingDatabase(t)
 	path := filepath.Join(t.TempDir(), "legacy.db")
-	err := openBillingDatabase(t, func() error { return sqlitex.InitWithLogLevel(path, "error") })
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, statement := range sqlStatements(t, "subscribed.sql") {
-		if err := sqlitex.DB.Exec(statement).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-	err = openBillingDatabase(t, func() error { return initializeBillingDatabase(path, "error", true) })
+	seedLegacyStartupDatabase(t, path)
+	err := openBillingDatabase(t, func() error { return initializeBillingDatabase(path, "error", true) })
 	if err != nil {
 		t.Fatal(err)
 	}

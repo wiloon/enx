@@ -9,6 +9,7 @@ import (
 	"enx-api/aitranslate"
 	"enx-api/aitranslate/worddef"
 	"enx-api/billing"
+	billingapp "enx-api/billing/app"
 	"enx-api/billing/credit"
 	billingstripe "enx-api/billing/stripe"
 	"enx-api/config"
@@ -38,7 +39,6 @@ import (
 	"enx-api/userstats"
 	"enx-api/utils"
 	"enx-api/utils/logger"
-	"enx-api/utils/sqlitex"
 	wordCount "enx-api/word"
 	"enx-api/wordlist"
 	"errors"
@@ -78,14 +78,15 @@ func main() {
 	m := metrics.New()
 	// A database that failed to open or migrate (e.g. the #211 users
 	// rebuild) stops the process before any job, listener or backfill runs.
-	if err := sqlitex.InitWithLogLevel(cfg.DB.Path, logLevel); err != nil {
-		logger.Errorf("database initialisation failed: %v", err)
+	appCtx, cancelApp := context.WithCancel(context.Background())
+	defer cancelApp()
+	stripeClient := configuredStripeClient(cfg)
+	application, err := initializeApplication(appCtx, cfg, m, stripeClient)
+	if err != nil {
+		cancelApp()
+		logger.Errorf("application initialisation failed: %v", err)
 		logger.Sync()
 		os.Exit(1)
-	}
-	if err := m.InstrumentDB(sqlitex.DB); err != nil {
-		// Losing the busy counter must not stop the API.
-		logger.Errorf("metrics: sqlite instrumentation: %v", err)
 	}
 
 	backfillTrialGrants(cfg)
@@ -103,15 +104,15 @@ func main() {
 	go runPageReportCleanup()
 	// Referrer rewards need Stripe to check each payment for a refund or
 	// dispute; without it they stay pending until it is configured.
-	if sc, err := billingstripe.New(cfg.Stripe.SecretKey.Reveal()); err == nil {
-		go runReferralRewards(newReferralService(cfg, sc, m))
-		go checkPortalConfigurationsAtStartup(sc, cfg.Stripe)
-	} else {
-		logger.Warnf("referral rewards job off: %v", err)
+	if stripeClient != nil {
+		go runReferralRewards(newReferralService(cfg, stripeClient, m))
+		if !cfg.Billing.Cutover {
+			go checkPortalConfigurationsAtStartup(stripeClient, cfg.Stripe)
+		}
 	}
 
 	go serveMetrics(cfg.Metrics.Addr, m)
-	router := setupRouter(cfg, m)
+	router := application.router
 
 	port := cfg.Enx.Port
 	listenAddress := fmt.Sprintf(":%d", port)
@@ -128,8 +129,12 @@ func main() {
 		// connection kept the process alive forever.
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), srv.WriteTimeout+shutdownGraceMargin)
 		defer cancel()
+		cancelApp()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			logger.Errorf("http server shutdown: %v", err)
+		}
+		if err := application.stopBilling(shutdownCtx); err != nil {
+			logger.Errorf("billing shutdown: %v", err)
 		}
 		close(idleConnectionsClosed)
 	}()
@@ -138,6 +143,13 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Errorf("failed to listen, %v", err)
 		logger.Error("server failed to start, exiting...")
+		cancelApp()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), srv.WriteTimeout+shutdownGraceMargin)
+		if err := application.stopBilling(shutdownCtx); err != nil {
+			logger.Errorf("billing shutdown after listen failure: %v", err)
+		}
+		cancel()
+		logger.Sync()
 		os.Exit(1)
 	}
 	logger.Infof("listen end")
@@ -304,16 +316,18 @@ func ginMode(logLevel string) string {
 }
 
 func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
-	// Stripe billing is optional, like sentence translation: without STRIPE_SECRET_KEY (a local
-	// dev box, or a deployment that hasn't set the secret yet), billing
-	// endpoints stay disabled (503) rather than the server failing to start.
-	// See docs/tasks/TASK-SPEC-enx-billing-stripe-subscription.md.
-	stripeClient, stripeErr := billingstripe.New(cfg.Stripe.SecretKey.Reveal())
-	if stripeErr != nil {
-		logger.Warnf("billing disabled: %v", stripeErr)
-		stripeClient = nil
+	return setupRouterWithStripe(cfg, m, configuredStripeClient(cfg))
+}
+
+func configuredStripeClient(cfg *config.Config) *stripeSDK.Client {
+	// Billing is optional while the cutover is off. The new assembly validates
+	// its required configuration before any worker starts when it is on.
+	client, err := billingstripe.New(cfg.Stripe.SecretKey.Reveal())
+	if err != nil {
+		logger.Warnf("billing disabled: %v", err)
+		return nil
 	}
-	return setupRouterWithStripe(cfg, m, stripeClient)
+	return client
 }
 
 // setupRouterWithStripe is setupRouter on the given Stripe client (nil turns
@@ -336,6 +350,10 @@ func clerkBackend(c config.Clerk) account.Clerk {
 // setupRouterWithClients is setupRouterWithStripe with the Clerk Backend API
 // client given too (nil: not configured).
 func setupRouterWithClients(cfg *config.Config, m *metrics.Metrics, stripeClient *stripeSDK.Client, clerk account.Clerk) *gin.Engine {
+	return setupRouterWithBilling(cfg, m, stripeClient, clerk, nil)
+}
+
+func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient *stripeSDK.Client, clerk account.Clerk, assembly *billingapp.Assembly) *gin.Engine {
 	router := gin.New()
 
 	// Metrics and the request log wrap Recovery, so a recovered panic is
@@ -550,7 +568,9 @@ func setupRouterWithClients(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// Billing (Stripe) — requires authentication (Clerk session JWT).
 	apiGroup.POST("/billing/checkout/subscription", billingHandler.CheckoutSubscription)
 	apiGroup.POST("/billing/checkout/topup", billingHandler.CheckoutTopup)
-	apiGroup.POST("/billing/portal", billingHandler.Portal)
+	if assembly == nil {
+		apiGroup.POST("/billing/portal", billingHandler.Portal)
+	}
 	apiGroup.GET("/billing/me", billingHandler.Me)
 
 	// Invite links (ADR-051): the user's code and invites, and claiming an
@@ -628,7 +648,11 @@ func setupRouterWithClients(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// relying on Stripe-Signature verification instead (TASK-SPEC §3). URL
 	// must match the endpoint registered in infra/stripe/opentofu/enx
 	// (w10n-config): enx-api.wiloon.lab/billing/webhook, no /api prefix.
-	router.POST("/billing/webhook", billingHandler.Webhook)
+	if assembly == nil {
+		router.POST("/billing/webhook", billingHandler.Webhook)
+	} else {
+		assembly.Mount(apiGroup, adminDict, router)
+	}
 
 	// What an invitee gets, for enx-ui's signed-out /invite/<code> landing
 	// page (ADR-051 Decision 8). Not in apiGroup: no session yet. Config
@@ -653,9 +677,18 @@ func newReferralService(cfg *config.Config, sc *stripeSDK.Client, m *metrics.Met
 	if sc != nil {
 		payments = refadapters.Stripe{Client: sc}
 	}
+	policy := newReferralPolicy(cfg)
+	// A deleted account signed up again gets no invite rewards (ADR-062
+	// Decision 3), judged by the trial grant record.
+	trials := repo.TrialGrants{Hash: account.NewEmailHMAC(cfg.Account.EmailHMACKey.Reveal()).Of}
+	return referral.NewService(repo.ReferralCodes{}, repo.Referrals{}, repo.ReferralAccounts{Trials: trials},
+		refadapters.Ledger{EmailHMAC: trials.EmailHMACOf}, payments, time.Now, policy).WithObserver(m)
+}
+
+func newReferralPolicy(cfg *config.Config) referral.FixedPolicy {
 	const day = 24 * time.Hour
 	r := cfg.Credits.Referral
-	policy := referral.FixedPolicy{
+	return referral.FixedPolicy{
 		TrialAmount:                cfg.Credits.Trial.Amount,
 		TrialTTL:                   time.Duration(cfg.Credits.Trial.TTLDays) * day,
 		InviteeBonus:               r.InviteeBonus,
@@ -665,11 +698,6 @@ func newReferralService(cfg *config.Config, sc *stripeSDK.Client, m *metrics.Met
 		RewardDelay:                time.Duration(r.RewardDelayDays) * day,
 		ClaimWindow:                time.Duration(r.ClaimWindowHours) * time.Hour,
 	}
-	// A deleted account signed up again gets no invite rewards (ADR-062
-	// Decision 3), judged by the trial grant record.
-	trials := repo.TrialGrants{Hash: account.NewEmailHMAC(cfg.Account.EmailHMACKey.Reveal()).Of}
-	return referral.NewService(repo.ReferralCodes{}, repo.Referrals{}, repo.ReferralAccounts{Trials: trials},
-		refadapters.Ledger{EmailHMAC: trials.EmailHMACOf}, payments, time.Now, policy).WithObserver(m)
 }
 
 // backfillTrialGrants records every existing user's email in trial_grants
