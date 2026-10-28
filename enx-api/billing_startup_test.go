@@ -7,7 +7,9 @@ import (
 
 	"enx-api/utils/sqlitex"
 
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 func TestBillingDatabaseStartupAppliesMigrationsWhenEnabled(t *testing.T) {
@@ -98,5 +100,29 @@ func assertBillingMigrationOrder(t *testing.T) {
 	want := sqlitex.BillingMigrationVersions()
 	if !reflect.DeepEqual(versions, want) {
 		t.Fatalf("migration order = %v, want %v", versions, want)
+	}
+}
+
+func seedLegacyStartupDatabase(t *testing.T, path string) {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{Logger: gormlogger.Default.LogMode(gormlogger.Silent)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := sqlDB.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	for _, fixture := range []string{"schema.sql", "subscribed.sql"} {
+		for _, statement := range sqlStatements(t, fixture) {
+			if err := db.Exec(statement).Error; err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 }

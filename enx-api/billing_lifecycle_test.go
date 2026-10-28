@@ -2,12 +2,10 @@ package main
 
 import (
 	"context"
-	billingapp "enx-api/billing/app"
-	"enx-api/email"
+	"net"
+	"net/http"
 	"testing"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type testBillingAssembly struct {
@@ -53,40 +51,81 @@ func TestBillingLifecycleStopsWaitingAtDeadline(t *testing.T) {
 	}
 }
 
-func TestBillingLifecycleUsesApplicationContextAndRealAssemblyRejectsSecondStart(t *testing.T) {
-	restoreBillingDatabase(t)
-	cfg := billingStartupConfig(t)
-	if err := openBillingDatabase(t, func() error { return initializeBillingDatabase(cfg.DB.Path, "error", true) }); err != nil {
-		t.Fatal(err)
-	}
-	assembly, err := billingapp.New(billingapp.Deps{
-		Stripe: cfg.Stripe, PortalReturnURL: cfg.App.FrontendBaseURL + "/billing",
-		Referral: newReferralPolicy(cfg), Client: startupStripeClient(t), Mailer: email.NewSender(cfg.Resend),
-		Now: time.Now, NewToken: uuid.NewString,
-	})
+// A worker can observe cancellation before it has finished its cleanup.
+type drainingBillingAssembly struct {
+	cancelled chan struct{}
+	release   chan struct{}
+	done      chan struct{}
+}
+
+func (a *drainingBillingAssembly) Start(ctx context.Context) error {
+	go func() {
+		<-ctx.Done()
+		close(a.cancelled)
+		<-a.release
+		close(a.done)
+	}()
+	return nil
+}
+func (a *drainingBillingAssembly) Done() <-chan struct{} { return a.done }
+
+func TestApplicationListenFailureCancelsAndJoinsBillingBeforeReturning(t *testing.T) {
+	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	parent, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	lifecycle, err := startBillingLifecycle(parent, assembly)
+	defer func() { _ = listener.Close() }()
+	worker := &drainingBillingAssembly{cancelled: make(chan struct{}), release: make(chan struct{}), done: make(chan struct{})}
+	defer close(worker.release)
+	lifecycle, err := startBillingLifecycle(context.Background(), worker)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		deadline, stop := context.WithTimeout(context.Background(), time.Second)
-		defer stop()
-		if err := lifecycle.stop(deadline); err != nil {
-			t.Error(err)
-		}
-	})
-	if second, err := startBillingLifecycle(parent, assembly); err == nil || second != nil {
-		t.Fatalf("second Start = %v, %v", second, err)
-	}
-	cancel()
+	a := &application{billing: lifecycle}
+	result := make(chan error, 1)
+	server := newServer(listener.Addr().String(), http.NewServeMux(), time.Second)
+	go func() { result <- a.serve(context.Background(), server) }()
 	select {
-	case <-assembly.Done():
+	case <-worker.cancelled:
 	case <-time.After(time.Second):
-		t.Fatal("real billing assembly ignored application cancellation")
+		t.Fatal("listen failure did not cancel billing")
+	}
+	select {
+	case err := <-result:
+		t.Fatalf("returned before billing cleanup finished: %v", err)
+	default:
+	}
+	worker.release <- struct{}{}
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("listen failure was swallowed")
+		}
+		select {
+		case <-worker.done:
+		default:
+			t.Fatal("returned before worker Done")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("listen failure did not return after cleanup")
+	}
+}
+
+func TestApplicationCancellationStopsServingAndBilling(t *testing.T) {
+	worker := &testBillingAssembly{done: make(chan struct{})}
+	lifecycle, err := startBillingLifecycle(context.Background(), worker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &application{billing: lifecycle}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := a.serve(ctx, newServer("127.0.0.1:0", http.NewServeMux(), time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-worker.done:
+	default:
+		t.Fatal("application returned with billing still running")
 	}
 }

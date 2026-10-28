@@ -118,42 +118,18 @@ func main() {
 	listenAddress := fmt.Sprintf(":%d", port)
 	srv := newServer(listenAddress, router, cfg.SentenceTranslate.RequestTimeout)
 
-	idleConnectionsClosed := make(chan struct{})
 	go func() {
 		utils.WaitSignals()
-		// Bounded, and deliberately bounded at the same ceiling as a single
-		// request: Shutdown waits for in-flight requests to finish, so a
-		// grace period shorter than WriteTimeout would abort billed AI calls
-		// on every deploy -- the same failure mode newServer exists to
-		// prevent. context.Background() had the opposite problem: one stuck
-		// connection kept the process alive forever.
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), srv.WriteTimeout+shutdownGraceMargin)
-		defer cancel()
 		cancelApp()
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			logger.Errorf("http server shutdown: %v", err)
-		}
-		if err := application.stopBilling(shutdownCtx); err != nil {
-			logger.Errorf("billing shutdown: %v", err)
-		}
-		close(idleConnectionsClosed)
 	}()
-
 	logger.Infof("enx api listening port: %v", port)
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		logger.Errorf("failed to listen, %v", err)
-		logger.Error("server failed to start, exiting...")
+	if err := application.serve(appCtx, srv); err != nil {
 		cancelApp()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), srv.WriteTimeout+shutdownGraceMargin)
-		if err := application.stopBilling(shutdownCtx); err != nil {
-			logger.Errorf("billing shutdown after listen failure: %v", err)
-		}
-		cancel()
+		logger.Errorf("failed to listen or shut down: %v", err)
 		logger.Sync()
 		os.Exit(1)
 	}
 	logger.Infof("listen end")
-	<-idleConnectionsClosed
 }
 
 const (

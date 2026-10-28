@@ -1,3 +1,5 @@
+//go:build integration
+
 package main
 
 import (
@@ -14,15 +16,16 @@ import (
 
 	"github.com/stripe/stripe-go/v86/webhook"
 
+	billingapp "enx-api/billing/app"
 	"enx-api/config"
+	"enx-api/email"
 	"enx-api/metrics"
 	"enx-api/utils/sqlitex"
 
+	"github.com/google/uuid"
+
 	"github.com/gin-gonic/gin"
-	"github.com/glebarez/sqlite"
 	stripeSDK "github.com/stripe/stripe-go/v86"
-	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
 )
 
 func billingStartupConfig(t *testing.T) *config.Config {
@@ -134,32 +137,19 @@ func TestApplicationCutoverRestartsLegacyFixtureWithoutRestoringOldConstraints(t
 	if err := sqlitex.DB.Exec("INSERT INTO subscriptions (stripe_subscription_id, stripe_customer_id, status, created_at, updated_at) VALUES ('sub_third', 'cus_subscribed', 'active', 1, 1)").Error; err != nil {
 		t.Fatalf("Customer uniqueness was restored: %v", err)
 	}
+	var account struct {
+		Accepted string
+		Balance  int64
+	}
+	if err := sqlitex.DB.Raw("SELECT u.accepted_subscription_id AS accepted, c.subscription_balance AS balance FROM users u JOIN credit_accounts c ON c.user_id = u.id WHERE u.id = 'u_subscribed'").Scan(&account).Error; err != nil {
+		t.Fatal(err)
+	}
+	if account.Accepted != "sub_subscribed" || account.Balance != 500 {
+		t.Fatalf("legacy account changed on restart: %+v", account)
+	}
+
 	if err := second.stopBilling(context.Background()); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func seedLegacyStartupDatabase(t *testing.T, path string) {
-	t.Helper()
-	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{Logger: gormlogger.Default.LogMode(gormlogger.Silent)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := sqlDB.Close(); err != nil {
-			t.Error(err)
-		}
-	}()
-	for _, fixture := range []string{"schema.sql", "subscribed.sql"} {
-		for _, statement := range sqlStatements(t, fixture) {
-			if err := db.Exec(statement).Error; err != nil {
-				t.Fatal(err)
-			}
-		}
 	}
 }
 
@@ -259,5 +249,43 @@ func TestApplicationDisabledCutoverKeepsLegacyRoutesAndStartsNoWorkers(t *testin
 				t.Fatalf("unconfigured legacy billing = %d, want 503", w.Code)
 			}
 		})
+	}
+}
+
+func TestBillingLifecycleUsesApplicationContextAndRealAssemblyRejectsSecondStart(t *testing.T) {
+	restoreBillingDatabase(t)
+	cfg := billingStartupConfig(t)
+	if err := openBillingDatabase(t, func() error { return initializeBillingDatabase(cfg.DB.Path, "error", true) }); err != nil {
+		t.Fatal(err)
+	}
+	assembly, err := billingapp.New(billingapp.Deps{
+		Stripe: cfg.Stripe, PortalReturnURL: cfg.App.FrontendBaseURL + "/billing",
+		Referral: newReferralPolicy(cfg), Client: startupStripeClient(t), Mailer: email.NewSender(cfg.Resend),
+		Now: time.Now, NewToken: uuid.NewString,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	lifecycle, err := startBillingLifecycle(parent, assembly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		deadline, stop := context.WithTimeout(context.Background(), time.Second)
+		defer stop()
+		if err := lifecycle.stop(deadline); err != nil {
+			t.Error(err)
+		}
+	})
+	if second, err := startBillingLifecycle(parent, assembly); err == nil || second != nil {
+		t.Fatalf("second Start = %v, %v", second, err)
+	}
+	cancel()
+	select {
+	case <-assembly.Done():
+	case <-time.After(time.Second):
+		t.Fatal("real billing assembly ignored application cancellation")
 	}
 }
