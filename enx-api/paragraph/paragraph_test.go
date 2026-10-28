@@ -1,64 +1,47 @@
-//go:build integration
-// +build integration
-
 package paragraph
 
 import (
 	"context"
-	"enx-api/config"
-	"enx-api/enx"
-	"enx-api/utils/sqlitex"
-	"fmt"
 	"testing"
+
+	"enx-api/enx"
 )
 
-func init() {
-	cfg, err := config.Load("")
+type emptyWordStates struct{}
+
+func (emptyWordStates) FindByEnglish(context.Context, string, []string) ([]enx.WordState, error) {
+	return nil, nil
+}
+
+func TestParagraphStartingWithDigitIsNotAWord(t *testing.T) {
+	out, err := enx.NewTextWords(emptyWordStates{}).In(context.Background(), "their 6-year-old to", "1")
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
-	sqlitex.Init(cfg.DB.Path)
-}
-
-func TestParagraph0(t *testing.T) {
-	paragraph := "their 6-year-old to"
-	out, _ := enx.NewTextWords(enx.RepoWordStates{}).In(context.Background(), paragraph, "1")
-	fmt.Printf("out: %+v\n", out)
-	// check if key "6-year-old" exist
-	if _, ok := out["6-year-old"]; !ok {
-		t.Errorf("key \"6-year-old\" not exist")
-	}
-
-	if out["6-year-old"].WordType != 1 {
-		t.Errorf("invalid word type: %v", out["6-year-old"].WordType)
+	word, ok := out["6-year-old"]
+	if !ok || word.WordType != 1 {
+		t.Fatalf("6-year-old: got %+v, present %v; want word type 1", word, ok)
 	}
 }
 
-func TestParagraphEndingChar(t *testing.T) {
-	paragraph := "Good morning."
-	out, _ := enx.NewTextWords(enx.RepoWordStates{}).In(context.Background(), paragraph, "1")
-	fmt.Printf("out: %+v\n", out)
-	for key, word := range out {
-		fmt.Printf("key: %s, word: %+v\n", key, word)
+func TestParagraphRemovesEndingPunctuation(t *testing.T) {
+	out, err := enx.NewTextWords(emptyWordStates{}).In(context.Background(), "Good morning.", "1")
+	if err != nil {
+		t.Fatal(err)
 	}
 	if _, ok := out["morning"]; !ok {
-		t.Errorf("key \"morning\" not exist")
+		t.Error("missing morning")
 	}
-
 }
 
-func TestParagraphBarcket(t *testing.T) {
-	paragraph := "scientists. (Assassins wove through traffic to attach “sticky bombs” to their car doors.) The"
-
-	out, _ := enx.NewTextWords(enx.RepoWordStates{}).In(context.Background(), paragraph, "1")
-	fmt.Printf("out: %+v\n", out)
-	for key, word := range out {
-		fmt.Printf("key: %s, word: %+v\n", key, word)
+func TestParagraphRemovesSurroundingPunctuation(t *testing.T) {
+	out, err := enx.NewTextWords(emptyWordStates{}).In(context.Background(), "scientists. (Assassins wove through traffic to attach “sticky bombs” to their car doors.) The", "1")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := out["Assassins"]; !ok {
-		t.Errorf("key \"Assassins\" not exist")
-	}
-	if _, ok := out["doors"]; !ok {
-		t.Errorf("key \"Assassins\" not exist")
+	for _, word := range []string{"Assassins", "doors"} {
+		if _, ok := out[word]; !ok {
+			t.Errorf("missing %s", word)
+		}
 	}
 }
