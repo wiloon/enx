@@ -7,13 +7,19 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// This test must run before any test that calls Init, since sugaredLogger
-// is a package-level var that, once set, is never nil again for the rest
-// of the test binary.
+// Tests using this helper must not run in parallel: logger state is global.
+func isolateLogger(t *testing.T) {
+	t.Helper()
+	previousSugar, previousDefault := sugaredLogger, dLogger
+	sugaredLogger, dLogger = nil, &defaultLogger{}
+	t.Cleanup(func() { sugaredLogger, dLogger = previousSugar, previousDefault })
+}
+
 func TestGetLoggerDefaultsBeforeInit(t *testing.T) {
+	isolateLogger(t)
 	l := GetLogger()
-	if l == nil {
-		t.Fatal("expected a non-nil default logger before Init is called")
+	if _, ok := l.(*defaultLogger); !ok {
+		t.Fatalf("GetLogger() = %T, want the default logger", l)
 	}
 
 	// None of these should panic.
@@ -41,6 +47,7 @@ func TestGetLoggerDefaultsBeforeInit(t *testing.T) {
 }
 
 func TestDefaultLoggerSyncPanics(t *testing.T) {
+	isolateLogger(t)
 	defer func() {
 		if r := recover(); r == nil {
 			t.Fatal("expected the default logger's Sync to panic (not implemented)")
@@ -52,12 +59,14 @@ func TestDefaultLoggerSyncPanics(t *testing.T) {
 // A mistyped LOG_LEVEL must not leave the service on the unlevelled stdlib
 // logger (which prints everything): it falls back to info.
 func TestInitWithInvalidLevelFallsBackToInfo(t *testing.T) {
+	isolateLogger(t)
 	Init("CONSOLE", "not-a-real-level", "enx-api-test")
 
 	assertLevel(t, zap.InfoLevel)
 }
 
 func TestInitAppliesTheLevel(t *testing.T) {
+	isolateLogger(t)
 	Init("CONSOLE", "warn", "enx-api-test")
 
 	assertLevel(t, zap.WarnLevel)
@@ -76,10 +85,11 @@ func assertLevel(t *testing.T, want zapcore.Level) {
 }
 
 func TestInitWithValidLevel(t *testing.T) {
+	isolateLogger(t)
 	Init("CONSOLE", "info", "enx-api-test")
 
 	l := GetLogger()
-	if _, ok := l.(*defaultLogger); ok {
+	if _, ok := l.(*zap.SugaredLogger); !ok {
 		t.Fatal("expected Init to replace the default logger with a zap-backed one")
 	}
 
@@ -108,8 +118,9 @@ func TestInitWithValidLevel(t *testing.T) {
 }
 
 func TestInitWithEmptyToDefaultsToConsole(t *testing.T) {
+	isolateLogger(t)
 	Init("", "info", "enx-api-test")
-	if _, ok := GetLogger().(*defaultLogger); ok {
+	if _, ok := GetLogger().(*zap.SugaredLogger); !ok {
 		t.Fatal("expected an empty `to` to still initialize a zap-backed logger via the console branch")
 	}
 }
