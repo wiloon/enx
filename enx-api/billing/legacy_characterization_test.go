@@ -47,6 +47,7 @@ func loadSubscriptionRows(t *testing.T, userID string) []sqlitex.Subscription {
 // later events for the first subscription find no row at all.
 func TestLegacyASecondSubscriptionCheckoutOverwritesTheFirst(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	h := NewHandler(fakeStripe(t, map[string]string{
 		"sub_first_" + userID:  liveSubscription("sub_first_"+userID, "active", 1700000000),
 		"sub_second_" + userID: liveSubscription("sub_second_"+userID, "active", 1700000000),
@@ -84,6 +85,7 @@ func TestLegacyASecondSubscriptionCheckoutOverwritesTheFirst(t *testing.T) {
 // Customer while the subscription itself is left in place.
 func TestLegacyATopupCheckoutReplacesTheSubscribersCustomer(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	seedSubscription(t, userID, "cus_sub_"+userID, "sub_"+userID, "active", 1700000000)
 	stripe := testStripe()
 	stripe.Credits.TopupSmall = 5
@@ -121,6 +123,7 @@ func TestLegacyATopupCheckoutReplacesTheSubscribersCustomer(t *testing.T) {
 // the top-up's, which is then recorded nowhere.
 func TestLegacyASubscriptionCheckoutRewritesATopupOnlyRow(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	stripe := testStripe()
 	stripe.Credits.TopupSmall = 5
 	h := NewHandler(fakeStripe(t, map[string]string{
@@ -166,6 +169,7 @@ func TestLegacyASubscriptionCheckoutRewritesATopupOnlyRow(t *testing.T) {
 // nothing.
 func TestLegacyInvoicePaidBeforeCheckoutFailsAndGrantsNothing(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	stripe := testStripe()
 	stripe.Price.Pro, stripe.Price.ProPlus, stripe.Price.Max = "enx_pro", "enx_pro_plus", "enx_max"
 	stripe.Credits.SubscriptionPro = 100
@@ -202,6 +206,7 @@ func TestLegacyInvoicePaidBeforeCheckoutFailsAndGrantsNothing(t *testing.T) {
 // the old price therefore grants the old tier's full allotment.
 func TestLegacyInvoicePaidGrantsAFullPeriodForTheFirstLinesTier(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	seedSubscription(t, userID, "cus_"+userID, "sub_"+userID, "active", 1800000000)
 	stripe := testStripe()
 	stripe.Price.Pro, stripe.Price.ProPlus, stripe.Price.Max = "enx_pro", "enx_pro_plus", "enx_max"
@@ -243,6 +248,7 @@ func TestLegacyInvoicePaidGrantsAFullPeriodForTheFirstLinesTier(t *testing.T) {
 // cancels the second subscription.
 func TestLegacyARefundCancelsTheSubscriptionInTheRowNotTheRefundedOne(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	first, second := "sub_first_"+t.Name(), "sub_second_"+t.Name()
 	pi := "pi_" + t.Name()
 	h, fake := subscriptionPaidSetup(t, userID, first, pi)
@@ -266,6 +272,7 @@ func TestLegacyARefundCancelsTheSubscriptionInTheRowNotTheRefundedOne(t *testing
 func TestLegacyWebhookRefusesASignedEventFromAnotherAPIVersion(t *testing.T) {
 	const secret = "whsec_test_api_version"
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	payload := []byte(`{
 		"id": "evt-` + t.Name() + `",
 		"object": "event",
@@ -309,6 +316,7 @@ func TestLegacyWebhookRefusesASignedEventFromAnotherAPIVersion(t *testing.T) {
 // top-up-only buyer's.
 func TestLegacySubscriptionCheckoutReusesTheRowsCustomer(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	seedUser(t, userID)
 	row := sqlitex.Subscription{UserId: userID, StripeCustomerId: "cus_topup_" + userID, Status: "none", CreatedAt: 1, UpdatedAt: 1}
 	if err := sqlitex.DB.Create(&row).Error; err != nil {

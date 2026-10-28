@@ -174,6 +174,7 @@ func wantNoSession(t *testing.T, w *httptest.ResponseRecorder, fake *portalFake)
 // checked plan-change configuration, pinned on the session.
 func TestPortalGivesAnActiveSubscriberThePlanChangeConfiguration(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	seedSubscription(t, userID, "cus_"+userID, "sub_"+userID, "active", 1700000000)
 	fake := healthyPortalFake()
 	fake.subscriptions = map[string]string{"sub_" + userID: liveSubscription("sub_"+userID, "active", 1700000000)}
@@ -189,6 +190,7 @@ func TestPortalGivesAnActiveSubscriberThePlanChangeConfiguration(t *testing.T) {
 // A customer with no subscription (top-ups only) is not blocked.
 func TestPortalGivesATopupOnlyCustomerThePlanChangeConfiguration(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	seedTopupOnlyCustomer(t, userID, "cus_"+userID)
 	fake := healthyPortalFake()
 
@@ -207,6 +209,7 @@ func TestPortalGivesAnUnhealthySubscriberTheRestrictedConfiguration(t *testing.T
 	for _, status := range []string{"past_due", "unpaid", "incomplete", "trialing"} {
 		t.Run(status, func(t *testing.T) {
 			userID := "u-" + t.Name()
+			cleanupBillingUser(t, userID)
 			seedSubscription(t, userID, "cus_"+userID, "sub_"+userID, "active", 1700000000)
 			fake := healthyPortalFake()
 			fake.subscriptions = map[string]string{"sub_" + userID: liveSubscription("sub_"+userID, status, 1700000000)}
@@ -221,6 +224,7 @@ func TestPortalGivesAnUnhealthySubscriberTheRestrictedConfiguration(t *testing.T
 // An ended subscription has nothing to switch; the user is not blocked.
 func TestPortalGivesAnEndedSubscriberThePlanChangeConfiguration(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	seedSubscription(t, userID, "cus_"+userID, "sub_"+userID, "past_due", 1700000000)
 	fake := healthyPortalFake()
 	fake.subscriptions = map[string]string{"sub_" + userID: liveSubscription("sub_"+userID, "canceled", 1700000000)}
@@ -232,6 +236,7 @@ func TestPortalGivesAnEndedSubscriberThePlanChangeConfiguration(t *testing.T) {
 
 func TestPortalCreatesNoSessionWhenTheBlockingLookupFails(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	seedSubscription(t, userID, "cus_"+userID, "sub_"+userID, "active", 1700000000)
 	fake := healthyPortalFake()
 	fake.subStatus = http.StatusInternalServerError
@@ -248,6 +253,7 @@ func TestPortalUsesTheConfiguredOverrides(t *testing.T) {
 	}{{"active", "bpc_change_override"}, {"past_due", "bpc_restricted_override"}} {
 		t.Run(tc.status, func(t *testing.T) {
 			userID := "u-" + t.Name()
+			cleanupBillingUser(t, userID)
 			seedSubscription(t, userID, "cus_"+userID, "sub_"+userID, "active", 1700000000)
 			fake := &portalFake{
 				configs: map[string]string{
@@ -290,6 +296,7 @@ func TestPortalRefusesWithoutASafeConfiguration(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			userID := "u-" + t.Name()
+			cleanupBillingUser(t, userID)
 			seedSubscription(t, userID, "cus_"+userID, "sub_"+userID, "active", 1700000000)
 			fake := healthyPortalFake()
 			fake.subscriptions = map[string]string{"sub_" + userID: liveSubscription("sub_"+userID, tc.status, 1700000000)}
@@ -303,6 +310,7 @@ func TestPortalRefusesWithoutASafeConfiguration(t *testing.T) {
 
 	t.Run("an unreadable override never falls back to the default", func(t *testing.T) {
 		userID := "u-" + t.Name()
+		cleanupBillingUser(t, userID)
 		seedSubscription(t, userID, "cus_"+userID, "sub_"+userID, "active", 1700000000)
 		fake := healthyPortalFake()
 		fake.subscriptions = map[string]string{"sub_" + userID: liveSubscription("sub_"+userID, "active", 1700000000)}
@@ -320,6 +328,7 @@ func TestPortalRefusesWithoutASafeConfiguration(t *testing.T) {
 // as well as the Checkout Session's client_reference_id.
 func TestSubscriptionCheckoutAttributesTheSubscriptionToTheUser(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	seedUser(t, userID)
 
 	var form url.Values

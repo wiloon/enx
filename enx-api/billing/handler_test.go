@@ -25,6 +25,22 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// cleanupBillingUser removes fixture data and any rows written by the handler.
+func cleanupBillingUser(t *testing.T, userID string) {
+	t.Helper()
+	t.Cleanup(func() {
+		for _, table := range []string{"credit_transactions", "credit_accounts", "subscriptions", "trial_grants", "users"} {
+			column := "user_id"
+			if table == "users" {
+				column = "id"
+			}
+			if err := sqlitex.DB.Exec("DELETE FROM "+table+" WHERE "+column+" = ?", userID).Error; err != nil {
+				t.Errorf("clean up %s: %v", table, err)
+			}
+		}
+	})
+}
+
 // setUserID simulates what middleware.ClerkAuth sets on the context.
 func setUserID(userID string) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -139,6 +155,7 @@ func fakeStripeClient(t *testing.T, onSession func(form url.Values)) *stripeSDK.
 // LAUNCH-CHECKLIST 2.1).
 func TestCheckoutTopupWithoutSubscriptionCreatesPaymentSession(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	seedUser(t, userID)
 
 	var form url.Values
@@ -168,6 +185,7 @@ func TestCheckoutTopupWithoutSubscriptionCreatesPaymentSession(t *testing.T) {
 // webhook needs one to record the user<->customer mapping.
 func TestCheckoutTopupFirstTimeBuyerAsksStripeToCreateACustomer(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	seedUser(t, userID)
 
 	var form url.Values
@@ -190,6 +208,7 @@ func TestCheckoutSubscriptionRefusesUserWithLiveSubscription(t *testing.T) {
 	for _, status := range []string{"active", "trialing", "past_due"} {
 		t.Run(status, func(t *testing.T) {
 			userID := "u-" + t.Name()
+			cleanupBillingUser(t, userID)
 			seedUser(t, userID)
 			seedSubscription(t, userID, "cus_"+userID, "sub_"+userID, status, 1700000000)
 
@@ -219,6 +238,7 @@ func TestCheckoutSubscriptionAllowsUserWithoutLiveSubscription(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			userID := "u-" + t.Name()
+			cleanupBillingUser(t, userID)
 			seedUser(t, userID)
 			if tc.status != "" {
 				seedSubscription(t, userID, "cus_"+userID, "sub_"+userID, tc.status, 1700000000)
@@ -241,6 +261,7 @@ func TestCheckoutSubscriptionAllowsUserWithoutLiveSubscription(t *testing.T) {
 // it must not risk a second subscription by checking out anyway.
 func TestCheckoutSubscriptionFailsWhenSubscriptionLookupFails(t *testing.T) {
 	userID := "u-subscription-lookup-fails"
+	cleanupBillingUser(t, userID)
 	seedUser(t, userID)
 	failSubscriptionQueries(t)
 
@@ -307,6 +328,7 @@ func TestMeDefaultsForUnknownUser(t *testing.T) {
 
 func TestMeReflectsExistingRows(t *testing.T) {
 	userID := "u-with-subscription"
+	cleanupBillingUser(t, userID)
 	sub := sqlitex.Subscription{
 		UserId:           userID,
 		StripeCustomerId: "cus_123",

@@ -63,6 +63,7 @@ func subscriptionHandler(t *testing.T, userID, subID, paymentIntentID string) *H
 
 func TestInvoicePaidRecordsASubscriptionPaymentForReferrals(t *testing.T) {
 	userID, subID := "u-"+t.Name(), "sub_"+t.Name()
+	cleanupBillingUser(t, userID)
 	recorder := &recordingPayments{}
 	h := subscriptionHandler(t, userID, subID, "pi_"+t.Name()).WithFirstPaymentRecorder(recorder)
 
@@ -81,6 +82,7 @@ func TestInvoicePaidRecordsASubscriptionPaymentForReferrals(t *testing.T) {
 
 func TestInvoicePaidRecordsTheInvoiceWhenTheIntentLookupFails(t *testing.T) {
 	userID, subID := "u-"+t.Name(), "sub_"+t.Name()
+	cleanupBillingUser(t, userID)
 	recorder := &recordingPayments{}
 	h := subscriptionHandler(t, userID, subID, "").WithFirstPaymentRecorder(recorder)
 
@@ -94,6 +96,7 @@ func TestInvoicePaidRecordsTheInvoiceWhenTheIntentLookupFails(t *testing.T) {
 
 func TestAZeroAmountInvoiceIsNotAPayment(t *testing.T) {
 	userID, subID := "u-"+t.Name(), "sub_"+t.Name()
+	cleanupBillingUser(t, userID)
 	recorder := &recordingPayments{}
 	h := subscriptionHandler(t, userID, subID, "").WithFirstPaymentRecorder(recorder)
 
@@ -107,6 +110,7 @@ func TestAZeroAmountInvoiceIsNotAPayment(t *testing.T) {
 
 func TestTopupCheckoutRecordsATopupPaymentForReferrals(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	recorder := &recordingPayments{}
 	stripe := testStripe()
 	stripe.Credits.TopupSmall = 300
@@ -129,6 +133,7 @@ func TestTopupCheckoutRecordsATopupPaymentForReferrals(t *testing.T) {
 // payer's credits are already granted.
 func TestAReferralFailureStillSucceedsTheWebhook(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	recorder := &recordingPayments{fail: true}
 	stripe := testStripe()
 	stripe.Credits.TopupSmall = 300
@@ -150,6 +155,8 @@ func TestAReferralFailureStillSucceedsTheWebhook(t *testing.T) {
 // the invitee's later refund claws back only the invitee's credits.
 func TestAnInviteeRefundLeavesTheReferrersRewardAlone(t *testing.T) {
 	invitee, referrer := "u-invitee-"+t.Name(), "u-referrer-"+t.Name()
+	cleanupBillingUser(t, invitee)
+	cleanupBillingUser(t, referrer)
 	pi := "pi_" + t.Name()
 	stripe := testStripe()
 	stripe.Credits.TopupSmall = 300

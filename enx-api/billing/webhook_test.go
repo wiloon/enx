@@ -30,6 +30,7 @@ func fakeEvent(id string, eventType stripeSDK.EventType, objJSON string) stripeS
 
 func TestHandleCheckoutSessionCompletedTopupGrantsCredits(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeCheckoutSessionCompleted, `{
 		"id": "cs_topup_1",
 		"client_reference_id": "`+userID+`",
@@ -73,6 +74,7 @@ func TestHandleCheckoutSessionCompletedTopupGrantsCredits(t *testing.T) {
 // production. The credits are what they paid for, so they still land.
 func TestHandleCheckoutSessionCompletedTopupWithoutCustomerGrantsCredits(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeCheckoutSessionCompleted, `{
 		"id": "cs_topup_nocus",
 		"client_reference_id": "`+userID+`",
@@ -106,6 +108,7 @@ func TestHandleCheckoutSessionCompletedTopupWithoutCustomerGrantsCredits(t *test
 
 func TestHandleCheckoutSessionCompletedTopupUnconfiguredAmount(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeCheckoutSessionCompleted, `{
 		"id": "cs_topup_2",
 		"client_reference_id": "`+userID+`",
@@ -127,6 +130,7 @@ func TestHandleCheckoutSessionCompletedTopupUnconfiguredAmount(t *testing.T) {
 // tier is configured: it fails like an unconfigured amount (#45).
 func TestHandleCheckoutSessionCompletedTopupUnknownTier(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeCheckoutSessionCompleted, `{
 		"id": "cs_topup_unknown",
 		"client_reference_id": "`+userID+`",
@@ -152,6 +156,7 @@ func TestHandleCheckoutSessionCompletedTopupUnknownTier(t *testing.T) {
 
 func TestHandleCheckoutSessionCompletedSubscriptionEstablishesMapping(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeCheckoutSessionCompleted, `{
 		"id": "cs_sub_1",
 		"client_reference_id": "`+userID+`",
@@ -177,6 +182,7 @@ func TestHandleCheckoutSessionCompletedSubscriptionEstablishesMapping(t *testing
 
 func TestHandleSubscriptionUpdatedSetsStatusAndPeriodEndFromStripe(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	seedSubscription(t, userID, "cus_x", "sub_x", "active", 0)
 
 	h := NewHandler(fakeStripe(t, map[string]string{"sub_x": liveSubscription("sub_x", "past_due", 1700000000)}),
@@ -200,6 +206,7 @@ func TestHandleSubscriptionUpdatedSetsStatusAndPeriodEndFromStripe(t *testing.T)
 // subscription was deleted must not resurrect it.
 func TestHandleSubscriptionUpdatedStaleEventAfterDeletionStaysCanceled(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	seedSubscription(t, userID, "cus_stale", "sub_stale", "active", 0)
 
 	h := NewHandler(fakeStripe(t, map[string]string{"sub_stale": liveSubscription("sub_stale", "canceled", 1700000000)}),
@@ -226,6 +233,7 @@ func TestHandleSubscriptionUpdatedStaleEventAfterDeletionStaysCanceled(t *testin
 // canceled subscription active either.
 func TestHandleCheckoutSessionCompletedUsesLiveStatus(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	h := NewHandler(fakeStripe(t, map[string]string{"sub_late": liveSubscription("sub_late", "canceled", 1700000000)}),
 		"https://example.com", testStripe(), nil)
 	event := fakeEvent("evt-"+t.Name(), stripeSDK.EventTypeCheckoutSessionCompleted, `{
@@ -262,6 +270,7 @@ func TestHandleSubscriptionUpdatedNoLocalRowIsAnError(t *testing.T) {
 
 func TestHandleSubscriptionEventStripeErrorIsAnError(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	seedSubscription(t, userID, "cus_err", "sub_err", "active", 0)
 
 	h := NewHandler(fakeStripe(t, map[string]string{}), "https://example.com", testStripe(), nil)
@@ -281,6 +290,7 @@ func TestHandleSubscriptionEventStripeErrorIsAnError(t *testing.T) {
 
 func TestHandleSubscriptionDeletedSetsCanceled(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	seedSubscription(t, userID, "cus_y", "sub_y", "active", 1700000000)
 
 	h := NewHandler(fakeStripe(t, map[string]string{"sub_y": liveSubscription("sub_y", "canceled", 1700000000)}),
@@ -301,6 +311,7 @@ func TestHandleSubscriptionDeletedSetsCanceled(t *testing.T) {
 
 func TestHandleInvoicePaymentFailedSetsPastDue(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	seedSubscription(t, userID, "cus_z", "sub_z", "active", 1700000000)
 
 	h := NewHandler(fakeStripe(t, map[string]string{"sub_z": liveSubscription("sub_z", "past_due", 1700000000)}),
@@ -324,6 +335,7 @@ func TestHandleInvoicePaymentFailedSetsPastDue(t *testing.T) {
 
 func TestHandleInvoicePaidGrantsCreditsAndSyncsState(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	seedSubscription(t, userID, "cus_paid", "sub_paid", "incomplete", 0)
 	stripe := testStripe()
 	stripe.Price.Pro, stripe.Price.ProPlus, stripe.Price.Max = "enx_pro", "enx_pro_plus", "enx_max"
@@ -405,6 +417,7 @@ func TestWebhookEndpointBadSignature(t *testing.T) {
 func TestWebhookEndpointValidSignatureDispatches(t *testing.T) {
 	secret := "whsec_test_endpoint"
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 
 	payload := []byte(`{
 		"id": "evt-` + t.Name() + `",

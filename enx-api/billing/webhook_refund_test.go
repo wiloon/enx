@@ -104,6 +104,7 @@ func subscriptionPaidSetup(t *testing.T, userID, subID, paymentIntentID string) 
 
 func TestWebhookChargeRefundedClawsBackASubscriptionPeriod(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	pi := "pi_" + t.Name()
 	h, _ := subscriptionPaidSetup(t, userID, "sub_"+t.Name(), pi)
 
@@ -127,6 +128,7 @@ func TestWebhookChargeRefundedCancelsALiveSubscription(t *testing.T) {
 		t.Run(strconv.FormatInt(refunded, 10), func(t *testing.T) {
 			name := strings.ReplaceAll(t.Name(), "/", "-")
 			userID := "u-" + name
+			cleanupBillingUser(t, userID)
 			subID := "sub_" + name
 			pi := "pi_" + name
 			h, fake := subscriptionPaidSetup(t, userID, subID, pi)
@@ -145,6 +147,7 @@ func TestWebhookChargeRefundedCancelsALiveSubscription(t *testing.T) {
 // cancels without clawing back a second time.
 func TestWebhookChargeRefundedRetriesAFailedCancelWithoutClawingTwice(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	subID := "sub_" + t.Name()
 	pi := "pi_" + t.Name()
 	h, fake := subscriptionPaidSetup(t, userID, subID, pi)
@@ -173,6 +176,7 @@ func TestWebhookChargeRefundedRetriesAFailedCancelWithoutClawingTwice(t *testing
 
 func TestWebhookChargeRefundedSkipsCancelWhenStripeSaysItEnded(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	subID := "sub_" + t.Name()
 	pi := "pi_" + t.Name()
 	h, fake := subscriptionPaidSetup(t, userID, subID, pi)
@@ -188,6 +192,7 @@ func TestWebhookChargeRefundedSkipsCancelWhenStripeSaysItEnded(t *testing.T) {
 
 func TestWebhookChargeRefundedForATopupLeavesTheSubscriptionAlone(t *testing.T) {
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	subID := "sub_" + t.Name()
 	_, fake := subscriptionPaidSetup(t, userID, subID, "pi_sub_"+t.Name())
 	stripe := testStripe()
@@ -229,6 +234,7 @@ func postSignedEvent(t *testing.T, h *Handler, secret, eventID, eventType, objec
 func TestWebhookRefundStoryTopupSpendPartialThenFullRefund(t *testing.T) {
 	const secret = "whsec_refund_story"
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	pi := "pi_" + t.Name()
 	stripe := testStripe()
 	stripe.WebhookSecret = secret
@@ -288,6 +294,7 @@ func TestWebhookRefundStoryTopupSpendPartialThenFullRefund(t *testing.T) {
 func TestWebhookChargeRefundedClawsBackATopup(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	pi := "pi_" + t.Name()
 	stripe := testStripe()
 	stripe.Credits.TopupSmall = 300
@@ -314,6 +321,7 @@ func TestWebhookChargeRefundedClawsBackATopup(t *testing.T) {
 func TestWebhookChargeRefundedNotesTheChargeOnTheClawbackRow(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	cleanupBillingUser(t, userID)
 	pi := "pi_" + t.Name()
 	stripe := testStripe()
 	stripe.Credits.TopupSmall = 300

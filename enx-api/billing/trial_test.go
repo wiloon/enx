@@ -12,6 +12,7 @@ import (
 )
 
 func TestTrialGrantGrantsOnceAndCountsIt(t *testing.T) {
+	cleanupBillingUser(t, "u-trial-hook")
 	ctx := context.Background()
 	grants := 0
 	g := TrialGrant{Amount: 100, TTL: 7 * 24 * time.Hour, EmailHMAC: fakeHMAC, Observe: func() { grants++ }}
@@ -53,6 +54,7 @@ func TestTrialGrantZeroAmountGrantsNothing(t *testing.T) {
 // ADR-062 Decision 3: the email decides, so a second account with the same
 // email (case and spaces aside, which the HMAC folds) gets no trial.
 func TestTrialGrantSkipsAnEmailThatAlreadyHadATrial(t *testing.T) {
+	cleanupBillingUser(t, "u-trial-email-1")
 	ctx := context.Background()
 	hmac := func(email string) string { return "h:" + strings.ToLower(strings.TrimSpace(email)) }
 	g := TrialGrant{Amount: 100, TTL: time.Hour, EmailHMAC: hmac}
@@ -99,6 +101,7 @@ func fakeHMAC(email string) string {
 
 func TestMeReportsTrial(t *testing.T) {
 	userID := "u-me-trial"
+	cleanupBillingUser(t, userID)
 	before := time.Now()
 	if _, err := credit.GrantTrial(context.Background(), userID, "h:"+userID, 100, 7*24*time.Hour); err != nil {
 		t.Fatal(err)
