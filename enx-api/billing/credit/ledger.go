@@ -73,6 +73,10 @@ func GrantSubscription(ctx context.Context, userID string, amount int64, periodE
 			return err
 		}
 
+		if err := checkGrantTarget(tx, userID); err != nil {
+			return err
+		}
+
 		now := time.Now().UnixMilli()
 		if err := ensureAccount(tx, userID, now); err != nil {
 			return err
@@ -116,6 +120,10 @@ func GrantTopup(ctx context.Context, userID string, amount int64, stripeEventID,
 	return sqlitex.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		already, err := eventAlreadyProcessed(tx, stripeEventID)
 		if err != nil || already {
+			return err
+		}
+
+		if err := checkGrantTarget(tx, userID); err != nil {
 			return err
 		}
 

@@ -49,6 +49,10 @@ func DeductAdmin(ctx context.Context, userID string, amount int64, note string) 
 // the ledger row in the same transaction.
 func adjustTopup(ctx context.Context, userID string, delta int64, txnType, note string) error {
 	return sqlitex.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := checkGrantTarget(tx, userID); err != nil {
+			return err
+		}
+
 		now := time.Now().UnixMilli()
 		if err := ensureAccount(tx, userID, now); err != nil {
 			return err

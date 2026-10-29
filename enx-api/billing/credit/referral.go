@@ -58,6 +58,23 @@ func GrantReferralBonus(ctx context.Context, userID string, b ReferralBonus) (tr
 		if err != nil {
 			return err
 		}
+		cutover, err := cutoverLedger(tx)
+		if err != nil {
+			return err
+		}
+		if already && cutover {
+			var accounts []sqlitex.CreditAccount
+			if err := tx.Where("user_id = ?", userID).Find(&accounts).Error; err != nil {
+				return err
+			}
+			if len(accounts) > 0 && accounts[0].TrialExpiresAt != nil {
+				trialExpiresAt = time.Unix(*accounts[0].TrialExpiresAt, 0)
+			}
+			return nil
+		}
+		if err := checkGrantTarget(tx, userID); err != nil {
+			return err
+		}
 		if !already {
 			if _, err := grantTrial(tx, userID, b.EmailHMAC, b.TrialAmount, b.TrialTTL, at); err != nil {
 				return err
@@ -127,6 +144,9 @@ func GrantReferralReward(ctx context.Context, referrerID string, amount int64, k
 	return sqlitex.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		already, err := eventAlreadyProcessed(tx, key)
 		if err != nil || already {
+			return err
+		}
+		if err := checkGrantTarget(tx, referrerID); err != nil {
 			return err
 		}
 		var users int64

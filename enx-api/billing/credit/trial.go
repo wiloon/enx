@@ -61,6 +61,10 @@ func grantTrial(tx *gorm.DB, userID, emailHMAC string, amount int64, ttl time.Du
 		return false, err
 	}
 
+	if err := checkGrantTarget(tx, userID); err != nil {
+		return false, err
+	}
+
 	nowMs := at.UnixMilli()
 	// The record is the guard: of two accounts with one email, only the one
 	// whose insert lands gets the trial. A record this account already owns
