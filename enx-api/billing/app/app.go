@@ -176,12 +176,13 @@ func (a *Assembly) planCredits() map[string]int64 {
 // handlers are the decision services over the tier of each Price.
 func (a *Assembly) handlers(tierForPrice map[string]string) webhookdispatch.Handlers {
 	endpoint := a.endpoint()
+	snapshotHandler := snapshot.NewHandler(repo.SubscriptionSnapshots{}, a.worker, tierForPrice)
 	return webhookdispatch.Handlers{
 		Checkout: checkoutcompleted.NewHandler(repo.CheckoutCompleted{Endpoint: endpoint}, a.topUpCredits()),
-		InvoicePaid: invoicepaid.NewHandler(repo.InvoicePaid{}, a.worker,
-			invoicepaid.Plans{TierForPrice: tierForPrice, Credits: a.planCredits()}, a.deps.Now),
+		InvoicePaid: webhookdispatch.WithInvoiceSnapshot(invoicepaid.NewHandler(repo.InvoicePaid{}, a.worker,
+			invoicepaid.Plans{TierForPrice: tierForPrice, Credits: a.planCredits()}, a.deps.Now), snapshotHandler),
 		Refund:   chargerefunded.NewHandler(repo.ChargeRefunds{}, a.worker),
-		Snapshot: snapshot.NewHandler(repo.SubscriptionSnapshots{}, a.worker, tierForPrice),
+		Snapshot: snapshotHandler,
 	}
 }
 

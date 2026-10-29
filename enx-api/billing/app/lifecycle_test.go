@@ -143,11 +143,11 @@ func (f *fakeStripe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		_, _ = w.Write([]byte(`{"id":"bps_1","object":"billing_portal.session","url":"https://billing.example.test/session"}`))
 	case r.URL.Path == "/v1/subscriptions/sub_recovery":
-		_, _ = w.Write([]byte(`{"id":"sub_recovery","object":"subscription","status":"active"}`))
+		_, _ = w.Write([]byte(`{"id":"sub_recovery","object":"subscription","status":"active","customer":"cus_topup","items":{"object":"list","has_more":false,"data":[{"id":"si_checkout","current_period_end":1800000000,"price":{"id":"price_pp_m"}}]}}`))
 	case r.URL.Path == "/v1/subscriptions/sub_conflict_a":
-		_, _ = w.Write([]byte(`{"id":"sub_conflict_a","object":"subscription","status":"active"}`))
+		_, _ = w.Write([]byte(`{"id":"sub_conflict_a","object":"subscription","status":"active","customer":"cus_topup","items":{"object":"list","has_more":false,"data":[{"id":"si_a","current_period_end":1800000000,"price":{"id":"price_pp_m"}}]}}`))
 	case r.URL.Path == "/v1/subscriptions/sub_conflict":
-		_, _ = w.Write([]byte(`{"id":"sub_conflict","object":"subscription","status":"active"}`))
+		_, _ = w.Write([]byte(`{"id":"sub_conflict","object":"subscription","status":"active","customer":"cus_topup","items":{"object":"list","has_more":false,"data":[{"id":"si_conflict","current_period_end":1800000000,"price":{"id":"price_pp_m"}}]}}`))
 	case strings.HasPrefix(r.URL.Path, "/v1/invoice"):
 		if f.invoicesFail.Load() {
 			fail()

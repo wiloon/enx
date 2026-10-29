@@ -13,6 +13,33 @@ import (
 // from the Checkout association committed by the preceding worker pass.
 const paidInvoice = `{"object":"invoice","id":"in_checkout","customer":"cus_topup","billing_reason":"subscription_create","amount_paid":2000,"parent":{"subscription_details":{"subscription":"sub_recovery"}},"lines":{"has_more":false,"data":[{"id":"il_checkout","amount":2000,"parent":{"subscription_item_details":{"subscription":"sub_recovery","subscription_item":"si_checkout","proration":false}},"pricing":{"price_details":{"price":"price_pp_m"}},"period":{"start":1790000000,"end":1800000000}}]}}`
 
+func TestPaidInvoiceRefreshesAcceptedSubscriptionStatus(t *testing.T) {
+	r := newRig(t, "topup-only.sql")
+	if err := sqlitex.DB.AutoMigrate(&sqlitex.Referral{}); err != nil {
+		t.Fatal(err)
+	}
+	r.stripe.portalSafe.Store(true)
+	r.start(t)
+	eventually(t, "endpoint discovery", func() bool { return r.a.identity.Endpoint().AccountID != "" })
+	if code := r.deliver(t, "evt_checkout_status", "checkout.session.completed", `{"object":"checkout.session","id":"cs_status","mode":"subscription","client_reference_id":"u_topup","customer":"cus_topup","subscription":"sub_recovery","payment_status":"paid"}`); code != http.StatusOK {
+		t.Fatalf("Checkout receipt = %d", code)
+	}
+	r.tickers.tick(testPoll)
+	eventually(t, "Checkout processing", func() bool { status, _ := eventStatus(t, "evt_checkout_status"); return status == "processed" })
+	if code := r.deliver(t, "evt_invoice_status", "invoice.paid", paidInvoice); code != http.StatusOK {
+		t.Fatalf("invoice receipt = %d", code)
+	}
+	r.tickers.tick(testPoll)
+	eventually(t, "invoice processing", func() bool { status, _ := eventStatus(t, "evt_invoice_status"); return status == "processed" })
+	var status string
+	if err := sqlitex.DB.Raw("SELECT status FROM subscriptions WHERE stripe_subscription_id = ?", "sub_recovery").Scan(&status).Error; err != nil {
+		t.Fatal(err)
+	}
+	if status != "active" {
+		t.Fatalf("subscription status = %q, want live Stripe status active after payment", status)
+	}
+}
+
 func TestMountedCheckoutAndPaidInvoiceGrantOnceAcrossRedeliveryAndAnotherEventID(t *testing.T) {
 	r := newRig(t, "topup-only.sql")
 	if err := sqlitex.DB.AutoMigrate(&sqlitex.Referral{}); err != nil {
