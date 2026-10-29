@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -302,5 +303,36 @@ func TestWordLookupFromCacheOfAnUnknownWordIs404AndNotCharged(t *testing.T) {
 	}
 	if _, _, found := reviewOf(t, "u1", "no-such-word"); found {
 		t.Fatal("a user_dicts row was written for a word that does not exist")
+	}
+}
+
+type quotaRecorder struct{}
+
+func (quotaRecorder) Record(context.Context, string, string, bool) (int, bool, error) {
+	return 0, false, dictionary.ErrQuotaExceeded
+}
+
+type quotaSubscriber bool
+
+func (s quotaSubscriber) IsActiveSubscriber(context.Context, string) (bool, error) {
+	return bool(s), nil
+}
+
+func TestWordLookupQuotaResponseUsesInjectedSubscription(t *testing.T) {
+	for _, tc := range []struct {
+		active bool
+		want   string
+	}{{true, "contact support"}, {false, "Upgrade"}} {
+		h := NewWordLookupHandler(quotaRecorder{}).WithSubscriptions(quotaSubscriber(tc.active))
+		r := gin.New()
+		r.Use(func(c *gin.Context) { c.Set("user_id", "u1") })
+		r.POST("/", h.Record)
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"wordId":"w1","fromCache":true}`))
+		req.Header.Set("Content-Type", "application/json")
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusTooManyRequests || !strings.Contains(w.Body.String(), tc.want) {
+			t.Fatalf("active %v: %d %s", tc.active, w.Code, w.Body.String())
+		}
 	}
 }

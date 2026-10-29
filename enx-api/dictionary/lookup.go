@@ -138,6 +138,12 @@ func isActiveSubscriber(userID string) (bool, error) {
 	return count > 0, nil
 }
 
+type legacySubscriptions struct{}
+
+func (legacySubscriptions) IsActiveSubscriber(_ context.Context, userID string) (bool, error) {
+	return isActiveSubscriber(userID)
+}
+
 // RespondUnavailable writes the ADR-mandated 503 JSON response.
 func RespondUnavailable(c *gin.Context) {
 	c.JSON(http.StatusServiceUnavailable, gin.H{
@@ -154,8 +160,17 @@ func RespondUnavailable(c *gin.Context) {
 // set high enough that reaching it means the account is being misused, not
 // that they should pay more (ADR-029 Decision 5).
 func RespondQuotaExceeded(c *gin.Context, userID string) {
+	RespondQuotaExceededWithSubscriptions(c, userID, legacySubscriptions{})
+}
+
+func RespondQuotaExceededWithSubscriptions(c *gin.Context, userID string, subs Subscriptions) {
 	message := "Daily dictionary lookup limit reached. Upgrade to Catglish Pro for a much higher daily limit."
-	if subscribed, err := isActiveSubscriber(userID); err == nil && subscribed {
+	ctx := context.Background()
+	if c.Request != nil {
+		ctx = c.Request.Context()
+	}
+	subscribed, err := subs.IsActiveSubscriber(ctx, userID)
+	if err == nil && subscribed {
 		message = "Daily dictionary lookup limit reached. That is unusually high for a subscription -- please contact support."
 	}
 	// The code tells the clients this 429 from the request rate limit's

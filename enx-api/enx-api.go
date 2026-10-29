@@ -18,8 +18,6 @@ import (
 	"enx-api/dictsample"
 	"enx-api/ecdict"
 	"enx-api/email"
-	"enx-api/entitlement"
-	entadapters "enx-api/entitlement/adapters"
 	"enx-api/enx"
 	"enx-api/handlers"
 	"enx-api/metrics"
@@ -359,7 +357,9 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// One entitlement judgement (ADR-045 Decision 14) for the lookup, which
 	// hides AI-made definitions from users who can't use AI, and for the
 	// preferences, whose editability follows the same rule.
-	entitlements := entitlement.NewService(entadapters.Billing{})
+	readers := newBillingReaders(cfg.Billing.Cutover)
+	subscriptions := readers.subscriptions
+	entitlements := readers.entitlements
 
 	// Sign-up trial (ADR-048): every new account gets the trial credits, and
 	// users whose AI access comes from the trial alone are held to its call
@@ -378,14 +378,14 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 		CallsPerDay:    cfg.Credits.Trial.CallsPerDay,
 	}, nil))
 
-	lookupQuota := dictionary.NewQuotaMeter(adapters.LookupEvents{}, entadapters.Billing{}, cfg.Stripe.Quota, time.Now)
+	lookupQuota := dictionary.NewQuotaMeter(adapters.LookupEvents{}, subscriptions, cfg.Stripe.Quota, time.Now)
 	dictionaryService := dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, lookupQuota, entitlements)
 	preferencesService := preferences.NewService(prefadapters.Table{}, entitlements)
 
 	// The AI word fallback (ADR-045) is a second request after a lookup
 	// missed. The policy decides what that miss offers each user; the service
 	// itself is switched on below, once the AI provider exists.
-	lookupHandler := translate.NewHandler(dictionaryService, repo.ReviewLog{}).WithAI(
+	lookupHandler := translate.NewHandlerWithSubscriptions(dictionaryService, repo.ReviewLog{}, subscriptions).WithAI(
 		dictionaryService,
 		adapters.AIPolicy{Service: dictionaryService, Entitlements: entitlements, Preferences: preferencesService},
 	)
@@ -538,7 +538,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// Metered only for a lookup answered from the extension's local cache
 	// (fromCache, ADR-061 Decision 4). Not idempotent: the extension never
 	// retries it.
-	wordLookupHandler := handlers.NewWordLookupHandler(dictionary.NewWordLookups(adapters.QueryCounts{}, lookupQuota))
+	wordLookupHandler := handlers.NewWordLookupHandlerWithSubscriptions(dictionary.NewWordLookups(adapters.QueryCounts{}, lookupQuota), subscriptions)
 	apiGroup.POST("/me/word-lookups", wordLookupHandler.Record)
 
 	// Billing (Stripe) — requires authentication (Clerk session JWT).
@@ -606,7 +606,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 		adminDict.GET("/page-reports", pagereport.ListHandler)
 		// Users and billing (ADR-049 Decision 11): accounts, balances and
 		// usage counts only, never saved pages or looked-up words.
-		adminUsers := adminuser.NewHandler(adminuser.NewService(repo.AdminUsers{Now: time.Now},
+		adminUsers := adminuser.NewHandler(adminuser.NewService(readers.admin,
 			strings.HasPrefix(cfg.Stripe.SecretKey.Reveal(), "sk_live_"), time.Now))
 		adminDict.GET("/users", adminUsers.List)
 		adminDict.GET("/users/:id", adminUsers.Detail)

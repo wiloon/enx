@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"enx-api/dictionary"
+	entadapters "enx-api/entitlement/adapters"
 	"enx-api/enx"
 	"enx-api/metrics"
 	"enx-api/middleware"
@@ -40,14 +41,24 @@ type AIPolicy interface {
 
 // Handler serves the word lookup endpoints.
 type Handler struct {
-	dict    Resolver
-	reviews ReviewLog
-	ai      AIDefiner
-	policy  AIPolicy
+	subscriptions dictionary.Subscriptions
+	dict          Resolver
+	reviews       ReviewLog
+	ai            AIDefiner
+	policy        AIPolicy
 }
 
 func NewHandler(dict Resolver, reviews ReviewLog) *Handler {
-	return &Handler{dict: dict, reviews: reviews}
+	return NewHandlerWithSubscriptions(dict, reviews, entadapters.Billing{})
+}
+
+func (h *Handler) WithSubscriptions(subs dictionary.Subscriptions) *Handler {
+	h.subscriptions = subs
+	return h
+}
+
+func NewHandlerWithSubscriptions(dict Resolver, reviews ReviewLog, subs dictionary.Subscriptions) *Handler {
+	return &Handler{dict: dict, reviews: reviews, subscriptions: subs}
 }
 
 // WithAI sets up the AI word fallback: ai answers POST /api/dictionary/ai-word
@@ -95,7 +106,7 @@ func (h *Handler) translateWord(c *gin.Context, raw string) {
 		dictionary.RespondUnavailable(c)
 		return
 	case errors.Is(err, dictionary.ErrQuotaExceeded):
-		dictionary.RespondQuotaExceeded(c, userId)
+		dictionary.RespondQuotaExceededWithSubscriptions(c, userId, h.subscriptions)
 		return
 	case err != nil:
 		// Only the two sentinels above mean something to the client; any

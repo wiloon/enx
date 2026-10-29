@@ -11,12 +11,20 @@ import (
 	"gorm.io/gorm"
 )
 
+// SubscriptionReader reports whether a user has an active subscription.
+type SubscriptionReader interface {
+	IsActiveSubscriber(context.Context, string) (bool, error)
+}
+
 // Billing reads subscriptions and credit_accounts.
-type Billing struct{}
+type Billing struct{ Subscriptions SubscriptionReader }
 
 // IsActiveSubscriber reports whether userID has a subscription whose status
 // is "active" (the same rule dictionary uses for its quota tiers).
-func (Billing) IsActiveSubscriber(ctx context.Context, userID string) (bool, error) {
+func (b Billing) IsActiveSubscriber(ctx context.Context, userID string) (bool, error) {
+	if b.Subscriptions != nil {
+		return b.Subscriptions.IsActiveSubscriber(ctx, userID)
+	}
 	var count int64
 	err := sqlitex.DB.WithContext(ctx).Model(&sqlitex.Subscription{}).
 		Where("user_id = ? AND status = ?", userID, "active").
