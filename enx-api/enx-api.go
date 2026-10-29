@@ -10,6 +10,7 @@ import (
 	"enx-api/aitranslate/worddef"
 	"enx-api/billing"
 	billingapp "enx-api/billing/app"
+	"enx-api/billing/checkout"
 	"enx-api/billing/credit"
 	"enx-api/billing/deletion"
 	billingstripe "enx-api/billing/stripe"
@@ -473,7 +474,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	referralHandler := handlers.NewReferralHandler(referrals, cfg.App.FrontendBaseURL)
 	billingHandler := billing.NewHandler(stripeClient, cfg.App.FrontendBaseURL, cfg.Stripe, m)
 	if cfg.Billing.Cutover {
-		billingHandler = billing.NewHandlerWithSubscriptions(stripeClient, cfg.App.FrontendBaseURL, cfg.Stripe, m, repo.BillingSubscriptions{})
+		billingHandler = billing.NewHandlerWithCheckout(stripeClient, cfg.App.FrontendBaseURL, cfg.Stripe, m, repo.BillingSubscriptions{}, checkout.New(repo.PortalSessionOwners{}, billingstripe.NewPortalClient(stripeClient, "", "", nil)))
 	}
 	billingHandler.WithRefundNotifier(email.NewSender(cfg.Resend)).
 		WithFirstPaymentRecorder(referrals)
