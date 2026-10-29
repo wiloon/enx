@@ -17,6 +17,7 @@ import (
 	"enx-api/config"
 	"enx-api/metrics"
 	"enx-api/utils/sqlitex"
+
 	"github.com/golang-jwt/jwt/v5"
 	stripeSDK "github.com/stripe/stripe-go/v86"
 )
@@ -47,13 +48,13 @@ func checkoutRoute(t *testing.T, cutover bool) *checkoutFixture {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/v1/prices":
-			fmt.Fprint(w, `{"object":"list","data":[{"id":"price_test"}],"has_more":false}`)
+			_, _ = fmt.Fprint(w, `{"object":"list","data":[{"id":"price_test"}],"has_more":false}`)
 		case "/v1/checkout/sessions":
 			if err := r.ParseForm(); err != nil {
 				t.Error(err)
 			}
 			f.forms = append(f.forms, r.PostForm)
-			fmt.Fprint(w, `{"id":"cs_test","url":"https://checkout.test/session"}`)
+			_, _ = fmt.Fprint(w, `{"id":"cs_test","url":"https://checkout.test/session"}`)
 		default:
 			if !strings.HasPrefix(r.URL.Path, "/v1/subscriptions/") {
 				t.Errorf("unexpected Stripe request: %s", r.URL.Path)
@@ -64,10 +65,10 @@ func checkoutRoute(t *testing.T, cutover bool) *checkoutFixture {
 			state := f.live[id]
 			if state == "" {
 				w.WriteHeader(404)
-				fmt.Fprint(w, `{"error":{"type":"invalid_request_error","code":"resource_missing","message":"missing"}}`)
+				_, _ = fmt.Fprint(w, `{"error":{"type":"invalid_request_error","code":"resource_missing","message":"missing"}}`)
 				return
 			}
-			fmt.Fprintf(w, `{"id":%q,"status":%q,"cancel_at_period_end":%t}`, id, state, f.cancel)
+			_, _ = fmt.Fprintf(w, `{"id":%q,"status":%q,"cancel_at_period_end":%t}`, id, state, f.cancel)
 		}
 	}))
 	t.Cleanup(backendServer.Close)
@@ -110,7 +111,7 @@ func (f *checkoutFixture) post(t *testing.T, endpoint string) (int, map[string]a
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var body map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -239,15 +240,16 @@ func TestCheckoutCutoverCustomerSelectionAndFailures(t *testing.T) {
 				switch scenario {
 				case "live accepted", "ended accepted", "live failure":
 					checkoutSub(t, "sub_accepted", "canceled", "accepted", "")
-					if scenario == "live accepted" {
+					switch scenario {
+					case "live accepted":
 						f.live["sub_accepted"] = "active"
 						customer = "cus_accepted"
 						if endpoint == "subscription" {
 							want = 409
 						}
-					} else if scenario == "ended accepted" {
+					case "ended accepted":
 						f.live["sub_accepted"] = "canceled"
-					} else {
+					default:
 						want = 503
 					}
 				case "subscription read failure":
