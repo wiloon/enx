@@ -73,6 +73,9 @@ func (h *AccountHandler) respond(c *gin.Context, action, targetUserID string, er
 
 	status, code, message := http.StatusInternalServerError, "failed", "The account action failed. Try again."
 	switch {
+	case errors.Is(err, account.ErrDeletionInProgress):
+		status, code, message = http.StatusServiceUnavailable, "deletion_in_progress", "Account deletion is in progress. Try again."
+		c.Header("Retry-After", "60")
 	case errors.Is(err, account.ErrNotConfigured):
 		status, code, message = http.StatusServiceUnavailable, "not_configured", "Account management is not configured."
 	case errors.Is(err, account.ErrUserNotFound):

@@ -518,7 +518,8 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 		repo.Accounts{}, repo.TrialGrants{Hash: emailHMAC.Of}, clerk,
 		accountadapters.Subscriptions{Stripe: stripeClient}, admins, emailHMAC, time.Now)
 	if cfg.Billing.Cutover {
-		accountService.WithDeletionChecker(deletion.New(repo.SubscriptionOwners{}, billingstripe.NewWorkerClient(stripeClient)))
+		accountService.WithDeletionChecker(deletion.New(repo.SubscriptionOwners{}, billingstripe.NewWorkerClient(stripeClient))).
+			WithDeletionCoordinator(repo.AccountDeletions{})
 	}
 	accountHandler := handlers.NewAccountHandler(accountService)
 	apiGroup.DELETE("/me", accountHandler.DeleteMe)

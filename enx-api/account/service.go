@@ -10,14 +10,15 @@ import (
 
 // Service holds the account rules.
 type Service struct {
-	users    Users
-	grants   TrialGrants
-	clerk    Clerk
-	subs     Subscriptions
-	deletion DeletionChecker
-	admins   Admins
-	hasher   Hasher
-	now      Clock
+	users       Users
+	grants      TrialGrants
+	clerk       Clerk
+	subs        Subscriptions
+	deletion    DeletionChecker
+	coordinator DeletionCoordinator
+	admins      Admins
+	hasher      Hasher
+	now         Clock
 }
 
 // NewService builds the service. clerk is nil when CLERK_SECRET_KEY is not
@@ -71,30 +72,13 @@ func (s *Service) delete(ctx context.Context, u User, opts DeleteOptions) error 
 	if s.admins.Contains(u.ClerkUserID) {
 		return ErrProtectedAdmin
 	}
-	var err error
-	if s.deletion != nil {
-		verdict, checkErr := s.deletion.Check(ctx, u.ID)
-		if checkErr != nil {
-			return fmt.Errorf("account: check the subscription: %w", checkErr)
-		}
-		switch verdict {
-		case eligibility.DeletionAllowed:
-		case eligibility.DeletionBlockedOpenConflict:
-			return ErrSubscriptionConflict
-		case eligibility.DeletionBlockedRenewing:
-			return ErrRenewingSubscription
-		default:
-			return fmt.Errorf("account: subscription live state unknown")
-		}
-	} else {
-		renewing, checkErr := s.subs.Renewing(ctx, u.ID)
-		if checkErr != nil {
-			return fmt.Errorf("account: check the subscription: %w", checkErr)
-		}
-		if renewing {
-			return ErrRenewingSubscription
-		}
+	if s.coordinator != nil {
+		return s.coordinatedDelete(ctx, u, opts)
 	}
+	if err := s.checkDeletion(ctx, u.ID); err != nil {
+		return err
+	}
+	var err error
 
 	if h := s.hasher.Of(u.Email); h != "" {
 		if opts.ResetTrial {
@@ -177,3 +161,31 @@ func (s *Service) target(ctx context.Context, userID string) (User, error) {
 }
 
 func normalizeEmail(email string) string { return strings.ToLower(strings.TrimSpace(email)) }
+
+func (s *Service) checkDeletion(ctx context.Context, userID string) error {
+	if s.deletion != nil {
+		verdict, checkErr := s.deletion.Check(ctx, userID)
+		if checkErr != nil {
+			return fmt.Errorf("account: check the subscription: %w", checkErr)
+		}
+		switch verdict {
+		case eligibility.DeletionAllowed:
+		case eligibility.DeletionBlockedOpenConflict:
+			return ErrSubscriptionConflict
+		case eligibility.DeletionBlockedRenewing:
+			return ErrRenewingSubscription
+		default:
+			return fmt.Errorf("account: subscription live state unknown")
+		}
+	} else {
+		renewing, checkErr := s.subs.Renewing(ctx, userID)
+		if checkErr != nil {
+			return fmt.Errorf("account: check the subscription: %w", checkErr)
+		}
+		if renewing {
+			return ErrRenewingSubscription
+		}
+	}
+
+	return nil
+}

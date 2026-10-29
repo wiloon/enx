@@ -2,7 +2,7 @@ package sqlitex
 
 import "gorm.io/gorm"
 
-var billingMigrationVersions = []string{WebhookReceiptsVersion, SubscriptionOwnershipVersion, CreditProvenanceVersion, DeletionGatesVersion}
+var billingMigrationVersions = []string{WebhookReceiptsVersion, SubscriptionOwnershipVersion, CreditProvenanceVersion, DeletionGatesVersion, DeletionAttemptsVersion}
 
 // BillingMigrationVersions returns the startup migration order as an independent slice.
 func BillingMigrationVersions() []string {
@@ -25,5 +25,5 @@ func MigrateBillingCutover(db *gorm.DB) error {
 	if _, err := MigrateDeletionGates(db); err != nil {
 		return err
 	}
-	return nil
+	return MigrateDeletionAttempts(db)
 }

@@ -2,6 +2,13 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-10-29: Durable account deletion and recovery — issue #532 (partial)
+
+**Agent**: Codex
+**Solution**: Both cutover deletion routes acquire a persisted lease and gate, revalidate the billing revision, then commit trial-record work and the irreversible phase before Clerk. Administrator retries recover with the original trial-reset intent; local deletion and the retained deleted gate commit together.
+
+**Lesson (fencing)**: Lease expiry does not stop a suspended caller. Check its ownership on preparation, release and completion. A potentially invoked Clerk deletion must retain the gate even when its response is lost. Integration tests pause external clients and replace the owner to verify these cases through the production routes. Grant-writer coordination and payment-worker races remain in #532; keep cutover disabled.
+
 ## 2026-10-18: Refund end-to-end tests — ADR-049 / issue #209
 
 **Agent**: Claude Code
