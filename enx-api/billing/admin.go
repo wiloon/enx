@@ -2,6 +2,7 @@ package billing
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/mail"
 	"strings"
@@ -52,6 +53,15 @@ func adjustCredits(c *gin.Context, name, verb string, apply func(ctx context.Con
 
 	ctx := c.Request.Context()
 	if err := apply(ctx, user.Id, req.Amount, req.Reason); err != nil {
+		if errors.Is(err, credit.ErrDeletionInProgress) {
+			c.Header("Retry-After", "60")
+			c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "code": "deletion_in_progress", "message": "Account deletion is in progress. Try again later."})
+			return
+		}
+		if errors.Is(err, credit.ErrNoUser) {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "no user with that id"})
+			return
+		}
 		logger.Errorf("admin %s(user=%s amount=%d) failed: %v", name, user.Id, req.Amount, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to update credits"})
 		return

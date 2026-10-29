@@ -2,6 +2,13 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-10-29: Coordinate all grants with account deletion — issue #532
+
+**Agent**: Codex
+**Solution**: Cutover credit writers check the deletion gate and local user inside their balance/ledger transaction under SQLite writer serialization. Blocked admin grants return retryable 503; referral rewards remain pending until safe abort or follow deleted-referrer forfeiture. Invoice classification also rechecks the gate.
+
+**Lesson (grant races)**: A caller's earlier target lookup is insufficient. Recheck in the writer, and reconcile committed replay keys before checking deletion. Invitee-bonus replays must read the existing balance without creating one. Production-route tests establish the gates and race grants, receipt/worker processing, and referral settlement against durable deletion outcomes. Cutover remains disabled pending ADR-067's full prerequisites.
+
 ## 2026-10-29: Durable account deletion and recovery — issue #532 (partial)
 
 **Agent**: Codex

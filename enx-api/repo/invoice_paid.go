@@ -176,7 +176,7 @@ func (w WebhookEffects) applyInvoicePaid(tx *gorm.DB, scope webhookevent.Scope, 
 		return invoicepaid.ErrStale
 	}
 	accepts := e.Classification != nil && e.Classification.To == acceptance.Accepted
-	if e.Grant != nil || e.FirstPayment != nil || accepts {
+	if e.Grant != nil || e.FirstPayment != nil || e.Classification != nil {
 		deletion, err := deletionState(tx, o.OwnerUserID)
 		if err != nil {
 			return err
