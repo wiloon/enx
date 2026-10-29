@@ -345,12 +345,23 @@ export default function PrivacyPolicyZhPage() {
           你可以随时在设置页注销账号。注销立即生效且无法撤销：你的登录账号、生词本、
           阅读统计、查词记录、保存的页面、阅读器文档、设置和邀请码都会被删除，而不是隐藏。
         </p>
-        <p>我们保留以下三类数据，都不包含你的姓名或邮箱：</p>
+        <p lang="en">We keep the following records after account deletion:</p>
+        <p lang="en">
+          We retain the payment records Stripe sends us, including every webhook
+          delivery with its full payload, subscriptions, Stripe Customer
+          ownership records, and the credit ledger, for billing, refunds and
+          dispute handling, including after account deletion. These records can
+          contain personal data such as your name, email address and billing
+          details.
+        </p>
         <List
           items={[
             <>
               <Term>积分账本和订阅记录。</Term>
-              财务记录需要为账务和税务留存。账号删除后，它们只对应一个随机标识，不再关联任何姓名或邮箱。
+              <span lang="en">
+                Financial records are retained for accounting and tax, as well
+                as the billing purposes described above.
+              </span>
             </>,
             <>
               <Term>Stripe 的付款记录</Term>，由 Stripe 按其自己的政策保存。

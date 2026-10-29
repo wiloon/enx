@@ -28,6 +28,32 @@ jest.mock('@/hooks/useExtensionStatus', () => ({
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 describe('Privacy Policy', () => {
+  it.each([
+    ['English', PrivacyPolicyPage],
+    ['Chinese route', PrivacyPolicyZhPage],
+  ])(
+    'discloses retained raw payment records on the %s page',
+    (_locale, Page) => {
+      const { container } = render(<Page />)
+
+      const disclosure = screen.getByText(
+        /including every webhook delivery with its full payload/
+      )
+      expect(disclosure).toHaveTextContent(
+        /subscriptions, Stripe Customer ownership records, and the credit ledger/
+      )
+      expect(disclosure).toHaveTextContent(
+        /billing, refunds and dispute handling, including after account deletion/
+      )
+      expect(disclosure).toHaveTextContent(
+        /personal data such as your name, email address and billing details/
+      )
+      expect(container).not.toHaveTextContent(
+        /none of which names you|no name or email attached|都不包含你的姓名或邮箱|不再关联任何姓名或邮箱/
+      )
+    }
+  )
+
   it('names the AI provider and where it runs, not "a third party"', () => {
     render(<PrivacyPolicyPage />)
 

@@ -53,7 +53,7 @@ export const LEGAL = {
   // --- Dates --------------------------------------------------------------
   // "Last updated" is load-bearing: a policy with no date cannot be shown to
   // have been in force when a given user signed up.
-  effectiveDate: '2026-10-16',
+  effectiveDate: '2026-10-29',
 
   // --- Commercial terms referenced by the pages ---------------------------
   /** No-questions-asked window for a first subscription charge. */

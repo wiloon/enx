@@ -383,14 +383,21 @@ export default function PrivacyPolicyPage() {
           list, reading statistics, lookup events, saved pages, reader
           documents, settings and invite code are erased, not hidden.
         </p>
-        <p>We keep three things, none of which names you:</p>
+        <p>We keep the following records after account deletion:</p>
+        <p>
+          We retain the payment records Stripe sends us, including every webhook
+          delivery with its full payload, subscriptions, Stripe Customer
+          ownership records, and the credit ledger, for billing, refunds and
+          dispute handling, including after account deletion. These records can
+          contain personal data such as your name, email address and billing
+          details.
+        </p>
         <List
           items={[
             <>
               <Term>Your credit ledger and your subscription records.</Term>{' '}
-              Financial records must be kept for accounting and tax. Once your
-              account is gone they are tied only to a random identifier, with no
-              name or email attached.
+              Financial records are retained for accounting and tax, as well as
+              the billing purposes described above.
             </>,
             <>
               <Term>Stripe&apos;s records</Term> of your payments, which Stripe
