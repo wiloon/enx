@@ -4,17 +4,20 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"enx-api/billing/eligibility"
 )
 
 // Service holds the account rules.
 type Service struct {
-	users  Users
-	grants TrialGrants
-	clerk  Clerk
-	subs   Subscriptions
-	admins Admins
-	hasher Hasher
-	now    Clock
+	users    Users
+	grants   TrialGrants
+	clerk    Clerk
+	subs     Subscriptions
+	deletion DeletionChecker
+	admins   Admins
+	hasher   Hasher
+	now      Clock
 }
 
 // NewService builds the service. clerk is nil when CLERK_SECRET_KEY is not
@@ -22,6 +25,12 @@ type Service struct {
 func NewService(users Users, grants TrialGrants, clerk Clerk, subs Subscriptions, admins Admins,
 	hasher Hasher, now Clock) *Service {
 	return &Service{users: users, grants: grants, clerk: clerk, subs: subs, admins: admins, hasher: hasher, now: now}
+}
+
+// WithDeletionChecker selects the cutover deletion check.
+func (s *Service) WithDeletionChecker(checker DeletionChecker) *Service {
+	s.deletion = checker
+	return s
 }
 
 // DeleteOptions are the admin's choices for a deletion.
@@ -62,12 +71,29 @@ func (s *Service) delete(ctx context.Context, u User, opts DeleteOptions) error 
 	if s.admins.Contains(u.ClerkUserID) {
 		return ErrProtectedAdmin
 	}
-	renewing, err := s.subs.Renewing(ctx, u.ID)
-	if err != nil {
-		return fmt.Errorf("account: check the subscription: %w", err)
-	}
-	if renewing {
-		return ErrRenewingSubscription
+	var err error
+	if s.deletion != nil {
+		verdict, checkErr := s.deletion.Check(ctx, u.ID)
+		if checkErr != nil {
+			return fmt.Errorf("account: check the subscription: %w", checkErr)
+		}
+		switch verdict {
+		case eligibility.DeletionAllowed:
+		case eligibility.DeletionBlockedOpenConflict:
+			return ErrSubscriptionConflict
+		case eligibility.DeletionBlockedRenewing:
+			return ErrRenewingSubscription
+		default:
+			return fmt.Errorf("account: subscription live state unknown")
+		}
+	} else {
+		renewing, checkErr := s.subs.Renewing(ctx, u.ID)
+		if checkErr != nil {
+			return fmt.Errorf("account: check the subscription: %w", checkErr)
+		}
+		if renewing {
+			return ErrRenewingSubscription
+		}
 	}
 
 	if h := s.hasher.Of(u.Email); h != "" {

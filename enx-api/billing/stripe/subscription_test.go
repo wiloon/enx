@@ -72,3 +72,9 @@ func TestSubscriptionSnapshotReturnsAMissingSubscriptionAsAnError(t *testing.T) 
 		t.Error("SubscriptionSnapshot of a missing subscription returned no error")
 	}
 }
+
+func TestSubscriptionSnapshotReturnsAnErrorWhenStripeIsNotConfigured(t *testing.T) {
+	if _, err := SubscriptionSnapshot(context.Background(), nil, "sub_1"); err == nil {
+		t.Error("SubscriptionSnapshot with no Stripe client returned no error")
+	}
+}

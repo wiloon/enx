@@ -25,6 +25,9 @@ func RetrieveSubscription(ctx context.Context, sc *stripeSDK.Client, subscriptio
 // resource_missing included, is returned: it never proves the subscription
 // ended.
 func SubscriptionSnapshot(ctx context.Context, sc *stripeSDK.Client, subscriptionID string) (snapshot.Live, error) {
+	if sc == nil {
+		return snapshot.Live{}, fmt.Errorf("billing/stripe: Stripe is not configured")
+	}
 	sub, err := sc.V1Subscriptions.Retrieve(ctx, subscriptionID, nil)
 	if err != nil {
 		return snapshot.Live{}, fmt.Errorf("billing/stripe: retrieve subscription %s: %w", subscriptionID, err)
