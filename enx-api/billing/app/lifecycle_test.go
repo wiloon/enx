@@ -81,12 +81,14 @@ func newBillingDB(t *testing.T, fixtures ...string) {
 // fakeStripe is the Stripe API as the startup sequence sees it; each flag
 // makes one part of it fail.
 type fakeStripe struct {
-	accountFails atomic.Bool
-	pricesFail   atomic.Bool
-	invoicesFail atomic.Bool
-	accountCalls atomic.Int64
-	sessionsMade atomic.Int64
-	portalSafe   atomic.Bool
+	accountFails      atomic.Bool
+	pricesFail        atomic.Bool
+	invoicesFail      atomic.Bool
+	accountCalls      atomic.Int64
+	sessionsMade      atomic.Int64
+	portalSafe        atomic.Bool
+	subscriptionReply func(string) string
+	subscriptionFails atomic.Bool
 }
 
 func (f *fakeStripe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -94,6 +96,14 @@ func (f *fakeStripe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fail := func() {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"error":{"message":"down"}}`))
+	}
+	if f.subscriptionFails.Load() && strings.HasPrefix(r.URL.Path, "/v1/subscriptions/") {
+		fail()
+		return
+	}
+	if f.subscriptionReply != nil && strings.HasPrefix(r.URL.Path, "/v1/subscriptions/") {
+		_, _ = w.Write([]byte(f.subscriptionReply(strings.TrimPrefix(r.URL.Path, "/v1/subscriptions/"))))
+		return
 	}
 	switch {
 	case r.URL.Path == "/v1/account":

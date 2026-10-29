@@ -179,8 +179,8 @@ func (a *Assembly) handlers(tierForPrice map[string]string) webhookdispatch.Hand
 	snapshotHandler := snapshot.NewHandler(repo.SubscriptionSnapshots{}, a.worker, tierForPrice)
 	return webhookdispatch.Handlers{
 		Checkout: checkoutcompleted.NewHandler(repo.CheckoutCompleted{Endpoint: endpoint}, a.topUpCredits()),
-		InvoicePaid: webhookdispatch.WithInvoiceSnapshot(invoicepaid.NewHandler(repo.InvoicePaid{}, a.worker,
-			invoicepaid.Plans{TierForPrice: tierForPrice, Credits: a.planCredits()}, a.deps.Now), snapshotHandler),
+		InvoicePaid: invoicepaid.NewLiveHandler(repo.InvoicePaid{}, repo.SubscriptionSnapshots{}, a.worker,
+			invoicepaid.Plans{TierForPrice: tierForPrice, Credits: a.planCredits()}, a.deps.Now),
 		Refund:   chargerefunded.NewHandler(repo.ChargeRefunds{}, a.worker),
 		Snapshot: snapshotHandler,
 	}

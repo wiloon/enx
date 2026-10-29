@@ -10,7 +10,6 @@ import (
 	"enx-api/billing/chargerefunded"
 	"enx-api/billing/checkoutcompleted"
 	"enx-api/billing/invoicepaid"
-	"enx-api/billing/webhookdispatch"
 	"enx-api/billing/webhookevent"
 	"enx-api/referral"
 	"enx-api/utils/sqlitex"
@@ -162,7 +161,7 @@ func (w WebhookEffects) Apply(tx *gorm.DB, scope webhookevent.Scope, effects web
 		return w.applyCheckoutCompleted(tx, scope, e)
 	case invoicepaid.Effects:
 		return w.applyInvoicePaid(tx, scope, e)
-	case webhookdispatch.InvoiceSnapshot:
+	case invoicepaid.LiveEffects:
 		if err := w.applyInvoicePaid(tx, scope, e.Invoice); err != nil {
 			return err
 		}
