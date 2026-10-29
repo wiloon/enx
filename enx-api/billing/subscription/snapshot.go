@@ -12,7 +12,7 @@ type Snapshot struct {
 
 // Reader supplies the accepted stored snapshot at cutover.
 // Absence returns status "none", an empty plan and a zero period end;
-// database failures return an error. Me still uses its legacy reader.
+// database failures return an error.
 type Reader interface {
 	Subscription(ctx context.Context, userID string) (Snapshot, error)
 }

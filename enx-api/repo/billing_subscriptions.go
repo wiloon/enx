@@ -9,7 +9,7 @@ import (
 )
 
 // BillingSubscriptions reads /billing/me's stored display from the
-// Subscription-ID-keyed schema. It is not wired until cutover.
+// Subscription-ID-keyed schema when billing cutover is enabled.
 type BillingSubscriptions struct{}
 
 var _ subscription.Reader = BillingSubscriptions{}
