@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"enx-api/account"
 	"enx-api/clerktest"
 	"enx-api/config"
 	"enx-api/metrics"
@@ -31,6 +32,8 @@ func TestDeletionRoutesSelectCutoverChecker(t *testing.T) {
 	}{
 		{"legacy missing", false, "active", "", "", 200, "", ""},
 		{"missing", true, "active", "", "", 500, "failed", ""},
+		{"unknown live state", true, "active", "", "error", 500, "failed", ""},
+		{"store failure", true, "active", "", "", 500, "failed", "store"},
 		{"renewing unpaid", true, "unpaid", "", `{"id":"sub_missing","status":"active"}`, 409, "subscription_active", ""},
 		{"scheduled unpaid", true, "unpaid", "", `{"id":"sub_missing","status":"unpaid","cancel_at_period_end":true}`, 200, "", ""},
 		{"unpaid ended", true, "unpaid", "", `{"id":"sub_missing","status":"canceled"}`, 200, "", ""},
@@ -59,12 +62,16 @@ func TestDeletionRoutesSelectCutoverChecker(t *testing.T) {
 				if err := sqlitex.DB.Exec("INSERT INTO subscriptions (stripe_subscription_id, user_id, status, stripe_customer_id, created_at, updated_at) VALUES (?, ?, ?, ?, 1, 1)", "sub_missing", "target", tc.stored, "cus_1").Error; err != nil {
 					t.Fatal(err)
 				}
+				grant := sqlitex.TrialGrant{EmailHmac: account.NewEmailHMAC("test-key").Of(accountPlainEmail), UserId: "target", GrantedAt: 123}
+				if err := sqlitex.DB.Create(&grant).Error; err != nil {
+					t.Fatal(err)
+				}
 				if tc.classification != "" {
 					if err := sqlitex.DB.Exec("UPDATE subscriptions SET classification = ? WHERE stripe_subscription_id = ?", tc.classification, "sub_missing").Error; err != nil {
 						t.Fatal(err)
 					}
 				}
-				if tc.extra != "" {
+				if tc.extra != "" && tc.extra != "store" {
 					if err := sqlitex.DB.Exec("INSERT INTO subscriptions (stripe_subscription_id, user_id, status, stripe_customer_id, created_at, updated_at) VALUES (?, ?, ?, ?, 1, 1)", "sub_unknown", "target", "active", "cus_1").Error; err != nil {
 						t.Fatal(err)
 					}
@@ -76,7 +83,10 @@ func TestDeletionRoutesSelectCutoverChecker(t *testing.T) {
 				}
 				stripeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-					if tc.response == "" || r.URL.Path == "/v1/subscriptions/sub_unknown" {
+					if tc.response == "error" {
+						w.WriteHeader(http.StatusBadRequest)
+						_, _ = w.Write([]byte(`{"error":{"type":"invalid_request_error","message":"unavailable"}}`))
+					} else if tc.response == "" || r.URL.Path == "/v1/subscriptions/sub_unknown" {
 						w.WriteHeader(http.StatusNotFound)
 						_, _ = w.Write([]byte(`{"error":{"type":"invalid_request_error","code":"resource_missing","message":"missing"}}`))
 					} else {
@@ -89,6 +99,11 @@ func TestDeletionRoutesSelectCutoverChecker(t *testing.T) {
 				clerk := &fakeClerkBackend{}
 				server := httptest.NewServer(setupRouterWithClients(cfg, metrics.New(), sc, clerk.client(t)))
 				defer server.Close()
+				if tc.extra == "store" {
+					if err := sqlitex.DB.Exec("DROP TABLE subscriptions").Error; err != nil {
+						t.Fatal(err)
+					}
+				}
 				token := jwks.SignSessionToken(t, jwt.MapClaims{"sub": nonAdminSub, "email": accountPlainEmail})
 				var status int
 				var body map[string]any
@@ -102,6 +117,31 @@ func TestDeletionRoutesSelectCutoverChecker(t *testing.T) {
 					t.Fatalf("status %d body %v, want %d %s", status, body, tc.status, tc.code)
 				}
 				blocked := tc.status != http.StatusOK
+				wantMessage := map[string]string{
+					"failed":                "The account action failed. Try again.",
+					"subscription_conflict": "Contact an administrator to resolve your subscription issue before deleting your account.",
+					"subscription_active":   "Cancel your subscription on the Billing page before deleting your account.",
+				}
+				if body["success"] != !blocked {
+					t.Fatalf("success: %v", body)
+				}
+				if blocked && body["message"] != wantMessage[tc.code] {
+					t.Fatalf("message: %v", body)
+				}
+				if !blocked {
+					if _, ok := body["code"]; ok {
+						t.Fatalf("unexpected code: %v", body)
+					}
+					if _, ok := body["message"]; ok {
+						t.Fatalf("unexpected message: %v", body)
+					}
+				}
+				if blocked {
+					var after sqlitex.TrialGrant
+					if err := sqlitex.DB.First(&after, "email_hmac = ?", grant.EmailHmac).Error; err != nil || after != grant {
+						t.Fatalf("trial grant changed: %+v, %v", after, err)
+					}
+				}
 
 				var count int64
 				if err := sqlitex.DB.Model(&sqlitex.User{}).Where("id = ?", "target").Count(&count).Error; err != nil {
