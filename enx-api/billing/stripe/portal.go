@@ -132,6 +132,7 @@ func ResolvePlanChangePortalConfiguration(ctx context.Context, sc *stripeSDK.Cli
 	} else {
 		configs := sc.V1BillingPortalConfigurations.List(ctx, &stripeSDK.BillingPortalConfigurationListParams{
 			Active: stripeSDK.Bool(true), IsDefault: stripeSDK.Bool(true),
+			Expand:     []*string{stripeSDK.String("data.features.subscription_update.products")},
 			ListParams: stripeSDK.ListParams{Limit: stripeSDK.Int64(2)},
 		})
 		if err := configs.Err(); err != nil {
@@ -190,7 +191,9 @@ func ResolveRestrictedPortalConfiguration(ctx context.Context, sc *stripeSDK.Cli
 }
 
 func retrievePortalConfiguration(ctx context.Context, sc *stripeSDK.Client, id string) (*stripeSDK.BillingPortalConfiguration, error) {
-	cfg, err := sc.V1BillingPortalConfigurations.Retrieve(ctx, id, nil)
+	cfg, err := sc.V1BillingPortalConfigurations.Retrieve(ctx, id, &stripeSDK.BillingPortalConfigurationRetrieveParams{
+		Expand: []*string{stripeSDK.String("features.subscription_update.products")},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("billing/stripe: retrieve Customer Portal configuration %s: %w", id, err)
 	}

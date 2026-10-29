@@ -2,11 +2,44 @@ package stripe
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
 	"testing"
 )
+
+func TestPlanChangeReadsExpandedProducts(t *testing.T) {
+	for _, override := range []string{"", "bpc_1"} {
+		t.Run("override="+override, func(t *testing.T) {
+			sc := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				var cfg map[string]any
+				if err := json.Unmarshal([]byte(planChangeJSON(true, true)), &cfg); err != nil {
+					t.Fatal(err)
+				}
+				expand := "features.subscription_update.products"
+				if override == "" {
+					expand = "data." + expand
+				}
+				if r.URL.Query().Get("expand[0]") != expand {
+					delete(cfg["features"].(map[string]any)["subscription_update"].(map[string]any), "products")
+				}
+				var response any = cfg
+				if override == "" {
+					response = map[string]any{"object": "list", "has_more": false, "data": []any{cfg}}
+				}
+				w.Header().Set("Content-Type", "application/json")
+				if err := json.NewEncoder(w).Encode(response); err != nil {
+					t.Error(err)
+				}
+			})
+			id, err := ResolvePlanChangePortalConfiguration(context.Background(), sc, override, testTierPrices)
+			if err != nil || id != "bpc_1" {
+				t.Fatalf("got %q, %v; want safe expanded configuration", id, err)
+			}
+		})
+	}
+}
 
 // planChangeJSON is the safe plan-change configuration, made inactive or
 // switched off on request.
