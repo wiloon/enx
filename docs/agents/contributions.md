@@ -2,6 +2,13 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-10-29: Checkout assessment behind billing cutover — issue #486
+
+**Agent**: Codex
+**Solution**: Both Checkout modes use the injected ownership reader and live accepted subscription state to select a Customer. Subscription Checkout additionally checks deletion, deterministic conflict blocking and tier eligibility before creating a session.
+
+**Lesson (Checkout reads)**: A stored terminal accepted snapshot cannot substitute for a required live read. Resolve all potentially billable resolved conflicts before choosing the smallest actual blocker; an unknown conflict does not outrank a known blocker. Mounted routes on migrated and legacy schemas verify switch assembly and outgoing Stripe Customer parameters.
+
 ## 2026-10-29: Coordinate all grants with account deletion — issue #532
 
 **Agent**: Codex

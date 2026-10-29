@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 
+	"enx-api/billing/checkout"
 	"enx-api/billing/credit"
 	"enx-api/billing/subscription"
 	"enx-api/email"
@@ -50,6 +51,7 @@ type Handler struct {
 	payments FirstPaymentRecorder
 	// subscriptions supplies the accepted stored display at cutover.
 	subscriptions subscription.Reader
+	checkout      *checkout.Service
 }
 
 // FirstPaymentRecorder notes a payment for ADR-051's referrer reward:
@@ -106,6 +108,39 @@ func NewHandlerWithSubscriptions(sc *stripeSDK.Client, frontendBaseURL string, s
 	return h
 }
 
+// NewHandlerWithCheckout injects cutover ownership and live Stripe assessment.
+func NewHandlerWithCheckout(sc *stripeSDK.Client, frontendBaseURL string, stripe config.Stripe, webhooks WebhookObserver, subscriptions subscription.Reader, checkout *checkout.Service) *Handler {
+	h := NewHandlerWithSubscriptions(sc, frontendBaseURL, stripe, webhooks, subscriptions)
+	h.checkout = checkout
+	return h
+}
+
+func (h *Handler) checkoutCustomer(c *gin.Context, userID, tier string) (string, bool) {
+	if h.checkout == nil {
+		return existingStripeCustomerID(userID), true
+	}
+	customer, err := h.checkout.Prepare(c.Request.Context(), userID, tier)
+	var refusal *checkout.Refusal
+	if errors.As(err, &refusal) {
+		body := gin.H{"success": false, "reason": refusal.Reason, "message": "Account deletion is in progress. Please retry later."}
+		if refusal.SubscriptionID != "" {
+			body["subscriptionId"] = refusal.SubscriptionID
+			body["message"] = "Please contact billing support to resolve your subscription conflict."
+		}
+		c.JSON(http.StatusConflict, body)
+		return "", false
+	}
+	if errors.Is(err, checkout.ErrRefused) {
+		c.JSON(http.StatusConflict, gin.H{"success": false, "message": "You already have a subscription. Manage it from the billing portal."})
+		return "", false
+	}
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "Billing is temporarily unavailable. Please retry."})
+		return "", false
+	}
+	return customer, true
+}
+
 func (h *Handler) observeWebhook(eventType, outcome string) {
 	if h.webhooks != nil {
 		h.webhooks.ObserveWebhook(eventType, outcome)
@@ -140,24 +175,29 @@ func (h *Handler) CheckoutSubscription(c *gin.Context) {
 		return
 	}
 
-	var sub sqlitex.Subscription
-	if err := sqlitex.DB.Where("user_id = ?", userID).First(&sub).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		logger.Errorf("billing: load subscription for %s: %v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to load subscription"})
+	if h.checkout == nil {
+		var sub sqlitex.Subscription
+		if err := sqlitex.DB.Where("user_id = ?", userID).First(&sub).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			logger.Errorf("billing: load subscription for %s: %v", userID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to load subscription"})
+			return
+		}
+		if hasLiveSubscription(sub) {
+			c.JSON(http.StatusConflict, gin.H{"success": false, "message": "You already have a subscription. Manage it from the billing portal."})
+			return
+		}
+	}
+	customer, ok := h.checkoutCustomer(c, userID, req.Plan)
+	if !ok {
 		return
 	}
-	if hasLiveSubscription(sub) {
-		c.JSON(http.StatusConflict, gin.H{"success": false, "message": "You already have a subscription. Manage it from the billing portal."})
-		return
-	}
-
 	lookupKey := h.prices.Subscription(req.Plan)
 	session, err := billingstripe.CreateCheckoutSession(c.Request.Context(), h.sc, billingstripe.CheckoutSessionParams{
 		PriceLookupKey:    lookupKey,
 		Mode:              "subscription",
 		ClientReferenceID: userID,
 		CustomerEmail:     user.Email,
-		Customer:          existingStripeCustomerID(userID),
+		Customer:          customer,
 		SuccessURL:        h.frontendBaseURL + "/billing/success?session_id={CHECKOUT_SESSION_ID}",
 		CancelURL:         h.frontendBaseURL + "/billing/cancel",
 		Metadata:          map[string]string{"type": "subscription", "plan": req.Plan},
@@ -196,13 +236,17 @@ func (h *Handler) CheckoutTopup(c *gin.Context) {
 	// No subscription is required: AI translate is unlocked by any credit
 	// balance, whether it came from a subscription or a top-up (2026-08-26
 	// decision, LAUNCH-CHECKLIST 2.1).
+	customer, ok := h.checkoutCustomer(c, userID, "")
+	if !ok {
+		return
+	}
 	lookupKey := h.prices.Topup(req.Tier)
 	session, err := billingstripe.CreateCheckoutSession(c.Request.Context(), h.sc, billingstripe.CheckoutSessionParams{
 		PriceLookupKey:    lookupKey,
 		Mode:              "payment",
 		ClientReferenceID: userID,
 		CustomerEmail:     user.Email,
-		Customer:          existingStripeCustomerID(userID),
+		Customer:          customer,
 		SuccessURL:        h.frontendBaseURL + "/billing/success?session_id={CHECKOUT_SESSION_ID}",
 		CancelURL:         h.frontendBaseURL + "/billing/cancel",
 		Metadata:          map[string]string{"type": "topup", "tier": req.Tier},
