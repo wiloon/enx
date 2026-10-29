@@ -27,12 +27,16 @@ func TestDeletionRoutesSelectCutoverChecker(t *testing.T) {
 		response       string
 		status         int
 		code           string
+		extra          string
 	}{
-		{"legacy missing", false, "active", "", "", 200, ""},
-		{"missing", true, "active", "", "", 500, "failed"},
-		{"renewing unpaid", true, "unpaid", "", `{"id":"sub_missing","status":"active"}`, 409, "subscription_active"},
-		{"scheduled unpaid", true, "unpaid", "", `{"id":"sub_missing","status":"unpaid","cancel_at_period_end":true}`, 200, ""},
-		{"open conflict", true, "canceled", "conflict", "", 409, "subscription_conflict"},
+		{"legacy missing", false, "active", "", "", 200, "", ""},
+		{"missing", true, "active", "", "", 500, "failed", ""},
+		{"renewing unpaid", true, "unpaid", "", `{"id":"sub_missing","status":"active"}`, 409, "subscription_active", ""},
+		{"scheduled unpaid", true, "unpaid", "", `{"id":"sub_missing","status":"unpaid","cancel_at_period_end":true}`, 200, "", ""},
+		{"unpaid ended", true, "unpaid", "", `{"id":"sub_missing","status":"canceled"}`, 200, "", ""},
+		{"renewing beats unknown", true, "unpaid", "", `{"id":"sub_missing","status":"active"}`, 409, "subscription_active", "unknown"},
+		{"conflict beats renewing and unknown", true, "unpaid", "", `{"id":"sub_missing","status":"active"}`, 409, "subscription_conflict", "conflict"},
+		{"open conflict", true, "canceled", "conflict", "", 409, "subscription_conflict", ""},
 	} {
 		cutover := tc.cutover
 		for _, admin := range []bool{false, true} {
@@ -60,9 +64,19 @@ func TestDeletionRoutesSelectCutoverChecker(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
+				if tc.extra != "" {
+					if err := sqlitex.DB.Exec("INSERT INTO subscriptions (stripe_subscription_id, user_id, status, stripe_customer_id, created_at, updated_at) VALUES (?, ?, ?, ?, 1, 1)", "sub_unknown", "target", "active", "cus_1").Error; err != nil {
+						t.Fatal(err)
+					}
+					if tc.extra == "conflict" {
+						if err := sqlitex.DB.Exec("INSERT INTO subscriptions (stripe_subscription_id, user_id, status, classification, stripe_customer_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, 1)", "sub_conflict", "target", "canceled", "conflict", "cus_1").Error; err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
 				stripeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-					if tc.response == "" {
+					if tc.response == "" || r.URL.Path == "/v1/subscriptions/sub_unknown" {
 						w.WriteHeader(http.StatusNotFound)
 						_, _ = w.Write([]byte(`{"error":{"type":"invalid_request_error","code":"resource_missing","message":"missing"}}`))
 					} else {
