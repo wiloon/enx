@@ -81,12 +81,14 @@ func newBillingDB(t *testing.T, fixtures ...string) {
 // fakeStripe is the Stripe API as the startup sequence sees it; each flag
 // makes one part of it fail.
 type fakeStripe struct {
-	accountFails atomic.Bool
-	pricesFail   atomic.Bool
-	invoicesFail atomic.Bool
-	accountCalls atomic.Int64
-	sessionsMade atomic.Int64
-	portalSafe   atomic.Bool
+	accountFails      atomic.Bool
+	pricesFail        atomic.Bool
+	invoicesFail      atomic.Bool
+	accountCalls      atomic.Int64
+	sessionsMade      atomic.Int64
+	portalSafe        atomic.Bool
+	subscriptionReply func(string) string
+	subscriptionFails atomic.Bool
 }
 
 func (f *fakeStripe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -94,6 +96,14 @@ func (f *fakeStripe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fail := func() {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"error":{"message":"down"}}`))
+	}
+	if f.subscriptionFails.Load() && strings.HasPrefix(r.URL.Path, "/v1/subscriptions/") {
+		fail()
+		return
+	}
+	if f.subscriptionReply != nil && strings.HasPrefix(r.URL.Path, "/v1/subscriptions/") {
+		_, _ = w.Write([]byte(f.subscriptionReply(strings.TrimPrefix(r.URL.Path, "/v1/subscriptions/"))))
+		return
 	}
 	switch {
 	case r.URL.Path == "/v1/account":
@@ -143,11 +153,11 @@ func (f *fakeStripe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		_, _ = w.Write([]byte(`{"id":"bps_1","object":"billing_portal.session","url":"https://billing.example.test/session"}`))
 	case r.URL.Path == "/v1/subscriptions/sub_recovery":
-		_, _ = w.Write([]byte(`{"id":"sub_recovery","object":"subscription","status":"active"}`))
+		_, _ = w.Write([]byte(`{"id":"sub_recovery","object":"subscription","status":"active","customer":"cus_topup","items":{"object":"list","has_more":false,"data":[{"id":"si_checkout","current_period_end":1800000000,"price":{"id":"price_pp_m"}}]}}`))
 	case r.URL.Path == "/v1/subscriptions/sub_conflict_a":
-		_, _ = w.Write([]byte(`{"id":"sub_conflict_a","object":"subscription","status":"active"}`))
+		_, _ = w.Write([]byte(`{"id":"sub_conflict_a","object":"subscription","status":"active","customer":"cus_topup","items":{"object":"list","has_more":false,"data":[{"id":"si_a","current_period_end":1800000000,"price":{"id":"price_pp_m"}}]}}`))
 	case r.URL.Path == "/v1/subscriptions/sub_conflict":
-		_, _ = w.Write([]byte(`{"id":"sub_conflict","object":"subscription","status":"active"}`))
+		_, _ = w.Write([]byte(`{"id":"sub_conflict","object":"subscription","status":"active","customer":"cus_topup","items":{"object":"list","has_more":false,"data":[{"id":"si_conflict","current_period_end":1800000000,"price":{"id":"price_pp_m"}}]}}`))
 	case strings.HasPrefix(r.URL.Path, "/v1/invoice"):
 		if f.invoicesFail.Load() {
 			fail()

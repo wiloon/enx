@@ -161,6 +161,20 @@ func (w WebhookEffects) Apply(tx *gorm.DB, scope webhookevent.Scope, effects web
 		return w.applyCheckoutCompleted(tx, scope, e)
 	case invoicepaid.Effects:
 		return w.applyInvoicePaid(tx, scope, e)
+	case invoicepaid.LiveEffects:
+		if err := w.applyInvoicePaid(tx, scope, e.Invoice); err != nil {
+			return err
+		}
+		var versions []int64
+		if err := tx.Raw("SELECT version FROM subscriptions WHERE stripe_subscription_id = ?", e.Snapshot.SubscriptionID).Scan(&versions).Error; err != nil {
+			return err
+		}
+		if len(versions) != 1 {
+			return invoicepaid.ErrStale
+		}
+		e.Snapshot.Known = true
+		e.Snapshot.Version = versions[0]
+		return ApplySnapshot(tx, e.Snapshot)
 	}
 	return applySnapshotOrClawback(tx, scope, effects)
 }
