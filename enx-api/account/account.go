@@ -10,6 +10,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"enx-api/billing/eligibility"
 )
 
 // Status is a users.status value.
@@ -40,6 +42,7 @@ var (
 	ErrProtectedAdmin = errors.New("account: an admin account cannot be disabled or deleted")
 	// ErrRenewingSubscription: the user has a subscription that will renew;
 	// it must be canceled first (ADR-062 Decision 2).
+	ErrSubscriptionConflict = errors.New("account: open subscription conflict")
 	ErrRenewingSubscription = errors.New("account: cancel the subscription before deleting the account")
 	// ErrEmailMismatch: the user's own deletion was confirmed with an email
 	// that is not theirs.
@@ -80,6 +83,10 @@ type Clerk interface {
 // Subscriptions answers whether a user's subscription will renew.
 type Subscriptions interface {
 	Renewing(ctx context.Context, userID string) (bool, error)
+}
+
+type DeletionChecker interface {
+	Check(context.Context, string) (eligibility.DeletionVerdict, error)
 }
 
 // Admins is the ADMIN_CLERK_USER_IDS allowlist.

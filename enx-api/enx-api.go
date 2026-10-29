@@ -11,6 +11,7 @@ import (
 	"enx-api/billing"
 	billingapp "enx-api/billing/app"
 	"enx-api/billing/credit"
+	"enx-api/billing/deletion"
 	billingstripe "enx-api/billing/stripe"
 	"enx-api/config"
 	"enx-api/dictionary"
@@ -513,9 +514,13 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 
 	// Account deletion, disable and session revoke (ADR-062). One Delete
 	// serves the user's own (DELETE /api/me) and the admin's.
-	accountHandler := handlers.NewAccountHandler(account.NewService(
+	accountService := account.NewService(
 		repo.Accounts{}, repo.TrialGrants{Hash: emailHMAC.Of}, clerk,
-		accountadapters.Subscriptions{Stripe: stripeClient}, admins, emailHMAC, time.Now))
+		accountadapters.Subscriptions{Stripe: stripeClient}, admins, emailHMAC, time.Now)
+	if cfg.Billing.Cutover {
+		accountService.WithDeletionChecker(deletion.New(repo.SubscriptionOwners{}, billingstripe.NewWorkerClient(stripeClient)))
+	}
+	accountHandler := handlers.NewAccountHandler(accountService)
 	apiGroup.DELETE("/me", accountHandler.DeleteMe)
 
 	// Server-side user preferences (ADR-044): the AI word fallback switch and

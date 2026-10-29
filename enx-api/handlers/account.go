@@ -80,6 +80,8 @@ func (h *AccountHandler) respond(c *gin.Context, action, targetUserID string, er
 	case errors.Is(err, account.ErrProtectedAdmin):
 		status, code, message = http.StatusForbidden, "admin_account",
 			"An admin account cannot be disabled or deleted. Remove it from ADMIN_CLERK_USER_IDS first."
+	case errors.Is(err, account.ErrSubscriptionConflict):
+		status, code, message = http.StatusConflict, "subscription_conflict", "Contact an administrator to resolve your subscription issue before deleting your account."
 	case errors.Is(err, account.ErrRenewingSubscription):
 		status, code, message = http.StatusConflict, "subscription_active",
 			"Cancel your subscription on the Billing page before deleting your account."
