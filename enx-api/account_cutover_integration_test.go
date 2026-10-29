@@ -136,6 +136,18 @@ func TestDeletionRoutesSelectCutoverChecker(t *testing.T) {
 						t.Fatalf("unexpected message: %v", body)
 					}
 				}
+				if cutover {
+					var states []string
+					if err := sqlitex.DB.Raw("SELECT state FROM account_deletion_gates WHERE user_id = ?", "target").Scan(&states).Error; err != nil {
+						t.Fatal(err)
+					}
+					if !blocked && (len(states) != 1 || states[0] != "deleted") {
+						t.Fatalf("successful deletion must retain deleted gate: %v", states)
+					}
+					if blocked && len(states) != 0 {
+						t.Fatalf("reversible failure must release gate: %v", states)
+					}
+				}
 				if blocked {
 					var after sqlitex.TrialGrant
 					if err := sqlitex.DB.First(&after, "email_hmac = ?", grant.EmailHmac).Error; err != nil || after != grant {
