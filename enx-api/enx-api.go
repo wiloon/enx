@@ -471,8 +471,11 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// and summary endpoints sit behind clerkAuth, the offer is public.
 	referrals := newReferralService(cfg, stripeClient, m)
 	referralHandler := handlers.NewReferralHandler(referrals, cfg.App.FrontendBaseURL)
-	billingHandler := billing.NewHandler(stripeClient, cfg.App.FrontendBaseURL, cfg.Stripe, m).
-		WithRefundNotifier(email.NewSender(cfg.Resend)).
+	billingHandler := billing.NewHandler(stripeClient, cfg.App.FrontendBaseURL, cfg.Stripe, m)
+	if cfg.Billing.Cutover {
+		billingHandler = billing.NewHandlerWithSubscriptions(stripeClient, cfg.App.FrontendBaseURL, cfg.Stripe, m, repo.BillingSubscriptions{})
+	}
+	billingHandler.WithRefundNotifier(email.NewSender(cfg.Resend)).
 		WithFirstPaymentRecorder(referrals)
 
 	// Authenticated APIs (Clerk session JWT). enx-chrome and enx-ui call only

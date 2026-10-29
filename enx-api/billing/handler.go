@@ -13,6 +13,7 @@ import (
 	"net/http"
 
 	"enx-api/billing/credit"
+	"enx-api/billing/subscription"
 	"enx-api/email"
 	"enx-api/enx"
 	"enx-api/middleware"
@@ -47,6 +48,8 @@ type Handler struct {
 	// payments hears about every paid top-up and subscription invoice, for
 	// referral rewards; nil records nothing.
 	payments FirstPaymentRecorder
+	// subscriptions supplies the accepted stored display at cutover.
+	subscriptions subscription.Reader
 }
 
 // FirstPaymentRecorder notes a payment for ADR-051's referrer reward:
@@ -93,6 +96,14 @@ func NewHandler(sc *stripeSDK.Client, frontendBaseURL string, stripe config.Stri
 		credits:                         stripe.Credits,
 		webhooks:                        webhooks,
 	}
+}
+
+// NewHandlerWithSubscriptions uses the injected subscription display reader.
+// The legacy constructor preserves the user-keyed read when cutover is off.
+func NewHandlerWithSubscriptions(sc *stripeSDK.Client, frontendBaseURL string, stripe config.Stripe, webhooks WebhookObserver, subscriptions subscription.Reader) *Handler {
+	h := NewHandler(sc, frontendBaseURL, stripe, webhooks)
+	h.subscriptions = subscriptions
+	return h
 }
 
 func (h *Handler) observeWebhook(eventType, outcome string) {
@@ -274,8 +285,19 @@ func (h *Handler) portalConfigurationFor(ctx context.Context, userID string) (st
 func (h *Handler) Me(c *gin.Context) {
 	userID := middleware.GetUserIDFromContext(c)
 
-	var sub sqlitex.Subscription
-	sqlitex.DB.Where("user_id = ?", userID).First(&sub)
+	var sub subscription.Snapshot
+	if h.subscriptions != nil {
+		var err error
+		sub, err = h.subscriptions.Subscription(c.Request.Context(), userID)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "Billing information is unavailable right now. Please try again later."})
+			return
+		}
+	} else {
+		var legacy sqlitex.Subscription
+		sqlitex.DB.Where("user_id = ?", userID).First(&legacy)
+		sub = subscription.Snapshot{Status: legacy.Status, Plan: legacy.Plan, CurrentPeriodEnd: legacy.CurrentPeriodEnd}
+	}
 	status := sub.Status
 	if status == "" {
 		status = "none"
