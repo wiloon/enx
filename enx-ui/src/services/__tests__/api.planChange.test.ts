@@ -42,27 +42,30 @@ describe('ApiService.createPlanChangeSession (#424)', () => {
     expect(resp.data?.url).toBe('https://stripe.test/confirm')
   })
 
-  it('keeps a 409 reason, message and subscription id', async () => {
-    ;(global.fetch as jest.Mock).mockResolvedValue(
-      jsonResponse(
-        {
-          success: false,
-          reason: 'subscription_conflict',
-          message: 'Contact support.',
-          subscriptionId: 'sub_9',
-        },
-        409
+  it.each(['createPlanChangeSession', 'createSubscriptionCheckout'] as const)(
+    '%s keeps a 409 reason, message and subscription id',
+    async (method) => {
+      ;(global.fetch as jest.Mock).mockResolvedValue(
+        jsonResponse(
+          {
+            success: false,
+            reason: 'subscription_conflict',
+            message: 'Contact support.',
+            subscriptionId: 'sub_9',
+          },
+          409
+        )
       )
-    )
-    const resp = await service.createPlanChangeSession('max')
-    expect(resp).toMatchObject({
-      success: false,
-      status: 409,
-      error: 'Contact support.',
-      reason: 'subscription_conflict',
-      subscriptionId: 'sub_9',
-    })
-  })
+      const resp = await service[method]('max')
+      expect(resp).toMatchObject({
+        success: false,
+        status: 409,
+        error: 'Contact support.',
+        reason: 'subscription_conflict',
+        subscriptionId: 'sub_9',
+      })
+    }
+  )
 
   it('accepts a 409 without a subscription id', async () => {
     ;(global.fetch as jest.Mock).mockResolvedValue(

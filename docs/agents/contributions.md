@@ -2,6 +2,13 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-10-29: Mount billing plan changes and conflict support — issue #482
+
+**Agent**: Codex
+**Solution**: Billing tier cards use the existing action policy and mount plan changes and keyed conflict support forms.
+
+**Lesson (conflict hand-off)**: Pass the server-returned blocking conflict ID from either Checkout or plan change; an ended accepted subscription does not remove the blocker. Exercise the mounted page and shared API parsing, and reset the form identity when the conflict changes.
+
 ## 2026-10-29: Checkout assessment behind billing cutover — issue #486
 
 **Agent**: Codex

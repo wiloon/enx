@@ -74,6 +74,8 @@ interface BillingStubs {
   me?: () => { status: number; body: unknown }
   checkoutSubscription?: (payload: unknown) => { status: number; body: unknown }
   checkoutTopup?: (payload: unknown) => { status: number; body: unknown }
+  planChange?: (payload: unknown) => { status: number; body: unknown }
+  support?: (payload: unknown) => { status: number; body: unknown }
   portal?: () => { status: number; body: unknown }
 }
 
@@ -106,6 +108,14 @@ async function stubBilling(page: Page, stubs: BillingStubs) {
     }
     if (path.endsWith('/api/billing/checkout/topup') && stubs.checkoutTopup) {
       const { status, body } = stubs.checkoutTopup(payload)
+      return jsonResponse(route, status, body)
+    }
+    if (path.endsWith('/api/billing/portal/plan-change') && stubs.planChange) {
+      const { status, body } = stubs.planChange(payload)
+      return jsonResponse(route, status, body)
+    }
+    if (path.endsWith('/api/billing/support') && stubs.support) {
+      const { status, body } = stubs.support(payload)
       return jsonResponse(route, status, body)
     }
     if (path.endsWith('/api/billing/portal') && stubs.portal) {
@@ -217,7 +227,7 @@ test.describe('/billing', () => {
 
     expect(
       await css(
-        page.getByRole('button', { name: 'Subscribed', exact: true }).first(),
+        page.getByRole('button', { name: 'Current plan', exact: true }).first(),
         'background-color'
       )
     ).toBe(brand)
@@ -232,7 +242,7 @@ test.describe('/billing', () => {
     )
   })
 
-  test('active subscriber sees balances, the portal button, and disabled subscribe buttons', async ({
+  test('active subscriber sees balances, the portal button, and the current tier', async ({
     page,
   }) => {
     await stubBilling(page, {
@@ -251,10 +261,10 @@ test.describe('/billing', () => {
     ).toBeVisible()
 
     const subscribeButtons = page.getByRole('button', {
-      name: 'Subscribed',
+      name: 'Current plan',
       exact: true,
     })
-    await expect(subscribeButtons).toHaveCount(3)
+    await expect(subscribeButtons).toHaveCount(1)
     await expect(subscribeButtons.first()).toBeDisabled()
   })
 
@@ -443,3 +453,116 @@ test.describe('/billing/cancel', () => {
     ).toHaveAttribute('href', '/billing')
   })
 })
+
+for (const theme of ['light', 'dark'] as const) {
+  for (const width of [1280, 375]) {
+    test(`billing support: ${theme} at ${width}px, limit, overflow, error and success`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.emulateMedia({ colorScheme: theme })
+      await page.addInitScript(
+        (mode) => localStorage.setItem('theme', mode),
+        theme
+      )
+      let attempts = 0
+      let supportPayload: unknown
+      let tier: unknown
+      await stubBilling(page, {
+        me: () => ({ status: 200, body: activeProPlus }),
+        planChange: (payload) => {
+          tier = payload
+          return {
+            status: 409,
+            body: {
+              message: 'Contact billing support',
+              reason: 'subscription_conflict',
+              subscriptionId: 'sub_blocking',
+            },
+          }
+        },
+        support: (payload) => {
+          supportPayload = payload
+          attempts++
+          return attempts === 1
+            ? { status: 400, body: { message: 'Please try sending again' } }
+            : {
+                status: 200,
+                body: {
+                  message: 'Your request was received',
+                  supportRequest: {
+                    message: (payload as { message: string }).message,
+                    sentAt: '2026-10-29T12:00:00Z',
+                  },
+                },
+              }
+        },
+      })
+      await page.route('**/api/me', (route) =>
+        jsonResponse(route, 200, {
+          id: 'test',
+          name: 'Billing Tester',
+          email: 'billing@example.com',
+          status: 'active',
+          isAdmin: false,
+        })
+      )
+      await page.route('**/api/version', (route) =>
+        jsonResponse(route, 200, { version: 'test' })
+      )
+      await page.goto('/billing')
+      await page.evaluate(
+        (mode) =>
+          document.documentElement.classList.toggle('dark', mode === 'dark'),
+        theme
+      )
+      await expect(page.locator('html')).toHaveClass(
+        theme === 'dark' ? /dark/ : /^(?!.*dark)/
+      )
+      await page.getByRole('button', { name: 'Change plan' }).last().click()
+      expect(tier).toEqual({ tier: 'max' })
+      const input = page.getByRole('textbox', { name: 'Message to support' })
+      const send = page.getByRole('button', { name: 'Send message' })
+      await expect(input).toBeVisible()
+      await expect(send).toBeDisabled()
+      await input.fill('x'.repeat(1799))
+      await expect(page.getByText(/characters$/)).toHaveCount(0)
+      const message = 'Long support message.\n'.repeat(90).slice(0, 1900)
+      await input.fill(message)
+      await expect(page.getByText('1,900 / 2,000 characters')).toBeVisible()
+      await expect(send).toBeEnabled()
+      expect(
+        await input.evaluate((el) => el.scrollHeight > el.clientHeight)
+      ).toBe(true)
+      const noOverflow = async () => {
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= innerWidth
+          )
+        ).toBe(true)
+      }
+      await noOverflow()
+      await input.fill('x'.repeat(2001))
+      await expect(page.getByText('2,001 / 2,000 characters')).toHaveClass(
+        /text-destructive/
+      )
+      await expect(send).toBeDisabled()
+      await input.fill(message)
+      await send.click()
+      await expect(
+        page.getByRole('alert').filter({ hasText: 'Please try sending again' })
+      ).toBeVisible()
+      await expect(input).toHaveValue(message)
+      await noOverflow()
+      await input.fill('x'.repeat(1900))
+      await send.click()
+      await expect(page.getByText('Your request was received')).toBeVisible()
+      expect(supportPayload).toEqual({
+        subscriptionId: 'sub_blocking',
+        message: 'x'.repeat(1900),
+      })
+      await expect(input).toHaveCount(0)
+      await noOverflow()
+    })
+  }
+}

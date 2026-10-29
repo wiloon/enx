@@ -11,7 +11,6 @@ const FALLBACK_MESSAGE =
 // Tier-card button that sends a subscribed user to Stripe's plan-change
 // confirmation (#424). A blocking subscription conflict also reaches the
 // parent through onNeedsSupport, which opens the billing-support form (#297).
-// No page mounts it yet.
 export default function PlanChangeButton({
   plan,
   onNeedsSupport,
@@ -56,9 +55,9 @@ export default function PlanChangeButton({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="w-full space-y-2">
       <Button
-        className="w-full"
+        className="w-full active:scale-[0.97]"
         variant="brand"
         onClick={change}
         disabled={pending}
