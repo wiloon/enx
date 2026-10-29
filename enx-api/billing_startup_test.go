@@ -7,7 +7,9 @@ import (
 
 	"enx-api/utils/sqlitex"
 
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 func TestBillingDatabaseStartupAppliesMigrationsWhenEnabled(t *testing.T) {
@@ -35,16 +37,8 @@ func TestBillingDatabaseStartupLeavesLegacySchemaWhenDisabled(t *testing.T) {
 func TestBillingDatabaseStartupMigratesLegacyFixture(t *testing.T) {
 	restoreBillingDatabase(t)
 	path := filepath.Join(t.TempDir(), "legacy.db")
-	err := openBillingDatabase(t, func() error { return sqlitex.InitWithLogLevel(path, "error") })
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, statement := range sqlStatements(t, "subscribed.sql") {
-		if err := sqlitex.DB.Exec(statement).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-	err = openBillingDatabase(t, func() error { return initializeBillingDatabase(path, "error", true) })
+	seedLegacyStartupDatabase(t, path)
+	err := openBillingDatabase(t, func() error { return initializeBillingDatabase(path, "error", true) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,5 +100,29 @@ func assertBillingMigrationOrder(t *testing.T) {
 	want := sqlitex.BillingMigrationVersions()
 	if !reflect.DeepEqual(versions, want) {
 		t.Fatalf("migration order = %v, want %v", versions, want)
+	}
+}
+
+func seedLegacyStartupDatabase(t *testing.T, path string) {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{Logger: gormlogger.Default.LogMode(gormlogger.Silent)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := sqlDB.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	for _, fixture := range []string{"schema.sql", "subscribed.sql"} {
+		for _, statement := range sqlStatements(t, fixture) {
+			if err := db.Exec(statement).Error; err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 }
