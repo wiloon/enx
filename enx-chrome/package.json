@@ -36,6 +36,7 @@
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
+    "@clerk/backend": "3.26.1",
     "@clerk/testing": "2.2.49",
     "@crxjs/vite-plugin": "^3.0.0",
     "@eslint/compat": "^2.1.1",
