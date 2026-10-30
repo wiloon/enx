@@ -122,7 +122,7 @@ export default defineConfig({
       : []),
     {
       // Frontend test fixtures server
-      command: `npx http-server e2e/test-fixtures -p ${new URL(FIXTURE_ORIGIN).port} --silent`,
+      command: serverCommand('fixtures', `npx http-server e2e/test-fixtures -p ${new URL(FIXTURE_ORIGIN).port} --silent`),
       url: FIXTURE_ORIGIN,
       // Not reused: a busy port must fail loudly, not serve someone else's pages
       reuseExistingServer: false,

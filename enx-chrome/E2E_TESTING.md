@@ -70,8 +70,9 @@ npx playwright test --grep "login"
 npx playwright test e2e/popup-login.spec.ts:10  # line 10
 ```
 
-The local API and UI server output is saved to `test-results/servers/enx-api.log`
-and `test-results/servers/enx-ui.log`. If a server exits during startup, its
+The local API, UI and fixture server output is saved to
+`test-results/servers/enx-api.log`, `test-results/servers/enx-ui.log` and
+`test-results/servers/fixtures.log`. If a server exits during startup, its
 last 50 log lines are printed. Set `E2E_SERVER_LOGS=1` to stream server output
 instead. Playwright test artifacts are in `test-results/artifacts/`.
 
