@@ -80,6 +80,10 @@ _Avoid_: 熟练度、mastery level（`mastery` 在 IELTS 词表语境另有含�
 选中一句话（或带句末标点、或超过短语长度的选区），把整句发到 Side Panel 翻译。见 adr-007。
 _Avoid_: 选择翻译、划句翻译
 
+**悬停整句翻译（hover sentence translation）**：
+**仅 enx-chrome**：指针在正文某个词上停留片刻，该词所在句子的句尾出现翻译按钮，点它把整句发到 Side Panel 翻译。不查词、不计查词次数。用户可在设置里关闭。见 adr-068。
+_Avoid_: 悬停翻译（易误解为悬停即翻译）、hover lookup
+
 **短语查询（phrase lookup）**：
 选中 2–5 个词、无句末标点的选区，走 AI 的「在上下文中解释这个短语」，而非词典查询（词典无短语条目）。见 adr-008。
 _Avoid_: 词组翻译、idiom lookup
