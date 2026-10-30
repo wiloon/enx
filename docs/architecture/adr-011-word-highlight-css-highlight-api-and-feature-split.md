@@ -466,3 +466,7 @@ navigation?.addEventListener('navigate', e => {
 ```
 
 **关于 script 5 与 Decision 6.1 的关系**：上面这段在 DevTools Console 里跑的是 **MAIN world**（`article[tabindex="-1"]` 就绪信号的实测已经用这种方式确认过，见 `adr-010-phase2-dom-readiness.md`），只能证明 X 用了 Navigation API 可观察的导航方式，**不能**证明 content script 收得到同样的事件。Decision 6.1 真正要验证的是 **isolated world**，2026-09-01 已经做过：把同样的 `navigation.addEventListener('navigate', ...)` 临时加进 content script（结果写进一个共享 DOM 属性回读，因为 isolated world 的 `console.log` 不会出现在部分外部 DevTools 读取工具里），构建、`chrome://extensions` 重新加载、在真实 X 页面点开另一条推文 / 浏览器后退，content script 都收到了 `navigate` 事件（`push` 与 `traverse` 均触发，目标路径正确）。**结论已定，无需再测**；探针代码已从仓库中撤回。
+
+## 修订（2026-10-30）：取词和绘制改由 ADR-069 决定
+
+Decision 1 的全文绘制、Decision 3 的「查词（`getWords` 填 `wordCache`）始终执行」和 F 节的 `rebuildHighlights` 整段重跑，都以「一篇文章」为前提，放到整本书上会让滚动和查词变慢（数据见 [ADR-069](adr-069-review-list-and-paint-window.md)）。[ADR-069](adr-069-review-list-and-paint-window.md) 改为：一次取回复习词表，只绘制当前屏附近的下划线，词状态变化时只更新这个词。CSS Custom Highlight API、点击查词和单词高亮开关不变。
