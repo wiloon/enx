@@ -5,7 +5,7 @@
 **Agent**: Codex
 **Solution**: A reusable Clerk development-user fixture keeps new accounts free of seeded vocabulary and deletes them in `finally`, verifying removal by external auth identity. Browser tests check the configured trial grant and the sample-article guide through completion, persisted preference reads and returning-user routing.
 
-**Lesson (test identity prerequisites)**: A social-login-only Clerk development instance rejects email-based Backend API user creation. Enable email sign-up only in the development instance; keep production Google/GitHub-only. Official test sign-in tickets do not require email-code sign-in. A fresh user's first lookup also needs the real read-only ECDICT file: shared-user vocabulary seeds can hide that missing test-environment dependency.
+**Lesson (test identity prerequisites)**: A social-login-only Clerk development instance rejects email-based Backend API user creation. Enable email sign-up only in the development instance; keep production Google/GitHub-only. Official test sign-in tickets do not require email-code sign-in. A fresh user's first lookup also needs the real read-only ECDICT file: shared-user vocabulary seeds can hide that missing test-environment dependency. Shared fixtures must seed the identity returned by authenticated `/api/me`, rather than assume the database contains only one user.
 
 ## 2026-10-30: Shared deterministic AI provider — issue #466
 

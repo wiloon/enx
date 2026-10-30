@@ -555,6 +555,9 @@ records each completion's feature without logging prompts or credentials.
 `signedIn` fixture: each test creates a random `+clerk_test` user through the
 Clerk Backend SDK, signs in with `@clerk/testing`, and waits for the extension's
 real session sync. It seeds no vocabulary, onboarding preferences or credits.
+The shared `signedIn` fixture targets vocabulary seeds using the local user
+identity returned by `/api/me`, so it works after fresh-user scenarios have
+added other accounts to the disposable database.
 The Billing assertion reads the expected grant from `[credits.trial] amount`
 in `enx-api/config.toml`.
 

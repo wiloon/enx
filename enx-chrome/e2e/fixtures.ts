@@ -117,19 +117,22 @@ export const test = base.extend<ExtensionFixtures, WorkerFixtures>({
     // its JWT: validateSession is GET /api/me through the background.
     const popup = await context.newPage()
     await popup.goto(`chrome-extension://${extensionId}/popup.html`)
+    let localUserId = ''
     await test
       .expect(async () => {
         const result = await popup.evaluate(() =>
           chrome.runtime.sendMessage({ type: 'validateSession' })
         )
         test.expect(result?.success, JSON.stringify(result)).toBe(true)
+        test.expect(result?.data?.id).toEqual(test.expect.any(String))
+        localUserId = result.data.id
       })
       .toPass({ timeout: 30_000 })
     await popup.close()
     await site.close()
 
     // The user now exists in enx-api; give it the fixture vocabulary.
-    seedVocabulary()
+    seedVocabulary(localUserId)
 
     await use()
   },
