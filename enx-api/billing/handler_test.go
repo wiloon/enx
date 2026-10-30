@@ -63,7 +63,7 @@ func doRequest(t *testing.T, method, path string, handler gin.HandlerFunc, userI
 }
 
 func TestCheckoutSubscriptionNotConfigured(t *testing.T) {
-	h := NewHandler(nil, "https://example.com", testStripe(), nil)
+	h := newTestBillingHandler(nil, "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodPost, "/billing/checkout/subscription", h.CheckoutSubscription, "u1", `{"plan":"monthly"}`)
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status: got %d want 503, body=%s", w.Code, w.Body.String())
@@ -71,7 +71,7 @@ func TestCheckoutSubscriptionNotConfigured(t *testing.T) {
 }
 
 func TestCheckoutTopupNotConfigured(t *testing.T) {
-	h := NewHandler(nil, "https://example.com", testStripe(), nil)
+	h := newTestBillingHandler(nil, "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodPost, "/billing/checkout/topup", h.CheckoutTopup, "u1", `{"tier":"small"}`)
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status: got %d want 503, body=%s", w.Code, w.Body.String())
@@ -86,7 +86,7 @@ func fakeConfiguredClient() *stripeSDK.Client {
 }
 
 func TestCheckoutSubscriptionInvalidPlan(t *testing.T) {
-	h := NewHandler(fakeConfiguredClient(), "https://example.com", testStripe(), nil)
+	h := newTestBillingHandler(fakeConfiguredClient(), "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodPost, "/billing/checkout/subscription", h.CheckoutSubscription, "u1", `{"plan":"lifetime"}`)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status: got %d want 400, body=%s", w.Code, w.Body.String())
@@ -94,7 +94,7 @@ func TestCheckoutSubscriptionInvalidPlan(t *testing.T) {
 }
 
 func TestCheckoutTopupInvalidTier(t *testing.T) {
-	h := NewHandler(fakeConfiguredClient(), "https://example.com", testStripe(), nil)
+	h := newTestBillingHandler(fakeConfiguredClient(), "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodPost, "/billing/checkout/topup", h.CheckoutTopup, "u1", `{"tier":"huge"}`)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status: got %d want 400, body=%s", w.Code, w.Body.String())
@@ -104,7 +104,7 @@ func TestCheckoutTopupInvalidTier(t *testing.T) {
 // The pre-2026-08-26 plan values ("monthly"/"annual") must no longer
 // validate: the three-tier refactor replaced them with "pro"/"pro-plus"/"max".
 func TestCheckoutSubscriptionRejectsLegacyPlanValues(t *testing.T) {
-	h := NewHandler(fakeConfiguredClient(), "https://example.com", testStripe(), nil)
+	h := newTestBillingHandler(fakeConfiguredClient(), "https://example.com", testStripe(), nil)
 	for _, plan := range []string{"monthly", "annual"} {
 		w := doRequest(t, http.MethodPost, "/billing/checkout/subscription", h.CheckoutSubscription, "u1", `{"plan":"`+plan+`"}`)
 		if w.Code != http.StatusBadRequest {
@@ -159,7 +159,7 @@ func TestCheckoutTopupWithoutSubscriptionCreatesPaymentSession(t *testing.T) {
 	seedUser(t, userID)
 
 	var form url.Values
-	h := NewHandler(fakeStripeClient(t, func(f url.Values) { form = f }), "https://example.com", testStripe(), nil)
+	h := newTestBillingHandler(fakeStripeClient(t, func(f url.Values) { form = f }), "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodPost, "/billing/checkout/topup", h.CheckoutTopup, userID, `{"tier":"small"}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())
@@ -189,7 +189,7 @@ func TestCheckoutTopupFirstTimeBuyerAsksStripeToCreateACustomer(t *testing.T) {
 	seedUser(t, userID)
 
 	var form url.Values
-	h := NewHandler(fakeStripeClient(t, func(f url.Values) { form = f }), "https://example.com", testStripe(), nil)
+	h := newTestBillingHandler(fakeStripeClient(t, func(f url.Values) { form = f }), "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodPost, "/billing/checkout/topup", h.CheckoutTopup, userID, `{"tier":"small"}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())
@@ -212,7 +212,7 @@ func TestCheckoutSubscriptionRefusesUserWithLiveSubscription(t *testing.T) {
 			seedUser(t, userID)
 			seedSubscription(t, userID, "cus_"+userID, "sub_"+userID, status, 1700000000)
 
-			h := NewHandler(fakeStripeClient(t, func(url.Values) {
+			h := newTestBillingHandler(fakeStripeClient(t, func(url.Values) {
 				t.Error("checkout session created for a user with a live subscription")
 			}), "https://example.com", testStripe(), nil)
 			w := doRequest(t, http.MethodPost, "/billing/checkout/subscription", h.CheckoutSubscription, userID, `{"plan":"pro"}`)
@@ -245,7 +245,7 @@ func TestCheckoutSubscriptionAllowsUserWithoutLiveSubscription(t *testing.T) {
 			}
 
 			var form url.Values
-			h := NewHandler(fakeStripeClient(t, func(f url.Values) { form = f }), "https://example.com", testStripe(), nil)
+			h := newTestBillingHandler(fakeStripeClient(t, func(f url.Values) { form = f }), "https://example.com", testStripe(), nil)
 			w := doRequest(t, http.MethodPost, "/billing/checkout/subscription", h.CheckoutSubscription, userID, `{"plan":"pro"}`)
 			if w.Code != http.StatusOK {
 				t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())
@@ -265,7 +265,7 @@ func TestCheckoutSubscriptionFailsWhenSubscriptionLookupFails(t *testing.T) {
 	seedUser(t, userID)
 	failSubscriptionQueries(t)
 
-	h := NewHandler(fakeStripeClient(t, func(url.Values) {
+	h := newTestBillingHandler(fakeStripeClient(t, func(url.Values) {
 		t.Error("checkout session created although the subscription lookup failed")
 	}), "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodPost, "/billing/checkout/subscription", h.CheckoutSubscription, userID, `{"plan":"pro"}`)
@@ -307,7 +307,7 @@ func seedUser(t *testing.T, userID string) {
 }
 
 func TestMeDefaultsForUnknownUser(t *testing.T) {
-	h := NewHandler(nil, "https://example.com", testStripe(), nil)
+	h := newTestBillingHandler(nil, "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodGet, "/billing/me", h.Me, "u-brand-new", ``)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())
@@ -333,7 +333,7 @@ func TestMeReflectsExistingRows(t *testing.T) {
 		t.Fatalf("seed credit account: %v", err)
 	}
 
-	h := NewHandler(nil, "https://example.com", testStripe(), nil)
+	h := newTestBillingHandler(nil, "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodGet, "/billing/me", h.Me, userID, ``)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())

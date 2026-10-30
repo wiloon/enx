@@ -4,6 +4,8 @@ import (
 	"enx-api/config"
 	"enx-api/utils/sqlitex"
 	"testing"
+
+	stripeSDK "github.com/stripe/stripe-go/v86"
 )
 
 func testStripe() config.Stripe {
@@ -32,4 +34,8 @@ func seedTopupOnlyCustomer(t *testing.T, userID, customerID string) {
 	if err := sqlitex.DB.Exec("INSERT INTO stripe_customers (stripe_customer_id,user_id,created_at) VALUES (?,?,1)", customerID, userID).Error; err != nil {
 		t.Fatal(err)
 	}
+}
+
+func newTestBillingHandler(sc *stripeSDK.Client, frontend string, stripe config.Stripe, _ WebhookObserver) *Handler {
+	return NewHandler(sc, frontend, stripe.Price, repo.BillingSubscriptions{}, checkout.New(repo.PortalSessionOwners{}, billingstripe.NewPortalClient(sc, "", "", nil)))
 }

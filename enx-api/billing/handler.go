@@ -1,12 +1,8 @@
-// Package billing wires Stripe Checkout/Portal into gin routes. See
-// docs/tasks/TASK-SPEC-enx-billing-stripe-subscription.md §3 for the
-// endpoint contract this implements (Phase 1: checkout + portal + me;
-// webhook handling is Phase 2).
+// Package billing provides thin HTTP adapters for billing operations.
 package billing
 
 import (
 	"enx-api/config"
-	"enx-api/repo"
 	"errors"
 	"net/http"
 
@@ -30,55 +26,14 @@ import (
 type Handler struct {
 	sc              *stripeSDK.Client
 	frontendBaseURL string
-	webhookSecret   string
-	// portalConfigurationID and portalRestrictedConfigurationID optionally
-	// override the plan-change and restricted Customer Portal configurations
-	// (ADR-067); "" resolves them in Stripe.
-	portalConfigurationID           string
-	portalRestrictedConfigurationID string
-	prices                          config.StripePrice
-	credits                         config.StripeCredits
-	webhooks                        WebhookObserver
-	// subscriptions supplies the accepted stored display at cutover.
-	subscriptions subscription.Reader
-	checkout      *checkout.Service
+	prices          config.StripePrice
+	subscriptions   subscription.Reader
+	checkout        *checkout.Service
 }
 
-// WebhookObserver hears the outcome of every Stripe webhook delivery:
-// metrics.Metrics in production (ADR-040). Nil records nothing.
-type WebhookObserver interface {
-	ObserveWebhook(eventType, outcome string)
-}
-
-// NewHandler builds the billing handler. stripe supplies the webhook secret,
-// the price lookup_keys and the credit amounts; sc may be nil (billing off).
-func NewHandler(sc *stripeSDK.Client, frontendBaseURL string, stripe config.Stripe, webhooks WebhookObserver) *Handler {
-	return &Handler{
-		subscriptions:                   repo.BillingSubscriptions{},
-		checkout:                        checkout.New(repo.PortalSessionOwners{}, billingstripe.NewPortalClient(sc, "", "", nil)),
-		sc:                              sc,
-		frontendBaseURL:                 frontendBaseURL,
-		webhookSecret:                   stripe.WebhookSecret.Reveal(),
-		portalConfigurationID:           stripe.PortalConfigurationID,
-		portalRestrictedConfigurationID: stripe.PortalRestrictedConfigurationID,
-		prices:                          stripe.Price,
-		credits:                         stripe.Credits,
-		webhooks:                        webhooks,
-	}
-}
-
-// NewHandlerWithSubscriptions uses the injected subscription display reader.
-func NewHandlerWithSubscriptions(sc *stripeSDK.Client, frontendBaseURL string, stripe config.Stripe, webhooks WebhookObserver, subscriptions subscription.Reader) *Handler {
-	h := NewHandler(sc, frontendBaseURL, stripe, webhooks)
-	h.subscriptions = subscriptions
-	return h
-}
-
-// NewHandlerWithCheckout injects subscription ownership and live Stripe assessment.
-func NewHandlerWithCheckout(sc *stripeSDK.Client, frontendBaseURL string, stripe config.Stripe, webhooks WebhookObserver, subscriptions subscription.Reader, checkout *checkout.Service) *Handler {
-	h := NewHandlerWithSubscriptions(sc, frontendBaseURL, stripe, webhooks, subscriptions)
-	h.checkout = checkout
-	return h
+// NewHandler injects accepted-subscription reads and live Checkout assessment.
+func NewHandler(sc *stripeSDK.Client, frontendBaseURL string, prices config.StripePrice, subscriptions subscription.Reader, checkout *checkout.Service) *Handler {
+	return &Handler{sc: sc, frontendBaseURL: frontendBaseURL, prices: prices, subscriptions: subscriptions, checkout: checkout}
 }
 
 func (h *Handler) checkoutCustomer(c *gin.Context, userID, tier string) (string, bool) {

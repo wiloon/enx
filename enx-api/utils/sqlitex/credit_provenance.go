@@ -45,8 +45,7 @@ func MigrateCreditProvenance(db *gorm.DB) (bool, error) {
 				"ALTER TABLE `credit_transactions` ADD COLUMN `provenance_reason` text NOT NULL DEFAULT ''",
 				// One subscription billing effect per invoice, whatever
 				// Event ID delivers it.
-				"CREATE UNIQUE INDEX `idx_credit_transactions_subscription_invoice` ON `credit_transactions`(`stripe_invoice_id`) "+
-					"WHERE `type` = 'GRANT_SUBSCRIPTION' AND `stripe_invoice_id` IS NOT NULL",
+				subscriptionInvoiceIndexDDL,
 				"CREATE INDEX `idx_credit_transactions_subscription_period` ON `credit_transactions`(`stripe_subscription_id`, `period_end`)",
 				"ALTER TABLE `credit_accounts` ADD COLUMN `pool_grant_id` text",
 			); err != nil {
@@ -65,3 +64,5 @@ func MigrateCreditProvenance(db *gorm.DB) (bool, error) {
 	}
 	return applied, nil
 }
+
+const subscriptionInvoiceIndexDDL = "CREATE UNIQUE INDEX `idx_credit_transactions_subscription_invoice` ON `credit_transactions`(`stripe_invoice_id`) WHERE `type` = 'GRANT_SUBSCRIPTION' AND `stripe_invoice_id` IS NOT NULL"

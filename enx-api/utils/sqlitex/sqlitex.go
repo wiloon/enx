@@ -10,8 +10,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -464,6 +466,11 @@ func CheckBillingSchema(path string) error {
 		"account_deletion_gates":    "user_id,state,started_at,deleted_at,updated_at",
 		"account_deletion_attempts": "user_id,owner,lease_until,phase,reset_trial",
 	}
+	for _, alert := range []struct{ table, prefix string }{{"stripe_webhook_events", "alert"}, {"subscriptions", "conflict_alert"}, {"subscriptions", "support_alert"}} {
+		for _, suffix := range []string{"attempts", "last_error", "next_attempt_at", "sent_at", "claim_token", "claim_expires_at"} {
+			required[alert.table] += "," + alert.prefix + "_" + suffix
+		}
+	}
 	for table, columns := range required {
 		rows, err := db.Raw("SELECT " + columns + " FROM " + table + " LIMIT 0").Rows()
 		if err != nil {
@@ -473,18 +480,32 @@ func CheckBillingSchema(path string) error {
 			return err
 		}
 	}
-	cols, err := tableColumns(db, "subscriptions")
-	if err != nil {
-		return err
-	}
-	var pk []string
-	for _, c := range cols {
-		if c.Pk > 0 {
-			pk = append(pk, strings.ToLower(c.Name))
+	for table, want := range map[string]string{
+		"users": "id", "subscriptions": "stripe_subscription_id", "stripe_customers": "stripe_customer_id",
+		"stripe_webhook_events": "stripe_account_id,livemode,event_id", "stripe_webhook_deliveries": "id",
+		"credit_accounts": "user_id", "credit_transactions": "id", "account_deletion_gates": "user_id", "account_deletion_attempts": "user_id",
+	} {
+		cols, err := tableColumns(db, table)
+		if err != nil {
+			return unsupported(err.Error())
+		}
+		sort.Slice(cols, func(i, j int) bool { return cols[i].Pk < cols[j].Pk })
+		var pk []string
+		for _, c := range cols {
+			if c.Pk > 0 {
+				pk = append(pk, strings.ToLower(c.Name))
+			}
+		}
+		if strings.Join(pk, ",") != want {
+			return unsupported(table + " has an unsupported primary key")
 		}
 	}
-	if len(pk) != 1 || pk[0] != "stripe_subscription_id" {
-		return unsupported("subscriptions must be keyed by Stripe Subscription ID")
+	var indexSQL string
+	if err := db.Raw("SELECT sql FROM sqlite_schema WHERE type='index' AND tbl_name='credit_transactions' AND name='idx_credit_transactions_subscription_invoice'").Scan(&indexSQL).Error; err != nil {
+		return unsupported(err.Error())
+	}
+	if normalizeSchemaSQL(indexSQL) != normalizeSchemaSQL(subscriptionInvoiceIndexDDL) {
+		return unsupported("invalid subscription invoice unique index")
 	}
 	for _, index := range []string{"idx_credit_transactions_subscription_invoice", "idx_credit_transactions_subscription_period"} {
 		if !db.Migrator().HasIndex("credit_transactions", index) {
@@ -492,4 +513,23 @@ func CheckBillingSchema(path string) error {
 		}
 	}
 	return nil
+}
+
+// normalizeSchemaSQL ignores identifier quoting and formatting while preserving
+// case-sensitive string literals in the supported index predicate.
+func normalizeSchemaSQL(sql string) string {
+	quoted := false
+	return strings.Map(func(r rune) rune {
+		if r == '\'' {
+			quoted = !quoted
+			return r
+		}
+		if quoted {
+			return r
+		}
+		if unicode.IsSpace(r) || strings.ContainsRune("`\"[]", r) {
+			return -1
+		}
+		return unicode.ToLower(r)
+	}, sql)
 }

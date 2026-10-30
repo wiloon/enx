@@ -79,8 +79,8 @@ worker 的可调正 duration 默认值在 #297 明确为 `stripe.webhook.poll-in
 
 ## 一次性充值与 Stripe Customer
 
-- 当前代码在 `subscriptions` 中还保存仅充值用户的 Customer 映射（Subscription ID 为空），实际充值流水与余额在 `credit_transactions` 和 `credit_accounts`。改主键前把所有 Customer 归属迁入独立 `stripe_customers` 关系，一份 Customer 一行，以本地用户身份关联；一人可以有多个 Stripe Customer，不把 Customer 唯一到一人只能一条。
-- 无 live accepted 时可使用用户正常的 Customer 关联；有 live accepted 时 Portal 与后续 Checkout 优先使用该订阅的 Customer。充值完成只补充 Customer 归属，不覆盖 live accepted 的 Customer。并发操作和迁移都保留此规则。
+- Stripe Customer 归属独立保存在 `stripe_customers`，一份 Customer 一行，以本地用户身份关联；一人可以有多个 Stripe Customer。仅充值不会创建虚构订阅，充值流水和余额保存在 `credit_transactions` 与 `credit_accounts`。
+- 无 live accepted 时可使用用户正常的 Customer 关联；有 live accepted 时 Portal 与后续 Checkout 优先使用该订阅的 Customer。充值完成只补充 Customer 归属，不覆盖 live accepted 的 Customer。并发操作保留此规则。
 - 所有者在 #483（2026-10-29）决定废弃旧账单数据自动迁移：生产发布前将旧数据库导出为 SQL 留档，发布时使用新数据库；不导入旧订阅、Customer、付款关联、生词本或阅读数据。需要补发的测试积分由所有者在上线后通过 Admin 页面手动发放，应用不提供专用恢复 SQL、脚本或迁移逻辑。此决定取代本 ADR 先前的旧账单保留、订阅主键转换和 Stripe 历史来源回填要求。
 - 新库直接初始化完整账单结构；已完成切换的 HomeLab 数据库继续使用当前结构，不清空、不重新建账。删除旧 webhook、旧订阅读取回退、历史来源回填及切换开关，新账单链路无条件挂载和启动。每日查词配额保留，通过 accepted subscription 判断订阅权益。
 - 新链路中，同一 Checkout Session 无论 Event ID 如何都至多发放一次：在所配置 endpoint account/mode 内，以 `stripe_webhook_events.checkout_session_id` 查 event，并以 event ID 关联 `credit_transactions.stripe_event_id` 的 `GRANT_TOPUP`。effects/task 同一事务中再次检查该业务键，发放时即使 Customer 归属未变也须从 `Effects.Observed.Revision` 条件递增付款用户的 `billing_version`；版本过期不提交效果或任务完成并重试。事务内重查还覆盖重复查询后、读取 Owner 前另一发放已提交的竞态，不能只靠版本栅栏；保留 Event ID 唯一性。

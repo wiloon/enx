@@ -22,7 +22,7 @@ import (
 // RequireAdmin gate is tested at the router (admin_credits_test.go).
 func adminRequest(t *testing.T, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	h := NewHandler(nil, "https://example.com", testStripe(), nil)
+	h := newTestBillingHandler(nil, "https://example.com", testStripe(), nil)
 	router := gin.New()
 	setCaller := func(c *gin.Context) {
 		c.Set("clerk_user_id", "user_admin")

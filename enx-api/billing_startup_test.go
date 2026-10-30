@@ -155,3 +155,44 @@ func closeCurrentStartupDatabaseForSchemaTest(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestBillingStartupRejectsDamagedCurrentSchemaBeforeWrites(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		sql  []string
+	}{
+		{"missing event alert column", []string{"ALTER TABLE stripe_webhook_events DROP COLUMN alert_attempts"}},
+		{"missing conflict alert column", []string{"ALTER TABLE subscriptions DROP COLUMN conflict_alert_claim_token"}},
+		{"nonunique invoice index", []string{"DROP INDEX idx_credit_transactions_subscription_invoice", "CREATE INDEX idx_credit_transactions_subscription_invoice ON credit_transactions(stripe_invoice_id) WHERE type='GRANT_SUBSCRIPTION' AND stripe_invoice_id IS NOT NULL"}},
+		{"missing scoped event key", []string{"ALTER TABLE stripe_webhook_events RENAME TO old_events", "CREATE TABLE stripe_webhook_events AS SELECT * FROM old_events", "DROP TABLE old_events"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			restoreBillingDatabase(t)
+			path := filepath.Join(t.TempDir(), "billing.db")
+			if err := initializeBillingDatabase(path, "error"); err != nil {
+				t.Fatal(err)
+			}
+			for _, stmt := range tc.sql {
+				if err := sqlitex.DB.Exec(stmt).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			closeCurrentStartupDatabaseForSchemaTest(t)
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = initializeBillingDatabase(path, "error")
+			if err == nil || !strings.Contains(err.Error(), "unsupported billing schema") {
+				t.Fatalf("damaged schema startup = %v", err)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(before, after) {
+				t.Fatal("unsupported schema was modified")
+			}
+		})
+	}
+}
