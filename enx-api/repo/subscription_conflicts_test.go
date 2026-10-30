@@ -16,10 +16,7 @@ import (
 	"enx-api/utils/sqlitex"
 )
 
-// newSubscriptionConflictDB opens a temporary database as the cutover leaves
-// it: the legacy billing schema, with the rows of the named
-// testdata/billing-legacy fixtures, migrated by MigrateSubscriptionOwnership,
-// MigrateWebhookReceipts, MigrateCreditProvenance and MigrateDeletionGates.
+// newSubscriptionConflictDB initializes the current schema and billing-current fixtures.
 func newSubscriptionConflictDB(t *testing.T, fixtures ...string) {
 	t.Helper()
 	previous := sqlitex.DB

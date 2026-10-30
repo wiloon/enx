@@ -421,7 +421,7 @@ func CheckBillingSchema(path string) error {
 	if err != nil {
 		return err
 	}
-	defer raw.Close()
+	defer func() { _ = raw.Close() }()
 
 	var tables int64
 	if err := db.Raw("SELECT count(*) FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'").Scan(&tables).Error; err != nil {

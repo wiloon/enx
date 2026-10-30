@@ -22,9 +22,7 @@ import (
 	"github.com/stripe/stripe-go/v86/webhook"
 )
 
-// newBillingDB opens a temporary database as the cutover leaves it, with the
-// rows of the named testdata/billing-legacy fixtures, and makes it the
-// package-wide one.
+// newBillingDB initializes the current schema with named billing-current fixtures.
 func newBillingDB(t *testing.T, fixtures ...string) {
 	t.Helper()
 	previous := sqlitex.DB

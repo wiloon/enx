@@ -106,7 +106,11 @@ func TestBillingStartupRejectsLegacyDatabaseBeforeChangingIt(t *testing.T) {
 		t.Fatal(openErr)
 	}
 	raw, _ := db.DB()
-	defer raw.Close()
+	defer func() {
+		if err := raw.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	if db.Migrator().HasTable("schema_migrations") {
 		t.Fatal("rejected database was migrated")
 	}
