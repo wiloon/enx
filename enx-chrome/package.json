@@ -12,7 +12,7 @@
     "package:prod": "node scripts/version.mjs --release && pnpm build:prod && node scripts/package-prod.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.app.json",
-    "test": "node --test scripts/__tests__/*.test.mjs && jest",
+    "test": "node --test ../enx-fake-ai/server.test.mjs scripts/__tests__/*.test.mjs && jest",
     "test:watch": "jest --watch",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",

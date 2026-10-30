@@ -1,0 +1,7 @@
+FROM docker-registry.wiloon.com/library/node:24-alpine
+WORKDIR /app
+COPY --chown=node:node server.mjs ./
+USER node
+ENV PORT=12113 HOST=0.0.0.0
+EXPOSE 12113
+CMD ["node", "server.mjs"]
