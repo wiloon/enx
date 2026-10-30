@@ -1,5 +1,12 @@
 # AI Contributions History
 
+## 2026-10-30: Shared deterministic AI provider — issue #466
+
+**Agent**: Codex
+**Solution**: A root-level dependency-free HTTP fixture service runs both in the local Playwright stack and as a HomeLab container. Existing DeepSeek configuration selects it; normal Clerk sign-in grants trial credits, and a browser test checks side-panel translation and the Billing balance decrease.
+
+**Lesson (container build context)**: Projected Kubernetes ConfigMap files are symlinks. Materialize them with `cp -L` before using that directory as Kaniko's build context, or the image can contain dangling `..data/` links. Validate the deployed HTTP endpoint and an authenticated API call; source-level tests alone cannot catch image packaging errors. Preserve the persistent deployment's HMAC key; fixed test keys belong only in disposable local databases.
+
 This document records significant contributions made with AI assistance.
 
 ## 2026-10-29: Restore local E2E billing startup — issue #552
