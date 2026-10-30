@@ -13,8 +13,7 @@ import { cn } from '@/lib/utils'
 import { apiService } from '@/services/api'
 
 // Billing-support entry for a blocked subscription (#297). The server keeps
-// the first request, so the answer is the same for a repeated send. No page
-// mounts it yet.
+// the first request, so the answer is the same for a repeated send.
 export default function BillingSupportForm({
   subscriptionId,
 }: {
@@ -93,6 +92,7 @@ export default function BillingSupportForm({
             </span>
           )}
           <Button
+            className="active:scale-[0.97]"
             variant="brand"
             type="submit"
             disabled={blank || overLimit || pending}

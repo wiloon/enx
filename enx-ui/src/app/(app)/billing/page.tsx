@@ -20,9 +20,12 @@ import {
   TOPUP_CREDITS_RULE,
   TOPUP_TIERS,
   hasLiveSubscription,
+  planCardAction,
   subscriptionBadgeVariant,
   subscriptionStatusLabel,
 } from '@/lib/plans'
+import BillingSupportForm from '@/components/app/BillingSupportForm'
+import PlanChangeButton from '@/components/app/PlanChangeButton'
 import PageHeader from '@/components/app/PageHeader'
 
 type BillingTab = 'subscription' | 'topup'
@@ -39,6 +42,7 @@ export default function BillingPage() {
   // redirect is in flight (avoids a second click firing a second Checkout
   // Session before the page navigates away).
   const [redirecting, setRedirecting] = useState<string | null>(null)
+  const [conflictId, setConflictId] = useState<string | null>(null)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
 
   const { data, isLoading, error } = useQuery({
@@ -68,9 +72,17 @@ export default function BillingPage() {
   }
 
   const handleSubscribe = (plan: SubscriptionPlan) =>
-    goToCheckout(`subscription-${plan}`, () =>
-      apiService.createSubscriptionCheckout(plan)
-    )
+    goToCheckout(`subscription-${plan}`, async () => {
+      const resp = await apiService.createSubscriptionCheckout(plan)
+      if (
+        !resp.success &&
+        resp.status === 409 &&
+        resp.reason === 'subscription_conflict'
+      ) {
+        setConflictId(resp.subscriptionId || null)
+      }
+      return resp
+    })
 
   const handleTopup = (tier: TopupTier) =>
     goToCheckout(`topup-${tier}`, () => apiService.createTopupCheckout(tier))
@@ -156,6 +168,10 @@ export default function BillingPage() {
         </div>
       )}
 
+      {conflictId && (
+        <BillingSupportForm key={conflictId} subscriptionId={conflictId} />
+      )}
+
       <div
         role="tablist"
         aria-label="Billing options"
@@ -192,29 +208,51 @@ export default function BillingPage() {
             {SUBSCRIPTION_CREDITS_RULE}
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {SUBSCRIPTION_PLANS.map((option) => (
-              <PriceCard
-                key={option.plan}
-                name={option.name}
-                priceLabel={option.priceLabel}
-                creditsLabel={option.creditsLabel}
-                description={option.description}
-                action={
-                  <Button
-                    className="w-full"
-                    variant="brand"
-                    onClick={() => handleSubscribe(option.plan)}
-                    disabled={isSubscribed || redirecting !== null}
-                  >
-                    {redirecting === `subscription-${option.plan}`
-                      ? 'Redirecting...'
-                      : isSubscribed
-                        ? 'Subscribed'
-                        : 'Subscribe'}
-                  </Button>
-                }
-              />
-            ))}
+            {SUBSCRIPTION_PLANS.map((option) => {
+              const action = planCardAction(
+                status,
+                data?.subscription.plan ?? '',
+                option.plan
+              )
+              return (
+                <PriceCard
+                  key={option.plan}
+                  name={option.name}
+                  priceLabel={option.priceLabel}
+                  creditsLabel={option.creditsLabel}
+                  description={option.description}
+                  action={
+                    action === 'change' ? (
+                      <PlanChangeButton
+                        plan={option.plan}
+                        onNeedsSupport={(id) => setConflictId(id || null)}
+                      />
+                    ) : (
+                      <Button
+                        className="w-full active:scale-[0.97]"
+                        variant={action === 'portal_home' ? 'outline' : 'brand'}
+                        onClick={() =>
+                          action === 'portal_home'
+                            ? handleManageBilling()
+                            : handleSubscribe(option.plan)
+                        }
+                        disabled={action === 'current' || redirecting !== null}
+                      >
+                        {action === 'current'
+                          ? 'Current plan'
+                          : redirecting === `subscription-${option.plan}` ||
+                              (action === 'portal_home' &&
+                                redirecting === 'portal')
+                            ? 'Redirecting...'
+                            : action === 'portal_home'
+                              ? 'Manage subscription'
+                              : 'Subscribe'}
+                      </Button>
+                    )
+                  }
+                />
+              )
+            })}
           </div>
         </section>
       )}
