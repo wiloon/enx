@@ -44,7 +44,10 @@ export const seededChinese = (word: string) => `测试释义:${word}`
  * an earlier test marked known. Call after sign-in: enx-api creates the local
  * user (a random id) on the first authenticated request.
  */
-export function seedVocabulary(dbPath = process.env.E2E_DB_PATH): void {
+export function seedVocabulary(
+  userId: string,
+  dbPath = process.env.E2E_DB_PATH
+): void {
   if (!dbPath)
     throw new Error('E2E_DB_PATH is not set (see playwright.config.ts)')
 
@@ -52,14 +55,10 @@ export function seedVocabulary(dbPath = process.env.E2E_DB_PATH): void {
   try {
     db.exec('PRAGMA busy_timeout = 10000')
 
-    // The per-run DB only ever sees the E2E user sign in.
-    const users = db.prepare('SELECT id FROM users').all() as { id: string }[]
-    if (users.length !== 1) {
-      throw new Error(
-        `expected exactly one user in the E2E DB after sign-in, found ${users.length}`
-      )
-    }
-    const userId = users[0].id
+    // Fresh-user specs share this disposable database. Seed only the local
+    // user identity returned by the authenticated /api/me response.
+    const user = db.prepare('SELECT id FROM users WHERE id = ?').get(userId)
+    if (!user) throw new Error('The signed-in E2E user does not exist')
 
     const now = Date.now()
     const upsertWord = db.prepare(

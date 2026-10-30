@@ -548,3 +548,50 @@ spent. It does not seed credit balances or mock backend responses. Clerk
 still uses real development-instance authentication over the network; only
 AI calls must stay inside the test environment. `test-results/servers/ai.log`
 records each completion's feature without logging prompts or credentials.
+
+## Fresh-user onboarding (#467)
+
+`new-user-welcome.spec.ts` uses `new-user.ts` rather than the shared
+`signedIn` fixture: each test creates a random `+clerk_test` user through the
+Clerk Backend SDK, signs in with `@clerk/testing`, and waits for the extension's
+real session sync. It seeds no vocabulary, onboarding preferences or credits.
+The shared `signedIn` fixture targets vocabulary seeds using the local user
+identity returned by `/api/me`, so it works after fresh-user scenarios have
+added other accounts to the disposable database.
+The Billing assertion reads the expected grant from `[credits.trial] amount`
+in `enx-api/config.toml`.
+
+Use the existing development Clerk credentials from the sign-in setup above.
+The **development instance** must enable **Sign-up with email**; it may keep
+**Verify at sign-up** enabled and **Sign-in with email** disabled. The Backend
+API creates verified test addresses and the testing helper uses a sign-in
+ticket. Email passwords, email-code sign-in and real mail delivery are not
+needed. Production authentication remains Google and GitHub only; these tests
+refuse a production secret key.
+
+The first lookup needs the real read-only ECDICT file. After loading the Clerk
+development credentials and building `dist-e2e`, run:
+
+```bash
+ECDICT_DB_PATH="$HOME/.local/share/enx/ecdict/stardict.db" \
+  pnpm test:e2e new-user-welcome.spec.ts --repeat-each=3
+```
+
+To prove the trial assertion catches a missing grant, run the trial test with
+`CREDITS_TRIAL_AMOUNT=0`. It must fail on the missing configured trial-credit
+text on Billing, not during setup. Restore the normal environment afterwards.
+
+Cleanup runs in `finally`, including when login or assertions fail: delete the
+created Clerk user, query by its ID, assert both an empty list and a zero count,
+and attach `clerk-user-cleanup` to the Playwright report. This does not delete
+any shared test user. As with any process teardown, forcibly killing the worker
+can interrupt cleanup; check Clerk Users for this fixture's
+`e2e-new-…+clerk_test@example.com` addresses and remove any leftover.
+
+### Manual checks
+
+In real Chrome, pin Catglish to the toolbar while `/welcome` is visible and
+check that the pin step changes to Done. Playwright covers the Skip path and
+uses the toolbar's public `enxRun` message to enable learning mode; it cannot
+click Chrome's toolbar or pin control. Loading an unpacked extension in this
+spec also does not verify a Chrome Web Store installation.
