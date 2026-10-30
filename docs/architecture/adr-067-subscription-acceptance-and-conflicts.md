@@ -79,12 +79,12 @@ worker 的可调正 duration 默认值在 #297 明确为 `stripe.webhook.poll-in
 
 ## 一次性充值与 Stripe Customer
 
-- 当前代码在 `subscriptions` 中还保存仅充值用户的 Customer 映射（Subscription ID 为空），实际充值流水与余额在 `credit_transactions` 和 `credit_accounts`。改主键前把所有 Customer 归属迁入独立 `stripe_customers` 关系，一份 Customer 一行，以本地用户身份关联；一人可以有多个 Stripe Customer，不把 Customer 唯一到一人只能一条。
-- 无 live accepted 时可使用用户正常的 Customer 关联；有 live accepted 时 Portal 与后续 Checkout 优先使用该订阅的 Customer。充值完成只补充 Customer 归属，不覆盖 live accepted 的 Customer。并发操作和迁移都保留此规则。
-- 只有真实 Subscription ID 的旧行迁入新 `subscriptions`，不为仅充值用户虚构订阅。迁移保留全部充值余额、原积分流水、Event ID/PaymentIntent ID 及退款关联。原子、可重复的数据库迁移取代仅靠 AutoMigrate 改主键；迁移边界和演练在 #297，不在运行中直接删旧表试错。
-- 所有者在 #426 round 2 答复中选择 A：cutover 前已发放的一次性充值不由新路径按 Checkout Session 去重。旧 `GRANT_TOPUP` 只有 Event ID/PaymentIntent ID，没有持久 webhook event/Checkout Session 关联；保留原流水和 Event ID 唯一性，接受以不同 Event ID 人工重放旧充值时可能再次发放。迁移不新增 Checkout Session 列或索引，不从 Stripe 恢复旧关联，也不为旧重放新增人工处理路径。所有者确认生产没有真实用户或订阅，只有测试用户的一次已发放充值，cutover 前也不预期有真实用户；旧 webhook 已返回 2xx，风险限于人工重发给测试账户重复发放。
-- 上述例外仅适用于 cutover 前的旧充值。cutover 后同一 Checkout Session 无论 Event ID 如何都至多发放一次：在所配置 endpoint account/mode 内，以 `stripe_webhook_events.checkout_session_id` 查 event，并以 event ID 关联 `credit_transactions.stripe_event_id` 的 `GRANT_TOPUP`。effects/task 同一事务中再次检查该业务键，发放时即使 Customer 归属未变也须从 `Effects.Observed.Revision` 条件递增付款用户的 `billing_version`；版本过期不提交效果或任务完成并重试。事务内重查还覆盖重复查询后、读取 Owner 前另一发放已提交的竞态，不能只靠版本栅栏；保留 Event ID 唯一性。
-- 旧 `GRANT_SUBSCRIPTION` 流水没有 Subscription ID、invoice 与周期起点，升档补差分母找不到同期正常发放。数据库迁移本身不调用 Stripe；迁移后、worker 处理订阅发票前，一次性、可重复的回填任务为每份迁入的真实订阅中「当前积分池来自旧流水」的那条发放，经其 PaymentIntent（零金额时经该订阅 period end 等于 `credit_accounts.period_end` 的 paid invoice）从 Stripe 读取 invoice，取 recurring line 的周期，仅当周期 end 等于 `credit_accounts.period_end` 时补记来源（Subscription ID、invoice、周期起止），不改金额、余额或流水。回填失败可重试；Stripe 无法唯一确定时不猜，标为无来源旧发放，该期升档发票直接 needs_attention（reason `legacy_grant_without_period`）并可靠告警。更早的旧流水不回填，只作历史/退款审计。生产尚未开放内测，影响限于 sandbox/homelab 数据。
+- Stripe Customer 归属独立保存在 `stripe_customers`，一份 Customer 一行，以本地用户身份关联；一人可以有多个 Stripe Customer。仅充值不会创建虚构订阅，充值流水和余额保存在 `credit_transactions` 与 `credit_accounts`。
+- 无 live accepted 时可使用用户正常的 Customer 关联；有 live accepted 时 Portal 与后续 Checkout 优先使用该订阅的 Customer。充值完成只补充 Customer 归属，不覆盖 live accepted 的 Customer。并发操作保留此规则。
+- 所有者在 #483（2026-10-29）决定废弃旧账单数据自动迁移：生产发布前将旧数据库导出为 SQL 留档，发布时使用新数据库；不导入旧订阅、Customer、付款关联、生词本或阅读数据。需要补发的测试积分由所有者在上线后通过 Admin 页面手动发放，应用不提供专用恢复 SQL、脚本或迁移逻辑。此决定取代本 ADR 先前的旧账单保留、订阅主键转换和 Stripe 历史来源回填要求。
+- 新库直接初始化完整账单结构；已完成切换的 HomeLab 数据库继续使用当前结构，不清空、不重新建账。删除旧 webhook、旧订阅读取回退、历史来源回填及切换开关，新账单链路无条件挂载和启动。每日查词配额保留，通过 accepted subscription 判断订阅权益。
+- 新链路中，同一 Checkout Session 无论 Event ID 如何都至多发放一次：在所配置 endpoint account/mode 内，以 `stripe_webhook_events.checkout_session_id` 查 event，并以 event ID 关联 `credit_transactions.stripe_event_id` 的 `GRANT_TOPUP`。effects/task 同一事务中再次检查该业务键，发放时即使 Customer 归属未变也须从 `Effects.Observed.Revision` 条件递增付款用户的 `billing_version`；版本过期不提交效果或任务完成并重试。事务内重查还覆盖重复查询后、读取 Owner 前另一发放已提交的竞态，不能只靠版本栅栏；保留 Event ID 唯一性。
+- 历史来源不再从 Stripe 回填。已存在的财务历史仍可供审计；来源不完整时保留既有拒绝猜测和人工处理规则，不改余额或自动归属。
 
 ## 管理员处理与邮件
 
@@ -104,7 +104,7 @@ worker 的可调正 duration 默认值在 #297 明确为 `stripe.webhook.poll-in
 
 ## 部署边界
 
-ADR-064 会在 main 合并后自动部署。#297 的 characterization/fixture 可先独立 PR。所有者 2026-10-27 决定（#297）：cutover 不再是单一部署 PR，而是按切片逐个合并，全部藏在 `BILLING_CUTOVER` 开关（默认关闭）之后；开关关闭时运行时行为与旧路径完全一致，不执行任何 ADR-067 迁移。原子边界由「同一 PR」改为「同一次启用」：改变 subscriptions 主键的迁移只在开关打开时随启动执行，而启用前必须合并所有读写方、accepted entitlement 查询、接收/worker、原子分类、积分/退款来源、删除屏障、必要管理员告警/查询以及改档和 billing-support 的后端 endpoint，不能先迁移再等后续切片修调用者。所有者在 #482 确认 HomeLab 已启用并完成基本 sandbox 支付冒烟；/billing 挂载已有改档按钮和 billing-support 表单（#482）在 HomeLab 启用后进行，这不表示已完成全面付款/退款验证。生产启用仍由所有者决定，须先合并改档入口、billing-support 表单及隐私告知等全部切片；最后一个切片删除开关与旧路径。迁移后的数据库不能再以关闭开关的旧路径启动：启动校验 schema，迁移过的库在开关关闭时拒绝启动（在任何写入或后台任务之前），旧 AutoMigrate 不能作用于迁移改形过的表；不能只回滚旧 binary。生产启用时旧进程停止/排空后切换，备份恢复方案与演练由发布流程承接。所有者 2026-10-23 决定：生产尚未开放内测，Portal 改档、改档入口、发票分类与升档补差积分、billing-support 表单与上述 cutover 同一次启用，不再拆后续改档切片，也不在上线前临时关闭 Portal 改档。sandbox 默认 Portal 配置已按上节开启改档；live 配置随生产上线按 P-3 交接。全部完成前不关闭 #297。具体切片与测试在 issue，主机配置/发布动作按 P-3 交 Linear；不改变 ADR-066 内测付款策略。
+ADR-064 会在 main 合并后自动部署。#297 的分片启用过程已在 HomeLab 完成，#482 已挂载改档和 billing-support 表单。#483 是最终切片：删除切换开关、旧运行路径、旧账单数据迁移及来源回填；新链路无条件启用。启动在任何应用写入或后台任务之前只读校验现有数据库：新库可以初始化，完整的当前 schema 可以重启，旧账单 schema、缺失账单结构或不支持的版本必须明确拒绝，绝不自动重置数据。schema 初始化保留已部署版本标记以兼容已切换的 HomeLab；不再用旧结构作为新库初始化的中间态。生产发布由所有者决定，旧数据库先导出 SQL 留档，停止旧进程后切换至新数据库，所需积分随后在 Admin 页面手动发放；不恢复旧学习数据或付款关联，不提供自动账单数据迁移，也不能回滚旧 binary 读取新结构。生产 Stripe live 配置、发布动作及手工验证按 P-3 交 Linear；不改变 ADR-066 内测付款策略。HomeLab 的基本 sandbox 付款冒烟不等于完成升降档、退款和管理员积分操作验证，这些检查仍须在发布交接中列明。#297 在 #483 合并并完成发布交接登记后关闭。
 
 ## 取舍
 
@@ -154,3 +154,5 @@ ADR-064 会在 main 合并后自动部署。#297 的 characterization/fixture �
 - [Stripe Portal deep links（subscription_update_confirm）](https://docs.stripe.com/customer-management/portal-deep-links)
 - [Stripe 默认 Portal 配置查询](https://docs.stripe.com/api/customer_portal/configurations/list)
 - [Stripe Product 与 Price 的官方建模](https://docs.stripe.com/products-prices/how-products-and-prices-work#model-your-product-catalog)
+
+- 2026-10-29（#483，所有者在交互会话明确决定）：删除旧账单迁移和历史来源回填，生产使用新库、旧库 SQL 导出留档，积分上线后通过 Admin 页面手动发放；保留查词配额、当前 schema 初始化、已切换 HomeLab 的重启及写入前拒绝不支持 schema 的校验。

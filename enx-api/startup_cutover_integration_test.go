@@ -45,7 +45,7 @@ func TestMain_CutoverReachesListenerAndStopsOnListenFailure(t *testing.T) {
 	cmd.Env = []string{
 		"PATH=" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME"), "HTTPS_PROXY=" + proxy.URL,
 		runMainEnv + "=1", "ENX_API_TEST_CONFIG=" + cfgPath,
-		"DB_PATH=" + filepath.Join(dir, "billing.db"), "BILLING_CUTOVER=true",
+		"DB_PATH=" + filepath.Join(dir, "billing.db"),
 		"STRIPE_SECRET_KEY=sk_test_startup", "STRIPE_WEBHOOK_SECRET=whsec_startup",
 		"APP_FRONTEND_BASE_URL=https://app.example.test", "LOG_LEVEL=info",
 		"ENX_PORT=" + strconv.Itoa(port), "METRICS_ADDR=127.0.0.1:0",

@@ -186,32 +186,6 @@ func (r webhookEventRow) event() eventadmin.Event {
 	}
 }
 
-// LegacyBackfillMarker is the schema_migrations row that records the
-// one-time legacy provenance backfill finished (ADR-067 §一次性充值与
-// Stripe Customer). Like a migration it runs once per database, after the
-// cutover migrations and before the worker claims subscription invoices.
-const LegacyBackfillMarker = "297-legacy-provenance-backfill-v1"
-
-// LegacyBackfillDone reports whether MarkLegacyBackfillDone has run.
-func (WebhookEvents) LegacyBackfillDone(ctx context.Context) (bool, error) {
-	var n int64
-	if err := sqlitex.DB.WithContext(ctx).Raw("SELECT count(*) FROM `schema_migrations` WHERE `version` = ?",
-		LegacyBackfillMarker).Scan(&n).Error; err != nil {
-		return false, fmt.Errorf("read legacy backfill marker: %w", err)
-	}
-	return n > 0, nil
-}
-
-// MarkLegacyBackfillDone records that the legacy provenance backfill
-// finished, for legacyprovenance.Store.MarkDone. Marking twice is a no-op.
-func MarkLegacyBackfillDone(ctx context.Context) error {
-	if err := sqlitex.DB.WithContext(ctx).Exec("INSERT INTO `schema_migrations` (`version`, `applied_at`) VALUES (?, ?) "+
-		"ON CONFLICT (`version`) DO NOTHING", LegacyBackfillMarker, time.Now().UnixMilli()).Error; err != nil {
-		return fmt.Errorf("mark legacy backfill done: %w", err)
-	}
-	return nil
-}
-
 // Save writes next as scope's task, and applies effects, in one
 // transaction, only while the stored Status, Attempts and ClaimToken still
 // equal read's; otherwise it returns webhookevent.ErrStaleClaim and

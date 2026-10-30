@@ -5,6 +5,8 @@ package translate
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"enx-api/config"
@@ -21,9 +23,15 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	sqlitex.Init(cfg.DB.Path)
+	dir, err := os.MkdirTemp("", "enx-translate-integration-")
+	if err != nil {
+		panic(err)
+	}
+	sqlitex.Init(filepath.Join(dir, "test.db"))
 	ecdict.Init(cfg.Ecdict.DBPath)
-	m.Run()
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
 }
 
 func TestTranslateReturns503WhenEcdictRequiredButMissing(t *testing.T) {

@@ -9,10 +9,10 @@ func BillingMigrationVersions() []string {
 	return append([]string(nil), billingMigrationVersions...)
 }
 
-// MigrateBillingCutover applies the migrations in the deployment order specified
-// by ADR-067 §部署边界 and #297 §Existing-data migration.
-// Each migration records its own completion and can be safely retried.
-func MigrateBillingCutover(db *gorm.DB) error {
+// InitializeBillingSchema creates the current billing structure on a fresh database.
+// It never copies or converts legacy billing data. Persisted version values are
+// retained so already initialized HomeLab databases can reopen unchanged.
+func InitializeBillingSchema(db *gorm.DB) error {
 	if _, err := MigrateWebhookReceipts(db); err != nil {
 		return err
 	}

@@ -14,8 +14,8 @@ import (
 // AcceptedAdminUsers is adminuser.Store over the Subscription-ID-keyed schema
 // (ADR-067): plan and status come from the user's accepted subscription, and
 // the Customer is the one attribution.SelectCustomer picks from the stored
-// rows, as the Portal does. It makes no Stripe call. It is not wired until
-// cutover; the ledger, lookup and transaction reads are AdminUsers'.
+// rows, as the Portal does. It makes no Stripe call; ledger, lookup and
+// transaction reads are shared with AdminUsers.
 type AcceptedAdminUsers struct {
 	AdminUsers
 }

@@ -93,13 +93,6 @@ model = "gemini-3.6-flash"
 rephrase-model = ""
 base-url = "https://generativelanguage.googleapis.com/v1beta/openai"
 
-# Billing cutover (ADR-067). Keep disabled until all cutover slices have
-# merged; enable and verify in HomeLab before the production release.
-# Override with BILLING_CUTOVER. A migrated database cannot start with it off:
-# enable it again or restore the pre-migration backup.
-# [billing]
-# cutover = false
-
 # [stripe]: STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET are env-var only, never
 # here (same convention as KIMI_API_KEY / RESEND_API_KEY).
 # Customer Portal configurations (ADR-067), both defined by w10n-config

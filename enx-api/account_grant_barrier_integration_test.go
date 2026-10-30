@@ -100,7 +100,7 @@ func TestAdminGrantReportsRetryableDeletionBarrier(t *testing.T) {
 	cfg := config.Default()
 	cfg.Clerk = jwks.Config()
 	cfg.Admin.ClerkUserIDs = []string{adminSub}
-	cfg.Billing.Cutover = true
+
 	server := httptest.NewServer(setupRouterWithClients(cfg, metrics.New(), nil, nil))
 	defer server.Close()
 	token := jwks.SignSessionToken(t, jwt.MapClaims{"sub": adminSub, "email": "admin@example.com"})
@@ -325,7 +325,7 @@ func TestAdminGrantCannotUseTargetLookedUpBeforeDeletion(t *testing.T) {
 	cfg := config.Default()
 	cfg.Clerk = jwks.Config()
 	cfg.Admin.ClerkUserIDs = []string{adminSub}
-	cfg.Billing.Cutover = true
+
 	server := httptest.NewServer(setupRouterWithClients(cfg, metrics.New(), nil, nil))
 	defer server.Close()
 	token := jwks.SignSessionToken(t, jwt.MapClaims{"sub": adminSub, "email": "admin@example.com"})

@@ -79,7 +79,7 @@ func TestWebhookEventsSaveWritesEachTransitionWhileTheClaimIsHeld(t *testing.T) 
 	read := unfinished(t, store)["evt_1"]
 
 	now := receiptT0.Add(time.Minute)
-	claimed, err := webhookevent.ClaimTask(read.Task, "tok_a", now, 2*time.Minute, true)
+	claimed, err := webhookevent.ClaimTask(read.Task, "tok_a", now, 2*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,12 +117,12 @@ func TestWebhookEventsSaveRefusesAWorkerWhoseClaimWasTakenOver(t *testing.T) {
 
 	// Worker A claims, its lease lapses, and worker B takes the task over.
 	now := receiptT0.Add(time.Minute)
-	claimedA, _ := webhookevent.ClaimTask(read, "tok_a", now, 2*time.Minute, true)
+	claimedA, _ := webhookevent.ClaimTask(read, "tok_a", now, 2*time.Minute)
 	if err := store.Save(ctx, sandboxScope, read, claimedA, nil); err != nil {
 		t.Fatal(err)
 	}
 	later := now.Add(3 * time.Minute)
-	claimedB, err := webhookevent.ClaimTask(claimedA, "tok_b", later, 2*time.Minute, true)
+	claimedB, err := webhookevent.ClaimTask(claimedA, "tok_b", later, 2*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestWebhookEventsSaveRefusesAWorkerWhoseClaimWasTakenOver(t *testing.T) {
 func TestWebhookEventsSaveOfAnUnknownEventIsAnError(t *testing.T) {
 	newWebhookReceiptDB(t)
 	read := webhookevent.NewTask("invoice.paid", "sub_1", receiptT0)
-	claimed, _ := webhookevent.ClaimTask(read, "tok_a", receiptT0, 2*time.Minute, true)
+	claimed, _ := webhookevent.ClaimTask(read, "tok_a", receiptT0, 2*time.Minute)
 
 	err := NewWebhookEvents(nil).Save(context.Background(), eventScope("evt_missing"), read, claimed, nil)
 
@@ -162,8 +162,8 @@ func TestWebhookEventsTwoWorkersClaimingTheSameTaskOnlyOneWins(t *testing.T) {
 	read := unfinished(t, store)["evt_1"].Task
 
 	now := receiptT0.Add(time.Minute)
-	claimedA, _ := webhookevent.ClaimTask(read, "tok_a", now, 2*time.Minute, true)
-	claimedB, _ := webhookevent.ClaimTask(read, "tok_b", now, 2*time.Minute, true)
+	claimedA, _ := webhookevent.ClaimTask(read, "tok_a", now, 2*time.Minute)
+	claimedB, _ := webhookevent.ClaimTask(read, "tok_b", now, 2*time.Minute)
 	errA := store.Save(ctx, sandboxScope, read, claimedA, nil)
 	errB := store.Save(ctx, sandboxScope, read, claimedB, nil)
 
@@ -210,7 +210,7 @@ func claimedTask(t *testing.T, store WebhookEvents) webhookevent.Task {
 	t.Helper()
 	receiveEvent(t, "dlv_1", sandboxScope, receiptT0)
 	read := unfinished(t, store)["evt_1"].Task
-	claimed, err := webhookevent.ClaimTask(read, "tok_a", receiptT0.Add(time.Minute), 2*time.Minute, true)
+	claimed, err := webhookevent.ClaimTask(read, "tok_a", receiptT0.Add(time.Minute), 2*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +261,7 @@ func TestWebhookEventsAStaleClaimCommitsNoEffect(t *testing.T) {
 	newWebhookReceiptDB(t)
 	store := NewWebhookEvents(newGrantApplier(t, nil))
 	claimed := claimedTask(t, store)
-	takeover, _ := webhookevent.ClaimTask(claimed, "tok_b", receiptT0.Add(4*time.Minute), 2*time.Minute, true)
+	takeover, _ := webhookevent.ClaimTask(claimed, "tok_b", receiptT0.Add(4*time.Minute), 2*time.Minute)
 	if err := store.Save(context.Background(), sandboxScope, claimed, takeover, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -363,26 +363,6 @@ func TestWebhookEventsATaskSaveNeverUndoesTheNotifiersSend(t *testing.T) {
 	}
 }
 
-func TestWebhookEventsReadTheLegacyBackfillMarkerOnceItIsMarked(t *testing.T) {
-	newWebhookReceiptDB(t)
-	ctx := context.Background()
-	store := NewWebhookEvents(nil)
-
-	before, err := store.LegacyBackfillDone(ctx)
-	if err != nil || before {
-		t.Fatalf("LegacyBackfillDone before marking = %t, %v; want false", before, err)
-	}
-	for i := range 2 {
-		if err := MarkLegacyBackfillDone(ctx); err != nil {
-			t.Fatalf("MarkLegacyBackfillDone #%d: %v", i+1, err)
-		}
-	}
-	after, err := store.LegacyBackfillDone(ctx)
-	if err != nil || !after {
-		t.Fatalf("LegacyBackfillDone after marking = %t, %v; want true", after, err)
-	}
-}
-
 // grantHandler handles every event by granting its invoice once.
 type grantHandler struct {
 	mu    sync.Mutex
@@ -404,7 +384,7 @@ func newTestWorker(store WebhookEvents, h webhookevent.Handler, now time.Time) *
 	}, func() time.Time { return now }, func() string { return fmt.Sprintf("tok_%d_%p", tokens.Add(1), h) })
 }
 
-func TestWebhookEventsWorkerHoldsSubscriptionInvoicesUntilTheBackfillThenGrantsOnce(t *testing.T) {
+func TestWebhookEventsWorkerProcessesSubscriptionInvoicesOnceWithoutBackfill(t *testing.T) {
 	newWebhookReceiptDB(t)
 	ctx := context.Background()
 	store := NewWebhookEvents(newGrantApplier(t, nil))
@@ -412,16 +392,6 @@ func TestWebhookEventsWorkerHoldsSubscriptionInvoicesUntilTheBackfillThenGrantsO
 	h := &grantHandler{}
 	worker := newTestWorker(store, h, receiptT0.Add(time.Minute))
 
-	if _, err := worker.Pass(ctx); err != nil {
-		t.Fatalf("Pass before the backfill: %v", err)
-	}
-	if h.calls != 0 || storedEvents(t)[0].Status != "pending" {
-		t.Fatalf("before the backfill: %d handler calls, status %s; want the invoice held pending", h.calls, storedEvents(t)[0].Status)
-	}
-
-	if err := MarkLegacyBackfillDone(ctx); err != nil {
-		t.Fatal(err)
-	}
 	for range 2 {
 		if _, err := worker.Pass(ctx); err != nil {
 			t.Fatalf("Pass: %v", err)
@@ -438,9 +408,6 @@ func TestWebhookEventsTwoWorkersSharingTheStoreApplyAnEventOnce(t *testing.T) {
 	newWebhookReceiptDB(t)
 	ctx := context.Background()
 	store := NewWebhookEvents(newGrantApplier(t, nil))
-	if err := MarkLegacyBackfillDone(ctx); err != nil {
-		t.Fatal(err)
-	}
 	for i := range 5 {
 		receiveEvent(t, fmt.Sprintf("dlv_%d", i), eventScope(fmt.Sprintf("evt_%d", i)), receiptT0.Add(time.Duration(i)*time.Second))
 	}

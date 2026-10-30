@@ -58,11 +58,7 @@ func GrantReferralBonus(ctx context.Context, userID string, b ReferralBonus) (tr
 		if err != nil {
 			return err
 		}
-		cutover, err := cutoverLedger(tx)
-		if err != nil {
-			return err
-		}
-		if already && cutover {
+		if already {
 			var accounts []sqlitex.CreditAccount
 			if err := tx.Where("user_id = ?", userID).Find(&accounts).Error; err != nil {
 				return err

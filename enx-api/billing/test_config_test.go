@@ -1,0 +1,38 @@
+package billing
+
+import (
+	"enx-api/billing/checkout"
+	billingstripe "enx-api/billing/stripe"
+	"enx-api/config"
+	"enx-api/repo"
+	"enx-api/utils/sqlitex"
+	"testing"
+
+	stripeSDK "github.com/stripe/stripe-go/v86"
+)
+
+func testStripe() config.Stripe {
+	stripe := config.Default().Stripe
+	stripe.WebhookSecret = "whsec_test"
+	return stripe
+}
+
+func seedSubscription(t *testing.T, userID, customerID, subscriptionID, status string, periodEnd int64) {
+	t.Helper()
+	for _, stmt := range []struct {
+		sql  string
+		args []any
+	}{
+		{"INSERT INTO subscriptions (user_id,stripe_customer_id,stripe_subscription_id,status,current_period_end,created_at,updated_at) VALUES (?,?,?,?,?,1,1)", []any{userID, customerID, subscriptionID, status, periodEnd}},
+		{"INSERT INTO stripe_customers (user_id,stripe_customer_id,created_at) VALUES (?,?,1)", []any{userID, customerID}},
+		{"UPDATE users SET accepted_subscription_id=? WHERE id=?", []any{subscriptionID, userID}},
+	} {
+		if err := sqlitex.DB.Exec(stmt.sql, stmt.args...).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func newTestBillingHandler(sc *stripeSDK.Client, frontend string, stripe config.Stripe, _ WebhookObserver) *Handler {
+	return NewHandler(sc, frontend, stripe.Price, repo.BillingSubscriptions{}, checkout.New(repo.PortalSessionOwners{}, billingstripe.NewPortalClient(sc, "", "", nil)))
+}

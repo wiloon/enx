@@ -2,6 +2,13 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-10-29: Remove legacy billing runtime — issue #483
+
+**Agent**: Codex
+**Solution**: Billing always uses the durable receiver, accepted-subscription readers and deletion coordination. Fresh databases initialize the current schema; unsupported existing schemas fail before application writes or workers. Legacy billing conversion and Stripe provenance backfill are removed.
+
+**Lesson (retiring a switch)**: Remove reader defaults and worker dependency gates along with the top-level branch. Keep current-schema fixtures and mounted durable refund tests; synchronous webhook tests do not verify an asynchronous receiver. Tests for historical non-billing table repairs should exercise that operation independently of production startup validation.
+
 ## 2026-10-29: Mount billing plan changes and conflict support — issue #482
 
 **Agent**: Codex

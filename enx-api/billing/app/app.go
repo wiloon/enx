@@ -1,8 +1,8 @@
 // Package app is the billing composition root (ADR-067): it assembles the
-// durable webhook receipt, worker, notifier, legacy provenance backfill and
+// durable webhook receipt, worker, notifier and
 // the billing HTTP edges from their parts, and runs the remote startup
 // sequence. It sits above billing and repo, so it may import both. The
-// application startup connects it when BILLING_CUTOVER is enabled.
+// application startup always connects it.
 package app
 
 import (
@@ -20,7 +20,6 @@ import (
 	"enx-api/billing/conflictadmin"
 	"enx-api/billing/eventadmin"
 	"enx-api/billing/invoicepaid"
-	"enx-api/billing/legacyprovenance"
 	"enx-api/billing/portalsession"
 	"enx-api/billing/snapshot"
 	billingstripe "enx-api/billing/stripe"
@@ -275,24 +274,12 @@ func (a *Assembly) runPipeline(ctx context.Context) {
 		a.deps.Report("webhook dispatcher", err)
 		return
 	}
-	backfill := legacyprovenance.NewBackfill(repo.LegacyProvenance{}, billingstripe.NewBackfillClient(a.deps.Client))
 	worker := webhookevent.NewWorker(a.store, dispatcher, webhookevent.WorkerSettings{
 		Timeout: w.OperationTimeout, Lease: w.LeaseDuration, BackoffMin: w.BackoffMin, BackoffMax: w.BackoffMax,
 		DependencyWaitDeadline: w.DependencyWaitDeadline,
 	}, a.deps.Now, a.deps.NewToken)
 
-	backfilled := false
 	pass := func() {
-		if !backfilled {
-			c, cancel := context.WithTimeout(ctx, w.OperationTimeout)
-			_, err := backfill.Run(c)
-			cancel()
-			if err != nil {
-				a.deps.Report("legacy provenance backfill", err)
-			} else {
-				backfilled = true
-			}
-		}
 		if _, err := worker.Pass(ctx); err != nil {
 			a.deps.Report("webhook worker pass", err)
 		}

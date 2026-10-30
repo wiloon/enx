@@ -39,14 +39,14 @@ type Config struct {
 	Admin             Admin             `mapstructure:"admin"`
 	Account           Account           `mapstructure:"account"`
 	SentenceTranslate SentenceTranslate `mapstructure:"sentence-translate"`
-	Billing           Billing           `mapstructure:"billing"`
-	Stripe            Stripe            `mapstructure:"stripe"`
-	AIWord            AIWord            `mapstructure:"ai-word"`
-	Credits           Credits           `mapstructure:"credits"`
-	RateLimit         RateLimit         `mapstructure:"rate-limit"`
-	Stats             Stats             `mapstructure:"stats"`
-	User              User              `mapstructure:"user"`
-	Ops               Ops               `mapstructure:"ops"`
+
+	Stripe    Stripe    `mapstructure:"stripe"`
+	AIWord    AIWord    `mapstructure:"ai-word"`
+	Credits   Credits   `mapstructure:"credits"`
+	RateLimit RateLimit `mapstructure:"rate-limit"`
+	Stats     Stats     `mapstructure:"stats"`
+	User      User      `mapstructure:"user"`
+	Ops       Ops       `mapstructure:"ops"`
 
 	// File is the config file that was read, "" when none was.
 	File string `mapstructure:"-"`
@@ -224,10 +224,6 @@ type MiniMax struct {
 type Bedrock struct {
 	Region  string `mapstructure:"region"`
 	ModelID string `mapstructure:"model-id"`
-}
-
-type Billing struct {
-	Cutover bool `mapstructure:"cutover"`
 }
 
 type Stripe struct {
@@ -752,8 +748,6 @@ func defaults() map[string]any {
 	// out on rephrase.
 	set("sentence-translate.request-timeout", "60s")
 
-	set("billing.cutover", false)
-
 	// Three subscription tiers (2026-08-26 decision) -- see config.toml's
 	// [stripe.price] comment.
 	set("stripe.price.pro", "enx_pro_monthly")
@@ -910,8 +904,6 @@ var envBindings = map[string]string{
 	"sentence-translate.openrouter.base-url":       "SENTENCE_TRANSLATE_OPENROUTER_BASE_URL",
 	"sentence-translate.openrouter.model":          "SENTENCE_TRANSLATE_OPENROUTER_MODEL",
 	"sentence-translate.openrouter.rephrase-model": "SENTENCE_TRANSLATE_OPENROUTER_REPHRASE_MODEL",
-
-	"billing.cutover": "BILLING_CUTOVER",
 
 	"stripe.secret-key":                         "STRIPE_SECRET_KEY",
 	"stripe.webhook-secret":                     "STRIPE_WEBHOOK_SECRET",

@@ -3,35 +3,28 @@ package adapters
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"enx-api/referral"
 	"enx-api/utils/sqlitex"
-
-	"github.com/glebarez/sqlite"
-	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
 )
 
 func newLedgerDB(t *testing.T) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
-		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&sqlitex.User{}, &sqlitex.CreditAccount{}, &sqlitex.CreditTransaction{}, &sqlitex.TrialGrant{}); err != nil {
-		t.Fatal(err)
-	}
 	prev := sqlitex.DB
-	sqlitex.DB = db
-	t.Cleanup(func() { sqlitex.DB = prev })
+	sqlitex.Init(filepath.Join(t.TempDir(), "test.db"))
+	db := sqlitex.DB
+	t.Cleanup(func() { raw, _ := db.DB(); _ = raw.Close(); sqlitex.DB = prev })
+
 }
 
 func TestLedgerGrantsTheInviteeBonusIntoTheTrialPool(t *testing.T) {
 	newLedgerDB(t)
+	if err := sqlitex.DB.Exec("INSERT INTO users(id) VALUES ('bob')").Error; err != nil {
+		t.Fatal(err)
+	}
 	expires := time.Now().Add(14 * 24 * time.Hour).Truncate(time.Second)
 
 	got, err := ledger.GrantInviteeBonus(context.Background(), "bob", referral.Bonus{

@@ -19,31 +19,18 @@ import (
 	"enx-api/utils/sqlitex"
 
 	"github.com/gin-gonic/gin"
-	"github.com/glebarez/sqlite"
 	"github.com/stripe/stripe-go/v86/webhook"
-	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
 )
 
-// newBillingDB opens a temporary database as the cutover leaves it, with the
-// rows of the named testdata/billing-legacy fixtures, and makes it the
-// package-wide one.
+// newBillingDB initializes the current schema with named billing-current fixtures.
 func newBillingDB(t *testing.T, fixtures ...string) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "enx.db")), &gorm.Config{
-		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sqlDB.SetMaxOpenConns(1)
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	for _, name := range append([]string{"schema.sql"}, fixtures...) {
-		raw, err := os.ReadFile(filepath.Join("../../testdata/billing-legacy", name))
+	previous := sqlitex.DB
+	sqlitex.Init(filepath.Join(t.TempDir(), "enx.db"))
+	db := sqlitex.DB
+	t.Cleanup(func() { raw, _ := db.DB(); _ = raw.Close(); sqlitex.DB = previous })
+	for _, name := range fixtures {
+		raw, err := os.ReadFile(filepath.Join("../../testdata/billing-current", name))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -81,14 +68,15 @@ func newBillingDB(t *testing.T, fixtures ...string) {
 // fakeStripe is the Stripe API as the startup sequence sees it; each flag
 // makes one part of it fail.
 type fakeStripe struct {
-	accountFails      atomic.Bool
-	pricesFail        atomic.Bool
-	invoicesFail      atomic.Bool
-	accountCalls      atomic.Int64
-	sessionsMade      atomic.Int64
-	portalSafe        atomic.Bool
-	subscriptionReply func(string) string
-	subscriptionFails atomic.Bool
+	accountFails        atomic.Bool
+	pricesFail          atomic.Bool
+	invoicesFail        atomic.Bool
+	accountCalls        atomic.Int64
+	sessionsMade        atomic.Int64
+	portalSafe          atomic.Bool
+	subscriptionReply   func(string) string
+	subscriptionFails   atomic.Bool
+	subscriptionCancels atomic.Int64
 }
 
 func (f *fakeStripe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -96,6 +84,11 @@ func (f *fakeStripe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fail := func() {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"error":{"message":"down"}}`))
+	}
+	if r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/v1/subscriptions/") {
+		f.subscriptionCancels.Add(1)
+		_, _ = w.Write([]byte(`{"id":"` + strings.TrimPrefix(r.URL.Path, "/v1/subscriptions/") + `","object":"subscription","status":"canceled"}`))
+		return
 	}
 	if f.subscriptionFails.Load() && strings.HasPrefix(r.URL.Path, "/v1/subscriptions/") {
 		fail()
@@ -399,36 +392,6 @@ func TestAnUnsafePortalIsReportedWhileReceiptAndWorkerProceed(t *testing.T) {
 	if n := r.stripe.sessionsMade.Load(); n != 1 {
 		t.Errorf("Portal sessions after recovery = %d, want 1", n)
 	}
-}
-
-func TestABackfillFailureGatesInvoicesWhileOtherEventsProgressUntilARetryTickSucceeds(t *testing.T) {
-	// subscribed.sql leaves one legacy grant without provenance.
-	r := newRig(t, "subscribed.sql")
-	r.stripe.invoicesFail.Store(true)
-	r.start(t)
-	eventually(t, "the failed backfill report", func() bool { return r.reports.count("legacy provenance backfill") >= 1 })
-
-	if code := r.deliver(t, "evt_inv", "invoice.paid", `{"object":"invoice","id":"in_1","customer":"cus_subscribed","parent":{"subscription_details":{"subscription":"sub_subscribed"}}}`); code != http.StatusOK {
-		t.Fatalf("invoice receipt = %d", code)
-	}
-	if code := r.deliver(t, "evt_other", "customer.created", ignorableObject); code != http.StatusOK {
-		t.Fatalf("other receipt = %d", code)
-	}
-	r.tickers.tick(testPoll)
-	eventually(t, "the other event to progress", func() bool {
-		status, _ := eventStatus(t, "evt_other")
-		return status == "ignored"
-	})
-	if status, attempts := eventStatus(t, "evt_inv"); status != "pending" || attempts != 0 {
-		t.Fatalf("gated invoice = %s/%d, want untouched pending/0", status, attempts)
-	}
-
-	r.stripe.invoicesFail.Store(false)
-	r.tickers.tick(testPoll)
-	eventually(t, "the backfill marker and the invoice to be claimed", func() bool {
-		_, attempts := eventStatus(t, "evt_inv")
-		return attempts > 0
-	})
 }
 
 func TestCancellationStopsEveryGoroutineAndTicker(t *testing.T) {

@@ -224,7 +224,7 @@ func claimedSnapshotTask(t *testing.T, store WebhookEvents, subscriptionID strin
 		t.Fatal(err)
 	}
 	read := unfinished(t, store)["evt_1"].Task
-	claimed, err := webhookevent.ClaimTask(read, "tok_a", receiptT0.Add(time.Minute), 2*time.Minute, true)
+	claimed, err := webhookevent.ClaimTask(read, "tok_a", receiptT0.Add(time.Minute), 2*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}

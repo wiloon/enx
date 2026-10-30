@@ -10,6 +10,7 @@ import (
 func TestGrantAdminAddsToTopupPoolWithReason(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	mustGrantSubscription(t, userID, 50, 10)
 
 	if err := GrantAdmin(ctx, userID, 25, "support comp for outage"); err != nil {
@@ -29,6 +30,7 @@ func TestGrantAdminAddsToTopupPoolWithReason(t *testing.T) {
 func TestGrantAdminRejectsNonPositiveAmountOrEmptyReason(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	mustGrantSubscription(t, userID, 50, 10)
 
 	for _, tc := range []struct {
@@ -47,6 +49,7 @@ func TestGrantAdminRejectsNonPositiveAmountOrEmptyReason(t *testing.T) {
 func TestDeductAdminTakesFromTopupPoolAndMayGoNegative(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	mustGrantSubscription(t, userID, 50, 10)
 
 	if err := DeductAdmin(ctx, userID, 30, "comp granted twice by mistake"); err != nil {
@@ -66,6 +69,7 @@ func TestDeductAdminTakesFromTopupPoolAndMayGoNegative(t *testing.T) {
 func TestDeductAdminRejectsNonPositiveAmountOrEmptyReason(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	mustGrantSubscription(t, userID, 50, 10)
 
 	for _, tc := range []struct {

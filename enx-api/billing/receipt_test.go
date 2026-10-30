@@ -211,3 +211,9 @@ type receiverFunc func(ctx context.Context, payload []byte, sigHeader string) we
 func (f receiverFunc) Receive(ctx context.Context, payload []byte, sigHeader string) webhookevent.Outcome {
 	return f(ctx, payload, sigHeader)
 }
+
+type recordedWebhooks struct{ got []string }
+
+func (r *recordedWebhooks) ObserveWebhook(eventType, outcome string) {
+	r.got = append(r.got, eventType+" "+outcome)
+}

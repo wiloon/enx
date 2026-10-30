@@ -10,8 +10,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -118,19 +120,13 @@ func Init(dbPath string) {
 // the SQL log level from the application log level (see SQLLogLevel), and
 // migrates it. An error means the database must not be used: main exits.
 func InitWithLogLevel(dbPath, level string) error {
-	if err := rejectBillingMigrations(dbPath); err != nil {
+	if err := CheckBillingSchema(dbPath); err != nil {
 		return err
 	}
-	return initDatabase(dbPath, level)
-}
-
-// InitForBillingCutover skips the legacy startup reject guard to preserve
-// versioned billing schemas (ADR-067 §部署边界). On fresh or legacy databases
-// it still creates the legacy subscriptions table until
-// MigrateSubscriptionOwnership rebuilds it. The caller must run the billing
-// migrations before using the new pipeline.
-func InitForBillingCutover(dbPath, level string) error {
-	return initDatabase(dbPath, level)
+	if err := initDatabase(dbPath, level); err != nil {
+		return err
+	}
+	return InitializeBillingSchema(DB)
 }
 
 func initDatabase(dbPath, level string) error {
@@ -211,17 +207,10 @@ func initDatabase(dbPath, level string) error {
 
 	// Auto-migrate database schema
 	zapLog.Info("running database auto-migration...")
-	ownership, err := migrationApplied(DB, SubscriptionOwnershipVersion)
-	if err != nil {
-		return err
-	}
 	models := []any{&Word{}, &UserDict{}, &Session{}, &SyncState{}, &LookupEvent{},
 		&ReaderDocument{}, &DailyStat{}, &StatsIngestLog{}, &PageReport{}, &SavedPage{},
 		&UserPreference{}, &ActiveUsersDay{}, &ReferralCode{}, &Referral{}, &TrialGrant{},
 		&User{}, &CreditAccount{}, &CreditTransaction{}}
-	if !ownership {
-		models = append(models, &Subscription{})
-	}
 	err = DB.AutoMigrate(models...)
 	if err != nil {
 		return fmt.Errorf("auto-migrate database: %w", err)
@@ -412,38 +401,135 @@ func migrateWordsEnglishNoCase() error {
 	})
 }
 
-// rejectBillingMigrations checks the existing database without writing before
-// legacy startup opens it with WAL or runs any migrations.
-// Old callers cannot use the migrated schema, and migrated data cannot be
-// rolled back to the old binary (ADR-067 §部署边界; #297 §Existing-data migration).
-func rejectBillingMigrations(path string) error {
+// CheckBillingSchema inspects an existing database read-only before startup writes.
+func CheckBillingSchema(path string) error {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil
 	} else if err != nil {
-		return fmt.Errorf("inspect database: %w", err)
+		return err
 	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return fmt.Errorf("resolve database path: %w", err)
+		return err
 	}
 	u := url.URL{Scheme: "file", Path: abs, RawQuery: "mode=ro"}
 	db, err := gorm.Open(sqlite.Open(u.String()), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	if err != nil {
 		return fmt.Errorf("inspect billing schema: %w", err)
 	}
-	sqlDB, err := db.DB()
+	raw, err := db.DB()
 	if err != nil {
-		return fmt.Errorf("inspect billing schema: %w", err)
+		return err
 	}
-	defer func() { _ = sqlDB.Close() }()
+	defer func() { _ = raw.Close() }()
+
+	var tables int64
+	if err := db.Raw("SELECT count(*) FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'").Scan(&tables).Error; err != nil {
+		return err
+	}
+	if tables == 0 {
+		return nil
+	}
+	unsupported := func(reason string) error {
+		return fmt.Errorf("unsupported billing schema: %s; initialize a fresh database or deploy a compatible binary", reason)
+	}
 	for _, version := range billingMigrationVersions {
-		applied, err := migrationApplied(db, version)
+		done, err := migrationApplied(db, version)
 		if err != nil {
-			return fmt.Errorf("inspect billing schema: %w", err)
+			return unsupported(err.Error())
 		}
-		if applied {
-			return fmt.Errorf("billing migration %s is present; legacy billing cannot start on a migrated database: enable BILLING_CUTOVER or restore the pre-migration backup", version)
+		if !done {
+			return unsupported("missing version " + version)
+		}
+	}
+	var versions []string
+	if err := db.Raw("SELECT version FROM schema_migrations").Scan(&versions).Error; err != nil {
+		return unsupported(err.Error())
+	}
+	for _, version := range versions {
+		known := version == "297-legacy-provenance-backfill-v1"
+		for _, supported := range billingMigrationVersions {
+			known = known || version == supported
+		}
+		if !known {
+			return unsupported("unknown version " + version)
+		}
+	}
+	required := map[string]string{
+		"users":                     "id,accepted_subscription_id,billing_version",
+		"subscriptions":             "stripe_subscription_id,user_id,stripe_customer_id,status,plan,price_id,current_period_end,cancel_at_period_end,cancel_at,pending_update,has_schedule,classification,version,conflict_reason,conflict_with_subscription_id,conflict_discovered_at,conflict_status,conflict_resolver_id,conflict_resolved_at,conflict_notes,support_message,support_at,conflict_alert_state,support_alert_state,created_at,updated_at",
+		"stripe_customers":          "stripe_customer_id,user_id,created_at",
+		"credit_accounts":           "user_id,pool_grant_id,subscription_balance,topup_balance,period_end",
+		"credit_transactions":       "id,user_id,grant_kind,stripe_invoice_id,stripe_subscription_id,period_start,period_end,from_tier,tier,purchased,applied,without_period,provenance_reason",
+		"stripe_webhook_deliveries": "id,received_at,stripe_account_id,livemode,event_id,event_type,event_created,api_version,payload",
+		"stripe_webhook_events":     "stripe_account_id,livemode,event_id,type,created,api_version,first_delivery_id,first_received_at,subscription_id,customer_id,checkout_session_id,invoice_id,payment_intent_id,charge_id,status,attempts,last_error,first_wait_at,next_attempt_at,completed_at,claim_token,claim_expires_at,alert_state,updated_at",
+		"account_deletion_gates":    "user_id,state,started_at,deleted_at,updated_at",
+		"account_deletion_attempts": "user_id,owner,lease_until,phase,reset_trial",
+	}
+	for _, alert := range []struct{ table, prefix string }{{"stripe_webhook_events", "alert"}, {"subscriptions", "conflict_alert"}, {"subscriptions", "support_alert"}} {
+		for _, suffix := range []string{"attempts", "last_error", "next_attempt_at", "sent_at", "claim_token", "claim_expires_at"} {
+			required[alert.table] += "," + alert.prefix + "_" + suffix
+		}
+	}
+	for table, columns := range required {
+		rows, err := db.Raw("SELECT " + columns + " FROM " + table + " LIMIT 0").Rows()
+		if err != nil {
+			return unsupported(table + ": " + err.Error())
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+	}
+	for table, want := range map[string]string{
+		"users": "id", "subscriptions": "stripe_subscription_id", "stripe_customers": "stripe_customer_id",
+		"stripe_webhook_events": "stripe_account_id,livemode,event_id", "stripe_webhook_deliveries": "id",
+		"credit_accounts": "user_id", "credit_transactions": "id", "account_deletion_gates": "user_id", "account_deletion_attempts": "user_id",
+	} {
+		cols, err := tableColumns(db, table)
+		if err != nil {
+			return unsupported(err.Error())
+		}
+		sort.Slice(cols, func(i, j int) bool { return cols[i].Pk < cols[j].Pk })
+		var pk []string
+		for _, c := range cols {
+			if c.Pk > 0 {
+				pk = append(pk, strings.ToLower(c.Name))
+			}
+		}
+		if strings.Join(pk, ",") != want {
+			return unsupported(table + " has an unsupported primary key")
+		}
+	}
+	var indexSQL string
+	if err := db.Raw("SELECT sql FROM sqlite_schema WHERE type='index' AND tbl_name='credit_transactions' AND name='idx_credit_transactions_subscription_invoice'").Scan(&indexSQL).Error; err != nil {
+		return unsupported(err.Error())
+	}
+	if normalizeSchemaSQL(indexSQL) != normalizeSchemaSQL(subscriptionInvoiceIndexDDL) {
+		return unsupported("invalid subscription invoice unique index")
+	}
+	for _, index := range []string{"idx_credit_transactions_subscription_invoice", "idx_credit_transactions_subscription_period"} {
+		if !db.Migrator().HasIndex("credit_transactions", index) {
+			return unsupported("missing index " + index)
 		}
 	}
 	return nil
+}
+
+// normalizeSchemaSQL ignores identifier quoting and formatting while preserving
+// case-sensitive string literals in the supported index predicate.
+func normalizeSchemaSQL(sql string) string {
+	quoted := false
+	return strings.Map(func(r rune) rune {
+		if r == '\'' {
+			quoted = !quoted
+			return r
+		}
+		if quoted {
+			return r
+		}
+		if unicode.IsSpace(r) || strings.ContainsRune("`\"[]", r) {
+			return -1
+		}
+		return unicode.ToLower(r)
+	}, sql)
 }

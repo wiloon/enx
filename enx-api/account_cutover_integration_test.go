@@ -30,7 +30,6 @@ func TestDeletionRoutesSelectCutoverChecker(t *testing.T) {
 		code           string
 		extra          string
 	}{
-		{"legacy missing", false, "active", "", "", 200, "", ""},
 		{"missing", true, "active", "", "", 500, "failed", ""},
 		{"unknown live state", true, "active", "", "error", 500, "failed", ""},
 		{"store failure", true, "active", "", "", 500, "failed", "store"},
@@ -49,10 +48,10 @@ func TestDeletionRoutesSelectCutoverChecker(t *testing.T) {
 				cfg.Clerk = jwks.Config()
 				cfg.Admin.ClerkUserIDs = []string{adminSub}
 				cfg.Account.EmailHMACKey = "test-key"
-				cfg.Billing.Cutover = cutover
+
 				sqlitex.Init(filepath.Join(t.TempDir(), "account.db"))
 				if cutover {
-					if err := sqlitex.MigrateBillingCutover(sqlitex.DB); err != nil {
+					if err := sqlitex.InitializeBillingSchema(sqlitex.DB); err != nil {
 						t.Fatal(err)
 					}
 				}

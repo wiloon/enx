@@ -15,6 +15,7 @@ import (
 func TestClawbackFullTopupRefundTakesAllGrantedCredits(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	pi := "pi_" + t.Name()
 	if err := GrantTopup(ctx, userID, 300, "evt-grant-"+t.Name(), pi); err != nil {
 		t.Fatalf("GrantTopup: %v", err)
@@ -40,6 +41,7 @@ func TestClawbackFullTopupRefundTakesAllGrantedCredits(t *testing.T) {
 func TestClawbackLatestSubscriptionGrantTakesSubscriptionPoolDownToZero(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	pi := "pi_" + t.Name()
 	if err := GrantSubscription(ctx, userID, 500, time.Now().Add(30*24*time.Hour), "evt-grant-"+t.Name(), pi); err != nil {
 		t.Fatalf("GrantSubscription: %v", err)
@@ -73,6 +75,7 @@ func TestClawbackLatestSubscriptionGrantTakesSubscriptionPoolDownToZero(t *testi
 func TestClawbackOlderSubscriptionGrantTakesNothingButIsRecorded(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	oldPI := "pi_old_" + t.Name()
 	periodEnd := time.Now().Add(30 * 24 * time.Hour)
 	if err := GrantSubscription(ctx, userID, 500, periodEnd, "evt-grant-1-"+t.Name(), oldPI); err != nil {
@@ -104,6 +107,7 @@ func TestClawbackOlderSubscriptionGrantTakesNothingButIsRecorded(t *testing.T) {
 func TestClawbackTopupMayGoNegativeAndLeavesTrialAlone(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	pi := "pi_" + t.Name()
 	mustGrantTrial(t, userID, 100, 7*24*time.Hour)
 	if err := GrantTopup(ctx, userID, 300, "evt-grant-"+t.Name(), pi); err != nil {
@@ -130,6 +134,7 @@ func TestClawbackTopupMayGoNegativeAndLeavesTrialAlone(t *testing.T) {
 func TestClawbackOutOfOrderPartialRefundTakesNothing(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	pi := "pi_" + t.Name()
 	if err := GrantTopup(ctx, userID, 300, "evt-grant-"+t.Name(), pi); err != nil {
 		t.Fatalf("GrantTopup: %v", err)
@@ -152,6 +157,7 @@ func TestClawbackOutOfOrderPartialRefundTakesNothing(t *testing.T) {
 func TestClawbackConcurrentRefundEventsTakeTheGrantOnce(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	pi := "pi_" + t.Name()
 	if err := GrantTopup(ctx, userID, 300, "evt-grant-"+t.Name(), pi); err != nil {
 		t.Fatalf("GrantTopup: %v", err)
@@ -177,6 +183,7 @@ func TestClawbackConcurrentRefundEventsTakeTheGrantOnce(t *testing.T) {
 func TestClawbackRejectsNothingCapturedWithoutTakingAnything(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	pi := "pi_" + t.Name()
 	if err := GrantTopup(ctx, userID, 300, "evt-grant-"+t.Name(), pi); err != nil {
 		t.Fatalf("GrantTopup: %v", err)
@@ -202,6 +209,7 @@ func TestClawbackUnknownPaymentIntentIsGrantNotFound(t *testing.T) {
 func TestClawbackReplayOfSameEventTakesNothingMore(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	pi := "pi_" + t.Name()
 	if err := GrantTopup(ctx, userID, 300, "evt-grant-"+t.Name(), pi); err != nil {
 		t.Fatalf("GrantTopup: %v", err)
@@ -225,6 +233,7 @@ func TestClawbackReplayOfSameEventTakesNothingMore(t *testing.T) {
 func TestClawbackPartialRefundsTakeTheDifferenceEachTime(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	pi := "pi_" + t.Name()
 	if err := GrantTopup(ctx, userID, 300, "evt-grant-"+t.Name(), pi); err != nil {
 		t.Fatalf("GrantTopup: %v", err)

@@ -7,15 +7,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// ADR-067 §积分周期与退款来源 and #297 §Credit-period provenance: each
-// subscription billing effect records the invoice, the real Subscription ID
-// and billing period it belongs to, and credit_accounts records the grant
-// that supplies subscription_balance. MigrateCreditProvenance adds those
-// columns, all empty on legacy rows, and points each migrated pool at its
-// legacy grant; the legacy provenance backfill (billing/legacyprovenance)
-// fills that grant in from Stripe later. It changes no amount, balance or
-// ledger row, runs in one transaction and records its completion in
-// schema_migrations.
+// ADR-067: subscription grants and pools retain invoice and period provenance.
+// Fresh schema initialization adds these columns and indexes without reading
+// or copying old billing data. Existing supported databases keep their markers.
 
 // CreditProvenanceVersion names the migration in schema_migrations.
 const CreditProvenanceVersion = "297-credit-provenance-v1"
@@ -36,9 +30,8 @@ func MigrateCreditProvenance(db *gorm.DB) (bool, error) {
 				// A subscription grant's provenance. grant_kind is
 				// normal_period or upgrade_top_up; purchased is what the
 				// invoice bought and applied what reached the pool (both
-				// NULL on a legacy row, whose amount was both).
-				// without_period marks a migrated grant the backfill could
-				// not pin to one invoice, with provenance_reason saying why.
+				// NULL on historical rows).
+				// without_period retains incomplete historical provenance for audit.
 				"ALTER TABLE `credit_transactions` ADD COLUMN `grant_kind` text NOT NULL DEFAULT ''",
 				"ALTER TABLE `credit_transactions` ADD COLUMN `stripe_invoice_id` text",
 				"ALTER TABLE `credit_transactions` ADD COLUMN `stripe_subscription_id` text",
@@ -52,16 +45,9 @@ func MigrateCreditProvenance(db *gorm.DB) (bool, error) {
 				"ALTER TABLE `credit_transactions` ADD COLUMN `provenance_reason` text NOT NULL DEFAULT ''",
 				// One subscription billing effect per invoice, whatever
 				// Event ID delivers it.
-				"CREATE UNIQUE INDEX `idx_credit_transactions_subscription_invoice` ON `credit_transactions`(`stripe_invoice_id`) "+
-					"WHERE `type` = 'GRANT_SUBSCRIPTION' AND `stripe_invoice_id` IS NOT NULL",
+				subscriptionInvoiceIndexDDL,
 				"CREATE INDEX `idx_credit_transactions_subscription_period` ON `credit_transactions`(`stripe_subscription_id`, `period_end`)",
 				"ALTER TABLE `credit_accounts` ADD COLUMN `pool_grant_id` text",
-				// The legacy pool comes from the user's latest
-				// GRANT_SUBSCRIPTION: every legacy renewal reset it, and
-				// legacy refunds find the current period's grant this way.
-				"UPDATE `credit_accounts` SET `pool_grant_id` = (SELECT t.`id` FROM `credit_transactions` t "+
-					"WHERE t.`user_id` = `credit_accounts`.`user_id` AND t.`type` = 'GRANT_SUBSCRIPTION' "+
-					"ORDER BY t.`created_at` DESC, t.rowid DESC LIMIT 1)",
 			); err != nil {
 				return err
 			}
@@ -78,3 +64,5 @@ func MigrateCreditProvenance(db *gorm.DB) (bool, error) {
 	}
 	return applied, nil
 }
+
+const subscriptionInvoiceIndexDDL = "CREATE UNIQUE INDEX `idx_credit_transactions_subscription_invoice` ON `credit_transactions`(`stripe_invoice_id`) WHERE `type` = 'GRANT_SUBSCRIPTION' AND `stripe_invoice_id` IS NOT NULL"

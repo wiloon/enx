@@ -10,7 +10,7 @@ import (
 var (
 	// ErrNotDue: the task is finished, needs attention, under another
 	// worker's live claim, not yet at its next attempt, or held for the
-	// legacy provenance backfill.
+	// initialization.
 	ErrNotDue = errors.New("billing/webhookevent: task is not due")
 	// ErrNoToken: a claim needs a nonempty fencing token.
 	ErrNoToken = errors.New("billing/webhookevent: claim token is empty")
@@ -53,14 +53,8 @@ func NewTask(eventType, subscriptionID string, now time.Time) Task {
 	return Task{Type: eventType, SubscriptionID: subscriptionID, Status: Pending, NextAttemptAt: now}
 }
 
-// Due reports whether a worker may claim the task at now. A paid invoice of
-// a subscription waits until the one-time legacy provenance backfill has
-// finished (ADR-067 §一次性充值与 Stripe Customer), so an upgrade invoice
-// queued before it never mistakes "not backfilled yet" for "no grant yet".
-func (t Task) Due(now time.Time, legacyBackfillDone bool) bool {
-	if !legacyBackfillDone && t.Type == "invoice.paid" && t.SubscriptionID != "" {
-		return false
-	}
+// Due reports whether a worker may claim the task at now.
+func (t Task) Due(now time.Time) bool {
 	switch t.Status {
 	case Pending, WaitingDependency:
 		return !now.Before(t.NextAttemptAt)
@@ -73,11 +67,11 @@ func (t Task) Due(now time.Time, legacyBackfillDone bool) bool {
 // ClaimTask gives the task to the worker holding token until now+lease. An
 // expired claim of a crashed worker is taken over. The lease must outlast
 // the operation timeout.
-func ClaimTask(t Task, token string, now time.Time, lease time.Duration, legacyBackfillDone bool) (Task, error) {
+func ClaimTask(t Task, token string, now time.Time, lease time.Duration) (Task, error) {
 	if token == "" {
 		return t, ErrNoToken
 	}
-	if !t.Due(now, legacyBackfillDone) {
+	if !t.Due(now) {
 		return t, ErrNotDue
 	}
 	t.Status = Processing

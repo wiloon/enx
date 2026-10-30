@@ -14,6 +14,7 @@ import (
 func TestSettleDrawsFromSubscriptionPoolFirst(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	mustGrantSubscription(t, userID, 10, 5)
 
 	if err := Settle(ctx, userID, "rephrase_to_english", 3); err != nil {
@@ -29,6 +30,7 @@ func TestSettleDrawsFromSubscriptionPoolFirst(t *testing.T) {
 func TestSettleRejectsNegativeCost(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	mustGrantSubscription(t, userID, 5, 5)
 
 	if err := Settle(ctx, userID, "rephrase_to_english", -1); err == nil {
@@ -46,6 +48,7 @@ func TestSettleRejectsNegativeCost(t *testing.T) {
 func TestSettleZeroCostIsNoOp(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	mustGrantSubscription(t, userID, 5, 5)
 
 	if err := Settle(ctx, userID, "rephrase_to_english", 0); err != nil {
@@ -64,6 +67,7 @@ func TestSettleZeroCostIsNoOp(t *testing.T) {
 func TestSettleDrivesTopupPoolNegativeWhenOverBudget(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	mustGrantSubscription(t, userID, 1, 1)
 
 	if err := Settle(ctx, userID, "rephrase_to_english", 5); err != nil {
@@ -82,6 +86,7 @@ func TestSettleDrivesTopupPoolNegativeWhenOverBudget(t *testing.T) {
 func TestSettleSpillsRemainderToTopupPool(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	mustGrantSubscription(t, userID, 2, 5)
 
 	if err := Settle(ctx, userID, "rephrase_to_english", 3); err != nil {
@@ -100,6 +105,7 @@ func TestSettleSpillsRemainderToTopupPool(t *testing.T) {
 func TestSettleConcurrentNoLostWrites(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	mustGrantSubscription(t, userID, 10, 100)
 
 	const (
@@ -143,6 +149,7 @@ func TestSettleConcurrentNoLostWrites(t *testing.T) {
 func TestSettleConcurrentKeepsSubscriptionNonNegative(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	mustGrantSubscription(t, userID, 5, 100)
 
 	const (

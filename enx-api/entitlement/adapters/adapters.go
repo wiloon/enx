@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"enx-api/billing/credit"
+	"enx-api/repo"
 	"enx-api/utils/sqlitex"
 
 	"gorm.io/gorm"
@@ -25,11 +26,7 @@ func (b Billing) IsActiveSubscriber(ctx context.Context, userID string) (bool, e
 	if b.Subscriptions != nil {
 		return b.Subscriptions.IsActiveSubscriber(ctx, userID)
 	}
-	var count int64
-	err := sqlitex.DB.WithContext(ctx).Model(&sqlitex.Subscription{}).
-		Where("user_id = ? AND status = ?", userID, "active").
-		Count(&count).Error
-	return count > 0, err
+	return (repo.AcceptedSubscriptions{}).IsActiveSubscriber(ctx, userID)
 }
 
 // TopupBalance returns userID's top-up credit balance; a user with no credit

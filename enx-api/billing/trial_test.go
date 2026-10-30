@@ -13,6 +13,7 @@ import (
 
 func TestTrialGrantGrantsOnceAndCountsIt(t *testing.T) {
 	cleanupBillingUser(t, "u-trial-hook")
+	seedUser(t, "u-trial-hook")
 	ctx := context.Background()
 	grants := 0
 	g := TrialGrant{Amount: 100, TTL: 7 * 24 * time.Hour, EmailHMAC: fakeHMAC, Observe: func() { grants++ }}
@@ -55,6 +56,9 @@ func TestTrialGrantZeroAmountGrantsNothing(t *testing.T) {
 // email (case and spaces aside, which the HMAC folds) gets no trial.
 func TestTrialGrantSkipsAnEmailThatAlreadyHadATrial(t *testing.T) {
 	cleanupBillingUser(t, "u-trial-email-1")
+	cleanupBillingUser(t, "u-trial-email-2")
+	seedUser(t, "u-trial-email-1")
+	seedUser(t, "u-trial-email-2")
 	ctx := context.Background()
 	hmac := func(email string) string { return "h:" + strings.ToLower(strings.TrimSpace(email)) }
 	g := TrialGrant{Amount: 100, TTL: time.Hour, EmailHMAC: hmac}
@@ -101,13 +105,14 @@ func fakeHMAC(email string) string {
 
 func TestMeReportsTrial(t *testing.T) {
 	userID := "u-me-trial"
+	seedUser(t, userID)
 	cleanupBillingUser(t, userID)
 	before := time.Now()
 	if _, err := credit.GrantTrial(context.Background(), userID, "h:"+userID, 100, 7*24*time.Hour); err != nil {
 		t.Fatal(err)
 	}
 
-	h := NewHandler(nil, "https://example.com", testStripe(), nil)
+	h := newTestBillingHandler(nil, "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodGet, "/billing/me", h.Me, userID, ``)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())
@@ -131,7 +136,7 @@ func TestMeReportsTrial(t *testing.T) {
 }
 
 func TestMeTrialExpiresAtIsNullWithoutTrial(t *testing.T) {
-	h := NewHandler(nil, "https://example.com", testStripe(), nil)
+	h := newTestBillingHandler(nil, "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodGet, "/billing/me", h.Me, "u-me-no-trial", ``)
 	var body struct {
 		Credits map[string]any `json:"credits"`

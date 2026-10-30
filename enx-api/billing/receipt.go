@@ -75,3 +75,8 @@ func receiptStatus(o webhookevent.Outcome) int {
 	}
 	return http.StatusInternalServerError
 }
+
+// WebhookObserver records the outcome of a verified or rejected delivery.
+type WebhookObserver interface {
+	ObserveWebhook(eventType, outcome string)
+}

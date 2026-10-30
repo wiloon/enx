@@ -2,42 +2,33 @@ package adapters
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"enx-api/billing/credit"
 	"enx-api/utils/sqlitex"
-
-	"github.com/glebarez/sqlite"
-	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
 )
 
 func setupBillingDB(t *testing.T) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
-		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&sqlitex.Subscription{}, &sqlitex.CreditAccount{}, &sqlitex.CreditTransaction{}, &sqlitex.TrialGrant{}); err != nil {
-		t.Fatal(err)
-	}
-	sqlitex.DB = db
+	prev := sqlitex.DB
+	sqlitex.Init(filepath.Join(t.TempDir(), "billing.db"))
+	db := sqlitex.DB
+	t.Cleanup(func() { raw, _ := db.DB(); _ = raw.Close(); sqlitex.DB = prev })
 }
 
 func TestBillingIsActiveSubscriber(t *testing.T) {
 	setupBillingDB(t)
-	for _, s := range []sqlitex.Subscription{
-		{UserId: "active", StripeCustomerId: "c1", Status: "active", CreatedAt: 1, UpdatedAt: 1},
-		{UserId: "canceled", StripeCustomerId: "c2", Status: "canceled", CreatedAt: 1, UpdatedAt: 1},
-		{UserId: "none", StripeCustomerId: "c3", Status: "none", CreatedAt: 1, UpdatedAt: 1},
-	} {
-		if err := sqlitex.DB.Create(&s).Error; err != nil {
+	for _, status := range []string{"active", "canceled", "none"} {
+		if err := sqlitex.DB.Exec("INSERT INTO users (id,accepted_subscription_id) VALUES (?,?)", status, "sub_"+status).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := sqlitex.DB.Exec("INSERT INTO subscriptions (stripe_subscription_id,user_id,stripe_customer_id,status,created_at,updated_at) VALUES (?,?,?,?,1,1)", "sub_"+status, status, "cus_"+status, status).Error; err != nil {
 			t.Fatal(err)
 		}
 	}
+
 	for user, want := range map[string]bool{"active": true, "canceled": false, "none": false, "no-row": false} {
 		got, err := Billing{}.IsActiveSubscriber(context.Background(), user)
 		if err != nil {
@@ -73,6 +64,11 @@ func TestBillingTopupBalance(t *testing.T) {
 func TestBillingTrialBalance(t *testing.T) {
 	setupBillingDB(t)
 	ctx := context.Background()
+	for _, id := range []string{"trialist", "expired", "empty"} {
+		if err := sqlitex.DB.Exec("INSERT INTO users (id) VALUES (?)", id).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, err := credit.GrantTrial(ctx, "trialist", "h:trialist", 100, time.Hour); err != nil {
 		t.Fatal(err)
 	}

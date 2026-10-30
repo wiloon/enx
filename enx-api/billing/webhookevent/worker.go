@@ -26,9 +26,6 @@ type TaskStore interface {
 	// Unfinished returns every pending, processing or waiting task; the
 	// worker decides which are due.
 	Unfinished(ctx context.Context) ([]StoredTask, error)
-	// LegacyBackfillDone reports whether the one-time legacy provenance
-	// backfill has recorded that it finished.
-	LegacyBackfillDone(ctx context.Context) (bool, error)
 	// Save writes next as scope's task, and applies effects, in one
 	// transaction, only while the stored task's Status, Attempts and
 	// ClaimToken still equal read's; otherwise it returns ErrStaleClaim and
@@ -145,10 +142,6 @@ func (w *Worker) Run(ctx context.Context, ticks <-chan time.Time, report func(Wo
 // Pass handles every due task once. Storage failures are returned and do
 // not stop the pass.
 func (w *Worker) Pass(ctx context.Context) (WorkerReport, error) {
-	backfillDone, err := w.store.LegacyBackfillDone(ctx)
-	if err != nil {
-		return WorkerReport{}, err
-	}
 	tasks, err := w.store.Unfinished(ctx)
 	if err != nil {
 		return WorkerReport{}, err
@@ -156,7 +149,7 @@ func (w *Worker) Pass(ctx context.Context) (WorkerReport, error) {
 	var report WorkerReport
 	var errs []error
 	for _, s := range tasks {
-		status, err := w.process(ctx, s, backfillDone)
+		status, err := w.process(ctx, s)
 		switch {
 		case errors.Is(err, errSkipped):
 		case err != nil:
@@ -188,9 +181,9 @@ var errSkipped = errors.New("billing/webhookevent: skipped")
 
 // process claims, handles and commits one task, returning the status it
 // committed.
-func (w *Worker) process(ctx context.Context, s StoredTask, backfillDone bool) (Status, error) {
+func (w *Worker) process(ctx context.Context, s StoredTask) (Status, error) {
 	token := w.newToken()
-	claimed, err := ClaimTask(s.Task, token, w.now(), w.settings.Lease, backfillDone)
+	claimed, err := ClaimTask(s.Task, token, w.now(), w.settings.Lease)
 	if err != nil {
 		return "", errSkipped
 	}

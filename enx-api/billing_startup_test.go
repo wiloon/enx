@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"enx-api/utils/sqlitex"
@@ -12,51 +15,14 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 )
 
-func TestBillingDatabaseStartupAppliesMigrationsWhenEnabled(t *testing.T) {
+func TestBillingDatabaseStartupInitializesCurrentSchema(t *testing.T) {
 	restoreBillingDatabase(t)
 	path := filepath.Join(t.TempDir(), "billing.db")
-	err := openBillingDatabase(t, func() error { return initializeBillingDatabase(path, "error", true) })
+	err := openBillingDatabase(t, func() error { return initializeBillingDatabase(path, "error") })
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertBillingMigrationOrder(t)
-}
-
-func TestBillingDatabaseStartupLeavesLegacySchemaWhenDisabled(t *testing.T) {
-	restoreBillingDatabase(t)
-	path := filepath.Join(t.TempDir(), "billing.db")
-	err := openBillingDatabase(t, func() error { return initializeBillingDatabase(path, "error", false) })
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sqlitex.DB.Migrator().HasTable("schema_migrations") {
-		t.Fatal("disabled startup applied billing migrations")
-	}
-}
-
-func TestBillingDatabaseStartupMigratesLegacyFixture(t *testing.T) {
-	restoreBillingDatabase(t)
-	path := filepath.Join(t.TempDir(), "legacy.db")
-	seedLegacyStartupDatabase(t, path)
-	err := openBillingDatabase(t, func() error { return initializeBillingDatabase(path, "error", true) })
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertBillingMigrationOrder(t)
-	var accepted string
-	if err := sqlitex.DB.Raw("SELECT accepted_subscription_id FROM users WHERE id = ?", "u_subscribed").Scan(&accepted).Error; err != nil {
-		t.Fatal(err)
-	}
-	if accepted != "sub_subscribed" {
-		t.Fatalf("accepted subscription = %q", accepted)
-	}
-	var count int64
-	if err := sqlitex.DB.Raw("SELECT count(*) FROM subscriptions WHERE stripe_subscription_id = ? AND stripe_customer_id = ?", "sub_subscribed", "cus_subscribed").Scan(&count).Error; err != nil {
-		t.Fatal(err)
-	}
-	if count != 1 {
-		t.Fatalf("migrated subscription count = %d, want 1", count)
-	}
 }
 
 func restoreBillingDatabase(t *testing.T) {
@@ -124,5 +90,113 @@ func seedLegacyStartupDatabase(t *testing.T, path string) {
 				t.Fatal(err)
 			}
 		}
+	}
+}
+
+func TestBillingStartupRejectsLegacyDatabaseBeforeChangingIt(t *testing.T) {
+	restoreBillingDatabase(t)
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	seedLegacyStartupDatabase(t, path)
+	err := openBillingDatabase(t, func() error { return initializeBillingDatabase(path, "error") })
+	if err == nil || !strings.Contains(err.Error(), "unsupported billing schema") {
+		t.Fatalf("legacy startup = %v, want unsupported billing schema", err)
+	}
+	db, openErr := gorm.Open(sqlite.Open(path), &gorm.Config{Logger: gormlogger.Default.LogMode(gormlogger.Silent)})
+	if openErr != nil {
+		t.Fatal(openErr)
+	}
+	raw, _ := db.DB()
+	defer func() {
+		if err := raw.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	if db.Migrator().HasTable("schema_migrations") {
+		t.Fatal("rejected database was migrated")
+	}
+	var balance int64
+	if err := db.Raw("SELECT topup_balance FROM credit_accounts WHERE user_id = 'u_subscribed'").Scan(&balance).Error; err != nil {
+		t.Fatal(err)
+	}
+	if balance != 0 {
+		t.Fatalf("preserved balance = %d, want 0", balance)
+	}
+}
+
+func TestBillingStartupRejectsAnUnknownSchemaVersionBeforeWrites(t *testing.T) {
+	restoreBillingDatabase(t)
+	path := filepath.Join(t.TempDir(), "billing.db")
+	if err := initializeBillingDatabase(path, "error"); err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlitex.DB.Exec("INSERT INTO schema_migrations VALUES ('future-billing-version', 1)").Error; err != nil {
+		t.Fatal(err)
+	}
+	closeCurrentStartupDatabaseForSchemaTest(t)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = initializeBillingDatabase(path, "error")
+	if err == nil || !strings.Contains(err.Error(), "unsupported billing schema") {
+		t.Fatalf("future schema startup = %v", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("unsupported schema was modified")
+	}
+}
+func closeCurrentStartupDatabaseForSchemaTest(t *testing.T) {
+	t.Helper()
+	db, err := sqlitex.DB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBillingStartupRejectsDamagedCurrentSchemaBeforeWrites(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		sql  []string
+	}{
+		{"missing event alert column", []string{"ALTER TABLE stripe_webhook_events DROP COLUMN alert_attempts"}},
+		{"missing conflict alert column", []string{"ALTER TABLE subscriptions DROP COLUMN conflict_alert_claim_token"}},
+		{"nonunique invoice index", []string{"DROP INDEX idx_credit_transactions_subscription_invoice", "CREATE INDEX idx_credit_transactions_subscription_invoice ON credit_transactions(stripe_invoice_id) WHERE type='GRANT_SUBSCRIPTION' AND stripe_invoice_id IS NOT NULL"}},
+		{"missing scoped event key", []string{"ALTER TABLE stripe_webhook_events RENAME TO old_events", "CREATE TABLE stripe_webhook_events AS SELECT * FROM old_events", "DROP TABLE old_events"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			restoreBillingDatabase(t)
+			path := filepath.Join(t.TempDir(), "billing.db")
+			if err := initializeBillingDatabase(path, "error"); err != nil {
+				t.Fatal(err)
+			}
+			for _, stmt := range tc.sql {
+				if err := sqlitex.DB.Exec(stmt).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			closeCurrentStartupDatabaseForSchemaTest(t)
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = initializeBillingDatabase(path, "error")
+			if err == nil || !strings.Contains(err.Error(), "unsupported billing schema") {
+				t.Fatalf("damaged schema startup = %v", err)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(before, after) {
+				t.Fatal("unsupported schema was modified")
+			}
+		})
 	}
 }

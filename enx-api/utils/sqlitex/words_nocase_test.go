@@ -78,7 +78,7 @@ func TestInitMigratesCaseSensitiveWords(t *testing.T) {
 	sqlDB, _ := old.DB()
 	_ = sqlDB.Close()
 
-	Init(path)
+	initializeRepairFixture(t, path)
 
 	if !englishNoCase.MatchString(wordsDDL(t)) {
 		t.Fatalf("words not rebuilt with COLLATE NOCASE: %s", wordsDDL(t))
@@ -99,7 +99,7 @@ func TestInitMigratesCaseSensitiveWords(t *testing.T) {
 	if err := DB.Exec(`INSERT INTO words (id, english, created_at, updated_at) VALUES ('w3', 'run', 1, 1)`).Error; err != nil {
 		t.Fatal(err)
 	}
-	Init(path)
+	initializeRepairFixture(t, path)
 	if n := count(t, "words"); n != 1 {
 		t.Fatalf("second start: %d words, want the row written after the migration", n)
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,27 +17,16 @@ import (
 	"enx-api/utils/sqlitex"
 
 	"github.com/gin-gonic/gin"
-	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
-	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
 )
 
 func setupQuotaTestDB(t *testing.T) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
-		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(
-		&sqlitex.Word{}, &sqlitex.UserDict{},
-		&sqlitex.Subscription{}, &sqlitex.LookupEvent{}, &sqlitex.DailyStat{},
-	); err != nil {
-		t.Fatal(err)
-	}
-	sqlitex.DB = db
+	prev := sqlitex.DB
+	sqlitex.Init(filepath.Join(t.TempDir(), "test.db"))
+	db := sqlitex.DB
+	t.Cleanup(func() { raw, _ := db.DB(); _ = raw.Close(); sqlitex.DB = prev })
+
 }
 
 // noAI is an Entitlements for tests that don't exercise AI definitions.

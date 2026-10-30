@@ -15,6 +15,7 @@ import (
 func TestGrantReferralBonusAddsToTrialAndExtendsExpiry(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	start := time.Now().Truncate(time.Second)
 	setClock(t, start)
 	mustGrantTrial(t, userID, 100, 7*24*time.Hour)
@@ -44,6 +45,7 @@ func TestGrantReferralBonusAddsToTrialAndExtendsExpiry(t *testing.T) {
 func TestGrantReferralBonusKeepsALaterExpiry(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	start := time.Now().Truncate(time.Second)
 	setClock(t, start)
 	mustGrantTrial(t, userID, 100, 30*24*time.Hour)
@@ -60,6 +62,7 @@ func TestGrantReferralBonusKeepsALaterExpiry(t *testing.T) {
 func TestGrantReferralBonusIsIdempotentPerInvitee(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	mustGrantTrial(t, userID, 100, 7*24*time.Hour)
 	bonus := ReferralBonus{Amount: 100, ExpiresAt: time.Now().Add(14 * 24 * time.Hour)}
 
@@ -77,6 +80,7 @@ func TestGrantReferralBonusIsIdempotentPerInvitee(t *testing.T) {
 func TestGrantReferralBonusIssuesAMissingTrialFirst(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	start := time.Now().Truncate(time.Second)
 	setClock(t, start)
 

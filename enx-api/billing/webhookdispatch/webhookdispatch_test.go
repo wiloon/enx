@@ -160,8 +160,6 @@ func (s *memoryTaskStore) Unfinished(context.Context) ([]webhookevent.StoredTask
 	return out, nil
 }
 
-func (s *memoryTaskStore) LegacyBackfillDone(context.Context) (bool, error) { return true, nil }
-
 func (s *memoryTaskStore) Save(_ context.Context, scope webhookevent.Scope, read, next webhookevent.Task, effects webhookevent.Effects) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
