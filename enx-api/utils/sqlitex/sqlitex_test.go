@@ -44,7 +44,7 @@ func TestTableNames(t *testing.T) {
 func TestInitCreatesDatabaseAndMigratesSchema(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "enx-sqlitex-init-test.db")
 
-	Init(dbPath)
+	initializeRepairFixture(t, dbPath)
 
 	if DB == nil {
 		t.Fatal("expected Init to set the package-level DB")
@@ -80,7 +80,7 @@ func TestInitDropsTheOldLookupQuotaTable(t *testing.T) {
 		_ = sqlDB.Close()
 	}
 
-	Init(dbPath)
+	initializeRepairFixture(t, dbPath)
 
 	if DB.Migrator().HasTable("dictionary_lookup_quota") {
 		t.Fatal("dictionary_lookup_quota still exists after Init")
@@ -94,7 +94,7 @@ func TestInitDropsTheOldLookupQuotaTable(t *testing.T) {
 func TestInitAppliesDSNPragmas(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "enx-sqlitex-pragma-test.db")
 
-	Init(dbPath)
+	initializeRepairFixture(t, dbPath)
 
 	if DB == nil {
 		t.Fatal("expected Init to set the package-level DB")
@@ -129,7 +129,7 @@ func TestInitAppliesDSNPragmas(t *testing.T) {
 func TestInitCreatesMissingParentDirectory(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "nested", "dir", "enx.db")
 
-	Init(dbPath)
+	initializeRepairFixture(t, dbPath)
 
 	if DB == nil {
 		t.Fatal("expected Init to set the package-level DB even with a missing parent dir")
@@ -205,45 +205,6 @@ func TestSQLLogLevel(t *testing.T) {
 	}
 }
 
-func TestInitRejectsBillingMigrationsBeforeWriting(t *testing.T) {
-	for _, version := range billingMigrationVersions {
-		t.Run(version, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "migrated.db")
-			db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := db.Exec(schemaMigrationsDDL).Error; err != nil {
-				t.Fatal(err)
-			}
-			if err := db.Exec("INSERT INTO schema_migrations VALUES (?, 1)", version).Error; err != nil {
-				t.Fatal(err)
-			}
-			sqlDB, err := db.DB()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := sqlDB.Close(); err != nil {
-				t.Fatal(err)
-			}
-			before, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := InitWithLogLevel(path, "error"); err == nil {
-				t.Fatal("expected migrated database to be rejected")
-			}
-			after, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if string(before) != string(after) {
-				t.Fatal("database changed during rejected startup")
-			}
-		})
-	}
-}
-
 func TestCutoverInitPreservesMigratedBillingSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "billing.db")
 	if err := InitWithLogLevel(path, "error"); err != nil {
@@ -266,7 +227,7 @@ func TestCutoverInitPreservesMigratedBillingSchema(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := InitForBillingCutover(path, "error"); err != nil {
+	if err := InitWithLogLevel(path, "error"); err != nil {
 		t.Fatal(err)
 	}
 	var count int64
@@ -278,5 +239,16 @@ func TestCutoverInitPreservesMigratedBillingSchema(t *testing.T) {
 	}
 	if err := DB.Exec("INSERT INTO subscriptions (stripe_subscription_id, stripe_customer_id, status, created_at, updated_at) VALUES ('sub_three', 'cus_shared', 'active', 1, 1)").Error; err != nil {
 		t.Fatalf("customer must remain non-unique: %v", err)
+	}
+}
+
+// initializeRepairFixture tests non-billing historical table repairs in isolation.
+func initializeRepairFixture(t *testing.T, path string) {
+	t.Helper()
+	if err := initDatabase(path, "error"); err != nil {
+		t.Fatal(err)
+	}
+	if err := InitializeBillingSchema(DB); err != nil {
+		t.Fatal(err)
 	}
 }

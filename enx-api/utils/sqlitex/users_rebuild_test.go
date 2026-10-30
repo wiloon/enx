@@ -685,10 +685,10 @@ func TestInit_RebuildsUsersThenAutoMigrates(t *testing.T) {
 			closeDB(t, db)
 
 			for run := 1; run <= 2; run++ {
-				if err := InitWithLogLevel(path, "warn"); err != nil {
+				if err := initDatabase(path, "warn"); err != nil {
 					t.Fatalf("Init run %d: %v", run, err)
 				}
-				for _, table := range []string{"subscriptions", "referral_codes", "user_preferences", "saved_pages"} {
+				for _, table := range []string{"referral_codes", "user_preferences", "saved_pages"} {
 					if !DB.Migrator().HasTable(table) {
 						t.Fatalf("run %d: AutoMigrate did not create %s", run, table)
 					}
@@ -725,7 +725,7 @@ func TestInit_FailedRebuildStopsBeforeAutoMigrate(t *testing.T) {
 	)
 	closeDB(t, db)
 
-	err := InitWithLogLevel(path, "warn")
+	err := initDatabase(path, "warn")
 
 	if err == nil || !strings.Contains(err.Error(), "cannot classify") {
 		t.Fatalf("Init = %v, want the rebuild's refusal", err)
@@ -775,7 +775,7 @@ func TestInit_NewDatabaseNeedsNoRebuild(t *testing.T) {
 	t.Cleanup(func() { DB = prev })
 	path := filepath.Join(t.TempDir(), "enx.db")
 
-	if err := InitWithLogLevel(path, "warn"); err != nil {
+	if err := initDatabase(path, "warn"); err != nil {
 		t.Fatal(err)
 	}
 

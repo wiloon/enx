@@ -26,24 +26,19 @@ type application struct {
 // initializeApplication is the production startup seam. Database preparation
 // precedes route construction and every billing background job.
 func initializeApplication(ctx context.Context, cfg *config.Config, m *metrics.Metrics, sc *stripeSDK.Client) (*application, error) {
-	if err := initializeBillingDatabase(cfg.DB.Path, cfg.Log.Level, cfg.Billing.Cutover); err != nil {
+	if err := initializeBillingDatabase(cfg.DB.Path, cfg.Log.Level); err != nil {
 		return nil, err
 	}
 	if err := m.InstrumentDB(sqlitex.DB); err != nil {
 		// Losing the busy counter must not stop the API.
 		logger.Errorf("metrics: sqlite instrumentation: %v", err)
 	}
-	var assembly *app.Assembly
-	if cfg.Billing.Cutover {
-		var err error
-		assembly, err = app.New(app.Deps{
-			Stripe: cfg.Stripe, PortalReturnURL: cfg.App.FrontendBaseURL + "/billing",
-			Referral: newReferralPolicy(cfg), Client: sc, Mailer: email.NewSender(cfg.Resend),
-			Now: time.Now, NewToken: uuid.NewString, Webhooks: m,
-		})
-		if err != nil {
-			return nil, err
-		}
+	assembly, err := app.New(app.Deps{
+		Stripe: cfg.Stripe, PortalReturnURL: cfg.App.FrontendBaseURL + "/billing",
+		Referral: newReferralPolicy(cfg), Client: sc, Mailer: email.NewSender(cfg.Resend), Now: time.Now, NewToken: uuid.NewString, Webhooks: m,
+	})
+	if err != nil {
+		return nil, err
 	}
 	a := &application{router: setupRouterWithBilling(cfg, m, sc, clerkBackend(cfg.Clerk), assembly)}
 	if assembly != nil {

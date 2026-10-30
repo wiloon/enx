@@ -27,41 +27,24 @@ func TestNewTask(t *testing.T) {
 func TestTaskDue(t *testing.T) {
 	claimed := Task{Type: "checkout.session.completed", Status: Processing, NextAttemptAt: t0, ClaimToken: "tok_a", ClaimExpiresAt: t0.Add(lease)}
 	cases := []struct {
-		name         string
-		task         Task
-		now          time.Time
-		backfillDone bool
-		want         bool
+		name string
+		task Task
+		now  time.Time
+		want bool
 	}{
-		{name: "a new task is due at once", task: NewTask("checkout.session.completed", "", t0), now: t0, backfillDone: true, want: true},
-		{name: "a task retried later waits for its next attempt", task: Task{Status: Pending, Attempts: 1, NextAttemptAt: t0.Add(minDelay)}, now: t0, backfillDone: true},
-		{name: "a task retried later is due at its next attempt", task: Task{Status: Pending, Attempts: 1, NextAttemptAt: t0.Add(minDelay)}, now: t0.Add(minDelay), backfillDone: true, want: true},
-		{name: "a waiting task is due at its next attempt", task: Task{Status: WaitingDependency, Attempts: 1, FirstWaitAt: t0, NextAttemptAt: t0.Add(minDelay)}, now: t0.Add(minDelay), backfillDone: true, want: true},
-		{name: "a live claim keeps every other worker away", task: claimed, now: t0.Add(time.Minute), backfillDone: true},
-		{name: "an expired claim is recovered after a crash", task: claimed, now: t0.Add(lease), backfillDone: true, want: true},
-		{name: "a processed task is never due", task: Task{Status: Processed, CompletedAt: t0}, now: t0.Add(time.Hour), backfillDone: true},
-		{name: "an ignored task is never due", task: Task{Status: Ignored, LastError: "unsupported_event_type", CompletedAt: t0}, now: t0.Add(time.Hour), backfillDone: true},
-		{name: "a task needing attention waits for an administrator", task: Task{Status: NeedsAttention, LastError: "unsupported_api_version"}, now: t0.Add(time.Hour), backfillDone: true},
-		{
-			name: "a subscription invoice.paid waits until the legacy provenance backfill finishes",
-			task: NewTask("invoice.paid", "sub_a", t0), now: t0.Add(time.Hour), backfillDone: false,
-		},
-		{
-			name: "a subscription invoice.paid is due once the backfill finished",
-			task: NewTask("invoice.paid", "sub_a", t0), now: t0, backfillDone: true, want: true,
-		},
-		{
-			name: "an invoice.paid without a subscription does not wait for the backfill",
-			task: NewTask("invoice.paid", "", t0), now: t0, backfillDone: false, want: true,
-		},
-		{
-			name: "other events of a subscription do not wait for the backfill",
-			task: NewTask("customer.subscription.updated", "sub_a", t0), now: t0, backfillDone: false, want: true,
-		},
+		{name: "a new task is due at once", task: NewTask("checkout.session.completed", "", t0), now: t0, want: true},
+		{name: "a task retried later waits for its next attempt", task: Task{Status: Pending, Attempts: 1, NextAttemptAt: t0.Add(minDelay)}, now: t0},
+		{name: "a task retried later is due at its next attempt", task: Task{Status: Pending, Attempts: 1, NextAttemptAt: t0.Add(minDelay)}, now: t0.Add(minDelay), want: true},
+		{name: "a waiting task is due at its next attempt", task: Task{Status: WaitingDependency, Attempts: 1, FirstWaitAt: t0, NextAttemptAt: t0.Add(minDelay)}, now: t0.Add(minDelay), want: true},
+		{name: "a live claim keeps every other worker away", task: claimed, now: t0.Add(time.Minute)},
+		{name: "an expired claim is recovered after a crash", task: claimed, now: t0.Add(lease), want: true},
+		{name: "a processed task is never due", task: Task{Status: Processed, CompletedAt: t0}, now: t0.Add(time.Hour)},
+		{name: "an ignored task is never due", task: Task{Status: Ignored, LastError: "unsupported_event_type", CompletedAt: t0}, now: t0.Add(time.Hour)},
+		{name: "a task needing attention waits for an administrator", task: Task{Status: NeedsAttention, LastError: "unsupported_api_version"}, now: t0.Add(time.Hour)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.task.Due(tc.now, tc.backfillDone); got != tc.want {
+			if got := tc.task.Due(tc.now); got != tc.want {
 				t.Errorf("Due = %v, want %v", got, tc.want)
 			}
 		})
@@ -71,7 +54,7 @@ func TestTaskDue(t *testing.T) {
 func TestClaimTask(t *testing.T) {
 	due := NewTask("checkout.session.completed", "sub_a", t0)
 
-	got, err := ClaimTask(due, "tok_a", t0, lease, true)
+	got, err := ClaimTask(due, "tok_a", t0, lease)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,12 +65,12 @@ func TestClaimTask(t *testing.T) {
 	}
 
 	t.Run("a second worker cannot claim a live claim", func(t *testing.T) {
-		if _, err := ClaimTask(got, "tok_b", t0.Add(time.Minute), lease, true); !errors.Is(err, ErrNotDue) {
+		if _, err := ClaimTask(got, "tok_b", t0.Add(time.Minute), lease); !errors.Is(err, ErrNotDue) {
 			t.Errorf("err = %v, want ErrNotDue", err)
 		}
 	})
 	t.Run("another worker takes over an expired claim", func(t *testing.T) {
-		taken, err := ClaimTask(got, "tok_b", t0.Add(lease), lease, true)
+		taken, err := ClaimTask(got, "tok_b", t0.Add(lease), lease)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -95,20 +78,15 @@ func TestClaimTask(t *testing.T) {
 			t.Errorf("ClaimTask after expiry = %+v, want tok_b until %v", taken, t0.Add(2*lease))
 		}
 	})
-	t.Run("a subscription invoice.paid cannot be claimed before the backfill finishes", func(t *testing.T) {
-		if _, err := ClaimTask(NewTask("invoice.paid", "sub_a", t0), "tok_a", t0, lease, false); !errors.Is(err, ErrNotDue) {
-			t.Errorf("err = %v, want ErrNotDue", err)
-		}
-	})
 	t.Run("a claim needs a token", func(t *testing.T) {
-		if _, err := ClaimTask(due, "", t0, lease, true); !errors.Is(err, ErrNoToken) {
+		if _, err := ClaimTask(due, "", t0, lease); !errors.Is(err, ErrNoToken) {
 			t.Errorf("err = %v, want ErrNoToken", err)
 		}
 	})
 }
 
 func TestRenewTask(t *testing.T) {
-	claimed, err := ClaimTask(NewTask("invoice.paid", "sub_a", t0), "tok_a", t0, lease, true)
+	claimed, err := ClaimTask(NewTask("invoice.paid", "sub_a", t0), "tok_a", t0, lease)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +146,7 @@ func TestTaskOutcomes(t *testing.T) {
 		var delay time.Duration
 		for i := range 100 {
 			now := task.NextAttemptAt
-			if task, err = ClaimTask(task, "tok", now, lease, true); err != nil {
+			if task, err = ClaimTask(task, "tok", now, lease); err != nil {
 				t.Fatalf("attempt %d: ClaimTask: %v", i, err)
 			}
 			if task, err = RetryLater(task, "tok", now, "stripe: 500", minDelay, maxDelay); err != nil {
@@ -222,7 +200,7 @@ func TestTaskOutcomes(t *testing.T) {
 func TestWaitForDependency(t *testing.T) {
 	claim := func(task Task, now time.Time) Task {
 		t.Helper()
-		claimed, err := ClaimTask(task, "tok", now, lease, true)
+		claimed, err := ClaimTask(task, "tok", now, lease)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -288,7 +266,7 @@ func TestWake(t *testing.T) {
 	if got != want {
 		t.Errorf("Wake = %+v, want %+v", got, want)
 	}
-	if !got.Due(now, true) {
+	if !got.Due(now) {
 		t.Error("a woken task must be due at once")
 	}
 
@@ -321,7 +299,7 @@ func TestRetryByOperator(t *testing.T) {
 	}
 
 	t.Run("a retried task that still lacks its dependency needs attention again without another mail", func(t *testing.T) {
-		claimed, err := ClaimTask(got, "tok", now, lease, true)
+		claimed, err := ClaimTask(got, "tok", now, lease)
 		if err != nil {
 			t.Fatal(err)
 		}

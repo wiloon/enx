@@ -384,16 +384,6 @@ func TestARefundOfAnOldGrantWithNoSubscriptionNeedsAttentionWithoutCancelling(t 
 	wantCancelled(t, stripe)
 }
 
-func TestARefundBeforeTheLegacyBackfillWaitsWithoutEffects(t *testing.T) {
-	stripe := &fakeStripe{statuses: map[string]string{"sub_a": "active"}}
-	owner := Owner{Revision: 7, Pool: creditperiod.Pool{BackfillPending: true}, SubscriptionBalance: 600}
-	r := handle(storeWith(t, refundedCharge(2000, 2000), subscriptionGrant(aMay, 1000), owner), stripe)
-
-	wantStep(t, r, webhookevent.MissingDependency, creditperiod.ReasonBackfillPending)
-	wantNoEffects(t, r)
-	wantCancelled(t, stripe)
-}
-
 // A migrated grant Stripe could not pin to a period may still supply the
 // pool, so no credits are taken on a guess; its subscription is known, so it
 // is still ended.

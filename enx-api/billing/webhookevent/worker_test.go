@@ -17,18 +17,16 @@ import (
 // the stored alert's progress. Effects are applied only when that write
 // succeeds, as in one transaction.
 type fakeTaskStore struct {
-	mu           sync.Mutex
-	tasks        map[Scope]StoredTask
-	applied      []Effects
-	listErr      error
-	saveErr      map[Scope]error
-	effectsErr   error
-	backfillDone bool
-	backfillErr  error
+	mu         sync.Mutex
+	tasks      map[Scope]StoredTask
+	applied    []Effects
+	listErr    error
+	saveErr    map[Scope]error
+	effectsErr error
 }
 
 func newFakeTaskStore(stored ...StoredTask) *fakeTaskStore {
-	s := &fakeTaskStore{tasks: map[Scope]StoredTask{}, saveErr: map[Scope]error{}, backfillDone: true}
+	s := &fakeTaskStore{tasks: map[Scope]StoredTask{}, saveErr: map[Scope]error{}}
 	for _, st := range stored {
 		s.tasks[st.Scope] = st
 	}
@@ -49,12 +47,6 @@ func (s *fakeTaskStore) Unfinished(context.Context) ([]StoredTask, error) {
 		}
 	}
 	return out, nil
-}
-
-func (s *fakeTaskStore) LegacyBackfillDone(context.Context) (bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.backfillDone, s.backfillErr
 }
 
 func (s *fakeTaskStore) Save(_ context.Context, scope Scope, read, next Task, effects Effects) error {
@@ -295,33 +287,13 @@ func TestWorkerLeavesTasksThatAreNotDue(t *testing.T) {
 	}
 }
 
-func TestWorkerHoldsSubscriptionInvoicesUntilTheLegacyBackfillFinishes(t *testing.T) {
+func TestWorkerProcessesSubscriptionInvoicesWithoutALegacyBackfill(t *testing.T) {
 	invoice := newStored("evt_invoice", "invoice.paid", "sub_a")
-	checkout := newStored("evt_checkout", "checkout.session.completed", "sub_a")
-	store := newFakeTaskStore(invoice, checkout)
-	store.backfillDone = false
+	store := newFakeTaskStore(invoice)
 	h := &fakeHandler{result: Result{Step: Handled}}
-
 	report := pass(t, store, h, t0)
-
-	if report != (WorkerReport{Processed: 1}) || store.get(checkout.Scope).Status != Processed {
-		t.Errorf("report = %+v, checkout %q; want the checkout processed", report, store.get(checkout.Scope).Status)
-	}
-	if store.get(invoice.Scope) != invoice.Task {
-		t.Errorf("invoice task = %+v, want it untouched until the backfill finishes", store.get(invoice.Scope))
-	}
-}
-
-func TestWorkerFailsThePassWhenTheBackfillStateIsUnreadable(t *testing.T) {
-	ev := newStored("evt_1", "checkout.session.completed", "")
-	store := newFakeTaskStore(ev)
-	store.backfillErr = errors.New("db down")
-	h := &fakeHandler{result: Result{Step: Handled}}
-
-	_, err := NewWorker(store, h, workerSettings, clockAt(t0), workerTokens("w")).Pass(context.Background())
-
-	if !errors.Is(err, store.backfillErr) || h.count() != 0 {
-		t.Errorf("err = %v, handler called %d times; want the backfill error and nothing handled", err, h.count())
+	if report.Processed != 1 || store.get(invoice.Scope).Status != Processed {
+		t.Fatalf("report = %+v, invoice = %+v", report, store.get(invoice.Scope))
 	}
 }
 

@@ -56,7 +56,7 @@ func TestAccountsDeleteDataRemovesPersonalRowsAndKeepsTheLedger(t *testing.T) {
 			&sqlitex.ReferralCode{UserId: id, Code: id + "-code", CreatedAt: 1},
 			&sqlitex.CreditAccount{UserId: id, UpdatedAt: 1},
 			&sqlitex.CreditTransaction{Id: id + "-tx", UserId: id, Type: "GRANT_TOPUP", Amount: 5, BalanceAfter: 5, CreatedAt: 1},
-			&sqlitex.Subscription{UserId: id, StripeCustomerId: id + "-cus", Status: "canceled", CreatedAt: 1, UpdatedAt: 1},
+			&sqlitex.Subscription{UserId: id, StripeCustomerId: id + "-cus", StripeSubscriptionId: stringPointer(id + "-sub"), Status: "canceled", CreatedAt: 1, UpdatedAt: 1},
 		} {
 			if err := sqlitex.DB.Create(row).Error; err != nil {
 				t.Fatalf("seed %T: %v", row, err)
@@ -179,3 +179,5 @@ func TestTrialGrantsDelete(t *testing.T) {
 		t.Fatalf("%d record(s) left", n)
 	}
 }
+
+func stringPointer(s string) *string { return &s }

@@ -3,12 +3,9 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -34,7 +31,7 @@ func billingStartupConfig(t *testing.T) *config.Config {
 	cfg := config.Default()
 	cfg.DB.Path = filepath.Join(t.TempDir(), "billing.db")
 	cfg.Log.Level = "error"
-	cfg.Billing.Cutover = true
+
 	cfg.Stripe.SecretKey = "sk_test_startup"
 	cfg.Stripe.WebhookSecret = "whsec_startup"
 	cfg.App.FrontendBaseURL = "https://app.example.test"
@@ -93,10 +90,22 @@ func TestApplicationCutoverStartsFreshAndMountsDurableBilling(t *testing.T) {
 	}
 }
 
-func TestApplicationCutoverRestartsLegacyFixtureWithoutRestoringOldConstraints(t *testing.T) {
+func TestApplicationRestartsCurrentDatabaseWithoutRestoringOldConstraints(t *testing.T) {
 	restoreBillingDatabase(t)
 	cfg := billingStartupConfig(t)
-	seedLegacyStartupDatabase(t, cfg.DB.Path)
+	if err := initializeBillingDatabase(cfg.DB.Path, "error"); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		"INSERT INTO users (id, accepted_subscription_id) VALUES ('u_subscribed','sub_subscribed')",
+		"INSERT INTO subscriptions (stripe_subscription_id,user_id,stripe_customer_id,status,created_at,updated_at) VALUES ('sub_subscribed','u_subscribed','cus_subscribed','active',1,1)",
+		"INSERT INTO credit_accounts (user_id,subscription_balance,updated_at) VALUES ('u_subscribed',500,1)",
+	} {
+		if err := sqlitex.DB.Exec(statement).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	closeCurrentStartupDatabase(t)
 	client := startupStripeClient(t)
 	first := startTestApplication(t, context.Background(), cfg, client)
 	assertBillingMigrationOrder(t)
@@ -182,80 +191,10 @@ func closeCurrentStartupDatabase(t *testing.T) {
 	}
 }
 
-func TestApplicationRefusesDisabledCutoverOnMigratedDatabaseWithoutWrites(t *testing.T) {
-	restoreBillingDatabase(t)
-	cfg := billingStartupConfig(t)
-	a := startTestApplication(t, context.Background(), cfg, startupStripeClient(t))
-	if err := a.stopBilling(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	closeCurrentStartupDatabase(t)
-	before, err := os.ReadFile(cfg.DB.Path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg.Billing.Cutover = false
-	stopped, err := initializeApplication(context.Background(), cfg, metrics.New(), nil)
-	if err == nil || stopped != nil {
-		t.Fatalf("disabled migrated startup = %v, %v", stopped, err)
-	}
-	for _, hint := range []string{"BILLING_CUTOVER", "backup"} {
-		if !strings.Contains(err.Error(), hint) {
-			t.Errorf("startup error lacks recovery hint %q: %v", hint, err)
-		}
-	}
-	after, err := os.ReadFile(cfg.DB.Path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(before, after) {
-		t.Fatal("refused startup modified the migrated database")
-	}
-}
-
-func TestApplicationDisabledCutoverKeepsLegacyRoutesAndStartsNoWorkers(t *testing.T) {
-	for _, legacy := range []bool{false, true} {
-		t.Run(fmt.Sprintf("legacy=%v", legacy), func(t *testing.T) {
-			restoreBillingDatabase(t)
-			cfg := billingStartupConfig(t)
-			cfg.Billing.Cutover = false
-			if legacy {
-				seedLegacyStartupDatabase(t, cfg.DB.Path)
-			}
-			a := startTestApplication(t, context.Background(), cfg, nil)
-			if a.billing != nil {
-				t.Fatal("disabled cutover started billing workers")
-			}
-			if sqlitex.DB.Migrator().HasTable("schema_migrations") {
-				t.Fatal("disabled cutover ran billing migrations")
-			}
-			routes := map[string]bool{}
-			for _, route := range a.router.Routes() {
-				routes[route.Method+" "+route.Path] = true
-			}
-			for _, route := range []string{"POST /billing/webhook", "POST /api/billing/portal"} {
-				if !routes[route] {
-					t.Errorf("legacy route missing: %s", route)
-				}
-			}
-			for _, route := range []string{"POST /api/billing/support", "POST /api/billing/portal/plan-change", "GET /api/admin/webhook-events"} {
-				if routes[route] {
-					t.Errorf("disabled cutover mounted new route: %s", route)
-				}
-			}
-			w := httptest.NewRecorder()
-			a.router.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/billing/webhook", nil))
-			if w.Code != http.StatusServiceUnavailable {
-				t.Fatalf("unconfigured legacy billing = %d, want 503", w.Code)
-			}
-		})
-	}
-}
-
 func TestBillingLifecycleUsesApplicationContextAndRealAssemblyRejectsSecondStart(t *testing.T) {
 	restoreBillingDatabase(t)
 	cfg := billingStartupConfig(t)
-	if err := openBillingDatabase(t, func() error { return initializeBillingDatabase(cfg.DB.Path, "error", true) }); err != nil {
+	if err := openBillingDatabase(t, func() error { return initializeBillingDatabase(cfg.DB.Path, "error") }); err != nil {
 		t.Fatal(err)
 	}
 	assembly, err := billingapp.New(billingapp.Deps{

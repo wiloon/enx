@@ -122,7 +122,10 @@ func TestE2E_AIWordFallback(t *testing.T) {
 // the next lookup honours it.
 func TestE2E_AIWordFallbackAutoFollowsTheSubscriptionAndThePreference(t *testing.T) {
 	base, credited, _, userID := aiWordEnv(t, confidentReply)
-	if err := sqlitex.DB.Create(&sqlitex.Subscription{UserId: userID, StripeCustomerId: "cus_ai_word", Status: "active", CreatedAt: 1, UpdatedAt: 1}).Error; err != nil {
+	if err := sqlitex.DB.Create(&sqlitex.Subscription{UserId: userID, StripeCustomerId: "cus_ai_word", StripeSubscriptionId: ptrTo("sub_ai_word"), Status: "active", CreatedAt: 1, UpdatedAt: 1}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlitex.DB.Exec("UPDATE users SET accepted_subscription_id='sub_ai_word' WHERE id=?", userID).Error; err != nil {
 		t.Fatal(err)
 	}
 	auto := func() any {
@@ -193,3 +196,5 @@ func TestE2E_AIWordFallbackUnusableReplyIsFree(t *testing.T) {
 		t.Fatal("an unusable reply must not be stored")
 	}
 }
+
+func ptrTo(s string) *string { return &s }

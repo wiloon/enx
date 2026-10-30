@@ -256,13 +256,7 @@ func poolProvenance(tx *gorm.DB, userID string) (creditperiod.Pool, error) {
 		return creditperiod.Pool{}, nil
 	}
 	r := rows[0]
-	if r.StripeSubscriptionID == nil {
-		var marks int64
-		if err := tx.Raw("SELECT count(*) FROM `schema_migrations` WHERE `version` = ?", LegacyBackfillMarker).Scan(&marks).Error; err != nil {
-			return creditperiod.Pool{}, fmt.Errorf("read legacy backfill marker: %w", err)
-		}
-		return creditperiod.Pool{BackfillPending: marks == 0}, nil
-	}
+
 	return creditperiod.Pool{Source: grantSource(r.StripeSubscriptionID, r.PeriodStart, r.PeriodEnd), WithoutPeriod: r.WithoutPeriod}, nil
 }
 

@@ -5,20 +5,16 @@
 package billing
 
 import (
-	"context"
 	"enx-api/config"
+	"enx-api/repo"
 	"errors"
-	"fmt"
-	"io"
 	"net/http"
 
 	"enx-api/billing/checkout"
 	"enx-api/billing/credit"
 	"enx-api/billing/subscription"
-	"enx-api/email"
 	"enx-api/enx"
 	"enx-api/middleware"
-	"enx-api/referral"
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
 
@@ -26,7 +22,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	stripeSDK "github.com/stripe/stripe-go/v86"
-	"gorm.io/gorm"
 )
 
 // Handler wraps a Stripe SDK client (which may be nil if STRIPE_SECRET_KEY
@@ -44,39 +39,9 @@ type Handler struct {
 	prices                          config.StripePrice
 	credits                         config.StripeCredits
 	webhooks                        WebhookObserver
-	// refunds hears about refunds that matched no grant; nil logs only.
-	refunds RefundNotifier
-	// payments hears about every paid top-up and subscription invoice, for
-	// referral rewards; nil records nothing.
-	payments FirstPaymentRecorder
 	// subscriptions supplies the accepted stored display at cutover.
 	subscriptions subscription.Reader
 	checkout      *checkout.Service
-}
-
-// FirstPaymentRecorder notes a payment for ADR-051's referrer reward:
-// *referral.Service in production. It decides itself whether the payment is
-// the user's first.
-type FirstPaymentRecorder interface {
-	RecordFirstPayment(ctx context.Context, userID string, p referral.FirstPayment) error
-}
-
-// WithFirstPaymentRecorder sets who hears about payments.
-func (h *Handler) WithFirstPaymentRecorder(r FirstPaymentRecorder) *Handler {
-	h.payments = r
-	return h
-}
-
-// RefundNotifier tells the admin about a refund ENX could not match to a
-// credit grant (ADR-049 Decision 7): *email.Sender in production.
-type RefundNotifier interface {
-	NotifyAdminUnmatchedRefund(r email.UnmatchedRefundNotify) error
-}
-
-// WithRefundNotifier sets who hears about unmatched refunds.
-func (h *Handler) WithRefundNotifier(n RefundNotifier) *Handler {
-	h.refunds = n
-	return h
 }
 
 // WebhookObserver hears the outcome of every Stripe webhook delivery:
@@ -89,6 +54,8 @@ type WebhookObserver interface {
 // the price lookup_keys and the credit amounts; sc may be nil (billing off).
 func NewHandler(sc *stripeSDK.Client, frontendBaseURL string, stripe config.Stripe, webhooks WebhookObserver) *Handler {
 	return &Handler{
+		subscriptions:                   repo.BillingSubscriptions{},
+		checkout:                        checkout.New(repo.PortalSessionOwners{}, billingstripe.NewPortalClient(sc, "", "", nil)),
 		sc:                              sc,
 		frontendBaseURL:                 frontendBaseURL,
 		webhookSecret:                   stripe.WebhookSecret.Reveal(),
@@ -101,14 +68,13 @@ func NewHandler(sc *stripeSDK.Client, frontendBaseURL string, stripe config.Stri
 }
 
 // NewHandlerWithSubscriptions uses the injected subscription display reader.
-// The legacy constructor preserves the user-keyed read when cutover is off.
 func NewHandlerWithSubscriptions(sc *stripeSDK.Client, frontendBaseURL string, stripe config.Stripe, webhooks WebhookObserver, subscriptions subscription.Reader) *Handler {
 	h := NewHandler(sc, frontendBaseURL, stripe, webhooks)
 	h.subscriptions = subscriptions
 	return h
 }
 
-// NewHandlerWithCheckout injects cutover ownership and live Stripe assessment.
+// NewHandlerWithCheckout injects subscription ownership and live Stripe assessment.
 func NewHandlerWithCheckout(sc *stripeSDK.Client, frontendBaseURL string, stripe config.Stripe, webhooks WebhookObserver, subscriptions subscription.Reader, checkout *checkout.Service) *Handler {
 	h := NewHandlerWithSubscriptions(sc, frontendBaseURL, stripe, webhooks, subscriptions)
 	h.checkout = checkout
@@ -117,7 +83,8 @@ func NewHandlerWithCheckout(sc *stripeSDK.Client, frontendBaseURL string, stripe
 
 func (h *Handler) checkoutCustomer(c *gin.Context, userID, tier string) (string, bool) {
 	if h.checkout == nil {
-		return existingStripeCustomerID(userID), true
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "Billing is temporarily unavailable. Please retry."})
+		return "", false
 	}
 	customer, err := h.checkout.Prepare(c.Request.Context(), userID, tier)
 	var refusal *checkout.Refusal
@@ -139,12 +106,6 @@ func (h *Handler) checkoutCustomer(c *gin.Context, userID, tier string) (string,
 		return "", false
 	}
 	return customer, true
-}
-
-func (h *Handler) observeWebhook(eventType, outcome string) {
-	if h.webhooks != nil {
-		h.webhooks.ObserveWebhook(eventType, outcome)
-	}
 }
 
 type checkoutSubscriptionRequest struct {
@@ -175,18 +136,6 @@ func (h *Handler) CheckoutSubscription(c *gin.Context) {
 		return
 	}
 
-	if h.checkout == nil {
-		var sub sqlitex.Subscription
-		if err := sqlitex.DB.Where("user_id = ?", userID).First(&sub).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			logger.Errorf("billing: load subscription for %s: %v", userID, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to load subscription"})
-			return
-		}
-		if hasLiveSubscription(sub) {
-			c.JSON(http.StatusConflict, gin.H{"success": false, "message": "You already have a subscription. Manage it from the billing portal."})
-			return
-		}
-	}
 	customer, ok := h.checkoutCustomer(c, userID, req.Plan)
 	if !ok {
 		return
@@ -267,60 +216,9 @@ func (h *Handler) CheckoutTopup(c *gin.Context) {
 // checked first and pinned on the session. A failed lookup or a missing or
 // unsafe configuration creates no session, and neither configuration stands
 // in for the other (ADR-067).
-func (h *Handler) Portal(c *gin.Context) {
-	if h.sc == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "billing is not configured"})
-		return
-	}
-
-	userID := middleware.GetUserIDFromContext(c)
-	customerID := existingStripeCustomerID(userID)
-	if customerID == "" {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "no billing account yet"})
-		return
-	}
-
-	configurationID, err := h.portalConfigurationFor(c.Request.Context(), userID)
-	if err != nil {
-		logger.Errorf("billing: portal refused: %v", err)
-		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "The billing portal is unavailable right now. Please try again later."})
-		return
-	}
-
-	session, err := billingstripe.CreatePortalSession(c.Request.Context(), h.sc, customerID, configurationID, h.frontendBaseURL+"/billing")
-	if err != nil {
-		logger.Errorf("billing: create portal session failed: %v", err)
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "failed to create portal session"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"success": true, "url": session.URL})
-}
 
 // portalConfigurationFor decides from the subscription's live Stripe status
 // whether userID is blocked, then resolves and checks that configuration.
-func (h *Handler) portalConfigurationFor(ctx context.Context, userID string) (string, error) {
-	var sub sqlitex.Subscription
-	if err := sqlitex.DB.Where("user_id = ?", userID).First(&sub).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return "", fmt.Errorf("load subscription for %s: %w", userID, err)
-	}
-	liveStatus := ""
-	if sub.StripeSubscriptionId != nil && *sub.StripeSubscriptionId != "" {
-		live, err := billingstripe.RetrieveSubscription(ctx, h.sc, *sub.StripeSubscriptionId)
-		if err != nil {
-			return "", fmt.Errorf("read subscription %s: %w", *sub.StripeSubscriptionId, err)
-		}
-		liveStatus = string(live.Status)
-	}
-	if portalRestricted(liveStatus) {
-		return billingstripe.ResolveRestrictedPortalConfiguration(ctx, h.sc, h.portalRestrictedConfigurationID)
-	}
-	tierPrices, err := billingstripe.TierPriceIDs(ctx, h.sc, h.prices.SubscriptionPlans())
-	if err != nil {
-		return "", err
-	}
-	return billingstripe.ResolvePlanChangePortalConfiguration(ctx, h.sc, h.portalConfigurationID, tierPrices)
-}
 
 // Me handles GET /billing/me: current subscription status + credit
 // balances, for the frontend to render. Users who have never checked out
@@ -338,9 +236,8 @@ func (h *Handler) Me(c *gin.Context) {
 			return
 		}
 	} else {
-		var legacy sqlitex.Subscription
-		sqlitex.DB.Where("user_id = ?", userID).First(&legacy)
-		sub = subscription.Snapshot{Status: legacy.Status, Plan: legacy.Plan, CurrentPeriodEnd: legacy.CurrentPeriodEnd}
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "Billing information is unavailable right now. Please try again later."})
+		return
 	}
 	status := sub.Status
 	if status == "" {
@@ -384,51 +281,9 @@ func (h *Handler) Me(c *gin.Context) {
 // Always responds with a bare status (no JSON body): Stripe only inspects
 // the status code, and everything here runs before/instead of the normal
 // success-envelope convention used by the authenticated endpoints above.
-func (h *Handler) Webhook(c *gin.Context) {
-	if h.sc == nil {
-		c.Status(http.StatusServiceUnavailable)
-		return
-	}
-
-	payload, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		c.Status(http.StatusBadRequest)
-		return
-	}
-
-	event, err := billingstripe.ConstructEvent(payload, c.GetHeader("Stripe-Signature"), h.webhookSecret)
-	if err != nil {
-		logger.Warnf("billing: webhook signature verification failed: %v", err)
-		// The type of an unverified payload can't be trusted as a label.
-		h.observeWebhook("unknown", "bad_signature")
-		c.Status(http.StatusBadRequest)
-		return
-	}
-
-	if err := h.dispatchWebhookEvent(c.Request.Context(), event); err != nil {
-		// Non-2xx makes Stripe retry with backoff -- correct for both
-		// transient failures (DB hiccup) and "our local subscriptions row
-		// isn't there yet because events arrived out of order," which
-		// resolves itself on retry once the missing event lands.
-		logger.Errorf("billing: webhook event id=%s type=%s failed: %v", event.ID, event.Type, err)
-		h.observeWebhook(webhookEventLabel(event.Type), "error")
-		c.Status(http.StatusInternalServerError)
-		return
-	}
-
-	h.observeWebhook(webhookEventLabel(event.Type), "ok")
-	c.Status(http.StatusOK)
-}
 
 // existingStripeCustomerID looks up a user's Stripe customer id, if a
 // subscriptions row already exists for them (from a prior checkout).
 // Returns "" for a first-time buyer -- CreateCheckoutSession then prefills
 // CustomerEmail, and Stripe creates the customer: subscription mode always
 // does, payment mode only because it sends customer_creation=always.
-func existingStripeCustomerID(userID string) string {
-	var sub sqlitex.Subscription
-	if err := sqlitex.DB.Where("user_id = ?", userID).First(&sub).Error; err != nil {
-		return ""
-	}
-	return sub.StripeCustomerId
-}

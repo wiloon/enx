@@ -15,6 +15,7 @@ import (
 func TestGrantTrialCountsTowardBalance(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 
 	granted, err := GrantTrial(ctx, userID, "email-"+userID, 100, 7*24*time.Hour)
 	if err != nil {
@@ -36,6 +37,7 @@ func TestGrantTrialCountsTowardBalance(t *testing.T) {
 func TestGrantTrialOnlyOncePerAccount(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	mustGrantTrial(t, userID, 100, time.Hour)
 	if err := Settle(ctx, userID, "translate_sentence", 40); err != nil {
 		t.Fatalf("Settle: %v", err)
@@ -61,6 +63,8 @@ func TestGrantTrialOnlyOncePerAccount(t *testing.T) {
 func TestGrantTrialRecordsTheEmailAndSkipsItForAnotherAccount(t *testing.T) {
 	ctx := context.Background()
 	first, second := "u-"+t.Name()+"-1", "u-"+t.Name()+"-2"
+	seedCreditUser(t, first)
+	seedCreditUser(t, second)
 	email := "hmac-" + t.Name()
 
 	if granted, err := GrantTrial(ctx, first, email, 100, time.Hour); err != nil || !granted {
@@ -89,6 +93,7 @@ func TestGrantTrialRecordsTheEmailAndSkipsItForAnotherAccount(t *testing.T) {
 func TestGrantTrialGrantsWhenTheRecordIsTheAccountsOwn(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	email := "hmac-" + t.Name()
 	if err := sqlitex.DB.Create(&sqlitex.TrialGrant{EmailHmac: email, UserId: userID, GrantedAt: 1}).Error; err != nil {
 		t.Fatalf("seed trial_grants: %v", err)
@@ -102,6 +107,7 @@ func TestGrantTrialGrantsWhenTheRecordIsTheAccountsOwn(t *testing.T) {
 func TestGrantTrialWithoutAnEmailGrantsNothing(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	granted, err := GrantTrial(ctx, userID, "", 100, time.Hour)
 	if err != nil || granted {
 		t.Fatalf("GrantTrial without an email = %v, %v; want false, nil", granted, err)
@@ -118,6 +124,7 @@ func TestGrantTrialWithoutAnEmailGrantsNothing(t *testing.T) {
 func TestGrantTrialZeroAmountIsOff(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 
 	granted, err := GrantTrial(ctx, userID, "email-"+userID, 0, time.Hour)
 	if err != nil || granted {
@@ -135,6 +142,7 @@ func TestGrantTrialZeroAmountIsOff(t *testing.T) {
 func TestBalanceIgnoresExpiredTrial(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	mustGrantSubscription(t, userID, 5, 0)
 	mustGrantTrial(t, userID, 100, time.Hour)
 
@@ -152,6 +160,7 @@ func TestBalanceIgnoresExpiredTrial(t *testing.T) {
 func TestSettleAfterExpiryForfeitsTrialAndRecordsExpire(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	mustGrantSubscription(t, userID, 10, 0)
 	mustGrantTrial(t, userID, 30, time.Hour)
 	setClock(t, time.Now().Add(2*time.Hour))
@@ -187,6 +196,7 @@ func TestSettleAfterExpiryForfeitsTrialAndRecordsExpire(t *testing.T) {
 func TestSettleConcurrentKeepsTrialNonNegativeAndLosesNothing(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	mustGrantSubscription(t, userID, 10, 100)
 	mustGrantTrial(t, userID, 20, time.Hour)
 
@@ -235,6 +245,7 @@ func setClock(t *testing.T, at time.Time) {
 func TestSettleDrawsTrialBeforeSubscriptionAndTopup(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	mustGrantSubscription(t, userID, 10, 10)
 	mustGrantTrial(t, userID, 5, time.Hour)
 
@@ -252,6 +263,7 @@ func TestSettleDrawsTrialBeforeSubscriptionAndTopup(t *testing.T) {
 func TestSettleOverrunSpillsFromTrialThroughToTopup(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	mustGrantSubscription(t, userID, 2, 1)
 	mustGrantTrial(t, userID, 3, time.Hour)
 
@@ -272,6 +284,7 @@ func TestSettleOverrunSpillsFromTrialThroughToTopup(t *testing.T) {
 func TestSettleWritesOffTrialOnlyOverrun(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	mustGrantTrial(t, userID, 3, time.Hour)
 
 	if err := Settle(ctx, userID, "translate_sentence", 10); err != nil {

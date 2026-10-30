@@ -10,7 +10,6 @@ import (
 	"enx-api/ecdict"
 	"enx-api/stats"
 	"enx-api/utils/logger"
-	"enx-api/utils/sqlitex"
 
 	"github.com/gin-gonic/gin"
 )
@@ -127,23 +126,6 @@ func (m *QuotaMeter) limit(ctx context.Context, userID string) int64 {
 	return m.limits.DictionaryLookupDailyFree
 }
 
-func isActiveSubscriber(userID string) (bool, error) {
-	var count int64
-	err := sqlitex.DB.Model(&sqlitex.Subscription{}).
-		Where("user_id = ? AND status = ?", userID, "active").
-		Count(&count).Error
-	if err != nil {
-		return false, err
-	}
-	return count > 0, nil
-}
-
-type legacySubscriptions struct{}
-
-func (legacySubscriptions) IsActiveSubscriber(_ context.Context, userID string) (bool, error) {
-	return isActiveSubscriber(userID)
-}
-
 // RespondUnavailable writes the ADR-mandated 503 JSON response.
 func RespondUnavailable(c *gin.Context) {
 	c.JSON(http.StatusServiceUnavailable, gin.H{
@@ -159,9 +141,6 @@ func RespondUnavailable(c *gin.Context) {
 // A subscriber hitting their ceiling is not an upsell moment: that tier is
 // set high enough that reaching it means the account is being misused, not
 // that they should pay more (ADR-029 Decision 5).
-func RespondQuotaExceeded(c *gin.Context, userID string) {
-	RespondQuotaExceededWithSubscriptions(c, userID, legacySubscriptions{})
-}
 
 func RespondQuotaExceededWithSubscriptions(c *gin.Context, userID string, subs Subscriptions) {
 	message := "Daily dictionary lookup limit reached. Upgrade to Catglish Pro for a much higher daily limit."

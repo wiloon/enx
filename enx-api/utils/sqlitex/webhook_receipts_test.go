@@ -59,24 +59,6 @@ func TestWebhookReceiptsMigrationRunsOnlyOnce(t *testing.T) {
 	}
 }
 
-func TestWebhookReceiptsMigrationSharesTheMarkerTableWithTheOwnershipMigration(t *testing.T) {
-	db := legacyBillingDB(t, "subscribed.sql")
-	if _, err := MigrateSubscriptionOwnership(db); err != nil {
-		t.Fatalf("ownership migration: %v", err)
-	}
-
-	if _, err := MigrateWebhookReceipts(db); err != nil {
-		t.Fatalf("migrate after the ownership migration: %v", err)
-	}
-	var versions []string
-	if err := db.Raw("SELECT version FROM schema_migrations ORDER BY version").Scan(&versions).Error; err != nil {
-		t.Fatalf("read schema_migrations: %v", err)
-	}
-	if got := strings.Join(versions, ","); got != SubscriptionOwnershipVersion+","+WebhookReceiptsVersion {
-		t.Fatalf("schema_migrations = %s, want both migrations", got)
-	}
-}
-
 func TestAFailedWebhookReceiptsMigrationLeavesNothingBehind(t *testing.T) {
 	db := openFixture(t, filepath.Join(t.TempDir(), "enx.db"), "")
 	// A stray table of the same name makes the second CREATE fail.

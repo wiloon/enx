@@ -173,63 +173,12 @@ func TestChargeRefundsOwnerReadsTheRevisionBalanceAndPoolProvenance(t *testing.T
 	newSubscriptionConflictDB(t, "subscribed.sql")
 	recordSubscriptionProvenance(t)
 	execAll(t, "UPDATE users SET billing_version = 6 WHERE id = 'u_subscribed'")
-	if err := MarkLegacyBackfillDone(context.Background()); err != nil {
-		t.Fatal(err)
-	}
 
 	got := refundOwner(t, "u_subscribed")
 
 	want := chargerefunded.Owner{Revision: 6, Pool: creditperiod.Pool{Source: subscribedMay}, SubscriptionBalance: 500}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Owner = %+v, want %+v", got, want)
-	}
-}
-
-func TestChargeRefundsOwnerReadsAMigratedPoolsProvenanceState(t *testing.T) {
-	cases := []struct {
-		name         string
-		stmts        []string
-		backfillDone bool
-		want         creditperiod.Pool
-	}{
-		{
-			name: "the backfill has not recorded the pool's grant yet",
-			want: creditperiod.Pool{BackfillPending: true},
-		},
-		{
-			name:         "the backfill finished without covering the grant",
-			backfillDone: true,
-			want:         creditperiod.Pool{},
-		},
-		{
-			name: "the backfill could not pin the grant to one invoice",
-			stmts: []string{"UPDATE credit_transactions SET grant_kind = 'normal_period', stripe_subscription_id = 'sub_subscribed', " +
-				"period_end = 1800000000, without_period = 1, provenance_reason = 'no_single_invoice' WHERE id = 'tx_subscribed_grant'"},
-			want: creditperiod.Pool{
-				Source:        creditperiod.Source{SubscriptionID: "sub_subscribed", Period: invoice.Period{End: 1800000000}},
-				WithoutPeriod: true,
-			},
-		},
-		{
-			name:  "no grant supplies the pool",
-			stmts: []string{"UPDATE credit_accounts SET pool_grant_id = NULL WHERE user_id = 'u_subscribed'"},
-			want:  creditperiod.Pool{},
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			newSubscriptionConflictDB(t, "subscribed.sql")
-			execAll(t, c.stmts...)
-			if c.backfillDone {
-				if err := MarkLegacyBackfillDone(context.Background()); err != nil {
-					t.Fatal(err)
-				}
-			}
-
-			if got := refundOwner(t, "u_subscribed").Pool; !reflect.DeepEqual(got, c.want) {
-				t.Errorf("Pool = %+v, want %+v", got, c.want)
-			}
-		})
 	}
 }
 

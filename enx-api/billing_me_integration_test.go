@@ -23,9 +23,9 @@ func billingMeRoute(t *testing.T, cutover bool) (*httptest.Server, string) {
 	jwks := clerktest.NewEnv(t)
 	cfg := config.Default()
 	cfg.Clerk = jwks.Config()
-	cfg.Billing.Cutover = cutover
+
 	if err := openBillingDatabase(t, func() error {
-		return initializeBillingDatabase(filepath.Join(t.TempDir(), "billing-me.db"), "error", cutover)
+		return initializeBillingDatabase(filepath.Join(t.TempDir(), "billing-me.db"), "error")
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -99,12 +99,4 @@ func TestBillingMeCutoverWithoutAcceptedSubscriptionReturnsDefaults(t *testing.T
 			assertBillingMe(t, server, token, "none", "", 0)
 		})
 	}
-}
-
-func TestBillingMeSwitchOffUsesLegacySchema(t *testing.T) {
-	server, token := billingMeRoute(t, false)
-	if err := sqlitex.DB.Exec("INSERT INTO subscriptions (user_id, stripe_subscription_id, stripe_customer_id, status, plan, current_period_end, created_at, updated_at) VALUES ('billing_me', 'sub_legacy', 'cus_legacy', 'active', 'pro-plus', 1795507902, 1, 1)").Error; err != nil {
-		t.Fatal(err)
-	}
-	assertBillingMe(t, server, token, "active", "pro-plus", 1795507902)
 }

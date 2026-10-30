@@ -35,21 +35,10 @@ func TestBillingReaderCutoverUsesAcceptedSubscription(t *testing.T) {
 	if err := sqlitex.DB.Exec("INSERT INTO subscriptions (stripe_subscription_id, user_id, status, stripe_customer_id, created_at, updated_at) VALUES (?, ?, ?, ?, 1, 1)", "sub_conflict", "user_1", "active", "cus_1").Error; err != nil {
 		t.Fatal(err)
 	}
-	reader := newBillingReaders(true).subscriptions
+	reader := newBillingReaders().subscriptions
 	active, err := reader.IsActiveSubscriber(context.Background(), "user_1")
 	if err != nil || active {
 		t.Fatalf("conflict grants subscription: active=%v err=%v", active, err)
-	}
-}
-
-func TestBillingReaderLegacyUsesActiveSubscription(t *testing.T) {
-	sqlitex.Init(filepath.Join(t.TempDir(), "legacy.db"))
-	if err := sqlitex.DB.Exec("INSERT INTO subscriptions (user_id, stripe_customer_id, status, created_at, updated_at) VALUES (?, ?, ?, 1, 1)", "user_1", "cus_1", "active").Error; err != nil {
-		t.Fatal(err)
-	}
-	active, err := newBillingReaders(false).subscriptions.IsActiveSubscriber(context.Background(), "user_1")
-	if err != nil || !active {
-		t.Fatalf("legacy subscription: active=%v err=%v", active, err)
 	}
 }
 
@@ -64,7 +53,7 @@ func TestEntitlementSourceUsesCutoverReader(t *testing.T) {
 	if err := sqlitex.DB.Exec("INSERT INTO subscriptions (stripe_subscription_id, user_id, status, stripe_customer_id, created_at, updated_at) VALUES (?, ?, ?, ?, 1, 1)", "sub_conflict", "user_1", "active", "cus_1").Error; err != nil {
 		t.Fatal(err)
 	}
-	got, err := newBillingReaders(true).entitlements.Status(context.Background(), "user_1")
+	got, err := newBillingReaders().entitlements.Status(context.Background(), "user_1")
 	if err != nil || got.Subscribed {
 		t.Fatalf("conflict grants entitlement: %+v, %v", got, err)
 	}
@@ -84,7 +73,7 @@ func TestQuotaResponseUsesCutoverSubscriptionReader(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest("GET", "/", nil)
-	dictionary.RespondQuotaExceededWithSubscriptions(c, "user_1", newBillingReaders(true).subscriptions)
+	dictionary.RespondQuotaExceededWithSubscriptions(c, "user_1", newBillingReaders().subscriptions)
 	if !strings.Contains(w.Body.String(), "Upgrade") {
 		t.Fatalf("conflict response: %s", w.Body.String())
 	}
@@ -103,7 +92,7 @@ func TestAdminReaderCutoverShowsOneAccountForMultipleSubscriptions(t *testing.T)
 			t.Fatal(err)
 		}
 	}
-	rows, total, err := newBillingReaders(true).admin.ListAccounts(context.Background(), adminuser.ListQuery{Limit: 10})
+	rows, total, err := newBillingReaders().admin.ListAccounts(context.Background(), adminuser.ListQuery{Limit: 10})
 	if err != nil || total != 1 || len(rows) != 1 {
 		t.Fatalf("accounts %d total %d error %v", len(rows), total, err)
 	}
@@ -126,8 +115,8 @@ func TestQuotaTierUsesSwitchSelectedReader(t *testing.T) {
 		t.Fatal(err)
 	}
 	limits := config.StripeQuota{DictionaryLookupDailyFree: 1, DictionaryLookupDailySubscribed: 5}
-	for _, tc := range []struct{ cutover, rejected bool }{{false, false}, {true, true}} {
-		meter := dictionary.NewQuotaMeter(quotaEvents{}, newBillingReaders(tc.cutover).subscriptions, limits, time.Now)
+	for _, tc := range []struct{ cutover, rejected bool }{{true, true}} {
+		meter := dictionary.NewQuotaMeter(quotaEvents{}, newBillingReaders().subscriptions, limits, time.Now)
 		err := meter.Charge(context.Background(), "user_1")
 		if errors.Is(err, dictionary.ErrQuotaExceeded) != tc.rejected {
 			t.Fatalf("cutover %v: %v", tc.cutover, err)
@@ -135,28 +124,14 @@ func TestQuotaTierUsesSwitchSelectedReader(t *testing.T) {
 	}
 }
 
-func TestAdminReaderLegacyShowsSubscription(t *testing.T) {
-	sqlitex.Init(filepath.Join(t.TempDir(), "legacy-admin.db"))
-	if err := sqlitex.DB.Exec("INSERT INTO users (id, clerk_user_id) VALUES (?, ?)", "user_1", "clerk_1").Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := sqlitex.DB.Exec("INSERT INTO subscriptions (user_id, stripe_customer_id, status, plan, created_at, updated_at) VALUES (?, ?, ?, ?, 1, 1)", "user_1", "cus_1", "active", "pro").Error; err != nil {
-		t.Fatal(err)
-	}
-	rows, total, err := newBillingReaders(false).admin.ListAccounts(context.Background(), adminuser.ListQuery{Limit: 10})
-	if err != nil || total != 1 || len(rows) != 1 || rows[0].SubscriptionStatus != "active" {
-		t.Fatalf("accounts %+v total %d error %v", rows, total, err)
-	}
-}
-
 func TestAdminRouteUsesCutoverReader(t *testing.T) {
-	for _, cutover := range []bool{false, true} {
+	for _, cutover := range []bool{true} {
 		t.Run(fmt.Sprint(cutover), func(t *testing.T) {
 			jwks := clerktest.NewEnv(t)
 			cfg := config.Default()
 			cfg.Clerk = jwks.Config()
 			cfg.Admin.ClerkUserIDs = []string{adminSub}
-			cfg.Billing.Cutover = cutover
+
 			sqlitex.Init(filepath.Join(t.TempDir(), "route.db"))
 			if cutover {
 				if _, err := sqlitex.MigrateSubscriptionOwnership(sqlitex.DB); err != nil {
@@ -191,12 +166,12 @@ func TestAdminRouteUsesCutoverReader(t *testing.T) {
 }
 
 func TestQuotaRoutesUseCutoverReader(t *testing.T) {
-	for _, cutover := range []bool{false, true} {
+	for _, cutover := range []bool{true} {
 		t.Run(fmt.Sprint(cutover), func(t *testing.T) {
 			jwks := clerktest.NewEnv(t)
 			cfg := config.Default()
 			cfg.Clerk = jwks.Config()
-			cfg.Billing.Cutover = cutover
+
 			cfg.Stripe.Quota.DictionaryLookupDailyFree = 1
 			cfg.Stripe.Quota.DictionaryLookupDailySubscribed = 1
 			sqlitex.Init(filepath.Join(t.TempDir(), "quota-route.db"))

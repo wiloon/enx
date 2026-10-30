@@ -36,9 +36,9 @@ func checkoutRoute(t *testing.T, cutover bool) *checkoutFixture {
 	jwks := clerktest.NewEnv(t)
 	cfg := config.Default()
 	cfg.Clerk = jwks.Config()
-	cfg.Billing.Cutover = cutover
+
 	if err := openBillingDatabase(t, func() error {
-		return initializeBillingDatabase(filepath.Join(t.TempDir(), "checkout.db"), "error", cutover)
+		return initializeBillingDatabase(filepath.Join(t.TempDir(), "checkout.db"), "error")
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -288,18 +288,5 @@ func TestCheckoutCutoverCustomerSelectionAndFailures(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-
-func TestCheckoutSwitchOffUsesLegacySchema(t *testing.T) {
-	for _, endpoint := range []string{"subscription", "topup"} {
-		t.Run(endpoint, func(t *testing.T) {
-			f := checkoutRoute(t, false)
-			checkoutSQL(t, "INSERT INTO subscriptions (user_id,stripe_subscription_id,stripe_customer_id,status,created_at,updated_at) VALUES ('buyer','sub_legacy','cus_legacy','canceled',1,1)")
-			code, body := f.post(t, endpoint)
-			if code != 200 || body["success"] != true || len(f.forms) != 1 || f.forms[0].Get("customer") != "cus_legacy" {
-				t.Fatalf("legacy response %d %v, forms %v", code, body, f.forms)
-			}
-		})
 	}
 }

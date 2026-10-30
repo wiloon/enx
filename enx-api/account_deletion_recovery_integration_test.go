@@ -42,9 +42,9 @@ func deletionRecoveryEnv(t *testing.T, stripeClients ...*stripeSDK.Client) (func
 	cfg.Clerk = jwks.Config()
 	cfg.Admin.ClerkUserIDs = []string{adminSub}
 	cfg.Account.EmailHMACKey = "test-key"
-	cfg.Billing.Cutover = true
+
 	sqlitex.Init(filepath.Join(t.TempDir(), "recovery.db"))
-	if err := sqlitex.MigrateBillingCutover(sqlitex.DB); err != nil {
+	if err := sqlitex.InitializeBillingSchema(sqlitex.DB); err != nil {
 		t.Fatal(err)
 	}
 	deletionSQL(t, "INSERT INTO users (id, clerk_user_id, email) VALUES ('target', ?, ?)", nonAdminSub, accountPlainEmail)

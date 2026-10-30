@@ -21,6 +21,7 @@ func TestMain(m *testing.M) {
 func TestGrantSubscriptionResetsNotAdds(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	mustGrantSubscription(t, userID, 50, 0)
 	// Simulate unused credit left over from last month, then renewal.
 	if err := GrantSubscription(ctx, userID, 30, time.Now().Add(30*24*time.Hour), "evt-renewal-2", ""); err != nil {
@@ -36,6 +37,7 @@ func TestGrantSubscriptionResetsNotAdds(t *testing.T) {
 func TestGrantSubscriptionIdempotent(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 	periodEnd := time.Now().Add(30 * 24 * time.Hour)
 
 	if err := GrantSubscription(ctx, userID, 20, periodEnd, "evt-dup-1", ""); err != nil {
@@ -59,6 +61,7 @@ func TestGrantSubscriptionIdempotent(t *testing.T) {
 func TestGrantTopupAddsAndIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 
 	if err := GrantTopup(ctx, userID, 10, "evt-topup-1", ""); err != nil {
 		t.Fatalf("first GrantTopup: %v", err)
@@ -79,6 +82,7 @@ func TestGrantTopupAddsAndIsIdempotent(t *testing.T) {
 func TestConsumeConcurrentIdempotentGrantsExactlyOnce(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
 
 	var wg sync.WaitGroup
 	const attempts = 20
@@ -117,4 +121,11 @@ func loadAccount(t *testing.T, userID string) sqlitex.CreditAccount {
 		t.Fatalf("load credit_accounts row: %v", err)
 	}
 	return acc
+}
+
+func seedCreditUser(t *testing.T, id string) {
+	t.Helper()
+	if err := sqlitex.DB.Exec("INSERT INTO users (id) VALUES (?) ON CONFLICT(id) DO NOTHING", id).Error; err != nil {
+		t.Fatal(err)
+	}
 }

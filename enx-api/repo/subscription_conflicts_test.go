@@ -14,10 +14,6 @@ import (
 	"enx-api/billing/conflictadmin"
 	"enx-api/billing/webhookevent"
 	"enx-api/utils/sqlitex"
-
-	"github.com/glebarez/sqlite"
-	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
 )
 
 // newSubscriptionConflictDB opens a temporary database as the cutover leaves
@@ -26,20 +22,12 @@ import (
 // MigrateWebhookReceipts, MigrateCreditProvenance and MigrateDeletionGates.
 func newSubscriptionConflictDB(t *testing.T, fixtures ...string) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "enx.db")), &gorm.Config{
-		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sqlDB.SetMaxOpenConns(1)
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	for _, name := range append([]string{"schema.sql"}, fixtures...) {
-		raw, err := os.ReadFile(filepath.Join("../testdata/billing-legacy", name))
+	previous := sqlitex.DB
+	sqlitex.Init(filepath.Join(t.TempDir(), "enx.db"))
+	db := sqlitex.DB
+	t.Cleanup(func() { raw, _ := db.DB(); _ = raw.Close(); sqlitex.DB = previous })
+	for _, name := range fixtures {
+		raw, err := os.ReadFile(filepath.Join("../testdata/billing-current", name))
 		if err != nil {
 			t.Fatal(err)
 		}

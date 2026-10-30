@@ -16,13 +16,8 @@ type billingReaders struct {
 	admin         adminuser.Store
 }
 
-func newBillingReaders(cutover bool) billingReaders {
-	var subscriptions dictionary.Subscriptions = entadapters.Billing{}
-	legacy := repo.AdminUsers{Now: time.Now}
-	var admin adminuser.Store = legacy
-	if cutover {
-		subscriptions = repo.AcceptedSubscriptions{}
-		admin = repo.AcceptedAdminUsers{AdminUsers: legacy}
-	}
+func newBillingReaders() billingReaders {
+	var subscriptions dictionary.Subscriptions = repo.AcceptedSubscriptions{}
+	admin := repo.AcceptedAdminUsers{AdminUsers: repo.AdminUsers{Now: time.Now}}
 	return billingReaders{subscriptions: subscriptions, entitlements: entitlement.NewService(entadapters.Billing{Subscriptions: subscriptions}), admin: admin}
 }

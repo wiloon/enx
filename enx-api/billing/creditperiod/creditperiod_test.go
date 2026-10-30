@@ -88,13 +88,6 @@ func TestNormalGrant(t *testing.T) {
 			accepted: true,
 			want:     Effect{Outcome: RecordOnly, Purchased: 100},
 		},
-		{
-			name:     "nothing is decided before the legacy provenance backfill finishes",
-			pool:     Pool{BackfillPending: true},
-			grant:    aJune,
-			accepted: true,
-			want:     Effect{Outcome: WaitDependency, Reason: ReasonBackfillPending},
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -165,11 +158,6 @@ func TestUpgradeTopUp(t *testing.T) {
 				Accepted: true, SubscriptionID: "sub_a", Line: half, FromCredits: 100, ToCredits: 300,
 			},
 			want: Effect{Outcome: NeedsAttention, Reason: ReasonLegacyGrantWithoutPeriod},
-		},
-		{
-			name: "nothing is decided before the legacy provenance backfill finishes",
-			in:   Upgrade{Pool: Pool{BackfillPending: true}, Accepted: true, SubscriptionID: "sub_a", Line: half, FromCredits: 100, ToCredits: 300},
-			want: Effect{Outcome: WaitDependency, Reason: ReasonBackfillPending},
 		},
 	}
 	for _, tc := range cases {
@@ -291,13 +279,6 @@ func TestClawback(t *testing.T) {
 			grant:  Grant{WithoutPeriod: true, Applied: 100},
 			refund: Refund{Refunded: 500, Captured: 500, Balance: 100},
 			want:   Effect{Outcome: RecordOnly},
-		},
-		{
-			name:   "nothing is decided before the legacy provenance backfill finishes",
-			pool:   Pool{BackfillPending: true},
-			grant:  Grant{Applied: 100},
-			refund: Refund{Refunded: 500, Captured: 500, Balance: 100},
-			want:   Effect{Outcome: WaitDependency, Reason: ReasonBackfillPending},
 		},
 	}
 	for _, tc := range cases {

@@ -7,9 +7,9 @@ package sqlitex
 // for the architecture decisions these implement.
 
 type Subscription struct {
-	UserId               string  `gorm:"column:user_id;primaryKey"`
-	StripeCustomerId     string  `gorm:"column:stripe_customer_id;not null;uniqueIndex"`
-	StripeSubscriptionId *string `gorm:"column:stripe_subscription_id;uniqueIndex"` // nil until first subscription
+	UserId               string  `gorm:"column:user_id;index"`
+	StripeCustomerId     string  `gorm:"column:stripe_customer_id;not null;index"`
+	StripeSubscriptionId *string `gorm:"column:stripe_subscription_id;primaryKey"` // nil until first subscription
 	Status               string  `gorm:"column:status;not null;default:none"`
 	Plan                 string  `gorm:"column:plan"`               // "pro" | "pro-plus" | "max"; empty until the first checkout/invoice resolves it
 	CurrentPeriodEnd     int64   `gorm:"column:current_period_end"` // Unix seconds, from Stripe

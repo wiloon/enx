@@ -106,9 +106,6 @@ func main() {
 	// dispute; without it they stay pending until it is configured.
 	if stripeClient != nil {
 		go runReferralRewards(newReferralService(cfg, stripeClient, m))
-		if !cfg.Billing.Cutover {
-			go checkPortalConfigurationsAtStartup(stripeClient, cfg.Stripe)
-		}
 	}
 
 	go serveMetrics(cfg.Metrics.Addr, m)
@@ -296,8 +293,7 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 }
 
 func configuredStripeClient(cfg *config.Config) *stripeSDK.Client {
-	// Billing is optional while the cutover is off. The new assembly validates
-	// its required configuration before any worker starts when it is on.
+	// The billing assembly validates required configuration before workers start.
 	client, err := billingstripe.New(cfg.Stripe.SecretKey.Reveal())
 	if err != nil {
 		logger.Warnf("billing disabled: %v", err)
@@ -359,7 +355,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// One entitlement judgement (ADR-045 Decision 14) for the lookup, which
 	// hides AI-made definitions from users who can't use AI, and for the
 	// preferences, whose editability follows the same rule.
-	readers := newBillingReaders(cfg.Billing.Cutover)
+	readers := newBillingReaders()
 	subscriptions := readers.subscriptions
 	entitlements := readers.entitlements
 
@@ -472,12 +468,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// and summary endpoints sit behind clerkAuth, the offer is public.
 	referrals := newReferralService(cfg, stripeClient, m)
 	referralHandler := handlers.NewReferralHandler(referrals, cfg.App.FrontendBaseURL)
-	billingHandler := billing.NewHandler(stripeClient, cfg.App.FrontendBaseURL, cfg.Stripe, m)
-	if cfg.Billing.Cutover {
-		billingHandler = billing.NewHandlerWithCheckout(stripeClient, cfg.App.FrontendBaseURL, cfg.Stripe, m, repo.BillingSubscriptions{}, checkout.New(repo.PortalSessionOwners{}, billingstripe.NewPortalClient(stripeClient, "", "", nil)))
-	}
-	billingHandler.WithRefundNotifier(email.NewSender(cfg.Resend)).
-		WithFirstPaymentRecorder(referrals)
+	billingHandler := billing.NewHandlerWithCheckout(stripeClient, cfg.App.FrontendBaseURL, cfg.Stripe, m, repo.BillingSubscriptions{}, checkout.New(repo.PortalSessionOwners{}, billingstripe.NewPortalClient(stripeClient, "", "", nil)))
 
 	// Authenticated APIs (Clerk session JWT). enx-chrome and enx-ui call only
 	// these /api routes; nothing is registered twice at the root.
@@ -520,8 +511,8 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// serves the user's own (DELETE /api/me) and the admin's.
 	accountService := account.NewService(
 		repo.Accounts{}, repo.TrialGrants{Hash: emailHMAC.Of}, clerk,
-		accountadapters.Subscriptions{Stripe: stripeClient}, admins, emailHMAC, time.Now)
-	if cfg.Billing.Cutover {
+		nil, admins, emailHMAC, time.Now)
+	{
 		accountService.WithDeletionChecker(deletion.New(repo.SubscriptionOwners{}, billingstripe.NewWorkerClient(stripeClient))).
 			WithDeletionCoordinator(repo.AccountDeletions{})
 	}
@@ -554,9 +545,6 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// Billing (Stripe) — requires authentication (Clerk session JWT).
 	apiGroup.POST("/billing/checkout/subscription", billingHandler.CheckoutSubscription)
 	apiGroup.POST("/billing/checkout/topup", billingHandler.CheckoutTopup)
-	if assembly == nil {
-		apiGroup.POST("/billing/portal", billingHandler.Portal)
-	}
 	apiGroup.GET("/billing/me", billingHandler.Me)
 
 	// Invite links (ADR-051): the user's code and invites, and claiming an
@@ -634,9 +622,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// relying on Stripe-Signature verification instead (TASK-SPEC §3). URL
 	// must match the endpoint registered in infra/stripe/opentofu/enx
 	// (w10n-config): enx-api.wiloon.lab/billing/webhook, no /api prefix.
-	if assembly == nil {
-		router.POST("/billing/webhook", billingHandler.Webhook)
-	} else {
+	if assembly != nil {
 		assembly.Mount(apiGroup, adminDict, router)
 	}
 
@@ -704,30 +690,6 @@ func backfillTrialGrants(cfg *config.Config) {
 	}
 	if added > 0 {
 		logger.Infof("trial grants backfill: recorded %d existing email(s)", added)
-	}
-}
-
-// checkPortalConfigurationsAtStartup reports at startup whether each
-// Customer Portal configuration can open sessions: POST /billing/portal
-// checks the one it uses again before every session (ADR-067).
-func checkPortalConfigurationsAtStartup(sc *stripeSDK.Client, stripe config.Stripe) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	tierPrices, err := billingstripe.TierPriceIDs(ctx, sc, stripe.Price.SubscriptionPlans())
-	if err == nil {
-		var id string
-		id, err = billingstripe.ResolvePlanChangePortalConfiguration(ctx, sc, stripe.PortalConfigurationID, tierPrices)
-		if err == nil {
-			logger.Infof("billing: plan-change Customer Portal configuration %s is safe", id)
-		}
-	}
-	if err != nil {
-		logger.Errorf("billing: Customer Portal sessions for unblocked users are refused until the plan-change configuration is safe: %v", err)
-	}
-	if id, err := billingstripe.ResolveRestrictedPortalConfiguration(ctx, sc, stripe.PortalRestrictedConfigurationID); err != nil {
-		logger.Errorf("billing: Customer Portal sessions for blocked users are refused until the restricted configuration is safe: %v", err)
-	} else {
-		logger.Infof("billing: restricted Customer Portal configuration %s is safe", id)
 	}
 }
 

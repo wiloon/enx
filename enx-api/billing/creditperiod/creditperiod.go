@@ -32,9 +32,6 @@ type Pool struct {
 	// the migrated subscription and credit_accounts.period_end as Period.End;
 	// Period.Start is unknown.
 	WithoutPeriod bool
-	// BackfillPending: the legacy provenance backfill has not finished, so
-	// the pool's provenance is not known yet.
-	BackfillPending bool
 }
 
 // Grant is a stored subscription grant (a normal period grant or upgrade
@@ -68,7 +65,6 @@ const (
 
 // Reasons for NeedsAttention and WaitDependency.
 const (
-	ReasonBackfillPending          = "legacy_provenance_pending"
 	ReasonNormalGrantMissing       = "normal_grant_missing"
 	ReasonLegacyGrantWithoutPeriod = "legacy_grant_without_period"
 	ReasonUpgradeNotHigher         = "upgrade_not_higher"
@@ -101,9 +97,6 @@ var ErrInvalidRefund = errors.New("billing/creditperiod: not a valid refund")
 // initializes the pool once. Same or older periods and historical
 // subscriptions are recorded with zero pool effect.
 func NormalGrant(pool Pool, grant Source, accepted bool, credits int64) Effect {
-	if pool.BackfillPending {
-		return Effect{Outcome: WaitDependency, Reason: ReasonBackfillPending}
-	}
 	recordOnly := Effect{Outcome: RecordOnly, Purchased: credits}
 	if !accepted {
 		return recordOnly
@@ -139,9 +132,6 @@ type Upgrade struct {
 func UpgradeTopUp(u Upgrade) (Effect, error) {
 	if u.ToCredits <= u.FromCredits {
 		return Effect{Outcome: NeedsAttention, Reason: ReasonUpgradeNotHigher}, nil
-	}
-	if u.Pool.BackfillPending {
-		return Effect{Outcome: WaitDependency, Reason: ReasonBackfillPending}, nil
 	}
 	if u.Pool.WithoutPeriod && u.Pool.Source.SubscriptionID == u.SubscriptionID && u.Pool.Source.Period.End == u.Line.End {
 		return Effect{Outcome: NeedsAttention, Reason: ReasonLegacyGrantWithoutPeriod}, nil
@@ -189,9 +179,6 @@ type Refund struct {
 func Clawback(pool Pool, grant Grant, r Refund) (Effect, error) {
 	if r.Captured <= 0 || r.Refunded < 0 || r.Refunded > r.Captured {
 		return Effect{}, fmt.Errorf("%w: refunded %d of captured %d", ErrInvalidRefund, r.Refunded, r.Captured)
-	}
-	if pool.BackfillPending {
-		return Effect{Outcome: WaitDependency, Reason: ReasonBackfillPending}, nil
 	}
 	if grant.WithoutPeriod && pool.WithoutPeriod {
 		return Effect{Outcome: NeedsAttention, Reason: ReasonLegacyGrantWithoutPeriod}, nil

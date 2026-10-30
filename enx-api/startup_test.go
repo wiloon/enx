@@ -80,7 +80,7 @@ func TestMain_DatabaseInitFailureExitsBeforeServing(t *testing.T) {
 	if !errors.As(err, &exit) || exit.ExitCode() != 1 {
 		t.Fatalf("process ended with %v, want exit status 1; output:\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "cannot classify") {
+	if !strings.Contains(string(out), "unsupported billing schema") {
 		t.Fatalf("output does not name the initialisation error:\n%s", out)
 	}
 	if strings.Contains(string(out), "listening") || strings.Contains(string(out), "auto-migration") {

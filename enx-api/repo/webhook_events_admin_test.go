@@ -114,7 +114,7 @@ func TestWebhookEventsAnOperatorRetryRequeuesTheEventAndKeepsItsSentAlert(t *tes
 	receiveEvent(t, "dlv_1", sandboxScope, receiptT0)
 	read := unfinished(t, store)["evt_1"].Task
 	now := receiptT0.Add(time.Minute)
-	claimed, _ := webhookevent.ClaimTask(read, "tok_a", now, 2*time.Minute, true)
+	claimed, _ := webhookevent.ClaimTask(read, "tok_a", now, 2*time.Minute)
 	if err := store.Save(ctx, sandboxScope, read, claimed, nil); err != nil {
 		t.Fatal(err)
 	}

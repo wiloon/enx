@@ -43,7 +43,7 @@ func TestInitHandlesCommentedP2PWordsTable(t *testing.T) {
 	sqlDB, _ := db.DB()
 	_ = sqlDB.Close()
 
-	Init(path)
+	initializeRepairFixture(t, path)
 
 	if ddl := wordsDDL(t); strings.Contains(ddl, "--") || !englishNoCase.MatchString(ddl) {
 		t.Fatalf("words not rebuilt cleanly: %s", ddl)

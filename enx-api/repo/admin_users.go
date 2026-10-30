@@ -19,108 +19,14 @@ type AdminUsers struct {
 
 var _ adminuser.Store = AdminUsers{}
 
-// accountRow is one users row joined with its subscription and credit
-// account; both may be missing.
-type accountRow struct {
-	ID                  string
-	Email               string
-	Name                string
-	UserStatus          string
-	CreatedAt           time.Time
-	LastLoginTime       time.Time
-	Plan                sql.NullString
-	Status              sql.NullString
-	StripeCustomerID    sql.NullString
-	SubscriptionBalance sql.NullInt64
-	TopupBalance        sql.NullInt64
-	TrialBalance        sql.NullInt64
-	TrialExpiresAt      sql.NullInt64 // Unix seconds
-}
-
-func (r accountRow) account() adminuser.Account {
-	a := adminuser.Account{
-		UserID:              r.ID,
-		Email:               r.Email,
-		Name:                r.Name,
-		Status:              r.UserStatus,
-		CreatedAt:           r.CreatedAt,
-		LastLoginAt:         r.LastLoginTime,
-		Plan:                r.Plan.String,
-		SubscriptionStatus:  r.Status.String,
-		StripeCustomerID:    r.StripeCustomerID.String,
-		SubscriptionBalance: r.SubscriptionBalance.Int64,
-		TopupBalance:        r.TopupBalance.Int64,
-		TrialBalance:        r.TrialBalance.Int64,
-	}
-	if r.TrialExpiresAt.Valid {
-		at := time.Unix(r.TrialExpiresAt.Int64, 0)
-		a.TrialExpiresAt = &at
-	}
-	return a
-}
-
-const accountColumns = `u.id, u.email, u.name, u.status AS user_status, u.created_at, u.last_login_time,
-	s.plan, s.status, s.stripe_customer_id,
-	a.subscription_balance, a.topup_balance, a.trial_balance, a.trial_expires_at`
-
-const accountJoins = `FROM users u
-	LEFT JOIN subscriptions s ON s.user_id = u.id
-	LEFT JOIN credit_accounts a ON a.user_id = u.id`
-
-// clerkUsersU is clerkUsers on the u alias.
 const clerkUsersU = "u.clerk_user_id IS NOT NULL AND u.clerk_user_id != ''"
 
 func (s AdminUsers) ListAccounts(ctx context.Context, q adminuser.ListQuery) ([]adminuser.Account, int64, error) {
-	where := clerkUsersU
-	var args []any
-	if q.Query != "" {
-		where += ` AND (u.email LIKE ? ESCAPE '\' OR u.id = ?)`
-		args = append(args, "%"+escapeLike(q.Query)+"%", q.Query)
-	}
-
-	var total int64
-	if err := sqlitex.DB.WithContext(ctx).Raw("SELECT COUNT(*) FROM users u WHERE "+where, args...).Scan(&total).Error; err != nil {
-		return nil, 0, err
-	}
-
-	order := "datetime(u.created_at) DESC, u.id"
-	switch q.Sort {
-	case adminuser.SortLastLogin:
-		order = "datetime(u.last_login_time) DESC, u.id"
-	case adminuser.SortBalance:
-		// The same balance the page shows: both pools plus a trial that
-		// has not expired, never below zero (ADR-048).
-		order = `COALESCE(a.subscription_balance, 0) + COALESCE(a.topup_balance, 0) +
-			CASE WHEN a.trial_expires_at > ? AND a.trial_balance > 0 THEN a.trial_balance ELSE 0 END DESC, u.id`
-		args = append(args, s.Now().Unix())
-	}
-	args = append(args, q.Limit, q.Offset)
-
-	var rows []accountRow
-	err := sqlitex.DB.WithContext(ctx).
-		Raw("SELECT "+accountColumns+" "+accountJoins+" WHERE "+where+" ORDER BY "+order+" LIMIT ? OFFSET ?", args...).
-		Scan(&rows).Error
-	if err != nil {
-		return nil, 0, err
-	}
-	accounts := make([]adminuser.Account, len(rows))
-	for i, r := range rows {
-		accounts[i] = r.account()
-	}
-	return accounts, total, nil
+	return (AcceptedAdminUsers{AdminUsers: s}).ListAccounts(ctx, q)
 }
-
-func (AdminUsers) Account(ctx context.Context, userID string) (adminuser.Account, bool, error) {
-	var rows []accountRow
-	err := sqlitex.DB.WithContext(ctx).
-		Raw("SELECT "+accountColumns+" "+accountJoins+" WHERE "+clerkUsersU+" AND u.id = ?", userID).
-		Scan(&rows).Error
-	if err != nil || len(rows) == 0 {
-		return adminuser.Account{}, false, err
-	}
-	return rows[0].account(), true, nil
+func (s AdminUsers) Account(ctx context.Context, userID string) (adminuser.Account, bool, error) {
+	return (AcceptedAdminUsers{AdminUsers: s}).Account(ctx, userID)
 }
-
 func (AdminUsers) LedgerSums(ctx context.Context, userIDs []string) (map[string]map[string]adminuser.LedgerSum, error) {
 	out := make(map[string]map[string]adminuser.LedgerSum, len(userIDs))
 	if len(userIDs) == 0 {
@@ -226,4 +132,42 @@ func (AdminUsers) Transactions(ctx context.Context, userID string, before *admin
 // escapeLike makes s match literally inside a LIKE pattern with ESCAPE '\'.
 func escapeLike(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+}
+
+type accountRow struct {
+	ID                  string
+	Email               string
+	Name                string
+	UserStatus          string
+	CreatedAt           time.Time
+	LastLoginTime       time.Time
+	Plan                sql.NullString
+	Status              sql.NullString
+	StripeCustomerID    sql.NullString
+	SubscriptionBalance sql.NullInt64
+	TopupBalance        sql.NullInt64
+	TrialBalance        sql.NullInt64
+	TrialExpiresAt      sql.NullInt64 // Unix seconds
+}
+
+func (r accountRow) account() adminuser.Account {
+	a := adminuser.Account{
+		UserID:              r.ID,
+		Email:               r.Email,
+		Name:                r.Name,
+		Status:              r.UserStatus,
+		CreatedAt:           r.CreatedAt,
+		LastLoginAt:         r.LastLoginTime,
+		Plan:                r.Plan.String,
+		SubscriptionStatus:  r.Status.String,
+		StripeCustomerID:    r.StripeCustomerID.String,
+		SubscriptionBalance: r.SubscriptionBalance.Int64,
+		TopupBalance:        r.TopupBalance.Int64,
+		TrialBalance:        r.TrialBalance.Int64,
+	}
+	if r.TrialExpiresAt.Valid {
+		at := time.Unix(r.TrialExpiresAt.Int64, 0)
+		a.TrialExpiresAt = &at
+	}
+	return a
 }

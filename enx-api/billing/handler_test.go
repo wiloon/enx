@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"enx-api/utils/sqlitex"
@@ -77,14 +78,6 @@ func TestCheckoutTopupNotConfigured(t *testing.T) {
 	}
 }
 
-func TestPortalNotConfigured(t *testing.T) {
-	h := NewHandler(nil, "https://example.com", testStripe(), nil)
-	w := doRequest(t, http.MethodPost, "/billing/portal", h.Portal, "u1", ``)
-	if w.Code != http.StatusServiceUnavailable {
-		t.Fatalf("status: got %d want 503, body=%s", w.Code, w.Body.String())
-	}
-}
-
 // A client built from a well-formed-but-fake key never makes a network call
 // in these tests: request validation always fails before CreateCheckoutSession
 // would be reached.
@@ -128,6 +121,13 @@ func fakeStripeClient(t *testing.T, onSession func(form url.Values)) *stripeSDK.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/subscriptions/"):
+			id := strings.TrimPrefix(r.URL.Path, "/v1/subscriptions/")
+			var status string
+			if err := sqlitex.DB.Raw("SELECT status FROM subscriptions WHERE stripe_subscription_id=?", id).Scan(&status).Error; err != nil {
+				t.Fatal(err)
+			}
+			_, _ = w.Write([]byte(`{"id":"` + id + `","object":"subscription","status":"` + status + `"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/prices":
 			_, _ = w.Write([]byte(`{"object":"list","url":"/v1/prices","has_more":false,"data":[{"id":"price_topup_small","object":"price"}]}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/checkout/sessions":
@@ -269,10 +269,10 @@ func TestCheckoutSubscriptionFailsWhenSubscriptionLookupFails(t *testing.T) {
 		t.Error("checkout session created although the subscription lookup failed")
 	}), "https://example.com", testStripe(), nil)
 	w := doRequest(t, http.MethodPost, "/billing/checkout/subscription", h.CheckoutSubscription, userID, `{"plan":"pro"}`)
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("status: got %d want 500, body=%s", w.Code, w.Body.String())
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status: got %d want 503, body=%s", w.Code, w.Body.String())
 	}
-	if !bytes.Contains(w.Body.Bytes(), []byte(`"message":"failed to load subscription"`)) {
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"message":"Billing is temporarily unavailable. Please retry."`)) {
 		t.Fatalf("expected load failure message, got %s", w.Body.String())
 	}
 }
@@ -282,15 +282,15 @@ func TestCheckoutSubscriptionFailsWhenSubscriptionLookupFails(t *testing.T) {
 func failSubscriptionQueries(t *testing.T) {
 	t.Helper()
 	const name = "test:fail-subscription-queries"
-	err := sqlitex.DB.Callback().Query().Before("gorm:query").Register(name, func(tx *gorm.DB) {
-		if tx.Statement.Table == "subscriptions" {
+	err := sqlitex.DB.Callback().Row().Before("gorm:row").Register(name, func(tx *gorm.DB) {
+		if strings.Contains(tx.Statement.SQL.String(), "subscriptions") {
 			_ = tx.AddError(errors.New("disk I/O error"))
 		}
 	})
 	if err != nil {
 		t.Fatalf("register callback: %v", err)
 	}
-	t.Cleanup(func() { _ = sqlitex.DB.Callback().Query().Remove(name) })
+	t.Cleanup(func() { _ = sqlitex.DB.Callback().Row().Remove(name) })
 }
 
 // seedUser creates the minimal users row enx.GetUserByID needs -- CheckoutTopup
@@ -303,14 +303,6 @@ func seedUser(t *testing.T, userID string) {
 		userID, userID, userID+"@example.com",
 	).Error; err != nil {
 		t.Fatalf("seed user: %v", err)
-	}
-}
-
-func TestPortalNoBillingAccountYet(t *testing.T) {
-	h := NewHandler(fakeConfiguredClient(), "https://example.com", testStripe(), nil)
-	w := doRequest(t, http.MethodPost, "/billing/portal", h.Portal, "u-never-checked-out", ``)
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("status: got %d want 404, body=%s", w.Code, w.Body.String())
 	}
 }
 
@@ -329,17 +321,8 @@ func TestMeDefaultsForUnknownUser(t *testing.T) {
 func TestMeReflectsExistingRows(t *testing.T) {
 	userID := "u-with-subscription"
 	cleanupBillingUser(t, userID)
-	sub := sqlitex.Subscription{
-		UserId:           userID,
-		StripeCustomerId: "cus_123",
-		Status:           "active",
-		CurrentPeriodEnd: 1700000000,
-		CreatedAt:        1,
-		UpdatedAt:        1,
-	}
-	if err := sqlitex.DB.Create(&sub).Error; err != nil {
-		t.Fatalf("seed subscription: %v", err)
-	}
+	seedUser(t, userID)
+	seedSubscription(t, userID, "cus_123", "sub_me", "active", 1700000000)
 	credit := sqlitex.CreditAccount{
 		UserId:              userID,
 		SubscriptionBalance: 100,
@@ -365,10 +348,4 @@ func TestMeReflectsExistingRows(t *testing.T) {
 		t.Fatalf("expected topupBalance 50, got %s", w.Body.String())
 	}
 
-	// existingStripeCustomerID is what Portal uses to decide 404 vs.
-	// proceeding to Stripe; verify it resolves the seeded row directly
-	// rather than making a real network call.
-	if got := existingStripeCustomerID(userID); got != "cus_123" {
-		t.Fatalf("existingStripeCustomerID: got %q want %q", got, "cus_123")
-	}
 }
