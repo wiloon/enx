@@ -39,7 +39,7 @@ func priceListResponse(priceIDs ...string) string {
 
 func TestNew(t *testing.T) {
 	t.Run("empty key returns error", func(t *testing.T) {
-		sc, err := New("")
+		sc, err := New("", "")
 		if err == nil {
 			t.Fatal("expected an error for empty secret key")
 		}
@@ -49,7 +49,7 @@ func TestNew(t *testing.T) {
 	})
 
 	t.Run("non-empty key returns a client", func(t *testing.T) {
-		sc, err := New("sk_test_123")
+		sc, err := New("sk_test_123", "")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

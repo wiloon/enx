@@ -11,13 +11,17 @@ import (
 	stripeSDK "github.com/stripe/stripe-go/v86"
 )
 
-// New builds a Stripe SDK client from a secret key. Returns a non-nil error
-// if secretKey is empty so callers can treat Stripe billing as an optional,
-// unconfigured feature (same "unconfigured but not fatal" pattern as
-// aitranslate.New when sentence-translate.provider is unset).
-func New(secretKey string) (*stripeSDK.Client, error) {
+// New builds a Stripe SDK client. An empty apiBaseURL keeps Stripe SDK defaults.
+// A configured endpoint routes every SDK backend to the same adapter.
+func New(secretKey, apiBaseURL string) (*stripeSDK.Client, error) {
 	if secretKey == "" {
 		return nil, fmt.Errorf("billing/stripe: STRIPE_SECRET_KEY is not set")
 	}
-	return stripeSDK.NewClient(secretKey), nil
+	if apiBaseURL == "" {
+		return stripeSDK.NewClient(secretKey), nil
+	}
+	backend := stripeSDK.GetBackendWithConfig(stripeSDK.APIBackend, &stripeSDK.BackendConfig{URL: stripeSDK.String(apiBaseURL)})
+	return stripeSDK.NewClient(secretKey, stripeSDK.WithBackends(&stripeSDK.Backends{
+		API: backend, Connect: backend, Uploads: backend, MeterEvents: backend,
+	})), nil
 }

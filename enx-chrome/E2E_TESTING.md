@@ -70,11 +70,34 @@ npx playwright test --grep "login"
 npx playwright test e2e/popup-login.spec.ts:10  # line 10
 ```
 
-The local API, UI and fixture server output is saved to
+The local API, UI, fixture and Stripe adapter output is saved to
 `test-results/servers/enx-api.log`, `test-results/servers/enx-ui.log` and
-`test-results/servers/fixtures.log`. If a server exits during startup, its
+`test-results/servers/fixtures.log`, plus `test-results/servers/stripe.log`. If a server exits during startup, its
 last 50 log lines are printed. Set `E2E_SERVER_LOGS=1` to stream server output
 instead. Playwright test artifacts are in `test-results/artifacts/`.
+
+## Local billing dependency
+
+Playwright starts `e2e/fake-stripe/server.mjs` on `127.0.0.1:12112` before the
+API. It overrides `STRIPE_API_BASE_URL`, `STRIPE_SECRET_KEY` and
+`STRIPE_WEBHOOK_SECRET` with the local endpoint and fixed non-secret fixture
+values, and clears Portal configuration overrides. No Stripe dashboard setup or
+real Stripe key is required. The normal API startup validation, billing workers
+and webhook signature checks remain enabled.
+
+The adapter serves account discovery, configured subscription Prices and safe
+Portal configuration reads. Other requests, including all payment mutations,
+return 501; it never forwards requests to Stripe. `/requests` exposes only request
+methods and paths for startup assertions. Edit the adapter when a test needs a
+new response; it is not a payment lifecycle simulator. Billing E2E tests here do
+not prove real Stripe payments or webhook processing.
+
+`STRIPE_API_BASE_URL` is the API's normal optional endpoint setting: unset uses
+the Stripe SDK endpoints. The E2E stack routes every SDK backend to the local
+adapter. Signed-in tests still contact the real Clerk **development** instance
+through `@clerk/testing` and session sync, and need the documented dev credentials.
+No local authentication substitute is used. AI-provider wiring remains separate
+(#466).
 
 ## Test Structure
 
