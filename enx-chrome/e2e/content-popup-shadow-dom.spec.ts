@@ -308,8 +308,12 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
           (HTMLElement & { hidePopover: () => void }) | null
         el?.hidePopover()
       })
+      // Poll independently of animation frames: on ser8 a background page
+      // throttles rAF to ~1 Hz (1,016 ms/cycle); 50 ms polling takes ~63 ms/cycle.
       await page.waitForFunction(
-        () => document.querySelectorAll('#enx-anchored-overlay').length === 0
+        () => document.querySelectorAll('#enx-anchored-overlay').length === 0,
+        undefined,
+        { polling: 50 }
       )
     }
 
