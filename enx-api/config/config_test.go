@@ -172,6 +172,7 @@ func TestLoadSearchedPathIsAbsolute(t *testing.T) {
 // Deliberately not derived from envBindings: dropping a binding there must
 // fail this test.
 var envVars = map[string]string{
+	"STRIPE_API_BASE_URL":                             "stripe.api-base-url",
 	"ENX_PORT":                                        "enx.port",
 	"ENX_DEV_MODE":                                    "enx.dev-mode",
 	"DB_PATH":                                         "db.path",

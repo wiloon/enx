@@ -2,6 +2,13 @@
 
 This document records significant contributions made with AI assistance.
 
+## 2026-10-29: Restore local E2E billing startup — issue #552
+
+**Agent**: Codex
+**Solution**: Route the Stripe SDK through a configurable HTTP endpoint and start a local read-only adapter with fixed fixture credentials before the E2E API.
+
+**Lesson (required startup dependencies)**: When an optional subsystem becomes mandatory, update the process-level test stack as well as injected unit fixtures. Verify both HTTP readiness and a real outbound request reaching the local adapter; preserve startup validation and real Clerk authentication.
+
 ## 2026-10-29: Remove legacy billing runtime — issue #483
 
 **Agent**: Codex

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -85,5 +87,72 @@ func TestMain_DatabaseInitFailureExitsBeforeServing(t *testing.T) {
 	}
 	if strings.Contains(string(out), "listening") || strings.Contains(string(out), "auto-migration") {
 		t.Fatalf("the process went on past the failed initialisation:\n%s", out)
+	}
+}
+
+// The E2E stack uses the real executable and a local Stripe HTTP adapter.
+func TestMain_LocalStripeBecomesReady(t *testing.T) {
+	accountRead := make(chan struct{}, 1)
+	stripeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/account" {
+			select {
+			case accountRead <- struct{}{}:
+			default:
+			}
+			_, _ = w.Write([]byte(`{"id":"acct_e2e","object":"account"}`))
+			return
+		}
+		http.Error(w, `{"error":{"message":"unsupported local Stripe request"}}`, http.StatusNotImplemented)
+	}))
+	defer stripeServer.Close()
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(cfgPath, []byte("[stripe]\napi-base-url = \""+stripeServer.URL+"\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	_ = listener.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^$")
+	cmd.Env = append(os.Environ(), runMainEnv+"=1", "ENX_API_TEST_CONFIG="+cfgPath,
+		"DB_PATH="+filepath.Join(dir, "enx.db"), "ENX_PORT="+strconv.Itoa(port),
+		"METRICS_ADDR=127.0.0.1:0", "STRIPE_SECRET_KEY=sk_test_local_e2e",
+		"STRIPE_WEBHOOK_SECRET=whsec_local_e2e")
+	logFile, err := os.Create(filepath.Join(dir, "startup.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = logFile.Close() }()
+	cmd.Stdout, cmd.Stderr = logFile, logFile
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { cancel(); _ = cmd.Wait() }()
+	client := &http.Client{Timeout: time.Second}
+	for {
+		response, err := client.Get("http://127.0.0.1:" + strconv.Itoa(port) + "/api/version")
+		if err == nil {
+			_ = response.Body.Close()
+			if response.StatusCode == http.StatusOK {
+				break
+			}
+		}
+		select {
+		case <-ctx.Done():
+			output, _ := os.ReadFile(logFile.Name())
+			t.Fatalf("API did not become ready with local Stripe: %s", output)
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	select {
+	case <-accountRead:
+	case <-ctx.Done():
+		t.Fatal("Stripe account discovery did not reach the local adapter")
 	}
 }

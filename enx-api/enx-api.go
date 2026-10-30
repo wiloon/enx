@@ -294,7 +294,7 @@ func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
 
 func configuredStripeClient(cfg *config.Config) *stripeSDK.Client {
 	// The billing assembly validates required configuration before workers start.
-	client, err := billingstripe.New(cfg.Stripe.SecretKey.Reveal())
+	client, err := billingstripe.New(cfg.Stripe.SecretKey.Reveal(), cfg.Stripe.APIBaseURL)
 	if err != nil {
 		logger.Warnf("billing disabled: %v", err)
 		return nil

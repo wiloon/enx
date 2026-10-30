@@ -227,6 +227,8 @@ type Bedrock struct {
 }
 
 type Stripe struct {
+	// APIBaseURL overrides the Stripe SDK endpoint; empty uses Stripe.
+	APIBaseURL    string `mapstructure:"api-base-url"`
 	SecretKey     Secret `mapstructure:"secret-key"`
 	WebhookSecret Secret `mapstructure:"webhook-secret"`
 	// PortalConfigurationID optionally overrides Stripe's default Portal
@@ -905,6 +907,7 @@ var envBindings = map[string]string{
 	"sentence-translate.openrouter.model":          "SENTENCE_TRANSLATE_OPENROUTER_MODEL",
 	"sentence-translate.openrouter.rephrase-model": "SENTENCE_TRANSLATE_OPENROUTER_REPHRASE_MODEL",
 
+	"stripe.api-base-url":                       "STRIPE_API_BASE_URL",
 	"stripe.secret-key":                         "STRIPE_SECRET_KEY",
 	"stripe.webhook-secret":                     "STRIPE_WEBHOOK_SECRET",
 	"stripe.portal-configuration-id":            "STRIPE_PORTAL_CONFIGURATION_ID",
