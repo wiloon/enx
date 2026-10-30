@@ -532,3 +532,19 @@ With backend running and ECDICT configured, translation E2E tests can run agains
 - [Testing Chrome Extensions](https://playwright.dev/docs/chrome-extensions)
 - [Debugging Tests](https://playwright.dev/docs/debug)
 - [Best Practices](https://playwright.dev/docs/best-practices)
+
+## Deterministic AI and trial credits
+
+The local stack starts `../enx-fake-ai/server.mjs` at
+`http://127.0.0.1:12113` and configures the real ENX DeepSeek client to use it
+with a dummy key. It supports all five AI response contracts and returns
+fixed non-zero token usage. Edit its `fixtures` array to change the answers;
+see `../enx-fake-ai/README.md` for running it as a HomeLab container.
+
+The API uses a fixed E2E email HMAC key so normal sign-in grants trial credits
+in the disposable database. `ai-credits.spec.ts` reads the trial balance on
+Billing, translates through the real side panel, and checks credits were
+spent. It does not seed credit balances or mock backend responses. Clerk
+still uses real development-instance authentication over the network; only
+AI calls must stay inside the test environment. `test-results/servers/ai.log`
+records each completion's feature without logging prompts or credentials.

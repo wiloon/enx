@@ -13,11 +13,13 @@ on:
   pull_request:
     paths:
       - 'enx-chrome/**'
+      - 'enx-fake-ai/**'
       - '.github/workflows/enx-chrome-ci.yml'
   push:
     branches: [main]
     paths:
       - 'enx-chrome/**'
+      - 'enx-fake-ai/**'
       - '.github/workflows/enx-chrome-ci.yml'
 
 permissions:
