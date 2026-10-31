@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Accepted — 2026-09-06。已按 TDD 分 14 片实现：enx-chrome `READER_ADAPTER` + `onMessageExternal`（`enx:ping` / `enx:enable-reader`，origin 白名单 + 登录门禁）+ `stampExtensionPresence` + manifest `externally_connectable` / content-script 白名单 + 漂移守卫测试；enx-ui `/reader` 页 + `useExtensionStatus` hook + `enxExtension.ts` + `app-nav.ts` 加 `Reader`。两仓 jest 全绿（enx-chrome 既有 `pronunciation.test.ts` 3 失败为历史遗留、与本次无关）、`tsc` 生产代码干净、`next build` / `vite build` 通过。待回填：prod 品牌域、`NEXT_PUBLIC_ENX_EXTENSION_ID`、Web Store URL。 |
+| **状态** | Accepted — 2026-09-06。已按 TDD 分 14 片实现：enx-chrome `READER_ADAPTER` + `onMessageExternal`（`enx:ping` / `enx:enable-reader`，origin 白名单 + 登录门禁）+ `stampExtensionPresence` + manifest `externally_connectable` / content-script 白名单 + 漂移守卫测试；enx-ui `/reader` 页 + `useExtensionStatus` hook + `enxExtension.ts` + `app-nav.ts` 加 `Reader`。两仓 jest 全绿（enx-chrome 既有 `pronunciation.test.ts` 3 失败为历史遗留、与本次无关）、`tsc` 生产代码干净、`next build` / `vite build` 通过。待回填：prod 品牌域、运行期扩展 ID、Web Store URL。 |
 | **日期** | 2026-09-06 |
 | **关联 ADR** | [`adr-016-enx-ui-app-shell-navigation.md`](adr-016-enx-ui-app-shell-navigation.md)（`(app)` route group + 配置化导航 `app-nav.ts`——本 ADR「加一个分区 = 加一行」）、[`adr-010-x-tweet-page-support.md`](adr-010-x-tweet-page-support.md) / [`adr-011-word-highlight-css-highlight-api-and-feature-split.md`](adr-011-word-highlight-css-highlight-api-and-feature-split.md)（`SiteAdapter` 机制——本 ADR 新增 `READER_ADAPTER`）、[`adr-015-cognito-to-clerk-auth-migration.md`](adr-015-cognito-to-clerk-auth-migration.md)（Clerk 会话同步：网站登录 → 扩展即登录态，本 ADR 的 `onMessageExternal` 依赖它判断登录）、[`adr-018-dictionary-lookup-single-metered-seam.md`](adr-018-dictionary-lookup-single-metered-seam.md)（查词配额：reader 页的每次点词都会经 `GET /api/word/:word` 计入每日配额）、[`adr-006-page-word-lookup-in-sidepanel.md`](adr-006-page-word-lookup-in-sidepanel.md) / [`adr-014-sidepanel-clicked-word-and-token-billing.md`](adr-014-sidepanel-clicked-word-and-token-billing.md)（查词浮层 / Side Panel / token 计费——reader 页原样复用，不动） |
 | **关联清单** | [`../tasks/LAUNCH-CHECKLIST.md`](../tasks/LAUNCH-CHECKLIST.md) §0.1（生产品牌域未定——本 ADR 的 manifest `matches` / `externally_connectable` / 扩展 ID 的 prod 值都要等域名定了回填；homelab `enx.wiloon.lab` 可先跑通） |
@@ -107,7 +107,7 @@
   ```
   `chrome.runtime` 不存在、或回调带 `lastError`（没装扩展 / 扩展没白名单本域）→ **静默**（决策 5：没装扩展就是个静态英文阅读页，不做额外处理）。
 - 提供「Edit」按钮回到输入态；再次提交再发一次消息（用户改了文本要重扫）。
-- `EXT_ID` 来自 enx-ui 配置 `NEXT_PUBLIC_ENX_EXTENSION_ID`。**扩展 ID 是确定的**——`enx-chrome/manifest.json` 带固定 `key`，任何未打包加载 / homelab 构建都得到同一个 ID `combdcldlodkikjfhjbdbogjlfmnbjkf`（= `SHA256(DER(key))` 前 16 字节按 a–p 映射）。所以 `enx-ui/Containerfile` 直接把它作为 `ARG` 默认值写死，homelab Tekton 流水线**不需要**为它加 `--build-arg`；未来上 Web Store 换 ID 时覆盖这个 build-arg 即可。`NEXT_PUBLIC_ENX_EXTENSION_WEB_STORE_URL` 留空 → 引导 banner 只显示文字、不带链接（扩展尚未上架，见 LAUNCH-CHECKLIST）。
+- `EXT_ID` 来自 enx-ui 的运行期配置 `ENX_EXTENSION_ID`，由服务端逐请求注入 `window.__ENX_ENV__`；未设置时为空。扩展 ID 由 `enx-chrome/manifest.json` 的固定 `key` 决定，当前为 `combdcldlodkikjfhjbdbogjlfmnbjkf`（`SHA256(DER(key))` 前 16 字节按 a–p 映射）。部署时配置与所加载扩展一致的 ID；镜像不设构建参数默认值。`ENX_EXTENSION_WEB_STORE_URL` 留空时引导 banner 不带链接。
 
 **扩展探测 + 引导（`useExtensionStatus` hook）**：
 
@@ -181,7 +181,7 @@ onMessageExternal(message, sender, sendResponse):
 | **扩展 content script 首次跑在 enx-ui 自己的域名上**（含 `/lookup` 等非 reader 页） | `READER_ADAPTER.pageSupport` 把 `enxRun` 限死在 `/reader`；其它路由注入了脚本但不激活。本 ADR 显式记下这个边界 |
 | **功能对没装扩展的用户是空的**——菜单项「点了没反应」 | `useExtensionStatus` 探测（Option G），`not-installed` 时 reader 页显示可关闭的 Chrome Web Store 引导 banner（决策 1 / 5）。Web Store 上架 URL 待回填 |
 | **外部协议从 1 个类型变成 2 个**（`enx:ping` + `enx:enable-reader`） | 两个都无副作用、不透传内部 `action`；仍是固定小词表，不是通用 RPC。加第 3 个仍要回 Option C 评估 |
-| **生产品牌域未定**（LAUNCH-CHECKLIST §0.1） | manifest `matches` / `externally_connectable` / `NEXT_PUBLIC_ENX_EXTENSION_ID` 的 prod 值等域名定了回填；homelab `enx.wiloon.lab` + dev `localhost:3000` 先跑通 |
+| **生产品牌域未定**（LAUNCH-CHECKLIST §0.1） | manifest `matches` / `externally_connectable` / `ENX_EXTENSION_ID` 的 prod 值等域名定了回填；homelab `enx.wiloon.lab` + dev `localhost:3000` 先跑通 |
 | **扩展 ID 要在两处保持同步**（manifest `key` 决定的 ID ↔ enx-ui 配置） | manifest 有固定 `key` → ID 稳定；在 `env.ts` 和 enx-ui 配置各写一条注释互指 |
 | **时序**：enx-ui 必须在 `<article>` 真正进 DOM 之后再发消息 | content script 早在 `document_end` 注入好，`enxRun` 收到时才扫描 DOM；只要 enx-ui 的 `sendMessage` 在阅读态渲染后的 `useEffect` 里发即可 |
 | **reader 页会消耗每日查词配额**（ADR-018）——一次长文阅读会话点词量可观 | ADR-018 决策 8：免费上限设得「明显高于一次正常长阅读会话的点词总量的数倍」，正常用户碰不到；reader 页不引入新的配额口径 |
@@ -211,4 +211,5 @@ onMessageExternal(message, sender, sendResponse):
 
 ## 修订记录
 
+- 2026-10-30（#469）：更正扩展 ID 和商店 URL 为运行期配置，移除已过时的镜像构建参数默认值说明；与当前实现及 ADR-031 的运行期配置一致。
 - 2026-10-23（#231）：落实 owner 的单一构建目标决定，将 Reader 识别、安装态/学习模式标记与 manifest 的 UI 源统一到所选 `uiOrigins`，保留端口区别并移除未声明的旧域名；其他 Reader 页面规则不变。
