@@ -43,6 +43,9 @@
   --radius-xl: calc(var(--radius) + 4px);
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
+  --color-warning: var(--warning);
+  --color-warning-muted: var(--warning-muted);
+  --color-warning-foreground: var(--warning-foreground);
 }
 
 :root {
@@ -57,6 +60,11 @@
   --brand-hue: 200;
   --brand: oklch(0.55 0.13 var(--brand-hue));
   --brand-foreground: oklch(0.985 0 0);
+  /* Amber for a warning (a signed-out state, a missing extension): the
+     border, a background tint and the text on that tint. */
+  --warning: oklch(0.879 0.169 91.605);
+  --warning-muted: oklch(0.987 0.022 95.277);
+  --warning-foreground: oklch(0.414 0.112 45.904);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -93,6 +101,9 @@
 .dark {
   --brand: oklch(0.7 0.12 var(--brand-hue));
   --brand-foreground: oklch(0.205 0 0);
+  --warning: oklch(0.414 0.112 45.904);
+  --warning-muted: oklch(0.279 0.077 45.635 / 40%);
+  --warning-foreground: oklch(0.924 0.12 95.746);
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);

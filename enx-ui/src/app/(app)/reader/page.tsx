@@ -2,9 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileText, Pencil, Puzzle, ShieldCheck } from 'lucide-react'
-import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { requestReaderMode, webStoreUrl } from '@/lib/enxExtension'
@@ -53,6 +52,7 @@ export default function ReaderPage() {
   const extensionStatus = useExtensionStatus()
   const [openingId, setOpeningId] = useState<string | null>(null)
   const [openError, setOpenError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
 
   // Shares the My Documents page's cache, so a delete there shows up here.
   const recent = useQuery({
@@ -96,7 +96,11 @@ export default function ReaderPage() {
       : apiService.createReaderDocument(draft)
     request.then((resp) => {
       setSaveStatus(resp.success ? 'saved' : 'error')
-      if (resp.success && resp.data) setDocumentId(resp.data.id)
+      if (!resp.success) return
+      if (resp.data) setDocumentId(resp.data.id)
+      // The server may also have evicted the oldest document at the cap, so
+      // the list is refetched rather than patched.
+      queryClient.invalidateQueries({ queryKey: ['reader-documents'] })
     })
   }
 
@@ -164,7 +168,15 @@ export default function ReaderPage() {
             <span className="text-sm font-medium text-muted-foreground">
               Reading mode
             </span>
-            <span className="text-xs text-muted-foreground" role="status">
+            <span
+              className={cn(
+                'text-xs',
+                saveStatus === 'error'
+                  ? 'text-destructive'
+                  : 'text-muted-foreground'
+              )}
+              role="status"
+            >
               {saveStatus === 'saving' && 'Saving…'}
               {saveStatus === 'saved' && 'Saved · kept for 7 days'}
               {saveStatus === 'error' && "Couldn't save (still readable)"}
@@ -184,7 +196,7 @@ export default function ReaderPage() {
             />
             <Link
               href="/reader/history"
-              className="text-sm font-medium text-muted-foreground underline-offset-4 hover:underline"
+              className="rounded-sm text-sm font-medium text-brand underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring active:opacity-70"
             >
               My Documents
             </Link>
@@ -208,14 +220,14 @@ export default function ReaderPage() {
           </div>
         </div>
         {showInstallPrompt && (
-          <div className="flex items-start justify-between gap-4 rounded-md border border-input bg-muted/40 p-3 text-sm">
+          <div className="flex items-start justify-between gap-4 rounded-md border border-warning bg-warning-muted p-3 text-sm text-warning-foreground">
             <p>
               {storeUrl ? (
                 <a
                   href={storeUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="font-medium underline"
+                  className="rounded-sm font-medium underline outline-none focus-visible:ring-2 focus-visible:ring-ring active:opacity-70"
                 >
                   Install the Catglish extension
                 </a>
@@ -230,7 +242,7 @@ export default function ReaderPage() {
               type="button"
               aria-label="Dismiss"
               onClick={() => setPromptDismissed(true)}
-              className="text-muted-foreground hover:text-foreground"
+              className="rounded-sm px-1 opacity-70 outline-none hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring active:opacity-50"
             >
               ×
             </button>
@@ -266,7 +278,7 @@ export default function ReaderPage() {
       <ol className="grid gap-3 text-sm sm:grid-cols-3">
         {HOW_IT_WORKS.map((step, i) => (
           <li key={step} className="flex items-start gap-2">
-            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-brand/10 text-xs font-medium text-brand">
               {i + 1}
             </span>
             <span className="text-muted-foreground">{step}</span>
@@ -277,7 +289,7 @@ export default function ReaderPage() {
       {extensionStatus === 'not-installed' && (
         <div
           role="note"
-          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning bg-warning-muted px-4 py-3 text-sm text-warning-foreground"
         >
           <p className="flex items-start gap-2">
             <Puzzle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
@@ -296,50 +308,51 @@ export default function ReaderPage() {
         </div>
       )}
 
-      <Card className="py-0">
-        <form className="space-y-3 p-4 sm:p-6" onSubmit={handleSubmit}>
-          <div className="flex min-h-8 items-center justify-between gap-2">
-            <Label htmlFor="reader-input">Paste English text</Label>
+      <form
+        className="rounded-xl border bg-card shadow-xs focus-within:ring-2 focus-within:ring-ring"
+        onSubmit={handleSubmit}
+      >
+        <Label htmlFor="reader-input" className="sr-only">
+          Paste English text
+        </Label>
+        <textarea
+          id="reader-input"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          maxLength={MAX_CONTENT_LENGTH}
+          placeholder="Paste an AI reply, an article or any passage here."
+          className="field-sizing-content max-h-[60vh] min-h-56 w-full resize-none overflow-y-auto border-0 bg-transparent px-4 py-3 text-base outline-none"
+        />
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 pb-3">
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <ShieldCheck className="size-3.5" aria-hidden="true" />
+            Only you can see it. Deleted automatically after 7 days.
+          </p>
+          <div className="flex items-center gap-3">
             {draft.length === 0 && (
               <Button asChild variant="ghost" size="sm">
                 <Link href="/reader/sample">Try a sample</Link>
               </Button>
             )}
+            {nearLimit && (
+              <span
+                className={cn(
+                  'text-xs',
+                  draft.length > MAX_CONTENT_LENGTH
+                    ? 'text-destructive'
+                    : 'text-muted-foreground'
+                )}
+              >
+                {draft.length.toLocaleString()} /{' '}
+                {MAX_CONTENT_LENGTH.toLocaleString()} characters
+              </span>
+            )}
+            <Button type="submit" variant="brand" disabled={!canRead}>
+              Start reading
+            </Button>
           </div>
-          <textarea
-            id="reader-input"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            maxLength={MAX_CONTENT_LENGTH}
-            placeholder="Paste an AI reply, an article or any passage here."
-            className="field-sizing-content max-h-[60vh] min-h-56 w-full resize-none overflow-y-auto rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <ShieldCheck className="size-3.5" aria-hidden="true" />
-              Only you can see it. Deleted automatically after 7 days.
-            </p>
-            <div className="flex items-center gap-3">
-              {nearLimit && (
-                <span
-                  className={cn(
-                    'text-xs',
-                    draft.length > MAX_CONTENT_LENGTH
-                      ? 'text-red-600'
-                      : 'text-muted-foreground'
-                  )}
-                >
-                  {draft.length.toLocaleString()} /{' '}
-                  {MAX_CONTENT_LENGTH.toLocaleString()} characters
-                </span>
-              )}
-              <Button type="submit" disabled={!canRead}>
-                Start reading
-              </Button>
-            </div>
-          </div>
-        </form>
-      </Card>
+        </div>
+      </form>
 
       {recentDocuments.length > 0 && (
         <section className="space-y-2">
@@ -347,7 +360,7 @@ export default function ReaderPage() {
             <h3 className="text-sm font-medium">Recent</h3>
             <Link
               href="/reader/history"
-              className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+              className="rounded-sm text-sm text-brand underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring active:opacity-70"
             >
               View all
             </Link>
@@ -359,10 +372,10 @@ export default function ReaderPage() {
                   type="button"
                   onClick={() => handleOpenRecent(doc.id)}
                   disabled={openingId !== null}
-                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/50 disabled:opacity-50"
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset active:bg-muted disabled:opacity-50"
                 >
                   <FileText
-                    className="size-4 shrink-0 text-muted-foreground"
+                    className="size-4 shrink-0 text-brand"
                     aria-hidden="true"
                   />
                   <span className="min-w-0 flex-1 truncate text-sm">
@@ -377,7 +390,7 @@ export default function ReaderPage() {
               </li>
             ))}
           </ul>
-          {openError && <p className="text-sm text-red-600">{openError}</p>}
+          {openError && <p className="text-sm text-destructive">{openError}</p>}
         </section>
       )}
     </div>
