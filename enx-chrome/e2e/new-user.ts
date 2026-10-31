@@ -8,6 +8,9 @@ import { UI_ORIGIN } from './auth'
 /** A fresh external auth identity; no vocabulary or onboarding state is seeded. */
 export type FreshUser = { id: string; email: string }
 
+/** A fresh user signed in and synced; `localUserId` is enx-api's user id. */
+export type SignedInFreshUser = FreshUser & { localUserId: string }
+
 export type FreshUsers = {
   /**
    * Creates a Clerk user without signing it in; sign in with `clerk.signIn`
@@ -60,7 +63,7 @@ async function deleteUsers(
 
 export const test = extensionTest.extend<{
   freshUsers: FreshUsers
-  newUser: FreshUser
+  newUser: SignedInFreshUser
 }>({
   freshUsers: async ({ clerkTesting: _ }, use, testInfo) => {
     const secretKey = process.env.CLERK_SECRET_KEY
@@ -93,15 +96,18 @@ export const test = extensionTest.extend<{
     await clerk.signIn({ page: site, emailAddress: user.email })
     const popup = await context.newPage()
     await popup.goto(`chrome-extension://${extensionId}/popup.html`)
+    let localUserId = ''
     await expect(async () => {
       const result = await popup.evaluate(() =>
         chrome.runtime.sendMessage({ type: 'validateSession' })
       )
       expect(result?.success, JSON.stringify(result)).toBe(true)
+      expect(result?.data?.id).toEqual(expect.any(String))
+      localUserId = result.data.id
     }).toPass({ timeout: 30_000 })
     await popup.close()
     await site.close()
-    await use(user)
+    await use({ ...user, localUserId })
   },
 })
 
