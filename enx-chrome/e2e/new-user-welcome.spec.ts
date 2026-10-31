@@ -1,23 +1,9 @@
-import { readFileSync } from 'node:fs'
 import { enableLearningMode } from './helpers'
 import { test, expect } from './new-user'
 import { loginAvailable, LOGIN_SKIP_REASON, UI_ORIGIN } from './auth'
+import { readCreditsConfig } from './product-config'
 
-// Independent expected grant from the checked-in product configuration, never
-// the server's CREDITS_TRIAL_AMOUNT override used to prove this assertion red.
-const config = readFileSync(
-  new URL('../../enx-api/config.toml', import.meta.url),
-  'utf8'
-)
-const trialSection = config.match(
-  /^\[credits\.trial\]\s*$([\s\S]*?)(?=^\[|$(?![\s\S]))/m
-)?.[1]
-const trialAmount = Number(trialSection?.match(/^amount\s*=\s*(\d+)\s*$/m)?.[1])
-if (!Number.isSafeInteger(trialAmount) || trialAmount <= 0) {
-  throw new Error(
-    'Expected a positive [credits.trial] amount in enx-api/config.toml'
-  )
-}
+const { trialAmount } = readCreditsConfig()
 
 test.describe('New user onboarding', () => {
   test.skip(!loginAvailable, LOGIN_SKIP_REASON)
