@@ -5,6 +5,7 @@ import { join } from 'path'
 import { fileURLToPath } from 'url'
 import {
   API_ORIGIN,
+  EXTENSION_ID,
   FIXTURE_ORIGIN,
   loginAvailable,
   UI_ORIGIN,
@@ -125,7 +126,9 @@ export default defineConfig({
             // own process group, so Playwright's teardown (kill the shell's
             // group) orphaned `next`, which kept the stdio pipes open and
             // hung the run forever after the last test.
-            command: serverCommand('enx-ui', `cd ../enx-ui && API_BASE_URL=${API_ORIGIN} exec ./node_modules/.bin/next dev --turbopack`),
+            // ENX_EXTENSION_ID is the one manifest.json's `key` fixes, so the
+            // reader's web-to-extension channel (ADR-019) reaches dist-e2e.
+            command: serverCommand('enx-ui', `cd ../enx-ui && API_BASE_URL=${API_ORIGIN} ENX_EXTENSION_ID=${EXTENSION_ID} exec ./node_modules/.bin/next dev --turbopack`),
             url: UI_ORIGIN,
             reuseExistingServer: !process.env.CI,
             timeout: 120000,

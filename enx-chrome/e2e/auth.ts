@@ -16,6 +16,9 @@ export const UI_ORIGIN = TARGETS.development.frontendBaseUrl
  */
 export const FIXTURE_ORIGIN = 'http://localhost:8765'
 
+/** The extension ID manifest.json's `key` fixes, for every build. */
+export const EXTENSION_ID = 'combdcldlodkikjfhjbdbogjlfmnbjkf'
+
 /** Local enx-api the e2e build talks to (development target). */
 export const API_ORIGIN = TARGETS.development.apiBaseUrl
 
