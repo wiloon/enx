@@ -390,9 +390,7 @@ export default function ReaderPage() {
               </li>
             ))}
           </ul>
-          {openError && (
-            <p className="text-sm text-destructive">{openError}</p>
-          )}
+          {openError && <p className="text-sm text-destructive">{openError}</p>}
         </section>
       )}
     </div>

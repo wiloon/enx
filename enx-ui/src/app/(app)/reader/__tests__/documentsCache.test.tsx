@@ -1,10 +1,4 @@
-import {
-  render,
-  screen,
-  fireEvent,
-  act,
-  within,
-} from '@testing-library/react'
+import { render, screen, fireEvent, act, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ReaderPage from '../page'
 import ReaderHistoryPage from '../history/page'
@@ -92,7 +86,9 @@ function newClient() {
 }
 
 function mount(client: QueryClient, page: React.ReactElement) {
-  return render(<QueryClientProvider client={client}>{page}</QueryClientProvider>)
+  return render(
+    <QueryClientProvider client={client}>{page}</QueryClientProvider>
+  )
 }
 
 function paste(text: string) {
@@ -184,7 +180,9 @@ it('an edited document moves to the top of Recent and My Documents with its new 
 })
 
 describe('leaving /reader while the save is in flight', () => {
-  let pending: ReturnType<typeof deferred<{ success: true; data: { id: string } }>>
+  let pending: ReturnType<
+    typeof deferred<{ success: true; data: { id: string } }>
+  >
 
   beforeEach(() => {
     pending = deferred()
