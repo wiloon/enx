@@ -85,6 +85,38 @@ export function seedVocabulary(
 }
 
 /**
+ * Spends a fresh user's whole sign-up trial, leaving them with no AI credit
+ * and so not entitled to AI (ADR-048): the state a trial user reaches by
+ * using the trial up. `localUserId` is enx-api's user id (validateSession's
+ * `data.id`), not the Clerk id.
+ */
+export function zeroTrialBalance(
+  localUserId: string,
+  dbPath = process.env.E2E_DB_PATH
+): void {
+  if (!dbPath)
+    throw new Error('E2E_DB_PATH is not set (see playwright.config.ts)')
+
+  const db = new DatabaseSync(dbPath)
+  try {
+    db.exec('PRAGMA busy_timeout = 10000')
+    const { changes } = db
+      .prepare(
+        `UPDATE credit_accounts SET trial_balance = 0, updated_at = ?
+         WHERE user_id = ?`
+      )
+      .run(Date.now(), localUserId)
+    if (changes !== 1) {
+      throw new Error(
+        `zeroTrialBalance: expected one credit_accounts row for user ${localUserId}, updated ${changes}`
+      )
+    }
+  } finally {
+    db.close()
+  }
+}
+
+/**
  * Makes `word` one the E2E user has never looked up (query_count 0), so the
  * page stops underlining it after a reload. seedVocabulary marks every fixture
  * word as looked up; a test that needs an un-underlined word makes its own.

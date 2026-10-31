@@ -1,4 +1,6 @@
 import { BrowserContext, Page } from '@playwright/test'
+import { existsSync, readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 /**
  * Helper utilities for E2E tests
@@ -421,6 +423,36 @@ export async function wordLookupPosts(
       ((self as unknown as Record<string, unknown>).__enxWordLookupPosts ??
         []) as unknown[]
   )
+}
+
+const AI_LOG = fileURLToPath(
+  new URL('../test-results/servers/ai.log', import.meta.url)
+)
+
+/**
+ * How many completions the fake AI provider has answered this run, optionally
+ * only those for one feature (e.g. `word-definition`), read from its request
+ * log. Throws rather than report 0 when the log can't be trusted: with
+ * E2E_SERVER_LOGS=1 the server output bypasses the file, so any file there is
+ * stale from an earlier run.
+ */
+export function aiCompletionCount(feature?: string): number {
+  if (process.env.E2E_SERVER_LOGS === '1') {
+    throw new Error(
+      'aiCompletionCount reads test-results/servers/ai.log, which E2E_SERVER_LOGS=1 bypasses'
+    )
+  }
+  if (!existsSync(AI_LOG)) {
+    throw new Error(`The fake AI request log is missing: ${AI_LOG}`)
+  }
+  let count = 0
+  for (const line of readFileSync(AI_LOG, 'utf8').split('\n')) {
+    if (!line.startsWith('{')) continue
+    const entry = JSON.parse(line) as { event?: string; feature?: string }
+    if (entry.event !== 'completion') continue
+    if (feature === undefined || entry.feature === feature) count++
+  }
+  return count
 }
 
 /**

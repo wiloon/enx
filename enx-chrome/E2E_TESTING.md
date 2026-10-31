@@ -549,6 +549,29 @@ still uses real development-instance authentication over the network; only
 AI calls must stay inside the test environment. `test-results/servers/ai.log`
 records each completion's feature without logging prompts or credentials.
 
+## AI word fallback and running out of credits (#471)
+
+`ai-word-and-credits.spec.ts` needs `ECDICT_DB_PATH`: only a clean
+dictionary miss offers the AI fallback, and without ECDICT a missing word
+answers 503. With Clerk credentials set and `ECDICT_DB_PATH` unset, these
+specs fail with that message rather than skip.
+
+Each test uses a fresh user (`new-user.ts`) and a new letters-only word that
+it inserts into the fixture page at runtime, so the word misses both `words`
+and ECDICT. The AI fallback test clicks "Look up with AI" and checks the fake
+definition, the AI badge, one more `word-definition` completion and a lower
+trial balance on Billing. The out-of-credit tests set the user's
+`credit_accounts.trial_balance` to 0 in SQLite (`zeroTrialBalance` in
+`seed.ts`) and check the locked word lookup and the side panel's
+insufficient-credit error, with no completions made. Completions are counted
+from `test-results/servers/ai.log`, so these specs fail under
+`E2E_SERVER_LOGS=1`.
+
+```bash
+ECDICT_DB_PATH="$HOME/.local/share/enx/ecdict/stardict.db" \
+  pnpm test:e2e ai-word-and-credits.spec.ts --repeat-each=3
+```
+
 ## Fresh-user onboarding (#467)
 
 `new-user-welcome.spec.ts` uses `new-user.ts` rather than the shared
