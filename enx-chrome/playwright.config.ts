@@ -110,7 +110,9 @@ export default defineConfig({
       // pins the repo config: without it viper checks /usr/local/etc/enx/ and
       // ~/.enx/ first, and a stale config there (no [clerk] section) makes
       // every signed-in request fail with 503 "auth service unavailable".
-      command: serverCommand('enx-api', `cd ../enx-api && ENX_PORT=${new URL(API_ORIGIN).port} ENX_DEV_MODE=true SENTENCE_TRANSLATE_PROVIDER=deepseek SENTENCE_TRANSLATE_DEEPSEEK_BASE_URL=http://127.0.0.1:12113 DEEPSEEK_API_KEY=fake ACCOUNT_EMAIL_HMAC_KEY=local-e2e-email-hmac-key STRIPE_API_BASE_URL=http://127.0.0.1:12112 STRIPE_SECRET_KEY=sk_test_local_e2e STRIPE_WEBHOOK_SECRET=whsec_local_e2e STRIPE_PORTAL_CONFIGURATION_ID= STRIPE_PORTAL_RESTRICTED_CONFIGURATION_ID= DB_PATH=${process.env.E2E_DB_PATH} ECDICT_DB_PATH=\${ECDICT_DB_PATH:-} go run . -c config.toml`),
+      // APP_FRONTEND_BASE_URL points invite links and Stripe return URLs at
+      // the local enx-ui.
+      command: serverCommand('enx-api', `cd ../enx-api && ENX_PORT=${new URL(API_ORIGIN).port} ENX_DEV_MODE=true APP_FRONTEND_BASE_URL=${UI_ORIGIN} SENTENCE_TRANSLATE_PROVIDER=deepseek SENTENCE_TRANSLATE_DEEPSEEK_BASE_URL=http://127.0.0.1:12113 DEEPSEEK_API_KEY=fake ACCOUNT_EMAIL_HMAC_KEY=local-e2e-email-hmac-key STRIPE_API_BASE_URL=http://127.0.0.1:12112 STRIPE_SECRET_KEY=sk_test_local_e2e STRIPE_WEBHOOK_SECRET=whsec_local_e2e STRIPE_PORTAL_CONFIGURATION_ID= STRIPE_PORTAL_RESTRICTED_CONFIGURATION_ID= DB_PATH=${process.env.E2E_DB_PATH} ECDICT_DB_PATH=\${ECDICT_DB_PATH:-} go run . -c config.toml`),
       url: `${API_ORIGIN}/api/version`,
       reuseExistingServer: false,
       timeout: 60000, // `go run` compiles first
