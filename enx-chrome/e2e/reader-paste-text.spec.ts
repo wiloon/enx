@@ -76,9 +76,8 @@ test.describe('Paste-text reader with the extension', () => {
     await expect(page.getByText(SAVED, { exact: true })).toBeVisible()
   })
 
-  // Known bug, reported in #469's follow-ups: submit does not invalidate the
-  // cached `reader-documents` list, so My Documents opened from the reader
-  // shows the pre-save list. Replace with the bug's number once filed.
+  // Known bug #572: submit does not invalidate the cached `reader-documents`
+  // list, so My Documents opened from the reader shows the pre-save list.
   test.fixme('My Documents lists the newly saved text with its preview and update time', async ({
     page,
     extensionId,
