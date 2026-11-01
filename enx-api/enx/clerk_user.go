@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm/clause"
 )
 
 // NewUserHook runs once, right after a local user is provisioned -- e.g. to
@@ -73,14 +74,7 @@ func GetOrCreateClerkUser(clerkUserID string, p ClerkProfile, lastLoginUpdateInt
 	}
 	existing := GetUserByClerkUserID(clerkUserID)
 	if existing.Id != "" {
-		syncProfile(existing, p)
-		now := time.Now()
-		if now.Sub(existing.LastLoginTime) >= lastLoginUpdateInterval {
-			_ = sqlitex.DB.Model(existing).Updates(map[string]interface{}{
-				"last_login_time": now,
-				"updated_at":      now,
-			}).Error
-		}
+		signInExisting(existing, p, lastLoginUpdateInterval)
 		return existing, nil
 	}
 
@@ -107,8 +101,23 @@ func GetOrCreateClerkUser(clerkUserID string, p ClerkProfile, lastLoginUpdateInt
 		UpdateTime:    time.Now(),
 		LastLoginTime: time.Now(),
 	}
-	if err := u.Create(); err != nil {
-		return nil, err
+	// A concurrent first request may have provisioned the same Clerk user
+	// since the read above. Only a clash on clerk_user_id is skipped; any
+	// other constraint failure still surfaces.
+	created := sqlitex.DB.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "clerk_user_id"}},
+		DoNothing: true,
+	}).Create(u)
+	if created.Error != nil {
+		return nil, created.Error
+	}
+	if created.RowsAffected == 0 {
+		winner := &User{}
+		if err := sqlitex.DB.Where("clerk_user_id = ?", clerkUserID).First(winner).Error; err != nil {
+			return nil, fmt.Errorf("re-read clerk user %s after a lost insert: %w", clerkUserID, err)
+		}
+		signInExisting(winner, p, lastLoginUpdateInterval)
+		return winner, nil
 	}
 	logger.Infof("provisioned clerk user clerk_user_id=%s id=%s name=%s", clerkUserID, u.Id, resolvedName)
 	if newUserHook != nil {
@@ -119,6 +128,19 @@ func GetOrCreateClerkUser(clerkUserID string, p ClerkProfile, lastLoginUpdateInt
 		}
 	}
 	return u, nil
+}
+
+// signInExisting is what every request of an already provisioned user does:
+// sync the profile and, when it is stale, re-write last_login_time.
+func signInExisting(u *User, p ClerkProfile, lastLoginUpdateInterval time.Duration) {
+	syncProfile(u, p)
+	now := time.Now()
+	if now.Sub(u.LastLoginTime) >= lastLoginUpdateInterval {
+		_ = sqlitex.DB.Model(u).Updates(map[string]interface{}{
+			"last_login_time": now,
+			"updated_at":      now,
+		}).Error
+	}
 }
 
 // syncProfile writes each non-empty profile field that differs from u's and
