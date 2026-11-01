@@ -126,7 +126,7 @@ export function waitForContentReady(
 }
 
 export function createSpaRebuilder(deps: SpaRebuilderDeps): SpaRebuilder {
-  // Bumped on every route change; a run whose captured value no longer
+  // Bumped on every route change and by stop(); a run whose captured value no longer
   // matches has been superseded and abandons. Rapid tweet-switching thus
   // completes only the last.
   let gen = 0

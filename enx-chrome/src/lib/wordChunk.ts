@@ -10,7 +10,10 @@ export interface WordChunkDeps {
   /** Sends one paragraph to paragraph-init through the background. */
   send: (paragraph: string) => Promise<BackgroundResponse>
   sleep: (ms: number) => Promise<void>
-  /** A newer run (an SPA tweet switch) took over: drop this one's answer. */
+  /**
+   * This run was superseded (a newer run from an SPA tweet switch, learning
+   * mode turned off, or an orphaned script standing down): drop its answer.
+   */
   isStale: () => boolean
 }
 

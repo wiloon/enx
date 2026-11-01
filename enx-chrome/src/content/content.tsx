@@ -872,8 +872,9 @@ const processArticleContent = async (
     const chunkDeps: WordChunkDeps = {
       send: paragraph => sendToBackground({ type: 'getWords', paragraph }),
       sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
-      // A newer tweet switch landed while a request was in flight -- stop so
-      // we don't cache/paint for a tweet the user has left.
+      // This run was superseded while a request was in flight (a newer tweet
+      // switch, learning mode turned off, or this orphan standing down) --
+      // stop so we don't cache/paint for a page state that is gone.
       isStale: stale,
     }
 
@@ -883,7 +884,8 @@ const processArticleContent = async (
       )
     } else {
       for (let i = 0; i < uniqueWords.length; i += chunkSize) {
-        // Superseded by a newer tweet switch: not a failure.
+        // Superseded (newer tweet switch, learning mode off, stand-down):
+        // not a failure.
         if (stale()) return ENABLE_OK
         const chunk = uniqueWords.slice(i, i + chunkSize)
         console.log(

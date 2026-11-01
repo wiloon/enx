@@ -347,6 +347,31 @@ describe('an orphan that is told to stand down', () => {
     expect(overlays()).toHaveLength(0)
   })
 
+  it('never clears the fresh script’s highlights when the preference read resolves late', async () => {
+    const orphan = await loadContentScript()
+    await orphan({ action: 'enxRun' })
+    let releaseRead: (value: Record<string, unknown>) => void = () => {}
+    ;(chrome.storage.local.get as jest.Mock).mockImplementationOnce(
+      () => new Promise(resolve => (releaseRead = resolve))
+    )
+    await clickFox() // the lookup succeeds and waits on the preference read
+
+    orphanAndAnnounce()
+    setRuntimeId(LIVE_ID)
+    const fresh = await loadContentScript()
+    await fresh({ action: 'enxRun' })
+    expect(CSS.highlights.size).toBeGreaterThan(0)
+    const set = jest.spyOn(CSS.highlights, 'set')
+    const del = jest.spyOn(CSS.highlights, 'delete')
+
+    releaseRead({})
+    await settle()
+
+    expect(set).not.toHaveBeenCalled()
+    expect(del).not.toHaveBeenCalled()
+    expect(CSS.highlights.size).toBeGreaterThan(0)
+  })
+
   it('never rebinds clicks or paints after an SPA navigation', async () => {
     const navigation = new FakeNavigation()
     ;(window as { navigation?: unknown }).navigation = navigation
