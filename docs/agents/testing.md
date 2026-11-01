@@ -40,7 +40,7 @@ Signed-in e2e uses Clerk's official testing package, `@clerk/testing`, against t
 
 - Needs `CLERK_SECRET_KEY` (dev instance, `sk_test_…`; `clerkSetup` refuses a production key) and `E2E_CLERK_USER_EMAIL=e2e+clerk_test@example.com` (already created in the dev instance).
 - Agents run signed-in specs themselves: load the dev key from the main checkout's `enx-ui/.env.local` into the test process only (`set -a; . <main checkout>/enx-ui/.env.local; set +a`), never print it. The maintainer approved this for the dev key on 2026-10-13.
-- Without them, signed-in specs are skipped with a stated reason, never faked. Specs that need no sign-in (options page, signed-out popup) run anywhere.
+- Without them, signed-in specs in the local lane are skipped with a stated reason, never faked. The HomeLab lane (`homelab-deployment.spec.ts`) fails instead of skipping. Specs that need no sign-in (options page, signed-out popup) run anywhere.
 - enx-chrome: `pnpm build:e2e`, then `CLERK_SECRET_KEY=… E2E_CLERK_USER_EMAIL=… pnpm test:e2e`. `E2E_CHROMIUM_PATH` points at an installed Chromium when Playwright's own build is missing (it must be Chromium; branded Chrome ignores `--load-extension`).
 - enx-ui: `set -a; . ./.env.local; set +a; E2E_CLERK_USER_EMAIL=… pnpm test:e2e` (the config's `webServer.env` overrides `.env.local`, so export first).
 

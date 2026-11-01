@@ -6,7 +6,7 @@ import {
   LOGIN_SKIP_REASON,
   UI_ORIGIN,
 } from './auth'
-import { aiCompletionCount, enableLearningMode } from './helpers'
+import { aiCompletionCount, clickWord, enableLearningMode } from './helpers'
 import { test, expect } from './new-user'
 import { zeroTrialBalance } from './seed'
 
@@ -38,33 +38,6 @@ async function openArticleWith(page: Page, word: string): Promise<void> {
     .evaluate((paragraph, w) => {
       paragraph.append(` Everyone admired the ${w} at the meeting.`)
     }, word)
-}
-
-/**
- * Clicks `word` in the article and waits for its popover. Fresh users have no
- * painted highlights, so a DOM Range locates the word's screen box.
- */
-async function clickWord(page: Page, word: string): Promise<Locator> {
-  await page.bringToFront()
-  const paragraph = page.locator('article p').first()
-  await paragraph.scrollIntoViewIfNeeded()
-  const point = await paragraph.evaluate((element, w) => {
-    const nodes = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
-    for (let node = nodes.nextNode(); node; node = nodes.nextNode()) {
-      const offset = node.textContent?.indexOf(w) ?? -1
-      if (offset < 0) continue
-      const range = document.createRange()
-      range.setStart(node, offset)
-      range.setEnd(node, offset + w.length)
-      const box = range.getBoundingClientRect()
-      return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
-    }
-    throw new Error(`The article must contain the word ${w}`)
-  }, word)
-  await page.mouse.click(point.x, point.y)
-  const popover = page.locator('#enx-anchored-overlay')
-  await expect(popover.getByTestId('word-popover-content')).toBeVisible()
-  return popover
 }
 
 async function trialCredits(trial: Locator): Promise<number> {

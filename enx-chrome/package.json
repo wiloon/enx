@@ -19,7 +19,6 @@
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:homelab": "playwright test --config playwright.homelab.config.ts",
-    "smoke:homelab": "node scripts/homelab-smoke.mjs",
     "test:all": "pnpm test && pnpm test:e2e",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

@@ -13,6 +13,13 @@ const __dirname = path.dirname(__filename)
 export type ExtensionOptions = {
   /** Built extension to load, relative to enx-chrome/ (ADR-037: dist-e2e). */
   extensionDir: string
+  /** enx-ui origin `signedIn` signs in on; the build must sync from it. */
+  uiOrigin: string
+  /**
+   * Whether `signedIn` gives the user the fixture vocabulary. Seeding writes
+   * the local throwaway database directly, so a deployed lane turns it off.
+   */
+  seedsVocabulary: boolean
 }
 
 type ExtensionFixtures = ExtensionOptions & {
@@ -38,6 +45,8 @@ type WorkerFixtures = {
  */
 export const test = base.extend<ExtensionFixtures, WorkerFixtures>({
   extensionDir: ['dist-e2e', { option: true }],
+  uiOrigin: [UI_ORIGIN, { option: true }],
+  seedsVocabulary: [true, { option: true }],
 
   context: async ({ extensionDir, headless }, use) => {
     const pathToExtension = path.join(__dirname, '..', extensionDir)
@@ -46,15 +55,6 @@ export const test = base.extend<ExtensionFixtures, WorkerFixtures>({
         `${extensionDir}/ is not built -- run \`pnpm build:e2e\` first (ADR-037)`
       )
     }
-
-    // ENX_PROXY (e.g. http://127.0.0.1:7890) routes ALL of Chrome's traffic,
-    // including the chrome.identity.launchWebAuthFlow auth window, through the
-    // proxy -- which a system/extension proxy does not reliably do. Used by the
-    // homelab interactive-OAuth test to prove the "Authorization page could not
-    // be loaded" failure is a proxy-coverage issue.
-    const proxy = process.env.ENX_PROXY
-      ? { server: process.env.ENX_PROXY }
-      : undefined
 
     // A fresh temporary profile per test, so chrome.storage never leaks
     // between tests. E2E_CHROMIUM_PATH reuses an already-installed Chromium
@@ -67,7 +67,6 @@ export const test = base.extend<ExtensionFixtures, WorkerFixtures>({
     const context = await chromium.launchPersistentContext('', {
       headless,
       channel: 'chromium',
-      proxy,
       executablePath: process.env.E2E_CHROMIUM_PATH || undefined,
       args: [
         `--disable-extensions-except=${pathToExtension}`,
@@ -106,11 +105,14 @@ export const test = base.extend<ExtensionFixtures, WorkerFixtures>({
     { scope: 'worker' },
   ],
 
-  signedIn: async ({ context, extensionId, clerkTesting: _ }, use) => {
+  signedIn: async (
+    { context, extensionId, uiOrigin, seedsVocabulary, clerkTesting: _ },
+    use
+  ) => {
     // Sign in on the website, exactly where a user would; the extension picks
     // the session up through syncHost (ADR-015).
     const site = await context.newPage()
-    await site.goto(`${UI_ORIGIN}/`)
+    await site.goto(`${uiOrigin}/`)
     await clerk.signIn({ page: site, emailAddress: E2E_USER_EMAIL })
 
     // Done only when the extension has synced the session AND enx-api accepted
@@ -132,7 +134,7 @@ export const test = base.extend<ExtensionFixtures, WorkerFixtures>({
     await site.close()
 
     // The user now exists in enx-api; give it the fixture vocabulary.
-    seedVocabulary(localUserId)
+    if (seedsVocabulary) seedVocabulary(localUserId)
 
     await use()
   },

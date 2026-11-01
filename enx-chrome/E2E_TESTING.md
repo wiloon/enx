@@ -76,6 +76,43 @@ The local API, UI, fixture and Stripe adapter output is saved to
 last 50 log lines are printed. Set `E2E_SERVER_LOGS=1` to stream server output
 instead. Playwright test artifacts are in `test-results/artifacts/`.
 
+## HomeLab lane (run by hand)
+
+`playwright.homelab.config.ts` drives the `dist-homelab` build against the
+deployed `https://enx.wiloon.lab` and `https://enx-api.wiloon.lab` (ADR-037
+Decision 6). It starts no local servers and checks only what the local stack
+cannot see: the stamped `/api/version` commit, the extension ID, enx-api's
+auth (401 for no token and a garbage token) and CORS for the extension's
+origin, session sync from the HomeLab site, and one lookup on
+`/reader/sample` counted on `/words`. Run it before the internal beta and
+before a release; nothing runs it on a schedule or in CI. New feature e2e
+belongs in the local suite, not here. The normal `pnpm test:e2e` ignores
+`homelab-*.spec.ts`.
+
+It needs the Clerk **development** credentials: `CLERK_SECRET_KEY`
+(`sk_test_…`) and `E2E_CLERK_USER_EMAIL`. Without them the signed-in tests
+fail; they never skip, so a hand run cannot pass empty.
+
+```bash
+set -a; . ../enx-ui/.env.local; set +a   # CLERK_SECRET_KEY, never printed
+export E2E_CLERK_USER_EMAIL=e2e+clerk_test@example.com
+pnpm build                                # dist-homelab/
+pnpm test:e2e:homelab                     # headless; add --headed to watch it
+```
+
+The lane writes to the HomeLab database as the e2e user and seeds nothing
+(HomeLab's database is not reachable). The lookup test reads the `reliable`
+row's count before and after, so run it while nobody else uses that account.
+After the first run caches `reliable`, the lookup no longer proves ECDICT is
+available on HomeLab.
+
+Two trust stores need the homelab CA: Node's (`NODE_EXTRA_CA_CERTS=<ca.crt>`)
+for the `fetch` checks, and Chromium's. On Linux, Chromium reads the user's
+NSS database (`~/.pki/nssdb`; add the CA with `certutil`).
+
+`homelab-x-tweet-rebuild.spec.ts` stays skipped: x.com is injected on demand,
+which Playwright cannot grant.
+
 ## Local billing dependency
 
 Playwright starts `e2e/fake-stripe/server.mjs` on `127.0.0.1:12112` before the

@@ -23,7 +23,10 @@ import {
  *   ENX_X_TWEET_URL='https://x.com/<user>/status/<id>' \
  *     pnpm test:e2e:homelab
  *
- * Get ENX_ACCESS_TOKEN from scripts/homelab-smoke.mjs (same as homelab-login).
+ * NOTE: the ENX_ACCESS_TOKEN seeding above predates Clerk (ADR-037) and the
+ * token smoke script is gone; update these instructions when this spec is next
+ * revived.
+ *
  * Pick ENX_X_TWEET_URL as an English-language tweet whose detail view shows at
  * least one reply / quoted tweet you can click through to without logging into
  * x.com. The jest suite covers the pure rebuild logic
@@ -53,8 +56,8 @@ test.describe('Homelab - X tweet-switch auto-rebuild', () => {
       'set ENX_ACCESS_TOKEN and ENX_X_TWEET_URL'
     )
 
-    // Seed the enx session the same way homelab-login.spec.ts does -- from an
-    // extension page, so chrome.storage is reachable.
+    // Seed the enx session from an extension page, so chrome.storage is
+    // reachable.
     const seedPage = await page.context().newPage()
     await seedPage.goto(`chrome-extension://${extensionId}/popup.html`)
     await seedPage.waitForLoadState('domcontentloaded')
