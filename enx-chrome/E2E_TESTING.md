@@ -129,11 +129,17 @@ before/after measurement: coordinate runs, and keep everyone else off the
 account meanwhile. A gain of +600 usually means two runs overlapped; check for
 a concurrent run before suspecting a double grant.
 
-Stripe Checkout answers headless Chromium with an hCaptcha challenge after a
-few payments (seen on ser8, 2026-11-01: three payments went through, then
-every Pay click stalled on a challenge). So this one test runs only in headed
-Chromium on macOS and is skipped everywhere else with that reason; the rest
-of the lane still runs headless on ser8. Never work around the challenge.
+Stripe Checkout often stops a Pay click with an invisible hCaptcha challenge,
+and Checkout then never confirms the payment. On 2026-11-01, headless on ser8,
+three payments went through and then every attempt stalled; headed on macOS,
+two of three attempts stalled. So this one test is a hand run before a release:
+it runs only in headed Chromium on macOS and is skipped everywhere else with
+that reason. The rest of the lane still runs headless on ser8.
+
+One passing run is enough. A failure that names the hCaptcha challenge bought no
+credits and says nothing about ENX, so run the test again later. Do not use
+`--repeat-each`, because repeated payments make a challenge more likely. Never
+work around the challenge.
 
 A headed run on macOS, from `enx-chrome/`:
 
@@ -144,11 +150,10 @@ set -a; . ../enx-ui/.env.local; set +a    # CLERK_SECRET_KEY, never printed
 export E2E_CLERK_USER_EMAIL=e2e+clerk_test@example.com
 export NODE_EXTRA_CA_CERTS=/path/to/homelab-ca.crt   # Node's fetch checks
 pnpm build                                # dist-homelab/
-ENX_HOMELAB=1 pnpm test:e2e:homelab --headed \
-  -g 'Small top-up' --repeat-each=3 --retries=0
+ENX_HOMELAB=1 pnpm test:e2e:homelab --headed -g 'Small top-up' --retries=0
 ```
 
-Drop `-g`, `--repeat-each` and `--retries` to run the whole lane headed.
+Drop `-g` and `--retries` to run the whole lane headed.
 
 Chromium on macOS trusts what the macOS keychain trusts, so add the HomeLab
 CA there once:
@@ -169,6 +174,10 @@ openssl s_client -connect enx.wiloon.lab:443 -servername enx.wiloon.lab \
   </dev/null 2>/dev/null | openssl x509 > /tmp/enx-homelab-leaf.pem
 security verify-cert -c /tmp/enx-homelab-leaf.pem -p ssl -s enx.wiloon.lab
 ```
+
+`security verify-cert` can instead report missing certificate transparency
+timestamps (SCTs) for the private CA. On 2026-11-01 Chromium still loaded the
+HomeLab site with that report.
 
 `homelab-x-tweet-rebuild.spec.ts` stays skipped: x.com is injected on demand,
 which Playwright cannot grant.

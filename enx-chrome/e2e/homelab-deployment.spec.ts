@@ -260,7 +260,7 @@ test.describe('HomeLab signed in', () => {
     // only selected test also skips the credentials beforeAll.
     test.skip(
       process.platform !== 'darwin' || headless,
-      'Stripe Checkout answers headless Chromium with an hCaptcha challenge after a few payments, so this test runs only headed on macOS -- see E2E_TESTING.md'
+      'Stripe Checkout often answers automated Chromium with an hCaptcha challenge, so this test is a hand run: headed on macOS only -- see E2E_TESTING.md'
     )
     test.setTimeout(240_000)
     await page.goto(`${SITE}/billing`)
@@ -287,8 +287,26 @@ test.describe('HomeLab signed in', () => {
       timeout: 30_000,
     })
     console.log('Checkout session:', await sessionType)
+    // Stripe's risk check can stop a Pay click with an invisible hCaptcha, so
+    // Checkout never confirms the payment. That says nothing about ENX, so
+    // name it instead of reporting a bare navigation timeout.
+    let challenged = false
+    let confirmed = false
+    page.on('request', r => {
+      if (/api\.hcaptcha\.com\/getcaptcha\//.test(r.url())) challenged = true
+      if (/\/payment_pages\/[^/]+\/confirm/.test(r.url())) confirmed = true
+    })
     await payWithTestCard(page)
-    await page.waitForURL(`${SITE}/billing/success**`, { timeout: 60_000 })
+    await page
+      .waitForURL(`${SITE}/billing/success**`, { timeout: 60_000 })
+      .catch((error: unknown) => {
+        if (challenged && !confirmed) {
+          throw new Error(
+            'Stripe stopped the payment with an hCaptcha challenge, and Checkout never confirmed it. No credits were bought and this says nothing about ENX: run the test again -- see E2E_TESTING.md'
+          )
+        }
+        throw error
+      })
 
     await expect
       .poll(
