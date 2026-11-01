@@ -83,8 +83,10 @@ deployed `https://enx.wiloon.lab` and `https://enx-api.wiloon.lab` (ADR-037
 Decision 6). It starts no local servers and checks only what the local stack
 cannot see: the stamped `/api/version` commit, the extension ID, enx-api's
 auth (401 for no token and a garbage token) and CORS for the extension's
-origin, session sync from the HomeLab site, and one lookup on
-`/reader/sample` counted on `/words`. Run it before the internal beta and
+origin, session sync from the HomeLab site, one lookup on
+`/reader/sample` counted on `/words`, and one Small top-up paid in Stripe
+Sandbox Checkout that grants exactly 300 top-up credits (see
+[Top-up payment test](#top-up-payment-test)). Run it before the internal beta and
 before a release; nothing runs it on a schedule or in CI. New feature e2e
 belongs in the local suite, not here. The normal `pnpm test:e2e` ignores
 `homelab-*.spec.ts`.
@@ -109,6 +111,64 @@ available on HomeLab.
 Two trust stores need the homelab CA: Node's (`NODE_EXTRA_CA_CERTS=<ca.crt>`)
 for the `fetch` checks, and Chromium's. On Linux, Chromium reads the user's
 NSS database (`~/.pki/nssdb`; add the CA with `certutil`).
+
+### Top-up payment test
+
+`a Small top-up paid in Stripe Sandbox Checkout grants exactly 300 top-up
+credits` reads **Top-up credit balance** on `/billing`, clicks **Buy** on
+**Small top-up**, pays on `checkout.stripe.com` with the test card
+`4242 4242 4242 4242`, waits for `/billing/success`, then reloads `/billing`
+until the balance is exactly 300 above where it started. The webhook that
+grants the credits is asynchronous (forwarded by `enx-stripe-cli`), so the
+success page alone proves nothing. It prints whether Checkout used the e2e
+user's existing Stripe Customer or none.
+
+Each run adds a Sandbox payment and 300 top-up credits to the e2e user, for
+good. The test needs exclusive use of that shared account for the whole
+before/after measurement: coordinate runs, and keep everyone else off the
+account meanwhile. A gain of +600 usually means two runs overlapped; check for
+a concurrent run before suspecting a double grant.
+
+Stripe Checkout answers headless Chromium with an hCaptcha challenge after a
+few payments (seen on ser8, 2026-11-01: three payments went through, then
+every Pay click stalled on a challenge). So this one test runs only in headed
+Chromium on macOS and is skipped everywhere else with that reason; the rest
+of the lane still runs headless on ser8. Never work around the challenge.
+
+A headed run on macOS, from `enx-chrome/`:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm exec playwright install chromium     # Playwright's own Chromium
+set -a; . ../enx-ui/.env.local; set +a    # CLERK_SECRET_KEY, never printed
+export E2E_CLERK_USER_EMAIL=e2e+clerk_test@example.com
+export NODE_EXTRA_CA_CERTS=/path/to/homelab-ca.crt   # Node's fetch checks
+pnpm build                                # dist-homelab/
+ENX_HOMELAB=1 pnpm test:e2e:homelab --headed \
+  -g 'Small top-up' --repeat-each=3 --retries=0
+```
+
+Drop `-g`, `--repeat-each` and `--retries` to run the whole lane headed.
+
+Chromium on macOS trusts what the macOS keychain trusts, so add the HomeLab
+CA there once:
+
+```bash
+sudo security add-trusted-cert -d -r trustRoot \
+  -k /Library/Keychains/System.keychain /path/to/homelab-ca.crt
+```
+
+Check both trust stores with certificate verification on (never
+`NODE_TLS_REJECT_UNAUTHORIZED=0` or `--ignore-certificate-errors`):
+
+```bash
+# Node: prints 200 only if NODE_EXTRA_CA_CERTS makes the chain valid
+node -e "fetch('https://enx-api.wiloon.lab/api/version').then(r => console.log(r.status))"
+# macOS keychain (what Chromium uses): "...certificate verification successful"
+openssl s_client -connect enx.wiloon.lab:443 -servername enx.wiloon.lab \
+  </dev/null 2>/dev/null | openssl x509 > /tmp/enx-homelab-leaf.pem
+security verify-cert -c /tmp/enx-homelab-leaf.pem -p ssl -s enx.wiloon.lab
+```
 
 `homelab-x-tweet-rebuild.spec.ts` stays skipped: x.com is injected on demand,
 which Playwright cannot grant.
