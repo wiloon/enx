@@ -49,14 +49,16 @@ describe('listenForStandDown (#561)', () => {
 
   it('is marked stood down before the teardown runs', () => {
     const standDown = setup()
+    let stoodDownDuringTeardown: boolean | undefined
     onStandDown.mockImplementation(() => {
-      expect(standDown.isStoodDown()).toBe(true)
+      stoodDownDuringTeardown = standDown.isStoodDown()
     })
     runtimeId = undefined
 
     target.dispatchEvent(new Event(STAND_DOWN_EVENT))
 
     expect(onStandDown).toHaveBeenCalledTimes(1)
+    expect(stoodDownDuringTeardown).toBe(true)
   })
 
   it('stands down only once, however many scripts announce', () => {
