@@ -23,6 +23,10 @@ import {
  *   ENX_X_TWEET_URL='https://x.com/<user>/status/<id>' \
  *     pnpm test:e2e:homelab
  *
+ * NOTE: the ENX_ACCESS_TOKEN seeding above predates Clerk (ADR-037) and the
+ * token smoke script is gone; update these instructions when this spec is next
+ * revived.
+ *
  * Pick ENX_X_TWEET_URL as an English-language tweet whose detail view shows at
  * least one reply / quoted tweet you can click through to without logging into
  * x.com. The jest suite covers the pure rebuild logic

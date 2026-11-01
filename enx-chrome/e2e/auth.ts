@@ -1,5 +1,5 @@
 // ADR-037: signed-in E2E uses a real Clerk *development* instance session,
-// created with @clerk/testing on the local enx-ui and synced into the extension
+// created with @clerk/testing on enx-ui (local, or the HomeLab one via uiOrigin) and synced into the extension
 // through `syncHost` -- the same path a user takes. There is no test-only auth
 // bypass in the extension or enx-api.
 
@@ -30,7 +30,8 @@ export const E2E_USER_EMAIL = process.env.E2E_CLERK_USER_EMAIL ?? ''
 
 /**
  * Signed-in specs need a dev-instance secret key and a test user. Without them
- * they are skipped (never faked), and the enx-ui server is not started.
+ * the local lane skips them (never faked) and does not start the enx-ui server.
+ * The HomeLab spec fails instead of skipping (ADR-037 Decision 4).
  */
 export const loginAvailable = Boolean(
   process.env.CLERK_SECRET_KEY && E2E_USER_EMAIL

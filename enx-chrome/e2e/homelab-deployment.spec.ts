@@ -122,7 +122,8 @@ test.describe('HomeLab deployment', () => {
     const response = await fetch(`${API}/api/version`, {
       headers: { Origin: origin },
     })
-    expect(response.headers.get('access-control-allow-origin')).not.toBe(origin)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('access-control-allow-origin')).toBeNull()
   })
 })
 
