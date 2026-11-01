@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
-import { mkdtempSync } from 'fs'
-import { tmpdir } from 'os'
+import { existsSync, mkdtempSync } from 'fs'
+import { homedir, tmpdir } from 'os'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
 import {
@@ -17,6 +17,16 @@ process.env.E2E_DB_PATH ??= join(
   mkdtempSync(join(tmpdir(), 'enx-e2e-')),
   'enx.db'
 )
+
+// Same default as enx-api/Taskfile.yml. An explicit value wins; an empty one
+// runs without ECDICT.
+const defaultEcdictPath = join(
+  homedir(),
+  '.local/share/enx/ecdict/stardict.db'
+)
+if (process.env.ECDICT_DB_PATH === undefined && existsSync(defaultEcdictPath)) {
+  process.env.ECDICT_DB_PATH = defaultEcdictPath
+}
 
 // Keep server logs outside Playwright's per-run artifact cleanup.
 const serverCommand = (name: string, command: string) => {
@@ -103,7 +113,7 @@ export default defineConfig({
       timeout: 10000,
     },
     {
-      // Backend API server (enx-api); set ECDICT_DB_PATH to a local ECDICT
+      // Backend API server (enx-api); ECDICT_DB_PATH points at a local ECDICT
       // SQLite file for translation tests. Never reused: an enx-api already on
       // that port is the developer's, with their real database. The port is
       // the one dist-e2e calls (the development target). `-c config.toml`

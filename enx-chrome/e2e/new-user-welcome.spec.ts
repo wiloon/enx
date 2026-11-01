@@ -27,6 +27,14 @@ test.describe('New user onboarding', () => {
     extensionId,
     newUser: _,
   }) => {
+    // A new user's first lookup reads the real dictionary (#467); seeding the
+    // word would hide that dependency.
+    if (!process.env.ECDICT_DB_PATH) {
+      throw new Error(
+        'This test needs ECDICT: set ECDICT_DB_PATH or run `task ecdict:download` (see E2E_TESTING.md)'
+      )
+    }
+
     await page.goto(`${UI_ORIGIN}/welcome?src=install`)
     await expect(
       page.getByRole('heading', { name: 'Welcome to Catglish', exact: true })
