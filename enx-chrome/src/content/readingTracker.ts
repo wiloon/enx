@@ -104,8 +104,12 @@ export function noteWordInteraction(reference: Range): void {
   flushIfProgressed()
 }
 
-/** Test seam: drop all state and listeners. */
-export function __resetForTests(): void {
+/**
+ * Ends tracking for good: drops the listeners, the timers and the session,
+ * without reporting it. For an orphaned content script standing down (#561),
+ * whose reports could not reach the extension anyway.
+ */
+export function stopReading(): void {
   if (scrollTimer !== null) window.clearTimeout(scrollTimer)
   if (idleTimer !== null) window.clearTimeout(idleTimer)
   scrollTimer = null
