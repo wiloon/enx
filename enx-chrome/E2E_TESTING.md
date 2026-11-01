@@ -588,9 +588,11 @@ records each completion's feature without logging prompts or credentials.
 
 ## AI word fallback and running out of credits (#471)
 
-`ai-word-and-credits.spec.ts` needs `ECDICT_DB_PATH`: only a clean
-dictionary miss offers the AI fallback, and without ECDICT a missing word
-answers 503. With Clerk credentials set and `ECDICT_DB_PATH` unset, these
+`ai-word-and-credits.spec.ts` needs ECDICT: only a clean dictionary miss offers
+the AI fallback, and without ECDICT a missing word answers 503. When
+`ECDICT_DB_PATH` is unset, `playwright.config.ts` uses
+`~/.local/share/enx/ecdict/stardict.db` if that file exists (`task
+ecdict:download` fetches it). With Clerk credentials set and no ECDICT, these
 specs fail with that message rather than skip.
 
 Each test uses a fresh user (`new-user.ts`) and a new letters-only word that
@@ -605,8 +607,7 @@ from `test-results/servers/ai.log`, so these specs fail under
 `E2E_SERVER_LOGS=1`.
 
 ```bash
-ECDICT_DB_PATH="$HOME/.local/share/enx/ecdict/stardict.db" \
-  pnpm test:e2e ai-word-and-credits.spec.ts --repeat-each=3
+pnpm test:e2e ai-word-and-credits.spec.ts --repeat-each=3
 ```
 
 ## Fresh-user onboarding (#467)
@@ -629,13 +630,18 @@ ticket. Email passwords, email-code sign-in and real mail delivery are not
 needed. Production authentication remains Google and GitHub only; these tests
 refuse a production secret key.
 
-The first lookup needs the real read-only ECDICT file. After loading the Clerk
-development credentials and building `dist-e2e`, run:
+The first lookup needs the real read-only ECDICT file, found the same way as
+for the AI word fallback above; without it that test fails with a message
+saying so, and the trial-credit test still runs. Do not seed the word: a seed
+would hide this dependency. After loading the Clerk development credentials and
+building `dist-e2e`, run:
 
 ```bash
-ECDICT_DB_PATH="$HOME/.local/share/enx/ecdict/stardict.db" \
-  pnpm test:e2e new-user-welcome.spec.ts --repeat-each=3
+pnpm test:e2e new-user-welcome.spec.ts --repeat-each=3
 ```
+
+To run without ECDICT even though the default file exists, set
+`ECDICT_DB_PATH=` (empty).
 
 To prove the trial assertion catches a missing grant, run the trial test with
 `CREDITS_TRIAL_AMOUNT=0`. It must fail on the missing configured trial-credit
