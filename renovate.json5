@@ -1,5 +1,6 @@
 // Renovate: dependency update PRs for enx-api, enx-ui and enx-chrome.
-// Nothing is auto-merged; every PR waits for CI and a human merge.
+// Minor and patch updates merge themselves once CI is green; major updates
+// wait for a human merge.
 // Major updates (and new Go / Node minors) wait for approval on the
 // Dependency Dashboard issue before a PR is opened.
 {
@@ -44,6 +45,10 @@
     {
       matchDepNames: ['go', 'docker.io/library/golang'],
       groupName: 'Go toolchain',
+    },
+    {
+      matchUpdateTypes: ['minor', 'patch'],
+      automerge: true,
     },
     {
       matchUpdateTypes: ['major'],
