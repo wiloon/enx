@@ -35,6 +35,16 @@ export const FLUSH_EVERY_WORDS = 100
 // slamming End counts the whole article as read.
 const SCROLL_DISCOUNT_VIEWPORTS = 1
 
+/**
+ * The height an article node's text is spread over. A body root can have a
+ * viewport-tall box (`html, body { height: 100% }`) with its paragraphs
+ * overflowing it, so body is measured by its content too (#565).
+ */
+function contentHeight(node: Element, rect: DOMRect): number {
+  if (node !== node.ownerDocument.body) return rect.height
+  return Math.max(rect.height, node.scrollHeight)
+}
+
 /** One article node and where its text starts in the concatenated article. */
 type NodeSpan = {
   node: Element
@@ -176,11 +186,12 @@ export class ReadingSession {
     let deepestChars = 0
     for (const span of this.spans) {
       const rect = span.node.getBoundingClientRect()
-      if (rect.height <= 0) continue
+      const height = contentHeight(span.node, rect)
+      if (height <= 0) continue
       if (rect.top >= readLine) continue // not reached yet
 
       // How far into this node the read line sits, as a fraction of its box.
-      const fraction = Math.min(1, (readLine - rect.top) / rect.height)
+      const fraction = Math.min(1, (readLine - rect.top) / height)
       const chars = span.charBase + fraction * span.charLength
       if (chars > deepestChars) deepestChars = chars
     }

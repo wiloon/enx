@@ -173,6 +173,16 @@ describe('WordProcessor.buildHighlightRanges', () => {
     ).toEqual(['the endgame is here'])
   })
 
+  it('leaves out the text of summary and label controls', () => {
+    document.body.innerHTML =
+      '<details><summary>Contents</summary><p>the endgame is here</p></details>' +
+      '<label for="q">Search</label><input id="q">'
+
+    expect(
+      textNodesUnder(document.body).map(n => n.textContent?.trim())
+    ).toEqual(['the endgame is here'])
+  })
+
   it("skips the extension's own UI inserted into the article", () => {
     // Anything the extension marks with data-enx-ui (e.g. the session
     // notice) must not have its words highlighted by a later rebuild.
@@ -284,6 +294,18 @@ describe('WordProcessor.expandToWordRange', () => {
       const inner = document.getElementById('x')!.firstChild as Text
       expect(WordProcessor.expandToWordRange(inner, 5)).toBeNull()
     }
+  })
+
+  // With body as the article root (#565), page controls sit inside it; a click
+  // on their text keeps its default action (toggle a details, focus an input).
+  it.each(['summary', 'label'])('returns null for text inside a %s', tag => {
+    document.body.innerHTML =
+      tag === 'summary'
+        ? '<details><summary id="x">Table of contents</summary><p>Chapter one</p></details>'
+        : '<label id="x" for="q">Search the book</label><input id="q">'
+    const inner = document.getElementById('x')!.firstChild as Text
+
+    expect(WordProcessor.expandToWordRange(inner, 2)).toBeNull()
   })
 
   it('returns null for a non-text node', () => {

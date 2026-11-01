@@ -22,10 +22,22 @@ export class WordProcessor {
   // link-to-text ratio exceeds this (adr-034 Decision 3).
   static readonly LINK_DENSITY_THRESHOLD = 0.5
 
+  // The largest-text fallback ignores candidates with this much text or
+  // less, and takes the whole body only when its lookup-eligible text is
+  // longer than this.
+  static readonly FALLBACK_MIN_TEXT_LENGTH = 500
+
+  // The largest-text fallback takes the whole body when its best candidate
+  // holds less than this share of the body's visible text: the paragraphs sit
+  // directly under <body> (#565). A starting value from a 20-page sample.
+  static readonly BODY_FALLBACK_MAX_CANDIDATE_SHARE = 0.25
+
   // Ancestor tags whose text is never looked up or highlighted (links,
   // form controls, code). Shared by collectTextNodes (highlight + extract
   // path) and expandToWordRange (click path) so their exclusion rules can't
-  // drift apart (ADR-010 §1.3 / ADR-011 Decision 2).
+  // drift apart (ADR-010 §1.3 / ADR-011 Decision 2). A click on summary or
+  // label text keeps its default action (toggling a details, focusing a
+  // field) because no lookup claims it.
   static readonly LOOKUP_EXCLUDED_TAGS = [
     'a',
     'script',
@@ -37,6 +49,8 @@ export class WordProcessor {
     'select',
     'code',
     'pre',
+    'summary',
+    'label',
   ]
 
   // Whole subtrees skipped by selector, for chrome the tag list can't reach:
@@ -95,8 +109,8 @@ export class WordProcessor {
 
   // The eligible-text-node filter, shared by word extraction and highlight
   // range building (ADR-010 Decision 3 / ADR-011). Skips
-  // a/script/style/noscript/button/input/textarea/select/code/pre subtrees
-  // and text with no Latin letters. Keeping extraction and highlighting on
+  // LOOKUP_EXCLUDED_TAGS and LOOKUP_EXCLUDED_SELECTORS subtrees and text with
+  // no Latin letters. Keeping extraction and highlighting on
   // this single traversal is what stops their filter rules from drifting
   // apart (ADR-010 §1.3).
   //
@@ -331,11 +345,22 @@ export class WordProcessor {
 
     allElements.forEach(element => {
       const textLength = element.textContent?.length || 0
-      if (textLength <= maxTextLength || textLength <= 500) return
+      if (
+        textLength <= maxTextLength ||
+        textLength <= this.FALLBACK_MIN_TEXT_LENGTH
+      ) {
+        return
+      }
       if (this.linkDensity(element) > this.LINK_DENSITY_THRESHOLD) return
       maxTextLength = textLength
       largestElement = element
     })
+
+    const body = document.body
+    if (body && this.bodyIsTheArticle(body, largestElement)) {
+      console.log('✅ Fallback: Using body, no container holds the article')
+      return [body]
+    }
 
     if (largestElement) {
       console.log(
@@ -347,12 +372,42 @@ export class WordProcessor {
     return []
   }
 
+  // The largest-text fallback's body test (#565). `candidate` is the winner
+  // picked on raw text, or null. Share and body link density are measured on
+  // visible text: inline scripts can outweigh a page's prose many times over.
+  private static bodyIsTheArticle(
+    body: HTMLElement,
+    candidate: Element | null
+  ): boolean {
+    const visibleBody = this.withoutNonContent(body)
+    const bodyLength = visibleBody.textContent?.length || 0
+    const candidateShare =
+      candidate && bodyLength > 0
+        ? this.cleanArticleText(candidate).length / bodyLength
+        : 0
+    if (candidateShare >= this.BODY_FALLBACK_MAX_CANDIDATE_SHARE) return false
+    if (this.linkDensity(visibleBody) > this.LINK_DENSITY_THRESHOLD)
+      return false
+
+    const eligibleLength = this.collectTextNodes(body).reduce(
+      (sum, node) => sum + node.data.length,
+      0
+    )
+    return eligibleLength > this.FALLBACK_MIN_TEXT_LENGTH
+  }
+
+  // A detached copy of `element` without its <script>/<style>/<noscript>
+  // subtrees.
+  private static withoutNonContent(element: Element): Element {
+    const clone = element.cloneNode(true) as Element
+    clone.querySelectorAll('script, style, noscript').forEach(el => el.remove())
+    return clone
+  }
+
   // Strips <script>/<style>/<noscript> before reading textContent, so their
   // contents don't get picked up as word candidates by extractWords().
   static cleanArticleText(articleNode: Element): string {
-    const clone = articleNode.cloneNode(true) as Element
-    clone.querySelectorAll('script, style, noscript').forEach(el => el.remove())
-    return clone.textContent || ''
+    return this.withoutNonContent(articleNode).textContent || ''
   }
 
   // Intl.Segmenter has a known "Maximum call stack exceeded" failure mode on

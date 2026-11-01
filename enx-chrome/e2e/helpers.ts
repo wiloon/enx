@@ -265,13 +265,18 @@ export async function clickHighlightedWord(
 }
 
 /**
- * Clicks the first occurrence of `word` in the article's first paragraph and
- * waits for its popover. A DOM Range locates the word's screen box, so the
- * word need not be highlighted (a user with no vocabulary has no paint).
+ * Clicks the first occurrence of `word` in the first paragraph matching
+ * `paragraphSelector` and waits for its popover. A DOM Range locates the
+ * word's screen box, so the word need not be highlighted (a user with no
+ * vocabulary has no paint).
  */
-export async function clickWord(page: Page, word: string): Promise<Locator> {
+export async function clickWord(
+  page: Page,
+  word: string,
+  paragraphSelector = 'article p'
+): Promise<Locator> {
   await page.bringToFront()
-  const paragraph = page.locator('article p').first()
+  const paragraph = page.locator(paragraphSelector).first()
   await paragraph.scrollIntoViewIfNeeded()
   const point = await paragraph.evaluate((element, w) => {
     const nodes = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)

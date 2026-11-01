@@ -131,6 +131,71 @@ describe('ReadingSession', () => {
     expect(session.watermarkWords).toBe(0)
   })
 
+  // A page styled `html, body { height: 100% }` gives body a viewport-tall
+  // box while its paragraphs overflow it; scrollHeight is the content's
+  // real height.
+  describe('a body root with a viewport-height box', () => {
+    function stubScrollHeight(node: HTMLElement, height: number): void {
+      Object.defineProperty(node, 'scrollHeight', {
+        configurable: true,
+        get: () => height,
+      })
+    }
+
+    afterEach(() => {
+      delete (document.body as unknown as Record<string, unknown>).scrollHeight
+      delete (document.body as unknown as Record<string, unknown>)
+        .getBoundingClientRect
+    })
+
+    it('measures progress against the overflowing content height', () => {
+      document.body.textContent = 'x'.repeat(1000)
+      stubRect(document.body, -800, 800) // 800px scrolled, box one viewport tall
+      stubScrollHeight(document.body, 4000)
+      const session = new ReadingSession([document.body], 1000)
+
+      // The read line (y=0) is 800px into 4000px of content.
+      session.noteScroll(800)
+
+      expect(session.watermarkWords).toBe(200)
+    })
+
+    it('discounts the screenful just scrolled into view', () => {
+      document.body.textContent = 'x'.repeat(1000)
+      stubRect(document.body, 0, 800) // not scrolled yet
+      stubScrollHeight(document.body, 4000)
+      const session = new ReadingSession([document.body], 1000)
+
+      session.noteScroll(800)
+
+      expect(session.watermarkWords).toBe(0)
+    })
+
+    it('never lowers the watermark when scrolled back up', () => {
+      document.body.textContent = 'x'.repeat(1000)
+      stubScrollHeight(document.body, 4000)
+      const session = new ReadingSession([document.body], 1000)
+
+      stubRect(document.body, -2000, 800)
+      session.noteScroll(800)
+      stubRect(document.body, -400, 800)
+      session.noteScroll(800)
+
+      expect(session.watermarkWords).toBe(500)
+    })
+  })
+
+  it('keeps using the box height for a root that is not body', () => {
+    const node = para(1000)
+    stubRect(node, -800, 2000)
+    Object.defineProperty(node, 'scrollHeight', { get: () => 8000 })
+    const session = new ReadingSession([node], 1000)
+
+    session.noteScroll(800)
+
+    expect(session.watermarkWords).toBe(400)
+  })
+
   it('reports each word once, as a delta', () => {
     const node = para(1000)
     const session = new ReadingSession([node], 1000)
