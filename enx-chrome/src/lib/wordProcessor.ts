@@ -35,7 +35,9 @@ export class WordProcessor {
   // Ancestor tags whose text is never looked up or highlighted (links,
   // form controls, code). Shared by collectTextNodes (highlight + extract
   // path) and expandToWordRange (click path) so their exclusion rules can't
-  // drift apart (ADR-010 §1.3 / ADR-011 Decision 2).
+  // drift apart (ADR-010 §1.3 / ADR-011 Decision 2). A click on summary or
+  // label text keeps its default action (toggling a details, focusing a
+  // field) because no lookup claims it.
   static readonly LOOKUP_EXCLUDED_TAGS = [
     'a',
     'script',
@@ -47,6 +49,8 @@ export class WordProcessor {
     'select',
     'code',
     'pre',
+    'summary',
+    'label',
   ]
 
   // Whole subtrees skipped by selector, for chrome the tag list can't reach:
@@ -105,8 +109,8 @@ export class WordProcessor {
 
   // The eligible-text-node filter, shared by word extraction and highlight
   // range building (ADR-010 Decision 3 / ADR-011). Skips
-  // a/script/style/noscript/button/input/textarea/select/code/pre subtrees
-  // and text with no Latin letters. Keeping extraction and highlighting on
+  // LOOKUP_EXCLUDED_TAGS and LOOKUP_EXCLUDED_SELECTORS subtrees and text with
+  // no Latin letters. Keeping extraction and highlighting on
   // this single traversal is what stops their filter rules from drifting
   // apart (ADR-010 §1.3).
   //
