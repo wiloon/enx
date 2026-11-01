@@ -380,6 +380,7 @@ describe('an orphan nobody told to stand down', () => {
     const send = await loadContentScript()
     await send({ action: 'enxRun' })
     setRuntimeId(undefined)
+    jest.spyOn(console, 'error').mockImplementation(() => {})
 
     await clickFox()
 
