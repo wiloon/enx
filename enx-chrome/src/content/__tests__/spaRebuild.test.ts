@@ -128,6 +128,24 @@ describe('createSpaRebuilder.start / stop', () => {
     expect(nav.listeners).toHaveLength(0)
   })
 
+  // #561: an orphan that stands down mid-navigation must not rebuild.
+  it('stop during the wait cancels the rebuild and the initial run', async () => {
+    const ready = deferred()
+    const { deps } = makeDeps({
+      waitForContentReady: jest.fn(() => ready.promise),
+    })
+    const r = createSpaRebuilder(deps)
+    const initialRun = r.makeIsCurrent()
+
+    const pending = r.onRouteChange('https://x.com/a/status/1')
+    r.stop()
+    ready.resolve()
+    await pending
+
+    expect(deps.rebuild).not.toHaveBeenCalled()
+    expect(initialRun()).toBe(false)
+  })
+
   it('a push navigate through the subscription rebuilds; a reload is ignored', async () => {
     const nav = new FakeNavigation()
     const { deps } = makeDeps()

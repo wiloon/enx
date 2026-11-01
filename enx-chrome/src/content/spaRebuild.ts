@@ -55,7 +55,7 @@ export interface SpaRebuilder {
   makeIsCurrent: () => () => boolean
   /** Subscribe to `navigation` 'navigate' events (filtered). Idempotent. */
   start: (navigation: NavigationLike) => void
-  /** Unsubscribe. Idempotent. */
+  /** Unsubscribe and cancel any run in flight. Idempotent. */
   stop: () => void
 }
 
@@ -169,6 +169,8 @@ export function createSpaRebuilder(deps: SpaRebuilderDeps): SpaRebuilder {
   }
 
   const stop = () => {
+    // Supersedes any run still waiting or processing (#561).
+    gen++
     if (subscribed && listener) {
       subscribed.removeEventListener('navigate', listener)
     }

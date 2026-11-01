@@ -51,7 +51,12 @@ import {
   WordData,
 } from '../types'
 import { contentScriptStore } from './contentAtoms'
-import { noteWordInteraction, startArticle } from './readingTracker'
+import {
+  noteWordInteraction,
+  startArticle,
+  stopReading,
+} from './readingTracker'
+import { listenForStandDown } from '@/lib/orphanStandDown'
 import {
   currentWordAtom,
   isTranslatingAtom,
@@ -135,6 +140,14 @@ let isProcessing = false
 // is bound to each, and refreshHighlights() rebuilds highlights over them.
 let articleRoots: Element[] = []
 let overlayEventCleanup: (() => void) | null = null
+
+// #561: once this script is orphaned and a fresh one announces itself, it
+// stops everything it does on the page (standDownOrphan, below), for good.
+const standDown = listenForStandDown({
+  target: document,
+  runtimeId: () => chrome.runtime?.id,
+  onStandDown: () => standDownOrphan(),
+})
 
 // Send message to background script
 const sendToBackground = (
@@ -643,7 +656,9 @@ const hideCurrentOverlay = () => {
 // no DOM to touch, so a full rebuild is cheap enough on a user action.
 const refreshHighlights = async () => {
   if (articleRoots.length === 0) return
-  if (await getWordHighlightEnabled()) {
+  const highlightEnabled = await getWordHighlightEnabled()
+  if (standDown.isStoodDown()) return
+  if (highlightEnabled) {
     WordProcessor.rebuildHighlights(articleRoots, wordCache)
   } else {
     WordProcessor.clearHighlights()
@@ -767,12 +782,13 @@ const showSessionExpiredMessage = (isLoginError = false) => {
 // Process article content and add word highlighting. `isCurrent` (SPA
 // auto-rebuild, ADR-011 Decision 6) is checked at every await boundary so a
 // run superseded by a newer tweet switch abandons instead of highlighting
-// stale content.
+// stale content. A script that stood down (#561) abandons the same way.
 const processArticleContent = async (
   opts: { isCurrent?: () => boolean; onArticleFound?: () => void } = {}
 ): Promise<EnableOutcome> => {
   const isSpaRebuild = opts.isCurrent !== undefined
-  const stale = () => isSpaRebuild && !opts.isCurrent!()
+  const stale = () =>
+    standDown.isStoodDown() || (isSpaRebuild && !opts.isCurrent!())
 
   // A user re-triggering enxRun on an already-processing page is a no-op; a
   // SPA rebuild for a newer tweet must NOT be blocked by an in-flight run
@@ -1429,6 +1445,9 @@ const getSpaRebuilder = () => {
 
 // Enable ENX functionality
 const enableEnx = async (): Promise<EnableOutcome> => {
+  // Before anything paints: an orphan beside this script tears down now.
+  standDown.announce()
+  if (standDown.isStoodDown()) return ENABLE_OK
   if (isEnxEnabled) {
     console.log('ENX already enabled')
     return ENABLE_OK
@@ -1468,7 +1487,7 @@ const enableEnx = async (): Promise<EnableOutcome> => {
   const outcome = await runWithStatus(
     onArticleFound => processArticleContent({ isCurrent, onArticleFound }),
     reportStatus,
-    isCurrent
+    () => !standDown.isStoodDown() && (isCurrent?.() ?? true)
   )
 
   if (outcome.ok) {
@@ -1509,6 +1528,23 @@ const disableEnx = () => {
   activeSentenceHighlightCleanup?.() // ADR-025: also drops its click/timeout listeners
   clearArticleRoots()
   reportStatus({ status: 'off' })
+}
+
+// #561: an orphaned script, told a fresh one is taking over, removes every
+// trace of itself whether learning mode was on or not. Synchronous, so it is
+// done before the fresh script paints; processing still in flight sees
+// standDown.isStoodDown() and abandons.
+const standDownOrphan = () => {
+  console.log('ENX: orphaned content script standing down')
+  disableEnx()
+  spaRebuilderInstance?.stop()
+  hidePinHint()
+  hideSelectionTranslateButton()
+  hideCurrentOverlay()
+  activeSentenceHighlightCleanup?.()
+  stopReading()
+  clearArticleRoots()
+  WordProcessor.clearHighlights()
 }
 
 // The enable path shared by the popup's enxRun and adr-039 auto-enable.
@@ -1644,6 +1680,9 @@ onWordHighlightEnabledChange(() => {
 window.addEventListener('beforeunload', () => {
   hideCurrentOverlay()
 })
+
+// #561: stand down any orphan already on the page.
+standDown.announce()
 
 // adr-039: on a site the user chose "Always enable on this site" for, turn
 // learning mode on at load. Every failure is silent (home and list pages on

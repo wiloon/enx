@@ -67,8 +67,9 @@ export function badgeFor(status: LearningModeStatus): BadgeAppearance {
 }
 
 // Whether turning learning mode off means anything yet. Not 'processing':
-// enxStop can't cancel a run still preparing the article, so the popup's
-// button and the shortcut (#230) both wait for it to finish.
+// on a static site enxStop can't cancel a run still preparing the article
+// (on an SPA site it can, #561), so the popup's button and the shortcut
+// (#230) both wait for it to finish.
 export const isLearningModeOn = (status: LearningModeStatus): boolean =>
   status.status === 'ready'
 
@@ -93,7 +94,9 @@ export function statusForOutcome(outcome: EnableOutcome): LearningModeStatus {
 // Wraps one processing run with its status reports (adr-046 Decision 3).
 // `run` calls `onArticleFound` once it has non-empty article nodes -- pages
 // that fail before that never flash `processing`. A run superseded by a newer
-// one (SPA tweet switch) reports nothing after it lost.
+// one (SPA tweet switch), by turning learning mode off on an SPA site, or by
+// an orphaned script standing down (#561) reports nothing after it lost, and
+// its enable answers ENABLE_OK.
 export async function runWithStatus(
   run: (onArticleFound: () => void) => Promise<EnableOutcome>,
   report: (status: LearningModeStatus) => void,
