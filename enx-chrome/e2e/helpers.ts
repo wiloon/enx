@@ -1,4 +1,4 @@
-import { BrowserContext, Page } from '@playwright/test'
+import { BrowserContext, expect, Locator, Page } from '@playwright/test'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
@@ -265,6 +265,34 @@ export async function clickHighlightedWord(
 }
 
 /**
+ * Clicks the first occurrence of `word` in the article's first paragraph and
+ * waits for its popover. A DOM Range locates the word's screen box, so the
+ * word need not be highlighted (a user with no vocabulary has no paint).
+ */
+export async function clickWord(page: Page, word: string): Promise<Locator> {
+  await page.bringToFront()
+  const paragraph = page.locator('article p').first()
+  await paragraph.scrollIntoViewIfNeeded()
+  const point = await paragraph.evaluate((element, w) => {
+    const nodes = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+    for (let node = nodes.nextNode(); node; node = nodes.nextNode()) {
+      const offset = node.textContent?.indexOf(w) ?? -1
+      if (offset < 0) continue
+      const range = document.createRange()
+      range.setStart(node, offset)
+      range.setEnd(node, offset + w.length)
+      const box = range.getBoundingClientRect()
+      return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    }
+    throw new Error(`The article must contain the word ${w}`)
+  }, word)
+  await page.mouse.click(point.x, point.y)
+  const popover = page.locator('#enx-anchored-overlay')
+  await expect(popover.getByTestId('word-popover-content')).toBeVisible()
+  return popover
+}
+
+/**
  * Click a highlighted word and wait for the translation popup.
  */
 export async function clickWordAndWaitForPopup(page: Page, wordIndex = 0) {
@@ -281,7 +309,7 @@ export async function clickWordAndWaitForPopup(page: Page, wordIndex = 0) {
 
 /**
  * Stub the extension's backend API calls so tests don't depend on a real
- * enx-api backend or a valid Cognito session.
+ * enx-api backend or a valid Clerk session.
  *
  * background.ts's message handlers call `fetch()` directly inside the
  * service worker. MV3 content scripts run in an isolated world, so a
