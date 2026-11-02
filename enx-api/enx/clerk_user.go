@@ -10,14 +10,23 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
-// NewUserHook runs once, right after a local user is provisioned -- e.g. to
-// grant the sign-up trial (ADR-048 Decision 3), which is once per email
-// (ADR-062). main wires it, so enx does not import billing.
+// NewUserHook runs once per provisioned user, inside the transaction that
+// creates the users row -- e.g. to grant the sign-up trial (ADR-048
+// Decision 3), which is once per email (ADR-062). main wires it, so enx does
+// not import billing.
+//
+// NewUser writes through tx only: a second connection would wait on the
+// outer transaction's write lock until busy_timeout. enx runs it in a
+// savepoint, so a returned error leaves none of its writes behind; the error
+// is logged and the user is still committed. afterCommit, when non-nil, is
+// called only if NewUser returned no error and the outer transaction
+// committed.
 type NewUserHook interface {
-	NewUser(ctx context.Context, userID, email string) error
+	NewUser(ctx context.Context, tx *gorm.DB, userID, email string) (afterCommit func(), err error)
 }
 
 var newUserHook NewUserHook
@@ -101,17 +110,44 @@ func GetOrCreateClerkUser(clerkUserID string, p ClerkProfile, lastLoginUpdateInt
 		UpdateTime:    time.Now(),
 		LastLoginTime: time.Now(),
 	}
-	// A concurrent first request may have provisioned the same Clerk user
-	// since the read above. Only a clash on clerk_user_id is skipped; any
-	// other constraint failure still surfaces.
-	created := sqlitex.DB.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "clerk_user_id"}},
-		DoNothing: true,
-	}).Create(u)
-	if created.Error != nil {
-		return nil, created.Error
+	// The user and the hook's writes (the sign-up trial) commit together, so
+	// a concurrent request never sees the user without them.
+	var lost bool
+	var afterCommit func()
+	err := sqlitex.DB.Transaction(func(tx *gorm.DB) error {
+		// A concurrent first request may have provisioned the same Clerk user
+		// since the read above. Only a clash on clerk_user_id is skipped; any
+		// other constraint failure still surfaces.
+		created := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "clerk_user_id"}},
+			DoNothing: true,
+		}).Create(u)
+		if created.Error != nil {
+			return created.Error
+		}
+		if created.RowsAffected == 0 {
+			lost = true
+			return nil
+		}
+		if newUserHook == nil {
+			return nil
+		}
+		// The account exists either way; a failed hook is rolled back to
+		// its savepoint and logged, never turned into a failed sign-in.
+		if err := tx.Transaction(func(sp *gorm.DB) error {
+			var err error
+			afterCommit, err = newUserHook.NewUser(context.Background(), sp, u.Id, p.Email)
+			return err
+		}); err != nil {
+			afterCommit = nil
+			logger.Errorf("new-user hook failed for user %s: %v", u.Id, err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	if created.RowsAffected == 0 {
+	if lost {
 		winner := &User{}
 		if err := sqlitex.DB.Where("clerk_user_id = ?", clerkUserID).First(winner).Error; err != nil {
 			return nil, fmt.Errorf("re-read clerk user %s after a lost insert: %w", clerkUserID, err)
@@ -120,12 +156,8 @@ func GetOrCreateClerkUser(clerkUserID string, p ClerkProfile, lastLoginUpdateInt
 		return winner, nil
 	}
 	logger.Infof("provisioned clerk user clerk_user_id=%s id=%s name=%s", clerkUserID, u.Id, resolvedName)
-	if newUserHook != nil {
-		// The account exists either way; a failed hook is logged, never
-		// turned into a failed sign-in.
-		if err := newUserHook.NewUser(context.Background(), u.Id, p.Email); err != nil {
-			logger.Errorf("new-user hook failed for user %s: %v", u.Id, err)
-		}
+	if afterCommit != nil {
+		afterCommit()
 	}
 	return u, nil
 }

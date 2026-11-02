@@ -1,8 +1,11 @@
 package enx
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -137,6 +140,133 @@ func TestGetOrCreateClerkUser_LostInsertWithTheRowGoneIsNotFound(t *testing.T) {
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Fatalf("err = %v, want gorm.ErrRecordNotFound", err)
+	}
+}
+
+// blockingHook writes a row through the provisioning transaction, then waits
+// for release before it returns.
+type blockingHook struct {
+	entered chan struct{}
+	release chan struct{}
+	calls   atomic.Int32
+}
+
+func (h *blockingHook) NewUser(_ context.Context, tx *gorm.DB, userID, _ string) (func(), error) {
+	h.calls.Add(1)
+	if err := tx.Exec(`INSERT INTO hook_writes (user_id) VALUES (?)`, userID).Error; err != nil {
+		return nil, err
+	}
+	close(h.entered)
+	<-h.release
+	return nil, nil
+}
+
+type provisioned struct {
+	user *User
+	err  error
+}
+
+// #596: a concurrent first request of the same Clerk user sees no user until
+// the hook's writes commit with it, so it never reads a user without its
+// sign-up trial.
+func TestGetOrCreateClerkUser_ConcurrentFirstRequestWaitsForTheHook(t *testing.T) {
+	db := newProductionUserDB(t)
+	if err := db.Exec(`CREATE TABLE hook_writes (user_id TEXT)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	hook := &blockingHook{entered: make(chan struct{}), release: make(chan struct{})}
+	withNewUserHook(t, hook)
+	p := ClerkProfile{Email: "first@example.com"}
+
+	first := make(chan provisioned, 1)
+	go func() {
+		u, err := GetOrCreateClerkUser("user_blocked", p, time.Hour)
+		first <- provisioned{u, err}
+	}()
+	select {
+	case <-hook.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the hook never ran")
+	}
+	second := make(chan provisioned, 1)
+	go func() {
+		u, err := GetOrCreateClerkUser("user_blocked", p, time.Hour)
+		second <- provisioned{u, err}
+	}()
+
+	select {
+	case got := <-second:
+		close(hook.release)
+		t.Fatalf("second request returned %+v while the hook was still running", got)
+	case <-time.After(300 * time.Millisecond):
+	}
+	close(hook.release)
+
+	a, b := <-first, <-second
+	if a.err != nil || b.err != nil {
+		t.Fatalf("errors: first=%v second=%v", a.err, b.err)
+	}
+	if a.user.Id != b.user.Id {
+		t.Fatalf("user ids differ: first=%s second=%s", a.user.Id, b.user.Id)
+	}
+	var written int64
+	if err := sqlitex.DB.Raw(`SELECT count(*) FROM hook_writes WHERE user_id = ?`, a.user.Id).Scan(&written).Error; err != nil {
+		t.Fatal(err)
+	}
+	if written != 1 || hook.calls.Load() != 1 {
+		t.Fatalf("hook rows = %d, hook calls = %d; want the one write of one call", written, hook.calls.Load())
+	}
+}
+
+// rollbackHook makes the outer transaction's commit fail by rolling the
+// transaction back underneath it, and returns an after-commit callback.
+type rollbackHook struct{ called bool }
+
+func (h *rollbackHook) NewUser(_ context.Context, tx *gorm.DB, _, _ string) (func(), error) {
+	if err := tx.Statement.ConnPool.(gorm.TxCommitter).Rollback(); err != nil {
+		return nil, err
+	}
+	return func() { h.called = true }, nil
+}
+
+func TestGetOrCreateClerkUser_FailedCommitSkipsTheAfterCommitCallback(t *testing.T) {
+	newProductionUserDB(t)
+	hook := &rollbackHook{}
+	withNewUserHook(t, hook)
+
+	got, err := GetOrCreateClerkUser("user_commit_fails", ClerkProfile{Email: "c@example.com"}, time.Hour)
+	if !errors.Is(err, sql.ErrTxDone) || got != nil {
+		t.Fatalf("got user %+v, err %v; want no user and sql.ErrTxDone", got, err)
+	}
+	if hook.called {
+		t.Fatal("after-commit callback ran although the commit failed")
+	}
+	if n := countUsers(t); n != 0 {
+		t.Fatalf("%d users rows, want none", n)
+	}
+}
+
+// failingHook returns an after-commit callback together with an error.
+type failingHook struct{ called bool }
+
+func (h *failingHook) NewUser(_ context.Context, _ *gorm.DB, _, _ string) (func(), error) {
+	return func() { h.called = true }, errors.New("hook failed")
+}
+
+func TestGetOrCreateClerkUser_FailedHookSkipsTheAfterCommitCallback(t *testing.T) {
+	newProductionUserDB(t)
+	hook := &failingHook{}
+	withNewUserHook(t, hook)
+
+	got, err := GetOrCreateClerkUser("user_hook_fails", ClerkProfile{Email: "h@example.com"}, time.Hour)
+	if err != nil || got == nil {
+		t.Fatalf("got user %+v, err %v; want the user and no error", got, err)
+	}
+	if n := countUsers(t); n != 1 {
+		t.Fatalf("%d users rows, want 1", n)
+	}
+	if hook.called {
+		t.Fatal("after-commit callback ran although the hook failed")
 	}
 }
 
