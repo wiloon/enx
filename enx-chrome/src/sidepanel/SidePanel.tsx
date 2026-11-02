@@ -23,6 +23,7 @@ import {
   HIGHLIGHT_NAME_PREFIX,
   reviewBucketHighlightCss,
   sentenceHighlightSpans,
+  wordKey,
   type CharSpan,
   type SentenceHighlightSpans,
 } from '@/lib/wordHighlight'
@@ -913,7 +914,7 @@ function SidePanelContent() {
   useEffect(() => {
     const listener = (message: { type?: string; word?: string }) => {
       if (message.type !== 'markKnown' || !message.word) return
-      const word = message.word.toLowerCase()
+      const word = wordKey(message.word)
       setWordStates(prev =>
         prev[word] ? { ...prev, [word]: { ...prev[word], Known: true } } : prev
       )
@@ -1001,7 +1002,7 @@ function SidePanelContent() {
   // which (if any) history sentence the word "belongs to" (Decision B2), so
   // an existing sentence entry is simply left alone.
   const mergePageWordLookup = useCallback((lookup: LatestPageWordLookup) => {
-    const word = lookup.word.toLowerCase()
+    const word = wordKey(lookup.word)
     // The page already knows this word's new stage; only the panel's
     // underlines need it (ADR-053 Decision 3), so no message goes back.
     setWordStates(prev => ({ ...prev, [word]: lookup.ecp }))
@@ -1117,7 +1118,7 @@ function SidePanelContent() {
   // ENX underlines the word anyway.
   const recordWordLookup = useCallback(
     (word: string, ecp: WordData) => {
-      setWordStates(prev => ({ ...prev, [word.toLowerCase()]: ecp }))
+      setWordStates(prev => ({ ...prev, [wordKey(word)]: ecp }))
       if (tabId === undefined) return
       const message: PanelWordLookupMessage = {
         action: 'panelWordLookup',

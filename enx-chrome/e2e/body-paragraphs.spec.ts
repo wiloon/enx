@@ -8,6 +8,8 @@ import {
   clickWord,
   enableLearningMode,
   mockBackendFetch,
+  reviewWordsRequests,
+  waitForContentScript,
   wordLookupPosts,
 } from './helpers'
 
@@ -41,6 +43,35 @@ test.describe('Paragraphs directly under body', () => {
 
     expect(await wordLookupPosts(context)).toHaveLength(1)
     await expect(popover).toHaveAttribute('data-e2e-marker', 'first')
+  })
+
+  // ADR-069: enabling sends one review-list GET with no page text; an empty
+  // list is a successful enable, and a click still looks the word up.
+  test('an empty review list enables, and a word still opens the popover', async ({
+    context,
+    page,
+    extensionId,
+    signedIn: _signedIn,
+  }) => {
+    await mockBackendFetch(context, {
+      wordData: { Id: 'w-stub', LoadCount: 3, Known: false },
+      reviewWords: [],
+    })
+    await page.goto('/body-paragraphs.html', { waitUntil: 'domcontentloaded' })
+    await enableLearningMode(page, extensionId)
+    await waitForContentScript(page, { emptyReviewList: true })
+
+    expect(await reviewWordsRequests(context)).toEqual([
+      {
+        url: expect.stringMatching(/\/api\/me\/review-words$/),
+        method: 'GET',
+        body: null,
+      },
+    ])
+    const popover = await clickWord(page, 'sailor', 'body > p')
+    await expect(
+      popover.locator('[data-testid="word-popover-header"] h3')
+    ).toHaveText('sailor')
   })
 })
 

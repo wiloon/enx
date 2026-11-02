@@ -38,6 +38,13 @@ export const reviewBucketHighlightCss = (): string =>
       ` text-decoration-thickness: 1px; }`
   ).join('\n')
 
+// The key a word's state is stored and looked up under, everywhere: the
+// review list, the page's word cache, page and Side Panel underlines
+// (ADR-069). Lower case, straight apostrophes, and no possessive 's, the way
+// enx-api's SetEnglishField reads a page token: "Cat’s" is "cat".
+export const wordKey = (word: string): string =>
+  word.toLowerCase().replace(/’/g, "'").replace(/'s/g, '')
+
 // Whether a word is still worth reviewing (and so worth highlighting).
 // False for words the user has marked known, words tagged as a known
 // part of speech, and words never actually looked up (LoadCount 0).
@@ -123,7 +130,7 @@ export interface SentenceHighlightSpans {
 
 // The character spans to mark in a Side Panel sentence original (ADR-053):
 // the anchor word the panel was opened for, and the review-stage underline
-// of every word in `wordStates` (keyed by lower-cased word, like the page's
+// of every word in `wordStates` (keyed by wordKey, like the page's
 // wordCache). `underlinesOn` is the "highlight vocabulary while reading"
 // preference; it never hides the anchor.
 export const sentenceHighlightSpans = (
@@ -137,10 +144,11 @@ export const sentenceHighlightSpans = (
   const anchorKey = anchorWord.toLowerCase()
 
   for (const { word, start, end } of tokenizeWords(sentence)) {
-    const key = word.toLowerCase()
-    if (anchorKey && key === anchorKey) anchor.push({ start, end })
+    if (anchorKey && word.toLowerCase() === anchorKey) {
+      anchor.push({ start, end })
+    }
 
-    const data = underlinesOn ? wordStates[key] : undefined
+    const data = underlinesOn ? wordStates[wordKey(word)] : undefined
     const bucket = data ? reviewBucket(data) : null
     if (bucket === null) continue
     const spans = buckets.get(bucket)
@@ -151,15 +159,15 @@ export const sentenceHighlightSpans = (
 }
 
 // The page wordCache entries for the words in `sentence` (keyed by
-// lower-cased word), handed to the Side Panel with the sentence so its
-// original starts out underlined like the page (ADR-053 Decision 3).
+// wordKey), handed to the Side Panel with the sentence so its original
+// starts out underlined like the page (ADR-053 Decision 3).
 export const sentenceWordStates = (
   sentence: string,
   wordCache: Record<string, WordData>
 ): Record<string, WordData> => {
   const states: Record<string, WordData> = {}
   for (const { word } of tokenizeWords(sentence)) {
-    const key = word.toLowerCase()
+    const key = wordKey(word)
     if (wordCache[key]) states[key] = wordCache[key]
   }
   return states

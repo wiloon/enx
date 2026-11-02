@@ -21,8 +21,9 @@ import {
 // cleanup). Backend calls are stubbed (see mockBackendFetch in helpers.ts)
 // so these tests don't depend on enx-api's data -- see TASK-SPEC §4.4
 // discussion for why. They still need a real Clerk session (ADR-037): the
-// background mints a token before every request, ahead of the stubbed fetch. mockBackendFetch reflects
-// the actually-requested word back into the WordData it returns (see
+// background mints a token before every request, ahead of the stubbed fetch.
+// mockBackendFetch answers the review list with FIXTURE_REVIEW_WORDS and
+// reflects the clicked word back into the WordData a lookup returns (see
 // helpers.ts), so English always matches whatever word was clicked.
 
 test.describe('Word popup - Shadow DOM React implementation', () => {

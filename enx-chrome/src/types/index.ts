@@ -49,10 +49,6 @@ export interface WordResponse {
   ecp: WordData
 }
 
-export interface ParagraphResponse {
-  wordProperties: Record<string, WordData>
-}
-
 export interface PopupPosition {
   x: number
   y: number
@@ -61,7 +57,7 @@ export interface PopupPosition {
 export interface ContentMessage {
   type:
     | 'getOneWord'
-    | 'getWords'
+    | 'getReviewWords'
     | 'markKnown'
     | 'recordWordLookup'
     | 'enxRun'
@@ -83,7 +79,6 @@ export interface ContentMessage {
   // Set on 'recordWordLookup': the words row id the lookup answered with.
   wordId?: string
   words?: string
-  paragraph?: string
   userId?: number
   username?: string
   password?: string
@@ -147,7 +142,9 @@ export interface BackgroundResponse {
   showPinHint?: boolean
   error?: string
   ecp?: WordData
-  wordProperties?: Record<string, WordData>
+  // Set by 'getReviewWords' (ADR-069): enx-api's [english, queryCount]
+  // pairs, as received; lib/reviewList.ts checks their shape.
+  reviewWords?: unknown
   sessionExpired?: boolean
   // Set by the content script's own sender, never by the background: this
   // tab's script was cut off by an extension reload or update and the page

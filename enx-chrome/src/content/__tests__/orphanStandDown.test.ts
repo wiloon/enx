@@ -9,7 +9,7 @@ import type { SiteOrigins } from '@/lib/siteAdapters'
 
 jest.mock('@/config/env')
 
-type Message = { type?: string; action?: string; paragraph?: string }
+type Message = { type?: string; action?: string }
 type Callback = (response: unknown) => void
 
 const ARTICLE_TEXT =
@@ -28,7 +28,7 @@ const FOX = {
 }
 
 let sent: Message[]
-// getWords replies held back by a test, released by releaseWords().
+// getReviewWords replies held back by a test, released by releaseWords().
 let heldWords: Callback[]
 let holdWords: boolean
 let showPinHint: boolean
@@ -39,10 +39,10 @@ const respond = (message: Message): unknown => {
   switch (message.type) {
     case 'learningModeStatus':
       return { success: true, showPinHint }
-    case 'getWords':
+    case 'getReviewWords':
       return wordsSessionExpired
         ? { success: false, sessionExpired: true }
-        : { success: true, wordProperties: { fox: FOX } }
+        : { success: true, reviewWords: [['fox', 1]] }
     case 'getOneWord':
       return { success: true, ecp: FOX }
     case 'shouldAutoEnable':
@@ -55,7 +55,7 @@ const respond = (message: Message): unknown => {
 const releaseWords = async () => {
   const pending = heldWords
   heldWords = []
-  pending.forEach(callback => callback(respond({ type: 'getWords' })))
+  pending.forEach(callback => callback(respond({ type: 'getReviewWords' })))
   await settle()
 }
 
@@ -188,7 +188,9 @@ beforeEach(() => {
     (message: Message, callback?: Callback) => {
       sent.push(message)
       if (!callback) return
-      if (message.type === 'getWords' && holdWords) heldWords.push(callback)
+      if (message.type === 'getReviewWords' && holdWords) {
+        heldWords.push(callback)
+      }
       else callback(respond(message))
     }
   )
@@ -221,14 +223,16 @@ describe('the stand-down signal', () => {
 
   it('enabling an already-loaded script announces before processing', async () => {
     const send = await loadContentScript()
-    const getWordsSentBefore: number[] = []
+    const listRequestsBefore: number[] = []
     const heard = () =>
-      getWordsSentBefore.push(sent.filter(m => m.type === 'getWords').length)
+      listRequestsBefore.push(
+        sent.filter(m => m.type === 'getReviewWords').length
+      )
     document.addEventListener(STAND_DOWN_EVENT, heard)
 
     await send({ action: 'enxRun' })
 
-    expect(getWordsSentBefore).toEqual([0])
+    expect(listRequestsBefore).toEqual([0])
     document.removeEventListener(STAND_DOWN_EVENT, heard)
   })
 })
@@ -395,7 +399,7 @@ describe('an orphan that is told to stand down', () => {
 
     expect(set).not.toHaveBeenCalled()
     expect(del).not.toHaveBeenCalled()
-    expect(sent.filter(m => m.type === 'getWords')).toHaveLength(1)
+    expect(sent.filter(m => m.type === 'getReviewWords')).toHaveLength(1)
     expect(overlays()).toHaveLength(0)
   })
 })
@@ -454,7 +458,7 @@ describe('stopping learning mode on an SPA site', () => {
     await loadContentScript(SPA_ORIGINS)
     await new Promise(resolve => setTimeout(resolve, 150)) // ready debounce
     await settle()
-    expect(sent.filter(m => m.type === 'getWords')).toHaveLength(1)
+    expect(sent.filter(m => m.type === 'getReviewWords')).toHaveLength(1)
 
     wordsSessionExpired = false
     const set = jest.spyOn(CSS.highlights, 'set')
@@ -463,29 +467,23 @@ describe('stopping learning mode on an SPA site', () => {
     await settle()
     await clickFox()
 
-    expect(sent.filter(m => m.type === 'getWords')).toHaveLength(1)
+    expect(sent.filter(m => m.type === 'getReviewWords')).toHaveLength(1)
     expect(set).not.toHaveBeenCalled()
     expect(overlays()).toHaveLength(0)
   })
 
-  it('enxRun again: only the newer run paints', async () => {
+  it('enxRun again: both runs share one request and only the newer paints', async () => {
     const { send, run } = await startPendingSpaRun()
 
     const rerun = send({ action: 'enxRun' })
     await new Promise(resolve => setTimeout(resolve, 150))
     await settle()
-    expect(heldWords).toHaveLength(2)
+    expect(heldWords).toHaveLength(1)
     const set = jest.spyOn(CSS.highlights, 'set')
-    const [first, second] = heldWords
-    heldWords = [first]
     await releaseWords()
 
     expect(await run).toMatchObject({ success: true })
-    expect(set).not.toHaveBeenCalled()
-
-    heldWords = [second]
-    await releaseWords()
     expect(await rerun).toMatchObject({ success: true })
-    expect(set).toHaveBeenCalled()
+    expect(set).toHaveBeenCalledTimes(1)
   })
 })
