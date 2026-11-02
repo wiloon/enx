@@ -487,6 +487,8 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	apiGroup.Use(stats.TZOffsetMiddleware())
 	{
 		// get words query count by paragraph
+		// Deprecated: the extension is moving to GET /api/me/review-words
+		// (ADR-069, #566). Removal is #598.
 		// ADR-041: QUERY is the default, POST the fallback; GET is
 		// deprecated and kept only for older extension builds.
 		apiGroup.Handle("QUERY", "/paragraph-init", paragraphHandler.ParagraphInitBody)
