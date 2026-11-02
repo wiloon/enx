@@ -546,7 +546,7 @@ describe('the paint window', () => {
     const blocks = [...document.querySelectorAll('article p')]
     expect(observer.observed).toEqual(blocks)
     expect(observer.options).toMatchObject({
-      rootMargin: '100% 0px',
+      rootMargin: '0px',
       scrollMargin: '100% 0px',
     })
 

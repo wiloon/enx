@@ -707,7 +707,8 @@ const startPaintWindow = () => {
     wordState: key => wordCache[key],
   })
   // rootMargin does not reach into a nested scroll container; scrollMargin
-  // does.
+  // does, and also widens the document's own scroller. A rootMargin on top
+  // compounds with it: about nine viewports instead of three in Chromium.
   const observer = new IntersectionObserver(
     entries => {
       for (const entry of entries) {
@@ -715,7 +716,7 @@ const startPaintWindow = () => {
         else instance.leave(entry.target)
       }
     },
-    { rootMargin: PAINT_WINDOW_MARGIN, scrollMargin: PAINT_WINDOW_MARGIN }
+    { rootMargin: '0px', scrollMargin: PAINT_WINDOW_MARGIN }
   )
   blocks.forEach((_nodes, block) => observer.observe(block))
   paintWindow = instance
