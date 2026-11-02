@@ -21,7 +21,7 @@ adr-047 的引导要让新用户在示例文章里体验侧边栏 AI 翻译。�
 3. **发放**：`credit.GrantTrial(ctx, userID, amount, ttl)`：
    - 写 `trial_balance = amount`、`trial_expires_at = now + ttl`，流水类型新增 `GRANT_TRIAL`。
    - **每个账号终生只发一次**：幂等键 `trial:<userID>` 写进 `credit_transactions.stripe_event_id`（该列已有唯一索引，就是现成的幂等键）。过期、用完之后都不会再发。
-   - 发放时机：**账号创建时**。Clerk 中间件调用 `enx.GetOrCreateByClerkUserID`，创建分支之后调用一个注入的「新用户」钩子（接口，由 `main` 接到 `GrantTrial`），`enx` 包不 import billing。已存在的账号不补发。
+   - 发放时机：**账号创建时**。Clerk 中间件调用 `enx.GetOrCreateClerkUser`，创建分支在用户建行事务内调用注入的「新用户」钩子（由 `main` 接到 `billing.TrialGrant`），`enx` 包不 import billing。已存在的账号不补发。
 4. **扣费顺序：试用 → 订阅 → top-up**：
    - `Settle` 在同一条原子 UPDATE 里先从**有效**试用余额扣（不会扣成负数），剩下的再按现有逻辑走订阅池（不低于 0）、top-up 池（可以变成负数）。
    - **试用用户超出的部分免掉**（2026-10-16 决定）：每次 AI 调用的花费要调完才知道，试用余额不够付最后一次调用是常态。如果这次扣费用到了试用池，而 top-up 余额 ≤ 0，那么试用池和订阅池付不了的部分直接免掉，top-up 保持原值，不变成负数。否则这个从没付过钱的用户会背上欠款，第一次充值时被吃掉一部分，看起来像计费错误。通常只免掉最后一次调用的超出部分；几次调用同时在路上时，每次的超出部分都会免掉，最多受每分钟次数限制。试用扣到 0 之后，`CanUseAI` 为假，就不能再用了。top-up > 0 的付费用户不受影响，照旧可以扣成负数。`SETTLE` 流水的金额记实际扣掉的积分，不是这次调用的成本。
@@ -53,7 +53,7 @@ adr-047 的引导要让新用户在示例文章里体验侧边栏 AI 翻译。�
    - **Clerk 注册门槛**（Dashboard 配置，人工操作，不是代码）：在 **User & authentication** 里关闭 Email address 作为登录 / 注册方式（连同密码），只保留 Google、GitHub 两个 social connection；CAPTCHA 保持开启（2026-10-04 查 `clerk.catglish.com/v1/environment`，已开启，Smart 模式）。生产实例和 dev 实例（rational-deer-4450）都改，避免本地与线上的登录界面不一致。
    - **已执行（2026-10-04）**：生产与 dev 实例都已关闭邮箱注册登录与密码；`/v1/environment` 核对为只剩 `oauth_google`、`oauth_github`，CAPTCHA 开启。关闭后 Clerk 的 `email_address` 属性显示为 disabled，但已在 dev 用一个新 Google 账号实测：OAuth 带来的邮箱仍作为用户的主邮箱保存（Primary、Linked），session token 的 `email` claim 与 enx-api 里依赖邮箱的功能（管理员按邮箱发积分、Stripe 预填、`/me`）不受影响。
    - **重新开放邮箱登录的条件**：用户量上来或有用户明确要求时，先升级 Clerk 套餐、打开两项拦截，再开放邮箱通道，并修订本条。
-   - **可观测与总开关**：`GrantTrial` 成功时给 adr-040 的 Prometheus 指标加一个计数器 `enx_trial_grants_total`，发放量异常时可以在 Grafana 上看到；紧急时把 `CREDITS_TRIAL_AMOUNT` 设为 0 即停发，已发出的试用不受影响。v1 不做自动告警（adr-040 v1 不做告警）。
+   - **可观测与总开关**：试用发放事务提交成功后给 adr-040 的 Prometheus 指标加一个计数器 `enx_trial_grants_total`，发放量异常时可以在 Grafana 上看到；紧急时把 `CREDITS_TRIAL_AMOUNT` 设为 0 即停发，已发出的试用不受影响。v1 不做自动告警（adr-040 v1 不做告警）。
 
    **第二层：使用端，防单个试用账号短时间烧光、或被脚本调用。**
    - **只对「试用用户」生效**：`entitlement.Status` 新增 `TrialOnly`，条件是没有订阅、top-up ≤ 0、有效试用余额 > 0，也就是 AI 权限完全来自试用。订阅和充值用户不受这两个限制。
@@ -77,7 +77,7 @@ adr-047 的引导要让新用户在示例文章里体验侧边栏 AI 翻译。�
   - 新增 `trial.go`，放 `GrantTrial` 与有效余额的计算（一个纯函数 `effectiveTrial(balance, expiresAt, now)`）。
   - 改 `Balance`、`Settle`。
   - 现有 `Settle` 的「两次并发 Settle 不会重复扣订阅池」性质必须对三个池同样成立：仍然用单条 UPDATE，所有右侧表达式都基于更新前的值。
-- 新用户钩子：`enx` 包定义接口（例如 `NewUserHook`），由 `main` 注入；`GrantTrial` 失败只记日志，不能让登录请求失败。
+- 新用户钩子：`enx` 包定义接口（例如 `NewUserHook`），由 `main` 注入；发放失败只记日志，不能让登录请求失败。
 - 单测（`billing/credit` 现有测试风格，真实 SQLite 临时库）：
   - `GrantTrial` 幂等，第二次调用是空操作；`amount = 0` 时不发；成功发放时 `enx_trial_grants_total` 加 1。
   - 试用限制：`TrialOnly` 用户超过每分钟 / 每日次数时返回 429，且不调模型、不扣费；订阅用户、top-up > 0 的用户不受限；`calls-per-* = 0` 时不限；限流器从 `dictionary` 挪走后，adr-045 的单词兜底限制行为不变（现有测试照常通过）。
@@ -90,6 +90,14 @@ adr-047 的引导要让新用户在示例文章里体验侧边栏 AI 翻译。�
   - `/billing/me` 返回 `trialBalance`、`trialExpiresAt`。
 - enx-ui / enx-chrome：余额展示加试用一行；402 的提示文案在试用用完或过期时引导去订阅或充值。
 - **人工验证项**：Clerk 生产与 dev 实例关闭邮箱注册登录，`/v1/environment` 里 `email_address.used_for_first_factor` 为 false、`password.enabled` 为 false，只有 `oauth_google`、`oauth_github` 启用；`/sign-in`、`/sign-up` 页面只显示两个 OAuth 按钮；CAPTCHA 仍为开启；新注册账号在 `/billing` 看到 100 积分与到期日；在 `/reader` 拖选整句看到 AI 翻译、余额减少。
+
+### 2026-11-01 修订：新用户事务（#596）
+
+用户建行与试用发放放在同一个数据库事务中，避免并发首个请求看到已建行但尚未发放的用户。`enx` 在该事务内用保存点调用注入的钩子；发放失败回滚保存点、只记日志，用户仍提交并可登录。发放成功且外层事务提交后才增加 `enx_trial_grants_total`；外层提交失败属于开通失败。相同用户的并发首个请求等待写锁上的发放，最多等待 `busy_timeout`；超时则作为开通错误返回。发放失败不补发、由 ADR-051 邀请认领顺带补发的规则不变。
+
+## 修订记录
+
+- 2026-11-01：#596 将建行与试用发放放在同一事务，消除并发首个请求读到零试用余额的窗口。
 
 ## Consequences
 
