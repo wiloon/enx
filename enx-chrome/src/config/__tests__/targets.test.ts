@@ -10,6 +10,7 @@ describe('resolveBuildTarget', () => {
   it.each([
     ['development', 'development', 'http://localhost:8091'],
     ['homelab', 'homelab', 'https://enx-api.wiloon.lab'],
+    ['homelab-test', 'homelab-test', 'https://enx-api-test.wiloon.lab'],
     ['production', 'production', 'https://api.catglish.com'],
     ['test', 'test', 'http://localhost:8090'],
   ])('builds the %s mode against the %s target', (mode, name, apiBaseUrl) => {
@@ -41,10 +42,24 @@ describe('resolveBuildTarget', () => {
     expect(target.uiOrigins).toEqual(['https://a.example', 'https://b.example'])
   })
 
+  // The automated-test copy of HomeLab (fake AI, ADR-0007 in w10n-config) has
+  // its own site, API and Clerk sync host; nothing points back at enx.wiloon.lab.
+  it('keeps the homelab-test build on the enx-test hosts only', () => {
+    const target = resolveBuildTarget('homelab-test', {})
+    expect(target.frontendBaseUrl).toBe('https://enx-test.wiloon.lab')
+    expect(target.clerkSyncHost).toBe('https://enx-test.wiloon.lab')
+    expect(target.uiOrigins).toEqual([
+      'http://localhost:3000',
+      'https://enx-test.wiloon.lab',
+    ])
+    expect(JSON.stringify(target)).not.toMatch(/https:\/\/enx(-api)?\.wiloon/)
+  })
+
   // The RSSX Reader is a LAN host: only the homelab and dev builds adapt to it.
   it.each([
     ['development', ['https://rssx-lab.wiloon.com']],
     ['homelab', ['https://rssx-lab.wiloon.com']],
+    ['homelab-test', ['https://rssx-lab.wiloon.com']],
     ['production', []],
     ['test', []],
   ])('declares the RSSX origins of the %s target', (mode, rssxOrigins) => {
@@ -53,7 +68,7 @@ describe('resolveBuildTarget', () => {
 
   // Generic injection only: every declared target leaves it empty, so only an
   // override (the E2E fixture) adds a content-script site.
-  it.each(['development', 'homelab', 'production', 'test'])(
+  it.each(['development', 'homelab', 'homelab-test', 'production', 'test'])(
     'declares no generic content-script origins in the %s target',
     mode => {
       expect(resolveBuildTarget(mode, {}).contentScriptOrigins).toEqual([])

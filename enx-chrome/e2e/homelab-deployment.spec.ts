@@ -7,16 +7,16 @@ import { clickWord, enableLearningMode, openPopup } from './helpers'
 
 /**
  * The HomeLab lane (ADR-037 Decision 6): run by hand before the internal beta
- * and before a release, against the deployed HomeLab with the dist-homelab
- * build. It checks only what the local stack cannot see: deployed config and
+ * and before a release, against HomeLab's automated-test copy (enx-test) with
+ * the dist-homelab-test build. It checks only what the local stack cannot see: deployed config and
  * secrets, ingress and TLS, the real extension ID and its CORS, the
  * production-style images. It writes to the HomeLab database as the e2e user.
  *
- *   pnpm build && pnpm test:e2e:homelab      # see E2E_TESTING.md
+ *   pnpm build:homelab-test && pnpm test:e2e:homelab      # see E2E_TESTING.md
  */
 
-const API = TARGETS.homelab.apiBaseUrl
-const SITE = TARGETS.homelab.frontendBaseUrl
+const API = TARGETS['homelab-test'].apiBaseUrl
+const SITE = TARGETS['homelab-test'].frontendBaseUrl
 const WORD = 'reliable'
 
 /** The newest first-parent commit on origin/main that touched enx-api. */
