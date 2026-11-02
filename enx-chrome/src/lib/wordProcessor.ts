@@ -355,6 +355,38 @@ export class WordProcessor {
   static readonly MAX_SEGMENT_LENGTH = 5000
   static readonly SEGMENT_WINDOW_RADIUS = 500
 
+  // UAX #29 breaks a sentence after every one of these (rule SB4), yet with
+  // `white-space: normal` the browser renders them as plain spaces, so
+  // hard-wrapped page source would split prose at every source line.
+  private static readonly LINE_SEPARATORS = /[\n\r\x85\u2028\u2029]/g
+  // `\s` and String.prototype.trim() don't treat NEL (U+0085) as whitespace.
+  private static readonly SEPARATOR_RUN = /[\s\x85]+/g
+  private static readonly LEADING_SEPARATORS = /^[\s\x85]*/
+  private static readonly TRAILING_SEPARATORS = /[\s\x85]*$/
+
+  // The sentence as rendered: every whitespace or separator run is one space.
+  private static normalizeSentence(text: string): string {
+    return text.replace(this.SEPARATOR_RUN, ' ').trim()
+  }
+
+  // The range over fullText[start, end), trimmed of leading/trailing
+  // whitespace and NEL so the highlight doesn't paint the gap around it.
+  private static trimmedRange(
+    container: Element,
+    fullText: string,
+    start: number,
+    end: number
+  ): Range | null {
+    const span = fullText.slice(start, end)
+    const leading = this.LEADING_SEPARATORS.exec(span)![0].length
+    const trailing = this.TRAILING_SEPARATORS.exec(span)![0].length
+    const trimmedStart = start + leading
+    const trimmedEnd = end - trailing
+    return trimmedEnd > trimmedStart
+      ? this.rangeFromContainerOffsets(container, trimmedStart, trimmedEnd)
+      : null
+  }
+
   // Walks up from a starting node looking for the nearest block-level
   // ancestor whose text is long enough to plausibly contain a full sentence.
   // Mirrors getArticleNodes()'s ">20/100/500 chars" style thresholds, just
@@ -452,10 +484,12 @@ export class WordProcessor {
   // LOOKUP_EXCLUDED_TAGS span (code, pre, ...) is replaced with a neutral
   // letter. Segment boundaries computed from this string index directly into
   // `fullText` unchanged, since lengths match; only the punctuation the
-  // segmenter sees is different. Falls back to `fullText` itself if the
-  // walked length ever disagrees with it (shouldn't happen -- textContent is
-  // defined as the concatenation of the same text nodes -- but a mismatch
-  // would silently corrupt every offset downstream, so it's worth guarding).
+  // segmenter sees is different. Every LINE_SEPARATORS character is also
+  // replaced with a space, one for one. Falls back to `fullText` (with the
+  // same separator replacement) if the walked length ever disagrees with it
+  // (shouldn't happen -- textContent is defined as the concatenation of the
+  // same text nodes -- but a mismatch would silently corrupt every offset
+  // downstream, so it's worth guarding).
   private static buildSegmentationText(
     container: Element,
     fullText: string
@@ -469,21 +503,20 @@ export class WordProcessor {
         ? 'x'.repeat(text.length)
         : text
     }
-    return masked.length === fullText.length ? masked : fullText
+    const segmentable = masked.length === fullText.length ? masked : fullText
+    return segmentable.replace(this.LINE_SEPARATORS, ' ')
   }
 
-  // The whole container as the sentence, its range trimmed of surrounding
-  // whitespace the same way a segmented sentence's is.
+  // The whole container as the sentence, normalized and with its range
+  // trimmed the same way a segmented sentence's is.
   private static wholeContainerContext(
     container: Element,
     fullText: string
   ): { sentence: string; sentenceIndex: number; range: Range | null } {
-    const start = fullText.length - fullText.trimStart().length
-    const end = fullText.trimEnd().length
     return {
-      sentence: fullText.trim(),
+      sentence: this.normalizeSentence(fullText),
       sentenceIndex: 0,
-      range: this.rangeFromContainerOffsets(container, start, end),
+      range: this.trimmedRange(container, fullText, 0, fullText.length),
     }
   }
 
@@ -497,8 +530,9 @@ export class WordProcessor {
   // phrase (2-5 word selection, ADR-008) the sentence is being fetched for --
   // used only for the sanity-check warning below.
   // `range` (ADR-025) spans the resolved sentence in the live DOM, trimmed of
-  // its leading/trailing whitespace, for setActiveSentenceHighlight(). null
-  // when the offsets can't be resolved back to text nodes.
+  // its leading/trailing whitespace and NEL, for setActiveSentenceHighlight().
+  // null when the offsets can't be resolved back to text nodes. `sentence` is
+  // that text with every whitespace run collapsed to one space.
   static extractSentenceContext(
     reference: Range,
     queryText: string
@@ -556,7 +590,7 @@ export class WordProcessor {
             const start = windowStart + segment.index
             const end = windowStart + segmentEnd
             result = {
-              sentence: fullText.slice(start, end).trim(),
+              sentence: this.normalizeSentence(fullText.slice(start, end)),
               sentenceIndex: i,
               start,
               end,
@@ -574,26 +608,21 @@ export class WordProcessor {
 
     if (!result) {
       result = {
-        sentence: fullText
-          .slice(windowStart, windowStart + textToSegment.length)
-          .trim(),
+        sentence: this.normalizeSentence(
+          fullText.slice(windowStart, windowStart + textToSegment.length)
+        ),
         sentenceIndex: 0,
         start: windowStart,
         end: windowStart + textToSegment.length,
       }
     }
 
-    // Trim the highlight range to the sentence's non-whitespace extent so it
-    // doesn't paint the gap before/after it.
-    const rawSpan = fullText.slice(result.start, result.end)
-    const leading = rawSpan.length - rawSpan.trimStart().length
-    const trailing = rawSpan.length - rawSpan.trimEnd().length
-    const trimmedStart = result.start + leading
-    const trimmedEnd = result.end - trailing
-    const range =
-      trimmedEnd > trimmedStart
-        ? this.rangeFromContainerOffsets(container, trimmedStart, trimmedEnd)
-        : null
+    const range = this.trimmedRange(
+      container,
+      fullText,
+      result.start,
+      result.end
+    )
 
     // Sanity check only, not a correctness gate: if the DOM-offset math ever
     // drifts, this surfaces it in the console instead of silently returning
