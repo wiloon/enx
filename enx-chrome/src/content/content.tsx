@@ -1471,6 +1471,7 @@ const enableEnx = async (): Promise<EnableOutcome> => {
 
   console.log('Enabling ENX functionality')
   isEnxEnabled = true
+  const lifecycle = learningModeLifecycle
 
   // Add mouseup listener for text selection, and mousedown to dismiss a
   // still-showing selection-translate button as soon as a new selection
@@ -1503,7 +1504,10 @@ const enableEnx = async (): Promise<EnableOutcome> => {
   const outcome = await runWithStatus(
     onArticleFound => processArticleContent({ isCurrent, onArticleFound }),
     reportStatus,
-    () => !standDown.isStoodDown() && (isCurrent?.() ?? true)
+    () =>
+      !standDown.isStoodDown() &&
+      lifecycle === learningModeLifecycle &&
+      (isCurrent?.() ?? true)
   )
 
   if (outcome.ok) {

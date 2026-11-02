@@ -90,6 +90,10 @@ const loadContentScript = async (
 }
 
 const listRequests = () => sent.filter(m => m.type === 'getReviewWords')
+const statusReports = () =>
+  sent
+    .filter(m => m.type === 'learningModeStatus')
+    .map(m => (m as { status?: unknown }).status)
 
 // Flips the "highlight vocabulary while reading" preference through the
 // content script's storage listener.
@@ -648,6 +652,40 @@ describe('the paint window', () => {
     expect(listRequests()).toHaveLength(1)
     expect(liveIntersectionObservers()).toHaveLength(1)
     expect(underlined()).toEqual({ 'enx-hl-1': ['Fox', 'fox’s', "FOX'S"] })
+  })
+
+  it('disabling during a held load ends at off, and the superseded run succeeds', async () => {
+    holdList = true
+    const send = await loadContentScript()
+    const run = send({ action: 'enxRun' })
+    await settle()
+
+    await send({ action: 'enxStop' })
+    await releaseList()
+
+    expect(await run).toMatchObject({ success: true })
+    expect(statusReports().at(-1)).toEqual({ status: 'off' })
+  })
+
+  it('disabling and re-enabling during a held load ends at ready, with no report from the superseded run', async () => {
+    holdList = true
+    const send = await loadContentScript()
+    const run = send({ action: 'enxRun' })
+    await settle()
+
+    await send({ action: 'enxStop' })
+    const offAt = statusReports().length
+    const rerun = send({ action: 'enxRun' })
+    await settle()
+    await releaseList()
+
+    expect(await run).toMatchObject({ success: true })
+    expect(await rerun).toMatchObject({ success: true })
+    expect(statusReports().slice(offAt - 1)).toEqual([
+      { status: 'off' },
+      { status: 'processing' },
+      { status: 'ready' },
+    ])
   })
 
   it.each([
