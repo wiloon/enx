@@ -90,7 +90,6 @@ export interface ContentMessage {
   // other two 'openSentencePanel' callers (single-word "🔤 整句翻译" button,
   // ADR-007 drag-select-sentence translation).
   phrase?: string
-  sourceUrl?: string
   // Set on 'openSentencePanel': the page's wordCache entries for the
   // sentence's words, passed through to PendingSentenceContext (ADR-053).
   wordStates?: Record<string, WordData>
@@ -198,7 +197,6 @@ export interface PendingSentenceContext {
   // single-word "🔤 整句翻译" button flow, and branching SidePanel.tsx on it
   // would change that existing flow's behavior too.
   phrase?: string
-  sourceUrl: string
   createdAt: number
   // The page's wordCache entries for the words in `sentence`, keyed by
   // lower-cased word, so the panel can underline the sentence original the

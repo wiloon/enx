@@ -734,7 +734,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             sender.tab?.id,
             request.word || '',
             request.sentence || request.word || '',
-            request.sourceUrl || '',
             request.phrase || undefined,
             sentencePanelOpening,
             request.wordStates
@@ -1331,7 +1330,6 @@ const handleOpenSentencePanel = async (
   tabId: number | undefined,
   word: string,
   sentence: string,
-  sourceUrl: string,
   phrase?: string,
   panelOpening?: Promise<boolean>,
   wordStates?: Record<string, WordData>
@@ -1343,7 +1341,6 @@ const handleOpenSentencePanel = async (
     word,
     sentence,
     phrase,
-    sourceUrl,
     createdAt: Date.now(),
     wordStates,
   }

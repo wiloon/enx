@@ -42,6 +42,23 @@ import {
   pendingSentenceKey,
 } from '@/lib/sidePanel'
 import {
+  adjacentPageCard,
+  findCard,
+  findSentence,
+  moveSentenceToTop,
+  panelCardKey,
+  patchCard,
+  patchSentence,
+  removeCard,
+  reorderOrInsertCard,
+  sentenceCardId,
+  topLevelPhraseCardKey,
+  wordCardKey,
+  type PanelEntry,
+  type SentenceEntry,
+  type WordCardData,
+} from '@/lib/panelHistory'
+import {
   BackgroundResponse,
   ContentMessage,
   LatestPageWordLookup,
@@ -51,77 +68,6 @@ import {
 } from '@/types'
 
 initSentry()
-
-type Status = 'idle' | 'loading' | 'loaded' | 'error'
-
-type FetchStatus = 'loading' | 'loaded' | 'error'
-
-// Word click in the Side Panel renders as a card (spec §3.9): dictionary
-// lookup (getOneWord) and AI contextual translation (translateWordInContext)
-// each track their own status -- the card renders progressively, showing
-// whichever half resolves first. 'none' means "not applicable". On
-// contextStatus: cards created from a page-level word popover lookup
-// (ADR-006) have no sentence context to translate against and so must never
-// show the "翻译中..."/context text UI at all. On dictionaryStatus: phrase
-// cards (ADR-008) -- a 2-5 word selection never has an ECDICT/words entry, so
-// they skip the dictionary half entirely and only ever populate context*.
-interface WordCardData {
-  word: string
-  pronunciation?: string
-  loadCount?: number
-  dictionaryChinese?: string
-  dictionaryStatus: FetchStatus | 'none'
-  // Set when dictionaryStatus is 'error'. The status and code tell the
-  // daily lookup quota (TASK-SPEC §4.2; rendered with an upgrade link) from
-  // the request rate limit (ADR-060; the server's own message) -- both 429.
-  dictionaryError?: string
-  dictionaryErrorHttpStatus?: number
-  dictionaryErrorCode?: string
-  contextChinese?: string
-  // One short clause explaining why contextChinese differs from
-  // dictionaryChinese, when the model judged the gap worth flagging. Empty
-  // or unset means no explanation was offered (ordinary sense, or the
-  // fallback translateWordInContext call was used instead).
-  contextWhy?: string
-  contextError?: string
-  // Set alongside contextError when contextStatus is 'error'. 402 means the
-  // AI translation credit balance ran out (TASK-SPEC §4.1).
-  contextErrorHttpStatus?: number
-  contextStatus: FetchStatus | 'none'
-  // The sentence text this card's context translation was fetched against,
-  // set only for a TOP-LEVEL card (ADR-023: a main-page phrase lookup,
-  // ADR-008, has no owning SentenceEntry to recall it from). A card nested
-  // inside a SentenceEntry's `words` instead reads its owning entry's
-  // `sentence` at retry time, so it's left unset there.
-  contextSentence?: string
-}
-
-// A card in the Side Panel's unified history list (ADR-023): either a
-// standalone word/phrase card (top-level, from a page click or a main-page
-// phrase drag-select -- ADR-006/008) or a sentence translation, which owns
-// its own nested `words` list for anything looked up by selecting text
-// inside THIS sentence's own rendered original (ADR-017). Nesting only
-// happens for a selection made inside the sentence's own <p> -- a main-page
-// lookup never tries to match itself to a history sentence (ADR-023
-// Decision B2), so the two origins stay structurally separate.
-interface SentenceEntry {
-  kind: 'sentence'
-  id: string
-  sourceUrl?: string
-  sentence: string
-  // The word the user clicked on the page before opening the panel
-  // (ADR-014), marked with the enx-sp-anchor highlight in the rendered
-  // original (ADR-053). Empty for a
-  // drag-selected sentence (ADR-007) -- no anchor word.
-  clickedWord: string
-  status: Status
-  chinese: string
-  errorMessage: string
-  errorHttpStatus?: number
-  words: WordCardData[]
-}
-
-type PanelEntry = ({ kind: 'word' } & WordCardData) | SentenceEntry
 
 // Billing-related HTTP statuses the backend can return from the AI
 // translate and dictionary lookup endpoints (see billing/handler.go and
@@ -239,102 +185,6 @@ const getSelectionCharRange = (root: HTMLElement): [number, number] | null => {
   return a <= b ? [a, b] : [b, a]
 }
 
-// -- Pure helpers over PanelEntry[] (ADR-023) --------------------------------
-// `sentenceId === undefined` targets the top-level word/phrase entries;
-// `sentenceId` set targets that SentenceEntry's own nested `words`. Keeping
-// these as pure functions (rather than inlined setState updaters) is what
-// lets every card-mutating callback below stay a one-liner regardless of
-// which scope it's writing into.
-
-const findCard = (
-  entries: PanelEntry[],
-  sentenceId: string | undefined,
-  word: string
-): WordCardData | undefined => {
-  if (sentenceId === undefined) {
-    return entries.find(
-      (e): e is { kind: 'word' } & WordCardData =>
-        e.kind === 'word' && e.word === word
-    )
-  }
-  const sentence = entries.find(
-    (e): e is SentenceEntry => e.kind === 'sentence' && e.id === sentenceId
-  )
-  return sentence?.words.find(w => w.word === word)
-}
-
-// Reorders the card to the front if `word` already exists at this scope
-// (reusing its existing data, never re-fetching); otherwise inserts a new
-// card built by `makeCard()` at the front.
-const reorderOrInsertCard = (
-  entries: PanelEntry[],
-  sentenceId: string | undefined,
-  word: string,
-  makeCard: () => WordCardData
-): PanelEntry[] => {
-  if (sentenceId === undefined) {
-    const index = entries.findIndex(e => e.kind === 'word' && e.word === word)
-    if (index !== -1)
-      return [
-        entries[index],
-        ...entries.slice(0, index),
-        ...entries.slice(index + 1),
-      ]
-    return [{ kind: 'word', ...makeCard() }, ...entries]
-  }
-  return entries.map(e => {
-    if (e.kind !== 'sentence' || e.id !== sentenceId) return e
-    const index = e.words.findIndex(w => w.word === word)
-    if (index !== -1) {
-      return {
-        ...e,
-        words: [
-          e.words[index],
-          ...e.words.slice(0, index),
-          ...e.words.slice(index + 1),
-        ],
-      }
-    }
-    return { ...e, words: [makeCard(), ...e.words] }
-  })
-}
-
-const patchCard = (
-  entries: PanelEntry[],
-  sentenceId: string | undefined,
-  word: string,
-  patch: Partial<WordCardData>
-): PanelEntry[] => {
-  if (sentenceId === undefined) {
-    return entries.map(e =>
-      e.kind === 'word' && e.word === word ? { ...e, ...patch } : e
-    )
-  }
-  return entries.map(e =>
-    e.kind === 'sentence' && e.id === sentenceId
-      ? {
-          ...e,
-          words: e.words.map(w => (w.word === word ? { ...w, ...patch } : w)),
-        }
-      : e
-  )
-}
-
-const removeCard = (
-  entries: PanelEntry[],
-  sentenceId: string | undefined,
-  word: string
-): PanelEntry[] => {
-  if (sentenceId === undefined) {
-    return entries.filter(e => !(e.kind === 'word' && e.word === word))
-  }
-  return entries.map(e =>
-    e.kind === 'sentence' && e.id === sentenceId
-      ? { ...e, words: e.words.filter(w => w.word !== word) }
-      : e
-  )
-}
-
 // Counts a word clicked in the panel on the server, without waiting
 // (lib/queryCount.ts).
 const countOnServer: RecordLookup = wordId => {
@@ -344,28 +194,12 @@ const countOnServer: RecordLookup = wordId => {
   } satisfies ContentMessage).catch(() => {})
 }
 
-// The top-level page-lookup card a new SentenceEntry should absorb (ADR-023
-// addendum): the user clicked `word` on the page, then sent its sentence to
-// the panel from the same popover, so the newest entry is that word's
-// dictionary-only card. Moving it into the sentence avoids two cards for
-// the same word side by side. Only the very first entry counts -- an older
-// lookup of the same word is its own history.
-const adjacentPageCard = (
-  entries: PanelEntry[],
-  word: string
-): ({ kind: 'word' } & WordCardData) | undefined => {
-  const first = entries[0]
-  if (
-    first?.kind === 'word' &&
-    first.word === word &&
-    first.dictionaryStatus === 'loaded' &&
-    first.contextStatus === 'none'
-  )
-    return first
-  return undefined
+// The card a request writes back to, and the token it started with.
+interface CardRef {
+  sentenceId: string | undefined
+  key: string
+  token: number
 }
-
-// -----------------------------------------------------------------------
 
 // The confirm affordance for an in-panel phrase selection (ADR-017 D2): a
 // bare icon button pinned just below the selection -- the selected text is
@@ -690,16 +524,17 @@ function SentenceBlock({
   onRetrySentence,
 }: {
   entry: SentenceEntry
+  // panelCardKey of every expanded card.
   expandedWords: Set<string>
-  onToggleExpand: (word: string) => void
+  onToggleExpand: (cardKey: string) => void
   onWordClick: (sentenceId: string, sentence: string, word: string) => void
   onPhraseConfirm: (
     sentenceId: string,
     sentence: string,
     phrase: string
   ) => void
-  onRemoveWord: (sentenceId: string, word: string) => void
-  onRetryContext: (sentenceId: string, word: string) => void
+  onRemoveWord: (sentenceId: string, key: string) => void
+  onRetryContext: (sentenceId: string, key: string) => void
   onRetrySentence: (sentenceId: string) => void
 }) {
   const sentenceRef = useRef<HTMLParagraphElement>(null)
@@ -749,7 +584,7 @@ function SentenceBlock({
     // Whole sentence (or more) selected -- the status area already covers it.
     if (wordCount >= sentenceWordCount) return
     // Already looked up in this sentence -- skip the confirm step, resurface it.
-    if (entry.words.some(w => w.word === text)) {
+    if (entry.words.some(w => w.key === wordCardKey(text))) {
       onPhraseConfirm(entry.id, entry.sentence, text)
       return
     }
@@ -839,12 +674,14 @@ function SentenceBlock({
         <div data-testid="sidepanel-sentence-words" className="space-y-2">
           {entry.words.map(card => (
             <WordCard
-              key={card.word}
+              key={card.key}
               card={card}
-              expanded={expandedWords.has(card.word)}
-              onToggleExpand={() => onToggleExpand(card.word)}
-              onRemove={() => onRemoveWord(entry.id, card.word)}
-              onRetryContext={() => onRetryContext(entry.id, card.word)}
+              expanded={expandedWords.has(panelCardKey(entry.id, card.key))}
+              onToggleExpand={() =>
+                onToggleExpand(panelCardKey(entry.id, card.key))
+              }
+              onRemove={() => onRemoveWord(entry.id, card.key)}
+              onRetryContext={() => onRetryContext(entry.id, card.key)}
               shownAbove={sentenceErrorText}
               nested
             />
@@ -868,26 +705,31 @@ function SidePanelContent() {
   // reorder only ever happens at the scope the selection came from -- a
   // main-page click never searches history sentences for a match to nest
   // into (Decision B2), so scoping never needs cross-referencing.
-  const [entries, setEntries] = useState<PanelEntry[]>([])
-  // Mirrors `entries` for callbacks reached from inside a long-lived effect
-  // closure (the sentence-creation effect below only depends on
-  // `pendingContext?.createdAt`, so its `.then()` captures whatever
-  // `entries` was AT THAT RENDER -- stale by the time an async response
-  // arrives if the user clicked something in between). A plain ref update
-  // in an effect is enough here since those callbacks only ever run after a
-  // real network round-trip, well past the next render.
+  const [entries, setEntriesState] = useState<PanelEntry[]>([])
+  // Always the latest list, for callbacks reached from inside a long-lived
+  // effect closure or an async response: written in the same call as the
+  // state, so a token check never reads a list React hasn't rendered yet.
   const entriesRef = useRef<PanelEntry[]>(entries)
-  useEffect(() => {
-    entriesRef.current = entries
-  }, [entries])
+  const setEntries = useCallback(
+    (update: PanelEntry[] | ((prev: PanelEntry[]) => PanelEntry[])) => {
+      entriesRef.current =
+        typeof update === 'function' ? update(entriesRef.current) : update
+      setEntriesState(entriesRef.current)
+    },
+    []
+  )
+  // Request tokens (ADR-023 Decision 8): each request a card waits on takes
+  // the next value, and its response is written only while the card found
+  // by id/key still carries it.
+  const lastTokenRef = useRef(0)
+  const nextToken = useCallback(() => ++lastTokenRef.current, [])
   // Last-seen sentence context, purely as the effect trigger below -- the
   // displayed data itself lives in `entries` once the effect creates (or
   // updates) a SentenceEntry from it.
   const [pendingContext, setPendingContext] =
     useState<PendingSentenceContext | null>(null)
-  // Words whose (often verbose) dictionary meaning the user has expanded past
-  // the default 3-line clamp. Keyed by word only (not by scope) -- shared
-  // across the top-level list and every sentence's nested list.
+  // Cards whose (often verbose) dictionary meaning the user has expanded past
+  // the default 3-line clamp, by panelCardKey.
   const [expandedWords, setExpandedWords] = useState<Set<string>>(new Set())
   // What Clear just removed, kept for a few seconds so Undo can put it back.
   const [cleared, setCleared] = useState<{
@@ -946,11 +788,11 @@ function SidePanelContent() {
     }
   }, [])
 
-  const toggleExpanded = useCallback((word: string) => {
+  const toggleExpanded = useCallback((cardKey: string) => {
     setExpandedWords(prev => {
       const next = new Set(prev)
-      if (next.has(word)) next.delete(word)
-      else next.add(word)
+      if (next.has(cardKey)) next.delete(cardKey)
+      else next.add(cardKey)
       return next
     })
   }, [])
@@ -959,16 +801,17 @@ function SidePanelContent() {
   // otherwise, so a long reading session accumulates noise). Purely local --
   // nothing is persisted, re-clicking the word re-adds it.
   const handleRemoveCard = useCallback(
-    (sentenceId: string | undefined, word: string) => {
-      setEntries(prev => removeCard(prev, sentenceId, word))
+    (sentenceId: string | undefined, key: string) => {
+      setEntries(prev => removeCard(prev, sentenceId, key))
+      const cardKey = panelCardKey(sentenceId, key)
       setExpandedWords(prev => {
-        if (!prev.has(word)) return prev
+        if (!prev.has(cardKey)) return prev
         const next = new Set(prev)
-        next.delete(word)
+        next.delete(cardKey)
         return next
       })
     },
-    []
+    [setEntries]
   )
 
   // Keep listening for a new sentence context: if the panel is already open
@@ -1007,8 +850,9 @@ function SidePanelContent() {
     // underlines need it (ADR-053 Decision 3), so no message goes back.
     setWordStates(prev => ({ ...prev, [word]: lookup.ecp }))
     setEntries(prev =>
-      reorderOrInsertCard(prev, undefined, word, () => ({
+      reorderOrInsertCard(prev, undefined, wordCardKey(word), () => ({
         word,
+        key: wordCardKey(word),
         pronunciation: lookup.ecp.Pronunciation,
         loadCount: lookup.ecp.LoadCount,
         dictionaryChinese: lookup.ecp.Chinese,
@@ -1016,7 +860,7 @@ function SidePanelContent() {
         contextStatus: 'none',
       }))
     )
-  }, [])
+  }, [setEntries])
 
   useEffect(() => {
     if (tabId === undefined) return
@@ -1072,9 +916,13 @@ function SidePanelContent() {
     (
       word: string,
       sentence: string,
-      sentenceId: string | undefined,
+      card: CardRef,
       dictionaryChinese?: string
     ) => {
+      const patch = (fields: Partial<WordCardData>) =>
+        setEntries(prev =>
+          patchCard(prev, card.sentenceId, card.key, fields, card.token)
+        )
       sendMessageToBackground<BackgroundResponse>({
         type: 'translateWordInContext',
         word,
@@ -1083,30 +931,34 @@ function SidePanelContent() {
       } satisfies ContentMessage)
         .then(response => {
           const resolved = response.success && response.chinese
-          setEntries(prev =>
-            patchCard(prev, sentenceId, word, {
-              contextChinese: resolved ? response.chinese : undefined,
-              contextWhy: resolved ? response.why || undefined : undefined,
-              contextError: resolved
-                ? undefined
-                : response.error || 'Translation failed',
-              contextErrorHttpStatus: resolved ? undefined : response.status,
-              contextStatus: resolved ? 'loaded' : 'error',
-            })
-          )
+          patch({
+            contextChinese: resolved ? response.chinese : undefined,
+            contextWhy: resolved ? response.why || undefined : undefined,
+            contextError: resolved
+              ? undefined
+              : response.error || 'Translation failed',
+            contextErrorHttpStatus: resolved ? undefined : response.status,
+            contextStatus: resolved ? 'loaded' : 'error',
+          })
         })
         .catch(() => {
-          setEntries(prev =>
-            patchCard(prev, sentenceId, word, {
-              contextStatus: 'error',
-              contextChinese: undefined,
-              contextWhy: undefined,
-              contextError: 'Translation failed',
-              contextErrorHttpStatus: undefined,
-            })
-          )
+          patch({
+            contextStatus: 'error',
+            contextChinese: undefined,
+            contextWhy: undefined,
+            contextError: 'Translation failed',
+            contextErrorHttpStatus: undefined,
+          })
         })
     },
+    [setEntries]
+  )
+
+  // Whether `card` is still waiting on the request its token started.
+  const holdsToken = useCallback(
+    (card: CardRef) =>
+      findCard(entriesRef.current, card.sentenceId, card.key)?.token ===
+      card.token,
     []
   )
 
@@ -1139,18 +991,25 @@ function SidePanelContent() {
   // `counts` is true only for a word clicked in the panel: that click is a
   // lookup and is counted once (lib/queryCount.ts). A card for a word the
   // page's popover already looked up -- a sentence's anchor word, a retry --
-  // must not count it again.
+  // must not count it again. A response for a card that no longer holds
+  // the token (removed, cleared, recreated) does nothing and resolves
+  // `current: false`, so the chain stops there.
   const fetchDictionary = useCallback(
     (
       word: string,
-      sentenceId: string | undefined,
+      card: CardRef,
       counts: boolean
-    ): Promise<string | undefined> => {
+    ): Promise<{ current: boolean; chinese?: string }> => {
+      const patch = (fields: Partial<WordCardData>) =>
+        setEntries(prev =>
+          patchCard(prev, card.sentenceId, card.key, fields, card.token)
+        )
       return sendMessageToBackground<BackgroundResponse>({
         type: 'getOneWord',
         word,
       } satisfies ContentMessage)
         .then(response => {
+          if (!holdsToken(card)) return { current: false }
           const ecp =
             response.success && response.ecp && counts
               ? countLookup(response.ecp, countOnServer)
@@ -1158,36 +1017,36 @@ function SidePanelContent() {
           if (response.success && ecp) {
             recordWordLookup(word, ecp)
           }
-          setEntries(prev =>
-            patchCard(prev, sentenceId, word, {
-              pronunciation: response.success ? ecp?.Pronunciation : undefined,
-              dictionaryChinese: response.success ? ecp?.Chinese : undefined,
-              loadCount: response.success ? ecp?.LoadCount : undefined,
-              dictionaryStatus: response.success ? 'loaded' : 'error',
-              dictionaryError: response.success
-                ? undefined
-                : response.error || 'Dictionary lookup failed',
-              dictionaryErrorHttpStatus: response.success
-                ? undefined
-                : response.status,
-              dictionaryErrorCode: response.success ? undefined : response.code,
-            })
-          )
-          return response.success ? ecp?.Chinese : undefined
+          patch({
+            pronunciation: response.success ? ecp?.Pronunciation : undefined,
+            dictionaryChinese: response.success ? ecp?.Chinese : undefined,
+            loadCount: response.success ? ecp?.LoadCount : undefined,
+            dictionaryStatus: response.success ? 'loaded' : 'error',
+            dictionaryError: response.success
+              ? undefined
+              : response.error || 'Dictionary lookup failed',
+            dictionaryErrorHttpStatus: response.success
+              ? undefined
+              : response.status,
+            dictionaryErrorCode: response.success ? undefined : response.code,
+          })
+          return {
+            current: true,
+            chinese: response.success ? ecp?.Chinese : undefined,
+          }
         })
         .catch(() => {
-          setEntries(prev =>
-            patchCard(prev, sentenceId, word, {
-              dictionaryStatus: 'error',
-              dictionaryError: 'Dictionary lookup failed',
-              dictionaryErrorHttpStatus: undefined,
-              dictionaryErrorCode: undefined,
-            })
-          )
-          return undefined
+          if (!holdsToken(card)) return { current: false }
+          patch({
+            dictionaryStatus: 'error',
+            dictionaryError: 'Dictionary lookup failed',
+            dictionaryErrorHttpStatus: undefined,
+            dictionaryErrorCode: undefined,
+          })
+          return { current: true }
         })
     },
-    [recordWordLookup]
+    [recordWordLookup, holdsToken, setEntries]
   )
 
   // The single entry point for "look up a word's dictionary AND context
@@ -1198,16 +1057,13 @@ function SidePanelContent() {
   // (successfully or not) does the AI call fire, so the model always has
   // whatever dictionary definition is available to compare against. A
   // phrase (ADR-008) has no dictionary entry and skips this entirely,
-  // calling fetchContextTranslation directly instead.
+  // calling fetchContextTranslation directly instead. The whole chain is one
+  // request with one token: the context half reuses it, and never starts
+  // for a card that lost it while the dictionary half was in flight.
   const fetchWordContext = useCallback(
-    (
-      word: string,
-      sentence: string,
-      sentenceId: string | undefined,
-      counts: boolean
-    ) => {
-      fetchDictionary(word, sentenceId, counts).then(dictionaryChinese => {
-        fetchContextTranslation(word, sentence, sentenceId, dictionaryChinese)
+    (word: string, sentence: string, card: CardRef, counts: boolean) => {
+      fetchDictionary(word, card, counts).then(({ current, chinese }) => {
+        if (current) fetchContextTranslation(word, sentence, card, chinese)
       })
     },
     [fetchDictionary, fetchContextTranslation]
@@ -1229,54 +1085,89 @@ function SidePanelContent() {
   const seedAnchorWord = useCallback(
     (sentenceId: string, rawWord: string, sentence: string) => {
       const word = rawWord.toLowerCase()
-      const existing = findCard(entriesRef.current, sentenceId, word)
+      const key = wordCardKey(word)
+      const existing = findCard(entriesRef.current, sentenceId, key)
 
       if (existing) {
         setEntries(prev =>
-          reorderOrInsertCard(prev, sentenceId, word, () => existing)
+          reorderOrInsertCard(prev, sentenceId, key, () => existing)
         )
         return
       }
 
+      const token = nextToken()
       setEntries(prev =>
-        reorderOrInsertCard(prev, sentenceId, word, () => ({
+        reorderOrInsertCard(prev, sentenceId, key, () => ({
           word,
+          key,
+          token,
           dictionaryStatus: 'loading',
           contextStatus: 'loading',
         }))
       )
       // The page's popover already counted this word's lookup.
-      fetchWordContext(word, sentence, sentenceId, false)
+      fetchWordContext(word, sentence, { sentenceId, key, token }, false)
     },
-    [fetchWordContext]
+    [fetchWordContext, nextToken, setEntries]
+  )
+
+  // Lets a card stuck in an error state (e.g. session expiry) recover
+  // without a full page reload, with a new token. Three cases, by what the
+  // dictionary half is doing: a phrase card (dictionaryStatus 'none') has no
+  // dictionary to redo, so just retry the AI call alone; a card whose
+  // dictionary already loaded reuses that definition rather than re-running
+  // getOneWord (no need to fetch it twice); anything else (dictionary
+  // itself never resolved, e.g. also hit the same session expiry) redoes
+  // the whole dictionary-first chain.
+  const retryWordCard = useCallback(
+    (sentenceId: string | undefined, card: WordCardData, sentence: string) => {
+      const token = nextToken()
+      const ref: CardRef = { sentenceId, key: card.key, token }
+      const contextOnly =
+        card.dictionaryStatus === 'none' || card.dictionaryStatus === 'loaded'
+      setEntries(prev =>
+        patchCard(prev, sentenceId, card.key, {
+          token,
+          contextStatus: 'loading',
+          contextError: undefined,
+          ...(contextOnly
+            ? {}
+            : { dictionaryStatus: 'loading', dictionaryError: undefined }),
+        })
+      )
+      if (contextOnly) {
+        fetchContextTranslation(
+          card.word,
+          sentence,
+          ref,
+          card.dictionaryStatus === 'loaded'
+            ? card.dictionaryChinese
+            : undefined
+        )
+        return
+      }
+      // A retry redoes a lookup, it is not a new one.
+      fetchWordContext(card.word, sentence, ref, false)
+    },
+    [fetchContextTranslation, fetchWordContext, nextToken, setEntries]
   )
 
   // Whole-sentence translation for SentenceEntry `id`, filled in when it
-  // resolves. `isCancelled` lets the creating effect drop a response that
-  // arrives after its cleanup ran.
+  // resolves -- if the entry still carries `token`.
   const translateSentence = useCallback(
-    (
-      id: string,
-      sentence: string,
-      isCancelled: () => boolean = () => false
-    ) => {
-      const patchSentence = (patch: Partial<SentenceEntry>) =>
-        setEntries(prev =>
-          prev.map(e =>
-            e.kind === 'sentence' && e.id === id ? { ...e, ...patch } : e
-          )
-        )
+    (id: string, sentence: string, token: number) => {
+      const patch = (fields: Partial<SentenceEntry>) =>
+        setEntries(prev => patchSentence(prev, id, fields, token))
 
       sendMessageToBackground<BackgroundResponse>({
         type: 'translateSentence',
         sentence,
       } satisfies ContentMessage)
         .then(response => {
-          if (isCancelled()) return
           if (response.success && response.chinese) {
-            patchSentence({ chinese: response.chinese, status: 'loaded' })
+            patch({ chinese: response.chinese, status: 'loaded' })
           } else {
-            patchSentence({
+            patch({
               errorMessage: response.error || 'Translation service unavailable',
               errorHttpStatus: response.status,
               status: 'error',
@@ -1284,30 +1175,31 @@ function SidePanelContent() {
           }
         })
         .catch(error => {
-          if (isCancelled()) return
           console.error('SidePanel: sentence translation failed', error)
-          patchSentence({
+          patch({
             errorMessage: 'Translation service unavailable',
             errorHttpStatus: undefined,
             status: 'error',
           })
         })
     },
-    []
+    [setEntries]
   )
 
-  // Re-translate whenever a new sentence context arrives (and it isn't a
-  // phrase context -- see the effect below for that). Prepends a new
-  // SentenceEntry and fills it in as the translation resolves. Keyed on
-  // createdAt so re-opening the same sentence still creates a fresh entry
-  // and re-fetches (spec: re-translate on every open).
+  // A sentence context arrived (and it isn't a phrase context -- see the
+  // effect below for that). The panel holds one card per sentence (ADR-023
+  // Decision 8): a new sentence is prepended and translated; one already in
+  // the history moves to the top with its translation and nested cards, and
+  // is translated again only if it failed. Requests are never cancelled: a
+  // loading card keeps its token and receives its response.
   useEffect(() => {
     if (!pendingContext || pendingContext.phrase) return
 
-    const id = `${pendingContext.sourceUrl || ''}#${pendingContext.createdAt}`
     const sentence = pendingContext.sentence
+    const id = sentenceCardId(sentence)
     const anchorWord = pendingContext.word?.trim() || ''
     const clickedWord = anchorWord.toLowerCase()
+    const anchorKey = wordCardKey(clickedWord)
 
     // pendingContext is an external event (a message from the content
     // script), so turning it into a new entry here is intended.
@@ -1316,58 +1208,86 @@ function SidePanelContent() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setWordStates(prev => ({ ...prev, ...carriedStates }))
     }
-    const absorbed = clickedWord
+    const existing = findSentence(entriesRef.current, id)
+    const nestedAnchor = clickedWord
+      ? existing?.words.find(w => w.key === anchorKey)
+      : undefined
+    // A nested card for the anchor already covers the page card; otherwise
+    // the page card moves in (Decision 7).
+    const pageCard = clickedWord
       ? adjacentPageCard(entriesRef.current, clickedWord)
       : undefined
-    setEntries(prev => [
-      {
-        kind: 'sentence',
-        id,
-        sourceUrl: pendingContext.sourceUrl,
-        sentence,
-        clickedWord,
-        status: 'loading',
-        chinese: '',
-        errorMessage: '',
-        errorHttpStatus: undefined,
-        words: absorbed
-          ? [
-              {
-                word: absorbed.word,
-                pronunciation: absorbed.pronunciation,
-                loadCount: absorbed.loadCount,
-                dictionaryChinese: absorbed.dictionaryChinese,
-                dictionaryStatus: absorbed.dictionaryStatus,
-                contextStatus: 'loading',
-              },
-            ]
-          : [],
-      },
-      ...prev.filter(e => e !== absorbed),
-    ])
+    const absorbed = nestedAnchor ? undefined : pageCard
+    const absorbedCard: WordCardData | undefined = absorbed && {
+      word: absorbed.word,
+      key: absorbed.key,
+      token: nextToken(),
+      pronunciation: absorbed.pronunciation,
+      loadCount: absorbed.loadCount,
+      dictionaryChinese: absorbed.dictionaryChinese,
+      dictionaryStatus: absorbed.dictionaryStatus,
+      contextStatus: 'loading',
+    }
+    const sentenceToken =
+      !existing || existing.status === 'error' ? nextToken() : undefined
+
+    setEntries(prev => {
+      const rest = prev.filter(e => e !== pageCard)
+      if (!existing) {
+        return [
+          {
+            kind: 'sentence',
+            id,
+            token: sentenceToken,
+            sentence,
+            clickedWord,
+            status: 'loading',
+            chinese: '',
+            errorMessage: '',
+            errorHttpStatus: undefined,
+            words: absorbedCard ? [absorbedCard] : [],
+          },
+          ...rest,
+        ]
+      }
+      let next = patchSentence(moveSentenceToTop(rest, id), id, {
+        ...(clickedWord ? { clickedWord } : {}),
+        ...(sentenceToken === undefined
+          ? {}
+          : { token: sentenceToken, status: 'loading', errorMessage: '' }),
+      })
+      const anchorCard = nestedAnchor ?? absorbedCard
+      if (anchorCard) {
+        next = reorderOrInsertCard(next, id, anchorKey, () => anchorCard)
+      }
+      return next
+    })
 
     // The anchor word's lookup is entirely independent of the
     // whole-sentence translation below -- neither should block the other --
     // so it fires here, not inside that request's .then(). An absorbed
     // page card already has its dictionary half, so only the in-sentence
-    // meaning is fetched, fed that definition (dictionary-first).
-    if (absorbed) {
+    // meaning is fetched, fed that definition (dictionary-first). A nested
+    // card for the anchor is only retried, and only if it failed.
+    if (nestedAnchor) {
+      if (
+        nestedAnchor.contextStatus === 'error' ||
+        nestedAnchor.dictionaryStatus === 'error'
+      )
+        retryWordCard(id, nestedAnchor, sentence)
+    } else if (absorbedCard?.token !== undefined) {
       fetchContextTranslation(
-        clickedWord,
+        absorbedCard.word,
         sentence,
-        id,
-        absorbed.dictionaryChinese
+        { sentenceId: id, key: absorbedCard.key, token: absorbedCard.token },
+        absorbedCard.dictionaryChinese
       )
     } else if (anchorWord) {
       seedAnchorWord(id, anchorWord, sentence)
     }
 
-    let cancelled = false
-    translateSentence(id, sentence, () => cancelled)
-
-    return () => {
-      cancelled = true
-    }
+    if (sentenceToken !== undefined)
+      translateSentence(id, sentence, sentenceToken)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingContext?.createdAt])
 
@@ -1378,22 +1298,38 @@ function SidePanelContent() {
   // `sentenceId` undefined means a top-level card (a main-page drag-select,
   // ADR-008 -- there's no displayed sentence to nest it under); set means
   // nested into that SentenceEntry's own `words` (an in-panel drag-select,
-  // ADR-017). Re-selecting a phrase already at that scope just moves its
-  // card up -- no second AI call, no second charge.
+  // ADR-017). Re-selecting a phrase already at that scope (a top-level one
+  // also in the same sentence; ADR-023 Decision 8) just moves its card up --
+  // no second AI call, no second charge -- unless it failed, which retries.
   const upsertPhraseCard = useCallback(
     (phrase: string, sentence: string, sentenceId: string | undefined) => {
-      const alreadyExists = !!findCard(entries, sentenceId, phrase)
+      const key =
+        sentenceId === undefined
+          ? topLevelPhraseCardKey(phrase, sentence)
+          : wordCardKey(phrase)
+      const existing = findCard(entriesRef.current, sentenceId, key)
+      if (existing) {
+        setEntries(prev =>
+          reorderOrInsertCard(prev, sentenceId, key, () => existing)
+        )
+        if (existing.contextStatus === 'error')
+          retryWordCard(sentenceId, existing, sentence)
+        return
+      }
+      const token = nextToken()
       setEntries(prev =>
-        reorderOrInsertCard(prev, sentenceId, phrase, () => ({
+        reorderOrInsertCard(prev, sentenceId, key, () => ({
           word: phrase,
+          key,
+          token,
           dictionaryStatus: 'none',
           contextStatus: 'loading',
           contextSentence: sentenceId === undefined ? sentence : undefined,
         }))
       )
-      if (!alreadyExists) fetchContextTranslation(phrase, sentence, sentenceId)
+      fetchContextTranslation(phrase, sentence, { sentenceId, key, token })
     },
-    [entries, fetchContextTranslation]
+    [fetchContextTranslation, nextToken, retryWordCard, setEntries]
   )
 
   // A phrase arriving via pendingContext (ADR-008: drag-selected on the web
@@ -1404,7 +1340,6 @@ function SidePanelContent() {
   useEffect(() => {
     if (pendingContext?.phrase) {
       // Same as above: reacting to an external pendingContext message.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       upsertPhraseCard(
         pendingContext.phrase,
         pendingContext.sentence,
@@ -1414,92 +1349,44 @@ function SidePanelContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingContext?.createdAt])
 
-  // Lets a card stuck in contextStatus 'error' (e.g. session expiry) recover
-  // without a full page reload. Recovers the sentence text from the owning
+  // A card's Retry button. Recovers the sentence text from the owning
   // SentenceEntry when nested, or from the card's own `contextSentence` when
   // it's a top-level phrase card (ADR-023 -- there's no ambient "current
-  // sentence" singleton anymore to fall back on). Three cases, by what the
-  // dictionary half is doing: a phrase card (dictionaryStatus 'none') has no
-  // dictionary to redo, so just retry the AI call alone; a card whose
-  // dictionary already loaded reuses that definition rather than re-running
-  // getOneWord (no need to fetch it twice); anything else (dictionary
-  // itself never resolved, e.g. also hit the same session expiry) redoes
-  // the whole dictionary-first chain.
+  // sentence" singleton anymore to fall back on).
   const handleRetryContextTranslation = useCallback(
-    (sentenceId: string | undefined, word: string) => {
+    (sentenceId: string | undefined, key: string) => {
       const sentenceEntry = sentenceId
-        ? entries.find(
-            (e): e is SentenceEntry =>
-              e.kind === 'sentence' && e.id === sentenceId
-          )
+        ? findSentence(entries, sentenceId)
         : undefined
-      const card = findCard(entries, sentenceId, word)
+      const card = findCard(entries, sentenceId, key)
       const sentence = sentenceEntry?.sentence ?? card?.contextSentence
-      if (!sentence) return
-
-      if (card?.dictionaryStatus === 'none') {
-        setEntries(prev =>
-          patchCard(prev, sentenceId, word, {
-            contextStatus: 'loading',
-            contextError: undefined,
-          })
-        )
-        fetchContextTranslation(word, sentence, sentenceId)
-        return
-      }
-
-      if (card?.dictionaryStatus === 'loaded') {
-        setEntries(prev =>
-          patchCard(prev, sentenceId, word, {
-            contextStatus: 'loading',
-            contextError: undefined,
-          })
-        )
-        fetchContextTranslation(
-          word,
-          sentence,
-          sentenceId,
-          card.dictionaryChinese
-        )
-        return
-      }
-
-      setEntries(prev =>
-        patchCard(prev, sentenceId, word, {
-          dictionaryStatus: 'loading',
-          dictionaryError: undefined,
-          contextStatus: 'loading',
-          contextError: undefined,
-        })
-      )
-      // A retry redoes a lookup, it is not a new one.
-      fetchWordContext(word, sentence, sentenceId, false)
+      if (!card || !sentence) return
+      retryWordCard(sentenceId, card, sentence)
     },
-    [entries, fetchContextTranslation, fetchWordContext]
+    [entries, retryWordCard]
   )
 
   // The sentence's error row is the only one shown for a failure its words
   // share (WordCard `shownAbove`), so its Retry redoes those words as well.
   const handleRetrySentence = useCallback(
     (sentenceId: string) => {
-      const entry = entries.find(
-        (e): e is SentenceEntry => e.kind === 'sentence' && e.id === sentenceId
-      )
+      const entry = findSentence(entries, sentenceId)
       if (!entry) return
+      const token = nextToken()
       setEntries(prev =>
-        prev.map(e =>
-          e.kind === 'sentence' && e.id === sentenceId
-            ? { ...e, status: 'loading', errorMessage: '' }
-            : e
-        )
+        patchSentence(prev, sentenceId, {
+          token,
+          status: 'loading',
+          errorMessage: '',
+        })
       )
-      translateSentence(entry.id, entry.sentence)
+      translateSentence(entry.id, entry.sentence, token)
       for (const card of entry.words) {
         if (card.contextStatus === 'error' || card.dictionaryStatus === 'error')
-          handleRetryContextTranslation(entry.id, card.word)
+          retryWordCard(entry.id, card, entry.sentence)
       }
     },
-    [entries, translateSentence, handleRetryContextTranslation]
+    [entries, translateSentence, retryWordCard, nextToken, setEntries]
   )
 
   // A single-word selection inside a sentence's own rendered original
@@ -1515,24 +1402,28 @@ function SidePanelContent() {
   const handleWordClick = useCallback(
     (rawWord: string, sentence: string, sentenceId: string) => {
       const word = rawWord.toLowerCase()
-      const existing = findCard(entries, sentenceId, word)
+      const key = wordCardKey(word)
+      const existing = findCard(entries, sentenceId, key)
       if (existing) {
         setEntries(prev =>
-          reorderOrInsertCard(prev, sentenceId, word, () => existing)
+          reorderOrInsertCard(prev, sentenceId, key, () => existing)
         )
         return
       }
+      const token = nextToken()
       setEntries(prev =>
-        reorderOrInsertCard(prev, sentenceId, word, () => ({
+        reorderOrInsertCard(prev, sentenceId, key, () => ({
           word,
+          key,
+          token,
           dictionaryStatus: 'loading',
           contextStatus: 'loading',
         }))
       )
       // A click in the panel is a lookup of its own: count it.
-      fetchWordContext(word, sentence, sentenceId, true)
+      fetchWordContext(word, sentence, { sentenceId, key, token }, true)
     },
-    [entries, fetchWordContext]
+    [entries, fetchWordContext, nextToken, setEntries]
   )
 
   // Re-mark every sentence original after each render (ADR-053): the
@@ -1633,13 +1524,15 @@ function SidePanelContent() {
             />
           ) : (
             <WordCard
-              key={entry.word}
+              key={entry.key}
               card={entry}
-              expanded={expandedWords.has(entry.word)}
-              onToggleExpand={() => toggleExpanded(entry.word)}
-              onRemove={() => handleRemoveCard(undefined, entry.word)}
+              expanded={expandedWords.has(panelCardKey(undefined, entry.key))}
+              onToggleExpand={() =>
+                toggleExpanded(panelCardKey(undefined, entry.key))
+              }
+              onRemove={() => handleRemoveCard(undefined, entry.key)}
               onRetryContext={() =>
-                handleRetryContextTranslation(undefined, entry.word)
+                handleRetryContextTranslation(undefined, entry.key)
               }
             />
           )

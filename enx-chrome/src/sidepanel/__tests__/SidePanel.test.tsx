@@ -134,7 +134,6 @@ describe('SidePanel', () => {
             newValue: {
               sentence: SENTENCE,
               word: 'great',
-              sourceUrl: 'https://example.com/other-tab',
               createdAt: Date.now(),
             },
           },
@@ -169,7 +168,6 @@ describe('SidePanel', () => {
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
-        sourceUrl: 'https://example.com',
         createdAt: 1,
       },
     })
@@ -190,32 +188,11 @@ describe('SidePanel', () => {
     )
   })
 
-  it('does not show the source URL above the original sentence (the panel is per-tab)', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
-      [PENDING_SENTENCE_STORAGE_KEY]: {
-        sentence: 'Cats are great pets.',
-        word: '',
-        sourceUrl: 'https://example.com/article',
-        createdAt: 1,
-      },
-    })
-    mockSendMessage.mockResolvedValue({
-      success: true,
-      chinese: '猫是很棒的宠物。',
-    })
-
-    render(<SidePanel />)
-
-    await screen.findByTestId('sidepanel-sentence')
-    expect(screen.queryByText('https://example.com/article')).toBeNull()
-  })
-
   it('renders the original sentence as selectable plain text, not per-word buttons (ADR-017)', async () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
-        sourceUrl: '',
         createdAt: 1,
       },
     })
@@ -236,7 +213,6 @@ describe('SidePanel', () => {
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
-        sourceUrl: '',
         createdAt: 1,
       },
     })
@@ -257,7 +233,6 @@ describe('SidePanel', () => {
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: SENTENCE,
         word: 'great',
-        sourceUrl: '',
         createdAt: 1,
       },
     })
@@ -320,7 +295,6 @@ describe('SidePanel', () => {
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: SENTENCE,
         word: '',
-        sourceUrl: '',
         createdAt: 1,
       },
     })
@@ -356,7 +330,6 @@ describe('SidePanel', () => {
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
-        sourceUrl: '',
         createdAt: 1,
       },
     })
@@ -379,7 +352,6 @@ describe('SidePanel', () => {
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
-        sourceUrl: '',
         createdAt: 1,
       },
     })
@@ -430,7 +402,6 @@ describe('SidePanel', () => {
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
-        sourceUrl: '',
         createdAt: 1,
       },
     })
@@ -490,7 +461,6 @@ describe('SidePanel', () => {
         [PENDING_SENTENCE_STORAGE_KEY]: {
           sentence: 'Cats are great pets.',
           word: '',
-          sourceUrl: '',
           createdAt: 1,
         },
       })
@@ -527,7 +497,6 @@ describe('SidePanel', () => {
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
-        sourceUrl: '',
         createdAt: 1,
       },
     })
@@ -598,7 +567,6 @@ describe('SidePanel', () => {
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
-        sourceUrl: '',
         createdAt: 1,
       },
     })
@@ -645,7 +613,6 @@ describe('SidePanel', () => {
         sentence: fullSentence,
         word: '',
         phrase: 'hunt down emails',
-        sourceUrl: '',
         createdAt: 1,
       },
     })
@@ -692,7 +659,6 @@ describe('SidePanel', () => {
         sentence: fullSentence,
         word: '',
         phrase: 'expired mid-sentence',
-        sourceUrl: '',
         createdAt: 1,
       },
     })
@@ -743,7 +709,6 @@ describe('SidePanel', () => {
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
-        sourceUrl: '',
         createdAt: 1,
       },
     })
@@ -812,7 +777,6 @@ describe('SidePanel', () => {
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
-        sourceUrl: '',
         createdAt: 1,
       },
     })
@@ -895,7 +859,6 @@ describe('SidePanel', () => {
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
-        sourceUrl: '',
         createdAt: 1,
       },
     })
@@ -952,7 +915,6 @@ describe('SidePanel', () => {
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
-        sourceUrl: '',
         createdAt: 1,
       },
     })
@@ -1008,7 +970,6 @@ describe('SidePanel', () => {
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
-        sourceUrl: '',
         createdAt: 1,
       },
     })
@@ -1066,7 +1027,6 @@ describe('SidePanel', () => {
             newValue: {
               sentence: 'First sentence.',
               word: '',
-              sourceUrl: '',
               createdAt: 1,
             },
           },
@@ -1087,7 +1047,6 @@ describe('SidePanel', () => {
             newValue: {
               sentence: 'Second sentence.',
               word: '',
-              sourceUrl: '',
               createdAt: 2,
             },
           },
@@ -1114,7 +1073,6 @@ describe('SidePanel', () => {
             newValue: {
               sentence: 'Should be ignored.',
               word: '',
-              sourceUrl: '',
               createdAt: 1,
             },
           },
@@ -1248,7 +1206,6 @@ describe('SidePanel', () => {
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
-        sourceUrl: '',
         createdAt: 1,
       },
     })
@@ -1322,7 +1279,6 @@ describe('SidePanel', () => {
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
-        sourceUrl: '',
         createdAt: 1,
       },
     })
@@ -1448,7 +1404,6 @@ describe('SidePanel', () => {
             newValue: {
               sentence: 'Cats are great pets.',
               word: '',
-              sourceUrl: '',
               createdAt: 2,
             },
           },
@@ -1531,7 +1486,6 @@ describe('SidePanel', () => {
             newValue: {
               sentence: 'Cats are great pets.',
               word: '',
-              sourceUrl: '',
               createdAt: 2,
             },
           },
@@ -1579,7 +1533,6 @@ describe('SidePanel', () => {
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: 'great',
-        sourceUrl: '',
         createdAt: 1,
       },
     }
@@ -1741,7 +1694,6 @@ describe('SidePanel', () => {
                 newValue: {
                   sentence: SENTENCE,
                   word,
-                  sourceUrl: '',
                   createdAt,
                 },
               },
@@ -1867,7 +1819,6 @@ describe('SidePanel', () => {
         [PENDING_SENTENCE_STORAGE_KEY]: {
           sentence: 'A great day for a great walk.',
           word: 'great',
-          sourceUrl: '',
           createdAt: 1,
         },
       })
@@ -1933,7 +1884,6 @@ describe('SidePanel', () => {
         [PENDING_SENTENCE_STORAGE_KEY]: {
           sentence: 'Cats are great pets.',
           word: '',
-          sourceUrl: '',
           createdAt: 1,
         },
       })
@@ -1968,7 +1918,6 @@ describe('SidePanel', () => {
         [PENDING_SENTENCE_STORAGE_KEY]: {
           sentence: SENTENCE,
           word: '',
-          sourceUrl: '',
           createdAt: 1,
         },
       })
@@ -2095,7 +2044,6 @@ describe('SidePanel', () => {
         [PENDING_SENTENCE_STORAGE_KEY]: {
           sentence: 'First sentence.',
           word: '',
-          sourceUrl: '',
           createdAt: 1,
         },
       })
@@ -2123,7 +2071,6 @@ describe('SidePanel', () => {
               newValue: {
                 sentence: 'Second sentence.',
                 word: '',
-                sourceUrl: '',
                 createdAt: 2,
               },
             },
@@ -2148,7 +2095,6 @@ describe('SidePanel', () => {
         [PENDING_SENTENCE_STORAGE_KEY]: {
           sentence: 'Cats are great pets.',
           word: '',
-          sourceUrl: '',
           createdAt: 1,
         },
       })
@@ -2197,7 +2143,6 @@ describe('SidePanel', () => {
               newValue: {
                 sentence: 'Dogs are loyal friends.',
                 word: '',
-                sourceUrl: '',
                 createdAt: 2,
               },
             },
@@ -2265,7 +2210,6 @@ describe('SidePanel', () => {
         [PENDING_SENTENCE_STORAGE_KEY]: {
           sentence,
           word: '',
-          sourceUrl: '',
           createdAt: 1,
           wordStates,
         },
@@ -2406,7 +2350,6 @@ describe('SidePanel', () => {
         [PENDING_SENTENCE_STORAGE_KEY]: {
           sentence: SENTENCE,
           word: 'great',
-          sourceUrl: '',
           createdAt: 1,
           wordStates: { cats: wordState('cats', 1) },
         },
@@ -2492,6 +2435,530 @@ describe('SidePanel', () => {
       })
 
       await waitFor(() => expect(highlightTexts('enx-hl-1')).toEqual([]))
+    })
+  })
+
+  // ADR-023 Decision 8 (#589): one card per sentence, one phrase card per
+  // scope and context; responses land by card key and request token.
+  describe('one card per sentence or phrase (ADR-023 Decision 8)', () => {
+    const OTHER = 'Dogs are great pets.'
+    type Message = { type: string; word?: string; sentence?: string }
+    type Pending = {
+      message: Message
+      resolve: (response: BackgroundResponse) => void
+      reject: (error: unknown) => void
+    }
+    let createdAt = 100
+    let pending: Pending[]
+
+    const send = (context: {
+      sentence: string
+      word?: string
+      phrase?: string
+    }) =>
+      act(() => {
+        fireStorageChange(
+          {
+            [PENDING_SENTENCE_STORAGE_KEY]: {
+              newValue: { word: '', ...context, createdAt: ++createdAt },
+            },
+          },
+          'session'
+        )
+      })
+
+    const pageClick = (word: string, chinese: string) =>
+      act(() => {
+        fireStorageChange(
+          {
+            [LATEST_PAGE_WORD_STORAGE_KEY]: {
+              newValue: {
+                word,
+                ecp: { English: word, Chinese: chinese, LoadCount: 1 },
+                createdAt: ++createdAt,
+              },
+            },
+          },
+          'session'
+        )
+      })
+
+    const replyAtOnce = () =>
+      mockSendMessage.mockImplementation(async (message: Message) => {
+        if (message.type === 'translateSentence')
+          return { success: true, chinese: `${message.sentence}译` }
+        if (message.type === 'getOneWord')
+          return {
+            success: true,
+            ecp: { English: message.word, Chinese: `${message.word}词典` },
+          }
+        if (message.type === 'translateWordInContext')
+          return { success: true, chinese: `${message.word}本句` }
+        return { success: true }
+      })
+
+    const deferAll = () =>
+      mockSendMessage.mockImplementation(
+        (message: Message) =>
+          new Promise((resolve, reject) =>
+            pending.push({ message, resolve, reject })
+          )
+      )
+
+    const take = (type: string, word?: string) => {
+      const index = pending.findIndex(
+        p => p.message.type === type && (!word || p.message.word === word)
+      )
+      if (index === -1) throw new Error(`no pending ${type} ${word ?? ''}`)
+      return pending.splice(index, 1)[0]
+    }
+
+    const settle = (p: Pending, response: BackgroundResponse) =>
+      act(async () => p.resolve(response))
+
+    const callsOf = (type: string, word?: string) =>
+      mockSendMessage.mock.calls.filter(
+        ([m]) => m.type === type && (!word || m.word === word)
+      ).length
+
+    const sentenceTexts = () =>
+      screen.queryAllByTestId('sidepanel-sentence').map(el => el.textContent)
+
+    const nestedWords = () =>
+      within(screen.getByTestId('sidepanel-sentence-words'))
+        .getAllByTestId(/^sidepanel-card-/)
+        .map(el => el.getAttribute('data-testid'))
+
+    beforeEach(() => {
+      pending = []
+    })
+
+    const renderEmpty = async () => {
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-empty-state')
+    }
+
+    it('expands the same word independently in different sentence scopes', async () => {
+      replyAtOnce()
+      mockSendMessage.mockImplementation(async (message: Message) => {
+        if (message.type === 'getOneWord')
+          return {
+            success: true,
+            ecp: {
+              English: message.word,
+              Chinese: 'A long dictionary definition '.repeat(3),
+            },
+          }
+        if (message.type === 'translateSentence')
+          return { success: true, chinese: `${message.sentence}译` }
+        return { success: true, chinese: `${message.word}本句` }
+      })
+      await renderEmpty()
+      send({ sentence: SENTENCE, word: 'great' })
+      send({ sentence: OTHER, word: 'great' })
+
+      const toggles = await screen.findAllByTestId(
+        'sidepanel-toggle-meaning-great'
+      )
+      expect(toggles).toHaveLength(2)
+      expect(toggles[0]).toHaveTextContent('Expand')
+      expect(toggles[1]).toHaveTextContent('Expand')
+
+      fireEvent.click(toggles[0])
+
+      expect(toggles[0]).toHaveTextContent('Collapse')
+      expect(toggles[1]).toHaveTextContent('Expand')
+    })
+
+    it('moves a re-sent sentence to the top instead of adding a second card', async () => {
+      replyAtOnce()
+      await renderEmpty()
+      send({ sentence: SENTENCE })
+      await screen.findByText(`${SENTENCE}译`)
+      send({ sentence: OTHER })
+      await screen.findByText(`${OTHER}译`)
+
+      send({ sentence: SENTENCE })
+
+      await waitFor(() => expect(sentenceTexts()).toEqual([SENTENCE, OTHER]))
+      expect(screen.getByText('History · 2')).toBeInTheDocument()
+      expect(screen.getAllByText(`${SENTENCE}译`)).toHaveLength(1)
+      expect(callsOf('translateSentence')).toBe(2)
+    })
+
+    it('sends no second translation for a sentence still loading, and the first one lands', async () => {
+      deferAll()
+      await renderEmpty()
+      send({ sentence: SENTENCE })
+      send({ sentence: SENTENCE })
+
+      expect(callsOf('translateSentence')).toBe(1)
+      await settle(take('translateSentence'), {
+        success: true,
+        chinese: '猫是很棒的宠物。',
+      })
+      expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent(
+        '猫是很棒的宠物。'
+      )
+      expect(sentenceTexts()).toEqual([SENTENCE])
+    })
+
+    it('treats sentences that differ only in whitespace or case as one', async () => {
+      replyAtOnce()
+      await renderEmpty()
+      send({ sentence: 'Cats are  great.' })
+      send({ sentence: 'cats are great. ' })
+      await waitFor(() => expect(sentenceTexts()).toEqual(['Cats are  great.']))
+
+      send({ sentence: OTHER })
+      await waitFor(() =>
+        expect(sentenceTexts()).toEqual([OTHER, 'Cats are  great.'])
+      )
+    })
+
+    it('keeps the nested cards and highlights the new anchor when re-sent from another word', async () => {
+      replyAtOnce()
+      await renderEmpty()
+      send({ sentence: SENTENCE, word: 'cats' })
+      await screen.findByText('cats本句')
+
+      send({ sentence: SENTENCE, word: 'great' })
+
+      await screen.findByText('great本句')
+      expect(nestedWords()).toEqual([
+        'sidepanel-card-great',
+        'sidepanel-card-cats',
+      ])
+      expect(highlightTexts('enx-sp-anchor')).toEqual(['great'])
+    })
+
+    it('reuses a loaded nested card for the anchor word and drops the page card for it', async () => {
+      replyAtOnce()
+      await renderEmpty()
+      send({ sentence: SENTENCE, word: 'great' })
+      await screen.findByText('great本句')
+      selectWord('cats')
+      await screen.findByText('cats本句')
+      pageClick('great', 'great页面释义')
+      await screen.findByText('great页面释义')
+
+      send({ sentence: SENTENCE, word: 'great' })
+
+      await waitFor(() =>
+        expect(screen.queryByText('great页面释义')).not.toBeInTheDocument()
+      )
+      expect(nestedWords()).toEqual([
+        'sidepanel-card-great',
+        'sidepanel-card-cats',
+      ])
+      expect(screen.getAllByTestId('sidepanel-card-great')).toHaveLength(1)
+      expect(callsOf('getOneWord', 'great')).toBe(1)
+      expect(callsOf('translateWordInContext', 'great')).toBe(1)
+    })
+
+    it('reuses a loading nested card for the anchor word, which still gets its result', async () => {
+      deferAll()
+      await renderEmpty()
+      send({ sentence: SENTENCE, word: 'great' })
+      selectWord('cats')
+      pageClick('great', 'great页面释义')
+      await screen.findByText('great页面释义')
+
+      send({ sentence: SENTENCE, word: 'great' })
+
+      await waitFor(() =>
+        expect(screen.queryByText('great页面释义')).not.toBeInTheDocument()
+      )
+      expect(nestedWords()).toEqual([
+        'sidepanel-card-great',
+        'sidepanel-card-cats',
+      ])
+      expect(callsOf('getOneWord', 'great')).toBe(1)
+      await settle(take('getOneWord', 'great'), {
+        success: true,
+        ecp: { English: 'great', Chinese: 'great词典' } as never,
+      })
+      await settle(take('translateWordInContext', 'great'), {
+        success: true,
+        chinese: 'great本句',
+      })
+      expect(screen.getByTestId('sidepanel-card-great')).toHaveTextContent(
+        'great本句'
+      )
+      expect(callsOf('translateWordInContext', 'great')).toBe(1)
+    })
+
+    it('absorbs the adjacent page card when re-sent from a word with no nested card', async () => {
+      replyAtOnce()
+      await renderEmpty()
+      send({ sentence: SENTENCE })
+      await screen.findByText(`${SENTENCE}译`)
+      pageClick('great', 'great页面释义')
+      await screen.findByText('great页面释义')
+
+      send({ sentence: SENTENCE, word: 'great' })
+
+      await screen.findByText('great本句')
+      expect(sentenceTexts()).toEqual([SENTENCE])
+      expect(
+        within(screen.getByTestId('sidepanel-sentence-words')).getByTestId(
+          'sidepanel-card-great'
+        )
+      ).toHaveTextContent('great页面释义')
+      expect(screen.getAllByTestId('sidepanel-card-great')).toHaveLength(1)
+      expect(callsOf('getOneWord')).toBe(0)
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'translateWordInContext',
+          word: 'great',
+          dictionaryChinese: 'great页面释义',
+        })
+      )
+    })
+
+    it('retries a sentence card in the error state when it is sent again', async () => {
+      deferAll()
+      await renderEmpty()
+      send({ sentence: SENTENCE })
+      await settle(take('translateSentence'), { success: false, error: 'down' })
+      await screen.findByTestId('sidepanel-error')
+
+      send({ sentence: SENTENCE })
+
+      expect(sentenceTexts()).toEqual([SENTENCE])
+      expect(callsOf('translateSentence')).toBe(2)
+      await settle(take('translateSentence'), {
+        success: true,
+        chinese: '猫是很棒的宠物。',
+      })
+      expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent(
+        '猫是很棒的宠物。'
+      )
+    })
+
+    it('keeps the new translation when the one from before Clear fails later', async () => {
+      deferAll()
+      await renderEmpty()
+      send({ sentence: SENTENCE })
+      const before = take('translateSentence')
+      fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
+      send({ sentence: SENTENCE })
+
+      await settle(take('translateSentence'), { success: true, chinese: '新' })
+      await act(async () => before.reject(new Error('offline')))
+
+      expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('新')
+      expect(screen.queryByTestId('sidepanel-error')).not.toBeInTheDocument()
+    })
+
+    it('ignores a translation from before Clear that lands while the new one is pending', async () => {
+      deferAll()
+      await renderEmpty()
+      send({ sentence: SENTENCE })
+      const before = take('translateSentence')
+      fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
+      send({ sentence: SENTENCE })
+
+      await settle(before, { success: true, chinese: '旧' })
+      expect(screen.getByTestId('sidepanel-loading')).toBeInTheDocument()
+      await settle(take('translateSentence'), { success: true, chinese: '新' })
+      expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent('新')
+    })
+
+    describe('a dictionary lookup outlived by its card', () => {
+      const oldDictionary = { English: 'great', Chinese: '旧词典' } as never
+
+      const expectNewChainOnly = async () => {
+        const card = screen.getByTestId('sidepanel-card-great')
+        expect(callsOf('translateWordInContext')).toBe(0)
+        expect(card).toHaveTextContent('Loading dictionary definition...')
+        await settle(take('getOneWord'), {
+          success: true,
+          ecp: { English: 'great', Chinese: '新词典' } as never,
+        })
+        await settle(take('translateWordInContext'), {
+          success: true,
+          chinese: '新本句',
+        })
+        expect(card).toHaveTextContent('新词典')
+        expect(card).toHaveTextContent('新本句')
+        expect(callsOf('translateWordInContext')).toBe(1)
+      }
+
+      it('writes nothing and starts no context request after remove and reselect', async () => {
+        deferAll()
+        await renderEmpty()
+        send({ sentence: SENTENCE })
+        selectWord('great')
+        const old = take('getOneWord')
+        fireEvent.click(screen.getByTestId('sidepanel-remove-great'))
+        selectWord('great')
+
+        await settle(old, { success: true, ecp: oldDictionary })
+
+        await expectNewChainOnly()
+      })
+
+      it('writes nothing and starts no context request after Clear and re-send', async () => {
+        deferAll()
+        await renderEmpty()
+        send({ sentence: SENTENCE, word: 'great' })
+        const old = take('getOneWord')
+        fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
+        send({ sentence: SENTENCE, word: 'great' })
+
+        await settle(old, { success: true, ecp: oldDictionary })
+
+        await expectNewChainOnly()
+      })
+
+      it('starts no context request after the card is removed', async () => {
+        deferAll()
+        await renderEmpty()
+        send({ sentence: SENTENCE })
+        selectWord('great')
+        const old = take('getOneWord')
+        fireEvent.click(screen.getByTestId('sidepanel-remove-great'))
+
+        await settle(old, { success: true, ecp: oldDictionary })
+
+        expect(callsOf('translateWordInContext')).toBe(0)
+      })
+    })
+
+    describe('phrases', () => {
+      const PHRASE_CARD = 'sidepanel-card-great pets'
+
+      const topLevelCards = () =>
+        screen
+          .getAllByTestId(/^sidepanel-card-/)
+          .filter(el => !el.closest('[data-testid="sidepanel-sentence-words"]'))
+          .map(el => el.getAttribute('data-testid'))
+
+      const confirmPhraseIn = async (sentence: string, el?: HTMLElement) => {
+        selectWord('great pets', sentence, el)
+        fireEvent.click(await screen.findByTestId('sidepanel-phrase-confirm'))
+      }
+
+      it('reuses a page phrase card for the same phrase in the same sentence, whatever its case or spacing', async () => {
+        replyAtOnce()
+        await renderEmpty()
+        send({ sentence: SENTENCE, phrase: 'great pets' })
+        await screen.findByText('great pets本句')
+        pageClick('cats', 'cats页面释义')
+        await screen.findByText('cats页面释义')
+
+        send({ sentence: ` ${SENTENCE.toLowerCase()}`, phrase: 'Great  pets' })
+
+        await waitFor(() =>
+          expect(topLevelCards()).toEqual([PHRASE_CARD, 'sidepanel-card-cats'])
+        )
+        expect(callsOf('translateWordInContext')).toBe(1)
+      })
+
+      it('moves an in-panel phrase card to the top of its sentence without reordering the list', async () => {
+        replyAtOnce()
+        await renderEmpty()
+        send({ sentence: SENTENCE })
+        send({ sentence: OTHER })
+        const older = () => screen.getAllByTestId('sidepanel-sentence')[1]
+        await confirmPhraseIn(SENTENCE, older())
+        await screen.findByText('great pets本句')
+        selectWord('cats', SENTENCE, older())
+        await screen.findByText('cats本句')
+
+        selectWord('great pets', SENTENCE, older())
+
+        await waitFor(() =>
+          expect(nestedWords()).toEqual([PHRASE_CARD, 'sidepanel-card-cats'])
+        )
+        expect(sentenceTexts()).toEqual([OTHER, SENTENCE])
+        expect(callsOf('translateWordInContext', 'great pets')).toBe(1)
+      })
+
+      it('gives a phrase its own card and lookup in every other scope', async () => {
+        replyAtOnce()
+        await renderEmpty()
+        send({ sentence: SENTENCE })
+        send({ sentence: OTHER })
+        await confirmPhraseIn(
+          OTHER,
+          screen.getAllByTestId('sidepanel-sentence')[0]
+        )
+        await confirmPhraseIn(
+          SENTENCE,
+          screen.getAllByTestId('sidepanel-sentence')[1]
+        )
+        send({ sentence: SENTENCE, phrase: 'great pets' })
+
+        await waitFor(() =>
+          expect(screen.getAllByText('great pets本句')).toHaveLength(3)
+        )
+        expect(callsOf('translateWordInContext', 'great pets')).toBe(3)
+      })
+
+      it('keeps one top-level card per context sentence for the same phrase', async () => {
+        deferAll()
+        await renderEmpty()
+        send({ sentence: SENTENCE, phrase: 'great pets' })
+        send({ sentence: OTHER, phrase: 'great pets' })
+        const fromCats = take('translateWordInContext')
+        const fromDogs = take('translateWordInContext')
+        await settle(fromDogs, { success: true, chinese: '狗的好宠物' })
+        await settle(fromCats, { success: false, error: 'down' })
+
+        const [dogsCard, catsCard] = screen.getAllByTestId(PHRASE_CARD)
+        expect(dogsCard).toHaveTextContent('狗的好宠物')
+        expect(catsCard).toHaveTextContent('down')
+
+        fireEvent.click(
+          within(catsCard).getByTestId('sidepanel-retry-context-great pets')
+        )
+        expect(take('translateWordInContext').message.sentence).toBe(SENTENCE)
+        expect(catsCard).toHaveTextContent('Translating...')
+        expect(dogsCard).toHaveTextContent('狗的好宠物')
+
+        fireEvent.click(
+          within(catsCard).getByTestId('sidepanel-remove-great pets')
+        )
+        expect(screen.getAllByTestId(PHRASE_CARD)).toEqual([dogsCard])
+      })
+
+      it('retries a failed phrase card when the phrase is selected again', async () => {
+        deferAll()
+        await renderEmpty()
+        send({ sentence: SENTENCE, phrase: 'great pets' })
+        await settle(take('translateWordInContext'), {
+          success: false,
+          error: 'down',
+        })
+
+        send({ sentence: SENTENCE, phrase: 'great pets' })
+
+        expect(callsOf('translateWordInContext')).toBe(2)
+        await settle(take('translateWordInContext'), {
+          success: true,
+          chinese: '好宠物',
+        })
+        expect(screen.getByTestId(PHRASE_CARD)).toHaveTextContent('好宠物')
+      })
+
+      it('lets a loading phrase card selected again receive its result', async () => {
+        deferAll()
+        await renderEmpty()
+        send({ sentence: SENTENCE, phrase: 'great pets' })
+        pageClick('cats', 'cats页面释义')
+
+        send({ sentence: SENTENCE, phrase: 'great pets' })
+
+        expect(topLevelCards()).toEqual([PHRASE_CARD, 'sidepanel-card-cats'])
+        await settle(take('translateWordInContext'), {
+          success: true,
+          chinese: '好宠物',
+        })
+        expect(screen.getByTestId(PHRASE_CARD)).toHaveTextContent('好宠物')
+        expect(callsOf('translateWordInContext')).toBe(1)
+      })
     })
   })
 })

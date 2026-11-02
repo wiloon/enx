@@ -73,8 +73,7 @@
 ```ts
 type SentenceEntry = {
   kind: 'sentence'
-  id: string                 // 例如 `${sourceUrl}#${createdAt}`
-  sourceUrl?: string
+  id: string                 // 由归一化后的句子决定，见 Decision 8
   sentence: string
   clickedWord?: string       // 对齐现有 ADR-007 的高亮
   chinese: string

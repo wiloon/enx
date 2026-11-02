@@ -419,7 +419,6 @@ const showWordPopover = async (word: string, reference: Range) => {
         type: 'openSentencePanel',
         word,
         sentence,
-        sourceUrl: window.location.href,
         wordStates: sentenceWordStates(sentence, wordCache),
       })
 
@@ -1111,7 +1110,6 @@ const triggerSelectionTranslation = async (
       type: 'openSentencePanel',
       word: '',
       sentence: selectedText,
-      sourceUrl: window.location.href,
       wordStates: sentenceWordStates(selectedText, wordCache),
     })
 
@@ -1160,7 +1158,6 @@ const triggerPhraseContextLookup = async (
       word: '',
       phrase: selectedText,
       sentence,
-      sourceUrl: window.location.href,
     })
 
     if (response.success && !response.panelOpened) {
