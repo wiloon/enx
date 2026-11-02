@@ -148,10 +148,18 @@ fs.rmSync(path.join(userDataDir, 'Default', 'Service Worker'), {
   force: true,
 })
 
+// On macOS the browser must be started as a child of this shell, not through
+// `open -a`. LaunchServices makes Chromium its own responsible app, and the
+// ungoogled Chromium build never gets the "Local Network" permission, so every
+// LAN address (enx.wiloon.lab is 192.168.50.101) fails with
+// ERR_ADDRESS_UNREACHABLE while public sites still load. A direct child
+// inherits the terminal's permission instead.
+// ENX_CHROME_VIA_OPEN=1 restores `open -a`, which was added so Chromium could
+// use WireGuard's utun interface when reaching HomeLab from outside the LAN.
+const viaOpen = isMac && process.env.ENX_CHROME_VIA_OPEN === '1'
+
 let chromeProcess
-if (isMac) {
-  // Use 'open -a' on macOS so Chromium gets proper network entitlements
-  // (required for WireGuard utun interface access)
+if (viaOpen) {
   chromeProcess = spawn(
     'open',
     [
@@ -166,7 +174,8 @@ if (isMac) {
   )
 } else {
   chromeProcess = spawn(chromiumBin, chromeArgs, {
-    stdio: detach ? 'ignore' : 'inherit',
+    // Chromium on macOS prints display-link errors on every start
+    stdio: detach || isMac ? 'ignore' : 'inherit',
     detached: detach,
   })
   if (detach) chromeProcess.unref()
@@ -178,7 +187,7 @@ if (detach) {
     console.log('✅ Chromium started; close it yourself when done')
     process.exit(code ?? 0)
   }
-  if (isMac) chromeProcess.on('exit', done)
+  if (viaOpen) chromeProcess.on('exit', done)
   else done(0)
 } else {
   chromeProcess.on('exit', () => {
