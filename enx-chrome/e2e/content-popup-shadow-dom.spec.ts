@@ -941,6 +941,21 @@ test.describe('Anchored overlays hide when the reference scrolls off-screen (#52
 
     await expect(button).toBeVisible()
     await expect(button).toHaveAttribute('data-enx-test-id', 'sel-backward')
+
+    const firstRect = await page.evaluate(() => {
+      const sel = window.getSelection()
+      if (!sel || sel.rangeCount === 0) return null
+      const rects = sel.getRangeAt(0).getClientRects()
+      if (rects.length === 0) return null
+      return { top: rects[0].top, bottom: rects[0].bottom }
+    })
+    expect(firstRect).toBeTruthy()
+    const box = await button.boundingBox()
+    expect(box).toBeTruthy()
+    const near =
+      Math.abs(box!.y - firstRect!.bottom) < 40 ||
+      Math.abs(box!.y + box!.height - firstRect!.top) < 40
+    expect(near, 'button sits beside the first line').toBe(true)
   })
 
   test('selection button: Escape while hidden removes it for good', async ({
