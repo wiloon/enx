@@ -94,9 +94,9 @@ export function statusForOutcome(outcome: EnableOutcome): LearningModeStatus {
 // Wraps one processing run with its status reports (adr-046 Decision 3).
 // `run` calls `onArticleFound` once it has non-empty article nodes -- pages
 // that fail before that never flash `processing`. A run superseded by a newer
-// one (SPA tweet switch), by turning learning mode off on an SPA site, or by
-// an orphaned script standing down (#561) reports nothing after it lost, and
-// its enable answers ENABLE_OK.
+// one (SPA tweet switch), by turning learning mode off on a static or SPA
+// site, or by an orphaned script standing down (#561) reports nothing after
+// it lost, and its enable answers ENABLE_OK.
 export async function runWithStatus(
   run: (onArticleFound: () => void) => Promise<EnableOutcome>,
   report: (status: LearningModeStatus) => void,
