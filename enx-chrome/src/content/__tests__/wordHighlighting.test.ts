@@ -3,8 +3,8 @@ import { WordProcessor } from '@/lib/wordProcessor'
 // ADR-011: the element-wrapping highlight path is gone. `getColorCode`,
 // `getTextDecoration`, `renderWithHighlights`, `applyHighlightsTo*`, the
 // flex-container fix and their tests were removed; the CSS Custom Highlight
-// API path (`reviewBucket` / `buildHighlightRanges` / `expandToWordRange` /
-// `applyHighlights`) is covered in `src/lib/__tests__/highlightRanges.test.ts`.
+// API path is covered in `src/lib/__tests__/highlightRanges.test.ts` and,
+// for painting (ADR-069), `paintWindow.test.ts`.
 // What stays here: word extraction and article-text cleaning, both kept.
 
 describe('WordProcessor', () => {

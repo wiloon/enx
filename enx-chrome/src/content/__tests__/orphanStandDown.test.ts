@@ -6,6 +6,10 @@
 
 import { STAND_DOWN_EVENT } from '@/lib/orphanStandDown'
 import type { SiteOrigins } from '@/lib/siteAdapters'
+import {
+  intersectionObservers,
+  showAllObserved,
+} from '@/test/fakeIntersectionObserver'
 
 jest.mock('@/config/env')
 
@@ -253,6 +257,7 @@ describe('a live script', () => {
 
     document.dispatchEvent(new Event(STAND_DOWN_EVENT))
     await loadContentScript() // a second script announcing itself
+    showAllObserved()
     await clickFox()
 
     expect(overlays()).toHaveLength(1)
@@ -344,6 +349,7 @@ describe('an orphan that is told to stand down', () => {
     setRuntimeId(LIVE_ID)
     await releaseWords()
     await run
+    showAllObserved()
     await clickFox()
 
     expect(set).not.toHaveBeenCalled()
@@ -351,25 +357,24 @@ describe('an orphan that is told to stand down', () => {
     expect(overlays()).toHaveLength(0)
   })
 
-  it('never clears the fresh script’s highlights when the preference read resolves late', async () => {
+  it('disconnects its observer, whose queued callback never touches the fresh script’s highlights', async () => {
     const orphan = await loadContentScript()
     await orphan({ action: 'enxRun' })
-    let releaseRead: (value: Record<string, unknown>) => void = () => {}
-    ;(chrome.storage.local.get as jest.Mock).mockImplementationOnce(
-      () => new Promise(resolve => (releaseRead = resolve))
-    )
-    await clickFox() // the lookup succeeds and waits on the preference read
+    showAllObserved()
+    const [orphanObserver] = intersectionObservers()
 
     orphanAndAnnounce()
+    expect(orphanObserver.disconnected).toBe(true)
     setRuntimeId(LIVE_ID)
     const fresh = await loadContentScript()
     await fresh({ action: 'enxRun' })
+    showAllObserved()
     expect(CSS.highlights.size).toBeGreaterThan(0)
     const set = jest.spyOn(CSS.highlights, 'set')
     const del = jest.spyOn(CSS.highlights, 'delete')
 
-    releaseRead({})
-    await settle()
+    orphanObserver.fire()
+    orphanObserver.fire(orphanObserver.observed, false)
 
     expect(set).not.toHaveBeenCalled()
     expect(del).not.toHaveBeenCalled()
@@ -395,6 +400,7 @@ describe('an orphan that is told to stand down', () => {
     navigation.navigate('http://localhost/?article=2')
     await new Promise(resolve => setTimeout(resolve, 150))
     await settle()
+    showAllObserved()
     await clickFox()
 
     expect(set).not.toHaveBeenCalled()
@@ -440,6 +446,7 @@ describe('stopping learning mode on an SPA site', () => {
       await send({ action })
       const set = jest.spyOn(CSS.highlights, 'set')
       await releaseWords()
+      showAllObserved()
       await clickFox()
 
       expect(await run).toMatchObject({ success: true })
@@ -465,6 +472,7 @@ describe('stopping learning mode on an SPA site', () => {
     navigation.navigate('http://localhost/?article=2')
     await new Promise(resolve => setTimeout(resolve, 150))
     await settle()
+    showAllObserved()
     await clickFox()
 
     expect(sent.filter(m => m.type === 'getReviewWords')).toHaveLength(1)
@@ -484,6 +492,7 @@ describe('stopping learning mode on an SPA site', () => {
 
     expect(await run).toMatchObject({ success: true })
     expect(await rerun).toMatchObject({ success: true })
+    showAllObserved()
     expect(set).toHaveBeenCalledTimes(1)
   })
 })
