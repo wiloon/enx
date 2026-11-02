@@ -534,6 +534,10 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// Mark Known (#133): idempotent, so the extension can retry it.
 	apiGroup.PUT("/me/words/:english/known", handlers.SetWordKnown)
 	apiGroup.DELETE("/me/words/:english/known", handlers.ClearWordKnown)
+	// The review list the extension underlines from (ADR-069 Decision 1):
+	// one request per page, no page text. Successful loads are the
+	// "pages enabled" count in Grafana.
+	apiGroup.GET("/me/review-words", handlers.NewReviewWordsHandler(repo.ReviewWords{}).List)
 	// One click-to-lookup's query count +1 (ADR-059 Decision 3). By word id,
 	// so an inflection counts against the headword the lookup resolved to.
 	// Metered only for a lookup answered from the extension's local cache

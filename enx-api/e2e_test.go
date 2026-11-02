@@ -6,6 +6,7 @@ import (
 	"enx-api/config"
 	"enx-api/metrics"
 	"enx-api/utils/sqlitex"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -294,6 +295,50 @@ func TestE2E_LookupMetrics(t *testing.T) {
 	}
 	if strings.Contains(out, "hello") {
 		t.Error("/metrics contains the looked-up word")
+	}
+}
+
+// ADR-069: a new user's review list is an empty array; the route is in the
+// per-user rate limit, and a successful load counts under its route label.
+func TestE2E_ReviewWordsRoute(t *testing.T) {
+	env := clerktest.NewEnv(t)
+	cfg := config.Default()
+	cfg.Clerk = env.Config()
+	cfg.RateLimit = config.RateLimit{RequestsPerSecond: 0.01, Burst: 1}
+	sqlitex.Init(filepath.Join(t.TempDir(), "enx-e2e-review-words.db"))
+	token := env.SignSessionToken(t, jwt.MapClaims{"sub": "user_e2ereviewwords", "email": "review@example.com", "name": "review"})
+
+	gin.SetMode(gin.TestMode)
+	m := metrics.New()
+	ts := httptest.NewServer(setupRouter(cfg, m))
+	defer ts.Close()
+
+	get := func() (int, string) {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/me/review-words", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := ts.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var body strings.Builder
+		_, _ = io.Copy(&body, resp.Body)
+		return resp.StatusCode, body.String()
+	}
+
+	if status, body := get(); status != http.StatusOK || body != "[]" {
+		t.Fatalf("first request: %d %s, want 200 []", status, body)
+	}
+	if status, _ := get(); status != http.StatusTooManyRequests {
+		t.Fatalf("second request: status %d, want 429 from the rate limit", status)
+	}
+
+	w := httptest.NewRecorder()
+	m.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	want := `enx_http_requests_total{method="GET",route="/api/me/review-words",status="200"} 1`
+	if !strings.Contains(w.Body.String(), want) {
+		t.Errorf("/metrics lacks %q", want)
 	}
 }
 
