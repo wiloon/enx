@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ENX E2E Paint Window Page</title>
+    <!--
+      Pages for the paint window (ADR-069, #567), built by the script below
+      from ?shape=:
+        long    (default) an article many screens long, with an in-page anchor
+        nested  the same article inside a nested scroll container
+        br      one huge div split by line breaks (measured for #599)
+        outer   an outer block with its own text around nested blocks (#599)
+      The text comes from the script so seed.ts, which drops scripts, seeds no
+      words from it; e2e/paint-window.spec.ts stubs the review list instead.
+    -->
+    <style>
+        body {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 0 20px;
+            font-family: Georgia, serif;
+            font-size: 18px;
+            line-height: 1.6;
+        }
+        .scroller {
+            height: 320px;
+            overflow-y: auto;
+            border: 1px solid #999;
+        }
+    </style>
+</head>
+<body>
+    <script>
+        const sentence = i =>
+            `Line ${i}: the harbour pilot lit a lantern while the captain ` +
+            `read the chart and the sailor coiled the rope. Later the ` +
+            `harbour bell rang twice, the lantern swung, and the captain ` +
+            `folded the chart as the sailor slept.`
+        const shape = new URLSearchParams(location.search).get('shape') || 'long'
+        const article = document.createElement('article')
+
+        if (shape === 'long' || shape === 'nested') {
+            const count = shape === 'long' ? 400 : 150
+            for (let i = 0; i < count; i++) {
+                if (shape === 'long' && i === 300) {
+                    const heading = document.createElement('h2')
+                    heading.id = 'far'
+                    heading.textContent = 'Far section'
+                    article.append(heading)
+                }
+                const p = document.createElement('p')
+                p.textContent = sentence(i)
+                article.append(p)
+            }
+        } else if (shape === 'br') {
+            const huge = document.createElement('div')
+            for (let i = 0; i < 1000; i++) {
+                huge.append(sentence(i), document.createElement('br'))
+            }
+            article.append(huge)
+        } else if (shape === 'outer') {
+            const outer = document.createElement('div')
+            for (let i = 0; i < 300; i++) {
+                const p = document.createElement('p')
+                p.textContent = sentence(i)
+                outer.append(sentence(i), p)
+            }
+            article.append(outer)
+        }
+
+        const heading = document.createElement('h1')
+        heading.textContent = 'The Harbour Log'
+        document.body.append(heading)
+        if (shape === 'long') {
+            const nav = document.createElement('nav')
+            const link = document.createElement('a')
+            link.id = 'jump-far'
+            link.href = '#far'
+            link.textContent = 'Jump to the far section'
+            nav.append(link)
+            document.body.append(nav)
+        }
+        if (shape === 'nested') {
+            const scroller = document.createElement('div')
+            scroller.className = 'scroller'
+            scroller.append(article)
+            document.body.append(scroller)
+        } else {
+            document.body.append(article)
+        }
+    </script>
+</body>
+</html>

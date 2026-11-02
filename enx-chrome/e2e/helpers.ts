@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 // `enx-hl-*` name; a lookup is a coordinate click on the word's on-screen box.
 // Keep this in sync with WordProcessor.HIGHLIGHT_NAME_PREFIX (src/lib/wordProcessor.ts);
 // the e2e specs are outside the src tsconfig so it can't be imported here.
-const HIGHLIGHT_NAME_PREFIX = 'enx-hl-'
+export const HIGHLIGHT_NAME_PREFIX = 'enx-hl-'
 
 /**
  * Navigate to extension popup
@@ -28,6 +28,26 @@ export async function openPopup(page: Page, extensionId: string) {
 export async function openOptions(page: Page, extensionId: string) {
   await page.goto(`chrome-extension://${extensionId}/options.html`)
   await page.waitForLoadState('domcontentloaded')
+}
+
+/**
+ * Flip the "Highlight vocabulary while reading" preference on the options
+ * page, the way a user does (ADR-011 Decision 3).
+ */
+export async function setHighlightPref(
+  page: Page,
+  extensionId: string,
+  enabled: boolean
+) {
+  const optionsPage = await page.context().newPage()
+  await openOptions(optionsPage, extensionId)
+  const toggle = optionsPage.locator('[data-testid="word-highlight-toggle"]')
+  await expect(toggle).toBeVisible()
+  if (enabled) await toggle.check()
+  else await toggle.uncheck()
+  // give chrome.storage.onChanged a beat to propagate to the content script
+  await optionsPage.waitForTimeout(200)
+  await optionsPage.close()
 }
 
 /**

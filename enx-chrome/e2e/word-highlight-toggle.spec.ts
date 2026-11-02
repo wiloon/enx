@@ -11,25 +11,9 @@ import {
   enableLearningMode,
   getHighlightedWords,
   getHighlightedWordsCount,
-  openOptions,
+  setHighlightPref,
   waitForContentScript,
 } from './helpers'
-
-async function setHighlightPref(
-  page: import('@playwright/test').Page,
-  extensionId: string,
-  enabled: boolean
-) {
-  const optionsPage = await page.context().newPage()
-  await openOptions(optionsPage, extensionId)
-  const toggle = optionsPage.locator('[data-testid="word-highlight-toggle"]')
-  await expect(toggle).toBeVisible()
-  if (enabled) await toggle.check()
-  else await toggle.uncheck()
-  // give chrome.storage.onChanged a beat to propagate to the content script
-  await optionsPage.waitForTimeout(200)
-  await optionsPage.close()
-}
 
 test.describe('Word highlight preference toggle', () => {
   // ADR-037: a real Clerk session; skipped (not faked) without credentials.
