@@ -168,6 +168,8 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
       })
       await page.goto('/test-page.html', { waitUntil: 'domcontentloaded' })
       await enableLearningMode(page, extensionId)
+      // A background tab renders no frames, so each mouse event waits ~1s.
+      await page.bringToFront()
       await waitForContentScript(page)
     }
   )
@@ -516,6 +518,7 @@ test.describe('Word popup - query count', () => {
     })
     await page.goto('/test-page.html', { waitUntil: 'domcontentloaded' })
     await enableLearningMode(page, extensionId)
+    await page.bringToFront()
     await waitForContentScript(page)
 
     const popup = page.locator('#enx-anchored-overlay')
@@ -548,6 +551,8 @@ test.describe('Anchored overlays hide when the reference scrolls off-screen (#52
       await page.goto('/test-page.html', { waitUntil: 'domcontentloaded' })
       await addScrollSpacers(page)
       await enableLearningMode(page, extensionId)
+      // A background tab renders no frames, so each mouse event waits ~1s.
+      await page.bringToFront()
       await waitForContentScript(page)
     }
   )
@@ -684,6 +689,7 @@ test.describe('Anchored overlays hide when the reference scrolls off-screen (#52
     await page.reload({ waitUntil: 'domcontentloaded' })
     await addScrollSpacers(page)
     await enableLearningMode(page, extensionId)
+    await page.bringToFront()
     await waitForContentScript(page)
     await page.locator('article').scrollIntoViewIfNeeded()
 
