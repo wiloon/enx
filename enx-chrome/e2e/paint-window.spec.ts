@@ -122,7 +122,9 @@ async function fixtureLimits(page: Page) {
       ...paragraphs.map(p => p.getBoundingClientRect().height)
     )
     const largest = Math.max(...occurrences)
-    const blocksInThreeViewports = Math.ceil((3 * window.innerHeight) / shortest)
+    const blocksInThreeViewports = Math.ceil(
+      (3 * window.innerHeight) / shortest
+    )
     return {
       bound: (blocksInThreeViewports + 2) * largest,
       total: occurrences.reduce((sum, n) => sum + n, 0),
@@ -259,9 +261,7 @@ test.describe('Paint window', () => {
 
     const viewport = page.viewportSize()!
     const words = await getHighlightedWords(page)
-    const index = words.findIndex(
-      w => w.y > 50 && w.y < viewport.height - 50
-    )
+    const index = words.findIndex(w => w.y > 50 && w.y < viewport.height - 50)
     expect(index).toBeGreaterThanOrEqual(0)
     const text = await clickHighlightedWord(page, index)
 
@@ -317,7 +317,9 @@ test.describe('Paint window', () => {
         }
       }, HIGHLIGHT_NAME_PREFIX)
 
-      console.log(`paint window measurement ${shape}: ${JSON.stringify(result)}`)
+      console.log(
+        `paint window measurement ${shape}: ${JSON.stringify(result)}`
+      )
     })
   }
 })
