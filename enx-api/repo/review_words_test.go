@@ -19,7 +19,9 @@ func TestReviewWordsListsOnlyTheUsersLookedUpUnknownLiveWords(t *testing.T) {
 		{Id: "w6", English: "theirs"},
 	} {
 		w.CreatedAt, w.UpdatedAt = 1, 1
-		db.Create(&w)
+		if err := db.Create(&w).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
 	for _, ud := range []UserDict{
 		{UserId: "u1", WordId: "w1", QueryCount: 3},
@@ -30,7 +32,9 @@ func TestReviewWordsListsOnlyTheUsersLookedUpUnknownLiveWords(t *testing.T) {
 		{UserId: "u2", WordId: "w6", QueryCount: 9},
 	} {
 		ud.CreatedAt, ud.UpdatedAt = 1, 1
-		db.Create(&ud)
+		if err := db.Create(&ud).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	got, err := ReviewWords{}.List(context.Background(), "u1")

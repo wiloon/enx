@@ -2359,6 +2359,45 @@ describe('SidePanel', () => {
       await waitFor(() => expect(highlightTexts('enx-hl-1')).toEqual(['pets']))
     })
 
+    it('underlines a possessive looked up on the page', async () => {
+      openSentence(undefined, 'The cat’s toy is red.')
+      mockSendMessage.mockResolvedValue({ success: true, chinese: '译文' })
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-chinese')
+
+      act(() => {
+        fireStorageChange(
+          {
+            [LATEST_PAGE_WORD_STORAGE_KEY]: {
+              newValue: {
+                word: 'cat’s',
+                ecp: wordState('cat', 1),
+                createdAt: 2,
+              },
+            },
+          },
+          'session'
+        )
+      })
+
+      await waitFor(() => expect(highlightTexts('enx-hl-1')).toEqual(['cat’s']))
+    })
+
+    it('underlines a possessive looked up in the panel', async () => {
+      const sentence = 'The cat’s toy is red.'
+      openSentence(undefined, sentence)
+      mockSendMessage.mockImplementation(async (message: { type: string }) =>
+        message.type === 'getOneWord'
+          ? { success: true, ecp: wordState('cat', 1) }
+          : { success: true, chinese: '译文' }
+      )
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-chinese')
+      selectWord('cat’s', sentence)
+
+      await waitFor(() => expect(highlightTexts('enx-hl-1')).toEqual(['cat’s']))
+    })
+
     it('keeps the anchor but drops the underlines when the highlight preference is off', async () => {
       ;(chrome.storage.local.get as jest.Mock).mockResolvedValue({
         [WORD_HIGHLIGHT_KEY]: false,
@@ -2438,9 +2477,7 @@ describe('SidePanel', () => {
 
       render(<SidePanel />)
       await screen.findByTestId('sidepanel-chinese')
-      await waitFor(() =>
-        expect(highlightTexts('enx-hl-1')).toEqual(['cat’s'])
-      )
+      await waitFor(() => expect(highlightTexts('enx-hl-1')).toEqual(['cat’s']))
 
       act(() => {
         for (const [listener] of (

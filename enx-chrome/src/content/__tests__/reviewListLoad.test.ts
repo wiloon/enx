@@ -11,7 +11,7 @@ type Message = { type?: string; action?: string }
 type Callback = (response: unknown) => void
 
 const ARTICLE_TEXT =
-  'The Fox and the fox’s den and FOX\'S tail, while the lazy dog sleeps ' +
+  "The Fox and the fox’s den and FOX'S tail, while the lazy dog sleeps " +
   'and the patient reader keeps reading this paragraph about animals.'
 const LIVE_ID = 'abcdefghijklmnopqrstuvwxyzabcdef'
 
@@ -231,7 +231,7 @@ describe('enabling learning mode', () => {
     expect(sent.filter(m => m.type === 'getOneWord')).toHaveLength(1)
   })
 
-  it("underlines a list word in any case and as a possessive, and nothing else", async () => {
+  it('underlines a list word in any case and as a possessive, and nothing else', async () => {
     const send = await loadContentScript()
     await send({ action: 'enxRun' })
 
@@ -240,10 +240,19 @@ describe('enabling learning mode', () => {
 
   it.each([
     ['a rejected request', { success: false, error: 'boom' }, 'lookup-failed'],
-    ['a malformed list', { success: true, reviewWords: { fox: 1 } }, 'lookup-failed'],
+    [
+      'a malformed list',
+      { success: true, reviewWords: { fox: 1 } },
+      'lookup-failed',
+    ],
     [
       'the rate limit',
-      { success: false, status: 429, code: 'too_many_requests', retryAfterMs: 1 },
+      {
+        success: false,
+        status: 429,
+        code: 'too_many_requests',
+        retryAfterMs: 1,
+      },
       'rate-limited',
     ],
     [
@@ -252,7 +261,9 @@ describe('enabling learning mode', () => {
       'account-disabled',
     ],
   ])('reports %s as its failure', async (_name, reply, reason) => {
-    jest.useFakeTimers({ doNotFake: ['setTimeout', 'nextTick', 'setImmediate'] })
+    jest.useFakeTimers({
+      doNotFake: ['setTimeout', 'nextTick', 'setImmediate'],
+    })
     reviewList = () => reply
     const send = await loadContentScript()
 
@@ -392,7 +403,14 @@ describe('the session expiring', () => {
 
     await send({ action: 'sessionExpired' })
     await releaseList()
-    await run
+    expect(await run).toMatchObject({
+      success: false,
+      reason: 'session-expired',
+    })
+    expect(sent.filter(m => m.type === 'learningModeStatus').at(-1)).toEqual({
+      type: 'learningModeStatus',
+      status: { status: 'error', reason: 'session-expired' },
+    })
     holdList = false
     reviewList = () => ({ success: true, reviewWords: [] })
     await send({ action: 'enxRun' })

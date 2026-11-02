@@ -46,7 +46,12 @@ function deps(replies: (BackgroundResponse | Error)[]) {
 
 describe('requestReviewList', () => {
   it('maps list entries to review states keyed by the shared word key', async () => {
-    const { d } = deps([listed([['Cat', 3], ["don't", 1]])])
+    const { d } = deps([
+      listed([
+        ['Cat', 3],
+        ["don't", 1],
+      ]),
+    ])
 
     expect(await requestReviewList(d)).toEqual({
       ok: true,
@@ -59,6 +64,15 @@ describe('requestReviewList', () => {
 
     expect(await requestReviewList(d)).toEqual({ ok: true, words: {} })
     expect(sent()).toBe(1)
+  })
+
+  it('skips malformed entries in a successful list', async () => {
+    const { d } = deps([listed([['cat', 3], 'x', [1, 2], ['dog']])])
+
+    expect(await requestReviewList(d)).toEqual({
+      ok: true,
+      words: { cat: state('cat', 3) },
+    })
   })
 
   it('reports a 200 whose body is not an array as lookup-failed', async () => {
@@ -160,10 +174,12 @@ describe('createReviewList', () => {
   const pendingRequests = () => {
     const resolvers: ((r: BackgroundResponse) => void)[] = []
     const send = jest.fn(
-      () =>
-        new Promise<BackgroundResponse>(resolve => resolvers.push(resolve))
+      () => new Promise<BackgroundResponse>(resolve => resolvers.push(resolve))
     )
-    return { send, answer: (i: number, r: BackgroundResponse) => resolvers[i](r) }
+    return {
+      send,
+      answer: (i: number, r: BackgroundResponse) => resolvers[i](r),
+    }
   }
 
   const setup = (stoodDown = () => false) => {
@@ -210,7 +226,13 @@ describe('createReviewList', () => {
     const lookedUp = { ...state('cat', 5), Chinese: '猫' }
     cache.cat = lookedUp
 
-    answer(0, listed([['cat', 2], ['dog', 1]]))
+    answer(
+      0,
+      listed([
+        ['cat', 2],
+        ['dog', 1],
+      ])
+    )
     await load
 
     expect(cache).toEqual({ cat: lookedUp, dog: state('dog', 1) })

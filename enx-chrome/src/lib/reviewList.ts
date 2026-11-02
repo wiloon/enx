@@ -73,7 +73,8 @@ export async function requestReviewList(
       }
       return { ok: true, words: toWordStates(response.reviewWords) }
     }
-    if (response?.sessionExpired) return { ok: false, reason: 'session-expired' }
+    if (response?.sessionExpired)
+      return { ok: false, reason: 'session-expired' }
     if (response && isAccountDisabled(response)) {
       return { ok: false, reason: 'account-disabled' }
     }
@@ -96,8 +97,7 @@ export async function requestReviewList(
 }
 
 export type ReviewListLoad =
-  | { ok: true }
-  | { ok: false; reason: ReviewListFailure }
+  { ok: true } | { ok: false; reason: ReviewListFailure }
 
 export interface ReviewListDeps extends ReviewListRequestDeps {
   /** The page's word states, keyed by wordKey; the list fills it. */
@@ -136,7 +136,8 @@ export function createReviewList(deps: ReviewListDeps): ReviewList {
 
     const requested = generation
     inFlight = requestReviewList(deps).then((result): ReviewListLoad => {
-      if (requested !== generation) return result.ok ? { ok: true } : result
+      if (requested !== generation)
+        return { ok: false, reason: 'session-expired' }
       inFlight = null
       if (!result.ok) {
         if (result.reason === 'session-expired') clear()
