@@ -7,6 +7,7 @@ import {
   isReviewable,
   reviewBucket,
   tokenizeWords,
+  wordKey,
 } from '@/lib/wordHighlight'
 
 // Single source of truth for article extraction / word highlighting.
@@ -198,7 +199,7 @@ export class WordProcessor {
 
     for (const node of textNodes) {
       for (const token of tokenizeWords(node.textContent || '')) {
-        const data = wordDict[token.word.toLowerCase()]
+        const data = wordDict[wordKey(token.word)]
         if (!data) continue
         const bucket = this.reviewBucket(data)
         if (bucket === null) continue

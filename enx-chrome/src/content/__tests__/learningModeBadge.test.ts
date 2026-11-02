@@ -19,21 +19,8 @@ const statuses = () =>
 
 const defaultRespond: Responder = message => {
   switch (message.type) {
-    case 'getWords':
-      return {
-        success: true,
-        wordProperties: {
-          fox: {
-            Key: 'fox',
-            English: 'fox',
-            Chinese: '狐狸',
-            Pronunciation: '',
-            LoadCount: 1,
-            Known: false,
-            WordType: 0,
-          },
-        },
-      }
+    case 'getReviewWords':
+      return { success: true, reviewWords: [['fox', 1]] }
     case 'shouldAutoEnable':
       return { success: true, autoEnable: false }
     default:
@@ -123,7 +110,7 @@ describe('content script learning-mode status (adr-046)', () => {
   it('reports an error when the session has expired', async () => {
     document.body.innerHTML = `<article><p>${ARTICLE_TEXT}</p></article>`
     respond = message =>
-      message.type === 'getWords'
+      message.type === 'getReviewWords'
         ? { success: false, sessionExpired: true }
         : defaultRespond(message)
     const send = await loadContentScript()

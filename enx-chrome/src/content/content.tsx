@@ -15,6 +15,7 @@ import { WordProcessor } from '@/lib/wordProcessor'
 import {
   reviewBucketHighlightCss,
   sentenceWordStates,
+  wordKey,
 } from '@/lib/wordHighlight'
 import { resolveSiteAdapter, type SiteOrigins } from '@/lib/siteAdapters'
 import {
@@ -23,7 +24,7 @@ import {
   failed,
   failureMessage,
 } from '@/lib/enableOutcome'
-import { fetchWordChunk, type WordChunkDeps } from '@/lib/wordChunk'
+import { createReviewList } from '@/lib/reviewList'
 import {
   stampExtensionPresence,
   stampLearningMode,
@@ -134,7 +135,8 @@ stampExtensionPresence(
 let isEnxEnabled = false
 let currentOverlay: HTMLElement | null = null
 let currentRoot: Root | null = null
-let wordCache: Record<string, WordData> = {}
+// Word states keyed by wordKey: the review list plus every lookup since.
+const wordCache: Record<string, WordData> = {}
 let isProcessing = false
 // Article roots ENX is currently operating on: the delegated click listener
 // is bound to each, and refreshHighlights() rebuilds highlights over them.
@@ -155,6 +157,15 @@ const sendToBackground = (
 ): Promise<BackgroundResponse> => {
   return sendRuntimeMessage(message)
 }
+
+// ADR-069 Decision 1: the user's review list fills wordCache once per page;
+// every rebuild, off/on and re-enable reuses a successful load.
+const reviewList = createReviewList({
+  send: () => sendToBackground({ type: 'getReviewWords' }),
+  sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
+  cache: wordCache,
+  isStoodDown: () => standDown.isStoodDown(),
+})
 
 // Counts a popover lookup on the server, without waiting (lib/queryCount.ts).
 const recordLookup: RecordLookup = wordId => {
@@ -343,7 +354,7 @@ const showWordPopover = async (word: string, reference: Range) => {
   // #133) is done. A call that still fails is left as is: the word is simply
   // underlined again on a later page, where the user can mark it again.
   const handleMarkKnown = async (englishWord: string) => {
-    const cached = wordCache[englishWord.toLowerCase()]
+    const cached = wordCache[wordKey(englishWord)]
     const updated: WordData = cached
       ? { ...cached, Known: true }
       : {
@@ -355,7 +366,7 @@ const showWordPopover = async (word: string, reference: Range) => {
           Known: true,
           WordType: 0,
         }
-    wordCache[englishWord.toLowerCase()] = updated
+    wordCache[wordKey(englishWord)] = updated
     contentScriptStore.set(currentWordAtom, updated)
     void refreshHighlights()
     overlay.hidePopover()
@@ -425,7 +436,7 @@ const showWordPopover = async (word: string, reference: Range) => {
     store: contentScriptStore,
     isCurrent: () => currentOverlay === overlay,
     onDefined: defined => {
-      wordCache[word.toLowerCase()] = defined
+      wordCache[wordKey(word)] = defined
       void refreshHighlights()
       // A word the AI was confident enough to store is in the user's
       // vocabulary like any other lookup; mirror it into the side panel.
@@ -492,7 +503,7 @@ const showWordPopover = async (word: string, reference: Range) => {
       contentScriptStore.set(currentWordAtom, wordData)
       contentScriptStore.set(isTranslatingAtom, false)
 
-      wordCache[word.toLowerCase()] = wordData
+      wordCache[wordKey(word)] = wordData
       void refreshHighlights()
 
       // Mirror the lookup into the Side Panel's word list if it's open --
@@ -848,77 +859,23 @@ const processArticleContent = async (
       return failed('no-words')
     }
 
-    // Deduplicate words to reduce chunk count and avoid redundant backend calls
-    const uniqueWords = Array.from(new Set(words))
-    console.log(
-      `Found ${words.length} words (${uniqueWords.length} unique) to process`
-    )
+    console.log(`Found ${words.length} words`)
 
-    // Short-circuit (ADR-011 Decision 6.2): on a SPA rebuild, if every word
-    // of the new tweet is already cached -- typical when switching between
-    // tweets in one session -- skip the getWords / paragraph-init round trip
-    // and go straight to highlighting. Scoped to the SPA path; a static-site
-    // re-arm keeps calling the backend as before.
-    const allCached =
-      isSpaRebuild &&
-      uniqueWords.every(w => wordCache[w.toLowerCase()] !== undefined)
-
-    // Process words in chunks
-    const chunkSize = 200 // Process in smaller chunks for better performance
-    let processedChunks = 0
-    // Some chunk was still refused by the request rate limit after waiting
-    // (ADR-060): if the page ends up with no word data, that is why.
-    let rateLimited = false
-    const chunkDeps: WordChunkDeps = {
-      send: paragraph => sendToBackground({ type: 'getWords', paragraph }),
-      sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
-      // This run was superseded while a request was in flight (a newer tweet
-      // switch, learning mode turned off, or this orphan standing down) --
-      // stop so we don't cache/paint for a page state that is gone.
-      isStale: stale,
-    }
-
-    if (allCached) {
-      console.log(
-        `All ${uniqueWords.length} words already cached; skipping backend`
-      )
-    } else {
-      for (let i = 0; i < uniqueWords.length; i += chunkSize) {
-        // Superseded (newer tweet switch, learning mode off, stand-down):
-        // not a failure.
-        if (stale()) return ENABLE_OK
-        const chunk = uniqueWords.slice(i, i + chunkSize)
-        console.log(
-          `📦 Processing chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(uniqueWords.length / chunkSize)}: ${chunk.length} words`
-        )
-
-        const result = await fetchWordChunk(chunk, chunkDeps)
-        switch (result.kind) {
-          case 'ok':
-            Object.assign(wordCache, result.words)
-            processedChunks++
-            console.log(
-              `✅ Chunk ${processedChunks}: ${Object.keys(result.words).length} words cached`
-            )
-            break
-          case 'session-expired':
-            console.log('Session expired during word processing')
-            showSessionExpiredMessage()
-            return failed('session-expired')
-          case 'account-disabled':
-            // ADR-062: every later chunk would be refused the same way.
-            return failed('account-disabled')
-          case 'stale':
-            return ENABLE_OK
-          case 'rate-limited':
-            rateLimited = true
-            console.error('❌ Chunk still rate-limited after waiting')
-            break
-          case 'failed':
-            // Continue processing other chunks
-            console.error('❌ Chunk failed after its retry')
-            break
-        }
+    // The user's review list (ADR-069 Decision 1), shared by every run on
+    // this page; no page text goes with it. Whether the run succeeds is the
+    // request's own result, not whether wordCache happens to hold words.
+    const loaded = await reviewList.load()
+    // Superseded while the list loaded (a newer tweet switch, learning mode
+    // turned off, or this orphan standing down): not a failure.
+    if (stale()) return ENABLE_OK
+    if (!loaded.ok) {
+      console.log(`Review list not loaded: ${loaded.reason}`)
+      if (loaded.reason === 'session-expired') {
+        showSessionExpiredMessage()
+        return failed('session-expired')
+      }
+      if (loaded.reason === 'account-disabled') {
+        return failed('account-disabled')
       }
     }
 
@@ -958,17 +915,16 @@ const processArticleContent = async (
     // highlights -- any English word is clickable.
     setArticleRoots(articleNodes)
 
-    // L0 reading instrumentation (ADR-028): `words.length` was computed
-    // above for chunking and, until now, thrown away -- it is the denominator
-    // of the only honest progress metric we have ("lookups per 1,000 words").
+    // L0 reading instrumentation (ADR-028): `words.length` is the
+    // denominator of the only honest progress metric we have ("lookups per
+    // 1,000 words"), counted locally; the words themselves are never sent.
     // Started after the paint so a failed run never reports a read article.
     startArticle(articleNodes, words.length, delta => {
       void sendToBackground({ type: 'reportReadingProgress', delta })
     })
 
-    console.log('✅ Article processing completed successfully')
-    if (haveWords) return ENABLE_OK
-    return failed(rateLimited ? 'rate-limited' : 'lookup-failed')
+    console.log('✅ Article processing completed')
+    return loaded.ok ? ENABLE_OK : failed(loaded.reason)
   } catch (error) {
     console.error('Error processing article:', error)
     return failed('error')
@@ -1554,8 +1510,8 @@ const runLearningMode = (): Promise<EnableOutcome> => {
   // ADR-010 Decision 7 (G2): "enable once" becomes "re-arm". On an
   // already-enabled page (e.g. X after an in-page navigation swapped the
   // DOM), tear down and re-run instead of the old no-op early return.
-  // wordCache is module-level and survives, so re-processed words hit the
-  // cache and don't re-call the backend.
+  // wordCache and the loaded review list are module-level and survive, so
+  // the re-run does not ask the backend again.
   if (isEnxEnabled) {
     disableEnx()
   }
@@ -1572,7 +1528,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     // refreshHighlights() is a no-op while ENX isn't running on the page.
     case 'panelWordLookup': {
       const { word, ecp } = request as PanelWordLookupMessage
-      wordCache[word.toLowerCase()] = ecp
+      wordCache[wordKey(word)] = ecp
       void refreshHighlights()
       sendResponse({ success: true })
       break
@@ -1635,6 +1591,8 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
     case 'sessionExpired':
       console.log('Session expired notification received')
+      // The next account must not see this one's words (ADR-069).
+      reviewList.clear()
       showSessionExpiredMessage()
       // Disable ENX functionality if it's currently enabled
       if (isEnxEnabled) {

@@ -720,8 +720,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'getOneWord':
           return await handleGetOneWord(request.word)
 
-        case 'getWords':
-          return await handleGetWords(request.paragraph)
+        case 'getReviewWords':
+          return await handleGetReviewWords()
 
         case 'markKnown':
           return await handleMarkKnown(request.word, request.userId)
@@ -1118,72 +1118,18 @@ const handleGetOneWord = async (word: string) => {
   }
 }
 
-// paragraph-init sends page text, so it travels in the request body, never
-// the URL, where CDN and proxy access logs would record it (ADR-041). QUERY
-// (RFC 10008) is the exact method for a read-only query with a body; POST
-// carries the same request on networks that reject QUERY.
-let paragraphInitMethod: 'QUERY' | 'POST' = 'QUERY'
-
-export const __resetParagraphMethodForTests = (): void => {
-  paragraphInitMethod = 'QUERY'
-}
-
-// Did QUERY fail to get through, rather than get an answer from enx-api? A
-// network-level failure (no status), or a proxy on the user's network
-// answering 405/501 for a method it doesn't know. Session expiry and real API
-// errors (402/429/500...) are answers, and POST would get the same one.
-const queryMethodBlocked = (r: ApiRequestResult): boolean =>
-  !r.success &&
-  !r.sessionExpired &&
-  (r.status === undefined || r.status === 405 || r.status === 501)
-
-// Handle get multiple words
-export const handleGetWords = async (paragraph: string) => {
-  if (!paragraph || paragraph.trim() === '') {
-    return { success: false, error: 'No paragraph provided' }
-  }
-
-  // A pure read, so the POST may retry (#133). QUERY doesn't: on a network
-  // that blocks it, retries would only delay the fallback to POST below.
-  const body = JSON.stringify({ paragraph })
-  let response = await makeApiRequest(
-    '/api/paragraph-init',
-    { method: paragraphInitMethod, body },
-    { retry: paragraphInitMethod === 'POST' }
-  )
-  if (paragraphInitMethod === 'QUERY' && queryMethodBlocked(response)) {
-    swlog(
-      `paragraph-init: QUERY did not get through (${response.status ?? 'network error'}), retrying with POST`,
-      'warn'
-    )
-    response = await makeApiRequest(
-      '/api/paragraph-init',
-      { method: 'POST', body },
-      { retry: true }
-    )
-    // Only a POST that worked proves this network needs it; a failing POST
-    // (say, the API is down) must not pin the worker to POST.
-    if (response.success) {
-      paragraphInitMethod = 'POST'
-    }
-  }
-
-  console.log('paragraph-init API response:', response)
+// The user's review list (ADR-069 Decision 1): a plain GET with no page text.
+// The content script's lib/reviewList.ts retries it and checks its shape.
+export const handleGetReviewWords = async () => {
+  const response = await makeApiRequest('/api/me/review-words', {
+    method: 'GET',
+  })
 
   if (response.success) {
-    const wordCount = Object.keys(response.data || {}).length
-    console.log('Word properties received:', wordCount, 'words')
-    if (wordCount > 0) {
-      console.log('Sample words:', Object.keys(response.data).slice(0, 5))
-      console.log('Sample word data:', Object.values(response.data)[0])
-    }
-    return {
-      success: true,
-      wordProperties: response.data,
-    }
+    return { success: true, reviewWords: response.data }
   } else {
     // Pass through session expiry, and what a 429 is and how long it asks
-    // to wait (ADR-060): the chunk retry in lib/wordChunk.ts needs both
+    // to wait (ADR-060): the retry in lib/reviewList.ts needs both
     return {
       success: false,
       error: response.error,

@@ -36,13 +36,21 @@ export async function openOptions(page: Page, extensionId: string) {
  * at least one non-empty `enx-hl-*` entry. The style tag alone only proves the
  * script evaluated (it is injected at load, before learning mode); the registry
  * check is what tells us `processArticleContent` finished a paint.
+ *
+ * `emptyReviewList`: the user's review list is empty, so there is nothing to
+ * paint. enableLearningMode already waited for enxRun's success reply, which
+ * comes once processing finished, so only the style tag is checked.
  */
-export async function waitForContentScript(page: Page, timeout = 10000) {
+export async function waitForContentScript(
+  page: Page,
+  { timeout = 10000, emptyReviewList = false } = {}
+) {
   await page.waitForFunction(
-    prefix => {
+    ({ prefix, emptyReviewList }) => {
       if (!document.head.querySelector('style[data-enx-highlight-styles]')) {
         return false
       }
+      if (emptyReviewList) return true
       const registry = (
         CSS as unknown as { highlights?: Iterable<[string, { size: number }]> }
       ).highlights
@@ -52,7 +60,7 @@ export async function waitForContentScript(page: Page, timeout = 10000) {
       }
       return false
     },
-    HIGHLIGHT_NAME_PREFIX,
+    { prefix: HIGHLIGHT_NAME_PREFIX, emptyReviewList },
     { timeout }
   )
 }
@@ -338,6 +346,12 @@ export async function mockBackendFetch(
       Known: boolean
       WordType: number
     }>
+    /**
+     * The GET /api/me/review-words answer, as [english, queryCount] pairs
+     * (ADR-069). Defaults to FIXTURE_REVIEW_WORDS, each looked up
+     * wordData.LoadCount times.
+     */
+    reviewWords?: [string, number][]
     translateFails?: boolean
     translateSessionExpired?: boolean
   } = {}
@@ -355,11 +369,16 @@ export async function mockBackendFetch(
     WordType: 0,
     ...options.wordData,
   }
+  const reviewWords =
+    options.reviewWords ??
+    FIXTURE_REVIEW_WORDS.map(
+      (word): [string, number] => [word, wordData.LoadCount]
+    )
   const translateFails = options.translateFails ?? false
   const translateSessionExpired = options.translateSessionExpired ?? false
 
   await sw.evaluate(
-    ({ wordData, translateFails, translateSessionExpired }) => {
+    ({ wordData, reviewWords, translateFails, translateSessionExpired }) => {
       const realFetch = self.fetch.bind(self)
       self.fetch = async (input, init) => {
         const url =
@@ -367,24 +386,16 @@ export async function mockBackendFetch(
             ? input
             : ((input as Request).url ?? String(input))
 
-        if (url.includes('/api/paragraph-init')) {
-          // Mirror the real endpoint's contract (word data for every word in
-          // the requested paragraph) using canned data, so whatever text is
-          // actually on the test page gets highlighted -- rather than
-          // hardcoding a word list that has to match the fixture's prose.
-          // The paragraph travels in the QUERY/POST body (ADR-041); the
-          // query string is the deprecated GET form.
-          const paragraph =
-            typeof init?.body === 'string'
-              ? ((JSON.parse(init.body) as { paragraph?: string }).paragraph ??
-                '')
-              : (new URL(url).searchParams.get('paragraph') ?? '')
-          const words = paragraph.split(/[^a-zA-Z']+/).filter(Boolean)
-          const body: Record<string, unknown> = {}
-          for (const w of words) {
-            body[w.toLowerCase()] = { ...wordData, English: w }
-          }
-          return new Response(JSON.stringify(body), {
+        if (url.includes('/api/me/review-words')) {
+          const requests = ((
+            self as unknown as Record<string, unknown>
+          ).__enxReviewWordsRequests ??= []) as unknown[]
+          requests.push({
+            url,
+            method: init?.method ?? 'GET',
+            body: init?.body ?? null,
+          })
+          return new Response(JSON.stringify(reviewWords), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           })
@@ -439,7 +450,68 @@ export async function mockBackendFetch(
         return realFetch(input, init)
       }
     },
-    { wordData, translateFails, translateSessionExpired }
+    { wordData, reviewWords, translateFails, translateSessionExpired }
+  )
+}
+
+/**
+ * The review list mockBackendFetch answers by default: words spread over
+ * every paragraph of test-page.html, so highlights reach each viewport edge,
+ * plus `sailor` from body-paragraphs.html.
+ */
+export const FIXTURE_REVIEW_WORDS = [
+  'software',
+  'development',
+  'complex',
+  'planning',
+  'execution',
+  'developers',
+  'performance',
+  'scalability',
+  'maintainability',
+  'applications',
+  'frameworks',
+  'powerful',
+  'robust',
+  'technologies',
+  'frontend',
+  'interactive',
+  'interfaces',
+  'testing',
+  'essential',
+  'quality',
+  'individual',
+  'integration',
+  'modules',
+  'workflow',
+  'continuous',
+  'deployment',
+  'reliably',
+  'automated',
+  'pipelines',
+  'efficiency',
+  'cloud',
+  'computing',
+  'infrastructure',
+  'automatically',
+  'demand',
+  'available',
+  'performant',
+  'sailor',
+]
+
+/**
+ * The GET /api/me/review-words requests the service worker sent under
+ * mockBackendFetch, in order.
+ */
+export async function reviewWordsRequests(
+  context: BrowserContext
+): Promise<{ url: string; method: string; body: unknown }[]> {
+  const [sw] = context.serviceWorkers()
+  return sw.evaluate(
+    () =>
+      ((self as unknown as Record<string, unknown>).__enxReviewWordsRequests ??
+        []) as { url: string; method: string; body: unknown }[]
   )
 }
 

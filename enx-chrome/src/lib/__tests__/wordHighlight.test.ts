@@ -113,4 +113,48 @@ describe('sentenceWordStates', () => {
 
     expect(states).toEqual({ cat, 'well-known': wellKnown })
   })
+
+  // ADR-069: the review list holds "cat"; a possessive with either
+  // apostrophe is the same word, as SetEnglishField has it on the server.
+  it('maps possessives with either apostrophe to the word they belong to', () => {
+    const cat = word('cat')
+
+    expect(sentenceWordStates('The cat’s bowl and the cat\'s toy', { cat }))
+      .toEqual({ cat })
+  })
+})
+
+describe('sentence mapping shared with the page (ADR-069)', () => {
+  it("underlines CAT's and cat’s for a list word cat", () => {
+    const sentence = "CAT'S toy and the cat’s bowl"
+    const { buckets } = sentenceHighlightSpans(
+      sentence,
+      '',
+      { cat: word('cat', { LoadCount: 1 }) },
+      true
+    )
+
+    expect(buckets).toEqual(
+      new Map([
+        [
+          1,
+          [
+            { start: 0, end: 5 },
+            { start: 18, end: 23 },
+          ],
+        ],
+      ])
+    )
+  })
+
+  it('keeps contractions as their own words', () => {
+    const { buckets } = sentenceHighlightSpans(
+      'It isn’t here',
+      '',
+      { "isn't": word("isn't") },
+      true
+    )
+
+    expect([...buckets.values()].flat()).toEqual([{ start: 3, end: 8 }])
+  })
 })

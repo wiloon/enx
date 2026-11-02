@@ -54,9 +54,8 @@ import {
   makeApiRequest,
   NETWORK_ERROR_MESSAGE,
   SERVICE_UNAVAILABLE_MESSAGE,
-  handleGetWords,
+  handleGetReviewWords,
   __resetClerkClientCacheForTests,
-  __resetParagraphMethodForTests,
 } from '../background'
 
 // Captured at import time, before any test's resetAllMocks() wipes the
@@ -1791,13 +1790,12 @@ describe('background auto-enable wiring (adr-039)', () => {
   })
 })
 
-// ADR-041: paragraph-init sends page text in a body, via QUERY by default and
-// POST where the user's network rejects QUERY.
-describe('handleGetWords (paragraph-init method)', () => {
+// ADR-069 Decision 1: the review list is a plain GET that carries no page
+// text.
+describe('handleGetReviewWords', () => {
   beforeEach(() => {
     jest.resetAllMocks()
     setClerkSession('clerk-session-jwt')
-    __resetParagraphMethodForTests()
     // resetAllMocks() wipes the env mock's implementation too.
     ;(chrome.storage.local.remove as jest.Mock).mockResolvedValue(undefined)
     ;(chrome.tabs.query as jest.Mock).mockResolvedValue([{ id: 1 }])
@@ -1812,119 +1810,48 @@ describe('handleGetWords (paragraph-init method)', () => {
       body: init.body,
     }))
 
-  it('sends QUERY with the paragraph in a JSON body, not the URL', async () => {
+  it('GETs the review list with no body and hands the list on as received', async () => {
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
-      jsonResponse(200, { data: { hello: { Id: 'w1' } } })
+      jsonResponse(200, [['cat', 3]])
     )
 
-    const result = await handleGetWords('hello world')
-
-    expect(result).toEqual({
+    expect(await handleGetReviewWords()).toEqual({
       success: true,
-      wordProperties: { data: { hello: { Id: 'w1' } } },
+      reviewWords: [['cat', 3]],
     })
     expect(calls()).toEqual([
       {
-        url: 'http://localhost:8090/api/paragraph-init',
-        method: 'QUERY',
-        body: JSON.stringify({ paragraph: 'hello world' }),
+        url: 'http://localhost:8090/api/me/review-words',
+        method: 'GET',
+        body: undefined,
       },
     ])
   })
 
-  it.each([
-    [
-      'a network-level failure',
-      () => Promise.reject(new TypeError('Failed to fetch')),
-    ],
-    ['405 from a proxy', () => Promise.resolve(jsonResponse(405, {}))],
-    ['501 from a proxy', () => Promise.resolve(jsonResponse(501, {}))],
-  ])(
-    'falls back to POST after %s, and stays on POST',
-    async (_, firstReply) => {
-      ;(global.fetch as jest.Mock)
-        .mockImplementationOnce(firstReply)
-        .mockResolvedValueOnce(jsonResponse(200, { data: {} }))
-        .mockResolvedValueOnce(jsonResponse(200, { data: {} }))
+  it('answers the getReviewWords message from a content script', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(200, []))
 
-      expect((await handleGetWords('hello')).success).toBe(true)
-      expect(calls().map(c => c.method)).toEqual(['QUERY', 'POST'])
+    const response = await new Promise(resolve =>
+      onMessageListener({ type: 'getReviewWords' }, { tab: { id: 1 } }, resolve)
+    )
 
-      await handleGetWords('world')
-      expect(calls().map(c => c.method)).toEqual(['QUERY', 'POST', 'POST'])
-    }
-  )
-
-  // #133: paragraph-init only reads word states, so its POST may retry. The
-  // QUERY attempt doesn't: a network that blocks QUERY would wait out every
-  // retry before falling back to POST.
-  it('retries the POST, not the QUERY, after a network failure', async () => {
-    jest.useFakeTimers()
-    try {
-      ;(global.fetch as jest.Mock)
-        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-        .mockResolvedValueOnce(jsonResponse(200, { data: {} }))
-
-      const pending = handleGetWords('hello')
-      await jest.runAllTimersAsync()
-
-      expect((await pending).success).toBe(true)
-      expect(calls().map(c => c.method)).toEqual(['QUERY', 'POST', 'POST'])
-    } finally {
-      jest.useRealTimers()
-    }
+    expect(response).toEqual({ success: true, reviewWords: [] })
   })
 
-  describe('while the API is unreachable', () => {
-    beforeEach(() => {
-      jest.useFakeTimers()
-      ;(global.fetch as jest.Mock).mockRejectedValue(
-        new TypeError('Failed to fetch')
+  it('no longer answers the paragraph-init getWords message', async () => {
+    const response = await new Promise(resolve =>
+      onMessageListener(
+        { type: 'getWords', paragraph: 'hello world' },
+        { tab: { id: 1 } },
+        resolve
       )
-    })
-    afterEach(() => jest.useRealTimers())
+    )
 
-    const getWords = async (paragraph: string) => {
-      const pending = handleGetWords(paragraph)
-      await jest.runAllTimersAsync()
-      return pending
-    }
-
-    it('keeps using QUERY when the POST fails too', async () => {
-      expect((await getWords('hello')).success).toBe(false)
-      ;(global.fetch as jest.Mock).mockResolvedValue(
-        jsonResponse(200, { data: {} })
-      )
-      await getWords('world')
-      expect(calls().map(c => c.method)).toEqual([
-        'QUERY',
-        'POST',
-        'POST',
-        'POST',
-        'QUERY',
-      ])
-    })
-
-    it('tells the reader to check their connection', async () => {
-      expect(await getWords('hello')).toEqual({
-        success: false,
-        error: NETWORK_ERROR_MESSAGE,
-      })
-    })
+    expect(response).toMatchObject({ success: false })
+    expect(global.fetch).not.toHaveBeenCalled()
   })
 
-  it.each([
-    ['a server error', 500],
-    ['a quota rejection', 429],
-  ])('does not fall back on %s', async (_, status) => {
-    ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(status, {}))
-
-    expect((await handleGetWords('hello')).success).toBe(false)
-    expect(calls().map(c => c.method)).toEqual(['QUERY'])
-  })
-
-  // ADR-060 Decision 4: the content script's chunk retry waits Retry-After.
+  // ADR-060 Decision 4: the content script's retry waits Retry-After.
   it("passes a rate-limit 429's code and Retry-After to the content script", async () => {
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
       jsonResponse(
@@ -1939,7 +1866,7 @@ describe('handleGetWords (paragraph-init method)', () => {
       )
     )
 
-    expect(await handleGetWords('hello')).toEqual({
+    expect(await handleGetReviewWords()).toEqual({
       success: false,
       error: 'Too many requests.',
       status: 429,

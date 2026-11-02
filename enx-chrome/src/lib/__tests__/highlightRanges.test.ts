@@ -107,15 +107,40 @@ describe('WordProcessor.buildHighlightRanges', () => {
     const buckets = WordProcessor.buildHighlightRanges(
       textNodesUnder(document.body),
       {
-        "it's": wd(),
         'well-known': wd(),
         "isn't": wd(),
       }
     )
     const hit = [...buckets.values()].flat().map(r => r.toString())
-    expect(hit).toContain("it's")
-    expect(hit).toContain('well-known')
-    expect(hit).toContain("isn't")
+    expect(hit).toEqual(['well-known', "isn't"])
+  })
+
+  // ADR-069: the review list is keyed by the stored word ("cat"); the page's
+  // case, curly apostrophes and possessive 's map onto it.
+  it("underlines Cat, CAT'S and cat’s for a list word cat, and nothing absent", () => {
+    document.body.innerHTML =
+      "<p>Cat and CAT'S toy and the cat’s bowl, not the dog’s</p>"
+    const buckets = WordProcessor.buildHighlightRanges(
+      textNodesUnder(document.body),
+      { cat: wd({ LoadCount: 1 }) }
+    )
+    expect(buckets.get(1)!.map(r => r.toString())).toEqual([
+      'Cat',
+      "CAT'S",
+      'cat’s',
+    ])
+    expect(buckets.size).toBe(1)
+  })
+
+  it('matches a curly-apostrophe contraction against the straight list word', () => {
+    document.body.innerHTML = '<p>we don’t know</p>'
+    const buckets = WordProcessor.buildHighlightRanges(
+      textNodesUnder(document.body),
+      { "don't": wd() }
+    )
+    expect([...buckets.values()].flat().map(r => r.toString())).toEqual([
+      'don’t',
+    ])
   })
 
   it('tokenizes word-then-number compounds the way extractWords does (letter part only)', () => {

@@ -78,8 +78,9 @@ export default function PrivacyPolicyZhPage() {
         <List
           items={[
             <>
-              页面上的<Term>单词列表</Term>
-              ，以便我们返回每个词的释义和你的复习状态；
+              仅限<Term>旧版扩展</Term>：页面上的<Term>单词列表</Term>
+              ，以便我们返回每个词的复习状态（不含释义）。当前版本不发送页面上的单词，而是下载你的
+              <Term>复习列表</Term>，即你查过、尚未标为已认识的词；
             </>,
             <>
               你<Term>点击</Term>的词，用于查询；

@@ -35,6 +35,7 @@ func TestLookupRoutesAreRegisteredOnlyUnderAPI(t *testing.T) {
 		"PUT /me/words/:english/known",
 		"DELETE /me/words/:english/known",
 		"POST /me/word-lookups",
+		"GET /me/review-words",
 	} {
 		if registered[route] {
 			t.Errorf("%s is registered at the root; it should exist only under /api", route)
@@ -221,6 +222,27 @@ func TestWordLookupRouteRequiresAuthentication(t *testing.T) {
 	router.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/me/word-lookups", strings.NewReader(`{"wordId":"w1"}`)))
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("POST /api/me/word-lookups without credentials: status %d, want 401", w.Code)
+	}
+}
+
+// ADR-069: the review list is the user's own data, behind the session check,
+// and each request counts under its route for the "pages enabled" panel.
+func TestReviewWordsRouteRequiresAuthentication(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	m := metrics.New()
+	router := setupRouter(clerkConfig(t), m)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/me/review-words", nil))
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("GET /api/me/review-words without credentials: status %d, want 401", w.Code)
+	}
+
+	scrape := httptest.NewRecorder()
+	m.Handler().ServeHTTP(scrape, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	want := `enx_http_requests_total{method="GET",route="/api/me/review-words",status="401"} 1`
+	if !strings.Contains(scrape.Body.String(), want) {
+		t.Errorf("/metrics lacks %q", want)
 	}
 }
 

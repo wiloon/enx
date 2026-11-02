@@ -54,6 +54,32 @@ describe('Privacy Policy', () => {
     }
   )
 
+  // ADR-069: current extension versions load the review list and send no page
+  // words; older versions still send them (until #598) and get word states
+  // back, not definitions.
+  it.each([
+    [
+      'English',
+      PrivacyPolicyPage,
+      /with older versions of the extension only, the list of individual words on the page, so we can return your review status for each \(not their definitions\)\. Current versions send no page words: they download your review list/,
+      /return their definitions and your review status/,
+    ],
+    [
+      'Chinese route',
+      PrivacyPolicyZhPage,
+      /仅限旧版扩展：页面上的单词列表，以便我们返回每个词的复习状态（不含释义）。当前版本不发送页面上的单词，而是下载你的复习列表/,
+      /返回每个词的释义和你的复习状态/,
+    ],
+  ])(
+    'says only older extension versions send page words, on the %s page',
+    (_locale, Page, transition, oldClaim) => {
+      const { container } = render(<Page />)
+
+      expect(container).toHaveTextContent(transition)
+      expect(container).not.toHaveTextContent(oldClaim)
+    }
+  )
+
   it('names the AI provider and where it runs, not "a third party"', () => {
     render(<PrivacyPolicyPage />)
 
