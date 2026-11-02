@@ -4,7 +4,11 @@
 // (see version.ts).
 // Called from vite.config.ts.
 
-import { clerkFrontendApiHost, type Target } from './targets.ts'
+import {
+  clerkFrontendApiHost,
+  type Target,
+  type TargetName,
+} from './targets.ts'
 
 interface ContentScript {
   matches?: string[]
@@ -31,10 +35,12 @@ export function buildManifest(
 
   // So a non-production build is recognisable in chrome://extensions and in the
   // toolbar, instead of two identical-looking "Catglish" entries.
-  const nameSuffix =
-    target.name === 'production'
-      ? ''
-      : ` (${target.name === 'homelab' ? 'Lab' : 'Dev'})`
+  const NAME_SUFFIX: Partial<Record<TargetName, string>> = {
+    production: '',
+    homelab: ' (Lab)',
+    'homelab-test': ' (Lab Test)',
+  }
+  const nameSuffix = NAME_SUFFIX[target.name] ?? ' (Dev)'
 
   const hostPermissions = unique([
     ...(base.host_permissions ?? []),

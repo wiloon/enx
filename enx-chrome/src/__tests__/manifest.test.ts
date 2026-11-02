@@ -98,6 +98,7 @@ describe('manifest stamping (ADR-019)', () => {
   it('marks non-production builds in the extension name', () => {
     expect(stamp(TARGETS.production).name).toBe(base.name)
     expect(stamp(TARGETS.homelab).name).toBe(`${base.name} (Lab)`)
+    expect(stamp(TARGETS['homelab-test']).name).toBe(`${base.name} (Lab Test)`)
     expect(stamp(TARGETS.development).name).toBe(`${base.name} (Dev)`)
   })
 

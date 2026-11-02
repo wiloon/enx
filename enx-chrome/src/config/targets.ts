@@ -9,7 +9,8 @@
 // Keep this file free of `import.meta` / `process` so it stays loadable from
 // the Vite config (Node) and from Jest (CommonJS) as well as the browser.
 
-export type TargetName = 'development' | 'homelab' | 'production' | 'test'
+export type TargetName =
+  'development' | 'homelab' | 'homelab-test' | 'production' | 'test'
 
 export interface Target {
   name: TargetName
@@ -78,6 +79,19 @@ export const TARGETS: Record<TargetName, Target> = {
     rssxOrigins: [RSSX_LAB_ORIGIN],
     contentScriptOrigins: [],
   },
+  // The second HomeLab copy for automated tests (w10n-config ADR-0007): the
+  // fake AI, its own database, and the only one with Stripe webhooks.
+  // `homelab` stays the copy on the real AI for manual checks.
+  'homelab-test': {
+    name: 'homelab-test',
+    apiBaseUrl: 'https://enx-api-test.wiloon.lab',
+    frontendBaseUrl: 'https://enx-test.wiloon.lab',
+    clerkPublishableKey: DEV_CLERK_PUBLISHABLE_KEY,
+    clerkSyncHost: 'https://enx-test.wiloon.lab',
+    uiOrigins: [LOCAL_UI_ORIGIN, 'https://enx-test.wiloon.lab'],
+    rssxOrigins: [RSSX_LAB_ORIGIN],
+    contentScriptOrigins: [],
+  },
   production: {
     name: 'production',
     // Catglish production (ADR-031): catglish.com serves enx-ui, api.catglish.com
@@ -116,6 +130,7 @@ const ALIASES: Record<string, TargetName> = {
   development: 'development',
   lab: 'homelab',
   homelab: 'homelab',
+  'homelab-test': 'homelab-test',
   // `staging` was the old name of the homelab target.
   staging: 'homelab',
   prod: 'production',

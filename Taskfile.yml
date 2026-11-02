@@ -148,6 +148,13 @@ tasks:
       - rm -rf dist-homelab
       - task build
 
+  chrome:build:homelab-test:
+    desc: Build enx-chrome extension to dist-homelab-test/ (connects to enx-api-test.wiloon.lab, the fake-AI copy the HomeLab e2e lane tests)
+    dir: enx-chrome
+    cmds:
+      - rm -rf dist-homelab-test
+      - fnm exec --using=.node-version -- pnpm build:homelab-test
+
   chrome:build:dev:
     desc: Build enx-chrome extension to dist-development/ (connects to the local enx-api on localhost:8091 and enx-ui on localhost:3000)
     dir: enx-chrome

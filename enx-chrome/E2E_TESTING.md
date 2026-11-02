@@ -78,9 +78,13 @@ instead. Playwright test artifacts are in `test-results/artifacts/`.
 
 ## HomeLab lane (run by hand)
 
-`playwright.homelab.config.ts` drives the `dist-homelab` build against the
-deployed `https://enx.wiloon.lab` and `https://enx-api.wiloon.lab` (ADR-037
-Decision 6). It starts no local servers and checks only what the local stack
+`playwright.homelab.config.ts` drives the `dist-homelab-test` build against
+HomeLab's automated-test copy, `https://enx-test.wiloon.lab` and
+`https://enx-api-test.wiloon.lab` (ADR-037 Decision 6; w10n-config ADR-0007).
+That copy answers AI requests with `enx-fake-ai`, has its own database and is
+the only one with Stripe webhooks. `enx.wiloon.lab` is the copy on the real AI
+for manual checks; the lane never touches it (grant credits there through the
+admin API). It starts no local servers and checks only what the local stack
 cannot see: the stamped `/api/version` commit, the extension ID, enx-api's
 auth (401 for no token and a garbage token) and CORS for the extension's
 origin, session sync from the HomeLab site, one lookup on
@@ -98,12 +102,13 @@ fail; they never skip, so a hand run cannot pass empty.
 ```bash
 set -a; . ../enx-ui/.env.local; set +a   # CLERK_SECRET_KEY, never printed
 export E2E_CLERK_USER_EMAIL=e2e+clerk_test@example.com
-pnpm build                                # dist-homelab/
+pnpm build:homelab-test                   # dist-homelab-test/
 pnpm test:e2e:homelab                     # headless; add --headed to watch it
 ```
 
-The lane writes to the HomeLab database as the e2e user and seeds nothing
-(HomeLab's database is not reachable). The lookup test reads the `reliable`
+The lane writes to the enx-test database as the e2e user and seeds nothing
+(that database is not reachable from here). To start from an empty database,
+see "Resetting the test database" in w10n-config `infra/homelab/k8s/enx-test/README.md`. The lookup test reads the `reliable`
 row's count before and after, so run it while nobody else uses that account.
 After the first run caches `reliable`, the lookup no longer proves ECDICT is
 available on HomeLab.
@@ -149,7 +154,7 @@ pnpm exec playwright install chromium     # Playwright's own Chromium
 set -a; . ../enx-ui/.env.local; set +a    # CLERK_SECRET_KEY, never printed
 export E2E_CLERK_USER_EMAIL=e2e+clerk_test@example.com
 export NODE_EXTRA_CA_CERTS=/path/to/homelab-ca.crt   # Node's fetch checks
-pnpm build                                # dist-homelab/
+pnpm build:homelab-test                   # dist-homelab-test/
 ENX_HOMELAB=1 pnpm test:e2e:homelab --headed -g 'Small top-up' --retries=0
 ```
 

@@ -7,10 +7,15 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-// Usage: node dev-chrome.mjs [--target homelab|dev] [--detach] [URL]
-//   --target  which build to load: dist-homelab/ (default) or dist-development/
+// Usage: node dev-chrome.mjs [--target homelab|homelab-test|dev] [--detach] [URL]
+//   --target  which build to load: dist-homelab/ (default), dist-homelab-test/
+//             or dist-development/
 //   --detach  return once Chromium is up instead of waiting for it to close
-const TARGET_DIRS = { homelab: 'dist-homelab', dev: 'dist-development' }
+const TARGET_DIRS = {
+  homelab: 'dist-homelab',
+  'homelab-test': 'dist-homelab-test',
+  dev: 'dist-development',
+}
 let target = 'homelab'
 let detach = false
 let url = 'https://www.infoq.com/'
