@@ -32,7 +32,7 @@ defaults:
 jobs:
   lint:
     name: golangci-lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -57,7 +57,7 @@ jobs:
 
   test:
     name: go test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -71,7 +71,7 @@ jobs:
 
   image:
     name: ko image build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       # ADR-056: the same enx-api/build/build.sh as homelab Tekton and the

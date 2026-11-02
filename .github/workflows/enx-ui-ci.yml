@@ -28,7 +28,7 @@ jobs:
   # (next build), but this job fails on a type error directly.
   check:
     name: Typecheck, lint and test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     # The committed .npmrc points at the homelab Nexus, which GitHub runners
     # can't reach. Set as env, not --registry: pnpm 12's launcher downloads
@@ -63,7 +63,7 @@ jobs:
 
   image:
     name: Build image (CNB) and smoke test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
