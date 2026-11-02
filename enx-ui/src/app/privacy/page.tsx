@@ -100,8 +100,8 @@ export default function PrivacyPolicyPage() {
               of <Term>individual words</Term> on the page, so we can return
               your review status for each (not their definitions). Current
               versions send no page words: they download your{' '}
-              <Term>review list</Term>, the words you have looked up and not
-              yet marked as known;
+              <Term>review list</Term>, the words you have looked up and not yet
+              marked as known;
             </>,
             <>
               a word you <Term>click</Term>, to look it up;
