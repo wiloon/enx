@@ -178,7 +178,7 @@ ADR-010 Phase 3/4（评论区、`streaming`）不在本 ADR 范围。
 
 `Range` 本身是 live 的，浏览器会在周围 DOM 变动时自动修正 offset。真正会让 `::highlight` 消失 / 错位的只有一类：**Range 的容器节点被替换或移除**（框架 reconciliation、宿主 `innerHTML` 重置、虚拟列表回收、SPA 路由切换）。节点内改文本、加兄弟节点、"Show more" 展开——Range 自愈，不用管。而且**没有「Range 失效」事件**，只能靠观察 DOM 或直接重建来应对。
 
-关键函数：`rebuildHighlights(root)` = 对 `root` 重跑 tokenize + match + 分桶 + `CSS.highlights.set` 覆盖，做到「随便什么时候调都对」。因为 Highlight API 不改 DOM，重建没有「过滤自己造成的 mutation」这种麻烦。
+原关键函数（已被 ADR-069 的绘制窗口取代）：`rebuildHighlights(root)` = 对 `root` 重跑 tokenize + match + 分桶 + `CSS.highlights.set` 覆盖，做到「随便什么时候调都对」。因为 Highlight API 不改 DOM，重建没有「过滤自己造成的 mutation」这种麻烦。
 
 正确的应对**取决于站点内容的易变程度**，用一个新的 `SiteAdapter` 字段表达：
 
@@ -312,7 +312,7 @@ ADR-010 Phase 2 前期调研四项均已完成（见上方「与 ADR-010 的关�
 - **查词不设开关，只有高亮设开关**：用户表述是「单词高亮做成可开关」。查词是学习模式的本体，`enxRun`/`enxStop` 已经是它的开关。把两者拆开的价值正在于：关掉视觉噪音（下划线）的同时，「想查哪个词点哪个」依然可用——这只有在「点击不依赖高亮标记」之后才可能，也正是 A2/B2 的直接收益。
 - **E1（档位归并）而不是 E2（忠实还原）**：31 档连续 hue 是伪精度，相邻档人眼分不出。借这次重构把它归并成 5–6 个有语义的复习档位，对用户是信息增益，对实现是「6 个 Highlight 对象」而不是「31 个」。
 - **`Intl.Segmenter` 而不是 `\b` 正则**：ADR-010 §1.3 已经点出正则分词在缩写 / 连字符 / Unicode 上的问题。既然点击命中无论如何要一套词边界算法，直接用 ICU 的，取词侧（`extractWords`）也可以后续统一过去（本 ADR 不强求，见 Out of Scope）。
-- **F 节把「什么时候重建」做成 `contentVolatility` 三档，本次落 `static` + `spa`**：Range 集合是从 `wordCache` + 活 DOM 可重新推导的一次性投影，`rebuildHighlights(root)` 是唯一需要写对的函数。`static` 页只在 `enxRun` 时调它；`spa`（X）加一个 Navigation API 监听在路由切换时重建——这一条顺带交付 ADR-010 Phase 2。`streaming`（`MutationObserver` + `IntersectionObserver` 惰性建 Range）留给 ADR-010 Phase 3/4，字段先就位避免将来动 `SiteAdapter` 形状。用 Navigation API 而非 monkey-patch `history`：调研已确认从 content script 的 isolated world patch `history` 根本拦不到页面的调用，Navigation API 是 content script 内唯一干净的选项——isolated world 能否收到 `navigate` 事件原是唯一的不确定项，2026-09-01 已实测确认收得到（见 Decision 6.1），不需要 `chrome.webNavigation` 兜底。
+- **F 节把「什么时候重建」做成 `contentVolatility` 三档，本次落 `static` + `spa`**：Range 集合是从 `wordCache` + 活 DOM 可重新推导的一次性投影，原方案以 `rebuildHighlights(root)` 为唯一关键函数；ADR-069 已改为窗口与逐词更新。`static` 页只在 `enxRun` 时调它；`spa`（X）加一个 Navigation API 监听在路由切换时重建——这一条顺带交付 ADR-010 Phase 2。`streaming`（`MutationObserver` + `IntersectionObserver` 惰性建 Range）留给 ADR-010 Phase 3/4，字段先就位避免将来动 `SiteAdapter` 形状。用 Navigation API 而非 monkey-patch `history`：调研已确认从 content script 的 isolated world patch `history` 根本拦不到页面的调用，Navigation API 是 content script 内唯一干净的选项——isolated world 能否收到 `navigate` 事件原是唯一的不确定项，2026-09-01 已实测确认收得到（见 Decision 6.1），不需要 `chrome.webNavigation` 兜底。
 
 ---
 
@@ -470,3 +470,8 @@ navigation?.addEventListener('navigate', e => {
 ## 修订（2026-10-30）：取词和绘制改由 ADR-069 决定
 
 Decision 1 的全文绘制、Decision 3 的「查词（`getWords` 填 `wordCache`）始终执行」和 F 节的 `rebuildHighlights` 整段重跑，都以「一篇文章」为前提，放到整本书上会让滚动和查词变慢（数据见 [ADR-069](adr-069-review-list-and-paint-window.md)）。[ADR-069](adr-069-review-list-and-paint-window.md) 改为：一次取回复习词表，只绘制当前屏附近的下划线，词状态变化时只更新这个词。CSS Custom Highlight API、点击查词和单词高亮开关不变。
+
+
+## 修订（2026-11-01，#567）：加载后的正文稳定
+
+所有者确认静态页与 SPA 的正文加载后都视为稳定，不监听正文变化；SPA 就绪等待不受影响。新内容不会再由下一次查词重走正文而补画，恢复方式见 [ADR-069 后果](adr-069-review-list-and-paint-window.md#后果)。本修订同时标明 F 节的整段重建已被 ADR-069 取代，避免把历史方案当作当前实现。
