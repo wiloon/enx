@@ -2538,6 +2538,38 @@ describe('SidePanel', () => {
       await screen.findByTestId('sidepanel-empty-state')
     }
 
+    it('expands the same word independently in different sentence scopes', async () => {
+      replyAtOnce()
+      mockSendMessage.mockImplementation(async (message: Message) => {
+        if (message.type === 'getOneWord')
+          return {
+            success: true,
+            ecp: {
+              English: message.word,
+              Chinese: 'A long dictionary definition '.repeat(3),
+            },
+          }
+        if (message.type === 'translateSentence')
+          return { success: true, chinese: `${message.sentence}译` }
+        return { success: true, chinese: `${message.word}本句` }
+      })
+      await renderEmpty()
+      send({ sentence: SENTENCE, word: 'great' })
+      send({ sentence: OTHER, word: 'great' })
+
+      const toggles = await screen.findAllByTestId(
+        'sidepanel-toggle-meaning-great'
+      )
+      expect(toggles).toHaveLength(2)
+      expect(toggles[0]).toHaveTextContent('Expand')
+      expect(toggles[1]).toHaveTextContent('Expand')
+
+      fireEvent.click(toggles[0])
+
+      expect(toggles[0]).toHaveTextContent('Collapse')
+      expect(toggles[1]).toHaveTextContent('Expand')
+    })
+
     it('moves a re-sent sentence to the top instead of adding a second card', async () => {
       replyAtOnce()
       await renderEmpty()
