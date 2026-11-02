@@ -9,6 +9,9 @@ import (
 	"time"
 
 	"enx-api/billing/credit"
+	"enx-api/utils/sqlitex"
+
+	"gorm.io/gorm"
 )
 
 func TestTrialGrantGrantsOnceAndCountsIt(t *testing.T) {
@@ -19,7 +22,7 @@ func TestTrialGrantGrantsOnceAndCountsIt(t *testing.T) {
 	g := TrialGrant{Amount: 100, TTL: 7 * 24 * time.Hour, EmailHMAC: fakeHMAC, Observe: func() { grants++ }}
 
 	for i := 0; i < 2; i++ {
-		if err := g.NewUser(ctx, "u-trial-hook", "hook@example.com"); err != nil {
+		if err := runNewUserHook(t, g, "u-trial-hook", "hook@example.com"); err != nil {
 			t.Fatalf("NewUser: %v", err)
 		}
 	}
@@ -40,7 +43,7 @@ func TestTrialGrantZeroAmountGrantsNothing(t *testing.T) {
 	ctx := context.Background()
 	g := TrialGrant{Amount: 0, TTL: time.Hour, EmailHMAC: fakeHMAC, Observe: func() { t.Fatal("a zero-amount trial must not be counted") }}
 
-	if err := g.NewUser(ctx, "u-trial-off", "off@example.com"); err != nil {
+	if err := runNewUserHook(t, g, "u-trial-off", "off@example.com"); err != nil {
 		t.Fatalf("NewUser: %v", err)
 	}
 	got, err := credit.Balance(ctx, "u-trial-off")
@@ -63,10 +66,10 @@ func TestTrialGrantSkipsAnEmailThatAlreadyHadATrial(t *testing.T) {
 	hmac := func(email string) string { return "h:" + strings.ToLower(strings.TrimSpace(email)) }
 	g := TrialGrant{Amount: 100, TTL: time.Hour, EmailHMAC: hmac}
 
-	if err := g.NewUser(ctx, "u-trial-email-1", "again@example.com"); err != nil {
+	if err := runNewUserHook(t, g, "u-trial-email-1", "again@example.com"); err != nil {
 		t.Fatalf("NewUser: %v", err)
 	}
-	if err := g.NewUser(ctx, "u-trial-email-2", " Again@Example.com "); err != nil {
+	if err := runNewUserHook(t, g, "u-trial-email-2", " Again@Example.com "); err != nil {
 		t.Fatalf("NewUser: %v", err)
 	}
 	got, err := credit.Balance(ctx, "u-trial-email-2")
@@ -83,7 +86,7 @@ func TestTrialGrantWithoutAnEmailGrantsNothing(t *testing.T) {
 	g := TrialGrant{Amount: 100, TTL: time.Hour, EmailHMAC: fakeHMAC,
 		Observe: func() { t.Fatal("no email, no trial") }}
 
-	if err := g.NewUser(ctx, "u-trial-no-email", ""); err != nil {
+	if err := runNewUserHook(t, g, "u-trial-no-email", ""); err != nil {
 		t.Fatalf("NewUser: %v", err)
 	}
 	got, err := credit.Balance(ctx, "u-trial-no-email")
@@ -93,6 +96,22 @@ func TestTrialGrantWithoutAnEmailGrantsNothing(t *testing.T) {
 	if got != 0 {
 		t.Fatalf("Balance = %d, want 0", got)
 	}
+}
+
+// runNewUserHook runs g as enx does: inside a transaction, calling the
+// after-commit callback once that transaction has committed.
+func runNewUserHook(t *testing.T, g TrialGrant, userID, email string) error {
+	t.Helper()
+	var afterCommit func()
+	err := sqlitex.DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		afterCommit, err = g.NewUser(context.Background(), tx, userID, email)
+		return err
+	})
+	if err == nil && afterCommit != nil {
+		afterCommit()
+	}
+	return err
 }
 
 // fakeHMAC stands in for account.EmailHMAC: "" for a blank email.

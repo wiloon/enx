@@ -50,6 +50,14 @@ func GrantTrial(ctx context.Context, userID, emailHMAC string, amount int64, ttl
 	return granted, nil
 }
 
+// GrantTrialTx is GrantTrial inside the caller's transaction tx, e.g. the one
+// that creates the user. It writes through tx only. granted is meaningful
+// only when err is nil; on an error the caller rolls tx (or its savepoint)
+// back.
+func GrantTrialTx(tx *gorm.DB, userID, emailHMAC string, amount int64, ttl time.Duration) (granted bool, err error) {
+	return grantTrial(tx, userID, emailHMAC, amount, ttl, now())
+}
+
 // grantTrial is GrantTrial inside the caller's transaction.
 func grantTrial(tx *gorm.DB, userID, emailHMAC string, amount int64, ttl time.Duration, at time.Time) (bool, error) {
 	if amount <= 0 || emailHMAC == "" {

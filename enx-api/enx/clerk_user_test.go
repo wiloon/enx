@@ -133,10 +133,10 @@ type recordingHook struct {
 	err     error
 }
 
-func (h *recordingHook) NewUser(_ context.Context, userID, email string) error {
+func (h *recordingHook) NewUser(_ context.Context, _ *gorm.DB, userID, email string) (func(), error) {
 	h.userIDs = append(h.userIDs, userID)
 	h.emails = append(h.emails, email)
-	return h.err
+	return nil, h.err
 }
 
 func withNewUserHook(t *testing.T, h NewUserHook) {
