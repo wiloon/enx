@@ -982,7 +982,6 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
           word: '',
           phrase: 'hunt down emails',
           sentence: 'I had to hunt down emails and draft outreach.',
-          sourceUrl: 'https://example.com/post',
         },
         { tab: { id: 7 } },
         resolve
@@ -1016,7 +1015,6 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
           type: 'openSentencePanel',
           word: 'great',
           sentence: 'Cats are great pets.',
-          sourceUrl: 'https://example.com/post',
         },
         { tab: { id: 7 } },
         resolve
@@ -1053,7 +1051,6 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
           type: 'openSentencePanel',
           word: 'great',
           sentence: 'Cats are great pets.',
-          sourceUrl: 'https://example.com/post',
         },
         { tab: { id: 7, windowId: 3 } },
         resolve
@@ -1080,7 +1077,6 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
           type: 'openSentencePanel',
           word: 'great',
           sentence: 'Cats are great pets.',
-          sourceUrl: 'https://example.com/post',
         },
         { tab: { id: 7 } },
         resolve
@@ -1109,7 +1105,6 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
           type: 'openSentencePanel',
           word: 'great',
           sentence: 'Cats are great pets.',
-          sourceUrl: 'https://example.com/post',
         },
         { tab: { id: 7 } },
         resolve
@@ -1126,7 +1121,6 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
           type: 'openSentencePanel',
           word: 'great',
           sentence: 'Cats are great pets.',
-          sourceUrl: 'https://example.com/post',
         },
         { tab: { id: 7 } },
         resolve
