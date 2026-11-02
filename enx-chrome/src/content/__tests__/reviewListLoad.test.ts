@@ -545,7 +545,10 @@ describe('the paint window', () => {
     const [observer] = liveIntersectionObservers()
     const blocks = [...document.querySelectorAll('article p')]
     expect(observer.observed).toEqual(blocks)
-    expect(observer.options.rootMargin).toBe(observer.options.scrollMargin)
+    expect(observer.options).toMatchObject({
+      rootMargin: '100% 0px',
+      scrollMargin: '100% 0px',
+    })
 
     observer.fire([blocks[1]])
     expect(underlined()).toEqual({ 'enx-hl-1': ['fox'] })
