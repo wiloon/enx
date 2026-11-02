@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom'
 import { TextDecoder, TextEncoder } from 'util'
 import { webcrypto } from 'crypto'
+import { FakeIntersectionObserver } from './fakeIntersectionObserver'
 
 global.TextEncoder = TextEncoder as typeof global.TextEncoder
 global.TextDecoder = TextDecoder as typeof global.TextDecoder
@@ -25,6 +26,12 @@ if (typeof globalThis.CSS === 'undefined') {
 } else if (!globalThis.CSS.highlights) {
   globalThis.CSS.highlights = new Map() as unknown as HighlightRegistry
 }
+
+globalThis.IntersectionObserver =
+  FakeIntersectionObserver as unknown as typeof IntersectionObserver
+beforeEach(() => {
+  FakeIntersectionObserver.instances = []
+})
 
 // Mock Chrome APIs
 ;(globalThis as unknown as { chrome: unknown }).chrome = {

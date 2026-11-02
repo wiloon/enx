@@ -6,8 +6,10 @@ import { WordData } from '@/types'
 // test files were deleted as they only exercised the old path via local
 // re-implementations: inPlaceHighlighting, flexContainerFix, htmlRendering,
 // whitespacePreservation, realWorldCase, highlightingIntegration,
-// codeBlockExclusion. The behaviour that still matters -- exclusion set,
-// no DOM mutation, review bucketing, word-boundary detection -- is here.
+// codeBlockExclusion. The exclusion set, review bucketing and click-path
+// word boundaries are here; painting, word matching and the untouched DOM
+// are covered with the paint window (paintWindow.test.ts,
+// blockPartition.test.ts, ADR-069).
 
 const wd = (overrides: Partial<WordData> = {}): WordData => ({
   Key: 'x',
@@ -24,7 +26,6 @@ const textNodesUnder = (root: Node) => WordProcessor.collectTextNodes(root)
 
 beforeEach(() => {
   document.body.innerHTML = ''
-  WordProcessor.clearHighlights()
 })
 
 describe('review-stage palette', () => {
@@ -70,99 +71,8 @@ describe('WordProcessor.reviewBucket', () => {
   })
 })
 
-describe('WordProcessor.buildHighlightRanges', () => {
-  it('groups matched words into their review buckets', () => {
-    document.body.innerHTML =
-      '<p>the endgame is clearly the real endgame here</p>'
-    const buckets = WordProcessor.buildHighlightRanges(
-      textNodesUnder(document.body),
-      {
-        endgame: wd({ LoadCount: 1 }), // bucket 1
-        clearly: wd({ LoadCount: 9 }), // bucket 3
-      }
-    )
-    expect([...buckets.keys()].sort()).toEqual([1, 3])
-    expect(buckets.get(1)!.map(r => r.toString())).toEqual([
-      'endgame',
-      'endgame',
-    ])
-    expect(buckets.get(3)!.map(r => r.toString())).toEqual(['clearly'])
-  })
-
-  it('produces no Range for words not in the dict or rejected by reviewBucket', () => {
-    document.body.innerHTML = '<p>the endgame is clearly known here</p>'
-    const buckets = WordProcessor.buildHighlightRanges(
-      textNodesUnder(document.body),
-      {
-        endgame: wd({ Known: true }), // rejected
-        clearly: wd({ LoadCount: 0 }), // rejected
-        // "known" / "here" not in dict
-      }
-    )
-    expect(buckets.size).toBe(0)
-  })
-
-  it('matches contractions and hyphenated compounds as whole words', () => {
-    document.body.innerHTML = "<p>it's a well-known problem, isn't it</p>"
-    const buckets = WordProcessor.buildHighlightRanges(
-      textNodesUnder(document.body),
-      {
-        'well-known': wd(),
-        "isn't": wd(),
-      }
-    )
-    const hit = [...buckets.values()].flat().map(r => r.toString())
-    expect(hit).toEqual(['well-known', "isn't"])
-  })
-
-  // ADR-069: the review list is keyed by the stored word ("cat"); the page's
-  // case, curly apostrophes and possessive 's map onto it.
-  it("underlines Cat, CAT'S and cat’s for a list word cat, and nothing absent", () => {
-    document.body.innerHTML =
-      "<p>Cat and CAT'S toy and the cat’s bowl, not the dog’s</p>"
-    const buckets = WordProcessor.buildHighlightRanges(
-      textNodesUnder(document.body),
-      { cat: wd({ LoadCount: 1 }) }
-    )
-    expect(buckets.get(1)!.map(r => r.toString())).toEqual([
-      'Cat',
-      "CAT'S",
-      'cat’s',
-    ])
-    expect(buckets.size).toBe(1)
-  })
-
-  it('matches a curly-apostrophe contraction against the straight list word', () => {
-    document.body.innerHTML = '<p>we don’t know</p>'
-    const buckets = WordProcessor.buildHighlightRanges(
-      textNodesUnder(document.body),
-      { "don't": wd() }
-    )
-    expect([...buckets.values()].flat().map(r => r.toString())).toEqual([
-      'don’t',
-    ])
-  })
-
-  it('tokenizes word-then-number compounds the way extractWords does (letter part only)', () => {
-    // ICU treats "19" as word-like; extractWords stops at the digit and
-    // yields "covid" / "catch", which is how wordDict is keyed.
-    document.body.innerHTML = '<p>the COVID-19 and Catch-22 situation</p>'
-    const extracted = WordProcessor.extractWords(
-      document.querySelector('p')!.textContent || ''
-    )
-    expect(extracted).toEqual(
-      expect.arrayContaining(['covid', 'catch', 'situation'])
-    )
-
-    const buckets = WordProcessor.buildHighlightRanges(
-      textNodesUnder(document.body),
-      { covid: wd(), catch: wd() }
-    )
-    const hit = [...buckets.values()].flat().map(r => r.toString())
-    expect(hit).toEqual(['COVID', 'Catch'])
-  })
-
-  it('does not highlight words inside excluded subtrees (a / code / pre / ...)', () => {
+describe('WordProcessor.collectTextNodes', () => {
+  it('leaves out text inside excluded subtrees (a / code / pre / button)', () => {
     document.body.innerHTML = `
       <p>the endgame is here</p>
       <p><a href="#">endgame</a></p>
@@ -170,12 +80,9 @@ describe('WordProcessor.buildHighlightRanges', () => {
       <pre>endgame</pre>
       <p><button>endgame</button></p>
     `
-    WordProcessor.rebuildHighlights(document.body, {
-      endgame: wd({ LoadCount: 4 }),
-    })
-    const ranges = [...(CSS.highlights.get('enx-hl-2') ?? [])]
-    // Only the one occurrence outside every excluded element.
-    expect(ranges.map(r => r.toString())).toEqual(['endgame'])
+    expect(
+      textNodesUnder(document.body).map(n => n.textContent?.trim())
+    ).toEqual(['the endgame is here'])
   })
 
   it('skips a whole X Article code block, including its language label', () => {
@@ -188,11 +95,6 @@ describe('WordProcessor.buildHighlightRanges', () => {
         <pre><code>endgame</code></pre>
       </div>
     `
-    WordProcessor.rebuildHighlights(document.body, {
-      endgame: wd({ LoadCount: 4 }),
-    })
-    const ranges = [...(CSS.highlights.get('enx-hl-2') ?? [])]
-    expect(ranges.map(r => r.toString())).toEqual(['endgame'])
     expect(
       textNodesUnder(document.body).map(n => n.textContent?.trim())
     ).toEqual(['the endgame is here'])
@@ -210,74 +112,14 @@ describe('WordProcessor.buildHighlightRanges', () => {
 
   it("skips the extension's own UI inserted into the article", () => {
     // Anything the extension marks with data-enx-ui (e.g. the session
-    // notice) must not have its words highlighted by a later rebuild.
+    // notice) must not have its words highlighted.
     document.body.innerHTML = `
       <p>the endgame is here</p>
       <div data-enx-ui>Click the endgame</div>
     `
-    WordProcessor.rebuildHighlights(document.body, {
-      endgame: wd({ LoadCount: 4 }),
-    })
-    const ranges = [...(CSS.highlights.get('enx-hl-2') ?? [])]
-    expect(ranges.map(r => r.toString())).toEqual(['endgame'])
-  })
-
-  it('creates and moves no element nodes (article DOM is untouched)', () => {
-    document.body.innerHTML =
-      '<p id="p"><span id="s">the endgame is <b id="b">clearly</b> here</span></p>'
-    const p = document.getElementById('p')
-    const s = document.getElementById('s')
-    const b = document.getElementById('b')
-    const htmlBefore = document.body.innerHTML
-
-    WordProcessor.rebuildHighlights(document.body, {
-      endgame: wd({ LoadCount: 10 }),
-      clearly: wd(),
-    })
-
-    expect(document.getElementById('p')).toBe(p)
-    expect(document.getElementById('s')).toBe(s)
-    expect(document.getElementById('b')).toBe(b)
-    expect(document.body.innerHTML).toBe(htmlBefore)
-  })
-
-  it('rebuildHighlights accepts several roots and highlights across all of them', () => {
-    document.body.innerHTML =
-      '<div id="a"><p>the endgame</p></div><div id="b"><p>the endgame again</p></div>'
-    WordProcessor.rebuildHighlights(
-      [document.getElementById('a')!, document.getElementById('b')!],
-      { endgame: wd({ LoadCount: 4 }) }
-    )
-    expect([...(CSS.highlights.get('enx-hl-2') ?? [])]).toHaveLength(2)
-  })
-})
-
-describe('WordProcessor.applyHighlights / clearHighlights', () => {
-  it('registers one CSS.highlights entry per non-empty bucket', () => {
-    const r = () => document.createRange()
-    WordProcessor.applyHighlights(
-      new Map([
-        [1, [r(), r()]],
-        [3, [r()]],
-        [5, []], // empty -> not registered
-      ])
-    )
-    expect([...CSS.highlights.keys()].sort()).toEqual(['enx-hl-1', 'enx-hl-3'])
-    expect(CSS.highlights.get('enx-hl-1')!.size).toBe(2)
-  })
-
-  it('replaces previous ENX highlights and leaves host-page highlights alone', () => {
-    CSS.highlights.set('site-search', new Highlight(document.createRange()))
-    WordProcessor.applyHighlights(new Map([[1, [document.createRange()]]]))
-    WordProcessor.applyHighlights(new Map([[2, [document.createRange()]]]))
-
-    expect([...CSS.highlights.keys()].sort()).toEqual([
-      'enx-hl-2',
-      'site-search',
-    ])
-
-    WordProcessor.clearHighlights()
-    expect([...CSS.highlights.keys()]).toEqual(['site-search'])
+    expect(
+      textNodesUnder(document.body).map(n => n.textContent?.trim())
+    ).toEqual(['the endgame is here'])
   })
 })
 

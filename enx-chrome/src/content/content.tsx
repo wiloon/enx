@@ -13,6 +13,12 @@ import {
 import { positionAnchoredOverlay } from '@/lib/overlayPositioning'
 import { WordProcessor } from '@/lib/wordProcessor'
 import {
+  createPaintWindow,
+  isBlockDisplay,
+  partitionBlocks,
+  type PaintWindow,
+} from '@/lib/paintWindow'
+import {
   reviewBucketHighlightCss,
   sentenceWordStates,
   wordKey,
@@ -137,9 +143,13 @@ let currentOverlay: HTMLElement | null = null
 let currentRoot: Root | null = null
 // Word states keyed by wordKey: the review list plus every lookup since.
 const wordCache: Record<string, WordData> = {}
-let isProcessing = false
+// Bumped whenever learning mode stops, so a processing run still in flight
+// abandons instead of painting.
+let learningModeLifecycle = 0
+// The lifecycle of the processing run in flight, if any.
+let processingLifecycle: number | null = null
 // Article roots ENX is currently operating on: the delegated click listener
-// is bound to each, and refreshHighlights() rebuilds highlights over them.
+// is bound to each.
 let articleRoots: Element[] = []
 let overlayEventCleanup: (() => void) | null = null
 
@@ -368,7 +378,7 @@ const showWordPopover = async (word: string, reference: Range) => {
         }
     wordCache[wordKey(englishWord)] = updated
     contentScriptStore.set(currentWordAtom, updated)
-    void refreshHighlights()
+    wordChanged(englishWord)
     overlay.hidePopover()
 
     try {
@@ -437,7 +447,7 @@ const showWordPopover = async (word: string, reference: Range) => {
     isCurrent: () => currentOverlay === overlay,
     onDefined: defined => {
       wordCache[wordKey(word)] = defined
-      void refreshHighlights()
+      wordChanged(word)
       // A word the AI was confident enough to store is in the user's
       // vocabulary like any other lookup; mirror it into the side panel.
       sendToBackground({
@@ -504,7 +514,7 @@ const showWordPopover = async (word: string, reference: Range) => {
       contentScriptStore.set(isTranslatingAtom, false)
 
       wordCache[wordKey(word)] = wordData
-      void refreshHighlights()
+      wordChanged(word)
 
       // Mirror the lookup into the Side Panel's word list if it's open --
       // ADR-006. Routed through the background service worker rather than
@@ -660,20 +670,66 @@ const hideCurrentOverlay = () => {
   }
 }
 
-// Re-derive the ENX highlights from the current wordCache + DOM, or clear
-// them if the "highlight vocabulary while reading" preference is off
-// (ADR-011 Decision 3). Called after a lookup / mark-known (a word may
-// change review bucket), a SPA tweet switch, and a preference flip. There's
-// no DOM to touch, so a full rebuild is cheap enough on a user action.
-const refreshHighlights = async () => {
-  if (articleRoots.length === 0) return
-  const highlightEnabled = await getWordHighlightEnabled()
-  if (standDown.isStoodDown()) return
-  if (highlightEnabled) {
-    WordProcessor.rebuildHighlights(articleRoots, wordCache)
-  } else {
-    WordProcessor.clearHighlights()
-  }
+// The paint window (ADR-069 Decision 2): underlines only for the blocks
+// within about one screen of the viewport. The blocks are partitioned once
+// per processing run and kept while the highlight preference is off; each
+// active window has one instance and one observer, and clearing is terminal,
+// so a callback an old observer already queued paints nothing.
+const PAINT_WINDOW_MARGIN = '100% 0px'
+let articleBlocks = new Map<Element, Text[]>()
+let paintWindow: PaintWindow<Element> | null = null
+let paintObserver: IntersectionObserver | null = null
+
+const isBlockElement = (element: Element) =>
+  isBlockDisplay(getComputedStyle(element).display)
+
+const stopPaintWindow = () => {
+  paintWindow?.clear()
+  paintObserver?.disconnect()
+  paintWindow = null
+  paintObserver = null
+}
+
+const startPaintWindow = () => {
+  stopPaintWindow()
+  const blocks = articleBlocks
+  if (blocks.size === 0) return
+  const instance = createPaintWindow<Element, Text, Range>({
+    textNodes: block => blocks.get(block) ?? [],
+    createRange: (node, start, end) => {
+      const range = document.createRange()
+      range.setStart(node, start)
+      range.setEnd(node, end)
+      return range
+    },
+    registry: CSS.highlights,
+    newRangeSet: () => new Highlight(),
+    wordState: key => wordCache[key],
+  })
+  // rootMargin does not reach into a nested scroll container; scrollMargin
+  // does.
+  const observer = new IntersectionObserver(
+    entries => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) instance.enter(entry.target)
+        else instance.leave(entry.target)
+      }
+    },
+    { rootMargin: PAINT_WINDOW_MARGIN, scrollMargin: PAINT_WINDOW_MARGIN }
+  )
+  blocks.forEach((_nodes, block) => observer.observe(block))
+  paintWindow = instance
+  paintObserver = observer
+}
+
+const dropArticleBlocks = () => {
+  stopPaintWindow()
+  articleBlocks = new Map()
+}
+
+// Called right after wordCache[wordKey(word)] changed.
+const wordChanged = (word: string) => {
+  paintWindow?.wordsChanged([word])
 }
 
 // ADR-025: marks the sentence a word click just opened the sentence panel
@@ -793,23 +849,28 @@ const showSessionExpiredMessage = (isLoginError = false) => {
 // Process article content and add word highlighting. `isCurrent` (SPA
 // auto-rebuild, ADR-011 Decision 6) is checked at every await boundary so a
 // run superseded by a newer tweet switch abandons instead of highlighting
-// stale content. A script that stood down (#561) abandons the same way.
+// stale content. A script that stood down (#561), or a run whose learning
+// mode was turned off meanwhile, abandons the same way.
 const processArticleContent = async (
   opts: { isCurrent?: () => boolean; onArticleFound?: () => void } = {}
 ): Promise<EnableOutcome> => {
   const isSpaRebuild = opts.isCurrent !== undefined
-  const stale = () =>
+  const lifecycle = learningModeLifecycle
+  const superseded = () =>
     standDown.isStoodDown() || (isSpaRebuild && !opts.isCurrent!())
+  const stale = () => superseded() || lifecycle !== learningModeLifecycle
 
   // A user re-triggering enxRun on an already-processing page is a no-op; a
   // SPA rebuild for a newer tweet must NOT be blocked by an in-flight run
   // for the previous tweet -- that older run abandons at its next stale()
-  // check, well before it paints anything.
-  if (isProcessing && !isSpaRebuild) {
+  // check, well before it paints anything. Neither is a run started after
+  // learning mode was turned off and on: the older run is abandoning, and
+  // this one shares its review-list load.
+  if (processingLifecycle === lifecycle && !isSpaRebuild) {
     console.log('Already processing, skipping...')
     return ENABLE_OK
   }
-  isProcessing = true
+  processingLifecycle = lifecycle
 
   try {
     console.log('Processing article content...')
@@ -832,9 +893,10 @@ const processArticleContent = async (
     // (home and list pages) never flash the "processing" badge.
     opts.onArticleFound?.()
 
-    const collectedTextNodes = articleNodes.flatMap(node =>
+    const textNodesByRoot = articleNodes.map(node =>
       WordProcessor.collectTextNodes(node)
     )
+    const collectedTextNodes = textNodesByRoot.flat()
 
     // Volatile (React-owned) content extracts from the same filtered text
     // nodes the highlighter uses, so the two can't drift apart (ADR-010
@@ -866,8 +928,8 @@ const processArticleContent = async (
     // request's own result, not whether wordCache happens to hold words.
     const loaded = await reviewList.load()
     // Superseded while the list loaded (a newer tweet switch, learning mode
-    // turned off, or this orphan standing down): not a failure.
-    if (stale()) return ENABLE_OK
+    // turned off on an SPA, or this orphan standing down): not a failure.
+    if (superseded()) return ENABLE_OK
     if (!loaded.ok) {
       console.log(`Review list not loaded: ${loaded.reason}`)
       if (loaded.reason === 'session-expired') {
@@ -889,25 +951,20 @@ const processArticleContent = async (
     // paint is effectively atomic with this guard.
     if (stale()) return ENABLE_OK
 
-    const haveWords = Object.keys(wordCache).length > 0
-
-    // Paint the highlights (ADR-011 Decision 1): build Ranges over the
-    // already-collected text nodes, bucket them, register with CSS.highlights.
-    // The article DOM is never touched.
-    if (haveWords && highlightEnabled) {
-      console.log(
-        'Applying highlighting for',
-        Object.keys(wordCache).length,
-        'words'
-      )
-      WordProcessor.applyHighlights(
-        WordProcessor.buildHighlightRanges(collectedTextNodes, wordCache)
-      )
-      console.log('Word highlighting applied.')
-    } else if (!highlightEnabled) {
-      console.log('Word highlight preference is off; skipping paint')
+    // Split the article into blocks on every run, whatever the review list
+    // held, so a later first lookup can paint (ADR-069 Decision 2). The
+    // window paints the blocks near the viewport as the observer reports
+    // them; the article DOM is never touched.
+    dropArticleBlocks()
+    articleBlocks = new Map(
+      articleNodes.flatMap((root, i) => [
+        ...partitionBlocks(textNodesByRoot[i], root, isBlockElement),
+      ])
+    )
+    if (highlightEnabled) {
+      startPaintWindow()
     } else {
-      console.log('No words in cache, skipping highlighting')
+      console.log('Word highlight preference is off; skipping paint')
     }
 
     // Delegated click-to-lookup (ADR-011 Decision 2): one listener per
@@ -929,7 +986,7 @@ const processArticleContent = async (
     console.error('Error processing article:', error)
     return failed('error')
   } finally {
-    isProcessing = false
+    if (processingLifecycle === lifecycle) processingLifecycle = null
   }
 }
 
@@ -1386,7 +1443,7 @@ const getSpaRebuilder = () => {
         isCurrent
       ),
     teardown: () => {
-      WordProcessor.clearHighlights()
+      dropArticleBlocks()
       clearArticleRoots()
       hideCurrentOverlay()
       reportStatus({ status: 'off' })
@@ -1466,6 +1523,7 @@ const disableEnx = () => {
 
   console.log('Disabling ENX functionality')
   isEnxEnabled = false
+  learningModeLifecycle++
 
   // Remove event listeners
   document.removeEventListener('mouseup', handleTextSelection)
@@ -1482,7 +1540,7 @@ const disableEnx = () => {
 
   // Drop the highlights and the click listener (ADR-011 Decision 1): no
   // element unwrapping, no reflow.
-  WordProcessor.clearHighlights()
+  dropArticleBlocks()
   activeSentenceHighlightCleanup?.() // ADR-025: also drops its click/timeout listeners
   clearArticleRoots()
   reportStatus({ status: 'off' })
@@ -1502,7 +1560,7 @@ const standDownOrphan = () => {
   activeSentenceHighlightCleanup?.()
   stopReading()
   clearArticleRoots()
-  WordProcessor.clearHighlights()
+  dropArticleBlocks()
 }
 
 // The enable path shared by the popup's enxRun and adr-039 auto-enable.
@@ -1525,11 +1583,11 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   switch (request.action) {
     // ADR-053 Decision 4: a word looked up in this tab's Side Panel. Record
     // its new review stage and repaint, same as a lookup on the page itself.
-    // refreshHighlights() is a no-op while ENX isn't running on the page.
+    // Nothing is painted while no paint window is active.
     case 'panelWordLookup': {
       const { word, ecp } = request as PanelWordLookupMessage
       wordCache[wordKey(word)] = ecp
-      void refreshHighlights()
+      wordChanged(word)
       sendResponse({ success: true })
       break
     }
@@ -1630,10 +1688,12 @@ if (!document.head.querySelector('style[data-enx-highlight-styles]')) {
 // Live-apply the "highlight vocabulary while reading" toggle (ADR-011
 // Decision 3): while learning mode is on, a flip from the popup or options
 // page repaints or clears the ENX highlights immediately -- no reload, no
-// re-fetch (wordCache is untouched). click-to-lookup is unaffected.
-// refreshHighlights() already reads the preference and paints or clears.
-onWordHighlightEnabledChange(() => {
-  if (isEnxEnabled) void refreshHighlights()
+// re-fetch (wordCache is untouched). click-to-lookup is unaffected. Off
+// keeps the article's blocks; on starts a new paint window over them.
+onWordHighlightEnabledChange(enabled => {
+  if (!isEnxEnabled || standDown.isStoodDown()) return
+  if (enabled) startPaintWindow()
+  else stopPaintWindow()
 })
 
 // Clean up on page unload

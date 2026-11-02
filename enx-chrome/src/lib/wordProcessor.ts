@@ -7,7 +7,6 @@ import {
   isReviewable,
   reviewBucket,
   tokenizeWords,
-  wordKey,
 } from '@/lib/wordHighlight'
 
 // Single source of truth for article extraction / word highlighting.
@@ -72,10 +71,9 @@ export class WordProcessor {
 
   // Marks the sentence a word-click just opened the sentence panel for
   // (ADR-025), so the user can find it again after returning from the side
-  // panel. Deliberately outside HIGHLIGHT_NAME_PREFIX: applyHighlights()
-  // wipes every enx-hl-* entry on each rebuild (a word's review bucket can
-  // change on practically any lookup), which would silently clear this one
-  // out from under an unrelated highlight refresh if it shared the prefix.
+  // panel. Deliberately outside HIGHLIGHT_NAME_PREFIX: the paint window
+  // adds, moves and removes enx-hl-* entries as blocks scroll by and words
+  // change review bucket, and must never touch this one.
   static readonly ACTIVE_SENTENCE_HIGHLIGHT_NAME = 'enx-active-sentence'
 
   static extractWords(text: string): string[] {
@@ -187,56 +185,6 @@ export class WordProcessor {
     return token ? this.rangeForToken(node, token) : null
   }
 
-  // Builds the Ranges to highlight from an already-collected text-node list
-  // (collectTextNodes), grouped by review-stage bucket. Words not in
-  // `wordDict`, and words reviewBucket() rejects, produce no Range.
-  static buildHighlightRanges(
-    textNodes: Text[],
-    wordDict: Record<string, WordData>
-  ): Map<number, Range[]> {
-    const buckets = new Map<number, Range[]>()
-    if (Object.keys(wordDict).length === 0) return buckets
-
-    for (const node of textNodes) {
-      for (const token of tokenizeWords(node.textContent || '')) {
-        const data = wordDict[wordKey(token.word)]
-        if (!data) continue
-        const bucket = this.reviewBucket(data)
-        if (bucket === null) continue
-
-        const range = this.rangeForToken(node, token)
-
-        const existing = buckets.get(bucket)
-        if (existing) existing.push(range)
-        else buckets.set(bucket, [range])
-      }
-    }
-    return buckets
-  }
-
-  // Registers each bucket's Ranges as a named CSS.highlights entry, replacing
-  // any ENX highlights already registered.
-  static applyHighlights(buckets: Map<number, Range[]>): void {
-    this.clearHighlights()
-    for (const [bucket, ranges] of buckets) {
-      if (ranges.length === 0) continue
-      CSS.highlights.set(
-        `${this.HIGHLIGHT_NAME_PREFIX}${bucket}`,
-        new Highlight(...ranges)
-      )
-    }
-  }
-
-  // Removes every ENX highlight from the registry, leaving any highlights the
-  // host page registered untouched. This is all `disableEnx` needs to do.
-  static clearHighlights(): void {
-    for (const name of [...CSS.highlights.keys()]) {
-      if (name.startsWith(this.HIGHLIGHT_NAME_PREFIX)) {
-        CSS.highlights.delete(name)
-      }
-    }
-  }
-
   // ADR-025: single-Range highlight for "the sentence a word click just
   // opened the sentence panel for". Replaces whatever was previously active
   // -- only the most recently queried sentence stays marked.
@@ -249,18 +197,6 @@ export class WordProcessor {
 
   static clearActiveSentenceHighlight(): void {
     CSS.highlights.delete(this.ACTIVE_SENTENCE_HIGHLIGHT_NAME)
-  }
-
-  // Re-derives every highlight over `roots` from `wordDict` + the current
-  // DOM. Safe to call at any time -- there is no self-inflicted DOM mutation
-  // to filter out, so a full rebuild is the whole story (ADR-011 F section).
-  static rebuildHighlights(
-    roots: Node | Node[],
-    wordDict: Record<string, WordData>
-  ): void {
-    const list = Array.isArray(roots) ? roots : [roots]
-    const textNodes = list.flatMap(root => this.collectTextNodes(root))
-    this.applyHighlights(this.buildHighlightRanges(textNodes, wordDict))
   }
 
   // Returns every element on the page that should be treated as article
