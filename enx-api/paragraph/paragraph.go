@@ -18,6 +18,10 @@ type TextWords interface {
 }
 
 // Handler serves /api/paragraph-init.
+//
+// Deprecated: the extension is moving to GET /api/me/review-words (ADR-069,
+// #566). Keep this endpoint until no extension build in use calls it, then
+// remove it (#598).
 type Handler struct {
 	words TextWords
 }
