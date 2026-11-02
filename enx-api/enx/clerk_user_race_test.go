@@ -246,6 +246,30 @@ func TestGetOrCreateClerkUser_FailedCommitSkipsTheAfterCommitCallback(t *testing
 	}
 }
 
+// failingHook returns an after-commit callback together with an error.
+type failingHook struct{ called bool }
+
+func (h *failingHook) NewUser(_ context.Context, _ *gorm.DB, _, _ string) (func(), error) {
+	return func() { h.called = true }, errors.New("hook failed")
+}
+
+func TestGetOrCreateClerkUser_FailedHookSkipsTheAfterCommitCallback(t *testing.T) {
+	newProductionUserDB(t)
+	hook := &failingHook{}
+	withNewUserHook(t, hook)
+
+	got, err := GetOrCreateClerkUser("user_hook_fails", ClerkProfile{Email: "h@example.com"}, time.Hour)
+	if err != nil || got == nil {
+		t.Fatalf("got user %+v, err %v; want the user and no error", got, err)
+	}
+	if n := countUsers(t); n != 1 {
+		t.Fatalf("%d users rows, want 1", n)
+	}
+	if hook.called {
+		t.Fatal("after-commit callback ran although the hook failed")
+	}
+}
+
 func TestGetOrCreateClerkUser_LostInsertWithAFailedReReadKeepsTheCause(t *testing.T) {
 	db := newProductionUserDB(t)
 	insertWinnerBeforeCreate(t, db, racingWinner{id: "winner-id", clerkUserID: "user_race", email: "winner@example.com", status: "active"})
