@@ -3,14 +3,11 @@
 
 import { createRoot, type Root } from 'react-dom/client'
 import { Provider } from 'jotai'
+import { autoUpdate } from '@floating-ui/dom'
 import {
-  computePosition,
-  autoUpdate,
-  offset,
-  flip,
-  shift,
-} from '@floating-ui/dom'
-import { positionAnchoredOverlay } from '@/lib/overlayPositioning'
+  positionAnchoredOverlay,
+  positionSelectionHint,
+} from '@/lib/overlayPositioning'
 import { WordProcessor } from '@/lib/wordProcessor'
 import {
   createPaintWindow,
@@ -1308,14 +1305,11 @@ const showSelectionTranslateButton = (
     contextElement: nearestElement(reference.startContainer) ?? undefined,
   }
   const update = () => {
-    computePosition(virtualReference, overlay, {
-      strategy: 'fixed',
-      placement: isBackward ? 'top-start' : 'bottom-end',
-      middleware: [offset(6), flip(), shift({ padding: 8 })],
-    }).then(({ x, y }) => {
-      overlay.style.left = `${x}px`
-      overlay.style.top = `${y}px`
-    })
+    void positionSelectionHint(
+      virtualReference,
+      overlay,
+      isBackward ? 'top-start' : 'bottom-end'
+    )
   }
   const stopPositioning = autoUpdate(virtualReference, overlay, update)
 

@@ -3,6 +3,7 @@
 // is a Range in `CSS.highlights`; a lookup is a coordinate click on the word's
 // on-screen box (clickHighlightedWord / getHighlightedWordRects in helpers.ts).
 
+import type { Page } from '@playwright/test'
 import { loginAvailable, LOGIN_SKIP_REASON } from './auth'
 import { expect, test } from './fixtures'
 import {
@@ -15,6 +16,131 @@ import {
   waitForContentScript,
   wordLookupPosts,
 } from './helpers'
+
+/** Word top edge from getHighlightedWords centre + height. */
+const wordTop = (w: { y: number; height: number }) => w.y - w.height / 2
+const wordBottom = (w: { y: number; height: number }) => w.y + w.height / 2
+
+/** Wheel until the word's box is fully above the viewport top. */
+async function wheelWordAboveViewport(
+  page: Page,
+  wordIndex: number,
+  pointer: { x: number; y: number }
+) {
+  await page.mouse.move(pointer.x, pointer.y)
+  for (let i = 0; i < 50; i++) {
+    const words = await getHighlightedWords(page)
+    if (wordBottom(words[wordIndex]) < 0) return
+    await page.mouse.wheel(0, 180)
+  }
+  throw new Error(`word ${wordIndex} never left the top of the viewport`)
+}
+
+/** Wheel until the word's box is fully below the viewport bottom. */
+async function wheelWordBelowViewport(
+  page: Page,
+  wordIndex: number,
+  pointer: { x: number; y: number }
+) {
+  const viewport = page.viewportSize()!
+  await page.mouse.move(pointer.x, pointer.y)
+  for (let i = 0; i < 50; i++) {
+    const words = await getHighlightedWords(page)
+    if (wordTop(words[wordIndex]) > viewport.height) return
+    await page.mouse.wheel(0, -180)
+  }
+  throw new Error(`word ${wordIndex} never left the bottom of the viewport`)
+}
+
+/** Wheel until the word's box is fully inside the viewport again. */
+async function wheelWordIntoViewport(
+  page: Page,
+  wordIndex: number,
+  pointer: { x: number; y: number }
+) {
+  const viewport = page.viewportSize()!
+  await page.mouse.move(pointer.x, pointer.y)
+  for (let i = 0; i < 60; i++) {
+    const words = await getHighlightedWords(page)
+    const w = words[wordIndex]
+    if (wordTop(w) >= 0 && wordBottom(w) <= viewport.height) return
+    await page.mouse.wheel(0, wordTop(w) < 0 ? -180 : 180)
+  }
+  throw new Error(`word ${wordIndex} never returned to the viewport`)
+}
+
+async function tagOverlay(page: Page, selector: string, id: string) {
+  await page.locator(selector).evaluate((el, tag) => {
+    ;(el as HTMLElement).dataset.enxTestId = tag
+  }, id)
+}
+
+async function overlayHitAtPointer(
+  page: Page,
+  pointer: { x: number; y: number },
+  overlaySelector: string
+): Promise<boolean> {
+  return page.evaluate(
+    ({ x, y, sel }) => {
+      const el = document.elementFromPoint(x, y)
+      if (!el) return false
+      return Boolean(el.closest(sel) || (el.matches?.(sel) ?? false))
+    },
+    { x: pointer.x, y: pointer.y, sel: overlaySelector }
+  )
+}
+
+/** Multi-line drag endpoints inside an article paragraph (0-based index). */
+async function paragraphLineDragPoints(page: Page, paragraphIndex = 0) {
+  return page.evaluate(index => {
+    const p = document.querySelectorAll('article p')[index]
+    if (!p) throw new Error(`no article paragraph at index ${index}`)
+    const range = document.createRange()
+    range.selectNodeContents(p)
+    const rects = [...range.getClientRects()].filter(r => r.width > 0)
+    if (rects.length < 2) {
+      throw new Error(`need a multi-line paragraph, got ${rects.length} rects`)
+    }
+    const first = rects[0]
+    const last = rects[rects.length - 1]
+    return {
+      firstStart: {
+        x: first.left + Math.min(12, first.width / 4),
+        y: first.top + first.height / 2,
+      },
+      lastEnd: {
+        x: last.right - Math.min(12, last.width / 4),
+        y: last.top + last.height / 2,
+      },
+    }
+  }, paragraphIndex)
+}
+
+/** Extra scroll room so a word or selection can leave either viewport edge. */
+async function addScrollSpacers(page: Page) {
+  await page.evaluate(() => {
+    if (document.getElementById('enx-e2e-spacer-top')) return
+    const top = document.createElement('div')
+    top.id = 'enx-e2e-spacer-top'
+    top.style.height = '900px'
+    document.body.insertBefore(top, document.body.firstChild)
+    const bottom = document.createElement('div')
+    bottom.id = 'enx-e2e-spacer-bottom'
+    bottom.style.height = '900px'
+    document.body.appendChild(bottom)
+  })
+}
+
+async function dragSelect(
+  page: Page,
+  from: { x: number; y: number },
+  to: { x: number; y: number }
+) {
+  await page.mouse.move(from.x, from.y)
+  await page.mouse.down()
+  await page.mouse.move(to.x, to.y, { steps: 12 })
+  await page.mouse.up()
+}
 
 // Covers TASK-SPEC-enx-chrome-word-popup-react.md §4.1 (viewport-edge
 // anchoring, close paths), §4.2 (style isolation) and §4.4 (resource
@@ -399,5 +525,453 @@ test.describe('Word popup - query count', () => {
     await expect
       .poll(() => wordLookupPosts(context))
       .toEqual([{ wordId: 'w-stub' }])
+  })
+})
+
+// #523: when the anchor scrolls out of the viewport, hide the overlay in
+// place (visibility:hidden) instead of letting flip/shift park it near the
+// pointer. Both the word card and the drag-select hint share the rule.
+test.describe('Anchored overlays hide when the reference scrolls off-screen (#523)', () => {
+  test.skip(!loginAvailable, LOGIN_SKIP_REASON)
+  test.describe.configure({ timeout: 90_000 })
+
+  test.beforeEach(
+    async ({ context, page, extensionId, signedIn: _signedIn }) => {
+      await mockBackendFetch(context, {
+        wordData: {
+          Pronunciation: '[stʌb]',
+          Chinese: '存根',
+          LoadCount: 3,
+          Known: false,
+        },
+      })
+      await page.goto('/test-page.html', { waitUntil: 'domcontentloaded' })
+      await addScrollSpacers(page)
+      await enableLearningMode(page, extensionId)
+      await waitForContentScript(page)
+    }
+  )
+
+  test('word card: scrolling the word above the top hides it; scrolling back restores it', async ({
+    page,
+  }) => {
+    await page.locator('article').scrollIntoViewIfNeeded()
+    const viewport = page.viewportSize()!
+    const words = await getHighlightedWords(page)
+    let index = -1
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i]
+      if (wordTop(w) >= 0 && wordBottom(w) <= viewport.height) {
+        if (index < 0 || w.y < words[index].y) index = i
+      }
+    }
+    expect(index).toBeGreaterThanOrEqual(0)
+    const pointer = {
+      x: words[index].x,
+      y: Math.min(words[index].y + 40, 400),
+    }
+
+    await clickHighlightedWord(page, index)
+    const popup = page.locator('#enx-anchored-overlay')
+    await expect(
+      popup.locator('[data-testid="word-popover-content"]')
+    ).toBeVisible()
+    const wordText = await popup
+      .locator('[data-testid="word-popover-header"] h3')
+      .innerText()
+    await tagOverlay(page, '#enx-anchored-overlay', 'word-card-top')
+
+    await wheelWordAboveViewport(page, index, pointer)
+
+    await expect(popup).toBeHidden()
+    await expect(popup).toHaveCount(1)
+    await expect(popup).toHaveAttribute('data-enx-test-id', 'word-card-top')
+    expect(await overlayHitAtPointer(page, pointer, '#enx-anchored-overlay')).toBe(
+      false
+    )
+    expect(
+      await page.evaluate(
+        () => document.querySelectorAll('#enx-anchored-overlay').length
+      )
+    ).toBe(1)
+
+    await wheelWordIntoViewport(page, index, pointer)
+
+    await expect(popup).toBeVisible()
+    await expect(popup).toHaveAttribute('data-enx-test-id', 'word-card-top')
+    await expect(
+      popup.locator('[data-testid="word-popover-header"] h3')
+    ).toHaveText(wordText)
+    await expect(
+      popup.locator('[data-testid="word-popover-content"]')
+    ).toContainText('存根')
+
+    const restored = await getHighlightedWords(page)
+    const word = restored[index]
+    const box = await popup.boundingBox()
+    expect(box).toBeTruthy()
+    const wordTopEdge = wordTop(word)
+    const wordBottomEdge = wordBottom(word)
+    const nearVertically =
+      Math.abs(box!.y + box!.height - wordTopEdge) < 48 ||
+      Math.abs(box!.y - wordBottomEdge) < 48
+    expect(nearVertically, 'popup sits next to the word again').toBe(true)
+  })
+
+  test('word card: scrolling the word below the bottom hides it; scrolling back restores it', async ({
+    page,
+  }) => {
+    await page.locator('article').scrollIntoViewIfNeeded()
+    // Park a mid-article word near the bottom of the viewport.
+    await page.evaluate(() => {
+      const article = document.querySelector('article')
+      if (!article) return
+      const rect = article.getBoundingClientRect()
+      window.scrollBy(0, rect.bottom - window.innerHeight + 80)
+    })
+    await page.waitForTimeout(100)
+
+    const viewport = page.viewportSize()!
+    const words = await getHighlightedWords(page)
+    let index = -1
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i]
+      if (wordTop(w) >= 0 && wordBottom(w) <= viewport.height) {
+        if (index < 0 || w.y > words[index].y) index = i
+      }
+    }
+    expect(index).toBeGreaterThanOrEqual(0)
+    const pointer = {
+      x: words[index].x,
+      y: Math.max(40, words[index].y - 40),
+    }
+
+    await clickHighlightedWord(page, index)
+    const popup = page.locator('#enx-anchored-overlay')
+    await expect(
+      popup.locator('[data-testid="word-popover-content"]')
+    ).toBeVisible()
+    await tagOverlay(page, '#enx-anchored-overlay', 'word-card-bottom')
+
+    await wheelWordBelowViewport(page, index, pointer)
+
+    await expect(popup).toBeHidden()
+    await expect(popup).toHaveAttribute('data-enx-test-id', 'word-card-bottom')
+    expect(await overlayHitAtPointer(page, pointer, '#enx-anchored-overlay')).toBe(
+      false
+    )
+
+    await wheelWordIntoViewport(page, index, pointer)
+    await expect(popup).toBeVisible()
+    await expect(popup).toHaveAttribute('data-enx-test-id', 'word-card-bottom')
+  })
+
+  test('word card: a lookup that finishes while hidden still shows success on the same overlay', async ({
+    page,
+    context,
+    extensionId,
+  }) => {
+    await mockBackendFetch(context, {
+      wordData: {
+        Id: 'w-hide-state',
+        Pronunciation: '[stʌb]',
+        Chinese: '存根',
+        LoadCount: 3,
+        Known: false,
+      },
+      lookupDelayMs: 1200,
+    })
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await addScrollSpacers(page)
+    await enableLearningMode(page, extensionId)
+    await waitForContentScript(page)
+    await page.locator('article').scrollIntoViewIfNeeded()
+
+    const viewport = page.viewportSize()!
+    const words = await getHighlightedWords(page)
+    let index = -1
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i]
+      if (wordTop(w) >= 0 && wordBottom(w) <= viewport.height) {
+        if (index < 0 || w.y < words[index].y) index = i
+      }
+    }
+    expect(index).toBeGreaterThanOrEqual(0)
+    const pointer = {
+      x: words[index].x,
+      y: Math.min(words[index].y + 40, 400),
+    }
+
+    await clickHighlightedWord(page, index)
+    const popup = page.locator('#enx-anchored-overlay')
+    await expect(
+      popup.locator('[data-testid="word-popover-loading"]')
+    ).toBeVisible()
+    await tagOverlay(page, '#enx-anchored-overlay', 'word-card-loading')
+
+    await wheelWordAboveViewport(page, index, pointer)
+    await expect(popup).toBeHidden()
+
+    await page.waitForTimeout(1400)
+    await wheelWordIntoViewport(page, index, pointer)
+
+    await expect(popup).toBeVisible()
+    await expect(popup).toHaveAttribute('data-enx-test-id', 'word-card-loading')
+    await expect(
+      popup.locator('[data-testid="word-popover-content"]')
+    ).toContainText('存根')
+    await expect
+      .poll(() => wordLookupPosts(context))
+      .toEqual([{ wordId: 'w-hide-state' }])
+  })
+
+  test('word card: Escape while hidden closes it for good', async ({ page }) => {
+    await page.locator('article').scrollIntoViewIfNeeded()
+    const viewport = page.viewportSize()!
+    const words = await getHighlightedWords(page)
+    let index = -1
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i]
+      if (wordTop(w) >= 0 && wordBottom(w) <= viewport.height) {
+        if (index < 0 || w.y < words[index].y) index = i
+      }
+    }
+    expect(index).toBeGreaterThanOrEqual(0)
+    const pointer = {
+      x: words[index].x,
+      y: Math.min(words[index].y + 40, 400),
+    }
+
+    await clickHighlightedWord(page, index)
+    const popup = page.locator('#enx-anchored-overlay')
+    await expect(
+      popup.locator('[data-testid="word-popover-content"]')
+    ).toBeVisible()
+
+    await wheelWordAboveViewport(page, index, pointer)
+    await expect(popup).toBeHidden()
+
+    await page.keyboard.press('Escape')
+    await expect(popup).toHaveCount(0)
+
+    await wheelWordIntoViewport(page, index, pointer)
+    await expect(popup).toHaveCount(0)
+  })
+
+  test('word card: click-outside while hidden closes it for good', async ({
+    page,
+  }) => {
+    await page.locator('article').scrollIntoViewIfNeeded()
+    const viewport = page.viewportSize()!
+    const words = await getHighlightedWords(page)
+    let index = -1
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i]
+      if (wordTop(w) >= 0 && wordBottom(w) <= viewport.height) {
+        if (index < 0 || w.y < words[index].y) index = i
+      }
+    }
+    expect(index).toBeGreaterThanOrEqual(0)
+    const pointer = {
+      x: words[index].x,
+      y: Math.min(words[index].y + 40, 400),
+    }
+
+    await clickHighlightedWord(page, index)
+    const popup = page.locator('#enx-anchored-overlay')
+    await expect(
+      popup.locator('[data-testid="word-popover-content"]')
+    ).toBeVisible()
+    await page.waitForTimeout(150)
+
+    await wheelWordAboveViewport(page, index, pointer)
+    await expect(popup).toBeHidden()
+
+    await page.locator('h1').click({ force: true })
+    await expect(popup).toHaveCount(0)
+
+    await wheelWordIntoViewport(page, index, pointer)
+    await expect(popup).toHaveCount(0)
+  })
+
+  test('selection button: forward drag hides when the last line leaves the top', async ({
+    page,
+    extensionId,
+  }) => {
+    await page.locator('article').scrollIntoViewIfNeeded()
+    const points = await paragraphLineDragPoints(page, 0)
+    await dragSelect(page, points.firstStart, points.lastEnd)
+
+    const button = page.locator('.enx-selection-translate-button')
+    await expect(button).toBeVisible()
+    await tagOverlay(page, '.enx-selection-translate-button', 'sel-forward')
+
+    const anchor = await button.boundingBox()
+    expect(anchor).toBeTruthy()
+    const pointer = {
+      x: points.lastEnd.x,
+      y: Math.min((anchor?.y ?? points.lastEnd.y) + 40, 500),
+    }
+
+    await page.mouse.move(pointer.x, pointer.y)
+    for (let i = 0; i < 30; i++) {
+      const stillInView = await page.evaluate(() => {
+        const sel = window.getSelection()
+        if (!sel || sel.rangeCount === 0) return true
+        const rects = sel.getRangeAt(0).getClientRects()
+        if (rects.length === 0) return true
+        return rects[rects.length - 1].bottom >= 0
+      })
+      if (!stillInView) break
+      await page.mouse.wheel(0, 400)
+      if (i === 29) throw new Error('last line never left the top')
+    }
+
+    await expect(button).toBeHidden()
+    await expect(button).toHaveCount(1)
+    await expect(button).toHaveAttribute('data-enx-test-id', 'sel-forward')
+    expect(
+      await overlayHitAtPointer(page, pointer, '.enx-selection-translate-button')
+    ).toBe(false)
+
+    await page.mouse.move(pointer.x, pointer.y)
+    for (let i = 0; i < 30; i++) {
+      const visible = await button.isVisible().catch(() => false)
+      if (visible) break
+      await page.mouse.wheel(0, -400)
+      if (i === 29) throw new Error('selection button never returned')
+    }
+
+    await expect(button).toBeVisible()
+    await expect(button).toHaveAttribute('data-enx-test-id', 'sel-forward')
+
+    const lastRect = await page.evaluate(() => {
+      const sel = window.getSelection()
+      if (!sel || sel.rangeCount === 0) return null
+      const rects = sel.getRangeAt(0).getClientRects()
+      if (rects.length === 0) return null
+      const last = rects[rects.length - 1]
+      return { top: last.top, bottom: last.bottom }
+    })
+    expect(lastRect).toBeTruthy()
+    const box = await button.boundingBox()
+    expect(box).toBeTruthy()
+    const near =
+      Math.abs(box!.y - lastRect!.bottom) < 40 ||
+      Math.abs(box!.y + box!.height - lastRect!.top) < 40
+    expect(near, 'button sits beside the last line').toBe(true)
+
+    // Click still runs the translate path: the button tears itself down and
+    // openSentencePanel writes a pending sentence for this tab.
+    await button.click()
+    await expect(button).toHaveCount(0)
+    const extPage = await page.context().newPage()
+    await extPage.goto(`chrome-extension://${extensionId}/popup.html`)
+    await expect
+      .poll(async () =>
+        extPage.evaluate(async () => {
+          const all = await chrome.storage.session.get(null)
+          return Object.keys(all).some(k => k.startsWith('enx-pending-sentence:'))
+        })
+      )
+      .toBe(true)
+    await extPage.close()
+  })
+
+  test('selection button: backward drag hides when the first line leaves the bottom', async ({
+    page,
+  }) => {
+    // Last paragraph, parked near the bottom of the viewport so wheeling up
+    // can push its first line off the bottom edge.
+    await page.locator('article p').last().scrollIntoViewIfNeeded()
+    await page.evaluate(() => {
+      const p = document.querySelector('article p:last-of-type')
+      if (!p) return
+      const rect = p.getBoundingClientRect()
+      window.scrollBy(0, rect.bottom - window.innerHeight + 40)
+    })
+    await page.waitForTimeout(100)
+
+    const points = await paragraphLineDragPoints(page, 4)
+    await dragSelect(page, points.lastEnd, points.firstStart)
+
+    const button = page.locator('.enx-selection-translate-button')
+    await expect(button).toBeVisible()
+    await tagOverlay(page, '.enx-selection-translate-button', 'sel-backward')
+
+    const viewport = page.viewportSize()!
+    const pointer = {
+      x: points.firstStart.x,
+      y: Math.max(40, points.firstStart.y - 40),
+    }
+
+    await page.mouse.move(pointer.x, pointer.y)
+    for (let i = 0; i < 30; i++) {
+      const stillInView = await page.evaluate(vh => {
+        const sel = window.getSelection()
+        if (!sel || sel.rangeCount === 0) return true
+        const rects = sel.getRangeAt(0).getClientRects()
+        if (rects.length === 0) return true
+        return rects[0].top <= vh
+      }, viewport.height)
+      if (!stillInView) break
+      await page.mouse.wheel(0, -400)
+      if (i === 29) throw new Error('first line never left the bottom')
+    }
+
+    await expect(button).toBeHidden()
+    await expect(button).toHaveAttribute('data-enx-test-id', 'sel-backward')
+    expect(
+      await overlayHitAtPointer(page, pointer, '.enx-selection-translate-button')
+    ).toBe(false)
+
+    await page.mouse.move(pointer.x, pointer.y)
+    for (let i = 0; i < 30; i++) {
+      const visible = await button.isVisible().catch(() => false)
+      if (visible) break
+      await page.mouse.wheel(0, 400)
+      if (i === 29) throw new Error('selection button never returned')
+    }
+
+    await expect(button).toBeVisible()
+    await expect(button).toHaveAttribute('data-enx-test-id', 'sel-backward')
+  })
+
+  test('selection button: Escape while hidden removes it for good', async ({
+    page,
+  }) => {
+    await page.locator('article').scrollIntoViewIfNeeded()
+    const points = await paragraphLineDragPoints(page, 0)
+    await dragSelect(page, points.firstStart, points.lastEnd)
+
+    const button = page.locator('.enx-selection-translate-button')
+    await expect(button).toBeVisible()
+
+    const pointer = {
+      x: points.lastEnd.x,
+      y: Math.min(points.lastEnd.y + 40, 500),
+    }
+    await page.mouse.move(pointer.x, pointer.y)
+    for (let i = 0; i < 30; i++) {
+      const stillInView = await page.evaluate(() => {
+        const sel = window.getSelection()
+        if (!sel || sel.rangeCount === 0) return true
+        const rects = sel.getRangeAt(0).getClientRects()
+        if (rects.length === 0) return true
+        return rects[rects.length - 1].bottom >= 0
+      })
+      if (!stillInView) break
+      await page.mouse.wheel(0, 400)
+      if (i === 29) throw new Error('last line never left the top')
+    }
+    await expect(button).toBeHidden()
+
+    await page.keyboard.press('Escape')
+    await expect(button).toHaveCount(0)
+
+    await page.mouse.move(pointer.x, pointer.y)
+    await page.mouse.wheel(0, -800)
+    await page.mouse.wheel(0, -800)
+    await expect(button).toHaveCount(0)
   })
 })
