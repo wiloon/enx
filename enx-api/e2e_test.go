@@ -321,7 +321,7 @@ func TestE2E_ReviewWordsRoute(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		var body strings.Builder
 		_, _ = io.Copy(&body, resp.Body)
 		return resp.StatusCode, body.String()
