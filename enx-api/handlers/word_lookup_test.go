@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -306,10 +307,10 @@ func TestWordLookupFromCacheOfAnUnknownWordIs404AndNotCharged(t *testing.T) {
 	}
 }
 
-type quotaRecorder struct{}
+type errRecorder struct{ err error }
 
-func (quotaRecorder) Record(context.Context, string, string, bool) (int, bool, error) {
-	return 0, false, dictionary.ErrQuotaExceeded
+func (r errRecorder) Record(context.Context, string, string, bool) (int, bool, error) {
+	return 0, false, r.err
 }
 
 type quotaSubscriber bool
@@ -323,7 +324,7 @@ func TestWordLookupQuotaResponseUsesInjectedSubscription(t *testing.T) {
 		active bool
 		want   string
 	}{{true, "contact support"}, {false, "Upgrade"}} {
-		h := NewWordLookupHandler(quotaRecorder{}).WithSubscriptions(quotaSubscriber(tc.active))
+		h := NewWordLookupHandler(errRecorder{dictionary.ErrQuotaExceeded}).WithSubscriptions(quotaSubscriber(tc.active))
 		r := gin.New()
 		r.Use(func(c *gin.Context) { c.Set("user_id", "u1") })
 		r.POST("/", h.Record)
@@ -334,5 +335,31 @@ func TestWordLookupQuotaResponseUsesInjectedSubscription(t *testing.T) {
 		if w.Code != http.StatusTooManyRequests || !strings.Contains(w.Body.String(), tc.want) {
 			t.Fatalf("active %v: %d %s", tc.active, w.Code, w.Body.String())
 		}
+	}
+}
+
+func TestWordLookupRecorderFailureReturns500WithoutLeakingTheError(t *testing.T) {
+	h := NewWordLookupHandler(errRecorder{errors.New("disk I/O error")})
+	r := gin.New()
+	r.Use(func(c *gin.Context) { c.Set("user_id", "u1") })
+	r.POST("/", h.Record)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"wordId":"w1"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("got %d, want 500: %s", w.Code, w.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body %q: %v", w.Body.String(), err)
+	}
+	want := map[string]any{"success": false, "message": "Failed to record the lookup"}
+	if len(body) != len(want) || body["success"] != want["success"] || body["message"] != want["message"] {
+		t.Fatalf("body %v, want %v", body, want)
+	}
+	if strings.Contains(w.Body.String(), "disk I/O error") {
+		t.Fatalf("raw error leaked into the response: %s", w.Body.String())
 	}
 }
