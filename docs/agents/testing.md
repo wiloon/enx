@@ -46,6 +46,15 @@ Signed-in e2e uses Clerk's official testing package, `@clerk/testing`, against t
 
 **E2E gate.** An acceptance item that needs a specific or repeated Playwright run goes in the issue as an `## E2E gate` section, one line of enx-chrome specs and an optional repeat: `e2e/invite-link.spec.ts --repeat-each=15` (N up to 50, homelab specs excluded). On ser8 the runner runs it with no retries before each push of the slice that completes the issue, a red gate takes the repair loop, and the result lands on the PR.
 
+## Screenshots for manual checks
+
+When a PR lists manual checks, shoot each item a human must look at:
+
+- **How:** Playwright against the enx-ui dev server, stubbing the API with `page.route` as `e2e/*.spec.ts` do, or signed in as §E2E and Clerk sign-in describes.
+- **Which:** light and dark mode for every item; add a 375px-wide shot for layout checks. Prefer viewport shots unless the item needs the whole page.
+
+Where to save them and how to name them comes from whoever asked for them (the SER8 runner's prompt gives a directory and a file pattern).
+
 ## Writing tests
 
 - **Name the behaviour.** `flips below the word instead of shrinking when the top is a few px short`, not `test1`.
