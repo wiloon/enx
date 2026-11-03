@@ -42,7 +42,7 @@ func TestMain(m *testing.M) {
 func cleanupBillingUser(t *testing.T, userID string) {
 	t.Helper()
 	t.Cleanup(func() {
-		for _, table := range []string{"credit_transactions", "credit_accounts", "subscriptions", "trial_grants", "users"} {
+		for _, table := range []string{"credit_transactions", "credit_accounts", "subscriptions", "stripe_customers", "trial_grants", "users"} {
 			column := "user_id"
 			if table == "users" {
 				column = "id"
