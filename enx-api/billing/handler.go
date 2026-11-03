@@ -57,6 +57,11 @@ func (h *Handler) checkoutCustomer(c *gin.Context, userID, tier string) (string,
 		return "", false
 	}
 	if err != nil {
+		mode := "subscription"
+		if tier == "" {
+			mode = "topup"
+		}
+		logger.Errorf("billing: prepare %s checkout for %s: %v", mode, userID, err)
 		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "Billing is temporarily unavailable. Please retry."})
 		return "", false
 	}

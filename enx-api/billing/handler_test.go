@@ -2,19 +2,31 @@ package billing
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
+	"enx-api/billing/acceptance"
+	"enx-api/billing/checkout"
+	"enx-api/billing/eligibility"
+	"enx-api/billing/portalsession"
+	"enx-api/repo"
+	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
 
 	"github.com/gin-gonic/gin"
 	stripeSDK "github.com/stripe/stripe-go/v86"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 	"gorm.io/gorm"
 )
 
@@ -274,6 +286,149 @@ func TestCheckoutSubscriptionFailsWhenSubscriptionLookupFails(t *testing.T) {
 	}
 	if !bytes.Contains(w.Body.Bytes(), []byte(`"message":"Billing is temporarily unavailable. Please retry."`)) {
 		t.Fatalf("expected load failure message, got %s", w.Body.String())
+	}
+}
+
+type fakeOwners struct {
+	owner portalsession.Owner
+	err   error
+}
+
+func (f fakeOwners) Owner(context.Context, string) (portalsession.Owner, error) {
+	return f.owner, f.err
+}
+
+type fakeSubscriptions struct {
+	sub portalsession.Subscription
+	err error
+}
+
+func (f fakeSubscriptions) Subscription(context.Context, string) (portalsession.Subscription, error) {
+	return f.sub, f.err
+}
+
+// checkoutHandler mounts the real checkout.Service over fake reads; it fails
+// the test if a Checkout session is created.
+func checkoutHandler(t *testing.T, owners fakeOwners, subs fakeSubscriptions) *Handler {
+	t.Helper()
+	sc := fakeStripeClient(t, func(url.Values) { t.Error("checkout session created") })
+	return NewHandler(sc, "https://example.com", testStripe().Price, repo.BillingSubscriptions{}, checkout.New(owners, subs))
+}
+
+func observeLogs(t *testing.T) *observer.ObservedLogs {
+	t.Helper()
+	core, logs := observer.New(zap.DebugLevel)
+	t.Cleanup(logger.Swap(zap.New(core).Sugar()))
+	return logs
+}
+
+func decodeBody(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
+	t.Helper()
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body %s: %v", w.Body.String(), err)
+	}
+	return body
+}
+
+// A Checkout that fails a required read answers 503 and leaves one error
+// line saying whose Checkout failed, in which mode, and why.
+func TestCheckoutLogsWhyItIsUnavailable(t *testing.T) {
+	routes := []struct {
+		mode, path, body string
+		handler          func(*Handler) gin.HandlerFunc
+	}{
+		{"subscription", "/billing/checkout/subscription", `{"plan":"pro"}`, func(h *Handler) gin.HandlerFunc { return h.CheckoutSubscription }},
+		{"topup", "/billing/checkout/topup", `{"tier":"small"}`, func(h *Handler) gin.HandlerFunc { return h.CheckoutTopup }},
+	}
+	causes := []struct {
+		name   string
+		owners fakeOwners
+		subs   fakeSubscriptions
+		cause  string
+	}{
+		{"owner read", fakeOwners{err: errors.New("owner read: disk I/O error")}, fakeSubscriptions{}, "owner read: disk I/O error"},
+		{"accepted subscription read", fakeOwners{owner: portalsession.Owner{AcceptedID: "sub_accepted"}}, fakeSubscriptions{err: errors.New("stripe: connection reset")}, "stripe: connection reset"},
+	}
+	for _, route := range routes {
+		for _, tc := range causes {
+			t.Run(route.mode+"/"+tc.name, func(t *testing.T) {
+				userID := "u-" + strings.ReplaceAll(t.Name(), "/", "-")
+				cleanupBillingUser(t, userID)
+				seedUser(t, userID)
+				logs := observeLogs(t)
+
+				h := checkoutHandler(t, tc.owners, tc.subs)
+				w := doRequest(t, http.MethodPost, route.path, route.handler(h), userID, route.body)
+				if w.Code != http.StatusServiceUnavailable {
+					t.Fatalf("status: got %d want 503, body=%s", w.Code, w.Body.String())
+				}
+				want := map[string]any{"success": false, "message": "Billing is temporarily unavailable. Please retry."}
+				if got := decodeBody(t, w); !reflect.DeepEqual(got, want) {
+					t.Fatalf("body: got %v want %v", got, want)
+				}
+				errorLines := logs.FilterLevelExact(zapcore.ErrorLevel).All()
+				if len(errorLines) != 1 {
+					t.Fatalf("error lines: got %d want 1: %v", len(errorLines), errorLines)
+				}
+				msg := errorLines[0].Message
+				for _, part := range []string{userID, route.mode, tc.cause} {
+					if !strings.Contains(msg, part) {
+						t.Errorf("error line %q does not name %q", msg, part)
+					}
+				}
+			})
+		}
+	}
+}
+
+// Refusals are expected outcomes: they keep their 409 bodies and are not
+// logged as errors.
+func TestCheckoutRefusalsAreNotLoggedAsErrors(t *testing.T) {
+	cases := []struct {
+		name   string
+		owners fakeOwners
+		subs   fakeSubscriptions
+		want   map[string]any
+	}{
+		{
+			"deletion in progress",
+			fakeOwners{owner: portalsession.Owner{Deletion: acceptance.DeletionInProgress}},
+			fakeSubscriptions{},
+			map[string]any{"success": false, "reason": "deletion_in_progress", "message": "Account deletion is in progress. Please retry later."},
+		},
+		{
+			"subscription conflict",
+			fakeOwners{owner: portalsession.Owner{Owned: []eligibility.Owned{{ID: "sub_conflict", Conflict: eligibility.ConflictOpen, StoredStatus: "active"}}}},
+			fakeSubscriptions{},
+			map[string]any{"success": false, "reason": "subscription_conflict", "subscriptionId": "sub_conflict", "message": "Please contact billing support to resolve your subscription conflict."},
+		},
+		{
+			"accepted subscription",
+			fakeOwners{owner: portalsession.Owner{AcceptedID: "sub_accepted", AcceptedCustomerID: "cus_accepted"}},
+			fakeSubscriptions{sub: portalsession.Subscription{Live: eligibility.Live{Status: "active"}}},
+			map[string]any{"success": false, "message": "You already have a subscription. Manage it from the billing portal."},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			userID := "u-" + strings.ReplaceAll(t.Name(), "/", "-")
+			cleanupBillingUser(t, userID)
+			seedUser(t, userID)
+			logs := observeLogs(t)
+
+			h := checkoutHandler(t, tc.owners, tc.subs)
+			w := doRequest(t, http.MethodPost, "/billing/checkout/subscription", h.CheckoutSubscription, userID, `{"plan":"pro"}`)
+			if w.Code != http.StatusConflict {
+				t.Fatalf("status: got %d want 409, body=%s", w.Code, w.Body.String())
+			}
+			if got := decodeBody(t, w); !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("body: got %v want %v", got, tc.want)
+			}
+			if n := logs.FilterLevelExact(zapcore.ErrorLevel).Len(); n != 0 {
+				t.Fatalf("error lines: got %d want 0: %v", n, logs.All())
+			}
+		})
 	}
 }
 
