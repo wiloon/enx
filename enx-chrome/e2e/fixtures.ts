@@ -111,9 +111,21 @@ export const test = base.extend<ExtensionFixtures, WorkerFixtures>({
   ) => {
     // Sign in on the website, exactly where a user would; the extension picks
     // the session up through syncHost (ADR-015).
+    // clerk.signIn calls Clerk's Backend API and fails now and then with an
+    // empty "Failed to sign in" error, so a fresh page retries it.
     const site = await context.newPage()
-    await site.goto(`${uiOrigin}/`)
-    await clerk.signIn({ page: site, emailAddress: E2E_USER_EMAIL })
+    await test
+      .expect(async () => {
+        await site.goto(`${uiOrigin}/`)
+        await clerk.loaded({ page: site })
+        const signedInAlready = await site.evaluate(
+          () => (window as { Clerk?: { user?: unknown } }).Clerk?.user != null
+        )
+        if (!signedInAlready) {
+          await clerk.signIn({ page: site, emailAddress: E2E_USER_EMAIL })
+        }
+      })
+      .toPass({ intervals: [1_000, 2_000, 5_000], timeout: 60_000 })
 
     // Done only when the extension has synced the session AND enx-api accepted
     // its JWT: validateSession is GET /api/me through the background.

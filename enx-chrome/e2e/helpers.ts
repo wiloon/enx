@@ -374,6 +374,11 @@ export async function mockBackendFetch(
     reviewWords?: [string, number][]
     translateFails?: boolean
     translateSessionExpired?: boolean
+    /**
+     * Delay before answering GET /api/translate. Used to keep the loading
+     * state on screen long enough to scroll the word off (#523).
+     */
+    lookupDelayMs?: number
   } = {}
 ) {
   let [sw] = context.serviceWorkers()
@@ -396,9 +401,16 @@ export async function mockBackendFetch(
     )
   const translateFails = options.translateFails ?? false
   const translateSessionExpired = options.translateSessionExpired ?? false
+  const lookupDelayMs = options.lookupDelayMs ?? 0
 
   await sw.evaluate(
-    ({ wordData, reviewWords, translateFails, translateSessionExpired }) => {
+    ({
+      wordData,
+      reviewWords,
+      translateFails,
+      translateSessionExpired,
+      lookupDelayMs,
+    }) => {
       const realFetch = self.fetch.bind(self)
       self.fetch = async (input, init) => {
         const url =
@@ -422,6 +434,9 @@ export async function mockBackendFetch(
         }
 
         if (url.includes('/api/translate')) {
+          if (lookupDelayMs > 0) {
+            await new Promise(resolve => setTimeout(resolve, lookupDelayMs))
+          }
           // makeApiRequest() in background.ts treats a 401 as session expiry
           // and sets sessionExpired: true on the returned error.
           if (translateSessionExpired) {
@@ -470,7 +485,13 @@ export async function mockBackendFetch(
         return realFetch(input, init)
       }
     },
-    { wordData, reviewWords, translateFails, translateSessionExpired }
+    {
+      wordData,
+      reviewWords,
+      translateFails,
+      translateSessionExpired,
+      lookupDelayMs,
+    }
   )
 }
 

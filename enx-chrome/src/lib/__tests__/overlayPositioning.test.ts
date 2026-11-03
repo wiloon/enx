@@ -1,7 +1,10 @@
 import { platform, type Platform, type Rect } from '@floating-ui/dom'
 import {
   OVERLAY_EDGE_PADDING,
+  applyReferenceHiddenVisibility,
+  buildAnchoredOverlayMiddleware,
   positionAnchoredOverlay,
+  positionSelectionHint,
 } from '../overlayPositioning'
 
 // jsdom has no layout, so the platform is faked: the viewport is
@@ -97,5 +100,83 @@ describe('positionAnchoredOverlay', () => {
     )
     expect(['top', 'bottom']).toContain(placement)
     expect(parseFloat(overlay.style.maxHeight)).toBeLessThan(tall)
+  })
+
+  // #523: once the word is fully clipped, hide the card in place rather than
+  // letting flip/shift park it near the pointer.
+  it('includes hide in the middleware list', () => {
+    const names = buildAnchoredOverlayMiddleware(overlay, () => GAP).map(
+      m => m.name
+    )
+    expect(names).toContain('hide')
+  })
+
+  it('hides the overlay when the reference is clipped', async () => {
+    await positionAnchoredOverlay(
+      wordAt(-100),
+      overlay,
+      () => GAP,
+      fakePlatform(HEIGHT)
+    )
+    expect(overlay.style.visibility).toBe('hidden')
+  })
+
+  it('clears the hidden style when the reference is on-screen', async () => {
+    overlay.style.visibility = 'hidden'
+    await positionAnchoredOverlay(
+      wordAt(400),
+      overlay,
+      () => GAP,
+      fakePlatform(HEIGHT)
+    )
+    expect(overlay.style.visibility).toBe('visible')
+  })
+})
+
+describe('applyReferenceHiddenVisibility', () => {
+  let overlay: HTMLElement
+  beforeEach(() => {
+    overlay = document.createElement('div')
+  })
+
+  it('sets visibility hidden when referenceHidden is true', () => {
+    applyReferenceHiddenVisibility(overlay, true)
+    expect(overlay.style.visibility).toBe('hidden')
+  })
+
+  it('sets visibility visible when referenceHidden is false', () => {
+    overlay.style.visibility = 'hidden'
+    applyReferenceHiddenVisibility(overlay, false)
+    expect(overlay.style.visibility).toBe('visible')
+  })
+})
+
+describe('positionSelectionHint', () => {
+  let overlay: HTMLElement
+  beforeEach(() => {
+    overlay = document.createElement('div')
+    document.body.appendChild(overlay)
+  })
+  afterEach(() => overlay.remove())
+
+  it('hides the hint when its anchor rect is clipped', async () => {
+    await positionSelectionHint(
+      wordAt(-100),
+      overlay,
+      'bottom-end',
+      fakePlatform(28)
+    )
+    expect(overlay.style.visibility).toBe('hidden')
+  })
+
+  it('shows the hint when its anchor rect is on-screen', async () => {
+    overlay.style.visibility = 'hidden'
+    await positionSelectionHint(
+      wordAt(400),
+      overlay,
+      'bottom-end',
+      fakePlatform(28)
+    )
+    expect(overlay.style.visibility).toBe('visible')
   })
 })
