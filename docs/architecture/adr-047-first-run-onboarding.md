@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-10-03
-revised: 2026-10-19
+revised: 2026-11-02
 related: adr-046（角标状态）、adr-027（Home 的 OnboardingChecklist，本 ADR 与它共用步骤模型）、adr-019 / adr-020（网页 → 扩展通道与登录回跳，本 ADR 加一个消息类型）、adr-039（站点自动启用）、adr-044（服务端偏好，存 `onboardingCompleted`）、adr-048（免费用户试用 AI 积分）
 ---
 
@@ -13,6 +13,8 @@ related: adr-046（角标状态）、adr-027（Home 的 OnboardingChecklist，�
 > - 完成页给一组推荐的英文站点（Decision 3）。
 > - 不让用户选母语：第一版只服务「中文母语者学英语」，由 Chrome Web Store 介绍页说明「目前只支持英文 → 中文」。
 > - 商店链接在扩展上架前用占位（Decision 2 第 0 步）。
+
+> **2026-11-02 修订（#624）**：推荐站点加 Standard Ebooks、去掉 BBC News 和 Wikipedia（Decision 3）；Home 清单改为纯文本步骤 + 一个 `/welcome` 按钮，并用 `onboarding.ts` 里的 Home 专用标题（Decision 6）。
 
 adr-046 去掉了正文里的「Article processed • Click words for translation」，学习模式的状态只靠扩展图标角标表达。这要求用户在第一次使用时**把图标固定到工具栏**（否则角标看不见、也找不到启用入口）。此外新用户还得完成登录，并**亲手**启用一次学习模式、点一次词——在真实网站上每次都要点图标启用，这是用户必须学会的唯一习惯。
 
@@ -59,12 +61,14 @@ A、B 的区别只是「进来时扩展装没装」，页面能直接探测到�
 3. **完成**：第 3 步两项都勾上后写入 `onboardingCompleted`，显示「You're all set」，然后放手。固定图标没做也没跳过不影响完成；完成态一旦出现就保持，之后关掉学习模式也不回到步骤列表：
    - 一句话：在任意英文文章页点 Catglish 图标 →「Read with Catglish」即可。
    - **推荐站点**：一组可以马上去读的英文站点链接（新标签页打开）。清单写在 enx-ui 一个常量里，按需增删；入选条件是**免登录、无付费墙、正文结构普通、实测学习模式可用**。初始候选：InfoQ（infoq.com）、Anthropic News（anthropic.com/news）、BBC News、The Guardian、AP News、NPR、Wikipedia（扩展有专门适配器）。实现时逐个在真实 Chrome 里验证，不能用的移出清单。
+     - **2026-11-02 修订（#624）**：加入 Standard Ebooks（standardebooks.org，免费公版经典书），去掉 BBC News 和 Wikipedia。Standard Ebooks 同样要过上面的入选条件，并且要在书的在线阅读页（如某一章）上实测，不只看首页；首页只是书目时，链接指向真正读书的页面。
    - 不介绍侧边栏、角标、「Always enable on this site」：这些留给用户自己发现，或写进日后的帮助文档。
    - 之后用户**主动**打开 `/welcome`（不带 `src=install`）时直接显示完成态，示例文章仍可在页内试用。
 4. **新的网页 → 扩展消息 `enx:status`**：返回 `{ ok, version, isOnToolbar }`。与 `enx:ping` 一样只认 `ENX_UI_ORIGINS` 来源，只读，不改任何状态。登录状态由网页自己的 Clerk 得出，不经扩展。`enx:ping` 保留不动（Home、`/reader` 在用）。
 4a. **学习模式状态标记 `data-enx-learning`**：与 adr-019 的 `data-enx-extension` 版本戳同一机制、同一限制（只在 enx-ui 页面上写）：content script 在本页学习模式启用成功后写 `<html data-enx-learning="on">`，关闭（`enxStop`）时移除。只是给 enx-ui 页面看的只读信号，不参与扩展内部逻辑。
 5. **自动启用由页面决定，不由 URL 决定**：enx-ui 上的学习模式自动启用一直是页面主动发 `enx:enable-reader`（adr-019）。`/reader` 提交后与 `/reader/sample` 保持自动启用；`/welcome` 不发。Reader 适配器（`siteAdapters.ts` 的 `pageSupport`）现在只放行 `/reader` 与 `/reader/*`，需加上 `/welcome`。
 6. **与 Home 清单的关系**：adr-027 的 `OnboardingChecklist` 与 `/welcome` 共用一个步骤模型（`onboardingSteps({ installed, signedIn, isOnToolbar, pinSkipped, learningEnabled, hasLookedUp })` 纯函数，放 `src/lib/onboarding.ts`）。Home 清单是同一套步骤的精简版（零阅读用户在 Home 上看到，点任一步跳 `/welcome`；省掉登录和固定图标：Home 在登录之后，固定状态只有 `/welcome` 会去问扩展。每个界面显示哪些步骤也由 `onboarding.ts` 决定）；它现在第 3 步链接的是 `/reader` 粘贴页，改为指向 `/welcome`。文案只写一份。
+   - **2026-11-02 修订（#624）**：Home 清单的步骤不再各自是链接。步骤标题是纯文本，整张卡只有一个按钮「Start with a sample article」→ `/welcome`（adr-027 Decision 2 的注记）。Home 的步骤标题与 `/welcome` 不同：「Click the Catglish icon in your toolbar…」「Click any word in the article」在 Home 上没有对应的工具栏操作和文章，Home 改用不依赖页面的说法（如「Turn on Catglish for the article」「Click any word you don't know」）。两套标题都放在 `onboarding.ts`，按 view 选用，组件里不写文案；「文案只写一份」指每个界面的每句话只在 `onboarding.ts` 出现一次。`/welcome` 的标题不变。
 7. **不做的事**：不选母语；不演示侧边栏整句翻译；不做角标图例；不做产品导览式的页面遮罩高亮；不收集引导漏斗指标（需要时按 adr-040 再加）；不做 `setUninstallURL` 的卸载反馈页；不在引导里设置词汇水平或高亮偏好；不放视频（官网首页已有）。
 8. **示例文章是 enx-ui 内置的固定公开文章**（2026-10-13 修订）：
    - 正文是写在 enx-ui 代码里的一篇英文短文（`src/lib/sampleArticle.ts`，约 200 词，大众话题，几个中等难度的词，并自然带上撇号词、连字符词、句首大写词和多个段落，方便同时当测试素材）。全站只有这一篇。
