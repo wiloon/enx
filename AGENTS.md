@@ -14,6 +14,11 @@ Another agent may be working in the main checkout at the same time. A session th
 
 - **Code, comments, config, docs:** English. ADRs in `docs/architecture/` are Chinese by convention; match the language of the doc you edit.
 - **UI copy in `enx-chrome` and `enx-ui`:** English, including every hint, toast and error, and the `message` strings enx-api returns for display. Chinese UI copy is a bug; fix it in place. The one exception is language-learning content aimed at the Chinese-speaking user (e.g. the notes from "地道表达", ADR-012).
+- **Commit messages:** conventional, scoped by sub-project: `fix(enx-ui): …`, `feat(enx-api): …`, `docs(adr): …`.
+
+## Changes across sub-projects
+
+enx-ui and enx-chrome both call enx-api. When you change, review or plan a change to an API, a shared type or a `src/lib/` rule, follow each changed call path end to end into its callers in the other sub-projects.
 
 ## Working with Matt skills
 
@@ -66,7 +71,7 @@ All three sub-projects keep the domain apart from the machinery around it:
 | File | Read it when |
 |------|--------------|
 | [docs/agents/principles.md](docs/agents/principles.md) | reviewing or revising an issue or ADR; deciding something an issue or ADR leaves open; the owner asks you to add a principle |
-| [docs/agents/testing.md](docs/agents/testing.md) | choosing a test type, running e2e, signing in for e2e |
+| [docs/agents/testing.md](docs/agents/testing.md) | choosing a test type, running e2e, signing in for e2e, shooting screenshots for a PR's manual checks |
 | [docs/agents/enx-api-design.md](docs/agents/enx-api-design.md) | adding an enx-api domain service, repository or entity |
 | [docs/agents/logging.md](docs/agents/logging.md) | adding or changing enx-api log lines |
 | [docs/agents/adding-website-support.md](docs/agents/adding-website-support.md) | making the extension work on a new website |
