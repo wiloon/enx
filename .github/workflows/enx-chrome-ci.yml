@@ -32,7 +32,7 @@ concurrency:
 jobs:
   check:
     name: Lint, test and build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     # The committed .npmrc points at the homelab Nexus, which GitHub runners
     # can't reach. Set as env, not --registry: pnpm 12's launcher downloads

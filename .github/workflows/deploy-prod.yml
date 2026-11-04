@@ -52,7 +52,7 @@ jobs:
   # ---------------------------------------------------------------------
   version:
     name: Resolve version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
       build: ${{ steps.resolve.outputs.build }}
@@ -78,7 +78,7 @@ jobs:
     name: Build enx-api
     needs: version
     if: needs.version.outputs.build == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       id-token: write
@@ -128,7 +128,7 @@ jobs:
     name: Build enx-ui
     needs: version
     if: needs.version.outputs.build == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       id-token: write
@@ -201,7 +201,7 @@ jobs:
       needs.build-ui.result != 'failure' &&
       needs.build-api.result != 'cancelled' &&
       needs.build-ui.result != 'cancelled'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     environment: production
     permissions:
       contents: read
@@ -261,7 +261,7 @@ jobs:
   smoke:
     name: Public smoke test
     needs: [version, deploy]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Probe public endpoints
         run: |
