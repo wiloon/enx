@@ -19,7 +19,7 @@
 
 现有的 `enx-api/clerktest` 包（本地 JWKS + 自签 JWT）只服务 Go 单测，扩展这一侧没有对应物：扩展的 token 来自真实的 clerk-js，不是我们能在测试里替换的一个 HTTP 头。
 
-Clerk 官方给 E2E 的方案是 `@clerk/testing`：`clerkSetup()` 在全局 setup 里用 `CLERK_SECRET_KEY` 换一个 Testing Token（绕过 dev 实例的 bot 检测）；`clerk.signIn({ page, emailAddress })` 用 Backend API 给指定用户签发 sign-in token 并走 ticket 策略登录，跳过邮箱验证码和 MFA。只对 **development 实例** 支持（`clerkSetup` 遇到生产 secret key 直接抛错），生产实例开 test mode 官方明确不推荐。
+Clerk 官方给 E2E 的方案是 `@clerk/testing`：`clerkSetup()` 用 `CLERK_SECRET_KEY` 换一个 Testing Token（绕过 dev 实例的 bot 检测）；`clerk.signIn({ page, emailAddress })` 用 Backend API 给指定用户签发 sign-in token 并走 ticket 策略登录，跳过邮箱验证码和 MFA。只对 **development 实例** 支持（`clerkSetup` 遇到生产 secret key 直接抛错），生产实例开 test mode 官方明确不推荐。
 
 ## Options Considered
 
@@ -49,7 +49,7 @@ Clerk 官方给 E2E 的方案是 `@clerk/testing`：`clerkSetup()` 在全局 set
 
 1. **扩展的 E2E 构建变体 `dist-e2e`。** `pnpm build:e2e` = `development` target，API 保持该 target 的 `localhost:8091`（Playwright 在同一端口起本地 enx-api），`syncHost`/enx-ui 为 `localhost:3000`。设置 `VITE_ENX_UI_ORIGINS=http://localhost:3000`，另用构建期 `VITE_CONTENT_SCRIPT_ORIGINS=http://localhost:8765` 把 fixture 服务器加入通用 `contentScriptOrigins`，使内容脚本常驻注入测试页。8765 是普通站点，不是 Reader 或 RSSX：不加入 `uiOrigins`、`rssxOrigins` 或 `externally_connectable`，也不写 enx-ui 的安装态与学习模式标记。保留 fixture 原有的 `http://localhost:8765/*` host permission：`buildManifest` 把通用 `contentScriptOrigins` 的 patterns 同时加入 `host_permissions`，让现有 E2E helper 能通过 `tab.url` / `tabs.query({ url })` 找到测试 tab；不增加宽泛的 `tabs` 权限。RSSX 移入专用列表后，各声明 target 的通用列表均为空，仅 E2E override 加入 fixture，因此默认发布构建不增加 host permission；`rssxOrigins` 仍只生成内容脚本 matches，不生成 host permission。这个测试构建参数不进入发布产物。`fixtures.ts` 加载 `dist-e2e`，缺失时报错提示先构建，而不是悄悄加载别的目录。
 2. **本地回归套件的 Playwright 起本地三件套，不指向 homelab。** enx-api 用每次运行独立的临时 `DB_PATH`（不复用开发机的 `/var/lib/enx-api/enx.db`），Clerk issuer / `azp` 允许列表沿用 `config.toml` 默认值（已含 `http://localhost:3000` 和扩展 ID `chrome-extension://combdcldlodkikjfhjbdbogjlfmnbjkf`）。enx-ui 只在提供了登录凭据时才启动（它自己也需要 `CLERK_SECRET_KEY`），`API_BASE_URL` 指向本地 enx-api。
-3. **登录走 `@clerk/testing`，按用例登录。** 全局 setup project 调 `clerkSetup()`；需要登录的用例通过 `signedIn` fixture：在可配置的网站 origin 上（本地默认 `localhost:3000`）`clerk.signIn({ page, emailAddress: E2E_CLERK_USER_EMAIL })`，再轮询扩展后台的 `validateSession`，直到扩展确认已同步到会话。不用 `storageState` 复用登录态：扩展测试用的是 `launchPersistentContext`（加载扩展的唯一方式），每条用例一个全新临时 profile；ticket 登录只需一次 Backend API 调用，按用例登录的代价可以接受，换来用例之间零共享状态。
+3. **登录走 `@clerk/testing`，按用例登录。** worker-scoped fixture 调 `clerkSetup()`，因为它把 `CLERK_TESTING_TOKEN` 写到当前进程的环境变量，必须在使用该 token 的 worker 中执行；需要登录的用例通过依赖该 fixture 的 `signedIn` fixture：在可配置的网站 origin 上（本地默认 `localhost:3000`）`clerk.signIn({ page, emailAddress: E2E_CLERK_USER_EMAIL })`，再轮询扩展后台的 `validateSession`，直到扩展确认已同步到会话。不用 `storageState` 复用登录态：扩展测试用的是 `launchPersistentContext`（加载扩展的唯一方式），每条用例一个全新临时 profile；ticket 登录只需一次 Backend API 调用，按用例登录的代价可以接受，换来用例之间零共享状态。
 4. **本地套件缺凭据时显式 skip，不假装通过。** 本地需要登录的用例在 `CLERK_SECRET_KEY` 或 `E2E_CLERK_USER_EMAIL` 缺失时 `test.skip` 并写明原因；不需要登录的用例（options 页、未登录 popup）任何环境都能跑。测试用户用 Clerk 测试邮箱格式（`xxx+clerk_test@...`，验证码固定 `424242`），只建在 dev 实例。密钥只从环境变量读，不进仓库、不进 `.env` 模板以外的任何文件。
 5. **删掉 Cognito 时代的假登录。** `seedLoggedInState()` / `login()` 删除；`popup-login.spec.ts` 按现在的 Clerk 登录界面重写。
 
@@ -75,3 +75,5 @@ Clerk 官方给 E2E 的方案是 `@clerk/testing`：`clerkSetup()` 在全局 set
 - 2026-10-23（#231，第二轮审查）：修正上一轮拆分列表时误删 fixture host permission 的说明，保留 ADR-037 原有的测试 tab URL 可见性；补充 manifest 验证边界，默认发布构建与 RSSX 权限不变。
 
 - 2026-10-31（#472）：记录 owner 已确定的 HomeLab 人工冒烟范围；明确 `signedIn` 的 origin 可配置，缺凭据的 skip 仅适用于本地套件，避免 HomeLab 空通过。
+
+- 2026-11-05（#585）：将 setup project 更正为现有的 worker-scoped fixture，确保 Testing Token 的环境变量到达使用它的 worker。
