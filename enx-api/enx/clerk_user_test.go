@@ -64,6 +64,23 @@ func TestGetOrCreateByClerkUserID_NameFromEmailWhenNameEmpty(t *testing.T) {
 	}
 }
 
+func TestGetOrCreateByClerkUserID_NameIsTheWholeEmailWithoutALocalPart(t *testing.T) {
+	newUserTestDB(t)
+
+	for clerkUserID, email := range map[string]string{
+		"user_no_at":      "no-at-sign",
+		"user_leading_at": "@example.com",
+	} {
+		id, err := GetOrCreateByClerkUserID(clerkUserID, ClerkProfile{Email: email}, time.Nanosecond)
+		if err != nil {
+			t.Fatalf("%s: unexpected error: %v", email, err)
+		}
+		if got := GetUserByID(id); got.Name != email {
+			t.Errorf("Name = %q, want the whole email %q", got.Name, email)
+		}
+	}
+}
+
 func TestGetOrCreateByClerkUserID_Idempotent(t *testing.T) {
 	newUserTestDB(t)
 

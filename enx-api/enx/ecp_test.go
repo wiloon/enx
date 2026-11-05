@@ -80,6 +80,9 @@ func TestSetEnglishTrimsSuffixesAndPrefixes(t *testing.T) {
 		{"morning.", "morning"},
 		{"morning,", "morning"},
 		{"(bombs)", "bombs"},
+		{"DHC--", "DHC"},
+		{"don't-", "don't"},
+		{"end -", "end"},
 	}
 	for _, c := range cases {
 		word := Word{}

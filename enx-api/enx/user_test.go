@@ -134,6 +134,44 @@ func TestGetUserByID(t *testing.T) {
 	}
 }
 
+// ADR-015 2026-10-20 note §4: users.email is not unique.
+func TestGetUsersByEmailReturnsEveryMatchOldestFirst(t *testing.T) {
+	newUserTestDB(t)
+	day := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for _, u := range []*User{
+		{Id: "b-newer", Email: "shared@example.com", CreateTime: day.Add(time.Hour)},
+		{Id: "c-older", Email: "shared@example.com", CreateTime: day},
+		{Id: "a-older", Email: "shared@example.com", CreateTime: day},
+		{Id: "other", Email: "other@example.com", CreateTime: day},
+	} {
+		u.ClerkUserID = "clerk_" + u.Id
+		if err := sqlitex.DB.Create(u).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	users, err := GetUsersByEmail("shared@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, u := range users {
+		ids = append(ids, u.Id)
+	}
+	if strings.Join(ids, ",") != "a-older,c-older,b-newer" {
+		t.Fatalf("ids = %v, want [a-older c-older b-newer]", ids)
+	}
+}
+
+func TestGetUsersByEmailWithNoMatchIsEmpty(t *testing.T) {
+	newUserTestDB(t)
+
+	users, err := GetUsersByEmail("nobody@example.com")
+	if err != nil || len(users) != 0 {
+		t.Fatalf("got %v, %v; want no users and no error", users, err)
+	}
+}
+
 func TestUserActivateClearsVerificationToken(t *testing.T) {
 	newUserTestDB(t)
 	u := createTestUser(t, "alice", "hunter2")

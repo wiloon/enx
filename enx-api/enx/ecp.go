@@ -102,10 +102,6 @@ func (word *Word) SetEnglishField(english string) {
 		tmpKey := strings.ReplaceAll(english, "'s", "")
 		word.English = tmpKey
 		word.Key = strings.ToLower(tmpKey)
-	} else if strings.Contains(english, "’s") {
-		tmpKey := strings.ReplaceAll(english, "’s", "")
-		word.English = tmpKey
-		word.Key = strings.ToLower(tmpKey)
 	} else {
 		word.English = english
 		word.Key = strings.ToLower(english)
