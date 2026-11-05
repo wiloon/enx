@@ -69,13 +69,6 @@ func (u *User) Create() error {
 	return sqlitex.DB.Create(u).Error
 }
 
-// GetUserByEmail looks up a user by email address.
-func GetUserByEmail(email string) *User {
-	user := User{}
-	sqlitex.DB.Where("email = ?", email).First(&user)
-	return &user
-}
-
 // GetUsersByEmail returns every user with exactly this email: users.email
 // is not unique (ADR-015, 2026-10-20 note §4).
 func GetUsersByEmail(email string) ([]User, error) {

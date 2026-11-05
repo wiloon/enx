@@ -119,21 +119,6 @@ func TestGeUserByName(t *testing.T) {
 	}
 }
 
-func TestGetUserByEmail(t *testing.T) {
-	newUserTestDB(t)
-	u := createTestUser(t, "alice", "hunter2")
-
-	got := GetUserByEmail(u.Email)
-	if got.Id != u.Id {
-		t.Errorf("Id = %q, want %q", got.Id, u.Id)
-	}
-
-	got = GetUserByEmail("missing@example.com")
-	if got.Id != "" {
-		t.Error("expected an empty user for an email that doesn't exist")
-	}
-}
-
 func TestGetUserByID(t *testing.T) {
 	newUserTestDB(t)
 	u := createTestUser(t, "alice", "hunter2")
