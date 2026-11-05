@@ -19,6 +19,7 @@ import {
 } from '@/store/atoms'
 import { formatPhonetic } from '@/lib/phonetic'
 import { playPronunciation } from '@/lib/pronunciation'
+import { popoverHasSpeaker } from '@/lib/speaker'
 
 interface WordPopoverProps {
   word: string
@@ -52,6 +53,12 @@ export default function WordPopover({
   const [errorNeedsReload] = useAtom(errorNeedsReloadAtom)
   const [sentencePanelHint] = useAtom(sentencePanelHintAtom)
   const rootRef = useRef<HTMLDivElement>(null)
+  const phonetic = formatPhonetic(currentWord?.Pronunciation)
+  const hasSpeaker = popoverHasSpeaker({
+    word: currentWord,
+    isTranslating,
+    error,
+  })
 
   useEffect(() => {
     // Auto-focus for keyboard navigation. Uses a ref rather than
@@ -122,23 +129,25 @@ export default function WordPopover({
           <h3 className="text-lg font-bold text-foreground leading-tight">
             {currentWord?.English || word}
           </h3>
-          {formatPhonetic(currentWord?.Pronunciation) && (
+          {(phonetic || hasSpeaker) && (
             <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
-              {formatPhonetic(currentWord?.Pronunciation)}
-              <button
-                data-testid="word-popover-play-pronunciation"
-                type="button"
-                onClick={() =>
-                  currentWord && playPronunciation(currentWord.English)
-                }
-                className="text-muted-foreground hover:text-brand leading-none p-1 -m-1"
-                title="Play pronunciation"
-              >
-                <SpeakerWaveIcon
-                  className="h-3.5 w-3.5 block"
-                  aria-hidden="true"
-                />
-              </button>
+              {phonetic}
+              {hasSpeaker && (
+                <button
+                  data-testid="word-popover-play-pronunciation"
+                  type="button"
+                  onClick={() =>
+                    currentWord && playPronunciation(currentWord.English)
+                  }
+                  className="text-muted-foreground hover:text-brand leading-none p-1 -m-1"
+                  title="Play pronunciation"
+                >
+                  <SpeakerWaveIcon
+                    className="h-3.5 w-3.5 block"
+                    aria-hidden="true"
+                  />
+                </button>
+              )}
             </span>
           )}
           {currentWord?.LoadCount !== undefined && (
