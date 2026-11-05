@@ -10,8 +10,7 @@
   schedule: ['before 9am on monday'],
   prConcurrentLimit: 5,
   labels: ['dependencies'],
-  // Mock translation API for e2e tests; never shipped.
-  ignorePaths: ['**/node_modules/**', 'mock-api/**'],
+  ignorePaths: ['**/node_modules/**'],
   // Same supply-chain guard as minimumReleaseAge in the pnpm-workspace.yaml
   // files: pnpm refuses a version less than a day old, so Renovate must not
   // propose one.

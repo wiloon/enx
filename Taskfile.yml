@@ -616,14 +616,3 @@ tasks:
     dir: enx-api
     cmds:
       - task migrate
-
-  # ===========================================
-  # Mock API
-  # ===========================================
-
-  mock:api:
-    desc: Start mock API server
-    dir: mock-api
-    cmds:
-      - pnpm install
-      - node server.js

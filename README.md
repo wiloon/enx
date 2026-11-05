@@ -23,7 +23,6 @@ This is a monorepo containing multiple sub-projects:
 | **[enx-api](enx-api/)** | Backend API server (Go) | Go, Gin, SQLite |
 | **[enx-chrome](enx-chrome/)** | Chrome browser extension | TypeScript, React, Vite |
 | **[enx-ui](enx-ui/)** | Web UI (future) | Next.js, React |
-| **[mock-api](mock-api/)** | Mock API server for testing | Node.js |
 
 ## 🚀 Quick Start
 
