@@ -347,7 +347,11 @@ function WordCard({
           </span>
         ) : (
           (phonetic || hasSpeaker) && (
-            <span className="inline-flex items-center gap-1">
+            // With no phonetic text the speaker alone has no baseline to
+            // share with the word, so it is centred on the row instead.
+            <span
+              className={`inline-flex items-center gap-1${phonetic ? '' : ' self-center'}`}
+            >
               {phonetic && (
                 <span className="text-muted-foreground text-xs">
                   {phonetic}

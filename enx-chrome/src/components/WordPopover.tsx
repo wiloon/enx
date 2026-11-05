@@ -130,7 +130,11 @@ export default function WordPopover({
             {currentWord?.English || word}
           </h3>
           {(phonetic || hasSpeaker) && (
-            <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
+            // With no phonetic text the speaker alone has no baseline to
+            // share with the heading, so it is centred on the row instead.
+            <span
+              className={`inline-flex items-center gap-1 text-sm text-muted-foreground${phonetic ? '' : ' self-center'}`}
+            >
               {phonetic}
               {hasSpeaker && (
                 <button
