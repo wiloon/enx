@@ -4,70 +4,106 @@ This document describes the E2E (End-to-End) testing setup for the ENX Chrome Ex
 
 ## Overview
 
-Playwright provides powerful browser automation capabilities that allow us to test the Chrome extension in a real browser environment. This includes testing:
+The e2e suite loads the built extension into Playwright's Chromium and drives
+it the way a user does: the popup, the options page, the content script on
+static fixture pages, the side panel, and the enx-ui website it syncs its
+session from. The design is in
+[ADR-037](../docs/architecture/adr-037-e2e-testing-with-clerk-testing-tokens.md);
+which test type to pick, and the Clerk credentials, are in
+[docs/agents/testing.md](../docs/agents/testing.md).
 
-- Popup interactions (login, buttons, state)
-- Content script functionality (word highlighting, translation)
-- Options page configuration
-- Extension lifecycle and state persistence
+There are two lanes:
+
+- **Local** (`playwright.config.ts`, `pnpm test:e2e`): loads `dist-e2e/`,
+  built by `pnpm build:e2e`, against a local stack Playwright starts itself
+  (see [Local stack](#local-stack)). New feature e2e goes here.
+- **HomeLab** (`playwright.homelab.config.ts`, `pnpm test:e2e:homelab`): loads
+  `dist-homelab-test/`, built by `pnpm build:homelab-test`, against a deployed
+  copy. Run by hand; see [HomeLab lane](#homelab-lane-run-by-hand).
 
 ## Prerequisites
 
-1. **Build the extension first**:
+From `enx-chrome/`:
 
-   ```bash
-   pnpm run build
-   # or
-   task build
-   ```
+```bash
+pnpm install
+pnpm exec playwright install chromium   # Playwright's own Chromium
+pnpm build:e2e                          # dist-e2e/
+```
 
-2. **Install Playwright browsers** (if not already done):
-   ```bash
-   npx playwright install chromium
-   ```
+The local stack also needs Go (enx-api runs with `go run`) and, for the
+signed-in specs, enx-ui's dependencies installed (`pnpm install` in
+`../enx-ui`). Rebuild `dist-e2e` after every change under `src/`: the tests
+load the build, not the sources.
+
+`E2E_CHROMIUM_PATH` points at an already-installed Chromium when Playwright's
+own build is missing. It must be Chromium; branded Chrome ignores
+`--load-extension`.
+
+## Signing in
+
+Signed-in specs sign a real user in on the Clerk **development** instance with
+`@clerk/testing`; there is no test-only auth bypass in the extension or
+enx-api. The credentials (`CLERK_SECRET_KEY`, `E2E_CLERK_USER_EMAIL`), where
+to load them from and how to keep the key out of logs are in
+[docs/agents/testing.md §E2E and Clerk sign-in](../docs/agents/testing.md#e2e-and-clerk-sign-in).
+
+```bash
+set -a; . ../enx-ui/.env.local; set +a   # CLERK_SECRET_KEY, never printed
+export E2E_CLERK_USER_EMAIL=e2e+clerk_test@example.com
+pnpm test:e2e
+```
+
+Two fixtures in `e2e/fixtures.ts` do the work (ADR-037 Decision 3):
+
+- `clerkTesting` is **worker-scoped**. It calls `clerkSetup()` once per
+  worker, which fetches a Testing Token (past the dev instance's bot
+  detection) and writes `CLERK_TESTING_TOKEN` into that worker's
+  `process.env`. It is a worker fixture rather than a setup project because
+  the variable only reaches the process that set it.
+- `signedIn` depends on `clerkTesting`. It opens enx-ui at `uiOrigin`
+  (`http://localhost:3000` locally), calls `clerk.signIn({ page, emailAddress })`
+  with a sign-in ticket, then polls the background's `validateSession` until
+  the extension has synced the session and enx-api has accepted it. Locally it
+  then seeds the fixture vocabulary for that user (`seedVocabulary` in
+  `e2e/seed.ts`). A test asks for a session by naming the fixture:
+  `async ({ page, extensionId, signedIn: _signedIn }) => …`.
+
+Every test gets a fresh temporary browser profile, so each signed-in test
+signs in again; nothing is shared through `storageState`. Specs that need a
+brand-new account use `e2e/new-user.ts` instead (see
+[Fresh-user onboarding](#fresh-user-onboarding-467)).
+
+Without `CLERK_SECRET_KEY` and `E2E_CLERK_USER_EMAIL`, the local lane skips the
+signed-in specs with `LOGIN_SKIP_REASON` (from `e2e/auth.ts`) and does not
+start enx-ui. Specs that need no sign-in still run: `options-page`,
+`billing-startup`, `product-config` and the signed-out parts of `popup-login`.
 
 ## Running Tests
 
 ### Basic Commands
 
 ```bash
-# Run all E2E tests
-pnpm run test:e2e
-# or
-task test-e2e
-
-# Run with UI mode (recommended for development)
-pnpm run test:e2e:ui
-# or
-task test-e2e-ui
-
-# Run in debug mode (step through tests)
-pnpm run test:e2e:debug
-# or
-task test-e2e-debug
-
-# Run with visible browser
-pnpm run test:e2e:headed
-# or
-task test-e2e-headed
-
-# Run all tests (unit + E2E)
-pnpm run test:all
-# or
-task test-all
+pnpm test:e2e            # all local specs, headless (task test-e2e)
+pnpm test:e2e:ui         # Playwright UI mode (task test-e2e-ui)
+pnpm test:e2e:debug      # step through with the Inspector (task test-e2e-debug)
+pnpm test:e2e:headed     # show the browser windows (task test-e2e-headed)
+pnpm test:all            # unit tests, then e2e (task test-all)
 ```
+
+None of these build the extension; run `pnpm build:e2e` first.
 
 ### Running Specific Tests
 
 ```bash
-# Run a specific test file
-npx playwright test e2e/popup-login.spec.ts
+# One spec file
+pnpm test:e2e e2e/popup-login.spec.ts
 
-# Run tests matching a pattern
-npx playwright test --grep "login"
+# Tests whose title matches a pattern
+pnpm test:e2e --grep "sign out"
 
-# Run a single test
-npx playwright test e2e/popup-login.spec.ts:10  # line 10
+# The test at one line
+pnpm test:e2e e2e/popup-login.spec.ts:9
 ```
 
 The local API, UI, fixture and Stripe adapter output is saved to
@@ -217,425 +253,243 @@ No local authentication substitute is used. AI-provider wiring remains separate
 ```
 enx-chrome/
 ├── e2e/
-│   ├── fixtures.ts                    # Custom Playwright fixtures
-│   ├── helpers.ts                     # Test helper functions
-│   ├── popup-login.spec.ts           # Popup login tests
-│   ├── content-highlighting.spec.ts   # Word highlighting tests
-│   ├── content-translation.spec.ts    # Translation popup tests
-│   └── options-page.spec.ts          # Options page tests
-├── playwright.config.ts               # Playwright configuration
-└── dist/                              # Built extension (required)
+│   ├── *.spec.ts                  # the specs (homelab-*.spec.ts: HomeLab lane only)
+│   ├── fixtures.ts                # context, extensionId, clerkTesting, signedIn
+│   ├── new-user.ts                # fixtures for a fresh Clerk user per test
+│   ├── auth.ts                    # origins, extension ID, Clerk env, LOGIN_SKIP_REASON
+│   ├── helpers.ts                 # page helpers (see below)
+│   ├── seed.ts                    # direct writes to the throwaway SQLite database
+│   ├── product-config.ts          # reads the credit terms from enx-api/config.toml
+│   ├── fake-stripe/server.mjs     # local Stripe adapter
+│   └── test-fixtures/             # static pages served on http://localhost:8765
+├── playwright.config.ts           # local lane
+├── playwright.homelab.config.ts   # HomeLab lane
+├── dist-e2e/                      # pnpm build:e2e (local lane)
+└── dist-homelab-test/             # pnpm build:homelab-test (HomeLab lane)
 ```
+
+`ls e2e/*.spec.ts` lists the specs; each one's `test.describe` title says what
+it covers. The local config ignores `homelab-*.spec.ts`.
+
+### Local stack
+
+`playwright.config.ts` starts every server the local lane needs and stops it
+afterwards. Output goes to `test-results/servers/<name>.log` (see above).
+
+| Server | Address | Notes |
+|---|---|---|
+| Fake AI (`../enx-fake-ai/server.mjs`) | `http://127.0.0.1:12113` | see [Deterministic AI](#deterministic-ai-and-trial-credits) |
+| Fake Stripe (`e2e/fake-stripe/server.mjs`) | `http://127.0.0.1:12112` | see [Local billing dependency](#local-billing-dependency) |
+| enx-api (`go run . -c config.toml`) | `http://localhost:8091` | `API_ORIGIN` in `e2e/auth.ts`, the development target's API |
+| enx-ui (`next dev`) | `http://localhost:3000` | `UI_ORIGIN`; started only when the Clerk credentials are set |
+| Fixture pages (`http-server e2e/test-fixtures`) | `http://localhost:8765` | `FIXTURE_ORIGIN`; also Playwright's `baseURL` |
+
+enx-api gets a throwaway SQLite database per run (`E2E_DB_PATH`, in a new
+temporary directory), never the developer's own. Only enx-ui is reused when
+already running, and not on CI; any other busy port fails the run instead of
+serving someone else's pages or data.
+
+`pnpm build:e2e` adds `http://localhost:8765` to the content script's matches
+(`VITE_CONTENT_SCRIPT_ORIGINS`) and `http://localhost:3000` to the enx-ui
+origins, so the content script runs on the fixture pages and the extension
+syncs its session from local enx-ui. A spec opens a fixture page with a path
+relative to `baseURL`, e.g. `page.goto('/test-page.html')`. The pages are
+`test-page.html`, `typescript-page.html`, `body-paragraphs.html` and
+`paint-window.html`.
 
 ### Key Files
 
 #### `playwright.config.ts`
 
-Main Playwright configuration:
-
-- **Test directory**: `./e2e`
-- **Browser**: Chromium only (required for Chrome extensions)
-- **Headless mode**: `false` (Chrome extensions require visible browser)
-- **Workers**: 1 (avoid conflicts when loading extension)
-- **Screenshots**: Captured on failure
-- **Videos**: Captured on first retry
+- **Test directory**: `./e2e`, ignoring `homelab-*.spec.ts`
+- **Browser**: one Chromium project, `headless: true`; `--headed` shows the
+  windows
+- **Workers**: 1, `fullyParallel: false`
+- **Retries**: 2 on CI, none locally
+- **Artifacts**: screenshot on failure, video kept on failure, trace on the
+  first retry, all in `test-results/artifacts/`
 
 #### `e2e/fixtures.ts`
 
-Custom Playwright fixtures for Chrome extension testing:
-
-```typescript
-export const test = base.extend<ExtensionFixtures>({
-  context: async ({}, use) => {
-    // Loads extension from dist/ directory
-    const pathToExtension = path.join(__dirname, '../dist')
-    const context = await chromium.launchPersistentContext('', {
-      headless: false,
-      args: [
-        `--disable-extensions-except=${pathToExtension}`,
-        `--load-extension=${pathToExtension}`,
-      ],
-    })
-    await use(context)
-  },
-  extensionId: async ({ context }, use) => {
-    // Extracts extension ID from service worker URL
-    let [background] = context.serviceWorkers()
-    if (!background) background = await context.waitForEvent('serviceworker')
-    const [, , extensionId] = background.url().split('/')
-    await use(extensionId)
-  },
-})
-```
+- `context`: launches a persistent context with a fresh temporary profile
+  per test, loading the extension from `extensionDir` (`dist-e2e` by default;
+  the HomeLab config sets `dist-homelab-test`). It throws if the build is
+  missing. It uses `channel: 'chromium'`, because headless mode only loads
+  extensions in full Chromium, not in `chromium-headless-shell`.
+- `extensionId`: read from the background service worker's URL.
+- `clerkTesting` and `signedIn`: see [Signing in](#signing-in).
 
 #### `e2e/helpers.ts`
 
-Reusable test utilities:
+- `openPopup(page, extensionId)`, `openOptions(page, extensionId)`: open the
+  popup or options page in `page`
+- `setHighlightPref(page, extensionId, enabled)`: flip the highlight
+  preference on the options page
+- `enableLearningMode(page, extensionId)`: turn on learning mode for the tab
+  showing `page`, through the popup's `chrome.tabs` access
+- `waitForContentScript(page, { emptyReviewList })`: wait until highlights are
+  painted (or, with `emptyReviewList`, until the content script's styles are in)
+- `getHighlightedWords(page)`, `getHighlightedWordsCount(page)`,
+  `getHighlightNames(page)`, `isWordHighlighted(page, text)`: read the
+  highlights from `CSS.highlights`
+- `clickHighlightedWord(page, index)`, `clickWordAndWaitForPopup(page, index)`:
+  click the nth highlighted word
+- `clickWord(page, word, paragraphSelector)`: click a word whether or not it
+  is highlighted, and return the popover
+- `mockBackendFetch(context, options)`: stub enx-api inside the service
+  worker; `reviewWordsRequests(context)` and `wordLookupPosts(context)` read
+  what it recorded
+- `aiCompletionCount(feature)`: completions the fake AI answered this run
+- `clearStorage(page)`: clear `chrome.storage.local`
 
-- `openPopup(page, extensionId)` - Navigate to popup
-- `openOptions(page, extensionId)` - Navigate to options page
-- `login(page, username, password)` - Perform login
-- `enableLearningMode(page, extensionId)` - Enable learning mode
-- `waitForContentScript(page)` - Wait for content script injection
-- `getHighlightedWordsCount(page)` - Count highlighted words
-- `clickWordAndWaitForPopup(page, wordIndex)` - Interact with words
-- `clearStorage(page)` - Clear extension storage
+### Highlights
 
-## Test Coverage
-
-### 1. Popup Login Tests (`popup-login.spec.ts`)
-
-Tests the popup UI and authentication:
-
-- ✅ Display login form when not logged in
-- ✅ Successfully login with valid credentials
-- ✅ Show error with invalid credentials
-- ✅ Remember login state after popup reopens
-
-### 2. Content Script - Word Highlighting (`content-highlighting.spec.ts`)
-
-Tests word highlighting functionality:
-
-- ✅ Highlight words on BBC News article
-- ✅ Not highlight words when learning mode is disabled
-- ✅ Add `enx-word` class to highlighted words
-- ✅ Work on different websites (Wikipedia, etc.)
-
-### 3. Content Script - Translation (`content-translation.spec.ts`)
-
-Tests translation popup:
-
-- ✅ Show translation popup when clicking highlighted word
-- ✅ Popup contains word and translation
-- ✅ Close translation popup when clicking outside
-- ✅ Show different translations for different words
-
-### 4. Options Page Tests (`options-page.spec.ts`)
-
-Tests options page functionality:
-
-- ✅ Display options page with API configuration
-- ✅ Save API URL configuration
-- ✅ Show default API URL when no custom URL is set
-- ✅ Reset to default URL
+Highlighting uses the CSS Custom Highlight API, so there are no marker
+elements or classes to select. A highlighted word is a `Range`
+registered in `CSS.highlights` under a name starting with `enx-hl-`
+(`HIGHLIGHT_NAME_PREFIX` in `e2e/helpers.ts`, kept in step with
+`src/lib/wordProcessor.ts`). Read highlights with the helpers above, and click
+a word by its on-screen coordinates (`clickHighlightedWord`, `clickWord`). The
+word popover renders in `#enx-anchored-overlay`.
 
 ## Writing New Tests
 
 ### Example Test
 
 ```typescript
-import { test, expect } from './fixtures'
-import { openPopup, login } from './helpers'
+import { loginAvailable, LOGIN_SKIP_REASON } from './auth'
+import { expect, test } from './fixtures'
+import {
+  clickWordAndWaitForPopup,
+  enableLearningMode,
+  waitForContentScript,
+} from './helpers'
 
-test.describe('My Feature', () => {
-  test('should do something', async ({ page, extensionId }) => {
-    // Open popup
-    await openPopup(page, extensionId)
+test.describe('Word popover', () => {
+  test.skip(!loginAvailable, LOGIN_SKIP_REASON)
 
-    // Perform login
-    await login(page, 'wiloon', 'haCahpro')
+  test('clicking a highlighted word opens the popover', async ({
+    page,
+    extensionId,
+    signedIn: _signedIn,
+  }) => {
+    await page.goto('/test-page.html', { waitUntil: 'domcontentloaded' })
+    await enableLearningMode(page, extensionId)
+    await waitForContentScript(page)
 
-    // Assert something
-    await expect(page.locator('text=/Welcome/')).toBeVisible()
+    await clickWordAndWaitForPopup(page, 0)
+
+    await expect(page.locator('#enx-anchored-overlay')).toBeVisible()
   })
 })
 ```
 
 ### Best Practices
 
-1. **Always build first**: E2E tests require `dist/` to exist
-2. **Use helpers**: Reuse helper functions from `helpers.ts`
-3. **Clear storage**: Use `clearStorage()` in `beforeEach` to avoid state pollution
-4. **Wait for elements**: Use `waitForSelector()` instead of `waitForTimeout()`
-5. **Use fixtures**: Access `page`, `context`, and `extensionId` from test fixtures
-6. **Descriptive names**: Use clear test descriptions
-7. **Isolate tests**: Each test should be independent
+1. **Build first**: the tests load `dist-e2e/`; rebuild after changing `src/`.
+2. **Skip at describe level**: put `test.skip(!loginAvailable, LOGIN_SKIP_REASON)`
+   on the `describe`, so `signedIn` never runs without credentials.
+3. **Use the fixture pages**: no external websites; add a page to
+   `e2e/test-fixtures/` when a test needs new markup.
+4. **Real backend by default**: signed-in specs run against the local enx-api
+   with seeded vocabulary. Use `mockBackendFetch` only for answers the local
+   stack cannot give (an expired session, a failed translation). It patches
+   `fetch` inside the service worker, because `context.route()` does not see
+   service-worker requests.
+5. **Wait on state, not time**: `expect(...).toBeVisible()`,
+   `waitForContentScript` and `expect(…).toPass()` rather than `waitForTimeout`.
+6. **Name the behaviour**: see [docs/agents/testing.md §Writing tests](../docs/agents/testing.md#writing-tests).
 
 ### Common Patterns
 
 #### Navigate to Extension Pages
 
 ```typescript
-// Popup
-await page.goto(`chrome-extension://${extensionId}/popup.html`)
-
-// Options
-await page.goto(`chrome-extension://${extensionId}/options.html`)
+await openPopup(page, extensionId)    // chrome-extension://<id>/popup.html
+await openOptions(page, extensionId)  // chrome-extension://<id>/options.html
 ```
 
 #### Interact with Content Scripts
 
 ```typescript
-// Navigate to a website
-await page.goto('https://www.bbc.com/news')
-
-// Enable learning mode
+await page.goto('/test-page.html', { waitUntil: 'domcontentloaded' })
 await enableLearningMode(page, extensionId)
-
-// Wait for content script
 await waitForContentScript(page)
 
-// Check highlighted words
-const count = await page.locator('.enx-word').count()
-expect(count).toBeGreaterThan(0)
+expect(await getHighlightedWordsCount(page)).toBeGreaterThan(0)
 ```
 
 #### Check Chrome Storage
 
 ```typescript
-// Get storage value
-const value = await page.evaluate(() => {
-  return chrome.storage.local.get('key')
-})
-
-// Clear storage
-await page.evaluate(() => {
-  return chrome.storage.local.clear()
-})
+// From an extension page (popup, options), where `chrome.storage` exists
+const value = await page.evaluate(() => chrome.storage.local.get('key'))
 ```
 
 ## Debugging Tests
 
 ### Visual Debugging
 
-Use UI mode for interactive debugging:
+`pnpm test:e2e:ui` opens Playwright's UI mode: watch a run, inspect the DOM
+at each step and re-run single tests. `pnpm test:e2e:debug` opens the
+Playwright Inspector and pauses before each action.
+
+### Artifacts
+
+A failed test leaves a screenshot and a video in `test-results/artifacts/`.
+Traces are recorded only on a retry, and local runs do not retry; add
+`--trace on` to record one, then open it:
 
 ```bash
-pnpm run test:e2e:ui
-# or
-task test-e2e-ui
-```
-
-Features:
-
-- See test execution in real-time
-- Inspect DOM at any point
-- Time-travel through test steps
-- View network requests
-- Edit and re-run tests
-
-### Debug Mode
-
-Use debug mode to step through tests:
-
-```bash
-pnpm run test:e2e:debug
-# or
-task test-e2e-debug
-```
-
-This will:
-
-- Open Playwright Inspector
-- Pause before each action
-- Allow stepping through test line by line
-- Show element selectors
-
-### Screenshots and Videos
-
-Failed tests automatically capture:
-
-- **Screenshots**: Saved to `test-results/artifacts/`
-- **Videos**: Saved to `test-results/artifacts/` (on retry)
-
-To view:
-
-```bash
-# View test results
-npx playwright show-report
-
-# Open specific test artifacts
-open test-results/artifacts/popup-login-should-display-login-form/test-failed-1.png
+pnpm test:e2e e2e/popup-login.spec.ts --trace on
+pnpm exec playwright show-trace test-results/artifacts/<test-dir>/trace.zip
 ```
 
 ## Troubleshooting
 
-### Extension Not Loading
+### `dist-e2e/ is not built`
 
-**Problem**: Tests fail because extension is not loaded
+The `context` fixture found no `dist-e2e/manifest.json`. Run `pnpm build:e2e`.
 
-**Solution**:
+### Chromium missing or the service worker never starts
 
-```bash
-# Build extension first
-pnpm run build
-# or
-task build
+Run `pnpm exec playwright install chromium`, or set `E2E_CHROMIUM_PATH` to an
+installed Chromium (not branded Chrome, which ignores `--load-extension`). A
+custom launch must keep `channel: 'chromium'`: `chromium-headless-shell`
+cannot load extensions, so the service worker never appears.
 
-# Then run tests
-pnpm run test:e2e
-```
+### A server fails to start
 
-### Service Worker Not Ready
+Read `test-results/servers/<name>.log`; the last 50 lines are also printed.
+The usual cause is a busy port (8091, 8765, 12112 or 12113): stop whatever
+holds it, since the config refuses to reuse it.
 
-**Problem**: `Cannot read properties of undefined (reading 'url')`
+### Signed-in specs are skipped
 
-**Solution**: The fixture already handles this with `waitForEvent('serviceworker')`. If it still fails:
+`CLERK_SECRET_KEY` or `E2E_CLERK_USER_EMAIL` is not set in the shell that runs
+Playwright; see [Signing in](#signing-in).
 
-```typescript
-// Wait longer for service worker
-await page.waitForTimeout(2000)
-```
+### The content script does nothing on a page
 
-### Popup Not Opening
+Serve the fixture page from `http://localhost:8765` (a path relative to
+`baseURL`). Call `enableLearningMode` before
+`waitForContentScript`. If the user's review list is empty there is nothing
+to paint; pass `{ emptyReviewList: true }` to `waitForContentScript`.
 
-**Problem**: Popup page is blank or not loading
+### Word lookups answer 503
 
-**Solution**:
-
-1. Check that popup.html exists in `dist/`
-2. Verify manifest.json has correct popup path
-3. Check browser console for errors
-
-### Content Script Not Injecting
-
-**Problem**: Words not highlighting, content script errors
-
-**Solution**:
-
-1. Check manifest.json `matches` patterns
-2. Verify content.ts is in `dist/`
-3. Use `waitForContentScript()` helper
-4. Check website CSP (Content Security Policy)
-
-### Tests Timeout
-
-**Problem**: Tests timeout waiting for elements
-
-**Solution**:
-
-1. Increase timeout: `{ timeout: 10000 }`
-2. Check element selector is correct
-3. Verify element actually appears
-4. Use `waitForLoadState('domcontentloaded')`
+ECDICT is not configured; see
+[AI word fallback and running out of credits](#ai-word-fallback-and-running-out-of-credits-471)
+for how the config finds it.
 
 ## CI/CD Integration
 
-### GitHub Actions Example
-
-```yaml
-name: E2E Tests
-
-on: [push, pull_request]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 8
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-
-      - name: Build extension
-        run: pnpm run build
-
-      - name: Run E2E tests
-        run: pnpm run test:e2e
-
-      - name: Upload test results
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-results
-          path: test-results/
-```
-
-## Performance Tips
-
-1. **Use single worker**: Chrome extensions can conflict with multiple workers
-2. **Reuse context**: The fixture automatically reuses browser context
-3. **Parallel tests**: Use `test.describe.parallel()` for independent test suites
-4. **Skip unnecessary waits**: Use `waitForSelector()` instead of `waitForTimeout()`
-5. **Build once**: Build extension before running all tests, not between tests
-
-## Local Testing with Static Pages
-
-To avoid dependency on external websites (BBC, InfoQ, etc.) and improve test reliability, we use local static HTML pages served by `http-server`:
-
-### Local Test Server
-
-- **Auto-start**: Playwright config automatically starts `http-server` on port 8080
-- **Test fixtures**: Located in `e2e/test-fixtures/`
-  - `test-page.html` - Software development article (~200 words)
-  - `typescript-page.html` - TypeScript introduction article
-- **Base URL**: `http://localhost:8080` (configured in `playwright.config.ts`)
-
-### Benefits
-
-- ✅ Faster test execution (no network latency)
-- ✅ More reliable (no external site downtime)
-- ✅ Offline testing (no internet required)
-- ✅ Consistent content (test pages don't change)
-- ✅ Easier debugging (can modify test pages locally)
-
-## Known Limitations
-
-### API-Dependent Features
-
-Some tests require a running backend API (default: `http://localhost:8090/enx/api/`):
-
-- **Translation popup tests**: Currently fail without API because word translation requires backend
-- **Word color coding**: Without API, all words show white underline (#FFFFFF)
-- **Word database lookups**: LoadCount and WordType data come from API
-
-**Current Test Results** (without API):
-
-- ✅ **12 / 16 tests passing** (75%)
-- ✅ Popup login tests: 4/4 passing
-- ✅ Options page tests: 4/4 passing
-- ✅ Content highlighting tests: 4/4 passing
-- ❌ Content translation tests: 0/4 passing (need API)
-
-### Running with Full API Support
-
-**Automatic Backend Startup** (Recommended):
-
-Playwright is configured to automatically start and stop the `enx-api` backend server:
-
-```bash
-# Just run tests - backend starts automatically
-task test-e2e
-```
-
-The backend will:
-
-- ✅ Auto-start before tests begin
-- ✅ Auto-stop after tests complete
-- ✅ Reuse existing server if already running (for faster iteration)
-
-**Manual Backend Startup** (Alternative):
-
-If you prefer to manage the backend manually:
-
-1. Start the `enx-api` backend server:
-
-   ```bash
-   cd ../enx-api
-   task run  # or task dev
-   ```
-
-2. Ensure API is accessible at `http://localhost:8090/api/version`
-
-3. Run tests:
-
-   ```bash
-   task test-e2e
-   ```
-
-**Note**: Translation and dictionary tests require `ECDICT_DB_PATH` (or `[ecdict] db_path` in `enx-api/config.toml`) pointing to a local ECDICT SQLite database. If ECDICT is not configured, the API returns HTTP 503 for word lookups that need it.
-
-With backend running and ECDICT configured, translation E2E tests can run against the local API.
+The enx-chrome CI workflow (`.github/workflows/enx-chrome-ci.yml`) runs lint,
+unit tests, typecheck and the production build, not e2e: the signed-in specs
+need the Clerk development key and a running enx-api and enx-ui. Run the
+specs your change touches locally before opening a PR. An issue that needs a
+specific or repeated run names it in an `## E2E gate` section; see
+[docs/agents/testing.md](../docs/agents/testing.md#e2e-and-clerk-sign-in).
 
 ## Resources
 
