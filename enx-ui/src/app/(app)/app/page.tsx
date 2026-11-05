@@ -7,7 +7,6 @@ import { apiService } from '@/services/api'
 import ExtensionBanner from '@/components/app/home/ExtensionBanner'
 import OnboardingChecklist from '@/components/app/home/OnboardingChecklist'
 import PlanCard from '@/components/app/home/PlanCard'
-import QuickTiles from '@/components/app/home/QuickTiles'
 import StatStrip from '@/components/app/home/StatStrip'
 import PageHeader from '@/components/app/PageHeader'
 
@@ -65,8 +64,12 @@ export default function AppHome() {
         </div>
       )}
 
-      <QuickTiles />
-      <ExtensionBanner status={extensionStatus} />
+      {/* The onboarding card is the only prominent block in its form; its
+          first step is the install (ADR-027). Held while loading so the
+          banner doesn't flash before the card. */}
+      {!isLoading && !showOnboarding && (
+        <ExtensionBanner status={extensionStatus} />
+      )}
     </div>
   )
 }

@@ -20,11 +20,6 @@ export const RECOMMENDED_SITES: RecommendedSite[] = [
     description: 'AI research and product news',
   },
   {
-    name: 'BBC News',
-    url: 'https://www.bbc.com/news',
-    description: 'World news',
-  },
-  {
     name: 'The Guardian',
     url: 'https://www.theguardian.com/international',
     description: 'News and long reads',
@@ -40,8 +35,10 @@ export const RECOMMENDED_SITES: RecommendedSite[] = [
     description: 'News and stories',
   },
   {
-    name: 'Wikipedia',
-    url: 'https://en.wikipedia.org/wiki/Special:Random',
-    description: 'A random encyclopedia article',
+    // The home page is a catalogue; this is where reading happens.
+    name: 'Standard Ebooks',
+    url: 'https://standardebooks.org/ebooks/jane-austen/pride-and-prejudice/text/chapter-1',
+    description:
+      'Free public-domain classics, starting with Pride and Prejudice',
   },
 ]

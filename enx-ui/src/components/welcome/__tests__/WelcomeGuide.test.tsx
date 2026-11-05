@@ -358,11 +358,30 @@ it('shows a returning user who opens /welcome the finished page with recommended
   expect(
     await screen.findByRole('heading', { name: "You're all set" })
   ).toBeInTheDocument()
-  expect(screen.getByRole('link', { name: /Wikipedia/ })).toHaveAttribute(
+  expect(screen.getByRole('link', { name: /Standard Ebooks/ })).toHaveAttribute(
     'target',
     '_blank'
   )
   expect(screen.queryByText('Pin the Catglish icon')).not.toBeInTheDocument()
+})
+
+it('recommends Standard Ebooks, not BBC News or Wikipedia, once finished', async () => {
+  signedIn()
+  installExtension({ isOnToolbar: true })
+  mockOverview.mockResolvedValue(overview(12))
+  renderGuide(false)
+
+  await screen.findByRole('heading', { name: "You're all set" })
+  expect(screen.getByRole('link', { name: /Standard Ebooks/ })).toHaveAttribute(
+    'href',
+    expect.stringMatching(/^https:\/\/standardebooks\.org\//)
+  )
+  expect(
+    screen.queryByRole('link', { name: /BBC News/ })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('link', { name: /Wikipedia/ })
+  ).not.toBeInTheDocument()
 })
 
 it('sends a returning user who just installed straight to /app', async () => {
