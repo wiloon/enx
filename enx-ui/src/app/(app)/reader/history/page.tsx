@@ -77,7 +77,7 @@ export default function ReaderHistoryPage() {
           )}
 
           {error && (
-            <div className="text-center py-8 text-red-600">
+            <div className="text-center py-8 text-destructive">
               {error instanceof Error
                 ? error.message
                 : 'Failed to load documents'}
@@ -85,7 +85,7 @@ export default function ReaderHistoryPage() {
           )}
 
           {actionError && (
-            <div className="text-sm text-red-600">{actionError}</div>
+            <div className="text-sm text-destructive">{actionError}</div>
           )}
 
           {data && data.length === 0 && (
