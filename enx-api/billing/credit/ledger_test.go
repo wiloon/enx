@@ -101,6 +101,32 @@ func TestConsumeConcurrentIdempotentGrantsExactlyOnce(t *testing.T) {
 	}
 }
 
+// A Stripe grant without its event id could not be deduplicated, and a
+// non-positive amount is a misconfigured price; both must fail loudly so
+// Stripe retries and an operator notices, and neither may touch the ledger.
+func TestStripeGrantsRejectAMissingEventIDOrNonPositiveAmount(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
+	periodEnd := time.Now().Add(30 * 24 * time.Hour)
+
+	for name, grant := range map[string]func() error{
+		"subscription without event id": func() error { return GrantSubscription(ctx, userID, 30, periodEnd, "", "pi_1") },
+		"subscription of zero":          func() error { return GrantSubscription(ctx, userID, 0, periodEnd, "evt-sub-0", "pi_1") },
+		"negative subscription":         func() error { return GrantSubscription(ctx, userID, -5, periodEnd, "evt-sub-neg", "pi_1") },
+		"top-up without event id":       func() error { return GrantTopup(ctx, userID, 30, "", "pi_2") },
+		"top-up of zero":                func() error { return GrantTopup(ctx, userID, 0, "evt-topup-0", "pi_2") },
+		"negative top-up":               func() error { return GrantTopup(ctx, userID, -5, "evt-topup-neg", "pi_2") },
+	} {
+		if err := grant(); err == nil {
+			t.Errorf("%s: succeeded, want an error", name)
+		}
+	}
+	if n := countCreditAccounts(t, userID); n != 0 {
+		t.Fatalf("credit_accounts rows = %d, want none created", n)
+	}
+}
+
 func mustGrantSubscription(t *testing.T, userID string, subAmount, topupAmount int64) {
 	t.Helper()
 	ctx := context.Background()

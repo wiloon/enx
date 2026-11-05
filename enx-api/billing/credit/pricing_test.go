@@ -46,3 +46,13 @@ func TestTokenPricingCost(t *testing.T) {
 		})
 	}
 }
+
+// An unpriced feature must never divide by zero or come out free.
+func TestTokenPricingCostWithoutADivisorIsOne(t *testing.T) {
+	for _, divisor := range []int64{0, -1} {
+		p := TokenPricing{WeightIn: 1, WeightOut: 3, Divisor: divisor}
+		if got := p.Cost(600, 900); got != 1 {
+			t.Errorf("Cost with divisor %d = %d, want 1", divisor, got)
+		}
+	}
+}
