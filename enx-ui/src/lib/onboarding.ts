@@ -36,7 +36,8 @@ export interface OnboardingProgress {
   complete: boolean
 }
 
-// The only copy of the step titles (ADR-047 Decision 6).
+// The only copy of the step titles (ADR-047 Decision 6), as /welcome words
+// them; Home overrides some below.
 export const ONBOARDING_STEP_TITLES: Record<OnboardingStepId, string> = {
   install: `Add ${SITE.name} to Chrome`,
   'sign-in': 'Sign in',
@@ -44,6 +45,17 @@ export const ONBOARDING_STEP_TITLES: Record<OnboardingStepId, string> = {
   enable: `Click the ${SITE.name} icon in your toolbar, then Read with ${SITE.name}`,
   'look-up': 'Click any word in the article',
 }
+
+// Home has no toolbar step to point at and no article on the page; its
+// steps say what happens on /welcome, where the card's button leads.
+const HOME_STEP_TITLES: Partial<Record<OnboardingStepId, string>> = {
+  enable: `Turn on ${SITE.name} for the article`,
+  'look-up': "Click any word you don't know",
+}
+
+const stepTitle = (id: OnboardingStepId, view: OnboardingView): string =>
+  (view === 'home' ? HOME_STEP_TITLES[id] : undefined) ??
+  ONBOARDING_STEP_TITLES[id]
 
 const stepStatus = (done: boolean, skipped = false): OnboardingStepStatus =>
   done ? 'done' : skipped ? 'skipped' : 'todo'
@@ -99,7 +111,7 @@ export function onboardingSteps(
     .map(([id, s]) => ({
       id,
       status: s,
-      title: ONBOARDING_STEP_TITLES[id],
+      title: stepTitle(id, view),
     }))
   const current = steps.find((step) => step.status === 'todo')?.id ?? null
   return { steps, current, complete: onboardingComplete(state) }

@@ -173,3 +173,27 @@ describe('the steps each screen shows', () => {
     )
   })
 })
+
+describe('step titles per screen (Decision 6)', () => {
+  const titles = (steps: { id: string; title: string }[]) =>
+    Object.fromEntries(steps.map((s) => [s.id, s.title]))
+
+  it('words the Home steps without a toolbar or an article on the page', () => {
+    expect(titles(homeChecklistSteps(false))).toEqual({
+      install: 'Add Catglish to Chrome',
+      enable: 'Turn on Catglish for the article',
+      'look-up': "Click any word you don't know",
+    })
+  })
+
+  it('keeps the toolbar instruction and the article on /welcome', () => {
+    const full = titles(
+      onboardingSteps({ ...fresh, installed: true, signedIn: true }, 'full')
+        .steps
+    )
+    expect(full.enable).toBe(
+      'Click the Catglish icon in your toolbar, then Read with Catglish'
+    )
+    expect(full['look-up']).toBe('Click any word in the article')
+  })
+})

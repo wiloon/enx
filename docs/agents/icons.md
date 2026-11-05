@@ -8,13 +8,13 @@ Before placing an icon, find its concept below and use that row's icon. A concep
 
 | Concept | enx-chrome (heroicons) | enx-ui (lucide) | Where |
 | --- | --- | --- | --- |
-| Look up a word or phrase | `MagnifyingGlassIcon` | `Search` | Word Lookup nav and tile; Side Panel phrase-lookup button |
+| Look up a word or phrase | `MagnifyingGlassIcon` | `Search` | Word Lookup nav; Side Panel phrase-lookup button |
 | Lookup count (review progress, ADR-011) | `ArrowPathRoundedSquareIcon` + bare number | `Repeat` + bare number | word popover, Side Panel card, Word List. Title and screen-reader text: "Looked up N times" |
-| AI does this | `SparklesIcon` | `Sparkles` | "Look up with AI", AI badge; Rephrase nav and tile |
+| AI does this | `SparklesIcon` | `Sparkles` | "Look up with AI", AI badge; Rephrase nav |
 | Turn Catglish on for this page (learning mode) | `CursorArrowRaysIcon` | `MousePointerClick` | popup "Read with Catglish" |
 | Word highlight (underlines) | `UnderlineIcon` | `Underline` | popup "Highlight looked-up words" toggle |
 | External dictionary (Youdao) | `BookOpenIcon` | `BookOpen` | word popover "Youdao" button |
-| Reader (pasted text, a document) | `DocumentTextIcon` | `FileText` | Reader nav and tile, Reader document rows |
+| Reader (pasted text, a document) | `DocumentTextIcon` | `FileText` | Reader nav, Reader document rows |
 | Word List | — | `BookText` | Word List nav |
 | Pronunciation | `SpeakerWaveIcon` | `Volume2` | word popover, Side Panel card, Word Lookup |
 | Translate the sentence in the Side Panel | `SidePanelTranslateIcon` (custom) | — | word popover, selection hint |
@@ -22,7 +22,7 @@ Before placing an icon, find its concept below and use that row's icon. A concep
 | Saved page | `BookmarkIcon` (outline = not saved, solid = saved) | `Bookmark` | popup Save card, Saved Pages |
 | Reading stats | `ChartBarIcon` | `BarChart3` | Reading Stats nav |
 | Done, on, known | `CheckIcon` / `CheckCircleIcon` (status) | `Check` | "Catglish is on", Mark as known, onboarding steps |
-| A step still to do | — | `Circle` | onboarding steps on `/welcome` and Home |
+| A step still to do | — | `Circle` | onboarding steps on `/welcome` (Home numbers its steps instead) |
 | A step the user skipped | — | `CircleSlash` | "Pin the Catglish icon" on `/welcome` after Skip |
 | Back to learning | `ArrowUturnLeftIcon` | `Undo2` | Mark as learning |
 | Delete something kept (server data) | `TrashIcon` | `Trash2` | Remove from Word List, delete a saved page or document |
@@ -31,8 +31,8 @@ Before placing an icon, find its concept below and use that row's icon. A concep
 | Private to you | `ShieldCheckIcon` | `ShieldCheck` | Reader's "Only you can see it" note |
 | A website | `GlobeAltIcon` | `Globe` | popup "Always enable on this site"; "Back to site" nav |
 | Opens in a new tab | `ArrowTopRightOnSquareIcon` | `ExternalLink` | popup header link to the site; popup "Set a shortcut" |
-| Next step, go on | `ArrowRightIcon` | `ArrowRight` | sign-in button |
-| Row leads somewhere | `ChevronRightIcon` | `ChevronRight` | popup "Open side panel", Home tiles |
+| Next step, go on | `ArrowRightIcon` | `ArrowRight` | sign-in button; Home "Start with a sample article" |
+| Row leads somewhere | `ChevronRightIcon` | `ChevronRight` | popup "Open side panel", Home stat strip and plan card |
 | The extension itself | `PuzzlePieceIcon` | `Puzzle` | Reader's "needs the extension" notice |
 | Settings | `Cog6ToothIcon` | `Settings` | popup header, Settings nav |
 | Billing | `CreditCardIcon` | `CreditCard` | account menu "Billing" |

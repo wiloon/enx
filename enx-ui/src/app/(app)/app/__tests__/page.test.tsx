@@ -1,8 +1,9 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import AppHome from '../page'
 import { apiService } from '@/services/api'
 import { useExtensionStatus } from '@/hooks/useExtensionStatus'
+import { setRuntimeEnv } from '@/test/runtimeEnv'
 
 jest.mock('@/services/api', () => ({
   apiService: {
@@ -71,6 +72,7 @@ function renderPage() {
 
 beforeEach(() => {
   jest.clearAllMocks()
+  setRuntimeEnv({})
   mockExtensionStatus.mockReturnValue('installed')
   mockBilling.mockResolvedValue({
     success: true,
@@ -86,42 +88,151 @@ beforeEach(() => {
   })
 })
 
-// ADR-047 Decision 6: the same steps as /welcome, each leading there.
-it('walks a user with no data through the onboarding steps on /welcome', async () => {
+const STORE_URL = 'https://chromewebstore.google.com/detail/catglish'
+const CARD_HEADING = 'Try Catglish in 1 minute'
+const FEATURE_LINKS = ['Word Lookup', 'Rephrase', 'Reader']
+
+const expectNoFeatureLinks = () => {
+  for (const name of FEATURE_LINKS) {
+    expect(screen.queryByRole('link', { name })).not.toBeInTheDocument()
+  }
+}
+
+// Lets a resolved overview render before asserting on what is absent.
+const settle = () =>
+  act(() => new Promise((resolve) => setTimeout(resolve, 20)))
+
+// ADR-047 Decision 6, as revised by #624: plain-text steps and one button
+// to /welcome, where the steps are done.
+it('shows a user with no data a two-step card leading to /welcome', async () => {
   mockOverview.mockResolvedValue(overview())
 
   renderPage()
 
-  expect(await screen.findByText('Get started')).toBeInTheDocument()
-  expect(screen.queryByText('Add Catglish to Chrome')).not.toBeInTheDocument()
+  expect(await screen.findByText('0 of 2')).toBeInTheDocument()
+  const items = within(screen.getByRole('list')).getAllByRole('listitem')
+  expect(items.map((li) => li.textContent)).toEqual([
+    '1Turn on Catglish for the article',
+    "2Click any word you don't know",
+  ])
   expect(
-    screen.getByRole('link', { name: 'Click any word in the article' })
-  ).toHaveAttribute('href', '/welcome')
+    within(screen.getByRole('list')).queryByRole('link')
+  ).not.toBeInTheDocument()
+  const toWelcome = screen
+    .getAllByRole('link')
+    .filter((a) => a.getAttribute('href') === '/welcome')
+  expect(toWelcome).toHaveLength(1)
+  expect(toWelcome[0]).toHaveAccessibleName(/^Start with a sample article/)
   expect(screen.queryByText('Today')).not.toBeInTheDocument()
 })
 
-it('starts the checklist with installing when the extension is missing', async () => {
+it('says what the onboarding card gets the user', async () => {
+  mockOverview.mockResolvedValue(overview())
+
+  renderPage()
+
+  expect(await screen.findByText(CARD_HEADING)).toBeInTheDocument()
+  expect(
+    screen.getByText('Read a short sample article and look up your first word.')
+  ).toBeInTheDocument()
+})
+
+it('numbers the steps in an ordered list', async () => {
   mockOverview.mockResolvedValue(overview())
   mockExtensionStatus.mockReturnValue('not-installed')
 
   renderPage()
 
-  expect(
-    await screen.findByRole('link', { name: 'Add Catglish to Chrome' })
-  ).toHaveAttribute('href', '/welcome')
+  const list = await screen.findByRole('list')
+  expect(list.tagName).toBe('OL')
+  within(list)
+    .getAllByRole('listitem')
+    .forEach((item, i) => expect(item).toHaveTextContent(String(i + 1)))
 })
 
-it('holds the checklist until the extension check has answered', async () => {
+it('puts installing first on the card, with no install banner, when the extension is missing', async () => {
+  setRuntimeEnv({ ENX_EXTENSION_WEB_STORE_URL: STORE_URL })
+  mockOverview.mockResolvedValue(overview())
+  mockExtensionStatus.mockReturnValue('not-installed')
+
+  renderPage()
+
+  expect(await screen.findByText('0 of 3')).toBeInTheDocument()
+  const items = within(screen.getByRole('list')).getAllByRole('listitem')
+  expect(items[0]).toHaveTextContent('Add Catglish to Chrome')
+  expect(
+    screen
+      .getAllByRole('link')
+      .filter((a) => a.getAttribute('href') === '/welcome')
+  ).toHaveLength(1)
+  expect(
+    screen.queryByRole('link', { name: 'Add to Chrome' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Add to Chrome' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByText(/Add Catglish to Chrome to look up words/)
+  ).not.toBeInTheDocument()
+})
+
+it('holds the card and the banner until the extension check has answered', async () => {
   mockOverview.mockResolvedValue(overview())
   mockExtensionStatus.mockReturnValue('unknown')
 
   renderPage()
 
   await waitFor(() => expect(mockOverview).toHaveBeenCalled())
-  // Inside act, so the overview's arrival renders before the assertions.
-  await act(() => new Promise((resolve) => setTimeout(resolve, 20)))
-  expect(screen.queryByText('Get started')).not.toBeInTheDocument()
+  await settle()
+  expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
+  expect(screen.queryByText(CARD_HEADING)).not.toBeInTheDocument()
+  expect(screen.queryByText(/extension connected/)).not.toBeInTheDocument()
   expect(screen.queryByText('Today')).not.toBeInTheDocument()
+})
+
+it('does not say the extension is connected while the onboarding card shows', async () => {
+  mockOverview.mockResolvedValue(overview())
+
+  renderPage()
+
+  expect(await screen.findByText(CARD_HEADING)).toBeInTheDocument()
+  expect(
+    screen.queryByText('Catglish extension connected')
+  ).not.toBeInTheDocument()
+})
+
+it('keeps the install banner hidden while the overview loads', async () => {
+  setRuntimeEnv({ ENX_EXTENSION_WEB_STORE_URL: STORE_URL })
+  mockOverview.mockReturnValue(new Promise(() => {}))
+  mockExtensionStatus.mockReturnValue('not-installed')
+
+  renderPage()
+
+  await waitFor(() => expect(mockOverview).toHaveBeenCalled())
+  await settle()
+  expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
+  expect(
+    screen.queryByRole('link', { name: 'Add to Chrome' })
+  ).not.toBeInTheDocument()
+  expect(screen.queryByText(CARD_HEADING)).not.toBeInTheDocument()
+})
+
+it('shows no feature links to a user with no data', async () => {
+  mockOverview.mockResolvedValue(overview())
+
+  renderPage()
+
+  expect(await screen.findByText(CARD_HEADING)).toBeInTheDocument()
+  expectNoFeatureLinks()
+})
+
+it('shows no feature links to a returning user (the sidebar has them)', async () => {
+  mockOverview.mockResolvedValue(overview({ vocab: { total: 5, mastered: 0 } }))
+
+  renderPage()
+
+  expect(await screen.findByText('Today')).toBeInTheDocument()
+  expectNoFeatureLinks()
 })
 
 it('leads a returning user with their own numbers, not a document list', async () => {
@@ -141,7 +252,7 @@ it('leads a returning user with their own numbers, not a document list', async (
   expect(screen.getByText('1,200')).toBeInTheDocument()
   expect(screen.getByText('14')).toBeInTheDocument()
   expect(screen.getByText('312')).toBeInTheDocument()
-  expect(screen.queryByText('Get started')).not.toBeInTheDocument()
+  expect(screen.queryByText(CARD_HEADING)).not.toBeInTheDocument()
   expect(screen.queryByText('Continue reading')).not.toBeInTheDocument()
 })
 
@@ -152,20 +263,6 @@ it('links the status strip to the full stats page', async () => {
 
   const strip = await screen.findByRole('link', { name: /Today/ })
   expect(strip).toHaveAttribute('href', '/stats')
-})
-
-it('renders feature entries as links, not buttons (ADR-027 decision 2)', async () => {
-  mockOverview.mockResolvedValue(overview())
-
-  renderPage()
-
-  for (const label of ['Word Lookup', 'Rephrase', 'Reader']) {
-    const tile = await screen.findByRole('link', { name: label })
-    expect(tile.tagName).toBe('A')
-  }
-  expect(
-    screen.queryByRole('button', { name: /Go to/ })
-  ).not.toBeInTheDocument()
 })
 
 it('hides the plan card when billing fails instead of taking the page down', async () => {
@@ -181,28 +278,30 @@ it('hides the plan card when billing fails instead of taking the page down', asy
 })
 
 it('keeps a stats failure from blanking the rest of Home', async () => {
+  setRuntimeEnv({ ENX_EXTENSION_WEB_STORE_URL: STORE_URL })
   mockOverview.mockResolvedValue({ success: false, error: 'boom' })
+  mockExtensionStatus.mockReturnValue('not-installed')
 
   renderPage()
 
   // No strip, no onboarding (which would be wrong -- we don't know whether
   // this user is new), but the rest of the page still works.
   expect(
-    await screen.findByRole('link', { name: 'Reader' })
-  ).toBeInTheDocument()
-  await waitFor(() =>
-    expect(screen.queryByText('Get started')).not.toBeInTheDocument()
-  )
+    await screen.findByRole('link', { name: 'Add to Chrome' })
+  ).toHaveAttribute('href', STORE_URL)
+  expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
+  expect(screen.queryByText(CARD_HEADING)).not.toBeInTheDocument()
   expect(screen.queryByText('Today')).not.toBeInTheDocument()
 })
 
-it('offers the install banner only when the extension is missing', async () => {
-  mockOverview.mockResolvedValue(overview())
+it('offers a returning user without the extension the install banner', async () => {
+  setRuntimeEnv({ ENX_EXTENSION_WEB_STORE_URL: STORE_URL })
+  mockOverview.mockResolvedValue(overview({ vocab: { total: 5, mastered: 0 } }))
   mockExtensionStatus.mockReturnValue('not-installed')
 
   renderPage()
 
   expect(
-    await screen.findByText(/Add Catglish to Chrome to look up words/)
-  ).toBeInTheDocument()
+    await screen.findByRole('link', { name: 'Add to Chrome' })
+  ).toHaveAttribute('href', STORE_URL)
 })
