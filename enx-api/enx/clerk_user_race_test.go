@@ -270,6 +270,38 @@ func TestGetOrCreateClerkUser_FailedHookSkipsTheAfterCommitCallback(t *testing.T
 	}
 }
 
+// committingHook returns an after-commit callback that counts the users rows
+// it can see from outside the provisioning transaction.
+type committingHook struct {
+	t       *testing.T
+	called  bool
+	visible int64
+}
+
+func (h *committingHook) NewUser(_ context.Context, _ *gorm.DB, _, _ string) (func(), error) {
+	return func() {
+		h.called = true
+		h.visible = countUsers(h.t)
+	}, nil
+}
+
+func TestGetOrCreateClerkUser_CommittedUserRunsTheAfterCommitCallback(t *testing.T) {
+	newProductionUserDB(t)
+	hook := &committingHook{t: t}
+	withNewUserHook(t, hook)
+
+	got, err := GetOrCreateClerkUser("user_commits", ClerkProfile{Email: "ok@example.com"}, time.Hour)
+	if err != nil || got == nil {
+		t.Fatalf("got user %+v, err %v; want the user and no error", got, err)
+	}
+	if !hook.called {
+		t.Fatal("after-commit callback did not run")
+	}
+	if hook.visible != 1 {
+		t.Fatalf("callback saw %d users rows, want the committed user", hook.visible)
+	}
+}
+
 func TestGetOrCreateClerkUser_LostInsertWithAFailedReReadKeepsTheCause(t *testing.T) {
 	db := newProductionUserDB(t)
 	insertWinnerBeforeCreate(t, db, racingWinner{id: "winner-id", clerkUserID: "user_race", email: "winner@example.com", status: "active"})

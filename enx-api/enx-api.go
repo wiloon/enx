@@ -39,7 +39,6 @@ import (
 	"enx-api/userstats"
 	"enx-api/utils"
 	"enx-api/utils/logger"
-	wordCount "enx-api/word"
 	"enx-api/wordlist"
 	"errors"
 	"flag"
@@ -503,7 +502,6 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 		apiGroup.POST("/translate/word-in-context", sentenceHandler.TranslateWordInContext)
 		apiGroup.POST("/translate/sentence-with-word", sentenceHandler.TranslateSentenceWithWord)
 		apiGroup.POST("/rephrase", rephraseHandler.Rephrase)
-		apiGroup.GET("/load-count", wordCount.LoadCount)
 	}
 
 	// /api/me — requires authentication (Clerk session JWT)

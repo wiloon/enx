@@ -211,7 +211,13 @@ func seedDependents(t *testing.T, db *gorm.DB, ids []any) {
 
 func newFixture(t *testing.T, ddl []string) (string, *gorm.DB) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "enx.db")
+	// SQLite reports the main file with symlinks resolved (macOS: /var ->
+	// /private/var), so the returned path must be resolved too.
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "enx.db")
 	db := openFixture(t, path, "")
 	execAll(t, db, ddl...)
 	execAll(t, db, usersFixtureDependents...)

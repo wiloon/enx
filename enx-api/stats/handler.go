@@ -205,8 +205,3 @@ func TZOffsetMiddleware() gin.HandlerFunc {
 		c.Next()
 	}
 }
-
-// LocalDateFromContext is the caller's current local date.
-func LocalDateFromContext(ctx context.Context, now time.Time) string {
-	return LocalDateFor(now, OffsetFromContext(ctx))
-}

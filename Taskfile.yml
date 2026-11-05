@@ -546,7 +546,7 @@ tasks:
       - bash .github/scripts/ci-changed.sh "$CI_BASE"
 
   ci:api:
-    desc: "Mirror .github/workflows/enx-api-ci.yml (vet, vet with integration tag, test, golangci-lint with default then integration tags)"
+    desc: "Mirror .github/workflows/enx-api-ci.yml (vet, vet with integration tag, test with integration tag, golangci-lint with default then integration tags)"
     # Mirrors .github/workflows/enx-api-ci.yml (lint and test jobs). A check
     # added to one side must be added to the other. The workflow's "ko image
     # build" job (enx-api/build/docker-build.sh) is CI-only: it needs Docker
@@ -556,7 +556,7 @@ tasks:
     cmds:
       - go vet ./...
       - go vet -tags=integration ./...
-      - go test ./...
+      - go test -tags=integration ./...
       # enx-api's lint task runs golangci-lint at CI's version, default tags
       # first and then --build-tags=integration.
       - task lint

@@ -66,14 +66,33 @@ func TestGrantReferralBonusIsIdempotentPerInvitee(t *testing.T) {
 	mustGrantTrial(t, userID, 100, 7*24*time.Hour)
 	bonus := ReferralBonus{Amount: 100, ExpiresAt: time.Now().Add(14 * 24 * time.Hour)}
 
-	if _, err := GrantReferralBonus(ctx, userID, bonus); err != nil {
+	first, err := GrantReferralBonus(ctx, userID, bonus)
+	if err != nil {
 		t.Fatalf("GrantReferralBonus: %v", err)
 	}
-	if _, err := GrantReferralBonus(ctx, userID, bonus); err != nil {
+	bonus.ExpiresAt = bonus.ExpiresAt.Add(30 * 24 * time.Hour)
+	replayed, err := GrantReferralBonus(ctx, userID, bonus)
+	if err != nil {
 		t.Fatalf("replayed GrantReferralBonus: %v", err)
 	}
 	if acc := loadAccount(t, userID); acc.TrialBalance != 200 {
 		t.Fatalf("trial = %d, want 200 (a replay grants nothing)", acc.TrialBalance)
+	}
+	if !replayed.Equal(first) {
+		t.Fatalf("replay reports expiry %v, want the stored %v", replayed, first)
+	}
+}
+
+func TestGrantReferralBonusRejectsANonPositiveAmount(t *testing.T) {
+	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
+	for _, amount := range []int64{0, -100} {
+		if _, err := GrantReferralBonus(context.Background(), userID, ReferralBonus{Amount: amount, ExpiresAt: time.Now()}); err == nil {
+			t.Errorf("GrantReferralBonus(%d) succeeded, want an error", amount)
+		}
+	}
+	if n := countCreditAccounts(t, userID); n != 0 {
+		t.Fatalf("credit_accounts rows = %d, want none created", n)
 	}
 }
 
@@ -208,6 +227,18 @@ func TestGrantReferralRewardAddsToTopupWithoutAPaymentIntent(t *testing.T) {
 func TestGrantReferralRewardRejectsANonPositiveAmount(t *testing.T) {
 	if err := GrantReferralReward(context.Background(), "u-"+t.Name(), 0, "referral-reward:x"); err == nil {
 		t.Fatal("GrantReferralReward(0) succeeded, want an error")
+	}
+}
+
+// Without a key a replayed invitee payment could reward the referrer twice.
+func TestGrantReferralRewardRequiresAKey(t *testing.T) {
+	userID := "u-" + t.Name()
+	seedUser(t, userID)
+	if err := GrantReferralReward(context.Background(), userID, 300, ""); err == nil {
+		t.Fatal("GrantReferralReward without a key succeeded, want an error")
+	}
+	if n := countReferralRewards(t, userID); n != 0 {
+		t.Fatalf("GRANT_REFERRAL_REWARD rows = %d, want none", n)
 	}
 }
 

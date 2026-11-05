@@ -174,7 +174,7 @@ tasks:
       - go test ./...
 
   test-integration:
-    desc: Run unit tests + integration tests across all packages (requires database and config)
+    desc: Run unit tests + integration tests across all packages (what CI runs)
     cmds:
       - go test -tags=integration ./...
 
