@@ -1,6 +1,8 @@
 // ENX Content Script for word identification and translation
 // Note: Sentry initialization is skipped to avoid import issues in content script context
 
+import { createAccountScope } from '@/lib/accountSession'
+
 import { createRoot, type Root } from 'react-dom/client'
 import { Provider } from 'jotai'
 import { autoUpdate } from '@floating-ui/dom'
@@ -167,6 +169,7 @@ const sendToBackground = (
 
 // ADR-069 Decision 1: the user's review list fills wordCache once per page;
 // every rebuild, off/on and re-enable reuses a successful load.
+const accountScope = createAccountScope()
 const reviewList = createReviewList({
   send: () => sendToBackground({ type: 'getReviewWords' }),
   sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
@@ -346,6 +349,7 @@ const createAnchoredOverlay = (
 const showWordPopover = async (word: string, reference: Range) => {
   if (!word || word.trim() === '') return
 
+  const isCurrentAccount = accountScope.capture()
   console.log('Showing overlay for word:', word)
 
   // Remove existing overlay
@@ -498,6 +502,9 @@ const showWordPopover = async (word: string, reference: Range) => {
     })
 
     console.log('Translation response:', response)
+    // An old account's response must not fill the new account's cache or
+    // record a lookup for it. Closing a popup in the same account still counts.
+    if (!isCurrentAccount()) return
 
     if (response.success && response.ecp) {
       // The raw ECDICT phonetic field is kept as-is here; formatPhonetic()
@@ -1643,8 +1650,16 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       })
       break
 
+    case 'accountChanged':
+      accountScope.clear()
+      reviewList.clear()
+      disableEnx()
+      sendResponse({ success: true })
+      break
+
     case 'sessionExpired':
       console.log('Session expired notification received')
+      accountScope.clear()
       // The next account must not see this one's words (ADR-069).
       reviewList.clear()
       showSessionExpiredMessage()

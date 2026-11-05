@@ -1,6 +1,7 @@
 // ENX Background Script - Handles API communication and message routing
 // Note: Sentry initialization is skipped in service worker context to avoid import issues
 
+import { createAccountSession } from '@/lib/accountSession'
 import { createClerkClient } from '@clerk/chrome-extension/client'
 import { config } from '@/config/env'
 import { LatestPageWordLookup, PendingSentenceContext, WordData } from '@/types'
@@ -53,6 +54,7 @@ const sleep = (ms: number): Promise<void> =>
 // client (synced from the website via `syncHost`) and mints a fresh, short-
 // lived session JWT for every API call via `session.getToken()`.
 type ClerkClient = Awaited<ReturnType<typeof createClerkClient>>
+let clerkGeneration = 0
 let clerkClientPromise: Promise<ClerkClient> | null = null
 
 const getClerk = (): Promise<ClerkClient> => {
@@ -70,8 +72,8 @@ const getClerk = (): Promise<ClerkClient> => {
 // jest.resetAllMocks(), so a suite that needs a clean signed-in / signed-out
 // starting point must flush it explicitly.
 export const __resetClerkClientCacheForTests = (): void => {
-  clerkClientPromise = null
-  syncedClerkInFlight = null
+  resetClerkSession()
+  accountSession = makeAccountSession()
 }
 
 // Mitigation for a false "session expired": homelab still runs Clerk's
@@ -104,17 +106,42 @@ const SESSION_SYNC_RETRY_DELAYS_MS =
 // user signs in) gets a fresh attempt instead of a pinned "signed out".
 let syncedClerkInFlight: Promise<ClerkClient> | null = null
 
+const resetClerkSession = () => {
+  clerkGeneration++
+  clerkClientPromise = null
+  syncedClerkInFlight = null
+}
+
 const getSyncedClerk = (): Promise<ClerkClient> => {
   if (!syncedClerkInFlight) {
-    syncedClerkInFlight = syncClerk().finally(() => {
-      syncedClerkInFlight = null
-    })
+    const requested = clerkGeneration
+    const current = syncClerk()
+      .then(async clerk => {
+        if (requested !== clerkGeneration) throw new Error('Session changed')
+        await accountSession.observe(clerk.user?.id ?? null)
+        if (requested !== clerkGeneration) throw new Error('Session changed')
+        return clerk
+      })
+      .catch(error => {
+        // Cookie refreshes can supersede a check without changing accounts.
+        // Join the latest check; the request's account scope decides whether
+        // its eventual identity is still safe for the original caller.
+        if (error instanceof Error && error.message === 'Session changed')
+          return getSyncedClerk()
+        throw error
+      })
+      .finally(() => {
+        if (syncedClerkInFlight === current) syncedClerkInFlight = null
+      })
+    syncedClerkInFlight = current
   }
   return syncedClerkInFlight
 }
 
 const syncClerk = async (): Promise<ClerkClient> => {
+  const requested = clerkGeneration
   let clerk = await getClerk()
+  if (requested !== clerkGeneration) throw new Error('Session changed')
   if (clerk.session) return clerk
 
   for (
@@ -123,8 +150,10 @@ const syncClerk = async (): Promise<ClerkClient> => {
     attempt++
   ) {
     await sleep(SESSION_SYNC_RETRY_DELAYS_MS[attempt - 1])
+    if (requested !== clerkGeneration) throw new Error('Session changed')
     clerkClientPromise = null
     clerk = await getClerk()
+    if (requested !== clerkGeneration) throw new Error('Session changed')
     if (clerk.session) {
       swlog(
         `clerk session recovered on retry ${attempt} ` +
@@ -158,16 +187,20 @@ const GET_TOKEN_RETRY_DELAYS_MS =
 // fails) is the only way to tell a stale cache from a real logout.
 const getSessionToken = async (
   opts: { forceRefresh?: boolean } = {}
-): Promise<string | null> => {
+): Promise<{ token: string | null; isCurrent: () => boolean }> => {
   let clerk: ClerkClient
   try {
     clerk = await getSyncedClerk()
   } catch (error) {
+    if (error instanceof Error && error.message === 'Session changed')
+      throw error
     swlog(`getSyncedClerk failed: ${String(error)}`, 'error')
-    return null
+    return { token: null, isCurrent: accountSession.capture() }
   }
 
-  if (!clerk.session) return null
+  const isCurrent = accountSession.capture()
+  const result = (token: string | null) => ({ token, isCurrent })
+  if (!clerk.session) return result(null)
 
   const getTokenOpts = opts.forceRefresh ? { skipCache: true } : undefined
 
@@ -178,7 +211,7 @@ const getSessionToken = async (
   ) {
     try {
       const token = (await clerk.session.getToken(getTokenOpts)) ?? null
-      if (token) return token
+      if (token) return result(token)
       swlog(`clerk getToken() returned null (attempt ${attempt})`, 'warn')
     } catch (error) {
       swlog(
@@ -196,7 +229,7 @@ const getSessionToken = async (
       `attempts (forceRefresh=${Boolean(opts.forceRefresh)}) despite an active session`,
     'error'
   )
-  return null
+  return result(null)
 }
 
 const isSignedIn = async (): Promise<boolean> => {
@@ -208,33 +241,66 @@ const isSignedIn = async (): Promise<boolean> => {
   }
 }
 
-// Handle session expiry: Clerk manages token lifetime, so a 401 means the
-// session is genuinely gone. Nudge the active tab's content script to prompt
-// re-login (the popup renders Clerk's <SignIn/>).
+// A page with learning mode off can still hold a successful review list.
+// Notify all tabs and tolerate pages without an injected content script.
+const notifyAccountChange = async (expired = false) => {
+  const tabs = await chrome.tabs.query({})
+  await Promise.allSettled(
+    tabs
+      .filter(tab => tab.id !== undefined)
+      .map(tab =>
+        chrome.tabs.sendMessage(
+          tab.id!,
+          expired
+            ? {
+                action: 'sessionExpired',
+                message:
+                  'Your session has expired. Please click the extension icon to login again.',
+              }
+            : { action: 'accountChanged' }
+        )
+      )
+  )
+}
+
+const ACCOUNT_SESSION_OWNER_KEY = 'enx-account-session-owner'
+const makeAccountSession = () =>
+  createAccountSession({
+    readOwner: async () => {
+      const owner = (
+        await chrome.storage.session.get(ACCOUNT_SESSION_OWNER_KEY)
+      )?.[ACCOUNT_SESSION_OWNER_KEY]
+      return typeof owner === 'string' || owner === null ? owner : undefined
+    },
+    writeOwner: async owner => {
+      await chrome.storage.session.set({ [ACCOUNT_SESSION_OWNER_KEY]: owner })
+    },
+    invalidate: expired => notifyAccountChange(expired),
+  })
+let accountSession = makeAccountSession()
+
 const handleSessionExpiry = async () => {
   console.log('Session expired (401 from API)')
-
-  // Try to open the extension popup to show login form
-  try {
-    // Get current active tab
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-    if (tab?.id) {
-      // Send message to content script to show a notification about session expiry
-      chrome.tabs
-        .sendMessage(tab.id, {
-          action: 'sessionExpired',
-          message:
-            'Your session has expired. Please click the extension icon to login again.',
-        })
-        .catch(() => {
-          // Ignore errors if content script is not available
-          console.log('Could not notify content script about session expiry')
-        })
-    }
-  } catch (error) {
-    console.error('Error handling session expiry:', error)
-  }
+  await accountSession.clear(true)
 }
+
+// Register synchronously so cookie changes wake an evicted MV3 worker too.
+// Rebuild the client: an already-loaded client's cached session can still be
+// the old account. JWT refreshes for the same user do not invalidate pages.
+chrome.cookies.onChanged.addListener(change => {
+  const host = new URL(config.clerkSyncHost).hostname
+  const domain = change.cookie.domain.replace(/^\./, '')
+  if (host !== domain && !host.endsWith(`.${domain}`)) return
+  if (!/^__(client|client_uat|clerk_db_jwt)(_|$)/.test(change.cookie.name))
+    return
+  if (change.removed && change.cause === 'overwrite') return
+  resetClerkSession()
+  return getSyncedClerk()
+    .then(() => {})
+    .catch(error => {
+      console.error('Could not check changed account session:', error)
+    })
+})
 
 export type ApiRequestResult = {
   success: boolean
@@ -310,6 +376,7 @@ export const makeApiRequest = async (
   // the session is gone; `forceRefresh` stays false when we had no token to
   // begin with (nothing to refresh -> real 401). A gateway 503 (see
   // GATEWAY_RETRY_DELAYS_MS) is replayed after a short wait.
+  const requestIsCurrent = accountSession.capture()
   let forceRefresh = false
   let gatewayRetries = 0
   let idempotentRetries = 0
@@ -329,6 +396,7 @@ export const makeApiRequest = async (
 
   try {
     for (let attempt = 1; ; attempt++) {
+      if (!requestIsCurrent()) throw new Error('Session changed')
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         // Every call carries the user's UTC offset so the server can file
@@ -342,7 +410,10 @@ export const makeApiRequest = async (
         ...((options.headers as Record<string, string>) || {}),
       }
 
-      const token = await getSessionToken({ forceRefresh })
+      const session = await getSessionToken({ forceRefresh })
+      if (!requestIsCurrent() || !session.isCurrent())
+        throw new Error('Session changed')
+      const token = session.token
       if (token) {
         headers['Authorization'] = `Bearer ${token}`
       } else {
@@ -367,6 +438,8 @@ export const makeApiRequest = async (
         throw error
       }
 
+      if (!requestIsCurrent()) throw new Error('Session changed')
+
       console.log(
         `API response status: ${response.status} ${response.statusText}`
       )
@@ -378,6 +451,7 @@ export const makeApiRequest = async (
           // been up (a real logout can 401 with a token too, but not right
           // after other calls in the same worker succeeded).
           const body = await response.text().catch(() => '')
+          if (!requestIsCurrent()) throw new Error('Session changed')
           swlog(
             `401 from ${endpoint}: hadToken=${Boolean(token)}, ` +
               `forceRefresh=${forceRefresh}, attempt=${attempt}, ` +
@@ -458,6 +532,7 @@ export const makeApiRequest = async (
         swlog(`${endpoint} succeeded after force-refreshing the Clerk token`)
       }
       const data = await response.json()
+      if (!requestIsCurrent()) throw new Error('Session changed')
       console.log('API response data:', data)
       return { success: true, data }
     }
@@ -465,7 +540,11 @@ export const makeApiRequest = async (
     console.error('API request failed:', error)
 
     // Check if this is a session expiry error
-    if (error instanceof Error && error.message === 'Session expired') {
+    if (
+      error instanceof Error &&
+      (error.message === 'Session expired' ||
+        error.message === 'Session changed')
+    ) {
       return {
         success: false,
         error: 'Your session has expired. Please login again.',
@@ -719,6 +798,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       switch (request.type || request.action) {
         case 'getOneWord':
           return await handleGetOneWord(request.word)
+
+        case 'accountSignedOut':
+          resetClerkSession()
+          await accountSession.clear()
+          return { success: true }
 
         case 'getReviewWords':
           return await handleGetReviewWords()

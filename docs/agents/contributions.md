@@ -1,5 +1,12 @@
 # AI Contributions History
 
+## 2026-11-05: Invalidate account-owned review lists — issue #606
+
+**Agent**: Codex
+**Solution**: Account changes and confirmed session expiry invalidate every tab, including stopped learning-mode pages. The worker remembers the external auth identity in session storage, checks it again after a cold start and on Clerk cookie changes, and discards responses from a superseded account. Pages remain off until the user enables learning mode again.
+
+**Lesson (cookie permissions and pending requests)**: A port-specific sync-host permission lets Clerk read a cookie by URL but misses cookie-change events on localhost; declare the cookie host without its web server port. Verify website sign-out in Chromium as well as popup sign-out. Fence both background API responses and content-script lookup responses; clearing the review list alone cannot prevent an older lookup from filling it again. A same-account lookup still counts if its popover was closed before the answer arrived.
+
 ## 2026-10-30: Fresh-user onboarding E2E — issue #467
 
 **Agent**: Codex

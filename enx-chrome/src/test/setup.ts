@@ -58,6 +58,9 @@ beforeEach(() => {
     getContexts: jest.fn(async () => []),
     ContextType: { SIDE_PANEL: 'SIDE_PANEL' },
   },
+  cookies: {
+    onChanged: { addListener: jest.fn(), removeListener: jest.fn() },
+  },
   identity: {
     launchWebAuthFlow: jest.fn(),
   },

@@ -32,6 +32,11 @@ export function buildManifest(
   const rssxPatterns = target.rssxOrigins.map(origin => `${origin}/*`)
   const sitePatterns = target.contentScriptOrigins.map(origin => `${origin}/*`)
   const clerkHost = clerkFrontendApiHost(target.clerkPublishableKey)
+  // Cookie events are checked against the cookie's host, without the web
+  // server's port. Port-specific access lets Clerk read a cookie by URL but
+  // misses onChanged notifications on a development host such as localhost.
+  const cookieHost = new URL(target.clerkSyncHost)
+  cookieHost.port = ''
 
   // So a non-production build is recognisable in chrome://extensions and in the
   // toolbar, instead of two identical-looking "Catglish" entries.
@@ -46,6 +51,7 @@ export function buildManifest(
     ...(base.host_permissions ?? []),
     `${target.apiBaseUrl}/*`,
     ...uiPatterns,
+    `${cookieHost.origin}/*`,
     ...(clerkHost ? [`https://${clerkHost}/*`] : []),
     // The E2E helpers read the fixture tab's URL (ADR-037); RSSX needs no
     // host permission to receive the content script.
