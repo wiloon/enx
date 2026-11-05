@@ -71,9 +71,11 @@ async function expectWithinViewport(page: Page, locator: Locator) {
   await expect(locator).toBeVisible()
   await locator.scrollIntoViewIfNeeded()
   const box = (await locator.boundingBox())!
-  const { width } = page.viewportSize()!
+  const { width, height } = page.viewportSize()!
   expect(box.x).toBeGreaterThanOrEqual(0)
   expect(box.x + box.width).toBeLessThanOrEqual(width)
+  expect(box.y).toBeGreaterThanOrEqual(0)
+  expect(box.y + box.height).toBeLessThanOrEqual(height)
 }
 
 test('fits the onboarding card on a phone', async ({ page }) => {
