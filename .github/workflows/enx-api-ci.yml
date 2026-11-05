@@ -2,10 +2,9 @@ name: enx-api CI
 
 # Local mirror: `task ci:api`. A check added here must be added there too.
 
-# Lint and unit tests for enx-api on every PR that touches it, and on main.
-# Integration tests (//go:build integration) are not run here: they need the
-# ECDICT database and a real app database. Run them locally with
-# `task test-integration`.
+# Lint, unit and integration tests for enx-api on every PR that touches it,
+# and on main. Integration tests (//go:build integration) open their own
+# SQLite files under t.TempDir(); none needs ECDICT or a shared database.
 
 on:
   pull_request:
@@ -65,9 +64,8 @@ jobs:
           go-version-file: enx-api/go.mod
           cache-dependency-path: enx-api/go.sum
       - run: go vet ./...
-      # Compiles the integration tests without running them.
       - run: go vet -tags=integration ./...
-      - run: go test ./...
+      - run: go test -tags=integration ./...
 
   image:
     name: ko image build

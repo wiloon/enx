@@ -18,7 +18,7 @@ This document explains the testing strategy and how to run different types of te
 - **Location**: `*_integration_test.go` or `*_test.go` files with `//go:build integration` tag
 - **Purpose**: Test components working together with real dependencies
 - **Speed**: Slower (seconds)
-- **Dependencies**: Requires database and configuration files
+- **Dependencies**: None outside the test: each one opens its own SQLite file under `t.TempDir()`
 - **Examples**:
   - `enx/ecp_integration_test.go` - Tests word save/translate with database
   - `paragraph/paragraph_test.go` - Tests text processing with database lookup
@@ -41,19 +41,15 @@ cd enx-api && task test
 
 **Output**: Only pure unit tests run, takes ~1 second
 
-### Integration Tests (Requires Setup)
+### Integration Tests
 ```bash
-# Run integration tests - requires database and config
+# Unit + integration tests; CI (enx-api-ci.yml) runs the same
 task test-integration         # All projects
 task test-integration-api     # enx-api only
 cd enx-api && task test-integration
 ```
 
-**Prerequisites**:
-- Database: `enx-api/enx.db` (auto-created from `enx.sql`)
-- Config: `enx-api/config.toml` (auto-copied from `config-e2e.toml`)
-- ECDICT (for translation/dictionary integration tests): the test tasks default `ECDICT_DB_PATH` to the shared local copy `~/.local/share/enx/ecdict/stardict.db` (run `task ecdict:download` at the repo root once; see the root README "ECDICT dictionary (local copy)"). Set `ECDICT_DB_PATH` to use another file. Unit tests never need it: they build a small fake `stardict` table.
-- Integration tests: `dictionary/lookup_integration_test.go`（Lookup 503）、`translate/service_integration_test.go`（翻译 API 503）
+No setup needed: no shared database, no `config.toml`, no ECDICT.
 
 ### All Tests
 ```bash
