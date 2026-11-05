@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | **阶段 1 + 阶段 2 均已实现 — 阶段 2 于 2026-09-17 落地**（数据源见 [`adr-028`](adr-028-reading-stats-what-to-measure.md)）。**2026-09-17 五次修订**：用户提出「继续阅读不是主要功能」，**Home 的「继续阅读」整块移除**，位置让给状态条；见文末「阶段 2 落地与对 Decision 1 的修订」。**2026-09-16 二次修订**：统计的「测什么 / 怎么采 / 怎么存」已拆到 ADR-028，本 ADR 收敛为**只管交互、布局、配色**；Decision 1 的状态条字段、Decision 7 的 `overview` 契约、Decision 8 的 streak 结论均按 ADR-028 回写。**三次修订**：[`adr-029`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md) 把配额改成分档模型，剩余额度对所有用户都算得出来了，Decision 10 的显示方式随之改为**状态驱动**（用量 ≥70% 才上状态条）。**四次修订**：用户 2026-09-16 确认对外正式名为 **Catglish**（只有英文名、无中文名，且不再保留任何「猫眼 / cat's eye」表述），本 ADR 范围内的**用户可见**品牌串一并替换；`ENX` 作为开发代号保留，非 UI 代码一律不动。见 Decision 11。 |
+| **状态** | **阶段 1 + 阶段 2 均已实现 — 阶段 2 于 2026-09-17 落地**（数据源见 [`adr-028`](adr-028-reading-stats-what-to-measure.md)）。**2026-11-02 修订（#624）**：Home 删除功能入口 `QuickTiles`，新用户引导卡改为「进度 + 一个 `/welcome` 实心按钮」，引导卡显示时不显示扩展提示条；见文末「Home 去掉功能入口、引导卡改版」。**2026-09-17 五次修订**：用户提出「继续阅读不是主要功能」，**Home 的「继续阅读」整块移除**，位置让给状态条；见文末「阶段 2 落地与对 Decision 1 的修订」。**2026-09-16 二次修订**：统计的「测什么 / 怎么采 / 怎么存」已拆到 ADR-028，本 ADR 收敛为**只管交互、布局、配色**；Decision 1 的状态条字段、Decision 7 的 `overview` 契约、Decision 8 的 streak 结论均按 ADR-028 回写。**三次修订**：[`adr-029`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md) 把配额改成分档模型，剩余额度对所有用户都算得出来了，Decision 10 的显示方式随之改为**状态驱动**（用量 ≥70% 才上状态条）。**四次修订**：用户 2026-09-16 确认对外正式名为 **Catglish**（只有英文名、无中文名，且不再保留任何「猫眼 / cat's eye」表述），本 ADR 范围内的**用户可见**品牌串一并替换；`ENX` 作为开发代号保留，非 UI 代码一律不动。见 Decision 11。 |
 | **日期** | 2026-09-16 |
 | **关联 Spec** | 无独立 TASK-SPEC，留到编码阶段再写（同 ADR-008/010/011/017/025/026 的做法） |
 | **关联 ADR** | [`adr-029-lookup-quota-tiered-limits-and-count-gate-split.md`](adr-029-lookup-quota-tiered-limits-and-count-gate-split.md)（配额分档后剩余额度对全体用户可算，本 ADR Decision 10 的额度显示改为状态驱动）、[`adr-028-reading-stats-what-to-measure.md`](adr-028-reading-stats-what-to-measure.md)（**配对 ADR**：本 ADR 管「Home 长什么样」，028 管「Home 上那些数字是什么、从哪来」。028 的结论反向改了本 ADR 的 Decision 1 / 7 / 8，见各处标注）、[`adr-016-enx-ui-app-shell-navigation.md`](adr-016-enx-ui-app-shell-navigation.md)（**主要依赖**：本 ADR 改的正是其建立的 App Shell 与 `/app` 概览页；其决策 5「`app-nav.ts` 是导航唯一事实源，加一个分区 = 加一行」继续成立，本 ADR 的 `Back to site` 就是加一行；其决策 6「本次范围 = 骨架 + 占位」正是 `/app` 现在这副样子的由来）、[`adr-013-catseye-marketing-site.md`](adr-013-catseye-marketing-site.md)（**本 ADR 显式修订其决策 4 的最后一条**「应用区不引用 `--brand`」，见 Decision 3；返回入口指向的 `/` 即其营销首页）、[`adr-022-enx-ui-reader-persistence-and-retention.md`](adr-022-enx-ui-reader-persistence-and-retention.md)（「继续阅读」直接复用其 `GET /api/reader/documents` 与 7 天 TTL 语义）、[`adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md`](adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md)（扩展安装状态用其 `useExtensionStatus()` / `pingExtension()`）、[`adr-018-dictionary-lookup-single-metered-seam.md`](adr-018-dictionary-lookup-single-metered-seam.md)（阶段 2 的 `stats/overview` **只读配额计数、不是查词**，显式在计量 seam 之外，同 ADR-021/026 的处理）、[`adr-009-billing-stripe-subscription-and-ai-credits.md`](adr-009-billing-stripe-subscription-and-ai-credits.md)（套餐 / 余额小卡读其 `GET /api/billing/me`；免费日配额表 `dictionary_lookup_quota` 的语义边界见 Decision 8） |
@@ -158,6 +158,8 @@ Welcome, yue wang!
 
 区块优先级（自上而下、信息价值递减）：**状态条 > 继续阅读 > 最近查的词 > 功能入口 > 扩展状态 > 套餐**。注意功能入口被降到第四位——它正是现在占满整屏的那四张卡。
 
+> **2026-11-02 修订（#624）**：功能入口（`QuickTiles`）从 Home 两种形态中**删除**，导航只靠侧边栏；优先级去掉「功能入口」一项。见文末「Home 去掉功能入口、引导卡改版」。
+
 **状态条为什么是「阅读视角」而不是「配额视角」**（本条按 ADR-028 修订）：初稿写的是「今日查词 12 / 50」，即剩余免费额度。但 `dictionary_lookup_quota` 对订阅用户不写行，付费用户会永远看到 `0 / 50`；更根本的是，**剩余额度是计费信息，不是学习信息**——它回答「我还能用多少」，而 Home 状态条该回答「我今天学得怎么样」。所以：
 
 - 状态条 = `今日阅读 N 词 · 查词 M 次 · 每千词 K 次 · 生词本 T`（字段定义见 ADR-028 指标字典），全部对免费 / 付费用户一视同仁。
@@ -167,6 +169,8 @@ Welcome, yue wang!
 ### 2. 卡片整块可点，Home 上不放按钮
 
 所有 tile / 卡片用 `<Link>` 包整块，`hover:border-brand/40 hover:shadow-sm transition-colors`，右上或右侧一个 `ArrowUpRight` / `ChevronRight`。Home 全页**零个实心按钮**，唯一的例外是「没装扩展」时那条提示里的 `Add to Chrome`（brand 实心）——那是新用户唯一真正的主操作，值得独占实心按钮这个层级。
+
+> **2026-11-02 修订（#624）**：引导卡显示时，它的「Start with a sample article」（→ `/welcome`）是 Home 唯一的 brand 实心按钮，扩展提示条整条不显示（没装扩展时，安装由 `/welcome` 第 0 步承接）；`Add to Chrome` 实心按钮只在老用户形态、扩展未安装时出现。一屏一个实心按钮的规则不变。
 
 ### 3. `Button` 加 `brand` variant，应用区开始用品牌色
 
@@ -384,3 +388,18 @@ Reading Stats 仍是占位。它的完整设计（四条曲线、日 / 周 / 月
 「继续阅读」在阶段 1 是**因为当时只有这个端点**才放上 Home 的（Options E1 写得很直白：阶段 1 只用已有端点）。一个为了「先有东西可显示」而占住首屏的区块，很容易在数据源到位之后被当成既定设计留下来。它回答的是「你想重新打开哪份文档」——而 `/reader` 已经回答得更好——并且让粘贴文本阅读器（几个入口之一，且不是主场景）在首屏上看起来像是产品本身。
 
 `/stats` 同一轮从「日 / 周 / 月 / 年三张静态卡片」改成一张图 + 切换，见 ADR-028 的「对 `/stats` 形态的修订」。
+
+---
+
+## Home 去掉功能入口、引导卡改版（2026-11-02，#624）
+
+**功能入口删除。** `QuickTiles`（Word Lookup / Rephrase / Reader）去的地方和旁边侧边栏一模一样：对新用户，它们和「完成引导」这唯一要紧的动作抢注意力；对老用户，它们不提供侧边栏没有的东西。Decision 1 当初已经说「侧边栏负责导航，Home 负责状态」，只是把它降到第四位留下了；这次删掉，两种形态都不再有功能入口。`tile.ts` 保留（`PlanCard` 在用）。
+
+**引导卡（形态一）改版：**
+
+- 标题一句话说明能得到什么（「Try Catglish in 1 minute」+ 一行价值说明），右侧显示进度 `N of M`。
+- 未完成的步骤用数字序号，完成的用勾，不再用空心圆（像单选框）。
+- 步骤标题是纯文本，不是链接；整张卡只有一个 brand 实心按钮「Start with a sample article」→ `/welcome`（修订 Decision 2，见那里的注记）。
+- 引导卡显示时它是 Home 上唯一显眼的区块：`ExtensionBanner` 在这一形态下不渲染，无论扩展装没装。
+- **进度的口径**：`N` 是步骤模型（ADR-047 Decision 6，`homeChecklistSteps`）里 `done` 的步骤数，`M` 是 Home 显示的步骤数。Home 只给「零查词」用户显示引导，且启用学习模式只有 `/welcome` 页能观察到，所以今天 Home 上的步骤全是未完成：已装扩展时 `0 of 2`，未装时 `0 of 3`（多一步安装）。这是有意的——这次只改呈现，不为 Home 新造完成状态的数据源；以后 Home 若能拿到真实的完成状态，进度和勾选自然跟着变。
+- 步骤文案仍只在 `src/lib/onboarding.ts` 一处（ADR-047 Decision 6）：Home 用的是那里的 Home 专用标题，`/welcome` 的工具栏操作说明不变。
