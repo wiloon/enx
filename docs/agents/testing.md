@@ -44,7 +44,7 @@ Signed-in e2e uses Clerk's official testing package, `@clerk/testing`, against t
 - enx-chrome: `pnpm build:e2e`, then `CLERK_SECRET_KEY=… E2E_CLERK_USER_EMAIL=… pnpm test:e2e`. `E2E_CHROMIUM_PATH` points at an installed Chromium when Playwright's own build is missing (it must be Chromium; branded Chrome ignores `--load-extension`).
 - enx-ui: `set -a; . ./.env.local; set +a; E2E_CLERK_USER_EMAIL=… pnpm test:e2e` (the config's `webServer.env` overrides `.env.local`, so export first).
 
-**E2E gate.** An acceptance item that needs a specific or repeated Playwright run goes in the issue as an `## E2E gate` section, one line of enx-chrome specs and an optional repeat: `e2e/invite-link.spec.ts --repeat-each=15` (N up to 50, homelab specs excluded). On ser8 the runner runs it with no retries before each push of the slice that completes the issue, a red gate takes the repair loop, and the result lands on the PR.
+**E2E gate.** An acceptance item that needs a specific or repeated Playwright run goes in the issue as an `## E2E gate` section: one line of specs from one sub-project and an optional repeat. enx-chrome specs are written `e2e/invite-link.spec.ts` or `enx-chrome/e2e/invite-link.spec.ts`, enx-ui specs `enx-ui/e2e/welcome.spec.ts`; e.g. `enx-ui/e2e/welcome.spec.ts --repeat-each=15` (N up to 50, homelab specs excluded). On ser8 the runner runs it with no retries before each push of the slice that completes the issue, a red gate takes the repair loop, and the result lands on the PR. Before every push it also runs the `enx-chrome/e2e/` and `enx-ui/e2e/` specs the change adds or edits, minus the gate's.
 
 ## Screenshots for manual checks
 
