@@ -21,6 +21,7 @@ jest.mock('@/config/env', () => ({
 // Fake Clerk client (ADR-015): the background mints a session JWT via
 // clerk.session.getToken(). `setClerkSession` controls what it returns.
 const getToken = jest.fn<Promise<string | null>, []>()
+let clerkUserId = 'user-a'
 let clerkSession: { getToken: typeof getToken } | null = { getToken }
 
 // Re-installed on every setClerkSession() call because it runs after each
@@ -30,6 +31,9 @@ function installCreateClerkClientMock() {
   ;(createClerkClient as jest.Mock).mockImplementation(async () => ({
     get session() {
       return clerkSession
+    },
+    get user() {
+      return clerkSession ? { id: clerkUserId } : null
     },
   }))
 }
@@ -68,6 +72,9 @@ const onMessageListener = (chrome.runtime.onMessage.addListener as jest.Mock)
   sendResponse: (response: unknown) => void
 ) => boolean
 
+const onCookieChanged = (chrome.cookies.onChanged.addListener as jest.Mock).mock
+  .calls[0]?.[0]
+
 // ADR-019: the one web -> extension channel. enx-ui (an externally_connectable
 // origin) is the only caller.
 const onMessageExternalListener = (
@@ -93,6 +100,11 @@ function jsonResponse(
     text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
   }
 }
+
+beforeEach(() => {
+  __resetClerkClientCacheForTests()
+  clerkUserId = 'user-a'
+})
 
 describe('background makeApiRequest / Clerk session token', () => {
   beforeEach(() => {
@@ -143,6 +155,183 @@ describe('background makeApiRequest / Clerk session token', () => {
       1,
       expect.objectContaining({ action: 'sessionExpired' })
     )
+  })
+
+  it('invalidates every tab after a confirmed 401, even if one has no content script', async () => {
+    ;(chrome.tabs.query as jest.Mock).mockImplementation(async query =>
+      query.active ? [{ id: 1 }] : [{ id: 1 }, { id: 2 }, { id: 3 }]
+    )
+    ;(chrome.tabs.sendMessage as jest.Mock).mockImplementation(async id => {
+      if (id === 2) throw new Error('Receiving end does not exist')
+    })
+    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
+
+    expect(await makeApiRequest('/api/me')).toMatchObject({
+      sessionExpired: true,
+    })
+    for (const id of [1, 2, 3]) {
+      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+        id,
+        expect.objectContaining({ action: 'sessionExpired' })
+      )
+    }
+  })
+
+  it('invalidates every tab when the popup reports a completed sign-out', async () => {
+    ;(chrome.tabs.query as jest.Mock).mockResolvedValue([{ id: 1 }, { id: 2 }])
+    const result = await new Promise(resolve =>
+      onMessageListener({ type: 'accountSignedOut' }, {}, resolve)
+    )
+    expect(result).toEqual({ success: true })
+    for (const id of [1, 2]) {
+      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(id, {
+        action: 'accountChanged',
+      })
+    }
+  })
+
+  it('invalidates a cached page when an API call observes a different account', async () => {
+    __resetClerkClientCacheForTests()
+    clerkUserId = 'user-a'
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
+    ;(chrome.storage.session.set as jest.Mock).mockResolvedValue(undefined)
+    ;(global.fetch as jest.Mock).mockImplementation(async () =>
+      jsonResponse(200, {})
+    )
+    await makeApiRequest('/api/me')
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
+
+    clerkUserId = 'user-b'
+    await makeApiRequest('/api/me')
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, {
+      action: 'accountChanged',
+    })
+    clerkUserId = 'user-a'
+  })
+
+  it('detects a website account switch from its session cookie without a page API request', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
+    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(200, {}))
+    await makeApiRequest('/api/me')
+    ;(chrome.tabs.sendMessage as jest.Mock).mockClear()
+    expect(onCookieChanged).toBeDefined()
+    clerkUserId = 'user-b'
+    await onCookieChanged({
+      cookie: { domain: 'clerk.localhost.test', name: '__client_uat' },
+      removed: false,
+    })
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, {
+      action: 'accountChanged',
+    })
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the review list when the same account refreshes its session cookie', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
+    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(200, {}))
+    await makeApiRequest('/api/me')
+    await onCookieChanged({
+      cookie: { domain: 'clerk.localhost.test', name: '__client_uat' },
+    })
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['unrelated.test', '__client_uat', false, 'explicit'],
+    ['clerk.localhost.test', 'preferences', false, 'explicit'],
+    ['clerk.localhost.test', '__client_uat', true, 'overwrite'],
+  ])(
+    'ignores a cookie event for %s / %s / removed=%s / %s',
+    async (domain, name, removed, cause) => {
+      await onCookieChanged({ cookie: { domain, name }, removed, cause })
+      expect(createClerkClient).not.toHaveBeenCalled()
+      expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each([200, 401])(
+    'discards a late %s from the previous account without expiring the new account',
+    async status => {
+      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
+      let finish: (response: unknown) => void = () => {}
+      let started: () => void = () => {}
+      const fetching = new Promise<void>(resolve => {
+        started = resolve
+      })
+      ;(global.fetch as jest.Mock)
+        .mockResolvedValue(jsonResponse(200, {}))
+        .mockImplementationOnce(() => {
+          started()
+          return new Promise(resolve => {
+            finish = resolve
+          })
+        })
+      const previous = makeApiRequest('/api/me/review-words')
+      await fetching
+      clerkUserId = 'user-b'
+      await onCookieChanged({
+        cookie: { domain: 'clerk.localhost.test', name: '__client_uat' },
+      })
+      ;(chrome.tabs.sendMessage as jest.Mock).mockClear()
+      finish(jsonResponse(status, [['fox', 1]]))
+      expect(await previous).toMatchObject({
+        success: false,
+        sessionExpired: true,
+      })
+      expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
+      expect(global.fetch).toHaveBeenCalledTimes(1)
+    }
+  )
+
+  it('keeps the newest website identity when cookie checks finish out of order', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
+    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(200, {}))
+    await makeApiRequest('/api/me')
+    let finishOld: (client: unknown) => void = () => {}
+    ;(createClerkClient as jest.Mock)
+      .mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            finishOld = resolve
+          })
+      )
+      .mockResolvedValue({ user: { id: 'user-c' }, session: { getToken } })
+    const change = {
+      cookie: { domain: 'clerk.localhost.test', name: '__client_uat' },
+    }
+    const olderCheck = onCookieChanged(change)
+    await onCookieChanged(change)
+    finishOld({ user: { id: 'user-b' }, session: { getToken } })
+    await olderCheck
+    expect(chrome.storage.session.set).toHaveBeenLastCalledWith({
+      'enx-account-session-owner': 'user-c',
+    })
+  })
+
+  it('keeps an API request alive when overlapping cookie checks resolve to the same account', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
+    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(200, {}))
+    await makeApiRequest('/api/me')
+    let finishOld: (client: unknown) => void = () => {}
+    const client = { user: { id: 'user-a' }, session: { getToken } }
+    ;(createClerkClient as jest.Mock)
+      .mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            finishOld = resolve
+          })
+      )
+      .mockResolvedValue(client)
+    const change = {
+      cookie: { domain: 'clerk.localhost.test', name: '__client_uat' },
+    }
+    const olderCheck = onCookieChanged(change)
+    const request = makeApiRequest('/api/me')
+    await onCookieChanged(change)
+    finishOld(client)
+    await olderCheck
+    expect(await request).toEqual({ success: true, data: {} })
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
   })
 
   it('recovers when a 401 is fixed by a force-refreshed token', async () => {

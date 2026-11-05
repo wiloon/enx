@@ -205,14 +205,15 @@ describe('manifest stamping (ADR-019)', () => {
     ])
   })
 
-  // Splitting the RSSX list off the generic one must not change what a
-  // release build asks for at install time.
+  // Each release requests its API, website and Clerk sync host; RSSX's
+  // content-script registration does not add a required host permission.
   it.each([
     [
       'production',
       [
         'https://api.catglish.com/*',
         'https://catglish.com/*',
+        'https://clerk.catglish.com/*',
         'https://rational-deer-4450.clerk.accounts.dev/*',
       ],
     ],

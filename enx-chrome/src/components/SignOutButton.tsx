@@ -1,3 +1,4 @@
+import { sendRuntimeMessage } from '@/lib/extensionContext'
 import { signingOutAtom } from '@/store/atoms'
 import { useClerk } from '@clerk/chrome-extension'
 import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
@@ -20,6 +21,7 @@ export default function SignOutButton() {
     setSigningOut(true)
     try {
       await clerk.signOut(() => {})
+      await sendRuntimeMessage({ type: 'accountSignedOut' })
     } finally {
       setSigningOut(false)
     }

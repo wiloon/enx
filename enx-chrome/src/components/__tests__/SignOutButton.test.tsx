@@ -76,6 +76,19 @@ describe('SignOutButton', () => {
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument()
   })
 
+  it('invalidates the account in open pages after signing out', async () => {
+    ;(chrome.runtime.sendMessage as jest.Mock).mockImplementation(
+      (_message, callback) => callback({ success: true })
+    )
+    renderPopup()
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    await act(async () => finishSignOut())
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+      { type: 'accountSignedOut' },
+      expect.any(Function)
+    )
+  })
+
   it('shows the sign-in card once the sign-out has finished', async () => {
     renderPopup()
 

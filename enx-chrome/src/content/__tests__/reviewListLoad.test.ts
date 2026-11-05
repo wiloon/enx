@@ -408,6 +408,97 @@ describe('a failed load', () => {
   })
 })
 
+describe('the account changing', () => {
+  it('clears the old account and stays off until the user enables the new account', async () => {
+    const send = await loadContentScript()
+    await send({ action: 'enxRun' })
+    showAllObserved()
+    expect(underlined()).toEqual({ 'enx-hl-1': ['Fox', 'fox’s', "FOX'S"] })
+
+    await send({ action: 'accountChanged' })
+    expect(underlined()).toEqual({})
+    expect(await send({ action: 'getPageInfo' })).toMatchObject({
+      isEnxEnabled: false,
+    })
+    expect(statusReports().at(-1)).toEqual({ status: 'off' })
+    expect(listRequests()).toHaveLength(1)
+
+    reviewList = () => ({ success: true, reviewWords: [['dog', 1]] })
+    await send({ action: 'enxRun' })
+    showAllObserved()
+    expect(underlined()).toEqual({ 'enx-hl-1': ['dog'] })
+    expect(listRequests()).toHaveLength(2)
+  })
+})
+
+describe('an old account review list finishing late', () => {
+  it('does not replace the new account list or turn learning mode back on', async () => {
+    holdList = true
+    const send = await loadContentScript()
+    const oldRun = send({ action: 'enxRun' })
+    await settle()
+    const finishOld = heldList[0]
+    heldList = []
+    await send({ action: 'accountChanged' })
+    holdList = false
+    reviewList = () => ({ success: true, reviewWords: [['dog', 1]] })
+    await send({ action: 'enxRun' })
+    finishOld({ success: true, reviewWords: [['fox', 1]] })
+    await oldRun
+    showAllObserved()
+    expect(underlined()).toEqual({ 'enx-hl-1': ['dog'] })
+    expect(statusReports().at(-1)).toEqual({ status: 'ready' })
+  })
+})
+
+describe('an old account lookup finishing late', () => {
+  it('does not restore the old word after the account changes', async () => {
+    const send = await loadContentScript()
+    await send({ action: 'enxRun' })
+    let finishLookup: Callback = () => {}
+    const original = (
+      chrome.runtime.sendMessage as jest.Mock
+    ).getMockImplementation()!
+    ;(chrome.runtime.sendMessage as jest.Mock).mockImplementation(
+      (message: Message, callback?: Callback) => {
+        if (message.type === 'getOneWord' && callback) finishLookup = callback
+        else original(message, callback)
+      }
+    )
+    await clickFox()
+    await send({ action: 'accountChanged' })
+    reviewList = () => ({ success: true, reviewWords: [['dog', 1]] })
+    await send({ action: 'enxRun' })
+    finishLookup({ success: true, ecp: FOX })
+    await settle()
+    showAllObserved()
+    expect(underlined()).toEqual({ 'enx-hl-1': ['dog'] })
+    expect(sent.filter(m => m.type === 'recordWordLookup')).toEqual([])
+  })
+})
+
+describe('a lookup closed without changing accounts', () => {
+  it('still records a completed lookup for the same account', async () => {
+    const send = await loadContentScript()
+    await send({ action: 'enxRun' })
+    let finishLookup: Callback = () => {}
+    const original = (
+      chrome.runtime.sendMessage as jest.Mock
+    ).getMockImplementation()!
+    ;(chrome.runtime.sendMessage as jest.Mock).mockImplementation(
+      (message: Message, callback?: Callback) => {
+        if (message.type === 'getOneWord' && callback) finishLookup = callback
+        else original(message, callback)
+      }
+    )
+    await clickFox()
+    await send({ action: 'enxStop' })
+    finishLookup({ success: true, ecp: FOX })
+    await settle()
+    expect(sent.filter(m => m.type === 'recordWordLookup')).toHaveLength(1)
+  })
+})
+
 describe('the session expiring', () => {
   it('clears the list: a later enable loads it again', async () => {
     const send = await loadContentScript()
