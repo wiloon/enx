@@ -71,10 +71,8 @@ func GrantReferralBonus(ctx context.Context, userID string, b ReferralBonus) (tr
 		if err := checkGrantTarget(tx, userID); err != nil {
 			return err
 		}
-		if !already {
-			if _, err := grantTrial(tx, userID, b.EmailHMAC, b.TrialAmount, b.TrialTTL, at); err != nil {
-				return err
-			}
+		if _, err := grantTrial(tx, userID, b.EmailHMAC, b.TrialAmount, b.TrialTTL, at); err != nil {
+			return err
 		}
 
 		nowMs := at.UnixMilli()
@@ -88,12 +86,6 @@ func GrantReferralBonus(ctx context.Context, userID string, b ReferralBonus) (tr
 		expires := b.ExpiresAt.Unix()
 		if account.TrialExpiresAt != nil && *account.TrialExpiresAt > expires {
 			expires = *account.TrialExpiresAt
-		}
-		if already {
-			if account.TrialExpiresAt != nil {
-				trialExpiresAt = time.Unix(*account.TrialExpiresAt, 0)
-			}
-			return nil
 		}
 		trialExpiresAt = time.Unix(expires, 0)
 
@@ -144,13 +136,6 @@ func GrantReferralReward(ctx context.Context, referrerID string, amount int64, k
 		}
 		if err := checkGrantTarget(tx, referrerID); err != nil {
 			return err
-		}
-		var users int64
-		if err := tx.Model(&sqlitex.User{}).Where("id = ?", referrerID).Count(&users).Error; err != nil {
-			return err
-		}
-		if users == 0 {
-			return ErrNoUser
 		}
 
 		nowMs := time.Now().UnixMilli()
