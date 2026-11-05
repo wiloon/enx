@@ -471,9 +471,8 @@ Playwright; see [Signing in](#signing-in).
 
 ### The content script does nothing on a page
 
-The page must be served from `http://localhost:8765` (a path relative to
-`baseURL`): that is the only non-enx-ui origin in `dist-e2e/manifest.json`'s
-content-script matches. Call `enableLearningMode` before
+Serve the fixture page from `http://localhost:8765` (a path relative to
+`baseURL`). Call `enableLearningMode` before
 `waitForContentScript`. If the user's review list is empty there is nothing
 to paint; pass `{ emptyReviewList: true }` to `waitForContentScript`.
 
