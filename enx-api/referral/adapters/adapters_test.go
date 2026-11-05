@@ -65,6 +65,24 @@ func TestLedgerGrantsTheReferrerRewardIntoTheTopupPool(t *testing.T) {
 	}
 }
 
+func TestLedgerRemembersWhichRewardsItGranted(t *testing.T) {
+	newLedgerDB(t)
+	ctx := context.Background()
+	if err := sqlitex.DB.Create(&sqlitex.User{Id: "alice", ClerkUserID: "user_alice", Name: "alice"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.GrantReferrerReward(ctx, "alice", 300, "referral-reward:bob"); err != nil {
+		t.Fatalf("GrantReferrerReward: %v", err)
+	}
+
+	for key, want := range map[string]bool{"referral-reward:bob": true, "referral-reward:carol": false} {
+		got, err := ledger.RewardGranted(ctx, key)
+		if err != nil || got != want {
+			t.Errorf("RewardGranted(%q) = %v, %v; want %v", key, got, err, want)
+		}
+	}
+}
+
 func TestLedgerReportsADeletedReferrerAsTheReferralSentinel(t *testing.T) {
 	newLedgerDB(t)
 	ctx := context.Background()
