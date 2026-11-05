@@ -8,7 +8,6 @@ The ENX monorepo consists of multiple projects:
 - **enx-api**: Go backend API
 - **enx-chrome**: Chrome extension
 - **enx-ui**: Next.js frontend
-- **mock-api**: Mock API server
 
 The root Taskfile provides a unified interface to manage all projects from a single location.
 
@@ -142,9 +141,6 @@ task info
 
 # Database migrations
 task migrate
-
-# Start mock API server
-task mock-api
 ```
 
 ### 9. CI/CD
