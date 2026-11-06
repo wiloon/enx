@@ -6,6 +6,7 @@ import {
   localTime,
   signedCredits,
   supportNote,
+  timelineRowKeys,
   transactionLabel,
 } from '../creditHistory'
 
@@ -143,6 +144,24 @@ function tx(
   }
 }
 
+describe('timelineRowKeys', () => {
+  it('keys a row by its id when it has one', () => {
+    expect(
+      timelineRowKeys([{ ...tx('2026-10-19T19:00:00Z'), id: 't7' }])
+    ).toEqual(['t7'])
+  })
+
+  it('keeps the keys of exact repeats when a newer repeat arrives at the top', () => {
+    const repeat = () => tx('2026-10-19T19:00:00Z')
+    const before = timelineRowKeys([repeat(), repeat()])
+    const after = timelineRowKeys([repeat(), repeat(), repeat()])
+
+    expect(new Set(before).size).toBe(2)
+    expect(after.slice(1)).toEqual(before)
+    expect(new Set(after).size).toBe(3)
+  })
+})
+
 describe('groupTimeline', () => {
   it('merges same-day AI spend of one feature at its newest row, with intervening rows below in order', () => {
     const refund = tx('2026-10-19T18:00:00Z', {
@@ -169,6 +188,7 @@ describe('groupTimeline', () => {
     expect(items).toHaveLength(3)
     expect(items[0]).toEqual({
       kind: 'group',
+      key: '2026-10-19|translate_word_in_context',
       feature: 'translate_word_in_context',
       rows: [rows[0], rows[2], rows[4]],
       count: 3,

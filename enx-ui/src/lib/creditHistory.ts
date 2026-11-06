@@ -98,10 +98,35 @@ type TimelineRow = {
   totalBalanceAfter: number | null
 }
 
+// Each loaded row's identity across refetches and "Load more": its id when it
+// has one (admin rows), else its time, type and feature plus a counter for
+// exact repeats. New rows arrive at the top, so the counter runs from the
+// oldest loaded row. Returned in the rows' order.
+export function timelineRowKeys(
+  rows: { id?: string; createdAt: string; type: string; feature: string }[]
+): string[] {
+  const seen = new Map<string, number>()
+  const keys: string[] = new Array(rows.length)
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i]
+    if (r.id) {
+      keys[i] = r.id
+      continue
+    }
+    const base = `${r.createdAt}-${r.type}-${r.feature}`
+    const n = seen.get(base) ?? 0
+    seen.set(base, n + 1)
+    keys[i] = `${base}-${n}`
+  }
+  return keys
+}
+
 export type TimelineItem<T extends TimelineRow> =
   | { kind: 'row'; row: T }
   | {
       kind: 'group'
+      // Local day and feature: stays the same as rows join the group.
+      key: string
       feature: string
       // Newest first, as loaded.
       rows: T[]
@@ -117,8 +142,9 @@ export type TimelineItem<T extends TimelineRow> =
 export function groupTimeline<T extends TimelineRow>(
   rows: T[]
 ): TimelineItem<T>[] {
-  const items: ({ kind: 'row'; row: T } | { kind: 'group'; rows: T[] })[] = []
-  const groups = new Map<string, { kind: 'group'; rows: T[] }>()
+  type Pending = { kind: 'group'; key: string; rows: T[] }
+  const items: ({ kind: 'row'; row: T } | Pending)[] = []
+  const groups = new Map<string, Pending>()
   for (const row of rows) {
     if (!isAiSpend(row.type)) {
       items.push({ kind: 'row', row })
@@ -130,7 +156,7 @@ export function groupTimeline<T extends TimelineRow>(
       group.rows.push(row)
       continue
     }
-    const created = { kind: 'group' as const, rows: [row] }
+    const created = { kind: 'group' as const, key, rows: [row] }
     groups.set(key, created)
     items.push(created)
   }
@@ -140,6 +166,7 @@ export function groupTimeline<T extends TimelineRow>(
     if (item.rows.length === 1) return { kind: 'row', row: newest }
     return {
       kind: 'group',
+      key: item.key,
       feature: newest.feature,
       rows: item.rows,
       count: item.rows.length,

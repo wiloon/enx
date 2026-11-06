@@ -384,6 +384,50 @@ it('reloads the balances and the ledger after an admin grant', async () => {
   })
 })
 
+it('keeps each ledger row on its own entry by id when a refetch reorders tied rows', async () => {
+  const tied = (id: string, note: string) =>
+    entry({
+      id,
+      type: 'GRANT_ADMIN',
+      amount: 5,
+      note,
+      createdAt: '2026-10-02T10:00:00Z',
+      source: 'admin',
+    })
+  mockLedger.mockResolvedValue(
+    ok({ transactions: [tied('t2', 'second'), tied('t1', 'first')], next: '' })
+  )
+  ;(apiService.adminAdjustCredits as jest.Mock).mockResolvedValue(
+    ok({ balance: 605 })
+  )
+  renderPage()
+  const ledger = await screen.findByRole('region', { name: 'Ledger' })
+  const first = (
+    await within(ledger).findByText('Note from support: first')
+  ).closest('li')
+
+  mockLedger.mockResolvedValue(
+    ok({ transactions: [tied('t1', 'first'), tied('t2', 'second')], next: '' })
+  )
+  const adjust = screen.getByRole('region', { name: 'Adjust credits' })
+  fireEvent.change(within(adjust).getByLabelText('Credits'), {
+    target: { value: '25' },
+  })
+  fireEvent.change(within(adjust).getByLabelText('Reason'), {
+    target: { value: 'support comp' },
+  })
+  fireEvent.click(within(adjust).getByRole('button', { name: 'Grant credits' }))
+  await waitFor(() => expect(mockLedger).toHaveBeenCalledTimes(2))
+  await waitFor(() =>
+    expect(within(ledger).getAllByRole('listitem')[0]).toHaveTextContent(
+      'first'
+    )
+  )
+
+  expect(first).toBeInTheDocument()
+  expect(first).toHaveTextContent('Note from support: first')
+})
+
 describe('account actions (ADR-062)', () => {
   const mockAction = apiService.adminUserAction as jest.Mock
   const mockDelete = apiService.adminDeleteUser as jest.Mock
