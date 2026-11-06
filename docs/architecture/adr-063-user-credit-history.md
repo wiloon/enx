@@ -33,7 +33,7 @@ related: adr-009（两池积分账本）、adr-012（Settle 事后扣费）、ad
 
 ### 三、流水补记三池合计余额
 
-7. **`credit_transactions` 新增可空列 `total_balance_after`**：写这一行时，三个池的可用积分合计，算法和 `Settle` 的 `spendable` 一样（未过期的试用池 + 订阅池（负数按 0 算）+ 充值池，充值池可以是负数）。合计由一个共用函数算：同一个事务里，余额更新完以后读一次账户，算出合计再写行。每个写流水的地方都调用它，不各自去算。现在写流水的有两类地方：`credit` 包的 `insertLedgerRow`（试用、邀请、管理员加减、`Settle`、`EXPIRE`），以及 adr-067 的 webhook 任务在 `repo/` 里直接写的三处（充值 `grantTopUp`、订阅发放 `recordSubscriptionGrant`、退款扣回 `ApplyClawback`）。以后新增的写入点也必须经过这个函数。原来的 `balance_after` 保持按池记录，语义不变，只给管理员排查用。
+7. **`credit_transactions` 新增可空列 `total_balance_after`**：写这一行时，三个池的可用积分合计，算法和 `Settle` 的 `spendable` 一样（未过期的试用池 + 订阅池（负数按 0 算）+ 充值池，充值池可以是负数）。合计由一个共用函数算：同一个事务里，余额更新完以后读一次账户，算出合计再写行。每个写流水的地方都调用它，不各自去算。现在写流水的有两类地方：`credit` 包的 `insertLedgerRow`（试用、邀请、管理员加减、`Settle`、`EXPIRE`），以及 adr-067 的 webhook 任务在 `repo/` 里直接写的三处（充值 `grantTopUp`、订阅发放 `recordSubscriptionGrant`、退款扣回 `ApplyClawback`）。以后新增的写入点也必须经过这个函数。原来的 `balance_after` 保持按池记录，语义不变，只给管理员排查用。注销后的零效果退款没有积分账户：此时记 `total_balance_after = 0`，不重建账户；缺少账户时仍不能扣回正数积分。注销会作废余额但不写流水（adr-062），因此它是对账边界：保留的注销前最后一行合计可能非零，注销后的第一行不要求与它按 `amount` 对上。
 8. **订阅续费前，先把上一期的剩余记一行 `EXPIRE`。** 只有普通发放（`grant_kind = normal_period`）且确实进池（`applied > 0`）时，`recordSubscriptionGrant` 才会覆盖 `subscription_balance`。覆盖之前，如果旧余额大于 0，在同一个事务里先写一行 `EXPIRE`：`feature = "subscription"`，`amount` 为负的旧余额。这样「上期剩余作废」和「本期发放」各占一行，每一行的 `amount` 都等于 `total_balance_after` 的变化量。用户界面上，`feature = "trial"` 的 `EXPIRE` 显示为 "Trial credits expired"，`feature = "subscription"` 的显示为 "Unused subscription credits expired"。升级补差（`upgrade_top_up`）是累加到订阅池上，没有进池的发放不动订阅池，这两种都不写 `EXPIRE`。
 9. **试用过期仍然懒写入，但改为任何一次写流水之前都先结算。** 现在只有 `Settle` 会先调用 `expireTrial`。如果试用过期后用户先充了值，充值那一行的合计余额已经不含试用（`effectiveTrial` 为 0），之后 `Settle` 再补写的 `EXPIRE` 行却带着负数金额，这两行就对不上了。所以每个会写流水的事务（包括第 7 条列出的 `repo/` 三处）都先调用 `expireTrial`，再更新余额。
    **这会改变邀请奖励的效果**（所有者 2026-11-06 确认）：以前试用过期后再领邀请奖励，`GrantReferralBonus` 会把过期时间往后推，并在原 `trial_balance` 上累加，过期前剩下的试用积分又能用了。现在要先把旧余额记成 `EXPIRE` 清零，再加奖励、推迟过期时间，用户拿到的只有奖励本身。第 10 条的清扫任务也会得到同样的结果。`EXPIRE` 行的时间戳仍然是写入时刻，不改成真正的到期时间：时间线按写入顺序排，改了时间反而会出现乱序。
@@ -79,12 +79,15 @@ related: adr-009（两池积分账本）、adr-012（Settle 事后扣费）、ad
 
 ## Verification
 
-1. **enx-api 单测**（假仓储或真实 SQLite，和现有 `credit` 包测试一致）：
-   - 依次执行「试用发放 → 充值 → AI 消耗 → 订阅发放 → 订阅续费 → 管理员扣减 → 退款扣回」，每一行的 `amount` 等于相邻两行 `total_balance_after` 之差。
+1. **enx-api 测试**（流水写入使用真实 SQLite，经过生产入口，不用已弃用的 `credit.GrantSubscription`、`GrantTopup`、`Clawback`）：
+   - 发放、消耗和管理员操作走现用 `credit` 函数，充值、订阅和退款分别走 `repo.ApplyCheckoutCompleted`、`repo.ApplyInvoicePaid`、`repo.ApplyClawback`；校验持久化流水、池余额和合计，并验证各 repo 写入的 `ErrStale` 检查及事务回滚。
+   - 依次执行「试用发放 → 充值 → AI 消耗 → 订阅发放 → 订阅续费 → 升级补差 → 管理员扣减 → 退款扣回」，每一行的 `amount` 等于相邻两行 `total_balance_after` 之差。
    - 续费时旧订阅余额 > 0，写出 `EXPIRE`（`feature = "subscription"`）；旧余额为 0 时不写。升级补差、没有进池（`applied = 0`）的发放都不写 `EXPIRE`，没有进池的那行 `total_balance_after` 和上一行相同。
    - 试用过期后，第一次写流水的是充值（不是 `Settle`）：先写出 `EXPIRE`，再写充值行，两行都满足上一条的等式。订阅发放、退款扣回、管理员加减作为第一笔写入时也一样。
    - 试用过期且有余额时领邀请奖励：先写出 `EXPIRE` 把旧余额清零，再写 `GRANT_REFERRAL_BONUS`，之后可用的试用积分只有奖励本身。
-   - 清扫任务：试用已过期且有余额的账户写出一行 `EXPIRE`，余额清零；未过期、余额为 0、已清扫过的账户不写；清扫和 `Settle` 并发时只有一行 `EXPIRE`。
+   - 清扫任务：试用已过期且有余额的账户写出一行 `EXPIRE`，余额清零；未过期、余额为 0、已清扫过的账户不写；清扫和 `Settle` 并发时只有一行 `EXPIRE`。通过生产清扫操作还要验证删除屏障内的账户被跳过、单账户失败后继续处理其他账户且下一轮重试。
+   - 通过 `adminuser.Service.Transactions` 验证试用与订阅的 `EXPIRE` 各自的来源。
+   - 通过 `repo.ApplyClawback` 验证注销前最后合计非零时，注销后零效果退款的合计为 0，不重建账户，跨注销边界不要求相邻行对账；缺少账户时正数扣回仍报错且不写流水。
    - `direction=in` / `out` 的筛选和游标分页正确；金额为 0 的行只出现在不筛选的结果里。
    - `GET /api/me/credits/transactions` 只返回当前用户的行，不返回第 5 条列出的内部字段，只有管理员类型的行带 `note`。
 2. **enx-ui 单测**：聚合纯函数（同一天同一类型合并、跨页合并、`REFUND` 不合并、余额取最新一笔）；标签映射（每个 `feature`、两种 `EXPIRE`、两种金额为 0 的行的说明）；`total_balance_after` 为空时显示 "—"。
@@ -94,3 +97,7 @@ related: adr-009（两池积分账本）、adr-012（Settle 事后扣费）、ad
 ## 修订（2026-11-06，#222）：流水写入点按 adr-067 更新，邀请奖励不再救回过期试用
 
 本 ADR 写于 adr-067 的 billing 重构之前，当时所有流水都经过 `credit` 包。重构以后，充值、订阅发放、退款扣回改由 webhook 任务在 `repo/` 里直接写，`credit.GrantSubscription`、`GrantTopup`、`Clawback` 已经没有调用方。第 7、8、9 条相应地改为覆盖全部写入点：普通发放才可能写订阅剩余的 `EXPIRE`，升级补差不写。新增第 6a 条，规定 adr-067 带来的金额为 0 的行怎么显示。另外，所有者确认了第 9 条和第 10 条的一个附带效果：试用过期后领到邀请奖励时，旧的试用余额先作废。其他决定不变。
+
+## 修订（2026-11-06，#668）：注销后的退款合计与验证入口
+
+按 adr-062 的注销作废余额和 adr-067 的退款留存规则，明确注销是流水对账边界，注销后零效果退款的合计为 0 且不重建账户；验证改为覆盖实际 webhook 写入、清扫和管理员流水入口。
