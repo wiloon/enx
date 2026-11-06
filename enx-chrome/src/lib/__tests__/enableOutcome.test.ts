@@ -45,6 +45,13 @@ describe('enableOutcome', () => {
     )
   })
 
+  // #236: a sign-out is routine, so the copy says what to do next.
+  it('tells a signed-out reader to sign in to keep looking up words', () => {
+    expect(failureMessage('session-expired')).toBe(
+      "You've been signed out. Sign in to keep looking up words."
+    )
+  })
+
   // ADR-062 Decision 5: enx-ui and the extension show the same message.
   it('tells a disabled account so', () => {
     expect(failureMessage('account-disabled')).toBe(

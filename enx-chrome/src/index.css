@@ -32,6 +32,12 @@
   --color-brand-foreground: oklch(0.985 0 0);
   --color-brand-muted: oklch(0.96 0.02 var(--brand-hue));
 
+  /* Amber for a warning (a signed-out state): the border, a background tint
+     and the text on that tint. enx-ui's light-theme values. */
+  --color-warning: oklch(0.879 0.169 91.605);
+  --color-warning-muted: oklch(0.987 0.022 95.277);
+  --color-warning-foreground: oklch(0.414 0.112 45.904);
+
   /* No counterpart in enx-ui yet -- the extension needs it for "known". */
   --color-success: oklch(0.58 0.14 150);
   --color-success-foreground: oklch(0.985 0 0);

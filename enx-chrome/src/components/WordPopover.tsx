@@ -16,7 +16,9 @@ import {
   errorAtom,
   errorNeedsReloadAtom,
   sentencePanelHintAtom,
+  signedOutAtom,
 } from '@/store/atoms'
+import SignedOutNotice from '@/components/SignedOutNotice'
 import { formatPhonetic } from '@/lib/phonetic'
 import { playPronunciation } from '@/lib/pronunciation'
 import { popoverHasSpeaker } from '@/lib/speaker'
@@ -31,6 +33,8 @@ interface WordPopoverProps {
   // The "Reload page" button under an error that only a reload fixes (an
   // extension reload or update cut this tab's script off).
   onReloadPage?: () => void
+  // The "Sign in" button of the signed-out state (#236).
+  onSignIn?: () => void
   // 'hint': renders only the sentencePanelHint text, no dictionary UI.
   // Used by the drag-select translation flow (ADR-007 Decision §4) when
   // there's nothing to define -- either the selection was rejected for
@@ -45,12 +49,14 @@ export default function WordPopover({
   onOpenSentencePanel,
   onAiLookup = () => {},
   onReloadPage = () => window.location.reload(),
+  onSignIn = () => {},
   variant = 'dictionary',
 }: WordPopoverProps) {
   const [currentWord] = useAtom(currentWordAtom)
   const [isTranslating] = useAtom(isTranslatingAtom)
   const [error] = useAtom(errorAtom)
   const [errorNeedsReload] = useAtom(errorNeedsReloadAtom)
+  const [signedOut] = useAtom(signedOutAtom)
   const [sentencePanelHint] = useAtom(sentencePanelHintAtom)
   const rootRef = useRef<HTMLDivElement>(null)
   const phonetic = formatPhonetic(currentWord?.Pronunciation)
@@ -188,6 +194,15 @@ export default function WordPopover({
         data-testid="word-popover-content"
         className="min-h-0 overflow-y-auto"
       >
+        {/* The session ended: the signed-out state replaces the definition. */}
+        {signedOut && (
+          <SignedOutNotice
+            testId="word-popover-signed-out"
+            onSignIn={onSignIn}
+            className="p-3 mb-3 text-sm"
+          />
+        )}
+
         {/* Loading state */}
         {isTranslating && (
           <LoadingSkeleton

@@ -69,8 +69,9 @@ export class WordProcessor {
   // but its "plaintext" language label sits beside it in a plain <span>.
   static readonly LOOKUP_EXCLUDED_SELECTORS = [
     '[data-testid="markdown-code-block"]',
-    // The extension's own UI inserted into the page (content.tsx sets
-    // data-enx-ui on it), e.g. the session-expired notice.
+    // Any extension UI inserted into the host page carries data-enx-ui, so
+    // its text is never looked up. Nothing sets it today: the session-expired
+    // notice is gone (#236) and the popovers render in shadow roots.
     '[data-enx-ui]',
   ]
 

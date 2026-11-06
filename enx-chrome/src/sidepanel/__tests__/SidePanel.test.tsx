@@ -768,6 +768,108 @@ describe('SidePanel', () => {
     expect(contextCallCount).toBe(2)
   })
 
+  // #236: a request that failed because the session ended offers Sign in,
+  // in amber, instead of a Retry that would fail again.
+  describe('a session-expired failure', () => {
+    const SIGNED_OUT = "You've been signed out. Sign in to keep looking up words."
+    const EXPIRED = {
+      success: false,
+      error: 'Your session has expired. Please login again.',
+      sessionExpired: true,
+    }
+
+    const answer = (overrides: Record<string, unknown>) =>
+      mockSendMessage.mockImplementation(
+        async (message: { type: string; word?: string }) => {
+          if (message.type in overrides) return overrides[message.type]
+          if (message.type === 'translateSentence') {
+            return { success: true, chinese: '猫是很棒的宠物。' }
+          }
+          if (message.type === 'getOneWord') {
+            return {
+              success: true,
+              ecp: { English: message.word, Chinese: '大的', Pronunciation: '' },
+            }
+          }
+          if (message.type === 'translateWordInContext') {
+            return { success: true, chinese: '很棒的' }
+          }
+          return { success: false }
+        }
+      )
+
+    beforeEach(() => {
+      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+        [PENDING_SENTENCE_STORAGE_KEY]: {
+          sentence: SENTENCE,
+          word: '',
+          createdAt: 1,
+        },
+      })
+    })
+
+    it('renders the sentence row signed out, with Sign in and no Retry', async () => {
+      answer({ translateSentence: EXPIRED })
+      const user = userEvent.setup()
+      render(<SidePanel />)
+
+      const row = await screen.findByTestId('sidepanel-signed-out')
+      expect(row).toHaveTextContent(SIGNED_OUT)
+      expect(row).not.toHaveTextContent('Please login again')
+      expect(screen.queryByTestId('sidepanel-retry-sentence')).toBeNull()
+
+      await user.click(within(row).getByRole('button', { name: 'Sign in' }))
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+        action: 'openWebSignIn',
+      })
+    })
+
+    it('renders the context row signed out, with Sign in and no Retry', async () => {
+      answer({ translateWordInContext: EXPIRED })
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-sentence')
+
+      selectWord('great')
+
+      const row = await screen.findByTestId(
+        'sidepanel-context-signed-out-great'
+      )
+      expect(row).toHaveTextContent(SIGNED_OUT)
+      expect(
+        within(row).getByRole('button', { name: 'Sign in' })
+      ).toBeInTheDocument()
+      expect(screen.queryByTestId('sidepanel-retry-context-great')).toBeNull()
+    })
+
+    it('renders the dictionary row signed out, with Sign in', async () => {
+      answer({ getOneWord: EXPIRED })
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-sentence')
+
+      selectWord('great')
+
+      const row = await screen.findByTestId(
+        'sidepanel-dictionary-signed-out-great'
+      )
+      expect(row).toHaveTextContent(SIGNED_OUT)
+      expect(
+        within(row).getByRole('button', { name: 'Sign in' })
+      ).toBeInTheDocument()
+    })
+
+    it('leaves an ordinary failure with its destructive Retry', async () => {
+      answer({
+        translateSentence: { success: false, error: 'Translation failed' },
+      })
+      render(<SidePanel />)
+
+      const row = await screen.findByTestId('sidepanel-error')
+      expect(row).toHaveClass('text-destructive')
+      expect(screen.getByTestId('sidepanel-retry-sentence')).toBeInTheDocument()
+      expect(screen.queryByTestId('sidepanel-signed-out')).toBeNull()
+    })
+  })
+
   // When the dictionary lookup itself never resolved (e.g. the same session
   // expiry broke both halves), retry must redo the whole dictionary-first
   // chain -- not just re-run the AI call with no definition to compare

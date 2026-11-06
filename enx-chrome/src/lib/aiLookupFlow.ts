@@ -10,6 +10,7 @@ import {
   shouldShowAiNotice,
 } from '@/lib/aiLookup'
 import { countLookup, type RecordLookup } from '@/lib/queryCount'
+import { showSignedOut } from '@/lib/signedOut'
 import type { WordData } from '@/types'
 
 type Store = ReturnType<typeof createStore>
@@ -23,7 +24,6 @@ export type AiLookupDeps = {
   // The content script's follow-ups for a word that now has a definition:
   // remember it, refresh highlights, mirror it into the side panel.
   onDefined: (word: WordData) => void
-  onSessionExpired: () => void
   // Sends the one POST that counts this click-to-lookup (ADR-059).
   recordLookup: RecordLookup
 }
@@ -70,7 +70,7 @@ export const runAiLookup = async (
       store.set(aiLookupAtom, { status: 'none' })
       return
     case 'session-expired':
-      deps.onSessionExpired()
+      showSignedOut(store)
       return
     case 'error':
       store.set(aiLookupAtom, {

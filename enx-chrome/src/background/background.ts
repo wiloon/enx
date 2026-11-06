@@ -1,7 +1,7 @@
 // ENX Background Script - Handles API communication and message routing
 // Note: Sentry initialization is skipped in service worker context to avoid import issues
 
-import { createAccountSession } from '@/lib/accountSession'
+import { createAccountSession, type Invalidation } from '@/lib/accountSession'
 import { createClerkClient } from '@clerk/chrome-extension/client'
 import { config } from '@/config/env'
 import { LatestPageWordLookup, PendingSentenceContext, WordData } from '@/types'
@@ -243,25 +243,29 @@ const isSignedIn = async (): Promise<boolean> => {
   }
 }
 
+// What each tab hears about an invalidation (#236). A lost session keeps an
+// open word popover, signed out; `cause` tells a confirmed 401 (error badge)
+// from a sign-out observed elsewhere (badge off).
+const invalidationMessage = (cause: Invalidation) => {
+  switch (cause) {
+    case 'expired':
+      return { action: 'sessionExpired', cause: 'expired' }
+    case 'lost':
+      return { action: 'sessionExpired', cause: 'signed-out' }
+    default:
+      return { action: 'accountChanged' }
+  }
+}
+
 // A page with learning mode off can still hold a successful review list.
 // Notify all tabs and tolerate pages without an injected content script.
-const notifyAccountChange = async (expired = false) => {
+const notifyAccountChange = async (cause: Invalidation) => {
   const tabs = await chrome.tabs.query({})
+  const message = invalidationMessage(cause)
   await Promise.allSettled(
     tabs
       .filter(tab => tab.id !== undefined)
-      .map(tab =>
-        chrome.tabs.sendMessage(
-          tab.id!,
-          expired
-            ? {
-                action: 'sessionExpired',
-                message:
-                  'Your session has expired. Please click the extension icon to login again.',
-              }
-            : { action: 'accountChanged' }
-        )
-      )
+      .map(tab => chrome.tabs.sendMessage(tab.id!, message))
   )
 }
 
@@ -277,13 +281,13 @@ const makeAccountSession = () =>
     writeOwner: async owner => {
       await chrome.storage.session.set({ [ACCOUNT_SESSION_OWNER_KEY]: owner })
     },
-    invalidate: expired => notifyAccountChange(expired),
+    invalidate: cause => notifyAccountChange(cause),
   })
 let accountSession = makeAccountSession()
 
 const handleSessionExpiry = async () => {
   console.log('Session expired (401 from API)')
-  await accountSession.clear(true)
+  await accountSession.clear('expired')
 }
 
 // Register synchronously so cookie changes wake an evicted MV3 worker too.
@@ -345,6 +349,8 @@ export const SERVICE_UNAVAILABLE_MESSAGE =
 // URL and the Options hint are for developers, so they go to swlog instead.
 export const NETWORK_ERROR_MESSAGE =
   "Couldn't connect to Catglish. Check your internet connection and try again."
+export const ACCOUNT_CHANGED_MESSAGE =
+  'Your sign-in changed while this was loading. Please try again.'
 
 // Waits before replaying a call that opted in with `{ retry: true }` (#133).
 // Only calls safe to repeat may opt in: they can be replayed after a network
@@ -541,17 +547,21 @@ export const makeApiRequest = async (
   } catch (error) {
     console.error('API request failed:', error)
 
-    // Check if this is a session expiry error
+    // A request the account fence stopped (#236): its session was lost
+    // unless the latest invalidation switched to another signed-in account,
+    // which is an ordinary failure for whoever asked.
     if (
       error instanceof Error &&
       (error.message === 'Session expired' ||
         error.message === 'Session changed')
     ) {
-      return {
-        success: false,
-        error: 'Your session has expired. Please login again.',
-        sessionExpired: true,
-      }
+      return accountSession.sessionLost()
+        ? {
+            success: false,
+            error: 'Your session has expired. Please login again.',
+            sessionExpired: true,
+          }
+        : { success: false, error: ACCOUNT_CHANGED_MESSAGE }
     }
 
     // Network errors
@@ -803,7 +813,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         case 'accountSignedOut':
           resetClerkSession()
-          await accountSession.clear()
+          await accountSession.clear('signed-out')
           return { success: true }
 
         case 'getReviewWords':
