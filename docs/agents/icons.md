@@ -30,7 +30,7 @@ Before placing an icon, find its concept below and use that row's icon. A concep
 | Needs a plan (paywalled) | `LockClosedIcon` | `Lock` | "Look up with AI" without credits |
 | Private to you | `ShieldCheckIcon` | `ShieldCheck` | Reader's "Only you can see it" note |
 | A website | `GlobeAltIcon` | `Globe` | popup "Always enable on this site"; "Back to site" nav |
-| Opens in a new tab | `ArrowTopRightOnSquareIcon` | `ExternalLink` | popup header link to the site; popup "Set a shortcut" |
+| Opens in a new tab | `ArrowTopRightOnSquareIcon` | `ExternalLink` | popup header link to the site; popup "Set a shortcut"; landing page "Similar apps" rows |
 | Next step, go on | `ArrowRightIcon` | `ArrowRight` | sign-in button; Home "Start with a sample article" |
 | Row leads somewhere | `ChevronRightIcon` | `ChevronRight` | popup "Open side panel", Home stat strip and plan card, `/billing` "Credit history" |
 | Expand or collapse a grouped row | — | `ChevronDown` (rotated when open) | credit history's same-day AI usage groups |

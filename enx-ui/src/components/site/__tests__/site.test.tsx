@@ -208,6 +208,13 @@ describe('Comparison', () => {
     )
   })
 
+  it("links open-source apps to their own website, in a new tab", () => {
+    render(<Comparison />)
+    const link = screen.getByRole('link', { name: 'Saladict' })
+    expect(link).toHaveAttribute('href', 'https://saladict.crimx.com')
+    expect(link).toHaveAttribute('target', '_blank')
+  })
+
   it('shows the data-freshness disclaimer', () => {
     render(<Comparison />)
     expect(screen.getByText(/approximate as of/i)).toBeInTheDocument()

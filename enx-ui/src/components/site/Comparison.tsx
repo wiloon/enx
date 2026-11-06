@@ -1,3 +1,5 @@
+import { ExternalLink } from 'lucide-react'
+
 // Similar apps in this space, ranked by reach (Chrome Web Store users, or
 // GitHub stars where the project is open source). No feature comparison —
 // see market-research.md if that's needed elsewhere.
@@ -41,7 +43,7 @@ const APPS: App[] = [
   },
   {
     name: 'Saladict',
-    url: 'https://github.com/crimx/ext-saladict',
+    url: 'https://saladict.crimx.com',
     description:
       'Pop-up dictionary and page translator with multiple lookup modes, a new-word notebook, and PDF support. Open source.',
     users: 200_000,
@@ -63,14 +65,14 @@ const APPS: App[] = [
   },
   {
     name: 'TransOver',
-    url: 'https://github.com/hanxue/transover',
+    url: 'https://chromewebstore.google.com/detail/transover/aggiiclaiamajehmlfpkjmlbadmkledi',
     description:
       'Hover, click, or select to translate any word or phrase on a page. Open source.',
     users: 100_000,
   },
   {
     name: 'KISS Translator',
-    url: 'https://github.com/fishjar/kiss-translator',
+    url: 'https://kiss-translator.rayjar.com',
     description:
       'Minimalist bilingual webpage, selection, and video subtitle translator. Open source.',
     users: 90_000,
@@ -78,7 +80,7 @@ const APPS: App[] = [
   },
   {
     name: 'Read Frog',
-    url: 'https://github.com/mengxi-ream/read-frog',
+    url: 'https://www.readfrog.app',
     description:
       'Dual-language webpage and PDF translator with vocabulary review for language learners. Open source.',
     users: 60_000,
@@ -100,7 +102,7 @@ const APPS: App[] = [
   },
   {
     name: 'FluentRead',
-    url: 'https://github.com/FluentRead/FluentRead',
+    url: 'https://read.thinkstu.com',
     description:
       'Bilingual webpage and selection translator with AI explanations and saved words for review. Open source.',
     users: 20_000,
@@ -173,16 +175,17 @@ export default function Comparison() {
         {APPS.map((app) => (
           <li
             key={app.name}
-            className="flex flex-wrap items-baseline justify-between gap-2 py-4"
+            className="group relative -mx-3 flex flex-wrap items-baseline justify-between gap-2 rounded-md px-3 py-4 transition-colors hover:bg-muted/60 has-[:focus-visible]:bg-muted/60"
           >
             <div>
               <a
                 href={app.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-semibold hover:underline"
+                className="inline-flex items-center gap-1 font-semibold text-brand outline-none after:absolute after:inset-0 after:rounded-md group-hover:underline focus-visible:after:ring-2 focus-visible:after:ring-ring"
               >
                 {app.name}
+                <ExternalLink className="size-3.5" aria-hidden="true" />
               </a>
               <p className="text-sm text-muted-foreground">{app.description}</p>
             </div>
