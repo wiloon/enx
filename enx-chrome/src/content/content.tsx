@@ -36,9 +36,10 @@ import {
 } from '@/lib/extensionPresence'
 import {
   runWithStatus,
+  withoutErrorBadge,
   type LearningModeStatus,
 } from '@/lib/learningModeStatus'
-import { maybeAutoEnable } from './autoEnable'
+import { autoEnableOnSignInReturn, maybeAutoEnable } from './autoEnable'
 import { countLookup, type RecordLookup } from '@/lib/queryCount'
 import { nearestElement, referenceLineHeight } from '@/lib/rangeUtils'
 import {
@@ -1457,8 +1458,11 @@ const getSpaRebuilder = () => {
   return spaRebuilderInstance
 }
 
-// Enable ENX functionality
-const enableEnx = async (): Promise<EnableOutcome> => {
+// Enable ENX functionality. `report` gets this run's status reports; later
+// SPA rebuilds always report through reportStatus.
+const enableEnx = async (
+  report: (status: LearningModeStatus) => void = reportStatus
+): Promise<EnableOutcome> => {
   // Before anything paints: an orphan beside this script tears down now.
   standDown.announce()
   if (standDown.isStoodDown()) return ENABLE_OK
@@ -1501,7 +1505,7 @@ const enableEnx = async (): Promise<EnableOutcome> => {
   }
   const outcome = await runWithStatus(
     onArticleFound => processArticleContent({ isCurrent, onArticleFound }),
-    reportStatus,
+    report,
     () =>
       !standDown.isStoodDown() &&
       lifecycle === learningModeLifecycle &&
@@ -1567,7 +1571,9 @@ const standDownOrphan = () => {
 }
 
 // The enable path shared by the popup's enxRun and adr-039 auto-enable.
-const runLearningMode = (): Promise<EnableOutcome> => {
+const runLearningMode = (
+  report: (status: LearningModeStatus) => void = reportStatus
+): Promise<EnableOutcome> => {
   // ADR-010 Decision 7 (G2): "enable once" becomes "re-arm". On an
   // already-enabled page (e.g. X after an in-page navigation swapped the
   // DOM), tear down and re-run instead of the old no-op early return.
@@ -1576,8 +1582,14 @@ const runLearningMode = (): Promise<EnableOutcome> => {
   if (isEnxEnabled) {
     disableEnx()
   }
-  return enableEnx()
+  return enableEnx(report)
 }
+
+// ADR-010 Decision 1: an adapter can declare the current page out of scope.
+const isPageSupported = () =>
+  !resolveSiteAdapter(window.location, siteOrigins).pageSupport?.(
+    window.location
+  )
 
 // Listen for messages from the popup or background
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
@@ -1635,6 +1647,21 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
     case 'enxStop':
       disableEnx()
+      sendResponse({ success: true })
+      break
+
+    // #526: back from an ADR-020 sign-in. Silent like page-load auto-enable,
+    // so the outcome goes to the badge only. runWithStatus drops a
+    // superseded run's reports, so this run never clears a newer one's.
+    case 'autoEnableOnSignInReturn':
+      void autoEnableOnSignInReturn({
+        isPageSupported,
+        enable: () =>
+          runLearningMode(status => reportStatus(withoutErrorBadge(status))),
+        disable: disableEnx,
+        keepsWatching: isSpaPage,
+        clearStatus: () => reportStatus({ status: 'off' }),
+      })
       sendResponse({ success: true })
       break
 
@@ -1721,10 +1748,7 @@ standDown.announce()
 void maybeAutoEnable({
   askBackground: async () =>
     (await sendToBackground({ type: 'shouldAutoEnable' })).autoEnable === true,
-  isPageSupported: () =>
-    !resolveSiteAdapter(window.location, siteOrigins).pageSupport?.(
-      window.location
-    ),
+  isPageSupported,
   enable: runLearningMode,
   disable: disableEnx,
   keepsWatching: isSpaPage,

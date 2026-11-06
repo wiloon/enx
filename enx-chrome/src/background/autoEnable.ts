@@ -9,7 +9,10 @@ import {
   sitePatternFor,
   type AutoEnableManifest,
 } from '@/lib/autoEnableSite'
-import type { LearningModeStatus } from '@/lib/learningModeStatus'
+import {
+  canEnableOnSignInReturn,
+  type LearningModeStatus,
+} from '@/lib/learningModeStatus'
 
 const SCRIPT_ID_PREFIX = 'auto-enable:'
 
@@ -102,6 +105,30 @@ export async function enableOnNewlyGrantedSite(
     if ((await deps.getStatus(tab.id)).status !== 'off') continue
     await deps.enable(tab.id)
   }
+}
+
+export interface EnableOnSignInReturnDeps {
+  getStatus: (tabId: number) => Promise<LearningModeStatus>
+  /** Asks the tab's content script to auto-enable, as at page load. */
+  enable: (tabId: number) => Promise<unknown>
+}
+
+// #526: an ADR-020 sign-in return only refocuses the origin tab, so the
+// page-load auto-enable check never runs again there. The caller has
+// already confirmed the sign-in.
+export async function enableOnSignInReturn(
+  originTabId: number,
+  deps: EnableOnSignInReturnDeps
+): Promise<void> {
+  let tab: chrome.tabs.Tab
+  try {
+    tab = await chrome.tabs.get(originTabId)
+  } catch {
+    return // Closed while the user signed in.
+  }
+  if (!(await shouldAutoEnable(tab.url))) return
+  if (!canEnableOnSignInReturn(await deps.getStatus(originTabId))) return
+  await deps.enable(originTabId)
 }
 
 export async function shouldAutoEnable(

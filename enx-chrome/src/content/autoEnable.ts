@@ -7,9 +7,7 @@
 
 import type { EnableOutcome } from '@/lib/enableOutcome'
 
-export interface AutoEnableDeps {
-  /** Asks the background whether this site is granted (and signed in). */
-  askBackground: () => Promise<boolean>
+interface AutoEnableRunDeps {
   /** The site adapter's pageSupport check (e.g. an X timeline is out of scope). */
   isPageSupported: () => boolean
   /** The same enable path the popup's enxRun uses. */
@@ -24,6 +22,11 @@ export interface AutoEnableDeps {
   keepsWatching: () => boolean
 }
 
+export interface AutoEnableDeps extends AutoEnableRunDeps {
+  /** Asks the background whether this site is granted (and signed in). */
+  askBackground: () => Promise<boolean>
+}
+
 // A signed-out session fails every later run the same way, so it is the one
 // failure an SPA site still rolls back on.
 const shouldRollBack = (
@@ -31,16 +34,7 @@ const shouldRollBack = (
   keepsWatching: boolean
 ): boolean => !keepsWatching || outcome.reason === 'session-expired'
 
-export async function maybeAutoEnable(deps: AutoEnableDeps): Promise<void> {
-  let granted = false
-  try {
-    granted = await deps.askBackground()
-  } catch (error) {
-    console.debug('auto-enable: background unreachable', error)
-    return
-  }
-  if (!granted || !deps.isPageSupported()) return
-
+async function runAutoEnable(deps: AutoEnableRunDeps): Promise<void> {
   try {
     const outcome = await deps.enable()
     if (!outcome.ok) {
@@ -57,4 +51,35 @@ export async function maybeAutoEnable(deps: AutoEnableDeps): Promise<void> {
     console.debug('auto-enable: rolled back after an error', error)
     deps.disable()
   }
+}
+
+export async function maybeAutoEnable(deps: AutoEnableDeps): Promise<void> {
+  let granted = false
+  try {
+    granted = await deps.askBackground()
+  } catch (error) {
+    console.debug('auto-enable: background unreachable', error)
+    return
+  }
+  if (!granted || !deps.isPageSupported()) return
+  await runAutoEnable(deps)
+}
+
+export interface SignInReturnDeps extends AutoEnableRunDeps {
+  /** Sets the badge back to empty. */
+  clearStatus: () => void
+}
+
+// #526: the background asks for this once an ADR-020 sign-in brings the user
+// back to this tab, having checked the site and the sign-in itself. `enable`
+// must leave no error badge (adr-046 Decision 3, sign-in return exception);
+// on a page out of scope the "!" left from being signed out is cleared.
+export async function autoEnableOnSignInReturn(
+  deps: SignInReturnDeps
+): Promise<void> {
+  if (!deps.isPageSupported()) {
+    deps.clearStatus()
+    return
+  }
+  await runAutoEnable(deps)
 }
