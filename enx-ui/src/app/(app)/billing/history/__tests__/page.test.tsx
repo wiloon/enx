@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import CreditHistoryPage from '../page'
 import { apiService } from '@/services/api'
@@ -29,11 +35,12 @@ function renderPage() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
-  return render(
+  render(
     <QueryClientProvider client={client}>
       <CreditHistoryPage />
     </QueryClientProvider>
   )
+  return client
 }
 
 const timeline = () =>
@@ -165,6 +172,95 @@ it('keeps tied transactions distinct through pagination and rerendering', async 
   } finally {
     errors.mockRestore()
   }
+})
+
+describe('expanded groups', () => {
+  const sentence = (createdAt: string) =>
+    tx({ createdAt, feature: 'translate_sentence' })
+  // Two same-day groups, interleaved: words at 0 and 2, sentences at 1 and 3.
+  const day = [
+    tx({ createdAt: '2026-11-05T22:00:00Z' }),
+    sentence('2026-11-05T21:30:00Z'),
+    tx({ createdAt: '2026-11-05T21:00:00Z' }),
+    sentence('2026-11-05T20:30:00Z'),
+  ]
+  const groupButton = (name: RegExp) => screen.getByRole('button', { name })
+
+  it('stay open, and no other group opens, after a refetch adds a newer row at the top', async () => {
+    mockList.mockResolvedValue(page(day))
+    const client = renderPage()
+    await screen.findByRole('button', { name: /Sentence translation ×2/ })
+    fireEvent.click(groupButton(/Sentence translation ×2/))
+
+    mockList.mockResolvedValue(
+      page([
+        tx({
+          createdAt: '2026-11-05T23:00:00Z',
+          type: 'GRANT_TOPUP',
+          feature: '',
+          amount: 300,
+        }),
+        ...day,
+      ])
+    )
+    await client.refetchQueries()
+    await screen.findByText('Credits purchased')
+
+    expect(groupButton(/Sentence translation ×2/)).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    )
+    expect(groupButton(/Word translation ×2/)).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    )
+  })
+
+  it('stay open when a refetch adds a newer same-day spend to them', async () => {
+    mockList.mockResolvedValue(page(day))
+    const client = renderPage()
+    await screen.findByRole('button', { name: /Sentence translation ×2/ })
+    fireEvent.click(groupButton(/Sentence translation ×2/))
+
+    mockList.mockResolvedValue(page([sentence('2026-11-05T23:00:00Z'), ...day]))
+    await client.refetchQueries()
+
+    const group = await screen.findByRole('button', {
+      name: /Sentence translation ×3/,
+    })
+    expect(group).toHaveAttribute('aria-expanded', 'true')
+    expect(
+      within(
+        screen.getByRole('list', { name: 'Sentence translation ×3' })
+      ).getAllByRole('listitem')
+    ).toHaveLength(3)
+    expect(groupButton(/Word translation ×2/)).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    )
+  })
+
+  it('are all shown closed after the filter changes', async () => {
+    mockList.mockResolvedValue(page(day))
+    renderPage()
+    await screen.findByRole('button', { name: /Word translation ×2/ })
+    fireEvent.click(groupButton(/Word translation ×2/))
+
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Filter' })).getByRole(
+        'button',
+        { name: 'Used' }
+      )
+    )
+    await waitFor(() => expect(mockList).toHaveBeenLastCalledWith('', 'out'))
+    await screen.findByRole('button', { name: /Word translation ×2/ })
+
+    expect(
+      within(screen.getByRole('list', { name: 'Credit transactions' }))
+        .getAllByRole('button')
+        .map((b) => b.getAttribute('aria-expanded'))
+    ).toEqual(['false', 'false'])
+  })
 })
 
 it('shows +0 and why on rows that changed nothing', async () => {

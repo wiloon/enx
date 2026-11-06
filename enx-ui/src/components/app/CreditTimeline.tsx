@@ -13,6 +13,7 @@ import {
   localTime,
   signedCredits,
   supportNote,
+  timelineRowKeys,
   transactionLabel,
 } from '@/lib/creditHistory'
 import { cn } from '@/lib/utils'
@@ -56,9 +57,9 @@ export default function CreditTimeline({
     queryFn: ({ pageParam }) => load(pageParam, direction),
     getNextPageParam: (last) => last.next || undefined,
   })
-  const entries = (query.data?.pages.flatMap((p) => p.transactions) ?? []).map(
-    (entry, index) => ({ ...entry, occurrence: index })
-  )
+  const loaded = query.data?.pages.flatMap((p) => p.transactions) ?? []
+  const keys = timelineRowKeys(loaded)
+  const entries = loaded.map((entry, i) => ({ ...entry, key: keys[i] }))
   const items = groupTimeline(entries)
   const filter = FILTERS.find((f) => f.direction === direction)!
 
@@ -82,7 +83,11 @@ export default function CreditTimeline({
             key={f.label}
             type="button"
             aria-pressed={direction === f.direction}
-            onClick={() => setDirection(f.direction)}
+            onClick={() => {
+              if (f.direction === direction) return
+              setDirection(f.direction)
+              setExpanded(new Set())
+            }}
             className={cn(
               'rounded-md px-4 py-1.5 text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none active:scale-[0.97] motion-reduce:active:scale-100',
               direction === f.direction
@@ -116,7 +121,7 @@ export default function CreditTimeline({
               const e = item.row
               return (
                 <li
-                  key={rowKey(e)}
+                  key={e.key}
                   className="flex items-start justify-between gap-4 py-3 text-sm"
                 >
                   <RowDetails entry={e} admin={admin} />
@@ -130,7 +135,7 @@ export default function CreditTimeline({
               )
             }
             const [newest] = item.rows
-            const key = `group-${rowKey(newest)}`
+            const key = `group-${item.key}`
             const name = `${aiFeatureLabel(item.feature)} ×${item.count}`
             const open = expanded.has(key)
             return (
@@ -170,7 +175,7 @@ export default function CreditTimeline({
                   >
                     {item.rows.map((e) => (
                       <li
-                        key={rowKey(e)}
+                        key={e.key}
                         className="flex items-start justify-between gap-4 py-2"
                       >
                         <RowDetails entry={e} admin={admin} timeOnly />
@@ -202,11 +207,6 @@ export default function CreditTimeline({
       )}
     </div>
   )
-}
-
-// Appending pages preserves each loaded occurrence's position, including ties.
-function rowKey(e: Entry & { occurrence: number }): string {
-  return String(e.occurrence)
 }
 
 function isAdminEntry(e: Entry): e is AdminLedgerEntry {
