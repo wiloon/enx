@@ -208,7 +208,7 @@ describe('Comparison', () => {
     )
   })
 
-  it("links open-source apps to their own website, in a new tab", () => {
+  it('links open-source apps to their own website, in a new tab', () => {
     render(<Comparison />)
     const link = screen.getByRole('link', { name: 'Saladict' })
     expect(link).toHaveAttribute('href', 'https://saladict.crimx.com')
