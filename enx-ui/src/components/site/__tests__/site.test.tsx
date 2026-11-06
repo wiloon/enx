@@ -225,6 +225,13 @@ describe('Comparison', () => {
     )
   })
 
+  it('shows Catglish as New instead of a user count', () => {
+    render(<Comparison />)
+    const row = screen.getByRole('link', { name: 'Catglish' }).closest('li')!
+    expect(row).toHaveTextContent(/\bNew\b/)
+    expect(row).not.toHaveTextContent(/users/)
+  })
+
   it('shows the data-freshness disclaimer', () => {
     render(<Comparison />)
     expect(screen.getByText(/approximate as of/i)).toBeInTheDocument()

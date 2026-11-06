@@ -11,6 +11,8 @@ type App = {
   description: string
   users?: number
   stars?: number
+  // Shown in place of figures for an app too new to have meaningful ones.
+  isNew?: boolean
 }
 
 const APPS: App[] = [
@@ -157,7 +159,7 @@ const APPS: App[] = [
     url: SITE.chromeWebStoreUrl,
     description:
       'Click any word for its meaning, translate sentences in a side panel, and see looked-up words underlined wherever they reappear.',
-    users: 2,
+    isNew: true,
   },
 ].sort((a, b) => (b.users ?? b.stars ?? 0) - (a.users ?? a.stars ?? 0))
 
@@ -199,6 +201,11 @@ export default function Comparison() {
               <p className="text-sm text-muted-foreground">{app.description}</p>
             </div>
             <div className="text-sm text-muted-foreground">
+              {app.isNew && (
+                <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-semibold text-brand">
+                  New
+                </span>
+              )}
               {app.users != null && <span>{formatCount(app.users)} users</span>}
               {app.stars != null && (
                 <span>
