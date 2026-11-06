@@ -46,6 +46,14 @@ beforeEach(() => {
   })
 })
 
+// ADR-063 Decision 5: the reason reaches the user's credit history.
+it('tells the admin the user sees the reason as a note from support', () => {
+  renderForm()
+  expect(screen.getByLabelText('Reason')).toHaveAccessibleDescription(
+    'The user sees this as a note from support in their credit history.'
+  )
+})
+
 // ADR-049 Decision 2. The user is named by their enx ID, never by email:
 // two accounts can share an email (#211).
 it('grants credits with the reason and reports the new balance', async () => {

@@ -2,27 +2,17 @@
 
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import {
-  useInfiniteQuery,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ExternalLink } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import PageHeader from '@/components/app/PageHeader'
+import CreditTimeline from '@/components/app/CreditTimeline'
 import AccountActions from '@/components/admin/AccountActions'
 import AdjustCreditsForm from '@/components/admin/AdjustCreditsForm'
 import CreditBalance from '@/components/admin/CreditBalance'
-import {
-  ledgerEntryLabel,
-  signedCredits,
-  utcDate,
-  utcMinute,
-} from '@/lib/adminUsers'
-import { cn } from '@/lib/utils'
+import { utcDate } from '@/lib/adminUsers'
 import { apiService } from '@/services/api'
-import type { AdminUserDetail } from '@/types'
+import type { AdminUserDetail, CreditDirection } from '@/types'
 
 // One user's account, usage and credit ledger (ADR-049 Decision 11), with
 // the admin grant and deduction forms (Decisions 2-3) and the account
@@ -211,19 +201,18 @@ function UserDetail({ detail }: { detail: AdminUserDetail }) {
   )
 }
 
-// Every credit_transactions row, newest first, a page at a time.
+// Every credit_transactions row, newest first, a page at a time: the user's
+// own timeline (ADR-063) plus the admin fields.
 function Ledger({ userId }: { userId: string }) {
-  const query = useInfiniteQuery({
-    queryKey: ['admin-user-ledger', userId],
-    initialPageParam: '',
-    queryFn: async ({ pageParam }) => {
-      const resp = await apiService.adminListUserTransactions(userId, pageParam)
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load the ledger')
-    },
-    getNextPageParam: (last) => last.next || undefined,
-  })
-  const entries = query.data?.pages.flatMap((p) => p.transactions) ?? []
+  const load = async (before: string, direction: CreditDirection) => {
+    const resp = await apiService.adminListUserTransactions(
+      userId,
+      before,
+      direction
+    )
+    if (resp.success && resp.data) return resp.data
+    throw new Error(resp.error || 'Failed to load the ledger')
+  }
 
   return (
     <Card role="region" aria-labelledby="ledger-title">
@@ -232,71 +221,12 @@ function Ledger({ userId }: { userId: string }) {
           Ledger
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {query.isError && (
-          <p role="alert" className="text-sm text-destructive">
-            {(query.error as Error).message}
-          </p>
-        )}
-        {query.isSuccess && entries.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            No credit transactions yet.
-          </p>
-        )}
-        {entries.length > 0 && (
-          <ol className="divide-y divide-border/60">
-            {entries.map((e) => (
-              <li
-                key={e.id}
-                className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2 text-sm"
-              >
-                <div className="min-w-0 space-y-0.5">
-                  <p className="font-medium">{ledgerEntryLabel(e.type)}</p>
-                  {(e.feature || e.note) && (
-                    <p className="break-words text-xs text-muted-foreground">
-                      {e.feature && (
-                        <span className="font-mono">{e.feature}</span>
-                      )}
-                      {e.feature && e.note && ' · '}
-                      {e.note}
-                    </p>
-                  )}
-                  <p className="font-mono text-xs text-muted-foreground">
-                    {utcMinute(e.createdAt)}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p
-                    className={cn(
-                      'font-semibold tabular-nums',
-                      e.amount < 0 ? 'text-destructive' : 'text-foreground'
-                    )}
-                  >
-                    {signedCredits(e.amount)}
-                  </p>
-                  {/* balance_after is the pool the row touched for grants,
-                      deductions and clawbacks, and the total for AI usage. */}
-                  <p
-                    className="text-xs text-muted-foreground"
-                    title="Balance after this entry: the pool it changed, or the total for AI usage"
-                  >
-                    after <CreditBalance value={e.balanceAfter} />
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ol>
-        )}
-        {query.hasNextPage && (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={query.isFetchingNextPage}
-            onClick={() => query.fetchNextPage()}
-          >
-            {query.isFetchingNextPage ? 'Loading…' : 'Load more'}
-          </Button>
-        )}
+      <CardContent>
+        <CreditTimeline
+          queryKey={['admin-user-ledger', userId]}
+          load={load}
+          admin
+        />
       </CardContent>
     </Card>
   )

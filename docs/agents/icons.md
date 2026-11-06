@@ -32,7 +32,9 @@ Before placing an icon, find its concept below and use that row's icon. A concep
 | A website | `GlobeAltIcon` | `Globe` | popup "Always enable on this site"; "Back to site" nav |
 | Opens in a new tab | `ArrowTopRightOnSquareIcon` | `ExternalLink` | popup header link to the site; popup "Set a shortcut" |
 | Next step, go on | `ArrowRightIcon` | `ArrowRight` | sign-in button; Home "Start with a sample article" |
-| Row leads somewhere | `ChevronRightIcon` | `ChevronRight` | popup "Open side panel", Home stat strip and plan card |
+| Row leads somewhere | `ChevronRightIcon` | `ChevronRight` | popup "Open side panel", Home stat strip and plan card, `/billing` "Credit history" |
+| Expand or collapse a grouped row | — | `ChevronDown` (rotated when open) | credit history's same-day AI usage groups |
+| Back to the parent page | — | `ArrowLeft` | "Users" on `/admin/users/[id]`, "Billing" on `/billing/history` |
 | The extension itself | `PuzzlePieceIcon` | `Puzzle` | Reader's "needs the extension" notice |
 | Settings | `Cog6ToothIcon` | `Settings` | popup header, Settings nav |
 | Billing | `CreditCardIcon` | `CreditCard` | account menu "Billing" |

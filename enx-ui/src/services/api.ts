@@ -11,6 +11,8 @@ import {
   ApiResponse,
   BillingMeData,
   CheckoutSessionData,
+  CreditDirection,
+  CreditTransactionPage,
   MeData,
   PreferenceChanges,
   PreferencesData,
@@ -57,6 +59,15 @@ export function localDate(now: Date = new Date()): string {
   const m = String(now.getMonth() + 1).padStart(2, '0')
   const d = String(now.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
+}
+
+// One page of a credit ledger, user's or admin's: 50 rows, older than the
+// cursor, optionally only added or used rows.
+function ledgerParams(before: string, direction: CreditDirection) {
+  const params = new URLSearchParams({ limit: '50' })
+  if (before) params.set('before', before)
+  if (direction) params.set('direction', direction)
+  return params
 }
 
 export class ApiService {
@@ -327,12 +338,11 @@ export class ApiService {
   // previous page's `next`.
   async adminListUserTransactions(
     id: string,
-    before: string
+    before: string,
+    direction: CreditDirection = ''
   ): Promise<ApiResponse<AdminLedgerPage>> {
-    const params = new URLSearchParams({ limit: '50' })
-    if (before) params.set('before', before)
     return this.makeRequest(
-      `/api/admin/users/${encodeURIComponent(id)}/transactions?${params}`
+      `/api/admin/users/${encodeURIComponent(id)}/transactions?${ledgerParams(before, direction)}`
     )
   }
 
@@ -401,6 +411,16 @@ export class ApiService {
 
   async getBillingMe(): Promise<ApiResponse<BillingMeData>> {
     return this.makeRequest('/api/billing/me')
+  }
+
+  // The signed-in user's own credit history, newest first (ADR-063).
+  async listCreditTransactions(
+    before: string,
+    direction: CreditDirection
+  ): Promise<ApiResponse<CreditTransactionPage>> {
+    return this.makeRequest(
+      `/api/me/credits/transactions?${ledgerParams(before, direction)}`
+    )
   }
 
   async createSubscriptionCheckout(

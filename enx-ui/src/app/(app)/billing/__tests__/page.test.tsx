@@ -65,6 +65,19 @@ it('shows the monthly subscription tab by default', async () => {
   await waitFor(() => expect(screen.getByText('Free user')).toBeInTheDocument())
 })
 
+// ADR-063 Decision 4: the way in to the credit history, not a nav item.
+it('links to the credit history from the balance card', async () => {
+  renderPage()
+  await waitFor(() => expect(screen.getByText('Free user')).toBeInTheDocument())
+
+  const status = screen
+    .getByText('Current status')
+    .closest('[data-slot="card"]')
+  expect(
+    within(status as HTMLElement).getByRole('link', { name: 'Credit history' })
+  ).toHaveAttribute('href', '/billing/history')
+})
+
 it('makes Subscribe the brand button and marks the selected tab in brand', async () => {
   renderPage()
   await waitFor(() => expect(screen.getByText('Free user')).toBeInTheDocument())

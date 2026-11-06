@@ -256,14 +256,33 @@ export interface AdminUserDetail {
 
 // GET /api/admin/users/:id/transactions, newest first. `next` is the cursor
 // for the following page, '' on the last one.
-export interface AdminLedgerEntry {
-  id: string
-  type: string
-  amount: number
-  balanceAfter: number
-  feature: string
-  note: string
+// GET /api/me/credits/transactions (ADR-063): one row of the user's own
+// credit history. Codes only; src/lib/creditHistory.ts labels them.
+export interface CreditTransaction {
   createdAt: string
+  type: string
+  feature: string
+  amount: number
+  // All three pools after the row; null on rows older than the column.
+  totalBalanceAfter: number | null
+  // Sent only on GRANT_ADMIN / DEDUCT_ADMIN: the reason support gave.
+  note?: string
+}
+
+export interface CreditTransactionPage {
+  transactions: CreditTransaction[]
+  next: string
+}
+
+// The server-side filter: in = Added (amount > 0), out = Used (amount < 0),
+// '' = All.
+export type CreditDirection = '' | 'in' | 'out'
+
+export interface AdminLedgerEntry extends CreditTransaction {
+  id: string
+  // The pool the row touched, or the total for AI usage.
+  balanceAfter: number
+  note: string
   // stripe | admin | refund | trial | referral | ai | other
   source: string
 }
