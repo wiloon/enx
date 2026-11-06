@@ -17,6 +17,7 @@ import {
   partitionBlocks,
   type PaintWindow,
 } from '@/lib/paintWindow'
+import { createHighlightPreference } from '@/lib/highlightPreference'
 import {
   reviewBucketHighlightCss,
   sentenceWordStates,
@@ -736,6 +737,11 @@ const dropArticleBlocks = () => {
   articleBlocks = new Map()
 }
 
+const highlightPreference = createHighlightPreference({
+  read: getWordHighlightEnabled,
+  paint: { start: startPaintWindow, stop: stopPaintWindow },
+})
+
 // Called right after wordCache[wordKey(word)] changed.
 const wordChanged = (word: string) => {
   paintWindow?.wordsChanged([word])
@@ -958,7 +964,7 @@ const processArticleContent = async (
     // Read the highlight preference before the last stale check so the paint
     // block below stays synchronous (ADR-011 Decision 3: word-data lookup
     // always runs; only the highlight paint is gated).
-    const highlightEnabled = await getWordHighlightEnabled()
+    await highlightPreference.load()
 
     // Last stale check before the paint. Everything from here to the return
     // is synchronous, so a queued navigate event can't interleave -- the
@@ -975,9 +981,7 @@ const processArticleContent = async (
         ...partitionBlocks(textNodesByRoot[i], root, isBlockElement),
       ])
     )
-    if (highlightEnabled) {
-      startPaintWindow()
-    } else {
+    if (!highlightPreference.paintRun()) {
       console.log('Word highlight preference is off; skipping paint')
     }
 
@@ -1778,8 +1782,7 @@ if (!document.head.querySelector('style[data-enx-highlight-styles]')) {
 // keeps the article's blocks; on starts a new paint window over them.
 onWordHighlightEnabledChange(enabled => {
   if (!isEnxEnabled || standDown.isStoodDown()) return
-  if (enabled) startPaintWindow()
-  else stopPaintWindow()
+  highlightPreference.changed(enabled)
 })
 
 // Clean up on page unload
