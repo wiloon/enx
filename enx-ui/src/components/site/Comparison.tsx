@@ -16,7 +16,7 @@ const APPS: App[] = [
     description:
       'Dual-language webpage, PDF, and video subtitle translator. Open source.',
     users: 3_000_000,
-    stars: 18_900,
+    stars: 19_600,
   },
   {
     name: 'Language Reactor',
@@ -73,15 +73,16 @@ const APPS: App[] = [
     url: 'https://github.com/fishjar/kiss-translator',
     description:
       'Minimalist bilingual webpage, selection, and video subtitle translator. Open source.',
-    users: 100_000,
-    stars: 12_500,
+    users: 90_000,
+    stars: 13_200,
   },
   {
     name: 'Read Frog',
     url: 'https://github.com/mengxi-ream/read-frog',
     description:
       'Dual-language webpage and PDF translator with vocabulary review for language learners. Open source.',
-    stars: 9_715,
+    users: 60_000,
+    stars: 10_300,
   },
   {
     name: 'LingQ',
@@ -120,7 +121,7 @@ function formatCount(n: number): string {
   return `${n}`
 }
 
-const AS_OF = 'September 2026'
+const AS_OF = 'November 2026'
 
 export default function Comparison() {
   return (
