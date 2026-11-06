@@ -158,7 +158,13 @@ export class WordProcessor {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode: node => {
         if (!node.parentElement) return NodeFilter.FILTER_REJECT
-        if (this.isInExcludedSubtree(node, root, adapterExclusions))
+        if (
+          this.isInExcludedSubtree(
+            node,
+            adapterExclusions.length > 0 ? undefined : root,
+            adapterExclusions
+          )
+        )
           return NodeFilter.FILTER_REJECT
 
         const text = node.textContent?.trim() || ''
@@ -362,7 +368,6 @@ export class WordProcessor {
 
   // The largest-text fallback: one container, the body (#565), or none.
   private static largestTextBlock(): Element[] {
-
     // Fallback: find the largest text container on the page, skipping
     // candidates whose text is mostly inside <a> tags (nav, related-links,
     // comment threads) -- adr-034 Decision 3. Threshold is a starting point,

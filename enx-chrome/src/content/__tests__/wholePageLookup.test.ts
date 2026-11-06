@@ -103,8 +103,9 @@ const clickWord = async (selector: string, word: string, wait = settle) => {
 }
 
 const popoverWord = () =>
-  overlays()[0]?.shadowRoot?.querySelector('[data-testid="word-popover-header"]')
-    ?.textContent
+  overlays()[0]?.shadowRoot?.querySelector(
+    '[data-testid="word-popover-header"]'
+  )?.textContent
 
 // Every underlined word, across review buckets.
 const underlined = (): string[] => {
@@ -337,20 +338,33 @@ describe('lookup exclusions on a default-adapter page', () => {
   })
 
   it.each([
-    ['on the article root', '<main contenteditable="true">Hello fox world.</main>'],
+    [
+      'on a link enclosing the article',
+      '<a href="/story"><article>Hello fox world.</article></a>',
+    ],
+    [
+      'on the article root',
+      '<main contenteditable="true">Hello fox world.</main>',
+    ],
     [
       'on an ancestor outside the article',
       '<div role="button"><article>Hello fox world.</article></div>',
     ],
-  ])('an exclusion %s leaves its text unclickable and unhighlighted', async (_name, html) => {
-    document.body.innerHTML = html
-    const send = await loadContentScript()
-    await send({ action: 'enxRun' })
-    showAllObserved()
+  ])(
+    'an exclusion %s leaves its text unclickable and unhighlighted',
+    async (_name, html) => {
+      document.body.innerHTML = html
+      document
+        .querySelector('a')
+        ?.addEventListener('click', event => event.preventDefault())
+      const send = await loadContentScript()
+      await send({ action: 'enxRun' })
+      showAllObserved()
 
-    await clickWord('body', 'fox')
+      await clickWord('body', 'fox')
 
-    expect(overlays()).toHaveLength(0)
-    expect(underlined()).toEqual([])
-  })
+      expect(overlays()).toHaveLength(0)
+      expect(underlined()).toEqual([])
+    }
+  )
 })
