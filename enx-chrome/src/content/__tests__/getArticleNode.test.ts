@@ -24,16 +24,27 @@ function getArticleNodesAsDefaultSite(): Element[] {
   })
 }
 
+function lookupAreaAsDefaultSite() {
+  return WordProcessor.findLookupArea({
+    contentSelector: DEFAULT_ADAPTER.contentSelector,
+    minTextLength: DEFAULT_ADAPTER.minTextLength,
+    focusedNodeResolver: DEFAULT_ADAPTER.focusedNodeResolver,
+  })
+}
+
+// The last layer: no article node, so the whole body is the lookup area.
+const WHOLE_PAGE = () => ({ nodes: [document.body], source: 'whole-page' })
+
 // Characterization of the selection before the body fallback (#565): one
 // simplified page shape per row, pinning what the selector list and the
 // largest-text fallback pick. `expected` is a selector for the one element
-// returned, or null for [].
+// returned.
 describe('WordProcessor.getArticleNodes page shapes', () => {
   afterEach(() => {
     document.body.innerHTML = ''
   })
 
-  const rows: Array<{ shape: string; html: string; expected: string | null }> =
+  const rows: Array<{ shape: string; html: string; expected: string }> =
     [
       {
         shape: 'an article element',
@@ -97,7 +108,7 @@ describe('WordProcessor.getArticleNodes page shapes', () => {
         expected: '.document',
       },
       {
-        shape: 'a list page of mostly links (Hacker News shape)',
+        shape: 'a list page of mostly links (Hacker News shape), the whole page',
         // Compact markup, as HN serves it: indentation whitespace would
         // count as non-link text.
         html: `<center><table id="hnmain">${Array.from(
@@ -108,13 +119,12 @@ describe('WordProcessor.getArticleNodes page shapes', () => {
             `3 hours ago | <a href="/hide${i}">hide</a> | ` +
             `<a href="/item${i}">45 comments</a></td></tr>`
         ).join('')}</table></center>`,
-        expected: null,
+        expected: 'body',
       },
       {
-        // #563 will change this row deliberately.
-        shape: 'a short title page',
+        shape: 'a short title page with no container, the whole page',
         html: `<h1>A Short Title</h1><p>${prose(120)}</p>`,
-        expected: null,
+        expected: 'body',
       },
     ]
 
@@ -123,12 +133,8 @@ describe('WordProcessor.getArticleNodes page shapes', () => {
 
     const nodes = getArticleNodesAsDefaultSite()
 
-    if (expected === null) {
-      expect(nodes).toEqual([])
-    } else {
-      expect(nodes).toHaveLength(1)
-      expect(nodes[0]).toBe(document.querySelector(expected))
-    }
+    expect(nodes).toHaveLength(1)
+    expect(nodes[0]).toBe(document.querySelector(expected))
   })
 })
 
@@ -222,7 +228,7 @@ describe('WordProcessor.getArticleNodes body fallback', () => {
     expect(nodes[0]).toBe(main)
   })
 
-  it('returns [] for mostly-link visible text beside a large inline script with no eligible candidate (BBC shape)', () => {
+  it('falls through to the whole page for mostly-link visible text beside a large inline script with no eligible candidate (BBC shape)', () => {
     document.body.innerHTML =
       `<script>${js(10000)}</script>` +
       `<div class="nav">${links(40, 50)}</div>` +
@@ -237,7 +243,7 @@ describe('WordProcessor.getArticleNodes body fallback', () => {
       expect(WordProcessor.linkDensity(div)).toBeGreaterThan(0.5)
     })
 
-    expect(getArticleNodesAsDefaultSite()).toEqual([])
+    expect(lookupAreaAsDefaultSite()).toEqual(WHOLE_PAGE())
   })
 
   it('returns body at exactly the link-density threshold', () => {
@@ -259,7 +265,7 @@ describe('WordProcessor.getArticleNodes body fallback', () => {
     expect(nodes[0]).toBe(intro)
   })
 
-  it('returns [] for a list page of links with no eligible candidate (Hacker News shape)', () => {
+  it('falls through to the whole page for a list page of links with no eligible candidate (Hacker News shape)', () => {
     document.body.innerHTML = `<table>${Array.from(
       { length: 30 },
       (_, i) =>
@@ -273,25 +279,28 @@ describe('WordProcessor.getArticleNodes body fallback', () => {
     ).toBeGreaterThan(500)
     expect(WordProcessor.linkDensity(document.body)).toBeGreaterThan(0.5)
 
-    expect(getArticleNodesAsDefaultSite()).toEqual([])
+    expect(lookupAreaAsDefaultSite()).toEqual(WHOLE_PAGE())
   })
 
-  it('returns [] with exactly 500 lookup-eligible characters and no candidate', () => {
+  it('falls through to the whole page with exactly 500 lookup-eligible characters and no candidate', () => {
     document.body.innerHTML = `<p>${prose(500)}</p>`
 
-    expect(getArticleNodesAsDefaultSite()).toEqual([])
+    expect(lookupAreaAsDefaultSite()).toEqual(WHOLE_PAGE())
   })
 
-  it('returns body with 501 lookup-eligible characters and no candidate', () => {
+  it('returns body as the article with 501 lookup-eligible characters and no candidate', () => {
     document.body.innerHTML = `<p>${prose(501)}</p>`
 
-    expect(getArticleNodesAsDefaultSite()).toEqual([document.body])
+    expect(lookupAreaAsDefaultSite()).toEqual({
+      nodes: [document.body],
+      source: 'article',
+    })
   })
 
-  it('returns [] when a large inline script inflates a body with under 500 lookup-eligible characters', () => {
+  it('falls through to the whole page when a large inline script inflates a body with under 500 lookup-eligible characters', () => {
     document.body.innerHTML = `<script>${js(20000)}</script><p>${prose(400)}</p>`
 
-    expect(getArticleNodesAsDefaultSite()).toEqual([])
+    expect(lookupAreaAsDefaultSite()).toEqual(WHOLE_PAGE())
   })
 
   it('keeps a small-share candidate when the body has under 500 lookup-eligible characters', () => {
@@ -307,10 +316,10 @@ describe('WordProcessor.getArticleNodes body fallback', () => {
     expect(nodes[0]).toBe(snippet)
   })
 
-  it('returns [] when the text over 500 characters sits only in pre and code', () => {
+  it('falls through to the whole page when the text over 500 characters sits only in pre and code', () => {
     document.body.innerHTML = `<pre>${prose(2000)}</pre><p><code>${prose(600)}</code></p>`
 
-    expect(getArticleNodesAsDefaultSite()).toEqual([])
+    expect(lookupAreaAsDefaultSite()).toEqual(WHOLE_PAGE())
   })
 
   it('returns body when a script-heavy candidate wins on raw text but holds under 25% of the visible text', () => {
@@ -470,5 +479,114 @@ describe('WordProcessor.getArticleNodes', () => {
 
     expect(nodes).toHaveLength(1)
     expect(nodes[0].id).toBe('real-article')
+  })
+})
+
+// #563: precise selectors (site-specific, article, main) count however short
+// the match; broad class selectors keep the minimum and pick the longest.
+describe('WordProcessor.getArticleNodes precise and broad selectors', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('returns main for a Standard Ebooks title page, heading and byline included', () => {
+    document.body.innerHTML = `
+      <header><nav><ul><li><a href="/">Standard Ebooks</a></li><li><a href="/ebooks">Ebooks</a></li></ul></nav></header>
+      <main>
+        <section id="titlepage">
+          <h1>Short Fiction</h1>
+          <p>By <b>Joseph Conrad</b>.</p>
+        </section>
+      </main>
+      <footer><a href="/about">About</a></footer>`
+
+    const nodes = getArticleNodesAsDefaultSite()
+
+    expect(nodes).toEqual([document.querySelector('main')])
+    expect(nodes[0].textContent).toContain('Short Fiction')
+    expect(nodes[0].textContent).toContain('By Joseph Conrad.')
+  })
+
+  it('returns an article under 100 characters', () => {
+    document.body.innerHTML = `<article id="short">${prose(60)}</article>`
+
+    expect(lookupAreaAsDefaultSite()).toEqual({
+      nodes: [document.getElementById('short')],
+      source: 'article',
+    })
+  })
+
+  it.each([
+    ['an empty', ' \n '],
+    ['a 1-character', ' a '],
+  ])('skips %s article', (_name, text) => {
+    document.body.innerHTML = `<article id="tiny">${text}</article>`
+
+    expect(getArticleNodesAsDefaultSite()).not.toContain(
+      document.getElementById('tiny')
+    )
+  })
+
+  it('returns every non-nested short article', () => {
+    document.body.innerHTML =
+      `<article id="one">${prose(40)}</article>` +
+      `<article id="two">${prose(50)}</article>`
+
+    expect(getArticleNodesAsDefaultSite()).toEqual([
+      document.getElementById('one'),
+      document.getElementById('two'),
+    ])
+  })
+
+  it('skips a broad selector match of exactly 100 characters', () => {
+    document.body.innerHTML = `<div class="content" id="c">${prose(100)}</div>`
+
+    expect(getArticleNodesAsDefaultSite()).not.toContain(
+      document.getElementById('c')
+    )
+  })
+
+  it('returns only the longest of several broad selector matches over 100 characters', () => {
+    document.body.innerHTML =
+      `<div class="entry-content" id="a">${prose(150)}</div>` +
+      `<div class="entry-content" id="b">${prose(300)}</div>` +
+      `<div class="entry-content" id="c">${prose(200)}</div>`
+
+    expect(getArticleNodesAsDefaultSite()).toEqual([
+      document.getElementById('b'),
+    ])
+  })
+
+  it('returns the article on a page with both article and main', () => {
+    document.body.innerHTML = `<main><p>${prose(300)}</p><article id="story">${prose(80)}</article></main>`
+
+    expect(getArticleNodesAsDefaultSite()).toEqual([
+      document.getElementById('story'),
+    ])
+  })
+
+  it('returns the broad match on a page with a broad match and main', () => {
+    document.body.innerHTML = `<main><p>${prose(300)}</p><div class="post-body" id="post">${prose(200)}</div></main>`
+
+    expect(getArticleNodesAsDefaultSite()).toEqual([
+      document.getElementById('post'),
+    ])
+  })
+
+  it('returns main where the largest-block fallback would pick one of its descendants', () => {
+    document.body.innerHTML = `<main id="m"><div id="nav">${links(40, 50)}</div><div id="story"><p>${prose(800)}</p></div></main>`
+    // main is too link-dense for the largest-block fallback, its child is not.
+    expect(WordProcessor.linkDensity(document.getElementById('m')!)).toBeGreaterThan(0.5)
+
+    expect(getArticleNodesAsDefaultSite()).toEqual([
+      document.getElementById('m'),
+    ])
+  })
+
+  it('returns the whole page when no selector hits and no block is over 500 characters', () => {
+    document.body.innerHTML = `<div><h1>A Title</h1><p>${prose(200)}</p></div>`
+
+    expect(getArticleNodesAsDefaultSite()).toEqual([document.body])
+    expect(lookupAreaAsDefaultSite().source).toBe('whole-page')
   })
 })

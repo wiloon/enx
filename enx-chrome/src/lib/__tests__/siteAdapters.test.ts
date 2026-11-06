@@ -40,7 +40,7 @@ describe('resolveSiteAdapter', () => {
     ).toBe(DEFAULT_ADAPTER)
   })
 
-  it('default adapter reproduces today behavior field-for-field', () => {
+  it('default adapter uses the built-in selectors with no site-specific overrides', () => {
     expect(DEFAULT_ADAPTER).toMatchObject({
       minTextLength: 100,
       contentVolatility: 'static',
@@ -458,6 +458,54 @@ describe('X adapter readiness selector', () => {
   it('waits for the focused tweet or X Article body', () => {
     const x = resolveSiteAdapter(loc('x.com', '/u/status/1'), HOMELAB)
     expect(x.readySelector).toBe(X_READY_SELECTOR)
+  })
+})
+
+// adr-034 #563: the interactive-role exclusions are the default adapter's
+// alone. X wraps a quoted tweet in div[role="link"].
+describe('lookup exclusions per adapter', () => {
+  const quotedTweet = () => {
+    document.body.innerHTML = `
+      <div data-testid="tweetText">Look at this
+        <div role="link"><span id="quoted">a quoted fox</span></div>
+      </div>`
+    return document.querySelector('#quoted')!.firstChild as Text
+  }
+
+  it('keeps a word inside div[role="link"] clickable and highlighted on X', () => {
+    const text = quotedTweet()
+    const x = resolveSiteAdapter(loc('x.com', '/u/status/1'), HOMELAB)
+    const root = document.querySelector(X_CONTENT_SELECTOR)!
+
+    expect(
+      WordProcessor.collectTextNodes(root, x.lookupExcludedSelectors)
+    ).toContain(text)
+    expect(
+      WordProcessor.expandToWordRange(
+        text,
+        text.data.indexOf('fox') + 1,
+        x.lookupExcludedSelectors
+      )?.toString()
+    ).toBe('fox')
+  })
+
+  it('leaves a word inside div[role="link"] alone with the default adapter', () => {
+    const text = quotedTweet()
+    const root = document.querySelector(X_CONTENT_SELECTOR)!
+
+    expect(
+      WordProcessor.collectTextNodes(
+        root,
+        DEFAULT_ADAPTER.lookupExcludedSelectors
+      )
+    ).not.toContain(text)
+    expect(
+      WordProcessor.expandToWordRange(
+        text,
+        text.data.indexOf('fox') + 1,
+        DEFAULT_ADAPTER.lookupExcludedSelectors
+      )
+    ).toBeNull()
   })
 })
 

@@ -1,4 +1,5 @@
 import {
+  endReading,
   IDLE_FLUSH_MS,
   noteWordInteraction,
   startArticle,
@@ -64,5 +65,39 @@ describe('readingTracker.stopReading (#561)', () => {
     jest.advanceTimersByTime(IDLE_FLUSH_MS * 2)
 
     expect(send).not.toHaveBeenCalled()
+  })
+})
+
+describe('readingTracker.endReading (#563)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers()
+  })
+  afterEach(() => {
+    stopReading()
+    jest.useRealTimers()
+  })
+
+  it('reports unreported progress once, then nothing from listeners, timers or clicks', () => {
+    const send = jest.fn()
+    readAQuarter(send)
+
+    endReading()
+
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(send.mock.calls[0][0].wordsRead).toBeGreaterThan(40)
+
+    const range = document.createRange()
+    range.selectNodeContents(document.querySelector('p')!)
+    noteWordInteraction(range)
+    window.dispatchEvent(new Event('pagehide'))
+    window.dispatchEvent(new Event('scroll'))
+    document.dispatchEvent(new Event('visibilitychange'))
+    jest.advanceTimersByTime(IDLE_FLUSH_MS * 2)
+
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports nothing when no session is running', () => {
+    expect(() => endReading()).not.toThrow()
   })
 })

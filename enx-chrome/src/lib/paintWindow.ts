@@ -22,8 +22,9 @@ export const isBlockDisplay = (display: string): boolean =>
 
 // Assigns each text node of one root-level collectTextNodes walk to its
 // nearest block ancestor, or to `root` when none sits below it. Walking from
-// each block instead would let isInExcludedSubtree, which stops at the root
-// it is given, admit text inside <pre> or <a>, and count nested text twice.
+// each block instead would count nested text twice and, for an adapter
+// without lookupExcludedSelectors (where isInExcludedSubtree stops at the
+// root it is given), admit text inside <pre> or <a>.
 export const partitionBlocks = (
   textNodes: readonly Text[],
   root: Element,
