@@ -11,6 +11,7 @@ import (
 	"enx-api/billing/checkoutcompleted"
 	"enx-api/billing/credit"
 	"enx-api/billing/invoicepaid"
+	"enx-api/billing/snapshot"
 	"enx-api/billing/webhookevent"
 	"enx-api/referral"
 	"enx-api/utils/sqlitex"
@@ -176,10 +177,12 @@ func (w WebhookEffects) Apply(tx *gorm.DB, scope webhookevent.Scope, effects web
 		e.Snapshot.Known = true
 		e.Snapshot.Version = versions[0]
 		return ApplySnapshot(tx, e.Snapshot)
+	case snapshot.Effects:
+		return ApplySnapshot(tx, e)
 	case chargerefunded.Effects:
 		return clawBackAt(tx, scope, e, w.now())
 	}
-	return applySnapshotOrClawback(tx, scope, effects)
+	return fmt.Errorf("no applier for webhook effects %T", effects)
 }
 
 func (w WebhookEffects) now() time.Time {
