@@ -133,6 +133,30 @@ func TestReferralBonusOnAnExpiredTrialForfeitsTheLeftoverFirst(t *testing.T) {
 	}
 }
 
+func TestReferralRewardAfterTrialExpiryForfeitsTheTrialFirst(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
+	mustGrantTrial(t, userID, 30, time.Hour)
+	setClock(t, time.Now().Add(2*time.Hour))
+
+	if err := GrantReferralReward(ctx, userID, 50, "referral-reward:"+userID); err != nil {
+		t.Fatalf("GrantReferralReward: %v", err)
+	}
+
+	rows := ledgerTotals(t, userID)
+	if !sameTypes(rows, TypeGrantTrial, TypeExpire, TypeGrantReferralReward) {
+		t.Fatalf("ledger = %v, want the trial, its expiry, then the reward", types(rows))
+	}
+	assertReconciles(t, rows)
+	if rows[1].Total == nil || *rows[1].Total != 0 || rows[2].Total == nil || *rows[2].Total != 50 {
+		t.Errorf("totals after expiry and reward = %v, %v; want 0, 50", rows[1].Total, rows[2].Total)
+	}
+	if acc := loadAccount(t, userID); acc.TrialBalance != 0 || acc.TopupBalance != 50 || acc.SubscriptionBalance != 0 {
+		t.Errorf("persisted balances: trial %d, top-up %d, subscription %d; want 0, 50, 0", acc.TrialBalance, acc.TopupBalance, acc.SubscriptionBalance)
+	}
+}
+
 func TestSettleRecordsTheTotalAfterTheCharge(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
@@ -258,13 +282,16 @@ func TestExpireTrialsRacingSettleWritesOneExpiry(t *testing.T) {
 
 	var wg sync.WaitGroup
 	errs := make(chan error, 20)
+	sweepErrors := make(chan []error, 10)
 	for i := 0; i < 10; i++ {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			if _, err := ExpireTrials(ctx); err != nil {
+			run, err := ExpireTrials(ctx)
+			if err != nil {
 				errs <- err
 			}
+			sweepErrors <- run.Errors
 		}()
 		go func() {
 			defer wg.Done()
@@ -275,6 +302,12 @@ func TestExpireTrialsRacingSettleWritesOneExpiry(t *testing.T) {
 	}
 	wg.Wait()
 	close(errs)
+	close(sweepErrors)
+	for accountErrors := range sweepErrors {
+		for _, err := range accountErrors {
+			t.Errorf("racing sweep account: %v", err)
+		}
+	}
 	for err := range errs {
 		t.Fatalf("racing write: %v", err)
 	}
