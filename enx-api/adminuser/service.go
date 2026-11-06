@@ -7,9 +7,9 @@ package adminuser
 import (
 	"context"
 	"errors"
-	"strconv"
-	"strings"
 	"time"
+
+	"enx-api/creditledger"
 )
 
 // Account is one user with their subscription and credit balances, as
@@ -37,35 +37,6 @@ type Account struct {
 type LedgerSum struct {
 	Sum   int64
 	Count int64
-}
-
-// Transaction is one credit ledger row.
-type Transaction struct {
-	ID string
-	// Seq is the row's insertion order; it breaks ties between rows written
-	// in the same millisecond.
-	Seq          int64
-	UserID       string
-	Type         string
-	Amount       int64
-	BalanceAfter int64
-	Feature      string
-	Note         string
-	CreatedAt    time.Time
-}
-
-// Cursor marks a position in a user's ledger, newest first: the next page
-// holds the rows older than it.
-type Cursor struct {
-	CreatedAt time.Time
-	Seq       int64
-}
-
-func (t Transaction) olderThan(c Cursor) bool {
-	if !t.CreatedAt.Equal(c.CreatedAt) {
-		return t.CreatedAt.Before(c.CreatedAt)
-	}
-	return t.Seq < c.Seq
 }
 
 // Sort orders the users list.
@@ -100,9 +71,8 @@ type Store interface {
 	// AISpend totals the credits the user's AI calls took in [from, to), by
 	// feature, as positive numbers.
 	AISpend(ctx context.Context, userID string, from, to time.Time) (map[string]int64, error)
-	// Transactions returns up to limit of the user's ledger rows, newest
-	// first, older than before when it is set.
-	Transactions(ctx context.Context, userID string, before *Cursor, limit int) ([]Transaction, error)
+	// The user's ledger, read the same way as the user's own history.
+	creditledger.Store
 }
 
 // Totals is where a user's credits came from and went, over all time.
@@ -143,6 +113,7 @@ type Page struct {
 // Service builds the admin users views.
 type Service struct {
 	store      Store
+	ledger     *creditledger.Reader
 	stripeLive bool
 	now        func() time.Time
 }
@@ -150,7 +121,7 @@ type Service struct {
 // NewService builds the service. stripeLive picks the Stripe Dashboard's live
 // or test links.
 func NewService(store Store, stripeLive bool, now func() time.Time) *Service {
-	return &Service{store: store, stripeLive: stripeLive, now: now}
+	return &Service{store: store, ledger: creditledger.NewReader(store), stripeLive: stripeLive, now: now}
 }
 
 // Page sizes for the users list and a user's ledger.
@@ -262,114 +233,19 @@ func (s *Service) Detail(ctx context.Context, userID string) (Detail, error) {
 	return d, nil
 }
 
-// Source says where a ledger row came from, for the admin's timeline.
-type Source string
-
-const (
-	SourceStripe   Source = "stripe"   // a top-up or subscription payment
-	SourceAdmin    Source = "admin"    // an admin grant or deduction
-	SourceRefund   Source = "refund"   // a clawback after a Stripe refund
-	SourceTrial    Source = "trial"    // the sign-up trial, granted or expired
-	SourceReferral Source = "referral" // invite credits (ADR-051)
-	SourceAI       Source = "ai"       // AI usage, or its refund after a failed call
-	SourceOther    Source = "other"
-)
-
-// sourceOf maps a row to its source. An EXPIRE is the trial's unless its
-// feature says it forfeited a subscription period's leftover (ADR-063).
-func sourceOf(txnType, feature string) Source {
-	switch txnType {
-	case "GRANT_TOPUP", "GRANT_SUBSCRIPTION":
-		return SourceStripe
-	case "GRANT_ADMIN", "DEDUCT_ADMIN":
-		return SourceAdmin
-	case "CLAWBACK":
-		return SourceRefund
-	case "EXPIRE":
-		if feature == "subscription" {
-			return SourceStripe
-		}
-		return SourceTrial
-	case "GRANT_TRIAL":
-		return SourceTrial
-	case "GRANT_REFERRAL_BONUS", "GRANT_REFERRAL_REWARD":
-		return SourceReferral
-	case "CONSUME", "SETTLE", "REFUND":
-		return SourceAI
-	default:
-		return SourceOther
-	}
-}
-
-// ErrInvalidCursor is returned for a before cursor this service did not
-// hand out.
-var ErrInvalidCursor = errors.New("adminuser: malformed cursor")
-
-// Entry is one ledger row with its source.
-type Entry struct {
-	Transaction
-	Source Source
-}
-
-// LedgerPage is one page of a user's ledger. Next, when not "", is the
-// before cursor of the following page.
-type LedgerPage struct {
-	Entries []Entry
-	Next    string
-}
-
-// Transactions returns a page of userID's ledger, newest first. before is
-// "" for the first page, then the previous page's Next.
-func (s *Service) Transactions(ctx context.Context, userID, before string, limit int) (LedgerPage, error) {
-	var cursor *Cursor
-	if before != "" {
-		c, err := parseCursor(before)
-		if err != nil {
-			return LedgerPage{}, err
-		}
-		cursor = &c
+// Transactions returns a page of userID's ledger through the reader the
+// user's own history uses (ADR-063 Decision 1): newest first, before "" for
+// the first page, direction "", "in" or "out".
+func (s *Service) Transactions(ctx context.Context, userID, before, direction string, limit int) (creditledger.Page, error) {
+	if err := creditledger.ValidateDirection(direction); err != nil {
+		return creditledger.Page{}, err
 	}
 	if _, ok, err := s.store.Account(ctx, userID); err != nil {
-		return LedgerPage{}, err
+		return creditledger.Page{}, err
 	} else if !ok {
-		return LedgerPage{}, ErrUserNotFound
+		return creditledger.Page{}, ErrUserNotFound
 	}
-
-	limit = clampLimit(limit)
-	rows, err := s.store.Transactions(ctx, userID, cursor, limit)
-	if err != nil {
-		return LedgerPage{}, err
-	}
-	page := LedgerPage{Entries: make([]Entry, len(rows))}
-	for i, r := range rows {
-		page.Entries[i] = Entry{Transaction: r, Source: sourceOf(r.Type, r.Feature)}
-	}
-	if len(rows) == limit {
-		last := rows[len(rows)-1]
-		page.Next = formatCursor(Cursor{CreatedAt: last.CreatedAt, Seq: last.Seq})
-	}
-	return page, nil
-}
-
-// A cursor travels as "<unix ms>_<seq>".
-func formatCursor(c Cursor) string {
-	return strconv.FormatInt(c.CreatedAt.UnixMilli(), 10) + "_" + strconv.FormatInt(c.Seq, 10)
-}
-
-func parseCursor(s string) (Cursor, error) {
-	ms, seq, ok := strings.Cut(s, "_")
-	if !ok {
-		return Cursor{}, ErrInvalidCursor
-	}
-	n, err := strconv.ParseInt(ms, 10, 64)
-	if err != nil {
-		return Cursor{}, ErrInvalidCursor
-	}
-	q, err := strconv.ParseInt(seq, 10, 64)
-	if err != nil {
-		return Cursor{}, ErrInvalidCursor
-	}
-	return Cursor{CreatedAt: time.UnixMilli(n), Seq: q}, nil
+	return s.ledger.Page(ctx, userID, before, direction, limit)
 }
 
 func (s *Service) stripeCustomerURL(customerID string) string {

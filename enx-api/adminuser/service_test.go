@@ -6,9 +6,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"enx-api/creditledger"
 )
 
 var now = time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+
+type Transaction = creditledger.Transaction
 
 // fakeStore keeps accounts and ledger rows in memory.
 type fakeStore struct {
@@ -70,18 +74,19 @@ func (f *fakeStore) AISpend(_ context.Context, userID string, _, _ time.Time) (m
 	return f.spend[userID], nil
 }
 
-func (f *fakeStore) Transactions(_ context.Context, userID string, before *Cursor, limit int) ([]Transaction, error) {
+func (f *fakeStore) Transactions(_ context.Context, userID string, q creditledger.Query) ([]Transaction, error) {
 	var out []Transaction
 	for i := len(f.ledger) - 1; i >= 0; i-- {
 		t := f.ledger[i]
 		if t.UserID != userID {
 			continue
 		}
-		if before != nil && !t.olderThan(*before) {
+		if q.Before != nil && (t.CreatedAt.After(q.Before.CreatedAt) ||
+			(t.CreatedAt.Equal(q.Before.CreatedAt) && t.Seq >= q.Before.Seq)) {
 			continue
 		}
 		out = append(out, t)
-		if len(out) == limit {
+		if len(out) == q.Limit {
 			break
 		}
 	}
@@ -231,7 +236,7 @@ func TestTransactionsPageNewestFirstWithSources(t *testing.T) {
 	var got []string
 	before := ""
 	for range 3 {
-		page, err := svc.Transactions(ctx, "u1", before, 2)
+		page, err := svc.Transactions(ctx, "u1", before, "", 2)
 		if err != nil {
 			t.Fatalf("Transactions(before=%q): %v", before, err)
 		}
@@ -261,7 +266,7 @@ func TestTransactionsSourceOfAnExpiryFollowsItsFeature(t *testing.T) {
 		},
 	}
 
-	page, err := NewService(store, false, func() time.Time { return now }).Transactions(context.Background(), "u1", "", 10)
+	page, err := NewService(store, false, func() time.Time { return now }).Transactions(context.Background(), "u1", "", "", 10)
 	if err != nil {
 		t.Fatalf("Transactions: %v", err)
 	}
@@ -277,14 +282,14 @@ func TestTransactionsSourceOfAnExpiryFollowsItsFeature(t *testing.T) {
 
 func TestTransactionsRejectsAMalformedCursor(t *testing.T) {
 	store := &fakeStore{accounts: []Account{{UserID: "u1"}}}
-	_, err := NewService(store, false, func() time.Time { return now }).Transactions(context.Background(), "u1", "not-a-cursor", 10)
-	if err != ErrInvalidCursor {
+	_, err := NewService(store, false, func() time.Time { return now }).Transactions(context.Background(), "u1", "not-a-cursor", "", 10)
+	if err != creditledger.ErrInvalidCursor {
 		t.Fatalf("Transactions = %v, want ErrInvalidCursor", err)
 	}
 }
 
 func TestTransactionsUnknownUserIsNotFound(t *testing.T) {
-	_, err := NewService(&fakeStore{}, false, func() time.Time { return now }).Transactions(context.Background(), "nobody", "", 10)
+	_, err := NewService(&fakeStore{}, false, func() time.Time { return now }).Transactions(context.Background(), "nobody", "", "", 10)
 	if err != ErrUserNotFound {
 		t.Fatalf("Transactions = %v, want ErrUserNotFound", err)
 	}

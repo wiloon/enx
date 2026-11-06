@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"enx-api/creditledger"
 	"enx-api/utils/logger"
 )
 
@@ -80,20 +81,23 @@ func (h *Handler) Detail(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "user": user, "dailyLookups": days, "aiSpend": spend})
 }
 
-// Transactions handles GET /api/admin/users/:id/transactions?limit=&before=.
+// Transactions handles GET /api/admin/users/:id/transactions?limit=&before=&direction=.
 func (h *Handler) Transactions(c *gin.Context) {
 	limit, ok := intQuery(c, "limit")
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "limit must be a whole number"})
 		return
 	}
-	page, err := h.svc.Transactions(c.Request.Context(), c.Param("id"), c.Query("before"), limit)
+	page, err := h.svc.Transactions(c.Request.Context(), c.Param("id"), c.Query("before"), c.Query("direction"), limit)
 	switch {
 	case errors.Is(err, ErrUserNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "no such user"})
 		return
-	case errors.Is(err, ErrInvalidCursor):
+	case errors.Is(err, creditledger.ErrInvalidCursor):
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "before is not a valid cursor"})
+		return
+	case errors.Is(err, creditledger.ErrInvalidDirection):
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "direction must be in or out"})
 		return
 	case err != nil:
 		logger.Errorf("admin users: transactions %s: %v", c.Param("id"), err)
@@ -103,7 +107,7 @@ func (h *Handler) Transactions(c *gin.Context) {
 	rows := make([]gin.H, len(page.Entries))
 	for i, e := range page.Entries {
 		rows[i] = gin.H{
-			"id": e.ID, "type": e.Type, "amount": e.Amount, "balanceAfter": e.BalanceAfter,
+			"id": e.ID, "type": e.Type, "amount": e.Amount, "balanceAfter": e.BalanceAfter, "totalBalanceAfter": e.TotalBalanceAfter,
 			"feature": e.Feature, "note": e.Note, "createdAt": e.CreatedAt.UTC().Format(time.RFC3339Nano),
 			"source": e.Source,
 		}
