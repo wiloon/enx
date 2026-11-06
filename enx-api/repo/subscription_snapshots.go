@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"enx-api/billing/chargerefunded"
 	"enx-api/billing/snapshot"
 	"enx-api/billing/webhookevent"
 	"enx-api/utils/sqlitex"
@@ -38,16 +37,6 @@ func (SubscriptionSnapshots) Subscription(ctx context.Context, subscriptionID st
 // referral terms.
 func ApplyWebhookEffects(tx *gorm.DB, scope webhookevent.Scope, effects webhookevent.Effects) error {
 	return WebhookEffects{}.Apply(tx, scope, effects)
-}
-
-func applySnapshotOrClawback(tx *gorm.DB, scope webhookevent.Scope, effects webhookevent.Effects) error {
-	switch e := effects.(type) {
-	case snapshot.Effects:
-		return ApplySnapshot(tx, e)
-	case chargerefunded.Effects:
-		return ApplyClawback(tx, scope, e)
-	}
-	return fmt.Errorf("no applier for webhook effects %T", effects)
 }
 
 // ApplySnapshot writes e inside tx: the snapshot columns of a row still at

@@ -250,6 +250,31 @@ func TestTransactionsPageNewestFirstWithSources(t *testing.T) {
 	}
 }
 
+// ADR-063 Decision 8: a renewal forfeits the last period's leftover as an
+// EXPIRE of feature "subscription", which comes from Stripe, not the trial.
+func TestTransactionsSourceOfAnExpiryFollowsItsFeature(t *testing.T) {
+	store := &fakeStore{
+		accounts: []Account{{UserID: "u1"}},
+		ledger: []Transaction{
+			{ID: "trial", Seq: 1, UserID: "u1", Type: "EXPIRE", Feature: "trial", Amount: -30, CreatedAt: now},
+			{ID: "subscription", Seq: 2, UserID: "u1", Type: "EXPIRE", Feature: "subscription", Amount: -200, CreatedAt: now},
+		},
+	}
+
+	page, err := NewService(store, false, func() time.Time { return now }).Transactions(context.Background(), "u1", "", 10)
+	if err != nil {
+		t.Fatalf("Transactions: %v", err)
+	}
+
+	var got []string
+	for _, e := range page.Entries {
+		got = append(got, e.ID+":"+string(e.Source))
+	}
+	if want := "subscription:stripe trial:trial"; strings.Join(got, " ") != want {
+		t.Fatalf("entries = %q, want %q", strings.Join(got, " "), want)
+	}
+}
+
 func TestTransactionsRejectsAMalformedCursor(t *testing.T) {
 	store := &fakeStore{accounts: []Account{{UserID: "u1"}}}
 	_, err := NewService(store, false, func() time.Time { return now }).Transactions(context.Background(), "u1", "not-a-cursor", 10)

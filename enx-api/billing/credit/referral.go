@@ -79,33 +79,38 @@ func GrantReferralBonus(ctx context.Context, userID string, b ReferralBonus) (tr
 		if err := ensureAccount(tx, userID, nowMs); err != nil {
 			return err
 		}
+		// An expired trial's leftover is forfeited before the bonus lands,
+		// so the bonus is all the trial pool holds (ADR-063 Decision 9).
 		var account sqlitex.CreditAccount
-		if err := tx.Where("user_id = ?", userID).First(&account).Error; err != nil {
-			return err
-		}
-		expires := b.ExpiresAt.Unix()
-		if account.TrialExpiresAt != nil && *account.TrialExpiresAt > expires {
-			expires = *account.TrialExpiresAt
-		}
-		trialExpiresAt = time.Unix(expires, 0)
-
-		if err := tx.Model(&sqlitex.CreditAccount{}).
-			Where("user_id = ?", userID).
-			Updates(map[string]interface{}{
-				"trial_balance":    gorm.Expr("trial_balance + ?", b.Amount),
-				"trial_expires_at": expires,
-				"updated_at":       nowMs,
-			}).Error; err != nil {
+		total, err := LedgerWrite(tx, userID, at, func() error {
+			if err := tx.Where("user_id = ?", userID).First(&account).Error; err != nil {
+				return err
+			}
+			expires := b.ExpiresAt.Unix()
+			if account.TrialExpiresAt != nil && *account.TrialExpiresAt > expires {
+				expires = *account.TrialExpiresAt
+			}
+			trialExpiresAt = time.Unix(expires, 0)
+			return tx.Model(&sqlitex.CreditAccount{}).
+				Where("user_id = ?", userID).
+				Updates(map[string]interface{}{
+					"trial_balance":    gorm.Expr("trial_balance + ?", b.Amount),
+					"trial_expires_at": expires,
+					"updated_at":       nowMs,
+				}).Error
+		})
+		if err != nil {
 			return err
 		}
 		return insertLedgerRow(tx, sqlitex.CreditTransaction{
-			Id:            uuid.New().String(),
-			UserId:        userID,
-			Type:          TypeGrantReferralBonus,
-			Amount:        b.Amount,
-			BalanceAfter:  account.TrialBalance + b.Amount,
-			StripeEventId: &key,
-			CreatedAt:     nowMs,
+			Id:                uuid.New().String(),
+			UserId:            userID,
+			Type:              TypeGrantReferralBonus,
+			Amount:            b.Amount,
+			BalanceAfter:      account.TrialBalance + b.Amount,
+			TotalBalanceAfter: &total,
+			StripeEventId:     &key,
+			CreatedAt:         nowMs,
 		})
 	})
 	if err != nil {
@@ -138,16 +143,20 @@ func GrantReferralReward(ctx context.Context, referrerID string, amount int64, k
 			return err
 		}
 
-		nowMs := time.Now().UnixMilli()
+		at := now()
+		nowMs := at.UnixMilli()
 		if err := ensureAccount(tx, referrerID, nowMs); err != nil {
 			return err
 		}
-		if err := tx.Model(&sqlitex.CreditAccount{}).
-			Where("user_id = ?", referrerID).
-			Updates(map[string]interface{}{
-				"topup_balance": gorm.Expr("topup_balance + ?", amount),
-				"updated_at":    nowMs,
-			}).Error; err != nil {
+		total, err := LedgerWrite(tx, referrerID, at, func() error {
+			return tx.Model(&sqlitex.CreditAccount{}).
+				Where("user_id = ?", referrerID).
+				Updates(map[string]interface{}{
+					"topup_balance": gorm.Expr("topup_balance + ?", amount),
+					"updated_at":    nowMs,
+				}).Error
+		})
+		if err != nil {
 			return err
 		}
 		var account sqlitex.CreditAccount
@@ -155,13 +164,14 @@ func GrantReferralReward(ctx context.Context, referrerID string, amount int64, k
 			return err
 		}
 		return insertLedgerRow(tx, sqlitex.CreditTransaction{
-			Id:            uuid.New().String(),
-			UserId:        referrerID,
-			Type:          TypeGrantReferralReward,
-			Amount:        amount,
-			BalanceAfter:  account.TopupBalance,
-			StripeEventId: &key,
-			CreatedAt:     nowMs,
+			Id:                uuid.New().String(),
+			UserId:            referrerID,
+			Type:              TypeGrantReferralReward,
+			Amount:            amount,
+			BalanceAfter:      account.TopupBalance,
+			TotalBalanceAfter: &total,
+			StripeEventId:     &key,
+			CreatedAt:         nowMs,
 		})
 	})
 }

@@ -103,6 +103,7 @@ func main() {
 	go runReaderDocumentCleanup()
 	go runStatsIngestLogCleanup(cfg.Stats.Ingest.LogTTL(), cfg.Stats.LookupEvents.RetentionDays, userStats)
 	go runPageReportCleanup()
+	go runTrialExpiry()
 	// Referrer rewards need Stripe to check each payment for a refund or
 	// dispute; without it they stay pending until it is configured.
 	if stripeClient != nil {
@@ -724,6 +725,33 @@ func runReferralRewards(svc *referral.Service) {
 	defer ticker.Stop()
 	for range ticker.C {
 		settle()
+	}
+}
+
+// runTrialExpiry forfeits expired trials with credits left (ADR-063
+// Decision 10), once on start and then hourly, so the ledger records an
+// expiry within the hour even when the user never writes again. An account
+// that fails is retried on the next run.
+func runTrialExpiry() {
+	sweep := func() {
+		run, err := credit.ExpireTrials(context.Background())
+		if err != nil {
+			logger.Errorf("credit: expire trials failed: %v", err)
+			return
+		}
+		for _, err := range run.Errors {
+			logger.Warnf("credit: trial left for the next run: %v", err)
+		}
+		if run.Expired > 0 {
+			logger.Infof("credit: %d expired trial(s) forfeited", run.Expired)
+		}
+	}
+
+	sweep()
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for range ticker.C {
+		sweep()
 	}
 }
 

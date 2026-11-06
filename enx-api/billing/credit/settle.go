@@ -35,44 +35,15 @@ func Settle(ctx context.Context, userID, feature string, cost int64) error {
 		if err := ensureAccount(tx, userID, nowMs); err != nil {
 			return err
 		}
-		if err := expireTrial(tx, userID, at); err != nil {
-			return err
-		}
 
 		var before sqlitex.CreditAccount
-		if err := tx.Where("user_id = ?", userID).First(&before).Error; err != nil {
-			return err
-		}
-
-		// One atomic UPDATE so the "trial, then subscription, each to zero,
-		// top-up absorbs the rest" split holds under concurrency: SQL
-		// evaluates every RHS against the row's pre-update values, so two
-		// racing Settles can't both decide to take the same credits from a
-		// non-negative pool and drive it negative (which GrantSubscription's
-		// replace-semantics would then silently forgive).
-		//   from_trial        = min(effective_trial, cost)
-		//   rest              = cost - from_trial
-		//   from_subscription = min(max(subscription_balance,0), rest)
-		//   trial_balance        -> trial_balance - from_trial
-		//   subscription_balance -> max(0, subscription_balance - rest)
-		//   topup_balance        -> topup_balance - (rest - from_subscription),
-		//                           unchanged when from_trial > 0 and
-		//                           topup_balance <= 0 (trial-only write-off)
-		effTrial := "(CASE WHEN trial_expires_at > ? THEN MAX(trial_balance, 0) ELSE 0 END)"
-		fromTrial := "MIN(" + effTrial + ", ?)"
-		rest := "(? - " + fromTrial + ")"
-		nowSec := at.Unix()
-		if err := tx.Model(&sqlitex.CreditAccount{}).
-			Where("user_id = ?", userID).
-			Updates(map[string]interface{}{
-				"topup_balance": gorm.Expr(
-					"CASE WHEN "+fromTrial+" > 0 AND topup_balance <= 0 THEN topup_balance "+
-						"ELSE topup_balance - ("+rest+" - MIN(MAX(subscription_balance, 0), "+rest+")) END",
-					nowSec, cost, cost, nowSec, cost, cost, nowSec, cost),
-				"subscription_balance": gorm.Expr("MAX(0, subscription_balance - "+rest+")", cost, nowSec, cost),
-				"trial_balance":        gorm.Expr("trial_balance - "+fromTrial, nowSec, cost),
-				"updated_at":           nowMs,
-			}).Error; err != nil {
+		total, err := LedgerWrite(tx, userID, at, func() error {
+			if err := tx.Where("user_id = ?", userID).First(&before).Error; err != nil {
+				return err
+			}
+			return settleUpdate(tx, userID, at, cost)
+		})
+		if err != nil {
 			return err
 		}
 
@@ -82,15 +53,49 @@ func Settle(ctx context.Context, userID, feature string, cost int64) error {
 		}
 
 		return insertLedgerRow(tx, sqlitex.CreditTransaction{
-			Id:           uuid.New().String(),
-			UserId:       userID,
-			Type:         TypeSettle,
-			Amount:       spendable(account, at) - spendable(before, at),
-			BalanceAfter: account.SubscriptionBalance + account.TopupBalance + effectiveTrial(account, at),
-			Feature:      feature,
-			CreatedAt:    nowMs,
+			Id:                uuid.New().String(),
+			UserId:            userID,
+			Type:              TypeSettle,
+			Amount:            total - spendable(before, at),
+			BalanceAfter:      account.SubscriptionBalance + account.TopupBalance + effectiveTrial(account, at),
+			TotalBalanceAfter: &total,
+			Feature:           feature,
+			CreatedAt:         nowMs,
 		})
 	})
+}
+
+// settleUpdate draws cost from userID's pools in place.
+func settleUpdate(tx *gorm.DB, userID string, at time.Time, cost int64) error {
+	// One atomic UPDATE so the "trial, then subscription, each to zero,
+	// top-up absorbs the rest" split holds under concurrency: SQL
+	// evaluates every RHS against the row's pre-update values, so two
+	// racing Settles can't both decide to take the same credits from a
+	// non-negative pool and drive it negative (which GrantSubscription's
+	// replace-semantics would then silently forgive).
+	//   from_trial        = min(effective_trial, cost)
+	//   rest              = cost - from_trial
+	//   from_subscription = min(max(subscription_balance,0), rest)
+	//   trial_balance        -> trial_balance - from_trial
+	//   subscription_balance -> max(0, subscription_balance - rest)
+	//   topup_balance        -> topup_balance - (rest - from_subscription),
+	//                           unchanged when from_trial > 0 and
+	//                           topup_balance <= 0 (trial-only write-off)
+	effTrial := "(CASE WHEN trial_expires_at > ? THEN MAX(trial_balance, 0) ELSE 0 END)"
+	fromTrial := "MIN(" + effTrial + ", ?)"
+	rest := "(? - " + fromTrial + ")"
+	nowSec := at.Unix()
+	return tx.Model(&sqlitex.CreditAccount{}).
+		Where("user_id = ?", userID).
+		Updates(map[string]interface{}{
+			"topup_balance": gorm.Expr(
+				"CASE WHEN "+fromTrial+" > 0 AND topup_balance <= 0 THEN topup_balance "+
+					"ELSE topup_balance - ("+rest+" - MIN(MAX(subscription_balance, 0), "+rest+")) END",
+				nowSec, cost, cost, nowSec, cost, cost, nowSec, cost),
+			"subscription_balance": gorm.Expr("MAX(0, subscription_balance - "+rest+")", cost, nowSec, cost),
+			"trial_balance":        gorm.Expr("trial_balance - "+fromTrial, nowSec, cost),
+			"updated_at":           at.UnixMilli(),
+		}).Error
 }
 
 // spendable sums the pools the way Settle draws them, so the difference

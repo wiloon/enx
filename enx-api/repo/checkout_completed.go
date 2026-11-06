@@ -9,7 +9,9 @@ import (
 	"enx-api/billing/acceptance"
 	"enx-api/billing/chargerefunded"
 	"enx-api/billing/checkoutcompleted"
+	"enx-api/billing/credit"
 	"enx-api/billing/invoicepaid"
+	"enx-api/billing/snapshot"
 	"enx-api/billing/webhookevent"
 	"enx-api/referral"
 	"enx-api/utils/sqlitex"
@@ -175,8 +177,12 @@ func (w WebhookEffects) Apply(tx *gorm.DB, scope webhookevent.Scope, effects web
 		e.Snapshot.Known = true
 		e.Snapshot.Version = versions[0]
 		return ApplySnapshot(tx, e.Snapshot)
+	case snapshot.Effects:
+		return ApplySnapshot(tx, e)
+	case chargerefunded.Effects:
+		return clawBackAt(tx, scope, e, w.now())
 	}
-	return applySnapshotOrClawback(tx, scope, effects)
+	return fmt.Errorf("no applier for webhook effects %T", effects)
 }
 
 func (w WebhookEffects) now() time.Time {
@@ -331,9 +337,15 @@ func grantTopUp(tx *gorm.DB, scope webhookevent.Scope, t checkoutcompleted.TopUp
 	if err := tx.Exec("INSERT INTO `credit_accounts` (`user_id`, `updated_at`) VALUES (?, ?) ON CONFLICT (`user_id`) DO NOTHING", t.UserID, at).Error; err != nil {
 		return fmt.Errorf("ensure credit account of %s: %w", t.UserID, err)
 	}
-	if err := tx.Exec("UPDATE `credit_accounts` SET `topup_balance` = `topup_balance` + ?, `updated_at` = ? WHERE `user_id` = ?",
-		t.Credits, at, t.UserID).Error; err != nil {
-		return fmt.Errorf("grant top-up of %s: %w", t.CheckoutSessionID, err)
+	total, err := credit.LedgerWrite(tx, t.UserID, now, func() error {
+		if err := tx.Exec("UPDATE `credit_accounts` SET `topup_balance` = `topup_balance` + ?, `updated_at` = ? WHERE `user_id` = ?",
+			t.Credits, at, t.UserID).Error; err != nil {
+			return fmt.Errorf("grant top-up of %s: %w", t.CheckoutSessionID, err)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	balance, _, err := poolBalance(tx, t.UserID, chargerefunded.PoolTopUp)
 	if err != nil {
@@ -343,9 +355,9 @@ func grantTopUp(tx *gorm.DB, scope webhookevent.Scope, t checkoutcompleted.TopUp
 	if t.PaymentIntentID != "" {
 		paymentIntent = t.PaymentIntentID
 	}
-	if err := tx.Exec("INSERT INTO `credit_transactions` (`id`, `user_id`, `type`, `amount`, `balance_after`, `stripe_event_id`, "+
-		"`stripe_payment_intent_id`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-		uuid.New().String(), t.UserID, typeGrantTopUp, t.Credits, balance, scope.EventID, paymentIntent, at).Error; err != nil {
+	if err := tx.Exec("INSERT INTO `credit_transactions` (`id`, `user_id`, `type`, `amount`, `balance_after`, `total_balance_after`, `stripe_event_id`, "+
+		"`stripe_payment_intent_id`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		uuid.New().String(), t.UserID, typeGrantTopUp, t.Credits, balance, total, scope.EventID, paymentIntent, at).Error; err != nil {
 		return fmt.Errorf("record top-up of %s: %w", t.CheckoutSessionID, err)
 	}
 	return nil

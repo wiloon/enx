@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"enx-api/billing/acceptance"
 	"enx-api/billing/chargerefunded"
 	"enx-api/billing/conflict"
+	"enx-api/billing/credit"
 	"enx-api/billing/creditperiod"
 	"enx-api/billing/invoicepaid"
 	"enx-api/billing/webhookevent"
@@ -205,7 +207,7 @@ func (w WebhookEffects) applyInvoicePaid(tx *gorm.DB, scope webhookevent.Scope, 
 		if recorded {
 			return invoicepaid.ErrStale
 		}
-		if err := recordSubscriptionGrant(tx, scope, o.OwnerUserID, *g, now.UnixMilli()); err != nil {
+		if err := recordSubscriptionGrant(tx, scope, o.OwnerUserID, *g, now); err != nil {
 			return err
 		}
 	}
@@ -282,13 +284,23 @@ func saveInvoiceSubscription(tx *gorm.DB, e invoicepaid.Effects, at int64) error
 // recordSubscriptionGrant writes g's ledger row keyed by scope's Event ID and
 // applies what reached the pool: an applied normal grant resets
 // subscription_balance and points the pool at the new grant, applied upgrade
-// top-up credits add to it, zero leaves the pool alone.
-func recordSubscriptionGrant(tx *gorm.DB, scope webhookevent.Scope, userID string, g invoicepaid.Grant, at int64) error {
+// top-up credits add to it, zero leaves the pool alone. A reset first
+// records the last period's leftover as an EXPIRE (ADR-063 Decision 8).
+func recordSubscriptionGrant(tx *gorm.DB, scope webhookevent.Scope, userID string, g invoicepaid.Grant, now time.Time) error {
+	at := now.UnixMilli()
 	if err := tx.Exec("INSERT INTO `credit_accounts` (`user_id`, `updated_at`) VALUES (?, ?) ON CONFLICT (`user_id`) DO NOTHING", userID, at).Error; err != nil {
 		return fmt.Errorf("ensure credit account of %s: %w", userID, err)
 	}
+	if g.Applied > 0 && g.Kind == invoicepaid.NormalGrant {
+		if err := expireSubscriptionLeftover(tx, userID, now); err != nil {
+			return err
+		}
+	}
 	id := uuid.New().String()
-	if g.Applied > 0 {
+	total, err := credit.LedgerWrite(tx, userID, now, func() error {
+		if g.Applied == 0 {
+			return nil
+		}
 		var err error
 		switch g.Kind {
 		case invoicepaid.NormalGrant:
@@ -303,6 +315,10 @@ func recordSubscriptionGrant(tx *gorm.DB, scope webhookevent.Scope, userID strin
 		if err != nil {
 			return fmt.Errorf("apply grant of invoice %s: %w", g.InvoiceID, err)
 		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	balance, _, err := poolBalance(tx, userID, chargerefunded.PoolSubscription)
 	if err != nil {
@@ -315,12 +331,37 @@ func recordSubscriptionGrant(tx *gorm.DB, scope webhookevent.Scope, userID strin
 	if g.PaymentIntentID != "" {
 		paymentIntent = g.PaymentIntentID
 	}
-	if err := tx.Exec("INSERT INTO `credit_transactions` (`id`, `user_id`, `type`, `amount`, `balance_after`, `stripe_event_id`, "+
+	if err := tx.Exec("INSERT INTO `credit_transactions` (`id`, `user_id`, `type`, `amount`, `balance_after`, `total_balance_after`, `stripe_event_id`, "+
 		"`stripe_payment_intent_id`, `grant_kind`, `stripe_invoice_id`, `stripe_subscription_id`, `period_start`, `period_end`, "+
-		"`from_tier`, `tier`, `purchased`, `applied`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		id, userID, typeGrantSubscription, g.Applied, balance, scope.EventID, paymentIntent, string(g.Kind), g.InvoiceID,
+		"`from_tier`, `tier`, `purchased`, `applied`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		id, userID, typeGrantSubscription, g.Applied, balance, total, scope.EventID, paymentIntent, string(g.Kind), g.InvoiceID,
 		subscriptionID, periodStart, periodEnd, g.FromTier, g.Tier, g.Purchased, g.Applied, at).Error; err != nil {
 		return fmt.Errorf("record grant of invoice %s: %w", g.InvoiceID, err)
+	}
+	return nil
+}
+
+// expireSubscriptionLeftover zeroes a positive subscription_balance and
+// records the forfeit as an EXPIRE of feature "subscription", so the reset
+// that follows adds exactly what the grant row says.
+func expireSubscriptionLeftover(tx *gorm.DB, userID string, now time.Time) error {
+	leftover, _, err := poolBalance(tx, userID, chargerefunded.PoolSubscription)
+	if err != nil || leftover <= 0 {
+		return err
+	}
+	total, err := credit.LedgerWrite(tx, userID, now, func() error {
+		if err := tx.Exec("UPDATE `credit_accounts` SET `subscription_balance` = 0, `updated_at` = ? WHERE `user_id` = ?",
+			now.UnixMilli(), userID).Error; err != nil {
+			return fmt.Errorf("expire subscription leftover of %s: %w", userID, err)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if err := tx.Exec("INSERT INTO `credit_transactions` (`id`, `user_id`, `type`, `amount`, `balance_after`, `total_balance_after`, `feature`, `created_at`) "+
+		"VALUES (?, ?, ?, ?, 0, ?, ?, ?)", uuid.New().String(), userID, credit.TypeExpire, -leftover, total, featureSubscription, now.UnixMilli()).Error; err != nil {
+		return fmt.Errorf("record subscription expiry of %s: %w", userID, err)
 	}
 	return nil
 }

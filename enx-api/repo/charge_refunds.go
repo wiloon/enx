@@ -7,6 +7,7 @@ import (
 
 	"enx-api/billing/acceptance"
 	"enx-api/billing/chargerefunded"
+	"enx-api/billing/credit"
 	"enx-api/billing/creditperiod"
 	"enx-api/billing/webhookevent"
 	"enx-api/utils/sqlitex"
@@ -129,6 +130,12 @@ func (ChargeRefunds) Owner(ctx context.Context, userID string) (chargerefunded.O
 // subscription balance is no longer what e.Observed read, it is
 // chargerefunded.ErrStale, with nothing written.
 func ApplyClawback(tx *gorm.DB, scope webhookevent.Scope, e chargerefunded.Effects) error {
+	return clawBackAt(tx, scope, e, time.Now())
+}
+
+// clawBackAt is ApplyClawback on the clock at, which decides whether the
+// owner's trial has expired.
+func clawBackAt(tx *gorm.DB, scope webhookevent.Scope, e chargerefunded.Effects, at time.Time) error {
 	c := e.Clawback
 	if c == nil {
 		return nil
@@ -150,10 +157,17 @@ func ApplyClawback(tx *gorm.DB, scope webhookevent.Scope, e chargerefunded.Effec
 		return chargerefunded.ErrStale
 	}
 
-	now := time.Now().UnixMilli()
-	if c.Credits > 0 {
-		if !hasAccount {
-			return fmt.Errorf("claw back %d credits of grant %s: user %s has no credit account", c.Credits, c.GrantID, c.UserID)
+	if c.Credits > 0 && !hasAccount {
+		return fmt.Errorf("claw back %d credits of grant %s: user %s has no credit account", c.Credits, c.GrantID, c.UserID)
+	}
+
+	now := at.UnixMilli()
+	// A deleted user has no account: the total is 0 and nothing is
+	// recreated. Deletion forfeited the balance without a ledger row, so
+	// this row need not reconcile with the last one before it.
+	total, err := credit.LedgerWrite(tx, c.UserID, at, func() error {
+		if c.Credits == 0 {
+			return nil
 		}
 		column := poolColumn(c.Pool)
 		if err := tx.Exec("UPDATE `credit_accounts` SET `"+column+"` = `"+column+"` - ?, `updated_at` = ? WHERE `user_id` = ?",
@@ -161,10 +175,14 @@ func ApplyClawback(tx *gorm.DB, scope webhookevent.Scope, e chargerefunded.Effec
 			return fmt.Errorf("claw back grant %s: %w", c.GrantID, err)
 		}
 		balance -= c.Credits
+		return nil
+	})
+	if err != nil {
+		return err
 	}
-	if err := tx.Exec("INSERT INTO `credit_transactions` (`id`, `user_id`, `type`, `amount`, `balance_after`, `stripe_event_id`, "+
-		"`related_transaction_id`, `note`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		uuid.New().String(), c.UserID, typeClawback, -c.Credits, balance, scope.EventID, c.GrantID,
+	if err := tx.Exec("INSERT INTO `credit_transactions` (`id`, `user_id`, `type`, `amount`, `balance_after`, `total_balance_after`, `stripe_event_id`, "+
+		"`related_transaction_id`, `note`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		uuid.New().String(), c.UserID, typeClawback, -c.Credits, balance, total, scope.EventID, c.GrantID,
 		fmt.Sprintf("Stripe charge %s, %d of %d refunded", c.ChargeID, c.Refunded, c.Captured), now).Error; err != nil {
 		return fmt.Errorf("record clawback of grant %s: %w", c.GrantID, err)
 	}
@@ -175,6 +193,9 @@ const (
 	typeGrantTopUp        = "GRANT_TOPUP"
 	typeGrantSubscription = "GRANT_SUBSCRIPTION"
 	typeClawback          = "CLAWBACK"
+	// featureSubscription marks an EXPIRE of a subscription period's
+	// leftover, apart from the trial's (ADR-063 Decision 8).
+	featureSubscription = "subscription"
 )
 
 // eventPayload reads the original payload of scope's event's first
