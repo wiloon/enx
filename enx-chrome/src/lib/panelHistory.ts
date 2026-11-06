@@ -231,6 +231,45 @@ export const removeCard = (
   )
 }
 
+// After a switch to a signed-in account (#236), no row offers Sign in: each
+// signed-out row becomes an ordinary failure with `message`, and Retry where
+// the row has one.
+export const supersedeSignedOut = (
+  entries: PanelEntry[],
+  message: string
+): PanelEntry[] => {
+  const card = <C extends WordCardData>(c: C): C =>
+    c.contextSessionExpired || c.dictionarySessionExpired
+      ? {
+          ...c,
+          ...(c.contextSessionExpired && {
+            contextSessionExpired: false,
+            contextError: message,
+            contextErrorHttpStatus: undefined,
+          }),
+          ...(c.dictionarySessionExpired && {
+            dictionarySessionExpired: false,
+            dictionaryError: message,
+            dictionaryErrorHttpStatus: undefined,
+            dictionaryErrorCode: undefined,
+          }),
+        }
+      : c
+  return entries.map(e =>
+    e.kind === 'word'
+      ? card(e)
+      : {
+          ...e,
+          ...(e.sessionExpired && {
+            sessionExpired: false,
+            errorMessage: message,
+            errorHttpStatus: undefined,
+          }),
+          words: e.words.map(card),
+        }
+  )
+}
+
 // Same token rule as patchCard, for the sentence card itself.
 export const patchSentence = (
   entries: PanelEntry[],

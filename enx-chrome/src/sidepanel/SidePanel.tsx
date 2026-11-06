@@ -40,6 +40,12 @@ import LoadingSkeleton from '@/components/LoadingSkeleton'
 import SignedOutNotice from '@/components/SignedOutNotice'
 import { isSignedOutFailure, SIGNED_OUT_MESSAGE } from '@/lib/signedOut'
 import {
+  ACCOUNT_CHANGED_MESSAGE,
+  createPanelAccountFence,
+  isAccountInvalidatedMessage,
+  supersededFailure,
+} from '@/lib/panelAccountFence'
+import {
   WORD_HIGHLIGHT_KEY,
   getWordHighlightEnabled,
 } from '@/config/preferences'
@@ -59,6 +65,7 @@ import {
   removeCard,
   reorderOrInsertCard,
   sentenceCardId,
+  supersedeSignedOut,
   topLevelPhraseCardKey,
   upsertPageLookupCard,
   wordCardKey,
@@ -811,6 +818,21 @@ function SidePanelContent() {
     return () => chrome.runtime.onMessage.removeListener(listener)
   }, [])
 
+  // #236: a signed-out response or row is obsolete once a signed-in
+  // account takes over. Listens only, like the listener above.
+  const [accountFence] = useState(createPanelAccountFence)
+  useEffect(() => {
+    const listener = (message: unknown) => {
+      if (!isAccountInvalidatedMessage(message)) return
+      accountFence.record(message.cause)
+      if (message.cause === 'switched') {
+        patchEntries(prev => supersedeSignedOut(prev, ACCOUNT_CHANGED_MESSAGE))
+      }
+    }
+    chrome.runtime.onMessage.addListener(listener)
+    return () => chrome.runtime.onMessage.removeListener(listener)
+  }, [accountFence, patchEntries])
+
   // The "highlight vocabulary while reading" preference governs the
   // underlines here as on the page (ADR-053 Decision 5), live. The anchor
   // word isn't vocabulary highlighting and ignores it.
@@ -890,23 +912,26 @@ function SidePanelContent() {
   // touches any sentence's state -- a page click doesn't try to determine
   // which (if any) history sentence the word "belongs to" (Decision B2), so
   // an existing sentence entry is simply left alone.
-  const mergePageWordLookup = useCallback((lookup: LatestPageWordLookup) => {
-    const word = wordKey(lookup.word)
-    // The page already knows this word's new stage; only the panel's
-    // underlines need it (ADR-053 Decision 3), so no message goes back.
-    setWordStates(prev => ({ ...prev, [word]: lookup.ecp }))
-    setEntries(prev =>
-      upsertPageLookupCard(prev, {
-        word,
-        key: wordCardKey(word),
-        pronunciation: lookup.ecp.Pronunciation,
-        loadCount: lookup.ecp.LoadCount,
-        dictionaryChinese: lookup.ecp.Chinese,
-        dictionaryStatus: 'loaded',
-        contextStatus: 'none',
-      })
-    )
-  }, [setEntries])
+  const mergePageWordLookup = useCallback(
+    (lookup: LatestPageWordLookup) => {
+      const word = wordKey(lookup.word)
+      // The page already knows this word's new stage; only the panel's
+      // underlines need it (ADR-053 Decision 3), so no message goes back.
+      setWordStates(prev => ({ ...prev, [word]: lookup.ecp }))
+      setEntries(prev =>
+        upsertPageLookupCard(prev, {
+          word,
+          key: wordCardKey(word),
+          pronunciation: lookup.ecp.Pronunciation,
+          loadCount: lookup.ecp.LoadCount,
+          dictionaryChinese: lookup.ecp.Chinese,
+          dictionaryStatus: 'loaded',
+          contextStatus: 'none',
+        })
+      )
+    },
+    [setEntries]
+  )
 
   useEffect(() => {
     if (tabId === undefined) return
@@ -950,6 +975,18 @@ function SidePanelContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Ask the worker at delivery: its account fence advances before its
+  // asynchronous invalidation notification can reach this panel.
+  const checkAccountFreshness = async (response: BackgroundResponse) => {
+    if (response.success || !response.sessionExpired) return response
+    const freshness = await sendMessageToBackground<{ sessionLost: boolean }>({
+      type: 'panelAccountFreshness',
+    })
+    return freshness?.sessionLost === false
+      ? supersededFailure(response)
+      : response
+  }
+
   // Shared by every card-mutating callback below: fetches the word's meaning
   // in the given sentence and merges it into the matching card at `sentenceId`
   // (undefined = top-level), without touching the dictionary half.
@@ -969,13 +1006,16 @@ function SidePanelContent() {
         patchEntries(prev =>
           patchCard(prev, card.sentenceId, card.key, fields, card.token)
         )
+      const current = accountFence.capture()
       sendMessageToBackground<BackgroundResponse>({
         type: 'translateWordInContext',
         word,
         sentence,
         dictionaryChinese,
       } satisfies ContentMessage)
-        .then(response => {
+        .then(checkAccountFreshness)
+        .then(delivered => {
+          const response = current(delivered)
           const resolved = response.success && response.chinese
           patch({
             contextChinese: resolved ? response.chinese : undefined,
@@ -999,7 +1039,7 @@ function SidePanelContent() {
           })
         })
     },
-    [patchEntries]
+    [accountFence, patchEntries]
   )
 
   // A single word looked up in the panel (ADR-053 Decision 3/4): its new
@@ -1044,12 +1084,16 @@ function SidePanelContent() {
         setEntries(prev =>
           patchCard(prev, card.sentenceId, card.key, fields, card.token)
         )
+      const current = accountFence.capture()
       return sendMessageToBackground<BackgroundResponse>({
         type: 'getOneWord',
         word,
       } satisfies ContentMessage)
-        .then(response =>
+        .then(checkAccountFreshness)
+        .then(delivered =>
           history.whenVisible(card, () => {
+            // Checked here: a cleared card holds its response until Undo.
+            const response = current(delivered)
             const ecp =
               response.success && response.ecp && counts
                 ? countLookup(response.ecp, countOnServer)
@@ -1091,7 +1135,7 @@ function SidePanelContent() {
         )
         .then(result => result ?? { current: false })
     },
-    [recordWordLookup, history, setEntries]
+    [accountFence, recordWordLookup, history, setEntries]
   )
 
   // The single entry point for "look up a word's dictionary AND context
@@ -1208,11 +1252,14 @@ function SidePanelContent() {
       const patch = (fields: Partial<SentenceEntry>) =>
         patchEntries(prev => patchSentence(prev, id, fields, token))
 
+      const current = accountFence.capture()
       sendMessageToBackground<BackgroundResponse>({
         type: 'translateSentence',
         sentence,
       } satisfies ContentMessage)
-        .then(response => {
+        .then(checkAccountFreshness)
+        .then(delivered => {
+          const response = current(delivered)
           if (response.success && response.chinese) {
             patch({ chinese: response.chinese, status: 'loaded' })
           } else {
@@ -1234,7 +1281,7 @@ function SidePanelContent() {
           })
         })
     },
-    [patchEntries]
+    [accountFence, patchEntries]
   )
 
   // A sentence context arrived (and it isn't a phrase context -- see the

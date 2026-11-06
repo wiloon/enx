@@ -2,6 +2,10 @@
 // Note: Sentry initialization is skipped in service worker context to avoid import issues
 
 import { createAccountSession, type Invalidation } from '@/lib/accountSession'
+import {
+  ACCOUNT_CHANGED_MESSAGE,
+  type AccountInvalidatedMessage,
+} from '@/lib/panelAccountFence'
 import { createClerkClient } from '@clerk/chrome-extension/client'
 import { config } from '@/config/env'
 import { LatestPageWordLookup, PendingSentenceContext, WordData } from '@/types'
@@ -259,14 +263,23 @@ const invalidationMessage = (cause: Invalidation) => {
 
 // A page with learning mode off can still hold a successful review list.
 // Notify all tabs and tolerate pages without an injected content script.
+// Extension pages (the side panel) hear the raw cause, and none may be open.
 const notifyAccountChange = async (cause: Invalidation) => {
+  const pages: AccountInvalidatedMessage = {
+    action: 'accountInvalidated',
+    cause,
+  }
+  const notifyPages = Promise.resolve().then(() =>
+    chrome.runtime.sendMessage(pages)
+  )
   const tabs = await chrome.tabs.query({})
   const message = invalidationMessage(cause)
-  await Promise.allSettled(
-    tabs
+  await Promise.allSettled([
+    notifyPages,
+    ...tabs
       .filter(tab => tab.id !== undefined)
-      .map(tab => chrome.tabs.sendMessage(tab.id!, message))
-  )
+      .map(tab => chrome.tabs.sendMessage(tab.id!, message)),
+  ])
 }
 
 const ACCOUNT_SESSION_OWNER_KEY = 'enx-account-session-owner'
@@ -349,8 +362,6 @@ export const SERVICE_UNAVAILABLE_MESSAGE =
 // URL and the Options hint are for developers, so they go to swlog instead.
 export const NETWORK_ERROR_MESSAGE =
   "Couldn't connect to Catglish. Check your internet connection and try again."
-export const ACCOUNT_CHANGED_MESSAGE =
-  'Your sign-in changed while this was loading. Please try again.'
 
 // Waits before replaying a call that opted in with `{ retry: true }` (#133).
 // Only calls safe to repeat may opt in: they can be replayed after a network
@@ -810,6 +821,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       switch (request.type || request.action) {
         case 'getOneWord':
           return await handleGetOneWord(request.word)
+
+        case 'panelAccountFreshness':
+          return { sessionLost: accountSession.sessionLost() }
 
         case 'accountSignedOut':
           resetClerkSession()
