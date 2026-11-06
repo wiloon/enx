@@ -822,6 +822,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'getOneWord':
           return await handleGetOneWord(request.word)
 
+        case 'panelAccountFreshness':
+          return { sessionLost: accountSession.sessionLost() }
+
         case 'accountSignedOut':
           resetClerkSession()
           await accountSession.clear('signed-out')

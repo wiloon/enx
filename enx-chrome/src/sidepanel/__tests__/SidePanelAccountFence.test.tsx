@@ -335,6 +335,36 @@ describe.each(Object.entries(KINDS))('a %s request', (_name, kind) => {
     await expectOrdinaryFailure(kind, 'great')
   })
 
+  it('renders an ordinary failure while the new owner write is pending', async () => {
+    const request = hold(kind.matches(word))
+    render(<SidePanel />)
+    await kind.start('great')
+    await started(request.route)
+    const deliver = gateDelivery(kind.type)
+    await signOutOnWebsite()
+    await act(async () => request.finish(json(200, {})))
+    await waitFor(() =>
+      expect(answered.get(kind.type)?.sessionExpired).toBe(true)
+    )
+
+    const write = deferred<void>()
+    ownerWrite = write.promise
+    clerkUserId = 'user-b'
+    clerkSession = { getToken }
+    const switching = onCookieChanged(cookie)
+    await waitFor(() =>
+      expect(chrome.storage.session.set).toHaveBeenCalledWith({
+        [OWNER_KEY]: 'user-b',
+      })
+    )
+    await deliver()
+    await expectOrdinaryFailure(kind, 'great')
+    await act(async () => {
+      write.resolve()
+      await switching
+    })
+  })
+
   it('turns a signed-out row into an ordinary failure once another account signs in', async () => {
     const request = hold(kind.matches(word))
     render(<SidePanel />)

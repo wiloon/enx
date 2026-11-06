@@ -43,6 +43,7 @@ import {
   ACCOUNT_CHANGED_MESSAGE,
   createPanelAccountFence,
   isAccountInvalidatedMessage,
+  supersededFailure,
 } from '@/lib/panelAccountFence'
 import {
   WORD_HIGHLIGHT_KEY,
@@ -974,6 +975,18 @@ function SidePanelContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Ask the worker at delivery: its account fence advances before its
+  // asynchronous invalidation notification can reach this panel.
+  const checkAccountFreshness = async (response: BackgroundResponse) => {
+    if (response.success || !response.sessionExpired) return response
+    const freshness = await sendMessageToBackground<{ sessionLost: boolean }>({
+      type: 'panelAccountFreshness',
+    })
+    return freshness?.sessionLost === false
+      ? supersededFailure(response)
+      : response
+  }
+
   // Shared by every card-mutating callback below: fetches the word's meaning
   // in the given sentence and merges it into the matching card at `sentenceId`
   // (undefined = top-level), without touching the dictionary half.
@@ -1000,6 +1013,7 @@ function SidePanelContent() {
         sentence,
         dictionaryChinese,
       } satisfies ContentMessage)
+        .then(checkAccountFreshness)
         .then(delivered => {
           const response = current(delivered)
           const resolved = response.success && response.chinese
@@ -1075,6 +1089,7 @@ function SidePanelContent() {
         type: 'getOneWord',
         word,
       } satisfies ContentMessage)
+        .then(checkAccountFreshness)
         .then(delivered =>
           history.whenVisible(card, () => {
             // Checked here: a cleared card holds its response until Undo.
@@ -1242,6 +1257,7 @@ function SidePanelContent() {
         type: 'translateSentence',
         sentence,
       } satisfies ContentMessage)
+        .then(checkAccountFreshness)
         .then(delivered => {
           const response = current(delivered)
           if (response.success && response.chinese) {

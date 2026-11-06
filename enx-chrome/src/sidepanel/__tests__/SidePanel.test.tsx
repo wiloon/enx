@@ -771,7 +771,8 @@ describe('SidePanel', () => {
   // #236: a request that failed because the session ended offers Sign in,
   // in amber, instead of a Retry that would fail again.
   describe('a session-expired failure', () => {
-    const SIGNED_OUT = "You've been signed out. Sign in to keep looking up words."
+    const SIGNED_OUT =
+      "You've been signed out. Sign in to keep looking up words."
     const EXPIRED = {
       success: false,
       error: 'Your session has expired. Please login again.',
@@ -788,7 +789,11 @@ describe('SidePanel', () => {
           if (message.type === 'getOneWord') {
             return {
               success: true,
-              ecp: { English: message.word, Chinese: '大的', Pronunciation: '' },
+              ecp: {
+                English: message.word,
+                Chinese: '大的',
+                Pronunciation: '',
+              },
             }
           }
           if (message.type === 'translateWordInContext') {
@@ -2188,8 +2193,13 @@ describe('SidePanel', () => {
           'First sentence.',
         ])
       })
-      const chineses = screen.getAllByTestId('sidepanel-chinese')
-      expect(chineses.map(c => c.textContent)).toEqual(['第二句。', '第一句。'])
+      await waitFor(() => {
+        const chineses = screen.getAllByTestId('sidepanel-chinese')
+        expect(chineses.map(c => c.textContent)).toEqual([
+          '第二句。',
+          '第一句。',
+        ])
+      })
     })
 
     it('nests a word looked up inside a historical (non-newest) sentence there, without moving that sentence in the list', async () => {
