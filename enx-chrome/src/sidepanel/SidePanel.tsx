@@ -18,6 +18,7 @@ import { initSentry } from '@/lib/sentry'
 import { lookupCountLabel } from '@/lib/lookupCount'
 import { formatPhonetic } from '@/lib/phonetic'
 import { playPronunciation } from '@/lib/pronunciation'
+import { cardHasSpeaker } from '@/lib/speaker'
 import { snapToWordBounds } from '@/lib/wordSegment'
 import {
   HIGHLIGHT_NAME_PREFIX,
@@ -296,6 +297,7 @@ function WordCard({
   nested?: boolean
 }) {
   const phonetic = formatPhonetic(card.pronunciation)
+  const hasSpeaker = cardHasSpeaker(card)
   // One failure (the API down for a moment) fails the dictionary and the AI
   // halves alike; show its message once. The context row is the one kept:
   // its Retry redoes the dictionary too when that never loaded.
@@ -345,21 +347,32 @@ function WordCard({
             Loading phonetics...
           </span>
         ) : (
-          phonetic && (
-            <span className="inline-flex items-center gap-1">
-              <span className="text-muted-foreground text-xs">{phonetic}</span>
-              <button
-                data-testid={`sidepanel-play-pronunciation-${card.word}`}
-                type="button"
-                onClick={() => playPronunciation(card.word)}
-                className="text-muted-foreground hover:text-brand leading-none p-1 -m-1"
-                title="Play pronunciation"
-              >
-                <SpeakerWaveIcon
-                  className="h-3.5 w-3.5 block"
-                  aria-hidden="true"
-                />
-              </button>
+          (phonetic || hasSpeaker) && (
+            // With no phonetic text the speaker alone has no baseline to
+            // share with the word, so it is centred on the row instead.
+            <span
+              className={`inline-flex items-center gap-1${phonetic ? '' : ' self-center'}`}
+            >
+              {phonetic && (
+                <span className="text-muted-foreground text-xs">
+                  {phonetic}
+                </span>
+              )}
+              {hasSpeaker && (
+                <button
+                  data-testid={`sidepanel-play-pronunciation-${card.word}`}
+                  type="button"
+                  onClick={() => playPronunciation(card.word)}
+                  className="text-muted-foreground hover:text-brand leading-none p-1 -m-1"
+                  aria-label="Play pronunciation"
+                  title="Play pronunciation"
+                >
+                  <SpeakerWaveIcon
+                    className="h-3.5 w-3.5 block"
+                    aria-hidden="true"
+                  />
+                </button>
+              )}
             </span>
           )
         )}
