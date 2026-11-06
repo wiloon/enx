@@ -9,6 +9,7 @@ package sqlitex
 // every Save/Update, clobbering the caller-supplied `now` that
 // reader.UpdateDocument relies on for deterministic behavior and tests.
 type ReaderDocument struct {
+	Version   int64  `gorm:"column:version;not null;default:0"`
 	ID        string `gorm:"column:id;primaryKey"`
 	UserID    string `gorm:"column:user_id;index"`
 	Content   string `gorm:"column:content;not null"`

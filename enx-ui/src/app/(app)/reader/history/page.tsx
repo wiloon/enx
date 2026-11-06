@@ -36,7 +36,11 @@ export default function ReaderHistoryPage() {
       setActionError(resp.error || 'Failed to open document')
       return
     }
-    stashReaderDocument({ id: resp.data.id, content: resp.data.content })
+    stashReaderDocument({
+      id: resp.data.id,
+      content: resp.data.content,
+      version: resp.data.version,
+    })
     router.push('/reader')
   }
 

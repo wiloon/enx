@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileText, Pencil, Puzzle, ShieldCheck } from 'lucide-react'
@@ -10,6 +10,11 @@ import { requestReaderMode, webStoreUrl } from '@/lib/enxExtension'
 import { useExtensionStatus } from '@/hooks/useExtensionStatus'
 import { apiService } from '@/services/api'
 import { consumeReaderDocument } from '@/lib/readerSession'
+import {
+  ReaderSaveSession,
+  READER_SAVE_FAILED_MESSAGE,
+  READER_CONFLICT_MESSAGE,
+} from '@/lib/readerSave'
 import { MAX_CONTENT_LENGTH } from './constants'
 import { toParagraphs } from '@/lib/readerText'
 import SegmentedControl from '@/components/app/stats/SegmentedControl'
@@ -35,12 +40,8 @@ const HOW_IT_WORKS = [
 export default function ReaderPage() {
   const [draft, setDraft] = useState('')
   const [article, setArticle] = useState<string | null>(null)
-  // The saved document this reading session is backed by, if any. Set after
-  // the first successful save (create or open-from-history). While set,
-  // submitting again updates this same document (PUT) instead of creating a
-  // new one -- that's what makes "Edit text" actually mean "edit", per the
-  // ADR-022 Addendum. "New" clears it to start a genuinely separate document.
-  const [documentId, setDocumentId] = useState<string | null>(null)
+  const saveSession = useRef(new ReaderSaveSession(() => crypto.randomUUID()))
+  const [saveError, setSaveError] = useState(READER_SAVE_FAILED_MESSAGE)
   // Bumped on every submit so re-reading the same text still re-triggers the
   // extension (state value alone wouldn't change).
   const [readSeq, setReadSeq] = useState(0)
@@ -90,26 +91,31 @@ export default function ReaderPage() {
     if (!canRead) return
     setArticle(draft)
     setReadSeq((n) => n + 1)
+    const request = saveSession.current.submit(draft)
+    if (!request) {
+      setSaveStatus('error')
+      setSaveError(READER_CONFLICT_MESSAGE)
+      return
+    }
     setSaveStatus('saving')
-    const request = documentId
-      ? apiService.updateReaderDocument(documentId, draft)
-      : apiService.createReaderDocument(draft)
-    request.then((resp) => {
-      setSaveStatus(resp.success ? 'saved' : 'error')
-      if (!resp.success) return
-      if (resp.data) setDocumentId(resp.data.id)
-      // The server may also have evicted the oldest document at the cap, so
-      // the list is refetched rather than patched.
-      queryClient.invalidateQueries({ queryKey: ['reader-documents'] })
-    })
+    apiService
+      .saveReaderDocument(request.id, request.content, request.version)
+      .then((resp) => {
+        const result = saveSession.current.complete(request, resp)
+        if (result) {
+          setSaveStatus(result.status)
+          setSaveError(result.message)
+        }
+        // Even a response for an article left behind can change the shared list.
+        if (resp.success || !result)
+          queryClient.invalidateQueries({ queryKey: ['reader-documents'] })
+      })
   }
 
-  // Starts a genuinely new document: distinct from "Edit text", which keeps
-  // editing the one this session is backed by.
   const handleNew = () => {
+    saveSession.current.startNew()
     setDraft('')
     setArticle(null)
-    setDocumentId(null)
     setSaveStatus('idle')
   }
 
@@ -125,7 +131,7 @@ export default function ReaderPage() {
       return
     }
     setDraft(resp.data.content)
-    setDocumentId(resp.data.id)
+    saveSession.current.open(resp.data.id, resp.data.version)
     setSaveStatus('saved')
     setArticle(resp.data.content)
     setReadSeq((n) => n + 1)
@@ -142,7 +148,7 @@ export default function ReaderPage() {
       // the server render has no sessionStorage). One-shot, on mount only.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setDraft(parsed.content)
-      setDocumentId(parsed.id ?? null)
+      if (parsed.id) saveSession.current.open(parsed.id, parsed.version ?? 0)
       setSaveStatus('saved')
       setArticle(parsed.content)
       setReadSeq((n) => n + 1)
@@ -179,7 +185,7 @@ export default function ReaderPage() {
             >
               {saveStatus === 'saving' && 'Saving…'}
               {saveStatus === 'saved' && 'Saved · kept for 7 days'}
-              {saveStatus === 'error' && "Couldn't save (still readable)"}
+              {saveStatus === 'error' && saveError}
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-3">

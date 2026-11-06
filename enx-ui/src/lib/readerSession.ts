@@ -8,7 +8,11 @@
 // (LAUNCH-CHECKLIST §7.4 "do not rename" table).
 export const OPEN_DOC_STORAGE_KEY = 'enx-reader-open-doc'
 
-export type StashedReaderDocument = { id?: string; content?: string }
+export type StashedReaderDocument = {
+  id?: string
+  content?: string
+  version?: number
+}
 
 export function stashReaderDocument(doc: StashedReaderDocument): void {
   try {

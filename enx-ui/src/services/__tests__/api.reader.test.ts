@@ -140,3 +140,20 @@ describe('ApiService reader documents', () => {
     expect(init.method).toBe('DELETE')
   })
 })
+
+describe('versioned Reader saves', () => {
+  it('PUTs the client UUID and revision and reads the saved version', async () => {
+    const service = new ApiService('http://localhost:8090')
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue(
+        jsonResponse(200, { success: true, id: 'client-id', version: 2 })
+      )
+    const result = await service.saveReaderDocument('client-id', 'edited', 2)
+    expect(result.data).toEqual({ success: true, id: 'client-id', version: 2 })
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toBe('http://localhost:8090/api/reader/documents/client-id')
+    expect(init.method).toBe('PUT')
+    expect(JSON.parse(init.body)).toEqual({ content: 'edited', version: 2 })
+  })
+})

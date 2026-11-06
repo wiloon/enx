@@ -569,6 +569,18 @@ export class ApiService {
     })
   }
 
+  // One UUID identifies a document from its first local draft onward.
+  async saveReaderDocument(
+    id: string,
+    content: string,
+    version: number
+  ): Promise<ApiResponse<{ id: string; version: number }>> {
+    return this.makeRequest(`/api/reader/documents/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ content, version }),
+    })
+  }
+
   async deleteReaderDocument(
     id: string
   ): Promise<ApiResponse<{ success: boolean }>> {

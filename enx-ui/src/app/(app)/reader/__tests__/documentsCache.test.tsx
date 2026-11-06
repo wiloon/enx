@@ -10,8 +10,7 @@ import { apiService } from '@/services/api'
 
 jest.mock('@/services/api', () => ({
   apiService: {
-    createReaderDocument: jest.fn(),
-    updateReaderDocument: jest.fn(),
+    saveReaderDocument: jest.fn(),
     listReaderDocuments: jest.fn(),
     getReaderDocument: jest.fn(),
     deleteReaderDocument: jest.fn(),
@@ -22,8 +21,7 @@ jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn() }),
 }))
 
-const mockCreate = apiService.createReaderDocument as jest.Mock
-const mockUpdate = apiService.updateReaderDocument as jest.Mock
+const mockSave = apiService.saveReaderDocument as jest.Mock
 const mockList = apiService.listReaderDocuments as jest.Mock
 const mockGet = apiService.getReaderDocument as jest.Mock
 
@@ -70,10 +68,12 @@ beforeEach(() => {
     success: true,
     data: { documents: serverDocs },
   }))
-  mockCreate.mockImplementation(async () => {
-    serverDocs = [created, ...serverDocs]
-    return { success: true, data: { id: created.id } }
-  })
+  mockSave.mockImplementation(
+    async (id: string, _content: string, version: number) => {
+      serverDocs = [created, ...serverDocs]
+      return { success: true, data: { id, version } }
+    }
+  )
 })
 
 // The production client keeps a list fresh for five minutes.
@@ -138,17 +138,19 @@ it('an edited document moves to the top of Recent and My Documents with its new 
   serverDocs = [other, existing]
   mockGet.mockResolvedValue({
     success: true,
-    data: { id: existing.id, content: 'An earlier note.' },
+    data: { id: existing.id, content: 'An earlier note.', version: 4 },
   })
   const edited: Row = {
     ...existing,
     updatedAt: NEW_DAY,
     preview: 'An edited note',
   }
-  mockUpdate.mockImplementation(async () => {
-    serverDocs = [edited, other]
-    return { success: true, data: { id: existing.id } }
-  })
+  mockSave.mockImplementation(
+    async (id: string, _content: string, version: number) => {
+      serverDocs = [edited, other]
+      return { success: true, data: { id, version } }
+    }
+  )
 
   const client = newClient()
   const reader = mount(client, <ReaderPage />)
@@ -159,7 +161,7 @@ it('an edited document moves to the top of Recent and My Documents with its new 
   fireEvent.click(screen.getByRole('button', { name: 'Edit text' }))
   paste('An edited note.')
   await clickRead()
-  expect(mockUpdate).toHaveBeenCalledWith(existing.id, 'An edited note.')
+  expect(mockSave).toHaveBeenCalledWith(existing.id, 'An edited note.', 5)
   expect(await screen.findByText(SAVED)).toBeInTheDocument()
 
   fireEvent.click(screen.getByRole('button', { name: 'Edit text' }))
@@ -181,12 +183,12 @@ it('an edited document moves to the top of Recent and My Documents with its new 
 
 describe('leaving /reader while the save is in flight', () => {
   let pending: ReturnType<
-    typeof deferred<{ success: true; data: { id: string } }>
+    typeof deferred<{ success: true; data: { id: string; version: number } }>
   >
 
   beforeEach(() => {
     pending = deferred()
-    mockCreate.mockImplementation(() => pending.promise)
+    mockSave.mockImplementation(() => pending.promise)
   })
 
   async function startSavingThenLeave(client: QueryClient) {
@@ -201,7 +203,10 @@ describe('leaving /reader while the save is in flight', () => {
   async function finishSave() {
     serverDocs = [created, ...serverDocs]
     await act(async () => {
-      pending.resolve({ success: true, data: { id: created.id } })
+      pending.resolve({
+        success: true,
+        data: { id: mockSave.mock.calls[0][0], version: 1 },
+      })
     })
   }
 
@@ -233,7 +238,7 @@ describe('leaving /reader while the save is in flight', () => {
 })
 
 it('a failed save leaves the list as it was', async () => {
-  mockCreate.mockImplementation(async () => ({
+  mockSave.mockImplementation(async () => ({
     success: false,
     error: 'network error',
   }))

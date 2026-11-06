@@ -46,6 +46,12 @@ _Avoid_: 限流、rate limit（那是下面的请求限流）
 按用户限制已登录请求的**速度**，所有已登录接口共用一条宽松规则，不分套餐，只拦脚本、不拦正常阅读的人。超出时返回 429、`Retry-After`，错误码 `too_many_requests`。见 adr-060。
 _Avoid_: 配额、quota（那是上面的每日查词配额）、throttling
 
+### Reader documents
+
+**Reader document**: A user's saved passage in Reader. Editing continues the same document; New starts a separate document.
+
+**Reader document version**: An ordered revision of one Reader document. A later revision supersedes earlier revisions; the version is separate from the document's retention period.
+
 ### 阅读辅助功能（enx-chrome）
 
 **学习模式（learning mode）**：
