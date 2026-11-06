@@ -14,7 +14,7 @@ import (
 )
 
 // ErrLiveStateUnknown: a decision needs a subscription's live Stripe state
-// and it could not be read. Fail closed with a retryable error.
+// and it could not be read or interpreted. Fail closed with a retryable error.
 var ErrLiveStateUnknown = errors.New("eligibility: live Stripe state unknown")
 
 // Live is a subscription's live Stripe state.
@@ -23,7 +23,9 @@ type Live struct {
 	CancelAtPeriodEnd bool
 	// CancelAt is Stripe's cancel_at (Unix seconds, 0 when unset). In
 	// flexible billing mode a Portal cancellation sets only this (#337).
-	CancelAt         int64
+	CancelAt int64
+	// CurrentPeriodEnd is required to prove that CancelAt stops renewal in
+	// this period. Read it from the subscription item, not the subscription.
 	CurrentPeriodEnd int64
 	// PendingUpdate: an upgrade waits for payment (pending_update).
 	PendingUpdate bool
@@ -33,7 +35,8 @@ type Live struct {
 }
 
 // CancelScheduled reports whether the subscription is set to end at or
-// before the end of its current period.
+// before the end of its current period. With only CancelAt and no period
+// end, cancellation timing is unproven and this returns false.
 func (l Live) CancelScheduled() bool {
 	return l.CancelAtPeriodEnd || (l.CancelAt != 0 && l.CancelAt <= l.CurrentPeriodEnd)
 }
@@ -120,8 +123,8 @@ func Deletion(owned []Owned) DeletionVerdict {
 // even after Stripe ended it, or one resolved but still billable in Stripe;
 // a resolution note proves nothing about billing. The smallest blocking ID
 // wins, whatever the order of owned. A resolved conflict whose live state is
-// unknown is no candidate: it is ErrLiveStateUnknown, unless another
-// conflict already blocks.
+// unread or outside the recognized billable and ended sets is no candidate:
+// it is ErrLiveStateUnknown, unless another conflict already blocks.
 func BlockingConflict(owned []Owned) (string, error) {
 	blocking, unknown := "", false
 	for _, o := range owned {
@@ -132,6 +135,7 @@ func BlockingConflict(owned []Owned) (string, error) {
 			isBlocker = true
 		case o.Live != nil:
 			isBlocker = acceptance.Billable(o.Live.Status)
+			unknown = unknown || (!isBlocker && !acceptance.Ended(o.Live.Status))
 		case NeedsLiveLookup(o):
 			unknown = true
 		}
@@ -183,7 +187,8 @@ const (
 	EntryCurrentTier
 )
 
-// Reasons for EntryBlocked.
+// Reasons for EntryBlocked. ReasonDeletionInProgress covers every active
+// deletion gate, including the retained gate after deletion completes.
 const (
 	ReasonDeletionInProgress   = "deletion_in_progress"
 	ReasonSubscriptionConflict = "subscription_conflict"
@@ -201,39 +206,54 @@ type Entry struct {
 // subscription, or one Stripe has ended, any tier is bought through
 // Checkout. Only a healthy (active) subscriber changes plan, and only when
 // Stripe holds no change of its own; every other accepted subscription goes
-// to the Portal home and never gets a second Checkout.
-func TierEntry(a Account, tier string) Entry {
+// to the Portal home and never gets a second Checkout. The caller must
+// validate that tier is offered; this rule does not validate tier Prices.
+// An empty accepted status is ErrLiveStateUnknown, never a Portal entry.
+func TierEntry(a Account, tier string) (Entry, error) {
+	if a.Accepted != nil && a.Accepted.Live.Status == "" {
+		return Entry{}, ErrLiveStateUnknown
+	}
 	switch {
 	case a.Deletion != acceptance.NoDeletion:
-		return Entry{Kind: EntryBlocked, Reason: ReasonDeletionInProgress}
+		return Entry{Kind: EntryBlocked, Reason: ReasonDeletionInProgress}, nil
 	case a.BlockingConflictID != "":
-		return Entry{Kind: EntryBlocked, Reason: ReasonSubscriptionConflict}
+		return Entry{Kind: EntryBlocked, Reason: ReasonSubscriptionConflict}, nil
 	case a.Accepted == nil, acceptance.Ended(a.Accepted.Live.Status):
-		return Entry{Kind: EntryCheckout}
+		return Entry{Kind: EntryCheckout}, nil
 	}
 	live := a.Accepted.Live
 	switch {
-	case live.Status != "active":
-		return Entry{Kind: EntryPortalHome}
+	case !healthy(live.Status):
+		return Entry{Kind: EntryPortalHome}, nil
 	case a.Accepted.Tier == tier:
-		return Entry{Kind: EntryCurrentTier}
+		return Entry{Kind: EntryCurrentTier}, nil
 	case live.PendingUpdate, live.HasSchedule, live.CancelScheduled():
-		return Entry{Kind: EntryPortalHome}
+		return Entry{Kind: EntryPortalHome}, nil
 	}
-	return Entry{Kind: EntryPlanChange}
+	return Entry{Kind: EntryPlanChange}, nil
 }
 
 // PortalRestricted reports whether the user's Portal sessions, the Portal
 // home included, must use the restricted configuration with plan switching
 // off: while the deletion gate is up, a conflict blocks, or the accepted
-// subscription is neither healthy nor ended.
-func PortalRestricted(a Account) bool {
+// subscription is neither healthy nor ended. An empty accepted status is
+// ErrLiveStateUnknown, never permission to create even a restricted session.
+func PortalRestricted(a Account) (bool, error) {
+	if a.Accepted != nil && a.Accepted.Live.Status == "" {
+		return false, ErrLiveStateUnknown
+	}
 	switch {
 	case a.Deletion != acceptance.NoDeletion, a.BlockingConflictID != "":
-		return true
+		return true, nil
 	case a.Accepted == nil:
-		return false
+		return false, nil
 	}
 	status := a.Accepted.Live.Status
-	return status != "active" && !acceptance.Ended(status)
+	return !healthy(status) && !acceptance.Ended(status), nil
+}
+
+// healthy follows ADR-067: only an active subscription may change plan.
+// Trialing is not healthy; Checkout does not offer a trial.
+func healthy(status string) bool {
+	return status == "active"
 }

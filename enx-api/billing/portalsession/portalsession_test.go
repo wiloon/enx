@@ -248,6 +248,56 @@ func TestAFailedLookupCreatesNoPortalHomeSession(t *testing.T) {
 	}
 }
 
+func TestAnIndeterminateResolvedConflictCreatesNoPortalSession(t *testing.T) {
+	for _, status := range []string{"paused", "future_status", ""} {
+		for _, entry := range []string{"home", "plan change"} {
+			t.Run(status+"/"+entry, func(t *testing.T) {
+				owner := subscriber(eligibility.Owned{ID: "sub_b", Conflict: eligibility.ConflictResolved, StoredStatus: "active"})
+				stripe := &fakeStripe{subs: map[string]Subscription{
+					"sub_a": on("sub_a", pricePro, active),
+					"sub_b": on("sub_b", priceMax, eligibility.Live{Status: status}),
+				}}
+				s := New(&fakeStore{owner: owner}, stripe, returnURL)
+				var url string
+				var err error
+				if entry == "home" {
+					url, err = s.Home(context.Background(), "u1")
+				} else {
+					url, err = s.PlanChange(context.Background(), "u1", "max")
+				}
+				if !errors.Is(err, ErrUnavailable) || !errors.Is(err, eligibility.ErrLiveStateUnknown) || url != "" {
+					t.Fatalf("entry = %q, %v; want retryable unknown state", url, err)
+				}
+				if len(stripe.sessions) != 0 {
+					t.Fatalf("created sessions %+v, want none", stripe.sessions)
+				}
+			})
+		}
+	}
+}
+
+func TestAnEmptyAcceptedLiveStatusCreatesNoPortalSession(t *testing.T) {
+	for _, entry := range []string{"home", "plan change"} {
+		t.Run(entry, func(t *testing.T) {
+			stripe := &fakeStripe{subs: map[string]Subscription{"sub_a": on("sub_a", pricePro, eligibility.Live{})}}
+			s := New(&fakeStore{owner: subscriber()}, stripe, returnURL)
+			var url string
+			var err error
+			if entry == "home" {
+				url, err = s.Home(context.Background(), "u1")
+			} else {
+				url, err = s.PlanChange(context.Background(), "u1", "max")
+			}
+			if !errors.Is(err, ErrUnavailable) || !errors.Is(err, eligibility.ErrLiveStateUnknown) || url != "" {
+				t.Fatalf("entry = %q, %v; want retryable unknown state", url, err)
+			}
+			if len(stripe.sessions) != 0 {
+				t.Fatalf("created sessions %+v, want none", stripe.sessions)
+			}
+		})
+	}
+}
+
 func TestAHealthySubscribersOtherTierCardOpensTheSubscriptionUpdateConfirmDeepLink(t *testing.T) {
 	stripe := &fakeStripe{subs: map[string]Subscription{"sub_a": on("sub_a", pricePro, active)}}
 

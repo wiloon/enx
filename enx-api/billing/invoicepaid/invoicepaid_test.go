@@ -710,6 +710,22 @@ func TestFailuresRetryWithoutEffects(t *testing.T) {
 	})
 }
 
+func TestAnIndeterminateResolvedConflictRetriesTheInvoiceWithoutEffects(t *testing.T) {
+	for _, status := range []string{"paused", "future_status", ""} {
+		t.Run(status, func(t *testing.T) {
+			owner := Owner{Owned: []eligibility.Owned{{ID: "sub_c", Conflict: eligibility.ConflictResolved, StoredStatus: "active"}}}
+			store, stripe := firstInvoice(t, owner, map[string]string{sandboxSub: "active", "sub_c": status})
+
+			r := handle(t, store, stripe)
+
+			wantStep(t, r, webhookevent.Transient, eligibility.ErrLiveStateUnknown.Error())
+			if r.Effects != nil {
+				t.Fatalf("effects = %#v; want no acceptance, credits or referral reward", r.Effects)
+			}
+		})
+	}
+}
+
 func describe(e Effects) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "  observed %+v\n", e.Observed)
