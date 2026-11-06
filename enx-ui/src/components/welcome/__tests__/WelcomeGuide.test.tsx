@@ -418,3 +418,57 @@ it('records "Skip setup" and goes to /app', async () => {
   )
   expect(push).toHaveBeenCalledWith('/app')
 })
+
+it('shows a checking status while extension detection is pending, without guessing the install state', async () => {
+  signedIn()
+  ;(global as unknown as { chrome?: unknown }).chrome = {
+    runtime: { sendMessage: jest.fn() },
+  }
+  renderGuide()
+  expect(
+    await screen.findByRole('status', { name: 'Checking extension' })
+  ).toHaveTextContent('Checking extension…')
+  expect(
+    screen.queryByRole('link', { name: 'Add to Chrome' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByText('Catglish extension installed')
+  ).not.toBeInTheDocument()
+})
+
+it('confirms an installed extension and offers the next setup step', async () => {
+  signedIn()
+  installExtension()
+  renderGuide()
+  expect(
+    await screen.findByText('Catglish extension installed')
+  ).toBeInTheDocument()
+  expect(
+    screen.getByRole('link', { name: 'Next: finish setup' })
+  ).toHaveAttribute('href', '#setup-steps')
+  expect(
+    screen.queryByRole('link', { name: 'Add to Chrome' })
+  ).not.toBeInTheDocument()
+  expect(screen.getByText('Pin the Catglish icon')).toBeInTheDocument()
+})
+
+it('rechecks after installation and replaces the install link with the completed status', async () => {
+  signedIn()
+  setRuntimeEnv({
+    ENX_EXTENSION_ID: 'test-ext-id',
+    ENX_EXTENSION_WEB_STORE_URL:
+      'https://chromewebstore.google.com/detail/catglish',
+  })
+  renderGuide()
+  await screen.findByRole('link', { name: 'Add to Chrome' })
+  installExtension()
+  expect(
+    await screen.findByText('Catglish extension installed')
+  ).toBeInTheDocument()
+  expect(
+    screen.queryByRole('link', { name: 'Add to Chrome' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.getByRole('link', { name: 'Next: finish setup' })
+  ).toBeInTheDocument()
+})

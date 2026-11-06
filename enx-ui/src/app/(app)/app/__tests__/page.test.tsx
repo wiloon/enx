@@ -9,11 +9,13 @@ jest.mock('@/services/api', () => ({
   apiService: {
     getStatsOverview: jest.fn(),
     getBillingMe: jest.fn(),
+    getPreferences: jest.fn(),
   },
 }))
 
+const replace = jest.fn()
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: jest.fn() }),
+  useRouter: () => ({ push: jest.fn(), replace }),
 }))
 
 jest.mock('@/hooks/useAuth', () => ({
@@ -72,6 +74,10 @@ function renderPage() {
 
 beforeEach(() => {
   jest.clearAllMocks()
+  ;(apiService.getPreferences as jest.Mock).mockResolvedValue({
+    success: true,
+    data: { onboardingCompleted: { effective: true } },
+  })
   setRuntimeEnv({})
   mockExtensionStatus.mockReturnValue('installed')
   mockBilling.mockResolvedValue({
@@ -304,4 +310,47 @@ it('offers a returning user without the extension the install banner', async () 
   expect(
     await screen.findByRole('link', { name: 'Add to Chrome' })
   ).toHaveAttribute('href', STORE_URL)
+})
+
+// #641: /app is the normal post-authentication destination.
+it('takes a new user directly to Welcome before showing the Home checklist', async () => {
+  mockOverview.mockResolvedValue(overview())
+  ;(apiService.getPreferences as jest.Mock).mockResolvedValue({
+    success: true,
+    data: { onboardingCompleted: { effective: false } },
+  })
+  renderPage()
+  await waitFor(() => expect(replace).toHaveBeenCalledWith('/welcome'))
+  expect(screen.queryByText(CARD_HEADING)).not.toBeInTheDocument()
+})
+
+it('waits for account history before choosing the post-authentication destination', async () => {
+  mockOverview.mockResolvedValue(overview())
+  ;(apiService.getPreferences as jest.Mock).mockReturnValue(
+    new Promise(() => {})
+  )
+  renderPage()
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    'Opening your setup guide'
+  )
+  expect(replace).not.toHaveBeenCalled()
+  expect(screen.queryByText(CARD_HEADING)).not.toBeInTheDocument()
+})
+
+it('keeps a user who skipped setup on Home without a redirect loop', async () => {
+  mockOverview.mockResolvedValue(overview())
+  renderPage()
+  await screen.findByText(CARD_HEADING)
+  expect(replace).not.toHaveBeenCalled()
+})
+
+it('keeps legacy users with lookups on Home even without a completion flag', async () => {
+  mockOverview.mockResolvedValue(overview({ vocab: { total: 5, mastered: 0 } }))
+  ;(apiService.getPreferences as jest.Mock).mockResolvedValue({
+    success: true,
+    data: { onboardingCompleted: { effective: false } },
+  })
+  renderPage()
+  await screen.findByText('Today')
+  expect(replace).not.toHaveBeenCalled()
 })

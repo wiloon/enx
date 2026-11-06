@@ -1,5 +1,12 @@
 # AI Contributions History
 
+## 2026-11-05: Send new users to Welcome after authentication — issue #641
+
+**Agent**: Codex
+**Solution**: Home reuses Welcome’s account-based onboarding rule before showing its checklist. Welcome exposes checking and installed states, and installation links default to the published store item. Explicit billing and extension sign-in destinations keep their existing routes.
+
+**Lesson (onboarding entry points)**: An installation checklist behind a sample-article button does not clearly tell new users to install the extension. Check both the authentication destination and the visible first action. Browser tests in a worktree must target that worktree’s server; an existing server on the default port can silently exercise main instead.
+
 ## 2026-11-05: Isolate Reader documents and order saves — issue #575
 
 **Agent**: Codex

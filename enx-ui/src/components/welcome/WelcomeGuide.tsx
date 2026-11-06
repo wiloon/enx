@@ -170,13 +170,41 @@ export default function WelcomeGuide({
   // the list is unknown; guessing either way makes it flash.
   const stepList = (steps: OnboardingStep[]) =>
     extension === undefined ? (
-      <Loading />
+      <p
+        role="status"
+        aria-label="Checking extension"
+        className="flex items-center gap-2 text-sm text-muted-foreground"
+      >
+        <span
+          aria-hidden="true"
+          className="size-4 animate-spin rounded-full border-2 border-brand/20 border-t-brand motion-reduce:animate-none"
+        />
+        Checking extension…
+      </p>
     ) : (
-      <StepList
-        steps={steps}
-        returnTo={returnTo}
-        onSkipPin={() => setPinSkipped(true)}
-      />
+      <div className="space-y-5">
+        {extension.installed && (
+          <div className="space-y-3 rounded-lg border border-brand/30 bg-brand/5 p-4">
+            <p
+              role="status"
+              className="flex items-center gap-2 text-sm font-medium"
+            >
+              <Check aria-hidden className="size-4 text-brand" />
+              {SITE.name} extension installed
+            </p>
+            <Button asChild variant="outline" size="sm">
+              <a href="#setup-steps">Next: finish setup</a>
+            </Button>
+          </div>
+        )}
+        <div id="setup-steps" tabIndex={-1} className="scroll-mt-6">
+          <StepList
+            steps={steps}
+            returnTo={returnTo}
+            onSkipPin={() => setPinSkipped(true)}
+          />
+        </div>
+      </div>
     )
 
   return (
@@ -332,6 +360,10 @@ function InstallButton() {
   )
   return (
     <div className="space-y-2">
+      <p className="text-muted-foreground">
+        Install {SITE.name} to look up words while browsing English pages. After
+        installing, return here to continue setup.
+      </p>
       {storeUrl ? (
         <Button asChild variant="brand" size="sm">
           <a href={storeUrl} target="_blank" rel="noopener noreferrer">

@@ -1,5 +1,8 @@
 'use client'
 
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { welcomeLanding } from '@/lib/onboarding'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/useAuth'
 import { useExtensionStatus } from '@/hooks/useExtensionStatus'
@@ -21,6 +24,7 @@ import PageHeader from '@/components/app/PageHeader'
 // the main one -- look like the product.
 export default function AppHome() {
   const { user } = useAuth()
+  const router = useRouter()
   const extensionStatus = useExtensionStatus()
 
   // Whether this user has done anything yet. The word list is the broadest
@@ -41,7 +45,32 @@ export default function AppHome() {
   })
 
   const hasData = (overview?.vocab.total ?? 0) > 0
-  const showOnboarding = !isLoading && !isError && !hasData
+  const preferences = useQuery({
+    queryKey: ['preferences'],
+    queryFn: async () => {
+      const resp = await apiService.getPreferences()
+      if (resp.success && resp.data) return resp.data
+      throw new Error(resp.error || 'Failed to load preferences')
+    },
+    enabled: !isLoading && !isError && !hasData,
+  })
+  // Use Welcome's account-based rule, including legacy users with lookups.
+  // Only Home redirects: billing and extension sign-in keep their destination.
+  const needsGuide = !isLoading && !isError && !hasData
+  const landing = welcomeLanding({
+    signedIn: true,
+    fromInstall: false,
+    onboardingCompleted:
+      hasData ||
+      (preferences.isError
+        ? false
+        : preferences.data?.onboardingCompleted?.effective),
+    hasLookedUp: isLoading || isError ? undefined : hasData,
+  })
+  useEffect(() => {
+    if (needsGuide && landing === 'steps') router.replace('/welcome')
+  }, [needsGuide, landing, router])
+  const showOnboarding = needsGuide && landing === 'done'
   const name = user?.username ? `, ${user.username}` : ''
 
   return (
@@ -55,7 +84,11 @@ export default function AppHome() {
         }
       />
 
-      {showOnboarding ? (
+      {needsGuide && landing !== 'done' ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          Opening your setup guide…
+        </p>
+      ) : showOnboarding ? (
         <OnboardingChecklist status={extensionStatus} />
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_16rem]">
@@ -67,7 +100,7 @@ export default function AppHome() {
       {/* The onboarding card is the only prominent block in its form; its
           first step is the install (ADR-027). Held while loading so the
           banner doesn't flash before the card. */}
-      {!isLoading && !showOnboarding && (
+      {!isLoading && !needsGuide && (
         <ExtensionBanner status={extensionStatus} />
       )}
     </div>
