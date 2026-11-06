@@ -1,5 +1,12 @@
 # AI Contributions History
 
+## 2026-11-05: Preserve pending Side Panel results through Clear/Undo — issue #622
+
+**Agent**: Codex
+**Solution**: A framework-free history session keeps the visible list and one Undo snapshot. In-flight translations patch either list by the original request token. Dictionary results wait while cleared; Undo resumes the original query and its paid continuation once. Expiry or a new lookup discards paused work. The timer follows the Clear generation, so response patches cannot renew it.
+
+**Lesson (temporary removal and request lifetime)**: Keeping response fields is insufficient for a dictionary-first query: its continuation and lookup-count side effects also need a lifetime policy. Defer those effects until the card is restored, recheck its token before starting AI, and release paused work when Undo becomes unavailable. Component tests should exercise both response/Undo orderings and verify external request counts as well as rendered results.
+
 ## 2026-11-05: Public installation help — issue #559
 
 **Agent**: Codex

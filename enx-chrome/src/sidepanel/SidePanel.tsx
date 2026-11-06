@@ -29,6 +29,10 @@ import {
   type SentenceHighlightSpans,
 } from '@/lib/wordHighlight'
 import { sendMessageToBackground } from '@/services/api'
+import {
+  PanelHistorySession,
+  type CardRequest,
+} from '@/lib/panelHistorySession'
 import { countLookup, type RecordLookup } from '@/lib/queryCount'
 import { isLookupQuotaExceeded } from '@/lib/rateLimit'
 import { config } from '@/config/env'
@@ -194,13 +198,6 @@ const countOnServer: RecordLookup = wordId => {
     type: 'recordWordLookup',
     wordId,
   } satisfies ContentMessage).catch(() => {})
-}
-
-// The card a request writes back to, and the token it started with.
-interface CardRef {
-  sentenceId: string | undefined
-  key: string
-  token: number
 }
 
 // The confirm affordance for an in-panel phrase selection (ADR-017 D2): a
@@ -719,18 +716,22 @@ function SidePanelContent() {
   // reorder only ever happens at the scope the selection came from -- a
   // main-page click never searches history sentences for a match to nest
   // into (Decision B2), so scoping never needs cross-referencing.
-  const [entries, setEntriesState] = useState<PanelEntry[]>([])
-  // Always the latest list, for callbacks reached from inside a long-lived
-  // effect closure or an async response: written in the same call as the
-  // state, so a token check never reads a list React hasn't rendered yet.
-  const entriesRef = useRef<PanelEntry[]>(entries)
+  const [history] = useState(() => new PanelHistorySession())
+  const [{ entries, cleared }, setHistory] = useState(history.snapshot)
+  const syncHistory = useCallback(() => setHistory(history.snapshot), [history])
   const setEntries = useCallback(
     (update: PanelEntry[] | ((prev: PanelEntry[]) => PanelEntry[])) => {
-      entriesRef.current =
-        typeof update === 'function' ? update(entriesRef.current) : update
-      setEntriesState(entriesRef.current)
+      history.update(update)
+      syncHistory()
     },
-    []
+    [history, syncHistory]
+  )
+  const patchEntries = useCallback(
+    (update: (prev: PanelEntry[]) => PanelEntry[]) => {
+      history.patch(update)
+      syncHistory()
+    },
+    [history, syncHistory]
   )
   // Request tokens (ADR-023 Decision 8): each request a card waits on takes
   // the next value, and its response is written only while the card found
@@ -745,19 +746,16 @@ function SidePanelContent() {
   // Cards whose (often verbose) dictionary meaning the user has expanded past
   // the default 3-line clamp, by panelCardKey.
   const [expandedWords, setExpandedWords] = useState<Set<string>>(new Set())
-  // What Clear just removed, kept for a few seconds so Undo can put it back.
-  const [cleared, setCleared] = useState<{
-    entries: PanelEntry[]
-    expandedWords: Set<string>
-  } | null>(null)
+  // Only Clear starts the Undo window; response patches keep its generation.
+  const clearGeneration = cleared?.generation
   useEffect(() => {
-    if (!cleared) return
-    const timer = setTimeout(() => setCleared(null), CLEAR_UNDO_MS)
+    if (clearGeneration === undefined) return
+    const timer = setTimeout(() => {
+      history.discardCleared()
+      syncHistory()
+    }, CLEAR_UNDO_MS)
     return () => clearTimeout(timer)
-  }, [cleared])
-  // A lookup after Clear starts a fresh list; Undo would mix the two.
-  // Adjusted during render rather than in an effect, as React recommends.
-  if (cleared && entries.length > 0) setCleared(null)
+  }, [clearGeneration, history, syncHistory])
   // What the panel knows about each word's review stage, keyed by
   // lower-cased word like the page's wordCache (ADR-053 Decision 3). Drives
   // the underlines in every sentence original.
@@ -930,11 +928,11 @@ function SidePanelContent() {
     (
       word: string,
       sentence: string,
-      card: CardRef,
+      card: CardRequest,
       dictionaryChinese?: string
     ) => {
       const patch = (fields: Partial<WordCardData>) =>
-        setEntries(prev =>
+        patchEntries(prev =>
           patchCard(prev, card.sentenceId, card.key, fields, card.token)
         )
       sendMessageToBackground<BackgroundResponse>({
@@ -965,15 +963,7 @@ function SidePanelContent() {
           })
         })
     },
-    [setEntries]
-  )
-
-  // Whether `card` is still waiting on the request its token started.
-  const holdsToken = useCallback(
-    (card: CardRef) =>
-      findCard(entriesRef.current, card.sentenceId, card.key)?.token ===
-      card.token,
-    []
+    [patchEntries]
   )
 
   // A single word looked up in the panel (ADR-053 Decision 3/4): its new
@@ -1005,13 +995,13 @@ function SidePanelContent() {
   // `counts` is true only for a word clicked in the panel: that click is a
   // lookup and is counted once (lib/queryCount.ts). A card for a word the
   // page's popover already looked up -- a sentence's anchor word, a retry --
-  // must not count it again. A response for a card that no longer holds
-  // the token (removed, cleared, recreated) does nothing and resolves
-  // `current: false`, so the chain stops there.
+  // must not count it again. A cleared card pauses until Undo; expiry or
+  // a new lookup discards its response. Removed/recreated cards fail the
+  // token check and resolve `current: false`, stopping the chain.
   const fetchDictionary = useCallback(
     (
       word: string,
-      card: CardRef,
+      card: CardRequest,
       counts: boolean
     ): Promise<{ current: boolean; chinese?: string }> => {
       const patch = (fields: Partial<WordCardData>) =>
@@ -1022,45 +1012,48 @@ function SidePanelContent() {
         type: 'getOneWord',
         word,
       } satisfies ContentMessage)
-        .then(response => {
-          if (!holdsToken(card)) return { current: false }
-          const ecp =
-            response.success && response.ecp && counts
-              ? countLookup(response.ecp, countOnServer)
-              : response.ecp
-          if (response.success && ecp) {
-            recordWordLookup(word, ecp)
-          }
-          patch({
-            pronunciation: response.success ? ecp?.Pronunciation : undefined,
-            dictionaryChinese: response.success ? ecp?.Chinese : undefined,
-            loadCount: response.success ? ecp?.LoadCount : undefined,
-            dictionaryStatus: response.success ? 'loaded' : 'error',
-            dictionaryError: response.success
-              ? undefined
-              : response.error || 'Dictionary lookup failed',
-            dictionaryErrorHttpStatus: response.success
-              ? undefined
-              : response.status,
-            dictionaryErrorCode: response.success ? undefined : response.code,
+        .then(response =>
+          history.whenVisible(card, () => {
+            const ecp =
+              response.success && response.ecp && counts
+                ? countLookup(response.ecp, countOnServer)
+                : response.ecp
+            if (response.success && ecp) {
+              recordWordLookup(word, ecp)
+            }
+            patch({
+              pronunciation: response.success ? ecp?.Pronunciation : undefined,
+              dictionaryChinese: response.success ? ecp?.Chinese : undefined,
+              loadCount: response.success ? ecp?.LoadCount : undefined,
+              dictionaryStatus: response.success ? 'loaded' : 'error',
+              dictionaryError: response.success
+                ? undefined
+                : response.error || 'Dictionary lookup failed',
+              dictionaryErrorHttpStatus: response.success
+                ? undefined
+                : response.status,
+              dictionaryErrorCode: response.success ? undefined : response.code,
+            })
+            return {
+              current: true,
+              chinese: response.success ? ecp?.Chinese : undefined,
+            }
           })
-          return {
-            current: true,
-            chinese: response.success ? ecp?.Chinese : undefined,
-          }
-        })
-        .catch(() => {
-          if (!holdsToken(card)) return { current: false }
-          patch({
-            dictionaryStatus: 'error',
-            dictionaryError: 'Dictionary lookup failed',
-            dictionaryErrorHttpStatus: undefined,
-            dictionaryErrorCode: undefined,
+        )
+        .catch(() =>
+          history.whenVisible(card, () => {
+            patch({
+              dictionaryStatus: 'error',
+              dictionaryError: 'Dictionary lookup failed',
+              dictionaryErrorHttpStatus: undefined,
+              dictionaryErrorCode: undefined,
+            })
+            return { current: true }
           })
-          return { current: true }
-        })
+        )
+        .then(result => result ?? { current: false })
     },
-    [recordWordLookup, holdsToken, setEntries]
+    [recordWordLookup, history, setEntries]
   )
 
   // The single entry point for "look up a word's dictionary AND context
@@ -1075,12 +1068,16 @@ function SidePanelContent() {
   // request with one token: the context half reuses it, and never starts
   // for a card that lost it while the dictionary half was in flight.
   const fetchWordContext = useCallback(
-    (word: string, sentence: string, card: CardRef, counts: boolean) => {
+    (word: string, sentence: string, card: CardRequest, counts: boolean) => {
       fetchDictionary(word, card, counts).then(({ current, chinese }) => {
-        if (current) fetchContextTranslation(word, sentence, card, chinese)
+        if (current) {
+          void history.whenVisible(card, () =>
+            fetchContextTranslation(word, sentence, card, chinese)
+          )
+        }
       })
     },
-    [fetchDictionary, fetchContextTranslation]
+    [fetchDictionary, fetchContextTranslation, history]
   )
 
   // Runs when a SentenceEntry is created from a page word click: seeds a
@@ -1100,7 +1097,7 @@ function SidePanelContent() {
     (sentenceId: string, rawWord: string, sentence: string) => {
       const word = rawWord.toLowerCase()
       const key = wordCardKey(word)
-      const existing = findCard(entriesRef.current, sentenceId, key)
+      const existing = findCard(history.entries, sentenceId, key)
 
       if (existing) {
         setEntries(prev =>
@@ -1122,7 +1119,7 @@ function SidePanelContent() {
       // The page's popover already counted this word's lookup.
       fetchWordContext(word, sentence, { sentenceId, key, token }, false)
     },
-    [fetchWordContext, nextToken, setEntries]
+    [fetchWordContext, history, nextToken, setEntries]
   )
 
   // Lets a card stuck in an error state (e.g. session expiry) recover
@@ -1136,7 +1133,7 @@ function SidePanelContent() {
   const retryWordCard = useCallback(
     (sentenceId: string | undefined, card: WordCardData, sentence: string) => {
       const token = nextToken()
-      const ref: CardRef = { sentenceId, key: card.key, token }
+      const ref: CardRequest = { sentenceId, key: card.key, token }
       const contextOnly =
         card.dictionaryStatus === 'none' || card.dictionaryStatus === 'loaded'
       setEntries(prev =>
@@ -1171,7 +1168,7 @@ function SidePanelContent() {
   const translateSentence = useCallback(
     (id: string, sentence: string, token: number) => {
       const patch = (fields: Partial<SentenceEntry>) =>
-        setEntries(prev => patchSentence(prev, id, fields, token))
+        patchEntries(prev => patchSentence(prev, id, fields, token))
 
       sendMessageToBackground<BackgroundResponse>({
         type: 'translateSentence',
@@ -1197,7 +1194,7 @@ function SidePanelContent() {
           })
         })
     },
-    [setEntries]
+    [patchEntries]
   )
 
   // A sentence context arrived (and it isn't a phrase context -- see the
@@ -1222,14 +1219,14 @@ function SidePanelContent() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setWordStates(prev => ({ ...prev, ...carriedStates }))
     }
-    const existing = findSentence(entriesRef.current, id)
+    const existing = findSentence(history.entries, id)
     const nestedAnchor = clickedWord
       ? existing?.words.find(w => w.key === anchorKey)
       : undefined
     // A nested card for the anchor already covers the page card; otherwise
     // the page card moves in (Decision 7).
     const pageCard = clickedWord
-      ? adjacentPageCard(entriesRef.current, clickedWord)
+      ? adjacentPageCard(history.entries, clickedWord)
       : undefined
     const absorbed = nestedAnchor ? undefined : pageCard
     const absorbedCard: WordCardData | undefined = absorbed && {
@@ -1321,7 +1318,7 @@ function SidePanelContent() {
         sentenceId === undefined
           ? topLevelPhraseCardKey(phrase, sentence)
           : wordCardKey(phrase)
-      const existing = findCard(entriesRef.current, sentenceId, key)
+      const existing = findCard(history.entries, sentenceId, key)
       if (existing) {
         setEntries(prev =>
           reorderOrInsertCard(prev, sentenceId, key, () => existing)
@@ -1343,7 +1340,7 @@ function SidePanelContent() {
       )
       fetchContextTranslation(phrase, sentence, { sentenceId, key, token })
     },
-    [fetchContextTranslation, nextToken, retryWordCard, setEntries]
+    [fetchContextTranslation, history, nextToken, retryWordCard, setEntries]
   )
 
   // A phrase arriving via pendingContext (ADR-008: drag-selected on the web
@@ -1354,6 +1351,7 @@ function SidePanelContent() {
   useEffect(() => {
     if (pendingContext?.phrase) {
       // Same as above: reacting to an external pendingContext message.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       upsertPhraseCard(
         pendingContext.phrase,
         pendingContext.sentence,
@@ -1478,9 +1476,9 @@ function SidePanelContent() {
               type="button"
               data-testid="sidepanel-undo-clear"
               onClick={() => {
-                setEntries(cleared.entries)
-                setExpandedWords(cleared.expandedWords)
-                setCleared(null)
+                const restored = history.undo()
+                if (restored) setExpandedWords(restored)
+                syncHistory()
               }}
               className="font-medium text-brand hover:text-brand/80"
             >
@@ -1508,8 +1506,8 @@ function SidePanelContent() {
           type="button"
           data-testid="sidepanel-clear-all"
           onClick={() => {
-            setCleared({ entries, expandedWords })
-            setEntries([])
+            history.clear(expandedWords)
+            syncHistory()
             setExpandedWords(new Set())
           }}
           className="hover:text-destructive"
