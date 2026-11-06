@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"enx-api/aitranslate/aiusage"
+	"enx-api/aitranslate/sentence"
 	"enx-api/utils/logger"
 
 	"github.com/go-resty/resty/v2"
@@ -45,10 +46,6 @@ const (
 	// See https://openrouter.ai/docs -- "HTTP-Referer" / "X-Title".
 	siteURL  = "https://catglish.com"
 	siteName = "Catglish"
-
-	systemPrompt = "You are a professional English-to-Chinese translator. " +
-		"Translate the given English sentence into natural, fluent Chinese. " +
-		"Reply with the Chinese translation only, no explanation, no pinyin, no quotes."
 )
 
 type OpenRouter struct {
@@ -136,8 +133,8 @@ type chatResponse struct {
 	Usage usage `json:"usage"`
 }
 
-func (o *OpenRouter) TranslateSentence(ctx context.Context, sentence string) (string, aiusage.Usage, error) {
-	out, u, err := o.chat(ctx, "translate_sentence", o.model, 0.3, systemPrompt, sentence)
+func (o *OpenRouter) TranslateSentence(ctx context.Context, text string) (string, aiusage.Usage, error) {
+	out, u, err := o.chat(ctx, "translate_sentence", o.model, sentence.Temperature, sentence.SystemPrompt, text)
 	return out, toUsage(u), err
 }
 

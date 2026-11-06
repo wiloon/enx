@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"enx-api/aitranslate/aiusage"
+	"enx-api/aitranslate/sentence"
 	"enx-api/utils/logger"
 
 	"github.com/go-resty/resty/v2"
@@ -23,10 +24,6 @@ const (
 	// thinkingDisabled.
 	defaultModel   = "deepseek-flash"
 	defaultBaseURL = "https://api.deepseek.com"
-
-	systemPrompt = "You are a professional English-to-Chinese translator. " +
-		"Translate the given English sentence into natural, fluent Chinese. " +
-		"Reply with the Chinese translation only, no explanation, no pinyin, no quotes."
 )
 
 type DeepSeek struct {
@@ -111,8 +108,8 @@ type chatResponse struct {
 	Usage usage `json:"usage"`
 }
 
-func (d *DeepSeek) TranslateSentence(ctx context.Context, sentence string) (string, aiusage.Usage, error) {
-	out, u, err := d.chat(ctx, "translate_sentence", d.model, 0.3, systemPrompt, sentence)
+func (d *DeepSeek) TranslateSentence(ctx context.Context, text string) (string, aiusage.Usage, error) {
+	out, u, err := d.chat(ctx, "translate_sentence", d.model, sentence.Temperature, sentence.SystemPrompt, text)
 	return out, toUsage(u), err
 }
 

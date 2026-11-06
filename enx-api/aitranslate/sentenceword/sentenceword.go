@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"enx-api/aitranslate/zh"
 )
 
 // SystemPrompt asks the model to return both the whole-sentence translation
@@ -27,7 +29,8 @@ Return ONLY a JSON object, no prose around it:
 
 Rules:
 - "sentence": the whole sentence in natural Chinese. No pinyin, no quotes, no explanation.
-- "word": just the contextual meaning, usually a few characters. No pinyin, no quotes, no explanation.`
+- "word": just the contextual meaning, usually a few characters. No pinyin, no quotes, no explanation.
+` + zh.SimplifiedRule
 
 // Temperature matches plain translation's 0.3 -- one most-natural rendering,
 // not creative variety.

@@ -1,5 +1,7 @@
 package rephrase
 
+import "enx-api/aitranslate/zh"
+
 // SystemPrompt is the instruction every provider sends for a rephrase call
 // (ADR-012 Decision 3). It lives here, in the shared contract package, so
 // kimi / minimax / any future provider all rewrite against the exact same
@@ -19,7 +21,8 @@ Rules:
 - "idiomatic": exactly one rendering, length close to the input.
 - "alternatives": 1 to 2 entries, each a different register.
 - "notes": 0 to 4 entries, each in Chinese, each under ~60 characters.
-- Only re-express what they said. Do NOT add information, context, or requirements they didn't state. Do NOT turn their message into instructions for an AI or a person. One sentence in, one sentence out.`
+- Only re-express what they said. Do NOT add information, context, or requirements they didn't state. Do NOT turn their message into instructions for an AI or a person. One sentence in, one sentence out.
+` + zh.SimplifiedRule
 
 // Temperature is a touch higher than translation's 0.3: rephrasing wants
 // natural-sounding wording, not a single most-literal rendering.

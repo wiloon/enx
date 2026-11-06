@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"enx-api/aitranslate/aiusage"
+	"enx-api/aitranslate/sentence"
 	"enx-api/utils/logger"
 
 	"github.com/go-resty/resty/v2"
@@ -21,10 +22,6 @@ import (
 const (
 	defaultModel   = "MiniMax-Text-01"
 	defaultBaseURL = "https://api.minimax.io/v1"
-
-	systemPrompt = "You are a professional English-to-Chinese translator. " +
-		"Translate the given English sentence into natural, fluent Chinese. " +
-		"Reply with the Chinese translation only, no explanation, no pinyin, no quotes."
 )
 
 type MiniMax struct {
@@ -91,8 +88,8 @@ type chatResponse struct {
 	Usage usage `json:"usage"`
 }
 
-func (m *MiniMax) TranslateSentence(ctx context.Context, sentence string) (string, aiusage.Usage, error) {
-	out, u, err := m.chat(ctx, "translate_sentence", 0.3, systemPrompt, sentence)
+func (m *MiniMax) TranslateSentence(ctx context.Context, text string) (string, aiusage.Usage, error) {
+	out, u, err := m.chat(ctx, "translate_sentence", sentence.Temperature, sentence.SystemPrompt, text)
 	return out, toUsage(u), err
 }
 
