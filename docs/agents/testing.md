@@ -51,7 +51,8 @@ Signed-in e2e uses Clerk's official testing package, `@clerk/testing`, against t
 When a PR lists manual checks, shoot each item a human must look at:
 
 - **How:** Playwright against the enx-ui dev server, stubbing the API with `page.route` as `e2e/*.spec.ts` do, or signed in as §E2E and Clerk sign-in describes.
-- **Which:** light and dark mode for every item; add a 375px-wide shot for layout checks. Prefer viewport shots unless the item needs the whole page.
+- **Which:** light and dark mode for every item; for an enx-ui layout check, add a 375px-wide shot. Prefer viewport shots unless the item needs the whole page.
+- **enx-chrome is desktop-only:** the extension runs in desktop Chrome, never on a phone, so its surfaces (popup, side panel, word popover) are shot at desktop width only. enx-chrome has no dark theme; light mode is the only mode.
 
 Where to save them and how to name them comes from whoever asked for them (the SER8 runner's prompt gives a directory and a file pattern).
 
