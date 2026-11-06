@@ -1,7 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
+import { ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -144,6 +146,15 @@ export default function BillingPage() {
                   {trialSummary(data.credits)}
                 </div>
               )}
+              <div className="col-span-2">
+                <Link
+                  href="/billing/history"
+                  className="inline-flex items-center gap-1 font-medium text-brand hover:underline focus-visible:underline focus-visible:outline-none"
+                >
+                  Credit history
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
+              </div>
             </div>
           )}
         </CardContent>

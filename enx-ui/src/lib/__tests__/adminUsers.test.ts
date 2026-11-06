@@ -1,50 +1,12 @@
-import {
-  deductWarning,
-  ledgerEntryLabel,
-  parseAdjustment,
-  signedCredits,
-  utcDate,
-  utcMinute,
-} from '../adminUsers'
+import { deductWarning, parseAdjustment, utcDate } from '../adminUsers'
 
-describe('signedCredits', () => {
-  it.each([
-    [25, '+25'],
-    [-90, '-90'],
-    [0, '0'],
-  ])('writes %p as %p', (n, text) => {
-    expect(signedCredits(n)).toBe(text)
-  })
-})
-
-describe('utcDate and utcMinute', () => {
-  it('reads the UTC day and minute of an RFC 3339 time', () => {
+describe('utcDate', () => {
+  it('reads the UTC day of an RFC 3339 time', () => {
     expect(utcDate('2026-10-05T10:07:59.123Z')).toBe('2026-10-05')
-    expect(utcMinute('2026-10-05T10:07:59.123Z')).toBe('2026-10-05 10:07 UTC')
   })
 
   it('shows a dash for a missing time', () => {
     expect(utcDate(null)).toBe('—')
-  })
-})
-
-describe('ledgerEntryLabel', () => {
-  it.each([
-    ['GRANT_SUBSCRIPTION', 'Subscription credits'],
-    ['GRANT_TOPUP', 'Top-up purchase'],
-    ['GRANT_TRIAL', 'Sign-up trial'],
-    ['GRANT_ADMIN', 'Admin grant'],
-    ['DEDUCT_ADMIN', 'Admin deduction'],
-    ['CLAWBACK', 'Refund clawback'],
-    ['SETTLE', 'AI usage'],
-    ['CONSUME', 'AI usage'],
-    ['REFUND', 'AI usage refund'],
-  ])('calls %s "%s"', (type, label) => {
-    expect(ledgerEntryLabel(type)).toBe(label)
-  })
-
-  it('shows an unknown type as it is', () => {
-    expect(ledgerEntryLabel('GRANT_REFERRAL')).toBe('GRANT_REFERRAL')
   })
 })
 

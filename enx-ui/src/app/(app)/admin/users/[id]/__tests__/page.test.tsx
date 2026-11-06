@@ -84,6 +84,7 @@ function entry(overrides: Partial<AdminLedgerEntry>): AdminLedgerEntry {
     type: 'GRANT_TOPUP',
     amount: 300,
     balanceAfter: 300,
+    totalBalanceAfter: 300,
     feature: '',
     note: '',
     createdAt: '2026-10-02T10:00:00Z',
@@ -185,7 +186,9 @@ it('says so for an unknown user', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('no such user')
 })
 
-it('shows the ledger newest first and loads older entries on request', async () => {
+// The jest process runs in America/Los_Angeles (jest.config.js): the admin
+// sees the same browser-local times and days as the user timeline.
+it('shows the ledger newest first in local time, with the total balance after, and loads older entries on request', async () => {
   mockLedger
     .mockResolvedValueOnce(
       ok({
@@ -195,7 +198,9 @@ it('shows the ledger newest first and loads older entries on request', async () 
             type: 'CLAWBACK',
             amount: -90,
             balanceAfter: 210,
-            createdAt: '2026-10-05T10:00:00Z',
+            totalBalanceAfter: 480,
+            note: 'ch_123',
+            createdAt: '2026-11-06T01:30:00Z',
             source: 'refund',
           }),
           entry({
@@ -203,6 +208,7 @@ it('shows the ledger newest first and loads older entries on request', async () 
             type: 'GRANT_ADMIN',
             amount: 25,
             balanceAfter: 300,
+            totalBalanceAfter: null,
             note: 'support comp',
             createdAt: '2026-10-04T10:00:00Z',
             source: 'admin',
@@ -219,6 +225,7 @@ it('shows the ledger newest first and loads older entries on request', async () 
             type: 'SETTLE',
             amount: -40,
             balanceAfter: 275,
+            totalBalanceAfter: 275,
             feature: 'translate_sentence',
             createdAt: '2026-10-03T10:00:00Z',
             source: 'ai',
@@ -232,23 +239,123 @@ it('shows the ledger newest first and loads older entries on request', async () 
   const ledger = await screen.findByRole('region', { name: 'Ledger' })
   const rows = await within(ledger).findAllByRole('listitem')
   expect(rows).toHaveLength(2)
-  expect(rows[0]).toHaveTextContent('Refund clawback')
+  expect(rows[0]).toHaveTextContent('Credits removed after refund')
   expect(rows[0]).toHaveTextContent('-90')
-  expect(rows[0]).toHaveTextContent('2026-10-05 10:00 UTC')
-  expect(rows[1]).toHaveTextContent('Admin grant')
+  expect(rows[0]).toHaveTextContent('Nov 5, 2026 · 17:30')
+  expect(rows[0]).toHaveTextContent('balance 480')
+  expect(rows[0]).toHaveTextContent('pool after: 210')
+  expect(rows[0]).toHaveTextContent('source: refund')
+  expect(rows[0]).toHaveTextContent('note: ch_123')
+  expect(rows[0]).toHaveTextContent('CLAWBACK')
+  expect(rows[1]).toHaveTextContent('Credits added by support')
   expect(rows[1]).toHaveTextContent('+25')
-  expect(rows[1]).toHaveTextContent('support comp')
-  expect(mockLedger).toHaveBeenCalledWith('u1', '')
+  expect(rows[1]).toHaveTextContent('Note from support: support comp')
+  expect(rows[1]).toHaveTextContent('balance —')
+  expect(rows[1]).toHaveTextContent('pool after: 300')
+  expect(
+    within(rows[0]).getByTitle(/Balance after this entry/)
+  ).toBeInTheDocument()
+  expect(mockLedger).toHaveBeenCalledWith('u1', '', '')
 
   fireEvent.click(within(ledger).getByRole('button', { name: 'Load more' }))
 
-  expect(await within(ledger).findByText('AI usage')).toBeInTheDocument()
+  expect(
+    await within(ledger).findByText('Sentence translation')
+  ).toBeInTheDocument()
   expect(within(ledger).getAllByRole('listitem')).toHaveLength(3)
-  expect(within(ledger).getByText('translate_sentence')).toBeInTheDocument()
-  expect(mockLedger).toHaveBeenLastCalledWith('u1', '1759572000000_2')
+  expect(
+    within(ledger).getByText('SETTLE · translate_sentence')
+  ).toBeInTheDocument()
+  expect(mockLedger).toHaveBeenLastCalledWith('u1', '1759572000000_2', '')
   expect(
     within(ledger).queryByRole('button', { name: 'Load more' })
   ).not.toBeInTheDocument()
+})
+
+it('groups same-local-day AI spend like the user timeline, and expands into rows with their admin fields', async () => {
+  mockLedger.mockResolvedValue(
+    ok({
+      transactions: [
+        entry({
+          id: 't4',
+          type: 'SETTLE',
+          feature: 'lookup_word_ai',
+          amount: -1,
+          createdAt: '2026-11-06T10:00:00Z',
+          source: 'ai',
+        }),
+        entry({
+          id: 't3',
+          type: 'SETTLE',
+          feature: 'lookup_word_ai',
+          amount: -1,
+          balanceAfter: 98,
+          totalBalanceAfter: 98,
+          createdAt: '2026-11-06T01:30:00Z',
+          source: 'ai',
+        }),
+        entry({
+          id: 't2',
+          type: 'REFUND',
+          feature: 'lookup_word_ai',
+          amount: 1,
+          createdAt: '2026-11-05T22:00:00Z',
+          source: 'ai',
+        }),
+        entry({
+          id: 't1',
+          type: 'SETTLE',
+          feature: 'lookup_word_ai',
+          amount: -1,
+          balanceAfter: 99,
+          totalBalanceAfter: 99,
+          createdAt: '2026-11-05T20:00:00Z',
+          source: 'ai',
+        }),
+      ],
+      next: '',
+    })
+  )
+  renderPage()
+
+  const ledger = await screen.findByRole('region', { name: 'Ledger' })
+  const group = await within(ledger).findByRole('button', {
+    name: /AI word lookup ×2/,
+  })
+  expect(group).toHaveTextContent('Nov 5, 2026')
+  expect(group).toHaveTextContent('-2')
+  expect(group).toHaveTextContent('balance 98')
+  expect(within(ledger).getByText('Nov 6, 2026 · 02:00')).toBeInTheDocument()
+
+  fireEvent.click(group)
+
+  const rows = within(
+    within(ledger).getByRole('list', { name: 'AI word lookup ×2' })
+  ).getAllByRole('listitem')
+  expect(rows).toHaveLength(2)
+  expect(rows[0]).toHaveTextContent('17:30')
+  expect(rows[0]).toHaveTextContent('SETTLE · lookup_word_ai')
+  expect(rows[0]).toHaveTextContent('source: ai')
+  expect(rows[0]).toHaveTextContent('pool after: 98')
+  expect(rows[1]).toHaveTextContent('12:00')
+  expect(rows[1]).toHaveTextContent('pool after: 99')
+})
+
+it('filters the ledger to used credits on the server', async () => {
+  renderPage()
+  const ledger = await screen.findByRole('region', { name: 'Ledger' })
+  await waitFor(() => expect(mockLedger).toHaveBeenCalledWith('u1', '', ''))
+
+  fireEvent.click(
+    within(within(ledger).getByRole('group', { name: 'Filter' })).getByRole(
+      'button',
+      { name: 'Used' }
+    )
+  )
+
+  await waitFor(() =>
+    expect(mockLedger).toHaveBeenLastCalledWith('u1', '', 'out')
+  )
 })
 
 it('reloads the balances and the ledger after an admin grant', async () => {

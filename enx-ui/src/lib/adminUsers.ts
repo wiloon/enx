@@ -23,35 +23,6 @@ export function utcDate(at: string | null): string {
   return at ? at.slice(0, 10) : '—'
 }
 
-// "2026-10-05 10:07 UTC" for a ledger row. enx-api always sends UTC (Z).
-export function utcMinute(at: string): string {
-  return `${at.slice(0, 10)} ${at.slice(11, 16)} UTC`
-}
-
-// A ledger amount with its sign: +25 for a grant, -90 for a clawback.
-export function signedCredits(n: number): string {
-  return n > 0 ? `+${n}` : String(n)
-}
-
-const LEDGER_LABELS: Record<string, string> = {
-  GRANT_SUBSCRIPTION: 'Subscription credits',
-  GRANT_TOPUP: 'Top-up purchase',
-  GRANT_TRIAL: 'Sign-up trial',
-  GRANT_ADMIN: 'Admin grant',
-  DEDUCT_ADMIN: 'Admin deduction',
-  CLAWBACK: 'Refund clawback',
-  SETTLE: 'AI usage',
-  // Older AI spend rows; nothing writes these any more.
-  CONSUME: 'AI usage',
-  REFUND: 'AI usage refund',
-}
-
-// The name a credit_transactions type goes by on the timeline. A type this
-// page does not know yet (a new grant kind) shows as it is.
-export function ledgerEntryLabel(type: string): string {
-  return LEDGER_LABELS[type] ?? type
-}
-
 // A deduction comes out of the top-up pool only, which may go negative
 // (ADR-049 Decision 3). Returns the warning to show before confirming, or
 // null when the pool covers it.

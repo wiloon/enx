@@ -103,11 +103,15 @@ export default function AdjustCreditsForm({
           <Label htmlFor="adjust-reason">Reason</Label>
           <Input
             id="adjust-reason"
-            placeholder="Kept on the ledger, e.g. support comp for outage"
+            placeholder="e.g. Credits for the outage on Oct 5"
+            aria-describedby="adjust-reason-hint"
             value={reason}
             disabled={confirming !== null}
             onChange={(e) => setReason(e.target.value)}
           />
+          <p id="adjust-reason-hint" className="text-xs text-muted-foreground">
+            The user sees this as a note from support in their credit history.
+          </p>
         </div>
       </div>
 
@@ -124,7 +128,12 @@ export default function AdjustCreditsForm({
 
       {confirming === null ? (
         <div className="flex flex-wrap gap-2">
-          <Button type="submit" disabled={mutation.isPending}>
+          <Button
+            type="submit"
+            variant="brand"
+            className="active:scale-[0.97]"
+            disabled={mutation.isPending}
+          >
             Grant credits
           </Button>
           <Button

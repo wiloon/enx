@@ -49,6 +49,13 @@ describe('ApiService admin users (ADR-049)', () => {
     )
   })
 
+  it('GETs only added or used rows when filtered', async () => {
+    await service.adminListUserTransactions('u1', '', 'out')
+    expect(call()[0]).toBe(
+      'http://localhost:8090/api/admin/users/u1/transactions?limit=50&direction=out'
+    )
+  })
+
   it.each(['grant', 'deduct'] as const)(
     'POSTs a %s with the email, amount and reason',
     async (direction) => {
