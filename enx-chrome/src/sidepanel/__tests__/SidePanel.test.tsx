@@ -2736,6 +2736,405 @@ describe('SidePanel', () => {
       )
     })
 
+    it('restores a sentence response received between Clear and Undo', async () => {
+      deferAll()
+      await renderEmpty()
+      send({ sentence: SENTENCE })
+      fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
+
+      await settle(take('translateSentence'), {
+        success: true,
+        chinese: '恢复译文',
+      })
+      expect(screen.getByTestId('sidepanel-empty-state')).toBeInTheDocument()
+      fireEvent.click(screen.getByTestId('sidepanel-undo-clear'))
+
+      expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent(
+        '恢复译文'
+      )
+      expect(callsOf('translateSentence')).toBe(1)
+    })
+
+    it('restores a phrase response received between Clear and Undo', async () => {
+      deferAll()
+      await renderEmpty()
+      send({ sentence: SENTENCE, phrase: 'great pets' })
+      fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
+      await settle(take('translateWordInContext'), {
+        success: true,
+        chinese: '短语译文',
+      })
+      fireEvent.click(screen.getByTestId('sidepanel-undo-clear'))
+
+      expect(screen.getByTestId('sidepanel-card-great pets')).toHaveTextContent(
+        '短语译文'
+      )
+      expect(callsOf('translateWordInContext')).toBe(1)
+    })
+
+    it('pauses a cleared dictionary-first lookup and resumes it once on Undo', async () => {
+      deferAll()
+      await renderEmpty()
+      send({ sentence: SENTENCE })
+      selectWord('great')
+      fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
+      await settle(take('getOneWord'), {
+        success: true,
+        ecp: {
+          Id: 'great-id',
+          English: 'great',
+          Chinese: '词典释义',
+          LoadCount: 2,
+        } as never,
+      })
+      expect(callsOf('translateWordInContext')).toBe(0)
+      fireEvent.click(screen.getByTestId('sidepanel-undo-clear'))
+      await act(async () => {})
+
+      expect(screen.getByTestId('sidepanel-card-great')).toHaveTextContent(
+        '词典释义'
+      )
+      expect(callsOf('getOneWord')).toBe(1)
+      expect(callsOf('recordWordLookup')).toBe(1)
+      expect(callsOf('translateWordInContext')).toBe(1)
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'translateWordInContext',
+          dictionaryChinese: '词典释义',
+        })
+      )
+      await settle(take('translateWordInContext'), {
+        success: true,
+        chinese: '语境释义',
+      })
+      expect(screen.getByTestId('sidepanel-card-great')).toHaveTextContent(
+        '语境释义'
+      )
+    })
+
+    describe('Clear and Undo request lifetime', () => {
+      const clear = () =>
+        fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
+      const undo = () =>
+        fireEvent.click(screen.getByTestId('sidepanel-undo-clear'))
+      afterEach(() => jest.useRealTimers())
+
+      it('receives a sentence response arriving after Undo without another request', async () => {
+        deferAll()
+        await renderEmpty()
+        send({ sentence: SENTENCE })
+        clear()
+        undo()
+        await settle(take('translateSentence'), {
+          success: true,
+          chinese: '后到译文',
+        })
+        expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent(
+          '后到译文'
+        )
+        expect(callsOf('translateSentence')).toBe(1)
+      })
+
+      it.each(['response', 'rejection'] as const)(
+        'restores a sentence %s error and permits explicit Retry',
+        async failure => {
+          deferAll()
+          await renderEmpty()
+          send({ sentence: SENTENCE })
+          clear()
+          const request = take('translateSentence')
+          if (failure === 'response')
+            await settle(request, { success: false, error: 'Service down' })
+          else await act(async () => request.reject(new Error('offline')))
+          undo()
+          expect(screen.getByTestId('sidepanel-error')).toBeInTheDocument()
+          expect(callsOf('translateSentence')).toBe(1)
+          fireEvent.click(screen.getByTestId('sidepanel-retry-sentence'))
+          await settle(take('translateSentence'), {
+            success: true,
+            chinese: '重试译文',
+          })
+          expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent(
+            '重试译文'
+          )
+          expect(callsOf('translateSentence')).toBe(2)
+        }
+      )
+
+      it.each(['word', 'phrase'] as const)(
+        'restores an already-issued %s context response without repeating it',
+        async kind => {
+          deferAll()
+          await renderEmpty()
+          if (kind === 'word') {
+            send({ sentence: SENTENCE, word: 'great' })
+            await settle(take('getOneWord'), {
+              success: true,
+              ecp: { English: 'great', Chinese: '词典释义' } as never,
+            })
+          } else send({ sentence: SENTENCE, phrase: 'great pets' })
+          clear()
+          await settle(take('translateWordInContext'), {
+            success: true,
+            chinese: '原语境结果',
+          })
+          undo()
+          expect(
+            screen.getByTestId(
+              `sidepanel-card-${kind === 'word' ? 'great' : 'great pets'}`
+            )
+          ).toHaveTextContent('原语境结果')
+          expect(callsOf('translateWordInContext')).toBe(1)
+        }
+      )
+
+      it.each(['before', 'after'] as const)(
+        'receives a phrase result %s Undo in a sentence scope',
+        async timing => {
+          deferAll()
+          await renderEmpty()
+          send({ sentence: SENTENCE })
+          selectWord('great pets')
+          fireEvent.click(screen.getByTestId('sidepanel-phrase-confirm'))
+          clear()
+          if (timing === 'after') undo()
+          await settle(take('translateWordInContext'), {
+            success: true,
+            chinese: '嵌套短语',
+          })
+          if (timing === 'before') undo()
+          expect(
+            within(screen.getByTestId('sidepanel-sentence-words')).getByTestId(
+              'sidepanel-card-great pets'
+            )
+          ).toHaveTextContent('嵌套短语')
+          expect(callsOf('translateWordInContext')).toBe(1)
+        }
+      )
+
+      it('continues a dictionary response arriving after Undo exactly once', async () => {
+        deferAll()
+        await renderEmpty()
+        send({ sentence: SENTENCE })
+        selectWord('great')
+        clear()
+        undo()
+        await settle(take('getOneWord'), {
+          success: true,
+          ecp: {
+            Id: 'great-id',
+            English: 'great',
+            Chinese: '词典释义',
+          } as never,
+        })
+        expect(screen.getByTestId('sidepanel-card-great')).toHaveTextContent(
+          '词典释义'
+        )
+        expect(callsOf('getOneWord')).toBe(1)
+        expect(callsOf('recordWordLookup')).toBe(1)
+        expect(callsOf('translateWordInContext')).toBe(1)
+        await settle(take('translateWordInContext'), {
+          success: true,
+          chinese: '恢复语境',
+        })
+        expect(screen.getByTestId('sidepanel-card-great')).toHaveTextContent(
+          '恢复语境'
+        )
+      })
+
+      it.each(['response', 'rejection'] as const)(
+        'retains a dictionary %s error and resumes its context only on Undo',
+        async failure => {
+          deferAll()
+          await renderEmpty()
+          send({ sentence: SENTENCE, word: 'great' })
+          clear()
+          const request = take('getOneWord')
+          if (failure === 'response')
+            await settle(request, { success: false, error: 'Dictionary down' })
+          else await act(async () => request.reject(new Error('offline')))
+          expect(callsOf('translateWordInContext')).toBe(0)
+          undo()
+          await act(async () => {})
+          expect(
+            screen.getByTestId('sidepanel-dictionary-error-great')
+          ).toBeInTheDocument()
+          expect(callsOf('getOneWord')).toBe(1)
+          expect(callsOf('translateWordInContext')).toBe(1)
+          await settle(take('translateWordInContext'), {
+            success: true,
+            chinese: '仍有语境',
+          })
+          expect(screen.getByTestId('sidepanel-card-great')).toHaveTextContent(
+            '仍有语境'
+          )
+        }
+      )
+
+      it.each(['response', 'rejection'] as const)(
+        'restores a context %s error with Retry and reuses the dictionary',
+        async failure => {
+          deferAll()
+          await renderEmpty()
+          send({ sentence: SENTENCE, word: 'great' })
+          await settle(take('getOneWord'), {
+            success: true,
+            ecp: { English: 'great', Chinese: '词典释义' } as never,
+          })
+          clear()
+          const request = take('translateWordInContext')
+          if (failure === 'response')
+            await settle(request, { success: false, error: 'AI down' })
+          else await act(async () => request.reject(new Error('offline')))
+          undo()
+          expect(
+            screen.getByTestId('sidepanel-context-error-great')
+          ).toBeInTheDocument()
+          expect(callsOf('translateWordInContext')).toBe(1)
+          fireEvent.click(screen.getByTestId('sidepanel-retry-context-great'))
+          await settle(take('translateWordInContext'), {
+            success: true,
+            chinese: '重试语境',
+          })
+          expect(screen.getByTestId('sidepanel-card-great')).toHaveTextContent(
+            '重试语境'
+          )
+          expect(callsOf('getOneWord')).toBe(1)
+          expect(callsOf('translateWordInContext')).toBe(2)
+        }
+      )
+
+      it.each(['expiry', 'new lookup'] as const)(
+        'discards a paused dictionary chain on %s',
+        async reason => {
+          deferAll()
+          await renderEmpty()
+          send({ sentence: SENTENCE, word: 'great' })
+          jest.useFakeTimers()
+          clear()
+          await settle(take('getOneWord'), {
+            success: true,
+            ecp: {
+              Id: 'great-id',
+              English: 'great',
+              Chinese: '旧词典',
+            } as never,
+          })
+          if (reason === 'expiry') act(() => jest.advanceTimersByTime(5000))
+          else send({ sentence: OTHER })
+          await act(async () => {})
+          await settle(take('translateSentence'), {
+            success: true,
+            chinese: '旧句子',
+          })
+          expect(
+            screen.queryByTestId('sidepanel-undo-clear')
+          ).not.toBeInTheDocument()
+          expect(
+            screen.queryByTestId('sidepanel-card-great')
+          ).not.toBeInTheDocument()
+          expect(screen.queryByText('旧句子')).not.toBeInTheDocument()
+          expect(callsOf('translateWordInContext')).toBe(0)
+          expect(callsOf('recordWordLookup')).toBe(0)
+        }
+      )
+
+      it('handles an exception while resuming a dictionary result as a lookup failure', async () => {
+        deferAll()
+        const deferred = mockSendMessage.getMockImplementation()!
+        mockSendMessage.mockImplementation((message: Message) => {
+          if (message.type === 'recordWordLookup')
+            throw new Error('runtime unavailable')
+          return deferred(message)
+        })
+        await renderEmpty()
+        send({ sentence: SENTENCE })
+        selectWord('great')
+        clear()
+        await settle(take('getOneWord'), {
+          success: true,
+          ecp: {
+            Id: 'great-id',
+            English: 'great',
+            Chinese: '词典释义',
+          } as never,
+        })
+        undo()
+        await act(async () => {})
+        expect(
+          screen.getByTestId('sidepanel-dictionary-error-great')
+        ).toHaveTextContent('Dictionary lookup failed')
+        expect(callsOf('translateWordInContext')).toBe(1)
+      })
+
+      it('does not renew the Undo deadline when a hidden response arrives', async () => {
+        deferAll()
+        await renderEmpty()
+        send({ sentence: SENTENCE })
+        jest.useFakeTimers()
+        clear()
+        act(() => jest.advanceTimersByTime(4000))
+        await settle(take('translateSentence'), {
+          success: true,
+          chinese: '旧译文',
+        })
+        expect(screen.getByTestId('sidepanel-undo-clear')).toBeInTheDocument()
+        act(() => jest.advanceTimersByTime(1000))
+        expect(
+          screen.queryByTestId('sidepanel-undo-clear')
+        ).not.toBeInTheDocument()
+        expect(screen.queryByText('旧译文')).not.toBeInTheDocument()
+      })
+
+      it('preserves multiple pending cards across repeated Clear and Undo', async () => {
+        deferAll()
+        await renderEmpty()
+        send({ sentence: SENTENCE, word: 'great' })
+        send({ sentence: OTHER, word: 'great' })
+        clear()
+        await settle(take('getOneWord'), {
+          success: true,
+          ecp: { English: 'great', Chinese: '第一词典' } as never,
+        })
+        undo()
+        await act(async () => {})
+        clear()
+        await settle(take('getOneWord'), {
+          success: true,
+          ecp: { English: 'great', Chinese: '第二词典' } as never,
+        })
+        await settle(take('translateWordInContext'), {
+          success: true,
+          chinese: '第一语境',
+        })
+        await settle(take('translateSentence'), {
+          success: true,
+          chinese: '第一句译文',
+        })
+        undo()
+        await act(async () => {})
+        await settle(take('translateWordInContext'), {
+          success: true,
+          chinese: '第二语境',
+        })
+        await settle(take('translateSentence'), {
+          success: true,
+          chinese: '第二句译文',
+        })
+        const blocks = screen
+          .getAllByTestId('sidepanel-sentence')
+          .map(el => el.parentElement!.parentElement!)
+        expect(blocks[0]).toHaveTextContent('第二句译文')
+        expect(blocks[0]).toHaveTextContent('第二词典')
+        expect(blocks[0]).toHaveTextContent('第二语境')
+        expect(blocks[1]).toHaveTextContent('第一句译文')
+        expect(blocks[1]).toHaveTextContent('第一词典')
+        expect(blocks[1]).toHaveTextContent('第一语境')
+        expect(callsOf('getOneWord')).toBe(2)
+        expect(callsOf('translateWordInContext')).toBe(2)
+      })
+    })
+
     it('keeps the new translation when the one from before Clear fails later', async () => {
       deferAll()
       await renderEmpty()
