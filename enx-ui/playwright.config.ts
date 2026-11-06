@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
+import { SITE } from './src/lib/site'
 
 export default defineConfig({
   testDir: './e2e',
@@ -30,6 +31,8 @@ export default defineConfig({
       // The API client is same-origin (/api/*), so the rewrite target only has
       // to be a real URL; specs stub /api/** with page.route() anyway.
       API_BASE_URL: process.env.API_BASE_URL || 'http://localhost:3000',
+      ENX_EXTENSION_ID: SITE.chromeExtensionId,
+      ENX_EXTENSION_WEB_STORE_URL: SITE.chromeWebStoreUrl,
       // Clerk (ADR-015). Dev instance publishable key is non-secret.
       CLERK_PUBLISHABLE_KEY:
         process.env.CLERK_PUBLISHABLE_KEY ||

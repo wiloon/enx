@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-10-03
-revised: 2026-11-02
+revised: 2026-11-05
 related: adr-046（角标状态）、adr-027（Home 的 OnboardingChecklist，本 ADR 与它共用步骤模型）、adr-019 / adr-020（网页 → 扩展通道与登录回跳，本 ADR 加一个消息类型）、adr-039（站点自动启用）、adr-044（服务端偏好，存 `onboardingCompleted`）、adr-048（免费用户试用 AI 积分）
 ---
 
@@ -19,6 +19,12 @@ related: adr-046（角标状态）、adr-027（Home 的 OnboardingChecklist，�
 adr-046 去掉了正文里的「Article processed • Click words for translation」，学习模式的状态只靠扩展图标角标表达。这要求用户在第一次使用时**把图标固定到工具栏**（否则角标看不见、也找不到启用入口）。此外新用户还得完成登录，并**亲手**启用一次学习模式、点一次词——在真实网站上每次都要点图标启用，这是用户必须学会的唯一习惯。
 
 现状：adr-027 在 Home 上给零阅读的用户显示三步清单（安装扩展 → 打开英文页启用 → 读完第一篇），但这只覆盖「先到网站」的用户，且第 2、3 步无法自动勾选；从 Chrome Web Store 直接安装的用户，`runtime.onInstalled` 只初始化了 storage，什么页面都不打开。
+
+## 2026-11-05 修订（#641，owner 确认）
+
+- 普通网页注册 / 登录的默认落点仍为 `/app`，在那里按本 ADR Decision 1a 的账号状态判断：未完成、未跳过引导且没有查词记录的新用户立即转到 `/welcome`，不先展示 Home 引导卡。完成或跳过的用户、已有查词记录的老用户保留 Home；`/billing` 等明确指定的回跳目标和扩展的 `/extension/connected` 不变。
+- Welcome 检测扩展时显示转圈与「Checking extension…」，检测完成前不猜测安装结果。未安装时解释用途并提供「Add to Chrome」；已安装时明确显示「Catglish extension installed」和「Next: finish setup」，安装完成只代表安装这一步完成，后续固定图标、亲手启用和查词保持不变。
+- 扩展已通过 Chrome Web Store 审核，以 Unlisted 发布，正式条目 ID 为 `combdcldlodkikjfhjbdbogjlfmnbjkf`。安装链接使用 `https://chromewebstore.google.com/detail/catglish-learn-english-as/combdcldlodkikjfhjbdbogjlfmnbjkf`；站点常量提供正式 ID 和链接作为默认值，运行时环境仍可覆盖。安装链接为空时也使用正式链接，替代上线前的占位。保留原有安装后复用 Welcome 标签页的行为。
 
 ## 用户从哪里进来
 

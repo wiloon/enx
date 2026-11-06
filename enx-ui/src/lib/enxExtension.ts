@@ -5,8 +5,8 @@
 
 import { runtimeEnv } from './runtimeEnv'
 
-// Set once the extension is packed / published. Empty in local dev, which
-// makes every helper below a no-op (treated as "not installed").
+// Defaults to the published extension; deployments can override the ID or
+// explicitly leave it empty to disable messaging (for example in local dev).
 export function extensionId(): string {
   return runtimeEnv('ENX_EXTENSION_ID')
 }

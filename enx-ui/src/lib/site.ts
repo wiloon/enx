@@ -7,8 +7,9 @@ export const SITE = {
   subtitle:
     'Catglish is a browser extension for AI-assisted English reading. Turn it on for any English page — click any word for its meaning, select a sentence to translate it. Every word you look up goes into your word list and is underlined wherever it shows up again, fading the more often you look it up.',
 
-  // TODO: real Chrome Web Store listing id
-  chromeWebStoreUrl: 'https://chromewebstore.google.com/',
+  chromeExtensionId: 'combdcldlodkikjfhjbdbogjlfmnbjkf',
+  chromeWebStoreUrl:
+    'https://chromewebstore.google.com/detail/catglish-learn-english-as/combdcldlodkikjfhjbdbogjlfmnbjkf',
   edgeAddonUrl: '', // empty => "Coming soon"
   firefoxAddonUrl: '',
 

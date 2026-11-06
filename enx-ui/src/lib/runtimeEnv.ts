@@ -1,3 +1,5 @@
+import { SITE } from './site'
+
 // Deployment-specific values the BROWSER needs.
 //
 // `NEXT_PUBLIC_*` would inline these at `next build`, which is exactly what
@@ -24,8 +26,9 @@ export const RUNTIME_ENV_GLOBAL = '__ENX_ENV__'
 
 export function serverRuntimeEnv(): RuntimeEnv {
   return {
-    ENX_EXTENSION_ID: process.env.ENX_EXTENSION_ID ?? '',
-    ENX_EXTENSION_WEB_STORE_URL: process.env.ENX_EXTENSION_WEB_STORE_URL ?? '',
+    ENX_EXTENSION_ID: process.env.ENX_EXTENSION_ID ?? SITE.chromeExtensionId,
+    ENX_EXTENSION_WEB_STORE_URL:
+      process.env.ENX_EXTENSION_WEB_STORE_URL || SITE.chromeWebStoreUrl,
     ENX_VERSION: process.env.ENX_VERSION ?? '',
     ENX_GIT_COMMIT: process.env.ENX_GIT_COMMIT ?? '',
     ENX_BUILD_TIME: process.env.ENX_BUILD_TIME ?? '',
