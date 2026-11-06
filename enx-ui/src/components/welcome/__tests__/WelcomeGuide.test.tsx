@@ -472,3 +472,39 @@ it('rechecks after installation and replaces the install link with the completed
     screen.getByRole('link', { name: 'Next: finish setup' })
   ).toBeInTheDocument()
 })
+
+it('offers manual installation and the caution note beside the missing-extension store button', async () => {
+  setRuntimeEnv({
+    ENX_EXTENSION_ID: 'test-ext-id',
+    ENX_EXTENSION_WEB_STORE_URL: 'https://chromewebstore.google.com/detail/x',
+  })
+  renderGuide()
+  await screen.findByRole('link', { name: 'Add to Chrome' })
+  expect(
+    screen.getByText(/With Enhanced protection enabled, Chrome may show/)
+  ).toHaveTextContent('To proceed, select “Continue to install”.')
+  expect(
+    screen.getByRole('link', { name: 'Install manually from a ZIP file' })
+  ).toHaveAttribute('href', '/help/install/offline')
+  expect(
+    screen.getByRole('link', { name: 'Install manually from a ZIP file' })
+  ).toHaveAttribute('target', '_blank')
+})
+
+it('removes installation guidance once the extension is detected', async () => {
+  setRuntimeEnv({
+    ENX_EXTENSION_ID: 'test-ext-id',
+    ENX_EXTENSION_WEB_STORE_URL: 'https://chromewebstore.google.com/detail/x',
+  })
+  renderGuide()
+  await screen.findByRole('link', { name: 'Install manually from a ZIP file' })
+  installExtension()
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('link', { name: 'Install manually from a ZIP file' })
+    ).not.toBeInTheDocument()
+  )
+  expect(
+    screen.queryByText(/With Enhanced protection enabled/)
+  ).not.toBeInTheDocument()
+})

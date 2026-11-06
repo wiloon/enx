@@ -1,4 +1,5 @@
 import type { MetadataRoute } from 'next'
+import { HELP_GUIDES } from '@/lib/help'
 
 // Read per request: SITE_URL comes from the container, not from the build.
 export const dynamic = 'force-dynamic'
@@ -8,6 +9,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
   return [
     { url: `${base}/`, changeFrequency: 'monthly', priority: 1 },
     { url: `${base}/pricing`, changeFrequency: 'monthly', priority: 0.8 },
+    ...['/help', ...HELP_GUIDES.map((guide) => guide.href)].map((path) => ({
+      url: `${base}${path}`,
+      changeFrequency: 'monthly' as const,
+      priority: 0.6,
+    })),
     // The legal pages are listed because two review processes (Chrome Web
     // Store, Stripe) go looking for them, and because a policy nobody can
     // find is not published in any meaningful sense.
