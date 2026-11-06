@@ -8,6 +8,8 @@ import (
 
 	"enx-api/billing/credit"
 	"enx-api/utils/sqlitex"
+
+	"gorm.io/gorm"
 )
 
 func setupBillingDB(t *testing.T) {
@@ -69,7 +71,10 @@ func TestBillingTrialBalance(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := credit.GrantTrial(ctx, "trialist", "h:trialist", 100, time.Hour); err != nil {
+	if err := sqlitex.DB.Transaction(func(tx *gorm.DB) error {
+		_, err := credit.GrantTrialTx(tx, "trialist", "h:trialist", 100, time.Hour)
+		return err
+	}); err != nil {
 		t.Fatal(err)
 	}
 	for user, want := range map[string]int64{"trialist": 100, "nobody": 0} {
