@@ -94,24 +94,28 @@ func grantTrial(tx *gorm.DB, userID, emailHMAC string, amount int64, ttl time.Du
 	if err := ensureAccount(tx, userID, nowMs); err != nil {
 		return false, err
 	}
-	if err := tx.Model(&sqlitex.CreditAccount{}).
-		Where("user_id = ?", userID).
-		Updates(map[string]interface{}{
-			"trial_balance":    amount,
-			"trial_expires_at": at.Add(ttl).Unix(),
-			"updated_at":       nowMs,
-		}).Error; err != nil {
+	total, err := LedgerWrite(tx, userID, at, func() error {
+		return tx.Model(&sqlitex.CreditAccount{}).
+			Where("user_id = ?", userID).
+			Updates(map[string]interface{}{
+				"trial_balance":    amount,
+				"trial_expires_at": at.Add(ttl).Unix(),
+				"updated_at":       nowMs,
+			}).Error
+	})
+	if err != nil {
 		return false, err
 	}
 
 	return true, insertLedgerRow(tx, sqlitex.CreditTransaction{
-		Id:            uuid.New().String(),
-		UserId:        userID,
-		Type:          TypeGrantTrial,
-		Amount:        amount,
-		BalanceAfter:  amount,
-		StripeEventId: &key,
-		CreatedAt:     nowMs,
+		Id:                uuid.New().String(),
+		UserId:            userID,
+		Type:              TypeGrantTrial,
+		Amount:            amount,
+		BalanceAfter:      amount,
+		TotalBalanceAfter: &total,
+		StripeEventId:     &key,
+		CreatedAt:         nowMs,
 	})
 }
 
@@ -133,29 +137,36 @@ func Trial(ctx context.Context, userID string) (balance int64, expiresAt time.Ti
 }
 
 // expireTrial zeroes a trial pool that has expired with credits left and
-// records the forfeit as an EXPIRE row. The UPDATE is conditional on the
-// balance just read, so of two racing Settles only one writes the row.
-func expireTrial(tx *gorm.DB, userID string, at time.Time) error {
-	var account sqlitex.CreditAccount
-	if err := tx.Where("user_id = ?", userID).First(&account).Error; err != nil {
-		return err
+// records the forfeit as an EXPIRE row; expired reports whether it did. The
+// UPDATE is conditional on the balance just read, so of two racing writers
+// only one writes the row. A user with no credit account has nothing to
+// expire.
+func expireTrial(tx *gorm.DB, userID string, at time.Time) (expired bool, err error) {
+	account, found, err := findAccount(tx, userID)
+	if err != nil || !found {
+		return false, err
 	}
 	if account.TrialExpiresAt == nil || at.Unix() < *account.TrialExpiresAt || account.TrialBalance <= 0 {
-		return nil
+		return false, nil
 	}
 	res := tx.Model(&sqlitex.CreditAccount{}).
 		Where("user_id = ? AND trial_balance = ?", userID, account.TrialBalance).
 		Update("trial_balance", 0)
 	if res.Error != nil || res.RowsAffected == 0 {
-		return res.Error
+		return false, res.Error
 	}
-	return insertLedgerRow(tx, sqlitex.CreditTransaction{
-		Id:           uuid.New().String(),
-		UserId:       userID,
-		Type:         TypeExpire,
-		Amount:       -account.TrialBalance,
-		BalanceAfter: 0,
-		Feature:      "trial",
-		CreatedAt:    at.UnixMilli(),
+	total, err := totalBalance(tx, userID, at)
+	if err != nil {
+		return false, err
+	}
+	return true, insertLedgerRow(tx, sqlitex.CreditTransaction{
+		Id:                uuid.New().String(),
+		UserId:            userID,
+		Type:              TypeExpire,
+		Amount:            -account.TrialBalance,
+		BalanceAfter:      0,
+		TotalBalanceAfter: &total,
+		Feature:           "trial",
+		CreatedAt:         at.UnixMilli(),
 	})
 }

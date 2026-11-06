@@ -47,6 +47,9 @@ type CreditTransaction struct {
 	BalanceAfter  int64   `gorm:"column:balance_after;not null"`
 	StripeEventId *string `gorm:"column:stripe_event_id;uniqueIndex"` // nil for CONSUME rows; set for webhook-triggered GRANT rows (idempotency key)
 	Feature       string  `gorm:"column:feature"`
+	// TotalBalanceAfter is the three-pool spendable total after this row
+	// (ADR-063 Decision 7); nil on rows written before it existed.
+	TotalBalanceAfter *int64 `gorm:"column:total_balance_after"`
 	// StripePaymentIntentId is the payment behind a GRANT_TOPUP or
 	// GRANT_SUBSCRIPTION row, so a refund can find what it paid for (ADR-049).
 	StripePaymentIntentId *string `gorm:"column:stripe_payment_intent_id;index"`

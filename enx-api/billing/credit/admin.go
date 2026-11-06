@@ -3,7 +3,6 @@ package credit
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"enx-api/utils/sqlitex"
 
@@ -53,17 +52,21 @@ func adjustTopup(ctx context.Context, userID string, delta int64, txnType, note 
 			return err
 		}
 
-		now := time.Now().UnixMilli()
-		if err := ensureAccount(tx, userID, now); err != nil {
+		at := now()
+		nowMs := at.UnixMilli()
+		if err := ensureAccount(tx, userID, nowMs); err != nil {
 			return err
 		}
 
-		if err := tx.Model(&sqlitex.CreditAccount{}).
-			Where("user_id = ?", userID).
-			Updates(map[string]interface{}{
-				"topup_balance": gorm.Expr("topup_balance + ?", delta),
-				"updated_at":    now,
-			}).Error; err != nil {
+		total, err := LedgerWrite(tx, userID, at, func() error {
+			return tx.Model(&sqlitex.CreditAccount{}).
+				Where("user_id = ?", userID).
+				Updates(map[string]interface{}{
+					"topup_balance": gorm.Expr("topup_balance + ?", delta),
+					"updated_at":    nowMs,
+				}).Error
+		})
+		if err != nil {
 			return err
 		}
 
@@ -73,13 +76,14 @@ func adjustTopup(ctx context.Context, userID string, delta int64, txnType, note 
 		}
 
 		return insertLedgerRow(tx, sqlitex.CreditTransaction{
-			Id:           uuid.New().String(),
-			UserId:       userID,
-			Type:         txnType,
-			Amount:       delta,
-			BalanceAfter: account.TopupBalance,
-			Note:         note,
-			CreatedAt:    now,
+			Id:                uuid.New().String(),
+			UserId:            userID,
+			Type:              txnType,
+			Amount:            delta,
+			BalanceAfter:      account.TopupBalance,
+			TotalBalanceAfter: &total,
+			Note:              note,
+			CreatedAt:         nowMs,
 		})
 	})
 }

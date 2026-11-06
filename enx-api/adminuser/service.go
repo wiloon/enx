@@ -275,7 +275,9 @@ const (
 	SourceOther    Source = "other"
 )
 
-func sourceOf(txnType string) Source {
+// sourceOf maps a row to its source. An EXPIRE is the trial's unless its
+// feature says it forfeited a subscription period's leftover (ADR-063).
+func sourceOf(txnType, feature string) Source {
 	switch txnType {
 	case "GRANT_TOPUP", "GRANT_SUBSCRIPTION":
 		return SourceStripe
@@ -283,7 +285,12 @@ func sourceOf(txnType string) Source {
 		return SourceAdmin
 	case "CLAWBACK":
 		return SourceRefund
-	case "GRANT_TRIAL", "EXPIRE":
+	case "EXPIRE":
+		if feature == "subscription" {
+			return SourceStripe
+		}
+		return SourceTrial
+	case "GRANT_TRIAL":
 		return SourceTrial
 	case "GRANT_REFERRAL_BONUS", "GRANT_REFERRAL_REWARD":
 		return SourceReferral
@@ -335,7 +342,7 @@ func (s *Service) Transactions(ctx context.Context, userID, before string, limit
 	}
 	page := LedgerPage{Entries: make([]Entry, len(rows))}
 	for i, r := range rows {
-		page.Entries[i] = Entry{Transaction: r, Source: sourceOf(r.Type)}
+		page.Entries[i] = Entry{Transaction: r, Source: sourceOf(r.Type, r.Feature)}
 	}
 	if len(rows) == limit {
 		last := rows[len(rows)-1]
