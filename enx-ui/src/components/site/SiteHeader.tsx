@@ -19,27 +19,33 @@ const NAV: { label: string; href: string; external?: boolean }[] = [
 export default function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:gap-6 sm:px-6">
+      <div className="mx-auto flex min-h-14 max-w-6xl flex-wrap items-center gap-3 px-4 py-3 sm:gap-6 sm:px-6">
         <HomeLink className="flex items-center gap-2 font-semibold">
           <BrandMark />
         </HomeLink>
 
-        <nav className="hidden flex-1 items-center gap-6 md:flex">
+        <nav className="hidden flex-1 flex-wrap items-center gap-4 md:flex">
           {NAV.map((item) => (
             <a
               key={item.href}
               href={item.href}
               {...(item.external && { target: '_blank', rel: 'noreferrer' })}
-              className="text-sm text-foreground/70 transition-colors hover:text-foreground"
+              className="rounded-sm text-sm text-brand transition-colors hover:text-brand/80 active:text-brand/70 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
             >
               {item.label}
             </a>
           ))}
         </nav>
 
-        <div className="ml-auto flex items-center gap-3 sm:gap-4 md:ml-0">
+        <div className="ml-auto flex flex-wrap items-center gap-3 sm:gap-4 md:ml-0">
+          <a
+            href="/help"
+            className="rounded-sm text-sm font-medium text-brand hover:underline active:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+          >
+            Help
+          </a>
           <HeaderAuthLinks />
-          <ChromeStoreCta className="whitespace-nowrap rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-brand-foreground transition-opacity hover:opacity-90">
+          <ChromeStoreCta className="whitespace-nowrap rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-brand-foreground transition-opacity hover:opacity-90 active:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">
             Add to Chrome
           </ChromeStoreCta>
         </div>

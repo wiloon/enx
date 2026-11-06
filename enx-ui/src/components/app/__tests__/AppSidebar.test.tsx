@@ -23,6 +23,15 @@ beforeEach(() => {
   mockUseIsAdmin.mockReturnValue({ isAdmin: false, isLoading: false })
 })
 
+it('offers the public Help center from the app navigation', () => {
+  mockPathname.mockReturnValue('/app')
+  render(<AppSidebar />)
+  expect(screen.getByRole('link', { name: 'Help' })).toHaveAttribute(
+    'href',
+    '/help'
+  )
+})
+
 it('renders every navigation destination', () => {
   mockPathname.mockReturnValue('/app')
   render(<AppSidebar />)
@@ -43,15 +52,16 @@ it('renders every navigation destination', () => {
 
 // Billing and Account live in the top bar's account menu (#211); the
 // footer keeps the app-wide utilities.
-it('ends with Settings, Invite friends and Back to site', () => {
+it('ends with Settings, Invite friends, Help and Back to site', () => {
   mockPathname.mockReturnValue('/app')
   render(<AppSidebar />)
 
   const labels = screen.getAllByRole('link').map((l) => l.textContent?.trim())
   const footer = labels.slice(labels.indexOf('Settings'))
-  expect(footer.slice(0, 3)).toEqual([
+  expect(footer.slice(0, 4)).toEqual([
     'Settings',
     'Invite friends',
+    'Help',
     'Back to site',
   ])
   expect(screen.getByRole('link', { name: 'Invite friends' })).toHaveAttribute(

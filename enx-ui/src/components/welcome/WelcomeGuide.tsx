@@ -19,6 +19,7 @@ import {
 } from '@/lib/onboarding'
 import { RECOMMENDED_SITES } from '@/lib/recommendedSites'
 import { SITE } from '@/lib/site'
+import { ENHANCED_PROTECTION_NOTE } from '@/lib/help'
 import SampleArticle from '@/components/reader/SampleArticle'
 import { Button } from '@/components/ui/button'
 
@@ -365,16 +366,38 @@ function InstallButton() {
         installing, return here to continue setup.
       </p>
       {storeUrl ? (
-        <Button asChild variant="brand" size="sm">
-          <a href={storeUrl} target="_blank" rel="noopener noreferrer">
-            Add to Chrome
-          </a>
-        </Button>
+        <>
+          <Button
+            asChild
+            variant="brand"
+            size="sm"
+            className="active:opacity-80"
+          >
+            <a href={storeUrl} target="_blank" rel="noopener noreferrer">
+              Add to Chrome
+            </a>
+          </Button>
+          <p className="rounded-md border border-warning bg-warning-muted p-3 text-warning-foreground">
+            {ENHANCED_PROTECTION_NOTE}
+          </p>
+        </>
       ) : (
         <Button variant="brand" size="sm" disabled>
           Coming soon to the Chrome Web Store
         </Button>
       )}
+      <p className="text-muted-foreground">
+        Can’t access the Chrome Web Store?{' '}
+        <Link
+          href="/help/install/offline"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-sm text-brand hover:underline active:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+        >
+          Install manually from a ZIP file
+        </Link>
+        .
+      </p>
       {!chromium && (
         <p className="text-muted-foreground">
           {SITE.name} needs Chrome (or another Chromium browser such as Edge).

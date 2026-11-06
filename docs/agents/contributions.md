@@ -1,5 +1,12 @@
 # AI Contributions History
 
+## 2026-11-05: Public installation help — issue #559
+
+**Agent**: Codex
+**Solution**: Public Help guides cover store installation, manual ZIP installation and first use. Both site and app navigation expose them; Welcome links directly to the manual route alongside the store action. Screenshot placeholders and a capture manifest let the owner add images later.
+
+**Lesson (renameable installation docs)**: Derive repository links and archive examples from site configuration. Existing release archives may still use the product name, so document that fallback separately from the repository-derived example. Store search instructions assume the owner's planned Public listing; the direct listing link remains available. Verify browser runs against the worktree's own server.
+
 ## 2026-11-05: Send new users to Welcome after authentication — issue #641
 
 **Agent**: Codex

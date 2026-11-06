@@ -30,6 +30,20 @@ jest.mock('@/lib/site', () => {
 // tests swap in other strings, so widen to `string` as well as dropping readonly.
 const mutableSite = SITE as unknown as Record<keyof typeof SITE, string>
 const original = { ...SITE }
+
+it('offers public Help from the site header and footer', () => {
+  const { unmount } = render(<SiteHeader />)
+  expect(screen.getByRole('link', { name: 'Help' })).toHaveAttribute(
+    'href',
+    '/help'
+  )
+  unmount()
+  render(<SiteFooter />)
+  expect(screen.getByRole('link', { name: 'Help' })).toHaveAttribute(
+    'href',
+    '/help'
+  )
+})
 afterEach(() => {
   Object.assign(mutableSite, original)
   mockExtensionStatus.mockReturnValue('not-installed')
