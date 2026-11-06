@@ -1,5 +1,12 @@
 # AI Contributions History
 
+## 2026-11-05: Isolate Reader documents and order saves — issue #575
+
+**Agent**: Codex
+**Solution**: Reader assigns each new document a client UUID and sends increasing versions. A framework-free save policy applies ownership, ordering and retry rules inside a serialized SQLite transaction. The page accepts status changes only for the current document and submission; history carries the stored version. Existing documents migrate to version 0.
+
+**Lesson (identity and persistence)**: A document ID identifies the article before its first save; it does not prove the row exists. Compare versions on the server as well as fencing responses in the UI. Identical retries must not refresh retention or evict documents. Same-version edits with different content need an explicit conflict, and a stale success returning a newer server version must not mark the local content saved.
+
 ## 2026-11-05: Invalidate account-owned review lists — issue #606
 
 **Agent**: Codex

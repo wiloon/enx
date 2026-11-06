@@ -122,6 +122,7 @@ it('opens a document: fetches full content, hands it off via sessionStorage, and
     data: {
       id: 'doc-1',
       content: 'full text',
+      version: 7,
       createdAt: '2026-09-14T00:00:00Z',
       expiresAt: '2026-09-21T00:00:00Z',
     },
@@ -135,6 +136,7 @@ it('opens a document: fetches full content, hands it off via sessionStorage, and
   expect(JSON.parse(sessionStorage.getItem('enx-reader-open-doc')!)).toEqual({
     id: 'doc-1',
     content: 'full text',
+    version: 7,
   })
 })
 

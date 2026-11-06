@@ -7,31 +7,26 @@ import { setRuntimeEnv } from '@/test/runtimeEnv'
 
 jest.mock('@/services/api', () => ({
   apiService: {
-    createReaderDocument: jest.fn(),
-    updateReaderDocument: jest.fn(),
+    saveReaderDocument: jest.fn(),
     listReaderDocuments: jest.fn(),
     getReaderDocument: jest.fn(),
   },
 }))
 
-const mockCreateReaderDocument = apiService.createReaderDocument as jest.Mock
-const mockUpdateReaderDocument = apiService.updateReaderDocument as jest.Mock
+const mockSaveReaderDocument = apiService.saveReaderDocument as jest.Mock
 const mockListReaderDocuments = apiService.listReaderDocuments as jest.Mock
 const mockGetReaderDocument = apiService.getReaderDocument as jest.Mock
 
 beforeEach(() => {
   ;(global as unknown as { chrome?: unknown }).chrome = undefined
   document.documentElement.removeAttribute('data-enx-extension')
-  mockCreateReaderDocument.mockReset()
-  mockCreateReaderDocument.mockResolvedValue({
-    success: true,
-    data: { id: 'doc-1' },
-  })
-  mockUpdateReaderDocument.mockReset()
-  mockUpdateReaderDocument.mockResolvedValue({
-    success: true,
-    data: { id: 'doc-1' },
-  })
+  mockSaveReaderDocument.mockReset()
+  mockSaveReaderDocument.mockImplementation(
+    async (id: string, _content: string, version: number) => ({
+      success: true,
+      data: { id, version },
+    })
+  )
   mockListReaderDocuments.mockReset()
   mockListReaderDocuments.mockResolvedValue({
     success: true,
@@ -59,7 +54,7 @@ function paste(text: string) {
   })
 }
 
-// Submitting always kicks off an apiService.createReaderDocument() call
+// Submitting always kicks off an apiService.saveReaderDocument() call
 // (ADR-022); wrapping in act() flushes that microtask so its state update
 // doesn't leak past the test as an "update not wrapped in act" warning.
 async function clickRead() {
@@ -229,12 +224,16 @@ describe('persistence (ADR-022)', () => {
 
     await clickRead()
 
-    expect(mockCreateReaderDocument).toHaveBeenCalledWith('Save me.')
+    expect(mockSaveReaderDocument).toHaveBeenCalledWith(
+      expect.any(String),
+      'Save me.',
+      1
+    )
     expect(await screen.findByText(/saved/i)).toBeInTheDocument()
   })
 
   it('shows a non-blocking note when saving fails', async () => {
-    mockCreateReaderDocument.mockResolvedValue({
+    mockSaveReaderDocument.mockResolvedValue({
       success: false,
       error: 'network error',
     })
@@ -263,7 +262,7 @@ describe('persistence (ADR-022)', () => {
     expect(document.querySelector('#enx-reader-article')).toHaveTextContent(
       'From history.'
     )
-    expect(mockCreateReaderDocument).not.toHaveBeenCalled()
+    expect(mockSaveReaderDocument).not.toHaveBeenCalled()
     expect(sessionStorage.getItem('enx-reader-open-doc')).toBeNull()
   })
 
@@ -271,23 +270,28 @@ describe('persistence (ADR-022)', () => {
     renderPage()
     paste('First version.')
     await clickRead()
-    expect(mockCreateReaderDocument).toHaveBeenCalledTimes(1)
+    expect(mockSaveReaderDocument).toHaveBeenCalledTimes(1)
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit text' }))
     paste('Revised version.')
     await clickRead()
 
-    expect(mockCreateReaderDocument).toHaveBeenCalledTimes(1)
-    expect(mockUpdateReaderDocument).toHaveBeenCalledWith(
-      'doc-1',
-      'Revised version.'
+    expect(mockSaveReaderDocument).toHaveBeenCalledTimes(2)
+    expect(mockSaveReaderDocument).toHaveBeenLastCalledWith(
+      mockSaveReaderDocument.mock.calls[0][0],
+      'Revised version.',
+      2
     )
   })
 
   it('editing a document opened from history updates that same document', async () => {
     sessionStorage.setItem(
       'enx-reader-open-doc',
-      JSON.stringify({ id: 'doc-from-history', content: 'Original.' })
+      JSON.stringify({
+        id: 'doc-from-history',
+        content: 'Original.',
+        version: 7,
+      })
     )
     renderPage()
 
@@ -295,10 +299,10 @@ describe('persistence (ADR-022)', () => {
     paste('Edited.')
     await clickRead()
 
-    expect(mockCreateReaderDocument).not.toHaveBeenCalled()
-    expect(mockUpdateReaderDocument).toHaveBeenCalledWith(
+    expect(mockSaveReaderDocument).toHaveBeenCalledWith(
       'doc-from-history',
-      'Edited.'
+      'Edited.',
+      8
     )
   })
 
@@ -306,7 +310,7 @@ describe('persistence (ADR-022)', () => {
     renderPage()
     paste('First document.')
     await clickRead()
-    expect(mockCreateReaderDocument).toHaveBeenCalledTimes(1)
+    expect(mockSaveReaderDocument).toHaveBeenCalledTimes(1)
 
     fireEvent.click(screen.getByRole('button', { name: 'New' }))
     expect(screen.getByLabelText(/paste english text/i)).toHaveValue('')
@@ -314,11 +318,15 @@ describe('persistence (ADR-022)', () => {
     paste('Second document.')
     await clickRead()
 
-    expect(mockCreateReaderDocument).toHaveBeenCalledTimes(2)
-    expect(mockCreateReaderDocument).toHaveBeenLastCalledWith(
-      'Second document.'
+    expect(mockSaveReaderDocument).toHaveBeenCalledTimes(2)
+    expect(mockSaveReaderDocument).toHaveBeenLastCalledWith(
+      expect.any(String),
+      'Second document.',
+      1
     )
-    expect(mockUpdateReaderDocument).not.toHaveBeenCalled()
+    expect(mockSaveReaderDocument.mock.calls[1][0]).not.toBe(
+      mockSaveReaderDocument.mock.calls[0][0]
+    )
   })
 
   it('shows a "My Documents" link and a "New" button in reading mode too', async () => {
@@ -502,7 +510,7 @@ describe('recent documents', () => {
     })
     mockGetReaderDocument.mockResolvedValue({
       success: true,
-      data: { id: 'doc-2', content: 'Second document body.' },
+      data: { id: 'doc-2', content: 'Second document body.', version: 5 },
     })
     renderPage()
 
@@ -515,14 +523,15 @@ describe('recent documents', () => {
     expect(document.querySelector('#enx-reader-article')).toHaveTextContent(
       'Second document body.'
     )
-    expect(mockCreateReaderDocument).not.toHaveBeenCalled()
+    expect(mockSaveReaderDocument).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit text' }))
     paste('Edited body.')
     await clickRead()
-    expect(mockUpdateReaderDocument).toHaveBeenCalledWith(
+    expect(mockSaveReaderDocument).toHaveBeenCalledWith(
       'doc-2',
-      'Edited body.'
+      'Edited body.',
+      6
     )
   })
 
@@ -545,4 +554,169 @@ describe('recent documents', () => {
     expect(await screen.findByText('document not found')).toBeInTheDocument()
     expect(screen.getByLabelText(/paste english text/i)).toBeInTheDocument()
   })
+})
+
+it('a save from before New cannot mark the new article as saved', async () => {
+  let finishFirst!: (value: {
+    success: true
+    data: { id: string; version: number }
+  }) => void
+  let finishSecond!: (value: {
+    success: true
+    data: { id: string; version: number }
+  }) => void
+  mockSaveReaderDocument.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishFirst = resolve
+      })
+  )
+  mockSaveReaderDocument.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishSecond = resolve
+      })
+  )
+  renderPage()
+  paste('First article.')
+  await clickRead()
+  fireEvent.click(screen.getByRole('button', { name: 'New' }))
+  paste('Second article.')
+  await clickRead()
+  expect(screen.getByRole('status')).toHaveTextContent('Saving…')
+  await act(async () => {
+    finishFirst({
+      success: true,
+      data: { id: mockSaveReaderDocument.mock.calls[0][0], version: 1 },
+    })
+  })
+  expect(screen.getByRole('status')).toHaveTextContent('Saving…')
+  await act(async () => {
+    finishSecond({
+      success: true,
+      data: { id: mockSaveReaderDocument.mock.calls[1][0], version: 1 },
+    })
+  })
+  expect(screen.getByRole('status')).toHaveTextContent('Saved')
+})
+
+it('an older save response for the same article cannot finish its latest save', async () => {
+  let finishOld!: (
+    value: Awaited<ReturnType<typeof apiService.saveReaderDocument>>
+  ) => void
+  let finishLatest!: (
+    value: Awaited<ReturnType<typeof apiService.saveReaderDocument>>
+  ) => void
+  mockSaveReaderDocument.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishOld = resolve
+      })
+  )
+  mockSaveReaderDocument.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishLatest = resolve
+      })
+  )
+  renderPage()
+  paste('First version.')
+  await clickRead()
+  fireEvent.click(screen.getByRole('button', { name: 'Edit text' }))
+  paste('Latest version.')
+  await clickRead()
+  const id = mockSaveReaderDocument.mock.calls[0][0]
+  expect(mockSaveReaderDocument).toHaveBeenLastCalledWith(
+    id,
+    'Latest version.',
+    2
+  )
+  await act(async () => {
+    finishOld({ success: false, status: 500 })
+  })
+  expect(screen.getByRole('status')).toHaveTextContent('Saving…')
+  await act(async () => {
+    finishLatest({ success: true, data: { id, version: 2 } })
+  })
+  expect(screen.getByRole('status')).toHaveTextContent('Saved')
+})
+
+it.each([true, false])(
+  'an old article response cannot replace the saved state of the new article (success=%s)',
+  async (success) => {
+    let finishOld!: (
+      value: Awaited<ReturnType<typeof apiService.saveReaderDocument>>
+    ) => void
+    mockSaveReaderDocument.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishOld = resolve
+        })
+    )
+    renderPage()
+    paste('Article A.')
+    await clickRead()
+    const firstId = mockSaveReaderDocument.mock.calls[0][0]
+    fireEvent.click(screen.getByRole('button', { name: 'New' }))
+    paste('Article B.')
+    await clickRead()
+    const secondId = mockSaveReaderDocument.mock.calls[1][0]
+    expect(secondId).not.toBe(firstId)
+    await act(async () => {
+      finishOld({
+        success,
+        data: { id: firstId, version: 1 },
+        status: success ? 200 : 409,
+      })
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Saved')
+    fireEvent.click(screen.getByRole('button', { name: 'Edit text' }))
+    paste('Edited B.')
+    await clickRead()
+    expect(mockSaveReaderDocument).toHaveBeenLastCalledWith(
+      secondId,
+      'Edited B.',
+      2
+    )
+  }
+)
+
+it('a conflicting save explains how to recover and cannot be retried as a newer overwrite', async () => {
+  mockSaveReaderDocument.mockResolvedValueOnce({
+    success: false,
+    status: 409,
+    error: 'conflict',
+  })
+  renderPage()
+  paste('Unsaved tab.')
+  await clickRead()
+  expect(screen.getByRole('status')).toHaveTextContent(
+    'Reopen it from My Documents'
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Edit text' }))
+  await clickRead()
+  expect(mockSaveReaderDocument).toHaveBeenCalledTimes(1)
+  expect(screen.getByRole('status')).toHaveTextContent(
+    'Reopen it from My Documents'
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'New' }))
+  paste('Separate document.')
+  await clickRead()
+  expect(screen.getByRole('status')).toHaveTextContent('Saved')
+})
+
+it('an ignored stale save cannot claim its local content was saved', async () => {
+  mockSaveReaderDocument.mockImplementationOnce(async (id: string) => ({
+    success: true,
+    data: { id, version: 9 },
+  }))
+  renderPage()
+  paste('A local edit behind another tab.')
+  await clickRead()
+  expect(screen.getByRole('status')).toHaveTextContent(
+    'Reopen it from My Documents'
+  )
+  expect(document.querySelector('#enx-reader-article')).toHaveTextContent(
+    'A local edit behind another tab.'
+  )
 })

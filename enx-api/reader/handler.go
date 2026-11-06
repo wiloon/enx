@@ -6,10 +6,13 @@ import (
 	"time"
 
 	"enx-api/middleware"
+	"enx-api/reader/saving"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+const readerConflictMessage = "This document was edited elsewhere. Reopen it from My Documents before editing again."
 
 type createDocumentRequest struct {
 	Content string `json:"content"`
@@ -79,6 +82,7 @@ func GetDocumentHandler(c *gin.Context) {
 		"success":   true,
 		"id":        doc.ID,
 		"content":   doc.Content,
+		"version":   doc.Version,
 		"createdAt": doc.CreatedAt,
 		"expiresAt": doc.ExpiresAt,
 	})
@@ -92,8 +96,17 @@ func UpdateDocumentHandler(c *gin.Context) {
 		return
 	}
 
+	legacyUpdateDocument(c, req.Content)
+}
+
+func legacyUpdateDocument(c *gin.Context, content string) {
 	userID := middleware.GetUserIDFromContext(c)
-	doc, err := UpdateDocument(c.Request.Context(), userID, c.Param("id"), req.Content, time.Now())
+	doc, err := UpdateDocument(c.Request.Context(), userID, c.Param("id"), content, time.Now())
+	if errors.Is(err, saving.ErrVersionConflict) {
+		c.JSON(http.StatusConflict, gin.H{"success": false, "message": readerConflictMessage})
+		return
+	}
+
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "document not found"})
 		return
@@ -107,6 +120,7 @@ func UpdateDocumentHandler(c *gin.Context) {
 		"success":   true,
 		"id":        doc.ID,
 		"content":   doc.Content,
+		"version":   doc.Version,
 		"createdAt": doc.CreatedAt,
 		"expiresAt": doc.ExpiresAt,
 	})
@@ -121,4 +135,43 @@ func DeleteDocumentHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// NewSaveDocumentHandler accepts versioned saves and retains the legacy PUT
+// for old clients that have not yet loaded the versioned Reader.
+func NewSaveDocumentHandler(service *saving.SaveService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Content string `json:"content"`
+			Version *int64 `json:"version"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid request body"})
+			return
+		}
+		if req.Version == nil {
+			// An old client may only edit documents that are still unversioned.
+			legacyUpdateDocument(c, req.Content)
+			return
+		}
+		doc, err := service.Save(c.Request.Context(), middleware.GetUserIDFromContext(c), c.Param("id"), req.Content, *req.Version, time.Now())
+		if err != nil {
+			status := http.StatusInternalServerError
+			message := "Failed to save document"
+			switch {
+			case errors.Is(err, saving.ErrDocumentUnavailable):
+				status = http.StatusNotFound
+				message = err.Error()
+			case errors.Is(err, saving.ErrVersionConflict):
+				status = http.StatusConflict
+				message = readerConflictMessage
+			case errors.Is(err, saving.ErrInvalidSave), errors.Is(err, ErrContentEmpty), errors.Is(err, ErrContentTooLong):
+				status = http.StatusBadRequest
+				message = err.Error()
+			}
+			c.JSON(status, gin.H{"success": false, "message": message})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true, "id": doc.ID, "version": doc.Version})
+	}
 }

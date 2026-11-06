@@ -6,44 +6,37 @@ package reader
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
-	"unicode/utf16"
 
 	"github.com/google/uuid"
 
+	"enx-api/reader/saving"
 	"enx-api/utils/sqlitex"
 )
 
-const retentionPeriod = 7 * 24 * time.Hour
+const retentionPeriod = saving.RetentionPeriod
 
 // MaxContentLength is the per-document character limit (ADR-022 Option C),
 // counted the way enx-ui's textarea counts it (see contentLength).
-const MaxContentLength = 20000
+const MaxContentLength = saving.MaxContentLength
 
 // ErrContentTooLong is returned when content exceeds MaxContentLength.
-var ErrContentTooLong = errors.New("reader: content exceeds maximum length")
+var ErrContentTooLong = saving.ErrContentTooLong
 
 // ErrContentEmpty is returned when content is empty.
-var ErrContentEmpty = errors.New("reader: content is empty")
+var ErrContentEmpty = saving.ErrContentEmpty
 
 // MaxDocumentsPerUser is the per-user document cap (ADR-022 Option D). The
 // oldest document is evicted on write once a user is at the cap.
-const MaxDocumentsPerUser = 50
+const MaxDocumentsPerUser = saving.MaxDocumentsPerUser
 
 // Document is a user's pasted-text reader document.
-type Document struct {
-	ID        string
-	UserID    string
-	Content   string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	ExpiresAt time.Time
-}
+type Document = saving.Document
 
 func documentFromRow(row sqlitex.ReaderDocument) *Document {
 	return &Document{
+		Version:   row.Version,
 		ID:        row.ID,
 		UserID:    row.UserID,
 		Content:   row.Content,
@@ -155,8 +148,14 @@ func UpdateDocument(ctx context.Context, userID, id, content string, now time.Ti
 	row.Content = content
 	row.LastEditedAt = now.UnixMilli()
 	row.ExpiresAt = now.Add(retentionPeriod).UnixMilli()
-	if err := sqlitex.DB.WithContext(ctx).Save(&row).Error; err != nil {
-		return nil, err
+	result := sqlitex.DB.WithContext(ctx).Model(&sqlitex.ReaderDocument{}).
+		Where("id = ? AND user_id = ? AND version = 0 AND expires_at > ?", id, userID, now.UnixMilli()).
+		Updates(map[string]any{"content": row.Content, "updated_at": row.LastEditedAt, "expires_at": row.ExpiresAt})
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return nil, saving.ErrVersionConflict
 	}
 
 	return documentFromRow(row), nil
@@ -189,13 +188,7 @@ func PurgeExpired(ctx context.Context, now time.Time) (int64, error) {
 // document with curly quotes, em dashes or CJK text that the UI accepts
 // (e.g. 19,000 characters, several of them 3 bytes each) would be rejected
 // here.
-func contentLength(content string) int {
-	n := 0
-	for _, r := range content {
-		n += utf16.RuneLen(r)
-	}
-	return n
-}
+func contentLength(content string) int { return saving.ContentLength(content) }
 
 // previewMaxLength caps DocumentSummary.Preview so a "My Documents" row
 // stays one line regardless of how long the underlying document is.

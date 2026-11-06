@@ -343,6 +343,7 @@ export interface ReaderDocumentSummary {
 }
 
 export interface ReaderDocument {
+  version: number
   id: string
   content: string
   createdAt: string

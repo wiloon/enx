@@ -30,6 +30,7 @@ import (
 	prefadapters "enx-api/preferences/adapters"
 	"enx-api/ratelimit"
 	"enx-api/reader"
+	"enx-api/reader/saving"
 	"enx-api/referral"
 	refadapters "enx-api/referral/adapters"
 	"enx-api/repo"
@@ -39,6 +40,7 @@ import (
 	"enx-api/userstats"
 	"enx-api/utils"
 	"enx-api/utils/logger"
+	"enx-api/utils/sqlitex"
 	"enx-api/wordlist"
 	"errors"
 	"flag"
@@ -557,13 +559,14 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	apiGroup.POST("/referral/claim", referralHandler.Claim)
 
 	// Reader (ADR-022): enx-ui's pasted-text documents. 20,000-char limit and
-	// 50-document-per-user cap are enforced in reader.CreateDocument; 7-day
+	// 50-document-per-user cap are enforced on creation; versioned saves
+	// are serialized by saving.SaveService and repo.ReaderDocuments. The 7-day
 	// TTL is enforced by runReaderDocumentCleanup plus the expiry filter
 	// baked into reader.ListDocuments / reader.GetDocument.
 	apiGroup.POST("/reader/documents", reader.CreateDocumentHandler)
 	apiGroup.GET("/reader/documents", reader.ListDocumentsHandler)
 	apiGroup.GET("/reader/documents/:id", reader.GetDocumentHandler)
-	apiGroup.PUT("/reader/documents/:id", reader.UpdateDocumentHandler)
+	apiGroup.PUT("/reader/documents/:id", reader.NewSaveDocumentHandler(saving.NewSaveService(repo.ReaderDocuments{DB: sqlitex.DB})))
 	apiGroup.DELETE("/reader/documents/:id", reader.DeleteDocumentHandler)
 
 	// Reading statistics (ADR-028). Deliberately NOT on the metered path:

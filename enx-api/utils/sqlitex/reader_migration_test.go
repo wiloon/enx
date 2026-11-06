@@ -61,3 +61,31 @@ func TestReaderDocumentsAddsUpdatedAtColumnAndBackfillsExistingRows(t *testing.T
 		t.Fatalf("got updated_at=%d, want 1000 (backfilled from created_at)", updatedAt)
 	}
 }
+
+func TestReaderDocumentsAddsVersionToExistingRows(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "version.db")), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := db.Exec(`CREATE TABLE reader_documents (id TEXT PRIMARY KEY,user_id TEXT,content TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,expires_at INTEGER NOT NULL)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO reader_documents VALUES ('legacy','owner','original',1000,2000,3000)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&ReaderDocument{}); err != nil {
+		t.Fatal(err)
+	}
+	var row ReaderDocument
+	if err := db.First(&row, "id = ?", "legacy").Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.Version != 0 || row.Content != "original" || row.LastEditedAt != 2000 || row.ExpiresAt != 3000 {
+		t.Fatalf("migration changed document: %+v", row)
+	}
+}
