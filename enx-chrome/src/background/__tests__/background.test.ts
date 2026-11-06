@@ -274,14 +274,122 @@ describe('background makeApiRequest / Clerk session token', () => {
       })
       ;(chrome.tabs.sendMessage as jest.Mock).mockClear()
       finish(jsonResponse(status, [['fox', 1]]))
-      expect(await previous).toMatchObject({
-        success: false,
-        sessionExpired: true,
-      })
+      const result = await previous
+      // #236: a switch to another signed-in account is an ordinary failure,
+      // never the signed-out state.
+      expect(result).toMatchObject({ success: false })
+      expect(result.sessionExpired).toBeUndefined()
       expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
       expect(global.fetch).toHaveBeenCalledTimes(1)
     }
   )
+
+  it('tells every tab a confirmed 401 expired the session', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
+
+    await makeApiRequest('/api/me')
+
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, {
+      action: 'sessionExpired',
+      cause: 'expired',
+    })
+  })
+
+  it('reports a signed-in user observed as signed out as a session loss, not an account change', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
+    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(200, {}))
+    await makeApiRequest('/api/me')
+    setClerkSession(null)
+
+    const result = await makeApiRequest('/api/me/review-words')
+
+    expect(result).toMatchObject({ success: false, sessionExpired: true })
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, {
+      action: 'sessionExpired',
+      cause: 'signed-out',
+    })
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalledWith(1, {
+      action: 'accountChanged',
+    })
+  })
+
+  it('classifies a request fenced by another request’s 401 as signed out, before the owner update finishes', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
+    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(200, {}))
+    await makeApiRequest('/api/me')
+
+    let finishOther: (response: unknown) => void = () => {}
+    let otherStarted: () => void = () => {}
+    const otherFetching = new Promise<void>(resolve => {
+      otherStarted = resolve
+    })
+    ;(global.fetch as jest.Mock).mockImplementation(async (url: string) => {
+      if (!url.endsWith('/other')) return jsonResponse(401, {})
+      otherStarted()
+      return new Promise(resolve => {
+        finishOther = resolve
+      })
+    })
+    let finishOwnerWrite: () => void = () => {}
+    ;(chrome.storage.session.set as jest.Mock).mockImplementation(
+      () =>
+        new Promise<void>(resolve => {
+          finishOwnerWrite = resolve
+        })
+    )
+
+    const other = makeApiRequest('/other')
+    await otherFetching
+    const expiring = makeApiRequest('/expiring')
+    await new Promise(resolve => setTimeout(resolve, 0))
+    finishOther(jsonResponse(200, {}))
+    expect(await other).toMatchObject({ success: false, sessionExpired: true })
+
+    finishOwnerWrite()
+    expect(await expiring).toMatchObject({
+      success: false,
+      sessionExpired: true,
+    })
+  })
+
+  it('lets a sign-in after a session loss turn an old request into an ordinary failure', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
+    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(200, {}))
+    await makeApiRequest('/api/me')
+    let finish: (response: unknown) => void = () => {}
+    let started: () => void = () => {}
+    const fetching = new Promise<void>(resolve => {
+      started = resolve
+    })
+    ;(global.fetch as jest.Mock).mockImplementationOnce(() => {
+      started()
+      return new Promise(resolve => {
+        finish = resolve
+      })
+    })
+    const previous = makeApiRequest('/api/me/review-words')
+    await fetching
+    const cookie = {
+      cookie: { domain: 'clerk.localhost.test', name: '__client_uat' },
+    }
+
+    setClerkSession(null)
+    await onCookieChanged(cookie)
+    clerkUserId = 'user-b'
+    setClerkSession('clerk-session-jwt')
+    await onCookieChanged(cookie)
+    finish(jsonResponse(200, []))
+
+    const result = await previous
+    expect(result).toMatchObject({ success: false })
+    expect(result.sessionExpired).toBeUndefined()
+    expect(
+      (chrome.tabs.sendMessage as jest.Mock).mock.calls.map(c => c[1])
+    ).toEqual([
+      { action: 'sessionExpired', cause: 'signed-out' },
+      { action: 'accountChanged' },
+    ])
+  })
 
   it('keeps the newest website identity when cookie checks finish out of order', async () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})

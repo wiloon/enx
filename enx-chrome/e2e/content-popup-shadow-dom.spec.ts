@@ -278,7 +278,9 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     await expect(popup).toHaveAttribute('data-e2e-marker', 'first')
   })
 
-  test('§4.1: sessionExpired response still triggers the session-expired notification', async ({
+  // #236: a lookup that ends in a confirmed 401 keeps the popup open in the
+  // signed-out state, and puts nothing else on the host page.
+  test('§4.1: a sessionExpired lookup leaves the popup open, signed out', async ({
     page,
     context,
   }) => {
@@ -286,11 +288,14 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     const popup = page.locator('#enx-anchored-overlay')
 
     await clickHighlightedWord(page, 0)
-    // The popup opens showing loading state, then immediately closes once
-    // the mocked 401/sessionExpired response comes back -- so it may already
-    // be gone by the time we get to check it; only the end state matters here.
-    await expect(popup).toHaveCount(0)
-    await expect(page.locator('#enx-session-expired')).toBeVisible()
+    await expect(
+      popup.locator('[data-testid="word-popover-signed-out"]')
+    ).toHaveText(/You've been signed out\. Sign in to keep looking up words\./)
+    await expect(
+      popup.getByRole('button', { name: 'Sign in' })
+    ).toBeVisible()
+    await expect(page.locator('#enx-session-expired')).toHaveCount(0)
+    await expect.poll(() => getHighlightedWordsCount(page)).toBe(0)
   })
 
   test('§4.1: loading -> success content renders via data-testid hooks', async ({

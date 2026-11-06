@@ -21,7 +21,7 @@ export type EnableFailureReason =
   /** No word data loaded because the request rate limit kept refusing
    *  (ADR-060), even after waiting Retry-After. */
   | 'rate-limited'
-  /** The sign-in session expired (the page already shows its own notice). */
+  /** The sign-in session ended (#236: shown by the badge only). */
   | 'session-expired'
   /** The admin disabled the account (ADR-062 Decision 5). */
   | 'account-disabled'
@@ -56,7 +56,7 @@ const FAILURE_MESSAGES: Record<EnableFailureReason, string> = {
   'lookup-failed':
     "Catglish couldn't load word data for this page. Check your connection and try again.",
   'rate-limited': 'Too many requests. Please wait a moment and try again.',
-  'session-expired': 'Your session has expired. Please sign in again.',
+  'session-expired': "You've been signed out. Sign in to keep looking up words.",
   'account-disabled': ACCOUNT_DISABLED_MESSAGE,
   error: 'Something went wrong while processing this page.',
   'injection-blocked': "Catglish can't run on this page.",

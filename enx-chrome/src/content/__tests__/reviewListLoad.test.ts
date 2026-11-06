@@ -552,6 +552,190 @@ describe('the session expiring', () => {
 
     expect(underlined()).toEqual({})
   })
+
+  it('adds nothing to the page when the review list comes back expired', async () => {
+    const send = await loadContentScript()
+    const bodyChildren = document.body.children.length
+    reviewList = () => ({ success: false, sessionExpired: true })
+
+    expect(await send({ action: 'enxRun' })).toMatchObject({
+      reason: 'session-expired',
+    })
+    expect(document.body.children.length).toBe(bodyChildren)
+  })
+})
+
+// #236: a session that ends shows in the open word popover (amber, with Sign
+// in), never as a notice on the host page.
+describe('the session ending with a word popover open', () => {
+  const signedOutNotice = () =>
+    overlays()[0]?.shadowRoot?.querySelector(
+      '[data-testid="word-popover-signed-out"]'
+    ) ?? null
+  const markKnownButton = () =>
+    overlays()[0]?.shadowRoot?.querySelector(
+      '[data-testid="word-popover-mark-known"]'
+    ) ?? null
+
+  // Holds the next getOneWord answer until the test releases it.
+  const holdLookup = () => {
+    const held: { finish: Callback } = { finish: () => {} }
+    const original = (
+      chrome.runtime.sendMessage as jest.Mock
+    ).getMockImplementation()!
+    ;(chrome.runtime.sendMessage as jest.Mock).mockImplementation(
+      (message: Message, callback?: Callback) => {
+        if (message.type === 'getOneWord' && callback) {
+          sent.push(message)
+          held.finish = callback
+        } else original(message, callback)
+      }
+    )
+    return held
+  }
+
+  const expectSignedOutPopover = (bodyChildren: number) => {
+    expect(overlays()).toHaveLength(1)
+    expect(signedOutNotice()).toHaveTextContent(
+      "You've been signed out. Sign in to keep looking up words."
+    )
+    expect(markKnownButton()).toBeNull()
+    // Only the popover itself was added to the host page.
+    expect(document.body.children.length).toBe(bodyChildren + 1)
+  }
+
+  it('keeps the popover open in the signed-out state when the lookup comes back expired', async () => {
+    const send = await loadContentScript()
+    await send({ action: 'enxRun' })
+    const bodyChildren = document.body.children.length
+    lookup = () => ({ success: false, sessionExpired: true })
+
+    await clickFox()
+
+    expectSignedOutPopover(bodyChildren)
+  })
+
+  it('starts the web sign-in from the popover’s Sign in', async () => {
+    const send = await loadContentScript()
+    await send({ action: 'enxRun' })
+    lookup = () => ({ success: false, sessionExpired: true })
+    await clickFox()
+
+    const signIn = overlays()[0].shadowRoot!.querySelector(
+      '[data-testid="word-popover-signed-out-sign-in"]'
+    ) as HTMLButtonElement
+    signIn.click()
+
+    expect(sent).toContainEqual({ action: 'openWebSignIn' })
+  })
+
+  it.each([
+    ['expired', { status: 'error', reason: 'session-expired' }],
+    ['signed-out', { status: 'off' }],
+  ])(
+    'a %s notification before the response turns learning mode off and the popover signed out; the fenced response cannot refill it',
+    async (cause, finalStatus) => {
+      const send = await loadContentScript()
+      await send({ action: 'enxRun' })
+      showAllObserved()
+      const bodyChildren = document.body.children.length
+      const lookupAnswer = holdLookup()
+      await clickFox()
+
+      await send({ action: 'sessionExpired', cause })
+      lookupAnswer.finish({ success: true, ecp: FOX })
+      await settle()
+
+      expectSignedOutPopover(bodyChildren)
+      expect(underlined()).toEqual({})
+      expect(await send({ action: 'getPageInfo' })).toMatchObject({
+        isEnxEnabled: false,
+      })
+      expect(statusReports().at(-1)).toEqual(finalStatus)
+      if (cause === 'signed-out') {
+        expect(statusReports()).not.toContainEqual(
+          expect.objectContaining({ status: 'error' })
+        )
+      }
+    }
+  )
+
+  it.each([
+    ['expired', { status: 'error', reason: 'session-expired' }],
+    ['signed-out', { status: 'off' }],
+  ])(
+    'an expired response before the %s notification ends the same way',
+    async (cause, finalStatus) => {
+      const send = await loadContentScript()
+      await send({ action: 'enxRun' })
+      showAllObserved()
+      const bodyChildren = document.body.children.length
+      const lookupAnswer = holdLookup()
+      await clickFox()
+
+      lookupAnswer.finish({ success: false, sessionExpired: true })
+      await settle()
+      await send({ action: 'sessionExpired', cause })
+
+      expectSignedOutPopover(bodyChildren)
+      expect(underlined()).toEqual({})
+      expect(statusReports().at(-1)).toEqual(finalStatus)
+    }
+  )
+
+  it('opens no popover, and adds nothing to the page, when none was open', async () => {
+    const send = await loadContentScript()
+    await send({ action: 'enxRun' })
+    const bodyChildren = document.body.children.length
+
+    await send({ action: 'sessionExpired', cause: 'expired' })
+    await settle()
+
+    expect(overlays()).toHaveLength(0)
+    expect(document.body.children.length).toBe(bodyChildren)
+  })
+
+  it('closes the signed-out popover on an account change, and a late old-account answer shows nothing', async () => {
+    const send = await loadContentScript()
+    await send({ action: 'enxRun' })
+    const lookupAnswer = holdLookup()
+    await clickFox()
+    await send({ action: 'sessionExpired', cause: 'signed-out' })
+    await settle()
+    expect(signedOutNotice()).not.toBeNull()
+
+    await send({ action: 'accountChanged' })
+    lookupAnswer.finish({ success: false, sessionExpired: true })
+    await settle()
+
+    expect(overlays()).toHaveLength(0)
+    expect(sent.filter(m => m.type === 'recordWordLookup')).toEqual([])
+  })
+
+  it('closes the signed-out popover when the popup turns learning mode off', async () => {
+    const send = await loadContentScript()
+    await send({ action: 'enxRun' })
+    lookup = () => ({ success: false, sessionExpired: true })
+    await clickFox()
+    await send({ action: 'sessionExpired', cause: 'expired' })
+
+    await send({ action: 'enxStop' })
+
+    expect(overlays()).toHaveLength(0)
+  })
+
+  it('closes the signed-out popover when this script stands down', async () => {
+    const send = await loadContentScript()
+    await send({ action: 'enxRun' })
+    lookup = () => ({ success: false, sessionExpired: true })
+    await clickFox()
+    await send({ action: 'sessionExpired', cause: 'expired' })
+
+    ;(chrome.runtime as { id?: string }).id = undefined
+    document.dispatchEvent(new Event(STAND_DOWN_EVENT))
+
+    expect(overlays()).toHaveLength(0)
+  })
 })
 
 describe('word state changes after the load', () => {

@@ -10,7 +10,12 @@ import {
   lookupWithAi,
   shouldShowAiNotice,
 } from '@/lib/aiLookup'
-import { aiLookupAtom, aiNoticeAtom, currentWordAtom } from '@/store/atoms'
+import {
+  aiLookupAtom,
+  aiNoticeAtom,
+  currentWordAtom,
+  signedOutAtom,
+} from '@/store/atoms'
 import type { WordData } from '@/types'
 
 jest.mock('@/lib/aiLookup', () => ({
@@ -51,7 +56,6 @@ function setup(overrides: Partial<AiLookupDeps> = {}) {
     store,
     isCurrent: jest.fn(() => true),
     onDefined: jest.fn(),
-    onSessionExpired: jest.fn(),
     recordLookup: jest.fn(),
     ...overrides,
   } satisfies AiLookupDeps
@@ -214,13 +218,16 @@ describe('runAiLookup', () => {
     })
   })
 
-  it('hands an expired session to the content script and shows nothing', async () => {
+  it('turns the open popup into the signed-out state when the session expired', async () => {
     lookup.mockResolvedValue({ kind: 'session-expired' })
-    const { deps } = setup()
+    const { store, deps } = setup()
 
     await runAiLookup('rizzler', { auto: false }, deps)
 
-    expect(deps.onSessionExpired).toHaveBeenCalledTimes(1)
+    expect(store.get(signedOutAtom)).toBe(true)
+    expect(store.get(currentWordAtom)).toBeNull()
+    expect(store.get(aiLookupAtom)).toEqual({ status: 'idle' })
+    expect(deps.onDefined).not.toHaveBeenCalled()
   })
 
   // The request cannot be cancelled, so the user may have moved on by the
@@ -234,7 +241,6 @@ describe('runAiLookup', () => {
 
     expect(store.get(currentWordAtom)).toMatchObject({ English: 'another' })
     expect(deps.onDefined).not.toHaveBeenCalled()
-    expect(deps.onSessionExpired).not.toHaveBeenCalled()
     expect(shouldShow).not.toHaveBeenCalled()
   })
 })

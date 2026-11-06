@@ -41,6 +41,9 @@ describe('badgeFor (adr-046 Decision 1)', () => {
     expect(badgeFor({ status: 'error', reason: 'session-expired' }).title).toBe(
       failureMessage('session-expired')
     )
+    expect(badgeFor({ status: 'error', reason: 'session-expired' }).title).toBe(
+      "You've been signed out. Sign in to keep looking up words."
+    )
   })
 
   it('asks a signed-out user to sign in (Decision 7)', () => {

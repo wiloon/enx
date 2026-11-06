@@ -72,7 +72,14 @@ import {
   errorAtom,
   errorNeedsReloadAtom,
   sentencePanelHintAtom,
+  signedOutAtom,
 } from '@/store/atoms'
+import {
+  isSignedOutFailure,
+  showSignedOut,
+  statusAfterSessionLoss,
+  type SessionLossCause,
+} from '@/lib/signedOut'
 import WordPopover from '@/components/WordPopover'
 import {
   handleLookupMiss,
@@ -104,7 +111,6 @@ const siteOrigins: SiteOrigins = {
 // come back empty. Literals, kept in step with index.css by hand -- and kept
 // together here rather than buried in the cssText blocks that use them.
 const HOST_PAGE_COLORS = {
-  destructive: 'oklch(0.577 0.245 27.325)', // mirrors --color-destructive
   // ADR-025, the sentence a word click opened the panel for. The one warm
   // accent in the system, and intentionally so: it is a transient locator on
   // someone else's page, where a warm wash stays legible against backgrounds
@@ -447,10 +453,10 @@ const showWordPopover = async (word: string, reference: Range) => {
   // The AI word fallback (ADR-045): what a lookup that found nothing offers,
   // and what to do with an AI-made definition. Its answer can arrive seconds
   // later, after the user has clicked another word, so every step checks that
-  // this popup is still the current one.
+  // this popup is still the current one -- and the account it was asked for.
   const aiDeps: AiLookupDeps = {
     store: contentScriptStore,
-    isCurrent: () => currentOverlay === overlay,
+    isCurrent: () => currentOverlay === overlay && isCurrentAccount(),
     onDefined: defined => {
       wordCache[wordKey(word)] = defined
       wordChanged(word)
@@ -461,10 +467,6 @@ const showWordPopover = async (word: string, reference: Range) => {
         word: word.trim().toLowerCase(),
         ecp: defined,
       })
-    },
-    onSessionExpired: () => {
-      overlay.hidePopover()
-      showSessionExpiredMessage()
     },
     recordLookup,
   }
@@ -481,6 +483,7 @@ const showWordPopover = async (word: string, reference: Range) => {
         onMarkKnown={handleMarkKnown}
         onOpenSentencePanel={handleOpenSentencePanel}
         onAiLookup={handleAiLookup}
+        onSignIn={() => void sendRuntimeMessage({ action: 'openWebSignIn' })}
       />
     </Provider>
   )
@@ -490,6 +493,7 @@ const showWordPopover = async (word: string, reference: Range) => {
   contentScriptStore.set(isTranslatingAtom, true)
   contentScriptStore.set(errorAtom, null)
   contentScriptStore.set(errorNeedsReloadAtom, false)
+  contentScriptStore.set(signedOutAtom, false)
   contentScriptStore.set(sentencePanelHintAtom, null)
   resetAiLookup(contentScriptStore)
 
@@ -544,10 +548,8 @@ const showWordPopover = async (word: string, reference: Range) => {
       // Nothing found: the server says whether the AI fallback starts by
       // itself, is offered as a button, or is for subscribers only.
       handleLookupMiss(wordData, aiDeps)
-    } else if (response.sessionExpired) {
-      console.log('Session expired, showing session expired message')
-      overlay.hidePopover()
-      showSessionExpiredMessage()
+    } else if (isSignedOutFailure(response)) {
+      showSignedOut(contentScriptStore)
     } else {
       const errorMessage = response.error || 'Translation service unavailable'
       console.error('Translation failed:', errorMessage)
@@ -789,78 +791,6 @@ const setActiveSentenceHighlight = (range: Range) => {
   activeSentenceHighlightCleanup = clear
 }
 
-// Show authentication error message
-const showSessionExpiredMessage = (isLoginError = false) => {
-  // Remove any existing session message
-  const existingMessage = document.getElementById('enx-session-expired')
-  if (existingMessage) {
-    existingMessage.remove()
-  }
-
-  const title = isLoginError ? 'Login Required' : 'Session Expired'
-  const message = isLoginError
-    ? 'Please click the Catglish extension icon to login.'
-    : 'Your session has expired. Please click the Catglish extension icon to login again.'
-
-  // Create notification
-  const notification = document.createElement('div')
-  notification.id = 'enx-session-expired'
-  notification.dataset.enxUi = ''
-  notification.style.cssText = `
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    background: ${HOST_PAGE_COLORS.destructive};
-    color: white;
-    padding: 16px 20px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    z-index: 10001;
-    max-width: 320px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 14px;
-    line-height: 1.4;
-    animation: slideIn 0.3s ease-out;
-  `
-
-  notification.innerHTML = `
-    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-      <div>
-        <div style="font-weight: bold; margin-bottom: 4px;">${title}</div>
-        <div style="font-size: 13px; opacity: 0.9;">${message}</div>
-      </div>
-      <button id="enx-close-session-msg" style="background: none; border: none; color: white; font-size: 18px; cursor: pointer; padding: 0; margin-left: 12px;">×</button>
-    </div>
-  `
-
-  // Add CSS animation
-  const style = document.createElement('style')
-  style.textContent = `
-    @keyframes slideIn {
-      from { transform: translateX(100%); opacity: 0; }
-      to { transform: translateX(0); opacity: 1; }
-    }
-  `
-  document.head.appendChild(style)
-
-  document.body.appendChild(notification)
-
-  // Add close button event
-  const closeBtn = notification.querySelector('#enx-close-session-msg')
-  if (closeBtn) {
-    closeBtn.addEventListener('click', () => {
-      notification.remove()
-    })
-  }
-
-  // Auto remove after 10 seconds
-  setTimeout(() => {
-    if (notification.parentNode) {
-      notification.remove()
-    }
-  }, 10000)
-}
-
 // Process article content and add word highlighting. `isCurrent` (SPA
 // auto-rebuild, ADR-011 Decision 6) is checked at every await boundary so a
 // run superseded by a newer tweet switch abandons instead of highlighting
@@ -953,7 +883,6 @@ const processArticleContent = async (
     if (!loaded.ok) {
       console.log(`Review list not loaded: ${loaded.reason}`)
       if (loaded.reason === 'session-expired') {
-        showSessionExpiredMessage()
         return failed('session-expired')
       }
       if (loaded.reason === 'account-disabled') {
@@ -1552,8 +1481,9 @@ const enableEnx = async (
   return outcome
 }
 
-// Disable ENX functionality
-const disableEnx = () => {
+// Disable ENX functionality. A lost session keeps the open word popover, to
+// show the signed-out state in it (#236).
+const disableEnx = ({ keepPopover = false } = {}) => {
   if (!isEnxEnabled) return
 
   console.log('Disabling ENX functionality')
@@ -1570,8 +1500,7 @@ const disableEnx = () => {
   hideSelectionTranslateButton()
   spaRebuilderInstance?.stop()
 
-  // Hide overlay
-  hideCurrentOverlay()
+  if (!keepPopover) hideCurrentOverlay()
 
   // Drop the highlights and the click listener (ADR-011 Decision 1): no
   // element unwrapping, no reflow.
@@ -1697,6 +1626,8 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
     case 'enxStop':
       disableEnx()
+      // A signed-out popover outlives learning mode.
+      hideCurrentOverlay()
       sendResponse({ success: true })
       break
 
@@ -1733,22 +1664,26 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       accountScope.clear()
       reviewList.clear()
       disableEnx()
+      // Also a signed-out popover, so it closes on sign-in.
+      hideCurrentOverlay()
       sendResponse({ success: true })
       break
 
-    case 'sessionExpired':
-      console.log('Session expired notification received')
+    // #236: the session ended. Learning mode stops, an open word popover
+    // stays and shows the signed-out state; nothing goes on the page.
+    case 'sessionExpired': {
+      const cause: SessionLossCause =
+        request.cause === 'signed-out' ? 'signed-out' : 'expired'
       accountScope.clear()
       // The next account must not see this one's words (ADR-069).
       reviewList.clear()
-      showSessionExpiredMessage()
-      // Disable ENX functionality if it's currently enabled
-      if (isEnxEnabled) {
-        disableEnx()
-        reportStatus({ status: 'error', reason: 'session-expired' })
-      }
+      const wasEnabled = isEnxEnabled
+      disableEnx({ keepPopover: true })
+      if (currentOverlay) showSignedOut(contentScriptStore)
+      if (wasEnabled) reportStatus(statusAfterSessionLoss(cause))
       sendResponse({ success: true })
       break
+    }
 
     default:
       sendResponse({ success: false, error: 'Unknown action' })

@@ -28,6 +28,10 @@ export const errorAtom = atom<string | null>(null)
 // it offers a Reload page button.
 export const errorNeedsReloadAtom = atom(false)
 
+// The word popup's session ended (#236): it shows the signed-out state with
+// Sign in in place of a definition.
+export const signedOutAtom = atom(false)
+
 // The AI word fallback inside the word popup (ADR-045): what a lookup that
 // found nothing offers, and where an AI lookup stands.
 export type AiLookupState =

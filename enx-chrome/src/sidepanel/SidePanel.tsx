@@ -37,6 +37,8 @@ import { countLookup, type RecordLookup } from '@/lib/queryCount'
 import { isLookupQuotaExceeded } from '@/lib/rateLimit'
 import { config } from '@/config/env'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
+import SignedOutNotice from '@/components/SignedOutNotice'
+import { isSignedOutFailure, SIGNED_OUT_MESSAGE } from '@/lib/signedOut'
 import {
   WORD_HIGHLIGHT_KEY,
   getWordHighlightEnabled,
@@ -255,6 +257,11 @@ function PhraseConfirmButton({
   )
 }
 
+// A signed-out row's Sign in: the ADR-020 web sign-in, back to the article tab.
+const openWebSignIn = () => {
+  void chrome.runtime.sendMessage({ action: 'openWebSignIn' })
+}
+
 // What an AI-call error row says: a 402 is the user's credit running out,
 // which reads better as that than as the server's own wording.
 function contextErrorDisplay(
@@ -300,7 +307,9 @@ function WordCard({
   // its Retry redoes the dictionary too when that never loaded.
   const contextErrorText =
     card.contextStatus === 'error'
-      ? contextErrorDisplay(card.contextError, card.contextErrorHttpStatus)
+      ? card.contextSessionExpired
+        ? SIGNED_OUT_MESSAGE
+        : contextErrorDisplay(card.contextError, card.contextErrorHttpStatus)
       : undefined
   const quotaExceeded = isLookupQuotaExceeded({
     status: card.dictionaryErrorHttpStatus,
@@ -308,9 +317,11 @@ function WordCard({
   })
   const dictionaryErrorText =
     card.dictionaryStatus === 'error'
-      ? quotaExceeded
-        ? "You've used up today's free lookups"
-        : card.dictionaryError
+      ? card.dictionarySessionExpired
+        ? SIGNED_OUT_MESSAGE
+        : quotaExceeded
+          ? "You've used up today's free lookups"
+          : card.dictionaryError
       : undefined
   const showContextError =
     contextErrorText !== undefined && contextErrorText !== shownAbove
@@ -404,7 +415,14 @@ function WordCard({
       {/* Kept off the headline row: an error (e.g. session expiry) read as a
           real translation there. Its own row + retry button makes it
           obviously an error and recoverable. */}
-      {showContextError && (
+      {showContextError && card.contextSessionExpired && (
+        <SignedOutNotice
+          testId={`sidepanel-context-signed-out-${card.word}`}
+          onSignIn={openWebSignIn}
+          className="text-xs px-2 py-1 mt-2"
+        />
+      )}
+      {showContextError && !card.contextSessionExpired && (
         <div
           className="flex items-center justify-between gap-2 text-destructive text-xs bg-destructive/10 rounded-sm px-2 py-1 mt-2"
           data-testid={`sidepanel-context-error-${card.word}`}
@@ -428,7 +446,14 @@ function WordCard({
       {/* Dictionary half's own error row -- the free daily lookup quota
           (TASK-SPEC §4.2) gets an upgrade link; any other failure, the
           request rate limit's 429 included, shows its own message. */}
-      {showDictionaryError && (
+      {showDictionaryError && card.dictionarySessionExpired && (
+        <SignedOutNotice
+          testId={`sidepanel-dictionary-signed-out-${card.word}`}
+          onSignIn={openWebSignIn}
+          className="text-xs px-2 py-1 mt-2"
+        />
+      )}
+      {showDictionaryError && !card.dictionarySessionExpired && (
         <div
           className="flex items-center justify-between gap-2 text-destructive text-xs bg-destructive/10 rounded-sm px-2 py-1 mt-2"
           data-testid={`sidepanel-dictionary-error-${card.word}`}
@@ -560,7 +585,9 @@ function SentenceBlock({
 
   const sentenceErrorText =
     entry.status === 'error'
-      ? contextErrorDisplay(entry.errorMessage, entry.errorHttpStatus)
+      ? entry.sessionExpired
+        ? SIGNED_OUT_MESSAGE
+        : contextErrorDisplay(entry.errorMessage, entry.errorHttpStatus)
       : undefined
 
   // Total words in the sentence -- invariant per entry, so a selection that
@@ -654,7 +681,14 @@ function SentenceBlock({
             testId="sidepanel-loading"
           />
         )}
-        {entry.status === 'error' && (
+        {entry.status === 'error' && entry.sessionExpired && (
+          <SignedOutNotice
+            testId="sidepanel-signed-out"
+            onSignIn={openWebSignIn}
+            className="px-2 py-1"
+          />
+        )}
+        {entry.status === 'error' && !entry.sessionExpired && (
           <div
             className="flex items-center justify-between gap-2 flex-wrap text-destructive"
             data-testid="sidepanel-error"
@@ -950,6 +984,7 @@ function SidePanelContent() {
               ? undefined
               : response.error || 'Translation failed',
             contextErrorHttpStatus: resolved ? undefined : response.status,
+            contextSessionExpired: isSignedOutFailure(response),
             contextStatus: resolved ? 'loaded' : 'error',
           })
         })
@@ -960,6 +995,7 @@ function SidePanelContent() {
             contextWhy: undefined,
             contextError: 'Translation failed',
             contextErrorHttpStatus: undefined,
+            contextSessionExpired: false,
           })
         })
     },
@@ -1033,6 +1069,7 @@ function SidePanelContent() {
                 ? undefined
                 : response.status,
               dictionaryErrorCode: response.success ? undefined : response.code,
+              dictionarySessionExpired: isSignedOutFailure(response),
             })
             return {
               current: true,
@@ -1047,6 +1084,7 @@ function SidePanelContent() {
               dictionaryError: 'Dictionary lookup failed',
               dictionaryErrorHttpStatus: undefined,
               dictionaryErrorCode: undefined,
+              dictionarySessionExpired: false,
             })
             return { current: true }
           })
@@ -1181,6 +1219,7 @@ function SidePanelContent() {
             patch({
               errorMessage: response.error || 'Translation service unavailable',
               errorHttpStatus: response.status,
+              sessionExpired: isSignedOutFailure(response),
               status: 'error',
             })
           }
@@ -1190,6 +1229,7 @@ function SidePanelContent() {
           patch({
             errorMessage: 'Translation service unavailable',
             errorHttpStatus: undefined,
+            sessionExpired: false,
             status: 'error',
           })
         })

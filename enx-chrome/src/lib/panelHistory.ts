@@ -34,6 +34,8 @@ export interface WordCardData {
   dictionaryError?: string
   dictionaryErrorHttpStatus?: number
   dictionaryErrorCode?: string
+  // The failure was a lost session (#236): the row offers Sign in.
+  dictionarySessionExpired?: boolean
   contextChinese?: string
   // One short clause explaining why contextChinese differs from
   // dictionaryChinese, when the model judged the gap worth flagging. Empty
@@ -44,6 +46,7 @@ export interface WordCardData {
   // Set alongside contextError when contextStatus is 'error'. 402 means the
   // AI translation credit balance ran out (TASK-SPEC §4.1).
   contextErrorHttpStatus?: number
+  contextSessionExpired?: boolean
   contextStatus: FetchStatus | 'none'
   // The sentence text this card's context translation was fetched against,
   // set only for a TOP-LEVEL card (ADR-023: a main-page phrase lookup,
@@ -76,6 +79,7 @@ export interface SentenceEntry {
   chinese: string
   errorMessage: string
   errorHttpStatus?: number
+  sessionExpired?: boolean
   words: WordCardData[]
 }
 
