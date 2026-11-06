@@ -1585,6 +1585,28 @@ const runLearningMode = (
   return enableEnx(report)
 }
 
+// A superseded auto-enable must not roll back the run that replaced it.
+const runAutoLearningMode = async (
+  report: (status: LearningModeStatus) => void = reportStatus
+): Promise<EnableOutcome> => {
+  const run = runLearningMode(report)
+  const lifecycle = learningModeLifecycle
+  const isCurrentNavigation = isSpaPage()
+    ? getSpaRebuilder().makeIsCurrent()
+    : () => true
+  const isCurrent = () =>
+    !standDown.isStoodDown() &&
+    lifecycle === learningModeLifecycle &&
+    isCurrentNavigation()
+  try {
+    const outcome = await run
+    return isCurrent() ? outcome : ENABLE_OK
+  } catch (error) {
+    if (!isCurrent()) return ENABLE_OK
+    throw error
+  }
+}
+
 // ADR-010 Decision 1: an adapter can declare the current page out of scope.
 const isPageSupported = () =>
   !resolveSiteAdapter(window.location, siteOrigins).pageSupport?.(
@@ -1657,7 +1679,9 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       void autoEnableOnSignInReturn({
         isPageSupported,
         enable: () =>
-          runLearningMode(status => reportStatus(withoutErrorBadge(status))),
+          runAutoLearningMode(status =>
+            reportStatus(withoutErrorBadge(status))
+          ),
         disable: disableEnx,
         keepsWatching: isSpaPage,
         clearStatus: () => reportStatus({ status: 'off' }),
@@ -1749,7 +1773,7 @@ void maybeAutoEnable({
   askBackground: async () =>
     (await sendToBackground({ type: 'shouldAutoEnable' })).autoEnable === true,
   isPageSupported,
-  enable: runLearningMode,
+  enable: runAutoLearningMode,
   disable: disableEnx,
   keepsWatching: isSpaPage,
 })

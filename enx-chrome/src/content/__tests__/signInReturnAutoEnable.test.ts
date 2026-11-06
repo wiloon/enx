@@ -170,7 +170,64 @@ describe('auto-enable on a sign-in return', () => {
     expect(listRequests()).toHaveLength(0)
   })
 
+  it.each([false, true])('rolls back a thrown error (SPA: %s)', async spa => {
+    const navigation = new FakeNavigation()
+    ;(window as { navigation?: unknown }).navigation = navigation
+    const send = await loadContentScript(spa ? SPA_ORIGINS : {})
+    if (spa) {
+      const add = navigation.addEventListener.bind(navigation)
+      jest
+        .spyOn(navigation, 'addEventListener')
+        .mockImplementation((type, listener) => {
+          add(type, listener)
+          throw new Error('navigation unavailable')
+        })
+    } else {
+      const add = document.addEventListener.bind(document)
+      jest.spyOn(document, 'addEventListener').mockImplementation(((
+        type,
+        listener,
+        options
+      ) => {
+        add(type, listener, options)
+        if (type === 'selectionchange') throw new Error('listener unavailable')
+      }) as typeof document.addEventListener)
+    }
+    await signInReturn(send)
+    if (spa) await spaSettle()
+    else await settle()
+    expect(await finalStatus(send)).toEqual({ status: 'off' })
+    expect(await isEnabled(send)).toBe(false)
+    expect(navigation.listeners).toHaveLength(0)
+  })
+
   describe('on a static site', () => {
+    it('does not roll back a newer run when an old account failure arrives', async () => {
+      let finishOld: Callback = () => {}
+      ;(chrome.runtime.sendMessage as jest.Mock).mockImplementation(
+        (message: Message, callback?: Callback) => {
+          sent.push(message)
+          if (message.type === 'getReviewWords' && !finishOldCalled) {
+            finishOldCalled = true
+            finishOld = callback!
+          } else callback?.(respond(message))
+        }
+      )
+      let finishOldCalled = false
+      const send = await loadContentScript()
+      await signInReturn(send)
+      await settle()
+      expect(finishOldCalled).toBe(true)
+      await send({ action: 'accountChanged' })
+      await signInReturn(send)
+      await settle()
+      expect(await finalStatus(send)).toEqual({ status: 'ready' })
+      finishOld({ success: false, accountDisabled: true })
+      await settle()
+      expect(await finalStatus(send)).toEqual({ status: 'ready' })
+      expect(await isEnabled(send)).toBe(true)
+    })
+
     it('rolls back to off after an actionable failure, with no error badge', async () => {
       reviewList = () => LIST_FAILED
       const send = await loadContentScript()
