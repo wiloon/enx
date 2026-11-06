@@ -1,5 +1,12 @@
 # AI Contributions History
 
+## 2026-11-05: Fail closed on indeterminate billing eligibility — issue #347
+
+**Agent**: Codex
+**Solution**: Resolved conflicts whose live status is neither billable nor ended return a retryable error unless a known conflict already blocks. Tier and Portal rules also reject an empty accepted status; Checkout and Portal propagate those errors. Shared eligibility fixtures and the healthy-status definition stay in one place.
+
+**Lesson (live billing observations)**: A successful Stripe request can still return state the rule cannot interpret. Test both failed reads and indeterminate returned values through the eligibility rules and their callers. A known blocker keeps precedence over indeterminate conflicts. Proving a period-end cancellation from `cancel_at` requires the subscription item's period end; missing timing must preserve the conservative deletion check.
+
 ## 2026-11-05: Preserve pending Side Panel results through Clear/Undo — issue #622
 
 **Agent**: Codex

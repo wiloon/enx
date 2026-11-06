@@ -7,10 +7,6 @@ import (
 	"enx-api/billing/acceptance"
 )
 
-func accepted(tier, status string) *Accepted {
-	return &Accepted{Tier: tier, Live: Live{Status: status, CurrentPeriodEnd: periodEnd}}
-}
-
 func TestTierEntry(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -24,13 +20,13 @@ func TestTierEntry(t *testing.T) {
 			want: Entry{Kind: EntryCheckout},
 		},
 		{
-			name:    "an ended accepted subscription allows repurchase of the same tier",
+			name:    "an ended accepted subscription allows a new subscription to the same tier",
 			account: Account{Accepted: accepted("pro", "canceled")},
 			tier:    "pro",
 			want:    Entry{Kind: EntryCheckout},
 		},
 		{
-			name:    "an expired first checkout allows repurchase of another tier",
+			name:    "an expired first checkout allows a new subscription to another tier",
 			account: Account{Accepted: accepted("pro", "incomplete_expired")},
 			tier:    "max",
 			want:    Entry{Kind: EntryCheckout},
@@ -120,7 +116,7 @@ func TestTierEntry(t *testing.T) {
 			want:    Entry{Kind: EntryBlocked, Reason: ReasonSubscriptionConflict},
 		},
 		{
-			name:    "a blocking conflict blocks repurchase after the accepted subscription ended",
+			name:    "a blocking conflict blocks a new subscription after the accepted subscription ended",
 			account: Account{BlockingConflictID: "sub_b", Accepted: accepted("pro", "canceled")},
 			tier:    "pro",
 			want:    Entry{Kind: EntryBlocked, Reason: ReasonSubscriptionConflict},
@@ -128,8 +124,9 @@ func TestTierEntry(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := TierEntry(tc.account, tc.tier); got != tc.want {
-				t.Fatalf("TierEntry = %+v, want %+v", got, tc.want)
+			got, err := TierEntry(tc.account, tc.tier)
+			if err != nil || got != tc.want {
+				t.Fatalf("TierEntry = %+v, %v; want %+v", got, err, tc.want)
 			}
 		})
 	}
@@ -152,66 +149,26 @@ func TestPortalRestricted(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := PortalRestricted(tc.account); got != tc.want {
-				t.Fatalf("PortalRestricted = %v, want %v", got, tc.want)
+			got, err := PortalRestricted(tc.account)
+			if err != nil || got != tc.want {
+				t.Fatalf("PortalRestricted = %v, %v; want %v", got, err, tc.want)
 			}
 		})
 	}
 }
 
-func TestBlockingConflict(t *testing.T) {
-	cases := []struct {
-		name    string
-		owned   []Owned
-		want    string
-		wantErr error
-	}{
-		{name: "no conflict", owned: []Owned{{ID: "sub_a", Live: live("active")}}, want: ""},
-		{name: "an open conflict blocks even after Stripe ended it", owned: []Owned{{ID: "sub_b", Conflict: ConflictOpen, Live: live("canceled")}}, want: "sub_b"},
-		{name: "an open conflict blocks without a live lookup", owned: []Owned{{ID: "sub_b", Conflict: ConflictOpen}}, want: "sub_b"},
-		{name: "a resolved conflict still billable blocks", owned: []Owned{{ID: "sub_b", Conflict: ConflictResolved, Live: live("past_due")}}, want: "sub_b"},
-		{name: "a resolved conflict with a period-end cancellation still blocks while billable", owned: []Owned{{ID: "sub_b", Conflict: ConflictResolved, Live: &Live{Status: "active", CancelAtPeriodEnd: true}}}, want: "sub_b"},
-		{name: "a resolved conflict Stripe canceled does not block", owned: []Owned{{ID: "sub_b", Conflict: ConflictResolved, Live: live("canceled")}}, want: ""},
-		{name: "a resolved conflict stored as canceled does not block", owned: []Owned{{ID: "sub_b", Conflict: ConflictResolved, StoredStatus: "canceled"}}, want: ""},
-		{name: "a resolved conflict whose live state is unknown fails closed", owned: []Owned{{ID: "sub_b", Conflict: ConflictResolved, StoredStatus: "active"}}, wantErr: ErrLiveStateUnknown},
-		{
-			name: "a known blocking conflict wins over another's unknown state",
-			owned: []Owned{
-				{ID: "sub_b", Conflict: ConflictResolved, StoredStatus: "active"},
-				{ID: "sub_c", Conflict: ConflictOpen},
-			},
-			want: "sub_c",
-		},
-		{
-			name: "the smallest blocking ID wins whatever the store order",
-			owned: []Owned{
-				{ID: "sub_z", Conflict: ConflictOpen},
-				{ID: "sub_m", Conflict: ConflictResolved, Live: live("active")},
-				{ID: "sub_c", Conflict: ConflictResolved, Live: live("canceled")},
-				{ID: "sub_d", Conflict: ConflictResolved, StoredStatus: "active"},
-				{ID: "sub_n", Conflict: ConflictOpen, Live: live("canceled")},
-			},
-			want: "sub_m",
-		},
-		{
-			name: "ended, unconflicted and unknown rows are no candidates",
-			owned: []Owned{
-				{ID: "sub_a", Conflict: NoConflict, Live: live("active")},
-				{ID: "sub_b", Conflict: ConflictResolved, Live: live("canceled")},
-				{ID: "sub_c", Conflict: ConflictResolved, StoredStatus: "active"},
-			},
-			wantErr: ErrLiveStateUnknown,
-		},
+func TestTierEntryRequiresTheAcceptedLiveStatus(t *testing.T) {
+	a := Account{Accepted: &Accepted{Tier: "pro"}}
+	_, err := TierEntry(a, "max")
+	if !errors.Is(err, ErrLiveStateUnknown) {
+		t.Fatalf("TierEntry error = %v; want ErrLiveStateUnknown", err)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := BlockingConflict(tc.owned)
-			if !errors.Is(err, tc.wantErr) {
-				t.Fatalf("BlockingConflict error = %v, want %v", err, tc.wantErr)
-			}
-			if got != tc.want {
-				t.Fatalf("BlockingConflict = %q, want %q", got, tc.want)
-			}
-		})
+}
+
+func TestPortalRestrictionRequiresTheAcceptedLiveStatus(t *testing.T) {
+	a := Account{Accepted: &Accepted{Tier: "pro"}}
+	_, err := PortalRestricted(a)
+	if !errors.Is(err, ErrLiveStateUnknown) {
+		t.Fatalf("PortalRestricted error = %v; want ErrLiveStateUnknown", err)
 	}
 }

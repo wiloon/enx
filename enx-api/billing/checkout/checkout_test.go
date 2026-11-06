@@ -115,6 +115,34 @@ func TestSubscriptionCheckoutIsRefusedForAnActiveSubscriber(t *testing.T) {
 	}
 }
 
+func TestSubscriptionCheckoutRetriesAnIndeterminateResolvedConflict(t *testing.T) {
+	for _, status := range []string{"paused", "future_status", ""} {
+		t.Run(status, func(t *testing.T) {
+			owner := portalsession.Owner{CustomerID: "cus_1", Owned: []eligibility.Owned{
+				{ID: "sub_old", Conflict: eligibility.ConflictResolved, StoredStatus: "active"},
+			}}
+			stripe := fakeStripe{subs: map[string]portalsession.Subscription{"sub_old": live(status)}}
+
+			customer, err := prepare(t, owner, stripe, "pro")
+
+			if !errors.Is(err, eligibility.ErrLiveStateUnknown) || customer != "" {
+				t.Fatalf("Prepare = %q, %v; want ErrLiveStateUnknown and no Customer", customer, err)
+			}
+		})
+	}
+}
+
+func TestSubscriptionCheckoutRetriesAnEmptyAcceptedLiveStatus(t *testing.T) {
+	owner := portalsession.Owner{AcceptedID: "sub_live", AcceptedCustomerID: "cus_acc", CustomerID: "cus_1"}
+	stripe := fakeStripe{subs: map[string]portalsession.Subscription{"sub_live": live("")}}
+
+	customer, err := prepare(t, owner, stripe, "max")
+
+	if !errors.Is(err, eligibility.ErrLiveStateUnknown) || customer != "" {
+		t.Fatalf("Prepare = %q, %v; want retryable unknown state and no Customer", customer, err)
+	}
+}
+
 func TestSubscriptionCheckoutAfterAnEndedSubscriptionUsesTheNormalCustomer(t *testing.T) {
 	owner := portalsession.Owner{AcceptedID: "sub_gone", AcceptedCustomerID: "cus_acc", CustomerID: "cus_1"}
 	customer, err := prepare(t, owner, fakeStripe{subs: map[string]portalsession.Subscription{"sub_gone": live("canceled")}}, "pro")

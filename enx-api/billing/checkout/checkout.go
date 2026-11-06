@@ -75,8 +75,14 @@ func (s *Service) Prepare(ctx context.Context, userID, tier string) (string, err
 		accepted.Status = sub.Status
 		account.Accepted = &eligibility.Accepted{Live: sub.Live}
 	}
-	if tier != "" && eligibility.TierEntry(account, tier).Kind != eligibility.EntryCheckout {
-		return "", ErrRefused
+	if tier != "" {
+		entry, err := eligibility.TierEntry(account, tier)
+		if err != nil {
+			return "", err
+		}
+		if entry.Kind != eligibility.EntryCheckout {
+			return "", ErrRefused
+		}
 	}
 	return attribution.SelectCustomer([]string{owner.CustomerID}, accepted), nil
 }

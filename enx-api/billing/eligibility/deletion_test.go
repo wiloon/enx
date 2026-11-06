@@ -2,12 +2,6 @@ package eligibility
 
 import "testing"
 
-const periodEnd = 2000
-
-func live(status string) *Live {
-	return &Live{Status: status, CurrentPeriodEnd: periodEnd}
-}
-
 func TestDeletion(t *testing.T) {
 	cases := []struct {
 		name  string

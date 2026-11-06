@@ -168,7 +168,10 @@ func (s *Service) PlanChange(ctx context.Context, userID, tier string) (string, 
 		a.account.Accepted.Tier = itemTier
 	}
 
-	entry := eligibility.TierEntry(a.account, tier)
+	entry, err := eligibility.TierEntry(a.account, tier)
+	if err != nil {
+		return "", unavailable(err)
+	}
 	switch entry.Kind {
 	case eligibility.EntryBlocked:
 		blocked := &BlockedError{Reason: entry.Reason}
@@ -260,8 +263,11 @@ func (s *Service) home(ctx context.Context, a assessment) (string, error) {
 		return "", ErrNoCustomer
 	}
 	var configurationID string
-	var err error
-	if eligibility.PortalRestricted(a.account) {
+	restricted, err := eligibility.PortalRestricted(a.account)
+	if err != nil {
+		return "", unavailable(err)
+	}
+	if restricted {
 		configurationID, err = s.stripe.RestrictedConfiguration(ctx)
 	} else {
 		var tierPrices map[string]string
