@@ -215,6 +215,16 @@ describe('Comparison', () => {
     expect(link).toHaveAttribute('target', '_blank')
   })
 
+  it('lists Catglish itself, ranked by users like the others', () => {
+    render(<Comparison />)
+    const names = screen.getAllByRole('link').map((a) => a.textContent)
+    expect(names.at(-1)).toBe('Catglish')
+    expect(screen.getByRole('link', { name: 'Catglish' })).toHaveAttribute(
+      'href',
+      SITE.chromeWebStoreUrl
+    )
+  })
+
   it('shows the data-freshness disclaimer', () => {
     render(<Comparison />)
     expect(screen.getByText(/approximate as of/i)).toBeInTheDocument()

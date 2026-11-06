@@ -1,5 +1,7 @@
 import { ExternalLink } from 'lucide-react'
 
+import { SITE } from '@/lib/site'
+
 // Similar apps in this space, ranked by reach (Chrome Web Store users, or
 // GitHub stars where the project is open source). No feature comparison —
 // see market-research.md if that's needed elsewhere.
@@ -149,6 +151,13 @@ const APPS: App[] = [
     description:
       'AI reader that explains words in context and simplifies sentences to your level.',
     users: 1_000,
+  },
+  {
+    name: SITE.name,
+    url: SITE.chromeWebStoreUrl,
+    description:
+      'Click any word for its meaning, translate sentences in a side panel, and see looked-up words underlined wherever they reappear.',
+    users: 2,
   },
 ].sort((a, b) => (b.users ?? b.stars ?? 0) - (a.users ?? a.stars ?? 0))
 
