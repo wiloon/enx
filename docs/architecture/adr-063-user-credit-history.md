@@ -72,7 +72,7 @@ related: adr-009（两池积分账本）、adr-012（Settle 事后扣费）、ad
 
 - 用户能自己查积分去向，管理员在客服对话里看到的和用户看到的是同一个列表。
 - 试用过期的 `EXPIRE` 行最多晚一小时出现，不再等用户下一次用 AI；enx-api 多一个每小时运行的后台任务。
-- 订阅用户每次续费会多一行 `EXPIRE`（上期有剩余时）。管理员页 adr-049 的累计数里，`EXPIRE` 以前只来自试用，现在也会来自订阅，`sourceOf` 需要按 `feature` 区分。
+- 订阅用户每次续费会多一行 `EXPIRE`（上期有剩余时）。管理员页 adr-049 的累计数里，`EXPIRE` 以前只来自试用，现在也会来自订阅，`sourceOf` 需要接收 `feature` 并区分：试用过期用 `SourceTrial`（`trial`），订阅过期用 `SourceStripe`（`stripe`），沿用订阅发放的来源。
 - 试用过期后才领到的邀请奖励，不再让过期前剩下的试用积分重新可用（第 9 条）。
 - 以后新增流水类型或写入点，只要经过第 7 条的共用函数就自动带上合计余额；标签在共用的一处添加，两个页面同时生效。
 - 老行显示 "—"，直到用户的流水完全是新数据为止。
@@ -80,13 +80,13 @@ related: adr-009（两池积分账本）、adr-012（Settle 事后扣费）、ad
 ## Verification
 
 1. **enx-api 测试**（流水写入使用真实 SQLite，经过生产入口，不用已弃用的 `credit.GrantSubscription`、`GrantTopup`、`Clawback`）：
-   - 发放、消耗和管理员操作走现用 `credit` 函数，充值、订阅和退款分别走 `repo.ApplyCheckoutCompleted`、`repo.ApplyInvoicePaid`、`repo.ApplyClawback`；校验持久化流水、池余额和合计，并验证各 repo 写入的 `ErrStale` 检查及事务回滚。
+   - 发放、消耗和管理员操作走现用 `credit` 函数，充值、订阅和退款走 `repo.WebhookEffects.Apply`，分别传入 `checkoutcompleted.Effects`、`invoicepaid.Effects`（或 `LiveEffects`）和 `chargerefunded.Effects`；需要试用已过期时设置 `WebhookEffects.Now`。校验持久化流水、池余额和合计，并验证各 repo 写入的 `ErrStale` 检查及包含 webhook 任务保存的事务回滚。
    - 依次执行「试用发放 → 充值 → AI 消耗 → 订阅发放 → 订阅续费 → 升级补差 → 管理员扣减 → 退款扣回」，每一行的 `amount` 等于相邻两行 `total_balance_after` 之差。
    - 续费时旧订阅余额 > 0，写出 `EXPIRE`（`feature = "subscription"`）；旧余额为 0 时不写。升级补差、没有进池（`applied = 0`）的发放都不写 `EXPIRE`，没有进池的那行 `total_balance_after` 和上一行相同。
    - 试用过期后，第一次写流水的是充值（不是 `Settle`）：先写出 `EXPIRE`，再写充值行，两行都满足上一条的等式。订阅发放、退款扣回、管理员加减作为第一笔写入时也一样。
    - 试用过期且有余额时领邀请奖励：先写出 `EXPIRE` 把旧余额清零，再写 `GRANT_REFERRAL_BONUS`，之后可用的试用积分只有奖励本身。
    - 清扫任务：试用已过期且有余额的账户写出一行 `EXPIRE`，余额清零；未过期、余额为 0、已清扫过的账户不写；清扫和 `Settle` 并发时只有一行 `EXPIRE`。通过生产清扫操作还要验证删除屏障内的账户被跳过、单账户失败后继续处理其他账户且下一轮重试。
-   - 通过 `adminuser.Service.Transactions` 验证试用与订阅的 `EXPIRE` 各自的来源。
+   - 通过 `adminuser.Service.Transactions` 验证试用 `EXPIRE` 的来源为 `trial`，订阅 `EXPIRE` 的来源为 `stripe`。
    - 通过 `repo.ApplyClawback` 验证注销前最后合计非零时，注销后零效果退款的合计为 0，不重建账户，跨注销边界不要求相邻行对账；缺少账户时正数扣回仍报错且不写流水。
    - `direction=in` / `out` 的筛选和游标分页正确；金额为 0 的行只出现在不筛选的结果里。
    - `GET /api/me/credits/transactions` 只返回当前用户的行，不返回第 5 条列出的内部字段，只有管理员类型的行带 `note`。
@@ -101,3 +101,7 @@ related: adr-009（两池积分账本）、adr-012（Settle 事后扣费）、ad
 ## 修订（2026-11-06，#668）：注销后的退款合计与验证入口
 
 按 adr-062 的注销作废余额和 adr-067 的退款留存规则，明确注销是流水对账边界，注销后零效果退款的合计为 0 且不重建账户；验证改为覆盖实际 webhook 写入、清扫和管理员流水入口。
+
+## 修订（2026-11-06，#668）：修正验证入口与管理员来源
+
+修正 webhook 验证入口为实际的 `WebhookEffects.Apply`，并明确管理员流水将订阅过期归为现有的 `stripe` 来源，试用过期仍为 `trial`，避免验证目标含糊。
