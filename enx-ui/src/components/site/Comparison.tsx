@@ -40,6 +40,14 @@ const APPS: App[] = [
     users: 200_000,
   },
   {
+    name: 'Saladict',
+    url: 'https://github.com/crimx/ext-saladict',
+    description:
+      'Pop-up dictionary and page translator with multiple lookup modes, a new-word notebook, and PDF support. Open source.',
+    users: 200_000,
+    stars: 13_400,
+  },
+  {
     name: 'Readlang',
     url: 'https://readlang.com',
     description:
