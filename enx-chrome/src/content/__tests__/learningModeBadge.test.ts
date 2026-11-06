@@ -97,10 +97,15 @@ describe('content script learning-mode status (adr-046)', () => {
   })
 
   it('never reports processing on a page with no article', async () => {
-    document.body.innerHTML = '<nav>Home</nav>'
     const send = await loadContentScript()
+    // With the default adapter only a page with no body has no lookup area
+    // (adr-034 #563).
+    const body = document.body
+    body.remove()
 
-    expect(await send({ action: 'enxRun' })).toMatchObject({
+    const result = await send({ action: 'enxRun' })
+    document.documentElement.appendChild(body)
+    expect(result).toMatchObject({
       success: false,
       reason: 'no-article-node',
     })

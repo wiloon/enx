@@ -124,6 +124,16 @@ export function stopReading(): void {
   }
 }
 
+/**
+ * Ends tracking after reporting what the session had left over: for a page
+ * whose lookup area is the whole page rather than an article (#563), which
+ * counts no reading of its own.
+ */
+export function endReading(): void {
+  flush()
+  stopReading()
+}
+
 /** Test seam: the live session, or null when nothing is being tracked. */
 export function __currentSessionForTests(): ReadingSession | null {
   return session

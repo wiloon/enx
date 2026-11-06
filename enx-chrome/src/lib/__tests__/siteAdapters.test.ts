@@ -461,6 +461,54 @@ describe('X adapter readiness selector', () => {
   })
 })
 
+// adr-034 #563: the interactive-role exclusions are the default adapter's
+// alone. X wraps a quoted tweet in div[role="link"].
+describe('lookup exclusions per adapter', () => {
+  const quotedTweet = () => {
+    document.body.innerHTML = `
+      <div data-testid="tweetText">Look at this
+        <div role="link"><span id="quoted">a quoted fox</span></div>
+      </div>`
+    return document.querySelector('#quoted')!.firstChild as Text
+  }
+
+  it('keeps a word inside div[role="link"] clickable and highlighted on X', () => {
+    const text = quotedTweet()
+    const x = resolveSiteAdapter(loc('x.com', '/u/status/1'), HOMELAB)
+    const root = document.querySelector(X_CONTENT_SELECTOR)!
+
+    expect(
+      WordProcessor.collectTextNodes(root, x.lookupExcludedSelectors)
+    ).toContain(text)
+    expect(
+      WordProcessor.expandToWordRange(
+        text,
+        text.data.indexOf('fox') + 1,
+        x.lookupExcludedSelectors
+      )?.toString()
+    ).toBe('fox')
+  })
+
+  it('leaves a word inside div[role="link"] alone with the default adapter', () => {
+    const text = quotedTweet()
+    const root = document.querySelector(X_CONTENT_SELECTOR)!
+
+    expect(
+      WordProcessor.collectTextNodes(
+        root,
+        DEFAULT_ADAPTER.lookupExcludedSelectors
+      )
+    ).not.toContain(text)
+    expect(
+      WordProcessor.expandToWordRange(
+        text,
+        text.data.indexOf('fox') + 1,
+        DEFAULT_ADAPTER.lookupExcludedSelectors
+      )
+    ).toBeNull()
+  })
+})
+
 describe('Wikipedia adapter', () => {
   // Trimmed from en.wikipedia.org/wiki/Cat (2026-10-15): the reference list
   // holds <a class="external text"> links with long titles, and the language

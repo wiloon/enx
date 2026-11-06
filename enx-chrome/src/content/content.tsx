@@ -59,6 +59,7 @@ import {
 } from '../types'
 import { contentScriptStore } from './contentAtoms'
 import {
+  endReading,
   noteWordInteraction,
   startArticle,
   stopReading,
@@ -151,6 +152,9 @@ let processingLifecycle: number | null = null
 // Article roots ENX is currently operating on: the delegated click listener
 // is bound to each.
 let articleRoots: Element[] = []
+// The site adapter's lookupExcludedSelectors for those roots, so a click
+// skips the same text the highlighter does.
+let articleLookupExclusions: readonly string[] = []
 let overlayEventCleanup: (() => void) | null = null
 
 // #561: once this script is orphaned and a fresh one announces itself, it
@@ -883,11 +887,14 @@ const processArticleContent = async (
     const adapter = resolveSiteAdapter(window.location, siteOrigins)
     console.log(`Site adapter: ${adapter.name} (${adapter.contentVolatility})`)
 
-    const articleNodes = WordProcessor.getArticleNodes({
+    const lookupArea = WordProcessor.findLookupArea({
       contentSelector: adapter.contentSelector,
       minTextLength: adapter.minTextLength,
       focusedNodeResolver: adapter.focusedNodeResolver,
     })
+    const articleNodes = lookupArea.nodes
+    const wholePage = lookupArea.source === 'whole-page'
+    const lookupExclusions = adapter.lookupExcludedSelectors ?? []
     if (articleNodes.length === 0) {
       console.log('No article node found')
       return failed('no-article-node')
@@ -899,7 +906,7 @@ const processArticleContent = async (
     opts.onArticleFound?.()
 
     const textNodesByRoot = articleNodes.map(node =>
-      WordProcessor.collectTextNodes(node)
+      WordProcessor.collectTextNodes(node, lookupExclusions)
     )
     const collectedTextNodes = textNodesByRoot.flat()
 
@@ -921,7 +928,9 @@ const processArticleContent = async (
 
     const words = WordProcessor.extractWords(textContent)
 
-    if (words.length === 0) {
+    // cleanArticleText counts link text too; a whole page of links and
+    // widgets has nothing to click (adr-034 #563).
+    if (words.length === 0 || (wholePage && collectedTextNodes.length === 0)) {
       console.log('No words found to process')
       return failed('no-words')
     }
@@ -975,15 +984,21 @@ const processArticleContent = async (
     // Delegated click-to-lookup (ADR-011 Decision 2): one listener per
     // article root, replacing the per-word listeners. Bound even with no
     // highlights -- any English word is clickable.
-    setArticleRoots(articleNodes)
+    setArticleRoots(articleNodes, lookupExclusions)
 
     // L0 reading instrumentation (ADR-028): `words.length` is the
     // denominator of the only honest progress metric we have ("lookups per
     // 1,000 words"), counted locally; the words themselves are never sent.
     // Started after the paint so a failed run never reports a read article.
-    startArticle(articleNodes, words.length, delta => {
-      void sendToBackground({ type: 'reportReadingProgress', delta })
-    })
+    // The whole page is no article: it ends the previous session, reporting
+    // what it earned, and counts nothing itself (adr-034 #563).
+    if (wholePage) {
+      endReading()
+    } else {
+      startArticle(articleNodes, words.length, delta => {
+        void sendToBackground({ type: 'reportReadingProgress', delta })
+      })
+    }
 
     console.log('✅ Article processing completed')
     return loaded.ok ? ENABLE_OK : failed(loaded.reason)
@@ -1038,7 +1053,11 @@ const handleArticleClick = (event: Event) => {
   const { clientX, clientY } = event as MouseEvent
   const caret = caretFromPoint(clientX, clientY)
   if (!caret) return
-  const wordRange = WordProcessor.expandToWordRange(caret.node, caret.offset)
+  const wordRange = WordProcessor.expandToWordRange(
+    caret.node,
+    caret.offset,
+    articleLookupExclusions
+  )
   if (!wordRange) return
   if (!pointInRange(wordRange, clientX, clientY)) return
   event.preventDefault()
@@ -1052,9 +1071,13 @@ const handleArticleClick = (event: Event) => {
 
 // articleRoots + its click listeners are managed together: point ENX at a
 // fresh set of roots, or clear it entirely.
-const setArticleRoots = (roots: Element[]) => {
+const setArticleRoots = (
+  roots: Element[],
+  lookupExclusions: readonly string[]
+) => {
   clearArticleRoots()
   articleRoots = roots
+  articleLookupExclusions = lookupExclusions
   articleRoots.forEach(root =>
     root.addEventListener('click', handleArticleClick)
   )
@@ -1065,6 +1088,7 @@ const clearArticleRoots = () => {
     root.removeEventListener('click', handleArticleClick)
   )
   articleRoots = []
+  articleLookupExclusions = []
 }
 
 // Shows a lightweight overlay carrying only the sentencePanelHint text, no

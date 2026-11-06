@@ -466,6 +466,23 @@ describe('WordProcessor.extractSentenceContext', () => {
     })
   })
 
+  it('takes the nearest block for a sentence of 20 characters or less (Standard Ebooks byline)', () => {
+    document.body.innerHTML = `
+      <main><section id="titlepage">
+        <h1>Short Fiction</h1>
+        <p>By <b>Joseph Conrad</b>.</p>
+      </section></main>`
+    const text = document.querySelector('b')!.firstChild!
+    const range = document.createRange()
+    range.setStart(text, 'Joseph '.length)
+    range.setEnd(text, 'Joseph Conrad'.length)
+
+    const ctx = WordProcessor.extractSentenceContext(range, 'Conrad')!
+
+    expect(ctx.sentence).toBe('By Joseph Conrad.')
+    expect(ctx.range?.toString()).toBe('By Joseph Conrad.')
+  })
+
   it('returns null when no ancestor container qualifies as a sentence container', () => {
     document.body.innerHTML = wrap('orphan')
     const el = document.querySelector<HTMLElement>('.w')!

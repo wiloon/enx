@@ -3,8 +3,7 @@
 // to process, how volatile the content is, and whether to show the
 // completion indicator (ADR-010, ADR-011 Decision 4).
 //
-// resolveSiteAdapter() returns DEFAULT_ADAPTER for ordinary article sites;
-// its field values reproduce the original hard-coded behavior field-for-field.
+// resolveSiteAdapter() returns DEFAULT_ADAPTER for ordinary article sites.
 // Only X, the enx-ui Reader, the RSSX Reader and Wikipedia need their own
 // adapter.
 
@@ -44,6 +43,12 @@ export interface SiteAdapter {
    */
   focusedNodeResolver?: (nodes: Element[]) => Element[]
   /**
+   * Selectors whose text is neither looked up nor highlighted, on top of
+   * WordProcessor's own exclusions, checked on the article root and its
+   * ancestors too. Undefined = none.
+   */
+  lookupExcludedSelectors?: readonly string[]
+  /**
    * How the article content changes after learning mode is on, and so which
    * observers the content script attaches (ADR-011 F section):
    *   'static'    — no observers; re-run only on an explicit enxRun.
@@ -66,12 +71,28 @@ export interface SiteAdapter {
   clickBinding?: 'bubble' | 'documentCapture'
 }
 
-// Field-for-field equal to today's hard-coded behavior. Every whitelisted
-// article site resolves to this.
+// Every whitelisted article site resolves to this.
 export const DEFAULT_ADAPTER: SiteAdapter = {
   name: 'default',
   matches: () => true,
+  // The minimum for the broad built-in selectors (adr-034 #563).
   minTextLength: 100,
+  // Text in interactive widgets and editable regions is left alone like link
+  // text (adr-034 #563). Not on the contentSelector adapters: X wraps a
+  // quoted tweet in div[role="link"], and its text is clickable.
+  lookupExcludedSelectors: [
+    '[role="button"]',
+    '[role="link"]',
+    '[role="tab"]',
+    '[role="menuitem"]',
+    '[role="menuitemcheckbox"]',
+    '[role="menuitemradio"]',
+    '[role="option"]',
+    '[role="switch"]',
+    '[role="checkbox"]',
+    '[role="radio"]',
+    '[contenteditable]:not([contenteditable="false"])',
+  ],
   contentVolatility: 'static',
 }
 

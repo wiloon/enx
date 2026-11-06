@@ -9,6 +9,17 @@ import {
   tokenizeWords,
 } from '@/lib/wordHighlight'
 
+export interface LookupAreaOptions {
+  contentSelector?: string
+  minTextLength?: number
+  focusedNodeResolver?: (nodes: Element[]) => Element[]
+}
+
+export interface LookupArea {
+  nodes: Element[]
+  source: 'article' | 'whole-page'
+}
+
 // Single source of truth for article extraction / word highlighting.
 // content.tsx and its tests import this instead of keeping their own copies.
 export class WordProcessor {
@@ -114,8 +125,14 @@ export class WordProcessor {
   // apart (ADR-010 §1.3).
   //
   // True when `node` sits inside a LOOKUP_EXCLUDED_TAGS subtree (walking up
-  // to, but not including, `root`).
-  static isInExcludedSubtree(node: Node, root?: Node): boolean {
+  // to, but not including, `root`), or inside an `adapterExclusions` match
+  // anywhere above it, `root` and its ancestors included (the SiteAdapter's
+  // lookupExcludedSelectors).
+  static isInExcludedSubtree(
+    node: Node,
+    root?: Node,
+    adapterExclusions: readonly string[] = []
+  ): boolean {
     let current: HTMLElement | null = node.parentElement
     while (current && current !== root) {
       if (
@@ -128,14 +145,20 @@ export class WordProcessor {
       }
       current = current.parentElement
     }
-    return false
+    return (
+      adapterExclusions.length > 0 &&
+      node.parentElement?.closest(adapterExclusions.join(', ')) != null
+    )
   }
 
-  static collectTextNodes(root: Node): Text[] {
+  static collectTextNodes(
+    root: Node,
+    adapterExclusions: readonly string[] = []
+  ): Text[] {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode: node => {
         if (!node.parentElement) return NodeFilter.FILTER_REJECT
-        if (this.isInExcludedSubtree(node, root))
+        if (this.isInExcludedSubtree(node, root, adapterExclusions))
           return NodeFilter.FILTER_REJECT
 
         const text = node.textContent?.trim() || ''
@@ -175,9 +198,14 @@ export class WordProcessor {
   // return a Range spanning the whole word the caret is inside -- or null if
   // the caret isn't in a word, or sits inside an excluded subtree
   // (link / button / code / ...). Never touches the DOM.
-  static expandToWordRange(node: Node, offset: number): Range | null {
+  static expandToWordRange(
+    node: Node,
+    offset: number,
+    adapterExclusions: readonly string[] = []
+  ): Range | null {
     if (node.nodeType !== Node.TEXT_NODE) return null
-    if (this.isInExcludedSubtree(node)) return null
+    if (this.isInExcludedSubtree(node, undefined, adapterExclusions))
+      return null
 
     const token = tokenizeWords(node.textContent || '').find(
       t => offset >= t.start && offset <= t.end
@@ -199,17 +227,6 @@ export class WordProcessor {
     CSS.highlights.delete(this.ACTIVE_SENTENCE_HIGHLIGHT_NAME)
   }
 
-  // Returns every element on the page that should be treated as article
-  // content. A selector can match more than one element (e.g. a short
-  // intro block and the real article body sharing the same class) — all
-  // of them get processed, not just the longest one.
-  //
-  // ADR-010: `options` carries the SiteAdapter's overrides. With no options
-  // (or the default adapter's values) this behaves exactly as before —
-  // built-in selector list, ">100 chars" threshold, largest-container
-  // fallback, every match returned. A `contentSelector` replaces the built-in
-  // list and disables the fallback; `focusedNodeResolver` narrows the winning
-  // selector's matches.
   // Fraction of `element`'s text that sits inside <a> tags -- high for nav
   // bars, related-link lists and comment threads, low for article prose
   // (adr-034 Decision 3).
@@ -225,52 +242,126 @@ export class WordProcessor {
     return linkLength / totalLength
   }
 
-  static getArticleNodes(options?: {
-    contentSelector?: string
-    minTextLength?: number
-    focusedNodeResolver?: (nodes: Element[]) => Element[]
-  }): Element[] {
+  // The built-in selector list, in priority order (adr-034 #563 amendment).
+  // A precise selector names the article itself: any match with more than
+  // one character of text counts. A broad selector is a generic class that
+  // also lands on small widgets: it keeps the adapter's minimum and only its
+  // longest match is taken.
+  private static readonly BUILT_IN_SELECTORS: ReadonlyArray<{
+    selector: string
+    broad?: true
+  }> = [
+    { selector: '.Article' }, // BBC
+    { selector: '.article__data' }, // InfoQ
+    { selector: '.blog_post_content_wrap' }, // Claude blog (Webflow)
+    { selector: '.post-content', broad: true }, // Blog posts
+    { selector: '.single-post__container' }, // Microsoft Research
+    { selector: '#EMAIL_CONTAINER' }, // NY Times
+    { selector: '#lesson-main-content' }, // Anthropic Skilljar
+    { selector: '.sjwc-lesson-content-item' }, // Anthropic Skilljar (inner)
+    { selector: 'article' }, // Semantic HTML5
+    { selector: '.content', broad: true },
+    { selector: '.entry-content', broad: true },
+    { selector: '.post-body', broad: true },
+    // Last, so article and the broad selectors win on pages that have them.
+    { selector: 'main' },
+  ]
+
+  // A precise selector's match counts when its trimmed text is longer than
+  // this, the rule the X, RSSX and Reader adapters use.
+  private static readonly PRECISE_MIN_TEXT_LENGTH = 1
+
+  // Returns every element on the page that should be treated as the lookup
+  // area. A selector can match more than one element (e.g. a short intro
+  // block and the real article body sharing the same class) — all of them get
+  // processed, not just the longest one; broad selectors are the exception.
+  //
+  // ADR-010: `options` carries the SiteAdapter's overrides. A
+  // `contentSelector` replaces the built-in list and disables both fallbacks;
+  // `minTextLength` is the minimum for it or for the broad selectors;
+  // `focusedNodeResolver` narrows the winning selector's matches.
+  static getArticleNodes(options?: LookupAreaOptions): Element[] {
+    return this.findLookupArea(options).nodes
+  }
+
+  // The nodes lookup and highlighting run in, and where they came from:
+  // 'article' when a selector or the largest-text fallback found the article
+  // (reading statistics count it, ADR-028), 'whole-page' when nothing did and
+  // the body is the lookup area only as a last resort (adr-034 #563). An
+  // adapter with a contentSelector never falls back: it gets 'article' with
+  // its matches, possibly none.
+  static findLookupArea(options?: LookupAreaOptions): LookupArea {
     const minTextLength = options?.minTextLength ?? 100
     const focus = options?.focusedNodeResolver ?? ((nodes: Element[]) => nodes)
+    const article = (nodes: Element[]): LookupArea => ({
+      nodes,
+      source: 'article',
+    })
 
-    const selectors = options?.contentSelector
-      ? [options.contentSelector]
-      : [
-          '.Article', // BBC
-          '.article__data', // InfoQ
-          '.blog_post_content_wrap', // Claude blog (Webflow)
-          '.post-content', // Blog posts
-          '.single-post__container', // Microsoft Research
-          '#EMAIL_CONTAINER', // NY Times
-          '#lesson-main-content', // Anthropic Skilljar
-          '.sjwc-lesson-content-item', // Anthropic Skilljar (inner)
-          'article', // Semantic HTML5
-          '.content',
-          '.entry-content',
-          '.post-body',
+    const selectors: Array<{
+      selector: string
+      minLength: number
+      longestOnly: boolean
+    }> = options?.contentSelector
+      ? [
+          {
+            selector: options.contentSelector,
+            minLength: minTextLength,
+            longestOnly: false,
+          },
         ]
+      : this.BUILT_IN_SELECTORS.map(({ selector, broad }) => ({
+          selector,
+          minLength: broad ? minTextLength : this.PRECISE_MIN_TEXT_LENGTH,
+          longestOnly: broad === true,
+        }))
 
-    for (const selector of selectors) {
+    for (const { selector, minLength, longestOnly } of selectors) {
       const matches = Array.from(document.querySelectorAll(selector)).filter(
-        element => (element.textContent?.trim().length || 0) > minTextLength
+        element => (element.textContent?.trim().length || 0) > minLength
       )
       // Drop matches nested inside another match, so the same text isn't processed twice.
-      const nodes = matches.filter(
+      let nodes = matches.filter(
         element =>
           !matches.some(other => other !== element && other.contains(element))
       )
+      if (longestOnly && nodes.length > 1) {
+        nodes = [this.longestText(nodes)]
+      }
 
       if (nodes.length > 0) {
         console.log(`✅ Using article node with selector: ${selector}`)
-        return focus(nodes)
+        return article(focus(nodes))
       }
     }
 
     // A SiteAdapter that pins its own selector opts out of the guess-y
     // fallback: "no node found" is a clean degradation there (ADR-010).
     if (options?.contentSelector) {
-      return []
+      return article([])
     }
+
+    const largest = this.largestTextBlock()
+    if (largest.length > 0) return article(largest)
+
+    if (document.body) {
+      console.log('✅ Whole page: no article node found, using body')
+      return { nodes: [document.body], source: 'whole-page' }
+    }
+    return article([])
+  }
+
+  private static longestText(nodes: Element[]): Element {
+    return nodes.reduce((longest, node) =>
+      (node.textContent?.trim().length || 0) >
+      (longest.textContent?.trim().length || 0)
+        ? node
+        : longest
+    )
+  }
+
+  // The largest-text fallback: one container, the body (#565), or none.
+  private static largestTextBlock(): Element[] {
 
     // Fallback: find the largest text container on the page, skipping
     // candidates whose text is mostly inside <a> tags (nav, related-links,
@@ -405,8 +496,11 @@ export class WordProcessor {
 
     // The minimum length skips small wrappers (a div around one link or tag,
     // a short menu item) on the way up to the element holding the prose.
+    // With no block over it, the nearest block is the sentence however short
+    // ("By Joseph Conrad." on a title page, #563).
     const blockSelector = 'p, li, blockquote, td, div'
-    let current = nearestElement(startNode)?.closest(blockSelector) || null
+    const nearest = nearestElement(startNode)?.closest(blockSelector) || null
+    let current = nearest
 
     while (current) {
       const length = current.textContent?.trim().length || 0
@@ -416,7 +510,7 @@ export class WordProcessor {
       current = current.parentElement?.closest(blockSelector) || null
     }
 
-    return null
+    return nearest
   }
 
   // Range start -> character offset within container's flattened textContent.
