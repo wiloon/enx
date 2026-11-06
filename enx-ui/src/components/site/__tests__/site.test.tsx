@@ -208,6 +208,30 @@ describe('Comparison', () => {
     )
   })
 
+  it('links open-source apps to their own website, in a new tab', () => {
+    render(<Comparison />)
+    const link = screen.getByRole('link', { name: 'Saladict' })
+    expect(link).toHaveAttribute('href', 'https://saladict.crimx.com')
+    expect(link).toHaveAttribute('target', '_blank')
+  })
+
+  it('lists Catglish itself, ranked by users like the others', () => {
+    render(<Comparison />)
+    const names = screen.getAllByRole('link').map((a) => a.textContent)
+    expect(names.at(-1)).toBe('Catglish')
+    expect(screen.getByRole('link', { name: 'Catglish' })).toHaveAttribute(
+      'href',
+      SITE.chromeWebStoreUrl
+    )
+  })
+
+  it('shows Catglish as New instead of a user count', () => {
+    render(<Comparison />)
+    const row = screen.getByRole('link', { name: 'Catglish' }).closest('li')!
+    expect(row).toHaveTextContent(/\bNew\b/)
+    expect(row).not.toHaveTextContent(/users/)
+  })
+
   it('shows the data-freshness disclaimer', () => {
     render(<Comparison />)
     expect(screen.getByText(/approximate as of/i)).toBeInTheDocument()
