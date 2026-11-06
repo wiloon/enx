@@ -237,6 +237,9 @@ func (s *Service) Detail(ctx context.Context, userID string) (Detail, error) {
 // user's own history uses (ADR-063 Decision 1): newest first, before "" for
 // the first page, direction "", "in" or "out".
 func (s *Service) Transactions(ctx context.Context, userID, before, direction string, limit int) (creditledger.Page, error) {
+	if err := creditledger.ValidateDirection(direction); err != nil {
+		return creditledger.Page{}, err
+	}
 	if _, ok, err := s.store.Account(ctx, userID); err != nil {
 		return creditledger.Page{}, err
 	} else if !ok {

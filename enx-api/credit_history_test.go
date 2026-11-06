@@ -181,6 +181,7 @@ func TestE2E_CreditHistory_UnknownDirectionIs400(t *testing.T) {
 	for _, tc := range []struct{ path, token string }{
 		{"/api/me/credits/transactions?direction=added", plainToken},
 		{"/api/admin/users/" + plainID + "/transactions?direction=added", adminToken},
+		{"/api/admin/users/no-such-user/transactions?direction=added", adminToken},
 	} {
 		if code, body := doJSON(t, http.MethodGet, base+tc.path, tc.token); code != http.StatusBadRequest {
 			t.Errorf("GET %s: status %d (%v), want 400", tc.path, code, body)

@@ -135,15 +135,23 @@ type Reader struct {
 
 func NewReader(store Store) *Reader { return &Reader{store: store} }
 
+// ValidateDirection rejects filters other than all, in, or out.
+func ValidateDirection(direction string) error {
+	switch Direction(direction) {
+	case DirectionAll, DirectionIn, DirectionOut:
+		return nil
+	default:
+		return ErrInvalidDirection
+	}
+}
+
 // Page returns a page of userID's ledger, newest first. before is "" for the
 // first page, then the previous page's Next. direction is "", "in" or "out".
 func (r *Reader) Page(ctx context.Context, userID, before, direction string, limit int) (Page, error) {
-	q := Query{Direction: Direction(direction), Limit: DefaultLimit}
-	switch q.Direction {
-	case DirectionAll, DirectionIn, DirectionOut:
-	default:
-		return Page{}, ErrInvalidDirection
+	if err := ValidateDirection(direction); err != nil {
+		return Page{}, err
 	}
+	q := Query{Direction: Direction(direction), Limit: DefaultLimit}
 	if before != "" {
 		c, err := parseCursor(before)
 		if err != nil {

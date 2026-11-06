@@ -183,6 +183,7 @@ func TestE2E_AdminUsers_BadRequestsAndUnknownUser(t *testing.T) {
 		{"/api/admin/users?limit=abc", http.StatusBadRequest},
 		{"/api/admin/users/no-such-user", http.StatusNotFound},
 		{"/api/admin/users/no-such-user/transactions", http.StatusNotFound},
+		{"/api/admin/users/no-such-user/transactions?before=not-a-cursor", http.StatusNotFound},
 	} {
 		if code, body := doJSON(t, http.MethodGet, base+tc.path, adminToken); code != tc.want {
 			t.Errorf("GET %s: status %d (%v), want %d", tc.path, code, body, tc.want)
