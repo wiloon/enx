@@ -177,6 +177,20 @@ export const reorderOrInsertCard = (
   })
 }
 
+// A page popover lookup mirrored into the panel (ADR-006): it carries the
+// popover's latest dictionary data, so a top-level card already holding the
+// word takes that data as it moves to the front -- a miss the AI fallback
+// later defined, or a newer lookup count. Nested cards are left alone.
+export const upsertPageLookupCard = (
+  entries: PanelEntry[],
+  card: WordCardData
+): PanelEntry[] => {
+  const index = entries.findIndex(e => e.kind === 'word' && e.key === card.key)
+  if (index === -1) return [{ kind: 'word', ...card }, ...entries]
+  const moved = toFront(entries, index)
+  return [{ ...moved[0], ...card } as WordEntry, ...moved.slice(1)]
+}
+
 // Merges `patch` into the card; with `token` given, only while the card
 // still carries it (a response to the request that token started).
 export const patchCard = (

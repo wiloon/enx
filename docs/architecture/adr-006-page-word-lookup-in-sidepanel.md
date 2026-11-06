@@ -100,3 +100,9 @@
 - 用户反馈"最近查过的词"列表和"当前句子的单词分析"混在一起反而造成困惑，需要重新评估 A1（独立区域）方案。
 - 需要支持真正的查词历史（跨会话持久化、可回溯多条），届时 `chrome.storage.session` 覆盖写入的"只留最新一条"语义不再够用，需要改用 `chrome.storage.local` 加列表结构。
 - 需要精确判断侧边栏开关状态用于其他功能（如"面板未打开时用 `chrome.action.setBadgeText` 提示未读查词数"），届时可以重新评估是否值得引入 B1 的长连接机制。
+
+---
+
+## 变更记录
+
+- 2026-11-05，issue #650（owner 决定）：Decision 2 的“已存在则移到最前”改为“移到最前，并用这次同步来的词典数据（`pronunciation`、`loadCount`、`dictionaryChinese`）刷新这张顶层卡片”；句子里嵌套的同名卡片不动。实现是 `panelHistory.ts` 的 `upsertPageLookupCard`。原因：浮层先同步一次词典 miss、AI 兜底（ADR-045）查到释义后再同步一次，旧逻辑让卡片一直停在 miss；同一个词再次点击时 `LoadCount` 也停在旧值。这与选 C2 的理由一致：侧边栏显示的应是浮层最新的结果。顶层单词卡只由页面查词创建（`contextStatus: 'none'`、没有请求令牌），刷新不会发请求、不会扣费。
