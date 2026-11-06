@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-10-19
-related: adr-009（两池积分账本）、adr-012（Settle 事后扣费）、adr-048（试用积分与 `EXPIRE`）、adr-049（管理员流水时间线、`GRANT_ADMIN` / `DEDUCT_ADMIN` 的 `note`）、adr-051（邀请积分）、adr-062（注销账号时账本保留）、WIL-186（查词句子复习，不在本 ADR 范围）、issue #222（本 ADR 的实现）
+related: adr-009（两池积分账本）、adr-012（Settle 事后扣费）、adr-048（试用积分与 `EXPIRE`）、adr-049（管理员流水时间线、`GRANT_ADMIN` / `DEDUCT_ADMIN` 的 `note`）、adr-051（邀请积分）、adr-062（注销账号时账本保留）、adr-067（订阅接受与冲突；充值、订阅发放、退款扣回改由 webhook 任务写流水）、WIL-186（查词句子复习，不在本 ADR 范围）、issue #222（本 ADR 的实现）
 ---
 
 # ADR-063：用户积分历史；增减同列、与管理员同源；流水补记三池合计余额
@@ -18,7 +18,7 @@ related: adr-009（两池积分账本）、adr-012（Settle 事后扣费）、ad
 ### 一、一个列表，增减都在里面
 
 1. **用户和管理员看的是同一份流水。** 读流水的逻辑（游标分页、新的在前、类型到来源的映射、筛选）从 `adminuser.Service.Transactions` 抽出来，成为管理员接口和用户接口共用的一处，标签和来源分类也只定义一次。两边的区别只在于每行显示哪些字段（见第 5 条）。
-2. **增加和减少放在同一个列表里，用筛选区分**：`All` / `Added`（`amount > 0`）/ `Used`（`amount < 0`）。按金额正负划分，不按类型划分：`EXPIRE`、`CLAWBACK`、`DEDUCT_ADMIN` 都算在 `Used` 里，`REFUND` 算在 `Added` 里。金额为 0 的行（更早一期订阅被退款时，`CLAWBACK` 扣 0）只在 `All` 里出现。筛选在服务端做，接口参数 `direction=in|out`，这样分页才正确。
+2. **增加和减少放在同一个列表里，用筛选区分**：`All` / `Added`（`amount > 0`）/ `Used`（`amount < 0`）。按金额正负划分，不按类型划分：`EXPIRE`、`CLAWBACK`、`DEDUCT_ADMIN` 都算在 `Used` 里，`REFUND` 算在 `Added` 里。金额为 0 的行只在 `All` 里出现，照常显示 "+0" 并带一句说明（第 6a 条）。筛选在服务端做，接口参数 `direction=in|out`，这样分页才正确。
 3. **新接口** `GET /api/me/credits/transactions?limit=&before=&direction=`，只返回当前用户自己的流水。管理员接口 `GET /api/admin/users/:id/transactions` 也增加同样的 `direction` 参数。
 4. **页面在 enx-ui 的 `/billing/history`**，入口是 `/billing` 余额卡片上的 "Credit history" 链接，用户导航栏不另加一项。管理员详情页的时间线和这个页面用同一个组件，管理员模式下多显示几个字段。
 
@@ -27,12 +27,16 @@ related: adr-009（两池积分账本）、adr-012（Settle 事后扣费）、ad
 5. **用户看到的字段**：时间、类型标签、增减数量、变动后合计余额（第 7 条），以及 `GRANT_ADMIN` / `DEDUCT_ADMIN` 的 `note`，也就是管理员填写的原因（用户 2026-10-19 确认显示）。管理员填原因时，界面提示「用户会看到这段文字」。
    **用户看不到的字段**：Stripe payment intent、`stripe_event_id`、`related_transaction_id`、`CLAWBACK` 的 `note`（里面是 Stripe charge id），以及按池记的 `balance_after`。管理员能看到全部字段。
 6. **AI 消耗只显示调用类型和时间，不显示查的单词或句子**（用户 2026-10-19 决定）。类型标签按 `feature` 区分，例如 `lookup_word_ai` → "AI word lookup"，`translate_word_in_context` → "Word translation"，`translate_sentence` → "Sentence translation"，`translate_sentence_with_word` → "Sentence translation"，`rephrase_to_english` → "Rephrase"。不认识的 `feature` 显示为 "AI usage"。流水表也**不新增**记录单词或句子内容的列。这和现行隐私政策一致（"a record of each AI call (which feature, how much it cost)"、"We do not store the sentence or the translation"），隐私政策不用改。
+6a. **金额为 0 的行照常显示，并说明为什么没有变化**（所有者 2026-11-06 决定），用户和管理员看到同一行。按 adr-067，这样的行有两种：
+   - `GRANT_SUBSCRIPTION` 金额为 0：这次付款记了账，但积分没有进池，原因可能是这份订阅不是当前被接受的那份，可能是这一期已经发过，也可能是升级补差到账时订阅池已经换到新的一期。显示为 "Subscription payment recorded" 加说明 "No credits added"。
+   - `CLAWBACK` 金额为 0：退款对应的发放已经不在当前池里，或者池里已经没有可扣的积分。显示为 "Refund recorded" 加说明 "No credits removed"。
 
 ### 三、流水补记三池合计余额
 
-7. **`credit_transactions` 新增可空列 `total_balance_after`**：写这一行时，三个池的可用积分合计，算法和 `Settle` 的 `spendable` 一样（未过期的试用池 + 订阅池（负数按 0 算）+ 充值池，充值池可以是负数）。写入集中在 `insertLedgerRow`：同一个事务里，余额更新完以后读一次账户，算出合计再写行，各个 `Grant*` / `Settle` / `Clawback` 不用各自去算。原来的 `balance_after` 保持按池记录，语义不变，只给管理员排查用。
-8. **订阅续费前，先把上一期的剩余记一行 `EXPIRE`。** `GrantSubscription` 覆盖 `subscription_balance` 之前，如果旧余额大于 0，在同一个事务里先写一行 `EXPIRE`：`feature = "subscription"`，`amount` 为负的旧余额。这样「上期剩余作废」和「本期发放」各占一行，每一行的 `amount` 都等于 `total_balance_after` 的变化量。用户界面上，`feature = "trial"` 的 `EXPIRE` 显示为 "Trial credits expired"，`feature = "subscription"` 的显示为 "Unused subscription credits expired"。
-9. **试用过期仍然懒写入，但改为任何一次写流水之前都先结算。** 现在只有 `Settle` 会先调用 `expireTrial`。如果试用过期后用户先充了值，充值那一行的合计余额已经不含试用（`effectiveTrial` 为 0），之后 `Settle` 再补写的 `EXPIRE` 行却带着负数金额，这两行就对不上了。所以每个会写流水的事务都先调用 `expireTrial`，再更新余额。`EXPIRE` 行的时间戳仍然是写入时刻，不改成真正的到期时间：时间线按写入顺序排，改了时间反而会出现乱序。
+7. **`credit_transactions` 新增可空列 `total_balance_after`**：写这一行时，三个池的可用积分合计，算法和 `Settle` 的 `spendable` 一样（未过期的试用池 + 订阅池（负数按 0 算）+ 充值池，充值池可以是负数）。合计由一个共用函数算：同一个事务里，余额更新完以后读一次账户，算出合计再写行。每个写流水的地方都调用它，不各自去算。现在写流水的有两类地方：`credit` 包的 `insertLedgerRow`（试用、邀请、管理员加减、`Settle`、`EXPIRE`），以及 adr-067 的 webhook 任务在 `repo/` 里直接写的三处（充值 `grantTopUp`、订阅发放 `recordSubscriptionGrant`、退款扣回 `ApplyClawback`）。以后新增的写入点也必须经过这个函数。原来的 `balance_after` 保持按池记录，语义不变，只给管理员排查用。
+8. **订阅续费前，先把上一期的剩余记一行 `EXPIRE`。** 只有普通发放（`grant_kind = normal_period`）且确实进池（`applied > 0`）时，`recordSubscriptionGrant` 才会覆盖 `subscription_balance`。覆盖之前，如果旧余额大于 0，在同一个事务里先写一行 `EXPIRE`：`feature = "subscription"`，`amount` 为负的旧余额。这样「上期剩余作废」和「本期发放」各占一行，每一行的 `amount` 都等于 `total_balance_after` 的变化量。用户界面上，`feature = "trial"` 的 `EXPIRE` 显示为 "Trial credits expired"，`feature = "subscription"` 的显示为 "Unused subscription credits expired"。升级补差（`upgrade_top_up`）是累加到订阅池上，没有进池的发放不动订阅池，这两种都不写 `EXPIRE`。
+9. **试用过期仍然懒写入，但改为任何一次写流水之前都先结算。** 现在只有 `Settle` 会先调用 `expireTrial`。如果试用过期后用户先充了值，充值那一行的合计余额已经不含试用（`effectiveTrial` 为 0），之后 `Settle` 再补写的 `EXPIRE` 行却带着负数金额，这两行就对不上了。所以每个会写流水的事务（包括第 7 条列出的 `repo/` 三处）都先调用 `expireTrial`，再更新余额。
+   **这会改变邀请奖励的效果**（所有者 2026-11-06 确认）：以前试用过期后再领邀请奖励，`GrantReferralBonus` 会把过期时间往后推，并在原 `trial_balance` 上累加，过期前剩下的试用积分又能用了。现在要先把旧余额记成 `EXPIRE` 清零，再加奖励、推迟过期时间，用户拿到的只有奖励本身。第 10 条的清扫任务也会得到同样的结果。`EXPIRE` 行的时间戳仍然是写入时刻，不改成真正的到期时间：时间线按写入顺序排，改了时间反而会出现乱序。
 10. **每小时清扫一次过期的试用积分。** 只靠第 9 条的话，用户试用到期后如果再也没有写流水的操作，就永远不会出现 `EXPIRE` 行：积分历史最后一行的合计余额还是过期前的数，页面顶部的当前余额却已经是 0。所以 enx-api 新增一个后台任务，和 `runReferralRewards` 等现有任务一样，启动时跑一次，之后每小时跑一次：找出 `trial_expires_at` 已过、`trial_balance > 0` 的账户，逐个在事务里调用 `expireTrial`。这样 `EXPIRE` 行最多比真正的到期时间晚一小时。第 9 条仍然保留，用来兜住到期后、清扫之前恰好有写操作的情况。`expireTrial` 的 UPDATE 以刚读到的余额为条件，清扫任务和写操作并发、或者多个实例同时清扫，都只会写出一行。单个账户失败只记日志，下一轮重试。
 11. **不回填老数据。** 订阅被覆盖掉的那部分没有任何记录，老行的合计余额算不准，所以 `total_balance_after` 留空，页面显示 "—"。生产库 2026-10-14 重置过，受影响的行很少。
 
@@ -69,18 +73,24 @@ related: adr-009（两池积分账本）、adr-012（Settle 事后扣费）、ad
 - 用户能自己查积分去向，管理员在客服对话里看到的和用户看到的是同一个列表。
 - 试用过期的 `EXPIRE` 行最多晚一小时出现，不再等用户下一次用 AI；enx-api 多一个每小时运行的后台任务。
 - 订阅用户每次续费会多一行 `EXPIRE`（上期有剩余时）。管理员页 adr-049 的累计数里，`EXPIRE` 以前只来自试用，现在也会来自订阅，`sourceOf` 需要按 `feature` 区分。
-- 以后新增流水类型，只要经过 `insertLedgerRow` 就自动带上合计余额；标签在共用的一处添加，两个页面同时生效。
+- 试用过期后才领到的邀请奖励，不再让过期前剩下的试用积分重新可用（第 9 条）。
+- 以后新增流水类型或写入点，只要经过第 7 条的共用函数就自动带上合计余额；标签在共用的一处添加，两个页面同时生效。
 - 老行显示 "—"，直到用户的流水完全是新数据为止。
 
 ## Verification
 
 1. **enx-api 单测**（假仓储或真实 SQLite，和现有 `credit` 包测试一致）：
    - 依次执行「试用发放 → 充值 → AI 消耗 → 订阅发放 → 订阅续费 → 管理员扣减 → 退款扣回」，每一行的 `amount` 等于相邻两行 `total_balance_after` 之差。
-   - 续费时旧订阅余额 > 0，写出 `EXPIRE`（`feature = "subscription"`）；旧余额为 0 时不写。
-   - 试用过期后，第一次写流水的是充值（不是 `Settle`）：先写出 `EXPIRE`，再写充值行，两行都满足上一条的等式。
+   - 续费时旧订阅余额 > 0，写出 `EXPIRE`（`feature = "subscription"`）；旧余额为 0 时不写。升级补差、没有进池（`applied = 0`）的发放都不写 `EXPIRE`，没有进池的那行 `total_balance_after` 和上一行相同。
+   - 试用过期后，第一次写流水的是充值（不是 `Settle`）：先写出 `EXPIRE`，再写充值行，两行都满足上一条的等式。订阅发放、退款扣回、管理员加减作为第一笔写入时也一样。
+   - 试用过期且有余额时领邀请奖励：先写出 `EXPIRE` 把旧余额清零，再写 `GRANT_REFERRAL_BONUS`，之后可用的试用积分只有奖励本身。
    - 清扫任务：试用已过期且有余额的账户写出一行 `EXPIRE`，余额清零；未过期、余额为 0、已清扫过的账户不写；清扫和 `Settle` 并发时只有一行 `EXPIRE`。
    - `direction=in` / `out` 的筛选和游标分页正确；金额为 0 的行只出现在不筛选的结果里。
    - `GET /api/me/credits/transactions` 只返回当前用户的行，不返回第 5 条列出的内部字段，只有管理员类型的行带 `note`。
-2. **enx-ui 单测**：聚合纯函数（同一天同一类型合并、跨页合并、`REFUND` 不合并、余额取最新一笔）；标签映射（每个 `feature` 和两种 `EXPIRE`）；`total_balance_after` 为空时显示 "—"。
+2. **enx-ui 单测**：聚合纯函数（同一天同一类型合并、跨页合并、`REFUND` 不合并、余额取最新一笔）；标签映射（每个 `feature`、两种 `EXPIRE`、两种金额为 0 的行的说明）；`total_balance_after` 为空时显示 "—"。
 3. **e2e**（已登录用户）：`/billing` → "Credit history"，能看到列表，切换筛选后列表更新。
 4. **手动验证**：在 homelab 用测试账号充值一次、用几次 AI、管理员加一次积分，对照用户页和管理员页，两边的行和余额一致，管理员填的原因在用户页可见。
+
+## 修订（2026-11-06，#222）：流水写入点按 adr-067 更新，邀请奖励不再救回过期试用
+
+本 ADR 写于 adr-067 的 billing 重构之前，当时所有流水都经过 `credit` 包。重构以后，充值、订阅发放、退款扣回改由 webhook 任务在 `repo/` 里直接写，`credit.GrantSubscription`、`GrantTopup`、`Clawback` 已经没有调用方。第 7、8、9 条相应地改为覆盖全部写入点：普通发放才可能写订阅剩余的 `EXPIRE`，升级补差不写。新增第 6a 条，规定 adr-067 带来的金额为 0 的行怎么显示。另外，所有者确认了第 9 条和第 10 条的一个附带效果：试用过期后领到邀请奖励时，旧的试用余额先作废。其他决定不变。
