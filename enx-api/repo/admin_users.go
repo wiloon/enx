@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"enx-api/adminuser"
+	"enx-api/creditledger"
 	"enx-api/utils/sqlitex"
 )
 
@@ -96,37 +97,8 @@ func (AdminUsers) AISpend(ctx context.Context, userID string, from, to time.Time
 	return out, nil
 }
 
-func (AdminUsers) Transactions(ctx context.Context, userID string, before *adminuser.Cursor, limit int) ([]adminuser.Transaction, error) {
-	query := sqlitex.DB.WithContext(ctx).Model(&sqlitex.CreditTransaction{}).
-		Select("rowid AS seq, id, user_id, type, amount, balance_after, feature, note, created_at").
-		Where("user_id = ?", userID)
-	if before != nil {
-		ms := before.CreatedAt.UnixMilli()
-		query = query.Where("created_at < ? OR (created_at = ? AND rowid < ?)", ms, ms, before.Seq)
-	}
-	var rows []struct {
-		Seq          int64
-		ID           string
-		UserID       string
-		Type         string
-		Amount       int64
-		BalanceAfter int64
-		Feature      string
-		Note         string
-		CreatedAt    int64 // Unix ms
-	}
-	if err := query.Order("created_at DESC, rowid DESC").Limit(limit).Scan(&rows).Error; err != nil {
-		return nil, err
-	}
-	out := make([]adminuser.Transaction, len(rows))
-	for i, r := range rows {
-		out[i] = adminuser.Transaction{
-			ID: r.ID, Seq: r.Seq, UserID: r.UserID, Type: r.Type, Amount: r.Amount,
-			BalanceAfter: r.BalanceAfter, Feature: r.Feature, Note: r.Note,
-			CreatedAt: time.UnixMilli(r.CreatedAt),
-		}
-	}
-	return out, nil
+func (AdminUsers) Transactions(ctx context.Context, userID string, q creditledger.Query) ([]creditledger.Transaction, error) {
+	return CreditLedger{}.Transactions(ctx, userID, q)
 }
 
 // escapeLike makes s match literally inside a LIKE pattern with ESCAPE '\'.

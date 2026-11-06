@@ -15,6 +15,7 @@ import (
 	"enx-api/billing/deletion"
 	billingstripe "enx-api/billing/stripe"
 	"enx-api/config"
+	"enx-api/creditledger"
 	"enx-api/dictionary"
 	"enx-api/dictionary/adapters"
 	"enx-api/dictsample"
@@ -553,6 +554,9 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	apiGroup.POST("/billing/checkout/subscription", billingHandler.CheckoutSubscription)
 	apiGroup.POST("/billing/checkout/topup", billingHandler.CheckoutTopup)
 	apiGroup.GET("/billing/me", billingHandler.Me)
+	// The user's own credit ledger (ADR-063 Decision 3), read the same way
+	// as the admin's timeline of them.
+	apiGroup.GET("/me/credits/transactions", handlers.NewCreditHistoryHandler(creditledger.NewReader(repo.CreditLedger{})).List)
 
 	// Invite links (ADR-051): the user's code and invites, and claiming an
 	// invite in the first hours after sign-up.
