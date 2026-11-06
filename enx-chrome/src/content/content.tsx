@@ -24,6 +24,7 @@ import {
   wordKey,
 } from '@/lib/wordHighlight'
 import { resolveSiteAdapter, type SiteOrigins } from '@/lib/siteAdapters'
+import { isSelectionLookupExcluded } from '@/lib/selectionLookup'
 import {
   ENABLE_OK,
   EnableOutcome,
@@ -1412,6 +1413,14 @@ const handleTextSelection = (event: MouseEvent) => {
   const selection = window.getSelection()
   const selectedText = selection?.toString().trim()
   if (!selectedText || !selection || selection.rangeCount === 0) return
+  if (
+    isSelectionLookupExcluded(
+      [target, selection.anchorNode],
+      resolveSiteAdapter(window.location, siteOrigins).lookupExcludedSelectors
+    )
+  ) {
+    return
+  }
 
   // Captured now: the selection can be cleared (by a later click) before an
   // async branch below gets to position its hint overlay against it.
