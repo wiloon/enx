@@ -363,6 +363,7 @@ function WordCard({
                   type="button"
                   onClick={() => playPronunciation(card.word)}
                   className="text-muted-foreground hover:text-brand leading-none p-1 -m-1"
+                  aria-label="Play pronunciation"
                   title="Play pronunciation"
                 >
                   <SpeakerWaveIcon

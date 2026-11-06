@@ -144,9 +144,11 @@ describe('a word card', () => {
     // The AI half is still loading; the definition alone enables the speaker.
     expect(card).toHaveTextContent('adj. 很棒的')
     expect(card).not.toHaveTextContent('Loading phonetics')
-    fireEvent.click(
-      within(card).getByTestId('sidepanel-play-pronunciation-great')
+    const speaker = within(card).getByTestId(
+      'sidepanel-play-pronunciation-great'
     )
+    expect(speaker).toHaveAttribute('aria-label', 'Play pronunciation')
+    fireEvent.click(speaker)
     expect(play).toHaveBeenCalledTimes(1)
     expect(play).toHaveBeenCalledWith('great')
   })

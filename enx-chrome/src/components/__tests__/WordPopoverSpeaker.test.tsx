@@ -79,6 +79,10 @@ describe('a defined word', () => {
 
     const header = screen.getByTestId('word-popover-header')
     expect(header).not.toHaveTextContent('/')
+    expect(screen.getByTestId(SPEAKER)).toHaveAttribute(
+      'aria-label',
+      'Play pronunciation'
+    )
     fireEvent.click(screen.getByTestId(SPEAKER))
 
     expect(play).toHaveBeenCalledTimes(1)

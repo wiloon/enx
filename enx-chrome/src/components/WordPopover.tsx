@@ -144,6 +144,7 @@ export default function WordPopover({
                     currentWord && playPronunciation(currentWord.English)
                   }
                   className="text-muted-foreground hover:text-brand leading-none p-1 -m-1"
+                  aria-label="Play pronunciation"
                   title="Play pronunciation"
                 >
                   <SpeakerWaveIcon
