@@ -58,7 +58,7 @@ Before adding CSS selectors, inspect the target website to identify the article 
 3. Identify the container element with these characteristics:
    - Contains the main article text
    - Has a reasonable CSS class or ID
-   - Has sufficient text length (>100 characters typically indicates real content)
+   - Holds the whole article, however short (a site-specific selector has no length minimum)
    - Doesn't include navigation, sidebar, or footer content
 
 **Common Patterns:**
@@ -108,9 +108,7 @@ static getArticleNode(): Element | null {
 - This ensures the most accurate match is found first
 
 **Why Ordering Matters:**
-The method iterates through selectors and returns the first element that:
-1. Exists on the page
-2. Has text content length > 100 characters
+The method stops at the first selector that matches. A precise selector (the site-specific ones, `article`, `main`) counts any match with more than 1 character of text. A broad selector (`.post-content`, `.content`, `.entry-content`, `.post-body`) needs more than 100 characters and keeps only its longest match. When nothing matches, the largest-text fallback runs, then the whole page (ADR-034, #563 amendment).
 
 ### 4. Test the Integration
 
@@ -149,7 +147,7 @@ After making changes:
 ### 5. Handle Edge Cases
 
 **Multiple Selectors Match:**
-- The first matching selector with >100 characters is used
+- The first selector that matches wins (see Why Ordering Matters)
 - Reorder selectors if a more appropriate one should take precedence
 
 **No Selector Matches:**
@@ -216,8 +214,8 @@ Update `enx-chrome/CHANGELOG.md` or create a site support document:
 **Problem:** Only partial content is highlighted  
 **Solution:** The selector might be too specific; try a parent container
 
-**Problem:** Console shows "Skipped (text too short: XX < 100)"  
-**Solution:** The selected element has insufficient text; find a larger container or adjust the threshold
+**Problem:** A short block (e.g. a one-line `<article>` card) wins over the real article  
+**Solution:** A precise selector counts however short its match is; add a site-specific selector for the real container before it in the list, or a site adapter
 
 ## Quick Reference Checklist
 

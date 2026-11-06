@@ -40,7 +40,7 @@ describe('resolveSiteAdapter', () => {
     ).toBe(DEFAULT_ADAPTER)
   })
 
-  it('default adapter reproduces today behavior field-for-field', () => {
+  it('default adapter uses the built-in selectors with no site-specific overrides', () => {
     expect(DEFAULT_ADAPTER).toMatchObject({
       minTextLength: 100,
       contentVolatility: 'static',
