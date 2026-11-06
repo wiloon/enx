@@ -1,6 +1,7 @@
 ---
 status: accepted
 date: 2026-10-19
+updated: 2026-11-06（#675：`credit.GrantTrial` 已删除，按邮箱 HMAC 只发一次的检查现在在 `credit.GrantTrialTx` / `grantTrial` 中执行）
 related: adr-015（Clerk 认证）、adr-048（试用积分，幂等键 `trial:<userID>`）、adr-049（管理员用户页）、adr-051（被邀请人奖励进试用池）、issue #217（本 ADR）
 ---
 

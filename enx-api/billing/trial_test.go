@@ -127,7 +127,10 @@ func TestMeReportsTrial(t *testing.T) {
 	seedUser(t, userID)
 	cleanupBillingUser(t, userID)
 	before := time.Now()
-	if _, err := credit.GrantTrial(context.Background(), userID, "h:"+userID, 100, 7*24*time.Hour); err != nil {
+	if err := sqlitex.DB.Transaction(func(tx *gorm.DB) error {
+		_, err := credit.GrantTrialTx(tx, userID, "h:"+userID, 100, 7*24*time.Hour)
+		return err
+	}); err != nil {
 		t.Fatal(err)
 	}
 

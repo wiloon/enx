@@ -117,8 +117,10 @@ func TestLedgerTotalsReconcileAcrossTheWholeCreditLifecycle(t *testing.T) {
 		}
 	}
 
-	_, err := credit.GrantTrial(ctx, "u_topup", "hmac_topup", 100, time.Hour)
-	must("trial", err)
+	must("trial", sqlitex.DB.Transaction(func(tx *gorm.DB) error {
+		_, err := credit.GrantTrialTx(tx, "u_topup", "hmac_topup", 100, time.Hour)
+		return err
+	}))
 	topUp := topUpEffects(billingVersion(t, "u_topup"), "cs_seq")
 	topUp.FirstPayment = nil
 	must("top-up", applyLive(t, "evt_topup", topUp))

@@ -121,12 +121,12 @@ func TestGrantReferralBonusIssuesAMissingTrialFirst(t *testing.T) {
 		t.Fatalf("GRANT_TRIAL rows = %d, want 1", count)
 	}
 	// The trial is still once per account.
-	granted, err := GrantTrial(ctx, userID, "email-"+userID, 100, time.Hour)
+	granted, err := grantTrialInTx(t, userID, "email-"+userID, 100, time.Hour)
 	if err != nil {
-		t.Fatalf("GrantTrial: %v", err)
+		t.Fatalf("GrantTrialTx: %v", err)
 	}
 	if granted {
-		t.Fatal("GrantTrial granted again after the backfill")
+		t.Fatal("GrantTrialTx granted again after the backfill")
 	}
 }
 

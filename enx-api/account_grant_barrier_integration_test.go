@@ -41,8 +41,10 @@ func deletionGrantWriters() map[string]func() error {
 		},
 		"topup": func() error { return credit.GrantTopup(context.Background(), "target", 10, "evt_topup", "pi_topup") },
 		"trial": func() error {
-			_, err := credit.GrantTrial(context.Background(), "target", "h:target", 10, time.Hour)
-			return err
+			return sqlitex.DB.Transaction(func(tx *gorm.DB) error {
+				_, err := credit.GrantTrialTx(tx, "target", "h:target", 10, time.Hour)
+				return err
+			})
 		},
 		"invitee with trial backfill": func() error {
 			_, err := credit.GrantReferralBonus(context.Background(), "target", credit.ReferralBonus{Amount: 10, ExpiresAt: time.Now().Add(time.Hour), TrialAmount: 10, TrialTTL: time.Hour, EmailHMAC: "h:target"})
