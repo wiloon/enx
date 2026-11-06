@@ -85,6 +85,42 @@ const APPS: App[] = [
     stars: 10_300,
   },
   {
+    name: 'Relingo',
+    url: 'https://relingo.net',
+    description:
+      'Highlights and translates words above your level on web pages and video subtitles, and builds a vocabulary book.',
+    users: 40_000,
+  },
+  {
+    name: 'Migaku',
+    url: 'https://migaku.com',
+    description:
+      'Click words in videos and web pages for meanings, track each word as unknown, learning, or known, and make flashcards.',
+    users: 30_000,
+  },
+  {
+    name: 'FluentRead',
+    url: 'https://github.com/FluentRead/FluentRead',
+    description:
+      'Bilingual webpage and selection translator with AI explanations and saved words for review. Open source.',
+    users: 20_000,
+    stars: 8_800,
+  },
+  {
+    name: 'Fluent',
+    url: 'https://www.fluent.co',
+    description:
+      'Swaps words on English pages for Spanish, French, or Italian, with quizzes and spaced repetition.',
+    users: 10_000,
+  },
+  {
+    name: 'WordUp',
+    url: 'https://chromewebstore.google.com/detail/wordup/hjglipkneddkikocdjfhmnachfjoccjn',
+    description:
+      'Highlights the words you marked as unknown on any page, so you can look them up again.',
+    users: 9_000,
+  },
+  {
     name: 'LingQ',
     url: 'https://www.lingq.com',
     description:
