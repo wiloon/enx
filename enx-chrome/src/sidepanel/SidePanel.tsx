@@ -53,6 +53,7 @@ import {
   reorderOrInsertCard,
   sentenceCardId,
   topLevelPhraseCardKey,
+  upsertPageLookupCard,
   wordCardKey,
   type PanelEntry,
   type SentenceEntry,
@@ -850,7 +851,7 @@ function SidePanelContent() {
     // underlines need it (ADR-053 Decision 3), so no message goes back.
     setWordStates(prev => ({ ...prev, [word]: lookup.ecp }))
     setEntries(prev =>
-      reorderOrInsertCard(prev, undefined, wordCardKey(word), () => ({
+      upsertPageLookupCard(prev, {
         word,
         key: wordCardKey(word),
         pronunciation: lookup.ecp.Pronunciation,
@@ -858,7 +859,7 @@ function SidePanelContent() {
         dictionaryChinese: lookup.ecp.Chinese,
         dictionaryStatus: 'loaded',
         contextStatus: 'none',
-      }))
+      })
     )
   }, [setEntries])
 

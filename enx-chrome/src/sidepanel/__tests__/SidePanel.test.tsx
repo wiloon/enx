@@ -2961,4 +2961,60 @@ describe('SidePanel', () => {
       })
     })
   })
+
+  describe('a page word mirrored again (ADR-006)', () => {
+    let createdAt = 0
+
+    const mirror = (word: string, ecp: Record<string, unknown>) =>
+      act(() => {
+        fireStorageChange(
+          {
+            [LATEST_PAGE_WORD_STORAGE_KEY]: {
+              newValue: {
+                word,
+                ecp: { English: word, ...ecp },
+                createdAt: ++createdAt,
+              },
+            },
+          },
+          'session'
+        )
+      })
+
+    it('shows the AI definition the popover mirrors after a dictionary miss', async () => {
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-empty-state')
+
+      mirror('glimmerous', { Chinese: '', LoadCount: 1 })
+      await screen.findByTestId('sidepanel-card-glimmerous')
+      mirror('glimmerous', {
+        Chinese: '闪烁微光的',
+        LoadCount: 1,
+        AIFallback: true,
+      })
+
+      expect(screen.getAllByTestId('sidepanel-card-glimmerous')).toHaveLength(1)
+      expect(screen.getByTestId('sidepanel-card-glimmerous')).toHaveTextContent(
+        '闪烁微光的'
+      )
+    })
+
+    it('moves a word clicked again to the top with its new lookup count', async () => {
+      render(<SidePanel />)
+      await screen.findByTestId('sidepanel-empty-state')
+
+      mirror('troy', { Chinese: '金衡', LoadCount: 1 })
+      mirror('cats', { Chinese: '猫', LoadCount: 1 })
+      mirror('troy', { Chinese: '金衡', LoadCount: 2 })
+
+      expect(
+        screen.getAllByTestId(/^sidepanel-card-/).map(c => c.dataset.testid)
+      ).toEqual(['sidepanel-card-troy', 'sidepanel-card-cats'])
+      expect(
+        within(screen.getByTestId('sidepanel-card-troy')).getByTitle(
+          'Looked up 2 times'
+        )
+      ).toHaveTextContent('2')
+    })
+  })
 })

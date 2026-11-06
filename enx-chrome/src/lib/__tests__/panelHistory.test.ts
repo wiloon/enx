@@ -5,6 +5,7 @@ import {
   reorderOrInsertCard,
   sentenceCardId,
   topLevelPhraseCardKey,
+  upsertPageLookupCard,
   wordCardKey,
   type PanelEntry,
   type SentenceEntry,
@@ -104,6 +105,35 @@ describe('reorderOrInsertCard', () => {
       'great',
       'cats',
     ])
+  })
+})
+
+describe('upsertPageLookupCard', () => {
+  const pageCard = (word: string, extra: Partial<WordCardData> = {}) =>
+    card(word, { dictionaryStatus: 'loaded', contextStatus: 'none', ...extra })
+
+  it("refreshes the top-level card's dictionary data and leaves a nested card of the same word alone", () => {
+    const s = sentence('Cats are great.', [
+      card('great', { dictionaryChinese: '伟大的', contextChinese: '很棒' }),
+    ])
+    const entries: PanelEntry[] = [
+      s,
+      { kind: 'word', ...pageCard('great', { dictionaryChinese: '' }) },
+    ]
+
+    const next = upsertPageLookupCard(
+      entries,
+      pageCard('great', { dictionaryChinese: '很好的', loadCount: 2 })
+    )
+
+    expect(next).toHaveLength(2)
+    expect(next[0]).toMatchObject({
+      kind: 'word',
+      key: wordCardKey('great'),
+      dictionaryChinese: '很好的',
+      loadCount: 2,
+    })
+    expect(next[1]).toBe(s)
   })
 })
 
