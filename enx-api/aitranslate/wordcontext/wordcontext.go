@@ -17,6 +17,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"enx-api/aitranslate/zh"
 )
 
 // SystemPrompt asks the model for the target word's meaning as used in THIS
@@ -31,7 +33,8 @@ Return ONLY a JSON object, no prose around it:
 
 Rules:
 - "word": just the contextual meaning, usually a few characters. No pinyin, no quotes, no explanation.
-- "why": leave it "" when no dictionary definition was given, or when the contextual meaning is an ordinary sense already covered by it. Otherwise keep it to one short clause, no pinyin, no quotes.`
+- "why": leave it "" when no dictionary definition was given, or when the contextual meaning is an ordinary sense already covered by it. Otherwise keep it to one short clause, no pinyin, no quotes.
+` + zh.SimplifiedRule
 
 // Temperature matches sentenceword's 0.3 -- one most-natural rendering, not
 // creative variety.

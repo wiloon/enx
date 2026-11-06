@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"enx-api/aitranslate/aiusage"
+	"enx-api/aitranslate/sentence"
 	"enx-api/utils/logger"
 
 	"github.com/go-resty/resty/v2"
@@ -24,10 +25,6 @@ const (
 	// Override with SENTENCE_TRANSLATE_GEMINI_MODEL.
 	defaultModel   = "gemini-3.6-flash"
 	defaultBaseURL = "https://generativelanguage.googleapis.com/v1beta/openai"
-
-	systemPrompt = "You are a professional English-to-Chinese translator. " +
-		"Translate the given English sentence into natural, fluent Chinese. " +
-		"Reply with the Chinese translation only, no explanation, no pinyin, no quotes."
 )
 
 type Gemini struct {
@@ -102,8 +99,8 @@ type chatResponse struct {
 	Usage usage `json:"usage"`
 }
 
-func (g *Gemini) TranslateSentence(ctx context.Context, sentence string) (string, aiusage.Usage, error) {
-	out, u, err := g.chat(ctx, "translate_sentence", g.model, 0.3, systemPrompt, sentence)
+func (g *Gemini) TranslateSentence(ctx context.Context, text string) (string, aiusage.Usage, error) {
+	out, u, err := g.chat(ctx, "translate_sentence", g.model, sentence.Temperature, sentence.SystemPrompt, text)
 	return out, toUsage(u), err
 }
 

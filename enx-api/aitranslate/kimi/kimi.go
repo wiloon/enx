@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"enx-api/aitranslate/aiusage"
+	"enx-api/aitranslate/sentence"
 	"enx-api/utils/logger"
 
 	"github.com/go-resty/resty/v2"
@@ -17,10 +18,6 @@ import (
 const (
 	defaultModel   = "moonshot-v1-8k"
 	defaultBaseURL = "https://api.moonshot.cn/v1"
-
-	systemPrompt = "You are a professional English-to-Chinese translator. " +
-		"Translate the given English sentence into natural, fluent Chinese. " +
-		"Reply with the Chinese translation only, no explanation, no pinyin, no quotes."
 )
 
 type Kimi struct {
@@ -104,8 +101,8 @@ type chatResponse struct {
 	Usage usage `json:"usage"`
 }
 
-func (k *Kimi) TranslateSentence(ctx context.Context, sentence string) (string, aiusage.Usage, error) {
-	out, u, err := k.chat(ctx, "translate_sentence", k.model, 0.3, systemPrompt, sentence)
+func (k *Kimi) TranslateSentence(ctx context.Context, text string) (string, aiusage.Usage, error) {
+	out, u, err := k.chat(ctx, "translate_sentence", k.model, sentence.Temperature, sentence.SystemPrompt, text)
 	return out, toUsage(u), err
 }
 
