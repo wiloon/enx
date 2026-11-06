@@ -350,7 +350,7 @@ export const SERVICE_UNAVAILABLE_MESSAGE =
 export const NETWORK_ERROR_MESSAGE =
   "Couldn't connect to Catglish. Check your internet connection and try again."
 export const ACCOUNT_CHANGED_MESSAGE =
-  'You switched accounts while this was loading. Please try again.'
+  'Your sign-in changed while this was loading. Please try again.'
 
 // Waits before replaying a call that opted in with `{ retry: true }` (#133).
 // Only calls safe to repeat may opt in: they can be replayed after a network
