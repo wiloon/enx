@@ -7,6 +7,8 @@
 // Only X, the enx-ui Reader, the RSSX Reader and Wikipedia need their own
 // adapter.
 
+import { EDITABLE_REGION_SELECTOR } from './selectionLookup'
+
 // The subset of a Location the adapters read. Both `window.location` and a
 // `URL` (from a Navigation API destination) satisfy it.
 export type PageLocation = Pick<Location, 'host' | 'hostname' | 'pathname'>
@@ -91,7 +93,7 @@ export const DEFAULT_ADAPTER: SiteAdapter = {
     '[role="switch"]',
     '[role="checkbox"]',
     '[role="radio"]',
-    '[contenteditable]:not([contenteditable="false"])',
+    EDITABLE_REGION_SELECTOR,
   ],
   contentVolatility: 'static',
 }

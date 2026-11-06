@@ -52,10 +52,10 @@ const settle = async () => {
 
 type Send = (request: unknown) => Promise<Record<string, unknown>>
 
-const loadContentScript = async (): Promise<Send> => {
+const loadContentScript = async (rssxOrigins: string[] = []): Promise<Send> => {
   await jest.isolateModulesAsync(async () => {
     const { config } = await import('@/config/env')
-    Object.assign(config, { rssxOrigins: [] })
+    Object.assign(config, { rssxOrigins })
     await import('../content')
   })
   const calls = (chrome.runtime.onMessage.addListener as jest.Mock).mock.calls
@@ -101,6 +101,25 @@ const clickWord = async (selector: string, word: string, wait = settle) => {
   )
   await wait()
 }
+
+// Selects `text` under `selector` and releases the mouse on its element.
+const selectText = async (selector: string, text: string) => {
+  const node = textHolding(selector, text)
+  const start = node.data.indexOf(text)
+  const range = document.createRange()
+  range.setStart(node, start)
+  range.setEnd(node, start + text.length)
+  const selection = window.getSelection()!
+  selection.removeAllRanges()
+  selection.addRange(range)
+  node.parentElement!.dispatchEvent(
+    new MouseEvent('mouseup', { bubbles: true })
+  )
+  await settle()
+}
+
+const selectionButtons = () =>
+  document.querySelectorAll('.enx-selection-translate-button')
 
 const popoverWord = () =>
   overlays()[0]?.shadowRoot?.querySelector(
@@ -300,13 +319,13 @@ describe('a whole-page lookup area', () => {
   })
 })
 
-describe('lookup exclusions on a default-adapter page', () => {
-  const page = (attributes: string) => `
-    <article>
-      <p id="plain">The plain fox runs.</p>
-      <p><span id="boxed" ${attributes}>A boxed dog sits.</span></p>
-    </article>`
+const page = (attributes: string) => `
+  <article>
+    <p id="plain">The plain fox runs.</p>
+    <p><span id="boxed" ${attributes}>A boxed dog sits.</span></p>
+  </article>`
 
+describe('lookup exclusions on a default-adapter page', () => {
   it.each([
     ['role="button"'],
     ['role="link"'],
@@ -367,4 +386,83 @@ describe('lookup exclusions on a default-adapter page', () => {
       expect(underlined()).toEqual([])
     }
   )
+})
+
+describe('selection lookup exclusions (#664)', () => {
+  describe('on a default-adapter page', () => {
+    it('selecting a plain word opens its popover', async () => {
+      document.body.innerHTML = page('')
+      const send = await loadContentScript()
+      await send({ action: 'enxRun' })
+
+      await selectText('#plain', 'fox')
+
+      expect(popoverWord()).toContain('fox')
+    })
+
+    it.each([['contenteditable'], ['role="button"'], ['role="link"']])(
+      'selecting a word inside [%s] opens nothing',
+      async attr => {
+        document.body.innerHTML = page(attr)
+        const send = await loadContentScript()
+        await send({ action: 'enxRun' })
+
+        await selectText('#boxed', 'dog')
+
+        expect(overlays()).toHaveLength(0)
+      }
+    )
+
+    it.each([
+      ['a phrase', 'A boxed dog'],
+      ['a sentence', 'A boxed dog sits.'],
+      ['an over-long selection', prose(400)],
+    ])(
+      'selecting %s inside [contenteditable] shows no button or hint',
+      async (_name, text) => {
+        document.body.innerHTML = `<article><p>${prose(200)}</p><p id="boxed" contenteditable>${text}</p></article>`
+        const send = await loadContentScript()
+        await send({ action: 'enxRun' })
+
+        await selectText('#boxed', text)
+
+        expect(selectionButtons()).toHaveLength(0)
+        expect(overlays()).toHaveLength(0)
+      }
+    )
+
+    it('selecting a word inside a link still opens its popover', async () => {
+      document.body.innerHTML = `<article><p>The <a href="/fox">quick fox</a> runs.</p></article>`
+      const send = await loadContentScript()
+      await send({ action: 'enxRun' })
+
+      await selectText('a', 'fox')
+
+      expect(popoverWord()).toContain('fox')
+    })
+  })
+
+  describe('on an adapter without lookupExcludedSelectors (RSSX, like X)', () => {
+    const loadOnRssx = () => loadContentScript([window.location.origin])
+
+    it('selecting a word inside [contenteditable] opens nothing', async () => {
+      document.body.innerHTML = page('contenteditable')
+      const send = await loadOnRssx()
+      await send({ action: 'enxRun' })
+
+      await selectText('#boxed', 'dog')
+
+      expect(overlays()).toHaveLength(0)
+    })
+
+    it('selecting a word inside [role="link"] opens its popover', async () => {
+      document.body.innerHTML = page('role="link"')
+      const send = await loadOnRssx()
+      await send({ action: 'enxRun' })
+
+      await selectText('#boxed', 'dog')
+
+      expect(popoverWord()).toContain('dog')
+    })
+  })
 })
