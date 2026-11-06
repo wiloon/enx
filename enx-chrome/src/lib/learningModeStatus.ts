@@ -73,6 +73,21 @@ export function badgeFor(status: LearningModeStatus): BadgeAppearance {
 export const isLearningModeOn = (status: LearningModeStatus): boolean =>
   status.status === 'ready'
 
+// #526: after an ADR-020 sign-in return, the origin tab is turned on if it is
+// off, or still shows the "!" the lost session left: `session-expired` once
+// the session lapsed under an enabled page, `signed-out` on a page loaded
+// while signed out. A page already on or processing is not torn down.
+export const canEnableOnSignInReturn = (status: LearningModeStatus): boolean =>
+  status.status === 'off' ||
+  (status.status === 'error' &&
+    (status.reason === 'session-expired' || status.reason === 'signed-out'))
+
+// adr-046 Decision 3, sign-in return exception (#526): that run's failures
+// leave the badge empty, whatever the reason.
+export const withoutErrorBadge = (
+  status: LearningModeStatus
+): LearningModeStatus => (status.status === 'error' ? { status: 'off' } : status)
+
 // Failures the user can act on (sign in again, check the network, retry).
 // The rest -- a home page, a layout we don't know, nothing English -- leave
 // the badge empty; a manual enable already explains them in the popup.

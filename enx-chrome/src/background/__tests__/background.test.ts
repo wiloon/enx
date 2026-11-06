@@ -1821,6 +1821,100 @@ describe('background onMessageExternal (ADR-019 web -> extension channel)', () =
         'enx-signin-return'
       )
     })
+
+    // #526: the origin tab is refocused, not reloaded, so the page-load
+    // auto-enable check has to be run again from here.
+    describe('auto-enable on the origin tab', () => {
+      let tabMessages: { tabId: number; action: string }[]
+      let originStatus: unknown
+
+      beforeEach(() => {
+        tabMessages = []
+        originStatus = { status: 'error', reason: 'session-expired' }
+        ;(chrome.runtime.getManifest as jest.Mock).mockReturnValue({
+          host_permissions: [],
+          content_scripts: [{ matches: [], js: [] }],
+        })
+        ;(chrome.permissions.getAll as jest.Mock).mockResolvedValue({
+          permissions: [],
+          origins: ['https://www.infoq.com/*'],
+        })
+        // The worker last saw nobody signed in, so this sign-in is an
+        // account change that is broadcast to every tab.
+        ;(chrome.storage.session.get as jest.Mock).mockImplementation(
+          async (key: string) =>
+            key === 'enx-account-session-owner'
+              ? { 'enx-account-session-owner': null }
+              : { 'enx-signin-return': pending }
+        )
+        ;(chrome.storage.session.set as jest.Mock).mockResolvedValue(undefined)
+        ;(chrome.tabs.query as jest.Mock).mockResolvedValue([{ id: 42 }])
+        ;(chrome.tabs.get as jest.Mock).mockImplementation(async (id: number) =>
+          id === 99
+            ? { id: 99, url: 'http://localhost:3000/extension/connected' }
+            : { id: 42, url: 'https://www.infoq.com/articles/foo' }
+        )
+        ;(chrome.tabs.sendMessage as jest.Mock).mockImplementation(
+          async (tabId: number, message: { action: string }) => {
+            tabMessages.push({ tabId, action: message.action })
+            return message.action === 'getLearningModeStatus'
+              ? { status: originStatus }
+              : { success: true }
+          }
+        )
+      })
+
+      const autoEnables = () =>
+        tabMessages.filter(m => m.action === 'autoEnableOnSignInReturn')
+
+      it('asks the origin tab to auto-enable, after the account-change broadcast', async () => {
+        await call({ type: 'enx:signed-in' })
+
+        expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+          42,
+          { action: 'autoEnableOnSignInReturn' },
+          { frameId: 0 }
+        )
+        const actions = tabMessages.map(m => m.action)
+        expect(actions.indexOf('accountChanged')).toBeGreaterThanOrEqual(0)
+        expect(actions.indexOf('accountChanged')).toBeLessThan(
+          actions.indexOf('autoEnableOnSignInReturn')
+        )
+      })
+
+      it('leaves an origin tab that is already on alone', async () => {
+        originStatus = { status: 'ready' }
+
+        await call({ type: 'enx:signed-in' })
+
+        expect(autoEnables()).toEqual([])
+      })
+
+      it('leaves an origin tab on a site that was not granted alone', async () => {
+        ;(chrome.permissions.getAll as jest.Mock).mockResolvedValue({
+          permissions: [],
+          origins: [],
+        })
+
+        await call({ type: 'enx:signed-in' })
+
+        expect(autoEnables()).toEqual([])
+      })
+
+      it('still answers when the origin tab was closed during sign-in', async () => {
+        ;(chrome.tabs.update as jest.Mock).mockRejectedValue(
+          new Error('No tab with id: 42')
+        )
+        ;(chrome.tabs.get as jest.Mock).mockRejectedValue(
+          new Error('No tab with id: 42')
+        )
+
+        const response = await call({ type: 'enx:signed-in' })
+
+        expect(response).toEqual({ ok: true, returned: true })
+        expect(autoEnables()).toEqual([])
+      })
+    })
   })
 })
 

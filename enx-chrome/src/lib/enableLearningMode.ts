@@ -99,6 +99,25 @@ export async function disableLearningModeOnTab(tabId: number): Promise<void> {
   }
 }
 
+// #526: page-load auto-enable again, after an ADR-020 sign-in return. Unlike
+// enxRun its failures are silent (adr-039 Decision 4), so the content script
+// answers at once and the outcome shows only on the badge. Only the top
+// frame owns the status. A tab with no content script is left alone: an
+// auto-enabled site always has one.
+export async function autoEnableOnSignInReturnOnTab(
+  tabId: number
+): Promise<void> {
+  try {
+    await chrome.tabs.sendMessage(
+      tabId,
+      { action: 'autoEnableOnSignInReturn' },
+      { frameId: 0 }
+    )
+  } catch (err) {
+    if (!isNoReceiverError(err)) throw err
+  }
+}
+
 // What learning mode is doing on the tab right now, so the popup's button
 // matches a page that was auto-enabled (adr-039) or enabled from an earlier
 // popup. Only the top frame owns the status, as with the badge. A tab with no

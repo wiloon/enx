@@ -20,10 +20,12 @@ import {
 } from './statsReporter'
 import {
   enableOnNewlyGrantedSite,
+  enableOnSignInReturn,
   reconcileAutoEnableScripts,
   shouldAutoEnable,
 } from './autoEnable'
 import {
+  autoEnableOnSignInReturnOnTab,
   disableLearningModeOnTab,
   enableLearningModeOnTab,
   getLearningModeStatusOnTab,
@@ -1017,11 +1019,24 @@ const handleSignedInReturn = async (): Promise<{
     // Tab already gone -- nothing to close.
   }
 
+  let backOnOrigin = false
   try {
     await chrome.tabs.update(stored.originTabId, { active: true })
+    backOnOrigin = true
     await chrome.windows.update(stored.originWindowId, { focused: true })
   } catch {
     // The origin tab or window was closed while the user signed in.
+  }
+
+  // #526: isSignedIn() above has already awaited the accountChanged
+  // broadcast, so nothing tears this enable down behind it.
+  if (backOnOrigin) {
+    await enableOnSignInReturn(stored.originTabId, {
+      getStatus: getLearningModeStatusOnTab,
+      enable: autoEnableOnSignInReturnOnTab,
+    }).catch(error =>
+      console.error('Failed to auto-enable the sign-in origin tab:', error)
+    )
   }
 
   try {

@@ -1,9 +1,11 @@
 import {
   enableOnNewlyGrantedSite,
+  enableOnSignInReturn,
   grantedAutoEnableSites,
   reconcileAutoEnableScripts,
   shouldAutoEnable,
 } from '@/background/autoEnable'
+import type { LearningModeStatus } from '@/lib/learningModeStatus'
 
 const JS = ['assets/content.tsx-loader-abc.js']
 
@@ -239,6 +241,70 @@ describe('enableOnNewlyGrantedSite', () => {
 
     await enableOnNewlyGrantedSite({ origins: ['https://*/*'] }, d)
 
+    expect(d.enable).not.toHaveBeenCalled()
+  })
+})
+
+// #526: the origin tab is only refocused, never reloaded, so page-load
+// auto-enable does not run again after an ADR-020 sign-in return.
+describe('enableOnSignInReturn', () => {
+  const tabs = chrome.tabs as unknown as { get: jest.Mock }
+
+  function deps(status: LearningModeStatus = { status: 'off' }) {
+    return {
+      getStatus: jest.fn().mockResolvedValue(status),
+      enable: jest.fn().mockResolvedValue(undefined),
+    }
+  }
+
+  beforeEach(() => {
+    granted('https://www.infoq.com/*')
+    tabs.get.mockResolvedValue({
+      id: 42,
+      url: 'https://www.infoq.com/articles/foo',
+    })
+  })
+
+  it.each<[string, LearningModeStatus]>([
+    ['off', { status: 'off' }],
+    ['error: session-expired', { status: 'error', reason: 'session-expired' }],
+    ['error: signed-out', { status: 'error', reason: 'signed-out' }],
+  ])('enables the origin tab of an auto-enabled site at %s', async (_, s) => {
+    const d = deps(s)
+
+    await enableOnSignInReturn(42, d)
+
+    expect(d.enable).toHaveBeenCalledWith(42)
+  })
+
+  it.each<[string, LearningModeStatus]>([
+    ['processing', { status: 'processing' }],
+    ['ready', { status: 'ready' }],
+    ['error: lookup-failed', { status: 'error', reason: 'lookup-failed' }],
+  ])('leaves the origin tab alone at %s', async (_, s) => {
+    const d = deps(s)
+
+    await enableOnSignInReturn(42, d)
+
+    expect(d.enable).not.toHaveBeenCalled()
+  })
+
+  it('leaves a tab on a site that was not granted alone', async () => {
+    tabs.get.mockResolvedValue({ id: 42, url: 'https://example.com/a' })
+    const d = deps()
+
+    await enableOnSignInReturn(42, d)
+
+    expect(d.enable).not.toHaveBeenCalled()
+  })
+
+  it('does nothing, quietly, when the origin tab was closed', async () => {
+    tabs.get.mockRejectedValue(new Error('No tab with id: 42'))
+    const d = deps()
+
+    await expect(enableOnSignInReturn(42, d)).resolves.toBeUndefined()
+
+    expect(d.getStatus).not.toHaveBeenCalled()
     expect(d.enable).not.toHaveBeenCalled()
   })
 })

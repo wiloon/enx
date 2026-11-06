@@ -1,4 +1,4 @@
-import { maybeAutoEnable } from '@/content/autoEnable'
+import { autoEnableOnSignInReturn, maybeAutoEnable } from '@/content/autoEnable'
 import { ENABLE_OK, failed } from '@/lib/enableOutcome'
 
 function deps(overrides: Partial<Parameters<typeof maybeAutoEnable>[0]> = {}) {
@@ -88,4 +88,74 @@ describe('maybeAutoEnable (adr-039 Decision 4)', () => {
       expect(d.disable).toHaveBeenCalledTimes(1)
     })
   })
+})
+
+// #526: the background has already checked the site and the sign-in, so
+// there is no background question; the rest is page-load policy.
+describe('autoEnableOnSignInReturn', () => {
+  function returnDeps(
+    overrides: Partial<Parameters<typeof autoEnableOnSignInReturn>[0]> = {}
+  ) {
+    return {
+      isPageSupported: jest.fn(() => true),
+      enable: jest.fn(async () => ENABLE_OK),
+      disable: jest.fn(),
+      keepsWatching: jest.fn(() => false),
+      clearStatus: jest.fn(),
+      ...overrides,
+    }
+  }
+
+  it('enables learning mode', async () => {
+    const d = returnDeps()
+    await autoEnableOnSignInReturn(d)
+    expect(d.enable).toHaveBeenCalledTimes(1)
+    expect(d.disable).not.toHaveBeenCalled()
+  })
+
+  // The tab's signed-out "!" no longer holds once the user is signed in.
+  it('only clears the status on a page the site adapter declares out of scope', async () => {
+    const d = returnDeps({ isPageSupported: jest.fn(() => false) })
+    await autoEnableOnSignInReturn(d)
+    expect(d.enable).not.toHaveBeenCalled()
+    expect(d.clearStatus).toHaveBeenCalledTimes(1)
+  })
+
+  it('rolls back on a static site after a failure', async () => {
+    const d = returnDeps({ enable: jest.fn(async () => failed('lookup-failed')) })
+    await autoEnableOnSignInReturn(d)
+    expect(d.disable).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps watching navigations on an SPA site after a failure', async () => {
+    const d = returnDeps({
+      enable: jest.fn(async () => failed('lookup-failed')),
+      keepsWatching: jest.fn(() => true),
+    })
+    await autoEnableOnSignInReturn(d)
+    expect(d.disable).not.toHaveBeenCalled()
+  })
+
+  it('rolls back on an SPA site when the session expired', async () => {
+    const d = returnDeps({
+      enable: jest.fn(async () => failed('session-expired')),
+      keepsWatching: jest.fn(() => true),
+    })
+    await autoEnableOnSignInReturn(d)
+    expect(d.disable).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([false, true])(
+    'rolls back silently when enabling throws (SPA: %s)',
+    async spa => {
+      const d = returnDeps({
+        enable: jest.fn(async () => {
+          throw new Error('boom')
+        }),
+        keepsWatching: jest.fn(() => spa),
+      })
+      await expect(autoEnableOnSignInReturn(d)).resolves.toBeUndefined()
+      expect(d.disable).toHaveBeenCalledTimes(1)
+    }
+  )
 })
