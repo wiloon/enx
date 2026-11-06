@@ -56,7 +56,9 @@ export default function CreditTimeline({
     queryFn: ({ pageParam }) => load(pageParam, direction),
     getNextPageParam: (last) => last.next || undefined,
   })
-  const entries = query.data?.pages.flatMap((p) => p.transactions) ?? []
+  const entries = (query.data?.pages.flatMap((p) => p.transactions) ?? []).map(
+    (entry, index) => ({ ...entry, occurrence: index })
+  )
   const items = groupTimeline(entries)
   const filter = FILTERS.find((f) => f.direction === direction)!
 
@@ -202,10 +204,9 @@ export default function CreditTimeline({
   )
 }
 
-// Rows carry no id on the user's side; time, type and feature tell them
-// apart well enough for React.
-function rowKey(e: Entry): string {
-  return 'id' in e ? e.id : `${e.createdAt}-${e.type}-${e.feature}`
+// Appending pages preserves each loaded occurrence's position, including ties.
+function rowKey(e: Entry & { occurrence: number }): string {
+  return String(e.occurrence)
 }
 
 function isAdminEntry(e: Entry): e is AdminLedgerEntry {

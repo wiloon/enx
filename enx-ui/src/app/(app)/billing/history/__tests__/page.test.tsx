@@ -137,6 +137,36 @@ it('merges a group across pages once the next page loads', async () => {
   expect(mockList).toHaveBeenLastCalledWith('cursor-1', '')
 })
 
+it('keeps tied transactions distinct through pagination and rerendering', async () => {
+  const errors = jest.spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    mockList
+      .mockResolvedValueOnce(
+        page([tx({}), tx({ type: 'REFUND', amount: 1 })], 'next')
+      )
+      .mockResolvedValueOnce(page([tx({}), tx({ type: 'REFUND', amount: 2 })]))
+    renderPage()
+    await timeline()
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    const group = await screen.findByRole('button', {
+      name: /Word translation ×2/,
+    })
+    fireEvent.click(group)
+    const rows = screen.getByRole('list', { name: 'Word translation ×2' })
+    expect(within(rows).getAllByRole('listitem')).toHaveLength(2)
+    fireEvent.click(group)
+    fireEvent.click(group)
+    expect(
+      within(
+        screen.getByRole('list', { name: 'Word translation ×2' })
+      ).getAllByRole('listitem')
+    ).toHaveLength(2)
+    expect(errors.mock.calls.flat().join(' ')).not.toContain('same key')
+  } finally {
+    errors.mockRestore()
+  }
+})
+
 it('shows +0 and why on rows that changed nothing', async () => {
   mockList.mockResolvedValue(
     page([
