@@ -26,7 +26,7 @@ Before placing an icon, find its concept below and use that row's icon. A concep
 | A step the user skipped | — | `CircleSlash` | "Pin the Catglish icon" on `/welcome` after Skip |
 | Back to learning | `ArrowUturnLeftIcon` | `Undo2` | Mark as learning |
 | Delete something kept (server data) | `TrashIcon` | `Trash2` | Remove from Word List, delete a saved page or document |
-| Close or dismiss something transient | `XMarkIcon` | `X` | close the word popover, remove a Side Panel card (cards are not persisted, ADR-023) |
+| Close or dismiss something transient | `XMarkIcon` | `X` | close the word popover, remove a Side Panel card (cards are not persisted, ADR-023), close the site header menu |
 | Needs a plan (paywalled) | `LockClosedIcon` | `Lock` | "Look up with AI" without credits |
 | Private to you | `ShieldCheckIcon` | `ShieldCheck` | Reader's "Only you can see it" note |
 | A website | `GlobeAltIcon` | `Globe` | popup "Always enable on this site"; "Back to site" nav |
@@ -43,7 +43,8 @@ Before placing an icon, find its concept below and use that row's icon. A concep
 | More actions | `EllipsisHorizontalIcon` | `MoreHorizontal` | Word List row menu |
 | Edit | `PencilIcon` | `Pencil` | Reader "Edit text" |
 | Explanation | `InformationCircleIcon` | `Info` | Reading Stats footnote |
-| Open the navigation drawer | — | `Menu` | top bar on mobile |
+| Open the navigation drawer | — | `Menu` | top bar on mobile; site header menu below `lg` |
+| GitHub repository | — | `GitHubIcon` (custom; lucide has no brand icons) | site header, beside Sign in |
 | Admin: dictionary / AI definitions / page reports / users | — | `Wrench` / `ClipboardCheck` / `AlertTriangle` / `Users` | admin nav |
 
 ## Style
