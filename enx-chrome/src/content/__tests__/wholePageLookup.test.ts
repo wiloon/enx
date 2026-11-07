@@ -1,6 +1,8 @@
 // #563 (adr-034 amendment): short pages whose article node is short, or that
-// have none at all, still enable. These tests load the real content script
-// against a jsdom page and a fake background.
+// have none at all, still enable. A page no selector recognises is the whole
+// page: selection lookup only, no click lookup, highlights or reading
+// (adr-034, 2026-11-07). These tests load the real content script against a
+// jsdom page and a fake background.
 
 import { STAND_DOWN_EVENT } from '@/lib/orphanStandDown'
 import { IDLE_FLUSH_MS } from '@/content/readingTracker'
@@ -206,27 +208,85 @@ afterEach(() => {
   jest.restoreAllMocks()
 })
 
-describe('a Standard Ebooks title page', () => {
+// adr-034 2026-11-07: InfoQ's homepage has no .article__data; its Trending
+// tabs are <li aria-selected> with no role, switched by a document listener.
+const INFOQ_HOME = `
+  <main>
+    <div class="tab__switcher">
+      <ul>
+        <li aria-selected="true">1 week</li>
+        <li id="month" aria-selected="false">1 month</li>
+        <li aria-selected="false">6 months</li>
+      </ul>
+    </div>
+    <section><p>The quick brown fox jumps over the lazy dog. ${prose(800)}</p></section>
+  </main>`
+
+describe('the InfoQ homepage (whole page)', () => {
+  it('a click on a Trending tab opens no popover and reaches the page', async () => {
+    document.body.innerHTML = INFOQ_HOME
+    const pageClicks: MouseEvent[] = []
+    const onDocumentClick = (event: MouseEvent) => pageClicks.push(event)
+    document.addEventListener('click', onDocumentClick)
+    const send = await loadContentScript()
+    expect(await send({ action: 'enxRun' })).toMatchObject({ success: true })
+
+    await clickWord('#month', 'month')
+    document.removeEventListener('click', onDocumentClick)
+
+    expect(overlays()).toHaveLength(0)
+    expect(pageClicks).toHaveLength(1)
+    expect(pageClicks[0].defaultPrevented).toBe(false)
+  })
+})
+
+describe('a Standard Ebooks title page (whole page)', () => {
   beforeEach(() => {
     document.body.innerHTML = TITLE_PAGE
   })
 
-  it('enables, and both the heading and the byline can be looked up', async () => {
+  it('enables, and both the heading and the byline can be looked up by selection', async () => {
     const send = await loadContentScript()
 
     expect(await send({ action: 'enxRun' })).toMatchObject({ success: true })
 
-    await clickWord('h1', 'Fiction')
+    await selectText('h1', 'Fiction')
     expect(popoverWord()).toContain('Fiction')
     closeOverlays()
-    await clickWord('b', 'Conrad')
+    await selectText('b', 'Conrad')
     expect(popoverWord()).toContain('Conrad')
   })
 
-  it('sends "By Joseph Conrad." as the sentence of a click on Conrad', async () => {
+  it('a single click on a word opens no popover', async () => {
+    const send = await loadContentScript()
+    await send({ action: 'enxRun' })
+
+    await clickWord('b', 'Conrad')
+
+    expect(overlays()).toHaveLength(0)
+  })
+
+  it('paints no highlight on a review word', async () => {
+    const send = await loadContentScript()
+    await send({ action: 'enxRun' })
+    showAllObserved()
+
+    expect(underlined()).toEqual([])
+  })
+
+  it('counts no reading', async () => {
     const send = await loadContentScript()
     await send({ action: 'enxRun' })
     await clickWord('b', 'Conrad')
+    window.dispatchEvent(new Event('pagehide'))
+
+    expect(progressReports()).toEqual([])
+  })
+
+  it('sends "By Joseph Conrad." as the sentence of a selected Conrad', async () => {
+    const send = await loadContentScript()
+    await send({ action: 'enxRun' })
+    await selectText('b', 'Conrad')
 
     const button = overlays()[0].shadowRoot!.querySelector(
       '[data-testid="word-popover-sentence-translation"]'
@@ -266,22 +326,25 @@ describe('a whole-page lookup area', () => {
     const send = await loadContentScript()
 
     expect(await send({ action: 'enxRun' })).toMatchObject({ success: true })
-    await clickWord('#short', 'dog')
+    await selectText('#short', 'dog')
     expect(overlays()).toHaveLength(1)
     window.dispatchEvent(new Event('pagehide'))
 
     expect(progressReports()).toEqual([])
   })
 
-  it('a body found by the largest-text fallback still counts reading', async () => {
+  it('paragraphs directly under body are whole page and count no reading', async () => {
     document.body.innerHTML = `<p id="long">The quick brown fox jumps over the lazy dog. ${prose(600)}</p>`
     const send = await loadContentScript()
 
     expect(await send({ action: 'enxRun' })).toMatchObject({ success: true })
     await clickWord('#long', 'dog')
+    expect(overlays()).toHaveLength(0)
+    await selectText('#long', 'dog')
+    expect(overlays()).toHaveLength(1)
     window.dispatchEvent(new Event('pagehide'))
 
-    expect(progressReports()).toHaveLength(1)
+    expect(progressReports()).toEqual([])
   })
 
   it('reports the article read before it once, then nothing from clicks, scrolls or timers', async () => {
@@ -290,8 +353,8 @@ describe('a whole-page lookup area', () => {
       for (let i = 0; i < 10; i++) await jest.advanceTimersByTimeAsync(1)
     }
     document.body.innerHTML =
-      `<p id="lead">The quick brown fox jumps over the lazy dog.</p>` +
-      `<p id="rest">${prose(600)}</p>`
+      `<article><p id="lead">The quick brown fox jumps over the lazy dog.</p>` +
+      `<p id="rest">${prose(600)}</p></article>`
     const send = await loadContentScript()
     const enabled = send({ action: 'enxRun' })
     await tick()
@@ -302,8 +365,8 @@ describe('a whole-page lookup area', () => {
     await stopped
     expect(progressReports()).toEqual([])
 
-    // The same body, now under the largest-text fallback's minimum.
-    document.getElementById('rest')!.remove()
+    // The next page no selector recognises.
+    document.body.innerHTML = `<div><p id="lead">The quick brown fox jumps over the lazy dog.</p></div>`
     const reenabled = send({ action: 'enxRun' })
     await tick()
     expect(await reenabled).toMatchObject({ success: true })
@@ -314,6 +377,38 @@ describe('a whole-page lookup area', () => {
     window.dispatchEvent(new Event('pagehide'))
     document.dispatchEvent(new Event('visibilitychange'))
     await jest.advanceTimersByTimeAsync(IDLE_FLUSH_MS * 2)
+
+    expect(progressReports()).toHaveLength(1)
+  })
+})
+
+describe('an article a selector recognises', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `<main><article><p id="a">The quick brown fox jumps over the lazy dog. ${prose(600)}</p></article></main>`
+  })
+
+  it('a click on a word opens its popover', async () => {
+    const send = await loadContentScript()
+    await send({ action: 'enxRun' })
+
+    await clickWord('#a', 'dog')
+
+    expect(popoverWord()).toContain('dog')
+  })
+
+  it('paints review words', async () => {
+    const send = await loadContentScript()
+    await send({ action: 'enxRun' })
+    showAllObserved()
+
+    expect(underlined().sort()).toEqual(['dog', 'fox'])
+  })
+
+  it('counts reading', async () => {
+    const send = await loadContentScript()
+    await send({ action: 'enxRun' })
+    await clickWord('#a', 'dog')
+    window.dispatchEvent(new Event('pagehide'))
 
     expect(progressReports()).toHaveLength(1)
   })
@@ -363,7 +458,7 @@ describe('lookup exclusions on a default-adapter page', () => {
     ],
     [
       'on the article root',
-      '<main contenteditable="true">Hello fox world.</main>',
+      '<article contenteditable="true">Hello fox world.</article>',
     ],
     [
       'on an ancestor outside the article',

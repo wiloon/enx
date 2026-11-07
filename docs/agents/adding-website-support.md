@@ -108,7 +108,7 @@ static getArticleNode(): Element | null {
 - This ensures the most accurate match is found first
 
 **Why Ordering Matters:**
-The method stops at the first selector that matches. A precise selector (the site-specific ones, `article`, `main`) counts any match with more than 1 character of text. A broad selector (`.post-content`, `.content`, `.entry-content`, `.post-body`) needs more than 100 characters and keeps only its longest match. When nothing matches, the largest-text fallback runs, then the whole page (ADR-034, #563 amendment).
+The method stops at the first selector that matches. A precise selector (the site-specific ones, `article`) counts any match with more than 1 character of text. A broad selector (`.post-content`, `.content`, `.entry-content`, `.post-body`) needs more than 100 characters and keeps only its longest match. When nothing matches, the page is the whole page: selection lookup only, with no click lookup, highlights or reading statistics (ADR-034, 2026-11-07 amendment). A site whose article no built-in selector finds needs its own selector here to get click lookup.
 
 ### 4. Test the Integration
 
