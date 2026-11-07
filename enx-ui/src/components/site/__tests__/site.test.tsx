@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { SITE } from '@/lib/site'
 import { SUBSCRIPTION_PLANS } from '@/lib/plans'
 
@@ -307,11 +307,70 @@ describe('SiteHeader', () => {
     )
   })
 
-  it('links to the GitHub repository from the nav, in a new tab', () => {
+  it('links to the GitHub repository with an icon beside Sign in, in a new tab', () => {
     render(<SiteHeader />)
     const link = screen.getByRole('link', { name: 'GitHub' })
     expect(link).toHaveAttribute('href', SITE.githubUrl)
     expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveTextContent('')
+    const nav = screen.getByRole('navigation', { name: 'Main' })
+    expect(within(nav).queryByRole('link', { name: 'GitHub' })).toBeNull()
+  })
+
+  it('lists Help with the other section links and leaves installing to the CTA', () => {
+    render(<SiteHeader />)
+    const nav = screen.getByRole('navigation', { name: 'Main' })
+    expect(
+      within(nav)
+        .getAllByRole('link')
+        .map((a) => a.textContent)
+    ).toEqual(['Features', 'How it works', 'Pricing', 'Similar apps', 'Help'])
+  })
+
+  describe('mobile menu', () => {
+    it('opens a menu with the section links and GitHub', () => {
+      render(<SiteHeader />)
+      const toggle = screen.getByRole('button', { name: 'Open menu' })
+      expect(toggle).toHaveAttribute('aria-expanded', 'false')
+      expect(screen.queryByRole('navigation', { name: 'Menu' })).toBeNull()
+
+      fireEvent.click(toggle)
+
+      expect(
+        screen.getByRole('button', { name: 'Close menu' })
+      ).toHaveAttribute('aria-expanded', 'true')
+      const menu = screen.getByRole('navigation', { name: 'Menu' })
+      expect(
+        within(menu)
+          .getAllByRole('link')
+          .map((a) => a.textContent)
+      ).toEqual([
+        'Features',
+        'How it works',
+        'Pricing',
+        'Similar apps',
+        'Help',
+        'GitHub',
+        // The bar has no room for the CTA on a phone, so the menu carries it.
+        'Add to Chrome',
+      ])
+    })
+
+    it('closes when a link is chosen, so a same-page anchor is not hidden behind it', () => {
+      render(<SiteHeader />)
+      fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
+      const menu = screen.getByRole('navigation', { name: 'Menu' })
+      fireEvent.click(within(menu).getByRole('link', { name: 'Features' }))
+      expect(screen.queryByRole('navigation', { name: 'Menu' })).toBeNull()
+    })
+
+    it('closes on Escape and hands focus back to the toggle', () => {
+      render(<SiteHeader />)
+      fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
+      fireEvent.keyDown(document, { key: 'Escape' })
+      expect(screen.queryByRole('navigation', { name: 'Menu' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Open menu' })).toHaveFocus()
+    })
   })
 
   it('shows "Add to Chrome" until the extension is detected as installed', () => {

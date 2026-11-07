@@ -74,7 +74,11 @@ describe('/pricing', () => {
   it('has no checkout buttons -- every call to action is a link', () => {
     render(<PricingPage />)
 
-    expect(screen.queryAllByRole('button')).toHaveLength(0)
+    // Scoped to <main>: the site header's mobile-menu toggle is a button but
+    // starts no checkout.
+    expect(
+      within(screen.getByRole('main')).queryAllByRole('button')
+    ).toHaveLength(0)
     expect(screen.getAllByRole('link', { name: 'Subscribe' })).toHaveLength(
       SUBSCRIPTION_PLANS.length
     )
