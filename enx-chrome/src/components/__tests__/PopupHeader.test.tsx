@@ -1,9 +1,14 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 
 // config/env reads import.meta.env, which Jest can't parse.
+const mockConfig = {
+  frontendBaseUrl: 'https://catglish.example',
+  apiBaseUrl: 'https://api.catglish.example',
+  environment: 'production',
+}
 jest.mock('@/config/env', () => ({
-  config: {
-    frontendBaseUrl: 'https://catglish.example',
+  get config() {
+    return mockConfig
   },
 }))
 
@@ -18,6 +23,30 @@ describe('PopupHeader', () => {
   beforeEach(() => {
     mockAuth.isLoaded = true
     mockAuth.isSignedIn = false
+    mockConfig.environment = 'production'
+  })
+
+  it('tags a HomeLab build with LAB and its API URL', () => {
+    mockConfig.environment = 'homelab'
+    render(<PopupHeader />)
+
+    const tag = screen.getByText('LAB')
+    expect(tag).toHaveAttribute(
+      'title',
+      expect.stringContaining('https://api.catglish.example')
+    )
+    expect(
+      screen.getByRole('link', { name: 'Open Catglish (LAB build)' })
+    ).toContainElement(tag)
+  })
+
+  it('shows no tag on a production build', () => {
+    render(<PopupHeader />)
+
+    expect(
+      screen.getByRole('link', { name: 'Open Catglish' })
+    ).toHaveTextContent(/^Catglish\s*English Reading Assistant$/)
+    expect(screen.queryByText('LAB')).not.toBeInTheDocument()
   })
 
   it('links a signed-out user to the main site in a new tab', () => {

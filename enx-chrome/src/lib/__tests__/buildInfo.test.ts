@@ -1,4 +1,21 @@
-import { describeBuild } from '@/lib/buildInfo'
+import { describeBuild, environmentTag } from '@/lib/buildInfo'
+
+describe('environmentTag', () => {
+  const api = 'https://api.example:8443'
+
+  it('shows no tag on a production build', () => {
+    expect(environmentTag('production', api)).toBeNull()
+  })
+
+  it.each([
+    ['homelab', 'LAB', `HomeLab build (${api})`],
+    ['homelab-test', 'LAB TEST', `HomeLab Test build (${api})`],
+    ['development', 'DEV', `Development build (${api})`],
+    ['test', 'TEST', `Test build (${api})`],
+  ] as const)('tags a %s build as %s', (environment, text, title) => {
+    expect(environmentTag(environment, api)).toEqual({ text, title })
+  })
+})
 
 describe('describeBuild', () => {
   it('labels the build with its version', () => {
