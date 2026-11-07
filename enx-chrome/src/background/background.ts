@@ -6,6 +6,8 @@ import {
   ACCOUNT_CHANGED_MESSAGE,
   type AccountInvalidatedMessage,
 } from '@/lib/panelAccountFence'
+import { classifyFinalUnauthorized } from '@/lib/finalUnauthorized'
+import { SESSION_UNVERIFIED_MESSAGE } from '@/lib/signedOut'
 import { createClerkClient } from '@clerk/chrome-extension/client'
 import { config } from '@/config/env'
 import { LatestPageWordLookup, PendingSentenceContext, WordData } from '@/types'
@@ -327,6 +329,9 @@ export type ApiRequestResult = {
   data?: any
   error?: string
   sessionExpired?: boolean
+  // The forced replay carried a freshly minted token and still got a 401
+  // (#686): the account session is left alone.
+  sessionUnverified?: boolean
   // HTTP status of a failed response (undefined for network-level failures
   // that never got a response at all). Lets callers distinguish billing
   // errors -- 402 insufficient AI credit, 429 daily dictionary quota
@@ -482,6 +487,24 @@ export const makeApiRequest = async (
             swlog('retrying once with a force-refreshed Clerk token', 'warn')
             forceRefresh = true
             continue
+          }
+
+          const replay = !forceRefresh
+            ? 'none'
+            : token
+              ? 'with-token'
+              : 'without-token'
+          if (classifyFinalUnauthorized(replay) === 'unverified') {
+            swlog(
+              `session unverified: ${endpoint} refused the freshly minted ` +
+                `Clerk token …${token?.slice(-8)}; keeping the account session`,
+              'warn'
+            )
+            return {
+              success: false,
+              error: SESSION_UNVERIFIED_MESSAGE,
+              sessionUnverified: true,
+            }
           }
 
           await handleSessionExpiry()
@@ -1228,12 +1251,13 @@ const handleGetOneWord = async (word: string) => {
     }
   } else {
     console.error('API request failed:', response.error)
-    // Pass through session expiry flag, status and code (a 429 is the daily
+    // Pass through the session flags, status and code (a 429 is the daily
     // quota or the request rate limit, told apart by code -- ADR-060)
     return {
       success: false,
       error: response.error || 'Translation service error',
       sessionExpired: response.sessionExpired,
+      sessionUnverified: response.sessionUnverified,
       status: response.status,
       code: response.code,
     }
@@ -1250,12 +1274,13 @@ export const handleGetReviewWords = async () => {
   if (response.success) {
     return { success: true, reviewWords: response.data }
   } else {
-    // Pass through session expiry, and what a 429 is and how long it asks
+    // Pass through the session flags, and what a 429 is and how long it asks
     // to wait (ADR-060): the retry in lib/reviewList.ts needs both
     return {
       success: false,
       error: response.error,
       sessionExpired: response.sessionExpired,
+      sessionUnverified: response.sessionUnverified,
       status: response.status,
       code: response.code,
       retryAfterMs: response.retryAfterMs,
@@ -1310,11 +1335,12 @@ const handleMarkKnown = async (word: string, userId: number) => {
     }
   } else {
     console.error('handleMarkKnown: Failed to mark word', response.error)
-    // Pass through session expiry flag
+    // Pass through the session flags
     return {
       success: false,
       error: response.error,
       sessionExpired: response.sessionExpired,
+      sessionUnverified: response.sessionUnverified,
     }
   }
 }
@@ -1338,6 +1364,7 @@ const handleTranslateSentence = async (sentence: string) => {
     success: false,
     error: response.error || 'Translation service unavailable',
     sessionExpired: response.sessionExpired,
+    sessionUnverified: response.sessionUnverified,
     status: response.status,
   }
 }
@@ -1373,6 +1400,7 @@ const handleTranslateSentenceWithWord = async (
     success: false,
     error: response.error || 'Translation service unavailable',
     sessionExpired: response.sessionExpired,
+    sessionUnverified: response.sessionUnverified,
     status: response.status,
   }
 }
@@ -1415,6 +1443,7 @@ const handleTranslateWordInContext = async (
     success: false,
     error: response.error || 'Translation service unavailable',
     sessionExpired: response.sessionExpired,
+    sessionUnverified: response.sessionUnverified,
     status: response.status,
   }
 }

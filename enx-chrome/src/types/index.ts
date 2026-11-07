@@ -145,6 +145,10 @@ export interface BackgroundResponse {
   // pairs, as received; lib/reviewList.ts checks their shape.
   reviewWords?: unknown
   sessionExpired?: boolean
+  // enx-api refused a freshly minted token while Clerk still holds the
+  // session (#686). Only the surface that asked shows it; never set together
+  // with sessionExpired.
+  sessionUnverified?: boolean
   // Set by the content script's own sender, never by the background: this
   // tab's script was cut off by an extension reload or update and the page
   // has to be reloaded (lib/extensionContext.ts).

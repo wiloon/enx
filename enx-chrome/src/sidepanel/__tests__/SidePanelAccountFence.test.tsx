@@ -53,7 +53,7 @@ const SIGNED_OUT = "You've been signed out. Sign in to keep looking up words."
 const SIGN_IN_CHANGED =
   'Your sign-in changed while this was loading. Please try again.'
 
-const getToken = jest.fn(async () => 'clerk-session-jwt')
+const getToken = jest.fn<Promise<string | null>, [{ skipCache?: boolean }?]>()
 let clerkUserId = 'user-a'
 let clerkSession: { getToken: typeof getToken } | null = { getToken }
 
@@ -91,12 +91,18 @@ const hold = (matches: (request: string) => boolean) => {
   const r = route(matches, () => response.promise)
   return { route: r, finish: response.resolve }
 }
-// A real expiry: the force-refreshed retry also gets a 401, and Clerk holds
-// no session from then on.
+// A real expiry: the force-refreshed mint gets no token, so the retry goes
+// out unauthenticated and also gets a 401, and Clerk holds no session from
+// then on. A retry that carried a fresh token is an unverified session
+// instead (#686).
 const answer401 = (matches: (request: string) => boolean) => {
   let calls = 0
   return route(matches, async () => {
-    if (++calls === 2) clerkSession = null
+    if (++calls === 1) {
+      getToken.mockImplementation(async options =>
+        options?.skipCache ? null : 'clerk-session-jwt'
+      )
+    } else clerkSession = null
     return json(401, {})
   })
 }
@@ -247,6 +253,7 @@ beforeEach(() => {
   ownerWrite = null
   storageListeners = []
   clerkUserId = 'user-a'
+  getToken.mockImplementation(async () => 'clerk-session-jwt')
   clerkSession = { getToken }
   ;(createClerkClient as jest.Mock).mockImplementation(async () => ({
     get session() {

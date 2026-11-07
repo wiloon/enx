@@ -19,6 +19,11 @@ type Store = ReturnType<typeof createStore>
 
 export const SIGNED_OUT_MESSAGE = failureMessage('session-expired')
 
+// A request enx-api refused even with a freshly minted token while Clerk
+// still holds the session (#686): only that request failed.
+export const SESSION_UNVERIFIED_MESSAGE =
+  "We couldn't verify your sign-in. Try again, or sign in again."
+
 // How the background said the session ended: a confirmed 401, or a sign-out
 // it observed (on enx-ui, an expiry, or a false empty read).
 export type SessionLossCause = 'expired' | 'signed-out'
