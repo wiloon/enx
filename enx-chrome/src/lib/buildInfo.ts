@@ -2,6 +2,8 @@
 // manifest's (tag-derived, ADR-031 §6a); commit and build time are stamped by
 // vite.config.ts and are absent from a test or an unstamped build.
 
+import type { TargetName } from '@/config/targets'
+
 export interface BuildInfo {
   version: string
   environment?: string
@@ -35,4 +37,32 @@ export function describeBuild(build: BuildInfo): BuildDescription {
   const builtAt = build.builtAt && formatBuildTime(build.builtAt)
   if (builtAt) lines.push(`Built ${builtAt}`)
   return { label, details: lines.join('\n') }
+}
+
+export interface EnvironmentTag {
+  /** The short tag beside the product name, e.g. `LAB`. */
+  text: string
+  /** The hover title, naming the build and the API it talks to. */
+  title: string
+}
+
+const ENVIRONMENT_TAGS: Record<
+  TargetName,
+  { text: string; build: string } | null
+> = {
+  production: null,
+  homelab: { text: 'LAB', build: 'HomeLab' },
+  'homelab-test': { text: 'LAB TEST', build: 'HomeLab Test' },
+  development: { text: 'DEV', build: 'Development' },
+  test: { text: 'TEST', build: 'Test' },
+}
+
+/** The popup header's tag for a non-production build; `null` for production. */
+export function environmentTag(
+  environment: TargetName,
+  apiBaseUrl: string
+): EnvironmentTag | null {
+  const tag = ENVIRONMENT_TAGS[environment]
+  if (!tag) return null
+  return { text: tag.text, title: `${tag.build} build (${apiBaseUrl})` }
 }

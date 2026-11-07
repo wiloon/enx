@@ -1,6 +1,7 @@
 import { useAuth } from '@clerk/chrome-extension'
 import CatglishLogo from '@/components/CatglishLogo'
 import { config } from '@/config/env'
+import { environmentTag } from '@/lib/buildInfo'
 import {
   ArrowTopRightOnSquareIcon,
   Cog6ToothIcon,
@@ -22,6 +23,7 @@ export default function PopupHeader() {
     isLoaded && isSignedIn
       ? `${config.frontendBaseUrl}/app`
       : config.frontendBaseUrl
+  const tag = environmentTag(config.environment, config.apiBaseUrl)
 
   const openOptions = () => {
     chrome.runtime.openOptionsPage()
@@ -34,14 +36,22 @@ export default function PopupHeader() {
         target="_blank"
         rel="noopener noreferrer"
         title="Open Catglish"
-        aria-label="Open Catglish"
+        aria-label={tag ? `Open Catglish (${tag.text} build)` : 'Open Catglish'}
         className="group flex flex-1 items-center gap-2.5 rounded-lg px-2 py-1.5 transition hover:bg-muted"
       >
         <CatglishLogo className="h-8 w-8 shrink-0" />
         <div className="flex-1 leading-tight">
-          <p className="flex items-center gap-1 text-sm font-semibold text-foreground">
+          <p className="flex items-center gap-1 whitespace-nowrap text-sm font-semibold text-foreground">
             Catglish
             <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5 text-muted-foreground transition group-hover:text-foreground" />
+            {tag && (
+              <span
+                title={tag.title}
+                className="ml-0.5 shrink-0 rounded-full border border-warning bg-warning-muted px-1.5 text-[10px] font-semibold uppercase leading-4 text-warning-foreground"
+              >
+                {tag.text}
+              </span>
+            )}
           </p>
           <p className="text-[11px] text-muted-foreground">
             English Reading Assistant
