@@ -75,6 +75,7 @@ All three sub-projects keep the domain apart from the machinery around it:
 | [docs/agents/enx-api-design.md](docs/agents/enx-api-design.md) | adding an enx-api domain service, repository or entity |
 | [docs/agents/logging.md](docs/agents/logging.md) | adding or changing enx-api log lines |
 | [docs/agents/adding-website-support.md](docs/agents/adding-website-support.md) | making the extension work on a new website |
+| [docs/agents/article-detection.md](docs/agents/article-detection.md) | reading or changing how enx-chrome finds a page's article: injection, site adapters, selectors, fallbacks, lookup exclusions |
 | [docs/agents/icons.md](docs/agents/icons.md) | placing or changing an icon in enx-ui or enx-chrome |
 | [docs/agents/ui-design.md](docs/agents/ui-design.md) | building or restyling anything a user sees: an enx-ui page, the extension's popup, side panel or word popover |
 | [docs/agents/contributions.md](docs/agents/contributions.md) | a change touches an area whose past lessons matter; add an entry after significant work |
