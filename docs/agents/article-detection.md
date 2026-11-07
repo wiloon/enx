@@ -25,7 +25,7 @@ The **article** comes only from a selector: the adapter's `contentSelector`, or 
 - **Precise selectors**: the site-specific ones (BBC, InfoQ, NYT, …) and `article`. A match counts when its trimmed text is longer than 1 character; all matches are returned.
 - **Broad selectors**: `.post-content`, `.content`, `.entry-content`, `.post-body`. A match needs more than 100 characters; only the longest is kept.
 
-The list itself is `WordProcessor.BUILT_IN_SELECTORS`. A site whose article no selector finds gets click lookup back through a new selector or a site adapter ([adding-website-support.md](adding-website-support.md)).
+The list itself is `WordProcessor.BUILT_IN_SELECTORS`. A site whose article no selector finds gets click lookup back through a new selector or a site adapter ([adding-website-support.md](adding-website-support.md)). Which sites to cover, and how a selector change is measured before it lands, is [ADR-070](../architecture/adr-070-article-detection-site-corpus-and-evaluation.md).
 
 ## 4. Whole page
 
