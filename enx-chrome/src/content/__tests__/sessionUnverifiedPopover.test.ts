@@ -280,6 +280,41 @@ describe('a lookup whose session is unverified', () => {
   })
 })
 
+// #688: every mint fails, and the recheck still finds the session but its
+// fresh mint fails too. The lookup never reaches enx-api.
+describe('a lookup whose session token cannot be minted', () => {
+  it('shows the ordinary error and leaves learning mode and highlights on', async () => {
+    const send = await startReading()
+    const bodyChildren = document.body.children.length
+    ;(createClerkClient as jest.Mock).mockImplementation(async () => ({
+      session: { getToken: async () => null },
+      user: { id: 'user-a' },
+    }))
+    __resetClerkClientCacheForTests()
+    const fetches = (global.fetch as jest.Mock).mock.calls.length
+
+    await clickFox()
+
+    expect(overlays()).toHaveLength(1)
+    expect(inPopover('word-popover-error')).toHaveTextContent(
+      "Couldn't reach the sign-in service. Please try again."
+    )
+    expect(inPopover('word-popover-signed-out')).toBeNull()
+    expect(inPopover('word-popover-unverified')).toBeNull()
+    expect((global.fetch as jest.Mock).mock.calls.length).toBe(fetches)
+    expect(underlined()).toContain('fox')
+    expect(await send({ action: 'getPageInfo' })).toMatchObject({
+      isEnxEnabled: true,
+    })
+    expect(statusReports()).not.toContainEqual(
+      expect.objectContaining({ status: 'error' })
+    )
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
+    expect(sent.filter(m => m.action)).toEqual([])
+    expect(document.body.children.length).toBe(bodyChildren + 1)
+  })
+})
+
 describe('an AI lookup whose session is unverified', () => {
   beforeEach(() => {
     api = url =>
