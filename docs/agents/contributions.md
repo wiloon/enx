@@ -1,5 +1,12 @@
 # AI Contributions History
 
+## 2026-11-06: Decide locally when no session token can be minted — issue #688
+
+**Agent**: Cursor
+**Solution**: enx-chrome never sends an API request without a Clerk token. `src/lib/sessionSync.ts` classifies a sync as present, absent or unconfirmed. Only `absent` ends the session. Everything else returns "Couldn't reach the sign-in service" and leaves the account session alone. A session whose mints all fail gets one shared reset-and-sync, then one fresh mint. A load that came back empty is confirmed signed out only by one read of the client that the instance's `__internal_onAfterResponse` hook sees answered 2xx with no signed-in session (`background/clerkSessionSync.ts`).
+
+**Lesson (Clerk's silent load)**: clerk-js 6 swallows a failed Frontend API request when it cannot see an online navigator. That happens offline in an MV3 worker, and always in Node, which has no `WorkerGlobalScope`. The load then resolves `status: 'ready'` with no session and no error. Neither `clerk.client` nor `clerk.status` tells this apart from a real signed-out load. `background/__tests__/clerkSessionSync.test.ts` drives the installed SDK in the node environment with `fetch` scripted. It needs fake timers, because clerk-js retries a GET up to 11 times. It also needs an inert `BroadcastChannel`, or Node keeps the process alive.
+
 ## 2026-11-05: Fail closed on indeterminate billing eligibility — issue #347
 
 **Agent**: Codex

@@ -91,21 +91,19 @@ const hold = (matches: (request: string) => boolean) => {
   const r = route(matches, () => response.promise)
   return { route: r, finish: response.resolve }
 }
-// A real expiry: the force-refreshed mint gets no token, so the retry goes
-// out unauthenticated and also gets a 401, and Clerk holds no session from
-// then on. A retry that carried a fresh token is an unverified session
+// A real expiry: the force-refreshed mint gets no token, and Clerk holds no
+// session from then on, so the recheck finds it signed out and no retry goes
+// out (#688). A retry that carried a fresh token is an unverified session
 // instead (#686).
-const answer401 = (matches: (request: string) => boolean) => {
-  let calls = 0
-  return route(matches, async () => {
-    if (++calls === 1) {
-      getToken.mockImplementation(async options =>
-        options?.skipCache ? null : 'clerk-session-jwt'
-      )
-    } else clerkSession = null
+const answer401 = (matches: (request: string) => boolean) =>
+  route(matches, async () => {
+    getToken.mockImplementation(async options => {
+      if (!options?.skipCache) return 'clerk-session-jwt'
+      clerkSession = null
+      return null
+    })
     return json(401, {})
   })
-}
 
 const fetchMock = jest.fn(async (url: string, init?: RequestInit) => {
   const request = `${url} ${init?.body ?? ''}`
@@ -186,6 +184,9 @@ type Kind = {
   signedOut: (word: string) => string
   error: (word: string) => string
   retry?: (word: string) => string
+  // The kind whose row shows a session loss that reaches the card before
+  // its follow-up request is sent.
+  shownAfterSignOut?: () => Kind
 }
 
 const clickWord = async (word: string) => {
@@ -220,6 +221,9 @@ const KINDS: Record<string, Kind> = {
     start: clickWord,
     signedOut: word => `sidepanel-dictionary-signed-out-${word}`,
     error: word => `sidepanel-dictionary-error-${word}`,
+    // The context request that follows the lookup finds Clerk signed out
+    // too (#688), and its identical row hides the dictionary one.
+    shownAfterSignOut: () => KINDS.context,
   },
 }
 
@@ -255,14 +259,35 @@ beforeEach(() => {
   clerkUserId = 'user-a'
   getToken.mockImplementation(async () => 'clerk-session-jwt')
   clerkSession = { getToken }
-  ;(createClerkClient as jest.Mock).mockImplementation(async () => ({
-    get session() {
-      return clerkSession
-    },
-    get user() {
-      return clerkSession ? { id: clerkUserId } : null
-    },
-  }))
+  ;(createClerkClient as jest.Mock).mockImplementation(async () => {
+    const afterResponse: Array<(request: unknown, response: unknown) => void> =
+      []
+    return {
+      get session() {
+        return clerkSession
+      },
+      get user() {
+        return clerkSession ? { id: clerkUserId } : null
+      },
+      // With no session, Clerk's Frontend API confirms a signed-out client.
+      client: {
+        reload: async () => {
+          if (clerkSession) return
+          afterResponse.forEach(callback =>
+            callback(
+              { method: 'GET', path: '/client' },
+              { ok: true, payload: { response: null } }
+            )
+          )
+        },
+      },
+      __internal_onAfterResponse: (
+        callback: (request: unknown, response: unknown) => void
+      ) => {
+        afterResponse.push(callback)
+      },
+    }
+  })
   global.fetch = fetchMock as unknown as typeof fetch
   ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
     [pendingSentenceKey(PANEL_TAB_ID)]: {
@@ -380,24 +405,25 @@ describe.each(Object.entries(KINDS))('a %s request', (_name, kind) => {
 
     await signOutOnWebsite()
     await act(async () => request.finish(json(200, {})))
-    await expectSignedOutRow(kind, 'great')
+    const shown = kind.shownAfterSignOut?.() ?? kind
+    await expectSignedOutRow(shown, 'great')
 
     await signInAs('user-b')
 
-    await expectOrdinaryFailure(kind, 'great')
+    await expectOrdinaryFailure(shown, 'great')
   })
 })
 
-describe('two requests when one gets a confirmed 401', () => {
-  // The 401 is confirmed after the force-refreshed retry also gets one.
+describe('two requests when one gets a confirmed session loss', () => {
+  // After the 401, the forced mint gets no token and the recheck finds Clerk
+  // signed out: the owner is cleared, and its write is held.
   const expiredBy = (r: Route) =>
-    waitFor(() =>
-      expect(
-        fetchMock.mock.calls.filter(([url, init]) =>
-          r.matches(`${url} ${init?.body ?? ''}`)
-        )
-      ).toHaveLength(2)
-    )
+    waitFor(() => {
+      expect(r.started).toBe(true)
+      expect(chrome.storage.session.set).toHaveBeenCalledWith({
+        [OWNER_KEY]: null,
+      })
+    })
   const ownerUpdate = () => {
     const write = deferred<void>()
     ownerWrite = write.promise
@@ -455,8 +481,9 @@ describe('two requests when one gets a confirmed 401', () => {
       clerkSession = null
       await finishOwnerUpdate()
 
-      await expectSignedOutRow(kind, 'great')
-      await expectSignedOutRow(kind, 'pets')
+      const shown = kind.shownAfterSignOut?.() ?? kind
+      await expectSignedOutRow(shown, 'great')
+      await expectSignedOutRow(shown, 'pets')
     }
   )
 })

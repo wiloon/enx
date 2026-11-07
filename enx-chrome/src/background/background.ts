@@ -7,8 +7,14 @@ import {
   type AccountInvalidatedMessage,
   type PanelAccountFreshness,
 } from '@/lib/panelAccountFence'
-import { classifyFinalUnauthorized } from '@/lib/finalUnauthorized'
+import {
+  classifySessionSync,
+  outcomeWithoutToken,
+  SIGN_IN_SERVICE_UNREACHABLE_MESSAGE,
+  type SessionSync,
+} from '@/lib/sessionSync'
 import { SESSION_UNVERIFIED_MESSAGE } from '@/lib/signedOut'
+import { classifyLoadedClerk } from './clerkSessionSync'
 import { createClerkClient } from '@clerk/chrome-extension/client'
 import { config } from '@/config/env'
 import { LatestPageWordLookup, PendingSentenceContext, WordData } from '@/types'
@@ -82,6 +88,7 @@ const getClerk = (): Promise<ClerkClient> => {
 // starting point must flush it explicitly.
 export const __resetClerkClientCacheForTests = (): void => {
   resetClerkSession()
+  sessionRecheckInFlight = null
   accountSession = makeAccountSession()
 }
 
@@ -121,12 +128,23 @@ const resetClerkSession = () => {
   syncedClerkInFlight = null
 }
 
+// Thrown when a sync came back without a session Clerk confirmed is gone
+// (#688). The owner is left alone: only a confirmed sync is observed.
+class SessionSyncUnconfirmed extends Error {
+  constructor() {
+    super('Clerk session sync unconfirmed')
+  }
+}
+
 const getSyncedClerk = (): Promise<ClerkClient> => {
   if (!syncedClerkInFlight) {
     const requested = clerkGeneration
     const current = syncClerk()
       .then(async clerk => {
         if (requested !== clerkGeneration) throw new Error('Session changed')
+        const sync = await classifyLoadedClerk(clerk)
+        if (requested !== clerkGeneration) throw new Error('Session changed')
+        if (sync === 'unconfirmed') throw new SessionSyncUnconfirmed()
         await accountSession.observe(clerk.user?.id ?? null)
         if (requested !== clerkGeneration) throw new Error('Session changed')
         return clerk
@@ -174,8 +192,7 @@ const syncClerk = async (): Promise<ClerkClient> => {
 
   swlog(
     `clerk session still empty after ${SESSION_SYNC_RETRY_DELAYS_MS.length} ` +
-      `retries (+${Date.now() - WORKER_BOOTED_AT}ms since worker boot) -- ` +
-      `treating as signed out`,
+      `retries (+${Date.now() - WORKER_BOOTED_AT}ms since worker boot)`,
     'warn'
   )
   return clerk
@@ -183,10 +200,57 @@ const syncClerk = async (): Promise<ClerkClient> => {
 
 // getToken() can also fail transiently on its own: the session exists but the
 // short-lived JWT needs refreshing and that Frontend API call blips. Retry a
-// couple of times before giving up (which would send an unauthenticated
-// request and get a 401 -> "Session Expired").
+// couple of times before giving up and rechecking the session (#688).
 const GET_TOKEN_RETRY_DELAYS_MS =
   config.environment === 'test' ? [0, 0] : [300, 700]
+
+// What getSessionToken found: the first sync, and the recheck when every mint
+// failed. Without a token, the request decides on the latest of them (#688).
+type SessionToken = {
+  token: string | null
+  isCurrent: () => boolean
+  sync: SessionSync
+  failedMints: number
+  lastMintError: string | null
+  recheck: SessionSync | null
+}
+
+// A session whose mints all failed is rechecked once from scratch: one
+// reset and sync, then one fresh mint, shared by every caller waiting on it.
+let sessionRecheckInFlight: Promise<{
+  sync: SessionSync
+  token: string | null
+}> | null = null
+
+const recheckSession = () => {
+  if (!sessionRecheckInFlight) {
+    const current = (async () => {
+      resetClerkSession()
+      let clerk: ClerkClient
+      try {
+        clerk = await getSyncedClerk()
+      } catch (error) {
+        if (error instanceof Error && error.message === 'Session changed')
+          throw error
+        swlog(`session recheck failed: ${String(error)}`, 'warn')
+        return { sync: 'unconfirmed' as const, token: null }
+      }
+      if (!clerk.session) return { sync: 'absent' as const, token: null }
+      try {
+        const token =
+          (await clerk.session.getToken({ skipCache: true })) ?? null
+        return { sync: 'present' as const, token }
+      } catch (error) {
+        swlog(`fresh getToken() after recheck threw: ${String(error)}`, 'warn')
+        return { sync: 'present' as const, token: null }
+      }
+    })().finally(() => {
+      if (sessionRecheckInFlight === current) sessionRecheckInFlight = null
+    })
+    sessionRecheckInFlight = current
+  }
+  return sessionRecheckInFlight
+}
 
 // `forceRefresh` bypasses clerk-js's in-memory token cache (getToken({
 // skipCache: true })). Needed after a 401: clerk-js refreshes the ~60s session
@@ -196,7 +260,13 @@ const GET_TOKEN_RETRY_DELAYS_MS =
 // fails) is the only way to tell a stale cache from a real logout.
 const getSessionToken = async (
   opts: { forceRefresh?: boolean } = {}
-): Promise<{ token: string | null; isCurrent: () => boolean }> => {
+): Promise<SessionToken> => {
+  const noToken = {
+    token: null,
+    failedMints: 0,
+    lastMintError: null,
+    recheck: null,
+  }
   let clerk: ClerkClient
   try {
     clerk = await getSyncedClerk()
@@ -204,14 +274,19 @@ const getSessionToken = async (
     if (error instanceof Error && error.message === 'Session changed')
       throw error
     swlog(`getSyncedClerk failed: ${String(error)}`, 'error')
-    return { token: null, isCurrent: accountSession.capture() }
+    return {
+      ...noToken,
+      isCurrent: accountSession.capture(),
+      sync: classifySessionSync({ loaded: false }),
+    }
   }
 
   const isCurrent = accountSession.capture()
-  const result = (token: string | null) => ({ token, isCurrent })
-  if (!clerk.session) return result(null)
+  if (!clerk.session) return { ...noToken, isCurrent, sync: 'absent' }
 
   const getTokenOpts = opts.forceRefresh ? { skipCache: true } : undefined
+  let failedMints = 0
+  let lastMintError: string | null = null
 
   for (
     let attempt = 1;
@@ -220,25 +295,40 @@ const getSessionToken = async (
   ) {
     try {
       const token = (await clerk.session.getToken(getTokenOpts)) ?? null
-      if (token) return result(token)
+      if (token) {
+        return {
+          token,
+          isCurrent,
+          sync: 'present',
+          failedMints,
+          lastMintError,
+          recheck: null,
+        }
+      }
+      lastMintError = 'returned null'
       swlog(`clerk getToken() returned null (attempt ${attempt})`, 'warn')
     } catch (error) {
+      lastMintError = String(error)
       swlog(
         `clerk getToken() threw (attempt ${attempt}): ${String(error)}`,
         'warn'
       )
     }
+    failedMints++
     if (attempt <= GET_TOKEN_RETRY_DELAYS_MS.length) {
       await sleep(GET_TOKEN_RETRY_DELAYS_MS[attempt - 1])
     }
   }
 
-  swlog(
-    `clerk getToken() gave no token after ${GET_TOKEN_RETRY_DELAYS_MS.length + 1} ` +
-      `attempts (forceRefresh=${Boolean(opts.forceRefresh)}) despite an active session`,
-    'error'
-  )
-  return result(null)
+  const recheck = await recheckSession()
+  return {
+    token: recheck.token,
+    isCurrent,
+    sync: 'present',
+    failedMints,
+    lastMintError,
+    recheck: recheck.sync,
+  }
 }
 
 const isSignedIn = async (): Promise<boolean> => {
@@ -398,12 +488,11 @@ export const makeApiRequest = async (
   // cold boot can report how long this instance had been gone (swlog.ts).
   void heartbeat()
 
-  // Two kinds of replay. A 401 while we *did* send a token is almost always
-  // an expired session JWT served from clerk-js's cache (see
-  // getSessionToken) -- force a fresh mint and replay once before concluding
-  // the session is gone; `forceRefresh` stays false when we had no token to
-  // begin with (nothing to refresh -> real 401). A gateway 503 (see
-  // GATEWAY_RETRY_DELAYS_MS) is replayed after a short wait.
+  // Two kinds of replay. A 401 is almost always an expired session JWT
+  // served from clerk-js's cache (see getSessionToken) -- force a fresh mint
+  // and replay once. A request never goes out without a token (#688), so a
+  // 401 on that replay was refused with a fresh one (#686). A gateway 503
+  // (see GATEWAY_RETRY_DELAYS_MS) is replayed after a short wait.
   const requestIsCurrent = accountSession.capture()
   const requestGeneration = accountSession.generation()
   let forceRefresh = false
@@ -440,19 +529,34 @@ export const makeApiRequest = async (
       }
 
       const session = await getSessionToken({ forceRefresh })
-      if (!requestIsCurrent() || !session.isCurrent())
-        throw new Error('Session changed')
       const token = session.token
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`
-      } else {
+      const outcome = token
+        ? null
+        : outcomeWithoutToken(session.recheck ?? session.sync)
+      if (outcome) {
         swlog(
-          `no session token for ${options.method ?? 'GET'} ${endpoint} ` +
-            `(+${Date.now() - WORKER_BOOTED_AT}ms since worker boot) -- ` +
-            `sending unauthenticated, expect 401`,
+          `no session token for ${options.method ?? 'GET'} ${endpoint}: ` +
+            `${session.failedMints} failed getToken() attempts` +
+            (session.lastMintError
+              ? ` (last error: ${session.lastMintError})`
+              : '') +
+            `, sync=${session.sync}, recheck=${session.recheck ?? 'none'}, ` +
+            `forceRefresh=${forceRefresh} -> ${outcome}`,
           'warn'
         )
       }
+      if (!requestIsCurrent() || !session.isCurrent())
+        throw new Error('Session changed')
+      if (!token) {
+        if (outcome === 'transient') {
+          return { success: false, error: SIGN_IN_SERVICE_UNREACHABLE_MESSAGE }
+        }
+        // Observing the signed-out sync fenced a signed-in owner's request
+        // as lost; with no owner to fence, the session expires here.
+        await handleSessionExpiry()
+        throw new Error('Session expired')
+      }
+      headers['Authorization'] = `Bearer ${token}`
 
       let response: Response
       try {
@@ -482,39 +586,30 @@ export const makeApiRequest = async (
           const body = await response.text().catch(() => '')
           if (!requestIsCurrent()) throw new Error('Session changed')
           swlog(
-            `401 from ${endpoint}: hadToken=${Boolean(token)}, ` +
+            `401 from ${endpoint}: ` +
               `forceRefresh=${forceRefresh}, attempt=${attempt}, ` +
               `+${Date.now() - WORKER_BOOTED_AT}ms since worker boot; body=${body.slice(0, 200)}`,
             'warn'
           )
 
-          if (!forceRefresh && token) {
+          if (!forceRefresh) {
             swlog('retrying once with a force-refreshed Clerk token', 'warn')
             forceRefresh = true
             continue
           }
 
-          const replay = !forceRefresh
-            ? 'none'
-            : token
-              ? 'with-token'
-              : 'without-token'
-          if (classifyFinalUnauthorized(replay) === 'unverified') {
-            swlog(
-              `session unverified: ${endpoint} refused the freshly minted ` +
-                `Clerk token …${token?.slice(-8)}; keeping the account session`,
-              'warn'
-            )
-            return {
-              success: false,
-              error: SESSION_UNVERIFIED_MESSAGE,
-              sessionUnverified: true,
-              accountGeneration: requestGeneration,
-            }
+          // An enx-api 401 alone never ends the session (#686, #688).
+          swlog(
+            `session unverified: ${endpoint} refused the freshly minted ` +
+              `Clerk token …${token.slice(-8)}; keeping the account session`,
+            'warn'
+          )
+          return {
+            success: false,
+            error: SESSION_UNVERIFIED_MESSAGE,
+            sessionUnverified: true,
+            accountGeneration: requestGeneration,
           }
-
-          await handleSessionExpiry()
-          throw new Error('Session expired')
         }
 
         if (

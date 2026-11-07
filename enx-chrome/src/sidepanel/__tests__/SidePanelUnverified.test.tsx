@@ -53,7 +53,14 @@ const UNVERIFIED =
 const SIGN_IN_CHANGED =
   'Your sign-in changed while this was loading. Please try again.'
 
-const getToken = jest.fn(async () => 'clerk-session-jwt')
+const SIGN_IN_UNREACHABLE =
+  "Couldn't reach the sign-in service. Please try again."
+
+// Scripted mint results, taken in order; once empty, every mint succeeds.
+let mints: Array<string | null>
+const getToken = jest.fn(async (): Promise<string | null> =>
+  mints.length > 0 ? (mints.shift() as string | null) : 'clerk-session-jwt'
+)
 let clerkUserId = 'user-a'
 
 const deferred = <T,>() => {
@@ -245,6 +252,7 @@ beforeEach(() => {
   answered = new Map()
   pageListeners = new Set()
   ownerWrite = null
+  mints = []
   clerkUserId = 'user-a'
   ;(createClerkClient as jest.Mock).mockImplementation(async () => ({
     session: { getToken },
@@ -401,3 +409,30 @@ describe.each(Object.entries(KINDS))('an unverified %s request', (_, kind) => {
     await expectUnverifiedRow(kind)
   })
 })
+
+// #688: every mint fails, and the recheck still finds the session but its
+// fresh mint fails too. The request never reaches enx-api.
+const NO_TOKEN = [null, null, null, null]
+
+describe.each(Object.entries(KINDS))(
+  'a %s request whose session token cannot be minted',
+  (name, kind) => {
+    it('renders the ordinary destructive row with the sign-in-service message', async () => {
+      if (name === 'sentence') mints = [...NO_TOKEN]
+      render(<SidePanel />)
+      if (name !== 'sentence') {
+        await screen.findByText('猫是很棒的宠物。')
+        // The dictionary lookup goes first; the context request follows it.
+        mints =
+          name === 'context'
+            ? ['clerk-session-jwt', ...NO_TOKEN]
+            : [...NO_TOKEN]
+      }
+      await kind.start()
+
+      await expectOrdinaryFailure(kind, SIGN_IN_UNREACHABLE)
+      expect(screen.queryByText(/signed out/)).toBeNull()
+      expect(fetchesOf(kind.matches)).toBe(0)
+    })
+  }
+)

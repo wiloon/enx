@@ -28,14 +28,43 @@ let clerkSession: { getToken: typeof getToken } | null = { getToken }
 // describe block's jest.resetAllMocks(), which wipes mockImplementation --
 // see the "Captured at import time" comment below for the same gotcha.
 function installCreateClerkClientMock() {
-  ;(createClerkClient as jest.Mock).mockImplementation(async () => ({
+  ;(createClerkClient as jest.Mock).mockImplementation(async () =>
+    fakeClerkClient()
+  )
+}
+
+// With no session, a read of the client gets Clerk's Frontend API answer: a
+// signed-out client, which confirms the session is gone (#688).
+type AfterResponse = (
+  request: { method: string; path: string },
+  response: { ok: boolean; payload: unknown }
+) => void
+function fakeClerkClient(
+  session: () => typeof clerkSession = () => clerkSession
+) {
+  const afterResponse: AfterResponse[] = []
+  return {
     get session() {
-      return clerkSession
+      return session()
     },
     get user() {
-      return clerkSession ? { id: clerkUserId } : null
+      return session() ? { id: clerkUserId } : null
     },
-  }))
+    client: {
+      reload: async () => {
+        if (session()) return
+        afterResponse.forEach(callback =>
+          callback(
+            { method: 'GET', path: '/client' },
+            { ok: true, payload: { response: null } }
+          )
+        )
+      },
+    },
+    __internal_onAfterResponse: (callback: AfterResponse) => {
+      afterResponse.push(callback)
+    },
+  }
 }
 
 function setClerkSession(token: string | null) {
@@ -48,13 +77,16 @@ function setClerkSession(token: string | null) {
   }
 }
 
-// A real expiry: the force-refreshed mint gets no token, so the replay goes
-// out unauthenticated and its 401 is final. A replay that carried a fresh
-// token is an unverified session instead (#686, sessionUnverified.test.ts).
+// A real expiry: the force-refreshed mint gets no token, and the recheck
+// that follows finds Clerk signed out, so no replay goes out (#688). A replay
+// that carried a fresh token is an unverified session instead (#686,
+// sessionUnverified.test.ts).
 function expireOnForcedMint() {
-  getToken.mockImplementation(async options =>
-    options?.skipCache ? null : 'clerk-session-jwt'
-  )
+  getToken.mockImplementation(async options => {
+    if (!options?.skipCache) return 'clerk-session-jwt'
+    clerkSession = null
+    return null
+  })
 }
 
 jest.mock('@clerk/chrome-extension/client', () => ({
@@ -137,17 +169,17 @@ describe('background makeApiRequest / Clerk session token', () => {
     expect(requestInit.headers.Authorization).toBe('Bearer clerk-session-jwt')
   })
 
-  it('sends no Authorization header when there is no Clerk session', async () => {
+  it('sends nothing when Clerk confirms there is no session', async () => {
     setClerkSession(null)
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(200, {}))
 
-    await makeApiRequest('/api/me')
+    const result = await makeApiRequest('/api/me')
 
-    const [, requestInit] = (global.fetch as jest.Mock).mock.calls[0]
-    expect(requestInit.headers.Authorization).toBeUndefined()
+    expect(result).toMatchObject({ success: false, sessionExpired: true })
+    expect(global.fetch).not.toHaveBeenCalled()
   })
 
-  it('force-refreshes the token once on a 401, then reports session-expired if it persists', async () => {
+  it('force-refreshes the token once on a 401, then reports session-expired when Clerk is signed out', async () => {
     expireOnForcedMint()
     ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
 
@@ -158,8 +190,9 @@ describe('background makeApiRequest / Clerk session token', () => {
       error: 'Your session has expired. Please login again.',
       sessionExpired: true,
     })
-    // Attempt 1 (cached token) + attempt 2 (skipCache token).
-    expect(global.fetch).toHaveBeenCalledTimes(2)
+    // Only the cached token went out: the forced mint got none, and the
+    // recheck found Clerk signed out.
+    expect(global.fetch).toHaveBeenCalledTimes(1)
     expect(getToken).toHaveBeenNthCalledWith(2, { skipCache: true })
     expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
       1,
@@ -167,7 +200,7 @@ describe('background makeApiRequest / Clerk session token', () => {
     )
   })
 
-  it('invalidates every tab after a confirmed 401, even if one has no content script', async () => {
+  it('invalidates every tab after a confirmed session loss, even if one has no content script', async () => {
     ;(chrome.tabs.query as jest.Mock).mockImplementation(async query =>
       query.active ? [{ id: 1 }] : [{ id: 1 }, { id: 2 }, { id: 3 }]
     )
@@ -295,7 +328,7 @@ describe('background makeApiRequest / Clerk session token', () => {
     }
   )
 
-  it('tells every tab a confirmed 401 expired the session', async () => {
+  it('tells every tab a signed-in user signed out when the recheck after a 401 finds Clerk signed out', async () => {
     expireOnForcedMint()
     ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
 
@@ -303,7 +336,7 @@ describe('background makeApiRequest / Clerk session token', () => {
 
     expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, {
       action: 'sessionExpired',
-      cause: 'expired',
+      cause: 'signed-out',
     })
   })
 
@@ -466,20 +499,6 @@ describe('background makeApiRequest / Clerk session token', () => {
     expect(global.fetch).toHaveBeenCalledTimes(2)
     expect(getToken).toHaveBeenNthCalledWith(2, { skipCache: true })
     expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
-  })
-
-  it('does not retry a 401 when it never had a token to refresh', async () => {
-    setClerkSession(null)
-    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
-
-    const result = await makeApiRequest('/api/translate?word=test')
-
-    expect(result).toEqual({
-      success: false,
-      error: 'Your session has expired. Please login again.',
-      sessionExpired: true,
-    })
-    expect(global.fetch).toHaveBeenCalledTimes(1)
   })
 
   it('propagates a non-401 error status (e.g. 402 insufficient credit)', async () => {
@@ -798,34 +817,35 @@ describe('background makeApiRequest / Clerk session token', () => {
     // the next call gets its own attempt (e.g. the user signed in meanwhile).
     __resetClerkClientCacheForTests()
     let signedIn = false
-    ;(createClerkClient as jest.Mock).mockImplementation(async () => ({
-      session: signedIn ? { getToken: jest.fn(async () => 'later-jwt') } : null,
-    }))
+    const laterSession = { getToken: jest.fn(async () => 'later-jwt') }
+    // No user id either way, so the sign-in is not an account switch.
+    ;(createClerkClient as jest.Mock).mockImplementation(async () => {
+      const session = signedIn ? laterSession : null
+      return { ...fakeClerkClient(() => session), user: null }
+    })
     ;(global.fetch as jest.Mock).mockImplementation(async () =>
       jsonResponse(200, {})
     )
-    await makeApiRequest('/api/me')
+    expect(await makeApiRequest('/api/me')).toMatchObject({
+      sessionExpired: true,
+    })
 
     signedIn = true
     await makeApiRequest('/api/me')
 
-    const [, firstInit] = (global.fetch as jest.Mock).mock.calls[0]
-    const [, secondInit] = (global.fetch as jest.Mock).mock.calls[1]
-    expect(firstInit.headers.Authorization).toBeUndefined()
-    expect(secondInit.headers.Authorization).toBe('Bearer later-jwt')
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    const [, requestInit] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(requestInit.headers.Authorization).toBe('Bearer later-jwt')
   })
 
   it('reports a real session expiry when the retried client is also empty', async () => {
     setClerkSession(null)
-    ;(createClerkClient as jest.Mock).mockImplementationOnce(async () => ({
-      session: null,
-    }))
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(200, {}))
 
-    await makeApiRequest('/api/me')
+    const result = await makeApiRequest('/api/me')
 
-    const [, requestInit] = (global.fetch as jest.Mock).mock.calls[0]
-    expect(requestInit.headers.Authorization).toBeUndefined()
+    expect(result).toMatchObject({ success: false, sessionExpired: true })
+    expect(global.fetch).not.toHaveBeenCalled()
   })
 })
 

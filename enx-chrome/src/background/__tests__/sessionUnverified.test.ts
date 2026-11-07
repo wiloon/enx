@@ -33,7 +33,6 @@ const CACHED_TOKEN = 'cached-token-aaaaaaaa'
 const FRESH_TOKEN = 'fresh-token-f7e3c1d9'
 
 type GetTokenOptions = { skipCache?: boolean } | undefined
-let freshToken: string | null
 const getToken = jest.fn<Promise<string | null>, [GetTokenOptions?]>()
 let clerkSession: { getToken: typeof getToken } | null
 let sessionStorage: Record<string, unknown>
@@ -64,9 +63,8 @@ const sameUserCookie = {
 beforeEach(async () => {
   jest.clearAllMocks()
   __resetClerkClientCacheForTests()
-  freshToken = FRESH_TOKEN
   getToken.mockImplementation(async options =>
-    options?.skipCache ? freshToken : CACHED_TOKEN
+    options?.skipCache ? FRESH_TOKEN : CACHED_TOKEN
   )
   clerkSession = { getToken }
   sessionStorage = {}
@@ -214,31 +212,6 @@ describe('the side panel freshness check', () => {
     const now = await freshness()
     expect(now.sessionLost).toBe(false)
     expect(now.accountGeneration).not.toBe(response.accountGeneration)
-  })
-})
-
-describe('the boundary with a lost session', () => {
-  it('a 401 on a first attempt with no token stays a lost session', async () => {
-    getToken.mockResolvedValue(null)
-    answer(() => 401)
-
-    const result = await makeApiRequest('/api/translate?word=fox')
-
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(result).toMatchObject({ success: false, sessionExpired: true })
-    expect(result).not.toHaveProperty('sessionUnverified')
-  })
-
-  it('a 401 on a forced replay with no token stays a lost session', async () => {
-    freshToken = null
-    answer(() => 401)
-
-    const result = await makeApiRequest('/api/translate?word=fox')
-
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(fetchMock.mock.calls[1][1].headers.Authorization).toBeUndefined()
-    expect(result).toMatchObject({ success: false, sessionExpired: true })
-    expect(result).not.toHaveProperty('sessionUnverified')
   })
 })
 
