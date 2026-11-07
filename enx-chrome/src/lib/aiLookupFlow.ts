@@ -10,7 +10,7 @@ import {
   shouldShowAiNotice,
 } from '@/lib/aiLookup'
 import { countLookup, type RecordLookup } from '@/lib/queryCount'
-import { showSignedOut } from '@/lib/signedOut'
+import { showSessionUnverified, showSignedOut } from '@/lib/signedOut'
 import type { WordData } from '@/types'
 
 type Store = ReturnType<typeof createStore>
@@ -71,6 +71,9 @@ export const runAiLookup = async (
       return
     case 'session-expired':
       showSignedOut(store)
+      return
+    case 'session-unverified':
+      showSessionUnverified(store, 'ai-lookup')
       return
     case 'error':
       store.set(aiLookupAtom, {

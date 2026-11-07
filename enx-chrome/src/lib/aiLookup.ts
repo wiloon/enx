@@ -13,6 +13,8 @@ export type AiLookupOutcome =
   // The AI has no definition for it.
   | { kind: 'none' }
   | { kind: 'session-expired' }
+  // enx-api refused a fresh token while Clerk holds the session (#686).
+  | { kind: 'session-unverified' }
   | {
       kind: 'error'
       reason: 'credit' | 'rate-limited' | 'not-entitled' | 'unavailable'
@@ -36,6 +38,7 @@ export const lookupWithAi = async (word: string): Promise<AiLookupOutcome> => {
   }
 
   if (response?.sessionExpired) return { kind: 'session-expired' }
+  if (response?.sessionUnverified) return { kind: 'session-unverified' }
 
   if (response?.success) {
     const body = response.data as

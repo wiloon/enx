@@ -16,9 +16,11 @@ import {
   errorAtom,
   errorNeedsReloadAtom,
   sentencePanelHintAtom,
+  sessionUnverifiedAtom,
   signedOutAtom,
 } from '@/store/atoms'
 import SignedOutNotice from '@/components/SignedOutNotice'
+import { SESSION_UNVERIFIED_MESSAGE } from '@/lib/signedOut'
 import { formatPhonetic } from '@/lib/phonetic'
 import { playPronunciation } from '@/lib/pronunciation'
 import { popoverHasSpeaker } from '@/lib/speaker'
@@ -33,8 +35,12 @@ interface WordPopoverProps {
   // The "Reload page" button under an error that only a reload fixes (an
   // extension reload or update cut this tab's script off).
   onReloadPage?: () => void
-  // The "Sign in" button of the signed-out state (#236).
+  // The "Sign in" button of the signed-out state (#236) and of the
+  // unverified state (#686).
   onSignIn?: () => void
+  // The "Retry" button of the unverified state (#686): re-sends the lookup
+  // or AI lookup that came back unverified.
+  onRetryUnverified?: () => void
   // 'hint': renders only the sentencePanelHint text, no dictionary UI.
   // Used by the drag-select translation flow (ADR-007 Decision §4) when
   // there's nothing to define -- either the selection was rejected for
@@ -50,6 +56,7 @@ export default function WordPopover({
   onAiLookup = () => {},
   onReloadPage = () => window.location.reload(),
   onSignIn = () => {},
+  onRetryUnverified = () => {},
   variant = 'dictionary',
 }: WordPopoverProps) {
   const [currentWord] = useAtom(currentWordAtom)
@@ -57,6 +64,7 @@ export default function WordPopover({
   const [error] = useAtom(errorAtom)
   const [errorNeedsReload] = useAtom(errorNeedsReloadAtom)
   const [signedOut] = useAtom(signedOutAtom)
+  const [sessionUnverified] = useAtom(sessionUnverifiedAtom)
   const [sentencePanelHint] = useAtom(sentencePanelHintAtom)
   const rootRef = useRef<HTMLDivElement>(null)
   const phonetic = formatPhonetic(currentWord?.Pronunciation)
@@ -203,6 +211,18 @@ export default function WordPopover({
           />
         )}
 
+        {/* enx-api refused a fresh token: the unverified notice replaces
+            the definition, with Retry for the request that failed. */}
+        {sessionUnverified && (
+          <SignedOutNotice
+            testId="word-popover-unverified"
+            message={SESSION_UNVERIFIED_MESSAGE}
+            onRetry={onRetryUnverified}
+            onSignIn={onSignIn}
+            className="p-3 mb-3 text-sm"
+          />
+        )}
+
         {/* Loading state */}
         {isTranslating && (
           <LoadingSkeleton
@@ -232,7 +252,7 @@ export default function WordPopover({
         )}
 
         {/* Word content */}
-        {currentWord && !isTranslating && !error && (
+        {currentWord && !isTranslating && !error && !sessionUnverified && (
           <div className="space-y-2">
             {/* Chinese translation; a definition a model wrote is marked as
                 such (ADR-045). With none, the AI fallback's state is shown. */}

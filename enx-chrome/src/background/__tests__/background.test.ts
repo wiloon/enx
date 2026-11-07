@@ -1973,10 +1973,11 @@ describe('background onMessageExternal (ADR-019 web -> extension channel)', () =
         )
         ;(chrome.storage.session.set as jest.Mock).mockResolvedValue(undefined)
         ;(chrome.tabs.query as jest.Mock).mockResolvedValue([{ id: 42 }])
-        ;(chrome.tabs.get as jest.Mock).mockImplementation(async (id: number) =>
-          id === 99
-            ? { id: 99, url: 'http://localhost:3000/extension/connected' }
-            : { id: 42, url: 'https://www.infoq.com/articles/foo' }
+        ;(chrome.tabs.get as jest.Mock).mockImplementation(
+          async (id: number) =>
+            id === 99
+              ? { id: 99, url: 'http://localhost:3000/extension/connected' }
+              : { id: 42, url: 'https://www.infoq.com/articles/foo' }
         )
         ;(chrome.tabs.sendMessage as jest.Mock).mockImplementation(
           async (tabId: number, message: { action: string }) => {

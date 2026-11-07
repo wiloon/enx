@@ -16,10 +16,7 @@ jest.mock('@clerk/chrome-extension/client', () => ({
 }))
 
 import { createClerkClient } from '@clerk/chrome-extension/client'
-import {
-  makeApiRequest,
-  __resetClerkClientCacheForTests,
-} from '../background'
+import { makeApiRequest, __resetClerkClientCacheForTests } from '../background'
 import { SESSION_UNVERIFIED_MESSAGE } from '@/lib/signedOut'
 
 const onMessage = (chrome.runtime.onMessage.addListener as jest.Mock).mock

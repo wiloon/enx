@@ -14,6 +14,7 @@ import {
   aiLookupAtom,
   aiNoticeAtom,
   currentWordAtom,
+  sessionUnverifiedAtom,
   signedOutAtom,
 } from '@/store/atoms'
 import type { WordData } from '@/types'
@@ -226,6 +227,19 @@ describe('runAiLookup', () => {
 
     expect(store.get(signedOutAtom)).toBe(true)
     expect(store.get(currentWordAtom)).toBeNull()
+    expect(store.get(aiLookupAtom)).toEqual({ status: 'idle' })
+    expect(deps.onDefined).not.toHaveBeenCalled()
+  })
+
+  it('shows the unverified notice for the AI lookup when the session is unverified (#686)', async () => {
+    lookup.mockResolvedValue({ kind: 'session-unverified' })
+    const { store, deps } = setup()
+
+    await runAiLookup('rizzler', { auto: true }, deps)
+
+    expect(store.get(sessionUnverifiedAtom)).toBe('ai-lookup')
+    expect(store.get(signedOutAtom)).toBe(false)
+    expect(store.get(currentWordAtom)).toEqual(miss())
     expect(store.get(aiLookupAtom)).toEqual({ status: 'idle' })
     expect(deps.onDefined).not.toHaveBeenCalled()
   })
