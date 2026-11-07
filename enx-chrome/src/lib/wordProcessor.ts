@@ -11,6 +11,7 @@ import {
 
 export interface LookupAreaOptions {
   contentSelector?: string
+  wholePageOnMiss?: boolean
   minTextLength?: number
   focusedNodeResolver?: (nodes: Element[]) => Element[]
 }
@@ -268,8 +269,9 @@ export class WordProcessor {
   //
   // ADR-010: `options` carries the SiteAdapter's overrides. A
   // `contentSelector` replaces the built-in list and disables the whole-page
-  // fallback; `minTextLength` is the minimum for it or for the broad
-  // selectors; `focusedNodeResolver` narrows the winning selector's matches.
+  // fallback unless `wholePageOnMiss` keeps it; `minTextLength` is the
+  // minimum for it or for the broad selectors; `focusedNodeResolver` narrows
+  // the winning selector's matches.
   static getArticleNodes(options?: LookupAreaOptions): Element[] {
     return this.findLookupArea(options).nodes
   }
@@ -277,8 +279,9 @@ export class WordProcessor {
   // The nodes lookup runs in, and where they came from: 'article' when a
   // selector found the article, 'whole-page' when none did and the body is
   // the lookup area (adr-034 #563, 2026-11-07). lookupAreaFeatures says what
-  // each one gets. An adapter with a contentSelector never falls back: it
-  // gets 'article' with its matches, possibly none.
+  // each one gets. An adapter with a contentSelector falls back only with
+  // wholePageOnMiss; otherwise it gets 'article' with its matches, possibly
+  // none.
   static findLookupArea(options?: LookupAreaOptions): LookupArea {
     const minTextLength = options?.minTextLength ?? 100
     const focus = options?.focusedNodeResolver ?? ((nodes: Element[]) => nodes)
@@ -324,9 +327,10 @@ export class WordProcessor {
       }
     }
 
-    // A SiteAdapter that pins its own selector opts out of the whole page:
-    // "no node found" is a clean degradation there (ADR-010).
-    if (options?.contentSelector) {
+    // A SiteAdapter that pins its own selector opts out of the whole page
+    // unless it sets wholePageOnMiss: "no node found" is a clean degradation
+    // there (ADR-010).
+    if (options?.contentSelector && !options.wholePageOnMiss) {
       return article([])
     }
 

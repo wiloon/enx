@@ -297,6 +297,11 @@ relative to `baseURL`, e.g. `page.goto('/test-page.html')`. The pages are
 `test-page.html`, `typescript-page.html`, `body-paragraphs.html` and
 `paint-window.html`.
 
+It also adds `https://standardebooks.org`, which no server answers:
+`standard-ebooks.spec.ts` fulfils those URLs with `context.route()` from the
+`standard-ebooks-*.xhtml` fixtures, served as `application/xhtml+xml` like
+the real pages, so the Standard Ebooks site adapter resolves.
+
 ### Key Files
 
 #### `playwright.config.ts`
