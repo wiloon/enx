@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Proposed — 2026-08-29（同日据评审意见把范围从"主推文 + 评论区"收窄为"仅主推文正文"，影响见 Context 边界 2）。**2026-09-20** Decision 8 页面上报已落地。**2026-09-21** 补 Decision 11–13（admin 列表 + 邮件通知管理员；`email/` 改用于此）。 |
+| **状态** | Proposed — 2026-08-29（同日据评审意见把范围从"主推文 + 评论区"收窄为"仅主推文正文"，影响见 Context 边界 2）。**2026-09-20** Decision 8 页面上报已落地。**2026-09-21** 补 Decision 11–13（admin 列表 + 邮件通知管理员；`email/` 改用于此）。 **2026-11-07** Amended by [ADR-071](adr-071-adapter-whole-page-on-miss.md)：`contentSelector` 未命中默认仍是空正文，适配器可显式选择退回整页。 |
 | **日期** | 2026-08-29 |
 | **关联 Spec** | 无独立 TASK-SPEC；Decision 即实现依据（同 adr-012 Decision 10）。历史 TASK-SPEC 文件若存在只作参考，不是编码门禁。 |
 | **关联 ADR** | [`adr-007-drag-select-sentence-translation.md`](adr-007-drag-select-sentence-translation.md)（划词整句翻译，本决策不改其分级逻辑，只需确认 `mouseup` 在 X 上不被抢）、[`adr-008-phrase-selection-context-translation.md`](adr-008-phrase-selection-context-translation.md)（短语查询依赖"选区内能找到 `.enx-word` 锚点"这个前提，本决策必须保持该前提成立）、[`adr-002-word-popup-react-shadow-dom.md`](adr-002-word-popup-react-shadow-dom.md)（Shadow DOM + Popover 弹窗，在 X 上无需改动，见 Consequences） |
@@ -446,9 +446,3 @@ console.log('替换文本节点数:', count);
 // 然后手动：点 Show more 展开、点开图片、上下滚动、点赞 —— Console 不应出现 React 报错，
 // 高亮也不应消失
 ```
-
-## 修订（2026-11-07，#700）：适配器可选择未命中时整页开启
-
-站点适配器的 `contentSelector` 未命中时，默认仍返回空正文；适配器可显式选择整页兜底，此时按 ADR-034 的整页模式开启：只允许划词查词，不绑定单击、不画复习高亮、不计阅读统计。Standard Ebooks 的文字页面采用这一选项；X、Reader、RSSX 和 Wikipedia 保持原有未命中行为。
-
-修订原因：#700 中 Standard Ebooks 的独立前言和后记页面没有 bodymatter，所有者选择保留安静开启和划词查词，而不是报错或依赖页面 slug 列表。
