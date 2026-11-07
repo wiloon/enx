@@ -4,6 +4,7 @@ import {
   X_CONTENT_SELECTOR,
   X_READY_SELECTOR,
   DEFAULT_ADAPTER,
+  lookupAreaOptions,
   PageLocation,
   SiteOrigins,
 } from '@/lib/siteAdapters'
@@ -567,5 +568,133 @@ describe('Wikipedia adapter', () => {
     expect(nodes).toHaveLength(1)
     expect(nodes[0].className).toBe('mw-parser-output')
     expect(nodes[0].textContent).not.toContain('中文')
+  })
+
+  it('finds no article, and no whole page, when the parser output is missing', () => {
+    document.body.innerHTML = '<div id="p-lang-btn"><a lang="zh">中文</a></div>'
+    const wikipedia = resolveSiteAdapter(
+      loc('en.wikipedia.org', '/wiki/Cat'),
+      HOMELAB
+    )
+    expect(WordProcessor.findLookupArea(lookupAreaOptions(wikipedia))).toEqual({
+      nodes: [],
+      source: 'article',
+    })
+  })
+})
+
+describe('Standard Ebooks adapter', () => {
+  const textPage = (path: string) =>
+    resolveSiteAdapter(loc('standardebooks.org', path), HOMELAB)
+  const area = () =>
+    WordProcessor.findLookupArea(
+      lookupAreaOptions(
+        textPage('/ebooks/carolyn-wells/the-gold-bag/text/single-page')
+      )
+    )
+
+  // The real pages are XHTML: `epub:type` is the attribute `type` in the
+  // OPS namespace, not a literal `epub:type` attribute. Parsing the fixture
+  // as XHTML and importing its body keeps that namespace.
+  const renderXhtml = (body: string) => {
+    const xhtml = new DOMParser().parseFromString(
+      `<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body>${body}</body></html>`,
+      'application/xhtml+xml'
+    )
+    document.body.replaceChildren(
+      ...Array.from(xhtml.body.childNodes).map(node =>
+        document.importNode(node, true)
+      )
+    )
+  }
+  const ids = (nodes: Element[]) => nodes.map(node => node.id)
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it.each([
+    '/ebooks/carolyn-wells/the-gold-bag/text/single-page',
+    '/ebooks/carolyn-wells/the-gold-bag/text/chapter-1',
+    '/ebooks/carolyn-wells/the-gold-bag/text/imprint',
+    '/ebooks/leo-tolstoy/war-and-peace/louise-maude_aylmer-maude/text/single-page',
+  ])('resolves the text page %s', path => {
+    expect(textPage(path).name).toBe('standard-ebooks')
+  })
+
+  it.each([
+    '/',
+    '/ebooks',
+    '/ebooks/carolyn-wells/the-gold-bag',
+    '/ebooks/carolyn-wells/the-gold-bag/downloads',
+  ])('leaves the non-text path %s to the default adapter', path => {
+    expect(textPage(path)).toBe(DEFAULT_ADAPTER)
+  })
+
+  it('leaves other hosts with a text-shaped path to their own adapter', () => {
+    const path = '/ebooks/carolyn-wells/the-gold-bag/text/single-page'
+    expect(resolveSiteAdapter(loc('example.com', path), HOMELAB)).toBe(
+      DEFAULT_ADAPTER
+    )
+    expect(
+      resolveSiteAdapter(loc('standardebooks.org.evil.net', path), HOMELAB)
+    ).toBe(DEFAULT_ADAPTER)
+  })
+
+  it('is a static page with click lookup bound on the article and a precise minimum length', () => {
+    const adapter = textPage('/ebooks/a/b/text/single-page')
+    expect(adapter.contentVolatility).toBe('static')
+    expect(adapter.clickBinding).toBe('bubble')
+    expect(adapter.minTextLength).toBe(1)
+  })
+
+  it('takes the outermost body-matter sections of a single-page novel, not its front or back matter', () => {
+    renderXhtml(`
+      <main>
+        <section id="titlepage" epub:type="frontmatter titlepage"><h2>The Gold Bag</h2><p>By Carolyn Wells.</p></section>
+        <section id="imprint" epub:type="frontmatter imprint"><p>This ebook is the product of many hours of hard work by volunteers.</p></section>
+        <nav id="toc"><ol><li>Chapter One</li><li>Chapter Two</li></ol></nav>
+        <section id="chapter-1" epub:type="bodymatter z3998:fiction chapter"><h2>I</h2><p>The lantern swung above the door of the old house.</p></section>
+        <section id="part-2" epub:type="bodymatter part">
+          <h2>Part Two</h2>
+          <section id="chapter-2" epub:type="bodymatter chapter"><p>Fleming Stone opened the gold bag at last.</p></section>
+        </section>
+        <section id="colophon" epub:type="backmatter colophon"><p>The Gold Bag was published in 1911 by Carolyn Wells.</p></section>
+      </main>`)
+    expect(area().source).toBe('article')
+    expect(ids(area().nodes)).toEqual(['chapter-1', 'part-2'])
+  })
+
+  it('takes every story and poem of a collection, a poem shorter than 100 characters too', () => {
+    renderXhtml(`
+      <main>
+        <section id="imprint" epub:type="frontmatter imprint"><p>Imprint text for the collection.</p></section>
+        <article id="story" epub:type="bodymatter z3998:fiction"><h2>The Black Cat</h2><p>For the most wild yet most homely narrative which I am about to pen.</p></article>
+        <article id="poem" epub:type="bodymatter z3998:poem"><h2>Alone</h2><p>From childhood’s hour I have not been.</p></article>
+        <section id="endnotes" epub:type="backmatter endnotes"><p>Endnote text for the collection.</p></section>
+      </main>`)
+    const nodes = area().nodes
+    expect(ids(nodes)).toEqual(['story', 'poem'])
+    expect(nodes[1].textContent!.trim().length).toBeLessThan(100)
+  })
+
+  it('takes the body-matter main of a per-chapter page, not the site header outside it', () => {
+    renderXhtml(`
+      <header id="site-header"><nav><a href="/ebooks">Ebooks</a> The Gold Bag navigation</nav></header>
+      <main id="chapter-main" epub:type="bodymatter z3998:fiction"><section id="chapter-1" epub:type="chapter"><p>The lantern swung above the door.</p></section></main>`)
+    expect(ids(area().nodes)).toEqual(['chapter-main'])
+  })
+
+  it('takes body matter marked with a literal epub:type attribute in plain HTML', () => {
+    document.body.innerHTML = `
+      <section id="titlepage" epub:type="frontmatter titlepage"><p>The Gold Bag, by Carolyn Wells.</p></section>
+      <section id="chapter-1" epub:type="bodymatter chapter"><p>The lantern swung above the door.</p></section>`
+    expect(ids(area().nodes)).toEqual(['chapter-1'])
+  })
+
+  it('falls back to the whole page on a text page with no body matter', () => {
+    renderXhtml(`
+      <main><section id="imprint" epub:type="frontmatter imprint"><p>This ebook is the product of many hours of hard work by volunteers.</p></section></main>`)
+    expect(area()).toEqual({ nodes: [document.body], source: 'whole-page' })
   })
 })

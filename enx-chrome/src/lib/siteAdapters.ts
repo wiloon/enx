@@ -4,10 +4,11 @@
 // completion indicator (ADR-010, ADR-011 Decision 4).
 //
 // resolveSiteAdapter() returns DEFAULT_ADAPTER for ordinary article sites.
-// Only X, the enx-ui Reader, the RSSX Reader and Wikipedia need their own
-// adapter.
+// Only X, the enx-ui Reader, the RSSX Reader, Wikipedia and Standard Ebooks
+// need their own adapter.
 
 import { EDITABLE_REGION_SELECTOR } from './selectionLookup'
+import type { LookupAreaOptions } from './wordProcessor'
 
 // The subset of a Location the adapters read. Both `window.location` and a
 // `URL` (from a Navigation API destination) satisfy it.
@@ -37,6 +38,12 @@ export interface SiteAdapter {
   pageSupport?: (location: PageLocation) => string | null
   /** Overrides getArticleNodes()'s built-in selector list when set. */
   contentSelector?: string
+  /**
+   * With a `contentSelector`: a page it misses becomes the whole page
+   * (selection lookup only) instead of failing with `no-article-node`.
+   * Undefined = the clean-degradation rule (ADR-010).
+   */
+  wholePageOnMiss?: boolean
   /** Minimum trimmed textContent length for a node to count as content. */
   minTextLength: number
   /**
@@ -252,10 +259,10 @@ const RSSX_ADAPTER: SiteAdapter = {
 }
 
 // --- Wikipedia ------------------------------------------------------------
-// The generic selectors and the largest-text fallback both miss here: the
-// fallback takes the whole page, whose language menu (中文, 粵語, ...) trips
-// the Chinese-article check. The article body is the parser output inside
-// #mw-content-text, the same on the desktop and mobile (.m.) sites.
+// The generic selectors miss here, and the whole page holds the language
+// menu (中文, 粵語, ...), which trips the Chinese-article check. The article
+// body is the parser output inside #mw-content-text, the same on the
+// desktop and mobile (.m.) sites.
 
 const WIKIPEDIA_HOST = /(^|\.)wikipedia\.org$/
 
@@ -268,13 +275,56 @@ const WIKIPEDIA_ADAPTER: SiteAdapter = {
   clickBinding: 'bubble',
 }
 
+// --- Standard Ebooks --------------------------------------------------------
+// A book's text pages (/ebooks/<author>/<title>[/<translator>]/text/...)
+// mark the blocks under <main> as frontmatter, bodymatter or backmatter in
+// the EPUB `type` attribute; the body matter is the article. On a
+// single-page book that is each chapter <section> or story/poem <article>,
+// on a per-chapter page it can be <main> itself. Front and back matter
+// pages (/text/imprint, /text/colophon, ...) have none and get the whole
+// page.
+//
+// The pages are XHTML, where `epub:type` is `type` in the OPS namespace:
+// `*|type` matches it in Chromium. Plain HTML has a literal `epub:type`
+// attribute, which only the escaped name matches (and which is all jsdom
+// supports).
+
+const STANDARD_EBOOKS_HOST = /(^|\.)standardebooks\.org$/
+const STANDARD_EBOOKS_TEXT_PATH = /^\/ebooks\/.+\/text(\/|$)/
+const STANDARD_EBOOKS_BODYMATTER_SELECTOR =
+  '[*|type~="bodymatter"], [epub\\:type~="bodymatter"]'
+
+const STANDARD_EBOOKS_ADAPTER: SiteAdapter = {
+  name: 'standard-ebooks',
+  matches: location =>
+    STANDARD_EBOOKS_HOST.test(location.hostname) &&
+    STANDARD_EBOOKS_TEXT_PATH.test(location.pathname),
+  contentSelector: STANDARD_EBOOKS_BODYMATTER_SELECTOR,
+  wholePageOnMiss: true,
+  // A collection's poem can be a few lines.
+  minTextLength: 1,
+  contentVolatility: 'static',
+  clickBinding: 'bubble',
+}
+
 // Non-default adapters, checked in order.
 const ADAPTERS: SiteAdapter[] = [
   X_ADAPTER,
   READER_ADAPTER,
   RSSX_ADAPTER,
   WIKIPEDIA_ADAPTER,
+  STANDARD_EBOOKS_ADAPTER,
 ]
+
+/** The adapter's overrides for WordProcessor.findLookupArea(). */
+export function lookupAreaOptions(adapter: SiteAdapter): LookupAreaOptions {
+  return {
+    contentSelector: adapter.contentSelector,
+    wholePageOnMiss: adapter.wholePageOnMiss,
+    minTextLength: adapter.minTextLength,
+    focusedNodeResolver: adapter.focusedNodeResolver,
+  }
+}
 
 export function resolveSiteAdapter(
   location: PageLocation,

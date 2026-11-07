@@ -16,7 +16,15 @@ X has no persistent injection (2026-10-15 amendment). The second, wildcard `web_
 
 ## 2. Site adapter
 
-`resolveSiteAdapter()` picks one adapter per page. An adapter with a `contentSelector` (X, Reader, RSSX, Wikipedia) uses only that selector: its matches longer than its `minTextLength` are the article, possibly none (`no-article-node`), and no fallback runs. Every other page gets the `default` adapter and steps 3–4.
+`resolveSiteAdapter()` picks one adapter per page. An adapter with a `contentSelector` (X, Reader, RSSX, Wikipedia, Standard Ebooks) uses only that selector: its matches longer than its `minTextLength` are the article, and matches nested inside another match are dropped. When nothing matches, the article is empty (`no-article-node`) and no fallback runs, unless the adapter sets `wholePageOnMiss`: then the page gets step 4's whole page. Every other page gets the `default` adapter and steps 3–4.
+
+| Adapter | Pages | `contentSelector` | On a miss |
+| --- | --- | --- | --- |
+| `x` | X tweet detail pages | tweet text, X Article body | `no-article-node` |
+| `reader` | enx-ui `/reader`, `/welcome` | `#enx-reader-article` | `no-article-node` |
+| `rssx` | the RSSX Reader | `article` | `no-article-node` |
+| `wikipedia` | `*.wikipedia.org` | `#mw-content-text .mw-parser-output` | `no-article-node` |
+| `standard-ebooks` | `standardebooks.org/ebooks/…/text/…` | the EPUB `bodymatter` type: `[*\|type~="bodymatter"]` for the real XHTML pages, `[epub\:type~="bodymatter"]` for a literal HTML attribute (and jsdom) | whole page (`wholePageOnMiss`): front and back matter pages like `/text/imprint` |
 
 ## 3. Built-in selectors (default adapter)
 
@@ -29,7 +37,7 @@ The list itself is `WordProcessor.BUILT_IN_SELECTORS`. A site whose article no s
 
 ## 4. Whole page
 
-When no selector matches, learning mode still turns on, with `<body>` as the lookup area and source `whole-page`. A whole page with no lookup-eligible text fails with `no-words`.
+When no selector matches (on the default adapter, or an adapter with `wholePageOnMiss`), learning mode still turns on, with `<body>` as the lookup area and source `whole-page`. A whole page with no lookup-eligible text fails with `no-words`.
 
 ## Article vs whole page
 

@@ -23,7 +23,11 @@ import {
   sentenceWordStates,
   wordKey,
 } from '@/lib/wordHighlight'
-import { resolveSiteAdapter, type SiteOrigins } from '@/lib/siteAdapters'
+import {
+  lookupAreaOptions,
+  resolveSiteAdapter,
+  type SiteOrigins,
+} from '@/lib/siteAdapters'
 import { isSelectionLookupExcluded } from '@/lib/selectionLookup'
 import {
   ENABLE_OK,
@@ -850,11 +854,7 @@ const processArticleContent = async (
     const adapter = resolveSiteAdapter(window.location, siteOrigins)
     console.log(`Site adapter: ${adapter.name} (${adapter.contentVolatility})`)
 
-    const lookupArea = WordProcessor.findLookupArea({
-      contentSelector: adapter.contentSelector,
-      minTextLength: adapter.minTextLength,
-      focusedNodeResolver: adapter.focusedNodeResolver,
-    })
+    const lookupArea = WordProcessor.findLookupArea(lookupAreaOptions(adapter))
     const articleNodes = lookupArea.nodes
     const wholePage = lookupArea.source === 'whole-page'
     const features = lookupAreaFeatures(lookupArea)
