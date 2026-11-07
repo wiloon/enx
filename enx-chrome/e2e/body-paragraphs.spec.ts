@@ -1,11 +1,12 @@
-// #565: on a page whose paragraphs sit directly under <body> (a Gutenberg
-// book, an RFC, a Paul Graham essay), body is the article root, so a word in
-// those paragraphs is clickable. The fixture is hand-written, not a real page.
+// On a page whose paragraphs sit directly under <body> (a Gutenberg book, an
+// RFC, a Paul Graham essay), no selector finds the article, so it is the
+// whole page: selection lookup only, no click lookup (adr-034, 2026-11-07).
+// The fixture is hand-written, not a real page.
 
+import type { Page } from '@playwright/test'
 import { loginAvailable, LOGIN_SKIP_REASON } from './auth'
 import { expect, test } from './fixtures'
 import {
-  clickWord,
   enableLearningMode,
   mockBackendFetch,
   reviewWordsRequests,
@@ -13,11 +14,31 @@ import {
   wordLookupPosts,
 } from './helpers'
 
+// The viewport centre of the first `word` under `body > p`.
+async function wordPoint(page: Page, word: string) {
+  await page.bringToFront()
+  const paragraph = page.locator('body > p').first()
+  await paragraph.scrollIntoViewIfNeeded()
+  return paragraph.evaluate((element, w) => {
+    const nodes = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+    for (let node = nodes.nextNode(); node; node = nodes.nextNode()) {
+      const offset = node.textContent?.indexOf(w) ?? -1
+      if (offset < 0) continue
+      const range = document.createRange()
+      range.setStart(node, offset)
+      range.setEnd(node, offset + w.length)
+      const box = range.getBoundingClientRect()
+      return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    }
+    throw new Error(`The paragraph must contain the word ${w}`)
+  }, word)
+}
+
 test.describe('Paragraphs directly under body', () => {
   // ADR-037: a real Clerk session; skipped (not faked) without credentials.
   test.skip(!loginAvailable, LOGIN_SKIP_REASON)
 
-  test('a word opens the popover, and a click inside the popover looks nothing up', async ({
+  test('a single click opens no popover; a double-click opens it and looks the word up once', async ({
     context,
     page,
     extensionId,
@@ -28,26 +49,26 @@ test.describe('Paragraphs directly under body', () => {
     })
     await page.goto('/body-paragraphs.html', { waitUntil: 'domcontentloaded' })
     await enableLearningMode(page, extensionId)
+    const popover = page.locator('#enx-anchored-overlay')
 
-    const popover = await clickWord(page, 'sailor', 'body > p')
+    const point = await wordPoint(page, 'sailor')
+    await page.mouse.click(point.x, point.y)
+    await page.waitForTimeout(500)
+    await expect(popover).toHaveCount(0)
+    expect(await wordLookupPosts(context)).toHaveLength(0)
+
+    await page.mouse.dblclick(point.x, point.y)
     await expect(
       popover.locator('[data-testid="word-popover-header"] h3')
     ).toHaveText('sailor')
     await expect.poll(() => wordLookupPosts(context)).toHaveLength(1)
-    await popover.evaluate(el => el.setAttribute('data-e2e-marker', 'first'))
-
-    // The overlay's shadow host sits under body, so this click reaches the
-    // body root's click listener too.
-    await popover.locator('[data-testid="word-popover-header"] h3').click()
     await page.waitForTimeout(500)
-
     expect(await wordLookupPosts(context)).toHaveLength(1)
-    await expect(popover).toHaveAttribute('data-e2e-marker', 'first')
   })
 
   // ADR-069: enabling sends one review-list GET with no page text; an empty
-  // list is a successful enable, and a click still looks the word up.
-  test('an empty review list enables, and a word still opens the popover', async ({
+  // list is a successful enable, and a double-click still looks the word up.
+  test('an empty review list enables, and a double-click still opens the popover', async ({
     context,
     page,
     extensionId,
@@ -68,36 +89,12 @@ test.describe('Paragraphs directly under body', () => {
         body: null,
       },
     ])
-    const popover = await clickWord(page, 'sailor', 'body > p')
+    const point = await wordPoint(page, 'sailor')
+    await page.mouse.dblclick(point.x, point.y)
     await expect(
-      popover.locator('[data-testid="word-popover-header"] h3')
+      page.locator(
+        '#enx-anchored-overlay [data-testid="word-popover-header"] h3'
+      )
     ).toHaveText('sailor')
   })
-})
-
-// The geometry ReadingSession.noteScroll handles for a body root: the box is
-// one viewport tall and scrollHeight is where the overflowing text ends.
-test('a 100%-height body box is viewport tall while its paragraphs overflow it', async ({
-  page,
-}) => {
-  await page.goto('/body-paragraphs.html', { waitUntil: 'domcontentloaded' })
-
-  const geometry = await page.evaluate(() => {
-    const body = document.body
-    const paragraphs = body.querySelectorAll(':scope > p')
-    const lastBottom =
-      paragraphs[paragraphs.length - 1].getBoundingClientRect().bottom
-    return {
-      viewport: window.innerHeight,
-      boxHeight: body.getBoundingClientRect().height,
-      scrollHeight: body.scrollHeight,
-      textBottom: lastBottom - body.getBoundingClientRect().top,
-    }
-  })
-
-  expect(geometry.boxHeight).toBe(geometry.viewport)
-  expect(geometry.textBottom).toBeGreaterThan(2 * geometry.viewport)
-  expect(geometry.scrollHeight).toBeGreaterThanOrEqual(
-    Math.floor(geometry.textBottom)
-  )
 })

@@ -10,7 +10,7 @@ import {
   positionAnchoredOverlay,
   positionSelectionHint,
 } from '@/lib/overlayPositioning'
-import { WordProcessor } from '@/lib/wordProcessor'
+import { WordProcessor, lookupAreaFeatures } from '@/lib/wordProcessor'
 import {
   createPaintWindow,
   isBlockDisplay,
@@ -857,6 +857,7 @@ const processArticleContent = async (
     })
     const articleNodes = lookupArea.nodes
     const wholePage = lookupArea.source === 'whole-page'
+    const features = lookupAreaFeatures(lookupArea)
     const lookupExclusions = adapter.lookupExcludedSelectors ?? []
     if (articleNodes.length === 0) {
       console.log('No article node found')
@@ -932,19 +933,25 @@ const processArticleContent = async (
     // window paints the blocks near the viewport as the observer reports
     // them; the article DOM is never touched.
     dropArticleBlocks()
-    articleBlocks = new Map(
-      articleNodes.flatMap((root, i) => [
-        ...partitionBlocks(textNodesByRoot[i], root, isBlockElement),
-      ])
-    )
-    if (!highlightPreference.paintRun()) {
-      console.log('Word highlight preference is off; skipping paint')
+    if (features.highlights) {
+      articleBlocks = new Map(
+        articleNodes.flatMap((root, i) => [
+          ...partitionBlocks(textNodesByRoot[i], root, isBlockElement),
+        ])
+      )
+      if (!highlightPreference.paintRun()) {
+        console.log('Word highlight preference is off; skipping paint')
+      }
     }
 
     // Delegated click-to-lookup (ADR-011 Decision 2): one listener per
     // article root, replacing the per-word listeners. Bound even with no
     // highlights -- any English word is clickable.
-    setArticleRoots(articleNodes, lookupExclusions)
+    if (features.clickLookup) {
+      setArticleRoots(articleNodes, lookupExclusions)
+    } else {
+      clearArticleRoots()
+    }
 
     // L0 reading instrumentation (ADR-028): `words.length` is the
     // denominator of the only honest progress metric we have ("lookups per
@@ -952,7 +959,7 @@ const processArticleContent = async (
     // Started after the paint so a failed run never reports a read article.
     // The whole page is no article: it ends the previous session, reporting
     // what it earned, and counts nothing itself (adr-034 #563).
-    if (wholePage) {
+    if (!features.readingStats) {
       endReading()
     } else {
       startArticle(articleNodes, words.length, delta => {

@@ -20,6 +20,20 @@ export interface LookupArea {
   source: 'article' | 'whole-page'
 }
 
+export interface LookupAreaFeatures {
+  clickLookup: boolean
+  highlights: boolean
+  readingStats: boolean
+}
+
+// adr-034 (2026-11-07): click lookup, highlights and reading statistics
+// belong to the article a selector found. The whole page keeps selection
+// lookup only, so a click reaches the page's own handlers untouched.
+export function lookupAreaFeatures(area: LookupArea): LookupAreaFeatures {
+  const article = area.source === 'article'
+  return { clickLookup: article, highlights: article, readingStats: article }
+}
+
 // Single source of truth for article extraction / word highlighting.
 // content.tsx and its tests import this instead of keeping their own copies.
 export class WordProcessor {
@@ -28,20 +42,6 @@ export class WordProcessor {
     htmlTag: /<[^>]*>/g,
     htmlEntity: /&[a-zA-Z0-9#]+;/g,
   }
-
-  // getArticleNodes()'s largest-text fallback rejects a candidate whose
-  // link-to-text ratio exceeds this (adr-034 Decision 3).
-  static readonly LINK_DENSITY_THRESHOLD = 0.5
-
-  // The largest-text fallback ignores candidates with this much text or
-  // less, and takes the whole body only when its lookup-eligible text is
-  // longer than this.
-  static readonly FALLBACK_MIN_TEXT_LENGTH = 500
-
-  // The largest-text fallback takes the whole body when its best candidate
-  // holds less than this share of the body's visible text: the paragraphs sit
-  // directly under <body> (#565). A starting value from a 20-page sample.
-  static readonly BODY_FALLBACK_MAX_CANDIDATE_SHARE = 0.25
 
   // Ancestor tags whose text is never looked up or highlighted (links,
   // form controls, code). Shared by collectTextNodes (highlight + extract
@@ -234,21 +234,6 @@ export class WordProcessor {
     CSS.highlights.delete(this.ACTIVE_SENTENCE_HIGHLIGHT_NAME)
   }
 
-  // Fraction of `element`'s text that sits inside <a> tags -- high for nav
-  // bars, related-link lists and comment threads, low for article prose
-  // (adr-034 Decision 3).
-  static linkDensity(element: Element): number {
-    const totalLength = element.textContent?.length || 0
-    if (totalLength === 0) return 0
-
-    let linkLength = 0
-    element.querySelectorAll('a').forEach(a => {
-      linkLength += a.textContent?.length || 0
-    })
-
-    return linkLength / totalLength
-  }
-
   // The built-in selector list, in priority order (adr-034 #563 amendment).
   // A precise selector names the article itself: any match with more than
   // one character of text counts. A broad selector is a generic class that
@@ -270,8 +255,6 @@ export class WordProcessor {
     { selector: '.content', broad: true },
     { selector: '.entry-content', broad: true },
     { selector: '.post-body', broad: true },
-    // Last, so article and the broad selectors win on pages that have them.
-    { selector: 'main' },
   ]
 
   // A precise selector's match counts when its trimmed text is longer than
@@ -284,19 +267,18 @@ export class WordProcessor {
   // processed, not just the longest one; broad selectors are the exception.
   //
   // ADR-010: `options` carries the SiteAdapter's overrides. A
-  // `contentSelector` replaces the built-in list and disables both fallbacks;
-  // `minTextLength` is the minimum for it or for the broad selectors;
-  // `focusedNodeResolver` narrows the winning selector's matches.
+  // `contentSelector` replaces the built-in list and disables the whole-page
+  // fallback; `minTextLength` is the minimum for it or for the broad
+  // selectors; `focusedNodeResolver` narrows the winning selector's matches.
   static getArticleNodes(options?: LookupAreaOptions): Element[] {
     return this.findLookupArea(options).nodes
   }
 
-  // The nodes lookup and highlighting run in, and where they came from:
-  // 'article' when a selector or the largest-text fallback found the article
-  // (reading statistics count it, ADR-028), 'whole-page' when nothing did and
-  // the body is the lookup area only as a last resort (adr-034 #563). An
-  // adapter with a contentSelector never falls back: it gets 'article' with
-  // its matches, possibly none.
+  // The nodes lookup runs in, and where they came from: 'article' when a
+  // selector found the article, 'whole-page' when none did and the body is
+  // the lookup area (adr-034 #563, 2026-11-07). lookupAreaFeatures says what
+  // each one gets. An adapter with a contentSelector never falls back: it
+  // gets 'article' with its matches, possibly none.
   static findLookupArea(options?: LookupAreaOptions): LookupArea {
     const minTextLength = options?.minTextLength ?? 100
     const focus = options?.focusedNodeResolver ?? ((nodes: Element[]) => nodes)
@@ -342,14 +324,11 @@ export class WordProcessor {
       }
     }
 
-    // A SiteAdapter that pins its own selector opts out of the guess-y
-    // fallback: "no node found" is a clean degradation there (ADR-010).
+    // A SiteAdapter that pins its own selector opts out of the whole page:
+    // "no node found" is a clean degradation there (ADR-010).
     if (options?.contentSelector) {
       return article([])
     }
-
-    const largest = this.largestTextBlock()
-    if (largest.length > 0) return article(largest)
 
     if (document.body) {
       console.log('✅ Whole page: no article node found, using body')
@@ -365,69 +344,6 @@ export class WordProcessor {
         ? node
         : longest
     )
-  }
-
-  // The largest-text fallback: one container, the body (#565), or none.
-  private static largestTextBlock(): Element[] {
-    // Fallback: find the largest text container on the page, skipping
-    // candidates whose text is mostly inside <a> tags (nav, related-links,
-    // comment threads) -- adr-034 Decision 3. Threshold is a starting point,
-    // tunable against real sites; not meant to be precise on day one.
-    const allElements = document.querySelectorAll('div, main, section, article')
-    let largestElement: Element | null = null
-    let maxTextLength = 0
-
-    allElements.forEach(element => {
-      const textLength = element.textContent?.length || 0
-      if (
-        textLength <= maxTextLength ||
-        textLength <= this.FALLBACK_MIN_TEXT_LENGTH
-      ) {
-        return
-      }
-      if (this.linkDensity(element) > this.LINK_DENSITY_THRESHOLD) return
-      maxTextLength = textLength
-      largestElement = element
-    })
-
-    const body = document.body
-    if (body && this.bodyIsTheArticle(body, largestElement)) {
-      console.log('✅ Fallback: Using body, no container holds the article')
-      return [body]
-    }
-
-    if (largestElement) {
-      console.log(
-        `✅ Fallback: Using largest element with ${maxTextLength} characters`
-      )
-      return [largestElement]
-    }
-
-    return []
-  }
-
-  // The largest-text fallback's body test (#565). `candidate` is the winner
-  // picked on raw text, or null. Share and body link density are measured on
-  // visible text: inline scripts can outweigh a page's prose many times over.
-  private static bodyIsTheArticle(
-    body: HTMLElement,
-    candidate: Element | null
-  ): boolean {
-    const visibleBody = this.withoutNonContent(body)
-    const bodyLength = visibleBody.textContent?.length || 0
-    const candidateShare =
-      candidate && bodyLength > 0
-        ? this.cleanArticleText(candidate).length / bodyLength
-        : 0
-    if (candidateShare >= this.BODY_FALLBACK_MAX_CANDIDATE_SHARE) return false
-    if (this.linkDensity(visibleBody) > this.LINK_DENSITY_THRESHOLD)
-      return false
-
-    const eligibleLength = this.collectTextNodes(body).reduce(
-      (sum, node) => sum + node.data.length,
-      0
-    )
-    return eligibleLength > this.FALLBACK_MIN_TEXT_LENGTH
   }
 
   // A detached copy of `element` without its <script>/<style>/<noscript>
