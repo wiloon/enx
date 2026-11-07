@@ -140,6 +140,13 @@ const underlined = (): string[] => {
   return out
 }
 
+// Every element reads as half scrolled past, so a live reading session would
+// credit words on its first scroll note; jsdom's zero-height boxes never do.
+const giveElementsABox = () =>
+  jest
+    .spyOn(Element.prototype, 'getBoundingClientRect')
+    .mockReturnValue({ ...BOX, top: -500 } as DOMRect)
+
 const progressReports = () =>
   sent.filter(m => m.type === 'reportReadingProgress')
 
@@ -259,7 +266,7 @@ describe('a Standard Ebooks title page (whole page)', () => {
 
   it('a single click on a word opens no popover', async () => {
     const send = await loadContentScript()
-    await send({ action: 'enxRun' })
+    expect(await send({ action: 'enxRun' })).toMatchObject({ success: true })
 
     await clickWord('b', 'Conrad')
 
@@ -268,15 +275,16 @@ describe('a Standard Ebooks title page (whole page)', () => {
 
   it('paints no highlight on a review word', async () => {
     const send = await loadContentScript()
-    await send({ action: 'enxRun' })
+    expect(await send({ action: 'enxRun' })).toMatchObject({ success: true })
     showAllObserved()
 
     expect(underlined()).toEqual([])
   })
 
   it('counts no reading', async () => {
+    giveElementsABox()
     const send = await loadContentScript()
-    await send({ action: 'enxRun' })
+    expect(await send({ action: 'enxRun' })).toMatchObject({ success: true })
     await clickWord('b', 'Conrad')
     window.dispatchEvent(new Event('pagehide'))
 
@@ -323,6 +331,7 @@ describe('a whole-page lookup area', () => {
 
   it('looks words up but counts no reading', async () => {
     document.body.innerHTML = `<div><p id="short">The quick brown fox jumps over the lazy dog.</p></div>`
+    giveElementsABox()
     const send = await loadContentScript()
 
     expect(await send({ action: 'enxRun' })).toMatchObject({ success: true })
@@ -335,6 +344,7 @@ describe('a whole-page lookup area', () => {
 
   it('paragraphs directly under body are whole page and count no reading', async () => {
     document.body.innerHTML = `<p id="long">The quick brown fox jumps over the lazy dog. ${prose(600)}</p>`
+    giveElementsABox()
     const send = await loadContentScript()
 
     expect(await send({ action: 'enxRun' })).toMatchObject({ success: true })
