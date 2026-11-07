@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>An Essay Without Markup</title>
+  </head>
+  <body>
+    <h1>An Essay Without Markup</h1>
+    <div id="text">
+      <p>
+        Some personal sites put their essays straight into the page with no
+        article element and no content class, just paragraphs one after the
+        other. The writing is still an article, but no selector in the
+        extension's list can find it, so learning mode falls back to the
+        whole page and offers selection lookup only.
+      </p>
+      <p>
+        That fallback keeps the page usable, yet it loses click lookup,
+        highlighting and reading statistics. Measuring how often it happens
+        across real sites is the reason the evaluation tool exists at all,
+        because a guess about coverage is no substitute for a number.
+      </p>
+      <p>
+        A reader who meets this page will still double-click a word to look it
+        up, and the popover will open as it does everywhere else, but a single
+        click on a word will reach the page's own handlers untouched.
+      </p>
+    </div>
+  </body>
+</html>

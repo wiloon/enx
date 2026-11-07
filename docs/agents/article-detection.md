@@ -61,3 +61,15 @@ Inside the lookup area, text under these is never looked up or highlighted:
 ## Failure reasons
 
 After the lookup area is chosen, `enxRun` fails with `no-article-node` (empty area), `not-english` (too much Han text, `config.hanCharLimit`), or `no-words`.
+
+## Measuring
+
+`task article-eval` (in `enx-chrome/`, ADR-070) opens every page in `article-eval/corpus.json` in Playwright's Chromium and prints how well the lookup area matches the article. It needs the live sites, so it never runs in CI.
+
+- **Chosen area:** the page runs `resolveSiteAdapter()` (with no build-target sites) and `WordProcessor.findLookupArea(lookupAreaOptions(adapter))`, bundled from `src/articleEval/pageProbe.ts`.
+- **Reference:** Mozilla Readability's article, parsed from a clone of the same document.
+- **Scores:** both texts lose `script`, `style` and `noscript`, keep links and code, and are compared as sets of lower-cased 5-word shingles. **Coverage** is the share of the reference inside the chosen area, **precision** the share of the chosen area that is reference.
+- **Verdicts**, first match wins: `load failed`; `no article node` (empty area); `whole page` (coverage 0); `no reference` (Readability found none); `misses text` (coverage < 0.8); `too broad` (precision < 0.7); `ok`. A score that can't be computed prints `n/a`.
+- **Baseline:** a run lists the pages whose verdict changed or whose score moved more than 0.05 against `article-eval/baseline.json`. `task article-eval -- --update-baseline` rewrites it; `-- --only <url part>` runs the matching pages only; `-- --headed` shows the browser.
+
+The scoring and the report are `src/lib/articleEval/`; the browser side is `article-eval/`, pinned by `e2e/article-eval.spec.ts`.

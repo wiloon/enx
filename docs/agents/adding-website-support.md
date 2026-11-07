@@ -110,6 +110,8 @@ static getArticleNode(): Element | null {
 **Why Ordering Matters:**
 The method stops at the first selector that matches. Which selectors are precise or broad, their length minimums, and what happens when none matches: [article-detection.md](article-detection.md). A site whose article no built-in selector finds needs its own selector here to get click lookup.
 
+**Measure before and after.** A new selector can win on sites it was never meant for. Run `task article-eval` in `enx-chrome/` before the change and again after it, and check the "Changes since the baseline" list for pages other than your target ([article-detection.md §Measuring](article-detection.md#measuring)). Add the target site's article pages to `enx-chrome/article-eval/corpus.json`, then run `task article-eval -- --update-baseline` and commit `baseline.json` with the change.
+
 ### 4. Test the Integration
 
 After making changes:
@@ -221,7 +223,9 @@ Update `enx-chrome/CHANGELOG.md` or create a site support document:
 
 - [ ] Add URL pattern to `manifest.json` `content_scripts.matches`
 - [ ] Inspect target website to identify article container
+- [ ] Run `task article-eval` before the selector change
 - [ ] Add CSS selector to `content.ts` `getArticleNode()` method
+- [ ] Run `task article-eval` again; only the intended pages change; add the site to the corpus and update the baseline
 - [ ] Rebuild extension: `task build` or `task dev`
 - [ ] Reload extension in Chrome
 - [ ] Test on target website

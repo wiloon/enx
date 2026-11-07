@@ -19,6 +19,8 @@ export interface LookupAreaOptions {
 export interface LookupArea {
   nodes: Element[]
   source: 'article' | 'whole-page'
+  /** The selector whose matches are the article; unset when none matched. */
+  selector?: string
 }
 
 export interface LookupAreaFeatures {
@@ -323,7 +325,7 @@ export class WordProcessor {
 
       if (nodes.length > 0) {
         console.log(`✅ Using article node with selector: ${selector}`)
-        return article(focus(nodes))
+        return { ...article(focus(nodes)), selector }
       }
     }
 
