@@ -212,6 +212,12 @@ tasks:
       - echo "⚠️  Make sure dist-e2e is built first (pnpm build:e2e, ADR-037)"
       - '{{.FNM_EXEC}} pnpm run test:e2e:headed'
 
+  article-eval:
+    desc: 'Measure article detection on the live site corpus (ADR-070; task article-eval -- --update-baseline | --headed | --only <url part>)'
+    cmds:
+      - task: ensure-node
+      - '{{.FNM_EXEC}} node article-eval/cli.ts {{.CLI_ARGS}}'
+
   test-all:
     desc: Run all tests (unit + E2E)
     cmds:

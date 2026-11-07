@@ -48,6 +48,7 @@ describe('WordProcessor.findLookupArea page shapes', () => {
     html: string
     expected: string
     source: 'article' | 'whole-page'
+    selector?: string
   }> = [
     {
       shape: 'an article element',
@@ -57,6 +58,7 @@ describe('WordProcessor.findLookupArea page shapes', () => {
           <footer>${prose(200)}</footer>`,
       expected: '#story',
       source: 'article',
+      selector: 'article',
     },
     {
       shape: 'a generic .entry-content class',
@@ -68,6 +70,7 @@ describe('WordProcessor.findLookupArea page shapes', () => {
           </div>`,
       expected: '.entry-content',
       source: 'article',
+      selector: '.entry-content',
     },
     {
       shape: 'a #root wrapper around the whole page, the whole page',
@@ -159,12 +162,13 @@ describe('WordProcessor.findLookupArea page shapes', () => {
     },
   ]
 
-  it.each(rows)('$shape', ({ html, expected, source }) => {
+  it.each(rows)('$shape', ({ html, expected, source, selector }) => {
     document.body.innerHTML = html
 
     expect(lookupAreaAsDefaultSite()).toEqual({
       nodes: [document.querySelector(expected)],
       source,
+      selector,
     })
   })
 })
@@ -190,6 +194,7 @@ describe('WordProcessor.findLookupArea edge cases', () => {
     expect(lookupAreaAsDefaultSite()).toEqual({
       nodes: [document.getElementById('teaser')],
       source: 'article',
+      selector: 'article',
     })
   })
 
@@ -203,6 +208,21 @@ describe('WordProcessor.findLookupArea edge cases', () => {
 
     expect(nodes).toHaveLength(1)
     expect(nodes[0]).toBe(document.querySelector('.tweet'))
+  })
+
+  it("names the adapter's contentSelector as the selector that found the article", () => {
+    document.body.innerHTML = `<div class="tweet">${prose(200)}</div>`
+
+    expect(
+      WordProcessor.findLookupArea({
+        contentSelector: '.tweet',
+        minTextLength: 1,
+      })
+    ).toEqual({
+      nodes: [document.querySelector('.tweet')],
+      source: 'article',
+      selector: '.tweet',
+    })
   })
 
   it("returns [] when an adapter's contentSelector matches nothing, without falling back to body", () => {
@@ -291,6 +311,7 @@ describe('WordProcessor.getArticleNodes precise and broad selectors', () => {
     expect(lookupAreaAsDefaultSite()).toEqual({
       nodes: [document.getElementById('short')],
       source: 'article',
+      selector: 'article',
     })
   })
 
