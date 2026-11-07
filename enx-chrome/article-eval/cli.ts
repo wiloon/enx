@@ -12,6 +12,7 @@ import { existsSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { chromium, devices } from '@playwright/test'
 import {
+  comparableBaseline,
   compareBaseline,
   type Baseline,
 } from '../src/lib/articleEval/baseline.ts'
@@ -92,9 +93,12 @@ async function main() {
     ? (JSON.parse(await readFile(BASELINE, 'utf8')) as Baseline)
     : null
   // A partial run compares, and updates, only the pages it measured.
-  const measured = (all: Baseline) =>
-    Object.fromEntries(Object.entries(all).filter(([url]) => url in current))
-  const changes = baseline ? compareBaseline(measured(baseline), current) : null
+  const changes = baseline
+    ? compareBaseline(
+        comparableBaseline(baseline, current, Boolean(options.only)),
+        current
+      )
+    : null
   console.log(formatReport(rows, changes))
 
   if (options.updateBaseline) {

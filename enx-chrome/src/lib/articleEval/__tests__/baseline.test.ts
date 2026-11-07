@@ -1,6 +1,31 @@
-import { compareBaseline, type Baseline } from '../baseline'
+import { compareBaseline, comparableBaseline, type Baseline } from '../baseline'
 
 const OK = { verdict: 'ok', coverage: 0.95, precision: 0.9 } as const
+
+describe('comparableBaseline', () => {
+  const baseline: Baseline = {
+    'https://a.example/1': OK,
+    'https://a.example/gone': OK,
+  }
+  const current: Baseline = { 'https://a.example/1': OK }
+
+  it('keeps every entry on a full run, so a removed page is reported', () => {
+    const changes = compareBaseline(
+      comparableBaseline(baseline, current, false),
+      current
+    )
+
+    expect(changes.map(c => [c.url, c.change])).toEqual([
+      ['https://a.example/gone', 'removed'],
+    ])
+  })
+
+  it('keeps only the measured pages on a partial run', () => {
+    expect(comparableBaseline(baseline, current, true)).toEqual({
+      'https://a.example/1': OK,
+    })
+  })
+})
 
 describe('compareBaseline', () => {
   it('lists nothing when every page is unchanged', () => {

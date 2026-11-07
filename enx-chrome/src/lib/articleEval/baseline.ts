@@ -24,6 +24,21 @@ function moved(before: number | null, after: number | null): boolean {
   return Math.abs(before - after) > SCORE_TOLERANCE
 }
 
+/**
+ * The baseline entries a run compares against. A partial (`--only`) run
+ * measured only some pages, so the rest are not reported as removed.
+ */
+export function comparableBaseline(
+  baseline: Baseline,
+  current: Baseline,
+  partial: boolean
+): Baseline {
+  if (!partial) return baseline
+  return Object.fromEntries(
+    Object.entries(baseline).filter(([url]) => url in current)
+  )
+}
+
 export function compareBaseline(
   baseline: Baseline,
   current: Baseline
