@@ -32,6 +32,12 @@ export const errorNeedsReloadAtom = atom(false)
 // Sign in in place of a definition.
 export const signedOutAtom = atom(false)
 
+// The word popup's lookup or AI lookup came back unverified (#686): it shows
+// the unverified notice with Retry and Sign in, and Retry re-sends this
+// request. Null when the popup is not in that state.
+export type UnverifiedRequest = 'lookup' | 'ai-lookup'
+export const sessionUnverifiedAtom = atom<UnverifiedRequest | null>(null)
+
 // The AI word fallback inside the word popup (ADR-045): what a lookup that
 // found nothing offers, and where an AI lookup stands.
 export type AiLookupState =

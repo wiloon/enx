@@ -20,7 +20,7 @@ jest.mock('@/config/env', () => ({
 
 // Fake Clerk client (ADR-015): the background mints a session JWT via
 // clerk.session.getToken(). `setClerkSession` controls what it returns.
-const getToken = jest.fn<Promise<string | null>, []>()
+const getToken = jest.fn<Promise<string | null>, [{ skipCache?: boolean }?]>()
 let clerkUserId = 'user-a'
 let clerkSession: { getToken: typeof getToken } | null = { getToken }
 
@@ -46,6 +46,15 @@ function setClerkSession(token: string | null) {
     clerkSession = { getToken }
     getToken.mockResolvedValue(token)
   }
+}
+
+// A real expiry: the force-refreshed mint gets no token, so the replay goes
+// out unauthenticated and its 401 is final. A replay that carried a fresh
+// token is an unverified session instead (#686, sessionUnverified.test.ts).
+function expireOnForcedMint() {
+  getToken.mockImplementation(async options =>
+    options?.skipCache ? null : 'clerk-session-jwt'
+  )
 }
 
 jest.mock('@clerk/chrome-extension/client', () => ({
@@ -139,6 +148,7 @@ describe('background makeApiRequest / Clerk session token', () => {
   })
 
   it('force-refreshes the token once on a 401, then reports session-expired if it persists', async () => {
+    expireOnForcedMint()
     ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
 
     const result = await makeApiRequest('/api/translate?word=test')
@@ -164,6 +174,7 @@ describe('background makeApiRequest / Clerk session token', () => {
     ;(chrome.tabs.sendMessage as jest.Mock).mockImplementation(async id => {
       if (id === 2) throw new Error('Receiving end does not exist')
     })
+    expireOnForcedMint()
     ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
 
     expect(await makeApiRequest('/api/me')).toMatchObject({
@@ -285,6 +296,7 @@ describe('background makeApiRequest / Clerk session token', () => {
   )
 
   it('tells every tab a confirmed 401 expired the session', async () => {
+    expireOnForcedMint()
     ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
 
     await makeApiRequest('/api/me')
@@ -317,6 +329,7 @@ describe('background makeApiRequest / Clerk session token', () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
     ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(200, {}))
     await makeApiRequest('/api/me')
+    expireOnForcedMint()
 
     let finishOther: (response: unknown) => void = () => {}
     let otherStarted: () => void = () => {}
@@ -984,6 +997,7 @@ describe('background onMessage / validateSession', () => {
 
   it('reports session-expired on a 401', async () => {
     // Persistent 401 so both the initial and the force-refresh retry see it.
+    expireOnForcedMint()
     ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
 
     const response = await new Promise(resolve => {
@@ -1082,6 +1096,7 @@ describe('background onMessage / getPreferences and updatePreferences (ADR-044)'
   })
 
   it('reports session expiry on a 401', async () => {
+    expireOnForcedMint()
     ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
 
     const response = await call({ type: 'getPreferences' })
@@ -1194,6 +1209,7 @@ describe('background onMessage / defineWordWithAI (ADR-045)', () => {
   )
 
   it('reports session expiry on a 401', async () => {
+    expireOnForcedMint()
     ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
 
     const response = await call({ type: 'defineWordWithAI', word: 'rizzler' })
@@ -1957,10 +1973,11 @@ describe('background onMessageExternal (ADR-019 web -> extension channel)', () =
         )
         ;(chrome.storage.session.set as jest.Mock).mockResolvedValue(undefined)
         ;(chrome.tabs.query as jest.Mock).mockResolvedValue([{ id: 42 }])
-        ;(chrome.tabs.get as jest.Mock).mockImplementation(async (id: number) =>
-          id === 99
-            ? { id: 99, url: 'http://localhost:3000/extension/connected' }
-            : { id: 42, url: 'https://www.infoq.com/articles/foo' }
+        ;(chrome.tabs.get as jest.Mock).mockImplementation(
+          async (id: number) =>
+            id === 99
+              ? { id: 99, url: 'http://localhost:3000/extension/connected' }
+              : { id: 42, url: 'https://www.infoq.com/articles/foo' }
         )
         ;(chrome.tabs.sendMessage as jest.Mock).mockImplementation(
           async (tabId: number, message: { action: string }) => {

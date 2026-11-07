@@ -74,6 +74,14 @@ describe('lookupWithAi', () => {
     expect(await lookupWithAi('rizzler')).toEqual({ kind: 'session-expired' })
   })
 
+  it('maps an unverified session (#686)', async () => {
+    send.mockResolvedValue({ success: false, sessionUnverified: true })
+
+    expect(await lookupWithAi('rizzler')).toEqual({
+      kind: 'session-unverified',
+    })
+  })
+
   it.each([
     [402, 'credit'],
     [403, 'not-entitled'],

@@ -73,10 +73,13 @@ import {
   errorAtom,
   errorNeedsReloadAtom,
   sentencePanelHintAtom,
+  sessionUnverifiedAtom,
   signedOutAtom,
 } from '@/store/atoms'
 import {
   isSignedOutFailure,
+  isUnverifiedFailure,
+  showSessionUnverified,
   showSignedOut,
   statusAfterSessionLoss,
   type SessionLossCause,
@@ -475,6 +478,18 @@ const showWordPopover = async (word: string, reference: Range) => {
     const current = contentScriptStore.get(currentWordAtom)
     void runAiLookup(current?.English || word, { auto: false }, aiDeps)
   }
+  // Retry on the unverified notice (#686): the request that came back
+  // unverified is sent again as a fresh attempt with its own outcome.
+  const handleRetryUnverified = () => {
+    const request = contentScriptStore.get(sessionUnverifiedAtom)
+    contentScriptStore.set(sessionUnverifiedAtom, null)
+    if (request === 'ai-lookup') {
+      handleAiLookup()
+      return
+    }
+    contentScriptStore.set(isTranslatingAtom, true)
+    void fetchTranslation()
+  }
 
   root.render(
     <Provider store={contentScriptStore}>
@@ -485,6 +500,7 @@ const showWordPopover = async (word: string, reference: Range) => {
         onOpenSentencePanel={handleOpenSentencePanel}
         onAiLookup={handleAiLookup}
         onSignIn={() => void sendRuntimeMessage({ action: 'openWebSignIn' })}
+        onRetryUnverified={handleRetryUnverified}
       />
     </Provider>
   )
@@ -495,6 +511,7 @@ const showWordPopover = async (word: string, reference: Range) => {
   contentScriptStore.set(errorAtom, null)
   contentScriptStore.set(errorNeedsReloadAtom, false)
   contentScriptStore.set(signedOutAtom, false)
+  contentScriptStore.set(sessionUnverifiedAtom, null)
   contentScriptStore.set(sentencePanelHintAtom, null)
   resetAiLookup(contentScriptStore)
 
@@ -505,68 +522,77 @@ const showWordPopover = async (word: string, reference: Range) => {
   setupOverlayEventHandlers(overlay, reference, root, cleanup)
 
   // 7. Fetch word translation
-  try {
-    console.log('Fetching translation for word:', word)
-    const response = await sendToBackground({
-      type: 'getOneWord',
-      word: word.trim(),
-    })
+  await fetchTranslation()
 
-    console.log('Translation response:', response)
-    // An old account's response must not fill the new account's cache or
-    // record a lookup for it. Closing a popup in the same account still counts.
-    if (!isCurrentAccount()) return
-
-    if (response.success && response.ecp) {
-      // The raw ECDICT phonetic field is kept as-is here; formatPhonetic()
-      // (src/lib/phonetic.ts) normalises it at render time in WordPopover and
-      // the Side Panel, so both surfaces show the same shape. This click is
-      // one lookup: counted on the server once, shown counted at once.
-      const wordData: WordData = countLookup({ ...response.ecp }, recordLookup)
-
-      contentScriptStore.set(currentWordAtom, wordData)
-      contentScriptStore.set(isTranslatingAtom, false)
-
-      wordCache[wordKey(word)] = wordData
-      wordChanged(word)
-
-      // Mirror the lookup into the Side Panel's word list if it's open --
-      // ADR-006. Routed through the background service worker rather than
-      // writing chrome.storage.session directly: content scripts don't have
-      // session-storage access unless the background grants it via
-      // setAccessLevel(TRUSTED_AND_UNTRUSTED_CONTEXTS), and doing that would
-      // also expose other session keys (e.g. the OAuth verifier) to content
-      // scripts running on arbitrary third-party pages. This call never
-      // triggers chrome.sidePanel.open() and never touches
-      // the pending-sentence key, so it can't force the panel open or
-      // trigger sentence translation.
-      sendToBackground({
-        type: 'recordPageWordLookup',
-        word: word.trim().toLowerCase(),
-        ecp: wordData,
+  async function fetchTranslation() {
+    try {
+      console.log('Fetching translation for word:', word)
+      const response = await sendToBackground({
+        type: 'getOneWord',
+        word: word.trim(),
       })
 
-      // Nothing found: the server says whether the AI fallback starts by
-      // itself, is offered as a button, or is for subscribers only.
-      handleLookupMiss(wordData, aiDeps)
-    } else if (isSignedOutFailure(response)) {
-      showSignedOut(contentScriptStore)
-    } else {
-      const errorMessage = response.error || 'Translation service unavailable'
-      console.error('Translation failed:', errorMessage)
-      contentScriptStore.set(errorAtom, errorMessage)
-      contentScriptStore.set(
-        errorNeedsReloadAtom,
-        response.extensionUpdated === true
-      )
+      console.log('Translation response:', response)
+      // An old account's response must not fill the new account's cache or
+      // record a lookup for it. Closing a popup in the same account still counts.
+      if (!isCurrentAccount()) return
+
+      if (response.success && response.ecp) {
+        // The raw ECDICT phonetic field is kept as-is here; formatPhonetic()
+        // (src/lib/phonetic.ts) normalises it at render time in WordPopover and
+        // the Side Panel, so both surfaces show the same shape. This click is
+        // one lookup: counted on the server once, shown counted at once.
+        const wordData: WordData = countLookup(
+          { ...response.ecp },
+          recordLookup
+        )
+
+        contentScriptStore.set(currentWordAtom, wordData)
+        contentScriptStore.set(isTranslatingAtom, false)
+
+        wordCache[wordKey(word)] = wordData
+        wordChanged(word)
+
+        // Mirror the lookup into the Side Panel's word list if it's open --
+        // ADR-006. Routed through the background service worker rather than
+        // writing chrome.storage.session directly: content scripts don't have
+        // session-storage access unless the background grants it via
+        // setAccessLevel(TRUSTED_AND_UNTRUSTED_CONTEXTS), and doing that would
+        // also expose other session keys (e.g. the OAuth verifier) to content
+        // scripts running on arbitrary third-party pages. This call never
+        // triggers chrome.sidePanel.open() and never touches
+        // the pending-sentence key, so it can't force the panel open or
+        // trigger sentence translation.
+        sendToBackground({
+          type: 'recordPageWordLookup',
+          word: word.trim().toLowerCase(),
+          ecp: wordData,
+        })
+
+        // Nothing found: the server says whether the AI fallback starts by
+        // itself, is offered as a button, or is for subscribers only.
+        handleLookupMiss(wordData, aiDeps)
+      } else if (isSignedOutFailure(response)) {
+        showSignedOut(contentScriptStore)
+      } else if (isUnverifiedFailure(response)) {
+        showSessionUnverified(contentScriptStore, 'lookup')
+      } else {
+        const errorMessage = response.error || 'Translation service unavailable'
+        console.error('Translation failed:', errorMessage)
+        contentScriptStore.set(errorAtom, errorMessage)
+        contentScriptStore.set(
+          errorNeedsReloadAtom,
+          response.extensionUpdated === true
+        )
+        contentScriptStore.set(isTranslatingAtom, false)
+      }
+    } catch (error) {
+      console.error('Error fetching word translation:', error)
+      // sendToBackground never rejects, so this is a bug in handling the
+      // answer, not a network failure.
+      contentScriptStore.set(errorAtom, LOOKUP_FAILED_MESSAGE)
       contentScriptStore.set(isTranslatingAtom, false)
     }
-  } catch (error) {
-    console.error('Error fetching word translation:', error)
-    // sendToBackground never rejects, so this is a bug in handling the
-    // answer, not a network failure.
-    contentScriptStore.set(errorAtom, LOOKUP_FAILED_MESSAGE)
-    contentScriptStore.set(isTranslatingAtom, false)
   }
 }
 

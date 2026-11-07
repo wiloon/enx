@@ -373,7 +373,7 @@ export async function mockBackendFetch(
      */
     reviewWords?: [string, number][]
     translateFails?: boolean
-    translateSessionExpired?: boolean
+    translateUnauthorized?: boolean
     /**
      * Delay before answering GET /api/translate. Used to keep the loading
      * state on screen long enough to scroll the word off (#523).
@@ -396,11 +396,12 @@ export async function mockBackendFetch(
   }
   const reviewWords =
     options.reviewWords ??
-    FIXTURE_REVIEW_WORDS.map(
-      (word): [string, number] => [word, wordData.LoadCount]
-    )
+    FIXTURE_REVIEW_WORDS.map((word): [string, number] => [
+      word,
+      wordData.LoadCount,
+    ])
   const translateFails = options.translateFails ?? false
-  const translateSessionExpired = options.translateSessionExpired ?? false
+  const translateUnauthorized = options.translateUnauthorized ?? false
   const lookupDelayMs = options.lookupDelayMs ?? 0
 
   await sw.evaluate(
@@ -408,7 +409,7 @@ export async function mockBackendFetch(
       wordData,
       reviewWords,
       translateFails,
-      translateSessionExpired,
+      translateUnauthorized,
       lookupDelayMs,
     }) => {
       const realFetch = self.fetch.bind(self)
@@ -437,9 +438,10 @@ export async function mockBackendFetch(
           if (lookupDelayMs > 0) {
             await new Promise(resolve => setTimeout(resolve, lookupDelayMs))
           }
-          // makeApiRequest() in background.ts treats a 401 as session expiry
-          // and sets sessionExpired: true on the returned error.
-          if (translateSessionExpired) {
+          // Every attempt gets a 401, the force-refreshed replay included.
+          // With Clerk signed in that replay carries a fresh token, so
+          // makeApiRequest() in background.ts reports sessionUnverified.
+          if (translateUnauthorized) {
             return new Response(JSON.stringify({ error: 'unauthorized' }), {
               status: 401,
               headers: { 'Content-Type': 'application/json' },
@@ -489,7 +491,7 @@ export async function mockBackendFetch(
       wordData,
       reviewWords,
       translateFails,
-      translateSessionExpired,
+      translateUnauthorized,
       lookupDelayMs,
     }
   )
