@@ -121,6 +121,7 @@ describe('a 401 on the forced replay with a fresh token', () => {
       success: false,
       error: SESSION_UNVERIFIED_MESSAGE,
       sessionUnverified: true,
+      accountGeneration: expect.any(Number),
     })
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe(
@@ -182,6 +183,37 @@ describe('a 401 on the forced replay with a fresh token', () => {
       success: true,
       data: { English: 'fox' },
     })
+  })
+})
+
+describe('the side panel freshness check', () => {
+  const freshness = () => send({ type: 'panelAccountFreshness' })
+
+  it('reports the account generation the unverified response belongs to', async () => {
+    answer(() => 401)
+
+    const response = await send({ type: 'getOneWord', word: 'fox' })
+
+    expect(response.accountGeneration).toEqual(expect.any(Number))
+    expect(await freshness()).toEqual({
+      sessionLost: false,
+      accountGeneration: response.accountGeneration,
+    })
+  })
+
+  it('reports a new generation once another account signed in', async () => {
+    answer(() => 401)
+    const response = await send({ type: 'getOneWord', word: 'fox' })
+
+    ;(createClerkClient as jest.Mock).mockImplementation(async () => ({
+      session: { getToken },
+      user: { id: 'user-b' },
+    }))
+    await onCookieChanged(sameUserCookie)
+
+    const now = await freshness()
+    expect(now.sessionLost).toBe(false)
+    expect(now.accountGeneration).not.toBe(response.accountGeneration)
   })
 })
 

@@ -5,6 +5,7 @@ import { createAccountSession, type Invalidation } from '@/lib/accountSession'
 import {
   ACCOUNT_CHANGED_MESSAGE,
   type AccountInvalidatedMessage,
+  type PanelAccountFreshness,
 } from '@/lib/panelAccountFence'
 import { classifyFinalUnauthorized } from '@/lib/finalUnauthorized'
 import { SESSION_UNVERIFIED_MESSAGE } from '@/lib/signedOut'
@@ -332,6 +333,9 @@ export type ApiRequestResult = {
   // The forced replay carried a freshly minted token and still got a 401
   // (#686): the account session is left alone.
   sessionUnverified?: boolean
+  // With sessionUnverified: the account generation the request ran under,
+  // so the side panel can tell at delivery whether the account has changed.
+  accountGeneration?: number
   // HTTP status of a failed response (undefined for network-level failures
   // that never got a response at all). Lets callers distinguish billing
   // errors -- 402 insufficient AI credit, 429 daily dictionary quota
@@ -401,6 +405,7 @@ export const makeApiRequest = async (
   // begin with (nothing to refresh -> real 401). A gateway 503 (see
   // GATEWAY_RETRY_DELAYS_MS) is replayed after a short wait.
   const requestIsCurrent = accountSession.capture()
+  const requestGeneration = accountSession.generation()
   let forceRefresh = false
   let gatewayRetries = 0
   let idempotentRetries = 0
@@ -504,6 +509,7 @@ export const makeApiRequest = async (
               success: false,
               error: SESSION_UNVERIFIED_MESSAGE,
               sessionUnverified: true,
+              accountGeneration: requestGeneration,
             }
           }
 
@@ -846,7 +852,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           return await handleGetOneWord(request.word)
 
         case 'panelAccountFreshness':
-          return { sessionLost: accountSession.sessionLost() }
+          return {
+            sessionLost: accountSession.sessionLost(),
+            accountGeneration: accountSession.generation(),
+          } satisfies PanelAccountFreshness
 
         case 'accountSignedOut':
           resetClerkSession()
@@ -1258,6 +1267,7 @@ const handleGetOneWord = async (word: string) => {
       error: response.error || 'Translation service error',
       sessionExpired: response.sessionExpired,
       sessionUnverified: response.sessionUnverified,
+      accountGeneration: response.accountGeneration,
       status: response.status,
       code: response.code,
     }
@@ -1281,6 +1291,7 @@ export const handleGetReviewWords = async () => {
       error: response.error,
       sessionExpired: response.sessionExpired,
       sessionUnverified: response.sessionUnverified,
+      accountGeneration: response.accountGeneration,
       status: response.status,
       code: response.code,
       retryAfterMs: response.retryAfterMs,
@@ -1341,6 +1352,7 @@ const handleMarkKnown = async (word: string, userId: number) => {
       error: response.error,
       sessionExpired: response.sessionExpired,
       sessionUnverified: response.sessionUnverified,
+      accountGeneration: response.accountGeneration,
     }
   }
 }
@@ -1365,6 +1377,7 @@ const handleTranslateSentence = async (sentence: string) => {
     error: response.error || 'Translation service unavailable',
     sessionExpired: response.sessionExpired,
     sessionUnverified: response.sessionUnverified,
+    accountGeneration: response.accountGeneration,
     status: response.status,
   }
 }
@@ -1401,6 +1414,7 @@ const handleTranslateSentenceWithWord = async (
     error: response.error || 'Translation service unavailable',
     sessionExpired: response.sessionExpired,
     sessionUnverified: response.sessionUnverified,
+    accountGeneration: response.accountGeneration,
     status: response.status,
   }
 }
@@ -1444,6 +1458,7 @@ const handleTranslateWordInContext = async (
     error: response.error || 'Translation service unavailable',
     sessionExpired: response.sessionExpired,
     sessionUnverified: response.sessionUnverified,
+    accountGeneration: response.accountGeneration,
     status: response.status,
   }
 }

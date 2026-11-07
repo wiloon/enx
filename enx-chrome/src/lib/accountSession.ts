@@ -23,6 +23,7 @@ export function createAccountScope() {
       const requested = generation
       return () => requested === generation
     },
+    generation: () => generation,
   }
 }
 
@@ -73,5 +74,11 @@ export function createAccountSession(deps: AccountSessionDeps) {
   // Whether a request the latest fence stopped lost its session.
   const sessionLost = () =>
     lastInvalidation !== undefined && lastInvalidation !== 'switched'
-  return { observe, clear, capture: scope.capture, sessionLost }
+  return {
+    observe,
+    clear,
+    capture: scope.capture,
+    generation: scope.generation,
+    sessionLost,
+  }
 }

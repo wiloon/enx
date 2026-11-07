@@ -36,6 +36,8 @@ export interface WordCardData {
   dictionaryErrorCode?: string
   // The failure was a lost session (#236): the row offers Sign in.
   dictionarySessionExpired?: boolean
+  // The failure was an unverified session (#686): Retry and Sign in.
+  dictionarySessionUnverified?: boolean
   contextChinese?: string
   // One short clause explaining why contextChinese differs from
   // dictionaryChinese, when the model judged the gap worth flagging. Empty
@@ -47,6 +49,7 @@ export interface WordCardData {
   // AI translation credit balance ran out (TASK-SPEC §4.1).
   contextErrorHttpStatus?: number
   contextSessionExpired?: boolean
+  contextSessionUnverified?: boolean
   contextStatus: FetchStatus | 'none'
   // The sentence text this card's context translation was fetched against,
   // set only for a TOP-LEVEL card (ADR-023: a main-page phrase lookup,
@@ -80,6 +83,7 @@ export interface SentenceEntry {
   errorMessage: string
   errorHttpStatus?: number
   sessionExpired?: boolean
+  sessionUnverified?: boolean
   words: WordCardData[]
 }
 
@@ -232,36 +236,43 @@ export const removeCard = (
 }
 
 // After a switch to a signed-in account (#236), no row offers Sign in: each
-// signed-out row becomes an ordinary failure with `message`, and Retry where
-// the row has one.
-export const supersedeSignedOut = (
+// signed-out or unverified (#686) row becomes an ordinary failure with
+// `message`, and Retry where the row has one.
+export const supersedeSessionRows = (
   entries: PanelEntry[],
   message: string
 ): PanelEntry[] => {
-  const card = <C extends WordCardData>(c: C): C =>
-    c.contextSessionExpired || c.dictionarySessionExpired
+  const card = <C extends WordCardData>(c: C): C => {
+    const context = c.contextSessionExpired || c.contextSessionUnverified
+    const dictionary =
+      c.dictionarySessionExpired || c.dictionarySessionUnverified
+    return context || dictionary
       ? {
           ...c,
-          ...(c.contextSessionExpired && {
+          ...(context && {
             contextSessionExpired: false,
+            contextSessionUnverified: false,
             contextError: message,
             contextErrorHttpStatus: undefined,
           }),
-          ...(c.dictionarySessionExpired && {
+          ...(dictionary && {
             dictionarySessionExpired: false,
+            dictionarySessionUnverified: false,
             dictionaryError: message,
             dictionaryErrorHttpStatus: undefined,
             dictionaryErrorCode: undefined,
           }),
         }
       : c
+  }
   return entries.map(e =>
     e.kind === 'word'
       ? card(e)
       : {
           ...e,
-          ...(e.sessionExpired && {
+          ...((e.sessionExpired || e.sessionUnverified) && {
             sessionExpired: false,
+            sessionUnverified: false,
             errorMessage: message,
             errorHttpStatus: undefined,
           }),

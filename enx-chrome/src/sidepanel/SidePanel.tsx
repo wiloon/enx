@@ -38,12 +38,19 @@ import { isLookupQuotaExceeded } from '@/lib/rateLimit'
 import { config } from '@/config/env'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
 import SignedOutNotice from '@/components/SignedOutNotice'
-import { isSignedOutFailure, SIGNED_OUT_MESSAGE } from '@/lib/signedOut'
+import {
+  isSignedOutFailure,
+  isUnverifiedFailure,
+  SESSION_UNVERIFIED_MESSAGE,
+  SIGNED_OUT_MESSAGE,
+} from '@/lib/signedOut'
 import {
   ACCOUNT_CHANGED_MESSAGE,
   createPanelAccountFence,
+  freshAtDelivery,
   isAccountInvalidatedMessage,
-  supersededFailure,
+  isSessionFailure,
+  type PanelAccountFreshness,
 } from '@/lib/panelAccountFence'
 import {
   WORD_HIGHLIGHT_KEY,
@@ -65,7 +72,7 @@ import {
   removeCard,
   reorderOrInsertCard,
   sentenceCardId,
-  supersedeSignedOut,
+  supersedeSessionRows,
   topLevelPhraseCardKey,
   upsertPageLookupCard,
   wordCardKey,
@@ -291,6 +298,7 @@ function WordCard({
   onToggleExpand,
   onRemove,
   onRetryContext,
+  onRetryDictionary,
   shownAbove,
   nested = false,
 }: {
@@ -299,6 +307,8 @@ function WordCard({
   onToggleExpand: () => void
   onRemove: () => void
   onRetryContext: () => void
+  // Retry on an unverified dictionary row (#686).
+  onRetryDictionary: () => void
   // Error text the owning sentence already shows, with a Retry that also
   // covers this card -- a row repeating it would be the same failure twice.
   shownAbove?: string
@@ -316,7 +326,9 @@ function WordCard({
     card.contextStatus === 'error'
       ? card.contextSessionExpired
         ? SIGNED_OUT_MESSAGE
-        : contextErrorDisplay(card.contextError, card.contextErrorHttpStatus)
+        : card.contextSessionUnverified
+          ? SESSION_UNVERIFIED_MESSAGE
+          : contextErrorDisplay(card.contextError, card.contextErrorHttpStatus)
       : undefined
   const quotaExceeded = isLookupQuotaExceeded({
     status: card.dictionaryErrorHttpStatus,
@@ -326,9 +338,11 @@ function WordCard({
     card.dictionaryStatus === 'error'
       ? card.dictionarySessionExpired
         ? SIGNED_OUT_MESSAGE
-        : quotaExceeded
-          ? "You've used up today's free lookups"
-          : card.dictionaryError
+        : card.dictionarySessionUnverified
+          ? SESSION_UNVERIFIED_MESSAGE
+          : quotaExceeded
+            ? "You've used up today's free lookups"
+            : card.dictionaryError
       : undefined
   const showContextError =
     contextErrorText !== undefined && contextErrorText !== shownAbove
@@ -429,26 +443,37 @@ function WordCard({
           className="text-xs px-2 py-1 mt-2"
         />
       )}
-      {showContextError && !card.contextSessionExpired && (
-        <div
-          className="flex items-center justify-between gap-2 text-destructive text-xs bg-destructive/10 rounded-sm px-2 py-1 mt-2"
-          data-testid={`sidepanel-context-error-${card.word}`}
-        >
-          <span className="flex-1">{contextErrorText}</span>
-          {card.contextErrorHttpStatus === HTTP_INSUFFICIENT_CREDIT && (
-            <UpgradeLink className="text-destructive hover:text-destructive/80 font-medium whitespace-nowrap underline" />
-          )}
-          <button
-            type="button"
-            data-testid={`sidepanel-retry-context-${card.word}`}
-            onClick={onRetryContext}
-            className="text-destructive hover:text-destructive/80 font-medium whitespace-nowrap"
-            title="Retry"
-          >
-            Retry
-          </button>
-        </div>
+      {showContextError && card.contextSessionUnverified && (
+        <SignedOutNotice
+          testId={`sidepanel-context-unverified-${card.word}`}
+          message={SESSION_UNVERIFIED_MESSAGE}
+          onRetry={onRetryContext}
+          onSignIn={openWebSignIn}
+          className="text-xs px-2 py-1 mt-2"
+        />
       )}
+      {showContextError &&
+        !card.contextSessionExpired &&
+        !card.contextSessionUnverified && (
+          <div
+            className="flex items-center justify-between gap-2 text-destructive text-xs bg-destructive/10 rounded-sm px-2 py-1 mt-2"
+            data-testid={`sidepanel-context-error-${card.word}`}
+          >
+            <span className="flex-1">{contextErrorText}</span>
+            {card.contextErrorHttpStatus === HTTP_INSUFFICIENT_CREDIT && (
+              <UpgradeLink className="text-destructive hover:text-destructive/80 font-medium whitespace-nowrap underline" />
+            )}
+            <button
+              type="button"
+              data-testid={`sidepanel-retry-context-${card.word}`}
+              onClick={onRetryContext}
+              className="text-destructive hover:text-destructive/80 font-medium whitespace-nowrap"
+              title="Retry"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
       {/* Dictionary half's own error row -- the free daily lookup quota
           (TASK-SPEC §4.2) gets an upgrade link; any other failure, the
@@ -460,17 +485,28 @@ function WordCard({
           className="text-xs px-2 py-1 mt-2"
         />
       )}
-      {showDictionaryError && !card.dictionarySessionExpired && (
-        <div
-          className="flex items-center justify-between gap-2 text-destructive text-xs bg-destructive/10 rounded-sm px-2 py-1 mt-2"
-          data-testid={`sidepanel-dictionary-error-${card.word}`}
-        >
-          <span className="flex-1">{dictionaryErrorText}</span>
-          {quotaExceeded && (
-            <UpgradeLink className="text-destructive hover:text-destructive/80 font-medium whitespace-nowrap underline" />
-          )}
-        </div>
+      {showDictionaryError && card.dictionarySessionUnverified && (
+        <SignedOutNotice
+          testId={`sidepanel-dictionary-unverified-${card.word}`}
+          message={SESSION_UNVERIFIED_MESSAGE}
+          onRetry={onRetryDictionary}
+          onSignIn={openWebSignIn}
+          className="text-xs px-2 py-1 mt-2"
+        />
       )}
+      {showDictionaryError &&
+        !card.dictionarySessionExpired &&
+        !card.dictionarySessionUnverified && (
+          <div
+            className="flex items-center justify-between gap-2 text-destructive text-xs bg-destructive/10 rounded-sm px-2 py-1 mt-2"
+            data-testid={`sidepanel-dictionary-error-${card.word}`}
+          >
+            <span className="flex-1">{dictionaryErrorText}</span>
+            {quotaExceeded && (
+              <UpgradeLink className="text-destructive hover:text-destructive/80 font-medium whitespace-nowrap underline" />
+            )}
+          </div>
+        )}
 
       {/* Meaning block: the AI in-sentence gloss (tagged 本句, blue) sits
           above the generic dictionary meaning (gray, clamped to 3 lines --
@@ -564,6 +600,7 @@ function SentenceBlock({
   onPhraseConfirm,
   onRemoveWord,
   onRetryContext,
+  onRetryDictionary,
   onRetrySentence,
 }: {
   entry: SentenceEntry
@@ -578,6 +615,7 @@ function SentenceBlock({
   ) => void
   onRemoveWord: (sentenceId: string, key: string) => void
   onRetryContext: (sentenceId: string, key: string) => void
+  onRetryDictionary: (sentenceId: string, key: string) => void
   onRetrySentence: (sentenceId: string) => void
 }) {
   const sentenceRef = useRef<HTMLParagraphElement>(null)
@@ -594,7 +632,9 @@ function SentenceBlock({
     entry.status === 'error'
       ? entry.sessionExpired
         ? SIGNED_OUT_MESSAGE
-        : contextErrorDisplay(entry.errorMessage, entry.errorHttpStatus)
+        : entry.sessionUnverified
+          ? SESSION_UNVERIFIED_MESSAGE
+          : contextErrorDisplay(entry.errorMessage, entry.errorHttpStatus)
       : undefined
 
   // Total words in the sentence -- invariant per entry, so a selection that
@@ -695,26 +735,37 @@ function SentenceBlock({
             className="px-2 py-1"
           />
         )}
-        {entry.status === 'error' && !entry.sessionExpired && (
-          <div
-            className="flex items-center justify-between gap-2 flex-wrap text-destructive"
-            data-testid="sidepanel-error"
-          >
-            <span className="flex-1">{sentenceErrorText}</span>
-            {entry.errorHttpStatus === HTTP_INSUFFICIENT_CREDIT && (
-              <UpgradeLink />
-            )}
-            <button
-              type="button"
-              data-testid="sidepanel-retry-sentence"
-              onClick={() => onRetrySentence(entry.id)}
-              className="text-destructive hover:text-destructive/80 font-medium whitespace-nowrap"
-              title="Retry"
-            >
-              Retry
-            </button>
-          </div>
+        {entry.status === 'error' && entry.sessionUnverified && (
+          <SignedOutNotice
+            testId="sidepanel-unverified"
+            message={SESSION_UNVERIFIED_MESSAGE}
+            onRetry={() => onRetrySentence(entry.id)}
+            onSignIn={openWebSignIn}
+            className="px-2 py-1"
+          />
         )}
+        {entry.status === 'error' &&
+          !entry.sessionExpired &&
+          !entry.sessionUnverified && (
+            <div
+              className="flex items-center justify-between gap-2 flex-wrap text-destructive"
+              data-testid="sidepanel-error"
+            >
+              <span className="flex-1">{sentenceErrorText}</span>
+              {entry.errorHttpStatus === HTTP_INSUFFICIENT_CREDIT && (
+                <UpgradeLink />
+              )}
+              <button
+                type="button"
+                data-testid="sidepanel-retry-sentence"
+                onClick={() => onRetrySentence(entry.id)}
+                className="text-destructive hover:text-destructive/80 font-medium whitespace-nowrap"
+                title="Retry"
+              >
+                Retry
+              </button>
+            </div>
+          )}
         {entry.status === 'loaded' && (
           <p className="text-foreground" data-testid="sidepanel-chinese">
             {entry.chinese}
@@ -734,6 +785,7 @@ function SentenceBlock({
               }
               onRemove={() => onRemoveWord(entry.id, card.key)}
               onRetryContext={() => onRetryContext(entry.id, card.key)}
+              onRetryDictionary={() => onRetryDictionary(entry.id, card.key)}
               shownAbove={sentenceErrorText}
               nested
             />
@@ -818,15 +870,17 @@ function SidePanelContent() {
     return () => chrome.runtime.onMessage.removeListener(listener)
   }, [])
 
-  // #236: a signed-out response or row is obsolete once a signed-in
-  // account takes over. Listens only, like the listener above.
+  // #236: a signed-out or unverified (#686) response or row is obsolete once
+  // a signed-in account takes over. Listens only, like the listener above.
   const [accountFence] = useState(createPanelAccountFence)
   useEffect(() => {
     const listener = (message: unknown) => {
       if (!isAccountInvalidatedMessage(message)) return
       accountFence.record(message.cause)
       if (message.cause === 'switched') {
-        patchEntries(prev => supersedeSignedOut(prev, ACCOUNT_CHANGED_MESSAGE))
+        patchEntries(prev =>
+          supersedeSessionRows(prev, ACCOUNT_CHANGED_MESSAGE)
+        )
       }
     }
     chrome.runtime.onMessage.addListener(listener)
@@ -978,13 +1032,13 @@ function SidePanelContent() {
   // Ask the worker at delivery: its account fence advances before its
   // asynchronous invalidation notification can reach this panel.
   const checkAccountFreshness = async (response: BackgroundResponse) => {
-    if (response.success || !response.sessionExpired) return response
-    const freshness = await sendMessageToBackground<{ sessionLost: boolean }>({
+    if (!isSessionFailure(response)) return response
+    const freshness = await sendMessageToBackground<
+      PanelAccountFreshness | undefined
+    >({
       type: 'panelAccountFreshness',
     })
-    return freshness?.sessionLost === false
-      ? supersededFailure(response)
-      : response
+    return freshAtDelivery(response, freshness)
   }
 
   // Shared by every card-mutating callback below: fetches the word's meaning
@@ -1025,6 +1079,7 @@ function SidePanelContent() {
               : response.error || 'Translation failed',
             contextErrorHttpStatus: resolved ? undefined : response.status,
             contextSessionExpired: isSignedOutFailure(response),
+            contextSessionUnverified: isUnverifiedFailure(response),
             contextStatus: resolved ? 'loaded' : 'error',
           })
         })
@@ -1036,6 +1091,7 @@ function SidePanelContent() {
             contextError: 'Translation failed',
             contextErrorHttpStatus: undefined,
             contextSessionExpired: false,
+            contextSessionUnverified: false,
           })
         })
     },
@@ -1114,6 +1170,7 @@ function SidePanelContent() {
                 : response.status,
               dictionaryErrorCode: response.success ? undefined : response.code,
               dictionarySessionExpired: isSignedOutFailure(response),
+              dictionarySessionUnverified: isUnverifiedFailure(response),
             })
             return {
               current: true,
@@ -1129,6 +1186,7 @@ function SidePanelContent() {
               dictionaryErrorHttpStatus: undefined,
               dictionaryErrorCode: undefined,
               dictionarySessionExpired: false,
+              dictionarySessionUnverified: false,
             })
             return { current: true }
           })
@@ -1223,9 +1281,16 @@ function SidePanelContent() {
           token,
           contextStatus: 'loading',
           contextError: undefined,
+          contextSessionExpired: false,
+          contextSessionUnverified: false,
           ...(contextOnly
             ? {}
-            : { dictionaryStatus: 'loading', dictionaryError: undefined }),
+            : {
+                dictionaryStatus: 'loading',
+                dictionaryError: undefined,
+                dictionarySessionExpired: false,
+                dictionarySessionUnverified: false,
+              }),
         })
       )
       if (contextOnly) {
@@ -1245,6 +1310,33 @@ function SidePanelContent() {
     [fetchContextTranslation, fetchWordContext, nextToken, setEntries]
   )
 
+  // Retry on an unverified dictionary row (#686): re-sends getOneWord alone,
+  // leaving a context half that loaded (or is still loading) as it is. A
+  // context half still waiting keeps the card's token, so its answer lands.
+  const retryDictionary = useCallback(
+    (sentenceId: string | undefined, card: WordCardData) => {
+      const token =
+        card.contextStatus === 'loading' && card.token !== undefined
+          ? card.token
+          : nextToken()
+      setEntries(prev =>
+        patchCard(prev, sentenceId, card.key, {
+          token,
+          dictionaryStatus: 'loading',
+          dictionaryError: undefined,
+          dictionarySessionExpired: false,
+          dictionarySessionUnverified: false,
+        })
+      )
+      void fetchDictionary(
+        card.word,
+        { sentenceId, key: card.key, token },
+        false
+      )
+    },
+    [fetchDictionary, nextToken, setEntries]
+  )
+
   // Whole-sentence translation for SentenceEntry `id`, filled in when it
   // resolves -- if the entry still carries `token`.
   const translateSentence = useCallback(
@@ -1261,12 +1353,18 @@ function SidePanelContent() {
         .then(delivered => {
           const response = current(delivered)
           if (response.success && response.chinese) {
-            patch({ chinese: response.chinese, status: 'loaded' })
+            patch({
+              chinese: response.chinese,
+              status: 'loaded',
+              sessionExpired: false,
+              sessionUnverified: false,
+            })
           } else {
             patch({
               errorMessage: response.error || 'Translation service unavailable',
               errorHttpStatus: response.status,
               sessionExpired: isSignedOutFailure(response),
+              sessionUnverified: isUnverifiedFailure(response),
               status: 'error',
             })
           }
@@ -1277,6 +1375,7 @@ function SidePanelContent() {
             errorMessage: 'Translation service unavailable',
             errorHttpStatus: undefined,
             sessionExpired: false,
+            sessionUnverified: false,
             status: 'error',
           })
         })
@@ -1465,6 +1564,14 @@ function SidePanelContent() {
     [entries, retryWordCard]
   )
 
+  const handleRetryDictionary = useCallback(
+    (sentenceId: string | undefined, key: string) => {
+      const card = findCard(entries, sentenceId, key)
+      if (card) retryDictionary(sentenceId, card)
+    },
+    [entries, retryDictionary]
+  )
+
   // The sentence's error row is the only one shown for a failure its words
   // share (WordCard `shownAbove`), so its Retry redoes those words as well.
   const handleRetrySentence = useCallback(
@@ -1477,6 +1584,8 @@ function SidePanelContent() {
           token,
           status: 'loading',
           errorMessage: '',
+          sessionExpired: false,
+          sessionUnverified: false,
         })
       )
       translateSentence(entry.id, entry.sentence, token)
@@ -1619,6 +1728,7 @@ function SidePanelContent() {
               }
               onRemoveWord={handleRemoveCard}
               onRetryContext={handleRetryContextTranslation}
+              onRetryDictionary={handleRetryDictionary}
               onRetrySentence={handleRetrySentence}
             />
           ) : (
@@ -1632,6 +1742,9 @@ function SidePanelContent() {
               onRemove={() => handleRemoveCard(undefined, entry.key)}
               onRetryContext={() =>
                 handleRetryContextTranslation(undefined, entry.key)
+              }
+              onRetryDictionary={() =>
+                handleRetryDictionary(undefined, entry.key)
               }
             />
           )

@@ -149,6 +149,9 @@ export interface BackgroundResponse {
   // session (#686). Only the surface that asked shows it; never set together
   // with sessionExpired.
   sessionUnverified?: boolean
+  // With sessionUnverified: the worker's account generation the request ran
+  // under, checked by the side panel at delivery (lib/panelAccountFence.ts).
+  accountGeneration?: number
   // Set by the content script's own sender, never by the background: this
   // tab's script was cut off by an extension reload or update and the page
   // has to be reloaded (lib/extensionContext.ts).
