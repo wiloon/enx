@@ -278,40 +278,36 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     await expect(popup).toHaveAttribute('data-e2e-marker', 'first')
   })
 
-  // #236: a lookup that ends in a confirmed 401 keeps the popup open in the
-  // signed-out state, and puts nothing else on the host page. The stub 401s
-  // while Clerk is still signed in, so the worker's next Clerk check reads
-  // the user as a fresh sign-in and closes the popup (accountChanged) at an
-  // unpredictable moment: record what the page showed rather than racing it.
-  test('§4.1: a sessionExpired lookup leaves the popup open, signed out', async ({
+  // #686: the stub 401s while Clerk is still signed in, so the forced replay
+  // carries a freshly minted token: an unverified session, not a sign-out.
+  // The popup stays open with the unverified notice, learning mode keeps its
+  // highlights, and nothing else lands on the host page. The signed-out
+  // popup (#236) is covered by the unit and integration tests.
+  test('§4.1: a 401 while Clerk is signed in leaves the popup open, unverified', async ({
     page,
     context,
   }) => {
-    await mockBackendFetch(context, { translateSessionExpired: true })
-    await page.evaluate(() => {
-      const seen = { signedOut: '', toast: false }
-      ;(window as unknown as { enxSeen: typeof seen }).enxSeen = seen
-      setInterval(() => {
-        const notice = document
-          .getElementById('enx-anchored-overlay')
-          ?.shadowRoot?.querySelector('[data-testid="word-popover-signed-out"]')
-        if (notice) seen.signedOut = notice.textContent ?? ''
-        if (document.getElementById('enx-session-expired')) seen.toast = true
-      }, 10)
-    })
-    const seen = () =>
-      page.evaluate(
-        () =>
-          (window as unknown as { enxSeen: { signedOut: string; toast: boolean } })
-            .enxSeen
-      )
+    await mockBackendFetch(context, { translateUnauthorized: true })
+    const highlighted = await getHighlightedWordsCount(page)
+    expect(highlighted).toBeGreaterThan(0)
 
     await clickHighlightedWord(page, 0)
-    await expect
-      .poll(async () => (await seen()).signedOut)
-      .toBe("You've been signed out. Sign in to keep looking up words.Sign in")
-    await expect.poll(() => getHighlightedWordsCount(page)).toBe(0)
-    expect((await seen()).toast).toBe(false)
+    const popup = page.locator('#enx-anchored-overlay')
+    const notice = popup.locator('[data-testid="word-popover-unverified"]')
+    await expect(notice).toHaveText(
+      "We couldn't verify your sign-in. Try again, or sign in again.RetrySign in"
+    )
+
+    // Nothing closes it a moment later: no account change follows.
+    for (let i = 0; i < 6; i++) {
+      await page.waitForTimeout(500)
+      await expect(notice).toBeVisible()
+    }
+    await expect(
+      popup.locator('[data-testid="word-popover-signed-out"]')
+    ).toHaveCount(0)
+    expect(await getHighlightedWordsCount(page)).toBe(highlighted)
+    await expect(page.locator('#enx-session-expired')).toHaveCount(0)
   })
 
   test('§4.1: loading -> success content renders via data-testid hooks', async ({
@@ -612,9 +608,9 @@ test.describe('Anchored overlays hide when the reference scrolls off-screen (#52
     await expect(popup).toBeHidden()
     await expect(popup).toHaveCount(1)
     await expect(popup).toHaveAttribute('data-enx-test-id', 'word-card-top')
-    expect(await overlayHitAtPointer(page, pointer, '#enx-anchored-overlay')).toBe(
-      false
-    )
+    expect(
+      await overlayHitAtPointer(page, pointer, '#enx-anchored-overlay')
+    ).toBe(false)
     expect(
       await page.evaluate(
         () => document.querySelectorAll('#enx-anchored-overlay').length
@@ -683,9 +679,9 @@ test.describe('Anchored overlays hide when the reference scrolls off-screen (#52
 
     await expect(popup).toBeHidden()
     await expect(popup).toHaveAttribute('data-enx-test-id', 'word-card-bottom')
-    expect(await overlayHitAtPointer(page, pointer, '#enx-anchored-overlay')).toBe(
-      false
-    )
+    expect(
+      await overlayHitAtPointer(page, pointer, '#enx-anchored-overlay')
+    ).toBe(false)
 
     await wheelWordIntoViewport(page, index, pointer)
     await expect(popup).toBeVisible()
@@ -752,7 +748,9 @@ test.describe('Anchored overlays hide when the reference scrolls off-screen (#52
       .toEqual([{ wordId: 'w-hide-state' }])
   })
 
-  test('word card: Escape while hidden closes it for good', async ({ page }) => {
+  test('word card: Escape while hidden closes it for good', async ({
+    page,
+  }) => {
     await page.locator('article').scrollIntoViewIfNeeded()
     const viewport = page.viewportSize()!
     const words = await getHighlightedWords(page)
@@ -858,7 +856,11 @@ test.describe('Anchored overlays hide when the reference scrolls off-screen (#52
     await expect(button).toHaveCount(1)
     await expect(button).toHaveAttribute('data-enx-test-id', 'sel-forward')
     expect(
-      await overlayHitAtPointer(page, pointer, '.enx-selection-translate-button')
+      await overlayHitAtPointer(
+        page,
+        pointer,
+        '.enx-selection-translate-button'
+      )
     ).toBe(false)
 
     await page.mouse.move(pointer.x, pointer.y)
@@ -898,7 +900,9 @@ test.describe('Anchored overlays hide when the reference scrolls off-screen (#52
       .poll(async () =>
         extPage.evaluate(async () => {
           const all = await chrome.storage.session.get(null)
-          return Object.keys(all).some(k => k.startsWith('enx-pending-sentence:'))
+          return Object.keys(all).some(k =>
+            k.startsWith('enx-pending-sentence:')
+          )
         })
       )
       .toBe(true)
@@ -949,7 +953,11 @@ test.describe('Anchored overlays hide when the reference scrolls off-screen (#52
     await expect(button).toBeHidden()
     await expect(button).toHaveAttribute('data-enx-test-id', 'sel-backward')
     expect(
-      await overlayHitAtPointer(page, pointer, '.enx-selection-translate-button')
+      await overlayHitAtPointer(
+        page,
+        pointer,
+        '.enx-selection-translate-button'
+      )
     ).toBe(false)
 
     await page.mouse.move(pointer.x, pointer.y)
