@@ -16,7 +16,7 @@ X has no persistent injection (2026-10-15 amendment). The second, wildcard `web_
 
 ## 2. Site adapter
 
-`resolveSiteAdapter()` picks one adapter per page. An adapter with a `contentSelector` (X, Reader, RSSX, Wikipedia, Standard Ebooks) uses only that selector: its matches longer than its `minTextLength` are the article, and matches nested inside another match are dropped. When nothing matches, the article is empty (`no-article-node`) and no fallback runs, unless the adapter sets `wholePageOnMiss`: then the page gets step 4's whole page. Every other page gets the `default` adapter and steps 3–4.
+`resolveSiteAdapter()` picks one adapter per page. An adapter with a `contentSelector` (X, Reader, RSSX, Wikipedia, Standard Ebooks, AWS docs) uses only that selector: its matches longer than its `minTextLength` are the article, and matches nested inside another match are dropped. When nothing matches, the article is empty (`no-article-node`) and no fallback runs, unless the adapter sets `wholePageOnMiss`: then the page gets step 4's whole page. Every other page gets the `default` adapter and steps 3–4.
 
 | Adapter | Pages | `contentSelector` | On a miss |
 | --- | --- | --- | --- |
@@ -25,12 +25,13 @@ X has no persistent injection (2026-10-15 amendment). The second, wildcard `web_
 | `rssx` | the RSSX Reader | `article` | `no-article-node` |
 | `wikipedia` | `*.wikipedia.org` | `#mw-content-text .mw-parser-output` | `no-article-node` |
 | `standard-ebooks` | `standardebooks.org/ebooks/…/text/…` | the EPUB `bodymatter` type: `[*\|type~="bodymatter"]` for the real XHTML pages, `[epub\:type~="bodymatter"]` for a literal HTML attribute (and jsdom) | whole page (`wholePageOnMiss`): front and back matter pages like `/text/imprint` |
+| `aws-docs` | `docs.aws.amazon.com` | the docs content column `#main-col-body` | whole page (`wholePageOnMiss`): landing and index pages |
 
 ## 3. Built-in selectors (default adapter)
 
 The **article** comes only from a selector: the adapter's `contentSelector`, or this list. Tried in list order; the first selector with a match wins, and matches nested inside another match are dropped.
 
-- **Precise selectors**: the site-specific ones (BBC, InfoQ, NYT, …) and `article`. A match counts when its trimmed text is longer than 1 character; all matches are returned.
+- **Precise selectors**: the site-specific ones (BBC, InfoQ, NYT, Ars Technica's article blocks `.post-content-double`, …) and `article`. A match counts when its trimmed text is longer than 1 character; all matches are returned.
 - **Broad selectors**: `.post-content`, `.content`, `.entry-content`, `.post-body`. A match needs more than 100 characters; only the longest is kept.
 
 The list itself is `WordProcessor.BUILT_IN_SELECTORS`. A site whose article no selector finds gets click lookup back through a new selector or a site adapter ([adding-website-support.md](adding-website-support.md)). Which sites to cover, and how a selector change is measured before it lands, is [ADR-070](../architecture/adr-070-article-detection-site-corpus-and-evaluation.md).

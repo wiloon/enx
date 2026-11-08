@@ -249,6 +249,7 @@ export class WordProcessor {
     { selector: '.Article' }, // BBC
     { selector: '.article__data' }, // InfoQ
     { selector: '.blog_post_content_wrap' }, // Claude blog (Webflow)
+    { selector: '.post-content-double' }, // Ars Technica: the article's blocks
     { selector: '.post-content', broad: true }, // Blog posts
     { selector: '.single-post__container' }, // Microsoft Research
     { selector: '#EMAIL_CONTAINER' }, // NY Times

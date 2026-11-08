@@ -307,6 +307,22 @@ const STANDARD_EBOOKS_ADAPTER: SiteAdapter = {
   clickBinding: 'bubble',
 }
 
+// --- AWS docs ---------------------------------------------------------------
+// The guides render their article into #main-col-body after load. The
+// built-in selectors would take a feedback widget's thank-you message
+// (`.content`) instead. A page without the column (a landing or index page,
+// a changed layout) gets the whole page.
+
+const AWS_DOCS_ADAPTER: SiteAdapter = {
+  name: 'aws-docs',
+  matches: location => location.hostname === 'docs.aws.amazon.com',
+  contentSelector: '#main-col-body',
+  wholePageOnMiss: true,
+  minTextLength: 100,
+  contentVolatility: 'static',
+  clickBinding: 'bubble',
+}
+
 // Non-default adapters, checked in order.
 const ADAPTERS: SiteAdapter[] = [
   X_ADAPTER,
@@ -314,6 +330,7 @@ const ADAPTERS: SiteAdapter[] = [
   RSSX_ADAPTER,
   WIKIPEDIA_ADAPTER,
   STANDARD_EBOOKS_ADAPTER,
+  AWS_DOCS_ADAPTER,
 ]
 
 /** The adapter's overrides for WordProcessor.findLookupArea(). */
