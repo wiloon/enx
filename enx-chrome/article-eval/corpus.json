@@ -64,6 +64,10 @@
   { "url": "https://react.dev/reference/react/useState", "category": "docs" },
   { "url": "https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html", "category": "docs" },
   { "url": "https://docs.aws.amazon.com/lambda/latest/dg/welcome.html", "category": "docs" },
+  { "url": "https://playwright.dev/docs/intro", "category": "docs" },
+  { "url": "https://jestjs.io/docs/getting-started", "category": "docs" },
+  { "url": "https://squidfunk.github.io/mkdocs-material/getting-started/", "category": "docs" },
+  { "url": "https://docs.astral.sh/uv/concepts/projects/init/", "category": "docs" },
 
   { "url": "https://paulgraham.com/greatwork.html", "category": "personal" },
   { "url": "https://paulgraham.com/avg.html", "category": "personal" },

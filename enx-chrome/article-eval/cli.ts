@@ -14,6 +14,7 @@ import { chromium, devices } from '@playwright/test'
 import {
   comparableBaseline,
   compareBaseline,
+  toBaseline,
   type Baseline,
 } from '../src/lib/articleEval/baseline.ts'
 import { formatReport, type PageReport } from '../src/lib/articleEval/report.ts'
@@ -35,26 +36,6 @@ function parseArgs(args: string[]) {
     else throw new Error(`unknown argument: ${args[i]}`)
   }
   return options
-}
-
-const round = (value: number | null) =>
-  value === null ? null : Math.round(value * 1000) / 1000
-
-function toBaseline(rows: PageReport[]): Baseline {
-  return Object.fromEntries(
-    rows.map(row => [
-      row.url,
-      {
-        category: row.category,
-        adapter: row.adapter,
-        selector: row.selector,
-        source: row.source,
-        verdict: row.verdict,
-        coverage: round(row.coverage),
-        precision: round(row.precision),
-      },
-    ])
-  )
 }
 
 async function main() {

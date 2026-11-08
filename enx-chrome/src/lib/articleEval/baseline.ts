@@ -1,6 +1,7 @@
 // ADR-070: the article-eval baseline, and what changed against it.
 // Imports nothing but types (see score.ts).
 
+import type { PageReport } from './report'
 import type { Score } from './score'
 
 /** A page's recorded scores; the baseline file may carry more fields. */
@@ -17,6 +18,28 @@ export interface BaselineChange {
   change: 'added' | 'removed' | 'verdict' | 'scores'
   before: BaselineEntry | null
   after: BaselineEntry | null
+}
+
+const round = (value: number | null) =>
+  value === null ? null : Math.round(value * 1000) / 1000
+
+/** A run's rows as the entries the baseline file records. */
+export function toBaseline(rows: PageReport[]): Baseline {
+  return Object.fromEntries(
+    rows.map(row => [
+      row.url,
+      {
+        category: row.category,
+        adapter: row.adapter,
+        selector: row.selector,
+        platform: row.platform,
+        source: row.source,
+        verdict: row.verdict,
+        coverage: round(row.coverage),
+        precision: round(row.precision),
+      },
+    ])
+  )
 }
 
 function moved(before: number | null, after: number | null): boolean {

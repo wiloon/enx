@@ -1,6 +1,62 @@
-import { compareBaseline, comparableBaseline, type Baseline } from '../baseline'
+import {
+  compareBaseline,
+  comparableBaseline,
+  toBaseline,
+  type Baseline,
+} from '../baseline'
 
 const OK = { verdict: 'ok', coverage: 0.95, precision: 0.9 } as const
+
+describe('toBaseline', () => {
+  it('records the platform, null for a non-platform result, and rounds the scores', () => {
+    const page = {
+      category: 'blog',
+      adapter: 'default',
+      source: 'article',
+      verdict: 'ok',
+      coverage: 0.98765,
+      precision: 0.91234,
+    } as const
+
+    expect(
+      toBaseline([
+        {
+          ...page,
+          url: 'https://a.example/wp',
+          selector: '.entry-content',
+          platform: 'wordpress',
+        },
+        {
+          ...page,
+          url: 'https://a.example/plain',
+          selector: 'article',
+          platform: null,
+        },
+      ])
+    ).toEqual({
+      'https://a.example/wp': {
+        category: 'blog',
+        adapter: 'default',
+        selector: '.entry-content',
+        platform: 'wordpress',
+        source: 'article',
+        verdict: 'ok',
+        coverage: 0.988,
+        precision: 0.912,
+      },
+      'https://a.example/plain': {
+        category: 'blog',
+        adapter: 'default',
+        selector: 'article',
+        platform: null,
+        source: 'article',
+        verdict: 'ok',
+        coverage: 0.988,
+        precision: 0.912,
+      },
+    })
+  })
+})
 
 describe('comparableBaseline', () => {
   const baseline: Baseline = {
@@ -32,6 +88,31 @@ describe('compareBaseline', () => {
     const baseline: Baseline = { 'https://a.example/1': OK }
 
     expect(compareBaseline(baseline, { 'https://a.example/1': OK })).toEqual([])
+  })
+
+  it('compares an entry recorded before the platform field existed', () => {
+    const recorded = {
+      'https://a.example/1': {
+        category: 'blog',
+        adapter: 'default',
+        selector: 'article',
+        source: 'article',
+        ...OK,
+      },
+    }
+    const current = toBaseline([
+      {
+        url: 'https://a.example/1',
+        category: 'blog',
+        adapter: 'default',
+        selector: 'article',
+        platform: null,
+        source: 'article',
+        ...OK,
+      },
+    ])
+
+    expect(compareBaseline(recorded, current)).toEqual([])
   })
 
   it('ignores score moves within the tolerance', () => {

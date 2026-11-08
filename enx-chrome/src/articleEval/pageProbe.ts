@@ -10,6 +10,7 @@ import { WordProcessor } from '@/lib/wordProcessor'
 export interface ProbeResult {
   adapter: string
   selector: string | null
+  platform: string | null
   source: 'article' | 'whole-page'
   nodes: number
   chosenText: string
@@ -41,6 +42,7 @@ export function probe(): ProbeResult {
   return {
     adapter: adapter.name,
     selector: area.selector ?? null,
+    platform: area.platform ?? null,
     source: area.source,
     nodes: area.nodes.length,
     chosenText: extractText(area.nodes),

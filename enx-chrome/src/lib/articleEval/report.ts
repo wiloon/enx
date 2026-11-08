@@ -22,6 +22,8 @@ export interface PageReport extends Score {
   adapter: string | null
   /** The selector whose matches are the article; null when none matched. */
   selector: string | null
+  /** The platform rule that found the article; null for any other result. */
+  platform: string | null
   source: 'article' | 'whole-page' | null
   /** Why the page failed to load. */
   error?: string
@@ -117,6 +119,7 @@ export function formatReport(
       'URL',
       'CATEGORY',
       'ADAPTER/SELECTOR',
+      'PLATFORM',
       'SOURCE',
       'COVERAGE',
       'PRECISION',
@@ -128,6 +131,7 @@ export function formatReport(
       row.adapter === null
         ? 'n/a'
         : `${row.adapter} ${row.selector ?? '(no selector)'}`,
+      row.platform ?? '-',
       row.source ?? 'n/a',
       score(row.coverage),
       score(row.precision),
