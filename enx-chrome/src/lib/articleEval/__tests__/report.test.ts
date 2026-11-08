@@ -138,4 +138,39 @@ describe('formatReport', () => {
   it('says so when nothing changed since the baseline', () => {
     expect(formatReport(ROWS, [])).toContain('No changes since the baseline')
   })
+
+  describe('lists every page that failed to load as unmeasured', () => {
+    const unmeasured = (report: string) =>
+      report.slice(report.indexOf('Unmeasured'))
+    const failed = ROWS[4]
+
+    it('with no baseline', () => {
+      expect(unmeasured(formatReport(ROWS, null))).toMatch(
+        /^Unmeasured: 1 page failed to load\n {2}https:\/\/b\.example\/2 {2}HTTP 403$/m
+      )
+    })
+
+    it('when its previous result was good', () => {
+      const report = formatReport(ROWS, [
+        {
+          url: failed.url,
+          change: 'verdict',
+          before: { verdict: 'ok', coverage: 0.9, precision: 1 },
+          after: { verdict: 'load failed', coverage: null, precision: null },
+        },
+      ])
+
+      expect(unmeasured(report)).toContain('https://b.example/2  HTTP 403')
+    })
+
+    it('when its previous result had also failed', () => {
+      expect(unmeasured(formatReport(ROWS, []))).toContain(
+        'https://b.example/2  HTTP 403'
+      )
+    })
+
+    it('and says nothing when every page loaded', () => {
+      expect(formatReport(ROWS.slice(0, 4), null)).not.toContain('Unmeasured')
+    })
+  })
 })

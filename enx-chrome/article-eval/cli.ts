@@ -14,6 +14,8 @@ import { chromium, devices } from '@playwright/test'
 import {
   comparableBaseline,
   compareBaseline,
+  formatBaseline,
+  mergeBaseline,
   toBaseline,
   type Baseline,
 } from '../src/lib/articleEval/baseline.ts'
@@ -83,16 +85,12 @@ async function main() {
   console.log(formatReport(rows, changes))
 
   if (options.updateBaseline) {
-    // Pages no longer in the corpus drop out; the file follows corpus order.
-    // One line per page, so a diff shows which pages moved.
-    const merged: Baseline = { ...baseline, ...current }
-    const lines = allPages
-      .filter(page => page.url in merged)
-      .map(
-        page =>
-          `  ${JSON.stringify(page.url)}: ${JSON.stringify(merged[page.url])}`
-      )
-    await writeFile(BASELINE, `{\n${lines.join(',\n')}\n}\n`)
+    const merged = mergeBaseline(
+      baseline,
+      current,
+      allPages.map(page => page.url)
+    )
+    await writeFile(BASELINE, formatBaseline(merged))
     console.log(
       `\nUpdated ${Object.keys(current).length} pages in ${BASELINE.pathname}`
     )

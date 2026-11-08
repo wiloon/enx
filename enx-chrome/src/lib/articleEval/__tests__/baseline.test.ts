@@ -1,11 +1,100 @@
 import {
   compareBaseline,
   comparableBaseline,
+  formatBaseline,
+  mergeBaseline,
   toBaseline,
   type Baseline,
 } from '../baseline'
 
 const OK = { verdict: 'ok', coverage: 0.95, precision: 0.9 } as const
+const FAILED = {
+  verdict: 'load failed',
+  coverage: null,
+  precision: null,
+} as const
+
+describe('mergeBaseline', () => {
+  const url = 'https://a.example/1'
+
+  it('keeps the last good entry when the page now fails to load', () => {
+    expect(mergeBaseline({ [url]: OK }, { [url]: FAILED }, [url])).toEqual({
+      [url]: OK,
+    })
+  })
+
+  it('records a failed page that has no previous entry', () => {
+    expect(mergeBaseline({}, { [url]: FAILED }, [url])).toEqual({
+      [url]: FAILED,
+    })
+    expect(mergeBaseline(null, { [url]: FAILED }, [url])).toEqual({
+      [url]: FAILED,
+    })
+  })
+
+  it('records a failed page whose previous entry also failed', () => {
+    const before = { ...FAILED, category: 'news' }
+
+    expect(mergeBaseline({ [url]: before }, { [url]: FAILED }, [url])).toEqual(
+      { [url]: FAILED }
+    )
+  })
+
+  it('replaces a good entry with a newly measured one', () => {
+    const after = { ...OK, coverage: 0.5, verdict: 'misses text' } as const
+
+    expect(mergeBaseline({ [url]: OK }, { [url]: after }, [url])).toEqual({
+      [url]: after,
+    })
+  })
+
+  it('keeps unmeasured corpus pages on a partial run and drops pages no longer in the corpus', () => {
+    const merged = mergeBaseline(
+      {
+        'https://a.example/kept': OK,
+        'https://a.example/gone': OK,
+        [url]: OK,
+      },
+      { [url]: { ...OK, precision: 0.8 } },
+      ['https://a.example/kept', url]
+    )
+
+    expect(merged).toEqual({
+      'https://a.example/kept': OK,
+      [url]: { ...OK, precision: 0.8 },
+    })
+  })
+
+  it('follows corpus order', () => {
+    const merged = mergeBaseline(
+      { 'https://a.example/b': OK },
+      { 'https://a.example/c': OK, 'https://a.example/a': OK },
+      ['https://a.example/a', 'https://a.example/b', 'https://a.example/c']
+    )
+
+    expect(Object.keys(merged)).toEqual([
+      'https://a.example/a',
+      'https://a.example/b',
+      'https://a.example/c',
+    ])
+  })
+})
+
+describe('formatBaseline', () => {
+  it('writes one line per page in the given order', () => {
+    expect(
+      formatBaseline({
+        'https://a.example/b': OK,
+        'https://a.example/a': FAILED,
+      })
+    ).toBe(
+      '{\n' +
+        `  "https://a.example/b": ${JSON.stringify(OK)},\n` +
+        `  "https://a.example/a": ${JSON.stringify(FAILED)}\n` +
+        '}\n'
+    )
+  })
+})
 
 describe('toBaseline', () => {
   it('records the platform, null for a non-platform result, and rounds the scores', () => {
