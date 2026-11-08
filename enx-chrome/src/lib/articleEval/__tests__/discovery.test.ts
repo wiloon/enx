@@ -72,7 +72,8 @@ describe('parseFeed', () => {
             'Fri, 06 Nov 2026 10:00:00 GMT',
           ],
           ['<![CDATA[https://www.blog.example/b?x=1&y=2]]>'],
-        ])
+        ]),
+        'https://www.blog.example/feed.xml'
       )
     ).toEqual([
       {
@@ -89,10 +90,34 @@ describe('parseFeed', () => {
       <entry><link rel="edit" href="https://www.blog.example/edit/b"/><link href="https://www.blog.example/b"/><updated>2026-10-01T00:00:00Z</updated></entry>
     </feed>`
 
-    expect(parseFeed(atom)).toEqual([
+    expect(parseFeed(atom, 'https://www.blog.example/feed.xml')).toEqual([
       { url: 'https://www.blog.example/a', date: '2026-11-01T00:00:00.000Z' },
       { url: 'https://www.blog.example/b', date: '2026-10-01T00:00:00.000Z' },
     ])
+  })
+})
+
+describe('parseFeed edge cases', () => {
+  const base = 'https://www.blog.example/feed.xml'
+
+  it('resolves relative Atom and RSS links against the feed URL', () => {
+    const atom = '<feed><entry><link href="/posts/x"/></entry></feed>'
+    const rssFeed =
+      '<rss><channel><item><link>/posts/y</link></item></channel></rss>'
+
+    expect(parseFeed(atom, base)).toEqual([
+      { url: 'https://www.blog.example/posts/x', date: null },
+    ])
+    expect(parseFeed(rssFeed, base)).toEqual([
+      { url: 'https://www.blog.example/posts/y', date: null },
+    ])
+  })
+
+  it('keeps an out-of-range numeric entity instead of throwing', () => {
+    const feed =
+      '<rss><item><link>https://www.blog.example/a?q=&#x110000;&#99999999;</link></item></rss>'
+
+    expect(() => parseFeed(feed, base)).not.toThrow()
   })
 })
 

@@ -117,6 +117,7 @@ function decodeEntities(text: string): string {
           name[1].toLowerCase() === 'x'
             ? parseInt(name.slice(2), 16)
             : parseInt(name.slice(1), 10)
+        if (!Number.isFinite(code) || code > 0x10ffff) return match
         return String.fromCodePoint(code)
       }
       return ENTITIES[name.toLowerCase()] ?? match
@@ -203,10 +204,11 @@ function atomLink(entry: string): string | null {
 }
 
 /** The items of an RSS or Atom feed, in feed order. */
-export function parseFeed(xml: string): DiscoveredItem[] {
+export function parseFeed(xml: string, feedUrl: string): DiscoveredItem[] {
   const items: DiscoveredItem[] = []
   for (const entry of [...elements(xml, 'item'), ...elements(xml, 'entry')]) {
-    const url = elementText(entry, 'link') || atomLink(entry)
+    const href = elementText(entry, 'link') || atomLink(entry)
+    const url = href ? resolve(href, feedUrl) : null
     if (!url) continue
     const date =
       elementText(entry, 'pubDate') ??
@@ -381,7 +383,25 @@ export async function discoverArticles(
   ): Promise<DiscoveredItem[]> => {
     const text = await fetchText(url)
     if (text === null) return []
-    if (!/<(sitemapindex|urlset)[\s>]/i.test(text)) return parseFeed(text)
+    try {
+      return await parseSource(text, url, depth)
+    } catch (error) {
+      failures.push({
+        url,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return []
+    }
+  }
+
+  const parseSource = async (
+    text: string,
+    url: string,
+    depth: number
+  ): Promise<DiscoveredItem[]> => {
+    if (!/<(sitemapindex|urlset)[\s>]/i.test(text)) {
+      return parseFeed(text, url)
+    }
     const { sitemaps, urls } = parseSitemap(text)
     const items = [...urls]
     if (depth >= maxIndexDepth) return items
