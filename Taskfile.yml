@@ -218,7 +218,7 @@ tasks:
       - task: ui:stop
 
   dev:verify:
-    desc: "Try this checkout (e.g. a worktree) in a browser: restart enx-api and enx-ui from it (replacing any other checkout's), build its extension, and open Chromium with that build on the sample article (http://localhost:3000/reader/sample). URL=/app for another page, TARGET=homelab to load the homelab build instead"
+    desc: "Try this checkout (e.g. a worktree) in a browser: restart enx-api and enx-ui from it (replacing any other checkout's), build its extension, and open Chromium with that build on the sample article (http://localhost:3000/reader/sample). URL=/app for another enx-ui page or URL=https://… for any site, TARGET=homelab to load the homelab build instead"
     vars:
       URL: '{{.URL | default "/reader/sample"}}'
       TARGET: '{{.TARGET | default "dev"}}'
@@ -234,7 +234,29 @@ tasks:
       - task: ui:run
         vars: { MODE: bg }
       - task: 'chrome:build:{{.TARGET}}'
-      - cd enx-chrome && node dev-chrome.mjs --target {{.TARGET}} --detach 'http://localhost:3000{{.URL}}'
+      - |
+        url='{{.URL}}'
+        case "$url" in http://*|https://*) ;; *) url="http://localhost:3000$url" ;; esac
+        cd enx-chrome && node dev-chrome.mjs --target {{.TARGET}} --detach "$url"
+
+  pr:worktree:
+    desc: "Print the path of a worktree with PR's head checked out (reuses the one on its branch, else creates .claude/worktrees/pr-<PR>). PR=718"
+    requires:
+      vars: [PR]
+    cmds:
+      - scripts/pr-worktree.sh '{{.PR}}'
+
+  pr:verify:
+    desc: "dev:verify in PR's worktree (created by pr:worktree when needed): local enx-api + enx-ui from it, its extension built, Chromium opened. PR=718 [URL=/app or https://…] [TARGET=homelab]"
+    requires:
+      vars: [PR]
+    vars:
+      URL: '{{.URL | default "/reader/sample"}}'
+      TARGET: '{{.TARGET | default "dev"}}'
+    cmds:
+      - |
+        wt="$(scripts/pr-worktree.sh '{{.PR}}')"
+        task -d "$wt" dev:verify URL='{{.URL}}' TARGET='{{.TARGET}}'
 
   deps:ui:
     internal: true
