@@ -189,7 +189,7 @@ contentVolatility: 'static' | 'spa' | 'streaming'
 
 | 方案 | 适用 | 机制 |
 | --- | --- | --- |
-| F1.（本次落地）**`static`**：不挂任何 observer，`enxRun` 重复触发时 `CSS.highlights` 清空 + `rebuildHighlights` 整段重跑（ADR-010 Decision 7 的「重新武装」） | 现有白名单里的静态文章页 | 零新增机制。宿主页面 enx 开启后自行大改 DOM 会错位，但这类页面本来就不会 |
+| F1.（本次落地）**`static`**：正文加载后不挂持续 observer；配置 `readySelector` 时首轮有一次临时就绪等待（见下方 #724 修订）。`enxRun` 重复触发时 `CSS.highlights` 清空 + `rebuildHighlights` 整段重跑（ADR-010 Decision 7 的「重新武装」） | 现有白名单里的静态文章页 | 就绪等待结束后不监听正文变化。宿主页面 enx 开启后自行大改 DOM 会错位，但这类页面本来就不会 |
 | F2.（本次落地，见 Decision 6）**`spa`**：F1 + Navigation API（`navigation.addEventListener('navigate', …)`，**不** monkey-patch `history`）在路由切换时拆掉全部 highlight + observer，等新 DOM 稳定后对新 DOM `rebuildHighlights` | X 主推文详情页（切推文） | 一个导航监听 + 一次防抖重建 |
 | F3.（Phase 3/4，方向）**`streaming`**：F2 + 正文根上一个 `MutationObserver`（`childList`+`characterData`+`subtree`，rAF + trailing timeout 防抖 ~150ms，尽量只重建受影响子树）+ `IntersectionObserver` 按可视区惰性建 Range（段落进视口才 `hl.add`，回收即释放），把 live range 数量限制在「屏幕内 + margin」 | X 时间线 / 评论区、Reddit、HN 这类无限滚动 | live range 数量有上界（浏览器对每个 live range 在 layout 时有成本）；observer 生命周期需与 F2 的导航拆解协调 |
 
@@ -295,6 +295,8 @@ ADR-007 的划词整句翻译（`triggerSelectionTranslation`）走 `selection.t
 4. 在 → 等新正文 DOM 稳定：`MutationObserver` 观察 `document.body` 子树，命中条件 = 存在 `article[tabindex="-1"] [data-testid="tweetText"]` 且其 `textContent` 非空；命中后防抖 ~100ms；超时 ~2s 兜底（按当前 DOM 尽力而为）。**不读 `document.title`、不读 `aria-live`**——实测（`adr-010-phase2-dom-readiness.md`）：`document.title` visibility-gated，切推文后长时间仍是上一条推文的标题（首次加载滞后 ~51 秒）；`aria-live` 区域全程为空。典型就绪延迟 <200ms，不需要长轮询。
 5. 过渡期新旧 `article[tabindex="-1"]` 会并存约 750ms，取 **DOM 顺序最后一个**。
 6. 跑一次完整 `processArticleContent`（含 §Decision-4 的 `focusedNodeResolver` 修正）+ `rebuildHighlights`。`processArticleContent` 目前会无条件把当前推文全部 unique 词发 `getWords`；本 Decision 一并加短路：`uniqueWords.every(w => wordCache[w.toLowerCase()])` 时跳过 `getWords`/`paragraph-init` 网络调用，直接进 `buildHighlightRanges`——否则 Phase 2 每切一条推文都会白发一个 `/api/paragraph-init` GET（该接口纯读、幂等、不计费，但无谓）。
+
+首次启用时也按适配器的 `readySelector` 等待就绪；静态适配器的首轮等待及取消见下方 #724 修订。
 
 **6.3 生命周期**
 
@@ -475,3 +477,7 @@ Decision 1 的全文绘制、Decision 3 的「查词（`getWords` 填 `wordCache
 ## 修订（2026-11-01，#567）：加载后的正文稳定
 
 所有者确认静态页与 SPA 的正文加载后都视为稳定，不监听正文变化；SPA 就绪等待不受影响。新内容不会再由下一次查词重走正文而补画，恢复方式见 [ADR-069 后果](adr-069-review-list-and-paint-window.md#后果)。本修订同时标明 F 节的整段重建已被 ADR-069 取代，避免把历史方案当作当前实现。
+
+## 修订（2026-11-08，#724）：静态页首轮等待正文
+
+AWS 文档的正文在加载后异步出现，故 `static` 适配器配置 `readySelector` 时，首次处理前也等待匹配节点文字非空并安静约 100ms，最多等待 `INITIAL_READY_TIMEOUT_MS`（8 秒）；超时按当前 DOM 检测。关闭、重新启用或脚本 stand-down 时取消等待并释放 observer。静态页不加路由监听，等待结束后不保留就绪 observer，也不监听正文后续变化。匹配页面缺少该选择器时，自动启用和弹窗按钮都会等到超时，再按原规则回退到整页。未配置选择器的适配器不等待。此修订补充 F 节和 Decision 6.2 的就绪时序，不改变加载后正文稳定的决定。

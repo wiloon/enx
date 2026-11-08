@@ -42,7 +42,7 @@ adr-019 的 `externally_connectable` 是唯一的「网页→扩展」通道，�
 ## 实现说明（2026-10-06）
 
 - 适配器 `rssx`（`enx-chrome/src/lib/siteAdapters.ts`）：`contentVolatility: 'spa'`，处理范围是页面上唯一的 `<article>`。契约是语义化 HTML：RSSX 只把打开的那篇 Article 渲染成 `<article>`，阅读区外壳和两栏都是 `<section>`（rssx `ReadingPane.vue`）。扩展不依赖 RSSX 的 class 或 `data-test`。
-- 换文章时 Vue Router 的 `router.replace` 触发 Navigation API 的 `navigate`（`navigationType: 'replace'`，Chrome 实测），沿用 ADR-011 Decision 6 的 SPA 重建器。等待正文就绪的选择器改由适配器的 `readySelector` 提供，X 和 RSSX 共用一套等待逻辑。
+- 换文章时 Vue Router 的 `router.replace` 触发 Navigation API 的 `navigate`（`navigationType: 'replace'`，Chrome 实测），沿用 ADR-011 Decision 6 的 SPA 重建器。等待正文就绪的选择器改由适配器的 `readySelector` 提供，X 和 RSSX 共用一套等待逻辑；静态适配器也可在首轮使用该选择器（见 ADR-011 的 #724 修订）。
 - 首次启用也先等正文（最长 8 秒）：页面加载完时 RSSX 还在请求文章。
 - adr-039 自动启用在 SPA 站点上首轮没找到文章时不回滚，继续监听导航；只有 `session-expired` 仍然回滚。
 - 学习模式由用户在 RSSX 上授予的「Always enable on this site」触发；安装态写到页面上那部分尚未实现。
@@ -50,3 +50,5 @@ adr-019 的 `externally_connectable` 是唯一的「网页→扩展」通道，�
 ## 修订记录
 
 - 2026-10-23（#231）：落实 owner 的按构建环境隔离站点适配决定，以专用 `rssxOrigins` 同源生成注入与 RSSX 识别，避免把 E2E fixture 等通用注入站点误认作 RSSX；不扩展网页消息通道或 RSSX 安装态实现范围。
+
+- 2026-11-08（#724）：同步 ADR-011 的静态适配器首轮就绪等待，避免误以为 `readySelector` 仅供 SPA 使用。
