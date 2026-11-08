@@ -8,6 +8,10 @@ related: adr-034（正文只认 selector）、adr-070（站点清单与评估工
 
 ADR-070 定了「主流英文站点的文章页，单击查词落在正确的正文节点上」这个目标，以及先量化再修改的做法。#702 的评估工具第一次全量运行（PR #706，81 页）之后，所有者和 Claude 讨论了接下来怎么补。本 ADR 记下讨论的结论：识别分哪几层、按什么顺序试，以及各层分几个阶段做。
 
+## 修订记录
+
+- 2026-11-07（#712）：明确候选信号须在线验证，补充匹配与评估细则，避免候选信号失效及多节点误选。
+
 ## 决定 1：识别分层，按顺序逐层尝试
 
 页面启用学习模式时，从上往下逐层尝试，第一层命中就停：
@@ -35,7 +39,7 @@ ADR-070 定了「主流英文站点的文章页，单击查词落在正确的正
 一条平台规则包含两部分：
 
 - **平台信号**：确认这页是该平台产出的，例如 `meta[name="generator"]` 的内容（`WordPress`、`Ghost`、`Docusaurus`、`Sphinx`、`MkDocs`），或者一个该平台特有的元素。
-- **正文 selector**：只有在信号成立时才试。
+- **正文 selector**：只有在信号成立时才试。generator 内容按不区分大小写的子串匹配；其他信号须用实际页面验证。
 
 初始候选（每条都要用评估工具量过才能加，见 ADR-070 决定 3）：
 
@@ -45,12 +49,14 @@ ADR-070 定了「主流英文站点的文章页，单击查词落在正确的正
 | Ghost | generator 含 `Ghost` | `.gh-content` |
 | Substack | Substack 特有元素 | `.available-content` |
 | Blogger | generator 含 `Blogger` | `.post-body` |
-| Sphinx（Python 文档等） | generator 含 `Sphinx` | `[role="main"]`、`div.body` |
+| Sphinx（Python 文档等） | 待在线验证的平台特有元素或其他信号 | `div.body`、`[role="main"]`（按序尝试） |
 | Docusaurus | generator 含 `Docusaurus` | `.theme-doc-markdown` |
 | MkDocs Material | generator 含 `MkDocs` | `.md-content` |
 | microformats | 页面有 `.h-entry` | `.h-entry .e-content` |
 
-内置列表里现有的 `.entry-content`、`.post-body` 也可以挪进平台层，要看挪过去之后分数会不会变差。
+平台规则只用于没有 `contentSelector` 的路径；有专用 selector 的 adapter 保持原有行为。每个 selector 沿用宽泛内置 selector 的规则：文本长度须大于 `minTextLength`，去掉嵌套匹配后只取最长节点；按候选顺序尝试 selector。每条保留的规则须在语料的线上页面验证信号，并在 PR 记录实际 HTML。
+
+内置列表里现有的 `.entry-content`、`.post-body` 也可以挪进平台层，要用同期主分支和改动后的评估结果检查是否变差；线上漂移不算改动造成的退化。
 
 **为什么要信号：** 不看信号直接匹配类名，会在不相干的站点上选错。例如内置的宽泛 selector `.content` 在 AWS 文档上选中了不是正文的节点（覆盖率 0，#709）。generator meta 读一次就能确认平台，代价很小。
 
