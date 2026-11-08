@@ -89,6 +89,26 @@ After the lookup area is chosen, `enxRun` fails with `no-article-node` (empty ar
 - **Scores:** both texts lose `script`, `style` and `noscript`, keep links and code, and are compared as sets of lower-cased 5-word shingles. **Coverage** is the share of the reference inside the chosen area, **precision** the share of the chosen area that is reference.
 - **Verdicts**, first match wins: `load failed`; `no article node` (empty area); `whole page` (coverage 0); `no reference` (Readability found none); `misses text` (coverage < 0.8); `too broad` (precision < 0.7); `ok`. A score that can't be computed prints `n/a`.
 - **Platform:** the report's `PLATFORM` column and each baseline entry's `platform` name the platform rule that found the article; `-` in the report and `null` in the baseline for any other result. Baseline entries recorded without the field still compare.
-- **Baseline:** a run lists the pages whose verdict changed or whose score moved more than 0.05 against `article-eval/baseline.json`. `task article-eval -- --update-baseline` rewrites it; `-- --only <url part>` runs the matching pages only; `-- --headed` shows the browser.
+- **Baseline:** a run lists the pages whose verdict changed or whose score moved more than 0.05 against `article-eval/baseline.json`. `task article-eval -- --update-baseline` rewrites it in corpus order: pages no longer in the corpus drop out, pages a `--only` run didn't measure keep their entry, and a page that now fails to load keeps its last entry that loaded. `-- --only <url part>` runs the matching pages only; `-- --headed` shows the browser.
+- **Unmeasured:** every page that failed to load in this run is listed under "Unmeasured" after the summary, whatever the baseline holds for it.
 
 The scoring and the report are `src/lib/articleEval/`; the browser side is `article-eval/`, pinned by `e2e/article-eval.spec.ts`.
+
+### Finding article pages
+
+Corpus pages come from `task article-eval-discover -- <site homepage URL>` (in `enx-chrome/`, ADR-075), not from URLs written by hand. It prints JSON:
+
+```json
+{
+  "site": "https://www.theguardian.com/",
+  "candidates": [{ "url": "https://www.theguardian.com/…", "date": "2026-11-08T13:00:41.000Z", "source": "https://www.theguardian.com/us/rss" }],
+  "failures": [{ "url": "https://apnews.com/", "error": "HTTP 403" }]
+}
+```
+
+- **Sources, in order:** the homepage's RSS/Atom `<link rel="alternate">` feeds, the `Sitemap:` entries in `/robots.txt`, then `/feed`, `/rss`, `/feed.xml`, `/rss.xml`, `/atom.xml`, `/index.xml`, `/sitemap.xml`, `/sitemap_index.xml`. A later source is tried only while fewer than two articles are found. Sitemap indexes are followed (newest five children, two levels deep) and gzipped sitemaps are unpacked.
+- **Selection:** newest first by feed publication date or sitemap `lastmod`; undated pages follow in source order. The homepage, other sites, files, and listing or site pages (`tag`, `category`, `author`, `page`, `about`, …) are skipped, and each URL counts once. A candidate is kept only when its final response, after redirects, is 2xx and still an article URL; `url` is that final URL.
+- **Bounds and failures:** each request times out after 15 seconds and a run makes at most 40 requests. Every source or candidate that failed is printed to stderr and listed in `failures`; the command exits 1 when it found fewer than two articles.
+- **Then:** add the two candidates to `article-eval/corpus.json` with the site's category, and screen them with `task article-eval` like every other page. A candidate can still be a landing page a feed or sitemap lists (for example a project hub). To replace a page that fails screening, rerun with `-- <site homepage URL> --skip <bad page URL>` (repeatable) and take the next candidate; when two usable pages can't be found, drop the site rather than write a URL by hand.
+
+`src/lib/articleEval/discovery.ts` holds the parsing and selection; `article-eval/discover.ts` supplies the network.

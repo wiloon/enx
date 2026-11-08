@@ -35,9 +35,9 @@ describe('mergeBaseline', () => {
   it('records a failed page whose previous entry also failed', () => {
     const before = { ...FAILED, category: 'news' }
 
-    expect(mergeBaseline({ [url]: before }, { [url]: FAILED }, [url])).toEqual(
-      { [url]: FAILED }
-    )
+    expect(mergeBaseline({ [url]: before }, { [url]: FAILED }, [url])).toEqual({
+      [url]: FAILED,
+    })
   })
 
   it('replaces a good entry with a newly measured one', () => {
