@@ -8,6 +8,7 @@
 # - Otherwise: .claude/worktrees/pr-<N> in the main checkout, on the PR's
 #   branch (tracking origin, so commits can be pushed back to the PR), or on a
 #   detached HEAD when the branch isn't in this repo (a fork's PR).
+# - A merged PR (its head is on origin/main): no worktree; says to use main.
 # - A reused worktree that is clean and behind the PR fast-forwards to it.
 # - New worktrees get the gitignored env files listed in .worktreeinclude,
 #   copied from the main checkout.
@@ -27,6 +28,16 @@ sha="$(git rev-parse FETCH_HEAD)"
 
 # The PR's branch: the origin branch whose tip is the PR head.
 branch="$(git ls-remote --heads origin | awk -v s="$sha" '$1 == s { sub("refs/heads/", "", $2); print $2; exit }')"
+
+# A merged PR's branch is usually deleted; its code is on main now.
+if [ -z "$branch" ]; then
+  git fetch -q origin main
+  if git merge-base --is-ancestor "$sha" origin/main; then
+    echo "PR #$pr is already merged into main. Verify it on main instead:" >&2
+    echo "  git -C \"$main\" pull --ff-only && task -d \"$main\" dev:verify" >&2
+    exit 1
+  fi
+fi
 
 wt=""
 if [ -n "$branch" ]; then
@@ -59,7 +70,7 @@ else
     echo "Created $wt ($branch)" >&2
   else
     git worktree add -q --detach "$wt" "$sha" >&2
-    echo "Created $wt (detached at the PR head; its branch isn't on origin)" >&2
+    echo "Created $wt (detached at the PR head: its branch isn't on origin, e.g. a fork's PR)" >&2
   fi
   if [ -f .worktreeinclude ]; then
     grep -v '^[[:space:]]*\(#\|$\)' .worktreeinclude | while IFS= read -r f; do
