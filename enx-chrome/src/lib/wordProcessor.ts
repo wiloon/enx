@@ -1,4 +1,5 @@
 import { WordData } from '@/types'
+import { platformRulesOn } from '@/lib/platformSelectors'
 import { nearestElement } from '@/lib/rangeUtils'
 import {
   HIGHLIGHT_BUCKET_COLORS,
@@ -21,6 +22,8 @@ export interface LookupArea {
   source: 'article' | 'whole-page'
   /** The selector whose matches are the article; unset when none matched. */
   selector?: string
+  /** The platform rule that found the article; unset for any other match. */
+  platform?: string
 }
 
 export interface LookupAreaFeatures {
@@ -293,10 +296,14 @@ export class WordProcessor {
       source: 'article',
     })
 
+    // ADR-072: the default adapter tries the platform selectors whose
+    // signal is on the page, with the broad-selector rule, before the
+    // built-in list.
     const selectors: Array<{
       selector: string
       minLength: number
       longestOnly: boolean
+      platform?: string
     }> = options?.contentSelector
       ? [
           {
@@ -305,13 +312,23 @@ export class WordProcessor {
             longestOnly: false,
           },
         ]
-      : this.BUILT_IN_SELECTORS.map(({ selector, broad }) => ({
-          selector,
-          minLength: broad ? minTextLength : this.PRECISE_MIN_TEXT_LENGTH,
-          longestOnly: broad === true,
-        }))
+      : [
+          ...platformRulesOn(document).flatMap(rule =>
+            rule.selectors.map(selector => ({
+              selector,
+              minLength: minTextLength,
+              longestOnly: true,
+              platform: rule.platform,
+            }))
+          ),
+          ...this.BUILT_IN_SELECTORS.map(({ selector, broad }) => ({
+            selector,
+            minLength: broad ? minTextLength : this.PRECISE_MIN_TEXT_LENGTH,
+            longestOnly: broad === true,
+          })),
+        ]
 
-    for (const { selector, minLength, longestOnly } of selectors) {
+    for (const { selector, minLength, longestOnly, platform } of selectors) {
       const matches = Array.from(document.querySelectorAll(selector)).filter(
         element => (element.textContent?.trim().length || 0) > minLength
       )
@@ -326,7 +343,11 @@ export class WordProcessor {
 
       if (nodes.length > 0) {
         console.log(`✅ Using article node with selector: ${selector}`)
-        return { ...article(focus(nodes)), selector }
+        return {
+          ...article(focus(nodes)),
+          selector,
+          ...(platform ? { platform } : {}),
+        }
       }
     }
 

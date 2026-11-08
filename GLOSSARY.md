@@ -59,7 +59,7 @@ _Avoid_: 配额、quota（那是上面的每日查词配额）、throttling
 _Avoid_: 阅读模式、reading mode（二者易与浏览器 Reader View 或移动端原生阅读视图混淆）
 
 **正文（article）**：
-**仅 enx-chrome**：页面上由 selector（站点适配器的 `contentSelector` 或内置 selector 列表）认出的文章节点。点击查词、单词高亮、阅读统计只在正文里发生；没有 selector 命中的页面以整页开启学习模式，整页不是正文。见 adr-034 修订（2026-11-07）。
+**仅 enx-chrome**：页面上由 selector（站点适配器的 `contentSelector`、平台级 selector 或内置 selector 列表）认出的文章节点。点击查词、单词高亮、阅读统计只在正文里发生；没有 selector 命中的页面以整页开启学习模式，整页不是正文。见 adr-034 修订（2026-11-07）。
 _Avoid_: 用「正文」指 `main`、`body` 或整页
 
 **点击查词（click-to-lookup）**：
@@ -108,6 +108,14 @@ _Avoid_: 合并翻译、combined translate
 **站点适配器（SiteAdapter）**：
 把「某个网站与默认行为的差异」（正文选择器、最小文本长度阈值、哪个匹配节点才是正文、页面是否在支持范围内、点击监听绑定方式、内容易变程度等）收在一处的对象。默认适配器逐字段等于历史行为。见 adr-010、adr-011。
 _Avoid_: site config、网站配置
+
+**平台信号（platform signal）**：
+**仅 enx-chrome**：说明这页由某个 CMS 或文档生成器产出的页面特征：`meta[name="generator"]` 的内容包含该平台的名字（不分大小写的子串），或者一个只有该平台才放的元素（例如 Sphinx 的 `documentation_options.js` 脚本）。只重复一个通用正文 selector 的东西不算平台信号。见 adr-072 决定 2。
+_Avoid_: 用「平台信号」指站点适配器按域名的匹配
+
+**平台级 selector（platform selector）**：
+**仅 enx-chrome**：一条平台规则里的正文 selector，只在该平台的平台信号出现时才试，位置在站点适配器之后、内置 selector 之前；有 `contentSelector` 的适配器不走这一层。沿用宽泛内置 selector 的规则（长度阈值、去嵌套、取最长）。命中时 `LookupArea.platform` 记下规则名（如 `sphinx`）。代码：`src/lib/platformSelectors.ts`。见 adr-072 决定 2。
+_Avoid_: 内置 selector（不看信号、对所有站点都试的那一层）
 
 **内容易变程度（contentVolatility）**：
 站点适配器的一个字段，取 `static` / `spa` / `streaming`，描述正文在学习模式开启后会不会被替换，决定单词高亮要挂哪些 observer 来在 DOM 变化后重建。见 adr-011 F 节。

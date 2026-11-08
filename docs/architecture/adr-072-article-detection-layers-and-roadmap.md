@@ -21,7 +21,7 @@ ADR-070 定了「主流英文站点的文章页，单击查词落在正确的正
 | 1 | 用户手动指定的正文（ADR-073） | 待做 | 用户选的节点是正文 | 往下 |
 | 2 | 服务端下发的规则（#710） | 讨论中，位置待 #710 定 | 规则的 selector 是正文 | 往下 |
 | 3 | 站点 adapter | 已有 | adapter 的 `contentSelector` 是正文 | `no-article-node`；设了 `wholePageOnMiss` 的退回整页（ADR-010、ADR-071，不变） |
-| 4 | 平台级 selector（决定 2） | 待做 | 该平台的 selector 是正文 | 往下 |
+| 4 | 平台级 selector（决定 2） | 已有（#712） | 该平台的 selector 是正文 | 往下 |
 | 5 | 内置 selector（`BUILT_IN_SELECTORS`） | 已有 | 选中的节点是正文 | 往下 |
 | 6 | 更严格的启发式兜底（ADR-070 第二阶段） | 待做，另写 ADR | 启发式选中的节点是正文 | 往下 |
 | 7 | 整页 | 已有 | 只能划词查词（ADR-034 修订） | — |

@@ -5,6 +5,7 @@ const row = (overrides: Partial<PageReport>): PageReport => ({
   category: 'news',
   adapter: 'default',
   selector: 'article',
+  platform: null,
   source: 'article',
   coverage: 0.9,
   precision: 0.8,
@@ -90,6 +91,29 @@ describe('formatReport', () => {
       .find(line => line.includes('https://b.example/1'))!
 
     expect(noReference).toMatch(/n\/a.*n\/a.*no reference/)
+  })
+
+  it('prints the platform that found the article, and - for a non-platform result', () => {
+    const lines = formatReport(
+      [
+        row({
+          url: 'https://c.example/wp',
+          selector: '.entry-content',
+          platform: 'wordpress',
+        }),
+        row({ url: 'https://c.example/plain' }),
+      ],
+      null
+    ).split('\n')
+    const line = (url: string) => lines.find(l => l.includes(url))!
+
+    expect(lines[0]).toMatch(/ADAPTER\/SELECTOR\s+PLATFORM\s+SOURCE/)
+    expect(line('https://c.example/wp')).toMatch(
+      /default \.entry-content\s+wordpress\s+article/
+    )
+    expect(line('https://c.example/plain')).toMatch(
+      /default article\s+-\s+article/
+    )
   })
 
   it('names why a page failed to load', () => {

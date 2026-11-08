@@ -39,6 +39,7 @@ export async function evaluatePage(
     category,
     adapter: null,
     selector: null,
+    platform: null,
     source: null,
     ...scorePage({ status: 'load-failed', error }),
     error,
@@ -88,6 +89,7 @@ export async function evaluatePage(
     category,
     adapter: probed.adapter,
     selector: probed.selector,
+    platform: probed.platform,
     source: probed.source,
     ...scorePage({ status: 'loaded', ...probed }),
   }

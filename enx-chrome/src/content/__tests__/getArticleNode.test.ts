@@ -411,3 +411,133 @@ describe('WordProcessor.findLookupArea on Ars Technica', () => {
     })
   })
 })
+
+// ADR-072 decision 2: a platform selector runs only when its platform
+// signal is on the page, after the adapter and before the built-in list.
+describe('WordProcessor.findLookupArea platform selectors', () => {
+  afterEach(() => {
+    document.head.innerHTML = ''
+    document.body.innerHTML = ''
+  })
+
+  it('returns the platform selector match and names the platform when its signal is present', () => {
+    document.head.innerHTML =
+      '<meta name="generator" content="WordPress 7.1.4">'
+    document.body.innerHTML = `
+      <article id="wrapper">
+        <h1>A post</h1>
+        <div class="entry-content" id="post">${prose(800)}</div>
+      </article>`
+
+    expect(lookupAreaAsDefaultSite()).toEqual({
+      nodes: [document.getElementById('post')],
+      source: 'article',
+      selector: '.entry-content',
+      platform: 'wordpress',
+    })
+  })
+
+  it('falls through to the built-in selectors when the platform selector matches but its signal is absent', () => {
+    document.body.innerHTML = `
+      <article id="wrapper">
+        <div class="gh-content">${prose(800)}</div>
+      </article>`
+
+    const area = lookupAreaAsDefaultSite()
+
+    expect(area.nodes).toEqual([document.getElementById('wrapper')])
+    expect(area.selector).toBe('article')
+    expect(area).not.toHaveProperty('platform')
+  })
+
+  it('falls through to the built-in selectors when the signal is present but no match passes the threshold', () => {
+    document.head.innerHTML = '<meta name="generator" content="Ghost 6.75">'
+    document.body.innerHTML = `
+      <article id="wrapper">
+        <div class="gh-content">${prose(100)}</div>
+        <p>${prose(400)}</p>
+      </article>`
+
+    const area = lookupAreaAsDefaultSite()
+
+    expect(area.nodes).toEqual([document.getElementById('wrapper')])
+    expect(area.selector).toBe('article')
+    expect(area).not.toHaveProperty('platform')
+  })
+
+  it('matches the generator signal as a case-insensitive substring', () => {
+    document.head.innerHTML =
+      '<meta name="generator" content="Site built with DOCUSAURUS v3.10.1">'
+    document.body.innerHTML = `
+      <article>
+        <nav>${links(3, 20)}</nav>
+        <div class="theme-doc-markdown markdown" id="docs">${prose(800)}</div>
+      </article>`
+
+    expect(lookupAreaAsDefaultSite()).toMatchObject({
+      nodes: [document.getElementById('docs')],
+      selector: '.theme-doc-markdown',
+      platform: 'docusaurus',
+    })
+  })
+
+  it('recognises a platform by its signal element when there is no generator meta', () => {
+    document.head.innerHTML =
+      '<script src="../_static/documentation_options.js?v=c6788839"></script>'
+    document.body.innerHTML = `
+      <div class="body" role="main" id="docs">${prose(800)}</div>`
+
+    expect(lookupAreaAsDefaultSite()).toMatchObject({
+      nodes: [document.getElementById('docs')],
+      selector: 'div.body',
+      platform: 'sphinx',
+    })
+  })
+
+  it("tries the rule's selectors in order: Sphinx falls back to role=main", () => {
+    document.head.innerHTML =
+      '<script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>'
+    document.body.innerHTML = `
+      <section role="main" id="docs">
+        <div class="body">${prose(50)}</div>
+        <p>${prose(800)}</p>
+      </section>`
+
+    expect(lookupAreaAsDefaultSite()).toMatchObject({
+      nodes: [document.getElementById('docs')],
+      selector: '[role="main"]',
+      platform: 'sphinx',
+    })
+  })
+
+  it('keeps only the longest outermost match over the threshold', () => {
+    document.head.innerHTML =
+      '<meta name="generator" content="WordPress 7.1.4">'
+    document.body.innerHTML = `
+      <div class="entry-content" id="short">${prose(300)}</div>
+      <div class="entry-content" id="long">
+        <div class="entry-content" id="nested">${prose(500)}</div>
+        <p>${prose(200)}</p>
+      </div>
+      <div class="entry-content" id="tiny">${prose(100)}</div>`
+
+    expect(lookupAreaAsDefaultSite()).toMatchObject({
+      nodes: [document.getElementById('long')],
+      selector: '.entry-content',
+      platform: 'wordpress',
+    })
+  })
+
+  it("skips the platform selectors for an adapter's contentSelector", () => {
+    document.head.innerHTML =
+      '<meta name="generator" content="WordPress 7.1.4">'
+    document.body.innerHTML = `<div class="entry-content">${prose(800)}</div>`
+
+    expect(
+      WordProcessor.findLookupArea({
+        contentSelector: '.missing',
+        minTextLength: 1,
+      })
+    ).toEqual({ nodes: [], source: 'article' })
+  })
+})

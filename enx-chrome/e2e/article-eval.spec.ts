@@ -36,6 +36,7 @@ test.describe('article-eval', () => {
     expect(report).toMatchObject({
       adapter: 'default',
       selector: 'article',
+      platform: null,
       source: 'article',
       verdict: 'ok',
     })
@@ -43,6 +44,22 @@ test.describe('article-eval', () => {
       expect(score).toBeGreaterThanOrEqual(0.7)
       expect(score).toBeLessThanOrEqual(1)
     }
+  })
+
+  test('a Docusaurus page records the platform selector and the platform', async ({
+    page,
+  }) => {
+    const report = await evaluate(
+      page,
+      `${FIXTURE_ORIGIN}/article-eval-docusaurus.html`
+    )
+
+    expect(report).toMatchObject({
+      adapter: 'default',
+      selector: '.theme-doc-markdown',
+      platform: 'docusaurus',
+      source: 'article',
+    })
   })
 
   test('a page with no article records the whole page', async ({ page }) => {
@@ -54,6 +71,7 @@ test.describe('article-eval', () => {
     expect(report).toMatchObject({
       adapter: 'default',
       selector: null,
+      platform: null,
       source: 'whole-page',
       coverage: 0,
       precision: null,
@@ -71,6 +89,7 @@ test.describe('article-eval', () => {
 
     expect(report).toMatchObject({
       selector: 'article',
+      platform: null,
       source: 'article',
       coverage: null,
       precision: null,
@@ -94,6 +113,7 @@ test.describe('article-eval', () => {
     expect(report).toMatchObject({
       adapter: 'wikipedia',
       selector: null,
+      platform: null,
       source: 'article',
       coverage: 0,
       precision: 0,
@@ -109,6 +129,7 @@ test.describe('article-eval', () => {
 
     expect(report).toMatchObject({
       adapter: null,
+      platform: null,
       source: null,
       coverage: null,
       precision: null,
