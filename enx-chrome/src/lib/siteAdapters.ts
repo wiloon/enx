@@ -60,16 +60,20 @@ export interface SiteAdapter {
   /**
    * How the article content changes after learning mode is on, and so which
    * observers the content script attaches (ADR-011 F section):
-   *   'static'    — no observers; re-run only on an explicit enxRun.
+   *   'static'    — no lasting observers; re-run only on an explicit enxRun.
+   *                 With a readySelector, the initial run still waits for it
+   *                 through a temporary observer.
    *   'spa'       — a Navigation API route-change listener re-runs on in-page
    *                 navigation (X switching tweets).
    *   'streaming' — incremental MutationObserver (ADR-010 Phase 3/4, not yet).
    */
   contentVolatility: 'static' | 'spa' | 'streaming'
   /**
-   * 'spa' only: matches once the page's content has rendered. Learning mode
-   * waits for it (non-empty, then quiet) before processing, both on the
-   * initial run and after every in-page navigation (ADR-011 Decision 6.2).
+   * Matches once the page's content has rendered. Learning mode waits for it
+   * (non-empty, then quiet, up to 8 s) before the initial run, through a
+   * MutationObserver released when the wait ends or the run is superseded;
+   * on 'spa' also after every in-page navigation (ADR-011 Decision 6.2).
+   * Undefined = no wait.
    */
   readySelector?: string
   /**
@@ -310,8 +314,9 @@ const STANDARD_EBOOKS_ADAPTER: SiteAdapter = {
 // --- AWS docs ---------------------------------------------------------------
 // The guides render their article into #main-col-body after load. The
 // built-in selectors would take a feedback widget's thank-you message
-// (`.content`) instead. A page without the column (a landing or index page,
-// a changed layout) gets the whole page.
+// (`.content`) instead. The initial run waits for the column (readySelector);
+// a page without it (a landing or index page, a changed layout) waits out
+// the timeout and gets the whole page.
 
 const AWS_DOCS_ADAPTER: SiteAdapter = {
   name: 'aws-docs',
@@ -320,6 +325,7 @@ const AWS_DOCS_ADAPTER: SiteAdapter = {
   wholePageOnMiss: true,
   minTextLength: 100,
   contentVolatility: 'static',
+  readySelector: '#main-col-body',
   clickBinding: 'bubble',
 }
 

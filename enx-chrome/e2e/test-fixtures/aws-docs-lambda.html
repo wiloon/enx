@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>What is AWS Lambda? - AWS Lambda</title>
+  </head>
+  <body>
+    <header>
+      <p>
+        AWS Documentation. Search the documentation, browse the guides, and
+        sign in to the console from this navigation header.
+      </p>
+    </header>
+    <div id="main">
+      <div id="main-content">
+        <h1>What is AWS Lambda?</h1>
+        <div id="main-col"></div>
+      </div>
+    </div>
+    <script>
+      // The real page renders #main-col-body by script after load. Here it
+      // appears only once enxRun has reached the content script: enableEnx
+      // announces itself with the stand-down event (#561), the second such
+      // event after the script's own announcement at load.
+      let announcements = 0
+      document.addEventListener('enx-content-script-stand-down', () => {
+        announcements += 1
+        if (announcements !== 2) return
+        setTimeout(() => {
+          const column = document.createElement('div')
+          column.id = 'main-col-body'
+          column.innerHTML =
+            '<p>AWS Lambda is a serverless compute service. With Lambda, you can run code without provisioning or managing servers, and pay only for the compute time you consume.</p>'
+          document.getElementById('main-col').appendChild(column)
+        }, 300)
+      })
+    </script>
+  </body>
+</html>
