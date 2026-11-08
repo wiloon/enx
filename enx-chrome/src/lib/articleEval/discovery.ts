@@ -443,7 +443,8 @@ export async function discoverArticles(
 
   const homepage = await fetchText(siteUrl)
   if (homepage !== null) {
-    for (const feed of feedLinks(homepage.text, siteUrl)) await trySource(feed)
+    for (const feed of feedLinks(homepage.text, homepage.url))
+      await trySource(feed)
   }
   if (!done()) {
     const robotsUrl = new URL('/robots.txt', siteUrl).href

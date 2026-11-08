@@ -258,6 +258,31 @@ function fakeDeps(responses: Record<string, FakeResponse>) {
 const ok: FakeResponse = { body: '<html>article</html>' }
 
 describe('discoverArticles', () => {
+  it('resolves a relative homepage feed link against the final URL after a redirect', async () => {
+    const { deps } = fakeDeps({
+      [SITE]: {
+        redirect: 'https://www.blog.example/en/',
+        body: '<link rel="alternate" type="application/rss+xml" href="feed.xml">',
+      },
+      'https://www.blog.example/en/feed.xml': {
+        body: rss([
+          ['https://www.blog.example/en/post', 'Fri, 06 Nov 2026 10:00:00 GMT'],
+        ]),
+      },
+      'https://www.blog.example/en/post': ok,
+    })
+
+    const result = await discoverArticles(SITE, deps, { wanted: 1 })
+
+    expect(result.candidates).toEqual([
+      {
+        url: 'https://www.blog.example/en/post',
+        date: '2026-11-06T10:00:00.000Z',
+        source: 'https://www.blog.example/en/feed.xml',
+      },
+    ])
+  })
+
   it('resolves relative feed links against the final URL after a redirect', async () => {
     const { deps } = fakeDeps({
       [SITE]: {
