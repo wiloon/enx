@@ -19,9 +19,10 @@ import {
   toBaseline,
   type Baseline,
 } from '../src/lib/articleEval/baseline.ts'
+import type { CorpusEntry } from '../src/lib/articleEval/corpus.ts'
 import { formatReport, type PageReport } from '../src/lib/articleEval/report.ts'
 import { buildProbe } from './buildProbe.ts'
-import { evaluatePage, type CorpusPage } from './evaluatePage.ts'
+import { evaluatePage } from './evaluatePage.ts'
 
 const CORPUS = new URL('./corpus.json', import.meta.url)
 const BASELINE = new URL('./baseline.json', import.meta.url)
@@ -42,7 +43,7 @@ function parseArgs(args: string[]) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2))
-  const allPages = JSON.parse(await readFile(CORPUS, 'utf8')) as CorpusPage[]
+  const allPages = JSON.parse(await readFile(CORPUS, 'utf8')) as CorpusEntry[]
   const corpus = allPages.filter(page => page.url.includes(options.only))
   const probeScript = await buildProbe()
 

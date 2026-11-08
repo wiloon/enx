@@ -105,7 +105,7 @@ A selector that would be unsafe in the shared list (it lands on widgets on other
 **Why Ordering Matters:**
 The method stops at the first selector that matches. Which selectors are precise or broad, their length minimums, and what happens when none matches: [article-detection.md](article-detection.md). A site whose article no built-in selector finds needs its own selector here to get click lookup.
 
-**Measure before and after.** A new selector can win on sites it was never meant for. Run `task article-eval` in `enx-chrome/` before the change and again after it, and check the "Changes since the baseline" list for pages other than your target ([article-detection.md §Measuring](article-detection.md#measuring)). Add the target site to `enx-chrome/article-eval/corpus.json` with two article pages found by `task article-eval-discover -- <site homepage URL>`, never URLs written by hand ([article-detection.md §Finding article pages](article-detection.md#finding-article-pages)), then run `task article-eval -- --update-baseline` and commit `baseline.json` with the change.
+**Measure before and after.** A new selector can win on sites it was never meant for. Run `task article-eval` in `enx-chrome/` before the change and again after it, and check the "Changes since the baseline" list for pages other than your target ([article-detection.md §Measuring](article-detection.md#measuring)). Add the target site to `enx-chrome/article-eval/corpus.json` with two article pages found by `task article-eval-discover -- <site homepage URL>`, never URLs written by hand ([article-detection.md §Finding article pages](article-detection.md#finding-article-pages)). Give both entries `"provenance": "hand-picked"` and the `trancoRank` of the site's registrable domain from Tranco list 94P72, or `null` when it isn't listed ([article-detection.md §The corpus](article-detection.md#the-corpus)). Then run `task article-eval -- --update-baseline` and commit `baseline.json` with the change.
 
 ### 4. Test the Integration
 
@@ -220,7 +220,7 @@ Update `enx-chrome/CHANGELOG.md` or create a site support document:
 - [ ] Inspect target website to identify article container
 - [ ] Run `task article-eval` before the selector change
 - [ ] Add CSS selector to `content.ts` `getArticleNode()` method
-- [ ] Run `task article-eval` again; only the intended pages change; add the site's two pages from `task article-eval-discover` to the corpus and update the baseline
+- [ ] Run `task article-eval` again; only the intended pages change; add the site's two pages from `task article-eval-discover` to the corpus with `hand-picked` provenance and its Tranco rank, and update the baseline
 - [ ] Rebuild extension: `task build` or `task dev`
 - [ ] Reload extension in Chrome
 - [ ] Test on target website

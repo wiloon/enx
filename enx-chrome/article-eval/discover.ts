@@ -5,7 +5,8 @@
 //
 // Prints JSON: { site, candidates: [{ url, date, source }], failures:
 // [{ url, error }] }. Exits 1 when fewer than two articles were found. The
-// operator adds the candidates to corpus.json with the site's category;
+// operator adds the candidates to corpus.json with the site's category,
+// provenance and Tranco rank;
 // `--skip` (repeatable) passes over pages that failed screening.
 
 import { gunzipSync } from 'node:zlib'
