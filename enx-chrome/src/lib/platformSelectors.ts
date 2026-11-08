@@ -27,7 +27,8 @@ export const PLATFORM_RULES: readonly PlatformRule[] = [
       generator: 'wordpress',
       selector: 'link[rel="https://api.w.org/"]',
     },
-    selectors: ['.entry-content'],
+    // Classic themes have no `.entry-content`: the post is `.entry` in `.hentry`.
+    selectors: ['.entry-content', '.hentry .entry'],
   },
   {
     platform: 'ghost',

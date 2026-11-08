@@ -437,6 +437,37 @@ describe('WordProcessor.findLookupArea platform selectors', () => {
     })
   })
 
+  it('finds a classic-theme WordPress article in .hentry .entry', () => {
+    document.head.innerHTML =
+      '<link rel="https://api.w.org/" href="https://example.com/wp-json/">'
+    document.body.innerHTML = `
+      <article class="hentry" id="wrapper">
+        <h1 class="post-title">A post</h1>
+        <div class="entry" id="post">${prose(800)}</div>
+      </article>`
+
+    expect(lookupAreaAsDefaultSite()).toEqual({
+      nodes: [document.getElementById('post')],
+      source: 'article',
+      selector: '.hentry .entry',
+      platform: 'wordpress',
+    })
+  })
+
+  it('does not name WordPress for .hentry .entry without the WordPress signal', () => {
+    document.body.innerHTML = `
+      <article class="hentry" id="wrapper">
+        <h1 class="post-title">A post</h1>
+        <div class="entry" id="post">${prose(800)}</div>
+      </article>`
+
+    const area = lookupAreaAsDefaultSite()
+
+    expect(area.nodes).toEqual([document.getElementById('wrapper')])
+    expect(area.selector).toBe('article')
+    expect(area).not.toHaveProperty('platform')
+  })
+
   it('falls through to the built-in selectors when the platform selector matches but its signal is absent', () => {
     document.body.innerHTML = `
       <article id="wrapper">

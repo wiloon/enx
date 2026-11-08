@@ -35,7 +35,7 @@ A signal is either a `meta[name="generator"]` whose content contains the rule's 
 
 | Platform | Signal | Selectors |
 | --- | --- | --- |
-| `wordpress` | generator `wordpress`, or the REST API link `link[rel="https://api.w.org/"]` | `.entry-content` |
+| `wordpress` | generator `wordpress`, or the REST API link `link[rel="https://api.w.org/"]` | `.entry-content`, then `.hentry .entry` (classic themes) |
 | `ghost` | generator `ghost` | `.gh-content` |
 | `substack` | `link[href^="https://substackcdn.com/"]` | `.available-content` |
 | `blogger` | generator `blogger` | `.post-body` |
