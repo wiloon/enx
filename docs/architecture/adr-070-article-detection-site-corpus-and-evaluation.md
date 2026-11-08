@@ -1,5 +1,5 @@
 ---
-status: accepted（决定 3 由 adr-071 加了一次例外）
+status: accepted（决定 3 由 adr-071 加了一次例外；决定 2 由 adr-074 修订：Readability 可以为「用阅读器打开」进扩展；决定 1、2 由 adr-075 补充）
 date: 2026-11-07
 related: adr-034（正文识别；本 ADR 不改它的规则，只定怎样衡量和改进它）、adr-010（站点 adapter）、adr-028（阅读统计）
 ---
