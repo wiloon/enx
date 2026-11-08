@@ -356,7 +356,9 @@ export async function discoverArticles(
     }
   }
 
-  const fetchText = async (url: string): Promise<string | null> => {
+  const fetchText = async (
+    url: string
+  ): Promise<{ text: string; url: string } | null> => {
     const response = await request(url)
     if (!response) return null
     if (!isSuccess(response.status)) {
@@ -367,7 +369,7 @@ export async function discoverArticles(
       const bytes = isGzip(response.body)
         ? deps.gunzip(response.body)
         : response.body
-      return new TextDecoder().decode(bytes)
+      return { text: new TextDecoder().decode(bytes), url: response.url }
     } catch (error) {
       failures.push({
         url,
@@ -381,10 +383,10 @@ export async function discoverArticles(
     url: string,
     depth: number
   ): Promise<DiscoveredItem[]> => {
-    const text = await fetchText(url)
-    if (text === null) return []
+    const resource = await fetchText(url)
+    if (resource === null) return []
     try {
-      return await parseSource(text, url, depth)
+      return await parseSource(resource.text, resource.url, depth)
     } catch (error) {
       failures.push({
         url,
@@ -441,13 +443,13 @@ export async function discoverArticles(
 
   const homepage = await fetchText(siteUrl)
   if (homepage !== null) {
-    for (const feed of feedLinks(homepage, siteUrl)) await trySource(feed)
+    for (const feed of feedLinks(homepage.text, siteUrl)) await trySource(feed)
   }
   if (!done()) {
     const robotsUrl = new URL('/robots.txt', siteUrl).href
     const robots = await fetchText(robotsUrl)
     if (robots !== null) {
-      for (const sitemap of robotsSitemaps(robots, siteUrl)) {
+      for (const sitemap of robotsSitemaps(robots.text, siteUrl)) {
         await trySource(sitemap)
       }
     }
