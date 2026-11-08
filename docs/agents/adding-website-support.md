@@ -76,30 +76,25 @@ Before adding CSS selectors, inspect the target website to identify the article 
 ```
 → Selector: `.article-content`
 
-### 3. Add CSS Selector to Content Script
+### 3. Add the CSS Selector
 
-**File:** `enx-chrome/src/content/content.ts`
+**File:** `enx-chrome/src/lib/wordProcessor.ts`
 
-Add the new selector to the `getArticleNode()` method's selectors array:
+Add the new selector to `WordProcessor.BUILT_IN_SELECTORS`, which `WordProcessor.findLookupArea()` tries in order. Mark a generic class `broad: true`; a site-specific selector stays precise:
 
 ```typescript
-static getArticleNode(): Element | null {
-  const selectors = [
-    '.Article',                     // BBC
-    '.article__data',              // InfoQ
-    '.post-content',               // Generic blog posts
-    '.single-post__container',     // Microsoft Research
-    '#EMAIL_CONTAINER',            // NY Times newsletters
-    'article',                     // Semantic HTML5
-    '.content',                    // Generic content
-    '.entry-content',              // WordPress/blogs
-    '.post-body',                  // Generic posts
-    '.article-content',            // The Verge (example)
-  ]
-  
-  // ... rest of the method
-}
+private static readonly BUILT_IN_SELECTORS = [
+  { selector: '.Article' }, // BBC
+  { selector: '.article__data' }, // InfoQ
+  { selector: '.post-content', broad: true }, // Blog posts
+  { selector: 'article' }, // Semantic HTML5
+  { selector: '.article-content' }, // The Verge (example)
+  { selector: '.content', broad: true },
+  // ...
+]
 ```
+
+A selector that would be unsafe in the shared list (it lands on widgets on other sites, or the site needs whole-page mode on pages without it) goes into a site adapter in `enx-chrome/src/lib/siteAdapters.ts` instead.
 
 **Selector Ordering Strategy:**
 - Place more specific selectors before generic ones

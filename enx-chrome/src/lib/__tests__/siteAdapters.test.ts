@@ -698,3 +698,52 @@ describe('Standard Ebooks adapter', () => {
     expect(area()).toEqual({ nodes: [document.body], source: 'whole-page' })
   })
 })
+
+describe('AWS docs adapter', () => {
+  const awsDocs = () =>
+    resolveSiteAdapter(
+      loc('docs.aws.amazon.com', '/lambda/latest/dg/welcome.html'),
+      HOMELAB
+    )
+  const area = () => WordProcessor.findLookupArea(lookupAreaOptions(awsDocs()))
+  // Trimmed from docs.aws.amazon.com/lambda/latest/dg/welcome.html as
+  // rendered in Chromium (2026-11-07): the two .content elements are the
+  // feedback widgets' thank-you messages.
+  const feedbackWidgets = `
+    <div id="quick-feedback-yes"><div class="content">Thanks for letting us know we're doing a good job! If you've got a moment, please tell us what we did right so we can do more of it.</div></div>
+    <div id="quick-feedback-no"><div class="content">Thanks for letting us know this page needs work. We're sorry we let you down. If you've got a moment, please tell us how we can make the documentation better.</div></div>`
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('matches docs.aws.amazon.com only', () => {
+    expect(awsDocs().name).toBe('aws-docs')
+    for (const host of ['aws.amazon.com', 'docs.aws.amazon.com.evil.net']) {
+      expect(resolveSiteAdapter(loc(host, '/'), HOMELAB)).toBe(DEFAULT_ADAPTER)
+    }
+  })
+
+  it('processes the docs content column, not the feedback widgets', () => {
+    document.body.innerHTML = `
+      <div id="main">
+        <div id="main-content" class="awsui-util-container">
+          <h1>What is AWS Lambda?</h1>
+          <div id="main-col-body"><p>AWS Lambda is a serverless compute service. With Lambda, you can run code without provisioning or managing servers.</p></div>
+        </div>
+      </div>
+      ${feedbackWidgets}`
+
+    expect(area()).toEqual({
+      nodes: [document.getElementById('main-col-body')],
+      source: 'article',
+      selector: '#main-col-body',
+    })
+  })
+
+  it('falls back to the whole page on a docs page with no content column', () => {
+    document.body.innerHTML = `<h1>AWS Documentation</h1>${feedbackWidgets}`
+
+    expect(area()).toEqual({ nodes: [document.body], source: 'whole-page' })
+  })
+})

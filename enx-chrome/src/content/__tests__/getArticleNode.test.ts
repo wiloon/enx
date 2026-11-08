@@ -378,3 +378,36 @@ describe('WordProcessor.getArticleNodes precise and broad selectors', () => {
     expect(lookupAreaAsDefaultSite()).toEqual(WHOLE_PAGE())
   })
 })
+
+// Ars Technica (#709): one article is split into sibling
+// div.post-content.post-content-double blocks inside <article>.
+describe('WordProcessor.findLookupArea on Ars Technica', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('returns every article block, not only the longest one, and leaves out other .post-content widgets', () => {
+    document.body.innerHTML = `
+      <main>
+        <article>
+          <header><h1>On the move</h1></header>
+          <div class="relative">
+            <div class="post-content post-content-double" id="block-1">${prose(3400)}</div>
+            <div class="ad">Advertisement</div>
+            <div class="post-content post-content-double" id="block-2">${prose(2000)}</div>
+            <div class="post-content post-content-double" id="block-3">${prose(760)}</div>
+          </div>
+          <section class="comments">${prose(400)}</section>
+        </article>
+        <aside><div class="post-content" id="teaser">${prose(150)}</div></aside>
+      </main>`
+
+    expect(lookupAreaAsDefaultSite()).toEqual({
+      nodes: ['block-1', 'block-2', 'block-3'].map(id =>
+        document.getElementById(id)
+      ),
+      source: 'article',
+      selector: '.post-content-double',
+    })
+  })
+})
