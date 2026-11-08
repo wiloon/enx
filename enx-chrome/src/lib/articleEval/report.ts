@@ -145,6 +145,19 @@ export function formatReport(
     lines.push(`${category.category}: ${summaryLine(category)}`)
   }
 
+  // Listed whatever the baseline says: a failed page's last good entry may be
+  // kept in the baseline, but this run measured nothing for it.
+  const failed = rows.filter(row => row.verdict === 'load failed')
+  if (failed.length > 0) {
+    lines.push(
+      '',
+      `Unmeasured: ${failed.length} ${failed.length === 1 ? 'page' : 'pages'} failed to load`,
+      ...table(failed.map(row => [row.url, row.error ?? ''])).map(
+        line => `  ${line}`
+      )
+    )
+  }
+
   if (changes !== null) {
     lines.push('')
     if (changes.length === 0) {

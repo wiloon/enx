@@ -42,6 +42,40 @@ export function toBaseline(rows: PageReport[]): Baseline {
   )
 }
 
+/**
+ * The baseline `--update-baseline` writes, in corpus order. Pages no longer
+ * in the corpus drop out, and pages a partial run didn't measure keep their
+ * entry. A page that failed to load keeps its last entry that loaded, so a
+ * blocked or flaky site doesn't erase its last good scores.
+ */
+export function mergeBaseline(
+  previous: Baseline | null,
+  current: Baseline,
+  corpusUrls: string[]
+): Baseline {
+  const merged: Baseline = {}
+  for (const url of corpusUrls) {
+    const before = previous?.[url]
+    const after = current[url]
+    const entry =
+      after?.verdict === 'load failed' &&
+      before &&
+      before.verdict !== 'load failed'
+        ? before
+        : (after ?? before)
+    if (entry) merged[url] = entry
+  }
+  return merged
+}
+
+/** The baseline file: one line per page, so a diff shows which pages moved. */
+export function formatBaseline(baseline: Baseline): string {
+  const lines = Object.entries(baseline).map(
+    ([url, entry]) => `  ${JSON.stringify(url)}: ${JSON.stringify(entry)}`
+  )
+  return `{\n${lines.join(',\n')}\n}\n`
+}
+
 function moved(before: number | null, after: number | null): boolean {
   if (before === null || after === null) return before !== after
   return Math.abs(before - after) > SCORE_TOLERANCE
