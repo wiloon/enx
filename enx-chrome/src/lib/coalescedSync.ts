@@ -19,19 +19,19 @@ export interface CoalescedSyncOptions<T> {
 
 export interface CoalescedSync<T> {
   change: () => Promise<T>
-  settleNow: (value: T) => boolean
+  settleNow: (value: T | PromiseLike<T>) => boolean
   // The outcome a change still waits for, or null once it has settled.
   pending: () => Promise<T> | null
 }
 
 type Waiters<T> = {
   promise: Promise<T>
-  resolve: (value: T) => void
+  resolve: (value: T | PromiseLike<T>) => void
   reject: (error: unknown) => void
 }
 
 const waiters = <T>(): Waiters<T> => {
-  let resolve: (value: T) => void = () => {}
+  let resolve: (value: T | PromiseLike<T>) => void = () => {}
   let reject: (error: unknown) => void = () => {}
   const promise = new Promise<T>((onResolve, onReject) => {
     resolve = onResolve
@@ -95,7 +95,7 @@ export function createCoalescedSync<T>({
 
   // Ends an open burst with `value` and no run, when none is in progress:
   // the caller knows the burst changed nothing. Returns false mid-run.
-  const settleNow = (value: T): boolean => {
+  const settleNow = (value: T | PromiseLike<T>): boolean => {
     if (running) return false
     clearTimeout(quietTimer)
     clearTimeout(maxWaitTimer)
