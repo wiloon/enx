@@ -436,6 +436,42 @@ describe('background makeApiRequest / Clerk session token', () => {
       expect(loads()).toBe(loadsBefore)
     })
 
+    it('answers a request right after a no-op rewrite pair without waiting for the timers', async () => {
+      await makeApiRequest('/api/me')
+      const check = changeSessionCookie('uat-signed-in')
+      await jest.advanceTimersByTimeAsync(1000)
+      await check
+      const loadsBefore = loads()
+
+      const removal = changeSessionCookie('uat-signed-in', {
+        removed: true,
+        cause: 'expired_overwrite',
+      })
+      const set = changeSessionCookie('uat-signed-in')
+      const request = makeApiRequest('/api/me')
+      await Promise.all([removal, set])
+
+      expect(await request).toEqual({ success: true, data: {} })
+      expect(loads()).toBe(loadsBefore)
+    })
+
+    it('settles the listener and a waiting request when the burst sync fails', async () => {
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+      ;(createClerkClient as jest.Mock).mockRejectedValue(
+        new Error('load failed')
+      )
+      const check = changeSessionCookie()
+      const request = makeApiRequest('/api/me')
+      await jest.advanceTimersByTimeAsync(1000)
+      await expect(check).resolves.toBeUndefined()
+      await request
+      expect(errorSpy).toHaveBeenCalledWith(
+        'Could not check changed account session:',
+        expect.anything()
+      )
+      errorSpy.mockRestore()
+    })
+
     it('rebuilds the client when a session cookie is removed and not set again', async () => {
       await makeApiRequest('/api/me')
       let check = changeSessionCookie('uat-signed-in')

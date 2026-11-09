@@ -19,6 +19,7 @@ export interface CoalescedSyncOptions<T> {
 
 export interface CoalescedSync<T> {
   change: () => Promise<T>
+  settleNow: (value: T) => boolean
   // The outcome a change still waits for, or null once it has settled.
   pending: () => Promise<T> | null
 }
@@ -92,5 +93,18 @@ export function createCoalescedSync<T>({
     return waiting.promise
   }
 
-  return { change, pending: () => waiting?.promise ?? null }
+  // Ends an open burst with `value` and no run, when none is in progress:
+  // the caller knows the burst changed nothing. Returns false mid-run.
+  const settleNow = (value: T): boolean => {
+    if (running) return false
+    clearTimeout(quietTimer)
+    clearTimeout(maxWaitTimer)
+    quietTimer = maxWaitTimer = undefined
+    const settled = waiting
+    waiting = null
+    settled?.resolve(value)
+    return true
+  }
+
+  return { change, settleNow, pending: () => waiting?.promise ?? null }
 }

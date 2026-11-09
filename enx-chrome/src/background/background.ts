@@ -92,6 +92,7 @@ export const __resetClerkClientCacheForTests = (): void => {
   resetClerkSession()
   sessionRecheckInFlight = null
   clerkCookieSync = makeClerkCookieSync()
+  sessionCookies = createSessionCookies()
   accountSession = makeAccountSession()
 }
 
@@ -188,7 +189,7 @@ const getSyncedClerk = (): Promise<ClerkClient> => {
 const COOKIE_SYNC_QUIET_MS = 1000
 const COOKIE_SYNC_MAX_WAIT_MS = 2000
 
-const sessionCookies = createSessionCookies()
+let sessionCookies = createSessionCookies()
 // The session cookies the cached client was rebuilt for, until a reset.
 let cookiesSynced: string | undefined
 
@@ -453,6 +454,14 @@ chrome.cookies.onChanged.addListener(change => {
     return
   if (change.removed && change.cause === 'overwrite') return
   sessionCookies.record(change)
+  // A rewrite that leaves the cookies as the cached client saw them changes
+  // nothing: end the open burst now so requests do not wait for its timers.
+  if (
+    clerkClientPromise &&
+    sessionCookies.snapshot() === cookiesSynced &&
+    clerkCookieSync.settleNow(clerkClientPromise)
+  )
+    return Promise.resolve()
   supersedeClerkSync()
   return clerkCookieSync
     .change()
