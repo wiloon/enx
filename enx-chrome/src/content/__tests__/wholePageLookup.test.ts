@@ -571,3 +571,130 @@ describe('selection lookup exclusions (#664)', () => {
     })
   })
 })
+
+describe('manual article choice (#715)', () => {
+  it('a saved choice overrides the built-in article and supplies click lookup and highlights', async () => {
+    document.body.innerHTML =
+      '<article>Automatic fox article.</article><main id="chosen"><p id="lead">The dog runs.</p></main>'
+    ;(chrome.storage.local.get as jest.Mock).mockImplementation(
+      async (key: string) =>
+        key.startsWith('articleChoice:') ? { [key]: '#chosen' } : {}
+    )
+    const send = await loadContentScript()
+    expect(await send({ action: 'enxRun' })).toMatchObject({ success: true })
+    showAllObserved()
+    expect(underlined()).toEqual(['dog'])
+    await clickWord('#lead', 'dog')
+    expect(popoverWord()).toContain('dog')
+    window.dispatchEvent(new Event('pagehide'))
+    expect(progressReports()).toHaveLength(1)
+    expect(await send({ action: 'getArticleChoice' })).toMatchObject({
+      choice: { source: 'your-choice', saved: true },
+    })
+  })
+})
+
+it('pauses learning mode for picking and Esc restores the old area', async () => {
+  document.body.innerHTML =
+    '<article><p id="lead">A fox runs.</p></article><main id="new">The dog waits.</main>'
+  const send = await loadContentScript()
+  await send({ action: 'enxRun' })
+  expect(await send({ action: 'chooseArticle' })).toMatchObject({
+    success: true,
+  })
+  showAllObserved()
+  expect(underlined()).toEqual([])
+  expect(document.querySelector('#enx-article-picker')).not.toBeNull()
+  document.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+  )
+  await settle()
+  showAllObserved()
+  expect(underlined()).toEqual(['fox'])
+  expect(await send({ action: 'getArticleChoice' })).toMatchObject({
+    choice: { source: 'automatic', saved: false },
+  })
+})
+
+it('confirmation replaces the saved region, restarts learning, and consumes the confirming click', async () => {
+  document.body.innerHTML =
+    '<article>Automatic fox article.</article><main id="new"><p id="lead">The dog waits.</p></main>'
+  const send = await loadContentScript()
+  await send({ action: 'enxRun' })
+  await send({ action: 'chooseArticle' })
+  const node = document.querySelector('#new')!
+  node.dispatchEvent(new MouseEvent('pointermove', { bubbles: true }))
+  node.dispatchEvent(
+    new MouseEvent('click', { bubbles: true, cancelable: true })
+  )
+  await settle()
+  expect(overlays()).toHaveLength(0)
+  showAllObserved()
+  expect(underlined()).toEqual(['dog'])
+  expect(chrome.storage.local.set).toHaveBeenCalledWith({
+    [`articleChoice:${location.hostname}`]: '[id="new"]',
+  })
+  await clickWord('#lead', 'dog')
+  expect(popoverWord()).toContain('dog')
+  await send({ action: 'useAutomaticArticle' })
+  showAllObserved()
+  expect(underlined()).toEqual(['fox'])
+})
+
+it('explains a page-only choice on the page and clears the previous hostname rule', async () => {
+  document.body.innerHTML =
+    '<div class="css-a1b2c3">A dog waits.</div><div>A fox runs.</div>'
+  ;(chrome.storage.local.get as jest.Mock).mockImplementation(
+    async (key: string) =>
+      key.startsWith('articleChoice:') ? { [key]: '#old' } : {}
+  )
+  const send = await loadContentScript()
+  await send({ action: 'chooseArticle' })
+  const node = document.querySelector('body > div')!
+  node.dispatchEvent(new MouseEvent('pointermove', { bubbles: true }))
+  node.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  await settle()
+  expect(await send({ action: 'getArticleChoice' })).toMatchObject({
+    choice: { source: 'your-choice', saved: false },
+  })
+  expect(chrome.storage.local.remove).toHaveBeenCalledWith(
+    `articleChoice:${location.hostname}`
+  )
+  expect(
+    document.querySelector('#enx-article-choice-notice')?.shadowRoot
+      ?.textContent
+  ).toContain('This page only')
+})
+
+it('a failed local choice read does not prevent automatic learning mode', async () => {
+  document.body.innerHTML = '<article>The fox waits.</article>'
+  ;(chrome.storage.local.get as jest.Mock).mockImplementation(
+    async (key: string) => {
+      if (key.startsWith('articleChoice:'))
+        throw new Error('Storage unavailable')
+      return {}
+    }
+  )
+  const send = await loadContentScript()
+  expect(await send({ action: 'enxRun' })).toMatchObject({ success: true })
+  showAllObserved()
+  expect(underlined()).toEqual(['fox'])
+})
+
+it.each(['enxStop', 'accountChanged', 'sessionExpired'])(
+  '%s abandons the picker without letting Esc resume learning mode',
+  async action => {
+    document.body.innerHTML = '<article>The fox waits.</article>'
+    const send = await loadContentScript()
+    await send({ action: 'enxRun' })
+    await send({ action: 'chooseArticle' })
+    await send({ action })
+    expect(document.querySelector('#enx-article-picker')).toBeNull()
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+    )
+    await settle()
+    showAllObserved()
+    expect(underlined()).toEqual([])
+  }
+)

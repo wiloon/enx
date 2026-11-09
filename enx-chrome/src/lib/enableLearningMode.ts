@@ -1,3 +1,4 @@
+import type { ArticleChoiceStatus } from '@/lib/articleChoice'
 import { failureMessage, type EnableFailureReason } from '@/lib/enableOutcome'
 import type { LearningModeStatus } from '@/lib/learningModeStatus'
 
@@ -27,11 +28,27 @@ async function injectContentScript(tabId: number): Promise<void> {
   await chrome.scripting.executeScript({ target: { tabId }, files })
 }
 
-export async function enableLearningModeOnTab(
+export function enableLearningModeOnTab(
   tabId: number
 ): Promise<EnxRunResponse> {
+  return sendPageActionOnTab(tabId, 'enxRun')
+}
+
+export interface PageActionResponse extends EnxRunResponse {
+  available?: boolean
+  choice?: ArticleChoiceStatus
+  picking?: boolean
+}
+
+type PageAction =
+  'enxRun' | 'chooseArticle' | 'getArticleChoice' | 'useAutomaticArticle'
+
+export async function sendPageActionOnTab(
+  tabId: number,
+  action: PageAction
+): Promise<PageActionResponse> {
   try {
-    return await chrome.tabs.sendMessage(tabId, { action: 'enxRun' })
+    return await sendPageAction(tabId, action)
   } catch (err) {
     if (!isNoReceiverError(err)) throw err
   }
@@ -57,8 +74,16 @@ export async function enableLearningModeOnTab(
     }
   }
 
-  return await sendEnxRunWithRetry(tabId)
+  return await sendPageActionWithRetry(tabId, action)
 }
+
+const sendPageAction = (
+  tabId: number,
+  action: PageAction
+): Promise<PageActionResponse> =>
+  action === 'enxRun'
+    ? chrome.tabs.sendMessage(tabId, { action })
+    : chrome.tabs.sendMessage(tabId, { action }, { frameId: 0 })
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -69,12 +94,15 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 // addListener call has run yet. A single immediate retry can still lose
 // that race and throw the raw "Receiving end does not exist" straight at
 // the user -- back off and retry a few times before giving up.
-async function sendEnxRunWithRetry(tabId: number): Promise<EnxRunResponse> {
+async function sendPageActionWithRetry(
+  tabId: number,
+  action: PageAction
+): Promise<PageActionResponse> {
   const retryDelaysMs = [100, 250, 500, 1000]
   for (const delay of retryDelaysMs) {
     await sleep(delay)
     try {
-      return await chrome.tabs.sendMessage(tabId, { action: 'enxRun' })
+      return await sendPageAction(tabId, action)
     } catch (err) {
       if (!isNoReceiverError(err)) throw err
     }
@@ -134,5 +162,26 @@ export async function getLearningModeStatusOnTab(
     return response?.status ?? { status: 'off' }
   } catch {
     return { status: 'off' }
+  }
+}
+
+// The article choice on the tab, for the popup's "Article area" section. Like
+// getLearningModeStatusOnTab it never injects (ADR-034 Decision 2): a tab with
+// no content script has applied no choice, so it shows automatic detection,
+// with `available` worked out by the popup from the tab URL. Only the
+// "Choose article" click injects, through sendPageActionOnTab.
+export async function getArticleChoiceOnTab(
+  tabId: number,
+  available: boolean
+): Promise<PageActionResponse> {
+  try {
+    return await chrome.tabs.sendMessage(
+      tabId,
+      { action: 'getArticleChoice' },
+      { frameId: 0 }
+    )
+  } catch (err) {
+    if (!isNoReceiverError(err)) throw err
+    return { success: true, available }
   }
 }

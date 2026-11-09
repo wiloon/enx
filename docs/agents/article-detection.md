@@ -1,6 +1,6 @@
 # Article detection: current behaviour
 
-How enx-chrome decides where learning mode runs on a web page, as the code on `main` does it today. The planned layers and their order (user pick, heuristic fallback) are [ADR-072](../architecture/adr-072-article-detection-layers-and-roadmap.md); this doc covers only what is built. This is a **current-state doc**: it says what the code does, not why or how it got here. The reasons and the history are in [ADR-034](../architecture/adr-034-site-support-on-demand-injection-and-generic-content-detection.md) and its amendments. The code is the final authority: `WordProcessor.findLookupArea()` in `enx-chrome/src/lib/wordProcessor.ts`, the adapters in `enx-chrome/src/lib/siteAdapters.ts` and the platform rules in `enx-chrome/src/lib/platformSelectors.ts`, pinned by `enx-chrome/src/content/__tests__/getArticleNode.test.ts` and `enx-chrome/src/lib/__tests__/siteAdapters.test.ts`.
+How enx-chrome decides where learning mode runs on a web page, as the code on `main` does it today. The planned layers and their order (including the remaining heuristic fallback) are [ADR-072](../architecture/adr-072-article-detection-layers-and-roadmap.md); this doc covers only what is built. This is a **current-state doc**: it says what the code does, not why or how it got here. The reasons and the history are in [ADR-034](../architecture/adr-034-site-support-on-demand-injection-and-generic-content-detection.md) and its amendments. The code is the final authority: `createPageArticleChoice()` in `enx-chrome/src/content/articleChoice.ts`, `WordProcessor.findLookupArea()` in `enx-chrome/src/lib/wordProcessor.ts`, the adapters in `enx-chrome/src/lib/siteAdapters.ts` and the platform rules in `enx-chrome/src/lib/platformSelectors.ts`, pinned by `enx-chrome/src/content/__tests__/getArticleNode.test.ts` and `enx-chrome/src/lib/__tests__/siteAdapters.test.ts`.
 
 A PR that changes any rule below updates this doc in the same PR.
 
@@ -14,9 +14,19 @@ A PR that changes any rule below updates this doc in the same PR.
 
 X has no persistent injection (2026-10-15 amendment). The second, wildcard `web_accessible_resources` entry in `manifest.ts` lets the on-demand loader import the real bundle on any site.
 
-## 2. Site adapter
+## 2. User choice (ADR-073, #715)
 
-`resolveSiteAdapter()` picks one adapter per page. An adapter with a `contentSelector` (X, Reader, RSSX, Wikipedia, Standard Ebooks, AWS docs) uses only that selector: its matches longer than its `minTextLength` are the article, and matches nested inside another match are dropped. When nothing matches, the article is empty (`no-article-node`) and no fallback runs, unless the adapter sets `wholePageOnMiss`: then the page gets step 5's whole page. Platform selectors and built-in selectors never run for these adapters. Every other page gets the `default` adapter and steps 3–5.
+The popup's **Choose article** is available while learning mode is on or off on supported HTTP(S) pages, except the X, enx-ui Reader and RSSX adapters. Starting the picker turns learning mode off and ends its reading session. The pointer outlines an element and shows its trimmed text length; ↑ expands to its parent, ↓ returns along that path, click confirms, and Esc restores the previous area and on/off state. The picker intercepts clicks and arrow keys so they neither look up words nor activate or scroll the page. `<html>`, `<body>` and extension UI are ineligible.
+
+A confirmed node is the article before every automatic layer, including dedicated selectors on eligible adapters. Confirmation re-enables through the existing learning-mode flow, including language checks and error reporting. Click lookup, highlights and reading statistics use the new area. Picker rules and learning-mode transitions live in `src/lib/articleChoice.ts`; DOM selection and rendering are in `src/content/articlePicker.ts`, with local storage wired by `src/content/articleChoice.ts`.
+
+The extension saves one uniquely matching selector per hostname under `articleChoice:<hostname>` in `chrome.storage.local`. Generation tries an id first, stable classes next, then tag structure and ancestor chains (which may anchor to `body` without selecting it); it uses no positional selectors and skips build-hash-looking classes. It validates that the selector matches exactly the selected node. If no reliable selector exists, the node still works on this page, the previous hostname rule is deleted, and the page and popup explain **This page only**. Reload and other pages then use automatic detection. Nothing is uploaded.
+
+On a later page, a saved selector must match exactly one eligible node. Zero matches, multiple matches or an invalid selector fall through to automatic detection and the popup explains the fallback; the saved rule remains. The popup shows **Automatic detection** or **Your choice**, including the page-only qualifier. **Use automatic** clears the page-only node and saved rule, immediately recalculates the area, and preserves the learning-mode on/off state. Esc changes neither the previous choice nor storage. Account/session loss or an explicit stop abandons the picker without resuming learning mode.
+
+## 3. Site adapter
+
+`resolveSiteAdapter()` picks one adapter per page. An adapter with a `contentSelector` (X, Reader, RSSX, Wikipedia, Standard Ebooks, AWS docs) uses only that selector: its matches longer than its `minTextLength` are the article, and matches nested inside another match are dropped. When nothing matches, the article is empty (`no-article-node`) and no fallback runs, unless the adapter sets `wholePageOnMiss`: then the page gets step 6's whole page. Platform selectors and built-in selectors never run for these adapters. Every other page gets the `default` adapter and steps 4–6.
 
 An adapter with a `readySelector` makes the initial run (the popup's enable and "Always enable" alike) wait before detection: until the selector matches with non-empty text and the page then stays quiet for 100 ms, or 8 s pass. A temporary `MutationObserver` watches for it and is released when the wait ends, or at once when the run is superseded (learning mode turned off or re-run, the script standing down, an SPA navigation); a superseded run detects nothing. After a timeout, detection runs as usual, so a page without the selector gets its normal miss. This holds for `static` and `spa` adapters alike; only `spa` adapters also re-run on in-page navigation (`src/content/initialRun.ts`, `src/content/spaRebuild.ts`).
 
@@ -29,9 +39,9 @@ An adapter with a `readySelector` makes the initial run (the popup's enable and 
 | `standard-ebooks` | `standardebooks.org/ebooks/…/text/…` | the EPUB `bodymatter` type: `[*\|type~="bodymatter"]` for the real XHTML pages, `[epub\:type~="bodymatter"]` for a literal HTML attribute (and jsdom) | none | whole page (`wholePageOnMiss`): front and back matter pages like `/text/imprint` |
 | `aws-docs` | `docs.aws.amazon.com` | the docs content column `#main-col-body`, rendered by script after load | `#main-col-body` | whole page (`wholePageOnMiss`) after the 8 s wait: landing and index pages |
 
-## 3. Platform selectors (default adapter)
+## 4. Platform selectors (default adapter)
 
-Many sites come from one CMS or doc generator that puts the article in a fixed class (ADR-072 decision 2). A **platform rule** is a **platform signal**, which says the page comes from that platform, plus one or more ordered **platform selectors**. A rule runs only when its signal is on the page; rules are tried in `PLATFORM_RULES` order. Each selector follows the broad-selector rule below: a match needs more than the adapter's `minTextLength` (100 by default) characters, nested matches are dropped, and only the longest is kept. When none of a rule's selectors qualifies, the next rule runs, then step 4. The winning rule's name is `LookupArea.platform` (unset for any other match).
+Many sites come from one CMS or doc generator that puts the article in a fixed class (ADR-072 decision 2). A **platform rule** is a **platform signal**, which says the page comes from that platform, plus one or more ordered **platform selectors**. A rule runs only when its signal is on the page; rules are tried in `PLATFORM_RULES` order. Each selector follows the broad-selector rule below: a match needs more than the adapter's `minTextLength` (100 by default) characters, nested matches are dropped, and only the longest is kept. When none of a rule's selectors qualifies, the next rule runs, then step 5. The winning rule's name is `LookupArea.platform` (unset for any other match).
 
 A signal is either a `meta[name="generator"]` whose content contains the rule's generator string (case-insensitive substring), or an element only that platform puts on its pages.
 
@@ -46,16 +56,16 @@ A signal is either a `meta[name="generator"]` whose content contains the rule's 
 
 `.entry-content` and `.post-body` also stay in the built-in list, for sites that use the class without the signal.
 
-## 4. Built-in selectors (default adapter)
+## 5. Built-in selectors (default adapter)
 
-The **article** comes only from a selector: the adapter's `contentSelector`, a platform selector, or this list. Tried in list order; the first selector with a match wins, and matches nested inside another match are dropped.
+An automatically detected **article** comes only from a selector: the adapter's `contentSelector`, a platform selector, or this list. Tried in list order; the first selector with a match wins, and matches nested inside another match are dropped.
 
 - **Precise selectors**: the site-specific ones (BBC, InfoQ, NYT, Ars Technica's article blocks `.post-content-double`, …) and `article`. A match counts when its trimmed text is longer than 1 character; all matches are returned.
 - **Broad selectors**: `.post-content`, `.content`, `.entry-content`, `.post-body`. A match needs more than 100 characters; only the longest is kept.
 
 The list itself is `WordProcessor.BUILT_IN_SELECTORS`. A site whose article no selector finds gets click lookup back through a new selector or a site adapter ([adding-website-support.md](adding-website-support.md)). Which sites to cover, and how a selector change is measured before it lands, is [ADR-070](../architecture/adr-070-article-detection-site-corpus-and-evaluation.md).
 
-## 5. Whole page
+## 6. Whole page
 
 When no selector matches (on the default adapter, or an adapter with `wholePageOnMiss`), learning mode still turns on, with `<body>` as the lookup area and source `whole-page`. A whole page with no lookup-eligible text fails with `no-words`.
 
@@ -63,7 +73,7 @@ When no selector matches (on the default adapter, or an adapter with `wholePageO
 
 `lookupAreaFeatures()` in `wordProcessor.ts` decides this table.
 
-| | Article (steps 2–4) | Whole page (step 5) |
+| | Article (steps 2–5) | Whole page (step 6) |
 | --- | --- | --- |
 | Click lookup | yes | no: clicks reach the page's own handlers |
 | Word highlighting | yes | no |
@@ -86,7 +96,7 @@ After the lookup area is chosen, `enxRun` fails with `no-article-node` (empty ar
 
 `task article-eval` (in `enx-chrome/`, ADR-070) opens every page in `article-eval/corpus.json` in Playwright's Chromium and prints how well the lookup area matches the article. It needs the live sites, so it never runs in CI.
 
-- **Chosen area:** the page runs `resolveSiteAdapter()` (with no build-target sites) and `WordProcessor.findLookupArea(lookupAreaOptions(adapter))`, bundled from `src/articleEval/pageProbe.ts`.
+- **Chosen area:** evaluation measures automatic detection, independent of locally saved user choices. The page runs `resolveSiteAdapter()` (with no build-target sites) and `WordProcessor.findLookupArea(lookupAreaOptions(adapter))`, bundled from `src/articleEval/pageProbe.ts`.
 - **Reference:** Mozilla Readability's article, parsed from a clone of the same document.
 - **Scores:** both texts lose `script`, `style` and `noscript`, keep links and code, and are compared as sets of lower-cased 5-word shingles. **Coverage** is the share of the reference inside the chosen area, **precision** the share of the chosen area that is reference.
 - **Verdicts**, first match wins: `load failed`; `no article node` (empty area); `whole page` (coverage 0); `no reference` (Readability found none); `misses text` (coverage < 0.8); `too broad` (precision < 0.7); `ok`. A score that can't be computed prints `n/a`.

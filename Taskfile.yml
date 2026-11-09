@@ -607,7 +607,7 @@ tasks:
       - '{{.FNM_UI}} pnpm build'
 
   ci:chrome:
-    desc: "Mirror .github/workflows/enx-chrome-ci.yml (install, lint, test, production build)"
+    desc: "Mirror .github/workflows/enx-chrome-ci.yml (install, typecheck, lint, test, production build)"
     # Mirrors .github/workflows/enx-chrome-ci.yml. A check added to one side
     # must be added to the other. This replaces the extension's old `task ci`,
     # whose build was the homelab build, not CI's build:prod.
@@ -618,6 +618,7 @@ tasks:
       pnpm_config_registry: https://registry.npmjs.org/
     cmds:
       - fnm exec --using=.node-version -- pnpm install --frozen-lockfile
+      - fnm exec --using=.node-version -- pnpm typecheck
       - fnm exec --using=.node-version -- pnpm lint
       - fnm exec --using=.node-version -- pnpm test
       - fnm exec --using=.node-version -- pnpm build:prod

@@ -56,6 +56,10 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      # The app plus article-eval/, which no build script checks.
+      - name: Typecheck
+        run: pnpm typecheck
+
       - name: Lint
         run: pnpm lint
 

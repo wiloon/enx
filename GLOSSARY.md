@@ -59,8 +59,8 @@ _Avoid_: 配额、quota（那是上面的每日查词配额）、throttling
 _Avoid_: 阅读模式、reading mode（二者易与浏览器 Reader View 或移动端原生阅读视图混淆）
 
 **正文（article）**：
-**仅 enx-chrome**：页面上由 selector（站点适配器的 `contentSelector`、平台级 selector 或内置 selector 列表）认出的文章节点。点击查词、单词高亮、阅读统计只在正文里发生；没有 selector 命中的页面以整页开启学习模式，整页不是正文。见 adr-034 修订（2026-11-07）。
-_Avoid_: 用「正文」指 `main`、`body` 或整页
+**enx-chrome only**: An area of a page explicitly chosen by the user or identified by automatic detection as the article. Click lookup, word highlighting and reading statistics apply inside the article. A whole page used when neither choice nor detection finds an article is not itself an article. See ADR-034 and ADR-073.
+_Avoid_: equating an article with the whole page, or assuming every `main` element is an article
 
 **点击查词（click-to-lookup）**：
 点正文里任意一个英文词，显示该词释义。在扩展里是学习模式的核心交互（经查词浮层展示），只在正文里生效，正文以外的文字靠划词（拖选、双击）查词；不单独设开关——跟随学习模式开关，不依赖任何注入到正文的标记元素。在 iOS 上发生在**原生阅读视图**内（不在 WebView 内），见 adr-042；iOS 查词 UI **不称**查词浮层（命名待定）。
