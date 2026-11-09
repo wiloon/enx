@@ -46,6 +46,7 @@ import {
   parseBillingSupportAnswer,
   type BillingSupportAnswer,
 } from '@/lib/billingSupport'
+import type { FeedbackSubmission } from '@/lib/feedback'
 
 export type SubscriptionPlan = 'pro' | 'pro-plus' | 'max'
 export type TopupTier = 'small' | 'medium' | 'large'
@@ -323,6 +324,23 @@ export class ApiService {
     if (query.kind) params.set('kind', query.kind)
     if (query.status) params.set('status', query.status)
     return this.makeRequest(`/api/admin/feedback?${params}`)
+  }
+
+  // Written feedback from "Send feedback" (ADR-076). The server re-cleans the
+  // URL; an empty one is sent as is.
+  async submitFeedback(
+    feedback: FeedbackSubmission
+  ): Promise<ApiResponse<{ success: boolean; recorded: boolean }>> {
+    return this.makeRequest('/api/feedback', {
+      method: 'POST',
+      body: JSON.stringify({
+        kind: 'text',
+        url: feedback.url,
+        text: feedback.text,
+        context: feedback.context,
+        details: {},
+      }),
+    })
   }
 
   async adminResolveFeedback(

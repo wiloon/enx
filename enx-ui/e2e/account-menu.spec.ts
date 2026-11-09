@@ -82,6 +82,45 @@ test('opens the menu under its trigger, inside the viewport', async ({
   expect(Math.abs(m.x + m.width - (t.x + t.width))).toBeLessThanOrEqual(1)
 })
 
+test('sends feedback from the menu with the cleaned page URL', async ({
+  page,
+}) => {
+  let body: Record<string, unknown> | undefined
+  await page.route('**/api/feedback', (route) => {
+    body = route.request().postDataJSON()
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, recorded: true }),
+    })
+  })
+  await page.goto('/app?tab=1#top')
+  await trigger(page).click()
+  await page.getByRole('menuitem', { name: 'Send feedback' }).click()
+
+  const dialog = page.getByRole('dialog', { name: 'Send feedback' })
+  await expect(dialog).toBeVisible()
+  const url = dialog.getByRole('textbox', { name: 'Page URL' })
+  await expect(url).toHaveValue(new URL('/app', page.url()).href)
+  await expect(
+    dialog.getByRole('textbox', { name: 'Your feedback' })
+  ).toBeFocused()
+
+  await page.keyboard.type('The chart is empty.')
+  await dialog.getByRole('button', { name: 'Send' }).click()
+  await expect(dialog.getByText('Thanks — feedback sent')).toBeVisible()
+  expect(body).toMatchObject({
+    kind: 'text',
+    url: new URL('/app', page.url()).href,
+    text: 'The chart is empty.',
+    details: {},
+  })
+  expect(Object.keys(body!.context as object).sort()).toEqual([
+    'appVersion',
+    'browser',
+  ])
+})
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 375, height: 740 } })
 
@@ -99,6 +138,19 @@ test.describe('on a phone', () => {
     await expect(
       page.getByRole('menuitem', { name: 'Sign out' })
     ).toBeInViewport()
+  })
+
+  test('fits the feedback dialog on screen', async ({ page }) => {
+    await page.goto('/app')
+    await trigger(page).click()
+    await page.getByRole('menuitem', { name: 'Send feedback' }).click()
+
+    const dialog = page.getByRole('dialog', { name: 'Send feedback' })
+    const d = (await dialog.boundingBox())!
+    expect(d.x).toBeGreaterThanOrEqual(0)
+    expect(d.x + d.width).toBeLessThanOrEqual(375)
+    await expect(dialog.getByRole('button', { name: 'Send' })).toBeInViewport()
+    await expect(dialog.getByRole('button', { name: 'Close' })).toBeInViewport()
   })
 
   test('fits a long email and ID on /account', async ({ page }) => {
