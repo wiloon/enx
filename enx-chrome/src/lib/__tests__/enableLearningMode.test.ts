@@ -195,3 +195,26 @@ describe('disableLearningModeOnTab', () => {
     )
   })
 })
+
+it('starts article picking on an uninjected page without enabling learning mode first', async () => {
+  const { sendPageActionOnTab } = await import('../enableLearningMode')
+  jest.useFakeTimers()
+  try {
+    ;(chrome.runtime.getManifest as jest.Mock).mockReturnValue({
+      content_scripts: [{ js: ['loader.js'] }],
+    })
+    ;(chrome.tabs.sendMessage as jest.Mock)
+      .mockReset()
+      .mockRejectedValueOnce(noReceiverError())
+      .mockResolvedValue({ success: true })
+    ;(chrome.scripting.executeScript as jest.Mock).mockResolvedValue(undefined)
+    const response = sendPageActionOnTab(7, 'chooseArticle')
+    await jest.runAllTimersAsync()
+    expect(await response).toEqual({ success: true })
+    expect(
+      (chrome.tabs.sendMessage as jest.Mock).mock.calls.map(call => call[1])
+    ).toEqual([{ action: 'chooseArticle' }, { action: 'chooseArticle' }])
+  } finally {
+    jest.useRealTimers()
+  }
+})

@@ -1,5 +1,12 @@
 # AI Contributions History
 
+## 2026-11-08: Local user-picked article areas — issue #715
+
+**Agent**: Codex
+**Solution**: A framework-free choice core owns remembered/page-only choices and learning-mode transitions. The browser controller supplies selector matching, local storage and picker rendering; content-script messages stay thin. A pick runs before every eligible automatic detector, while X, Reader and RSSX keep their existing areas.
+
+**Lesson (node identity versus persistence)**: A node can be usable now without having a reliable selector. Treat those as separate facts: use the node on the current page, remove a superseded hostname rule, and explain the reload behaviour. Persist only a selector that uniquely selects that node; later zero/multiple matches fall back without deleting the rule. Keep the previous choice until confirmation so Esc can restore it. In browser tests, release the mouse at its existing point after keyboard expansion: moving it for a coordinate click selects the element under the new pointer position again.
+
 ## 2026-11-06: Decide locally when no session token can be minted — issue #688
 
 **Agent**: Cursor

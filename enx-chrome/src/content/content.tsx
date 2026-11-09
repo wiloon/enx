@@ -1,6 +1,7 @@
 // ENX Content Script for word identification and translation
 // Note: Sentry initialization is skipped to avoid import issues in content script context
 
+import { createPageArticleChoice } from './articleChoice'
 import { createAccountScope } from '@/lib/accountSession'
 
 import { createRoot, type Root } from 'react-dom/client'
@@ -823,6 +824,31 @@ const setActiveSentenceHighlight = (range: Range) => {
   activeSentenceHighlightCleanup = clear
 }
 
+// Browser events enter the article-choice controller; its core rules live in lib/.
+const articleChoice = createPageArticleChoice({
+  document,
+  storage: chrome.storage.local,
+  available: () => {
+    if (standDown.isStoodDown()) return false
+    const adapter = resolveSiteAdapter(window.location, siteOrigins)
+    return (
+      !['x', 'reader', 'rssx'].includes(adapter.name) &&
+      !adapter.pageSupport?.(window.location)
+    )
+  },
+  mode: {
+    isOn: () => isEnxEnabled,
+    stop: () => {
+      disableEnx()
+      endReading()
+    },
+    enable: async () => {
+      const outcome = await runLearningMode()
+      if (!outcome.ok) throw new Error(failureMessage(outcome.reason))
+    },
+  },
+})
+
 // Process article content and add word highlighting. `isCurrent` (SPA
 // auto-rebuild, ADR-011 Decision 6) is checked at every await boundary so a
 // run superseded by a newer tweet switch abandons instead of highlighting
@@ -855,7 +881,12 @@ const processArticleContent = async (
     const adapter = resolveSiteAdapter(window.location, siteOrigins)
     console.log(`Site adapter: ${adapter.name} (${adapter.contentVolatility})`)
 
-    const lookupArea = WordProcessor.findLookupArea(lookupAreaOptions(adapter))
+    await articleChoice.ready
+    if (stale()) return ENABLE_OK
+    const choice = articleChoice.current()
+    const lookupArea = choice?.node
+      ? { nodes: [choice.node], source: 'article' as const }
+      : WordProcessor.findLookupArea(lookupAreaOptions(adapter))
     const articleNodes = lookupArea.nodes
     const wholePage = lookupArea.source === 'whole-page'
     const features = lookupAreaFeatures(lookupArea)
@@ -1473,6 +1504,9 @@ const enableEnx = async (
   console.log('Enabling ENX functionality')
   isEnxEnabled = true
   const lifecycle = learningModeLifecycle
+  await articleChoice.ready
+  if (standDown.isStoodDown() || lifecycle !== learningModeLifecycle)
+    return ENABLE_OK
 
   // Add mouseup listener for text selection, and mousedown to dismiss a
   // still-showing selection-translate button as soon as a new selection
@@ -1499,7 +1533,9 @@ const enableEnx = async (
   // An adapter's content can render after document_end (the auto-enable
   // moment): wait for its readySelector first. Resolves at once without one.
   const outcome = await initialRunner.run({
-    adapter: resolveSiteAdapter(window.location, siteOrigins),
+    adapter: articleChoice.current()?.node
+      ? {}
+      : resolveSiteAdapter(window.location, siteOrigins),
     isCurrent: isRunCurrent,
     process: () =>
       runWithStatus(
@@ -1557,6 +1593,7 @@ const disableEnx = ({ keepPopover = false } = {}) => {
 // standDown.isStoodDown() and abandons.
 const standDownOrphan = () => {
   console.log('ENX: orphaned content script standing down')
+  articleChoice.abandon()
   disableEnx()
   spaRebuilderInstance?.stop()
   hidePinHint()
@@ -1628,6 +1665,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     }
 
     case 'enxRun': {
+      articleChoice.abandon()
       // ADR-010 Decision 1: an adapter can match the host but declare the
       // current page out of scope (X list/timeline pages vs a tweet detail
       // page). Abort with the adapter's message rather than silently doing
@@ -1666,6 +1704,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     }
 
     case 'enxStop':
+      articleChoice.abandon()
       disableEnx()
       // A signed-out popover outlives learning mode.
       hideCurrentOverlay()
@@ -1693,6 +1732,18 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       sendResponse({ status: currentStatus })
       break
 
+    case 'chooseArticle':
+      articleChoice.start().then(sendResponse)
+      return true
+
+    case 'useAutomaticArticle':
+      articleChoice.useAutomatic().then(sendResponse)
+      return true
+
+    case 'getArticleChoice':
+      articleChoice.status().then(sendResponse)
+      return true
+
     case 'getPageInfo':
       sendResponse({
         title: document.title,
@@ -1702,6 +1753,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       break
 
     case 'accountChanged':
+      articleChoice.abandon()
       accountScope.clear()
       reviewList.clear()
       disableEnx()
@@ -1713,6 +1765,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     // #236: the session ended. Learning mode stops, an open word popover
     // stays and shows the signed-out state; nothing goes on the page.
     case 'sessionExpired': {
+      articleChoice.abandon()
       const cause: SessionLossCause =
         request.cause === 'signed-out' ? 'signed-out' : 'expired'
       accountScope.clear()

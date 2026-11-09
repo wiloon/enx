@@ -1,3 +1,4 @@
+import ArticleChoiceControl from '@/components/ArticleChoiceControl'
 import DebugPanel from '@/components/DebugPanel'
 import LearningModeCard, {
   type LearningModeCardStatus,
@@ -271,6 +272,18 @@ function SignedInBody({
         onEnable={handleEnableLearning}
         onTurnOff={handleTurnOffLearning}
         onSetShortcut={() => void openShortcutSettings(chrome.tabs)}
+      />
+
+      <ArticleChoiceControl
+        onModeChange={() => {
+          void chrome.tabs
+            .query({ active: true, currentWindow: true })
+            .then(async ([tab]) => {
+              if (!tab?.id) return
+              const status = await getLearningModeStatusOnTab(tab.id)
+              setLearningStatus(isLearningModeOn(status) ? 'on' : 'off')
+            })
+        }}
       />
 
       {/* adr-039: only on pages whose site can be auto-enabled. */}
