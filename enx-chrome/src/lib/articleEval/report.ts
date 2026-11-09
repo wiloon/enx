@@ -42,7 +42,7 @@ export interface CategorySummary extends Summary {
   category: string
 }
 
-function summarizeRows(rows: PageReport[]): Summary {
+function summarizeRows(rows: Score[]): Summary {
   const verdicts = Object.fromEntries(VERDICTS.map(v => [v, 0])) as Record<
     Verdict,
     number
@@ -174,6 +174,49 @@ export function formatReport(
         ).map(line => `  ${line}`)
       )
     }
+  }
+  return lines.join('\n')
+}
+
+/** Both extractors are scored against the same human label, never each other. */
+export interface DatasetReport {
+  id: string
+  url: string
+  ours: Score
+  readability: Score
+  error?: string
+}
+
+export function formatDatasetReport(rows: DatasetReport[]): string {
+  const lines = table([
+    [
+      'ID',
+      'URL',
+      'OUR COVERAGE',
+      'OUR PRECISION',
+      'OUR VERDICT',
+      'READABILITY COVERAGE',
+      'READABILITY PRECISION',
+      'READABILITY VERDICT',
+    ],
+    ...rows.map(row => [
+      row.id,
+      row.url,
+      score(row.ours.coverage),
+      score(row.ours.precision),
+      row.ours.verdict,
+      score(row.readability.coverage),
+      score(row.readability.precision),
+      row.readability.verdict,
+    ]),
+  ])
+  lines.push(
+    '',
+    `Ours: ${summaryLine(summarizeRows(rows.map(row => row.ours)))}`,
+    `Readability: ${summaryLine(summarizeRows(rows.map(row => row.readability)))}`
+  )
+  for (const row of rows) {
+    if (row.error) lines.push(`Unmeasured: ${row.id} ${row.url} (${row.error})`)
   }
   return lines.join('\n')
 }

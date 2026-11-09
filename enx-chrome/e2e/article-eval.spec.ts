@@ -138,3 +138,79 @@ test.describe('article-eval', () => {
     })
   })
 })
+
+test.describe('labelled offline snapshots', () => {
+  test('serves a snapshot at its labelled URL and blocks resources and scripts', async ({
+    page,
+  }) => {
+    const { readFile } = await import('node:fs/promises')
+    const { evaluateSnapshot } =
+      await import('../article-eval/evaluateSnapshot')
+    const html = await readFile(
+      path.join(FIXTURES, 'article-eval-labelled.html'),
+      'utf8'
+    )
+    const labelText =
+      'Local volunteers walked beside the river early this morning, recording birds and measuring the water after several days of heavy rain. Their observations will help the village understand how the changing seasons affect wildlife along the banks. The team plans to return next month, when the young trees have grown new leaves and the water has settled. Everyone can join the walk, bring a notebook, and share what they learn with the community.'
+    const failed: string[] = []
+    page.on('requestfailed', request => failed.push(request.url()))
+    const url = 'https://snapshot.example.invalid/river#observations'
+    const report = await evaluateSnapshot(
+      page,
+      { id: 'river', url, html, labelText },
+      { probeScript }
+    )
+    expect(page.url()).toBe(url)
+    expect(await page.locator('article').innerText()).toContain(
+      'Local volunteers'
+    )
+    expect(await page.locator('body').innerText()).not.toContain(
+      'Inline script must not run'
+    )
+    expect(failed).toContain('https://assets.example.invalid/photo.jpg')
+    expect(failed).toContain('https://assets.example.invalid/frame')
+    expect(report).toMatchObject({
+      id: 'river',
+      url,
+      ours: { coverage: 1, precision: 1, verdict: 'ok' },
+      readability: { coverage: 1, precision: 1, verdict: 'ok' },
+    })
+    // The snapshot is fulfilled only for its top-level navigation.
+    expect(
+      await page.evaluate(async url => {
+        try {
+          await fetch(url)
+          return 'escaped'
+        } catch {
+          return 'blocked'
+        }
+      }, url)
+    ).toBe('blocked')
+  })
+
+  test('shows Readability missing text even when our selection matches the label', async ({
+    page,
+  }) => {
+    const { readFile } = await import('node:fs/promises')
+    const { evaluateSnapshot } =
+      await import('../article-eval/evaluateSnapshot')
+    const html = await readFile(
+      path.join(FIXTURES, 'article-eval-labelled-miss.html'),
+      'utf8'
+    )
+    const report = await evaluateSnapshot(
+      page,
+      {
+        id: 'station',
+        url: 'https://snapshot.example.invalid/station',
+        html,
+        labelText: 'The station recorded five quiet nights.',
+      },
+      { probeScript }
+    )
+    expect(report).toMatchObject({
+      ours: { coverage: 1, precision: 1, verdict: 'ok' },
+      readability: { coverage: 0, precision: 0, verdict: 'no article node' },
+    })
+  })
+})

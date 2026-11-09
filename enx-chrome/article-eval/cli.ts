@@ -5,7 +5,8 @@
 //   task article-eval -- --headed            show the browser
 //   task article-eval -- --only <url part>   just the matching corpus pages
 //
-// Live sites only, so never in CI. A page that fails to load is reported as
+// --dataset zyte evaluates cached snapshots against human labels.
+// Live sites or a downloaded dataset, so never in CI. A page that fails to load is reported as
 // `load failed` and doesn't fail the run.
 
 import { existsSync } from 'node:fs'
@@ -23,6 +24,8 @@ import type { CorpusEntry } from '../src/lib/articleEval/corpus.ts'
 import { formatReport, type PageReport } from '../src/lib/articleEval/report.ts'
 import { buildProbe } from './buildProbe.ts'
 import { evaluatePage } from './evaluatePage.ts'
+import { evaluateDataset } from './evaluateDataset.ts'
+import { ZyteDataset, ZYTE_COMMIT } from './zyte.ts'
 
 const CORPUS = new URL('./corpus.json', import.meta.url)
 const BASELINE = new URL('./baseline.json', import.meta.url)
@@ -31,18 +34,35 @@ const BASELINE = new URL('./baseline.json', import.meta.url)
 const CONCURRENCY = 3
 
 function parseArgs(args: string[]) {
-  const options = { updateBaseline: false, headed: false, only: '' }
+  const options = {
+    updateBaseline: false,
+    headed: false,
+    only: '',
+    dataset: '',
+  }
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--update-baseline') options.updateBaseline = true
     else if (args[i] === '--headed') options.headed = true
+    else if (args[i] === '--dataset' && args[i + 1]) options.dataset = args[++i]
     else if (args[i] === '--only' && args[i + 1]) options.only = args[++i]
     else throw new Error(`unknown argument: ${args[i]}`)
   }
+  if (options.dataset && options.dataset !== 'zyte')
+    throw new Error(`unknown dataset: ${options.dataset}`)
+  if (options.dataset && options.updateBaseline)
+    throw new Error('--update-baseline is only supported for the online corpus')
   return options
 }
 
 async function main() {
   const options = parseArgs(process.argv.slice(2))
+  if (options.dataset) {
+    console.error(
+      `Dataset: zyte at ${ZYTE_COMMIT}; reference: human-labelled articleBody`
+    )
+    console.log(await evaluateDataset(new ZyteDataset(), options))
+    return
+  }
   const allPages = JSON.parse(await readFile(CORPUS, 'utf8')) as CorpusEntry[]
   const corpus = allPages.filter(page => page.url.includes(options.only))
   const probeScript = await buildProbe()

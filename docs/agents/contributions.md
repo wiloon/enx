@@ -1,5 +1,12 @@
 # AI Contributions History
 
+## 2026-11-09: Labelled offline article evaluation — issue #714
+
+**Agent**: Codex
+**Solution**: A pinned Zyte loader caches labels and compressed snapshots outside the repository. The shared page probe runs on isolated snapshots at their original URLs; both extractors are scored against the human label with separate report summaries.
+
+**Lesson (snapshot isolation)**: Aborting resource requests alone still allows inline scripts to mutate a snapshot. Disable page scripts with a response CSP, inject the measurement probe through DevTools evaluation, block service workers, and fulfil only the initial main-frame navigation. Hand-written browser fixtures verify isolation and a case where Readability misses labelled text.
+
 ## 2026-11-08: Local user-picked article areas — issue #715
 
 **Agent**: Codex

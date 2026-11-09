@@ -106,6 +106,17 @@ After the lookup area is chosen, `enxRun` fails with `no-article-node` (empty ar
 
 The scoring and the report are `src/lib/articleEval/`; the browser side is `article-eval/`, pinned by `e2e/article-eval.spec.ts`.
 
+### Labelled offline datasets
+
+Run `task article-eval -- --dataset zyte` in `enx-chrome/` to score both the extension and Mozilla Readability against human-labelled `articleBody` text. Each page has coverage, precision and verdict columns for both extractors, followed by separate summaries. The existing 5-word shingles and verdict thresholds apply. Summary means include only pages with both scores available, and state the scored count; whole-page results retain coverage 0 and precision `n/a` as in online mode. The online baseline is not read or updated (`--update-baseline` is rejected with `--dataset`). `--only <url part>` and `--headed` also work.
+
+- **Dataset:** [Zyte article-extraction-benchmark](https://github.com/scrapinghub/article-extraction-benchmark/tree/4a3bc979f76c0df73cb95fe272e2fc1b96f9f010), 181 pages, pinned to commit `4a3bc979f76c0df73cb95fe272e2fc1b96f9f010`. Its [licence is MIT](https://github.com/scrapinghub/article-extraction-benchmark/blob/4a3bc979f76c0df73cb95fe272e2fc1b96f9f010/LICENSE). Page contents remain the original publishers' copyright and are used only locally for measurement.
+- **Cache:** at run time the loader downloads `ground-truth.json` and `html/<id>.html.gz` from the pinned commit into `~/.cache/enx/article-eval/zyte/<commit>/`. Later runs reuse those files without downloading again. Downloads are validated before atomic cache writes; an interrupted download is retried next time. No dataset labels or snapshots are committed.
+- **Browser:** every snapshot gets a fresh context with service workers blocked. `page.route` serves the HTML only for the initial main-frame navigation at its labelled URL and aborts every other request, including CSS, external scripts, images, fonts and frames. A response CSP disables page scripts so they cannot mutate the snapshot. The same bundled page probe as online mode runs via DevTools evaluation. No requests reach the original sites. A failed page is unmeasured for both extractors.
+- **Loader boundary:** `DatasetLoader.load()` returns `{ id, url, html, labelText }[]` (`src/lib/articleEval/dataset.ts`). Another dataset needs a loader and CLI registration; scoring and reporting remain shared.
+- **Excluded:** WCEB was rejected because its README provides no clear commercial licence for the data, and several constituent corpora are research-only or unlicensed. WCXB is a separate follow-up (#744).
+- **Checks:** hand-written snapshots in `e2e/test-fixtures/article-eval-labelled*.html` exercise offline routing and scores in `e2e/article-eval.spec.ts`. Downloading and measuring the full dataset is a local manual check, never CI.
+
 ### The corpus
 
 Each `article-eval/corpus.json` entry is `{ "url", "category", "provenance", "trancoRank" }`, plus `"handWritten": true` on a hand-written page (ADR-075). `src/lib/articleEval/__tests__/corpus.test.ts` checks the committed file with `corpusProblems` (`src/lib/articleEval/corpus.ts`):
