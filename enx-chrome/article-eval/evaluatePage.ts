@@ -3,14 +3,12 @@
 
 import type { Page } from '@playwright/test'
 import type { ProbeResult } from '../src/articleEval/pageProbe.ts'
+import type { CorpusEntry } from '../src/lib/articleEval/corpus.ts'
 import type { PageReport } from '../src/lib/articleEval/report.ts'
 import { scorePage } from '../src/lib/articleEval/score.ts'
 import { PROBE_GLOBAL } from './buildProbe.ts'
 
-export interface CorpusPage {
-  url: string
-  category: string
-}
+export type CorpusPage = Pick<CorpusEntry, 'url' | 'category'>
 
 export interface EvaluateOptions {
   /** The IIFE buildProbe() returns. */
