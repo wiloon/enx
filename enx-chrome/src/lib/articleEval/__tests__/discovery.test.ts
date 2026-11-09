@@ -3,6 +3,7 @@
  */
 import { gunzipSync, gzipSync } from 'node:zlib'
 import {
+  COMMON_SOURCE_PATHS,
   discoverArticles,
   feedLinks,
   isArticleUrl,
@@ -526,5 +527,157 @@ describe('discoverArticles', () => {
       url: SITE,
       error: 'stopped after 10 requests',
     })
+  })
+
+  it('reaches the eligible URLs of a child sitemap too large to spread into a call', async () => {
+    const urls = Array.from(
+      { length: 200_000 },
+      (_, i) => `<url><loc>https://www.blog.example/p${i}</loc></url>`
+    ).join('')
+    const { deps } = fakeDeps({
+      [SITE]: { body: '' },
+      'https://www.blog.example/robots.txt': {
+        body: 'Sitemap: https://www.blog.example/index.xml',
+      },
+      'https://www.blog.example/index.xml': {
+        body: '<sitemapindex><sitemap><loc>https://www.blog.example/huge.xml</loc></sitemap></sitemapindex>',
+      },
+      'https://www.blog.example/huge.xml': { body: `<urlset>${urls}</urlset>` },
+      'https://www.blog.example/p0': ok,
+      'https://www.blog.example/p1': ok,
+    })
+
+    const result = await discoverArticles(SITE, deps)
+
+    expect(result.candidates.map(c => c.url)).toEqual([
+      'https://www.blog.example/p0',
+      'https://www.blog.example/p1',
+    ])
+    expect(result.failures).toEqual([])
+  })
+})
+
+describe('discoverArticles on a homepage with a path', () => {
+  const DOCS = 'https://docs.example/uv/'
+  const commonUnder = (base: string) =>
+    COMMON_SOURCE_PATHS.map(path => new URL(path.slice(1), base).href)
+  const commonAtRoot = (base: string) =>
+    COMMON_SOURCE_PATHS.map(path => new URL(path, base).href)
+
+  it('tries the common paths under the homepage path before the root, skipping the homepage itself', async () => {
+    const { deps, requested } = fakeDeps({
+      [DOCS]: { body: '<html>docs</html>' },
+      'https://docs.example/uv/sitemap.xml': {
+        body: urlset([
+          ['https://docs.example/uv/'],
+          ['https://docs.example/uv'],
+          ['https://docs.example/uv/#top'],
+          ['https://docs.example/uv/guides/install/'],
+          ['https://docs.example/ruff/rules/'],
+        ]),
+      },
+      'https://docs.example/uv': ok,
+      'https://docs.example/uv/guides/install/': ok,
+      'https://docs.example/ruff/rules/': ok,
+    })
+
+    const result = await discoverArticles(DOCS, deps)
+
+    expect(result.candidates.map(c => [c.url, c.source])).toEqual([
+      [
+        'https://docs.example/uv/guides/install/',
+        'https://docs.example/uv/sitemap.xml',
+      ],
+      [
+        'https://docs.example/ruff/rules/',
+        'https://docs.example/uv/sitemap.xml',
+      ],
+    ])
+    expect(requested).not.toContain('https://docs.example/uv')
+    expect(requested.slice(0, 2)).toEqual([
+      DOCS,
+      'https://docs.example/robots.txt',
+    ])
+    expect(requested.slice(2, 9)).toEqual(commonUnder(DOCS).slice(0, 7))
+  })
+
+  it('reads a path without a trailing slash as a directory', async () => {
+    const { deps, requested } = fakeDeps({})
+
+    await discoverArticles('https://docs.example/uv', deps)
+
+    expect(requested).toEqual([
+      'https://docs.example/uv',
+      'https://docs.example/robots.txt',
+      ...commonUnder(DOCS),
+      ...commonAtRoot(DOCS),
+    ])
+  })
+
+  it('uses the final homepage URL after a redirect, and skips pages that redirect to either homepage', async () => {
+    const { deps, requested } = fakeDeps({
+      'https://docs.example/': { redirect: 'https://docs.example/en/latest' },
+      'https://docs.example/en/latest/feed.xml': {
+        body: rss([
+          ['https://docs.example/latest', 'Sat, 07 Nov 2026 00:00:00 GMT'],
+          ['https://docs.example/en/latest/', 'Fri, 06 Nov 2026 00:00:00 GMT'],
+          ['https://docs.example/start', 'Thu, 05 Nov 2026 00:00:00 GMT'],
+          ['https://docs.example/en/latest/a', 'Wed, 04 Nov 2026 00:00:00 GMT'],
+          ['https://docs.example/en/latest/b', 'Tue, 03 Nov 2026 00:00:00 GMT'],
+        ]),
+      },
+      'https://docs.example/start': { redirect: 'https://docs.example/#intro' },
+      'https://docs.example/latest': {
+        redirect: 'https://docs.example/en/latest/',
+      },
+      'https://docs.example/en/latest/a': ok,
+      'https://docs.example/en/latest/b': ok,
+    })
+
+    const result = await discoverArticles('https://docs.example/', deps)
+
+    expect(result.candidates.map(c => c.url)).toEqual([
+      'https://docs.example/en/latest/a',
+      'https://docs.example/en/latest/b',
+    ])
+    expect(requested).not.toContain('https://docs.example/en/latest/')
+    expect(
+      result.failures.filter(f => f.error.startsWith('redirected'))
+    ).toEqual([
+      {
+        url: 'https://docs.example/latest',
+        error:
+          'redirected to a non-article page: https://docs.example/en/latest/',
+      },
+      {
+        url: 'https://docs.example/start',
+        error: 'redirected to a non-article page: https://docs.example/#intro',
+      },
+    ])
+  })
+
+  it('falls back to the input path when the homepage cannot be fetched', async () => {
+    const { deps, requested } = fakeDeps({ [DOCS]: { status: 0 } })
+
+    await discoverArticles(DOCS, deps)
+
+    expect(requested).toEqual([
+      DOCS,
+      'https://docs.example/robots.txt',
+      ...commonUnder(DOCS),
+      ...commonAtRoot(DOCS),
+    ])
+  })
+
+  it('requests the same sources as before for a root homepage', async () => {
+    const { deps, requested } = fakeDeps({ [SITE]: { body: '' } })
+
+    await discoverArticles(SITE, deps)
+
+    expect(requested).toEqual([
+      SITE,
+      'https://www.blog.example/robots.txt',
+      ...commonAtRoot(SITE),
+    ])
   })
 })

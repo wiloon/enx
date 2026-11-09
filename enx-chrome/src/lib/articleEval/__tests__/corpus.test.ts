@@ -106,6 +106,41 @@ describe('corpusProblems', () => {
       ])
     ).toEqual(['a.example: pages disagree on provenance or trancoRank'])
   })
+
+  it('accepts a hand-written page on a hand-picked site', () => {
+    expect(
+      corpusProblems([
+        page('https://a.example/a'),
+        page('https://a.example/b', { handWritten: true }),
+      ])
+    ).toEqual([])
+  })
+
+  it('reports a hand-written page on a recommended site', () => {
+    expect(
+      corpusProblems([
+        page('https://a.example/a', { provenance: 'recommended' }),
+        page('https://a.example/b', {
+          provenance: 'recommended',
+          handWritten: true,
+        }),
+      ])
+    ).toEqual([
+      'https://a.example/b: handWritten is only for hand-picked sites',
+    ])
+  })
+
+  it('reports a handWritten value other than true', () => {
+    expect(
+      corpusProblems([
+        page('https://a.example/a', { handWritten: false }),
+        page('https://a.example/b', { handWritten: 'yes' }),
+      ])
+    ).toEqual([
+      'https://a.example/a: handWritten must be true when present',
+      'https://a.example/b: handWritten must be true when present',
+    ])
+  })
 })
 
 describe('the committed corpus', () => {
