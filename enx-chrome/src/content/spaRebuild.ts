@@ -91,18 +91,22 @@ export const READY_TIMEOUT_MS = 2000
 // for X's ~750ms handoff where the outgoing and incoming tweets coexist.
 // Always resolves, never rejects: the timeout falls through to a best-effort
 // run. An adapter without a readiness selector has nothing to wait for.
+// `isCurrent` is only checked on a DOM change; an aborted `signal` ends the
+// wait at once, even on a quiet page.
 export function waitForContentReady(
   readySelector: string | undefined,
   isCurrent: () => boolean,
-  timeoutMs: number = READY_TIMEOUT_MS
+  timeoutMs: number = READY_TIMEOUT_MS,
+  signal?: AbortSignal
 ): Promise<void> {
-  if (!readySelector) return Promise.resolve()
+  if (!readySelector || signal?.aborted) return Promise.resolve()
   return new Promise<void>(resolve => {
     let debounce: ReturnType<typeof setTimeout> | undefined
     const finish = () => {
       observer.disconnect()
       clearTimeout(debounce)
       clearTimeout(timeout)
+      signal?.removeEventListener('abort', finish)
       resolve()
     }
     const check = () => {
@@ -121,6 +125,7 @@ export function waitForContentReady(
       characterData: true,
     })
     const timeout = setTimeout(finish, timeoutMs)
+    signal?.addEventListener('abort', finish)
     check() // maybe already ready
   })
 }

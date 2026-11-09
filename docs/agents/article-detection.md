@@ -18,14 +18,16 @@ X has no persistent injection (2026-10-15 amendment). The second, wildcard `web_
 
 `resolveSiteAdapter()` picks one adapter per page. An adapter with a `contentSelector` (X, Reader, RSSX, Wikipedia, Standard Ebooks, AWS docs) uses only that selector: its matches longer than its `minTextLength` are the article, and matches nested inside another match are dropped. When nothing matches, the article is empty (`no-article-node`) and no fallback runs, unless the adapter sets `wholePageOnMiss`: then the page gets step 5's whole page. Platform selectors and built-in selectors never run for these adapters. Every other page gets the `default` adapter and steps 3–5.
 
-| Adapter | Pages | `contentSelector` | On a miss |
-| --- | --- | --- | --- |
-| `x` | X tweet detail pages | tweet text, X Article body | `no-article-node` |
-| `reader` | enx-ui `/reader`, `/welcome` | `#enx-reader-article` | `no-article-node` |
-| `rssx` | the RSSX Reader | `article` | `no-article-node` |
-| `wikipedia` | `*.wikipedia.org` | `#mw-content-text .mw-parser-output` | `no-article-node` |
-| `standard-ebooks` | `standardebooks.org/ebooks/…/text/…` | the EPUB `bodymatter` type: `[*\|type~="bodymatter"]` for the real XHTML pages, `[epub\:type~="bodymatter"]` for a literal HTML attribute (and jsdom) | whole page (`wholePageOnMiss`): front and back matter pages like `/text/imprint` |
-| `aws-docs` | `docs.aws.amazon.com` | the docs content column `#main-col-body` | whole page (`wholePageOnMiss`): landing and index pages |
+An adapter with a `readySelector` makes the initial run (the popup's enable and "Always enable" alike) wait before detection: until the selector matches with non-empty text and the page then stays quiet for 100 ms, or 8 s pass. A temporary `MutationObserver` watches for it and is released when the wait ends, or at once when the run is superseded (learning mode turned off or re-run, the script standing down, an SPA navigation); a superseded run detects nothing. After a timeout, detection runs as usual, so a page without the selector gets its normal miss. This holds for `static` and `spa` adapters alike; only `spa` adapters also re-run on in-page navigation (`src/content/initialRun.ts`, `src/content/spaRebuild.ts`).
+
+| Adapter | Pages | `contentSelector` | `readySelector` (initial wait) | On a miss |
+| --- | --- | --- | --- | --- |
+| `x` | X tweet detail pages | tweet text, X Article body | the tweet text or Article body in the opened tweet | `no-article-node` |
+| `reader` | enx-ui `/reader`, `/welcome` | `#enx-reader-article` | none | `no-article-node` |
+| `rssx` | the RSSX Reader | `article` | `article` | `no-article-node` |
+| `wikipedia` | `*.wikipedia.org` | `#mw-content-text .mw-parser-output` | none | `no-article-node` |
+| `standard-ebooks` | `standardebooks.org/ebooks/…/text/…` | the EPUB `bodymatter` type: `[*\|type~="bodymatter"]` for the real XHTML pages, `[epub\:type~="bodymatter"]` for a literal HTML attribute (and jsdom) | none | whole page (`wholePageOnMiss`): front and back matter pages like `/text/imprint` |
+| `aws-docs` | `docs.aws.amazon.com` | the docs content column `#main-col-body`, rendered by script after load | `#main-col-body` | whole page (`wholePageOnMiss`) after the 8 s wait: landing and index pages |
 
 ## 3. Platform selectors (default adapter)
 

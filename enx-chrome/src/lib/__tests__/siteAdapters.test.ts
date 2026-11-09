@@ -724,6 +724,11 @@ describe('AWS docs adapter', () => {
     }
   })
 
+  // The column renders after document_end; the initial run waits for it.
+  it('waits for the docs content column on the initial run', () => {
+    expect(awsDocs().readySelector).toBe('#main-col-body')
+  })
+
   it('processes the docs content column, not the feedback widgets', () => {
     document.body.innerHTML = `
       <div id="main">

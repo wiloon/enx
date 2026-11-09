@@ -53,6 +53,7 @@ import {
   isSupportedPage,
   waitForContentReady,
 } from './spaRebuild'
+import { createInitialRunner } from './initialRun'
 import {
   getWordHighlightEnabled,
   onWordHighlightEnabledChange,
@@ -1423,10 +1424,8 @@ const handleTextSelection = (event: MouseEvent) => {
 // isSupportedPage / waitForContentReady / shouldHandleTweetNavigate + the
 // factory all live in ./spaRebuild; here we only wire the concrete deps.
 
-// The first run after page load waits longer than an in-page switch: on RSSX
-// the open Article only renders after the feed list, the feed and the article
-// itself have been fetched.
-const INITIAL_READY_TIMEOUT_MS = 8000
+// The initial run's readiness wait (./initialRun), for every adapter.
+const initialRunner = createInitialRunner()
 
 const isSpaPage = () =>
   resolveSiteAdapter(window.location, siteOrigins).contentVolatility ===
@@ -1442,6 +1441,7 @@ const getSpaRebuilder = () => {
         isCurrent
       ),
     teardown: () => {
+      initialRunner.cancel()
       dropArticleBlocks()
       clearArticleRoots()
       hideCurrentOverlay()
@@ -1492,24 +1492,22 @@ const enableEnx = async (
   // is abandoned if the user switches tweets before its backend call
   // returns (otherwise it could paint the old tweet after teardown).
   const isCurrent = isSpa ? getSpaRebuilder().makeIsCurrent() : undefined
-  // An SPA renders its content after document_end (the auto-enable moment),
-  // so wait for it as a navigation would. Resolves at once if it is there.
-  if (isCurrent) {
-    await waitForContentReady(
-      resolveSiteAdapter(window.location, siteOrigins).readySelector,
-      isCurrent,
-      INITIAL_READY_TIMEOUT_MS
-    )
-    if (!isCurrent()) return ENABLE_OK
-  }
-  const outcome = await runWithStatus(
-    onArticleFound => processArticleContent({ isCurrent, onArticleFound }),
-    report,
-    () =>
-      !standDown.isStoodDown() &&
-      lifecycle === learningModeLifecycle &&
-      (isCurrent?.() ?? true)
-  )
+  const isRunCurrent = () =>
+    !standDown.isStoodDown() &&
+    lifecycle === learningModeLifecycle &&
+    (isCurrent?.() ?? true)
+  // An adapter's content can render after document_end (the auto-enable
+  // moment): wait for its readySelector first. Resolves at once without one.
+  const outcome = await initialRunner.run({
+    adapter: resolveSiteAdapter(window.location, siteOrigins),
+    isCurrent: isRunCurrent,
+    process: () =>
+      runWithStatus(
+        onArticleFound => processArticleContent({ isCurrent, onArticleFound }),
+        report,
+        isRunCurrent
+      ),
+  })
 
   if (outcome.ok) {
     console.log('✅ ENX enabled successfully with article processing')
@@ -1531,6 +1529,7 @@ const disableEnx = ({ keepPopover = false } = {}) => {
   console.log('Disabling ENX functionality')
   isEnxEnabled = false
   learningModeLifecycle++
+  initialRunner.cancel()
 
   // Remove event listeners
   document.removeEventListener('mouseup', handleTextSelection)
