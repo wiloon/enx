@@ -96,18 +96,19 @@ The scoring and the report are `src/lib/articleEval/`; the browser side is `arti
 
 ### The corpus
 
-Each `article-eval/corpus.json` entry is `{ "url", "category", "provenance", "trancoRank" }` (ADR-075). `src/lib/articleEval/__tests__/corpus.test.ts` checks the committed file with `corpusProblems` (`src/lib/articleEval/corpus.ts`):
+Each `article-eval/corpus.json` entry is `{ "url", "category", "provenance", "trancoRank" }`, plus `"handWritten": true` on a hand-written page (ADR-075). `src/lib/articleEval/__tests__/corpus.test.ts` checks the committed file with `corpusProblems` (`src/lib/articleEval/corpus.ts`):
 
 - **Sites:** a site is a hostname, and every site has exactly two distinct pages. All of a site's pages share its `provenance` and `trancoRank`.
 - **`category`:** `news`, `tech-media`, `blog-platform`, `docs`, `personal` or `reference`, assigned by the operator.
 - **`provenance`:** why the site is in the corpus, whatever found its URLs. `hand-picked`: chosen by hand, which covers the sites the corpus had before ADR-075 and a site added while adding website support. `recommended`: an English article site a model recommended and checked against the Tranco rank (ADR-075). It is not the report's `source` column.
 - **`trancoRank`:** the rank of the site's registrable domain in the Tranco list below, so subdomains share their parent's rank (`spectrum.ieee.org` has the rank of `ieee.org`); `null` when the domain isn't listed.
+- **`handWritten`:** `true` marks a page added after ADR-075 without discovery, because discovery found no usable page and the operator picked it from the site's own navigation ([§Finding article pages](#finding-article-pages)). Only `hand-picked` sites may have one, and `true` is the only value. Pages carried over from before ADR-075, including the ones #733 restored, stay unmarked even though no script found them.
 - **Ranks come from Tranco list [94P72](https://tranco-list.eu/list/94P72)**: the daily list of 2026-11-07 (top 1M pay-level domains, Dowdall combination of CrUX, Farsight, Majestic, Cloudflare Radar and Umbrella over 2026-10-09 to 2026-11-07). The list is free to download for research and has no terms of its own; its providers' data is licensed as the Tranco home page states (Majestic CC BY 3.0, CrUX CC BY-SA 4.0, Cloudflare Radar CC BY-NC 4.0, Umbrella free of charge), with attribution. The repository stores only the selected domains' ranks, never the list: download it outside the repo to look up a new site's rank.
 - **Ranks are a sanity check, not a filter:** sites are chosen as English article sites people read a lot, and the rank only confirms their size. Neither the report nor the baseline sorts by rank.
 
 ### Finding article pages
 
-Corpus pages come from `task article-eval-discover -- <site homepage URL>` (in `enx-chrome/`, ADR-075), not from URLs written by hand. It prints JSON:
+Corpus pages come from `task article-eval-discover -- <site homepage URL>` (in `enx-chrome/`, ADR-075); a hand-picked site falls back to a hand-written page only when discovery fails. It prints JSON:
 
 ```json
 {
@@ -118,8 +119,10 @@ Corpus pages come from `task article-eval-discover -- <site homepage URL>` (in `
 ```
 
 - **Sources, in order:** the homepage's RSS/Atom `<link rel="alternate">` feeds, the `Sitemap:` entries in `/robots.txt`, then `/feed`, `/rss`, `/feed.xml`, `/rss.xml`, `/atom.xml`, `/index.xml`, `/sitemap.xml`, `/sitemap_index.xml`. A later source is tried only while fewer than two articles are found. Sitemap indexes are followed (newest five children, two levels deep) and gzipped sitemaps are unpacked.
-- **Selection:** newest first by feed publication date or sitemap `lastmod`; undated pages follow in source order. The homepage, other sites, files, and listing or site pages (`tag`, `category`, `author`, `page`, `about`, …) are skipped, and each URL counts once. A candidate is kept only when its final response, after redirects, is 2xx and still an article URL; `url` is that final URL.
+- **A homepage with a path** (docs served under a path, such as `https://docs.astral.sh/uv/`): pass that path as the homepage. The common feed and sitemap paths are then tried under it (`/uv/feed`, …, `/uv/sitemap_index.xml`) before the root ones. The path comes from the homepage's final URL after redirects (the input URL when the homepage fails to load), read as a directory. For a blog-platform author, pass the author's page (`https://medium.com/@name`) so its feed link is used.
+- **Selection:** newest first by feed publication date or sitemap `lastmod`; undated pages follow in source order. The homepage (the input URL and its final URL, ignoring a trailing slash or fragment), other sites, files, and listing or site pages (`tag`, `category`, `author`, `page`, `about`, …) are skipped, and each URL counts once. Other paths on the same hostname stay eligible. A candidate is kept only when its final response, after redirects, is 2xx, still an article URL and not the homepage; `url` is that final URL.
 - **Bounds and failures:** each request times out after 15 seconds and a run makes at most 40 requests. Every source or candidate that failed is printed to stderr and listed in `failures`; the command exits 1 when it found fewer than two articles.
-- **Then:** add the two candidates to `article-eval/corpus.json` with the site's category, provenance and Tranco rank ([§The corpus](#the-corpus)), and screen them with `task article-eval` like every other page. A candidate can still be a landing page a feed or sitemap lists (for example a project hub). To replace a page that fails screening, rerun with `-- <site homepage URL> --skip <bad page URL>` (repeatable) and take the next candidate; when two usable pages can't be found, drop the site rather than write a URL by hand.
+- **Then:** add the two candidates to `article-eval/corpus.json` with the site's category, provenance and Tranco rank ([§The corpus](#the-corpus)), and screen them with `task article-eval` like every other page. A candidate can still be a landing page a feed or sitemap lists (for example a project hub). To replace a page that fails screening, or to pass over video, landing or other non-article pages, rerun with `-- <site homepage URL> --skip <bad page URL>` (repeatable) and take the next candidate.
+- **When discovery finds no usable page:** drop a `recommended` site. For a `hand-picked` site, pick an article from the site's own navigation and give its entry `"handWritten": true` ([§The corpus](#the-corpus)); when the site has no second article at all, drop it.
 
 `src/lib/articleEval/discovery.ts` holds the parsing and selection; `article-eval/discover.ts` supplies the network.

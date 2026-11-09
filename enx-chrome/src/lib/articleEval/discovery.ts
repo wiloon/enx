@@ -303,6 +303,23 @@ export function selectArticles(
   return selected
 }
 
+/** The homepage URL as a directory: no query or fragment, a trailing `/`. */
+function directoryOf(url: string): URL {
+  const base = new URL(url)
+  base.search = ''
+  base.hash = ''
+  if (!base.pathname.endsWith('/')) base.pathname += '/'
+  return base
+}
+
+/** A URL compared as a homepage: fragment and trailing slash immaterial. */
+function homepageKey(url: string): string {
+  const parsed = new URL(url)
+  parsed.hash = ''
+  parsed.pathname = parsed.pathname.replace(/\/+$/, '')
+  return parsed.href
+}
+
 const isSuccess = (status: number) => status >= 200 && status < 300
 
 const isGzip = (bytes: Uint8Array) =>
@@ -311,9 +328,11 @@ const isGzip = (bytes: Uint8Array) =>
 /**
  * The site's newest article pages that answer 2xx. Sources are tried in
  * order: the homepage's feeds, robots.txt sitemaps, then common feed and
- * sitemap paths, until `wanted` articles are found or the request budget runs
- * out. Every failed source or candidate is in `failures`. `skip` lists pages
- * never to return, such as ones that failed screening.
+ * sitemap paths (under the homepage's path first when it has one, e.g. docs
+ * served at `/uv/`), until `wanted` articles are found or the request budget
+ * runs out. The homepage, before and after redirects, is never an article.
+ * Every failed source or candidate is in `failures`. `skip` lists pages never
+ * to return, such as ones that failed screening.
  */
 export async function discoverArticles(
   siteUrl: string,
@@ -329,6 +348,8 @@ export async function discoverArticles(
   const failures: DiscoveryFailure[] = []
   const requested = new Set<string>()
   const considered = new Set(skip.map(withoutHash))
+  const homepages = new Set([homepageKey(siteUrl)])
+  const isHomepage = (url: string) => homepages.has(homepageKey(url))
   let exhausted = false
   const done = () => candidates.length >= wanted || exhausted
 
@@ -405,11 +426,11 @@ export async function discoverArticles(
       return parseFeed(text, url)
     }
     const { sitemaps, urls } = parseSitemap(text)
-    const items = [...urls]
+    let items = urls
     if (depth >= maxIndexDepth) return items
     for (const child of newestFirst(sitemaps).slice(0, maxChildSitemaps)) {
       if (exhausted) break
-      items.push(...(await loadItems(child.url, depth + 1)))
+      items = items.concat(await loadItems(child.url, depth + 1))
     }
     return items
   }
@@ -419,7 +440,7 @@ export async function discoverArticles(
     const items = selectArticles(await loadItems(source, 0), siteUrl)
     for (const item of items) {
       if (done()) return
-      if (considered.has(item.url)) continue
+      if (considered.has(item.url) || isHomepage(item.url)) continue
       considered.add(item.url)
       const response = await request(item.url)
       if (!response) continue
@@ -427,7 +448,7 @@ export async function discoverArticles(
         failures.push({ url: item.url, error: `HTTP ${response.status}` })
         continue
       }
-      if (!isArticleUrl(response.url, siteUrl)) {
+      if (!isArticleUrl(response.url, siteUrl) || isHomepage(response.url)) {
         failures.push({
           url: item.url,
           error: `redirected to a non-article page: ${response.url}`,
@@ -443,9 +464,11 @@ export async function discoverArticles(
 
   const homepage = await fetchText(siteUrl)
   if (homepage !== null) {
+    homepages.add(homepageKey(homepage.url))
     for (const feed of feedLinks(homepage.text, homepage.url))
       await trySource(feed)
   }
+  const base = directoryOf(homepage?.url ?? siteUrl)
   if (!done()) {
     const robotsUrl = new URL('/robots.txt', siteUrl).href
     const robots = await fetchText(robotsUrl)
@@ -453,6 +476,11 @@ export async function discoverArticles(
       for (const sitemap of robotsSitemaps(robots.text, siteUrl)) {
         await trySource(sitemap)
       }
+    }
+  }
+  if (base.pathname !== '/') {
+    for (const path of COMMON_SOURCE_PATHS) {
+      await trySource(new URL(path.slice(1), base).href)
     }
   }
   for (const path of COMMON_SOURCE_PATHS) {

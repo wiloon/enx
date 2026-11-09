@@ -19,6 +19,12 @@ export interface CorpusEntry {
   provenance: SiteProvenance
   /** Tranco rank of the site's registrable domain; null when it isn't listed. */
   trancoRank: number | null
+  /**
+   * A page added after ADR-075 without discovery, because discovery found no
+   * usable page; hand-picked sites only. Pages carried over from before
+   * ADR-075 are not marked.
+   */
+  handWritten?: true
 }
 
 /** A site is a hostname, and each site has exactly this many pages. */
@@ -59,6 +65,13 @@ export function corpusProblems(pages: unknown[]): string[] {
     }
     if (!isRank(entry.trancoRank)) {
       problems.push(`${url}: trancoRank must be a positive integer or null`)
+    }
+    if ('handWritten' in entry) {
+      if (entry.handWritten !== true) {
+        problems.push(`${url}: handWritten must be true when present`)
+      } else if (entry.provenance !== 'hand-picked') {
+        problems.push(`${url}: handWritten is only for hand-picked sites`)
+      }
     }
     sites.set(host, [...(sites.get(host) ?? []), entry])
   }
