@@ -138,10 +138,27 @@ let pageListeners: Set<Listener>
 let storageListeners: Array<(changes: unknown, area: string) => void>
 let ownerWrite: Promise<void> | null
 
-const cookie = {
-  cookie: { domain: 'clerk.localhost.test', name: '__client_uat' },
+// Each sign-in, sign-out or switch gives `__client_uat` a new value.
+let clientUat = 0
+// The worker debounces a burst of cookie changes (#743): move the clock past
+// the debounce and hand back the check the change settles with.
+const changeCookie = async (): Promise<{ check: Promise<void> }> => {
+  jest.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  const check = onCookieChanged({
+    cookie: {
+      domain: 'clerk.localhost.test',
+      name: '__client_uat',
+      value: String(++clientUat),
+    },
+  })
+  await jest.advanceTimersByTimeAsync(1000)
+  jest.useRealTimers()
+  return { check }
 }
-const observe = () => act(async () => onCookieChanged(cookie))
+const observe = () =>
+  act(async () => {
+    await (await changeCookie()).check
+  })
 const signOutOnWebsite = () => {
   clerkSession = null
   return observe()
@@ -383,7 +400,7 @@ describe.each(Object.entries(KINDS))('a %s request', (_name, kind) => {
     ownerWrite = write.promise
     clerkUserId = 'user-b'
     clerkSession = { getToken }
-    const switching = onCookieChanged(cookie)
+    const { check: switching } = await changeCookie()
     await waitFor(() =>
       expect(chrome.storage.session.set).toHaveBeenCalledWith({
         [OWNER_KEY]: 'user-b',
