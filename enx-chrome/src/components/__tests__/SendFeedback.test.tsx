@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import SendFeedback from '../SendFeedback'
 
 const CHROME_UA =
@@ -105,10 +105,34 @@ it('starts with no URL on a tab that is not a web page, and still sends', async 
     { id: 7, url: 'chrome://newtab/' },
   ])
   const { text, url, send } = await open()
-  await waitFor(() => expect(chrome.tabs.query).toHaveBeenCalled())
+  await act(async () => {
+    await (chrome.tabs.query as jest.Mock).mock.results[0].value
+  })
   expect(url).toHaveValue('')
   type(text, 'hi')
   fireEvent.click(send)
+
+  await waitFor(() => expect(sentFeedback()).toHaveLength(1))
+  expect(sentFeedback()[0].url).toBe('')
+  expect(tabSend).toHaveBeenCalledWith(
+    7,
+    { action: 'getFeedbackContext' },
+    { frameId: 0 }
+  )
+})
+
+it('keeps a cleared URL when the panel is collapsed and reopened', async () => {
+  const { url } = await open()
+  await waitFor(() => expect(url).not.toHaveValue(''))
+  type(url, '')
+  const toggle = screen.getByRole('button', { name: 'Send feedback' })
+  fireEvent.click(toggle)
+  fireEvent.click(toggle)
+  const reopened = await screen.findByRole('textbox', { name: 'Page URL' })
+  await act(async () => {})
+  expect(reopened).toHaveValue('')
+  type(screen.getByRole('textbox', { name: 'Your feedback' }), 'hi')
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
   await waitFor(() => expect(sentFeedback()).toHaveLength(1))
   expect(sentFeedback()[0].url).toBe('')

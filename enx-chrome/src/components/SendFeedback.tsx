@@ -29,22 +29,23 @@ export default function SendFeedback() {
   const inFlight = useRef(false)
   const urlId = useId()
 
+  // The tab is read once, on the first open; later opens keep what the user
+  // typed (or cleared). A URL edited before the query resolves also wins.
+  const queried = useRef(false)
+  const urlEdited = useRef(false)
+
   useEffect(() => {
-    if (!open) return
-    let cancelled = false
+    if (!open || queried.current) return
+    queried.current = true
     chrome.tabs
       .query({ active: true, currentWindow: true })
       .then(([tab]) => {
-        if (cancelled) return
         const cleaned = sanitizePageUrl(tab?.url) ?? ''
         setTabId(tab?.id)
         setDefaultUrl(cleaned)
-        setUrl(cleaned)
+        if (!urlEdited.current) setUrl(cleaned)
       })
       .catch(() => {})
-    return () => {
-      cancelled = true
-    }
   }, [open])
 
   const blank = isFeedbackBlank(text)
@@ -147,7 +148,10 @@ export default function SendFeedback() {
               id={urlId}
               type="text"
               value={url}
-              onChange={e => setUrl(e.target.value)}
+              onChange={e => {
+                urlEdited.current = true
+                setUrl(e.target.value)
+              }}
               disabled={pending}
               placeholder="No page"
               className="block w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-brand"
