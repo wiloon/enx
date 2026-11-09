@@ -1876,6 +1876,107 @@ describe('background onMessage / submitPageReport (ADR-010 Decision 8)', () => {
   })
 })
 
+describe('background onMessage / submitFeedback (ADR-076)', () => {
+  const listener = onMessageListener
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    setClerkSession('clerk-session-jwt')
+    ;(chrome.runtime.getManifest as jest.Mock).mockReturnValue({
+      version: '1.0.1',
+    })
+    ;(global.fetch as jest.Mock) = jest.fn()
+  })
+
+  const send = (request: unknown): Promise<unknown> =>
+    new Promise(resolve => listener(request, {}, resolve))
+
+  const context = {
+    browser: 'Chrome 142',
+    learningMode: true,
+    adapter: 'default',
+    articleSource: 'auto',
+  }
+
+  it.each([
+    ['a page URL', 'https://example.com/a'],
+    ['no page', ''],
+  ])(
+    'POSTs text feedback with %s, the context and the extension version',
+    async (_name, url) => {
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+        jsonResponse(200, { success: true, recorded: true })
+      )
+
+      const response = await send({
+        type: 'submitFeedback',
+        feedback: { text: 'The popover hides the word', url, context },
+      })
+
+      expect(response).toMatchObject({ success: true })
+      const [endpoint, init] = (global.fetch as jest.Mock).mock.calls[0]
+      expect(endpoint).toMatch(/\/api\/feedback$/)
+      expect(init.method).toBe('POST')
+      expect(JSON.parse(init.body)).toEqual({
+        kind: 'text',
+        url,
+        text: 'The popover hides the word',
+        context: { appVersion: '1.0.1', ...context },
+        details: {},
+      })
+    }
+  )
+
+  it('sends only the context fields the server knows', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(200, { success: true, recorded: true })
+    )
+
+    await send({
+      type: 'submitFeedback',
+      feedback: {
+        text: 'hi',
+        url: '',
+        context: {
+          browser: 'Chrome 142',
+          learningMode: false,
+          pageTitle: 'secret',
+        },
+      },
+    })
+
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(JSON.parse(init.body).context).toEqual({
+      appVersion: '1.0.1',
+      browser: 'Chrome 142',
+      learningMode: false,
+    })
+  })
+
+  it.each([
+    [400, 'invalid feedback: url "foo" is not a web page'],
+    [429, 'Daily feedback limit reached. Please try again tomorrow.'],
+  ])("passes the status and the API's message back for a %i", async (status, message) => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(status, { success: false, message })
+    )
+
+    const response = await send({
+      type: 'submitFeedback',
+      feedback: { text: 'hi', url: 'foo', context },
+    })
+
+    expect(response).toMatchObject({ success: false, status, error: message })
+  })
+
+  it('rejects a message with no text without calling the API', async () => {
+    const response = await send({ type: 'submitFeedback' })
+
+    expect(response).toEqual({ success: false, error: 'Missing feedback' })
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+})
+
 describe('background onMessage / savePage (ADR-032)', () => {
   const listener = onMessageListener
 

@@ -38,6 +38,7 @@ import {
   failureMessage,
 } from '@/lib/enableOutcome'
 import { createReviewList } from '@/lib/reviewList'
+import { pageFeedbackContext } from '@/lib/feedback'
 import {
   stampExtensionPresence,
   stampLearningMode,
@@ -1735,6 +1736,19 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
     case 'getArticleChoice':
       articleChoice.status().then(sendResponse)
+      return true
+
+    // ADR-076: the page's half of the popup's "Send feedback" context.
+    case 'getFeedbackContext':
+      articleChoice.ready.then(() =>
+        sendResponse(
+          pageFeedbackContext({
+            learningMode: isEnxEnabled,
+            adapter: resolveSiteAdapter(window.location, siteOrigins).name,
+            choice: articleChoice.current()?.source ?? 'automatic',
+          })
+        )
+      )
       return true
 
     case 'getPageInfo':

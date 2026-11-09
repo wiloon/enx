@@ -15,6 +15,7 @@ import PageReportPrompt, {
   PageReportStatus,
 } from '@/components/PageReportPrompt'
 import SaveLinkCard from '@/components/SaveLinkCard'
+import SendFeedback from '@/components/SendFeedback'
 import SignOutButton from '@/components/SignOutButton'
 import { config } from '@/config/env'
 import { isReportableFailure } from '@/lib/enableOutcome'
@@ -369,6 +370,8 @@ function SignedInBody({
           onRemove={() => void savedPage.remove()}
         />
       )}
+
+      <SendFeedback />
     </div>
   )
 }

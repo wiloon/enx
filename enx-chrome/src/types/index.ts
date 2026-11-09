@@ -1,5 +1,6 @@
 // Core data types for ENX extension
 
+import type { FeedbackSubmission } from '@/lib/feedback'
 import type { LearningModeStatus } from '@/lib/learningModeStatus'
 
 export interface WordData {
@@ -71,6 +72,7 @@ export interface ContentMessage {
     | 'recordPageWordLookup'
     | 'reportReadingProgress'
     | 'submitPageReport'
+    | 'submitFeedback'
     | 'savePage'
     | 'removeSavedPage'
     | 'shouldAutoEnable'
@@ -114,6 +116,9 @@ export interface ContentMessage {
   // they want reported. `url` is already sanitized by the popup; enx-api
   // sanitizes again and does not trust it.
   pageReport?: { url: string; reason: string; adapter: string }
+  // Set on 'submitFeedback' (ADR-076): the user's written feedback. `url` is
+  // the cleaned URL as the user left it, possibly ''.
+  feedback?: FeedbackSubmission
   // Set on 'savePage' (ADR-032): the page the user chose to save (收藏).
   // The URL is sent as the browser has it; enx-api normalizes it (drops the
   // fragment, credentials and tracking parameters) and returns what it stored.

@@ -65,6 +65,36 @@ test.describe('Popup - signed in', () => {
   })
 })
 
+// ADR-076: written feedback goes through the background worker to enx-api.
+test.describe('Popup - send feedback', () => {
+  test.skip(!loginAvailable, LOGIN_SKIP_REASON)
+
+  test('sends written feedback and resets the form', async ({
+    page,
+    extensionId,
+    signedIn: _signedIn,
+  }) => {
+    await openPopup(page, extensionId)
+    await page
+      .getByRole('button', { name: 'Send feedback' })
+      .click({ timeout: 15_000 })
+
+    const text = page.getByRole('textbox', { name: 'Your feedback' })
+    const send = page.getByRole('button', { name: 'Send', exact: true })
+    await expect(send).toBeDisabled()
+    await expect(page.getByRole('textbox', { name: 'Page URL' })).toBeVisible()
+
+    await text.fill('The popover hides the word I clicked.')
+    await expect(page.getByText('1,963 characters left')).toBeVisible()
+    await send.click()
+
+    await expect(page.getByText('Thanks — feedback sent')).toBeVisible({
+      timeout: 15_000,
+    })
+    await expect(text).toHaveValue('')
+  })
+})
+
 test.describe('Popup - sign out', () => {
   test.skip(!loginAvailable, LOGIN_SKIP_REASON)
 

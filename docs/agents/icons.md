@@ -33,14 +33,14 @@ Before placing an icon, find its concept below and use that row's icon. A concep
 | Opens in a new tab | `ArrowTopRightOnSquareIcon` | `ExternalLink` | popup header link to the site; popup "Set a shortcut"; landing page "Similar apps" rows |
 | Next step, go on | `ArrowRightIcon` | `ArrowRight` | sign-in button; Home "Start with a sample article" |
 | Row leads somewhere | `ChevronRightIcon` | `ChevronRight` | popup "Open side panel", Home stat strip and plan card, `/billing` "Credit history" |
-| Expand or collapse a grouped row | — | `ChevronDown` (rotated when open) | credit history's same-day AI usage groups |
+| Expand or collapse a grouped row | `ChevronDownIcon` (rotated when open) | `ChevronDown` (rotated when open) | credit history's same-day AI usage groups; popup "Send feedback" |
 | Back to the parent page | — | `ArrowLeft` | "Users" on `/admin/users/[id]`, "Billing" on `/billing/history` |
 | The extension itself | `PuzzlePieceIcon` | `Puzzle` | Reader's "needs the extension" notice |
 | Settings | `Cog6ToothIcon` | `Settings` | popup header, Settings nav |
 | Billing | `CreditCardIcon` | `CreditCard` | account menu "Billing" |
 | Your account (no picture yet) | `UserCircleIcon` | `CircleUser` | account menu "Account" item; avatar placeholder while the profile loads |
 | Sign out | `ArrowRightOnRectangleIcon` | `LogOut` | popup; account menu |
-| Send feedback | `ChatBubbleLeftEllipsisIcon` | `MessageSquarePlus` | account menu "Send feedback" |
+| Send feedback | `ChatBubbleLeftEllipsisIcon` | `MessageSquarePlus` | account menu "Send feedback"; popup "Send feedback" |
 | More actions | `EllipsisHorizontalIcon` | `MoreHorizontal` | Word List row menu |
 | Edit | `PencilIcon` | `Pencil` | Reader "Edit text" |
 | Explanation | `InformationCircleIcon` | `Info` | Reading Stats footnote |
