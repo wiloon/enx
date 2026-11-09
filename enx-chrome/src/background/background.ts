@@ -3,6 +3,7 @@
 
 import { createAccountSession, type Invalidation } from '@/lib/accountSession'
 import { createCoalescedSync } from '@/lib/coalescedSync'
+import { createSessionCookies } from '@/lib/sessionCookies'
 import {
   ACCOUNT_CHANGED_MESSAGE,
   type AccountInvalidatedMessage,
@@ -124,10 +125,16 @@ export const SESSION_SYNC_RETRY_DELAYS_MS =
 // user signs in) gets a fresh attempt instead of a pinned "signed out".
 let syncedClerkInFlight: Promise<ClerkClient> | null = null
 
-const resetClerkSession = () => {
+// Supersedes the syncs in flight; their callers join the next one.
+const supersedeClerkSync = () => {
   clerkGeneration++
-  clerkClientPromise = null
   syncedClerkInFlight = null
+}
+
+const resetClerkSession = () => {
+  supersedeClerkSync()
+  clerkClientPromise = null
+  cookiesSynced = undefined
 }
 
 // Thrown when a sync came back without a session Clerk confirmed is gone
@@ -174,16 +181,27 @@ const getSyncedClerk = (): Promise<ClerkClient> => {
 }
 
 // A sign-in rewrites the website's Clerk cookies several times in a row
-// (#743). The cached client is stale from the first change, but the client is
-// rebuilt once per burst, so a sign-in costs a few Clerk loads, not dozens.
+// (#743). No caller uses the cached client from the first change on, but the
+// client is rebuilt once per burst, so a sign-in costs a few Clerk loads, not
+// dozens; a burst that left the cookies as the last rebuild saw them keeps
+// the client it has.
 const COOKIE_SYNC_QUIET_MS = 1000
 const COOKIE_SYNC_MAX_WAIT_MS = 2000
 
+const sessionCookies = createSessionCookies()
+// The session cookies the cached client was rebuilt for, until a reset.
+let cookiesSynced: string | undefined
+
 const makeClerkCookieSync = () =>
   createCoalescedSync({
-    run: () => {
+    run: async () => {
+      const cookies = sessionCookies.snapshot()
+      if (cookies === cookiesSynced && clerkClientPromise)
+        return clerkClientPromise
       resetClerkSession()
-      return syncAndObserveClerk()
+      const clerk = await syncAndObserveClerk()
+      cookiesSynced = cookies
+      return clerk
     },
     quietMs: COOKIE_SYNC_QUIET_MS,
     maxWaitMs: COOKIE_SYNC_MAX_WAIT_MS,
@@ -434,7 +452,8 @@ chrome.cookies.onChanged.addListener(change => {
   if (!/^__(client|client_uat|clerk_db_jwt)(_|$)/.test(change.cookie.name))
     return
   if (change.removed && change.cause === 'overwrite') return
-  resetClerkSession()
+  sessionCookies.record(change)
+  supersedeClerkSync()
   return clerkCookieSync
     .change()
     .then(() => {})

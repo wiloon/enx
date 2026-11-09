@@ -327,12 +327,20 @@ describe('background makeApiRequest / Clerk session token', () => {
   // #743: a sign-in rewrites Clerk's cookies several times in a row. The
   // debounce runs in tests too, so every test here moves the clock itself.
   describe('website session cookie changes', () => {
-    const sessionCookie = {
-      cookie: { domain: 'clerk.localhost.test', name: '__client_uat' },
-      removed: false,
-    }
-    const changeSessionCookie = (): Promise<void> =>
-      onCookieChanged(sessionCookie)
+    // Each sign-in, sign-out or switch gives `__client_uat` a new value.
+    let clientUat = 0
+    const changeSessionCookie = (
+      value = `uat-${++clientUat}`,
+      removal: { removed: boolean; cause?: string } = { removed: false }
+    ): Promise<void> =>
+      onCookieChanged({
+        cookie: {
+          domain: 'clerk.localhost.test',
+          name: '__client_uat',
+          value,
+        },
+        ...removal,
+      })
     const loads = () => (createClerkClient as jest.Mock).mock.calls.length
     const holdNextFetch = () => {
       let finish: (response: unknown) => void = () => {}
@@ -400,6 +408,50 @@ describe('background makeApiRequest / Clerk session token', () => {
         expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
       }
     )
+
+    // The website's Clerk rewrites its cookies every second or so with the
+    // values they already hold: a removal by an expired overwrite, then a set.
+    it('loads nothing when a burst rewrites the session cookies with the values they had', async () => {
+      await makeApiRequest('/api/me')
+      let check = changeSessionCookie('uat-signed-in')
+      await jest.advanceTimersByTimeAsync(1000)
+      await check
+      const loadsBefore = loads()
+
+      for (let i = 0; i < 3; i++) {
+        check = changeSessionCookie('uat-signed-in', {
+          removed: true,
+          cause: 'expired_overwrite',
+        })
+        const set = changeSessionCookie('uat-signed-in')
+        await jest.advanceTimersByTimeAsync(1500)
+        await Promise.all([check, set])
+      }
+
+      expect(loads()).toBe(loadsBefore)
+      expect(await makeApiRequest('/api/me')).toEqual({
+        success: true,
+        data: {},
+      })
+      expect(loads()).toBe(loadsBefore)
+    })
+
+    it('rebuilds the client when a session cookie is removed and not set again', async () => {
+      await makeApiRequest('/api/me')
+      let check = changeSessionCookie('uat-signed-in')
+      await jest.advanceTimersByTimeAsync(1000)
+      await check
+      const loadsBefore = loads()
+
+      check = changeSessionCookie('uat-signed-in', {
+        removed: true,
+        cause: 'explicit',
+      })
+      await jest.advanceTimersByTimeAsync(1000)
+      await check
+
+      expect(loads()).toBe(loadsBefore + 1)
+    })
 
     it('loads the client once, a second after a burst of changes goes quiet', async () => {
       const checks: Promise<void>[] = []
