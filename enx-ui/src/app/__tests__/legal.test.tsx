@@ -80,6 +80,45 @@ describe('Privacy Policy', () => {
     }
   )
 
+  // ADR-076: feedback is tied to the account, never expires, goes with the
+  // account, and article-choice sharing is off until the user turns it on.
+  it.each([
+    [
+      'English',
+      PrivacyPolicyPage,
+      [
+        /Feedback you send us/,
+        /linked to your account/,
+        /not deleted automatically/,
+        /deleted when you delete your account/,
+        /off by default/,
+        /feedback you sent/,
+      ],
+      /90 days|50 most recent reports|most recent 50 reports/,
+    ],
+    [
+      'Chinese route',
+      PrivacyPolicyZhPage,
+      [
+        /你发给我们的反馈/,
+        /关联你的账号/,
+        /不会自动删除/,
+        /注销账号时一并删除/,
+        /默认关闭/,
+        /你发送的反馈/,
+      ],
+      /90 天|最近 50 条/,
+    ],
+  ])(
+    'discloses what feedback keeps and for how long, on the %s page',
+    (_locale, Page, claims, oldClaim) => {
+      const { container } = render(<Page />)
+
+      for (const claim of claims) expect(container).toHaveTextContent(claim)
+      expect(container).not.toHaveTextContent(oldClaim)
+    }
+  )
+
   it('names the AI provider and where it runs, not "a third party"', () => {
     render(<PrivacyPolicyPage />)
 

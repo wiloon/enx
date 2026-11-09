@@ -299,16 +299,31 @@ export type AdminCreditAdjustment = { amount: number; reason: string } & (
   { userId: string; email?: never } | { email: string; userId?: never }
 )
 
-// GET /api/admin/page-reports (ADR-010 Decision 11): newest page reports first.
-export interface AdminPageReport {
+// User feedback (ADR-076): every record a user sends is one of these kinds.
+export type FeedbackKind =
+  'text' | 'page_report' | 'article_choice' | 'definition'
+export type FeedbackStatus = 'new' | 'resolved'
+
+// GET /api/admin/feedback: newest first. `context` is the scene the record
+// was sent from, `details` the kind's own fields; createdAt is Unix ms.
+export interface AdminFeedback {
   id: string
   userId: string
+  kind: FeedbackKind
   url: string
   host: string
-  reason: string
-  adapter: string
-  extVersion: string
+  text: string
+  context: Record<string, unknown>
+  details: Record<string, unknown>
+  status: FeedbackStatus
   createdAt: number
+}
+
+// nextOffset is null on the last page.
+export interface AdminFeedbackPage {
+  success: boolean
+  feedback: AdminFeedback[]
+  nextOffset: number | null
 }
 
 // Reader "paste text" documents (ADR-022): 20,000-char limit, 7-day TTL, 50

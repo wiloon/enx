@@ -1,5 +1,4 @@
 import {
-  AlertTriangle,
   BarChart3,
   Bookmark,
   BookText,
@@ -9,6 +8,7 @@ import {
   Globe,
   Home,
   CircleHelp,
+  MessageSquare,
   Search,
   Settings,
   Sparkles,
@@ -64,7 +64,8 @@ export const NAV_ADMIN: NavItem[] = [
   { label: 'Dictionary', href: '/admin/dictionary', icon: Wrench },
   // AI-made definitions waiting for review (ADR-045).
   { label: 'AI definitions', href: '/admin/ai-words', icon: ClipboardCheck },
-  { label: 'Page reports', href: '/admin/page-reports', icon: AlertTriangle },
+  // Everything users sent: page reports, notes, ... (ADR-076).
+  { label: 'Feedback', href: '/admin/feedback', icon: MessageSquare },
   // Accounts, balances and the credit ledger (ADR-049).
   { label: 'Users', href: '/admin/users', icon: Users },
 ]

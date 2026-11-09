@@ -23,6 +23,8 @@ import { SITE } from '@/lib/site'
 //     SENTENCE_TRANSLATE_PROVIDER
 //   - what account deletion removes and keeps          -> enx-api
 //     repo/account.go personalTables, trial_grants, ADR-062
+//   - feedback: linked to the account, no expiry        -> enx-api
+//     feedback/ (feedback table), ADR-076
 export const dynamic = 'force-static'
 
 export const metadata: Metadata = {
@@ -123,8 +125,9 @@ export default function PrivacyPolicyPage() {
           take that access back at any time in Chrome&rsquo;s extension
           settings. The full text of a page is never sent to our servers. Its
           address and title are never sent or stored either, unless you press
-          &ldquo;Save&rdquo; to keep the page, or &ldquo;Send report&rdquo; on a
-          page Catglish could not read (see below).
+          &ldquo;Save&rdquo; to keep the page, or send it to us as feedback,
+          such as &ldquo;Send report&rdquo; on a page Catglish could not read
+          (see below).
         </p>
       </Section>
 
@@ -171,9 +174,9 @@ export default function PrivacyPolicyPage() {
                   'At most 100 days, then deleted automatically; only the daily lookup counts remain',
                 ],
                 [
-                  'The address of a page Catglish could not read — only if you press "Send report" in the extension',
-                  'So we can fix support for that page',
-                  '90 days, then deleted automatically (most recent 50 reports)',
+                  'Feedback you send us, such as a page Catglish could not read when you press "Send report": the page address, what went wrong, and the extension version',
+                  'So we can find and fix problems',
+                  'Not deleted automatically; deleted when you delete your account',
                 ],
                 [
                   'Subscription status, credit balance, and a record of each AI call (which feature, how much it cost)',
@@ -227,19 +230,31 @@ export default function PrivacyPolicyPage() {
           anywhere on our side: your browsing history is never uploaded.
         </p>
         <p>
-          The second is a report you send yourself. When Catglish cannot process
+          The second is feedback you send yourself. When Catglish cannot process
           a page, the extension offers to send us that page&apos;s address. It
           shows you exactly what would be sent, and sends nothing unless you
           press &quot;Send report&quot;. The address is cut down to the site and
           path — no query string, no fragment, no login details — and parts of
           the path that look like personal identifiers, such as an email address
-          or a long token, are replaced with a placeholder. We keep it, together
-          with the reason the page failed and your account identifier, for 90
-          days and for no more than your 50 most recent reports. It is used only
-          to fix support for that page — never for statistics or profiling.
+          or a long token, are replaced with a placeholder. We keep it together
+          with the reason the page failed and the extension version. It is used
+          only to find and fix problems — never for statistics or profiling.
         </p>
         <p>
-          Apart from a page you save and a report you send, which article you
+          Feedback is linked to your account, so we can follow up with you and
+          so a flood of it from one account can be limited. It is not deleted
+          automatically, including after we have dealt with it; it is deleted
+          when you delete your account.
+        </p>
+        <p>
+          A future version of the extension may offer to share the article you
+          pick by hand on a page, so we can improve automatic detection. That
+          sharing is off by default: the extension will ask you once, and you
+          will be able to turn it off at any time. What was already shared is
+          kept as feedback, under the rules above.
+        </p>
+        <p>
+          Apart from a page you save and feedback you send, which article you
           were reading is something your own browser knows and our servers never
           learn.
         </p>
@@ -385,7 +400,8 @@ export default function PrivacyPolicyPage() {
           You can delete your account at any time on the Settings page. The
           deletion is immediate and permanent: your sign-in account, your word
           list, reading statistics, lookup events, saved pages, reader
-          documents, settings and invite code are erased, not hidden.
+          documents, feedback you sent, settings and invite code are erased, not
+          hidden.
         </p>
         <p>We keep the following records after account deletion:</p>
         <p>
