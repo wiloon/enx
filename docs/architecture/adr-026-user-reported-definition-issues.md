@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Proposed — 2026-09-16。**计划在工具正式上线部署之后再开发**，本 ADR 先把决策记录下来。本次未写任何代码。 |
+| **状态** | Proposed — 2026-09-16。**2026-11-09** Amended by [ADR-076](adr-076-user-feedback.md)：释义反馈成为用户反馈的一种类型，存进 `feedback` 表，不再建 `word_feedback`；状态只有 `new` / `resolved`；每日限额改为 ADR-076 决定 5 的合计限额。决定 2、3、7、8 的内容要求不变。**计划在工具正式上线部署之后再开发**，本 ADR 先把决策记录下来。本次未写任何代码。 |
 | **日期** | 2026-09-16 |
 | **关联 Spec** | 无独立 TASK-SPEC；Decision 即实现依据（同 adr-012 Decision 10）。 |
 | **关联 ADR** | [`adr-021-enx-ui-admin-dictionary-maintenance.md`](adr-021-enx-ui-admin-dictionary-maintenance.md)（**主要依赖**：复用其建立的 `middleware.RequireAdmin` + `(app)/admin/` 子树 + `NAV_ADMIN` 条件导航；本 ADR 继承并强化其「`words` 表只能由人订正」的边界，见 Decision 8；管理页与其 `/admin/dictionary` 互链）、[`adr-024-word-context-dictionary-first-why.md`](adr-024-word-context-dictionary-first-why.md)（本 ADR 记录的「上下文释义 / `why`」快照即其产物；**本 ADR 不改其返回契约**，见 Decision 5 对 provider 的处理）、[`adr-023-sidepanel-unified-history-list-nested-sentence-words.md`](adr-023-sidepanel-unified-history-list-nested-sentence-words.md)（提交入口加在其 `WordCard` 上；原句的取法依赖其「top-level 卡读 `contextSentence`、嵌套卡读所属 `SentenceEntry.sentence`」的结构，见 Decision 2）、[`adr-006-page-word-lookup-in-sidepanel.md`](adr-006-page-word-lookup-in-sidepanel.md)（其镜像进来的卡**没有句子上下文**，决定了表单要按卡的形态降级，见 Decision 2）、[`adr-008-phrase-selection-context-translation.md`](adr-008-phrase-selection-context-translation.md)（短语卡无词典条目，`dictionary_wrong` 分类对其不可用）、[`adr-018-dictionary-lookup-single-metered-seam.md`](adr-018-dictionary-lookup-single-metered-seam.md)（提交/管理端点都**不是查词**，同 ADR-021 显式在计量范围外） |
