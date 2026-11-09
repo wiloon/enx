@@ -1,6 +1,7 @@
 import {
   disableLearningModeOnTab,
   enableLearningModeOnTab,
+  getArticleChoiceOnTab,
   getLearningModeStatusOnTab,
 } from '@/lib/enableLearningMode'
 
@@ -193,5 +194,67 @@ describe('disableLearningModeOnTab', () => {
     await expect(disableLearningModeOnTab(7)).rejects.toThrow(
       'No tab with id: 7'
     )
+  })
+})
+
+it('starts article picking on an uninjected page without enabling learning mode first', async () => {
+  const { sendPageActionOnTab } = await import('../enableLearningMode')
+  jest.useFakeTimers()
+  try {
+    ;(chrome.runtime.getManifest as jest.Mock).mockReturnValue({
+      content_scripts: [{ js: ['loader.js'] }],
+    })
+    ;(chrome.tabs.sendMessage as jest.Mock)
+      .mockReset()
+      .mockRejectedValueOnce(noReceiverError())
+      .mockResolvedValue({ success: true })
+    ;(chrome.scripting.executeScript as jest.Mock).mockResolvedValue(undefined)
+    const response = sendPageActionOnTab(7, 'chooseArticle')
+    await jest.runAllTimersAsync()
+    expect(await response).toEqual({ success: true })
+    expect(
+      (chrome.tabs.sendMessage as jest.Mock).mock.calls.map(call => call[1])
+    ).toEqual([{ action: 'chooseArticle' }, { action: 'chooseArticle' }])
+  } finally {
+    jest.useRealTimers()
+  }
+})
+
+describe('getArticleChoiceOnTab', () => {
+  beforeEach(() => {
+    jest.resetAllMocks()
+    ;(chrome.runtime.getManifest as jest.Mock).mockReturnValue({
+      content_scripts: [{ js: ['loader.js'] }],
+    })
+  })
+
+  it("returns the content script's own status when it is listening", async () => {
+    const status = {
+      success: true,
+      available: true,
+      choice: { source: 'your-choice', saved: true },
+    }
+    ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(status)
+
+    expect(await getArticleChoiceOnTab(7, true)).toEqual(status)
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      7,
+      { action: 'getArticleChoice' },
+      { frameId: 0 }
+    )
+  })
+
+  it('reports automatic detection for a tab with no content script, without injecting one', async () => {
+    ;(chrome.tabs.sendMessage as jest.Mock).mockRejectedValue(noReceiverError())
+
+    expect(await getArticleChoiceOnTab(7, true)).toEqual({
+      success: true,
+      available: true,
+    })
+    expect(await getArticleChoiceOnTab(7, false)).toEqual({
+      success: true,
+      available: false,
+    })
+    expect(chrome.scripting.executeScript).not.toHaveBeenCalled()
   })
 })
