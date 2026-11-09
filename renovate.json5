@@ -1,5 +1,5 @@
 // Renovate: dependency update PRs for enx-api, enx-ui and enx-chrome.
-// Minor and patch updates merge themselves once CI is green; major updates
+// Minor, patch and digest updates merge themselves once CI is green; major updates
 // wait for a human merge.
 // Major updates (and new Go / Node minors) wait for approval on the
 // Dependency Dashboard issue before a PR is opened.
@@ -7,7 +7,6 @@
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: ['config:recommended', ':dependencyDashboard'],
   timezone: 'Asia/Shanghai',
-  schedule: ['before 9am on monday'],
   prConcurrentLimit: 5,
   labels: ['dependencies'],
   ignorePaths: ['**/node_modules/**'],
@@ -46,7 +45,7 @@
       groupName: 'Go toolchain',
     },
     {
-      matchUpdateTypes: ['minor', 'patch'],
+      matchUpdateTypes: ['minor', 'patch', 'digest'],
       automerge: true,
     },
     {
