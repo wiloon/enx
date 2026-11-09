@@ -29,7 +29,11 @@ import {
   type LearningModeShortcut,
 } from '@/lib/learningModeCommand'
 import { isLearningModeOn } from '@/lib/learningModeStatus'
-import { PageReportPayload, sanitizePageUrl } from '@/lib/pageReport'
+import {
+  PageReportPayload,
+  sanitizePageUrl,
+  sendPageReport,
+} from '@/lib/pageReport'
 import { initSentry } from '@/lib/sentry'
 import { errorAtom, userAtom } from '@/store/atoms'
 import { ClerkProvider, useUser } from '@clerk/chrome-extension'
@@ -160,19 +164,17 @@ function SignedInBody({
   const [reportCandidate, setReportCandidate] =
     useState<PageReportPayload | null>(null)
   const [reportStatus, setReportStatus] = useState<PageReportStatus>('idle')
+  const [reportError, setReportError] = useState<string>()
 
   const handleSendReport = async () => {
     if (!reportCandidate) return
     setReportStatus('sending')
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: 'submitPageReport',
-        pageReport: reportCandidate,
-      })
-      setReportStatus(response?.success ? 'sent' : 'failed')
-    } catch {
-      setReportStatus('failed')
-    }
+    const outcome = await sendPageReport(
+      message => chrome.runtime.sendMessage(message),
+      reportCandidate
+    )
+    setReportError(outcome.sent ? undefined : outcome.message)
+    setReportStatus(outcome.sent ? 'sent' : 'failed')
   }
 
   // Saving (收藏) the current tab's link: one click, with the address in view
@@ -261,6 +263,7 @@ function SignedInBody({
         <PageReportPrompt
           url={reportCandidate.url}
           status={reportStatus}
+          errorMessage={reportError}
           onSend={handleSendReport}
           onDismiss={() => setReportCandidate(null)}
         />

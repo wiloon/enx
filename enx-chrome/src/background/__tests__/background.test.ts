@@ -95,6 +95,7 @@ jest.mock('@clerk/chrome-extension/client', () => ({
 
 import { createClerkClient } from '@clerk/chrome-extension/client'
 import { TOGGLE_LEARNING_MODE_COMMAND } from '@/lib/learningModeCommand'
+import { sanitizePageUrl } from '@/lib/pageReport'
 import {
   makeApiRequest,
   NETWORK_ERROR_MESSAGE,
@@ -1800,29 +1801,49 @@ describe('background onMessage / submitPageReport (ADR-010 Decision 8)', () => {
   const send = (request: unknown): Promise<unknown> =>
     new Promise(resolve => listener(request, {}, resolve))
 
-  it('POSTs the page report to /api/page-reports with the extension version', async () => {
+  it('POSTs the cleaned URL the prompt showed to /api/feedback as a page_report (ADR-076)', async () => {
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
       jsonResponse(200, { success: true, recorded: true })
     )
+    const shown = sanitizePageUrl(
+      'https://user:pw@x.com/unsub/jane@example.com/status/1?s=20#top'
+    )!
 
     const response = await send({
       type: 'submitPageReport',
-      pageReport: {
-        url: 'https://x.com/a/status/1',
-        reason: 'no-article-node',
-        adapter: 'x',
-      },
+      pageReport: { url: shown, reason: 'no-article-node', adapter: 'x' },
     })
 
     expect(response).toMatchObject({ success: true })
     const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
-    expect(url).toContain('/api/page-reports')
+    expect(url).toMatch(/\/api\/feedback$/)
     expect(init.method).toBe('POST')
     expect(JSON.parse(init.body)).toEqual({
-      url: 'https://x.com/a/status/1',
-      reason: 'no-article-node',
-      adapter: 'x',
-      extVersion: '1.0.1',
+      kind: 'page_report',
+      url: 'https://x.com/unsub/:redacted/status/1',
+      context: { adapter: 'x', extVersion: '1.0.1' },
+      details: { reason: 'no-article-node' },
+    })
+  })
+
+  it("passes the server's daily-limit message back to the popup", async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(429, {
+        success: false,
+        code: 'feedback_limit_exceeded',
+        message: 'Daily feedback limit reached. Please try again tomorrow.',
+      })
+    )
+
+    const response = await send({
+      type: 'submitPageReport',
+      pageReport: { url: 'https://x.com/a', reason: 'error', adapter: 'x' },
+    })
+
+    expect(response).toMatchObject({
+      success: false,
+      error: 'Daily feedback limit reached. Please try again tomorrow.',
+      code: 'feedback_limit_exceeded',
     })
   })
 
