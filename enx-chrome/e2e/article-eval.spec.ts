@@ -22,7 +22,7 @@ test.beforeAll(async () => {
 })
 
 const evaluate = (page: import('@playwright/test').Page, url: string) =>
-  evaluatePage(page, { url, category: 'fixture' }, { probeScript, settleMs: 0 })
+  evaluatePage(page, { url, category: 'docs' }, { probeScript, settleMs: 0 })
 
 test.describe('article-eval', () => {
   test('an article page records the article selector and scores in range', async ({
