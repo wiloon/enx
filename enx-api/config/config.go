@@ -44,6 +44,7 @@ type Config struct {
 	AIWord    AIWord    `mapstructure:"ai-word"`
 	Credits   Credits   `mapstructure:"credits"`
 	RateLimit RateLimit `mapstructure:"rate-limit"`
+	Feedback  Feedback  `mapstructure:"feedback"`
 	Stats     Stats     `mapstructure:"stats"`
 	User      User      `mapstructure:"user"`
 	Ops       Ops       `mapstructure:"ops"`
@@ -385,6 +386,12 @@ type RateLimit struct {
 	Burst             int     `mapstructure:"burst"`
 }
 
+// Feedback guards user feedback (ADR-076 Decision 5): DailyLimit is how many
+// new records one user may submit per UTC day, all kinds together.
+type Feedback struct {
+	DailyLimit int `mapstructure:"daily-limit"`
+}
+
 type Credits struct {
 	Trial    Trial    `mapstructure:"trial"`
 	Referral Referral `mapstructure:"referral"`
@@ -703,6 +710,7 @@ func (c *Config) Validate() error {
 	if rl.RequestsPerSecond > 0 {
 		positive("rate-limit.burst", rl.Burst > 0)
 	}
+	positive("feedback.daily-limit", c.Feedback.DailyLimit > 0)
 
 	errs = append(errs, c.Clerk.validate()...)
 
@@ -819,6 +827,10 @@ func defaults() map[string]any {
 	// be tuned from enx_rate_limited_total; 0 req/s switches it off.
 	set("rate-limit.requests-per-second", 5)
 	set("rate-limit.burst", 60)
+
+	// New user feedback records per user per UTC day, all kinds together
+	// (ADR-076 Decision 5): a guard against flooding, never hit in normal use.
+	set("feedback.daily-limit", 50)
 
 	// Reading statistics ingest guards (ADR-028 Decision 9). The word cap
 	// bounds a single session report; the TTL is how long a deduplication
@@ -965,6 +977,8 @@ var envBindings = map[string]string{
 
 	"rate-limit.requests-per-second": "RATE_LIMIT_REQUESTS_PER_SECOND",
 	"rate-limit.burst":               "RATE_LIMIT_BURST",
+
+	"feedback.daily-limit": "FEEDBACK_DAILY_LIMIT",
 
 	"stats.ingest.max-words-per-report":  "STATS_INGEST_MAX_WORDS_PER_REPORT",
 	"stats.ingest.log-ttl-days":          "STATS_INGEST_LOG_TTL_DAYS",

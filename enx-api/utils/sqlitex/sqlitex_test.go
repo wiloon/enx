@@ -87,6 +87,31 @@ func TestInitDropsTheOldLookupQuotaTable(t *testing.T) {
 	}
 }
 
+// ADR-076 Decision 1: feedback replaced page_reports, whose test rows are
+// dropped, not migrated.
+func TestInitReplacesPageReportsWithFeedback(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "enx-sqlitex-drop-page-reports-test.db")
+	old, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := old.Exec(`CREATE TABLE page_reports (id TEXT PRIMARY KEY, user_id TEXT, url TEXT)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if sqlDB, err := old.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
+
+	initializeRepairFixture(t, dbPath)
+
+	if DB.Migrator().HasTable("page_reports") {
+		t.Fatal("page_reports still exists after Init")
+	}
+	if !DB.Migrator().HasTable("feedback") {
+		t.Fatal("Init did not create feedback")
+	}
+}
+
 // The DSN pragmas are parsed by the sqlite driver (glebarez/go-sqlite on top
 // of modernc.org/sqlite). A driver upgrade that stops honoring the
 // "_pragma=" query syntax would silently drop WAL and busy_timeout, which the

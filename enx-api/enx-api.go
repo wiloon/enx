@@ -22,10 +22,11 @@ import (
 	"enx-api/ecdict"
 	"enx-api/email"
 	"enx-api/enx"
+	"enx-api/feedback"
+	feedbackadapters "enx-api/feedback/adapters"
 	"enx-api/handlers"
 	"enx-api/metrics"
 	"enx-api/middleware"
-	"enx-api/pagereport"
 	"enx-api/paragraph"
 	"enx-api/preferences"
 	prefadapters "enx-api/preferences/adapters"
@@ -103,7 +104,6 @@ func main() {
 
 	go runReaderDocumentCleanup()
 	go runStatsIngestLogCleanup(cfg.Stats.Ingest.LogTTL(), cfg.Stats.LookupEvents.RetentionDays, userStats)
-	go runPageReportCleanup()
 	go runTrialExpiry()
 	// Referrer rewards need Stripe to check each payment for a refund or
 	// dispute; without it they stay pending until it is configured.
@@ -256,29 +256,6 @@ func runLookupEventJob(ctx context.Context, now time.Time, retentionDays int, ac
 		logger.Errorf("stats: lookup event rollup failed: %v", err)
 	} else if deleted > 0 {
 		logger.Infof("stats: deleted %d lookup event(s) past retention", deleted)
-	}
-}
-
-// runPageReportCleanup periodically hard-deletes page reports past their
-// retention period (ADR-010 Decision 8). Mirrors the other cleanups: once on
-// start so a restart doesn't leave a backlog, then hourly.
-func runPageReportCleanup() {
-	purge := func() {
-		deleted, err := pagereport.PurgeExpired(context.Background(), time.Now())
-		if err != nil {
-			logger.Errorf("pagereport: purge failed: %v", err)
-			return
-		}
-		if deleted > 0 {
-			logger.Infof("pagereport: purged %d expired report(s)", deleted)
-		}
-	}
-
-	purge()
-	ticker := time.NewTicker(time.Hour)
-	defer ticker.Stop()
-	for range ticker.C {
-		purge()
 	}
 }
 
@@ -581,10 +558,12 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	apiGroup.GET("/stats/overview", stats.OverviewHandler)
 	apiGroup.GET("/stats/series", stats.SeriesHandler)
 
-	// User-confirmed "this page didn't work" reports (ADR-010 Decision 8).
-	// The one endpoint that stores a (sanitized) URL, so the extension only
-	// calls it after the user clicks to confirm. Not on the metered path.
-	apiGroup.POST("/page-reports", pagereport.SubmitHandler(email.NewSender(cfg.Resend)))
+	// User feedback (ADR-076): records the user chose to send, such as a
+	// confirmed "this page didn't work" report. Stores a cleaned URL, so the
+	// extension only calls it after the user confirms. Not on the metered path.
+	feedbackHandler := feedback.NewHandler(feedback.NewService(feedbackadapters.Table{},
+		feedbackadapters.Mail{Sender: email.NewSender(cfg.Resend)}, cfg.Feedback.DailyLimit, time.Now))
+	apiGroup.POST("/feedback", feedbackHandler.Submit)
 
 	// Pages the user chose to save (ADR-032): URL + title only, readable and
 	// editable by that user alone -- there is deliberately no admin route.
@@ -611,9 +590,10 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 		adminDict.DELETE("/words/:word", handlers.AdminDeleteWord)
 		adminDict.GET("/ecdict/:word", handlers.AdminGetEcdict)
 		adminDict.POST("/words/:word/sync-from-ecdict", handlers.AdminSyncWordFromEcdict)
-		// Page reports (ADR-010 Decision 11): read-only queue of user-confirmed
-		// learning-mode failures. Not on the metered path.
-		adminDict.GET("/page-reports", pagereport.ListHandler)
+		// The feedback queue (ADR-076 Decision 7-8): filter by kind and status,
+		// mark a record resolved. Not on the metered path.
+		adminDict.GET("/feedback", feedbackHandler.List)
+		adminDict.PATCH("/feedback/:id", feedbackHandler.Resolve)
 		// Users and billing (ADR-049 Decision 11): accounts, balances and
 		// usage counts only, never saved pages or looked-up words.
 		adminUsers := adminuser.NewHandler(adminuser.NewService(readers.admin,

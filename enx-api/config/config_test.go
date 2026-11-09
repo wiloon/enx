@@ -104,6 +104,8 @@ func TestLoadDefaults(t *testing.T) {
 		// On by default, local development included (ADR-060 Decision 3).
 		{"rate-limit.requests-per-second", cfg.RateLimit.RequestsPerSecond, 5.0},
 		{"rate-limit.burst", cfg.RateLimit.Burst, 60},
+		// ADR-076 Decision 5: all feedback kinds together, per user per UTC day.
+		{"feedback.daily-limit", cfg.Feedback.DailyLimit, 50},
 	}
 	for _, c := range checks {
 		if c.got != c.want {
@@ -265,6 +267,7 @@ var envVars = map[string]string{
 	"USER_LAST_LOGIN_UPDATE_INTERVAL":                 "user.last-login-update-interval",
 	"RATE_LIMIT_REQUESTS_PER_SECOND":                  "rate-limit.requests-per-second",
 	"RATE_LIMIT_BURST":                                "rate-limit.burst",
+	"FEEDBACK_DAILY_LIMIT":                            "feedback.daily-limit",
 	"OPS_STATS_TOKEN":                                 "ops.stats-token",
 }
 
@@ -518,6 +521,16 @@ func TestLoadRejects(t *testing.T) {
 			name:    "rate limit on with an empty bucket",
 			env:     map[string]string{"RATE_LIMIT_BURST": "0"},
 			wantErr: "rate-limit.burst must be positive",
+		},
+		{
+			name:    "zero daily feedback limit",
+			env:     map[string]string{"FEEDBACK_DAILY_LIMIT": "0"},
+			wantErr: "feedback.daily-limit must be positive",
+		},
+		{
+			name:    "negative daily feedback limit",
+			env:     map[string]string{"FEEDBACK_DAILY_LIMIT": "-5"},
+			wantErr: "feedback.daily-limit must be positive",
 		},
 		{
 			name:    "AI word quality above 10",

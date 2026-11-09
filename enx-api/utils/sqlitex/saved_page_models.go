@@ -1,6 +1,6 @@
 package sqlitex
 
-// SavedPage is a page the user chose to save (ADR-032). Unlike PageReport it
+// SavedPage is a page the user chose to save (ADR-032). Unlike Feedback it
 // belongs to the user: it is only ever read back to them, never surfaced to an
 // admin, and is kept until they delete it or their account.
 //

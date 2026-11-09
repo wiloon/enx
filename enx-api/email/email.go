@@ -111,8 +111,8 @@ func (s *Sender) send(to, subject, htmlBody string) error {
 }
 
 // PageReportNotify is the fields shown in the admin page-report email
-// (ADR-010 Decision 12). Kept as a plain struct so pagereport does not
-// import this package's HTTP helpers.
+// (ADR-010 Decision 12). Kept as a plain struct so the feedback domain does
+// not import this package's HTTP helpers.
 type PageReportNotify struct {
 	URL        string
 	Host       string

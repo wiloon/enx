@@ -48,7 +48,7 @@ var personalTables = []struct{ table, column string }{
 	{"saved_pages", "user_id"},
 	{"user_preferences", "user_id"},
 	{"reader_documents", "user_id"},
-	{"page_reports", "user_id"},
+	{"feedback", "user_id"},
 	{"referral_codes", "user_id"},
 	{"sessions", "user_id"},
 	// The balances: whatever was left is forfeited with the account.

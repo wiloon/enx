@@ -230,6 +230,11 @@ call-timeout = "45s"
 requests-per-second = 5
 burst = 60
 
+[feedback]
+# New user feedback records per user per UTC day, all kinds together
+# (ADR-076 Decision 5). Must be positive. Override with FEEDBACK_DAILY_LIMIT.
+daily-limit = 50
+
 [credits.trial]
 # One-off sign-up trial (ADR-048): every new account gets `amount` credits
 # that expire after `ttl-days`, spent before the paid pools. amount = 0

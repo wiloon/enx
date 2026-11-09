@@ -52,6 +52,7 @@ func TestAccountsDeleteDataRemovesPersonalRowsAndKeepsTheLedger(t *testing.T) {
 			&sqlitex.UserDict{UserId: id, WordId: "w1", CreatedAt: 1, UpdatedAt: 1},
 			&sqlitex.LookupEvent{UserID: id, At: 1, Outcome: "hit"},
 			&sqlitex.SavedPage{ID: id + "-p", UserID: id, URL: "https://x", Host: "x", CreatedAt: 1},
+			&sqlitex.Feedback{ID: id + "-f", UserID: id, Kind: "page_report", URL: "https://x/", Host: "x", Status: "new", CreatedAt: 1},
 			&sqlitex.UserPreference{UserId: id, Key: "k", Value: "true", UpdatedAt: 1},
 			&sqlitex.ReferralCode{UserId: id, Code: id + "-code", CreatedAt: 1},
 			&sqlitex.CreditAccount{UserId: id, UpdatedAt: 1},
@@ -83,6 +84,12 @@ func TestAccountsDeleteDataRemovesPersonalRowsAndKeepsTheLedger(t *testing.T) {
 	}
 	if n := countRows(t, "user_dicts", "user_id", "bob"); n != 1 {
 		t.Fatal("another user's word list must be untouched")
+	}
+	if n := countRows(t, "feedback", "user_id", "alice"); n != 0 {
+		t.Errorf("feedback: %d row(s) of alice left (ADR-076 Decision 2)", n)
+	}
+	if n := countRows(t, "feedback", "user_id", "bob"); n != 1 {
+		t.Fatal("another user's feedback must be untouched")
 	}
 }
 

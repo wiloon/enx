@@ -208,7 +208,7 @@ func initDatabase(dbPath, level string) error {
 	// Auto-migrate database schema
 	zapLog.Info("running database auto-migration...")
 	models := []any{&Word{}, &UserDict{}, &Session{}, &SyncState{}, &LookupEvent{},
-		&ReaderDocument{}, &DailyStat{}, &StatsIngestLog{}, &PageReport{}, &SavedPage{},
+		&ReaderDocument{}, &DailyStat{}, &StatsIngestLog{}, &Feedback{}, &SavedPage{},
 		&UserPreference{}, &ActiveUsersDay{}, &ReferralCode{}, &Referral{}, &TrialGrant{},
 		&User{}, &CreditAccount{}, &CreditTransaction{}}
 	err = DB.AutoMigrate(models...)
@@ -221,6 +221,12 @@ func initDatabase(dbPath, level string) error {
 	// Pre-launch, so its rows are dropped, not migrated.
 	if err := DB.Migrator().DropTable("dictionary_lookup_quota"); err != nil {
 		zapLog.Errorf("failed to drop dictionary_lookup_quota: %v", err)
+	}
+
+	// ADR-076 Decision 1: feedback replaced page_reports. Pre-launch, so its
+	// rows are dropped, not migrated.
+	if err := DB.Migrator().DropTable("page_reports"); err != nil {
+		zapLog.Errorf("failed to drop page_reports: %v", err)
 	}
 
 	// One-time data migration: existing users (created before email verification was added)
