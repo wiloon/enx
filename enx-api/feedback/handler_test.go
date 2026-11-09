@@ -169,7 +169,6 @@ func TestSubmitRejectsInvalidInput(t *testing.T) {
 		"not json":                `nope`,
 		"no kind":                 `{"url":"https://x.com/a","details":{"reason":"error"}}`,
 		"unknown kind":            `{"kind":"bug","url":"https://x.com/a"}`,
-		"text not yet accepted":   `{"kind":"text","url":"https://x.com/a","text":"broken"}`,
 		"article choice not yet":  `{"kind":"article_choice","url":"https://x.com/a","details":{"selector":"main"}}`,
 		"definition not yet":      `{"kind":"definition","url":"https://x.com/a","details":{"word":"run"}}`,
 		"page report with text":   `{"kind":"page_report","url":"https://x.com/a","text":"hi","details":{"reason":"error"}}`,
@@ -320,6 +319,109 @@ func TestSubmitNotifiesTheAdminOnlyOfANewPageReport(t *testing.T) {
 	if n.Kind != feedback.KindPageReport || n.URL != "https://x.com/a" || n.Host != "x.com" || n.UserID != "u1" ||
 		!ok || pr.Reason != "no-words" || pr.Adapter != "x" || pr.ExtVersion != "1.0.1" {
 		t.Fatalf("notification = %+v (%+v)", n, pr)
+	}
+}
+
+func textFeedback(url, text, context string) string {
+	return fmt.Sprintf(`{"kind":"text","url":%q,"text":%q,"context":%s,"details":{}}`, url, text, context)
+}
+
+const extensionContext = `{"appVersion":"1.4.0","browser":"Chrome 142","learningMode":true,"adapter":"x","articleSource":"auto","pageText":"secret"}`
+
+func TestSubmitStoresTextFeedbackWithTheURLTheServerCleaned(t *testing.T) {
+	e := newEnv(t)
+
+	e.wantRecorded(e.submit("u1", textFeedback("https://X.com/a/status/1?s=20#top", "  The popup froze.  ", extensionContext)), true)
+
+	got := rows(t, "u1")
+	if len(got) != 1 {
+		t.Fatalf("rows = %d, want 1", len(got))
+	}
+	r := got[0]
+	if r.Kind != "text" || r.UserID != "u1" || r.URL != "https://x.com/a/status/1" || r.Host != "x.com" ||
+		r.Text != "The popup froze." || r.Details != "{}" {
+		t.Fatalf("row = %+v", r)
+	}
+	if r.Context != `{"appVersion":"1.4.0","browser":"Chrome 142","learningMode":true,"adapter":"x","articleSource":"auto"}` {
+		t.Fatalf("context = %s, want the known fields only", r.Context)
+	}
+	if len(e.notifier.sent) != 1 || e.notifier.sent[0].Kind != feedback.KindText {
+		t.Fatalf("notifications = %+v, want the text record", e.notifier.sent)
+	}
+}
+
+func TestSubmitStoresTextFeedbackWithoutAPage(t *testing.T) {
+	e := newEnv(t)
+
+	e.wantRecorded(e.submit("u1", textFeedback("", "Love it", `{"appVersion":"unknown","browser":"Firefox 133"}`)), true)
+
+	r := rows(t, "u1")[0]
+	if r.URL != "" || r.Host != "" || r.Context != `{"appVersion":"unknown","browser":"Firefox 133"}` {
+		t.Fatalf("row = %+v", r)
+	}
+}
+
+func TestSubmitAcceptsTextOf2000CodePoints(t *testing.T) {
+	e := newEnv(t)
+
+	e.wantRecorded(e.submit("u1", textFeedback("", strings.Repeat("好", 2000), `{}`)), true)
+
+	if r := rows(t, "u1")[0]; r.Text != strings.Repeat("好", 2000) {
+		t.Fatalf("text has %d bytes", len(r.Text))
+	}
+}
+
+func TestSubmitRejectsInvalidTextFeedback(t *testing.T) {
+	e := newEnv(t)
+	for name, body := range map[string]string{
+		"no text":                `{"kind":"text","url":""}`,
+		"empty text":             textFeedback("", "", `{}`),
+		"whitespace text":        textFeedback("", " \n\t ", `{}`),
+		"2001 code points":       textFeedback("", strings.Repeat("好", 2001), `{}`),
+		"url not a url":          textFeedback("foo", "hi", `{}`),
+		"url not http":           textFeedback("chrome://extensions", "hi", `{}`),
+		"unknown article source": textFeedback("", "hi", `{"articleSource":"guess"}`),
+		"bad browser":            textFeedback("", "hi", `{"browser":"Mozilla/5.0 (X11; Linux x86_64)"}`),
+		"bad version":            textFeedback("", "hi", `{"appVersion":"1 0"}`),
+		"bad adapter":            textFeedback("", "hi", `{"adapter":"A B"}`),
+		"learning mode a string": textFeedback("", "hi", `{"learningMode":"yes"}`),
+	} {
+		w := e.submit("u1", body)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("%s: status %d body=%s, want 400", name, w.Code, w.Body.String())
+			continue
+		}
+		if r := decode[submitResponse](t, w); r.Message == "" {
+			t.Errorf("%s: no message", name)
+		}
+	}
+	if n := len(rows(t, "u1")); n != 0 {
+		t.Fatalf("rows = %d, want none", n)
+	}
+}
+
+func TestSubmitStoresEveryRepeatOfTextFeedback(t *testing.T) {
+	e := newEnv(t)
+	body := textFeedback("https://x.com/a", "Same again", `{}`)
+
+	e.wantRecorded(e.submit("u1", body), true)
+	e.wantRecorded(e.submit("u1", body), true)
+
+	if n := len(rows(t, "u1")); n != 2 {
+		t.Fatalf("rows = %d, want 2", n)
+	}
+}
+
+func TestSubmitRejectsThe51stRecordWhenItIsText(t *testing.T) {
+	e := newEnv(t)
+	seed(t, "u1", "page_report", today.Add(-time.Hour), 50)
+
+	w := e.submit("u1", textFeedback("", "one more", `{}`))
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("status %d body=%s, want 429", w.Code, w.Body.String())
+	}
+	if r := decode[submitResponse](t, w); r.Message != "Daily feedback limit reached. Please try again tomorrow." {
+		t.Fatalf("response %+v", r)
 	}
 }
 

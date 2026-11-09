@@ -119,6 +119,63 @@ describe('Privacy Policy', () => {
     }
   )
 
+  // ADR-076 Decision 3: written feedback, the editable cleaned URL and the
+  // context fields, in each of the three passages that describe feedback.
+  it.each([
+    [
+      'English',
+      PrivacyPolicyPage,
+      {
+        intro: /never sent or stored either/,
+        row: /^Feedback you send us/,
+        section: /You can also write to us/,
+      },
+      [/Send feedback/, /edit or clear it|edit it or clear it/],
+      [
+        /Send feedback/,
+        /app version/,
+        /browser.s name and major version/,
+        /learning mode/,
+        /site adapter/,
+        /picked the article yourself|picked by you/,
+      ],
+      /never send the page.s text, its title or a screenshot/,
+    ],
+    [
+      'Chinese route',
+      PrivacyPolicyZhPage,
+      {
+        intro: /页面的网址和标题也从不发送/,
+        row: /^你发给我们的反馈/,
+        section: /你也可以用「Send feedback」/,
+      },
+      [/Send feedback/, /修改或清空/],
+      [
+        /Send feedback/,
+        /应用版本/,
+        /浏览器名称和主版本号/,
+        /学习模式/,
+        /站点适配器/,
+        /自动识别还是你自己选的/,
+      ],
+      /从不发送页面的正文、标题或截图/,
+    ],
+  ])(
+    'discloses written feedback and what it carries, on the %s page',
+    (_locale, Page, passages, introClaims, contextClaims, notSent) => {
+      render(<Page />)
+
+      const intro = screen.getByText(passages.intro)
+      for (const claim of introClaims) expect(intro).toHaveTextContent(claim)
+      const row = screen.getByText(passages.row)
+      for (const claim of contextClaims) expect(row).toHaveTextContent(claim)
+      const section = screen.getByText(passages.section)
+      for (const claim of [...introClaims, ...contextClaims, notSent]) {
+        expect(section).toHaveTextContent(claim)
+      }
+    }
+  )
+
   it('names the AI provider and where it runs, not "a third party"', () => {
     render(<PrivacyPolicyPage />)
 

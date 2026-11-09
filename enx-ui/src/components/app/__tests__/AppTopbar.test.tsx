@@ -121,7 +121,7 @@ describe('account menu', () => {
     const items = within(menu)
       .getAllByRole('menuitem')
       .map((i) => i.textContent?.trim())
-    expect(items).toEqual(['Account', 'Billing', 'Sign out'])
+    expect(items).toEqual(['Account', 'Billing', 'Send feedback', 'Sign out'])
     expect(
       within(menu).getByRole('menuitem', { name: 'Account' })
     ).toHaveAttribute('href', '/account')
