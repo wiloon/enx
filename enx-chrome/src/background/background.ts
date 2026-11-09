@@ -146,15 +146,23 @@ class SessionSyncUnconfirmed extends Error {
   }
 }
 
+// Thrown when a newer Clerk check or an account change superseded the one in
+// progress; callers join the latest check or fence the request.
+class SessionChanged extends Error {
+  constructor() {
+    super('Session changed')
+  }
+}
+
 const syncAndObserveClerk = async (): Promise<ClerkClient> => {
   const requested = clerkGeneration
   const clerk = await syncClerk()
-  if (requested !== clerkGeneration) throw new Error('Session changed')
+  if (requested !== clerkGeneration) throw new SessionChanged()
   const sync = await classifyLoadedClerk(clerk)
-  if (requested !== clerkGeneration) throw new Error('Session changed')
+  if (requested !== clerkGeneration) throw new SessionChanged()
   if (sync === 'unconfirmed') throw new SessionSyncUnconfirmed()
   await accountSession.observe(clerk.user?.id ?? null)
-  if (requested !== clerkGeneration) throw new Error('Session changed')
+  if (requested !== clerkGeneration) throw new SessionChanged()
   return clerk
 }
 
@@ -162,8 +170,7 @@ const syncAndObserveClerk = async (): Promise<ClerkClient> => {
 // latest check; the request's account scope decides whether its eventual
 // identity is still safe for the original caller.
 const joinLatestCheck = (error: unknown): Promise<ClerkClient> => {
-  if (error instanceof Error && error.message === 'Session changed')
-    return getSyncedClerk()
+  if (error instanceof SessionChanged) return getSyncedClerk()
   throw error
 }
 
@@ -212,7 +219,7 @@ let clerkCookieSync = makeClerkCookieSync()
 const syncClerk = async (): Promise<ClerkClient> => {
   const requested = clerkGeneration
   let clerk = await getClerk()
-  if (requested !== clerkGeneration) throw new Error('Session changed')
+  if (requested !== clerkGeneration) throw new SessionChanged()
   if (clerk.session) return clerk
 
   for (
@@ -221,10 +228,10 @@ const syncClerk = async (): Promise<ClerkClient> => {
     attempt++
   ) {
     await sleep(SESSION_SYNC_RETRY_DELAYS_MS[attempt - 1])
-    if (requested !== clerkGeneration) throw new Error('Session changed')
+    if (requested !== clerkGeneration) throw new SessionChanged()
     clerkClientPromise = null
     clerk = await getClerk()
-    if (requested !== clerkGeneration) throw new Error('Session changed')
+    if (requested !== clerkGeneration) throw new SessionChanged()
     if (clerk.session) {
       swlog(
         `clerk session recovered on retry ${attempt} ` +
@@ -274,8 +281,7 @@ const recheckSession = () => {
       try {
         clerk = await getSyncedClerk()
       } catch (error) {
-        if (error instanceof Error && error.message === 'Session changed')
-          throw error
+        if (error instanceof SessionChanged) throw error
         swlog(`session recheck failed: ${String(error)}`, 'warn')
         return { sync: 'unconfirmed' as const, token: null }
       }
@@ -317,8 +323,7 @@ const getSessionToken = async (
   try {
     clerk = opts.synced ?? (await getSyncedClerk())
   } catch (error) {
-    if (error instanceof Error && error.message === 'Session changed')
-      throw error
+    if (error instanceof SessionChanged) throw error
     swlog(`getSyncedClerk failed: ${String(error)}`, 'error')
     return {
       ...noToken,
@@ -586,7 +591,7 @@ export const makeApiRequest = async (
 
   try {
     for (let attempt = 1; ; attempt++) {
-      if (!requestIsCurrent()) throw new Error('Session changed')
+      if (!requestIsCurrent()) throw new SessionChanged()
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         // Every call carries the user's UTC offset so the server can file
@@ -621,7 +626,7 @@ export const makeApiRequest = async (
         )
       }
       if (!requestIsCurrent() || !session.isCurrent())
-        throw new Error('Session changed')
+        throw new SessionChanged()
       if (!token) {
         if (outcome === 'transient') {
           return { success: false, error: SIGN_IN_SERVICE_UNREACHABLE_MESSAGE }
@@ -646,7 +651,7 @@ export const makeApiRequest = async (
         throw error
       }
 
-      if (!(await responseIsCurrent())) throw new Error('Session changed')
+      if (!(await responseIsCurrent())) throw new SessionChanged()
 
       console.log(
         `API response status: ${response.status} ${response.statusText}`
@@ -659,7 +664,7 @@ export const makeApiRequest = async (
           // been up (a real logout can 401 with a token too, but not right
           // after other calls in the same worker succeeded).
           const body = await response.text().catch(() => '')
-          if (!(await responseIsCurrent())) throw new Error('Session changed')
+          if (!(await responseIsCurrent())) throw new SessionChanged()
           swlog(
             `401 from ${endpoint}: ` +
               `forceRefresh=${forceRefresh}, attempt=${attempt}, ` +
@@ -750,7 +755,7 @@ export const makeApiRequest = async (
         swlog(`${endpoint} succeeded after force-refreshing the Clerk token`)
       }
       const data = await response.json()
-      if (!(await responseIsCurrent())) throw new Error('Session changed')
+      if (!(await responseIsCurrent())) throw new SessionChanged()
       console.log('API response data:', data)
       return { success: true, data }
     }
@@ -761,9 +766,8 @@ export const makeApiRequest = async (
     // unless the latest invalidation switched to another signed-in account,
     // which is an ordinary failure for whoever asked.
     if (
-      error instanceof Error &&
-      (error.message === 'Session expired' ||
-        error.message === 'Session changed')
+      error instanceof SessionChanged ||
+      (error instanceof Error && error.message === 'Session expired')
     ) {
       return accountSession.sessionLost()
         ? {

@@ -105,51 +105,57 @@ export const test = base.extend<ExtensionFixtures, WorkerFixtures>({
     { scope: 'worker' },
   ],
 
-  signedIn: async (
-    { context, extensionId, uiOrigin, seedsVocabulary, clerkTesting: _ },
-    use
-  ) => {
-    // Sign in on the website, exactly where a user would; the extension picks
-    // the session up through syncHost (ADR-015).
-    // clerk.signIn calls Clerk's Backend API and fails now and then with an
-    // empty "Failed to sign in" error, so a fresh page retries it.
-    const site = await context.newPage()
-    await test
-      .expect(async () => {
-        await site.goto(`${uiOrigin}/`)
-        await clerk.loaded({ page: site })
-        const signedInAlready = await site.evaluate(
-          () => (window as { Clerk?: { user?: unknown } }).Clerk?.user != null
-        )
-        if (!signedInAlready) {
-          await clerk.signIn({ page: site, emailAddress: E2E_USER_EMAIL })
-        }
-      })
-      .toPass({ intervals: [1_000, 2_000, 5_000], timeout: 60_000 })
+  // Its own timeout: the waits below (60s sign-in, 30s session sync) outlast
+  // the default test timeout, and a test's setTimeout only starts counting
+  // after its fixtures are set up.
+  signedIn: [
+    async (
+      { context, extensionId, uiOrigin, seedsVocabulary, clerkTesting: _ },
+      use
+    ) => {
+      // Sign in on the website, exactly where a user would; the extension picks
+      // the session up through syncHost (ADR-015).
+      // clerk.signIn calls Clerk's Backend API and fails now and then with an
+      // empty "Failed to sign in" error, so a fresh page retries it.
+      const site = await context.newPage()
+      await test
+        .expect(async () => {
+          await site.goto(`${uiOrigin}/`)
+          await clerk.loaded({ page: site })
+          const signedInAlready = await site.evaluate(
+            () => (window as { Clerk?: { user?: unknown } }).Clerk?.user != null
+          )
+          if (!signedInAlready) {
+            await clerk.signIn({ page: site, emailAddress: E2E_USER_EMAIL })
+          }
+        })
+        .toPass({ intervals: [1_000, 2_000, 5_000], timeout: 60_000 })
 
-    // Done only when the extension has synced the session AND enx-api accepted
-    // its JWT: validateSession is GET /api/me through the background.
-    const popup = await context.newPage()
-    await popup.goto(`chrome-extension://${extensionId}/popup.html`)
-    let localUserId = ''
-    await test
-      .expect(async () => {
-        const result = await popup.evaluate(() =>
-          chrome.runtime.sendMessage({ type: 'validateSession' })
-        )
-        test.expect(result?.success, JSON.stringify(result)).toBe(true)
-        test.expect(result?.data?.id).toEqual(test.expect.any(String))
-        localUserId = result.data.id
-      })
-      .toPass({ timeout: 30_000 })
-    await popup.close()
-    await site.close()
+      // Done only when the extension has synced the session AND enx-api accepted
+      // its JWT: validateSession is GET /api/me through the background.
+      const popup = await context.newPage()
+      await popup.goto(`chrome-extension://${extensionId}/popup.html`)
+      let localUserId = ''
+      await test
+        .expect(async () => {
+          const result = await popup.evaluate(() =>
+            chrome.runtime.sendMessage({ type: 'validateSession' })
+          )
+          test.expect(result?.success, JSON.stringify(result)).toBe(true)
+          test.expect(result?.data?.id).toEqual(test.expect.any(String))
+          localUserId = result.data.id
+        })
+        .toPass({ timeout: 30_000 })
+      await popup.close()
+      await site.close()
 
-    // The user now exists in enx-api; give it the fixture vocabulary.
-    if (seedsVocabulary) seedVocabulary(localUserId)
+      // The user now exists in enx-api; give it the fixture vocabulary.
+      if (seedsVocabulary) seedVocabulary(localUserId)
 
-    await use()
-  },
+      await use()
+    },
+    { timeout: 120_000 },
+  ],
 })
 
 export { expect } from '@playwright/test'

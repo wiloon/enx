@@ -55,7 +55,12 @@ test.describe('Account-owned review lists', () => {
       } else {
         await clerk.signOut({ page: website })
       }
-      await expect.poll(() => getHighlightedWordsCount(page)).toBe(0)
+      // A website sign-out reaches the worker as a cookie burst: it waits for
+      // the burst to settle, then retries the empty Clerk load with backoff
+      // before it treats the session as gone, which can outlast 5s.
+      await expect
+        .poll(() => getHighlightedWordsCount(page), { timeout: 30_000 })
+        .toBe(0)
       await expect
         .poll(() => sendToPage(page.url(), 'getPageInfo'))
         .toMatchObject({ isEnxEnabled: false })

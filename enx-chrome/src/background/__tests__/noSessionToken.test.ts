@@ -181,6 +181,23 @@ describe('a Clerk sync that cannot confirm the session', () => {
     expectTransient(result)
   })
 
+  // Only the worker's own SessionChanged marks a superseded check; a plain
+  // error that happens to carry the same wording is an ordinary failure.
+  it('is transient when the load throws a plain error worded like a superseded check', async () => {
+    loadsAs(async () => {
+      throw new Error('Session changed')
+    })
+    answer(200)
+
+    const result = await makeApiRequest('/api/translate?word=fox')
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expectTransient(result)
+    expect(result).not.toEqual(
+      expect.objectContaining({ error: ACCOUNT_CHANGED_MESSAGE })
+    )
+  }, 2000)
+
   it('is transient when the load comes back empty after a Frontend API network failure', async () => {
     loadsAs(empty('swallowed'))
     answer(200)
