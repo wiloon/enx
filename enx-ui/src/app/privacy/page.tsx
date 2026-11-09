@@ -125,9 +125,11 @@ export default function PrivacyPolicyPage() {
           take that access back at any time in Chrome&rsquo;s extension
           settings. The full text of a page is never sent to our servers. Its
           address and title are never sent or stored either, unless you press
-          &ldquo;Save&rdquo; to keep the page, or send it to us as feedback,
-          such as &ldquo;Send report&rdquo; on a page Catglish could not read
-          (see below).
+          &ldquo;Save&rdquo; to keep the page, or send it to us as feedback:
+          &ldquo;Send report&rdquo; on a page Catglish could not read, or
+          &ldquo;Send feedback&rdquo; in the extension popup or the account
+          menu, where you see the cleaned address and can edit or clear it
+          before sending (see below).
         </p>
       </Section>
 
@@ -174,7 +176,7 @@ export default function PrivacyPolicyPage() {
                   'At most 100 days, then deleted automatically; only the daily lookup counts remain',
                 ],
                 [
-                  'Feedback you send us, such as a page Catglish could not read when you press "Send report": the page address, what went wrong, and the extension version',
+                  'Feedback you send us: what you write with "Send feedback", or a page Catglish could not read when you press "Send report". With it: the page address (cleaned, and shown to you to edit or clear before sending), what went wrong, the app version, your browser\'s name and major version, and, from the extension, whether learning mode was on, which site adapter read the page and whether you picked the article yourself',
                   'So we can find and fix problems',
                   'Not deleted automatically; deleted when you delete your account',
                 ],
@@ -239,6 +241,17 @@ export default function PrivacyPolicyPage() {
           or a long token, are replaced with a placeholder. We keep it together
           with the reason the page failed and the extension version. It is used
           only to find and fix problems — never for statistics or profiling.
+        </p>
+        <p>
+          You can also write to us with &ldquo;Send feedback&rdquo;, in the
+          extension popup or the account menu on catglish.com. We keep what you
+          write and the address of the page you were on, cleaned the same way;
+          the form shows that address before sending, and you can edit it or
+          clear it. With it we keep the app version and your browser&rsquo;s
+          name and major version, and, when you send from the extension, whether
+          learning mode was on, which site adapter read the page and whether the
+          article was found automatically or picked by you. We never send the
+          page&rsquo;s text, its title or a screenshot.
         </p>
         <p>
           Feedback is linked to your account, so we can follow up with you and

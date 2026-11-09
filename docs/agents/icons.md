@@ -40,6 +40,7 @@ Before placing an icon, find its concept below and use that row's icon. A concep
 | Billing | `CreditCardIcon` | `CreditCard` | account menu "Billing" |
 | Your account (no picture yet) | `UserCircleIcon` | `CircleUser` | account menu "Account" item; avatar placeholder while the profile loads |
 | Sign out | `ArrowRightOnRectangleIcon` | `LogOut` | popup; account menu |
+| Send feedback | `ChatBubbleLeftEllipsisIcon` | `MessageSquarePlus` | account menu "Send feedback" |
 | More actions | `EllipsisHorizontalIcon` | `MoreHorizontal` | Word List row menu |
 | Edit | `PencilIcon` | `Pencil` | Reader "Edit text" |
 | Explanation | `InformationCircleIcon` | `Info` | Reading Stats footnote |
