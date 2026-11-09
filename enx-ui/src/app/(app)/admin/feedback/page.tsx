@@ -52,7 +52,7 @@ function fields(obj: Record<string, unknown>): string {
 }
 
 const selectClass =
-  'h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground'
+  'h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground cursor-pointer transition-colors hover:border-foreground/40 active:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
 // The feedback queue (ADR-076 Decision 7-8): everything users sent, newest
 // first, filtered on the server. Resolving keeps the record.
@@ -216,7 +216,7 @@ function FeedbackRow({ record: f }: { record: AdminFeedback }) {
       </td>
       <td className="py-2 pr-3 whitespace-nowrap">{kindLabel(f.kind)}</td>
       <td className="py-2 pr-3 max-w-32 break-all font-mono text-xs">
-        <Link href={`/admin/users/${f.userId}`} className="hover:underline">
+        <Link href={`/admin/users/${f.userId}`} className="hover:underline active:opacity-70 focus-visible:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
           {f.userId}
         </Link>
       </td>
