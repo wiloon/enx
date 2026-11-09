@@ -216,7 +216,10 @@ function FeedbackRow({ record: f }: { record: AdminFeedback }) {
       </td>
       <td className="py-2 pr-3 whitespace-nowrap">{kindLabel(f.kind)}</td>
       <td className="py-2 pr-3 max-w-32 break-all font-mono text-xs">
-        <Link href={`/admin/users/${f.userId}`} className="hover:underline active:opacity-70 focus-visible:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
+        <Link
+          href={`/admin/users/${f.userId}`}
+          className="hover:underline active:opacity-70 focus-visible:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+        >
           {f.userId}
         </Link>
       </td>
