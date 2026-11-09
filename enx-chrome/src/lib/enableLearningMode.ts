@@ -164,3 +164,24 @@ export async function getLearningModeStatusOnTab(
     return { status: 'off' }
   }
 }
+
+// The article choice on the tab, for the popup's "Article area" section. Like
+// getLearningModeStatusOnTab it never injects (ADR-034 Decision 2): a tab with
+// no content script has applied no choice, so it shows automatic detection,
+// with `available` worked out by the popup from the tab URL. Only the
+// "Choose article" click injects, through sendPageActionOnTab.
+export async function getArticleChoiceOnTab(
+  tabId: number,
+  available: boolean
+): Promise<PageActionResponse> {
+  try {
+    return await chrome.tabs.sendMessage(
+      tabId,
+      { action: 'getArticleChoice' },
+      { frameId: 0 }
+    )
+  } catch (err) {
+    if (!isNoReceiverError(err)) throw err
+    return { success: true, available }
+  }
+}

@@ -358,3 +358,20 @@ export function resolveSiteAdapter(
     DEFAULT_ADAPTER
   )
 }
+
+/**
+ * Whether the user may choose the article area on this page (ADR-073). X, the
+ * Catglish reader and RSSX find their own areas, and a page its adapter rules
+ * out has nothing to choose. The popup asks this of the tab URL, so it never
+ * injects the content script just to learn it.
+ */
+export function articleChoiceAvailable(
+  location: PageLocation,
+  origins: SiteOrigins
+): boolean {
+  const adapter = resolveSiteAdapter(location, origins)
+  return (
+    !['x', 'reader', 'rssx'].includes(adapter.name) &&
+    !adapter.pageSupport?.(location)
+  )
+}

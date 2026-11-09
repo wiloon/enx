@@ -1,4 +1,5 @@
 import {
+  articleChoiceAvailable,
   resolveSiteAdapter,
   pickFocusedTweet,
   X_CONTENT_SELECTOR,
@@ -750,5 +751,25 @@ describe('AWS docs adapter', () => {
     document.body.innerHTML = `<h1>AWS Documentation</h1>${feedbackWidgets}`
 
     expect(area()).toEqual({ nodes: [document.body], source: 'whole-page' })
+  })
+})
+
+describe('articleChoiceAvailable', () => {
+  it('offers a choice on an ordinary article page', () => {
+    expect(
+      articleChoiceAvailable(loc('paulgraham.com', '/greatwork.html'), HOMELAB)
+    ).toBe(true)
+  })
+
+  it('offers none on X, the Catglish reader or RSSX, which find their own areas', () => {
+    expect(
+      articleChoiceAvailable(loc('x.com', '/user/status/1'), HOMELAB)
+    ).toBe(false)
+    expect(
+      articleChoiceAvailable(loc('localhost:3000', '/reader/sample'), HOMELAB)
+    ).toBe(false)
+    expect(
+      articleChoiceAvailable(loc('rssx-lab.wiloon.com', '/'), HOMELAB)
+    ).toBe(false)
   })
 })

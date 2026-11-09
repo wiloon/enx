@@ -1,6 +1,7 @@
 import {
   disableLearningModeOnTab,
   enableLearningModeOnTab,
+  getArticleChoiceOnTab,
   getLearningModeStatusOnTab,
 } from '@/lib/enableLearningMode'
 
@@ -217,4 +218,43 @@ it('starts article picking on an uninjected page without enabling learning mode 
   } finally {
     jest.useRealTimers()
   }
+})
+
+describe('getArticleChoiceOnTab', () => {
+  beforeEach(() => {
+    jest.resetAllMocks()
+    ;(chrome.runtime.getManifest as jest.Mock).mockReturnValue({
+      content_scripts: [{ js: ['loader.js'] }],
+    })
+  })
+
+  it("returns the content script's own status when it is listening", async () => {
+    const status = {
+      success: true,
+      available: true,
+      choice: { source: 'your-choice', saved: true },
+    }
+    ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(status)
+
+    expect(await getArticleChoiceOnTab(7, true)).toEqual(status)
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      7,
+      { action: 'getArticleChoice' },
+      { frameId: 0 }
+    )
+  })
+
+  it('reports automatic detection for a tab with no content script, without injecting one', async () => {
+    ;(chrome.tabs.sendMessage as jest.Mock).mockRejectedValue(noReceiverError())
+
+    expect(await getArticleChoiceOnTab(7, true)).toEqual({
+      success: true,
+      available: true,
+    })
+    expect(await getArticleChoiceOnTab(7, false)).toEqual({
+      success: true,
+      available: false,
+    })
+    expect(chrome.scripting.executeScript).not.toHaveBeenCalled()
+  })
 })

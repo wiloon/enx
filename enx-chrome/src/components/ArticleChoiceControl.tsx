@@ -1,8 +1,22 @@
 import { useEffect, useState } from 'react'
+import { config } from '@/config/env'
 import {
+  getArticleChoiceOnTab,
   sendPageActionOnTab,
   type PageActionResponse,
 } from '@/lib/enableLearningMode'
+import { articleChoiceAvailable } from '@/lib/siteAdapters'
+
+// Asks the tab without injecting the content script (ADR-034 Decision 2).
+function probe(tabId: number, url: string) {
+  return getArticleChoiceOnTab(
+    tabId,
+    articleChoiceAvailable(new URL(url), {
+      uiOrigins: config.uiOrigins,
+      rssxOrigins: config.rssxOrigins,
+    })
+  )
+}
 
 const actionClass =
   'rounded-lg border border-brand/40 px-3 py-1.5 text-xs font-medium text-brand transition hover:bg-brand-muted active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50'
@@ -12,21 +26,21 @@ export default function ArticleChoiceControl({
 }: {
   onModeChange: () => void
 }) {
-  const [tabId, setTabId] = useState<number>()
+  const [tab, setTab] = useState<{ id: number; url: string }>()
   const [state, setState] = useState<PageActionResponse>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      const [tab] = await chrome.tabs.query({
+      const [active] = await chrome.tabs.query({
         active: true,
         currentWindow: true,
       })
-      if (!tab?.id || !tab.url || !/^https?:\/\//.test(tab.url)) return
-      const response = await sendPageActionOnTab(tab.id, 'getArticleChoice')
+      if (!active?.id || !active.url || !/^https?:\/\//.test(active.url)) return
+      const response = await probe(active.id, active.url)
       if (!cancelled) {
-        setTabId(tab.id)
+        setTab({ id: active.id, url: active.url })
         setState(response)
       }
     })().catch(() => {})
@@ -39,11 +53,11 @@ export default function ArticleChoiceControl({
   const manual = state.choice?.source === 'your-choice'
   const pageOnly = manual && !state.choice?.saved
   const handleUseAutomatic = async () => {
-    if (!tabId) return
+    if (!tab) return
     setBusy(true)
     setError(undefined)
     try {
-      const response = await sendPageActionOnTab(tabId, 'useAutomaticArticle')
+      const response = await sendPageActionOnTab(tab.id, 'useAutomaticArticle')
       if (!response.success) throw new Error(response.error)
     } catch (error) {
       setError(
@@ -53,7 +67,7 @@ export default function ArticleChoiceControl({
       )
     } finally {
       try {
-        setState(await sendPageActionOnTab(tabId, 'getArticleChoice'))
+        setState(await probe(tab.id, tab.url))
       } catch {
         /* Keep the last known choice when the tab becomes unavailable. */
       }
@@ -62,11 +76,11 @@ export default function ArticleChoiceControl({
     }
   }
   const choose = async () => {
-    if (!tabId) return
+    if (!tab) return
     setBusy(true)
     setError(undefined)
     try {
-      const response = await sendPageActionOnTab(tabId, 'chooseArticle')
+      const response = await sendPageActionOnTab(tab.id, 'chooseArticle')
       if (!response.success) throw new Error(response.error)
       window.close()
     } catch (error) {

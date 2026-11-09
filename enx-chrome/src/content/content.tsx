@@ -26,6 +26,7 @@ import {
 } from '@/lib/wordHighlight'
 import {
   lookupAreaOptions,
+  articleChoiceAvailable,
   resolveSiteAdapter,
   type SiteOrigins,
 } from '@/lib/siteAdapters'
@@ -828,14 +829,9 @@ const setActiveSentenceHighlight = (range: Range) => {
 const articleChoice = createPageArticleChoice({
   document,
   storage: chrome.storage.local,
-  available: () => {
-    if (standDown.isStoodDown()) return false
-    const adapter = resolveSiteAdapter(window.location, siteOrigins)
-    return (
-      !['x', 'reader', 'rssx'].includes(adapter.name) &&
-      !adapter.pageSupport?.(window.location)
-    )
-  },
+  available: () =>
+    !standDown.isStoodDown() &&
+    articleChoiceAvailable(window.location, siteOrigins),
   mode: {
     isOn: () => isEnxEnabled,
     stop: () => {
