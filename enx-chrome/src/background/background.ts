@@ -1,6 +1,10 @@
 // ENX Background Script - Handles API communication and message routing
 // Note: Sentry initialization is skipped in service worker context to avoid import issues
 
+import {
+  createDictionaryCache,
+  openDictionaryCache,
+} from '@/lib/dictionaryCache'
 import { createAccountSession, type Invalidation } from '@/lib/accountSession'
 import { createCoalescedSync } from '@/lib/coalescedSync'
 import { createSessionCookies } from '@/lib/sessionCookies'
@@ -1023,7 +1027,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     try {
       switch (request.type || request.action) {
         case 'getOneWord':
-          return await handleGetOneWord(request.word)
+          return await handleGetOneWord(request.word, request.refresh === true)
 
         case 'panelAccountFreshness':
           return {
@@ -1034,6 +1038,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'accountSignedOut':
           resetClerkSession()
           await accountSession.clear('signed-out')
+          dictionaryCacheGeneration++
+          try {
+            await workerDictionaryCache().clear()
+          } catch {
+            /* Best effort; no user data. */
+          }
           return { success: true }
 
         case 'getReviewWords':
@@ -1043,7 +1053,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           return await handleMarkKnown(request.word, request.userId)
 
         case 'recordWordLookup':
-          return await handleRecordWordLookup(request.wordId || '')
+          return await handleRecordWordLookup(
+            request.wordId || '',
+            request.fromCache === true
+          )
 
         case 'openSentencePanel':
           return await handleOpenSentencePanel(
@@ -1365,24 +1378,55 @@ chrome.runtime.onMessageExternal.addListener(
 // Handle get one word translation
 // One click-to-lookup's +1 to the word's Query Count (ADR-059 Decision 3).
 // Never retried: it is not idempotent, and a lost one only leaves the count
-// one short. Callers don't wait for it (lib/queryCount.ts).
-const handleRecordWordLookup = async (wordId: string) => {
+// one short. Cache hits use its authoritative count (ADR-061).
+const handleRecordWordLookup = async (wordId: string, fromCache = false) => {
   if (!wordId) return { success: false, error: 'No word id provided' }
   const response = await makeApiRequest('/api/me/word-lookups', {
     method: 'POST',
-    body: JSON.stringify({ wordId }),
+    body: JSON.stringify({ wordId, ...(fromCache ? { fromCache: true } : {}) }),
   })
   if (!response.success) {
     swlog(`recordWordLookup ${wordId} failed: ${response.error}`, 'warn')
   }
-  return { success: response.success }
+  if (!response.success) return response
+  return {
+    success: true,
+    queryCount: response.data?.queryCount,
+    known: response.data?.known,
+  }
 }
 
-const handleGetOneWord = async (word: string) => {
+let dictionaryCacheInstance:
+  ReturnType<typeof createDictionaryCache> | undefined
+let dictionaryCacheGeneration = 0
+const workerDictionaryCache = () =>
+  (dictionaryCacheInstance ??= createDictionaryCache(
+    openDictionaryCache(indexedDB),
+    Date.now,
+    error => swlog(`Dictionary cache write failed: ${String(error)}`, 'warn')
+  ))
+
+const handleGetOneWord = async (word: string, refresh = false) => {
   if (!word || word.trim() === '') {
     return { success: false, error: 'No word provided' }
   }
 
+  const generation = dictionaryCacheGeneration
+  try {
+    const cache = workerDictionaryCache()
+    if (refresh) await cache.delete(word)
+    else {
+      const entry = await cache.get(word)
+      if (entry)
+        return {
+          success: true,
+          ecp: { ...entry, Key: word.trim().toLowerCase() },
+          fromCache: true,
+        }
+    }
+  } catch (error) {
+    swlog(`Dictionary cache read failed: ${String(error)}`, 'warn')
+  }
   console.log('Handling getOneWord request for:', word)
   const encodedWord = encodeURIComponent(word.trim())
   // Read-only, so safe to replay (ADR-059 Decision 3): the click's one
@@ -1408,9 +1452,17 @@ const handleGetOneWord = async (word: string) => {
 
       if (ecp && (ecp.English || ecp.Chinese || ecp.Pronunciation)) {
         console.log('Found word data:', ecp)
+        if (generation === dictionaryCacheGeneration) {
+          try {
+            await workerDictionaryCache().put(word, ecp)
+          } catch (error) {
+            swlog(`Dictionary cache write failed: ${String(error)}`, 'warn')
+          }
+        }
         return {
           success: true,
           ecp: ecp,
+          fromCache: false,
         }
       }
 
@@ -1420,6 +1472,7 @@ const handleGetOneWord = async (word: string) => {
         return {
           success: true,
           ecp: response.data,
+          fromCache: false,
         }
       }
     }

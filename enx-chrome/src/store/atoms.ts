@@ -1,5 +1,5 @@
 import { atom } from 'jotai'
-import { WordData } from '@/types'
+import { WordData, type BackgroundResponse } from '@/types'
 import { createUserAtom } from '@/lib/storageAtoms'
 
 // Demo counter (keeping for hello world demo)
@@ -22,6 +22,9 @@ export const isTranslatingAtom = atom(false)
 export const signingOutAtom = atom(false)
 
 // Error state
+// A refused cache-hit POST is shown below the definition (ADR-061).
+export const lookupNoticeAtom = atom<BackgroundResponse | null>(null)
+
 export const errorAtom = atom<string | null>(null)
 
 // The word popup's error is "reload this page" (lib/extensionContext.ts), so

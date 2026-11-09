@@ -48,7 +48,8 @@ import {
   type LearningModeStatus,
 } from '@/lib/learningModeStatus'
 import { autoEnableOnSignInReturn, maybeAutoEnable } from './autoEnable'
-import { countLookup, type RecordLookup } from '@/lib/queryCount'
+import { runDictionaryLookup } from '@/lib/dictionaryLookup'
+import { type RecordLookup } from '@/lib/queryCount'
 import { nearestElement, referenceLineHeight } from '@/lib/rangeUtils'
 import {
   createSpaRebuilder,
@@ -78,6 +79,7 @@ import {
   currentWordAtom,
   isTranslatingAtom,
   errorAtom,
+  lookupNoticeAtom,
   errorNeedsReloadAtom,
   sentencePanelHintAtom,
   sessionUnverifiedAtom,
@@ -489,6 +491,7 @@ const showWordPopover = async (word: string, reference: Range) => {
   // unverified is sent again as a fresh attempt with its own outcome.
   const handleRetryUnverified = () => {
     const request = contentScriptStore.get(sessionUnverifiedAtom)
+    contentScriptStore.set(lookupNoticeAtom, null)
     contentScriptStore.set(sessionUnverifiedAtom, null)
     if (request === 'ai-lookup') {
       handleAiLookup()
@@ -516,6 +519,7 @@ const showWordPopover = async (word: string, reference: Range) => {
   contentScriptStore.set(currentWordAtom, null)
   contentScriptStore.set(isTranslatingAtom, true)
   contentScriptStore.set(errorAtom, null)
+  contentScriptStore.set(lookupNoticeAtom, null)
   contentScriptStore.set(errorNeedsReloadAtom, false)
   contentScriptStore.set(signedOutAtom, false)
   contentScriptStore.set(sessionUnverifiedAtom, null)
@@ -533,66 +537,59 @@ const showWordPopover = async (word: string, reference: Range) => {
 
   async function fetchTranslation() {
     try {
-      console.log('Fetching translation for word:', word)
-      const response = await sendToBackground({
-        type: 'getOneWord',
-        word: word.trim(),
-      })
-
-      console.log('Translation response:', response)
-      // An old account's response must not fill the new account's cache or
-      // record a lookup for it. Closing a popup in the same account still counts.
-      if (!isCurrentAccount()) return
-
-      if (response.success && response.ecp) {
-        // The raw ECDICT phonetic field is kept as-is here; formatPhonetic()
-        // (src/lib/phonetic.ts) normalises it at render time in WordPopover and
-        // the Side Panel, so both surfaces show the same shape. This click is
-        // one lookup: counted on the server once, shown counted at once.
-        const wordData: WordData = countLookup(
-          { ...response.ecp },
-          recordLookup
-        )
-
-        contentScriptStore.set(currentWordAtom, wordData)
-        contentScriptStore.set(isTranslatingAtom, false)
-
-        wordCache[wordKey(word)] = wordData
-        wordChanged(word)
-
-        // Mirror the lookup into the Side Panel's word list if it's open --
-        // ADR-006. Routed through the background service worker rather than
-        // writing chrome.storage.session directly: content scripts don't have
-        // session-storage access unless the background grants it via
-        // setAccessLevel(TRUSTED_AND_UNTRUSTED_CONTEXTS), and doing that would
-        // also expose other session keys (e.g. the OAuth verifier) to content
-        // scripts running on arbitrary third-party pages. This call never
-        // triggers chrome.sidePanel.open() and never touches
-        // the pending-sentence key, so it can't force the panel open or
-        // trigger sentence translation.
-        sendToBackground({
-          type: 'recordPageWordLookup',
-          word: word.trim().toLowerCase(),
-          ecp: wordData,
-        })
-
-        // Nothing found: the server says whether the AI fallback starts by
-        // itself, is offered as a button, or is for subscribers only.
-        handleLookupMiss(wordData, aiDeps)
-      } else if (isSignedOutFailure(response)) {
-        showSignedOut(contentScriptStore)
-      } else if (isUnverifiedFailure(response)) {
-        showSessionUnverified(contentScriptStore, 'lookup')
-      } else {
-        const errorMessage = response.error || 'Translation service unavailable'
-        console.error('Translation failed:', errorMessage)
-        contentScriptStore.set(errorAtom, errorMessage)
-        contentScriptStore.set(
-          errorNeedsReloadAtom,
-          response.extensionUpdated === true
-        )
-        contentScriptStore.set(isTranslatingAtom, false)
-      }
+      const wordData = await runDictionaryLookup(
+        word.trim(),
+        { counts: true },
+        {
+          get: (word, refresh) =>
+            sendToBackground({
+              type: 'getOneWord',
+              word,
+              ...(refresh ? { refresh } : {}),
+            }),
+          record: (wordId, fromCache) =>
+            sendToBackground({
+              type: 'recordWordLookup',
+              wordId,
+              ...(fromCache ? { fromCache } : {}),
+            }),
+          isActive: isCurrentAccount,
+          isCurrent: () => currentOverlay === overlay && isCurrentAccount(),
+          onDefinition: data => {
+            contentScriptStore.set(currentWordAtom, data)
+            contentScriptStore.set(isTranslatingAtom, false)
+          },
+          onCounted: data => {
+            wordCache[wordKey(word)] = data
+            wordChanged(word)
+            void sendToBackground({
+              type: 'recordPageWordLookup',
+              word: word.trim().toLowerCase(),
+              ecp: data,
+            })
+          },
+          onFailure: response => {
+            if (response.fromCache) {
+              contentScriptStore.set(lookupNoticeAtom, response)
+            } else if (isSignedOutFailure(response)) {
+              showSignedOut(contentScriptStore)
+            } else if (isUnverifiedFailure(response)) {
+              showSessionUnverified(contentScriptStore, 'lookup')
+            } else {
+              contentScriptStore.set(
+                errorAtom,
+                response.error || 'Translation service unavailable'
+              )
+              contentScriptStore.set(
+                errorNeedsReloadAtom,
+                response.extensionUpdated === true
+              )
+              contentScriptStore.set(isTranslatingAtom, false)
+            }
+          },
+        }
+      )
+      if (wordData && aiDeps.isCurrent()) handleLookupMiss(wordData, aiDeps)
     } catch (error) {
       console.error('Error fetching word translation:', error)
       // sendToBackground never rejects, so this is a bug in handling the

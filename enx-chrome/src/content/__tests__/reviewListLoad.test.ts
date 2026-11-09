@@ -1002,3 +1002,37 @@ describe('the paint window', () => {
     expect(underlined()).toEqual({})
   })
 })
+
+it('shows a cached definition immediately and updates review state only when the metering POST answers', async () => {
+  lookup = () => ({
+    success: true,
+    fromCache: true,
+    ecp: { ...FOX, LoadCount: undefined, Known: undefined },
+  })
+  const send = await loadContentScript()
+  await send({ action: 'enxRun' })
+  showAllObserved()
+  let finishCount: Callback = () => {}
+  const original = (
+    chrome.runtime.sendMessage as jest.Mock
+  ).getMockImplementation()!
+  ;(chrome.runtime.sendMessage as jest.Mock).mockImplementation(
+    (message: Message, callback?: Callback) => {
+      if (message.type === 'recordWordLookup' && callback) {
+        sent.push(message)
+        finishCount = callback
+      } else original(message, callback)
+    }
+  )
+  await clickFox()
+  const shadow = document.querySelector('#enx-anchored-overlay')!.shadowRoot!
+  expect(shadow.textContent).toContain('狐狸')
+  expect(shadow.querySelector('[title^="Looked up"]')).toBeNull()
+  expect(sent.filter(m => m.type === 'recordWordLookup')).toEqual([
+    { type: 'recordWordLookup', wordId: 'w-fox', fromCache: true },
+  ])
+  finishCount({ success: true, queryCount: 8, known: false })
+  await settle()
+  expect(shadow.querySelector('[title="Looked up 8 times"]')).not.toBeNull()
+  expect(underlined()).toEqual({ 'enx-hl-3': ['Fox', 'fox’s', "FOX'S"] })
+})

@@ -33,7 +33,8 @@ import {
   PanelHistorySession,
   type CardRequest,
 } from '@/lib/panelHistorySession'
-import { countLookup, type RecordLookup } from '@/lib/queryCount'
+import { runDictionaryLookup } from '@/lib/dictionaryLookup'
+import { createAccountScope } from '@/lib/accountSession'
 import { isLookupQuotaExceeded } from '@/lib/rateLimit'
 import { config } from '@/config/env'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
@@ -205,15 +206,6 @@ const getSelectionCharRange = (root: HTMLElement): [number, number] | null => {
   const a = boundaryCharOffset(root, r.startContainer, r.startOffset)
   const b = boundaryCharOffset(root, r.endContainer, r.endOffset)
   return a <= b ? [a, b] : [b, a]
-}
-
-// Counts a word clicked in the panel on the server, without waiting
-// (lib/queryCount.ts).
-const countOnServer: RecordLookup = wordId => {
-  void sendMessageToBackground({
-    type: 'recordWordLookup',
-    wordId,
-  } satisfies ContentMessage).catch(() => {})
 }
 
 // The confirm affordance for an in-panel phrase selection (ADR-017 D2): a
@@ -853,6 +845,10 @@ function SidePanelContent() {
   // lower-cased word like the page's wordCache (ADR-053 Decision 3). Drives
   // the underlines in every sentence original.
   const [wordStates, setWordStates] = useState<Record<string, WordData>>({})
+  const wordStatesRef = useRef(wordStates)
+  useEffect(() => {
+    wordStatesRef.current = wordStates
+  }, [wordStates])
   // Optimistic broadcast (ADR-053): the page's markKnown request to
   // background reaches every extension page, this panel included. The panel
   // drops the underline at once, as the page does, without waiting for the
@@ -873,10 +869,12 @@ function SidePanelContent() {
   // #236: a signed-out or unverified (#686) response or row is obsolete once
   // a signed-in account takes over. Listens only, like the listener above.
   const [accountFence] = useState(createPanelAccountFence)
+  const [lookupScope] = useState(createAccountScope)
   useEffect(() => {
     const listener = (message: unknown) => {
       if (!isAccountInvalidatedMessage(message)) return
       accountFence.record(message.cause)
+      lookupScope.clear()
       if (message.cause === 'switched') {
         patchEntries(prev =>
           supersedeSessionRows(prev, ACCOUNT_CHANGED_MESSAGE)
@@ -885,7 +883,7 @@ function SidePanelContent() {
     }
     chrome.runtime.onMessage.addListener(listener)
     return () => chrome.runtime.onMessage.removeListener(listener)
-  }, [accountFence, patchEntries])
+  }, [accountFence, lookupScope, patchEntries])
 
   // The "highlight vocabulary while reading" preference governs the
   // underlines here as on the page (ADR-053 Decision 5), live. The anchor
@@ -1137,45 +1135,78 @@ function SidePanelContent() {
       counts: boolean
     ): Promise<{ current: boolean; chinese?: string }> => {
       const patch = (fields: Partial<WordCardData>) =>
-        setEntries(prev =>
+        patchEntries(prev =>
           patchCard(prev, card.sentenceId, card.key, fields, card.token)
         )
       const current = accountFence.capture()
+      const isActive = lookupScope.capture()
       return sendMessageToBackground<BackgroundResponse>({
         type: 'getOneWord',
         word,
       } satisfies ContentMessage)
         .then(checkAccountFreshness)
         .then(delivered =>
-          history.whenVisible(card, () => {
-            // Checked here: a cleared card holds its response until Undo.
+          history.whenVisible(card, async () => {
             const response = current(delivered)
-            const ecp =
-              response.success && response.ecp && counts
-                ? countLookup(response.ecp, countOnServer)
-                : response.ecp
-            if (response.success && ecp) {
-              recordWordLookup(word, ecp)
-            }
-            patch({
-              pronunciation: response.success ? ecp?.Pronunciation : undefined,
-              dictionaryChinese: response.success ? ecp?.Chinese : undefined,
-              loadCount: response.success ? ecp?.LoadCount : undefined,
-              dictionaryStatus: response.success ? 'loaded' : 'error',
-              dictionaryError: response.success
-                ? undefined
-                : response.error || 'Dictionary lookup failed',
-              dictionaryErrorHttpStatus: response.success
-                ? undefined
-                : response.status,
-              dictionaryErrorCode: response.success ? undefined : response.code,
-              dictionarySessionExpired: isSignedOutFailure(response),
-              dictionarySessionUnverified: isUnverifiedFailure(response),
-            })
-            return {
-              current: true,
-              chinese: response.success ? ecp?.Chinese : undefined,
-            }
+            const data = await runDictionaryLookup(
+              word,
+              { counts, state: wordStatesRef.current[wordKey(word)] },
+              {
+                get: async (word, refresh) => {
+                  if (!refresh) return response
+                  const fresh = await history.whenVisible(card, () =>
+                    sendMessageToBackground<BackgroundResponse>({
+                      type: 'getOneWord',
+                      word,
+                      refresh,
+                    }).then(checkAccountFreshness)
+                  )
+                  // A clear during recovery pauses the next POST as well.
+                  return (
+                    (await history.whenVisible(card, () =>
+                      current(fresh ?? { success: false })
+                    )) ?? { success: false }
+                  )
+                },
+                record: (wordId, fromCache) =>
+                  sendMessageToBackground<BackgroundResponse>({
+                    type: 'recordWordLookup',
+                    wordId,
+                    ...(fromCache ? { fromCache } : {}),
+                  })
+                    .then(checkAccountFreshness)
+                    .then(current),
+                isActive,
+                isCurrent: () => true,
+                onDefinition: ecp => {
+                  patch({
+                    pronunciation: ecp.Pronunciation,
+                    dictionaryChinese: ecp.Chinese,
+                    loadCount: ecp.LoadCount,
+                    dictionaryStatus: 'loaded',
+                    dictionaryError: undefined,
+                    dictionaryErrorHttpStatus: undefined,
+                    dictionaryErrorCode: undefined,
+                    dictionarySessionExpired: false,
+                    dictionarySessionUnverified: false,
+                  })
+                  if (!counts && ecp.LoadCount !== undefined)
+                    recordWordLookup(word, ecp)
+                },
+                onCounted: ecp => recordWordLookup(word, ecp),
+                onFailure: response =>
+                  patch({
+                    dictionaryStatus: 'error',
+                    dictionaryError:
+                      response.error || 'Dictionary lookup failed',
+                    dictionaryErrorHttpStatus: response.status,
+                    dictionaryErrorCode: response.code,
+                    dictionarySessionExpired: isSignedOutFailure(response),
+                    dictionarySessionUnverified: isUnverifiedFailure(response),
+                  }),
+              }
+            )
+            return { current: true, chinese: data?.Chinese }
           })
         )
         .catch(() =>
@@ -1193,7 +1224,7 @@ function SidePanelContent() {
         )
         .then(result => result ?? { current: false })
     },
-    [accountFence, recordWordLookup, history, setEntries]
+    [accountFence, lookupScope, recordWordLookup, history, patchEntries]
   )
 
   // The single entry point for "look up a word's dictionary AND context
@@ -1402,6 +1433,8 @@ function SidePanelContent() {
     // script), so turning it into a new entry here is intended.
     const carriedStates = pendingContext.wordStates
     if (carriedStates) {
+      // The read-only anchor may resolve before the state update re-renders.
+      wordStatesRef.current = { ...wordStatesRef.current, ...carriedStates }
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setWordStates(prev => ({ ...prev, ...carriedStates }))
     }

@@ -379,6 +379,8 @@ export async function mockBackendFetch(
      * state on screen long enough to scroll the word off (#523).
      */
     lookupDelayMs?: number
+    lookupPostDelayMs?: number
+    lookupPostStatus?: number
   } = {}
 ) {
   let [sw] = context.serviceWorkers()
@@ -403,6 +405,8 @@ export async function mockBackendFetch(
   const translateFails = options.translateFails ?? false
   const translateUnauthorized = options.translateUnauthorized ?? false
   const lookupDelayMs = options.lookupDelayMs ?? 0
+  const lookupPostDelayMs = options.lookupPostDelayMs ?? 0
+  const lookupPostStatus = options.lookupPostStatus ?? 200
 
   await sw.evaluate(
     ({
@@ -411,6 +415,8 @@ export async function mockBackendFetch(
       translateFails,
       translateUnauthorized,
       lookupDelayMs,
+      lookupPostDelayMs,
+      lookupPostStatus,
     }) => {
       const realFetch = self.fetch.bind(self)
       self.fetch = async (input, init) => {
@@ -435,6 +441,10 @@ export async function mockBackendFetch(
         }
 
         if (url.includes('/api/translate')) {
+          const gets = ((
+            self as unknown as Record<string, unknown>
+          ).__enxDictionaryGets ??= []) as unknown[]
+          gets.push(url)
           if (lookupDelayMs > 0) {
             await new Promise(resolve => setTimeout(resolve, lookupDelayMs))
           }
@@ -467,7 +477,21 @@ export async function mockBackendFetch(
           const posts = ((
             self as unknown as Record<string, unknown>
           ).__enxWordLookupPosts ??= []) as unknown[]
-          posts.push(JSON.parse(String(init?.body ?? '{}')))
+          const body = JSON.parse(String(init?.body ?? '{}'))
+          posts.push(body)
+          if (body.fromCache && lookupPostDelayMs)
+            await new Promise(resolve => setTimeout(resolve, lookupPostDelayMs))
+          if (body.fromCache && lookupPostStatus !== 200)
+            return new Response(
+              JSON.stringify({
+                code: 'lookup_quota_exceeded',
+                message: "You've used up today's free lookups",
+              }),
+              {
+                status: lookupPostStatus,
+                headers: { 'Content-Type': 'application/json' },
+              }
+            )
           return new Response(
             JSON.stringify({
               queryCount: wordData.LoadCount + 1,
@@ -493,6 +517,8 @@ export async function mockBackendFetch(
       translateFails,
       translateUnauthorized,
       lookupDelayMs,
+      lookupPostDelayMs,
+      lookupPostStatus,
     }
   )
 }
@@ -614,4 +640,16 @@ export async function clearStorage(page: Page) {
     }
     return Promise.resolve()
   })
+}
+
+/** The actual dictionary GETs sent by the extension worker. */
+export async function dictionaryGets(
+  context: BrowserContext
+): Promise<unknown[]> {
+  const [sw] = context.serviceWorkers()
+  return sw.evaluate(
+    () =>
+      ((self as unknown as Record<string, unknown>).__enxDictionaryGets ??
+        []) as unknown[]
+  )
 }
