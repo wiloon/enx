@@ -1139,6 +1139,7 @@ describe('background onMessage / lookups and the query count', () => {
     expect(await send({ type: 'getOneWord', word: 'cat' })).toEqual({
       success: true,
       ecp,
+      fromCache: false,
     })
     expect(global.fetch).toHaveBeenCalledTimes(2)
   })

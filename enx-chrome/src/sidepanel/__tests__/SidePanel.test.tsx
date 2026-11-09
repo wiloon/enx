@@ -325,6 +325,182 @@ describe('SidePanel', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('a cached read-only anchor uses the carried page count and sends no count POST', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: SENTENCE,
+        word: 'great',
+        createdAt: 1,
+        wordStates: {
+          great: {
+            Id: 'great-id',
+            English: 'great',
+            LoadCount: 11,
+            Known: false,
+            WordType: 0,
+          },
+        },
+      },
+    })
+    mockSendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'getOneWord')
+        return {
+          success: true,
+          fromCache: true,
+          ecp: {
+            Id: 'great-id',
+            English: 'great',
+            Chinese: '伟大的',
+            Pronunciation: '',
+            WordType: 0,
+          },
+        }
+      return { success: true, chinese: '很棒的' }
+    })
+    render(<SidePanel />)
+    await screen.findByText('伟大的')
+    expect(screen.getByTitle('Looked up 11 times')).toBeInTheDocument()
+    expect(
+      mockSendMessage.mock.calls.filter(
+        ([message]) => message.type === 'recordWordLookup'
+      )
+    ).toEqual([])
+  })
+
+  it('retains a cached count that completes during Clear so Undo shows the updated card', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: SENTENCE,
+        word: '',
+        createdAt: 1,
+      },
+    })
+    let finish!: (r: BackgroundResponse) => void
+    mockSendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'getOneWord')
+        return {
+          success: true,
+          fromCache: true,
+          ecp: {
+            Id: 'great-id',
+            English: 'great',
+            Chinese: '伟大的',
+            Pronunciation: '',
+            WordType: 0,
+          },
+        }
+      if (message.type === 'recordWordLookup')
+        return new Promise(resolve => {
+          finish = resolve
+        })
+      return { success: true, chinese: '很棒的' }
+    })
+    render(<SidePanel />)
+    await screen.findByTestId('sidepanel-sentence')
+    selectWord('great')
+    await screen.findByText('伟大的')
+    fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
+    await act(async () =>
+      finish({ success: true, queryCount: 17, known: false })
+    )
+    fireEvent.click(screen.getByTestId('sidepanel-undo-clear'))
+    expect(await screen.findByTitle('Looked up 17 times')).toBeInTheDocument()
+  })
+
+  it('pauses stale-cache recovery while the card is cleared, then resumes it once on Undo', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: SENTENCE,
+        word: '',
+        createdAt: 1,
+      },
+    })
+    let finish!: (r: BackgroundResponse) => void
+    let gets = 0
+    mockSendMessage.mockImplementation(
+      async (message: { type: string; fromCache?: boolean }) => {
+        if (message.type === 'getOneWord') {
+          gets++
+          return {
+            success: true,
+            fromCache: gets === 1,
+            ecp: {
+              Id: gets === 1 ? 'old-id' : 'new-id',
+              English: 'great',
+              Chinese: '伟大的',
+              Pronunciation: '',
+              WordType: 0,
+            },
+          }
+        }
+        if (message.type === 'recordWordLookup')
+          return message.fromCache
+            ? new Promise(resolve => {
+                finish = resolve
+              })
+            : { success: true, queryCount: 17, known: false }
+        return { success: true, chinese: '很棒的' }
+      }
+    )
+    render(<SidePanel />)
+    await screen.findByTestId('sidepanel-sentence')
+    selectWord('great')
+    await screen.findByText('伟大的')
+    fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
+    await act(async () => finish({ success: false, status: 404 }))
+    expect(gets).toBe(1)
+    fireEvent.click(screen.getByTestId('sidepanel-undo-clear'))
+    expect(await screen.findByTitle('Looked up 17 times')).toBeInTheDocument()
+    expect(gets).toBe(2)
+  })
+
+  it('keeps a cached definition visible while its count POST waits and after a quota refusal', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: SENTENCE,
+        word: '',
+        createdAt: 1,
+      },
+    })
+    let finish!: (r: BackgroundResponse) => void
+    mockSendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'getOneWord')
+        return {
+          success: true,
+          fromCache: true,
+          ecp: {
+            Id: 'great-id',
+            English: 'great',
+            Chinese: '伟大的',
+            Pronunciation: '',
+            WordType: 0,
+          },
+        }
+      if (message.type === 'recordWordLookup')
+        return new Promise(resolve => {
+          finish = resolve
+        })
+      return { success: true, chinese: '很棒的' }
+    })
+    render(<SidePanel />)
+    await screen.findByTestId('sidepanel-sentence')
+    selectWord('great')
+    const definition = await screen.findByText('伟大的')
+    expect(mockSendMessage).toHaveBeenCalledWith({
+      type: 'recordWordLookup',
+      wordId: 'great-id',
+      fromCache: true,
+    })
+    await act(async () =>
+      finish({ success: false, status: 429, code: 'lookup_quota_exceeded' })
+    )
+    expect(definition).toBeInTheDocument()
+    expect(
+      await screen.findByTestId('sidepanel-dictionary-error-great')
+    ).toHaveTextContent("You've used up today's free lookups")
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
+  })
+
   it('shows an upgrade link instead of the raw message when sentence translation fails with 402 (insufficient AI credit)', async () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {

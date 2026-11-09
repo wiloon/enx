@@ -10,8 +10,9 @@ export interface WordData {
   English: string
   Pronunciation: string
   Chinese: string
-  LoadCount: number
-  Known: boolean
+  // Unknown until the cache-hit POST answers (ADR-061).
+  LoadCount?: number
+  Known?: boolean
   WordType: number
   // Where the definition first came from; absent on a miss (ADR-045). "ai"
   // marks a definition a model wrote rather than the dictionary.
@@ -78,6 +79,9 @@ export interface ContentMessage {
   word?: string
   // Set on 'recordWordLookup': the words row id the lookup answered with.
   wordId?: string
+  fromCache?: boolean
+  // A stale cached id was refused: invalidate it and fetch again.
+  refresh?: boolean
   words?: string
   userId?: number
   username?: string
@@ -132,6 +136,9 @@ export interface ReadingStatsDelta {
 
 export interface BackgroundResponse {
   success: boolean
+  fromCache?: boolean
+  queryCount?: number
+  known?: boolean
   data?: unknown
   // Set by 'shouldAutoEnable' (adr-039): this page's site is one the user
   // chose "Always enable on this site" for, and they are signed in.

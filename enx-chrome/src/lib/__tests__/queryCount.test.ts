@@ -69,3 +69,9 @@ describe('countLookup (ADR-059 Decision 3)', () => {
     expect(original.LoadCount).toBe(2)
   })
 })
+
+it('does not assign a review underline before a cached lookup has a count', () => {
+  expect(
+    reviewBucket(word({ LoadCount: undefined, Known: undefined }))
+  ).toBeNull()
+})

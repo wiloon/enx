@@ -1,5 +1,12 @@
 # AI Contributions History
 
+## 2026-11-09: Local dictionary cache — issue #216
+
+**Agent**: Codex
+**Solution**: The extension worker shares an IndexedDB dictionary cache across tabs, with a fixed 30-day TTL and transactional eviction at 5,000 entries. Page and Side Panel lookups use one plain decision flow: cached definitions appear before the metering POST, whose response supplies user state. Read-only cards reuse the carried page count; explicit sign-out clears definitions.
+
+**Lesson (dictionary data versus user state)**: Cache only dictionary fields. Do not infer a count or change underlines while the POST is pending or refused. Keep quota notices below cached definitions, recover stale ids with one fresh GET and an unmetered POST, and scope late counts separately from popover rendering. Keep the Side Panel's Clear/Undo request lifetime around the shared flow. Browser tests must exercise the worker's real IndexedDB across page reloads.
+
 ## 2026-11-09: Labelled offline article evaluation — issue #714
 
 **Agent**: Codex

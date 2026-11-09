@@ -9,9 +9,12 @@ import {
 import SidePanelTranslateIcon from '@/components/icons/SidePanelTranslateIcon'
 import { AiBadge, AiMissPanel, AiNotice } from '@/components/AiLookup'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
+import { billingUrl } from '@/lib/aiLookup'
+import { isLookupQuotaExceeded } from '@/lib/rateLimit'
 import { lookupCountLabel } from '@/lib/lookupCount'
 import {
   currentWordAtom,
+  lookupNoticeAtom,
   isTranslatingAtom,
   errorAtom,
   errorNeedsReloadAtom,
@@ -63,6 +66,7 @@ export default function WordPopover({
   const [isTranslating] = useAtom(isTranslatingAtom)
   const [error] = useAtom(errorAtom)
   const [errorNeedsReload] = useAtom(errorNeedsReloadAtom)
+  const [lookupNotice] = useAtom(lookupNoticeAtom)
   const [signedOut] = useAtom(signedOutAtom)
   const [sessionUnverified] = useAtom(sessionUnverifiedAtom)
   const [sentencePanelHint] = useAtom(sentencePanelHintAtom)
@@ -267,6 +271,43 @@ export default function WordPopover({
               <AiMissPanel onLookup={onAiLookup} />
             )}
             <AiNotice />
+            {lookupNotice &&
+              (lookupNotice.sessionExpired || lookupNotice.sessionUnverified ? (
+                <SignedOutNotice
+                  testId="word-popover-lookup-notice"
+                  message={
+                    lookupNotice.sessionUnverified
+                      ? SESSION_UNVERIFIED_MESSAGE
+                      : undefined
+                  }
+                  onSignIn={onSignIn}
+                  onRetry={
+                    lookupNotice.sessionUnverified
+                      ? onRetryUnverified
+                      : undefined
+                  }
+                  className="p-2 text-sm"
+                />
+              ) : (
+                <div
+                  data-testid="word-popover-lookup-notice"
+                  className="p-2 rounded-sm bg-warning-muted border border-warning text-warning-foreground text-sm"
+                >
+                  {isLookupQuotaExceeded(lookupNotice)
+                    ? "You've used up today's free lookups"
+                    : lookupNotice.error}
+                  {isLookupQuotaExceeded(lookupNotice) && (
+                    <a
+                      href={billingUrl('lookup-miss')}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-2 text-brand underline hover:text-brand/80 active:text-brand/70 focus-visible:outline-2 focus-visible:outline-brand"
+                    >
+                      Upgrade
+                    </a>
+                  )}
+                </div>
+              ))}
 
             {/* Known status */}
             {currentWord.Known && (

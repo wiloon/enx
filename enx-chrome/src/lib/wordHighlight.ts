@@ -49,7 +49,7 @@ export const wordKey = (word: string): string =>
 // False for words the user has marked known, words tagged as a known
 // part of speech, and words never actually looked up (LoadCount 0).
 export const isReviewable = (wordData: WordData): boolean =>
-  !wordData.Known && wordData.WordType !== 1 && wordData.LoadCount !== 0
+  !wordData.Known && wordData.WordType !== 1 && (wordData.LoadCount ?? 0) > 0
 
 // Which review-stage bucket a word belongs to (1 = most recently learned,
 // REVIEW_BUCKET_COUNT = nearly known), or null when it shouldn't be
@@ -61,7 +61,7 @@ export const isReviewable = (wordData: WordData): boolean =>
 export const reviewBucket = (wordData: WordData): number | null => {
   if (!isReviewable(wordData)) return null
 
-  const count = wordData.LoadCount
+  const count = wordData.LoadCount ?? 0
   if (count <= 2) return 1
   if (count <= 5) return 2
   if (count <= 10) return 3
