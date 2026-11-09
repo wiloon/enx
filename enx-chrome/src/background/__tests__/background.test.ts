@@ -100,6 +100,7 @@ import {
   NETWORK_ERROR_MESSAGE,
   SERVICE_UNAVAILABLE_MESSAGE,
   handleGetReviewWords,
+  SESSION_SYNC_RETRY_DELAYS_MS,
   __resetClerkClientCacheForTests,
 } from '../background'
 
@@ -253,81 +254,6 @@ describe('background makeApiRequest / Clerk session token', () => {
     clerkUserId = 'user-a'
   })
 
-  it('detects a website account switch from its session cookie without a page API request', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
-    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(200, {}))
-    await makeApiRequest('/api/me')
-    ;(chrome.tabs.sendMessage as jest.Mock).mockClear()
-    expect(onCookieChanged).toBeDefined()
-    clerkUserId = 'user-b'
-    await onCookieChanged({
-      cookie: { domain: 'clerk.localhost.test', name: '__client_uat' },
-      removed: false,
-    })
-    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, {
-      action: 'accountChanged',
-    })
-    expect(global.fetch).toHaveBeenCalledTimes(1)
-  })
-
-  it('keeps the review list when the same account refreshes its session cookie', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
-    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(200, {}))
-    await makeApiRequest('/api/me')
-    await onCookieChanged({
-      cookie: { domain: 'clerk.localhost.test', name: '__client_uat' },
-    })
-    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
-  })
-
-  it.each([
-    ['unrelated.test', '__client_uat', false, 'explicit'],
-    ['clerk.localhost.test', 'preferences', false, 'explicit'],
-    ['clerk.localhost.test', '__client_uat', true, 'overwrite'],
-  ])(
-    'ignores a cookie event for %s / %s / removed=%s / %s',
-    async (domain, name, removed, cause) => {
-      await onCookieChanged({ cookie: { domain, name }, removed, cause })
-      expect(createClerkClient).not.toHaveBeenCalled()
-      expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
-    }
-  )
-
-  it.each([200, 401])(
-    'discards a late %s from the previous account without expiring the new account',
-    async status => {
-      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
-      let finish: (response: unknown) => void = () => {}
-      let started: () => void = () => {}
-      const fetching = new Promise<void>(resolve => {
-        started = resolve
-      })
-      ;(global.fetch as jest.Mock)
-        .mockResolvedValue(jsonResponse(200, {}))
-        .mockImplementationOnce(() => {
-          started()
-          return new Promise(resolve => {
-            finish = resolve
-          })
-        })
-      const previous = makeApiRequest('/api/me/review-words')
-      await fetching
-      clerkUserId = 'user-b'
-      await onCookieChanged({
-        cookie: { domain: 'clerk.localhost.test', name: '__client_uat' },
-      })
-      ;(chrome.tabs.sendMessage as jest.Mock).mockClear()
-      finish(jsonResponse(status, [['fox', 1]]))
-      const result = await previous
-      // #236: a switch to another signed-in account is an ordinary failure,
-      // never the signed-out state.
-      expect(result).toMatchObject({ success: false })
-      expect(result.sessionExpired).toBeUndefined()
-      expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
-      expect(global.fetch).toHaveBeenCalledTimes(1)
-    }
-  )
-
   it('tells every tab a signed-in user signed out when the recheck after a 401 finds Clerk signed out', async () => {
     expireOnForcedMint()
     ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(401, {}))
@@ -398,94 +324,301 @@ describe('background makeApiRequest / Clerk session token', () => {
     })
   })
 
-  it('lets a sign-in after a session loss turn an old request into an ordinary failure', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
-    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(200, {}))
-    await makeApiRequest('/api/me')
-    let finish: (response: unknown) => void = () => {}
-    let started: () => void = () => {}
-    const fetching = new Promise<void>(resolve => {
-      started = resolve
+  // #743: a sign-in rewrites Clerk's cookies several times in a row. The
+  // debounce runs in tests too, so every test here moves the clock itself.
+  describe('website session cookie changes', () => {
+    const sessionCookie = {
+      cookie: { domain: 'clerk.localhost.test', name: '__client_uat' },
+      removed: false,
+    }
+    const changeSessionCookie = (): Promise<void> =>
+      onCookieChanged(sessionCookie)
+    const loads = () => (createClerkClient as jest.Mock).mock.calls.length
+    const holdNextFetch = () => {
+      let finish: (response: unknown) => void = () => {}
+      let started: () => void = () => {}
+      const fetching = new Promise<void>(resolve => {
+        started = resolve
+      })
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() => {
+        started()
+        return new Promise(resolve => {
+          finish = resolve
+        })
+      })
+      return { fetching, finish: (response: unknown) => finish(response) }
+    }
+    const holdNextLoad = () => {
+      let release: (client: unknown) => void = () => {}
+      ;(createClerkClient as jest.Mock).mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            release = resolve
+          })
+      )
+      return (client: unknown) => release(client)
+    }
+
+    beforeEach(() => {
+      jest.useFakeTimers()
+      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
+      ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(200, {}))
     })
-    ;(global.fetch as jest.Mock).mockImplementationOnce(() => {
-      started()
-      return new Promise(resolve => {
-        finish = resolve
+    afterEach(() => jest.useRealTimers())
+
+    it('detects a website account switch from its session cookie without a page API request', async () => {
+      await makeApiRequest('/api/me')
+      ;(chrome.tabs.sendMessage as jest.Mock).mockClear()
+      clerkUserId = 'user-b'
+      const check = changeSessionCookie()
+      await jest.advanceTimersByTimeAsync(1000)
+      await check
+      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, {
+        action: 'accountChanged',
+      })
+      expect(global.fetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps the review list when the same account refreshes its session cookie', async () => {
+      await makeApiRequest('/api/me')
+      const check = changeSessionCookie()
+      await jest.advanceTimersByTimeAsync(1000)
+      await check
+      expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['unrelated.test', '__client_uat', false, 'explicit'],
+      ['clerk.localhost.test', 'preferences', false, 'explicit'],
+      ['clerk.localhost.test', '__client_uat', true, 'overwrite'],
+    ])(
+      'ignores a cookie event for %s / %s / removed=%s / %s',
+      async (domain, name, removed, cause) => {
+        await onCookieChanged({ cookie: { domain, name }, removed, cause })
+        await jest.advanceTimersByTimeAsync(2000)
+        expect(createClerkClient).not.toHaveBeenCalled()
+        expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
+      }
+    )
+
+    it('loads the client once, a second after a burst of changes goes quiet', async () => {
+      const checks: Promise<void>[] = []
+      for (let i = 0; i < 5; i++) {
+        checks.push(changeSessionCookie())
+        await jest.advanceTimersByTimeAsync(200)
+      }
+      // The last change came at 800 ms.
+      await jest.advanceTimersByTimeAsync(799)
+      expect(loads()).toBe(0)
+      await jest.advanceTimersByTimeAsync(1)
+      expect(loads()).toBe(1)
+      await Promise.all(checks)
+      expect(loads()).toBe(1)
+    })
+
+    it('starts the load 2 s after the first change while changes keep coming', async () => {
+      const checks = [changeSessionCookie()]
+      for (let i = 0; i < 3; i++) {
+        await jest.advanceTimersByTimeAsync(500)
+        checks.push(changeSessionCookie())
+      }
+      await jest.advanceTimersByTimeAsync(499)
+      expect(loads()).toBe(0)
+      await jest.advanceTimersByTimeAsync(1)
+      expect(loads()).toBe(1)
+      await Promise.all(checks)
+    })
+
+    it('spends one load plus the retries on a settled burst with no session', async () => {
+      setClerkSession(null)
+      const checks = [
+        changeSessionCookie(),
+        changeSessionCookie(),
+        changeSessionCookie(),
+      ]
+      await jest.advanceTimersByTimeAsync(1000)
+      await Promise.all(checks)
+      expect(loads()).toBe(1 + SESSION_SYNC_RETRY_DELAYS_MS.length)
+    })
+
+    it('folds changes during an empty-session sync into one follow-up that answers its waiting callers', async () => {
+      setClerkSession(null)
+      const releaseFirst = holdNextLoad()
+      const first = changeSessionCookie()
+      await jest.advanceTimersByTimeAsync(1000)
+      expect(loads()).toBe(1)
+
+      const request = makeApiRequest('/api/me')
+      const later = [
+        changeSessionCookie(),
+        changeSessionCookie(),
+        changeSessionCookie(),
+      ]
+      await jest.advanceTimersByTimeAsync(2000)
+      expect(loads()).toBe(1)
+      releaseFirst(fakeClerkClient())
+      await Promise.all([first, ...later])
+
+      const cycle = 1 + SESSION_SYNC_RETRY_DELAYS_MS.length
+      expect(loads()).toBeGreaterThan(1)
+      expect(loads()).toBeLessThanOrEqual(2 * cycle)
+      expect(await request).toMatchObject({
+        success: false,
+        sessionExpired: true,
+      })
+      expect(loads()).toBeLessThanOrEqual(2 * cycle)
+      expect(global.fetch).not.toHaveBeenCalled()
+    })
+
+    it('holds a request made right after an account switch until the new account is loaded', async () => {
+      await makeApiRequest('/api/me')
+      ;(global.fetch as jest.Mock).mockClear()
+      const loadsBefore = loads()
+      clerkUserId = 'user-b'
+      ;(createClerkClient as jest.Mock).mockImplementation(async () => ({
+        user: { id: 'user-b' },
+        session: { getToken: async () => 'user-b-jwt' },
+      }))
+
+      const check = changeSessionCookie()
+      const request = makeApiRequest('/api/me')
+      await jest.advanceTimersByTimeAsync(999)
+      expect(global.fetch).not.toHaveBeenCalled()
+      await jest.advanceTimersByTimeAsync(1)
+      await check
+
+      expect(await request).toEqual({ success: true, data: {} })
+      expect(loads()).toBe(loadsBefore + 1)
+      expect(global.fetch).toHaveBeenCalledTimes(1)
+      const [, requestInit] = (global.fetch as jest.Mock).mock.calls[0]
+      expect(requestInit.headers.Authorization).toBe('Bearer user-b-jwt')
+    })
+
+    it('loads once more after changes during a load, and keeps the newest website identity', async () => {
+      await makeApiRequest('/api/me')
+      const releaseFirst = holdNextLoad()
+      ;(createClerkClient as jest.Mock).mockResolvedValue({
+        user: { id: 'user-c' },
+        session: { getToken },
+      })
+      const loadsBefore = loads()
+      const first = changeSessionCookie()
+      await jest.advanceTimersByTimeAsync(1000)
+      const later = [changeSessionCookie(), changeSessionCookie()]
+      await jest.advanceTimersByTimeAsync(2000)
+      expect(loads()).toBe(loadsBefore + 1)
+
+      releaseFirst({ user: { id: 'user-b' }, session: { getToken } })
+      await Promise.all([first, ...later])
+
+      expect(loads()).toBe(loadsBefore + 2)
+      expect(chrome.storage.session.set).not.toHaveBeenCalledWith({
+        'enx-account-session-owner': 'user-b',
+      })
+      expect(chrome.storage.session.set).toHaveBeenLastCalledWith({
+        'enx-account-session-owner': 'user-c',
       })
     })
-    const previous = makeApiRequest('/api/me/review-words')
-    await fetching
-    const cookie = {
-      cookie: { domain: 'clerk.localhost.test', name: '__client_uat' },
-    }
 
-    setClerkSession(null)
-    await onCookieChanged(cookie)
-    clerkUserId = 'user-b'
-    setClerkSession('clerk-session-jwt')
-    await onCookieChanged(cookie)
-    finish(jsonResponse(200, []))
+    it('keeps a waiting API request alive when changes during a load resolve to the same account', async () => {
+      await makeApiRequest('/api/me')
+      const client = { user: { id: 'user-a' }, session: { getToken } }
+      const releaseFirst = holdNextLoad()
+      ;(createClerkClient as jest.Mock).mockResolvedValue(client)
+      const loadsBefore = loads()
+      const first = changeSessionCookie()
+      await jest.advanceTimersByTimeAsync(1000)
+      const request = makeApiRequest('/api/me')
+      const later = [changeSessionCookie(), changeSessionCookie()]
 
-    const result = await previous
-    expect(result).toMatchObject({ success: false })
-    expect(result.sessionExpired).toBeUndefined()
-    expect(
-      (chrome.tabs.sendMessage as jest.Mock).mock.calls.map(c => c[1])
-    ).toEqual([
-      { action: 'sessionExpired', cause: 'signed-out' },
-      { action: 'accountChanged' },
-    ])
-  })
+      releaseFirst(client)
+      await Promise.all([first, ...later])
 
-  it('keeps the newest website identity when cookie checks finish out of order', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
-    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(200, {}))
-    await makeApiRequest('/api/me')
-    let finishOld: (client: unknown) => void = () => {}
-    ;(createClerkClient as jest.Mock)
-      .mockImplementationOnce(
-        () =>
-          new Promise(resolve => {
-            finishOld = resolve
-          })
-      )
-      .mockResolvedValue({ user: { id: 'user-c' }, session: { getToken } })
-    const change = {
-      cookie: { domain: 'clerk.localhost.test', name: '__client_uat' },
-    }
-    const olderCheck = onCookieChanged(change)
-    await onCookieChanged(change)
-    finishOld({ user: { id: 'user-b' }, session: { getToken } })
-    await olderCheck
-    expect(chrome.storage.session.set).toHaveBeenLastCalledWith({
-      'enx-account-session-owner': 'user-c',
+      expect(await request).toEqual({ success: true, data: {} })
+      expect(loads()).toBe(loadsBefore + 2)
+      expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
     })
-  })
 
-  it('keeps an API request alive when overlapping cookie checks resolve to the same account', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
-    ;(global.fetch as jest.Mock).mockResolvedValue(jsonResponse(200, {}))
-    await makeApiRequest('/api/me')
-    let finishOld: (client: unknown) => void = () => {}
-    const client = { user: { id: 'user-a' }, session: { getToken } }
-    ;(createClerkClient as jest.Mock)
-      .mockImplementationOnce(
-        () =>
-          new Promise(resolve => {
-            finishOld = resolve
-          })
-      )
-      .mockResolvedValue(client)
-    const change = {
-      cookie: { domain: 'clerk.localhost.test', name: '__client_uat' },
-    }
-    const olderCheck = onCookieChanged(change)
-    const request = makeApiRequest('/api/me')
-    await onCookieChanged(change)
-    finishOld(client)
-    await olderCheck
-    expect(await request).toEqual({ success: true, data: {} })
-    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
+    it.each([
+      ['discards', 'user-b', { success: false }],
+      ['applies', 'user-a', { success: true, data: [['fox', 1]] }],
+    ])(
+      '%s an in-flight response released mid-debounce once the sync settles on %s',
+      async (_, nextUser, expected) => {
+        await makeApiRequest('/api/me')
+        const held = holdNextFetch()
+        const previous = makeApiRequest('/api/me/review-words')
+        await held.fetching
+        clerkUserId = nextUser
+        const check = changeSessionCookie()
+        held.finish(jsonResponse(200, [['fox', 1]]))
+        let settled = false
+        void previous.then(() => {
+          settled = true
+        })
+
+        await jest.advanceTimersByTimeAsync(999)
+        expect(settled).toBe(false)
+        await jest.advanceTimersByTimeAsync(1)
+        await check
+
+        const result = await previous
+        expect(result).toMatchObject(expected)
+        expect(result.sessionExpired).toBeUndefined()
+      }
+    )
+
+    it.each([200, 401])(
+      'discards a late %s from the previous account without expiring the new account',
+      async status => {
+        await makeApiRequest('/api/me')
+        ;(global.fetch as jest.Mock).mockClear()
+        const held = holdNextFetch()
+        const previous = makeApiRequest('/api/me/review-words')
+        await held.fetching
+        clerkUserId = 'user-b'
+        const check = changeSessionCookie()
+        await jest.advanceTimersByTimeAsync(1000)
+        await check
+        ;(chrome.tabs.sendMessage as jest.Mock).mockClear()
+        held.finish(jsonResponse(status, [['fox', 1]]))
+        const result = await previous
+        // #236: a switch to another signed-in account is an ordinary failure,
+        // never the signed-out state.
+        expect(result).toMatchObject({ success: false })
+        expect(result.sessionExpired).toBeUndefined()
+        expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
+        expect(global.fetch).toHaveBeenCalledTimes(1)
+      }
+    )
+
+    it('lets a sign-in after a session loss turn an old request into an ordinary failure', async () => {
+      await makeApiRequest('/api/me')
+      const held = holdNextFetch()
+      const previous = makeApiRequest('/api/me/review-words')
+      await held.fetching
+
+      setClerkSession(null)
+      let check = changeSessionCookie()
+      await jest.advanceTimersByTimeAsync(1000)
+      await check
+      clerkUserId = 'user-b'
+      setClerkSession('clerk-session-jwt')
+      check = changeSessionCookie()
+      await jest.advanceTimersByTimeAsync(1000)
+      await check
+      held.finish(jsonResponse(200, []))
+
+      const result = await previous
+      expect(result).toMatchObject({ success: false })
+      expect(result.sessionExpired).toBeUndefined()
+      expect(
+        (chrome.tabs.sendMessage as jest.Mock).mock.calls.map(c => c[1])
+      ).toEqual([
+        { action: 'sessionExpired', cause: 'signed-out' },
+        { action: 'accountChanged' },
+      ])
+    })
   })
 
   it('recovers when a 401 is fixed by a force-refreshed token', async () => {

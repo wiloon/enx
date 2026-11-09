@@ -2,6 +2,7 @@
 // Note: Sentry initialization is skipped in service worker context to avoid import issues
 
 import { createAccountSession, type Invalidation } from '@/lib/accountSession'
+import { createCoalescedSync } from '@/lib/coalescedSync'
 import {
   ACCOUNT_CHANGED_MESSAGE,
   type AccountInvalidatedMessage,
@@ -89,6 +90,7 @@ const getClerk = (): Promise<ClerkClient> => {
 export const __resetClerkClientCacheForTests = (): void => {
   resetClerkSession()
   sessionRecheckInFlight = null
+  clerkCookieSync = makeClerkCookieSync()
   accountSession = makeAccountSession()
 }
 
@@ -110,7 +112,7 @@ export const __resetClerkClientCacheForTests = (): void => {
 // still-empty session after every retry is treated as a real logout. The real
 // fix is the production Clerk cutover; this just stops a stale/slow dev-browser
 // sync from surfacing as "Session Expired" mid-reading.
-const SESSION_SYNC_RETRY_DELAYS_MS =
+export const SESSION_SYNC_RETRY_DELAYS_MS =
   config.environment === 'test' ? [0, 0, 0] : [200, 500, 1000]
 
 // Single-flight (#15): a page load fires many lookups at once into a
@@ -136,27 +138,33 @@ class SessionSyncUnconfirmed extends Error {
   }
 }
 
+const syncAndObserveClerk = async (): Promise<ClerkClient> => {
+  const requested = clerkGeneration
+  const clerk = await syncClerk()
+  if (requested !== clerkGeneration) throw new Error('Session changed')
+  const sync = await classifyLoadedClerk(clerk)
+  if (requested !== clerkGeneration) throw new Error('Session changed')
+  if (sync === 'unconfirmed') throw new SessionSyncUnconfirmed()
+  await accountSession.observe(clerk.user?.id ?? null)
+  if (requested !== clerkGeneration) throw new Error('Session changed')
+  return clerk
+}
+
+// Cookie refreshes can supersede a check without changing accounts. Join the
+// latest check; the request's account scope decides whether its eventual
+// identity is still safe for the original caller.
+const joinLatestCheck = (error: unknown): Promise<ClerkClient> => {
+  if (error instanceof Error && error.message === 'Session changed')
+    return getSyncedClerk()
+  throw error
+}
+
 const getSyncedClerk = (): Promise<ClerkClient> => {
+  const cookieSync = clerkCookieSync.pending()
+  if (cookieSync) return cookieSync.catch(joinLatestCheck)
   if (!syncedClerkInFlight) {
-    const requested = clerkGeneration
-    const current = syncClerk()
-      .then(async clerk => {
-        if (requested !== clerkGeneration) throw new Error('Session changed')
-        const sync = await classifyLoadedClerk(clerk)
-        if (requested !== clerkGeneration) throw new Error('Session changed')
-        if (sync === 'unconfirmed') throw new SessionSyncUnconfirmed()
-        await accountSession.observe(clerk.user?.id ?? null)
-        if (requested !== clerkGeneration) throw new Error('Session changed')
-        return clerk
-      })
-      .catch(error => {
-        // Cookie refreshes can supersede a check without changing accounts.
-        // Join the latest check; the request's account scope decides whether
-        // its eventual identity is still safe for the original caller.
-        if (error instanceof Error && error.message === 'Session changed')
-          return getSyncedClerk()
-        throw error
-      })
+    const current = syncAndObserveClerk()
+      .catch(joinLatestCheck)
       .finally(() => {
         if (syncedClerkInFlight === current) syncedClerkInFlight = null
       })
@@ -164,6 +172,23 @@ const getSyncedClerk = (): Promise<ClerkClient> => {
   }
   return syncedClerkInFlight
 }
+
+// A sign-in rewrites the website's Clerk cookies several times in a row
+// (#743). The cached client is stale from the first change, but the client is
+// rebuilt once per burst, so a sign-in costs a few Clerk loads, not dozens.
+const COOKIE_SYNC_QUIET_MS = 1000
+const COOKIE_SYNC_MAX_WAIT_MS = 2000
+
+const makeClerkCookieSync = () =>
+  createCoalescedSync({
+    run: () => {
+      resetClerkSession()
+      return syncAndObserveClerk()
+    },
+    quietMs: COOKIE_SYNC_QUIET_MS,
+    maxWaitMs: COOKIE_SYNC_MAX_WAIT_MS,
+  })
+let clerkCookieSync = makeClerkCookieSync()
 
 const syncClerk = async (): Promise<ClerkClient> => {
   const requested = clerkGeneration
@@ -258,8 +283,10 @@ const recheckSession = () => {
 // warm-looking worker can hand out a token minted 15 min ago -- long expired --
 // without re-minting. Forcing a fresh mint (or surfacing that the mint itself
 // fails) is the only way to tell a stale cache from a real logout.
+// `synced` is a client a cookie-change sync already settled on; its caller
+// waited for it, so it is not synced again.
 const getSessionToken = async (
-  opts: { forceRefresh?: boolean } = {}
+  opts: { forceRefresh?: boolean; synced?: ClerkClient } = {}
 ): Promise<SessionToken> => {
   const noToken = {
     token: null,
@@ -269,7 +296,7 @@ const getSessionToken = async (
   }
   let clerk: ClerkClient
   try {
-    clerk = await getSyncedClerk()
+    clerk = opts.synced ?? (await getSyncedClerk())
   } catch (error) {
     if (error instanceof Error && error.message === 'Session changed')
       throw error
@@ -399,6 +426,7 @@ const handleSessionExpiry = async () => {
 // Register synchronously so cookie changes wake an evicted MV3 worker too.
 // Rebuild the client: an already-loaded client's cached session can still be
 // the old account. JWT refreshes for the same user do not invalidate pages.
+// The promise settles with the sync that covers this change (#743).
 chrome.cookies.onChanged.addListener(change => {
   const host = new URL(config.clerkSyncHost).hostname
   const domain = change.cookie.domain.replace(/^\./, '')
@@ -407,7 +435,8 @@ chrome.cookies.onChanged.addListener(change => {
     return
   if (change.removed && change.cause === 'overwrite') return
   resetClerkSession()
-  return getSyncedClerk()
+  return clerkCookieSync
+    .change()
     .then(() => {})
     .catch(error => {
       console.error('Could not check changed account session:', error)
@@ -493,8 +522,23 @@ export const makeApiRequest = async (
   // and replay once. A request never goes out without a token (#688), so a
   // 401 on that replay was refused with a fresh one (#686). A gateway 503
   // (see GATEWAY_RETRY_DELAYS_MS) is replayed after a short wait.
+  //
+  // A request made while a cookie change is being synced waits for that
+  // sync (#743): its token and account scope come from the account it
+  // settled on, never from the stale client.
+  const cookieSync = clerkCookieSync.pending()
+  const synced = cookieSync
+    ? await cookieSync.catch(() => undefined)
+    : undefined
   const requestIsCurrent = accountSession.capture()
   const requestGeneration = accountSession.generation()
+  // A response that lands while a cookie change is being synced is applied
+  // only once that sync has said whose session it is now.
+  const responseIsCurrent = async () => {
+    const pending = clerkCookieSync.pending()
+    if (pending) await pending.catch(() => {})
+    return requestIsCurrent()
+  }
   let forceRefresh = false
   let gatewayRetries = 0
   let idempotentRetries = 0
@@ -528,7 +572,10 @@ export const makeApiRequest = async (
         ...((options.headers as Record<string, string>) || {}),
       }
 
-      const session = await getSessionToken({ forceRefresh })
+      const session = await getSessionToken({
+        forceRefresh,
+        synced: attempt === 1 ? synced : undefined,
+      })
       const token = session.token
       const outcome = token
         ? null
@@ -571,7 +618,7 @@ export const makeApiRequest = async (
         throw error
       }
 
-      if (!requestIsCurrent()) throw new Error('Session changed')
+      if (!(await responseIsCurrent())) throw new Error('Session changed')
 
       console.log(
         `API response status: ${response.status} ${response.statusText}`
@@ -584,7 +631,7 @@ export const makeApiRequest = async (
           // been up (a real logout can 401 with a token too, but not right
           // after other calls in the same worker succeeded).
           const body = await response.text().catch(() => '')
-          if (!requestIsCurrent()) throw new Error('Session changed')
+          if (!(await responseIsCurrent())) throw new Error('Session changed')
           swlog(
             `401 from ${endpoint}: ` +
               `forceRefresh=${forceRefresh}, attempt=${attempt}, ` +
@@ -675,7 +722,7 @@ export const makeApiRequest = async (
         swlog(`${endpoint} succeeded after force-refreshing the Clerk token`)
       }
       const data = await response.json()
-      if (!requestIsCurrent()) throw new Error('Session changed')
+      if (!(await responseIsCurrent())) throw new Error('Session changed')
       console.log('API response data:', data)
       return { success: true, data }
     }

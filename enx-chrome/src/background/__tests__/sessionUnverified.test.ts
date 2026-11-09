@@ -59,6 +59,13 @@ const send = (request: unknown) =>
 const sameUserCookie = {
   cookie: { domain: 'clerk.localhost.test', name: '__client_uat' },
 }
+// The listener debounces a burst of changes (#743); move the clock past it.
+const changeSessionCookie = async () => {
+  jest.useFakeTimers()
+  const check = onCookieChanged(sameUserCookie)
+  await jest.advanceTimersByTimeAsync(1000)
+  await check
+}
 
 beforeEach(async () => {
   jest.clearAllMocks()
@@ -101,7 +108,10 @@ beforeEach(async () => {
   fetchMock.mockReset()
 })
 
-afterEach(() => jest.restoreAllMocks())
+afterEach(() => {
+  jest.useRealTimers()
+  jest.restoreAllMocks()
+})
 
 const expectAccountSessionUntouched = () => {
   expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
@@ -144,7 +154,7 @@ describe('a 401 on the forced replay with a fresh token', () => {
     answer(() => 401)
     await makeApiRequest('/api/translate?word=fox')
 
-    await onCookieChanged(sameUserCookie)
+    await changeSessionCookie()
 
     expectAccountSessionUntouched()
   })
@@ -207,7 +217,7 @@ describe('the side panel freshness check', () => {
       session: { getToken },
       user: { id: 'user-b' },
     }))
-    await onCookieChanged(sameUserCookie)
+    await changeSessionCookie()
 
     const now = await freshness()
     expect(now.sessionLost).toBe(false)
