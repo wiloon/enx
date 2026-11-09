@@ -2,8 +2,8 @@ import {
   AdminAiWordsPage,
   AdminCreditAdjustment,
   AdminEcdictRow,
+  AdminFeedbackPage,
   AdminLedgerPage,
-  AdminPageReport,
   AdminUserDetail,
   AdminUserSort,
   AdminUsersPage,
@@ -13,6 +13,8 @@ import {
   CheckoutSessionData,
   CreditDirection,
   CreditTransactionPage,
+  FeedbackKind,
+  FeedbackStatus,
   MeData,
   PreferenceChanges,
   PreferencesData,
@@ -307,11 +309,29 @@ export class ApiService {
     return this.makeRequest(`/api/admin/ai-words?${params}`)
   }
 
-  // Page reports (ADR-010 Decision 11): user-confirmed learning-mode failures.
-  async adminListPageReports(): Promise<
-    ApiResponse<{ success: boolean; reports: AdminPageReport[] }>
-  > {
-    return this.makeRequest('/api/admin/page-reports')
+  // The feedback queue (ADR-076): an empty kind or status matches all.
+  async adminListFeedback(query: {
+    kind: FeedbackKind | ''
+    status: FeedbackStatus | ''
+    limit: number
+    offset: number
+  }): Promise<ApiResponse<AdminFeedbackPage>> {
+    const params = new URLSearchParams({
+      limit: String(query.limit),
+      offset: String(query.offset),
+    })
+    if (query.kind) params.set('kind', query.kind)
+    if (query.status) params.set('status', query.status)
+    return this.makeRequest(`/api/admin/feedback?${params}`)
+  }
+
+  async adminResolveFeedback(
+    id: string
+  ): Promise<ApiResponse<{ success: boolean }>> {
+    return this.makeRequest(`/api/admin/feedback/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'resolved' }),
+    })
   }
 
   // The users page (ADR-049 Decision 11): search by email, sort, page.

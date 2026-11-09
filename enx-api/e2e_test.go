@@ -50,7 +50,9 @@ func TestE2E_UnauthenticatedAccessRejected(t *testing.T) {
 	}{
 		{http.MethodGet, "/api/me"},
 		{http.MethodGet, "/api/paragraph-init"},
-		{http.MethodGet, "/api/admin/page-reports"},
+		{http.MethodPost, "/api/feedback"},
+		{http.MethodGet, "/api/admin/feedback"},
+		{http.MethodPatch, "/api/admin/feedback/f1"},
 	}
 
 	for _, ep := range endpoints {
@@ -159,59 +161,83 @@ func TestE2E_ClerkGetMe_IsAdminReflectsAllowlist(t *testing.T) {
 	}
 }
 
-func TestE2E_AdminPageReportsRequiresAdmin(t *testing.T) {
+// call sends one request with a bearer token and returns the status and body.
+func call(t *testing.T, ts *httptest.Server, method, path, token, body string) (int, string) {
+	t.Helper()
+	req, _ := http.NewRequest(method, ts.URL+path, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", method, path, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var out strings.Builder
+	_, _ = io.Copy(&out, resp.Body)
+	return resp.StatusCode, out.String()
+}
+
+// ADR-076: a signed-in user's page report reaches the admin's feedback list;
+// the list and resolve routes are admin-only, the daily limit comes from
+// config, and the page-report routes it replaced are gone.
+func TestE2E_FeedbackRoutes(t *testing.T) {
 	env := clerktest.NewEnv(t)
 	cfg := config.Default()
 	cfg.Clerk = env.Config()
+	cfg.Feedback.DailyLimit = 1
+	adminSub := "user_e2efeedback_admin"
+	cfg.Admin.ClerkUserIDs = []string{adminSub}
+	sqlitex.Init(filepath.Join(t.TempDir(), "enx-e2e-feedback.db"))
 
-	dbPath := filepath.Join(t.TempDir(), "enx-e2e-page-reports.db")
-	sqlitex.Init(dbPath)
-
-	sub := "user_e2epage_reports"
-	t.Cleanup(func() { sqlitex.DB.Exec("DELETE FROM users WHERE clerk_user_id = ?", sub) })
-	token := env.SignSessionToken(t, jwt.MapClaims{
-		"sub": sub, "email": "user@example.com", "name": "not-admin",
-	})
-
+	user := env.SignSessionToken(t, jwt.MapClaims{"sub": "user_e2efeedback", "email": "user@example.com", "name": "user"})
+	admin := env.SignSessionToken(t, jwt.MapClaims{"sub": adminSub, "email": "admin@example.com", "name": "admin"})
 	ts, done := e2eServer(t, cfg)
 	defer done()
 
-	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/admin/page-reports", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := ts.Client().Do(req)
-	if err != nil {
-		t.Fatalf("GET /api/admin/page-reports: %v", err)
+	report := func(url string) string {
+		return `{"kind":"page_report","url":"` + url + `","context":{"adapter":"x","extVersion":"1.0.1"},"details":{"reason":"no-words"}}`
 	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403 for non-admin", resp.StatusCode)
+	if status, body := call(t, ts, http.MethodPost, "/api/feedback", user, report("https://x.com/a?s=1")); status != http.StatusOK || body != `{"recorded":true,"success":true}` {
+		t.Fatalf("submit: %d %s", status, body)
+	}
+	if status, body := call(t, ts, http.MethodPost, "/api/feedback", user, report("https://x.com/b")); status != http.StatusTooManyRequests ||
+		!strings.Contains(body, `"code":"feedback_limit_exceeded"`) {
+		t.Fatalf("second submit with a limit of 1: %d %s, want 429", status, body)
 	}
 
-	// The same user on a server that lists them as admin.
-	adminCfg := *cfg
-	adminCfg.Admin.ClerkUserIDs = []string{sub}
-	adminTS, adminDone := e2eServer(t, &adminCfg)
-	defer adminDone()
+	for _, req := range []struct{ method, path string }{
+		{http.MethodGet, "/api/admin/feedback"},
+		{http.MethodPatch, "/api/admin/feedback/x"},
+	} {
+		if status, _ := call(t, ts, req.method, req.path, user, `{"status":"resolved"}`); status != http.StatusForbidden {
+			t.Errorf("%s %s as a user: status %d, want 403", req.method, req.path, status)
+		}
+	}
 
-	adminToken := env.SignSessionToken(t, jwt.MapClaims{
-		"sub": sub, "email": "admin@example.com", "name": "admin",
-	})
-	req2, _ := http.NewRequest(http.MethodGet, adminTS.URL+"/api/admin/page-reports", nil)
-	req2.Header.Set("Authorization", "Bearer "+adminToken)
-	resp2, err := adminTS.Client().Do(req2)
-	if err != nil {
-		t.Fatalf("GET /api/admin/page-reports as admin: %v", err)
+	status, body := call(t, ts, http.MethodGet, "/api/admin/feedback?kind=page_report&status=new", admin, "")
+	var list struct {
+		Success  bool `json:"success"`
+		Feedback []struct {
+			ID  string `json:"id"`
+			URL string `json:"url"`
+		} `json:"feedback"`
+		NextOffset *int `json:"nextOffset"`
 	}
-	defer func() { _ = resp2.Body.Close() }()
-	if resp2.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200 for admin", resp2.StatusCode)
+	if err := json.Unmarshal([]byte(body), &list); err != nil || status != http.StatusOK || !list.Success ||
+		len(list.Feedback) != 1 || list.Feedback[0].URL != "https://x.com/a" || list.NextOffset != nil {
+		t.Fatalf("admin list: %d %s", status, body)
 	}
-	var body struct {
-		Success bool             `json:"success"`
-		Reports []map[string]any `json:"reports"`
+	if status, body := call(t, ts, http.MethodPatch, "/api/admin/feedback/"+list.Feedback[0].ID, admin, `{"status":"resolved"}`); status != http.StatusOK {
+		t.Fatalf("resolve: %d %s", status, body)
 	}
-	if err := json.NewDecoder(resp2.Body).Decode(&body); err != nil || !body.Success {
-		t.Fatalf("body=%+v err=%v", body, err)
+
+	for _, req := range []struct{ method, path string }{
+		{http.MethodPost, "/api/page-reports"},
+		{http.MethodGet, "/api/admin/page-reports"},
+	} {
+		if status, _ := call(t, ts, req.method, req.path, admin, report("https://x.com/c")); status != http.StatusNotFound {
+			t.Errorf("%s %s: status %d, want 404 (removed by ADR-076)", req.method, req.path, status)
+		}
 	}
 }
 

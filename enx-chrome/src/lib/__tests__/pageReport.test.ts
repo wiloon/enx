@@ -1,6 +1,10 @@
-import { sanitizePageUrl } from '@/lib/pageReport'
+import {
+  PAGE_REPORT_FAILED_MESSAGE,
+  sanitizePageUrl,
+  sendPageReport,
+} from '@/lib/pageReport'
 
-// The cases mirror enx-api/pagereport/pagereport_test.go TestSanitizeURL: the
+// The cases mirror enx-api/feedback/url_test.go TestSanitizeURL: the
 // extension shows the user this URL and the server re-sanitizes it, so the two
 // implementations must agree.
 describe('sanitizePageUrl', () => {
@@ -80,5 +84,49 @@ describe('sanitizePageUrl', () => {
   it('never lets a query string or fragment through', () => {
     const out = sanitizePageUrl('https://example.com/a?token=SECRET#SECRET2')
     expect(out).not.toMatch(/SECRET|token|\?|#/)
+  })
+})
+
+describe('sendPageReport', () => {
+  const report = { url: 'https://x.com/a', reason: 'error', adapter: 'x' }
+
+  it('sends the confirmed report to the background and reports it sent', async () => {
+    const send = jest.fn().mockResolvedValue({ success: true, recorded: true })
+
+    await expect(sendPageReport(send, report)).resolves.toEqual({ sent: true })
+    expect(send).toHaveBeenCalledWith({
+      type: 'submitPageReport',
+      pageReport: report,
+    })
+  })
+
+  it("shows the server's message when the daily limit is reached", async () => {
+    const send = jest.fn().mockResolvedValue({
+      success: false,
+      status: 429,
+      code: 'feedback_limit_exceeded',
+      error: 'Daily feedback limit reached. Please try again tomorrow.',
+    })
+
+    await expect(sendPageReport(send, report)).resolves.toEqual({
+      sent: false,
+      message: 'Daily feedback limit reached. Please try again tomorrow.',
+    })
+  })
+
+  it('falls back to a generic message when there is none', async () => {
+    const noMessage = jest.fn().mockResolvedValue({ success: false })
+    const noAnswer = jest.fn().mockResolvedValue(undefined)
+    const thrown = jest.fn().mockRejectedValue(new Error('port closed'))
+
+    for (const send of [noMessage, noAnswer, thrown]) {
+      await expect(sendPageReport(send, report)).resolves.toEqual({
+        sent: false,
+        message: PAGE_REPORT_FAILED_MESSAGE,
+      })
+    }
+    expect(PAGE_REPORT_FAILED_MESSAGE).toBe(
+      "Couldn't send the report. Try again in a moment."
+    )
   })
 })

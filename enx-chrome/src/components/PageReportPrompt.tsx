@@ -2,12 +2,16 @@
 // read (ADR-010 Decision 8). It shows the user exactly what would be sent and
 // sends nothing until they press the button.
 
+import { PAGE_REPORT_FAILED_MESSAGE } from '@/lib/pageReport'
+
 export type PageReportStatus = 'idle' | 'sending' | 'sent' | 'failed'
 
 interface PageReportPromptProps {
   /** The sanitized URL -- exactly what will be sent. */
   url: string
   status: PageReportStatus
+  /** Why sending failed, shown with status 'failed'. */
+  errorMessage?: string
   onSend: () => void
   onDismiss: () => void
 }
@@ -15,6 +19,7 @@ interface PageReportPromptProps {
 export default function PageReportPrompt({
   url,
   status,
+  errorMessage,
   onSend,
   onDismiss,
 }: PageReportPromptProps) {
@@ -48,7 +53,7 @@ export default function PageReportPrompt({
       </p>
       {status === 'failed' && (
         <p role="alert" className="text-destructive">
-          Couldn&apos;t send the report. Try again in a moment.
+          {errorMessage || PAGE_REPORT_FAILED_MESSAGE}
         </p>
       )}
       <div className="flex gap-2">

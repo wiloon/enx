@@ -1738,23 +1738,26 @@ const handleReportReadingProgress = async (delta?: StatsDelta) => {
   return { success: true, queued: true }
 }
 
-// A page the user confirmed they want reported (ADR-010 Decision 8). Unlike
-// the stats queue this is NOT fire-and-forget: the popup shows the user
-// whether it went through, and a report they clicked "send" on is not
-// silently dropped.
+// A page the user confirmed they want reported (ADR-010 Decision 8), sent as
+// a page_report feedback record (ADR-076). Unlike the stats queue this is NOT
+// fire-and-forget: the popup shows the user whether it went through, and a
+// report they clicked "send" on is not silently dropped.
 const handleSubmitPageReport = async (report?: {
   url: string
   reason: string
   adapter: string
 }) => {
   if (!report?.url) return { success: false, error: 'Missing report' }
-  return await makeApiRequest('/api/page-reports', {
+  return await makeApiRequest('/api/feedback', {
     method: 'POST',
     body: JSON.stringify({
+      kind: 'page_report',
       url: report.url,
-      reason: report.reason,
-      adapter: report.adapter,
-      extVersion: chrome.runtime.getManifest().version,
+      context: {
+        adapter: report.adapter,
+        extVersion: chrome.runtime.getManifest().version,
+      },
+      details: { reason: report.reason },
     }),
   })
 }

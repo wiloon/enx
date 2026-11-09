@@ -3,7 +3,7 @@
 // The one thing in the extension that sends a page URL to the server, so it
 // is fenced in: nothing is sent unless the user clicks to confirm, and what
 // they are shown -- and what is sent -- is the sanitized URL below, never the
-// raw one. enx-api re-sanitizes with the same rules (pagereport.SanitizeURL)
+// raw one. enx-api re-sanitizes with the same rules (feedback.SanitizeURL)
 // and does not trust this copy; keep the two in step.
 
 const MAX_SANITIZED_URL_LENGTH = 1024
@@ -61,4 +61,39 @@ export interface PageReportPayload {
   url: string
   reason: string
   adapter: string
+}
+
+export const PAGE_REPORT_FAILED_MESSAGE =
+  "Couldn't send the report. Try again in a moment."
+
+export type PageReportOutcome =
+  { sent: true } | { sent: false; message: string }
+
+type SendToBackground = (message: {
+  type: 'submitPageReport'
+  pageReport: PageReportPayload
+}) => Promise<{ success?: boolean; error?: string } | undefined>
+
+/**
+ * Sends a report the user confirmed through the background worker. A refusal
+ * carries the server's own message (e.g. the daily feedback limit, ADR-076);
+ * anything without one gets the generic message.
+ */
+export async function sendPageReport(
+  send: SendToBackground,
+  report: PageReportPayload
+): Promise<PageReportOutcome> {
+  try {
+    const response = await send({
+      type: 'submitPageReport',
+      pageReport: report,
+    })
+    if (response?.success) return { sent: true }
+    return {
+      sent: false,
+      message: response?.error || PAGE_REPORT_FAILED_MESSAGE,
+    }
+  } catch {
+    return { sent: false, message: PAGE_REPORT_FAILED_MESSAGE }
+  }
 }

@@ -3,13 +3,17 @@ import PageReportPrompt from '../PageReportPrompt'
 
 const URL_SHOWN = 'https://x.com/a/status/1'
 
-const setup = (status: 'idle' | 'sending' | 'sent' | 'failed' = 'idle') => {
+const setup = (
+  status: 'idle' | 'sending' | 'sent' | 'failed' = 'idle',
+  errorMessage?: string
+) => {
   const onSend = jest.fn()
   const onDismiss = jest.fn()
   render(
     <PageReportPrompt
       url={URL_SHOWN}
       status={status}
+      errorMessage={errorMessage}
       onSend={onSend}
       onDismiss={onDismiss}
     />
@@ -50,6 +54,13 @@ describe('PageReportPrompt', () => {
       "Couldn't send the report"
     )
     expect(screen.getByRole('button', { name: 'Send report' })).toBeEnabled()
+  })
+
+  it("shows the server's message when sending was refused", () => {
+    setup('failed', 'Daily feedback limit reached. Please try again tomorrow.')
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Daily feedback limit reached. Please try again tomorrow.'
+    )
   })
 
   it('replaces the prompt with a thank-you once sent', () => {

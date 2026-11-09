@@ -1,6 +1,6 @@
 // Package urlnorm normalizes page URLs. ForSave keeps a URL usable for
 // reopening the page (ADR-032 Options C3); it is deliberately weaker than the
-// redaction pagereport applies for diagnostics.
+// redaction feedback applies for diagnostics.
 package urlnorm
 
 import (
