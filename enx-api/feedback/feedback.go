@@ -22,7 +22,9 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -196,7 +198,8 @@ func NewService(store Store, notifier Notifier, dailyLimit int, now func() time.
 }
 
 // Submit validates and stores one record for userID. recorded is false when
-// it repeats one already stored, which is a normal outcome, not an error.
+// it repeats a page report already stored, which is a normal outcome, not an
+// error; text records are never deduplicated.
 // A repeat is answered before the daily limit is checked, so it never
 // counts against it.
 func (s *Service) Submit(ctx context.Context, userID string, sub Submission) (recorded bool, err error) {
@@ -207,40 +210,30 @@ func (s *Service) Submit(ctx context.Context, userID string, sub Submission) (re
 		return false, invalid("unknown kind %q", sub.Kind)
 	}
 	// Each kind is accepted once its submitter and validation exist (ADR-076):
-	// text with the "Send feedback" entry, article_choice with #716.
-	if sub.Kind != KindPageReport {
+	// article_choice with #716.
+	var rec Record
+	switch sub.Kind {
+	case KindPageReport:
+		rec, err = pageReportRecord(sub)
+	case KindText:
+		rec, err = textRecord(sub)
+	default:
 		return false, invalid("kind %q is not accepted yet", sub.Kind)
 	}
-	if sub.Text != nil {
-		return false, invalid("a page report has no text")
-	}
-	var details pageReportDetails
-	if err := decodeObject(sub.Details, &details); err != nil || !reportableReasons[details.Reason] {
-		return false, invalid("unknown reason")
-	}
-	var scene pageReportContext
-	if err := decodeObject(sub.Context, &scene); err != nil ||
-		!adapterPattern.MatchString(scene.Adapter) || !versionPattern.MatchString(scene.ExtVersion) {
-		return false, invalid("malformed context")
-	}
-	pageURL, host, err := SanitizeURL(sub.URL)
 	if err != nil {
-		return false, invalid("%v", err)
+		return false, err
 	}
 
 	now := s.now()
-	contextJSON, _ := json.Marshal(scene)
-	detailsJSON, _ := json.Marshal(details)
-	rec := Record{
-		ID: uuid.NewString(), UserID: userID, Kind: sub.Kind, URL: pageURL, Host: host,
-		Context: contextJSON, Details: detailsJSON, Status: StatusNew, CreatedAt: now,
-	}
+	rec.ID, rec.UserID, rec.Kind, rec.Status, rec.CreatedAt = uuid.NewString(), userID, sub.Kind, StatusNew, now
 	dayStart := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC)
 
 	err = s.store.Admit(ctx, func(a Admission) error {
-		dup, err := a.HasPageReportSince(userID, pageURL, details.Reason, now.Add(-dedupeWindow))
-		if err != nil || dup {
-			return err
+		if report, ok := rec.PageReport(); ok {
+			dup, err := a.HasPageReportSince(userID, rec.URL, report.Reason, now.Add(-dedupeWindow))
+			if err != nil || dup {
+				return err
+			}
 		}
 		n, err := a.CountCreated(userID, dayStart, dayStart.AddDate(0, 0, 1))
 		if err != nil {
@@ -265,6 +258,76 @@ func (s *Service) Submit(ctx context.Context, userID string, sub Submission) (re
 		}
 	}
 	return recorded, nil
+}
+
+// pageReportRecord validates a page report into the fields of its record.
+func pageReportRecord(sub Submission) (Record, error) {
+	if sub.Text != nil {
+		return Record{}, invalid("a page report has no text")
+	}
+	var details pageReportDetails
+	if err := decodeObject(sub.Details, &details); err != nil || !reportableReasons[details.Reason] {
+		return Record{}, invalid("unknown reason")
+	}
+	var scene pageReportContext
+	if err := decodeObject(sub.Context, &scene); err != nil ||
+		!adapterPattern.MatchString(scene.Adapter) || !versionPattern.MatchString(scene.ExtVersion) {
+		return Record{}, invalid("malformed context")
+	}
+	pageURL, host, err := SanitizeURL(sub.URL)
+	if err != nil {
+		return Record{}, invalid("%v", err)
+	}
+	contextJSON, _ := json.Marshal(scene)
+	detailsJSON, _ := json.Marshal(details)
+	return Record{URL: pageURL, Host: host, Context: contextJSON, Details: detailsJSON}, nil
+}
+
+// MaxTextLength is the most Unicode code points a text record may hold,
+// counted after trimming.
+const MaxTextLength = 2000
+
+// textContext is the scene a text record is sent from: both clients send the
+// app version and browser, the extension adds the learning-mode fields.
+type textContext struct {
+	AppVersion    string `json:"appVersion"`
+	Browser       string `json:"browser"`
+	LearningMode  *bool  `json:"learningMode,omitempty"`
+	Adapter       string `json:"adapter,omitempty"`
+	ArticleSource string `json:"articleSource,omitempty"`
+}
+
+// browserPattern is a browser's name and major version, e.g. "Chrome 142",
+// never a raw user-agent.
+var browserPattern = regexp.MustCompile(`^([A-Za-z]+( [A-Za-z]+)? [0-9]{1,4})?$`)
+
+// textRecord validates written feedback into the fields of its record. The
+// page URL is optional: a user may write from a page that has none.
+func textRecord(sub Submission) (Record, error) {
+	if sub.Text == nil || strings.TrimSpace(*sub.Text) == "" {
+		return Record{}, invalid("write some feedback before sending")
+	}
+	text := strings.TrimSpace(*sub.Text)
+	if utf8.RuneCountInString(text) > MaxTextLength {
+		return Record{}, invalid("feedback is limited to %d characters", MaxTextLength)
+	}
+	var scene textContext
+	if err := decodeObject(sub.Context, &scene); err != nil ||
+		!versionPattern.MatchString(scene.AppVersion) || !browserPattern.MatchString(scene.Browser) ||
+		!adapterPattern.MatchString(scene.Adapter) ||
+		(scene.ArticleSource != "" && scene.ArticleSource != "auto" && scene.ArticleSource != "user") {
+		return Record{}, invalid("malformed context")
+	}
+	rec := Record{Text: text, Details: json.RawMessage(`{}`)}
+	if sub.URL != "" {
+		pageURL, host, err := SanitizeURL(sub.URL)
+		if err != nil {
+			return Record{}, invalid("the page URL must be a web address starting with http:// or https://")
+		}
+		rec.URL, rec.Host = pageURL, host
+	}
+	rec.Context, _ = json.Marshal(scene)
+	return rec, nil
 }
 
 // decodeObject decodes a JSON object; a missing one decodes as empty.
