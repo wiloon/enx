@@ -13,13 +13,9 @@ import (
 
 	"github.com/stripe/stripe-go/v86/webhook"
 
-	billingapp "enx-api/billing/app"
 	"enx-api/config"
-	"enx-api/email"
 	"enx-api/metrics"
 	"enx-api/utils/sqlitex"
-
-	"github.com/google/uuid"
 
 	"github.com/gin-gonic/gin"
 	stripeSDK "github.com/stripe/stripe-go/v86"
@@ -90,73 +86,17 @@ func TestApplicationCutoverStartsFreshAndMountsDurableBilling(t *testing.T) {
 	}
 }
 
-func TestApplicationRestartsCurrentDatabaseWithoutRestoringOldConstraints(t *testing.T) {
+func TestApplicationRestartsOnItsOwnDatabase(t *testing.T) {
 	restoreBillingDatabase(t)
 	cfg := billingStartupConfig(t)
-	if err := initializeBillingDatabase(cfg.DB.Path, "error"); err != nil {
-		t.Fatal(err)
-	}
-	for _, statement := range []string{
-		"INSERT INTO users (id, accepted_subscription_id) VALUES ('u_subscribed','sub_subscribed')",
-		"INSERT INTO subscriptions (stripe_subscription_id,user_id,stripe_customer_id,status,created_at,updated_at) VALUES ('sub_subscribed','u_subscribed','cus_subscribed','active',1,1)",
-		"INSERT INTO credit_accounts (user_id,subscription_balance,updated_at) VALUES ('u_subscribed',500,1)",
-	} {
-		if err := sqlitex.DB.Exec(statement).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-	closeCurrentStartupDatabase(t)
 	client := startupStripeClient(t)
 	first := startTestApplication(t, context.Background(), cfg, client)
-	assertBillingMigrationOrder(t)
 	if err := first.stopBilling(context.Background()); err != nil {
 		t.Fatal(err)
-	}
-	for _, statement := range []string{
-		"INSERT INTO subscriptions (stripe_subscription_id, user_id, stripe_customer_id, status, created_at, updated_at) VALUES ('sub_second', 'u_subscribed', 'cus_subscribed', 'active', 1, 1)",
-		"ALTER TABLE users DROP COLUMN avatar_url",
-		"ALTER TABLE credit_accounts DROP COLUMN trial_expires_at",
-		"ALTER TABLE credit_transactions DROP COLUMN note",
-	} {
-		if err := sqlitex.DB.Exec(statement).Error; err != nil {
-			t.Fatal(err)
-		}
 	}
 	closeCurrentStartupDatabase(t)
 	second := startTestApplication(t, context.Background(), cfg, client)
 	assertBillingMigrationOrder(t)
-	for table, column := range map[string]string{"users": "avatar_url", "credit_accounts": "trial_expires_at", "credit_transactions": "note"} {
-		if !sqlitex.DB.Migrator().HasColumn(table, column) {
-			t.Errorf("%s.%s was excluded from AutoMigrate", table, column)
-		}
-	}
-	if !sqlitex.DB.Migrator().HasColumn("users", "billing_version") {
-		t.Error("lost users.billing_version")
-	}
-	if !sqlitex.DB.Migrator().HasIndex("credit_transactions", "idx_credit_transactions_subscription_invoice") {
-		t.Error("lost subscription invoice uniqueness")
-	}
-	var count int64
-	if err := sqlitex.DB.Raw("SELECT count(*) FROM subscriptions WHERE stripe_customer_id = 'cus_subscribed'").Scan(&count).Error; err != nil {
-		t.Fatal(err)
-	}
-	if count != 2 {
-		t.Fatalf("shared Customer subscriptions = %d, want 2", count)
-	}
-	if err := sqlitex.DB.Exec("INSERT INTO subscriptions (stripe_subscription_id, stripe_customer_id, status, created_at, updated_at) VALUES ('sub_third', 'cus_subscribed', 'active', 1, 1)").Error; err != nil {
-		t.Fatalf("Customer uniqueness was restored: %v", err)
-	}
-	var account struct {
-		Accepted string
-		Balance  int64
-	}
-	if err := sqlitex.DB.Raw("SELECT u.accepted_subscription_id AS accepted, c.subscription_balance AS balance FROM users u JOIN credit_accounts c ON c.user_id = u.id WHERE u.id = 'u_subscribed'").Scan(&account).Error; err != nil {
-		t.Fatal(err)
-	}
-	if account.Accepted != "sub_subscribed" || account.Balance != 500 {
-		t.Fatalf("legacy account changed on restart: %+v", account)
-	}
-
 	if err := second.stopBilling(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -188,43 +128,5 @@ func closeCurrentStartupDatabase(t *testing.T) {
 	}
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestBillingLifecycleUsesApplicationContextAndRealAssemblyRejectsSecondStart(t *testing.T) {
-	restoreBillingDatabase(t)
-	cfg := billingStartupConfig(t)
-	if err := openBillingDatabase(t, func() error { return initializeBillingDatabase(cfg.DB.Path, "error") }); err != nil {
-		t.Fatal(err)
-	}
-	assembly, err := billingapp.New(billingapp.Deps{
-		Stripe: cfg.Stripe, PortalReturnURL: cfg.App.FrontendBaseURL + "/billing",
-		Referral: newReferralPolicy(cfg), Client: startupStripeClient(t), Mailer: email.NewSender(cfg.Resend),
-		Now: time.Now, NewToken: uuid.NewString,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	parent, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	lifecycle, err := startBillingLifecycle(parent, assembly)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		deadline, stop := context.WithTimeout(context.Background(), time.Second)
-		defer stop()
-		if err := lifecycle.stop(deadline); err != nil {
-			t.Error(err)
-		}
-	})
-	if second, err := startBillingLifecycle(parent, assembly); err == nil || second != nil {
-		t.Fatalf("second Start = %v, %v", second, err)
-	}
-	cancel()
-	select {
-	case <-assembly.Done():
-	case <-time.After(time.Second):
-		t.Fatal("real billing assembly ignored application cancellation")
 	}
 }

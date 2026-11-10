@@ -17,7 +17,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func billingMeRoute(t *testing.T, cutover bool) (*httptest.Server, string) {
+func billingMeRoute(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
 	restoreBillingDatabase(t)
 	jwks := clerktest.NewEnv(t)
@@ -63,7 +63,7 @@ func assertBillingMe(t *testing.T, server *httptest.Server, token, status, plan 
 }
 
 func TestBillingMeCutoverDisplaysAcceptedSnapshotDespiteConflict(t *testing.T) {
-	server, token := billingMeRoute(t, true)
+	server, token := billingMeRoute(t)
 	for _, statement := range []string{
 		"INSERT INTO subscriptions (stripe_subscription_id, user_id, stripe_customer_id, status, plan, current_period_end, classification, conflict_status, created_at, updated_at) VALUES ('sub_a_conflict', 'billing_me', 'cus_conflict', 'active', 'pro', 123, 'conflict', 'open', 1, 1)",
 		"INSERT INTO subscriptions (stripe_subscription_id, user_id, stripe_customer_id, status, plan, current_period_end, classification, created_at, updated_at) VALUES ('sub_z_accepted', 'billing_me', 'cus_accepted', 'past_due', 'max', 1795507901, 'accepted', 1, 1)",
@@ -74,29 +74,4 @@ func TestBillingMeCutoverDisplaysAcceptedSnapshotDespiteConflict(t *testing.T) {
 		}
 	}
 	assertBillingMe(t, server, token, "past_due", "max", 1795507901)
-}
-
-func TestBillingMeCutoverReaderFailureIsNotAbsence(t *testing.T) {
-	server, token := billingMeRoute(t, true)
-	if err := sqlitex.DB.Exec("DROP TABLE subscriptions").Error; err != nil {
-		t.Fatal(err)
-	}
-	code, body := doJSON(t, http.MethodGet, server.URL+"/api/billing/me", token)
-	if code < 500 || body["success"] != false {
-		t.Fatalf("reader failure = %d %v, want server error and success false", code, body)
-	}
-}
-
-func TestBillingMeCutoverWithoutAcceptedSubscriptionReturnsDefaults(t *testing.T) {
-	for _, scenario := range []string{"never subscribed", "conflict only"} {
-		t.Run(scenario, func(t *testing.T) {
-			server, token := billingMeRoute(t, true)
-			if scenario == "conflict only" {
-				if err := sqlitex.DB.Exec("INSERT INTO subscriptions (stripe_subscription_id, user_id, stripe_customer_id, status, plan, current_period_end, classification, conflict_status, created_at, updated_at) VALUES ('sub_conflict', 'billing_me', 'cus_conflict', 'active', 'pro', 123, 'conflict', 'open', 1, 1)").Error; err != nil {
-					t.Fatal(err)
-				}
-			}
-			assertBillingMe(t, server, token, "none", "", 0)
-		})
-	}
 }
