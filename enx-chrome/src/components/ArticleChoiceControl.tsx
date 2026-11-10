@@ -1,3 +1,4 @@
+import { DocumentTextIcon } from '@heroicons/react/24/outline'
 import { useEffect, useState } from 'react'
 import { config } from '@/config/env'
 import {
@@ -23,7 +24,7 @@ function probe(tabId: number, url: string) {
 }
 
 const actionClass =
-  'rounded-lg border border-brand/40 px-3 py-1.5 text-xs font-medium text-brand transition hover:bg-brand-muted active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50'
+  'rounded-lg border border-brand/40 px-2.5 py-1 text-xs font-medium text-brand transition hover:bg-brand-muted active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50'
 
 export default function ArticleChoiceControl({
   onModeChange,
@@ -108,37 +109,60 @@ export default function ArticleChoiceControl({
     }
   }
   return (
-    <section
-      aria-label="Article area"
-      className="space-y-2 rounded-xl bg-background px-3 py-2.5 ring-1 ring-border"
-    >
-      <p className="text-xs text-muted-foreground">
-        {manual
-          ? pageOnly
-            ? 'Your choice · This page only'
-            : 'Your choice'
-          : 'Automatic detection'}
-      </p>
-      {state.choice?.missed && (
-        <p className="text-xs text-warning-foreground">
-          Your saved choice could not be applied on this page. Using automatic
-          detection.
+    // A row of the popup's settings group, which draws the frame.
+    <section aria-label="Article area" className="space-y-2 px-3 py-2">
+      <div className="flex items-center gap-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-muted text-brand">
+          <DocumentTextIcon className="h-[18px] w-[18px]" />
+        </span>
+        <span className="min-w-0 flex-1 leading-tight">
+          <span className="block text-sm font-medium text-foreground">
+            Article
+          </span>
+          <span className="block truncate text-[11px] text-muted-foreground">
+            {manual
+              ? pageOnly
+                ? 'Your choice · This page only'
+                : 'Your choice'
+              : 'Automatic detection'}
+          </span>
+        </span>
+        <button
+          type="button"
+          className={`shrink-0 ${actionClass}`}
+          disabled={busy}
+          onClick={() => void choose()}
+        >
+          Choose article
+        </button>
+      </div>
+      {/* One small-print line under the row's text, Use automatic inline
+          at its end, so a manual choice adds little height to the popup. */}
+      {(manual || state.choice?.saved || state.choice?.missed) && (
+        <p className="pl-11 text-[11px] leading-snug text-muted-foreground">
+          {state.choice?.missed && (
+            <span className="text-warning-foreground">
+              Your saved choice could not be applied on this page.{' '}
+            </span>
+          )}
+          {pageOnly && (
+            <>
+              This choice cannot be remembered. Reloading restores automatic
+              detection.{' '}
+            </>
+          )}
+          {(manual || state.choice?.saved) && (
+            <button
+              type="button"
+              className="font-medium text-brand transition hover:underline active:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand disabled:opacity-50"
+              disabled={busy}
+              onClick={() => void handleUseAutomatic()}
+            >
+              Use automatic
+            </button>
+          )}
         </p>
       )}
-      {pageOnly && (
-        <p className="text-xs text-muted-foreground">
-          This choice cannot be remembered or applied to other pages. Reloading
-          restores automatic detection.
-        </p>
-      )}
-      <button
-        type="button"
-        className={actionClass}
-        disabled={busy}
-        onClick={() => void choose()}
-      >
-        Choose article
-      </button>
       {asking && (
         <section
           aria-labelledby="article-choice-sharing-title"
@@ -153,9 +177,9 @@ export default function ArticleChoiceControl({
           <p className="text-xs text-muted-foreground">
             Sharing helps improve automatic detection. Each choice you confirm
             sends the cleaned page address, the article&apos;s selector, what
-            automatic detection found and the extension version, linked to
-            your account. Never the page&apos;s text or title. You can change
-            this in Options.
+            automatic detection found and the extension version, linked to your
+            account. Never the page&apos;s text or title. You can change this in
+            Options.
           </p>
           <div className="flex gap-2">
             <button
@@ -176,16 +200,6 @@ export default function ArticleChoiceControl({
             </button>
           </div>
         </section>
-      )}
-      {(manual || state.choice?.saved) && (
-        <button
-          type="button"
-          className={actionClass}
-          disabled={busy}
-          onClick={() => void handleUseAutomatic()}
-        >
-          Use automatic
-        </button>
       )}
       {(error || state.error) && (
         <p role="alert" className="text-xs text-destructive">

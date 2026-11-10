@@ -72,6 +72,35 @@ function SidePanelIcon({ className }: { className?: string }) {
   )
 }
 
+// One row of the popup's settings group; the group draws the frame.
+const settingRowClass = 'flex cursor-pointer items-center gap-3 px-3 py-2'
+const settingIconClass =
+  'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-muted text-brand'
+
+function Switch({
+  testId,
+  checked,
+  onChange,
+}: {
+  testId: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <span className="relative inline-flex shrink-0 items-center">
+      <input
+        type="checkbox"
+        data-testid={testId}
+        checked={checked}
+        onChange={e => onChange(e.target.checked)}
+        className="peer sr-only"
+      />
+      <span className="block h-5 w-9 rounded-full bg-border transition peer-checked:bg-brand peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-1" />
+      <span className="pointer-events-none absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-background shadow-sm transition peer-checked:translate-x-4" />
+    </span>
+  )
+}
+
 // Mirror the Clerk session into userAtom (ADR-015) so the rest of the popup
 // (DebugPanel, etc.) can keep reading user.isLoggedIn / user.username.
 function ClerkUserSync() {
@@ -239,8 +268,8 @@ function SignedInBody({
 
   return (
     <SendFeedback>
-      <div className="flex items-center gap-3 rounded-xl bg-background p-3 shadow-xs ring-1 ring-border">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-sm font-semibold text-brand-foreground">
+      <div className="flex items-center gap-3 rounded-xl bg-background px-3 py-2 shadow-xs ring-1 ring-border">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand text-sm font-semibold text-brand-foreground">
           {initial}
         </div>
         <div className="min-w-0 flex-1 leading-tight">
@@ -278,86 +307,74 @@ function SignedInBody({
         onSetShortcut={() => void openShortcutSettings(chrome.tabs)}
       />
 
-      <ArticleChoiceControl
-        onModeChange={() => {
-          void chrome.tabs
-            .query({ active: true, currentWindow: true })
-            .then(async ([tab]) => {
-              if (!tab?.id) return
-              const status = await getLearningModeStatusOnTab(tab.id)
-              setLearningStatus(isLearningModeOn(status) ? 'on' : 'off')
-            })
-        }}
-      />
-
-      {/* adr-039: only on pages whose site can be auto-enabled. */}
-      {autoEnableSite.site && (
-        <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-background px-3 py-2.5 shadow-xs ring-1 ring-border">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-muted text-brand">
-            <GlobeAltIcon className="h-[18px] w-[18px]" />
-          </span>
-          <span className="min-w-0 flex-1 leading-tight">
-            <span className="block text-sm font-medium text-foreground">
-              Always enable on this site
+      {/* The page's settings share one frame with a divider between rows, so
+          the main page fits Chrome's 600px popup without a scrollbar. */}
+      <div className="divide-y divide-border overflow-hidden rounded-xl bg-background shadow-xs ring-1 ring-border">
+        {/* adr-039: only on pages whose site can be auto-enabled. */}
+        {autoEnableSite.site && (
+          <label className={settingRowClass}>
+            <span className={settingIconClass}>
+              <GlobeAltIcon className="h-[18px] w-[18px]" />
             </span>
-            <span className="block truncate text-[11px] text-muted-foreground">
-              {autoEnableSite.host}
+            <span className="min-w-0 flex-1 leading-tight">
+              <span className="block text-sm font-medium text-foreground">
+                Always enable on this site
+              </span>
+              <span className="block truncate text-[11px] text-muted-foreground">
+                {autoEnableSite.host}
+              </span>
             </span>
-          </span>
-          <span className="relative inline-flex shrink-0 items-center">
-            <input
-              type="checkbox"
-              data-testid="popup-auto-enable-site-toggle"
+            <Switch
+              testId="popup-auto-enable-site-toggle"
               checked={autoEnableSite.enabled}
-              onChange={e => void autoEnableSite.setEnabled(e.target.checked)}
-              className="peer sr-only"
+              onChange={checked => void autoEnableSite.setEnabled(checked)}
             />
-            <span className="block h-5 w-9 rounded-full bg-border transition peer-checked:bg-brand peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-1" />
-            <span className="pointer-events-none absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-background shadow-sm transition peer-checked:translate-x-4" />
-          </span>
-        </label>
-      )}
+          </label>
+        )}
 
-      <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-background px-3 py-2.5 shadow-xs ring-1 ring-border">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-muted text-brand">
-          <UnderlineIcon className="h-[18px] w-[18px]" />
-        </span>
-        <span className="min-w-0 flex-1 leading-tight">
-          <span className="block text-sm font-medium text-foreground">
+        <label className={settingRowClass}>
+          <span className={settingIconClass}>
+            <UnderlineIcon className="h-[18px] w-[18px]" />
+          </span>
+          <span className="min-w-0 flex-1 text-sm font-medium text-foreground">
             Highlight looked-up words
           </span>
-          <span className="block text-[11px] text-muted-foreground">
-            Underline the words you&apos;ve looked up
-          </span>
-        </span>
-        <span className="relative inline-flex shrink-0 items-center">
-          <input
-            type="checkbox"
-            data-testid="popup-word-highlight-toggle"
+          <Switch
+            testId="popup-word-highlight-toggle"
             checked={wordHighlightEnabled}
-            onChange={e => setWordHighlightEnabled(e.target.checked)}
-            className="peer sr-only"
+            onChange={setWordHighlightEnabled}
           />
-          <span className="block h-5 w-9 rounded-full bg-border transition peer-checked:bg-brand peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-1" />
-          <span className="pointer-events-none absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-background shadow-sm transition peer-checked:translate-x-4" />
-        </span>
-      </label>
+        </label>
 
-      <button
-        type="button"
-        data-testid="popup-open-sentence-panel"
-        aria-pressed={sidePanel.open}
-        onClick={() => void sidePanel.toggle()}
-        className="flex w-full items-center gap-3 rounded-xl bg-background px-3 py-2.5 text-left shadow-xs ring-1 ring-border transition hover:ring-brand/50"
-      >
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-muted text-brand">
-          <SidePanelIcon className="h-[18px] w-[18px]" />
-        </span>
-        <span className="flex-1 text-sm font-medium text-foreground">
-          {sidePanel.open ? 'Close side panel' : 'Open side panel'}
-        </span>
-        <ChevronRightIcon className="h-4 w-4 text-muted-foreground" />
-      </button>
+        <button
+          type="button"
+          data-testid="popup-open-sentence-panel"
+          aria-pressed={sidePanel.open}
+          onClick={() => void sidePanel.toggle()}
+          className={`${settingRowClass} w-full text-left transition hover:bg-muted/60 active:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand`}
+        >
+          <span className={settingIconClass}>
+            <SidePanelIcon className="h-[18px] w-[18px]" />
+          </span>
+          <span className="flex-1 text-sm font-medium text-foreground">
+            {sidePanel.open ? 'Close side panel' : 'Open side panel'}
+          </span>
+          <ChevronRightIcon className="h-4 w-4 text-muted-foreground" />
+        </button>
+
+        {/* Last: choosing the article by hand is the least used setting. */}
+        <ArticleChoiceControl
+          onModeChange={() => {
+            void chrome.tabs
+              .query({ active: true, currentWindow: true })
+              .then(async ([tab]) => {
+                if (!tab?.id) return
+                const status = await getLearningModeStatusOnTab(tab.id)
+                setLearningStatus(isLearningModeOn(status) ? 'on' : 'off')
+              })
+          }}
+        />
+      </div>
 
       {savedPage.tab && (
         <SaveLinkCard
