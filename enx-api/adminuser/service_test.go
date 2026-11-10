@@ -288,6 +288,38 @@ func TestTransactionsRejectsAMalformedCursor(t *testing.T) {
 	}
 }
 
+// directionStore remembers the direction the ledger was read in.
+type directionStore struct {
+	fakeStore
+	got creditledger.Direction
+}
+
+func (d *directionStore) Transactions(ctx context.Context, userID string, q creditledger.Query) ([]Transaction, error) {
+	d.got = q.Direction
+	return d.fakeStore.Transactions(ctx, userID, q)
+}
+
+func TestTransactionsHandsTheDirectionToTheStore(t *testing.T) {
+	for _, direction := range []creditledger.Direction{creditledger.DirectionAll, creditledger.DirectionIn, creditledger.DirectionOut} {
+		store := &directionStore{fakeStore: fakeStore{accounts: []Account{{UserID: "u1"}}}, got: "unset"}
+		if _, err := NewService(store, false, func() time.Time { return now }).Transactions(context.Background(), "u1", "", string(direction), 10); err != nil {
+			t.Fatalf("Transactions(%q): %v", direction, err)
+		}
+		if store.got != direction {
+			t.Errorf("store read direction %q, want %q", store.got, direction)
+		}
+	}
+}
+
+// An unknown direction is a client bug whoever the user is: it is refused
+// before the user is looked up.
+func TestTransactionsRejectsAnUnknownDirectionBeforeTheUserLookup(t *testing.T) {
+	_, err := NewService(&fakeStore{}, false, func() time.Time { return now }).Transactions(context.Background(), "nobody", "", "added", 10)
+	if err != creditledger.ErrInvalidDirection {
+		t.Fatalf("Transactions = %v, want ErrInvalidDirection", err)
+	}
+}
+
 func TestTransactionsUnknownUserIsNotFound(t *testing.T) {
 	_, err := NewService(&fakeStore{}, false, func() time.Time { return now }).Transactions(context.Background(), "nobody", "", "", 10)
 	if err != ErrUserNotFound {
