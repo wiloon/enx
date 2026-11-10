@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { browserName, type BrowserIdentity } from '@/lib/browserName'
 import {
-  FEEDBACK_SENT_MESSAGE,
   clampFeedbackText,
   feedbackContext,
   feedbackFailureMessage,
@@ -21,15 +20,21 @@ import { apiService } from '@/services/api'
 
 // "Send feedback" from the account menu (ADR-076): the user's own words,
 // with the current page's cleaned URL, which they may edit or clear.
-export default function FeedbackDialog({ onClose }: { onClose: () => void }) {
-  const [defaultUrl] = useState(
+// A successful send calls onSent; the caller closes the dialog and thanks
+// the user with a toast.
+export default function FeedbackDialog({
+  onClose,
+  onSent,
+}: {
+  onClose: () => void
+  onSent: () => void
+}) {
+  const [text, setText] = useState('')
+  const [url, setUrl] = useState(
     () => sanitizePageUrl(window.location.href) ?? ''
   )
-  const [text, setText] = useState('')
-  const [url, setUrl] = useState(defaultUrl)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [sent, setSent] = useState(false)
   // State lags a click; the ref stops a second one in the same tick.
   const inFlight = useRef(false)
   const textarea = useRef<HTMLTextAreaElement>(null)
@@ -56,7 +61,6 @@ export default function FeedbackDialog({ onClose }: { onClose: () => void }) {
     inFlight.current = true
     setPending(true)
     setError(null)
-    setSent(false)
     try {
       const resp = await apiService.submitFeedback({
         text,
@@ -67,9 +71,7 @@ export default function FeedbackDialog({ onClose }: { onClose: () => void }) {
         ),
       })
       if (resp.success) {
-        setSent(true)
-        setText('')
-        setUrl(defaultUrl)
+        onSent()
       } else {
         setError(feedbackFailureMessage(resp.status, resp.error))
       }
@@ -127,7 +129,6 @@ export default function FeedbackDialog({ onClose }: { onClose: () => void }) {
               value={text}
               onChange={(e) => {
                 setText(clampFeedbackText(e.target.value))
-                setSent(false)
               }}
               disabled={pending}
               placeholder="Your feedback"
@@ -166,11 +167,6 @@ export default function FeedbackDialog({ onClose }: { onClose: () => void }) {
             </p>
           </div>
 
-          {sent && (
-            <p role="status" className="text-sm text-brand">
-              {FEEDBACK_SENT_MESSAGE}
-            </p>
-          )}
           {error && (
             <p role="alert" className="text-sm text-destructive">
               {error}

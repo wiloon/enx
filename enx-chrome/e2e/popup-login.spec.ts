@@ -65,6 +65,46 @@ test.describe('Popup - signed in', () => {
   })
 })
 
+// ADR-076: written feedback goes through the background worker to enx-api.
+test.describe('Popup - send feedback', () => {
+  test.skip(!loginAvailable, LOGIN_SKIP_REASON)
+
+  test('sends written feedback from its own page and thanks the user with a toast', async ({
+    page,
+    extensionId,
+    signedIn: _signedIn,
+  }) => {
+    await openPopup(page, extensionId)
+    await page
+      .getByRole('button', { name: 'Send feedback' })
+      .click({ timeout: 15_000 })
+
+    const text = page.getByRole('textbox', { name: 'Your feedback' })
+    const send = page.getByRole('button', { name: 'Send', exact: true })
+    await expect(send).toBeDisabled()
+    await expect(page.getByRole('textbox', { name: 'Page URL' })).toBeVisible()
+
+    await text.fill('The popover hides the word I clicked.')
+    await expect(page.getByText('1,963 characters left')).toBeVisible()
+    await send.click()
+
+    const toast = page.getByRole('status').filter({
+      hasText: 'Thanks — feedback sent',
+    })
+    await expect(toast).toBeVisible({ timeout: 15_000 })
+    // Back on the main page, which still fits Chrome's 600px popup.
+    await expect(text).toHaveCount(0)
+    await expect(
+      page.getByRole('button', { name: 'Send feedback' })
+    ).toBeVisible()
+    const height = await page.evaluate(
+      () => document.getElementById('root')!.getBoundingClientRect().height
+    )
+    expect(height).toBeLessThanOrEqual(600)
+    await expect(toast).toBeHidden({ timeout: 5_000 })
+  })
+})
+
 test.describe('Popup - sign out', () => {
   test.skip(!loginAvailable, LOGIN_SKIP_REASON)
 

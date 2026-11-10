@@ -8,6 +8,7 @@ import {
 import { createAccountSession, type Invalidation } from '@/lib/accountSession'
 import { createCoalescedSync } from '@/lib/coalescedSync'
 import { createSessionCookies } from '@/lib/sessionCookies'
+import type { FeedbackSubmission } from '@/lib/feedback'
 import {
   ACCOUNT_CHANGED_MESSAGE,
   type AccountInvalidatedMessage,
@@ -1081,6 +1082,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'submitPageReport':
           return await handleSubmitPageReport(request.pageReport)
 
+        case 'submitFeedback':
+          return await handleSubmitFeedback(request.feedback)
+
         case 'savePage':
           return await handleSavePage(request.savedPage)
 
@@ -1811,6 +1815,32 @@ const handleSubmitPageReport = async (report?: {
         extVersion: chrome.runtime.getManifest().version,
       },
       details: { reason: report.reason },
+    }),
+  })
+}
+
+// The popup's "Send feedback" (ADR-076), sent as a text feedback record. An
+// empty URL means the user sends it without a page. The context is copied
+// field by field, so nothing else the message carries reaches the server.
+// A failure keeps the API's status and message: the popup shows a 400's or
+// 429's message and its own fallback for anything else.
+const handleSubmitFeedback = async (feedback?: FeedbackSubmission) => {
+  if (!feedback?.text) return { success: false, error: 'Missing feedback' }
+  const { context } = feedback
+  return await makeApiRequest('/api/feedback', {
+    method: 'POST',
+    body: JSON.stringify({
+      kind: 'text',
+      url: feedback.url ?? '',
+      text: feedback.text,
+      context: {
+        appVersion: chrome.runtime.getManifest().version,
+        browser: context?.browser,
+        learningMode: context?.learningMode,
+        adapter: context?.adapter,
+        articleSource: context?.articleSource,
+      },
+      details: {},
     }),
   })
 }

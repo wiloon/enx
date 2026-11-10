@@ -1,5 +1,6 @@
 import type { ArticleChoiceStatus } from '@/lib/articleChoice'
 import { failureMessage, type EnableFailureReason } from '@/lib/enableOutcome'
+import type { PageFeedbackContext } from '@/lib/feedback'
 import type { LearningModeStatus } from '@/lib/learningModeStatus'
 
 export interface EnxRunResponse {
@@ -183,5 +184,23 @@ export async function getArticleChoiceOnTab(
   } catch (err) {
     if (!isNoReceiverError(err)) throw err
     return { success: true, available }
+  }
+}
+
+// What the tab's page adds to the popup's feedback (ADR-076). Never injects
+// (ADR-034 Decision 2): a tab with no content script, or one the browser
+// won't message, has learning mode off and nothing more to say.
+export async function getFeedbackContextOnTab(
+  tabId: number
+): Promise<PageFeedbackContext> {
+  try {
+    const response = await chrome.tabs.sendMessage(
+      tabId,
+      { action: 'getFeedbackContext' },
+      { frameId: 0 }
+    )
+    return response ?? { learningMode: false }
+  } catch {
+    return { learningMode: false }
   }
 }

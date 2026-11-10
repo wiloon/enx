@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import AccountAvatar from './AccountAvatar'
 import FeedbackDialog from './FeedbackDialog'
+import FeedbackSentToast from './FeedbackSentToast'
 
 // The top bar's account menu (#211): who is signed in, Account, Billing,
 // Send feedback and Sign out. Sign out never waits for GET /api/me; while it
@@ -23,6 +24,7 @@ export default function AccountMenu() {
   const { logout } = useAuth()
   const { me, isLoading } = useMe()
   const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [feedbackSent, setFeedbackSent] = useState(false)
 
   return (
     <>
@@ -90,7 +92,16 @@ export default function AccountMenu() {
         </DropdownMenuContent>
       </DropdownMenu>
       {feedbackOpen && (
-        <FeedbackDialog onClose={() => setFeedbackOpen(false)} />
+        <FeedbackDialog
+          onClose={() => setFeedbackOpen(false)}
+          onSent={() => {
+            setFeedbackOpen(false)
+            setFeedbackSent(true)
+          }}
+        />
+      )}
+      {feedbackSent && (
+        <FeedbackSentToast onDone={() => setFeedbackSent(false)} />
       )}
     </>
   )

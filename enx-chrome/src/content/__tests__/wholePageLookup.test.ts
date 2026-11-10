@@ -594,6 +594,56 @@ describe('manual article choice (#715)', () => {
   })
 })
 
+describe('getFeedbackContext (ADR-076)', () => {
+  it('names the adapter and an automatic article while learning mode is on', async () => {
+    document.body.innerHTML = '<article><p>The fox runs.</p></article>'
+    const send = await loadContentScript()
+    await send({ action: 'enxRun' })
+
+    expect(await send({ action: 'getFeedbackContext' })).toEqual({
+      learningMode: true,
+      adapter: 'default',
+      articleSource: 'auto',
+    })
+  })
+
+  it('names the RSSX adapter on an RSSX page', async () => {
+    document.body.innerHTML = '<article><p>The fox runs.</p></article>'
+    const send = await loadContentScript([window.location.origin])
+    await send({ action: 'enxRun' })
+
+    expect(await send({ action: 'getFeedbackContext' })).toMatchObject({
+      adapter: 'rssx',
+      articleSource: 'auto',
+    })
+  })
+
+  it('leaves the adapter out when the user chose the article', async () => {
+    document.body.innerHTML =
+      '<article>Automatic fox article.</article><main id="chosen"><p>The dog runs.</p></main>'
+    ;(chrome.storage.local.get as jest.Mock).mockImplementation(
+      async (key: string) =>
+        key.startsWith('articleChoice:') ? { [key]: '#chosen' } : {}
+    )
+    const send = await loadContentScript()
+    await send({ action: 'enxRun' })
+
+    expect(await send({ action: 'getFeedbackContext' })).toEqual({
+      learningMode: true,
+      articleSource: 'user',
+    })
+  })
+
+  it('sends only learningMode while learning mode is off', async () => {
+    document.body.innerHTML = '<article><p>The fox runs.</p></article>'
+    const send = await loadContentScript()
+
+    expect(await send({ action: 'getFeedbackContext' })).toEqual({
+      learningMode: false,
+    })
+  })
+})
+
 it('pauses learning mode for picking and Esc restores the old area', async () => {
   document.body.innerHTML =
     '<article><p id="lead">A fox runs.</p></article><main id="new">The dog waits.</main>'
