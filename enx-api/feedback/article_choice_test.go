@@ -291,6 +291,16 @@ func TestResolvingAnArticleChoiceGroupResolvesEveryRecordInIt(t *testing.T) {
 	}
 }
 
+func TestNoArticleChoiceGroupsIsAnEmptyListNotNull(t *testing.T) {
+	e := newEnv(t)
+
+	w := e.do(http.MethodGet, "/api/admin/feedback/article-choices", "admin", "")
+
+	if w.Code != http.StatusOK || w.Body.String() != `{"groups":[],"nextOffset":null,"success":true}` {
+		t.Fatalf("GET groups = %d %s, want an empty groups list", w.Code, w.Body.String())
+	}
+}
+
 func TestArticleChoiceGroupsRejectInvalidFiltersAndPaging(t *testing.T) {
 	e := newEnv(t)
 	for _, q := range []string{"?status=open", "?limit=0", "?limit=201", "?limit=ten", "?offset=-1"} {

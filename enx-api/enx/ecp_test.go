@@ -93,6 +93,14 @@ func TestSetEnglishTrimsSuffixesAndPrefixes(t *testing.T) {
 	}
 }
 
+func TestSetEnglishDropsDigits(t *testing.T) {
+	word := Word{}
+	word.SetEnglish("ri22ler")
+	if word.English != "riler" {
+		t.Errorf("SetEnglish(%q).English = %q, want %q", "ri22ler", word.English, "riler")
+	}
+}
+
 // ADR-043: the lookup key uses straight apostrophes; Raw keeps the page's
 // spelling, because the extension keys its cache on it.
 func TestSetEnglishStraightensApostrophes(t *testing.T) {
