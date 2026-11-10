@@ -134,20 +134,22 @@ ADR-070 第二阶段要求新规则拒绝 InfoQ 首页这类首页和索引页�
 |---|---|---|---|---|---|---|---|
 | 2026-11-10 05:31 | `https://www.infoq.com/` | 整页 | `WebSite` | 否 | `div#infoq > header.header > div.header__container` | 0.39 | 整页 |
 | 2026-11-10 05:52 | `https://www.infoq.com/` | 整页 | `WebSite` | 是 | 同上 | 0.40 | 整页 |
+| 2026-11-10 06:36 | `https://www.infoq.com/` | 整页 | `WebSite` | 否 | 同上 | 0.39 | 整页 |
+| 2026-11-10 06:37 | `https://www.infoq.com/` | 整页 | `WebSite` | 否 | 同上 | 0.40 | 整页 |
 
-两道门槛各自都会拒绝它：JSON-LD 没有文章类型，Readability 节点的链接密度也超过 0.2。`isProbablyReaderable` 两次结果不同，说明首页内容在变，它不适合当门槛。同两次测量里，按本 ADR 的口径，`main` 的链接密度是 0.86–0.87，`body` 是 0.51–0.52。
+两道门槛各自都会拒绝它：JSON-LD 没有文章类型，Readability 节点的链接密度也超过 0.2。`isProbablyReaderable` 四次里只有一次为真，说明首页内容在变，它不适合当门槛。按本 ADR 的口径，四次测量里 `main` 的链接密度是 0.86–0.87，`body` 是 0.51–0.52。后两次另外记下：页面没有 `og:type`；段落聚类找到的合格段落（`p`，≥ 25 字符，不在 `nav`、`header`、`footer`、`aside`、`form` 里）全页只有 3 个。
 
 各候选在 InfoQ 首页上的结论（只写观察到或能由观察到的数值直接得出的）：
 
 | 候选 | 门槛在 InfoQ 上 | 节点与链接密度 | 结论 |
 |---|---|---|---|
-| Readability + JSON-LD | 不通过（`WebSite`） | `div#infoq > header…`，0.39–0.40 | 整页（两次实测） |
-| Readability + `isProbablyReaderable` | 第一次否、第二次是 | 同上，0.39–0.40 | 整页：第一次被门槛拒，第二次通过门槛但密度 > 0.2（由实测密度得出） |
-| Readability + `og:type` / 无门槛 | 没记录 `og:type` | 同上，0.39–0.40 | 整页：节点密度 > 0.2（由实测密度得出；`og:type` 本身没量） |
-| `main` + `isProbablyReaderable` | 第二次通过 | 0.86–0.87 | 整页：密度 > 0.2（由实测密度得出） |
-| 段落聚类（无门槛、JSON-LD 门槛） | JSON-LD 门槛不通过 | **没有测量** | JSON-LD 门槛下整页（`WebSite`）；无门槛时的节点、链接密度和结论**没有观察到** |
-
-缺口：段落聚类在 InfoQ 首页上选中的节点和它的链接密度没有实测，所以不声称无门槛的段落聚类会拒绝该页。补测时这个环境没有网络，补不上；需要有网络的环境用检测路径重跑一次，把节点和密度填进这一行。
+| Readability + JSON-LD | 不通过（`WebSite`） | `div#infoq > header…`，0.39–0.40 | 整页（四次实测） |
+| Readability + `isProbablyReaderable` | 四次里一次通过 | 同上，0.39–0.40 | 整页：没通过时被门槛拒，通过的那次密度 > 0.2（由实测密度得出） |
+| Readability + `og:type` | 不通过（没有 `og:type`，后两次实测） | 同上，0.39–0.40 | 整页 |
+| Readability，无门槛 | — | 同上，0.39–0.40 | 整页：节点密度 > 0.2（由实测密度得出） |
+| `main` + `isProbablyReaderable` | 四次里一次通过 | 0.86–0.87 | 整页：密度 > 0.2（由实测密度得出） |
+| 段落聚类 + JSON-LD | 不通过（`WebSite`） | 同下 | 整页 |
+| 段落聚类，无门槛 | — | `div#infoq > section.section.container > div.container__inner > div.actions > div.actions__left`，127–132 字符，0.09（后两次实测） | 整页：节点文字不足 500 字符。链接密度本身过了 0.2，拒绝靠的是文字下限 |
 
 ## 决定 1：第 6 层 = JSON-LD 文章声明 + Readability 节点
 
