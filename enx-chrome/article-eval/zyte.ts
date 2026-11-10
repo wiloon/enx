@@ -1,54 +1,34 @@
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import {
   parseZyteLabels,
   type DatasetItem,
   type DatasetLoader,
 } from '../src/lib/articleEval/dataset.ts'
+import { cachedDownloader } from './cache.ts'
 
 export const ZYTE_COMMIT = '4a3bc979f76c0df73cb95fe272e2fc1b96f9f010'
 const SOURCE = `https://raw.githubusercontent.com/scrapinghub/article-extraction-benchmark/${ZYTE_COMMIT}`
 
 /** Downloads only into the external cache; partial downloads are never reused. */
 export class ZyteDataset implements DatasetLoader {
-  private directory: string
-  private fetchFile: typeof fetch
+  private cached: (file: string) => Promise<Buffer>
 
   constructor({
     cacheRoot = join(homedir(), '.cache/enx/article-eval'),
     fetchFile = fetch,
   } = {}) {
-    this.directory = join(cacheRoot, 'zyte', ZYTE_COMMIT)
-    this.fetchFile = fetchFile
-  }
-
-  private async cached(file: string): Promise<Buffer> {
-    const target = join(this.directory, file)
-    try {
-      return await readFile(target)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-    }
-    const response = await this.fetchFile(`${SOURCE}/${file}`, {
-      signal: AbortSignal.timeout(30_000),
+    this.cached = cachedDownloader({
+      name: 'Zyte',
+      source: SOURCE,
+      directory: join(cacheRoot, 'zyte', ZYTE_COMMIT),
+      fetchFile,
+      validate: (file, data) => {
+        if (file.endsWith('.gz')) gunzipSync(data)
+        else parseZyteLabels(JSON.parse(data.toString('utf8')))
+      },
     })
-    if (!response.ok) throw new Error(`Zyte ${file}: HTTP ${response.status}`)
-    const data = Buffer.from(await response.arrayBuffer())
-    // Reject incomplete or malformed files before they enter the cache.
-    if (file.endsWith('.gz')) gunzipSync(data)
-    else parseZyteLabels(JSON.parse(data.toString('utf8')))
-    await mkdir(dirname(target), { recursive: true })
-    const temporary = `${target}.${randomUUID()}.tmp`
-    try {
-      await writeFile(temporary, data)
-      await rename(temporary, target)
-    } finally {
-      await rm(temporary, { force: true })
-    }
-    return data
   }
 
   async load(): Promise<DatasetItem[]> {

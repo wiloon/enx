@@ -182,16 +182,31 @@ export function formatReport(
 export interface DatasetReport {
   id: string
   url: string
+  /** The dataset's page type; untyped datasets get no page type summaries. */
+  pageType?: string
   ours: Score
   readability: Score
+  /** Why the page is unmeasured. */
   error?: string
 }
 
+function extractorSummaries(rows: DatasetReport[], prefix = ''): string[] {
+  return [
+    `${prefix}Ours: ${summaryLine(summarizeRows(rows.map(row => row.ours)))}`,
+    `${prefix}Readability: ${summaryLine(summarizeRows(rows.map(row => row.readability)))}`,
+  ]
+}
+
 export function formatDatasetReport(rows: DatasetReport[]): string {
+  const pageTypes = [
+    ...new Set(rows.flatMap(row => (row.pageType ? [row.pageType] : []))),
+  ]
+  const typed = pageTypes.length > 0
   const lines = table([
     [
       'ID',
       'URL',
+      ...(typed ? ['PAGE TYPE'] : []),
       'OUR COVERAGE',
       'OUR PRECISION',
       'OUR VERDICT',
@@ -202,6 +217,7 @@ export function formatDatasetReport(rows: DatasetReport[]): string {
     ...rows.map(row => [
       row.id,
       row.url,
+      ...(typed ? [row.pageType ?? '-'] : []),
       score(row.ours.coverage),
       score(row.ours.precision),
       row.ours.verdict,
@@ -210,13 +226,24 @@ export function formatDatasetReport(rows: DatasetReport[]): string {
       row.readability.verdict,
     ]),
   ])
-  lines.push(
-    '',
-    `Ours: ${summaryLine(summarizeRows(rows.map(row => row.ours)))}`,
-    `Readability: ${summaryLine(summarizeRows(rows.map(row => row.readability)))}`
-  )
+  lines.push('', ...extractorSummaries(rows))
+  for (const pageType of pageTypes) {
+    lines.push(
+      ...extractorSummaries(
+        rows.filter(row => row.pageType === pageType),
+        `${pageType}: `
+      )
+    )
+  }
   for (const row of rows) {
-    if (row.error) lines.push(`Unmeasured: ${row.id} ${row.url} (${row.error})`)
+    if (!row.error) continue
+    if (!row.url) {
+      const where = [row.id, `(${row.error})`, row.pageType]
+      lines.push(`Unmeasured: ${where.filter(Boolean).join(' ')}`)
+      continue
+    }
+    const where = [row.id, row.url, row.pageType].filter(Boolean).join(' ')
+    lines.push(`Unmeasured: ${where} (${row.error})`)
   }
   return lines.join('\n')
 }

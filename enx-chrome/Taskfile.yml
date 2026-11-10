@@ -213,7 +213,7 @@ tasks:
       - '{{.FNM_EXEC}} pnpm run test:e2e:headed'
 
   article-eval:
-    desc: 'Measure article detection on live pages or labelled snapshots (task article-eval -- --dataset zyte | --update-baseline | --headed | --only <url part>)'
+    desc: 'Measure article detection on live pages or labelled snapshots (task article-eval -- --dataset zyte|wcxb | --update-baseline | --headed | --only <url part>)'
     cmds:
       - task: ensure-node
       - '{{.FNM_EXEC}} node article-eval/cli.ts {{.CLI_ARGS}}'
