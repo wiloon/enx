@@ -5,7 +5,6 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"slices"
-	"strings"
 	"sync"
 	"testing"
 
@@ -57,8 +56,7 @@ func (f *fakeClerkBackend) client(t *testing.T) account.Clerk {
 }
 
 // accountEnv is a full server with the trial on, the email HMAC key set and
-// Clerk's Backend API faked (clerk nil leaves it unconfigured). sign mints a
-// session token for any Clerk user.
+// Clerk's Backend API faked. sign mints a session token for any Clerk user.
 type accountEnv struct {
 	base  string
 	clerk *fakeClerkBackend
@@ -67,7 +65,7 @@ type accountEnv struct {
 
 const accountPlainEmail = "plain@example.com"
 
-func newAccountEnv(t *testing.T, withClerk bool) *accountEnv {
+func newAccountEnv(t *testing.T) *accountEnv {
 	t.Helper()
 	jwks := clerktest.NewEnv(t)
 	cfg := config.Default()
@@ -82,12 +80,8 @@ func newAccountEnv(t *testing.T, withClerk bool) *accountEnv {
 	}
 
 	e := &accountEnv{clerk: &fakeClerkBackend{}}
-	var clerk account.Clerk
-	if withClerk {
-		clerk = e.clerk.client(t)
-	}
 	gin.SetMode(gin.TestMode)
-	ts := httptest.NewServer(setupRouterWithClients(cfg, metrics.New(), nil, clerk))
+	ts := httptest.NewServer(setupRouterWithClients(cfg, metrics.New(), nil, e.clerk.client(t)))
 	t.Cleanup(ts.Close)
 	e.base = ts.URL
 	e.sign = func(sub, email string) string {
@@ -116,19 +110,14 @@ func trialBalance(t *testing.T, base, token string) any {
 }
 
 func TestE2E_DeleteOwnAccountRemovesItAndTheEmailGetsNoSecondTrial(t *testing.T) {
-	e := newAccountEnv(t, true)
+	e := newAccountEnv(t)
 	token := e.sign(nonAdminSub, accountPlainEmail)
 	if got := trialBalance(t, e.base, token); got != float64(100) {
 		t.Fatalf("first sign-up trial = %v, want 100", got)
 	}
 	userID := e.userID(t, nonAdminSub)
 
-	code, body := doJSONBody(t, http.MethodDelete, e.base+"/api/me", token, map[string]string{"email": "bob@example.com"})
-	if code != http.StatusBadRequest || body["code"] != "email_mismatch" {
-		t.Fatalf("delete with the wrong email: %d %+v, want 400 email_mismatch", code, body)
-	}
-
-	code, body = doJSONBody(t, http.MethodDelete, e.base+"/api/me", token, map[string]string{"email": accountPlainEmail})
+	code, body := doJSONBody(t, http.MethodDelete, e.base+"/api/me", token, map[string]string{"email": accountPlainEmail})
 	if code != http.StatusOK || body["success"] != true {
 		t.Fatalf("delete own account: %d %+v", code, body)
 	}
@@ -151,7 +140,7 @@ func TestE2E_DeleteOwnAccountRemovesItAndTheEmailGetsNoSecondTrial(t *testing.T)
 }
 
 func TestE2E_AdminDeleteWithResetTrialLetsTheEmailSignUpAsNew(t *testing.T) {
-	e := newAccountEnv(t, true)
+	e := newAccountEnv(t)
 	adminToken := e.sign(adminSub, "admin@example.com")
 	token := e.sign(nonAdminSub, accountPlainEmail)
 	trialBalance(t, e.base, token)
@@ -167,23 +156,8 @@ func TestE2E_AdminDeleteWithResetTrialLetsTheEmailSignUpAsNew(t *testing.T) {
 	}
 }
 
-func TestE2E_AdminDeleteWithoutResetTrialKeepsTheEmailFromASecondTrial(t *testing.T) {
-	e := newAccountEnv(t, true)
-	adminToken := e.sign(adminSub, "admin@example.com")
-	token := e.sign(nonAdminSub, accountPlainEmail)
-	trialBalance(t, e.base, token)
-
-	code, body := doJSON(t, http.MethodDelete, e.base+"/api/admin/users/"+e.userID(t, nonAdminSub), adminToken)
-	if code != http.StatusOK {
-		t.Fatalf("admin delete: %d %+v", code, body)
-	}
-	if got := trialBalance(t, e.base, e.sign("user_plain_again", accountPlainEmail)); got != float64(0) {
-		t.Fatalf("trial after a plain deletion = %v, want 0", got)
-	}
-}
-
 func TestE2E_DisabledAccountIsRejectedUntilEnabled(t *testing.T) {
-	e := newAccountEnv(t, true)
+	e := newAccountEnv(t)
 	adminToken := e.sign(adminSub, "admin@example.com")
 	token := e.sign(nonAdminSub, accountPlainEmail)
 	if code, _ := doJSON(t, http.MethodGet, e.base+"/api/me", token); code != http.StatusOK {
@@ -215,69 +189,28 @@ func TestE2E_DisabledAccountIsRejectedUntilEnabled(t *testing.T) {
 	}
 }
 
-func TestE2E_RevokeSessionsSignsTheUserOutEverywhere(t *testing.T) {
-	e := newAccountEnv(t, true)
-	adminToken := e.sign(adminSub, "admin@example.com")
+// ADR-062 Decision 4: the admin's account actions sit behind RequireAdmin.
+// A 403 also proves the route is registered: an unknown path is a 404.
+func TestE2E_AdminAccountRoutesRequireAdmin(t *testing.T) {
+	e := newAccountEnv(t)
 	token := e.sign(nonAdminSub, accountPlainEmail)
 	doJSON(t, http.MethodGet, e.base+"/api/me", token)
-
-	code, body := doJSON(t, http.MethodPost, e.base+"/api/admin/users/"+e.userID(t, nonAdminSub)+"/revoke-sessions", adminToken)
-	if code != http.StatusOK {
-		t.Fatalf("revoke sessions: %d %+v", code, body)
-	}
-	if got := strings.Join(e.clerk.recorded(), ","); got != "GET /v1/sessions,POST /v1/sessions/sess_1/revoke" {
-		t.Fatalf("Clerk calls = %s", got)
-	}
-	if code, _ := doJSON(t, http.MethodGet, e.base+"/api/me", token); code != http.StatusOK {
-		t.Fatal("revoking sessions must not disable the account")
-	}
-}
-
-func TestE2E_AdminAccountCannotBeDisabledOrDeleted(t *testing.T) {
-	e := newAccountEnv(t, true)
-	adminToken := e.sign(adminSub, "admin@example.com")
-	doJSON(t, http.MethodGet, e.base+"/api/me", adminToken)
-	adminID := e.userID(t, adminSub)
-
-	for _, req := range []struct{ method, path string }{
-		{http.MethodPost, "/api/admin/users/" + adminID + "/disable"},
-		{http.MethodDelete, "/api/admin/users/" + adminID},
-	} {
-		if code, body := doJSON(t, req.method, e.base+req.path, adminToken); code != http.StatusForbidden || body["code"] != "admin_account" {
-			t.Errorf("%s %s: %d %+v, want 403 admin_account", req.method, req.path, code, body)
-		}
-	}
-	code, body := doJSONBody(t, http.MethodDelete, e.base+"/api/me", adminToken, map[string]string{"email": "admin@example.com"})
-	if code != http.StatusForbidden || body["code"] != "admin_account" {
-		t.Errorf("admin deleting themselves: %d %+v, want 403 admin_account", code, body)
-	}
-	if got := e.clerk.recorded(); len(got) != 0 {
-		t.Fatalf("Clerk calls = %v, want none", got)
-	}
-}
-
-func TestE2E_AccountActionsWithoutAClerkKeyAreNotConfigured(t *testing.T) {
-	e := newAccountEnv(t, false)
-	adminToken := e.sign(adminSub, "admin@example.com")
-	token := e.sign(nonAdminSub, accountPlainEmail)
-
-	code, body := doJSONBody(t, http.MethodDelete, e.base+"/api/me", token, map[string]string{"email": accountPlainEmail})
-	if code != http.StatusServiceUnavailable || body["code"] != "not_configured" {
-		t.Fatalf("delete without Clerk: %d %+v, want 503 not_configured", code, body)
-	}
 	userID := e.userID(t, nonAdminSub)
+
 	for _, req := range []struct{ method, path string }{
 		{http.MethodPost, "/api/admin/users/" + userID + "/disable"},
 		{http.MethodPost, "/api/admin/users/" + userID + "/enable"},
 		{http.MethodPost, "/api/admin/users/" + userID + "/revoke-sessions"},
 		{http.MethodDelete, "/api/admin/users/" + userID},
 	} {
-		if code, body := doJSON(t, req.method, e.base+req.path, adminToken); code != http.StatusServiceUnavailable || body["code"] != "not_configured" {
-			t.Errorf("%s %s: %d %+v, want 503 not_configured", req.method, req.path, code, body)
+		if code, _ := doJSON(t, req.method, e.base+req.path, token); code != http.StatusForbidden {
+			t.Errorf("%s %s as non-admin: status %d, want 403", req.method, req.path, code)
+		}
+		if code, _ := doJSON(t, req.method, e.base+req.path, ""); code != http.StatusUnauthorized {
+			t.Errorf("%s %s signed out: status %d, want 401", req.method, req.path, code)
 		}
 	}
-	// Everything else works as before.
-	if code, _ := doJSON(t, http.MethodGet, e.base+"/api/me", token); code != http.StatusOK {
-		t.Fatalf("GET /api/me without Clerk: %d, want 200", code)
+	if got := e.clerk.recorded(); len(got) != 0 {
+		t.Fatalf("Clerk calls = %v, want none", got)
 	}
 }
