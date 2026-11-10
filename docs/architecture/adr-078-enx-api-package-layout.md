@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-11-10
+status: accepted
+date: 2026-11-11
 related: AGENTS.md §enx-api（「SQL lives in `repo/`」）、docs/agents/enx-api-design.md §Layer Separation、PR #799
 ---
 
