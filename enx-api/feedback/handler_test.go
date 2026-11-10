@@ -69,6 +69,8 @@ func newEnvWith(t *testing.T, store feedback.Store) *env {
 	e.router.POST("/api/feedback", h.Submit)
 	e.router.GET("/api/admin/feedback", h.List)
 	e.router.PATCH("/api/admin/feedback/:id", h.Resolve)
+	e.router.GET("/api/admin/feedback/article-choices", h.ListArticleChoiceGroups)
+	e.router.POST("/api/admin/feedback/article-choices/resolve", h.ResolveArticleChoiceGroup)
 	return e
 }
 
@@ -169,7 +171,6 @@ func TestSubmitRejectsInvalidInput(t *testing.T) {
 		"not json":                `nope`,
 		"no kind":                 `{"url":"https://x.com/a","details":{"reason":"error"}}`,
 		"unknown kind":            `{"kind":"bug","url":"https://x.com/a"}`,
-		"article choice not yet":  `{"kind":"article_choice","url":"https://x.com/a","details":{"selector":"main"}}`,
 		"definition not yet":      `{"kind":"definition","url":"https://x.com/a","details":{"word":"run"}}`,
 		"page report with text":   `{"kind":"page_report","url":"https://x.com/a","text":"hi","details":{"reason":"error"}}`,
 		"not http":                pageReport("chrome://extensions", "error"),

@@ -112,6 +112,63 @@ func (h *Handler) Resolve(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
+// ListArticleChoiceGroups handles GET
+// /api/admin/feedback/article-choices?status=&limit=&offset=: article
+// choices grouped by host + selector. Mount behind clerkAuth + RequireAdmin.
+func (h *Handler) ListArticleChoiceGroups(c *gin.Context) {
+	limit, okLimit := intQuery(c, "limit", DefaultListLimit)
+	offset, okOffset := intQuery(c, "offset", 0)
+	if !okLimit || !okOffset {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "limit and offset must be whole numbers"})
+		return
+	}
+	page, err := h.svc.ListArticleChoiceGroups(c.Request.Context(), GroupQuery{
+		Status: Status(c.Query("status")), Limit: limit, Offset: offset,
+	})
+	if errors.Is(err, ErrInvalid) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	if err != nil {
+		logger.Errorf("feedback: list article choice groups failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not list article choices"})
+		return
+	}
+	groups := make([]gin.H, len(page.Groups))
+	for i, g := range page.Groups {
+		groups[i] = gin.H{
+			"host": g.Host, "selector": g.Selector, "count": g.Count, "total": g.Total, "sampleUrl": g.SampleURL,
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "groups": groups, "nextOffset": page.NextOffset})
+}
+
+// ResolveArticleChoiceGroup handles POST
+// /api/admin/feedback/article-choices/resolve with {"host","selector"}:
+// every record in the group is resolved. Mount behind clerkAuth + RequireAdmin.
+func (h *Handler) ResolveArticleChoiceGroup(c *gin.Context) {
+	var req struct {
+		Host     string `json:"host"`
+		Selector string `json:"selector"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid request body"})
+		return
+	}
+	n, err := h.svc.ResolveArticleChoiceGroup(c.Request.Context(), req.Host, req.Selector)
+	switch {
+	case errors.Is(err, ErrInvalid):
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+	case errors.Is(err, ErrNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "no such article choice group"})
+	case err != nil:
+		logger.Errorf("feedback: resolve article choice group: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not resolve the article choices"})
+	default:
+		c.JSON(http.StatusOK, gin.H{"success": true, "resolved": n})
+	}
+}
+
 // intQuery reads an optional integer query parameter, def when absent.
 func intQuery(c *gin.Context, name string, def int) (int, bool) {
 	v, ok := c.GetQuery(name)

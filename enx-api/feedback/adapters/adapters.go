@@ -38,6 +38,15 @@ func (a feedbackAdmission) HasPageReportSince(userID, url, reason string, since 
 	return n > 0, err
 }
 
+func (a feedbackAdmission) HasArticleChoice(userID, host, selector string) (bool, error) {
+	var n int64
+	err := a.tx.Model(&sqlitex.Feedback{}).
+		Where("user_id = ? AND kind = ? AND host = ? AND "+selectorExpr+" = ?",
+			userID, string(feedback.KindArticleChoice), host, selector).
+		Count(&n).Error
+	return n > 0, err
+}
+
 func (a feedbackAdmission) CountCreated(userID string, from, to time.Time) (int64, error) {
 	var n int64
 	err := a.tx.Model(&sqlitex.Feedback{}).
@@ -80,6 +89,43 @@ func (Table) List(ctx context.Context, q feedback.ListQuery) ([]feedback.Record,
 func (Table) SetStatus(ctx context.Context, id string, status feedback.Status) (bool, error) {
 	res := sqlitex.DB.WithContext(ctx).Model(&sqlitex.Feedback{}).Where("id = ?", id).Update("status", string(status))
 	return res.RowsAffected > 0, res.Error
+}
+
+// selectorExpr is an article choice's selector, compared byte for byte.
+const selectorExpr = "json_extract(details, '$.selector')"
+
+// articleChoiceGroupsSQL groups the article choices whose status matches
+// (an empty status matches all) by host + selector. The sample is the
+// newest matching record's URL, ties broken by id, so pages are stable.
+const articleChoiceGroupsSQL = `
+SELECT f.host AS host, json_extract(f.details, '$.selector') AS selector, COUNT(*) AS count,
+  (SELECT COUNT(*) FROM feedback t
+    WHERE t.kind = f.kind AND t.host = f.host
+      AND json_extract(t.details, '$.selector') = json_extract(f.details, '$.selector')) AS total,
+  (SELECT s.url FROM feedback s
+    WHERE s.kind = f.kind AND s.host = f.host
+      AND json_extract(s.details, '$.selector') = json_extract(f.details, '$.selector')
+      AND (@status = '' OR s.status = @status)
+    ORDER BY s.created_at DESC, s.id DESC LIMIT 1) AS sample_url
+FROM feedback f
+WHERE f.kind = @kind AND (@status = '' OR f.status = @status)
+GROUP BY f.host, json_extract(f.details, '$.selector')
+ORDER BY count DESC, host, selector
+LIMIT @limit OFFSET @offset`
+
+func (Table) ArticleChoiceGroups(ctx context.Context, q feedback.GroupQuery) ([]feedback.ArticleChoiceGroup, error) {
+	var groups []feedback.ArticleChoiceGroup
+	err := sqlitex.DB.WithContext(ctx).Raw(articleChoiceGroupsSQL, map[string]any{
+		"kind": string(feedback.KindArticleChoice), "status": string(q.Status), "limit": q.Limit, "offset": q.Offset,
+	}).Scan(&groups).Error
+	return groups, err
+}
+
+func (Table) SetArticleChoiceGroupStatus(ctx context.Context, host, selector string, status feedback.Status) (int64, error) {
+	res := sqlitex.DB.WithContext(ctx).Model(&sqlitex.Feedback{}).
+		Where("kind = ? AND host = ? AND "+selectorExpr+" = ?", string(feedback.KindArticleChoice), host, selector).
+		Update("status", string(status))
+	return res.RowsAffected, res.Error
 }
 
 // Mail is feedback.Notifier over the Resend admin email (ADR-010 Decision
