@@ -1,6 +1,6 @@
 //go:build integration
 
-package main
+package server
 
 import (
 	"context"
@@ -50,7 +50,7 @@ func TestApplicationCutoverStartsFreshAndMountsDurableBilling(t *testing.T) {
 	restoreBillingDatabase(t)
 	cfg := billingStartupConfig(t)
 	previous := sqlitex.DB
-	app, err := initializeApplication(context.Background(), cfg, metrics.New(), startupStripeClient(t))
+	app, err := Initialize(context.Background(), cfg, metrics.New(), startupStripeClient(t))
 	closeNewBillingDatabase(t, previous)
 	if err != nil {
 		t.Fatal(err)
@@ -102,10 +102,10 @@ func TestApplicationRestartsOnItsOwnDatabase(t *testing.T) {
 	}
 }
 
-func startTestApplication(t *testing.T, ctx context.Context, cfg *config.Config, client *stripeSDK.Client) *application {
+func startTestApplication(t *testing.T, ctx context.Context, cfg *config.Config, client *stripeSDK.Client) *Application {
 	t.Helper()
 	previous := sqlitex.DB
-	a, err := initializeApplication(ctx, cfg, metrics.New(), client)
+	a, err := Initialize(ctx, cfg, metrics.New(), client)
 	closeNewBillingDatabase(t, previous)
 	if err != nil {
 		t.Fatal(err)

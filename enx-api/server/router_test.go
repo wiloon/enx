@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"enx-api/config"
@@ -126,8 +126,8 @@ func TestGinModeFollowsLogLevel(t *testing.T) {
 		"":        gin.ReleaseMode,
 	}
 	for level, want := range cases {
-		if got := ginMode(level); got != want {
-			t.Errorf("ginMode(%q) = %q, want %q", level, got, want)
+		if got := GinMode(level); got != want {
+			t.Errorf("GinMode(%q) = %q, want %q", level, got, want)
 		}
 	}
 }

@@ -80,7 +80,7 @@ logger.With(
 ## HTTP Request/Response Logging
 
 enx-api logs every request in **one structured line**, written by
-`middleware.RequestLog` (registered in `setupRouter`) after the handler
+`middleware.RequestLog` (registered in `server/router.go`) after the handler
 returns:
 
 ```

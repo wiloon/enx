@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"testing"
@@ -17,7 +17,7 @@ import (
 // particular duration.
 func TestNewServerWriteTimeoutExceedsProviderTimeout(t *testing.T) {
 	const provider = 60 * time.Second // the default
-	srv := newServer(":0", nil, provider)
+	srv := NewHTTPServer(":0", nil, provider)
 	if srv.WriteTimeout <= provider {
 		t.Fatalf("WriteTimeout (%v) must be strictly greater than the provider request timeout (%v): "+
 			"the server would abort billed AI requests mid-flight", srv.WriteTimeout, provider)
@@ -40,7 +40,7 @@ func TestNewServerWriteTimeoutTracksConfiguredProviderTimeout(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			srv := newServer(":0", nil, tc.provider)
+			srv := NewHTTPServer(":0", nil, tc.provider)
 			if srv.WriteTimeout != tc.want {
 				t.Errorf("provider timeout %s: WriteTimeout = %v, want %v", tc.provider, srv.WriteTimeout, tc.want)
 			}
@@ -56,7 +56,7 @@ func TestNewServerWriteTimeoutTracksConfiguredProviderTimeout(t *testing.T) {
 // meant to touch, so a future change to the WriteTimeout derivation cannot
 // quietly take them with it.
 func TestNewServerLeavesOtherTimeoutsAlone(t *testing.T) {
-	srv := newServer(":0", nil, 60*time.Second)
+	srv := NewHTTPServer(":0", nil, 60*time.Second)
 	if want := 10 * time.Second; srv.ReadHeaderTimeout != want {
 		t.Errorf("ReadHeaderTimeout = %v, want %v", srv.ReadHeaderTimeout, want)
 	}
