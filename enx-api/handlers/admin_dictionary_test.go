@@ -70,6 +70,7 @@ func adminDictionary(t *testing.T) *gin.Engine {
 	r.POST("/words/:word/sync-from-ecdict", AdminSyncWordFromEcdict)
 	r.GET("/ecdict/:word", AdminGetEcdict)
 	r.GET("/ai-words", AdminListAIWords)
+	r.DELETE("/words/:word", AdminDeleteWord)
 	return r
 }
 
@@ -253,5 +254,22 @@ func TestAdminListAIWordsRejectsBadPaging(t *testing.T) {
 	}
 	if code, _ := serve(t, r, http.MethodGet, "/ai-words?limit=200&offset=0", nil); code != http.StatusOK {
 		t.Errorf("?limit=200&offset=0: %d, want 200", code)
+	}
+}
+
+func TestAdminDeleteWordAnswersWhetherTheWordExisted(t *testing.T) {
+	r := adminDictionary(t)
+	seedAIWord(t, "w-hello", "hello", map[string]int{"u1": 3})
+
+	code, body := serve(t, r, http.MethodDelete, "/words/hello", nil)
+	if code != http.StatusOK || body["success"] != true || body["deleted"] != true {
+		t.Fatalf("delete = %d %v, want 200 with deleted true", code, body)
+	}
+	if code, body := serve(t, r, http.MethodGet, "/words/hello", nil); code != http.StatusOK || body["found"] != false {
+		t.Fatalf("after delete: %d %v, want found false", code, body)
+	}
+	code, body = serve(t, r, http.MethodDelete, "/words/hello", nil)
+	if code != http.StatusOK || body["success"] != true || body["deleted"] != false {
+		t.Fatalf("second delete = %d %v, want 200 with deleted false", code, body)
 	}
 }
