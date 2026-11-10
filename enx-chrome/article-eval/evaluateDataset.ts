@@ -8,15 +8,30 @@ import {
   formatNonArticleReport,
 } from '../src/lib/articleEval/report.ts'
 import { buildProbe } from './buildProbe.ts'
+import { closeWithin, PAGE_TIMEOUT_MS } from './deadline.ts'
 import { evaluateSnapshot } from './evaluateSnapshot.ts'
 
 /** Dataset formats stop at the loader; evaluation and reporting are shared. */
 export async function evaluateDataset(
   loader: DatasetLoader,
-  { headed = false, only = '', nonArticle = false } = {}
+  {
+    headed = false,
+    only = '',
+    nonArticle = false,
+    timeoutMs = PAGE_TIMEOUT_MS,
+    probeScript: givenProbeScript,
+  }: {
+    headed?: boolean
+    only?: string
+    nonArticle?: boolean
+    /** Per-page budget for loading, probing and closing. */
+    timeoutMs?: number
+    /** Defaults to buildProbe(). */
+    probeScript?: string
+  } = {}
 ): Promise<string> {
   const items = (await loader.load()).filter(item => item.url.includes(only))
-  const probeScript = await buildProbe()
+  const probeScript = givenProbeScript ?? (await buildProbe())
   const browser = await chromium.launch({
     headless: !headed,
     executablePath: process.env.E2E_CHROMIUM_PATH || undefined,
@@ -32,9 +47,10 @@ export async function evaluateDataset(
         try {
           return await evaluateSnapshot(await context.newPage(), item, {
             probeScript,
+            timeoutMs,
           })
         } finally {
-          await context.close()
+          await closeWithin(() => context.close(), timeoutMs)
         }
       },
       {
@@ -47,6 +63,6 @@ export async function evaluateDataset(
     )
     return nonArticle ? formatNonArticleReport(rows) : formatDatasetReport(rows)
   } finally {
-    await browser.close()
+    await closeWithin(() => browser.close(), timeoutMs)
   }
 }

@@ -2,17 +2,24 @@
 // pages. A plain page, no extension: the tool injects the extension's own
 // detection itself.
 
+import { readFile } from 'node:fs/promises'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { expect, test } from '@playwright/test'
-import { buildProbe } from '../article-eval/buildProbe'
+import { buildProbe, PROBE_GLOBAL } from '../article-eval/buildProbe'
+import { closeWithin, withDeadline } from '../article-eval/deadline'
+import { evaluateDataset } from '../article-eval/evaluateDataset'
 import { evaluatePage } from '../article-eval/evaluatePage'
+import { evaluateSnapshot } from '../article-eval/evaluateSnapshot'
 import { FIXTURE_ORIGIN } from './auth'
 
 const FIXTURES = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   'test-fixtures'
 )
+
+const ARTICLE_LABEL =
+  'Local volunteers walked beside the river early this morning, recording birds and measuring the water after several days of heavy rain. Their observations will help the village understand how the changing seasons affect wildlife along the banks. The team plans to return next month, when the young trees have grown new leaves and the water has settled. Everyone can join the walk, bring a notebook, and share what they learn with the community.'
 
 let probeScript: string
 
@@ -150,8 +157,7 @@ test.describe('labelled offline snapshots', () => {
       path.join(FIXTURES, 'article-eval-labelled.html'),
       'utf8'
     )
-    const labelText =
-      'Local volunteers walked beside the river early this morning, recording birds and measuring the water after several days of heavy rain. Their observations will help the village understand how the changing seasons affect wildlife along the banks. The team plans to return next month, when the young trees have grown new leaves and the water has settled. Everyone can join the walk, bring a notebook, and share what they learn with the community.'
+    const labelText = ARTICLE_LABEL
     const failed: string[] = []
     page.on('requestfailed', request => failed.push(request.url()))
     const url = 'https://snapshot.example.invalid/river#observations'
@@ -238,5 +244,166 @@ test.describe('labelled offline snapshots', () => {
       readability: { verdict: 'load failed' },
     })
     expect(report.error).toContain('probe broke')
+  })
+})
+
+// A probe stuck in a synchronous loop blocks its renderer, so these tests use
+// their own contexts and close them within a budget.
+const STUCK_PROBE = `window.${PROBE_GLOBAL} = {
+  readySelector: () => null,
+  probe: () => { for (;;) {} },
+}`
+const BUDGET_MS = 2_000
+
+test.describe('a probe that never returns', () => {
+  test('a live page is load failed once the probe outruns its budget', async ({
+    browser,
+  }) => {
+    const context = await browser.newContext()
+    try {
+      const started = Date.now()
+      const report = await evaluatePage(
+        await context.newPage(),
+        {
+          url: `${FIXTURE_ORIGIN}/article-eval-article.html`,
+          category: 'docs',
+        },
+        { probeScript: STUCK_PROBE, settleMs: 0, timeoutMs: BUDGET_MS }
+      )
+      expect(Date.now() - started).toBeLessThan(BUDGET_MS * 5)
+      expect(report).toMatchObject({ verdict: 'load failed' })
+      expect(report.error).toContain('probe timed out')
+    } finally {
+      await closeWithin(() => context.close(), BUDGET_MS)
+    }
+  })
+
+  test('a snapshot is unmeasured and keeps its page type once the probe outruns its budget', async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({ serviceWorkers: 'block' })
+    try {
+      const started = Date.now()
+      const report = await evaluateSnapshot(
+        await context.newPage(),
+        {
+          id: 'stuck',
+          url: 'https://snapshot.example.invalid/stuck',
+          html: '<article>Stuck probe</article>',
+          labelText: 'Stuck probe',
+          pageType: 'documentation',
+        },
+        { probeScript: STUCK_PROBE, timeoutMs: BUDGET_MS }
+      )
+      expect(Date.now() - started).toBeLessThan(BUDGET_MS * 5)
+      expect(report).toMatchObject({
+        id: 'stuck',
+        pageType: 'documentation',
+        ours: { verdict: 'load failed' },
+        readability: { verdict: 'load failed' },
+      })
+      expect(report.error).toContain('probe timed out')
+    } finally {
+      await closeWithin(() => context.close(), BUDGET_MS)
+    }
+  })
+
+  test('a dataset run closes the stuck pages and measures the next one', async () => {
+    test.setTimeout(60_000)
+    const html = await readFile(
+      path.join(FIXTURES, 'article-eval-labelled.html'),
+      'utf8'
+    )
+    // More stuck pages than workers, so a worker must move past one.
+    const stuck = ['stuck-1', 'stuck-2', 'stuck-3'].map(id => ({
+      id,
+      url: `https://snapshot.example.invalid/stuck/${id}`,
+      html: '<article>Stuck probe</article>',
+      labelText: 'Stuck probe',
+    }))
+    const next = {
+      id: 'next',
+      url: 'https://snapshot.example.invalid/river',
+      html,
+      labelText: ARTICLE_LABEL,
+    }
+    const stuckOnStuckPaths = `${probeScript}
+;(() => {
+  const real = window.${PROBE_GLOBAL}
+  window.${PROBE_GLOBAL} = {
+    readySelector: () => real.readySelector(),
+    probe: () => {
+      if (location.pathname.startsWith('/stuck/')) for (;;) {}
+      return real.probe()
+    },
+  }
+})()`
+
+    const report = await evaluateDataset(
+      { load: async () => [...stuck, next] },
+      { probeScript: stuckOnStuckPaths, timeoutMs: BUDGET_MS }
+    )
+
+    for (const { id } of stuck) {
+      expect(report).toMatch(new RegExp(`^${id}\\s.*load failed`, 'm'))
+    }
+    expect(report).toMatch(/^next\s.*\bok\s*$/m)
+  })
+})
+
+test.describe('the deadline on browser operations', () => {
+  test('a probe that settles in time keeps its result and clears its timer', async () => {
+    const realSetTimeout = globalThis.setTimeout
+    const realClearTimeout = globalThis.clearTimeout
+    const set: unknown[] = []
+    const cleared: unknown[] = []
+    globalThis.setTimeout = ((...args: Parameters<typeof setTimeout>) => {
+      const timer = realSetTimeout(...args)
+      set.push(timer)
+      return timer
+    }) as typeof setTimeout
+    globalThis.clearTimeout = ((timer: Parameters<typeof clearTimeout>[0]) => {
+      cleared.push(timer)
+      realClearTimeout(timer)
+    }) as typeof clearTimeout
+    try {
+      expect(
+        await withDeadline(Promise.resolve('probed'), BUDGET_MS, 'probe')
+      ).toBe('probed')
+    } finally {
+      globalThis.setTimeout = realSetTimeout
+      globalThis.clearTimeout = realClearTimeout
+    }
+    expect(set).toHaveLength(1)
+    expect(cleared).toEqual(set)
+  })
+
+  test('a close that rejects, never settles or rejects late returns within its budget', async () => {
+    const unhandled: unknown[] = []
+    const onUnhandled = (reason: unknown) => unhandled.push(reason)
+    process.on('unhandledRejection', onUnhandled)
+    try {
+      const closes: Array<() => Promise<void>> = [
+        () => Promise.reject(new Error('close failed')),
+        () => {
+          throw new Error('close threw')
+        },
+        () => new Promise<void>(() => {}),
+        () =>
+          new Promise<void>((_, reject) =>
+            setTimeout(() => reject(new Error('late close')), 400)
+          ),
+      ]
+      for (const close of closes) {
+        const started = Date.now()
+        await closeWithin(close, 200)
+        expect(Date.now() - started).toBeLessThan(1_000)
+      }
+      // Let the late rejection land after its close was abandoned.
+      await new Promise(resolve => setTimeout(resolve, 500))
+      expect(unhandled).toEqual([])
+    } finally {
+      process.off('unhandledRejection', onUnhandled)
+    }
   })
 })
