@@ -186,7 +186,15 @@ describe('sharing a confirmed article choice (ADR-073)', () => {
         error: undefined,
         choice: { source: 'your-choice', saved: true },
       })
-      expect(document.body.textContent).not.toMatch(/share|send|fail/i)
+      expect(
+        document.querySelectorAll('[data-enx-ui="article-choice-notice"]')
+      ).toHaveLength(1)
+      const shadow = document.getElementById('enx-article-choice-notice')
+        ?.shadowRoot
+      expect(shadow?.querySelector('p')?.textContent).toBe(
+        'Your article choice is remembered for this site.'
+      )
+      expect(shadow?.querySelector('[role="alert"]')).toBeNull()
       expect(warn).toHaveBeenCalledTimes(1)
       const logged = warn.mock.calls[0].join(' ')
       expect(logged).not.toContain('localhost')
