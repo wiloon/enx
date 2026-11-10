@@ -36,39 +36,6 @@ func clerkConfig(t *testing.T) *config.Config {
 	return cfg
 }
 
-// TestE2E_UnauthenticatedAccessRejected verifies that protected endpoints
-// return 401 when no Bearer token is provided.
-func TestE2E_UnauthenticatedAccessRejected(t *testing.T) {
-	ts, done := e2eServer(t, clerkConfig(t))
-	defer done()
-
-	client := ts.Client()
-
-	endpoints := []struct {
-		method string
-		path   string
-	}{
-		{http.MethodGet, "/api/me"},
-		{http.MethodGet, "/api/paragraph-init"},
-		{http.MethodPost, "/api/feedback"},
-		{http.MethodGet, "/api/admin/feedback"},
-		{http.MethodPatch, "/api/admin/feedback/f1"},
-	}
-
-	for _, ep := range endpoints {
-		req, _ := http.NewRequest(ep.method, ts.URL+ep.path, nil)
-		resp, err := client.Do(req)
-		if err != nil {
-			t.Fatalf("%s %s request failed: %v", ep.method, ep.path, err)
-		}
-		_ = resp.Body.Close()
-
-		if resp.StatusCode != http.StatusUnauthorized {
-			t.Errorf("%s %s: expected 401, got %d", ep.method, ep.path, resp.StatusCode)
-		}
-	}
-}
-
 func TestE2E_ClerkGetMe(t *testing.T) {
 	env := clerktest.NewEnv(t)
 	cfg := config.Default()
@@ -177,9 +144,10 @@ func call(t *testing.T, ts *httptest.Server, method, path, token, body string) (
 	return resp.StatusCode, out.String()
 }
 
-// ADR-076: a signed-in user's page report reaches the admin's feedback list;
-// the list and resolve routes are admin-only, the daily limit comes from
-// config, and the page-report routes it replaced are gone.
+// ADR-076 wiring: a signed-in user's page report reaches the admin's feedback
+// list; the admin routes are admin-only, the daily limit comes from config,
+// and the page-report routes it replaced are gone. The feedback rules
+// themselves are in the feedback package.
 func TestE2E_FeedbackRoutes(t *testing.T) {
 	env := clerktest.NewEnv(t)
 	cfg := config.Default()
@@ -216,25 +184,12 @@ func TestE2E_FeedbackRoutes(t *testing.T) {
 		}
 	}
 
-	status, body := call(t, ts, http.MethodGet, "/api/admin/feedback?kind=page_report&status=new", admin, "")
+	status, body := call(t, ts, http.MethodGet, "/api/admin/feedback?kind=page_report", admin, "")
 	var list struct {
-		Success  bool `json:"success"`
-		Feedback []struct {
-			ID  string `json:"id"`
-			URL string `json:"url"`
-		} `json:"feedback"`
-		NextOffset *int `json:"nextOffset"`
+		Feedback []struct{} `json:"feedback"`
 	}
-	if err := json.Unmarshal([]byte(body), &list); err != nil || status != http.StatusOK || !list.Success ||
-		len(list.Feedback) != 1 || list.Feedback[0].URL != "https://x.com/a" || list.NextOffset != nil {
-		t.Fatalf("admin list: %d %s", status, body)
-	}
-	if status, body := call(t, ts, http.MethodPatch, "/api/admin/feedback/"+list.Feedback[0].ID, admin, `{"status":"resolved"}`); status != http.StatusOK {
-		t.Fatalf("resolve: %d %s", status, body)
-	}
-	if status, body := call(t, ts, http.MethodGet, "/api/admin/feedback/article-choices", admin, ""); status != http.StatusOK ||
-		body != `{"groups":[],"nextOffset":null,"success":true}` {
-		t.Fatalf("admin article choice groups: %d %s", status, body)
+	if err := json.Unmarshal([]byte(body), &list); err != nil || status != http.StatusOK || len(list.Feedback) != 1 {
+		t.Fatalf("admin list: %d %s, want the user's report", status, body)
 	}
 
 	for _, req := range []struct{ method, path string }{

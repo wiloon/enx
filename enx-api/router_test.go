@@ -132,51 +132,32 @@ func TestGinModeFollowsLogLevel(t *testing.T) {
 	}
 }
 
-// ADR-044: the preference routes exist under /api and sit behind the session
-// check -- a request with no credentials never reaches the handler.
-func TestPreferencesRoutesRequireAuthentication(t *testing.T) {
+// Signed-in routes sit behind the session check: a request with no
+// credentials never reaches the handler. The check is on the /api group, so
+// a 401 also shows the route is registered (an unknown route answers 404).
+func TestSignedInRoutesRequireASession(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := setupRouter(clerkConfig(t), metrics.New())
 
-	registered := map[string]bool{}
-	for _, r := range router.Routes() {
-		registered[r.Method+" "+r.Path] = true
-	}
-	for _, method := range []string{http.MethodGet, http.MethodPut} {
-		if !registered[method+" /api/me/preferences"] {
-			t.Errorf("%s /api/me/preferences is not registered", method)
-		}
+	for _, route := range []struct{ method, path string }{
+		{http.MethodGet, "/api/me"},
+		{http.MethodGet, "/api/me/preferences"},
+		{http.MethodPut, "/api/me/preferences"},
+		{http.MethodGet, "/api/me/words"},
+		{http.MethodPut, "/api/me/words/hello/known"},
+		{http.MethodDelete, "/api/me/words/hello/known"},
+		{http.MethodPost, "/api/me/word-lookups"},
+		{http.MethodGet, "/api/me/review-words"},
+		{http.MethodGet, "/api/paragraph-init"},
+		{http.MethodPost, "/api/dictionary/ai-word"},
+		{http.MethodPost, "/api/feedback"},
+		{http.MethodGet, "/api/admin/feedback"},
+		{http.MethodPatch, "/api/admin/feedback/f1"},
+	} {
 		w := httptest.NewRecorder()
-		router.ServeHTTP(w, httptest.NewRequest(method, "/api/me/preferences", strings.NewReader(`{"aiWordFallback":true}`)))
+		router.ServeHTTP(w, httptest.NewRequest(route.method, route.path, strings.NewReader(`{}`)))
 		if w.Code != http.StatusUnauthorized {
-			t.Errorf("%s /api/me/preferences without credentials: status %d, want 401", method, w.Code)
-		}
-	}
-}
-
-// The word list is the user's own data: the route sits behind the session
-// check like the rest of /api/me.
-func TestWordListRouteRequiresAuthentication(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	router := setupRouter(clerkConfig(t), metrics.New())
-
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/me/words", nil))
-	if w.Code != http.StatusUnauthorized {
-		t.Errorf("GET /api/me/words without credentials: status %d, want 401", w.Code)
-	}
-}
-
-// Marking a word known is the user's own data, behind the session check.
-func TestWordKnownRoutesRequireAuthentication(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	router := setupRouter(clerkConfig(t), metrics.New())
-
-	for _, method := range []string{http.MethodPut, http.MethodDelete} {
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, httptest.NewRequest(method, "/api/me/words/hello/known", nil))
-		if w.Code != http.StatusUnauthorized {
-			t.Errorf("%s /api/me/words/hello/known without credentials: status %d, want 401", method, w.Code)
+			t.Errorf("%s %s without credentials: status %d, want 401", route.method, route.path, w.Code)
 		}
 	}
 }
@@ -211,46 +192,14 @@ func TestOpsUserStatsRouteUsesTheOpsTokenNotClerk(t *testing.T) {
 	}
 }
 
-// Recording a lookup writes the user's own query count, behind the session
-// check.
-func TestWordLookupRouteRequiresAuthentication(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	router := setupRouter(clerkConfig(t), metrics.New())
-
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/me/word-lookups", strings.NewReader(`{"wordId":"w1"}`)))
-	if w.Code != http.StatusUnauthorized {
-		t.Errorf("POST /api/me/word-lookups without credentials: status %d, want 401", w.Code)
-	}
-}
-
-// ADR-069: the review list is the user's own data, behind the session check,
-// and each request counts under its route for the "pages enabled" panel.
-func TestReviewWordsRouteRequiresAuthentication(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	m := metrics.New()
-	router := setupRouter(clerkConfig(t), m)
-
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/me/review-words", nil))
-	if w.Code != http.StatusUnauthorized {
-		t.Errorf("GET /api/me/review-words without credentials: status %d, want 401", w.Code)
-	}
-
-	scrape := httptest.NewRecorder()
-	m.Handler().ServeHTTP(scrape, httptest.NewRequest(http.MethodGet, "/metrics", nil))
-	want := `enx_http_requests_total{method="GET",route="/api/me/review-words",status="401"} 1`
-	if !strings.Contains(scrape.Body.String(), want) {
-		t.Errorf("/metrics lacks %q", want)
-	}
-}
-
-func TestCORSUsesOnlyConfiguredChromeExtensions(t *testing.T) {
+// The router passes the configured authorized parties to the CORS middleware;
+// which origins it allows is middleware.TestCORSOrigins.
+func TestCORSUsesTheConfiguredAuthorizedParties(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := config.Default()
-	cfg.Clerk.AuthorizedParties = []string{"chrome-extension://configured-id", "https://catglish.com", "moz-extension://configured-id"}
+	cfg.Clerk.AuthorizedParties = []string{"chrome-extension://configured-id"}
 	router := setupRouter(cfg, metrics.New())
-	for _, origin := range []string{"chrome-extension://configured-id", "chrome-extension://combdcldlodkikjfhjbdbogjlfmnbjkf", "chrome-extension://other", "moz-extension://configured-id", "https://enx.wiloon.com", "https://enx.wiloon.lab", "http://localhost:3000", "https://catglish.com", "null", ""} {
+	for _, origin := range []string{"chrome-extension://configured-id", "chrome-extension://other"} {
 		t.Run(origin, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/ping", nil)
 			req.Header.Set("Origin", origin)

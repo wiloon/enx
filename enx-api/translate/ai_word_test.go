@@ -183,12 +183,26 @@ func TestAIWordRejectsBadRequests(t *testing.T) {
 		t.Errorf("no user: status %d, want 401", w.Code)
 	}
 	for name, body := range map[string]string{"empty": ``, "not json": `word=rizzler`, "no word": `{}`, "empty word": `{"word":""}`} {
-		if w := post(t, h.AIWord, "u1", body); w.Code != http.StatusBadRequest {
-			t.Errorf("%s: status %d, want 400", name, w.Code)
+		w := post(t, h.AIWord, "u1", body)
+		if w.Code != http.StatusBadRequest || decode(t, w)["code"] != "invalid_word" {
+			t.Errorf("%s: status %d body %s, want 400 invalid_word", name, w.Code, w.Body)
 		}
 	}
 	if len(ai.words) != 0 {
 		t.Fatalf("a bad request reached the AI: %v", ai.words)
+	}
+}
+
+// The AI request names the same words row as the lookup that missed, so it
+// is normalised the same way.
+func TestAIWordNormalisesTheWordLikeALookup(t *testing.T) {
+	ai := &fakeAI{res: dictionary.Result{English: "riler", Source: dictionary.SourceAIMiss}}
+	h := NewHandler(nil, &fakeReviews{}).WithAI(ai, fakePolicy{})
+
+	post(t, h.AIWord, "u1", `{"word":"ri22ler"}`)
+
+	if len(ai.words) != 1 || ai.words[0] != "riler" {
+		t.Fatalf("AI asked for %v, want [riler]", ai.words)
 	}
 }
 
