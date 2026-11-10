@@ -12,7 +12,6 @@ import {
   ArrowLeftIcon,
   ChatBubbleLeftEllipsisIcon,
   CheckCircleIcon,
-  ChevronRightIcon,
 } from '@heroicons/react/24/outline'
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 
@@ -193,18 +192,15 @@ export default function SendFeedback({ children }: { children?: ReactNode }) {
         </div>
       )}
       {children}
+      {/* A quiet ghost entry rather than a card of its own, so the main page
+          fits Chrome's 600px popup without a scrollbar. */}
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex w-full items-center gap-3 rounded-xl bg-background px-3 py-2.5 text-left shadow-xs ring-1 ring-border transition hover:ring-brand/50 active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        className="flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-background hover:text-foreground active:bg-background/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       >
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-muted text-brand">
-          <ChatBubbleLeftEllipsisIcon className="h-[18px] w-[18px]" />
-        </span>
-        <span className="flex-1 text-sm font-medium text-foreground">
-          Send feedback
-        </span>
-        <ChevronRightIcon className="h-4 w-4 text-muted-foreground" />
+        <ChatBubbleLeftEllipsisIcon className="h-4 w-4" />
+        Send feedback
       </button>
     </div>
   )
