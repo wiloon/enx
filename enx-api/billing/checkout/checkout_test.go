@@ -54,6 +54,18 @@ func TestSubscriptionCheckoutIsRefusedWhileTheAccountIsBeingDeleted(t *testing.T
 	}
 }
 
+func TestSubscriptionCheckoutReportsTheDeletionBeforeAConflict(t *testing.T) {
+	owner := portalsession.Owner{Deletion: acceptance.DeletionInProgress, CustomerID: "cus_1", Owned: []eligibility.Owned{
+		{ID: "sub_a", Conflict: eligibility.ConflictOpen, StoredStatus: "active"},
+	}}
+	_, err := prepare(t, owner, fakeStripe{}, "pro")
+
+	var refusal *Refusal
+	if !errors.As(err, &refusal) || refusal.Reason != eligibility.ReasonDeletionInProgress || refusal.SubscriptionID != "" {
+		t.Fatalf("err = %v, want a deletion_in_progress Refusal naming no subscription", err)
+	}
+}
+
 func TestSubscriptionCheckoutIsRefusedByAnOpenConflict(t *testing.T) {
 	owner := portalsession.Owner{CustomerID: "cus_1", Owned: []eligibility.Owned{
 		{ID: "sub_b", Conflict: eligibility.ConflictOpen, StoredStatus: "active"},
@@ -150,6 +162,27 @@ func TestSubscriptionCheckoutAfterAnEndedSubscriptionUsesTheNormalCustomer(t *te
 	if err != nil || customer != "cus_1" {
 		t.Fatalf("Prepare = %q, %v; want cus_1", customer, err)
 	}
+}
+
+func TestSubscriptionCheckoutDecidesOnTheAcceptedSubscriptionsLiveStatusNotTheStoredOne(t *testing.T) {
+	accepted := func(stored string) portalsession.Owner {
+		return portalsession.Owner{AcceptedID: "sub_acc", AcceptedCustomerID: "cus_acc", CustomerID: "cus_1", Owned: []eligibility.Owned{
+			{ID: "sub_acc", StoredStatus: stored},
+		}}
+	}
+
+	t.Run("stored active, canceled in Stripe allows", func(t *testing.T) {
+		customer, err := prepare(t, accepted("active"), fakeStripe{subs: map[string]portalsession.Subscription{"sub_acc": live("canceled")}}, "pro")
+		if err != nil || customer != "cus_1" {
+			t.Fatalf("Prepare = %q, %v; want cus_1", customer, err)
+		}
+	})
+	t.Run("stored canceled, active in Stripe refuses", func(t *testing.T) {
+		_, err := prepare(t, accepted("canceled"), fakeStripe{subs: map[string]portalsession.Subscription{"sub_acc": live("active")}}, "pro")
+		if !errors.Is(err, ErrRefused) {
+			t.Fatalf("err = %v, want ErrRefused", err)
+		}
+	})
 }
 
 func TestFirstCheckoutWithNoCustomerReturnsEmpty(t *testing.T) {
