@@ -12,6 +12,7 @@ ADR-070 定了「主流英文站点的文章页，单击查词落在正确的正
 
 - 2026-11-07（#712）：明确候选信号须在线验证，补充匹配与评估细则，避免候选信号失效及多节点误选。
 - 2026-11-09（#770）：第 6 层由 [ADR-077](adr-077-article-detection-stage-2-json-ld-gated-readability-fallback.md) 定下规则，状态改为「已定，待实现」；实现合并后改为「已有」。
+- 2026-11-09（#775）：第 6 层实现，状态改为「已有」。
 
 ## 决定 1：识别分层，按顺序逐层尝试
 
@@ -24,7 +25,7 @@ ADR-070 定了「主流英文站点的文章页，单击查词落在正确的正
 | 3 | 站点 adapter | 已有 | adapter 的 `contentSelector` 是正文 | `no-article-node`；设了 `wholePageOnMiss` 的退回整页（ADR-010、ADR-071，不变） |
 | 4 | 平台级 selector（决定 2） | 已有（#712） | 该平台的 selector 是正文 | 往下 |
 | 5 | 内置 selector（`BUILT_IN_SELECTORS`） | 已有 | 选中的节点是正文 | 往下 |
-| 6 | 更严格的启发式兜底（ADR-070 第二阶段） | 已定（[ADR-077](adr-077-article-detection-stage-2-json-ld-gated-readability-fallback.md)：JSON-LD 声明为文章时用 Readability 选出的节点），待实现 | 启发式选中的节点是正文 | 往下 |
+| 6 | 更严格的启发式兜底（ADR-070 第二阶段） | 已有（[ADR-077](adr-077-article-detection-stage-2-json-ld-gated-readability-fallback.md)：JSON-LD 声明为文章时用 Readability 选出的节点；#775） | 启发式选中的节点是正文 | 往下 |
 | 7 | 整页 | 已有 | 只能划词查词（ADR-034 修订） | — |
 
 越靠上的层越具体、越可信：用户自己选的最准，站点 adapter 是为某个站点专门写的，平台级 selector 只在认出平台时才试，内置 selector 是对所有站点的猜测。

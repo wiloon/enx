@@ -139,6 +139,16 @@ describe('formatReport', () => {
     expect(formatReport(ROWS, [])).toContain('No changes since the baseline')
   })
 
+  it('sums up what layer 6 cost on the pages that ran it', () => {
+    const ran = [40, 7, 12, 3, 9].map((layer6Ms, i) =>
+      row({ url: `https://c.example/${i}`, layer6Ms })
+    )
+    expect(formatReport([...ROWS, ...ran], null)).toContain(
+      'Layer 6 ran on 5 pages: p50 9 ms, p90 40 ms, max 40 ms'
+    )
+    expect(formatReport(ROWS, null)).not.toContain('Layer 6 ran')
+  })
+
   describe('lists every page that failed to load as unmeasured', () => {
     const unmeasured = (report: string) =>
       report.slice(report.indexOf('Unmeasured'))
@@ -173,4 +183,22 @@ describe('formatReport', () => {
       expect(formatReport(ROWS.slice(0, 4), null)).not.toContain('Unmeasured')
     })
   })
+})
+
+test('tells a layer 6 article from a selector match in the SOURCE column', () => {
+  const report = formatReport(
+    [
+      row({ url: 'https://a.example/selector' }),
+      row({
+        url: 'https://a.example/layer6',
+        selector: null,
+        fallback: 'json-ld-readability',
+      }),
+    ],
+    null
+  )
+  expect(report).toMatch(/a\.example\/selector .*default article\s+-\s+article\s+0\.90/)
+  expect(report).toMatch(
+    /a\.example\/layer6 .*default \(no selector\)\s+-\s+article \(layer 6\)\s+0\.90/
+  )
 })

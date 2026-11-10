@@ -1,6 +1,6 @@
 # Article detection: current behaviour
 
-How enx-chrome decides where learning mode runs on a web page, as the code on `main` does it today. The planned layers and their order (including the remaining heuristic fallback) are [ADR-072](../architecture/adr-072-article-detection-layers-and-roadmap.md); this doc covers only what is built. This is a **current-state doc**: it says what the code does, not why or how it got here. The reasons and the history are in [ADR-034](../architecture/adr-034-site-support-on-demand-injection-and-generic-content-detection.md) and its amendments. The code is the final authority: `createPageArticleChoice()` in `enx-chrome/src/content/articleChoice.ts`, `WordProcessor.findLookupArea()` in `enx-chrome/src/lib/wordProcessor.ts`, the adapters in `enx-chrome/src/lib/siteAdapters.ts` and the platform rules in `enx-chrome/src/lib/platformSelectors.ts`, pinned by `enx-chrome/src/content/__tests__/getArticleNode.test.ts` and `enx-chrome/src/lib/__tests__/siteAdapters.test.ts`.
+How enx-chrome decides where learning mode runs on a web page, as the code on `main` does it today. The planned layers and their order are [ADR-072](../architecture/adr-072-article-detection-layers-and-roadmap.md); this doc covers only what is built. This is a **current-state doc**: it says what the code does, not why or how it got here. The reasons and the history are in [ADR-034](../architecture/adr-034-site-support-on-demand-injection-and-generic-content-detection.md) and its amendments. The code is the final authority: `createPageArticleChoice()` in `enx-chrome/src/content/articleChoice.ts`, `resolveLookupArea()` in `enx-chrome/src/lib/lookupArea.ts` (layer 6) over `WordProcessor.findLookupArea()` in `enx-chrome/src/lib/wordProcessor.ts` (steps 3–5 and the whole page), the adapters in `enx-chrome/src/lib/siteAdapters.ts` and the platform rules in `enx-chrome/src/lib/platformSelectors.ts`, pinned by `enx-chrome/src/content/__tests__/getArticleNode.test.ts`, `enx-chrome/src/lib/__tests__/lookupArea.test.ts` and `enx-chrome/src/lib/__tests__/siteAdapters.test.ts`.
 
 A PR that changes any rule below updates this doc in the same PR.
 
@@ -26,7 +26,7 @@ On a later page, a saved selector must match exactly one eligible node. Zero mat
 
 ## 3. Site adapter
 
-`resolveSiteAdapter()` picks one adapter per page. An adapter with a `contentSelector` (X, Reader, RSSX, Wikipedia, Standard Ebooks, AWS docs) uses only that selector: its matches longer than its `minTextLength` are the article, and matches nested inside another match are dropped. When nothing matches, the article is empty (`no-article-node`) and no fallback runs, unless the adapter sets `wholePageOnMiss`: then the page gets step 6's whole page. Platform selectors and built-in selectors never run for these adapters. Every other page gets the `default` adapter and steps 4–6.
+`resolveSiteAdapter()` picks one adapter per page. An adapter with a `contentSelector` (X, Reader, RSSX, Wikipedia, Standard Ebooks, AWS docs) uses only that selector: its matches longer than its `minTextLength` are the article, and matches nested inside another match are dropped. When nothing matches, the article is empty (`no-article-node`) and no fallback runs, unless the adapter sets `wholePageOnMiss`: then the page gets step 7's whole page. Platform selectors, built-in selectors and layer 6 never run for these adapters. Every other page gets the `default` adapter and steps 4–7.
 
 An adapter with a `readySelector` makes the initial run (the popup's enable and "Always enable" alike) wait before detection: until the selector matches with non-empty text and the page then stays quiet for 100 ms, or 8 s pass. A temporary `MutationObserver` watches for it and is released when the wait ends, or at once when the run is superseded (learning mode turned off or re-run, the script standing down, an SPA navigation); a superseded run detects nothing. After a timeout, detection runs as usual, so a page without the selector gets its normal miss. This holds for `static` and `spa` adapters alike; only `spa` adapters also re-run on in-page navigation (`src/content/initialRun.ts`, `src/content/spaRebuild.ts`).
 
@@ -58,22 +58,32 @@ A signal is either a `meta[name="generator"]` whose content contains the rule's 
 
 ## 5. Built-in selectors (default adapter)
 
-An automatically detected **article** comes only from a selector: the adapter's `contentSelector`, a platform selector, or this list. Tried in list order; the first selector with a match wins, and matches nested inside another match are dropped.
+An automatically detected **article** comes from a selector (the adapter's `contentSelector`, a platform selector, or this list) or from step 6. This list is tried in order; the first selector with a match wins, and matches nested inside another match are dropped.
 
 - **Precise selectors**: the site-specific ones (BBC, InfoQ, NYT, Ars Technica's article blocks `.post-content-double`, …) and `article`. A match counts when its trimmed text is longer than 1 character; all matches are returned.
 - **Broad selectors**: `.post-content`, `.content`, `.entry-content`, `.post-body`. A match needs more than 100 characters; only the longest is kept.
 
 The list itself is `WordProcessor.BUILT_IN_SELECTORS`. A site whose article no selector finds gets click lookup back through a new selector or a site adapter ([adding-website-support.md](adding-website-support.md)). Which sites to cover, and how a selector change is measured before it lands, is [ADR-070](../architecture/adr-070-article-detection-site-corpus-and-evaluation.md).
 
-## 6. Whole page
+## 6. JSON-LD-gated Readability (default adapter, ADR-077)
 
-When no selector matches (on the default adapter, or an adapter with `wholePageOnMiss`), learning mode still turns on, with `<body>` as the lookup area and source `whole-page`. A whole page with no lookup-eligible text fails with `no-words`.
+When steps 3–5 find nothing on the default adapter, `resolveLookupArea()` tries once more before the whole page:
+
+1. **Gate:** a `script[type="application/ld+json"]` holds an entity whose `@type` (a string or an array) ends in `Article`, or is `BlogPosting`, `LiveBlogPosting` or `APIReference`. Entities are read at the top level, in arrays, and under `@graph`, `mainEntity` and `mainEntityOfPage`; other keys (e.g. a listing's `hasPart`) are not followed. Malformed JSON-LD is skipped. No match: whole page, and Readability is not loaded.
+2. **Node:** Readability runs on a clone of the document whose elements carry their page index; the lowest common ancestor of the page elements in its output is the node. No output, or the node is `body` or `html`: whole page.
+3. **Node conditions:** without `script`, `style` and `noscript`, whitespace collapsed, the node has at least 500 characters and link density (text of outermost links / all text) at most 0.2. Otherwise whole page.
+
+A node that passes is the article, with source `article` and `fallback: 'json-ld-readability'` on the `LookupArea`. Readability is its own chunk, loaded by dynamic `import()` from `src/content/loadReadability.ts` only once the gate passes; it is never in the always-loaded content script. If the chunk fails to load, learning mode opens on the whole page. A user choice (step 2) still wins. The shared article choice report sends a layer 6 result as `autoSource: 'article'` with no selector.
+
+## 7. Whole page
+
+When neither a selector nor step 6 finds an article (on the default adapter, or an adapter with `wholePageOnMiss`), learning mode still turns on, with `<body>` as the lookup area and source `whole-page`. A whole page with no lookup-eligible text fails with `no-words`.
 
 ## Article vs whole page
 
 `lookupAreaFeatures()` in `wordProcessor.ts` decides this table.
 
-| | Article (steps 2–5) | Whole page (step 6) |
+| | Article (steps 2–6) | Whole page (step 7) |
 | --- | --- | --- |
 | Click lookup | yes | no: clicks reach the page's own handlers |
 | Word highlighting | yes | no |
@@ -96,7 +106,7 @@ After the lookup area is chosen, `enxRun` fails with `no-article-node` (empty ar
 
 `task article-eval` (in `enx-chrome/`, ADR-070) opens every page in `article-eval/corpus.json` in Playwright's Chromium and prints how well the lookup area matches the article. It needs the live sites, so it never runs in CI.
 
-- **Chosen area:** evaluation measures automatic detection, independent of locally saved user choices. The page runs `resolveSiteAdapter()` (with no build-target sites) and `WordProcessor.findLookupArea(lookupAreaOptions(adapter))`, bundled from `src/articleEval/pageProbe.ts`.
+- **Chosen area:** evaluation measures automatic detection, independent of locally saved user choices. The page runs `resolveSiteAdapter()` (with no build-target sites) and `resolveLookupArea(lookupAreaOptions(adapter))` with Readability bundled in, from `src/articleEval/pageProbe.ts`. The `SOURCE` column reads `article (layer 6)` when step 6 found the article.
 - **Reference:** Mozilla Readability's article, parsed from a clone of the same document.
 - **Scores:** both texts lose `script`, `style` and `noscript`, keep links and code, and are compared as sets of lower-cased 5-word shingles. **Coverage** is the share of the reference inside the chosen area, **precision** the share of the chosen area that is reference.
 - **Verdicts**, first match wins: `load failed`; `no article node` (empty area); `whole page` (coverage 0); `no reference` (Readability found none); `misses text` (coverage < 0.8); `too broad` (precision < 0.7); `ok`. A score that can't be computed prints `n/a`.
@@ -121,11 +131,12 @@ Run `task article-eval -- --dataset zyte` in `enx-chrome/` to score both the ext
 
 Run `task article-eval -- --dataset wcxb` to score both extractors against WCXB's `ground_truth.main_content` on article and documentation pages.
 
-- **Dataset:** WCXB, the web content extraction benchmark by Murrough Foley: [the repository at the pinned commit](https://github.com/Murrough-Foley/web-content-extraction-benchmark/tree/c039d5ee9f5a3a984a0e167e63aacd04e76e78a9), 2,008 pages from 2025, under its [CC-BY-4.0 licence at that commit](https://github.com/Murrough-Foley/web-content-extraction-benchmark/blob/c039d5ee9f5a3a984a0e167e63aacd04e76e78a9/LICENSE). Only `article` and `documentation` pages are measured: product, collection, listing and service pages aren't articles and would skew the result, and `forum` pages are left out for now. Both `dev/` and `test/` splits are used, since nothing is trained.
+- **Dataset:** WCXB, the web content extraction benchmark by Murrough Foley: [the repository at the pinned commit](https://github.com/Murrough-Foley/web-content-extraction-benchmark/tree/c039d5ee9f5a3a984a0e167e63aacd04e76e78a9), pages from 2025 (`metadata.json` at that commit lists 1,869), under its [CC-BY-4.0 licence at that commit](https://github.com/Murrough-Foley/web-content-extraction-benchmark/blob/c039d5ee9f5a3a984a0e167e63aacd04e76e78a9/LICENSE). `--dataset wcxb` scores only `article` and `documentation` pages: the other types aren't articles and would skew the scores. Both `dev/` and `test/` splits are used, since nothing is trained.
+- **Non-article pages:** `--dataset wcxb-negative` opens the `listing`, `collection`, `product`, `service` and `forum` pages instead and scores nothing. It reports, per page type and in total, how many pages were measured and unmeasured, and how many got a selector node, a layer 6 node or the whole page, then lists every layer 6 page so a false positive can be checked by hand (ADR-077's negative set). Labels are not needed, so an empty label is still measured; a page with no URL or that fails to load is unmeasured with its reason. Forum pages may be one long post: read their count on its own.
 - **Label caveat:** the labels were drafted by an LLM (Claude) and then reviewed by people, and the dataset is a 2026 single-author project. When a page scores low, check its label before trusting the score.
 - **Cache:** the loader downloads `metadata.json` from commit `c039d5ee9f5a3a984a0e167e63aacd04e76e78a9` into `~/.cache/enx/article-eval/wcxb/<commit>/`, then `<split>/ground-truth/<id>.json` and `<split>/html/<id>.html.gz` for the selected pages only. Files of other page types are never downloaded. JSON and gzip contents are validated before the atomic cache write, as for Zyte.
 - **Loader:** `metadata.json`'s `files` object is the index: each key is the page ID (unique across splits, digits only) with its `split` and `page_type`. Each page's label is `ground_truth.main_content`, its URL `url` and its type `_internal.page_type.primary`. An invalid ID, split, non-string label (other than null or missing), missing page type, or a page type that disagrees with the index fails the load with the file or ID named. A missing or invalid URL is unmeasured; null or missing labels are treated as empty.
-- **Report:** a `PAGE TYPE` column, and after the overall summaries an Ours and a Readability summary per page type. A label with no text after trimming is unmeasured: the page is not opened in the browser, adds nothing to the means, and is listed under "Unmeasured" with its ID, URL, page type and the reason. Zyte rows carry no page type, so the Zyte report has neither.
+- **Report:** a `PAGE TYPE` column, and after the overall summaries an Ours and a Readability summary per page type. When step 6 found any article, a `Layer 6:` line counts those pages and their `ok`, `misses text` and `too broad` verdicts (Zyte too). Every report (the online corpus as well) ends with a `Layer 6 ran on N pages: p50 / p90 / max` line when any page passed step 6's gate, timed from the gate to the decision, whether or not the node was kept. A label with no text after trimming is unmeasured: the page is not opened in the browser, adds nothing to the means, and is listed under "Unmeasured" with its ID, URL, page type and the reason. Zyte rows carry no page type, so the Zyte report has neither.
 - **Checks:** fake downloads in `scripts/__tests__/article-eval-wcxb.test.mjs` cover the WCXB loader and its cache; no dataset pages are committed.
 
 ### The corpus

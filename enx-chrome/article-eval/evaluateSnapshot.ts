@@ -41,7 +41,7 @@ export async function evaluateSnapshot(
     await page.evaluate(probeScript)
     const observed = await page.evaluate(name => {
       const api = (
-        window as unknown as Record<string, { probe(): ProbeResult }>
+        window as unknown as Record<string, { probe(): Promise<ProbeResult> }>
       )[name]
       return api.probe()
     }, PROBE_GLOBAL)
@@ -49,6 +49,11 @@ export async function evaluateSnapshot(
       id: item.id,
       url: item.url,
       pageType: item.pageType,
+      source: observed.source,
+      ...(observed.fallback ? { fallback: observed.fallback } : {}),
+      ...(observed.layer6Ms === undefined
+        ? {}
+        : { layer6Ms: observed.layer6Ms }),
       ours: scorePage({
         status: 'loaded',
         ...observed,

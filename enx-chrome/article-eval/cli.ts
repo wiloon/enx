@@ -6,7 +6,9 @@
 //   task article-eval -- --only <url part>   just the matching corpus pages
 //
 // --dataset zyte|wcxb evaluates cached snapshots against labels: Zyte's
-// articleBody, or WCXB's article and documentation pages.
+// articleBody, or WCXB's article and documentation pages. --dataset
+// wcxb-negative counts which WCXB non-article pages get an article node
+// (ADR-077).
 // Live sites or a downloaded dataset, so never in CI. A page that fails to load is reported as
 // `load failed` and doesn't fail the run.
 
@@ -37,9 +39,9 @@ const CONCURRENCY = 3
 async function main() {
   const options = parseArgs(process.argv.slice(2))
   if (options.dataset) {
-    const { header, loader } = selectDataset(options.dataset)
+    const { header, loader, nonArticle } = selectDataset(options.dataset)
     console.error(header)
-    console.log(await evaluateDataset(loader, options))
+    console.log(await evaluateDataset(loader, { ...options, nonArticle }))
     return
   }
   const allPages = JSON.parse(await readFile(CORPUS, 'utf8')) as CorpusEntry[]

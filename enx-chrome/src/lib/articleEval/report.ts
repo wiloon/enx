@@ -25,6 +25,10 @@ export interface PageReport extends Score {
   /** The platform rule that found the article; null for any other result. */
   platform: string | null
   source: 'article' | 'whole-page' | null
+  /** Set when layer 6 (ADR-077) found the article rather than a selector. */
+  fallback?: 'json-ld-readability'
+  /** Set when the page passed layer 6's gate, whether or not its node was kept. */
+  layer6Ms?: number
   /** Why the page failed to load. */
   error?: string
 }
@@ -132,7 +136,7 @@ export function formatReport(
         ? 'n/a'
         : `${row.adapter} ${row.selector ?? '(no selector)'}`,
       row.platform ?? '-',
-      row.source ?? 'n/a',
+      row.fallback ? `${row.source} (layer 6)` : (row.source ?? 'n/a'),
       score(row.coverage),
       score(row.precision),
       row.error ? `${row.verdict} (${row.error})` : row.verdict,
@@ -144,6 +148,7 @@ export function formatReport(
   for (const category of summary.categories) {
     lines.push(`${category.category}: ${summaryLine(category)}`)
   }
+  lines.push(...layer6CostLines(rows))
 
   // Listed whatever the baseline says: a failed page's last good entry may be
   // kept in the baseline, but this run measured nothing for it.
@@ -186,8 +191,27 @@ export interface DatasetReport {
   pageType?: string
   ours: Score
   readability: Score
+  /** Where our lookup area came from; unset when the page is unmeasured. */
+  source?: 'article' | 'whole-page'
+  /** Set when layer 6 (ADR-077) found the article rather than a selector. */
+  fallback?: 'json-ld-readability'
+  /** Set when the page passed layer 6's gate, whether or not its node was kept. */
+  layer6Ms?: number
   /** Why the page is unmeasured. */
   error?: string
+}
+
+/** Nearest-rank percentiles (ADR-077 asks for p50 / p90 / max). */
+function layer6CostLines(rows: { layer6Ms?: number }[]): string[] {
+  const ms = rows
+    .flatMap(row => (row.layer6Ms === undefined ? [] : [row.layer6Ms]))
+    .sort((a, b) => a - b)
+  if (ms.length === 0) return []
+  const at = (p: number) => Math.round(ms[Math.ceil(p * ms.length) - 1])
+  return [
+    `Layer 6 ran on ${ms.length} pages: ` +
+      `p50 ${at(0.5)} ms, p90 ${at(0.9)} ms, max ${at(1)} ms`,
+  ]
 }
 
 function extractorSummaries(rows: DatasetReport[], prefix = ''): string[] {
@@ -235,15 +259,65 @@ export function formatDatasetReport(rows: DatasetReport[]): string {
       )
     )
   }
-  for (const row of rows) {
-    if (!row.error) continue
-    if (!row.url) {
-      const where = [row.id, `(${row.error})`, row.pageType]
-      lines.push(`Unmeasured: ${where.filter(Boolean).join(' ')}`)
-      continue
-    }
-    const where = [row.id, row.url, row.pageType].filter(Boolean).join(' ')
-    lines.push(`Unmeasured: ${where} (${row.error})`)
+  const layer6 = rows.filter(row => row.fallback !== undefined)
+  if (layer6.length > 0) {
+    const count = (verdict: Verdict) =>
+      layer6.filter(row => row.ours.verdict === verdict).length
+    lines.push(
+      `Layer 6: ${layer6.length} pages; ok ${count('ok')}, ` +
+        `misses text ${count('misses text')}, too broad ${count('too broad')}`
+    )
   }
+  lines.push(...layer6CostLines(rows))
+  lines.push(...rows.filter(row => row.error).map(unmeasuredLine))
+  return lines.join('\n')
+}
+
+function unmeasuredLine(row: DatasetReport): string {
+  if (!row.url) {
+    const where = [row.id, `(${row.error})`, row.pageType]
+    return `Unmeasured: ${where.filter(Boolean).join(' ')}`
+  }
+  const where = [row.id, row.url, row.pageType].filter(Boolean).join(' ')
+  return `Unmeasured: ${where} (${row.error})`
+}
+
+function nodeCounts(rows: DatasetReport[]): string {
+  const measured = rows.filter(row => row.source !== undefined)
+  const layer6 = measured.filter(row => row.fallback !== undefined).length
+  const wholePage = measured.filter(row => row.source === 'whole-page').length
+  return (
+    `${rows.length} pages, ${measured.length} measured, ` +
+    `${rows.length - measured.length} unmeasured; ` +
+    `selector node ${measured.length - layer6 - wholePage}, ` +
+    `layer 6 node ${layer6}, whole page ${wholePage}`
+  )
+}
+
+/**
+ * Non-article pages have no article to score: what matters is whether
+ * detection gives them an article node at all, and which layer did
+ * (ADR-077's negative set).
+ */
+export function formatNonArticleReport(rows: DatasetReport[]): string {
+  const pageTypes = [...new Set(rows.map(row => row.pageType ?? '-'))]
+  const lines = [
+    ...pageTypes.map(
+      pageType =>
+        `${pageType}: ${nodeCounts(rows.filter(row => (row.pageType ?? '-') === pageType))}`
+    ),
+    `All: ${nodeCounts(rows)}`,
+  ]
+  const layer6 = rows.filter(row => row.fallback !== undefined)
+  lines.push('', `Layer 6 nodes (${layer6.length}):`)
+  if (layer6.length > 0) {
+    lines.push(
+      ...table(layer6.map(row => [row.id, row.url, row.pageType ?? '-'])).map(
+        line => `  ${line}`
+      )
+    )
+  }
+  lines.push(...layer6CostLines(rows))
+  lines.push(...rows.filter(row => row.error).map(unmeasuredLine))
   return lines.join('\n')
 }

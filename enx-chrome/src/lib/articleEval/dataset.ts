@@ -34,11 +34,21 @@ export function parseZyteLabels(data: unknown): Omit<DatasetItem, 'html'>[] {
   })
 }
 
-/**
- * The WCXB page types measured. Product, collection, listing and service
- * pages aren't articles; forum pages are left out for now.
- */
+/** The WCXB page types scored against their labels. */
 export const WCXB_PAGE_TYPES: readonly string[] = ['article', 'documentation']
+
+/**
+ * The WCXB page types that aren't articles, ADR-077's negative set. Forum
+ * pages may be one long post or a thread of replies: report them on their
+ * own rather than as proof of a non-article.
+ */
+export const WCXB_NON_ARTICLE_PAGE_TYPES: readonly string[] = [
+  'listing',
+  'collection',
+  'product',
+  'service',
+  'forum',
+]
 
 export interface WcxbIndexEntry {
   id: string
@@ -109,7 +119,8 @@ const UNMEASURED: Score = {
 /**
  * Evaluates every item with `evaluate`, a few at a time, in item order. A
  * label with no text measures nothing, so its page is reported unmeasured
- * and never evaluated.
+ * and never evaluated -- unless `requireLabel` is false, as for non-article
+ * pages, where only whether detection gives a node is measured.
  */
 export async function measureDataset(
   items: DatasetItem[],
@@ -117,9 +128,11 @@ export async function measureDataset(
   {
     concurrency = 3,
     onRow = () => {},
+    requireLabel = true,
   }: {
     concurrency?: number
     onRow?: (row: DatasetReport, done: number) => void
+    requireLabel?: boolean
   } = {}
 ): Promise<DatasetReport[]> {
   const rows: DatasetReport[] = new Array(items.length)
@@ -131,7 +144,7 @@ export async function measureDataset(
         const index = next++
         const item = items[index]
         rows[index] =
-          item.url === '' || item.labelText.trim() === ''
+          item.url === '' || (requireLabel && item.labelText.trim() === '')
             ? {
                 id: item.id,
                 url: item.url,

@@ -1,4 +1,8 @@
-import { formatDatasetReport, type DatasetReport } from '../report'
+import {
+  formatDatasetReport,
+  formatNonArticleReport,
+  type DatasetReport,
+} from '../report'
 
 test('reports both extractors against labels with separate summary means', () => {
   const report = formatDatasetReport([
@@ -104,4 +108,111 @@ test('typed rows get a page type column and a summary per type for each extracto
     'documentation: Readability: 1 pages, 1 scored, mean coverage 1.00, mean precision 0.80; ok 1, misses text 0, too broad 0, whole page 0, no article node 0, no reference 0, load failed 0',
     'Unmeasured: 0003 https://d.example/story article (timeout)',
   ])
+})
+
+describe('formatNonArticleReport', () => {
+  const none = { coverage: null, precision: null, verdict: 'no reference' } as const
+  const page = (
+    id: string,
+    pageType: string,
+    found: Partial<DatasetReport>
+  ): DatasetReport => ({
+    id,
+    url: `https://example.org/${id}`,
+    pageType,
+    ours: none,
+    readability: none,
+    ...found,
+  })
+
+  it('counts, per page type, the pages given an article node and lists layer 6 ones', () => {
+    expect(
+      formatNonArticleReport([
+        page('1', 'listing', { source: 'article' }),
+        page('2', 'listing', {
+          source: 'article',
+          fallback: 'json-ld-readability',
+        }),
+        page('3', 'listing', { source: 'whole-page' }),
+        page('4', 'forum', { source: 'whole-page' }),
+        { ...page('5', 'forum', {}), url: '', error: 'no URL' },
+        {
+          ...page('6', 'forum', {}),
+          ours: { coverage: null, precision: null, verdict: 'load failed' },
+          error: 'timeout',
+        },
+      ])
+    ).toBe(
+      [
+        'listing: 3 pages, 3 measured, 0 unmeasured; selector node 1, layer 6 node 1, whole page 1',
+        'forum: 3 pages, 1 measured, 2 unmeasured; selector node 0, layer 6 node 0, whole page 1',
+        'All: 6 pages, 4 measured, 2 unmeasured; selector node 1, layer 6 node 1, whole page 2',
+        '',
+        'Layer 6 nodes (1):',
+        '  2  https://example.org/2  listing',
+        'Unmeasured: 5 (no URL) forum',
+        'Unmeasured: 6 https://example.org/6 forum (timeout)',
+      ].join('\n')
+    )
+  })
+})
+
+test('sums up the verdicts of the pages layer 6 found', () => {
+  const report = formatDatasetReport([
+    {
+      id: 'one',
+      url: 'https://example.org/one',
+      source: 'article',
+      fallback: 'json-ld-readability',
+      ours: { coverage: 0.9, precision: 0.9, verdict: 'ok' },
+      readability: { coverage: 0.9, precision: 0.9, verdict: 'ok' },
+    },
+    {
+      id: 'two',
+      url: 'https://example.org/two',
+      source: 'article',
+      fallback: 'json-ld-readability',
+      ours: { coverage: 0.9, precision: 0.5, verdict: 'too broad' },
+      readability: { coverage: 0.9, precision: 0.9, verdict: 'ok' },
+    },
+    {
+      id: 'three',
+      url: 'https://example.org/three',
+      source: 'article',
+      ours: { coverage: 1, precision: 1, verdict: 'ok' },
+      readability: { coverage: 1, precision: 1, verdict: 'ok' },
+    },
+  ])
+  expect(report).toContain(
+    'Layer 6: 2 pages; ok 1, misses text 0, too broad 1'
+  )
+})
+
+test('sums up what layer 6 cost, including pages where its node was rejected', () => {
+  const ran = (id: string, layer6Ms: number): DatasetReport => ({
+    id,
+    url: `https://example.org/${id}`,
+    source: 'whole-page',
+    layer6Ms,
+    ours: { coverage: 1, precision: 0.1, verdict: 'whole page' },
+    readability: { coverage: 1, precision: 1, verdict: 'ok' },
+  })
+  const rows = [ran('one', 2.4), ran('two', 15.6)]
+  const line = 'Layer 6 ran on 2 pages: p50 2 ms, p90 16 ms, max 16 ms'
+  expect(formatDatasetReport(rows)).toContain(line)
+  expect(formatNonArticleReport(rows)).toContain(line)
+})
+
+test('says nothing about layer 6 when no page used it', () => {
+  expect(
+    formatDatasetReport([
+      {
+        id: 'one',
+        url: 'https://example.org/one',
+        source: 'article',
+        ours: { coverage: 1, precision: 1, verdict: 'ok' },
+        readability: { coverage: 1, precision: 1, verdict: 'ok' },
+      },
+    ])
+  ).not.toContain('Layer 6')
 })
