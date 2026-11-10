@@ -34,6 +34,8 @@ export function createArticleChoice<N>(deps: ArticleChoiceDeps<N>) {
       selector = null
       pageNode = undefined
     },
+    /** The remembered selector; null for automatic or a page-only choice. */
+    selector: () => selector,
     current(): ArticleChoiceStatus & { node?: N } {
       if (pageNode !== undefined && deps.isEligible(pageNode)) {
         return {

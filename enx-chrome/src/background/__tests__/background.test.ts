@@ -1977,6 +1977,67 @@ describe('background onMessage / submitFeedback (ADR-076)', () => {
   })
 })
 
+describe('background onMessage / submitArticleChoice (ADR-073)', () => {
+  const listener = onMessageListener
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    setClerkSession('clerk-session-jwt')
+    ;(chrome.runtime.getManifest as jest.Mock).mockReturnValue({
+      version: '1.0.1',
+    })
+    ;(global.fetch as jest.Mock) = jest.fn()
+  })
+
+  const send = (request: unknown): Promise<unknown> =>
+    new Promise(resolve => listener(request, {}, resolve))
+
+  it('POSTs an article_choice record with the extension version and only the known fields, no text', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(200, { success: true, recorded: true })
+    )
+
+    const response = await send({
+      type: 'submitArticleChoice',
+      articleChoice: {
+        url: 'https://example.com/story',
+        adapter: 'default',
+        selector: '[id="picked"]',
+        autoSource: 'article',
+        autoSelector: '.gh-content',
+        autoPlatform: 'ghost',
+        title: 'secret',
+      },
+    })
+
+    expect(response).toMatchObject({ success: true })
+    const [endpoint, init] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(endpoint).toMatch(/\/api\/feedback$/)
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body)).toEqual({
+      kind: 'article_choice',
+      url: 'https://example.com/story',
+      context: { adapter: 'default', extVersion: '1.0.1' },
+      details: {
+        selector: '[id="picked"]',
+        autoSource: 'article',
+        autoSelector: '.gh-content',
+        autoPlatform: 'ghost',
+      },
+    })
+  })
+
+  it('rejects a message with no selector without calling the API', async () => {
+    const response = await send({
+      type: 'submitArticleChoice',
+      articleChoice: { url: 'https://example.com/story' },
+    })
+
+    expect(response).toMatchObject({ success: false })
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+})
+
 describe('background onMessage / savePage (ADR-032)', () => {
   const listener = onMessageListener
 

@@ -119,6 +119,60 @@ describe('Privacy Policy', () => {
     }
   )
 
+  // ADR-073 decision 5: article-choice sharing is released, so the policy
+  // describes what it sends, why, the default-off consent and what stays.
+  it.each([
+    [
+      'English',
+      PrivacyPolicyPage,
+      /can also share an article you choose by hand/,
+      [
+        /improve automatic detection/,
+        /off by default/,
+        /asks you/,
+        /Share my article choices/,
+        /page address, cleaned the same way/,
+        /selector/,
+        /what automatic detection found/,
+        /extension version/,
+        /never send the page.s text or title/,
+        /linked to your account/,
+        /until you delete your account/,
+        /stops future sends/,
+      ],
+      /A future version of the extension may offer/,
+    ],
+    [
+      'Chinese route',
+      PrivacyPolicyZhPage,
+      /扩展还可以分享你手动选择的正文/,
+      [
+        /改进自动识别/,
+        /默认关闭/,
+        /会先问你/,
+        /Share my article choices/,
+        /按同样规则清理的页面地址/,
+        /选择器/,
+        /自动识别的结果/,
+        /扩展版本/,
+        /从不发送页面的正文或标题/,
+        /关联你的账号/,
+        /注销账号/,
+        /停止以后的发送/,
+      ],
+      /以后的扩展版本可能会提供/,
+    ],
+  ])(
+    'describes article-choice sharing as released, on the %s page',
+    (_locale, Page, passage, claims, futureClaim) => {
+      const { container } = render(<Page />)
+
+      const section = screen.getByText(passage)
+      for (const claim of claims) expect(section).toHaveTextContent(claim)
+      expect(container).not.toHaveTextContent(futureClaim)
+    }
+  )
+
   // ADR-076 Decision 3: written feedback, the editable cleaned URL and the
   // context fields, in each of the three passages that describe feedback.
   it.each([

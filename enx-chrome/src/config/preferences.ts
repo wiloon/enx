@@ -32,6 +32,22 @@ export const setWordHighlightEnabled = async (
   }
 }
 
+export const ARTICLE_CHOICE_SHARING_KEY = 'enx-article-choice-sharing'
+
+// Whether confirmed article choices are shared (ADR-073 decision 5). Absent =
+// not answered yet: nothing is shared and the popup asks before picking.
+// Errors propagate, so an answer is never assumed to have been saved.
+export const getArticleChoiceSharing = async (): Promise<boolean | null> => {
+  const result = await chrome.storage.local.get<{
+    [ARTICLE_CHOICE_SHARING_KEY]?: boolean
+  }>(ARTICLE_CHOICE_SHARING_KEY)
+  const value = result?.[ARTICLE_CHOICE_SHARING_KEY]
+  return typeof value === 'boolean' ? value : null
+}
+
+export const setArticleChoiceSharing = async (share: boolean): Promise<void> =>
+  chrome.storage.local.set({ [ARTICLE_CHOICE_SHARING_KEY]: share })
+
 // Fires whenever the preference changes (in this tab or another surface).
 // Returns an unsubscribe function.
 export const onWordHighlightEnabledChange = (

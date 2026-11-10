@@ -28,7 +28,114 @@ it('explains a page-only choice and lets the user return to automatic detection'
   )
 })
 
+function storedSharing(initial?: boolean) {
+  const data: Record<string, unknown> =
+    initial === undefined ? {} : { 'enx-article-choice-sharing': initial }
+  ;(chrome.storage.local.get as jest.Mock).mockImplementation(
+    async (key: string) => (key in data ? { [key]: data[key] } : {})
+  )
+  ;(chrome.storage.local.set as jest.Mock).mockImplementation(
+    async (items: Record<string, unknown>) => {
+      Object.assign(data, items)
+    }
+  )
+  return data
+}
+
+const chooseArticleSent = () =>
+  (chrome.tabs.sendMessage as jest.Mock).mock.calls.some(
+    ([, request]) => request.action === 'chooseArticle'
+  )
+
+describe('asking before the first pick whether to share article choices', () => {
+  let close: jest.SpyInstance
+  beforeEach(() => {
+    ;(chrome.tabs.sendMessage as jest.Mock).mockClear()
+    close = jest.spyOn(window, 'close').mockImplementation(() => {})
+  })
+  afterEach(() => close.mockRestore())
+
+  it.each([
+    ['Share', true],
+    ["Don't share", false],
+  ])(
+    'asks first, then saves "%s" before starting the picker',
+    async (button, answer) => {
+      const stored = storedSharing()
+      ;(chrome.tabs.sendMessage as jest.Mock).mockImplementation(
+        async (_tab, request) => {
+          if (request.action === 'chooseArticle')
+            expect(stored['enx-article-choice-sharing']).toBe(answer)
+          return {
+            success: true,
+            available: true,
+            choice: { source: 'automatic', saved: false, missed: false },
+          }
+        }
+      )
+      render(<ArticleChoiceControl onModeChange={() => {}} />)
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Choose article' })
+      )
+
+      const prompt = await screen.findByRole('region', {
+        name: 'Share article choices?',
+      })
+      expect(prompt).toHaveTextContent(/cleaned page address/)
+      expect(prompt).toHaveTextContent(/linked to your account/)
+      expect(chooseArticleSent()).toBe(false)
+
+      fireEvent.click(screen.getByRole('button', { name: button }))
+
+      await waitFor(() => expect(chooseArticleSent()).toBe(true))
+      expect(stored).toEqual({ 'enx-article-choice-sharing': answer })
+      expect(close).toHaveBeenCalledTimes(1)
+    }
+  )
+
+  it('asks again on the next attempt when the popup closed without an answer', async () => {
+    const stored = storedSharing()
+    const first = render(<ArticleChoiceControl onModeChange={() => {}} />)
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Choose article' })
+    )
+    await screen.findByRole('region', { name: 'Share article choices?' })
+    first.unmount()
+
+    render(<ArticleChoiceControl onModeChange={() => {}} />)
+    expect(
+      screen.queryByRole('region', { name: 'Share article choices?' })
+    ).toBeNull()
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Choose article' })
+    )
+
+    expect(
+      await screen.findByRole('region', { name: 'Share article choices?' })
+    ).toBeInTheDocument()
+    expect(stored).toEqual({})
+    expect(chooseArticleSent()).toBe(false)
+  })
+
+  it.each([true, false])(
+    'does not ask again once answered (%s)',
+    async answer => {
+      storedSharing(answer)
+      render(<ArticleChoiceControl onModeChange={() => {}} />)
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Choose article' })
+      )
+
+      await waitFor(() => expect(chooseArticleSent()).toBe(true))
+      expect(
+        screen.queryByRole('region', { name: 'Share article choices?' })
+      ).toBeNull()
+    }
+  )
+})
+
 it('starts picking while learning mode is off and closes the popup after the picker starts', async () => {
+  storedSharing(false)
   const close = jest.spyOn(window, 'close').mockImplementation(() => {})
   try {
     render(<ArticleChoiceControl onModeChange={() => {}} />)

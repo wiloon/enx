@@ -9,6 +9,7 @@ import { createAccountSession, type Invalidation } from '@/lib/accountSession'
 import { createCoalescedSync } from '@/lib/coalescedSync'
 import { createSessionCookies } from '@/lib/sessionCookies'
 import type { FeedbackSubmission } from '@/lib/feedback'
+import type { ArticleChoiceReport } from '@/lib/articleChoiceShare'
 import {
   ACCOUNT_CHANGED_MESSAGE,
   type AccountInvalidatedMessage,
@@ -1085,6 +1086,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'submitFeedback':
           return await handleSubmitFeedback(request.feedback)
 
+        case 'submitArticleChoice':
+          return await handleSubmitArticleChoice(request.articleChoice)
+
         case 'savePage':
           return await handleSavePage(request.savedPage)
 
@@ -1841,6 +1845,31 @@ const handleSubmitFeedback = async (feedback?: FeedbackSubmission) => {
         articleSource: context?.articleSource,
       },
       details: {},
+    }),
+  })
+}
+
+// A confirmed article choice the user agreed to share (ADR-073 decision 5),
+// sent as an article_choice feedback record. Fields are copied one by one,
+// so nothing else the message carries reaches the server.
+const handleSubmitArticleChoice = async (choice?: ArticleChoiceReport) => {
+  if (!choice?.url || !choice.selector)
+    return { success: false, error: 'Missing article choice' }
+  return await makeApiRequest('/api/feedback', {
+    method: 'POST',
+    body: JSON.stringify({
+      kind: 'article_choice',
+      url: choice.url,
+      context: {
+        adapter: choice.adapter,
+        extVersion: chrome.runtime.getManifest().version,
+      },
+      details: {
+        selector: choice.selector,
+        autoSource: choice.autoSource,
+        autoSelector: choice.autoSelector,
+        autoPlatform: choice.autoPlatform,
+      },
     }),
   })
 }

@@ -59,6 +59,7 @@ import {
 } from './spaRebuild'
 import { createInitialRunner } from './initialRun'
 import {
+  getArticleChoiceSharing,
   getWordHighlightEnabled,
   onWordHighlightEnabledChange,
 } from '@/config/preferences'
@@ -840,6 +841,12 @@ const articleChoice = createPageArticleChoice({
       const outcome = await runLearningMode()
       if (!outcome.ok) throw new Error(failureMessage(outcome.reason))
     },
+  },
+  share: {
+    enabled: async () => (await getArticleChoiceSharing()) === true,
+    adapter: () => resolveSiteAdapter(window.location, siteOrigins),
+    send: articleChoice =>
+      sendToBackground({ type: 'submitArticleChoice', articleChoice }),
   },
 })
 

@@ -1,5 +1,6 @@
 import { config } from '@/config/env'
 import AiWordFallbackSetting from '@/components/AiWordFallbackSetting'
+import ArticleChoiceSharingSetting from '@/components/ArticleChoiceSharingSetting'
 import '@/index.css'
 import { initSentry } from '@/lib/sentry'
 import { useWordHighlightEnabled } from '@/hooks/useWordHighlightEnabled'
@@ -63,6 +64,14 @@ function OptionsContent() {
             AI Word Lookup
           </h2>
           <AiWordFallbackSetting />
+        </div>
+
+        {/* Article choice sharing (ADR-073), asked by the popup first */}
+        <div className="bg-background rounded-lg shadow-lg p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4 text-foreground">
+            Article Detection
+          </h2>
+          <ArticleChoiceSharingSetting />
         </div>
       </div>
     </div>
