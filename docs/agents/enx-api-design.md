@@ -17,10 +17,13 @@ enx-api/
 ├── reader/, savedpage/, wordlist/, …   # Plain CRUD: handler, storage and rules in one package
 ├── server/           # Composition root: wires dependencies, mounts each domain's routes
 ├── middleware/, config/, metrics/      # Cross-cutting edges
-└── utils/            # Shared infrastructure; becoming platform/ (logger, password, sqlitex)
+├── schema/           # All gorm table models, the AutoMigrate list and startup migrations (now in utils/sqlitex)
+└── utils/            # Shared infrastructure, imports no domain package; becoming platform/ (logger, password, sqlitex connection)
 ```
 
 `handlers/`, `repo/` and `enx/` are legacy being emptied. Move code out of them; never add to them.
+
+Exception to "no gorm in the core": `billing/credit` and `billing/trial.go` keep their gorm transactions (ADR-078 Decision 9, for the ADR-009 atomic ledger). Don't "fix" them as part of a move.
 
 **Rules:**
 - **Handlers** (`<domain>/httpapi`) should only handle HTTP concerns (request/response, validation)

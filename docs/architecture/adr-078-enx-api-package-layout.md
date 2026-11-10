@@ -14,7 +14,7 @@ enx-api 根目录下现在有 42 个目录，其中 33 个是 Go 包（另有 `c
   - `repo/`：25 个非测试文件，装着几乎所有领域的 SQL。它 import 24 个领域包（`account`、`adminuser`、`referral`、`userstats`、`creditledger`、`reader/saving` 和 18 个 `billing/*` 子包），返回领域类型——依赖方向是对的，只是所有领域的适配器挤在同一个包里。AGENTS.md 规定「SQL lives in `repo/`」，与 `account/adapters` 等子包的做法形成两套规则。
   - `enx/`：名字不是领域概念。里面是 `Dictionary`（只有 `ecdict` 用）、`Word` / `AIFallback`（查词，active-record 风格直接读写全局 DB）、`User` / `GetOrCreateClerkUser` / `SetNewUserHook`（本地用户身份）、`TextWords`（段落取词状态）。还有一个提交进 git 的 0 字节 `enx/enx.db`。
   - `utils/`：`logger`、`password`、`sqlitex`。`sqlitex` 除了 DB 连接，还放着全部 gorm 表模型（`billing_models.go`、`referral_models.go` 等）、集中的 `AutoMigrate` 列表和跨表的启动迁移（`users_rebuild.go` 559 行、`billing_cutover.go`、`deletion_gates.go`），并为清理缓存音标 import 了 `ecdict`。
-- **有核心的领域包里也混着框架代码**：gin 出现在 `billing/` 顶层的 `handler.go`、`admin.go`、`conflict_admin.go`、`portal_session.go`、`receipt.go`、`support.go`、`webhook_event_admin.go`，`dictionary/lookup.go`（`RespondUnavailable`、`RespondQuotaExceededWithSubscriptions` 两个响应函数），`feedback/handler.go`；gorm 出现在 `billing/trial.go` 和 `billing/credit` 的 8 个文件。非测试代码里直接 import `sqlitex` 的领域核心是 `billing` 和 `billing/credit`。
+- **有核心的领域包里也混着框架代码**：gin 出现在 `billing/` 顶层的 `handler.go`、`admin.go`、`conflict_admin.go`、`portal_session.go`、`receipt.go`、`support.go`、`webhook_event_admin.go`，`dictionary/lookup.go`（`RespondUnavailable`、`RespondQuotaExceededWithSubscriptions` 两个响应函数），`feedback/handler.go`；gorm 出现在 `billing/trial.go` 和 `billing/credit` 的 8 个文件。非测试代码里直接 import `sqlitex` 的领域核心是 `billing`（只有 `billing/handler.go` 一个文件，第 4 阶段随 handler 进 `billing/httpapi` 后自然消失）和 `billing/credit`（第 9 条的例外）。
 
 后果是：新代码该放哪里要看「这个领域当初是谁写的」；读一个领域要在 `handlers/`、`repo/`、`enx/`、`utils/sqlitex/` 和领域包之间来回跳；`server/router.go` 463 行，一个领域有哪些接口要在这里翻；根目录同一层既有领域，也有技术层，还有一次性脚手架（`dictsample`）和只服务一个调用方的小工具包（`urlnorm`）。
 
@@ -39,7 +39,7 @@ enx-api 根目录下现在有 42 个目录，其中 33 个是 Go 包（另有 `c
    | `handlers/word_lookup.go`、`known_word.go`、`review_words.go`、`admin_dictionary.go`；`dictionary/lookup.go` 里的两个 `Respond*` 函数；整个 `paragraph` 包 | `dictionary/httpapi` |
    | `billing/` 顶层的 7 个 gin 文件（见背景） | `billing/httpapi` |
    | `feedback/handler.go` | `feedback/httpapi` |
-   | `handlers/credit_history.go` | 随 `creditledger` 进 `billing/creditledger`（见第 7 条） |
+   | `handlers/credit_history.go` | `billing/httpapi`（`billing/creditledger` 是核心，只有 `ledger.go`，不放 handler） |
    | `handlers/ping.go`、`handlers/version.go` | `server/`（属于进程而不是领域） |
 
    `paragraph` 包只有一个 handler，包着 `TextWords`（见第 5 条），并入后删除。
@@ -64,7 +64,7 @@ enx-api 根目录下现在有 42 个目录，其中 33 个是 Go 包（另有 `c
 7. **小包合并：**
    - `urlnorm` → 并入 `savedpage`（唯一调用方；ADR-032 当初为与 `pagereport` 共享而抽出，`pagereport` 后来并入 `feedback`，`feedback` 用自己的 `url.go`）。
    - `creditledger` → `billing/creditledger`（ADR-063 的额度流水，属于计费）。
-   - `dictsample` → 保留在顶层，不搬不删（owner 确认，2026-11-11）。ADR-030 的测量仍在用；它设计上就是将来整包删除的，到时连同 `scripts/dictsample-report.sh` 一起删除，那是 ADR-030 的事。
+   - `dictsample` → 保留在顶层，不搬不删（owner 确认，2026-11-11）。ADR-030 Decision 0 的埋点已经写好，但从未开启：`config.toml` 默认 `sampling = false`，homelab 和生产都没有设 `ECDICT_SAMPLING`，线上没有 `DICTSAMPLE` 日志。开不开、何时连同 `scripts/dictsample-report.sh` 一起删除，由 ADR-030 决定。
 
 8. **以下包看似重叠，保持分开：**
    - `ailimit`（AI 花费上限，ADR-045/048）和 `ratelimit`（全站请求限流，ADR-060）。
@@ -102,7 +102,7 @@ enx-api 根目录下现在有 42 个目录，其中 33 个是 Go 包（另有 `c
   - 第 3 阶段改名为 `platform/` 时，同时开「`platform/**` 不得 import 领域包」。
   - 写法照 `.golangci.yml` 里已有的 `koanf-only-in-config`。
 - **测试：** 只移动文件、改 import 和 package 声明的阶段，由编译器和现有测试保证，不补特征测试。代码形状有变化的地方要先补测试、看它在旧代码上绿、搬完仍绿：`Word` 从 active-record 改成注入的适配器（第 5 阶段），`sqlitex` 拆出 `schema/`（第 3 阶段），各 `httpapi` 的 `Register` 替换 `server/router.go` 里的路由（第 4 阶段，用现有的 `server` 集成测试覆盖路由表）。
-- **搬迁 PR 的纪律：** 只移动文件、改 import 和 package 声明，不夹带任何其他修改，保证 `git log --follow` 能跟上；开 PR 前确认 `ready-for-agent` 队列里没有碰同一个领域的 issue；当天开、当天合，避免和无人值守 agent 的改动反复 rebase。
+- **搬迁 PR 的纪律：** 只移动文件，改 import、package 声明和测试里读 fixture 的相对路径（如 `repo/subscription_conflicts_test.go` 的 `../testdata/...`、`utils/sqlitex/billing_schema_check_test.go` 的 `../../testdata/...`，搬家后层级会变），不夹带任何其他修改，保证 `git log --follow` 能跟上；开 PR 前确认 `ready-for-agent` 队列里没有碰同一个领域的 issue；当天开、当天合，避免和无人值守 agent 的改动反复 rebase。
 
 ### 实施分阶段（接受后转为 GitHub issue 的任务列表）
 
