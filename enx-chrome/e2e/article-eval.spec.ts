@@ -278,6 +278,36 @@ test.describe('a probe that never returns', () => {
     }
   })
 
+  test('a page whose ready selector never appears is still probed and measured', async ({
+    browser,
+  }) => {
+    const neverAppears = `${probeScript}
+;(() => {
+  const real = window.${PROBE_GLOBAL}
+  window.${PROBE_GLOBAL} = {
+    readySelector: () => '#never-appears',
+    probe: () => real.probe(),
+  }
+})()`
+    const context = await browser.newContext()
+    try {
+      const started = Date.now()
+      const report = await evaluatePage(
+        await context.newPage(),
+        {
+          url: `${FIXTURE_ORIGIN}/article-eval-article.html`,
+          category: 'docs',
+        },
+        { probeScript: neverAppears, settleMs: 0, timeoutMs: BUDGET_MS }
+      )
+      expect(Date.now() - started).toBeLessThan(BUDGET_MS * 5)
+      expect(report.verdict).not.toBe('load failed')
+      expect(report.error).toBeUndefined()
+    } finally {
+      await closeWithin(() => context.close(), BUDGET_MS)
+    }
+  })
+
   test('a snapshot is unmeasured and keeps its page type once the probe outruns its budget', async ({
     browser,
   }) => {
