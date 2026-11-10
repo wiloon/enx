@@ -3,6 +3,12 @@ import {
   createArticlePickSession,
 } from '@/lib/articleChoice'
 import {
+  articleChoiceReport,
+  type ArticleChoiceReport,
+} from '@/lib/articleChoiceShare'
+import { lookupAreaOptions, type SiteAdapter } from '@/lib/siteAdapters'
+import { WordProcessor } from '@/lib/wordProcessor'
+import {
   articleSelector,
   isPickable,
   startArticlePicker,
@@ -42,6 +48,13 @@ export function createPageArticleChoice(deps: {
   storage: Pick<chrome.storage.StorageArea, 'get' | 'set' | 'remove'>
   available: () => boolean
   mode: { isOn: () => boolean; stop: () => void; enable: () => Promise<void> }
+  share: {
+    enabled: () => Promise<boolean>
+    adapter: () => SiteAdapter
+    send: (
+      report: ArticleChoiceReport
+    ) => Promise<{ success?: boolean } | undefined>
+  }
 }) {
   const choice = localArticleChoice(deps.document, deps.storage)
   let error: string | undefined
@@ -49,9 +62,26 @@ export function createPageArticleChoice(deps: {
     error =
       "Couldn't read your saved article choice. Using automatic detection."
   })
+  // Detection runs at confirmation, before learning mode touches the page.
+  // A failed send is dropped: the choice is applied either way.
+  const share = async () => {
+    const adapter = deps.share.adapter()
+    const report = articleChoiceReport({
+      url: deps.document.location.href,
+      adapter: adapter.name,
+      selector: choice.selector(),
+      detected: WordProcessor.findLookupArea(lookupAreaOptions(adapter)),
+    })
+    if (!report || !(await deps.share.enabled())) return
+    const response = await deps.share.send(report)
+    if (!response?.success) throw new Error('refused')
+  }
   const session = createArticlePickSession({
     mode: deps.mode,
-    confirm: choice.confirm,
+    confirm: async (node: Element) => {
+      await choice.confirm(node)
+      share().catch(() => console.warn('[ENX] article choice was not shared'))
+    },
     useAutomatic: choice.useAutomatic,
   })
   let stopPicker: (() => void) | null = null

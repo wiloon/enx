@@ -1,5 +1,6 @@
 // Core data types for ENX extension
 
+import type { ArticleChoiceReport } from '@/lib/articleChoiceShare'
 import type { FeedbackSubmission } from '@/lib/feedback'
 import type { LearningModeStatus } from '@/lib/learningModeStatus'
 
@@ -73,6 +74,7 @@ export interface ContentMessage {
     | 'reportReadingProgress'
     | 'submitPageReport'
     | 'submitFeedback'
+    | 'submitArticleChoice'
     | 'savePage'
     | 'removeSavedPage'
     | 'shouldAutoEnable'
@@ -119,6 +121,9 @@ export interface ContentMessage {
   // Set on 'submitFeedback' (ADR-076): the user's written feedback. `url` is
   // the cleaned URL as the user left it, possibly ''.
   feedback?: FeedbackSubmission
+  // Set on 'submitArticleChoice' (ADR-073): a confirmed choice the user agreed
+  // to share. `url` is already cleaned; enx-api sanitizes it again.
+  articleChoice?: ArticleChoiceReport
   // Set on 'savePage' (ADR-032): the page the user chose to save (收藏).
   // The URL is sent as the browser has it; enx-api normalizes it (drops the
   // fragment, credentials and tracking parameters) and returns what it stored.

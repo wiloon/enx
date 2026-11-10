@@ -2,10 +2,31 @@ import type { Page, BrowserContext } from '@playwright/test'
 import { loginAvailable, LOGIN_SKIP_REASON } from './auth'
 import { expect, test } from './fixtures'
 import {
+  feedbackPosts,
   getHighlightedWords,
   mockBackendFetch,
   wordLookupPosts,
 } from './helpers'
+
+const SHARING_KEY = 'enx-article-choice-sharing'
+
+// null leaves the question unanswered, as on a fresh install.
+async function setSharing(context: BrowserContext, value: boolean | null) {
+  await context.serviceWorkers()[0].evaluate(
+    async ({ key, value }) => {
+      if (value === null) await chrome.storage.local.remove(key)
+      else await chrome.storage.local.set({ [key]: value })
+    },
+    { key: SHARING_KEY, value }
+  )
+}
+
+async function sharing(context: BrowserContext) {
+  return context.serviceWorkers()[0].evaluate(
+    async key => (await chrome.storage.local.get(key))[key],
+    SHARING_KEY
+  )
+}
 
 async function action(context: BrowserContext, page: Page, action: string) {
   const worker = context.serviceWorkers()[0]
@@ -65,7 +86,68 @@ test.describe('User-picked article', () => {
         ['fox', 1],
       ],
     })
+    // Scenarios that do not exercise consent start with it answered.
+    await setSharing(context, false)
     await page.goto('/article-pick.html')
+  })
+
+  test('the first pick asks before the picker starts, and with sharing off nothing leaves the extension', async ({
+    context,
+    page,
+    extensionId,
+  }) => {
+    await setSharing(context, null)
+    const popup = await context.newPage()
+    await page.bringToFront()
+    await popup.goto(`chrome-extension://${extensionId}/popup.html`)
+    await popup.getByRole('button', { name: 'Choose article' }).click()
+    await expect(
+      popup.getByRole('region', { name: 'Share article choices?' })
+    ).toBeVisible()
+    await expect(page.locator('#enx-article-picker')).toHaveCount(0)
+
+    await popup.getByRole('button', { name: "Don't share" }).click()
+    await expect(page.locator('#enx-article-picker')).toBeAttached()
+    expect(await sharing(context)).toBe(false)
+    await page.bringToFront()
+    await page.locator('#picked').hover({ position: { x: 8, y: 8 } })
+    await page.mouse.down()
+    await page.mouse.up()
+    await expect
+      .poll(() => action(context, page, 'getLearningModeStatus'))
+      .toMatchObject({ status: { status: 'ready' } })
+    expect(await action(context, page, 'getArticleChoice')).toMatchObject({
+      choice: { source: 'your-choice', saved: true },
+    })
+    expect(await feedbackPosts(context)).toEqual([])
+  })
+
+  test('with sharing on, one confirmed choice sends one article_choice request with the cleaned URL and no page text', async ({
+    context,
+    page,
+  }) => {
+    await setSharing(context, true)
+    await page.goto('/article-pick.html?utm_source=mail#top')
+    await pick(context, page, '#picked')
+    await page.mouse.down()
+    await page.mouse.up()
+    await expect
+      .poll(() => action(context, page, 'getLearningModeStatus'))
+      .toMatchObject({ status: { status: 'ready' } })
+    await expect.poll(() => feedbackPosts(context)).toHaveLength(1)
+
+    expect(await feedbackPosts(context)).toEqual([
+      {
+        kind: 'article_choice',
+        url: new URL('/article-pick.html', page.url()).href,
+        context: { adapter: 'default', extVersion: expect.any(String) },
+        details: {
+          selector: '[id="picked"]',
+          autoSource: 'article',
+          autoSelector: 'article',
+        },
+      },
+    ])
   })
 
   test('choose from the popup, look up a word, retain across reload, and fall back on a page without the selector', async ({

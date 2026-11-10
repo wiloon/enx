@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 import { config } from '@/config/env'
 import {
+  getArticleChoiceSharing,
+  setArticleChoiceSharing,
+} from '@/config/preferences'
+import {
   getArticleChoiceOnTab,
   sendPageActionOnTab,
   type PageActionResponse,
@@ -30,6 +34,7 @@ export default function ArticleChoiceControl({
   const [state, setState] = useState<PageActionResponse>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
+  const [asking, setAsking] = useState(false)
   useEffect(() => {
     let cancelled = false
     void (async () => {
@@ -75,11 +80,20 @@ export default function ArticleChoiceControl({
       setBusy(false)
     }
   }
-  const choose = async () => {
+  // ADR-073: the first pick asks whether to share; an unanswered popup that
+  // closes leaves nothing stored, so the next pick asks again.
+  const choose = async (answer?: boolean) => {
     if (!tab) return
     setBusy(true)
     setError(undefined)
     try {
+      if (answer !== undefined) {
+        await setArticleChoiceSharing(answer)
+        setAsking(false)
+      } else if ((await getArticleChoiceSharing()) === null) {
+        setAsking(true)
+        return
+      }
       const response = await sendPageActionOnTab(tab.id, 'chooseArticle')
       if (!response.success) throw new Error(response.error)
       window.close()
@@ -125,6 +139,44 @@ export default function ArticleChoiceControl({
       >
         Choose article
       </button>
+      {asking && (
+        <section
+          aria-labelledby="article-choice-sharing-title"
+          className="space-y-2 rounded-lg bg-muted px-3 py-2.5"
+        >
+          <p
+            id="article-choice-sharing-title"
+            className="text-xs font-medium text-foreground"
+          >
+            Share article choices?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Sharing helps improve automatic detection. Each choice you confirm
+            sends the cleaned page address, the article&apos;s selector, what
+            automatic detection found and the extension version, linked to
+            your account. Never the page&apos;s text or title. You can change
+            this in Options.
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className={actionClass}
+              disabled={busy}
+              onClick={() => void choose(true)}
+            >
+              Share
+            </button>
+            <button
+              type="button"
+              className={actionClass}
+              disabled={busy}
+              onClick={() => void choose(false)}
+            >
+              Don&apos;t share
+            </button>
+          </div>
+        </section>
+      )}
       {(manual || state.choice?.saved) && (
         <button
           type="button"

@@ -501,6 +501,17 @@ export async function mockBackendFetch(
           )
         }
 
+        if (url.endsWith('/api/feedback') && init?.method === 'POST') {
+          const posts = ((
+            self as unknown as Record<string, unknown>
+          ).__enxFeedbackPosts ??= []) as unknown[]
+          posts.push(JSON.parse(String(init.body ?? '{}')))
+          return new Response(
+            JSON.stringify({ success: true, recorded: true }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          )
+        }
+
         if (/\/api\/me\/words\/[^/]+\/known$/.test(url)) {
           return new Response(JSON.stringify({ ...wordData, Known: true }), {
             status: 200,
@@ -595,6 +606,21 @@ export async function wordLookupPosts(
   return sw.evaluate(
     () =>
       ((self as unknown as Record<string, unknown>).__enxWordLookupPosts ??
+        []) as unknown[]
+  )
+}
+
+/**
+ * The bodies of the POST /api/feedback requests the service worker sent
+ * under mockBackendFetch, in order.
+ */
+export async function feedbackPosts(
+  context: BrowserContext
+): Promise<unknown[]> {
+  const [sw] = context.serviceWorkers()
+  return sw.evaluate(
+    () =>
+      ((self as unknown as Record<string, unknown>).__enxFeedbackPosts ??
         []) as unknown[]
   )
 }
