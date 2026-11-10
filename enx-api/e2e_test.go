@@ -208,6 +208,8 @@ func TestE2E_FeedbackRoutes(t *testing.T) {
 	for _, req := range []struct{ method, path string }{
 		{http.MethodGet, "/api/admin/feedback"},
 		{http.MethodPatch, "/api/admin/feedback/x"},
+		{http.MethodGet, "/api/admin/feedback/article-choices"},
+		{http.MethodPost, "/api/admin/feedback/article-choices/resolve"},
 	} {
 		if status, _ := call(t, ts, req.method, req.path, user, `{"status":"resolved"}`); status != http.StatusForbidden {
 			t.Errorf("%s %s as a user: status %d, want 403", req.method, req.path, status)
@@ -229,6 +231,10 @@ func TestE2E_FeedbackRoutes(t *testing.T) {
 	}
 	if status, body := call(t, ts, http.MethodPatch, "/api/admin/feedback/"+list.Feedback[0].ID, admin, `{"status":"resolved"}`); status != http.StatusOK {
 		t.Fatalf("resolve: %d %s", status, body)
+	}
+	if status, body := call(t, ts, http.MethodGet, "/api/admin/feedback/article-choices", admin, ""); status != http.StatusOK ||
+		body != `{"groups":[],"nextOffset":null,"success":true}` {
+		t.Fatalf("admin article choice groups: %d %s", status, body)
 	}
 
 	for _, req := range []struct{ method, path string }{

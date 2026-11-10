@@ -155,6 +155,8 @@ const dedupeWindow = 24 * time.Hour
 type Admission interface {
 	// HasPageReportSince reports whether userID reported url for reason after since.
 	HasPageReportSince(userID, url, reason string, since time.Time) (bool, error)
+	// HasArticleChoice reports whether userID already sent selector for host.
+	HasArticleChoice(userID, host, selector string) (bool, error)
 	// CountCreated counts userID's records created in [from, to).
 	CountCreated(userID string, from, to time.Time) (int64, error)
 	Insert(r Record) error
@@ -177,6 +179,12 @@ type Store interface {
 	List(ctx context.Context, q ListQuery) ([]Record, error)
 	// SetStatus sets a record's status, reporting whether the id exists.
 	SetStatus(ctx context.Context, id string, status Status) (bool, error)
+	// ArticleChoiceGroups groups the article choices matching q.Status by
+	// host + selector: most records first, then by host and selector.
+	ArticleChoiceGroups(ctx context.Context, q GroupQuery) ([]ArticleChoiceGroup, error)
+	// SetArticleChoiceGroupStatus sets the status of every record in the
+	// host + selector group, returning how many records it holds.
+	SetArticleChoiceGroupStatus(ctx context.Context, host, selector string, status Status) (int64, error)
 }
 
 // Notifier tells the admin about a newly recorded record (ADR-010 Decision 12).
@@ -198,8 +206,8 @@ func NewService(store Store, notifier Notifier, dailyLimit int, now func() time.
 }
 
 // Submit validates and stores one record for userID. recorded is false when
-// it repeats a page report already stored, which is a normal outcome, not an
-// error; text records are never deduplicated.
+// it repeats a page report or an article choice already stored, which is a
+// normal outcome, not an error; text records are never deduplicated.
 // A repeat is answered before the daily limit is checked, so it never
 // counts against it.
 func (s *Service) Submit(ctx context.Context, userID string, sub Submission) (recorded bool, err error) {
@@ -209,14 +217,15 @@ func (s *Service) Submit(ctx context.Context, userID string, sub Submission) (re
 	if !sub.Kind.known() {
 		return false, invalid("unknown kind %q", sub.Kind)
 	}
-	// Each kind is accepted once its submitter and validation exist (ADR-076):
-	// article_choice with #716.
+	// Each kind is accepted once its submitter and validation exist (ADR-076).
 	var rec Record
 	switch sub.Kind {
 	case KindPageReport:
 		rec, err = pageReportRecord(sub)
 	case KindText:
 		rec, err = textRecord(sub)
+	case KindArticleChoice:
+		rec, err = articleChoiceRecord(sub)
 	default:
 		return false, invalid("kind %q is not accepted yet", sub.Kind)
 	}
@@ -231,6 +240,12 @@ func (s *Service) Submit(ctx context.Context, userID string, sub Submission) (re
 	err = s.store.Admit(ctx, func(a Admission) error {
 		if report, ok := rec.PageReport(); ok {
 			dup, err := a.HasPageReportSince(userID, rec.URL, report.Reason, now.Add(-dedupeWindow))
+			if err != nil || dup {
+				return err
+			}
+		}
+		if choice, ok := rec.ArticleChoice(); ok {
+			dup, err := a.HasArticleChoice(userID, rec.Host, choice.Selector)
 			if err != nil || dup {
 				return err
 			}
@@ -357,14 +372,8 @@ func (s *Service) List(ctx context.Context, q ListQuery) (ListPage, error) {
 	if q.Kind != "" && !q.Kind.known() {
 		return ListPage{}, invalid("unknown kind %q", q.Kind)
 	}
-	if q.Status != "" && q.Status != StatusNew && q.Status != StatusResolved {
-		return ListPage{}, invalid("unknown status %q", q.Status)
-	}
-	if q.Limit < 1 || q.Limit > MaxListLimit {
-		return ListPage{}, invalid("limit must be 1-%d", MaxListLimit)
-	}
-	if q.Offset < 0 {
-		return ListPage{}, invalid("offset must not be negative")
+	if err := checkPaging(q.Status, q.Limit, q.Offset); err != nil {
+		return ListPage{}, err
 	}
 
 	probe := q
@@ -380,6 +389,20 @@ func (s *Service) List(ctx context.Context, q ListQuery) (ListPage, error) {
 		page.NextOffset = &next
 	}
 	return page, nil
+}
+
+// checkPaging validates an admin query's status filter and page.
+func checkPaging(status Status, limit, offset int) error {
+	if status != "" && status != StatusNew && status != StatusResolved {
+		return invalid("unknown status %q", status)
+	}
+	if limit < 1 || limit > MaxListLimit {
+		return invalid("limit must be 1-%d", MaxListLimit)
+	}
+	if offset < 0 {
+		return invalid("offset must not be negative")
+	}
+	return nil
 }
 
 // Resolve marks a record resolved; resolving it again is a no-op. The

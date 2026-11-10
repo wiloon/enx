@@ -594,6 +594,8 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 		// mark a record resolved. Not on the metered path.
 		adminDict.GET("/feedback", feedbackHandler.List)
 		adminDict.PATCH("/feedback/:id", feedbackHandler.Resolve)
+		adminDict.GET("/feedback/article-choices", feedbackHandler.ListArticleChoiceGroups)
+		adminDict.POST("/feedback/article-choices/resolve", feedbackHandler.ResolveArticleChoiceGroup)
 		// Users and billing (ADR-049 Decision 11): accounts, balances and
 		// usage counts only, never saved pages or looked-up words.
 		adminUsers := adminuser.NewHandler(adminuser.NewService(readers.admin,
