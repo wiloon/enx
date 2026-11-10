@@ -766,9 +766,11 @@ func defaults() map[string]any {
 	set("stripe.price.credits-topup-small", "enx_credits_topup_small")
 	set("stripe.price.credits-topup-medium", "enx_credits_topup_medium")
 	set("stripe.price.credits-topup-large", "enx_credits_topup_large")
-	// Credit amounts default to 0 (= "not configured"); billing/credit.Consume
-	// and GrantSubscription/GrantTopup deliberately reject 0 rather than
-	// silently under-crediting, see config.toml's [stripe.credits] comment.
+	// Credit amounts default to 0 (= "not configured"); the
+	// checkout.session.completed and invoice.paid webhook handlers treat 0
+	// or less as unconfigured and mark the event needs-attention with no
+	// grant rather than silently under-crediting, see config.toml's
+	// [stripe.credits] comment.
 	set("stripe.credits.subscription-pro", 0)
 	set("stripe.credits.subscription-pro-plus", 0)
 	set("stripe.credits.subscription-max", 0)

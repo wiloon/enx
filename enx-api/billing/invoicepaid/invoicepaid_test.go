@@ -621,14 +621,22 @@ func TestAnInvoiceAlreadyRecordedChangesNothing(t *testing.T) {
 }
 
 func TestATierWithoutConfiguredCreditsNeedsAttention(t *testing.T) {
-	store, stripe := acceptedInvoice(t, "15-invoice.paid-subscription_cycle.json", poolOf(firstPeriod), nil)
-	h := NewHandler(store, stripe, Plans{TierForPrice: plans.TierForPrice, Credits: map[string]int64{"pro-plus": 1500}}, func() time.Time { return testNow })
+	for name, credits := range map[string]map[string]int64{
+		"missing":  {"pro-plus": 1500},
+		"zero":     {"pro": 0, "pro-plus": 1500},
+		"negative": {"pro": -500, "pro-plus": 1500},
+	} {
+		t.Run(name, func(t *testing.T) {
+			store, stripe := acceptedInvoice(t, "15-invoice.paid-subscription_cycle.json", poolOf(firstPeriod), nil)
+			h := NewHandler(store, stripe, Plans{TierForPrice: plans.TierForPrice, Credits: credits}, func() time.Time { return testNow })
 
-	r := h.Handle(context.Background(), webhookevent.StoredTask{Scope: scope, APIVersion: "2026-07-29.dahlia"})
+			r := h.Handle(context.Background(), webhookevent.StoredTask{Scope: scope, APIVersion: "2026-07-29.dahlia"})
 
-	wantStep(t, r, webhookevent.Unrecoverable, ReasonTierCreditsUnset)
-	if r.Effects != nil && effects(t, r).Grant != nil {
-		t.Fatalf("grant = %+v, want none", effects(t, r).Grant)
+			wantStep(t, r, webhookevent.Unrecoverable, ReasonTierCreditsUnset)
+			if r.Effects != nil && effects(t, r).Grant != nil {
+				t.Fatalf("grant = %+v, want none", effects(t, r).Grant)
+			}
+		})
 	}
 }
 

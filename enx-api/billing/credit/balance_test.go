@@ -13,7 +13,7 @@ func TestBalanceSumsBothPools(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	seedCreditUser(t, userID)
-	mustGrantSubscription(t, userID, 3, 4)
+	seedPaidPools(t, userID, 3, 4)
 
 	got, err := Balance(ctx, userID)
 	if err != nil {
@@ -28,7 +28,7 @@ func TestBalanceCanBeNegative(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	seedCreditUser(t, userID)
-	mustGrantSubscription(t, userID, 1, 1)
+	seedPaidPools(t, userID, 1, 1)
 	if err := Settle(ctx, userID, "rephrase_to_english", 5); err != nil {
 		t.Fatalf("Settle: %v", err)
 	}

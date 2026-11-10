@@ -213,6 +213,23 @@ func TestTopUpOfATierWithoutCreditsNeedsAttention(t *testing.T) {
 	}
 }
 
+func TestTopUpOfATierWithNonPositiveCreditsNeedsAttention(t *testing.T) {
+	for name, credits := range map[string]int64{"zero": 0, "negative": -300} {
+		t.Run(name, func(t *testing.T) {
+			r := NewHandler(storeWith(t, topUpSession()), map[string]int64{"small": credits}).Handle(context.Background(), webhookevent.StoredTask{
+				Scope:      scope,
+				APIVersion: "2026-08-26.dahlia",
+				Task:       webhookevent.Task{Type: "checkout.session.completed"},
+			})
+
+			wantStep(t, r, webhookevent.Unrecoverable, ReasonTopUpCreditsUnset)
+			if r.Effects != nil {
+				t.Fatalf("effects = %#v, want none", r.Effects)
+			}
+		})
+	}
+}
+
 func TestSubscriptionCheckoutRecordsItsAssociationAndCustomerWithoutCredits(t *testing.T) {
 	r := handle(storeWith(t, subscriptionSession().with("payment_status", "unpaid")))
 

@@ -36,10 +36,6 @@ import (
 func deletionGrantWriters() map[string]func() error {
 	return map[string]func() error{
 		"admin": func() error { return credit.GrantAdmin(context.Background(), "target", 10, "test") },
-		"subscription": func() error {
-			return credit.GrantSubscription(context.Background(), "target", 10, time.Now(), "evt_sub", "pi_sub")
-		},
-		"topup": func() error { return credit.GrantTopup(context.Background(), "target", 10, "evt_topup", "pi_topup") },
 		"trial": func() error {
 			return sqlitex.DB.Transaction(func(tx *gorm.DB) error {
 				_, err := credit.GrantTrialTx(tx, "target", "h:target", 10, time.Hour)

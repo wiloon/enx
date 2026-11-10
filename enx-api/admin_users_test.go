@@ -2,14 +2,24 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"enx-api/billing/chargerefunded"
+	"enx-api/billing/checkoutcompleted"
 	"enx-api/billing/credit"
+	billingstripe "enx-api/billing/stripe"
+	"enx-api/billing/webhookdispatch"
+	"enx-api/billing/webhookevent"
+	"enx-api/referral"
 	"enx-api/repo"
 	"enx-api/utils/sqlitex"
+
+	"github.com/google/uuid"
+	"github.com/stripe/stripe-go/v86/webhook"
 )
 
 // ADR-049 Decision 11: the users page API sits behind RequireAdmin.
@@ -43,18 +53,15 @@ func TestE2E_AdminUsers_ListDetailAndLedger(t *testing.T) {
 	base, adminToken, plainToken := adminDictEnv(t)
 	userID := plainUserID(t, base, plainToken)
 	ctx := context.Background()
-	if err := credit.GrantTopup(ctx, userID, 300, "evt-topup-"+t.Name(), "pi_"+t.Name()); err != nil {
-		t.Fatalf("GrantTopup: %v", err)
-	}
+	deliver := adminUsersWebhooks(t)
+	deliver("evt_topup", "checkout.session.completed", `{"id":"cs_topup","object":"checkout.session","mode":"payment","client_reference_id":"`+userID+`","customer":null,"payment_intent":"pi_topup","payment_status":"paid","metadata":{"type":"topup","tier":"small"}}`)
 	if err := credit.Settle(ctx, userID, "translate_sentence", 40); err != nil {
 		t.Fatalf("Settle: %v", err)
 	}
 	if err := credit.GrantAdmin(ctx, userID, 25, "support comp"); err != nil {
 		t.Fatalf("GrantAdmin: %v", err)
 	}
-	if _, err := credit.Clawback(ctx, "pi_"+t.Name(), 150, 499, "evt-refund-"+t.Name(), ""); err != nil {
-		t.Fatalf("Clawback: %v", err)
-	}
+	deliver("evt_refund", "charge.refunded", `{"id":"ch_topup","object":"charge","payment_intent":"pi_topup","amount_refunded":150,"amount_captured":499}`)
 	today := time.Now().UTC()
 	for _, at := range []time.Time{today, today, today.AddDate(0, 0, -2), today.AddDate(0, 0, -40)} {
 		if err := repo.AddLookupEvent(ctx, sqlitex.LookupEvent{UserID: userID, At: at.UnixMilli(), Outcome: "allowed"}); err != nil {
@@ -128,6 +135,51 @@ func TestE2E_AdminUsers_ListDetailAndLedger(t *testing.T) {
 	if got, want := strings.Join(types, " "), "CLAWBACK/refund GRANT_ADMIN/admin SETTLE/ai GRANT_TOPUP/stripe"; got != want {
 		t.Fatalf("ledger = %q, want %q", got, want)
 	}
+}
+
+// adminUsersWebhooks returns a function that delivers one signed Stripe
+// event to the production receiver and has a worker decide it with the
+// production checkout and refund handlers: a 300-credit "small" top-up.
+func adminUsersWebhooks(t *testing.T) func(eventID, eventType, object string) {
+	t.Helper()
+	ctx := context.Background()
+	endpoint := webhookevent.Endpoint{AccountID: "acct_test"}
+	receiver := webhookevent.NewReceiver(func(p []byte, sig string) error { return billingstripe.VerifyWebhook(p, sig, "whsec_test") },
+		func() webhookevent.Endpoint { return endpoint }, repo.WebhookReceipts{}, time.Now, uuid.NewString)
+	handlers := adminUsersWebhookHandlers{
+		webhookevent.KindCheckout: checkoutcompleted.NewHandler(repo.CheckoutCompleted{Endpoint: endpoint}, map[string]int64{"small": 300}),
+		webhookevent.KindRefund:   chargerefunded.NewHandler(repo.ChargeRefunds{}, adminUsersNoStripe{}),
+	}
+	store := repo.NewWebhookEvents(repo.WebhookEffects{Now: time.Now, Referral: referral.FixedPolicy{}}.Apply)
+	worker := webhookevent.NewWorker(store, handlers, webhookevent.WorkerSettings{Timeout: time.Second, Lease: time.Minute, BackoffMin: time.Second, BackoffMax: time.Minute, DependencyWaitDeadline: time.Hour}, time.Now, uuid.NewString)
+	return func(eventID, eventType, object string) {
+		t.Helper()
+		payload := []byte(`{"id":"` + eventID + `","object":"event","type":"` + eventType + `","created":1790000000,"api_version":"2026-08-26.dahlia","livemode":false,"data":{"object":` + object + `}}`)
+		signed := webhook.GenerateTestSignedPayload(&webhook.UnsignedPayload{Payload: payload, Secret: "whsec_test"})
+		if outcome := receiver.Receive(ctx, signed.Payload, signed.Header); !outcome.Accepted {
+			t.Fatalf("receipt of %s: %+v", eventID, outcome)
+		}
+		if report, err := worker.Pass(ctx); err != nil || report.Processed != 1 {
+			t.Fatalf("processing %s: %+v %v, want it processed", eventID, report, err)
+		}
+	}
+}
+
+type adminUsersWebhookHandlers map[webhookevent.Kind]webhookdispatch.KindHandler
+
+func (h adminUsersWebhookHandlers) Handle(ctx context.Context, kind webhookevent.Kind, task webhookevent.StoredTask) webhookevent.Result {
+	return h[kind].Handle(ctx, task)
+}
+
+// adminUsersNoStripe fails every call: refunding a top-up needs no Stripe.
+type adminUsersNoStripe struct{}
+
+func (adminUsersNoStripe) SubscriptionStatus(context.Context, string) (string, error) {
+	return "", errors.New("unexpected Stripe subscription lookup")
+}
+
+func (adminUsersNoStripe) CancelSubscriptionNow(context.Context, string) error {
+	return errors.New("unexpected Stripe cancellation")
 }
 
 func TestE2E_AdminUsers_SortAndFilter(t *testing.T) {
