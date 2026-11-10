@@ -64,7 +64,7 @@ enx-api 根目录下现在有 42 个目录，其中 33 个是 Go 包（另有 `c
 7. **小包合并：**
    - `urlnorm` → 并入 `savedpage`（唯一调用方；ADR-032 当初为与 `pagereport` 共享而抽出，`pagereport` 后来并入 `feedback`，`feedback` 用自己的 `url.go`）。
    - `creditledger` → `billing/creditledger`（ADR-063 的额度流水，属于计费）。
-   - `dictsample` → 不搬。ADR-030 说它「设计上就是用完整包删除的」；测量结束后连同 `scripts/dictsample-report.sh` 一起删除。是否已经结束由 owner 确认。
+   - `dictsample` → 保留在顶层，不搬不删（owner 确认，2026-11-11）。ADR-030 的测量仍在用；它设计上就是将来整包删除的，到时连同 `scripts/dictsample-report.sh` 一起删除，那是 ADR-030 的事。
 
 8. **以下包看似重叠，保持分开：**
    - `ailimit`（AI 花费上限，ADR-045/048）和 `ratelimit`（全站请求限流，ADR-060）。
@@ -77,9 +77,10 @@ enx-api 根目录下现在有 42 个目录，其中 33 个是 Go 包（另有 `c
     - `build/` 不动：`deploy-prod.yml` 和 homelab Tekton（仓库外）引用了 `enx-api/build/*.sh`、`build.conf`。
     - `migrations/`、根目录 `testdata/`（被 `billing/app`、`repo`、`utils/sqlitex` 三个包的测试共用）不动。
     - `examples/`（1 个 JSON）、`test/`（4 个 `.http` 手工请求文件，名字容易误认为是测试代码）、根目录的 `TESTING.md`、`TASKFILE_README.md`、`VERSION_API.md`、`enx.puml` 移入 `enx-api/docs/`，同时修好引用它们的链接。
-    - `deploy/`（Jenkins 脚本、systemd unit）：仓库内没有任何地方引用，homelab 和 prod 都已改用 GitHub Actions 部署。由 owner 确认是否已废弃，废弃就删除。
+    - `deploy/`（Jenkins 脚本、systemd unit）删除：仓库内没有任何地方引用，homelab 和 prod 都已改用 GitHub Actions 部署，owner 确认已废弃（2026-11-11）。
+    - `scripts/` 不动：`dictsample-report.sh` 随 `dictsample` 保留。
 
-11. **不引入 `internal/`。** enx-api 是一个应用，不是被别人 import 的库，`internal/` 唯一的好处（禁止外部 import）在这里用不上，代价却是改动全部 import 路径。完成本 ADR 后，顶层 Go 包从 33 个降到 26 个左右（删除 `handlers`、`repo`、`enx`、`paragraph`、`urlnorm`、`creditledger`、`clerktest`、`utils`，`dictsample` 视情况删除；新增 `platform`、`schema`），非代码目录从 8 个降到 4–6 个。
+11. **不引入 `internal/`。** enx-api 是一个应用，不是被别人 import 的库，`internal/` 唯一的好处（禁止外部 import）在这里用不上，代价却是改动全部 import 路径。完成本 ADR 后，顶层 Go 包从 33 个降到 27 个（删除 `handlers`、`repo`、`enx`、`paragraph`、`urlnorm`、`creditledger`、`clerktest`、`utils`；新增 `platform`、`schema`），非代码目录从 8 个降到 5 个（删除 `deploy`、`examples`、`test`）。
 
 ## Considered Options
 
@@ -107,7 +108,7 @@ enx-api 根目录下现在有 42 个目录，其中 33 个是 Go 包（另有 `c
 
 按风险从低到高，每一步一个 PR，都可以单独回滚：
 
-1. **清理与护栏**：删除 `enx/enx.db`，`.gitignore` 加 `*.db`；`examples/`、`test/` 和根目录的 md 文档移入 `docs/`；确认后删除 `deploy/`；给 `account`、`referral`、`preferences`、`entitlement` 开 depguard 规则。
+1. **清理与护栏**：删除 `enx/enx.db`，`.gitignore` 加 `*.db`；删除 `deploy/`；`examples/`、`test/` 和根目录的 md 文档移入 `docs/`；给 `account`、`referral`、`preferences`、`entitlement` 开 depguard 规则。
 2. **小包合并**：`urlnorm` → `savedpage`；`creditledger` → `billing/creditledger`；`clerktest` → `platform/clerktest`。
 3. **`utils/` → `platform/`，拆出 `schema/`**：先纯改名，再把模型和迁移搬进 `schema/`；开 `platform/**` 的 depguard 规则。
 4. **HTTP 进 `httpapi`**：按第 3 条，一个领域一个 PR（`account`、`referral`、`preferences`、`dictionary` 含 `paragraph`、`feedback`、`billing`），同时把该领域的路由从 `server/router.go` 移进它的 `Register`；`ping` / `version` 进 `server/`；`handlers/` 拆空后删除。
@@ -115,8 +116,3 @@ enx-api 根目录下现在有 42 个目录，其中 33 个是 Go 包（另有 `c
 6. **拆 `repo/`**：按领域分批，`billing/adapters` 单独成一个或多个 PR。拆空后删除 `repo/`，并删掉 AGENTS.md 里「遗留」的说法。
 
 每个领域搬完，就把它加进 depguard 规则。
-
-## 待 owner 确认
-
-- `deploy/` 是否已经废弃，可以删除？
-- `dictsample`（ADR-030 的测量）是否已经结束，可以删除？
