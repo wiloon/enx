@@ -237,6 +237,11 @@ export function formatDatasetReport(rows: DatasetReport[]): string {
   }
   for (const row of rows) {
     if (!row.error) continue
+    if (!row.url) {
+      const where = [row.id, `(${row.error})`, row.pageType]
+      lines.push(`Unmeasured: ${where.filter(Boolean).join(' ')}`)
+      continue
+    }
     const where = [row.id, row.url, row.pageType].filter(Boolean).join(' ')
     lines.push(`Unmeasured: ${where} (${row.error})`)
   }

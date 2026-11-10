@@ -90,14 +90,15 @@ export function parseWcxbGroundTruth(
   } | null
   const labelText = page?.ground_truth?.main_content
   const pageType = page?._internal?.page_type?.primary
-  if (
-    !isHttpUrl(page?.url) ||
-    typeof labelText !== 'string' ||
-    typeof pageType !== 'string'
-  )
+  if (typeof labelText !== 'string' || typeof pageType !== 'string')
     throw new Error(`Invalid WCXB ground truth ${file}`)
-  return { url: page.url, labelText, pageType }
+  // A missing or non-http(s) URL is a gap in the dataset, not a broken file:
+  // the page loads with an empty URL and is reported unmeasured.
+  return { url: isHttpUrl(page?.url) ? page.url : '', labelText, pageType }
 }
+
+/** Why a page with an empty URL is unmeasured; the report words it itself. */
+const NO_URL = 'no URL'
 
 const UNMEASURED: Score = {
   coverage: null,
@@ -130,14 +131,17 @@ export async function measureDataset(
         const index = next++
         const item = items[index]
         rows[index] =
-          item.labelText.trim() === ''
+          item.url === '' || item.labelText.trim() === ''
             ? {
                 id: item.id,
                 url: item.url,
                 pageType: item.pageType,
                 ours: UNMEASURED,
                 readability: UNMEASURED,
-                error: 'empty label, nothing to score',
+                error:
+                  item.url === ''
+                    ? NO_URL
+                    : 'empty label, nothing to score',
               }
             : await evaluate(item)
         onRow(rows[index], ++done)

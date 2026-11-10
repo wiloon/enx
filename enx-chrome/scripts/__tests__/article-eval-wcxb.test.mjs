@@ -131,6 +131,24 @@ test('keeps a page whose label is empty so the report can show it as unmeasured'
   })
 })
 
+for (const [name, url] of [
+  ['an empty', ''],
+  ['a missing', undefined],
+  ['a non-HTTP', 'ftp://a.example/story'],
+]) {
+  test(`keeps a page with ${name} URL with no URL so the report lists it as unmeasured`, async () => {
+    await withCache(async cacheRoot => {
+      const { fetchFile } = fakeDataset({
+        'dev/ground-truth/0001.json': groundTruth(url, 'Label', 'article'),
+      })
+      const items = await new WcxbDataset({ cacheRoot, fetchFile }).load()
+      assert.equal(items[0].id, '0001')
+      assert.equal(items[0].url, '')
+      assert.equal(items[1].url, 'https://c.example/docs')
+    })
+  })
+}
+
 const rejected = [
   ['metadata that is not JSON', { 'metadata.json': '{"files": ' }, /JSON/],
   [
@@ -160,24 +178,6 @@ const rejected = [
     'an entry without a page type',
     { 'metadata.json': metadata({ '0001': { split: 'dev' } }) },
     /Invalid WCXB metadata entry: 0001/,
-  ],
-  [
-    'a non-HTTP URL',
-    {
-      'dev/ground-truth/0001.json': groundTruth(
-        'ftp://a.example/story',
-        'Label',
-        'article'
-      ),
-    },
-    /Invalid WCXB ground truth dev\/ground-truth\/0001\.json/,
-  ],
-  [
-    'a missing URL',
-    {
-      'dev/ground-truth/0001.json': groundTruth(undefined, 'Label', 'article'),
-    },
-    /Invalid WCXB ground truth dev\/ground-truth\/0001\.json/,
   ],
   [
     'a non-string label',

@@ -51,6 +51,27 @@ test('reports an empty label as unmeasured without evaluating the page', async (
   )
 })
 
+test('reports a page without a URL as unmeasured without evaluating it', async () => {
+  const evaluated: string[] = []
+  const rows = await measureDataset(
+    [
+      {
+        id: '4129',
+        url: '',
+        html: '<article>Story</article>',
+        labelText: 'Story',
+        pageType: 'article',
+      },
+    ],
+    async item => {
+      evaluated.push(item.id)
+      throw new Error('must not evaluate')
+    }
+  )
+  expect(evaluated).toEqual([])
+  expect(formatDatasetReport(rows)).toContain('Unmeasured: 4129 (no URL) article')
+})
+
 test('maps labelled snapshot IDs to URLs and human article text', () => {
   expect(
     parseZyteLabels({
