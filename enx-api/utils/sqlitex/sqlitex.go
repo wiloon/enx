@@ -418,6 +418,11 @@ func CheckBillingSchema(path string) error {
 	if err != nil {
 		return err
 	}
+	// A URI path must use slashes and start with one: C:\db becomes /C:/db.
+	abs = filepath.ToSlash(abs)
+	if !strings.HasPrefix(abs, "/") {
+		abs = "/" + abs
+	}
 	u := url.URL{Scheme: "file", Path: abs, RawQuery: "mode=ro"}
 	db, err := gorm.Open(sqlite.Open(u.String()), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	if err != nil {
