@@ -61,7 +61,7 @@ All three sub-projects keep the domain apart from the machinery around it:
 
 ## enx-api (Go)
 
-- **DDD layering.** Handlers do HTTP only. Business rules live in domain services and entities (`enx/`, or a domain package such as `dictionary/`). SQL lives in `repo/`. A domain service receives its repositories and data sources as interfaces through a constructor, so its unit tests run on fakes with no database. Plain CRUD stays plain. Examples: [docs/agents/enx-api-design.md](docs/agents/enx-api-design.md).
+- **DDD layering.** Handlers do HTTP only. Business rules live in domain packages such as `dictionary/`, `account/`, `billing/`. New SQL goes in the domain's `adapters/` subpackage and new HTTP code in its `httpapi/` subpackage; a plain CRUD package keeps both inside itself. `repo/`, `handlers/` and `enx/` are legacy being emptied (ADR-078): move code out of them, never add to them. A domain service receives its repositories and data sources as interfaces through a constructor, so its unit tests run on fakes with no database. Plain CRUD stays plain. Examples: [docs/agents/enx-api-design.md](docs/agents/enx-api-design.md).
 - **ECDICT is read-only.** It is a separate third-party SQLite file opened `mode=ro`. Migrations, cleanups and fixes touch only the application database; corrections to ECDICT data go into application tables (`words`, …), never into ECDICT.
 - **One word-lookup entry point:** `dictionary.Service.Resolve` (ADR-018), wired in `main`. User lookups go through it, never straight to `words` or `ecdict`.
 - **Logging:** one structured request line per request comes from `middleware.RequestLog`; read [docs/agents/logging.md](docs/agents/logging.md) before adding log lines.

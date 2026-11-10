@@ -1,40 +1,49 @@
 # enx-api design reference
 
-The rules (handlers do HTTP only, business rules in domain services, SQL in `repo/`, dependencies injected as interfaces, ECDICT read-only, one lookup entry point) are in [AGENTS.md](../../AGENTS.md) §enx-api. This file holds the worked examples behind them. Testing these layers: [testing.md](testing.md).
+The rules (handlers do HTTP only, business rules in domain services, SQL in the domain's `adapters/`, dependencies injected as interfaces, ECDICT read-only, one lookup entry point) are in [AGENTS.md](../../AGENTS.md) §enx-api. This file holds the worked examples behind them. Testing these layers: [testing.md](testing.md).
 
 ## Domain-Driven Design
 
 ### 1. Layer Separation
 
+Target layout ([ADR-078](../architecture/adr-078-enx-api-package-layout.md)):
+
 ```
 enx-api/
-├── handlers/      # HTTP handlers (presentation layer)
-├── enx/          # Domain logic and entities
-├── dictionary/, billing/, stats/, …  # Domain packages, one per domain concept
-├── repo/         # Repository pattern (data access)
-├── utils/        # Shared utilities
-└── middleware/   # Cross-cutting concerns
+├── account/, dictionary/, billing/, …  # Domain packages with a core
+│   ├── *.go          # Domain core: entities, services, rules; no gin, no gorm
+│   ├── adapters/     # SQL and external APIs implementing the core's interfaces
+│   └── httpapi/      # gin handlers plus Register(r gin.IRouter, deps)
+├── reader/, savedpage/, wordlist/, …   # Plain CRUD: handler, storage and rules in one package
+├── server/           # Composition root: wires dependencies, mounts each domain's routes
+├── middleware/, config/, metrics/      # Cross-cutting edges
+├── schema/           # All gorm table models, the AutoMigrate list and startup migrations (now in utils/sqlitex)
+└── utils/            # Shared infrastructure; becoming platform/ (logger, password, sqlitex connection), which imports no domain package
 ```
 
+`handlers/`, `repo/` and `enx/` are legacy being emptied. Move code out of them; never add to them.
+
+Exception to "no gorm in the core": `billing/credit` and `billing/trial.go` keep their gorm transactions (ADR-078 Decision 9, for the ADR-009 atomic ledger). Don't "fix" them as part of a move.
+
 **Rules:**
-- **Handlers** should only handle HTTP concerns (request/response, validation)
-- **Domain layer** (`enx/`) contains business logic and entities
-- **Repository** (`repo/`) handles all database operations
-- Never put business logic in handlers or repositories
+- **Handlers** (`<domain>/httpapi`) should only handle HTTP concerns (request/response, validation)
+- **Domain core** (`<domain>/`) contains business logic and entities
+- **Adapters** (`<domain>/adapters`) handle the domain's database and external API calls
+- Never put business logic in handlers or adapters
 
 ### 2. Repository Pattern
 
 **Purpose:** Abstract data access from business logic
 
 **Guidelines:**
-- Create repository interfaces in the domain layer
-- Implement repositories in the `repo/` package
+- Create repository interfaces in the domain core
+- Implement repositories in the domain's `adapters/` package
 - Repository methods should return domain entities, not database models
 - Use descriptive method names: `GetUserByID`, `FindActiveWords`, `SaveUserDict`
 
 **Example:**
 ```go
-// enx/user_repository.go (interface)
+// account/user_repository.go (interface)
 type UserRepository interface {
     GetByID(id string) (*User, error)
     GetByName(name string) (*User, error)
@@ -42,12 +51,12 @@ type UserRepository interface {
     Update(user *User) error
 }
 
-// repo/user_repo.go (implementation)
+// account/adapters/user_repo.go (implementation)
 type userRepository struct {
     db *gorm.DB
 }
 
-func NewUserRepository(db *gorm.DB) enx.UserRepository {
+func NewUserRepository(db *gorm.DB) account.UserRepository {
     return &userRepository{db: db}
 }
 ```
@@ -57,14 +66,14 @@ func NewUserRepository(db *gorm.DB) enx.UserRepository {
 **Purpose:** Encapsulate business logic and orchestrate operations
 
 **Guidelines:**
-- Create services in the domain layer (`enx/` package)
+- Create services in the domain core (`<domain>/` package)
 - Services coordinate between repositories and contain business rules
 - Keep services focused on a single domain concept
 - Services should be testable without database (use repository interfaces)
 
 **Example:**
 ```go
-// enx/user_service.go
+// account/user_service.go
 type UserService struct {
     repo UserRepository
 }
@@ -81,14 +90,14 @@ func (s *UserService) RegisterUser(name, email, password string) (*User, error) 
 **Purpose:** Represent core business concepts
 
 **Guidelines:**
-- Define entities in the domain layer (`enx/` package)
+- Define entities in the domain core (`<domain>/` package)
 - Entities should have behavior, not just data (methods that express domain operations)
 - Keep database concerns separate (use separate structs for DB models if needed)
 - Entities should be independent of frameworks (GORM, HTTP, etc.)
 
 **Example:**
 ```go
-// enx/user.go
+// account/user.go
 type User struct {
     ID        string
     Name      string
@@ -120,7 +129,7 @@ func (u *User) UpdateLastLogin() {
 
 **Example:**
 ```go
-// enx/email.go
+// account/email.go
 type Email struct {
     value string
 }
@@ -146,13 +155,13 @@ func (e Email) String() string {
 
 **Example:**
 ```go
-// handlers/user_handler.go
+// account/httpapi/user_handler.go
 type UserHandler struct {
-    userService *enx.UserService
+    userService *account.UserService
     logger      *zap.Logger
 }
 
-func NewUserHandler(userService *enx.UserService, logger *zap.Logger) *UserHandler {
+func NewUserHandler(userService *account.UserService, logger *zap.Logger) *UserHandler {
     return &UserHandler{
         userService: userService,
         logger:      logger,
