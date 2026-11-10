@@ -136,16 +136,31 @@ export default function ArticleChoiceControl({
           Choose article
         </button>
       </div>
-      {state.choice?.missed && (
-        <p className="text-xs text-warning-foreground">
-          Your saved choice could not be applied on this page. Using automatic
-          detection.
-        </p>
-      )}
-      {pageOnly && (
-        <p className="text-xs text-muted-foreground">
-          This choice cannot be remembered or applied to other pages. Reloading
-          restores automatic detection.
+      {/* One small-print line under the row's text, Use automatic inline
+          at its end, so a manual choice adds little height to the popup. */}
+      {(manual || state.choice?.saved || state.choice?.missed) && (
+        <p className="pl-11 text-[11px] leading-snug text-muted-foreground">
+          {state.choice?.missed && (
+            <span className="text-warning-foreground">
+              Your saved choice could not be applied on this page.{' '}
+            </span>
+          )}
+          {pageOnly && (
+            <>
+              This choice cannot be remembered. Reloading restores automatic
+              detection.{' '}
+            </>
+          )}
+          {(manual || state.choice?.saved) && (
+            <button
+              type="button"
+              className="font-medium text-brand transition hover:underline active:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand disabled:opacity-50"
+              disabled={busy}
+              onClick={() => void handleUseAutomatic()}
+            >
+              Use automatic
+            </button>
+          )}
         </p>
       )}
       {asking && (
@@ -185,16 +200,6 @@ export default function ArticleChoiceControl({
             </button>
           </div>
         </section>
-      )}
-      {(manual || state.choice?.saved) && (
-        <button
-          type="button"
-          className={actionClass}
-          disabled={busy}
-          onClick={() => void handleUseAutomatic()}
-        >
-          Use automatic
-        </button>
       )}
       {(error || state.error) && (
         <p role="alert" className="text-xs text-destructive">

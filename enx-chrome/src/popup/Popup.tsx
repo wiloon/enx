@@ -310,18 +310,6 @@ function SignedInBody({
       {/* The page's settings share one frame with a divider between rows, so
           the main page fits Chrome's 600px popup without a scrollbar. */}
       <div className="divide-y divide-border overflow-hidden rounded-xl bg-background shadow-xs ring-1 ring-border">
-        <ArticleChoiceControl
-          onModeChange={() => {
-            void chrome.tabs
-              .query({ active: true, currentWindow: true })
-              .then(async ([tab]) => {
-                if (!tab?.id) return
-                const status = await getLearningModeStatusOnTab(tab.id)
-                setLearningStatus(isLearningModeOn(status) ? 'on' : 'off')
-              })
-          }}
-        />
-
         {/* adr-039: only on pages whose site can be auto-enabled. */}
         {autoEnableSite.site && (
           <label className={settingRowClass}>
@@ -373,6 +361,19 @@ function SignedInBody({
           </span>
           <ChevronRightIcon className="h-4 w-4 text-muted-foreground" />
         </button>
+
+        {/* Last: choosing the article by hand is the least used setting. */}
+        <ArticleChoiceControl
+          onModeChange={() => {
+            void chrome.tabs
+              .query({ active: true, currentWindow: true })
+              .then(async ([tab]) => {
+                if (!tab?.id) return
+                const status = await getLearningModeStatusOnTab(tab.id)
+                setLearningStatus(isLearningModeOn(status) ? 'on' : 'off')
+              })
+          }}
+        />
       </div>
 
       {savedPage.tab && (
