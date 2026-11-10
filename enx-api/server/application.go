@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"context"
@@ -17,15 +17,15 @@ import (
 	stripeSDK "github.com/stripe/stripe-go/v86"
 )
 
-// application owns the HTTP router and the billing workers sharing its lifetime.
-type application struct {
+// Application owns the HTTP router and the billing workers sharing its lifetime.
+type Application struct {
 	router  *gin.Engine
 	billing *billingLifecycle
 }
 
-// initializeApplication is the production startup seam. Database preparation
+// Initialize is the production startup seam. Database preparation
 // precedes route construction and every billing background job.
-func initializeApplication(ctx context.Context, cfg *config.Config, m *metrics.Metrics, sc *stripeSDK.Client) (*application, error) {
+func Initialize(ctx context.Context, cfg *config.Config, m *metrics.Metrics, sc *stripeSDK.Client) (*Application, error) {
 	if err := initializeBillingDatabase(cfg.DB.Path, cfg.Log.Level); err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ func initializeApplication(ctx context.Context, cfg *config.Config, m *metrics.M
 	if err != nil {
 		return nil, err
 	}
-	a := &application{router: setupRouterWithBilling(cfg, m, sc, clerkBackend(cfg.Clerk), assembly)}
+	a := &Application{router: setupRouterWithBilling(cfg, m, sc, clerkBackend(cfg.Clerk), assembly)}
 	if assembly != nil {
 		lifecycle, err := startBillingLifecycle(ctx, assembly)
 		if err != nil {
@@ -51,16 +51,19 @@ func initializeApplication(ctx context.Context, cfg *config.Config, m *metrics.M
 	return a, nil
 }
 
-func (a *application) stopBilling(ctx context.Context) error {
+// Handler is the router that serves every HTTP route.
+func (a *Application) Handler() http.Handler { return a.router }
+
+func (a *Application) stopBilling(ctx context.Context) error {
 	if a.billing == nil {
 		return nil
 	}
 	return a.billing.stop(ctx)
 }
 
-// serve joins billing cleanup before returning, both on cancellation and on
+// Serve joins billing cleanup before returning, both on cancellation and on
 // a listener error. HTTP draining and billing share one shutdown deadline.
-func (a *application) serve(ctx context.Context, srv *http.Server) error {
+func (a *Application) Serve(ctx context.Context, srv *http.Server) error {
 	listening := make(chan error, 1)
 	go func() { listening <- srv.ListenAndServe() }()
 	var listenErr error

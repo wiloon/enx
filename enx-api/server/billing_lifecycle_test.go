@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"context"
@@ -121,10 +121,10 @@ func TestApplicationListenFailureCancelsAndJoinsBillingBeforeReturning(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := &application{billing: lifecycle}
+	a := &Application{billing: lifecycle}
 	result := make(chan error, 1)
-	server := newServer(listener.Addr().String(), http.NewServeMux(), time.Second)
-	go func() { result <- a.serve(context.Background(), server) }()
+	server := NewHTTPServer(listener.Addr().String(), http.NewServeMux(), time.Second)
+	go func() { result <- a.Serve(context.Background(), server) }()
 	select {
 	case <-worker.cancelled:
 	case <-time.After(time.Second):
@@ -157,10 +157,10 @@ func TestApplicationCancellationStopsServingAndBilling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := &application{billing: lifecycle}
+	a := &Application{billing: lifecycle}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := a.serve(ctx, newServer("127.0.0.1:0", http.NewServeMux(), time.Second)); err != nil {
+	if err := a.Serve(ctx, NewHTTPServer("127.0.0.1:0", http.NewServeMux(), time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	select {
