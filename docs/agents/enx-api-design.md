@@ -18,7 +18,7 @@ enx-api/
 ├── server/           # Composition root: wires dependencies, mounts each domain's routes
 ├── middleware/, config/, metrics/      # Cross-cutting edges
 ├── schema/           # All gorm table models, the AutoMigrate list and startup migrations (now in utils/sqlitex)
-└── utils/            # Shared infrastructure, imports no domain package; becoming platform/ (logger, password, sqlitex connection)
+└── utils/            # Shared infrastructure; becoming platform/ (logger, password, sqlitex connection), which imports no domain package
 ```
 
 `handlers/`, `repo/` and `enx/` are legacy being emptied. Move code out of them; never add to them.
