@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { gzipSync } from 'node:zlib'
 import { WcxbDataset, WCXB_COMMIT } from '../../article-eval/wcxb.ts'
+import { measureDataset } from '../../src/lib/articleEval/dataset.ts'
 
 const metadata = files => JSON.stringify({ total: 3, files })
 
@@ -131,6 +132,28 @@ test('keeps a page whose label is empty so the report can show it as unmeasured'
   })
 })
 
+for (const [name, label] of [
+  ['null', null],
+  ['missing', undefined],
+]) {
+  test(`keeps a page with a ${name} label as unmeasured`, async () => {
+    await withCache(async cacheRoot => {
+      const { fetchFile } = fakeDataset({
+        'dev/ground-truth/0001.json': groundTruth(
+          'https://a.example/story',
+          label,
+          'article'
+        ),
+      })
+      const items = await new WcxbDataset({ cacheRoot, fetchFile }).load()
+      const rows = await measureDataset(items.slice(0, 1), () => {
+        throw new Error('empty label must not be evaluated')
+      })
+      assert.equal(rows[0].error, 'empty label, nothing to score')
+    })
+  })
+}
+
 for (const [name, url] of [
   ['an empty', ''],
   ['a missing', undefined],
@@ -184,8 +207,19 @@ const rejected = [
     {
       'dev/ground-truth/0001.json': groundTruth(
         'https://a.example/story',
-        null,
+        42,
         'article'
+      ),
+    },
+    /Invalid WCXB ground truth dev\/ground-truth\/0001\.json/,
+  ],
+  [
+    'ground truth without a page type',
+    {
+      'dev/ground-truth/0001.json': groundTruth(
+        'https://a.example/story',
+        'Label',
+        undefined
       ),
     },
     /Invalid WCXB ground truth dev\/ground-truth\/0001\.json/,

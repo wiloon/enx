@@ -88,7 +88,7 @@ export function parseWcxbGroundTruth(
     ground_truth?: { main_content?: unknown } | null
     _internal?: { page_type?: { primary?: unknown } | null } | null
   } | null
-  const labelText = page?.ground_truth?.main_content
+  const labelText = page?.ground_truth?.main_content ?? ''
   const pageType = page?._internal?.page_type?.primary
   if (typeof labelText !== 'string' || typeof pageType !== 'string')
     throw new Error(`Invalid WCXB ground truth ${file}`)
