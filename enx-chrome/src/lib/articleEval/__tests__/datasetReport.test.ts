@@ -156,3 +156,48 @@ describe('formatNonArticleReport', () => {
     )
   })
 })
+
+test('sums up the verdicts of the pages layer 6 found', () => {
+  const report = formatDatasetReport([
+    {
+      id: 'one',
+      url: 'https://example.org/one',
+      source: 'article',
+      fallback: 'json-ld-readability',
+      ours: { coverage: 0.9, precision: 0.9, verdict: 'ok' },
+      readability: { coverage: 0.9, precision: 0.9, verdict: 'ok' },
+    },
+    {
+      id: 'two',
+      url: 'https://example.org/two',
+      source: 'article',
+      fallback: 'json-ld-readability',
+      ours: { coverage: 0.9, precision: 0.5, verdict: 'too broad' },
+      readability: { coverage: 0.9, precision: 0.9, verdict: 'ok' },
+    },
+    {
+      id: 'three',
+      url: 'https://example.org/three',
+      source: 'article',
+      ours: { coverage: 1, precision: 1, verdict: 'ok' },
+      readability: { coverage: 1, precision: 1, verdict: 'ok' },
+    },
+  ])
+  expect(report).toContain(
+    'Layer 6: 2 pages; ok 1, misses text 0, too broad 1'
+  )
+})
+
+test('says nothing about layer 6 when no page used it', () => {
+  expect(
+    formatDatasetReport([
+      {
+        id: 'one',
+        url: 'https://example.org/one',
+        source: 'article',
+        ours: { coverage: 1, precision: 1, verdict: 'ok' },
+        readability: { coverage: 1, precision: 1, verdict: 'ok' },
+      },
+    ])
+  ).not.toContain('Layer 6')
+})

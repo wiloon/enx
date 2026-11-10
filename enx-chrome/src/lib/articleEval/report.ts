@@ -241,6 +241,15 @@ export function formatDatasetReport(rows: DatasetReport[]): string {
       )
     )
   }
+  const layer6 = rows.filter(row => row.fallback !== undefined)
+  if (layer6.length > 0) {
+    const count = (verdict: Verdict) =>
+      layer6.filter(row => row.ours.verdict === verdict).length
+    lines.push(
+      `Layer 6: ${layer6.length} pages; ok ${count('ok')}, ` +
+        `misses text ${count('misses text')}, too broad ${count('too broad')}`
+    )
+  }
   lines.push(...rows.filter(row => row.error).map(unmeasuredLine))
   return lines.join('\n')
 }
