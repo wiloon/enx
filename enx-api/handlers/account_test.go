@@ -218,6 +218,55 @@ func TestDeleteMeDuringAnotherDeletionAsksTheClientToRetry(t *testing.T) {
 	}
 }
 
+// optionsCoordinator remembers the options a deletion was started with.
+type optionsCoordinator struct {
+	busyCoordinator
+	got *account.DeleteOptions
+}
+
+func (o optionsCoordinator) Acquire(_ context.Context, _ account.User, opts account.DeleteOptions, _ time.Time) (account.DeletionAttempt, error) {
+	*o.got = opts
+	return account.DeletionAttempt{}, account.ErrDeletionInProgress
+}
+
+func TestAdminDeleteResetsTheTrialOnlyWhenAskedTo(t *testing.T) {
+	for query, want := range map[string]bool{"": false, "?resetTrial=true": true, "?resetTrial=1": false} {
+		var got account.DeleteOptions
+		h := newAccountHandler(accountSetup{coordinator: optionsCoordinator{got: &got}})
+		gin.SetMode(gin.TestMode)
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodDelete, "/"+query, nil)
+		c.Set("user_id", accountAdmin.ID)
+		c.Params = gin.Params{{Key: "id", Value: accountAlice.ID}}
+
+		h.Delete(c)
+
+		if got.ResetTrial != want {
+			t.Errorf("%q: ResetTrial = %v, want %v", query, got.ResetTrial, want)
+		}
+	}
+}
+
+func TestAdminAccountActionsAnswerSuccessOrNotConfigured(t *testing.T) {
+	actions := map[string]func(*AccountHandler) gin.HandlerFunc{
+		"delete":          func(h *AccountHandler) gin.HandlerFunc { return h.Delete },
+		"disable":         func(h *AccountHandler) gin.HandlerFunc { return h.Disable },
+		"enable":          func(h *AccountHandler) gin.HandlerFunc { return h.Enable },
+		"revoke sessions": func(h *AccountHandler) gin.HandlerFunc { return h.RevokeSessions },
+	}
+	for name, action := range actions {
+		t.Run(name, func(t *testing.T) {
+			if r := callAccount(t, action(newAccountHandler(accountSetup{})), accountAdmin.ID, accountAlice.ID, ""); r.status != http.StatusOK || !r.body.Success {
+				t.Errorf("with Clerk: got %d %+v, want 200 success", r.status, r.body)
+			}
+			r := callAccount(t, action(newAccountHandler(accountSetup{noClerk: true})), accountAdmin.ID, accountAlice.ID, "")
+			if r.status != http.StatusServiceUnavailable || r.body.Code != "not_configured" {
+				t.Errorf("without Clerk: got %d %+v, want 503 not_configured", r.status, r.body)
+			}
+		})
+	}
+}
+
 func TestAdminAccountActionsRefuseAProtectedAdmin(t *testing.T) {
 	h := newAccountHandler(accountSetup{})
 	for name, action := range map[string]gin.HandlerFunc{"delete": h.Delete, "disable": h.Disable} {

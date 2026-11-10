@@ -51,6 +51,55 @@ func TestAccountDeletionsReleaseLiftsTheGateAndLeavesTheAccountAndTrialGrant(t *
 	}
 }
 
+// ADR-062 Decision 3: an email keeps its one trial across a deletion unless
+// the admin's deletion resets the trial.
+func TestAccountDeletionsPrepareRecordsTheTrialGrantUnlessTheTrialIsReset(t *testing.T) {
+	earlier := sqlitex.TrialGrant{EmailHmac: "hmac_alice", UserId: "older-alice", GrantedAt: 123}
+	for _, tc := range []struct {
+		name     string
+		reset    bool
+		existing *sqlitex.TrialGrant
+		want     []sqlitex.TrialGrant
+	}{
+		{"recorded", false, nil, []sqlitex.TrialGrant{{EmailHmac: "hmac_alice", UserId: "alice"}}},
+		{"earlier record kept", false, &earlier, []sqlitex.TrialGrant{earlier}},
+		{"reset clears the record", true, &earlier, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			newAccountDB(t)
+			seedAccount(t, "alice", "alice@example.com")
+			if tc.existing != nil {
+				if err := sqlitex.DB.Create(tc.existing).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			ctx, now := context.Background(), time.Now()
+			deletions := AccountDeletions{}
+			a, err := deletions.Acquire(ctx, account.User{ID: "alice"}, account.DeleteOptions{ResetTrial: tc.reset}, now)
+			if err != nil {
+				t.Fatalf("Acquire: %v", err)
+			}
+
+			if err := deletions.Prepare(ctx, a, "hmac_alice", now); err != nil {
+				t.Fatalf("Prepare: %v", err)
+			}
+
+			var grants []sqlitex.TrialGrant
+			if err := sqlitex.DB.Find(&grants).Error; err != nil {
+				t.Fatal(err)
+			}
+			for i := range grants {
+				if tc.existing == nil {
+					grants[i].GrantedAt = 0
+				}
+			}
+			if len(grants) != len(tc.want) || (len(grants) == 1 && grants[0] != tc.want[0]) {
+				t.Fatalf("trial grants = %+v, want %+v", grants, tc.want)
+			}
+		})
+	}
+}
+
 func TestAccountDeletionsCompleteDeletesTheAccountAndKeepsADeletedGate(t *testing.T) {
 	newAccountDB(t)
 	seedAccount(t, "alice", "alice@example.com")

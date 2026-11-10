@@ -104,6 +104,40 @@ func TestClerkAuth_ExistingUserWithoutEmailClaimGetsThrough(t *testing.T) {
 	}
 }
 
+// ADR-062 Decision 5: a token minted before the Clerk ban (or after a failed
+// one) still reaches the API, which refuses the disabled account itself.
+func TestClerkAuth_DisabledUserIsRefusedWithAccountDisabled(t *testing.T) {
+	newUsersDB(t)
+	env, cfg := testClerkEnv(t)
+	if err := sqlitex.DB.Create(&sqlitex.User{Id: "u1", ClerkUserID: "user_off", Email: "off@example.com", Status: AccountDisabled}).Error; err != nil {
+		t.Fatal(err)
+	}
+	token := env.SignSessionToken(t, jwt.MapClaims{"sub": "user_off", "email": "off@example.com"})
+
+	obs := &recordedAuth{}
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	c.Request.Header.Set("Authorization", "Bearer "+token)
+	ClerkAuth(cfg, obs)(c)
+
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != http.StatusForbidden || body["success"] != false || body["code"] != "account_disabled" ||
+		body["message"] != "This account has been disabled." {
+		t.Fatalf("status %d body %+v, want 403 account_disabled", w.Code, body)
+	}
+	if !c.IsAborted() {
+		t.Fatal("request was not aborted")
+	}
+	if len(obs.outcomes) != 1 || obs.outcomes[0] != "account_disabled" {
+		t.Fatalf("outcomes %v, want [account_disabled]", obs.outcomes)
+	}
+}
+
 // The image_url claim (ADR-015 2026-10-20 note §1) lands in users.avatar_url.
 func TestClerkAuth_StoresTheImageURLClaim(t *testing.T) {
 	newUsersDB(t)
