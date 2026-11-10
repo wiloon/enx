@@ -4,12 +4,20 @@ import type { DatasetItem } from '../src/lib/articleEval/dataset.ts'
 import type { DatasetReport } from '../src/lib/articleEval/report.ts'
 import { scorePage } from '../src/lib/articleEval/score.ts'
 import { PROBE_GLOBAL } from './buildProbe.ts'
+import { PAGE_TIMEOUT_MS, withDeadline } from './deadline.ts'
 
 /** Use a fresh context with CSP enabled and serviceWorkers: 'block'. */
 export async function evaluateSnapshot(
   page: Page,
   item: DatasetItem,
-  { probeScript }: { probeScript: string }
+  {
+    probeScript,
+    timeoutMs = PAGE_TIMEOUT_MS,
+  }: {
+    probeScript: string
+    /** Budget for loading, and again for probing. */
+    timeoutMs?: number
+  }
 ): Promise<DatasetReport> {
   // Fragments stay in the page URL but are never part of an HTTP request.
   const navigationUrl = new URL(item.url)
@@ -36,15 +44,24 @@ export async function evaluateSnapshot(
     return route.abort()
   })
   try {
-    await page.goto(item.url, { waitUntil: 'load', timeout: 30_000 })
-    // DevTools evaluation executes our probe even though page scripts are disabled.
-    await page.evaluate(probeScript)
-    const observed = await page.evaluate(name => {
-      const api = (
-        window as unknown as Record<string, { probe(): Promise<ProbeResult> }>
-      )[name]
-      return api.probe()
-    }, PROBE_GLOBAL)
+    await page.goto(item.url, { waitUntil: 'load', timeout: timeoutMs })
+    const observed = await withDeadline(
+      (async () => {
+        // DevTools evaluation executes our probe even though page scripts are disabled.
+        await page.evaluate(probeScript)
+        return page.evaluate(name => {
+          const api = (
+            window as unknown as Record<
+              string,
+              { probe(): Promise<ProbeResult> }
+            >
+          )[name]
+          return api.probe()
+        }, PROBE_GLOBAL)
+      })(),
+      timeoutMs,
+      'probe'
+    )
     return {
       id: item.id,
       url: item.url,

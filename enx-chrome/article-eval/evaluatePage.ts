@@ -7,13 +7,14 @@ import type { CorpusEntry } from '../src/lib/articleEval/corpus.ts'
 import type { PageReport } from '../src/lib/articleEval/report.ts'
 import { scorePage } from '../src/lib/articleEval/score.ts'
 import { PROBE_GLOBAL } from './buildProbe.ts'
+import { PAGE_TIMEOUT_MS, TimeoutError, withDeadline } from './deadline.ts'
 
 export type CorpusPage = Pick<CorpusEntry, 'url' | 'category'>
 
 export interface EvaluateOptions {
   /** The IIFE buildProbe() returns. */
   probeScript: string
-  /** Per-page budget for loading and waiting. */
+  /** Per-page budget for loading, and again for probing after the settle wait. */
   timeoutMs?: number
   /** Wait after `load` for late-rendered content. */
   settleMs?: number
@@ -30,7 +31,11 @@ const firstLine = (error: unknown) =>
 export async function evaluatePage(
   page: Page,
   { url, category }: CorpusPage,
-  { probeScript, timeoutMs = 30_000, settleMs = 2_000 }: EvaluateOptions
+  {
+    probeScript,
+    timeoutMs = PAGE_TIMEOUT_MS,
+    settleMs = 2_000,
+  }: EvaluateOptions
 ): Promise<PageReport> {
   const loadFailed = (error: string): PageReport => ({
     url,
@@ -62,22 +67,33 @@ export async function evaluatePage(
   let probed: ProbeResult
   try {
     await page.waitForTimeout(settleMs)
-    await page.addScriptTag({ content: probeScript })
-    const ready = await page.evaluate(
-      name =>
-        (window as unknown as Record<string, ProbeApi>)[name].readySelector(),
-      PROBE_GLOBAL
-    )
-    if (ready) {
-      await page
-        .waitForSelector(ready, { timeout: timeoutMs })
-        .catch(() => undefined)
-    }
-    probed = await page.evaluate(
-      name => (window as unknown as Record<string, ProbeApi>)[name].probe(),
-      PROBE_GLOBAL
+    probed = await withDeadline(
+      (async () => {
+        await page.addScriptTag({ content: probeScript })
+        const ready = await page.evaluate(
+          name =>
+            (window as unknown as Record<string, ProbeApi>)[
+              name
+            ].readySelector(),
+          PROBE_GLOBAL
+        )
+        if (ready) {
+          // Half the budget, so a page whose selector never appears is
+          // still probed.
+          await page
+            .waitForSelector(ready, { timeout: timeoutMs / 2 })
+            .catch(() => undefined)
+        }
+        return page.evaluate(
+          name => (window as unknown as Record<string, ProbeApi>)[name].probe(),
+          PROBE_GLOBAL
+        )
+      })(),
+      timeoutMs,
+      'probe'
     )
   } catch (error) {
+    if (error instanceof TimeoutError) return loadFailed(error.message)
     // A page that navigates away or blocks the script mid-probe.
     return loadFailed(`probe failed: ${firstLine(error)}`)
   }

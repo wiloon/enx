@@ -26,6 +26,7 @@ import {
 import type { CorpusEntry } from '../src/lib/articleEval/corpus.ts'
 import { formatReport, type PageReport } from '../src/lib/articleEval/report.ts'
 import { buildProbe } from './buildProbe.ts'
+import { closeWithin, PAGE_TIMEOUT_MS } from './deadline.ts'
 import { evaluatePage } from './evaluatePage.ts'
 import { evaluateDataset } from './evaluateDataset.ts'
 import { parseArgs, selectDataset } from './options.ts'
@@ -62,16 +63,22 @@ async function main() {
         ...devices['Desktop Chrome'],
         bypassCSP: true,
       })
-      const page = await context.newPage()
-      rows[index] = await evaluatePage(page, corpus[index], { probeScript })
-      await context.close()
+      try {
+        rows[index] = await evaluatePage(
+          await context.newPage(),
+          corpus[index],
+          { probeScript }
+        )
+      } finally {
+        await closeWithin(() => context.close(), PAGE_TIMEOUT_MS)
+      }
       console.error(
         `[${rows.filter(Boolean).length}/${corpus.length}] ${rows[index].verdict}  ${corpus[index].url}`
       )
     }
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, worker))
-  await browser.close()
+  await closeWithin(() => browser.close(), PAGE_TIMEOUT_MS)
 
   const current = toBaseline(rows)
   const baseline: Baseline | null = existsSync(BASELINE)
