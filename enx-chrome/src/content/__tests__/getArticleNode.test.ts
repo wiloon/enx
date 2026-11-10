@@ -412,6 +412,40 @@ describe('WordProcessor.findLookupArea on Ars Technica', () => {
   })
 })
 
+// martinfowler.com long articles (#772): no <article>; the text sits in
+// div.paperBody.deep inside <main>, after the front matter.
+describe('WordProcessor.findLookupArea on martinfowler.com', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('returns the .paperBody node of a long article with no <article>', () => {
+    document.body.innerHTML = `
+      <header><nav>Home Refactoring Agile</nav></header>
+      <main>
+        <h1>Microservices</h1>
+        <div class="frontMatter">
+          <p class="date">25 March 2014</p>
+          <div class="author">${prose(300)}</div>
+          <div class="author">${prose(300)}</div>
+          <div class="contents">Contents: Characteristics, Are Microservices the Future?</div>
+        </div>
+        <div class="paperBody deep" id="paper">
+          <section><h2>Characteristics</h2>${prose(3000)}</section>
+          <aside class="sidebar">${prose(400)}</aside>
+          <section><h2>Are Microservices the Future?</h2>${prose(2000)}</section>
+        </div>
+      </main>
+      <footer>${prose(200)}</footer>`
+
+    expect(lookupAreaAsDefaultSite()).toEqual({
+      nodes: [document.getElementById('paper')],
+      source: 'article',
+      selector: '.paperBody',
+    })
+  })
+})
+
 // ADR-072 decision 2: a platform selector runs only when its platform
 // signal is on the page, after the adapter and before the built-in list.
 describe('WordProcessor.findLookupArea platform selectors', () => {

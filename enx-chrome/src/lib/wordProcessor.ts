@@ -258,6 +258,7 @@ export class WordProcessor {
     { selector: '#EMAIL_CONTAINER' }, // NY Times
     { selector: '#lesson-main-content' }, // Anthropic Skilljar
     { selector: '.sjwc-lesson-content-item' }, // Anthropic Skilljar (inner)
+    { selector: '.paperBody' }, // Martin Fowler
     { selector: 'article' }, // Semantic HTML5
     { selector: '.content', broad: true },
     { selector: '.entry-content', broad: true },
