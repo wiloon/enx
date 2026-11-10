@@ -60,10 +60,13 @@ func (a accountAdmins) Contains(id string) bool {
 	return false
 }
 
-type conflictChecker struct{}
+type deletionChecker struct {
+	verdict eligibility.DeletionVerdict
+	err     error
+}
 
-func (conflictChecker) Check(context.Context, string) (eligibility.DeletionVerdict, error) {
-	return eligibility.DeletionBlockedOpenConflict, nil
+func (c deletionChecker) Check(context.Context, string) (eligibility.DeletionVerdict, error) {
+	return c.verdict, c.err
 }
 
 type busyCoordinator struct{}
@@ -113,6 +116,7 @@ type accountResponse struct {
 	body       struct {
 		Success bool   `json:"success"`
 		Code    string `json:"code"`
+		Message string `json:"message"`
 	}
 }
 
@@ -146,7 +150,7 @@ func TestDeleteMeAnswersEachOutcomeWithItsStatusAndCode(t *testing.T) {
 		"unreadable body":       {userID: accountAlice.ID, body: `not json`, status: http.StatusBadRequest, code: "email_mismatch"},
 		"wrong email":           {userID: accountAlice.ID, body: `{"email":"bob@example.com"}`, status: http.StatusBadRequest, code: "email_mismatch"},
 		"renewing subscription": {setup: accountSetup{renewing: true}, userID: accountAlice.ID, body: `{"email":"alice@example.com"}`, status: http.StatusConflict, code: "subscription_active"},
-		"subscription conflict": {setup: accountSetup{checker: conflictChecker{}}, userID: accountAlice.ID, body: `{"email":"alice@example.com"}`, status: http.StatusConflict, code: "subscription_conflict"},
+		"subscription conflict": {setup: accountSetup{checker: deletionChecker{verdict: eligibility.DeletionBlockedOpenConflict}}, userID: accountAlice.ID, body: `{"email":"alice@example.com"}`, status: http.StatusConflict, code: "subscription_conflict"},
 		"protected admin":       {userID: accountAdmin.ID, body: `{"email":"admin@example.com"}`, status: http.StatusForbidden, code: "admin_account"},
 		"unknown user":          {userID: "u-ghost", body: `{"email":"ghost@example.com"}`, status: http.StatusNotFound, code: "not_found"},
 		"clerk not configured":  {setup: accountSetup{noClerk: true}, userID: accountAlice.ID, body: `{"email":"alice@example.com"}`, status: http.StatusServiceUnavailable, code: "not_configured"},
@@ -158,6 +162,50 @@ func TestDeleteMeAnswersEachOutcomeWithItsStatusAndCode(t *testing.T) {
 				t.Fatalf("got %d %+v, want %d code %q", r.status, r.body, tc.status, tc.code)
 			}
 		})
+	}
+}
+
+func TestBothDeletionRoutesAnswerABillingRefusalWithItsCodeAndMessage(t *testing.T) {
+	routes := map[string]func(*AccountHandler) accountResponse{
+		"own": func(h *AccountHandler) accountResponse {
+			return callAccount(t, h.DeleteMe, accountAlice.ID, "", `{"email":"alice@example.com"}`)
+		},
+		"admin": func(h *AccountHandler) accountResponse {
+			return callAccount(t, h.Delete, accountAdmin.ID, accountAlice.ID, "")
+		},
+	}
+	for name, tc := range map[string]struct {
+		checker deletionChecker
+		status  int
+		code    string
+		message string
+	}{
+		"renewing subscription": {deletionChecker{verdict: eligibility.DeletionBlockedRenewing}, http.StatusConflict, "subscription_active",
+			"Cancel your subscription on the Billing page before deleting your account."},
+		"subscription conflict": {deletionChecker{verdict: eligibility.DeletionBlockedOpenConflict}, http.StatusConflict, "subscription_conflict",
+			"Contact an administrator to resolve your subscription issue before deleting your account."},
+		"live state unknown": {deletionChecker{verdict: eligibility.DeletionBlockedLookup}, http.StatusInternalServerError, "failed",
+			"The account action failed. Try again."},
+		"check fails": {deletionChecker{err: errors.New("database is locked")}, http.StatusInternalServerError, "failed",
+			"The account action failed. Try again."},
+	} {
+		for route, call := range routes {
+			t.Run(name+"/"+route, func(t *testing.T) {
+				r := call(newAccountHandler(accountSetup{checker: tc.checker}))
+				if r.status != tc.status || r.body.Success || r.body.Code != tc.code || r.body.Message != tc.message {
+					t.Fatalf("got %d %+v, want %d code %q message %q", r.status, r.body, tc.status, tc.code, tc.message)
+				}
+			})
+		}
+	}
+}
+
+func TestADeletionThatGoesThroughAnswersWithoutCodeOrMessage(t *testing.T) {
+	h := newAccountHandler(accountSetup{checker: deletionChecker{verdict: eligibility.DeletionAllowed}})
+	r := callAccount(t, h.DeleteMe, accountAlice.ID, "", `{"email":"alice@example.com"}`)
+
+	if r.status != http.StatusOK || !r.body.Success || r.body.Code != "" || r.body.Message != "" {
+		t.Fatalf("got %d %+v, want 200 success with no code or message", r.status, r.body)
 	}
 }
 

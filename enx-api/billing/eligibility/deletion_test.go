@@ -101,6 +101,14 @@ func TestDeletion(t *testing.T) {
 			want: DeletionBlockedOpenConflict,
 		},
 		{
+			name: "an open conflict is reported before another one's failed lookup",
+			owned: []Owned{
+				{ID: "sub_a", StoredStatus: "active"},
+				{ID: "sub_b", Conflict: ConflictOpen, Live: live("canceled")},
+			},
+			want: DeletionBlockedOpenConflict,
+		},
+		{
 			name:  "a resolved conflict that still renews blocks",
 			owned: []Owned{{ID: "sub_b", Conflict: ConflictResolved, Live: live("active")}},
 			want:  DeletionBlockedRenewing,
