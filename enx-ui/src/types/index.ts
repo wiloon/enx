@@ -326,6 +326,25 @@ export interface AdminFeedbackPage {
   nextOffset: number | null
 }
 
+// GET /api/admin/feedback/article-choices (ADR-073): article choices grouped
+// by host + selector on the server. `count` is the records matching the
+// status filter, one per user; `total` is every record in the group, any
+// status; `sampleUrl` is the newest matching record's page.
+export interface ArticleChoiceGroup {
+  host: string
+  selector: string
+  count: number
+  total: number
+  sampleUrl: string
+}
+
+// nextOffset is null on the last page.
+export interface ArticleChoiceGroupPage {
+  success: boolean
+  groups: ArticleChoiceGroup[]
+  nextOffset: number | null
+}
+
 // Reader "paste text" documents (ADR-022): 20,000-char limit, 7-day TTL, 50
 // documents per user (oldest evicted on write) -- all enforced server-side.
 // Editing a document (ADR-022 Addendum) bumps `updatedAt` and resets the

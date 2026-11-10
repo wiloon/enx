@@ -9,6 +9,7 @@ import {
   AdminUsersPage,
   AdminWordRow,
   ApiResponse,
+  ArticleChoiceGroupPage,
   BillingMeData,
   CheckoutSessionData,
   CreditDirection,
@@ -349,6 +350,32 @@ export class ApiService {
     return this.makeRequest(`/api/admin/feedback/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify({ status: 'resolved' }),
+    })
+  }
+
+  // Article choices grouped by host + selector (ADR-073); an empty status
+  // matches all.
+  async adminListArticleChoiceGroups(query: {
+    status: FeedbackStatus | ''
+    limit: number
+    offset: number
+  }): Promise<ApiResponse<ArticleChoiceGroupPage>> {
+    const params = new URLSearchParams({
+      limit: String(query.limit),
+      offset: String(query.offset),
+    })
+    if (query.status) params.set('status', query.status)
+    return this.makeRequest(`/api/admin/feedback/article-choices?${params}`)
+  }
+
+  // Resolves every record in the group, whatever its status.
+  async adminResolveArticleChoiceGroup(
+    host: string,
+    selector: string
+  ): Promise<ApiResponse<{ success: boolean; resolved: number }>> {
+    return this.makeRequest('/api/admin/feedback/article-choices/resolve', {
+      method: 'POST',
+      body: JSON.stringify({ host, selector }),
     })
   }
 

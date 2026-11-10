@@ -13,9 +13,21 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import PageHeader from '@/components/app/PageHeader'
 import { apiService } from '@/services/api'
-import type { AdminFeedback, FeedbackKind, FeedbackStatus } from '@/types'
+import type {
+  AdminFeedback,
+  ArticleChoiceGroup,
+  FeedbackKind,
+  FeedbackStatus,
+} from '@/types'
 
 const PAGE_SIZE = 100
+
+type View = 'records' | 'article-choice-groups'
+
+const VIEWS: { value: View; label: string }[] = [
+  { value: 'records', label: 'Records' },
+  { value: 'article-choice-groups', label: 'Article choice groups' },
+]
 
 const KINDS: { value: FeedbackKind | ''; label: string }[] = [
   { value: '', label: 'All kinds' },
@@ -55,31 +67,15 @@ const selectClass =
   'h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground cursor-pointer transition-colors hover:border-foreground/40 active:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
 // The feedback queue (ADR-076 Decision 7-8): everything users sent, newest
-// first, filtered on the server. Resolving keeps the record.
+// first, filtered on the server. Resolving keeps the record. Article choices
+// can also be seen grouped by host + selector (ADR-073), the rule candidates
+// for #710; nothing becomes a rule from here.
 export default function AdminFeedbackPage() {
+  const [view, setView] = useState<View>('records')
   const [kind, setKind] = useState<FeedbackKind | ''>('')
   const [status, setStatus] = useState<FeedbackStatus | ''>('')
   // Offsets of the pages before this one, so Previous can step back.
   const [offsets, setOffsets] = useState<number[]>([0])
-  const offset = offsets[offsets.length - 1]
-
-  const query = useQuery({
-    queryKey: ['admin-feedback', kind, status, offset],
-    placeholderData: keepPreviousData,
-    queryFn: async () => {
-      const resp = await apiService.adminListFeedback({
-        kind,
-        status,
-        limit: PAGE_SIZE,
-        offset,
-      })
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load feedback')
-    },
-  })
-
-  const nextOffset = query.data?.nextOffset ?? null
-  const rows = query.data?.feedback ?? []
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6 md:p-8">
@@ -90,22 +86,41 @@ export default function AdminFeedbackPage() {
 
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          Kind
+          View
           <select
-            value={kind}
+            value={view}
             onChange={(e) => {
-              setKind(e.target.value as FeedbackKind | '')
+              setView(e.target.value as View)
               setOffsets([0])
             }}
             className={selectClass}
           >
-            {KINDS.map((k) => (
-              <option key={k.value} value={k.value}>
-                {k.label}
+            {VIEWS.map((v) => (
+              <option key={v.value} value={v.value}>
+                {v.label}
               </option>
             ))}
           </select>
         </label>
+        {view === 'records' && (
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            Kind
+            <select
+              value={kind}
+              onChange={(e) => {
+                setKind(e.target.value as FeedbackKind | '')
+                setOffsets([0])
+              }}
+              className={selectClass}
+            >
+              {KINDS.map((k) => (
+                <option key={k.value} value={k.value}>
+                  {k.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
           Status
           <select
@@ -125,73 +140,271 @@ export default function AdminFeedbackPage() {
         </label>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            {query.isLoading
-              ? 'Loading…'
-              : query.isError
-                ? 'Could not load'
-                : `Records ${rows.length === 0 ? 0 : offset + 1}–${offset + rows.length}`}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {query.isError && (
-            <p role="alert" className="text-sm text-destructive">
-              {(query.error as Error).message}
-            </p>
-          )}
-          {query.isSuccess && rows.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              No feedback matches.
-            </p>
-          )}
-          {rows.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b text-muted-foreground">
-                    <th className="py-2 pr-3 font-medium">When</th>
-                    <th className="py-2 pr-3 font-medium">Kind</th>
-                    <th className="py-2 pr-3 font-medium">User</th>
-                    <th className="py-2 pr-3 font-medium">Page</th>
-                    <th className="py-2 pr-3 font-medium">Details</th>
-                    <th className="py-2 font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((f) => (
-                    <FeedbackRow key={f.id} record={f} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {query.isSuccess && (offset > 0 || nextOffset !== null) && (
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={offsets.length === 1}
-                onClick={() => setOffsets(offsets.slice(0, -1))}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={nextOffset === null}
-                onClick={() =>
-                  nextOffset !== null && setOffsets([...offsets, nextOffset])
-                }
-              >
-                Next
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {view === 'records' ? (
+        <FeedbackRecords
+          kind={kind}
+          status={status}
+          offsets={offsets}
+          setOffsets={setOffsets}
+        />
+      ) : (
+        <ArticleChoiceGroups
+          status={status}
+          offsets={offsets}
+          setOffsets={setOffsets}
+        />
+      )}
     </div>
+  )
+}
+
+type Paging = {
+  offsets: number[]
+  setOffsets: (offsets: number[]) => void
+}
+
+function FeedbackRecords({
+  kind,
+  status,
+  offsets,
+  setOffsets,
+}: Paging & { kind: FeedbackKind | ''; status: FeedbackStatus | '' }) {
+  const offset = offsets[offsets.length - 1]
+  const query = useQuery({
+    queryKey: ['admin-feedback', kind, status, offset],
+    placeholderData: keepPreviousData,
+    queryFn: async () => {
+      const resp = await apiService.adminListFeedback({
+        kind,
+        status,
+        limit: PAGE_SIZE,
+        offset,
+      })
+      if (resp.success && resp.data) return resp.data
+      throw new Error(resp.error || 'Failed to load feedback')
+    },
+  })
+
+  const nextOffset = query.data?.nextOffset ?? null
+  const rows = query.data?.feedback ?? []
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">
+          {query.isLoading
+            ? 'Loading…'
+            : query.isError
+              ? 'Could not load'
+              : `Records ${rows.length === 0 ? 0 : offset + 1}–${offset + rows.length}`}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {query.isError && (
+          <p role="alert" className="text-sm text-destructive">
+            {(query.error as Error).message}
+          </p>
+        )}
+        {query.isSuccess && rows.length === 0 && (
+          <p className="text-sm text-muted-foreground">No feedback matches.</p>
+        )}
+        {rows.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b text-muted-foreground">
+                  <th className="py-2 pr-3 font-medium">When</th>
+                  <th className="py-2 pr-3 font-medium">Kind</th>
+                  <th className="py-2 pr-3 font-medium">User</th>
+                  <th className="py-2 pr-3 font-medium">Page</th>
+                  <th className="py-2 pr-3 font-medium">Details</th>
+                  <th className="py-2 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((f) => (
+                  <FeedbackRow key={f.id} record={f} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {query.isSuccess && (
+          <Pager
+            offsets={offsets}
+            setOffsets={setOffsets}
+            nextOffset={nextOffset}
+          />
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ArticleChoiceGroups({
+  status,
+  offsets,
+  setOffsets,
+}: Paging & { status: FeedbackStatus | '' }) {
+  const offset = offsets[offsets.length - 1]
+  const query = useQuery({
+    queryKey: ['admin-article-choice-groups', status, offset],
+    placeholderData: keepPreviousData,
+    queryFn: async () => {
+      const resp = await apiService.adminListArticleChoiceGroups({
+        status,
+        limit: PAGE_SIZE,
+        offset,
+      })
+      if (resp.success && resp.data) return resp.data
+      throw new Error(resp.error || 'Failed to load article choices')
+    },
+  })
+
+  const nextOffset = query.data?.nextOffset ?? null
+  const groups = query.data?.groups ?? []
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">
+          {query.isLoading
+            ? 'Loading…'
+            : query.isError
+              ? 'Could not load'
+              : `Groups ${groups.length === 0 ? 0 : offset + 1}–${offset + groups.length}`}
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Article choices by host and selector, most chosen first. Each user
+          counts once per group.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {query.isError && (
+          <p role="alert" className="text-sm text-destructive">
+            {(query.error as Error).message}
+          </p>
+        )}
+        {query.isSuccess && groups.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            No article choices match.
+          </p>
+        )}
+        {groups.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b text-muted-foreground">
+                  <th className="py-2 pr-3 font-medium">Host</th>
+                  <th className="py-2 pr-3 font-medium">Selector</th>
+                  <th className="py-2 pr-3 font-medium">Users</th>
+                  <th className="py-2 pr-3 font-medium">Sample page</th>
+                  <th className="py-2 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groups.map((g) => (
+                  <ArticleChoiceGroupRow
+                    key={`${g.host}\n${g.selector}`}
+                    group={g}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {query.isSuccess && (
+          <Pager
+            offsets={offsets}
+            setOffsets={setOffsets}
+            nextOffset={nextOffset}
+          />
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function Pager({
+  offsets,
+  setOffsets,
+  nextOffset,
+}: Paging & { nextOffset: number | null }) {
+  if (offsets.length === 1 && nextOffset === null) return null
+  return (
+    <div className="flex justify-end gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={offsets.length === 1}
+        onClick={() => setOffsets(offsets.slice(0, -1))}
+      >
+        Previous
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={nextOffset === null}
+        onClick={() =>
+          nextOffset !== null && setOffsets([...offsets, nextOffset])
+        }
+      >
+        Next
+      </Button>
+    </div>
+  )
+}
+
+function ArticleChoiceGroupRow({ group: g }: { group: ArticleChoiceGroup }) {
+  const queryClient = useQueryClient()
+  const resolve = useMutation({
+    mutationFn: async () => {
+      const resp = await apiService.adminResolveArticleChoiceGroup(
+        g.host,
+        g.selector
+      )
+      if (resp.success && resp.data?.success) return resp.data
+      throw new Error(resp.error || 'Could not resolve')
+    },
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['admin-article-choice-groups'],
+        }),
+        queryClient.invalidateQueries({ queryKey: ['admin-feedback'] }),
+      ]),
+  })
+
+  return (
+    <tr className="border-b border-border/60 align-top">
+      <td className="py-2 pr-3 min-w-32 break-all font-mono text-xs">
+        {g.host}
+      </td>
+      <td className="py-2 pr-3 min-w-40 break-all font-mono text-xs whitespace-pre-wrap">
+        {g.selector}
+      </td>
+      <td className="py-2 pr-3 whitespace-nowrap">{g.count}</td>
+      <td className="py-2 pr-3 min-w-48 break-all font-mono text-xs">
+        {g.sampleUrl || '—'}
+      </td>
+      <td className="py-2 whitespace-nowrap">
+        <div className="space-y-1">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={resolve.isPending}
+            onClick={() => resolve.mutate()}
+          >
+            {resolve.isPending ? 'Resolving…' : `Resolve all ${g.total}`}
+          </Button>
+          {resolve.isError && (
+            <p role="alert" className="text-xs text-destructive">
+              {(resolve.error as Error).message}
+            </p>
+          )}
+        </div>
+      </td>
+    </tr>
   )
 }
 

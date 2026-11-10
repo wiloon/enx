@@ -1,6 +1,12 @@
 import { type Page } from '@playwright/test'
 import { test, expect, loginAvailable, LOGIN_SKIP_REASON } from './fixtures'
-import type { AdminFeedback, AdminFeedbackPage, MeData } from '@/types'
+import type {
+  AdminFeedback,
+  AdminFeedbackPage,
+  ArticleChoiceGroup,
+  ArticleChoiceGroupPage,
+  MeData,
+} from '@/types'
 
 // What jsdom cannot see on the feedback queue (ADR-076): the wide table
 // scrolls inside its card instead of widening the page on a phone, and the
@@ -47,6 +53,26 @@ const feedback: AdminFeedback[] = [
   },
 ]
 
+const LONG_SELECTOR =
+  'body > div#app-root > main.layout-main > section.content-column > article.story-body[data-component="article-body"]'
+
+const groups: ArticleChoiceGroup[] = [
+  {
+    host: 'www.example-news-site-with-a-long-name.com',
+    selector: LONG_SELECTOR,
+    count: 12,
+    total: 14,
+    sampleUrl: LONG_URL,
+  },
+  {
+    host: 'x.com',
+    selector: 'main article',
+    count: 3,
+    total: 3,
+    sampleUrl: 'https://x.com/a/status/1',
+  },
+]
+
 async function stubApi(page: Page) {
   const json = (body: unknown) => ({
     status: 200,
@@ -63,6 +89,13 @@ async function stubApi(page: Page) {
   }
   await page.route('**/api/admin/feedback?**', (route) =>
     route.fulfill(json(list))
+  )
+  const groupList: Omit<ArticleChoiceGroupPage, 'success'> = {
+    groups,
+    nextOffset: null,
+  }
+  await page.route('**/api/admin/feedback/article-choices?**', (route) =>
+    route.fulfill(json(groupList))
   )
 }
 
@@ -100,13 +133,43 @@ test.describe('on a phone', () => {
     })
   })
 
-  test('keeps both filters on screen', async ({ page }) => {
+  test('keeps every filter on screen', async ({ page }) => {
     await page.goto('/admin/feedback')
-    for (const label of ['Kind', 'Status']) {
+    for (const label of ['View', 'Kind', 'Status']) {
       const box = await page.getByLabel(label).boundingBox()
       expect(box).not.toBeNull()
       expect(box!.x).toBeGreaterThanOrEqual(0)
       expect(box!.x + box!.width).toBeLessThanOrEqual(375)
     }
+  })
+
+  test('scrolls the article choice groups inside their card, not the page', async ({
+    page,
+  }) => {
+    await page.goto('/admin/feedback')
+    await page.getByLabel('View').selectOption('article-choice-groups')
+    await expect(page.getByText(LONG_SELECTOR)).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: 'Resolve all 14' })
+    ).toBeAttached()
+
+    const overflow = await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth -
+        document.documentElement.clientWidth
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
+
+    const scroller = page.locator('table').locator('xpath=..')
+    const { scrollWidth, clientWidth } = await scroller.evaluate((el) => ({
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+    }))
+    expect(scrollWidth).toBeGreaterThan(clientWidth)
+
+    await page.screenshot({
+      path: 'test-results/admin-feedback-groups-phone.png',
+      fullPage: true,
+    })
   })
 })
