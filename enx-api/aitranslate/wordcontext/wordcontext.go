@@ -1,8 +1,9 @@
 // Package wordcontext holds the contract for the "gloss one word as used in
 // a sentence, informed by its dictionary definition" call: the caller looks
 // up the word's dictionary entry first (ECDICT/Word table) and passes it
-// along so the model can explain WHY the contextual meaning diverges from
-// that dictionary definition, rather than guessing blind. Used by
+// along so the model can relate the contextual meaning to that dictionary
+// definition when the definition doesn't cover it -- which sense it comes
+// from and how -- rather than guessing blind. Used by
 // TranslateWordInContext once the dictionary lookup this word's card
 // depends on has resolved (or failed -- an empty dictionary definition is a
 // valid input, just one the model can't compare against).
@@ -22,18 +23,26 @@ import (
 )
 
 // SystemPrompt asks the model for the target word's meaning as used in THIS
-// sentence, plus (when a dictionary definition was supplied and the
-// contextual meaning meaningfully diverges from it) a short explanation of
-// why -- different part of speech, idiom, figurative extension, etc.
-const SystemPrompt = `You are a professional English-to-Chinese translator. You are given an English sentence, one target word or short phrase taken from it, and (optionally) that word's common dictionary definition.
+// sentence, then whether the supplied dictionary definition covers that
+// meaning. Covered (or no definition supplied): why is empty. Not covered:
+// why says in one short sentence why the word means this here and, when the
+// meaning grows out of one dictionary sense, names that sense and how
+// (figurative extension, part-of-speech shift, idiom, narrowing). why never
+// negates or lists dictionary senses that don't apply: the card already
+// shows the dictionary definition next to it.
+const SystemPrompt = `You are a professional English-to-Chinese translator. You are given an English sentence, one target word or short phrase taken from it, and (optionally) that word's dictionary definition.
 
 Return ONLY a JSON object, no prose around it:
 {"word": "<the target word's Chinese meaning AS USED IN THIS SENTENCE, not a generic dictionary definition>",
- "why": "<if a dictionary definition was given AND the contextual meaning differs meaningfully from it, one short Chinese clause explaining why (different part of speech, idiom, figurative extension, etc.); otherwise an empty string>"}
+ "why": "<one short Chinese sentence relating that meaning to the dictionary, or an empty string; see the rules>"}
 
 Rules:
 - "word": just the contextual meaning, usually a few characters. No pinyin, no quotes, no explanation.
-- "why": leave it "" when no dictionary definition was given, or when the contextual meaning is an ordinary sense already covered by it. Otherwise keep it to one short clause, no pinyin, no quotes.
+- "why": first decide whether the dictionary definition covers the meaning in "word", then:
+  - No dictionary definition given, or the meaning is one of its senses or an ordinary sense it already covers: "".
+  - Not covered, but it comes from one dictionary sense: say why the word means this here, and name that one source sense and how the meaning comes from it (figurative extension, part-of-speech shift, idiom, narrowing).
+  - Not covered and no dictionary sense is related (a proper noun, a new usage, a different word): say only why the word means this here.
+  - One short sentence, no pinyin, no quotes. Never mention or rule out dictionary senses that don't apply.
 ` + zh.SimplifiedRule
 
 // Temperature matches sentenceword's 0.3 -- one most-natural rendering, not
@@ -41,8 +50,10 @@ Rules:
 const Temperature = 0.3
 
 // Result is the parsed reply. Why is empty whenever the model judged the
-// contextual meaning unsurprising, or no dictionary definition was
-// available to compare against.
+// contextual meaning covered by the dictionary definition, or no dictionary
+// definition was available to compare against. Otherwise it is one short
+// sentence on why the word means this here, naming at most the one
+// dictionary sense the meaning comes from.
 type Result struct {
 	WordChinese string
 	Why         string
