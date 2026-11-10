@@ -281,12 +281,14 @@ const WIKIPEDIA_ADAPTER: SiteAdapter = {
 
 // --- Standard Ebooks --------------------------------------------------------
 // A book's text pages (/ebooks/<author>/<title>[/<translator>]/text/...)
-// mark the blocks under <main> as frontmatter, bodymatter or backmatter in
-// the EPUB `type` attribute; the body matter is the article. On a
-// single-page book that is each chapter <section> or story/poem <article>,
-// on a per-chapter page it can be <main> itself. Front and back matter
-// pages (/text/imprint, /text/colophon, ...) have none and get the whole
-// page.
+// mark the blocks under <main> with EPUB `type` tokens. The article is the
+// body matter plus the front and back matter the reader reads as prose
+// (introduction, epigraph, endnotes, ...). On a single-page book that is
+// each such <section> or story/poem <article>; on a per-chapter page it can
+// be <main> itself (body matter) or the <section> inside it (/text/introduction).
+// Boilerplate (title page, imprint, table of contents, colophon,
+// uncopyright) and any type not listed stay out, so their pages
+// (/text/imprint, /text/colophon, ...) get the whole page.
 //
 // The pages are XHTML, where `epub:type` is `type` in the OPS namespace:
 // `*|type` matches it in Chromium. Plain HTML has a literal `epub:type`
@@ -295,15 +297,28 @@ const WIKIPEDIA_ADAPTER: SiteAdapter = {
 
 const STANDARD_EBOOKS_HOST = /(^|\.)standardebooks\.org$/
 const STANDARD_EBOOKS_TEXT_PATH = /^\/ebooks\/.+\/text(\/|$)/
-const STANDARD_EBOOKS_BODYMATTER_SELECTOR =
-  '[*|type~="bodymatter"], [epub\\:type~="bodymatter"]'
+const STANDARD_EBOOKS_ARTICLE_TYPES = [
+  'bodymatter',
+  'introduction',
+  'preface',
+  'foreword',
+  'prologue',
+  'epilogue',
+  'afterword',
+  'epigraph',
+  'dedication',
+  'endnotes',
+]
+const STANDARD_EBOOKS_ARTICLE_SELECTOR = STANDARD_EBOOKS_ARTICLE_TYPES.flatMap(
+  type => [`[*|type~="${type}"]`, `[epub\\:type~="${type}"]`]
+).join(', ')
 
 const STANDARD_EBOOKS_ADAPTER: SiteAdapter = {
   name: 'standard-ebooks',
   matches: location =>
     STANDARD_EBOOKS_HOST.test(location.hostname) &&
     STANDARD_EBOOKS_TEXT_PATH.test(location.pathname),
-  contentSelector: STANDARD_EBOOKS_BODYMATTER_SELECTOR,
+  contentSelector: STANDARD_EBOOKS_ARTICLE_SELECTOR,
   wholePageOnMiss: true,
   // A collection's poem can be a few lines.
   minTextLength: 1,

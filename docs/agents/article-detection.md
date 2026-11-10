@@ -36,7 +36,7 @@ An adapter with a `readySelector` makes the initial run (the popup's enable and 
 | `reader` | enx-ui `/reader`, `/welcome` | `#enx-reader-article` | none | `no-article-node` |
 | `rssx` | the RSSX Reader | `article` | `article` | `no-article-node` |
 | `wikipedia` | `*.wikipedia.org` | `#mw-content-text .mw-parser-output` | none | `no-article-node` |
-| `standard-ebooks` | `standardebooks.org/ebooks/…/text/…` | the EPUB `bodymatter` type: `[*\|type~="bodymatter"]` for the real XHTML pages, `[epub\:type~="bodymatter"]` for a literal HTML attribute (and jsdom) | none | whole page (`wholePageOnMiss`): front and back matter pages like `/text/imprint` |
+| `standard-ebooks` | `standardebooks.org/ebooks/…/text/…` | an element whose EPUB type has the token `bodymatter` or one of the prose front and back matter types `introduction`, `preface`, `foreword`, `prologue`, `epilogue`, `afterword`, `epigraph`, `dedication`, `endnotes`: `[*\|type~="…"]` for the real XHTML pages, `[epub\:type~="…"]` for a literal HTML attribute (and jsdom). Boilerplate (`titlepage`, `halftitlepage`, `imprint`, `toc`, `colophon`, `copyright-page`) and any other type stay out | none | whole page (`wholePageOnMiss`): boilerplate pages like `/text/imprint` and `/text/colophon` |
 | `aws-docs` | `docs.aws.amazon.com` | the docs content column `#main-col-body`, rendered by script after load | `#main-col-body` | whole page (`wholePageOnMiss`) after the 8 s wait: landing and index pages |
 
 ## 4. Platform selectors (default adapter)

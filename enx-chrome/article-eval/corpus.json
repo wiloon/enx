@@ -174,6 +174,9 @@
   { "url": "https://en.wikipedia.org/wiki/Alan_Turing", "category": "reference", "provenance": "hand-picked", "trancoRank": 39 },
   { "url": "https://standardebooks.org/ebooks/carolyn-wells/the-gold-bag/text/single-page", "category": "reference", "provenance": "hand-picked", "trancoRank": 67685 },
   { "url": "https://standardebooks.org/ebooks/carolyn-wells/the-gold-bag/text/chapter-1", "category": "reference", "provenance": "hand-picked", "trancoRank": 67685 },
+  { "url": "https://standardebooks.org/ebooks/benjamin-franklin/the-autobiography-of-benjamin-franklin/text/single-page", "category": "reference", "provenance": "hand-picked", "trancoRank": 67685 },
+  { "url": "https://standardebooks.org/ebooks/benjamin-franklin/the-autobiography-of-benjamin-franklin/text/introduction", "category": "reference", "provenance": "hand-picked", "trancoRank": 67685 },
+  { "url": "https://standardebooks.org/ebooks/benjamin-franklin/the-autobiography-of-benjamin-franklin/text/imprint", "category": "reference", "provenance": "hand-picked", "trancoRank": 67685 },
   { "url": "https://www.gutenberg.org/cache/epub/1342/pg1342-images.html", "category": "reference", "provenance": "hand-picked", "trancoRank": 2530 },
   { "url": "https://www.gutenberg.org/cache/epub/84/pg84-images.html", "category": "reference", "provenance": "hand-picked", "trancoRank": 2530 }
 ]
