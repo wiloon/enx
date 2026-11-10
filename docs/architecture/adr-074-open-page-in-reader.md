@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted（决定 2 由 adr-077 修订：Readability 也用于识别第 6 层）
 date: 2026-11-07
 related: adr-019（Reader 与网页→扩展通道）、adr-022（Reader 文档落库）、adr-032（不替用户保存别人的文章正文）、adr-070（Readability 只用于评估）、adr-072（识别分层）、adr-073（用户手动指定正文）
 amends: adr-070 决定 2（Readability 不进扩展）、adr-019 决定 3（Reader 只接受粘贴的纯文本）
@@ -23,6 +23,8 @@ amends: adr-070 决定 2（Readability 不进扩展）、adr-019 决定 3（Read
 ADR-070 决定 2 定的是：Readability 只装成 enx-chrome 的 devDependency，第一阶段不进扩展。理由是猜出来的节点不能拥有拦截单击的权限。
 
 本 ADR 让 Readability 进扩展，但**只用于「用阅读器打开」**，不参与原页面上的正文识别。原页面上的单击查词仍然只在 ADR-072 的各层找到的正文里生效。ADR-070 的那个理由不受影响。
+
+> **2026-11-09 被 [ADR-077](adr-077-article-detection-stage-2-json-ld-gated-readability-fallback.md) 修订：** Readability 也用于识别第 6 层：前几层都没命中、页面在 JSON-LD 里声明为文章时，按需加载 Readability 选正文节点，和「用阅读器打开」共用同一个按需加载的块，不进常驻的内容脚本包。
 
 - 只在用户点按钮时才加载 Readability（按需加载），不常驻在每个页面上。
 - 在文档的克隆上运行，不改动原页面。
