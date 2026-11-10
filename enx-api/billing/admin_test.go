@@ -242,6 +242,46 @@ func TestAdminCredits_UserIDTargetsThatRowWhenEmailsCollide(t *testing.T) {
 	}
 }
 
+// The ledger rechecks the target inside its transaction: a deletion in
+// progress is a retryable 503, and a target deleted after the handler found
+// its row is a 404.
+func TestAdminCredits_AnswerTheDeletionGateTheLedgerReports(t *testing.T) {
+	for _, op := range []string{"grant", "deduct"} {
+		path := "/api/admin/credits/" + op
+		for _, c := range []struct {
+			gate, code string
+			status     int
+		}{
+			{gate: "in_progress", status: http.StatusServiceUnavailable, code: "deletion_in_progress"},
+			{gate: "deleted", status: http.StatusNotFound},
+		} {
+			u := seedGrantee(t, "admin-gate-"+c.gate+"-"+op, "")
+			if err := sqlitex.DB.Exec("INSERT INTO account_deletion_gates (user_id, state, started_at, updated_at) VALUES (?, ?, 1, 1)", u.Id, c.gate).Error; err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { sqlitex.DB.Exec("DELETE FROM account_deletion_gates WHERE user_id = ?", u.Id) })
+
+			w := adminRequest(t, path, `{"userId":"`+u.Id+`","amount":100,"reason":"r"}`)
+			var body struct {
+				Success *bool  `json:"success"`
+				Code    string `json:"code"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if w.Code != c.status || body.Success == nil || *body.Success || body.Code != c.code {
+				t.Errorf("%s gate %s: status %d body %s, want %d code %q", path, c.gate, w.Code, w.Body.String(), c.status, c.code)
+			}
+			if c.status == http.StatusServiceUnavailable && w.Header().Get("Retry-After") == "" {
+				t.Errorf("%s gate %s: no Retry-After header", path, c.gate)
+			}
+			if rows := ledgerRows(t, u.Id); len(rows) != 0 {
+				t.Errorf("%s gate %s: ledger rows %+v, want none", path, c.gate, rows)
+			}
+		}
+	}
+}
+
 // userId is the enx id only: a Clerk id, or an id that matches nobody, is a
 // 404, never a fallback to email.
 func TestAdminCredits_UnknownUserIDIsNotFound(t *testing.T) {

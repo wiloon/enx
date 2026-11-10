@@ -490,6 +490,30 @@ func TestApplyInvoicePaidDeletionBarriersPreventNewEntitlement(t *testing.T) {
 	}
 }
 
+func TestApplyInvoicePaidDeletionBarriersPreventAConflictClassification(t *testing.T) {
+	for _, state := range []string{"in_progress", "deleted"} {
+		t.Run(state, func(t *testing.T) {
+			newInvoiceDB(t)
+			execAll(t, "INSERT INTO account_deletion_gates (user_id, state, started_at, updated_at) VALUES ('u_topup', '"+state+"', 1, 1)")
+			e := invoicepaid.Effects{
+				Observed: invoicepaid.Observed{SubscriptionID: "sub_new", SubscriptionKnown: true, SubscriptionVersion: 1, OwnerUserID: "u_topup", Revision: 0},
+				Classification: &invoicepaid.Classification{
+					To: acceptance.Conflict, ConflictReason: "second_live_subscription", ConflictWith: "sub_a",
+					DiscoveredAt: receiptT0, Alert: alert.Raise(alert.Alert{}, receiptT0),
+				},
+			}
+
+			if err := applyInvoice(t, "evt_a", e); !errors.Is(err, invoicepaid.ErrStale) {
+				t.Fatalf("apply = %v, want ErrStale", err)
+			}
+			var class string
+			if err := sqlitex.DB.Raw("SELECT classification FROM subscriptions WHERE stripe_subscription_id = 'sub_new'").Scan(&class).Error; err != nil || class != "" {
+				t.Errorf("classification = %q, %v; want it unclassified", class, err)
+			}
+		})
+	}
+}
+
 func TestWebhookEventsSaveRollsTheTaskBackWhenAnInvoiceEffectFails(t *testing.T) {
 	newInvoiceDB(t)
 	// The zero WebhookEffects has no referral policy, so the first-payment

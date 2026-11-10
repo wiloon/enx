@@ -97,3 +97,20 @@ func TestLedgerReportsADeletedReferrerAsTheReferralSentinel(t *testing.T) {
 		t.Fatalf("GrantReferrerReward of 0 = %v, want an ordinary error", err)
 	}
 }
+
+// A deletion in progress may still be released, so the reward is not
+// forfeited: the error stays ordinary and the service retries.
+func TestLedgerReportsADeletionInProgressAsAnOrdinaryError(t *testing.T) {
+	newLedgerDB(t)
+	if err := sqlitex.DB.Create(&sqlitex.User{Id: "alice", ClerkUserID: "user_alice", Name: "alice"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlitex.DB.Exec("INSERT INTO account_deletion_gates (user_id, state, started_at, updated_at) VALUES ('alice', 'in_progress', 1, 1)").Error; err != nil {
+		t.Fatal(err)
+	}
+
+	err := ledger.GrantReferrerReward(context.Background(), "alice", 300, "referral-reward:bob")
+	if err == nil || errors.Is(err, referral.ErrReferrerDeleted) {
+		t.Fatalf("GrantReferrerReward during deletion = %v, want an ordinary error", err)
+	}
+}
