@@ -18,6 +18,7 @@ import (
 	"enx-api/billing/checkout"
 	"enx-api/billing/eligibility"
 	"enx-api/billing/portalsession"
+	"enx-api/billing/subscription"
 	"enx-api/repo"
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
@@ -470,6 +471,21 @@ func TestMeDefaultsForUnknownUser(t *testing.T) {
 	body := w.Body.String()
 	if !bytes.Contains(w.Body.Bytes(), []byte(`"status":"none"`)) {
 		t.Fatalf("expected status none, got %s", body)
+	}
+}
+
+type failingSubscriptionReader struct{}
+
+func (failingSubscriptionReader) Subscription(context.Context, string) (subscription.Snapshot, error) {
+	return subscription.Snapshot{}, errors.New("database is locked")
+}
+
+func TestMeAnswers503WhenTheSubscriptionCannotBeRead(t *testing.T) {
+	h := NewHandler(nil, "https://example.com", testStripe().Price, failingSubscriptionReader{}, nil)
+	w := doRequest(t, http.MethodGet, "/billing/me", h.Me, "u-reader-down", ``)
+
+	if w.Code != http.StatusServiceUnavailable || !bytes.Contains(w.Body.Bytes(), []byte(`"success":false`)) {
+		t.Fatalf("got %d %s, want 503 with success false rather than the defaults", w.Code, w.Body.String())
 	}
 }
 

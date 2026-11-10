@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"testing"
@@ -38,6 +39,45 @@ func TestBillingLifecycleCancelsAndWaitsForAssembly(t *testing.T) {
 	case <-a.done:
 	default:
 		t.Fatal("assembly still running")
+	}
+}
+
+func TestBillingLifecycleFollowsTheApplicationContext(t *testing.T) {
+	a := &testBillingAssembly{done: make(chan struct{})}
+	parent, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if _, err := startBillingLifecycle(parent, a); err != nil {
+		t.Fatal(err)
+	}
+
+	cancel()
+
+	select {
+	case <-a.done:
+	case <-time.After(time.Second):
+		t.Fatal("assembly ignored the application's cancellation")
+	}
+}
+
+// refusingBillingAssembly fails Start and keeps the context it was given.
+type refusingBillingAssembly struct{ ctx context.Context }
+
+func (a *refusingBillingAssembly) Start(ctx context.Context) error {
+	a.ctx = ctx
+	return errors.New("already started")
+}
+func (a *refusingBillingAssembly) Done() <-chan struct{} { return nil }
+
+func TestBillingLifecycleThatFailsToStartReleasesItsContext(t *testing.T) {
+	a := &refusingBillingAssembly{}
+
+	lifecycle, err := startBillingLifecycle(context.Background(), a)
+
+	if err == nil || lifecycle != nil {
+		t.Fatalf("got %v, %v; want no lifecycle and the Start error", lifecycle, err)
+	}
+	if a.ctx.Err() == nil {
+		t.Fatal("the context given to a failed Start was left running")
 	}
 }
 
