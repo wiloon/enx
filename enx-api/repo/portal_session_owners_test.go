@@ -145,6 +145,24 @@ func TestPortalSessionOwnersReadsTheDeletionGate(t *testing.T) {
 	}
 }
 
+func TestPortalSessionOwnersFailsRatherThanReadsAnEmptyOwnerWhenATableIsUnreadable(t *testing.T) {
+	for _, table := range []string{"account_deletion_gates", "subscriptions", "stripe_customers"} {
+		t.Run(table, func(t *testing.T) {
+			newSubscriptionConflictDB(t)
+			seedBillingOwner(t, "user_1", 0)
+			if err := sqlitex.DB.Exec("DROP TABLE " + table).Error; err != nil {
+				t.Fatal(err)
+			}
+
+			got, err := PortalSessionOwners{}.Owner(context.Background(), "user_1")
+
+			if err == nil {
+				t.Fatalf("Owner = %+v, want an error rather than an owner with nothing to block a session", got)
+			}
+		})
+	}
+}
+
 func TestPortalSessionOwnersRefusesAnAcceptedPointerToASubscriptionTheUserDoesNotOwn(t *testing.T) {
 	for _, tc := range []struct {
 		name string
