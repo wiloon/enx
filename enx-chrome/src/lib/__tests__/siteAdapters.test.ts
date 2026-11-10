@@ -9,7 +9,7 @@ import {
   PageLocation,
   SiteOrigins,
 } from '@/lib/siteAdapters'
-import { WordProcessor } from '@/lib/wordProcessor'
+import { WordProcessor, lookupAreaFeatures } from '@/lib/wordProcessor'
 
 // `host` includes the port (as on window.location); hostname drops it.
 const loc = (host: string, pathname: string): PageLocation => ({
@@ -675,8 +675,121 @@ describe('Standard Ebooks adapter', () => {
         <section id="endnotes" epub:type="backmatter endnotes"><p>Endnote text for the collection.</p></section>
       </main>`)
     const nodes = area().nodes
-    expect(ids(nodes)).toEqual(['story', 'poem'])
+    expect(ids(nodes)).toEqual(['story', 'poem', 'endnotes'])
     expect(nodes[1].textContent!.trim().length).toBeLessThan(100)
+  })
+
+  it('takes the prose front and back matter of a single-page book, not its boilerplate', () => {
+    renderXhtml(`
+      <main>
+        <section id="titlepage" epub:type="frontmatter titlepage"><h2>The Autobiography of Benjamin Franklin</h2></section>
+        <section id="imprint" epub:type="frontmatter imprint"><p>This ebook is the product of many hours of hard work by volunteers.</p></section>
+        <section id="introduction" epub:type="frontmatter introduction z3998:non-fiction"><p>Franklin began his memoir in 1771 at Twyford.</p></section>
+        <section id="halftitlepage" epub:type="frontmatter halftitlepage"><h2>The Autobiography</h2></section>
+        <section id="epigraph" epub:type="epigraph frontmatter"><p>Early to bed and early to rise.</p></section>
+        <section id="chapter-1" epub:type="bodymatter chapter"><p>Dear son, I have ever had pleasure in obtaining any little anecdotes.</p></section>
+        <section id="endnotes" epub:type="backmatter endnotes"><ol><li id="note-1" epub:type="endnote"><p>Franklin wrote this in England.</p></li></ol></section>
+        <section id="colophon" epub:type="backmatter colophon"><p>This ebook was produced for Standard Ebooks.</p></section>
+        <section id="uncopyright" epub:type="backmatter copyright-page"><p>May you do good and not evil.</p></section>
+      </main>`)
+    const found = area()
+    expect(found.source).toBe('article')
+    expect(lookupAreaFeatures(found)).toEqual({
+      clickLookup: true,
+      highlights: true,
+      readingStats: true,
+    })
+    expect(ids(found.nodes)).toEqual([
+      'introduction',
+      'epigraph',
+      'chapter-1',
+      'endnotes',
+    ])
+  })
+
+  it.each([
+    ['introduction', 'frontmatter z3998:non-fiction'],
+    ['endnotes', 'backmatter'],
+  ])(
+    'takes the %s section of a per-chapter page, not the whole page',
+    (type, mainType) => {
+      renderXhtml(`
+        <header id="site-header"><nav><a href="/ebooks">Ebooks</a> The Autobiography navigation</nav></header>
+        <main epub:type="${mainType}"><section id="${type}" epub:type="${type}"><p>Prose the reader actually reads.</p></section></main>`)
+      const found = area()
+      expect(found.source).toBe('article')
+      expect(found.nodes).toEqual([document.getElementById(type)])
+    }
+  )
+
+  it.each([
+    ['imprint', 'frontmatter'],
+    ['colophon', 'backmatter'],
+  ])(
+    'falls back to the whole page on a per-chapter %s page',
+    (type, matter) => {
+      renderXhtml(`
+      <main epub:type="${matter}"><section id="${type}" epub:type="${type}"><p>Standard Ebooks boilerplate for this book.</p></section></main>`)
+      expect(area()).toEqual({ nodes: [document.body], source: 'whole-page' })
+    }
+  )
+
+  const PROSE_TYPES = [
+    'introduction',
+    'preface',
+    'foreword',
+    'prologue',
+    'epilogue',
+    'afterword',
+    'epigraph',
+    'dedication',
+    'endnotes',
+  ]
+
+  it.each(PROSE_TYPES)('takes a %s section in XHTML', type => {
+    renderXhtml(
+      `<section id="prose" epub:type="frontmatter ${type}"><p>Prose text.</p></section>`
+    )
+    expect(ids(area().nodes)).toEqual(['prose'])
+  })
+
+  it.each(PROSE_TYPES)(
+    'takes a %s section marked with a literal epub:type attribute',
+    type => {
+      document.body.innerHTML = `<section id="prose" epub:type="${type} backmatter"><p>Prose text.</p></section>`
+      expect(ids(area().nodes)).toEqual(['prose'])
+    }
+  )
+
+  it.each([
+    'titlepage',
+    'halftitlepage',
+    'imprint',
+    'toc',
+    'colophon',
+    'copyright-page',
+    'appendix',
+  ])('leaves a %s section out of the article', type => {
+    renderXhtml(
+      `<section id="other" epub:type="frontmatter ${type}"><p>Other text.</p></section>`
+    )
+    expect(area().source).toBe('whole-page')
+  })
+
+  it('matches whole epub:type tokens, not parts of one', () => {
+    renderXhtml(`
+      <ol><li id="note-1" epub:type="endnote"><p>A lone endnote.</p></li></ol>
+      <section id="dedications" epub:type="frontmatter dedications"><p>To my son.</p></section>`)
+    expect(area().source).toBe('whole-page')
+  })
+
+  it('keeps a body-matter section containing an epigraph as a single area', () => {
+    renderXhtml(`
+      <section id="chapter-1" epub:type="bodymatter chapter">
+        <blockquote id="chapter-epigraph" epub:type="epigraph"><p>Lost time is never found again.</p></blockquote>
+        <p>Dear son, I have ever had pleasure in obtaining any little anecdotes.</p>
+      </section>`)
+    expect(ids(area().nodes)).toEqual(['chapter-1'])
   })
 
   it('takes the body-matter main of a per-chapter page, not the site header outside it', () => {
