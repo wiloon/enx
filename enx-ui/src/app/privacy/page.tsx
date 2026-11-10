@@ -25,6 +25,8 @@ import { SITE } from '@/lib/site'
 //     repo/account.go personalTables, trial_grants, ADR-062
 //   - feedback: linked to the account, no expiry        -> enx-api
 //     feedback/ (feedback table), ADR-076
+//   - article-choice sharing: fields, default off       -> enx-chrome
+//     lib/articleChoiceShare.ts, config/preferences.ts, ADR-073
 export const dynamic = 'force-static'
 
 export const metadata: Metadata = {
@@ -129,7 +131,8 @@ export default function PrivacyPolicyPage() {
           &ldquo;Send report&rdquo; on a page Catglish could not read, or
           &ldquo;Send feedback&rdquo; in the extension popup or the account
           menu, where you see the cleaned address and can edit or clear it
-          before sending (see below).
+          before sending, or share an article you chose by hand after agreeing
+          to (see below).
         </p>
       </Section>
 
@@ -176,7 +179,7 @@ export default function PrivacyPolicyPage() {
                   'At most 100 days, then deleted automatically; only the daily lookup counts remain',
                 ],
                 [
-                  'Feedback you send us: what you write with "Send feedback", or a page Catglish could not read when you press "Send report". With it: the page address (cleaned, and shown to you to edit or clear before sending), what went wrong, the app version, your browser\'s name and major version, and, from the extension, whether learning mode was on, which site adapter read the page and whether you picked the article yourself',
+                  'Feedback you send us: what you write with "Send feedback", or a page Catglish could not read when you press "Send report". With it: the page address (cleaned, and shown to you to edit or clear before sending), what went wrong, the app version, your browser\'s name and major version, and, from the extension, whether learning mode was on, which site adapter read the page and whether you picked the article yourself. If you turned on sharing of article choices, each choice you confirm: its cleaned page address, the article\'s selector, what automatic detection found and the extension version',
                   'So we can find and fix problems',
                   'Not deleted automatically; deleted when you delete your account',
                 ],
@@ -260,16 +263,23 @@ export default function PrivacyPolicyPage() {
           when you delete your account.
         </p>
         <p>
-          A future version of the extension may offer to share the article you
-          pick by hand on a page, so we can improve automatic detection. That
-          sharing is off by default: the extension will ask you once, and you
-          will be able to turn it off at any time. What was already shared is
-          kept as feedback, under the rules above.
+          The extension can also share an article you choose by hand, so we can
+          improve automatic detection on that site. This is off by default: the
+          first time you choose an article, the extension asks you, and you can
+          change your answer at any time with &ldquo;Share my article
+          choices&rdquo; in the extension&rsquo;s options. With sharing on, each
+          choice you confirm that can be remembered for the site sends the page
+          address, cleaned the same way, the selector that identifies the
+          article you chose, what automatic detection found on that page, and
+          the extension version. We never send the page&rsquo;s text or title. A
+          shared choice is feedback: it is linked to your account and kept until
+          you delete your account. Turning sharing off stops future sends;
+          choices already shared remain until you delete your account.
         </p>
         <p>
-          Apart from a page you save and feedback you send, which article you
-          were reading is something your own browser knows and our servers never
-          learn.
+          Apart from a page you save, feedback you send and article choices you
+          agreed to share, which article you were reading is something your own
+          browser knows and our servers never learn.
         </p>
       </Section>
 
