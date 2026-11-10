@@ -48,6 +48,7 @@ export async function evaluateSnapshot(
     return {
       id: item.id,
       url: item.url,
+      pageType: item.pageType,
       ours: scorePage({
         status: 'loaded',
         ...observed,
@@ -69,6 +70,7 @@ export async function evaluateSnapshot(
     return {
       id: item.id,
       url: item.url,
+      pageType: item.pageType,
       ours: failed,
       readability: failed,
       error: message,

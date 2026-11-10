@@ -157,7 +157,7 @@ test.describe('labelled offline snapshots', () => {
     const url = 'https://snapshot.example.invalid/river#observations'
     const report = await evaluateSnapshot(
       page,
-      { id: 'river', url, html, labelText },
+      { id: 'river', url, html, labelText, pageType: 'article' },
       { probeScript }
     )
     expect(page.url()).toBe(url)
@@ -172,6 +172,7 @@ test.describe('labelled offline snapshots', () => {
     expect(report).toMatchObject({
       id: 'river',
       url,
+      pageType: 'article',
       ours: { coverage: 1, precision: 1, verdict: 'ok' },
       readability: { coverage: 1, precision: 1, verdict: 'ok' },
     })
@@ -212,5 +213,30 @@ test.describe('labelled offline snapshots', () => {
       ours: { coverage: 1, precision: 1, verdict: 'ok' },
       readability: { coverage: 0, precision: 0, verdict: 'no article node' },
     })
+  })
+
+  test('a snapshot whose probe fails is unmeasured and keeps its page type', async ({
+    page,
+  }) => {
+    const { evaluateSnapshot } =
+      await import('../article-eval/evaluateSnapshot')
+    const report = await evaluateSnapshot(
+      page,
+      {
+        id: 'broken',
+        url: 'https://snapshot.example.invalid/broken',
+        html: '<article>Broken probe</article>',
+        labelText: 'Broken probe',
+        pageType: 'documentation',
+      },
+      { probeScript: 'throw new Error("probe broke")' }
+    )
+    expect(report).toMatchObject({
+      id: 'broken',
+      pageType: 'documentation',
+      ours: { verdict: 'load failed' },
+      readability: { verdict: 'load failed' },
+    })
+    expect(report.error).toContain('probe broke')
   })
 })

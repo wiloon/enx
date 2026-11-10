@@ -1,9 +1,9 @@
 import { chromium, devices } from '@playwright/test'
-import type { DatasetLoader } from '../src/lib/articleEval/dataset.ts'
 import {
-  formatDatasetReport,
-  type DatasetReport,
-} from '../src/lib/articleEval/report.ts'
+  measureDataset,
+  type DatasetLoader,
+} from '../src/lib/articleEval/dataset.ts'
+import { formatDatasetReport } from '../src/lib/articleEval/report.ts'
 import { buildProbe } from './buildProbe.ts'
 import { evaluateSnapshot } from './evaluateSnapshot.ts'
 
@@ -18,34 +18,31 @@ export async function evaluateDataset(
     headless: !headed,
     executablePath: process.env.E2E_CHROMIUM_PATH || undefined,
   })
-  const rows: DatasetReport[] = new Array(items.length)
-  let next = 0
   try {
-    await Promise.all(
-      Array.from({ length: 3 }, async () => {
-        while (next < items.length) {
-          const index = next++
-          const context = await browser.newContext({
-            ...devices['Desktop Chrome'],
-            serviceWorkers: 'block',
+    const rows = await measureDataset(
+      items,
+      async item => {
+        const context = await browser.newContext({
+          ...devices['Desktop Chrome'],
+          serviceWorkers: 'block',
+        })
+        try {
+          return await evaluateSnapshot(await context.newPage(), item, {
+            probeScript,
           })
-          try {
-            rows[index] = await evaluateSnapshot(
-              await context.newPage(),
-              items[index],
-              { probeScript }
-            )
-          } finally {
-            await context.close()
-          }
-          console.error(
-            `[${rows.filter(Boolean).length}/${items.length}] ${rows[index].ours.verdict}  ${items[index].url}`
-          )
+        } finally {
+          await context.close()
         }
-      })
+      },
+      {
+        onRow: (row, done) =>
+          console.error(
+            `[${done}/${items.length}] ${row.ours.verdict}  ${row.url}`
+          ),
+      }
     )
+    return formatDatasetReport(rows)
   } finally {
     await browser.close()
   }
-  return formatDatasetReport(rows)
 }
