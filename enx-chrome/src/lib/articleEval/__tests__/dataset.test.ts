@@ -97,3 +97,41 @@ test('maps labelled snapshot IDs to URLs and human article text', () => {
     },
   ])
 })
+
+test('measures an unlabelled page when labels are not required', async () => {
+  const evaluated: string[] = []
+  const rows = await measureDataset(
+    [
+      {
+        id: '0003',
+        url: 'https://a.example/shop',
+        html: '<main>Shop</main>',
+        labelText: '',
+        pageType: 'product',
+      },
+      {
+        id: '0004',
+        url: '',
+        html: '<main>Lost</main>',
+        labelText: '',
+        pageType: 'product',
+      },
+    ],
+    async item => {
+      evaluated.push(item.id)
+      return {
+        id: item.id,
+        url: item.url,
+        pageType: item.pageType,
+        ours: { coverage: null, precision: null, verdict: 'no reference' },
+        readability: { coverage: null, precision: null, verdict: 'no reference' },
+        source: 'whole-page',
+      }
+    },
+    { requireLabel: false }
+  )
+
+  expect(evaluated).toEqual(['0003'])
+  expect(rows[0]).toMatchObject({ id: '0003', source: 'whole-page' })
+  expect(rows[1]).toMatchObject({ id: '0004', error: 'no URL' })
+})

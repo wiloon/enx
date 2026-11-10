@@ -20,7 +20,7 @@ export interface EvaluateOptions {
 }
 
 type ProbeApi = {
-  probe: () => ProbeResult
+  probe: () => Promise<ProbeResult>
   readySelector: () => string | null
 }
 
@@ -89,6 +89,7 @@ export async function evaluatePage(
     selector: probed.selector,
     platform: probed.platform,
     source: probed.source,
+    ...(probed.fallback ? { fallback: probed.fallback } : {}),
     ...scorePage({ status: 'loaded', ...probed }),
   }
 }

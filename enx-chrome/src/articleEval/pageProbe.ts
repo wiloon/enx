@@ -4,14 +4,16 @@
 
 import { Readability } from '@mozilla/readability'
 import { extractText } from '@/lib/articleEval/extractText'
+import { resolveLookupArea } from '@/lib/lookupArea'
 import { lookupAreaOptions, resolveSiteAdapter } from '@/lib/siteAdapters'
-import { WordProcessor } from '@/lib/wordProcessor'
 
 export interface ProbeResult {
   adapter: string
   selector: string | null
   platform: string | null
   source: 'article' | 'whole-page'
+  /** Set when layer 6 (ADR-077) found the article rather than a selector. */
+  fallback?: 'json-ld-readability'
   nodes: number
   chosenText: string
   referenceText: string | null
@@ -36,14 +38,17 @@ function referenceText(): string | null {
   return extractText([article.body])
 }
 
-export function probe(): ProbeResult {
+export async function probe(): Promise<ProbeResult> {
   const adapter = siteAdapter()
-  const area = WordProcessor.findLookupArea(lookupAreaOptions(adapter))
+  const area = await resolveLookupArea(lookupAreaOptions(adapter), {
+    loadReadability: () => Promise.resolve(Readability),
+  })
   return {
     adapter: adapter.name,
     selector: area.selector ?? null,
     platform: area.platform ?? null,
     source: area.source,
+    ...(area.fallback ? { fallback: area.fallback } : {}),
     nodes: area.nodes.length,
     chosenText: extractText(area.nodes),
     referenceText: referenceText(),

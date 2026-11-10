@@ -174,3 +174,21 @@ describe('formatReport', () => {
     })
   })
 })
+
+test('tells a layer 6 article from a selector match in the SOURCE column', () => {
+  const report = formatReport(
+    [
+      row({ url: 'https://a.example/selector' }),
+      row({
+        url: 'https://a.example/layer6',
+        selector: null,
+        fallback: 'json-ld-readability',
+      }),
+    ],
+    null
+  )
+  expect(report).toMatch(/a\.example\/selector .*default article\s+-\s+article\s+0\.90/)
+  expect(report).toMatch(
+    /a\.example\/layer6 .*default \(no selector\)\s+-\s+article \(layer 6\)\s+0\.90/
+  )
+})

@@ -3,14 +3,17 @@ import {
   measureDataset,
   type DatasetLoader,
 } from '../src/lib/articleEval/dataset.ts'
-import { formatDatasetReport } from '../src/lib/articleEval/report.ts'
+import {
+  formatDatasetReport,
+  formatNonArticleReport,
+} from '../src/lib/articleEval/report.ts'
 import { buildProbe } from './buildProbe.ts'
 import { evaluateSnapshot } from './evaluateSnapshot.ts'
 
 /** Dataset formats stop at the loader; evaluation and reporting are shared. */
 export async function evaluateDataset(
   loader: DatasetLoader,
-  { headed = false, only = '' } = {}
+  { headed = false, only = '', nonArticle = false } = {}
 ): Promise<string> {
   const items = (await loader.load()).filter(item => item.url.includes(only))
   const probeScript = await buildProbe()
@@ -35,13 +38,14 @@ export async function evaluateDataset(
         }
       },
       {
+        requireLabel: !nonArticle,
         onRow: (row, done) =>
           console.error(
-            `[${done}/${items.length}] ${row.ours.verdict}  ${row.url}`
+            `[${done}/${items.length}] ${nonArticle ? (row.fallback ? 'layer 6' : (row.source ?? row.ours.verdict)) : row.ours.verdict}  ${row.url}`
           ),
       }
     )
-    return formatDatasetReport(rows)
+    return nonArticle ? formatNonArticleReport(rows) : formatDatasetReport(rows)
   } finally {
     await browser.close()
   }

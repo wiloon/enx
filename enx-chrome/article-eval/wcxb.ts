@@ -16,16 +16,20 @@ const SOURCE = `https://raw.githubusercontent.com/Murrough-Foley/web-content-ext
 const json = (data: Buffer): unknown => JSON.parse(data.toString('utf8'))
 
 /**
- * WCXB article and documentation pages from both splits, indexed by
- * metadata.json so other page types are never downloaded.
+ * WCXB pages of the given types (article and documentation by default) from
+ * both splits, indexed by metadata.json so other page types are never
+ * downloaded.
  */
 export class WcxbDataset implements DatasetLoader {
   private cached: (file: string) => Promise<Buffer>
+  private pageTypes: readonly string[]
 
   constructor({
     cacheRoot = join(homedir(), '.cache/enx/article-eval'),
     fetchFile = fetch,
+    pageTypes = WCXB_PAGE_TYPES,
   } = {}) {
+    this.pageTypes = pageTypes
     this.cached = cachedDownloader({
       name: 'WCXB',
       source: SOURCE,
@@ -43,7 +47,7 @@ export class WcxbDataset implements DatasetLoader {
     const index = parseWcxbIndex(json(await this.cached('metadata.json')))
     const items: DatasetItem[] = []
     for (const { id, split, pageType } of index) {
-      if (!WCXB_PAGE_TYPES.includes(pageType)) continue
+      if (!this.pageTypes.includes(pageType)) continue
       const file = `${split}/ground-truth/${id}.json`
       const label = parseWcxbGroundTruth(file, json(await this.cached(file)))
       if (label.pageType !== pageType)
