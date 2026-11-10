@@ -71,8 +71,8 @@ func settleUpdate(tx *gorm.DB, userID string, at time.Time, cost int64) error {
 	// top-up absorbs the rest" split holds under concurrency: SQL
 	// evaluates every RHS against the row's pre-update values, so two
 	// racing Settles can't both decide to take the same credits from a
-	// non-negative pool and drive it negative (which GrantSubscription's
-	// replace-semantics would then silently forgive).
+	// non-negative pool and drive it negative (which the invoice.paid
+	// renewal's reset of the subscription pool would then silently forgive).
 	//   from_trial        = min(effective_trial, cost)
 	//   rest              = cost - from_trial
 	//   from_subscription = min(max(subscription_balance,0), rest)

@@ -15,7 +15,7 @@ func TestSettleDrawsFromSubscriptionPoolFirst(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	seedCreditUser(t, userID)
-	mustGrantSubscription(t, userID, 10, 5)
+	seedPaidPools(t, userID, 10, 5)
 
 	if err := Settle(ctx, userID, "rephrase_to_english", 3); err != nil {
 		t.Fatalf("Settle: %v", err)
@@ -31,7 +31,7 @@ func TestSettleRejectsNegativeCost(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	seedCreditUser(t, userID)
-	mustGrantSubscription(t, userID, 5, 5)
+	seedPaidPools(t, userID, 5, 5)
 
 	if err := Settle(ctx, userID, "rephrase_to_english", -1); err == nil {
 		t.Fatal("expected an error for a negative cost")
@@ -49,7 +49,7 @@ func TestSettleZeroCostIsNoOp(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	seedCreditUser(t, userID)
-	mustGrantSubscription(t, userID, 5, 5)
+	seedPaidPools(t, userID, 5, 5)
 
 	if err := Settle(ctx, userID, "rephrase_to_english", 0); err != nil {
 		t.Fatalf("Settle: %v", err)
@@ -68,7 +68,7 @@ func TestSettleDrivesTopupPoolNegativeWhenOverBudget(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	seedCreditUser(t, userID)
-	mustGrantSubscription(t, userID, 1, 1)
+	seedPaidPools(t, userID, 1, 1)
 
 	if err := Settle(ctx, userID, "rephrase_to_english", 5); err != nil {
 		t.Fatalf("Settle: %v", err)
@@ -87,7 +87,7 @@ func TestSettleSpillsRemainderToTopupPool(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	seedCreditUser(t, userID)
-	mustGrantSubscription(t, userID, 2, 5)
+	seedPaidPools(t, userID, 2, 5)
 
 	if err := Settle(ctx, userID, "rephrase_to_english", 3); err != nil {
 		t.Fatalf("Settle: %v", err)
@@ -106,7 +106,7 @@ func TestSettleConcurrentNoLostWrites(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	seedCreditUser(t, userID)
-	mustGrantSubscription(t, userID, 10, 100)
+	seedPaidPools(t, userID, 10, 100)
 
 	const (
 		goroutines = 50
@@ -142,7 +142,7 @@ func TestSettleConcurrentNoLostWrites(t *testing.T) {
 }
 
 // Under concurrency the subscription pool must still never go negative --
-// GrantSubscription replaces (not adds to) that balance, so a negative
+// the invoice.paid renewal replaces (not adds to) that balance, so a negative
 // there would be silently forgiven on renewal. The single atomic UPDATE in
 // Settle is what guarantees this; the earlier read-then-write version did
 // not.
@@ -150,7 +150,7 @@ func TestSettleConcurrentKeepsSubscriptionNonNegative(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	seedCreditUser(t, userID)
-	mustGrantSubscription(t, userID, 5, 100)
+	seedPaidPools(t, userID, 5, 100)
 
 	const (
 		goroutines = 20

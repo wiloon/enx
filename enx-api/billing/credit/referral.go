@@ -121,8 +121,9 @@ func GrantReferralBonus(ctx context.Context, userID string, b ReferralBonus) (tr
 
 // GrantReferralReward adds amount to the referrer's top-up pool, which never
 // expires. Idempotent on key ("referral-reward:<inviteeID>"). The row
-// deliberately carries no payment intent: ADR-049's Clawback finds grants
-// by payment intent, and the invitee's later refund must not reach the
+// deliberately carries no payment intent: the charge.refunded handler finds
+// the refunded grant by payment intent (repo.ChargeRefunds
+// GrantForPaymentIntent), and the invitee's later refund must not reach the
 // referrer. A referrer with no users row gets ErrNoUser and nothing is
 // written; the check runs inside the transaction so that it serializes with
 // the account's deletion.

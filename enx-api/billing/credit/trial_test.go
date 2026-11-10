@@ -147,7 +147,7 @@ func TestGrantTrialAddsToABonusAlreadyInTheTrialPool(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	seedCreditUser(t, userID)
-	mustGrantSubscription(t, userID, 5, 0)
+	seedPaidPools(t, userID, 5, 0)
 	start := time.Now().Truncate(time.Second)
 	setClock(t, start)
 	bonusExpiry := start.Add(14 * 24 * time.Hour)
@@ -218,7 +218,7 @@ func TestBalanceIgnoresExpiredTrial(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	seedCreditUser(t, userID)
-	mustGrantSubscription(t, userID, 5, 0)
+	seedPaidPools(t, userID, 5, 0)
 	mustGrantTrial(t, userID, 100, time.Hour)
 
 	setClock(t, time.Now().Add(time.Hour+time.Second))
@@ -236,7 +236,7 @@ func TestSettleAfterExpiryForfeitsTrialAndRecordsExpire(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	seedCreditUser(t, userID)
-	mustGrantSubscription(t, userID, 10, 0)
+	seedPaidPools(t, userID, 10, 0)
 	mustGrantTrial(t, userID, 30, time.Hour)
 	setClock(t, time.Now().Add(2*time.Hour))
 
@@ -272,7 +272,7 @@ func TestSettleConcurrentKeepsTrialNonNegativeAndLosesNothing(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	seedCreditUser(t, userID)
-	mustGrantSubscription(t, userID, 10, 100)
+	seedPaidPools(t, userID, 10, 100)
 	mustGrantTrial(t, userID, 20, time.Hour)
 
 	const goroutines, costEach = 50, 3
@@ -332,7 +332,7 @@ func TestSettleDrawsTrialBeforeSubscriptionAndTopup(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	seedCreditUser(t, userID)
-	mustGrantSubscription(t, userID, 10, 10)
+	seedPaidPools(t, userID, 10, 10)
 	mustGrantTrial(t, userID, 5, time.Hour)
 
 	if err := Settle(ctx, userID, "translate_sentence", 8); err != nil {
@@ -350,7 +350,7 @@ func TestSettleOverrunSpillsFromTrialThroughToTopup(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	seedCreditUser(t, userID)
-	mustGrantSubscription(t, userID, 2, 1)
+	seedPaidPools(t, userID, 2, 1)
 	mustGrantTrial(t, userID, 3, time.Hour)
 
 	if err := Settle(ctx, userID, "translate_sentence", 10); err != nil {

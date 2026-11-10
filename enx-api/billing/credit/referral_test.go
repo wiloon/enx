@@ -204,7 +204,7 @@ func TestGrantReferralRewardAddsToTopupWithoutAPaymentIntent(t *testing.T) {
 	ctx := context.Background()
 	userID := "u-" + t.Name()
 	seedUser(t, userID)
-	mustGrantSubscription(t, userID, 1, 40)
+	seedPaidPools(t, userID, 1, 40)
 
 	if err := GrantReferralReward(ctx, userID, 300, "referral-reward:invitee-1"); err != nil {
 		t.Fatalf("GrantReferralReward: %v", err)

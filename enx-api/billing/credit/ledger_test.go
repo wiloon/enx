@@ -1,10 +1,8 @@
 package credit
 
 import (
-	"context"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
@@ -18,125 +16,19 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestGrantSubscriptionResetsNotAdds(t *testing.T) {
-	ctx := context.Background()
-	userID := "u-" + t.Name()
-	seedCreditUser(t, userID)
-	mustGrantSubscription(t, userID, 50, 0)
-	// Simulate unused credit left over from last month, then renewal.
-	if err := GrantSubscription(ctx, userID, 30, time.Now().Add(30*24*time.Hour), "evt-renewal-2", ""); err != nil {
-		t.Fatalf("GrantSubscription: %v", err)
-	}
-
-	acc := loadAccount(t, userID)
-	if acc.SubscriptionBalance != 30 {
-		t.Fatalf("got subscription_balance=%d, want 30 (reset, not 50+30=80)", acc.SubscriptionBalance)
-	}
-}
-
-func TestGrantSubscriptionIdempotent(t *testing.T) {
-	ctx := context.Background()
-	userID := "u-" + t.Name()
-	seedCreditUser(t, userID)
-	periodEnd := time.Now().Add(30 * 24 * time.Hour)
-
-	if err := GrantSubscription(ctx, userID, 20, periodEnd, "evt-dup-1", ""); err != nil {
-		t.Fatalf("first GrantSubscription: %v", err)
-	}
-	// Simulate a Stripe webhook retry of the same event, after the user has
-	// already spent some credit -- a naive re-grant would clobber that.
-	if err := Settle(ctx, userID, "translate_sentence", 5); err != nil {
-		t.Fatalf("Settle: %v", err)
-	}
-	if err := GrantSubscription(ctx, userID, 20, periodEnd, "evt-dup-1", ""); err != nil {
-		t.Fatalf("retried GrantSubscription: %v", err)
-	}
-
-	acc := loadAccount(t, userID)
-	if acc.SubscriptionBalance != 15 {
-		t.Fatalf("got subscription_balance=%d, want 15 (retry must be a no-op, not re-grant 20)", acc.SubscriptionBalance)
-	}
-}
-
-func TestGrantTopupAddsAndIsIdempotent(t *testing.T) {
-	ctx := context.Background()
-	userID := "u-" + t.Name()
-	seedCreditUser(t, userID)
-
-	if err := GrantTopup(ctx, userID, 10, "evt-topup-1", ""); err != nil {
-		t.Fatalf("first GrantTopup: %v", err)
-	}
-	if err := GrantTopup(ctx, userID, 7, "evt-topup-2", ""); err != nil {
-		t.Fatalf("second GrantTopup: %v", err)
-	}
-	if err := GrantTopup(ctx, userID, 7, "evt-topup-2", ""); err != nil {
-		t.Fatalf("retried GrantTopup: %v", err)
-	}
-
-	acc := loadAccount(t, userID)
-	if acc.TopupBalance != 17 {
-		t.Fatalf("got topup_balance=%d, want 17 (10+7, retry of evt-topup-2 must be a no-op)", acc.TopupBalance)
-	}
-}
-
-func TestConsumeConcurrentIdempotentGrantsExactlyOnce(t *testing.T) {
-	ctx := context.Background()
-	userID := "u-" + t.Name()
-	seedCreditUser(t, userID)
-
-	var wg sync.WaitGroup
-	const attempts = 20
-	for i := 0; i < attempts; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			_ = GrantTopup(ctx, userID, 10, "evt-racing-topup", "")
-		}()
-	}
-	wg.Wait()
-
-	acc := loadAccount(t, userID)
-	if acc.TopupBalance != 10 {
-		t.Fatalf("got topup_balance=%d, want 10 (event must be applied exactly once even when raced)", acc.TopupBalance)
-	}
-}
-
-// A Stripe grant without its event id could not be deduplicated, and a
-// non-positive amount is a misconfigured price; both must fail loudly so
-// Stripe retries and an operator notices, and neither may touch the ledger.
-func TestStripeGrantsRejectAMissingEventIDOrNonPositiveAmount(t *testing.T) {
-	ctx := context.Background()
-	userID := "u-" + t.Name()
-	seedCreditUser(t, userID)
-	periodEnd := time.Now().Add(30 * 24 * time.Hour)
-
-	for name, grant := range map[string]func() error{
-		"subscription without event id": func() error { return GrantSubscription(ctx, userID, 30, periodEnd, "", "pi_1") },
-		"subscription of zero":          func() error { return GrantSubscription(ctx, userID, 0, periodEnd, "evt-sub-0", "pi_1") },
-		"negative subscription":         func() error { return GrantSubscription(ctx, userID, -5, periodEnd, "evt-sub-neg", "pi_1") },
-		"top-up without event id":       func() error { return GrantTopup(ctx, userID, 30, "", "pi_2") },
-		"top-up of zero":                func() error { return GrantTopup(ctx, userID, 0, "evt-topup-0", "pi_2") },
-		"negative top-up":               func() error { return GrantTopup(ctx, userID, -5, "evt-topup-neg", "pi_2") },
-	} {
-		if err := grant(); err == nil {
-			t.Errorf("%s: succeeded, want an error", name)
-		}
-	}
-	if n := countCreditAccounts(t, userID); n != 0 {
-		t.Fatalf("credit_accounts rows = %d, want none created", n)
-	}
-}
-
-func mustGrantSubscription(t *testing.T, userID string, subAmount, topupAmount int64) {
+// seedPaidPools sets userID's subscription and top-up pools directly, with
+// a subscription period a month out. Paid grants are written by the webhook
+// handlers in repo, which this package cannot import; the tests here only
+// need the pools, not the grant's ledger row.
+func seedPaidPools(t *testing.T, userID string, subscription, topup int64) {
 	t.Helper()
-	ctx := context.Background()
-	if err := GrantSubscription(ctx, userID, subAmount, time.Now().Add(30*24*time.Hour), "evt-setup-"+userID+"-sub", ""); err != nil {
-		t.Fatalf("setup GrantSubscription: %v", err)
-	}
-	if topupAmount > 0 {
-		if err := GrantTopup(ctx, userID, topupAmount, "evt-setup-"+userID+"-topup", ""); err != nil {
-			t.Fatalf("setup GrantTopup: %v", err)
-		}
+	now := time.Now()
+	if err := sqlitex.DB.Exec(
+		"INSERT INTO credit_accounts (user_id, subscription_balance, topup_balance, period_end, updated_at) VALUES (?, ?, ?, ?, ?) "+
+			"ON CONFLICT(user_id) DO UPDATE SET subscription_balance = excluded.subscription_balance, topup_balance = excluded.topup_balance, "+
+			"period_end = excluded.period_end, updated_at = excluded.updated_at",
+		userID, subscription, topup, now.Add(30*24*time.Hour).Unix(), now.UnixMilli()).Error; err != nil {
+		t.Fatalf("seed paid pools: %v", err)
 	}
 }
 

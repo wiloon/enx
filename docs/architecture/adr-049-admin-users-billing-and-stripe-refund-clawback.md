@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-10-07
-updated: 2026-10-23（#297：持久处理、当前积分池来源及原订阅退款归属）
+updated: 2026-10-23（#297：持久处理、当前积分池来源及原订阅退款归属）；2026-11-10（#682：删除 `credit.GrantTopup`、`GrantSubscription` 和 `Clawback`，这些流水改由 adr-067 的 webhook 处理器和 `repo.ApplyClawback` 写入）
 related: adr-009（两池积分账本、Stripe webhook）、adr-021（管理员白名单与 enx-ui 管理页）、adr-032（保存的页面没有管理员路由）、adr-048（试用积分，已实现；`GRANT_TRIAL` 与本 ADR 的流水类型并列）、adr-051（邀请积分，未实现；依赖本 ADR 的管理员扣减）、adr-059（查词事件表，取代 `dictionary_lookup_quota`）
 ---
 
