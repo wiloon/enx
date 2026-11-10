@@ -9,22 +9,30 @@ import {
 } from '@/lib/feedback'
 import { sanitizePageUrl } from '@/lib/pageReport'
 import {
+  ArrowLeftIcon,
   ChatBubbleLeftEllipsisIcon,
-  ChevronDownIcon,
+  CheckCircleIcon,
+  ChevronRightIcon,
 } from '@heroicons/react/24/outline'
-import { useEffect, useId, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
+
+// How long the "feedback sent" toast stays on screen.
+export const FEEDBACK_TOAST_MS = 3_000
 
 // "Send feedback" in the popup (ADR-076): the user's own words, with the
-// current tab's cleaned URL, which they may edit or clear.
-export default function SendFeedback() {
+// current tab's cleaned URL, which they may edit or clear. The form is a page
+// of its own in place of the popup's main page (`children`), so the popup
+// stays within Chrome's 600px height; a successful send returns to the main
+// page and shows a toast that goes away by itself.
+export default function SendFeedback({ children }: { children?: ReactNode }) {
   const [open, setOpen] = useState(false)
+  const [toast, setToast] = useState(false)
   const [tabId, setTabId] = useState<number>()
   const [defaultUrl, setDefaultUrl] = useState('')
   const [text, setText] = useState('')
   const [url, setUrl] = useState('')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string>()
-  const [sent, setSent] = useState(false)
   // State lags a click; the ref stops a second one in the same tick.
   const inFlight = useRef(false)
   const urlId = useId()
@@ -48,6 +56,12 @@ export default function SendFeedback() {
       .catch(() => {})
   }, [open])
 
+  useEffect(() => {
+    if (!toast) return
+    const timer = setTimeout(() => setToast(false), FEEDBACK_TOAST_MS)
+    return () => clearTimeout(timer)
+  }, [toast])
+
   const blank = isFeedbackBlank(text)
 
   const submit = async (e: React.FormEvent) => {
@@ -56,7 +70,6 @@ export default function SendFeedback() {
     inFlight.current = true
     setPending(true)
     setError(undefined)
-    setSent(false)
     try {
       const page =
         tabId === undefined
@@ -74,9 +87,10 @@ export default function SendFeedback() {
         }
       )
       if (outcome.sent) {
-        setSent(true)
         setText('')
         setUrl(defaultUrl)
+        setOpen(false)
+        setToast(true)
       } else {
         setError(outcome.message)
       }
@@ -86,34 +100,30 @@ export default function SendFeedback() {
     }
   }
 
-  return (
-    <div className="rounded-xl bg-background shadow-xs ring-1 ring-border">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-muted/50 active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-      >
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-muted text-brand">
-          <ChatBubbleLeftEllipsisIcon className="h-[18px] w-[18px]" />
-        </span>
-        <span className="flex-1 text-sm font-medium text-foreground">
-          Send feedback
-        </span>
-        <ChevronDownIcon
-          className={`h-4 w-4 text-muted-foreground transition ${open ? 'rotate-180' : ''}`}
-        />
-      </button>
-
-      {open && (
-        <form className="space-y-2.5 px-3 pb-3" onSubmit={submit}>
+  if (open) {
+    return (
+      <div className="space-y-2.5 p-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            aria-label="Back"
+            onClick={() => setOpen(false)}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-background hover:text-foreground active:scale-[0.95] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+          >
+            <ArrowLeftIcon className="h-[18px] w-[18px]" />
+          </button>
+          <h2 className="text-sm font-semibold text-foreground">
+            Send feedback
+          </h2>
+        </div>
+        <form className="space-y-2.5" onSubmit={submit}>
           <div className="rounded-xl border border-border bg-card shadow-xs focus-within:ring-2 focus-within:ring-brand">
             <textarea
               aria-label="Your feedback"
+              autoFocus
               value={text}
               onChange={e => {
                 setText(clampFeedbackText(e.target.value))
-                setSent(false)
               }}
               disabled={pending}
               placeholder="Tell us what went wrong or what could be better."
@@ -161,18 +171,41 @@ export default function SendFeedback() {
             </p>
           </div>
 
-          {sent && (
-            <p role="status" className="text-xs text-brand">
-              {FEEDBACK_SENT_MESSAGE}
-            </p>
-          )}
           {error && (
             <p role="alert" className="text-xs text-destructive">
               {error}
             </p>
           )}
         </form>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2.5 p-3">
+      {toast && (
+        <div
+          role="status"
+          className="fixed inset-x-3 top-3 z-50 flex items-center gap-2 rounded-xl bg-foreground px-3 py-2.5 text-sm font-medium text-background shadow-lg"
+        >
+          <CheckCircleIcon className="h-[18px] w-[18px] shrink-0 text-brand" />
+          {FEEDBACK_SENT_MESSAGE}
+        </div>
       )}
+      {children}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex w-full items-center gap-3 rounded-xl bg-background px-3 py-2.5 text-left shadow-xs ring-1 ring-border transition hover:ring-brand/50 active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+      >
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-muted text-brand">
+          <ChatBubbleLeftEllipsisIcon className="h-[18px] w-[18px]" />
+        </span>
+        <span className="flex-1 text-sm font-medium text-foreground">
+          Send feedback
+        </span>
+        <ChevronRightIcon className="h-4 w-4 text-muted-foreground" />
+      </button>
     </div>
   )
 }

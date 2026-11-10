@@ -33,7 +33,11 @@ afterEach(() => {
 })
 
 const open = async () => {
-  render(<SendFeedback />)
+  render(
+    <SendFeedback>
+      <p>Main page</p>
+    </SendFeedback>
+  )
   fireEvent.click(screen.getByRole('button', { name: 'Send feedback' }))
   return {
     text: screen.getByRole('textbox', { name: 'Your feedback' }),
@@ -51,6 +55,16 @@ const sentFeedback = () => {
   )
   return calls.map(([message]) => message.feedback)
 }
+
+it('opens the feedback page in place of the main page, and Back returns to it', async () => {
+  await open()
+  expect(screen.queryByText('Main page')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+  expect(screen.getByText('Main page')).toBeInTheDocument()
+  expect(
+    screen.queryByRole('textbox', { name: 'Your feedback' })
+  ).not.toBeInTheDocument()
+})
 
 it('opens with the cleaned page URL of the current tab', async () => {
   const { url } = await open()
@@ -121,13 +135,12 @@ it('starts with no URL on a tab that is not a web page, and still sends', async 
   )
 })
 
-it('keeps a cleared URL when the panel is collapsed and reopened', async () => {
+it('keeps a cleared URL when the user goes back and opens it again', async () => {
   const { url } = await open()
   await waitFor(() => expect(url).not.toHaveValue(''))
   type(url, '')
-  const toggle = screen.getByRole('button', { name: 'Send feedback' })
-  fireEvent.click(toggle)
-  fireEvent.click(toggle)
+  fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Send feedback' }))
   const reopened = await screen.findByRole('textbox', { name: 'Page URL' })
   await act(async () => {})
   expect(reopened).toHaveValue('')
@@ -182,36 +195,61 @@ it('sends once for a double click and is disabled while in flight', async () => 
   await waitFor(() => expect(sentFeedback()).toHaveLength(1))
   expect(screen.getByRole('button', { name: 'Sending…' })).toBeDisabled()
   answer({ success: true })
-  expect(await screen.findByRole('button', { name: 'Send' })).toBeDisabled()
+  await screen.findByText('Main page')
   expect(sentFeedback()).toHaveLength(1)
 })
 
-it('thanks the user and resets the text and the URL after a successful send', async () => {
+it('goes back to the main page with a thank-you toast that disappears after 3 seconds', async () => {
+  const { text, url, send } = await open()
+  await waitFor(() => expect(url).not.toHaveValue(''))
+  jest.useFakeTimers()
+  try {
+    type(text, 'hi')
+    fireEvent.click(send)
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Thanks — feedback sent'
+    )
+    expect(screen.getByText('Main page')).toBeInTheDocument()
+    act(() => jest.advanceTimersByTime(2_900))
+    expect(screen.getByRole('status')).toHaveTextContent('Thanks')
+    act(() => jest.advanceTimersByTime(200))
+    expect(screen.queryByText('Thanks — feedback sent')).not.toBeInTheDocument()
+  } finally {
+    jest.useRealTimers()
+  }
+})
+
+it('starts again with empty text and the page URL after a successful send', async () => {
   const { text, url, send } = await open()
   await waitFor(() => expect(url).not.toHaveValue(''))
   type(url, 'https://example.com/other')
   type(text, 'hi')
   fireEvent.click(send)
 
-  expect(await screen.findByRole('status')).toHaveTextContent(
-    'Thanks — feedback sent'
+  await screen.findByText('Main page')
+  fireEvent.click(screen.getByRole('button', { name: 'Send feedback' }))
+  expect(screen.getByRole('textbox', { name: 'Your feedback' })).toHaveValue('')
+  expect(screen.getByRole('textbox', { name: 'Page URL' })).toHaveValue(
+    'https://example.com/news/:redacted/story'
   )
-  expect(text).toHaveValue('')
-  expect(url).toHaveValue('https://example.com/news/:redacted/story')
 })
 
 it.each([
   [400, 'invalid feedback: url "foo" is not a web page'],
   [429, 'Daily feedback limit reached. Please try again tomorrow.'],
-])("shows the API's message for a %i and keeps the text", async (status, error) => {
-  runtimeSend.mockResolvedValue({ success: false, status, error })
-  const { text, send } = await open()
-  type(text, 'hi')
-  fireEvent.click(send)
+])(
+  "shows the API's message for a %i and keeps the text",
+  async (status, error) => {
+    runtimeSend.mockResolvedValue({ success: false, status, error })
+    const { text, send } = await open()
+    type(text, 'hi')
+    fireEvent.click(send)
 
-  expect(await screen.findByRole('alert')).toHaveTextContent(error)
-  expect(text).toHaveValue('hi')
-})
+    expect(await screen.findByRole('alert')).toHaveTextContent(error)
+    expect(text).toHaveValue('hi')
+  }
+)
 
 it.each([
   [

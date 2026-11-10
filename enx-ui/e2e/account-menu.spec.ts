@@ -108,7 +108,13 @@ test('sends feedback from the menu with the cleaned page URL', async ({
 
   await page.keyboard.type('The chart is empty.')
   await dialog.getByRole('button', { name: 'Send' }).click()
-  await expect(dialog.getByText('Thanks — feedback sent')).toBeVisible()
+  const toast = page.getByRole('status').filter({
+    hasText: 'Thanks — feedback sent',
+  })
+  await expect(toast).toBeVisible()
+  await expect(dialog).toBeHidden()
+  await page.screenshot({ path: 'test-results/feedback-toast.png' })
+  await expect(toast).toBeHidden({ timeout: 5_000 })
   expect(body).toMatchObject({
     kind: 'text',
     url: new URL('/app', page.url()).href,

@@ -238,7 +238,7 @@ function SignedInBody({
   }
 
   return (
-    <div className="space-y-2.5 p-3">
+    <SendFeedback>
       <div className="flex items-center gap-3 rounded-xl bg-background p-3 shadow-xs ring-1 ring-border">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-sm font-semibold text-brand-foreground">
           {initial}
@@ -370,9 +370,7 @@ function SignedInBody({
           onRemove={() => void savedPage.remove()}
         />
       )}
-
-      <SendFeedback />
-    </div>
+    </SendFeedback>
   )
 }
 

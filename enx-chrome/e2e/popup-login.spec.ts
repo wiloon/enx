@@ -69,7 +69,7 @@ test.describe('Popup - signed in', () => {
 test.describe('Popup - send feedback', () => {
   test.skip(!loginAvailable, LOGIN_SKIP_REASON)
 
-  test('sends written feedback and resets the form', async ({
+  test('sends written feedback from its own page and thanks the user with a toast', async ({
     page,
     extensionId,
     signedIn: _signedIn,
@@ -88,10 +88,20 @@ test.describe('Popup - send feedback', () => {
     await expect(page.getByText('1,963 characters left')).toBeVisible()
     await send.click()
 
-    await expect(page.getByText('Thanks — feedback sent')).toBeVisible({
-      timeout: 15_000,
+    const toast = page.getByRole('status').filter({
+      hasText: 'Thanks — feedback sent',
     })
-    await expect(text).toHaveValue('')
+    await expect(toast).toBeVisible({ timeout: 15_000 })
+    // Back on the main page, which still fits Chrome's 600px popup.
+    await expect(text).toHaveCount(0)
+    await expect(
+      page.getByRole('button', { name: 'Send feedback' })
+    ).toBeVisible()
+    const height = await page.evaluate(
+      () => document.getElementById('root')!.getBoundingClientRect().height
+    )
+    expect(height).toBeLessThanOrEqual(600)
+    await expect(toast).toBeHidden({ timeout: 5_000 })
   })
 })
 

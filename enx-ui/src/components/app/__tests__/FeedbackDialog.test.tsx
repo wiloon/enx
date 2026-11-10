@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -128,13 +129,41 @@ it('sends an empty URL when the user cleared it', async () => {
   expect(sentBody().url).toBe('')
 })
 
-it('resets the text and the URL after a successful send', async () => {
+it('closes after a successful send and shows a toast that disappears after 3 seconds', async () => {
+  jest.useFakeTimers()
+  try {
+    openFeedback()
+    type('hi')
+    fireEvent.click(sendButton())
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Thanks — feedback sent'
+    )
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    act(() => jest.advanceTimersByTime(2_900))
+    expect(screen.getByRole('status')).toBeInTheDocument()
+    act(() => jest.advanceTimersByTime(200))
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  } finally {
+    jest.useRealTimers()
+  }
+})
+
+it('starts again with empty text and the page URL after a successful send', async () => {
   openFeedback()
   fireEvent.change(urlField(), { target: { value: '' } })
   type('hi')
   fireEvent.click(sendButton())
+  await screen.findByRole('status')
 
-  await screen.findByText('Thanks — feedback sent')
+  fireEvent.keyDown(screen.getByRole('button', { name: 'Account menu' }), {
+    key: 'Enter',
+  })
+  fireEvent.click(
+    within(screen.getByRole('menu')).getByRole('menuitem', {
+      name: 'Send feedback',
+    })
+  )
   expect(textbox()).toHaveValue('')
   expect(urlField()).toHaveValue('http://localhost/reader/:redacted')
 })
