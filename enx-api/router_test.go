@@ -148,6 +148,7 @@ func TestSignedInRoutesRequireASession(t *testing.T) {
 		{http.MethodDelete, "/api/me/words/hello/known"},
 		{http.MethodPost, "/api/me/word-lookups"},
 		{http.MethodGet, "/api/me/review-words"},
+		{http.MethodGet, "/api/me/credits/transactions"},
 		{http.MethodGet, "/api/paragraph-init"},
 		{http.MethodPost, "/api/dictionary/ai-word"},
 		{http.MethodPost, "/api/feedback"},
