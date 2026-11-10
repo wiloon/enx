@@ -117,6 +117,29 @@ func TestAReferrerDeletedBeforeTheGrantCommitsForfeitsTheReward(t *testing.T) {
 	}
 }
 
+func TestAReferrerWhoseDeletionStartsBeforeTheGrantKeepsTheRewardPending(t *testing.T) {
+	newFileDB(t)
+	seedDueReward(t)
+	startDeletion := func() {
+		if err := sqlitex.DB.Exec("INSERT INTO account_deletion_gates (user_id, state, started_at, updated_at) VALUES ('alice', 'in_progress', 1, 1)").Error; err != nil {
+			t.Errorf("start deletion: %v", err)
+		}
+	}
+
+	run := payDueRewards(t, cleanCharge{onCharge: startDeletion})
+
+	if run.Retry != 1 || run.Rewarded != 0 || run.Forfeited != 0 {
+		t.Fatalf("run = %+v, want one to retry", run)
+	}
+	r, _, err := (repo.Referrals{}).Get(context.Background(), "bob")
+	if err != nil || r.Status != referral.StatusPending {
+		t.Fatalf("referral = %+v, %v; want it still pending", r, err)
+	}
+	if n := count(t, "credit_accounts", "user_id = ?", "alice"); n != 0 {
+		t.Fatalf("alice has %d credit_accounts row(s), want none", n)
+	}
+}
+
 func TestAReferrerDeletedAfterTheGrantCommitsLosesTheBalanceButKeepsTheLedger(t *testing.T) {
 	newFileDB(t)
 	seedDueReward(t)

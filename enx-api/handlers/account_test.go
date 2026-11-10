@@ -218,6 +218,31 @@ func TestDeleteMeDuringAnotherDeletionAsksTheClientToRetry(t *testing.T) {
 	}
 }
 
+// replacedCoordinator hands out an attempt that another owner takes over
+// before it can be released.
+type replacedCoordinator struct{ busyCoordinator }
+
+func (replacedCoordinator) Acquire(_ context.Context, u account.User, _ account.DeleteOptions, _ time.Time) (account.DeletionAttempt, error) {
+	return account.DeletionAttempt{UserID: u.ID, Owner: "first"}, nil
+}
+func (replacedCoordinator) Release(context.Context, account.DeletionAttempt, time.Time) error {
+	return account.ErrDeletionInProgress
+}
+
+// A refusal whose release finds the gate taken over is still a deletion in
+// progress: the client retries rather than reading the refusal as final.
+func TestARefusalWhoseGateWasTakenOverAsksTheClientToRetry(t *testing.T) {
+	h := newAccountHandler(accountSetup{
+		checker:     deletionChecker{verdict: eligibility.DeletionBlockedRenewing},
+		coordinator: replacedCoordinator{},
+	})
+	r := callAccount(t, h.DeleteMe, accountAlice.ID, "", `{"email":"alice@example.com"}`)
+
+	if r.status != http.StatusServiceUnavailable || r.body.Code != "deletion_in_progress" || r.retryAfter != "60" {
+		t.Fatalf("got %d %+v Retry-After %q, want 503 deletion_in_progress with Retry-After 60", r.status, r.body, r.retryAfter)
+	}
+}
+
 // optionsCoordinator remembers the options a deletion was started with.
 type optionsCoordinator struct {
 	busyCoordinator
