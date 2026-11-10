@@ -139,6 +139,16 @@ describe('formatReport', () => {
     expect(formatReport(ROWS, [])).toContain('No changes since the baseline')
   })
 
+  it('sums up what layer 6 cost on the pages that ran it', () => {
+    const ran = [40, 7, 12, 3, 9].map((layer6Ms, i) =>
+      row({ url: `https://c.example/${i}`, layer6Ms })
+    )
+    expect(formatReport([...ROWS, ...ran], null)).toContain(
+      'Layer 6 ran on 5 pages: p50 9 ms, p90 40 ms, max 40 ms'
+    )
+    expect(formatReport(ROWS, null)).not.toContain('Layer 6 ran')
+  })
+
   describe('lists every page that failed to load as unmeasured', () => {
     const unmeasured = (report: string) =>
       report.slice(report.indexOf('Unmeasured'))

@@ -51,6 +51,9 @@ export async function evaluateSnapshot(
       pageType: item.pageType,
       source: observed.source,
       ...(observed.fallback ? { fallback: observed.fallback } : {}),
+      ...(observed.layer6Ms === undefined
+        ? {}
+        : { layer6Ms: observed.layer6Ms }),
       ours: scorePage({
         status: 'loaded',
         ...observed,

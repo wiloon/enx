@@ -27,6 +27,8 @@ export interface PageReport extends Score {
   source: 'article' | 'whole-page' | null
   /** Set when layer 6 (ADR-077) found the article rather than a selector. */
   fallback?: 'json-ld-readability'
+  /** Set when the page passed layer 6's gate, whether or not its node was kept. */
+  layer6Ms?: number
   /** Why the page failed to load. */
   error?: string
 }
@@ -146,6 +148,7 @@ export function formatReport(
   for (const category of summary.categories) {
     lines.push(`${category.category}: ${summaryLine(category)}`)
   }
+  lines.push(...layer6CostLines(rows))
 
   // Listed whatever the baseline says: a failed page's last good entry may be
   // kept in the baseline, but this run measured nothing for it.
@@ -192,8 +195,23 @@ export interface DatasetReport {
   source?: 'article' | 'whole-page'
   /** Set when layer 6 (ADR-077) found the article rather than a selector. */
   fallback?: 'json-ld-readability'
+  /** Set when the page passed layer 6's gate, whether or not its node was kept. */
+  layer6Ms?: number
   /** Why the page is unmeasured. */
   error?: string
+}
+
+/** Nearest-rank percentiles (ADR-077 asks for p50 / p90 / max). */
+function layer6CostLines(rows: { layer6Ms?: number }[]): string[] {
+  const ms = rows
+    .flatMap(row => (row.layer6Ms === undefined ? [] : [row.layer6Ms]))
+    .sort((a, b) => a - b)
+  if (ms.length === 0) return []
+  const at = (p: number) => Math.round(ms[Math.ceil(p * ms.length) - 1])
+  return [
+    `Layer 6 ran on ${ms.length} pages: ` +
+      `p50 ${at(0.5)} ms, p90 ${at(0.9)} ms, max ${at(1)} ms`,
+  ]
 }
 
 function extractorSummaries(rows: DatasetReport[], prefix = ''): string[] {
@@ -250,6 +268,7 @@ export function formatDatasetReport(rows: DatasetReport[]): string {
         `misses text ${count('misses text')}, too broad ${count('too broad')}`
     )
   }
+  lines.push(...layer6CostLines(rows))
   lines.push(...rows.filter(row => row.error).map(unmeasuredLine))
   return lines.join('\n')
 }
@@ -298,6 +317,7 @@ export function formatNonArticleReport(rows: DatasetReport[]): string {
       )
     )
   }
+  lines.push(...layer6CostLines(rows))
   lines.push(...rows.filter(row => row.error).map(unmeasuredLine))
   return lines.join('\n')
 }

@@ -188,6 +188,21 @@ test('sums up the verdicts of the pages layer 6 found', () => {
   )
 })
 
+test('sums up what layer 6 cost, including pages where its node was rejected', () => {
+  const ran = (id: string, layer6Ms: number): DatasetReport => ({
+    id,
+    url: `https://example.org/${id}`,
+    source: 'whole-page',
+    layer6Ms,
+    ours: { coverage: 1, precision: 0.1, verdict: 'whole page' },
+    readability: { coverage: 1, precision: 1, verdict: 'ok' },
+  })
+  const rows = [ran('one', 2.4), ran('two', 15.6)]
+  const line = 'Layer 6 ran on 2 pages: p50 2 ms, p90 16 ms, max 16 ms'
+  expect(formatDatasetReport(rows)).toContain(line)
+  expect(formatNonArticleReport(rows)).toContain(line)
+})
+
 test('says nothing about layer 6 when no page used it', () => {
   expect(
     formatDatasetReport([

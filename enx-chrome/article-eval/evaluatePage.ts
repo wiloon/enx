@@ -90,6 +90,7 @@ export async function evaluatePage(
     platform: probed.platform,
     source: probed.source,
     ...(probed.fallback ? { fallback: probed.fallback } : {}),
+    ...(probed.layer6Ms === undefined ? {} : { layer6Ms: probed.layer6Ms }),
     ...scorePage({ status: 'loaded', ...probed }),
   }
 }
