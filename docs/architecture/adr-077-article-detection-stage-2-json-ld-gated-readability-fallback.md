@@ -137,6 +137,18 @@ ADR-070 第二阶段要求新规则拒绝 InfoQ 首页这类首页和索引页�
 
 两道门槛各自都会拒绝它：JSON-LD 没有文章类型，Readability 节点的链接密度也超过 0.2。`isProbablyReaderable` 两次结果不同，说明首页内容在变，它不适合当门槛。同两次测量里，按本 ADR 的口径，`main` 的链接密度是 0.86–0.87，`body` 是 0.51–0.52。
 
+各候选在 InfoQ 首页上的结论（只写观察到或能由观察到的数值直接得出的）：
+
+| 候选 | 门槛在 InfoQ 上 | 节点与链接密度 | 结论 |
+|---|---|---|---|
+| Readability + JSON-LD | 不通过（`WebSite`） | `div#infoq > header…`，0.39–0.40 | 整页（两次实测） |
+| Readability + `isProbablyReaderable` | 第一次否、第二次是 | 同上，0.39–0.40 | 整页：第一次被门槛拒，第二次通过门槛但密度 > 0.2（由实测密度得出） |
+| Readability + `og:type` / 无门槛 | 没记录 `og:type` | 同上，0.39–0.40 | 整页：节点密度 > 0.2（由实测密度得出；`og:type` 本身没量） |
+| `main` + `isProbablyReaderable` | 第二次通过 | 0.86–0.87 | 整页：密度 > 0.2（由实测密度得出） |
+| 段落聚类（无门槛、JSON-LD 门槛） | JSON-LD 门槛不通过 | **没有测量** | JSON-LD 门槛下整页（`WebSite`）；无门槛时的节点、链接密度和结论**没有观察到** |
+
+缺口：段落聚类在 InfoQ 首页上选中的节点和它的链接密度没有实测，所以不声称无门槛的段落聚类会拒绝该页。补测时这个环境没有网络，补不上；需要有网络的环境用检测路径重跑一次，把节点和密度填进这一行。
+
 ## 决定 1：第 6 层 = JSON-LD 文章声明 + Readability 节点
 
 第 1–5 层都没命中、要退回整页之前（只走没有 `contentSelector` 的默认 adapter 路径；有 `contentSelector` 的 adapter 照旧，ADR-010、ADR-071），按顺序检查：
