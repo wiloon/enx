@@ -1,7 +1,9 @@
 package email
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"enx-api/utils/logger"
 	"errors"
 	"fmt"
@@ -22,7 +24,13 @@ type Sender struct {
 }
 
 func NewSender(cfg config.Resend) *Sender {
-	return &Sender{cfg: cfg, endpoint: resendEndpoint}
+	return NewSenderAt(cfg, resendEndpoint)
+}
+
+// NewSenderAt is NewSender posting to another Resend endpoint, for tests
+// that point a Sender at a fake Resend server.
+func NewSenderAt(cfg config.Resend, endpoint string) *Sender {
+	return &Sender{cfg: cfg, endpoint: endpoint}
 }
 
 const resendEndpoint = "https://api.resend.com/emails"
@@ -151,4 +159,70 @@ func (s *Sender) NotifyAdminPageReport(r PageReportNotify) error {
 		html.EscapeString(when),
 	)
 	return s.send(to, subject, htmlBody)
+}
+
+// FeedbackNotify is the fields shown in the admin email for a new text or
+// definition feedback record (ADR-076 decision 7). Context and Details are
+// the record's raw JSON objects.
+type FeedbackNotify struct {
+	Kind      string
+	Text      string
+	URL       string
+	Host      string
+	UserID    string
+	RecordID  string
+	Context   []byte
+	Details   []byte
+	CreatedAt time.Time
+}
+
+// NotifyAdminFeedback emails the configured admin when a user records new
+// feedback. Best-effort: missing API key or admin-to skips with nil.
+func (s *Sender) NotifyAdminFeedback(f FeedbackNotify) error {
+	to := s.cfg.AdminTo
+	if to == "" {
+		logger.Warnf("resend.admin-to is not set, skipping feedback notify")
+		return nil
+	}
+
+	subject := "Catglish feedback: " + f.Kind
+	if f.Host != "" {
+		subject += " (" + f.Host + ")"
+	}
+	htmlBody := fmt.Sprintf(
+		"<p>A user sent feedback.</p>"+
+			"<ul>"+
+			"<li><strong>Kind:</strong> %s</li>"+
+			"<li><strong>Text:</strong><div style=\"white-space: pre-wrap\">%s</div></li>"+
+			"<li><strong>URL:</strong> %s</li>"+
+			"<li><strong>Host:</strong> %s</li>"+
+			"<li><strong>User ID:</strong> %s</li>"+
+			"<li><strong>Record ID:</strong> %s</li>"+
+			"<li><strong>Time (UTC):</strong> %s</li>"+
+			"<li><strong>Context:</strong><pre>%s</pre></li>"+
+			"<li><strong>Details:</strong><pre>%s</pre></li>"+
+			"</ul>",
+		html.EscapeString(f.Kind),
+		html.EscapeString(f.Text),
+		html.EscapeString(f.URL),
+		html.EscapeString(f.Host),
+		html.EscapeString(f.UserID),
+		html.EscapeString(f.RecordID),
+		html.EscapeString(f.CreatedAt.UTC().Format(time.RFC3339)),
+		html.EscapeString(indentedJSON(f.Context)),
+		html.EscapeString(indentedJSON(f.Details)),
+	)
+	return s.send(to, subject, htmlBody)
+}
+
+// indentedJSON shows an empty or invalid JSON value as {}.
+func indentedJSON(raw []byte) string {
+	if !json.Valid(raw) {
+		return "{}"
+	}
+	var out bytes.Buffer
+	if err := json.Indent(&out, raw, "", "  "); err != nil {
+		return "{}"
+	}
+	return out.String()
 }

@@ -129,7 +129,8 @@ func (Table) SetArticleChoiceGroupStatus(ctx context.Context, host, selector str
 }
 
 // Mail is feedback.Notifier over the Resend admin email (ADR-010 Decision
-// 12). Only page reports are submitted yet, so only they have an email.
+// 12, ADR-076 decision 7): page reports keep their own email, text and
+// definition records share the generic feedback email.
 type Mail struct {
 	Sender *email.Sender
 }
@@ -137,13 +138,23 @@ type Mail struct {
 var _ feedback.Notifier = Mail{}
 
 func (m Mail) NotifyNewFeedback(r feedback.Record) error {
-	pr, ok := r.PageReport()
-	if !ok {
+	switch r.Kind {
+	case feedback.KindPageReport:
+		pr, ok := r.PageReport()
+		if !ok {
+			return nil
+		}
+		return m.Sender.NotifyAdminPageReport(email.PageReportNotify{
+			URL: r.URL, Host: r.Host, Reason: pr.Reason, Adapter: pr.Adapter, ExtVersion: pr.ExtVersion, CreatedAt: r.CreatedAt,
+		})
+	case feedback.KindText, feedback.KindDefinition:
+		return m.Sender.NotifyAdminFeedback(email.FeedbackNotify{
+			Kind: string(r.Kind), Text: r.Text, URL: r.URL, Host: r.Host, UserID: r.UserID, RecordID: r.ID,
+			Context: r.Context, Details: r.Details, CreatedAt: r.CreatedAt,
+		})
+	default:
 		return nil
 	}
-	return m.Sender.NotifyAdminPageReport(email.PageReportNotify{
-		URL: r.URL, Host: r.Host, Reason: pr.Reason, Adapter: pr.Adapter, ExtVersion: pr.ExtVersion, CreatedAt: r.CreatedAt,
-	})
 }
 
 // jsonObject stores a missing object as {}.
