@@ -2,6 +2,8 @@
 // Note: Sentry initialization is skipped to avoid import issues in content script context
 
 import { createPageArticleChoice } from './articleChoice'
+import { loadReadability } from './loadReadability'
+import { resolveLookupArea } from '@/lib/lookupArea'
 import { createAccountScope } from '@/lib/accountSession'
 
 import { createRoot, type Root } from 'react-dom/client'
@@ -887,7 +889,10 @@ const processArticleContent = async (
     const choice = articleChoice.current()
     const lookupArea = choice?.node
       ? { nodes: [choice.node], source: 'article' as const }
-      : WordProcessor.findLookupArea(lookupAreaOptions(adapter))
+      : await resolveLookupArea(lookupAreaOptions(adapter), {
+          loadReadability,
+        })
+    if (stale()) return ENABLE_OK
     const articleNodes = lookupArea.nodes
     const wholePage = lookupArea.source === 'whole-page'
     const features = lookupAreaFeatures(lookupArea)

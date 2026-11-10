@@ -24,6 +24,8 @@ export interface LookupArea {
   selector?: string
   /** The platform rule that found the article; unset for any other match. */
   platform?: string
+  /** Set when layer 6 (ADR-077) found the article rather than a selector. */
+  fallback?: 'json-ld-readability'
 }
 
 export interface LookupAreaFeatures {

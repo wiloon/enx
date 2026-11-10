@@ -6,8 +6,9 @@ import {
   articleChoiceReport,
   type ArticleChoiceReport,
 } from '@/lib/articleChoiceShare'
+import { resolveLookupArea } from '@/lib/lookupArea'
 import { lookupAreaOptions, type SiteAdapter } from '@/lib/siteAdapters'
-import { WordProcessor } from '@/lib/wordProcessor'
+import { loadReadability } from './loadReadability'
 import {
   articleSelector,
   isPickable,
@@ -70,7 +71,9 @@ export function createPageArticleChoice(deps: {
       url: deps.document.location.href,
       adapter: adapter.name,
       selector: choice.selector(),
-      detected: WordProcessor.findLookupArea(lookupAreaOptions(adapter)),
+      detected: await resolveLookupArea(lookupAreaOptions(adapter), {
+        loadReadability,
+      }),
     })
     if (!report || !(await deps.share.enabled())) return
     const response = await deps.share.send(report)
