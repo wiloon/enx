@@ -113,6 +113,24 @@ test.describe('Popup - layout', () => {
         popup.getByRole('button', { name: 'Send feedback' })
       ).toBeVisible()
 
+      const version = popup.getByRole('button', { name: /^v\d/ })
+      await expect(version).toHaveCount(1)
+      const feedbackBox = await popup
+        .getByRole('button', { name: 'Send feedback' })
+        .boundingBox()
+      const versionBox = await version.boundingBox()
+      expect(feedbackBox).not.toBeNull()
+      expect(versionBox).not.toBeNull()
+      expect(Math.max(feedbackBox!.y, versionBox!.y)).toBeLessThan(
+        Math.min(
+          feedbackBox!.y + feedbackBox!.height,
+          versionBox!.y + versionBox!.height
+        )
+      )
+      expect(feedbackBox!.x + feedbackBox!.width).toBeLessThanOrEqual(
+        versionBox!.x
+      )
+
       const height = await popup.evaluate(
         () => document.getElementById('root')!.getBoundingClientRect().height
       )
@@ -120,6 +138,39 @@ test.describe('Popup - layout', () => {
         path: `test-results/popup-layout-${scenario.replace(/\W+/g, '-')}.png`,
       })
       expect(height).toBeLessThanOrEqual(POPUP_MAX_HEIGHT)
+      await version.hover()
+      await expect(version).toHaveAttribute(
+        'title',
+        /Catglish v[\s\S]*Click to copy/
+      )
+      await version.click()
+      await expect(
+        popup.getByRole('button', { name: 'Copied', exact: true })
+      ).toBeVisible()
+      await popup.getByRole('button', { name: 'Send feedback' }).click()
+      await expect(
+        popup.getByRole('textbox', { name: 'Your feedback' })
+      ).toBeVisible()
+      await expect(
+        popup.getByRole('button', { name: /^v\d|^Copied$/ })
+      ).toHaveCount(0)
     })
   }
+})
+
+test('signed-out popup keeps the standalone version footer', async ({
+  context,
+  extensionId,
+}) => {
+  const popup = await context.newPage()
+  await popup.setViewportSize({ width: 340, height: POPUP_MAX_HEIGHT })
+  await popup.goto(`chrome-extension://${extensionId}/popup.html`)
+  await expect(
+    popup.getByRole('button', { name: 'Sign in on the website' })
+  ).toBeVisible()
+  await expect(popup.getByRole('button', { name: /^v\d/ })).toHaveCount(1)
+  await expect(
+    popup.getByRole('button', { name: 'Send feedback' })
+  ).toHaveCount(0)
+  await popup.screenshot({ path: 'test-results/popup-layout-signed-out.png' })
 })

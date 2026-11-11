@@ -23,7 +23,13 @@ export const FEEDBACK_TOAST_MS = 3_000
 // of its own in place of the popup's main page (`children`), so the popup
 // stays within Chrome's 600px height; a successful send returns to the main
 // page and shows a toast that goes away by itself.
-export default function SendFeedback({ children }: { children?: ReactNode }) {
+export default function SendFeedback({
+  children,
+  footerEnd,
+}: {
+  children?: ReactNode
+  footerEnd?: ReactNode
+}) {
   const [open, setOpen] = useState(false)
   const [toast, setToast] = useState(false)
   const [tabId, setTabId] = useState<number>()
@@ -194,14 +200,17 @@ export default function SendFeedback({ children }: { children?: ReactNode }) {
       {children}
       {/* A quiet ghost entry rather than a card of its own, so the main page
           fits Chrome's 600px popup without a scrollbar. */}
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-background hover:text-foreground active:bg-background/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-      >
-        <ChatBubbleLeftEllipsisIcon className="h-4 w-4" />
-        Send feedback
-      </button>
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className={`flex ${footerEnd ? '' : 'w-full'} items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-background hover:text-foreground active:bg-background/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand`}
+        >
+          <ChatBubbleLeftEllipsisIcon className="h-4 w-4" />
+          Send feedback
+        </button>
+        {footerEnd}
+      </div>
     </div>
   )
 }

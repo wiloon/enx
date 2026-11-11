@@ -44,7 +44,7 @@ import {
   UnderlineIcon,
 } from '@heroicons/react/24/outline'
 import { Provider, useAtom, useSetAtom } from 'jotai'
-import { useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 
 initSentry()
 
@@ -129,11 +129,13 @@ function ClerkUserSync() {
 }
 
 interface SignedInBodyProps {
+  footerEnd: ReactNode
   wordHighlightEnabled: boolean
   setWordHighlightEnabled: (value: boolean) => void
 }
 
 function SignedInBody({
+  footerEnd,
   wordHighlightEnabled,
   setWordHighlightEnabled,
 }: SignedInBodyProps) {
@@ -267,7 +269,7 @@ function SignedInBody({
   }
 
   return (
-    <SendFeedback>
+    <SendFeedback footerEnd={footerEnd}>
       <div className="flex items-center gap-3 rounded-xl bg-background px-3 py-2 shadow-xs ring-1 ring-border">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand text-sm font-semibold text-brand-foreground">
           {initial}
@@ -392,8 +394,21 @@ function SignedInBody({
 }
 
 function PopupContent() {
+  const { isSignedIn } = useUser()
   const { enabled: wordHighlightEnabled, setEnabled: setWordHighlightEnabled } =
     useWordHighlightEnabled()
+
+  const versionFooter = (
+    <PopupVersion
+      build={{
+        version: chrome.runtime.getManifest().version,
+        environment: config.environment,
+        commit: config.buildCommit,
+        builtAt: config.builtAt,
+      }}
+      copy={text => navigator.clipboard.writeText(text)}
+    />
+  )
 
   const handleLoginSuccess = () => {
     console.log('Login successful')
@@ -406,6 +421,7 @@ function PopupContent() {
       <div className="min-h-[180px]">
         <Login onLoginSuccess={handleLoginSuccess}>
           <SignedInBody
+            footerEnd={versionFooter}
             wordHighlightEnabled={wordHighlightEnabled}
             setWordHighlightEnabled={setWordHighlightEnabled}
           />
@@ -416,16 +432,8 @@ function PopupContent() {
           <DebugPanel />
         </div>
       )}
-      {/* Outside Login, so a signed-out user can still read it off. */}
-      <PopupVersion
-        build={{
-          version: chrome.runtime.getManifest().version,
-          environment: config.environment,
-          commit: config.buildCommit,
-          builtAt: config.builtAt,
-        }}
-        copy={text => navigator.clipboard.writeText(text)}
-      />
+      {/* Signed-out users can still read the version off. */}
+      {!isSignedIn && versionFooter}
     </div>
   )
 }
