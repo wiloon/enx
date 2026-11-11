@@ -32,10 +32,10 @@ ADR-061 之后，点过的词再点会立刻显示释义。但本地词典缓存
 - 拆成两个接口的理由不变（ADR-059 Decision 3）：读释义是最常用的操作，必须能在网络抖动时重试；记查词不幂等，不能重试。把两者合成一个请求，最常见的「第一次查一个新词」就不能重试了；要能重试又不重复计数，得加查词 ID 去重，ADR-059 已因成本否决。
 - 查词事件与查词次数从此都由 POST 写：先检查词存在，再扣配额、加次数、写事件。404 不扣配额；次数写入失败时已扣的配额保留且不写事件；事件写入失败只记日志，不撤销次数。缓存命中与否只决定客户端发不发 QUERY，不再决定服务端在哪边计量。
 - QUERY 的请求体是 `{"words": ["…", …]}`，最多 100 个词，超过返回 400。上限按原始条目计；含空格（GET 的句子判定）或规范化后为空的条目使整个请求返回 400，且不扣配额。复用 GET 的 `SetEnglish` 规范化（保留大小写、统一撇号、去掉所有格），规范化后按区分大小写的形式去重，再一次性按不同词数扣配额。
-- QUERY 返回数组，每项以请求的规范化词形为键，另带状态 `found`、`not_found` 或 `failed`；`English` 可以是不同的原形。命中返回词典字段（ADR-061 Decision 1 的 `Id`、`English`、`Pronunciation`、`Chinese`、`WordType`，以及 `Origin`）；写回失败时省略空 `Id`。真正查不到时返回现有用户策略的 `AIFallback`（每次请求至多计算一次）；超时、数据源错误、ECDICT 不可用或存储错误标记 `failed`，不冒充查不到，也不给 AI 入口，其他词仍可返回。**不返回查词次数和「认识」状态**。点击查词时它们由随后的 POST 返回，与 ADR-061 缓存命中时一样；浮层先显示释义，POST 返回后补上次数和「认识」状态。
+- QUERY 返回数组，每项以请求的规范化词形为键，另带状态 `found`、`not_found` 或 `failed`；`English` 可以是不同的原形。命中返回词典字段（ADR-061 Decision 1 的 `Id`、`English`、`Pronunciation`、`Chinese`、`WordType`，以及 `Origin`，和释义来源 `Source`：`local` 或 `ecdict`，供 enx-ui `/lookup` 给管理员显示来源）；写回失败时省略空 `Id`。真正查不到时返回现有用户策略的 `AIFallback`（每次请求至多计算一次）；超时、数据源错误、ECDICT 不可用或存储错误标记 `failed`，不冒充查不到，也不给 AI 入口，其他词仍可返回。**不返回查词次数和「认识」状态**。点击查词时它们由随后的 POST 返回，与 ADR-061 缓存命中时一样；浮层先显示释义，POST 返回后补上次数和「认识」状态。
 - 每个词仍由 `dictionary` 包解析：先 `words` 表，再 ECDICT，ECDICT 命中写回 `words`；AI 写的释义只对能用 AI 的用户返回（ADR-045）。QUERY 不触发 AI 兜底。
 - 用 HTTP QUERY 方法（RFC 10008）：它和 GET 一样安全、可重试，又能带请求体，适合「按一批词读」。2026-09-29 实测 Chrome、gin、Cloudflare + nginx、Kong 都放行，`paragraph-init` 已使用带请求体的 QUERY；同时始终注册 `POST /api/dictionary/entries/query`，与 QUERY 共用 handler；enx-chrome 和 enx-ui `/lookup` 先发 QUERY，遇到方法被拒、请求体丢失或网络错误等传输失败时用同一请求重试 POST（ADR-041 C）。上线前仍在 homelab 验证 QUERY 请求体完整到达。
-- enx-ui 跨域请求会先发 OPTIONS 预检；现有 CORS 已允许 QUERY。请求必须是 JSON，否则返回 415；成功响应带 `Accept-Query: application/json`，与 `paragraph-init` 一致。
+- enx-chrome 跨域请求会先发 OPTIONS 预检；现有 CORS 已允许 QUERY。enx-ui 不跨域：它请求同源的 `/api/*`，由 `src/proxy.ts` 转发给 enx-api，QUERY 及其请求体要经过这层转发；转发丢掉方法或请求体时由上面的 POST 回退兜住。请求必须是 JSON，否则返回 415；成功响应带 `Accept-Query: application/json`，与 `paragraph-init` 一致。
 
 ### 2. 每次点击查词怎么走
 
@@ -49,7 +49,7 @@ ADR-061 之后，点过的词再点会立刻显示释义。但本地词典缓存
 ### 3. 不是点击的读释义也走 QUERY
 
 - Side Panel 翻译整句后为句子的锚点词建卡片、加载失败后点 Retry：先查本地缓存，没命中就 QUERY，不发 POST（ADR-061 Decision 3 的「只读拉取」）。现在它们没命中时发 GET，会写一行查词事件、被算进阅读统计和活跃用户；改走 QUERY 后不再算。
-- enx-ui `/lookup` 的每次提交：QUERY 一个词，拿到 `Id` 后发一次 POST（ADR-059 #274 的规则不变，只是 GET 换成 QUERY）。
+- enx-ui `/lookup` 的每次提交：QUERY 一个词，拿到 `Id` 后发一次 POST（ADR-059 #274 的规则不变，只是 GET 换成 QUERY）。QUERY 返回就显示释义；查词次数等 POST 200 后按其 `queryCount` 显示。POST 的处理与 Decision 2 的表一致：429 释义留在屏幕上、在下方显示 API 的提示（配额与限流各自的文案），不重试；其他失败不重试、不提示，只是不显示次数。较早一次提交的 POST 晚到时不得改写较新的结果。
 
 ### 4. 预取
 
@@ -120,3 +120,4 @@ ADR-061 之后，点过的词再点会立刻显示释义。但本地词典缓存
 - 2026-11-10，issue #812：补全批量接口的规范化、逐词结果与 AI 入口及 POST 失败顺序，纠正 QUERY 路由和 CORS 的现状，避免与现有点击流程及词典解析不一致。
 - 2026-11-10，issue #812：按用户决定始终注册 POST 回退，并将每日配额用量保留期改为查词事件的保留窗口，以覆盖拦截 QUERY 的网络并支持历史撞额测量。
 - 2026-11-10，issue #813：预取与缓存统一按 `wordKey` 识别页面词形，并明确现有重建与重新启用的处理时机，避免预取无法命中。
+- 2026-11-11，issue #814：QUERY 的 `found` 项加 `Source`，纠正 enx-ui 经同源转发而非跨域请求的现状，并写明 `/lookup` 在 POST 返回前后与失败时的显示，以保住管理员来源标签并与点击查词的 POST 处理一致。
