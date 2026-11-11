@@ -273,13 +273,15 @@ func TestEntriesWithoutAPolicyOffersNoAIFallback(t *testing.T) {
 }
 
 type fakeLookedUpWords struct {
-	calls  int
-	userID string
-	words  []string
-	err    error
+	calls     int
+	userID    string
+	requested []string
+	words     []string
+	err       error
 }
 
-func (f *fakeLookedUpWords) LookedUpWords(_ context.Context, userID string) ([]string, error) {
+func (f *fakeLookedUpWords) LookedUpWords(_ context.Context, userID string, words []string) ([]string, error) {
+	f.requested = append([]string(nil), words...)
 	f.calls++
 	f.userID = userID
 	return f.words, f.err
@@ -347,5 +349,19 @@ func TestEntriesWordsAbsentFromLookedUpWordsAreCharged(t *testing.T) {
 				t.Fatalf("charges %v, want [1]", f.meter.charges)
 			}
 		})
+	}
+}
+
+func TestEntriesReadsOnlyNormalizedDistinctBatchWords(t *testing.T) {
+	f := newEntriesFixture()
+	_, err := f.entries.Lookup(context.Background(), "u1", []string{"(run)", "hello", "run"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.lookedUp.calls != 1 || f.lookedUp.userID != "u1" || !reflect.DeepEqual(f.lookedUp.requested, []string{"run", "hello"}) {
+		t.Fatalf("looked-up reads %d for %q with %v, want once for u1 with [run hello]", f.lookedUp.calls, f.lookedUp.userID, f.lookedUp.requested)
+	}
+	if !reflect.DeepEqual(f.meter.charges, []int{2}) {
+		t.Fatalf("charges %v, want [2]", f.meter.charges)
 	}
 }

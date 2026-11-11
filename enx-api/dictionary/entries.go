@@ -60,9 +60,9 @@ type AIFallbackPolicy interface {
 }
 
 // LookedUpWords reads the user's non-deleted words with a positive query count,
-// including known words.
+// including known words, restricted to the normalized batch words.
 type LookedUpWords interface {
-	LookedUpWords(ctx context.Context, userID string) ([]string, error)
+	LookedUpWords(ctx context.Context, userID string, words []string) ([]string, error)
 }
 
 // Entries reads batch definitions without lookup events or query counts.
@@ -91,7 +91,7 @@ func (e *Entries) Lookup(ctx context.Context, userID string, raw []string) ([]En
 	}
 	charge := len(words)
 	if e.lookedUp != nil {
-		lookedUp, readErr := e.lookedUp.LookedUpWords(ctx, userID)
+		lookedUp, readErr := e.lookedUp.LookedUpWords(ctx, userID, words)
 		if readErr != nil {
 			logger.Warnf("dictionary: looked-up words read failed for user %s, charging the whole batch: %v", userID, readErr)
 		} else {
