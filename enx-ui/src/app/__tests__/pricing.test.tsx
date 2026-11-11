@@ -1,11 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import PricingPage from '../pricing/page'
 import { pricingCtaHref } from '@/components/site/PricingCta'
-import {
-  FREE_PLAN,
-  SUBSCRIPTION_PLANS,
-  TOPUP_TIERS,
-} from '@/lib/plans'
+import { FREE_PLAN, SUBSCRIPTION_PLANS, TOPUP_TIERS } from '@/lib/plans'
 
 const mockUseAuth = jest.fn(() => ({ isSignedIn: false }))
 jest.mock('@clerk/nextjs', () => ({

@@ -101,7 +101,9 @@ describe('Privacy Policy', () => {
       render(<Page />)
 
       const row = screen.getByText(usageRow).closest('tr')
-      expect(row).toHaveTextContent(/enforce your daily lookup limit|执行每日查词上限/)
+      expect(row).toHaveTextContent(
+        /enforce your daily lookup limit|执行每日查词上限/
+      )
       expect(row).toHaveTextContent(/At most 100 days|最多保留 100 天/)
       expect(
         screen.getByText(lookupEventsRow).closest('tr')
@@ -300,7 +302,11 @@ describe('Privacy Policy', () => {
     expect(
       screen.getByText(/the time and time zone of each word lookup/)
     ).toBeInTheDocument()
-    expect(screen.getByText(/At most 100 days, then deleted automatically; only the daily lookup counts remain/)).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /At most 100 days, then deleted automatically; only the daily lookup counts remain/
+      )
+    ).toBeInTheDocument()
     expect(screen.queryByText(/nothing finer/)).toBeNull()
   })
 
