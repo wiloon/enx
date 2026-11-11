@@ -10,6 +10,8 @@
 
 ---
 
+> **adr-079 修订**：`Resolve` 仍是解析一个词的唯一入口，但不再自己计量；每日查词配额由 `QUERY /api/dictionary/entries`（按词数）、旧 GET 和 `POST /api/me/word-lookups` 各自扣，计入单独的计数表。
+
 ## Context
 
 ### 查词有两条 handler，其中一条是死的
