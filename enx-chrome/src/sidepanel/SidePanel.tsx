@@ -1140,6 +1140,16 @@ function SidePanelContent() {
         )
       const current = accountFence.capture()
       const isActive = lookupScope.capture()
+      // A refused count leaves the definition on the card above its notice.
+      const showFailure = (response: BackgroundResponse) =>
+        patch({
+          dictionaryStatus: 'error',
+          dictionaryError: response.error || 'Dictionary lookup failed',
+          dictionaryErrorHttpStatus: response.status,
+          dictionaryErrorCode: response.code,
+          dictionarySessionExpired: isSignedOutFailure(response),
+          dictionarySessionUnverified: isUnverifiedFailure(response),
+        })
       return sendMessageToBackground<BackgroundResponse>({
         type: 'getOneWord',
         word,
@@ -1148,7 +1158,13 @@ function SidePanelContent() {
         .then(delivered =>
           history.whenVisible(card, async () => {
             const response = current(delivered)
-            const data = await runDictionaryLookup(
+            // The context call starts once there is a definition (or none),
+            // without waiting for the count POST.
+            let shown!: (chinese?: string) => void
+            const definitionShown = new Promise<string | undefined>(resolve => {
+              shown = resolve
+            })
+            const lookup = runDictionaryLookup(
               word,
               { counts, state: wordStatesRef.current[wordKey(word)] },
               {
@@ -1168,11 +1184,10 @@ function SidePanelContent() {
                     )) ?? { success: false }
                   )
                 },
-                record: (wordId, fromCache) =>
+                record: wordId =>
                   sendMessageToBackground<BackgroundResponse>({
                     type: 'recordWordLookup',
                     wordId,
-                    ...(fromCache ? { fromCache } : {}),
                   })
                     .then(checkAccountFreshness)
                     .then(current),
@@ -1192,21 +1207,21 @@ function SidePanelContent() {
                   })
                   if (!counts && ecp.LoadCount !== undefined)
                     recordWordLookup(word, ecp)
+                  shown(ecp.Chinese)
                 },
                 onCounted: ecp => recordWordLookup(word, ecp),
-                onFailure: response =>
-                  patch({
-                    dictionaryStatus: 'error',
-                    dictionaryError:
-                      response.error || 'Dictionary lookup failed',
-                    dictionaryErrorHttpStatus: response.status,
-                    dictionaryErrorCode: response.code,
-                    dictionarySessionExpired: isSignedOutFailure(response),
-                    dictionarySessionUnverified: isUnverifiedFailure(response),
-                  }),
+                onFailure: response => {
+                  showFailure(response)
+                  shown()
+                },
+                onRecordFailure: showFailure,
               }
             )
-            return { current: true, chinese: data?.Chinese }
+            const chinese = await Promise.race([
+              definitionShown,
+              lookup.then(data => data?.Chinese),
+            ])
+            return { current: true, chinese }
           })
         )
         .catch(() =>

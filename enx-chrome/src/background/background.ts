@@ -5,6 +5,11 @@ import {
   createDictionaryCache,
   openDictionaryCache,
 } from '@/lib/dictionaryCache'
+import {
+  definitionFromEntries,
+  requestDictionaryEntries,
+} from '@/lib/dictionaryEntries'
+import { wordKey } from '@/lib/wordHighlight'
 import { createAccountSession, type Invalidation } from '@/lib/accountSession'
 import { createCoalescedSync } from '@/lib/coalescedSync'
 import { createSessionCookies } from '@/lib/sessionCookies'
@@ -508,6 +513,8 @@ export type ApiRequestResult = {
   code?: string
   // Retry-After, in milliseconds, when the response carried one.
   retryAfterMs?: number
+  // fetch itself failed, so there was no response at all.
+  networkError?: boolean
 }
 
 // Retry-After in seconds (the only form enx-api sends), as milliseconds.
@@ -792,7 +799,11 @@ export const makeApiRequest = async (
         `network failure reaching ${config.apiBaseUrl}${endpoint} -- is the API server up?`,
         'warn'
       )
-      return { success: false, error: NETWORK_ERROR_MESSAGE }
+      return {
+        success: false,
+        error: NETWORK_ERROR_MESSAGE,
+        networkError: true,
+      }
     }
 
     return {
@@ -1055,10 +1066,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           return await handleMarkKnown(request.word, request.userId)
 
         case 'recordWordLookup':
-          return await handleRecordWordLookup(
-            request.wordId || '',
-            request.fromCache === true
-          )
+          return await handleRecordWordLookup(request.wordId || '')
 
         case 'openSentencePanel':
           return await handleOpenSentencePanel(
@@ -1386,12 +1394,12 @@ chrome.runtime.onMessageExternal.addListener(
 // Handle get one word translation
 // One click-to-lookup's +1 to the word's Query Count (ADR-059 Decision 3).
 // Never retried: it is not idempotent, and a lost one only leaves the count
-// one short. Cache hits use its authoritative count (ADR-061).
-const handleRecordWordLookup = async (wordId: string, fromCache = false) => {
+// one short. Every click uses its authoritative count (ADR-079 Decision 2).
+const handleRecordWordLookup = async (wordId: string) => {
   if (!wordId) return { success: false, error: 'No word id provided' }
   const response = await makeApiRequest('/api/me/word-lookups', {
     method: 'POST',
-    body: JSON.stringify({ wordId, ...(fromCache ? { fromCache: true } : {}) }),
+    body: JSON.stringify({ wordId }),
   })
   if (!response.success) {
     swlog(`recordWordLookup ${wordId} failed: ${response.error}`, 'warn')
@@ -1428,71 +1436,34 @@ const handleGetOneWord = async (word: string, refresh = false) => {
       if (entry)
         return {
           success: true,
-          ecp: { ...entry, Key: word.trim().toLowerCase() },
-          fromCache: true,
+          ecp: { ...entry, Key: wordKey(word.trim()) },
         }
     }
   } catch (error) {
     swlog(`Dictionary cache read failed: ${String(error)}`, 'warn')
   }
-  console.log('Handling getOneWord request for:', word)
-  const encodedWord = encodeURIComponent(word.trim())
-  // Read-only, so safe to replay (ADR-059 Decision 3): the click's one
+  // A read, so safe to replay (ADR-079 Decision 1): the click's one
   // recordWordLookup is what counts it.
-  const response = await makeApiRequest(
-    `/api/translate?word=${encodedWord}`,
-    {},
-    { retry: true }
+  const response = await requestDictionaryEntries(
+    [word.trim()],
+    (method, path, body) =>
+      makeApiRequest(path, { method, body }, { retry: true })
   )
 
-  console.log('API response for word translation:', response)
-
   if (response.success) {
-    console.log(
-      'API response data structure:',
-      JSON.stringify(response.data, null, 2)
-    )
-
-    // Check multiple possible response formats
-    if (response.data) {
-      // Try different possible data structures
-      const ecp = response.data.ecp || response.data.word || response.data
-
-      if (ecp && (ecp.English || ecp.Chinese || ecp.Pronunciation)) {
-        console.log('Found word data:', ecp)
-        if (generation === dictionaryCacheGeneration) {
-          try {
-            await workerDictionaryCache().put(word, ecp)
-          } catch (error) {
-            swlog(`Dictionary cache write failed: ${String(error)}`, 'warn')
-          }
-        }
-        return {
-          success: true,
-          ecp: ecp,
-          fromCache: false,
-        }
-      }
-
-      // If we have any data at all, try to use it
-      if (response.data.English || response.data.Chinese) {
-        console.log('Using direct response data as word data')
-        return {
-          success: true,
-          ecp: response.data,
-          fromCache: false,
-        }
+    const ecp = definitionFromEntries(word.trim(), response.data)
+    if (!ecp) {
+      swlog(`getOneWord ${word.trim()}: no definition in the answer`, 'warn')
+      return { success: false, error: 'Dictionary lookup failed' }
+    }
+    if (generation === dictionaryCacheGeneration) {
+      try {
+        await workerDictionaryCache().put(word, ecp)
+      } catch (error) {
+        swlog(`Dictionary cache write failed: ${String(error)}`, 'warn')
       }
     }
-
-    console.error(
-      'API returned success but unexpected data format:',
-      response.data
-    )
-    return {
-      success: false,
-      error: 'Unexpected response format from translation service',
-    }
+    return { success: true, ecp }
   } else {
     console.error('API request failed:', response.error)
     // Pass through the session flags, status and code (a 429 is the daily

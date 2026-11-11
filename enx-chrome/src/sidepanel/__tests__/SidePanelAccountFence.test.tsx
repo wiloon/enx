@@ -118,8 +118,10 @@ const fetchMock = jest.fn(async (url: string, init?: RequestInit) => {
   if (url.includes('/api/translate/word-in-context')) {
     return json(200, { chinese: '很棒的' })
   }
-  if (url.includes('/api/translate?word=')) {
-    return json(200, { English: 'great', Chinese: '大的' })
+  if (url.includes('/api/dictionary/entries')) {
+    return json(200, [
+      { Word: 'great', Status: 'found', English: 'great', Chinese: '大的' },
+    ])
   }
   return json(200, {})
 })
@@ -157,7 +159,9 @@ const changeCookie = async (): Promise<{ check: Promise<void> }> => {
 }
 const observe = () =>
   act(async () => {
-    await (await changeCookie()).check
+    await (
+      await changeCookie()
+    ).check
   })
 const signOutOnWebsite = () => {
   clerkSession = null
@@ -234,7 +238,9 @@ const KINDS: Record<string, Kind> = {
   },
   dictionary: {
     type: 'getOneWord',
-    matches: word => request => request.includes(`/api/translate?word=${word}`),
+    matches: word => request =>
+      request.includes('/api/dictionary/entries') &&
+      request.includes(`{"words":["${word}"]}`),
     start: clickWord,
     signedOut: word => `sidepanel-dictionary-signed-out-${word}`,
     error: word => `sidepanel-dictionary-error-${word}`,

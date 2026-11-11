@@ -375,7 +375,7 @@ export async function mockBackendFetch(
     translateFails?: boolean
     translateUnauthorized?: boolean
     /**
-     * Delay before answering GET /api/translate. Used to keep the loading
+     * Delay before answering QUERY /api/dictionary/entries. Used to keep the loading
      * state on screen long enough to scroll the word off (#523).
      */
     lookupDelayMs?: number
@@ -440,11 +440,12 @@ export async function mockBackendFetch(
           })
         }
 
-        if (url.includes('/api/translate')) {
-          const gets = ((
+        if (url.includes('/api/dictionary/entries')) {
+          const reads = ((
             self as unknown as Record<string, unknown>
-          ).__enxDictionaryGets ??= []) as unknown[]
-          gets.push(url)
+          ).__enxDictionaryReads ??= []) as unknown[]
+          const body = JSON.parse(String(init?.body ?? '{}'))
+          reads.push({ method: init?.method, url, body })
           if (lookupDelayMs > 0) {
             await new Promise(resolve => setTimeout(resolve, lookupDelayMs))
           }
@@ -463,12 +464,16 @@ export async function mockBackendFetch(
               { status: 500, headers: { 'Content-Type': 'application/json' } }
             )
           }
-          const requested = new URL(url).searchParams.get('word')
+          const requested: string = body.words?.[0] ?? wordData.English
           return new Response(
-            JSON.stringify({
-              ...wordData,
-              English: requested || wordData.English,
-            }),
+            JSON.stringify([
+              {
+                Word: requested,
+                Status: 'found',
+                ...wordData,
+                English: requested,
+              },
+            ]),
             { status: 200, headers: { 'Content-Type': 'application/json' } }
           )
         }
@@ -479,9 +484,9 @@ export async function mockBackendFetch(
           ).__enxWordLookupPosts ??= []) as unknown[]
           const body = JSON.parse(String(init?.body ?? '{}'))
           posts.push(body)
-          if (body.fromCache && lookupPostDelayMs)
+          if (lookupPostDelayMs)
             await new Promise(resolve => setTimeout(resolve, lookupPostDelayMs))
-          if (body.fromCache && lookupPostStatus !== 200)
+          if (lookupPostStatus !== 200)
             return new Response(
               JSON.stringify({
                 code: 'lookup_quota_exceeded',
@@ -668,14 +673,14 @@ export async function clearStorage(page: Page) {
   })
 }
 
-/** The actual dictionary GETs sent by the extension worker. */
-export async function dictionaryGets(
+/** The definitions reads (QUERY or its POST fallback) the worker sent. */
+export async function dictionaryReads(
   context: BrowserContext
 ): Promise<unknown[]> {
   const [sw] = context.serviceWorkers()
   return sw.evaluate(
     () =>
-      ((self as unknown as Record<string, unknown>).__enxDictionaryGets ??
+      ((self as unknown as Record<string, unknown>).__enxDictionaryReads ??
         []) as unknown[]
   )
 }

@@ -346,7 +346,6 @@ describe('SidePanel', () => {
       if (message.type === 'getOneWord')
         return {
           success: true,
-          fromCache: true,
           ecp: {
             Id: 'great-id',
             English: 'great',
@@ -380,7 +379,6 @@ describe('SidePanel', () => {
       if (message.type === 'getOneWord')
         return {
           success: true,
-          fromCache: true,
           ecp: {
             Id: 'great-id',
             English: 'great',
@@ -418,12 +416,11 @@ describe('SidePanel', () => {
     let finish!: (r: BackgroundResponse) => void
     let gets = 0
     mockSendMessage.mockImplementation(
-      async (message: { type: string; fromCache?: boolean }) => {
+      async (message: { type: string; wordId?: string }) => {
         if (message.type === 'getOneWord') {
           gets++
           return {
             success: true,
-            fromCache: gets === 1,
             ecp: {
               Id: gets === 1 ? 'old-id' : 'new-id',
               English: 'great',
@@ -434,7 +431,7 @@ describe('SidePanel', () => {
           }
         }
         if (message.type === 'recordWordLookup')
-          return message.fromCache
+          return message.wordId === 'old-id'
             ? new Promise(resolve => {
                 finish = resolve
               })
@@ -467,7 +464,6 @@ describe('SidePanel', () => {
       if (message.type === 'getOneWord')
         return {
           success: true,
-          fromCache: true,
           ecp: {
             Id: 'great-id',
             English: 'great',
@@ -489,7 +485,6 @@ describe('SidePanel', () => {
     expect(mockSendMessage).toHaveBeenCalledWith({
       type: 'recordWordLookup',
       wordId: 'great-id',
-      fromCache: true,
     })
     await act(async () =>
       finish({ success: false, status: 429, code: 'lookup_quota_exceeded' })
@@ -688,12 +683,15 @@ describe('SidePanel', () => {
           return {
             success: true,
             ecp: {
+              Id: `${message.word}-id`,
               English: message.word,
               Chinese: `${message.word}的通用词典释义`,
               Pronunciation: `/${message.word}/`,
-              LoadCount: 3,
             },
           }
+        }
+        if (message.type === 'recordWordLookup') {
+          return { success: true, queryCount: 3, known: false }
         }
         return { success: false }
       }
@@ -2515,14 +2513,22 @@ describe('SidePanel', () => {
       expect(highlightTexts('enx-hl-3')).toEqual(['pets'])
     })
 
-    const lookUpGreat = () => {
+    // A click's definition comes without state; its POST brings the count.
+    const lookUp = (english: string) => {
       mockSendMessage.mockImplementation(async (message: { type: string }) => {
         if (message.type === 'getOneWord') {
-          return { success: true, ecp: wordState('great', 1) }
+          return {
+            success: true,
+            ecp: { ...wordState(english, 0), Id: `${english}-id` },
+          }
+        }
+        if (message.type === 'recordWordLookup') {
+          return { success: true, queryCount: 1, known: false }
         }
         return { success: true, chinese: '译文' }
       })
     }
+    const lookUpGreat = () => lookUp('great')
 
     it('underlines a word once it is looked up in the sentence', async () => {
       openSentence()
@@ -2547,7 +2553,7 @@ describe('SidePanel', () => {
         expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(PANEL_TAB_ID, {
           action: 'panelWordLookup',
           word: 'great',
-          ecp: wordState('great', 1),
+          ecp: { ...wordState('great', 1), Id: 'great-id' },
         })
       )
     })
@@ -2618,11 +2624,7 @@ describe('SidePanel', () => {
     it('underlines a possessive looked up in the panel', async () => {
       const sentence = 'The cat’s toy is red.'
       openSentence(undefined, sentence)
-      mockSendMessage.mockImplementation(async (message: { type: string }) =>
-        message.type === 'getOneWord'
-          ? { success: true, ecp: wordState('cat', 1) }
-          : { success: true, chinese: '译文' }
-      )
+      lookUp('cat')
       render(<SidePanel />)
       await screen.findByTestId('sidepanel-chinese')
       selectWord('cat’s', sentence)
@@ -3327,7 +3329,7 @@ describe('SidePanel', () => {
         }
       )
 
-      it('handles an exception while resuming a dictionary result as a lookup failure', async () => {
+      it('keeps a resumed definition and still runs the context call when recording throws', async () => {
         deferAll()
         const deferred = mockSendMessage.getMockImplementation()!
         mockSendMessage.mockImplementation((message: Message) => {
@@ -3349,9 +3351,12 @@ describe('SidePanel', () => {
         })
         undo()
         await act(async () => {})
+        expect(screen.getByTestId('sidepanel-card-great')).toHaveTextContent(
+          '词典释义'
+        )
         expect(
-          screen.getByTestId('sidepanel-dictionary-error-great')
-        ).toHaveTextContent('Dictionary lookup failed')
+          screen.queryByTestId('sidepanel-dictionary-error-great')
+        ).not.toBeInTheDocument()
         expect(callsOf('translateWordInContext')).toBe(1)
       })
 
