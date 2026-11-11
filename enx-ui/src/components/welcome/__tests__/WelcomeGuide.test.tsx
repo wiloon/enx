@@ -444,8 +444,8 @@ it('confirms an installed extension and offers the next setup step', async () =>
     await screen.findByText('Catglish extension installed')
   ).toBeInTheDocument()
   expect(
-    screen.getByRole('link', { name: 'Next: finish setup' })
-  ).toHaveAttribute('href', '#setup-steps')
+    screen.getByRole('button', { name: 'Next: finish setup' })
+  ).toBeInTheDocument()
   expect(
     screen.queryByRole('link', { name: 'Add to Chrome' })
   ).not.toBeInTheDocument()
@@ -469,8 +469,25 @@ it('rechecks after installation and replaces the install link with the completed
     screen.queryByRole('link', { name: 'Add to Chrome' })
   ).not.toBeInTheDocument()
   expect(
-    screen.getByRole('link', { name: 'Next: finish setup' })
+    screen.getByRole('button', { name: 'Next: finish setup' })
   ).toBeInTheDocument()
+})
+
+it('moves focus to the first unfinished step when "Next: finish setup" is clicked', async () => {
+  signedIn()
+  installExtension({ isOnToolbar: true })
+  renderGuide()
+
+  await waitFor(() =>
+    expect(
+      within(step('Pin the Catglish icon')).getByLabelText('Done')
+    ).toBeInTheDocument()
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Next: finish setup' }))
+
+  const next = step(/then Read with Catglish/)
+  expect(next).toHaveFocus()
+  expect(next).toHaveAttribute('aria-current', 'step')
 })
 
 it('offers manual installation and the caution note beside the missing-extension store button', async () => {

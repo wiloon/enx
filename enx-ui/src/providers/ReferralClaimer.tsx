@@ -45,9 +45,9 @@ export default function ReferralClaimer() {
   return (
     <div
       role="status"
-      className="fixed bottom-4 right-4 z-50 flex max-w-sm items-start gap-3 rounded-lg border bg-background px-4 py-3 text-sm shadow-lg"
+      className="fixed bottom-4 right-4 z-50 flex max-w-[calc(100vw-2rem)] items-start gap-3 rounded-lg border bg-background px-4 py-3 text-sm shadow-lg"
     >
-      <span className="flex-1">{toast}</span>
+      <span className="flex-1 text-pretty">{toast}</span>
       <button
         type="button"
         aria-label="Dismiss"

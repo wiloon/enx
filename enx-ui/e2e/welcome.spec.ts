@@ -132,7 +132,7 @@ test('detects installation without flashing a guessed result, and updates after 
     animations: 'disabled',
     path: 'test-results/welcome-installed-status.png',
   })
-  await page.getByRole('link', { name: 'Next: finish setup' }).click()
+  await page.getByRole('button', { name: 'Next: finish setup' }).click()
   await expect(page.getByRole('link', { name: 'Sign in' })).toBeInViewport()
   await page.screenshot({
     animations: 'disabled',

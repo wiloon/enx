@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -49,6 +49,10 @@ export default function WelcomeGuide({
   const signedIn = isLoading ? undefined : isAuthenticated
   const learningEnabled = useLearningModeMark()
   const [pinSkipped, setPinSkipped] = useState(false)
+  // Bumped by "Next: finish setup"; the step list then focuses its first
+  // unfinished step. The steps are usually already on screen, so moving
+  // focus and highlighting is the visible answer to the click.
+  const [focusRequest, setFocusRequest] = useState(0)
 
   const preferences = useQuery({
     queryKey: ['preferences'],
@@ -193,18 +197,21 @@ export default function WelcomeGuide({
               <Check aria-hidden className="size-4 text-brand" />
               {SITE.name} extension installed
             </p>
-            <Button asChild variant="outline" size="sm">
-              <a href="#setup-steps">Next: finish setup</a>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setFocusRequest((n) => n + 1)}
+            >
+              Next: finish setup
             </Button>
           </div>
         )}
-        <div id="setup-steps" tabIndex={-1} className="scroll-mt-6">
-          <StepList
-            steps={steps}
-            returnTo={returnTo}
-            onSkipPin={() => setPinSkipped(true)}
-          />
-        </div>
+        <StepList
+          steps={steps}
+          returnTo={returnTo}
+          onSkipPin={() => setPinSkipped(true)}
+          focusRequest={focusRequest}
+        />
       </div>
     )
 
@@ -247,15 +254,34 @@ function StepList({
   steps,
   returnTo,
   onSkipPin,
+  focusRequest,
 }: {
   steps: OnboardingStep[]
   returnTo: string
   onSkipPin: () => void
+  focusRequest: number
 }) {
+  const nextId = steps.find((step) => step.status === 'todo')?.id
+  const nextRef = useRef<HTMLLIElement>(null)
+  useEffect(() => {
+    if (focusRequest === 0) return
+    const next = nextRef.current
+    if (!next) return
+    next.focus({ preventScroll: true })
+    next.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+  }, [focusRequest])
   return (
     <ol className="space-y-5">
       {steps.map((step) => (
-        <li key={step.id} className="flex gap-3 text-sm">
+        <li
+          key={step.id}
+          ref={step.id === nextId ? nextRef : undefined}
+          tabIndex={step.id === nextId ? -1 : undefined}
+          aria-current={
+            focusRequest > 0 && step.id === nextId ? 'step' : undefined
+          }
+          className="flex gap-3 rounded-sm text-sm outline-none ring-offset-4 ring-offset-background aria-[current=step]:ring-2 aria-[current=step]:ring-brand/50"
+        >
           <StepIcon status={step.status} />
           <div className="min-w-0 flex-1 space-y-2">
             <p
