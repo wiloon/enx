@@ -51,6 +51,7 @@ func TestAccountsDeleteDataRemovesPersonalRowsAndKeepsTheLedger(t *testing.T) {
 		for _, row := range []any{
 			&sqlitex.UserDict{UserId: id, WordId: "w1", CreatedAt: 1, UpdatedAt: 1},
 			&sqlitex.LookupEvent{UserID: id, At: 1, Outcome: "hit"},
+			&sqlitex.DictionaryQuotaUsage{UserID: id, UTCDay: "2026-11-10", Used: 3, Rejected: 1},
 			&sqlitex.SavedPage{ID: id + "-p", UserID: id, URL: "https://x", Host: "x", CreatedAt: 1},
 			&sqlitex.Feedback{ID: id + "-f", UserID: id, Kind: "page_report", URL: "https://x/", Host: "x", Status: "new", CreatedAt: 1},
 			&sqlitex.UserPreference{UserId: id, Key: "k", Value: "true", UpdatedAt: 1},
@@ -84,6 +85,12 @@ func TestAccountsDeleteDataRemovesPersonalRowsAndKeepsTheLedger(t *testing.T) {
 	}
 	if n := countRows(t, "user_dicts", "user_id", "bob"); n != 1 {
 		t.Fatal("another user's word list must be untouched")
+	}
+	if n := countRows(t, "dictionary_quota_usage", "user_id", "alice"); n != 0 {
+		t.Errorf("dictionary_quota_usage: %d row(s) of alice left (ADR-079 Decision 5)", n)
+	}
+	if n := countRows(t, "dictionary_quota_usage", "user_id", "bob"); n != 1 {
+		t.Fatal("another user's quota usage must be untouched")
 	}
 	if n := countRows(t, "feedback", "user_id", "alice"); n != 0 {
 		t.Errorf("feedback: %d row(s) of alice left (ADR-076 Decision 2)", n)

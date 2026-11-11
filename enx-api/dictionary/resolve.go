@@ -88,10 +88,12 @@ type ExternalDictionary interface {
 	Lookup(ctx context.Context, english string) (Entry, error)
 }
 
-// Meter charges one lookup against a user's daily quota (ADR-018 B2,
-// ADR-029). It returns ErrQuotaExceeded or nil.
+// Meter charges n against a user's daily lookup quota (ADR-029, ADR-079
+// Decision 5), all or nothing. It returns ErrQuotaExceeded or nil. Callers
+// charge before they resolve: QUERY its distinct words, each old lookup GET
+// and POST /api/me/word-lookups one.
 type Meter interface {
-	Charge(ctx context.Context, userID string) error
+	Charge(ctx context.Context, userID string, n int) error
 }
 
 // Entitlements says whether a user may use AI features (ADR-045 Decision 14).
@@ -103,13 +105,12 @@ type Entitlements interface {
 type Service struct {
 	words    WordStore
 	external ExternalDictionary
-	meter    Meter
 	ent      Entitlements
 	ai       *aiFallback // nil until EnableAI
 }
 
-func NewService(words WordStore, external ExternalDictionary, meter Meter, ent Entitlements) *Service {
-	return &Service{words: words, external: external, meter: meter, ent: ent}
+func NewService(words WordStore, external ExternalDictionary, ent Entitlements) *Service {
+	return &Service{words: words, external: external, ent: ent}
 }
 
 // findCached reads the words table for userID. It looks first at the rows
@@ -138,18 +139,12 @@ func (s *Service) findCached(ctx context.Context, english, userID string) (strin
 // words table first (AI-made definitions only for users who may use AI), then
 // the external dictionary, caching an external hit in the words table.
 //
-// Every request is metered against userID's daily quota before anything is
-// read (ADR-018 B2, ADR-059 Decision 2): an over-limit request reads neither
-// the words table nor the external dictionary, and a request that ends in
-// ErrEcdictUnavailable has still been counted.
+// It does not meter: each caller charges the daily quota before it resolves
+// (ADR-079, revising ADR-018 B2).
 //
-// Besides a WordStore read error, it returns only the sentinels
-// ErrEcdictUnavailable (not cached, and no external dictionary configured)
-// and ErrQuotaExceeded.
+// Besides a WordStore read error, it returns only the sentinel
+// ErrEcdictUnavailable (not cached, and no external dictionary configured).
 func (s *Service) Resolve(ctx context.Context, english, userID string) (Result, error) {
-	if err := s.meter.Charge(ctx, userID); err != nil {
-		return Result{}, err
-	}
 	id, cached, ok, err := s.findCached(ctx, english, userID)
 	if err != nil {
 		return Result{}, err

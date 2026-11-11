@@ -151,7 +151,8 @@ func (s *Service) AIConfigured() bool {
 
 // DefineWithAI defines english with a model, for a user the first lookup
 // (Resolve) found nothing for. It is the second request of the two-stage
-// lookup and does not meter a lookup: Resolve already did.
+// lookup and does not meter a lookup: the request that resolved the miss
+// already charged the quota.
 //
 // It re-checks the caches first, so a repeated or hand-made request never
 // pays for a word that is already known. The model call is detached from

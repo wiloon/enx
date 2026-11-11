@@ -69,7 +69,7 @@ type aiEnv struct {
 // answers with goodDefinition, and a word nobody else knows.
 func newAIEnv() *aiEnv {
 	ent := &fakeEntitlements{can: true}
-	svc, words, external, _ := newTestServiceFor(ent)
+	svc, words, external := newTestServiceFor(ent)
 	env := &aiEnv{
 		svc: svc, words: words, external: external, ent: ent,
 		definer: &fakeDefiner{def: goodDefinition, usage: AIUsage{PromptTokens: 150, CompletionTokens: 40}},
@@ -314,7 +314,7 @@ func TestDefineWithAIRateLimited(t *testing.T) {
 }
 
 func TestDefineWithAIUnavailableWhenNotConfiguredOrUnpriced(t *testing.T) {
-	svc, _, _, _ := newTestServiceFor(&fakeEntitlements{can: true})
+	svc, _, _ := newTestServiceFor(&fakeEntitlements{can: true})
 	if _, err := svc.DefineWithAI(context.Background(), "rizzler", "u1"); !errors.Is(err, ErrAIUnavailable) {
 		t.Fatalf("not enabled: err = %v, want ErrAIUnavailable", err)
 	}

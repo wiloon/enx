@@ -18,6 +18,7 @@ import (
 	"enx-api/creditledger"
 	"enx-api/dictionary"
 	"enx-api/dictionary/adapters"
+	dictionaryhttp "enx-api/dictionary/httpapi"
 	"enx-api/email"
 	"enx-api/enx"
 	"enx-api/feedback"
@@ -148,17 +149,21 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 		CallsPerDay:    cfg.Credits.Trial.CallsPerDay,
 	}, nil))
 
-	lookupQuota := dictionary.NewQuotaMeter(adapters.LookupEvents{}, subscriptions, cfg.Stripe.Quota, time.Now)
-	dictionaryService := dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, lookupQuota, entitlements)
+	// The daily lookup quota (ADR-079 Decision 5): each caller charges it
+	// before it resolves; dictionaryService itself never does.
+	lookupQuota := dictionary.NewQuotaMeter(adapters.QuotaUsage{}, subscriptions, cfg.Stripe.Quota, time.Now)
+	dictionaryService := dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, entitlements)
 	preferencesService := preferences.NewService(prefadapters.Table{}, entitlements)
 
 	// The AI word fallback (ADR-045) is a second request after a lookup
 	// missed. The policy decides what that miss offers each user; the service
 	// itself is switched on below, once the AI provider exists.
-	lookupHandler := translate.NewHandlerWithSubscriptions(dictionaryService, repo.ReviewLog{}, subscriptions).WithAI(
-		dictionaryService,
-		adapters.AIPolicy{Service: dictionaryService, Entitlements: entitlements, Preferences: preferencesService},
+	aiPolicy := adapters.AIPolicy{Service: dictionaryService, Entitlements: entitlements, Preferences: preferencesService}
+	lookupHandler := translate.NewHandlerWithSubscriptions(dictionaryService, lookupQuota, repo.ReviewLog{}, subscriptions).WithAI(
+		dictionaryService, aiPolicy,
 	)
+	// Batch definitions (ADR-079 Decision 1): the quota, no lookup event.
+	entriesHandler := dictionaryhttp.NewHandler(dictionary.NewEntries(dictionaryService, lookupQuota, aiPolicy), subscriptions)
 
 	// Sentence translation is an optional feature: if sentence-translate.provider
 	// is unset, it stays disabled (same "unconfigured but not fatal" pattern as
@@ -253,8 +258,8 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 		RequestsPerSecond: cfg.RateLimit.RequestsPerSecond,
 		Burst:             cfg.RateLimit.Burst,
 	}, nil), m))
-	// Carries X-Enx-Tz-Offset down to dictionary.QuotaMeter, which stores it
-	// on each lookup event so the event's local day is known (ADR-059
+	// Carries X-Enx-Tz-Offset down to dictionary.WordLookups, which stores
+	// it on each lookup event so the event's local day is known (ADR-059
 	// Decision 1).
 	apiGroup.Use(stats.TZOffsetMiddleware())
 	{
@@ -270,6 +275,10 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 		// translate
 		apiGroup.GET("/translate", lookupHandler.Translate)
 		apiGroup.GET("/word/:word", lookupHandler.TranslateByWord)
+		// ADR-079 Decision 1, ADR-041 C: QUERY is the default, POST the
+		// fallback for networks that reject QUERY.
+		apiGroup.Handle("QUERY", "/dictionary/entries", entriesHandler.Entries)
+		apiGroup.POST("/dictionary/entries/query", entriesHandler.Entries)
 		apiGroup.POST("/dictionary/ai-word", lookupHandler.AIWord)
 		apiGroup.POST("/translate/sentence", sentenceHandler.TranslateSentence)
 		apiGroup.POST("/translate/word-in-context", sentenceHandler.TranslateWordInContext)
@@ -311,12 +320,12 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// one request per page, no page text. Successful loads are the
 	// "pages enabled" count in Grafana.
 	apiGroup.GET("/me/review-words", handlers.NewReviewWordsHandler(repo.ReviewWords{}).List)
-	// One click-to-lookup's query count +1 (ADR-059 Decision 3). By word id,
-	// so an inflection counts against the headword the lookup resolved to.
-	// Metered only for a lookup answered from the extension's local cache
-	// (fromCache, ADR-061 Decision 4). Not idempotent: the extension never
-	// retries it.
-	wordLookupHandler := handlers.NewWordLookupHandlerWithSubscriptions(dictionary.NewWordLookups(adapters.QueryCounts{}, lookupQuota), subscriptions)
+	// One click-to-lookup (ADR-059 Decision 3, ADR-079 Decision 1): one
+	// against the quota, the query count +1 and one lookup event. By word
+	// id, so an inflection counts against the headword the lookup resolved
+	// to. Not idempotent: the extension never retries it.
+	wordLookupHandler := handlers.NewWordLookupHandlerWithSubscriptions(
+		dictionary.NewWordLookups(adapters.QueryCounts{}, lookupQuota, adapters.LookupEvents{}, time.Now), subscriptions)
 	apiGroup.POST("/me/word-lookups", wordLookupHandler.Record)
 
 	// Billing (Stripe) — requires authentication (Clerk session JWT).

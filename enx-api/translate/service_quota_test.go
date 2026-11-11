@@ -44,9 +44,9 @@ func newTestHandler() *Handler {
 }
 
 func newTestHandlerWithQuota(limits config.StripeQuota) *Handler {
-	meter := dictionary.NewQuotaMeter(adapters.LookupEvents{}, entadapters.Billing{}, limits, time.Now)
 	return NewHandler(
-		dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, meter, noAI{}),
+		dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, noAI{}),
+		dictionary.NewQuotaMeter(adapters.QuotaUsage{}, entadapters.Billing{}, limits, time.Now),
 		repo.ReviewLog{},
 	)
 }
@@ -59,10 +59,9 @@ func translateCtx(word, userID string) (*gin.Context, *httptest.ResponseRecorder
 	return c, w
 }
 
-// A word already in the local `words` cache still counts against the free
-// daily quota (ADR-018 B2), and the rejected request is recorded as a
-// lookup event too (ADR-059 Decision 1).
-func TestTranslateWordAtTheLimitAnswers429AndRecordsARejectedEvent(t *testing.T) {
+// A word already in the local `words` cache still costs one against the
+// daily quota, and the GET writes no lookup event (ADR-079 Decision 7).
+func TestTranslateWordChargesOneAndAnswers429AtTheLimitWithoutEvents(t *testing.T) {
 	setupQuotaTestDB(t)
 	h := newTestHandlerWithQuota(config.StripeQuota{DictionaryLookupDailyFree: 1, DictionaryLookupDailySubscribed: 20000})
 	gin.SetMode(gin.TestMode)
@@ -94,9 +93,31 @@ func TestTranslateWordAtTheLimitAnswers429AndRecordsARejectedEvent(t *testing.T)
 		t.Fatalf("code = %v, want lookup_quota_exceeded", body["code"])
 	}
 
-	var outcomes []string
-	sqlitex.DB.Model(&sqlitex.LookupEvent{}).Where("user_id = ?", "u-local").Order("rowid").Pluck("outcome", &outcomes)
-	if len(outcomes) != 2 || outcomes[0] != "allowed" || outcomes[1] != "rejected" {
-		t.Fatalf("lookup events %v, want [allowed rejected]", outcomes)
+	var usage sqlitex.DictionaryQuotaUsage
+	if err := sqlitex.DB.Where("user_id = ?", "u-local").First(&usage).Error; err != nil {
+		t.Fatal(err)
+	}
+	if usage.Used != 1 || usage.Rejected != 1 {
+		t.Fatalf("quota used %d rejected %d, want 1 and 1", usage.Used, usage.Rejected)
+	}
+	var events int64
+	sqlitex.DB.Model(&sqlitex.LookupEvent{}).Count(&events)
+	if events != 0 {
+		t.Fatalf("%d lookup events, want none", events)
+	}
+}
+
+// A sentence is answered without a lookup, so it costs nothing.
+func TestTranslateSentenceIsNotCharged(t *testing.T) {
+	setupQuotaTestDB(t)
+	gin.SetMode(gin.TestMode)
+
+	c, w := translateCtx("hello%20world", "u1")
+	newTestHandler().translateWord(c, "hello world")
+
+	var n int64
+	sqlitex.DB.Model(&sqlitex.DictionaryQuotaUsage{}).Where("used > 0 OR rejected > 0").Count(&n)
+	if w.Code != http.StatusOK || n != 0 {
+		t.Fatalf("got %d with %d charged quota rows, want 200 and none", w.Code, n)
 	}
 }

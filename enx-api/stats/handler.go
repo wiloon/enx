@@ -196,7 +196,7 @@ func OffsetFromContext(ctx context.Context) int {
 }
 
 // TZOffsetMiddleware copies TZOffsetHeader onto the request context so code
-// far from the HTTP layer -- dictionary.QuotaMeter, which sees only a
+// far from the HTTP layer -- dictionary.WordLookups, which sees only a
 // context.Context -- can record the caller's offset on a lookup event without
 // every function in between growing a parameter.
 func TZOffsetMiddleware() gin.HandlerFunc {

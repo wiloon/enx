@@ -96,18 +96,15 @@ func (f *fakeExternal) Lookup(_ context.Context, english string) (Entry, error) 
 	return e, nil
 }
 
-// fakeMeter counts charges and rejects once limit is reached (0 = no limit).
+// fakeMeter records the n of every charge and answers each with err.
 type fakeMeter struct {
-	limit   int
-	charged int
+	charges []int
+	err     error
 }
 
-func (m *fakeMeter) Charge(context.Context, string) error {
-	m.charged++
-	if m.limit > 0 && m.charged > m.limit {
-		return ErrQuotaExceeded
-	}
-	return nil
+func (m *fakeMeter) Charge(_ context.Context, _ string, n int) error {
+	m.charges = append(m.charges, n)
+	return m.err
 }
 
 // fakeEntitlements answers CanUseAI with a fixed result and counts the asks.
@@ -125,22 +122,21 @@ func (e *fakeEntitlements) CanUseAI(context.Context, string) (bool, error) {
 var run = Entry{English: "run", Chinese: "v. 跑", Pronunciation: "rʌn"}
 
 // newTestService is a service for a user who may not use AI.
-func newTestService() (*Service, *fakeWords, *fakeExternal, *fakeMeter) {
+func newTestService() (*Service, *fakeWords, *fakeExternal) {
 	return newTestServiceFor(&fakeEntitlements{})
 }
 
-func newTestServiceFor(ent Entitlements) (*Service, *fakeWords, *fakeExternal, *fakeMeter) {
+func newTestServiceFor(ent Entitlements) (*Service, *fakeWords, *fakeExternal) {
 	words := newFakeWords()
 	external := &fakeExternal{
 		entries: map[string]Entry{"run": run},
 		forms:   map[string]string{"ran": "run"},
 	}
-	meter := &fakeMeter{}
-	return NewService(words, external, meter, ent), words, external, meter
+	return NewService(words, external, ent), words, external
 }
 
 func TestResolveLocalHit(t *testing.T) {
-	svc, words, external, meter := newTestService()
+	svc, words, external := newTestService()
 	words.seed("w1", Entry{English: "serendipity", Chinese: "机缘巧合"})
 
 	res, err := svc.Resolve(context.Background(), "serendipity", "u1")
@@ -151,15 +147,15 @@ func TestResolveLocalHit(t *testing.T) {
 	if res != want {
 		t.Fatalf("got %+v, want %+v", res, want)
 	}
-	if meter.charged != 1 || len(external.queried) != 0 {
-		t.Fatalf("charged=%d external queries=%v, want 1 charge and no external query", meter.charged, external.queried)
+	if len(external.queried) != 0 {
+		t.Fatalf("external queries=%v, want none", external.queried)
 	}
 }
 
 // The response keeps the word as the user typed it; the cached row matched
 // case-insensitively.
 func TestResolveLocalHitKeepsTypedEnglish(t *testing.T) {
-	svc, words, _, _ := newTestService()
+	svc, words, _ := newTestService()
 	words.seed("w1", Entry{English: "serendipity", Chinese: "机缘巧合"})
 
 	res, err := svc.Resolve(context.Background(), "Serendipity", "u1")
@@ -174,7 +170,7 @@ func TestResolveLocalHitKeepsTypedEnglish(t *testing.T) {
 // A cached word needs no external dictionary, so it resolves even when that
 // dictionary is down.
 func TestResolveLocalHitWithoutExternalDictionary(t *testing.T) {
-	svc, words, external, _ := newTestService()
+	svc, words, external := newTestService()
 	external.unavailable = true
 	words.seed("w1", Entry{English: "serendipity"})
 
@@ -184,23 +180,8 @@ func TestResolveLocalHitWithoutExternalDictionary(t *testing.T) {
 	}
 }
 
-// ADR-018 B2: a local hit counts against the daily quota like any lookup.
-func TestResolveMetersLocalHit(t *testing.T) {
-	svc, words, _, meter := newTestService()
-	meter.limit = 1
-	words.seed("w1", Entry{English: "serendipity"})
-	ctx := context.Background()
-
-	if _, err := svc.Resolve(ctx, "serendipity", "u1"); err != nil {
-		t.Fatalf("lookup 1: %v", err)
-	}
-	if _, err := svc.Resolve(ctx, "serendipity", "u1"); !errors.Is(err, ErrQuotaExceeded) {
-		t.Fatalf("lookup 2: got %v, want ErrQuotaExceeded", err)
-	}
-}
-
 func TestResolveExternalHitIsCached(t *testing.T) {
-	svc, words, _, meter := newTestService()
+	svc, words, _ := newTestService()
 
 	res, err := svc.Resolve(context.Background(), "run", "u1")
 	if err != nil {
@@ -210,8 +191,8 @@ func TestResolveExternalHitIsCached(t *testing.T) {
 	if res != want {
 		t.Fatalf("got %+v, want %+v", res, want)
 	}
-	if len(words.added) != 1 || words.added[0] != run || meter.charged != 1 {
-		t.Fatalf("added=%v charged=%d, want run cached once and one charge", words.added, meter.charged)
+	if len(words.added) != 1 || words.added[0] != run {
+		t.Fatalf("added=%v, want run cached once", words.added)
 	}
 
 	again, err := svc.Resolve(context.Background(), "run", "u1")
@@ -223,7 +204,7 @@ func TestResolveExternalHitIsCached(t *testing.T) {
 // An inflection resolves to its headword; when the headword is already
 // cached, its row is reused.
 func TestResolveInflectionReusesCachedHeadword(t *testing.T) {
-	svc, words, _, _ := newTestService()
+	svc, words, _ := newTestService()
 	words.seed("w-run", run)
 
 	res, err := svc.Resolve(context.Background(), "ran", "u1")
@@ -239,7 +220,7 @@ func TestResolveInflectionReusesCachedHeadword(t *testing.T) {
 }
 
 func TestResolveMiss(t *testing.T) {
-	svc, words, _, meter := newTestService()
+	svc, words, _ := newTestService()
 
 	res, err := svc.Resolve(context.Background(), "zzxqv", "u1")
 	if err != nil {
@@ -248,43 +229,24 @@ func TestResolveMiss(t *testing.T) {
 	if res != (Result{English: "zzxqv", Source: SourceMiss}) {
 		t.Fatalf("got %+v, want a miss", res)
 	}
-	if len(words.added) != 0 || meter.charged != 1 {
-		t.Fatalf("added=%v charged=%d, want nothing cached and one charge", words.added, meter.charged)
+	if len(words.added) != 0 {
+		t.Fatalf("added=%v, want nothing cached", words.added)
 	}
 }
 
-// Not cached and no external dictionary: unavailable, and still charged --
-// the quota counts requests (ADR-059 Decision 2).
+// Not cached and no external dictionary: unavailable.
 func TestResolveUncachedWordWithoutExternalDictionary(t *testing.T) {
-	svc, _, external, meter := newTestService()
+	svc, _, external := newTestService()
 	external.unavailable = true
 
 	if _, err := svc.Resolve(context.Background(), "run", "u1"); !errors.Is(err, ErrEcdictUnavailable) {
 		t.Fatalf("got %v, want ErrEcdictUnavailable", err)
 	}
-	if meter.charged != 1 {
-		t.Fatalf("charged=%d, want 1", meter.charged)
-	}
-}
-
-// Over quota: neither the words table nor the external dictionary is read
-// (ADR-059 Decision 2).
-func TestResolveQuotaExceededReadsNoDictionary(t *testing.T) {
-	svc, words, external, meter := newTestService()
-	words.seed("id-run", run)
-	meter.limit, meter.charged = 1, 1 // the quota is already used up
-
-	if _, err := svc.Resolve(context.Background(), "run", "u1"); !errors.Is(err, ErrQuotaExceeded) {
-		t.Fatalf("got %v, want ErrQuotaExceeded", err)
-	}
-	if len(words.finds) != 0 || len(external.queried) != 0 {
-		t.Fatalf("words finds=%v external queried=%v, want neither read", words.finds, external.queried)
-	}
 }
 
 // Failing to cache still answers with the definition, without a row id.
 func TestResolveAnswersWhenCachingFails(t *testing.T) {
-	svc, words, _, _ := newTestService()
+	svc, words, _ := newTestService()
 	words.addErr = errors.New("disk full")
 
 	res, err := svc.Resolve(context.Background(), "run", "u1")
@@ -297,7 +259,7 @@ func TestResolveAnswersWhenCachingFails(t *testing.T) {
 }
 
 func TestResolveReturnsWordStoreErrors(t *testing.T) {
-	svc, words, _, _ := newTestService()
+	svc, words, _ := newTestService()
 	words.findErr = errors.New("db down")
 
 	if _, err := svc.Resolve(context.Background(), "run", "u1"); err == nil || err.Error() != "db down" {
@@ -317,7 +279,7 @@ func TestResolveLabelsExternalFailures(t *testing.T) {
 		{errors.New("disk I/O error"), SourceError},
 		{context.Canceled, SourceError},
 	} {
-		svc, words, external, _ := newTestService()
+		svc, words, external := newTestService()
 		external.err = tc.err
 
 		res, err := svc.Resolve(context.Background(), "run", "u1")
@@ -340,7 +302,7 @@ var aiRow = Entry{English: "rizzler", Chinese: "n. 很有魅力的人", Origin: 
 
 func TestResolveECDICTRowNeverAsksForEntitlement(t *testing.T) {
 	ent := &fakeEntitlements{}
-	svc, words, _, _ := newTestServiceFor(ent)
+	svc, words, _ := newTestServiceFor(ent)
 	words.seed("w1", Entry{English: "serendipity", Chinese: "机缘巧合"})
 
 	res, err := svc.Resolve(context.Background(), "serendipity", "u1")
@@ -359,7 +321,7 @@ func TestResolveECDICTRowNeverAsksForEntitlement(t *testing.T) {
 }
 
 func TestResolveShowsAIDefinitionToUsersWhoCanUseAI(t *testing.T) {
-	svc, words, external, meter := newTestServiceFor(&fakeEntitlements{can: true})
+	svc, words, external := newTestServiceFor(&fakeEntitlements{can: true})
 	words.seed("w2", aiRow)
 
 	res, err := svc.Resolve(context.Background(), "rizzler", "u1")
@@ -373,13 +335,10 @@ func TestResolveShowsAIDefinitionToUsersWhoCanUseAI(t *testing.T) {
 	if len(external.queried) != 0 {
 		t.Fatalf("ECDICT queried %v: a cached AI row should answer first", external.queried)
 	}
-	if meter.charged != 1 {
-		t.Fatalf("charged %d, want 1", meter.charged)
-	}
 }
 
 func TestResolveHidesAIDefinitionFromUsersWhoCannotUseAI(t *testing.T) {
-	svc, words, external, _ := newTestServiceFor(&fakeEntitlements{can: false})
+	svc, words, external := newTestServiceFor(&fakeEntitlements{can: false})
 	words.seed("w2", aiRow)
 
 	res, err := svc.Resolve(context.Background(), "rizzler", "u1")
@@ -402,7 +361,7 @@ func TestResolveHidesAIDefinitionFromUsersWhoCannotUseAI(t *testing.T) {
 
 func TestResolveShowsAnAdminEditedAIDefinitionToEveryone(t *testing.T) {
 	ent := &fakeEntitlements{can: false}
-	svc, words, _, _ := newTestServiceFor(ent)
+	svc, words, _ := newTestServiceFor(ent)
 	words.seedEdited("w2", aiRow)
 
 	res, err := svc.Resolve(context.Background(), "rizzler", "u1")
@@ -418,7 +377,7 @@ func TestResolveShowsAnAdminEditedAIDefinitionToEveryone(t *testing.T) {
 }
 
 func TestResolveTreatsAnEntitlementErrorAsNotEntitled(t *testing.T) {
-	svc, words, _, _ := newTestServiceFor(&fakeEntitlements{can: true, err: errors.New("db down")})
+	svc, words, _ := newTestServiceFor(&fakeEntitlements{can: true, err: errors.New("db down")})
 	words.seed("w2", aiRow)
 
 	res, err := svc.Resolve(context.Background(), "rizzler", "u1")

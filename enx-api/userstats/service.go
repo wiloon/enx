@@ -2,7 +2,9 @@
 // per ADR-059): total users, new users and active users, now and per UTC day.
 //
 // An active user on a UTC day is one with at least one lookup event that
-// day, a 429-rejected lookup included. A user is a users row with a Clerk
+// day. Since ADR-079 an over-quota lookup writes no event, so a user whose
+// lookups were all rejected is not active; dictionary_quota_usage.rejected
+// counts those. A user is a users row with a Clerk
 // id. Live numbers come from lookup_events; finished days are rolled up into
 // active_users_daily before their events expire.
 package userstats

@@ -50,19 +50,76 @@ func serve(t *testing.T, h *Handler, word string) (int, lookupResponse) {
 	return w.Code, resp
 }
 
-func TestHandlerMapsResolverErrorsToStatus(t *testing.T) {
-	// RespondQuotaExceeded reads the caller's subscription to word its 429.
+// fakeMeter records the n of every charge and answers each with err.
+type fakeMeter struct {
+	charges []int
+	err     error
+}
+
+func (m *fakeMeter) Charge(_ context.Context, _ string, n int) error {
+	m.charges = append(m.charges, n)
+	return m.err
+}
+
+// countingResolver is a fakeResolver that counts its calls.
+type countingResolver struct {
+	fakeResolver
+	calls int
+}
+
+func (r *countingResolver) Resolve(ctx context.Context, english, userID string) (dictionary.Result, error) {
+	r.calls++
+	return r.fakeResolver.Resolve(ctx, english, userID)
+}
+
+// ADR-079 Decision 7: each lookup GET charges one before it resolves.
+func TestHandlerChargesOneBeforeResolving(t *testing.T) {
+	meter := &fakeMeter{}
+	reviews := &fakeReviewLog{count: 2, known: true}
+	res := dictionary.Result{ID: "w1", English: "run", Source: dictionary.SourceLocal}
+
+	code, resp := serve(t, NewHandler(fakeResolver{res: res}, meter, reviews), "run")
+
+	if code != http.StatusOK || len(meter.charges) != 1 || meter.charges[0] != 1 {
+		t.Fatalf("got %d with charges %v, want 200 and [1]", code, meter.charges)
+	}
+	if resp.LoadCount != 2 || !resp.Known {
+		t.Fatalf("response %+v, want the review state kept for old extensions", resp)
+	}
+}
+
+func TestHandlerOverQuotaResolvesNothing(t *testing.T) {
 	setupQuotaTestDB(t)
+	resolver := &countingResolver{}
+
+	code, _ := serve(t, NewHandler(resolver, &fakeMeter{err: dictionary.ErrQuotaExceeded}, &fakeReviewLog{}), "run")
+
+	if code != http.StatusTooManyRequests || resolver.calls != 0 {
+		t.Fatalf("got %d with %d resolutions, want 429 and none", code, resolver.calls)
+	}
+}
+
+// ADR-029 E2: a meter error other than the quota lets the lookup through.
+func TestHandlerFailsOpenWhenTheMeterErrors(t *testing.T) {
+	res := dictionary.Result{ID: "w1", English: "run", Source: dictionary.SourceLocal}
+
+	code, _ := serve(t, NewHandler(fakeResolver{res: res}, &fakeMeter{err: errors.New("db down")}, &fakeReviewLog{}), "run")
+
+	if code != http.StatusOK {
+		t.Fatalf("got %d, want 200", code)
+	}
+}
+
+func TestHandlerMapsResolverErrorsToStatus(t *testing.T) {
 	for _, tc := range []struct {
 		err  error
 		want int
 	}{
 		{dictionary.ErrEcdictUnavailable, http.StatusServiceUnavailable},
-		{dictionary.ErrQuotaExceeded, http.StatusTooManyRequests},
 		{errors.New("db down"), http.StatusBadGateway},
 	} {
 		reviews := &fakeReviewLog{}
-		code, _ := serve(t, NewHandler(fakeResolver{err: tc.err}, reviews), "run")
+		code, _ := serve(t, NewHandler(fakeResolver{err: tc.err}, &fakeMeter{}, reviews), "run")
 		if code != tc.want || reviews.calls != 0 {
 			t.Errorf("%v: got %d with %d review reads, want %d and none", tc.err, code, reviews.calls, tc.want)
 		}
@@ -73,7 +130,7 @@ func TestHandlerReportsReviewCounts(t *testing.T) {
 	reviews := &fakeReviewLog{count: 4}
 	res := dictionary.Result{ID: "w1", English: "run", Chinese: "v. 跑", Source: dictionary.SourceLocal}
 
-	code, resp := serve(t, NewHandler(fakeResolver{res: res}, reviews), "run")
+	code, resp := serve(t, NewHandler(fakeResolver{res: res}, &fakeMeter{}, reviews), "run")
 	if code != http.StatusOK || resp.Id != "w1" || resp.Chinese != "v. 跑" || resp.LoadCount != 4 || reviews.calls != 1 {
 		t.Fatalf("got %d %+v with %d review reads, want 200, w1, LoadCount 4, one read", code, resp, reviews.calls)
 	}
@@ -83,7 +140,7 @@ func TestHandlerSkipsReviewLogOnMiss(t *testing.T) {
 	reviews := &fakeReviewLog{}
 	res := dictionary.Result{English: "zzxqv", Source: dictionary.SourceMiss}
 
-	code, resp := serve(t, NewHandler(fakeResolver{res: res}, reviews), "zzxqv")
+	code, resp := serve(t, NewHandler(fakeResolver{res: res}, &fakeMeter{}, reviews), "zzxqv")
 	if code != http.StatusOK || resp.Id != "" || reviews.calls != 0 {
 		t.Fatalf("got %d %+v with %d review reads, want 200, no id, no reads", code, resp, reviews.calls)
 	}
@@ -94,7 +151,7 @@ func TestHandlerAnswersWhenReviewLogFails(t *testing.T) {
 	reviews := &fakeReviewLog{err: errors.New("locked")}
 	res := dictionary.Result{ID: "w1", English: "run", Chinese: "v. 跑", Source: dictionary.SourceLocal}
 
-	code, resp := serve(t, NewHandler(fakeResolver{res: res}, reviews), "run")
+	code, resp := serve(t, NewHandler(fakeResolver{res: res}, &fakeMeter{}, reviews), "run")
 	if code != http.StatusOK || resp.Chinese != "v. 跑" || resp.LoadCount != 0 {
 		t.Fatalf("got %d %+v, want 200 with the definition and LoadCount 0", code, resp)
 	}
@@ -108,7 +165,7 @@ func TestLookupRoutesSendTheSource(t *testing.T) {
 		dictionary.SourceLocal, dictionary.SourceEcdict, dictionary.SourceMiss,
 		dictionary.SourceTimeout, dictionary.SourceError,
 	} {
-		h := NewHandler(fakeResolver{res: dictionary.Result{English: "run", Source: source}}, &fakeReviewLog{})
+		h := NewHandler(fakeResolver{res: dictionary.Result{English: "run", Source: source}}, &fakeMeter{}, &fakeReviewLog{})
 		r := gin.New()
 		r.Use(func(c *gin.Context) { c.Set("user_id", "u1") })
 		r.GET("/api/translate", h.Translate)
@@ -143,7 +200,7 @@ func TestHandlerTagsLookupSource(t *testing.T) {
 	} {
 		gin.SetMode(gin.TestMode)
 		c, _ := translateCtx("run", "u1")
-		NewHandler(fakeResolver{res: tc.res, err: tc.err}, &fakeReviewLog{}).translateWord(c, "run")
+		NewHandler(fakeResolver{res: tc.res, err: tc.err}, &fakeMeter{}, &fakeReviewLog{}).translateWord(c, "run")
 		if got := c.GetString(metrics.LookupSourceKey); got != tc.want {
 			t.Errorf("source %q / err %v: tagged %q, want %q", tc.res.Source, tc.err, got, tc.want)
 		}
@@ -162,7 +219,7 @@ func TestQuotaResponseUsesInjectedSubscription(t *testing.T) {
 		want   string
 	}{{true, "contact support"}, {false, "Upgrade"}} {
 		c, w := translateCtx("run", "u1")
-		h := NewHandler(fakeResolver{err: dictionary.ErrQuotaExceeded}, &fakeReviewLog{}).WithSubscriptions(subscriberForQuota(tc.active))
+		h := NewHandler(fakeResolver{}, &fakeMeter{err: dictionary.ErrQuotaExceeded}, &fakeReviewLog{}).WithSubscriptions(subscriberForQuota(tc.active))
 		h.Translate(c)
 		if w.Code != http.StatusTooManyRequests || !strings.Contains(w.Body.String(), tc.want) {
 			t.Fatalf("active %v: %d %s", tc.active, w.Code, w.Body.String())

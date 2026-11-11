@@ -31,8 +31,8 @@ var defaultLookupQuota = config.StripeQuota{DictionaryLookupDailyFree: 200, Dict
 // production wiring, metered with limits, and returns the recorder.
 func sendWordLookup(t *testing.T, limits config.StripeQuota, userID, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	meter := dictionary.NewQuotaMeter(adapters.LookupEvents{}, entadapters.Billing{}, limits, time.Now)
-	h := NewWordLookupHandler(dictionary.NewWordLookups(adapters.QueryCounts{}, meter))
+	meter := dictionary.NewQuotaMeter(adapters.QuotaUsage{}, entadapters.Billing{}, limits, time.Now)
+	h := NewWordLookupHandler(dictionary.NewWordLookups(adapters.QueryCounts{}, meter, adapters.LookupEvents{}, time.Now))
 	router := gin.New()
 	router.Use(func(c *gin.Context) { c.Set("user_id", userID) })
 	router.POST("/api/me/word-lookups", h.Record)
@@ -67,16 +67,27 @@ func lookupOutcomes(t *testing.T, userID string) []string {
 	return outcomes
 }
 
-// seedLookupEvents fills userID's quota for today with n allowed events.
-func seedLookupEvents(t *testing.T, userID string, n int) {
+// useQuota uses n of userID's quota for today.
+func useQuota(t *testing.T, userID string, n int64) {
 	t.Helper()
-	for i := 0; i < n; i++ {
-		if err := sqlitex.DB.Create(&sqlitex.LookupEvent{
-			UserID: userID, At: time.Now().UnixMilli(), Outcome: "allowed",
-		}).Error; err != nil {
-			t.Fatalf("seed lookup event: %v", err)
-		}
+	if err := sqlitex.DB.Create(&sqlitex.DictionaryQuotaUsage{
+		UserID: userID, UTCDay: time.Now().UTC().Format("2006-01-02"), Used: n,
+	}).Error; err != nil {
+		t.Fatalf("seed quota usage: %v", err)
 	}
+}
+
+// quotaUsage is userID's quota row for today.
+func quotaUsage(t *testing.T, userID string) sqlitex.DictionaryQuotaUsage {
+	t.Helper()
+	var rows []sqlitex.DictionaryQuotaUsage
+	if err := sqlitex.DB.Where("user_id = ? AND utc_day = ?", userID, time.Now().UTC().Format("2006-01-02")).Find(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) == 0 {
+		return sqlitex.DictionaryQuotaUsage{}
+	}
+	return rows[0]
 }
 
 func recordLookupOf(t *testing.T, userID, wordID string) wordLookupResponse {
@@ -163,7 +174,7 @@ func TestWordLookupOnlyTouchesTheCallersRow(t *testing.T) {
 	}
 }
 
-func TestWordLookupOfAnUnknownWordIs404(t *testing.T) {
+func TestWordLookupOfAnUnknownWordIs404AndNotCharged(t *testing.T) {
 	setupKnownTest(t)
 
 	code, _ := postWordLookup(t, "u1", `{"wordId":"no-such-word"}`)
@@ -173,6 +184,12 @@ func TestWordLookupOfAnUnknownWordIs404(t *testing.T) {
 	}
 	if _, _, found := reviewOf(t, "u1", "no-such-word"); found {
 		t.Fatal("a user_dicts row was written for a word that does not exist")
+	}
+	if got := lookupOutcomes(t, "u1"); len(got) != 0 {
+		t.Fatalf("lookup events %v, want none", got)
+	}
+	if u := quotaUsage(t, "u1"); u.Used != 0 || u.Rejected != 0 {
+		t.Fatalf("quota %+v, want nothing charged", u)
 	}
 }
 
@@ -186,22 +203,6 @@ func TestWordLookupRejectsARequestWithoutAWordID(t *testing.T) {
 	}
 }
 
-// Recording a lookup the lookup GET already answered is not a lookup
-// request: no quota, no lookup event (ADR-059 Decision 3). Extensions that
-// never send fromCache see exactly this.
-func TestWordLookupWritesNoLookupEvent(t *testing.T) {
-	setupKnownTest(t)
-	id := seedKnownWord(t, "serendipity")
-
-	recordLookupOf(t, "u1", id)
-
-	var n int64
-	sqlitex.DB.Model(&sqlitex.LookupEvent{}).Count(&n)
-	if n != 0 {
-		t.Fatalf("%d lookup events, want 0", n)
-	}
-}
-
 func TestWordLookupRejectsAnUnauthenticatedRequest(t *testing.T) {
 	setupKnownTest(t)
 	id := seedKnownWord(t, "serendipity")
@@ -211,49 +212,41 @@ func TestWordLookupRejectsAnUnauthenticatedRequest(t *testing.T) {
 	}
 }
 
-func TestWordLookupNotFromCacheIsNotMeteredEvenOverQuota(t *testing.T) {
-	setupKnownTest(t)
-	id := seedKnownWord(t, "serendipity")
-	seedLookupEvents(t, "u1", 1)
-	limits := config.StripeQuota{DictionaryLookupDailyFree: 1, DictionaryLookupDailySubscribed: 20000}
+// ADR-079 Decision 1: every click-to-lookup POST charges one and writes one
+// lookup event, whatever fromCache says; the field is ignored.
+func TestWordLookupChargesOneAndWritesOneEvent(t *testing.T) {
+	for name, body := range map[string]string{
+		"no fromCache":    `{"wordId":"%s"}`,
+		"fromCache false": `{"wordId":"%s","fromCache":false}`,
+		"fromCache true":  `{"wordId":"%s","fromCache":true}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			setupKnownTest(t)
+			id := seedKnownWord(t, "serendipity")
 
-	w := sendWordLookup(t, limits, "u1", `{"wordId":"`+id+`","fromCache":false}`)
+			code, resp := postWordLookup(t, "u1", strings.Replace(body, "%s", id, 1))
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("got %d, want 200 (body=%s)", w.Code, w.Body.String())
-	}
-	if qc, _, _ := reviewOf(t, "u1", id); qc != 1 {
-		t.Fatalf("query count %d, want 1", qc)
-	}
-	if got := lookupOutcomes(t, "u1"); len(got) != 1 {
-		t.Fatalf("lookup events %v, want only the seeded one", got)
-	}
-}
-
-// A lookup the extension answered from its local dictionary cache sent no
-// lookup GET, so this POST charges the click instead (ADR-061 Decision 4).
-func TestWordLookupFromCacheIsChargedAsALookup(t *testing.T) {
-	setupKnownTest(t)
-	id := seedKnownWord(t, "serendipity")
-
-	code, resp := postWordLookup(t, "u1", `{"wordId":"`+id+`","fromCache":true}`)
-
-	if code != http.StatusOK || resp.QueryCount != 1 {
-		t.Fatalf("got %d %+v, want 200 with queryCount 1", code, resp)
-	}
-	if got := lookupOutcomes(t, "u1"); len(got) != 1 || got[0] != "allowed" {
-		t.Fatalf("lookup events %v, want [allowed]", got)
+			if code != http.StatusOK || resp.QueryCount != 1 {
+				t.Fatalf("got %d %+v, want 200 with queryCount 1", code, resp)
+			}
+			if got := lookupOutcomes(t, "u1"); len(got) != 1 || got[0] != "allowed" {
+				t.Fatalf("lookup events %v, want [allowed]", got)
+			}
+			if u := quotaUsage(t, "u1"); u.Used != 1 {
+				t.Fatalf("quota used %d, want 1", u.Used)
+			}
+		})
 	}
 }
 
-func TestWordLookupFromCacheOverQuotaIs429AndLeavesTheCount(t *testing.T) {
+func TestWordLookupOverQuotaIs429WithoutACountOrAnEvent(t *testing.T) {
 	setupKnownTest(t)
 	id := seedKnownWord(t, "serendipity")
 	seedReview(t, "u1", id, 3, false)
-	seedLookupEvents(t, "u1", 1)
+	useQuota(t, "u1", 1)
 	limits := config.StripeQuota{DictionaryLookupDailyFree: 1, DictionaryLookupDailySubscribed: 20000}
 
-	w := sendWordLookup(t, limits, "u1", `{"wordId":"`+id+`","fromCache":true}`)
+	w := sendWordLookup(t, limits, "u1", `{"wordId":"`+id+`"}`)
 
 	if w.Code != http.StatusTooManyRequests {
 		t.Fatalf("got %d, want 429 (body=%s)", w.Code, w.Body.String())
@@ -261,20 +254,23 @@ func TestWordLookupFromCacheOverQuotaIs429AndLeavesTheCount(t *testing.T) {
 	if qc, _, _ := reviewOf(t, "u1", id); qc != 3 {
 		t.Fatalf("query count %d, want 3 unchanged", qc)
 	}
-	if got := lookupOutcomes(t, "u1"); len(got) != 2 || got[1] != "rejected" {
-		t.Fatalf("lookup events %v, want [allowed rejected]", got)
+	if got := lookupOutcomes(t, "u1"); len(got) != 0 {
+		t.Fatalf("lookup events %v, want none", got)
+	}
+	if u := quotaUsage(t, "u1"); u.Used != 1 || u.Rejected != 1 {
+		t.Fatalf("quota %+v, want used 1 and rejected 1", u)
 	}
 }
 
 // The extension handles both 429s alike, so the body must be the lookup
 // GET's (dictionary.RespondQuotaExceeded).
-func TestWordLookupFromCacheOverQuotaAnswersTheLookupGETs429Body(t *testing.T) {
+func TestWordLookupOverQuotaAnswersTheLookupGETs429Body(t *testing.T) {
 	setupKnownTest(t)
 	id := seedKnownWord(t, "serendipity")
-	seedLookupEvents(t, "u1", 1)
+	useQuota(t, "u1", 1)
 	limits := config.StripeQuota{DictionaryLookupDailyFree: 1, DictionaryLookupDailySubscribed: 20000}
 
-	w := sendWordLookup(t, limits, "u1", `{"wordId":"`+id+`","fromCache":true}`)
+	w := sendWordLookup(t, limits, "u1", `{"wordId":"`+id+`"}`)
 
 	want := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(want)
@@ -289,27 +285,9 @@ func TestWordLookupFromCacheOverQuotaAnswersTheLookupGETs429Body(t *testing.T) {
 	}
 }
 
-// The extension answers the 404 with a fresh lookup GET, which charges the
-// click; charging here too would count it twice.
-func TestWordLookupFromCacheOfAnUnknownWordIs404AndNotCharged(t *testing.T) {
-	setupKnownTest(t)
-
-	code, _ := postWordLookup(t, "u1", `{"wordId":"no-such-word","fromCache":true}`)
-
-	if code != http.StatusNotFound {
-		t.Fatalf("got %d, want 404", code)
-	}
-	if got := lookupOutcomes(t, "u1"); len(got) != 0 {
-		t.Fatalf("lookup events %v, want none", got)
-	}
-	if _, _, found := reviewOf(t, "u1", "no-such-word"); found {
-		t.Fatal("a user_dicts row was written for a word that does not exist")
-	}
-}
-
 type errRecorder struct{ err error }
 
-func (r errRecorder) Record(context.Context, string, string, bool) (int, bool, error) {
+func (r errRecorder) Record(context.Context, string, string) (int, bool, error) {
 	return 0, false, r.err
 }
 
@@ -329,7 +307,7 @@ func TestWordLookupQuotaResponseUsesInjectedSubscription(t *testing.T) {
 		r.Use(func(c *gin.Context) { c.Set("user_id", "u1") })
 		r.POST("/", h.Record)
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"wordId":"w1","fromCache":true}`))
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"wordId":"w1"}`))
 		req.Header.Set("Content-Type", "application/json")
 		r.ServeHTTP(w, req)
 		if w.Code != http.StatusTooManyRequests || !strings.Contains(w.Body.String(), tc.want) {

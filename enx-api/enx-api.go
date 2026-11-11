@@ -5,6 +5,7 @@ import (
 	"enx-api/account"
 	"enx-api/billing/credit"
 	"enx-api/config"
+	dictadapters "enx-api/dictionary/adapters"
 	"enx-api/dictsample"
 	"enx-api/ecdict"
 	"enx-api/metrics"
@@ -128,21 +129,11 @@ func runReaderDocumentCleanup() {
 	}
 }
 
-// runStatsIngestLogCleanup periodically deletes expired stats deduplication
-// rows (ADR-028 Decision 5) and runs the lookup event job. daily_stats and
-// active_users_daily are history and are never deleted. Mirrors the reader
-// cleanup: once on start so a restart doesn't leave a backlog, then hourly;
-// both rollups are safe to rerun.
+// runStatsIngestLogCleanup runs runStatsJobs once on start, so a restart
+// doesn't leave a backlog, then hourly, mirroring the reader cleanup.
 func runStatsIngestLogCleanup(ttl time.Duration, lookupEventRetentionDays int, activeUsers *userstats.Service) {
 	purge := func() {
-		deleted, err := stats.PurgeIngestLog(context.Background(), time.Now(), ttl)
-		if err != nil {
-			logger.Errorf("stats: purge ingest log failed: %v", err)
-		} else if deleted > 0 {
-			logger.Infof("stats: purged %d expired ingest-log row(s)", deleted)
-		}
-
-		runLookupEventJob(context.Background(), time.Now(), lookupEventRetentionDays, activeUsers)
+		runStatsJobs(context.Background(), time.Now(), ttl, lookupEventRetentionDays, activeUsers)
 	}
 
 	purge()
@@ -150,6 +141,29 @@ func runStatsIngestLogCleanup(ttl time.Duration, lookupEventRetentionDays int, a
 	defer ticker.Stop()
 	for range ticker.C {
 		purge()
+	}
+}
+
+// runStatsJobs deletes expired stats deduplication rows (ADR-028 Decision
+// 5), runs the lookup event job, and deletes the daily lookup quota rows
+// outside the lookup events' retention (ADR-079 Decision 5). daily_stats
+// and active_users_daily are history and are never deleted. Every step is
+// safe to rerun.
+func runStatsJobs(ctx context.Context, now time.Time, ingestLogTTL time.Duration, lookupEventRetentionDays int, activeUsers *userstats.Service) {
+	deleted, err := stats.PurgeIngestLog(ctx, now, ingestLogTTL)
+	if err != nil {
+		logger.Errorf("stats: purge ingest log failed: %v", err)
+	} else if deleted > 0 {
+		logger.Infof("stats: purged %d expired ingest-log row(s)", deleted)
+	}
+
+	runLookupEventJob(ctx, now, lookupEventRetentionDays, activeUsers)
+
+	deleted, err = dictadapters.QuotaUsage{}.DeleteOutsideRetention(ctx, now, lookupEventRetentionDays)
+	if err != nil {
+		logger.Errorf("dictionary: lookup quota usage cleanup failed: %v", err)
+	} else if deleted > 0 {
+		logger.Infof("dictionary: deleted %d lookup quota usage row(s) past retention", deleted)
 	}
 }
 

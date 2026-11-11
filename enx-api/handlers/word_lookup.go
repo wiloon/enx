@@ -13,14 +13,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// wordLookupRequest is the body. Older extensions also send fromCache,
+// which no longer means anything (ADR-079 Decision 7) and is ignored.
 type wordLookupRequest struct {
-	WordID    string `json:"wordId"`
-	FromCache bool   `json:"fromCache"`
+	WordID string `json:"wordId"`
 }
 
 // WordLookupRecorder is the slice of dictionary.WordLookups the handler uses.
 type WordLookupRecorder interface {
-	Record(ctx context.Context, userID, wordID string, fromCache bool) (queryCount int, known bool, err error)
+	Record(ctx context.Context, userID, wordID string) (queryCount int, known bool, err error)
 }
 
 // WordLookupHandler serves POST /api/me/word-lookups.
@@ -45,15 +46,13 @@ func NewWordLookupHandlerWithSubscriptions(lookups WordLookupRecorder, subs dict
 // Record handles POST /api/me/word-lookups: the caller looked up the word
 // with this id, so its query count goes up by one and it leaves "known"
 // (ADR-059 Decision 3). The extension sends it once per click-to-lookup,
-// after the lookup GET answered with a word id, or after its local
-// dictionary cache did.
+// whether the definition came from the server or its local dictionary
+// cache.
 //
-// It is the only writer of the query count. It is not idempotent and not
-// retried; a lost one leaves the count one short. With fromCache it is also
-// the click's lookup request: it charges the daily quota and writes the
-// lookup event the skipped GET would have (ADR-061 Decision 4), answering
-// the GET's 429 when the quota is used up. Without it, no quota and no
-// lookup event: the GET already charged the click.
+// It is the only writer of the query count and of lookup events (ADR-079
+// Decision 1): it charges one against the daily quota, answering the
+// lookup's 429 when the quota is used up. It is not idempotent and not
+// retried; a lost one leaves the count one short.
 func (h *WordLookupHandler) Record(c *gin.Context) {
 	userId := middleware.GetUserIDFromContext(c)
 	if userId == "" {
@@ -70,7 +69,7 @@ func (h *WordLookupHandler) Record(c *gin.Context) {
 		return
 	}
 
-	qc, known, err := h.lookups.Record(c.Request.Context(), userId, req.WordID, req.FromCache)
+	qc, known, err := h.lookups.Record(c.Request.Context(), userId, req.WordID)
 	switch {
 	case errors.Is(err, dictionary.ErrWordNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Word not found"})

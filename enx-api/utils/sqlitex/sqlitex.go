@@ -210,7 +210,7 @@ func initDatabase(dbPath, level string) error {
 	models := []any{&Word{}, &UserDict{}, &Session{}, &SyncState{}, &LookupEvent{},
 		&ReaderDocument{}, &DailyStat{}, &StatsIngestLog{}, &Feedback{}, &SavedPage{},
 		&UserPreference{}, &ActiveUsersDay{}, &ReferralCode{}, &Referral{}, &TrialGrant{},
-		&User{}, &CreditAccount{}, &CreditTransaction{}}
+		&User{}, &CreditAccount{}, &CreditTransaction{}, &DictionaryQuotaUsage{}}
 	err = DB.AutoMigrate(models...)
 	if err != nil {
 		return fmt.Errorf("auto-migrate database: %w", err)
