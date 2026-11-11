@@ -54,6 +54,21 @@ it('expires after 30 days from insertion even when read just before expiry', asy
   expect(await store.get('ran')).toBeUndefined()
 })
 
+it('peeks at a usable entry without refreshing its last use, and not past expiry', async () => {
+  const store = cache()
+  await store.put('Ran', definition)
+  const put = jest.spyOn(IDBObjectStore.prototype, 'put')
+  try {
+    expect(await store.peek('ran')).toMatchObject({ Id: 'run-id' })
+    expect(await store.peek('run')).toBeUndefined()
+    now += 30 * 24 * 60 * 60 * 1000
+    expect(await store.peek('ran')).toBeUndefined()
+    expect(put).not.toHaveBeenCalled()
+  } finally {
+    put.mockRestore()
+  }
+})
+
 it.each([
   ['a miss', { Id: undefined }],
   ['an AI definition', { Origin: 'ai' as const }],

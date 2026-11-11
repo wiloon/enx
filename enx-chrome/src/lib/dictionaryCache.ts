@@ -24,6 +24,8 @@ interface CacheSchema extends DBSchema {
 // keyed by the lower-cased form; an upgrade drops every old entry.
 const cacheKey = (word: string): string => wordKey(word.trim())
 
+const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
+
 // The worker passes its own IndexedDB factory; content scripts never open it.
 export function openDictionaryCache(
   factory: IDBFactory,
@@ -60,7 +62,7 @@ export function createDictionaryCache(
     async get(word: string): Promise<DictionaryEntry | undefined> {
       const tx = (await database).transaction('entries', 'readwrite')
       const row = await tx.store.get(cacheKey(word))
-      if (!row || now() - row.cachedAt >= 30 * 24 * 60 * 60 * 1000) {
+      if (!row || now() - row.cachedAt >= MAX_AGE_MS) {
         await tx.done
         return undefined
       }
@@ -72,6 +74,12 @@ export function createDictionaryCache(
         onWriteError(error)
       }
       return row.entry
+    },
+    // A usable entry for the prefetch's "is it cached?", which is no use of
+    // the word: its last-used time, and so its LRU place, stays.
+    async peek(word: string): Promise<DictionaryEntry | undefined> {
+      const row = await (await database).get('entries', cacheKey(word))
+      return row && now() - row.cachedAt < MAX_AGE_MS ? row.entry : undefined
     },
     async put(word: string, data: WordData): Promise<void> {
       const { Id, English, Pronunciation, Chinese, WordType } = data

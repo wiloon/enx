@@ -60,6 +60,7 @@ export interface PopupPosition {
 export interface ContentMessage {
   type:
     | 'getOneWord'
+    | 'prefetchDefinitions'
     | 'getReviewWords'
     | 'markKnown'
     | 'recordWordLookup'
@@ -85,7 +86,8 @@ export interface ContentMessage {
   wordId?: string
   // A stale cached id was refused: invalidate it and fetch again.
   refresh?: boolean
-  words?: string
+  // Set on 'prefetchDefinitions': the page's highlighted words, by wordKey.
+  words?: string[]
   userId?: number
   username?: string
   password?: string

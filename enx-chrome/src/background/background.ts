@@ -5,6 +5,7 @@ import {
   createDictionaryCache,
   openDictionaryCache,
 } from '@/lib/dictionaryCache'
+import { createDefinitionPrefetcher } from '@/lib/definitionPrefetch'
 import {
   definitionFromEntries,
   requestDictionaryEntries,
@@ -548,6 +549,9 @@ export const IDEMPOTENT_RETRY_DELAYS_MS = [500, 1500]
 
 export interface ApiRequestPolicy {
   retry?: boolean
+  // false: a gateway 503 is answered at once (the prefetch, which no one
+  // waits on, asks again on the click instead).
+  gatewayRetry?: boolean
 }
 
 const isNetworkFailure = (error: unknown): boolean =>
@@ -557,7 +561,7 @@ const isNetworkFailure = (error: unknown): boolean =>
 export const makeApiRequest = async (
   endpoint: string,
   options: RequestInit = {},
-  { retry = false }: ApiRequestPolicy = {}
+  { retry = false, gatewayRetry = true }: ApiRequestPolicy = {}
 ): Promise<ApiRequestResult> => {
   // An API call proves the worker is alive; refresh the heartbeat so the next
   // cold boot can report how long this instance had been gone (swlog.ts).
@@ -735,6 +739,7 @@ export const makeApiRequest = async (
           // An opted-in call already spent its own retries above.
           if (
             !retry &&
+            gatewayRetry &&
             response.status === 503 &&
             gatewayRetries < GATEWAY_RETRY_DELAYS_MS.length
           ) {
@@ -1041,6 +1046,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       switch (request.type || request.action) {
         case 'getOneWord':
           return await handleGetOneWord(request.word, request.refresh === true)
+
+        case 'prefetchDefinitions':
+          await definitionPrefetcher.prefetch(
+            Array.isArray(request.words) ? request.words : []
+          )
+          return { success: true }
 
         case 'panelAccountFreshness':
           return {
@@ -1421,6 +1432,22 @@ const workerDictionaryCache = () =>
     Date.now,
     error => swlog(`Dictionary cache write failed: ${String(error)}`, 'warn')
   ))
+
+// ADR-079 Decision 4: only the transport fallback and the 401 token refresh
+// may repeat a prefetch request; the click reads anything it missed.
+const definitionPrefetcher = createDefinitionPrefetcher({
+  cache: {
+    peek: word => workerDictionaryCache().peek(word),
+    put: (word, data) => workerDictionaryCache().put(word, data),
+  },
+  send: (method, path, body) =>
+    makeApiRequest(
+      path,
+      { method, body },
+      { retry: false, gatewayRetry: false }
+    ),
+  generation: () => dictionaryCacheGeneration,
+})
 
 const handleGetOneWord = async (word: string, refresh = false) => {
   if (!word || word.trim() === '') {

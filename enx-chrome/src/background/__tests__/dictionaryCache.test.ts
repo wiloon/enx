@@ -228,6 +228,123 @@ it('a cache write failure still returns the server definition', async () => {
   }
 })
 
+describe('prefetching definitions', () => {
+  const found = (word: string) => ({
+    ...entry,
+    Word: word,
+    Id: `${word}-id`,
+    English: word,
+  })
+
+  it('reads the uncached words with one JSON QUERY and caches only found entries', async () => {
+    await send({ type: 'getOneWord', word: 'cat' })
+    ;(fetch as jest.Mock).mockClear()
+    ;(fetch as jest.Mock).mockResolvedValueOnce(
+      reply(200, [
+        found('fox'),
+        { ...found('robot'), Origin: 'ai' },
+        { Word: 'zorbly', Status: 'not_found', AIFallback: { CanUse: true } },
+        { Word: 'ran', Status: 'failed' },
+      ])
+    )
+
+    expect(
+      await send({
+        type: 'prefetchDefinitions',
+        words: ['cat', 'fox', 'robot', 'zorbly', 'ran'],
+      })
+    ).toEqual({ success: true })
+    expect(calls()).toEqual([
+      {
+        url: '/api/dictionary/entries',
+        method: 'QUERY',
+        contentType: 'application/json',
+        body: { words: ['fox', 'robot', 'zorbly', 'ran'] },
+      },
+    ])
+
+    ;(fetch as jest.Mock).mockClear()
+    expect(await send({ type: 'getOneWord', word: 'Fox' })).toMatchObject({
+      ecp: { Id: 'fox-id', Key: 'fox' },
+    })
+    expect(fetch).not.toHaveBeenCalled()
+    for (const word of ['robot', 'zorbly', 'ran']) {
+      await send({ type: 'getOneWord', word })
+    }
+    expect(calls().map(({ body }) => body?.words)).toEqual([
+      ['robot'],
+      ['zorbly'],
+      ['ran'],
+    ])
+  })
+
+  it.each([
+    ['405', () => reply(405, {})],
+    ['a network error', () => Promise.reject(new TypeError('Failed to fetch'))],
+  ])(
+    'falls back once to POST on %s, and retries neither',
+    async (_name, refusal) => {
+      ;(fetch as jest.Mock).mockImplementation(refusal)
+      expect(
+        await send({ type: 'prefetchDefinitions', words: ['fox'] })
+      ).toEqual({ success: true })
+      expect(
+        calls().map(({ method, url, body }) => [method, url, body])
+      ).toEqual([
+        ['QUERY', '/api/dictionary/entries', { words: ['fox'] }],
+        ['POST', '/api/dictionary/entries/query', { words: ['fox'] }],
+      ])
+    }
+  )
+
+  it.each([
+    ['a quota refusal', () => reply(429, { code: 'lookup_quota_exceeded' }), 1],
+    ['a server error', () => reply(500, { success: false, error: 'boom' }), 1],
+    ['a gateway 503', () => reply(503, {}), 1],
+    ['a 401, after its one token refresh', () => reply(401, {}), 2],
+  ])('stays silent on %s with no other retry', async (_name, refusal, sent) => {
+    ;(fetch as jest.Mock).mockImplementation(refusal)
+    expect(await send({ type: 'prefetchDefinitions', words: ['fox'] })).toEqual(
+      { success: true }
+    )
+    expect(calls().map(({ method }) => method)).toEqual(
+      Array(sent).fill('QUERY')
+    )
+  })
+
+  it('leaves a cached entry untouched: no request and no last-used refresh', async () => {
+    await send({ type: 'getOneWord', word: 'cat' })
+    ;(fetch as jest.Mock).mockClear()
+    const put = jest.spyOn(IDBObjectStore.prototype, 'put')
+    try {
+      await send({ type: 'prefetchDefinitions', words: ['Cat’s'] })
+      expect(fetch).not.toHaveBeenCalled()
+      expect(put).not.toHaveBeenCalled()
+    } finally {
+      put.mockRestore()
+    }
+  })
+
+  it('writes nothing when sign-out lands during the batch', async () => {
+    let finish!: (value: ReturnType<typeof reply>) => void
+    ;(fetch as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          finish = resolve
+        })
+    )
+    const pending = send({ type: 'prefetchDefinitions', words: ['fox'] })
+    while (!finish) await new Promise(resolve => setTimeout(resolve, 0))
+    await send({ type: 'accountSignedOut' })
+    finish(reply(200, [found('fox')]))
+    await pending
+    __resetClerkClientCacheForTests()
+    ;(fetch as jest.Mock).mockClear()
+    await send({ type: 'getOneWord', word: 'fox' })
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+})
+
 it('still serves the cached definition when updating its last-used timestamp fails', async () => {
   await send({ type: 'getOneWord', word: 'cat' })
   const fail = jest

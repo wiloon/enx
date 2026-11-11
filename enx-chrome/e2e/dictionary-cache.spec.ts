@@ -2,6 +2,7 @@ import { test, expect } from './fixtures'
 import { loginAvailable, LOGIN_SKIP_REASON } from './auth'
 import {
   clickHighlightedWord,
+  clickWord,
   dictionaryReads,
   enableLearningMode,
   mockBackendFetch,
@@ -85,18 +86,37 @@ test.describe('Local dictionary cache (ADR-061, ADR-079)', () => {
     await page.screenshot({ path: 'test-results/dictionary-cache-quota.png' })
   })
 
-  test('a first click reads the word with one JSON QUERY', async ({
+  test('highlighted words arrive in one batch QUERY, so a click sends only the POST', async ({
     page,
     context,
   }) => {
+    await expect.poll(() => dictionaryReads(context)).toHaveLength(1)
+    const [batch] = (await dictionaryReads(context)) as Read[]
+    expect(batch.method).toBe('QUERY')
+    expect(batch.body.words).toEqual(
+      expect.arrayContaining(['software', 'development', 'complex'])
+    )
+    expect(new Set(batch.body.words).size).toBe(batch.body.words.length)
+    expect(batch.body.words).not.toContain('careful')
+
     await clickHighlightedWord(page, 0)
     await expect(page.getByText('缓存释义', { exact: true })).toBeVisible()
-    const reads = (await dictionaryReads(context)) as {
-      method: string
-      body: { words: string[] }
-    }[]
-    expect(reads).toHaveLength(1)
-    expect(reads[0].method).toBe('QUERY')
-    expect(reads[0].body.words).toHaveLength(1)
+    await expect.poll(() => wordLookupPosts(context)).toHaveLength(1)
+    expect(await dictionaryReads(context)).toHaveLength(1)
+  })
+
+  test('a first click on a word not highlighted reads it with one JSON QUERY', async ({
+    page,
+    context,
+  }) => {
+    await expect.poll(() => dictionaryReads(context)).toHaveLength(1)
+    await clickWord(page, 'careful')
+    await expect(page.getByText('缓存释义', { exact: true })).toBeVisible()
+    const reads = (await dictionaryReads(context)) as Read[]
+    expect(reads).toHaveLength(2)
+    expect(reads[1].method).toBe('QUERY')
+    expect(reads[1].body.words).toEqual(['careful'])
   })
 })
+
+type Read = { method: string; body: { words: string[] } }
