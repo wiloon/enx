@@ -787,7 +787,7 @@ func defaults() map[string]any {
 	}
 	// Daily dictionary lookup ceilings per tier (ADR-029, ADR-059 Decision
 	// 6): free is the product limit, subscribed a backstop against scripts.
-	set("stripe.quota.dictionary-lookup-daily-free", 200)
+	set("stripe.quota.dictionary-lookup-daily-free", 2000)
 	set("stripe.quota.dictionary-lookup-daily-subscribed", 20000)
 	// Durable webhook worker timing (ADR-067, #297).
 	set("stripe.webhook.poll-interval", "5s")

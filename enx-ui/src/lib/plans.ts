@@ -53,19 +53,13 @@ export const SUBSCRIPTION_PLANS: PlanOption[] = [
   },
 ]
 
-// The free tier's daily dictionary lookup ceiling. Must match
-// enx-api/config.toml stripe.quota.dictionary-lookup-daily-free and the
-// STRIPE_QUOTA_DICTIONARY_LOOKUP_DAILY_FREE env in both deployments
-// (w10n-config homelab deployment.yaml, ec2-tokyo enx-api-prod.env.j2).
-export const FREE_DAILY_LOOKUPS = 200
-
 // What a signed-in user gets without paying.
 export const FREE_PLAN = {
   name: 'Free',
   priceLabel: '$0',
   features: [
     'Underlines the words you have looked up, on any English page',
-    `Click any word for its dictionary meaning, ${FREE_DAILY_LOOKUPS} lookups a day`,
+    'Click any word for its dictionary meaning, with a daily limit',
     'A word list built from what you look up',
   ],
   note: 'AI translation uses credits, which come with a plan or a top-up.',

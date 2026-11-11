@@ -80,6 +80,35 @@ describe('Privacy Policy', () => {
     }
   )
 
+  // ADR-079: the daily lookup limit is read from a per-day usage counter;
+  // lookup events only feed reading stats and active users.
+  it.each([
+    [
+      'English',
+      PrivacyPolicyPage,
+      /Daily lookup usage: one count per day of how much of your daily lookup limit you used and how much was refused — never which words, and never on which page/,
+      /^Lookup events:/,
+    ],
+    [
+      'Chinese route',
+      PrivacyPolicyZhPage,
+      /每日查词用量：每天一个计数，记录你用了多少每日查词上限、被拒了多少 —— 不含查的是哪些词，也不含在哪个页面/,
+      /^查词事件：/,
+    ],
+  ])(
+    'says the daily lookup limit comes from a daily usage count, on the %s page',
+    (_locale, Page, usageRow, lookupEventsRow) => {
+      render(<Page />)
+
+      const row = screen.getByText(usageRow).closest('tr')
+      expect(row).toHaveTextContent(/enforce your daily lookup limit|执行每日查词上限/)
+      expect(row).toHaveTextContent(/At most 100 days|最多保留 100 天/)
+      expect(
+        screen.getByText(lookupEventsRow).closest('tr')
+      ).not.toHaveTextContent(/daily lookup limit|每日查词上限/)
+    }
+  )
+
   // ADR-076: feedback is tied to the account, never expires, goes with the
   // account, and article-choice sharing is off until the user turns it on.
   it.each([
@@ -271,7 +300,7 @@ describe('Privacy Policy', () => {
     expect(
       screen.getByText(/the time and time zone of each word lookup/)
     ).toBeInTheDocument()
-    expect(screen.getByText(/At most 100 days/)).toBeInTheDocument()
+    expect(screen.getByText(/At most 100 days, then deleted automatically; only the daily lookup counts remain/)).toBeInTheDocument()
     expect(screen.queryByText(/nothing finer/)).toBeNull()
   })
 
@@ -471,7 +500,7 @@ describe('bilingual legal pages', () => {
 
     expect(screen.getByText(/每次查词的时间和时区/)).toBeInTheDocument()
     expect(
-      screen.getByText(/最多保留 100 天，之后自动删除/)
+      screen.getByText(/最多保留 100 天，之后自动删除，只保留按天的查词次数/)
     ).toBeInTheDocument()
     expect(screen.queryByText(/没有更细的/)).toBeNull()
   })

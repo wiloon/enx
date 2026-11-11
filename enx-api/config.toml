@@ -270,11 +270,13 @@ claim-window-hours = 24
 # 6). Everyone is counted against a UTC day; the tier only decides the
 # number. Both must be positive -- the service refuses to start otherwise.
 #
-# `-free` is 200 (2026-09-29): the product limit, and the point where a free
-# user is offered an upgrade. The number is published on the /pricing page
-# (enx-ui/src/lib/plans.ts FREE_DAILY_LOOKUPS); change both together.
+# The count is dictionary usage (ADR-079): prefetch costs 1 per highlighted
+# word, a click on an uncached word 2. `-free` is 2000 for the internal beta
+# (2026-11-11, Linear WIL-498), so a heavy reading day (about 600) never
+# reaches it; the /pricing page names the limit without a number. Keep the
+# code default and both deployments (w10n-config) in step.
 # `-subscribed` is a backstop against scripts, not a product tier: normal
-# use never reaches it. Both are starting values, tuned from lookup_events
-# after launch (Linear WIL-176).
-dictionary-lookup-daily-free = 200
+# use never reaches it. Both are tuned from dictionary_quota_usage after
+# launch (Linear WIL-176).
+dictionary-lookup-daily-free = 2000
 dictionary-lookup-daily-subscribed = 20000
