@@ -381,6 +381,13 @@ export async function mockBackendFetch(
     lookupDelayMs?: number
     lookupPostDelayMs?: number
     lookupPostStatus?: number
+    /**
+     * Lookup quota left today, spent as enx-api does (ADR-079 Decision 5):
+     * a QUERY costs its word count and is refused whole with 429 when it
+     * exceeds what is left; a lookup POST costs one. Unlimited by default.
+     * A small value refuses the prefetch batch but lets a click through.
+     */
+    dailyQuotaLeft?: number
   } = {}
 ) {
   let [sw] = context.serviceWorkers()
@@ -407,6 +414,7 @@ export async function mockBackendFetch(
   const lookupDelayMs = options.lookupDelayMs ?? 0
   const lookupPostDelayMs = options.lookupPostDelayMs ?? 0
   const lookupPostStatus = options.lookupPostStatus ?? 200
+  const dailyQuotaLeft = options.dailyQuotaLeft ?? null
 
   await sw.evaluate(
     ({
@@ -417,7 +425,23 @@ export async function mockBackendFetch(
       lookupDelayMs,
       lookupPostDelayMs,
       lookupPostStatus,
+      dailyQuotaLeft,
     }) => {
+      let quotaLeft = dailyQuotaLeft ?? Number.MAX_SAFE_INTEGER
+      // Spends `cost`, or answers the refusal enx-api sends when it can't.
+      const quotaRefusal = (cost: number) => {
+        if (cost <= quotaLeft) {
+          quotaLeft -= cost
+          return null
+        }
+        return new Response(
+          JSON.stringify({
+            code: 'lookup_quota_exceeded',
+            message: "You've used up today's free lookups",
+          }),
+          { status: 429, headers: { 'Content-Type': 'application/json' } }
+        )
+      }
       const realFetch = self.fetch.bind(self)
       self.fetch = async (input, init) => {
         const url =
@@ -464,16 +488,19 @@ export async function mockBackendFetch(
               { status: 500, headers: { 'Content-Type': 'application/json' } }
             )
           }
-          const requested: string = body.words?.[0] ?? wordData.English
+          // One found entry per requested word, as for a prefetch batch.
+          const requested: string[] = body.words ?? [wordData.English]
+          const refused = quotaRefusal(requested.length)
+          if (refused) return refused
           return new Response(
-            JSON.stringify([
-              {
-                Word: requested,
+            JSON.stringify(
+              requested.map(word => ({
+                Word: word,
                 Status: 'found',
                 ...wordData,
-                English: requested,
-              },
-            ]),
+                English: word,
+              }))
+            ),
             { status: 200, headers: { 'Content-Type': 'application/json' } }
           )
         }
@@ -497,6 +524,8 @@ export async function mockBackendFetch(
                 headers: { 'Content-Type': 'application/json' },
               }
             )
+          const refused = quotaRefusal(1)
+          if (refused) return refused
           return new Response(
             JSON.stringify({
               queryCount: wordData.LoadCount + 1,
@@ -535,6 +564,7 @@ export async function mockBackendFetch(
       lookupDelayMs,
       lookupPostDelayMs,
       lookupPostStatus,
+      dailyQuotaLeft,
     }
   )
 }

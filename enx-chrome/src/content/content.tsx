@@ -40,6 +40,7 @@ import {
   failureMessage,
 } from '@/lib/enableOutcome'
 import { createReviewList } from '@/lib/reviewList'
+import { createPagePrefetch } from '@/lib/definitionPrefetch'
 import { pageFeedbackContext } from '@/lib/feedback'
 import {
   stampExtensionPresence,
@@ -204,6 +205,12 @@ const reviewList = createReviewList({
   sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
   cache: wordCache,
   isStoodDown: () => standDown.isStoodDown(),
+})
+
+// ADR-079 Decision 4: the page's highlighted words go to the worker's
+// dictionary cache ahead of a click. A re-enable keeps what this page sent.
+const pagePrefetch = createPagePrefetch(words => {
+  void sendToBackground({ type: 'prefetchDefinitions', words })
 })
 
 // Counts a popover lookup on the server, without waiting (lib/queryCount.ts).
@@ -967,16 +974,20 @@ const processArticleContent = async (
     // window paints the blocks near the viewport as the observer reports
     // them; the article DOM is never touched.
     dropArticleBlocks()
+    let painting = false
     if (features.highlights) {
       articleBlocks = new Map(
         articleNodes.flatMap((root, i) => [
           ...partitionBlocks(textNodesByRoot[i], root, isBlockElement),
         ])
       )
-      if (!highlightPreference.paintRun()) {
+      painting = highlightPreference.paintRun()
+      if (!painting) {
         console.log('Word highlight preference is off; skipping paint')
       }
     }
+    // Every highlighted word on the page, not just the paint window's.
+    if (painting && loaded.ok) pagePrefetch.request(words, wordCache)
 
     // Delegated click-to-lookup (ADR-011 Decision 2): one listener per
     // article root, replacing the per-word listeners. Bound even with no
@@ -1475,6 +1486,7 @@ const getSpaRebuilder = () => {
       ),
     teardown: () => {
       initialRunner.cancel()
+      pagePrefetch.reset()
       dropArticleBlocks()
       clearArticleRoots()
       hideCurrentOverlay()
@@ -1771,6 +1783,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       articleChoice.abandon()
       accountScope.clear()
       reviewList.clear()
+      pagePrefetch.reset()
       disableEnx()
       // Also a signed-out popover, so it closes on sign-in.
       hideCurrentOverlay()
@@ -1786,6 +1799,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       accountScope.clear()
       // The next account must not see this one's words (ADR-069).
       reviewList.clear()
+      pagePrefetch.reset()
       const wasEnabled = isEnxEnabled
       disableEnx({ keepPopover: true })
       if (currentOverlay) showSignedOut(contentScriptStore)

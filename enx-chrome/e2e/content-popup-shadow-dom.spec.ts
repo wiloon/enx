@@ -702,6 +702,8 @@ test.describe('Anchored overlays hide when the reference scrolls off-screen (#52
         Known: false,
       },
       lookupDelayMs: 1200,
+      // The quota refuses the prefetch batch, so the click reads the word.
+      dailyQuotaLeft: 2,
     })
     await page.reload({ waitUntil: 'domcontentloaded' })
     await addScrollSpacers(page)
