@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"enx-api/aitranslate"
 	"enx-api/aitranslate/worddef"
@@ -36,10 +35,6 @@ func (QueryCounts) RecordWordLookup(_ context.Context, userID, wordID string) (i
 // LookupEvents is the dictionary.LookupEventStore backed by the
 // lookup_events table.
 type LookupEvents struct{}
-
-func (LookupEvents) CountSince(ctx context.Context, userID string, since time.Time) (int64, error) {
-	return repo.CountLookupEventsSince(ctx, userID, since.UnixMilli())
-}
 
 func (LookupEvents) Add(ctx context.Context, e dictionary.LookupEvent) error {
 	return repo.AddLookupEvent(ctx, sqlitex.LookupEvent{

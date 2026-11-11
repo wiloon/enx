@@ -69,9 +69,16 @@ func TestQuotaRoutesUseCutoverReader(t *testing.T) {
 	if err := sqlitex.DB.Create(&sqlitex.Word{Id: "w1", English: "example"}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := sqlitex.DB.Create(&sqlitex.LookupEvent{UserID: "target", At: time.Now().UnixMilli(), Outcome: "allowed"}).Error; err != nil {
-		t.Fatal(err)
+	useQuota := func() {
+		t.Helper()
+		if err := sqlitex.DB.Exec("DELETE FROM dictionary_quota_usage WHERE user_id = ?", "target").Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := sqlitex.DB.Create(&sqlitex.DictionaryQuotaUsage{UserID: "target", UTCDay: time.Now().UTC().Format("2006-01-02"), Used: 1}).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
+	useQuota()
 	server := httptest.NewServer(setupRouterWithClients(cfg, metrics.New(), nil, nil))
 	defer server.Close()
 	token := jwks.SignSessionToken(t, jwt.MapClaims{"sub": "clerk_target", "email": "target@example.com"})
@@ -87,19 +94,17 @@ func TestQuotaRoutesUseCutoverReader(t *testing.T) {
 	if tierCode != http.StatusTooManyRequests {
 		t.Fatalf("a conflict got the subscribed quota: %d %v", tierCode, tierBody)
 	}
-	if err := sqlitex.DB.Exec("DELETE FROM lookup_events WHERE user_id = ?", "target").Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := sqlitex.DB.Create(&sqlitex.LookupEvent{UserID: "target", At: time.Now().UnixMilli(), Outcome: "allowed"}).Error; err != nil {
-		t.Fatal(err)
-	}
-	for _, route := range []string{"get", "cached"} {
+	for _, route := range []string{"get", "post", "query"} {
+		useQuota()
 		var code int
 		var body map[string]any
-		if route == "get" {
+		switch route {
+		case "get":
 			code, body = doJSON(t, http.MethodGet, server.URL+"/api/translate?word=example", token)
-		} else {
-			code, body = doJSONBody(t, http.MethodPost, server.URL+"/api/me/word-lookups", token, map[string]any{"wordId": "w1", "fromCache": true})
+		case "post":
+			code, body = doJSONBody(t, http.MethodPost, server.URL+"/api/me/word-lookups", token, map[string]any{"wordId": "w1"})
+		default:
+			code, body = doJSONBody(t, http.MethodPost, server.URL+"/api/dictionary/entries/query", token, map[string]any{"words": []string{"example"}})
 		}
 		message, _ := body["message"].(string)
 		if code != http.StatusTooManyRequests || !strings.Contains(message, "Upgrade") {

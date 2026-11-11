@@ -32,7 +32,7 @@ func TestLookupEventsAddStoresTheEvent(t *testing.T) {
 	at := time.Date(2026, 10, 15, 12, 0, 0, 123_000_000, time.UTC)
 
 	err := LookupEvents{}.Add(context.Background(), dictionary.LookupEvent{
-		UserID: "u1", At: at, TZOffsetMinutes: 480, Outcome: dictionary.OutcomeRejected,
+		UserID: "u1", At: at, TZOffsetMinutes: 480, Outcome: dictionary.OutcomeAllowed,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -40,33 +40,8 @@ func TestLookupEventsAddStoresTheEvent(t *testing.T) {
 
 	var rows []sqlitex.LookupEvent
 	sqlitex.DB.Find(&rows)
-	want := sqlitex.LookupEvent{UserID: "u1", At: at.UnixMilli(), TZOffsetMinutes: 480, Outcome: "rejected"}
+	want := sqlitex.LookupEvent{UserID: "u1", At: at.UnixMilli(), TZOffsetMinutes: 480, Outcome: "allowed"}
 	if len(rows) != 1 || rows[0] != want {
 		t.Fatalf("rows %+v, want [%+v]", rows, want)
-	}
-}
-
-func TestLookupEventsCountSinceCountsTheUsersEventsFromThatInstant(t *testing.T) {
-	setupLookupEventsDB(t)
-	midnight := time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)
-	ctx := context.Background()
-	store := LookupEvents{}
-	for _, e := range []dictionary.LookupEvent{
-		{UserID: "u1", At: midnight.Add(-time.Millisecond), Outcome: dictionary.OutcomeAllowed}, // yesterday
-		{UserID: "u1", At: midnight, Outcome: dictionary.OutcomeAllowed},
-		{UserID: "u1", At: midnight.Add(time.Hour), Outcome: dictionary.OutcomeRejected},
-		{UserID: "u2", At: midnight.Add(time.Hour), Outcome: dictionary.OutcomeAllowed},
-	} {
-		if err := store.Add(ctx, e); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	got, err := store.CountSince(ctx, "u1", midnight)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != 2 {
-		t.Fatalf("count %d, want 2 (today's allowed and rejected, not yesterday's or u2's)", got)
 	}
 }

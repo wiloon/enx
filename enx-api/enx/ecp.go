@@ -1,10 +1,10 @@
 package enx
 
 import (
+	"enx-api/dictionary/wordform"
 	"enx-api/repo"
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
-	"regexp"
 	"strings"
 	"time"
 
@@ -54,40 +54,11 @@ type AIFallback struct {
 	Auto   bool
 }
 
-// nonEnglish matches everything SetEnglish strips from a token. Compiled
-// once: SetEnglish runs for every word of every page (paragraph-init).
-var nonEnglish = regexp.MustCompile(`[^a-zA-Z\-'’ ]+`)
-
 func (word *Word) SetEnglish(raw string) {
-	raw = nonEnglish.ReplaceAllString(raw, "")
-
-	english := ""
-	if strings.Contains(raw, "'s") ||
-		strings.Contains(raw, "’s") ||
-		strings.Contains(raw, "'t") ||
-		strings.Contains(raw, "'ve") ||
-		strings.Contains(raw, "'m") ||
-		strings.Contains(raw, "'d") ||
-		strings.Contains(raw, "'re") {
-		// do nothing
-		english = raw
-	} else {
-		english = raw
-		english = strings.TrimSuffix(english, "-")
-		english = strings.TrimSuffix(english, "’")
-		english = strings.TrimSuffix(english, ".")
-		english = strings.TrimSuffix(english, ",")
-		english = strings.TrimPrefix(english, "(")
-		english = strings.TrimSuffix(english, ")")
-		english = nonEnglish.ReplaceAllString(english, "")
-	}
-
-	// if english end with - or space, remove it
-	if strings.HasSuffix(english, "-") || strings.HasSuffix(english, " ") {
-		english = english[:len(english)-1]
-	}
-	word.Raw = raw
-	word.SetEnglishField(english)
+	word.Raw = wordform.Clean(raw)
+	english := wordform.Normalize(raw)
+	word.English = english
+	word.Key = strings.ToLower(english)
 }
 
 func (word *Word) FindId() {
@@ -96,16 +67,9 @@ func (word *Word) FindId() {
 }
 
 func (word *Word) SetEnglishField(english string) {
-	// ADR-043: the lookup key uses straight apostrophes ("don’t" -> "don't").
-	english = repo.CanonicalEnglish(english)
-	if strings.Contains(english, "'s") {
-		tmpKey := strings.ReplaceAll(english, "'s", "")
-		word.English = tmpKey
-		word.Key = strings.ToLower(tmpKey)
-	} else {
-		word.English = english
-		word.Key = strings.ToLower(english)
-	}
+	english = wordform.Canonical(english)
+	word.English = english
+	word.Key = strings.ToLower(english)
 }
 func (word *Word) FindQueryCount(userId string) int {
 	qc, known, _ := repo.GetUserWordQueryCount(word.Id, userId)

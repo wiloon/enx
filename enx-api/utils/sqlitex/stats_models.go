@@ -63,9 +63,10 @@ func (StatsIngestLog) TableName() string {
 	return "stats_ingest_log"
 }
 
-// LookupEvent is one dictionary lookup request (ADR-059 Decision 1). The
-// daily lookup quota, the lookup counts in /stats and active users are all
-// derived from this table.
+// LookupEvent is one lookup a user made (ADR-059 Decision 1, ADR-079
+// Decision 6): POST /api/me/word-lookups writes it. The lookup counts in
+// /stats and active users are derived from this table; the daily lookup
+// quota is not (DictionaryQuotaUsage).
 //
 // No word, URL or page is stored: which word was looked up is already in
 // user_dicts, and an event only has to be counted. Rows are kept for
@@ -79,12 +80,31 @@ type LookupEvent struct {
 	// X-Enx-Tz-Offset; 0 without the header. The event's local day is the
 	// date of At + TZOffsetMinutes.
 	TZOffsetMinutes int `gorm:"column:tz_offset_minutes;not null"`
-	// "allowed" or "rejected" (answered with a 429).
+	// "allowed". Rows written before ADR-079 may say "rejected" (answered
+	// with a 429) until retention removes them.
 	Outcome string `gorm:"column:outcome;not null"`
 }
 
 func (LookupEvent) TableName() string {
 	return "lookup_events"
+}
+
+// DictionaryQuotaUsage is one user's dictionary use on one UTC day, the
+// daily lookup quota's counter (ADR-079 Decision 5). Only counts: no word,
+// URL or page. Rows are kept for stats.lookup-events.retention-days, like
+// lookup events, then deleted.
+type DictionaryQuotaUsage struct {
+	UserID string `gorm:"column:user_id;primaryKey"`
+	// YYYY-MM-DD.
+	UTCDay string `gorm:"column:utc_day;primaryKey;index:idx_dictionary_quota_usage_utc_day"`
+	// Charged and allowed.
+	Used int64 `gorm:"column:used;not null;default:0"`
+	// Charged and answered with a 429; never part of Used.
+	Rejected int64 `gorm:"column:rejected;not null;default:0"`
+}
+
+func (DictionaryQuotaUsage) TableName() string {
+	return "dictionary_quota_usage"
 }
 
 // ActiveUsersDay is one finished UTC day's site-wide active users, rolled up

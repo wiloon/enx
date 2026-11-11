@@ -43,13 +43,14 @@ type AIPolicy interface {
 type Handler struct {
 	subscriptions dictionary.Subscriptions
 	dict          Resolver
+	meter         dictionary.Meter
 	reviews       ReviewLog
 	ai            AIDefiner
 	policy        AIPolicy
 }
 
-func NewHandler(dict Resolver, reviews ReviewLog) *Handler {
-	return NewHandlerWithSubscriptions(dict, reviews, entadapters.Billing{})
+func NewHandler(dict Resolver, meter dictionary.Meter, reviews ReviewLog) *Handler {
+	return NewHandlerWithSubscriptions(dict, meter, reviews, entadapters.Billing{})
 }
 
 func (h *Handler) WithSubscriptions(subs dictionary.Subscriptions) *Handler {
@@ -57,8 +58,8 @@ func (h *Handler) WithSubscriptions(subs dictionary.Subscriptions) *Handler {
 	return h
 }
 
-func NewHandlerWithSubscriptions(dict Resolver, reviews ReviewLog, subs dictionary.Subscriptions) *Handler {
-	return &Handler{dict: dict, reviews: reviews, subscriptions: subs}
+func NewHandlerWithSubscriptions(dict Resolver, meter dictionary.Meter, reviews ReviewLog, subs dictionary.Subscriptions) *Handler {
+	return &Handler{dict: dict, meter: meter, reviews: reviews, subscriptions: subs}
 }
 
 // WithAI sets up the AI word fallback: ai answers POST /api/dictionary/ai-word
@@ -100,16 +101,22 @@ func (h *Handler) translateWord(c *gin.Context, raw string) {
 	word := enx.Word{}
 	word.SetEnglish(raw)
 
+	// ADR-079 Decision 7: one word, one charge, before it is resolved; no
+	// lookup event (POST /api/me/word-lookups writes that).
+	if err := h.meter.Charge(c.Request.Context(), userId, 1); errors.Is(err, dictionary.ErrQuotaExceeded) {
+		dictionary.RespondQuotaExceededWithSubscriptions(c, userId, h.subscriptions)
+		return
+	} else if err != nil {
+		logger.Warnf("lookup quota charge failed for user %s, allowing lookup: %v", userId, err)
+	}
+
 	res, err := h.dict.Resolve(c.Request.Context(), word.English, userId)
 	switch {
 	case errors.Is(err, dictionary.ErrEcdictUnavailable):
 		dictionary.RespondUnavailable(c)
 		return
-	case errors.Is(err, dictionary.ErrQuotaExceeded):
-		dictionary.RespondQuotaExceededWithSubscriptions(c, userId, h.subscriptions)
-		return
 	case err != nil:
-		// Only the two sentinels above mean something to the client; any
+		// Only the sentinel above means something to the client; any
 		// other error must never be passed off as "word not found" (#17).
 		logger.Errorf("translate word %s: %v", word.English, err)
 		c.JSON(502, gin.H{"success": false, "message": "Dictionary lookup failed"})

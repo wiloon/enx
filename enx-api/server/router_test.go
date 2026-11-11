@@ -27,6 +27,8 @@ func TestLookupRoutesAreRegisteredOnlyUnderAPI(t *testing.T) {
 		"GET /paragraph-init",
 		"GET /translate",
 		"GET /word/:word",
+		"QUERY /dictionary/entries",
+		"POST /dictionary/entries/query",
 		"POST /translate/sentence",
 		"POST /translate/word-in-context",
 		"POST /translate/sentence-with-word",

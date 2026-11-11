@@ -45,3 +45,24 @@ func TestLookupEventJobRollsUpActiveUsersBeforeDeleting(t *testing.T) {
 		t.Errorf("an event past retention is still there: %v", first)
 	}
 }
+
+// ADR-079 Decision 5: the daily quota counter is kept as long as lookup
+// events, by the same hourly job.
+func TestStatsJobDeletesQuotaUsageOutsideTheLookupEventRetention(t *testing.T) {
+	sqlitex.Init(filepath.Join(t.TempDir(), "job.db"))
+	now := time.Date(2026, 10, 16, 1, 30, 0, 0, time.UTC)
+	const retention = 31 // the window starts 2026-09-15 01:30
+	for _, day := range []string{"2026-09-14", "2026-09-15", "2026-10-16"} {
+		if err := sqlitex.DB.Create(&sqlitex.DictionaryQuotaUsage{UserID: "u1", UTCDay: day, Used: 1}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	runStatsJobs(context.Background(), now, time.Hour, retention, userstats.NewService(repo.UserStats{}, func() time.Time { return now }))
+
+	var days []string
+	sqlitex.DB.Model(&sqlitex.DictionaryQuotaUsage{}).Order("utc_day").Pluck("utc_day", &days)
+	if len(days) != 2 || days[0] != "2026-09-15" || days[1] != "2026-10-16" {
+		t.Fatalf("days left %v, want [2026-09-15 2026-10-16]", days)
+	}
+}
