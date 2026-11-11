@@ -24,62 +24,91 @@ const listener = (chrome.runtime.onMessage.addListener as jest.Mock).mock
   .calls[0][0]
 const send = (message: object): Promise<Record<string, unknown>> =>
   new Promise(resolve => listener(message, {}, resolve))
-const definition = {
+const entry = {
+  Word: 'Cat',
+  Status: 'found',
   Id: 'cat-id',
   English: 'cat',
   Chinese: '猫',
   Pronunciation: 'kæt',
   WordType: 0,
-  LoadCount: 3,
-  Known: true,
+  Origin: 'ecdict',
 }
-const reply = (status: number, data: object) => ({
+const definition = {
+  Id: 'cat-id',
+  Key: 'cat',
+  English: 'cat',
+  Chinese: '猫',
+  Pronunciation: 'kæt',
+  WordType: 0,
+  Origin: 'ecdict',
+}
+const reply = (status: number, data: unknown) => ({
   ok: status < 400,
   status,
   headers: new Headers(),
   json: async () => data,
   text: async () => JSON.stringify(data),
 })
+const calls = () =>
+  (fetch as jest.Mock).mock.calls.map(([url, init]) => ({
+    url: String(url).replace('http://localhost:8090', ''),
+    method: init?.method ?? 'GET',
+    contentType: init?.headers?.['Content-Type'],
+    body: init?.body ? JSON.parse(init.body) : undefined,
+  }))
 beforeEach(async () => {
   ;(chrome.tabs.query as jest.Mock).mockResolvedValue([])
   ;(chrome.storage.local.remove as jest.Mock).mockResolvedValue(undefined)
-  global.fetch = jest.fn().mockResolvedValue(reply(200, definition))
+  global.fetch = jest.fn().mockResolvedValue(reply(200, [entry]))
   await send({ type: 'accountSignedOut' })
   __resetClerkClientCacheForTests()
 })
 
-it('reuses dictionary data on the next getOneWord without sending a GET or POST', async () => {
-  expect(await send({ type: 'getOneWord', word: ' Cat ' })).toMatchObject({
+it('reads a cache miss with one JSON QUERY and serves the next lookup from the cache', async () => {
+  expect(await send({ type: 'getOneWord', word: ' Cat ' })).toEqual({
     success: true,
-    fromCache: false,
     ecp: definition,
   })
+  expect(calls()).toEqual([
+    {
+      url: '/api/dictionary/entries',
+      method: 'QUERY',
+      contentType: 'application/json',
+      body: { words: ['Cat'] },
+    },
+  ])
   expect(await send({ type: 'getOneWord', word: 'CAT' })).toEqual({
     success: true,
-    fromCache: true,
-    ecp: {
-      Id: 'cat-id',
-      Key: 'cat',
-      English: 'cat',
-      Chinese: '猫',
-      Pronunciation: 'kæt',
-      WordType: 0,
-    },
+    ecp: { ...definition, Origin: undefined },
   })
   expect(fetch).toHaveBeenCalledTimes(1)
 })
 
-it('passes cache metering and the authoritative count through the recording message', async () => {
+it('retries a QUERY refused with 405 once as POST with the same body', async () => {
+  ;(fetch as jest.Mock)
+    .mockResolvedValueOnce(reply(405, {}))
+    .mockResolvedValueOnce(reply(200, [entry]))
+  expect(await send({ type: 'getOneWord', word: 'cat' })).toMatchObject({
+    success: true,
+    ecp: { Id: 'cat-id' },
+  })
+  expect(calls().map(({ method, url, body }) => [method, url, body])).toEqual([
+    ['QUERY', '/api/dictionary/entries', { words: ['cat'] }],
+    ['POST', '/api/dictionary/entries/query', { words: ['cat'] }],
+  ])
+})
+
+it('records a lookup with only the word id and passes the authoritative count back', async () => {
   ;(fetch as jest.Mock).mockResolvedValue(
     reply(200, { queryCount: 21, known: false })
   )
-  expect(
-    await send({ type: 'recordWordLookup', wordId: 'cat-id', fromCache: true })
-  ).toEqual({ success: true, queryCount: 21, known: false })
-  expect(JSON.parse((fetch as jest.Mock).mock.calls[0][1].body)).toEqual({
-    wordId: 'cat-id',
-    fromCache: true,
+  expect(await send({ type: 'recordWordLookup', wordId: 'cat-id' })).toEqual({
+    success: true,
+    queryCount: 21,
+    known: false,
   })
+  expect(calls()[0].body).toEqual({ wordId: 'cat-id' })
 })
 
 it('passes a quota refusal through without retrying the recording POST', async () => {
@@ -87,7 +116,7 @@ it('passes a quota refusal through without retrying the recording POST', async (
     reply(429, { code: 'lookup_quota_exceeded', message: 'Quota reached' })
   )
   expect(
-    await send({ type: 'recordWordLookup', wordId: 'cat-id', fromCache: true })
+    await send({ type: 'recordWordLookup', wordId: 'cat-id' })
   ).toMatchObject({
     success: false,
     status: 429,
@@ -97,32 +126,75 @@ it('passes a quota refusal through without retrying the recording POST', async (
   expect(fetch).toHaveBeenCalledTimes(1)
 })
 
+it('passes a quota refusal of the QUERY through without falling back', async () => {
+  ;(fetch as jest.Mock).mockResolvedValue(
+    reply(429, { code: 'lookup_quota_exceeded', message: 'Quota reached' })
+  )
+  expect(await send({ type: 'getOneWord', word: 'cat' })).toMatchObject({
+    success: false,
+    status: 429,
+    code: 'lookup_quota_exceeded',
+  })
+  expect(fetch).toHaveBeenCalledTimes(1)
+})
+
+it('answers a word no dictionary knows with its AI offer and does not cache it', async () => {
+  ;(fetch as jest.Mock).mockResolvedValue(
+    reply(200, [
+      {
+        Word: 'zorbly',
+        Status: 'not_found',
+        AIFallback: { CanUse: true, Auto: true },
+      },
+    ])
+  )
+  expect(await send({ type: 'getOneWord', word: 'zorbly' })).toEqual({
+    success: true,
+    ecp: {
+      Key: 'zorbly',
+      English: 'zorbly',
+      Pronunciation: '',
+      Chinese: '',
+      WordType: 0,
+      AIFallback: { CanUse: true, Auto: true },
+    },
+  })
+  await send({ type: 'getOneWord', word: 'zorbly' })
+  expect(fetch).toHaveBeenCalledTimes(2)
+})
+
+it('reports a failed entry as a lookup failure', async () => {
+  ;(fetch as jest.Mock).mockResolvedValue(
+    reply(200, [{ Word: 'cat', Status: 'failed' }])
+  )
+  expect(await send({ type: 'getOneWord', word: 'cat' })).toMatchObject({
+    success: false,
+  })
+})
+
 it('explicit sign-out removes definitions from the next lookup', async () => {
   await send({ type: 'getOneWord', word: 'cat' })
   await send({ type: 'accountSignedOut' })
   __resetClerkClientCacheForTests()
-  expect(await send({ type: 'getOneWord', word: 'cat' })).toMatchObject({
-    fromCache: false,
-  })
+  await send({ type: 'getOneWord', word: 'cat' })
   expect(fetch).toHaveBeenCalledTimes(2)
 })
 
 it('refreshing a stale id fetches and caches the replacement definition', async () => {
   await send({ type: 'getOneWord', word: 'cat' })
   ;(fetch as jest.Mock).mockResolvedValue(
-    reply(200, { ...definition, Id: 'new-id' })
+    reply(200, [{ ...entry, Id: 'new-id' }])
   )
   expect(
     await send({ type: 'getOneWord', word: 'cat', refresh: true })
-  ).toMatchObject({ fromCache: false, ecp: { Id: 'new-id' } })
+  ).toMatchObject({ ecp: { Id: 'new-id' } })
   expect(await send({ type: 'getOneWord', word: 'cat' })).toMatchObject({
-    fromCache: true,
     ecp: { Id: 'new-id' },
   })
   expect(fetch).toHaveBeenCalledTimes(2)
 })
 
-it('does not repopulate the cache when an old GET completes after explicit sign-out', async () => {
+it('does not repopulate the cache when an old QUERY completes after explicit sign-out', async () => {
   let finish!: (value: ReturnType<typeof reply>) => void
   ;(fetch as jest.Mock).mockImplementationOnce(
     () =>
@@ -133,13 +205,11 @@ it('does not repopulate the cache when an old GET completes after explicit sign-
   const pending = send({ type: 'getOneWord', word: 'cat' })
   while (!finish) await new Promise(resolve => setTimeout(resolve, 0))
   await send({ type: 'accountSignedOut' })
-  finish(reply(200, definition))
+  finish(reply(200, [entry]))
   await pending
   __resetClerkClientCacheForTests()
-  ;(fetch as jest.Mock).mockResolvedValue(reply(200, definition))
-  expect(await send({ type: 'getOneWord', word: 'cat' })).toMatchObject({
-    fromCache: false,
-  })
+  await send({ type: 'getOneWord', word: 'cat' })
+  expect(fetch).toHaveBeenCalledTimes(2)
 })
 
 it('a cache write failure still returns the server definition', async () => {
@@ -149,7 +219,7 @@ it('a cache write failure still returns the server definition', async () => {
       throw new DOMException('Storage full', 'QuotaExceededError')
     })
   try {
-    expect(await send({ type: 'getOneWord', word: 'cat' })).toMatchObject({
+    expect(await send({ type: 'getOneWord', word: 'cat' })).toEqual({
       success: true,
       ecp: definition,
     })
@@ -168,7 +238,6 @@ it('still serves the cached definition when updating its last-used timestamp fai
   try {
     expect(await send({ type: 'getOneWord', word: 'cat' })).toMatchObject({
       success: true,
-      fromCache: true,
       ecp: { Chinese: '猫' },
     })
     expect(fetch).toHaveBeenCalledTimes(1)

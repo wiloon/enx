@@ -38,6 +38,13 @@ it('reuses a clicked inflection across cache instances without persisting user s
   expect(await cache().get('run')).toBeUndefined()
 })
 
+it('shares one entry between a possessive page form and its word', async () => {
+  await cache().put('Cat’s', { ...definition, Id: 'cat-id', English: 'cat' })
+  expect(await cache().get('cat')).toMatchObject({ Id: 'cat-id' })
+  await cache().delete("CAT's")
+  expect(await cache().get('Cat’s')).toBeUndefined()
+})
+
 it('expires after 30 days from insertion even when read just before expiry', async () => {
   const store = cache()
   await store.put('ran', definition)
@@ -88,14 +95,14 @@ it('overwrites an existing word at capacity without evicting another', async () 
   expect(await store.get('word-0')).toBeDefined()
 })
 
-it('clears dictionary entries when the database version increases', async () => {
-  const db = await openDictionaryCache(factory)
+it('discards entries stored under the old version 1 keys', async () => {
+  const db = await openDictionaryCache(factory, 1)
   await createDictionaryCache(Promise.resolve(db), () => now).put(
     'ran',
     definition
   )
   db.close()
-  const upgraded = await openDictionaryCache(factory, 2)
+  const upgraded = await openDictionaryCache(factory)
   expect(
     await createDictionaryCache(Promise.resolve(upgraded), () => now).get('ran')
   ).toBeUndefined()

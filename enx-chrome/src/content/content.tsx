@@ -551,12 +551,8 @@ const showWordPopover = async (word: string, reference: Range) => {
               word,
               ...(refresh ? { refresh } : {}),
             }),
-          record: (wordId, fromCache) =>
-            sendToBackground({
-              type: 'recordWordLookup',
-              wordId,
-              ...(fromCache ? { fromCache } : {}),
-            }),
+          record: wordId =>
+            sendToBackground({ type: 'recordWordLookup', wordId }),
           isActive: isCurrentAccount,
           isCurrent: () => currentOverlay === overlay && isCurrentAccount(),
           onDefinition: data => {
@@ -572,10 +568,10 @@ const showWordPopover = async (word: string, reference: Range) => {
               ecp: data,
             })
           },
+          onRecordFailure: response =>
+            contentScriptStore.set(lookupNoticeAtom, response),
           onFailure: response => {
-            if (response.fromCache) {
-              contentScriptStore.set(lookupNoticeAtom, response)
-            } else if (isSignedOutFailure(response)) {
+            if (isSignedOutFailure(response)) {
               showSignedOut(contentScriptStore)
             } else if (isUnverifiedFailure(response)) {
               showSessionUnverified(contentScriptStore, 'lookup')

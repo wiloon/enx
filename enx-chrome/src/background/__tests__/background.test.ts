@@ -921,7 +921,7 @@ describe('background makeApiRequest / Clerk session token', () => {
       [
         'a network failure',
         () => Promise.reject(new TypeError('Failed to fetch')),
-        { success: false, error: NETWORK_ERROR_MESSAGE },
+        { success: false, error: NETWORK_ERROR_MESSAGE, networkError: true },
       ],
     ])('gives up on %s after two retries', async (_name, reply, want) => {
       ;(global.fetch as jest.Mock).mockImplementation(reply)
@@ -1130,18 +1130,71 @@ describe('background onMessage / lookups and the query count', () => {
     return pending
   }
 
+  const found = [
+    {
+      Word: 'cat',
+      Status: 'found',
+      Id: 'w1',
+      English: 'cat',
+      Chinese: 'n. 猫',
+    },
+  ]
+  const requests = () =>
+    (global.fetch as jest.Mock).mock.calls.map(([url, init]) => [
+      init.method,
+      url.replace('http://localhost:8090', ''),
+    ])
+
   it('retries a lookup whose reply was lost', async () => {
-    const ecp = { Id: 'w1', English: 'cat', Chinese: 'n. 猫', LoadCount: 2 }
     ;(global.fetch as jest.Mock)
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-      .mockResolvedValueOnce(jsonResponse(200, ecp))
+      .mockResolvedValueOnce(jsonResponse(200, found))
 
-    expect(await send({ type: 'getOneWord', word: 'cat' })).toEqual({
+    expect(await send({ type: 'getOneWord', word: 'cat' })).toMatchObject({
       success: true,
-      ecp,
-      fromCache: false,
+      ecp: { Id: 'w1', Chinese: 'n. 猫' },
     })
-    expect(global.fetch).toHaveBeenCalledTimes(2)
+    expect(requests()).toEqual([
+      ['QUERY', '/api/dictionary/entries'],
+      ['QUERY', '/api/dictionary/entries'],
+    ])
+  })
+
+  it('spends the QUERY retries before falling back to one retried POST', async () => {
+    ;(global.fetch as jest.Mock)
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(jsonResponse(200, found))
+
+    expect(await send({ type: 'getOneWord', word: 'cat' })).toMatchObject({
+      success: true,
+      ecp: { Id: 'w1' },
+    })
+    expect(requests()).toEqual([
+      ['QUERY', '/api/dictionary/entries'],
+      ['QUERY', '/api/dictionary/entries'],
+      ['QUERY', '/api/dictionary/entries'],
+      ['POST', '/api/dictionary/entries/query'],
+      ['POST', '/api/dictionary/entries/query'],
+    ])
+  })
+
+  it('retries a QUERY answered 501 as a 5xx before falling back to POST', async () => {
+    ;(global.fetch as jest.Mock)
+      .mockResolvedValueOnce(jsonResponse(501, {}))
+      .mockResolvedValueOnce(jsonResponse(501, {}))
+      .mockResolvedValueOnce(jsonResponse(501, {}))
+      .mockResolvedValueOnce(jsonResponse(200, found))
+
+    await send({ type: 'getOneWord', word: 'cat' })
+    expect(requests().map(([method]) => method)).toEqual([
+      'QUERY',
+      'QUERY',
+      'QUERY',
+      'POST',
+    ])
   })
 
   it("passes a lookup 429's code through to the caller", async () => {
@@ -1956,18 +2009,21 @@ describe('background onMessage / submitFeedback (ADR-076)', () => {
   it.each([
     [400, 'invalid feedback: url "foo" is not a web page'],
     [429, 'Daily feedback limit reached. Please try again tomorrow.'],
-  ])("passes the status and the API's message back for a %i", async (status, message) => {
-    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
-      jsonResponse(status, { success: false, message })
-    )
+  ])(
+    "passes the status and the API's message back for a %i",
+    async (status, message) => {
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+        jsonResponse(status, { success: false, message })
+      )
 
-    const response = await send({
-      type: 'submitFeedback',
-      feedback: { text: 'hi', url: 'foo', context },
-    })
+      const response = await send({
+        type: 'submitFeedback',
+        feedback: { text: 'hi', url: 'foo', context },
+      })
 
-    expect(response).toMatchObject({ success: false, status, error: message })
-  })
+      expect(response).toMatchObject({ success: false, status, error: message })
+    }
+  )
 
   it('rejects a message with no text without calling the API', async () => {
     const response = await send({ type: 'submitFeedback' })

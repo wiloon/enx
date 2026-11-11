@@ -41,12 +41,14 @@ const FOX = {
   Known: false,
   WordType: 0,
 }
-const FOX_MISS = {
-  ...FOX,
-  Id: undefined,
-  Chinese: '',
-  AIFallback: { CanUse: true, Auto: true },
-}
+const FOX_FOUND = [{ Word: 'fox', Status: 'found', ...FOX }]
+const FOX_MISS = [
+  {
+    Word: 'fox',
+    Status: 'not_found',
+    AIFallback: { CanUse: true, Auto: true },
+  },
+]
 
 let sent: Message[]
 let api: (url: string) => { status: number; body: unknown }
@@ -164,7 +166,7 @@ beforeEach(() => {
     user: { id: 'user-a' },
   }))
   api = url =>
-    url.includes('/api/translate?word=')
+    url.includes('/api/dictionary/entries')
       ? { status: 401, body: {} }
       : { status: 200, body: {} }
   global.fetch = jest.fn(async (url: string) => {
@@ -255,8 +257,8 @@ describe('a lookup whose session is unverified', () => {
     await startReading()
     await clickFox()
     api = url =>
-      url.includes('/api/translate?word=')
-        ? { status: 200, body: FOX }
+      url.includes('/api/dictionary/entries')
+        ? { status: 200, body: FOX_FOUND }
         : { status: 200, body: {} }
 
     ;(inPopover('word-popover-unverified-retry') as HTMLButtonElement).click()
@@ -318,7 +320,7 @@ describe('a lookup whose session token cannot be minted', () => {
 describe('an AI lookup whose session is unverified', () => {
   beforeEach(() => {
     api = url =>
-      url.includes('/api/translate?word=')
+      url.includes('/api/dictionary/entries')
         ? { status: 200, body: FOX_MISS }
         : url.includes('/api/dictionary/ai-word')
           ? { status: 401, body: {} }

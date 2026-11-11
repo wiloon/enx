@@ -1,4 +1,5 @@
 import { wrap, type DBSchema, type IDBPDatabase } from 'idb'
+import { wordKey } from '@/lib/wordHighlight'
 import type { WordData } from '@/types'
 
 export type DictionaryEntry = Pick<
@@ -18,10 +19,15 @@ interface CacheSchema extends DBSchema {
   }
 }
 
+// Entries are keyed by wordKey of the trimmed page form (ADR-061 Decision 1),
+// so "Cat’s" and "cat" share one while "ran" and "run" stay apart. Version 1
+// keyed by the lower-cased form; an upgrade drops every old entry.
+const cacheKey = (word: string): string => wordKey(word.trim())
+
 // The worker passes its own IndexedDB factory; content scripts never open it.
 export function openDictionaryCache(
   factory: IDBFactory,
-  version = 1
+  version = 2
 ): Promise<IDBPDatabase<CacheSchema>> {
   const request = factory.open('enx-dictionary-cache', version)
   request.onupgradeneeded = () => {
@@ -49,11 +55,11 @@ export function createDictionaryCache(
       await (await database).clear('entries')
     },
     async delete(word: string): Promise<void> {
-      await (await database).delete('entries', word.trim().toLowerCase())
+      await (await database).delete('entries', cacheKey(word))
     },
     async get(word: string): Promise<DictionaryEntry | undefined> {
       const tx = (await database).transaction('entries', 'readwrite')
-      const row = await tx.store.get(word.trim().toLowerCase())
+      const row = await tx.store.get(cacheKey(word))
       if (!row || now() - row.cachedAt >= 30 * 24 * 60 * 60 * 1000) {
         await tx.done
         return undefined
@@ -71,7 +77,7 @@ export function createDictionaryCache(
       const { Id, English, Pronunciation, Chinese, WordType } = data
       if (!Id || data.Origin === 'ai') return
       const row = {
-        word: word.trim().toLowerCase(),
+        word: cacheKey(word),
         entry: { Id, English, Pronunciation, Chinese, WordType },
         cachedAt: now(),
         lastUsedAt: now(),

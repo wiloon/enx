@@ -2,14 +2,14 @@ import { test, expect } from './fixtures'
 import { loginAvailable, LOGIN_SKIP_REASON } from './auth'
 import {
   clickHighlightedWord,
-  dictionaryGets,
+  dictionaryReads,
   enableLearningMode,
   mockBackendFetch,
   waitForContentScript,
   wordLookupPosts,
 } from './helpers'
 
-test.describe('Local dictionary cache (ADR-061)', () => {
+test.describe('Local dictionary cache (ADR-061, ADR-079)', () => {
   test.skip(!loginAvailable, LOGIN_SKIP_REASON)
   test.beforeEach(
     async ({ context, page, extensionId, signedIn: _signedIn }) => {
@@ -24,7 +24,7 @@ test.describe('Local dictionary cache (ADR-061)', () => {
     }
   )
 
-  test('a repeat click skips the GET and meters one POST, displaying the definition before the count', async ({
+  test('a repeat click skips the QUERY and sends one POST, displaying the definition before the count', async ({
     page,
     context,
   }) => {
@@ -37,11 +37,8 @@ test.describe('Local dictionary cache (ADR-061)', () => {
     await expect(page.getByTitle('Looked up 4 times')).toHaveCount(0)
     await expect
       .poll(() => wordLookupPosts(context))
-      .toEqual([
-        { wordId: 'cache-word' },
-        { wordId: 'cache-word', fromCache: true },
-      ])
-    expect(await dictionaryGets(context)).toHaveLength(1)
+      .toEqual([{ wordId: 'cache-word' }, { wordId: 'cache-word' }])
+    expect(await dictionaryReads(context)).toHaveLength(1)
     await expect(page.getByTitle('Looked up 4 times')).toBeVisible()
   })
 
@@ -59,10 +56,9 @@ test.describe('Local dictionary cache (ADR-061)', () => {
     await clickHighlightedWord(page, 0)
     await expect(page.getByText('缓存释义', { exact: true })).toBeVisible()
     await expect.poll(() => wordLookupPosts(context)).toHaveLength(2)
-    expect(await dictionaryGets(context)).toHaveLength(1)
+    expect(await dictionaryReads(context)).toHaveLength(1)
     expect((await wordLookupPosts(context))[1]).toEqual({
       wordId: 'cache-word',
-      fromCache: true,
     })
   })
 
@@ -87,5 +83,20 @@ test.describe('Local dictionary cache (ADR-061)', () => {
     const noticeBox = await notice.boundingBox()
     expect(noticeBox!.y).toBeGreaterThanOrEqual(defBox!.y + defBox!.height)
     await page.screenshot({ path: 'test-results/dictionary-cache-quota.png' })
+  })
+
+  test('a first click reads the word with one JSON QUERY', async ({
+    page,
+    context,
+  }) => {
+    await clickHighlightedWord(page, 0)
+    await expect(page.getByText('缓存释义', { exact: true })).toBeVisible()
+    const reads = (await dictionaryReads(context)) as {
+      method: string
+      body: { words: string[] }
+    }[]
+    expect(reads).toHaveLength(1)
+    expect(reads[0].method).toBe('QUERY')
+    expect(reads[0].body.words).toHaveLength(1)
   })
 })

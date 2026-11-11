@@ -83,7 +83,6 @@ export interface ContentMessage {
   word?: string
   // Set on 'recordWordLookup': the words row id the lookup answered with.
   wordId?: string
-  fromCache?: boolean
   // A stale cached id was refused: invalidate it and fetch again.
   refresh?: boolean
   words?: string
@@ -146,7 +145,6 @@ export interface ReadingStatsDelta {
 
 export interface BackgroundResponse {
   success: boolean
-  fromCache?: boolean
   queryCount?: number
   known?: boolean
   data?: unknown
