@@ -1,12 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import PricingPage from '../pricing/page'
 import { pricingCtaHref } from '@/components/site/PricingCta'
-import {
-  FREE_DAILY_LOOKUPS,
-  FREE_PLAN,
-  SUBSCRIPTION_PLANS,
-  TOPUP_TIERS,
-} from '@/lib/plans'
+import { FREE_PLAN, SUBSCRIPTION_PLANS, TOPUP_TIERS } from '@/lib/plans'
 
 const mockUseAuth = jest.fn(() => ({ isSignedIn: false }))
 jest.mock('@clerk/nextjs', () => ({
@@ -61,14 +56,14 @@ describe('/pricing', () => {
     }
   })
 
-  it('states the free daily lookup limit as a number', () => {
+  // ADR-079: the quota counts prefetch too, so "N lookups a day" would no
+  // longer match what a reader sees; the free card names a limit, no number.
+  it('names the free daily lookup limit without a number', () => {
     render(<PricingPage />)
 
-    expect(
-      within(card(FREE_PLAN.name)).getByText(
-        new RegExp(`${FREE_DAILY_LOOKUPS} lookups a day`)
-      )
-    ).toBeInTheDocument()
+    const c = within(card(FREE_PLAN.name))
+    expect(c.getByText(/daily limit/)).toBeInTheDocument()
+    expect(c.queryByText(/\d+ lookups a day/)).not.toBeInTheDocument()
   })
 
   it('has no checkout buttons -- every call to action is a link', () => {

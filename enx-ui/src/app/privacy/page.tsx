@@ -175,8 +175,13 @@ export default function PrivacyPolicyPage() {
                 ],
                 [
                   'Lookup events: the time and time zone of each word lookup — never which word, and never on which page',
-                  'Your daily lookup limit, the lookup counts on your Reading Stats page, and counting how many people use Catglish each day',
+                  'The lookup counts on your Reading Stats page, and counting how many people use Catglish each day',
                   'At most 100 days, then deleted automatically; only the daily lookup counts remain',
+                ],
+                [
+                  'Daily lookup usage: one count per day of how much of your daily lookup limit you used and how much was refused — never which words, and never on which page',
+                  'To enforce your daily lookup limit, and to see how often people reach it',
+                  'At most 100 days, then deleted automatically',
                 ],
                 [
                   'Feedback you send us: what you write with "Send feedback", or a page Catglish could not read when you press "Send report". With it: the page address (cleaned, and shown to you to edit or clear before sending), what went wrong, the app version, your browser\'s name and major version, and, from the extension, whether learning mode was on, which site adapter read the page and whether you picked the article yourself. If you turned on sharing of article choices, each choice you confirm: its cleaned page address, the article\'s selector, what automatic detection found and the extension version',

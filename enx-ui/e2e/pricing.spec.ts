@@ -17,7 +17,7 @@ test.describe('/pricing (signed out)', () => {
     await expect(card(page, 'Catglish Pro+')).toContainText('1,500 credits/mo')
     await expect(card(page, 'Small top-up')).toContainText('$2.99')
     await expect(card(page, 'Free')).toContainText('$0')
-    await expect(card(page, 'Free')).toContainText('200 lookups a day')
+    await expect(card(page, 'Free')).toContainText('with a daily limit')
     // Not redirected to sign-in.
     await expect(page).toHaveURL(/\/pricing$/)
   })
