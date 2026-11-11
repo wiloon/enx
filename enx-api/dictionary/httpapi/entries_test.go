@@ -51,7 +51,7 @@ var resolved = stubResolver{
 func serveEntries(t *testing.T, meter *stubMeter, userID, contentType, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	h := NewHandler(dictionary.NewEntries(resolved, meter, stubPolicy{}), freeTier{})
+	h := NewHandler(dictionary.NewEntries(resolved, meter, stubPolicy{}, nil), freeTier{})
 	r := gin.New()
 	r.Use(func(c *gin.Context) {
 		if userID != "" {

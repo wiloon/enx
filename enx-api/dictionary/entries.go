@@ -59,32 +59,59 @@ type AIFallbackPolicy interface {
 	Fallback(ctx context.Context, userID string) (canUse, auto bool)
 }
 
-// Entries reads the definitions of a batch of words (ADR-079 Decision 1):
-// one charge for the whole batch, no lookup event, no query count.
+// LookedUpWords reads the user's non-deleted words with a positive query count,
+// including known words.
+type LookedUpWords interface {
+	LookedUpWords(ctx context.Context, userID string) ([]string, error)
+}
+
+// Entries reads batch definitions without lookup events or query counts.
+// Only words the user has not looked up consume quota (ADR-080).
 type Entries struct {
 	resolver Resolver
+	lookedUp LookedUpWords
 	meter    Meter
 	policy   AIFallbackPolicy // nil: misses offer no AI fallback
 }
 
-func NewEntries(resolver Resolver, meter Meter, policy AIFallbackPolicy) *Entries {
-	return &Entries{resolver: resolver, meter: meter, policy: policy}
+func NewEntries(resolver Resolver, meter Meter, policy AIFallbackPolicy, lookedUp LookedUpWords) *Entries {
+	return &Entries{resolver: resolver, meter: meter, policy: policy, lookedUp: lookedUp}
 }
 
 // Lookup normalizes raw like the lookup GET, drops exact duplicates, charges
-// the distinct words to userID's quota at once and then resolves each, in
+// only distinct words userID has not looked up to quota, then resolves each, in
 // the order first named. An invalid batch is ErrInvalidBatch and an
 // over-quota one ErrQuotaExceeded; neither is charged or resolved. Any other
-// meter error fails open (ADR-029 E2).
+// meter error fails open (ADR-029 E2). Looked-up words match without case;
+// a failed read charges the whole batch. An all-looked-up batch skips the meter.
 func (e *Entries) Lookup(ctx context.Context, userID string, raw []string) ([]EntryResult, error) {
 	words, err := distinctWords(raw)
 	if err != nil {
 		return nil, err
 	}
-	if err := e.meter.Charge(ctx, userID, len(words)); errors.Is(err, ErrQuotaExceeded) {
-		return nil, err
-	} else if err != nil {
-		logger.Warnf("dictionary: lookup quota charge failed for user %s, allowing the batch: %v", userID, err)
+	charge := len(words)
+	if e.lookedUp != nil {
+		lookedUp, readErr := e.lookedUp.LookedUpWords(ctx, userID)
+		if readErr != nil {
+			logger.Warnf("dictionary: looked-up words read failed for user %s, charging the whole batch: %v", userID, readErr)
+		} else {
+			seen := make(map[string]bool, len(lookedUp))
+			for _, word := range lookedUp {
+				seen[strings.ToLower(word)] = true
+			}
+			for _, word := range words {
+				if seen[strings.ToLower(word)] {
+					charge--
+				}
+			}
+		}
+	}
+	if charge > 0 {
+		if err := e.meter.Charge(ctx, userID, charge); errors.Is(err, ErrQuotaExceeded) {
+			return nil, err
+		} else if err != nil {
+			logger.Warnf("dictionary: lookup quota charge failed for user %s, allowing the batch: %v", userID, err)
+		}
 	}
 
 	var offer *AIFallbackOffer
