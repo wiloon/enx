@@ -81,8 +81,8 @@ func TestEntriesAnswersEachWordUnderItsRequestedForm(t *testing.T) {
 		t.Fatalf("decode %s: %v", w.Body, err)
 	}
 	want := []map[string]any{
-		{"Word": "ran", "Status": "found", "Id": "w-run", "English": "run", "Pronunciation": "ræn", "Chinese": "v. 跑", "WordType": float64(0), "Origin": "ecdict"},
-		{"Word": "uncached", "Status": "found", "English": "uncached", "Pronunciation": "", "Chinese": "未缓存", "WordType": float64(0), "Origin": "ecdict"},
+		{"Word": "ran", "Status": "found", "Id": "w-run", "English": "run", "Pronunciation": "ræn", "Chinese": "v. 跑", "WordType": float64(0), "Origin": "ecdict", "Source": "ecdict"},
+		{"Word": "uncached", "Status": "found", "English": "uncached", "Pronunciation": "", "Chinese": "未缓存", "WordType": float64(0), "Origin": "ecdict", "Source": "ecdict"},
 		{"Word": "zzxqv", "Status": "not_found", "AIFallback": map[string]any{"CanUse": true, "Auto": false}},
 		{"Word": "slow", "Status": "failed"},
 	}
@@ -151,5 +151,29 @@ func TestEntriesRejectsAnUnauthenticatedRequest(t *testing.T) {
 
 	if w.Code != http.StatusUnauthorized || len(meter.charged) != 0 {
 		t.Fatalf("got %d with charges %v, want 401 and none", w.Code, meter.charged)
+	}
+}
+
+func TestEntriesFoundSource(t *testing.T) {
+	for _, source := range []dictionary.Source{dictionary.SourceLocal, dictionary.SourceEcdict} {
+		t.Run(string(source), func(t *testing.T) {
+			resolver := stubResolver{"run": {ID: "w-run", English: "run", Chinese: "v. 跑", Source: source}}
+			h := NewHandler(dictionary.NewEntries(resolver, &stubMeter{}, stubPolicy{}, nil), freeTier{})
+			gin.SetMode(gin.TestMode)
+			r := gin.New()
+			r.Use(func(c *gin.Context) { c.Set("user_id", "u1") })
+			r.Handle("QUERY", "/api/dictionary/entries", h.Entries)
+			req := httptest.NewRequest("QUERY", "/api/dictionary/entries", strings.NewReader(`{"words":["run"]}`))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			var got []map[string]any
+			if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+			if w.Code != 200 || len(got) != 1 || got[0]["Source"] != string(source) {
+				t.Fatalf("got %d %s; want Source %s", w.Code, w.Body, source)
+			}
+		})
 	}
 }

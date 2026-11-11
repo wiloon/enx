@@ -4,10 +4,10 @@ import LookupCount from '@/components/app/LookupCount'
 import { Button } from '@/components/ui/button'
 import { formatPhonetic } from '@/lib/phonetic'
 import { playPronunciation } from '@/lib/pronunciation'
-import { WordData } from '@/types'
+import type { LookupWord } from '@/lib/lookupAnswer'
 
 interface WordResultCardProps {
-  data: WordData
+  data: LookupWord
   // Admin-only: omit it and the Clear button is not rendered.
   onClear?: () => void
   clearing?: boolean
@@ -66,7 +66,7 @@ export default function WordResultCard({
       )}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t px-6 py-3 text-xs text-muted-foreground">
-        <LookupCount count={data.LoadCount} />
+        {data.LoadCount !== undefined && <LookupCount count={data.LoadCount} />}
         <span className="ml-auto flex min-w-0 items-center gap-3">
           {source && (
             <span title="Lookup source" className="text-muted-foreground">

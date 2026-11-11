@@ -1,35 +1,30 @@
-import { countLookup } from '../queryCount'
-import type { WordData } from '@/types'
+import { recordLookup } from '../queryCount'
 
-const run: WordData = {
-  Id: 'w1',
-  Key: 'run',
-  English: 'run',
-  Pronunciation: 'rʌn',
-  Chinese: 'v. 跑',
-  LoadCount: 3,
-  Known: true,
-  WordType: 0,
-}
-
-describe('countLookup', () => {
-  it('records a word with an id once and returns it one lookup on, back in review', () => {
-    const record = jest.fn()
-
-    const counted = countLookup(run, record)
-
-    expect(record).toHaveBeenCalledTimes(1)
-    expect(record).toHaveBeenCalledWith('w1')
-    expect(counted).toEqual({ ...run, LoadCount: 4, Known: false })
-  })
-
-  it('records nothing for a word without an id and returns it unchanged', () => {
-    const record = jest.fn()
-    const uncached = { ...run, Id: '' }
-
-    const counted = countLookup(uncached, record)
-
-    expect(record).not.toHaveBeenCalled()
-    expect(counted).toEqual(uncached)
-  })
+it.each([
+  [
+    { success: true, data: { queryCount: 4, known: false } },
+    { LoadCount: 4, Known: false },
+  ],
+  [
+    { success: false, status: 429, error: 'Quota reached' },
+    { message: 'Quota reached' },
+  ],
+  [{ success: false, status: 500, error: 'Server failed' }, {}],
+])(
+  'records once and returns only authoritative state',
+  async (response, expected) => {
+    const send = jest.fn().mockResolvedValue(response)
+    expect(await recordLookup('w1', send)).toEqual(expected)
+    expect(send.mock.calls).toEqual([['w1']])
+  }
+)
+it('silently keeps the definition on network failure without retry', async () => {
+  const send = jest.fn().mockRejectedValue(new Error('network'))
+  expect(await recordLookup('w1', send)).toEqual({})
+  expect(send).toHaveBeenCalledTimes(1)
+})
+it('does not record a definition without an id', async () => {
+  const send = jest.fn()
+  expect(await recordLookup('', send)).toEqual({})
+  expect(send).not.toHaveBeenCalled()
 })

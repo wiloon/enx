@@ -1,53 +1,42 @@
-import { classifyLookupAnswer, shownLookupSource } from '../lookupAnswer'
-import type { WordData } from '@/types'
+import { lookupAnswer, shownLookupSource } from '../lookupAnswer'
 
-const run: WordData = {
-  Id: 'w1',
-  Key: 'run',
-  English: 'run',
-  Pronunciation: 'rʌn',
-  Chinese: 'v. 跑',
-  LoadCount: 3,
-  Known: false,
-  WordType: 0,
-}
-
-describe('classifyLookupAnswer', () => {
-  it.each(['local', 'ecdict', 'miss', 'timeout', 'error', undefined, 'later'])(
-    'is a result whenever there is a definition (Source %s)',
-    (Source) => {
-      expect(classifyLookupAnswer({ ...run, Source })).toBe('result')
-    }
-  )
-
-  it.each(['timeout', 'error'])(
-    'is "the dictionary did not answer" without a definition and Source %s',
-    (Source) => {
-      expect(
-        classifyLookupAnswer({ ...run, Chinese: '', Id: '', Source })
-      ).toBe('no-answer')
-    }
-  )
-
-  it.each(['local', 'ecdict', 'miss', undefined, 'later', 'Timeout'])(
-    'is a miss without a definition and Source %s',
-    (Source) => {
-      expect(
-        classifyLookupAnswer({ ...run, Chinese: '', Id: '', Source })
-      ).toBe('miss')
-    }
-  )
+it.each(['w1', undefined])(
+  'maps found with Id %s without inventing user state',
+  (Id) => {
+    expect(
+      lookupAnswer('ran', [
+        {
+          Status: 'found',
+          Id,
+          English: 'run',
+          Chinese: 'v. 跑',
+          Source: 'ecdict',
+        },
+      ])
+    ).toEqual({
+      kind: 'result',
+      word: {
+        Id: Id ?? '',
+        Key: 'ran',
+        English: 'run',
+        Chinese: 'v. 跑',
+        Pronunciation: '',
+        WordType: 0,
+        Source: 'ecdict',
+      },
+    })
+  }
+)
+it.each([
+  ['not_found', 'miss'],
+  ['failed', 'no-answer'],
+])('maps %s to %s', (Status, kind) => {
+  expect(lookupAnswer('run', [{ Status }])).toEqual({ kind })
 })
-
-describe('shownLookupSource', () => {
-  it.each(['local', 'ecdict'])('shows %s as it is', (source) => {
-    expect(shownLookupSource(source)).toBe(source)
-  })
-
-  it.each(['miss', 'timeout', 'error', undefined, '', 'Local', 'later'])(
-    'shows nothing for %s',
-    (source) => {
-      expect(shownLookupSource(source)).toBeNull()
-    }
-  )
-})
+it.each(['local', 'ecdict'])('shows admin source %s', (source) =>
+  expect(shownLookupSource(source)).toBe(source)
+)
+it.each(['miss', 'timeout', 'error', undefined, '', 'Local', 'later'])(
+  'hides source %s',
+  (source) => expect(shownLookupSource(source)).toBeNull()
+)

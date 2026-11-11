@@ -1,25 +1,33 @@
-// What one lookup on /lookup answered.
-// A lookup GET answers 200 whether the dictionary knew the word, did not
-// know it, or did not answer in time; Source tells the last two apart
-// (ADR-040). The client trusts the definition first, so an API that does not
-// send Source yet, or sends a value this build doesn't know, reads as today.
-
 import type { WordData } from '@/types'
 
-// result: a definition to show and count. no-answer: the dictionary timed
-// out or failed, so the word may well exist. miss: the dictionary knows no
-// such word.
-export type LookupAnswerKind = 'result' | 'no-answer' | 'miss'
+// Definition reads carry no user state; only the recording response supplies it.
+export type LookupWord = Omit<WordData, 'LoadCount' | 'Known'> &
+  Partial<Pick<WordData, 'LoadCount' | 'Known'>>
+export type LookupAnswer =
+  | { kind: 'result'; word: LookupWord; message?: string }
+  | { kind: 'miss' | 'no-answer' }
 
-export const classifyLookupAnswer = (word: WordData): LookupAnswerKind => {
-  if (word.Chinese) return 'result'
-  if (word.Source === 'timeout' || word.Source === 'error') return 'no-answer'
-  return 'miss'
+export const lookupAnswer = (
+  requested: string,
+  data: unknown
+): LookupAnswer => {
+  const entry = Array.isArray(data) ? data[0] : undefined
+  if (entry?.Status === 'not_found') return { kind: 'miss' }
+  if (entry?.Status !== 'found') return { kind: 'no-answer' }
+  return {
+    kind: 'result',
+    word: {
+      Id: entry.Id ?? '',
+      Key: requested,
+      English: entry.English || requested,
+      Pronunciation: entry.Pronunciation ?? '',
+      Chinese: entry.Chinese ?? '',
+      WordType: entry.WordType ?? 0,
+      Source: entry.Source,
+    },
+  }
 }
 
-// The lookup source an admin sees beside the word's id: where this answer
-// came from, the server's words table ("local") or ECDICT just now
-// ("ecdict"). Never the browser's cache, and not the definition's Origin.
 export const shownLookupSource = (
   source: string | undefined
 ): 'local' | 'ecdict' | null =>

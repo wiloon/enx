@@ -30,7 +30,6 @@ import {
   StatsPeriod,
   StatsSeries,
   VersionData,
-  WordData,
   WordListPage,
   WordListSort,
   WordListStatus,
@@ -47,6 +46,7 @@ import {
   parseBillingSupportAnswer,
   type BillingSupportAnswer,
 } from '@/lib/billingSupport'
+import { requestDictionaryEntries } from '@/lib/dictionaryEntries'
 import type { FeedbackSubmission } from '@/lib/feedback'
 
 export type SubscriptionPlan = 'pro' | 'pro-plus' | 'max'
@@ -448,13 +448,19 @@ export class ApiService {
     })
   }
 
-  async lookupWord(word: string): Promise<ApiResponse<WordData>> {
-    return this.makeRequest<WordData>(`/api/word/${encodeURIComponent(word)}`)
+  async dictionaryEntries(word: string): Promise<ApiResponse<unknown>> {
+    return requestDictionaryEntries([word], async (method, path, body) => {
+      const result = await this.makeRequest<unknown>(path, { method, body })
+      return {
+        ...result,
+        networkError:
+          result.status === undefined && result.error === UNREACHABLE_MESSAGE,
+      }
+    })
   }
 
-  // Adds one to the query count of the word a lookup answered with
-  // (ADR-059 Decision 3). No fromCache: the lookup GET already charged the
-  // daily quota and wrote the lookup event.
+  // Records one lookup, charges daily quota and returns the server's query
+  // count and known state (ADR-079). Never retried by the caller.
   async recordWordLookup(
     wordId: string
   ): Promise<ApiResponse<{ queryCount: number; known: boolean }>> {
