@@ -99,8 +99,10 @@ export default function SaveLinkCard({
           <span className="block text-sm font-medium text-foreground">
             Save this link
           </span>
+          {/* One line beside the Save button, so the popup stays within
+              Chrome's 600px cap (e2e/popup-layout.spec.ts). */}
           <span className="block text-[11px] text-muted-foreground">
-            Link and title only, not the page content
+            Link and title, not content
           </span>
           {address}
         </span>

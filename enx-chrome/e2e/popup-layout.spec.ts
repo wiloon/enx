@@ -6,13 +6,30 @@ import { mockBackendFetch } from './helpers'
 // Chrome caps an action popup at 600px tall and scrolls anything beyond it.
 const POPUP_MAX_HEIGHT = 600
 
-// Sends a page action to the article tab's content script, as the popup does.
+// Sends a page action to the article tab's content script, as the popup does,
+// retrying while the just-loaded page's content script is not listening yet.
 async function pageAction(context: BrowserContext, page: Page, action: string) {
   return context.serviceWorkers()[0].evaluate(
     async ({ url, action }) => {
       const tab = (await chrome.tabs.query({})).find(tab => tab.url === url)
       if (!tab?.id) throw new Error('Article tab not found')
-      return chrome.tabs.sendMessage(tab.id, { action }, { frameId: 0 })
+      const deadline = Date.now() + 5000
+      for (;;) {
+        try {
+          return await chrome.tabs.sendMessage(
+            tab.id,
+            { action },
+            { frameId: 0 }
+          )
+        } catch (error) {
+          if (
+            !String(error).includes('Receiving end does not exist') ||
+            Date.now() >= deadline
+          )
+            throw error
+          await new Promise(resolve => setTimeout(resolve, 50))
+        }
+      }
     },
     { url: page.url(), action }
   )

@@ -28,9 +28,7 @@ describe('SaveLinkCard', () => {
 
     expect(screen.getByTestId('save-link-url')).toHaveTextContent(URL_SHOWN)
     expect(screen.getByText('Save this link')).toBeInTheDocument()
-    expect(
-      screen.getByText('Link and title only, not the page content')
-    ).toBeInTheDocument()
+    expect(screen.getByText('Link and title, not content')).toBeInTheDocument()
     expect(onSave).not.toHaveBeenCalled()
   })
 
