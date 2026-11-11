@@ -284,3 +284,34 @@ it.each([
   )
   expect(text).toHaveValue('hi')
 })
+
+it('shows the footer end beside feedback only on the main page', async () => {
+  render(
+    <SendFeedback footerEnd={<button>Version</button>}>
+      <p>Main page</p>
+    </SendFeedback>
+  )
+  const feedback = screen.getByRole('button', { name: 'Send feedback' })
+  expect(feedback.parentElement).toContainElement(
+    screen.getByRole('button', { name: 'Version' })
+  )
+  fireEvent.click(feedback)
+  await screen.findByRole('textbox', { name: 'Page URL' })
+  expect(
+    screen.queryByRole('button', { name: 'Version' })
+  ).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+  expect(screen.getByRole('button', { name: 'Version' })).toBeInTheDocument()
+})
+
+it('renders only the feedback button when no footer end is supplied', () => {
+  render(
+    <SendFeedback>
+      <p>Main page</p>
+    </SendFeedback>
+  )
+  expect(screen.getAllByRole('button')).toHaveLength(1)
+  expect(
+    screen.getByRole('button', { name: 'Send feedback' })
+  ).toBeInTheDocument()
+})
