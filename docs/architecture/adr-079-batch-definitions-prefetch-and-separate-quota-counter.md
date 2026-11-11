@@ -30,12 +30,12 @@ ADR-061 之后，点过的词再点会立刻显示释义。但本地词典缓存
 | 重试 | 可以（安全；重试只让配额多算） | 不重试（不幂等，宁可少记一次，ADR-059 Decision 3） |
 
 - 拆成两个接口的理由不变（ADR-059 Decision 3）：读释义是最常用的操作，必须能在网络抖动时重试；记查词不幂等，不能重试。把两者合成一个请求，最常见的「第一次查一个新词」就不能重试了；要能重试又不重复计数，得加查词 ID 去重，ADR-059 已因成本否决。
-- 「查词事件与查词次数」从此**永远在 POST 里一起写**。缓存命中与否只决定客户端发不发 QUERY，不再决定服务端在哪边计量。
-- QUERY 的请求体是 `{"words": ["…", …]}`，最多 100 个词，超过返回 400。每个词与 GET 一样 trim、转小写，重复的词只算一次。
-- QUERY 的结果只有词典字段（ADR-061 Decision 1 的 `Id`、`English`、`Pronunciation`、`Chinese`、`WordType`，以及 `Origin`），**不返回查词次数和「认识」状态**。点击查词时它们由随后的 POST 返回，与 ADR-061 缓存命中时一样；浮层先显示释义，POST 返回后补上次数和「认识」状态。
+- 查词事件与查词次数从此都由 POST 写：先检查词存在，再扣配额、加次数、写事件。404 不扣配额；次数写入失败时已扣的配额保留且不写事件；事件写入失败只记日志，不撤销次数。缓存命中与否只决定客户端发不发 QUERY，不再决定服务端在哪边计量。
+- QUERY 的请求体是 `{"words": ["…", …]}`，最多 100 个词，超过返回 400。上限按原始条目计；含空格（GET 的句子判定）或规范化后为空的条目使整个请求返回 400，且不扣配额。复用 GET 的 `SetEnglish` 规范化（保留大小写、统一撇号、去掉所有格），规范化后按区分大小写的形式去重，再一次性按不同词数扣配额。
+- QUERY 返回数组，每项以请求的规范化词形为键，另带状态 `found`、`not_found` 或 `failed`；`English` 可以是不同的原形。命中返回词典字段（ADR-061 Decision 1 的 `Id`、`English`、`Pronunciation`、`Chinese`、`WordType`，以及 `Origin`）；写回失败时省略空 `Id`。真正查不到时返回现有用户策略的 `AIFallback`（每次请求至多计算一次）；超时、数据源错误、ECDICT 不可用或存储错误标记 `failed`，不冒充查不到，也不给 AI 入口，其他词仍可返回。**不返回查词次数和「认识」状态**。点击查词时它们由随后的 POST 返回，与 ADR-061 缓存命中时一样；浮层先显示释义，POST 返回后补上次数和「认识」状态。
 - 每个词仍由 `dictionary` 包解析：先 `words` 表，再 ECDICT，ECDICT 命中写回 `words`；AI 写的释义只对能用 AI 的用户返回（ADR-045）。QUERY 不触发 AI 兜底。
-- 用 HTTP QUERY 方法（RFC 10008）：它和 GET 一样安全、可重试，又能带请求体，适合「按一批词读」。2026-09-29 实测 Chrome、gin、Cloudflare + nginx、Kong 都放行，但请求体在真实路由上是否完整到达还没验证过；这是第一个用 QUERY 的接口，上线前在 homelab 验证一次。
-- enx-ui 从 `catglish.com` 调 `api.catglish.com` 是跨域请求，QUERY 不是简单请求方法，浏览器会先发 OPTIONS 预检：CORS 的 `Access-Control-Allow-Methods` 要加上 `QUERY`。扩展有 host_permissions，不受影响。
+- 用 HTTP QUERY 方法（RFC 10008）：它和 GET 一样安全、可重试，又能带请求体，适合「按一批词读」。2026-09-29 实测 Chrome、gin、Cloudflare + nginx、Kong 都放行，`paragraph-init` 已使用带请求体的 QUERY；同时始终注册 `POST /api/dictionary/entries/query`，与 QUERY 共用 handler；enx-chrome 和 enx-ui `/lookup` 先发 QUERY，遇到方法被拒、请求体丢失或网络错误等传输失败时用同一请求重试 POST（ADR-041 C）。上线前仍在 homelab 验证 QUERY 请求体完整到达。
+- enx-ui 跨域请求会先发 OPTIONS 预检；现有 CORS 已允许 QUERY。请求必须是 JSON，否则返回 415；成功响应带 `Accept-Query: application/json`，与 `paragraph-init` 一致。
 
 ### 2. 每次点击查词怎么走
 
@@ -68,7 +68,7 @@ ADR-061 之后，点过的词再点会立刻显示释义。但本地词典缓存
 - `rejected` 保留 ADR-029 C2 想要的信号（「有多少人撞墙、撞得多狠」），但不再让它进 `used`，也不再为被拒的请求写查词事件。
 - 上限仍按订阅档位分两档，仍由 `stripe.quota.dictionary-lookup-daily-free` / `-subscribed` 配置，启动时必须大于 0（ADR-059）。
 - 计数失败照旧放行（ADR-029）：读写计数表出错只记 warning，放行这次请求。
-- 旧的行只需要保留今天（UTC）的；每小时那次统计汇总顺带删掉早于昨天的行。
+- 用现有 `stats.lookup-events.retention-days`（31–100 天）保留每日用量行，每小时清理超过该窗口的行；不建汇总表。
 - 这张表带 `user_id`，注销账号时要一并删除（加进 `repo/account.go` 的 `personalTables`，ADR-062）。
 - 计量规则放在 `dictionary` 包里（`QuotaMeter` 改为扣 n、读写这张表），handler 只做 HTTP 翻译。查词事件的写入从 `QuotaMeter` 移到记查词的 `dictionary.WordLookups.Record`。
 
@@ -101,16 +101,21 @@ ADR-061 之后，点过的词再点会立刻显示释义。但本地词典缓存
 - **预取整个复习列表，不只本页**：一次填满缓存，换页也不用再取。但复习列表可能有几千个词，大多不在当前文章里，白白占配额和缓存位置。否决。
 - **按阅读进度分段预取**（读第 1 页取第 1、2 页，读第 2 页取第 3 页）：网页没有可靠的「页」，要跟踪滚动位置；而一篇文章的高亮词一次就取完了。只在正文后来又加进内容时补取一次。否决。
 - **超额的 POST 也写一行 `rejected` 查词事件**（ADR-029 C2 原样保留）：查词事件就又不只表示一次查词了；被拒的量改记在计数表的 `rejected` 里。否决（用户 2026-11-10 定）。
-- **继续用 GET 批量读（`GET /api/dictionary/entries?words=a,b,c`）**：不需要 QUERY，也不用改 CORS。但 100 个词放进 URL 会很长，还会出现在访问日志和 Cloudflare 日志里，泄露用户在读什么。否决；若 QUERY 在真实路由上验证不通过，退回 `POST /api/dictionary/entries/query`。
+- **继续用 GET 批量读（`GET /api/dictionary/entries?words=a,b,c`）**：不需要 QUERY，也不用改 CORS。但 100 个词放进 URL 会很长，还会出现在访问日志和 Cloudflare 日志里，泄露用户在读什么。否决；始终提供 POST 回退，以覆盖拦截 QUERY 的用户网络。
 
 ## Consequences
 
 - 有单词高亮的词，第一次点时释义通常已经在本地，与缓存命中一样立刻出现。
 - 修订 ADR-018：`Resolve` 仍是解析一个词的唯一入口，但不再自己计量；计量由调用方（QUERY、旧 GET、POST）按本 ADR 扣。
-- 修订 ADR-029：计数从「查询请求数」改为「词典用量」（QUERY 的词数加 POST 的次数）；被拒的量单独记，不进 `used`。分档和引导付费的作用不变，目标仍是 10–20% 的活跃免费用户偶尔撞到上限（Linear WIL-176），数据改看 `dictionary_quota_usage`。
+- 修订 ADR-029：计数从「查询请求数」改为「词典用量」（QUERY 的词数加 POST 的次数）；被拒的量单独记，不进 `used`。分档和引导付费的作用不变，目标仍是 10–20% 的活跃免费用户偶尔撞到上限（Linear WIL-176），数据改看 `dictionary_quota_usage`，保留期与查词事件相同。
 - 修订 ADR-059：配额不再从查词事件推导；GET 不再写查词事件；POST 扣配额（Decision 3 曾否决「POST 也扣配额」，理由是它把配额当限流用，现在配额就是这个用途）；被拒的请求不写查词事件；活跃用户不含只被拒的用户。
 - 修订 ADR-061：`fromCache` 作废；预取也会写本地词典缓存；只读拉取没命中时改走 QUERY。
 - 配额数字不再等于「今天查了几个词」，对用户也不再这样解释；要看查了几个词，看阅读统计。
-- **隐私政策要跟着改**：enx-ui 隐私页现在写查词事件用于「Your daily lookup limit」。改为配额来自一张只有每天用量的计数表，查词事件只用于阅读统计和活跃用户；「查词事件不记是哪个词」的承诺不变。
+- **隐私政策要跟着改**：enx-ui 隐私页现在写查词事件用于「Your daily lookup limit」。改为配额来自一张只有每天用量的计数表，查词事件只用于阅读统计和活跃用户；列出每日查词用量计数（最多 100 天）；这些行只有每日每用户计数，没有词或页面。文案由 Linear WIL-498 跟踪并在上线前发布，不属于 #812；「查词事件不记是哪个词」的承诺不变。
 - **定价文案要跟着改**：enx-ui `src/lib/plans.ts` 免费档写 "… 200 lookups a day"（`FREE_DAILY_LOOKUPS`）。配额包含预取之后，「每天 N 次查词」不再准确：用户没点几个词，用量也会上升。改法（用户 2026-11-10 定）：免费档不写具体次数；付费档「更高的每日查词上限」仍是卖点，ADR-029 Decision 8 的额度提醒和 429 的升级入口保留，只是文案不说「查了 N 个词」。与调高免费档一起做，见 Linear WIL-498。
-- 实现另开 issue：enx-api（计数表、`QuotaMeter` 扣 n、QUERY 接口、POST 扣配额并写事件、旧 GET 改行为、CORS）、enx-chrome（点击查词改 QUERY、预取、只读拉取改 QUERY）、enx-ui（`/lookup` 改 QUERY）、配置（调高免费档）。
+- 实现另开 issue：enx-api（计数表、`QuotaMeter` 扣 n、QUERY 接口、POST 扣配额并写事件、旧 GET 改行为）、enx-chrome（点击查词改 QUERY、预取、只读拉取改 QUERY）、enx-ui（`/lookup` 改 QUERY）、配置（调高免费档）。
+
+## 修订记录
+
+- 2026-11-10，issue #812：补全批量接口的规范化、逐词结果与 AI 入口及 POST 失败顺序，纠正 QUERY 路由和 CORS 的现状，避免与现有点击流程及词典解析不一致。
+- 2026-11-10，issue #812：按用户决定始终注册 POST 回退，并将每日配额用量保留期改为查词事件的保留窗口，以覆盖拦截 QUERY 的网络并支持历史撞额测量。
