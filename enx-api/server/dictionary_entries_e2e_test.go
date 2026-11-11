@@ -145,3 +145,62 @@ func TestE2E_OldLookupGETsChargeAndOnlyThePOSTWritesAnEvent(t *testing.T) {
 		t.Fatalf("after the POST: quota used %d, %d lookup events; want 4 and 1", used, events)
 	}
 }
+
+func TestE2E_DictionaryEntriesLookedUpWordsAreFree(t *testing.T) {
+	base, _, token := adminDictEnv(t)
+	// Create the user and cache definitions, then record real lookups.
+	code, _, results := sendEntries(t, "QUERY", base+"/api/dictionary/entries", token, `{"words":["run","hello"]}`)
+	if code != http.StatusOK || len(results) != 2 {
+		t.Fatalf("seed: %d %v", code, results)
+	}
+	userID := userIDOf(t, nonAdminSub)
+	for _, result := range results {
+		if result.Id == nil {
+			t.Fatalf("missing id: %+v", result)
+		}
+		code, body := doJSONBody(t, http.MethodPost, base+"/api/me/word-lookups", token, map[string]any{"wordId": *result.Id})
+		if code != http.StatusOK {
+			t.Fatalf("record: %d %v", code, body)
+		}
+	}
+	if err := sqlitex.DB.Exec("UPDATE user_dicts SET known = 1 WHERE user_id = ? AND word_id = ?", userID, *results[1].Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	before := quotaUsed(t, userID)
+	for _, route := range []struct{ method, path string }{
+		{"QUERY", "/api/dictionary/entries"},
+		{http.MethodPost, "/api/dictionary/entries/query"},
+	} {
+		code, _, got := sendEntries(t, route.method, base+route.path, token, `{"words":["RUN","hello","RUN"]}`)
+		if code != http.StatusOK || len(got) != 2 {
+			t.Fatalf("free batch: %d %v", code, got)
+		}
+		if used := quotaUsed(t, userID); used != before {
+			t.Fatalf("free batch used %d, want %d", used, before)
+		}
+		code, _, _ = sendEntries(t, route.method, base+route.path, token, `{"words":["run","unqueried"]}`)
+		before++
+		if code != http.StatusOK || quotaUsed(t, userID) != before {
+			t.Fatalf("new word: status %d, used %d, want %d", code, quotaUsed(t, userID), before)
+		}
+	}
+	// With no daily counter yet, free definitions must not create one.
+	if err := sqlitex.DB.Exec("DELETE FROM dictionary_quota_usage WHERE user_id = ?", userID).Error; err != nil {
+		t.Fatal(err)
+	}
+	code, _, got := sendEntries(t, "QUERY", base+"/api/dictionary/entries", token, `{"words":["run","hello"]}`)
+	if code != http.StatusOK || len(got) != 2 {
+		t.Fatalf("free batch without counter: %d %v", code, got)
+	}
+	var counters int64
+	if err := sqlitex.DB.Table("dictionary_quota_usage").Where("user_id = ?", userID).Count(&counters).Error; err != nil {
+		t.Fatal(err)
+	}
+	if counters != 0 {
+		t.Fatalf("free batch created %d counter rows, want none", counters)
+	}
+
+	if got := countLookupEvents(t, userID); got != 2 {
+		t.Fatalf("events %d, want only the two recorded lookups", got)
+	}
+}

@@ -163,7 +163,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 		dictionaryService, aiPolicy,
 	)
 	// Batch definitions (ADR-079 Decision 1): the quota, no lookup event.
-	entriesHandler := dictionaryhttp.NewHandler(dictionary.NewEntries(dictionaryService, lookupQuota, aiPolicy), subscriptions)
+	entriesHandler := dictionaryhttp.NewHandler(dictionary.NewEntries(dictionaryService, lookupQuota, aiPolicy, adapters.LookedUpWords{}), subscriptions)
 
 	// Sentence translation is an optional feature: if sentence-translate.provider
 	// is unset, it stays disabled (same "unconfigured but not fatal" pattern as

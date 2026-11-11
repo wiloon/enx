@@ -59,6 +59,7 @@ type entriesFixture struct {
 	resolver *fakeResolver
 	policy   *fakeAIPolicy
 	log      *callLog
+	lookedUp *fakeLookedUpWords
 }
 
 func newEntriesFixture() *entriesFixture {
@@ -68,8 +69,9 @@ func newEntriesFixture() *entriesFixture {
 		resolver: &fakeResolver{results: map[string]Result{}, errs: map[string]error{}, log: log},
 		policy:   &fakeAIPolicy{can: map[string]bool{}},
 		log:      log,
+		lookedUp: &fakeLookedUpWords{},
 	}
-	f.entries = NewEntries(f.resolver, f.meter, f.policy)
+	f.entries = NewEntries(f.resolver, f.meter, f.policy, f.lookedUp)
 	return f
 }
 
@@ -242,7 +244,7 @@ func TestEntriesReturnsLocalHitsWhenECDICTIsUnavailable(t *testing.T) {
 	svc, words, external := newTestService()
 	external.unavailable = true
 	words.seed("w1", Entry{English: "serendipity", Chinese: "机缘巧合"})
-	entries := NewEntries(svc, &fakeMeter{}, &fakeAIPolicy{})
+	entries := NewEntries(svc, &fakeMeter{}, &fakeAIPolicy{}, &fakeLookedUpWords{})
 
 	results, err := entries.Lookup(context.Background(), "u1", []string{"serendipity", "run"})
 	if err != nil {
@@ -261,11 +263,89 @@ func TestEntriesReturnsLocalHitsWhenECDICTIsUnavailable(t *testing.T) {
 // nothing.
 func TestEntriesWithoutAPolicyOffersNoAIFallback(t *testing.T) {
 	log := &callLog{}
-	entries := NewEntries(&fakeResolver{log: log}, &fakeMeter{}, nil)
+	entries := NewEntries(&fakeResolver{log: log}, &fakeMeter{}, nil, &fakeLookedUpWords{})
 
 	results, err := entries.Lookup(context.Background(), "u1", []string{"zzxqv"})
 
 	if err != nil || results[0].Status != EntryNotFound || results[0].AIFallback != nil {
 		t.Fatalf("got %+v, %v; want not_found without an AI fallback", results, err)
+	}
+}
+
+type fakeLookedUpWords struct {
+	calls  int
+	userID string
+	words  []string
+	err    error
+}
+
+func (f *fakeLookedUpWords) LookedUpWords(_ context.Context, userID string) ([]string, error) {
+	f.calls++
+	f.userID = userID
+	return f.words, f.err
+}
+
+func TestEntriesLookedUpWordsAreFreeEvenOverQuota(t *testing.T) {
+	f := newEntriesFixture()
+	f.meter.err = ErrQuotaExceeded
+	*f.lookedUp = fakeLookedUpWords{words: []string{"run", "hello"}}
+	f.resolver.results["run"] = Result{English: "run", Source: SourceLocal}
+	f.resolver.results["hello"] = Result{English: "hello", Source: SourceLocal}
+	results, err := f.entries.Lookup(context.Background(), "u1", []string{"run", "hello"})
+	if err != nil || len(results) != 2 {
+		t.Fatalf("results %v, err %v; want both definitions even over quota", results, err)
+	}
+	for _, result := range results {
+		if result.Status != EntryFound {
+			t.Fatalf("result %+v, want found", result)
+		}
+	}
+	if len(f.meter.charges) != 0 {
+		t.Fatalf("charges %v, want no meter call", f.meter.charges)
+	}
+}
+
+func TestEntriesMixedBatchChargesOnlyDistinctNewWordsCaseInsensitively(t *testing.T) {
+	f := newEntriesFixture()
+	*f.lookedUp = fakeLookedUpWords{words: []string{"Run", "hello"}}
+	results, err := f.entries.Lookup(context.Background(), "u1", []string{"run", "RUN", "hello", "walk", "(walk)", "new"})
+	if err != nil || len(results) != 5 {
+		t.Fatalf("results %v, err %v; want five normalized distinct results", results, err)
+	}
+	if !reflect.DeepEqual(f.meter.charges, []int{2}) {
+		t.Fatalf("charges %v, want [2]", f.meter.charges)
+	}
+	if f.lookedUp.calls != 1 || f.lookedUp.userID != "u1" {
+		t.Fatalf("looked-up reads %d for %q, want once for u1", f.lookedUp.calls, f.lookedUp.userID)
+	}
+}
+
+func TestEntriesLookedUpWordsReadErrorChargesTheWholeBatch(t *testing.T) {
+	f := newEntriesFixture()
+	*f.lookedUp = fakeLookedUpWords{words: []string{"run"}, err: errors.New("read failed")}
+	_, err := f.entries.Lookup(context.Background(), "u1", []string{"run", "walk", "run"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(f.meter.charges, []int{2}) {
+		t.Fatalf("charges %v, want [2]", f.meter.charges)
+	}
+	if f.lookedUp.calls != 1 || f.lookedUp.userID != "u1" {
+		t.Fatalf("looked-up reads %d for %q, want once for u1", f.lookedUp.calls, f.lookedUp.userID)
+	}
+}
+
+func TestEntriesWordsAbsentFromLookedUpWordsAreCharged(t *testing.T) {
+	for _, word := range []string{"never-looked-up", "deleted", "other-users-word"} {
+		t.Run(word, func(t *testing.T) {
+			f := newEntriesFixture()
+			_, err := f.entries.Lookup(context.Background(), "u1", []string{word})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(f.meter.charges, []int{1}) {
+				t.Fatalf("charges %v, want [1]", f.meter.charges)
+			}
+		})
 	}
 }
