@@ -65,6 +65,8 @@ CREATE INDEX idx_lookup_events_at      ON lookup_events (at);
 
 > **adr-061 修订**：扩展命中本地词典缓存时不发 GET，POST 带 `fromCache: true`，由 POST 扣配额、写查词事件。一次点击查词仍然只计量一次。
 
+> **adr-079 修订**：读释义改用 `QUERY /api/dictionary/entries`（可批量，只扣配额、不写查词事件）；POST 是记一次查词的唯一入口，每次都扣配额、写查词事件，`fromCache` 作废；超额的 POST 不写事件。每日查词配额改用单独的计数表，不再从查词事件推导（Decision 2 的配额部分随之作废）。
+
 | | `GET /api/word/:word`（及 `GET /api/translate?word=`） | `POST /api/me/word-lookups`（新，body `{"wordId"}`） |
 | ---- | ---- | ---- |
 | 查词事件 / 配额 | 写一行，超额返回 429 | 不写，不扣配额 |

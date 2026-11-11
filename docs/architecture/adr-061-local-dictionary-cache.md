@@ -39,6 +39,8 @@ related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-029�
 
 ### 3. 一次点击查词怎么走
 
+> **adr-079 修订**：没命中时改发 `QUERY /api/dictionary/entries`；POST 每次都扣配额、写查词事件，`fromCache` 作废，本节与 Decision 4 的计量规则由 adr-079 Decision 2、5、6 取代。打开页面时的预取也写本缓存。
+
 所有要释义的地方都先查缓存，区别只在要不要发 POST：
 
 - **一次点击查词**（主窗口点词、Side Panel 里点句中的词）：算一次查词，按下面的流程发 POST。
