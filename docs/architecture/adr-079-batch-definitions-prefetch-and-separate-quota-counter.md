@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted；2026-11-11 Amended by adr-080（Decision 1、5、8：QUERY 里属于复习词表的词不扣每日查词配额）
 date: 2026-11-10
 related: PR #810、实现 #815、adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-029（每日查词配额）、adr-058（活跃用户）、adr-059（查词事件；GET 读释义、POST 记查词次数）、adr-060（请求限流）、adr-061（本地词典缓存）、http-query 实测（2026-09-29）
 ---
