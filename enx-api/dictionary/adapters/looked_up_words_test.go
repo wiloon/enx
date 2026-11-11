@@ -14,7 +14,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestLookedUpWordsIncludesKnownButExcludesDeletedUnqueriedAndOtherUsers(t *testing.T) {
+func TestLookedUpWordsReturnsOnlyRequestedLookedUpWordsCaseInsensitively(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
@@ -39,6 +39,7 @@ func TestLookedUpWordsIncludesKnownButExcludesDeletedUnqueriedAndOtherUsers(t *t
 		{Id: "w1", English: "Run"}, {Id: "w2", English: "hello"},
 		{Id: "w3", English: "deleted", DeletedAt: &deleted},
 		{Id: "w4", English: "unqueried"}, {Id: "w5", English: "other"},
+		{Id: "w6", English: "outside"},
 	}
 	if err := db.Create(&words).Error; err != nil {
 		t.Fatal(err)
@@ -49,11 +50,12 @@ func TestLookedUpWordsIncludesKnownButExcludesDeletedUnqueriedAndOtherUsers(t *t
 		{UserId: "u1", WordId: "w3", QueryCount: 1},
 		{UserId: "u1", WordId: "w4", QueryCount: 0},
 		{UserId: "u2", WordId: "w5", QueryCount: 1},
+		{UserId: "u1", WordId: "w6", QueryCount: 1},
 	}
 	if err := db.Create(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
-	got, err := (LookedUpWords{}).LookedUpWords(context.Background(), "u1")
+	got, err := (LookedUpWords{}).LookedUpWords(context.Background(), "u1", []string{"run", "HELLO", "deleted", "unqueried", "other", "missing"})
 	if err != nil {
 		t.Fatal(err)
 	}
