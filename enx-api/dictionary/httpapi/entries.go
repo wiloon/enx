@@ -51,6 +51,7 @@ type definitionJSON struct {
 	Chinese       string
 	WordType      int
 	Origin        dictionary.Origin
+	Source        dictionary.Source
 }
 
 // Entries handles QUERY /api/dictionary/entries (the default) and POST
@@ -108,6 +109,7 @@ func (h *Handler) Entries(c *gin.Context) {
 				Pronunciation: r.Result.Pronunciation,
 				Chinese:       r.Result.Chinese,
 				Origin:        r.Result.Origin,
+				Source:        r.Result.Source,
 			}
 		}
 	}

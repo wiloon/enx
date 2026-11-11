@@ -29,11 +29,22 @@ test.beforeEach(async ({ signedIn }) => {
 // POST /api/me/word-lookups the page sent, so no request reaches a real API.
 async function lookUp(page: Page, word: WordData) {
   const recorded: unknown[] = []
-  await page.route('**/api/word/**', (route) =>
+  await page.route('**/api/dictionary/entries{,/query}', (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(word),
+      body: JSON.stringify([
+        {
+          ...word,
+          Word: word.Key,
+          Status:
+            word.Source === 'timeout'
+              ? 'failed'
+              : word.Chinese
+                ? 'found'
+                : 'not_found',
+        },
+      ]),
     })
   )
   await page.route('**/api/me/word-lookups', (route) => {

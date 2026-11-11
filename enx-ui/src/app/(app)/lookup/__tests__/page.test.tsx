@@ -10,7 +10,7 @@ import type { ApiResponse, WordData } from '@/types'
 
 jest.mock('@/services/api', () => ({
   apiService: {
-    lookupWord: jest.fn(),
+    dictionaryEntries: jest.fn(),
     recordWordLookup: jest.fn(),
     deleteWord: jest.fn(),
   },
@@ -19,7 +19,7 @@ jest.mock('@/services/api', () => ({
 const mockIsAdmin = jest.fn(() => ({ isAdmin: false, isLoading: false }))
 jest.mock('@/hooks/useIsAdmin', () => ({ useIsAdmin: () => mockIsAdmin() }))
 
-const mockLookup = apiService.lookupWord as jest.Mock
+const mockLookup = apiService.dictionaryEntries as jest.Mock
 const mockRecord = apiService.recordWordLookup as jest.Mock
 const mockDelete = apiService.deleteWord as jest.Mock
 
@@ -34,9 +34,19 @@ const run: WordData = {
   WordType: 0,
 }
 
-const found = (word: WordData): ApiResponse<WordData> => ({
+const found = (word: WordData): ApiResponse<unknown> => ({
   success: true,
-  data: word,
+  data: [
+    {
+      ...word,
+      Word: word.Key,
+      Status: word.Chinese
+        ? 'found'
+        : ['timeout', 'error'].includes(word.Source ?? '')
+          ? 'failed'
+          : 'not_found',
+    },
+  ],
 })
 
 const recorded: ApiResponse<{ queryCount: number; known: boolean }> = {
@@ -81,9 +91,11 @@ it('looks the word up, records the lookup by the answer’s id and shows the cou
 })
 
 it('looks the word up again and counts again when the same word is resubmitted', async () => {
-  mockLookup
-    .mockResolvedValueOnce(found(run))
-    .mockResolvedValueOnce(found({ ...run, LoadCount: 4 }))
+  mockLookup.mockResolvedValueOnce(found(run)).mockResolvedValueOnce(found(run))
+  mockRecord.mockResolvedValueOnce(recorded).mockResolvedValueOnce({
+    success: true,
+    data: { queryCount: 5, known: false },
+  })
   renderPage()
 
   submit('run')
@@ -96,7 +108,7 @@ it('looks the word up again and counts again when the same word is resubmitted',
 })
 
 it('sends one lookup for two submits while the first is pending', async () => {
-  let answer!: (r: ApiResponse<WordData>) => void
+  let answer!: (r: ApiResponse<unknown>) => void
   mockLookup.mockReturnValue(new Promise((resolve) => (answer = resolve)))
   renderPage()
 
@@ -157,7 +169,7 @@ it('shows a definition the API could not cache, without counting it', async () =
   submit('run')
 
   expect(await screen.findByText('n. x')).toBeInTheDocument()
-  expect(screen.getByTitle('Looked up 3 times')).toBeInTheDocument()
+  expect(screen.queryByTitle(/^Looked up/)).not.toBeInTheDocument()
   expect(mockRecord).not.toHaveBeenCalled()
 })
 
@@ -198,7 +210,7 @@ it('still shows the definition when recording the lookup fails', async () => {
   submit('run')
 
   expect(await screen.findByText('v. 跑')).toBeInTheDocument()
-  expect(screen.queryByText('Too many requests')).not.toBeInTheDocument()
+  expect(await screen.findByText('Too many requests')).toBeInTheDocument()
 })
 
 function seededClient() {
@@ -354,4 +366,103 @@ it('removes the card after an admin clears the word', async () => {
   )
   expect(mockDelete).toHaveBeenCalledWith('run')
   expect(screen.getByLabelText('Enter English word')).toHaveValue('')
+})
+
+it('shows the definition without a count while recording is pending', async () => {
+  let settle!: (r: unknown) => void
+  mockLookup.mockResolvedValue(found(run))
+  mockRecord.mockReturnValue(
+    new Promise((resolve) => {
+      settle = resolve
+    })
+  )
+  renderPage()
+  submit('run')
+  expect(await screen.findByText('v. 跑')).toBeInTheDocument()
+  expect(screen.queryByTitle(/^Looked up/)).not.toBeInTheDocument()
+  await act(async () => settle(recorded))
+  expect(await screen.findByTitle('Looked up 4 times')).toBeInTheDocument()
+})
+it.each(['Daily lookup limit reached.', 'Too many requests'])(
+  'keeps the definition and shows POST 429 message %s',
+  async (error) => {
+    mockLookup.mockResolvedValue(found(run))
+    mockRecord.mockResolvedValue({ success: false, status: 429, error })
+    renderPage()
+    submit('run')
+    expect(await screen.findByText(error)).toBeInTheDocument()
+    expect(screen.getByText('v. 跑')).toBeInTheDocument()
+    expect(screen.queryByTitle(/^Looked up/)).not.toBeInTheDocument()
+    expect(mockRecord).toHaveBeenCalledTimes(1)
+  }
+)
+it.each([404, 500, 'network'])(
+  'silently retains the definition on recording failure %s',
+  async (status) => {
+    mockLookup.mockResolvedValue(found(run))
+    if (status === 'network') mockRecord.mockRejectedValue(new Error('network'))
+    else
+      mockRecord.mockResolvedValue({ success: false, status, error: 'Failed' })
+    const client = renderPage(seededClient())
+    submit('run')
+    expect(await screen.findByText('v. 跑')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(invalidated(client, ['stats-overview'])).toBe(true)
+    )
+    expect(screen.queryByTitle(/^Looked up/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Failed')).not.toBeInTheDocument()
+    expect(mockRecord).toHaveBeenCalledTimes(1)
+  }
+)
+it('ignores an earlier recording response after another submit', async () => {
+  let first!: (r: unknown) => void
+  let second!: (r: unknown) => void
+  mockLookup
+    .mockResolvedValueOnce(found(run))
+    .mockResolvedValueOnce(
+      found({ ...run, Id: 'w-walk', English: 'walk', Chinese: 'v. 行走' })
+    )
+  mockRecord
+    .mockReturnValueOnce(
+      new Promise((resolve) => {
+        first = resolve
+      })
+    )
+    .mockReturnValueOnce(
+      new Promise((resolve) => {
+        second = resolve
+      })
+    )
+  renderPage()
+  submit('run')
+  await screen.findByText('v. 跑')
+  submit('walk')
+  await screen.findByText('v. 行走')
+  await act(async () =>
+    second({ success: true, data: { queryCount: 8, known: false } })
+  )
+  await act(async () => first(recorded))
+  expect(screen.getByText('walk')).toBeInTheDocument()
+  expect(screen.getByTitle('Looked up 8 times')).toBeInTheDocument()
+  expect(screen.queryByTitle('Looked up 4 times')).not.toBeInTheDocument()
+})
+it('ignores a recording response after Clear', async () => {
+  let settle!: (r: unknown) => void
+  mockIsAdmin.mockReturnValue({ isAdmin: true, isLoading: false })
+  mockLookup.mockResolvedValue(found(run))
+  mockRecord.mockReturnValue(
+    new Promise((resolve) => {
+      settle = resolve
+    })
+  )
+  mockDelete.mockResolvedValue({ success: true })
+  renderPage()
+  submit('run')
+  fireEvent.click(await screen.findByRole('button', { name: 'Clear' }))
+  await waitFor(() =>
+    expect(screen.queryByText('v. 跑')).not.toBeInTheDocument()
+  )
+  await act(async () => settle(recorded))
+  expect(screen.queryByText('v. 跑')).not.toBeInTheDocument()
+  expect(screen.queryByTitle(/^Looked up/)).not.toBeInTheDocument()
 })
