@@ -43,7 +43,7 @@ export default function PopupVersion({
       type="button"
       onClick={() => void handleClick()}
       title={`${details}\nClick to copy`}
-      className={`${inline ? '-mr-1.5' : ''} rounded px-1.5 py-0.5 text-xs text-muted-foreground transition hover:bg-background hover:text-foreground active:bg-background/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand`}
+      className="rounded px-1.5 py-0.5 text-xs text-muted-foreground transition hover:bg-background hover:text-foreground active:bg-background/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
     >
       {copied ? 'Copied' : label}
     </button>

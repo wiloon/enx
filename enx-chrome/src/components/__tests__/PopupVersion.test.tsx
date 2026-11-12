@@ -31,7 +31,9 @@ describe('PopupVersion', () => {
     expect(version.parentElement).toContainElement(
       screen.getByRole('button', { name: 'Send feedback' })
     )
-    expect(version).toHaveClass('text-xs')
+    expect(version).toHaveClass('text-xs', 'text-muted-foreground')
+    expect(version).not.toHaveClass('font-medium')
+    expect(version.className).not.toMatch(/-mr-/)
   })
 
   afterEach(() => {

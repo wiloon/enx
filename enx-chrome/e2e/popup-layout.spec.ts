@@ -128,21 +128,25 @@ test.describe('Popup - layout', () => {
         const feedbackText = document.createRange()
         feedbackText.selectNode(feedback.lastChild!)
         const feedbackRect = feedbackText.getBoundingClientRect()
-        const icon = feedback.querySelector('svg')!.getBoundingClientRect()
         const card = document
           .querySelector('[data-testid="save-link-card"]')!
           .getBoundingClientRect()
         const row = feedback.parentElement!.getBoundingClientRect()
         const root = document.getElementById('root')!.getBoundingClientRect()
+        const lineLeft = feedback.getBoundingClientRect().left
+        const lineRight = version.getBoundingClientRect().right
         return {
+          lineCentreDifference: Math.abs(
+            (lineLeft + lineRight) / 2 - (root.left + root.width / 2)
+          ),
+          feedbackIsLeft: feedbackRect.right < versionRect.left,
+          hasIcon: feedback.querySelector('svg') !== null,
           centreDifference: Math.abs(
             feedbackRect.y +
               feedbackRect.height / 2 -
               versionRect.y -
               versionRect.height / 2
           ),
-          leftDifference: Math.abs(icon.left - card.left),
-          rightDifference: Math.abs(versionRect.right - card.right),
           cardGap: row.top - card.bottom,
           bottomGap: root.bottom - row.bottom,
           scrolls:
@@ -151,8 +155,9 @@ test.describe('Popup - layout', () => {
         }
       })
       expect(geometry.centreDifference).toBeLessThanOrEqual(1)
-      expect(geometry.leftDifference).toBeLessThanOrEqual(2)
-      expect(geometry.rightDifference).toBeLessThanOrEqual(2)
+      expect(geometry.lineCentreDifference).toBeLessThanOrEqual(2)
+      expect(geometry.feedbackIsLeft).toBe(true)
+      expect(geometry.hasIcon).toBe(false)
       expect(geometry.cardGap).toBeGreaterThanOrEqual(3)
       expect(geometry.cardGap).toBeLessThanOrEqual(5)
       expect(geometry.bottomGap).toBeGreaterThanOrEqual(7)

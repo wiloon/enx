@@ -8,11 +8,7 @@ import {
   sendFeedback,
 } from '@/lib/feedback'
 import { sanitizePageUrl } from '@/lib/pageReport'
-import {
-  ArrowLeftIcon,
-  ChatBubbleLeftEllipsisIcon,
-  CheckCircleIcon,
-} from '@heroicons/react/24/outline'
+import { ArrowLeftIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 
 // How long the "feedback sent" toast stays on screen.
@@ -200,16 +196,26 @@ export default function SendFeedback({
       <div className="space-y-2.5">{children}</div>
       {/* A quiet ghost entry rather than a card of its own, so the main page
           fits Chrome's 600px popup without a scrollbar. */}
-      <div className="mt-1 flex items-center justify-between">
+      <div className="mt-1 flex items-center justify-center">
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className={`flex ${footerEnd ? '-ml-3' : 'w-full'} items-center justify-center gap-1.5 rounded-lg px-3 py-0.5 text-xs font-medium text-muted-foreground transition hover:bg-background hover:text-foreground active:bg-background/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand`}
+          className="rounded px-1.5 py-0.5 text-xs font-medium text-muted-foreground transition hover:bg-background hover:text-foreground active:bg-background/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         >
-          <ChatBubbleLeftEllipsisIcon className="h-4 w-4" />
           Send feedback
         </button>
-        {footerEnd}
+        {footerEnd && (
+          <>
+            {/* Button padding supplies the 6px each side of the dot. */}
+            <span
+              aria-hidden="true"
+              className="text-xs text-muted-foreground/60"
+            >
+              ·
+            </span>
+            {footerEnd}
+          </>
+        )}
       </div>
     </div>
   )

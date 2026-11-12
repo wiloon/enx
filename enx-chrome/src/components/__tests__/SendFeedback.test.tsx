@@ -304,6 +304,40 @@ it('shows the footer end beside feedback only on the main page', async () => {
   expect(screen.getByRole('button', { name: 'Version' })).toBeInTheDocument()
 })
 
+it('has no icon on the feedback link', () => {
+  render(
+    <SendFeedback>
+      <p>Main page</p>
+    </SendFeedback>
+  )
+  expect(
+    screen.getByRole('button', { name: 'Send feedback' }).querySelector('svg')
+  ).toBeNull()
+})
+
+it('puts an aria-hidden middle dot between feedback and the footer end, only when one is supplied', () => {
+  const { unmount } = render(
+    <SendFeedback footerEnd={<button>Version</button>}>
+      <p>Main page</p>
+    </SendFeedback>
+  )
+  const dot = screen.getByText('·')
+  expect(dot).toHaveAttribute('aria-hidden', 'true')
+  expect(dot).toHaveClass('text-muted-foreground/60')
+  const feedback = screen.getByRole('button', { name: 'Send feedback' })
+  const version = screen.getByRole('button', { name: 'Version' })
+  expect(feedback.nextElementSibling).toBe(dot)
+  expect(dot.nextElementSibling).toBe(version)
+  unmount()
+
+  render(
+    <SendFeedback>
+      <p>Main page</p>
+    </SendFeedback>
+  )
+  expect(screen.queryByText('·')).not.toBeInTheDocument()
+})
+
 it('renders only the feedback button when no footer end is supplied', () => {
   render(
     <SendFeedback>
