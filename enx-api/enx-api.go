@@ -20,8 +20,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -73,16 +75,19 @@ func main() {
 	userStats := userstats.NewService(repo.UserStats{}, time.Now)
 	m.RegisterUserStats(userStats, time.Now)
 
-	go runReaderDocumentCleanup(appCtx)
-	go runStatsIngestLogCleanup(appCtx, cfg.Stats.Ingest.LogTTL(), cfg.Stats.LookupEvents.RetentionDays, userStats)
-	go runTrialExpiry(appCtx)
+	tasks := newBackgroundTasks()
+	tasks.start(func() { runReaderDocumentCleanup(appCtx) })
+	tasks.start(func() {
+		runStatsIngestLogCleanup(appCtx, cfg.Stats.Ingest.LogTTL(), cfg.Stats.LookupEvents.RetentionDays, userStats)
+	})
+	tasks.start(func() { runTrialExpiry(appCtx) })
 	// Referrer rewards need Stripe to check each payment for a refund or
 	// dispute; without it they stay pending until it is configured.
 	if stripeClient != nil {
-		go runReferralRewards(appCtx, server.NewReferralService(cfg, stripeClient, m))
+		tasks.start(func() { runReferralRewards(appCtx, server.NewReferralService(cfg, stripeClient, m)) })
 	}
 
-	go serveMetrics(appCtx, cfg.Metrics.Addr, m)
+	tasks.start(func() { serveMetrics(appCtx, cfg.Metrics.Addr, m) })
 	router := application.Handler()
 
 	port := cfg.Enx.Port
@@ -94,8 +99,12 @@ func main() {
 		cancelApp()
 	}()
 	logger.Infof("enx api listening port: %v", port)
-	if err := application.Serve(appCtx, srv); err != nil {
-		cancelApp()
+	serveErr := application.Serve(appCtx, srv)
+	cancelApp()
+	if !tasks.wait(5 * time.Second) {
+		logger.Warn("background shutdown timed out")
+	}
+	if err := serveErr; err != nil {
 		logger.Errorf("failed to listen or shut down: %v", err)
 		logger.Sync()
 		os.Exit(1)
@@ -110,7 +119,7 @@ func main() {
 // this is what actually removes them from disk. Runs once immediately so a
 // restart doesn't leave stale rows sitting for up to an hour, then hourly.
 func runReaderDocumentCleanup(ctx context.Context) {
-	purge := func() {
+	purge := func(ctx context.Context) {
 		deleted, err := reader.PurgeExpired(ctx, time.Now())
 		if err != nil {
 			logger.Errorf("reader: purge expired documents failed: %v", err)
@@ -121,37 +130,17 @@ func runReaderDocumentCleanup(ctx context.Context) {
 		}
 	}
 
-	purge()
-	ticker := time.NewTicker(time.Hour)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			purge()
-		}
-	}
+	runPeriodic(ctx, time.Hour, purge)
 }
 
 // runStatsIngestLogCleanup runs runStatsJobs once on start, so a restart
 // doesn't leave a backlog, then hourly, mirroring the reader cleanup.
 func runStatsIngestLogCleanup(ctx context.Context, ttl time.Duration, lookupEventRetentionDays int, activeUsers *userstats.Service) {
-	purge := func() {
+	purge := func(ctx context.Context) {
 		runStatsJobs(ctx, time.Now(), ttl, lookupEventRetentionDays, activeUsers)
 	}
 
-	purge()
-	ticker := time.NewTicker(time.Hour)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			purge()
-		}
-	}
+	runPeriodic(ctx, time.Hour, purge)
 }
 
 // runStatsJobs deletes expired stats deduplication rows (ADR-028 Decision
@@ -224,7 +213,7 @@ func backfillTrialGrants(cfg *config.Config) {
 // Stripe could not answer for is retried on the next run, and the ledger's
 // idempotency key keeps reruns and parallel instances from paying twice.
 func runReferralRewards(ctx context.Context, svc *referral.Service) {
-	settle := func() {
+	settle := func(ctx context.Context) {
 		run, err := svc.PayDueRewards(ctx)
 		if err != nil {
 			logger.Errorf("referral: pay due rewards failed: %v", err)
@@ -238,17 +227,7 @@ func runReferralRewards(ctx context.Context, svc *referral.Service) {
 		}
 	}
 
-	settle()
-	ticker := time.NewTicker(time.Hour)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			settle()
-		}
-	}
+	runPeriodic(ctx, time.Hour, settle)
 }
 
 // runTrialExpiry forfeits expired trials with credits left (ADR-063
@@ -256,7 +235,7 @@ func runReferralRewards(ctx context.Context, svc *referral.Service) {
 // expiry within the hour even when the user never writes again. An account
 // that fails is retried on the next run.
 func runTrialExpiry(ctx context.Context) {
-	sweep := func() {
+	sweep := func(ctx context.Context) {
 		run, err := credit.ExpireTrials(ctx)
 		if err != nil {
 			logger.Errorf("credit: expire trials failed: %v", err)
@@ -270,17 +249,7 @@ func runTrialExpiry(ctx context.Context) {
 		}
 	}
 
-	sweep()
-	ticker := time.NewTicker(time.Hour)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			sweep()
-		}
-	}
+	runPeriodic(ctx, time.Hour, sweep)
 }
 
 // serveMetrics serves /metrics on its own listener (ADR-040): never the
@@ -297,20 +266,67 @@ func serveMetrics(ctx context.Context, addr string, m *metrics.Metrics) {
 	mux.Handle("/metrics", m.Handler())
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 
-	// Shutdown the metrics listener when the app context is cancelled
-	// (SIGTERM), so Kubernetes rolling upgrades drain the port cleanly.
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		logger.Errorf("metrics listener on %s stopped: %v", addr, err)
+		return
+	}
+	logger.Infof("metrics listening on %s", addr)
+	serveMetricsServer(ctx, srv, listener)
+}
+
+func serveMetricsServer(ctx context.Context, srv *http.Server, listener net.Listener) {
+	done := make(chan struct{})
+	serverStopped := make(chan struct{})
 	go func() {
-		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			logger.Warnf("metrics listener shutdown on %s: %v", addr, err)
+		defer close(done)
+		select {
+		case <-ctx.Done():
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := srv.Shutdown(shutdownCtx); err != nil {
+				logger.Warnf("metrics listener shutdown: %v", err)
+			}
+		case <-serverStopped:
 		}
 	}()
+	if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		logger.Errorf("metrics listener stopped: %v", err)
+	}
+	close(serverStopped)
+	<-done
+}
 
-	logger.Infof("metrics listening on %s", addr)
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		// Losing metrics must not take the API down with it.
-		logger.Errorf("metrics listener on %s stopped: %v", addr, err)
+func runPeriodic(ctx context.Context, interval time.Duration, work func(context.Context)) {
+	work(ctx)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			work(ctx)
+		}
+	}
+}
+
+type backgroundTasks struct{ wg sync.WaitGroup }
+
+func newBackgroundTasks() *backgroundTasks { return &backgroundTasks{} }
+func (t *backgroundTasks) start(work func()) {
+	t.wg.Add(1)
+	go func() { defer t.wg.Done(); work() }()
+}
+func (t *backgroundTasks) wait(timeout time.Duration) bool {
+	done := make(chan struct{})
+	go func() { t.wg.Wait(); close(done) }()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+		return true
+	case <-timer.C:
+		return false
 	}
 }
