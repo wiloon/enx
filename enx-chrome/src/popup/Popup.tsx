@@ -400,6 +400,7 @@ function PopupContent() {
 
   const versionFooter = (
     <PopupVersion
+      inline={!!isSignedIn}
       build={{
         version: chrome.runtime.getManifest().version,
         environment: config.environment,

@@ -187,7 +187,7 @@ export default function SendFeedback({
   }
 
   return (
-    <div className="space-y-2.5 p-3">
+    <div className="p-3 pb-2">
       {toast && (
         <div
           role="status"
@@ -197,14 +197,14 @@ export default function SendFeedback({
           {FEEDBACK_SENT_MESSAGE}
         </div>
       )}
-      {children}
+      <div className="space-y-2.5">{children}</div>
       {/* A quiet ghost entry rather than a card of its own, so the main page
           fits Chrome's 600px popup without a scrollbar. */}
-      <div className="flex items-center justify-between">
+      <div className="mt-1 flex items-center justify-between">
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className={`flex ${footerEnd ? '' : 'w-full'} items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-background hover:text-foreground active:bg-background/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand`}
+          className={`flex ${footerEnd ? '-ml-3' : 'w-full'} items-center justify-center gap-1.5 rounded-lg px-3 py-0.5 text-xs font-medium text-muted-foreground transition hover:bg-background hover:text-foreground active:bg-background/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand`}
         >
           <ChatBubbleLeftEllipsisIcon className="h-4 w-4" />
           Send feedback

@@ -23,6 +23,17 @@ const setup = (
 }
 
 describe('SaveLinkCard', () => {
+  it('offers Save as an outline action beside the visible disclosure', () => {
+    setup()
+    const save = screen.getByRole('button', { name: 'Save' })
+    expect(save).not.toHaveClass('bg-brand')
+    expect(save).toHaveClass('border', 'border-brand/40', 'text-brand')
+    expect(save).not.toHaveClass('shadow-sm')
+    expect(save.parentElement).toContainElement(
+      screen.getByText('Link and title, not content')
+    )
+  })
+
   it('shows the exact address and says only the link is saved, saving nothing on render', () => {
     const { onSave } = setup()
 
