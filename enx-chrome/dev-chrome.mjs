@@ -7,21 +7,27 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-// Usage: node dev-chrome.mjs [--target homelab|homelab-test|dev] [--detach] [URL]
-//   --target  which build to load: dist-homelab/ (default), dist-homelab-test/
-//             or dist-development/
-//   --detach  return once Chromium is up instead of waiting for it to close
+// Usage: node dev-chrome.mjs [--target homelab|homelab-test|dev|prod]
+//                            [--ext-dir DIR] [--detach] [URL]
+//   --target   which build to load: dist-homelab/ (default), dist-homelab-test/,
+//              dist-development/ or dist-production/
+//   --ext-dir  load the build from DIR instead of this checkout's dist-*/
+//              (e.g. a production build made in another worktree)
+//   --detach   return once Chromium is up instead of waiting for it to close
 const TARGET_DIRS = {
   homelab: 'dist-homelab',
   'homelab-test': 'dist-homelab-test',
   dev: 'dist-development',
+  prod: 'dist-production',
 }
 let target = 'homelab'
+let extDir = ''
 let detach = false
 let url = 'https://www.infoq.com/'
 const args = process.argv.slice(2)
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--target') target = args[++i]
+  else if (args[i] === '--ext-dir') extDir = args[++i]
   else if (args[i] === '--detach') detach = true
   else url = args[i]
 }
@@ -32,12 +38,19 @@ if (!TARGET_DIRS[target]) {
   process.exit(2)
 }
 
-const pathToExtension = path.join(__dirname, TARGET_DIRS[target])
+const pathToExtension = extDir
+  ? path.resolve(extDir)
+  : path.join(__dirname, TARGET_DIRS[target])
 // One profile for every worktree, so the Clerk sign-in survives switching
-// worktrees. Each run replaces the extension it loads.
+// worktrees. Each run replaces the extension it loads. The production build
+// has the same extension ID but signs in to the production Clerk instance and
+// talks to api.catglish.com, so it gets a profile of its own: its session and
+// storage never mix with the dev/homelab ones.
 const userDataDir = path.join(
   os.homedir(),
-  '.local/share/enx/chrome-dev-profile'
+  target === 'prod'
+    ? '.local/share/enx/chrome-prod-profile'
+    : '.local/share/enx/chrome-dev-profile'
 )
 const tmpExtensionDir = `/tmp/enx-chrome-ext-${target}`
 const isMac = os.platform() === 'darwin'
