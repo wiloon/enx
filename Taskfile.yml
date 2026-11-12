@@ -168,6 +168,24 @@ tasks:
     cmds:
       - task build-prod
 
+  chrome:verify:prod:
+    desc: "Build the production extension (api.catglish.com) from the latest commit on origin/main and open it in Chromium on URL. REV=<commit|tag> to build another commit, URL=https://… for another page"
+    vars:
+      REV: '{{.REV | default "origin/main"}}'
+      URL: '{{.URL | default "https://standardebooks.org/ebooks/benjamin-franklin/the-autobiography-of-benjamin-franklin/text/single-page"}}'
+    cmds:
+      # Built in a detached worktree (.claude/worktrees/chrome-prod), so local
+      # edits and gitignored .env files never reach the production bundle.
+      - |
+        wt="$(scripts/chrome-prod-worktree.sh '{{.REV}}')"
+        cd "$wt/enx-chrome"
+        fnm exec --using=.node-version -- pnpm install --frozen-lockfile
+        # A failed build must not leave a stale dist-production/ to load.
+        rm -rf dist-production
+        fnm exec --using=.node-version -- pnpm build:prod
+        node '{{.ROOT_DIR}}/enx-chrome/dev-chrome.mjs' --target prod \
+          --ext-dir "$wt/enx-chrome/dist-production" --detach '{{.URL}}'
+
   chrome:release:
     desc: 'Release the extension to production: tag origin/main as chrome-v<version> and push; GitHub Actions attaches the store zip to a GitHub Release (task chrome:release -- 0.1.2)'
     dir: enx-chrome
