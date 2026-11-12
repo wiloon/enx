@@ -112,14 +112,15 @@ beforeEach(() => {
   mockOverview.mockResolvedValue(overview(0))
 })
 
-it('shows a signed-out visitor sign-in and the sample article, and no later steps', async () => {
+it('shows signed-out installed visitors one complete list with only sign-in expanded', async () => {
+  installExtension()
   renderGuide()
 
+  await screen.findByRole('link', { name: 'Sign in' })
   expect(
-    await screen.findByRole('heading', { name: /sign in to get started/i })
+    within(step('Catglish extension installed')).getByLabelText('Done')
   ).toBeInTheDocument()
-  // The install step appears once the extension check has answered.
-  await screen.findByText('Add Catglish to Chrome')
+  expect(screen.getAllByRole('listitem')).toHaveLength(5)
   expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
     'href',
     '/sign-in?redirect_url=%2Fwelcome'
@@ -128,10 +129,74 @@ it('shows a signed-out visitor sign-in and the sample article, and no later step
     'href',
     '/sign-up?redirect_url=%2Fwelcome'
   )
+  expect(screen.queryByRole('button', { name: 'Skip' })).not.toBeInTheDocument()
   expect(
-    screen.getByRole('heading', { name: 'The Quiet Power of a Short Walk' })
+    screen.queryByRole('img', { name: /Chrome toolbar/ })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Next: finish setup' })
+  ).not.toBeInTheDocument()
+  for (const title of [
+    'Pin the Catglish icon',
+    'Click the Catglish icon in your toolbar, then Read with Catglish',
+    'Click any word in the article',
+  ]) {
+    expect(within(step(title)).getByLabelText('To do')).toBeInTheDocument()
+    expect(within(step(title)).queryByRole('button')).not.toBeInTheDocument()
+  }
+})
+
+it.each([true, false])(
+  'hides the article and welcomes signed-out visitors (installed: %s)',
+  async (installed) => {
+    if (installed) installExtension()
+    renderGuide()
+    await screen.findByText(
+      installed ? 'Catglish extension installed' : 'Add Catglish to Chrome'
+    )
+    expect(
+      screen.getByRole('heading', { name: 'Welcome to Catglish' })
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('region', { name: 'Sample article' })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'The Quiet Power of a Short Walk' })
+    ).not.toBeInTheDocument()
+  }
+)
+
+it('hides the article until authentication is resolved', async () => {
+  mockAuth.mockReturnValue({ isLoading: true, isAuthenticated: false })
+  await act(async () => {
+    renderGuide()
+  })
+  expect(
+    screen.queryByRole('region', { name: 'Sample article' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('heading', { name: 'The Quiet Power of a Short Walk' })
+  ).not.toBeInTheDocument()
+})
+
+it('expands only installation for a signed-out visitor without the extension', async () => {
+  setRuntimeEnv({
+    ENX_EXTENSION_ID: 'test-ext-id',
+    ENX_EXTENSION_WEB_STORE_URL: 'https://chromewebstore.google.com/detail/x',
+  })
+  renderGuide()
+  await screen.findByRole('link', { name: 'Add to Chrome' })
+  expect(screen.getAllByRole('listitem')).toHaveLength(5)
+  expect(
+    within(step('Add Catglish to Chrome')).getByLabelText('To do')
   ).toBeInTheDocument()
-  expect(screen.queryByText('Pin the Catglish icon')).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('link', { name: 'Sign in' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('link', { name: 'Sign up' })
+  ).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Skip' })).not.toBeInTheDocument()
 })
 
 it('never flashes the install step at a visitor who has the extension', async () => {
@@ -144,9 +209,10 @@ it('never flashes the install step at a visitor who has the extension', async ()
 })
 
 it('brings an installing visitor back to /welcome?src=install after sign-in', async () => {
+  installExtension()
   renderGuide(true)
 
-  await screen.findByText('Add Catglish to Chrome')
+  await screen.findByRole('link', { name: 'Sign in' })
   expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
     'href',
     '/sign-in?redirect_url=%2Fwelcome%3Fsrc%3Dinstall'
@@ -183,6 +249,12 @@ it('ticks sign-in for a signed-in new user and never enables learning mode itsel
     expect(within(step('Sign in')).getByLabelText('Done')).toBeInTheDocument()
   )
   expect(screen.getByText('Pin the Catglish icon')).toBeInTheDocument()
+  expect(
+    screen.getByRole('region', { name: 'Sample article' })
+  ).toBeInTheDocument()
+  expect(
+    screen.getByRole('heading', { name: 'The Quiet Power of a Short Walk' })
+  ).toBeInTheDocument()
   expect(sendMessage).toHaveBeenCalledWith(
     'test-ext-id',
     { type: 'enx:status' },
@@ -288,6 +360,12 @@ it('finishes once learning mode is on and a word is looked up, and records it', 
   expect(mockUpdatePreferences).toHaveBeenCalledWith({
     onboardingCompleted: true,
   })
+  expect(
+    screen.getByRole('region', { name: 'Sample article' })
+  ).toBeInTheDocument()
+  expect(
+    screen.getByRole('heading', { name: 'The Quiet Power of a Short Walk' })
+  ).toBeInTheDocument()
   // A new user who just finished stays here, even though they arrived from
   // an install and now have a lookup.
   expect(replace).not.toHaveBeenCalled()
@@ -363,6 +441,12 @@ it('shows a returning user who opens /welcome the finished page with recommended
     '_blank'
   )
   expect(screen.queryByText('Pin the Catglish icon')).not.toBeInTheDocument()
+  expect(
+    screen.getByRole('region', { name: 'Sample article' })
+  ).toBeInTheDocument()
+  expect(
+    screen.getByRole('heading', { name: 'The Quiet Power of a Short Walk' })
+  ).toBeInTheDocument()
 })
 
 it('recommends Standard Ebooks, not BBC News or Wikipedia, once finished', async () => {
@@ -393,16 +477,26 @@ it('sends a returning user who just installed straight to /app', async () => {
   await waitFor(() => expect(replace).toHaveBeenCalledWith('/app'))
 })
 
-it('offers "Skip setup" while the user\'s history is still loading', async () => {
-  signedIn()
-  installExtension()
-  mockPreferences.mockReturnValue(new Promise(() => {}))
-  renderGuide()
+it.each(['preferences', 'stats'])(
+  'offers Skip setup without the article while %s is loading',
+  async (pending) => {
+    signedIn()
+    installExtension()
+    const request = pending === 'preferences' ? mockPreferences : mockOverview
+    request.mockReturnValue(new Promise(() => {}))
+    renderGuide()
 
-  expect(
-    await screen.findByRole('button', { name: 'Skip setup' })
-  ).toBeInTheDocument()
-})
+    expect(
+      await screen.findByRole('button', { name: 'Skip setup' })
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('region', { name: 'Sample article' })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'The Quiet Power of a Short Walk' })
+    ).not.toBeInTheDocument()
+  }
+)
 
 it('records "Skip setup" and goes to /app', async () => {
   signedIn()
@@ -436,22 +530,6 @@ it('shows a checking status while extension detection is pending, without guessi
   ).not.toBeInTheDocument()
 })
 
-it('confirms an installed extension and offers the next setup step', async () => {
-  signedIn()
-  installExtension()
-  renderGuide()
-  expect(
-    await screen.findByText('Catglish extension installed')
-  ).toBeInTheDocument()
-  expect(
-    screen.getByRole('button', { name: 'Next: finish setup' })
-  ).toBeInTheDocument()
-  expect(
-    screen.queryByRole('link', { name: 'Add to Chrome' })
-  ).not.toBeInTheDocument()
-  expect(screen.getByText('Pin the Catglish icon')).toBeInTheDocument()
-})
-
 it('rechecks after installation and replaces the install link with the completed status', async () => {
   signedIn()
   setRuntimeEnv({
@@ -469,25 +547,8 @@ it('rechecks after installation and replaces the install link with the completed
     screen.queryByRole('link', { name: 'Add to Chrome' })
   ).not.toBeInTheDocument()
   expect(
-    screen.getByRole('button', { name: 'Next: finish setup' })
-  ).toBeInTheDocument()
-})
-
-it('moves focus to the first unfinished step when "Next: finish setup" is clicked', async () => {
-  signedIn()
-  installExtension({ isOnToolbar: true })
-  renderGuide()
-
-  await waitFor(() =>
-    expect(
-      within(step('Pin the Catglish icon')).getByLabelText('Done')
-    ).toBeInTheDocument()
-  )
-  fireEvent.click(screen.getByRole('button', { name: 'Next: finish setup' }))
-
-  const next = step(/then Read with Catglish/)
-  expect(next).toHaveFocus()
-  expect(next).toHaveAttribute('aria-current', 'step')
+    screen.queryByRole('button', { name: 'Next: finish setup' })
+  ).not.toBeInTheDocument()
 })
 
 it('offers manual installation and the caution note beside the missing-extension store button', async () => {
