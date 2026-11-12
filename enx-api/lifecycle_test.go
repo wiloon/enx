@@ -43,16 +43,81 @@ func TestPeriodicWorkReceivesCancellation(t *testing.T) {
 	}
 }
 
-func TestShutdownWaitsForMetricsRequest(t *testing.T) {
+// TestServeUntilStoppedJoinsBackgroundWork pins the shutdown wiring in main:
+// after serve returns, the process must not return until the workers have
+// stopped. Deleting the join makes this test fail on the first select.
+func TestServeUntilStoppedJoinsBackgroundWork(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	work := &backgroundTasks{}
+	release := make(chan struct{})
+	t.Cleanup(func() { closeIfOpen(release) })
+	worked := make(chan struct{})
+	work.start("blocking job", func() { <-ctx.Done(); <-release; close(worked) })
+
+	returned := make(chan bool, 1)
+	go func() {
+		serveErr, drained := serveUntilStopped(cancel, time.Minute, work, func() error { return nil })
+		if serveErr != nil {
+			t.Errorf("serve error: %v", serveErr)
+		}
+		returned <- drained
+	}()
+
+	select {
+	case <-returned:
+		t.Fatal("serveUntilStopped returned while background work was still running")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(release)
+	select {
+	case <-worked:
+	case <-time.After(time.Second):
+		t.Fatal("background work did not finish")
+	}
+	select {
+	case drained := <-returned:
+		if !drained {
+			t.Fatal("shutdown reported a timeout")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("serveUntilStopped did not return")
+	}
+}
+
+func TestBackgroundShutdownHasDeadline(t *testing.T) {
+	work := &backgroundTasks{}
+	release := make(chan struct{})
+	t.Cleanup(func() { closeIfOpen(release) })
+	work.start("stuck job", func() { <-release })
+	if work.wait(20 * time.Millisecond) {
+		t.Fatal("shutdown completed while work was still running")
+	}
+	if got := work.stillRunning(); len(got) != 1 || got[0] != "stuck job" {
+		t.Fatalf("stillRunning() = %v, want [stuck job]", got)
+	}
+}
+
+func TestMetricsShutdownDrainsActiveRequest(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	entered, release := make(chan struct{}), make(chan struct{})
-	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { close(entered); <-release; w.WriteHeader(http.StatusOK) })}
+	t.Cleanup(func() { closeIfOpen(release) })
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(entered)
+		<-release
+		w.WriteHeader(http.StatusOK)
+	})}
 	ctx, cancel := context.WithCancel(context.Background())
-	tasks := newBackgroundTasks()
-	tasks.start(func() { serveMetricsServer(ctx, srv, listener) })
+	served := make(chan struct{})
+	go func() {
+		serveMetricsServer(ctx, "test", srv, listener)
+		close(served)
+	}()
+
 	requestDone := make(chan error, 1)
 	go func() {
 		resp, err := http.Get("http://" + listener.Addr().String())
@@ -63,28 +128,30 @@ func TestShutdownWaitsForMetricsRequest(t *testing.T) {
 	}()
 	<-entered
 	cancel()
-	stopped := make(chan bool, 1)
-	go func() { stopped <- tasks.wait(time.Second) }()
+
 	select {
-	case <-stopped:
-		t.Fatal("shutdown returned before request drained")
-	case <-time.After(50 * time.Millisecond):
+	case <-served:
+		t.Fatal("metrics shutdown returned before the request drained")
+	case <-time.After(100 * time.Millisecond):
 	}
+
 	close(release)
 	if err := <-requestDone; err != nil {
 		t.Fatal(err)
 	}
-	if !<-stopped {
-		t.Fatal("shutdown timed out")
+	select {
+	case <-served:
+	case <-time.After(time.Second):
+		t.Fatal("metrics shutdown did not return after the request drained")
 	}
 }
 
-func TestBackgroundShutdownHasDeadline(t *testing.T) {
-	tasks := newBackgroundTasks()
-	release := make(chan struct{})
-	tasks.start(func() { <-release })
-	defer close(release)
-	if tasks.wait(20 * time.Millisecond) {
-		t.Fatal("shutdown completed while work was still running")
+// closeIfOpen closes c unless it is already closed, so test cleanup never
+// panics on a release channel the test already closed.
+func closeIfOpen(c chan struct{}) {
+	select {
+	case <-c:
+	default:
+		close(c)
 	}
 }

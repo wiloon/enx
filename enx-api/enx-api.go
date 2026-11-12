@@ -23,10 +23,26 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+)
+
+const (
+	// shutdownGrace bounds how long the process gives its long-lived workers
+	// to stop once the API server stops, so a SIGTERM cannot leave the
+	// process exiting with work in flight. It is one budget for the whole
+	// drain: the metrics listener spends metricsShutdownGrace of it, and the
+	// join that follows keeps the rest.
+	shutdownGrace = 5 * time.Second
+
+	// metricsShutdownGrace is the part of shutdownGrace the metrics listener
+	// may spend draining. It is shorter than the join so a scrape that runs
+	// to its own deadline cannot make the join report a false timeout.
+	metricsShutdownGrace = 3 * time.Second
 )
 
 func main() {
@@ -75,19 +91,19 @@ func main() {
 	userStats := userstats.NewService(repo.UserStats{}, time.Now)
 	m.RegisterUserStats(userStats, time.Now)
 
-	tasks := newBackgroundTasks()
-	tasks.start(func() { runReaderDocumentCleanup(appCtx) })
-	tasks.start(func() {
+	tasks := &backgroundTasks{}
+	tasks.start("reader document cleanup", func() { runReaderDocumentCleanup(appCtx) })
+	tasks.start("stats and lookup cleanup", func() {
 		runStatsIngestLogCleanup(appCtx, cfg.Stats.Ingest.LogTTL(), cfg.Stats.LookupEvents.RetentionDays, userStats)
 	})
-	tasks.start(func() { runTrialExpiry(appCtx) })
+	tasks.start("trial expiry", func() { runTrialExpiry(appCtx) })
 	// Referrer rewards need Stripe to check each payment for a refund or
 	// dispute; without it they stay pending until it is configured.
 	if stripeClient != nil {
-		tasks.start(func() { runReferralRewards(appCtx, server.NewReferralService(cfg, stripeClient, m)) })
+		tasks.start("referral rewards", func() { runReferralRewards(appCtx, server.NewReferralService(cfg, stripeClient, m)) })
 	}
 
-	tasks.start(func() { serveMetrics(appCtx, cfg.Metrics.Addr, m) })
+	tasks.start("metrics listener", func() { serveMetrics(appCtx, cfg.Metrics.Addr, m) })
 	router := application.Handler()
 
 	port := cfg.Enx.Port
@@ -99,10 +115,12 @@ func main() {
 		cancelApp()
 	}()
 	logger.Infof("enx api listening port: %v", port)
-	serveErr := application.Serve(appCtx, srv)
-	cancelApp()
-	if !tasks.wait(5 * time.Second) {
-		logger.Warn("background shutdown timed out")
+	serveErr, drained := serveUntilStopped(cancelApp, shutdownGrace, tasks, func() error {
+		return application.Serve(appCtx, srv)
+	})
+	if !drained {
+		logger.Warnf("background shutdown timed out after %s; still running: %s",
+			shutdownGrace, strings.Join(tasks.stillRunning(), ", "))
 	}
 	if err := serveErr; err != nil {
 		logger.Errorf("failed to listen or shut down: %v", err)
@@ -110,6 +128,17 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Infof("listen end")
+}
+
+// serveUntilStopped runs serve until it returns (SIGTERM, or a listener
+// error), then cancels cancel and joins the background workers within grace.
+// The join is what makes shutdown graceful: without it main would return
+// while in-flight jobs were still running. It reports serve's error and
+// whether every worker stopped in time.
+func serveUntilStopped(cancel context.CancelFunc, grace time.Duration, work *backgroundTasks, serve func() error) (error, bool) {
+	serveErr := serve()
+	cancel()
+	return serveErr, work.wait(grace)
 }
 
 // runReaderDocumentCleanup periodically hard-deletes expired reader
@@ -122,7 +151,7 @@ func runReaderDocumentCleanup(ctx context.Context) {
 	purge := func(ctx context.Context) {
 		deleted, err := reader.PurgeExpired(ctx, time.Now())
 		if err != nil {
-			logger.Errorf("reader: purge expired documents failed: %v", err)
+			logJobFailure("reader: purge expired documents", err)
 			return
 		}
 		if deleted > 0 {
@@ -151,7 +180,7 @@ func runStatsIngestLogCleanup(ctx context.Context, ttl time.Duration, lookupEven
 func runStatsJobs(ctx context.Context, now time.Time, ingestLogTTL time.Duration, lookupEventRetentionDays int, activeUsers *userstats.Service) {
 	deleted, err := stats.PurgeIngestLog(ctx, now, ingestLogTTL)
 	if err != nil {
-		logger.Errorf("stats: purge ingest log failed: %v", err)
+		logJobFailure("stats: purge ingest log", err)
 	} else if deleted > 0 {
 		logger.Infof("stats: purged %d expired ingest-log row(s)", deleted)
 	}
@@ -160,7 +189,7 @@ func runStatsJobs(ctx context.Context, now time.Time, ingestLogTTL time.Duration
 
 	deleted, err = dictadapters.QuotaUsage{}.DeleteOutsideRetention(ctx, now, lookupEventRetentionDays)
 	if err != nil {
-		logger.Errorf("dictionary: lookup quota usage cleanup failed: %v", err)
+		logJobFailure("dictionary: lookup quota usage cleanup", err)
 	} else if deleted > 0 {
 		logger.Infof("dictionary: deleted %d lookup quota usage row(s) past retention", deleted)
 	}
@@ -173,7 +202,7 @@ func runStatsJobs(ctx context.Context, now time.Time, ingestLogTTL time.Duration
 // it has been counted.
 func runLookupEventJob(ctx context.Context, now time.Time, retentionDays int, activeUsers *userstats.Service) {
 	if days, err := activeUsers.Rollup(ctx, retentionDays); err != nil {
-		logger.Errorf("userstats: active users rollup failed, lookup events kept: %v", err)
+		logJobFailure("userstats: active users rollup, lookup events kept", err)
 		return
 	} else if days > 0 {
 		logger.Infof("userstats: rolled up active users for %d day(s)", days)
@@ -181,7 +210,7 @@ func runLookupEventJob(ctx context.Context, now time.Time, retentionDays int, ac
 
 	deleted, err := stats.RollupLookupEvents(ctx, now, retentionDays)
 	if err != nil {
-		logger.Errorf("stats: lookup event rollup failed: %v", err)
+		logJobFailure("stats: lookup event rollup", err)
 	} else if deleted > 0 {
 		logger.Infof("stats: deleted %d lookup event(s) past retention", deleted)
 	}
@@ -216,7 +245,7 @@ func runReferralRewards(ctx context.Context, svc *referral.Service) {
 	settle := func(ctx context.Context) {
 		run, err := svc.PayDueRewards(ctx)
 		if err != nil {
-			logger.Errorf("referral: pay due rewards failed: %v", err)
+			logJobFailure("referral: pay due rewards", err)
 			return
 		}
 		for _, err := range run.Errors {
@@ -238,7 +267,7 @@ func runTrialExpiry(ctx context.Context) {
 	sweep := func(ctx context.Context) {
 		run, err := credit.ExpireTrials(ctx)
 		if err != nil {
-			logger.Errorf("credit: expire trials failed: %v", err)
+			logJobFailure("credit: expire trials", err)
 			return
 		}
 		for _, err := range run.Errors {
@@ -250,6 +279,17 @@ func runTrialExpiry(ctx context.Context) {
 	}
 
 	runPeriodic(ctx, time.Hour, sweep)
+}
+
+// logJobFailure reports a periodic job's failure. A cancellation is the
+// shutdown signal doing its job, not an error: logging it at Error level
+// would make every normal SIGTERM look like a fault.
+func logJobFailure(what string, err error) {
+	if errors.Is(err, context.Canceled) {
+		logger.Infof("%s: cancelled by shutdown", what)
+		return
+	}
+	logger.Errorf("%s failed: %v", what, err)
 }
 
 // serveMetrics serves /metrics on its own listener (ADR-040): never the
@@ -268,35 +308,41 @@ func serveMetrics(ctx context.Context, addr string, m *metrics.Metrics) {
 
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		logger.Errorf("metrics listener on %s stopped: %v", addr, err)
+		logger.Errorf("metrics listener failed to listen on %s: %v", addr, err)
 		return
 	}
 	logger.Infof("metrics listening on %s", addr)
-	serveMetricsServer(ctx, srv, listener)
+	serveMetricsServer(ctx, addr, srv, listener)
 }
 
-func serveMetricsServer(ctx context.Context, srv *http.Server, listener net.Listener) {
+// serveMetricsServer serves srv on listener until ctx is cancelled, then
+// shuts it down within metricsShutdownGrace and waits for the drain to
+// finish, so an in-flight scrape is not cut off. Losing metrics must not take
+// the API down with it, so errors are logged here, never returned.
+func serveMetricsServer(ctx context.Context, addr string, srv *http.Server, listener net.Listener) {
 	done := make(chan struct{})
 	serverStopped := make(chan struct{})
 	go func() {
 		defer close(done)
 		select {
 		case <-ctx.Done():
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), metricsShutdownGrace)
 			defer cancel()
 			if err := srv.Shutdown(shutdownCtx); err != nil {
-				logger.Warnf("metrics listener shutdown: %v", err)
+				logger.Warnf("metrics listener %s shutdown: %v", addr, err)
 			}
 		case <-serverStopped:
 		}
 	}()
 	if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		logger.Errorf("metrics listener stopped: %v", err)
+		logger.Errorf("metrics listener %s stopped: %v", addr, err)
 	}
 	close(serverStopped)
 	<-done
 }
 
+// runPeriodic runs work once immediately, then every interval until ctx is
+// cancelled. work receives ctx so a job in flight stops with the process.
 func runPeriodic(ctx context.Context, interval time.Duration, work func(context.Context)) {
 	work(ctx)
 	ticker := time.NewTicker(interval)
@@ -311,13 +357,38 @@ func runPeriodic(ctx context.Context, interval time.Duration, work func(context.
 	}
 }
 
-type backgroundTasks struct{ wg sync.WaitGroup }
-
-func newBackgroundTasks() *backgroundTasks { return &backgroundTasks{} }
-func (t *backgroundTasks) start(work func()) {
-	t.wg.Add(1)
-	go func() { defer t.wg.Done(); work() }()
+// backgroundTasks joins the process's long-lived workers when it shuts down.
+// The zero value is ready to use.
+type backgroundTasks struct {
+	wg      sync.WaitGroup
+	mu      sync.Mutex
+	running map[string]struct{}
 }
+
+// start runs work in its own goroutine, keeping name so a shutdown timeout
+// can say which worker had not returned.
+func (t *backgroundTasks) start(name string, work func()) {
+	t.mu.Lock()
+	if t.running == nil {
+		t.running = make(map[string]struct{})
+	}
+	t.running[name] = struct{}{}
+	t.mu.Unlock()
+	t.wg.Go(func() {
+		defer t.finish(name)
+		work()
+	})
+}
+
+func (t *backgroundTasks) finish(name string) {
+	t.mu.Lock()
+	delete(t.running, name)
+	t.mu.Unlock()
+}
+
+// wait blocks up to timeout for every worker to return. A false result means
+// the deadline expired with work still in flight. The goroutine it leaves
+// waiting on wg is harmless: the process is exiting and will not reuse t.
 func (t *backgroundTasks) wait(timeout time.Duration) bool {
 	done := make(chan struct{})
 	go func() { t.wg.Wait(); close(done) }()
@@ -329,4 +400,16 @@ func (t *backgroundTasks) wait(timeout time.Duration) bool {
 	case <-timer.C:
 		return false
 	}
+}
+
+// stillRunning lists, sorted, the workers that had not returned yet.
+func (t *backgroundTasks) stillRunning() []string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	names := make([]string, 0, len(t.running))
+	for name := range t.running {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
