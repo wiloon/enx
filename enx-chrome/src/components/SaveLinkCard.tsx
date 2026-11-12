@@ -3,7 +3,7 @@
 // confirmation; once saved, the same card offers Remove. The address sits on
 // one line, cut with an ellipsis, and shows in full as the browser's native
 // hover text (chosen over a custom tooltip after trying both). Save is a
-// filled button of its own, so the card reads as an action, not a label. The copy says "link", not "page":
+// secondary outline action beside the disclosure. The copy says "link", not "page":
 // enx-api keeps the address and title, never the page's content.
 
 import { BookmarkIcon } from '@heroicons/react/24/outline'
@@ -111,7 +111,7 @@ export default function SaveLinkCard({
           data-testid="save-link-save"
           onClick={onSave}
           disabled={busy !== null}
-          className="flex shrink-0 items-center gap-1 rounded-lg bg-brand px-2.5 py-1.5 text-xs font-semibold text-brand-foreground shadow-sm shadow-brand/25 transition hover:brightness-105 active:scale-[0.97] disabled:opacity-60"
+          className="flex shrink-0 items-center gap-1 rounded-lg border border-brand/40 px-2.5 py-1.5 text-xs font-medium text-brand transition hover:bg-brand-muted active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-60"
         >
           <BookmarkSolidIcon className="h-3.5 w-3.5" />
           {busy === 'saving' ? 'Saving…' : 'Save'}

@@ -65,7 +65,7 @@ test.describe('Popup - layout', () => {
       page,
       extensionId,
       signedIn: _signedIn,
-    }) => {
+    }, testInfo) => {
       await mockBackendFetch(context)
       await page.goto('/article-pick.html')
       if (scenario === 'page-only choice') {
@@ -115,27 +115,63 @@ test.describe('Popup - layout', () => {
 
       const version = popup.getByRole('button', { name: /^v\d/ })
       await expect(version).toHaveCount(1)
-      const feedbackBox = await popup
-        .getByRole('button', { name: 'Send feedback' })
-        .boundingBox()
-      const versionBox = await version.boundingBox()
-      expect(feedbackBox).not.toBeNull()
-      expect(versionBox).not.toBeNull()
-      expect(Math.max(feedbackBox!.y, versionBox!.y)).toBeLessThan(
-        Math.min(
-          feedbackBox!.y + feedbackBox!.height,
-          versionBox!.y + versionBox!.height
-        )
-      )
-      expect(feedbackBox!.x + feedbackBox!.width).toBeLessThanOrEqual(
-        versionBox!.x
-      )
+      const geometry = await popup.evaluate(() => {
+        const feedback = [...document.querySelectorAll('button')].find(
+          button => button.textContent?.trim() === 'Send feedback'
+        )!
+        const version = [...document.querySelectorAll('button')].find(button =>
+          /^v\d/.test(button.textContent ?? '')
+        )!
+        const versionText = document.createRange()
+        versionText.selectNodeContents(version)
+        const versionRect = versionText.getBoundingClientRect()
+        const feedbackText = document.createRange()
+        feedbackText.selectNode(feedback.lastChild!)
+        const feedbackRect = feedbackText.getBoundingClientRect()
+        const card = document
+          .querySelector('[data-testid="save-link-card"]')!
+          .getBoundingClientRect()
+        const row = feedback.parentElement!.getBoundingClientRect()
+        const root = document.getElementById('root')!.getBoundingClientRect()
+        const lineLeft = feedback.getBoundingClientRect().left
+        const lineRight = version.getBoundingClientRect().right
+        return {
+          lineCentreDifference: Math.abs(
+            (lineLeft + lineRight) / 2 - (root.left + root.width / 2)
+          ),
+          feedbackIsLeft: feedbackRect.right < versionRect.left,
+          hasIcon: feedback.querySelector('svg') !== null,
+          centreDifference: Math.abs(
+            feedbackRect.y +
+              feedbackRect.height / 2 -
+              versionRect.y -
+              versionRect.height / 2
+          ),
+          cardGap: row.top - card.bottom,
+          bottomGap: root.bottom - row.bottom,
+          scrolls:
+            document.documentElement.scrollHeight > window.innerHeight ||
+            document.documentElement.scrollWidth > window.innerWidth,
+        }
+      })
+      expect(geometry.centreDifference).toBeLessThanOrEqual(1)
+      expect(geometry.lineCentreDifference).toBeLessThanOrEqual(2)
+      expect(geometry.feedbackIsLeft).toBe(true)
+      expect(geometry.hasIcon).toBe(false)
+      expect(geometry.cardGap).toBeGreaterThanOrEqual(3)
+      expect(geometry.cardGap).toBeLessThanOrEqual(5)
+      expect(geometry.bottomGap).toBeGreaterThanOrEqual(7)
+      expect(geometry.bottomGap).toBeLessThanOrEqual(12)
+      expect(geometry.scrolls).toBe(false)
 
       const height = await popup.evaluate(
         () => document.getElementById('root')!.getBoundingClientRect().height
       )
-      await popup.screenshot({
-        path: `test-results/popup-layout-${scenario.replace(/\W+/g, '-')}.png`,
+      const screenshotPath = `test-results/popup-layout-${scenario.replace(/\W+/g, '-')}.png`
+      await popup.screenshot({ path: screenshotPath })
+      await testInfo.attach(`popup-${scenario}`, {
+        path: screenshotPath,
+        contentType: 'image/png',
       })
       expect(height).toBeLessThanOrEqual(POPUP_MAX_HEIGHT)
       await version.hover()
@@ -161,7 +197,7 @@ test.describe('Popup - layout', () => {
 test('signed-out popup keeps the standalone version footer', async ({
   context,
   extensionId,
-}) => {
+}, testInfo) => {
   const popup = await context.newPage()
   await popup.setViewportSize({ width: 340, height: POPUP_MAX_HEIGHT })
   await popup.goto(`chrome-extension://${extensionId}/popup.html`)
@@ -173,4 +209,8 @@ test('signed-out popup keeps the standalone version footer', async ({
     popup.getByRole('button', { name: 'Send feedback' })
   ).toHaveCount(0)
   await popup.screenshot({ path: 'test-results/popup-layout-signed-out.png' })
+  await testInfo.attach('popup-signed-out', {
+    path: 'test-results/popup-layout-signed-out.png',
+    contentType: 'image/png',
+  })
 })

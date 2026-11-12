@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import PopupVersion from '../PopupVersion'
+import SendFeedback from '../SendFeedback'
 
 const build = {
   version: '0.1.2',
@@ -14,6 +15,27 @@ const details = [
 ].join('\n')
 
 describe('PopupVersion', () => {
+  it('keeps its standalone footer spacing when signed out', () => {
+    render(<PopupVersion build={build} copy={jest.fn()} />)
+    expect(screen.getByRole('contentinfo')).toHaveClass('px-3', 'pb-2')
+  })
+
+  it('omits the standalone footer spacing inside the feedback row', () => {
+    render(
+      <SendFeedback
+        footerEnd={<PopupVersion build={build} copy={jest.fn()} inline />}
+      />
+    )
+    const version = screen.getByRole('button', { name: /v0\.1\.2/ })
+    expect(version.closest('footer')).toBeNull()
+    expect(version.parentElement).toContainElement(
+      screen.getByRole('button', { name: 'Send feedback' })
+    )
+    expect(version).toHaveClass('text-xs', 'text-muted-foreground')
+    expect(version).not.toHaveClass('font-medium')
+    expect(version.className).not.toMatch(/-mr-/)
+  })
+
   afterEach(() => {
     jest.useRealTimers()
   })
