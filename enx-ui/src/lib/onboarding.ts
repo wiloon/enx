@@ -81,7 +81,7 @@ export function extensionStatusSettled(
 export type OnboardingView =
   /** /welcome, signed in: every step. */
   | 'full'
-  /** /welcome, signed out: install (when missing) and sign in. */
+  /** /welcome, signed out: every step, with upcoming steps collapsed. */
   | 'signed-out'
   /** Home's checklist (Decision 6): behind sign-in, and the pin is left to
    * /welcome, the only page that asks the extension about it. */
@@ -89,7 +89,7 @@ export type OnboardingView =
 
 const VIEW_STEPS: Record<OnboardingView, ReadonlySet<OnboardingStepId>> = {
   full: new Set(['install', 'sign-in', 'pin', 'enable', 'look-up']),
-  'signed-out': new Set(['install', 'sign-in']),
+  'signed-out': new Set(['install', 'sign-in', 'pin', 'enable', 'look-up']),
   home: new Set(['install', 'enable', 'look-up']),
 }
 
@@ -103,15 +103,19 @@ export function onboardingSteps(
     ['enable', stepStatus(state.learningEnabled)],
     ['look-up', stepStatus(state.hasLookedUp)],
   ]
-  // Step 0 exists only while the extension is missing (Decision 2).
-  if (!state.installed) entries.unshift(['install', 'todo'])
+  // Welcome keeps the completed install; Home only shows it when missing.
+  if (view !== 'home' || !state.installed)
+    entries.unshift(['install', stepStatus(state.installed)])
 
   const steps = entries
     .filter(([id]) => VIEW_STEPS[view].has(id))
     .map(([id, s]) => ({
       id,
       status: s,
-      title: stepTitle(id, view),
+      title:
+        id === 'install' && s === 'done'
+          ? `${SITE.name} extension installed`
+          : stepTitle(id, view),
     }))
   const current = steps.find((step) => step.status === 'todo')?.id ?? null
   return { steps, current, complete: onboardingComplete(state) }
@@ -136,7 +140,7 @@ export function homeChecklistSteps(installed: boolean): OnboardingStep[] {
 export type WelcomeLanding =
   /** Still waiting on sign-in state or the user's history. */
   | 'loading'
-  /** Signed out: install (when missing) and sign in, nothing more. */
+  /** Signed out: the full setup list, starting with install or sign in. */
   | 'sign-in'
   | 'steps'
   | 'done'

@@ -70,15 +70,34 @@ describe('onboardingSteps (ADR-047 Decision 2)', () => {
     expect(progress.complete).toBe(false)
   })
 
-  it('drops the install step once the extension is there', () => {
-    const progress = onboardingSteps({ ...fresh, installed: true })
-    expect(progress.steps.map((s) => s.id)).not.toContain('install')
-    expect(progress.current).toBe('sign-in')
-  })
+  it.each(['full', 'signed-out'] as const)(
+    'offers installation when missing on %s welcome',
+    (view) => {
+      expect(onboardingSteps(fresh, view).steps[0]).toEqual({
+        id: 'install',
+        status: 'todo',
+        title: 'Add Catglish to Chrome',
+      })
+    }
+  )
+
+  it.each(['full', 'signed-out'] as const)(
+    'keeps installation done on %s welcome',
+    (view) => {
+      const progress = onboardingSteps({ ...fresh, installed: true }, view)
+      expect(progress.steps[0]).toEqual({
+        id: 'install',
+        status: 'done',
+        title: 'Catglish extension installed',
+      })
+      expect(progress.current).toBe('sign-in')
+    }
+  )
 
   it('ticks steps from real state, in any order', () => {
     // Pinned before signing in (or pinned by Chrome itself).
     expect(statuses({ ...fresh, installed: true, isOnToolbar: true })).toEqual({
+      install: 'done',
       'sign-in': 'todo',
       pin: 'done',
       enable: 'todo',
@@ -151,14 +170,17 @@ describe('onboardingSteps (ADR-047 Decision 2)', () => {
 describe('the steps each screen shows', () => {
   const ids = (steps: { id: string }[]) => steps.map((s) => s.id)
 
-  it('shows a signed-out visitor only installing and signing in', () => {
+  it('shows all five steps to a signed-out visitor in either installation state', () => {
     expect(ids(onboardingSteps(fresh, 'signed-out').steps)).toEqual([
       'install',
       'sign-in',
+      'pin',
+      'enable',
+      'look-up',
     ])
     expect(
       ids(onboardingSteps({ ...fresh, installed: true }, 'signed-out').steps)
-    ).toEqual(['sign-in'])
+    ).toEqual(['install', 'sign-in', 'pin', 'enable', 'look-up'])
   })
 
   it('leaves sign-in and pinning off the Home checklist (Decision 6)', () => {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -49,10 +49,6 @@ export default function WelcomeGuide({
   const signedIn = isLoading ? undefined : isAuthenticated
   const learningEnabled = useLearningModeMark()
   const [pinSkipped, setPinSkipped] = useState(false)
-  // Bumped by "Next: finish setup"; the step list then focuses its first
-  // unfinished step. The steps are usually already on screen, so moving
-  // focus and highlighting is the visible answer to the click.
-  const [focusRequest, setFocusRequest] = useState(0)
 
   const preferences = useQuery({
     queryKey: ['preferences'],
@@ -171,8 +167,7 @@ export default function WelcomeGuide({
 
   const returnTo = fromInstall ? '/welcome?src=install' : '/welcome'
 
-  // Until the extension has answered, whether the install step belongs in
-  // the list is unknown; guessing either way makes it flash.
+  // Until detection answers, do not guess whether installation is done.
   const stepList = (steps: OnboardingStep[]) =>
     extension === undefined ? (
       <p
@@ -187,44 +182,25 @@ export default function WelcomeGuide({
         Checking extension…
       </p>
     ) : (
-      <div className="space-y-5">
-        {extension.installed && (
-          <div className="space-y-3 rounded-lg border border-brand/30 bg-brand/5 p-4">
-            <p
-              role="status"
-              className="flex items-center gap-2 text-sm font-medium"
-            >
-              <Check aria-hidden className="size-4 text-brand" />
-              {SITE.name} extension installed
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setFocusRequest((n) => n + 1)}
-            >
-              Next: finish setup
-            </Button>
-          </div>
-        )}
-        <StepList
-          steps={steps}
-          returnTo={returnTo}
-          onSkipPin={() => setPinSkipped(true)}
-          focusRequest={focusRequest}
-        />
-      </div>
+      <StepList
+        steps={steps}
+        returnTo={returnTo}
+        onSkipPin={() => setPinSkipped(true)}
+      />
     )
 
+  const showArticle = landing === 'steps' || finished
+
   return (
-    <div className="mx-auto grid w-full max-w-6xl gap-10 p-6 md:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] md:p-10">
+    <div
+      className={`mx-auto grid w-full gap-10 p-6 md:p-10 ${showArticle ? 'max-w-6xl md:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]' : 'max-w-xl'}`}
+    >
       <section className="space-y-6">
         {finished ? (
           <Finished />
         ) : landing === 'sign-in' ? (
           <>
-            <h1 className="text-2xl font-bold">
-              Welcome to {SITE.name} — sign in to get started
-            </h1>
+            <h1 className="text-2xl font-bold">Welcome to {SITE.name}</h1>
             {stepList(progress.steps)}
             <SkipSetup onClick={skipSetup} />
           </>
@@ -243,9 +219,11 @@ export default function WelcomeGuide({
         )}
       </section>
 
-      <section className="space-y-4" aria-label="Sample article">
-        <SampleArticle titleAs="h2" />
-      </section>
+      {showArticle && (
+        <section className="space-y-4" aria-label="Sample article">
+          <SampleArticle titleAs="h2" />
+        </section>
+      )}
     </div>
   )
 }
@@ -254,46 +232,30 @@ function StepList({
   steps,
   returnTo,
   onSkipPin,
-  focusRequest,
 }: {
   steps: OnboardingStep[]
   returnTo: string
   onSkipPin: () => void
-  focusRequest: number
 }) {
   const nextId = steps.find((step) => step.status === 'todo')?.id
-  const nextRef = useRef<HTMLLIElement>(null)
-  useEffect(() => {
-    if (focusRequest === 0) return
-    const next = nextRef.current
-    if (!next) return
-    next.focus({ preventScroll: true })
-    next.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
-  }, [focusRequest])
   return (
     <ol className="space-y-5">
       {steps.map((step) => (
-        <li
-          key={step.id}
-          ref={step.id === nextId ? nextRef : undefined}
-          tabIndex={step.id === nextId ? -1 : undefined}
-          aria-current={
-            focusRequest > 0 && step.id === nextId ? 'step' : undefined
-          }
-          className="flex gap-3 rounded-sm text-sm outline-none ring-offset-4 ring-offset-background aria-[current=step]:ring-2 aria-[current=step]:ring-brand/50"
-        >
+        <li key={step.id} className="flex gap-3 text-sm">
           <StepIcon status={step.status} />
           <div className="min-w-0 flex-1 space-y-2">
             <p
               className={
-                step.status === 'todo'
-                  ? 'font-medium'
-                  : 'font-medium text-muted-foreground'
+                step.id === nextId
+                  ? 'text-foreground'
+                  : step.status === 'skipped'
+                    ? 'font-medium text-muted-foreground'
+                    : 'text-muted-foreground'
               }
             >
               {step.title}
             </p>
-            {step.status === 'todo' && (
+            {step.id === nextId && (
               <StepDetail
                 id={step.id}
                 returnTo={returnTo}
