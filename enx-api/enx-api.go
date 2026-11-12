@@ -73,16 +73,16 @@ func main() {
 	userStats := userstats.NewService(repo.UserStats{}, time.Now)
 	m.RegisterUserStats(userStats, time.Now)
 
-	go runReaderDocumentCleanup()
-	go runStatsIngestLogCleanup(cfg.Stats.Ingest.LogTTL(), cfg.Stats.LookupEvents.RetentionDays, userStats)
-	go runTrialExpiry()
+	go runReaderDocumentCleanup(appCtx)
+	go runStatsIngestLogCleanup(appCtx, cfg.Stats.Ingest.LogTTL(), cfg.Stats.LookupEvents.RetentionDays, userStats)
+	go runTrialExpiry(appCtx)
 	// Referrer rewards need Stripe to check each payment for a refund or
 	// dispute; without it they stay pending until it is configured.
 	if stripeClient != nil {
-		go runReferralRewards(server.NewReferralService(cfg, stripeClient, m))
+		go runReferralRewards(appCtx, server.NewReferralService(cfg, stripeClient, m))
 	}
 
-	go serveMetrics(cfg.Metrics.Addr, m)
+	go serveMetrics(appCtx, cfg.Metrics.Addr, m)
 	router := application.Handler()
 
 	port := cfg.Enx.Port
@@ -109,9 +109,9 @@ func main() {
 // reader.GetDocument) already filter out expired rows on their own, but
 // this is what actually removes them from disk. Runs once immediately so a
 // restart doesn't leave stale rows sitting for up to an hour, then hourly.
-func runReaderDocumentCleanup() {
+func runReaderDocumentCleanup(ctx context.Context) {
 	purge := func() {
-		deleted, err := reader.PurgeExpired(context.Background(), time.Now())
+		deleted, err := reader.PurgeExpired(ctx, time.Now())
 		if err != nil {
 			logger.Errorf("reader: purge expired documents failed: %v", err)
 			return
@@ -124,23 +124,33 @@ func runReaderDocumentCleanup() {
 	purge()
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
-	for range ticker.C {
-		purge()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			purge()
+		}
 	}
 }
 
 // runStatsIngestLogCleanup runs runStatsJobs once on start, so a restart
 // doesn't leave a backlog, then hourly, mirroring the reader cleanup.
-func runStatsIngestLogCleanup(ttl time.Duration, lookupEventRetentionDays int, activeUsers *userstats.Service) {
+func runStatsIngestLogCleanup(ctx context.Context, ttl time.Duration, lookupEventRetentionDays int, activeUsers *userstats.Service) {
 	purge := func() {
-		runStatsJobs(context.Background(), time.Now(), ttl, lookupEventRetentionDays, activeUsers)
+		runStatsJobs(ctx, time.Now(), ttl, lookupEventRetentionDays, activeUsers)
 	}
 
 	purge()
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
-	for range ticker.C {
-		purge()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			purge()
+		}
 	}
 }
 
@@ -213,9 +223,9 @@ func backfillTrialGrants(cfg *config.Config) {
 // Decision 5). Mirrors the cleanups: once on start, then hourly; a row
 // Stripe could not answer for is retried on the next run, and the ledger's
 // idempotency key keeps reruns and parallel instances from paying twice.
-func runReferralRewards(svc *referral.Service) {
+func runReferralRewards(ctx context.Context, svc *referral.Service) {
 	settle := func() {
-		run, err := svc.PayDueRewards(context.Background())
+		run, err := svc.PayDueRewards(ctx)
 		if err != nil {
 			logger.Errorf("referral: pay due rewards failed: %v", err)
 			return
@@ -231,8 +241,13 @@ func runReferralRewards(svc *referral.Service) {
 	settle()
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
-	for range ticker.C {
-		settle()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			settle()
+		}
 	}
 }
 
@@ -240,9 +255,9 @@ func runReferralRewards(svc *referral.Service) {
 // Decision 10), once on start and then hourly, so the ledger records an
 // expiry within the hour even when the user never writes again. An account
 // that fails is retried on the next run.
-func runTrialExpiry() {
+func runTrialExpiry(ctx context.Context) {
 	sweep := func() {
-		run, err := credit.ExpireTrials(context.Background())
+		run, err := credit.ExpireTrials(ctx)
 		if err != nil {
 			logger.Errorf("credit: expire trials failed: %v", err)
 			return
@@ -258,8 +273,13 @@ func runTrialExpiry() {
 	sweep()
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
-	for range ticker.C {
-		sweep()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			sweep()
+		}
 	}
 }
 
@@ -267,8 +287,8 @@ func runTrialExpiry() {
 // public port, so nginx and the ingress never expose it. addr defaults to
 // 127.0.0.1:9091 (EC2, where only the local Alloy scrapes it); homelab sets
 // METRICS_ADDR=0.0.0.0:9091 so the cluster's Prometheus can reach the pod.
-// An empty addr turns it off.
-func serveMetrics(addr string, m *metrics.Metrics) {
+// An empty addr turns it off. ctx cancels to Shutdown the listener gracefully.
+func serveMetrics(ctx context.Context, addr string, m *metrics.Metrics) {
 	if addr == "" {
 		logger.Warn("metrics listener disabled (metrics.addr is empty)")
 		return
@@ -276,6 +296,18 @@ func serveMetrics(addr string, m *metrics.Metrics) {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", m.Handler())
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+
+	// Shutdown the metrics listener when the app context is cancelled
+	// (SIGTERM), so Kubernetes rolling upgrades drain the port cleanly.
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			logger.Warnf("metrics listener shutdown on %s: %v", addr, err)
+		}
+	}()
+
 	logger.Infof("metrics listening on %s", addr)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		// Losing metrics must not take the API down with it.
