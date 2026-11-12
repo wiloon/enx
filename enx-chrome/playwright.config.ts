@@ -72,8 +72,9 @@ export default defineConfig({
     // Base URL to use in actions like `await page.goto('/')`
     baseURL: FIXTURE_ORIGIN,
 
-    // Collect trace when retrying the failed test
-    trace: 'on-first-retry',
+    // Keep a trace of every failed attempt. The runner on ser8 runs with
+    // --retries=0, where 'on-first-retry' never records one (#839).
+    trace: 'retain-on-failure',
 
     // Screenshot on failure
     screenshot: 'only-on-failure',
