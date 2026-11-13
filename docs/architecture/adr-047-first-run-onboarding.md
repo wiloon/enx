@@ -26,6 +26,16 @@ adr-046 去掉了正文里的「Article processed • Click words for translatio
 - Welcome 检测扩展时显示转圈与「Checking extension…」，检测完成前不猜测安装结果。未安装时解释用途并提供「Add to Chrome」；已安装时安装这一步在步骤列表里显示为已完成（「Catglish extension installed」，与其他已完成步骤同样的勾和弱化文字，不另做卡片，也没有「Next: finish setup」，见 2026-11-12 修订），安装完成只代表安装这一步完成，后续固定图标、亲手启用和查词保持不变。
 - 扩展已通过 Chrome Web Store 审核，以 Unlisted 发布，正式条目 ID 为 `combdcldlodkikjfhjbdbogjlfmnbjkf`。安装链接使用 `https://chromewebstore.google.com/detail/catglish-learn-english-as/combdcldlodkikjfhjbdbogjlfmnbjkf`；站点常量提供正式 ID 和链接作为默认值，运行时环境仍可覆盖。安装链接为空时也使用正式链接，替代上线前的占位。保留原有安装后复用 Welcome 标签页的行为。
 
+## 2026-11-12 修订（#868，登录步骤只留一个 Continue；owner 在生产环境走引导后提出）
+
+- 问题：登录步骤并排两个按钮，品牌色的是「Sign in」、描边的是「Sign up」。带 `?src=install` 进来的几乎都是新用户，主按钮却是登录；两个按钮只差一个词，用户得先想「我算登录还是注册」。步骤标题「Sign in」和按钮文字重复，也没说登录对用户有什么用。
+- 生产 Clerk 实例只开了 Google 和 GitHub 登录。OAuth 下 Clerk 的 `<SignIn>` 遇到不存在的账号会自动转为注册（transfer），所以对用户来说登录和注册没有区别，二选一是没有意义的选择。owner 在生产环境用管理员删除测试用户后，用同一邮箱重新走过这条路。
+- `/welcome` 上这一步的标题改为「Create your free account」，当前时标题下加一行灰字「Free to start. Your saved words follow you to any device.」，不写积分数字（数字以 adr-048 为准，会变）。
+- 两个按钮合成一个品牌色按钮「Continue」，指向 `/sign-in?redirect_url=…`，回跳规则不变（Decision 2 第 2 步）。老用户（重装扩展、换电脑）点同一个按钮直接登录，不再单独放 Sign in 入口。`/welcome` 上去掉 Sign up；`/sign-up` 页面和其他地方的链接保留。
+- 按钮文字用中性的「Continue」，不写「Continue with Google or GitHub」：以后可能加 Apple 等登录方式，按钮不该随之改字。
+- 新用户经 `/sign-in` 建号这一点要实测；`@clerk/nextjs` 7.x 默认不这样做时，给 `<SignIn>` 加 `withSignUp`，`src=extension` 的 `forceRedirectUrl`（adr-020）不变。新用户照常拿到 adr-048 的试用积分；同一邮箱已经领过试用的拿不到（adr-062），这是预期。
+- 以后若开启邮箱密码登录，登录和注册在 Clerk 里会重新分开，届时重新评估这一步是否仍只要一个按钮。
+
 ## 2026-11-12 修订（#865，完成态的去向；owner 在生产环境走完引导后提出）
 
 - 问题：完成态最后的「Go to your dashboard」是黑色 `text-sm font-medium`，只在悬停时出现下划线。它和小标题「Something to read」字号、颜色相同，看上去像又一个小标题；上面的推荐站点链接都是品牌色，对比之下它更不像能点的东西。前面每一步的下一个动作都是品牌色按钮，到完成态断了。
@@ -94,7 +104,7 @@ A、B 的区别只是「进来时扩展装没装」，页面能直接探测到�
 2. **步骤**（全部按真实状态显示勾选，不按顺序锁定；文案全英文）：
    0. **安装扩展**（`/welcome` 上始终在列表里：未安装时为当前步骤，已安装时显示为已完成的「Catglish extension installed」；Home 清单只在未安装时出现。2026-11-12 修订，#846）：「Add to Chrome」按钮在新标签页打开 Chrome Web Store。链接取现有的运行时配置 `ENX_EXTENSION_WEB_STORE_URL`；扩展上架前它为空，按钮显示为不可点的「Coming soon to the Chrome Web Store」（与 `OnboardingChecklist` 现有的空链接处理一致），上架后填上配置即可，不改代码。页面可见时每 2 秒发一次 `enx:status`，探测到安装后自动勾上（同时扩展会把用户切回这个标签页，见 Decision 1）。非 Chromium 浏览器给出「Catglish needs Chrome」说明。安装操作由商店页面完成；**2026-11-05 修订（#559，owner 确认）**：Enhanced protection 用户可能遇到额外警告，因此公开帮助中心 `/help` 提供商店搜索安装、ZIP 手动安装与首次使用手册，正文先上线并预留截图位置，不加视频。商店搜索说明按上线时 Public 发布编写，保留正式条目直达链接。`/welcome` 的安装步骤在商店按钮下解释该警告，并提供新标签页打开的 ZIP 安装帮助链接；检测到已安装后随安装步骤的说明一起隐藏（步骤本身变为已完成）。警告文案与商店安装手册共用一处定义，经 #560 实测确认警告消失后移除。帮助页从官网与 App 的 Help 菜单进入，免登录；安装后的状态判断与实际操作仍在 `/welcome`。产品名和仓库地址使用站点配置，离线包名示例从仓库名派生，并兼容旧发布使用产品名的附件。产品演示视频已在官网首页。
    1. **固定图标**（可跳过；2026-11-12 修订，#852：排在登录之前）：一张示意图，展示「点拼图图标 → 点 Catglish 旁的图钉」（静态图片，用本地构建的扩展截取，放在 enx-ui 的 `public/` 下；第一版先用手绘示意图 `public/onboarding/pin-icon.svg`，截图后替换）。页面在这一步可见、且未跳过时每 2 秒经 `enx:status` 查询 `isOnToolbar`，固定后自动勾上；进来时已固定（包括被 Chrome 自动固定的用户）则直接是勾上的。点「Skip」直接进入下一步；跳过的人之后由 adr-046 Decision 6 的固定提示最多再提醒两次，本 ADR 不另做计数。
-   2. **登录**：已登录则勾上；未登录时给 Sign in / Sign up，登录回跳回到 `/welcome`（用 Clerk 的 `redirect_url`，保留 `?src=install`；不用 adr-020 的 `src=extension`，它会把用户送到 `/extension/connected`）。
+   2. **登录**：已登录则勾上；未登录时标题为「Create your free account」，只给一个「Continue」按钮去 `/sign-in`（2026-11-12 修订，#868：原为 Sign in / Sign up 两个按钮），登录回跳回到 `/welcome`（用 Clerk 的 `redirect_url`，保留 `?src=install`；不用 adr-020 的 `src=extension`，它会把用户送到 `/extension/connected`）。
    3. **在示例文章上试一次**：`/welcome` 页内直接渲染示例文章（与 `/reader/sample` 同一份 `SAMPLE_ARTICLE`，容器同为 `#enx-reader-article`），**不调用 `requestReaderMode()`**。两个小项：
       - **启用**：提示「Click the Catglish icon in your toolbar, then *Read with Catglish*」（2026-11-12 修订，#862：标题改为「Turn on Catglish」，这句移到当前步骤展开的说明里；点词同样展开一句指向文章的说明）。扩展启用学习模式后在 `<html>` 上写 `data-enx-learning="on"`（Decision 4a），页面观察到即勾上，提示换成下一项。
       - **点一个词**：提示「Click any word in the article」。累计查词数 > 0 即勾上（现有 stats 接口 `/api/stats/overview` 的 `vocab.total`，即词表条目数，与 Home 同一信号；用户删过词时会少算。页面可见时每几秒重查一次，直到勾上）。
