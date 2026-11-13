@@ -96,7 +96,9 @@ function renderGuide(fromInstall = false, client = newClient()) {
 }
 
 const step = (title: string | RegExp) =>
-  screen.getByText(title).closest('li') as HTMLElement
+  screen
+    .getByText(title, { selector: 'li > div > p' })
+    .closest('li') as HTMLElement
 
 beforeEach(() => {
   jest.clearAllMocks()
@@ -136,10 +138,7 @@ it('shows signed-out pinned visitors one complete list with only sign-in expande
   expect(
     screen.queryByRole('button', { name: 'Next: finish setup' })
   ).not.toBeInTheDocument()
-  for (const title of [
-    'Click the Catglish icon in your toolbar, then Read with Catglish',
-    'Click any word in the article',
-  ]) {
+  for (const title of ['Turn on Catglish', 'Click any word in the article']) {
     expect(within(step(title)).getByLabelText('To do')).toBeInTheDocument()
     expect(within(step(title)).queryByRole('button')).not.toBeInTheDocument()
   }
@@ -187,7 +186,7 @@ it('expands only installation for a signed-out visitor without the extension', a
   await screen.findByRole('link', { name: 'Add to Chrome' })
   expect(screen.getAllByRole('listitem')).toHaveLength(5)
   expect(
-    within(step('Add Catglish to Chrome')).getByLabelText('To do')
+    within(step('Add Catglish to Chrome')).getByLabelText('Current step')
   ).toBeInTheDocument()
   expect(
     screen.queryByRole('link', { name: 'Sign in' })
@@ -375,7 +374,7 @@ it('ticks "Read with Catglish" when the extension marks the page', async () => {
   installExtension()
   renderGuide()
 
-  const enable = await screen.findByText(/then Read with Catglish/)
+  const enable = await screen.findByText('Turn on Catglish')
   expect(
     within(enable.closest('li') as HTMLElement).queryByLabelText('Done')
   ).not.toBeInTheDocument()
@@ -386,7 +385,7 @@ it('ticks "Read with Catglish" when the extension marks the page', async () => {
 
   await waitFor(() =>
     expect(
-      within(step(/then Read with Catglish/)).getByLabelText('Done')
+      within(step('Turn on Catglish')).getByLabelText('Done')
     ).toBeInTheDocument()
   )
 })
@@ -631,4 +630,81 @@ it('removes installation guidance once the extension is detected', async () => {
   expect(
     screen.queryByText(/With Enhanced protection enabled/)
   ).not.toBeInTheDocument()
+})
+
+it.each([
+  ['Add Catglish to Chrome', false, false, false, false],
+  ['Pin the Catglish icon', true, false, false, false],
+  ['Sign in', true, true, false, false],
+  ['Turn on Catglish', true, true, true, false],
+  ['Click any word in the article', true, true, true, true],
+] as const)(
+  'marks only %s as the current step',
+  async (title, installed, pinned, authenticated, learning) => {
+    if (installed) installExtension({ isOnToolbar: pinned })
+    if (authenticated) signedIn()
+    if (learning)
+      document.documentElement.setAttribute('data-enx-learning', 'on')
+    const { container } = renderGuide()
+    await waitFor(() =>
+      expect(container.querySelectorAll('[aria-current="step"]')).toHaveLength(
+        1
+      )
+    )
+    const current = step(title)
+    expect(current).toHaveAttribute('aria-current', 'step')
+    expect(
+      within(current).getByLabelText('Current step').querySelector('svg')
+    ).toHaveClass('lucide-circle-dot', 'text-brand')
+    expect(within(current).getByText(title, { selector: 'p' })).toHaveClass(
+      'font-medium',
+      'text-foreground'
+    )
+    for (const row of container.querySelectorAll('ol > li')) {
+      if (row !== current) expect(row).not.toHaveAttribute('aria-current')
+    }
+  }
+)
+
+it('expands enable, then moves the detail and marker to look-up when enabled', async () => {
+  signedIn()
+  installExtension({ isOnToolbar: true })
+  const { container } = renderGuide()
+  const hint = await screen.findByText(
+    'Click the Catglish icon in your toolbar, then Read with Catglish.'
+  )
+  expect(hint.parentElement).toHaveTextContent('↗')
+  const lookup = step('Click any word in the article')
+  expect(
+    within(lookup).getByLabelText('To do').querySelector('svg')
+  ).toHaveClass('lucide-circle', 'text-muted-foreground')
+  expect(within(lookup).getByText('Click any word in the article')).toHaveClass(
+    'text-muted-foreground'
+  )
+  expect(within(lookup).queryByText(/Try any word/)).not.toBeInTheDocument()
+
+  act(() => document.documentElement.setAttribute('data-enx-learning', 'on'))
+  await waitFor(() => expect(lookup).toHaveAttribute('aria-current', 'step'))
+  expect(container.querySelectorAll('[aria-current="step"]')).toHaveLength(1)
+  expect(
+    within(step('Turn on Catglish')).getByLabelText('Done').querySelector('svg')
+  ).toHaveClass('lucide-check', 'text-brand')
+  expect(
+    screen.queryByText(/Click the Catglish icon in your toolbar, then/)
+  ).not.toBeInTheDocument()
+  expect(
+    within(lookup).getByText('Try any word in the article on the right →')
+  ).toBeInTheDocument()
+  expect(
+    within(lookup).getByText('Try any word in the article below ↓')
+  ).toBeInTheDocument()
+})
+
+it('has no current step after the guide is finished', async () => {
+  signedIn()
+  mockOverview.mockResolvedValue(overview(1))
+  const { container } = renderGuide()
+  await screen.findByRole('heading', { name: "You're all set" })
+  expect(container.querySelector('[aria-current]')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Current step')).not.toBeInTheDocument()
 })

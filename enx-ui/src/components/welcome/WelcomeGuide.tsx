@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Circle, CircleSlash } from 'lucide-react'
+import { Check, Circle, CircleDot, CircleSlash } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useExtensionStatusPoll } from '@/hooks/useExtensionStatusPoll'
 import { useLearningModeMark } from '@/hooks/useLearningModeMark'
@@ -241,13 +241,17 @@ function StepList({
   return (
     <ol className="space-y-5">
       {steps.map((step) => (
-        <li key={step.id} className="flex gap-3 text-sm">
-          <StepIcon status={step.status} />
+        <li
+          key={step.id}
+          className="flex gap-3 text-sm"
+          aria-current={step.id === nextId ? 'step' : undefined}
+        >
+          <StepIcon status={step.status} current={step.id === nextId} />
           <div className="min-w-0 flex-1 space-y-2">
             <p
               className={
                 step.id === nextId
-                  ? 'text-foreground'
+                  ? 'font-medium text-foreground'
                   : step.status === 'skipped'
                     ? 'font-medium text-muted-foreground'
                     : 'text-muted-foreground'
@@ -269,7 +273,13 @@ function StepList({
   )
 }
 
-function StepIcon({ status }: { status: OnboardingStep['status'] }) {
+function StepIcon({
+  status,
+  current,
+}: {
+  status: OnboardingStep['status']
+  current: boolean
+}) {
   if (status === 'done') {
     return (
       <span className="mt-0.5 shrink-0" aria-label="Done">
@@ -281,6 +291,13 @@ function StepIcon({ status }: { status: OnboardingStep['status'] }) {
     return (
       <span className="mt-0.5 shrink-0" aria-label="Skipped">
         <CircleSlash aria-hidden className="size-4 text-muted-foreground" />
+      </span>
+    )
+  }
+  if (current) {
+    return (
+      <span className="mt-0.5 shrink-0" aria-label="Current step">
+        <CircleDot aria-hidden className="size-4 text-brand" />
       </span>
     )
   }
@@ -336,6 +353,27 @@ function StepDetail({
             Skip
           </Button>
         </div>
+      )
+    case 'enable':
+      return (
+        <p className="text-muted-foreground">
+          <span>
+            Click the {SITE.name} icon in your toolbar, then Read with{' '}
+            {SITE.name}.
+          </span>{' '}
+          <span aria-hidden="true" className="text-brand">
+            ↗
+          </span>
+        </p>
+      )
+    case 'look-up':
+      return (
+        <p className="text-muted-foreground">
+          <span className="hidden md:inline">
+            Try any word in the article on the right →
+          </span>
+          <span className="md:hidden">Try any word in the article below ↓</span>
+        </p>
       )
     default:
       return null

@@ -42,7 +42,7 @@ export const ONBOARDING_STEP_TITLES: Record<OnboardingStepId, string> = {
   install: `Add ${SITE.name} to Chrome`,
   'sign-in': 'Sign in',
   pin: `Pin the ${SITE.name} icon`,
-  enable: `Click the ${SITE.name} icon in your toolbar, then Read with ${SITE.name}`,
+  enable: `Turn on ${SITE.name}`,
   'look-up': 'Click any word in the article',
 }
 

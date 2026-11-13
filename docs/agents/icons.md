@@ -22,6 +22,7 @@ Before placing an icon, find its concept below and use that row's icon. A concep
 | Saved page | `BookmarkIcon` (outline = not saved, solid = saved) | `Bookmark` | popup Save card, Saved Pages |
 | Reading stats | `ChartBarIcon` | `BarChart3` | Reading Stats nav |
 | Done, on, known | `CheckIcon` / `CheckCircleIcon` (status) | `Check` | "Catglish is on", Mark as known, onboarding steps |
+| The current onboarding step | — | `CircleDot` | first step still to do on `/welcome` |
 | A step still to do | — | `Circle` | onboarding steps on `/welcome` (Home numbers its steps instead) |
 | A step the user skipped | — | `CircleSlash` | "Pin the Catglish icon" on `/welcome` after Skip |
 | Back to learning | `ArrowUturnLeftIcon` | `Undo2` | Mark as learning |
