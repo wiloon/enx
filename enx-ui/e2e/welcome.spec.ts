@@ -110,11 +110,7 @@ test.describe('/welcome (signed out)', () => {
     await expect(current.locator('p').first()).toHaveText(
       'Create your free account'
     )
-    await expect(
-      current.getByText(
-        'Free to start. Your saved words follow you to any device.'
-      )
-    ).toBeVisible()
+    await expect(current.getByText('Free to start.')).toBeVisible()
     await expect(current.getByRole('link')).toHaveCount(1)
     await expect(
       current.getByRole('link', { name: 'Continue', exact: true })
