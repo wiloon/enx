@@ -331,12 +331,12 @@ function StepDetail({
     case 'sign-in': {
       const redirect = encodeURIComponent(returnTo)
       return (
-        <div className="flex gap-2">
+        <div className="space-y-2">
+          <p className="text-muted-foreground">
+            Free to start. Your saved words follow you to any device.
+          </p>
           <Button asChild variant="brand" size="sm">
-            <Link href={`/sign-in?redirect_url=${redirect}`}>Sign in</Link>
-          </Button>
-          <Button asChild variant="outline" size="sm">
-            <Link href={`/sign-up?redirect_url=${redirect}`}>Sign up</Link>
+            <Link href={`/sign-in?redirect_url=${redirect}`}>Continue</Link>
           </Button>
         </div>
       )

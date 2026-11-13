@@ -228,4 +228,22 @@ describe('step titles per screen (Decision 6)', () => {
     expect(full.enable).toBe('Turn on Catglish')
     expect(full['look-up']).toBe('Click any word in the article')
   })
+
+  it('asks a signed-out visitor to create a free account', () => {
+    const state = { ...fresh, installed: true, isOnToolbar: true }
+    for (const view of ['full', 'signed-out'] as const) {
+      expect(titles(onboardingSteps(state, view).steps)['sign-in']).toBe(
+        'Create your free account'
+      )
+    }
+  })
+
+  it('keeps the done sign-in step titled Sign in', () => {
+    const state = { ...fresh, installed: true, signedIn: true }
+    for (const view of ['full', 'signed-out'] as const) {
+      expect(titles(onboardingSteps(state, view).steps)['sign-in']).toBe(
+        'Sign in'
+      )
+    }
+  })
 })

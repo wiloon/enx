@@ -115,7 +115,9 @@ export function onboardingSteps(
       title:
         id === 'install' && s === 'done'
           ? `${SITE.name} extension installed`
-          : stepTitle(id, view),
+          : id === 'sign-in' && s !== 'done'
+            ? 'Create your free account'
+            : stepTitle(id, view),
     }))
   const current = steps.find((step) => step.status === 'todo')?.id ?? null
   return { steps, current, complete: onboardingComplete(state) }

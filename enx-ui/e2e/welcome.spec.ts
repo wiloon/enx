@@ -21,7 +21,7 @@ test.describe('/welcome (signed out)', () => {
       page.getByRole('link', { name: 'Add to Chrome' })
     ).toBeVisible()
     await expect(
-      page.getByRole('link', { name: 'Sign in', exact: true })
+      page.getByRole('link', { name: 'Continue', exact: true })
     ).toHaveCount(0)
     await expect(
       page.getByRole('region', { name: 'Sample article' })
@@ -30,6 +30,44 @@ test.describe('/welcome (signed out)', () => {
       page.getByRole('heading', { name: 'The Quiet Power of a Short Walk' })
     ).toHaveCount(0)
     await expect(page).toHaveURL(/\/welcome$/)
+  })
+
+  test('asks a pinned installer to create a free account with one Continue', async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(window, 'chrome', {
+        configurable: true,
+        value: {
+          runtime: {
+            sendMessage: (
+              _id: string,
+              _message: unknown,
+              callback: (response: unknown) => void
+            ) => callback({ ok: true, isOnToolbar: true }),
+          },
+        },
+      })
+    })
+    await page.goto('/welcome?src=install')
+
+    const current = page.locator('[aria-current="step"]')
+    await expect(current.locator('p').first()).toHaveText(
+      'Create your free account'
+    )
+    await expect(
+      current.getByText(
+        'Free to start. Your saved words follow you to any device.'
+      )
+    ).toBeVisible()
+    await expect(current.getByRole('link')).toHaveCount(1)
+    await expect(
+      current.getByRole('link', { name: 'Continue', exact: true })
+    ).toHaveAttribute(
+      'href',
+      `/sign-in?redirect_url=${encodeURIComponent('/welcome?src=install')}`
+    )
+    await expect(page.getByRole('link', { name: /sign up/i })).toHaveCount(0)
   })
 })
 
@@ -352,7 +390,7 @@ test('detects installation without flashing a guessed result, and updates after 
   const skipPin = current.getByRole('button', { name: 'Skip', exact: true })
   await expect(skipPin).toBeVisible()
   await expect(
-    page.getByRole('link', { name: 'Sign in', exact: true })
+    page.getByRole('link', { name: 'Continue', exact: true })
   ).toHaveCount(0)
   const styles = await page.locator('ol > li > div > p').evaluateAll((titles) =>
     titles.map((title) => ({
@@ -391,13 +429,13 @@ test('detects installation without flashing a guessed result, and updates after 
     page
       .locator('ol > li')
       .nth(2)
-      .getByRole('link', { name: 'Sign in', exact: true })
+      .getByRole('link', { name: 'Continue', exact: true })
   ).toBeVisible()
-  await expect(
-    page.getByRole('link', { name: 'Sign up', exact: true })
-  ).toBeVisible()
+  await expect(page.getByRole('link', { name: /sign up/i })).toHaveCount(0)
   await expect(skipPin).toHaveCount(0)
-  await expect(page.getByRole('link', { name: 'Sign in' })).toBeInViewport()
+  await expect(
+    page.getByRole('link', { name: 'Continue', exact: true })
+  ).toBeInViewport()
   await page.screenshot({
     animations: 'disabled',
     path: 'test-results/welcome-installed-mobile.png',
