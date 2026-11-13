@@ -26,6 +26,17 @@ adr-046 去掉了正文里的「Article processed • Click words for translatio
 - Welcome 检测扩展时显示转圈与「Checking extension…」，检测完成前不猜测安装结果。未安装时解释用途并提供「Add to Chrome」；已安装时安装这一步在步骤列表里显示为已完成（「Catglish extension installed」，与其他已完成步骤同样的勾和弱化文字，不另做卡片，也没有「Next: finish setup」，见 2026-11-12 修订），安装完成只代表安装这一步完成，后续固定图标、亲手启用和查词保持不变。
 - 扩展已通过 Chrome Web Store 审核，以 Unlisted 发布，正式条目 ID 为 `combdcldlodkikjfhjbdbogjlfmnbjkf`。安装链接使用 `https://chromewebstore.google.com/detail/catglish-learn-english-as/combdcldlodkikjfhjbdbogjlfmnbjkf`；站点常量提供正式 ID 和链接作为默认值，运行时环境仍可覆盖。安装链接为空时也使用正式链接，替代上线前的占位。保留原有安装后复用 Welcome 标签页的行为。
 
+## 2026-11-12 修订（#862，当前步骤标记；owner 用新账号在生产环境走引导后提出）
+
+- 问题：当前步骤与后面的步骤用同一个灰色空心圆，只差标题颜色深浅。安装、固定、登录当前时有展开的说明和按钮，本身够醒目；启用、点词没有展开内容，当前时只是一行字，看不出该做哪一步。
+- 当前步骤（第一个未完成的）的图标改为品牌色的带点圆（`CircleDot`），标题加 `font-medium`，所在行加 `aria-current="step"`；已完成仍是品牌色的勾，跳过仍是 `CircleSlash`，之后的步骤仍是灰色空心圆。品牌色表示「做完的和正在做的」，灰色表示「还没轮到」。列表里任何时候只有一个 `aria-current`。
+- 启用、点词当前时也展开说明，与其他步骤同为「标题 + 说明」：
+  - 启用：`/welcome` 上的标题缩短为「Turn on Catglish」，说明为「Click the Catglish icon in your toolbar, then *Read with Catglish*.」，带一个指向工具栏的右上箭头。
+  - 点词：标题不变，说明指向示例文章：双栏布局时文章在右，写「on the right →」；窄屏文章在下方，写「below ↓」。按切换双栏的同一断点用 CSS 选，不用 JS。
+  - Home 清单的标题不变（Decision 6 的 Home 专用标题）。
+- 不做：当前行的底色或卡片（会和右边的示例文章抢注意力，启用的两行标题配色块偏重）；左侧品牌色竖线（以上三项做完仍不够时再考虑）；「Step N of M」计数（勾已经表达了进度）。
+- 这条修订把 #846 修订里去掉的 `aria-current` 加回来，但对象不同：#846 去掉的是已删除的「Next: finish setup」按钮上的高亮，这里是步骤列表里当前步骤所在的行。
+
 ## 2026-11-12 修订（#852，owner 在真实 Chrome 中重装扩展后提出）
 
 - 固定图标排到登录之前，`/welcome` 的步骤顺序改为：安装 → 固定图标 → 登录 → 启用 → 点词（Decision 2）。
@@ -76,7 +87,7 @@ A、B 的区别只是「进来时扩展装没装」，页面能直接探测到�
    1. **固定图标**（可跳过；2026-11-12 修订，#852：排在登录之前）：一张示意图，展示「点拼图图标 → 点 Catglish 旁的图钉」（静态图片，用本地构建的扩展截取，放在 enx-ui 的 `public/` 下；第一版先用手绘示意图 `public/onboarding/pin-icon.svg`，截图后替换）。页面在这一步可见、且未跳过时每 2 秒经 `enx:status` 查询 `isOnToolbar`，固定后自动勾上；进来时已固定（包括被 Chrome 自动固定的用户）则直接是勾上的。点「Skip」直接进入下一步；跳过的人之后由 adr-046 Decision 6 的固定提示最多再提醒两次，本 ADR 不另做计数。
    2. **登录**：已登录则勾上；未登录时给 Sign in / Sign up，登录回跳回到 `/welcome`（用 Clerk 的 `redirect_url`，保留 `?src=install`；不用 adr-020 的 `src=extension`，它会把用户送到 `/extension/connected`）。
    3. **在示例文章上试一次**：`/welcome` 页内直接渲染示例文章（与 `/reader/sample` 同一份 `SAMPLE_ARTICLE`，容器同为 `#enx-reader-article`），**不调用 `requestReaderMode()`**。两个小项：
-      - **启用**：提示「Click the Catglish icon in your toolbar, then *Read with Catglish*」。扩展启用学习模式后在 `<html>` 上写 `data-enx-learning="on"`（Decision 4a），页面观察到即勾上，提示换成下一项。
+      - **启用**：提示「Click the Catglish icon in your toolbar, then *Read with Catglish*」（2026-11-12 修订，#862：标题改为「Turn on Catglish」，这句移到当前步骤展开的说明里；点词同样展开一句指向文章的说明）。扩展启用学习模式后在 `<html>` 上写 `data-enx-learning="on"`（Decision 4a），页面观察到即勾上，提示换成下一项。
       - **点一个词**：提示「Click any word in the article」。累计查词数 > 0 即勾上（现有 stats 接口 `/api/stats/overview` 的 `vocab.total`，即词表条目数，与 Home 同一信号；用户删过词时会少算。页面可见时每几秒重查一次，直到勾上）。
       - 用户未登录扩展时点「Read with Catglish」会得到扩展自己的登录提示；登录（第 2 步）本来就在前面，不另做处理。
 3. **完成**：第 3 步两项都勾上后写入 `onboardingCompleted`，显示「You're all set」，然后放手。固定图标没做也没跳过不影响完成；完成态一旦出现就保持，之后关掉学习模式也不回到步骤列表：
