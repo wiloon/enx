@@ -5,13 +5,54 @@ import { SITE } from '../src/lib/site'
 // installs from the Chrome Web Store usually has no account yet.
 
 test.describe('/welcome (signed out)', () => {
-  test('shows all steps in one column without the article', async ({
+  test('shows the steps beside the word-lookup illustration under the brand mark', async ({
     page,
   }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto('/welcome')
+    const heading = page.getByRole('heading', {
+      name: 'Welcome to Catglish',
+      exact: true,
+    })
+    await expect(heading).toBeVisible()
+
+    const brand = page.getByRole('banner')
+    await expect(brand.getByTestId('logo-mark')).toBeVisible()
+    await expect(brand).toContainText('Catglish')
+    await expect(brand.getByRole('link')).toHaveCount(0)
+    const brandBox = (await brand.getByTestId('logo-mark').boundingBox())!
+    const headingBox = (await heading.boundingBox())!
+    expect(brandBox.y + brandBox.height).toBeLessThanOrEqual(headingBox.y)
+    expect(brandBox.x).toBeLessThanOrEqual(headingBox.x)
+
+    const illustration = page.getByRole('img', {
+      name: 'An English article: click a word and Catglish shows its meaning in a small card',
+    })
+    await expect(illustration).toBeVisible()
+    await expect(illustration).toHaveAttribute(
+      'src',
+      '/onboarding/word-lookup.svg'
+    )
+    expect(
+      await illustration.evaluate((el) => (el as HTMLImageElement).naturalWidth)
+    ).toBeGreaterThan(0)
+    const caption = page.getByText(
+      'Click any word while you read — see its meaning in context.'
+    )
+    await expect(caption).toBeVisible()
+    const guideBox = (await heading.locator('..').boundingBox())!
+    const imageBox = (await illustration.boundingBox())!
+    expect(imageBox.x).toBeGreaterThan(guideBox.x + guideBox.width)
+    expect(imageBox.y).toBeLessThan(guideBox.y + guideBox.height)
+
+    const skip = page.getByRole('button', { name: 'Skip setup', exact: true })
+    await expect(skip).toHaveCSS('text-decoration-line', 'underline')
+    const muted = await caption.evaluate((el) => getComputedStyle(el).color)
+    await expect(skip).toHaveCSS('color', muted)
     await expect(
-      page.getByRole('heading', { name: 'Welcome to Catglish', exact: true })
-    ).toBeVisible()
+      page.getByText('You can finish it later from your dashboard.')
+    ).toHaveCount(0)
+
     const steps = page.locator('ol > li')
     await expect(steps).toHaveCount(5)
     await expect(steps.locator('p').first()).toHaveText(
@@ -30,6 +71,20 @@ test.describe('/welcome (signed out)', () => {
       page.getByRole('heading', { name: 'The Quiet Power of a Short Walk' })
     ).toHaveCount(0)
     await expect(page).toHaveURL(/\/welcome$/)
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme })
+      await page.evaluate(
+        (dark) => document.documentElement.classList.toggle('dark', dark),
+        colorScheme === 'dark'
+      )
+      await page.screenshot({
+        path: `test-results/welcome-signed-out-illustration-${colorScheme}.png`,
+        animations: 'disabled',
+      })
+    }
+
+    await skip.click()
+    await expect(page).toHaveURL(/\/$/)
   })
 
   test('asks a pinned installer to create a free account with one Continue', async ({
@@ -205,6 +260,16 @@ test.describe('/welcome (signed in)', () => {
     await expect(
       page.getByRole('img', { name: /Chrome toolbar/ })
     ).toBeVisible()
+    await expect(
+      page.getByRole('img', { name: /click a word and Catglish shows/ })
+    ).toHaveCount(0)
+    await expect(
+      page.getByRole('banner').getByTestId('logo-mark')
+    ).toBeVisible()
+    await expect(page.getByRole('banner').getByRole('link')).toHaveCount(0)
+    await expect(
+      page.getByText('You can finish it later from your dashboard.')
+    ).toBeVisible()
     await page.setViewportSize({ width: 1280, height: 900 })
     const guide = page
       .getByRole('heading', { name: 'Welcome to Catglish', exact: true })
@@ -214,10 +279,17 @@ test.describe('/welcome (signed in)', () => {
     expect(left).not.toBeNull()
     expect(right).not.toBeNull()
     expect(right!.x).toBeGreaterThan(left!.x + left!.width)
-    await page.screenshot({
-      path: 'test-results/welcome-signed-in-desktop.png',
-      animations: 'disabled',
-    })
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme })
+      await page.evaluate(
+        (dark) => document.documentElement.classList.toggle('dark', dark),
+        colorScheme === 'dark'
+      )
+      await page.screenshot({
+        path: `test-results/welcome-signed-in-desktop-${colorScheme}.png`,
+        animations: 'disabled',
+      })
+    }
     await page.setViewportSize({ width: 375, height: 812 })
     expect(
       await page.evaluate(
