@@ -8,6 +8,7 @@ import {
   Globe,
   Home,
   CircleHelp,
+  ListChecks,
   MessageSquare,
   Search,
   Settings,
@@ -52,6 +53,9 @@ export const NAV_FOOTER: NavItem[] = [
   // Invite links (ADR-051 Decision 8).
   { label: 'Invite friends', href: '/invite', icon: Gift },
   { label: 'Help', href: '/help', icon: CircleHelp },
+  // Back to /welcome, which shows a finished user their extension status
+  // (ADR-047 #873).
+  { label: 'Check setup', href: '/welcome', icon: ListChecks },
   // Back to the marketing site (ADR-027 decision 4). Same Next.js app, so it
   // is a plain in-app link, not an external one.
   { label: 'Back to site', href: '/', icon: Globe },
