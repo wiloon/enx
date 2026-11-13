@@ -1,7 +1,8 @@
 // The query count (查词次数) of a word: how many times the user has looked it
 // up. It decides the word's review bucket and so its underline colour
-// (wordHighlight.ts). The lookup GET only reads it; one click-to-lookup adds
-// one with POST /api/me/word-lookups (ADR-059 Decision 3).
+// (wordHighlight.ts). Definition reads with QUERY or from the cache leave it
+// unchanged; one click-to-lookup adds one with POST /api/me/word-lookups
+// (ADR-079).
 
 import type { WordData } from '@/types'
 
