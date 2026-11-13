@@ -118,19 +118,24 @@ it('shows signed-out pinned visitors one complete list with only sign-in expande
   installExtension({ isOnToolbar: true })
   renderGuide()
 
-  await screen.findByRole('link', { name: 'Sign in' })
+  await screen.findByRole('link', { name: 'Continue' })
   expect(
     within(step('Catglish extension installed')).getByLabelText('Done')
   ).toBeInTheDocument()
   expect(screen.getAllByRole('listitem')).toHaveLength(5)
-  expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
+  const signIn = step('Create your free account')
+  expect(signIn).toHaveAttribute('aria-current', 'step')
+  expect(
+    within(signIn).getByText(
+      'Free to start. Your saved words follow you to any device.'
+    )
+  ).toHaveClass('text-muted-foreground')
+  expect(within(signIn).getAllByRole('link')).toHaveLength(1)
+  expect(screen.getByRole('link', { name: 'Continue' })).toHaveAttribute(
     'href',
     '/sign-in?redirect_url=%2Fwelcome'
   )
-  expect(screen.getByRole('link', { name: 'Sign up' })).toHaveAttribute(
-    'href',
-    '/sign-up?redirect_url=%2Fwelcome'
-  )
+  expect(screen.queryByRole('link', { name: /sign up/i })).toBeNull()
   expect(screen.queryByRole('button', { name: 'Skip' })).not.toBeInTheDocument()
   expect(
     screen.queryByRole('img', { name: /Chrome toolbar/ })
@@ -189,10 +194,10 @@ it('expands only installation for a signed-out visitor without the extension', a
     within(step('Add Catglish to Chrome')).getByLabelText('Current step')
   ).toBeInTheDocument()
   expect(
-    screen.queryByRole('link', { name: 'Sign in' })
+    screen.queryByRole('link', { name: 'Continue' })
   ).not.toBeInTheDocument()
   expect(
-    screen.queryByRole('link', { name: 'Sign up' })
+    screen.queryByRole('link', { name: /sign up/i })
   ).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Skip' })).not.toBeInTheDocument()
 })
@@ -202,7 +207,7 @@ it('never flashes the install step at a visitor who has the extension', async ()
   renderGuide()
 
   expect(screen.queryByText('Add Catglish to Chrome')).not.toBeInTheDocument()
-  await screen.findByRole('link', { name: 'Sign in' })
+  await screen.findByRole('link', { name: 'Continue' })
   expect(screen.queryByText('Add Catglish to Chrome')).not.toBeInTheDocument()
 })
 
@@ -210,8 +215,8 @@ it('brings an installing visitor back to /welcome?src=install after sign-in', as
   installExtension({ isOnToolbar: true })
   renderGuide(true)
 
-  await screen.findByRole('link', { name: 'Sign in' })
-  expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
+  await screen.findByRole('link', { name: 'Continue' })
+  expect(screen.getByRole('link', { name: 'Continue' })).toHaveAttribute(
     'href',
     '/sign-in?redirect_url=%2Fwelcome%3Fsrc%3Dinstall'
   )
@@ -314,10 +319,10 @@ it('advances a signed-out visitor from Pin to sign-in when the toolbar status ch
 
   await screen.findByRole('button', { name: 'Skip' })
   expect(
-    screen.queryByRole('link', { name: 'Sign in' })
+    screen.queryByRole('link', { name: 'Continue' })
   ).not.toBeInTheDocument()
   expect(
-    screen.queryByRole('link', { name: 'Sign up' })
+    screen.queryByRole('link', { name: /sign up/i })
   ).not.toBeInTheDocument()
   expect(
     screen.getByRole('img', { name: /Chrome toolbar/ })
@@ -326,8 +331,8 @@ it('advances a signed-out visitor from Pin to sign-in when the toolbar status ch
     cb({ ok: true, isOnToolbar: true })
   )
 
-  await screen.findByRole('link', { name: 'Sign in' })
-  expect(screen.getByRole('link', { name: 'Sign up' })).toBeInTheDocument()
+  await screen.findByRole('link', { name: 'Continue' })
+  expect(screen.queryByRole('link', { name: /sign up/i })).toBeNull()
   expect(
     within(step('Pin the Catglish icon')).getByLabelText('Done')
   ).toBeInTheDocument()
@@ -343,9 +348,9 @@ it('advances a signed-out visitor to sign-in and stops polling after skipping Pi
 
   fireEvent.click(await screen.findByRole('button', { name: 'Skip' }))
   expect(
-    await screen.findByRole('link', { name: 'Sign in' })
+    await screen.findByRole('link', { name: 'Continue' })
   ).toBeInTheDocument()
-  expect(screen.getByRole('link', { name: 'Sign up' })).toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: /sign up/i })).toBeNull()
   expect(
     within(step('Pin the Catglish icon')).getByLabelText('Skipped')
   ).toBeInTheDocument()
@@ -635,7 +640,7 @@ it('removes installation guidance once the extension is detected', async () => {
 it.each([
   ['Add Catglish to Chrome', false, false, false, false],
   ['Pin the Catglish icon', true, false, false, false],
-  ['Sign in', true, true, false, false],
+  ['Create your free account', true, true, false, false],
   ['Turn on Catglish', true, true, true, false],
   ['Click any word in the article', true, true, true, true],
 ] as const)(
