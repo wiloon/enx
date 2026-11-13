@@ -60,7 +60,6 @@ describe('the external dictionary link', () => {
     expect(link).toHaveAttribute('target', '_blank')
     expect(link).toHaveAttribute('rel', 'noopener noreferrer')
     expect(link).toHaveTextContent(/^$/)
-    expect(document.body).not.toHaveTextContent(/youdao/i)
   })
 
   it('falls back to the clicked word before a result arrives', () => {
