@@ -322,7 +322,7 @@ export default function WordPopover({
               href={externalDictionaryUrl(currentWord?.English || word)}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center text-brand hover:text-brand/80"
+              className="inline-flex items-center text-brand hover:text-brand/80 active:text-brand/70 focus-visible:outline-2 focus-visible:outline-brand"
               title="Open in Cambridge Dictionary"
               aria-label="Open in Cambridge Dictionary"
             >

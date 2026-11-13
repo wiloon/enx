@@ -249,6 +249,16 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     expect(await link.getAttribute('href')).toBe(
       `https://dictionary.cambridge.org/search/direct/?datasetsearch=english-chinese-simplified&q=${encodeURIComponent(clickedWord)}`
     )
+    await page.keyboard.press('Tab')
+    await link.focus()
+    await expect(link).toHaveCSS('outline-style', 'solid')
+    await expect(link).toHaveCSS('outline-width', '2px')
+    await link.hover()
+    const hoverColor = await link.evaluate(el => getComputedStyle(el).color)
+    await page.mouse.down()
+    const pressedColor = await link.evaluate(el => getComputedStyle(el).color)
+    await page.mouse.up()
+    expect(pressedColor).not.toBe(hoverColor)
   })
 
   test('§4.1: speaker plays the word on a popup opened from a selection', async ({
