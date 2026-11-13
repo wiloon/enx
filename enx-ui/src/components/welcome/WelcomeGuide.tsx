@@ -113,7 +113,7 @@ export default function WelcomeGuide({
 
   const extension = useExtensionStatusPoll({
     enabled: !finished && landing !== 'app',
-    watchToolbar: landing === 'steps' && !pinSkipped,
+    watchToolbar: (landing === 'steps' || landing === 'sign-in') && !pinSkipped,
     intervalMs: pollMs,
   })
 

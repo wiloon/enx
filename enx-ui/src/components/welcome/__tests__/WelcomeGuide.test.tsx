@@ -112,8 +112,8 @@ beforeEach(() => {
   mockOverview.mockResolvedValue(overview(0))
 })
 
-it('shows signed-out installed visitors one complete list with only sign-in expanded', async () => {
-  installExtension()
+it('shows signed-out pinned visitors one complete list with only sign-in expanded', async () => {
+  installExtension({ isOnToolbar: true })
   renderGuide()
 
   await screen.findByRole('link', { name: 'Sign in' })
@@ -137,7 +137,6 @@ it('shows signed-out installed visitors one complete list with only sign-in expa
     screen.queryByRole('button', { name: 'Next: finish setup' })
   ).not.toBeInTheDocument()
   for (const title of [
-    'Pin the Catglish icon',
     'Click the Catglish icon in your toolbar, then Read with Catglish',
     'Click any word in the article',
   ]) {
@@ -200,7 +199,7 @@ it('expands only installation for a signed-out visitor without the extension', a
 })
 
 it('never flashes the install step at a visitor who has the extension', async () => {
-  installExtension()
+  installExtension({ isOnToolbar: true })
   renderGuide()
 
   expect(screen.queryByText('Add Catglish to Chrome')).not.toBeInTheDocument()
@@ -209,7 +208,7 @@ it('never flashes the install step at a visitor who has the extension', async ()
 })
 
 it('brings an installing visitor back to /welcome?src=install after sign-in', async () => {
-  installExtension()
+  installExtension({ isOnToolbar: true })
   renderGuide(true)
 
   await screen.findByRole('link', { name: 'Sign in' })
@@ -307,6 +306,53 @@ it('stops asking the extension for its status once the pin step is skipped', asy
   const afterSkip = statusCalls()
   await settle()
 
+  expect(statusCalls()).toBe(afterSkip)
+})
+
+it('advances a signed-out visitor from Pin to sign-in when the toolbar status changes', async () => {
+  installExtension()
+  renderGuide()
+
+  await screen.findByRole('button', { name: 'Skip' })
+  expect(
+    screen.queryByRole('link', { name: 'Sign in' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('link', { name: 'Sign up' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.getByRole('img', { name: /Chrome toolbar/ })
+  ).toBeInTheDocument()
+  sendMessage.mockImplementation((_id, _message, cb) =>
+    cb({ ok: true, isOnToolbar: true })
+  )
+
+  await screen.findByRole('link', { name: 'Sign in' })
+  expect(screen.getByRole('link', { name: 'Sign up' })).toBeInTheDocument()
+  expect(
+    within(step('Pin the Catglish icon')).getByLabelText('Done')
+  ).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Skip' })).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('img', { name: /Chrome toolbar/ })
+  ).not.toBeInTheDocument()
+})
+
+it('advances a signed-out visitor to sign-in and stops polling after skipping Pin', async () => {
+  installExtension()
+  renderGuide()
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Skip' }))
+  expect(
+    await screen.findByRole('link', { name: 'Sign in' })
+  ).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Sign up' })).toBeInTheDocument()
+  expect(
+    within(step('Pin the Catglish icon')).getByLabelText('Skipped')
+  ).toBeInTheDocument()
+  await settle()
+  const afterSkip = statusCalls()
+  await settle()
   expect(statusCalls()).toBe(afterSkip)
 })
 

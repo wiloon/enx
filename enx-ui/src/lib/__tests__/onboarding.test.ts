@@ -61,8 +61,8 @@ describe('onboardingSteps (ADR-047 Decision 2)', () => {
     const progress = onboardingSteps(fresh)
     expect(progress.steps.map((s) => s.id)).toEqual([
       'install',
-      'sign-in',
       'pin',
+      'sign-in',
       'enable',
       'look-up',
     ])
@@ -90,7 +90,19 @@ describe('onboardingSteps (ADR-047 Decision 2)', () => {
         status: 'done',
         title: 'Catglish extension installed',
       })
-      expect(progress.current).toBe('sign-in')
+      expect(progress.current).toBe('pin')
+    }
+  )
+
+  it.each(['full', 'signed-out'] as const)(
+    'advances to sign-in when Pin is done or skipped in %s',
+    (view) => {
+      for (const pinState of [{ isOnToolbar: true }, { pinSkipped: true }]) {
+        expect(
+          onboardingSteps({ ...fresh, installed: true, ...pinState }, view)
+            .current
+        ).toBe('sign-in')
+      }
     }
   )
 
@@ -173,14 +185,14 @@ describe('the steps each screen shows', () => {
   it('shows all five steps to a signed-out visitor in either installation state', () => {
     expect(ids(onboardingSteps(fresh, 'signed-out').steps)).toEqual([
       'install',
-      'sign-in',
       'pin',
+      'sign-in',
       'enable',
       'look-up',
     ])
     expect(
       ids(onboardingSteps({ ...fresh, installed: true }, 'signed-out').steps)
-    ).toEqual(['install', 'sign-in', 'pin', 'enable', 'look-up'])
+    ).toEqual(['install', 'pin', 'sign-in', 'enable', 'look-up'])
   })
 
   it('leaves sign-in and pinning off the Home checklist (Decision 6)', () => {

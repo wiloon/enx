@@ -88,8 +88,8 @@ export type OnboardingView =
   | 'home'
 
 const VIEW_STEPS: Record<OnboardingView, ReadonlySet<OnboardingStepId>> = {
-  full: new Set(['install', 'sign-in', 'pin', 'enable', 'look-up']),
-  'signed-out': new Set(['install', 'sign-in', 'pin', 'enable', 'look-up']),
+  full: new Set(['install', 'pin', 'sign-in', 'enable', 'look-up']),
+  'signed-out': new Set(['install', 'pin', 'sign-in', 'enable', 'look-up']),
   home: new Set(['install', 'enable', 'look-up']),
 }
 
@@ -98,8 +98,8 @@ export function onboardingSteps(
   view: OnboardingView = 'full'
 ): OnboardingProgress {
   const entries: [OnboardingStepId, OnboardingStepStatus][] = [
-    ['sign-in', stepStatus(state.signedIn)],
     ['pin', stepStatus(state.isOnToolbar, state.pinSkipped)],
+    ['sign-in', stepStatus(state.signedIn)],
     ['enable', stepStatus(state.learningEnabled)],
     ['look-up', stepStatus(state.hasLookedUp)],
   ]
