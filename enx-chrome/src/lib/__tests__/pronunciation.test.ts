@@ -1,103 +1,108 @@
-import { playPronunciation } from '../pronunciation'
+import { pickEnglishVoice, playPronunciation } from '../pronunciation'
 
-class FakeAudio {
-  static instances: FakeAudio[] = []
-  url: string
-  playResult: Promise<void>
-  private errorListeners: Array<() => void> = []
+const voice = (name: string, lang: string) =>
+  ({ name, lang }) as SpeechSynthesisVoice
 
-  constructor(url: string) {
-    this.url = url
-    this.playResult = Promise.resolve()
-    FakeAudio.instances.push(this)
-  }
+describe('pickEnglishVoice', () => {
+  it('prefers an en-US voice', () => {
+    const us = voice('US', 'en-US')
+    expect(pickEnglishVoice([voice('GB', 'en-GB'), us])).toBe(us)
+  })
 
-  addEventListener(event: string, listener: () => void) {
-    if (event === 'error') this.errorListeners.push(listener)
-  }
+  it('takes any English voice when there is no en-US one', () => {
+    const gb = voice('GB', 'en-GB')
+    expect(pickEnglishVoice([voice('DE', 'de-DE'), gb])).toBe(gb)
+  })
 
-  play() {
-    return this.playResult
-  }
-
-  emitError() {
-    this.errorListeners.forEach(listener => listener())
-  }
-}
+  it('returns undefined when no voice is English', () => {
+    expect(
+      pickEnglishVoice([voice('DE', 'de-DE'), voice('ZH', 'zh-CN')])
+    ).toBeUndefined()
+  })
+})
 
 describe('playPronunciation', () => {
   let speakMock: jest.Mock
+  let cancelMock: jest.Mock
+  let voices: SpeechSynthesisVoice[]
+  const calls: string[] = []
 
   beforeEach(() => {
-    FakeAudio.instances = []
-    // @ts-expect-error jsdom's Audio doesn't implement playback; swap in a fake.
-    globalThis.Audio = FakeAudio
-    speakMock = jest.fn()
+    calls.length = 0
+    voices = []
+    speakMock = jest.fn(() => calls.push('speak'))
+    cancelMock = jest.fn(() => calls.push('cancel'))
     Object.defineProperty(window, 'speechSynthesis', {
-      value: { speak: speakMock },
+      value: {
+        speak: speakMock,
+        cancel: cancelMock,
+        getVoices: () => voices,
+      },
       configurable: true,
     })
     // jsdom doesn't implement the Web Speech API at all.
     // @ts-expect-error minimal stand-in for the constructor
     globalThis.SpeechSynthesisUtterance = jest.fn(function (
-      this: { text: string; lang: string },
+      this: { text: string; lang: string; voice: SpeechSynthesisVoice | null },
       text: string
     ) {
       this.text = text
       this.lang = ''
+      this.voice = null
     })
   })
 
   it('does nothing for an empty word', () => {
+    voices = [voice('US', 'en-US')]
     playPronunciation('')
-    expect(FakeAudio.instances).toHaveLength(0)
-  })
-
-  it('plays the Youdao audio URL for the word', () => {
-    playPronunciation('hello')
-    expect(FakeAudio.instances).toHaveLength(1)
-    expect(FakeAudio.instances[0].url).toBe(
-      'https://dict.youdao.com/dictvoice?audio=hello&type=2'
-    )
-  })
-
-  it('does not fall back to speech synthesis when playback succeeds', async () => {
-    playPronunciation('hello')
-    await Promise.resolve()
     expect(speakMock).not.toHaveBeenCalled()
   })
 
-  it('falls back to speech synthesis when playback rejects', async () => {
-    const instance = new FakeAudio('unused')
-    instance.playResult = Promise.reject(new Error('blocked'))
-    // @ts-expect-error swap in the pre-built rejecting instance
-    globalThis.Audio = jest.fn(() => instance)
+  it('cancels, then speaks the word in en-US with the selected English voice', () => {
+    const us = voice('US', 'en-US')
+    voices = [voice('GB', 'en-GB'), us]
 
     playPronunciation('hello')
-    await Promise.resolve().then(() => Promise.resolve())
+
+    expect(calls).toEqual(['cancel', 'speak'])
+    const utterance = speakMock.mock.calls[0][0]
+    expect(utterance.text).toBe('hello')
+    expect(utterance.lang).toBe('en-US')
+    expect(utterance.voice).toBe(us)
+  })
+
+  it('does not speak when the voice list has no English voice', () => {
+    voices = [voice('DE', 'de-DE')]
+    playPronunciation('hello')
+    expect(speakMock).not.toHaveBeenCalled()
+  })
+
+  it('speaks in en-US with no voice assigned while the voice list is empty', () => {
+    playPronunciation('hello')
 
     expect(speakMock).toHaveBeenCalledTimes(1)
     const utterance = speakMock.mock.calls[0][0]
     expect(utterance.text).toBe('hello')
     expect(utterance.lang).toBe('en-US')
+    expect(utterance.voice).toBeNull()
   })
 
-  it('falls back to speech synthesis when the audio element errors', () => {
+  it('selects an English voice once the empty voice list has loaded', () => {
     playPronunciation('hello')
-    FakeAudio.instances[0].emitError()
-    expect(speakMock).toHaveBeenCalledTimes(1)
+    const us = voice('US', 'en-US')
+    voices = [us]
+
+    playPronunciation('world')
+
+    expect(speakMock).toHaveBeenCalledTimes(2)
+    const utterance = speakMock.mock.calls[1][0]
+    expect(utterance.text).toBe('world')
+    expect(utterance.voice).toBe(us)
   })
 
-  it('speaks only once when both play() rejects and the element errors', async () => {
-    const instance = new FakeAudio('unused')
-    instance.playResult = Promise.reject(new Error('blocked'))
-    // @ts-expect-error swap in the pre-built rejecting instance
-    globalThis.Audio = jest.fn(() => instance)
-
-    playPronunciation('hello')
-    instance.emitError()
-    await Promise.resolve().then(() => Promise.resolve())
-
-    expect(speakMock).toHaveBeenCalledTimes(1)
+  it('does not throw when the browser has no speechSynthesis', () => {
+    // @ts-expect-error simulate a browser without the Web Speech API
+    delete window.speechSynthesis
+    expect(() => playPronunciation('hello')).not.toThrow()
   })
 })

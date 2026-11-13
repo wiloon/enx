@@ -1,33 +1,36 @@
 // enx-ui/src/lib/pronunciation.ts is a copy of this file; change both together.
 //
-// Youdao's dictvoice endpoint returns real human recordings and needs no API
-// key, but it's an unofficial endpoint that can go down or rate-limit. The
-// Web Speech API is the fallback: lower quality but built into the browser,
-// so pronunciation playback never fully fails.
-const YOUDAO_AUDIO_URL = (word: string) =>
-  `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(word)}&type=2`
+// Words are spoken by the browser's own speech synthesis (Web Speech API), so
+// no word leaves the browser for a third-party audio service.
 
-function speakWithBrowserTts(word: string): void {
-  if (!('speechSynthesis' in window)) return
-  const utterance = new SpeechSynthesisUtterance(word)
-  utterance.lang = 'en-US'
-  window.speechSynthesis.speak(utterance)
+const langMatches = (pattern: RegExp) => (voice: SpeechSynthesisVoice) =>
+  pattern.test(voice.lang.replace('_', '-'))
+
+export function pickEnglishVoice(
+  voices: readonly SpeechSynthesisVoice[]
+): SpeechSynthesisVoice | undefined {
+  return (
+    voices.find(langMatches(/^en-US$/i)) ??
+    voices.find(langMatches(/^en(-|$)/i))
+  )
 }
 
 export function playPronunciation(word: string): void {
   if (!word) return
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
+  const synth = window.speechSynthesis
 
-  // A failed Youdao request rejects the play() promise *and* fires the audio
-  // element's 'error' event, so both fallback paths run and the browser TTS
-  // speaks the word twice. Guard so the fallback fires at most once.
-  let fellBack = false
-  const fallBack = () => {
-    if (fellBack) return
-    fellBack = true
-    speakWithBrowserTts(word)
-  }
+  // Voices can load after the first call ('voiceschanged'), so read the list
+  // every time. While it is still empty, let the browser pick from the lang.
+  const voices = synth.getVoices()
+  const voice = pickEnglishVoice(voices)
+  if (voices.length > 0 && !voice) return
 
-  const audio = new Audio(YOUDAO_AUDIO_URL(word))
-  audio.addEventListener('error', fallBack, { once: true })
-  audio.play().catch(fallBack)
+  const utterance = new SpeechSynthesisUtterance(word)
+  utterance.lang = 'en-US'
+  if (voice) utterance.voice = voice
+
+  // Interrupt the word still speaking instead of queueing behind it.
+  synth.cancel()
+  synth.speak(utterance)
 }
