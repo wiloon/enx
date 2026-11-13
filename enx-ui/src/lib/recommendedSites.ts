@@ -38,7 +38,6 @@ export const RECOMMENDED_SITES: RecommendedSite[] = [
     // The home page is a catalogue; this is where reading happens.
     name: 'Standard Ebooks',
     url: 'https://standardebooks.org/ebooks/jane-austen/pride-and-prejudice/text/chapter-1',
-    description:
-      'Free public-domain classics, starting with Pride and Prejudice',
+    description: 'Free classic books',
   },
 ]
