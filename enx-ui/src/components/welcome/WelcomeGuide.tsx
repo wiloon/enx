@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -121,9 +121,10 @@ export default function WelcomeGuide({
   const finished = landing === 'done' || reachedDone
 
   const extension = useExtensionStatusPoll({
-    enabled: !finished && landing !== 'app',
+    enabled: landing !== 'app',
     watchToolbar: (landing === 'steps' || landing === 'sign-in') && !pinSkipped,
     intervalMs: pollMs,
+    live: finished,
   })
 
   const progress = onboardingSteps(
@@ -136,6 +137,19 @@ export default function WelcomeGuide({
       hasLookedUp: hasLookedUp ?? false,
     },
     landing === 'sign-in' ? 'signed-out' : 'full'
+  )
+  // Only a signed-in user reaches the finished view. A pin skipped during
+  // the steps shows again here: this list is for finding what is missing.
+  const setupStatus = onboardingSteps(
+    {
+      installed: extension?.installed ?? false,
+      signedIn: true,
+      isOnToolbar: extension?.isOnToolbar ?? false,
+      pinSkipped: false,
+      learningEnabled: false,
+      hasLookedUp: false,
+    },
+    'check'
   )
 
   const queryClient = useQueryClient()
@@ -188,7 +202,7 @@ export default function WelcomeGuide({
   const returnTo = fromInstall ? '/welcome?src=install' : '/welcome'
 
   // Until detection answers, do not guess whether installation is done.
-  const stepList = (steps: OnboardingStep[]) =>
+  const stepList = (steps: OnboardingStep[], onSkipPin?: () => void) =>
     extension === undefined ? (
       <p
         role="status"
@@ -202,12 +216,9 @@ export default function WelcomeGuide({
         Checking extension…
       </p>
     ) : (
-      <StepList
-        steps={steps}
-        returnTo={returnTo}
-        onSkipPin={() => setPinSkipped(true)}
-      />
+      <StepList steps={steps} returnTo={returnTo} onSkipPin={onSkipPin} />
     )
+  const skipPin = () => setPinSkipped(true)
 
   const showArticle = landing === 'steps' || finished
   // Signed in but still loading keeps one column: the article waits for the
@@ -225,17 +236,17 @@ export default function WelcomeGuide({
       >
         <section className="space-y-6">
           {finished ? (
-            <Finished />
+            <Finished setupStatus={stepList(setupStatus.steps)} />
           ) : landing === 'sign-in' ? (
             <>
               <h1 className="text-2xl font-bold">Welcome to {SITE.name}</h1>
-              {stepList(progress.steps)}
+              {stepList(progress.steps, skipPin)}
               <SkipSetup onClick={skipSetup} signedIn={signedIn === true} />
             </>
           ) : landing === 'steps' ? (
             <>
               <h1 className="text-2xl font-bold">Welcome to {SITE.name}</h1>
-              {stepList(progress.steps)}
+              {stepList(progress.steps, skipPin)}
               <SkipSetup onClick={skipSetup} signedIn={signedIn === true} />
             </>
           ) : (
@@ -265,7 +276,8 @@ function StepList({
 }: {
   steps: OnboardingStep[]
   returnTo: string
-  onSkipPin: () => void
+  /** Without it, the pin step offers no Skip. */
+  onSkipPin?: () => void
 }) {
   const nextId = steps.find((step) => step.status === 'todo')?.id
   return (
@@ -345,7 +357,7 @@ function StepDetail({
 }: {
   id: OnboardingStep['id']
   returnTo: string
-  onSkipPin: () => void
+  onSkipPin?: () => void
 }) {
   switch (id) {
     case 'install':
@@ -379,9 +391,11 @@ function StepDetail({
             height={200}
             className="w-full max-w-sm rounded-md border"
           />
-          <Button variant="ghost" size="sm" onClick={onSkipPin}>
-            Skip
-          </Button>
+          {onSkipPin && (
+            <Button variant="ghost" size="sm" onClick={onSkipPin}>
+              Skip
+            </Button>
+          )}
         </div>
       )
     case 'enable':
@@ -515,9 +529,11 @@ function SkipSetup({
   )
 }
 
-function Finished() {
+// The setup status list sits above the heading (ADR-047 #873).
+function Finished({ setupStatus }: { setupStatus: ReactNode }) {
   return (
     <>
+      {setupStatus}
       <h1 className="flex items-center gap-2 text-2xl font-bold">
         <CircleCheck
           className="size-6 shrink-0 text-brand"

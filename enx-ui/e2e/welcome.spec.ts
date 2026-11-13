@@ -155,6 +155,20 @@ test.describe('/welcome (signed in)', () => {
         },
       })
     )
+    await page.addInitScript(() => {
+      Object.defineProperty(window, 'chrome', {
+        configurable: true,
+        value: {
+          runtime: {
+            sendMessage: (
+              _id: string,
+              _message: unknown,
+              callback: (response: unknown) => void
+            ) => callback({ ok: true, isOnToolbar: true }),
+          },
+        },
+      })
+    })
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto('/welcome')
     const heading = page.getByRole('heading', {
@@ -162,6 +176,13 @@ test.describe('/welcome (signed in)', () => {
       exact: true,
     })
     await expect(heading).toBeVisible()
+    const status = page.locator('ol > li')
+    await expect(status).toHaveText([
+      'Catglish extension installed',
+      'Catglish icon pinned',
+      'Signed in',
+    ])
+    await expect(status.getByLabel('Done')).toHaveCount(3)
     const dashboard = page.getByRole('link', {
       name: 'Go to your dashboard',
       exact: true,
@@ -208,6 +229,110 @@ test.describe('/welcome (signed in)', () => {
     await expect(
       page.getByRole('heading', { name: 'Today', exact: true })
     ).toBeVisible()
+  })
+
+  test('Check setup shows the live extension status above "You\'re all set"', async ({
+    page,
+    signedIn,
+  }) => {
+    void signedIn
+    await page.route('**/api/me/preferences', (route) =>
+      route.fulfill({
+        json: {
+          onboardingCompleted: {
+            value: true,
+            effective: true,
+            editable: false,
+          },
+        },
+      })
+    )
+    await page.route('**/api/stats/overview**', (route) =>
+      route.fulfill({
+        json: {
+          vocab: { total: 12, mastered: 0 },
+          today: { wordsRead: 0, wordLookups: 0 },
+          week: { wordsRead: 0 },
+          sparkline: [],
+        },
+      })
+    )
+    // A disabled extension does not answer; the test flips it on later.
+    await page.addInitScript(() => {
+      const w = window as unknown as { enxEnabled?: boolean }
+      Object.defineProperty(window, 'chrome', {
+        configurable: true,
+        value: {
+          runtime: {
+            sendMessage: (
+              _id: string,
+              _message: unknown,
+              callback: (response: unknown) => void
+            ) =>
+              callback(
+                w.enxEnabled ? { ok: true, isOnToolbar: true } : undefined
+              ),
+          },
+        },
+      })
+    })
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto('/app')
+    await page.getByRole('link', { name: 'Check setup', exact: true }).click()
+    await expect(page).toHaveURL(/\/welcome$/)
+    const heading = page.getByRole('heading', {
+      name: "You're all set",
+      exact: true,
+    })
+    await expect(heading).toBeVisible()
+
+    const current = page.locator('[aria-current="step"]')
+    await expect(current.locator('p').first()).toHaveText(
+      'Add Catglish to Chrome'
+    )
+    await expect(
+      current.getByRole('link', { name: 'Add to Chrome', exact: true })
+    ).toHaveAttribute('href', SITE.chromeWebStoreUrl)
+    await expect(
+      current.getByRole('link', { name: 'Install manually from a ZIP file' })
+    ).toBeVisible()
+    const currentBox = (await current.boundingBox())!
+    const headingBox = (await heading.boundingBox())!
+    expect(currentBox.y + currentBox.height).toBeLessThanOrEqual(headingBox.y)
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme })
+      await page.evaluate(
+        (dark) => document.documentElement.classList.toggle('dark', dark),
+        colorScheme === 'dark'
+      )
+      await page.screenshot({
+        path: `test-results/welcome-check-setup-missing-${colorScheme}.png`,
+        animations: 'disabled',
+      })
+    }
+
+    await page.evaluate(() => {
+      ;(window as unknown as { enxEnabled?: boolean }).enxEnabled = true
+    })
+    const status = page.locator('ol > li')
+    await expect(status.getByLabel('Done')).toHaveCount(3)
+    await expect(status).toHaveText([
+      'Catglish extension installed',
+      'Catglish icon pinned',
+      'Signed in',
+    ])
+    await expect(current).toHaveCount(0)
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme })
+      await page.evaluate(
+        (dark) => document.documentElement.classList.toggle('dark', dark),
+        colorScheme === 'dark'
+      )
+      await page.screenshot({
+        path: `test-results/welcome-check-setup-ok-${colorScheme}.png`,
+        animations: 'disabled',
+      })
+    }
   })
 
   test('ticks the sign-in step', async ({ page, signedIn }) => {

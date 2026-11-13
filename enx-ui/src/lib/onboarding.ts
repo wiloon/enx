@@ -53,8 +53,19 @@ const HOME_STEP_TITLES: Partial<Record<OnboardingStepId, string>> = {
   'look-up': "Click any word you don't know",
 }
 
-const stepTitle = (id: OnboardingStepId, view: OnboardingView): string =>
+// The finished view's status list (#873) states what is in place.
+const CHECK_DONE_TITLES: Partial<Record<OnboardingStepId, string>> = {
+  pin: `${SITE.name} icon pinned`,
+  'sign-in': 'Signed in',
+}
+
+const stepTitle = (
+  id: OnboardingStepId,
+  view: OnboardingView,
+  status: OnboardingStepStatus
+): string =>
   (view === 'home' ? HOME_STEP_TITLES[id] : undefined) ??
+  (view === 'check' && status === 'done' ? CHECK_DONE_TITLES[id] : undefined) ??
   ONBOARDING_STEP_TITLES[id]
 
 const stepStatus = (done: boolean, skipped = false): OnboardingStepStatus =>
@@ -86,11 +97,14 @@ export type OnboardingView =
   /** Home's checklist (Decision 6): behind sign-in, and the pin is left to
    * /welcome, the only page that asks the extension about it. */
   | 'home'
+  /** /welcome once finished (#873): whether the extension still works. */
+  | 'check'
 
 const VIEW_STEPS: Record<OnboardingView, ReadonlySet<OnboardingStepId>> = {
   full: new Set(['install', 'pin', 'sign-in', 'enable', 'look-up']),
   'signed-out': new Set(['install', 'pin', 'sign-in', 'enable', 'look-up']),
   home: new Set(['install', 'enable', 'look-up']),
+  check: new Set(['install', 'pin', 'sign-in']),
 }
 
 export function onboardingSteps(
@@ -117,7 +131,7 @@ export function onboardingSteps(
           ? `${SITE.name} extension installed`
           : id === 'sign-in' && s !== 'done'
             ? 'Create your free account'
-            : stepTitle(id, view),
+            : stepTitle(id, view, s),
     }))
   const current = steps.find((step) => step.status === 'todo')?.id ?? null
   return { steps, current, complete: onboardingComplete(state) }
