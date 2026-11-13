@@ -4,7 +4,7 @@ import type { DatasetItem } from '../src/lib/articleEval/dataset.ts'
 import type { DatasetReport } from '../src/lib/articleEval/report.ts'
 import { scorePage } from '../src/lib/articleEval/score.ts'
 import { PROBE_GLOBAL } from './buildProbe.ts'
-import { PAGE_TIMEOUT_MS, withDeadline } from './deadline.ts'
+import { prepareProbe, PAGE_TIMEOUT_MS, withDeadline } from './deadline.ts'
 
 /** Use a fresh context with CSP enabled and serviceWorkers: 'block'. */
 export async function evaluateSnapshot(
@@ -47,6 +47,7 @@ export async function evaluateSnapshot(
     await page.goto(item.url, { waitUntil: 'load', timeout: timeoutMs })
     const observed = await withDeadline(
       (async () => {
+        await prepareProbe(page)
         // DevTools evaluation executes our probe even though page scripts are disabled.
         await page.evaluate(probeScript)
         return page.evaluate(name => {

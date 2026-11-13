@@ -26,7 +26,7 @@ import {
 import type { CorpusEntry } from '../src/lib/articleEval/corpus.ts'
 import { formatReport, type PageReport } from '../src/lib/articleEval/report.ts'
 import { buildProbe } from './buildProbe.ts'
-import { closeWithin, PAGE_TIMEOUT_MS } from './deadline.ts'
+import { closeContextWithin, closeWithin, PAGE_TIMEOUT_MS } from './deadline.ts'
 import { evaluatePage } from './evaluatePage.ts'
 import { evaluateDataset } from './evaluateDataset.ts'
 import { parseArgs, selectDataset } from './options.ts'
@@ -70,7 +70,7 @@ async function main() {
           { probeScript }
         )
       } finally {
-        await closeWithin(() => context.close(), PAGE_TIMEOUT_MS)
+        await closeContextWithin(context, PAGE_TIMEOUT_MS)
       }
       console.error(
         `[${rows.filter(Boolean).length}/${corpus.length}] ${rows[index].verdict}  ${corpus[index].url}`

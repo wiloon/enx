@@ -5,9 +5,13 @@
 import { readFile } from 'node:fs/promises'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { expect, test } from '@playwright/test'
+import { chromium, expect, test, type BrowserContext } from '@playwright/test'
 import { buildProbe, PROBE_GLOBAL } from '../article-eval/buildProbe'
-import { closeWithin, withDeadline } from '../article-eval/deadline'
+import {
+  closeContextWithin,
+  closeWithin,
+  withDeadline,
+} from '../article-eval/deadline'
 import { evaluateDataset } from '../article-eval/evaluateDataset'
 import { evaluatePage } from '../article-eval/evaluatePage'
 import { evaluateSnapshot } from '../article-eval/evaluateSnapshot'
@@ -255,11 +259,26 @@ const STUCK_PROBE = `window.${PROBE_GLOBAL} = {
 }`
 const BUDGET_MS = 2_000
 
+// Observe real closure, including resolution of Playwright's close promise.
+function observeClosure(context: BrowserContext) {
+  const state = { closed: false, completed: false }
+  context.on('close', () => {
+    state.closed = true
+  })
+  const close = context.close.bind(context)
+  context.close = async options => {
+    await close(options)
+    state.completed = true
+  }
+  return state
+}
+
 test.describe('a probe that never returns', () => {
   test('a live page is load failed once the probe outruns its budget', async ({
     browser,
   }) => {
     const context = await browser.newContext()
+    const closure = observeClosure(context)
     try {
       const started = Date.now()
       const report = await evaluatePage(
@@ -274,7 +293,10 @@ test.describe('a probe that never returns', () => {
       expect(report).toMatchObject({ verdict: 'load failed' })
       expect(report.error).toContain('probe timed out')
     } finally {
-      await closeWithin(() => context.close(), BUDGET_MS)
+      const closingStarted = Date.now()
+      await closeContextWithin(context, BUDGET_MS)
+      expect(Date.now() - closingStarted).toBeLessThan(BUDGET_MS * 5)
+      expect(closure).toEqual({ closed: true, completed: true })
     }
   })
 
@@ -290,6 +312,7 @@ test.describe('a probe that never returns', () => {
   }
 })()`
     const context = await browser.newContext()
+    const closure = observeClosure(context)
     try {
       const started = Date.now()
       const report = await evaluatePage(
@@ -304,7 +327,10 @@ test.describe('a probe that never returns', () => {
       expect(report.verdict).not.toBe('load failed')
       expect(report.error).toBeUndefined()
     } finally {
-      await closeWithin(() => context.close(), BUDGET_MS)
+      const closingStarted = Date.now()
+      await closeContextWithin(context, BUDGET_MS)
+      expect(Date.now() - closingStarted).toBeLessThan(BUDGET_MS * 5)
+      expect(closure).toEqual({ closed: true, completed: true })
     }
   })
 
@@ -312,6 +338,7 @@ test.describe('a probe that never returns', () => {
     browser,
   }) => {
     const context = await browser.newContext({ serviceWorkers: 'block' })
+    const closure = observeClosure(context)
     try {
       const started = Date.now()
       const report = await evaluateSnapshot(
@@ -334,7 +361,10 @@ test.describe('a probe that never returns', () => {
       })
       expect(report.error).toContain('probe timed out')
     } finally {
-      await closeWithin(() => context.close(), BUDGET_MS)
+      const closingStarted = Date.now()
+      await closeContextWithin(context, BUDGET_MS)
+      expect(Date.now() - closingStarted).toBeLessThan(BUDGET_MS * 5)
+      expect(closure).toEqual({ closed: true, completed: true })
     }
   })
 
@@ -369,11 +399,43 @@ test.describe('a probe that never returns', () => {
   }
 })()`
 
+    let datasetBrowser: import('@playwright/test').Browser | undefined
+    const contexts = new Map<string, { closed: boolean; completed: boolean }>()
+    const completed: string[] = []
     const report = await evaluateDataset(
       { load: async () => [...stuck, next] },
-      { probeScript: stuckOnStuckPaths, timeoutMs: BUDGET_MS }
+      {
+        probeScript: stuckOnStuckPaths,
+        timeoutMs: BUDGET_MS,
+        launchBrowser: async options => {
+          const browser = await chromium.launch(options)
+          datasetBrowser = browser
+          const newContext = browser.newContext.bind(browser)
+          browser.newContext = async options => {
+            const context = await newContext(options)
+            const state = observeClosure(context)
+            context.on('page', page => {
+              page.on('framenavigated', frame => {
+                if (frame === page.mainFrame()) contexts.set(frame.url(), state)
+              })
+            })
+            return context
+          }
+          return browser
+        },
+        onRow: row => {
+          expect(contexts.get(row.url)).toEqual({
+            closed: true,
+            completed: true,
+          })
+          completed.push(row.id)
+        },
+      }
     )
 
+    expect(completed).toHaveLength(4)
+    expect(datasetBrowser).toBeDefined()
+    expect(datasetBrowser!.isConnected()).toBe(false)
     for (const { id } of stuck) {
       expect(report).toMatch(new RegExp(`^${id}\\s.*load failed`, 'm'))
     }
