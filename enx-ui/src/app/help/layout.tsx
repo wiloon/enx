@@ -9,6 +9,7 @@ const links = [
   { href: '/help/install', label: 'Chrome Web Store' },
   { href: '/help/install/offline', label: 'Manual installation' },
   { href: '/help/get-started', label: 'Get started' },
+  { href: '/help/rephrase', label: 'Rephrase' },
   { href: SITE.appPath, label: 'Go to app' },
 ]
 

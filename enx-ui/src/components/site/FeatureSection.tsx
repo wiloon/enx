@@ -7,13 +7,8 @@ export interface Feature {
   imageSrc?: string
 }
 
+// Reading features only; Rephrase is a writing tool and lives in Help.
 const FEATURES: Feature[] = [
-  {
-    title: 'Word highlight while you read',
-    body: "Words you've looked up get a colored underline wherever they appear again, fading the more often you've looked each one up. It's a toggle — turn it off and the page is clean, click-to-look-up still works.",
-    imageAlt:
-      'An article with looked-up words underlined in shades of one color',
-  },
   {
     title: 'Click any word for its meaning',
     body: "Click a word in the text and a popup shows its definition, IPA, how many times you've looked it up, and whether you've marked it known. No setup — it works whenever Catglish is on.",
@@ -25,9 +20,10 @@ const FEATURES: Feature[] = [
     imageAlt: 'The browser side panel showing a translated sentence',
   },
   {
-    title: 'Idiomatic phrasing',
-    body: 'Writing to an American teammate? Paste Chinese or rough English and Catglish rewrites it the way a colleague would actually say it — with alternatives and short notes on what changed.',
-    imageAlt: 'The idiomatic phrasing page with alternatives and notes',
+    title: 'Word highlight while you read',
+    body: "Words you've looked up get a colored underline wherever they appear again, fading the more often you've looked each one up. It's a toggle — turn it off and the page is clean, click-to-look-up still works.",
+    imageAlt:
+      'An article with looked-up words underlined in shades of one color',
   },
 ]
 

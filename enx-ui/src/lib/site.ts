@@ -5,7 +5,7 @@ export const SITE = {
   name: 'Catglish',
   tagline: 'Learn English while you read the web',
   subtitle:
-    'Catglish is a browser extension for AI-assisted English reading. Turn it on for any English page — click any word for its meaning, select a sentence to translate it. Every word you look up goes into your word list and is underlined wherever it shows up again, fading the more often you look it up.',
+    'Click any word for its meaning. Select a sentence to translate it.',
 
   chromeExtensionId: 'combdcldlodkikjfhjbdbogjlfmnbjkf',
   chromeWebStoreUrl:

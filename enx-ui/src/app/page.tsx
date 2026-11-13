@@ -6,7 +6,6 @@ import FeatureSection from '@/components/site/FeatureSection'
 import HowItWorks from '@/components/site/HowItWorks'
 import Comparison from '@/components/site/Comparison'
 import InstallCTA from '@/components/site/InstallCTA'
-import CtaBanner from '@/components/site/CtaBanner'
 import SiteFooter from '@/components/site/SiteFooter'
 
 // Marketing landing page (ADR-013). Static — no auth, no data fetching. The
@@ -30,7 +29,6 @@ export default function LandingPage() {
         <HowItWorks />
         <Comparison />
         <InstallCTA />
-        <CtaBanner />
       </main>
       <SiteFooter />
     </>

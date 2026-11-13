@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { SITE } from '@/lib/site'
 import { SUBSCRIPTION_PLANS } from '@/lib/plans'
 import ChromeStoreCta from './ChromeStoreCta'
+import HeroSecondaryCta from './HeroSecondaryCta'
 
 const PRIMARY =
   'w-full rounded-md bg-brand px-5 py-2.5 text-sm font-medium text-brand-foreground transition-opacity hover:opacity-90 sm:w-auto'
@@ -26,12 +27,7 @@ export default function Hero() {
         >
           Add to Chrome — it&apos;s free
         </ChromeStoreCta>
-        <a
-          href="#how-it-works"
-          className="w-full rounded-md border border-border px-5 py-2.5 text-sm font-medium transition-colors hover:bg-muted sm:w-auto"
-        >
-          See how it works
-        </a>
+        <HeroSecondaryCta />
       </div>
       <p className="mt-4 text-sm text-muted-foreground">
         Free to use · AI translation plans from{' '}

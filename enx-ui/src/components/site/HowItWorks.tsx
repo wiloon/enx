@@ -2,12 +2,12 @@ const STEPS = [
   {
     n: 1,
     title: 'Add the extension',
-    body: 'One click from the Chrome Web Store.',
+    body: 'One click from the Chrome Web Store, then pin the Catglish icon to the toolbar.',
   },
   {
     n: 2,
     title: 'Read with Catglish',
-    body: 'On any English page, click the Catglish icon, then Read with Catglish.',
+    body: 'On any English page, click the icon, then Read with Catglish.',
   },
   {
     n: 3,

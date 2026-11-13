@@ -47,10 +47,7 @@ export default function SiteFooter() {
           <h3 className="text-sm font-medium">Resources</h3>
           <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
             <li>
-              <Link
-                href="/help"
-                className="text-brand hover:underline active:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
-              >
+              <Link href="/help" className="hover:text-foreground">
                 Help
               </Link>
             </li>
