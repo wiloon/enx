@@ -1,4 +1,9 @@
-import { chromium, devices } from '@playwright/test'
+import {
+  chromium,
+  devices,
+  type Browser,
+  type LaunchOptions,
+} from '@playwright/test'
 import {
   measureDataset,
   type DatasetLoader,
@@ -6,9 +11,10 @@ import {
 import {
   formatDatasetReport,
   formatNonArticleReport,
+  type DatasetReport,
 } from '../src/lib/articleEval/report.ts'
 import { buildProbe } from './buildProbe.ts'
-import { closeWithin, PAGE_TIMEOUT_MS } from './deadline.ts'
+import { closeContextWithin, closeWithin, PAGE_TIMEOUT_MS } from './deadline.ts'
 import { evaluateSnapshot } from './evaluateSnapshot.ts'
 
 /** Dataset formats stop at the loader; evaluation and reporting are shared. */
@@ -20,6 +26,8 @@ export async function evaluateDataset(
     nonArticle = false,
     timeoutMs = PAGE_TIMEOUT_MS,
     probeScript: givenProbeScript,
+    launchBrowser = options => chromium.launch(options),
+    onRow,
   }: {
     headed?: boolean
     only?: string
@@ -28,11 +36,15 @@ export async function evaluateDataset(
     timeoutMs?: number
     /** Defaults to buildProbe(). */
     probeScript?: string
+    /** Browser I/O seam; the evaluator owns and closes the returned browser. */
+    launchBrowser?: (options: LaunchOptions) => Promise<Browser>
+    /** Reports a completed item, after its resources have been closed. */
+    onRow?: (row: DatasetReport, done: number) => void
   } = {}
 ): Promise<string> {
   const items = (await loader.load()).filter(item => item.url.includes(only))
   const probeScript = givenProbeScript ?? (await buildProbe())
-  const browser = await chromium.launch({
+  const browser = await launchBrowser({
     headless: !headed,
     executablePath: process.env.E2E_CHROMIUM_PATH || undefined,
   })
@@ -50,15 +62,17 @@ export async function evaluateDataset(
             timeoutMs,
           })
         } finally {
-          await closeWithin(() => context.close(), timeoutMs)
+          await closeContextWithin(context, timeoutMs)
         }
       },
       {
         requireLabel: !nonArticle,
-        onRow: (row, done) =>
-          console.error(
-            `[${done}/${items.length}] ${nonArticle ? (row.fallback ? 'layer 6' : (row.source ?? row.ours.verdict)) : row.ours.verdict}  ${row.url}`
-          ),
+        onRow:
+          onRow ??
+          ((row, done) =>
+            console.error(
+              `[${done}/${items.length}] ${nonArticle ? (row.fallback ? 'layer 6' : (row.source ?? row.ours.verdict)) : row.ours.verdict}  ${row.url}`
+            )),
       }
     )
     return nonArticle ? formatNonArticleReport(rows) : formatDatasetReport(rows)

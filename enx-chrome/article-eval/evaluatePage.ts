@@ -7,7 +7,12 @@ import type { CorpusEntry } from '../src/lib/articleEval/corpus.ts'
 import type { PageReport } from '../src/lib/articleEval/report.ts'
 import { scorePage } from '../src/lib/articleEval/score.ts'
 import { PROBE_GLOBAL } from './buildProbe.ts'
-import { PAGE_TIMEOUT_MS, TimeoutError, withDeadline } from './deadline.ts'
+import {
+  prepareProbe,
+  PAGE_TIMEOUT_MS,
+  TimeoutError,
+  withDeadline,
+} from './deadline.ts'
 
 export type CorpusPage = Pick<CorpusEntry, 'url' | 'category'>
 
@@ -69,6 +74,7 @@ export async function evaluatePage(
     await page.waitForTimeout(settleMs)
     probed = await withDeadline(
       (async () => {
+        await prepareProbe(page)
         await page.addScriptTag({ content: probeScript })
         const ready = await page.evaluate(
           name =>

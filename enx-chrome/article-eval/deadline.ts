@@ -1,3 +1,5 @@
+import type { BrowserContext, CDPSession, Page } from '@playwright/test'
+
 // Budgets for browser operations that can hang: a probe that never returns
 // keeps its page, and its context's close, waiting forever.
 
@@ -33,4 +35,29 @@ export async function closeWithin(
   await withDeadline(Promise.resolve().then(close), ms, 'close').catch(
     () => undefined
   )
+}
+
+// Attach before a probe can block the renderer: attaching afterwards can hang too.
+const probeSessions = new WeakMap<BrowserContext, Set<CDPSession>>()
+
+export async function prepareProbe(page: Page): Promise<void> {
+  const context = page.context()
+  const sessions = probeSessions.get(context) ?? new Set<CDPSession>()
+  probeSessions.set(context, sessions)
+  sessions.add(await context.newCDPSession(page))
+}
+
+/** Stop disposable probe renderers before closing their context, even in a JS loop. */
+export async function closeContextWithin(
+  context: BrowserContext,
+  ms: number
+): Promise<void> {
+  await closeWithin(async () => {
+    for (const session of probeSessions.get(context) ?? []) {
+      // Page.crash may never reply. Context closure detaches the session.
+      void session.send('Page.crash').catch(() => undefined)
+    }
+    await context.close()
+    probeSessions.delete(context)
+  }, ms)
 }
