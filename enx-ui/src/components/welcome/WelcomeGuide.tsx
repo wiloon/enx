@@ -138,14 +138,13 @@ export default function WelcomeGuide({
     },
     landing === 'sign-in' ? 'signed-out' : 'full'
   )
-  // Only a signed-in user reaches the finished view. A pin skipped during
-  // the steps shows again here: this list is for finding what is missing.
+  // Only a signed-in user reaches the finished view.
   const setupStatus = onboardingSteps(
     {
       installed: extension?.installed ?? false,
       signedIn: true,
       isOnToolbar: extension?.isOnToolbar ?? false,
-      pinSkipped: false,
+      pinSkipped,
       learningEnabled: false,
       hasLookedUp: false,
     },
@@ -280,6 +279,7 @@ function StepList({
   onSkipPin?: () => void
 }) {
   const nextId = steps.find((step) => step.status === 'todo')?.id
+  const [showSkippedPin, setShowSkippedPin] = useState(false)
   return (
     <ol className="space-y-5">
       {steps.map((step) => (
@@ -290,18 +290,33 @@ function StepList({
         >
           <StepIcon status={step.status} current={step.id === nextId} />
           <div className="min-w-0 flex-1 space-y-2">
-            <p
-              className={
-                step.id === nextId
-                  ? 'font-medium text-foreground'
-                  : step.status === 'skipped'
-                    ? 'font-medium text-muted-foreground'
-                    : 'text-muted-foreground'
-              }
-            >
-              {step.title}
-            </p>
-            {step.id === nextId && (
+            {step.id === 'pin' && step.status === 'skipped' && !onSkipPin ? (
+              <button
+                type="button"
+                aria-expanded={showSkippedPin}
+                onClick={() => setShowSkippedPin((shown) => !shown)}
+                className="font-medium text-muted-foreground hover:text-foreground active:opacity-80 focus-visible:outline-2 focus-visible:outline-brand"
+              >
+                {step.title}
+              </button>
+            ) : (
+              <p
+                className={
+                  step.id === nextId
+                    ? 'font-medium text-foreground'
+                    : step.status === 'skipped'
+                      ? 'font-medium text-muted-foreground'
+                      : 'text-muted-foreground'
+                }
+              >
+                {step.title}
+              </p>
+            )}
+            {(step.id === nextId ||
+              (step.id === 'pin' &&
+                step.status === 'skipped' &&
+                !onSkipPin &&
+                showSkippedPin)) && (
               <StepDetail
                 id={step.id}
                 returnTo={returnTo}

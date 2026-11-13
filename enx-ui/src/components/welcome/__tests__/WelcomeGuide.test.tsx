@@ -572,7 +572,7 @@ describe('setup status on the finished view (ADR-047 #873)', () => {
     expect(within(step('Signed in')).getByLabelText('Done')).toBeInTheDocument()
   })
 
-  it('shows the pin detail again on the finished view after Skip during the steps', async () => {
+  it('lets the user expand and collapse the skipped pin detail on the finished view', async () => {
     signedIn()
     installExtension()
     mockOverview
@@ -583,12 +583,25 @@ describe('setup status on the finished view (ADR-047 #873)', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Skip' }))
     await screen.findByRole('heading', { name: "You're all set" })
-    await waitFor(() =>
-      expect(step('Pin the Catglish icon')).toHaveAttribute(
-        'aria-current',
-        'step'
-      )
-    )
+    const toggle = await screen.findByRole('button', {
+      name: 'Pin the Catglish icon',
+    })
+    const pin = toggle.closest('li')!
+    expect(pin).not.toHaveAttribute('aria-current')
+    expect(within(pin).getByLabelText('Skipped')).toBeInTheDocument()
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(within(pin).queryByRole('img')).not.toBeInTheDocument()
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(
+      within(pin).getByRole('img', { name: /Chrome toolbar/ })
+    ).toBeInTheDocument()
+    expect(
+      within(pin).queryByRole('button', { name: 'Skip' })
+    ).not.toBeInTheDocument()
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(within(pin).queryByRole('img')).not.toBeInTheDocument()
   })
 
   it('shows the checking status, not a guess, until the extension answers', async () => {
