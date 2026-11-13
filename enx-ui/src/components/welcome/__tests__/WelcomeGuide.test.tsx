@@ -8,6 +8,7 @@ import {
 } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import WelcomeGuide from '../WelcomeGuide'
+import AppHome from '@/app/(app)/app/page'
 import { apiService } from '@/services/api'
 import { useAuth } from '@/hooks/useAuth'
 import { setRuntimeEnv } from '@/test/runtimeEnv'
@@ -25,6 +26,17 @@ const push = jest.fn()
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ replace, push }),
 }))
+
+jest.mock('@/hooks/useExtensionStatus', () => ({
+  useExtensionStatus: () => 'installed',
+}))
+jest.mock(
+  '@/components/app/home/OnboardingChecklist',
+  () =>
+    function MockOnboardingChecklist() {
+      return <div>Dashboard setup</div>
+    }
+)
 
 jest.mock('@/hooks/useAuth', () => ({ useAuth: jest.fn() }))
 
@@ -569,6 +581,39 @@ it('shows the finished page on a later visit in the same session after "Skip set
   expect(
     await screen.findByRole('heading', { name: "You're all set" })
   ).toBeInTheDocument()
+})
+
+it('keeps the dashboard open after skipping while an older preferences read is pending', async () => {
+  signedIn()
+  installExtension()
+  const client = newClient()
+  let resolveOldRead!: (value: ReturnType<typeof preferences>) => void
+  mockPreferences
+    .mockResolvedValueOnce(preferences(false))
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveOldRead = resolve
+        })
+    )
+    .mockImplementation(() => new Promise(() => {}))
+  const first = renderGuide(false, client)
+  await screen.findByRole('region', { name: 'Sample article' })
+  void client.refetchQueries({ queryKey: ['preferences'] })
+  await waitFor(() => expect(mockPreferences).toHaveBeenCalledTimes(2))
+  fireEvent.click(screen.getByRole('button', { name: 'Skip setup' }))
+  await waitFor(() => expect(push).toHaveBeenCalledWith('/app'))
+  first.unmount()
+  render(
+    <QueryClientProvider client={client}>
+      <AppHome />
+    </QueryClientProvider>
+  )
+  await act(async () => {
+    resolveOldRead(preferences(false))
+  })
+  expect(await screen.findByText('Dashboard setup')).toBeInTheDocument()
+  expect(replace).not.toHaveBeenCalledWith('/welcome')
 })
 
 it('shows a returning user who opens /welcome the finished page with recommended sites', async () => {

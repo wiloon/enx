@@ -173,9 +173,14 @@ export default function WelcomeGuide({
     }
     // A failed write still leaves: the guide showing once more is the
     // cheap mistake (Decision 1a).
-    await apiService.updatePreferences({ onboardingCompleted: true })
-    // Marks the cache stale at once; waiting for the refetch would hang
-    // while the first preferences read is still pending.
+    const response = await apiService.updatePreferences({
+      onboardingCompleted: true,
+    })
+    if (response.success && response.data) {
+      // Discard an older read before publishing the server's updated preferences.
+      await queryClient.cancelQueries({ queryKey: ['preferences'] })
+      queryClient.setQueryData(['preferences'], response.data)
+    }
     void refreshPreferences()
     router.push('/app')
   }
