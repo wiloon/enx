@@ -17,6 +17,7 @@ import PriceCard from '@/components/site/PriceCard'
 import { trialSummary } from '@/lib/credits'
 import { apiService, SubscriptionPlan, TopupTier } from '@/services/api'
 import {
+  CREDIT_COST_RULE,
   SUBSCRIPTION_CREDITS_RULE,
   SUBSCRIPTION_PLANS,
   TOPUP_CREDITS_RULE,
@@ -216,7 +217,7 @@ export default function BillingPage() {
           className="space-y-3"
         >
           <p className="text-sm text-muted-foreground">
-            {SUBSCRIPTION_CREDITS_RULE}
+            {SUBSCRIPTION_CREDITS_RULE} {CREDIT_COST_RULE}
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {SUBSCRIPTION_PLANS.map((option) => {
@@ -231,7 +232,7 @@ export default function BillingPage() {
                   name={option.name}
                   priceLabel={option.priceLabel}
                   creditsLabel={option.creditsLabel}
-                  description={option.description}
+                  features={option.features}
                   action={
                     action === 'change' ? (
                       <PlanChangeButton

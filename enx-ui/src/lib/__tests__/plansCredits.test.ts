@@ -1,6 +1,11 @@
 import { readFileSync } from 'fs'
 import path from 'path'
-import { SUBSCRIPTION_PLANS, TOPUP_TIERS } from '../plans'
+import {
+  FREE_DAILY_LOOKUPS,
+  SUBSCRIBED_DAILY_LOOKUPS,
+  SUBSCRIPTION_PLANS,
+  TOPUP_TIERS,
+} from '../plans'
 
 // The credits a purchase grants come from enx-api/config.toml
 // [stripe.credits]; /pricing and /billing advertise plans.ts. Read the file at
@@ -8,21 +13,21 @@ import { SUBSCRIPTION_PLANS, TOPUP_TIERS } from '../plans'
 // type-checks test files, so a static import would break it.
 const CONFIG_PATH = path.resolve(__dirname, '../../../../enx-api/config.toml')
 
-function stripeCredits(): Record<string, number> {
+function configSection(section: string): Record<string, number> {
   const lines = readFileSync(CONFIG_PATH, 'utf8').split(/\r?\n/)
-  const credits: Record<string, number> = {}
+  const values: Record<string, number> = {}
   let inSection = false
   for (const raw of lines) {
     const line = raw.trim()
     if (line.startsWith('[')) {
-      inSection = line === '[stripe.credits]'
+      inSection = line === `[${section}]`
       continue
     }
     if (!inSection) continue
     const match = line.match(/^([A-Za-z0-9_-]+)\s*=\s*(\d+)\s*(?:#.*)?$/)
-    if (match) credits[match[1]] = Number(match[2])
+    if (match) values[match[1]] = Number(match[2])
   }
-  return credits
+  return values
 }
 
 // "1,500 credits/mo" -> 1500
@@ -34,7 +39,7 @@ function labelCredits(label: string): number {
 }
 
 function configCredits(key: string): number {
-  const value = stripeCredits()[key]
+  const value = configSection('stripe.credits')[key]
   if (value === undefined) {
     throw new Error(`enx-api/config.toml [stripe.credits] has no ${key}`)
   }
@@ -67,5 +72,22 @@ describe('plans.ts credits match enx-api/config.toml [stripe.credits]', () => {
       'medium',
       'small',
     ])
+  })
+})
+
+// /pricing names the daily dictionary lookup limits; enx-api enforces
+// [stripe.quota]. Deployments may override them by env (w10n-config), which
+// this test cannot see -- keep those in step by hand.
+describe('plans.ts lookup limits match enx-api/config.toml [stripe.quota]', () => {
+  it('advertises the free limit the API enforces', () => {
+    expect(FREE_DAILY_LOOKUPS).toBe(
+      configSection('stripe.quota')['dictionary-lookup-daily-free']
+    )
+  })
+
+  it('advertises the subscriber limit the API enforces', () => {
+    expect(SUBSCRIBED_DAILY_LOOKUPS).toBe(
+      configSection('stripe.quota')['dictionary-lookup-daily-subscribed']
+    )
   })
 })

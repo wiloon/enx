@@ -1,7 +1,13 @@
 import { render, screen, within } from '@testing-library/react'
 import PricingPage from '../pricing/page'
 import { pricingCtaHref } from '@/components/site/PricingCta'
-import { FREE_PLAN, SUBSCRIPTION_PLANS, TOPUP_TIERS } from '@/lib/plans'
+import {
+  FREE_DAILY_LOOKUPS,
+  FREE_PLAN,
+  SUBSCRIBED_DAILY_LOOKUPS,
+  SUBSCRIPTION_PLANS,
+  TOPUP_TIERS,
+} from '@/lib/plans'
 
 const mockUseAuth = jest.fn(() => ({ isSignedIn: false }))
 jest.mock('@clerk/nextjs', () => ({
@@ -56,14 +62,45 @@ describe('/pricing', () => {
     }
   })
 
-  // ADR-079: the quota counts prefetch too, so "N lookups a day" would no
-  // longer match what a reader sees; the free card names a limit, no number.
-  it('names the free daily lookup limit without a number', () => {
+  // ADR-080: prefetch no longer spends the quota, so the number is close to
+  // clicks again. "Up to": the first click on a new word counts 2.
+  it('names the free daily lookup limit with its number', () => {
     render(<PricingPage />)
 
     const c = within(card(FREE_PLAN.name))
-    expect(c.getByText(/daily limit/)).toBeInTheDocument()
-    expect(c.queryByText(/\d+ lookups a day/)).not.toBeInTheDocument()
+    expect(
+      c.getByText(
+        new RegExp(
+          `up to ${FREE_DAILY_LOOKUPS.toLocaleString('en-US')} lookups a day`,
+          'i'
+        )
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('lists what every paid plan adds, not just its price', () => {
+    render(<PricingPage />)
+
+    for (const p of SUBSCRIPTION_PLANS) {
+      const c = within(card(p.name))
+      expect(c.getByText(/everything in free/i)).toBeInTheDocument()
+      expect(
+        c.getByText(
+          new RegExp(
+            `up to ${SUBSCRIBED_DAILY_LOOKUPS.toLocaleString('en-US')} dictionary lookups a day`,
+            'i'
+          )
+        )
+      ).toBeInTheDocument()
+    }
+  })
+
+  it('says what a credit buys', () => {
+    render(<PricingPage />)
+
+    expect(
+      screen.getByText(/charged by length, from 1 credit per request/i)
+    ).toBeInTheDocument()
   })
 
   it('has no checkout buttons -- every call to action is a link', () => {
