@@ -114,6 +114,7 @@ const step = (title: string | RegExp) =>
 
 beforeEach(() => {
   jest.clearAllMocks()
+  localStorage.clear()
   setRuntimeEnv({
     ENX_EXTENSION_ID: 'test-ext-id',
     ENX_EXTENSION_WEB_STORE_URL: '',
@@ -600,6 +601,26 @@ describe('setup status on the finished view (ADR-047 #873)', () => {
       within(pin).queryByRole('button', { name: 'Skip' })
     ).not.toBeInTheDocument()
     fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(within(pin).queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('remembers a skipped pin on a later Check setup visit', async () => {
+    signedIn()
+    installExtension()
+    const firstVisit = renderGuide()
+    fireEvent.click(await screen.findByRole('button', { name: 'Skip' }))
+    firstVisit.unmount()
+
+    finishedUser()
+    renderGuide()
+    await screen.findByRole('heading', { name: "You're all set" })
+    const toggle = await screen.findByRole('button', {
+      name: 'Pin the Catglish icon',
+    })
+    const pin = toggle.closest('li')!
+    expect(within(pin).getByLabelText('Skipped')).toBeInTheDocument()
+    expect(pin).not.toHaveAttribute('aria-current')
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     expect(within(pin).queryByRole('img')).not.toBeInTheDocument()
   })

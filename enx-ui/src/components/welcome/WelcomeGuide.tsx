@@ -1,6 +1,11 @@
 'use client'
 
-import { useEffect, useState, type ReactNode } from 'react'
+import {
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -35,6 +40,16 @@ import { Button } from '@/components/ui/button'
 // How often /welcome asks the extension for its status and re-reads the
 // user's lookups while waiting on a step (ADR-047 Decision 2).
 const POLL_MS = 2000
+const PIN_SKIPPED_KEY = 'enx.onboarding.pinSkipped'
+const subscribeToPinSkip = () => () => {}
+const serverPinSkipped = () => false
+const readPinSkipped = () => {
+  try {
+    return localStorage.getItem(PIN_SKIPPED_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
 
 const FINAL_LANDINGS: ReadonlySet<WelcomeLanding> = new Set([
   'steps',
@@ -57,7 +72,13 @@ export default function WelcomeGuide({
   const { isLoading, isAuthenticated } = useAuth()
   const signedIn = isLoading ? undefined : isAuthenticated
   const learningEnabled = useLearningModeMark()
-  const [pinSkipped, setPinSkipped] = useState(false)
+  const [skippedThisVisit, setPinSkipped] = useState(false)
+  const savedPinSkipped = useSyncExternalStore(
+    subscribeToPinSkip,
+    readPinSkipped,
+    serverPinSkipped
+  )
+  const pinSkipped = skippedThisVisit || savedPinSkipped
 
   const preferences = useQuery({
     queryKey: ['preferences'],
@@ -217,7 +238,14 @@ export default function WelcomeGuide({
     ) : (
       <StepList steps={steps} returnTo={returnTo} onSkipPin={onSkipPin} />
     )
-  const skipPin = () => setPinSkipped(true)
+  const skipPin = () => {
+    setPinSkipped(true)
+    try {
+      localStorage.setItem(PIN_SKIPPED_KEY, 'true')
+    } catch {
+      // Keep the skip for this visit when storage is unavailable.
+    }
+  }
 
   const showArticle = landing === 'steps' || finished
   // Signed in but still loading keeps one column: the article waits for the
