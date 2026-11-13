@@ -13,7 +13,7 @@ Before placing an icon, find its concept below and use that row's icon. A concep
 | AI does this | `SparklesIcon` | `Sparkles` | "Look up with AI", AI badge; Rephrase nav |
 | Turn Catglish on for this page (learning mode) | `CursorArrowRaysIcon` | `MousePointerClick` | popup "Read with Catglish" |
 | Word highlight (underlines) | `UnderlineIcon` | `Underline` | popup "Highlight looked-up words" toggle |
-| External dictionary (Youdao) | `BookOpenIcon` | `BookOpen` | word popover "Youdao" button |
+| External dictionary | `BookOpenIcon` | `BookOpen` | word popover dictionary link (icon only, `Open in Cambridge Dictionary`) |
 | Reader (pasted text, a document) | `DocumentTextIcon` | `FileText` | Reader nav, Reader document rows |
 | Word List | — | `BookText` | Word List nav |
 | Pronunciation | `SpeakerWaveIcon` | `Volume2` | word popover, Side Panel card, Word Lookup |
