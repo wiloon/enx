@@ -26,6 +26,13 @@ adr-046 去掉了正文里的「Article processed • Click words for translatio
 - Welcome 检测扩展时显示转圈与「Checking extension…」，检测完成前不猜测安装结果。未安装时解释用途并提供「Add to Chrome」；已安装时安装这一步在步骤列表里显示为已完成（「Catglish extension installed」，与其他已完成步骤同样的勾和弱化文字，不另做卡片，也没有「Next: finish setup」，见 2026-11-12 修订），安装完成只代表安装这一步完成，后续固定图标、亲手启用和查词保持不变。
 - 扩展已通过 Chrome Web Store 审核，以 Unlisted 发布，正式条目 ID 为 `combdcldlodkikjfhjbdbogjlfmnbjkf`。安装链接使用 `https://chromewebstore.google.com/detail/catglish-learn-english-as/combdcldlodkikjfhjbdbogjlfmnbjkf`；站点常量提供正式 ID 和链接作为默认值，运行时环境仍可覆盖。安装链接为空时也使用正式链接，替代上线前的占位。保留原有安装后复用 Welcome 标签页的行为。
 
+## 2026-11-12 修订（#852，owner 在真实 Chrome 中重装扩展后提出）
+
+- 固定图标排到登录之前，`/welcome` 的步骤顺序改为：安装 → 固定图标 → 登录 → 启用 → 点词（Decision 2）。
+- 原因：从 Chrome Web Store 安装的扩展常被 Chrome 自动固定到工具栏（owner 取消固定、卸载后重装仍被固定，触发条件 Chrome 未公开）。这类用户落地时安装和固定都已勾上，旧顺序下两个勾中间夹着未完成的登录；新顺序下已完成的步骤连在顶部，要做的从下面开始。
+- 没被自动固定的用户，当前步骤先是固定图标、再是登录。可以接受：工具栏图标是后面启用、查词的入口，固定步骤仍可跳过，固定检测（`enx:status`）不依赖网站登录。
+- 当前步骤仍是第一个未完成的步骤；Home 清单不显示固定和登录，不受影响。上面 #846 修订里「已安装时（当前步骤）是登录」改为「已安装时是第一个未完成的步骤」。
+
 ## 2026-11-12 修订（#846，owner 在真实 Chrome 中试用后提出）
 
 - 已安装在 `/welcome` 的步骤列表里显示为一个已完成的步骤（勾 + 弱化标题，无底色、无边框），不再单独放「Catglish extension installed」卡片；去掉「Next: finish setup」按钮及其聚焦 / `aria-current` 高亮：登录步骤本来就在按钮正下方并展开着。
@@ -61,17 +68,17 @@ A、B 的区别只是「进来时扩展装没装」，页面能直接探测到�
    - **已完成标记**：adr-044 的服务端偏好加一个布尔键 `onboardingCompleted`（与 `aiWordFallbackNoticeAck` 同类，用户不可在设置里编辑）。引导到达完成态、或用户点「Skip setup」时写入 true。
    - **既有用户不需要迁移**：`onboardingCompleted` 为真，**或**累计查词数 > 0，都视为老用户。
    - **已登录、经安装进入 `/welcome?src=install`**（同一浏览器重装时网站登录态还在）：老用户直接跳到 `/app`，带一句「Catglish extension connected」，不显示步骤。
-   - **未登录进入 `/welcome`**（换电脑）：页面标题为「Welcome to Catglish」，列出全部步骤，第一个未完成的为当前步骤：已安装时第 0 步为已完成、登录为当前步骤并展开 Sign in / Sign up；未安装时（直接访问 `/welcome`，A 路径）第 0 步为当前步骤并展开安装说明，登录随后续步骤一起灰显。当前步骤之后的步骤只有标题、没有按钮；不显示示例文章，页面为单栏（2026-11-12 修订，#846）。这一屏对新老用户都成立，老用户本来也必须重新登录扩展；登录回跳后按上一条判断，老用户直接去 `/app`。
+   - **未登录进入 `/welcome`**（换电脑）：页面标题为「Welcome to Catglish」，列出全部步骤，第一个未完成的为当前步骤：已安装时第 0 步为已完成，第一个未完成的步骤（未固定时是固定图标，已固定时是登录，见 2026-11-12 #852 修订）为当前步骤并展开；未安装时（直接访问 `/welcome`，A 路径）第 0 步为当前步骤并展开安装说明，登录随后续步骤一起灰显。当前步骤之后的步骤只有标题、没有按钮；不显示示例文章，页面为单栏（2026-11-12 修订，#846）。这一屏对新老用户都成立，老用户本来也必须重新登录扩展；登录回跳后按上一条判断，老用户直接去 `/app`。
    - 因此老用户最多看到一次本来就需要的登录页，看不到任何引导步骤。
    - 判断不了的情况（例如用户换电脑后不登录、直接关掉）就让引导出现一次：这种情况概率低，代价只是多看一页。**每一步都显示「Skip setup」**，点了即写入 `onboardingCompleted`（已登录时）并去 `/app`。
 2. **步骤**（全部按真实状态显示勾选，不按顺序锁定；文案全英文）：
    0. **安装扩展**（`/welcome` 上始终在列表里：未安装时为当前步骤，已安装时显示为已完成的「Catglish extension installed」；Home 清单只在未安装时出现。2026-11-12 修订，#846）：「Add to Chrome」按钮在新标签页打开 Chrome Web Store。链接取现有的运行时配置 `ENX_EXTENSION_WEB_STORE_URL`；扩展上架前它为空，按钮显示为不可点的「Coming soon to the Chrome Web Store」（与 `OnboardingChecklist` 现有的空链接处理一致），上架后填上配置即可，不改代码。页面可见时每 2 秒发一次 `enx:status`，探测到安装后自动勾上（同时扩展会把用户切回这个标签页，见 Decision 1）。非 Chromium 浏览器给出「Catglish needs Chrome」说明。安装操作由商店页面完成；**2026-11-05 修订（#559，owner 确认）**：Enhanced protection 用户可能遇到额外警告，因此公开帮助中心 `/help` 提供商店搜索安装、ZIP 手动安装与首次使用手册，正文先上线并预留截图位置，不加视频。商店搜索说明按上线时 Public 发布编写，保留正式条目直达链接。`/welcome` 的安装步骤在商店按钮下解释该警告，并提供新标签页打开的 ZIP 安装帮助链接；检测到已安装后随安装步骤的说明一起隐藏（步骤本身变为已完成）。警告文案与商店安装手册共用一处定义，经 #560 实测确认警告消失后移除。帮助页从官网与 App 的 Help 菜单进入，免登录；安装后的状态判断与实际操作仍在 `/welcome`。产品名和仓库地址使用站点配置，离线包名示例从仓库名派生，并兼容旧发布使用产品名的附件。产品演示视频已在官网首页。
-   1. **登录**：已登录则勾上；未登录时给 Sign in / Sign up，登录回跳回到 `/welcome`（用 Clerk 的 `redirect_url`，保留 `?src=install`；不用 adr-020 的 `src=extension`，它会把用户送到 `/extension/connected`）。
-   2. **固定图标**（可跳过）：一张示意图，展示「点拼图图标 → 点 Catglish 旁的图钉」（静态图片，用本地构建的扩展截取，放在 enx-ui 的 `public/` 下；第一版先用手绘示意图 `public/onboarding/pin-icon.svg`，截图后替换）。页面在这一步可见、且未跳过时每 2 秒经 `enx:status` 查询 `isOnToolbar`，固定后自动勾上；进来时已固定（包括被 Chrome 自动固定的用户）则直接是勾上的。点「Skip」直接进入下一步；跳过的人之后由 adr-046 Decision 6 的固定提示最多再提醒两次，本 ADR 不另做计数。
+   1. **固定图标**（可跳过；2026-11-12 修订，#852：排在登录之前）：一张示意图，展示「点拼图图标 → 点 Catglish 旁的图钉」（静态图片，用本地构建的扩展截取，放在 enx-ui 的 `public/` 下；第一版先用手绘示意图 `public/onboarding/pin-icon.svg`，截图后替换）。页面在这一步可见、且未跳过时每 2 秒经 `enx:status` 查询 `isOnToolbar`，固定后自动勾上；进来时已固定（包括被 Chrome 自动固定的用户）则直接是勾上的。点「Skip」直接进入下一步；跳过的人之后由 adr-046 Decision 6 的固定提示最多再提醒两次，本 ADR 不另做计数。
+   2. **登录**：已登录则勾上；未登录时给 Sign in / Sign up，登录回跳回到 `/welcome`（用 Clerk 的 `redirect_url`，保留 `?src=install`；不用 adr-020 的 `src=extension`，它会把用户送到 `/extension/connected`）。
    3. **在示例文章上试一次**：`/welcome` 页内直接渲染示例文章（与 `/reader/sample` 同一份 `SAMPLE_ARTICLE`，容器同为 `#enx-reader-article`），**不调用 `requestReaderMode()`**。两个小项：
       - **启用**：提示「Click the Catglish icon in your toolbar, then *Read with Catglish*」。扩展启用学习模式后在 `<html>` 上写 `data-enx-learning="on"`（Decision 4a），页面观察到即勾上，提示换成下一项。
       - **点一个词**：提示「Click any word in the article」。累计查词数 > 0 即勾上（现有 stats 接口 `/api/stats/overview` 的 `vocab.total`，即词表条目数，与 Home 同一信号；用户删过词时会少算。页面可见时每几秒重查一次，直到勾上）。
-      - 用户未登录扩展时点「Read with Catglish」会得到扩展自己的登录提示；第 1 步本来就在前面，不另做处理。
+      - 用户未登录扩展时点「Read with Catglish」会得到扩展自己的登录提示；登录（第 2 步）本来就在前面，不另做处理。
 3. **完成**：第 3 步两项都勾上后写入 `onboardingCompleted`，显示「You're all set」，然后放手。固定图标没做也没跳过不影响完成；完成态一旦出现就保持，之后关掉学习模式也不回到步骤列表：
    - 一句话：在任意英文文章页点 Catglish 图标 →「Read with Catglish」即可。
    - **推荐站点**：一组可以马上去读的英文站点链接（新标签页打开）。清单写在 enx-ui 一个常量里，按需增删；入选条件是**免登录、无付费墙、正文结构普通、实测学习模式可用**。初始候选：InfoQ（infoq.com）、Anthropic News（anthropic.com/news）、BBC News、The Guardian、AP News、NPR、Wikipedia（扩展有专门适配器）。实现时逐个在真实 Chrome 里验证，不能用的移出清单。
@@ -100,10 +107,10 @@ A、B 的区别只是「进来时扩展装没装」，页面能直接探测到�
   - 单测：`install` 且没有 `/welcome` 标签页时新开、已有时切回不新开，`update` 不打开；`enx:status` 只响应 `ENX_UI_ORIGINS`、返回 `isOnToolbar`；`data-enx-learning` 启用后出现、关闭后消失、非 enx-ui 页面不写；`/welcome` 被 Reader 适配器判为支持。
 - enx-api：`preferences` 注册表加 `onboardingCompleted`（布尔，默认 false，不可在设置页编辑）；单测覆盖默认值与写入。
 - enx-ui：
-  - 公开路由 `/welcome`（未登录必须能看到第 1 步）；`src/lib/enxExtension.ts` 加 `extensionStatus()`；`src/lib/onboarding.ts` 放 `onboardingSteps` 纯函数，`OnboardingChecklist` 改用它并链到 `/welcome`；推荐站点常量；固定图标示意图放 `public/`。
+  - 公开路由 `/welcome`（未登录必须能看到登录步骤）；`src/lib/enxExtension.ts` 加 `extensionStatus()`；`src/lib/onboarding.ts` 放 `onboardingSteps` 纯函数，`OnboardingChecklist` 改用它并链到 `/welcome`；推荐站点常量；固定图标示意图放 `public/`。
   - 单测：`onboardingSteps` 各状态组合；`/welcome` 不发 `enx:enable-reader`；`data-enx-learning` 出现后第 3 步「启用」勾上；已登录 + 已固定 + 已查词时直接显示完成态；固定步骤可跳过；`extensionStatus` 超时返回未安装；老用户经 `src=install` 进入跳 `/app`；商店链接为空时安装按钮不可点。
-- e2e（adr-037 / enx-ui e2e）：已登录用户打开 `/welcome` 看到第 1 步已勾；未登录打开 `/welcome` 看到登录入口和全部步骤、没有示例文章（2026-11-12 修订，#846）；已登录打开 `/welcome` 看到示例文章；未登录打开 `/reader/sample` 直接看到文章正文，不跳登录页。
-- **人工验证项**：真实 Chrome 中全新安装扩展 → 自动打开 `/welcome` → 登录回跳回 `/welcome` → 固定图标后第 2 步自动勾上 → 点图标「Read with Catglish」，角标 `…` → `✓`、第 3 步「启用」勾上 → 点词出释义 → 完成页出现推荐站点；推荐站点逐个可用。
+- e2e（adr-037 / enx-ui e2e）：已登录用户打开 `/welcome` 看到登录步骤已勾；未登录打开 `/welcome` 看到登录入口和全部步骤、没有示例文章（2026-11-12 修订，#846）；已登录打开 `/welcome` 看到示例文章；未登录打开 `/reader/sample` 直接看到文章正文，不跳登录页。
+- **人工验证项**：真实 Chrome 中全新安装扩展 → 自动打开 `/welcome` → 固定图标后第 1 步自动勾上（或 Chrome 已自动固定、进来即勾上）→ 登录回跳回 `/welcome` → 点图标「Read with Catglish」，角标 `…` → `✓`、第 3 步「启用」勾上 → 点词出释义 → 完成页出现推荐站点；推荐站点逐个可用。
 
 ## Consequences
 
