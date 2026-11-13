@@ -193,9 +193,12 @@ test('detects installation without flashing a guessed result, and updates after 
   const done = page.locator('ol > li').first()
   await expect(done.getByLabel('Done')).toBeVisible()
   const current = page.locator('ol > li').nth(1)
+  await expect(current.getByText('Pin the Catglish icon')).toBeVisible()
+  const skipPin = current.getByRole('button', { name: 'Skip', exact: true })
+  await expect(skipPin).toBeVisible()
   await expect(
-    current.getByRole('link', { name: 'Sign in', exact: true })
-  ).toBeVisible()
+    page.getByRole('link', { name: 'Sign in', exact: true })
+  ).toHaveCount(0)
   const styles = await page.locator('ol > li > div > p').evaluateAll((titles) =>
     titles.map((title) => ({
       color: getComputedStyle(title).color,
@@ -217,6 +220,28 @@ test('detects installation without flashing a guessed result, and updates after 
   await expect(
     page.getByRole('button', { name: 'Next: finish setup' })
   ).toHaveCount(0)
+  await expect(skipPin).toBeInViewport()
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth
+    )
+  ).toBe(true)
+  await page.screenshot({
+    path: 'test-results/welcome-pin-mobile.png',
+    animations: 'disabled',
+  })
+  await skipPin.click()
+  await expect(current.getByLabel('Skipped')).toBeVisible()
+  await expect(
+    page
+      .locator('ol > li')
+      .nth(2)
+      .getByRole('link', { name: 'Sign in', exact: true })
+  ).toBeVisible()
+  await expect(
+    page.getByRole('link', { name: 'Sign up', exact: true })
+  ).toBeVisible()
+  await expect(skipPin).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Sign in' })).toBeInViewport()
   await page.screenshot({
     animations: 'disabled',
