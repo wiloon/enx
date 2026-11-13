@@ -36,6 +36,87 @@ test.describe('/welcome (signed out)', () => {
 test.describe('/welcome (signed in)', () => {
   test.skip(!loginAvailable, LOGIN_SKIP_REASON)
 
+  test('finishes with a primary dashboard exit after the recommended sites', async ({
+    page,
+    signedIn,
+  }) => {
+    void signedIn
+    await page.route('**/api/me/preferences', (route) =>
+      route.fulfill({
+        json: {
+          onboardingCompleted: {
+            value: true,
+            effective: true,
+            editable: false,
+          },
+        },
+      })
+    )
+    await page.route('**/api/stats/overview**', (route) =>
+      route.fulfill({
+        json: {
+          vocab: { total: 12, mastered: 0 },
+          today: { wordsRead: 0, wordLookups: 0 },
+          week: { wordsRead: 0 },
+          sparkline: [],
+        },
+      })
+    )
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto('/welcome')
+    const heading = page.getByRole('heading', {
+      name: "You're all set",
+      exact: true,
+    })
+    await expect(heading).toBeVisible()
+    const dashboard = page.getByRole('link', {
+      name: 'Go to your dashboard',
+      exact: true,
+    })
+    await expect(dashboard).toHaveAttribute('href', '/app')
+    await expect(dashboard.locator('svg')).toHaveAttribute(
+      'aria-hidden',
+      'true'
+    )
+    const sites = page.getByRole('link', { name: /\(opens in a new tab\)$/ })
+    await expect(sites).toHaveCount(6)
+    for (const link of await sites.all()) {
+      await expect(link).toHaveAttribute('target', '_blank')
+      await expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+      await expect(link.locator('svg')).toBeVisible()
+    }
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme })
+      await page.evaluate(
+        (dark) => document.documentElement.classList.toggle('dark', dark),
+        colorScheme === 'dark'
+      )
+      await expect(dashboard).toBeInViewport()
+      const buttonBox = await dashboard.boundingBox()
+      const sitesBox = await sites.last().boundingBox()
+      expect(buttonBox!.y).toBeGreaterThan(sitesBox!.y + sitesBox!.height)
+      const brand = await heading
+        .locator('svg')
+        .evaluate((el) => getComputedStyle(el).color)
+      await expect(dashboard).toHaveCSS('background-color', brand)
+      const background = await dashboard.evaluate(
+        (el) => getComputedStyle(el).backgroundColor
+      )
+      expect(background).not.toBe(
+        await dashboard.evaluate((el) => getComputedStyle(el).color)
+      )
+      await page.screenshot({
+        path: `test-results/welcome-finished-${colorScheme}.png`,
+        animations: 'disabled',
+      })
+    }
+    await dashboard.click()
+    await expect(page).toHaveURL(/\/app$/)
+    await expect(
+      page.getByRole('heading', { name: 'Today', exact: true })
+    ).toBeVisible()
+  })
+
   test('ticks the sign-in step', async ({ page, signedIn }) => {
     void signedIn
     // A new user: never finished onboarding, no lookups yet.

@@ -21,7 +21,7 @@ Before placing an icon, find its concept below and use that row's icon. A concep
 | Open the Side Panel | `SidePanelIcon` (custom, `Popup.tsx`) | — | popup |
 | Saved page | `BookmarkIcon` (outline = not saved, solid = saved) | `Bookmark` | popup Save card, Saved Pages |
 | Reading stats | `ChartBarIcon` | `BarChart3` | Reading Stats nav |
-| Done, on, known | `CheckIcon` / `CheckCircleIcon` (status) | `Check` | "Catglish is on", Mark as known, onboarding steps |
+| Done, on, known | `CheckIcon` / `CheckCircleIcon` (status) | `Check`; `CircleCheck` for `/welcome` finished-view completion | "Catglish is on", Mark as known, onboarding steps; brand `CircleCheck` before "You're all set" |
 | The current onboarding step | — | `CircleDot` | first step still to do on `/welcome` |
 | A step still to do | — | `Circle` | onboarding steps on `/welcome` (Home numbers its steps instead) |
 | A step the user skipped | — | `CircleSlash` | "Pin the Catglish icon" on `/welcome` after Skip |
@@ -31,8 +31,8 @@ Before placing an icon, find its concept below and use that row's icon. A concep
 | Needs a plan (paywalled) | `LockClosedIcon` | `Lock` | "Look up with AI" without credits |
 | Private to you | `ShieldCheckIcon` | `ShieldCheck` | Reader's "Only you can see it" note |
 | A website | `GlobeAltIcon` | `Globe` | popup "Always enable on this site"; "Back to site" nav |
-| Opens in a new tab | `ArrowTopRightOnSquareIcon` | `ExternalLink` | popup header link to the site; popup "Set a shortcut"; landing page "Similar apps" rows |
-| Next step, go on | `ArrowRightIcon` | `ArrowRight` | sign-in button; Home "Start with a sample article" |
+| Opens in a new tab | `ArrowTopRightOnSquareIcon` | `ExternalLink`; `ArrowUpRight` for `/welcome` finished-view recommended links | popup header link to the site; popup "Set a shortcut"; landing page "Similar apps" rows; trailing `ArrowUpRight` on recommended site names |
+| Next step, go on | `ArrowRightIcon` | `ArrowRight` | sign-in button; Home "Start with a sample article"; trailing arrow on `/welcome` finished-view "Go to your dashboard" brand button |
 | Row leads somewhere | `ChevronRightIcon` | `ChevronRight` | popup "Open side panel", Home stat strip and plan card, `/billing` "Credit history" |
 | Expand or collapse a grouped row | `ChevronDownIcon` (rotated when open) | `ChevronDown` (rotated when open) | credit history's same-day AI usage groups; popup "Send feedback" |
 | Back to the parent page | — | `ArrowLeft` | "Users" on `/admin/users/[id]`, "Billing" on `/billing/history` |

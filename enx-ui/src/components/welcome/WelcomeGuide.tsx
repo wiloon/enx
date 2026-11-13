@@ -4,7 +4,15 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Circle, CircleDot, CircleSlash } from 'lucide-react'
+import {
+  ArrowRight,
+  ArrowUpRight,
+  Check,
+  Circle,
+  CircleCheck,
+  CircleDot,
+  CircleSlash,
+} from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useExtensionStatusPoll } from '@/hooks/useExtensionStatusPoll'
 import { useLearningModeMark } from '@/hooks/useLearningModeMark'
@@ -448,7 +456,13 @@ function SkipSetup({ onClick }: { onClick: () => void }) {
 function Finished() {
   return (
     <>
-      <h1 className="text-2xl font-bold">You&apos;re all set</h1>
+      <h1 className="flex items-center gap-2 text-2xl font-bold">
+        <CircleCheck
+          className="size-6 shrink-0 text-brand"
+          aria-hidden="true"
+        />
+        You&apos;re all set
+      </h1>
       <p className="text-sm">
         On any English article, click the {SITE.name} icon in your toolbar, then{' '}
         <span className="font-medium">Read with {SITE.name}</span>.
@@ -465,6 +479,11 @@ function Finished() {
                 className="font-medium text-brand underline-offset-4 hover:underline"
               >
                 {site.name}
+                <ArrowUpRight
+                  className="ml-1 inline size-3.5"
+                  aria-hidden="true"
+                />
+                <span className="sr-only"> (opens in a new tab)</span>
               </a>
               <span className="text-muted-foreground">
                 {' '}
@@ -474,12 +493,12 @@ function Finished() {
           ))}
         </ul>
       </div>
-      <Link
-        href="/app"
-        className="inline-block text-sm font-medium underline-offset-4 hover:underline"
-      >
-        Go to your dashboard
-      </Link>
+      <Button asChild variant="brand">
+        <Link href="/app">
+          Go to your dashboard
+          <ArrowRight aria-hidden="true" />
+        </Link>
+      </Button>
     </>
   )
 }

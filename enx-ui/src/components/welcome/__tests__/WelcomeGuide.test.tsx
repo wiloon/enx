@@ -700,6 +700,59 @@ it('expands enable, then moves the detail and marker to look-up when enabled', a
   ).toBeInTheDocument()
 })
 
+it('ends the finished view with a brand dashboard link and decorative arrow', async () => {
+  signedIn()
+  mockOverview.mockResolvedValue(overview(12))
+  renderGuide(false)
+  await screen.findByRole('heading', { name: "You're all set" })
+  const dashboard = screen.getByRole('link', {
+    name: 'Go to your dashboard',
+  })
+  expect(dashboard).toHaveAttribute('href', '/app')
+  expect(dashboard).toHaveClass('bg-brand', 'text-brand-foreground')
+  expect(dashboard.lastElementChild).toHaveClass('lucide-arrow-right')
+  expect(dashboard.lastElementChild).toHaveAttribute('aria-hidden', 'true')
+  expect(dashboard.nextElementSibling).toBeNull()
+})
+
+it('marks completion before the unchanged heading with a decorative brand check', async () => {
+  signedIn()
+  mockOverview.mockResolvedValue(overview(12))
+  renderGuide(false)
+  const heading = await screen.findByRole('heading', {
+    name: "You're all set",
+  })
+  expect(heading.firstElementChild).toHaveClass(
+    'lucide-circle-check',
+    'text-brand'
+  )
+  expect(heading.firstElementChild).toHaveAttribute('aria-hidden', 'true')
+})
+
+it('announces a new tab and shows a decorative up-right arrow for every recommended site', async () => {
+  signedIn()
+  mockOverview.mockResolvedValue(overview(12))
+  renderGuide(false)
+  await screen.findByRole('heading', { name: "You're all set" })
+  for (const name of [
+    'InfoQ',
+    'Anthropic News',
+    'The Guardian',
+    'AP News',
+    'NPR',
+    'Standard Ebooks',
+  ]) {
+    const link = screen.getByRole('link', {
+      name: `${name} (opens in a new tab)`,
+    })
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(link).toHaveClass('text-brand')
+    expect(link.querySelector('svg')).toHaveClass('lucide-arrow-up-right')
+    expect(link.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+  }
+})
+
 it('has no current step after the guide is finished', async () => {
   signedIn()
   mockOverview.mockResolvedValue(overview(1))
