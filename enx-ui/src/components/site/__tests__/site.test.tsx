@@ -214,7 +214,14 @@ describe('FeatureSection', () => {
     ])
     // Rephrase is a writing tool; it is explained in Help, not here.
     expect(screen.queryByText(/idiomatic/i)).not.toBeInTheDocument()
-    expect(screen.getAllByRole('img')).toHaveLength(3)
+    // Real screenshots, not the empty placeholder boxes.
+    expect(
+      screen.getAllByRole('img').map((img) => img.getAttribute('src'))
+    ).toEqual([
+      '/landing/click-word.png',
+      '/landing/translate-sentence.png',
+      '/landing/word-highlight.png',
+    ])
   })
 })
 
