@@ -220,14 +220,12 @@ describe('step titles per screen (Decision 6)', () => {
     })
   })
 
-  it('keeps the toolbar instruction and the article on /welcome', () => {
+  it('uses a short enable title and the article on /welcome', () => {
     const full = titles(
       onboardingSteps({ ...fresh, installed: true, signedIn: true }, 'full')
         .steps
     )
-    expect(full.enable).toBe(
-      'Click the Catglish icon in your toolbar, then Read with Catglish'
-    )
+    expect(full.enable).toBe('Turn on Catglish')
     expect(full['look-up']).toBe('Click any word in the article')
   })
 })

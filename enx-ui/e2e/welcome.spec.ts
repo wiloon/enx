@@ -111,6 +111,80 @@ test.describe('/welcome (signed in)', () => {
       animations: 'disabled',
     })
   })
+
+  test('points the current lookup hint at the article across the layout breakpoint', async ({
+    page,
+    signedIn,
+  }) => {
+    void signedIn
+    await page.route('**/api/me/preferences', (route) =>
+      route.fulfill({
+        json: {
+          onboardingCompleted: {
+            value: null,
+            effective: false,
+            editable: true,
+          },
+        },
+      })
+    )
+    await page.route('**/api/stats/overview**', (route) =>
+      route.fulfill({ json: { vocab: { total: 0, mastered: 0 } } })
+    )
+    await page.addInitScript(() => {
+      Object.defineProperty(window, 'chrome', {
+        configurable: true,
+        value: {
+          runtime: {
+            sendMessage: (
+              _id: string,
+              _message: unknown,
+              callback: (response: unknown) => void
+            ) => callback({ ok: true, isOnToolbar: true }),
+          },
+        },
+      })
+    })
+    await page.goto('/welcome')
+    const current = page.locator('[aria-current="step"]')
+    await expect(current).toContainText('Turn on Catglish')
+    await expect(
+      current.getByText(
+        'Click the Catglish icon in your toolbar, then Read with Catglish.'
+      )
+    ).toBeVisible()
+    await page.evaluate(() =>
+      document.documentElement.setAttribute('data-enx-learning', 'on')
+    )
+    await expect(current).toHaveCount(1)
+    await expect(current).toContainText('Click any word in the article')
+    const rightHint = current.getByText(
+      'Try any word in the article on the right →'
+    )
+    const belowHint = current.getByText('Try any word in the article below ↓')
+    const article = page.getByRole('region', { name: 'Sample article' })
+    for (const width of [1280, 768, 767, 375]) {
+      await page.setViewportSize({ width, height: 900 })
+      if (width >= 768) {
+        await expect(rightHint).toBeVisible()
+        await expect(belowHint).toBeHidden()
+        const guideBox = await current.boundingBox()
+        const articleBox = await article.boundingBox()
+        expect(articleBox!.x).toBeGreaterThan(guideBox!.x + guideBox!.width)
+      } else {
+        await expect(belowHint).toBeVisible()
+        await expect(rightHint).toBeHidden()
+        const guideBox = await current.boundingBox()
+        const articleBox = await article.boundingBox()
+        expect(articleBox!.y).toBeGreaterThan(guideBox!.y + guideBox!.height)
+      }
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth
+        )
+      ).toBe(true)
+    }
+  })
 })
 
 // The extension messaging API is a browser boundary. These checks render the
@@ -207,11 +281,11 @@ test('detects installation without flashing a guessed result, and updates after 
   )
   expect(styles[0].color).toBe(styles[2].color)
   expect(styles[1].color).not.toBe(styles[2].color)
-  expect(styles[1].weight).toBe('400')
+  expect(styles[1].weight).toBe('500')
   expect(
     await done.evaluate((el) => getComputedStyle(el).backgroundColor)
   ).toBe('rgba(0, 0, 0, 0)')
-  await expect(page.locator('[aria-current="step"]')).toHaveCount(0)
+  await expect(page.locator('[aria-current="step"]')).toHaveCount(1)
   await expect(install).toHaveCount(0)
   await page.screenshot({
     animations: 'disabled',
