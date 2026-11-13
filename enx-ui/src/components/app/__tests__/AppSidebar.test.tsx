@@ -32,6 +32,14 @@ it('offers the public Help center from the app navigation', () => {
   )
 })
 
+it('offers Check setup back to /welcome beside Help (ADR-047 #873)', () => {
+  mockPathname.mockReturnValue('/app')
+  render(<AppSidebar />)
+  const checkSetup = screen.getByRole('link', { name: 'Check setup' })
+  expect(checkSetup).toHaveAttribute('href', '/welcome')
+  expect(checkSetup.querySelector('svg')).toHaveClass('lucide-list-checks')
+})
+
 it('renders every navigation destination', () => {
   mockPathname.mockReturnValue('/app')
   render(<AppSidebar />)
@@ -52,16 +60,17 @@ it('renders every navigation destination', () => {
 
 // Billing and Account live in the top bar's account menu (#211); the
 // footer keeps the app-wide utilities.
-it('ends with Settings, Invite friends, Help and Back to site', () => {
+it('ends with Settings, Invite friends, Help, Check setup and Back to site', () => {
   mockPathname.mockReturnValue('/app')
   render(<AppSidebar />)
 
   const labels = screen.getAllByRole('link').map((l) => l.textContent?.trim())
   const footer = labels.slice(labels.indexOf('Settings'))
-  expect(footer.slice(0, 4)).toEqual([
+  expect(footer.slice(0, 5)).toEqual([
     'Settings',
     'Invite friends',
     'Help',
+    'Check setup',
     'Back to site',
   ])
   expect(screen.getByRole('link', { name: 'Invite friends' })).toHaveAttribute(

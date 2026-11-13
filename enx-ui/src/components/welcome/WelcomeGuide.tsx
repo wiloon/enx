@@ -1,6 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import {
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -35,6 +40,16 @@ import { Button } from '@/components/ui/button'
 // How often /welcome asks the extension for its status and re-reads the
 // user's lookups while waiting on a step (ADR-047 Decision 2).
 const POLL_MS = 2000
+const PIN_SKIPPED_KEY = 'enx.onboarding.pinSkipped'
+const subscribeToPinSkip = () => () => {}
+const serverPinSkipped = () => false
+const readPinSkipped = () => {
+  try {
+    return localStorage.getItem(PIN_SKIPPED_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
 
 const FINAL_LANDINGS: ReadonlySet<WelcomeLanding> = new Set([
   'steps',
@@ -57,7 +72,13 @@ export default function WelcomeGuide({
   const { isLoading, isAuthenticated } = useAuth()
   const signedIn = isLoading ? undefined : isAuthenticated
   const learningEnabled = useLearningModeMark()
-  const [pinSkipped, setPinSkipped] = useState(false)
+  const [skippedThisVisit, setPinSkipped] = useState(false)
+  const savedPinSkipped = useSyncExternalStore(
+    subscribeToPinSkip,
+    readPinSkipped,
+    serverPinSkipped
+  )
+  const pinSkipped = skippedThisVisit || savedPinSkipped
 
   const preferences = useQuery({
     queryKey: ['preferences'],
@@ -121,9 +142,10 @@ export default function WelcomeGuide({
   const finished = landing === 'done' || reachedDone
 
   const extension = useExtensionStatusPoll({
-    enabled: !finished && landing !== 'app',
+    enabled: landing !== 'app',
     watchToolbar: (landing === 'steps' || landing === 'sign-in') && !pinSkipped,
     intervalMs: pollMs,
+    live: finished,
   })
 
   const progress = onboardingSteps(
@@ -136,6 +158,18 @@ export default function WelcomeGuide({
       hasLookedUp: hasLookedUp ?? false,
     },
     landing === 'sign-in' ? 'signed-out' : 'full'
+  )
+  // Only a signed-in user reaches the finished view.
+  const setupStatus = onboardingSteps(
+    {
+      installed: extension?.installed ?? false,
+      signedIn: true,
+      isOnToolbar: extension?.isOnToolbar ?? false,
+      pinSkipped,
+      learningEnabled: false,
+      hasLookedUp: false,
+    },
+    'check'
   )
 
   const queryClient = useQueryClient()
@@ -188,7 +222,7 @@ export default function WelcomeGuide({
   const returnTo = fromInstall ? '/welcome?src=install' : '/welcome'
 
   // Until detection answers, do not guess whether installation is done.
-  const stepList = (steps: OnboardingStep[]) =>
+  const stepList = (steps: OnboardingStep[], onSkipPin?: () => void) =>
     extension === undefined ? (
       <p
         role="status"
@@ -202,12 +236,16 @@ export default function WelcomeGuide({
         Checking extension…
       </p>
     ) : (
-      <StepList
-        steps={steps}
-        returnTo={returnTo}
-        onSkipPin={() => setPinSkipped(true)}
-      />
+      <StepList steps={steps} returnTo={returnTo} onSkipPin={onSkipPin} />
     )
+  const skipPin = () => {
+    setPinSkipped(true)
+    try {
+      localStorage.setItem(PIN_SKIPPED_KEY, 'true')
+    } catch {
+      // Keep the skip for this visit when storage is unavailable.
+    }
+  }
 
   const showArticle = landing === 'steps' || finished
   // Signed in but still loading keeps one column: the article waits for the
@@ -225,17 +263,17 @@ export default function WelcomeGuide({
       >
         <section className="space-y-6">
           {finished ? (
-            <Finished />
+            <Finished setupStatus={stepList(setupStatus.steps)} />
           ) : landing === 'sign-in' ? (
             <>
               <h1 className="text-2xl font-bold">Welcome to {SITE.name}</h1>
-              {stepList(progress.steps)}
+              {stepList(progress.steps, skipPin)}
               <SkipSetup onClick={skipSetup} signedIn={signedIn === true} />
             </>
           ) : landing === 'steps' ? (
             <>
               <h1 className="text-2xl font-bold">Welcome to {SITE.name}</h1>
-              {stepList(progress.steps)}
+              {stepList(progress.steps, skipPin)}
               <SkipSetup onClick={skipSetup} signedIn={signedIn === true} />
             </>
           ) : (
@@ -265,9 +303,11 @@ function StepList({
 }: {
   steps: OnboardingStep[]
   returnTo: string
-  onSkipPin: () => void
+  /** Without it, the pin step offers no Skip. */
+  onSkipPin?: () => void
 }) {
   const nextId = steps.find((step) => step.status === 'todo')?.id
+  const [showSkippedPin, setShowSkippedPin] = useState(false)
   return (
     <ol className="space-y-5">
       {steps.map((step) => (
@@ -278,18 +318,33 @@ function StepList({
         >
           <StepIcon status={step.status} current={step.id === nextId} />
           <div className="min-w-0 flex-1 space-y-2">
-            <p
-              className={
-                step.id === nextId
-                  ? 'font-medium text-foreground'
-                  : step.status === 'skipped'
-                    ? 'font-medium text-muted-foreground'
-                    : 'text-muted-foreground'
-              }
-            >
-              {step.title}
-            </p>
-            {step.id === nextId && (
+            {step.id === 'pin' && step.status === 'skipped' && !onSkipPin ? (
+              <button
+                type="button"
+                aria-expanded={showSkippedPin}
+                onClick={() => setShowSkippedPin((shown) => !shown)}
+                className="font-medium text-muted-foreground hover:text-foreground active:opacity-80 focus-visible:outline-2 focus-visible:outline-brand"
+              >
+                {step.title}
+              </button>
+            ) : (
+              <p
+                className={
+                  step.id === nextId
+                    ? 'font-medium text-foreground'
+                    : step.status === 'skipped'
+                      ? 'font-medium text-muted-foreground'
+                      : 'text-muted-foreground'
+                }
+              >
+                {step.title}
+              </p>
+            )}
+            {(step.id === nextId ||
+              (step.id === 'pin' &&
+                step.status === 'skipped' &&
+                !onSkipPin &&
+                showSkippedPin)) && (
               <StepDetail
                 id={step.id}
                 returnTo={returnTo}
@@ -345,7 +400,7 @@ function StepDetail({
 }: {
   id: OnboardingStep['id']
   returnTo: string
-  onSkipPin: () => void
+  onSkipPin?: () => void
 }) {
   switch (id) {
     case 'install':
@@ -379,9 +434,11 @@ function StepDetail({
             height={200}
             className="w-full max-w-sm rounded-md border"
           />
-          <Button variant="ghost" size="sm" onClick={onSkipPin}>
-            Skip
-          </Button>
+          {onSkipPin && (
+            <Button variant="ghost" size="sm" onClick={onSkipPin}>
+              Skip
+            </Button>
+          )}
         </div>
       )
     case 'enable':
@@ -515,9 +572,11 @@ function SkipSetup({
   )
 }
 
-function Finished() {
+// The setup status list sits above the heading (ADR-047 #873).
+function Finished({ setupStatus }: { setupStatus: ReactNode }) {
   return (
     <>
+      {setupStatus}
       <h1 className="flex items-center gap-2 text-2xl font-bold">
         <CircleCheck
           className="size-6 shrink-0 text-brand"

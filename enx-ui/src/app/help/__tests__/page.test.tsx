@@ -16,3 +16,10 @@ it('offers installation and first-use guides without an account', () => {
     screen.getByRole('link', { name: 'Get started with Catglish' })
   ).toHaveAttribute('href', '/help/get-started')
 })
+
+it('links Check setup to /welcome before the guides (ADR-047 #873)', () => {
+  render(<HelpPage />)
+  const links = screen.getAllByRole('link')
+  expect(links[0]).toHaveAccessibleName('Check setup')
+  expect(links[0]).toHaveAttribute('href', '/welcome')
+})

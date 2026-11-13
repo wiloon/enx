@@ -114,12 +114,14 @@ const step = (title: string | RegExp) =>
 
 beforeEach(() => {
   jest.clearAllMocks()
+  localStorage.clear()
   setRuntimeEnv({
     ENX_EXTENSION_ID: 'test-ext-id',
     ENX_EXTENSION_WEB_STORE_URL: '',
   })
   ;(global as unknown as { chrome?: unknown }).chrome = undefined
   document.documentElement.removeAttribute('data-enx-learning')
+  document.documentElement.removeAttribute('data-enx-extension')
   mockAuth.mockReturnValue({ isLoading: false, isAuthenticated: false })
   mockPreferences.mockResolvedValue(preferences(false))
   mockUpdatePreferences.mockResolvedValue(preferences(true))
@@ -466,18 +468,213 @@ it('advances a signed-out visitor to sign-in and stops polling after skipping Pi
   expect(statusCalls()).toBe(afterSkip)
 })
 
-it('does not poll the extension on the finished page', async () => {
+describe('setup status on the finished view (ADR-047 #873)', () => {
+  const failStatus = () => {
+    sendMessage = jest.fn((_id, _message, cb) => cb(undefined))
+    ;(global as unknown as { chrome?: unknown }).chrome = {
+      runtime: { sendMessage },
+    }
+  }
+
+  const finishedUser = () => {
+    signedIn()
+    mockOverview.mockResolvedValue(overview(12))
+  }
+
+  const statusRows = () =>
+    screen.getAllByRole('listitem').filter((row) => row.closest('ol'))
+
+  it('shows three ticks above "You\'re all set" when installed and pinned', async () => {
+    finishedUser()
+    installExtension({ isOnToolbar: true })
+    const { container } = renderGuide()
+
+    const heading = await screen.findByRole('heading', {
+      name: "You're all set",
+    })
+    await screen.findByText('Catglish icon pinned')
+    expect(statusRows().map((row) => row.textContent)).toEqual([
+      'Catglish extension installed',
+      'Catglish icon pinned',
+      'Signed in',
+    ])
+    for (const row of statusRows()) {
+      expect(within(row).getByLabelText('Done')).toBeInTheDocument()
+    }
+    const list = container.querySelector('ol') as HTMLElement
+    expect(
+      list.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    expect(container.querySelector('[aria-current]')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Go to your dashboard' })
+    ).toBeInTheDocument()
+  })
+
+  it('expands the install detail despite a stale extension stamp when the status request fails, then ticks it once the extension answers', async () => {
+    finishedUser()
+    document.documentElement.dataset.enxExtension = '1.0.0'
+    failStatus()
+    renderGuide()
+
+    await screen.findByRole('heading', { name: "You're all set" })
+    const install = await waitFor(() => step('Add Catglish to Chrome'))
+    expect(install).toHaveAttribute('aria-current', 'step')
+    expect(
+      within(install).getByRole('link', {
+        name: 'Install manually from a ZIP file',
+      })
+    ).toHaveAttribute('href', '/help/install/offline')
+    expect(within(step('Signed in')).getByLabelText('Done')).toBeInTheDocument()
+
+    installExtension({ isOnToolbar: true })
+    await waitFor(() =>
+      expect(
+        within(step('Catglish extension installed')).getByLabelText('Done')
+      ).toBeInTheDocument()
+    )
+    expect(
+      screen.queryByRole('link', { name: 'Install manually from a ZIP file' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('offers Add to Chrome in the install detail when the store link is set', async () => {
+    setRuntimeEnv({
+      ENX_EXTENSION_ID: 'test-ext-id',
+      ENX_EXTENSION_WEB_STORE_URL: 'https://chromewebstore.google.com/detail/x',
+    })
+    finishedUser()
+    failStatus()
+    renderGuide()
+
+    await screen.findByRole('heading', { name: "You're all set" })
+    expect(
+      within(step('Add Catglish to Chrome')).getByRole('link', {
+        name: 'Add to Chrome',
+      })
+    ).toHaveAttribute('href', 'https://chromewebstore.google.com/detail/x')
+  })
+
+  it('expands the pin detail without a Skip when the icon is not pinned', async () => {
+    finishedUser()
+    installExtension()
+    renderGuide()
+
+    await screen.findByRole('heading', { name: "You're all set" })
+    const pin = await waitFor(() => step('Pin the Catglish icon'))
+    expect(pin).toHaveAttribute('aria-current', 'step')
+    expect(
+      within(pin).getByRole('img', { name: /Chrome toolbar/ })
+    ).toBeInTheDocument()
+    expect(within(pin).queryByRole('button')).not.toBeInTheDocument()
+    expect(
+      within(step('Catglish extension installed')).getByLabelText('Done')
+    ).toBeInTheDocument()
+    expect(within(step('Signed in')).getByLabelText('Done')).toBeInTheDocument()
+  })
+
+  it('lets the user expand and collapse the skipped pin detail on the finished view', async () => {
+    signedIn()
+    installExtension()
+    mockOverview
+      .mockResolvedValueOnce(overview(0))
+      .mockResolvedValue(overview(1))
+    document.documentElement.setAttribute('data-enx-learning', 'on')
+    renderGuide()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Skip' }))
+    await screen.findByRole('heading', { name: "You're all set" })
+    const toggle = await screen.findByRole('button', {
+      name: 'Pin the Catglish icon',
+    })
+    const pin = toggle.closest('li')!
+    expect(pin).not.toHaveAttribute('aria-current')
+    expect(within(pin).getByLabelText('Skipped')).toBeInTheDocument()
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(within(pin).queryByRole('img')).not.toBeInTheDocument()
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(
+      within(pin).getByRole('img', { name: /Chrome toolbar/ })
+    ).toBeInTheDocument()
+    expect(
+      within(pin).queryByRole('button', { name: 'Skip' })
+    ).not.toBeInTheDocument()
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(within(pin).queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('remembers a skipped pin on a later Check setup visit', async () => {
+    signedIn()
+    installExtension()
+    const firstVisit = renderGuide()
+    fireEvent.click(await screen.findByRole('button', { name: 'Skip' }))
+    firstVisit.unmount()
+
+    finishedUser()
+    renderGuide()
+    await screen.findByRole('heading', { name: "You're all set" })
+    const toggle = await screen.findByRole('button', {
+      name: 'Pin the Catglish icon',
+    })
+    const pin = toggle.closest('li')!
+    expect(within(pin).getByLabelText('Skipped')).toBeInTheDocument()
+    expect(pin).not.toHaveAttribute('aria-current')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(within(pin).queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('shows the checking status, not a guess, until the extension answers', async () => {
+    finishedUser()
+    ;(global as unknown as { chrome?: unknown }).chrome = {
+      runtime: { sendMessage: jest.fn() },
+    }
+    renderGuide()
+
+    await screen.findByRole('heading', { name: "You're all set" })
+    expect(
+      screen.getByRole('status', { name: 'Checking extension' })
+    ).toHaveTextContent('Checking extension…')
+    expect(screen.queryByText('Signed in')).not.toBeInTheDocument()
+    expect(screen.queryByText('Add Catglish to Chrome')).not.toBeInTheDocument()
+  })
+
+  it('keeps checking, so disabling the extension expands the install detail without a reload', async () => {
+    finishedUser()
+    installExtension({ isOnToolbar: true })
+    renderGuide()
+
+    await screen.findByText('Catglish extension installed')
+    const onArrival = statusCalls()
+    await act(settle)
+    expect(statusCalls()).toBeGreaterThan(onArrival)
+    failStatus()
+
+    await waitFor(() =>
+      expect(step('Add Catglish to Chrome')).toHaveAttribute(
+        'aria-current',
+        'step'
+      )
+    )
+  })
+})
+
+it('still counts the extension stamp as installed for a user mid-onboarding', async () => {
   signedIn()
-  installExtension()
-  mockOverview.mockResolvedValue(overview(12))
+  document.documentElement.dataset.enxExtension = '1.0.0'
+  sendMessage = jest.fn((_id, _message, cb) => cb(undefined))
+  ;(global as unknown as { chrome?: unknown }).chrome = {
+    runtime: { sendMessage },
+  }
   renderGuide()
 
-  await screen.findByRole('heading', { name: "You're all set" })
-  await settle()
-  const onArrival = statusCalls()
-  await settle()
-
-  expect(statusCalls()).toBe(onArrival)
+  await waitFor(() =>
+    expect(
+      within(step('Catglish extension installed')).getByLabelText('Done')
+    ).toBeInTheDocument()
+  )
+  expect(screen.queryByText('Add Catglish to Chrome')).not.toBeInTheDocument()
 })
 
 it('ticks "Read with Catglish" when the extension marks the page', async () => {
@@ -541,7 +738,7 @@ it('stays finished when learning mode is turned off afterwards', async () => {
     document.documentElement.removeAttribute('data-enx-learning')
   })
 
-  await new Promise((resolve) => setTimeout(resolve, POLL_MS * 3))
+  await act(() => new Promise((resolve) => setTimeout(resolve, POLL_MS * 3)))
   expect(
     screen.getByRole('heading', { name: "You're all set" })
   ).toBeInTheDocument()
@@ -943,9 +1140,11 @@ it('announces a new tab and shows a decorative up-right arrow for every recommen
 
 it('has no current step after the guide is finished', async () => {
   signedIn()
+  installExtension({ isOnToolbar: true })
   mockOverview.mockResolvedValue(overview(1))
   const { container } = renderGuide()
   await screen.findByRole('heading', { name: "You're all set" })
+  await screen.findByText('Catglish icon pinned')
   expect(container.querySelector('[aria-current]')).not.toBeInTheDocument()
   expect(screen.queryByLabelText('Current step')).not.toBeInTheDocument()
 })

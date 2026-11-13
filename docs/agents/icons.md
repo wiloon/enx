@@ -25,6 +25,7 @@ Before placing an icon, find its concept below and use that row's icon. A concep
 | The current onboarding step | — | `CircleDot` | first step still to do on `/welcome` |
 | A step still to do | — | `Circle` | onboarding steps on `/welcome` (Home numbers its steps instead) |
 | A step the user skipped | — | `CircleSlash` | "Pin the Catglish icon" on `/welcome` after Skip |
+| Check your setup | — | `ListChecks` | "Check setup" nav (to `/welcome`) |
 | Back to learning | `ArrowUturnLeftIcon` | `Undo2` | Mark as learning |
 | Delete something kept (server data) | `TrashIcon` | `Trash2` | Remove from Word List, delete a saved page or document |
 | Close or dismiss something transient | `XMarkIcon` | `X` | close the word popover, remove a Side Panel card (cards are not persisted, ADR-023), close the site header menu |
