@@ -5,15 +5,15 @@
 // Words are spoken by the browser's own speech synthesis (Web Speech API), so
 // no word leaves the browser for a third-party audio service.
 
-const isLang = (voice: SpeechSynthesisVoice, pattern: RegExp) =>
+const langMatches = (pattern: RegExp) => (voice: SpeechSynthesisVoice) =>
   pattern.test(voice.lang.replace('_', '-'))
 
 export function pickEnglishVoice(
   voices: readonly SpeechSynthesisVoice[]
 ): SpeechSynthesisVoice | undefined {
   return (
-    voices.find((voice) => isLang(voice, /^en-US$/i)) ??
-    voices.find((voice) => isLang(voice, /^en(-|$)/i))
+    voices.find(langMatches(/^en-US$/i)) ??
+    voices.find(langMatches(/^en(-|$)/i))
   )
 }
 
