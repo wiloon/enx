@@ -26,6 +26,15 @@ adr-046 去掉了正文里的「Article processed • Click words for translatio
 - Welcome 检测扩展时显示转圈与「Checking extension…」，检测完成前不猜测安装结果。未安装时解释用途并提供「Add to Chrome」；已安装时安装这一步在步骤列表里显示为已完成（「Catglish extension installed」，与其他已完成步骤同样的勾和弱化文字，不另做卡片，也没有「Next: finish setup」，见 2026-11-12 修订），安装完成只代表安装这一步完成，后续固定图标、亲手启用和查词保持不变。
 - 扩展已通过 Chrome Web Store 审核，以 Unlisted 发布，正式条目 ID 为 `combdcldlodkikjfhjbdbogjlfmnbjkf`。安装链接使用 `https://chromewebstore.google.com/detail/catglish-learn-english-as/combdcldlodkikjfhjbdbogjlfmnbjkf`；站点常量提供正式 ID 和链接作为默认值，运行时环境仍可覆盖。安装链接为空时也使用正式链接，替代上线前的占位。保留原有安装后复用 Welcome 标签页的行为。
 
+## 2026-11-12 修订（#865，完成态的去向；owner 在生产环境走完引导后提出）
+
+- 问题：完成态最后的「Go to your dashboard」是黑色 `text-sm font-medium`，只在悬停时出现下划线。它和小标题「Something to read」字号、颜色相同，看上去像又一个小标题；上面的推荐站点链接都是品牌色，对比之下它更不像能点的东西。前面每一步的下一个动作都是品牌色按钮，到完成态断了。
+- 「Go to your dashboard」改为品牌色按钮（`Button variant="brand"`），文字后带一个向右的箭头图标（`ArrowRight`），仍放在推荐站点之后、作为这一页的收尾动作。它是完成态里唯一留在站内的跳转，所以用主按钮。
+- 「You're all set」前加品牌色的勾（`CircleCheck`），与步骤列表里「已完成」的勾呼应，表示引导结束。图标仅作装饰（`aria-hidden`），标题文字不变。
+- 推荐站点链接在站点名后加一个小的右上箭头（`ArrowUpRight`，装饰），并给读屏加「(opens in a new tab)」（`sr-only`），把「去外部站点、开新标签页」和「站内按钮」区分开。站点名仍是品牌色文字链接，不改成按钮或卡片（6 个按钮会淹没主按钮）。
+- 不做：把 dashboard 按钮挪到推荐站点之前（这一页先引导用户去读真实文章，dashboard 是之后的去处）。
+- 新用户引导页（`/welcome`）只面向桌面浏览器：引导发生在刚装好 Chrome 扩展之后，这是桌面产品。今后的修订不再为窄屏设计，也不加窄屏的测试和截图；已有的响应式样式和窄屏用例保留，不专门去删。
+
 ## 2026-11-12 修订（#862，当前步骤标记；owner 用新账号在生产环境走引导后提出）
 
 - 问题：当前步骤与后面的步骤用同一个灰色空心圆，只差标题颜色深浅。安装、固定、登录当前时有展开的说明和按钮，本身够醒目；启用、点词没有展开内容，当前时只是一行字，看不出该做哪一步。
@@ -94,6 +103,7 @@ A、B 的区别只是「进来时扩展装没装」，页面能直接探测到�
    - 一句话：在任意英文文章页点 Catglish 图标 →「Read with Catglish」即可。
    - **推荐站点**：一组可以马上去读的英文站点链接（新标签页打开）。清单写在 enx-ui 一个常量里，按需增删；入选条件是**免登录、无付费墙、正文结构普通、实测学习模式可用**。初始候选：InfoQ（infoq.com）、Anthropic News（anthropic.com/news）、BBC News、The Guardian、AP News、NPR、Wikipedia（扩展有专门适配器）。实现时逐个在真实 Chrome 里验证，不能用的移出清单。
      - **2026-11-02 修订（#624）**：加入 Standard Ebooks（standardebooks.org，免费公版经典书），去掉 BBC News 和 Wikipedia。Standard Ebooks 同样要过上面的入选条件，并且要在书的在线阅读页（如某一章）上实测，不只看首页；首页只是书目时，链接指向真正读书的页面。
+   - **去 Home**：最后一个品牌色按钮「Go to your dashboard →」，去 `/app`（2026-11-12 修订，#865：原为黑色文字链接）。
    - 不介绍侧边栏、角标、「Always enable on this site」：这些留给用户自己发现，或写进日后的帮助文档。
    - 之后用户**主动**打开 `/welcome`（不带 `src=install`）时直接显示完成态，示例文章仍可在页内试用。
 4. **新的网页 → 扩展消息 `enx:status`**：返回 `{ ok, version, isOnToolbar }`。与 `enx:ping` 一样只认 `ENX_UI_ORIGINS` 来源，只读，不改任何状态。登录状态由网页自己的 Clerk 得出，不经扩展。`enx:ping` 保留不动（Home、`/reader` 在用）。
