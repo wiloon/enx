@@ -505,9 +505,76 @@ test.describe('/welcome (signed in)', () => {
 
 // The extension messaging API is a browser boundary. These checks render the
 // real page; extension installation itself is covered by the extension suite.
-test('detects installation without flashing a guessed result, and updates after installing', async ({
+test('never offers Add to Chrome to an installed extension while Clerk loads slowly', async ({
   page,
 }) => {
+  // Hold clerk-js past the 2 s status timeout while the extension answers
+  // within it, and watch every render for a guessed "not installed".
+  let releaseClerk = () => {}
+  const clerkHeld = new Promise<void>((resolve) => (releaseClerk = resolve))
+  await page.route(
+    '**/npm/@clerk/clerk-js@*/dist/clerk.browser.js',
+    async (route) => {
+      await clerkHeld
+      await route.continue()
+    }
+  )
+  await page.addInitScript(() => {
+    const seen = window as unknown as { answered: number; sawInstall: boolean }
+    seen.answered = 0
+    seen.sawInstall = false
+    new MutationObserver(() => {
+      if (
+        [...document.querySelectorAll('a')].some((a) =>
+          a.textContent?.includes('Add to Chrome')
+        )
+      )
+        seen.sawInstall = true
+    }).observe(document, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    })
+    Object.defineProperty(window, 'chrome', {
+      configurable: true,
+      value: {
+        runtime: {
+          sendMessage: (
+            _id: string,
+            _message: unknown,
+            callback: (response: unknown) => void
+          ) =>
+            setTimeout(() => {
+              seen.answered++
+              callback({ ok: true, isOnToolbar: false })
+            }, 100),
+        },
+      },
+    })
+  })
+  await page.goto('/welcome', { waitUntil: 'domcontentloaded' })
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as { answered: number }).answered)
+    )
+    .toBeGreaterThan(0)
+  await expect(page.getByText('Loading…')).toBeVisible()
+  await page.waitForTimeout(2500)
+  await expect(page.getByText('Loading…')).toBeVisible()
+  releaseClerk()
+  await expect(page.getByText('Catglish extension installed')).toBeVisible()
+  await expect(page.locator('ol > li').first().getByLabel('Done')).toBeVisible()
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { sawInstall: boolean }).sawInstall
+    )
+  ).toBe(false)
+})
+
+test('shows the checking state until the extension answers, and updates after installing', async ({
+  page,
+}) => {
+  await page.clock.install()
   await page.addInitScript(() => {
     let installed: boolean | undefined
     window.addEventListener('test:extension-status', (event) => {
@@ -534,7 +601,16 @@ test('detects installation without flashing a guessed result, and updates after 
       },
     })
   })
-  await page.goto('/welcome', { waitUntil: 'domcontentloaded' })
+  // The checking state lasts as long as the status request, which a slow
+  // Clerk can outlast. Let Clerk load, then come back to /welcome in the same
+  // document with timers frozen, so the request stays pending until answered.
+  await page.goto('/welcome')
+  await expect(page.locator('ol > li')).toHaveCount(5)
+  await page.getByRole('button', { name: 'Skip setup', exact: true }).click()
+  await expect(page).toHaveURL(/\/$/)
+  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000)
+  await page.goBack()
+  await expect(page).toHaveURL(/\/welcome$/)
   await expect(
     page.getByRole('status', { name: 'Checking extension' })
   ).toBeVisible()
@@ -550,6 +626,7 @@ test('detects installation without flashing a guessed result, and updates after 
   )
   const install = page.getByRole('link', { name: 'Add to Chrome' })
   await expect(install).toHaveAttribute('href', SITE.chromeWebStoreUrl)
+  await page.clock.resume()
   await expect(install).toHaveAttribute('target', '_blank')
   for (const colorScheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme })
