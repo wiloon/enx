@@ -12,7 +12,10 @@ const customJestConfig = {
   setupFiles: ['<rootDir>/jest.polyfills.js'],
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   testEnvironment: 'jsdom',
-  testPathIgnorePatterns: ['<rootDir>/e2e/'],
+  // Not '<rootDir>/e2e/': the pattern is a regex and <rootDir> goes in
+  // unescaped, so a checkout path with '+' (a Claude Code worktree for a
+  // `fix/…` branch) stops matching and jest runs the Playwright specs.
+  testPathIgnorePatterns: ['/e2e/'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
   },

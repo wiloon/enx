@@ -59,7 +59,7 @@ ADR-079 Decision 8 的「上线前调高免费档」不变，但估算改了：�
 ## Consequences
 
 - 修订 ADR-079：Decision 1 表格「每日查词配额」一行改为「没查过的词每个 +1」；Decision 5「扣 n」里 QUERY 的 n 改为没查过的词数，「余量不够时预取先于点击被挡」不再成立（预取的词根本不扣）；Decision 8 的估算按本 ADR Decision 4。ADR-079 Considered Options 否决的「QUERY 只返回复习词表里的词」仍然否决：QUERY 照旧能读任何词，只是扣不扣配额按是不是查过的词区分。
-- 预取不再消耗配额，点击查词不会因为预取被 429 挡住；配额重新接近「今天点了几次」。定价页免费档不写具体次数的决定（ADR-079 Consequences）不变。
+- 预取不再消耗配额，点击查词不会因为预取被 429 挡住；配额重新接近「今天点了几次」。~~定价页免费档不写具体次数的决定（ADR-079 Consequences）不变。~~ 修订（2026-11-13，用户定）：既然配额接近点击次数，定价页改为写出每档的每日查词上限，措辞用「Up to N … lookups a day」，因为第一次点新词扣 2。数值写在 enx-ui `src/lib/plans.ts`（`FREE_DAILY_LOOKUPS`、`SUBSCRIBED_DAILY_LOOKUPS`），单元测试与 enx-api `config.toml` 的 `[stripe.quota]` 对账；部署用环境变量覆盖时（w10n-config）要手动同步。这同时取代 ADR-079 Consequences 里「免费档不写具体次数」一条。
 - QUERY 每次多一次按用户读查过的词的查询（`user_dicts` 按 `user_id` 加 `words` 主键 join，只读本批规范化去重后的词：`words.english IN (…)`，issue #829），代价很小，与生词本大小无关。
 - enx-chrome、enx-ui 不用改：客户端照常发 QUERY，扣不扣由服务端定。
 - 隐私不变：判定只用已有的生词本数据，不新增存储。

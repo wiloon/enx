@@ -13,6 +13,7 @@ interface PriceCardProps {
   priceLabel: string
   creditsLabel?: string
   description?: string
+  features?: readonly string[]
   children?: ReactNode
   // The button slot. /pricing passes a link and /billing a checkout button,
   // so the card itself never knows about payment.
@@ -26,6 +27,7 @@ export default function PriceCard({
   priceLabel,
   creditsLabel,
   description,
+  features,
   children,
   action,
 }: PriceCardProps) {
@@ -42,6 +44,13 @@ export default function PriceCard({
             <div className="text-sm text-muted-foreground">{creditsLabel}</div>
           )}
         </div>
+        {features && (
+          <ul className="list-disc space-y-1 pl-4 text-sm">
+            {features.map((f) => (
+              <li key={f}>{f}</li>
+            ))}
+          </ul>
+        )}
         {children}
       </CardContent>
       {action && <CardFooter>{action}</CardFooter>}

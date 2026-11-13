@@ -13,17 +13,29 @@ import { SubscriptionPlan, TopupTier } from '@/services/api'
 // subscribe.
 //
 // Lookups are not "unlimited" on any tier: every tier has a daily ceiling,
-// subscribers just get a far higher one (ADR-029).
-//
-// Both the public /pricing page and the signed-in /billing page render from
-// this file, so a price change is made here once.
+// subscribers just get a far higher one (ADR-029). The ceilings mirror
+// enx-api/config.toml [stripe.quota] (a test checks) and the deployments'
+// env overrides in w10n-config (kept in step by hand). Since ADR-080 prefetch
+// spends none of it, so the count is close to clicks; the first click on a new
+// word counts 2, hence "up to".
+export const FREE_DAILY_LOOKUPS = 2000
+export const SUBSCRIBED_DAILY_LOOKUPS = 20000
+
+const fmt = (n: number) => n.toLocaleString('en-US')
+
+// What every paid plan adds on top of Free; the plans differ only in credits.
+const PAID_FEATURES = [
+  'Everything in Free',
+  `Up to ${fmt(SUBSCRIBED_DAILY_LOOKUPS)} dictionary lookups a day`,
+  'AI translation of sentences and in-context word meanings',
+]
 
 export interface PlanOption {
   plan: SubscriptionPlan
   name: string
   priceLabel: string
   creditsLabel: string
-  description: string
+  features: string[]
 }
 
 export const SUBSCRIPTION_PLANS: PlanOption[] = [
@@ -32,24 +44,21 @@ export const SUBSCRIPTION_PLANS: PlanOption[] = [
     name: 'Catglish Pro',
     priceLabel: '$3.99/mo',
     creditsLabel: '500 credits/mo',
-    description:
-      'A much higher daily lookup limit + monthly AI translation credits',
+    features: PAID_FEATURES,
   },
   {
     plan: 'pro-plus',
     name: 'Catglish Pro+',
     priceLabel: '$9.99/mo',
     creditsLabel: '1,500 credits/mo',
-    description:
-      'A much higher daily lookup limit + more monthly AI translation credits',
+    features: PAID_FEATURES,
   },
   {
     plan: 'max',
     name: 'Catglish Max',
     priceLabel: '$19.99/mo',
     creditsLabel: '4,000 credits/mo',
-    description:
-      'A much higher daily lookup limit + maximum monthly AI translation credits',
+    features: PAID_FEATURES,
   },
 ]
 
@@ -59,11 +68,18 @@ export const FREE_PLAN = {
   priceLabel: '$0',
   features: [
     'Underlines the words you have looked up, on any English page',
-    'Click any word for its dictionary meaning, with a daily limit',
+    `Click any word for its dictionary meaning, up to ${fmt(FREE_DAILY_LOOKUPS)} lookups a day`,
     'A word list built from what you look up',
   ],
   note: 'AI translation uses credits, which come with a plan or a top-up.',
 } as const
+
+// What a credit buys. AI features are billed by tokens ([stripe.costs.*] in
+// enx-api/config.toml, ADR-014) with a floor of 1 credit per call, so "from 1"
+// holds whatever the weights are. Name a typical count only once they are
+// calibrated against real usage.
+export const CREDIT_COST_RULE =
+  'AI translation is charged by length, from 1 credit per request.'
 
 // The two credit pools (ADR-009 D2) expire under different rules; both
 // pages explain them in the same words.

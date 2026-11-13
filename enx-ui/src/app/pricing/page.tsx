@@ -5,6 +5,7 @@ import SiteFooter from '@/components/site/SiteFooter'
 import PriceCard from '@/components/site/PriceCard'
 import PricingCta from '@/components/site/PricingCta'
 import {
+  CREDIT_COST_RULE,
   FREE_PLAN,
   SUBSCRIPTION_CREDITS_RULE,
   SUBSCRIPTION_PLANS,
@@ -43,19 +44,15 @@ export default function PricingPage() {
             Monthly plans
           </h2>
           <p className="text-sm text-muted-foreground">
-            {SUBSCRIPTION_CREDITS_RULE} Cancel any time.
+            {SUBSCRIPTION_CREDITS_RULE} {CREDIT_COST_RULE} Cancel any time.
           </p>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
             <PriceCard
               name={FREE_PLAN.name}
               priceLabel={FREE_PLAN.priceLabel}
+              features={FREE_PLAN.features}
               action={<PricingCta label="Get started" variant="outline" />}
             >
-              <ul className="list-disc space-y-1 pl-4 text-sm">
-                {FREE_PLAN.features.map((f) => (
-                  <li key={f}>{f}</li>
-                ))}
-              </ul>
               <p className="text-xs text-muted-foreground">{FREE_PLAN.note}</p>
             </PriceCard>
             {SUBSCRIPTION_PLANS.map((option) => (
@@ -64,7 +61,7 @@ export default function PricingPage() {
                 name={option.name}
                 priceLabel={option.priceLabel}
                 creditsLabel={option.creditsLabel}
-                description={option.description}
+                features={option.features}
                 action={<PricingCta label="Subscribe" />}
               />
             ))}
