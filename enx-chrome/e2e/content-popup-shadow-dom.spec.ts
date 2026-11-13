@@ -235,17 +235,30 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     }
   })
 
-  test('§4.1: Youdao link href matches the clicked word', async ({ page }) => {
+  test('§4.1: dictionary link opens Cambridge for the clicked word', async ({
+    page,
+  }) => {
     const clickedWord = await clickHighlightedWord(page, 0)
     const popup = page.locator('#enx-anchored-overlay')
     await expect(popup).toBeVisible()
 
-    const href = await popup
-      .locator('a[title="Open in Youdao Dictionary"]')
-      .getAttribute('href')
-    expect(href).toBe(
-      `https://www.youdao.com/result?word=${encodeURIComponent(clickedWord)}&lang=en`
+    const link = popup.getByRole('link', {
+      name: 'Open in Cambridge Dictionary',
+    })
+    await expect(link).toHaveText('')
+    expect(await link.getAttribute('href')).toBe(
+      `https://dictionary.cambridge.org/search/direct/?datasetsearch=english-chinese-simplified&q=${encodeURIComponent(clickedWord)}`
     )
+    await page.keyboard.press('Tab')
+    await link.focus()
+    await expect(link).toHaveCSS('outline-style', 'solid')
+    await expect(link).toHaveCSS('outline-width', '2px')
+    await link.hover()
+    const hoverColor = await link.evaluate(el => getComputedStyle(el).color)
+    await page.mouse.down()
+    const pressedColor = await link.evaluate(el => getComputedStyle(el).color)
+    await page.mouse.up()
+    expect(pressedColor).not.toBe(hoverColor)
   })
 
   test('§4.1: speaker plays the word on a popup opened from a selection', async ({

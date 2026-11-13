@@ -10,6 +10,7 @@ import SidePanelTranslateIcon from '@/components/icons/SidePanelTranslateIcon'
 import { AiBadge, AiMissPanel, AiNotice } from '@/components/AiLookup'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
 import { billingUrl } from '@/lib/aiLookup'
+import { externalDictionaryUrl } from '@/lib/externalDictionary'
 import { isLookupQuotaExceeded } from '@/lib/rateLimit'
 import { lookupCountLabel } from '@/lib/lookupCount'
 import {
@@ -91,10 +92,6 @@ export default function WordPopover({
     } else if (e.key === 'Enter' && currentWord) {
       onMarkKnown(currentWord.English)
     }
-  }
-
-  const getYoudaoUrl = (word: string) => {
-    return `https://www.youdao.com/result?word=${encodeURIComponent(word)}&lang=en`
   }
 
   if (variant === 'hint') {
@@ -322,14 +319,14 @@ export default function WordPopover({
         <div className="flex justify-between items-center mt-3 pt-2 border-t border-border">
           <div className="flex items-center gap-3">
             <a
-              href={getYoudaoUrl(currentWord?.English || word)}
+              href={externalDictionaryUrl(currentWord?.English || word)}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-brand hover:text-brand/80 text-sm"
-              title="Open in Youdao Dictionary"
+              className="inline-flex items-center text-brand hover:text-brand/80 active:text-brand/70 focus-visible:outline-2 focus-visible:outline-brand"
+              title="Open in Cambridge Dictionary"
+              aria-label="Open in Cambridge Dictionary"
             >
               <BookOpenIcon className="h-4 w-4" aria-hidden="true" />
-              Youdao
             </a>
             <button
               data-testid="word-popover-sentence-translation"
