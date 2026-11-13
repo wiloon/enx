@@ -575,7 +575,9 @@ describe('setup status on the finished view (ADR-047 #873)', () => {
   it('shows the pin detail again on the finished view after Skip during the steps', async () => {
     signedIn()
     installExtension()
-    mockOverview.mockResolvedValueOnce(overview(0)).mockResolvedValue(overview(1))
+    mockOverview
+      .mockResolvedValueOnce(overview(0))
+      .mockResolvedValue(overview(1))
     document.documentElement.setAttribute('data-enx-learning', 'on')
     renderGuide()
 
@@ -601,9 +603,7 @@ describe('setup status on the finished view (ADR-047 #873)', () => {
       screen.getByRole('status', { name: 'Checking extension' })
     ).toHaveTextContent('Checking extension…')
     expect(screen.queryByText('Signed in')).not.toBeInTheDocument()
-    expect(
-      screen.queryByText('Add Catglish to Chrome')
-    ).not.toBeInTheDocument()
+    expect(screen.queryByText('Add Catglish to Chrome')).not.toBeInTheDocument()
   })
 
   it('keeps checking, so disabling the extension expands the install detail without a reload', async () => {
