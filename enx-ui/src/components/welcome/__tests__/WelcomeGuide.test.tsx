@@ -8,6 +8,7 @@ import {
 } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import WelcomeGuide from '../WelcomeGuide'
+import AppHome from '@/app/(app)/app/page'
 import { apiService } from '@/services/api'
 import { useAuth } from '@/hooks/useAuth'
 import { setRuntimeEnv } from '@/test/runtimeEnv'
@@ -25,6 +26,17 @@ const push = jest.fn()
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ replace, push }),
 }))
+
+jest.mock('@/hooks/useExtensionStatus', () => ({
+  useExtensionStatus: () => 'installed',
+}))
+jest.mock(
+  '@/components/app/home/OnboardingChecklist',
+  () =>
+    function MockOnboardingChecklist() {
+      return <div>Dashboard setup</div>
+    }
+)
 
 jest.mock('@/hooks/useAuth', () => ({ useAuth: jest.fn() }))
 
@@ -180,6 +192,100 @@ it('hides the article until authentication is resolved', async () => {
   expect(
     screen.queryByRole('heading', { name: 'The Quiet Power of a Short Walk' })
   ).not.toBeInTheDocument()
+})
+
+describe('word-lookup illustration', () => {
+  const ALT =
+    'An English article: click a word and Catglish shows its meaning in a small card'
+  const CAPTION = 'Click any word while you read — see its meaning in context.'
+
+  const expectIllustration = () => {
+    const image = screen.getByRole('img', { name: ALT })
+    expect(image).toHaveAttribute('src', '/onboarding/word-lookup.svg')
+    expect(image.closest('a')).toBeNull()
+    expect(screen.getByText(CAPTION)).toHaveClass('text-muted-foreground')
+    expect(
+      screen.queryByRole('region', { name: 'Sample article' })
+    ).not.toBeInTheDocument()
+  }
+
+  it.each([true, false])(
+    'shows a signed-out visitor the illustration instead of the article (installed: %s)',
+    async (installed) => {
+      if (installed) installExtension()
+      renderGuide()
+      await screen.findByText(
+        installed ? 'Catglish extension installed' : 'Add Catglish to Chrome'
+      )
+      expectIllustration()
+    }
+  )
+
+  it('shows the illustration while authentication is unresolved', async () => {
+    mockAuth.mockReturnValue({ isLoading: true, isAuthenticated: false })
+    await act(async () => {
+      renderGuide()
+    })
+    expectIllustration()
+  })
+
+  it.each(['preferences', 'stats'])(
+    'shows no right column while signed in and %s is loading',
+    async (pending) => {
+      signedIn()
+      installExtension()
+      const request = pending === 'preferences' ? mockPreferences : mockOverview
+      request.mockReturnValue(new Promise(() => {}))
+      renderGuide()
+      await screen.findByText('Loading…')
+      expect(screen.queryByRole('img', { name: ALT })).not.toBeInTheDocument()
+      expect(screen.queryByText(CAPTION)).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('region', { name: 'Sample article' })
+      ).not.toBeInTheDocument()
+    }
+  )
+
+  it('keeps the sample article, not the illustration, on the signed-in steps', async () => {
+    signedIn()
+    installExtension()
+    renderGuide()
+    await screen.findByRole('region', { name: 'Sample article' })
+    expect(screen.queryByRole('img', { name: ALT })).not.toBeInTheDocument()
+  })
+})
+
+describe('brand mark', () => {
+  const expectBrandMarkWithoutLink = () => {
+    const banner = screen.getByRole('banner')
+    expect(within(banner).getByTestId('logo-mark')).toBeInTheDocument()
+    expect(banner).toHaveTextContent('Catglish')
+    expect(within(banner).queryByRole('link')).not.toBeInTheDocument()
+    expect(banner.closest('a')).toBeNull()
+  }
+
+  it('shows the logo and name, not as a link, to a signed-out visitor', async () => {
+    renderGuide()
+    await screen.findByText('Add Catglish to Chrome')
+    expectBrandMarkWithoutLink()
+  })
+
+  it('shows the logo and name, not as a link, on the signed-in steps', async () => {
+    signedIn()
+    installExtension()
+    renderGuide()
+    await screen.findByRole('region', { name: 'Sample article' })
+    expectBrandMarkWithoutLink()
+  })
+
+  it('shows the logo and name, not as a link, once finished', async () => {
+    signedIn()
+    installExtension({ isOnToolbar: true })
+    mockOverview.mockResolvedValue(overview(12))
+    renderGuide()
+    await screen.findByRole('heading', { name: "You're all set" })
+    expectBrandMarkWithoutLink()
+  })
 })
 
 it('expands only installation for a signed-out visitor without the extension', async () => {
@@ -477,6 +583,39 @@ it('shows the finished page on a later visit in the same session after "Skip set
   ).toBeInTheDocument()
 })
 
+it('keeps the dashboard open after skipping while an older preferences read is pending', async () => {
+  signedIn()
+  installExtension()
+  const client = newClient()
+  let resolveOldRead!: (value: ReturnType<typeof preferences>) => void
+  mockPreferences
+    .mockResolvedValueOnce(preferences(false))
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveOldRead = resolve
+        })
+    )
+    .mockImplementation(() => new Promise(() => {}))
+  const first = renderGuide(false, client)
+  await screen.findByRole('region', { name: 'Sample article' })
+  void client.refetchQueries({ queryKey: ['preferences'] })
+  await waitFor(() => expect(mockPreferences).toHaveBeenCalledTimes(2))
+  fireEvent.click(screen.getByRole('button', { name: 'Skip setup' }))
+  await waitFor(() => expect(push).toHaveBeenCalledWith('/app'))
+  first.unmount()
+  render(
+    <QueryClientProvider client={client}>
+      <AppHome />
+    </QueryClientProvider>
+  )
+  await act(async () => {
+    resolveOldRead(preferences(false))
+  })
+  expect(await screen.findByText('Dashboard setup')).toBeInTheDocument()
+  expect(replace).not.toHaveBeenCalledWith('/welcome')
+})
+
 it('shows a returning user who opens /welcome the finished page with recommended sites', async () => {
   signedIn()
   installExtension({ isOnToolbar: true })
@@ -548,12 +687,16 @@ it.each(['preferences', 'stats'])(
   }
 )
 
+const SKIP_NOTE = 'You can finish it later from your dashboard.'
+
 it('records "Skip setup" and goes to /app', async () => {
   signedIn()
   installExtension()
   renderGuide()
 
-  fireEvent.click(await screen.findByRole('button', { name: 'Skip setup' }))
+  await screen.findByRole('region', { name: 'Sample article' })
+  expect(screen.getByText(SKIP_NOTE)).toHaveClass('text-muted-foreground')
+  fireEvent.click(screen.getByRole('button', { name: 'Skip setup' }))
 
   await waitFor(() =>
     expect(mockUpdatePreferences).toHaveBeenCalledWith({
@@ -562,6 +705,46 @@ it('records "Skip setup" and goes to /app', async () => {
   )
   expect(push).toHaveBeenCalledWith('/app')
 })
+
+it.each(['preferences', 'stats'])(
+  'records "Skip setup", notes the dashboard and goes to /app while %s is loading',
+  async (pending) => {
+    signedIn()
+    installExtension()
+    const request = pending === 'preferences' ? mockPreferences : mockOverview
+    request.mockReturnValue(new Promise(() => {}))
+    renderGuide()
+
+    await screen.findByText('Loading…')
+    expect(screen.getByText(SKIP_NOTE)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Skip setup' }))
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/app'))
+    expect(mockUpdatePreferences).toHaveBeenCalledWith({
+      onboardingCompleted: true,
+    })
+  }
+)
+
+it.each([
+  ['signed out', { isLoading: false, isAuthenticated: false }],
+  ['authentication is unresolved', { isLoading: true, isAuthenticated: false }],
+])(
+  'sends "Skip setup" home without writing anything or a note when %s',
+  async (_state, auth) => {
+    mockAuth.mockReturnValue(auth)
+    await act(async () => {
+      renderGuide()
+    })
+
+    expect(screen.queryByText(SKIP_NOTE)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Skip setup' }))
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/'))
+    expect(push).not.toHaveBeenCalledWith('/app')
+    expect(mockUpdatePreferences).not.toHaveBeenCalled()
+  }
+)
 
 it('shows a checking status while extension detection is pending, without guessing the install state', async () => {
   signedIn()

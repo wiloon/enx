@@ -29,6 +29,7 @@ import { RECOMMENDED_SITES } from '@/lib/recommendedSites'
 import { SITE } from '@/lib/site'
 import { ENHANCED_PROTECTION_NOTE } from '@/lib/help'
 import SampleArticle from '@/components/reader/SampleArticle'
+import BrandMark from '@/components/site/BrandMark'
 import { Button } from '@/components/ui/button'
 
 // How often /welcome asks the extension for its status and re-reads the
@@ -163,13 +164,24 @@ export default function WelcomeGuide({
     if (landing === 'app') router.replace('/app')
   }, [landing, router])
 
+  // A visitor goes home, not to /app: /app would send them to sign in and
+  // back here (ADR-047 #872). Unknown sign-in status counts as signed out.
   const skipSetup = async () => {
-    if (signedIn) {
-      // A failed write still leaves: the guide showing once more is the
-      // cheap mistake (Decision 1a).
-      await apiService.updatePreferences({ onboardingCompleted: true })
-      await refreshPreferences()
+    if (signedIn !== true) {
+      router.push('/')
+      return
     }
+    // A failed write still leaves: the guide showing once more is the
+    // cheap mistake (Decision 1a).
+    const response = await apiService.updatePreferences({
+      onboardingCompleted: true,
+    })
+    if (response.success && response.data) {
+      // Discard an older read before publishing the server's updated preferences.
+      await queryClient.cancelQueries({ queryKey: ['preferences'] })
+      queryClient.setQueryData(['preferences'], response.data)
+    }
+    void refreshPreferences()
     router.push('/app')
   }
 
@@ -198,41 +210,51 @@ export default function WelcomeGuide({
     )
 
   const showArticle = landing === 'steps' || finished
+  // Signed in but still loading keeps one column: the article waits for the
+  // account history (#846), and the illustration is for visitors only.
+  const showIllustration = !showArticle && signedIn !== true
 
   return (
-    <div
-      className={`mx-auto grid w-full gap-10 p-6 md:p-10 ${showArticle ? 'max-w-6xl md:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]' : 'max-w-xl'}`}
-    >
-      <section className="space-y-6">
-        {finished ? (
-          <Finished />
-        ) : landing === 'sign-in' ? (
-          <>
-            <h1 className="text-2xl font-bold">Welcome to {SITE.name}</h1>
-            {stepList(progress.steps)}
-            <SkipSetup onClick={skipSetup} />
-          </>
-        ) : landing === 'steps' ? (
-          <>
-            <h1 className="text-2xl font-bold">Welcome to {SITE.name}</h1>
-            {stepList(progress.steps)}
-            <SkipSetup onClick={skipSetup} />
-          </>
-        ) : (
-          <>
-            <h1 className="text-2xl font-bold">Welcome to {SITE.name}</h1>
-            <Loading />
-            <SkipSetup onClick={skipSetup} />
-          </>
-        )}
-      </section>
-
-      {showArticle && (
-        <section className="space-y-4" aria-label="Sample article">
-          <SampleArticle titleAs="h2" />
+    <>
+      {/* Not a link: the guide should not invite leaving (ADR-047 #872). */}
+      <header className="mx-auto flex w-full max-w-6xl items-center gap-2 px-6 pt-6 font-semibold md:px-10">
+        <BrandMark />
+      </header>
+      <div
+        className={`mx-auto grid w-full gap-10 p-6 md:p-10 ${showArticle || showIllustration ? 'max-w-6xl md:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]' : 'max-w-xl'}`}
+      >
+        <section className="space-y-6">
+          {finished ? (
+            <Finished />
+          ) : landing === 'sign-in' ? (
+            <>
+              <h1 className="text-2xl font-bold">Welcome to {SITE.name}</h1>
+              {stepList(progress.steps)}
+              <SkipSetup onClick={skipSetup} signedIn={signedIn === true} />
+            </>
+          ) : landing === 'steps' ? (
+            <>
+              <h1 className="text-2xl font-bold">Welcome to {SITE.name}</h1>
+              {stepList(progress.steps)}
+              <SkipSetup onClick={skipSetup} signedIn={signedIn === true} />
+            </>
+          ) : (
+            <>
+              <h1 className="text-2xl font-bold">Welcome to {SITE.name}</h1>
+              <Loading />
+              <SkipSetup onClick={skipSetup} signedIn={signedIn === true} />
+            </>
+          )}
         </section>
-      )}
-    </div>
+
+        {showArticle && (
+          <section className="space-y-4" aria-label="Sample article">
+            <SampleArticle titleAs="h2" />
+          </section>
+        )}
+        {showIllustration && <WordLookupIllustration />}
+      </div>
+    </>
   )
 }
 
@@ -441,15 +463,55 @@ function InstallButton() {
   )
 }
 
+// What setup buys a visitor, shown instead of the interactive article until
+// they sign in (ADR-047 #872). Not a link: Continue keeps the attention.
+function WordLookupIllustration() {
+  return (
+    <figure className="space-y-3">
+      {/* eslint-disable-next-line @next/next/no-img-element -- a static
+          illustration from public/, nothing to optimize */}
+      <img
+        src="/onboarding/word-lookup.svg"
+        alt={`An English article: click a word and ${SITE.name} shows its meaning in a small card`}
+        width={480}
+        height={360}
+        className="h-auto w-full max-w-xl"
+      />
+      <figcaption className="text-sm text-muted-foreground">
+        Click any word while you read — see its meaning in context.
+      </figcaption>
+    </figure>
+  )
+}
+
 function Loading() {
   return <p className="text-sm text-muted-foreground">Loading…</p>
 }
 
-function SkipSetup({ onClick }: { onClick: () => void }) {
+// Findable but not encouraged: muted and always underlined, never brand
+// colour or a filled button (ADR-047 #872).
+function SkipSetup({
+  onClick,
+  signedIn,
+}: {
+  onClick: () => void
+  signedIn: boolean
+}) {
   return (
-    <Button variant="link" size="sm" className="px-0" onClick={onClick}>
-      Skip setup
-    </Button>
+    <div className="space-y-1 text-sm text-muted-foreground">
+      <button
+        type="button"
+        onClick={onClick}
+        className="rounded-sm underline underline-offset-4 transition-colors hover:text-foreground active:text-foreground/80 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+      >
+        Skip setup
+      </button>
+      {signedIn && (
+        <p className="text-muted-foreground">
+          You can finish it later from your dashboard.
+        </p>
+      )}
+    </div>
   )
 }
 
