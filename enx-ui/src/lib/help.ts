@@ -16,6 +16,12 @@ export const HELP_GUIDES = [
     title: `Get started with ${SITE.name}`,
     description: 'Pin the icon, sign in and look up your first word.',
   },
+  {
+    href: '/help/rephrase',
+    title: 'Rephrase into idiomatic English',
+    description:
+      'Turn Chinese or rough English into natural workplace English.',
+  },
 ] as const
 
 // Temporary installation note; remove this and its uses when #560 is verified.

@@ -22,9 +22,9 @@ export default function HelpPage() {
           Check setup
         </Link>
       </p>
-      <section aria-labelledby="getting-started" className="space-y-5">
-        <h2 id="getting-started" className="text-xl font-semibold">
-          Getting started
+      <section aria-labelledby="guides" className="space-y-5">
+        <h2 id="guides" className="text-xl font-semibold">
+          Guides
         </h2>
         {HELP_GUIDES.map((guide) => (
           <div

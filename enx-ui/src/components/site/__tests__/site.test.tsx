@@ -18,6 +18,7 @@ import DemoVideo from '../DemoVideo'
 import FeatureSection from '../FeatureSection'
 import Comparison from '../Comparison'
 import InstallCTA from '../InstallCTA'
+import HowItWorks from '../HowItWorks'
 import SiteFooter from '../SiteFooter'
 import SiteHeader from '../SiteHeader'
 
@@ -83,9 +84,30 @@ describe('Hero', () => {
     render(<Hero />)
     const cta = screen.getByRole('link', { name: /add to chrome/i })
     expect(cta).toHaveAttribute('href', SITE.chromeWebStoreUrl)
+  })
+
+  it('points a visitor without the extension at how it works, not the sample', () => {
+    render(<Hero />)
     expect(
-      screen.getByRole('link', { name: /see how it works/i })
+      screen.getByRole('link', { name: 'See how it works' })
     ).toHaveAttribute('href', '#how-it-works')
+    // Lookups need the extension, so the sample would do nothing yet.
+    expect(
+      screen.queryByRole('link', { name: 'Try it on a sample article' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('offers the sample article once the extension is installed', () => {
+    mockExtensionStatus.mockReturnValue('installed')
+    render(<Hero />)
+    expect(
+      screen.getByRole('link', { name: 'Try it on a sample article' })
+    ).toHaveAttribute('href', '/reader/sample')
+  })
+
+  it('keeps the subtitle to the two core actions, one short line', () => {
+    render(<Hero />)
+    expect(screen.getByText(SITE.subtitle).textContent!.length).toBeLessThan(80)
   })
 
   it('offers neither the store CTA nor "Go to app" while extension detection is pending', () => {
@@ -181,13 +203,25 @@ describe('DemoVideo', () => {
 })
 
 describe('FeatureSection', () => {
-  it('renders every feature title and an accessible image for each', () => {
+  it('leads with click-to-look-up and covers only the reading features', () => {
     render(<FeatureSection />)
     expect(
-      screen.getByText('Word highlight while you read')
-    ).toBeInTheDocument()
-    expect(screen.getByText('Idiomatic phrasing')).toBeInTheDocument()
-    expect(screen.getAllByRole('img').length).toBeGreaterThanOrEqual(4)
+      screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+    ).toEqual([
+      'Click any word for its meaning',
+      'Select a sentence to translate it',
+      'Word highlight while you read',
+    ])
+    // Rephrase is a writing tool; it is explained in Help, not here.
+    expect(screen.queryByText(/idiomatic/i)).not.toBeInTheDocument()
+    // Real screenshots, not the empty placeholder boxes.
+    expect(
+      screen.getAllByRole('img').map((img) => img.getAttribute('src'))
+    ).toEqual([
+      '/landing/click-word.png',
+      '/landing/translate-sentence.png',
+      '/landing/word-highlight.png',
+    ])
   })
 })
 
@@ -238,12 +272,42 @@ describe('Comparison', () => {
   })
 })
 
+describe('HowItWorks', () => {
+  it('tells new users to pin the icon, which Chrome hides by default', () => {
+    render(<HowItWorks />)
+    expect(screen.getByText(/pin the Catglish icon/i)).toBeInTheDocument()
+  })
+})
+
 describe('InstallCTA', () => {
-  it('shows "coming soon" (not a link) for a browser with no store url', () => {
-    mutableSite.edgeAddonUrl = ''
+  it('links Add to Chrome to the store for a visitor without the extension', () => {
     render(<InstallCTA />)
-    expect(screen.getByText(/edge — coming soon/i)).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /^edge/i })).toBeNull()
+    expect(screen.getByRole('link', { name: 'Add to Chrome' })).toHaveAttribute(
+      'href',
+      SITE.chromeWebStoreUrl
+    )
+  })
+
+  it('swaps Add to Chrome for "Go to app" once the extension is installed', () => {
+    mockExtensionStatus.mockReturnValue('installed')
+    render(<InstallCTA />)
+    expect(
+      screen.queryByRole('link', { name: 'Add to Chrome' })
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Go to app' })).toHaveAttribute(
+      'href',
+      SITE.appPath
+    )
+  })
+
+  it('names browsers with no store url as plain text, not as buttons', () => {
+    mutableSite.edgeAddonUrl = ''
+    mutableSite.firefoxAddonUrl = ''
+    render(<InstallCTA />)
+    expect(
+      screen.getByText('Edge and Firefox coming soon.')
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /edge|firefox/i })).toBeNull()
   })
 })
 

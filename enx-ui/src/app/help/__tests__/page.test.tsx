@@ -15,6 +15,9 @@ it('offers installation and first-use guides without an account', () => {
   expect(
     screen.getByRole('link', { name: 'Get started with Catglish' })
   ).toHaveAttribute('href', '/help/get-started')
+  expect(
+    screen.getByRole('link', { name: 'Rephrase into idiomatic English' })
+  ).toHaveAttribute('href', '/help/rephrase')
 })
 
 it('links Check setup to /welcome before the guides (ADR-047 #873)', () => {
