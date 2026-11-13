@@ -31,7 +31,7 @@ adr-046 去掉了正文里的「Article processed • Click words for translatio
 - 问题：完成或跳过引导的用户，扩展坏了、丢了，或想再看一遍引导时，回不到 `/welcome`：Home 的引导清单在第一次查词后就消失，只剩 `/help/install`、`/help/get-started` 里藏得很深的链接。即使回到 `/welcome`，完成过引导的用户也只看到完成页，看不到扩展装没装、固定没固定。
 - app 侧边栏底部（`NAV_FOOTER`，挨着 Help）加常驻入口「Check setup」→ `/welcome`；`/help` 顶部也放同一个链接。
 - 已完成（含跳过）的已登录用户打开 `/welcome` 时，在「You're all set」上方显示一个简短的状态列表，用步骤列表同样的图标：扩展已安装（`enx:status`）、图标已固定（`isOnToolbar`）、已登录（这里总是勾上）。全部正常时就是一排勾；没装或没固定时，那一行作为当前步骤展开安装或固定的说明。完成页其余内容不变。
-- 扩展本身是否登录不显示：`enx:status` 不报告这一点（Decision 4），要加时另开 issue，跨 enx-chrome。
+- 「已登录」一行同时代表扩展的登录：扩展用 Clerk 的 `syncHost` 从网站同步登录（cookie 共享，`background.ts`、`Popup.tsx`），网站已登录则扩展拿到同一个会话，不单独检测。扩展偶尔误报「Session Expired」是同步时序问题，不是两套登录。
 
 ## 2026-11-13 修订（#872，未登录页面太空、Skip setup 不像能点；owner 在生产环境走引导后提出）
 
@@ -39,7 +39,7 @@ adr-046 去掉了正文里的「Article processed • Click words for translatio
 - `/welcome` 左上角在所有状态下显示一个小的 Catglish logo 和名字，不是链接，也不加导航菜单：引导页不该邀请用户离开。
 - 未登录（以及确定登录状态前的加载中）改为与登录后相同的两栏，右栏是一张**静态示意图** `public/onboarding/word-lookup.svg`：一篇英文文章，点中的一个词弹出 Catglish 的释义卡（单词、音标、中文释义、✓ Know It），下面一行灰字「Click any word while you read — see its meaning in context.」。图不能点、没有链接，所以不和「Continue」抢注意力，同时回答了「为什么要登录」。#846 修订不在未登录时放可互动示例文章的理由仍然成立；登录后右栏仍是示例文章。
   - 选示意图而不是真实截图：截图缩到右栏宽度后释义小字看不清，带着浏览器和网站的杂乱元素，弹窗一改版就过时；示意图与固定图标那一步的 `pin-icon.svg` 同一风格（扁平、浅灰底、品牌色点缀）。也不用手绘风（与站点界面不搭）和动图 / 视频（抢注意力，首页已有演示视频）。
-  - 释义卡里**不画**「Youdao」链接：词典外链将来可能替换，示意图不和某个具体词典绑定。
+  - 释义卡底部的外部词典链接只画一个书本图标、不写「Youdao」：外部词典将来可能更换，示意图不和某个具体词典绑定。
 - 「Skip setup」改为灰色小字、常驻下划线；它要能找到，但不该被鼓励，所以不用品牌色、不做实心按钮。
   - 已登录：行为不变（写 `onboardingCompleted`，去 `/app`），后面跟一句灰字「You can finish it later from your dashboard.」。
   - 未登录：去产品首页 `/`，不写任何东西，让用户先看看产品再决定是否登录；不再去 `/app`，避免上面的绕圈。
