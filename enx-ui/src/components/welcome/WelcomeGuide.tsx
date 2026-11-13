@@ -409,9 +409,7 @@ function StepDetail({
       const redirect = encodeURIComponent(returnTo)
       return (
         <div className="space-y-2">
-          <p className="text-muted-foreground">
-            Free to start. Your saved words follow you to any device.
-          </p>
+          <p className="text-muted-foreground">Free to start.</p>
           <Button asChild variant="brand" size="sm">
             <Link href={`/sign-in?redirect_url=${redirect}`}>Continue</Link>
           </Button>

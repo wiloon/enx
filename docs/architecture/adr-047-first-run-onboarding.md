@@ -53,7 +53,7 @@ adr-046 去掉了正文里的「Article processed • Click words for translatio
 
 - 问题：登录步骤并排两个按钮，品牌色的是「Sign in」、描边的是「Sign up」。带 `?src=install` 进来的几乎都是新用户，主按钮却是登录；两个按钮只差一个词，用户得先想「我算登录还是注册」。步骤标题「Sign in」和按钮文字重复，也没说登录对用户有什么用。
 - 生产 Clerk 实例只开了 Google 和 GitHub 登录。OAuth 下 Clerk 的 `<SignIn>` 遇到不存在的账号会自动转为注册（transfer），所以对用户来说登录和注册没有区别，二选一是没有意义的选择。owner 在生产环境用管理员删除测试用户后，用同一邮箱重新走过这条路。
-- `/welcome` 上这一步的标题改为「Create your free account」，当前时标题下加一行灰字「Free to start. Your saved words follow you to any device.」，不写积分数字（数字以 adr-048 为准，会变）。
+- `/welcome` 上这一步的标题改为「Create your free account」，当前时标题下加一行灰字「Free to start.」，不写积分数字（数字以 adr-048 为准，会变）。
 - 两个按钮合成一个品牌色按钮「Continue」，指向 `/sign-in?redirect_url=…`，回跳规则不变（Decision 2 第 2 步）。老用户（重装扩展、换电脑）点同一个按钮直接登录，不再单独放 Sign in 入口。`/welcome` 上去掉 Sign up；`/sign-up` 页面和其他地方的链接保留。
 - 按钮文字用中性的「Continue」，不写「Continue with Google or GitHub」：以后可能加 Apple 等登录方式，按钮不该随之改字。
 - 新用户经 `/sign-in` 建号这一点要实测；`@clerk/nextjs` 7.x 默认不这样做时，给 `<SignIn>` 加 `withSignUp`，`src=extension` 的 `forceRedirectUrl`（adr-020）不变。新用户照常拿到 adr-048 的试用积分。同一邮箱已经领过试用的拿不到（adr-062），这是预期；管理员删除测试用户时勾选「Allow the trial again」（adr-062 第 4 条，`resetTrial=true`）可让该邮箱重新领取。

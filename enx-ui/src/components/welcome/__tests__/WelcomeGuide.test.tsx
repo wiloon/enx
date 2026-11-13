@@ -139,11 +139,9 @@ it('shows signed-out pinned visitors one complete list with only sign-in expande
   expect(screen.getAllByRole('listitem')).toHaveLength(5)
   const signIn = step('Create your free account')
   expect(signIn).toHaveAttribute('aria-current', 'step')
-  expect(
-    within(signIn).getByText(
-      'Free to start. Your saved words follow you to any device.'
-    )
-  ).toHaveClass('text-muted-foreground')
+  expect(within(signIn).getByText('Free to start.')).toHaveClass(
+    'text-muted-foreground'
+  )
   expect(within(signIn).getAllByRole('link')).toHaveLength(1)
   expect(screen.getByRole('link', { name: 'Continue' })).toHaveAttribute(
     'href',
