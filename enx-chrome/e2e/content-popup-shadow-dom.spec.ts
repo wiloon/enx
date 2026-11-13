@@ -3,7 +3,7 @@
 // is a Range in `CSS.highlights`; a lookup is a coordinate click on the word's
 // on-screen box (clickHighlightedWord / getHighlightedWordRects in helpers.ts).
 
-import type { Page } from '@playwright/test'
+import type { BrowserContext, Page } from '@playwright/test'
 import { loginAvailable, LOGIN_SKIP_REASON } from './auth'
 import { expect, test } from './fixtures'
 import {
@@ -142,6 +142,72 @@ async function dragSelect(
   await page.mouse.up()
 }
 
+const STUB_VOICE_NAME = 'E2E US English'
+
+type SpokenUtterance = { text: string; lang: string; voice: string | null }
+
+/**
+ * Stub the Web Speech API in the content script's isolated world, where the
+ * popover calls it; a page-world init script never reaches that world. The
+ * utterance constructor is stubbed too: a real one rejects a fake voice.
+ */
+async function stubContentScriptSpeech(
+  context: BrowserContext,
+  page: Page,
+  extensionId: string
+) {
+  const cdp = await context.newCDPSession(page)
+  const contextIds: number[] = []
+  cdp.on('Runtime.executionContextCreated', ({ context: execution }) => {
+    if (execution.origin === `chrome-extension://${extensionId}`) {
+      contextIds.push(execution.id)
+    }
+  })
+  await cdp.send('Runtime.enable')
+  await expect.poll(() => contextIds.length).toBeGreaterThan(0)
+
+  const evaluate = (expression: string) =>
+    Promise.all(
+      contextIds.map(async contextId => {
+        const { result, exceptionDetails } = await cdp.send(
+          'Runtime.evaluate',
+          { expression, contextId, returnByValue: true }
+        )
+        if (exceptionDetails) throw new Error(exceptionDetails.text)
+        return result.value
+      })
+    )
+
+  await evaluate(`(() => {
+    const voice = { name: ${JSON.stringify(STUB_VOICE_NAME)}, lang: 'en-US' }
+    const synth = window.speechSynthesis
+    globalThis.__enxSpoken = []
+    globalThis.__enxCancels = 0
+    synth.getVoices = () => [{ name: 'E2E German', lang: 'de-DE' }, voice]
+    synth.cancel = () => { globalThis.__enxCancels++ }
+    synth.speak = utterance => {
+      globalThis.__enxSpoken.push({
+        text: utterance.text,
+        lang: utterance.lang,
+        voice: utterance.voice ? utterance.voice.name : null,
+      })
+    }
+    globalThis.SpeechSynthesisUtterance = class {
+      constructor(text) { this.text = text; this.lang = ''; this.voice = null }
+    }
+  })()`)
+
+  return {
+    spoken: async (): Promise<SpokenUtterance[]> =>
+      (await evaluate('globalThis.__enxSpoken')).flat(),
+    cancels: async (): Promise<number> =>
+      (await evaluate('globalThis.__enxCancels')).reduce(
+        (sum: number, n: number) => sum + n,
+        0
+      ),
+  }
+}
+
 // Covers TASK-SPEC-enx-chrome-word-popup-react.md §4.1 (viewport-edge
 // anchoring, close paths), §4.2 (style isolation) and §4.4 (resource
 // cleanup). Backend calls are stubbed (see mockBackendFetch in helpers.ts)
@@ -261,17 +327,19 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     expect(pressedColor).not.toBe(hoverColor)
   })
 
-  test('§4.1: speaker plays the word on a popup opened from a selection', async ({
+  test('§4.1: speaker speaks the word on a popup opened from a selection', async ({
+    context,
     page,
+    extensionId,
   }) => {
     // A double-click leaves the word selected. The speaker's mouseup used to
     // reach handleTextSelection with that selection still live, so it re-ran
     // the lookup and swapped the overlay before the click landed: the query
     // count went up and nothing played.
-    const audioRequests: string[] = []
-    await page.route('**/dict.youdao.com/dictvoice*', route => {
-      audioRequests.push(route.request().url())
-      return route.fulfill({ status: 200, contentType: 'audio/mpeg', body: '' })
+    const speech = await stubContentScriptSpeech(context, page, extensionId)
+    const mediaRequests: string[] = []
+    page.on('request', request => {
+      if (request.resourceType() === 'media') mediaRequests.push(request.url())
     })
 
     const [word] = await getHighlightedWords(page)
@@ -285,8 +353,11 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
 
     await play.click()
 
-    await expect.poll(() => audioRequests.length).toBeGreaterThan(0)
-    expect(audioRequests[0]).toContain(`audio=${encodeURIComponent(word.text)}`)
+    await expect.poll(() => speech.spoken()).toEqual([
+      { text: word.text, lang: 'en-US', voice: STUB_VOICE_NAME },
+    ])
+    expect(await speech.cancels()).toBeGreaterThan(0)
+    expect(mediaRequests).toEqual([])
     // Still the overlay the double-click opened, not a fresh lookup's.
     await expect(popup).toHaveAttribute('data-e2e-marker', 'first')
   })
