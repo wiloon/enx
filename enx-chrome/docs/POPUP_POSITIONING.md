@@ -991,7 +991,7 @@ async function showWordPopover(word: string, event: MouseEvent) {
       <div class="enx-popup-content">
         <p>${wordData.translation}</p>
         <div class="enx-popup-footer">
-          <a href="${wordData.youdaoUrl}" target="_blank">Youdao</a>
+          <a href="${wordData.dictionaryUrl}" target="_blank" aria-label="Open in Cambridge Dictionary">📖</a>
           <button onclick="markAsKnown('${word}')">Mark Known</button>
         </div>
       </div>
@@ -1119,7 +1119,7 @@ async function showWordPopover(word: string, event: MouseEvent) {
 ├── 查询次数
 ├── 已认识标记
 └── 底部操作栏
-    ├── Youdao 链接
+    ├── 外部词典链接（剑桥英汉，仅图标）
     └── Mark Known 按钮
 ```
 
