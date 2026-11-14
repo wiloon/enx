@@ -83,28 +83,25 @@ func TestSubscriptionCheckoutIsRefusedByAnOpenConflict(t *testing.T) {
 }
 
 func TestSubscriptionCheckoutChecksAResolvedConflictAgainstLiveStripe(t *testing.T) {
-	// Prepare writes the live state into Owned, so each case gets its own.
-	resolved := func() portalsession.Owner {
-		return portalsession.Owner{CustomerID: "cus_1", Owned: []eligibility.Owned{
-			{ID: "sub_old", Conflict: eligibility.ConflictResolved, StoredStatus: "active"},
-		}}
-	}
+	owner := portalsession.Owner{CustomerID: "cus_1", Owned: []eligibility.Owned{
+		{ID: "sub_old", Conflict: eligibility.ConflictResolved, StoredStatus: "active"},
+	}}
 
 	t.Run("still billable blocks", func(t *testing.T) {
-		_, err := prepare(t, resolved(), fakeStripe{subs: map[string]portalsession.Subscription{"sub_old": live("past_due")}}, "pro")
+		_, err := prepare(t, owner, fakeStripe{subs: map[string]portalsession.Subscription{"sub_old": live("past_due")}}, "pro")
 		var refusal *Refusal
 		if !errors.As(err, &refusal) || refusal.SubscriptionID != "sub_old" {
 			t.Fatalf("err = %v, want a Refusal on sub_old", err)
 		}
 	})
 	t.Run("ended in Stripe allows", func(t *testing.T) {
-		customer, err := prepare(t, resolved(), fakeStripe{subs: map[string]portalsession.Subscription{"sub_old": live("canceled")}}, "pro")
+		customer, err := prepare(t, owner, fakeStripe{subs: map[string]portalsession.Subscription{"sub_old": live("canceled")}}, "pro")
 		if err != nil || customer != "cus_1" {
 			t.Fatalf("Prepare = %q, %v; want cus_1", customer, err)
 		}
 	})
 	t.Run("unreadable fails closed", func(t *testing.T) {
-		customer, err := prepare(t, resolved(), fakeStripe{}, "pro")
+		customer, err := prepare(t, owner, fakeStripe{}, "pro")
 		if !errors.Is(err, eligibility.ErrLiveStateUnknown) || customer != "" {
 			t.Fatalf("Prepare = %q, %v; want ErrLiveStateUnknown", customer, err)
 		}
@@ -112,6 +109,22 @@ func TestSubscriptionCheckoutChecksAResolvedConflictAgainstLiveStripe(t *testing
 			t.Fatal("an unknown live state is retryable, not a refusal")
 		}
 	})
+}
+
+func TestPrepareDoesNotWriteLiveStateIntoTheStoreOwner(t *testing.T) {
+	owner := portalsession.Owner{CustomerID: "cus_1", Owned: []eligibility.Owned{
+		{ID: "sub_old", Conflict: eligibility.ConflictResolved, StoredStatus: "active"},
+	}}
+
+	customer, err := prepare(t, owner, fakeStripe{subs: map[string]portalsession.Subscription{"sub_old": live("canceled")}}, "pro")
+	if err != nil || customer != "cus_1" {
+		t.Fatalf("first Prepare = %q, %v; want cus_1", customer, err)
+	}
+
+	customer, err = prepare(t, owner, fakeStripe{}, "pro")
+	if !errors.Is(err, eligibility.ErrLiveStateUnknown) || customer != "" {
+		t.Fatalf("second Prepare = %q, %v; want ErrLiveStateUnknown", customer, err)
+	}
 }
 
 func TestSubscriptionCheckoutIsRefusedForAnActiveSubscriber(t *testing.T) {
