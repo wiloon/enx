@@ -736,6 +736,39 @@ describe('SidePanel', () => {
     ])
   })
 
+  it('records no reading position for a word clicked in the panel (ADR-081 Decision 1)', async () => {
+    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      [PENDING_SENTENCE_STORAGE_KEY]: {
+        sentence: SENTENCE,
+        word: '',
+        createdAt: 1,
+      },
+    })
+    mockSendMessage.mockImplementation(async (message: { type: string }) =>
+      message.type === 'translateSentence'
+        ? { success: true, chinese: '猫是很棒的宠物。' }
+        : { success: true }
+    )
+
+    render(<SidePanel />)
+    await screen.findByTestId('sidepanel-sentence')
+    selectWord('great')
+
+    await waitFor(() =>
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'translateWordInContext' })
+      )
+    )
+    const messages = [
+      ...mockSendMessage.mock.calls,
+      ...(chrome.runtime.sendMessage as jest.Mock).mock.calls,
+      ...(chrome.tabs.sendMessage as jest.Mock).mock.calls,
+    ].flat()
+    expect(messages).not.toContainEqual(
+      expect.objectContaining({ type: 'recordReadingPosition' })
+    )
+  })
+
   it('still shows dictionary info when the contextual translation fails, and vice versa (spec §4.5, 互不阻塞)', async () => {
     ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
       [PENDING_SENTENCE_STORAGE_KEY]: {

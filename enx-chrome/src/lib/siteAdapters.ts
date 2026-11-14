@@ -82,6 +82,11 @@ export interface SiteAdapter {
    * placeholder, not yet implemented.
    */
   clickBinding?: 'bubble' | 'documentCapture'
+  /**
+   * The book a page belongs to, for reading positions (ADR-081 Decision 4),
+   * from the page's full URL. Undefined = the normalized page address.
+   */
+  bookKey?: (href: string) => string
 }
 
 // Every whitelisted article site resolves to this.

@@ -53,6 +53,22 @@ describe('WordProcessor.extractSentenceContext', () => {
     ).toBe('Birds can sing beautifully.')
   })
 
+  it('warns of a sentence without its word, but logs neither the word nor the sentence (#897)', () => {
+    document.body.innerHTML = `<p>Cats are ${wrap('great')} pets. Dogs are loyal companions.</p>`
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+    WordProcessor.extractSentenceContext(
+      rangeOverElement(document.querySelector('.w')!),
+      'zebra'
+    )
+
+    expect(warn).toHaveBeenCalledTimes(1)
+    const logged = JSON.stringify(warn.mock.calls)
+    expect(logged).not.toContain('zebra')
+    expect(logged).not.toContain('Cats')
+    warn.mockRestore()
+  })
+
   it('resolves the clicked occurrence of a word repeated twice in the same paragraph, not the first one', () => {
     document.body.innerHTML = `
       <p>The ${wrap('bank')} is by the river. I went to the ${wrap('bank')} to deposit money.</p>
