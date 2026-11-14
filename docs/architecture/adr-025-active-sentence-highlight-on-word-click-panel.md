@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Proposed — 2026-09-16 |
+| **状态** | Proposed — 2026-09-16；Amended by ADR-085（2026-11-14，被点的词加深标记） |
 | **日期** | 2026-09-16 |
 | **关联 Spec** | 无独立 TASK-SPEC，留到编码阶段再写（同 ADR-008/010/011/017 的做法） |
 | **关联 ADR** | [`adr-011-word-highlight-css-highlight-api-and-feature-split.md`](adr-011-word-highlight-css-highlight-api-and-feature-split.md)（本 ADR 复用其建立的 CSS Custom Highlight API 机制与 `::highlight()` 样式注入模式，也复用其 Decision 5 把 `extractSentenceContext` Range 化的结果）、[`adr-007-drag-select-sentence-translation.md`](adr-007-drag-select-sentence-translation.md)（划词整句翻译，**明确排除在本 ADR 范围外**）、[`adr-008-phrase-selection-context-translation.md`](adr-008-phrase-selection-context-translation.md)（正文划词短语查询，**明确排除**）、[`adr-017-sidepanel-sentence-drag-select-phrase-lookup.md`](adr-017-sidepanel-sentence-drag-select-phrase-lookup.md)（侧边栏原句划词短语查询，**明确排除**——发生在侧边栏内，本来就不是"回到主窗口找句子"这个问题） |
