@@ -3029,3 +3029,30 @@ describe('background learning mode shortcut', () => {
     })
   })
 })
+
+// #903: the catch-all log names the message type alone. Bodies carry page text
+// (translateSentence, openSentencePanel), which stays out of the worker console.
+describe('background message log', () => {
+  it('logs only the message type, never the page text in its body', () => {
+    const log = jest.spyOn(console, 'log').mockImplementation(() => {})
+    jest.spyOn(console, 'warn').mockImplementation(() => {})
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+
+    onMessageListener(
+      {
+        type: 'translateSentence',
+        sentence: 'A private sentence about Mr. Darcy.',
+      },
+      { tab: { id: 1 } },
+      () => {}
+    )
+
+    const received = log.mock.calls.find(
+      ([first]) => first === 'Background received message:'
+    )
+    expect(received).toEqual([
+      'Background received message:',
+      'translateSentence',
+    ])
+  })
+})
