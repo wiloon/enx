@@ -41,7 +41,7 @@ const serverCommand = (name: string, command: string) => {
  *
  *   pnpm build:e2e && pnpm test:e2e
  *
- * Drives dist-e2e/ against a LOCAL enx-api (:8090), and -- only when Clerk
+ * Drives dist-e2e/ against a LOCAL enx-api (:8091), and -- only when Clerk
  * credentials are set -- a local enx-ui (:3000) to sign in on. Signed-in specs
  * skip without them. See https://playwright.dev/docs/test-configuration
  */
