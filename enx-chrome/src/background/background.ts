@@ -1142,8 +1142,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           return await readingPositions.open(request.bookKey)
 
         case 'flushReadingPositions':
-          await readingPositions.flush()
-          return { ok: true }
+          return await readingPositions.flush()
 
         case 'reportReadingProgress':
           return await handleReportReadingProgress(request.delta)

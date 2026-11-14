@@ -214,6 +214,17 @@ describe('rejected actions keep the previous position', () => {
     expect(storedSentence()).toBe('Next write.')
   })
 
+  it('reports a failed flush instead of success and keeps the previous position', async () => {
+    failingSets = 1
+    const pending = record(BOOK, anchor('Lost on flush.', 200))
+
+    const reply = await send({ type: 'flushReadingPositions' })
+
+    expect(reply).toEqual({ ok: false, code: 'write-failed' })
+    expect(await pending).toEqual({ ok: false, code: 'write-failed' })
+    expect(storedSentence()).toBe('The previous sentence.')
+  })
+
   it('refuses a write that would take the feature past 4 MB across all accounts', async () => {
     local[KEY_B] = {
       books: { [OTHER_BOOK]: { filler: 'x'.repeat(4_194_000) } },

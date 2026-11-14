@@ -117,6 +117,7 @@ export function createReadingPositionWriter(deps: ReadingPositionWriterDeps) {
     clearTimeout(entry.timer)
     const result = await persist(entry.userId, entry.bookKey, entry.anchor)
     entry.waiters.forEach(resolve => resolve(result))
+    return result
   }
 
   // Binds the action to the user signed in now and queues it; settles once
@@ -156,9 +157,12 @@ export function createReadingPositionWriter(deps: ReadingPositionWriterDeps) {
     })
 
   /** Writes everything pending now, e.g. when a tab hides or unloads. */
-  const flush = async () => {
+  const flush = async (): Promise<WriteResult> => {
     await Promise.allSettled(receiving)
-    await Promise.all([...pending.keys()].map(flushOne))
+    const results = await Promise.all([...pending.keys()].map(flushOne))
+    return (
+      results.find(result => result && !result.ok) ?? { ok: true as const }
+    )
   }
 
   /**
