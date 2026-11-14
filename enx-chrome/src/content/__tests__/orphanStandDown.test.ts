@@ -194,8 +194,7 @@ beforeEach(() => {
       if (!callback) return
       if (message.type === 'getReviewWords' && holdWords) {
         heldWords.push(callback)
-      }
-      else callback(respond(message))
+      } else callback(respond(message))
     }
   )
   ;(chrome.storage.local.get as jest.Mock).mockResolvedValue({})
