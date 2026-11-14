@@ -33,7 +33,7 @@
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
-    "@clerk/testing": "2.2.55",
+    "@clerk/testing": "2.2.56",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/dom": "^10.4.1",
