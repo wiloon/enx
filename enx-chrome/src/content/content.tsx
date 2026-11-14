@@ -114,7 +114,10 @@ import {
   LOOKUP_FAILED_MESSAGE,
   sendRuntimeMessage,
 } from '@/lib/extensionContext'
-import { createReadingPositionRecorder } from '@/lib/readingPositionRecorder'
+import {
+  createReadingPositionRecorder,
+  type ReadingPositionMessage,
+} from '@/lib/readingPositionRecorder'
 
 console.log('ENX Content script loaded')
 
@@ -193,7 +196,7 @@ const standDown = listenForStandDown({
 
 // Send message to background script
 const sendToBackground = (
-  message: ContentMessage
+  message: ContentMessage | ReadingPositionMessage
 ): Promise<BackgroundResponse> => {
   return sendRuntimeMessage(message)
 }

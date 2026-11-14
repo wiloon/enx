@@ -3,7 +3,6 @@
 import type { ArticleChoiceReport } from '@/lib/articleChoiceShare'
 import type { FeedbackSubmission } from '@/lib/feedback'
 import type { LearningModeStatus } from '@/lib/learningModeStatus'
-import type { ReadingAnchor } from '@/lib/readingPositions'
 
 export interface WordData {
   // The words row id; absent on a miss, and on an AI definition that was not
@@ -82,13 +81,7 @@ export interface ContentMessage {
     | 'shouldAutoEnable'
     | 'learningModeStatus'
     | 'pinHintDismissed'
-    | 'recordReadingPosition'
-    | 'flushReadingPositions'
   word?: string
-  // Set on 'recordReadingPosition' (ADR-081): the book and the sentence's
-  // anchor. Neither is ever logged.
-  bookKey?: string
-  anchor?: ReadingAnchor
   // Set on 'recordWordLookup': the words row id the lookup answered with.
   wordId?: string
   // A stale cached id was refused: invalidate it and fetch again.
