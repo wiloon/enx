@@ -325,7 +325,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// id, so an inflection counts against the headword the lookup resolved
 	// to. Not idempotent: the extension never retries it.
 	wordLookupHandler := handlers.NewWordLookupHandlerWithSubscriptions(
-		dictionary.NewWordLookups(adapters.QueryCounts{}, lookupQuota, adapters.LookupEvents{}, time.Now), subscriptions)
+		dictionary.NewWordLookups(adapters.WordLookupRecords{}, lookupQuota, adapters.LookupEvents{}, time.Now), subscriptions)
 	apiGroup.POST("/me/word-lookups", wordLookupHandler.Record)
 
 	// Billing (Stripe) — requires authentication (Clerk session JWT).

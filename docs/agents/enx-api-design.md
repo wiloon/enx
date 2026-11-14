@@ -200,6 +200,8 @@ upstream release can replace the file wholesale with no migration.
 
 The single word-lookup entry point is `dictionary.Service.Resolve` (ADR-018): it reads
 the application's `words` table first (case-insensitive, straight apostrophes:
-ADR-043), then ECDICT (caching a hit in `words`),
-and meters the lookup; callers do not touch `ecdict` directly. Per-user review
-bookkeeping (`user_dicts`) stays with the caller (`repo.RecordWordLookup`).
+ADR-043), then ECDICT (caching a hit in `words`); callers do not touch `ecdict`
+directly. It does not meter: the batch lookup (`dictionary.Entries.Lookup`) charges
+the daily quota before it resolves (ADR-079), and recording one lookup
+(`dictionary.WordLookups.Record`, `POST /api/me/word-lookups`) charges, raises that
+word's query count in `user_dicts` and writes the lookup event.

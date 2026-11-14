@@ -20,15 +20,15 @@ import (
 	"enx-api/utils/sqlitex"
 )
 
-// QueryCounts is the dictionary.QueryCounts backed by the words and
-// user_dicts tables.
-type QueryCounts struct{}
+// WordLookupRecords is the dictionary.WordLookupRecords backed by the words
+// and user_dicts tables.
+type WordLookupRecords struct{}
 
-func (QueryCounts) WordExists(_ context.Context, wordID string) (bool, error) {
+func (WordLookupRecords) WordExists(_ context.Context, wordID string) (bool, error) {
 	return repo.WordExists(wordID)
 }
 
-func (QueryCounts) RecordWordLookup(_ context.Context, userID, wordID string) (int, bool, error) {
+func (WordLookupRecords) RecordWordLookup(_ context.Context, userID, wordID string) (int, bool, error) {
 	return repo.RecordWordLookup(userID, wordID)
 }
 

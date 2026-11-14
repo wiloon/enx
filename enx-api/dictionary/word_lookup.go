@@ -13,9 +13,9 @@ import (
 // ErrWordNotFound: the word id names no word.
 var ErrWordNotFound = errors.New("dictionary: word not found")
 
-// QueryCounts is the review system's per-user query counts (user_dicts) and
-// the words they count.
-type QueryCounts interface {
+// WordLookupRecords is the review system's per-user word lookup records
+// (user_dicts), and whether a word exists to record.
+type WordLookupRecords interface {
 	WordExists(ctx context.Context, wordID string) (bool, error)
 	// RecordWordLookup raises userID's query count for wordID by one and
 	// returns the new count and known flag.
@@ -25,14 +25,14 @@ type QueryCounts interface {
 // WordLookups records one click-to-lookup (ADR-059 Decision 3, ADR-079
 // Decision 1): the only writer of lookup events and query counts.
 type WordLookups struct {
-	counts QueryCounts
-	meter  Meter
-	events LookupEventStore
-	now    func() time.Time
+	records WordLookupRecords
+	meter   Meter
+	events  LookupEventStore
+	now     func() time.Time
 }
 
-func NewWordLookups(counts QueryCounts, meter Meter, events LookupEventStore, now func() time.Time) *WordLookups {
-	return &WordLookups{counts: counts, meter: meter, events: events, now: now}
+func NewWordLookups(records WordLookupRecords, meter Meter, events LookupEventStore, now func() time.Time) *WordLookups {
+	return &WordLookups{records: records, meter: meter, events: events, now: now}
 }
 
 // Record charges one lookup against userID's daily quota, raises their
@@ -44,7 +44,7 @@ func NewWordLookups(counts QueryCounts, meter Meter, events LookupEventStore, no
 // the charge standing and writes no event. A failed event write is only
 // logged: the lookup was counted, and the stats are one short.
 func (w *WordLookups) Record(ctx context.Context, userID, wordID string) (queryCount int, known bool, err error) {
-	exists, err := w.counts.WordExists(ctx, wordID)
+	exists, err := w.records.WordExists(ctx, wordID)
 	if err != nil {
 		return 0, false, fmt.Errorf("find word %s: %w", wordID, err)
 	}
@@ -56,7 +56,7 @@ func (w *WordLookups) Record(ctx context.Context, userID, wordID string) (queryC
 	} else if err != nil {
 		logger.Warnf("dictionary: lookup quota charge failed for user %s, allowing lookup: %v", userID, err)
 	}
-	queryCount, known, err = w.counts.RecordWordLookup(ctx, userID, wordID)
+	queryCount, known, err = w.records.RecordWordLookup(ctx, userID, wordID)
 	if err != nil {
 		return 0, false, err
 	}
