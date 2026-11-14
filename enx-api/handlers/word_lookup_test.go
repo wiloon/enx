@@ -32,7 +32,7 @@ var defaultLookupQuota = config.StripeQuota{DictionaryLookupDailyFree: 200, Dict
 func sendWordLookup(t *testing.T, limits config.StripeQuota, userID, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	meter := dictionary.NewQuotaMeter(adapters.QuotaUsage{}, entadapters.Billing{}, limits, time.Now)
-	h := NewWordLookupHandler(dictionary.NewWordLookups(adapters.QueryCounts{}, meter, adapters.LookupEvents{}, time.Now))
+	h := NewWordLookupHandler(dictionary.NewWordLookups(adapters.WordLookupRecords{}, meter, adapters.LookupEvents{}, time.Now))
 	router := gin.New()
 	router.Use(func(c *gin.Context) { c.Set("user_id", userID) })
 	router.POST("/api/me/word-lookups", h.Record)
