@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; amended by adr-085 (2026-11-14, clicked-word mark row)
 date: 2026-10-11
 related: adr-011（主窗口复习阶段下划线）、adr-025（主窗口整句底色）、adr-053（侧边栏锚点词与下划线）
 ---
