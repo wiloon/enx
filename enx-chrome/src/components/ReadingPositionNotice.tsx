@@ -5,14 +5,20 @@ import { useEffect } from 'react'
 
 export const READING_POSITION_NOTICE_MS = 8000
 
+const CLOSE_CLASS =
+  'rounded-sm text-base leading-none opacity-70 transition hover:opacity-100 active:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand'
+
 interface ReadingPositionNoticeProps {
   text: string
+  /** A failure is red; a warning is amber. */
+  tone: 'failure' | 'warning'
   onClose: () => void
   durationMs?: number
 }
 
 export default function ReadingPositionNotice({
   text,
+  tone,
   onClose,
   durationMs = READING_POSITION_NOTICE_MS,
 }: ReadingPositionNoticeProps) {
@@ -25,14 +31,20 @@ export default function ReadingPositionNotice({
     <div
       role="status"
       data-testid="reading-position-notice"
-      className="flex w-72 items-start gap-2 rounded-lg bg-background px-3 py-2.5 text-xs text-foreground shadow-lg ring-1 ring-border"
+      data-tone={tone}
+      className={`flex w-72 items-start gap-2 rounded-lg border px-3 py-2.5 text-xs shadow-lg ${
+        tone === 'failure'
+          ? 'border-destructive/25 bg-destructive/10 text-destructive'
+          : 'border-warning bg-warning-muted text-warning-foreground'
+      }`}
     >
       <p className="flex-1">{text}</p>
       <button
         type="button"
         aria-label="Close"
+        title="Close"
         onClick={onClose}
-        className="text-base leading-none text-muted-foreground hover:text-foreground"
+        className={CLOSE_CLASS}
       >
         ×
       </button>

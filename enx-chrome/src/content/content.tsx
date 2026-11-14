@@ -393,13 +393,21 @@ const readingResume = createReadingPositionResume({
         />
       )),
     hidePrompt: () => hideCornerOverlay(READING_POSITION_PROMPT),
-    showNotice: text =>
+    showNotice: (text, tone) =>
       showCornerOverlay(READING_POSITION_NOTICE, close => (
-        <ReadingPositionNotice text={text} onClose={close} />
+        <ReadingPositionNotice text={text} tone={tone} onClose={close} />
       )),
     reveal: revealReadingPosition,
   },
 })
+
+// Everything the reading position put on the page: prompt, notice, flash.
+const clearReadingPositionUi = () => {
+  readingResume.close()
+  hideCornerOverlay(READING_POSITION_NOTICE)
+  window.clearTimeout(readingPositionFlashTimer)
+  CSS.highlights.delete(READING_POSITION_FLASH)
+}
 
 // adr-046: learning mode's state goes to the toolbar badge, via background.
 // The last one is also kept so the popup can show it when it opens.
@@ -1613,7 +1621,7 @@ const getSpaRebuilder = () => {
       dropArticleBlocks()
       clearArticleRoots()
       readingPositions.setArticle([])
-      readingResume.close()
+      clearReadingPositionUi()
       hideCurrentOverlay()
       reportStatus({ status: 'off' })
     },
@@ -1724,7 +1732,7 @@ const disableEnx = ({ keepPopover = false } = {}) => {
   activeSentenceHighlightCleanup?.() // ADR-025: also drops its click/timeout listeners
   clearArticleRoots()
   readingPositions.setArticle([])
-  readingResume.close()
+  clearReadingPositionUi()
   reportStatus({ status: 'off' })
 }
 
@@ -1745,9 +1753,7 @@ const standDownOrphan = () => {
   clearArticleRoots()
   dropArticleBlocks()
   readingPositions.setArticle([])
-  readingResume.close()
-  hideCornerOverlay(READING_POSITION_NOTICE)
-  CSS.highlights.delete(READING_POSITION_FLASH)
+  clearReadingPositionUi()
   document.removeEventListener(
     'visibilitychange',
     flushReadingPositionsWhenHidden

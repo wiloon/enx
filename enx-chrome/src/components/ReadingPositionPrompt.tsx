@@ -22,7 +22,7 @@ export default function ReadingPositionPrompt({
       <button
         type="button"
         onClick={onJump}
-        className="flex-1 space-y-1 text-left"
+        className="flex-1 space-y-1 rounded-sm text-left transition hover:bg-brand-muted active:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       >
         <span className="block font-medium text-brand">Continue reading</span>
         <span className="block text-muted-foreground">
@@ -32,8 +32,9 @@ export default function ReadingPositionPrompt({
       <button
         type="button"
         aria-label="Dismiss"
+        title="Dismiss"
         onClick={onDismiss}
-        className="text-base leading-none text-muted-foreground hover:text-foreground"
+        className="rounded-sm text-base leading-none text-muted-foreground transition hover:text-foreground active:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       >
         ×
       </button>

@@ -310,6 +310,25 @@ describe('the reading position prompt', () => {
     expect(notice()?.textContent).toMatch(/couldn.t find/i)
   })
 
+  it('removes the not-found notice when learning mode turns off', async () => {
+    stored = {
+      ...anchorOf(RESIDENCE),
+      sentence: 'A sentence the page no longer has.',
+      before: '',
+      after: '',
+      offset: 0,
+      articleLength: ARTICLE.length,
+    }
+    await enable()
+    button(/continue reading/i).click()
+    await settle()
+    expect(notice()).not.toBeNull()
+
+    await sendToContent({ action: 'enxStop' })
+
+    expect(notice()).toBeNull()
+  })
+
   it('hides once a new sentence on this page becomes the position', async () => {
     await enable()
     expect(prompt()).not.toBeNull()

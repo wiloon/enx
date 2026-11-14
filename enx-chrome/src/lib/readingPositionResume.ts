@@ -26,10 +26,13 @@ export type ReadingPositionOpenMessage = {
   bookKey: string
 }
 
+/** A failure is red; a missing sentence is only a warning. */
+export type NoticeTone = 'failure' | 'warning'
+
 export interface ReadingPositionView {
   showPrompt(preview: string, actions: { jump(): void; dismiss(): void }): void
   hidePrompt(): void
-  showNotice(text: string): void
+  showNotice(text: string, tone: NoticeTone): void
   /** Scrolls `range` into view; flashes it only when it is the sentence. */
   reveal(range: Range, flash: boolean): void
 }
@@ -74,7 +77,7 @@ export function createReadingPositionResume(deps: ReadingPositionResumeDeps) {
           text.text.length
         )
     if (range) view.reveal(range, found.found)
-    if (!found.found || !range) view.showNotice(NOT_FOUND_NOTICE)
+    if (!found.found || !range) view.showNotice(NOT_FOUND_NOTICE, 'warning')
   }
 
   return {
@@ -106,7 +109,7 @@ export function createReadingPositionResume(deps: ReadingPositionResumeDeps) {
     notSaved(code: NotSavedCode) {
       if (notSavedShown) return
       notSavedShown = true
-      view.showNotice(NOT_SAVED_NOTICES[code])
+      view.showNotice(NOT_SAVED_NOTICES[code], 'failure')
     },
   }
 }
