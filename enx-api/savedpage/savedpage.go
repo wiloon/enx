@@ -1,5 +1,6 @@
 // Package savedpage stores the pages a user chose to save (ADR-032): URL and
-// title only, readable and editable by that user alone.
+// title only, readable and editable by that user alone. The URL is normalized
+// for saving (url.go) so it reopens the page without its tracking parameters.
 package savedpage
 
 import (
@@ -9,7 +10,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"enx-api/urlnorm"
 	"enx-api/utils/sqlitex"
 )
 
@@ -60,7 +60,7 @@ func pageFromRow(row sqlitex.SavedPage) Page {
 
 // Save stores in for userID.
 func Save(ctx context.Context, userID string, in Input, now time.Time) (page Page, created bool, err error) {
-	pageURL, host, err := urlnorm.ForSave(in.URL)
+	pageURL, host, err := forSave(in.URL)
 	if err != nil {
 		return Page{}, false, err
 	}
@@ -165,7 +165,7 @@ func Update(ctx context.Context, userID, id string, patch Patch) (Page, error) {
 	}
 
 	if patch.URL != nil {
-		pageURL, host, err := urlnorm.ForSave(*patch.URL)
+		pageURL, host, err := forSave(*patch.URL)
 		if err != nil {
 			return Page{}, err
 		}

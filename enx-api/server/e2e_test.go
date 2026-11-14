@@ -2,9 +2,9 @@ package server
 
 import (
 	"encoding/json"
-	"enx-api/clerktest"
 	"enx-api/config"
 	"enx-api/metrics"
+	"enx-api/platform/clerktest"
 	"enx-api/utils/sqlitex"
 	"io"
 	"net/http"

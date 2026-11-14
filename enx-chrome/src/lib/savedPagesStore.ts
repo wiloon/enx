@@ -16,8 +16,8 @@ export interface SavedPageRef {
 
 type SavedPagesMap = Record<string, SavedPageRef>
 
-// Mirrors enx-api urlnorm.isTrackingParam: these say how the user arrived,
-// not which page it is.
+// Mirrors the tracking-parameter rule in enx-api's savedpage/url.go: these say
+// how the user arrived, not which page it is.
 function isTrackingParam(key: string, onX: boolean): boolean {
   key = key.toLowerCase()
   if (onX && (key === 's' || key === 't')) return true
@@ -32,7 +32,7 @@ function isTrackingParam(key: string, onX: boolean): boolean {
 const X_HOST = /(^|\.)(x|twitter)\.com$/
 
 // savedPageKey reduces a URL to the form used to match the open tab against
-// saved pages. It follows the same rules as enx-api's urlnorm.ForSave (no
+// saved pages. It follows the same rules as enx-api's savedpage/url.go (no
 // fragment, no credentials, no tracking parameters), but it is only ever
 // compared with itself: the key of the tab's URL against the key of the URL
 // enx-api returned. So a difference in how Go and the browser serialize a URL

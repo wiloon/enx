@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"enx-api/creditledger"
+	"enx-api/billing/creditledger"
 	"enx-api/middleware"
 	"enx-api/utils/logger"
 

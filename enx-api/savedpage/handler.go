@@ -9,7 +9,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"enx-api/middleware"
-	"enx-api/urlnorm"
 	"enx-api/utils/logger"
 )
 
@@ -32,11 +31,11 @@ func toResponse(p Page) pageResponse {
 }
 
 // invalidURLMessage tells the user what is wrong with the address. A too-long
-// one is also an invalid one (ErrURLTooLong wraps ErrInvalidURL), so it is
+// one is also an invalid one (errURLTooLong wraps errInvalidURL), so it is
 // named first.
 func invalidURLMessage(err error) string {
-	if errors.Is(err, urlnorm.ErrURLTooLong) {
-		return fmt.Sprintf("That address is too long to save (the limit is %d characters).", urlnorm.MaxURLLength)
+	if errors.Is(err, errURLTooLong) {
+		return fmt.Sprintf("That address is too long to save (the limit is %d characters).", maxURLLength)
 	}
 	return "that is not a valid web page address"
 }
@@ -64,7 +63,7 @@ func SaveHandler(c *gin.Context) {
 	}, time.Now())
 	if err != nil {
 		switch {
-		case errors.Is(err, urlnorm.ErrInvalidURL):
+		case errors.Is(err, errInvalidURL):
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": invalidURLMessage(err)})
 		case errors.Is(err, ErrLimitReached):
 			c.JSON(http.StatusUnprocessableEntity, gin.H{
@@ -132,7 +131,7 @@ func UpdateHandler(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "saved page not found"})
 		case errors.Is(err, ErrDuplicate):
 			c.JSON(http.StatusConflict, gin.H{"success": false, "message": "you have already saved a page with that address"})
-		case errors.Is(err, urlnorm.ErrInvalidURL):
+		case errors.Is(err, errInvalidURL):
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": invalidURLMessage(err)})
 		default:
 			logger.Errorf("savedpage: update failed for user %s: %v", userID, err)

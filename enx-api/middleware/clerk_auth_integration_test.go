@@ -3,7 +3,7 @@
 package middleware
 
 import (
-	"enx-api/clerktest"
+	"enx-api/platform/clerktest"
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
 	"net/http"
