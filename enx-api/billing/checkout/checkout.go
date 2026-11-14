@@ -5,6 +5,7 @@ package checkout
 import (
 	"context"
 	"errors"
+	"slices"
 
 	"enx-api/billing/acceptance"
 	"enx-api/billing/attribution"
@@ -50,6 +51,7 @@ func (s *Service) Prepare(ctx context.Context, userID, tier string) (string, err
 		if owner.Deletion != acceptance.NoDeletion {
 			return "", &Refusal{Reason: eligibility.ReasonDeletionInProgress}
 		}
+		owner.Owned = slices.Clone(owner.Owned)
 		for i, owned := range owner.Owned {
 			if owned.Conflict == eligibility.ConflictResolved && eligibility.NeedsLiveLookup(owned) {
 				if sub, err := s.stripe.Subscription(ctx, owned.ID); err == nil {
