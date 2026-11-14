@@ -1,5 +1,5 @@
 ---
-status: accepted；2026-11-13 Amended by adr-082（Decision 1–7：书的边界、锚点验证、跳转、pin 来源与存储限制）
+status: accepted；2026-11-13 Amended by adr-082（Decision 1–7：书的边界、锚点验证、跳转、pin 来源与存储限制）、adr-083（Decision 7：每个用户最多 20 本书）
 date: 2026-11-13
 related: adr-007（划词整句翻译）、adr-023（侧边栏卡片列表）、adr-028 Decision 3（不记录阅读历史，要记也只在本地）、adr-032（收藏页面只存 URL + 标题）、adr-050（标签页级侧边栏）、adr-053 / adr-054（Highlight API 与高亮颜色）、adr-068（悬停整句翻译）、adr-010 / adr-011（站点适配器）、issue #855（可选服务端同步）、issue #856（enx-ui 本地全部书列表）
 ---
