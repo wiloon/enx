@@ -17,14 +17,17 @@ function safeDecode(segment: string): string {
 
 // An identifier that could name a person or grant access: an email, a UUID,
 // or a long separator-free token. A 19-digit tweet id has no letters and a
-// hyphenated slug has separators, so neither is caught.
+// hyphenated slug has separators, so neither is caught. Lengths count code
+// points and digits are decimal (Nd), matching enx-api's rule (ADR-076
+// Decision 3).
 function isOpaqueSegment(segment: string): boolean {
   const seg = safeDecode(segment)
   if (seg.includes('@') || UUID.test(seg)) return true
   if (/[-_.]/.test(seg)) return false
-  if (seg.length >= 32) return true
-  if (seg.length < 20) return false
-  return /\p{L}/u.test(seg) && /\p{N}/u.test(seg)
+  const length = [...seg].length
+  if (length >= 32) return true
+  if (length < 20) return false
+  return /\p{L}/u.test(seg) && /\p{Nd}/u.test(seg)
 }
 
 /**
