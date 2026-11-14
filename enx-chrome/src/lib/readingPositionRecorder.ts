@@ -5,6 +5,7 @@
 
 import { readArticleText } from '@/lib/articleText'
 import { buildReadingAnchor, readingBook } from '@/lib/readingAnchor'
+import type { NotSavedCode } from '@/lib/readingPositionResume'
 import type { ReadingAnchor } from '@/lib/readingPositions'
 import type { SiteAdapter } from '@/lib/siteAdapters'
 
@@ -13,13 +14,23 @@ export type ReadingPositionMessage =
   | { type: 'flushReadingPositions' }
 
 export interface ReadingPositionRecorderDeps {
-  send: (message: ReadingPositionMessage) => void
+  /** Resolves with the writer's reply, once the write is done. */
+  send: (message: ReadingPositionMessage) => Promise<unknown>
   now: () => number
   page: () => {
     href: string
     title: string
     adapter: Pick<SiteAdapter, 'bookKey'>
   }
+  /** A sentence on this page went to the writer. */
+  onRecorded?: () => void
+  /** The writer could not store it; the previous position stands. */
+  onNotSaved?: (code: NotSavedCode) => void
+}
+
+const notSavedCode = (reply: unknown): NotSavedCode | null => {
+  const code = (reply as { ok?: boolean; code?: unknown } | null)?.code
+  return code === 'storage-full' || code === 'write-failed' ? code : null
 }
 
 export function createReadingPositionRecorder(
@@ -53,20 +64,28 @@ export function createReadingPositionRecorder(
         occurredAt
       )
       if (!anchor) return false
-      deps.send({
-        type: 'recordReadingPosition',
-        bookKey: book.bookKey,
-        anchor,
-      })
+      void deps
+        .send({ type: 'recordReadingPosition', bookKey: book.bookKey, anchor })
+        .then(reply => {
+          const code = notSavedCode(reply)
+          if (code) deps.onNotSaved?.(code)
+        })
       unflushed = true
+      deps.onRecorded?.()
       return true
+    },
+
+    /** The book this page belongs to, or null for an address with none. */
+    bookKey(): string | null {
+      const { href, adapter } = deps.page()
+      return readingBook(adapter, href)?.bookKey ?? null
     },
 
     /** Asks the writer to write what this tab sent; best effort. */
     flush() {
       if (!unflushed) return
       unflushed = false
-      deps.send({ type: 'flushReadingPositions' })
+      void deps.send({ type: 'flushReadingPositions' })
     },
   }
 }

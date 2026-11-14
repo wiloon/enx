@@ -14,6 +14,11 @@ export interface ArticleText {
    * position, or null when the position is outside the article.
    */
   offsetOf(container: Node, offset: number): number | null
+  /**
+   * The DOM range of the article text from `start` to `end`, or null when
+   * that stretch holds no text.
+   */
+  rangeOf(start: number, end: number): Range | null
 }
 
 interface NodeStart {
@@ -75,8 +80,42 @@ export function readArticleText(roots: readonly Node[]): ArticleText {
     return text.length
   }
 
+  // The text node and index of each character in [start, end) that is not
+  // whitespace, in order: first and last are all rangeOf needs.
+  const charsBetween = (start: number, end: number) => {
+    let first: { node: Text; index: number } | null = null
+    let last: { node: Text; index: number } | null = null
+    for (const nodeStart of starts) {
+      let { length, pendingSpace } = nodeStart
+      const data = nodeStart.node.data
+      for (let i = 0; i < data.length; i++) {
+        if (WHITESPACE.test(data[i])) {
+          pendingSpace = true
+          continue
+        }
+        if (pendingSpace && length > 0) length++
+        pendingSpace = false
+        if (length >= end) return { first, last }
+        if (length >= start) {
+          first ??= { node: nodeStart.node, index: i }
+          last = { node: nodeStart.node, index: i }
+        }
+        length++
+      }
+    }
+    return { first, last }
+  }
+
   return {
     text,
+    rangeOf(start, end) {
+      const { first, last } = charsBetween(start, end)
+      if (!first || !last) return null
+      const range = first.node.ownerDocument.createRange()
+      range.setStart(first.node, first.index)
+      range.setEnd(last.node, last.index + 1)
+      return range
+    },
     offsetOf(container, offset) {
       if (container.nodeType === Node.TEXT_NODE) {
         const index = starts.findIndex(s => s.node === container)

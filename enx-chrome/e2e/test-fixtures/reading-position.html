@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Harbour Book</title>
+    <!--
+      A one-page book many screens long for reading positions (#897), built
+      by the script below. e2e/reading-position.spec.ts serves changed
+      versions of it at the same address by replacing VARIANT:
+        original   every paragraph as written
+        rewritten  paragraph 150's second sentence reworded
+    -->
+    <style>
+        body {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 0 20px;
+            font-family: Georgia, serif;
+            font-size: 18px;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <h1>The Harbour Book</h1>
+    <script>
+        const VARIANT = 'original'
+        const article = document.createElement('article')
+        for (let i = 0; i < 200; i++) {
+            const p = document.createElement('p')
+            p.id = `p${i}`
+            const second =
+                VARIANT === 'rewritten' && i === 150
+                    ? `Someone else studied map number ${i} quickly.`
+                    : `The captain read chart number ${i} slowly.`
+            p.textContent =
+                `In chapter ${i} the pilot lit a lantern near the quay. ${second} ` +
+                `Then the harbour bell rang and the sailors went home.`
+            article.append(p)
+        }
+        document.body.append(article)
+    </script>
+</body>
+</html>

@@ -72,3 +72,40 @@ describe('readArticleText', () => {
     expect(article.offsetOf(textIn('#outside', 'story'), 0)).toBeNull()
   })
 })
+
+describe('ArticleText.rangeOf', () => {
+  const normalized = (range: Range | null) =>
+    range?.toString().replace(/\s+/g, ' ')
+
+  it('spans the DOM text of an article stretch across nodes and whitespace', () => {
+    const article = readArticleText(roots())
+    const start = article.text.indexOf('It was')
+    const end = article.text.indexOf('night.') + 'night.'.length
+
+    const range = article.rangeOf(start, end)
+
+    expect(normalized(range)).toBe('It was a dark and stormy night.')
+    expect(range?.startContainer).toBe(textIn('#one p', 'It was'))
+    expect(range?.endContainer).toBe(textIn('#one p', 'stormy'))
+  })
+
+  it('maps back to the offsets it came from', () => {
+    const article = readArticleText(roots())
+    const start = article.text.indexOf('The end')
+    const range = article.rangeOf(start, start + 3)!
+
+    expect(range.toString()).toBe('The')
+    expect(article.offsetOf(range.startContainer, range.startOffset)).toBe(
+      start
+    )
+  })
+
+  it('has no range outside the article text', () => {
+    const article = readArticleText(roots())
+
+    expect(
+      article.rangeOf(article.text.length, article.text.length + 4)
+    ).toBeNull()
+    expect(article.rangeOf(5, 5)).toBeNull()
+  })
+})
