@@ -1,7 +1,8 @@
 // Reading positions for one-page books (ADR-081, ADR-082, #897): a lookup
 // deep in a long page becomes the book's position; a hidden tab writes it at
 // once; reopening the page offers a corner prompt that scrolls back to the
-// sentence and flashes it, leaving a closed side panel closed. A changed
+// sentence and highlights it until the next click (ADR-084), leaving a
+// closed side panel closed. A changed
 // page says it could not find the sentence instead of picking another one.
 
 import type { BrowserContext, Page } from '@playwright/test'
@@ -82,7 +83,7 @@ const flashedText = (page: Page) =>
     const registry = (
       CSS as unknown as { highlights: Map<string, Iterable<Range>> }
     ).highlights
-    const flash = registry.get('enx-reading-position')
+    const flash = registry.get('enx-active-sentence') // ADR-084
     return flash ? [...flash].map(range => range.toString()) : []
   })
 
@@ -184,8 +185,12 @@ test.describe('Reading position on a one-page book', () => {
     await expect.poll(() => flashedText(page)).toEqual([SENTENCE])
     await expect(prompt(page)).toHaveCount(0)
     expect(await sidePanelsOpen(context)).toBe(0)
-    // The flash is brief.
-    await expect.poll(() => flashedText(page), { timeout: 5000 }).toEqual([])
+    // ADR-084: the highlight outlasts any brief flash and clears on the
+    // user's next click, like ADR-025's active sentence.
+    await page.waitForTimeout(3000)
+    expect(await flashedText(page)).toEqual([SENTENCE])
+    await page.mouse.click(5, 5)
+    await expect.poll(() => flashedText(page)).toEqual([])
   })
 
   test('a changed page says the sentence is gone and scrolls to about where it was', async ({

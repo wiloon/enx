@@ -1,6 +1,6 @@
 // Coming back to a book (ADR-081 Decision 3, #897): when learning mode turns
 // on, a book with a reading position gets a corner prompt. Clicking it finds
-// the sentence in the article as it is now, scrolls there and flashes it; it
+// the sentence in the article as it is now, scrolls there and highlights it (ADR-084); it
 // never opens the side panel. The prompt goes once it is clicked, dismissed,
 // or a new sentence on this page becomes the position. The DOM side is the
 // view, passed in.
@@ -33,8 +33,8 @@ export interface ReadingPositionView {
   showPrompt(preview: string, actions: { jump(): void; dismiss(): void }): void
   hidePrompt(): void
   showNotice(text: string, tone: NoticeTone): void
-  /** Scrolls `range` into view; flashes it only when it is the sentence. */
-  reveal(range: Range, flash: boolean): void
+  /** Scrolls `range` into view; highlights it only when it is the sentence. */
+  reveal(range: Range, highlight: boolean): void
 }
 
 export interface ReadingPositionResumeDeps {
