@@ -10,9 +10,9 @@ import (
 
 	"enx-api/account"
 	accountadapters "enx-api/account/adapters"
-	"enx-api/clerktest"
 	"enx-api/config"
 	"enx-api/metrics"
+	"enx-api/platform/clerktest"
 	"enx-api/utils/sqlitex"
 
 	"github.com/gin-gonic/gin"

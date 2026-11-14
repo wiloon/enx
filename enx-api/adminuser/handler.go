@@ -9,7 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"enx-api/creditledger"
+	"enx-api/billing/creditledger"
 	"enx-api/utils/logger"
 )
 

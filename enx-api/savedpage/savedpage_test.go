@@ -11,7 +11,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"enx-api/urlnorm"
 	"enx-api/utils/sqlitex"
 )
 
@@ -330,8 +329,8 @@ func TestSavingSomethingThatIsNotAWebPageIsRejected(t *testing.T) {
 	user := "u-" + t.Name()
 
 	for _, raw := range []string{"", "javascript:alert(1)", "chrome://extensions", "file:///etc/passwd"} {
-		if _, created, err := Save(ctx, user, Input{URL: raw, Title: "t"}, time.Now()); !errors.Is(err, urlnorm.ErrInvalidURL) || created {
-			t.Errorf("Save(%q): created=%v err=%v, want ErrInvalidURL", raw, created, err)
+		if _, created, err := Save(ctx, user, Input{URL: raw, Title: "t"}, time.Now()); !errors.Is(err, errInvalidURL) || created {
+			t.Errorf("Save(%q): created=%v err=%v, want errInvalidURL", raw, created, err)
 		}
 	}
 	if pages, _ := List(ctx, user); len(pages) != 0 {
@@ -349,8 +348,8 @@ func TestEditedURLsAreNormalizedAndValidatedLikeSavedOnes(t *testing.T) {
 		t.Fatalf("Update: url=%q err=%v, want the normalized URL", updated.URL, err)
 	}
 
-	if _, err := Update(ctx, user, page.ID, Patch{URL: strPtr("javascript:alert(1)")}); !errors.Is(err, urlnorm.ErrInvalidURL) {
-		t.Fatalf("Update to a non-web URL: err=%v, want ErrInvalidURL", err)
+	if _, err := Update(ctx, user, page.ID, Patch{URL: strPtr("javascript:alert(1)")}); !errors.Is(err, errInvalidURL) {
+		t.Fatalf("Update to a non-web URL: err=%v, want errInvalidURL", err)
 	}
 	if pages, _ := List(ctx, user); pages[0].URL != "https://example.com/b?id=1" {
 		t.Fatalf("a rejected edit changed the page to %q", pages[0].URL)

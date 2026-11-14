@@ -9,9 +9,9 @@ import (
 	"reflect"
 	"testing"
 
-	"enx-api/clerktest"
 	"enx-api/config"
 	"enx-api/metrics"
+	"enx-api/platform/clerktest"
 	"enx-api/utils/sqlitex"
 
 	"github.com/golang-jwt/jwt/v5"

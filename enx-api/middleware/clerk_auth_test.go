@@ -1,8 +1,8 @@
 package middleware
 
 import (
-	"enx-api/clerktest"
 	"enx-api/config"
+	"enx-api/platform/clerktest"
 	"net/http"
 	"net/http/httptest"
 	"reflect"

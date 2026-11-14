@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"enx-api/creditledger"
+	"enx-api/billing/creditledger"
 	"enx-api/utils/sqlitex"
 )
 

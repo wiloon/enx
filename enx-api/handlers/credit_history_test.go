@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"enx-api/creditledger"
+	"enx-api/billing/creditledger"
 
 	"github.com/gin-gonic/gin"
 )

@@ -9,7 +9,7 @@ import (
 	"errors"
 	"time"
 
-	"enx-api/creditledger"
+	"enx-api/billing/creditledger"
 )
 
 // Account is one user with their subscription and credit balances, as
