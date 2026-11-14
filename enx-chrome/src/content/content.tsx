@@ -6,6 +6,7 @@ import { loadReadability } from './loadReadability'
 import { resolveLookupArea } from '@/lib/lookupArea'
 import { createAccountScope } from '@/lib/accountSession'
 
+import type { ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { Provider } from 'jotai'
 import { autoUpdate } from '@floating-ui/dom'
@@ -118,6 +119,12 @@ import {
   createReadingPositionRecorder,
   type ReadingPositionMessage,
 } from '@/lib/readingPositionRecorder'
+import {
+  createReadingPositionResume,
+  type ReadingPositionOpenMessage,
+} from '@/lib/readingPositionResume'
+import ReadingPositionPrompt from '@/components/ReadingPositionPrompt'
+import ReadingPositionNotice from '@/components/ReadingPositionNotice'
 
 console.log('ENX Content script loaded')
 
@@ -196,7 +203,7 @@ const standDown = listenForStandDown({
 
 // Send message to background script
 const sendToBackground = (
-  message: ContentMessage | ReadingPositionMessage
+  message: ContentMessage | ReadingPositionMessage | ReadingPositionOpenMessage
 ): Promise<BackgroundResponse> => {
   return sendRuntimeMessage(message)
 }
@@ -220,15 +227,15 @@ const pagePrefetch = createPagePrefetch(words => {
 // ADR-081/082: the sentence of each lookup or translation becomes the book's
 // reading position, through the background's one writer.
 const readingPositions = createReadingPositionRecorder({
-  send: message => {
-    void sendToBackground(message)
-  },
+  send: message => sendToBackground(message),
   now: () => Date.now(),
   page: () => ({
     href: window.location.href,
     title: document.title,
     adapter: resolveSiteAdapter(window.location, siteOrigins),
   }),
+  onRecorded: () => readingResume.recorded(),
+  onNotSaved: code => readingResume.notSaved(code),
 })
 
 const recordSentenceOf = (reference: Range, queryText: string) => {
@@ -311,6 +318,95 @@ const showPinHint = () => {
   document.body.appendChild(overlay)
   overlay.showPopover()
   pinHintOverlay = overlay
+}
+
+// ADR-081 Decision 3: the reading-position prompt and its notices, in the
+// top layer's bottom-right corner, away from the pin hint at the top right.
+const READING_POSITION_PROMPT = 'enx-reading-position-prompt'
+const READING_POSITION_NOTICE = 'enx-reading-position-notice'
+const READING_POSITION_FLASH = 'enx-reading-position'
+const READING_POSITION_FLASH_MS = 2000
+
+const cornerOverlays = new Map<
+  string,
+  { overlay: OverlayElement; root: Root }
+>()
+
+const hideCornerOverlay = (className: string) => {
+  const shown = cornerOverlays.get(className)
+  if (!shown) return
+  cornerOverlays.delete(className)
+  shown.root.unmount()
+  shown.overlay.hidePopover()
+  shown.overlay.remove()
+}
+
+const showCornerOverlay = (
+  className: string,
+  render: (close: () => void) => ReactNode
+) => {
+  hideCornerOverlay(className)
+  const overlay = document.createElement('div') as OverlayElement
+  overlay.popover = 'manual'
+  overlay.className = className
+  overlay.style.cssText = `
+    position: fixed;
+    inset: auto 12px 12px auto;
+    padding: 0;
+    border: none;
+    background: transparent;
+    margin: 0;
+  `
+  const root = mountShadowRoot(overlay)
+  const close = () => {
+    if (cornerOverlays.get(className)?.overlay === overlay) {
+      hideCornerOverlay(className)
+    }
+  }
+  root.render(render(close))
+  document.body.appendChild(overlay)
+  overlay.showPopover()
+  cornerOverlays.set(className, { overlay, root })
+}
+
+let readingPositionFlashTimer = 0
+const revealReadingPosition = (range: Range, flash: boolean) => {
+  nearestElement(range.startContainer)?.scrollIntoView({ block: 'center' })
+  if (!flash) return
+  CSS.highlights.set(READING_POSITION_FLASH, new Highlight(range))
+  window.clearTimeout(readingPositionFlashTimer)
+  readingPositionFlashTimer = window.setTimeout(
+    () => CSS.highlights.delete(READING_POSITION_FLASH),
+    READING_POSITION_FLASH_MS
+  )
+}
+
+const readingResume = createReadingPositionResume({
+  send: message => sendToBackground(message),
+  view: {
+    showPrompt: (preview, { jump, dismiss }) =>
+      showCornerOverlay(READING_POSITION_PROMPT, () => (
+        <ReadingPositionPrompt
+          preview={preview}
+          onJump={jump}
+          onDismiss={dismiss}
+        />
+      )),
+    hidePrompt: () => hideCornerOverlay(READING_POSITION_PROMPT),
+    showNotice: (text, tone) =>
+      showCornerOverlay(READING_POSITION_NOTICE, close => (
+        <ReadingPositionNotice text={text} tone={tone} onClose={close} />
+      )),
+    reveal: revealReadingPosition,
+  },
+})
+
+// Everything the reading position put on the page: prompt, notice, flash.
+const clearReadingPositionUi = () => {
+  readingResume.close()
+  hideCornerOverlay(READING_POSITION_NOTICE)
+  window.clearTimeout(readingPositionFlashTimer)
+  CSS.highlights.delete(READING_POSITION_FLASH)
 }
 
 // adr-046: learning mode's state goes to the toolbar badge, via background.
@@ -1029,6 +1125,7 @@ const processArticleContent = async (
       clearArticleRoots()
     }
     readingPositions.setArticle(articleNodes)
+    void readingResume.open(readingPositions.bookKey(), articleNodes)
 
     // L0 reading instrumentation (ADR-028): `words.length` is the
     // denominator of the only honest progress metric we have ("lookups per
@@ -1524,6 +1621,7 @@ const getSpaRebuilder = () => {
       dropArticleBlocks()
       clearArticleRoots()
       readingPositions.setArticle([])
+      clearReadingPositionUi()
       hideCurrentOverlay()
       reportStatus({ status: 'off' })
     },
@@ -1634,6 +1732,7 @@ const disableEnx = ({ keepPopover = false } = {}) => {
   activeSentenceHighlightCleanup?.() // ADR-025: also drops its click/timeout listeners
   clearArticleRoots()
   readingPositions.setArticle([])
+  clearReadingPositionUi()
   reportStatus({ status: 'off' })
 }
 
@@ -1654,6 +1753,7 @@ const standDownOrphan = () => {
   clearArticleRoots()
   dropArticleBlocks()
   readingPositions.setArticle([])
+  clearReadingPositionUi()
   document.removeEventListener(
     'visibilitychange',
     flushReadingPositionsWhenHidden
@@ -1870,6 +1970,9 @@ highlightStyles.textContent =
   // opened the sentence panel for -- a different visual channel
   // (background, not underline) so it reads distinctly from review buckets.
   `\n::highlight(${WordProcessor.ACTIVE_SENTENCE_HIGHLIGHT_NAME}) {` +
+  ` background-color: ${HOST_PAGE_COLORS.activeSentenceWash}; }` +
+  // ADR-081 Decision 3: the same warm wash flashes the reading position.
+  `\n::highlight(${READING_POSITION_FLASH}) {` +
   ` background-color: ${HOST_PAGE_COLORS.activeSentenceWash}; }`
 if (!document.head.querySelector('style[data-enx-highlight-styles]')) {
   document.head.appendChild(highlightStyles)
