@@ -676,15 +676,14 @@ export class WordProcessor {
     // an unrelated sentence. Only checked for single words -- a phrase
     // selection needn't appear verbatim in the segmented sentence (whitespace
     // normalisation, spanning a boundary), so an exact-substring test there
-    // would just be noise.
+    // would just be noise. Page text stays out of the log (#897).
     const isSingleWord = !/\s/.test(queryText.trim())
     if (
       isSingleWord &&
       !result.sentence.toLowerCase().includes(queryText.toLowerCase())
     ) {
       console.warn(
-        `extractSentenceContext: resolved sentence does not contain "${queryText}"`,
-        result.sentence
+        'extractSentenceContext: resolved sentence does not contain the word'
       )
     }
 

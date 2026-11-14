@@ -114,6 +114,10 @@ import {
   LOOKUP_FAILED_MESSAGE,
   sendRuntimeMessage,
 } from '@/lib/extensionContext'
+import {
+  createReadingPositionRecorder,
+  type ReadingPositionMessage,
+} from '@/lib/readingPositionRecorder'
 
 console.log('ENX Content script loaded')
 
@@ -192,7 +196,7 @@ const standDown = listenForStandDown({
 
 // Send message to background script
 const sendToBackground = (
-  message: ContentMessage
+  message: ContentMessage | ReadingPositionMessage
 ): Promise<BackgroundResponse> => {
   return sendRuntimeMessage(message)
 }
@@ -212,6 +216,32 @@ const reviewList = createReviewList({
 const pagePrefetch = createPagePrefetch(words => {
   void sendToBackground({ type: 'prefetchDefinitions', words })
 })
+
+// ADR-081/082: the sentence of each lookup or translation becomes the book's
+// reading position, through the background's one writer.
+const readingPositions = createReadingPositionRecorder({
+  send: message => {
+    void sendToBackground(message)
+  },
+  now: () => Date.now(),
+  page: () => ({
+    href: window.location.href,
+    title: document.title,
+    adapter: resolveSiteAdapter(window.location, siteOrigins),
+  }),
+})
+
+const recordSentenceOf = (reference: Range, queryText: string) => {
+  const sentence = WordProcessor.extractSentenceContext(reference, queryText)
+  if (sentence?.range) readingPositions.record(sentence.range)
+}
+
+const flushReadingPositionsWhenHidden = () => {
+  if (document.visibilityState === 'hidden') readingPositions.flush()
+}
+const flushReadingPositions = () => readingPositions.flush()
+document.addEventListener('visibilitychange', flushReadingPositionsWhenHidden)
+window.addEventListener('pagehide', flushReadingPositions)
 
 // Counts a popover lookup on the server, without waiting (lib/queryCount.ts).
 const recordLookup: RecordLookup = wordId => {
@@ -384,6 +414,7 @@ const createAnchoredOverlay = (
 // against `reference` -- a Range over the clicked word (or the drag-selection).
 const showWordPopover = async (word: string, reference: Range) => {
   if (!word || word.trim() === '') return
+  recordSentenceOf(reference, word)
 
   const isCurrentAccount = accountScope.capture()
   console.log('Showing overlay for word:', word)
@@ -997,6 +1028,7 @@ const processArticleContent = async (
     } else {
       clearArticleRoots()
     }
+    readingPositions.setArticle(articleNodes)
 
     // L0 reading instrumentation (ADR-028): `words.length` is the
     // denominator of the only honest progress metric we have ("lookups per
@@ -1146,6 +1178,7 @@ const triggerSelectionTranslation = async (
   selectedText: string,
   reference: Range
 ) => {
+  readingPositions.record(reference)
   try {
     const response = await sendToBackground({
       type: 'openSentencePanel',
@@ -1192,6 +1225,7 @@ const triggerPhraseContextLookup = async (
     )
     return
   }
+  if (sentenceContext?.range) readingPositions.record(sentenceContext.range)
 
   try {
     const response = await sendToBackground({
@@ -1489,6 +1523,7 @@ const getSpaRebuilder = () => {
       pagePrefetch.reset()
       dropArticleBlocks()
       clearArticleRoots()
+      readingPositions.setArticle([])
       hideCurrentOverlay()
       reportStatus({ status: 'off' })
     },
@@ -1598,6 +1633,7 @@ const disableEnx = ({ keepPopover = false } = {}) => {
   dropArticleBlocks()
   activeSentenceHighlightCleanup?.() // ADR-025: also drops its click/timeout listeners
   clearArticleRoots()
+  readingPositions.setArticle([])
   reportStatus({ status: 'off' })
 }
 
@@ -1617,6 +1653,12 @@ const standDownOrphan = () => {
   stopReading()
   clearArticleRoots()
   dropArticleBlocks()
+  readingPositions.setArticle([])
+  document.removeEventListener(
+    'visibilitychange',
+    flushReadingPositionsWhenHidden
+  )
+  window.removeEventListener('pagehide', flushReadingPositions)
 }
 
 // The enable path shared by the popup's enxRun and adr-039 auto-enable.
