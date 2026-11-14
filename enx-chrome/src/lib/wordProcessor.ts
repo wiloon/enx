@@ -95,6 +95,9 @@ export class WordProcessor {
   // adds, moves and removes enx-hl-* entries as blocks scroll by and words
   // change review bucket, and must never touch this one.
   static readonly ACTIVE_SENTENCE_HIGHLIGHT_NAME = 'enx-active-sentence'
+  // ADR-085: the clicked word inside the active sentence, outside
+  // HIGHLIGHT_NAME_PREFIX for the same reason.
+  static readonly CLICKED_WORD_HIGHLIGHT_NAME = 'enx-clicked-word'
 
   static extractWords(text: string): string[] {
     if (!text || text.trim() === '') return []
@@ -230,16 +233,27 @@ export class WordProcessor {
 
   // ADR-025: single-Range highlight for "the sentence a word click just
   // opened the sentence panel for". Replaces whatever was previously active
-  // -- only the most recently queried sentence stays marked.
-  static setActiveSentenceHighlight(range: Range): void {
+  // -- only the most recently queried sentence stays marked. The clicked
+  // word (ADR-085) is set, replaced and cleared with it; a sentence with no
+  // clicked word (ADR-084's jump) drops the previous word's mark.
+  static setActiveSentenceHighlight(range: Range, clickedWord?: Range): void {
     CSS.highlights.set(
       this.ACTIVE_SENTENCE_HIGHLIGHT_NAME,
       new Highlight(range)
     )
+    if (clickedWord) {
+      CSS.highlights.set(
+        this.CLICKED_WORD_HIGHLIGHT_NAME,
+        new Highlight(clickedWord)
+      )
+    } else {
+      CSS.highlights.delete(this.CLICKED_WORD_HIGHLIGHT_NAME)
+    }
   }
 
   static clearActiveSentenceHighlight(): void {
     CSS.highlights.delete(this.ACTIVE_SENTENCE_HIGHLIGHT_NAME)
+    CSS.highlights.delete(this.CLICKED_WORD_HIGHLIGHT_NAME)
   }
 
   // The built-in selector list, in priority order (adr-034 #563 amendment).
