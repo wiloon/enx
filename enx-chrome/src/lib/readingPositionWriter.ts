@@ -61,6 +61,7 @@ export function createReadingPositionWriter(deps: ReadingPositionWriterDeps) {
   const pending = new Map<string, Pending>()
   // Actions still finding out their user; a flush waits for them.
   const receiving = new Set<Promise<unknown>>()
+  const inFlight = new Set<Promise<WriteResult>>()
   let queue: Promise<unknown> = Promise.resolve()
 
   const serialized = <T>(task: () => Promise<T>): Promise<T> => {
@@ -110,14 +111,18 @@ export function createReadingPositionWriter(deps: ReadingPositionWriterDeps) {
       }
     })
 
-  const flushOne = async (id: string) => {
+  const flushOne = (id: string) => {
     const entry = pending.get(id)
     if (!entry) return
     pending.delete(id)
     clearTimeout(entry.timer)
-    const result = await persist(entry.userId, entry.bookKey, entry.anchor)
-    entry.waiters.forEach(resolve => resolve(result))
-    return result
+    const write = persist(entry.userId, entry.bookKey, entry.anchor)
+    inFlight.add(write)
+    void write.then(result => {
+      entry.waiters.forEach(resolve => resolve(result))
+      inFlight.delete(write)
+    })
+    return write
   }
 
   // Binds the action to the user signed in now and queues it; settles once
@@ -158,8 +163,14 @@ export function createReadingPositionWriter(deps: ReadingPositionWriterDeps) {
 
   /** Writes everything pending now, e.g. when a tab hides or unloads. */
   const flush = async (): Promise<WriteResult> => {
+    const writes = new Set(inFlight)
     await Promise.allSettled(receiving)
-    const results = await Promise.all([...pending.keys()].map(flushOne))
+    for (const write of inFlight) writes.add(write)
+    for (const id of pending.keys()) {
+      const write = flushOne(id)
+      if (write) writes.add(write)
+    }
+    const results = await Promise.all(writes)
     return (
       results.find(result => result && !result.ok) ?? { ok: true as const }
     )

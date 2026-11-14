@@ -225,6 +225,28 @@ describe('rejected actions keep the previous position', () => {
     expect(storedSentence()).toBe('The previous sentence.')
   })
 
+  it('waits for an in-flight write and reports its failure on flush', async () => {
+    let failWrite!: () => void
+    let writeStarted!: () => void
+    const started = new Promise<void>(resolve => { writeStarted = resolve })
+    ;(chrome.storage.local.set as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((_resolve, reject) => {
+        failWrite = () => reject(new Error('write failed'))
+        writeStarted()
+      })
+    )
+    const pending = record(BOOK, anchor('Lost in flight.', 200))
+    await jest.advanceTimersByTimeAsync(2000)
+    await started
+
+    const flush = send({ type: 'flushReadingPositions' })
+    failWrite()
+
+    expect(await flush).toEqual({ ok: false, code: 'write-failed' })
+    expect(await pending).toEqual({ ok: false, code: 'write-failed' })
+    expect(storedSentence()).toBe('The previous sentence.')
+  })
+
   it('refuses a write that would take the feature past 4 MB across all accounts', async () => {
     local[KEY_B] = {
       books: { [OTHER_BOOK]: { filler: 'x'.repeat(4_194_000) } },
