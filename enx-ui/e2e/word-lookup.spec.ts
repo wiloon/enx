@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 import { test, expect, loginAvailable, LOGIN_SKIP_REASON } from './fixtures'
-import type { WordData } from '@/types'
+import type { MeData, WordData } from '@/types'
 
 // What jsdom cannot see on /lookup: the word id is a one-line footnote that
 // gives way (truncates) on a phone instead of wrapping or widening the page,
@@ -25,10 +25,37 @@ test.beforeEach(async ({ signedIn }) => {
   void signedIn
 })
 
+const viewer: MeData = {
+  id: 'user-e2e',
+  name: 'E2E Reader',
+  email: 'e2e+clerk_test@example.com',
+  status: 'active',
+  isAdmin: false,
+  avatarUrl: '',
+  createdAt: '2026-03-04T10:00:00Z',
+}
+
+const json = (body: unknown) => ({
+  status: 200,
+  contentType: 'application/json',
+  body: JSON.stringify({ success: true, ...(body as object) }),
+})
+
+// The app layout asks for the account and the API version on every page, so
+// both are stubbed: otherwise they reach the dev relay, fail, and leave
+// console noise and Next's error overlay in screenshots (#306).
+async function stubLayoutApis(page: Page, me: MeData = viewer) {
+  await page.route('**/api/me', (route) => route.fulfill(json(me)))
+  await page.route('**/api/version', (route) =>
+    route.fulfill(json({ version: 'e2e', commit: '', build_time: '' }))
+  )
+}
+
 // Looks the word up with the API mocked; returns the bodies of the
 // POST /api/me/word-lookups the page sent, so no request reaches a real API.
-async function lookUp(page: Page, word: WordData) {
+async function lookUp(page: Page, word: WordData, me: MeData = viewer) {
   const recorded: unknown[] = []
+  await stubLayoutApis(page, me)
   await page.route('**/api/dictionary/entries{,/query}', (route) =>
     route.fulfill({
       status: 200,
@@ -152,20 +179,17 @@ test('shows an admin the lookup source on the id line, muted, on a phone', async
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 800 })
-  await page.route('**/api/me', (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        id: 'admin',
-        name: 'Admin',
-        email: 'admin@example.com',
-        status: 'active',
-        isAdmin: true,
-      }),
-    })
+  await lookUp(
+    page,
+    { ...scratchpad, Source: 'local' },
+    {
+      ...viewer,
+      id: 'admin',
+      name: 'Admin',
+      email: 'admin@example.com',
+      isAdmin: true,
+    }
   )
-  await lookUp(page, { ...scratchpad, Source: 'local' })
 
   const source = page.getByTitle('Lookup source')
   const id = page.getByText(`ID ${scratchpad.Id}`)
@@ -189,6 +213,7 @@ test('shows an admin the lookup source on the id line, muted, on a phone', async
 test('shows Look Up pressed while the mouse is held down on it', async ({
   page,
 }) => {
+  await stubLayoutApis(page)
   await page.goto('/lookup')
   const button = page.getByRole('button', { name: 'Look Up' })
   const pressed = () =>
