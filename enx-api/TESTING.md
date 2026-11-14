@@ -21,7 +21,6 @@ This document explains the testing strategy and how to run different types of te
 - **Dependencies**: None outside the test: each one opens its own SQLite file under `t.TempDir()`
 - **Examples**:
   - `enx/ecp_integration_test.go` - Tests word save/translate with database
-  - `paragraph/paragraph_test.go` - Tests text processing with database lookup
   - `repo/repo_test.go` - Tests repository layer with database
   - `ecdict/ecdict_test.go` - Tests ECDICT lookup (exact, case-insensitive, sw/exchange word forms)
   - `dictionary/lookup_test.go` - Tests lookup unavailable without ECDICT
