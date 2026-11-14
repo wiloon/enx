@@ -145,6 +145,9 @@ const HOST_PAGE_COLORS = {
   // someone else's page, where a warm wash stays legible against backgrounds
   // that the cool tokens have to compete with.
   activeSentenceWash: 'hsl(45 95% 55% / 35%)',
+  // ADR-085, the clicked word inside that sentence: the same warm hue, more
+  // opaque, painted over the sentence wash.
+  clickedWordWash: 'hsl(45 95% 55% / 60%)',
 } as const
 
 // Tailwind v4 declares its --tw-* variables with @property, and browsers ignore
@@ -565,11 +568,22 @@ const showWordPopover = async (word: string, reference: Range) => {
     // ADR-025: mark the sentence so it's findable again after the user
     // returns from the side panel. Word-click path only -- drag-select
     // (ADR-007) and phrase lookup (ADR-008/017) already leave the browser's
-    // own selection highlight in place.
+    // own selection highlight in place. ADR-085: the clicked word gets its
+    // own, deeper mark inside it.
     if (sentenceContext?.range) {
-      setActiveSentenceHighlight(sentenceContext.range)
+      setActiveSentenceHighlight(sentenceContext.range, reference)
     }
 
+    // ADR-085: the popover closes only once the panel really opened; any
+    // other outcome keeps it, with the hint in it. The reply can arrive
+    // after the user opened another word or switched account, and then it
+    // touches nothing.
+    const isCurrent = () => currentOverlay === overlay && isCurrentAccount()
+    const showHint = () =>
+      contentScriptStore.set(
+        sentencePanelHintAtom,
+        'Saved. Click or right-click the Catglish toolbar icon to view the sentence translation.'
+      )
     try {
       const response = await sendToBackground({
         type: 'openSentencePanel',
@@ -577,19 +591,15 @@ const showWordPopover = async (word: string, reference: Range) => {
         sentence,
         wordStates: sentenceWordStates(sentence, wordCache),
       })
-
-      if (response.success && !response.panelOpened) {
-        contentScriptStore.set(
-          sentencePanelHintAtom,
-          'Saved. Click or right-click the Catglish toolbar icon to view the sentence translation.'
-        )
+      if (!isCurrent()) return
+      if (response.success && response.panelOpened) {
+        hideCurrentOverlay()
+      } else {
+        showHint()
       }
     } catch (error) {
       console.error('Error opening sentence panel:', error)
-      contentScriptStore.set(
-        sentencePanelHintAtom,
-        'Saved. Click or right-click the Catglish toolbar icon to view the sentence translation.'
-      )
+      if (isCurrent()) showHint()
     }
   }
 
@@ -918,10 +928,10 @@ const wordChanged = (word: string) => {
 const ACTIVE_SENTENCE_CLEAR_EVENTS = ['click', 'keydown'] as const
 let activeSentenceHighlightCleanup: (() => void) | null = null
 
-const setActiveSentenceHighlight = (range: Range) => {
+const setActiveSentenceHighlight = (range: Range, clickedWord?: Range) => {
   activeSentenceHighlightCleanup?.()
 
-  WordProcessor.setActiveSentenceHighlight(range)
+  WordProcessor.setActiveSentenceHighlight(range, clickedWord)
 
   let registerListenersId = 0
 
@@ -1963,7 +1973,9 @@ highlightStyles.textContent =
   // opened the sentence panel for -- a different visual channel
   // (background, not underline) so it reads distinctly from review buckets.
   `\n::highlight(${WordProcessor.ACTIVE_SENTENCE_HIGHLIGHT_NAME}) {` +
-  ` background-color: ${HOST_PAGE_COLORS.activeSentenceWash}; }`
+  ` background-color: ${HOST_PAGE_COLORS.activeSentenceWash}; }` +
+  `\n::highlight(${WordProcessor.CLICKED_WORD_HIGHLIGHT_NAME}) {` +
+  ` background-color: ${HOST_PAGE_COLORS.clickedWordWash}; }`
 if (!document.head.querySelector('style[data-enx-highlight-styles]')) {
   document.head.appendChild(highlightStyles)
 }

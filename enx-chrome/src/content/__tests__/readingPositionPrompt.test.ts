@@ -269,6 +269,16 @@ describe('the reading position prompt', () => {
     expect(chrome.sidePanel.open).not.toHaveBeenCalled()
   })
 
+  it('marks no clicked word, since the jump has none (ADR-085)', async () => {
+    await enable()
+
+    button(/continue reading/i).click()
+    await settle()
+
+    expect(flashed()).toHaveLength(1)
+    expect(CSS.highlights.has('enx-clicked-word')).toBe(false)
+  })
+
   it('keeps the sentence highlighted until the user next clicks (ADR-084)', async () => {
     jest.useFakeTimers()
     try {
