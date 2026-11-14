@@ -37,9 +37,7 @@ func newFakeResend(t *testing.T, handler func(w http.ResponseWriter, r *http.Req
 }
 
 func alertSender(cfg config.Resend, endpoint string) *Sender {
-	s := NewSender(cfg)
-	s.endpoint = endpoint
-	return s
+	return NewSenderAt(cfg, endpoint)
 }
 
 func TestSendAdminAlertDeliversThePlainTextMailToTheAdmin(t *testing.T) {
