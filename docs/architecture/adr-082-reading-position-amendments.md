@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted；2026-11-14 Amended by adr-084（跳转后句子高亮保留到用户操作，不再闪烁）
 date: 2026-11-13
 related: Amends adr-081 Decision 1–7, issue #857
 ---

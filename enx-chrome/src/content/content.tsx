@@ -324,8 +324,6 @@ const showPinHint = () => {
 // top layer's bottom-right corner, away from the pin hint at the top right.
 const READING_POSITION_PROMPT = 'enx-reading-position-prompt'
 const READING_POSITION_NOTICE = 'enx-reading-position-notice'
-const READING_POSITION_FLASH = 'enx-reading-position'
-const READING_POSITION_FLASH_MS = 2000
 
 const cornerOverlays = new Map<
   string,
@@ -369,16 +367,11 @@ const showCornerOverlay = (
   cornerOverlays.set(className, { overlay, root })
 }
 
-let readingPositionFlashTimer = 0
-const revealReadingPosition = (range: Range, flash: boolean) => {
+// ADR-084: the sentence becomes the active sentence (ADR-025), which stays
+// marked until the user next clicks or presses a key in the page.
+const revealReadingPosition = (range: Range, highlight: boolean) => {
   nearestElement(range.startContainer)?.scrollIntoView({ block: 'center' })
-  if (!flash) return
-  CSS.highlights.set(READING_POSITION_FLASH, new Highlight(range))
-  window.clearTimeout(readingPositionFlashTimer)
-  readingPositionFlashTimer = window.setTimeout(
-    () => CSS.highlights.delete(READING_POSITION_FLASH),
-    READING_POSITION_FLASH_MS
-  )
+  if (highlight) setActiveSentenceHighlight(range)
 }
 
 const readingResume = createReadingPositionResume({
@@ -401,12 +394,11 @@ const readingResume = createReadingPositionResume({
   },
 })
 
-// Everything the reading position put on the page: prompt, notice, flash.
+// Everything the reading position put on the page: prompt and notice. The
+// jump's highlight is the active sentence, cleared with it by its callers.
 const clearReadingPositionUi = () => {
   readingResume.close()
   hideCornerOverlay(READING_POSITION_NOTICE)
-  window.clearTimeout(readingPositionFlashTimer)
-  CSS.highlights.delete(READING_POSITION_FLASH)
 }
 
 // adr-046: learning mode's state goes to the toolbar badge, via background.
@@ -1622,6 +1614,7 @@ const getSpaRebuilder = () => {
       clearArticleRoots()
       readingPositions.setArticle([])
       clearReadingPositionUi()
+      activeSentenceHighlightCleanup?.() // ADR-084: the jump's highlight too
       hideCurrentOverlay()
       reportStatus({ status: 'off' })
     },
@@ -1970,9 +1963,6 @@ highlightStyles.textContent =
   // opened the sentence panel for -- a different visual channel
   // (background, not underline) so it reads distinctly from review buckets.
   `\n::highlight(${WordProcessor.ACTIVE_SENTENCE_HIGHLIGHT_NAME}) {` +
-  ` background-color: ${HOST_PAGE_COLORS.activeSentenceWash}; }` +
-  // ADR-081 Decision 3: the same warm wash flashes the reading position.
-  `\n::highlight(${READING_POSITION_FLASH}) {` +
   ` background-color: ${HOST_PAGE_COLORS.activeSentenceWash}; }`
 if (!document.head.querySelector('style[data-enx-highlight-styles]')) {
   document.head.appendChild(highlightStyles)

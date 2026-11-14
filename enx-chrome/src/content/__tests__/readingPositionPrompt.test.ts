@@ -1,6 +1,7 @@
 // Reading positions (ADR-081 Decision 3, #897): with learning mode on, a
 // book with a position gets a corner prompt; clicking it scrolls to the
-// sentence and flashes it, without the side panel. These tests load the real
+// sentence and marks it as the active sentence until the user next clicks or
+// presses a key (ADR-084), without the side panel. These tests load the real
 // content script against a jsdom page and a fake background.
 
 import { STAND_DOWN_EVENT } from '@/lib/orphanStandDown'
@@ -122,8 +123,9 @@ const button = (name: RegExp) =>
     name.test(b.getAttribute('aria-label') ?? b.textContent ?? '')
   )!
 
+// ADR-084: the jump marks the sentence with ADR-025's active-sentence highlight.
 const flashed = () =>
-  [...(CSS.highlights.get('enx-reading-position') ?? [])] as Range[]
+  [...(CSS.highlights.get('enx-active-sentence') ?? [])] as Range[]
 
 let scrolled: Element[]
 
@@ -252,7 +254,7 @@ describe('the reading position prompt', () => {
     expect(flashed()).toEqual([])
   })
 
-  it('jumps to the sentence and flashes it on click, leaving the side panel closed', async () => {
+  it('jumps to the sentence and highlights it on click, leaving the side panel closed', async () => {
     await enable()
     const before = sent.length
 
@@ -265,6 +267,40 @@ describe('the reading position prompt', () => {
     expect(scrolled).toEqual([document.querySelector('#one')])
     expect(sent.slice(before)).toEqual([])
     expect(chrome.sidePanel.open).not.toHaveBeenCalled()
+  })
+
+  it('keeps the sentence highlighted until the user next clicks (ADR-084)', async () => {
+    jest.useFakeTimers()
+    try {
+      const fakeSettle = async () => {
+        for (let i = 0; i < 10; i++) await jest.advanceTimersByTimeAsync(1)
+      }
+      await loadContentScript()
+      const done = sendToContent({ action: 'enxRun' })
+      await fakeSettle()
+      await done
+      await fakeSettle()
+
+      button(/continue reading/i).click()
+      await fakeSettle()
+      await jest.advanceTimersByTimeAsync(60_000)
+      expect(flashed()).toHaveLength(1)
+
+      document.body.click()
+      expect(flashed()).toEqual([])
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('clears the jump highlight on a key press (ADR-084)', async () => {
+    await enable()
+    button(/continue reading/i).click()
+    await settle()
+    expect(flashed()).toHaveLength(1)
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }))
+    expect(flashed()).toEqual([])
   })
 
   it('finds a repeated sentence by its context after the page changed', async () => {
