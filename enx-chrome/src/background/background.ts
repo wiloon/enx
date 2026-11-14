@@ -12,6 +12,7 @@ import {
 } from '@/lib/dictionaryEntries'
 import { wordKey } from '@/lib/wordHighlight'
 import { createAccountSession, type Invalidation } from '@/lib/accountSession'
+import { createReadingPositionWriter } from '@/lib/readingPositionWriter'
 import { createCoalescedSync } from '@/lib/coalescedSync'
 import { createSessionCookies } from '@/lib/sessionCookies'
 import type { FeedbackSubmission } from '@/lib/feedback'
@@ -106,6 +107,11 @@ export const __resetClerkClientCacheForTests = (): void => {
   clerkCookieSync = makeClerkCookieSync()
   sessionCookies = createSessionCookies()
   accountSession = makeAccountSession()
+}
+
+// Test-only: a worker restart drops the writer's pending actions.
+export const __restartReadingPositionWriterForTests = (): void => {
+  readingPositions = makeReadingPositionWriter()
 }
 
 // Mitigation for a false "session expired": homelab still runs Clerk's
@@ -402,6 +408,27 @@ const isSignedIn = async (): Promise<boolean> => {
     return false
   }
 }
+
+const signedInUserId = async (): Promise<string | null> => {
+  try {
+    const clerk = await getSyncedClerk()
+    return clerk.session ? (clerk.user?.id ?? null) : null
+  } catch {
+    return null
+  }
+}
+
+const makeReadingPositionWriter = () =>
+  createReadingPositionWriter({
+    storage: {
+      get: async key => (await chrome.storage.local.get(key))?.[key],
+      set: (key, value) => chrome.storage.local.set({ [key]: value }),
+      keys: () => chrome.storage.local.getKeys(),
+      bytesInUse: keys => chrome.storage.local.getBytesInUse(keys),
+    },
+    currentUserId: signedInUserId,
+  })
+let readingPositions = makeReadingPositionWriter()
 
 // What each tab hears about an invalidation (#236). A lost session keeps an
 // open word popover, signed out; `cause` tells a confirmed 401 (error badge)
@@ -1027,8 +1054,19 @@ chrome.action.onClicked.addListener(async tab => {
 })
 
 // Handle messages from content scripts and popup
+// These carry sentence text and page addresses, which stay out of logs.
+const READING_POSITION_MESSAGES = new Set([
+  'recordReadingPosition',
+  'openReadingPosition',
+  'flushReadingPositions',
+])
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log('Background received message:', request)
+  const messageType = request?.type || request?.action
+  console.log(
+    'Background received message:',
+    READING_POSITION_MESSAGES.has(messageType) ? messageType : request
+  )
 
   // Trigger path③ (spec §3.2): chrome.sidePanel.open() only works inside the
   // user gesture that Chrome forwards with a content-script runtime.sendMessage,
@@ -1095,6 +1133,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             request.word || '',
             request.ecp
           )
+
+        // ADR-081/082: tabs send each action at once; the writer debounces.
+        case 'recordReadingPosition':
+          return await readingPositions.record(request.bookKey, request.anchor)
+
+        case 'openReadingPosition':
+          return await readingPositions.open(request.bookKey)
+
+        case 'flushReadingPositions':
+          await readingPositions.flush()
+          return { ok: true }
 
         case 'reportReadingProgress':
           return await handleReportReadingProgress(request.delta)
