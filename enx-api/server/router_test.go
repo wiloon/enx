@@ -24,7 +24,6 @@ func TestLookupRoutesAreRegisteredOnlyUnderAPI(t *testing.T) {
 	}
 
 	for _, route := range []string{
-		"GET /paragraph-init",
 		"GET /translate",
 		"GET /word/:word",
 		"QUERY /dictionary/entries",
@@ -62,9 +61,9 @@ func TestRemovedRoutesAreNotRegistered(t *testing.T) {
 	}
 }
 
-// ADR-041: paragraph-init takes its paragraph in a body via QUERY (default)
-// or POST (fallback); the GET form stays until old extensions are gone.
-func TestParagraphInitRoutes(t *testing.T) {
+// paragraph-init is gone: GET /api/me/review-words replaced it (ADR-069) and
+// no extension build calls the old endpoint any more (#598).
+func TestParagraphInitIsNotRegistered(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	registered := map[string]bool{}
@@ -72,8 +71,8 @@ func TestParagraphInitRoutes(t *testing.T) {
 		registered[r.Method+" "+r.Path] = true
 	}
 	for _, route := range []string{"QUERY /api/paragraph-init", "POST /api/paragraph-init", "GET /api/paragraph-init"} {
-		if !registered[route] {
-			t.Errorf("%s is not registered", route)
+		if registered[route] {
+			t.Errorf("%s is still registered", route)
 		}
 	}
 }
@@ -105,7 +104,7 @@ func TestCORSPreflightAllowsQuery(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodOptions, "/api/paragraph-init", nil)
+	req := httptest.NewRequest(http.MethodOptions, "/api/dictionary/entries", nil)
 	req.Header.Set("Origin", "chrome-extension://combdcldlodkikjfhjbdbogjlfmnbjkf")
 	req.Header.Set("Access-Control-Request-Method", "QUERY")
 	cfg := config.Default()
@@ -151,7 +150,6 @@ func TestSignedInRoutesRequireASession(t *testing.T) {
 		{http.MethodPost, "/api/me/word-lookups"},
 		{http.MethodGet, "/api/me/review-words"},
 		{http.MethodGet, "/api/me/credits/transactions"},
-		{http.MethodGet, "/api/paragraph-init"},
 		{http.MethodPost, "/api/dictionary/ai-word"},
 		{http.MethodPost, "/api/feedback"},
 		{http.MethodGet, "/api/admin/feedback"},

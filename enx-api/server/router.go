@@ -26,7 +26,6 @@ import (
 	"enx-api/handlers"
 	"enx-api/metrics"
 	"enx-api/middleware"
-	"enx-api/paragraph"
 	"enx-api/preferences"
 	prefadapters "enx-api/preferences/adapters"
 	"enx-api/ratelimit"
@@ -122,8 +121,6 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 
 	// Word lookup (ADR-018): the dictionary domain service over the words
 	// table and ECDICT, plus the per-user review log.
-	// Word states for a page (paragraph-init): one query per paragraph.
-	paragraphHandler := paragraph.NewHandler(enx.NewTextWords(enx.RepoWordStates{}))
 
 	// One entitlement judgement (ADR-045 Decision 14) for the lookup, which
 	// hides AI-made definitions from users who can't use AI, and for the
@@ -263,15 +260,6 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// Decision 1).
 	apiGroup.Use(stats.TZOffsetMiddleware())
 	{
-		// get words query count by paragraph
-		// Deprecated: the extension is moving to GET /api/me/review-words
-		// (ADR-069, #566). Removal is #598.
-		// ADR-041: QUERY is the default, POST the fallback; GET is
-		// deprecated and kept only for older extension builds.
-		apiGroup.Handle("QUERY", "/paragraph-init", paragraphHandler.ParagraphInitBody)
-		apiGroup.POST("/paragraph-init", paragraphHandler.ParagraphInitBody)
-		apiGroup.GET("/paragraph-init", paragraphHandler.ParagraphInit)
-
 		// translate
 		apiGroup.GET("/translate", lookupHandler.Translate)
 		apiGroup.GET("/word/:word", lookupHandler.TranslateByWord)

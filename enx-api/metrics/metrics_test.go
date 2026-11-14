@@ -213,12 +213,12 @@ func TestObserveRateLimited(t *testing.T) {
 	m := New()
 	m.ObserveRateLimited("/api/word/:word")
 	m.ObserveRateLimited("/api/word/:word")
-	m.ObserveRateLimited("/api/paragraph-init")
+	m.ObserveRateLimited("/api/me/review-words")
 
 	out := exposition(t, m)
 	for _, want := range []string{
 		`enx_rate_limited_total{route="/api/word/:word"} 2`,
-		`enx_rate_limited_total{route="/api/paragraph-init"} 1`,
+		`enx_rate_limited_total{route="/api/me/review-words"} 1`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("exposition lacks %q", want)

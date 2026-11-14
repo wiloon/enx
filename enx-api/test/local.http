@@ -39,9 +39,6 @@ content-type: application/json
 
 {"username": "wiloon", "password": "password_1"}
 
-### paragraph init: Google
-GET http://{{address}}/paragraph-init?paragraph=Google HTTP/1.1
-
 ### register - success
 POST http://{{address}}/register HTTP/1.1
 content-type: application/json

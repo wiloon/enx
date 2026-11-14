@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Accepted — 2026-09-29（维护者拍板：默认 QUERY，网络不通时回退 POST，GET 加弃用注释暂留、以后删除） |
+| **状态** | Superseded — 2026-09-29 Accepted（维护者拍板：默认 QUERY，网络不通时回退 POST，GET 加弃用注释暂留、以后删除）；2026-11-14 端点随 #598 整个删除，本文只作历史记录 |
 | **日期** | 2026-09-29 |
 | **关联** | [`adr-031-production-deployment-topology.md`](adr-031-production-deployment-topology.md)（生产链路：Cloudflare → nginx → enx-api）、PR #74（paragraph-init 批量查询）、RFC 10008 *The HTTP QUERY Method* |
 
@@ -80,9 +80,11 @@ enx-chrome 每打开一个页面，就把页面上的不重复单词按每批 20
 2. enx-api 上生产，同样验证；
 3. 发布扩展。
 
-### 4. 以后删除 GET
+### 4. 以后删除 GET（已完成）
 
-当所有在用的扩展版本都已包含本改动（Chrome Web Store 的版本分布可查），删除 GET 路由和 `ParagraphInit`。删除前在 enx-api 请求日志里确认 `GET /api/paragraph-init` 已无流量（ADR-040 的 `route` 字段可直接筛）。
+原计划：当所有在用的扩展版本都已包含本改动（Chrome Web Store 的版本分布可查），删除 GET 路由和 `ParagraphInit`；删除前在 enx-api 请求日志里确认 `GET /api/paragraph-init` 已无流量（ADR-040 的 `route` 字段可直接筛）。
+
+ADR-069 用 `GET /api/me/review-words` 取代了这个端点，扩展不再调用它。#598 已删除 QUERY、POST、GET 三个入口和 `paragraph` 包，请求 `/api/paragraph-init` 现在返回 404。
 
 ### 5. 约定
 

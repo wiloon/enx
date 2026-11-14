@@ -202,39 +202,21 @@ func TestE2E_FeedbackRoutes(t *testing.T) {
 	}
 }
 
-// ADR-041: a real QUERY request, with the paragraph in its JSON body, goes
-// through the whole router -- CORS, Clerk auth, logging -- to paragraph-init.
-func TestE2E_ParagraphInitOverQuery(t *testing.T) {
+// ADR-069 replaced paragraph-init with GET /api/me/review-words; #598 removed
+// the old endpoint, so every method now 404s.
+func TestE2E_ParagraphInitIsGone(t *testing.T) {
 	env := clerktest.NewEnv(t)
 	cfg := config.Default()
 	cfg.Clerk = env.Config()
-	sqlitex.Init(filepath.Join(t.TempDir(), "enx-query.db"))
-	if err := sqlitex.DB.Create(&sqlitex.Word{Id: "w-morning", English: "morning", CreatedAt: 1, UpdatedAt: 1}).Error; err != nil {
-		t.Fatal(err)
-	}
-	token := env.SignSessionToken(t, jwt.MapClaims{"sub": "user_e2equery001", "email": "e2e-query@example.com", "name": "e2e-query"})
+	sqlitex.Init(filepath.Join(t.TempDir(), "enx-paragraph-init.db"))
+	token := env.SignSessionToken(t, jwt.MapClaims{"sub": "user_e2eparagraph1", "email": "e2e-paragraph@example.com", "name": "e2e-paragraph"})
 
 	ts, done := e2eServer(t, cfg)
 	defer done()
 
-	for _, method := range []string{"QUERY", http.MethodPost} {
-		req, err := http.NewRequest(method, ts.URL+"/api/paragraph-init", strings.NewReader(`{"paragraph":"Good morning."}`))
-		if err != nil {
-			t.Fatal(err)
-		}
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("Content-Type", "application/json")
-		resp, err := ts.Client().Do(req)
-		if err != nil {
-			t.Fatalf("%s: %v", method, err)
-		}
-		var body struct {
-			Data map[string]struct{ Id string }
-		}
-		err = json.NewDecoder(resp.Body).Decode(&body)
-		_ = resp.Body.Close()
-		if err != nil || resp.StatusCode != http.StatusOK || body.Data["morning"].Id != "w-morning" {
-			t.Fatalf("%s: status %d, err %v, body %+v; want 200 with morning -> w-morning", method, resp.StatusCode, err, body)
+	for _, method := range []string{"QUERY", http.MethodPost, http.MethodGet} {
+		if status, _ := call(t, ts, method, "/api/paragraph-init", token, `{"paragraph":"Good morning."}`); status != http.StatusNotFound {
+			t.Errorf("%s /api/paragraph-init: status %d, want 404", method, status)
 		}
 	}
 }
