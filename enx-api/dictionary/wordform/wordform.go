@@ -9,7 +9,7 @@ import (
 )
 
 // nonEnglish matches everything Clean strips from a token. Compiled once:
-// it runs for every word of every page (paragraph-init).
+// it runs for every token of every page.
 var nonEnglish = regexp.MustCompile(`[^a-zA-Z\-'’ ]+`)
 
 // Clean drops everything but letters, hyphens, apostrophes and spaces

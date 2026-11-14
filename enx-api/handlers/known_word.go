@@ -46,7 +46,7 @@ func setWordKnown(c *gin.Context, known bool) {
 	// key a user_dicts row on. Writing one with an empty word_id would make
 	// every such word share that single row, and the phantom row would count
 	// towards the user's vocabulary. Nothing is lost by skipping the write:
-	// paragraph-init never reads known state for an id-less word anyway.
+	// no review-list entry can exist for an id-less word anyway.
 	if word.Id == "" {
 		c.JSON(http.StatusOK, word)
 		return
