@@ -1053,20 +1053,11 @@ chrome.action.onClicked.addListener(async tab => {
   }
 })
 
-// Handle messages from content scripts and popup
-// These carry sentence text and page addresses, which stay out of logs.
-const READING_POSITION_MESSAGES = new Set([
-  'recordReadingPosition',
-  'openReadingPosition',
-  'flushReadingPositions',
-])
-
+// Handle messages from content scripts and popup. Only the type is logged:
+// the bodies carry sentence text and page addresses, which stay out of logs.
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   const messageType = request?.type || request?.action
-  console.log(
-    'Background received message:',
-    READING_POSITION_MESSAGES.has(messageType) ? messageType : request
-  )
+  console.log('Background received message:', messageType)
 
   // Trigger path③ (spec §3.2): chrome.sidePanel.open() only works inside the
   // user gesture that Chrome forwards with a content-script runtime.sendMessage,
