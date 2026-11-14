@@ -51,6 +51,33 @@ describe('sanitizePageUrl', () => {
       'https://example.com/:redacted',
     ],
     [
+      'keeps a short CJK segment',
+      'https://example.com/中文字符测试示例一二三四',
+      'https://example.com/%E4%B8%AD%E6%96%87%E5%AD%97%E7%AC%A6%E6%B5%8B%E8%AF%95%E7%A4%BA%E4%BE%8B%E4%B8%80%E4%BA%8C%E4%B8%89%E5%9B%9B',
+    ],
+    [
+      'redacts a long CJK segment',
+      `https://example.com/${'中'.repeat(32)}`,
+      'https://example.com/:redacted',
+    ],
+    [
+      'keeps a segment whose only digits are superscript',
+      `https://example.com/${'a'.repeat(19)}²`,
+      'https://example.com/aaaaaaaaaaaaaaaaaaa%C2%B2',
+    ],
+    [
+      'keeps a segment whose only digits are a Roman numeral',
+      `https://example.com/${'a'.repeat(19)}Ⅻ`,
+      'https://example.com/aaaaaaaaaaaaaaaaaaa%E2%85%AB',
+    ],
+    ['drops the default https port', 'https://x.com:443/a', 'https://x.com/a'],
+    ['drops the default http port', 'http://x.com:80/a', 'http://x.com/a'],
+    [
+      'keeps a non-default port',
+      'https://x.com:8443/a',
+      'https://x.com:8443/a',
+    ],
+    [
       'keeps a normal slug',
       'https://www.infoq.com/articles/kubernetes-operators-in-practice',
       'https://www.infoq.com/articles/kubernetes-operators-in-practice',
