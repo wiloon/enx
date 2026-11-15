@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Proposed — 2026-09-07（本次对话提出，待用户确认 / 编码） |
+| **状态** | Proposed — 2026-09-07（本次对话提出，待用户确认 / 编码）<br>2026-11-14 Amended by [ADR-087](adr-087-dark-theme-everywhere.md)（proposed）：网页→扩展通道词表加 `enx:get-theme` / `enx:set-theme`。 |
 | **日期** | 2026-09-07 |
 | **关联 ADR** | [`adr-015-cognito-to-clerk-auth-migration.md`](adr-015-cognito-to-clerk-auth-migration.md)（`syncHost`：网站登录 → 扩展即登录态。本 ADR 补上「登录动作完成后，把用户送回扩展 / 原页面」这段 syncHost 不管的收尾）、[`adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md`](adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md)（`externally_connectable` + `onMessageExternal`，现有 `enx:ping` / `enx:enable-reader` 两个类型。本 ADR 加第 3 个 `enx:signed-in`，并兑现其 Revisit Trigger 第 1 条「加第二个网页→扩展动作时评估要不要泛化协议」的评估——结论是暂不泛化）、[`adr-001-chrome-oauth-in-background.md`](adr-001-chrome-oauth-in-background.md)（popup 失焦即销毁的生命周期教训。本 ADR 让登录全程在网站 tab、扩展只做 background 收尾，绕开这个坑） |
 | **关联代码** | enx-chrome：`src/components/Login.tsx`（`openWebSignIn`）、`src/background/background.ts`（`onMessageExternal`、`ENX_UI_ORIGINS`、`isSignedIn`）；enx-ui：`src/app/sign-in/[[...sign-in]]/page.tsx`、新增 `src/app/extension/connected/page.tsx`、`src/lib/enxExtension.ts` |
