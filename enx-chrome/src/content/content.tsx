@@ -1037,7 +1037,10 @@ const processArticleContent = async (
     // ADR-086: pick the host-page palette from this run's article text colour
     // (or body when the list is empty / whole-page). A stale run never reaches
     // here. Don't use articleRoots -- those exist only when clickLookup is on.
-    applyHostPageHighlightTone(articleNodes[0] ?? document.body)
+    // Skip when body was detached (jsdom edge cases); empty nodes still fail
+    // below with no-article-node.
+    const toneNode = articleNodes[0] ?? document.body
+    if (toneNode) applyHostPageHighlightTone(toneNode)
     const wholePage = lookupArea.source === 'whole-page'
     const features = lookupAreaFeatures(lookupArea)
     const lookupExclusions = adapter.lookupExcludedSelectors ?? []
