@@ -37,7 +37,7 @@ Add the new website's URL pattern to the `content_scripts.matches` array:
       "https://www.reuters.com/*",
       "https://www.theverge.com/*"  // Add new domain here
     ],
-    "js": ["src/content/content.ts"],
+    "js": ["src/content/content.tsx"],
     "run_at": "document_end"
   }
 ]
@@ -159,32 +159,28 @@ If content loads after page load (SPA, lazy loading):
 - Check if `run_at: "document_idle"` helps in manifest.json
 
 **Site-Specific Issues:**
+
+A site that needs its own selector, a page gate or whole-page mode goes into a site adapter in `enx-chrome/src/lib/siteAdapters.ts`, not the shared list:
+
 ```typescript
-// Example: Handle site-specific cases
-static getArticleNode(): Element | null {
-  // Special handling for specific domains
-  const hostname = window.location.hostname
-  
-  if (hostname.includes('special-site.com')) {
-    // Wait for dynamic content
-    const element = document.querySelector('.dynamic-article')
-    if (element) return element
-  }
-  
-  // Fall back to standard selectors
-  const selectors = [...]
-  // ... rest of method
+{
+  name: 'Special site',
+  matches: location => location.hostname === 'special-site.com',
+  contentSelector: '.dynamic-article',
+  minTextLength: 200,
 }
 ```
+
+`resolveSiteAdapter()` picks the adapter for the current page; its `contentSelector` overrides `WordProcessor.BUILT_IN_SELECTORS` for that site only. Add `wholePageOnMiss: true` when a page the selector misses should still fall back to the whole page for selection lookup (ADR-010).
 
 ### 6. Document the Change
 
 After successful integration, document in the appropriate location:
 
 **Option 1: Code Comments**
-Add inline comments in `content.ts`:
+Add inline comments in `src/lib/wordProcessor.ts`:
 ```typescript
-'.article-content',  // The Verge - main article container
+{ selector: '.article-content' },  // The Verge - main article container
 ```
 
 **Option 2: Changelog/Docs**
@@ -219,7 +215,7 @@ Update `enx-chrome/CHANGELOG.md` or create a site support document:
 - [ ] Add URL pattern to `manifest.json` `content_scripts.matches`
 - [ ] Inspect target website to identify article container
 - [ ] Run `task article-eval` before the selector change
-- [ ] Add CSS selector to `content.ts` `getArticleNode()` method
+- [ ] Add the selector to `WordProcessor.BUILT_IN_SELECTORS` in `src/lib/wordProcessor.ts`, or to a site adapter in `src/lib/siteAdapters.ts`
 - [ ] Run `task article-eval` again; only the intended pages change; add the site's two pages from `task article-eval-discover` (a page picked by hand only when discovery fails, marked `"handWritten": true`) to the corpus with `hand-picked` provenance and its Tranco rank, and update the baseline
 - [ ] Rebuild extension: `task build` or `task dev`
 - [ ] Reload extension in Chrome
