@@ -23,7 +23,8 @@ import {
 } from '@/lib/paintWindow'
 import { createHighlightPreference } from '@/lib/highlightPreference'
 import {
-  reviewBucketHighlightCss,
+  hostPageHighlightCss,
+  pageToneFromComputedColor,
   sentenceWordStates,
   wordKey,
 } from '@/lib/wordHighlight'
@@ -134,21 +135,28 @@ const siteOrigins: SiteOrigins = {
   rssxOrigins: config.rssxOrigins,
 }
 
-// Colours for the elements we inject straight into the host page. These cannot
-// use the tokens from index.css: that stylesheet is only ever attached inside
-// our shadow roots, so a var() here would resolve against the host page and
-// come back empty. Literals, kept in step with index.css by hand -- and kept
-// together here rather than buried in the cssText blocks that use them.
-const HOST_PAGE_COLORS = {
-  // ADR-025, the sentence a word click opened the panel for. The one warm
-  // accent in the system, and intentionally so: it is a transient locator on
-  // someone else's page, where a warm wash stays legible against backgrounds
-  // that the cool tokens have to compete with.
-  activeSentenceWash: 'hsl(45 95% 55% / 35%)',
-  // ADR-085, the clicked word inside that sentence: the same warm hue, more
-  // opaque, painted over the sentence wash.
-  clickedWordWash: 'hsl(45 95% 55% / 60%)',
-} as const
+// ADR-086: host-page ::highlight() palette follows the article text colour.
+// The node last sampled for tone; prefers-color-scheme changes re-sample it.
+let currentToneNode: Element | null = null
+let colorSchemeMql: MediaQueryList | null = null
+let onColorSchemeChange: (() => void) | null = null
+
+const applyHostPageHighlightTone = (node: Element) => {
+  currentToneNode = node
+  const tone = pageToneFromComputedColor(getComputedStyle(node).color)
+  const style = document.head.querySelector(
+    'style[data-enx-highlight-styles]'
+  )
+  if (style) style.textContent = hostPageHighlightCss(tone)
+}
+
+const stopColorSchemeListener = () => {
+  if (colorSchemeMql && onColorSchemeChange) {
+    colorSchemeMql.removeEventListener('change', onColorSchemeChange)
+  }
+  colorSchemeMql = null
+  onColorSchemeChange = null
+}
 
 // Tailwind v4 declares its --tw-* variables with @property, and browsers ignore
 // @property inside a shadow root. Unregistered, those variables resolve to the
@@ -1026,6 +1034,10 @@ const processArticleContent = async (
         })
     if (stale()) return ENABLE_OK
     const articleNodes = lookupArea.nodes
+    // ADR-086: pick the host-page palette from this run's article text colour
+    // (or body when the list is empty / whole-page). A stale run never reaches
+    // here. Don't use articleRoots -- those exist only when clickLookup is on.
+    applyHostPageHighlightTone(articleNodes[0] ?? document.body)
     const wholePage = lookupArea.source === 'whole-page'
     const features = lookupAreaFeatures(lookupArea)
     const lookupExclusions = adapter.lookupExcludedSelectors ?? []
@@ -1658,6 +1670,17 @@ const enableEnx = async (
   if (standDown.isStoodDown() || lifecycle !== learningModeLifecycle)
     return ENABLE_OK
 
+  // ADR-086: system colour-scheme flips can change a page that follows it;
+  // re-sample the last tone node (or body before the first article run).
+  stopColorSchemeListener()
+  if (typeof window.matchMedia === 'function') {
+    colorSchemeMql = window.matchMedia('(prefers-color-scheme: dark)')
+    onColorSchemeChange = () => {
+      applyHostPageHighlightTone(currentToneNode ?? document.body)
+    }
+    colorSchemeMql.addEventListener('change', onColorSchemeChange)
+  }
+
   // Add mouseup listener for text selection, and mousedown to dismiss a
   // still-showing selection-translate button as soon as a new selection
   // gesture starts (ADR-007 Decision §3).
@@ -1716,6 +1739,7 @@ const disableEnx = ({ keepPopover = false } = {}) => {
   isEnxEnabled = false
   learningModeLifecycle++
   initialRunner.cancel()
+  stopColorSchemeListener()
 
   // Remove event listeners
   document.removeEventListener('mouseup', handleTextSelection)
@@ -1961,21 +1985,14 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 })
 
 // ::highlight() rules for each review-stage bucket (ADR-011 Decision 1 /
-// E1). CSS.highlights registers which Ranges are in bucket N; these rules
-// paint them, using the palette shared with the Side Panel
-// (wordHighlight.ts, ADR-053). No cursor or :hover rule -- the article is
-// untouched and every word is clickable, so there's nothing to hint at.
+// E1), plus the sentence / clicked-word washes (ADR-025 / ADR-085). Starts
+// on the light palette; processArticleContent rewrites for the page tone
+// (ADR-086). CSS.highlights registers which Ranges are in bucket N; these
+// rules paint them. No cursor or :hover rule -- the article is untouched
+// and every word is clickable, so there's nothing to hint at.
 const highlightStyles = document.createElement('style')
 highlightStyles.setAttribute('data-enx-highlight-styles', 'true')
-highlightStyles.textContent =
-  reviewBucketHighlightCss() +
-  // ADR-025: background wash for the sentence a word click most recently
-  // opened the sentence panel for -- a different visual channel
-  // (background, not underline) so it reads distinctly from review buckets.
-  `\n::highlight(${WordProcessor.ACTIVE_SENTENCE_HIGHLIGHT_NAME}) {` +
-  ` background-color: ${HOST_PAGE_COLORS.activeSentenceWash}; }` +
-  `\n::highlight(${WordProcessor.CLICKED_WORD_HIGHLIGHT_NAME}) {` +
-  ` background-color: ${HOST_PAGE_COLORS.clickedWordWash}; }`
+highlightStyles.textContent = hostPageHighlightCss('light')
 if (!document.head.querySelector('style[data-enx-highlight-styles]')) {
   document.head.appendChild(highlightStyles)
 }

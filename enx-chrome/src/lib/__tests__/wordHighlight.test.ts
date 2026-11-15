@@ -1,4 +1,13 @@
-import { sentenceHighlightSpans, sentenceWordStates } from '@/lib/wordHighlight'
+import {
+  HIGHLIGHT_BUCKET_COLORS,
+  hostPageHighlightCss,
+  pageToneFromComputedColor,
+  reviewBucketHighlightCss,
+  sentenceHighlightSpans,
+  sentenceWordStates,
+  underlineColorsForTone,
+  washColorsForTone,
+} from '@/lib/wordHighlight'
 import { WordData } from '@/types'
 
 const word = (
@@ -157,4 +166,86 @@ describe('sentence mapping shared with the page (ADR-069)', () => {
 
     expect([...buckets.values()].flat()).toEqual([{ start: 3, end: 8 }])
   })
+})
+
+// ADR-086 / #923: page tone from computed colour, and the light/dark palettes.
+describe('pageToneFromComputedColor', () => {
+  it.each([
+    ['rgb(224, 224, 224)', 'dark'],
+    ['rgb(176, 176, 176)', 'dark'],
+    ['rgb(51, 51, 51)', 'light'],
+    ['rgb(0, 0, 0)', 'light'],
+  ] as const)('%s gives %s', (color, tone) => {
+    expect(pageToneFromComputedColor(color)).toBe(tone)
+  })
+
+  it.each([
+    ['rgba(224, 224, 224, 0.8)', 'dark'],
+    ['rgb(224 224 224 / 50%)', 'dark'],
+    ['rgba(255, 255, 255, 0)', 'light'],
+    ['oklch(0.9 0 0)', 'light'],
+    ['color(srgb 1 1 1)', 'light'],
+    ['', 'light'],
+    ['garbage', 'light'],
+  ] as const)('%j gives %s without throwing', (color, tone) => {
+    expect(pageToneFromComputedColor(color)).toBe(tone)
+  })
+
+  it('treats the luminance boundary: 117 is light, 118 is dark', () => {
+    expect(pageToneFromComputedColor('rgb(117, 117, 117)')).toBe('light')
+    expect(pageToneFromComputedColor('rgb(118, 118, 118)')).toBe('dark')
+  })
+})
+
+describe('highlight palette by page tone (ADR-086)', () => {
+  const LIGHT_UNDERLINES = [
+    'oklch(0.45 0.13 305)',
+    'oklch(0.53 0.13 305)',
+    'oklch(0.61 0.12 305)',
+    'oklch(0.69 0.1 305)',
+    'oklch(0.77 0.08 305)',
+  ]
+  const LIGHT_WASHES = {
+    activeSentenceWash: 'hsl(45 95% 55% / 35%)',
+    clickedWordWash: 'hsl(45 95% 55% / 60%)',
+  }
+
+  it('keeps the light palette equal to today so light pages are unchanged', () => {
+    expect(underlineColorsForTone('light')).toEqual(LIGHT_UNDERLINES)
+    expect(underlineColorsForTone('light')).toEqual([
+      ...HIGHLIGHT_BUCKET_COLORS,
+    ])
+    expect(washColorsForTone('light')).toEqual(LIGHT_WASHES)
+    expect(reviewBucketHighlightCss()).toBe(reviewBucketHighlightCss('light'))
+  })
+
+  it('orders dark underlines from lightest (bucket 1) to darkest (bucket 5)', () => {
+    const lightness = (oklch: string) => {
+      const m = /^oklch\(([\d.]+)/.exec(oklch)
+      if (!m) throw new Error(`not oklch: ${oklch}`)
+      return Number(m[1])
+    }
+    const dark = underlineColorsForTone('dark')
+    expect(dark).toHaveLength(5)
+    for (let i = 0; i < dark.length - 1; i++) {
+      expect(lightness(dark[i])).toBeGreaterThan(lightness(dark[i + 1]))
+    }
+  })
+
+  it.each(['light', 'dark'] as const)(
+    'hostPageHighlightCss(%s) has one rule per bucket plus sentence and clicked-word washes',
+    tone => {
+      const css = hostPageHighlightCss(tone)
+      const underlines = underlineColorsForTone(tone)
+      const washes = washColorsForTone(tone)
+      for (let i = 0; i < 5; i++) {
+        expect(css).toContain(`::highlight(enx-hl-${i + 1})`)
+        expect(css).toContain(underlines[i])
+      }
+      expect(css).toContain('::highlight(enx-active-sentence)')
+      expect(css).toContain(washes.activeSentenceWash)
+      expect(css).toContain('::highlight(enx-clicked-word)')
+      expect(css).toContain(washes.clickedWordWash)
+    }
+  )
 })
