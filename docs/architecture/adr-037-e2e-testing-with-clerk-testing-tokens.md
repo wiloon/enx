@@ -33,7 +33,7 @@ Clerk 官方给 E2E 的方案是 `@clerk/testing`：`clerkSetup()` 用 `CLERK_SE
 
 ### B.（采用）本地三件套 + `@clerk/testing` 真登录
 
-扩展构建成指向本地的变体，Playwright 起本地 enx-api（:8090）和 enx-ui（:3000），在 enx-ui 页面上 `clerk.signIn()`，扩展经 `syncHost` 同步到这个会话。
+扩展构建成指向本地的变体，Playwright 起本地 enx-api（:8091）和 enx-ui（:3000），在 enx-ui 页面上 `clerk.signIn()`，扩展经 `syncHost` 同步到这个会话。
 
 | Pros | Cons |
 | --- | --- |
