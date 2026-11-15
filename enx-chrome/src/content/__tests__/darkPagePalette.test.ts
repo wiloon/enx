@@ -2,12 +2,29 @@
 
 import { STAND_DOWN_EVENT } from '@/lib/orphanStandDown'
 import type { SiteOrigins } from '@/lib/siteAdapters'
-import {
-  hostPageHighlightCss,
-  type PageTone,
-} from '@/lib/wordHighlight'
+import { hostPageHighlightCss, type PageTone } from '@/lib/wordHighlight'
 
 jest.mock('@/config/env')
+
+let mockHoldLookup: ((release: () => void) => void) | null = null
+jest.mock('@/lib/lookupArea', () => {
+  const actual =
+    jest.requireActual<typeof import('@/lib/lookupArea')>('@/lib/lookupArea')
+  return {
+    ...actual,
+    resolveLookupArea: async (
+      ...args: Parameters<typeof actual.resolveLookupArea>
+    ) => {
+      const area = await actual.resolveLookupArea(...args)
+      if (mockHoldLookup) {
+        const hold = mockHoldLookup
+        mockHoldLookup = null
+        await new Promise<void>(resolve => hold(resolve))
+      }
+      return area
+    },
+  }
+})
 
 type Message = { type?: string; action?: string }
 type Callback = (response: unknown) => void
@@ -89,8 +106,8 @@ const loadSpaScript = async () => {
 }
 
 const highlightStyleText = () =>
-  document.head.querySelector('style[data-enx-highlight-styles]')?.textContent ??
-  ''
+  document.head.querySelector('style[data-enx-highlight-styles]')
+    ?.textContent ?? ''
 
 const expectTone = (tone: PageTone) => {
   expect(highlightStyleText()).toBe(hostPageHighlightCss(tone))
@@ -136,6 +153,7 @@ const fireColorSchemeChange = () => {
 beforeEach(() => {
   jest.spyOn(console, 'log').mockImplementation(() => {})
   jest.spyOn(console, 'debug').mockImplementation(() => {})
+  mockHoldLookup = null
   sent = []
   ;(chrome.runtime as { id?: string }).id = LIVE_ID
   ;(chrome.runtime.sendMessage as jest.Mock).mockImplementation(
@@ -219,17 +237,37 @@ describe('dark-page highlight palette (ADR-086)', () => {
     expect(await send({ action: 'enxRun' })).toMatchObject({ success: true })
     expectTone('light')
 
-    // First navigate: empty body so waitForContentReady stays pending.
-    document.body.innerHTML = ''
+    let releaseOlder!: () => void
+    const olderHeld = new Promise<void>(resolve => {
+      mockHoldLookup = release => {
+        releaseOlder = release
+        resolve()
+      }
+    })
     navigation.navigate('http://localhost/?article=2')
-    await settle()
+    await olderHeld
 
-    // Second navigate wins before the first rebuild runs: light-text article.
     document.body.innerHTML = `<article><p>${ARTICLE_TEXT}</p></article>`
     setColor(document.querySelector('article')!, 'rgb(224, 224, 224)')
     navigation.navigate('http://localhost/?article=3')
     await spaSettle()
+    expectTone('dark')
 
+    const style = document.head.querySelector(
+      'style[data-enx-highlight-styles]'
+    )!
+    const writes: MutationRecord[] = []
+    const observer = new MutationObserver(records => writes.push(...records))
+    observer.observe(style, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    })
+    releaseOlder()
+    await settle()
+    observer.disconnect()
+
+    expect(writes).toHaveLength(0)
     expectTone('dark')
   })
 
