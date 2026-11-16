@@ -18,10 +18,7 @@ import {
 
 const TEST_PAGE_PATH = '/test-page.html'
 
-async function readingTabId(
-  page: Page,
-  extensionId: string
-): Promise<number> {
+async function readingTabId(page: Page, extensionId: string): Promise<number> {
   const helper = await page.context().newPage()
   await helper.goto(`chrome-extension://${extensionId}/popup.html`)
   const tabId = await helper.evaluate(
@@ -35,9 +32,11 @@ async function readingTabId(
 async function openPanel(
   context: BrowserContext,
   extensionId: string,
-  tabId: number
+  tabId: number,
+  fakeClock = false
 ): Promise<Page> {
   const panel = await context.newPage()
+  if (fakeClock) await panel.clock.install()
   await panel.goto(
     `chrome-extension://${extensionId}/sidepanel.html?tabId=${tabId}`
   )
@@ -127,6 +126,35 @@ test.describe('Side Panel shared history (ADR-090)', () => {
     await page.waitForTimeout(500)
     expect(sentenceTranslatePosts(await translatePosts(context))).toHaveLength(
       5
+    )
+  })
+
+  test('closing the requesting panel times out its held request in another panel without resending', async ({
+    page,
+    context,
+    extensionId,
+    signedIn: _signedIn,
+  }) => {
+    await mockBackendFetch(context, { holdSentenceTranslation: true })
+    await page.goto(TEST_PAGE_PATH, { waitUntil: 'domcontentloaded' })
+    await enableLearningMode(page, extensionId)
+    await waitForContentScript(page)
+    const tabId = await readingTabId(page, extensionId)
+    const owner = await openPanel(context, extensionId, tabId)
+    await sendOneSentenceFromPage(page)
+    await expect
+      .poll(async () => sentenceTranslatePosts(await translatePosts(context)))
+      .toHaveLength(1)
+    const other = await openPanel(context, extensionId, tabId, true)
+    await expect(other.getByTestId('sidepanel-loading')).toBeVisible()
+    await owner.close()
+    await other.clock.fastForward(121_000)
+    await expect(other.getByTestId('sidepanel-error')).toContainText(
+      'Request timed out. Tap Retry to try again.'
+    )
+    await expect(other.getByTestId('sidepanel-retry-sentence')).toBeVisible()
+    expect(sentenceTranslatePosts(await translatePosts(context))).toHaveLength(
+      1
     )
   })
 

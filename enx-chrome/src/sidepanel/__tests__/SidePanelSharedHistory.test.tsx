@@ -129,7 +129,11 @@ describe('SidePanel shared history (ADR-090)', () => {
       }
     )
     ;(chrome.storage.onChanged.removeListener as jest.Mock).mockImplementation(
-      () => {}
+      (listener: StorageChangeListener) => {
+        storageChangeListeners = storageChangeListeners.filter(
+          item => item !== listener
+        )
+      }
     )
     const heldLocks = new Set<string>()
     const lockWaiters = new Map<string, Array<() => void>>()
@@ -375,23 +379,39 @@ describe('SidePanel shared history (ADR-090)', () => {
           within(panelB.root).getByTestId('sidepanel-retry-sentence')
         ).toBeInTheDocument()
       )
-      expect(within(panelB.root).getByTestId('sidepanel-error')).toHaveTextContent(
-        PANEL_TIMEOUT_ERROR_MESSAGE
-      )
+      expect(
+        within(panelB.root).getByTestId('sidepanel-error')
+      ).toHaveTextContent(PANEL_TIMEOUT_ERROR_MESSAGE)
       expect(countOf('translateSentence')).toBe(1)
     })
 
     it('keeps the loading card visible when the timeout write fails', async () => {
-      seedSession({ [HISTORY_KEY]: { ...emptyPanelHistory(), entries: [{
-        ...failedSentenceHistory().entries[0], status: 'loading', errorMessage: '',
-        token: 1, startedAt: Date.now() - PANEL_REQUEST_TIMEOUT_MS,
-      }] } })
-      ;(chrome.storage.session.set as jest.Mock).mockRejectedValue(new Error('write failed'))
+      seedSession({
+        [HISTORY_KEY]: {
+          ...emptyPanelHistory(),
+          entries: [
+            {
+              ...failedSentenceHistory().entries[0],
+              status: 'loading',
+              errorMessage: '',
+              token: 1,
+              startedAt: Date.now() - PANEL_REQUEST_TIMEOUT_MS,
+            },
+          ],
+        },
+      })
+      ;(chrome.storage.session.set as jest.Mock).mockRejectedValue(
+        new Error('write failed')
+      )
       const log = jest.spyOn(console, 'error').mockImplementation(() => {})
       const panel = mountPanel()
       await waitFor(() => expect(chrome.storage.session.set).toHaveBeenCalled())
-      expect(within(panel.root).queryByTestId('sidepanel-retry-sentence')).toBeNull()
-      expect(within(panel.root).getByTestId('sidepanel-loading')).toBeInTheDocument()
+      expect(
+        within(panel.root).queryByTestId('sidepanel-retry-sentence')
+      ).toBeNull()
+      expect(
+        within(panel.root).getByTestId('sidepanel-loading')
+      ).toBeInTheDocument()
       log.mockRestore()
     })
 
@@ -467,13 +487,127 @@ describe('SidePanel shared history (ADR-090)', () => {
       act(() => fireSentence(nextEventId(), 'great'))
       await waitFor(() => expect(countOf('getOneWord')).toBe(1))
       const log = jest.spyOn(console, 'error').mockImplementation(() => {})
-      ;(chrome.storage.session.set as jest.Mock).mockRejectedValue(new Error('write failed'))
+      ;(chrome.storage.session.set as jest.Mock).mockRejectedValue(
+        new Error('write failed')
+      )
       await act(async () => {
-        dictionary.resolve({ success: false, error: 'Dictionary lookup failed' })
+        dictionary.resolve({
+          success: false,
+          error: 'Dictionary lookup failed',
+        })
         await new Promise(resolve => setTimeout(resolve, 50))
       })
       expect(countOf('translateWordInContext')).toBe(0)
       log.mockRestore()
+    })
+
+    it('does not send context after the word card is removed while the dictionary waits', async () => {
+      const dictionary = deferred<unknown>()
+      mockSendMessage.mockImplementation(async message =>
+        message.type === 'getOneWord'
+          ? dictionary.promise
+          : { success: true, chinese: '译文' }
+      )
+      const panel = mountPanel()
+      await within(panel.root).findByTestId('sidepanel-empty-state')
+      act(() => fireSentence(nextEventId(), 'great'))
+      await waitFor(() => expect(countOf('getOneWord')).toBe(1))
+      fireEvent.click(
+        await within(panel.root).findByTestId('sidepanel-remove-great')
+      )
+      await waitFor(() =>
+        expect(
+          within(panel.root).queryByTestId('sidepanel-card-great')
+        ).toBeNull()
+      )
+      await act(async () => {
+        dictionary.resolve({
+          success: false,
+          error: 'Dictionary lookup failed',
+        })
+      })
+      expect(countOf('translateWordInContext')).toBe(0)
+    })
+
+    it('does not send context after the dictionary token times out', async () => {
+      jest.useFakeTimers()
+      const dictionary = deferred<unknown>()
+      mockSendMessage.mockImplementation(async message =>
+        message.type === 'getOneWord'
+          ? dictionary.promise
+          : { success: true, chinese: '译文' }
+      )
+      const panel = mountPanel()
+      await within(panel.root).findByTestId('sidepanel-empty-state')
+      act(() => fireSentence(nextEventId(), 'great'))
+      await waitFor(() => expect(countOf('getOneWord')).toBe(1))
+      await act(async () => {
+        jest.advanceTimersByTime(PANEL_REQUEST_TIMEOUT_MS + 1)
+      })
+      await within(panel.root).findByTestId('sidepanel-retry-context-great')
+      await act(async () => {
+        dictionary.resolve({
+          success: false,
+          error: 'Dictionary lookup failed',
+        })
+      })
+      expect(countOf('translateWordInContext')).toBe(0)
+    })
+
+    it('times out a dictionary chain after its owner closes without resending', async () => {
+      jest.useFakeTimers()
+      mockSendMessage.mockImplementation(async message =>
+        message.type === 'getOneWord'
+          ? new Promise(() => {})
+          : { success: true, chinese: '译文' }
+      )
+      const owner = mountPanel()
+      const other = mountPanel()
+      await within(owner.root).findByTestId('sidepanel-empty-state')
+      act(() => fireSentence(nextEventId(), 'great'))
+      await waitFor(() => expect(countOf('getOneWord')).toBe(1))
+      act(() => owner.unmount())
+      await act(async () => {
+        jest.advanceTimersByTime(PANEL_REQUEST_TIMEOUT_MS + 1)
+      })
+      await within(other.root).findByTestId('sidepanel-retry-context-great')
+      expect(countOf('getOneWord')).toBe(1)
+      expect(countOf('translateWordInContext')).toBe(0)
+    })
+
+    it('times out an Undo-paused follow-up after its owner closes without resending', async () => {
+      jest.useFakeTimers()
+      const dictionary = deferred<unknown>()
+      mockSendMessage.mockImplementation(async message =>
+        message.type === 'getOneWord'
+          ? dictionary.promise
+          : { success: true, chinese: '译文' }
+      )
+      const owner = mountPanel()
+      const other = mountPanel()
+      await within(owner.root).findByTestId('sidepanel-empty-state')
+      act(() => fireSentence(nextEventId(), 'great'))
+      await waitFor(() => expect(countOf('getOneWord')).toBe(1))
+      fireEvent.click(
+        await within(other.root).findByTestId('sidepanel-clear-all')
+      )
+      await within(other.root).findByTestId('sidepanel-undo-clear')
+      await act(async () => {
+        dictionary.resolve({
+          success: false,
+          error: 'Dictionary lookup failed',
+        })
+      })
+      expect(countOf('translateWordInContext')).toBe(0)
+      act(() => owner.unmount())
+      fireEvent.click(within(other.root).getByTestId('sidepanel-undo-clear'))
+      await within(other.root).findByTestId('sidepanel-card-great')
+      await act(async () => {
+        jest.advanceTimersByTime(PANEL_REQUEST_TIMEOUT_MS + 1)
+      })
+      await within(other.root).findByTestId('sidepanel-retry-context-great')
+      expect(countOf('getOneWord')).toBe(1)
+      expect(countOf('translateWordInContext')).toBe(0)
     })
 
     it('dictionary-then-context continues for the sending panel while the other one is the one in view', async () => {
@@ -491,7 +625,10 @@ describe('SidePanel shared history (ADR-090)', () => {
       act(() => fireSentence(nextEventId(), 'great'))
       await waitFor(() => expect(countOf('getOneWord')).toBe(1))
       await act(async () => {
-        dictionary.resolve({ success: false, error: 'Dictionary lookup failed' })
+        dictionary.resolve({
+          success: false,
+          error: 'Dictionary lookup failed',
+        })
       })
       await waitFor(() => expect(countOf('translateWordInContext')).toBe(1))
       await waitFor(() =>
@@ -516,10 +653,15 @@ describe('SidePanel shared history (ADR-090)', () => {
       act(() => fireSentence(nextEventId(), 'great'))
       await waitFor(() => expect(countOf('getOneWord')).toBe(1))
 
-      fireEvent.click(await within(panelB.root).findByTestId('sidepanel-clear-all'))
+      fireEvent.click(
+        await within(panelB.root).findByTestId('sidepanel-clear-all')
+      )
       await within(panelB.root).findByTestId('sidepanel-undo-clear')
       await act(async () => {
-        dictionary.resolve({ success: false, error: 'Dictionary lookup failed' })
+        dictionary.resolve({
+          success: false,
+          error: 'Dictionary lookup failed',
+        })
       })
       await act(async () => {
         await Promise.resolve()

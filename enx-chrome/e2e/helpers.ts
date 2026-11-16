@@ -372,6 +372,7 @@ export async function mockBackendFetch(
      * wordData.LoadCount times.
      */
     reviewWords?: [string, number][]
+    holdSentenceTranslation?: boolean
     translateFails?: boolean
     translateUnauthorized?: boolean
     /**
@@ -409,6 +410,7 @@ export async function mockBackendFetch(
       word,
       wordData.LoadCount,
     ])
+  const holdSentenceTranslation = options.holdSentenceTranslation ?? false
   const translateFails = options.translateFails ?? false
   const translateUnauthorized = options.translateUnauthorized ?? false
   const lookupDelayMs = options.lookupDelayMs ?? 0
@@ -420,6 +422,7 @@ export async function mockBackendFetch(
     ({
       wordData,
       reviewWords,
+      holdSentenceTranslation,
       translateFails,
       translateUnauthorized,
       lookupDelayMs,
@@ -567,6 +570,13 @@ export async function mockBackendFetch(
           ).__enxTranslatePosts ??= []) as { url: string; body: unknown }[]
           const body = JSON.parse(String(init.body ?? '{}'))
           posts.push({ url, body })
+          if (
+            holdSentenceTranslation &&
+            url.includes('/api/translate/sentence') &&
+            !url.includes('sentence-with-word')
+          ) {
+            await new Promise(() => {})
+          }
           if (url.includes('/api/translate/sentence-with-word')) {
             return new Response(
               JSON.stringify({ chinese: '译文', wordChinese: '词义' }),
@@ -594,6 +604,7 @@ export async function mockBackendFetch(
     {
       wordData,
       reviewWords,
+      holdSentenceTranslation,
       translateFails,
       translateUnauthorized,
       lookupDelayMs,
