@@ -306,15 +306,19 @@ func TestMountedAdminDetailResolveAndRetryServeAnAdminAndRefuseAnyoneElse(t *tes
 		t.Fatalf("conflict detail = %d: %s", rec.Code, rec.Body.String())
 	}
 
-	var resolved struct {
-		Success    bool
-		Resolution struct {
-			Status     string
-			ResolvedBy string `json:"resolvedBy"`
-			Notes      string
-		}
-	}
 	for range 2 { // repeating the same resolution is a no-op
+		// A fresh struct each iteration: json.Unmarshal leaves fields
+		// absent from the response untouched, so reusing it would let a
+		// field omitted from the second response masquerade as a value the
+		// second response had (issue #479 review nit).
+		var resolved struct {
+			Success    bool
+			Resolution struct {
+				Status     string
+				ResolvedBy string `json:"resolvedBy"`
+				Notes      string
+			}
+		}
 		rec = do(http.MethodPatch, conflictPath, resolveBody, true)
 		if err := json.Unmarshal(rec.Body.Bytes(), &resolved); err != nil {
 			t.Fatal(err)
