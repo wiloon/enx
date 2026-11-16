@@ -20,9 +20,16 @@ test.describe('AI translation and trial credits', () => {
     signedIn: _signedIn,
   }) => {
     const billing = await context.newPage()
-    await billing.goto(`${UI_ORIGIN}/billing`)
     const trial = billing.getByText(/^\d[\d,]* trial credits · expires /)
-    await expect(trial).toBeVisible()
+    // Next.js cold-compiling the /billing route on its first hit can take
+    // well over the default 5 s expect timeout -- the shared `signedIn`
+    // fixture uses a `toPass` retry for the same reason.
+    await test
+      .expect(async () => {
+        await billing.goto(`${UI_ORIGIN}/billing`)
+        await expect(trial).toBeVisible()
+      })
+      .toPass({ intervals: [1_000, 2_000, 5_000], timeout: 60_000 })
     const before = Number(
       (await trial.innerText()).split(' ')[0].replaceAll(',', '')
     )
@@ -50,8 +57,12 @@ test.describe('AI translation and trial credits', () => {
       '[fake] 这只猫在读书。'
     )
 
-    await billing.reload()
-    await expect(trial).toBeVisible()
+    await test
+      .expect(async () => {
+        await billing.reload()
+        await expect(trial).toBeVisible()
+      })
+      .toPass({ intervals: [1_000, 2_000, 5_000], timeout: 60_000 })
     const after = Number(
       (await trial.innerText()).split(' ')[0].replaceAll(',', '')
     )
