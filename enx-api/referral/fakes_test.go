@@ -223,6 +223,10 @@ func (f *fakeCredits) GrantReferrerReward(_ context.Context, referrerID string, 
 	return nil
 }
 
+func (f *fakeCredits) RewardGranted(_ context.Context, key string) (bool, error) {
+	return f.keys[key], f.lookupErr
+}
+
 // fakePayments answers from maps; a payment intent or invoice missing from
 // them is a Stripe error.
 type fakePayments struct {
@@ -258,8 +262,4 @@ type recordingObserver struct {
 func (o *recordingObserver) ObserveReferralClaim(result string) { o.claims = append(o.claims, result) }
 func (o *recordingObserver) ObserveReferralReward(result string) {
 	o.rewards = append(o.rewards, result)
-}
-
-func (f *fakeCredits) RewardGranted(_ context.Context, key string) (bool, error) {
-	return f.keys[key], f.lookupErr
 }
