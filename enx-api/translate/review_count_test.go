@@ -221,12 +221,15 @@ func TestMissInBothSourcesWritesNoReviewRow(t *testing.T) {
 	}
 }
 
-// Looking up an inflection ("ran") resolves via ECDICT's exchange column to
-// its headword ("run"). The answer carries the headword's id and review
-// state: the id the client then records the lookup against.
-func TestInflectionAnswersWithTheHeadwordsIdAndReviewState(t *testing.T) {
-	setupReviewTest(t, stardictRow{Word: "run", Sw: "run", Translation: "v. 跑", Exchange: "p:ran/d:run/i:running/3:runs"})
-	id := seedWord(t, "run")
+// Looking up an inflected form that is itself a headword ("ran") answers
+// with that form's own id and review state (#959: no exchange remapping to
+// another headword).
+func TestInflectedHeadwordAnswersWithItsOwnIdAndReviewState(t *testing.T) {
+	setupReviewTest(t,
+		stardictRow{Word: "run", Sw: "run", Translation: "v. 跑", Exchange: "p:ran/d:run/i:running/3:runs"},
+		stardictRow{Word: "ran", Sw: "ran", Translation: "v. 跑（过去式）"},
+	)
+	id := seedWord(t, "ran")
 	seedUserDict(t, "u1", id, 5, true)
 
 	resp := lookup(t, "ran", "u1")

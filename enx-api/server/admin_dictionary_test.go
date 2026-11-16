@@ -79,6 +79,8 @@ func seedEcdict(t *testing.T) {
 	ecdict.Init(ecdicttest.Create(t,
 		ecdicttest.Row{Word: "hello", Sw: "hello", Phonetic: "/həˈloʊ/", Translation: "int. 你好；喂"},
 		ecdicttest.Row{Word: "run", Sw: "run", Phonetic: "/rʌn/", Translation: "v. 跑；奔跑\nn. 奔跑", Exchange: "i:running/d:ran"},
+		// Inflected form as its own headword (#959: no exchange reverse lookup).
+		ecdicttest.Row{Word: "running", Sw: "running", Phonetic: "/ˈrʌnɪŋ/", Translation: "v. 奔跑；adj. 连续的"},
 	))
 	if !ecdict.IsAvailable() {
 		t.Fatal("ECDICT not available after Init")
