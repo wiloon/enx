@@ -526,7 +526,9 @@ func TestWebhookEventsSaveRollsTheTaskBackWhenAnInvoiceEffectFails(t *testing.T)
 		t.Fatal(err)
 	}
 
-	if err := store.Save(context.Background(), sandboxScope, read, next, normalGrantEffects(0, "in_1")); err == nil || err.Error() != "apply webhook event effects: record first payment: no referral terms configured" {
+	// errors.Is, not the wrapped string: the point is that the handoff was
+	// refused for this reason, not how the layers above word it.
+	if err := store.Save(context.Background(), sandboxScope, read, next, normalGrantEffects(0, "in_1")); !errors.Is(err, ErrNoReferralTerms) {
 		t.Fatalf("Save = %v, want the first-payment handoff to fail because no referral terms are configured", err)
 	}
 

@@ -288,10 +288,15 @@ func (w WebhookEffects) applyCheckoutCompleted(tx *gorm.DB, scope webhookevent.S
 	return nil
 }
 
+// ErrNoReferralTerms: the effects applier has no referral CreditPolicy, so it
+// cannot record a first payment. Callers test for it with errors.Is; the
+// wrapping text above it may change.
+var ErrNoReferralTerms = errors.New("record first payment: no referral terms configured")
+
 // recordFirstPayment hands p to the referral domain inside tx.
 func (w WebhookEffects) recordFirstPayment(tx *gorm.DB, userID string, p referral.FirstPayment) error {
 	if w.Referral == nil {
-		return errors.New("record first payment: no referral terms configured")
+		return ErrNoReferralTerms
 	}
 	svc := referral.NewService(nil, Referrals{tx: tx}, nil, nil, nil, w.now, w.Referral)
 	if err := svc.RecordFirstPayment(tx.Statement.Context, userID, p); err != nil {
