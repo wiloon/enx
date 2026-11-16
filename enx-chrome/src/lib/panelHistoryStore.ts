@@ -458,7 +458,7 @@ export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
         return { committed: true, plan: [], state }
       }
       if (!(await deps.tabExists(tabId))) {
-        return { committed: false, plan: [], state }
+        return { committed: false, plan: [], state: base }
       }
       const capped: StoredPanelHistory = {
         ...drafted.state,
@@ -474,7 +474,7 @@ export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
         await deps.storage.set(key, capped)
       } catch (error) {
         console.error('panelHistoryStore: failed to write panel history', error)
-        return { committed: false, plan: [], state }
+        return { committed: false, plan: [], state: base }
       }
       return { committed: true, plan: drafted.plan ?? [], state: capped }
     })

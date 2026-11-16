@@ -381,6 +381,20 @@ describe('SidePanel shared history (ADR-090)', () => {
       expect(countOf('translateSentence')).toBe(1)
     })
 
+    it('keeps the loading card visible when the timeout write fails', async () => {
+      seedSession({ [HISTORY_KEY]: { ...emptyPanelHistory(), entries: [{
+        ...failedSentenceHistory().entries[0], status: 'loading', errorMessage: '',
+        token: 1, startedAt: Date.now() - PANEL_REQUEST_TIMEOUT_MS,
+      }] } })
+      ;(chrome.storage.session.set as jest.Mock).mockRejectedValue(new Error('write failed'))
+      const log = jest.spyOn(console, 'error').mockImplementation(() => {})
+      const panel = mountPanel()
+      await waitFor(() => expect(chrome.storage.session.set).toHaveBeenCalled())
+      expect(within(panel.root).queryByTestId('sidepanel-retry-sentence')).toBeNull()
+      expect(within(panel.root).getByTestId('sidepanel-loading')).toBeInTheDocument()
+      log.mockRestore()
+    })
+
     it('a panel mounted after the timeout shows the card as Retry (mount sweep)', async () => {
       seedSession({
         [HISTORY_KEY]: {
@@ -440,6 +454,26 @@ describe('SidePanel shared history (ADR-090)', () => {
       expect(
         within(panelB.root).getAllByTestId('sidepanel-sentence')
       ).toHaveLength(1)
+    })
+
+    it('does not send context when its history write fails', async () => {
+      const dictionary = deferred<unknown>()
+      mockSendMessage.mockImplementation(async message => {
+        if (message.type === 'getOneWord') return dictionary.promise
+        return { success: true, chinese: '译文' }
+      })
+      const panel = mountPanel()
+      await within(panel.root).findByTestId('sidepanel-empty-state')
+      act(() => fireSentence(nextEventId(), 'great'))
+      await waitFor(() => expect(countOf('getOneWord')).toBe(1))
+      const log = jest.spyOn(console, 'error').mockImplementation(() => {})
+      ;(chrome.storage.session.set as jest.Mock).mockRejectedValue(new Error('write failed'))
+      await act(async () => {
+        dictionary.resolve({ success: false, error: 'Dictionary lookup failed' })
+        await new Promise(resolve => setTimeout(resolve, 50))
+      })
+      expect(countOf('translateWordInContext')).toBe(0)
+      log.mockRestore()
     })
 
     it('dictionary-then-context continues for the sending panel while the other one is the one in view', async () => {

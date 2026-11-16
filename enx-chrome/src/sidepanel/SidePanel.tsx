@@ -1301,16 +1301,15 @@ function SidePanelContent() {
         if (current) {
           // The context request re-records the card's startedAt as it is
           // sent (the 120 s runs from this request, not the dictionary one).
-          void history.whenVisible(card, () => {
-            if (tabId !== undefined) {
-              void store.markContextSent(
-                tabId,
-                card.sentenceId,
-                card.key,
-                card.token
-              )
-            }
-            fetchContextTranslation(word, sentence, card, chinese)
+          void history.whenVisible(card, async () => {
+            if (tabId === undefined) return
+            const committed = await store.markContextSent(
+              tabId,
+              card.sentenceId,
+              card.key,
+              card.token
+            )
+            if (committed) fetchContextTranslation(word, sentence, card, chinese)
           })
         }
       })
