@@ -167,6 +167,25 @@ describe('requestReviewList', () => {
     })
     expect(sent()).toBe(1)
   })
+
+  // ADR-015: only support can add the missing email; retrying cannot help.
+  it('does not retry an account without an email', async () => {
+    const { d, sent } = deps([
+      {
+        success: false,
+        error: 'Your account has no email address. Please contact support.',
+        status: 403,
+        code: 'email_required',
+      },
+      listed([]),
+    ])
+
+    expect(await requestReviewList(d)).toEqual({
+      ok: false,
+      reason: 'email-required',
+    })
+    expect(sent()).toBe(1)
+  })
 })
 
 describe('createReviewList', () => {

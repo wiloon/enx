@@ -1,5 +1,5 @@
 import { ApiService } from '../api'
-import { ACCOUNT_DISABLED_MESSAGE } from '@/lib/account'
+import { ACCOUNT_DISABLED_MESSAGE, EMAIL_REQUIRED_MESSAGE } from '@/lib/account'
 
 function jsonResponse(body: unknown, status = 200) {
   return {
@@ -145,6 +145,44 @@ describe('ApiService and a disabled account (ADR-062 Decision 5)', () => {
 
     expect(global.fetch).toHaveBeenCalledTimes(1)
     expect(resp.error).toBe(ACCOUNT_DISABLED_MESSAGE)
+    expect(errorLog).toHaveBeenCalledWith(
+      'API request failed:',
+      expect.any(Error)
+    )
+  })
+})
+
+describe('ApiService and an account without an email (ADR-015)', () => {
+  let service: ApiService
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    service = new ApiService('http://localhost:8090')
+    service.setAccessToken('access-token')
+  })
+
+  it('shows its own message, not the generic 403 text', async () => {
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
+    ;(global.fetch as jest.Mock).mockResolvedValue(
+      jsonResponse(
+        {
+          success: false,
+          code: 'email_required',
+          message: 'Your account has no email address. Please contact support.',
+        },
+        403
+      )
+    )
+    const listener = jest.fn()
+    service.onAccountDisabled(listener)
+
+    const resp = await service.getMe()
+
+    expect(resp.success).toBe(false)
+    expect(resp.error).toBe(EMAIL_REQUIRED_MESSAGE)
+    // Only support can add the email: the app keeps calling the server.
+    expect(service.isAccountDisabled()).toBe(false)
+    expect(listener).not.toHaveBeenCalled()
     expect(errorLog).toHaveBeenCalledWith(
       'API request failed:',
       expect.any(Error)

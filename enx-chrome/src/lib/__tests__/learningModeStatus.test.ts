@@ -64,6 +64,7 @@ describe('statusForOutcome (adr-046 Decision 3)', () => {
     'rate-limited',
     'session-expired',
     'account-disabled',
+    'email-required',
     'error',
   ] as const)('is an error for the actionable failure %s', reason => {
     expect(statusForOutcome(failed(reason))).toEqual({
