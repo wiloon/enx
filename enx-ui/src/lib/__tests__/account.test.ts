@@ -1,4 +1,4 @@
-import { emailMatches, isAccountDisabled } from '../account'
+import { emailMatches, isAccountDisabled, isEmailRequired } from '../account'
 
 describe('emailMatches (the deletion confirmation)', () => {
   it.each([
@@ -29,5 +29,20 @@ describe('isAccountDisabled', () => {
     )
     expect(isAccountDisabled(400, { code: 'account_disabled' })).toBe(false)
     expect(isAccountDisabled(403, null)).toBe(false)
+  })
+})
+
+describe('isEmailRequired (ADR-015)', () => {
+  it('reads the email_required error code of a 403', () => {
+    expect(isEmailRequired(403, { code: 'email_required' })).toBe(true)
+  })
+
+  it('ignores other 403s and other statuses', () => {
+    expect(isEmailRequired(403, { code: 'account_disabled' })).toBe(false)
+    expect(isEmailRequired(403, { message: 'admin access required' })).toBe(
+      false
+    )
+    expect(isEmailRequired(401, { code: 'email_required' })).toBe(false)
+    expect(isEmailRequired(403, null)).toBe(false)
   })
 })

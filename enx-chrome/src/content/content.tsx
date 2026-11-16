@@ -1086,6 +1086,9 @@ const processArticleContent = async (
       if (loaded.reason === 'account-disabled') {
         return failed('account-disabled')
       }
+      if (loaded.reason === 'email-required') {
+        return failed('email-required')
+      }
     }
 
     // Read the highlight preference before the last stale check so the paint

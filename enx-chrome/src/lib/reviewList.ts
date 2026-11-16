@@ -4,7 +4,7 @@
 // retry rules and the list's lifecycle in the content script, apart from
 // content.tsx so both run on fakes.
 
-import { isAccountDisabled } from '@/lib/accountDisabled'
+import { isAccountDisabled, isEmailRequired } from '@/lib/accountDisabled'
 import { isRequestRateLimited } from '@/lib/rateLimit'
 import { wordKey } from '@/lib/wordHighlight'
 import type { BackgroundResponse, WordData } from '@/types'
@@ -15,6 +15,8 @@ export type ReviewListFailure =
   | 'session-expired'
   /** The admin disabled the account (ADR-062): retrying cannot help. */
   | 'account-disabled'
+  /** The account has no email address (ADR-015): only support can fix it. */
+  | 'email-required'
   | 'lookup-failed'
 
 export type ReviewListResult =
@@ -77,6 +79,9 @@ export async function requestReviewList(
       return { ok: false, reason: 'session-expired' }
     if (response && isAccountDisabled(response)) {
       return { ok: false, reason: 'account-disabled' }
+    }
+    if (response && isEmailRequired(response)) {
+      return { ok: false, reason: 'email-required' }
     }
 
     if (response && isRequestRateLimited(response)) {

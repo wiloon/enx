@@ -37,8 +37,10 @@ import {
 } from '@/types'
 import {
   ACCOUNT_DISABLED_MESSAGE,
+  EMAIL_REQUIRED_MESSAGE,
   type AdminUserAction,
   isAccountDisabled,
+  isEmailRequired,
 } from '@/lib/account'
 import { UNREACHABLE_MESSAGE, apiErrorMessage } from '@/lib/apiErrors'
 import {
@@ -185,6 +187,9 @@ export class ApiService {
         }
         if (isAccountDisabled(response.status, errorBody)) {
           this.markAccountDisabled()
+        }
+        if (isEmailRequired(response.status, errorBody)) {
+          throw new Error(EMAIL_REQUIRED_MESSAGE)
         }
         const message =
           errorBody?.error ||

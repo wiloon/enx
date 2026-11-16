@@ -96,6 +96,7 @@ const ACTIONABLE: ReadonlySet<EnableFailureReason> = new Set([
   'rate-limited',
   'session-expired',
   'account-disabled',
+  'email-required',
   'error',
 ])
 

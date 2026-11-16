@@ -14,6 +14,7 @@ const ALL_REASONS: EnableFailureReason[] = [
   'rate-limited',
   'session-expired',
   'account-disabled',
+  'email-required',
   'error',
   'injection-blocked',
   'not-english',
@@ -56,6 +57,13 @@ describe('enableOutcome', () => {
   it('tells a disabled account so', () => {
     expect(failureMessage('account-disabled')).toBe(
       'This account has been disabled.'
+    )
+  })
+
+  // ADR-015: the message says who can fix the missing email.
+  it('tells an account without an email to contact support', () => {
+    expect(failureMessage('email-required')).toBe(
+      'Your account has no email address. Contact support to add one.'
     )
   })
 

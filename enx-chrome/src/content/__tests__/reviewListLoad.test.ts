@@ -282,6 +282,11 @@ describe('enabling learning mode', () => {
       { success: false, status: 403, code: 'account_disabled' },
       'account-disabled',
     ],
+    [
+      'an account without an email',
+      { success: false, status: 403, code: 'email_required' },
+      'email-required',
+    ],
   ])('reports %s as its failure', async (_name, reply, reason) => {
     jest.useFakeTimers({
       doNotFake: ['setTimeout', 'nextTick', 'setImmediate'],
