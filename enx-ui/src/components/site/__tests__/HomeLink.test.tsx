@@ -31,6 +31,21 @@ describe('HomeLink', () => {
     )
   })
 
+  it('sets data-no-progress on the landing page where onClick cancels navigation', () => {
+    render(<HomeLink className="">Catglish</HomeLink>)
+    expect(screen.getByRole('link', { name: 'Catglish' })).toHaveAttribute(
+      'data-no-progress'
+    )
+  })
+
+  it('omits data-no-progress off the landing page', () => {
+    mockPathname.mockReturnValue('/pricing')
+    render(<HomeLink className="">Catglish</HomeLink>)
+    expect(screen.getByRole('link', { name: 'Catglish' })).not.toHaveAttribute(
+      'data-no-progress'
+    )
+  })
+
   it('scrolls to the top in place when already on the landing page', () => {
     window.history.replaceState(null, '', '/#features')
     expect(clickLogo()).toBe(false)

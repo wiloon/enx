@@ -29,7 +29,12 @@ export default function HomeLink({
   }
 
   return (
-    <Link href="/" className={className} onClick={onClick}>
+    <Link
+      href="/"
+      className={className}
+      onClick={onClick}
+      {...(pathname === '/' ? { 'data-no-progress': true } : {})}
+    >
       {children}
     </Link>
   )

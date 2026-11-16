@@ -48,6 +48,8 @@ Every request a page makes has four states. Design each one:
 3. **Error.** The message from `src/lib/apiErrors.ts` or the API's own `message`, in `text-destructive`, plus the action that fixes it: a 402 links to `/billing`.
 4. **Result.** The answer is the headline: the largest text, at the top of its card, with its main action beside it. Supporting facts (status, counts, ids, register labels) are small and muted, in a label line or a footer.
 
+**Navigation.** Feedback for an in-flight internal navigation comes from the site-wide progress bar in the root layout (`NavigationProgressBar`). Pages and links do not add their own pending UI for route changes. A link whose `onClick` cancels the navigation (so the bar must not start) sets `data-no-progress` on the anchor; `HomeLink` does this while `pathname === '/'`.
+
 ## Checking it
 
 Layout, overflow and colour need a real browser (AGENTS.md, Tests). An enx-ui page redesign adds a Playwright spec, signed in with the API mocked, in the style of `e2e/word-lookup.spec.ts`: at 375px wide the page doesn't scroll sideways and the controls stay on screen. The PR lists what was checked by eye at desktop width and in dark mode; for an enx-chrome surface, what was checked in a real Chrome.

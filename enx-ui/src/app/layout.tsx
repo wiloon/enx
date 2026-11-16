@@ -1,8 +1,10 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import { ClerkProvider } from '@clerk/nextjs'
 import './globals.css'
+import NavigationProgressBar from '@/components/site/NavigationProgressBar'
 import QueryProvider from '@/providers/QueryProvider'
 import ApiAuthBridge from '@/providers/ApiAuthBridge'
 import ReferralClaimer from '@/providers/ReferralClaimer'
@@ -39,6 +41,9 @@ export default function RootLayout({
           <QueryProvider>
             <ApiAuthBridge />
             <ReferralClaimer />
+            <Suspense fallback={null}>
+              <NavigationProgressBar />
+            </Suspense>
             {children}
           </QueryProvider>
         </body>
