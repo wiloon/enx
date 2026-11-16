@@ -1,7 +1,7 @@
 ---
-status: accepted; amended by adr-085 (2026-11-14, clicked-word mark row); amended by adr-086 (proposed 2026-11-14, dark-page palette)
+status: accepted; amended by adr-085 (2026-11-14, clicked-word mark row); amended by adr-086 (2026-11-15, dark-page palette column)
 date: 2026-10-11
-related: adr-011（主窗口复习阶段下划线）、adr-025（主窗口整句底色）、adr-053（侧边栏锚点词与下划线）
+related: adr-011（主窗口复习阶段下划线）、adr-025（主窗口整句底色）、adr-053（侧边栏锚点词与下划线）、adr-086（深色宿主页面换一套色）
 ---
 
 # ADR-054：高亮配色分工——页面定位用暖黄，自己界面里的强调用产品色，复习状态用紫色下划线
@@ -10,11 +10,13 @@ related: adr-011（主窗口复习阶段下划线）、adr-025（主窗口整句
 
 我们决定**不统一**，每种颜色只负责一类标记：
 
-| 用途 | 位置 | 颜色 | 代码 |
-|------|------|------|------|
-| 定位：侧边栏正在翻译页面上哪一句 | 主窗口（别人的网页） | 暖黄底 `hsl(45 95% 55% / 35%)` | `content.tsx` `HOST_PAGE_COLORS.activeSentenceWash` |
-| 强调：这句里点的是哪个词 | 侧边栏（我们的界面） | 产品色底 `brand` 25% | `SidePanel.tsx` `enx-sp-anchor` |
-| 状态：生词复习到第几档 | 两处都有 | 紫色下划线 `oklch(… 305)` 五档 | `wordHighlight.ts` `HIGHLIGHT_BUCKET_COLORS` |
+| 用途 | 位置 | 浅色页面 | 深色页面（adr-086） | 代码 |
+|------|------|----------|---------------------|------|
+| 定位：侧边栏正在翻译页面上哪一句 | 主窗口（别人的网页） | 暖黄底 `hsl(45 95% 55% / 35%)` | `hsl(45 95% 45% / 20%)` | `wordHighlight.ts` `washColorsForTone` |
+| 被点词加深（adr-085） | 主窗口（别人的网页） | 暖黄底 `hsl(45 95% 55% / 60%)` | `hsl(45 95% 45% / 35%)` | `wordHighlight.ts` `washColorsForTone` |
+| 强调：这句里点的是哪个词 | 侧边栏（我们的界面） | 产品色底 `brand` 25% | （侧边栏主题见 adr-087；宿主色调不跟） | `SidePanel.tsx` `enx-sp-anchor` |
+| 状态：生词复习到第几档 | 主窗口 | `oklch(0.45→0.77 … 305)`，档 1 最暗 | `oklch(0.90→0.58 … 305)`，档 1 最亮 | `wordHighlight.ts` `underlineColorsForTone` |
+| 状态：生词复习到第几档 | 侧边栏原句 | 同上浅色五档（adr-086 Decision 6） | — | `reviewBucketHighlightCss()` 默认 light |
 
 两处的对应关系靠的是**同一句话的文字**，不是同一种颜色。两处标的东西也不一样：一处是整句，一处是一个词。
 
