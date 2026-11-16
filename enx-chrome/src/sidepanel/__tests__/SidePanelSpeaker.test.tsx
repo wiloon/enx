@@ -18,6 +18,7 @@ jest.mock('@/lib/pronunciation', () => ({ playPronunciation: jest.fn() }))
 import { sendMessageToBackground } from '@/services/api'
 import { playPronunciation } from '@/lib/pronunciation'
 import { latestPageWordKey, pendingSentenceKey } from '@/lib/sidePanel'
+import { installPanelHistoryChrome } from '@/test/installPanelHistoryChrome'
 import SidePanel from '../SidePanel'
 
 const PANEL_TAB_ID = 7
@@ -61,30 +62,36 @@ const speakerOf = (word: string) =>
 const anySpeaker = () =>
   screen.queryAllByTestId(/^sidepanel-play-pronunciation-/)
 
-type StorageChangeListener = (
-  changes: { [key: string]: chrome.storage.StorageChange },
-  areaName: string
-) => void
-
-let storageChangeListeners: StorageChangeListener[]
+let seedSession: ReturnType<typeof installPanelHistoryChrome>['seedSession']
+let fireStorageChange: ReturnType<
+  typeof installPanelHistoryChrome
+>['fireStorageChange']
 
 const mirrorPageLookup = (ecp: Record<string, unknown>) =>
   act(() => {
-    storageChangeListeners.forEach(listener =>
-      listener(
-        {
-          [latestPageWordKey(PANEL_TAB_ID)]: {
-            newValue: { word: 'rizzler', ecp, createdAt: 1 },
+    fireStorageChange(
+      {
+        [latestPageWordKey(PANEL_TAB_ID)]: {
+          newValue: {
+            word: 'rizzler',
+            ecp,
+            createdAt: 1,
+            eventId: 'evt-page-rizzler',
           },
         },
-        'session'
-      )
+      },
+      'session'
     )
   })
 
 const seed = (context: Record<string, unknown>) =>
-  (chrome.storage.session.get as jest.Mock).mockResolvedValue({
-    [pendingSentenceKey(PANEL_TAB_ID)]: { word: '', createdAt: 1, ...context },
+  seedSession({
+    [pendingSentenceKey(PANEL_TAB_ID)]: {
+      word: '',
+      createdAt: 1,
+      eventId: 'evt-speaker-seed',
+      ...context,
+    },
   })
 
 // Opens the panel on SENTENCE and looks up "great" inside it.
@@ -113,17 +120,12 @@ const selectWord = (text: string) => {
 beforeEach(() => {
   jest.clearAllMocks()
   window.history.replaceState({}, '', `/sidepanel.html?tabId=${PANEL_TAB_ID}`)
-  storageChangeListeners = []
   CSS.highlights.clear()
-  ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
+  const panelChrome = installPanelHistoryChrome({ tabId: PANEL_TAB_ID })
+  seedSession = panelChrome.seedSession
+  fireStorageChange = panelChrome.fireStorageChange
   ;(chrome.storage.local.get as jest.Mock).mockResolvedValue({})
   ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
-  ;(chrome.storage.onChanged.addListener as jest.Mock).mockImplementation(
-    (listener: StorageChangeListener) => storageChangeListeners.push(listener)
-  )
-  ;(chrome.storage.onChanged.removeListener as jest.Mock).mockImplementation(
-    () => {}
-  )
 })
 
 describe('a word card', () => {

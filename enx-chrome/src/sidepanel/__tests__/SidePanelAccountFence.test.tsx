@@ -31,6 +31,7 @@ import { createClerkClient } from '@clerk/chrome-extension/client'
 import { sendMessageToBackground } from '@/services/api'
 import { __resetClerkClientCacheForTests } from '@/background/background'
 import { pendingSentenceKey } from '@/lib/sidePanel'
+import { installPanelHistoryChrome } from '@/test/installPanelHistoryChrome'
 import SidePanel from '../SidePanel'
 
 type Listener = (
@@ -137,8 +138,11 @@ const gateDelivery = (type: string) => {
 }
 
 let pageListeners: Set<Listener>
-let storageListeners: Array<(changes: unknown, area: string) => void>
 let ownerWrite: Promise<void> | null
+let fireStorageChange: ReturnType<
+  typeof installPanelHistoryChrome
+>['fireStorageChange']
+let seedSession: ReturnType<typeof installPanelHistoryChrome>['seedSession']
 
 // Each sign-in, sign-out or switch gives `__client_uat` a new value.
 let clientUat = 0
@@ -278,7 +282,25 @@ beforeEach(() => {
   answered = new Map()
   pageListeners = new Set()
   ownerWrite = null
-  storageListeners = []
+  const panelChrome = installPanelHistoryChrome({ tabId: PANEL_TAB_ID })
+  fireStorageChange = panelChrome.fireStorageChange
+  seedSession = panelChrome.seedSession
+  const helperSet = (chrome.storage.session.set as jest.Mock)
+    .getMockImplementation()!
+  ;(chrome.storage.session.set as jest.Mock).mockImplementation(
+    async (items: Record<string, unknown>) => {
+      if (OWNER_KEY in items && ownerWrite) await ownerWrite
+      await helperSet(items)
+    }
+  )
+  seedSession({
+    [pendingSentenceKey(PANEL_TAB_ID)]: {
+      sentence: SENTENCE,
+      word: '',
+      createdAt: 1,
+      eventId: 'evt-fence-seed',
+    },
+  })
   clerkUserId = 'user-a'
   getToken.mockImplementation(async () => 'clerk-session-jwt')
   clerkSession = { getToken }
@@ -312,23 +334,7 @@ beforeEach(() => {
     }
   })
   global.fetch = fetchMock as unknown as typeof fetch
-  ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
-    [pendingSentenceKey(PANEL_TAB_ID)]: {
-      sentence: SENTENCE,
-      word: '',
-      createdAt: 1,
-    },
-  })
-  ;(chrome.storage.session.set as jest.Mock).mockImplementation(
-    async (items: Record<string, unknown>) => {
-      if (OWNER_KEY in items && ownerWrite) await ownerWrite
-    }
-  )
   ;(chrome.storage.local.get as jest.Mock).mockResolvedValue({})
-  ;(chrome.storage.onChanged.addListener as jest.Mock).mockImplementation(
-    (listener: (changes: unknown, area: string) => void) =>
-      storageListeners.push(listener)
-  )
   ;(chrome.tabs.query as jest.Mock).mockResolvedValue([])
   ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
   // The panel's own listeners, which hear what the worker sends to
@@ -461,15 +467,18 @@ describe('two requests when one gets a confirmed session loss', () => {
     const finishOwnerUpdate = ownerUpdate()
 
     act(() => {
-      storageListeners.forEach(listener =>
-        listener(
-          {
-            [pendingSentenceKey(PANEL_TAB_ID)]: {
-              newValue: { sentence: OTHER_SENTENCE, word: '', createdAt: 2 },
+      fireStorageChange(
+        {
+          [pendingSentenceKey(PANEL_TAB_ID)]: {
+            newValue: {
+              sentence: OTHER_SENTENCE,
+              word: '',
+              createdAt: 2,
+              eventId: 'evt-fence-other',
             },
           },
-          'session'
-        )
+        },
+        'session'
       )
     })
     await expiredBy(second)

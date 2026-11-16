@@ -31,6 +31,7 @@ import { createClerkClient } from '@clerk/chrome-extension/client'
 import { sendMessageToBackground } from '@/services/api'
 import { __resetClerkClientCacheForTests } from '@/background/background'
 import { pendingSentenceKey } from '@/lib/sidePanel'
+import { installPanelHistoryChrome } from '@/test/installPanelHistoryChrome'
 import SidePanel from '../SidePanel'
 
 type Listener = (
@@ -276,28 +277,30 @@ beforeEach(() => {
   pageListeners = new Set()
   ownerWrite = null
   mints = []
+  const { seedSession } = installPanelHistoryChrome({ tabId: PANEL_TAB_ID })
+  const helperSet = (chrome.storage.session.set as jest.Mock)
+    .getMockImplementation()!
+  ;(chrome.storage.session.set as jest.Mock).mockImplementation(
+    async (items: Record<string, unknown>) => {
+      if (OWNER_KEY in items && ownerWrite) await ownerWrite
+      await helperSet(items)
+    }
+  )
+  seedSession({
+    [pendingSentenceKey(PANEL_TAB_ID)]: {
+      sentence: SENTENCE,
+      word: '',
+      createdAt: 1,
+      eventId: 'evt-unverified-seed',
+    },
+  })
   clerkUserId = 'user-a'
   ;(createClerkClient as jest.Mock).mockImplementation(async () => ({
     session: { getToken },
     user: { id: clerkUserId },
   }))
   global.fetch = fetchMock as unknown as typeof fetch
-  ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
-    [pendingSentenceKey(PANEL_TAB_ID)]: {
-      sentence: SENTENCE,
-      word: '',
-      createdAt: 1,
-    },
-  })
-  ;(chrome.storage.session.set as jest.Mock).mockImplementation(
-    async (items: Record<string, unknown>) => {
-      if (OWNER_KEY in items && ownerWrite) await ownerWrite
-    }
-  )
   ;(chrome.storage.local.get as jest.Mock).mockResolvedValue({})
-  ;(chrome.storage.onChanged.addListener as jest.Mock).mockImplementation(
-    () => {}
-  )
   ;(chrome.tabs.query as jest.Mock).mockResolvedValue([])
   ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
   ;(chrome.runtime.onMessage.addListener as jest.Mock).mockImplementation(
@@ -376,6 +379,9 @@ describe.each(Object.entries(KINDS))('an unverified %s request', (_, kind) => {
     await expectUnverifiedRow(kind)
 
     fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
+    await waitFor(() =>
+      expect(screen.getByTestId('sidepanel-undo-clear')).toBeInTheDocument()
+    )
     fireEvent.click(screen.getByTestId('sidepanel-undo-clear'))
 
     await expectUnverifiedRow(kind)
