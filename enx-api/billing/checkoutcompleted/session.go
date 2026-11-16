@@ -23,12 +23,24 @@ var dahliaVersions = map[string]bool{
 	"2026-08-26.dahlia": true,
 }
 
+// Stripe payment_status values that let a top-up grant credits. Top-ups are
+// the only checkout path that reads this field: subscription-mode sessions
+// grant nothing from it.
+const (
+	paymentStatusPaid              = "paid"
+	paymentStatusNoPaymentRequired = "no_payment_required"
+)
+
 // Session is a completed Checkout Session, normalized across supported API
 // versions. The IDs are "" where the session has none.
 type Session struct {
 	ID string
 	// Mode is "payment" or "subscription".
-	Mode              string
+	Mode string
+	// PaymentStatus is Stripe's checkout.session.payment_status:
+	// "paid", "unpaid", or "no_payment_required". Only top-ups consult it;
+	// anything other than paid/no_payment_required is an unsettled top-up
+	// and the event lands in needs_attention (ReasonTopUpPaymentNotSettled).
 	PaymentStatus     string
 	ClientReferenceID string
 	CustomerID        string

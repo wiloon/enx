@@ -442,13 +442,50 @@ func TestDecodeEventReadsPaymentStatus(t *testing.T) {
 }
 
 func TestUnsettledTopUpNeedsAttentionWithoutEffects(t *testing.T) {
-	for _, status := range []string{"unpaid", "", "unknown", "missing"} {
-		t.Run(status, func(t *testing.T) {
-			object := topUpSession().with("payment_status", status)
-			if status == "missing" {
+	for _, c := range []struct {
+		name string
+		// status is the value placed at payment_status; when missing is true
+		// the key is deleted from the fixture and status is ignored.
+		nameInFixture string
+		missing       bool
+	}{
+		{name: "unpaid", missing: false},
+		{name: "empty string", missing: false},
+		{name: "unknown future value", missing: false},
+		{name: "payment_status absent", missing: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			object := topUpSession()
+			if c.missing {
 				delete(object, "payment_status")
+			} else {
+				object = object.with("payment_status", c.name)
 			}
 			r := handle(storeWith(t, object))
+			wantStep(t, r, webhookevent.Unrecoverable, "topup_payment_not_settled")
+			if r.Effects != nil {
+				t.Fatalf("effects = %#v, want none", r.Effects)
+			}
+		})
+	}
+}
+
+// TestTopUpPaymentNotSettledBeatsDeletionPaths pins the order of checks: a
+// top-up whose payment is unpaid must refuse even if the payer's account is
+// being deleted. The stored payload still says "unpaid" after all, so
+// RetryByOperator would hit the same reason (it cannot un-settle a charge).
+func TestTopUpPaymentNotSettledBeatsDeletionPaths(t *testing.T) {
+	for _, c := range []struct {
+		deletion acceptance.Deletion
+		name     string
+	}{
+		{acceptance.DeletionInProgress, "deletion in progress"},
+		{acceptance.DeletionCompleted, "deletion completed"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			store := storeWith(t, topUpSession().with("payment_status", "unpaid"))
+			store.owners = map[string]Owner{"user_1": {Revision: 3, Deletion: c.deletion}}
+			r := handle(store)
 			wantStep(t, r, webhookevent.Unrecoverable, "topup_payment_not_settled")
 			if r.Effects != nil {
 				t.Fatalf("effects = %#v, want none", r.Effects)

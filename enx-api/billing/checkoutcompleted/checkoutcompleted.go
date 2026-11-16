@@ -183,7 +183,7 @@ func (h *Handler) Handle(ctx context.Context, s webhookevent.StoredTask) webhook
 		if credits = h.topUpCredits[cs.Metadata["tier"]]; credits <= 0 {
 			return unrecoverable(ReasonTopUpCreditsUnset, nil)
 		}
-		if cs.PaymentStatus != "paid" && cs.PaymentStatus != "no_payment_required" {
+		if cs.PaymentStatus != paymentStatusPaid && cs.PaymentStatus != paymentStatusNoPaymentRequired {
 			return unrecoverable(ReasonTopUpPaymentNotSettled, nil)
 		}
 		recorded, err := h.store.TopUpRecorded(ctx, cs.ID)
