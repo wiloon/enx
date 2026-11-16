@@ -215,6 +215,9 @@ func (w WebhookEffects) applyCheckoutCompleted(tx *gorm.DB, scope webhookevent.S
 		if err != nil {
 			return err
 		}
+		// Not foldable into the revision check above: a deleted user has no
+		// users row, so billingRevision reports revision 0 and a handler that
+		// also observed 0 passes it. This branch is what stops that race.
 		if !userExists || deletion != acceptance.NoDeletion {
 			return checkoutcompleted.ErrStale
 		}
