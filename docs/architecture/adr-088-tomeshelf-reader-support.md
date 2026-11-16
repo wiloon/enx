@@ -32,6 +32,7 @@ tomeshelf 是用户自托管的 EPUB 阅读器（独立仓库 wiloon/tomeshelf�
      - 学习模式已开（弹窗或「本站总是启用」）：取消正在进行的首次运行（`initialRunner.cancel()`，作废当前 lifecycle），撤掉默认适配器的处理结果，再按 tomeshelf 适配器重新开启：启动 SPA 重建监听，按 `readySelector` 等待（`INITIAL_READY_TIMEOUT_MS`），然后处理并报告状态。
      - 学习模式关着，而原因是加载时的自动开启失败回滚了（或还没跑完）：重新走一次自动开启（重新问后台是否授权）；这次是 SPA 适配器，首次运行没找到文章也不回滚（adr-039 / adr-033 的现有规则）。
      - 学习模式关着，而原因是用户自己关了或本站没授权：什么也不做。
+     - 被取代的旧运行不能再动页面：迟到识别时若加载时的自动开启还在等结果（`runAutoEnable` 还在 `await enable()`），它的结果属于已作废的 lifecycle。旧运行之后无论以失败、取消还是异常结束，都不得调用 `disable()`、回滚或报告状态，也不得覆盖新运行的状态；只有当前 lifecycle 的运行能回滚。
 2. **文章是 `#tomeshelf-content`，`contentVolatility` 是 `spa`。** 页内跳转后按 adr-011 Decision 6 重新识别文章、重新处理正文，并像其他 SPA 站点一样重新报告学习模式状态，角标随之恢复。`readySelector` 用 `#tomeshelf-content`，等它非空且安静后再处理；`minTextLength` 为 1（插图页、很短的文档也要能用）；`wholePageOnMiss` 不开，契约保证文章节点存在。
 3. **角标恢复不依赖时序。** 后台在 `loading` 时清掉角标，内容脚本在重建完成后重新报告；如果清角标晚于重新报告到达，角标会再次消失。实现必须保证页内跳转后最终显示的是重建后的状态（例如重建在 `loading` 之后才报告，或后台对页内跳转不清角标），并用测试锁定：后台的单元测试通过已注册的 `tabs.onUpdated` 监听和状态消息处理，分别按「先清后报」和「先报后清」两种顺序驱动一次页内跳转，最终角标都是开启状态；整页跳转（新文档）照旧清掉角标，等新页面报告。E2E 测试锁定页内跳转后角标仍是开启状态、新文档能点击查词。
 4. **书标识来自 `tomeshelf:book`，不来自地址。** adr-081 Decision 4 的 `bookKey` 今天只拿 `href`；tomeshelf 的书 id 在契约里只出现在 meta 标签上（契约明确说 URL 路径不属于契约），所以 `bookKey` 要能读页面。书标识由页面的 origin（含端口）和 `tomeshelf:book` 的值组成；不同实例上的同一本书是不同的书。书 id 在契约里是不透明的字符串，所以按数据编码，不拼进路径：`bookKey` 是 `new URL('/', location.origin)` 上用 `searchParams.set('enx-tomeshelf-book', id)` 得到的地址，例如 `https://tomeshelf.wiloon.lab/?enx-tomeshelf-book=9f2c…`。这个形式是 `savedPageKey` 的不动点（http(s)、无 fragment、参数名不是追踪参数），能通过后台 `checkAnchor` 的校验，id 里的 `/ ? # & = % + '`、空格和非 ASCII 字符都不会在规范化时丢失或改变。锚点的 `sourceUrl` 仍是当前文档规范化后的真实地址。一本书的所有文档共用一个阅读位置（钉住的句子由 #899 加到同一条书记录上，到时自然共用这个书标识）。meta 缺失或为空时退回规范化后的页面地址（今天的行为）。
@@ -59,3 +60,4 @@ tomeshelf 是用户自托管的 EPUB 阅读器（独立仓库 wiloon/tomeshelf�
 ## 修订记录
 
 - 2026-11-15（issue #907 规格评审第 1 轮）：tomeshelf 的 meta 在阅读视图异步挂载后才出现，`document_end` 时不一定在，改为持续识别、迟到识别时取消并重新开启（Decision 1、Consequences）；书标识改为在 origin 上用查询参数编码不透明的书 id，保证通过 `savedPageKey` 和后台校验（Decision 4）；钉住句子和侧边栏阅读位置操作尚未实现（#899），从「照常工作」改为以后的使用者（Decision 4、5）；角标时序要求两种顺序的确定性单元测试（Decision 3）。
+- 2026-11-15（issue #907 规格评审第 2 轮）：迟到识别时加载时的自动开启可能还没结束，`runAutoEnable` 失败后会调用 `disable()`；规定被取代的旧运行结束时不得回滚、报告状态或覆盖新运行（Decision 1）。
