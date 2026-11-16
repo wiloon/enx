@@ -70,7 +70,7 @@ func adminWordRowFrom(w *repo.Word) adminWordRow {
 }
 
 // adminEcdictRow is the matched ECDICT stardict row plus which fallback
-// strategy hit ("exact" / "lower" / "sw" / "exchange").
+// strategy hit ("exact" / "sw"). No exchange reverse lookup (#959).
 type adminEcdictRow struct {
 	Found       bool   `json:"found"`
 	MatchedBy   string `json:"matchedBy,omitempty"`

@@ -52,8 +52,8 @@ func TestAdminEcdictHandlersNeedEcdict(t *testing.T) {
 }
 
 // adminDictionary mounts the admin dictionary handlers on a fresh app
-// database and an ECDICT holding "hello" and "run" (with "running" as an
-// inflection).
+// database and an ECDICT holding "hello", "run", and "ran" (an inflected
+// form that is itself a headword, as in real ECDICT).
 func adminDictionary(t *testing.T) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -61,6 +61,7 @@ func adminDictionary(t *testing.T) *gin.Engine {
 	ecdict.Init(ecdicttest.Create(t,
 		ecdicttest.Row{Word: "hello", Sw: "hello", Phonetic: "/həˈloʊ/", Translation: "int. 你好；喂"},
 		ecdicttest.Row{Word: "run", Sw: "run", Phonetic: "/rʌn/", Translation: "v. 跑；奔跑\nn. 奔跑", Exchange: "i:running/d:ran"},
+		ecdicttest.Row{Word: "ran", Sw: "ran", Phonetic: "/ræn/", Translation: "v. 跑（过去式）"},
 	))
 	t.Cleanup(func() { ecdict.Init("") })
 
@@ -144,9 +145,13 @@ func TestAdminGetEcdictShowsTheRawRowAndHowItMatched(t *testing.T) {
 		body["sw"] != "hello" || body["phonetic"] != "/həˈloʊ/" || body["translation"] != "int. 你好；喂" {
 		t.Fatalf("GET ecdict/hello = %d %v, want the exact row", code, body)
 	}
+	code, body = serve(t, r, http.MethodGet, "/ecdict/ran", nil)
+	if code != http.StatusOK || body["matchedBy"] != "exact" || body["word"] != "ran" || body["translation"] != "v. 跑（过去式）" {
+		t.Fatalf("GET ecdict/ran = %d %v, want ran via exact (inflected headword)", code, body)
+	}
 	code, body = serve(t, r, http.MethodGet, "/ecdict/running", nil)
-	if code != http.StatusOK || body["matchedBy"] != "exchange" || body["word"] != "run" || body["exchange"] != "i:running/d:ran" {
-		t.Fatalf("GET ecdict/running = %d %v, want run via exchange", code, body)
+	if code != http.StatusOK || len(body) != 1 || body["found"] != false {
+		t.Fatalf("GET ecdict/running = %d %v, want 200 {found:false} (exchange-only form)", code, body)
 	}
 	code, body = serve(t, r, http.MethodGet, "/ecdict/serendipity", nil)
 	if code != http.StatusOK || len(body) != 1 || body["found"] != false {
@@ -157,12 +162,12 @@ func TestAdminGetEcdictShowsTheRawRowAndHowItMatched(t *testing.T) {
 func TestAdminSyncFromEcdictAnswersWithTheWrittenRow(t *testing.T) {
 	r := adminDictionary(t)
 
-	code, body := serve(t, r, http.MethodPost, "/words/running/sync-from-ecdict", nil)
+	code, body := serve(t, r, http.MethodPost, "/words/ran/sync-from-ecdict", nil)
 
 	word, _ := body["word"].(map[string]any)
-	if code != http.StatusOK || body["success"] != true || body["matchedBy"] != "exchange" ||
-		word["found"] != true || word["english"] != "running" || word["chinese"] != "v. 跑；奔跑\nn. 奔跑" || word["pronunciation"] != "/rʌn/" {
-		t.Fatalf("sync = %d %v, want the words row written from run", code, body)
+	if code != http.StatusOK || body["success"] != true || body["matchedBy"] != "exact" ||
+		word["found"] != true || word["english"] != "ran" || word["chinese"] != "v. 跑（过去式）" || word["pronunciation"] != "/ræn/" {
+		t.Fatalf("sync = %d %v, want the words row written from ran", code, body)
 	}
 }
 

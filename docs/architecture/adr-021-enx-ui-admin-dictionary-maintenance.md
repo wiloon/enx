@@ -91,8 +91,8 @@ ADR-018 刚**删掉**了独立的 `GET /ecdict`（无客户端的死接口），
 
 | 方案 | 做法 | 结论 |
 | --- | --- | --- |
-| D1. 只 `word = ?` 精确匹配 | 最简单 | 看不到「用户点 `running` 时翻译路径实际命中的是 `run` 的 exchange 行」这种情况，一致性判断会误报 |
-| **D2.（采用）复刻 `ecdict.lookupEntry` 的回退链**（exact → lower → sw → exchange），并在响应里报告**哪一步命中**、命中行的 `word` 是什么 | 管理员看到的就是翻译路径会用的那条 ECDICT 记录，一致性判断才有意义。需要 `ecdict` 包导出一个返回原始 `stardict`（`word/sw/phonetic/translation/exchange` 全字段）+ 命中策略的查询函数（现有 `Query` 返回的是精简过的 `*enx.Dictionary`，丢了 `sw`/`exchange`，且不报命中策略） |
+| D1. 只 `word = ?` 精确匹配 | 最简单 | 看不到「用户点 `U.S.` 时翻译路径经 `sw` 命中」这类情况，一致性判断会误报 |
+| **D2.（采用）复刻 `ecdict.lookupEntry` 的回退链**（exact → sw；#959 起无 exchange），并在响应里报告**哪一步命中**、命中行的 `word` 是什么 | 管理员看到的就是翻译路径会用的那条 ECDICT 记录，一致性判断才有意义。需要 `ecdict` 包导出一个返回原始 `stardict`（`word/sw/phonetic/translation/exchange` 全字段）+ 命中策略的查询函数（现有 `Query` 返回的是精简过的 `*enx.Dictionary`，丢了 `sw`/`exchange`，且不报命中策略） |
 
 ### E. 本期写操作的边界
 
@@ -134,7 +134,7 @@ ADR-018 刚**删掉**了独立的 `GET /ecdict`（无客户端的死接口），
 
    端点：
    - `GET /api/admin/words/:word` → 直接查 `words` 表（`english` 精确 + 大小写不敏感，包含 `deleted_at IS NOT NULL` 的软删行也返回并标记），返回原始行全字段（`id, english, chinese, pronunciation, load_count, created_at, updated_at, deleted_at`）或 `{ found: false }`。
-   - `GET /api/admin/ecdict/:word` → 复刻 `ecdict.lookupEntry` 回退链（exact → lower → sw → exchange），返回命中的 `stardict` 全字段（`word, sw, phonetic, translation, exchange`）+ `matchedBy`（哪一步命中）或 `{ found: false }`；ECDICT 未配置 → 503（复用 `dictionary.RespondUnavailable`）。
+   - `GET /api/admin/ecdict/:word` → 复刻 `ecdict.lookupEntry` 回退链（exact → sw；#959 起无 exchange），返回命中的 `stardict` 全字段（`word, sw, phonetic, translation, exchange`）+ `matchedBy`（哪一步命中）或 `{ found: false }`；ECDICT 未配置 → 503（复用 `dictionary.RespondUnavailable`）。
    - 需要 `ecdict` 包导出一个 `LookupRaw(ctx, word) (StardictRow, matchedBy string, found bool)`（当前 `stardict` 类型未导出、`Query` 有损）。
 
 4. **enx-api：一个写端点**
@@ -149,7 +149,7 @@ ADR-018 刚**删掉**了独立的 `GET /ecdict`（无客户端的死接口），
    - 「Sync from ECDICT」按钮：ECDICT found 时可用；点击 → `adminSyncWordFromEcdict` → 成功后 invalidate 两个 query 重新拉取。
 
 6. **测试**
-   - enx-api：`RequireAdmin`（`clerk_user_id` 不在名单 → 403；在名单 → 放行；空名单 → 403）；`isAdminClerkUser` 抽出后 `GrantCredits` 现有测试仍绿；`GetMe` 返回 `isAdmin`（在/不在名单两种）；`GET /api/admin/words/:word`（命中 / 未命中 / 软删行）；`GET /api/admin/ecdict/:word`（exact / exchange 回退命中 + `matchedBy` / 未命中 / ECDICT 未配置 503）；写端点（新建 / 覆盖 / ECDICT 未命中 409 / 幂等 / 审计日志）；三个新端点用非管理员 token → 403。
+   - enx-api：`RequireAdmin`（`clerk_user_id` 不在名单 → 403；在名单 → 放行；空名单 → 403）；`isAdminClerkUser` 抽出后 `GrantCredits` 现有测试仍绿；`GetMe` 返回 `isAdmin`（在/不在名单两种）；`GET /api/admin/words/:word`（命中 / 未命中 / 软删行）；`GET /api/admin/ecdict/:word`（exact / sw 回退命中 + `matchedBy` / 未命中 / ECDICT 未配置 503）；写端点（新建 / 覆盖 / ECDICT 未命中 409 / 幂等 / 审计日志）；三个新端点用非管理员 token → 403。
    - enx-ui：`admin/layout` 非管理员 → 404、管理员 → children、加载中 → spinner；`AppSidebar` 在 `isAdmin` 下渲染 Admin 组、否则不渲染；页面一致性判断四种状态；Sync 按钮禁用/启用条件与成功后刷新。
    - `src/__tests__/clerk-routing.test.ts` 不变量继续成立。
 
@@ -160,7 +160,7 @@ ADR-018 刚**删掉**了独立的 `GET /ecdict`（无客户端的死接口），
 - **A1（复用 env allowlist）而非 A2（角色系统）**：当前 N=1 管理员且几乎不变。`admin.go` 的注释把 allowlist 叫「过渡方案」，但「过渡到什么」的触发条件是「outgrows an env var」——一个人、一个功能，没有 outgrow。A2 的收益（运行时改名单、身份服务里维护）在第二个管理员出现前是零，成本（两个 Clerk 实例的 session-token 定制、漏配即静默 403）是实打实的。复用 allowlist 还顺带把 `GrantCredits` 和新端点统一到**一套**判断上。升级路径清晰（见 Revisit），真到那天再迁不迟。
 - **B2（两端点分开、独立 handler）而非 B1/B3**：用户明确要两个。更根本的是——普通查词路径 `translateWord` 带着一串面向用户的副作用（计量、`words`/ECDICT 择一、ECDICT 回填、`user_dicts` 复习计数、结果精简成单一 `enx.Word`），admin 要的是「两张表各自的原始行、零副作用、不受配额约束」，这**只能靠独立 handler**，在用户路径上加 `?debug=1`（B3）既污染主路径、又要在主路径里判断请求方身份。两个数据源本就无关（`words` 可写的 SQLite 缓存 / ECDICT 只读第三方词库），分开的端点各自单一职责、各自可独立测试，不用发明耦合的响应结构。
 - **不计量（C/F）**：ADR-018 收敛的是「用户把词解析成释义」的所有路径。维护页两个原样端点 + 一个同步写不是那个动作，是运维。`RequireAdmin` 已经排除了普通用户，没有「绕过配额刷词」的滥用面。这是对 ADR-018 的**补充**（明确「维护端点在计量范围外」），不是翻案。
-- **D2（复刻回退链）而非 D1**：一致性判断要有意义，管理员必须看到翻译路径**实际**会用的那条 ECDICT 记录（可能是 `sw` 或 `exchange` 命中的另一个词），而不只是精确匹配。
+- **D2（复刻回退链）而非 D1**：一致性判断要有意义，管理员必须看到翻译路径**实际**会用的那条 ECDICT 记录（可能是 `sw` 命中的另一个词），而不只是精确匹配。
 - **E（只做 ECDICT→words 同步）**：这是用户对本期范围的明确收窄，也确实覆盖了维护的主要现实用途。泛化 CRUD 的每一项都带独立的语义决策（删除的软硬、自由编辑与回填优先级、审计粒度），不该在一个 ADR 里囫囵吞。
 - **回写不怕被回填覆盖**：`fillFromEcdict` 只在本地无行时 `Save()`，有行后翻译路径永不更新。所以不需要 `source` / `manual` 标记列（用户也选了不加）。
 
@@ -218,3 +218,7 @@ ADR-018 刚**删掉**了独立的 `GET /ecdict`（无客户端的死接口），
 - **需要真正的词条编辑**（自由改释义、删除、批量导入）：那时要正面回答删除的软/硬 + `user_dicts` 级联、手工值与回填的优先级（可能就是那时候加 `source` 列）、审计粒度——单独 ADR。
 - **维护页要看的不止 `words` vs ECDICT**（比如还要对比 enx-sync 侧、或某个用户的 `user_dicts`）：两个原样端点的模式可能要重新组织。
 - **enx-chrome 缓存的旧释义造成困扰**：给 `words` 回写加一个 `wordCache` 失效信号（版本号 / 时间戳），或缩短客户端缓存 TTL。
+
+## 修订记录
+
+- 2026-11-16（[#959](https://github.com/wiloon/enx/issues/959)）：D2 / Decision 3 的回退链从「exact → lower → sw → exchange」改为与 `ecdict.lookupEntry` 现行一致的 exact → `sw`（无 `exchange` 反查）。`matchedBy` 不再出现 `"exchange"`。

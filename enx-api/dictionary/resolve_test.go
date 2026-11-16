@@ -69,8 +69,8 @@ func (f *fakeWords) Add(_ context.Context, e Entry) (string, error) {
 	return id, nil
 }
 
-// fakeExternal is an in-memory ExternalDictionary; forms maps an inflection
-// to its headword, the way ECDICT's exchange column does.
+// fakeExternal is an in-memory ExternalDictionary; forms maps a query to the
+// English the external dictionary returns (e.g. sw matching "us" → "U.S.").
 type fakeExternal struct {
 	unavailable bool
 	entries     map[string]Entry
@@ -201,8 +201,8 @@ func TestResolveExternalHitIsCached(t *testing.T) {
 	}
 }
 
-// An inflection resolves to its headword; when the headword is already
-// cached, its row is reused.
+// When the external dictionary returns a different English than the query
+// (e.g. sw), and that English is already cached, its row is reused.
 func TestResolveInflectionReusesCachedHeadword(t *testing.T) {
 	svc, words, _ := newTestService()
 	words.seed("w-run", run)

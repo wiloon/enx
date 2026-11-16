@@ -137,20 +137,36 @@ func TestWordsTableAddReturnsExistingRowForCachedHeadword(t *testing.T) {
 }
 
 func TestEcdictLookup(t *testing.T) {
-	setupEcdict(t, [5]string{"run", "run", "rʌn", "v. 跑", "p:ran/d:run/i:running/3:runs"})
+	setupEcdict(t,
+		[5]string{"run", "run", "rʌn", "v. 跑", "p:ran/d:run/i:running/3:runs"},
+		[5]string{"ran", "ran", "ræn", "v. 跑（过去式）", ""},
+		[5]string{"U.S.", "us", "", "美国", ""},
+	)
 	ctx := context.Background()
 
 	if !(Ecdict{}).Available() {
 		t.Fatal("Available() = false with a database configured")
 	}
-	want := dictionary.Entry{English: "run", Chinese: "v. 跑", Pronunciation: "rʌn"}
-	for _, english := range []string{"run", "RUN", "ran"} {
-		if got, err := (Ecdict{}).Lookup(ctx, english); err != nil || got != want {
-			t.Fatalf("Lookup(%q) = %+v, %v; want %+v", english, got, err, want)
+	wantRun := dictionary.Entry{English: "run", Chinese: "v. 跑", Pronunciation: "rʌn"}
+	for _, english := range []string{"run", "RUN"} {
+		if got, err := (Ecdict{}).Lookup(ctx, english); err != nil || got != wantRun {
+			t.Fatalf("Lookup(%q) = %+v, %v; want %+v", english, got, err, wantRun)
 		}
 	}
-	if _, err := (Ecdict{}).Lookup(ctx, "zzxqv"); !errors.Is(err, dictionary.ErrNotInDictionary) {
-		t.Fatalf("Lookup(zzxqv) = %v, want ErrNotInDictionary", err)
+	// Inflected forms that are headwords match as themselves (#959).
+	wantRan := dictionary.Entry{English: "ran", Chinese: "v. 跑（过去式）", Pronunciation: "ræn"}
+	if got, err := (Ecdict{}).Lookup(ctx, "ran"); err != nil || got != wantRan {
+		t.Fatalf("Lookup(ran) = %+v, %v; want %+v", got, err, wantRan)
+	}
+	wantUS := dictionary.Entry{English: "U.S.", Chinese: "美国"}
+	if got, err := (Ecdict{}).Lookup(ctx, "us"); err != nil || got != wantUS {
+		t.Fatalf("Lookup(us) = %+v, %v; want %+v via sw", got, err, wantUS)
+	}
+	// Exchange-only forms and true misses are ErrNotInDictionary.
+	for _, english := range []string{"running", "zzxqv"} {
+		if _, err := (Ecdict{}).Lookup(ctx, english); !errors.Is(err, dictionary.ErrNotInDictionary) {
+			t.Fatalf("Lookup(%q) = %v, want ErrNotInDictionary", english, err)
+		}
 	}
 }
 

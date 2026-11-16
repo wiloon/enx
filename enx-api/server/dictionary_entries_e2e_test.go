@@ -90,8 +90,8 @@ func TestE2E_DictionaryEntriesOverQueryAndPostFallback(t *testing.T) {
 			t.Fatalf("%s: %d results %+v, want 3 (hello once)", route.method, len(results), results)
 		}
 		running, hello, miss := results[0], results[1], results[2]
-		if running.Word != "running" || running.Status != "found" || running.English != "run" || running.Id == nil || *running.Id == "" {
-			t.Errorf("%s: running = %+v, want found under its own key with headword run and an id", route.method, running)
+		if running.Word != "running" || running.Status != "found" || running.English != "running" || running.Id == nil || *running.Id == "" {
+			t.Errorf("%s: running = %+v, want found under its own key as the headword running with an id", route.method, running)
 		}
 		if hello.Word != "hello" || hello.Status != "found" || !strings.Contains(hello.Chinese, "你好") || hello.Origin != "ecdict" {
 			t.Errorf("%s: hello = %+v, want found with its ECDICT definition", route.method, hello)
