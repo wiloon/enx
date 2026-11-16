@@ -122,6 +122,15 @@ func TestReferralsLifecycle(t *testing.T) {
 	if got, _, _ = refs.Get(ctx, "bob"); got.Status != referral.StatusRewarded {
 		t.Fatalf("status = %s, want still rewarded", got.Status)
 	}
+	// MarkRewarded itself is idempotent: a row that is already rewarded keeps
+	// its original reward time and no forfeit reason ever lands on it.
+	if err := refs.MarkRewarded(ctx, "bob", due.Add(2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	got, _, _ = refs.Get(ctx, "bob")
+	if got.Status != referral.StatusRewarded || got.ForfeitReason != "" || !got.RewardedAt.Equal(due) {
+		t.Fatalf("re-rewarded = %+v, want unchanged", got)
+	}
 }
 
 func TestReferralsMarkForfeited(t *testing.T) {

@@ -136,22 +136,32 @@ func (Referrals) SetPaymentIntent(ctx context.Context, inviteeID, paymentIntentI
 // MarkRewarded reconciles pending or forfeited rows after a committed grant.
 // An already rewarded row never changes.
 func (Referrals) MarkRewarded(ctx context.Context, inviteeID string, at time.Time) error {
-	return sqlitex.DB.WithContext(ctx).Model(&sqlitex.Referral{}).
-		Where("invitee_user_id = ? AND status IN ?", inviteeID, []string{string(referral.StatusPending), string(referral.StatusForfeited)}).
-		Updates(map[string]any{
-			"status": string(referral.StatusRewarded), "rewarded_at": at.UnixMilli(), "updated_at": at.UnixMilli(), "forfeit_reason": "",
-		}).Error
+	return settleReferral(ctx, inviteeID,
+		[]string{string(referral.StatusPending), string(referral.StatusForfeited)},
+		map[string]any{
+			"status":         string(referral.StatusRewarded),
+			"rewarded_at":    at.UnixMilli(),
+			"updated_at":     at.UnixMilli(),
+			"forfeit_reason": "",
+		})
 }
 
 func (Referrals) MarkForfeited(ctx context.Context, inviteeID, reason string, at time.Time) error {
-	return settleReferral(ctx, inviteeID, map[string]any{
-		"status": string(referral.StatusForfeited), "forfeit_reason": reason, "updated_at": at.UnixMilli(),
-	})
+	return settleReferral(ctx, inviteeID,
+		[]string{string(referral.StatusPending)},
+		map[string]any{
+			"status":         string(referral.StatusForfeited),
+			"forfeit_reason": reason,
+			"updated_at":     at.UnixMilli(),
+		})
 }
 
-func settleReferral(ctx context.Context, inviteeID string, updates map[string]any) error {
+// settleReferral is the shared UPDATE helper. Each caller passes the statuses
+// it allows the row to have before the write, so the "already settled" rule
+// sits next to the map of what to settle into.
+func settleReferral(ctx context.Context, inviteeID string, allowed []string, updates map[string]any) error {
 	return sqlitex.DB.WithContext(ctx).Model(&sqlitex.Referral{}).
-		Where("invitee_user_id = ? AND status = ?", inviteeID, string(referral.StatusPending)).
+		Where("invitee_user_id = ? AND status IN ?", inviteeID, allowed).
 		Updates(updates).Error
 }
 
