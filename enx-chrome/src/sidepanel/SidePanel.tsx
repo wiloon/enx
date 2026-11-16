@@ -867,14 +867,21 @@ function SidePanelContent() {
 
   useEffect(() => {
     const abort = new AbortController()
+    let release: (() => void) | undefined
     void navigator.locks
       .request(
         panelAliveLockName(instanceId),
         { signal: abort.signal },
-        () => new Promise<void>(() => {})
+        () =>
+          new Promise<void>(resolve => {
+            release = resolve
+          })
       )
       .catch(() => {})
-    return () => abort.abort()
+    return () => {
+      abort.abort()
+      release?.()
+    }
   }, [instanceId])
 
   const queueOrphanSweep = useCallback(
@@ -903,9 +910,11 @@ function SidePanelContent() {
     if (clearExpiresAt === undefined) return
     const delay = Math.max(0, clearExpiresAt - Date.now())
     const timer = setTimeout(() => {
-      void store.discardClearedGeneration(tabId, clearGeneration).then(result => {
-        if (result.committed) publishRef.current(result.state)
-      })
+      void store
+        .discardClearedGeneration(tabId, clearGeneration)
+        .then(result => {
+          if (result.committed) publishRef.current(result.state)
+        })
     }, delay)
     return () => clearTimeout(timer)
   }, [tabId, clearGeneration, clearExpiresAt, store])
@@ -1110,9 +1119,7 @@ function SidePanelContent() {
       }
       const pageWordChange = changes[pageWordKey]
       if (pageWordChange?.newValue) {
-        void claimPageWordEvent(
-          pageWordChange.newValue as LatestPageWordLookup
-        )
+        void claimPageWordEvent(pageWordChange.newValue as LatestPageWordLookup)
       }
     }
     chrome.storage.onChanged.addListener(listener)
@@ -1129,8 +1136,7 @@ function SidePanelContent() {
       ])
       if (cancelled) return
       const sentence = sentenceResult[sentenceKey] as
-        | PendingSentenceContext
-        | undefined
+        PendingSentenceContext | undefined
       const word = wordResult[pageWordKey] as LatestPageWordLookup | undefined
       const ordered: Array<
         | { kind: 'sentence'; event: PendingSentenceContext }
@@ -1417,10 +1423,12 @@ function SidePanelContent() {
   const translateSentence = useCallback(
     (id: string, sentence: string, token: number) => {
       const patch = (fields: Partial<SentenceEntry>) =>
-        void patchEntries(
-          prev => patchSentence(prev, id, fields, token),
-          { sentenceId: id, key: id, kind: 'sentence', sentencePatch: fields }
-        )
+        void patchEntries(prev => patchSentence(prev, id, fields, token), {
+          sentenceId: id,
+          key: id,
+          kind: 'sentence',
+          sentencePatch: fields,
+        })
 
       const current = accountFence.capture()
       sendMessageToBackground<BackgroundResponse>({
@@ -1620,7 +1628,11 @@ function SidePanelContent() {
         }
       }).then(result => {
         if (!result) return
-        const token = findCard(result.state.entries, sentenceId, card.key)?.token
+        const token = findCard(
+          result.state.entries,
+          sentenceId,
+          card.key
+        )?.token
         if (token === undefined) return
         void fetchDictionary(
           card.word,
@@ -1668,15 +1680,21 @@ function SidePanelContent() {
           state: {
             ...state,
             nextToken: token,
-            entries: reorderOrInsertCard(state.entries, sentenceId, key, () => ({
-              word: phrase,
+            entries: reorderOrInsertCard(
+              state.entries,
+              sentenceId,
               key,
-              token,
-              ownerInstanceId: instanceId,
-              dictionaryStatus: 'none',
-              contextStatus: 'loading',
-              contextSentence: sentenceId === undefined ? sentence : undefined,
-            })),
+              () => ({
+                word: phrase,
+                key,
+                token,
+                ownerInstanceId: instanceId,
+                dictionaryStatus: 'none',
+                contextStatus: 'loading',
+                contextSentence:
+                  sentenceId === undefined ? sentence : undefined,
+              })
+            ),
           },
           plan: [
             {
@@ -1805,14 +1823,19 @@ function SidePanelContent() {
           state: {
             ...state,
             nextToken: token,
-            entries: reorderOrInsertCard(state.entries, sentenceId, key, () => ({
-              word,
+            entries: reorderOrInsertCard(
+              state.entries,
+              sentenceId,
               key,
-              token,
-              ownerInstanceId: instanceId,
-              dictionaryStatus: 'loading',
-              contextStatus: 'loading',
-            })),
+              () => ({
+                word,
+                key,
+                token,
+                ownerInstanceId: instanceId,
+                dictionaryStatus: 'loading',
+                contextStatus: 'loading',
+              })
+            ),
           },
           plan: [
             {
@@ -1911,17 +1934,15 @@ function SidePanelContent() {
           onClick={() => {
             if (tabId === undefined) return
             clearedExpandedRef.current = new Set(expandedWords)
-            void store
-              .clear(tabId, pendingErrorsRef.current)
-              .then(result => {
-                pendingErrorsRef.current = result.remainingPending
-                if (!result.committed) {
-                  clearedExpandedRef.current = null
-                  return
-                }
-                publish(result.state)
-                setExpandedWords(new Set())
-              })
+            void store.clear(tabId, pendingErrorsRef.current).then(result => {
+              pendingErrorsRef.current = result.remainingPending
+              if (!result.committed) {
+                clearedExpandedRef.current = null
+                return
+              }
+              publish(result.state)
+              setExpandedWords(new Set())
+            })
           }}
           className="hover:text-destructive"
         >

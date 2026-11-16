@@ -1,10 +1,4 @@
-import {
-  act,
-  fireEvent,
-  render,
-  waitFor,
-  within,
-} from '@testing-library/react'
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react'
 
 jest.mock('@/lib/sentry', () => ({
   initSentry: jest.fn(),
@@ -147,35 +141,13 @@ describe('SidePanel shared history (ADR-090)', () => {
           async (
             name: string,
             optionsOrCallback:
-              | { signal?: AbortSignal }
-              | (() => Promise<unknown>),
+              { signal?: AbortSignal } | (() => Promise<unknown>),
             maybeCallback?: () => Promise<unknown>
           ) => {
             const callback =
               typeof optionsOrCallback === 'function'
                 ? optionsOrCallback
                 : maybeCallback!
-            const options =
-              typeof optionsOrCallback === 'function'
-                ? undefined
-                : optionsOrCallback
-            // Lifetime hold (has AbortSignal): keep the lock until abort so
-            // orphan sweeps queued on the same name wait, then run.
-            if (
-              String(name).startsWith('enx-panel-alive') &&
-              options?.signal
-            ) {
-              return new Promise((_resolve, reject) => {
-                heldLocks.add(name)
-                options.signal!.addEventListener('abort', () => {
-                  releaseWaiter(name)
-                  reject(
-                    options.signal?.reason ??
-                      new DOMException('Aborted', 'AbortError')
-                  )
-                })
-              })
-            }
             if (heldLocks.has(name)) {
               await new Promise<void>(resolve => {
                 const q = lockWaiters.get(name) ?? []
@@ -247,7 +219,9 @@ describe('SidePanel shared history (ADR-090)', () => {
   it('second panel mount after 5 claimed sentences shows all 5 and sends no messages', async () => {
     const history: StoredPanelHistory = {
       ...emptyPanelHistory(),
-      entries: Array.from({ length: 5 }, (_, i) => loadedSentence('Sentence', i)),
+      entries: Array.from({ length: 5 }, (_, i) =>
+        loadedSentence('Sentence', i)
+      ),
       claimedSentenceEventIds: ['c0', 'c1', 'c2', 'c3', 'c4'],
       nextToken: 5,
     }

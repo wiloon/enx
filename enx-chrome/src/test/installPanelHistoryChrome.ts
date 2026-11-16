@@ -83,30 +83,13 @@ export function installPanelHistoryChrome(options?: {
         async (
           name: string,
           optionsOrCallback:
-            | { signal?: AbortSignal }
-            | (() => Promise<unknown>),
+            { signal?: AbortSignal } | (() => Promise<unknown>),
           maybeCallback?: () => Promise<unknown>
         ) => {
           const callback =
             typeof optionsOrCallback === 'function'
               ? optionsOrCallback
               : maybeCallback!
-          const options =
-            typeof optionsOrCallback === 'function'
-              ? undefined
-              : optionsOrCallback
-          if (String(name).startsWith('enx-panel-alive') && options?.signal) {
-            return new Promise((_resolve, reject) => {
-              heldLocks.add(name)
-              options.signal!.addEventListener('abort', () => {
-                releaseWaiter(name)
-                reject(
-                  options.signal?.reason ??
-                    new DOMException('Aborted', 'AbortError')
-                )
-              })
-            })
-          }
           if (heldLocks.has(name)) {
             await new Promise<void>(resolve => {
               const q = lockWaiters.get(name) ?? []

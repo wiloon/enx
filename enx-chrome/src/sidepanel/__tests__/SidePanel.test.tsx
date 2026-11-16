@@ -182,37 +182,17 @@ describe('SidePanel', () => {
           async (
             name: string,
             optionsOrCallback:
-              | { signal?: AbortSignal }
-              | (() => Promise<unknown>),
+              { signal?: AbortSignal } | (() => Promise<unknown>),
             maybeCallback?: () => Promise<unknown>
           ) => {
             const callback =
               typeof optionsOrCallback === 'function'
                 ? optionsOrCallback
                 : maybeCallback!
-            const options =
-              typeof optionsOrCallback === 'function'
-                ? undefined
-                : optionsOrCallback
             const releaseWaiter = (lockName: string) => {
               heldLocks.delete(lockName)
               const next = lockWaiters.get(lockName)?.shift()
               next?.()
-            }
-            if (
-              String(name).startsWith('enx-panel-alive') &&
-              options?.signal
-            ) {
-              return new Promise((_resolve, reject) => {
-                heldLocks.add(name)
-                options.signal!.addEventListener('abort', () => {
-                  releaseWaiter(name)
-                  reject(
-                    options.signal?.reason ??
-                      new DOMException('Aborted', 'AbortError')
-                  )
-                })
-              })
             }
             if (heldLocks.has(name)) {
               await new Promise<void>(resolve => {
@@ -2027,9 +2007,7 @@ describe('SidePanel', () => {
     }
 
     it('does not double-fetch when the anchor word is clicked in the sentence while its own dictionary-first lookup is still in flight (ADR-023 race)', async () => {
-      seedSession(
-        pendingWithWord
-      )
+      seedSession(pendingWithWord)
 
       let resolveDictionary: (value: BackgroundResponse) => void = () => {}
       let getOneWordCalls = 0
@@ -2093,9 +2071,7 @@ describe('SidePanel', () => {
     })
 
     it('sends translateSentence (not translateSentenceWithWord) and looks up the anchor word dictionary-first', async () => {
-      seedSession(
-        pendingWithWord
-      )
+      seedSession(pendingWithWord)
       mockSendMessage.mockImplementation(
         async (message: {
           type: string
@@ -2333,9 +2309,7 @@ describe('SidePanel', () => {
     // still gets its contextual meaning, just with no definition to compare
     // against (so `why` naturally comes back empty).
     it('still looks up the context meaning when the anchor word has no dictionary entry', async () => {
-      seedSession(
-        pendingWithWord
-      )
+      seedSession(pendingWithWord)
       mockSendMessage.mockImplementation(
         async (message: {
           type: string
@@ -3801,7 +3775,10 @@ describe('SidePanel', () => {
         await pageClick('cats', 'cats页面释义')
         await screen.findByText('cats页面释义')
 
-        await send({ sentence: ` ${SENTENCE.toLowerCase()}`, phrase: 'Great  pets' })
+        await send({
+          sentence: ` ${SENTENCE.toLowerCase()}`,
+          phrase: 'Great  pets',
+        })
 
         await waitFor(() =>
           expect(topLevelCards()).toEqual([PHRASE_CARD, 'sidepanel-card-cats'])
