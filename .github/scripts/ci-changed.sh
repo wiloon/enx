@@ -18,6 +18,7 @@ set -euo pipefail
 
 # "task workflow" pairs, in the order the tasks run.
 MAPPING=(
+  "ci:scripts ci-scripts.yml"
   "ci:api enx-api-ci.yml"
   "ci:ui enx-ui-ci.yml"
   "ci:chrome enx-chrome-ci.yml"

@@ -1,0 +1,29 @@
+name: CI scripts
+
+# Local mirror: `task ci:scripts`.
+
+# The selector behind `task ci:changed` (.github/scripts/ci-changed.sh) chooses
+# workflows; nothing else exercises it, so its tests run here. Also what
+# check-copied-files.sh does is covered by copied-files.yml; this workflow adds
+# the scripts' own tests.
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/**'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Selector tests
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - run: bash .github/scripts/__tests__/ci-changed.test.sh

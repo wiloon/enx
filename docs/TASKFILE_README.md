@@ -154,6 +154,7 @@ other way round.
 task ci
 
 # One workflow at a time
+task ci:scripts       # ci-scripts.yml: tests of the .github scripts
 task ci:api           # enx-api-ci.yml: vet, test, golangci-lint
 task ci:ui            # enx-ui-ci.yml: install, typecheck, lint, test, plus a local build
 task ci:chrome        # enx-chrome-ci.yml: install, lint, test, build:prod
@@ -256,8 +257,8 @@ task test
 task ci
 ```
 
-This runs `ci:api`, `ci:ui`, `ci:chrome` and `ci:copied-files` in turn and
-stops at the first failure (see section 9). To run only what a branch's
+This runs `ci:scripts`, `ci:api`, `ci:ui`, `ci:chrome` and `ci:copied-files` in
+turn and stops at the first failure (see section 9). To run only what a branch's
 committed changes need: `git fetch origin main`, then `task ci:changed`.
 
 ### Fresh Start
