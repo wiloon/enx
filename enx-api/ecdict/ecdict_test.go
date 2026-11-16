@@ -54,26 +54,28 @@ func TestFindViaSw(t *testing.T) {
 	}
 }
 
-func TestFindViaExchange(t *testing.T) {
+// An inflection that exists only in another headword's exchange column is a
+// miss: the exchange full scan is gone (#959). Inflected forms that are
+// themselves headwords still match via exact (see TestFindInflectedHeadword).
+func TestFindExchangeOnlyFormIsAMiss(t *testing.T) {
 	use(t, run)
 
-	row, matchedBy, err := Find(context.Background(), "running")
-	if err != nil || matchedBy != "exchange" || row.Word != "run" || row.Exchange == "" {
-		t.Fatalf("got %+v, %q, %v; want run via exchange", row, matchedBy, err)
+	if _, matchedBy, err := Find(context.Background(), "running"); !errors.Is(err, ErrNotFound) || matchedBy != "" {
+		t.Fatalf("got matchedBy=%q err=%v; want ErrNotFound (no exchange step)", matchedBy, err)
 	}
 }
 
-// The three exchange patterns are tried in one scan but keep their order:
-// a ":form/" match beats an alphabetically earlier "/form/" match.
-func TestFindExchangeKeepsPatternPrecedence(t *testing.T) {
+// Inflected forms still resolve when they are headwords themselves, as "ran"
+// is in real ECDICT — exact/sw, never an exchange reverse lookup.
+func TestFindInflectedHeadword(t *testing.T) {
 	use(t,
-		ecdicttest.Row{Word: "aaa", Translation: "x", Exchange: "d:foo/ran/i:bar"},
-		ecdicttest.Row{Word: "run", Translation: "跑", Exchange: "p:ran/d:ran"},
+		run,
+		ecdicttest.Row{Word: "ran", Sw: "ran", Translation: "跑（过去式）"},
 	)
 
-	row, _, err := Find(context.Background(), "ran")
-	if err != nil || row.Word != "run" {
-		t.Fatalf("got %+v, %v; want run (pattern \":ran/\" first)", row, err)
+	row, matchedBy, err := Find(context.Background(), "ran")
+	if err != nil || matchedBy != "exact" || row.Word != "ran" {
+		t.Fatalf("got %+v, %q, %v; want ran via exact", row, matchedBy, err)
 	}
 }
 

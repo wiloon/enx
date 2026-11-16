@@ -193,8 +193,8 @@ export interface AdminAiWordsPage {
 }
 
 // GET /api/admin/ecdict/:word (ADR-021): the matched ECDICT stardict row plus
-// which fallback strategy hit ("exact" | "sw" | "exchange"; "exact" is
-// case-insensitive, stardict.word being COLLATE NOCASE).
+// which fallback strategy hit ("exact" | "sw"; "exact" is case-insensitive,
+// stardict.word being COLLATE NOCASE). No exchange reverse lookup (#959).
 export interface AdminEcdictRow {
   found: boolean
   matchedBy?: string

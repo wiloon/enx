@@ -30,14 +30,14 @@ Accepted
    - 本地开发：直接读取本地文件，通过环境变量 `ECDICT_DB_PATH` 指定路径
    - 生产部署(homelab)：通过 Volume 挂载数据库文件
 2. **查询策略（本地 `words` 表与 ECDICT 一致）**:
-   - 先 **精确匹配** `english` / `word`
-   - 未命中再 **忽略大小写** 匹配
-   - ECDICT 额外通过 `sw`（strip-word）与 `exchange` 字段做 **词形变化** 回查
+   - 先 **精确匹配** `english` / `word`（`stardict.word` 为 `COLLATE NOCASE`，精确步已覆盖大小写）
+   - 未命中再按 `sw`（strip-word）匹配
+   - 词形变化：屈折形式在 ECDICT 里几乎都是独立词条，由 exact / `sw` 命中；**不做** `exchange` 列反查（见修订记录，#959）
 3. **数据存储**: ECDICT 查询结果保存到现有 `words` 表，不修改现有表结构
 4. **有道集成**: 完全移除（代码、配置、`youdao` 表迁移、mock 端点）；Chrome 扩展内「打开有道网页」外链保留，不属于 API 依赖
 5. **句子翻译**: 暂不提供；请求含空格时 HTTP 200，在 `Chinese` 字段返回固定提示文案（功能暂未开放，将在未来版本提供）
 6. **ECDICT 未配置或无法打开**: 需要走 ECDICT 的查词请求返回 **HTTP 503**，JSON 含 `success: false` 与 `message`，不得静默返回空释义
-7. **词形变化**: 必须实现（通过 ECDICT `exchange` / `sw` 回查），与精确/忽略大小写查询同属词典查询能力
+7. **词形变化**: 仍须可用；机制是屈折形式作为独立 headword 被 exact / `sw` 命中，而不是 `exchange` 全表反查
 
 ## Alternatives Considered
 
@@ -81,7 +81,7 @@ Accepted
 
 | 项 | 说明 |
 |----|------|
-| 模块 | `enx-api/ecdict/` — 初始化、只读打开、可用性检查、`Query`（精确→忽略大小写→sw→exchange） |
+| 模块 | `enx-api/ecdict/` — 初始化、只读打开、可用性检查、`Find`（exact→sw；无 exchange 反查，#959） |
 | 统一查词 | `enx-api/dictionary/` — 本地 `words` 回退 ECDICT，503 响应辅助函数 |
 | 翻译 API | `enx-api/translate/service.go` — 句子提示、经 `dictionary.Lookup` 查词 |
 | 本地词库 | `enx-api/repo/ecp.go` — `GetWordByEnglish` 精确后忽略大小写 |
@@ -95,6 +95,10 @@ Accepted
 - 单元测试：`ecdict` 包（精确/忽略大小写/不可用状态）
 - 集成测试：配置 `ECDICT_DB_PATH` 后查词；未配置时断言 503
 - 测试说明维护在 `enx-api/TESTING.md`，不在此 ADR 重复步骤
+
+## 修订记录
+
+- 2026-11-16（[#959](https://github.com/wiloon/enx/issues/959)）：去掉 `exchange` 反查全表扫。测量（ECDICT 1.0.28）：`exchange` 列有 219,568 个不同屈折形式，其中仅 2 个（`more replete`、`most replete`，含空格，无法作为单词语点击）不是独立 headword；其余均已被 exact / `sw`（`stardict_*` 有索引）命中。全表扫只拖慢真正的 miss（生产上可超过 `queryTimeout` 3s，把 miss 变成 `SourceTimeout`，阻断 ADR-045 的 AI 兜底）。回退链改为 exact → `sw`；`queryTimeout` 与 goroutine 竞速保留，作为真实故障信号。
 
 ## References
 

@@ -231,7 +231,7 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 - 效果：一次本地命中的 SQL 从 9 条降到 5 条（`user_dicts` 从 4 读 1 写变成 1 条 upsert）；剩下 4 条是 `words` 查询和计量本身。
 - 行为变化：首次查词的计数固定从 1 开始，不再用 `words.load_count + 1`。`load_count` 在现行代码里没有写入路径，生产从空库起（ADR-031）恒为 0，结果不变；只有从 P2P 迁移带来旧 `load_count` 值的 homelab 老数据会有差异。
 
-仍未解决（频率未知）：本地检查用用户输入的原词。一个变形词如果在 ECDICT 里**没有自己的词条**、只能靠 `exchange` 列反查到原形，它就会被缓存成原形那一行，之后再查这个变形仍然本地未命中，每次都走 ECDICT 的 `exchange LIKE` 扫描（无索引，`ecdict.queryTimeout` 为 3 秒）。常见变形（如 "ran"）在 ECDICT 里通常有独立词条，精确匹配即命中并单独缓存，不受影响；未核实有多少变形只能靠 `exchange` 命中。ADR-030 的 `dictsample` 采样按词记录来源，同一个词反复记成 `ecdict` 即属此类，开采样即可量出来（ADR-040 的指标按规定不带单词标签，量不了），确有必要再做「变形 → 原形」映射（schema 变更，另行处理）。
+~~仍未解决（频率未知）：本地检查用用户输入的原词。一个变形词如果在 ECDICT 里**没有自己的词条**、只能靠 `exchange` 列反查到原形……~~ **已关闭（[#959](https://github.com/wiloon/enx/issues/959)，2026-11-16）**：测量 ECDICT 1.0.28 的 `exchange` 列——219,568 个不同屈折形式中，仅 2 个（`more replete`、`most replete`，含空格）不是独立 headword。`exchange` 反查已删除；miss 以毫秒级返回 `ErrNotFound`，可进入 ADR-045 的 AI 兜底。屈折形式作为 headword 由 exact / `sw` 命中并单独缓存。
 
 ### 2026-09-29：查词改为注入依赖的领域服务
 
@@ -242,3 +242,7 @@ TASK-SPEC-billing §4.2 写的是「`dictionary.Lookup` = 统一查词入口」�
 - `translate.Handler` 由 `NewHandler(Resolver, ReviewLog)` 构造，`main` 负责组装。
 - `lookupEcdict` 删除；原来借它测配额的用例改为直接测 `MeterLookup`（`TestMeterLookup…`）。
 - 行为不变，只有一处：复习记账写入失败时，响应里的计数直接为 0，不再回退去查一次 `user_dicts`。
+
+### 2026-11-16：关闭「仅靠 exchange 命中」开放问题（#959）
+
+去掉 ECDICT `exchange` 反查全表扫。测量与后果见上条「已关闭」段与 [ADR-0001 修订记录](../adr/0001-integrate-ecdict-dictionary.md)。回退链现为 exact → `sw`；miss 可进入 ADR-045 AI 兜底。

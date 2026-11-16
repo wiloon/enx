@@ -24,7 +24,7 @@ if err := MeterLookup(ctx, userID); err != nil { return nil, err }
 return ecdict.Query(ctx, english), nil
 ```
 
-「查不到」和「ECDICT 没配」是仅有的两种失败。`ecdict.Query` 内部（`enx-api/ecdict/ecdict.go`）已经有一条四级回退链——exact → lower → sw（strip-word）→ exchange（屈折形式）——**这条链解决的是同一本词典内的形态匹配问题，不是数据源问题**。
+「查不到」和「ECDICT 没配」是仅有的两种失败。`ecdict.Find` 内部（`enx-api/ecdict/ecdict.go`）有一条回退链——exact → sw（strip-word）；屈折形式作为独立 headword 命中，**不做** `exchange` 反查（[#959](https://github.com/wiloon/enx/issues/959)）——**这条链解决的是同一本词典内的形态匹配问题，不是数据源问题**。
 
 **好消息**：加 provider 链不需要动 seam 的位置，只需要把 `ecdict.Query` 那一行换成一条有序链。ADR-018 的深 seam（本地 `words` 查询搬进 `Lookup`）仍然推迟，与本 ADR 正交。
 
@@ -125,7 +125,7 @@ ENX 要收订阅（ADR-009，Stripe 已接）。ECDICT 自身的数据来源是�
 | C2. 并行查全部、按优先级合并 | 同时发起，取最高优先级的非空结果 | 多查的那次全是浪费（ECDICT 命中率本来就高）；SQLite 并发读还要多开连接 |
 | C3. 同步只查 ECDICT，miss 走异步补齐 | miss 记入队列，后台补，用户下次才看到 | 「查了个词，下次才有结果」对阅读场景不可接受 |
 
-**注意超时预算**：`ecdict.LookupRaw` 已经给自己留了 3s（`queryTimeout`，因为 `sw`/`exchange` 无索引会退化成扫表），并用 goroutine 竞速兜底 driver 取消不生效的问题。串行链的总预算必须显式设上限。**新 provider 的表必须建好索引，不要重蹈 `stardict` 无索引的覆辙。**
+**注意超时预算**：`ecdict.LookupRaw` 已经给自己留了 3s（`queryTimeout`）并用 goroutine 竞速兜底 driver 取消不生效的问题。exact 与 `sw` 均有索引（`stardict_*`；[#959](https://github.com/wiloon/enx/issues/959) 起不再跑无索引的 `exchange` 全表扫），超时是真实故障信号。串行链的总预算必须显式设上限。**新 provider 的表必须建好索引。**
 
 ### D. AI 兜底算不算一次查词
 
@@ -295,7 +295,7 @@ ENX 要收订阅（ADR-009，Stripe 已接）。ECDICT 自身的数据来源是�
 
    **三条护栏，缺一条都会出问题：**
 
-   1. **⚠️ 短语探测只做精确匹配，`lower` 那一级也要去掉。** `lookupEntry` 的四级是 exact → lower → `sw` → `exchange`：`sw`/`exchange` **没有索引**（`queryTimeout = 3s` 与那个 goroutine 竞速兜底就是为它们存在的），而 `lower` 那级写的是 `LOWER(word) = LOWER(?)`——**函数表达式，`stardict` 上没有对应的函数索引，同样是三百万行全表扫**。对短语而言 `sw`（归一成单个词）与 `exchange`（动词变位）本来就无意义，而一个短语必然穿透 exact 后触发**三次**扫表。
+   1. **⚠️ 短语探测只做精确匹配。** `lookupEntry` 对单词是 exact → `sw`（[#959](https://github.com/wiloon/enx/issues/959) 起无 `exchange`；`sw` 有 `stardict_3` 索引）。对短语而言 `sw`（归一成单个词）本来就无意义；历史上若再叠 `LOWER(word) = LOWER(?)`（无函数索引）会退化成扫表。
       **正确做法：两次精确匹配，都打在有索引的 `word` 列上**——先按原样，再按整体小写后的字符串。两次索引读，约等于免费。（注意这与 `words` 表不同：那边有 `idx_words_english_lower` 函数索引，`LOWER` 匹配是走索引的。）
    2. **词数上限：2–5 词（✅ 已由实测数据支持）。** 下界 2——1 个词就是普通查词、走原路径。上界 5 的依据是 ECDICT 多词条目的实际词数分布：**≤3 词覆盖 87.7%，≤4 词 95.9%，≤5 词 98.6%**。取 5 换来最后 2.7 个百分点，再往上（6 词以上仅 1.4%）不值得。另加字符数保险（≤ 60 字符），防病态输入。
       **⚠️ 上限是延迟决策，不是成本决策。** 加了护栏 1 之后单次探测的 SQLite 成本可以忽略；真正的代价是 **ADR-024 特意把 AI 调用排在词典之后**（要把词典释义拼进提示词），所以探测卡在关键路径上，**每次拖选都要多等一个网络往返才开始 AI 调用**。
@@ -326,7 +326,7 @@ ENX 要收订阅（ADR-009，Stripe 已接）。ECDICT 自身的数据来源是�
 - **⚠️ 未经审核的 AI 释义会直接到达用户**（Decision 6 的「展示」选择）。一条错释义在管理员处理到它之前一直可见，**`AI` 标记与 ADR-026 的报告入口是仅有的两道防线**。这是一个有意识的产品取舍，不是疏漏。
 - **短语卡的形态变了**（Decision 8）：从「只有 AI 一半」变成和单词卡一样的两半。这对 ADR-023 的统一历史列表是个好事（卡片形态收敛成一种），但 `dictionaryStatus: 'none'` 这条分支的既有测试与重试逻辑（ADR-024 的 `handleRetryContextTranslation` 三分支）都要跟着改。
 - **多了一次 AI 调用形态**。`ai_definitions` 的无语境释义与 ADR-024 的上下文释义是两个不同的 prompt、两条不同的计费线，别在实现时合并——合并的那一刻缓存就失去正确性。
-- **串行链的尾延迟**。ECDICT 的 `sw`/`exchange` 分支本来就慢（3s 超时不是摆设），链上再加一跳，p99 会变差。
+- **串行链的尾延迟**。ECDICT 的 exact/`sw` 已是索引读（[#959](https://github.com/wiloon/enx/issues/959) 去掉了无索引的 `exchange` 扫），但链上再加一跳仍会抬高 miss 路径的 p99；`queryTimeout` 仍是真实故障上限。
 - **若走 F2**：依赖一个官方标着 experimental 的端点，且要遵守 User-Agent 与 200 req/s 共享限额。它下线的那天，缓存表里已有的内容还在（这也是缓存表的额外价值），但新词查不到了。
 - **CC BY-SA 的署名义务是持续的**，不是加一次就完事——UI 改版、词卡重构时最容易掉。写进 LAUNCH-CHECKLIST，而不是只写进代码注释。
 - **G2 的表隔离从「整洁」升级成「法律边界」**。既然采纳了 CC BY-SA 的源，`wiktionary_entries` 不与自有数据混表这一条就不再是可以为了省事让步的设计偏好了——将来任何「合表以减少一次查询」的优化提案，都要先回到这里。
@@ -369,3 +369,7 @@ ENX 要收订阅（ADR-009，Stripe 已接）。ECDICT 自身的数据来源是�
 - **署名的展示位置被改动**（词卡重构、来源标记被当成视觉噪声去掉）：这不是 UI 微调，是许可合规问题，改之前回到 Decision 4。
 - **ADR-024 的 `why` 质量仍不达标**（即使接了 WordNet 义项）：说明问题不在输入而在 prompt 或模型，provider 链不是答案。
 - **enx-sync 恢复维护**：Options G 的理由 3 要重新加回来（但不改结论）。
+
+## 修订记录
+
+- 2026-11-16（[#959](https://github.com/wiloon/enx/issues/959)）：正文里「`sw`/`exchange` 无索引」的说法已错——`sw` 有 `stardict_3` 索引；`exchange` 反查已删除。回退链与超时预算描述改为 exact → `sw`，超时是真实故障信号。测量（219,568 / 2）记在 [ADR-0001 修订记录](../adr/0001-integrate-ecdict-dictionary.md)。

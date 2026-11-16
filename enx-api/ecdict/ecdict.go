@@ -11,7 +11,6 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 	gormlogger "gorm.io/gorm/logger"
 )
 
@@ -78,10 +77,10 @@ func UnavailableMessage() string {
 	return defaultUnavailableReason
 }
 
-// queryTimeout bounds each ECDICT lookup. A word ECDICT doesn't know runs
-// every fallback step, and the exchange step scans the whole table (it has
-// no index); without a deadline a slow scan could block the request
-// indefinitely (observed hanging past Kong's 60s upstream timeout). A var so
+// queryTimeout bounds each ECDICT lookup. The remaining steps (exact, sw)
+// are indexed, so a miss answers in milliseconds; the deadline is kept as a
+// real fault signal for unexpected SQLite stalls, and the goroutine race
+// below still covers driver cancellation that is only best-effort. A var so
 // tests can shorten it.
 var queryTimeout = 3 * time.Second
 
@@ -112,8 +111,9 @@ type findResult struct {
 }
 
 // Find runs the fallback chain -- exact (stardict.word is COLLATE NOCASE, so
-// any case) -> sw (strip-word) -> exchange (inflections) -- and reports which
-// step matched ("exact", "sw", "exchange"). It returns ErrNotFound when no
+// any case) -> sw (strip-word) -- and reports which step matched ("exact",
+// "sw"). Inflected forms that are themselves headwords match via exact/sw;
+// there is no exchange reverse lookup (#959). It returns ErrNotFound when no
 // step matches, ErrTimeout after queryTimeout, ErrUnavailable when ECDICT is
 // not configured, ctx's error when the caller gave up, and any other
 // database error as is: a failure is never reported as "not found". It does
@@ -198,25 +198,6 @@ func lookupEntry(ctx context.Context, conn *gorm.DB, word string) (stardict, str
 		}
 	}
 
-	// Inflections: the forms are in the unindexed exchange column, so this
-	// is a full scan. One scan covers all three patterns; the ORDER BY keeps
-	// the earlier one-query-per-pattern precedence (pattern order, then
-	// word), so the same headword wins.
-	if word != "" {
-		p := exchangePatterns(word)
-		q := dbc.Where("exchange LIKE ? OR exchange LIKE ? OR exchange LIKE ?", p[0], p[1], p[2]).
-			Clauses(clause.OrderBy{Expression: clause.Expr{
-				SQL:                "CASE WHEN exchange LIKE ? THEN 0 WHEN exchange LIKE ? THEN 1 ELSE 2 END, word",
-				Vars:               []interface{}{p[0], p[1]},
-				WithoutParentheses: true,
-			}})
-		if err := q.Limit(1).Find(&entry); err.Error != nil {
-			return stardict{}, "", err.Error
-		} else if err.RowsAffected > 0 {
-			return entry, "exchange", nil
-		}
-	}
-
 	return stardict{}, "", ErrNotFound
 }
 
@@ -231,14 +212,6 @@ func first(q *gorm.DB, dest *stardict) error {
 		return errMiss
 	}
 	return err
-}
-
-func exchangePatterns(word string) []string {
-	return []string{
-		"%:" + word + "/%",
-		"%/" + word + "/%",
-		"%:" + word,
-	}
 }
 
 func stripWord(s string) string {
