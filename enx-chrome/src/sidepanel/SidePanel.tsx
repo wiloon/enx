@@ -861,7 +861,9 @@ function SidePanelContent() {
     },
     [history]
   )
-  publishRef.current = publish
+  useEffect(() => {
+    publishRef.current = publish
+  }, [publish])
 
   useEffect(() => {
     const abort = new AbortController()
@@ -1491,7 +1493,9 @@ function SidePanelContent() {
     },
     [translateSentence, fetchWordContext, fetchContextTranslation]
   )
-  dispatchPlanRef.current = dispatchPlan
+  useEffect(() => {
+    dispatchPlanRef.current = dispatchPlan
+  }, [dispatchPlan])
 
   // In-panel mutations that allocate tokens run inside the store lock and
   // only dispatch the committed plan (ADR-090 Decision 4).
