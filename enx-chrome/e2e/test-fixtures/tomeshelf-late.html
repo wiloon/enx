@@ -5,45 +5,9 @@
     <title>Tomeshelf fixture — late meta</title>
   </head>
   <body>
+    <!-- Intentionally inert: the e2e test inserts the tomeshelf meta tags and
+         article after the content script has started (ADR-088 late
+         recognition), so there is no timer to race against. -->
     <p>Loading the reading view…</p>
-    <button id="next-document" type="button" hidden>Next</button>
-    <script>
-      // Meta tags and article appear after the content script has started
-      // (ADR-088 late recognition).
-      setTimeout(() => {
-        const generator = document.createElement('meta')
-        generator.setAttribute('name', 'generator')
-        generator.setAttribute('content', 'tomeshelf 1.0.0-e2e')
-        document.head.appendChild(generator)
-
-        const book = document.createElement('meta')
-        book.setAttribute('name', 'tomeshelf:book')
-        book.setAttribute('content', 'e2e-book-late')
-        document.head.appendChild(book)
-
-        const restores = document.createElement('meta')
-        restores.setAttribute('name', 'tomeshelf:restores-position')
-        restores.setAttribute('content', 'true')
-        document.head.appendChild(restores)
-
-        document.body.innerHTML = `
-          <article id="tomeshelf-content" data-tomeshelf-block="1">
-            <p>
-              The quick brown fox jumps over the lazy dog while the patient
-              reader keeps reading this first document about foxes and dogs.
-            </p>
-          </article>
-          <button id="next-document" type="button">Next</button>`
-
-        document
-          .getElementById('next-document')
-          .addEventListener('click', () => {
-            history.pushState({}, '', '/books/x/read/2')
-            document.title = 'Tomeshelf fixture — document 2'
-            document.getElementById('tomeshelf-content').innerHTML =
-              '<p data-tomeshelf-block="1">A second document introduces the word zebra found only after the in-page navigation replaces the article content.</p>'
-          })
-      }, 400)
-    </script>
   </body>
 </html>
