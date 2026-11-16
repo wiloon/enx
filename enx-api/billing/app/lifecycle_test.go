@@ -60,6 +60,11 @@ func newBillingDB(t *testing.T, fixtures ...string) {
 	if _, err := sqlitex.MigrateDeletionGates(db); err != nil {
 		t.Fatal(err)
 	}
+	// The assembly's paid-invoice path reads referrals, so every rig gets the
+	// table here rather than each positive-payment test migrating it itself.
+	if err := db.AutoMigrate(&sqlitex.Referral{}); err != nil {
+		t.Fatal(err)
+	}
 	prev := sqlitex.DB
 	sqlitex.DB = db
 	t.Cleanup(func() { sqlitex.DB = prev })
