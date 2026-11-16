@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -95,6 +97,13 @@ func (m *fakeMailer) count() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.sent)
+}
+
+// mails returns a copy of what was sent, for assertions on content.
+func (m *fakeMailer) mails() []sentMail {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return slices.Clone(m.sent)
 }
 
 var (
@@ -318,9 +327,17 @@ func TestNotifierReportsStorageFailures(t *testing.T) {
 }
 
 func TestParallelNotifiersSendEachAlertOnce(t *testing.T) {
+	// Each alert carries its own Event ID in its mail, so a duplicate send
+	// and a missed alert are both visible: identical content would let one
+	// compensate for the other.
 	var stored []Stored
+	var ids []string
 	for i := range 20 {
-		stored = append(stored, Stored{Ref: Ref{Kind: EventAttentionAlert, ID: fmt.Sprintf("evt_%d", i)}, Alert: Raise(Alert{}, t0), Content: eventContent})
+		id := fmt.Sprintf("evt_%02d", i)
+		ids = append(ids, id)
+		content := eventContent
+		content.EventID = id
+		stored = append(stored, Stored{Ref: Ref{Kind: EventAttentionAlert, ID: id}, Alert: Raise(Alert{}, t0), Content: content})
 	}
 	store := newFakeStore(stored...)
 	mailer := &fakeMailer{}
@@ -337,7 +354,19 @@ func TestParallelNotifiersSendEachAlertOnce(t *testing.T) {
 	wg.Wait()
 
 	if mailer.count() != 20 {
-		t.Errorf("sent %d mails, want each of the 20 alerts once", mailer.count())
+		t.Fatalf("sent %d mails, want each of the 20 alerts once", mailer.count())
+	}
+	sent := mailer.mails()
+	for _, id := range ids {
+		hits := 0
+		for _, m := range sent {
+			if strings.Contains(m.Text, id) {
+				hits++
+			}
+		}
+		if hits != 1 {
+			t.Errorf("event %s appears in %d mails, want exactly one", id, hits)
+		}
 	}
 }
 
@@ -393,5 +422,29 @@ func TestNotifierRunsAStartupPassThenAnHourlyPassPerTick(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("Run did not stop when its context was cancelled")
+	}
+}
+
+func TestNotifierStopsWhenItsTickChannelCloses(t *testing.T) {
+	store := newFakeStore()
+	ticks := make(chan time.Time)
+	close(ticks) // a closed channel is ready for ever
+
+	var passes atomic.Int32
+	done := make(chan struct{})
+	go func() {
+		NewNotifier(store, &fakeMailer{}, settings, fixedClock(t0), tokens("tok")).
+			Run(context.Background(), ticks, func(Report, error) { passes.Add(1) })
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("Run kept passing on a closed tick channel (%d passes)", passes.Load())
+	}
+	// The startup pass ran; the closed channel must not add hourly passes.
+	if got := passes.Load(); got != 1 {
+		t.Errorf("passes = %d, want only the startup pass", got)
 	}
 }
