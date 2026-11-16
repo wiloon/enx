@@ -1,5 +1,5 @@
 ---
-status: accepted; amended by adr-085 (2026-11-14, clicked-word mark row); amended by adr-086 (2026-11-15, dark-page palette column)
+status: accepted; amended by adr-085 (2026-11-14, clicked-word mark row); amended by adr-086 (proposed 2026-11-14, dark-page palette column)
 date: 2026-10-11
 related: adr-011（主窗口复习阶段下划线）、adr-025（主窗口整句底色）、adr-053（侧边栏锚点词与下划线）、adr-086（深色宿主页面换一套色）
 ---
