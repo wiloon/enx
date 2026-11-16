@@ -75,7 +75,7 @@ _Avoid_: 弹窗、popup（专指下面工具栏那个）、单词卡 / word card
 _Avoid_: 查词浮层、扩展面板、side panel
 
 **单词卡 / 短语卡 / 整句卡（word card / phrase card / sentence card）**：
-Side Panel 里那条会累积的卡片列表的三种条目（`WordCardData`，见 adr-006、adr-008）。查词浮层里查过的词会被「镜像」成列表里的一张单词卡。是 Side Panel 的概念，不是正文里的浮层。
+Side Panel 里那条会累积的卡片列表的三种条目（`WordCardData`，见 adr-006、adr-008）。查词浮层里查过的词会被「镜像」成列表里的一张单词卡。是 Side Panel 的概念，不是正文里的浮层。列表按所属标签页一份，存在 `chrome.storage.session`（`enx-panel-history:<tabId>`），同一标签页的多个面板实例共享这一份（ADR-090）；不是只活在某个面板页面的内存里。
 _Avoid_: 用「单词卡」指正文里的查词浮层
 
 **单词高亮（word highlight）**：

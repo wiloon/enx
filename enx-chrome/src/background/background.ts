@@ -67,6 +67,11 @@ import {
   isTabSidePanelOpen,
   pendingSentenceKey,
 } from '@/lib/sidePanel'
+import {
+  chromePanelHistoryDeps,
+  createPanelHistoryStore,
+  type PanelHistoryStoreDeps,
+} from '@/lib/panelHistoryStore'
 import { welcomeTabAction, welcomeUrlPattern } from '@/lib/welcomeTab'
 
 console.log('ENX Background script loaded')
@@ -1008,12 +1013,31 @@ chrome.sidePanel
 
 // A tab's panel goes away with the tab; drop what it was showing too, so
 // storage.session doesn't accumulate one entry per tab ever read in.
+// ADR-090: also drop enx-panel-history:<tabId> under the same Web Lock the
+// panel uses for list writes, so a queued transaction can't recreate the key.
+export type ClearTabSidePanelSessionDeps = Partial<PanelHistoryStoreDeps> & {
+  removePendingKeys?: (keys: string[]) => Promise<void>
+}
+
+export async function clearTabSidePanelSession(
+  tabId: number,
+  deps: ClearTabSidePanelSessionDeps = {}
+): Promise<void> {
+  const { removePendingKeys, ...storeOverrides } = deps
+  const removeKeys =
+    removePendingKeys ??
+    ((keys: string[]) => chrome.storage.session.remove(keys))
+
+  await removeKeys([pendingSentenceKey(tabId), latestPageWordKey(tabId)])
+
+  const store = createPanelHistoryStore(chromePanelHistoryDeps(storeOverrides))
+  await store.removeForTab(tabId)
+}
+
 chrome.tabs.onRemoved.addListener(tabId => {
-  chrome.storage.session
-    .remove([pendingSentenceKey(tabId), latestPageWordKey(tabId)])
-    .catch(error =>
-      console.warn('Failed to clear side panel state for closed tab:', error)
-    )
+  clearTabSidePanelSession(tabId).catch(error =>
+    console.warn('Failed to clear side panel state for closed tab:', error)
+  )
 })
 
 // #230: Alt+C (or whatever the user bound) turns learning mode on or off on
@@ -1781,6 +1805,7 @@ const handleOpenSentencePanel = async (
     sentence,
     phrase,
     createdAt: Date.now(),
+    eventId: crypto.randomUUID(),
     wordStates,
   }
   await chrome.storage.session.set({ [pendingSentenceKey(tabId)]: context })
@@ -1816,7 +1841,12 @@ const handleRecordPageWordLookup = async (
   if (!word || !ecp)
     return { success: false, error: 'Missing word or dictionary data' }
 
-  const lookup: LatestPageWordLookup = { word, ecp, createdAt: Date.now() }
+  const lookup: LatestPageWordLookup = {
+    word,
+    ecp,
+    createdAt: Date.now(),
+    eventId: crypto.randomUUID(),
+  }
   await chrome.storage.session.set({ [latestPageWordKey(tabId)]: lookup })
 
   return { success: true }

@@ -428,6 +428,7 @@ export async function mockBackendFetch(
       dailyQuotaLeft,
     }) => {
       let quotaLeft = dailyQuotaLeft ?? Number.MAX_SAFE_INTEGER
+      ;(self as unknown as Record<string, unknown>).__enxTranslatePosts = []
       // Spends `cost`, or answers the refusal enx-api sends when it can't.
       const quotaRefusal = (cost: number) => {
         if (cost <= quotaLeft) {
@@ -553,6 +554,40 @@ export async function mockBackendFetch(
           })
         }
 
+        // ADR-090 e2e: count Side Panel translate POSTs the way word-lookups
+        // are counted, so shared-history specs can assert one paid call.
+        if (
+          init?.method === 'POST' &&
+          (url.includes('/api/translate/sentence-with-word') ||
+            url.includes('/api/translate/word-in-context') ||
+            url.includes('/api/translate/sentence'))
+        ) {
+          const posts = ((
+            self as unknown as Record<string, unknown>
+          ).__enxTranslatePosts ??= []) as { url: string; body: unknown }[]
+          const body = JSON.parse(String(init.body ?? '{}'))
+          posts.push({ url, body })
+          if (url.includes('/api/translate/sentence-with-word')) {
+            return new Response(
+              JSON.stringify({ chinese: '译文', wordChinese: '词义' }),
+              {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+              }
+            )
+          }
+          if (url.includes('/api/translate/word-in-context')) {
+            return new Response(JSON.stringify({ chinese: '语境', why: '' }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            })
+          }
+          return new Response(JSON.stringify({ chinese: '译文' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+
         return realFetch(input, init)
       }
     },
@@ -657,6 +692,21 @@ export async function feedbackPosts(
     () =>
       ((self as unknown as Record<string, unknown>).__enxFeedbackPosts ??
         []) as unknown[]
+  )
+}
+
+/**
+ * The POST /api/translate/* requests the service worker sent under
+ * mockBackendFetch, in order (url + parsed body).
+ */
+export async function translatePosts(
+  context: BrowserContext
+): Promise<{ url: string; body: unknown }[]> {
+  const [sw] = context.serviceWorkers()
+  return sw.evaluate(
+    () =>
+      ((self as unknown as Record<string, unknown>).__enxTranslatePosts ??
+        []) as { url: string; body: unknown }[]
   )
 }
 

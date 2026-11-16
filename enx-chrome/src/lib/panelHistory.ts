@@ -24,6 +24,8 @@ export interface WordCardData {
   key: string
   // The request this card is waiting on (a panel-wide counter).
   token?: number
+  // Panel instance that sent the in-flight request (ADR-090 Decision 5).
+  ownerInstanceId?: string
   pronunciation?: string
   loadCount?: number
   dictionaryChinese?: string
@@ -72,6 +74,8 @@ export interface SentenceEntry {
   // sentenceCardId(sentence): one card per sentence in the whole history.
   id: string
   token?: number
+  // Panel instance that sent the in-flight request (ADR-090 Decision 5).
+  ownerInstanceId?: string
   sentence: string
   // The word the user clicked on the page before opening the panel
   // (ADR-014), marked with the enx-sp-anchor highlight in the rendered

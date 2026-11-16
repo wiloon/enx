@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-11-16
 related: adr-023（统一卡片列表；本 ADR 修订其 Decision 6「不新增存储链路」与 Decision 8 的请求令牌来源）、adr-050（标签页面板、按标签页拆分的存储 key）、adr-089（分屏共用面板，本 ADR 是它的前提）、adr-081（阅读位置与钉住句子存 storage.local，与本 ADR 的会话级列表互不相干）
 ---
