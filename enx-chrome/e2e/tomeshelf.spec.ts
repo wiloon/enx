@@ -1,8 +1,6 @@
 // ADR-088 / #907: tomeshelf SPA rebuild, late recognition, and badge stay on
 // after an in-page document change.
 
-import path from 'path'
-import { fileURLToPath } from 'url'
 import { loginAvailable, LOGIN_SKIP_REASON, FIXTURE_ORIGIN } from './auth'
 import { expect, test } from './fixtures'
 import {
@@ -11,13 +9,6 @@ import {
   mockBackendFetch,
   waitForContentScript,
 } from './helpers'
-
-const ORIGIN = 'https://books.tomeshelf.test'
-const LATE_FIXTURE = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  'test-fixtures',
-  'tomeshelf-late.html'
-)
 
 async function badgeText(
   page: import('@playwright/test').Page,
@@ -35,29 +26,6 @@ async function badgeText(
   }, tabUrl)
   await popup.close()
   return text
-}
-
-async function grantAutoEnable(
-  page: import('@playwright/test').Page,
-  extensionId: string
-): Promise<boolean> {
-  await page.bringToFront()
-  const popup = await page.context().newPage()
-  await popup.goto(`chrome-extension://${extensionId}/popup.html`)
-  await popup.waitForLoadState('domcontentloaded')
-  const toggle = popup.getByTestId('popup-auto-enable-site-toggle')
-  await expect(toggle).toBeAttached({ timeout: 15_000 })
-  if (await toggle.isChecked()) {
-    await popup.close()
-    return true
-  }
-  await toggle.click()
-  // permissions.request is synchronous for the gesture; give the toggle a
-  // beat to reflect the grant (or a denial under automation).
-  await popup.waitForTimeout(500)
-  const granted = await toggle.isChecked()
-  await popup.close()
-  return granted
 }
 
 test.describe('tomeshelf EPUB reader (ADR-088)', () => {
@@ -104,7 +72,13 @@ test.describe('tomeshelf EPUB reader (ADR-088)', () => {
       .toBe('✓')
   })
 
-  test('auto-enable with late meta then survives document 2', async ({
+  // Late meta after the content script starts (ADR-088 Decision 1). The
+  // fixture origin is a required host permission, so Playwright cannot grant
+  // "Always enable" via chrome.permissions.request (it returns false under
+  // automation). Enable while the meta is still absent; when it appears,
+  // late recognition cancels and re-enables as tomeshelf. Auto-enable + late
+  // meta is covered in content-script tests (tomeshelf.test.ts).
+  test('late meta after enable then survives document 2', async ({
     context,
     page,
     extensionId,
@@ -118,26 +92,11 @@ test.describe('tomeshelf EPUB reader (ADR-088)', () => {
       ],
     })
 
-    const lateUrl = `${ORIGIN}/books/x/read/1`
-    await context.route(`${ORIGIN}/**`, async route => {
-      const pathname = new URL(route.request().url()).pathname
-      if (pathname.includes('/read/')) {
-        await route.fulfill({
-          path: LATE_FIXTURE,
-          contentType: 'text/html; charset=utf-8',
-        })
-        return
-      }
-      await route.fulfill({ status: 404 })
+    await page.goto(`${FIXTURE_ORIGIN}/tomeshelf-late.html`, {
+      waitUntil: 'domcontentloaded',
     })
-
-    await page.goto(lateUrl, { waitUntil: 'domcontentloaded' })
-    const granted = await grantAutoEnable(page, extensionId)
-    test.skip(!granted, 'chrome.permissions.request did not grant the origin')
-
-    // Reload so the registered auto-enable content script starts before the
-    // late meta appears.
-    await page.goto(lateUrl, { waitUntil: 'domcontentloaded' })
+    // Enable before the 400ms delayed meta/article insert.
+    await enableLearningMode(page, extensionId)
     await expect(page.locator('#tomeshelf-content')).toBeVisible({
       timeout: 10_000,
     })
