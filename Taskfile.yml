@@ -566,11 +566,12 @@ tasks:
   # (`fnm install` there) and Corepack enabled for that Node (`corepack enable`)
   # so pnpm resolves to the packageManager version in package.json.
   #
-  # `task ci` runs all four; `task ci:changed` runs only those a branch needs.
+  # `task ci` runs all five; `task ci:changed` runs only those a branch needs.
 
   ci:
-    desc: Run every CI code check locally (ci:api, ci:ui, ci:chrome, ci:copied-files), stopping on the first failure
+    desc: Run every CI code check locally (ci:scripts, ci:api, ci:ui, ci:chrome, ci:copied-files), stopping on the first failure
     cmds:
+      - task: ci:scripts
       - task: ci:api
       - task: ci:ui
       - task: ci:chrome
@@ -584,6 +585,13 @@ tasks:
       CI_DRY_RUN: '{{.DRY_RUN | default "0"}}'
     cmds:
       - bash .github/scripts/ci-changed.sh "$CI_BASE"
+
+  ci:scripts:
+    desc: "Mirror .github/workflows/ci-scripts.yml (tests of the .github scripts)"
+    # Mirrors .github/workflows/ci-scripts.yml. A check added to one side must
+    # be added to the other.
+    cmds:
+      - bash .github/scripts/__tests__/ci-changed.test.sh
 
   ci:api:
     desc: "Mirror .github/workflows/enx-api-ci.yml (vet, vet with integration tag, test with integration tag, golangci-lint with default then integration tags)"
