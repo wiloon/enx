@@ -246,6 +246,11 @@ test.describe('Side Panel shared history (ADR-090)', () => {
     await panelB.getByTestId('sidepanel-undo-clear').click()
     await expect(panelA.getByTestId('sidepanel-chinese')).toHaveText('译文')
     await expect(panelB.getByTestId('sidepanel-chinese')).toHaveText('译文')
+
+    const cardB = panelB.locator('[data-testid^="sidepanel-card-"]')
+    await expect(cardB).toHaveCount(1)
+    await panelA.locator('[data-testid^="sidepanel-remove-"]').click()
+    await expect(cardB).toHaveCount(0)
   })
 
   test('closing the reading tab drops enx-panel-history from storage.session', async ({

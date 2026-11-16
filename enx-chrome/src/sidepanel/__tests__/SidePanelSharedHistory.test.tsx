@@ -525,6 +525,7 @@ describe('SidePanel shared history (ADR-090)', () => {
           success: false,
           error: 'Dictionary lookup failed',
         })
+        await new Promise(resolve => setTimeout(resolve, 50))
       })
       expect(countOf('translateWordInContext')).toBe(0)
     })
@@ -550,6 +551,7 @@ describe('SidePanel shared history (ADR-090)', () => {
           success: false,
           error: 'Dictionary lookup failed',
         })
+        await jest.runAllTimersAsync()
       })
       expect(countOf('translateWordInContext')).toBe(0)
     })
