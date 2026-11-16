@@ -13,6 +13,7 @@ import (
 	"enx-api/config"
 	"enx-api/dictionary"
 	"enx-api/dictionary/adapters"
+	dictionaryhttp "enx-api/dictionary/httpapi"
 	entadapters "enx-api/entitlement/adapters"
 	"enx-api/utils/sqlitex"
 
@@ -274,7 +275,7 @@ func TestWordLookupOverQuotaAnswersTheLookupGETs429Body(t *testing.T) {
 
 	want := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(want)
-	dictionary.RespondQuotaExceededWithSubscriptions(c, "u1", entadapters.Billing{})
+	dictionaryhttp.RespondQuotaExceededWithSubscriptions(c, "u1", entadapters.Billing{})
 	if w.Code != want.Code || w.Body.String() != want.Body.String() {
 		t.Fatalf("got %d %s, want %d %s", w.Code, w.Body.String(), want.Code, want.Body.String())
 	}

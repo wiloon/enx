@@ -91,7 +91,7 @@ func (h *Handler) Entries(c *gin.Context) {
 		})
 		return
 	case errors.Is(err, dictionary.ErrQuotaExceeded):
-		dictionary.RespondQuotaExceededWithSubscriptions(c, userID, h.subscriptions)
+		RespondQuotaExceededWithSubscriptions(c, userID, h.subscriptions)
 		return
 	case err != nil:
 		logger.Errorf("dictionary entries for %s: %v", userID, err)

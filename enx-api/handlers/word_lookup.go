@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"enx-api/dictionary"
+	dictionaryhttp "enx-api/dictionary/httpapi"
 	entadapters "enx-api/entitlement/adapters"
 	"enx-api/middleware"
 	"enx-api/utils/logger"
@@ -75,7 +76,7 @@ func (h *WordLookupHandler) Record(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Word not found"})
 		return
 	case errors.Is(err, dictionary.ErrQuotaExceeded):
-		dictionary.RespondQuotaExceededWithSubscriptions(c, userId, h.subscriptions)
+		dictionaryhttp.RespondQuotaExceededWithSubscriptions(c, userId, h.subscriptions)
 		return
 	case err != nil:
 		logger.Errorf("RecordWordLookup: record %s for %s: %v", req.WordID, userId, err)
