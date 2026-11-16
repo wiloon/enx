@@ -98,14 +98,19 @@ func NewNotifier(store Store, mailer Mailer, settings NotifierSettings, now func
 }
 
 // Run makes a startup pass, then an hourly pass on every tick, until ctx is
-// done. report gets each pass's outcome.
+// done or ticks is closed. report gets each pass's outcome. A closed ticks
+// channel is ready for ever, so it ends the loop: without the ok check the
+// notifier would pass non-stop.
 func (n *Notifier) Run(ctx context.Context, ticks <-chan time.Time, report func(Report, error)) {
 	report(n.Pass(ctx, StartupPass))
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticks:
+		case _, ok := <-ticks:
+			if !ok {
+				return
+			}
 			report(n.Pass(ctx, HourlyPass))
 		}
 	}
