@@ -76,9 +76,10 @@ type fakeStore struct {
 	customers map[string]string
 	subs      map[string]Subscription
 	owners    map[string]Owner
-	// payloadErr fails reading the payload; err fails every other read.
-	payloadErr error
-	err        error
+	// One error per read: failing every read at once let a case that meant to
+	// fail the third read pass on the first one. Still separate from the reads
+	// above, payloadErr fails only Payload.
+	payloadErr, topUpErr, customerErr, subscriptionErr, ownerErr error
 }
 
 func (f *fakeStore) Payload(_ context.Context, s webhookevent.Scope) ([]byte, error) {
@@ -92,19 +93,19 @@ func (f *fakeStore) Payload(_ context.Context, s webhookevent.Scope) ([]byte, er
 }
 
 func (f *fakeStore) TopUpRecorded(_ context.Context, id string) (bool, error) {
-	return f.recorded[id], f.err
+	return f.recorded[id], f.topUpErr
 }
 
 func (f *fakeStore) CustomerOwner(_ context.Context, id string) (string, error) {
-	return f.customers[id], f.err
+	return f.customers[id], f.customerErr
 }
 
 func (f *fakeStore) Subscription(_ context.Context, id string) (Subscription, error) {
-	return f.subs[id], f.err
+	return f.subs[id], f.subscriptionErr
 }
 
 func (f *fakeStore) Owner(_ context.Context, userID string) (Owner, error) {
-	return f.owners[userID], f.err
+	return f.owners[userID], f.ownerErr
 }
 
 func storeWith(t *testing.T, object any) *fakeStore {
@@ -403,17 +404,19 @@ func TestAnExpandedCustomerAndPaymentIntentAreRead(t *testing.T) {
 
 func TestStoreFailuresRetryWithoutEffects(t *testing.T) {
 	failure := errors.New("database is locked")
+	// Each case fails exactly one read, so "reading a subscription's rows"
+	// cannot pass because an earlier read failed first.
 	for name, c := range map[string]struct {
-		object          session
-		payloadErr, err error
+		object session
+		fail   func(*fakeStore)
 	}{
-		"reading the payload":           {topUpSession(), failure, nil},
-		"reading a top-up's records":    {topUpSession(), nil, failure},
-		"reading a subscription's rows": {subscriptionSession(), nil, failure},
+		"reading the payload":           {topUpSession(), func(s *fakeStore) { s.payloadErr = failure }},
+		"reading a top-up's records":    {topUpSession(), func(s *fakeStore) { s.topUpErr = failure }},
+		"reading a subscription's rows": {subscriptionSession(), func(s *fakeStore) { s.subscriptionErr = failure }},
 	} {
 		t.Run(name, func(t *testing.T) {
 			store := storeWith(t, c.object)
-			store.payloadErr, store.err = c.payloadErr, c.err
+			c.fail(store)
 			r := handle(store)
 
 			wantStep(t, r, webhookevent.Transient, "database is locked")
