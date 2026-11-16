@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"enx-api/dictionary"
+	dictionaryhttp "enx-api/dictionary/httpapi"
 	entadapters "enx-api/entitlement/adapters"
 	"enx-api/enx"
 	"enx-api/metrics"
@@ -14,11 +15,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
-
-// Resolver resolves a word lookup: dictionary.Service in production.
-type Resolver interface {
-	Resolve(ctx context.Context, english, userID string) (dictionary.Result, error)
-}
 
 // ReviewLog reads a user's review state for a word: repo.ReviewLog in
 // production. It is read-only on purpose: the lookup endpoints never change
@@ -42,14 +38,14 @@ type AIPolicy interface {
 // Handler serves the word lookup endpoints.
 type Handler struct {
 	subscriptions dictionary.Subscriptions
-	dict          Resolver
+	dict          dictionary.Resolver
 	meter         dictionary.Meter
 	reviews       ReviewLog
 	ai            AIDefiner
 	policy        AIPolicy
 }
 
-func NewHandler(dict Resolver, meter dictionary.Meter, reviews ReviewLog) *Handler {
+func NewHandler(dict dictionary.Resolver, meter dictionary.Meter, reviews ReviewLog) *Handler {
 	return NewHandlerWithSubscriptions(dict, meter, reviews, entadapters.Billing{})
 }
 
@@ -58,7 +54,7 @@ func (h *Handler) WithSubscriptions(subs dictionary.Subscriptions) *Handler {
 	return h
 }
 
-func NewHandlerWithSubscriptions(dict Resolver, meter dictionary.Meter, reviews ReviewLog, subs dictionary.Subscriptions) *Handler {
+func NewHandlerWithSubscriptions(dict dictionary.Resolver, meter dictionary.Meter, reviews ReviewLog, subs dictionary.Subscriptions) *Handler {
 	return &Handler{dict: dict, meter: meter, reviews: reviews, subscriptions: subs}
 }
 
@@ -104,7 +100,7 @@ func (h *Handler) translateWord(c *gin.Context, raw string) {
 	// ADR-079 Decision 7: one word, one charge, before it is resolved; no
 	// lookup event (POST /api/me/word-lookups writes that).
 	if err := h.meter.Charge(c.Request.Context(), userId, 1); errors.Is(err, dictionary.ErrQuotaExceeded) {
-		dictionary.RespondQuotaExceededWithSubscriptions(c, userId, h.subscriptions)
+		dictionaryhttp.RespondQuotaExceededWithSubscriptions(c, userId, h.subscriptions)
 		return
 	} else if err != nil {
 		logger.Warnf("lookup quota charge failed for user %s, allowing lookup: %v", userId, err)
@@ -113,7 +109,7 @@ func (h *Handler) translateWord(c *gin.Context, raw string) {
 	res, err := h.dict.Resolve(c.Request.Context(), word.English, userId)
 	switch {
 	case errors.Is(err, dictionary.ErrEcdictUnavailable):
-		dictionary.RespondUnavailable(c)
+		dictionaryhttp.RespondUnavailable(c)
 		return
 	case err != nil:
 		// Only the sentinel above means something to the client; any

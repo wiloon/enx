@@ -7,6 +7,7 @@ import (
 
 	"enx-api/ailimit"
 	"enx-api/dictionary"
+	dictionaryhttp "enx-api/dictionary/httpapi"
 	"enx-api/enx"
 	"enx-api/middleware"
 	"enx-api/utils/logger"
@@ -103,7 +104,7 @@ func respondAIError(c *gin.Context, err error) {
 	case errors.Is(err, dictionary.ErrAIUnavailable):
 		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "code": "ai_unavailable", "message": "AI lookup is not available right now."})
 	case errors.Is(err, dictionary.ErrEcdictUnavailable):
-		dictionary.RespondUnavailable(c)
+		dictionaryhttp.RespondUnavailable(c)
 	case errors.Is(err, dictionary.ErrAIFailed):
 		c.JSON(http.StatusBadGateway, gin.H{"success": false, "code": "ai_failed", "message": "AI lookup failed. Please try again."})
 	default:
