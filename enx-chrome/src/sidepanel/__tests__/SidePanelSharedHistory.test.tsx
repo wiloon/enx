@@ -21,7 +21,11 @@ import {
   panelHistoryKey,
   type StoredPanelHistory,
 } from '@/lib/panelHistoryStore'
-import { sentenceCardId } from '@/lib/panelHistory'
+import {
+  PANEL_REQUEST_TIMEOUT_MS,
+  PANEL_TIMEOUT_ERROR_MESSAGE,
+  sentenceCardId,
+} from '@/lib/panelHistory'
 import SidePanel from '../SidePanel'
 
 const PANEL_TAB_ID = 7
@@ -130,9 +134,9 @@ describe('SidePanel shared history (ADR-090)', () => {
     const heldLocks = new Set<string>()
     const lockWaiters = new Map<string, Array<() => void>>()
     const releaseWaiter = (name: string) => {
-      heldLocks.delete(name)
       const next = lockWaiters.get(name)?.shift()
-      next?.()
+      if (next) next()
+      else heldLocks.delete(name)
     }
     Object.defineProperty(navigator, 'locks', {
       configurable: true,
@@ -154,8 +158,9 @@ describe('SidePanel shared history (ADR-090)', () => {
                 q.push(resolve)
                 lockWaiters.set(name, q)
               })
+            } else {
+              heldLocks.add(name)
             }
-            heldLocks.add(name)
             try {
               return await callback()
             } finally {
@@ -294,61 +299,238 @@ describe('SidePanel shared history (ADR-090)', () => {
     })
   })
 
-  it('unmounting the owner turns its loading card into Retry on the other panel', async () => {
-    mockSendMessage.mockImplementation(
-      () => new Promise(() => {}) // never resolves: keep loading
-    )
-    const panelA = mountPanel()
-    const panelB = mountPanel()
-    await within(panelA.root).findByTestId('sidepanel-empty-state')
-
-    act(() => {
+  describe('request timeout, chains and overlapping actions', () => {
+    const SENTENCE = 'Cats are great pets.'
+    const countOf = (type: string) =>
+      mockSendMessage.mock.calls.filter(([m]) => m?.type === type).length
+    const deferred = <T,>() => {
+      let resolve!: (value: T) => void
+      const promise = new Promise<T>(r => {
+        resolve = r
+      })
+      return { promise, resolve }
+    }
+    const fireSentence = (eventId: string, word = '') =>
       fireStorageChange(
         {
           [PENDING_SENTENCE_STORAGE_KEY]: {
             newValue: {
-              sentence: 'Cats are great pets.',
-              word: '',
+              sentence: SENTENCE,
+              word,
               createdAt: Date.now(),
-              eventId: nextEventId(),
+              eventId,
             },
           },
         },
         'session'
       )
+    const failedSentenceHistory = (): StoredPanelHistory => ({
+      ...emptyPanelHistory(),
+      entries: [
+        {
+          kind: 'sentence',
+          id: sentenceCardId(SENTENCE),
+          sentence: SENTENCE,
+          clickedWord: '',
+          status: 'error',
+          chinese: '',
+          errorMessage: 'Translation service unavailable',
+          words: [],
+        },
+      ],
+      nextToken: 1,
     })
 
-    await waitFor(() => {
-      expect(
-        within(panelA.root).getByTestId('sidepanel-loading')
-      ).toBeInTheDocument()
+    afterEach(() => {
+      jest.useRealTimers()
+    })
+
+    it('owner page closed: the card becomes Retry on the other panel 120 s after it was sent, with no automatic resend', async () => {
+      jest.useFakeTimers()
+      mockSendMessage.mockImplementation(() => new Promise(() => {}))
+      const panelA = mountPanel()
+      const panelB = mountPanel()
+      await within(panelA.root).findByTestId('sidepanel-empty-state')
+      act(() => fireSentence(nextEventId()))
+      await waitFor(() => {
+        expect(
+          within(panelB.root).getByTestId('sidepanel-loading')
+        ).toBeInTheDocument()
+      })
+      expect(countOf('translateSentence')).toBe(1)
+
+      act(() => panelA.unmount())
+      await act(async () => {
+        jest.advanceTimersByTime(PANEL_REQUEST_TIMEOUT_MS - 1)
+      })
       expect(
         within(panelB.root).getByTestId('sidepanel-loading')
       ).toBeInTheDocument()
+
+      await act(async () => {
+        jest.advanceTimersByTime(1)
+      })
+      await waitFor(() =>
+        expect(
+          within(panelB.root).getByTestId('sidepanel-retry-sentence')
+        ).toBeInTheDocument()
+      )
+      expect(within(panelB.root).getByTestId('sidepanel-error')).toHaveTextContent(
+        PANEL_TIMEOUT_ERROR_MESSAGE
+      )
+      expect(countOf('translateSentence')).toBe(1)
     })
 
-    const translateBefore = mockSendMessage.mock.calls.filter(
-      ([message]) => message?.type === 'translateSentence'
-    ).length
-    expect(translateBefore).toBe(1)
-
-    act(() => {
-      panelA.unmount()
+    it('a panel mounted after the timeout shows the card as Retry (mount sweep)', async () => {
+      seedSession({
+        [HISTORY_KEY]: {
+          ...emptyPanelHistory(),
+          entries: [
+            {
+              ...failedSentenceHistory().entries[0],
+              status: 'loading',
+              errorMessage: '',
+              token: 1,
+              startedAt: Date.now() - PANEL_REQUEST_TIMEOUT_MS,
+            },
+          ],
+        },
+      })
+      const panel = mountPanel()
+      await within(panel.root).findByTestId('sidepanel-retry-sentence')
+      expect(countOf('translateSentence')).toBe(0)
     })
 
-    await waitFor(() => {
+    it('overlapping Retry clicks from two panels send exactly one request', async () => {
+      seedSession({ [HISTORY_KEY]: failedSentenceHistory() })
+      const panelA = mountPanel()
+      const panelB = mountPanel()
+      const retryA = await within(panelA.root).findByTestId(
+        'sidepanel-retry-sentence'
+      )
+      const retryB = await within(panelB.root).findByTestId(
+        'sidepanel-retry-sentence'
+      )
+      await act(async () => {
+        fireEvent.click(retryA)
+        fireEvent.click(retryB)
+      })
+      await waitFor(() => expect(countOf('translateSentence')).toBe(1))
+      await act(async () => {
+        await Promise.resolve()
+      })
+      expect(countOf('translateSentence')).toBe(1)
+    })
+
+    it('overlapping same-sentence events with an anchor word send one translation and one lookup', async () => {
+      mockSendMessage.mockImplementation(() => new Promise(() => {}))
+      const panelA = mountPanel()
+      const panelB = mountPanel()
+      await within(panelA.root).findByTestId('sidepanel-empty-state')
+      act(() => {
+        fireSentence('evt-x', 'great')
+        fireSentence('evt-y', 'great')
+      })
+      await waitFor(() => expect(countOf('getOneWord')).toBe(1))
+      await act(async () => {
+        await Promise.resolve()
+      })
+      expect(countOf('translateSentence')).toBe(1)
+      expect(countOf('getOneWord')).toBe(1)
       expect(
-        within(panelB.root).getByTestId('sidepanel-error')
-      ).toBeInTheDocument()
-      expect(
-        within(panelB.root).getByTestId('sidepanel-retry-sentence')
-      ).toBeInTheDocument()
+        within(panelB.root).getAllByTestId('sidepanel-sentence')
+      ).toHaveLength(1)
     })
 
-    const translateAfter = mockSendMessage.mock.calls.filter(
-      ([message]) => message?.type === 'translateSentence'
-    ).length
-    expect(translateAfter).toBe(1)
+    it('dictionary-then-context continues for the sending panel while the other one is the one in view', async () => {
+      const dictionary = deferred<unknown>()
+      mockSendMessage.mockImplementation(async message => {
+        if (message.type === 'getOneWord') return dictionary.promise
+        if (message.type === 'translateWordInContext') {
+          return { success: true, chinese: '很棒的' }
+        }
+        return { success: true, chinese: '猫是很棒的宠物。' }
+      })
+      mountPanel()
+      const panelB = mountPanel()
+      await within(panelB.root).findByTestId('sidepanel-empty-state')
+      act(() => fireSentence(nextEventId(), 'great'))
+      await waitFor(() => expect(countOf('getOneWord')).toBe(1))
+      await act(async () => {
+        dictionary.resolve({ success: false, error: 'Dictionary lookup failed' })
+      })
+      await waitFor(() => expect(countOf('translateWordInContext')).toBe(1))
+      await waitFor(() =>
+        expect(
+          within(panelB.root).getByTestId('sidepanel-card-great')
+        ).toHaveTextContent('很棒的')
+      )
+    })
+
+    it('a follow-up paused by Clear in the other panel is sent after Undo there', async () => {
+      const dictionary = deferred<unknown>()
+      mockSendMessage.mockImplementation(async message => {
+        if (message.type === 'getOneWord') return dictionary.promise
+        if (message.type === 'translateWordInContext') {
+          return { success: true, chinese: '很棒的' }
+        }
+        return { success: true, chinese: '猫是很棒的宠物。' }
+      })
+      mountPanel()
+      const panelB = mountPanel()
+      await within(panelB.root).findByTestId('sidepanel-empty-state')
+      act(() => fireSentence(nextEventId(), 'great'))
+      await waitFor(() => expect(countOf('getOneWord')).toBe(1))
+
+      fireEvent.click(await within(panelB.root).findByTestId('sidepanel-clear-all'))
+      await within(panelB.root).findByTestId('sidepanel-undo-clear')
+      await act(async () => {
+        dictionary.resolve({ success: false, error: 'Dictionary lookup failed' })
+      })
+      await act(async () => {
+        await Promise.resolve()
+      })
+      expect(countOf('translateWordInContext')).toBe(0)
+
+      fireEvent.click(within(panelB.root).getByTestId('sidepanel-undo-clear'))
+      await waitFor(() => expect(countOf('translateWordInContext')).toBe(1))
+    })
+
+    it('removing a card in one panel removes it from the other', async () => {
+      seedSession({
+        [HISTORY_KEY]: {
+          ...emptyPanelHistory(),
+          entries: [
+            {
+              ...failedSentenceHistory().entries[0],
+              status: 'loaded',
+              chinese: '猫是很棒的宠物。',
+              errorMessage: '',
+              words: [
+                {
+                  word: 'great',
+                  key: 'great',
+                  dictionaryStatus: 'loaded',
+                  dictionaryChinese: 'adj. 很棒的',
+                  contextStatus: 'loaded',
+                  contextChinese: '很棒的',
+                },
+              ],
+            },
+          ],
+        },
+      })
+      const panelA = mountPanel()
+      const panelB = mountPanel()
+      await within(panelB.root).findByTestId('sidepanel-card-great')
+      await within(panelA.root).findByTestId('sidepanel-card-great')
+      fireEvent.click(within(panelA.root).getByTestId('sidepanel-remove-great'))
+      await waitFor(() => {
+        expect(
+          within(panelB.root).queryByTestId('sidepanel-card-great')
+        ).toBeNull()
+      })
+    })
   })
 
   it('Undo window ends at expiresAt for a late-mounted panel', async () => {

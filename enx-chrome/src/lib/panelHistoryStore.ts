@@ -1,23 +1,27 @@
 // ADR-090: the Side Panel's card list lives in chrome.storage.session, one
 // copy per reading tab, shared by every panel document of that tab. Every
 // write is a locked read-modify-write that returns the committed request
-// plan (or none). I/O enters through the constructor.
+// plan (or none): allocation of tokens, retry decisions and card transitions
+// all happen here, on the state read under the lock. I/O enters through the
+// constructor.
 
 import {
+  PANEL_REQUEST_TIMEOUT_MS,
   adjacentPageCard,
   findCard,
   findSentence,
+  isCardLoading,
   moveSentenceToTop,
   patchCard,
   patchSentence,
   removeCard,
   reorderOrInsertCard,
   sentenceCardId,
+  sweepTimedOut,
   topLevelPhraseCardKey,
   upsertPageLookupCard,
   wordCardKey,
   type PanelEntry,
-  type SentenceEntry,
   type WordCardData,
 } from './panelHistory'
 
@@ -25,19 +29,12 @@ export const PANEL_HISTORY_KEY_PREFIX = 'enx-panel-history'
 export const PANEL_HISTORY_MAX_ENTRIES = 100
 export const PANEL_HISTORY_MAX_CLAIMS = 20
 export const PANEL_HISTORY_UNDO_MS = 5000
-export const PANEL_ORPHAN_ERROR_MESSAGE =
-  'Request interrupted. Tap Retry to try again.'
 
 export const panelHistoryKey = (tabId: number): string =>
   `${PANEL_HISTORY_KEY_PREFIX}:${tabId}`
 
 export const panelHistoryLockName = (tabId: number): string =>
   panelHistoryKey(tabId)
-
-export const panelAliveLockName = (instanceId: string): string =>
-  `enx-panel-alive:${instanceId}`
-
-export type ClaimStream = 'sentence' | 'pageWord'
 
 export type StoredCleared = {
   generation: number
@@ -69,7 +66,6 @@ export type PlannedRequest =
       sentenceId: string
       sentence: string
       token: number
-      ownerInstanceId: string
     }
   | {
       type: 'fetchWordContext'
@@ -78,7 +74,6 @@ export type PlannedRequest =
       sentenceId: string | undefined
       key: string
       token: number
-      ownerInstanceId: string
       counts: boolean
     }
   | {
@@ -88,24 +83,21 @@ export type PlannedRequest =
       sentenceId: string | undefined
       key: string
       token: number
-      ownerInstanceId: string
       dictionaryChinese?: string
+    }
+  | {
+      type: 'fetchDictionary'
+      word: string
+      sentenceId: string | undefined
+      key: string
+      token: number
     }
 
 export type TransactionOutcome = {
-  /** False when the tab is gone, or both the write and its quota retry failed. */
+  /** False when the tab is gone or the storage write failed. */
   committed: boolean
   plan: PlannedRequest[]
   state: StoredPanelHistory
-}
-
-export type PendingError = {
-  sentenceId: string | undefined
-  /** Sentence cards use the sentence id; word/phrase cards use their key. */
-  key: string
-  kind: 'sentence' | 'word'
-  sentencePatch?: Partial<SentenceEntry>
-  wordPatch?: Partial<WordCardData>
 }
 
 export type SessionStorageArea = {
@@ -124,16 +116,20 @@ export type PanelHistoryStoreDeps = {
   requestLock: LockRequest
   tabExists: (tabId: number) => Promise<boolean>
   now: () => number
+  /** Test seam: shortens the 120 s request timeout (ADR-090 Decision 5). */
+  requestTimeoutMs?: number
 }
 
-type Mutator = (
-  state: StoredPanelHistory
+export type Mutator = (
+  state: StoredPanelHistory,
+  now: number
 ) => {
+  /** Return the received state object itself for "nothing to change". */
   state: StoredPanelHistory
   plan?: PlannedRequest[]
-  /** When true, skip the write (read-only / already claimed). */
-  skipWrite?: boolean
 }
+
+type Draft = { state: StoredPanelHistory; plan: PlannedRequest[] }
 
 const expireCleared = (
   state: StoredPanelHistory,
@@ -161,112 +157,61 @@ const trimToCap = (entries: PanelEntry[]): PanelEntry[] =>
     ? entries
     : entries.slice(0, PANEL_HISTORY_MAX_ENTRIES)
 
-const trimOldestHalf = (entries: PanelEntry[]): PanelEntry[] =>
-  entries.slice(0, Math.ceil(entries.length / 2))
+const isFailedCard = (card: WordCardData): boolean =>
+  card.contextStatus === 'error' || card.dictionaryStatus === 'error'
 
-const isQuotaError = (error: unknown): boolean => {
-  if (!error || typeof error !== 'object') return false
-  const message = String((error as { message?: string }).message ?? error)
-  return /quota|QUOTA|exceed/i.test(message)
-}
-
-const markOrphanLoading = (
-  entries: PanelEntry[],
-  ownerInstanceId: string
-): PanelEntry[] =>
-  entries.map(entry => {
-    if (entry.kind === 'sentence') {
-      let next: SentenceEntry = entry
-      if (
-        entry.status === 'loading' &&
-        entry.ownerInstanceId === ownerInstanceId
-      ) {
-        next = {
-          ...entry,
-          status: 'error',
-          errorMessage: PANEL_ORPHAN_ERROR_MESSAGE,
-          token: undefined,
-          ownerInstanceId: undefined,
-        }
-      }
-      const words = next.words.map(card => {
-        const loading =
-          card.dictionaryStatus === 'loading' ||
-          card.contextStatus === 'loading'
-        if (!loading || card.ownerInstanceId !== ownerInstanceId) return card
-        return {
-          ...card,
-          ...(card.dictionaryStatus === 'loading'
-            ? {
-                dictionaryStatus: 'error' as const,
-                dictionaryError: PANEL_ORPHAN_ERROR_MESSAGE,
-              }
-            : {}),
-          ...(card.contextStatus === 'loading'
-            ? {
-                contextStatus: 'error' as const,
-                contextError: PANEL_ORPHAN_ERROR_MESSAGE,
-              }
-            : {}),
-          token: undefined,
-          ownerInstanceId: undefined,
-        }
-      })
-      return words === next.words ? next : { ...next, words }
-    }
-    const loading =
-      entry.dictionaryStatus === 'loading' || entry.contextStatus === 'loading'
-    if (!loading || entry.ownerInstanceId !== ownerInstanceId) return entry
-    return {
-      ...entry,
-      ...(entry.dictionaryStatus === 'loading'
-        ? {
-            dictionaryStatus: 'error' as const,
-            dictionaryError: PANEL_ORPHAN_ERROR_MESSAGE,
-          }
-        : {}),
-      ...(entry.contextStatus === 'loading'
-        ? {
-            contextStatus: 'error' as const,
-            contextError: PANEL_ORPHAN_ERROR_MESSAGE,
-          }
-        : {}),
-      token: undefined,
-      ownerInstanceId: undefined,
-    }
-  })
-
-const applyPendingErrors = (
+// Retries a failed word/phrase card with a new token: the context half alone
+// when the dictionary half is done (or never applies), otherwise the whole
+// dictionary-first chain.
+const retryCard = (
   state: StoredPanelHistory,
-  pending: PendingError[]
-): { state: StoredPanelHistory; remaining: PendingError[] } => {
-  let next = state
-  const remaining: PendingError[] = []
-  for (const error of pending) {
-    if (error.kind === 'sentence' && error.sentencePatch) {
-      const before = next.entries
-      next = {
-        ...next,
-        entries: patchSentence(next.entries, error.key, error.sentencePatch),
+  sentenceId: string | undefined,
+  card: WordCardData,
+  sentence: string,
+  now: number
+): Draft => {
+  const alloc = allocateToken(state)
+  const token = alloc.token
+  const contextOnly =
+    card.dictionaryStatus === 'none' || card.dictionaryStatus === 'loaded'
+  const entries = patchCard(alloc.state.entries, sentenceId, card.key, {
+    token,
+    startedAt: now,
+    contextStatus: 'loading',
+    contextError: undefined,
+    contextErrorHttpStatus: undefined,
+    contextSessionExpired: false,
+    contextSessionUnverified: false,
+    ...(contextOnly
+      ? {}
+      : {
+          dictionaryStatus: 'loading' as const,
+          dictionaryError: undefined,
+          dictionarySessionExpired: false,
+          dictionarySessionUnverified: false,
+        }),
+  })
+  const request: PlannedRequest = contextOnly
+    ? {
+        type: 'fetchContextTranslation',
+        word: card.word,
+        sentence,
+        sentenceId,
+        key: card.key,
+        token,
+        dictionaryChinese:
+          card.dictionaryStatus === 'loaded' ? card.dictionaryChinese : undefined,
       }
-      if (next.entries === before) remaining.push(error)
-    } else if (error.kind === 'word' && error.wordPatch) {
-      const before = next.entries
-      next = {
-        ...next,
-        entries: patchCard(
-          next.entries,
-          error.sentenceId,
-          error.key,
-          error.wordPatch
-        ),
+    : {
+        type: 'fetchWordContext',
+        word: card.word,
+        sentence,
+        sentenceId,
+        key: card.key,
+        token,
+        counts: false,
       }
-      if (next.entries === before) remaining.push(error)
-    } else {
-      remaining.push(error)
-    }
-  }
-  return { state: next, remaining }
+  return { state: { ...alloc.state, entries }, plan: [request] }
 }
 
 export type SentenceEventInput = {
@@ -283,700 +228,609 @@ export type PageWordEventInput = {
   ecp: import('@/types').WordData
 }
 
+const claimSentence = (
+  start: StoredPanelHistory,
+  event: SentenceEventInput,
+  now: number
+): Draft => {
+  if (start.claimedSentenceEventIds.includes(event.eventId)) {
+    return { state: start, plan: [] }
+  }
+  let state: StoredPanelHistory = {
+    ...start,
+    claimedSentenceEventIds: pushClaim(
+      start.claimedSentenceEventIds,
+      event.eventId
+    ),
+  }
+  const plan: PlannedRequest[] = []
+
+  if (event.phrase) {
+    const keyForPhrase = topLevelPhraseCardKey(event.phrase, event.sentence)
+    const existing = findCard(state.entries, undefined, keyForPhrase)
+    if (existing) {
+      state = {
+        ...state,
+        entries: reorderOrInsertCard(
+          state.entries,
+          undefined,
+          keyForPhrase,
+          () => existing
+        ),
+      }
+      if (existing.contextStatus === 'error' && !isCardLoading(existing)) {
+        const retried = retryCard(state, undefined, existing, event.sentence, now)
+        state = retried.state
+        plan.push(...retried.plan)
+      }
+    } else {
+      const alloc = allocateToken(state)
+      state = {
+        ...alloc.state,
+        entries: reorderOrInsertCard(
+          alloc.state.entries,
+          undefined,
+          keyForPhrase,
+          () => ({
+            word: event.phrase!,
+            key: keyForPhrase,
+            token: alloc.token,
+            startedAt: now,
+            dictionaryStatus: 'none',
+            contextStatus: 'loading',
+            contextSentence: event.sentence,
+          })
+        ),
+      }
+      plan.push({
+        type: 'fetchContextTranslation',
+        word: event.phrase,
+        sentence: event.sentence,
+        sentenceId: undefined,
+        key: keyForPhrase,
+        token: alloc.token,
+      })
+    }
+  } else {
+    const id = sentenceCardId(event.sentence)
+    const anchorWord = event.word?.trim() || ''
+    const clickedWord = anchorWord.toLowerCase()
+    const anchorKey = wordCardKey(clickedWord)
+    const existing = findSentence(state.entries, id)
+    const nestedAnchor = clickedWord
+      ? existing?.words.find(w => w.key === anchorKey)
+      : undefined
+    const pageCard = clickedWord
+      ? adjacentPageCard(state.entries, clickedWord)
+      : undefined
+    const absorbed = nestedAnchor ? undefined : pageCard
+
+    let sentenceToken: number | undefined
+    if (!existing || existing.status === 'error') {
+      const alloc = allocateToken(state)
+      state = alloc.state
+      sentenceToken = alloc.token
+    }
+
+    let absorbedCard: WordCardData | undefined
+    if (absorbed) {
+      const alloc = allocateToken(state)
+      state = alloc.state
+      absorbedCard = {
+        word: absorbed.word,
+        key: absorbed.key,
+        token: alloc.token,
+        startedAt: now,
+        pronunciation: absorbed.pronunciation,
+        loadCount: absorbed.loadCount,
+        dictionaryChinese: absorbed.dictionaryChinese,
+        dictionaryStatus: absorbed.dictionaryStatus,
+        contextStatus: 'loading',
+      }
+    }
+
+    const rest = state.entries.filter(e => e !== pageCard)
+    if (!existing) {
+      state = {
+        ...state,
+        entries: [
+          {
+            kind: 'sentence',
+            id,
+            token: sentenceToken,
+            startedAt: now,
+            sentence: event.sentence,
+            clickedWord,
+            status: 'loading',
+            chinese: '',
+            errorMessage: '',
+            errorHttpStatus: undefined,
+            words: absorbedCard ? [absorbedCard] : [],
+          },
+          ...rest,
+        ],
+      }
+    } else {
+      let next = patchSentence(moveSentenceToTop(rest, id), id, {
+        ...(clickedWord ? { clickedWord } : {}),
+        ...(sentenceToken === undefined
+          ? {}
+          : {
+              token: sentenceToken,
+              startedAt: now,
+              status: 'loading' as const,
+              errorMessage: '',
+            }),
+      })
+      const anchorCard = nestedAnchor ?? absorbedCard
+      if (anchorCard) {
+        next = reorderOrInsertCard(next, id, anchorKey, () => anchorCard)
+      }
+      state = { ...state, entries: next }
+    }
+
+    if (sentenceToken !== undefined) {
+      plan.push({
+        type: 'translateSentence',
+        sentenceId: id,
+        sentence: event.sentence,
+        token: sentenceToken,
+      })
+    }
+
+    if (nestedAnchor) {
+      if (isFailedCard(nestedAnchor) && !isCardLoading(nestedAnchor)) {
+        const retried = retryCard(state, id, nestedAnchor, event.sentence, now)
+        state = retried.state
+        plan.push(...retried.plan)
+      }
+    } else if (absorbedCard?.token !== undefined) {
+      plan.push({
+        type: 'fetchContextTranslation',
+        word: absorbedCard.word,
+        sentence: event.sentence,
+        sentenceId: id,
+        key: absorbedCard.key,
+        token: absorbedCard.token,
+        dictionaryChinese: absorbedCard.dictionaryChinese,
+      })
+    } else if (anchorWord) {
+      const existingAnchor = findCard(state.entries, id, anchorKey)
+      if (!existingAnchor) {
+        const alloc = allocateToken(state)
+        state = {
+          ...alloc.state,
+          entries: reorderOrInsertCard(alloc.state.entries, id, anchorKey, () => ({
+            word: clickedWord,
+            key: anchorKey,
+            token: alloc.token,
+            startedAt: now,
+            dictionaryStatus: 'loading',
+            contextStatus: 'loading',
+          })),
+        }
+        plan.push({
+          type: 'fetchWordContext',
+          word: clickedWord,
+          sentence: event.sentence,
+          sentenceId: id,
+          key: anchorKey,
+          token: alloc.token,
+          counts: false,
+        })
+      }
+    }
+  }
+
+  // New content discards an open Undo window (same as PanelHistorySession.update).
+  if (state.entries.length > 0 && state.cleared) {
+    state = { ...state, cleared: null }
+  }
+  return { state, plan }
+}
+
 export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
-  const readFresh = async (tabId: number): Promise<StoredPanelHistory> => {
+  const timeoutMs = deps.requestTimeoutMs ?? PANEL_REQUEST_TIMEOUT_MS
+
+  const read = async (tabId: number): Promise<StoredPanelHistory> => {
     const raw = await deps.storage.get(panelHistoryKey(tabId))
     return expireCleared(raw ?? emptyPanelHistory(), deps.now())
   }
 
-  const writeWithQuotaRetry = async (
-    key: string,
-    state: StoredPanelHistory
-  ): Promise<StoredPanelHistory | null> => {
-    const capped: StoredPanelHistory = {
-      ...state,
-      entries: trimToCap(state.entries),
-      cleared: state.cleared
-        ? {
-            ...state.cleared,
-            entries: trimToCap(state.cleared.entries),
-          }
-        : null,
-    }
-    try {
-      await deps.storage.set(key, capped)
-      return capped
-    } catch (error) {
-      if (!isQuotaError(error)) throw error
-      const trimmed: StoredPanelHistory = {
-        ...capped,
-        entries: trimOldestHalf(capped.entries),
-        cleared: capped.cleared
+  // One locked read-modify-write. The state the mutator sees is the stored
+  // one with an expired Undo stash dropped and timed-out loading cards swept
+  // (ADR-090 Decisions 5 and 7). A failed write commits nothing: no plan, the
+  // error is logged, and the caller's event stays unclaimed.
+  const transact = (
+    tabId: number,
+    mutator: Mutator
+  ): Promise<TransactionOutcome> =>
+    deps.requestLock(panelHistoryLockName(tabId), async () => {
+      const key = panelHistoryKey(tabId)
+      const now = deps.now()
+      const base = (await deps.storage.get(key)) ?? emptyPanelHistory()
+      let state = expireCleared(base, now)
+      const swept = sweepTimedOut(state.entries, now, timeoutMs)
+      if (swept !== state.entries) state = { ...state, entries: swept }
+
+      const drafted = mutator(state, now)
+      if (drafted.state === state && state === base) {
+        return { committed: true, plan: [], state }
+      }
+      if (!(await deps.tabExists(tabId))) {
+        return { committed: false, plan: [], state }
+      }
+      const capped: StoredPanelHistory = {
+        ...drafted.state,
+        entries: trimToCap(drafted.state.entries),
+        cleared: drafted.state.cleared
           ? {
-              ...capped.cleared,
-              entries: trimOldestHalf(capped.cleared.entries),
+              ...drafted.state.cleared,
+              entries: trimToCap(drafted.state.cleared.entries),
             }
           : null,
       }
       try {
-        await deps.storage.set(key, trimmed)
-        return trimmed
-      } catch (retryError) {
-        if (!isQuotaError(retryError)) throw retryError
-        return null
+        await deps.storage.set(key, capped)
+      } catch (error) {
+        console.error('panelHistoryStore: failed to write panel history', error)
+        return { committed: false, plan: [], state }
       }
-    }
-  }
-
-  const transact = async (
-    tabId: number,
-    mutator: Mutator
-  ): Promise<TransactionOutcome> => {
-    const key = panelHistoryKey(tabId)
-    return deps.requestLock(panelHistoryLockName(tabId), async () => {
-      const before = await readFresh(tabId)
-      const { state: drafted, plan = [], skipWrite } = mutator(before)
-      if (skipWrite) {
-        return { committed: true, plan: [], state: before }
-      }
-      const exists = await deps.tabExists(tabId)
-      if (!exists) {
-        return { committed: false, plan: [], state: before }
-      }
-      const written = await writeWithQuotaRetry(key, {
-        ...drafted,
-        entries: trimToCap(drafted.entries),
-      })
-      if (!written) {
-        return { committed: false, plan: [], state: before }
-      }
-      return { committed: true, plan, state: written }
-    })
-  }
-
-  const claimSentenceEvent = (
-    tabId: number,
-    instanceId: string,
-    event: SentenceEventInput,
-    pendingErrors: PendingError[] = []
-  ): Promise<TransactionOutcome & { remainingPending: PendingError[] }> =>
-    deps.requestLock(panelHistoryLockName(tabId), async () => {
-      const key = panelHistoryKey(tabId)
-      let state = await readFresh(tabId)
-      const flushed = applyPendingErrors(state, pendingErrors)
-      state = flushed.state
-      let remainingPending = flushed.remaining
-
-      if (state.claimedSentenceEventIds.includes(event.eventId)) {
-        if (state !== (await readFresh(tabId)) || pendingErrors.length > 0) {
-          const exists = await deps.tabExists(tabId)
-          if (exists) {
-            const written = await writeWithQuotaRetry(key, state)
-            if (written) {
-              return {
-                committed: true,
-                plan: [],
-                state: written,
-                remainingPending,
-              }
-            }
-          }
-        }
-        return {
-          committed: true,
-          plan: [],
-          state,
-          remainingPending: pendingErrors,
-        }
-      }
-
-      state = {
-        ...state,
-        claimedSentenceEventIds: pushClaim(
-          state.claimedSentenceEventIds,
-          event.eventId
-        ),
-      }
-
-      const plan: PlannedRequest[] = []
-
-      if (event.phrase) {
-        const keyForPhrase = topLevelPhraseCardKey(event.phrase, event.sentence)
-        const existing = findCard(state.entries, undefined, keyForPhrase)
-        if (existing) {
-          state = {
-            ...state,
-            entries: reorderOrInsertCard(
-              state.entries,
-              undefined,
-              keyForPhrase,
-              () => existing
-            ),
-          }
-          if (existing.contextStatus === 'error') {
-            const alloc = allocateToken(state)
-            state = alloc.state
-            state = {
-              ...state,
-              entries: patchCard(state.entries, undefined, keyForPhrase, {
-                token: alloc.token,
-                ownerInstanceId: instanceId,
-                contextStatus: 'loading',
-                contextError: undefined,
-              }),
-            }
-            plan.push({
-              type: 'fetchContextTranslation',
-              word: event.phrase,
-              sentence: event.sentence,
-              sentenceId: undefined,
-              key: keyForPhrase,
-              token: alloc.token,
-              ownerInstanceId: instanceId,
-            })
-          }
-        } else {
-          const alloc = allocateToken(state)
-          state = alloc.state
-          state = {
-            ...state,
-            entries: reorderOrInsertCard(
-              state.entries,
-              undefined,
-              keyForPhrase,
-              () => ({
-                word: event.phrase!,
-                key: keyForPhrase,
-                token: alloc.token,
-                ownerInstanceId: instanceId,
-                dictionaryStatus: 'none',
-                contextStatus: 'loading',
-                contextSentence: event.sentence,
-              })
-            ),
-          }
-          plan.push({
-            type: 'fetchContextTranslation',
-            word: event.phrase,
-            sentence: event.sentence,
-            sentenceId: undefined,
-            key: keyForPhrase,
-            token: alloc.token,
-            ownerInstanceId: instanceId,
-          })
-        }
-      } else {
-        const id = sentenceCardId(event.sentence)
-        const anchorWord = event.word?.trim() || ''
-        const clickedWord = anchorWord.toLowerCase()
-        const anchorKey = wordCardKey(clickedWord)
-        const existing = findSentence(state.entries, id)
-        const nestedAnchor = clickedWord
-          ? existing?.words.find(w => w.key === anchorKey)
-          : undefined
-        const pageCard = clickedWord
-          ? adjacentPageCard(state.entries, clickedWord)
-          : undefined
-        const absorbed = nestedAnchor ? undefined : pageCard
-
-        let sentenceToken: number | undefined
-        if (!existing || existing.status === 'error') {
-          const alloc = allocateToken(state)
-          state = alloc.state
-          sentenceToken = alloc.token
-        }
-
-        let absorbedCard: WordCardData | undefined
-        if (absorbed) {
-          const alloc = allocateToken(state)
-          state = alloc.state
-          absorbedCard = {
-            word: absorbed.word,
-            key: absorbed.key,
-            token: alloc.token,
-            ownerInstanceId: instanceId,
-            pronunciation: absorbed.pronunciation,
-            loadCount: absorbed.loadCount,
-            dictionaryChinese: absorbed.dictionaryChinese,
-            dictionaryStatus: absorbed.dictionaryStatus,
-            contextStatus: 'loading',
-          }
-        }
-
-        const rest = state.entries.filter(e => e !== pageCard)
-        if (!existing) {
-          state = {
-            ...state,
-            entries: [
-              {
-                kind: 'sentence',
-                id,
-                token: sentenceToken,
-                ownerInstanceId: instanceId,
-                sentence: event.sentence,
-                clickedWord,
-                status: 'loading',
-                chinese: '',
-                errorMessage: '',
-                errorHttpStatus: undefined,
-                words: absorbedCard ? [absorbedCard] : [],
-              },
-              ...rest,
-            ],
-          }
-        } else {
-          let next = patchSentence(moveSentenceToTop(rest, id), id, {
-            ...(clickedWord ? { clickedWord } : {}),
-            ...(sentenceToken === undefined
-              ? {}
-              : {
-                  token: sentenceToken,
-                  ownerInstanceId: instanceId,
-                  status: 'loading' as const,
-                  errorMessage: '',
-                }),
-          })
-          const anchorCard = nestedAnchor ?? absorbedCard
-          if (anchorCard) {
-            next = reorderOrInsertCard(next, id, anchorKey, () => anchorCard)
-          }
-          state = { ...state, entries: next }
-        }
-
-        if (sentenceToken !== undefined) {
-          plan.push({
-            type: 'translateSentence',
-            sentenceId: id,
-            sentence: event.sentence,
-            token: sentenceToken,
-            ownerInstanceId: instanceId,
-          })
-        }
-
-        if (nestedAnchor) {
-          if (
-            nestedAnchor.contextStatus === 'error' ||
-            nestedAnchor.dictionaryStatus === 'error'
-          ) {
-            const alloc = allocateToken(state)
-            state = alloc.state
-            const contextOnly =
-              nestedAnchor.dictionaryStatus === 'none' ||
-              nestedAnchor.dictionaryStatus === 'loaded'
-            state = {
-              ...state,
-              entries: patchCard(state.entries, id, nestedAnchor.key, {
-                token: alloc.token,
-                ownerInstanceId: instanceId,
-                contextStatus: 'loading',
-                contextError: undefined,
-                ...(contextOnly
-                  ? {}
-                  : {
-                      dictionaryStatus: 'loading' as const,
-                      dictionaryError: undefined,
-                    }),
-              }),
-            }
-            if (contextOnly) {
-              plan.push({
-                type: 'fetchContextTranslation',
-                word: nestedAnchor.word,
-                sentence: event.sentence,
-                sentenceId: id,
-                key: nestedAnchor.key,
-                token: alloc.token,
-                ownerInstanceId: instanceId,
-                dictionaryChinese:
-                  nestedAnchor.dictionaryStatus === 'loaded'
-                    ? nestedAnchor.dictionaryChinese
-                    : undefined,
-              })
-            } else {
-              plan.push({
-                type: 'fetchWordContext',
-                word: nestedAnchor.word,
-                sentence: event.sentence,
-                sentenceId: id,
-                key: nestedAnchor.key,
-                token: alloc.token,
-                ownerInstanceId: instanceId,
-                counts: false,
-              })
-            }
-          }
-        } else if (absorbedCard?.token !== undefined) {
-          plan.push({
-            type: 'fetchContextTranslation',
-            word: absorbedCard.word,
-            sentence: event.sentence,
-            sentenceId: id,
-            key: absorbedCard.key,
-            token: absorbedCard.token,
-            ownerInstanceId: instanceId,
-            dictionaryChinese: absorbedCard.dictionaryChinese,
-          })
-        } else if (anchorWord) {
-          const existingAnchor = findCard(state.entries, id, anchorKey)
-          if (!existingAnchor) {
-            const alloc = allocateToken(state)
-            state = alloc.state
-            state = {
-              ...state,
-              entries: reorderOrInsertCard(state.entries, id, anchorKey, () => ({
-                word: clickedWord,
-                key: anchorKey,
-                token: alloc.token,
-                ownerInstanceId: instanceId,
-                dictionaryStatus: 'loading',
-                contextStatus: 'loading',
-              })),
-            }
-            plan.push({
-              type: 'fetchWordContext',
-              word: clickedWord,
-              sentence: event.sentence,
-              sentenceId: id,
-              key: anchorKey,
-              token: alloc.token,
-              ownerInstanceId: instanceId,
-              counts: false,
-            })
-          }
-        }
-      }
-
-      // New content discards an open Undo window (same as PanelHistorySession.update).
-      if (state.entries.length > 0 && state.cleared) {
-        state = { ...state, cleared: null }
-      }
-
-      const exists = await deps.tabExists(tabId)
-      if (!exists) {
-        return {
-          committed: false,
-          plan: [],
-          state: await readFresh(tabId),
-          remainingPending: pendingErrors,
-        }
-      }
-      const written = await writeWithQuotaRetry(key, state)
-      if (!written) {
-        return {
-          committed: false,
-          plan: [],
-          state: await readFresh(tabId),
-          remainingPending: pendingErrors,
-        }
-      }
-      return {
-        committed: true,
-        plan,
-        state: written,
-        remainingPending,
-      }
+      return { committed: true, plan: drafted.plan ?? [], state: capped }
     })
 
-  const claimPageWordEvent = (
-    tabId: number,
-    _instanceId: string,
-    event: PageWordEventInput,
-    pendingErrors: PendingError[] = []
-  ): Promise<TransactionOutcome & { remainingPending: PendingError[] }> =>
-    deps.requestLock(panelHistoryLockName(tabId), async () => {
-      const key = panelHistoryKey(tabId)
-      let state = await readFresh(tabId)
-      const flushed = applyPendingErrors(state, pendingErrors)
-      state = flushed.state
-      const remainingPending = flushed.remaining
-
-      if (state.claimedPageWordEventIds.includes(event.eventId)) {
-        if (pendingErrors.length > 0) {
-          const exists = await deps.tabExists(tabId)
-          if (exists) {
-            const written = await writeWithQuotaRetry(key, state)
-            if (written) {
-              return {
-                committed: true,
-                plan: [],
-                state: written,
-                remainingPending,
-              }
-            }
-          }
-        }
-        return {
-          committed: true,
-          plan: [],
-          state,
-          remainingPending: pendingErrors,
-        }
-      }
-
-      const word = event.word.trim().toLowerCase()
-      state = {
-        ...state,
-        claimedPageWordEventIds: pushClaim(
-          state.claimedPageWordEventIds,
-          event.eventId
-        ),
-        entries: upsertPageLookupCard(state.entries, {
-          word,
-          key: wordCardKey(word),
-          pronunciation: event.ecp.Pronunciation,
-          loadCount: event.ecp.LoadCount,
-          dictionaryChinese: event.ecp.Chinese,
-          dictionaryStatus: 'loaded',
-          contextStatus: 'none',
-        }),
-        cleared: null,
-      }
-
-      const exists = await deps.tabExists(tabId)
-      if (!exists) {
-        return {
-          committed: false,
-          plan: [],
-          state: await readFresh(tabId),
-          remainingPending: pendingErrors,
-        }
-      }
-      const written = await writeWithQuotaRetry(key, state)
-      if (!written) {
-        return {
-          committed: false,
-          plan: [],
-          state: await readFresh(tabId),
-          remainingPending: pendingErrors,
-        }
-      }
-      return { committed: true, plan: [], state: written, remainingPending }
-    })
+  const fromDraft = (draft: Draft) => draft
 
   return {
-    read: readFresh,
-
+    read,
     transact,
 
-    claimSentenceEvent,
-    claimPageWordEvent,
+    /** Mount / timer sweep: persists timed-out cards as error (Decision 5). */
+    sweep: (tabId: number) => transact(tabId, state => ({ state })),
 
-    async clear(
-      tabId: number,
-      pendingErrors: PendingError[] = []
-    ): Promise<TransactionOutcome & { remainingPending: PendingError[] }> {
-      return deps.requestLock(panelHistoryLockName(tabId), async () => {
-        const key = panelHistoryKey(tabId)
-        let state = await readFresh(tabId)
-        const flushed = applyPendingErrors(state, pendingErrors)
-        state = flushed.state
-        const generation = state.clearGeneration + 1
-        const next: StoredPanelHistory = {
-          ...state,
-          entries: [],
-          cleared: {
-            generation,
-            entries: state.entries,
-            expiresAt: deps.now() + PANEL_HISTORY_UNDO_MS,
+    claimSentenceEvent: (tabId: number, event: SentenceEventInput) =>
+      transact(tabId, (state, now) => fromDraft(claimSentence(state, event, now))),
+
+    claimPageWordEvent: (tabId: number, event: PageWordEventInput) =>
+      transact(tabId, state => {
+        if (state.claimedPageWordEventIds.includes(event.eventId)) {
+          return { state }
+        }
+        const word = event.word.trim().toLowerCase()
+        return {
+          state: {
+            ...state,
+            claimedPageWordEventIds: pushClaim(
+              state.claimedPageWordEventIds,
+              event.eventId
+            ),
+            entries: upsertPageLookupCard(state.entries, {
+              word,
+              key: wordCardKey(word),
+              pronunciation: event.ecp.Pronunciation,
+              loadCount: event.ecp.LoadCount,
+              dictionaryChinese: event.ecp.Chinese,
+              dictionaryStatus: 'loaded',
+              contextStatus: 'none',
+            }),
+            cleared: null,
           },
-          clearGeneration: generation,
         }
-        const exists = await deps.tabExists(tabId)
-        if (!exists) {
-          return {
-            committed: false,
-            plan: [],
-            state,
-            remainingPending: pendingErrors,
-          }
-        }
-        const written = await writeWithQuotaRetry(key, next)
-        if (!written) {
-          return {
-            committed: false,
-            plan: [],
-            state,
-            remainingPending: pendingErrors,
-          }
-        }
+      }),
+
+    clear: (tabId: number) =>
+      transact(tabId, (state, now) => {
+        const generation = state.clearGeneration + 1
         return {
-          committed: true,
-          plan: [],
-          state: written,
-          remainingPending: flushed.remaining,
+          state: {
+            ...state,
+            entries: [],
+            cleared: {
+              generation,
+              entries: state.entries,
+              expiresAt: now + PANEL_HISTORY_UNDO_MS,
+            },
+            clearGeneration: generation,
+          },
         }
-      })
-    },
+      }),
 
-    async undo(
-      tabId: number,
-      pendingErrors: PendingError[] = []
-    ): Promise<TransactionOutcome & { remainingPending: PendingError[] }> {
-      return deps.requestLock(panelHistoryLockName(tabId), async () => {
-        const key = panelHistoryKey(tabId)
-        let state = await readFresh(tabId)
-        const flushed = applyPendingErrors(state, pendingErrors)
-        state = flushed.state
-        if (!state.cleared) {
-          return {
-            committed: true,
-            plan: [],
-            state,
-            remainingPending: pendingErrors,
-          }
-        }
-        const next: StoredPanelHistory = {
-          ...state,
-          entries: state.cleared.entries,
-          cleared: null,
-        }
-        const exists = await deps.tabExists(tabId)
-        if (!exists) {
-          return {
-            committed: false,
-            plan: [],
-            state,
-            remainingPending: pendingErrors,
-          }
-        }
-        const written = await writeWithQuotaRetry(key, next)
-        if (!written) {
-          return {
-            committed: false,
-            plan: [],
-            state,
-            remainingPending: pendingErrors,
-          }
-        }
-        return {
-          committed: true,
-          plan: [],
-          state: written,
-          remainingPending: flushed.remaining,
-        }
-      })
-    },
+    undo: (tabId: number) =>
+      transact(tabId, state =>
+        state.cleared
+          ? {
+              state: {
+                ...state,
+                entries: state.cleared.entries,
+                cleared: null,
+              },
+            }
+          : { state }
+      ),
 
-    async discardClearedGeneration(
-      tabId: number,
-      generation: number
-    ): Promise<TransactionOutcome> {
-      return transact(tabId, state => {
-        if (!state.cleared || state.cleared.generation !== generation) {
-          return { state, skipWrite: true }
-        }
-        if (state.cleared.expiresAt > deps.now()) {
-          return { state, skipWrite: true }
-        }
-        return { state: { ...state, cleared: null } }
-      })
-    },
+    /** Drops the Undo stash only if it is generation `generation` and due. */
+    discardClearedGeneration: (tabId: number, generation: number) =>
+      transact(tabId, (state, now) =>
+        state.cleared &&
+        state.cleared.generation === generation &&
+        state.cleared.expiresAt <= now
+          ? { state: { ...state, cleared: null } }
+          : { state }
+      ),
 
-    async removeCard(
+    removeCard: (
       tabId: number,
       sentenceId: string | undefined,
-      cardKey: string,
-      pendingErrors: PendingError[] = []
-    ): Promise<TransactionOutcome & { remainingPending: PendingError[] }> {
-      return deps.requestLock(panelHistoryLockName(tabId), async () => {
-        const key = panelHistoryKey(tabId)
-        let state = await readFresh(tabId)
-        const flushed = applyPendingErrors(state, pendingErrors)
-        state = flushed.state
-        const next = {
+      cardKey: string
+    ) =>
+      transact(tabId, state => ({
+        state: {
           ...state,
           entries: removeCard(state.entries, sentenceId, cardKey),
-        }
-        const exists = await deps.tabExists(tabId)
-        if (!exists) {
-          return {
-            committed: false,
-            plan: [],
-            state,
-            remainingPending: pendingErrors,
-          }
-        }
-        const written = await writeWithQuotaRetry(key, next)
-        if (!written) {
-          return {
-            committed: false,
-            plan: [],
-            state,
-            remainingPending: pendingErrors,
-          }
-        }
-        return {
-          committed: true,
-          plan: [],
-          state: written,
-          remainingPending: flushed.remaining,
-        }
-      })
-    },
+        },
+      })),
 
-    async patchEntries(
+    /** Writes a response back (the update applies the token rule itself). */
+    patchEntries: (
       tabId: number,
-      update: (entries: PanelEntry[]) => PanelEntry[],
-      pendingErrors: PendingError[] = []
-    ): Promise<TransactionOutcome & { remainingPending: PendingError[] }> {
-      return deps.requestLock(panelHistoryLockName(tabId), async () => {
-        const key = panelHistoryKey(tabId)
-        let state = await readFresh(tabId)
-        const flushed = applyPendingErrors(state, pendingErrors)
-        state = flushed.state
-        const next: StoredPanelHistory = {
+      update: (entries: PanelEntry[]) => PanelEntry[]
+    ) =>
+      transact(tabId, state => ({
+        state: {
           ...state,
           entries: update(state.entries),
           cleared: state.cleared
             ? { ...state.cleared, entries: update(state.cleared.entries) }
             : null,
+        },
+      })),
+
+    /**
+     * Retry of a sentence card (and the failed words nested in it, whose
+     * failure the sentence's error row shares). No plan when the card is gone
+     * or already loading.
+     */
+    retrySentence: (tabId: number, sentenceId: string) =>
+      transact(tabId, (start, now) => {
+        const entry = findSentence(start.entries, sentenceId)
+        if (!entry || entry.status === 'loading') return { state: start }
+        const alloc = allocateToken(start)
+        let state: StoredPanelHistory = {
+          ...alloc.state,
+          entries: patchSentence(alloc.state.entries, sentenceId, {
+            token: alloc.token,
+            startedAt: now,
+            status: 'loading',
+            errorMessage: '',
+            errorHttpStatus: undefined,
+            sessionExpired: false,
+            sessionUnverified: false,
+          }),
         }
-        const exists = await deps.tabExists(tabId)
-        if (!exists) {
-          return {
-            committed: false,
-            plan: [],
-            state,
-            remainingPending: pendingErrors,
+        const plan: PlannedRequest[] = [
+          {
+            type: 'translateSentence',
+            sentenceId: entry.id,
+            sentence: entry.sentence,
+            token: alloc.token,
+          },
+        ]
+        for (const card of entry.words) {
+          if (isFailedCard(card) && !isCardLoading(card)) {
+            const retried = retryCard(state, entry.id, card, entry.sentence, now)
+            state = retried.state
+            plan.push(...retried.plan)
           }
         }
-        const written = await writeWithQuotaRetry(key, next)
-        if (!written) {
-          return {
-            committed: false,
-            plan: [],
-            state,
-            remainingPending: pendingErrors,
-          }
-        }
+        return { state, plan }
+      }),
+
+    /** Retry of a word/phrase card's context half (or its whole chain). */
+    retryContext: (
+      tabId: number,
+      sentenceId: string | undefined,
+      key: string
+    ) =>
+      transact(tabId, (state, now) => {
+        const card = findCard(state.entries, sentenceId, key)
+        const sentence = sentenceId
+          ? findSentence(state.entries, sentenceId)?.sentence
+          : card?.contextSentence
+        if (!card || !sentence || isCardLoading(card)) return { state }
+        return fromDraft(retryCard(state, sentenceId, card, sentence, now))
+      }),
+
+    /** Retry of the dictionary half alone (#686); a loading context half keeps its token. */
+    retryDictionary: (
+      tabId: number,
+      sentenceId: string | undefined,
+      key: string
+    ) =>
+      transact(tabId, (start, now) => {
+        const card = findCard(start.entries, sentenceId, key)
+        if (!card || card.dictionaryStatus === 'loading') return { state: start }
+        const keepToken =
+          card.contextStatus === 'loading' && card.token !== undefined
+        const alloc = keepToken
+          ? { state: start, token: card.token! }
+          : allocateToken(start)
         return {
-          committed: true,
-          plan: [],
-          state: written,
-          remainingPending: flushed.remaining,
+          state: {
+            ...alloc.state,
+            entries: patchCard(alloc.state.entries, sentenceId, key, {
+              token: alloc.token,
+              startedAt: keepToken ? (card.startedAt ?? now) : now,
+              dictionaryStatus: 'loading',
+              dictionaryError: undefined,
+              dictionaryErrorHttpStatus: undefined,
+              dictionaryErrorCode: undefined,
+              dictionarySessionExpired: false,
+              dictionarySessionUnverified: false,
+            }),
+          },
+          plan: [
+            {
+              type: 'fetchDictionary',
+              word: card.word,
+              sentenceId,
+              key,
+              token: alloc.token,
+            },
+          ],
+        }
+      }),
+
+    /**
+     * A phrase selected in a sentence (nested) or on the page (top-level).
+     * An existing card moves up; one that failed is retried; one still
+     * loading is left alone.
+     */
+    upsertPhrase: (
+      tabId: number,
+      phrase: string,
+      sentence: string,
+      sentenceId: string | undefined
+    ) =>
+      transact(tabId, (start, now) => {
+        const key =
+          sentenceId === undefined
+            ? topLevelPhraseCardKey(phrase, sentence)
+            : wordCardKey(phrase)
+        const existing = findCard(start.entries, sentenceId, key)
+        if (existing) {
+          const moved: StoredPanelHistory = {
+            ...start,
+            entries: reorderOrInsertCard(
+              start.entries,
+              sentenceId,
+              key,
+              () => existing
+            ),
+          }
+          if (existing.contextStatus === 'error' && !isCardLoading(existing)) {
+            return fromDraft(retryCard(moved, sentenceId, existing, sentence, now))
+          }
+          return { state: moved }
+        }
+        const alloc = allocateToken(start)
+        return {
+          state: {
+            ...alloc.state,
+            entries: reorderOrInsertCard(
+              alloc.state.entries,
+              sentenceId,
+              key,
+              () => ({
+                word: phrase,
+                key,
+                token: alloc.token,
+                startedAt: now,
+                dictionaryStatus: 'none',
+                contextStatus: 'loading',
+                contextSentence: sentenceId === undefined ? sentence : undefined,
+              })
+            ),
+          },
+          plan: [
+            {
+              type: 'fetchContextTranslation',
+              word: phrase,
+              sentence,
+              sentenceId,
+              key,
+              token: alloc.token,
+            },
+          ],
+        }
+      }),
+
+    /** A word clicked in a sentence's own original (ADR-017). */
+    clickWord: (
+      tabId: number,
+      rawWord: string,
+      sentence: string,
+      sentenceId: string
+    ) =>
+      transact(tabId, (start, now) => {
+        const word = rawWord.toLowerCase()
+        const key = wordCardKey(word)
+        const existing = findCard(start.entries, sentenceId, key)
+        if (existing) {
+          return {
+            state: {
+              ...start,
+              entries: reorderOrInsertCard(
+                start.entries,
+                sentenceId,
+                key,
+                () => existing
+              ),
+            },
+          }
+        }
+        const alloc = allocateToken(start)
+        return {
+          state: {
+            ...alloc.state,
+            entries: reorderOrInsertCard(
+              alloc.state.entries,
+              sentenceId,
+              key,
+              () => ({
+                word,
+                key,
+                token: alloc.token,
+                startedAt: now,
+                dictionaryStatus: 'loading',
+                contextStatus: 'loading',
+              })
+            ),
+          },
+          plan: [
+            {
+              type: 'fetchWordContext',
+              word,
+              sentence,
+              sentenceId,
+              key,
+              token: alloc.token,
+              counts: true,
+            },
+          ],
+        }
+      }),
+
+    /**
+     * The context half of a dictionary-then-context chain is about to be
+     * sent: re-record its startedAt. False (do not send) when the card is
+     * gone, timed out or carries another token.
+     */
+    markContextSent: async (
+      tabId: number,
+      sentenceId: string | undefined,
+      key: string,
+      token: number
+    ): Promise<boolean> => {
+      const outcome = await transact(tabId, (state, now) => {
+        const card = findCard(state.entries, sentenceId, key)
+        if (!card || card.token !== token) return { state }
+        return {
+          state: {
+            ...state,
+            entries: patchCard(
+              state.entries,
+              sentenceId,
+              key,
+              { startedAt: now },
+              token
+            ),
+          },
         }
       })
-    },
-
-    async orphanOwner(
-      tabId: number,
-      ownerInstanceId: string
-    ): Promise<TransactionOutcome> {
-      return transact(tabId, state => ({
-        state: {
-          ...state,
-          entries: markOrphanLoading(state.entries, ownerInstanceId),
-          cleared: state.cleared
-            ? {
-                ...state.cleared,
-                entries: markOrphanLoading(
-                  state.cleared.entries,
-                  ownerInstanceId
-                ),
-              }
-            : null,
-        },
-      }))
+      return (
+        outcome.committed &&
+        findCard(outcome.state.entries, sentenceId, key)?.token === token
+      )
     },
 
     async removeForTab(tabId: number): Promise<void> {

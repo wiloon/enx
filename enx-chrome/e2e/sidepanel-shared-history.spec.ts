@@ -45,8 +45,8 @@ async function openPanel(
   return panel
 }
 
-async function sendOneSentenceFromPage(page: Page) {
-  await clickWordAndWaitForPopup(page, 0)
+async function sendOneSentenceFromPage(page: Page, wordIndex = 0) {
+  await clickWordAndWaitForPopup(page, wordIndex)
   await page
     .locator(
       '#enx-anchored-overlay [data-testid="word-popover-sentence-translation"]'
@@ -104,16 +104,90 @@ test.describe('Side Panel shared history (ADR-090)', () => {
 
     const tabId = await readingTabId(page, extensionId)
     const panelA = await openPanel(context, extensionId, tabId)
-    await sendOneSentenceFromPage(page)
-    await expect(panelA.getByTestId('sidepanel-chinese')).toHaveText('译文')
-    const afterFirst = sentenceTranslatePosts(await translatePosts(context))
-    expect(afterFirst).toHaveLength(1)
+
+    // Five translations: click highlighted words until five distinct
+    // sentence cards exist (words in one sentence share a card).
+    const cards = panelA.getByTestId('sidepanel-sentence')
+    for (let i = 0; i < 60 && (await cards.count()) < 5; i++) {
+      try {
+        await sendOneSentenceFromPage(page, i)
+      } catch {
+        break // ran out of highlighted words
+      }
+      await page.waitForTimeout(300)
+    }
+    await expect(cards).toHaveCount(5)
+    await expect(panelA.getByTestId('sidepanel-chinese')).toHaveCount(5)
+    const sentPosts = sentenceTranslatePosts(await translatePosts(context))
+    expect(sentPosts).toHaveLength(5)
 
     const panelB = await openPanel(context, extensionId, tabId)
-    await expect(panelB.getByTestId('sidepanel-chinese')).toHaveText('译文')
+    await expect(panelB.getByTestId('sidepanel-sentence')).toHaveCount(5)
+    await expect(panelB.getByTestId('sidepanel-chinese')).toHaveCount(5)
     await page.waitForTimeout(500)
     expect(sentenceTranslatePosts(await translatePosts(context))).toHaveLength(
-      1
+      5
+    )
+  })
+
+  test('a card whose owner never answered shows error + Retry after 120 s, with no resend', async ({
+    page,
+    context,
+    extensionId,
+    signedIn: _signedIn,
+  }, testInfo) => {
+    await mockBackendFetch(context)
+    await page.goto(TEST_PAGE_PATH, { waitUntil: 'domcontentloaded' })
+    await enableLearningMode(page, extensionId)
+    await waitForContentScript(page)
+
+    const tabId = await readingTabId(page, extensionId)
+    const seeder = await openPanel(context, extensionId, tabId)
+    // A loading card the (now closed) owner sent 121 s ago.
+    await seeder.evaluate(
+      async ({ key, startedAt }) => {
+        await chrome.storage.session.set({
+          [key]: {
+            entries: [
+              {
+                kind: 'sentence',
+                id: 'seeded-sentence',
+                sentence: 'Seeded sentence for the timeout check.',
+                clickedWord: '',
+                status: 'loading',
+                chinese: '',
+                errorMessage: '',
+                words: [],
+                token: 1,
+                startedAt,
+              },
+            ],
+            cleared: null,
+            nextToken: 1,
+            claimedSentenceEventIds: [],
+            claimedPageWordEventIds: [],
+            clearGeneration: 0,
+          },
+        })
+      },
+      {
+        key: `enx-panel-history:${tabId}`,
+        startedAt: Date.now() - 121_000,
+      }
+    )
+    await seeder.close()
+
+    const panel = await openPanel(context, extensionId, tabId)
+    await expect(panel.getByTestId('sidepanel-error')).toContainText(
+      'Request timed out. Tap Retry to try again.'
+    )
+    await expect(panel.getByTestId('sidepanel-retry-sentence')).toBeVisible()
+    await panel.screenshot({
+      path: testInfo.outputPath('timed-out-card.png'),
+    })
+    await page.waitForTimeout(500)
+    expect(sentenceTranslatePosts(await translatePosts(context))).toHaveLength(
+      0
     )
   })
 

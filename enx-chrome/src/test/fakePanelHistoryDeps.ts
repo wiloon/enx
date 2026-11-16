@@ -34,14 +34,15 @@ export function createFakePanelHistoryDeps(options?: {
         q.push({ resolve })
         queues.set(name, q)
       })
+    } else {
+      held.add(name)
     }
-    held.add(name)
     try {
       return await callback()
     } finally {
-      held.delete(name)
       const next = queues.get(name)?.shift()
-      next?.resolve()
+      if (next) next.resolve()
+      else held.delete(name)
     }
   }
 

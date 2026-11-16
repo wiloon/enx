@@ -71,10 +71,12 @@ export function installPanelHistoryChrome(options?: {
 
   const heldLocks = new Set<string>()
   const lockWaiters = new Map<string, Array<() => void>>()
+  // Hand the lock straight to the next waiter (as Web Locks do) so a request
+  // arriving in between cannot run beside it.
   const releaseWaiter = (name: string) => {
-    heldLocks.delete(name)
     const next = lockWaiters.get(name)?.shift()
-    next?.()
+    if (next) next()
+    else heldLocks.delete(name)
   }
   Object.defineProperty(navigator, 'locks', {
     configurable: true,
@@ -96,8 +98,9 @@ export function installPanelHistoryChrome(options?: {
               q.push(resolve)
               lockWaiters.set(name, q)
             })
+          } else {
+            heldLocks.add(name)
           }
-          heldLocks.add(name)
           try {
             return await callback()
           } finally {
