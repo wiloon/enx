@@ -29,7 +29,9 @@ beforeEach(() => {
 describe('BillingSupportForm', () => {
   it('groups the borderless message field and controls in one focusable composer surface', () => {
     render(<BillingSupportForm subscriptionId="sub_1" />)
-    const composer = textbox().parentElement
+    // By test id, not the field's parent: a wrapper between the composer and
+    // the textarea is a layout change, not a behaviour change.
+    const composer = screen.getByTestId('billing-support-composer')
     expect(composer).toHaveClass(
       'rounded-xl',
       'border',
@@ -38,6 +40,7 @@ describe('BillingSupportForm', () => {
       'focus-within:ring-2',
       'focus-within:ring-ring'
     )
+    expect(composer).toContainElement(textbox())
     expect(composer).toContainElement(button())
     expect(textbox()).toHaveClass('border-0')
     expect(textbox()).not.toHaveClass(
@@ -82,6 +85,23 @@ describe('BillingSupportForm', () => {
     expect(alert).toHaveClass('text-destructive')
     expect(textbox()).toHaveValue('please help')
     expect(button()).toBeEnabled()
+  })
+
+  it('describes the message field with the error it is showing', async () => {
+    mockSubmit.mockResolvedValue({ success: false, error: 'Try again later.' })
+    render(<BillingSupportForm subscriptionId="sub_1" />)
+    expect(textbox()).not.toHaveAttribute('aria-describedby')
+    expect(textbox()).not.toHaveAttribute('aria-invalid')
+
+    type('please help')
+    fireEvent.click(button())
+
+    const alert = await screen.findByRole('alert')
+    // A screen-reader user back on the field can reach the message.
+    expect(alert.id).not.toBe('')
+    expect(textbox()).toHaveAttribute('aria-describedby', alert.id)
+    expect(textbox()).toHaveAttribute('aria-invalid', 'true')
+    expect(document.getElementById(alert.id)).toBe(alert)
   })
 
   it.each([
