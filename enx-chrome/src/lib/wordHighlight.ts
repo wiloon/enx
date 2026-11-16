@@ -28,15 +28,148 @@ export const HIGHLIGHT_BUCKET_COLORS: readonly string[] = [
 ]
 export const REVIEW_BUCKET_COUNT = HIGHLIGHT_BUCKET_COLORS.length
 
+// Page tone for the host-page highlight palette (ADR-086). Light = today's
+// colours; dark = a lighter violet ramp and dimmer warm washes.
+export type PageTone = 'light' | 'dark'
+
+const DARK_UNDERLINE_COLORS: readonly string[] = [
+  'oklch(0.90 0.10 305)', // 1 - very new, most prominent on dark pages
+  'oklch(0.82 0.11 305)', // 2
+  'oklch(0.74 0.12 305)', // 3
+  'oklch(0.66 0.12 305)', // 4
+  'oklch(0.58 0.12 305)', // 5 - nearly known, faintest
+]
+
+// ADR-025 / ADR-085 washes: warm accent for temporary location on the host
+// page (ADR-054). Tone-dependent so dark pages keep underlines and body text
+// readable (ADR-086).
+const WASH_COLORS: Record<
+  PageTone,
+  { activeSentenceWash: string; clickedWordWash: string }
+> = {
+  light: {
+    // ADR-025, the sentence a word click opened the panel for. The one warm
+    // accent in the system, and intentionally so: it is a transient locator on
+    // someone else's page, where a warm wash stays legible against backgrounds
+    // that the cool tokens have to compete with.
+    activeSentenceWash: 'hsl(45 95% 55% / 35%)',
+    // ADR-085, the clicked word inside that sentence: the same warm hue, more
+    // opaque, painted over the sentence wash.
+    clickedWordWash: 'hsl(45 95% 55% / 60%)',
+  },
+  dark: {
+    activeSentenceWash: 'hsl(45 95% 45% / 20%)',
+    clickedWordWash: 'hsl(45 95% 45% / 35%)',
+  },
+}
+
+export const underlineColorsForTone = (
+  tone: PageTone
+): readonly string[] =>
+  tone === 'dark' ? DARK_UNDERLINE_COLORS : HIGHLIGHT_BUCKET_COLORS
+
+export const washColorsForTone = (
+  tone: PageTone
+): { activeSentenceWash: string; clickedWordWash: string } => WASH_COLORS[tone]
+
+// Relative luminance of a channel in 0..1 after sRGB linearisation (WCAG 2).
+const linearizeSrgb = (channel: number): number => {
+  const c = channel / 255
+  return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+}
+
+const relativeLuminance = (r: number, g: number, b: number): number =>
+  0.2126 * linearizeSrgb(r) +
+  0.7152 * linearizeSrgb(g) +
+  0.0722 * linearizeSrgb(b)
+
+// Parse Chrome's computed `color`: rgb()/rgba(), comma- or space-separated,
+// optional `/ a` alpha. Returns null when the string is not one of those
+// (oklch, lab, color(), empty, garbage) or when alpha is 0.
+const parseComputedRgb = (
+  color: string
+): { r: number; g: number; b: number } | null => {
+  const s = color.trim()
+  if (!s) return null
+
+  // rgb(r, g, b) / rgba(r, g, b, a) with commas
+  const comma = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+%?))?\s*\)$/i.exec(
+    s
+  )
+  if (comma) {
+    const alpha = parseAlpha(comma[4])
+    if (alpha === 0) return null
+    return {
+      r: Number(comma[1]),
+      g: Number(comma[2]),
+      b: Number(comma[3]),
+    }
+  }
+
+  // Modern: rgb(r g b / a) or rgb(r g b)
+  const space =
+    /^rgba?\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+%?))?\s*\)$/i.exec(
+      s
+    )
+  if (space) {
+    const alpha = parseAlpha(space[4])
+    if (alpha === 0) return null
+    return {
+      r: Number(space[1]),
+      g: Number(space[2]),
+      b: Number(space[3]),
+    }
+  }
+
+  return null
+}
+
+// Missing alpha means opaque (1). "50%" → 0.5. Never throws.
+const parseAlpha = (raw: string | undefined): number => {
+  if (raw === undefined) return 1
+  if (raw.endsWith('%')) return Number(raw.slice(0, -1)) / 100
+  return Number(raw)
+}
+
+// Decide light vs dark page tone from a computed CSS colour string (ADR-086
+// Decision 2). Relative luminance strictly > 0.18 → dark (light text); at
+// or below 0.18 → light. Unparseable / alpha 0 → light. Never throws.
+export const pageToneFromComputedColor = (color: string): PageTone => {
+  try {
+    const rgb = parseComputedRgb(color)
+    if (!rgb) return 'light'
+    return relativeLuminance(rgb.r, rgb.g, rgb.b) > 0.18 ? 'dark' : 'light'
+  } catch {
+    return 'light'
+  }
+}
+
 // The ::highlight() rules painting each review stage's underline.
-export const reviewBucketHighlightCss = (): string =>
-  HIGHLIGHT_BUCKET_COLORS.map(
-    (color, i) =>
-      `::highlight(${HIGHLIGHT_NAME_PREFIX}${i + 1}) {` +
-      ` text-decoration-line: underline;` +
-      ` text-decoration-color: ${color};` +
-      ` text-decoration-thickness: 1px; }`
-  ).join('\n')
+// No tone argument keeps the light set so the Side Panel stays on light
+// (ADR-086 Decision 6).
+export const reviewBucketHighlightCss = (tone: PageTone = 'light'): string =>
+  underlineColorsForTone(tone)
+    .map(
+      (color, i) =>
+        `::highlight(${HIGHLIGHT_NAME_PREFIX}${i + 1}) {` +
+        ` text-decoration-line: underline;` +
+        ` text-decoration-color: ${color};` +
+        ` text-decoration-thickness: 1px; }`
+    )
+    .join('\n')
+
+// Full host-page highlight CSS for a tone: review buckets + active-sentence
+// + clicked-word washes (ADR-086). Highlight names do not change with tone.
+export const hostPageHighlightCss = (tone: PageTone): string => {
+  const washes = washColorsForTone(tone)
+  return (
+    reviewBucketHighlightCss(tone) +
+    `\n::highlight(enx-active-sentence) {` +
+    ` background-color: ${washes.activeSentenceWash}; }` +
+    `\n::highlight(enx-clicked-word) {` +
+    ` background-color: ${washes.clickedWordWash}; }`
+  )
+}
 
 // The key a word's state is stored and looked up under, everywhere: the
 // review list, the page's word cache, page and Side Panel underlines
