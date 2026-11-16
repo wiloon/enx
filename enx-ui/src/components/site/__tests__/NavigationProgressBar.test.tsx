@@ -299,15 +299,19 @@ describe('NavigationProgressBar', () => {
     expect(bar()).toBeNull()
   })
 
-  it('clears timers on unmount so a stale delay cannot show the bar', () => {
+  it('clears pending timers and stops listening for clicks on unmount', () => {
     const { unmount } = mountBar()
     clickLink('Pricing')
+    expect(jest.getTimerCount()).toBe(2)
+
     unmount()
-    act(() => {
-      jest.advanceTimersByTime(
-        NAVIGATION_PROGRESS_SHOW_DELAY_MS + NAVIGATION_PROGRESS_BACKSTOP_MS
-      )
-    })
-    expect(bar()).toBeNull()
+    expect(jest.getTimerCount()).toBe(0)
+
+    const link = document.createElement('a')
+    link.href = '/pricing'
+    document.body.appendChild(link)
+    fireEvent.click(link)
+    expect(jest.getTimerCount()).toBe(0)
+    link.remove()
   })
 })
