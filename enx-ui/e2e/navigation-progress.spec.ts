@@ -112,7 +112,9 @@ test.describe('navigation progress bar', () => {
     }
   })
 
-  test('uses the dark --brand token when .dark is on html', async ({ page }) => {
+  test('uses the dark --brand token when .dark is on html', async ({
+    page,
+  }) => {
     const held = await holdPricing(page)
     await page.goto('/')
     await page.evaluate(() => document.documentElement.classList.add('dark'))

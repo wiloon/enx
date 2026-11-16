@@ -8,6 +8,13 @@ import {
   shouldStartNavigationProgress,
 } from '@/lib/navigationProgress'
 
+function clearTimer(ref: { current: ReturnType<typeof setTimeout> | null }) {
+  if (ref.current !== null) {
+    clearTimeout(ref.current)
+    ref.current = null
+  }
+}
+
 // Site-wide pending-navigation bar. One capture-phase listener covers every
 // internal link; completion is the first pathname/search change after start.
 export default function NavigationProgressBar() {
@@ -19,53 +26,38 @@ export default function NavigationProgressBar() {
   const pendingRef = useRef(false)
   const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const backstopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const setVisibleRef = useRef(setVisible)
-  setVisibleRef.current = setVisible
-
-  const clearShowTimer = () => {
-    if (showTimerRef.current !== null) {
-      clearTimeout(showTimerRef.current)
-      showTimerRef.current = null
-    }
-  }
-
-  const clearBackstopTimer = () => {
-    if (backstopTimerRef.current !== null) {
-      clearTimeout(backstopTimerRef.current)
-      backstopTimerRef.current = null
-    }
-  }
-
-  const endPendingRef = useRef(() => {})
-  endPendingRef.current = () => {
-    pendingRef.current = false
-    clearShowTimer()
-    clearBackstopTimer()
-    setVisibleRef.current(false)
-  }
-
-  const startPendingRef = useRef(() => {})
-  startPendingRef.current = () => {
-    const alreadyPending = pendingRef.current
-    pendingRef.current = true
-    clearBackstopTimer()
-    backstopTimerRef.current = setTimeout(() => {
-      endPendingRef.current()
-    }, NAVIGATION_PROGRESS_BACKSTOP_MS)
-    if (alreadyPending) return
-    showTimerRef.current = setTimeout(() => {
-      showTimerRef.current = null
-      if (pendingRef.current) setVisibleRef.current(true)
-    }, NAVIGATION_PROGRESS_SHOW_DELAY_MS)
-  }
 
   // Complete on the first route change after pending started.
   useEffect(() => {
     if (!pendingRef.current) return
-    endPendingRef.current()
+    pendingRef.current = false
+    clearTimer(showTimerRef)
+    clearTimer(backstopTimerRef)
+    setVisible(false)
   }, [pathname, search])
 
   useEffect(() => {
+    const endPending = () => {
+      pendingRef.current = false
+      clearTimer(showTimerRef)
+      clearTimer(backstopTimerRef)
+      setVisible(false)
+    }
+
+    const startPending = () => {
+      const alreadyPending = pendingRef.current
+      pendingRef.current = true
+      clearTimer(backstopTimerRef)
+      backstopTimerRef.current = setTimeout(() => {
+        endPending()
+      }, NAVIGATION_PROGRESS_BACKSTOP_MS)
+      if (alreadyPending) return
+      showTimerRef.current = setTimeout(() => {
+        showTimerRef.current = null
+        if (pendingRef.current) setVisible(true)
+      }, NAVIGATION_PROGRESS_SHOW_DELAY_MS)
+    }
+
     const onClick = (event: MouseEvent) => {
       const target = event.target
       if (!(target instanceof Element)) return
@@ -89,11 +81,11 @@ export default function NavigationProgressBar() {
         return
       }
 
-      startPendingRef.current()
+      startPending()
     }
 
     const onPopState = () => {
-      if (pendingRef.current) endPendingRef.current()
+      if (pendingRef.current) endPending()
     }
 
     document.addEventListener('click', onClick, true)
@@ -101,8 +93,8 @@ export default function NavigationProgressBar() {
     return () => {
       document.removeEventListener('click', onClick, true)
       window.removeEventListener('popstate', onPopState)
-      clearShowTimer()
-      clearBackstopTimer()
+      clearTimer(showTimerRef)
+      clearTimer(backstopTimerRef)
       pendingRef.current = false
     }
   }, [])

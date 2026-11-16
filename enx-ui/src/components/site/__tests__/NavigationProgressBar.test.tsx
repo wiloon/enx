@@ -27,7 +27,7 @@ function mountBar() {
       <a href="/pricing?plan=pro">Pro plan</a>
       <a href="/a">To A</a>
       <a href="#features">Features</a>
-      <a href="/">Same home</a>
+      <a href="/pricing">Same pricing</a>
       <a href="https://other.example.com/x">External</a>
       <a href="/blank" target="_blank">
         Blank
@@ -164,11 +164,21 @@ describe('NavigationProgressBar', () => {
     ['download', 'Download'],
     ['external', 'External'],
     ['hash-only', 'Features'],
-    ['same URL', 'Same home'],
     ['data-no-progress', 'Skip'],
   ] as const)('shows no bar for %s', (_label, name) => {
     mountBar()
     clickLink(name)
+    act(() => {
+      jest.advanceTimersByTime(NAVIGATION_PROGRESS_SHOW_DELAY_MS)
+    })
+    expect(bar()).toBeNull()
+  })
+
+  it('shows no bar for a link to the current URL', () => {
+    setRoute('/pricing')
+    window.history.replaceState(null, '', '/pricing')
+    mountBar()
+    clickLink('Same pricing')
     act(() => {
       jest.advanceTimersByTime(NAVIGATION_PROGRESS_SHOW_DELAY_MS)
     })

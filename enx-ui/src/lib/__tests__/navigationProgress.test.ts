@@ -2,18 +2,20 @@ import { shouldStartNavigationProgress } from '../navigationProgress'
 
 const CURRENT = 'https://enx.example.com/pricing'
 
-function click(overrides: {
-  button?: number
-  metaKey?: boolean
-  ctrlKey?: boolean
-  shiftKey?: boolean
-  altKey?: boolean
-  href?: string
-  target?: string
-  download?: boolean
-  noProgress?: boolean
-  currentUrl?: string
-} = {}) {
+function click(
+  overrides: {
+    button?: number
+    metaKey?: boolean
+    ctrlKey?: boolean
+    shiftKey?: boolean
+    altKey?: boolean
+    href?: string
+    target?: string
+    download?: boolean
+    noProgress?: boolean
+    currentUrl?: string
+  } = {}
+) {
   return shouldStartNavigationProgress({
     button: overrides.button ?? 0,
     metaKey: overrides.metaKey ?? false,
