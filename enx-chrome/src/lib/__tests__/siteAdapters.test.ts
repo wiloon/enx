@@ -966,6 +966,26 @@ describe('tomeshelf adapter (ADR-088)', () => {
     ).toBe('tomeshelf')
   })
 
+  it('reads the injected page at call time and preserves the opaque book ID', () => {
+    const page = document.implementation.createHTMLDocument()
+    page.head.innerHTML =
+      '<meta name="generator" content="tomeshelf 1"><meta name="tomeshelf:book" content=" book ">'
+    const adapter = resolveSiteAdapter(
+      loc('books.example', '/read/1'),
+      HOMELAB,
+      { page }
+    )
+    expect(adapter.bookKey?.('https://books.example/read/1')).toBe(
+      'https://books.example/?enx-tomeshelf-book=+book+'
+    )
+    page
+      .querySelector('meta[name="tomeshelf:book"]')!
+      .setAttribute('content', 'other')
+    expect(adapter.bookKey?.('https://books.example/read/2')).toBe(
+      'https://books.example/?enx-tomeshelf-book=other'
+    )
+  })
+
   it('pins the article node, SPA volatility, ready selector and min text length', () => {
     page('tomeshelf 1.0')
     const adapter = resolveSiteAdapter(

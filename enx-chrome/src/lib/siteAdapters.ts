@@ -110,8 +110,7 @@ export function tomeshelfBookId(page: ParentNode): string | null {
   const raw = page
     .querySelector('meta[name="tomeshelf:book"]')
     ?.getAttribute('content')
-  const id = raw?.trim() ?? ''
-  return id === '' ? null : id
+  return raw && raw.trim() !== '' ? raw : null
 }
 
 /** True when tomeshelf itself restores the reading position (ADR-088 Decision 5). */
@@ -399,7 +398,7 @@ const AWS_DOCS_ADAPTER: SiteAdapter = {
 // adapters above still win. Matches is never used for host resolution; the
 // page signal is checked after every host adapter misses.
 
-const TOMESHELF_ADAPTER: SiteAdapter = {
+const tomeshelfAdapter = (page?: ParentNode): SiteAdapter => ({
   name: 'tomeshelf',
   matches: () => false,
   contentSelector: '#tomeshelf-content',
@@ -408,10 +407,10 @@ const TOMESHELF_ADAPTER: SiteAdapter = {
   readySelector: '#tomeshelf-content',
   clickBinding: 'bubble',
   bookKey: href => {
-    const id = tomeshelfBookId(document)
+    const id = page ? tomeshelfBookId(page) : null
     return id ? tomeshelfBookKey(href, id) : href
   },
-}
+})
 
 // Non-default host adapters, checked in order before page-signal adapters.
 const HOST_ADAPTERS: SiteAdapter[] = [
@@ -438,12 +437,12 @@ export function resolveSiteAdapter(
   origins: SiteOrigins,
   options?: ResolveSiteAdapterOptions
 ): SiteAdapter {
-  if (options?.sticky === 'tomeshelf') return TOMESHELF_ADAPTER
+  if (options?.sticky === 'tomeshelf') return tomeshelfAdapter(options?.page)
   const host =
     HOST_ADAPTERS.find(adapter => adapter.matches(location, origins)) ?? null
   if (host) return host
   if (options?.page && isTomeshelfGenerator(options.page)) {
-    return TOMESHELF_ADAPTER
+    return tomeshelfAdapter(options?.page)
   }
   return DEFAULT_ADAPTER
 }
