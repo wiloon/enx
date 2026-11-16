@@ -975,9 +975,20 @@ const handleLearningModeStatus = async (
 
 // Decision 4: Chrome keeps a per-tab badge across navigations, so drop it
 // when the tab starts loading; the new page's content script reports afresh.
+// ADR-088 Decision 3: an in-page SPA navigation also fires `loading`, and
+// the content script's ready report can race that reset. After clearing,
+// ask the still-living content script; re-apply when learning mode is on.
+// A full navigation has no receiver, so the badge stays cleared until the
+// new page reports.
+const restoreBadgeAfterLoad = async (tabId: number): Promise<void> => {
+  await resetTab(tabId)
+  const status = await getLearningModeStatusOnTab(tabId)
+  if (status.status !== 'off') await applyStatus(tabId, status)
+}
+
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status !== 'loading') return
-  resetTab(tabId).catch(error =>
+  restoreBadgeAfterLoad(tabId).catch(error =>
     console.debug('badge: reset failed (tab gone?)', error)
   )
 })

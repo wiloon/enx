@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Tomeshelf fixture — document 1</title>
+    <meta name="generator" content="tomeshelf 1.0.0-e2e" />
+    <meta name="tomeshelf:book" content="e2e-book-9f2c" />
+    <meta name="tomeshelf:restores-position" content="true" />
+  </head>
+  <body>
+    <article id="tomeshelf-content" data-tomeshelf-block="1">
+      <p>
+        The quick brown fox jumps over the lazy dog while the patient reader
+        keeps reading this first document about foxes and dogs.
+      </p>
+    </article>
+    <button id="next-document" type="button">Next</button>
+    <script>
+      document.getElementById('next-document').addEventListener('click', () => {
+        history.pushState({}, '', '/books/x/read/2')
+        document.title = 'Tomeshelf fixture — document 2'
+        const article = document.getElementById('tomeshelf-content')
+        article.innerHTML =
+          '<p data-tomeshelf-block="1">A second document introduces the word zebra found only after the in-page navigation replaces the article content.</p>'
+      })
+    </script>
+  </body>
+</html>

@@ -4,8 +4,8 @@
 // completion indicator (ADR-010, ADR-011 Decision 4).
 //
 // resolveSiteAdapter() returns DEFAULT_ADAPTER for ordinary article sites.
-// Only X, the enx-ui Reader, the RSSX Reader, Wikipedia and Standard Ebooks
-// need their own adapter.
+// Only X, the enx-ui Reader, the RSSX Reader, Wikipedia, Standard Ebooks,
+// AWS docs and tomeshelf (ADR-088) need their own adapter.
 
 import { EDITABLE_REGION_SELECTOR } from './selectionLookup'
 import type { LookupAreaOptions } from './wordProcessor'
@@ -85,8 +85,53 @@ export interface SiteAdapter {
   /**
    * The book a page belongs to, for reading positions (ADR-081 Decision 4),
    * from the page's full URL. Undefined = the normalized page address.
+   * Tomeshelf (ADR-088) also reads the page DOM at call time.
    */
   bookKey?: (href: string) => string
+}
+
+/** Optional page DOM / sticky state for adapters that are not host-based. */
+export interface ResolveSiteAdapterOptions {
+  /** Document (or a fragment) to read page-level signals from (ADR-088). */
+  page?: ParentNode
+  /** Keep a previously recognised page adapter for this content script. */
+  sticky?: 'tomeshelf'
+}
+
+/** True when `<meta name="generator">` content starts with `tomeshelf `. */
+export function isTomeshelfGenerator(page: ParentNode): boolean {
+  const meta = page.querySelector('meta[name="generator"]')
+  const content = meta?.getAttribute('content') ?? ''
+  return content.startsWith('tomeshelf ')
+}
+
+/** Opaque book id from `tomeshelf:book`, or null when missing/empty. */
+export function tomeshelfBookId(page: ParentNode): string | null {
+  const raw = page
+    .querySelector('meta[name="tomeshelf:book"]')
+    ?.getAttribute('content')
+  const id = raw?.trim() ?? ''
+  return id === '' ? null : id
+}
+
+/** True when tomeshelf itself restores the reading position (ADR-088 Decision 5). */
+export function tomeshelfRestoresPosition(page: ParentNode): boolean {
+  return (
+    page
+      .querySelector('meta[name="tomeshelf:restores-position"]')
+      ?.getAttribute('content') === 'true'
+  )
+}
+
+/**
+ * Book key from the page origin and tomeshelf book id (ADR-088 Decision 4).
+ * A fixed point of savedPageKey; special characters in the id survive.
+ */
+export function tomeshelfBookKey(href: string, bookId: string): string {
+  const origin = new URL(href).origin
+  const key = new URL('/', origin)
+  key.searchParams.set('enx-tomeshelf-book', bookId)
+  return key.toString()
 }
 
 // Every whitelisted article site resolves to this.
@@ -349,8 +394,27 @@ const AWS_DOCS_ADAPTER: SiteAdapter = {
   clickBinding: 'bubble',
 }
 
-// Non-default adapters, checked in order.
-const ADAPTERS: SiteAdapter[] = [
+// --- tomeshelf (ADR-088) ----------------------------------------------------
+// Recognised by its generator meta on any host (self-hosted instances). Host
+// adapters above still win. Matches is never used for host resolution; the
+// page signal is checked after every host adapter misses.
+
+const TOMESHELF_ADAPTER: SiteAdapter = {
+  name: 'tomeshelf',
+  matches: () => false,
+  contentSelector: '#tomeshelf-content',
+  minTextLength: 1,
+  contentVolatility: 'spa',
+  readySelector: '#tomeshelf-content',
+  clickBinding: 'bubble',
+  bookKey: href => {
+    const id = tomeshelfBookId(document)
+    return id ? tomeshelfBookKey(href, id) : href
+  },
+}
+
+// Non-default host adapters, checked in order before page-signal adapters.
+const HOST_ADAPTERS: SiteAdapter[] = [
   X_ADAPTER,
   READER_ADAPTER,
   RSSX_ADAPTER,
@@ -371,12 +435,17 @@ export function lookupAreaOptions(adapter: SiteAdapter): LookupAreaOptions {
 
 export function resolveSiteAdapter(
   location: PageLocation,
-  origins: SiteOrigins
+  origins: SiteOrigins,
+  options?: ResolveSiteAdapterOptions
 ): SiteAdapter {
-  return (
-    ADAPTERS.find(adapter => adapter.matches(location, origins)) ??
-    DEFAULT_ADAPTER
-  )
+  if (options?.sticky === 'tomeshelf') return TOMESHELF_ADAPTER
+  const host =
+    HOST_ADAPTERS.find(adapter => adapter.matches(location, origins)) ?? null
+  if (host) return host
+  if (options?.page && isTomeshelfGenerator(options.page)) {
+    return TOMESHELF_ADAPTER
+  }
+  return DEFAULT_ADAPTER
 }
 
 /**

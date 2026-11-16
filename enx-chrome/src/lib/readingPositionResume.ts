@@ -84,8 +84,14 @@ export function createReadingPositionResume(deps: ReadingPositionResumeDeps) {
     /**
      * Learning mode turned on over `article`: asks the writer for the book's
      * position, which also makes the book the most recent, and offers it.
+     * `prompt: false` still opens (touchedAt) but shows no resume hint
+     * (ADR-088 Decision 5: tomeshelf restores the position itself).
      */
-    async open(bookKey: string | null, article: readonly Element[]) {
+    async open(
+      bookKey: string | null,
+      article: readonly Element[],
+      opts: { prompt?: boolean } = {}
+    ) {
       hide()
       if (!bookKey || article.length === 0) return
       const current = generation
@@ -93,6 +99,7 @@ export function createReadingPositionResume(deps: ReadingPositionResumeDeps) {
         await deps.send({ type: 'openReadingPosition', bookKey })
       )
       if (!position || current !== generation) return
+      if (opts.prompt === false) return
       view.showPrompt(promptPreview(position.sentence), {
         jump: () => jump(article, position),
         dismiss: hide,

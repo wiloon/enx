@@ -8,6 +8,7 @@ function deps(overrides: Partial<Parameters<typeof maybeAutoEnable>[0]> = {}) {
     enable: jest.fn(async () => ENABLE_OK),
     disable: jest.fn(),
     keepsWatching: jest.fn(() => false),
+    isCurrent: () => true,
     ...overrides,
   }
 }
@@ -60,6 +61,72 @@ describe('maybeAutoEnable (adr-039 Decision 4)', () => {
     })
     await expect(maybeAutoEnable(d)).resolves.toBeUndefined()
     expect(d.disable).toHaveBeenCalledTimes(1)
+  })
+
+  // ADR-088 Decision 1: a superseded auto-enable must not roll back the run
+  // that replaced it (late recognition cancels the load-time attempt).
+  describe('when the attempt is superseded (ADR-088)', () => {
+    const flush = () => new Promise<void>(resolve => setTimeout(resolve, 0))
+
+    it('does not disable after a rollback-worthy failure', async () => {
+      let settle!: (outcome: Awaited<ReturnType<typeof failed>>) => void
+      const enable = jest.fn(
+        () =>
+          new Promise<Awaited<ReturnType<typeof failed>>>(resolve => {
+            settle = resolve
+          })
+      )
+      let current = true
+      const d = deps({
+        enable,
+        isCurrent: () => current,
+        keepsWatching: jest.fn(() => false),
+      })
+      const pending = maybeAutoEnable(d)
+      await flush()
+      current = false
+      settle(failed('no-article-node'))
+      await pending
+      expect(d.disable).not.toHaveBeenCalled()
+    })
+
+    it('does not disable after enable rejects', async () => {
+      let reject!: (error: Error) => void
+      const enable = jest.fn(
+        () =>
+          new Promise<never>((_resolve, rej) => {
+            reject = rej
+          })
+      )
+      let current = true
+      const d = deps({ enable, isCurrent: () => current })
+      const pending = maybeAutoEnable(d)
+      await flush()
+      current = false
+      reject(new Error('boom'))
+      await pending
+      expect(d.disable).not.toHaveBeenCalled()
+    })
+
+    it('still rolls back when not superseded', async () => {
+      let settle!: (outcome: Awaited<ReturnType<typeof failed>>) => void
+      const enable = jest.fn(
+        () =>
+          new Promise<Awaited<ReturnType<typeof failed>>>(resolve => {
+            settle = resolve
+          })
+      )
+      const d = deps({
+        enable,
+        isCurrent: () => true,
+        keepsWatching: jest.fn(() => false),
+      })
+      const pending = maybeAutoEnable(d)
+      await flush()
+      settle(failed('no-article-node'))
+      await pending
+      expect(d.disable).toHaveBeenCalledTimes(1)
+    })
   })
 
   // adr-033: on an SPA site (RSSX) the first page load often has no article
@@ -122,7 +189,9 @@ describe('autoEnableOnSignInReturn', () => {
   })
 
   it('rolls back on a static site after a failure', async () => {
-    const d = returnDeps({ enable: jest.fn(async () => failed('lookup-failed')) })
+    const d = returnDeps({
+      enable: jest.fn(async () => failed('lookup-failed')),
+    })
     await autoEnableOnSignInReturn(d)
     expect(d.disable).toHaveBeenCalledTimes(1)
   })
