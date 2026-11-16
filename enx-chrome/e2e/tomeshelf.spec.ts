@@ -95,11 +95,41 @@ test.describe('tomeshelf EPUB reader (ADR-088)', () => {
     await page.goto(`${FIXTURE_ORIGIN}/tomeshelf-late.html`, {
       waitUntil: 'domcontentloaded',
     })
-    // Enable before the 400ms delayed meta/article insert.
+    // Learning mode is on and the content script has started (its highlight
+    // styles are injected) before any tomeshelf meta exists.
     await enableLearningMode(page, extensionId)
-    await expect(page.locator('#tomeshelf-content')).toBeVisible({
-      timeout: 10_000,
+    await waitForContentScript(page, { emptyReviewList: true })
+    await expect(page.locator('meta[name="generator"]')).toHaveCount(0)
+
+    // Late insertion, driven by the test rather than a timer.
+    await page.evaluate(() => {
+      const addMeta = (name: string, content: string) => {
+        const meta = document.createElement('meta')
+        meta.setAttribute('name', name)
+        meta.setAttribute('content', content)
+        document.head.appendChild(meta)
+      }
+      addMeta('generator', 'tomeshelf 1.0.0-e2e')
+      addMeta('tomeshelf:book', 'e2e-book-late')
+      addMeta('tomeshelf:restores-position', 'true')
+      document.body.innerHTML = `
+        <article id="tomeshelf-content" data-tomeshelf-block="1">
+          <p>
+            The quick brown fox jumps over the lazy dog while the patient
+            reader keeps reading this first document about foxes and dogs.
+          </p>
+        </article>
+        <button id="next-document" type="button">Next</button>`
+      document
+        .getElementById('next-document')!
+        .addEventListener('click', () => {
+          history.pushState({}, '', '/books/x/read/2')
+          document.title = 'Tomeshelf fixture — document 2'
+          document.getElementById('tomeshelf-content')!.innerHTML =
+            '<p data-tomeshelf-block="1">A second document introduces the word zebra found only after the in-page navigation replaces the article content.</p>'
+        })
     })
+    await expect(page.locator('#tomeshelf-content')).toBeVisible()
     await waitForContentScript(page)
 
     await clickWord(page, 'fox', '#tomeshelf-content p')
