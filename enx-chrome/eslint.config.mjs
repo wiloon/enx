@@ -97,17 +97,6 @@ export default [
       },
     },
   },
-  // Console snippets meant to be pasted into the extension's devtools
-  {
-    files: ['scripts/clear-api-config.js'],
-    languageOptions: {
-      globals: {
-        ...globals.browser,
-        ...globals.webextensions,
-        chrome: 'readonly',
-      },
-    },
-  },
   // Playwright E2E specs / config run under Node with browser-context evaluate()
   {
     files: ['e2e/**/*.ts', 'playwright.config.ts', 'playwright.*.config.ts'],

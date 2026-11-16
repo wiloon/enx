@@ -276,7 +276,7 @@ The unit test setup includes:
 ### E2E Tests
 
 Playwright drives a dedicated build (`dist-e2e/`) against a **local** stack,
-never homelab (ADR-037): enx-api on :8090 with a throwaway database, static
+never homelab (ADR-037): enx-api on :8091 with a throwaway database, static
 test pages on :8765, and, for signed-in specs, enx-ui on :3000.
 
 ```bash
@@ -294,7 +294,7 @@ pnpm test:e2e:debug
 ```
 
 - Chrome extensions need `headless: false`, so a browser window opens.
-- Ports 8090 and 8765 must be free. Those servers are never reused, so a
+- Ports 8091 and 8765 must be free. Those servers are never reused, so a
   developer's own enx-api or an unrelated app cannot answer for them.
 - If this Playwright version's Chromium isn't downloaded, point
   `E2E_CHROMIUM_PATH` at an installed Chromium or Chrome for Testing binary
