@@ -70,13 +70,20 @@ export default function BillingSupportForm({
   return (
     <form className="space-y-3" onSubmit={submit}>
       <Label htmlFor="billing-support-message">Message to support</Label>
-      <div className="rounded-xl border bg-card shadow-xs focus-within:ring-2 focus-within:ring-ring">
+      <div
+        data-testid="billing-support-composer"
+        className="rounded-xl border bg-card shadow-xs focus-within:ring-2 focus-within:ring-ring"
+      >
         <textarea
           id="billing-support-message"
           value={text}
           onChange={(e) => setText(e.target.value)}
           disabled={pending}
           placeholder="Tell us what you need help with."
+          aria-invalid={error ? true : undefined}
+          // Links the message below to the field, so a screen-reader user
+          // back on the field can reach the failure it explains.
+          aria-describedby={error ? 'billing-support-message-error' : undefined}
           className="field-sizing-content max-h-[60vh] min-h-32 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-2 text-base outline-none"
         />
         <div className="flex flex-wrap items-center justify-end gap-3 px-3 pb-3">
@@ -102,7 +109,11 @@ export default function BillingSupportForm({
         </div>
       </div>
       {error && (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          id="billing-support-message-error"
+          role="alert"
+          className="text-sm text-destructive"
+        >
           {error}
         </p>
       )}
