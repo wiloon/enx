@@ -886,3 +886,122 @@ describe('articleChoiceAvailable', () => {
     ).toBe(false)
   })
 })
+
+// ADR-088: tomeshelf is recognised by its generator meta, on any host.
+describe('tomeshelf adapter (ADR-088)', () => {
+  afterEach(() => {
+    document.head.innerHTML = ''
+    document.body.innerHTML = ''
+  })
+
+  const page = (generator: string | null) => {
+    document.head.innerHTML =
+      generator === null ? '' : `<meta name="generator" content="${generator}">`
+  }
+
+  it('matches when the generator content starts with "tomeshelf "', () => {
+    page('tomeshelf 1.2.3')
+    expect(
+      resolveSiteAdapter(loc('books.example', '/read/1'), HOMELAB, {
+        page: document,
+      }).name
+    ).toBe('tomeshelf')
+  })
+
+  it('matches a tomeshelf-dev style version string', () => {
+    page('tomeshelf 0.0.0-dev+abc')
+    expect(
+      resolveSiteAdapter(loc('localhost:8080', '/books/x/read/1'), HOMELAB, {
+        page: document,
+      }).name
+    ).toBe('tomeshelf')
+  })
+
+  it('does not match a non-tomeshelf generator', () => {
+    page('WordPress 6.4')
+    expect(
+      resolveSiteAdapter(loc('books.example', '/read/1'), HOMELAB, {
+        page: document,
+      })
+    ).toBe(DEFAULT_ADAPTER)
+  })
+
+  it('does not match a generator that merely starts with tomeshelf without a space', () => {
+    page('tomeshelffork 1.0')
+    expect(
+      resolveSiteAdapter(loc('books.example', '/'), HOMELAB, {
+        page: document,
+      })
+    ).toBe(DEFAULT_ADAPTER)
+  })
+
+  it('resolves as today when the page never gets the meta', () => {
+    page(null)
+    expect(
+      resolveSiteAdapter(loc('books.example', '/read/1'), HOMELAB, {
+        page: document,
+      })
+    ).toBe(DEFAULT_ADAPTER)
+    expect(resolveSiteAdapter(loc('books.example', '/read/1'), HOMELAB)).toBe(
+      DEFAULT_ADAPTER
+    )
+  })
+
+  it('lets a host-matched adapter win over the generator meta', () => {
+    page('tomeshelf 1.0')
+    expect(
+      resolveSiteAdapter(loc('x.com', '/u/status/1'), HOMELAB, {
+        page: document,
+      }).name
+    ).toBe('x')
+  })
+
+  it('stays tomeshelf when sticky even without the meta', () => {
+    page(null)
+    expect(
+      resolveSiteAdapter(loc('books.example', '/library'), HOMELAB, {
+        page: document,
+        sticky: 'tomeshelf',
+      }).name
+    ).toBe('tomeshelf')
+  })
+
+  it('reads the injected page at call time and preserves the opaque book ID', () => {
+    const page = document.implementation.createHTMLDocument()
+    page.head.innerHTML =
+      '<meta name="generator" content="tomeshelf 1"><meta name="tomeshelf:book" content=" book ">'
+    const adapter = resolveSiteAdapter(
+      loc('books.example', '/read/1'),
+      HOMELAB,
+      { page }
+    )
+    expect(adapter.bookKey?.('https://books.example/read/1')).toBe(
+      'https://books.example/?enx-tomeshelf-book=+book+'
+    )
+    page
+      .querySelector('meta[name="tomeshelf:book"]')!
+      .setAttribute('content', 'other')
+    expect(adapter.bookKey?.('https://books.example/read/2')).toBe(
+      'https://books.example/?enx-tomeshelf-book=other'
+    )
+  })
+
+  it('pins the article node, SPA volatility, ready selector and min text length', () => {
+    page('tomeshelf 1.0')
+    const adapter = resolveSiteAdapter(
+      loc('books.example', '/read/1'),
+      HOMELAB,
+      {
+        page: document,
+      }
+    )
+    expect(adapter).toMatchObject({
+      name: 'tomeshelf',
+      contentSelector: '#tomeshelf-content',
+      contentVolatility: 'spa',
+      readySelector: '#tomeshelf-content',
+      minTextLength: 1,
+    })
+    expect(adapter.wholePageOnMiss).toBeUndefined()
+  })
+})

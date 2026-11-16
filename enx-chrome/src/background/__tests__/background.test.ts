@@ -2852,7 +2852,12 @@ describe('background learning-mode badge (adr-046)', () => {
 
   it('clears the tab badge when the tab starts loading a page', async () => {
     ;(chrome.action.setBadgeText as jest.Mock).mockResolvedValue(undefined)
+    ;(chrome.tabs.sendMessage as jest.Mock).mockRejectedValue(
+      new Error('Receiving end does not exist')
+    )
     onTabUpdated(9, { status: 'loading' })
+    await Promise.resolve()
+    await Promise.resolve()
     expect(chrome.action.setBadgeText).toHaveBeenCalledWith({
       tabId: 9,
       text: '',
@@ -2862,6 +2867,109 @@ describe('background learning-mode badge (adr-046)', () => {
   it('leaves the badge alone on other tab updates', () => {
     onTabUpdated(9, { status: 'complete' })
     expect(chrome.action.setBadgeText).not.toHaveBeenCalled()
+  })
+
+  // ADR-088 Decision 3: in-page SPA navigations fire loading; the badge must
+  // end on for both orders of reset vs the content script's ready report.
+  describe('SPA in-page navigation badge ordering (ADR-088)', () => {
+    const flush = async () => {
+      for (let i = 0; i < 5; i++) await Promise.resolve()
+    }
+
+    it('ends on when the ready report arrives before the loading reset', async () => {
+      ;(chrome.action.setBadgeText as jest.Mock).mockResolvedValue(undefined)
+      await send(
+        { type: 'learningModeStatus', status: { status: 'ready' } },
+        { tab: { id: 9 }, frameId: 0 }
+      )
+      ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue({
+        status: { status: 'ready' },
+      })
+      onTabUpdated(9, { status: 'loading' })
+      await flush()
+      expect(chrome.action.setBadgeText).toHaveBeenLastCalledWith({
+        tabId: 9,
+        text: '✓',
+      })
+    })
+
+    it('ends on when the loading reset arrives before the ready report', async () => {
+      ;(chrome.action.setBadgeText as jest.Mock).mockResolvedValue(undefined)
+      ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue({
+        status: { status: 'off' },
+      })
+      onTabUpdated(9, { status: 'loading' })
+      await flush()
+      await send(
+        { type: 'learningModeStatus', status: { status: 'ready' } },
+        { tab: { id: 9 }, frameId: 0 }
+      )
+      expect(chrome.action.setBadgeText).toHaveBeenLastCalledWith({
+        tabId: 9,
+        text: '✓',
+      })
+    })
+
+    it('drops a delayed reply when a newer off report arrives meanwhile', async () => {
+      ;(chrome.action.setBadgeText as jest.Mock).mockResolvedValue(undefined)
+      let reply!: (value: unknown) => void
+      ;(chrome.tabs.sendMessage as jest.Mock).mockReturnValue(
+        new Promise(resolve => {
+          reply = resolve
+        })
+      )
+      onTabUpdated(9, { status: 'loading' })
+      await flush()
+      await send(
+        { type: 'learningModeStatus', status: { status: 'off' } },
+        { tab: { id: 9 }, frameId: 0 }
+      )
+      reply({ status: { status: 'ready' } })
+      await flush()
+      expect(chrome.action.setBadgeText).toHaveBeenLastCalledWith({
+        tabId: 9,
+        text: '',
+      })
+    })
+
+    it('drops the stale reply when a second loading reset arrives meanwhile', async () => {
+      ;(chrome.action.setBadgeText as jest.Mock).mockResolvedValue(undefined)
+      let replyFirst!: (value: unknown) => void
+      ;(chrome.tabs.sendMessage as jest.Mock)
+        .mockReturnValueOnce(
+          new Promise(resolve => {
+            replyFirst = resolve
+          })
+        )
+        .mockRejectedValueOnce(new Error('Receiving end does not exist'))
+      onTabUpdated(9, { status: 'loading' })
+      await flush()
+      onTabUpdated(9, { status: 'loading' })
+      await flush()
+      replyFirst({ status: { status: 'ready' } })
+      await flush()
+      expect(chrome.action.setBadgeText).toHaveBeenLastCalledWith({
+        tabId: 9,
+        text: '',
+      })
+    })
+
+    it('stays cleared after a full navigation until the new page reports', async () => {
+      ;(chrome.action.setBadgeText as jest.Mock).mockResolvedValue(undefined)
+      await send(
+        { type: 'learningModeStatus', status: { status: 'ready' } },
+        { tab: { id: 9 }, frameId: 0 }
+      )
+      ;(chrome.tabs.sendMessage as jest.Mock).mockRejectedValue(
+        new Error('Receiving end does not exist')
+      )
+      onTabUpdated(9, { status: 'loading' })
+      await flush()
+      expect(chrome.action.setBadgeText).toHaveBeenLastCalledWith({
+        tabId: 9,
+        text: '',
+      })
+    })
   })
 })
 

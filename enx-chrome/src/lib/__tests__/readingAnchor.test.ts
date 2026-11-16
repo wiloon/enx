@@ -3,6 +3,8 @@ import {
   findReadingAnchor,
   readingBook,
 } from '@/lib/readingAnchor'
+import { checkAnchor } from '@/lib/readingPositions'
+import { tomeshelfBookId, tomeshelfBookKey } from '@/lib/siteAdapters'
 
 const ARTICLE =
   'Sense and Sensibility The family of Dashwood had long been settled in Sussex. Their estate was large, and their residence was at Norland Park. The reader turns another page of the long story.'
@@ -164,5 +166,107 @@ describe('readingBook', () => {
     expect(
       readingBook({ bookKey: () => 'chrome://newtab' }, 'https://example.com/')
     ).toBeNull()
+  })
+})
+
+describe('tomeshelf book key (ADR-088 Decision 4)', () => {
+  afterEach(() => {
+    document.head.innerHTML = ''
+  })
+
+  const setBook = (id: string | null) => {
+    document.head.innerHTML = '<meta name="generator" content="tomeshelf 1.0">'
+    if (id === null) return
+    const meta = document.createElement('meta')
+    meta.setAttribute('name', 'tomeshelf:book')
+    meta.setAttribute('content', id)
+    document.head.appendChild(meta)
+  }
+
+  const adapter = {
+    bookKey: (href: string) => {
+      const id = tomeshelfBookId(document)
+      return id ? tomeshelfBookKey(href, id) : href
+    },
+  }
+
+  const sampleAnchor = (sourceUrl: string) => ({
+    sentence: 'Their estate was large.',
+    before: 'settled in Sussex. ',
+    after: ' Their residence was at',
+    offset: 10,
+    articleLength: 100,
+    sourceUrl,
+    title: 'A book',
+    occurredAt: 1,
+  })
+
+  it('gives the same key and different sourceUrls for two documents of one book', () => {
+    setBook('9f2c-book')
+    const a = readingBook(
+      adapter,
+      'https://tomeshelf.wiloon.lab/books/x/read/1'
+    )
+    const b = readingBook(
+      adapter,
+      'https://tomeshelf.wiloon.lab/books/x/read/2'
+    )
+    expect(a?.bookKey).toBe(
+      'https://tomeshelf.wiloon.lab/?enx-tomeshelf-book=9f2c-book'
+    )
+    expect(a?.bookKey).toBe(b?.bookKey)
+    expect(a?.sourceUrl).toBe('https://tomeshelf.wiloon.lab/books/x/read/1')
+    expect(b?.sourceUrl).toBe('https://tomeshelf.wiloon.lab/books/x/read/2')
+    expect(checkAnchor(a!.bookKey, sampleAnchor(a!.sourceUrl)).ok).toBe(true)
+    expect(checkAnchor(b!.bookKey, sampleAnchor(b!.sourceUrl)).ok).toBe(true)
+  })
+
+  it('gives different keys for different book ids', () => {
+    setBook('book-a')
+    const a = readingBook(adapter, 'https://tomeshelf.wiloon.lab/read/1')
+    setBook('book-b')
+    const b = readingBook(adapter, 'https://tomeshelf.wiloon.lab/read/1')
+    expect(a?.bookKey).not.toBe(b?.bookKey)
+  })
+
+  it('gives different keys on different origins and ports', () => {
+    setBook('same-id')
+    const a = readingBook(adapter, 'https://a.example/read/1')
+    const b = readingBook(adapter, 'https://b.example/read/1')
+    const c = readingBook(adapter, 'https://a.example:8443/read/1')
+    expect(a?.bookKey).not.toBe(b?.bookKey)
+    expect(a?.bookKey).not.toBe(c?.bookKey)
+  })
+
+  it.each([
+    "id/with?query#frag&eq=val%20+space'",
+    'id with spaces',
+    '书名-非ASCII',
+  ])('keeps special characters in the book id unchanged (%s)', id => {
+    setBook(id)
+    const book = readingBook(adapter, 'https://tomeshelf.example/read/1')
+    expect(book?.bookKey).toContain('enx-tomeshelf-book=')
+    const parsed = new URL(book!.bookKey)
+    expect(parsed.searchParams.get('enx-tomeshelf-book')).toBe(id)
+    expect(checkAnchor(book!.bookKey, sampleAnchor(book!.sourceUrl)).ok).toBe(
+      true
+    )
+  })
+
+  it('falls back to the page address when the meta is missing or empty', () => {
+    setBook(null)
+    expect(
+      readingBook(adapter, 'https://tomeshelf.example/books/x/read/1#ch')
+    ).toEqual({
+      bookKey: 'https://tomeshelf.example/books/x/read/1',
+      sourceUrl: 'https://tomeshelf.example/books/x/read/1',
+    })
+    setBook('   ')
+    expect(
+      readingBook(adapter, 'https://tomeshelf.example/books/x/read/1')
+    ).toEqual({
+      bookKey: 'https://tomeshelf.example/books/x/read/1',
+      sourceUrl: 'https://tomeshelf.example/books/x/read/1',
+    })
   })
 })

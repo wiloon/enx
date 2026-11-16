@@ -943,6 +943,7 @@ const handleShouldAutoEnable = async (
   if (await isSignedIn()) return true
   const tabId = topFrameTabId(sender)
   if (tabId !== undefined) {
+    bumpBadgeGeneration(tabId)
     await applyStatus(tabId, { status: 'error', reason: 'signed-out' })
   }
   return false
@@ -967,6 +968,7 @@ const handleLearningModeStatus = async (
   if (!status || !LEARNING_MODE_STATUSES.has(status.status)) {
     return { success: false, error: 'Unknown learning mode status' }
   }
+  bumpBadgeGeneration(tabId)
   await applyStatus(tabId, status)
   // Decision 6: an unpinned icon hides the badge; ask once it has news.
   const showPinHint = status.status === 'ready' && (await maybeAskToPin())
@@ -975,9 +977,31 @@ const handleLearningModeStatus = async (
 
 // Decision 4: Chrome keeps a per-tab badge across navigations, so drop it
 // when the tab starts loading; the new page's content script reports afresh.
+// ADR-088 Decision 3: an in-page SPA navigation also fires `loading`, and
+// the content script's ready report can race that reset. After clearing,
+// ask the still-living content script; re-apply when learning mode is on.
+// A full navigation has no receiver, so the badge stays cleared until the
+// new page reports.
+// A per-tab generation (bumped by every reset and every status report) lets a
+// delayed re-ask reply be dropped when anything newer touched the badge.
+const badgeGeneration = new Map<number, number>()
+const bumpBadgeGeneration = (tabId: number): number => {
+  const next = (badgeGeneration.get(tabId) ?? 0) + 1
+  badgeGeneration.set(tabId, next)
+  return next
+}
+
+const restoreBadgeAfterLoad = async (tabId: number): Promise<void> => {
+  const generation = bumpBadgeGeneration(tabId)
+  await resetTab(tabId)
+  const status = await getLearningModeStatusOnTab(tabId)
+  if (badgeGeneration.get(tabId) !== generation) return
+  if (status.status !== 'off') await applyStatus(tabId, status)
+}
+
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status !== 'loading') return
-  resetTab(tabId).catch(error =>
+  restoreBadgeAfterLoad(tabId).catch(error =>
     console.debug('badge: reset failed (tab gone?)', error)
   )
 })

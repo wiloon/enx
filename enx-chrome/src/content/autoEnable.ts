@@ -20,6 +20,11 @@ interface AutoEnableRunDeps {
    * no article open yet -- is not the end: the next navigation may bring one.
    */
   keepsWatching: () => boolean
+  /**
+   * False once this attempt has been superseded (ADR-088 late recognition).
+   * A stale attempt must not disable, roll back, or overwrite the replacement.
+   */
+  isCurrent?: () => boolean
 }
 
 export interface AutoEnableDeps extends AutoEnableRunDeps {
@@ -34,9 +39,13 @@ const shouldRollBack = (
   keepsWatching: boolean
 ): boolean => !keepsWatching || outcome.reason === 'session-expired'
 
+const stillCurrent = (deps: AutoEnableRunDeps): boolean =>
+  deps.isCurrent?.() ?? true
+
 async function runAutoEnable(deps: AutoEnableRunDeps): Promise<void> {
   try {
     const outcome = await deps.enable()
+    if (!stillCurrent(deps)) return
     if (!outcome.ok) {
       if (shouldRollBack(outcome, deps.keepsWatching())) {
         console.debug(`auto-enable: rolled back (${outcome.reason})`)
@@ -48,6 +57,7 @@ async function runAutoEnable(deps: AutoEnableRunDeps): Promise<void> {
       }
     }
   } catch (error) {
+    if (!stillCurrent(deps)) return
     console.debug('auto-enable: rolled back after an error', error)
     deps.disable()
   }
@@ -61,7 +71,7 @@ export async function maybeAutoEnable(deps: AutoEnableDeps): Promise<void> {
     console.debug('auto-enable: background unreachable', error)
     return
   }
-  if (!granted || !deps.isPageSupported()) return
+  if (!granted || !deps.isPageSupported() || !stillCurrent(deps)) return
   await runAutoEnable(deps)
 }
 

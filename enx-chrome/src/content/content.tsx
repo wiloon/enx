@@ -32,8 +32,10 @@ import {
   lookupAreaOptions,
   articleChoiceAvailable,
   resolveSiteAdapter,
+  tomeshelfRestoresPosition,
   type SiteOrigins,
 } from '@/lib/siteAdapters'
+import { watchTomeshelfRecognition } from './tomeshelfWatch'
 import { isSelectionLookupExcluded } from '@/lib/selectionLookup'
 import {
   ENABLE_OK,
@@ -57,11 +59,7 @@ import { autoEnableOnSignInReturn, maybeAutoEnable } from './autoEnable'
 import { runDictionaryLookup } from '@/lib/dictionaryLookup'
 import { type RecordLookup } from '@/lib/queryCount'
 import { nearestElement, referenceLineHeight } from '@/lib/rangeUtils'
-import {
-  createSpaRebuilder,
-  isSupportedPage,
-  waitForContentReady,
-} from './spaRebuild'
+import { createSpaRebuilder, waitForContentReady } from './spaRebuild'
 import { createInitialRunner } from './initialRun'
 import {
   getArticleChoiceSharing,
@@ -135,6 +133,23 @@ const siteOrigins: SiteOrigins = {
   rssxOrigins: config.rssxOrigins,
 }
 
+// ADR-088: once tomeshelf is recognised, stick for this content script's life.
+let tomeshelfSticky = false
+// True after the user pressed Stop; late recognition must not re-auto-enable.
+let userTurnedLearningModeOff = false
+// Bumped to supersede an in-flight auto-enable (late recognition).
+let autoEnableEpoch = 0
+let disconnectTomeshelfWatch = () => {}
+
+const pageAdapter = () => {
+  const adapter = resolveSiteAdapter(window.location, siteOrigins, {
+    page: document,
+    sticky: tomeshelfSticky ? 'tomeshelf' : undefined,
+  })
+  if (adapter.name === 'tomeshelf') tomeshelfSticky = true
+  return adapter
+}
+
 // ADR-086: host-page ::highlight() palette follows the article text colour.
 // The node last sampled for tone; prefers-color-scheme changes re-sample it.
 let currentToneNode: Element | null = null
@@ -144,9 +159,7 @@ let onColorSchemeChange: (() => void) | null = null
 const applyHostPageHighlightTone = (node: Element) => {
   currentToneNode = node
   const tone = pageToneFromComputedColor(getComputedStyle(node).color)
-  const style = document.head.querySelector(
-    'style[data-enx-highlight-styles]'
-  )
+  const style = document.head.querySelector('style[data-enx-highlight-styles]')
   if (style) style.textContent = hostPageHighlightCss(tone)
 }
 
@@ -243,7 +256,7 @@ const readingPositions = createReadingPositionRecorder({
   page: () => ({
     href: window.location.href,
     title: document.title,
-    adapter: resolveSiteAdapter(window.location, siteOrigins),
+    adapter: pageAdapter(),
   }),
   onRecorded: () => readingResume.recorded(),
   onNotSaved: code => readingResume.notSaved(code),
@@ -986,7 +999,7 @@ const articleChoice = createPageArticleChoice({
   },
   share: {
     enabled: async () => (await getArticleChoiceSharing()) === true,
-    adapter: () => resolveSiteAdapter(window.location, siteOrigins),
+    adapter: () => pageAdapter(),
     send: articleChoice =>
       sendToBackground({ type: 'submitArticleChoice', articleChoice }),
   },
@@ -1021,7 +1034,7 @@ const processArticleContent = async (
   try {
     console.log('Processing article content...')
 
-    const adapter = resolveSiteAdapter(window.location, siteOrigins)
+    const adapter = pageAdapter()
     console.log(`Site adapter: ${adapter.name} (${adapter.contentVolatility})`)
 
     await articleChoice.ready
@@ -1145,7 +1158,9 @@ const processArticleContent = async (
       clearArticleRoots()
     }
     readingPositions.setArticle(articleNodes)
-    void readingResume.open(readingPositions.bookKey(), articleNodes)
+    void readingResume.open(readingPositions.bookKey(), articleNodes, {
+      prompt: !tomeshelfRestoresPosition(document),
+    })
 
     // L0 reading instrumentation (ADR-028): `words.length` is the
     // denominator of the only honest progress metric we have ("lookups per
@@ -1574,7 +1589,7 @@ const handleTextSelection = (event: MouseEvent) => {
   if (
     isSelectionLookupExcluded(
       [target, selection.anchorNode],
-      resolveSiteAdapter(window.location, siteOrigins).lookupExcludedSelectors
+      pageAdapter().lookupExcludedSelectors
     )
   ) {
     return
@@ -1623,18 +1638,24 @@ const handleTextSelection = (event: MouseEvent) => {
 const initialRunner = createInitialRunner()
 
 const isSpaPage = () =>
-  resolveSiteAdapter(window.location, siteOrigins).contentVolatility ===
-    'spa' && !!window.navigation
+  pageAdapter().contentVolatility === 'spa' && !!window.navigation
 
 let spaRebuilderInstance: ReturnType<typeof createSpaRebuilder> | null = null
 const getSpaRebuilder = () => {
   spaRebuilderInstance ??= createSpaRebuilder({
-    isPageSupported: url => isSupportedPage(url, siteOrigins),
+    isPageSupported: url => {
+      try {
+        const loc = new URL(url)
+        const adapter = resolveSiteAdapter(loc, siteOrigins, {
+          sticky: tomeshelfSticky ? 'tomeshelf' : undefined,
+        })
+        return !adapter.pageSupport?.(loc)
+      } catch {
+        return false
+      }
+    },
     waitForContentReady: isCurrent =>
-      waitForContentReady(
-        resolveSiteAdapter(window.location, siteOrigins).readySelector,
-        isCurrent
-      ),
+      waitForContentReady(pageAdapter().readySelector, isCurrent),
     teardown: () => {
       initialRunner.cancel()
       pagePrefetch.reset()
@@ -1712,9 +1733,7 @@ const enableEnx = async (
   // An adapter's content can render after document_end (the auto-enable
   // moment): wait for its readySelector first. Resolves at once without one.
   const outcome = await initialRunner.run({
-    adapter: articleChoice.current()?.node
-      ? {}
-      : resolveSiteAdapter(window.location, siteOrigins),
+    adapter: articleChoice.current()?.node ? {} : pageAdapter(),
     isCurrent: isRunCurrent,
     process: () =>
       runWithStatus(
@@ -1775,6 +1794,8 @@ const disableEnx = ({ keepPopover = false } = {}) => {
 // standDown.isStoodDown() and abandons.
 const standDownOrphan = () => {
   console.log('ENX: orphaned content script standing down')
+  disconnectTomeshelfWatch()
+  autoEnableEpoch++
   articleChoice.abandon()
   disableEnx()
   spaRebuilderInstance?.stop()
@@ -1832,10 +1853,7 @@ const runAutoLearningMode = async (
 }
 
 // ADR-010 Decision 1: an adapter can declare the current page out of scope.
-const isPageSupported = () =>
-  !resolveSiteAdapter(window.location, siteOrigins).pageSupport?.(
-    window.location
-  )
+const isPageSupported = () => !pageAdapter().pageSupport?.(window.location)
 
 // Listen for messages from the popup or background
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
@@ -1855,11 +1873,12 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
     case 'enxRun': {
       articleChoice.abandon()
+      userTurnedLearningModeOff = false
       // ADR-010 Decision 1: an adapter can match the host but declare the
       // current page out of scope (X list/timeline pages vs a tweet detail
       // page). Abort with the adapter's message rather than silently doing
       // nothing.
-      const adapter = resolveSiteAdapter(window.location, siteOrigins)
+      const adapter = pageAdapter()
       const unsupportedReason = adapter.pageSupport?.(window.location)
       if (unsupportedReason) {
         sendResponse({
@@ -1894,6 +1913,8 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
     case 'enxStop':
       articleChoice.abandon()
+      userTurnedLearningModeOff = true
+      autoEnableEpoch++
       disableEnx()
       // A signed-out popover outlives learning mode.
       hideCurrentOverlay()
@@ -1939,7 +1960,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
         sendResponse(
           pageFeedbackContext({
             learningMode: isEnxEnabled,
-            adapter: resolveSiteAdapter(window.location, siteOrigins).name,
+            adapter: pageAdapter().name,
             choice: articleChoice.current()?.source ?? 'automatic',
           })
         )
@@ -2021,16 +2042,43 @@ window.addEventListener('beforeunload', () => {
 // #561: stand down any orphan already on the page.
 standDown.announce()
 
+const startAutoEnable = () => {
+  const epoch = ++autoEnableEpoch
+  return maybeAutoEnable({
+    askBackground: async () =>
+      (await sendToBackground({ type: 'shouldAutoEnable' })).autoEnable ===
+      true,
+    isPageSupported,
+    enable: runAutoLearningMode,
+    disable: disableEnx,
+    keepsWatching: isSpaPage,
+    isCurrent: () => epoch === autoEnableEpoch && !standDown.isStoodDown(),
+  })
+}
+
+// ADR-088 Decision 1: late recognition of tomeshelf after the content script
+// started. Switch once; a superseded auto-enable must not roll back after.
+const onTomeshelfRecognised = () => {
+  if (standDown.isStoodDown()) return
+  tomeshelfSticky = true
+  if (isEnxEnabled) {
+    autoEnableEpoch++
+    void runLearningMode()
+    return
+  }
+  if (userTurnedLearningModeOff) return
+  void startAutoEnable()
+}
+
+disconnectTomeshelfWatch = watchTomeshelfRecognition({
+  isTomeshelf: () => pageAdapter().name === 'tomeshelf',
+  onRecognised: onTomeshelfRecognised,
+  root: document.head ?? document.documentElement,
+}).disconnect
+
 // adr-039: on a site the user chose "Always enable on this site" for, turn
 // learning mode on at load. Every failure is silent (home and list pages on
 // the same origin have no article); the popup button stays the loud path.
-void maybeAutoEnable({
-  askBackground: async () =>
-    (await sendToBackground({ type: 'shouldAutoEnable' })).autoEnable === true,
-  isPageSupported,
-  enable: runAutoLearningMode,
-  disable: disableEnx,
-  keepsWatching: isSpaPage,
-})
+void startAutoEnable()
 
 console.log('ENX Content script ready')
