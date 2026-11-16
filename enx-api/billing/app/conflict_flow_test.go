@@ -23,9 +23,6 @@ type recordingMailer struct {
 
 func TestMountedPlanChangeHandsTheSmallestBlockingConflictToSupport(t *testing.T) {
 	r := newRig(t, "topup-only.sql")
-	if err := sqlitex.DB.AutoMigrate(&sqlitex.Referral{}); err != nil {
-		t.Fatal(err)
-	}
 	r.stripe.portalSafe.Store(true)
 	r.start(t)
 	eventually(t, "endpoint discovery", func() bool { return r.a.identity.Endpoint().AccountID != "" })
@@ -127,9 +124,6 @@ func TestMountedSecondLiveSubscriptionKeepsAcceptedCreditsAndSendsOneConflictAle
 			return ticker(interval)
 		}
 	}, "topup-only.sql")
-	if err := sqlitex.DB.AutoMigrate(&sqlitex.Referral{}); err != nil {
-		t.Fatal(err)
-	}
 	r.stripe.portalSafe.Store(true)
 	r.start(t)
 	eventually(t, "endpoint discovery", func() bool { return r.a.identity.Endpoint().AccountID != "" })
@@ -232,9 +226,6 @@ func TestMountedSecondLiveSubscriptionKeepsAcceptedCreditsAndSendsOneConflictAle
 
 func TestMountedAdminDetailResolveAndRetryServeAnAdminAndRefuseAnyoneElse(t *testing.T) {
 	r := newRig(t, "topup-only.sql")
-	if err := sqlitex.DB.AutoMigrate(&sqlitex.Referral{}); err != nil {
-		t.Fatal(err)
-	}
 	r.stripe.portalSafe.Store(true)
 	r.start(t)
 	eventually(t, "endpoint discovery", func() bool { return r.a.identity.Endpoint().AccountID != "" })

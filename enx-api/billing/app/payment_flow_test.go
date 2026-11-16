@@ -17,9 +17,6 @@ const paidInvoice = `{"object":"invoice","id":"in_checkout","customer":"cus_topu
 
 func TestPaidInvoiceRefreshesAcceptedSubscriptionStatus(t *testing.T) {
 	r := newRig(t, "topup-only.sql")
-	if err := sqlitex.DB.AutoMigrate(&sqlitex.Referral{}); err != nil {
-		t.Fatal(err)
-	}
 	var reads atomic.Int64
 	r.stripe.subscriptionReply = func(id string) string {
 		status := "active"
@@ -64,9 +61,6 @@ func TestPaidInvoiceRefreshesAcceptedSubscriptionStatus(t *testing.T) {
 
 func TestMountedCheckoutAndPaidInvoiceGrantOnceAcrossRedeliveryAndAnotherEventID(t *testing.T) {
 	r := newRig(t, "topup-only.sql")
-	if err := sqlitex.DB.AutoMigrate(&sqlitex.Referral{}); err != nil {
-		t.Fatal(err)
-	}
 	t.Cleanup(func() {
 		if t.Failed() {
 			var rows []map[string]any
@@ -105,15 +99,26 @@ func TestMountedCheckoutAndPaidInvoiceGrantOnceAcrossRedeliveryAndAnotherEventID
 	if err := sqlitex.DB.Exec("UPDATE credit_accounts SET subscription_balance = 4321 WHERE user_id = 'u_topup'").Error; err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"evt_invoice", "evt_invoice_replay"} {
-		if code := r.deliver(t, id, "invoice.paid", paidInvoice); code != http.StatusOK {
-			t.Fatalf("invoice replay %s receipt = %d, want 200", id, code)
+	// The redelivery adds a delivery row for an event the worker already
+	// processed: the tick starts no new work, so there is nothing to wait for.
+	// The attempts check below is the proof that it did not reprocess.
+	for _, replay := range []struct {
+		id   string
+		wait bool
+	}{
+		{id: "evt_invoice"},
+		{id: "evt_invoice_replay", wait: true},
+	} {
+		if code := r.deliver(t, replay.id, "invoice.paid", paidInvoice); code != http.StatusOK {
+			t.Fatalf("invoice replay %s receipt = %d, want 200", replay.id, code)
 		}
 		r.tickers.tick(testPoll)
-		eventually(t, "replay processing", func() bool {
-			status, _ := eventStatus(t, id)
-			return status == "processed"
-		})
+		if replay.wait {
+			eventually(t, "replay processing", func() bool {
+				status, _ := eventStatus(t, replay.id)
+				return status == "processed"
+			})
+		}
 		assertPaymentState(t, "sub_recovery", 4321, 1)
 	}
 	if n := countRows(t, "stripe_webhook_deliveries"); n != 4 {
@@ -160,7 +165,7 @@ func assertPaymentState(t *testing.T, accepted string, balance, grants int64) {
 		PeriodStart          int64
 		PeriodEnd            int64
 	}
-	if err := sqlitex.DB.Raw("SELECT * FROM credit_transactions WHERE stripe_invoice_id = 'in_checkout'").Scan(&grant).Error; err != nil {
+	if err := sqlitex.DB.Raw("SELECT type, tier, grant_kind, stripe_subscription_id, amount, purchased, applied, period_start, period_end FROM credit_transactions WHERE stripe_invoice_id = 'in_checkout'").Scan(&grant).Error; err != nil {
 		t.Fatal(err)
 	}
 	if grant.Type != "GRANT_SUBSCRIPTION" || grant.Tier != "pro-plus" || grant.GrantKind != "normal_period" || grant.StripeSubscriptionID != "sub_recovery" || grant.Amount != 5000 || grant.Purchased != 5000 || grant.Applied != 5000 || grant.PeriodStart != 1790000000 || grant.PeriodEnd != 1800000000 {
@@ -170,9 +175,6 @@ func assertPaymentState(t *testing.T, accepted string, balance, grants int64) {
 
 func TestPaidConflictRetainsOwnershipAndAlertWhenLivePriceIsUnknown(t *testing.T) {
 	r := newRig(t, "topup-only.sql")
-	if err := sqlitex.DB.AutoMigrate(&sqlitex.Referral{}); err != nil {
-		t.Fatal(err)
-	}
 	r.stripe.portalSafe.Store(true)
 	r.stripe.subscriptionReply = func(id string) string {
 		price := "price_pp_m"
@@ -217,9 +219,6 @@ func TestPaidConflictRetainsOwnershipAndAlertWhenLivePriceIsUnknown(t *testing.T
 
 func TestPaidInvoiceRetriesStripeFailureWithoutPartialGrant(t *testing.T) {
 	r := newRig(t, "topup-only.sql")
-	if err := sqlitex.DB.AutoMigrate(&sqlitex.Referral{}); err != nil {
-		t.Fatal(err)
-	}
 	r.stripe.portalSafe.Store(true)
 	r.start(t)
 	eventually(t, "discovery", func() bool { return r.a.identity.Endpoint().AccountID != "" })
@@ -249,9 +248,6 @@ func TestPaidInvoiceRetriesStripeFailureWithoutPartialGrant(t *testing.T) {
 
 func TestPaidInvoiceOfEndedUnacceptedSubscriptionKeepsStaleContextWithoutCredits(t *testing.T) {
 	r := newRig(t, "topup-only.sql")
-	if err := sqlitex.DB.AutoMigrate(&sqlitex.Referral{}); err != nil {
-		t.Fatal(err)
-	}
 	r.stripe.portalSafe.Store(true)
 	r.stripe.subscriptionReply = func(id string) string {
 		return `{"id":"` + id + `","object":"subscription","status":"canceled","customer":"cus_topup","items":{"has_more":false,"data":[{"price":{"id":"price_pp_m"},"current_period_end":1800000000}]}}`
