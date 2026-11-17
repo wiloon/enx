@@ -105,7 +105,7 @@ export default function NavigationProgressBar() {
     <div
       data-testid="navigation-progress"
       aria-hidden="true"
-      className="fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden bg-brand"
+      className="fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden bg-brand/20"
     >
       <div className="h-full w-full bg-brand motion-safe:animate-[navigation-progress-sweep_1.1s_ease-in-out_infinite]" />
     </div>

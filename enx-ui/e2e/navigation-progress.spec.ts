@@ -89,6 +89,39 @@ test.describe('navigation progress bar', () => {
     expect(sawBar).toBe(false)
   })
 
+  test('sweeps a brand-coloured segment across a fainter track', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    const held = await holdPricing(page)
+    await page.goto('/')
+    try {
+      const navigation = clickPricing(page)
+
+      await expect(bar(page)).toBeVisible({ timeout: 5000 })
+      const colours = await bar(page).evaluate((el) => {
+        const sweep = el.firstElementChild
+        return {
+          track: getComputedStyle(el).backgroundColor,
+          sweep: sweep ? getComputedStyle(sweep).backgroundColor : null,
+          running: el
+            .getAnimations({ subtree: true })
+            .some((animation) => animation.playState === 'running'),
+        }
+      })
+      expect(colours.running).toBe(true)
+      expect(colours.sweep).not.toBeNull()
+      // Same colour on track and sweep makes the animation invisible.
+      expect(colours.sweep).not.toBe(colours.track)
+
+      held.release()
+      await navigation
+      await expect(bar(page)).toHaveCount(0)
+    } finally {
+      held.release()
+    }
+  })
+
   test('uses a static bar under prefers-reduced-motion', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     const held = await holdPricing(page)
@@ -112,7 +145,7 @@ test.describe('navigation progress bar', () => {
     }
   })
 
-  test('uses the dark --brand token when .dark is on html', async ({
+  test('sweeps in the dark --brand token when .dark is on html', async ({
     page,
   }) => {
     const held = await holdPricing(page)
@@ -122,7 +155,9 @@ test.describe('navigation progress bar', () => {
       const navigation = clickPricing(page)
 
       await expect(bar(page)).toBeVisible({ timeout: 5000 })
-      const matchesBrand = await bar(page).evaluate((el) => {
+      const matchesBrand = await bar(page).evaluate((bar) => {
+        const el = bar.firstElementChild
+        if (!el) return false
         const probe = document.createElement('div')
         probe.style.backgroundColor = 'var(--brand)'
         document.body.appendChild(probe)
