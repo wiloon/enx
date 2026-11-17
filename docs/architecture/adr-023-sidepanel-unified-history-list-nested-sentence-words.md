@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Accepted — 2026-09-15；2026-11-16 Amended by adr-090（Decision 6：列表改存 `storage.session`；Decision 8：令牌计数器移入存储）。已按方案实现（TDD）：`SidePanel.tsx` 的 `definitions`/`pendingContext`/`chinese`/`status` 收敛为单一 `entries: PanelEntry[]`（`PanelEntry = WordEntry \| SentenceEntry`），拆出 `SentenceBlock`/`WordCard` 组件，四个纯函数 `findCard`/`reorderOrInsertCard`/`patchCard`/`removeCard` 承载所有按 scope（top-level vs 某条 `SentenceEntry.words`）的读写。`mergePageWordLookup` 不再清空句子。`SidePanel.test.tsx` 全量迁移 + 新增「多句历史共存」「句子内查词不重排顶层」两个用例；code-review 后修：`seedAnchorWord`（ADR-014 锚点词自动查询）补回「已存在卡片则只回填、不重查」的守卫——它是在 `translateSentenceWithWord` 的 `.then()` 里跑的，若这期间用户手动点了同一个高亮锚点词，原实现会对同一个词重复触发 `getOneWord`（重复计入 Query Count）与 `translateWordInContext`（重复计费）；用 `entriesRef`（在 effect 里同步镜像 `entries`）替代该函数原本闭包住的、可能过期的 `entries`，修掉这个过期闭包读到旧值的问题。`pnpm jest`（184 passed）/ `tsc` / `pnpm build` 通过。用户随后反馈：整句翻译区域和它嵌套的单词卡之间缺一个共同的视觉边界，与正文点词产生的顶层独立单词卡用同一种卡片样式，分不清归属——补了一个视觉分组：`SentenceBlock` 根容器套一层浅灰底 + 边框的外框（`rounded-lg border bg-gray-50 p-3`），把「来源链接+原文+译文+嵌套单词卡」框成一个整体；`WordCard` 加 `bg-white` 使其在外框内和在顶层页面背景上都保持视觉对比。纯样式改动，未触及测试断言的 testid/结构，`pnpm jest`/`tsc`/`pnpm build` 复跑仍通过。 |
+| **状态** | Accepted — 2026-09-15；2026-11-16 Amended by adr-090（Decision 6：列表改存 `storage.session`；Decision 8：令牌计数器移入存储）；2026-11-17 新增 Decision 9（句子卡吸收窗口内所有同词正文查词卡，未实现）。已按方案实现（TDD）：`SidePanel.tsx` 的 `definitions`/`pendingContext`/`chinese`/`status` 收敛为单一 `entries: PanelEntry[]`（`PanelEntry = WordEntry \| SentenceEntry`），拆出 `SentenceBlock`/`WordCard` 组件，四个纯函数 `findCard`/`reorderOrInsertCard`/`patchCard`/`removeCard` 承载所有按 scope（top-level vs 某条 `SentenceEntry.words`）的读写。`mergePageWordLookup` 不再清空句子。`SidePanel.test.tsx` 全量迁移 + 新增「多句历史共存」「句子内查词不重排顶层」两个用例；code-review 后修：`seedAnchorWord`（ADR-014 锚点词自动查询）补回「已存在卡片则只回填、不重查」的守卫——它是在 `translateSentenceWithWord` 的 `.then()` 里跑的，若这期间用户手动点了同一个高亮锚点词，原实现会对同一个词重复触发 `getOneWord`（重复计入 Query Count）与 `translateWordInContext`（重复计费）；用 `entriesRef`（在 effect 里同步镜像 `entries`）替代该函数原本闭包住的、可能过期的 `entries`，修掉这个过期闭包读到旧值的问题。`pnpm jest`（184 passed）/ `tsc` / `pnpm build` 通过。用户随后反馈：整句翻译区域和它嵌套的单词卡之间缺一个共同的视觉边界，与正文点词产生的顶层独立单词卡用同一种卡片样式，分不清归属——补了一个视觉分组：`SentenceBlock` 根容器套一层浅灰底 + 边框的外框（`rounded-lg border bg-gray-50 p-3`），把「来源链接+原文+译文+嵌套单词卡」框成一个整体；`WordCard` 加 `bg-white` 使其在外框内和在顶层页面背景上都保持视觉对比。纯样式改动，未触及测试断言的 testid/结构，`pnpm jest`/`tsc`/`pnpm build` 复跑仍通过。 |
 | **日期** | 2026-09-15 |
 | **关联 Spec** | 配套 TASK-SPEC 留到编码阶段再写（同 ADR-008 / ADR-017 的做法） |
 | **关联 ADR** | [`adr-006-page-word-lookup-in-sidepanel.md`](adr-006-page-word-lookup-in-sidepanel.md)（本 ADR 改动的 `definitions` 累积列表、newest-on-top 惯例的出处）、[`adr-007-drag-select-sentence-translation.md`](adr-007-drag-select-sentence-translation.md) / [`adr-008-phrase-selection-context-translation.md`](adr-008-phrase-selection-context-translation.md)（`pendingContext` 单槽位句子翻译、`PendingSentenceContext` 的出处；本 ADR 把这个单槽位改成历史列表里的一种 entry）、[`adr-014-sidepanel-clicked-word-and-token-billing.md`](adr-014-sidepanel-clicked-word-and-token-billing.md)（`LATEST_PAGE_WORD_STORAGE_KEY` 正文点词回传侧边栏的机制，本 ADR 不改这条链路的传输方式，只改它落地时对句子状态的副作用）、[`adr-017-sidepanel-sentence-drag-select-phrase-lookup.md`](adr-017-sidepanel-sentence-drag-select-phrase-lookup.md)（`handleSentenceSelection` 单词/短语分派、`upsertPhraseCard`，本 ADR 改这两者的落点） |
@@ -109,6 +109,8 @@ type PanelEntry = ({ kind: 'word' } & WordCardData) | SentenceEntry
 
 ### 7. 补充（2026-10-13）：整句翻译吸收紧挨着的同词顶层卡片
 
+> 2026-11-17 起由 Decision 9 扩展：不再只看第一条，也不限于锚点词。下面的条件和 dictionary-first 做法仍适用于每张被吸收的卡。
+
 **问题。** 侧边栏开着时，用户在正文点一个词，顶层多出一张只有词典释义的卡片（Decision 4）；接着在同一个浮层上点「整句翻译」，新的 `SentenceEntry` 又按 ADR-014 给锚点词建一张嵌套卡片，并重新 `getOneWord`。结果是同一个词的两张卡片挨在一起，词典也多查了一次（多计一次 Query Count）。嵌套卡片是顶层卡片的超集（词典释义 + 本句释义），顶层那张已经没有用处。
 
 **决定。** 新建带锚点词的 `SentenceEntry` 时，如果顶层**第一条** entry 正好是这个词的正文查词卡片（`kind: 'word'`、同一个词、`dictionaryStatus: 'loaded'`、`contextStatus: 'none'`），就把它**挪进**这条句子的 `words`，不再留在顶层：
@@ -140,6 +142,23 @@ type PanelEntry = ({ kind: 'word' } & WordCardData) | SentenceEntry
   3. 都没有：照常 `seedAnchorWord`。
 
 **不变。** Decision B2（正文点词不归属历史句子）、C2（句子内选的短语只进该句子）、Decision 5（句子内选词不重排顶层）都不变。
+
+### 9. 补充（2026-11-17）：句子卡吸收它与上一张句子卡之间所有同词的正文查词卡
+
+**问题。** 用户读一句话时常先点几个词（比如第 1、3、5 个），最后点第 7 个词时才决定把整句发到侧边栏。Decision 7 只看顶层第一条，于是只有第 7 个词进了句子卡，第 1、3、5 个词的卡片仍散在顶层，和这句话分开显示，也没有本句释义。
+
+**决定。** 扩展 Decision 7，取代其中「只看第一条」「必须是锚点词」两个限制：
+
+- **吸收窗口**：从顶层第一条往后扫，遇到第一张句子卡（包括这句话自己在历史里的那张）或列表尽头就停。侧边栏刚打开时窗口是整个列表；之前翻译过句子时，窗口就是两张句子卡之间的那段。
+- **吸收条件**：窗口里的正文查词卡（`kind: 'word'`、`dictionaryStatus: 'loaded'`、`contextStatus: 'none'`），其 key（`wordCardKey`）等于这句话里某个词的 key（切词规则与正文点词一致）。只按文字匹配，不管这张卡当初是在哪句话里点的。短语卡、已有本句释义的卡、窗口外的卡都不动。
+- **适用所有句子**：浮层整句翻译（有锚点词）和划词整句（ADR-007，没有锚点词）都吸收。
+- **顺序**：嵌套列表里锚点词在最前，其余按它们在顶层的原有先后排列。窗口里没被吸收的卡留在原位。
+- **再次发送已有句子**（Decision 8）：同样扫窗口。句子里已有同 key 嵌套卡的，删掉顶层卡、不搬数据（把 Decision 8 第 1 条推广到每个被吸收的词）；其余搬进去。
+- **一次 AI 调用**：本次要发整句翻译请求时（新句子，或出错的句子重试），把所有被吸收的词连同各自的词典释义（dictionary-first 不变）带进同一个请求，一次返回整句译文和每个词在本句的释义（含 `why`），一次计费。这取代原来「`translateSentence` + 每个词一次 `translateWordInContext`」。没有被吸收的词时，仍是单独的 `translateSentence`。没有正文查词卡、要 `seedAnchorWord` 的锚点词照旧走 `fetchWordContext`：它要先查词典，搭不上这次请求。
+- **降级**：模型漏了某个词的释义，就给那个词单独补一次 `translateWordInContext`（同 ADR-014 的做法）。整句请求失败时，被吸收卡的本句释义也显示错误，各自的 Retry 走单词的 `translateWordInContext`。句子已加载、本次不发整句请求时，新吸收的词各自单独调 `translateWordInContext`。
+- **请求令牌**：句子卡和每张被吸收的卡各取一个令牌；合并响应按 `(sentenceId, key)` 分别写回，只写给仍带着同一令牌的卡（Decision 8 的规则）。
+
+**与 Decision B2 的关系。** B2 拒绝的是正文点词那一刻去猜它属于哪条**历史**句子。这里方向相反：句子进侧边栏时，只往回看它前面那一段还没归属的卡片，按文字匹配。按文字匹配会吸进在别的句子里点的同一个词；用户接受这一点（2026-11-17）：窗口很短，误吸收的代价只是卡片换了位置，而且它拿到的是这句话里的释义。B2 依然成立：正文点词照样只进顶层。
 
 ---
 
@@ -199,3 +218,4 @@ type PanelEntry = ({ kind: 'word' } & WordCardData) | SentenceEntry
 - 2026-11-02，issue #589（spec 评审第 2 轮）：Decision 8 的请求令牌补充一条：单词卡“先词典、后语境”的整条查询共用一个令牌，词典响应返回后先核对令牌再发起语境请求。原因：否则卡片被删除或 Clear 后重建时，旧的词典响应仍会发起一次付费的语境 AI 调用，甚至覆盖新卡的结果。
 
 - 2026-11-05，issue #622：Decision 8 补充 Clear 的 Undo 例外。保留在途结果、Undo 后恢复词典优先链，避免恢复出永久加载的卡片，同时保持清空期间不启动后续付费请求。
+- 2026-11-17：新增 Decision 9，取代 Decision 7 的「只看顶层第一条、只吸收锚点词」。句子卡吸收它与上一张句子卡之间所有同词的正文查词卡，按文字匹配；被吸收词的本句释义随整句翻译一次 AI 调用返回。原因：用户发送整句前通常已在这句话里点过好几个词，这些卡片应归到句子下面。
