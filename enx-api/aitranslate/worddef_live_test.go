@@ -26,27 +26,45 @@ var defineWordSamples = []struct {
 }
 
 // TestLiveDefineWord sends words through the production define-word prompt,
-// user content and parser on OpenRouter. Opt-in: it runs only when an
-// OpenRouter API key is configured (OPENROUTER_API_KEY or config.toml), and
-// honours SENTENCE_TRANSLATE_OPENROUTER_MODEL.
+// user content and parser, on every provider that has an API key configured:
+// OpenRouter (OPENROUTER_API_KEY, production's route) and DeepSeek directly
+// (DEEPSEEK_API_KEY). Opt-in: with neither key it is skipped. The model
+// overrides (SENTENCE_TRANSLATE_*_MODEL) are honoured.
 func TestLiveDefineWord(t *testing.T) {
 	cfg, err := config.Load("")
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
-	if cfg.SentenceTranslate.OpenRouter.APIKey == "" {
-		t.Skip("no OpenRouter API key configured (OPENROUTER_API_KEY); live define-word test skipped")
+	keys := map[string]config.Secret{
+		"openrouter": cfg.SentenceTranslate.OpenRouter.APIKey,
+		"deepseek":   cfg.SentenceTranslate.DeepSeek.APIKey,
 	}
-	cfg.SentenceTranslate.Provider = "openrouter"
+	ran := false
+	for _, provider := range []string{"openrouter", "deepseek"} {
+		if keys[provider] == "" {
+			continue
+		}
+		ran = true
+		t.Run(provider, func(t *testing.T) {
+			pcfg := cfg.SentenceTranslate
+			pcfg.Provider = provider
+			defineWordSamplesOn(t, pcfg)
+		})
+	}
+	if !ran {
+		t.Skip("no OpenRouter or DeepSeek API key configured; live define-word test skipped")
+	}
+}
 
+func defineWordSamplesOn(t *testing.T, cfg config.SentenceTranslate) {
 	ctx := context.Background()
-	translator, err := aitranslate.New(ctx, cfg.SentenceTranslate)
+	translator, err := aitranslate.New(ctx, cfg)
 	if err != nil {
 		t.Fatalf("aitranslate.New: %v", err)
 	}
 	definer, ok := aitranslate.AsWordDefiner(translator)
 	if !ok {
-		t.Fatal("the openrouter provider does not define words")
+		t.Fatalf("the %s provider does not define words", cfg.Provider)
 	}
 
 	for _, s := range defineWordSamples {
