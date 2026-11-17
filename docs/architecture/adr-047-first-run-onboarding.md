@@ -20,6 +20,13 @@ adr-046 去掉了正文里的「Article processed • Click words for translatio
 
 现状：adr-027 在 Home 上给零阅读的用户显示三步清单（安装扩展 → 打开英文页启用 → 读完第一篇），但这只覆盖「先到网站」的用户，且第 2、3 步无法自动勾选；从 Chrome Web Store 直接安装的用户，`runtime.onInstalled` 只初始化了 storage，什么页面都不打开。
 
+## 2026-11-17 修订（#911，启用步骤显示实际快捷键）
+
+- `enx:status` 的响应加一个可选字段 `shortcut`：`{ bound: true, key } | { bound: false }`，由 background 用 `learningModeShortcut(await chrome.commands.getAll())` 算出，与 popup 显示的是同一个值。`chrome.commands.getAll()` 失败时不带这个字段。仍然只读、只认 `ENX_UI_ORIGINS`（Decision 4）。不改用 `<html>` 标记：content script 读不到 `chrome.commands`，Chrome 也没有快捷键变更事件，无论哪种传法都只能轮询。
+- 页面：`bound: true` 时在启用步骤和「You're all set」显示「Or press {key}」；`bound: false`、字段缺失（旧版扩展或读取失败）、或没有响应（扩展被禁用、卸载）时不显示，之前显示过的也收起。
+- 轮询（Decision 2）：启用步骤是当前步骤时，状态检测不因安装、固定已确定而停止，页面可见时继续每 2 秒查询，这样在 `chrome://extensions/shortcuts` 改绑或清除快捷键后无需刷新。完成页本来就持续检测（#873）。比较前后两次响应时也比较 `shortcut`。
+- 修订记录（#911）：Decision 4 的响应加 `shortcut` 字段，Decision 2 的停止条件加上启用步骤；原因是网页无法读取扩展的快捷键，而 Alt+C 可能被占用或被用户改掉。
+
 ## 2026-11-05 修订（#641，owner 确认）
 
 - 普通网页注册 / 登录的默认落点仍为 `/app`，在那里按本 ADR Decision 1a 的账号状态判断：未完成、未跳过引导且没有查词记录的新用户立即转到 `/welcome`，不先展示 Home 引导卡。完成或跳过的用户、已有查词记录的老用户保留 Home；`/billing` 等明确指定的回跳目标和扩展的 `/extension/connected` 不变。
