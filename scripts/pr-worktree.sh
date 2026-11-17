@@ -34,7 +34,7 @@ if [ -z "$branch" ]; then
   git fetch -q origin main
   if git merge-base --is-ancestor "$sha" origin/main; then
     echo "PR #$pr is already merged into main. Verify it on main instead:" >&2
-    echo "  git -C \"$main\" pull --ff-only && task -d \"$main\" dev:verify" >&2
+    echo "  git -C \"$main\" pull --ff-only && task -d \"$main\" chrome:run:dev" >&2
     exit 1
   fi
 fi

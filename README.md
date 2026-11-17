@@ -44,16 +44,23 @@ task ecdict:download
 
 # Start API server
 task api:start
-
-# Start Chrome extension development
-task dev-chrome
-
-# Try the current checkout (e.g. a worktree) end to end: restart enx-api and
-# enx-ui from it, build its extension against them, and open Chromium with it
-task dev:verify            # opens /reader/sample; URL=/app for another page
 ```
 
-`dev:verify` needs Chromium (`brew install --cask chromium`): Google Chrome ignores `--load-extension` since version 137. Every checkout shares one Chromium profile (`~/.local/share/enx/chrome-dev-profile`), so you sign in once.
+### Try the extension: `task chrome:run:<env>`
+
+Each command builds **this checkout's** extension for one environment and opens Chromium with it, on that environment's sample article (`/reader/sample`). HomeLab and production are already deployed, so only `dev` starts a backend.
+
+| Command | Extension talks to | Also starts |
+|---|---|---|
+| `task chrome:run:dev` | local enx-api + enx-ui (localhost) | enx-api and enx-ui from this checkout |
+| `task chrome:run:homelab` | enx-api.wiloon.lab | nothing |
+| `task chrome:run:homelab-test` | enx-api-test.wiloon.lab (fake AI) | nothing |
+| `task chrome:run:prod` | api.catglish.com | nothing |
+| `task pr:run PR=718 [TARGET=homelab]` | `chrome:run:<TARGET>` in that PR's worktree | as above |
+
+Options on all of them: `URL=/app` (a page on that environment's enx-ui) or `URL=https://…` (any site); `WATCH=true` rebuilds on change and keeps the terminal until Chromium closes (reload the extension in `chrome://extensions` after a rebuild). `chrome:run:prod REV=origin/main` (or a commit or tag) builds that commit in a clean worktree instead of this checkout.
+
+They need Chromium (`brew install --cask chromium`): Google Chrome ignores `--load-extension` since version 137. Every checkout shares one Chromium profile (`~/.local/share/enx/chrome-dev-profile`; production uses its own, `chrome-prod-profile`), so you sign in once. The old names `dev:verify`, `dev:chrome`, `dev`, `chrome:verify:prod` and `pr:verify` are aliases for now.
 
 ## Development Environment
 

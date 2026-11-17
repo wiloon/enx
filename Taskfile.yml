@@ -166,43 +166,98 @@ tasks:
     desc: Build enx-chrome extension to dist-production/ (connects to api.catglish.com)
     dir: enx-chrome
     cmds:
+      # A failed build must not leave a stale dist-production/ to load.
+      - rm -rf dist-production
       - task build-prod
 
-  chrome:verify:prod:
-    desc: "Build the production extension (api.catglish.com) from the latest commit on origin/main and open it in Chromium on URL. REV=<commit|tag> to build another commit, URL=https://… for another page"
-    vars:
-      REV: '{{.REV | default "origin/main"}}'
-      URL: '{{.URL | default "https://standardebooks.org/ebooks/benjamin-franklin/the-autobiography-of-benjamin-franklin/text/single-page"}}'
+  # chrome:run:<env> builds THIS checkout's extension for <env> and opens
+  # Chromium with it. HomeLab and production are deployed already, so only
+  # dev also starts a backend (enx-api + enx-ui from this checkout).
+  chrome:run:dev:
+    desc: "Restart enx-api and enx-ui from this checkout, build its extension against them (localhost) and open Chromium on the sample article. URL=/app or URL=https://… for another page, WATCH=true to rebuild on change"
+    aliases: [dev:verify]
+    preconditions:
+      # dev:verify used to take TARGET=homelab; fail loudly rather than
+      # silently loading the dev build.
+      - sh: '[ -z "{{.TARGET}}" ] || [ "{{.TARGET}}" = dev ]'
+        msg: 'TARGET is gone: run task chrome:run:{{.TARGET}} instead'
     cmds:
-      # Built in a detached worktree (.claude/worktrees/chrome-prod), so local
-      # edits and gitignored .env files never reach the production bundle.
+      # A fresh worktree has no node_modules yet.
+      - task: deps:ui
+      - task: api:run
+        vars: { MODE: bg }
+      - task: ui:run
+        vars: { MODE: bg }
+      - task: chrome:launch
+        vars: { TARGET: dev, URL: '{{.URL}}', WATCH: '{{.WATCH}}' }
+
+  chrome:run:homelab:
+    desc: "Build this checkout's extension against HomeLab (enx-api.wiloon.lab) and open Chromium on HomeLab's sample article. URL=/app or URL=https://… for another page, WATCH=true to rebuild on change"
+    aliases: [dev:chrome, dev]
+    cmds:
+      - task: chrome:launch
+        vars: { TARGET: homelab, URL: '{{.URL}}', WATCH: '{{.WATCH}}' }
+
+  chrome:run:homelab-test:
+    desc: "Build this checkout's extension against the HomeLab test copy (enx-api-test.wiloon.lab, fake AI) and open Chromium on its sample article. URL=/app or URL=https://… for another page, WATCH=true to rebuild on change"
+    cmds:
+      - task: chrome:launch
+        vars: { TARGET: homelab-test, URL: '{{.URL}}', WATCH: '{{.WATCH}}' }
+
+  chrome:run:prod:
+    desc: "Build this checkout's extension against production (api.catglish.com) and open Chromium on catglish.com's sample article. REV=<commit|tag|origin/main> builds that commit instead, URL=/app or URL=https://… for another page, WATCH=true to rebuild on change"
+    aliases: [chrome:verify:prod]
+    preconditions:
+      - sh: '[ -z "{{.REV}}" ] || [ "{{.WATCH}}" != true ]'
+        msg: 'WATCH=true rebuilds this checkout, so it does not combine with REV'
+    cmds:
+      - task: chrome:launch
+        vars: { TARGET: prod, URL: '{{.URL}}', WATCH: '{{.WATCH}}' }
+        if: '[ -z "{{.REV}}" ]'
+      # REV builds in a detached worktree (.claude/worktrees/chrome-prod), so
+      # local edits and gitignored .env files never reach that bundle.
+      - cmd: |
+          url='{{.URL | default "/reader/sample"}}'
+          case "$url" in http://*|https://*) ;; *) url="https://catglish.com$url" ;; esac
+          wt="$(scripts/chrome-prod-worktree.sh '{{.REV}}')"
+          cd "$wt/enx-chrome"
+          fnm exec --using=.node-version -- pnpm install --frozen-lockfile
+          # A failed build must not leave a stale dist-production/ to load.
+          rm -rf dist-production
+          fnm exec --using=.node-version -- pnpm build:prod
+          node '{{.ROOT_DIR}}/enx-chrome/dev-chrome.mjs' --target prod \
+            --ext-dir "$wt/enx-chrome/dist-production" --detach "$url"
+        if: '[ -n "{{.REV}}" ]'
+
+  chrome:launch:
+    internal: true
+    # Shared by chrome:run:*: build this checkout's extension for TARGET and
+    # open Chromium with it. A relative URL opens on TARGET's enx-ui.
+    vars:
+      ORIGIN: '{{if eq .TARGET "dev"}}http://localhost:3000{{else if eq .TARGET "homelab"}}https://enx.wiloon.lab{{else if eq .TARGET "homelab-test"}}https://enx-test.wiloon.lab{{else}}https://catglish.com{{end}}'
+      VITE_MODE: '{{if eq .TARGET "dev"}}development{{else if eq .TARGET "prod"}}production{{else}}{{.TARGET}}{{end}}'
+    cmds:
+      - task: deps:chrome
+      - task: 'chrome:build:{{.TARGET}}'
       - |
-        wt="$(scripts/chrome-prod-worktree.sh '{{.REV}}')"
-        cd "$wt/enx-chrome"
-        fnm exec --using=.node-version -- pnpm install --frozen-lockfile
-        # A failed build must not leave a stale dist-production/ to load.
-        rm -rf dist-production
-        fnm exec --using=.node-version -- pnpm build:prod
-        node '{{.ROOT_DIR}}/enx-chrome/dev-chrome.mjs' --target prod \
-          --ext-dir "$wt/enx-chrome/dist-production" --detach '{{.URL}}'
+        url='{{.URL | default "/reader/sample"}}'
+        case "$url" in http://*|https://*) ;; *) url="{{.ORIGIN}}$url" ;; esac
+        cd enx-chrome
+        if [ '{{.WATCH}}' != true ]; then
+          exec node dev-chrome.mjs --target {{.TARGET}} --detach "$url"
+        fi
+        fnm exec --using=.node-version -- pnpm exec vite build --mode {{.VITE_MODE}} --watch > /tmp/enx-watch.log 2>&1 &
+        watch_pid=$!
+        trap 'kill $watch_pid 2>/dev/null || true' EXIT
+        echo "Watch mode rebuilds dist-{{.VITE_MODE}}/ on change (log: /tmp/enx-watch.log)."
+        echo "Reload the extension in chrome://extensions after a rebuild; close Chromium to stop."
+        node dev-chrome.mjs --target {{.TARGET}} "$url"
 
   chrome:release:
     desc: 'Release the extension to production: tag origin/main as chrome-v<version> and push; GitHub Actions attaches the store zip to a GitHub Release (task chrome:release -- 0.1.2)'
     dir: enx-chrome
     cmds:
       - task release -- {{.CLI_ARGS}}
-
-  dev:chrome:
-    desc: Start Chrome browser with extension (auto-reload)
-    dir: enx-chrome
-    cmds:
-      - task dev-chrome URL={{.URL | default "https://www.infoq.com/"}}
-
-  dev:
-    desc: Start Chrome browser with extension, open rssx-lab (auto-reload)
-    dir: enx-chrome
-    cmds:
-      - task dev-chrome URL={{.URL | default "https://rssx-lab.wiloon.com/"}}
 
   ui:run:
     desc: Restart enx-ui in development mode on http://localhost:3000 (usage - task ui:run [MODE=fg|bg] - default is fg)
@@ -235,28 +290,6 @@ tasks:
       - task: api:stop
       - task: ui:stop
 
-  dev:verify:
-    desc: "Try this checkout (e.g. a worktree) in a browser: restart enx-api and enx-ui from it (replacing any other checkout's), build its extension, and open Chromium with that build on the sample article (http://localhost:3000/reader/sample). URL=/app for another enx-ui page or URL=https://… for any site, TARGET=homelab to load the homelab build instead"
-    vars:
-      URL: '{{.URL | default "/reader/sample"}}'
-      TARGET: '{{.TARGET | default "dev"}}'
-    preconditions:
-      - sh: '[ "{{.TARGET}}" = dev ] || [ "{{.TARGET}}" = homelab ]'
-        msg: 'TARGET must be dev or homelab, got "{{.TARGET}}"'
-    cmds:
-      # A fresh worktree has no node_modules yet.
-      - task: deps:ui
-      - task: deps:chrome
-      - task: api:run
-        vars: { MODE: bg }
-      - task: ui:run
-        vars: { MODE: bg }
-      - task: 'chrome:build:{{.TARGET}}'
-      - |
-        url='{{.URL}}'
-        case "$url" in http://*|https://*) ;; *) url="http://localhost:3000$url" ;; esac
-        cd enx-chrome && node dev-chrome.mjs --target {{.TARGET}} --detach "$url"
-
   pr:worktree:
     desc: "Print the path of a worktree with PR's head checked out (reuses the one on its branch, else creates .claude/worktrees/pr-<PR>). PR=718"
     requires:
@@ -264,17 +297,20 @@ tasks:
     cmds:
       - scripts/pr-worktree.sh '{{.PR}}'
 
-  pr:verify:
-    desc: "dev:verify in PR's worktree (created by pr:worktree when needed): local enx-api + enx-ui from it, its extension built, Chromium opened. PR=718 [URL=/app or https://…] [TARGET=homelab]"
+  pr:run:
+    desc: "chrome:run:<TARGET> in PR's worktree (created by pr:worktree when needed). PR=718 [TARGET=dev|homelab|homelab-test|prod, default dev] [URL=/app or https://…] [WATCH=true]"
+    aliases: [pr:verify]
     requires:
       vars: [PR]
     vars:
-      URL: '{{.URL | default "/reader/sample"}}'
       TARGET: '{{.TARGET | default "dev"}}'
+    preconditions:
+      - sh: 'case "{{.TARGET}}" in dev|homelab|homelab-test|prod) ;; *) exit 1 ;; esac'
+        msg: 'TARGET must be dev, homelab, homelab-test or prod, got "{{.TARGET}}"'
     cmds:
       - |
         wt="$(scripts/pr-worktree.sh '{{.PR}}')"
-        task -d "$wt" dev:verify URL='{{.URL}}' TARGET='{{.TARGET}}'
+        task -d "$wt" 'chrome:run:{{.TARGET}}' URL='{{.URL}}' WATCH='{{.WATCH}}'
 
   deps:ui:
     internal: true
