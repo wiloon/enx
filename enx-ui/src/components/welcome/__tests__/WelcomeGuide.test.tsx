@@ -442,7 +442,7 @@ const statusCalls = () =>
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, POLL_MS * 5))
 
-it('stops asking the extension for its status once the pin step is skipped', async () => {
+it('keeps asking the extension for its shortcut after a signed-in user skips pinning', async () => {
   signedIn()
   installExtension()
   renderGuide()
@@ -452,7 +452,7 @@ it('stops asking the extension for its status once the pin step is skipped', asy
   const afterSkip = statusCalls()
   await settle()
 
-  expect(statusCalls()).toBe(afterSkip)
+  expect(statusCalls()).toBeGreaterThan(afterSkip)
 })
 
 it('advances a signed-out visitor from Pin to sign-in when the toolbar status changes', async () => {
@@ -1089,10 +1089,12 @@ it('expands enable, then moves the detail and marker to look-up when enabled', a
   signedIn()
   installExtension({ isOnToolbar: true })
   const { container } = renderGuide()
-  const hint = await screen.findByText(
-    'Click the Catglish icon in your toolbar, then Read with Catglish.'
+  const chip = await screen.findByText('Read with Catglish', {
+    selector: 'span',
+  })
+  expect(chip.closest('p')).toHaveTextContent(
+    'then press the Read with Catglish button.'
   )
-  expect(hint.parentElement).toHaveTextContent('↗')
   const lookup = step('Click any word in the article')
   expect(
     within(lookup).getByLabelText('To do').querySelector('svg')
@@ -1182,3 +1184,93 @@ it('has no current step after the guide is finished', async () => {
   expect(container.querySelector('[aria-current]')).not.toBeInTheDocument()
   expect(screen.queryByLabelText('Current step')).not.toBeInTheDocument()
 })
+
+describe.each(['enable', 'finished'])(
+  'Read with Catglish instructions on %s',
+  (view) => {
+    beforeEach(() => {
+      signedIn()
+      if (view === 'finished') mockOverview.mockResolvedValue(overview(12))
+      installExtension({ isOnToolbar: true })
+    })
+
+    it('names the button with a decorative icon chip', async () => {
+      renderGuide()
+      const chip = await screen.findByText('Read with Catglish', {
+        selector: 'span',
+      })
+      expect(chip.closest('p')).toHaveTextContent(
+        'then press the Read with Catglish button.'
+      )
+      expect(chip.querySelector('svg')).toHaveClass(
+        'lucide-mouse-pointer-click'
+      )
+      expect(chip.closest('button, a, [role=button], [role=link]')).toBeNull()
+      expect(chip.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+      if (view === 'enable') {
+        expect(
+          screen.getByRole('img', { name: /popup.*Read with Catglish/i })
+        ).toBeInTheDocument()
+      }
+    })
+
+    it.each([
+      ['unbound', { bound: false }],
+      ['not reported', undefined],
+      ['null', null],
+      ['wrong bound type', { bound: 'true', key: 'Alt+C' }],
+      ['missing key', { bound: true }],
+      ['wrong key type', { bound: true, key: 42 }],
+      ['empty key', { bound: true, key: '' }],
+      ['blank key', { bound: true, key: '  ' }],
+    ])('hides the shortcut hint when %s', async (_label, shortcut) => {
+      sendMessage.mockImplementation((_id, _message, cb) =>
+        cb({
+          ok: true,
+          isOnToolbar: true,
+          shortcut,
+        })
+      )
+      renderGuide()
+      await screen.findByText('Read with Catglish', { selector: 'span' })
+      expect(screen.queryByText(/Or press/)).not.toBeInTheDocument()
+    })
+
+    it('refreshes and hides the reported shortcut without remounting', async () => {
+      let shortcut: unknown = { bound: true, key: 'Alt+C' }
+      let gone = false
+      sendMessage.mockImplementation((_id, _message, cb) =>
+        cb(
+          gone
+            ? undefined
+            : {
+                ok: true,
+                isOnToolbar: true,
+                shortcut,
+              }
+        )
+      )
+      renderGuide()
+      expect(await screen.findByText('Or press Alt+C')).toBeInTheDocument()
+      shortcut = { bound: true, key: 'Alt+X' }
+      expect(await screen.findByText('Or press Alt+X')).toBeInTheDocument()
+      expect(screen.queryByText('Or press Alt+C')).not.toBeInTheDocument()
+      shortcut = { bound: false }
+      await waitFor(() =>
+        expect(screen.queryByText(/Or press/)).not.toBeInTheDocument()
+      )
+      shortcut = { bound: true, key: 'Alt+C' }
+      await screen.findByText('Or press Alt+C')
+      shortcut = undefined
+      await waitFor(() =>
+        expect(screen.queryByText(/Or press/)).not.toBeInTheDocument()
+      )
+      shortcut = { bound: true, key: 'Alt+C' }
+      await screen.findByText('Or press Alt+C')
+      gone = true
+      await waitFor(() =>
+        expect(screen.queryByText(/Or press/)).not.toBeInTheDocument()
+      )
+    })
+  }
+)

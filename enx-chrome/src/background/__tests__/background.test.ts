@@ -2289,6 +2289,42 @@ describe('background onMessageExternal (ADR-019 web -> extension channel)', () =
     })
   })
 
+  it.each([
+    [
+      [{ name: TOGGLE_LEARNING_MODE_COMMAND, shortcut: 'Alt+X' }],
+      { bound: true, key: 'Alt+X' },
+    ],
+    [[{ name: TOGGLE_LEARNING_MODE_COMMAND, shortcut: '' }], { bound: false }],
+  ])(
+    'reports the actual learning mode shortcut for %j',
+    async (commands, shortcut) => {
+      ;(chrome.action.getUserSettings as jest.Mock).mockResolvedValue({
+        isOnToolbar: true,
+      })
+      ;(chrome.commands.getAll as jest.Mock).mockResolvedValue(commands)
+      expect(await call({ type: 'enx:status' })).toEqual({
+        ok: true,
+        version: '1.2.3',
+        isOnToolbar: true,
+        shortcut,
+      })
+    }
+  )
+
+  it('still reports status when reading commands fails', async () => {
+    ;(chrome.action.getUserSettings as jest.Mock).mockResolvedValue({
+      isOnToolbar: true,
+    })
+    ;(chrome.commands.getAll as jest.Mock).mockRejectedValue(
+      new Error('unavailable')
+    )
+    expect(await call({ type: 'enx:status' })).toEqual({
+      ok: true,
+      version: '1.2.3',
+      isOnToolbar: true,
+    })
+  })
+
   it('drops enx:status from an origin that is not an enx-ui origin', async () => {
     const sendResponse = jest.fn()
     const keptOpen = external(

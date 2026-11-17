@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="200" viewBox="0 0 360 200" role="img" aria-labelledby="title">
+  <title id="title">Catglish popup: press the Read with Catglish button</title>
+  <style>
+    /* The popup has one light theme; brand values match globals.css. */
+    svg { --brand: oklch(0.55 0.13 200); --brand-foreground: oklch(0.985 0 0); --foreground: oklch(0.145 0 0); --muted: oklch(0.97 0 0); --border: oklch(0.922 0 0); }
+    text { font-family: system-ui, sans-serif; fill: var(--foreground); }
+  </style>
+  <rect width="360" height="200" rx="10" fill="var(--muted)"/>
+  <rect x="32" y="12" width="296" height="176" rx="14" fill="var(--brand-foreground)" stroke="var(--border)"/>
+  <text x="50" y="40" font-size="15" font-weight="700">Catglish</text>
+  <path d="M48 54h264" stroke="var(--border)"/>
+  <rect x="43" y="66" width="274" height="64" rx="15" fill="none" stroke="var(--brand)" stroke-width="2" stroke-dasharray="4 3"/>
+  <rect x="49" y="72" width="262" height="52" rx="12" fill="var(--brand)"/>
+  <g transform="translate(70 88)" fill="none" stroke="var(--brand-foreground)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m8 8 4.5 13.5 2.5-6 6-2.5L8 8Z M5 3v3 M3 10H0 M12 2l-2 3 M2 4l3 2"/>
+  </g>
+  <text x="102" y="103" font-size="14" font-weight="600" style="fill:var(--brand-foreground)">Read with Catglish</text>
+  <text x="51" y="156" font-size="12">Highlight looked-up words</text>
+  <rect x="276" y="144" width="32" height="18" rx="9" fill="var(--brand)"/>
+  <circle cx="299" cy="153" r="6" fill="var(--brand-foreground)"/>
+</svg>

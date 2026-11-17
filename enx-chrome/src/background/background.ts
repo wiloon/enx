@@ -58,7 +58,10 @@ import {
   enableLearningModeOnTab,
   getLearningModeStatusOnTab,
 } from '@/lib/enableLearningMode'
-import { runLearningModeCommand } from '@/lib/learningModeCommand'
+import {
+  learningModeShortcut,
+  runLearningModeCommand,
+} from '@/lib/learningModeCommand'
 import { applyStatus, dismissPinHint, maybeAskToPin, resetTab } from './badge'
 import type { LearningModeStatus } from '@/lib/learningModeStatus'
 import {
@@ -1520,10 +1523,17 @@ chrome.runtime.onMessageExternal.addListener(
           .getUserSettings()
           .then(settings => settings.isOnToolbar)
           .catch(() => false)
+        let shortcut
+        try {
+          shortcut = learningModeShortcut(await chrome.commands.getAll())
+        } catch {
+          // Older or unavailable commands API must not suppress status.
+        }
         sendResponse({
           ok: true,
           version: chrome.runtime.getManifest().version,
           isOnToolbar,
+          ...(shortcut ? { shortcut } : {}),
         })
       })()
       return true

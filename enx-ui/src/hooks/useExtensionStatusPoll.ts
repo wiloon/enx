@@ -5,7 +5,11 @@ import { extensionStatus, type StatusResult } from '@/lib/enxExtension'
 import { extensionStatusSettled } from '@/lib/onboarding'
 
 const same = (a: StatusResult | undefined, b: StatusResult) =>
-  a?.installed === b.installed && a?.isOnToolbar === b.isOnToolbar
+  a?.installed === b.installed &&
+  a?.isOnToolbar === b.isOnToolbar &&
+  a?.shortcut?.bound === b.shortcut?.bound &&
+  (a?.shortcut?.bound ? a.shortcut.key : undefined) ===
+    (b.shortcut?.bound ? b.shortcut.key : undefined)
 
 // ADR-047 Decision 2: /welcome asks the extension every couple of seconds
 // while the page is visible, so installing or pinning ticks its step without
@@ -19,11 +23,13 @@ const same = (a: StatusResult | undefined, b: StatusResult) =>
 export function useExtensionStatusPoll({
   enabled = true,
   watchToolbar = true,
+  watchShortcut = false,
   intervalMs = 2000,
   live = false,
 }: {
   enabled?: boolean
   watchToolbar?: boolean
+  watchShortcut?: boolean
   intervalMs?: number
   live?: boolean
 } = {}): StatusResult | undefined {
@@ -53,7 +59,8 @@ export function useExtensionStatusPoll({
             ? prev
             : { live, result: next }
         )
-        if (!live && extensionStatusSettled(next, watchToolbar)) return
+        if (!live && extensionStatusSettled(next, watchToolbar, watchShortcut))
+          return
       }
       timer = setTimeout(tick, intervalMs)
     }
@@ -63,7 +70,7 @@ export function useExtensionStatusPoll({
       cancelled = true
       clearTimeout(timer)
     }
-  }, [enabled, watchToolbar, intervalMs, live])
+  }, [enabled, watchToolbar, watchShortcut, intervalMs, live])
 
   // An answer from the other mode is no answer for this one.
   return status?.live === live ? status.result : undefined

@@ -80,13 +80,15 @@ export function onboardingComplete(
 }
 
 // Decision 2: /welcome asks the extension for its status only while a step
-// still waits on it -- the install, and the pin when that step is showing
-// and not skipped.
+// still waits on it: installation, pinning, or the enable step's shortcut.
 export function extensionStatusSettled(
   status: { installed: boolean; isOnToolbar: boolean },
-  watchToolbar: boolean
+  watchToolbar: boolean,
+  watchShortcut = false
 ): boolean {
-  return status.installed && (status.isOnToolbar || !watchToolbar)
+  return (
+    !watchShortcut && status.installed && (status.isOnToolbar || !watchToolbar)
+  )
 }
 
 export type OnboardingView =
