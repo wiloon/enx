@@ -32,6 +32,20 @@ describe('WordProcessor.extractSentenceContext', () => {
     document.body.innerHTML = ''
   })
 
+  it.each([
+    ['without href', 'id="n"', 'Third part here.'],
+    ['with href', 'href="#n"', 'Second sentence. Third part here.'],
+  ])('segments punctuation in an anchor %s', (_name, attributes, expected) => {
+    document.body.innerHTML = `<p>First one! <a ${attributes}>Second sentence. Third</a> part here.</p>`
+    const text = document.querySelector('a')!.firstChild!
+    const context = WordProcessor.extractSentenceContext(
+      collapsedRangeInText(text, text.textContent!.indexOf('Third')),
+      'Third'
+    )
+    expect(context?.sentence).toBe(expected)
+    expect(context?.range?.toString()).toBe(expected)
+  })
+
   it('locates the correct sentence when the range is in different sentences of the same paragraph', () => {
     document.body.innerHTML = `
       <p>Cats are ${wrap('great')} pets. Dogs are ${wrap('loyal')} companions. Birds can ${wrap('sing')} beautifully.</p>

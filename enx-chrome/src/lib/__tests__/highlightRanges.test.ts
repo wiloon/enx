@@ -155,9 +155,18 @@ describe('WordProcessor.expandToWordRange', () => {
     expect(WordProcessor.expandToWordRange(trailing, 5)).toBeNull() // past the period
   })
 
+  it('returns the word range inside an anchor without href', () => {
+    document.body.innerHTML =
+      '<p>see <a id="x">the ordinary phrase</a> here</p>'
+    const inner = document.getElementById('x')!.firstChild as Text
+    expect(WordProcessor.expandToWordRange(inner, 5)?.toString()).toBe(
+      'ordinary'
+    )
+  })
+
   it('returns null when the caret node is inside any excluded subtree', () => {
     for (const tag of ['a', 'button', 'code', 'pre', 'textarea']) {
-      document.body.innerHTML = `<p>see <${tag} id="x">the excluded phrase</${tag}> ok</p>`
+      document.body.innerHTML = `<p>see <${tag} ${tag === 'a' ? 'href="#"' : ''} id="x">the excluded phrase</${tag}> ok</p>`
       const inner = document.getElementById('x')!.firstChild as Text
       expect(WordProcessor.expandToWordRange(inner, 5)).toBeNull()
     }

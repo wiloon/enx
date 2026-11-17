@@ -6,6 +6,7 @@ import { expect, test } from './fixtures'
 import {
   clickWord,
   enableLearningMode,
+  getHighlightedWords,
   mockBackendFetch,
   waitForContentScript,
 } from './helpers'
@@ -30,6 +31,50 @@ async function badgeText(
 
 test.describe('tomeshelf EPUB reader (ADR-088)', () => {
   test.skip(!loginAvailable, LOGIN_SKIP_REASON)
+
+  test.describe('endnote anchors', () => {
+    test.beforeEach(
+      async ({ context, page, extensionId, signedIn: _signedIn }) => {
+        await mockBackendFetch(context, {
+          wordData: { Id: 'w-stub', LoadCount: 3, Known: false },
+          reviewWords: [
+            ['fox', 1],
+            ['shocks', 1],
+          ],
+        })
+        await page.goto(`${FIXTURE_ORIGIN}/tomeshelf.html`, {
+          waitUntil: 'domcontentloaded',
+        })
+        await enableLearningMode(page, extensionId)
+        await waitForContentScript(page)
+      }
+    )
+
+    test('looks up a word inside an anchor without href', async ({ page }) => {
+      const popover = await clickWord(page, 'people', '#endnote')
+      await expect(
+        popover.getByTestId('word-popover-header').locator('h3')
+      ).toHaveText('people')
+    })
+
+    test('highlights a review word inside an anchor without href', async ({
+      page,
+    }) => {
+      await expect
+        .poll(async () =>
+          (await getHighlightedWords(page)).map(word => word.text)
+        )
+        .toContain('shocks')
+    })
+
+    test('preserves navigation without lookup for an anchor with href', async ({
+      page,
+    }) => {
+      await page.locator('#endnote-link').click()
+      await expect(page).toHaveURL(`${FIXTURE_ORIGIN}/tomeshelf.html#endnote`)
+      await expect(page.locator('#enx-anchored-overlay')).toHaveCount(0)
+    })
+  })
 
   test('click lookup and badge survive an in-page document change', async ({
     context,
