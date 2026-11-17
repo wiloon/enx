@@ -87,7 +87,7 @@ ADR-010 Phase 3/4（评论区、`streaming`）不在本 ADR 范围。
   ├─ 一个委托监听（正文容器 or document 捕获）
   ├─ 点击 → caretPositionFromPoint(x,y) → 拿到 Range
   ├─ Intl.Segmenter('en',{granularity:'word'}) 把 Range 扩到整词
-  ├─ 命中 <a>/<button>/<code> 等祖先 → 放弃（沿用 collectTextNodes 的过滤集）
+  ├─ 命中 <a href>/<button>/<code> 等祖先 → 放弃（沿用 collectTextNodes 的过滤集）
   └─ 扩词后的 Range 直接作为弹窗定位参照，不写入任何 DOM
        ├─ Floating UI: computePosition(range, popup, [offset, flip, shift, size]) + autoUpdate
        ├─ 同一个 Range 传给 extractSentenceContext（签名改为收 Range）
@@ -127,7 +127,7 @@ ADR-010 Phase 3/4（评论区、`streaming`）不在本 ADR 范围。
 | B2.（采用）`document.caretPositionFromPoint(x, y)` 拿 Range，再用 `Intl.Segmenter` 扩到整词 | 点击时按坐标反查文本节点 + 偏移，ICU 分词规则确定词边界 | 无需任何标记；ICU 规则比 `\b` 正则更准（缩写、连字符、Unicode）；正文不动 | `caretPositionFromPoint` 标准版 Chrome 128+ 才有；旧版是非标准的 `caretRangeFromPoint`——需 feature-detect + fallback（扩展只跑 Chrome，影响可控） |
 | B3. `Selection` + `modify('extend', 'forward', 'word')` | 借 selection API 求词边界 | 原生词边界 | 会改动用户的选区状态，副作用大。排除 |
 
-`caretPositionFromPoint` 命中 `<a>` / `<button>` / `<code>` / `<pre>` 内文本时（Range 的 `startContainer` 祖先链命中 `collectTextNodes` 那份排除集），直接放弃本次点击——与今天「这些子树里的词根本不包 `.enx-word`，点了没反应」行为一致。
+`caretPositionFromPoint` 命中 `<a href>`（链接；不带 `href` 的锚点 `<a>` 按正文处理，见下方 #974 修订） / `<button>` / `<code>` / `<pre>` 内文本时（Range 的 `startContainer` 祖先链命中 `collectTextNodes` 那份排除集），直接放弃本次点击——与今天「这些子树里的词根本不包 `.enx-word`，点了没反应」行为一致。
 
 ### C. 弹窗（Popover）定位参照从哪来
 
@@ -481,3 +481,7 @@ Decision 1 的全文绘制、Decision 3 的「查词（`getWords` 填 `wordCache
 ## 修订（2026-11-08，#724）：静态页首轮等待正文
 
 AWS 文档的正文在加载后异步出现，故 `static` 适配器配置 `readySelector` 时，首次处理前也等待匹配节点文字非空并安静约 100ms，最多等待 `INITIAL_READY_TIMEOUT_MS`（8 秒）；超时按当前 DOM 检测。关闭、重新启用或脚本 stand-down 时取消等待并释放 observer。静态页不加路由监听，等待结束后不保留就绪 observer，也不监听正文后续变化。匹配页面缺少该选择器时，自动启用和弹窗按钮都会等到超时，再按原规则回退到整页。未配置选择器的适配器不等待。此修订补充 F 节和 Decision 6.2 的就绪时序，不改变加载后正文稳定的决定。
+
+## 修订（2026-11-17，#974）：排除集只排除链接 `<a href>`
+
+B 节放弃 `<a>` 内点击，是为了不抢链接的点击（ADR-010 §1.3）。不带 `href` 的 `<a>` 只是页内跳转目标，没有默认动作；EPUB 尾注常用它包住正文短语，整段词因此点不了。排除集改为只排除 `a[href]`，不带 `href` 的 `<a>` 在点击查词、单词高亮和切句遮蔽中都按普通正文处理。点击查词与 `collectTextNodes` 仍共用同一份排除集。
