@@ -1,5 +1,7 @@
 'use client'
 
+import type { LearningModeShortcut } from '@/lib/enxExtension'
+import { ReadWithCatglishChip } from '@/components/ReadWithCatglishChip'
 import {
   useEffect,
   useState,
@@ -146,6 +148,7 @@ export default function WelcomeGuide({
     watchToolbar: (landing === 'steps' || landing === 'sign-in') && !pinSkipped,
     intervalMs: pollMs,
     live: finished,
+    watchShortcut: signedIn === true && !learningEnabled,
   })
 
   const progress = onboardingSteps(
@@ -236,7 +239,12 @@ export default function WelcomeGuide({
         Checking extension…
       </p>
     ) : (
-      <StepList steps={steps} returnTo={returnTo} onSkipPin={onSkipPin} />
+      <StepList
+        steps={steps}
+        returnTo={returnTo}
+        onSkipPin={onSkipPin}
+        shortcut={extension?.shortcut}
+      />
     )
   const skipPin = () => {
     setPinSkipped(true)
@@ -269,7 +277,10 @@ export default function WelcomeGuide({
           {holding ? (
             <LoadingSpinner />
           ) : finished ? (
-            <Finished setupStatus={stepList(setupStatus.steps)} />
+            <Finished
+              setupStatus={stepList(setupStatus.steps)}
+              shortcut={extension?.shortcut}
+            />
           ) : landing === 'sign-in' ? (
             <>
               <h1 className="text-2xl font-bold">Welcome to {SITE.name}</h1>
@@ -306,11 +317,13 @@ function StepList({
   steps,
   returnTo,
   onSkipPin,
+  shortcut,
 }: {
   steps: OnboardingStep[]
   returnTo: string
   /** Without it, the pin step offers no Skip. */
   onSkipPin?: () => void
+  shortcut?: LearningModeShortcut
 }) {
   const nextId = steps.find((step) => step.status === 'todo')?.id
   const [showSkippedPin, setShowSkippedPin] = useState(false)
@@ -355,6 +368,7 @@ function StepList({
                 id={step.id}
                 returnTo={returnTo}
                 onSkipPin={onSkipPin}
+                shortcut={shortcut}
               />
             )}
           </div>
@@ -403,10 +417,12 @@ function StepDetail({
   id,
   returnTo,
   onSkipPin,
+  shortcut,
 }: {
   id: OnboardingStep['id']
   returnTo: string
   onSkipPin?: () => void
+  shortcut?: LearningModeShortcut
 }) {
   switch (id) {
     case 'install':
@@ -447,15 +463,21 @@ function StepDetail({
       )
     case 'enable':
       return (
-        <p className="text-muted-foreground">
-          <span>
-            Click the {SITE.name} icon in your toolbar, then Read with{' '}
-            {SITE.name}.
-          </span>{' '}
-          <span aria-hidden="true" className="text-brand">
-            ↗
-          </span>
-        </p>
+        <div className="space-y-3">
+          <p className="text-muted-foreground">
+            Click the {SITE.name} icon in your toolbar, then press the{' '}
+            <ReadWithCatglishChip /> button.
+          </p>
+          <ShortcutHint shortcut={shortcut} />
+          {/* eslint-disable-next-line @next/next/no-img-element -- static illustration */}
+          <img
+            src="/onboarding/read-with-catglish.svg"
+            alt="Catglish popup with the Read with Catglish button highlighted"
+            width={360}
+            height={200}
+            className="w-full max-w-sm rounded-md border"
+          />
+        </div>
       )
     case 'look-up':
       return (
@@ -587,8 +609,20 @@ function SkipSetup({
   )
 }
 
+function ShortcutHint({ shortcut }: { shortcut?: LearningModeShortcut }) {
+  return shortcut?.bound ? (
+    <p className="text-xs text-muted-foreground">Or press {shortcut.key}</p>
+  ) : null
+}
+
 // The setup status list sits above the heading (ADR-047 #873).
-function Finished({ setupStatus }: { setupStatus: ReactNode }) {
+function Finished({
+  setupStatus,
+  shortcut,
+}: {
+  setupStatus: ReactNode
+  shortcut?: LearningModeShortcut
+}) {
   return (
     <>
       {setupStatus}
@@ -600,9 +634,10 @@ function Finished({ setupStatus }: { setupStatus: ReactNode }) {
         You&apos;re all set
       </h1>
       <p className="text-sm">
-        On any English article, click the {SITE.name} icon in your toolbar, then{' '}
-        <span className="font-medium">Read with {SITE.name}</span>.
+        On any English article, click the {SITE.name} icon in your toolbar, then
+        press the <ReadWithCatglishChip /> button.
       </p>
+      <ShortcutHint shortcut={shortcut} />
       <div className="space-y-2">
         <h2 className="text-sm font-semibold">Something to read</h2>
         <ul className="space-y-2 text-sm">

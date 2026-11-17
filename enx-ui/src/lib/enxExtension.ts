@@ -87,14 +87,18 @@ export function pingExtension(timeoutMs = 2000): Promise<PingResult> {
   )
 }
 
+export type LearningModeShortcut =
+  { bound: true; key: string } | { bound: false }
+
 export type StatusResult = {
   installed: boolean
   version?: string
   isOnToolbar: boolean
+  shortcut?: LearningModeShortcut
 }
 
-// ADR-047 Decision 4: `enx:status` is `enx:ping` plus whether the toolbar
-// icon is pinned, which only the extension can read. /welcome polls it.
+// ADR-047 Decision 4: status adds pinning and the actual shortcut, which
+// only the extension can read. /welcome polls it.
 export function extensionStatus(timeoutMs = 2000): Promise<StatusResult> {
   return sendExternal<StatusResult>(
     'enx:status',
@@ -103,11 +107,24 @@ export function extensionStatus(timeoutMs = 2000): Promise<StatusResult> {
         ok?: boolean
         version?: string
         isOnToolbar?: boolean
+        shortcut?: unknown
       }
+      const shortcut = r.shortcut as { bound?: unknown; key?: unknown } | null
+      const reported =
+        shortcut && typeof shortcut === 'object'
+          ? shortcut.bound === false
+            ? { bound: false as const }
+            : shortcut.bound === true &&
+                typeof shortcut.key === 'string' &&
+                shortcut.key.trim()
+              ? { bound: true as const, key: shortcut.key }
+              : undefined
+          : undefined
       return {
         installed: r.ok === true,
         version: r.version,
         isOnToolbar: r.isOnToolbar === true,
+        ...(r.ok === true && reported ? { shortcut: reported } : {}),
       }
     },
     { installed: false, isOnToolbar: false },

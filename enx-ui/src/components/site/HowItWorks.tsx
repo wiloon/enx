@@ -1,3 +1,5 @@
+import { ReadWithCatglishChip } from '@/components/ReadWithCatglishChip'
+
 const STEPS = [
   {
     n: 1,
@@ -7,7 +9,12 @@ const STEPS = [
   {
     n: 2,
     title: 'Read with Catglish',
-    body: 'On any English page, click the icon, then Read with Catglish.',
+    body: (
+      <>
+        On any English page, click the icon, then press the{' '}
+        <ReadWithCatglishChip /> button.
+      </>
+    ),
   },
   {
     n: 3,

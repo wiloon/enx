@@ -462,7 +462,7 @@ test.describe('/welcome (signed in)', () => {
     await expect(current).toContainText('Turn on Catglish')
     await expect(
       current.getByText(
-        'Click the Catglish icon in your toolbar, then Read with Catglish.'
+        'Click the Catglish icon in your toolbar, then press the Read with Catglish button.'
       )
     ).toBeVisible()
     await page.evaluate(() =>
