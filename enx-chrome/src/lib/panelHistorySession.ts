@@ -1,4 +1,31 @@
-import { findCard, type PanelEntry } from './panelHistory'
+import { findCard, type PanelEntry, type SentenceEntry } from './panelHistory'
+
+const entryTokensHeld = (
+  entries: PanelEntry[],
+  entry: PanelEntry
+): boolean => {
+  if (entry.kind === 'sentence') {
+    const found = entries.find(
+      (e): e is SentenceEntry => e.kind === 'sentence' && e.id === entry.id
+    )
+    if (!found) return false
+    if (
+      entry.token !== undefined &&
+      found.token === entry.token
+    ) {
+      return true
+    }
+    return entry.words.some(
+      card =>
+        card.token !== undefined &&
+        findCard(entries, entry.id, card.key)?.token === card.token
+    )
+  }
+  return (
+    entry.token !== undefined &&
+    findCard(entries, undefined, entry.key)?.token === entry.token
+  )
+}
 
 export interface CardRequest {
   sentenceId: string | undefined
@@ -66,6 +93,30 @@ export class PanelHistorySession {
   discardCleared() {
     this.snapshot = { ...this.snapshot, cleared: null }
     this.finishPaused(false)
+  }
+
+  // ADR-090: the card list lives in storage; this session only gates
+  // whenVisible. After each committed store state, copy entries/cleared
+  // here. expandedWords stay panel-local (pass an empty Set).
+  mirrorFromStore(
+    entries: PanelEntry[],
+    cleared: { generation: number; entries: PanelEntry[] } | null
+  ) {
+    const prevCleared = this.snapshot.cleared
+    const nextCleared = cleared
+      ? {
+          generation: cleared.generation,
+          entries: cleared.entries,
+          expandedWords: new Set<string>(),
+        }
+      : null
+    this.snapshot = { entries, cleared: nextCleared }
+    if (prevCleared && !nextCleared) {
+      const restored = prevCleared.entries.some(entry =>
+        entryTokensHeld(entries, entry)
+      )
+      this.finishPaused(restored)
+    }
   }
 
   // Dictionary results and their paid continuation run only for a visible

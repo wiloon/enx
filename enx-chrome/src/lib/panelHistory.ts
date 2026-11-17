@@ -24,6 +24,9 @@ export interface WordCardData {
   key: string
   // The request this card is waiting on (a panel-wide counter).
   token?: number
+  // When the in-flight request was sent (ADR-090 Decision 5): a card still
+  // loading 120 s later becomes a Retry error.
+  startedAt?: number
   pronunciation?: string
   loadCount?: number
   dictionaryChinese?: string
@@ -72,6 +75,8 @@ export interface SentenceEntry {
   // sentenceCardId(sentence): one card per sentence in the whole history.
   id: string
   token?: number
+  // When the in-flight request was sent (ADR-090 Decision 5).
+  startedAt?: number
   sentence: string
   // The word the user clicked on the page before opening the panel
   // (ADR-014), marked with the enx-sp-anchor highlight in the rendered
@@ -321,4 +326,107 @@ export const adjacentPageCard = (
   )
     return first
   return undefined
+}
+
+// -- Request timeout (ADR-090 Decision 5) ---------------------------------
+
+export const PANEL_REQUEST_TIMEOUT_MS = 120_000
+export const PANEL_TIMEOUT_ERROR_MESSAGE =
+  'Request timed out. Click Retry to try again.'
+
+export const isCardLoading = (card: WordCardData): boolean =>
+  card.dictionaryStatus === 'loading' || card.contextStatus === 'loading'
+
+const timedOutCard = <C extends WordCardData>(
+  card: C,
+  now: number,
+  timeoutMs: number
+): C => {
+  if (
+    !isCardLoading(card) ||
+    card.startedAt === undefined ||
+    now - card.startedAt < timeoutMs
+  )
+    return card
+  return {
+    ...card,
+    ...(card.dictionaryStatus === 'loading'
+      ? {
+          dictionaryStatus: 'error' as const,
+          dictionaryError: PANEL_TIMEOUT_ERROR_MESSAGE,
+          dictionaryErrorHttpStatus: undefined,
+          dictionaryErrorCode: undefined,
+        }
+      : {}),
+    ...(card.contextStatus === 'loading'
+      ? {
+          contextStatus: 'error' as const,
+          contextError: PANEL_TIMEOUT_ERROR_MESSAGE,
+          contextErrorHttpStatus: undefined,
+        }
+      : {}),
+    token: undefined,
+    startedAt: undefined,
+  }
+}
+
+// Turns every card still loading `timeoutMs` after its startedAt into the
+// ordinary error/Retry state and clears its token, so a late response is
+// dropped by the token rule. Returns the same array when nothing timed out.
+export const sweepTimedOut = (
+  entries: PanelEntry[],
+  now: number,
+  timeoutMs: number = PANEL_REQUEST_TIMEOUT_MS
+): PanelEntry[] => {
+  let changed = false
+  const next = entries.map((entry): PanelEntry => {
+    let result: PanelEntry = entry
+    if (entry.kind === 'sentence') {
+      let sentence: SentenceEntry = entry
+      if (
+        entry.status === 'loading' &&
+        entry.startedAt !== undefined &&
+        now - entry.startedAt >= timeoutMs
+      ) {
+        sentence = {
+          ...entry,
+          status: 'error',
+          errorMessage: PANEL_TIMEOUT_ERROR_MESSAGE,
+          errorHttpStatus: undefined,
+          token: undefined,
+          startedAt: undefined,
+        }
+      }
+      const words = sentence.words.map(w => timedOutCard(w, now, timeoutMs))
+      if (words.some((w, i) => w !== sentence.words[i])) {
+        sentence = { ...sentence, words }
+      }
+      result = sentence
+    } else {
+      result = timedOutCard(entry, now, timeoutMs)
+    }
+    if (result !== entry) changed = true
+    return result
+  })
+  return changed ? next : entries
+}
+
+// The earliest startedAt among loading cards, for the sweep timer.
+export const earliestLoadingStartedAt = (
+  entries: PanelEntry[]
+): number | undefined => {
+  let earliest: number | undefined
+  const see = (at: number | undefined) => {
+    if (at !== undefined && (earliest === undefined || at < earliest))
+      earliest = at
+  }
+  for (const entry of entries) {
+    if (entry.kind === 'sentence') {
+      if (entry.status === 'loading') see(entry.startedAt)
+      for (const w of entry.words) if (isCardLoading(w)) see(w.startedAt)
+    } else if (isCardLoading(entry)) {
+      see(entry.startedAt)
+    }
+  }
+  return earliest
 }

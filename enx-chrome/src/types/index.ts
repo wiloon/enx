@@ -222,6 +222,9 @@ export interface PendingSentenceContext {
   // would change that existing flow's behavior too.
   phrase?: string
   createdAt: number
+  // Identity of this page event (ADR-090 Decision 4). Panels claim by
+  // eventId; createdAt is display/order only and may collide.
+  eventId: string
   // The page's wordCache entries for the words in `sentence`, keyed by
   // lower-cased word, so the panel can underline the sentence original the
   // way the page does (ADR-053). Absent when the page had none to give.
@@ -247,4 +250,6 @@ export interface LatestPageWordLookup {
   word: string
   ecp: WordData
   createdAt: number
+  // Identity of this page event (ADR-090 Decision 4).
+  eventId: string
 }

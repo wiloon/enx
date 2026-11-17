@@ -33,6 +33,15 @@ import {
   PanelHistorySession,
   type CardRequest,
 } from '@/lib/panelHistorySession'
+import {
+  chromePanelHistoryDeps,
+  createPanelHistoryStore,
+  panelHistoryKey,
+  type PlannedRequest,
+  type StoredCleared,
+  type StoredPanelHistory,
+  type TransactionOutcome,
+} from '@/lib/panelHistoryStore'
 import { runDictionaryLookup } from '@/lib/dictionaryLookup'
 import { createAccountScope } from '@/lib/accountSession'
 import { isLookupQuotaExceeded } from '@/lib/rateLimit'
@@ -63,19 +72,12 @@ import {
   pendingSentenceKey,
 } from '@/lib/sidePanel'
 import {
-  adjacentPageCard,
-  findCard,
-  findSentence,
-  moveSentenceToTop,
+  PANEL_REQUEST_TIMEOUT_MS,
+  earliestLoadingStartedAt,
   panelCardKey,
   patchCard,
   patchSentence,
-  removeCard,
-  reorderOrInsertCard,
-  sentenceCardId,
   supersedeSessionRows,
-  topLevelPhraseCardKey,
-  upsertPageLookupCard,
   wordCardKey,
   type PanelEntry,
   type SentenceEntry,
@@ -559,9 +561,6 @@ function WordCard({
   )
 }
 
-// How long Clear keeps the removed list around for Undo.
-const CLEAR_UNDO_MS = 5000
-
 // The slim row above the list: what the list is on the left, its one action
 // on the right. Sticky, so Clear (or Undo) stays reachable in a long list.
 function PanelToolbar({
@@ -793,54 +792,69 @@ function SidePanelContent() {
   // (ADR-050). Undefined only for a stray panel with no owning tab -- that
   // one stays on the empty state and reads no tab's keys.
   const [tabId] = useState(() => panelTabIdFromUrl(window.location.href))
-  // The unified, newest-on-top history list (ADR-023): word/phrase cards
-  // that arrived without an owning sentence (page clicks, ADR-006; main-page
-  // phrase drag-select, ADR-008) sit at the top level; a sentence
-  // translation is its own entry that owns a nested `words` list for
-  // anything looked up inside ITS OWN rendered original (ADR-017). A
-  // reorder only ever happens at the scope the selection came from -- a
-  // main-page click never searches history sentences for a match to nest
-  // into (Decision B2), so scoping never needs cross-referencing.
+  const [store] = useState(() =>
+    createPanelHistoryStore(chromePanelHistoryDeps())
+  )
+  // whenVisible / paused follow-ups only; the card list lives in storage.
   const [history] = useState(() => new PanelHistorySession())
-  const [{ entries, cleared }, setHistory] = useState(history.snapshot)
-  const syncHistory = useCallback(() => setHistory(history.snapshot), [history])
-  const setEntries = useCallback(
-    (update: PanelEntry[] | ((prev: PanelEntry[]) => PanelEntry[])) => {
-      history.update(update)
-      syncHistory()
+  const [entries, setEntriesState] = useState<PanelEntry[]>([])
+  const [cleared, setCleared] = useState<StoredCleared | null>(null)
+  // Clear's expandedWords are panel-local (not stored); restored on Undo here.
+  const clearedExpandedRef = useRef<Set<string> | null>(null)
+  const publishRef = useRef<(state: StoredPanelHistory) => void>(() => {})
+  const dispatchPlanRef = useRef<(plan: PlannedRequest[]) => void>(() => {})
+
+  const publish = useCallback(
+    (state: StoredPanelHistory) => {
+      history.mirrorFromStore(state.entries, state.cleared)
+      setEntriesState(state.entries)
+      setCleared(state.cleared)
     },
-    [history, syncHistory]
+    [history]
   )
-  const patchEntries = useCallback(
-    (update: (prev: PanelEntry[]) => PanelEntry[]) => {
-      history.patch(update)
-      syncHistory()
-    },
-    [history, syncHistory]
-  )
-  // Request tokens (ADR-023 Decision 8): each request a card waits on takes
-  // the next value, and its response is written only while the card found
-  // by id/key still carries it.
-  const lastTokenRef = useRef(0)
-  const nextToken = useCallback(() => ++lastTokenRef.current, [])
-  // Last-seen sentence context, purely as the effect trigger below -- the
-  // displayed data itself lives in `entries` once the effect creates (or
-  // updates) a SentenceEntry from it.
-  const [pendingContext, setPendingContext] =
-    useState<PendingSentenceContext | null>(null)
+  useEffect(() => {
+    publishRef.current = publish
+  }, [publish])
+
+  // Timeout sweep timer (ADR-090 Decision 5): fires for the earliest loading
+  // card; the sweep itself runs in the store transaction.
+  const sweepAt = useMemo(() => {
+    const startedAt = earliestLoadingStartedAt(entries)
+    return startedAt === undefined
+      ? undefined
+      : startedAt + PANEL_REQUEST_TIMEOUT_MS
+  }, [entries])
+  useEffect(() => {
+    if (tabId === undefined || sweepAt === undefined) return
+    const timer = setTimeout(
+      () => {
+        void store.sweep(tabId).then(result => publishRef.current(result.state))
+      },
+      Math.max(0, sweepAt - Date.now())
+    )
+    return () => clearTimeout(timer)
+  }, [tabId, sweepAt, store])
+
   // Cards whose (often verbose) dictionary meaning the user has expanded past
   // the default 3-line clamp, by panelCardKey.
   const [expandedWords, setExpandedWords] = useState<Set<string>>(new Set())
-  // Only Clear starts the Undo window; response patches keep its generation.
+  // Undo window follows storage expiresAt (ADR-090 Decision 7).
   const clearGeneration = cleared?.generation
+  const clearExpiresAt = cleared?.expiresAt
   useEffect(() => {
-    if (clearGeneration === undefined) return
+    if (tabId === undefined || clearGeneration === undefined) return
+    if (clearExpiresAt === undefined) return
+    const delay = Math.max(0, clearExpiresAt - Date.now())
     const timer = setTimeout(() => {
-      history.discardCleared()
-      syncHistory()
-    }, CLEAR_UNDO_MS)
+      void store
+        .discardClearedGeneration(tabId, clearGeneration)
+        .then(result => {
+          if (result.committed) publishRef.current(result.state)
+        })
+    }, delay)
     return () => clearTimeout(timer)
-  }, [clearGeneration, history, syncHistory])
+  }, [tabId, clearGeneration, clearExpiresAt, store])
+
   // What the panel knows about each word's review stage, keyed by
   // lower-cased word like the page's wordCache (ADR-053 Decision 3). Drives
   // the underlines in every sentence original.
@@ -866,6 +880,17 @@ function SidePanelContent() {
     return () => chrome.runtime.onMessage.removeListener(listener)
   }, [])
 
+  // Persist a response write; a failed write leaves the card loading until
+  // the 120 s timeout turns it into a Retry error (ADR-090 Decision 5).
+  const patchEntries = useCallback(
+    async (update: (prev: PanelEntry[]) => PanelEntry[]) => {
+      if (tabId === undefined) return
+      const result = await store.patchEntries(tabId, update)
+      publish(result.state)
+    },
+    [tabId, store, publish]
+  )
+
   // #236: a signed-out or unverified (#686) response or row is obsolete once
   // a signed-in account takes over. Listens only, like the listener above.
   const [accountFence] = useState(createPanelAccountFence)
@@ -876,7 +901,7 @@ function SidePanelContent() {
       accountFence.record(message.cause)
       lookupScope.clear()
       if (message.cause === 'switched') {
-        patchEntries(prev =>
+        void patchEntries(prev =>
           supersedeSessionRows(prev, ACCOUNT_CHANGED_MESSAGE)
         )
       }
@@ -918,11 +943,13 @@ function SidePanelContent() {
   }, [])
 
   // Removes a single card from the running list (ADR-006 list is append-only
-  // otherwise, so a long reading session accumulates noise). Purely local --
-  // nothing is persisted, re-clicking the word re-adds it.
+  // otherwise, so a long reading session accumulates noise).
   const handleRemoveCard = useCallback(
     (sentenceId: string | undefined, key: string) => {
-      setEntries(prev => removeCard(prev, sentenceId, key))
+      if (tabId === undefined) return
+      void store.removeCard(tabId, sentenceId, key).then(result => {
+        if (result.committed) publish(result.state)
+      })
       const cardKey = panelCardKey(sentenceId, key)
       setExpandedWords(prev => {
         if (!prev.has(cardKey)) return prev
@@ -931,101 +958,116 @@ function SidePanelContent() {
         return next
       })
     },
-    [setEntries]
+    [tabId, store, publish]
   )
 
-  // Keep listening for a new sentence context: if the panel is already open
-  // and the user clicks "整句翻译" on another word on the page, this fires
-  // with the new context and a new SentenceEntry is prepended in place -- no
-  // need to re-trigger sidePanel.open() (spec §3.3/§4.6). Initial mount-time
-  // read is handled below, combined with the latest page word, so whichever
-  // of the two actually happened more recently wins (ADR-006). Only this
-  // panel's own tab's keys count (ADR-050).
-  useEffect(() => {
-    if (tabId === undefined) return
-    const key = pendingSentenceKey(tabId)
-    const listener = (
-      changes: { [key: string]: chrome.storage.StorageChange },
-      areaName: string
-    ) => {
-      if (areaName !== 'session') return
-      const change = changes[key]
-      if (change?.newValue) {
-        setPendingContext(change.newValue as PendingSentenceContext)
+  const claimSentenceEvent = useCallback(
+    async (event: PendingSentenceContext) => {
+      if (tabId === undefined || !event.eventId) return
+      const carriedStates = event.wordStates
+      if (carriedStates) {
+        wordStatesRef.current = { ...wordStatesRef.current, ...carriedStates }
+        setWordStates(prev => ({ ...prev, ...carriedStates }))
       }
-    }
-    chrome.storage.onChanged.addListener(listener)
-    return () => chrome.storage.onChanged.removeListener(listener)
-  }, [tabId])
-
-  // Mirrors a word looked up via the page's word popover into a top-level
-  // card (ADR-006). Merges the already-fetched WordData directly -- no
-  // re-fetch. ADR-023: unlike the pre-unification version, this never
-  // touches any sentence's state -- a page click doesn't try to determine
-  // which (if any) history sentence the word "belongs to" (Decision B2), so
-  // an existing sentence entry is simply left alone.
-  const mergePageWordLookup = useCallback(
-    (lookup: LatestPageWordLookup) => {
-      const word = wordKey(lookup.word)
-      // The page already knows this word's new stage; only the panel's
-      // underlines need it (ADR-053 Decision 3), so no message goes back.
-      setWordStates(prev => ({ ...prev, [word]: lookup.ecp }))
-      setEntries(prev =>
-        upsertPageLookupCard(prev, {
-          word,
-          key: wordCardKey(word),
-          pronunciation: lookup.ecp.Pronunciation,
-          loadCount: lookup.ecp.LoadCount,
-          dictionaryChinese: lookup.ecp.Chinese,
-          dictionaryStatus: 'loaded',
-          contextStatus: 'none',
-        })
-      )
+      const result = await store.claimSentenceEvent(tabId, {
+        eventId: event.eventId,
+        sentence: event.sentence,
+        word: event.word,
+        phrase: event.phrase,
+        wordStates: event.wordStates,
+      })
+      if (!result.committed) return
+      publish(result.state)
+      dispatchPlanRef.current(result.plan)
     },
-    [setEntries]
+    [tabId, store, publish]
   )
 
+  const claimPageWordEvent = useCallback(
+    async (lookup: LatestPageWordLookup) => {
+      if (tabId === undefined || !lookup.eventId) return
+      const word = wordKey(lookup.word)
+      setWordStates(prev => ({ ...prev, [word]: lookup.ecp }))
+      const result = await store.claimPageWordEvent(tabId, {
+        eventId: lookup.eventId,
+        word: lookup.word,
+        ecp: lookup.ecp,
+      })
+      if (!result.committed) return
+      publish(result.state)
+    },
+    [tabId, store, publish]
+  )
+
+  // History key + page events: mount read, then subscribe (ADR-090 / ADR-050).
   useEffect(() => {
     if (tabId === undefined) return
-    const key = latestPageWordKey(tabId)
+    const historyKey = panelHistoryKey(tabId)
+    const sentenceKey = pendingSentenceKey(tabId)
+    const pageWordKey = latestPageWordKey(tabId)
+    let cancelled = false
+
     const listener = (
       changes: { [key: string]: chrome.storage.StorageChange },
       areaName: string
     ) => {
       if (areaName !== 'session') return
-      const change = changes[key]
-      if (change?.newValue) {
-        mergePageWordLookup(change.newValue as LatestPageWordLookup)
+      const historyChange = changes[historyKey]
+      if (historyChange?.newValue) {
+        publishRef.current(historyChange.newValue as StoredPanelHistory)
+      }
+      const sentenceChange = changes[sentenceKey]
+      if (sentenceChange?.newValue) {
+        void claimSentenceEvent(
+          sentenceChange.newValue as PendingSentenceContext
+        )
+      }
+      const pageWordChange = changes[pageWordKey]
+      if (pageWordChange?.newValue) {
+        void claimPageWordEvent(pageWordChange.newValue as LatestPageWordLookup)
       }
     }
     chrome.storage.onChanged.addListener(listener)
-    return () => chrome.storage.onChanged.removeListener(listener)
-  }, [tabId, mergePageWordLookup])
 
-  // One-time mount read of both storage keys together: whichever actually
-  // happened more recently (by createdAt) wins, since the two independent
-  // `.get()` calls above would otherwise race and let whichever Promise
-  // settles last clobber the other regardless of real chronological order.
-  useEffect(() => {
-    if (tabId === undefined) return
-    const sentenceKey = pendingSentenceKey(tabId)
-    const wordKey = latestPageWordKey(tabId)
-    Promise.all([
-      chrome.storage.session.get(sentenceKey),
-      chrome.storage.session.get(wordKey),
-    ]).then(([sentenceResult, wordResult]) => {
+    void (async () => {
+      // Mount sweep: timed-out cards become Retry errors (Decision 5).
+      const swept = await store.sweep(tabId)
+      if (cancelled) return
+      publish(swept.state)
+
+      const [sentenceResult, wordResult] = await Promise.all([
+        chrome.storage.session.get(sentenceKey),
+        chrome.storage.session.get(pageWordKey),
+      ])
+      if (cancelled) return
       const sentence = sentenceResult[sentenceKey] as
         PendingSentenceContext | undefined
-      const word = wordResult[wordKey] as LatestPageWordLookup | undefined
-
-      if (word && (!sentence || word.createdAt > sentence.createdAt)) {
-        mergePageWordLookup(word)
-      } else if (sentence) {
-        setPendingContext(sentence)
+      const word = wordResult[pageWordKey] as LatestPageWordLookup | undefined
+      const ordered: Array<
+        | { kind: 'sentence'; event: PendingSentenceContext }
+        | { kind: 'pageWord'; event: LatestPageWordLookup }
+      > = []
+      if (sentence) ordered.push({ kind: 'sentence', event: sentence })
+      if (word) ordered.push({ kind: 'pageWord', event: word })
+      ordered.sort((a, b) => a.event.createdAt - b.event.createdAt)
+      for (const item of ordered) {
+        if (cancelled) return
+        if (item.kind === 'sentence') await claimSentenceEvent(item.event)
+        else await claimPageWordEvent(item.event)
       }
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    })()
+
+    return () => {
+      cancelled = true
+      chrome.storage.onChanged.removeListener(listener)
+    }
+  }, [
+    tabId,
+    store,
+    publish,
+    claimSentenceEvent,
+    claimPageWordEvent,
+  ])
 
   // Ask the worker at delivery: its account fence advances before its
   // asynchronous invalidation notification can reach this panel.
@@ -1055,7 +1097,7 @@ function SidePanelContent() {
       dictionaryChinese?: string
     ) => {
       const patch = (fields: Partial<WordCardData>) =>
-        patchEntries(prev =>
+        void patchEntries(prev =>
           patchCard(prev, card.sentenceId, card.key, fields, card.token)
         )
       const current = accountFence.capture()
@@ -1135,7 +1177,7 @@ function SidePanelContent() {
       counts: boolean
     ): Promise<{ current: boolean; chinese?: string }> => {
       const patch = (fields: Partial<WordCardData>) =>
-        patchEntries(prev =>
+        void patchEntries(prev =>
           patchCard(prev, card.sentenceId, card.key, fields, card.token)
         )
       const current = accountFence.capture()
@@ -1257,130 +1299,22 @@ function SidePanelContent() {
     (word: string, sentence: string, card: CardRequest, counts: boolean) => {
       fetchDictionary(word, card, counts).then(({ current, chinese }) => {
         if (current) {
-          void history.whenVisible(card, () =>
-            fetchContextTranslation(word, sentence, card, chinese)
-          )
+          // The context request re-records the card's startedAt as it is
+          // sent (the 120 s runs from this request, not the dictionary one).
+          void history.whenVisible(card, async () => {
+            if (tabId === undefined) return
+            const committed = await store.markContextSent(
+              tabId,
+              card.sentenceId,
+              card.key,
+              card.token
+            )
+            if (committed) fetchContextTranslation(word, sentence, card, chinese)
+          })
         }
       })
     },
-    [fetchDictionary, fetchContextTranslation, history]
-  )
-
-  // Runs when a SentenceEntry is created from a page word click: seeds a
-  // card for the anchor word (the word this sentence was opened for) right
-  // away, nested into the SAME brand-new entry, and kicks off the same
-  // dictionary-first lookup (fetchWordContext) as any other word click --
-  // this fires independently of the sentence's own whole-sentence
-  // translation (they must not block each other). The entry is usually
-  // brand new when this runs, so there's usually no existing card at this
-  // scope -- EXCEPT the entry (and its highlighted anchor word)
-  // render synchronously just before this runs, so in principle the user
-  // could click that highlighted word (handleWordClick) in the same tick.
-  // Guard against that race the same way the pre-ADR-023 version did: if a
-  // card already exists, just reorder it -- never re-seed/re-fetch (would
-  // double-charge the AI call for the same word).
-  const seedAnchorWord = useCallback(
-    (sentenceId: string, rawWord: string, sentence: string) => {
-      const word = rawWord.toLowerCase()
-      const key = wordCardKey(word)
-      const existing = findCard(history.entries, sentenceId, key)
-
-      if (existing) {
-        setEntries(prev =>
-          reorderOrInsertCard(prev, sentenceId, key, () => existing)
-        )
-        return
-      }
-
-      const token = nextToken()
-      setEntries(prev =>
-        reorderOrInsertCard(prev, sentenceId, key, () => ({
-          word,
-          key,
-          token,
-          dictionaryStatus: 'loading',
-          contextStatus: 'loading',
-        }))
-      )
-      // The page's popover already counted this word's lookup.
-      fetchWordContext(word, sentence, { sentenceId, key, token }, false)
-    },
-    [fetchWordContext, history, nextToken, setEntries]
-  )
-
-  // Lets a card stuck in an error state (e.g. session expiry) recover
-  // without a full page reload, with a new token. Three cases, by what the
-  // dictionary half is doing: a phrase card (dictionaryStatus 'none') has no
-  // dictionary to redo, so just retry the AI call alone; a card whose
-  // dictionary already loaded reuses that definition rather than re-running
-  // getOneWord (no need to fetch it twice); anything else (dictionary
-  // itself never resolved, e.g. also hit the same session expiry) redoes
-  // the whole dictionary-first chain.
-  const retryWordCard = useCallback(
-    (sentenceId: string | undefined, card: WordCardData, sentence: string) => {
-      const token = nextToken()
-      const ref: CardRequest = { sentenceId, key: card.key, token }
-      const contextOnly =
-        card.dictionaryStatus === 'none' || card.dictionaryStatus === 'loaded'
-      setEntries(prev =>
-        patchCard(prev, sentenceId, card.key, {
-          token,
-          contextStatus: 'loading',
-          contextError: undefined,
-          contextSessionExpired: false,
-          contextSessionUnverified: false,
-          ...(contextOnly
-            ? {}
-            : {
-                dictionaryStatus: 'loading',
-                dictionaryError: undefined,
-                dictionarySessionExpired: false,
-                dictionarySessionUnverified: false,
-              }),
-        })
-      )
-      if (contextOnly) {
-        fetchContextTranslation(
-          card.word,
-          sentence,
-          ref,
-          card.dictionaryStatus === 'loaded'
-            ? card.dictionaryChinese
-            : undefined
-        )
-        return
-      }
-      // A retry redoes a lookup, it is not a new one.
-      fetchWordContext(card.word, sentence, ref, false)
-    },
-    [fetchContextTranslation, fetchWordContext, nextToken, setEntries]
-  )
-
-  // Retry on an unverified dictionary row (#686): re-sends getOneWord alone,
-  // leaving a context half that loaded (or is still loading) as it is. A
-  // context half still waiting keeps the card's token, so its answer lands.
-  const retryDictionary = useCallback(
-    (sentenceId: string | undefined, card: WordCardData) => {
-      const token =
-        card.contextStatus === 'loading' && card.token !== undefined
-          ? card.token
-          : nextToken()
-      setEntries(prev =>
-        patchCard(prev, sentenceId, card.key, {
-          token,
-          dictionaryStatus: 'loading',
-          dictionaryError: undefined,
-          dictionarySessionExpired: false,
-          dictionarySessionUnverified: false,
-        })
-      )
-      void fetchDictionary(
-        card.word,
-        { sentenceId, key: card.key, token },
-        false
-      )
-    },
-    [fetchDictionary, nextToken, setEntries]
+    [fetchDictionary, fetchContextTranslation, history, store, tabId]
   )
 
   // Whole-sentence translation for SentenceEntry `id`, filled in when it
@@ -1388,7 +1322,7 @@ function SidePanelContent() {
   const translateSentence = useCallback(
     (id: string, sentence: string, token: number) => {
       const patch = (fields: Partial<SentenceEntry>) =>
-        patchEntries(prev => patchSentence(prev, id, fields, token))
+        void patchEntries(prev => patchSentence(prev, id, fields, token))
 
       const current = accountFence.capture()
       sendMessageToBackground<BackgroundResponse>({
@@ -1429,257 +1363,100 @@ function SidePanelContent() {
     [accountFence, patchEntries]
   )
 
-  // A sentence context arrived (and it isn't a phrase context -- see the
-  // effect below for that). The panel holds one card per sentence (ADR-023
-  // Decision 8): a new sentence is prepended and translated; one already in
-  // the history moves to the top with its translation and nested cards, and
-  // is translated again only if it failed. Requests are never cancelled: a
-  // loading card keeps its token and receives its response.
-  useEffect(() => {
-    if (!pendingContext || pendingContext.phrase) return
-
-    const sentence = pendingContext.sentence
-    const id = sentenceCardId(sentence)
-    const anchorWord = pendingContext.word?.trim() || ''
-    const clickedWord = anchorWord.toLowerCase()
-    const anchorKey = wordCardKey(clickedWord)
-
-    // pendingContext is an external event (a message from the content
-    // script), so turning it into a new entry here is intended.
-    const carriedStates = pendingContext.wordStates
-    if (carriedStates) {
-      // The read-only anchor may resolve before the state update re-renders.
-      wordStatesRef.current = { ...wordStatesRef.current, ...carriedStates }
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setWordStates(prev => ({ ...prev, ...carriedStates }))
-    }
-    const existing = findSentence(history.entries, id)
-    const nestedAnchor = clickedWord
-      ? existing?.words.find(w => w.key === anchorKey)
-      : undefined
-    // A nested card for the anchor already covers the page card; otherwise
-    // the page card moves in (Decision 7).
-    const pageCard = clickedWord
-      ? adjacentPageCard(history.entries, clickedWord)
-      : undefined
-    const absorbed = nestedAnchor ? undefined : pageCard
-    const absorbedCard: WordCardData | undefined = absorbed && {
-      word: absorbed.word,
-      key: absorbed.key,
-      token: nextToken(),
-      pronunciation: absorbed.pronunciation,
-      loadCount: absorbed.loadCount,
-      dictionaryChinese: absorbed.dictionaryChinese,
-      dictionaryStatus: absorbed.dictionaryStatus,
-      contextStatus: 'loading',
-    }
-    const sentenceToken =
-      !existing || existing.status === 'error' ? nextToken() : undefined
-
-    setEntries(prev => {
-      const rest = prev.filter(e => e !== pageCard)
-      if (!existing) {
-        return [
-          {
-            kind: 'sentence',
-            id,
-            token: sentenceToken,
-            sentence,
-            clickedWord,
-            status: 'loading',
-            chinese: '',
-            errorMessage: '',
-            errorHttpStatus: undefined,
-            words: absorbedCard ? [absorbedCard] : [],
-          },
-          ...rest,
-        ]
+  const dispatchPlan = useCallback(
+    (plan: PlannedRequest[]) => {
+      for (const req of plan) {
+        if (req.type === 'translateSentence') {
+          translateSentence(req.sentenceId, req.sentence, req.token)
+        } else if (req.type === 'fetchWordContext') {
+          fetchWordContext(
+            req.word,
+            req.sentence,
+            {
+              sentenceId: req.sentenceId,
+              key: req.key,
+              token: req.token,
+            },
+            req.counts
+          )
+        } else if (req.type === 'fetchDictionary') {
+          void fetchDictionary(
+            req.word,
+            { sentenceId: req.sentenceId, key: req.key, token: req.token },
+            false
+          )
+        } else {
+          fetchContextTranslation(
+            req.word,
+            req.sentence,
+            {
+              sentenceId: req.sentenceId,
+              key: req.key,
+              token: req.token,
+            },
+            req.dictionaryChinese
+          )
+        }
       }
-      let next = patchSentence(moveSentenceToTop(rest, id), id, {
-        ...(clickedWord ? { clickedWord } : {}),
-        ...(sentenceToken === undefined
-          ? {}
-          : { token: sentenceToken, status: 'loading', errorMessage: '' }),
-      })
-      const anchorCard = nestedAnchor ?? absorbedCard
-      if (anchorCard) {
-        next = reorderOrInsertCard(next, id, anchorKey, () => anchorCard)
-      }
-      return next
-    })
-
-    // The anchor word's lookup is entirely independent of the
-    // whole-sentence translation below -- neither should block the other --
-    // so it fires here, not inside that request's .then(). An absorbed
-    // page card already has its dictionary half, so only the in-sentence
-    // meaning is fetched, fed that definition (dictionary-first). A nested
-    // card for the anchor is only retried, and only if it failed.
-    if (nestedAnchor) {
-      if (
-        nestedAnchor.contextStatus === 'error' ||
-        nestedAnchor.dictionaryStatus === 'error'
-      )
-        retryWordCard(id, nestedAnchor, sentence)
-    } else if (absorbedCard?.token !== undefined) {
-      fetchContextTranslation(
-        absorbedCard.word,
-        sentence,
-        { sentenceId: id, key: absorbedCard.key, token: absorbedCard.token },
-        absorbedCard.dictionaryChinese
-      )
-    } else if (anchorWord) {
-      seedAnchorWord(id, anchorWord, sentence)
-    }
-
-    if (sentenceToken !== undefined)
-      translateSentence(id, sentence, sentenceToken)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingContext?.createdAt])
-
-  // Phrase-in-context lookup (ADR-008/017): a multi-word selection never has a
-  // dictionary entry (ECDICT/words only has single words), so it skips
-  // getOneWord entirely and only ever gets an AI translateWordInContext
-  // result -- rendered as a phrase card (dictionaryStatus 'none').
-  // `sentenceId` undefined means a top-level card (a main-page drag-select,
-  // ADR-008 -- there's no displayed sentence to nest it under); set means
-  // nested into that SentenceEntry's own `words` (an in-panel drag-select,
-  // ADR-017). Re-selecting a phrase already at that scope (a top-level one
-  // also in the same sentence; ADR-023 Decision 8) just moves its card up --
-  // no second AI call, no second charge -- unless it failed, which retries.
-  const upsertPhraseCard = useCallback(
-    (phrase: string, sentence: string, sentenceId: string | undefined) => {
-      const key =
-        sentenceId === undefined
-          ? topLevelPhraseCardKey(phrase, sentence)
-          : wordCardKey(phrase)
-      const existing = findCard(history.entries, sentenceId, key)
-      if (existing) {
-        setEntries(prev =>
-          reorderOrInsertCard(prev, sentenceId, key, () => existing)
-        )
-        if (existing.contextStatus === 'error')
-          retryWordCard(sentenceId, existing, sentence)
-        return
-      }
-      const token = nextToken()
-      setEntries(prev =>
-        reorderOrInsertCard(prev, sentenceId, key, () => ({
-          word: phrase,
-          key,
-          token,
-          dictionaryStatus: 'none',
-          contextStatus: 'loading',
-          contextSentence: sentenceId === undefined ? sentence : undefined,
-        }))
-      )
-      fetchContextTranslation(phrase, sentence, { sentenceId, key, token })
     },
-    [fetchContextTranslation, history, nextToken, retryWordCard, setEntries]
+    [
+      translateSentence,
+      fetchWordContext,
+      fetchContextTranslation,
+      fetchDictionary,
+    ]
+  )
+  useEffect(() => {
+    dispatchPlanRef.current = dispatchPlan
+  }, [dispatchPlan])
+
+  // Card actions: the store decides inside its lock (card still there, not
+  // already loading, token allocation) and returns the plan to send; this
+  // component only wires the click and dispatches what was committed.
+  const runAction = useCallback(
+    (action: (id: number) => Promise<TransactionOutcome>) => {
+      if (tabId === undefined) return
+      void action(tabId).then(result => {
+        if (!result.committed) return
+        publish(result.state)
+        dispatchPlan(result.plan)
+      })
+    },
+    [tabId, publish, dispatchPlan]
   )
 
-  // A phrase arriving via pendingContext (ADR-008: drag-selected on the web
-  // page, already confirmed there) goes straight to a top-level card -- no
-  // confirm button, unlike an in-panel drag-select (ADR-017), and no
-  // SentenceEntry is created for it (the top status area stays reserved for
-  // a genuine whole-sentence translation).
-  useEffect(() => {
-    if (pendingContext?.phrase) {
-      // Same as above: reacting to an external pendingContext message.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      upsertPhraseCard(
-        pendingContext.phrase,
-        pendingContext.sentence,
-        undefined
-      )
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingContext?.createdAt])
-
-  // A card's Retry button. Recovers the sentence text from the owning
-  // SentenceEntry when nested, or from the card's own `contextSentence` when
-  // it's a top-level phrase card (ADR-023 -- there's no ambient "current
-  // sentence" singleton anymore to fall back on).
   const handleRetryContextTranslation = useCallback(
-    (sentenceId: string | undefined, key: string) => {
-      const sentenceEntry = sentenceId
-        ? findSentence(entries, sentenceId)
-        : undefined
-      const card = findCard(entries, sentenceId, key)
-      const sentence = sentenceEntry?.sentence ?? card?.contextSentence
-      if (!card || !sentence) return
-      retryWordCard(sentenceId, card, sentence)
-    },
-    [entries, retryWordCard]
+    (sentenceId: string | undefined, key: string) =>
+      runAction(id => store.retryContext(id, sentenceId, key)),
+    [runAction, store]
   )
 
   const handleRetryDictionary = useCallback(
-    (sentenceId: string | undefined, key: string) => {
-      const card = findCard(entries, sentenceId, key)
-      if (card) retryDictionary(sentenceId, card)
-    },
-    [entries, retryDictionary]
+    (sentenceId: string | undefined, key: string) =>
+      runAction(id => store.retryDictionary(id, sentenceId, key)),
+    [runAction, store]
   )
 
   // The sentence's error row is the only one shown for a failure its words
   // share (WordCard `shownAbove`), so its Retry redoes those words as well.
   const handleRetrySentence = useCallback(
-    (sentenceId: string) => {
-      const entry = findSentence(entries, sentenceId)
-      if (!entry) return
-      const token = nextToken()
-      setEntries(prev =>
-        patchSentence(prev, sentenceId, {
-          token,
-          status: 'loading',
-          errorMessage: '',
-          sessionExpired: false,
-          sessionUnverified: false,
-        })
-      )
-      translateSentence(entry.id, entry.sentence, token)
-      for (const card of entry.words) {
-        if (card.contextStatus === 'error' || card.dictionaryStatus === 'error')
-          retryWordCard(entry.id, card, entry.sentence)
-      }
-    },
-    [entries, translateSentence, retryWordCard, nextToken, setEntries]
+    (sentenceId: string) =>
+      runAction(id => store.retrySentence(id, sentenceId)),
+    [runAction, store]
   )
 
-  // A single-word selection inside a sentence's own rendered original
-  // (ADR-017) -- always nested into that entry's `words` (`sentenceId` is
-  // always defined here; only page clicks and main-page phrases populate the
-  // top-level list). Runs the same dictionary-first lookup (fetchWordContext)
-  // as an anchor word click (spec §3.7/§3.8/§3.9): the dictionary half
-  // renders as soon as it resolves, then the AI call fires with that
-  // definition. Re-clicking a word already nested here just moves its card
-  // up instead of re-fetching (spec §3.9). A card with contextStatus 'none'
-  // can't occur at this scope (only a page-lookup card is ever 'none', and
-  // those are always top-level).
+  // Phrase-in-context lookup (ADR-008/017) and in-sentence word click
+  // (ADR-017); see the store for the rules.
+  const upsertPhraseCard = useCallback(
+    (phrase: string, sentence: string, sentenceId: string | undefined) =>
+      runAction(id => store.upsertPhrase(id, phrase, sentence, sentenceId)),
+    [runAction, store]
+  )
+
   const handleWordClick = useCallback(
-    (rawWord: string, sentence: string, sentenceId: string) => {
-      const word = rawWord.toLowerCase()
-      const key = wordCardKey(word)
-      const existing = findCard(entries, sentenceId, key)
-      if (existing) {
-        setEntries(prev =>
-          reorderOrInsertCard(prev, sentenceId, key, () => existing)
-        )
-        return
-      }
-      const token = nextToken()
-      setEntries(prev =>
-        reorderOrInsertCard(prev, sentenceId, key, () => ({
-          word,
-          key,
-          token,
-          dictionaryStatus: 'loading',
-          contextStatus: 'loading',
-        }))
-      )
-      // A click in the panel is a lookup of its own: count it.
-      fetchWordContext(word, sentence, { sentenceId, key, token }, true)
-    },
-    [entries, fetchWordContext, nextToken, setEntries]
+    (rawWord: string, sentence: string, sentenceId: string) =>
+      runAction(id => store.clickWord(id, rawWord, sentence, sentenceId)),
+    [runAction, store]
   )
 
   // Re-mark every sentence original after each render (ADR-053): the
@@ -1720,9 +1497,15 @@ function SidePanelContent() {
               type="button"
               data-testid="sidepanel-undo-clear"
               onClick={() => {
-                const restored = history.undo()
-                if (restored) setExpandedWords(restored)
-                syncHistory()
+                if (tabId === undefined) return
+                void store.undo(tabId).then(result => {
+                  if (!result.committed) return
+                  publish(result.state)
+                  if (clearedExpandedRef.current) {
+                    setExpandedWords(clearedExpandedRef.current)
+                    clearedExpandedRef.current = null
+                  }
+                })
               }}
               className="font-medium text-brand hover:text-brand/80"
             >
@@ -1750,9 +1533,16 @@ function SidePanelContent() {
           type="button"
           data-testid="sidepanel-clear-all"
           onClick={() => {
-            history.clear(expandedWords)
-            syncHistory()
-            setExpandedWords(new Set())
+            if (tabId === undefined) return
+            clearedExpandedRef.current = new Set(expandedWords)
+            void store.clear(tabId).then(result => {
+              if (!result.committed) {
+                clearedExpandedRef.current = null
+                return
+              }
+              publish(result.state)
+              setExpandedWords(new Set())
+            })
           }}
           className="hover:text-destructive"
         >

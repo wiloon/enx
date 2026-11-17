@@ -105,14 +105,66 @@ describe('SidePanel', () => {
     storageChangeListeners.forEach(listener => listener(changes, areaName))
   }
 
+  // ADR-090: real SidePanel path uses chrome.storage.session get/set for the
+  // shared history key; keep an in-memory bag and fan out onChanged on writes.
+  let sessionBag: Record<string, unknown>
+  let eventIdSeq = 0
+  const nextEventId = () => `evt-${++eventIdSeq}`
+  const seedSession = (data: Record<string, unknown>) => {
+    Object.assign(sessionBag, data)
+  }
+
   beforeEach(() => {
     jest.clearAllMocks()
     window.history.replaceState({}, '', `/sidepanel.html?tabId=${PANEL_TAB_ID}`)
     storageChangeListeners = []
+    sessionBag = {}
+    eventIdSeq = 0
     CSS.highlights.clear()
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({})
+    ;(chrome.storage.session.get as jest.Mock).mockImplementation(
+      async (keys?: string | string[] | Record<string, unknown> | null) => {
+        if (keys == null) return { ...sessionBag }
+        if (typeof keys === 'string') {
+          return keys in sessionBag ? { [keys]: sessionBag[keys] } : {}
+        }
+        if (Array.isArray(keys)) {
+          const out: Record<string, unknown> = {}
+          for (const k of keys) {
+            if (k in sessionBag) out[k] = sessionBag[k]
+          }
+          return out
+        }
+        const out: Record<string, unknown> = { ...keys }
+        for (const k of Object.keys(keys)) {
+          if (k in sessionBag) out[k] = sessionBag[k]
+        }
+        return out
+      }
+    )
+    ;(chrome.storage.session.set as jest.Mock).mockImplementation(
+      async (items: Record<string, unknown>) => {
+        const changes: { [key: string]: chrome.storage.StorageChange } = {}
+        for (const [key, value] of Object.entries(items)) {
+          changes[key] = { oldValue: sessionBag[key], newValue: value }
+          sessionBag[key] = value
+        }
+        fireStorageChange(changes, 'session')
+      }
+    )
+    ;(chrome.storage.session.remove as jest.Mock).mockImplementation(
+      async (keys: string | string[]) => {
+        const list = Array.isArray(keys) ? keys : [keys]
+        const changes: { [key: string]: chrome.storage.StorageChange } = {}
+        for (const key of list) {
+          changes[key] = { oldValue: sessionBag[key], newValue: undefined }
+          delete sessionBag[key]
+        }
+        fireStorageChange(changes, 'session')
+      }
+    )
     ;(chrome.storage.local.get as jest.Mock).mockResolvedValue({})
     ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
+    ;(chrome.tabs.get as jest.Mock).mockResolvedValue({ id: PANEL_TAB_ID })
     ;(chrome.storage.onChanged.addListener as jest.Mock).mockImplementation(
       (listener: StorageChangeListener) => {
         storageChangeListeners.push(listener)
@@ -121,6 +173,44 @@ describe('SidePanel', () => {
     ;(chrome.storage.onChanged.removeListener as jest.Mock).mockImplementation(
       () => {}
     )
+    const heldLocks = new Set<string>()
+    const lockWaiters = new Map<string, Array<() => void>>()
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: {
+        request: jest.fn(
+          async (
+            name: string,
+            optionsOrCallback:
+              { signal?: AbortSignal } | (() => Promise<unknown>),
+            maybeCallback?: () => Promise<unknown>
+          ) => {
+            const callback =
+              typeof optionsOrCallback === 'function'
+                ? optionsOrCallback
+                : maybeCallback!
+            const releaseWaiter = (lockName: string) => {
+              heldLocks.delete(lockName)
+              const next = lockWaiters.get(lockName)?.shift()
+              next?.()
+            }
+            if (heldLocks.has(name)) {
+              await new Promise<void>(resolve => {
+                const q = lockWaiters.get(name) ?? []
+                q.push(resolve)
+                lockWaiters.set(name, q)
+              })
+            }
+            heldLocks.add(name)
+            try {
+              return await callback()
+            } finally {
+              releaseWaiter(name)
+            }
+          }
+        ),
+      },
+    })
   })
 
   it("ignores another tab's sentence (ADR-050)", async () => {
@@ -135,6 +225,7 @@ describe('SidePanel', () => {
               sentence: SENTENCE,
               word: 'great',
               createdAt: Date.now(),
+              eventId: nextEventId(),
             },
           },
         },
@@ -164,11 +255,12 @@ describe('SidePanel', () => {
   })
 
   it('loads and displays the sentence + translation once a pending context is stored', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     mockSendMessage.mockResolvedValue({
@@ -189,11 +281,12 @@ describe('SidePanel', () => {
   })
 
   it('renders the original sentence as selectable plain text, not per-word buttons (ADR-017)', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     mockSendMessage.mockResolvedValue({
@@ -209,11 +302,12 @@ describe('SidePanel', () => {
   })
 
   it('shows the translator error message instead of a blank/silent result (spec §4.4/§4.6 tie-in)', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     mockSendMessage.mockResolvedValue({
@@ -229,11 +323,12 @@ describe('SidePanel', () => {
   })
 
   it('shows one failure shared by the sentence and its anchor word once, and its Retry recovers both', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: SENTENCE,
         word: 'great',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     let apiDown = true
@@ -291,11 +386,12 @@ describe('SidePanel', () => {
   })
 
   it('shows a word card failure once when its dictionary and AI halves fail alike', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: SENTENCE,
         word: '',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     mockSendMessage.mockImplementation(async (message: { type: string }) => {
@@ -326,11 +422,12 @@ describe('SidePanel', () => {
   })
 
   it('a cached read-only anchor uses the carried page count and sends no count POST', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: SENTENCE,
         word: 'great',
         createdAt: 1,
+        eventId: nextEventId(),
         wordStates: {
           great: {
             Id: 'great-id',
@@ -367,11 +464,12 @@ describe('SidePanel', () => {
   })
 
   it('retains a cached count that completes during Clear so Undo shows the updated card', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: SENTENCE,
         word: '',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     let finish!: (r: BackgroundResponse) => void
@@ -398,6 +496,9 @@ describe('SidePanel', () => {
     selectWord('great')
     await screen.findByText('伟大的')
     fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
+    await waitFor(() =>
+      expect(screen.getByTestId('sidepanel-undo-clear')).toBeInTheDocument()
+    )
     await act(async () =>
       finish({ success: true, queryCount: 17, known: false })
     )
@@ -406,11 +507,12 @@ describe('SidePanel', () => {
   })
 
   it('pauses stale-cache recovery while the card is cleared, then resumes it once on Undo', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: SENTENCE,
         word: '',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     let finish!: (r: BackgroundResponse) => void
@@ -444,6 +546,9 @@ describe('SidePanel', () => {
     selectWord('great')
     await screen.findByText('伟大的')
     fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
+    await waitFor(() =>
+      expect(screen.getByTestId('sidepanel-undo-clear')).toBeInTheDocument()
+    )
     await act(async () => finish({ success: false, status: 404 }))
     expect(gets).toBe(1)
     fireEvent.click(screen.getByTestId('sidepanel-undo-clear'))
@@ -452,11 +557,12 @@ describe('SidePanel', () => {
   })
 
   it('keeps a cached definition visible while its count POST waits and after a quota refusal', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: SENTENCE,
         word: '',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     let finish!: (r: BackgroundResponse) => void
@@ -497,11 +603,12 @@ describe('SidePanel', () => {
   })
 
   it('shows an upgrade link instead of the raw message when sentence translation fails with 402 (insufficient AI credit)', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     mockSendMessage.mockResolvedValue({
@@ -519,11 +626,12 @@ describe('SidePanel', () => {
   })
 
   it('shows an upgrade link on a word-context translation 402, alongside the retry button', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     mockSendMessage.mockImplementation(
@@ -569,11 +677,12 @@ describe('SidePanel', () => {
   })
 
   it('shows an upgrade link (not the raw error) when the dictionary lookup hits the daily quota (429)', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     mockSendMessage.mockImplementation(async (message: { type: string }) => {
@@ -628,11 +737,12 @@ describe('SidePanel', () => {
   ])(
     'tells a 429 from %s by its code',
     async (_name, code, error, shown, upgrade) => {
-      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      seedSession({
         [PENDING_SENTENCE_STORAGE_KEY]: {
           sentence: 'Cats are great pets.',
           word: '',
           createdAt: 1,
+          eventId: nextEventId(),
         },
       })
       mockSendMessage.mockImplementation(async (message: { type: string }) => {
@@ -664,11 +774,12 @@ describe('SidePanel', () => {
   )
 
   it('appends word cards on click instead of replacing the previous one, newest on top (spec §3.9/§4.5)', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     mockSendMessage.mockImplementation(
@@ -737,11 +848,12 @@ describe('SidePanel', () => {
   })
 
   it('records no reading position for a word clicked in the panel (ADR-081 Decision 1)', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: SENTENCE,
         word: '',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     mockSendMessage.mockImplementation(async (message: { type: string }) =>
@@ -770,11 +882,12 @@ describe('SidePanel', () => {
   })
 
   it('still shows dictionary info when the contextual translation fails, and vice versa (spec §4.5, 互不阻塞)', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     mockSendMessage.mockImplementation(
@@ -815,12 +928,13 @@ describe('SidePanel', () => {
   it('renders a phrase card instead of the top sentence-translation slot when pendingContext.phrase is set (ADR-008)', async () => {
     const fullSentence =
       "I'd have to find the right contacts, hunt down emails, and draft outreach."
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: fullSentence,
         word: '',
         phrase: 'hunt down emails',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     mockSendMessage.mockImplementation(
@@ -861,12 +975,13 @@ describe('SidePanel', () => {
   it('shows an error + retry on a phrase card, same as a word card (ADR-008)', async () => {
     const fullSentence =
       'Your session has just expired mid-sentence for this phrase test.'
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: fullSentence,
         word: '',
         phrase: 'expired mid-sentence',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     let callCount = 0
@@ -912,11 +1027,12 @@ describe('SidePanel', () => {
   })
 
   it('lets the user retry a failed contextual translation (e.g. session expiry) instead of leaving the card stuck', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     let contextCallCount = 0
@@ -1011,11 +1127,12 @@ describe('SidePanel', () => {
       )
 
     beforeEach(() => {
-      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      seedSession({
         [PENDING_SENTENCE_STORAGE_KEY]: {
           sentence: SENTENCE,
           word: '',
           createdAt: 1,
+          eventId: nextEventId(),
         },
       })
     })
@@ -1087,11 +1204,12 @@ describe('SidePanel', () => {
   // chain -- not just re-run the AI call with no definition to compare
   // against.
   it('retries the dictionary lookup too when it never resolved, not just the AI call', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     let getOneWordCalls = 0
@@ -1169,11 +1287,12 @@ describe('SidePanel', () => {
   })
 
   it('renders the card progressively: dictionary info appears before the slower AI context translation resolves (spec §3.9)', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
 
@@ -1225,11 +1344,12 @@ describe('SidePanel', () => {
   })
 
   it('re-clicking a word already in the list moves its card to the top instead of re-fetching (spec §3.9)', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     mockSendMessage.mockImplementation(
@@ -1280,11 +1400,12 @@ describe('SidePanel', () => {
   })
 
   it('does not render a dictionary section, or the literal string "undefined", when the dictionary lookup has no Chinese meaning (spec §3.9)', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     mockSendMessage.mockImplementation(
@@ -1342,6 +1463,7 @@ describe('SidePanel', () => {
               sentence: 'First sentence.',
               word: '',
               createdAt: 1,
+              eventId: nextEventId(),
             },
           },
         },
@@ -1362,6 +1484,7 @@ describe('SidePanel', () => {
               sentence: 'Second sentence.',
               word: '',
               createdAt: 2,
+              eventId: nextEventId(),
             },
           },
         },
@@ -1388,6 +1511,7 @@ describe('SidePanel', () => {
               sentence: 'Should be ignored.',
               word: '',
               createdAt: 1,
+              eventId: nextEventId(),
             },
           },
         },
@@ -1420,6 +1544,7 @@ describe('SidePanel', () => {
                 LoadCount: 5,
               },
               createdAt: 1,
+              eventId: nextEventId(),
             },
           },
         },
@@ -1448,6 +1573,7 @@ describe('SidePanel', () => {
                 word,
                 ecp: { English: word, Chinese: `${word}的释义`, LoadCount: 1 },
                 createdAt,
+                eventId: nextEventId(),
               },
             },
           },
@@ -1466,14 +1592,16 @@ describe('SidePanel', () => {
       await screen.findByTestId('sidepanel-card-troy')
 
       fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
-      expect(
-        screen.queryByTestId('sidepanel-card-troy')
-      ).not.toBeInTheDocument()
+      await waitFor(() =>
+        expect(
+          screen.queryByTestId('sidepanel-card-troy')
+        ).not.toBeInTheDocument()
+      )
 
       fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
-      expect(screen.getByTestId('sidepanel-card-troy')).toHaveTextContent(
-        'troy的释义'
-      )
+      expect(
+        await screen.findByTestId('sidepanel-card-troy')
+      ).toHaveTextContent('troy的释义')
     })
 
     it('stops offering Undo after a few seconds', async () => {
@@ -1484,9 +1612,16 @@ describe('SidePanel', () => {
 
       jest.useFakeTimers()
       fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+        await Promise.resolve()
+      })
       expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument()
-      act(() => {
+      await act(async () => {
         jest.advanceTimersByTime(6000)
+        await Promise.resolve()
+        await Promise.resolve()
       })
       expect(
         screen.queryByRole('button', { name: 'Undo' })
@@ -1500,11 +1635,21 @@ describe('SidePanel', () => {
       await screen.findByTestId('sidepanel-card-troy')
 
       fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+      await waitFor(() =>
+        expect(
+          screen.queryByTestId('sidepanel-card-troy')
+        ).not.toBeInTheDocument()
+      )
       lookUpOnPage('argues', 2)
       await screen.findByTestId('sidepanel-card-argues')
       // Empty again, still within the Undo window: the old list must not
       // come back as an offer.
       fireEvent.click(screen.getByTestId('sidepanel-remove-argues'))
+      await waitFor(() =>
+        expect(
+          screen.queryByTestId('sidepanel-card-argues')
+        ).not.toBeInTheDocument()
+      )
 
       expect(
         screen.queryByRole('button', { name: 'Undo' })
@@ -1516,11 +1661,12 @@ describe('SidePanel', () => {
   })
 
   it('counts the top-level history items, not the words nested in a sentence', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     mockSendMessage.mockImplementation(
@@ -1555,6 +1701,7 @@ describe('SidePanel', () => {
               word: 'troy',
               ecp: { English: 'troy', Chinese: '金衡', LoadCount: 1 },
               createdAt: 2,
+              eventId: nextEventId(),
             },
           },
         },
@@ -1577,6 +1724,7 @@ describe('SidePanel', () => {
               word: 'troy',
               ecp: { English: 'troy', Chinese: '金衡', LoadCount: 1 },
               createdAt: 1,
+              eventId: nextEventId(),
             },
           },
         },
@@ -1589,11 +1737,12 @@ describe('SidePanel', () => {
   })
 
   it('keeps the sentence (and its nested in-sentence word) visible when a page word lookup arrives afterwards (ADR-023, fixes the previous "sentence disappears" bug)', async () => {
-    ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+    seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
         sentence: 'Cats are great pets.',
         word: '',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     })
     mockSendMessage.mockImplementation(
@@ -1647,6 +1796,7 @@ describe('SidePanel', () => {
                 LoadCount: 5,
               },
               createdAt: 2,
+              eventId: nextEventId(),
             },
           },
         },
@@ -1703,6 +1853,7 @@ describe('SidePanel', () => {
                 LoadCount: 5,
               },
               createdAt: 1,
+              eventId: nextEventId(),
             },
           },
         },
@@ -1719,6 +1870,7 @@ describe('SidePanel', () => {
               sentence: 'Cats are great pets.',
               word: '',
               createdAt: 2,
+              eventId: nextEventId(),
             },
           },
         },
@@ -1782,6 +1934,7 @@ describe('SidePanel', () => {
                 LoadCount: 2,
               },
               createdAt: 1,
+              eventId: nextEventId(),
             },
           },
         },
@@ -1801,6 +1954,7 @@ describe('SidePanel', () => {
               sentence: 'Cats are great pets.',
               word: '',
               createdAt: 2,
+              eventId: nextEventId(),
             },
           },
         },
@@ -1848,13 +2002,12 @@ describe('SidePanel', () => {
         sentence: 'Cats are great pets.',
         word: 'great',
         createdAt: 1,
+        eventId: nextEventId(),
       },
     }
 
     it('does not double-fetch when the anchor word is clicked in the sentence while its own dictionary-first lookup is still in flight (ADR-023 race)', async () => {
-      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue(
-        pendingWithWord
-      )
+      seedSession(pendingWithWord)
 
       let resolveDictionary: (value: BackgroundResponse) => void = () => {}
       let getOneWordCalls = 0
@@ -1918,9 +2071,7 @@ describe('SidePanel', () => {
     })
 
     it('sends translateSentence (not translateSentenceWithWord) and looks up the anchor word dictionary-first', async () => {
-      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue(
-        pendingWithWord
-      )
+      seedSession(pendingWithWord)
       mockSendMessage.mockImplementation(
         async (message: {
           type: string
@@ -1993,6 +2144,7 @@ describe('SidePanel', () => {
                     LoadCount: 3,
                   },
                   createdAt,
+                  eventId: nextEventId(),
                 },
               },
             },
@@ -2009,6 +2161,7 @@ describe('SidePanel', () => {
                   sentence: SENTENCE,
                   word,
                   createdAt,
+                  eventId: nextEventId(),
                 },
               },
             },
@@ -2129,11 +2282,12 @@ describe('SidePanel', () => {
     })
 
     it('highlights every occurrence of the clicked word in the original', async () => {
-      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      seedSession({
         [PENDING_SENTENCE_STORAGE_KEY]: {
           sentence: 'A great day for a great walk.',
           word: 'great',
           createdAt: 1,
+          eventId: nextEventId(),
         },
       })
       mockSendMessage.mockResolvedValue({
@@ -2155,9 +2309,7 @@ describe('SidePanel', () => {
     // still gets its contextual meaning, just with no definition to compare
     // against (so `why` naturally comes back empty).
     it('still looks up the context meaning when the anchor word has no dictionary entry', async () => {
-      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue(
-        pendingWithWord
-      )
+      seedSession(pendingWithWord)
       mockSendMessage.mockImplementation(
         async (message: {
           type: string
@@ -2194,11 +2346,12 @@ describe('SidePanel', () => {
     })
 
     it('does not seed a card or highlight for a drag-selected sentence (no anchor word)', async () => {
-      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      seedSession({
         [PENDING_SENTENCE_STORAGE_KEY]: {
           sentence: 'Cats are great pets.',
           word: '',
           createdAt: 1,
+          eventId: nextEventId(),
         },
       })
       mockSendMessage.mockImplementation(async (message: { type: string }) => {
@@ -2228,11 +2381,12 @@ describe('SidePanel', () => {
 
   describe('drag-select phrase lookup in the sentence (ADR-017)', () => {
     const seedSentence = async (chinese = '猫是很棒的宠物。') => {
-      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      seedSession({
         [PENDING_SENTENCE_STORAGE_KEY]: {
           sentence: SENTENCE,
           word: '',
           createdAt: 1,
+          eventId: nextEventId(),
         },
       })
       mockSendMessage.mockImplementation(async (message: { type: string }) => {
@@ -2354,11 +2508,12 @@ describe('SidePanel', () => {
 
   describe('unified history list (ADR-023)', () => {
     it('keeps every translated sentence in the panel, newest on top', async () => {
-      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      seedSession({
         [PENDING_SENTENCE_STORAGE_KEY]: {
           sentence: 'First sentence.',
           word: '',
           createdAt: 1,
+          eventId: nextEventId(),
         },
       })
       mockSendMessage.mockImplementation(
@@ -2386,6 +2541,7 @@ describe('SidePanel', () => {
                 sentence: 'Second sentence.',
                 word: '',
                 createdAt: 2,
+                eventId: nextEventId(),
               },
             },
           },
@@ -2410,11 +2566,12 @@ describe('SidePanel', () => {
     })
 
     it('nests a word looked up inside a historical (non-newest) sentence there, without moving that sentence in the list', async () => {
-      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      seedSession({
         [PENDING_SENTENCE_STORAGE_KEY]: {
           sentence: 'Cats are great pets.',
           word: '',
           createdAt: 1,
+          eventId: nextEventId(),
         },
       })
       mockSendMessage.mockImplementation(
@@ -2463,6 +2620,7 @@ describe('SidePanel', () => {
                 sentence: 'Dogs are loyal friends.',
                 word: '',
                 createdAt: 2,
+                eventId: nextEventId(),
               },
             },
           },
@@ -2525,11 +2683,12 @@ describe('SidePanel', () => {
       wordStates?: Record<string, unknown>,
       sentence = SENTENCE
     ) => {
-      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      seedSession({
         [PENDING_SENTENCE_STORAGE_KEY]: {
           sentence,
           word: '',
           createdAt: 1,
+          eventId: nextEventId(),
           wordStates,
         },
       })
@@ -2620,6 +2779,7 @@ describe('SidePanel', () => {
                 word: 'pets',
                 ecp: wordState('pets', 1),
                 createdAt: 2,
+                eventId: nextEventId(),
               },
             },
           },
@@ -2644,6 +2804,7 @@ describe('SidePanel', () => {
                 word: 'cat’s',
                 ecp: wordState('cat', 1),
                 createdAt: 2,
+                eventId: nextEventId(),
               },
             },
           },
@@ -2669,11 +2830,12 @@ describe('SidePanel', () => {
       ;(chrome.storage.local.get as jest.Mock).mockResolvedValue({
         [WORD_HIGHLIGHT_KEY]: false,
       })
-      ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
+      seedSession({
         [PENDING_SENTENCE_STORAGE_KEY]: {
           sentence: SENTENCE,
           word: 'great',
           createdAt: 1,
+          eventId: nextEventId(),
           wordStates: { cats: wordState('cats', 1) },
         },
       })
@@ -2774,23 +2936,36 @@ describe('SidePanel', () => {
     let createdAt = 100
     let pending: Pending[]
 
-    const send = (context: {
+    const flushMicrotasks = async (times = 8) => {
+      await act(async () => {
+        for (let i = 0; i < times; i++) await Promise.resolve()
+      })
+    }
+
+    const send = async (context: {
       sentence: string
       word?: string
       phrase?: string
-    }) =>
+    }) => {
       act(() => {
         fireStorageChange(
           {
             [PENDING_SENTENCE_STORAGE_KEY]: {
-              newValue: { word: '', ...context, createdAt: ++createdAt },
+              newValue: {
+                word: '',
+                ...context,
+                createdAt: ++createdAt,
+                eventId: nextEventId(),
+              },
             },
           },
           'session'
         )
       })
+      await flushMicrotasks()
+    }
 
-    const pageClick = (word: string, chinese: string) =>
+    const pageClick = async (word: string, chinese: string) => {
       act(() => {
         fireStorageChange(
           {
@@ -2799,12 +2974,25 @@ describe('SidePanel', () => {
                 word,
                 ecp: { English: word, Chinese: chinese, LoadCount: 1 },
                 createdAt: ++createdAt,
+                eventId: nextEventId(),
               },
             },
           },
           'session'
         )
       })
+      await flushMicrotasks()
+    }
+
+    const clickClear = async () => {
+      fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
+      await flushMicrotasks()
+    }
+
+    const clickUndo = async () => {
+      fireEvent.click(screen.getByTestId('sidepanel-undo-clear'))
+      await flushMicrotasks()
+    }
 
     const replyAtOnce = () =>
       mockSendMessage.mockImplementation(async (message: Message) => {
@@ -2877,8 +3065,8 @@ describe('SidePanel', () => {
         return { success: true, chinese: `${message.word}本句` }
       })
       await renderEmpty()
-      send({ sentence: SENTENCE, word: 'great' })
-      send({ sentence: OTHER, word: 'great' })
+      await send({ sentence: SENTENCE, word: 'great' })
+      await send({ sentence: OTHER, word: 'great' })
 
       const toggles = await screen.findAllByTestId(
         'sidepanel-toggle-meaning-great'
@@ -2896,12 +3084,12 @@ describe('SidePanel', () => {
     it('moves a re-sent sentence to the top instead of adding a second card', async () => {
       replyAtOnce()
       await renderEmpty()
-      send({ sentence: SENTENCE })
+      await send({ sentence: SENTENCE })
       await screen.findByText(`${SENTENCE}译`)
-      send({ sentence: OTHER })
+      await send({ sentence: OTHER })
       await screen.findByText(`${OTHER}译`)
 
-      send({ sentence: SENTENCE })
+      await send({ sentence: SENTENCE })
 
       await waitFor(() => expect(sentenceTexts()).toEqual([SENTENCE, OTHER]))
       expect(screen.getByText('History · 2')).toBeInTheDocument()
@@ -2912,8 +3100,8 @@ describe('SidePanel', () => {
     it('sends no second translation for a sentence still loading, and the first one lands', async () => {
       deferAll()
       await renderEmpty()
-      send({ sentence: SENTENCE })
-      send({ sentence: SENTENCE })
+      await send({ sentence: SENTENCE })
+      await send({ sentence: SENTENCE })
 
       expect(callsOf('translateSentence')).toBe(1)
       await settle(take('translateSentence'), {
@@ -2929,11 +3117,11 @@ describe('SidePanel', () => {
     it('treats sentences that differ only in whitespace or case as one', async () => {
       replyAtOnce()
       await renderEmpty()
-      send({ sentence: 'Cats are  great.' })
-      send({ sentence: 'cats are great. ' })
+      await send({ sentence: 'Cats are  great.' })
+      await send({ sentence: 'cats are great. ' })
       await waitFor(() => expect(sentenceTexts()).toEqual(['Cats are  great.']))
 
-      send({ sentence: OTHER })
+      await send({ sentence: OTHER })
       await waitFor(() =>
         expect(sentenceTexts()).toEqual([OTHER, 'Cats are  great.'])
       )
@@ -2942,10 +3130,10 @@ describe('SidePanel', () => {
     it('keeps the nested cards and highlights the new anchor when re-sent from another word', async () => {
       replyAtOnce()
       await renderEmpty()
-      send({ sentence: SENTENCE, word: 'cats' })
+      await send({ sentence: SENTENCE, word: 'cats' })
       await screen.findByText('cats本句')
 
-      send({ sentence: SENTENCE, word: 'great' })
+      await send({ sentence: SENTENCE, word: 'great' })
 
       await screen.findByText('great本句')
       expect(nestedWords()).toEqual([
@@ -2958,14 +3146,14 @@ describe('SidePanel', () => {
     it('reuses a loaded nested card for the anchor word and drops the page card for it', async () => {
       replyAtOnce()
       await renderEmpty()
-      send({ sentence: SENTENCE, word: 'great' })
+      await send({ sentence: SENTENCE, word: 'great' })
       await screen.findByText('great本句')
       selectWord('cats')
       await screen.findByText('cats本句')
-      pageClick('great', 'great页面释义')
+      await pageClick('great', 'great页面释义')
       await screen.findByText('great页面释义')
 
-      send({ sentence: SENTENCE, word: 'great' })
+      await send({ sentence: SENTENCE, word: 'great' })
 
       await waitFor(() =>
         expect(screen.queryByText('great页面释义')).not.toBeInTheDocument()
@@ -2982,12 +3170,12 @@ describe('SidePanel', () => {
     it('reuses a loading nested card for the anchor word, which still gets its result', async () => {
       deferAll()
       await renderEmpty()
-      send({ sentence: SENTENCE, word: 'great' })
+      await send({ sentence: SENTENCE, word: 'great' })
       selectWord('cats')
-      pageClick('great', 'great页面释义')
+      await pageClick('great', 'great页面释义')
       await screen.findByText('great页面释义')
 
-      send({ sentence: SENTENCE, word: 'great' })
+      await send({ sentence: SENTENCE, word: 'great' })
 
       await waitFor(() =>
         expect(screen.queryByText('great页面释义')).not.toBeInTheDocument()
@@ -3014,12 +3202,12 @@ describe('SidePanel', () => {
     it('absorbs the adjacent page card when re-sent from a word with no nested card', async () => {
       replyAtOnce()
       await renderEmpty()
-      send({ sentence: SENTENCE })
+      await send({ sentence: SENTENCE })
       await screen.findByText(`${SENTENCE}译`)
-      pageClick('great', 'great页面释义')
+      await pageClick('great', 'great页面释义')
       await screen.findByText('great页面释义')
 
-      send({ sentence: SENTENCE, word: 'great' })
+      await send({ sentence: SENTENCE, word: 'great' })
 
       await screen.findByText('great本句')
       expect(sentenceTexts()).toEqual([SENTENCE])
@@ -3042,11 +3230,11 @@ describe('SidePanel', () => {
     it('retries a sentence card in the error state when it is sent again', async () => {
       deferAll()
       await renderEmpty()
-      send({ sentence: SENTENCE })
+      await send({ sentence: SENTENCE })
       await settle(take('translateSentence'), { success: false, error: 'down' })
       await screen.findByTestId('sidepanel-error')
 
-      send({ sentence: SENTENCE })
+      await send({ sentence: SENTENCE })
 
       expect(sentenceTexts()).toEqual([SENTENCE])
       expect(callsOf('translateSentence')).toBe(2)
@@ -3062,15 +3250,15 @@ describe('SidePanel', () => {
     it('restores a sentence response received between Clear and Undo', async () => {
       deferAll()
       await renderEmpty()
-      send({ sentence: SENTENCE })
-      fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
+      await send({ sentence: SENTENCE })
+      await clickClear()
 
       await settle(take('translateSentence'), {
         success: true,
         chinese: '恢复译文',
       })
       expect(screen.getByTestId('sidepanel-empty-state')).toBeInTheDocument()
-      fireEvent.click(screen.getByTestId('sidepanel-undo-clear'))
+      await clickUndo()
 
       expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent(
         '恢复译文'
@@ -3081,13 +3269,13 @@ describe('SidePanel', () => {
     it('restores a phrase response received between Clear and Undo', async () => {
       deferAll()
       await renderEmpty()
-      send({ sentence: SENTENCE, phrase: 'great pets' })
-      fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
+      await send({ sentence: SENTENCE, phrase: 'great pets' })
+      await clickClear()
       await settle(take('translateWordInContext'), {
         success: true,
         chinese: '短语译文',
       })
-      fireEvent.click(screen.getByTestId('sidepanel-undo-clear'))
+      await clickUndo()
 
       expect(screen.getByTestId('sidepanel-card-great pets')).toHaveTextContent(
         '短语译文'
@@ -3098,9 +3286,9 @@ describe('SidePanel', () => {
     it('pauses a cleared dictionary-first lookup and resumes it once on Undo', async () => {
       deferAll()
       await renderEmpty()
-      send({ sentence: SENTENCE })
+      await send({ sentence: SENTENCE })
       selectWord('great')
-      fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
+      await clickClear()
       await settle(take('getOneWord'), {
         success: true,
         ecp: {
@@ -3111,7 +3299,7 @@ describe('SidePanel', () => {
         } as never,
       })
       expect(callsOf('translateWordInContext')).toBe(0)
-      fireEvent.click(screen.getByTestId('sidepanel-undo-clear'))
+      await clickUndo()
       await act(async () => {})
 
       expect(screen.getByTestId('sidepanel-card-great')).toHaveTextContent(
@@ -3136,18 +3324,20 @@ describe('SidePanel', () => {
     })
 
     describe('Clear and Undo request lifetime', () => {
-      const clear = () =>
-        fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
-      const undo = () =>
-        fireEvent.click(screen.getByTestId('sidepanel-undo-clear'))
+      const clear = async () => {
+        await clickClear()
+      }
+      const undo = async () => {
+        await clickUndo()
+      }
       afterEach(() => jest.useRealTimers())
 
       it('receives a sentence response arriving after Undo without another request', async () => {
         deferAll()
         await renderEmpty()
-        send({ sentence: SENTENCE })
-        clear()
-        undo()
+        await send({ sentence: SENTENCE })
+        await clear()
+        await undo()
         await settle(take('translateSentence'), {
           success: true,
           chinese: '后到译文',
@@ -3163,16 +3353,17 @@ describe('SidePanel', () => {
         async failure => {
           deferAll()
           await renderEmpty()
-          send({ sentence: SENTENCE })
-          clear()
+          await send({ sentence: SENTENCE })
+          await clear()
           const request = take('translateSentence')
           if (failure === 'response')
             await settle(request, { success: false, error: 'Service down' })
           else await act(async () => request.reject(new Error('offline')))
-          undo()
+          await undo()
           expect(screen.getByTestId('sidepanel-error')).toBeInTheDocument()
           expect(callsOf('translateSentence')).toBe(1)
           fireEvent.click(screen.getByTestId('sidepanel-retry-sentence'))
+          await flushMicrotasks()
           await settle(take('translateSentence'), {
             success: true,
             chinese: '重试译文',
@@ -3190,18 +3381,18 @@ describe('SidePanel', () => {
           deferAll()
           await renderEmpty()
           if (kind === 'word') {
-            send({ sentence: SENTENCE, word: 'great' })
+            await send({ sentence: SENTENCE, word: 'great' })
             await settle(take('getOneWord'), {
               success: true,
               ecp: { English: 'great', Chinese: '词典释义' } as never,
             })
-          } else send({ sentence: SENTENCE, phrase: 'great pets' })
-          clear()
+          } else await send({ sentence: SENTENCE, phrase: 'great pets' })
+          await clear()
           await settle(take('translateWordInContext'), {
             success: true,
             chinese: '原语境结果',
           })
-          undo()
+          await undo()
           expect(
             screen.getByTestId(
               `sidepanel-card-${kind === 'word' ? 'great' : 'great pets'}`
@@ -3216,16 +3407,16 @@ describe('SidePanel', () => {
         async timing => {
           deferAll()
           await renderEmpty()
-          send({ sentence: SENTENCE })
+          await send({ sentence: SENTENCE })
           selectWord('great pets')
           fireEvent.click(screen.getByTestId('sidepanel-phrase-confirm'))
-          clear()
-          if (timing === 'after') undo()
+          await clear()
+          if (timing === 'after') await undo()
           await settle(take('translateWordInContext'), {
             success: true,
             chinese: '嵌套短语',
           })
-          if (timing === 'before') undo()
+          if (timing === 'before') await undo()
           expect(
             within(screen.getByTestId('sidepanel-sentence-words')).getByTestId(
               'sidepanel-card-great pets'
@@ -3238,10 +3429,10 @@ describe('SidePanel', () => {
       it('continues a dictionary response arriving after Undo exactly once', async () => {
         deferAll()
         await renderEmpty()
-        send({ sentence: SENTENCE })
+        await send({ sentence: SENTENCE })
         selectWord('great')
-        clear()
-        undo()
+        await clear()
+        await undo()
         await settle(take('getOneWord'), {
           success: true,
           ecp: {
@@ -3270,14 +3461,14 @@ describe('SidePanel', () => {
         async failure => {
           deferAll()
           await renderEmpty()
-          send({ sentence: SENTENCE, word: 'great' })
-          clear()
+          await send({ sentence: SENTENCE, word: 'great' })
+          await clear()
           const request = take('getOneWord')
           if (failure === 'response')
             await settle(request, { success: false, error: 'Dictionary down' })
           else await act(async () => request.reject(new Error('offline')))
           expect(callsOf('translateWordInContext')).toBe(0)
-          undo()
+          await undo()
           await act(async () => {})
           expect(
             screen.getByTestId('sidepanel-dictionary-error-great')
@@ -3299,22 +3490,23 @@ describe('SidePanel', () => {
         async failure => {
           deferAll()
           await renderEmpty()
-          send({ sentence: SENTENCE, word: 'great' })
+          await send({ sentence: SENTENCE, word: 'great' })
           await settle(take('getOneWord'), {
             success: true,
             ecp: { English: 'great', Chinese: '词典释义' } as never,
           })
-          clear()
+          await clear()
           const request = take('translateWordInContext')
           if (failure === 'response')
             await settle(request, { success: false, error: 'AI down' })
           else await act(async () => request.reject(new Error('offline')))
-          undo()
+          await undo()
           expect(
             screen.getByTestId('sidepanel-context-error-great')
           ).toBeInTheDocument()
           expect(callsOf('translateWordInContext')).toBe(1)
           fireEvent.click(screen.getByTestId('sidepanel-retry-context-great'))
+          await flushMicrotasks()
           await settle(take('translateWordInContext'), {
             success: true,
             chinese: '重试语境',
@@ -3332,9 +3524,9 @@ describe('SidePanel', () => {
         async reason => {
           deferAll()
           await renderEmpty()
-          send({ sentence: SENTENCE, word: 'great' })
+          await send({ sentence: SENTENCE, word: 'great' })
           jest.useFakeTimers()
-          clear()
+          await clear()
           await settle(take('getOneWord'), {
             success: true,
             ecp: {
@@ -3344,7 +3536,7 @@ describe('SidePanel', () => {
             } as never,
           })
           if (reason === 'expiry') act(() => jest.advanceTimersByTime(5000))
-          else send({ sentence: OTHER })
+          else await send({ sentence: OTHER })
           await act(async () => {})
           await settle(take('translateSentence'), {
             success: true,
@@ -3371,9 +3563,9 @@ describe('SidePanel', () => {
           return deferred(message)
         })
         await renderEmpty()
-        send({ sentence: SENTENCE })
+        await send({ sentence: SENTENCE })
         selectWord('great')
-        clear()
+        await clear()
         await settle(take('getOneWord'), {
           success: true,
           ecp: {
@@ -3382,7 +3574,7 @@ describe('SidePanel', () => {
             Chinese: '词典释义',
           } as never,
         })
-        undo()
+        await undo()
         await act(async () => {})
         expect(screen.getByTestId('sidepanel-card-great')).toHaveTextContent(
           '词典释义'
@@ -3396,16 +3588,21 @@ describe('SidePanel', () => {
       it('does not renew the Undo deadline when a hidden response arrives', async () => {
         deferAll()
         await renderEmpty()
-        send({ sentence: SENTENCE })
+        await send({ sentence: SENTENCE })
         jest.useFakeTimers()
-        clear()
+        await clear()
         act(() => jest.advanceTimersByTime(4000))
         await settle(take('translateSentence'), {
           success: true,
           chinese: '旧译文',
         })
         expect(screen.getByTestId('sidepanel-undo-clear')).toBeInTheDocument()
-        act(() => jest.advanceTimersByTime(1000))
+        await act(async () => {
+          jest.advanceTimersByTime(1000)
+          await Promise.resolve()
+          await Promise.resolve()
+          await Promise.resolve()
+        })
         expect(
           screen.queryByTestId('sidepanel-undo-clear')
         ).not.toBeInTheDocument()
@@ -3415,16 +3612,16 @@ describe('SidePanel', () => {
       it('preserves multiple pending cards across repeated Clear and Undo', async () => {
         deferAll()
         await renderEmpty()
-        send({ sentence: SENTENCE, word: 'great' })
-        send({ sentence: OTHER, word: 'great' })
-        clear()
+        await send({ sentence: SENTENCE, word: 'great' })
+        await send({ sentence: OTHER, word: 'great' })
+        await clear()
         await settle(take('getOneWord'), {
           success: true,
           ecp: { English: 'great', Chinese: '第一词典' } as never,
         })
-        undo()
+        await undo()
         await act(async () => {})
-        clear()
+        await clear()
         await settle(take('getOneWord'), {
           success: true,
           ecp: { English: 'great', Chinese: '第二词典' } as never,
@@ -3437,7 +3634,7 @@ describe('SidePanel', () => {
           success: true,
           chinese: '第一句译文',
         })
-        undo()
+        await undo()
         await act(async () => {})
         await settle(take('translateWordInContext'), {
           success: true,
@@ -3464,10 +3661,10 @@ describe('SidePanel', () => {
     it('keeps the new translation when the one from before Clear fails later', async () => {
       deferAll()
       await renderEmpty()
-      send({ sentence: SENTENCE })
+      await send({ sentence: SENTENCE })
       const before = take('translateSentence')
-      fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
-      send({ sentence: SENTENCE })
+      await clickClear()
+      await send({ sentence: SENTENCE })
 
       await settle(take('translateSentence'), { success: true, chinese: '新' })
       await act(async () => before.reject(new Error('offline')))
@@ -3479,10 +3676,10 @@ describe('SidePanel', () => {
     it('ignores a translation from before Clear that lands while the new one is pending', async () => {
       deferAll()
       await renderEmpty()
-      send({ sentence: SENTENCE })
+      await send({ sentence: SENTENCE })
       const before = take('translateSentence')
-      fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
-      send({ sentence: SENTENCE })
+      await clickClear()
+      await send({ sentence: SENTENCE })
 
       await settle(before, { success: true, chinese: '旧' })
       expect(screen.getByTestId('sidepanel-loading')).toBeInTheDocument()
@@ -3513,11 +3710,14 @@ describe('SidePanel', () => {
       it('writes nothing and starts no context request after remove and reselect', async () => {
         deferAll()
         await renderEmpty()
-        send({ sentence: SENTENCE })
+        await send({ sentence: SENTENCE })
         selectWord('great')
+        await flushMicrotasks()
         const old = take('getOneWord')
         fireEvent.click(screen.getByTestId('sidepanel-remove-great'))
+        await flushMicrotasks()
         selectWord('great')
+        await flushMicrotasks()
 
         await settle(old, { success: true, ecp: oldDictionary })
 
@@ -3527,10 +3727,10 @@ describe('SidePanel', () => {
       it('writes nothing and starts no context request after Clear and re-send', async () => {
         deferAll()
         await renderEmpty()
-        send({ sentence: SENTENCE, word: 'great' })
+        await send({ sentence: SENTENCE, word: 'great' })
         const old = take('getOneWord')
-        fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
-        send({ sentence: SENTENCE, word: 'great' })
+        await clickClear()
+        await send({ sentence: SENTENCE, word: 'great' })
 
         await settle(old, { success: true, ecp: oldDictionary })
 
@@ -3540,10 +3740,12 @@ describe('SidePanel', () => {
       it('starts no context request after the card is removed', async () => {
         deferAll()
         await renderEmpty()
-        send({ sentence: SENTENCE })
+        await send({ sentence: SENTENCE })
         selectWord('great')
+        await flushMicrotasks()
         const old = take('getOneWord')
         fireEvent.click(screen.getByTestId('sidepanel-remove-great'))
+        await flushMicrotasks()
 
         await settle(old, { success: true, ecp: oldDictionary })
 
@@ -3568,12 +3770,15 @@ describe('SidePanel', () => {
       it('reuses a page phrase card for the same phrase in the same sentence, whatever its case or spacing', async () => {
         replyAtOnce()
         await renderEmpty()
-        send({ sentence: SENTENCE, phrase: 'great pets' })
+        await send({ sentence: SENTENCE, phrase: 'great pets' })
         await screen.findByText('great pets本句')
-        pageClick('cats', 'cats页面释义')
+        await pageClick('cats', 'cats页面释义')
         await screen.findByText('cats页面释义')
 
-        send({ sentence: ` ${SENTENCE.toLowerCase()}`, phrase: 'Great  pets' })
+        await send({
+          sentence: ` ${SENTENCE.toLowerCase()}`,
+          phrase: 'Great  pets',
+        })
 
         await waitFor(() =>
           expect(topLevelCards()).toEqual([PHRASE_CARD, 'sidepanel-card-cats'])
@@ -3584,8 +3789,8 @@ describe('SidePanel', () => {
       it('moves an in-panel phrase card to the top of its sentence without reordering the list', async () => {
         replyAtOnce()
         await renderEmpty()
-        send({ sentence: SENTENCE })
-        send({ sentence: OTHER })
+        await send({ sentence: SENTENCE })
+        await send({ sentence: OTHER })
         const older = () => screen.getAllByTestId('sidepanel-sentence')[1]
         await confirmPhraseIn(SENTENCE, older())
         await screen.findByText('great pets本句')
@@ -3604,8 +3809,8 @@ describe('SidePanel', () => {
       it('gives a phrase its own card and lookup in every other scope', async () => {
         replyAtOnce()
         await renderEmpty()
-        send({ sentence: SENTENCE })
-        send({ sentence: OTHER })
+        await send({ sentence: SENTENCE })
+        await send({ sentence: OTHER })
         await confirmPhraseIn(
           OTHER,
           screen.getAllByTestId('sidepanel-sentence')[0]
@@ -3614,7 +3819,7 @@ describe('SidePanel', () => {
           SENTENCE,
           screen.getAllByTestId('sidepanel-sentence')[1]
         )
-        send({ sentence: SENTENCE, phrase: 'great pets' })
+        await send({ sentence: SENTENCE, phrase: 'great pets' })
 
         await waitFor(() =>
           expect(screen.getAllByText('great pets本句')).toHaveLength(3)
@@ -3625,8 +3830,8 @@ describe('SidePanel', () => {
       it('keeps one top-level card per context sentence for the same phrase', async () => {
         deferAll()
         await renderEmpty()
-        send({ sentence: SENTENCE, phrase: 'great pets' })
-        send({ sentence: OTHER, phrase: 'great pets' })
+        await send({ sentence: SENTENCE, phrase: 'great pets' })
+        await send({ sentence: OTHER, phrase: 'great pets' })
         const fromCats = take('translateWordInContext')
         const fromDogs = take('translateWordInContext')
         await settle(fromDogs, { success: true, chinese: '狗的好宠物' })
@@ -3639,6 +3844,7 @@ describe('SidePanel', () => {
         fireEvent.click(
           within(catsCard).getByTestId('sidepanel-retry-context-great pets')
         )
+        await flushMicrotasks()
         expect(take('translateWordInContext').message.sentence).toBe(SENTENCE)
         expect(catsCard).toHaveTextContent('Translating...')
         expect(dogsCard).toHaveTextContent('狗的好宠物')
@@ -3646,19 +3852,20 @@ describe('SidePanel', () => {
         fireEvent.click(
           within(catsCard).getByTestId('sidepanel-remove-great pets')
         )
+        await flushMicrotasks()
         expect(screen.getAllByTestId(PHRASE_CARD)).toEqual([dogsCard])
       })
 
       it('retries a failed phrase card when the phrase is selected again', async () => {
         deferAll()
         await renderEmpty()
-        send({ sentence: SENTENCE, phrase: 'great pets' })
+        await send({ sentence: SENTENCE, phrase: 'great pets' })
         await settle(take('translateWordInContext'), {
           success: false,
           error: 'down',
         })
 
-        send({ sentence: SENTENCE, phrase: 'great pets' })
+        await send({ sentence: SENTENCE, phrase: 'great pets' })
 
         expect(callsOf('translateWordInContext')).toBe(2)
         await settle(take('translateWordInContext'), {
@@ -3671,10 +3878,10 @@ describe('SidePanel', () => {
       it('lets a loading phrase card selected again receive its result', async () => {
         deferAll()
         await renderEmpty()
-        send({ sentence: SENTENCE, phrase: 'great pets' })
-        pageClick('cats', 'cats页面释义')
+        await send({ sentence: SENTENCE, phrase: 'great pets' })
+        await pageClick('cats', 'cats页面释义')
 
-        send({ sentence: SENTENCE, phrase: 'great pets' })
+        await send({ sentence: SENTENCE, phrase: 'great pets' })
 
         expect(topLevelCards()).toEqual([PHRASE_CARD, 'sidepanel-card-cats'])
         await settle(take('translateWordInContext'), {
@@ -3699,6 +3906,7 @@ describe('SidePanel', () => {
                 word,
                 ecp: { English: word, ...ecp },
                 createdAt: ++createdAt,
+                eventId: nextEventId(),
               },
             },
           },
@@ -3718,10 +3926,12 @@ describe('SidePanel', () => {
         AIFallback: true,
       })
 
-      expect(screen.getAllByTestId('sidepanel-card-glimmerous')).toHaveLength(1)
-      expect(screen.getByTestId('sidepanel-card-glimmerous')).toHaveTextContent(
-        '闪烁微光的'
+      await waitFor(() =>
+        expect(
+          screen.getByTestId('sidepanel-card-glimmerous')
+        ).toHaveTextContent('闪烁微光的')
       )
+      expect(screen.getAllByTestId('sidepanel-card-glimmerous')).toHaveLength(1)
     })
 
     it('moves a word clicked again to the top with its new lookup count', async () => {
@@ -3729,12 +3939,16 @@ describe('SidePanel', () => {
       await screen.findByTestId('sidepanel-empty-state')
 
       mirror('troy', { Chinese: '金衡', LoadCount: 1 })
+      await screen.findByTestId('sidepanel-card-troy')
       mirror('cats', { Chinese: '猫', LoadCount: 1 })
+      await screen.findByTestId('sidepanel-card-cats')
       mirror('troy', { Chinese: '金衡', LoadCount: 2 })
 
-      expect(
-        screen.getAllByTestId(/^sidepanel-card-/).map(c => c.dataset.testid)
-      ).toEqual(['sidepanel-card-troy', 'sidepanel-card-cats'])
+      await waitFor(() =>
+        expect(
+          screen.getAllByTestId(/^sidepanel-card-/).map(c => c.dataset.testid)
+        ).toEqual(['sidepanel-card-troy', 'sidepanel-card-cats'])
+      )
       expect(
         within(screen.getByTestId('sidepanel-card-troy')).getByTitle(
           'Looked up 2 times'

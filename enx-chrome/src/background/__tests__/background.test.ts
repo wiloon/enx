@@ -102,8 +102,11 @@ import {
   SERVICE_UNAVAILABLE_MESSAGE,
   handleGetReviewWords,
   SESSION_SYNC_RETRY_DELAYS_MS,
+  clearTabSidePanelSession,
   __resetClerkClientCacheForTests,
 } from '../background'
+import { createFakePanelHistoryDeps } from '@/test/fakePanelHistoryDeps'
+import { panelHistoryKey } from '@/lib/panelHistoryStore'
 
 // Captured at import time, before any test's resetAllMocks() wipes the
 // addListener call history: importing ../background registers this as a
@@ -1604,6 +1607,7 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
           word: '',
           phrase: 'hunt down emails',
           sentence: 'I had to hunt down emails and draft outreach.',
+          eventId: expect.any(String),
         }),
       })
     )
@@ -1742,6 +1746,7 @@ describe('background onMessage / openSentencePanel phrase passthrough (ADR-008)'
         'enx-pending-sentence:7': expect.objectContaining({
           word: 'great',
           phrase: undefined,
+          eventId: expect.any(String),
         }),
       })
     )
@@ -3036,7 +3041,11 @@ describe('background tab-scoped Side Panel (ADR-050)', () => {
 
     expect(response).toEqual({ success: true })
     expect(chrome.storage.session.set).toHaveBeenCalledWith({
-      'enx-latest-page-word:7': expect.objectContaining({ word: 'great', ecp }),
+      'enx-latest-page-word:7': expect.objectContaining({
+        word: 'great',
+        ecp,
+        eventId: expect.any(String),
+      }),
     })
   })
 
@@ -3059,11 +3068,64 @@ describe('background tab-scoped Side Panel (ADR-050)', () => {
 
   it("forgets a closed tab's panel state", async () => {
     expect(onTabRemoved).toBeDefined()
-    onTabRemoved(7)
+    const removeHistory = jest.fn(async () => undefined)
+    await clearTabSidePanelSession(7, {
+      requestLock: async (_name, callback) => callback(),
+      storage: {
+        get: async () => undefined,
+        set: async () => undefined,
+        remove: removeHistory,
+      },
+    })
     expect(chrome.storage.session.remove).toHaveBeenCalledWith([
       'enx-pending-sentence:7',
       'enx-latest-page-word:7',
     ])
+    expect(removeHistory).toHaveBeenCalledWith(panelHistoryKey(7))
+  })
+
+  it('waits for a held panel-history lock before removing history', async () => {
+    const fake = createFakePanelHistoryDeps()
+    const lockName = panelHistoryKey(7)
+    fake.bag[lockName] = {
+      entries: [],
+      cleared: null,
+      nextToken: 0,
+      claimedSentenceEventIds: [],
+      claimedPageWordEventIds: [],
+      clearGeneration: 0,
+    }
+
+    let release!: () => void
+    const hold = new Promise<void>(resolve => {
+      release = resolve
+    })
+    const holder = fake.requestLock(lockName, async () => {
+      await hold
+    })
+
+    let clearedHistory = false
+    const clearing = clearTabSidePanelSession(7, {
+      requestLock: fake.requestLock,
+      storage: {
+        get: fake.storage.get,
+        set: fake.storage.set,
+        remove: async key => {
+          clearedHistory = true
+          await fake.storage.remove(key)
+        },
+      },
+    })
+
+    await Promise.resolve()
+    expect(clearedHistory).toBe(false)
+    expect(fake.bag[lockName]).toBeDefined()
+
+    release()
+    await holder
+    await clearing
+    expect(clearedHistory).toBe(true)
+    expect(fake.bag[lockName]).toBeUndefined()
   })
 })
 
