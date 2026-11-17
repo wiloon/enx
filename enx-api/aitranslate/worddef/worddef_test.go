@@ -91,3 +91,18 @@ func TestBuildUserContentIsTheWordAlone(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// An author's hyphenated compound ("mind-set-changing") is in no dictionary,
+// which is why it reaches the AI fallback. The prompt must count it as a word
+// when its parts are real words, or a model following "only a real English
+// word" answers is_word false and the reader gets no definition.
+func TestSystemPromptCountsACompoundOfRealWordsAsAWord(t *testing.T) {
+	for _, want := range []string{"hyphenated compound", "mind-set-changing"} {
+		if !strings.Contains(SystemPrompt, want) {
+			t.Errorf("SystemPrompt does not mention %q:\n%s", want, SystemPrompt)
+		}
+	}
+	if PromptVersion == "v2" {
+		t.Errorf("PromptVersion is still v2; the prompt changed, so bump it")
+	}
+}
