@@ -62,11 +62,17 @@ import { runLearningModeCommand } from '@/lib/learningModeCommand'
 import { applyStatus, dismissPinHint, maybeAskToPin, resetTab } from './badge'
 import type { LearningModeStatus } from '@/lib/learningModeStatus'
 import {
-  latestPageWordKey,
   openTabSidePanel,
+  latestPageWordKey,
   isTabSidePanelOpen,
   pendingSentenceKey,
 } from '@/lib/sidePanel'
+import {
+  removeTabSplitMembership,
+  startSplitPartnerCache,
+  updateTabSplitMembership,
+} from '@/lib/splitViewPartnerCache'
+import { createSplitViewSidePanel } from '@/lib/splitViewSidePanel'
 import {
   chromePanelHistoryDeps,
   createPanelHistoryStore,
@@ -1011,16 +1017,54 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   )
 })
 
+const {
+  cleanupSplitPanelRegistrations,
+  handleSplitSidePanelClosed,
+  openTabSidePanelForSplit,
+} = createSplitViewSidePanel(chrome.sidePanel, openTabSidePanel)
+
+// ADR-089: keep the Split View partner cache current. Take the former
+// partner before updating, then disable registrations that no longer point
+// at a tab in the same split.
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (!('splitViewId' in changeInfo)) return
+  const windowId = tab.windowId
+  if (windowId === undefined) return
+  const formerPartner = updateTabSplitMembership(
+    tabId,
+    changeInfo.splitViewId,
+    windowId
+  )
+  const candidates = [tabId]
+  if (formerPartner !== undefined) candidates.push(formerPartner)
+  const run = async () => {
+    if (formerPartner === undefined) {
+      const tabs = await chrome.tabs.query({ windowId })
+      candidates.push(
+        ...tabs.flatMap(tab => (tab.id === undefined ? [] : [tab.id]))
+      )
+    }
+    await cleanupSplitPanelRegistrations(candidates)
+  }
+  run().catch(error =>
+    console.warn('Failed to clean up split side panel after unsplit:', error)
+  )
+})
+
+// ADR-089 Decision 3: build the partner cache as soon as the worker starts
+// so gesture handlers can read it synchronously.
+void startSplitPartnerCache(() => chrome.tabs.query({}))
+
 // Trigger path② (spec §3.2): right-click the toolbar icon -> menu item ->
 // open the current tab's own Side Panel (ADR-050). Independent of the
 // left-click default_popup behavior (trigger path①), so it can't interfere
 // with login/logout. Not async: open() has to run inside the menu click's
-// user gesture, before any await.
+// user gesture, before any await. ADR-089: also open the Split View partner.
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId !== 'enx-open-sentence-panel') return
   if (tab?.id === undefined) return
 
-  openTabSidePanel(tab.id).catch(error =>
+  openTabSidePanelForSplit(tab.id, tab.splitViewId).catch(error =>
     console.error('Failed to open side panel from context menu:', error)
   )
 })
@@ -1061,6 +1105,41 @@ export async function clearTabSidePanelSession(
 chrome.tabs.onRemoved.addListener(tabId => {
   clearTabSidePanelSession(tabId).catch(error =>
     console.warn('Failed to clear side panel state for closed tab:', error)
+  )
+})
+
+// ADR-089: when a tab leaves (or the worker has no former partner after a
+// restart), disable stale mirror registrations on the other side / window.
+chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
+  if (removeInfo.isWindowClosing) return
+  const formerPartner = removeTabSplitMembership(tabId)
+  const run = async () => {
+    // Prefer the cached partner; always also scan the window so a worker
+    // restart (empty cache) still finds a stale mirror (ADR-089 Decision 4).
+    const windowTabs = await chrome.tabs.query({
+      windowId: removeInfo.windowId,
+    })
+    const fromWindow = (Array.isArray(windowTabs) ? windowTabs : [])
+      .map(tab => tab.id)
+      .filter((id): id is number => id !== undefined)
+    const candidates = [
+      ...new Set(
+        formerPartner !== undefined
+          ? [formerPartner, ...fromWindow]
+          : fromWindow
+      ),
+    ]
+    await cleanupSplitPanelRegistrations(candidates)
+  }
+  run().catch(error =>
+    console.warn('Failed to clean up split side panel after tab close:', error)
+  )
+})
+
+// ADR-089 Decision 4: closing either side of a mirrored pair closes the other.
+chrome.sidePanel.onClosed?.addListener(info => {
+  handleSplitSidePanelClosed(info).catch(error =>
+    console.warn('Failed to close split side panel partner:', error)
   )
 })
 
@@ -1114,7 +1193,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // handleOpenSentencePanel. Its outcome is awaited later via this promise.
   const sentencePanelOpening =
     (request.type || request.action) === 'openSentencePanel'
-      ? openSentencePanelForGesture(sender.tab?.id)
+      ? openSentencePanelForGesture(sender.tab?.id, sender.tab?.splitViewId)
       : undefined
 
   // Handle async responses
@@ -1791,9 +1870,12 @@ const handleTranslateWordInContext = async (
 // panel is a harmless no-op), false if the gesture didn't forward, so the
 // caller can fall back to trigger paths①/② (toolbar icon popup button /
 // right-click menu), which read the same persisted context.
-const openSentencePanelForGesture = (tabId?: number): Promise<boolean> => {
+const openSentencePanelForGesture = (
+  tabId?: number,
+  splitViewId?: number
+): Promise<boolean> => {
   if (tabId === undefined) return Promise.resolve(false)
-  return openTabSidePanel(tabId)
+  return openTabSidePanelForSplit(tabId, splitViewId)
     .then(() => true)
     .catch(error => {
       console.warn(

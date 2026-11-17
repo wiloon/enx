@@ -48,7 +48,10 @@ export const test = base.extend<ExtensionFixtures, WorkerFixtures>({
   uiOrigin: [UI_ORIGIN, { option: true }],
   seedsVocabulary: [true, { option: true }],
 
-  context: async ({ extensionDir, headless }, use) => {
+  // `viewport` is Playwright's built-in option. Default stays 1280×720; a
+  // spec that needs the real window size (Split View innerWidth, ADR-089)
+  // sets `test.use({ viewport: null })`.
+  context: async ({ extensionDir, headless, viewport }, use) => {
     const pathToExtension = path.join(__dirname, '..', extensionDir)
     if (!existsSync(path.join(pathToExtension, 'manifest.json'))) {
       throw new Error(
@@ -64,17 +67,24 @@ export const test = base.extend<ExtensionFixtures, WorkerFixtures>({
     // `headless` comes from the config (and --headed). Headless only works
     // with full Chromium's new headless mode: channel 'chromium' keeps
     // Playwright off chromium-headless-shell, which cannot load extensions.
+    const args = [
+      `--disable-extensions-except=${pathToExtension}`,
+      `--load-extension=${pathToExtension}`,
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+    ]
+    if (viewport === null) {
+      args.push('--window-size=1400,900')
+    }
     const context = await chromium.launchPersistentContext('', {
       headless,
       channel: 'chromium',
       executablePath: process.env.E2E_CHROMIUM_PATH || undefined,
-      args: [
-        `--disable-extensions-except=${pathToExtension}`,
-        `--load-extension=${pathToExtension}`,
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-      ],
-      viewport: { width: 1280, height: 720 },
+      args,
+      viewport,
+      // devices['Desktop Chrome'] injects deviceScaleFactor: 1; Playwright
+      // rejects that pairing when viewport is null (Split View width checks).
+      deviceScaleFactor: viewport === null ? undefined : 1,
     })
 
     await use(context)

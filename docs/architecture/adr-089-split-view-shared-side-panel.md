@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-11-15
 related: adr-050（标签页面板，本 ADR 在分屏场景下修订其 Decision 1、6 与 Consequences 第 3 条）、adr-090（卡片列表存入 storage.session，本 ADR 的前提）
 ---

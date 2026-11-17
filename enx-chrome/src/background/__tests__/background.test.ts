@@ -107,6 +107,11 @@ import {
 } from '../background'
 import { createFakePanelHistoryDeps } from '@/test/fakePanelHistoryDeps'
 import { panelHistoryKey } from '@/lib/panelHistoryStore'
+import {
+  applySplitPartnerTabs,
+  resetSplitPartnerCache,
+  startSplitPartnerCache,
+} from '@/lib/splitViewPartnerCache'
 
 // Captured at import time, before any test's resetAllMocks() wipes the
 // addListener call history: importing ../background registers this as a
@@ -3224,5 +3229,348 @@ describe('background message log', () => {
       'Background received message:',
       'translateSentence',
     ])
+  })
+})
+
+// ADR-089: mirrored side panel across both tabs of a Chrome Split View.
+describe('background Split View shared side panel (ADR-089)', () => {
+  const listener = onMessageListener
+  const onMenuClicked = (chrome.contextMenus.onClicked.addListener as jest.Mock)
+    .mock.calls[0]?.[0] as (
+    info: { menuItemId: string },
+    tab?: { id?: number; windowId?: number; splitViewId?: number }
+  ) => void
+  const onSplitUpdated = (chrome.tabs.onUpdated.addListener as jest.Mock).mock
+    .calls[1]?.[0] as (
+    tabId: number,
+    changeInfo: { splitViewId?: number },
+    tab: { windowId?: number }
+  ) => void
+  const onSplitRemoved = (chrome.tabs.onRemoved.addListener as jest.Mock).mock
+    .calls[1]?.[0] as (
+    tabId: number,
+    removeInfo: { windowId: number; isWindowClosing: boolean }
+  ) => void
+  const onPanelClosed = (chrome.sidePanel.onClosed.addListener as jest.Mock)
+    .mock.calls[0]?.[0] as (info: {
+    tabId?: number
+    windowId: number
+    path: string
+  }) => void
+
+  // Tracks the last setOptions per tab so getOptions mirrors Chrome.
+  const optionsByTab = new Map<number, { path?: string; enabled?: boolean }>()
+
+  const installOptionsTracking = () => {
+    optionsByTab.clear()
+    ;(chrome.sidePanel.setOptions as jest.Mock).mockImplementation(
+      async (opts: { tabId?: number; path?: string; enabled?: boolean }) => {
+        if (opts.tabId === undefined) return
+        const prev = optionsByTab.get(opts.tabId) ?? {}
+        optionsByTab.set(opts.tabId, {
+          path: opts.path !== undefined ? opts.path : prev.path,
+          enabled: opts.enabled !== undefined ? opts.enabled : prev.enabled,
+        })
+      }
+    )
+    ;(chrome.sidePanel.getOptions as jest.Mock).mockImplementation(
+      async (opts: { tabId: number }) => optionsByTab.get(opts.tabId) ?? {}
+    )
+    ;(chrome.sidePanel.open as jest.Mock).mockResolvedValue(undefined)
+    ;(chrome.sidePanel.close as jest.Mock).mockResolvedValue(undefined)
+  }
+
+  const flush = () => new Promise(resolve => setTimeout(resolve, 0))
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    resetSplitPartnerCache()
+    installOptionsTracking()
+    ;(chrome.storage.session.set as jest.Mock).mockResolvedValue(undefined)
+    ;(chrome.storage.session.remove as jest.Mock).mockResolvedValue(undefined)
+  })
+
+  it('opens owner and partner from the context menu with a cached split', () => {
+    applySplitPartnerTabs([
+      { id: 7, windowId: 1, splitViewId: 50 },
+      { id: 8, windowId: 1, splitViewId: 50 },
+    ])
+
+    onMenuClicked(
+      { menuItemId: 'enx-open-sentence-panel' },
+      { id: 7, windowId: 1, splitViewId: 50 }
+    )
+
+    expect(chrome.sidePanel.setOptions).toHaveBeenCalledWith({
+      tabId: 7,
+      path: 'sidepanel.html?tabId=7',
+      enabled: true,
+    })
+    expect(chrome.sidePanel.setOptions).toHaveBeenCalledWith({
+      tabId: 8,
+      path: 'sidepanel.html?tabId=7',
+      enabled: true,
+    })
+    expect(chrome.sidePanel.open).toHaveBeenCalledWith({ tabId: 7 })
+    expect(chrome.sidePanel.open).toHaveBeenCalledWith({ tabId: 8 })
+  })
+
+  it('opens owner and partner from openSentencePanel before any await', async () => {
+    applySplitPartnerTabs([
+      { id: 7, windowId: 1, splitViewId: 50 },
+      { id: 8, windowId: 1, splitViewId: 50 },
+    ])
+    const calls: string[] = []
+    ;(chrome.sidePanel.open as jest.Mock).mockImplementation(
+      async (opts: { tabId: number }) => {
+        calls.push(`open:${opts.tabId}`)
+      }
+    )
+    ;(chrome.storage.session.set as jest.Mock).mockImplementation(async () => {
+      calls.push('storage.session.set')
+    })
+
+    const response = await new Promise(resolve => {
+      listener(
+        {
+          type: 'openSentencePanel',
+          word: 'great',
+          sentence: 'Cats are great pets.',
+        },
+        { tab: { id: 7, splitViewId: 50 } },
+        resolve
+      )
+    })
+
+    expect(response).toEqual({ success: true, panelOpened: true })
+    expect(calls.slice(0, 3)).toEqual([
+      'open:7',
+      'open:8',
+      'storage.session.set',
+    ])
+    expect(chrome.sidePanel.setOptions).toHaveBeenCalledWith({
+      tabId: 8,
+      path: 'sidepanel.html?tabId=7',
+      enabled: true,
+    })
+  })
+
+  it('cold-starts the owner sync, then tries the partner once the cache builds', async () => {
+    let resolveQuery!: (
+      tabs: Array<{ id: number; windowId: number; splitViewId: number }>
+    ) => void
+    const queryPending = new Promise<
+      Array<{ id: number; windowId: number; splitViewId: number }>
+    >(resolve => {
+      resolveQuery = resolve
+    })
+    void startSplitPartnerCache(() => queryPending)
+
+    onMenuClicked(
+      { menuItemId: 'enx-open-sentence-panel' },
+      { id: 7, windowId: 1, splitViewId: 50 }
+    )
+
+    expect(chrome.sidePanel.open).toHaveBeenCalledWith({ tabId: 7 })
+    expect(chrome.sidePanel.open).not.toHaveBeenCalledWith({ tabId: 8 })
+
+    resolveQuery([
+      { id: 7, windowId: 1, splitViewId: 50 },
+      { id: 8, windowId: 1, splitViewId: 50 },
+    ])
+    await flush()
+
+    expect(chrome.sidePanel.setOptions).toHaveBeenCalledWith({
+      tabId: 8,
+      path: 'sidepanel.html?tabId=7',
+      enabled: true,
+    })
+    expect(chrome.sidePanel.open).toHaveBeenCalledWith({ tabId: 8 })
+  })
+
+  it('logs a refused cold-start partner open without failing the owner', async () => {
+    let resolveQuery!: (
+      tabs: Array<{ id: number; windowId: number; splitViewId: number }>
+    ) => void
+    const queryPending = new Promise<
+      Array<{ id: number; windowId: number; splitViewId: number }>
+    >(resolve => {
+      resolveQuery = resolve
+    })
+    void startSplitPartnerCache(() => queryPending)
+    ;(chrome.sidePanel.open as jest.Mock).mockImplementation(
+      async (opts: { tabId: number }) => {
+        if (opts.tabId === 8) throw new Error('user gesture')
+      }
+    )
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+    onMenuClicked(
+      { menuItemId: 'enx-open-sentence-panel' },
+      { id: 7, windowId: 1, splitViewId: 50 }
+    )
+    resolveQuery([
+      { id: 7, windowId: 1, splitViewId: 50 },
+      { id: 8, windowId: 1, splitViewId: 50 },
+    ])
+    await flush()
+
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('moves ownership when openSentencePanel comes from the mirror tab', async () => {
+    applySplitPartnerTabs([
+      { id: 7, windowId: 1, splitViewId: 50 },
+      { id: 8, windowId: 1, splitViewId: 50 },
+    ])
+    // Old pair: both registered under owner 7.
+    optionsByTab.set(7, { path: 'sidepanel.html?tabId=7', enabled: true })
+    optionsByTab.set(8, { path: 'sidepanel.html?tabId=7', enabled: true })
+
+    const response = await new Promise(resolve => {
+      listener(
+        {
+          type: 'openSentencePanel',
+          word: 'hello',
+          sentence: 'Hello from the mirror.',
+        },
+        { tab: { id: 8, splitViewId: 50 } },
+        resolve
+      )
+    })
+
+    expect(response).toEqual({ success: true, panelOpened: true })
+    expect(chrome.sidePanel.setOptions).toHaveBeenCalledWith({
+      tabId: 8,
+      path: 'sidepanel.html?tabId=8',
+      enabled: true,
+    })
+    expect(chrome.sidePanel.setOptions).toHaveBeenCalledWith({
+      tabId: 7,
+      path: 'sidepanel.html?tabId=8',
+      enabled: true,
+    })
+    expect(chrome.storage.session.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        'enx-pending-sentence:8': expect.objectContaining({
+          sentence: 'Hello from the mirror.',
+        }),
+      })
+    )
+
+    // Old panels' onClosed (path still naming owner 7) must not tear down
+    // the new registrations.
+    await onPanelClosed({
+      tabId: 7,
+      windowId: 1,
+      path: 'sidepanel.html?tabId=7',
+    })
+    await onPanelClosed({
+      tabId: 8,
+      windowId: 1,
+      path: 'sidepanel.html?tabId=7',
+    })
+    await flush()
+
+    expect(optionsByTab.get(7)?.enabled).toBe(true)
+    expect(optionsByTab.get(7)?.path).toBe('sidepanel.html?tabId=8')
+    expect(optionsByTab.get(8)?.enabled).toBe(true)
+    expect(optionsByTab.get(8)?.path).toBe('sidepanel.html?tabId=8')
+    expect(chrome.sidePanel.close).not.toHaveBeenCalled()
+  })
+
+  it('closes the other side once on a user onClosed', async () => {
+    applySplitPartnerTabs([
+      { id: 7, windowId: 1, splitViewId: 50 },
+      { id: 8, windowId: 1, splitViewId: 50 },
+    ])
+    optionsByTab.set(7, { path: 'sidepanel.html?tabId=7', enabled: true })
+    optionsByTab.set(8, { path: 'sidepanel.html?tabId=7', enabled: true })
+
+    await onPanelClosed({
+      tabId: 7,
+      windowId: 1,
+      path: 'sidepanel.html?tabId=7',
+    })
+    await flush()
+
+    expect(optionsByTab.get(8)?.enabled).toBe(false)
+    expect(chrome.sidePanel.close).toHaveBeenCalledWith({ tabId: 8 })
+
+    // The resulting onClosed on the disabled partner does nothing.
+    ;(chrome.sidePanel.close as jest.Mock).mockClear()
+    await onPanelClosed({
+      tabId: 8,
+      windowId: 1,
+      path: 'sidepanel.html?tabId=7',
+    })
+    await flush()
+    expect(chrome.sidePanel.close).not.toHaveBeenCalled()
+  })
+
+  it('disables the mirror when either tab unsplits', async () => {
+    applySplitPartnerTabs([
+      { id: 7, windowId: 1, splitViewId: 50 },
+      { id: 8, windowId: 1, splitViewId: 50 },
+    ])
+    optionsByTab.set(7, { path: 'sidepanel.html?tabId=7', enabled: true })
+    optionsByTab.set(8, { path: 'sidepanel.html?tabId=7', enabled: true })
+
+    onSplitUpdated(8, { splitViewId: undefined }, { windowId: 1 })
+    await flush()
+
+    expect(optionsByTab.get(8)?.enabled).toBe(false)
+    expect(chrome.sidePanel.close).toHaveBeenCalledWith({ tabId: 8 })
+    expect(optionsByTab.get(7)?.enabled).toBe(true)
+  })
+
+  it('finds a stale mirror after restart when the owner unsplits', async () => {
+    applySplitPartnerTabs([
+      { id: 7, windowId: 1, splitViewId: -1 },
+      { id: 8, windowId: 1, splitViewId: -1 },
+    ])
+    optionsByTab.set(8, { path: 'sidepanel.html?tabId=7', enabled: true })
+    ;(chrome.tabs.query as jest.Mock).mockResolvedValue([
+      { id: 7, windowId: 1 },
+      { id: 8, windowId: 1 },
+    ])
+    onSplitUpdated(7, { splitViewId: -1 }, { windowId: 1 })
+    await flush()
+    expect(optionsByTab.get(8)?.enabled).toBe(false)
+  })
+
+  it('disables the mirror when the owning tab closes', async () => {
+    applySplitPartnerTabs([
+      { id: 7, windowId: 1, splitViewId: 50 },
+      { id: 8, windowId: 1, splitViewId: 50 },
+    ])
+    optionsByTab.set(7, { path: 'sidepanel.html?tabId=7', enabled: true })
+    optionsByTab.set(8, { path: 'sidepanel.html?tabId=7', enabled: true })
+    ;(chrome.tabs.query as jest.Mock).mockResolvedValue([
+      { id: 8, windowId: 1 },
+    ])
+
+    onSplitRemoved(7, { windowId: 1, isWindowClosing: false })
+    await flush()
+
+    expect(optionsByTab.get(8)?.enabled).toBe(false)
+  })
+
+  it('after a worker restart, checks the window tabs when the owner closes', async () => {
+    // Simulate restart: no former partner in the cache, so cleanup queries
+    // the closed tab's window.
+    resetSplitPartnerCache()
+    optionsByTab.set(8, { path: 'sidepanel.html?tabId=7', enabled: true })
+    ;(chrome.tabs.query as jest.Mock).mockResolvedValue([
+      { id: 8, windowId: 1 },
+      { id: 9, windowId: 1 },
+    ])
+
+    onSplitRemoved(7, { windowId: 1, isWindowClosing: false })
+    await flush()
+
+    expect(chrome.tabs.query).toHaveBeenCalledWith({ windowId: 1 })
+    expect(optionsByTab.get(8)?.enabled).toBe(false)
   })
 })
