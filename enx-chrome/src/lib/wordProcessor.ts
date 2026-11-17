@@ -58,7 +58,6 @@ export class WordProcessor {
   // label text keeps its default action (toggling a details, focusing a
   // field) because no lookup claims it.
   static readonly LOOKUP_EXCLUDED_TAGS = [
-    'a',
     'script',
     'style',
     'noscript',
@@ -76,6 +75,7 @@ export class WordProcessor {
   // an X Article code block keeps its <pre><code> body in the tag list above,
   // but its "plaintext" language label sits beside it in a plain <span>.
   static readonly LOOKUP_EXCLUDED_SELECTORS = [
+    'a[href]',
     '[data-testid="markdown-code-block"]',
     // Any extension UI inserted into the host page carries data-enx-ui, so
     // its text is never looked up. Nothing sets it today: the session-expired
