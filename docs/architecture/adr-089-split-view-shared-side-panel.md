@@ -17,11 +17,16 @@ ADR-050 之后 ENX 只有标签页面板，于是典型用法「左边中文译�
 1. **面板的归属不变，只是多一个「镜像登记」。** 打开面板的那个标签页（称为所属标签页）仍是内容的主人：面板 URL 仍是 `sidepanel.html?tabId=<所属标签页>`，存储 key 仍按所属标签页拆分（ADR-050 Decision 2、3 不变）。分屏里另一个标签页用**同一个 URL** 调 `setOptions({ tabId: <另一个>, path, enabled: true })`，它的面板显示的就是所属标签页的句子和查词。
 2. **一个分屏只有一份 ENX 面板。** 在分屏任一边打开 ENX，都以这一边为所属标签页，覆盖两边的登记。两边各显示各的面板（例如左右都是英文文章）不在本 ADR 范围内。
 3. **两个标签页都要 `setOptions` + `open()`，且都在同一个用户手势里。** 实验（#945，Chromium 158）：只对伙伴 `setOptions` 不 `open()`，焦点切过去面板照样收起；对非活动的伙伴调 `open({ tabId })` 会成功，面板在它第一次成为活动视图时才创建（那时才触发 `onOpened`）。手势之外调用 `open()` 会被拒绝。**分屏关系由 background 同步维护**：`open()` 必须在用户手势里同步调用（ADR-050 Decision 1），来不及 `await tabs.query`。background 维护「标签页 → 分屏伙伴」的缓存：Service Worker 启动时用 `tabs.query({})` 读 `Tab.splitViewId` 建表，之后靠 `tabs.onUpdated` 的 `changeInfo.splitViewId` 和 `tabs.onRemoved` 更新。打开时同步读缓存，两个标签页的 `setOptions` 与 `open` 在同一个同步块里发出。
+   - **每个打开入口自己拿到伙伴。** `openTabSidePanel(tabId, partnerTabId?)` 只负责在同一同步块里发出两边的调用，伙伴由调用方传入。background 的两个入口（右键菜单、整句翻译消息）读上面的缓存。popup 是另一个上下文，读不到 Service Worker 的内存：popup 挂载时本来就 `await tabs.query` 找活动标签页，顺带读它的 `splitViewId`，再在同一窗口里找同一 `splitViewId` 的另一个标签页，记下伙伴；点击时同步传入。点击早于这次查找完成时，沿用现有的 `openActiveTabSidePanel()` 后备，查完再一起打开（尽力而为）。
+   - **Service Worker 冷启动。** 右键菜单或整句翻译消息唤醒 Service Worker 时，`tabs.query({})` 的建表还没完成。此时事件自带的 `tab` / `sender.tab` 上的 `splitViewId` 能同步看出它在分屏里，但伙伴未知：先在手势里同步打开所属标签页（即 ADR-050 的行为），再等建表完成后对伙伴尽力补一次 `setOptions` + `open()`；Chrome 因手势已失效拒绝时只记日志。结果是冷启动后的第一次打开可能只有一边有面板，用户再打开一次即两边都开，与 Decision 4 第三条同类。popup 入口不受影响。
 4. **两边同生同灭。**
+   - **哪边是所属、哪边是镜像，记在 `storage.session` 里。** 分屏关系只说明两个标签页在一起，分不出主从；Service Worker 重启后内存也没了。所以每次两边一起打开时，同步记下一条配对记录 `enx-split-panel-mirror:<镜像标签页>` → `{ ownerTabId }`（popup 与 background 共用 `lib/sidePanel.ts` 里的同一个写入函数，覆盖登记时先删掉两个标签页上的旧记录）。下面的清理都先读这条记录，不靠内存，所以重启后照样能找到镜像。
+   - **先删记录，再关另一边。** 收尾时先删配对记录，再关闭或注销另一边；另一边因此触发的 `onClosed` 找不到记录，什么也不做，不会互相递归关闭。
+   - **换主人引起的关闭不算用户关闭。** `onClosed` 带着被关面板的 `path`。如果 `path` 里的 `tabId` 不是这对记录当前的所属标签页（例如在另一边重新打开 ENX 换了主人，旧文档被替换），说明是被替换的旧面板，忽略，不关新面板。
    - 用户在任一边关闭面板（`sidePanel.onClosed`，Chrome 142+，与 manifest 的 `minimum_chrome_version` 一致）→ 关闭并注销另一边。
    - 分屏解除、或所属标签页关闭 → 注销镜像那边的登记（`setOptions({ tabId, enabled: false })`），不留一个指向已失效内容的面板。
    - 已打开面板的标签页之后才进入分屏：`onUpdated` 里没有用户手势，`open()` 会被拒绝，无法自动补开。用户在分屏里再点一次打开 ENX 侧边栏（任一路径）即可两边都开；不做自动补开。
-5. **「面板是否已打开」仍按所属标签页判断。** `isTabSidePanelOpen(tabId)` 比对的是 URL 里的 `tabId`；镜像面板的 URL 带的是所属标签页的 id，判断结果自然正确，不需要改。
+5. **「内容属于谁」和「这个标签页上有没有打开的面板」分开判断。** `isTabSidePanelOpen(tabId)` 比对的是 URL 里的 `tabId`，回答的是「这个标签页自己的内容面板开着没有」，保持不变，整句翻译的已打开探测（`handleOpenSentencePanel`）仍用它。popup 的按钮要回答的是后者：活动标签页是镜像（有配对记录）时，按它的所属标签页的面板是否打开来判断；按钮因此显示「关闭」，点击关闭镜像这边，再由 Decision 4 关掉另一边，而不是把主人换成镜像这边。popup 的 `onOpened` / `onClosed` 同步也要认镜像标签页的 id。
 
 ## Considered Options
 
@@ -32,5 +37,10 @@ ADR-050 之后 ENX 只有标签页面板，于是典型用法「左边中文译�
 ## Consequences
 
 - 两边的面板是 Chrome 的**两个实例**（`setOptions` 文档：同一 path 登记到不同标签页即不同实例），两个都会存活。ADR-023 的卡片列表原本只在面板内存里，两个实例会内容不一致、每句各调一次 AI；所以卡片列表先按 ADR-090 存进 `storage.session`、事件由一个面板认领，两边才真正一致，一次操作只调一次 AI。滚动位置、展开状态各面板各自一份。
-- 焦点在镜像那边时（例如在中文页上悬停），产生的查词或整句翻译写入的是镜像标签页自己的 key，不会出现在共用面板里。这符合「面板属于英文原文那一页」。
+- 焦点在镜像那边时（例如在中文页上悬停），产生的查词写入的是镜像标签页自己的 key，不会出现在共用面板里。这符合「面板属于英文原文那一页」。在镜像那边点「整句翻译」则不同：它和其他入口一样会打开 ENX，按 Decision 2 镜像这边成为新的所属标签页，两边改显示它的卡片列表（ADR-090 按所属标签页存），原所属标签页的卡片仍留在自己的 key 下，在那边重新打开 ENX 即可回来。
+- Service Worker 冷启动后的第一次右键菜单或整句翻译打开，可能只开所属那一边（Decision 3）。
 - ADR-050 Consequences 第 3 条（切到别的标签页就没有面板）对分屏伙伴不再成立；对分屏之外的标签页仍然成立。
+
+## 修订记录
+
+- 2026-11-16，issue #945（规格评审第 1 轮）：Decision 3 补充每个打开入口如何拿到伙伴（popup 挂载时自己查 `splitViewId`，background 读缓存），以及 Service Worker 冷启动时先只开所属一边、再尽力补开伙伴；Decision 4 新增存在 `storage.session` 的配对记录、先删记录再关另一边、按 `onClosed` 的 `path` 忽略换主人造成的关闭；Decision 5 把「内容属于谁」和「标签页上是否有打开的面板」分开，popup 在镜像标签页上显示「关闭」；Consequences 写明镜像那边的整句翻译会换主人。原因：popup 读不到 Service Worker 的内存；分屏关系分不出主从，重启后也找不回镜像；原 Decision 5 会让镜像上的 popup 按钮把关闭变成换主人；原 Consequences 与 Decision 2 矛盾。
