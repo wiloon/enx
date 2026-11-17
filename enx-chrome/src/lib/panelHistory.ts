@@ -332,7 +332,7 @@ export const adjacentPageCard = (
 
 export const PANEL_REQUEST_TIMEOUT_MS = 120_000
 export const PANEL_TIMEOUT_ERROR_MESSAGE =
-  'Request timed out. Tap Retry to try again.'
+  'Request timed out. Click Retry to try again.'
 
 export const isCardLoading = (card: WordCardData): boolean =>
   card.dictionaryStatus === 'loading' || card.contextStatus === 'loading'

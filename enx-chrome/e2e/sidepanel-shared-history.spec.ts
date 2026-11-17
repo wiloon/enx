@@ -150,7 +150,7 @@ test.describe('Side Panel shared history (ADR-090)', () => {
     await owner.close()
     await other.clock.fastForward(121_000)
     await expect(other.getByTestId('sidepanel-error')).toContainText(
-      'Request timed out. Tap Retry to try again.'
+      'Request timed out. Click Retry to try again.'
     )
     await expect(other.getByTestId('sidepanel-retry-sentence')).toBeVisible()
     expect(sentenceTranslatePosts(await translatePosts(context))).toHaveLength(
@@ -207,7 +207,7 @@ test.describe('Side Panel shared history (ADR-090)', () => {
 
     const panel = await openPanel(context, extensionId, tabId)
     await expect(panel.getByTestId('sidepanel-error')).toContainText(
-      'Request timed out. Tap Retry to try again.'
+      'Request timed out. Click Retry to try again.'
     )
     await expect(panel.getByTestId('sidepanel-retry-sentence')).toBeVisible()
     await panel.screenshot({
