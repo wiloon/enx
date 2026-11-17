@@ -328,6 +328,42 @@ it('brings an installing visitor back to /welcome?src=install after sign-in', as
   )
 })
 
+// A returning user who reinstalls lands here signed in and leaves for /app;
+// until the account says which, nothing of the guide may flash.
+it('shows only a loading status to a signed-in install arrival until the account history loads', async () => {
+  signedIn()
+  installExtension()
+  mockPreferences.mockReturnValue(new Promise(() => {}))
+  renderGuide(true)
+
+  expect(
+    await screen.findByRole('status', { name: 'Loading' })
+  ).toBeInTheDocument()
+  expect(
+    screen.queryByRole('heading', { name: 'Welcome to Catglish' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Skip setup' })
+  ).not.toBeInTheDocument()
+})
+
+it('sends a returning user who reinstalled to /app without showing the guide', async () => {
+  signedIn()
+  installExtension()
+  mockPreferences.mockResolvedValue(preferences(true))
+  mockOverview.mockResolvedValue(overview(3))
+  renderGuide(true)
+
+  await waitFor(() => expect(replace).toHaveBeenCalledWith('/app'))
+  expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
+  expect(
+    screen.queryByRole('heading', { name: 'Welcome to Catglish' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Skip setup' })
+  ).not.toBeInTheDocument()
+})
+
 it('offers a disabled install button while the store link is not set', async () => {
   renderGuide()
 

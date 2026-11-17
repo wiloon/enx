@@ -248,9 +248,13 @@ export default function WelcomeGuide({
   }
 
   const showArticle = landing === 'steps' || finished
+  // An install arrival may be a returning user who reinstalled and is about
+  // to leave for /app: until the account says otherwise, show no part of
+  // the guide, so nothing flashes before the redirect.
+  const holding = fromInstall && (landing === 'loading' || landing === 'app')
   // Signed in but still loading keeps one column: the article waits for the
   // account history (#846), and the illustration is for visitors only.
-  const showIllustration = !showArticle && signedIn !== true
+  const showIllustration = !showArticle && !holding && signedIn !== true
 
   return (
     <>
@@ -262,7 +266,9 @@ export default function WelcomeGuide({
         className={`mx-auto grid w-full gap-10 p-6 md:p-10 ${showArticle || showIllustration ? 'max-w-6xl md:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]' : 'max-w-xl'}`}
       >
         <section className="space-y-6">
-          {finished ? (
+          {holding ? (
+            <LoadingSpinner />
+          ) : finished ? (
             <Finished setupStatus={stepList(setupStatus.steps)} />
           ) : landing === 'sign-in' ? (
             <>
@@ -536,6 +542,17 @@ function WordLookupIllustration() {
         Click any word while you read — see its meaning in context.
       </figcaption>
     </figure>
+  )
+}
+
+function LoadingSpinner() {
+  return (
+    <p role="status" aria-label="Loading" className="flex justify-center">
+      <span
+        aria-hidden="true"
+        className="size-5 animate-spin rounded-full border-2 border-brand/20 border-t-brand motion-reduce:animate-none"
+      />
+    </p>
   )
 }
 
