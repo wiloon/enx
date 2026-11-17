@@ -3240,32 +3240,26 @@ describe('background Split View shared side panel (ADR-089)', () => {
     info: { menuItemId: string },
     tab?: { id?: number; windowId?: number; splitViewId?: number }
   ) => void
-  const onSplitUpdated = (
-    chrome.tabs.onUpdated.addListener as jest.Mock
-  ).mock.calls[1]?.[0] as (
+  const onSplitUpdated = (chrome.tabs.onUpdated.addListener as jest.Mock).mock
+    .calls[1]?.[0] as (
     tabId: number,
     changeInfo: { splitViewId?: number },
     tab: { windowId?: number }
   ) => void
-  const onSplitRemoved = (
-    chrome.tabs.onRemoved.addListener as jest.Mock
-  ).mock.calls[1]?.[0] as (
+  const onSplitRemoved = (chrome.tabs.onRemoved.addListener as jest.Mock).mock
+    .calls[1]?.[0] as (
     tabId: number,
     removeInfo: { windowId: number; isWindowClosing: boolean }
   ) => void
-  const onPanelClosed = (
-    chrome.sidePanel.onClosed.addListener as jest.Mock
-  ).mock.calls[0]?.[0] as (info: {
+  const onPanelClosed = (chrome.sidePanel.onClosed.addListener as jest.Mock)
+    .mock.calls[0]?.[0] as (info: {
     tabId?: number
     windowId: number
     path: string
   }) => void
 
   // Tracks the last setOptions per tab so getOptions mirrors Chrome.
-  const optionsByTab = new Map<
-    number,
-    { path?: string; enabled?: boolean }
-  >()
+  const optionsByTab = new Map<number, { path?: string; enabled?: boolean }>()
 
   const installOptionsTracking = () => {
     optionsByTab.clear()
@@ -3529,6 +3523,21 @@ describe('background Split View shared side panel (ADR-089)', () => {
     expect(optionsByTab.get(8)?.enabled).toBe(false)
     expect(chrome.sidePanel.close).toHaveBeenCalledWith({ tabId: 8 })
     expect(optionsByTab.get(7)?.enabled).toBe(true)
+  })
+
+  it('finds a stale mirror after restart when the owner unsplits', async () => {
+    applySplitPartnerTabs([
+      { id: 7, windowId: 1, splitViewId: -1 },
+      { id: 8, windowId: 1, splitViewId: -1 },
+    ])
+    optionsByTab.set(8, { path: 'sidepanel.html?tabId=7', enabled: true })
+    ;(chrome.tabs.query as jest.Mock).mockResolvedValue([
+      { id: 7, windowId: 1 },
+      { id: 8, windowId: 1 },
+    ])
+    onSplitUpdated(7, { splitViewId: -1 }, { windowId: 1 })
+    await flush()
+    expect(optionsByTab.get(8)?.enabled).toBe(false)
   })
 
   it('disables the mirror when the owning tab closes', async () => {

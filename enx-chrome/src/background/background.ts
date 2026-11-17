@@ -62,6 +62,7 @@ import { runLearningModeCommand } from '@/lib/learningModeCommand'
 import { applyStatus, dismissPinHint, maybeAskToPin, resetTab } from './badge'
 import type { LearningModeStatus } from '@/lib/learningModeStatus'
 import {
+  openTabSidePanel,
   latestPageWordKey,
   isTabSidePanelOpen,
   pendingSentenceKey,
@@ -71,11 +72,7 @@ import {
   startSplitPartnerCache,
   updateTabSplitMembership,
 } from '@/lib/splitViewPartnerCache'
-import {
-  cleanupSplitPanelRegistrations,
-  handleSplitSidePanelClosed,
-  openTabSidePanelForSplit,
-} from '@/lib/splitViewSidePanel'
+import { createSplitViewSidePanel } from '@/lib/splitViewSidePanel'
 import {
   chromePanelHistoryDeps,
   createPanelHistoryStore,
@@ -1020,6 +1017,12 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   )
 })
 
+const {
+  cleanupSplitPanelRegistrations,
+  handleSplitSidePanelClosed,
+  openTabSidePanelForSplit,
+} = createSplitViewSidePanel(chrome.sidePanel, openTabSidePanel)
+
 // ADR-089: keep the Split View partner cache current. Take the former
 // partner before updating, then disable registrations that no longer point
 // at a tab in the same split.
@@ -1034,14 +1037,23 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   )
   const candidates = [tabId]
   if (formerPartner !== undefined) candidates.push(formerPartner)
-  cleanupSplitPanelRegistrations(candidates).catch(error =>
+  const run = async () => {
+    if (formerPartner === undefined) {
+      const tabs = await chrome.tabs.query({ windowId })
+      candidates.push(
+        ...tabs.flatMap(tab => (tab.id === undefined ? [] : [tab.id]))
+      )
+    }
+    await cleanupSplitPanelRegistrations(candidates)
+  }
+  run().catch(error =>
     console.warn('Failed to clean up split side panel after unsplit:', error)
   )
 })
 
 // ADR-089 Decision 3: build the partner cache as soon as the worker starts
 // so gesture handlers can read it synchronously.
-void startSplitPartnerCache()
+void startSplitPartnerCache(() => chrome.tabs.query({}))
 
 // Trigger path② (spec §3.2): right-click the toolbar icon -> menu item ->
 // open the current tab's own Side Panel (ADR-050). Independent of the
@@ -1120,10 +1132,7 @@ chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
     await cleanupSplitPanelRegistrations(candidates)
   }
   run().catch(error =>
-    console.warn(
-      'Failed to clean up split side panel after tab close:',
-      error
-    )
+    console.warn('Failed to clean up split side panel after tab close:', error)
   )
 })
 

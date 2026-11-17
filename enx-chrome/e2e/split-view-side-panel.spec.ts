@@ -52,17 +52,6 @@ async function createSplit(
   return splitViewId
 }
 
-async function closeTab(
-  context: BrowserContext,
-  extensionId: string,
-  tabId: number
-) {
-  const helper = await context.newPage()
-  await helper.goto(`chrome-extension://${extensionId}/popup.html`)
-  await helper.evaluate(id => chrome.tabs.remove(id), tabId)
-  await helper.close()
-}
-
 async function activateTab(
   context: BrowserContext,
   extensionId: string,
@@ -87,27 +76,30 @@ async function openEnxSidePanel(
   await activateTab(context, extensionId, ownerTabId)
   const helper = await context.newPage()
   await helper.goto(`chrome-extension://${extensionId}/popup.html`)
-  await helper.evaluate(({ ownerTabId, partnerTabId }) => {
-    const button = document.createElement('button')
-    button.id = 'e2e-open-enx-panel'
-    button.textContent = 'e2e open'
-    button.addEventListener('click', () => {
-      const path = `sidepanel.html?tabId=${ownerTabId}`
-      void chrome.sidePanel.setOptions({
-        tabId: ownerTabId,
-        path,
-        enabled: true,
+  await helper.evaluate(
+    ({ ownerTabId, partnerTabId }) => {
+      const button = document.createElement('button')
+      button.id = 'e2e-open-enx-panel'
+      button.textContent = 'e2e open'
+      button.addEventListener('click', () => {
+        const path = `sidepanel.html?tabId=${ownerTabId}`
+        void chrome.sidePanel.setOptions({
+          tabId: ownerTabId,
+          path,
+          enabled: true,
+        })
+        void chrome.sidePanel.setOptions({
+          tabId: partnerTabId,
+          path,
+          enabled: true,
+        })
+        void chrome.sidePanel.open({ tabId: ownerTabId })
+        void chrome.sidePanel.open({ tabId: partnerTabId })
       })
-      void chrome.sidePanel.setOptions({
-        tabId: partnerTabId,
-        path,
-        enabled: true,
-      })
-      void chrome.sidePanel.open({ tabId: ownerTabId })
-      void chrome.sidePanel.open({ tabId: partnerTabId })
-    })
-    document.body.appendChild(button)
-  }, { ownerTabId, partnerTabId })
+      document.body.appendChild(button)
+    },
+    { ownerTabId, partnerTabId }
+  )
   await helper.locator('#e2e-open-enx-panel').click()
   await expect
     .poll(async () =>
@@ -142,12 +134,56 @@ async function sidePanelContextsForTab(
     const contexts = await chrome.runtime.getContexts({
       contextTypes: ['SIDE_PANEL' as chrome.runtime.ContextType],
     })
-    return contexts.filter(c =>
-      (c.documentUrl ?? '').includes(`tabId=${id}`)
-    ).length
+    return contexts.filter(c => (c.documentUrl ?? '').includes(`tabId=${id}`))
+      .length
   }, tabId)
   await helper.close()
   return count
+}
+
+async function panelTargets(context: BrowserContext, ownerId: number) {
+  const cdp = await context.browser()!.newBrowserCDPSession()
+  const { targetInfos } = await cdp.send('Target.getTargets')
+  await cdp.detach()
+  return targetInfos
+    .filter(t => t.url.includes(`/sidepanel.html?tabId=${ownerId}`))
+    .map(t => t.targetId)
+}
+
+async function panelContent(context: BrowserContext, targetId: string) {
+  const cdp = await context.browser()!.newBrowserCDPSession()
+  const { sessionId } = await cdp.send('Target.attachToTarget', {
+    targetId,
+    flatten: false,
+  })
+  const result = new Promise<{
+    sentence: string
+    translation: string
+    word: string
+  }>((resolve, reject) => {
+    cdp.on('Target.receivedMessageFromTarget', event => {
+      if (event.sessionId !== sessionId) return
+      const message = JSON.parse(event.message)
+      if (message.id !== 1) return
+      if (message.error) reject(new Error(message.error.message))
+      else resolve(message.result.result.value)
+    })
+  })
+  await cdp.send('Target.sendMessageToTarget', {
+    sessionId,
+    message: JSON.stringify({
+      id: 1,
+      method: 'Runtime.evaluate',
+      params: {
+        expression: `({ sentence: document.querySelector('[data-testid="sidepanel-sentence"]')?.textContent ?? '', translation: document.querySelector('[data-testid="sidepanel-chinese"]')?.textContent ?? '', word: document.querySelector('[data-testid^="sidepanel-card-"]')?.textContent ?? '' })`,
+        returnByValue: true,
+      },
+    }),
+  })
+  const content = await result
+  await cdp.send('Target.detachFromTarget', { sessionId })
+  await cdp.detach()
+  return content
 }
 
 function sentenceTranslatePosts(
@@ -174,7 +210,7 @@ test.describe('Split View shared side panel (ADR-089)', () => {
   // Real window size so Split View changes each view's innerWidth (spike method).
   test.use({ viewport: null })
 
-  test('keeps width stable, shares cards, closes both, cleans up when owner closes', async ({
+  test('keeps width stable, shares cards, closes both, cleans up when tabs unsplit', async ({
     page,
     context,
     extensionId,
@@ -200,7 +236,10 @@ test.describe('Split View shared side panel (ADR-089)', () => {
       `${FIXTURE_ORIGIN}${PARTNER_PATH}`
     )
 
-    await createSplit(context, extensionId, [englishTabId, partnerTabId])
+    const splitViewId = await createSplit(context, extensionId, [
+      englishTabId,
+      partnerTabId,
+    ])
 
     // Widths after the split but before any panel (baseline for collapse).
     await activateTab(context, extensionId, englishTabId)
@@ -213,12 +252,7 @@ test.describe('Split View shared side panel (ADR-089)', () => {
     expect(splitNoPanel.english).toBeLessThan(900)
     expect(splitNoPanel.partner).toBeLessThan(900)
 
-    await openEnxSidePanel(
-      context,
-      extensionId,
-      englishTabId,
-      partnerTabId
-    )
+    await openEnxSidePanel(context, extensionId, englishTabId, partnerTabId)
     await activateTab(context, extensionId, englishTabId)
     await expect
       .poll(async () => page.evaluate(() => window.innerWidth))
@@ -229,32 +263,31 @@ test.describe('Split View shared side panel (ADR-089)', () => {
       partner: await partnerPage.evaluate(() => window.innerWidth),
     }
 
+    // Send the first card before the mirror view is activated.
+    await sendOneSentenceFromPage(page)
+    await expect
+      .poll(async () => sentenceTranslatePosts(await translatePosts(context)))
+      .toHaveLength(1)
+
+    const ownerTargets = await panelTargets(context, englishTabId)
+
     // Switch to the partner view and back: widths must stay at panel-open.
     await activateTab(context, extensionId, partnerTabId)
     await partnerPage.waitForTimeout(300)
     expect(await partnerPage.evaluate(() => window.innerWidth)).toBe(
       panelOpen.partner
     )
-    expect(await page.evaluate(() => window.innerWidth)).toBe(
-      panelOpen.english
-    )
+    expect(await page.evaluate(() => window.innerWidth)).toBe(panelOpen.english)
 
     await activateTab(context, extensionId, englishTabId)
     await page.waitForTimeout(300)
-    expect(await page.evaluate(() => window.innerWidth)).toBe(
-      panelOpen.english
-    )
+    expect(await page.evaluate(() => window.innerWidth)).toBe(panelOpen.english)
     expect(await partnerPage.evaluate(() => window.innerWidth)).toBe(
       panelOpen.partner
     )
 
     // Cards sent while only the owner panel existed, then a new sentence
     // after the partner view was focused: one translate request per sentence.
-    await sendOneSentenceFromPage(page)
-    await expect
-      .poll(async () => sentenceTranslatePosts(await translatePosts(context)))
-      .toHaveLength(1)
-
     await activateTab(context, extensionId, partnerTabId)
     await partnerPage.waitForTimeout(500)
     // Partner panel document is created lazily on first activation; shared
@@ -262,6 +295,17 @@ test.describe('Split View shared side panel (ADR-089)', () => {
     expect(sentenceTranslatePosts(await translatePosts(context))).toHaveLength(
       1
     )
+    const mirrorTarget = (await panelTargets(context, englishTabId)).find(
+      id => !ownerTargets.includes(id)
+    )
+    expect(mirrorTarget).toBeDefined()
+    await expect
+      .poll(() => panelContent(context, mirrorTarget!))
+      .toMatchObject({
+        sentence: expect.stringMatching(/\S/),
+        translation: '译文',
+        word: expect.stringMatching(/\S/),
+      })
 
     // A new sentence from the English tab: one more translate (not one per panel).
     await activateTab(context, extensionId, englishTabId)
@@ -291,24 +335,26 @@ test.describe('Split View shared side panel (ADR-089)', () => {
       splitNoPanel.english
     )
 
-    // Reopen, then close the owning tab while panels are open: the former
-    // partner loses its ENX panel. (Acceptance also allows tabs.unsplit;
-    // in this headless Chromium, tabs.unsplit leaves splitViewId set, so the
-    // owner-close path is the one the gate can observe. Unsplit cleanup is
-    // covered by background unit tests.)
-    await openEnxSidePanel(
-      context,
-      extensionId,
-      englishTabId,
-      partnerTabId
-    )
+    // Reopen, then separate the tabs and check the former mirror is disabled.
+    await openEnxSidePanel(context, extensionId, englishTabId, partnerTabId)
     await activateTab(context, extensionId, englishTabId)
     await expect
       .poll(async () => page.evaluate(() => window.innerWidth))
       .toBe(panelOpen.english)
 
-    await closeTab(context, extensionId, englishTabId)
-    // Closing the owner may leave the partner at a half-pane width; the
+    const helper = await context.newPage()
+    await helper.goto(`chrome-extension://${extensionId}/popup.html`)
+    await helper.evaluate(id => chrome.tabs.unsplit(id), splitViewId)
+    await expect
+      .poll(() =>
+        helper.evaluate(
+          id => chrome.tabs.get(id).then(tab => tab.splitViewId),
+          englishTabId
+        )
+      )
+      .toBe(-1)
+    await helper.close()
+    // Separating the tabs may leave the partner at a half-pane width; the
     // acceptance check is that it no longer has an ENX side panel.
     await expect
       .poll(async () =>

@@ -131,18 +131,20 @@ it('removes its listeners on unmount', async () => {
 
 // ADR-089: Split View partner and mirror-tab popup behaviour.
 it('opens both Split View tabs synchronously on toggle', async () => {
-  query.mockImplementation(async (q: { active?: boolean; windowId?: number }) => {
-    if (q.active) {
-      return [{ id: 42, windowId: 1, splitViewId: 5 }]
+  query.mockImplementation(
+    async (q: { active?: boolean; windowId?: number }) => {
+      if (q.active) {
+        return [{ id: 42, windowId: 1, splitViewId: 5 }]
+      }
+      if (q.windowId === 1) {
+        return [
+          { id: 42, windowId: 1, splitViewId: 5 },
+          { id: 99, windowId: 1, splitViewId: 5 },
+        ]
+      }
+      return []
     }
-    if (q.windowId === 1) {
-      return [
-        { id: 42, windowId: 1, splitViewId: 5 },
-        { id: 99, windowId: 1, splitViewId: 5 },
-      ]
-    }
-    return []
-  })
+  )
   const { result } = await renderReady()
 
   let toggling: Promise<void> = Promise.resolve()
@@ -200,4 +202,30 @@ it('follows onOpened and onClosed for the mirror tab id', async () => {
     lastListener(sidePanel.onClosed)({ tabId: 99, windowId: 1, path: '' })
   )
   expect(result.current.open).toBe(false)
+})
+
+it('opens both tabs when clicked while the partner lookup is pending', async () => {
+  let resolveLookup!: (tabs: chrome.tabs.Tab[]) => void
+  const pending = new Promise<chrome.tabs.Tab[]>(resolve => {
+    resolveLookup = resolve
+  })
+  const tabs = [
+    { id: 42, windowId: 1, splitViewId: 5 },
+    { id: 99, windowId: 1, splitViewId: 5 },
+  ]
+  query.mockImplementation((q: { active?: boolean }) =>
+    q.active ? Promise.resolve([tabs[0]]) : pending
+  )
+  const { result } = renderHook(() => useActiveTabSidePanel())
+  await waitFor(() => expect(query).toHaveBeenCalledTimes(2))
+  let toggling!: Promise<void>
+  act(() => {
+    toggling = result.current.toggle()
+  })
+  await act(async () => {
+    resolveLookup(tabs as chrome.tabs.Tab[])
+    await toggling
+  })
+  expect(sidePanel.open).toHaveBeenCalledWith({ tabId: 42 })
+  expect(sidePanel.open).toHaveBeenCalledWith({ tabId: 99 })
 })

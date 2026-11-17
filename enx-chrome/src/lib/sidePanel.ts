@@ -36,7 +36,12 @@ export const splitPartnerTabId = (
   tab: Pick<chrome.tabs.Tab, 'id' | 'windowId' | 'splitViewId'>,
   tabs: Array<Pick<chrome.tabs.Tab, 'id' | 'windowId' | 'splitViewId'>>
 ): number | undefined => {
-  if (tab.id === undefined || tab.splitViewId === undefined) return undefined
+  if (
+    tab.id === undefined ||
+    tab.splitViewId === undefined ||
+    tab.splitViewId < 0
+  )
+    return undefined
   const partner = tabs.find(
     other =>
       other.id !== undefined &&
@@ -76,9 +81,14 @@ export const openTabSidePanel = (
   }
   const opening = chrome.sidePanel.open({ tabId })
   if (partnerTabId !== undefined) {
-    chrome.sidePanel.open({ tabId: partnerTabId }).catch(error =>
-      console.warn('openTabSidePanel: partner sidePanel.open() failed:', error)
-    )
+    chrome.sidePanel
+      .open({ tabId: partnerTabId })
+      .catch(error =>
+        console.warn(
+          'openTabSidePanel: partner sidePanel.open() failed:',
+          error
+        )
+      )
   }
   return opening
 }
@@ -91,7 +101,11 @@ export const openActiveTabSidePanel = async (): Promise<void> => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
   if (tab?.id === undefined) return
   let partnerTabId: number | undefined
-  if (tab.splitViewId !== undefined && tab.windowId !== undefined) {
+  if (
+    tab.splitViewId !== undefined &&
+    tab.splitViewId >= 0 &&
+    tab.windowId !== undefined
+  ) {
     const windowTabs = await chrome.tabs.query({ windowId: tab.windowId })
     partnerTabId = splitPartnerTabId(tab, windowTabs)
   }

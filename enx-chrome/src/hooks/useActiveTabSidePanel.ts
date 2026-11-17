@@ -17,6 +17,7 @@ import {
 export const useActiveTabSidePanel = () => {
   const [tabId, setTabId] = useState<number>()
   const [partnerTabId, setPartnerTabId] = useState<number>()
+  const [lookupReady, setLookupReady] = useState(false)
   const [open, setOpen] = useState(false)
   const tabIdRef = useRef<number | undefined>(undefined)
 
@@ -29,13 +30,19 @@ export const useActiveTabSidePanel = () => {
         tabIdRef.current = tab.id
         setTabId(tab.id)
 
-        if (tab.splitViewId !== undefined && tab.windowId !== undefined) {
+        if (
+          tab.splitViewId !== undefined &&
+          tab.splitViewId >= 0 &&
+          tab.windowId !== undefined
+        ) {
           const windowTabs = await chrome.tabs.query({
             windowId: tab.windowId,
           })
           if (!alive) return
           setPartnerTabId(splitPartnerTabId(tab, windowTabs))
         }
+
+        setLookupReady(true)
 
         // When the registration names another tab, this tab is a mirror:
         // the button reflects whether that owner's panel is open (ADR-089
@@ -82,7 +89,7 @@ export const useActiveTabSidePanel = () => {
   // to openActiveTabSidePanel(), whose own await is fine inside the popup.
   const toggle = useCallback(async () => {
     try {
-      if (tabId === undefined) {
+      if (tabId === undefined || !lookupReady) {
         await openActiveTabSidePanel()
         return
       }
@@ -96,7 +103,7 @@ export const useActiveTabSidePanel = () => {
     } catch (error) {
       console.error('Failed to toggle side panel from popup:', error)
     }
-  }, [tabId, partnerTabId, open])
+  }, [tabId, partnerTabId, open, lookupReady])
 
   return { open, toggle }
 }

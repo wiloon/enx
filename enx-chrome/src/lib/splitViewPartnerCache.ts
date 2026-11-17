@@ -35,7 +35,8 @@ export const applySplitPartnerTabs = (
     if (
       tab.id === undefined ||
       tab.windowId === undefined ||
-      tab.splitViewId === undefined
+      tab.splitViewId === undefined ||
+      tab.splitViewId < 0
     ) {
       continue
     }
@@ -57,7 +58,7 @@ export const resetSplitPartnerCache = (): void => {
 export const startSplitPartnerCache = (
   queryAllTabs: () => Promise<
     Array<Pick<chrome.tabs.Tab, 'id' | 'windowId' | 'splitViewId'>>
-  > = () => chrome.tabs.query({})
+  >
 ): Promise<void> => {
   cacheBuilt = false
   cacheReady = Promise.resolve()
@@ -80,7 +81,7 @@ export const updateTabSplitMembership = (
   windowId: number
 ): number | undefined => {
   const formerPartner = getSplitPartner(tabId)
-  if (splitViewId === undefined) {
+  if (splitViewId === undefined || splitViewId < 0) {
     membership.delete(tabId)
   } else {
     membership.set(tabId, { splitViewId, windowId })
@@ -88,9 +89,7 @@ export const updateTabSplitMembership = (
   return formerPartner
 }
 
-export const removeTabSplitMembership = (
-  tabId: number
-): number | undefined => {
+export const removeTabSplitMembership = (tabId: number): number | undefined => {
   const formerPartner = getSplitPartner(tabId)
   membership.delete(tabId)
   return formerPartner
