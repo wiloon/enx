@@ -89,6 +89,7 @@ beforeEach(() => {
     open: jest.fn(),
     close: jest.fn(async () => undefined),
     setOptions: jest.fn(async () => undefined),
+    getOptions: jest.fn(async () => ({})),
     onOpened: { addListener: jest.fn(), removeListener: jest.fn() },
     onClosed: { addListener: jest.fn(), removeListener: jest.fn() },
   },

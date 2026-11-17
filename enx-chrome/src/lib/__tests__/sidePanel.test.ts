@@ -7,6 +7,7 @@ import {
   panelTabIdFromUrl,
   pendingSentenceKey,
   sidePanelPath,
+  splitPartnerTabId,
 } from '../sidePanel'
 
 // ADR-050: the Side Panel is always a tab-specific panel, and everything it
@@ -76,6 +77,51 @@ describe('sidePanel (ADR-050)', () => {
     await expect(openTabSidePanel(42)).rejects.toThrow('user gesture')
   })
 
+  // ADR-089: when a Split View partner is known, register the owner's URL on
+  // both tabs and open both inside the same synchronous block.
+  it('registers and opens the partner with the owner path in one sync block', async () => {
+    const calls: string[] = []
+    ;(chrome.sidePanel.setOptions as jest.Mock).mockImplementation(
+      async (opts: { tabId: number }) => {
+        calls.push(`setOptions:${opts.tabId}`)
+      }
+    )
+    ;(chrome.sidePanel.open as jest.Mock).mockImplementation(
+      async (opts: { tabId: number }) => {
+        calls.push(`open:${opts.tabId}`)
+      }
+    )
+
+    const opening = openTabSidePanel(42, 99)
+
+    expect(calls).toEqual([
+      'setOptions:42',
+      'setOptions:99',
+      'open:42',
+      'open:99',
+    ])
+    expect(chrome.sidePanel.setOptions).toHaveBeenCalledWith({
+      tabId: 99,
+      path: 'sidepanel.html?tabId=42',
+      enabled: true,
+    })
+    expect(chrome.sidePanel.open).toHaveBeenCalledWith({ tabId: 99 })
+    await expect(opening).resolves.toBeUndefined()
+  })
+
+  it('keeps the owner open when the partner open is refused', async () => {
+    ;(chrome.sidePanel.open as jest.Mock).mockImplementation(
+      async (opts: { tabId: number }) => {
+        if (opts.tabId === 99) throw new Error('user gesture')
+      }
+    )
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await expect(openTabSidePanel(42, 99)).resolves.toBeUndefined()
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
   it("opens the current window's active tab's own panel (popup button)", async () => {
     ;(chrome.tabs.query as jest.Mock).mockResolvedValue([{ id: 42 }])
 
@@ -93,12 +139,53 @@ describe('sidePanel (ADR-050)', () => {
     expect(chrome.sidePanel.open).toHaveBeenCalledWith({ tabId: 42 })
   })
 
+  it('opens the Split View partner from the active-tab fallback', async () => {
+    const query = chrome.tabs.query as jest.Mock
+    query
+      .mockResolvedValueOnce([
+        { id: 42, windowId: 1, splitViewId: 5 },
+      ])
+      .mockResolvedValueOnce([
+        { id: 42, windowId: 1, splitViewId: 5 },
+        { id: 99, windowId: 1, splitViewId: 5 },
+      ])
+
+    await openActiveTabSidePanel()
+
+    expect(chrome.sidePanel.open).toHaveBeenCalledWith({ tabId: 42 })
+    expect(chrome.sidePanel.open).toHaveBeenCalledWith({ tabId: 99 })
+    expect(chrome.sidePanel.setOptions).toHaveBeenCalledWith({
+      tabId: 99,
+      path: 'sidepanel.html?tabId=42',
+      enabled: true,
+    })
+  })
+
   it('opens nothing when there is no active tab', async () => {
     ;(chrome.tabs.query as jest.Mock).mockResolvedValue([])
 
     await openActiveTabSidePanel()
 
     expect(chrome.sidePanel.open).not.toHaveBeenCalled()
+  })
+
+  it('finds the other tab that shares a Split View id in the window', () => {
+    expect(
+      splitPartnerTabId(
+        { id: 42, windowId: 1, splitViewId: 5 },
+        [
+          { id: 42, windowId: 1, splitViewId: 5 },
+          { id: 99, windowId: 1, splitViewId: 5 },
+          { id: 7, windowId: 1 },
+        ]
+      )
+    ).toBe(99)
+    expect(
+      splitPartnerTabId({ id: 42, windowId: 1 }, [
+        { id: 42, windowId: 1 },
+        { id: 99, windowId: 1 },
+      ])
+    ).toBeUndefined()
   })
 
   describe('isTabSidePanelOpen', () => {

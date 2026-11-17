@@ -5,6 +5,7 @@ const sidePanel = chrome.sidePanel as unknown as {
   open: jest.Mock
   close: jest.Mock
   setOptions: jest.Mock
+  getOptions: jest.Mock
   onOpened: { addListener: jest.Mock; removeListener: jest.Mock }
   onClosed: { addListener: jest.Mock; removeListener: jest.Mock }
 }
@@ -38,6 +39,7 @@ beforeEach(() => {
   sidePanel.open.mockResolvedValue(undefined)
   sidePanel.close.mockResolvedValue(undefined)
   sidePanel.setOptions.mockResolvedValue(undefined)
+  sidePanel.getOptions.mockResolvedValue({})
 })
 
 it("starts open when the active tab's panel is already open", async () => {
@@ -125,4 +127,77 @@ it('removes its listeners on unmount', async () => {
 
   expect(sidePanel.onOpened.removeListener).toHaveBeenCalledWith(opened)
   expect(sidePanel.onClosed.removeListener).toHaveBeenCalledWith(closed)
+})
+
+// ADR-089: Split View partner and mirror-tab popup behaviour.
+it('opens both Split View tabs synchronously on toggle', async () => {
+  query.mockImplementation(async (q: { active?: boolean; windowId?: number }) => {
+    if (q.active) {
+      return [{ id: 42, windowId: 1, splitViewId: 5 }]
+    }
+    if (q.windowId === 1) {
+      return [
+        { id: 42, windowId: 1, splitViewId: 5 },
+        { id: 99, windowId: 1, splitViewId: 5 },
+      ]
+    }
+    return []
+  })
+  const { result } = await renderReady()
+
+  let toggling: Promise<void> = Promise.resolve()
+  act(() => {
+    toggling = result.current.toggle()
+  })
+  expect(sidePanel.open).toHaveBeenCalledWith({ tabId: 42 })
+  expect(sidePanel.open).toHaveBeenCalledWith({ tabId: 99 })
+  expect(sidePanel.setOptions).toHaveBeenCalledWith({
+    tabId: 99,
+    path: 'sidepanel.html?tabId=42',
+    enabled: true,
+  })
+  await act(() => toggling)
+})
+
+it('shows open on a mirror tab when the owner panel is open, and closes the mirror', async () => {
+  query.mockResolvedValue([{ id: 99, windowId: 1, splitViewId: 5 }])
+  sidePanel.getOptions.mockResolvedValue({
+    path: 'sidepanel.html?tabId=42',
+    enabled: true,
+  })
+  getContexts.mockResolvedValue([panelOf(42)])
+
+  const { result } = renderHook(() => useActiveTabSidePanel())
+  await waitFor(() => expect(result.current.open).toBe(true))
+
+  await act(async () => {
+    await result.current.toggle()
+  })
+
+  expect(sidePanel.close).toHaveBeenCalledWith({ tabId: 99 })
+  expect(sidePanel.setOptions).not.toHaveBeenCalled()
+  expect(sidePanel.open).not.toHaveBeenCalled()
+  expect(result.current.open).toBe(false)
+})
+
+it('follows onOpened and onClosed for the mirror tab id', async () => {
+  query.mockResolvedValue([{ id: 99, windowId: 1, splitViewId: 5 }])
+  sidePanel.getOptions.mockResolvedValue({
+    path: 'sidepanel.html?tabId=42',
+    enabled: true,
+  })
+  getContexts.mockResolvedValue([])
+
+  const { result } = await renderReady()
+  expect(result.current.open).toBe(false)
+
+  act(() =>
+    lastListener(sidePanel.onOpened)({ tabId: 99, windowId: 1, path: '' })
+  )
+  expect(result.current.open).toBe(true)
+
+  act(() =>
+    lastListener(sidePanel.onClosed)({ tabId: 99, windowId: 1, path: '' })
+  )
+  expect(result.current.open).toBe(false)
 })

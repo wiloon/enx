@@ -29,26 +29,73 @@ export const pendingSentenceKey = (tabId: number): string =>
 export const latestPageWordKey = (tabId: number): string =>
   `${LATEST_PAGE_WORD_KEY_PREFIX}:${tabId}`
 
-// Registers the tab's own panel, then opens it. open() only works inside a
-// user gesture and any `await` before it spends that gesture, so setOptions()
-// is deliberately not awaited: Chrome handles the two calls in order. The
-// returned promise is open()'s, so a caller can fall back when Chrome refuses.
-export const openTabSidePanel = (tabId: number): Promise<void> => {
+// The other tab in the same Chrome Split View, if any. Used by the popup
+// (ADR-089 Decision 3): it resolves the partner before the click so open()
+// can stay synchronous inside the gesture.
+export const splitPartnerTabId = (
+  tab: Pick<chrome.tabs.Tab, 'id' | 'windowId' | 'splitViewId'>,
+  tabs: Array<Pick<chrome.tabs.Tab, 'id' | 'windowId' | 'splitViewId'>>
+): number | undefined => {
+  if (tab.id === undefined || tab.splitViewId === undefined) return undefined
+  const partner = tabs.find(
+    other =>
+      other.id !== undefined &&
+      other.id !== tab.id &&
+      other.windowId === tab.windowId &&
+      other.splitViewId === tab.splitViewId
+  )
+  return partner?.id
+}
+
+// Registers the tab's own panel, then opens it. When partnerTabId is given
+// (ADR-089), also registers the owner's URL on the Split View partner and
+// opens that tab in the same synchronous block so the panel width stays
+// stable across views. open() only works inside a user gesture and any
+// `await` before it spends that gesture, so setOptions() is deliberately
+// not awaited. The returned promise is the owner's open(), so a caller can
+// fall back when Chrome refuses; a refused partner open is only logged.
+export const openTabSidePanel = (
+  tabId: number,
+  partnerTabId?: number
+): Promise<void> => {
+  const path = sidePanelPath(tabId)
   chrome.sidePanel
-    .setOptions({ tabId, path: sidePanelPath(tabId), enabled: true })
+    .setOptions({ tabId, path, enabled: true })
     .catch(error =>
       console.warn('openTabSidePanel: sidePanel.setOptions() failed:', error)
     )
-  return chrome.sidePanel.open({ tabId })
+  if (partnerTabId !== undefined) {
+    chrome.sidePanel
+      .setOptions({ tabId: partnerTabId, path, enabled: true })
+      .catch(error =>
+        console.warn(
+          'openTabSidePanel: partner sidePanel.setOptions() failed:',
+          error
+        )
+      )
+  }
+  const opening = chrome.sidePanel.open({ tabId })
+  if (partnerTabId !== undefined) {
+    chrome.sidePanel.open({ tabId: partnerTabId }).catch(error =>
+      console.warn('openTabSidePanel: partner sidePanel.open() failed:', error)
+    )
+  }
+  return opening
 }
 
 // Trigger path① (spec §3.2): the popup's button. A click inside the popup is
 // a real, unforwarded user gesture, so awaiting the tab lookup first is fine
-// here (it has always awaited windows.getCurrent() the same way).
+// here (it has always awaited windows.getCurrent() the same way). Looks up
+// the Split View partner before opening (ADR-089 Decision 3).
 export const openActiveTabSidePanel = async (): Promise<void> => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
   if (tab?.id === undefined) return
-  await openTabSidePanel(tab.id)
+  let partnerTabId: number | undefined
+  if (tab.splitViewId !== undefined && tab.windowId !== undefined) {
+    const windowTabs = await chrome.tabs.query({ windowId: tab.windowId })
+    partnerTabId = splitPartnerTabId(tab, windowTabs)
+  }
+  await openTabSidePanel(tab.id, partnerTabId)
 }
 
 // Whether the given tab's own panel is open right now. Chrome has no direct
