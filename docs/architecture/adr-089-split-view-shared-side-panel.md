@@ -20,9 +20,11 @@ ADR-050 之后 ENX 只有标签页面板，于是典型用法「左边中文译�
    - **每个打开入口自己拿到伙伴。** `openTabSidePanel(tabId, partnerTabId?)` 只负责在同一同步块里发出两边的调用，伙伴由调用方传入。background 的两个入口（右键菜单、整句翻译消息）读上面的缓存。popup 是另一个上下文，读不到 Service Worker 的内存：popup 挂载时本来就 `await tabs.query` 找活动标签页，顺带读它的 `splitViewId`，再在同一窗口里找同一 `splitViewId` 的另一个标签页，记下伙伴；点击时同步传入。点击早于这次查找完成时，沿用现有的 `openActiveTabSidePanel()` 后备，查完再一起打开（尽力而为）。
    - **Service Worker 冷启动。** 右键菜单或整句翻译消息唤醒 Service Worker 时，`tabs.query({})` 的建表还没完成。此时事件自带的 `tab` / `sender.tab` 上的 `splitViewId` 能同步看出它在分屏里，但伙伴未知：先在手势里同步打开所属标签页（即 ADR-050 的行为），再等建表完成后对伙伴尽力补一次 `setOptions` + `open()`；Chrome 因手势已失效拒绝时只记日志。结果是冷启动后的第一次打开可能只有一边有面板，用户再打开一次即两边都开，与 Decision 4 第三条同类。popup 入口不受影响。
 4. **两边同生同灭。**
-   - **哪边是所属、哪边是镜像，记在 `storage.session` 里。** 分屏关系只说明两个标签页在一起，分不出主从；Service Worker 重启后内存也没了。所以每次两边一起打开时，同步记下一条配对记录 `enx-split-panel-mirror:<镜像标签页>` → `{ ownerTabId }`（popup 与 background 共用 `lib/sidePanel.ts` 里的同一个写入函数，覆盖登记时先删掉两个标签页上的旧记录）。下面的清理都先读这条记录，不靠内存，所以重启后照样能找到镜像。
-   - **先删记录，再关另一边。** 收尾时先删配对记录，再关闭或注销另一边；另一边因此触发的 `onClosed` 找不到记录，什么也不做，不会互相递归关闭。
-   - **换主人引起的关闭不算用户关闭。** `onClosed` 带着被关面板的 `path`。如果 `path` 里的 `tabId` 不是这对记录当前的所属标签页（例如在另一边重新打开 ENX 换了主人，旧文档被替换），说明是被替换的旧面板，忽略，不关新面板。
+   - **哪边是所属、哪边是镜像，以 Chrome 里的登记为准，`storage.session` 里的记录只是索引。** 分屏关系只说明两个标签页在一起，分不出主从；Service Worker 重启后内存也没了。手势里同步发出的 `setOptions` 本身就是权威状态：每个标签页登记的 `path`（`sidePanel.getOptions({ tabId })` 可读回）里的 `tabId` 就是它的所属标签页。配对记录 `enx-split-panel-mirror:<镜像标签页>` → `{ ownerTabId }` 只用来在重启后找到镜像。
+   - **记录的写入和所有清理都在 background 的一个串行队列里，按事件顺序执行。** `storage.session` 是异步的，两个打开入口又在不同上下文，所以记录不能由各入口各自写。popup 在点击里同步发出两边的 `setOptions` + `open` 之后，再发消息把这对（所属、镜像）交给 background；background 自己的入口直接入队。`onClosed`、`onUpdated`（`splitViewId`）、`onRemoved` 的处理也进同一个队列，一步做完（含 `await`）再做下一步。
+   - **每一步先对照 Chrome 的当前登记再动手。** 写记录前读两边的 `getOptions`：两边的 `path` 都指向这次的所属标签页才写（先删掉两个标签页上的旧记录），否则说明已有更新的登记，跳过；这样 popup 与 background 的打开交错、消息晚到，最后的记录仍与最后一次登记一致。解除分屏或所属标签页关闭时，镜像的 `path` 仍指向记录里的所属标签页才注销镜像。
+   - **换主人引起的关闭不算用户关闭。** `onClosed` 带着被关面板的 `path`。它不等于该标签页当前登记的 `path`（`getOptions`）时，说明是被新登记替换掉的旧文档（例如在另一边重新打开 ENX 换了主人），忽略，不关新面板。这个判断只看 Chrome 的登记，不看记录，所以即使旧面板的 `onClosed` 早于新记录写入，也不会把替换后的面板关掉。
+   - **先删记录，再关另一边。** 收尾时先删配对记录，再关闭或注销另一边；另一边因此触发的 `onClosed` 在队列里排在后面，找不到记录，什么也不做，不会互相递归关闭。
    - 用户在任一边关闭面板（`sidePanel.onClosed`，Chrome 142+，与 manifest 的 `minimum_chrome_version` 一致）→ 关闭并注销另一边。
    - 分屏解除、或所属标签页关闭 → 注销镜像那边的登记（`setOptions({ tabId, enabled: false })`），不留一个指向已失效内容的面板。
    - 已打开面板的标签页之后才进入分屏：`onUpdated` 里没有用户手势，`open()` 会被拒绝，无法自动补开。用户在分屏里再点一次打开 ENX 侧边栏（任一路径）即可两边都开；不做自动补开。
@@ -44,3 +46,4 @@ ADR-050 之后 ENX 只有标签页面板，于是典型用法「左边中文译�
 ## 修订记录
 
 - 2026-11-16，issue #945（规格评审第 1 轮）：Decision 3 补充每个打开入口如何拿到伙伴（popup 挂载时自己查 `splitViewId`，background 读缓存），以及 Service Worker 冷启动时先只开所属一边、再尽力补开伙伴；Decision 4 新增存在 `storage.session` 的配对记录、先删记录再关另一边、按 `onClosed` 的 `path` 忽略换主人造成的关闭；Decision 5 把「内容属于谁」和「标签页上是否有打开的面板」分开，popup 在镜像标签页上显示「关闭」；Consequences 写明镜像那边的整句翻译会换主人。原因：popup 读不到 Service Worker 的内存；分屏关系分不出主从，重启后也找不回镜像；原 Decision 5 会让镜像上的 popup 按钮把关闭变成换主人；原 Consequences 与 Decision 2 矛盾。
+- 2026-11-16，issue #945（规格评审第 2 轮）：Decision 4 改为以 Chrome 的登记（`sidePanel.getOptions` 读回的 `path`）为所属关系的权威，配对记录只作重启后的索引；记录写入改由 background 的串行队列完成（popup 打开后发消息交给 background），清理处理也进同一队列，每步先对照 `getOptions`；换主人造成的 `onClosed` 按「被关的 `path` ≠ 当前登记的 `path`」忽略。原因：`storage.session` 是异步的，旧面板的 `onClosed` 可能早于新记录写入，按记录判断会把替换后的面板关掉；popup 与 background 交错打开时，各自写记录可能留下比最新登记更旧的记录。
