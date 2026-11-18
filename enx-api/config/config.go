@@ -346,6 +346,7 @@ func (c StripeCredits) Topup(tier string) int64 {
 }
 
 type StripeCosts struct {
+	Default    TokenPrice `mapstructure:"default"`
 	Translate  TokenPrice `mapstructure:"translate"`
 	Rephrase   TokenPrice `mapstructure:"rephrase"`
 	DefineWord TokenPrice `mapstructure:"define-word"`
@@ -501,6 +502,7 @@ func Load(path string) (*Config, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
+	cfg.resolveTokenPrices(k)
 	return cfg, nil
 }
 
@@ -515,7 +517,28 @@ func Default() *Config {
 	if err != nil {
 		panic(fmt.Sprintf("config: defaults do not decode: %v", err))
 	}
+	cfg.resolveTokenPrices(k)
 	return cfg
+}
+
+// resolveTokenPrices runs after validation so discarded sections cannot hide negatives.
+func (c *Config) resolveTokenPrices(k *koanf.Koanf) {
+	resolve := func(name string, price TokenPrice) TokenPrice {
+		if k.Exists("stripe.costs."+name+".weight-in") && k.Exists("stripe.costs."+name+".weight-out") && k.Exists("stripe.costs."+name+".divisor") {
+			return price
+		}
+		return TokenPrice{}
+	}
+	fallback := resolve("default", c.Stripe.Costs.Default)
+	feature := func(name string, price TokenPrice) TokenPrice {
+		if !k.Exists("stripe.costs."+name+".weight-in") && !k.Exists("stripe.costs."+name+".weight-out") && !k.Exists("stripe.costs."+name+".divisor") {
+			return fallback
+		}
+		return resolve(name, price)
+	}
+	c.Stripe.Costs.Translate = feature("translate", c.Stripe.Costs.Translate)
+	c.Stripe.Costs.Rephrase = feature("rephrase", c.Stripe.Costs.Rephrase)
+	c.Stripe.Costs.DefineWord = feature("define-word", c.Stripe.Costs.DefineWord)
 }
 
 // searchDirs are where Load looks for config.toml when no -c is given, first
@@ -636,6 +659,7 @@ func (c *Config) Validate() error {
 	notNegative("stripe.credits.topup-medium", cr.TopupMedium >= 0)
 	notNegative("stripe.credits.topup-large", cr.TopupLarge >= 0)
 	for name, p := range map[string]TokenPrice{
+		"default":     c.Stripe.Costs.Default,
 		"translate":   c.Stripe.Costs.Translate,
 		"rephrase":    c.Stripe.Costs.Rephrase,
 		"define-word": c.Stripe.Costs.DefineWord,
@@ -777,14 +801,6 @@ func defaults() map[string]any {
 	set("stripe.credits.topup-small", 0)
 	set("stripe.credits.topup-medium", 0)
 	set("stripe.credits.topup-large", 0)
-	// Token pricing (ADR-014, ADR-012, ADR-045) defaults to 0 so an
-	// unconfigured deployment fails closed; k8s (no config.toml) sets the
-	// values via env.
-	for _, feature := range []string{"translate", "rephrase", "define-word"} {
-		set("stripe.costs."+feature+".weight-in", 0)
-		set("stripe.costs."+feature+".weight-out", 0)
-		set("stripe.costs."+feature+".divisor", 0)
-	}
 	// Daily dictionary lookup ceilings per tier (ADR-029, ADR-059 Decision
 	// 6): free is the product limit, subscribed a backstop against scripts.
 	set("stripe.quota.dictionary-lookup-daily-free", 2000)
@@ -936,6 +952,9 @@ var envBindings = map[string]string{
 	"stripe.credits.topup-medium":          "STRIPE_CREDITS_TOPUP_MEDIUM",
 	"stripe.credits.topup-large":           "STRIPE_CREDITS_TOPUP_LARGE",
 
+	"stripe.costs.default.weight-in":      "STRIPE_COSTS_DEFAULT_WEIGHT_IN",
+	"stripe.costs.default.weight-out":     "STRIPE_COSTS_DEFAULT_WEIGHT_OUT",
+	"stripe.costs.default.divisor":        "STRIPE_COSTS_DEFAULT_DIVISOR",
 	"stripe.costs.translate.weight-in":    "STRIPE_COSTS_TRANSLATE_WEIGHT_IN",
 	"stripe.costs.translate.weight-out":   "STRIPE_COSTS_TRANSLATE_WEIGHT_OUT",
 	"stripe.costs.translate.divisor":      "STRIPE_COSTS_TRANSLATE_DIVISOR",
