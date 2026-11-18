@@ -73,6 +73,13 @@ func (b *Bedrock) TranslateSentence(ctx context.Context, text string) (string, a
 	return b.converse(ctx, "translate_sentence", sentence.SystemPrompt, text)
 }
 
+// chat is converse as the llm.Chat the feature packages call. Converse
+// requests here set no temperature, so the feature's temperature is
+// dropped, as it was before the feature packages took over the call.
+func (b *Bedrock) chat(ctx context.Context, feature string, _ float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
+	return b.converse(ctx, feature, systemPrompt, userContent)
+}
+
 func (b *Bedrock) converse(ctx context.Context, feature, systemPrompt, userContent string) (string, aiusage.Usage, error) {
 	callCtx, cancel := context.WithTimeout(ctx, b.timeout)
 	defer cancel()

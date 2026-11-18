@@ -2,35 +2,13 @@ package openrouter
 
 import (
 	"context"
-	"fmt"
 
 	"enx-api/aitranslate/aiusage"
 	"enx-api/aitranslate/sentenceword"
 )
 
 // TranslateSentenceWithWord implements aitranslate.Translator's combined
-// call (ADR-014): one OpenRouter request returns both the whole-sentence
-// translation and the target word's in-context meaning as JSON.
-// sentenceword.ParseResult is lenient about fences and stray prose; a
-// missing word gloss is tolerated (empty Result.WordChinese), a missing
-// sentence translation is an error. The token usage from the API response
-// is returned so the caller bills by actual consumption.
+// call (ADR-014); see sentenceword.Call.
 func (o *OpenRouter) TranslateSentenceWithWord(ctx context.Context, sentence, word string) (sentenceword.Result, aiusage.Usage, error) {
-	content, u, err := o.chat(
-		ctx,
-		"translate_sentence_with_word",
-		o.model,
-		sentenceword.Temperature,
-		sentenceword.SystemPrompt,
-		fmt.Sprintf("Sentence: %s\nWord: %s", sentence, word),
-	)
-	if err != nil {
-		return sentenceword.Result{}, u, err
-	}
-
-	res, err := sentenceword.ParseResult(content)
-	if err != nil {
-		return sentenceword.Result{}, u, err
-	}
-	return res, u, nil
+	return sentenceword.Call(ctx, o.chatWith(o.model), sentence, word)
 }
