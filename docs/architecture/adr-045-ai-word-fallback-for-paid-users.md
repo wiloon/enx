@@ -6,6 +6,7 @@
 | 字段 | 值 |
 | --- | --- |
 | **状态** | Accepted — 2026-10-01（维护者审阅全文通过；维护者在讨论中逐条确认了下列决定；本文据此起草，待维护者审阅。**它部分取代 ADR-030 的 Decision 5、Decision 6 与 Options D2**，见 Decision 0） |
+| **修订（2026-11-17）** | Decision 6「分数不够：展示给当事用户，不入库」被 [ADR-091](adr-091-ai-candidate-definitions.md) 修订：没写进 `words` 的 AI 释义（分数不够或当天写入次数用完）存入共享的候选表，有资格的用户从这里命中、不再重复调 AI，管理员审核后才进 `words`。Options B1 的否决理由因此不再成立，见 ADR-091。 |
 | **日期** | 2026-09-30 |
 | **关联** | [`adr-030-dictionary-provider-chain-and-fallback-sources.md`](adr-030-dictionary-provider-chain-and-fallback-sources.md)（provider 链；本文取代其中 AI 兜底的存储与计费部分）、[`adr-044-server-side-user-preferences.md`](adr-044-server-side-user-preferences.md)（开关）、[`adr-018-dictionary-lookup-single-metered-seam.md`](adr-018-dictionary-lookup-single-metered-seam.md)（`Resolve` 是唯一查词入口）、[`adr-024-word-context-dictionary-first-why.md`](adr-024-word-context-dictionary-first-why.md)（句内释义，不变）、[`adr-014-sidepanel-clicked-word-and-token-billing.md`](adr-014-sidepanel-clicked-word-and-token-billing.md)（按 token 计费）、[`adr-021-enx-ui-admin-dictionary-maintenance.md`](adr-021-enx-ui-admin-dictionary-maintenance.md)、[`adr-026-user-reported-definition-issues.md`](adr-026-user-reported-definition-issues.md)、[`adr-043-words-english-case-insensitive-unique.md`](adr-043-words-english-case-insensitive-unique.md) |
 
