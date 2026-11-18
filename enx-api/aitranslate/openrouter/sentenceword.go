@@ -25,12 +25,12 @@ func (o *OpenRouter) TranslateSentenceWithWord(ctx context.Context, sentence, wo
 		fmt.Sprintf("Sentence: %s\nWord: %s", sentence, word),
 	)
 	if err != nil {
-		return sentenceword.Result{}, toUsage(u), err
+		return sentenceword.Result{}, u, err
 	}
 
 	res, err := sentenceword.ParseResult(content)
 	if err != nil {
-		return sentenceword.Result{}, toUsage(u), err
+		return sentenceword.Result{}, u, err
 	}
-	return res, toUsage(u), nil
+	return res, u, nil
 }

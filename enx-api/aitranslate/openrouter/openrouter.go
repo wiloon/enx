@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"enx-api/aitranslate/aiusage"
+	"enx-api/aitranslate/openaicompat"
 	"enx-api/aitranslate/sentence"
-	"enx-api/utils/logger"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -95,18 +95,6 @@ func New(c config.OpenAICompatible, timeout time.Duration) (*OpenRouter, error) 
 	}, nil
 }
 
-type chatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type chatRequest struct {
-	Model       string        `json:"model"`
-	Messages    []chatMessage `json:"messages"`
-	Temperature float64       `json:"temperature"`
-	Reasoning   reasoning     `json:"reasoning"`
-}
-
 // reasoning is OpenRouter's reasoning switch
 // (https://openrouter.ai/docs/use-cases/reasoning-tokens). Models that
 // support reasoning use it by default (deepseek-v4.1-flash: effort high),
@@ -118,66 +106,16 @@ type reasoning struct {
 
 var reasoningDisabled = reasoning{Enabled: false}
 
-// usage mirrors the OpenAI-compatible "usage" object OpenRouter returns
-// alongside every response, regardless of which upstream vendor served it.
-type usage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
-}
-
-type chatResponse struct {
-	Choices []struct {
-		Message chatMessage `json:"message"`
-	} `json:"choices"`
-	Usage usage `json:"usage"`
-}
-
 func (o *OpenRouter) TranslateSentence(ctx context.Context, text string) (string, aiusage.Usage, error) {
-	out, u, err := o.chat(ctx, "translate_sentence", o.model, sentence.Temperature, sentence.SystemPrompt, text)
-	return out, toUsage(u), err
+	return o.chat(ctx, "translate_sentence", o.model, sentence.Temperature, sentence.SystemPrompt, text)
 }
 
-func toUsage(u usage) aiusage.Usage {
-	return aiusage.Usage{
-		PromptTokens:     u.PromptTokens,
-		CompletionTokens: u.CompletionTokens,
-		TotalTokens:      u.TotalTokens,
-	}
-}
-
-func (o *OpenRouter) chat(ctx context.Context, feature, model string, temperature float64, systemPrompt, userContent string) (string, usage, error) {
-	var result chatResponse
-	resp, err := o.client.R().
-		SetContext(ctx).
-		SetHeader("Authorization", "Bearer "+o.apiKey).
-		SetHeader("Content-Type", "application/json").
-		SetHeader("HTTP-Referer", siteURL).
-		SetHeader("X-Title", siteName).
-		SetBody(chatRequest{
-			Model: model,
-			Messages: []chatMessage{
-				{Role: "system", Content: systemPrompt},
-				{Role: "user", Content: userContent},
-			},
-			Temperature: temperature,
-			Reasoning:   reasoningDisabled,
-		}).
-		SetResult(&result).
-		Post(o.baseURL + "/chat/completions")
-
-	if err != nil {
-		return "", usage{}, fmt.Errorf("openrouter: request failed: %w", err)
-	}
-	if resp.StatusCode() != 200 {
-		return "", usage{}, fmt.Errorf("openrouter: unexpected status %d: %s", resp.StatusCode(), resp.String())
-	}
-	if len(result.Choices) == 0 {
-		return "", usage{}, fmt.Errorf("openrouter: empty response")
-	}
-
-	logger.Infof("aitranslate: usage provider=openrouter feature=%s model=%s input_chars=%d prompt_tokens=%d completion_tokens=%d total_tokens=%d",
-		feature, model, len(userContent), result.Usage.PromptTokens, result.Usage.CompletionTokens, result.Usage.TotalTokens)
-
-	return result.Choices[0].Message.Content, result.Usage, nil
+func (o *OpenRouter) chat(ctx context.Context, feature, model string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
+	return openaicompat.Chat(ctx, o.client, openaicompat.Endpoint{
+		Provider: "openrouter",
+		BaseURL:  o.baseURL,
+		APIKey:   o.apiKey,
+		Headers:  map[string]string{"HTTP-Referer": siteURL, "X-Title": siteName},
+		Extra:    map[string]any{"reasoning": reasoningDisabled},
+	}, openaicompat.Prompt{Feature: feature, Model: model, Temperature: temperature, System: systemPrompt, User: userContent})
 }

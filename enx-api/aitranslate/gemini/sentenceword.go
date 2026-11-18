@@ -25,12 +25,12 @@ func (g *Gemini) TranslateSentenceWithWord(ctx context.Context, sentence, word s
 		fmt.Sprintf("Sentence: %s\nWord: %s", sentence, word),
 	)
 	if err != nil {
-		return sentenceword.Result{}, toUsage(u), err
+		return sentenceword.Result{}, u, err
 	}
 
 	res, err := sentenceword.ParseResult(content)
 	if err != nil {
-		return sentenceword.Result{}, toUsage(u), err
+		return sentenceword.Result{}, u, err
 	}
-	return res, toUsage(u), nil
+	return res, u, nil
 }

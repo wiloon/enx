@@ -22,12 +22,12 @@ func (d *DeepSeek) DefineWord(ctx context.Context, word string) (worddef.Result,
 		worddef.BuildUserContent(word),
 	)
 	if err != nil {
-		return worddef.Result{}, toUsage(u), err
+		return worddef.Result{}, u, err
 	}
 
 	res, err := worddef.ParseResult(content)
 	if err != nil {
-		return worddef.Result{}, toUsage(u), err
+		return worddef.Result{}, u, err
 	}
-	return res, toUsage(u), nil
+	return res, u, nil
 }

@@ -40,9 +40,9 @@ func (m *MiniMax) TranslateSentenceWithWord(ctx context.Context, sentence, word 
 			fmt.Sprintf("Sentence: %s\nWord: %s", sentence, word),
 		)
 		if err != nil {
-			return sentenceword.Result{}, sumUsage(total, toUsage(u)), err
+			return sentenceword.Result{}, sumUsage(total, u), err
 		}
-		total = sumUsage(total, toUsage(u))
+		total = sumUsage(total, u)
 
 		res, err := sentenceword.ParseResult(content)
 		if err == nil {
