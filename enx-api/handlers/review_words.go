@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"enx-api/middleware"
+	"enx-api/platform/httpjson"
 	"enx-api/repo"
 	"enx-api/utils/logger"
 
@@ -32,13 +33,13 @@ func NewReviewWordsHandler(words ReviewWordLister) *ReviewWordsHandler {
 func (h *ReviewWordsHandler) List(c *gin.Context) {
 	userID := middleware.GetUserIDFromContext(c)
 	if userID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Invalid session"})
+		httpjson.Fail(c, http.StatusUnauthorized, "Invalid session")
 		return
 	}
 	words, err := h.words.List(c.Request.Context(), userID)
 	if err != nil {
 		logger.Errorf("review words for %s: %v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to load your review list"})
+		httpjson.Fail(c, http.StatusInternalServerError, "Failed to load your review list")
 		return
 	}
 	out := make([][2]any, len(words))

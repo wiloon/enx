@@ -11,6 +11,7 @@ import (
 	"enx-api/enx"
 	"enx-api/metrics"
 	"enx-api/middleware"
+	"enx-api/platform/httpjson"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
@@ -80,10 +81,10 @@ func (h *Handler) translateWord(c *gin.Context, raw string) {
 	userId := middleware.GetUserIDFromContext(c)
 	if userId == "" {
 		logger.Errorf("no valid user id found in session")
-		c.JSON(401, gin.H{
-			"success": false,
-			"message": "Invalid session",
-		})
+		httpjson.Fail(c, 401,
+
+			"Invalid session")
+
 		return
 	}
 
@@ -115,7 +116,7 @@ func (h *Handler) translateWord(c *gin.Context, raw string) {
 		// Only the sentinel above means something to the client; any
 		// other error must never be passed off as "word not found" (#17).
 		logger.Errorf("translate word %s: %v", word.English, err)
-		c.JSON(502, gin.H{"success": false, "message": "Dictionary lookup failed"})
+		httpjson.Fail(c, 502, "Dictionary lookup failed")
 		return
 	}
 

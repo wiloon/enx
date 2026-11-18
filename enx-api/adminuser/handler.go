@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"enx-api/billing/creditledger"
+	"enx-api/platform/httpjson"
 	"enx-api/utils/logger"
 )
 
@@ -26,19 +27,19 @@ func (h *Handler) List(c *gin.Context) {
 	limit, okLimit := intQuery(c, "limit")
 	offset, okOffset := intQuery(c, "offset")
 	if !okLimit || !okOffset {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "limit and offset must be whole numbers"})
+		httpjson.Fail(c, http.StatusBadRequest, "limit and offset must be whole numbers")
 		return
 	}
 	page, err := h.svc.List(c.Request.Context(), ListParams{
 		Query: c.Query("q"), Sort: Sort(c.Query("sort")), Limit: limit, Offset: offset,
 	})
 	if errors.Is(err, ErrInvalidSort) {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "sort must be created, last_login or balance"})
+		httpjson.Fail(c, http.StatusBadRequest, "sort must be created, last_login or balance")
 		return
 	}
 	if err != nil {
 		logger.Errorf("admin users: list: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to list users"})
+		httpjson.Fail(c, http.StatusInternalServerError, "failed to list users")
 		return
 	}
 	users := make([]gin.H, len(page.Users))
@@ -52,12 +53,12 @@ func (h *Handler) List(c *gin.Context) {
 func (h *Handler) Detail(c *gin.Context) {
 	d, err := h.svc.Detail(c.Request.Context(), c.Param("id"))
 	if errors.Is(err, ErrUserNotFound) {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "no such user"})
+		httpjson.Fail(c, http.StatusNotFound, "no such user")
 		return
 	}
 	if err != nil {
 		logger.Errorf("admin users: detail %s: %v", c.Param("id"), err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to load user"})
+		httpjson.Fail(c, http.StatusInternalServerError, "failed to load user")
 		return
 	}
 
@@ -85,23 +86,23 @@ func (h *Handler) Detail(c *gin.Context) {
 func (h *Handler) Transactions(c *gin.Context) {
 	limit, ok := intQuery(c, "limit")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "limit must be a whole number"})
+		httpjson.Fail(c, http.StatusBadRequest, "limit must be a whole number")
 		return
 	}
 	page, err := h.svc.Transactions(c.Request.Context(), c.Param("id"), c.Query("before"), c.Query("direction"), limit)
 	switch {
 	case errors.Is(err, ErrUserNotFound):
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "no such user"})
+		httpjson.Fail(c, http.StatusNotFound, "no such user")
 		return
 	case errors.Is(err, creditledger.ErrInvalidCursor):
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "before is not a valid cursor"})
+		httpjson.Fail(c, http.StatusBadRequest, "before is not a valid cursor")
 		return
 	case errors.Is(err, creditledger.ErrInvalidDirection):
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "direction must be in or out"})
+		httpjson.Fail(c, http.StatusBadRequest, "direction must be in or out")
 		return
 	case err != nil:
 		logger.Errorf("admin users: transactions %s: %v", c.Param("id"), err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to load transactions"})
+		httpjson.Fail(c, http.StatusInternalServerError, "failed to load transactions")
 		return
 	}
 	rows := make([]gin.H, len(page.Entries))

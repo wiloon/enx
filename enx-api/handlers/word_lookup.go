@@ -9,6 +9,7 @@ import (
 	dictionaryhttp "enx-api/dictionary/httpapi"
 	entadapters "enx-api/entitlement/adapters"
 	"enx-api/middleware"
+	"enx-api/platform/httpjson"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
@@ -57,30 +58,30 @@ func NewWordLookupHandlerWithSubscriptions(lookups WordLookupRecorder, subs dict
 func (h *WordLookupHandler) Record(c *gin.Context) {
 	userId := middleware.GetUserIDFromContext(c)
 	if userId == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "Invalid session",
-		})
+		httpjson.Fail(c, http.StatusUnauthorized,
+
+			"Invalid session")
+
 		return
 	}
 
 	var req wordLookupRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.WordID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "A word id is required."})
+		httpjson.Fail(c, http.StatusBadRequest, "A word id is required.")
 		return
 	}
 
 	qc, known, err := h.lookups.Record(c.Request.Context(), userId, req.WordID)
 	switch {
 	case errors.Is(err, dictionary.ErrWordNotFound):
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Word not found"})
+		httpjson.Fail(c, http.StatusNotFound, "Word not found")
 		return
 	case errors.Is(err, dictionary.ErrQuotaExceeded):
 		dictionaryhttp.RespondQuotaExceededWithSubscriptions(c, userId, h.subscriptions)
 		return
 	case err != nil:
 		logger.Errorf("RecordWordLookup: record %s for %s: %v", req.WordID, userId, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to record the lookup"})
+		httpjson.Fail(c, http.StatusInternalServerError, "Failed to record the lookup")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"queryCount": qc, "known": known})

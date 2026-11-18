@@ -8,6 +8,7 @@ import (
 
 	"enx-api/billing/creditledger"
 	"enx-api/middleware"
+	"enx-api/platform/httpjson"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
@@ -42,7 +43,7 @@ func (h *CreditHistoryHandler) List(c *gin.Context) {
 	if v := c.Query("limit"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "limit must be a whole number"})
+			httpjson.Fail(c, http.StatusBadRequest, "limit must be a whole number")
 			return
 		}
 		limit = n
@@ -50,14 +51,14 @@ func (h *CreditHistoryHandler) List(c *gin.Context) {
 	page, err := h.ledger.Page(c.Request.Context(), userID, c.Query("before"), c.Query("direction"), limit)
 	switch {
 	case errors.Is(err, creditledger.ErrInvalidCursor):
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "before is not a valid cursor"})
+		httpjson.Fail(c, http.StatusBadRequest, "before is not a valid cursor")
 		return
 	case errors.Is(err, creditledger.ErrInvalidDirection):
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "direction must be in or out"})
+		httpjson.Fail(c, http.StatusBadRequest, "direction must be in or out")
 		return
 	case err != nil:
 		logger.Errorf("credit history: %s: %v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to load your credit history"})
+		httpjson.Fail(c, http.StatusInternalServerError, "failed to load your credit history")
 		return
 	}
 	rows := make([]userTransactionJSON, len(page.Entries))

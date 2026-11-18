@@ -3,6 +3,7 @@ package stats
 import (
 	"context"
 	"enx-api/config"
+	"enx-api/platform/httpjson"
 	"errors"
 	"net/http"
 	"strconv"
@@ -71,7 +72,7 @@ func IngestHandler(limits config.StatsIngest) gin.HandlerFunc {
 func ingest(c *gin.Context, limits config.StatsIngest) {
 	var req ingestRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid request body"})
+		httpjson.Fail(c, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
@@ -93,11 +94,11 @@ func ingest(c *gin.Context, limits config.StatsIngest) {
 	}, time.Now(), limits.MaxWordsPerReport)
 	if err != nil {
 		if errors.Is(err, ErrInvalidDate) || errors.Is(err, ErrMissingEventID) {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+			httpjson.Fail(c, http.StatusBadRequest, err.Error())
 			return
 		}
 		logger.Errorf("stats: ingest failed for user %s: %v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not record statistics"})
+		httpjson.Fail(c, http.StatusInternalServerError, "could not record statistics")
 		return
 	}
 
@@ -122,11 +123,11 @@ func OverviewHandler(c *gin.Context) {
 	overview, err := GetOverview(c.Request.Context(), userID, date, now)
 	if err != nil {
 		if errors.Is(err, ErrInvalidDate) {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+			httpjson.Fail(c, http.StatusBadRequest, err.Error())
 			return
 		}
 		logger.Errorf("stats: overview failed for user %s: %v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not load statistics"})
+		httpjson.Fail(c, http.StatusInternalServerError, "could not load statistics")
 		return
 	}
 	c.JSON(http.StatusOK, overview)
@@ -139,25 +140,25 @@ func SeriesHandler(c *gin.Context) {
 
 	period, err := ParsePeriod(c.Query("period"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		httpjson.Fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	to, err := parseDateParam(c.Query("to"), LocalDateFor(now, OffsetFromRequest(c)))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		httpjson.Fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
 	from, err := parseDateParam(c.Query("from"), to.AddDate(0, 0, -29).Format(DateLayout))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		httpjson.Fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	points, err := GetSeries(c.Request.Context(), userID, period, from, to, LocalDateFor(now, OffsetFromRequest(c)))
 	if err != nil {
 		logger.Errorf("stats: series failed for user %s: %v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not load statistics"})
+		httpjson.Fail(c, http.StatusInternalServerError, "could not load statistics")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"period": string(period), "points": points})

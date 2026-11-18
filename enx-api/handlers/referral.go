@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"enx-api/middleware"
+	"enx-api/platform/httpjson"
 	"enx-api/referral"
 	"enx-api/utils/logger"
 
@@ -39,7 +40,7 @@ func (h *ReferralHandler) Me(c *gin.Context) {
 	sum, err := h.svc.Me(c.Request.Context(), userID)
 	if err != nil {
 		logger.Errorf("referral: me %s: %v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to load your invites"})
+		httpjson.Fail(c, http.StatusInternalServerError, "failed to load your invites")
 		return
 	}
 	pending := make([]gin.H, len(sum.Pending))
@@ -77,7 +78,7 @@ var referralClaimMessages = map[referral.Reason]string{
 func (h *ReferralHandler) Claim(c *gin.Context) {
 	var req referralClaimRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "code is required"})
+		httpjson.Fail(c, http.StatusBadRequest, "code is required")
 		return
 	}
 	userID := middleware.GetUserIDFromContext(c)
@@ -89,7 +90,7 @@ func (h *ReferralHandler) Claim(c *gin.Context) {
 	}
 	if err != nil {
 		logger.Errorf("referral: claim by %s: %v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to claim the invite"})
+		httpjson.Fail(c, http.StatusInternalServerError, "failed to claim the invite")
 		return
 	}
 	var expiresAt *int64

@@ -10,6 +10,7 @@ import (
 	dictionaryhttp "enx-api/dictionary/httpapi"
 	"enx-api/enx"
 	"enx-api/middleware"
+	"enx-api/platform/httpjson"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
@@ -30,7 +31,7 @@ type aiWordRequest struct {
 func (h *Handler) AIWord(c *gin.Context) {
 	userID := middleware.GetUserIDFromContext(c)
 	if userID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Invalid session"})
+		httpjson.Fail(c, http.StatusUnauthorized, "Invalid session")
 		return
 	}
 	if h.ai == nil {

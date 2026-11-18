@@ -7,6 +7,7 @@ import (
 	"enx-api/aitranslate/rephrase"
 	"enx-api/billing/credit"
 	"enx-api/middleware"
+	"enx-api/platform/httpjson"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
@@ -49,21 +50,21 @@ type rephraseRequest struct {
 func (h *RephraseHandler) Rephrase(c *gin.Context) {
 	var req rephraseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "input is required"})
+		httpjson.Fail(c, http.StatusBadRequest, "input is required")
 		return
 	}
 	if utf8.RuneCountInString(req.Input) > maxRephraseInputRunes {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Input is too long (max 200 characters)."})
+		httpjson.Fail(c, http.StatusBadRequest, "Input is too long (max 200 characters).")
 		return
 	}
 
 	if h.rephraser == nil {
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "Rephrase is not configured."})
+		httpjson.Fail(c, http.StatusBadGateway, "Rephrase is not configured.")
 		return
 	}
 	if !h.pricing.Priced() {
 		logger.Errorf("aitranslate: rephrase is unpriced (%+v)", h.pricing)
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "Rephrase service unavailable."})
+		httpjson.Fail(c, http.StatusBadGateway, "Rephrase service unavailable.")
 		return
 	}
 
@@ -76,11 +77,11 @@ func (h *RephraseHandler) Rephrase(c *gin.Context) {
 	balance, err := h.ledger.Balance(c.Request.Context(), userID)
 	if err != nil {
 		logger.Errorf("aitranslate: rephrase balance check failed: %v", err)
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "Rephrase service unavailable."})
+		httpjson.Fail(c, http.StatusBadGateway, "Rephrase service unavailable.")
 		return
 	}
 	if balance < 1 {
-		c.JSON(http.StatusPaymentRequired, gin.H{"success": false, "message": "Insufficient credits. Top up or subscribe to continue."})
+		httpjson.Fail(c, http.StatusPaymentRequired, "Insufficient credits. Top up or subscribe to continue.")
 		return
 	}
 	if refuseOverTrialLimit(c, h.trialGate, userID) {
@@ -90,7 +91,7 @@ func (h *RephraseHandler) Rephrase(c *gin.Context) {
 	result, err := h.rephraser.Rephrase(c.Request.Context(), req.Input)
 	if err != nil {
 		logger.Errorf("aitranslate: Rephrase failed: %v", err)
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "Rephrase service unavailable."})
+		httpjson.Fail(c, http.StatusBadGateway, "Rephrase service unavailable.")
 		return
 	}
 
