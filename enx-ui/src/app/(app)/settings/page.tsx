@@ -9,6 +9,7 @@ import { apiService } from '@/services/api'
 import type { PreferencesData } from '@/types'
 import PageHeader from '@/components/app/PageHeader'
 import DeleteAccountCard from '@/components/app/DeleteAccountCard'
+import { unwrap } from '@/lib/apiResult'
 
 const PREFERENCES_KEY = ['preferences']
 
@@ -22,8 +23,7 @@ export default function SettingsPage() {
     queryKey: PREFERENCES_KEY,
     queryFn: async () => {
       const resp = await apiService.getPreferences()
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load settings')
+      return unwrap(resp, 'Failed to load settings')
     },
   })
 
@@ -32,8 +32,7 @@ export default function SettingsPage() {
       const resp = await apiService.updatePreferences({
         aiWordFallback: enabled,
       })
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Could not save the setting')
+      return unwrap(resp, 'Could not save the setting')
     },
     // The server answers with the full set, so show exactly what it holds
     // rather than what we assume it holds.

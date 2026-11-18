@@ -28,6 +28,7 @@ import type {
   WordListStatus,
 } from '@/types'
 import PageHeader from '@/components/app/PageHeader'
+import { unwrap } from '@/lib/apiResult'
 
 const PAGE_SIZE = 50
 // How long a removed word can still be brought back with Undo before the
@@ -200,8 +201,7 @@ export default function WordListPage() {
         limit: PAGE_SIZE,
         offset: pageParam,
       })
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load your word list')
+      return unwrap(resp, 'Failed to load your word list')
     },
     getNextPageParam: (last, pages) => {
       const loaded = pages.reduce((n, p) => n + p.words.length, 0)

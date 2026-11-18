@@ -13,6 +13,7 @@ import { joinDateLabel } from '@/lib/accountProfile'
 import { totalCredits } from '@/lib/credits'
 import { subscriptionStatusLabel } from '@/lib/plans'
 import { apiService } from '@/services/api'
+import { unwrap } from '@/lib/apiResult'
 
 const linkClass = 'text-sm font-medium text-brand hover:underline'
 
@@ -91,8 +92,7 @@ function PlanCard() {
     queryKey: ['billing-me'],
     queryFn: async () => {
       const resp = await apiService.getBillingMe()
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load billing status')
+      return unwrap(resp, 'Failed to load billing status')
     },
   })
 
@@ -140,8 +140,7 @@ function InviteCard() {
     queryKey: ['referral-me'],
     queryFn: async () => {
       const resp = await apiService.getReferralMe()
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load your invites')
+      return unwrap(resp, 'Failed to load your invites')
     },
   })
 

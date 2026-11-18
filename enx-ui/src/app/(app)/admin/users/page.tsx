@@ -12,6 +12,7 @@ import PageHeader from '@/components/app/PageHeader'
 import { utcDate } from '@/lib/adminUsers'
 import { apiService } from '@/services/api'
 import type { AdminUserSort, AdminUserSummary } from '@/types'
+import { unwrap } from '@/lib/apiResult'
 
 const PAGE_SIZE = 50
 
@@ -43,8 +44,7 @@ export default function AdminUsersPage() {
         limit: PAGE_SIZE,
         offset,
       })
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load users')
+      return unwrap(resp, 'Failed to load users')
     },
   })
 

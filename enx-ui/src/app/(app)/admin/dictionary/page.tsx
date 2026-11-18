@@ -10,6 +10,7 @@ import { apiService } from '@/services/api'
 import WordEditor from '@/components/admin/WordEditor'
 import type { AdminEcdictRow, AdminWordRow } from '@/types'
 import PageHeader from '@/components/app/PageHeader'
+import { unwrap } from '@/lib/apiResult'
 
 type Consistency =
   | { kind: 'loading' }
@@ -125,8 +126,7 @@ export default function AdminDictionaryPage() {
     queryKey: ['admin-word', word],
     queryFn: async () => {
       const resp = await apiService.adminGetWord(word)
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load words-table row')
+      return unwrap(resp, 'Failed to load words-table row')
     },
     enabled: !!word,
   })
@@ -135,8 +135,7 @@ export default function AdminDictionaryPage() {
     queryKey: ['admin-ecdict', word],
     queryFn: async () => {
       const resp = await apiService.adminGetEcdict(word)
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load ECDICT row')
+      return unwrap(resp, 'Failed to load ECDICT row')
     },
     enabled: !!word,
   })

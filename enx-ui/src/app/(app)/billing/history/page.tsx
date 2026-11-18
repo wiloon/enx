@@ -7,11 +7,11 @@ import PageHeader from '@/components/app/PageHeader'
 import CreditTimeline from '@/components/app/CreditTimeline'
 import { apiService } from '@/services/api'
 import type { CreditDirection } from '@/types'
+import { unwrap } from '@/lib/apiResult'
 
 async function loadPage(before: string, direction: CreditDirection) {
   const resp = await apiService.listCreditTransactions(before, direction)
-  if (resp.success && resp.data) return resp.data
-  throw new Error(resp.error || 'Failed to load your credit history')
+  return unwrap(resp, 'Failed to load your credit history')
 }
 
 // Every credit added to or used from the user's balance (ADR-063), linked
