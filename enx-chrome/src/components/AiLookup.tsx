@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useAtomValue } from 'jotai'
 import { LockClosedIcon, SparklesIcon } from '@heroicons/react/20/solid'
 import { billingUrl, stopAutomaticAiLookup } from '@/lib/aiLookup'
@@ -143,7 +143,7 @@ const automaticAiStoppedMessage =
 // Marks a definition a model wrote, so the user knows it did not come from the
 // dictionary. It is also the permanent way to switch automatic AI lookup off,
 // so that is one click from the result and nobody has to find a settings page.
-export function AiBadge() {
+export function AiDefinition({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false)
   const [auto, setAuto] = useState<AutoState>('loading')
 
@@ -169,23 +169,36 @@ export function AiBadge() {
   }
 
   return (
-    <span className="relative inline-block">
-      <button
-        type="button"
-        data-testid="word-popover-ai-badge"
-        onClick={toggle}
-        aria-expanded={open}
-        className="inline-flex items-center rounded-sm border border-brand/40 px-1 text-[10px] font-semibold leading-4 text-brand hover:bg-brand-muted"
-        title="Defined by AI. Click for options."
-      >
-        AI
-      </button>
+    <>
+      <p className="text-sm leading-relaxed text-foreground">
+        {children}{' '}
+        <button
+          type="button"
+          data-testid="word-popover-ai-badge"
+          onClick={toggle}
+          aria-expanded={open}
+          className="inline-flex items-center rounded-sm border border-border px-1 text-[10px] font-semibold leading-4 text-muted-foreground align-middle hover:bg-muted active:bg-muted focus-visible:outline-2 focus-visible:outline-brand"
+          title="Defined by AI. Click for options."
+        >
+          AI
+        </button>
+      </p>
       {open && (
         <div
           data-testid="word-popover-ai-menu"
           className="mt-1 space-y-1 rounded-sm border border-border bg-background p-2 text-xs text-muted-foreground"
         >
           <p>This definition was written by AI, not the dictionary.</p>
+          <a
+            href={`chrome-extension://${chrome.runtime.id}/options.html`}
+            onClick={event => {
+              event.preventDefault()
+              void chrome.runtime.sendMessage({ type: 'openOptionsPage' })
+            }}
+            className="block text-brand hover:underline active:text-brand/70 focus-visible:outline-2 focus-visible:outline-brand"
+          >
+            Extension options
+          </a>
           {auto === 'loading' && <p>Checking your AI setting…</p>}
           {auto === 'on' && (
             <button
@@ -204,7 +217,7 @@ export function AiBadge() {
           )}
         </div>
       )}
-    </span>
+    </>
   )
 }
 

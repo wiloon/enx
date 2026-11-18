@@ -101,6 +101,10 @@ func TestAIWordWithoutARowHasNoReviewState(t *testing.T) {
 	if body := decode(t, w); body["found"] != true {
 		t.Fatalf("body = %+v, want the definition shown", body)
 	}
+	word := decode(t, w)["word"].(map[string]any)
+	if _, present := word["LoadCount"]; present {
+		t.Fatalf("word = %+v, want LoadCount omitted without a row", word)
+	}
 	if len(reviews.read) != 0 {
 		t.Fatalf("review state read for %v, want nothing for a word with no row", reviews.read)
 	}

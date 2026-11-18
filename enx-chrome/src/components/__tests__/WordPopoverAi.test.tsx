@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { Provider, createStore } from 'jotai'
 import WordPopover from '@/components/WordPopover'
 import { stopAutomaticAiLookup } from '@/lib/aiLookup'
@@ -46,6 +52,7 @@ function renderPopover({
   ai = { status: 'idle' } as AiLookupState,
   notice = { show: false, offerStop: false },
   onAiLookup = jest.fn(),
+  onMarkKnown = jest.fn(),
 } = {}) {
   const store = createStore()
   store.set(currentWordAtom, current)
@@ -56,13 +63,13 @@ function renderPopover({
       <WordPopover
         word="rizzler"
         onClose={jest.fn()}
-        onMarkKnown={jest.fn()}
+        onMarkKnown={onMarkKnown}
         onOpenSentencePanel={jest.fn()}
         onAiLookup={onAiLookup}
       />
     </Provider>
   )
-  return { onAiLookup }
+  return { onAiLookup, onMarkKnown }
 }
 
 beforeEach(() => {
@@ -183,7 +190,11 @@ describe('a definition', () => {
   it('has no AI badge when it came from the dictionary', () => {
     renderPopover({ current: word({ Chinese: 'v. 跑', Origin: 'ecdict' }) })
 
-    expect(screen.getByText('v. 跑')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        (_, el) => el?.tagName === 'P' && el.textContent === 'v. 跑'
+      )
+    ).toBeInTheDocument()
     expect(screen.queryByTestId('word-popover-ai-badge')).toBeNull()
     expect(screen.queryByTestId('word-popover-not-found')).toBeNull()
   })
@@ -200,7 +211,12 @@ describe('a definition', () => {
       ai: { status: 'idle' },
     })
 
-    expect(screen.getByText('n. 很有魅力的人')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        (_, el) =>
+          el?.tagName === 'P' && el.textContent === 'n. 很有魅力的人 AI'
+      )
+    ).toBeInTheDocument()
     expect(screen.getByTestId('word-popover-ai-badge')).toHaveTextContent('AI')
   })
 })
@@ -340,4 +356,42 @@ describe('the one-time notice', () => {
       screen.getByTestId('word-popover-ai-notice-stop')
     ).toBeInTheDocument()
   })
+})
+
+it('renders each POS label separately while keeping the definition intact', () => {
+  renderPopover({ current: word({ Chinese: 'adj. foo; n. bar' }) })
+  const adjective = screen.getByText('adj.', { exact: true })
+  const noun = screen.getByText('n.', { exact: true })
+  expect(adjective).not.toBe(noun)
+  expect(adjective.parentElement!.textContent).toBe('adj. foo; n. bar')
+})
+
+it('keeps the badge inline and opens its menu below the definition with an options link', async () => {
+  fetchPrefs.mockResolvedValue(prefsResult(false))
+  renderPopover({ current: word({ Chinese: 'n. 很有魅力的人', Origin: 'ai' }) })
+  const badge = screen.getByTestId('word-popover-ai-badge')
+  const definition = badge.closest('p')
+  expect(definition).not.toBeNull()
+  fireEvent.click(badge)
+  const menu = await screen.findByTestId('word-popover-ai-menu')
+  expect(definition!.nextElementSibling).toBe(menu)
+  const options = within(menu).getByRole('link', {
+    name: 'Extension options',
+  })
+  fireEvent.click(options)
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+    type: 'openOptionsPage',
+  })
+  await screen.findByText('Automatic AI lookup is off.')
+})
+
+it('does not mark a stored word known when Enter activates the options link', async () => {
+  fetchPrefs.mockResolvedValue(prefsResult(false))
+  const { onMarkKnown } = renderPopover({
+    current: word({ Id: 'w1', Chinese: 'n. 人', Origin: 'ai' }),
+  })
+  fireEvent.click(screen.getByTestId('word-popover-ai-badge'))
+  const options = await screen.findByRole('link', { name: 'Extension options' })
+  fireEvent.keyDown(options, { key: 'Enter' })
+  expect(onMarkKnown).not.toHaveBeenCalled()
 })

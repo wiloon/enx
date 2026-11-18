@@ -73,3 +73,15 @@ describe('the external dictionary link', () => {
     )
   })
 })
+
+it('labels the sentence translation action and describes where it opens', () => {
+  renderPopover(word(), 'resilient')
+  const button = screen.getByRole('button', {
+    name: 'Translate sentence in side panel',
+  })
+  expect(button).toHaveTextContent('Translate sentence')
+  expect(button).toHaveAttribute(
+    'title',
+    'Translate this sentence in the side panel'
+  )
+})
