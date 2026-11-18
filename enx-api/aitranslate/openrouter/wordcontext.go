@@ -23,12 +23,12 @@ func (o *OpenRouter) TranslateWordInContext(ctx context.Context, sentence, word,
 		wordcontext.BuildUserContent(sentence, word, dictionaryChinese),
 	)
 	if err != nil {
-		return wordcontext.Result{}, toUsage(u), err
+		return wordcontext.Result{}, u, err
 	}
 
 	res, err := wordcontext.ParseResult(content)
 	if err != nil {
-		return wordcontext.Result{}, toUsage(u), err
+		return wordcontext.Result{}, u, err
 	}
-	return res, toUsage(u), nil
+	return res, u, nil
 }

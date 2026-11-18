@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"enx-api/aitranslate/aiusage"
+	"enx-api/aitranslate/openaicompat"
 	"enx-api/aitranslate/sentence"
 	"enx-api/utils/logger"
 
@@ -60,91 +61,27 @@ func New(c config.MiniMax, timeout time.Duration) (*MiniMax, error) {
 	}, nil
 }
 
-type chatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type chatRequest struct {
-	Model       string        `json:"model"`
-	Messages    []chatMessage `json:"messages"`
-	Temperature float64       `json:"temperature"`
-}
-
-// usage mirrors the OpenAI-compatible "usage" object MiniMax's Chat
-// Completions API returns alongside every response. Rephrase bills by these
-// real token counts (ADR-012 Decision 5); translation still only logs them,
-// pending its own token-billing decision.
-type usage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
-}
-
-type chatResponse struct {
-	Choices []struct {
-		Message chatMessage `json:"message"`
-	} `json:"choices"`
-	Usage usage `json:"usage"`
-}
-
 func (m *MiniMax) TranslateSentence(ctx context.Context, text string) (string, aiusage.Usage, error) {
-	out, u, err := m.chat(ctx, "translate_sentence", sentence.Temperature, sentence.SystemPrompt, text)
-	return out, toUsage(u), err
+	return m.chat(ctx, "translate_sentence", sentence.Temperature, sentence.SystemPrompt, text)
 }
 
-// toUsage maps MiniMax's OpenAI-compatible usage object to the
-// provider-neutral aiusage.Usage the Translator interface returns.
-func toUsage(u usage) aiusage.Usage {
-	return aiusage.Usage{
-		PromptTokens:     u.PromptTokens,
-		CompletionTokens: u.CompletionTokens,
-		TotalTokens:      u.TotalTokens,
-	}
-}
-
-func (m *MiniMax) chat(ctx context.Context, feature string, temperature float64, systemPrompt, userContent string) (string, usage, error) {
-	req := m.client.R().
-		SetContext(ctx).
-		SetHeader("Authorization", "Bearer "+m.apiKey).
-		SetHeader("Content-Type", "application/json")
-
+func (m *MiniMax) chat(ctx context.Context, feature string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
+	e := openaicompat.Endpoint{Provider: "minimax", BaseURL: m.baseURL, APIKey: m.apiKey}
 	if m.groupID != "" {
-		req.SetQueryParam("GroupId", m.groupID)
+		e.Query = map[string]string{"GroupId": m.groupID}
 	}
-
-	var result chatResponse
-	resp, err := req.
-		SetBody(chatRequest{
-			Model: m.model,
-			Messages: []chatMessage{
-				{Role: "system", Content: systemPrompt},
-				{Role: "user", Content: userContent},
-			},
-			Temperature: temperature,
-		}).
-		SetResult(&result).
-		Post(m.baseURL + "/chat/completions")
-
+	raw, u, err := openaicompat.Chat(ctx, m.client, e, openaicompat.Prompt{
+		Feature: feature, Model: m.model, Temperature: temperature, System: systemPrompt, User: userContent,
+	})
 	if err != nil {
-		return "", usage{}, fmt.Errorf("minimax: request failed: %w", err)
-	}
-	if resp.StatusCode() != 200 {
-		return "", usage{}, fmt.Errorf("minimax: unexpected status %d: %s", resp.StatusCode(), resp.String())
-	}
-	if len(result.Choices) == 0 {
-		return "", usage{}, fmt.Errorf("minimax: empty response")
+		return "", u, err
 	}
 
-	logger.Infof("aitranslate: usage provider=minimax feature=%s model=%s input_chars=%d prompt_tokens=%d completion_tokens=%d total_tokens=%d",
-		feature, m.model, len(userContent), result.Usage.PromptTokens, result.Usage.CompletionTokens, result.Usage.TotalTokens)
-
-	raw := result.Choices[0].Message.Content
 	content := stripReasoning(raw)
 	if content != raw {
 		logger.Debugf("aitranslate: minimax feature=%s stripped %d chars of <think> reasoning", feature, len(raw)-len(content))
 	}
-	return content, result.Usage, nil
+	return content, u, nil
 }
 
 // stripReasoning removes the chain-of-thought MiniMax's M-series ("thinking")

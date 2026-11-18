@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"enx-api/aitranslate/aiusage"
+	"enx-api/aitranslate/openaicompat"
 	"enx-api/aitranslate/sentence"
-	"enx-api/utils/logger"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -73,74 +73,14 @@ func New(c config.OpenAICompatible, timeout time.Duration) (*Gemini, error) {
 	}, nil
 }
 
-type chatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type chatRequest struct {
-	Model       string        `json:"model"`
-	Messages    []chatMessage `json:"messages"`
-	Temperature float64       `json:"temperature"`
-}
-
-// usage mirrors the OpenAI-compatible "usage" object Gemini's Chat
-// Completions compatibility layer returns alongside every response.
-type usage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
-}
-
-type chatResponse struct {
-	Choices []struct {
-		Message chatMessage `json:"message"`
-	} `json:"choices"`
-	Usage usage `json:"usage"`
-}
-
 func (g *Gemini) TranslateSentence(ctx context.Context, text string) (string, aiusage.Usage, error) {
-	out, u, err := g.chat(ctx, "translate_sentence", g.model, sentence.Temperature, sentence.SystemPrompt, text)
-	return out, toUsage(u), err
+	return g.chat(ctx, "translate_sentence", g.model, sentence.Temperature, sentence.SystemPrompt, text)
 }
 
-func toUsage(u usage) aiusage.Usage {
-	return aiusage.Usage{
-		PromptTokens:     u.PromptTokens,
-		CompletionTokens: u.CompletionTokens,
-		TotalTokens:      u.TotalTokens,
-	}
-}
-
-func (g *Gemini) chat(ctx context.Context, feature, model string, temperature float64, systemPrompt, userContent string) (string, usage, error) {
-	var result chatResponse
-	resp, err := g.client.R().
-		SetContext(ctx).
-		SetHeader("Authorization", "Bearer "+g.apiKey).
-		SetHeader("Content-Type", "application/json").
-		SetBody(chatRequest{
-			Model: model,
-			Messages: []chatMessage{
-				{Role: "system", Content: systemPrompt},
-				{Role: "user", Content: userContent},
-			},
-			Temperature: temperature,
-		}).
-		SetResult(&result).
-		Post(g.baseURL + "/chat/completions")
-
-	if err != nil {
-		return "", usage{}, fmt.Errorf("gemini: request failed: %w", err)
-	}
-	if resp.StatusCode() != 200 {
-		return "", usage{}, fmt.Errorf("gemini: unexpected status %d: %s", resp.StatusCode(), resp.String())
-	}
-	if len(result.Choices) == 0 {
-		return "", usage{}, fmt.Errorf("gemini: empty response")
-	}
-
-	logger.Infof("aitranslate: usage provider=gemini feature=%s model=%s input_chars=%d prompt_tokens=%d completion_tokens=%d total_tokens=%d",
-		feature, model, len(userContent), result.Usage.PromptTokens, result.Usage.CompletionTokens, result.Usage.TotalTokens)
-
-	return result.Choices[0].Message.Content, result.Usage, nil
+func (g *Gemini) chat(ctx context.Context, feature, model string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
+	return openaicompat.Chat(ctx, g.client, openaicompat.Endpoint{
+		Provider: "gemini",
+		BaseURL:  g.baseURL,
+		APIKey:   g.apiKey,
+	}, openaicompat.Prompt{Feature: feature, Model: model, Temperature: temperature, System: systemPrompt, User: userContent})
 }

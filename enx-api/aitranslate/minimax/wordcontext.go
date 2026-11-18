@@ -34,9 +34,9 @@ func (m *MiniMax) TranslateWordInContext(ctx context.Context, sentence, word, di
 			wordcontext.BuildUserContent(sentence, word, dictionaryChinese),
 		)
 		if err != nil {
-			return wordcontext.Result{}, sumUsage(total, toUsage(u)), err
+			return wordcontext.Result{}, sumUsage(total, u), err
 		}
-		total = sumUsage(total, toUsage(u))
+		total = sumUsage(total, u)
 
 		res, err := wordcontext.ParseResult(content)
 		if err == nil {
