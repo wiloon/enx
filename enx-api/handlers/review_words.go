@@ -31,9 +31,8 @@ func NewReviewWordsHandler(words ReviewWordLister) *ReviewWordsHandler {
 // [["word",3], ...], so the extension can underline any page without
 // sending its text. An empty list is [].
 func (h *ReviewWordsHandler) List(c *gin.Context) {
-	userID := middleware.GetUserIDFromContext(c)
-	if userID == "" {
-		httpjson.Fail(c, http.StatusUnauthorized, "Invalid session")
+	userID, ok := middleware.RequireUserID(c, "Invalid session")
+	if !ok {
 		return
 	}
 	words, err := h.words.List(c.Request.Context(), userID)

@@ -10,7 +10,6 @@ import (
 	dictionaryhttp "enx-api/dictionary/httpapi"
 	"enx-api/enx"
 	"enx-api/middleware"
-	"enx-api/platform/httpjson"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
@@ -29,9 +28,8 @@ type aiWordRequest struct {
 // The lookup request already counted against the daily lookup quota, so this
 // one does not.
 func (h *Handler) AIWord(c *gin.Context) {
-	userID := middleware.GetUserIDFromContext(c)
-	if userID == "" {
-		httpjson.Fail(c, http.StatusUnauthorized, "Invalid session")
+	userID, ok := middleware.RequireUserID(c, "Invalid session")
+	if !ok {
 		return
 	}
 	if h.ai == nil {

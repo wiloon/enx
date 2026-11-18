@@ -23,12 +23,8 @@ func ClearWordKnown(c *gin.Context) { setWordKnown(c, false) }
 // setWordKnown responds with the word and the caller's review state for it
 // after the change.
 func setWordKnown(c *gin.Context, known bool) {
-	userId := middleware.GetUserIDFromContext(c)
-	if userId == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "Invalid session",
-		})
+	userId, ok := middleware.RequireUserID(c, "Invalid session")
+	if !ok {
 		return
 	}
 
