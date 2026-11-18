@@ -102,8 +102,8 @@ func TestTranslateSentenceWithWordGivesUpAfterMaxAttempts(t *testing.T) {
 	if _, _, err := m.TranslateSentenceWithWord(context.Background(), "irrelevant", "irrelevant"); err == nil {
 		t.Fatal("expected an error once every attempt fails to parse")
 	}
-	if calls != sentenceWithWordMaxAttempts {
-		t.Fatalf("expected exactly %d attempts, got %d", sentenceWithWordMaxAttempts, calls)
+	if calls != parseMaxAttempts {
+		t.Fatalf("expected exactly %d attempts, got %d", parseMaxAttempts, calls)
 	}
 }
 
