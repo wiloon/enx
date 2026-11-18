@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"enx-api/aitranslate/aiusage"
+	"enx-api/aitranslate/llm"
 	"enx-api/aitranslate/openaicompat"
 	"enx-api/aitranslate/sentence"
 
@@ -92,4 +93,12 @@ func (d *DeepSeek) chat(ctx context.Context, feature, model string, temperature 
 		APIKey:   d.apiKey,
 		Extra:    map[string]any{"thinking": thinkingDisabled},
 	}, openaicompat.Prompt{Feature: feature, Model: model, Temperature: temperature, System: systemPrompt, User: userContent})
+}
+
+// chatWith binds chat to one model, giving the feature packages the
+// llm.Chat they call.
+func (d *DeepSeek) chatWith(model string) llm.Chat {
+	return func(ctx context.Context, feature string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
+		return d.chat(ctx, feature, model, temperature, systemPrompt, userContent)
+	}
 }
