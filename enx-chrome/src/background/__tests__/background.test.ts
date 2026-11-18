@@ -3610,3 +3610,14 @@ describe('background Split View shared side panel (ADR-089)', () => {
     expect(optionsByTab.get(8)?.enabled).toBe(false)
   })
 })
+
+describe('background onMessage / openOptionsPage', () => {
+  it('opens the extension options from a content-script message', async () => {
+    chrome.runtime.openOptionsPage = jest.fn().mockResolvedValue(undefined)
+    const response = await new Promise(resolve => {
+      onMessageListener({ type: 'openOptionsPage' }, {}, resolve)
+    })
+    expect(chrome.runtime.openOptionsPage).toHaveBeenCalledTimes(1)
+    expect(response).toEqual({ success: true })
+  })
+})

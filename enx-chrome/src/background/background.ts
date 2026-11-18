@@ -1218,6 +1218,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             accountGeneration: accountSession.generation(),
           } satisfies PanelAccountFreshness
 
+        case 'openOptionsPage':
+          await chrome.runtime.openOptionsPage()
+          return { success: true }
+
         case 'accountSignedOut':
           resetClerkSession()
           await accountSession.clear('signed-out')

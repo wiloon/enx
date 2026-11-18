@@ -81,7 +81,16 @@ func (h *Handler) AIWord(c *gin.Context) {
 			word.Known = known
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"found": true, "word": word})
+	// An unstored definition has no lookup count, including a zero count.
+	var loadCount *int
+	if word.Id != "" {
+		loadCount = &word.LoadCount
+	}
+	payload := struct {
+		enx.Word
+		LoadCount *int `json:"LoadCount,omitempty"`
+	}{Word: word, LoadCount: loadCount}
+	c.JSON(http.StatusOK, gin.H{"found": true, "word": payload})
 }
 
 // respondAIError maps the AI fallback's errors to a status and a stable code.

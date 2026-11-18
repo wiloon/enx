@@ -7,9 +7,10 @@ import {
   XMarkIcon,
 } from '@heroicons/react/20/solid'
 import SidePanelTranslateIcon from '@/components/icons/SidePanelTranslateIcon'
-import { AiBadge, AiMissPanel, AiNotice } from '@/components/AiLookup'
+import { AiDefinition, AiMissPanel, AiNotice } from '@/components/AiLookup'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
 import { billingUrl } from '@/lib/aiLookup'
+import { splitDefinition } from '@/lib/definitionParts'
 import { externalDictionaryUrl } from '@/lib/externalDictionary'
 import { isLookupQuotaExceeded } from '@/lib/rateLimit'
 import { lookupCountLabel } from '@/lib/lookupCount'
@@ -86,10 +87,25 @@ export default function WordPopover({
     rootRef.current?.focus()
   }, [])
 
+  const definition = splitDefinition(currentWord?.Chinese ?? '').map(
+    (part, index) =>
+      part.partOfSpeech ? (
+        <span key={index} className="text-muted-foreground">
+          {part.text}
+        </span>
+      ) : (
+        part.text
+      )
+  )
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       onClose()
-    } else if (e.key === 'Enter' && currentWord) {
+    } else if (
+      e.key === 'Enter' &&
+      currentWord?.Id &&
+      e.target === e.currentTarget
+    ) {
       onMarkKnown(currentWord.English)
     }
   }
@@ -141,7 +157,7 @@ export default function WordPopover({
         className="flex justify-between items-center gap-2 mb-2 shrink-0"
       >
         <div className="flex flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
-          <h3 className="text-lg font-bold text-foreground leading-tight">
+          <h3 className="text-lg font-bold text-foreground leading-tight min-w-0 max-w-full break-words">
             {currentWord?.English || word}
           </h3>
           {(phonetic || hasSpeaker) && (
@@ -170,7 +186,7 @@ export default function WordPopover({
               )}
             </span>
           )}
-          {currentWord?.LoadCount !== undefined && (
+          {currentWord?.Id && currentWord.LoadCount !== undefined && (
             <span
               className="inline-flex items-center gap-0.5 text-xs text-muted-foreground"
               title={lookupCountLabel(currentWord.LoadCount)}
@@ -258,11 +274,14 @@ export default function WordPopover({
             {/* Chinese translation; a definition a model wrote is marked as
                 such (ADR-045). With none, the AI fallback's state is shown. */}
             {currentWord.Chinese ? (
-              <div className="flex items-start gap-2">
-                <p className="text-sm leading-relaxed text-foreground">
-                  {currentWord.Chinese}
-                </p>
-                {currentWord.Origin === 'ai' && <AiBadge />}
+              <div>
+                {currentWord.Origin === 'ai' ? (
+                  <AiDefinition>{definition}</AiDefinition>
+                ) : (
+                  <p className="text-sm leading-relaxed text-foreground">
+                    {definition}
+                  </p>
+                )}
               </div>
             ) : (
               <AiMissPanel onLookup={onAiLookup} />
@@ -316,8 +335,8 @@ export default function WordPopover({
 
       {/* Action buttons */}
       <div className="shrink-0">
-        <div className="flex justify-between items-center mt-3 pt-2 border-t border-border">
-          <div className="flex items-center gap-3">
+        <div className="flex justify-between items-center gap-2 mt-3 pt-3 border-t border-border">
+          <div className="flex items-center gap-3 min-w-0">
             <a
               href={externalDictionaryUrl(currentWord?.English || word)}
               target="_blank"
@@ -331,19 +350,20 @@ export default function WordPopover({
             <button
               data-testid="word-popover-sentence-translation"
               onClick={onOpenSentencePanel}
-              className="inline-flex items-center text-brand hover:text-brand/80"
-              title="Sentence translation (translate the whole sentence in the side panel)"
-              aria-label="Sentence translation"
+              className="inline-flex items-center gap-1 text-xs text-brand hover:text-brand/80 active:text-brand/70 focus-visible:outline-2 focus-visible:outline-brand"
+              title="Translate this sentence in the side panel"
+              aria-label="Translate sentence in side panel"
             >
-              <SidePanelTranslateIcon className="h-5 w-5" />
+              <SidePanelTranslateIcon className="h-5 w-5 shrink-0" />
+              Translate sentence
             </button>
           </div>
 
-          {currentWord && !currentWord.Known && (
+          {currentWord?.Id && !currentWord.Known && (
             <button
               data-testid="word-popover-mark-known"
               onClick={() => onMarkKnown(currentWord.English)}
-              className="bg-brand hover:bg-brand/90 text-brand-foreground text-sm px-3 py-1 rounded-sm transition-colors"
+              className="shrink-0 bg-brand hover:bg-brand/90 active:bg-brand/80 focus-visible:outline-2 focus-visible:outline-brand text-brand-foreground text-sm px-3 py-1 rounded-sm transition-colors"
               title="Mark as known"
             >
               ✓ Know It

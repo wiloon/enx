@@ -41,7 +41,9 @@ it('retains the cached definition with its quota notice and upgrade link below i
     </Provider>
   )
 
-  const definition = screen.getByText('int. 你好')
+  const definition = screen.getByText(
+    (_, el) => el?.tagName === 'P' && el.textContent === 'int. 你好'
+  )
   const notice = screen.getByTestId('word-popover-lookup-notice')
   expect(notice).toHaveTextContent("You've used up today's free lookups")
   expect(screen.getByRole('link', { name: 'Upgrade' })).toHaveAttribute(
