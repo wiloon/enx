@@ -174,6 +174,9 @@ func TestLoadSearchedPathIsAbsolute(t *testing.T) {
 // Deliberately not derived from envBindings: dropping a binding there must
 // fail this test.
 var envVars = map[string]string{
+	"STRIPE_COSTS_DEFAULT_WEIGHT_IN":                  "stripe.costs.default.weight-in",
+	"STRIPE_COSTS_DEFAULT_WEIGHT_OUT":                 "stripe.costs.default.weight-out",
+	"STRIPE_COSTS_DEFAULT_DIVISOR":                    "stripe.costs.default.divisor",
 	"STRIPE_API_BASE_URL":                             "stripe.api-base-url",
 	"ENX_PORT":                                        "enx.port",
 	"ENX_DEV_MODE":                                    "enx.dev-mode",
@@ -297,6 +300,13 @@ func TestEnvVarsPopulateTheirFields(t *testing.T) {
 				value, want = "7m", 7*time.Minute
 			default:
 				value, want = testValue(t, key, field.Type, env)
+			}
+			if strings.HasPrefix(key, "stripe.costs.") {
+				for boundEnv, boundKey := range envVars {
+					if strings.HasPrefix(boundKey, key[:strings.LastIndex(key, ".")+1]) {
+						t.Setenv(boundEnv, "7")
+					}
+				}
 			}
 			t.Setenv(env, value)
 
@@ -833,5 +843,88 @@ func TestSecretRevealAndEmpty(t *testing.T) {
 	// An unset secret prints as empty, so "is it configured?" stays readable.
 	if got := fmt.Sprint(Secret("")); got != "" {
 		t.Errorf("empty secret prints as %q, want empty", got)
+	}
+}
+
+func TestLoadDefaultTokenPrice(t *testing.T) {
+	isolate(t)
+	cfg, err := Load(writeTOML(t, "[stripe.costs.default]\nweight-in=1\nweight-out=3\ndivisor=3000\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := TokenPrice{1, 3, 3000}
+	for name, got := range map[string]TokenPrice{"translate": cfg.Stripe.Costs.Translate, "rephrase": cfg.Stripe.Costs.Rephrase, "define-word": cfg.Stripe.Costs.DefineWord} {
+		if got != want {
+			t.Errorf("%s = %+v, want %+v", name, got, want)
+		}
+	}
+}
+
+func TestLoadTokenPriceResolution(t *testing.T) {
+	const base = "[stripe.costs.default]\nweight-in=1\nweight-out=3\ndivisor=3000\n"
+	const complete = "[stripe.costs.translate]\nweight-in=2\nweight-out=4\ndivisor=6000\n"
+	rate := TokenPrice{1, 3, 3000}
+	for _, tt := range []struct {
+		name, file        string
+		env               map[string]string
+		translate, others TokenPrice
+	}{
+		{name: "default env", env: map[string]string{"STRIPE_COSTS_DEFAULT_WEIGHT_IN": "1", "STRIPE_COSTS_DEFAULT_WEIGHT_OUT": "3", "STRIPE_COSTS_DEFAULT_DIVISOR": "3000"}, translate: rate, others: rate},
+		{name: "feature override", file: base + complete, translate: TokenPrice{2, 4, 6000}, others: rate},
+		{name: "zero input weight", file: base + "[stripe.costs.translate]\nweight-in=0\nweight-out=3\ndivisor=3000", translate: TokenPrice{0, 3, 3000}, others: rate},
+		{name: "one key", file: base + "[stripe.costs.translate]\ndivisor=3000", others: rate},
+		{name: "two keys cannot be priced", file: base + "[stripe.costs.translate]\nweight-out=3\ndivisor=3000", others: rate},
+		{name: "explicit zeros", file: base + "[stripe.costs.translate]\nweight-in=0\nweight-out=0\ndivisor=0", others: rate},
+		{name: "env zeros", file: base, env: map[string]string{"STRIPE_COSTS_TRANSLATE_WEIGHT_IN": "0", "STRIPE_COSTS_TRANSLATE_WEIGHT_OUT": "0", "STRIPE_COSTS_TRANSLATE_DIVISOR": "0"}, others: rate},
+		{name: "incomplete default", file: "[stripe.costs.default]\nweight-out=3\ndivisor=3000"},
+		{name: "neither set"},
+		{name: "empty feature section", file: base + "[stripe.costs.translate]\n", translate: rate, others: rate},
+		{name: "empty env", file: base, env: map[string]string{"STRIPE_COSTS_TRANSLATE_DIVISOR": ""}, translate: rate, others: rate},
+		{name: "env overrides file", file: base + complete, env: map[string]string{"STRIPE_COSTS_TRANSLATE_DIVISOR": "9000"}, translate: TokenPrice{2, 4, 9000}, others: rate},
+		{name: "merged completeness", file: base + "[stripe.costs.translate]\nweight-out=4\ndivisor=6000", env: map[string]string{"STRIPE_COSTS_TRANSLATE_WEIGHT_IN": "2"}, translate: TokenPrice{2, 4, 6000}, others: rate},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			isolate(t)
+			for key, value := range tt.env {
+				t.Setenv(key, value)
+			}
+			cfg, err := Load(writeTOML(t, tt.file))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for name, pair := range map[string][2]TokenPrice{"translate": {cfg.Stripe.Costs.Translate, tt.translate}, "rephrase": {cfg.Stripe.Costs.Rephrase, tt.others}, "define-word": {cfg.Stripe.Costs.DefineWord, tt.others}} {
+				if pair[0] != pair[1] {
+					t.Errorf("%s = %+v, want %+v", name, pair[0], pair[1])
+				}
+			}
+		})
+	}
+}
+
+func TestLoadValidatesTokenPricesBeforeResolution(t *testing.T) {
+	const base = "[stripe.costs.default]\nweight-in=1\nweight-out=3\ndivisor=3000\n"
+	for _, tt := range []struct{ name, file, key string }{
+		{"incomplete feature", base + "[stripe.costs.translate]\nweight-in=-1", "translate.weight-in"},
+		{"incomplete default", "[stripe.costs.default]\ndivisor=-1", "default.divisor"},
+		{"unused default", "[stripe.costs.default]\nweight-in=-1\nweight-out=3\ndivisor=3000\n" + "[stripe.costs.translate]\nweight-in=1\nweight-out=3\ndivisor=3000\n[stripe.costs.rephrase]\nweight-in=1\nweight-out=3\ndivisor=3000\n[stripe.costs.define-word]\nweight-in=1\nweight-out=3\ndivisor=3000", "default.weight-in"},
+		{"complete feature", base + "[stripe.costs.translate]\nweight-in=1\nweight-out=-3\ndivisor=3000", "translate.weight-out"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			isolate(t)
+			_, err := Load(writeTOML(t, tt.file))
+			want := "stripe.costs." + tt.key + " must not be negative"
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("error = %v, want %s", err, want)
+			}
+		})
+	}
+}
+
+func TestDefaultTokenPricesFailClosed(t *testing.T) {
+	cfg := Default()
+	for name, price := range map[string]TokenPrice{"translate": cfg.Stripe.Costs.Translate, "rephrase": cfg.Stripe.Costs.Rephrase, "define-word": cfg.Stripe.Costs.DefineWord} {
+		if price != (TokenPrice{}) {
+			t.Errorf("%s = %+v, want zero", name, price)
+		}
 	}
 }

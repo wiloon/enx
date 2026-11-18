@@ -1,5 +1,8 @@
 # ADR-012：enx-ui 新增「地道表达」页面——把中文 / 中英混杂 / 不地道的英文改写成地道的职场美式英语（面向跟美国同事沟通的措辞优化），在 `aitranslate` 包内**新建**反向 `Rephraser` 能力，并以此作为**全站按 token 计费**基础设施的第一块试点
 
+> 2026-11-17（#960）：token 价格默认使用共享的 `[stripe.costs.default]`；功能覆盖必须设置全部三个键，部分设置即未定价。解析与校验规则见 [ADR-014「默认 token 价格与按功能覆盖」](adr-014-sidepanel-clicked-word-and-token-billing.md#默认-token-价格与按功能覆盖2026-11-17issue-960)，取代本文原有的逐功能部署配置要求。
+
+
 | 字段 | 值 |
 | --- | --- |
 | **状态** | Accepted — 2026-09-02。经 grilling 收敛全部取舍，已按 TDD 实现（enx-api + enx-ui）并过一轮双轴 code review，review 提出的 Spec / Standards 问题已修（`Settle` 改单条原子 UPDATE 保证 subscription 池不为负、`TokenPricing` 值类型下沉到 `billing/credit`、`TypeSettle` 并入 `ledger.go`、日志行去重、enx-ui 补测试）。 |
