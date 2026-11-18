@@ -195,3 +195,13 @@ func TestRemoveHandlerSucceedsForAWordNotOnTheList(t *testing.T) {
 		}
 	}
 }
+
+func TestListHandlerReadsAnEmptyLimitOrOffsetAsAbsent(t *testing.T) {
+	user := "u-" + t.Name()
+	insert(t, user, seed{english: "wle-one", count: 1, createdAt: day, updatedAt: day})
+
+	absent, empty := get(t, user, ""), get(t, user, "?limit=&offset=")
+	if empty.Code != http.StatusOK || empty.Body.String() != absent.Body.String() {
+		t.Fatalf("?limit=&offset=: %d %s\nwant 200 %s", empty.Code, empty.Body.String(), absent.Body.String())
+	}
+}

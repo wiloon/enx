@@ -3,12 +3,12 @@ package handlers
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"enx-api/ecdict"
 	"enx-api/platform/httpjson"
+	"enx-api/platform/httpquery"
 	"enx-api/repo"
 	"enx-api/utils/logger"
 
@@ -185,23 +185,15 @@ const (
 // this queue is the backlog of what the rest of the users cannot yet see.
 func AdminListAIWords(c *gin.Context) {
 	reviewed := c.Query("reviewed") == "true"
-	limit := adminAIWordsDefaultLimit
-	if raw := c.Query("limit"); raw != "" {
-		n, err := strconv.Atoi(raw)
-		if err != nil || n < 1 || n > adminAIWordsMaxLimit {
-			httpjson.Fail(c, http.StatusBadRequest, "limit must be between 1 and 200")
-			return
-		}
-		limit = n
+	limit, ok := httpquery.Int(c, "limit", adminAIWordsDefaultLimit)
+	if !ok || limit < 1 || limit > adminAIWordsMaxLimit {
+		httpjson.Fail(c, http.StatusBadRequest, "limit must be between 1 and 200")
+		return
 	}
-	offset := 0
-	if raw := c.Query("offset"); raw != "" {
-		n, err := strconv.Atoi(raw)
-		if err != nil || n < 0 {
-			httpjson.Fail(c, http.StatusBadRequest, "offset must be 0 or more")
-			return
-		}
-		offset = n
+	offset, ok := httpquery.Int(c, "offset", 0)
+	if !ok || offset < 0 {
+		httpjson.Fail(c, http.StatusBadRequest, "offset must be 0 or more")
+		return
 	}
 
 	rows, total, err := repo.AdminListAIWords(reviewed, limit, offset)

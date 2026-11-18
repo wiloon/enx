@@ -113,3 +113,16 @@ func TestCreditHistoryLedgerFailureIs500WithoutTheError(t *testing.T) {
 		t.Fatalf("got %d %s, want 500 without the cause", w.Code, w.Body.String())
 	}
 }
+
+func TestCreditHistoryReadsAnEmptyLimitAsAbsent(t *testing.T) {
+	absent, empty := &fakeCreditLedger{}, &fakeCreditLedger{}
+	if w := serveCreditHistory(absent, ""); w.Code != http.StatusOK {
+		t.Fatalf("absent: got %d %s", w.Code, w.Body.String())
+	}
+	if w := serveCreditHistory(empty, "limit="); w.Code != http.StatusOK {
+		t.Fatalf("?limit=: got %d %s, want 200", w.Code, w.Body.String())
+	}
+	if empty.query.Limit != absent.query.Limit {
+		t.Fatalf("ledger limit = %d, want %d as when absent", empty.query.Limit, absent.query.Limit)
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"enx-api/billing/eventadmin"
 	"enx-api/middleware"
 	"enx-api/platform/httpjson"
+	"enx-api/platform/httpquery"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
@@ -38,8 +39,8 @@ func NewWebhookEventAdminHandler(events WebhookEventAdmin) *WebhookEventAdminHan
 // List handles GET /api/admin/webhook-events?status=&limit=&offset=, newest
 // receipt first; without a status, the events that need attention.
 func (h *WebhookEventAdminHandler) List(c *gin.Context) {
-	limit, okLimit := wholeQuery(c, "limit")
-	offset, okOffset := wholeQuery(c, "offset")
+	limit, okLimit := httpquery.Int(c, "limit", 0)
+	offset, okOffset := httpquery.Int(c, "offset", 0)
 	if !okLimit || !okOffset {
 		httpjson.Fail(c, http.StatusBadRequest, "limit and offset must be whole numbers")
 		return

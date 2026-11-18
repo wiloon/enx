@@ -148,3 +148,23 @@ func TestTransactionsMapEachRefusalToItsStatus(t *testing.T) {
 		}
 	}
 }
+
+func TestAnEmptyLimitOrOffsetIsReadAsAbsent(t *testing.T) {
+	absent, empty := &recordingStore{}, &recordingStore{}
+	if w := get(adminUsersAPI(absent), "/users"); w.Code != http.StatusOK {
+		t.Fatalf("absent: status %d %s", w.Code, w.Body.String())
+	}
+	if w := get(adminUsersAPI(empty), "/users?limit=&offset="); w.Code != http.StatusOK {
+		t.Fatalf("empty: status %d %s", w.Code, w.Body.String())
+	}
+	if empty.got != absent.got {
+		t.Fatalf("store query = %+v, want %+v as when absent", empty.got, absent.got)
+	}
+
+	store := &fakeStore{accounts: []Account{{UserID: "u1"}}}
+	without := get(adminUsersAPI(store), "/users/u1/transactions")
+	with := get(adminUsersAPI(store), "/users/u1/transactions?limit=")
+	if with.Code != http.StatusOK || with.Body.String() != without.Body.String() {
+		t.Fatalf("?limit=: got %d %s\nwant 200 %s", with.Code, with.Body.String(), without.Body.String())
+	}
+}

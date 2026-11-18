@@ -1,15 +1,14 @@
 package wordlist
 
 import (
-	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"enx-api/middleware"
 	"enx-api/platform/httpjson"
+	"enx-api/platform/httpquery"
 	"enx-api/utils/logger"
 )
 
@@ -38,13 +37,14 @@ func ListHandler(c *gin.Context) {
 		httpjson.Fail(c, http.StatusBadRequest, "sort must be recent or lookups")
 		return
 	}
-	limit, err := intParam(c, "limit")
-	if err != nil {
+	// Absent means 0, which Query.normalize turns into the default.
+	limit, ok := httpquery.Int(c, "limit", 0)
+	if !ok {
 		httpjson.Fail(c, http.StatusBadRequest, "limit must be a whole number")
 		return
 	}
-	offset, err := intParam(c, "offset")
-	if err != nil {
+	offset, ok := httpquery.Int(c, "offset", 0)
+	if !ok {
 		httpjson.Fail(c, http.StatusBadRequest, "offset must be a whole number")
 		return
 	}
@@ -76,22 +76,6 @@ func ListHandler(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "total": page.Total, "words": out})
-}
-
-var errNotInt = errors.New("not an integer")
-
-// intParam reads an optional integer query parameter; absent means 0, which
-// Query.normalize turns into the default.
-func intParam(c *gin.Context, name string) (int, error) {
-	raw := c.Query(name)
-	if raw == "" {
-		return 0, nil
-	}
-	n, err := strconv.Atoi(raw)
-	if err != nil {
-		return 0, errNotInt
-	}
-	return n, nil
 }
 
 // RemoveHandler handles DELETE /api/me/words/:english.
