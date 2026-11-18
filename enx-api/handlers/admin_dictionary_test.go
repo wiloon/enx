@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -259,6 +260,17 @@ func TestAdminListAIWordsRejectsBadPaging(t *testing.T) {
 	}
 	if code, _ := serve(t, r, http.MethodGet, "/ai-words?limit=200&offset=0", nil); code != http.StatusOK {
 		t.Errorf("?limit=200&offset=0: %d, want 200", code)
+	}
+}
+
+func TestAdminListAIWordsReadsAnEmptyLimitOrOffsetAsAbsent(t *testing.T) {
+	r := adminDictionary(t)
+	seedAIWord(t, "w-emptyq", "emptyq", map[string]int{"u1": 1})
+
+	absentCode, absent := serve(t, r, http.MethodGet, "/ai-words", nil)
+	emptyCode, empty := serve(t, r, http.MethodGet, "/ai-words?limit=&offset=", nil)
+	if absentCode != http.StatusOK || emptyCode != http.StatusOK || !reflect.DeepEqual(empty, absent) {
+		t.Fatalf("?limit=&offset= = %d %v\nwant %d %v", emptyCode, empty, absentCode, absent)
 	}
 }
 

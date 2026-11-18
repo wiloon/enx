@@ -3,12 +3,12 @@ package handlers
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
 	"enx-api/billing/creditledger"
 	"enx-api/middleware"
 	"enx-api/platform/httpjson"
+	"enx-api/platform/httpquery"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
@@ -39,14 +39,10 @@ type userTransactionJSON struct {
 // List handles GET /api/me/credits/transactions?limit=&before=&direction=.
 func (h *CreditHistoryHandler) List(c *gin.Context) {
 	userID := middleware.GetUserIDFromContext(c)
-	limit := 0
-	if v := c.Query("limit"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil {
-			httpjson.Fail(c, http.StatusBadRequest, "limit must be a whole number")
-			return
-		}
-		limit = n
+	limit, ok := httpquery.Int(c, "limit", 0)
+	if !ok {
+		httpjson.Fail(c, http.StatusBadRequest, "limit must be a whole number")
+		return
 	}
 	page, err := h.ledger.Page(c.Request.Context(), userID, c.Query("before"), c.Query("direction"), limit)
 	switch {

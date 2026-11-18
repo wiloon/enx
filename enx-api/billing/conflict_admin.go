@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
 	"enx-api/billing/conflict"
 	"enx-api/billing/conflictadmin"
 	"enx-api/middleware"
 	"enx-api/platform/httpjson"
+	"enx-api/platform/httpquery"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
@@ -39,8 +39,8 @@ func NewConflictAdminHandler(conflicts ConflictAdmin) *ConflictAdminHandler {
 // List handles GET /api/admin/subscription-conflicts?status=&limit=&offset=,
 // newest discovery first.
 func (h *ConflictAdminHandler) List(c *gin.Context) {
-	limit, okLimit := wholeQuery(c, "limit")
-	offset, okOffset := wholeQuery(c, "offset")
+	limit, okLimit := httpquery.Int(c, "limit", 0)
+	offset, okOffset := httpquery.Int(c, "offset", 0)
 	if !okLimit || !okOffset {
 		httpjson.Fail(c, http.StatusBadRequest, "limit and offset must be whole numbers")
 		return
@@ -153,16 +153,6 @@ func resolutionJSON(r conflict.Resolution) gin.H {
 
 func rfc3339(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
-}
-
-// wholeQuery reads an optional integer query parameter; 0 when absent.
-func wholeQuery(c *gin.Context, name string) (int, bool) {
-	v := c.Query(name)
-	if v == "" {
-		return 0, true
-	}
-	n, err := strconv.Atoi(v)
-	return n, err == nil
 }
 
 func conflictUnavailable(c *gin.Context, action string, err error) {

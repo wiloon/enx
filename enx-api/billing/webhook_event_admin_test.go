@@ -269,3 +269,16 @@ func TestWebhookEventRequestsThatCannotBeServedAreAnswered503(t *testing.T) {
 		}
 	}
 }
+
+func TestAnEmptyWebhookEventListLimitOrOffsetIsReadAsAbsent(t *testing.T) {
+	absent, empty := newEventStore(), newEventStore()
+	if code, resp := serveEventAdmin(t, absent, eventEndpoint, http.MethodGet, "/api/admin/webhook-events"); code != http.StatusOK {
+		t.Fatalf("absent: status %d %v", code, resp)
+	}
+	if code, resp := serveEventAdmin(t, empty, eventEndpoint, http.MethodGet, "/api/admin/webhook-events?limit=&offset="); code != http.StatusOK {
+		t.Fatalf("empty: status %d %v", code, resp)
+	}
+	if empty.query != absent.query {
+		t.Errorf("query = %+v, want %+v as when absent", empty.query, absent.query)
+	}
+}

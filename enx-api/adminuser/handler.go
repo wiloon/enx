@@ -4,13 +4,13 @@ import (
 	"errors"
 	"net/http"
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"enx-api/billing/creditledger"
 	"enx-api/platform/httpjson"
+	"enx-api/platform/httpquery"
 	"enx-api/utils/logger"
 )
 
@@ -24,8 +24,8 @@ func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 
 // List handles GET /api/admin/users?q=&sort=&limit=&offset=.
 func (h *Handler) List(c *gin.Context) {
-	limit, okLimit := intQuery(c, "limit")
-	offset, okOffset := intQuery(c, "offset")
+	limit, okLimit := httpquery.Int(c, "limit", 0)
+	offset, okOffset := httpquery.Int(c, "offset", 0)
 	if !okLimit || !okOffset {
 		httpjson.Fail(c, http.StatusBadRequest, "limit and offset must be whole numbers")
 		return
@@ -84,7 +84,7 @@ func (h *Handler) Detail(c *gin.Context) {
 
 // Transactions handles GET /api/admin/users/:id/transactions?limit=&before=&direction=.
 func (h *Handler) Transactions(c *gin.Context) {
-	limit, ok := intQuery(c, "limit")
+	limit, ok := httpquery.Int(c, "limit", 0)
 	if !ok {
 		httpjson.Fail(c, http.StatusBadRequest, "limit must be a whole number")
 		return
@@ -153,14 +153,4 @@ func timeOrNil(t time.Time) any {
 		return nil
 	}
 	return t.UTC().Format(time.RFC3339)
-}
-
-// intQuery reads an optional integer query parameter; 0 when absent.
-func intQuery(c *gin.Context, name string) (int, bool) {
-	v := c.Query(name)
-	if v == "" {
-		return 0, true
-	}
-	n, err := strconv.Atoi(v)
-	return n, err == nil
 }

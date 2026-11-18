@@ -546,3 +546,14 @@ func TestResolveMarksARecordResolvedAndKeepsIt(t *testing.T) {
 		}
 	}
 }
+
+// Unlike the other admin lists, feedback answers 400 to a limit or offset
+// that is present but empty.
+func TestListRejectsAnEmptyLimitOrOffset(t *testing.T) {
+	e := newEnv(t)
+	for _, q := range []string{"?limit=", "?offset="} {
+		if w := e.do(http.MethodGet, "/api/admin/feedback"+q, "admin", ""); w.Code != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400", q, w.Code)
+		}
+	}
+}

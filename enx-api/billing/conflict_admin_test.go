@@ -291,3 +291,16 @@ func TestConflictRequestsTheStoreCannotServeAreAnswered503(t *testing.T) {
 		})
 	}
 }
+
+func TestAnEmptyConflictListLimitOrOffsetIsReadAsAbsent(t *testing.T) {
+	absent, empty := newConflictStore(), newConflictStore()
+	if code, resp := serveConflictAdmin(t, absent, http.MethodGet, "/api/admin/subscription-conflicts", ""); code != http.StatusOK {
+		t.Fatalf("absent: status %d %v", code, resp)
+	}
+	if code, resp := serveConflictAdmin(t, empty, http.MethodGet, "/api/admin/subscription-conflicts?limit=&offset=", ""); code != http.StatusOK {
+		t.Fatalf("empty: status %d %v", code, resp)
+	}
+	if empty.query != absent.query {
+		t.Errorf("query = %+v, want %+v as when absent", empty.query, absent.query)
+	}
+}
