@@ -421,3 +421,43 @@ describe('the forced replay after a 401', () => {
     expect(result).toMatchObject({ success: false, sessionUnverified: true })
   })
 })
+
+describe('the session-loss flag through every message handler', () => {
+  const onMessage = (chrome.runtime.onMessage.addListener as jest.Mock).mock
+    .calls[0][0] as (
+    request: unknown,
+    sender: unknown,
+    sendResponse: (response: unknown) => void
+  ) => boolean
+  const send = (request: unknown) =>
+    new Promise<Record<string, unknown>>(resolve => {
+      onMessage(request, {}, resolve as (response: unknown) => void)
+    })
+
+  // markKnown is left out: it checks the session itself before any request.
+  it.each([
+    ['getOneWord', { type: 'getOneWord', word: 'fox' }],
+    ['getReviewWords', { type: 'getReviewWords' }],
+    ['translateSentence', { type: 'translateSentence', sentence: 'A fox.' }],
+    [
+      'translateSentenceWithWord',
+      { type: 'translateSentenceWithWord', sentence: 'A fox.', word: 'fox' },
+    ],
+    [
+      'translateWordInContext',
+      { type: 'translateWordInContext', sentence: 'A fox.', word: 'fox' },
+    ],
+  ])('%s returns the session-expired flag', async (_name, request) => {
+    loadsAs(empty('signed-out'))
+    answer(200)
+
+    const response = await send(request)
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(response).toMatchObject({
+      success: false,
+      error: EXPIRED,
+      sessionExpired: true,
+    })
+  })
+})

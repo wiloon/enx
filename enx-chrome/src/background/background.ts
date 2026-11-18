@@ -559,6 +559,14 @@ export type ApiRequestResult = {
   networkError?: boolean
 }
 
+// The session flags a message handler passes on from a failed request, so
+// the surface that asked can show the sign-in prompt or fence the reply.
+const sessionFlags = (response: ApiRequestResult) => ({
+  sessionExpired: response.sessionExpired,
+  sessionUnverified: response.sessionUnverified,
+  accountGeneration: response.accountGeneration,
+})
+
 // Retry-After in seconds (the only form enx-api sends), as milliseconds.
 const retryAfterMs = (response: Response): number | undefined => {
   const seconds = Number(response.headers?.get('Retry-After'))
@@ -1678,9 +1686,7 @@ const handleGetOneWord = async (word: string, refresh = false) => {
     return {
       success: false,
       error: response.error || 'Translation service error',
-      sessionExpired: response.sessionExpired,
-      sessionUnverified: response.sessionUnverified,
-      accountGeneration: response.accountGeneration,
+      ...sessionFlags(response),
       status: response.status,
       code: response.code,
     }
@@ -1702,9 +1708,7 @@ export const handleGetReviewWords = async () => {
     return {
       success: false,
       error: response.error,
-      sessionExpired: response.sessionExpired,
-      sessionUnverified: response.sessionUnverified,
-      accountGeneration: response.accountGeneration,
+      ...sessionFlags(response),
       status: response.status,
       code: response.code,
       retryAfterMs: response.retryAfterMs,
@@ -1763,9 +1767,7 @@ const handleMarkKnown = async (word: string, userId: number) => {
     return {
       success: false,
       error: response.error,
-      sessionExpired: response.sessionExpired,
-      sessionUnverified: response.sessionUnverified,
-      accountGeneration: response.accountGeneration,
+      ...sessionFlags(response),
     }
   }
 }
@@ -1788,9 +1790,7 @@ const handleTranslateSentence = async (sentence: string) => {
   return {
     success: false,
     error: response.error || 'Translation service unavailable',
-    sessionExpired: response.sessionExpired,
-    sessionUnverified: response.sessionUnverified,
-    accountGeneration: response.accountGeneration,
+    ...sessionFlags(response),
     status: response.status,
   }
 }
@@ -1825,9 +1825,7 @@ const handleTranslateSentenceWithWord = async (
   return {
     success: false,
     error: response.error || 'Translation service unavailable',
-    sessionExpired: response.sessionExpired,
-    sessionUnverified: response.sessionUnverified,
-    accountGeneration: response.accountGeneration,
+    ...sessionFlags(response),
     status: response.status,
   }
 }
@@ -1869,9 +1867,7 @@ const handleTranslateWordInContext = async (
   return {
     success: false,
     error: response.error || 'Translation service unavailable',
-    sessionExpired: response.sessionExpired,
-    sessionUnverified: response.sessionUnverified,
-    accountGeneration: response.accountGeneration,
+    ...sessionFlags(response),
     status: response.status,
   }
 }

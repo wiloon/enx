@@ -248,6 +248,7 @@ describe('the flag through every message handler', () => {
     expect(response).toMatchObject({
       success: false,
       sessionUnverified: true,
+      accountGeneration: expect.any(Number),
     })
     expect(response.sessionExpired).toBeFalsy()
     expectAccountSessionUntouched()
