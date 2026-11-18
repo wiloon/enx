@@ -20,9 +20,8 @@ func GetMe(admins middleware.AdminAllowlist) gin.HandlerFunc {
 }
 
 func serveMe(c *gin.Context, admins middleware.AdminAllowlist) {
-	userID := middleware.GetUserIDFromContext(c)
-	if userID == "" {
-		httpjson.Fail(c, http.StatusUnauthorized, "Unauthorized")
+	userID, ok := middleware.RequireUserID(c, "Unauthorized")
+	if !ok {
 		return
 	}
 	user := enx.GetUserByID(userID)

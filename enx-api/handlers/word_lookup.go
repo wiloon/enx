@@ -56,12 +56,8 @@ func NewWordLookupHandlerWithSubscriptions(lookups WordLookupRecorder, subs dict
 // lookup's 429 when the quota is used up. It is not idempotent and not
 // retried; a lost one leaves the count one short.
 func (h *WordLookupHandler) Record(c *gin.Context) {
-	userId := middleware.GetUserIDFromContext(c)
-	if userId == "" {
-		httpjson.Fail(c, http.StatusUnauthorized,
-
-			"Invalid session")
-
+	userId, ok := middleware.RequireUserID(c, "Invalid session")
+	if !ok {
 		return
 	}
 

@@ -78,13 +78,9 @@ func (h *Handler) TranslateByWord(c *gin.Context) {
 }
 
 func (h *Handler) translateWord(c *gin.Context, raw string) {
-	userId := middleware.GetUserIDFromContext(c)
-	if userId == "" {
+	userId, ok := middleware.RequireUserID(c, "Invalid session")
+	if !ok {
 		logger.Errorf("no valid user id found in session")
-		httpjson.Fail(c, 401,
-
-			"Invalid session")
-
 		return
 	}
 

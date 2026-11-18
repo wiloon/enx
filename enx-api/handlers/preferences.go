@@ -48,9 +48,8 @@ func preferencesBody(views map[preferences.Key]preferences.View) map[string]pref
 
 // Get returns every preference for the signed-in user.
 func (h *PreferencesHandler) Get(c *gin.Context) {
-	userID := middleware.GetUserIDFromContext(c)
-	if userID == "" {
-		httpjson.Fail(c, http.StatusUnauthorized, "Unauthorized")
+	userID, ok := middleware.RequireUserID(c, "Unauthorized")
+	if !ok {
 		return
 	}
 	views, err := h.svc.Get(c.Request.Context(), userID)
@@ -66,9 +65,8 @@ func (h *PreferencesHandler) Get(c *gin.Context) {
 // returns the key to its default -- and answers with the full set, as Get
 // does.
 func (h *PreferencesHandler) Update(c *gin.Context) {
-	userID := middleware.GetUserIDFromContext(c)
-	if userID == "" {
-		httpjson.Fail(c, http.StatusUnauthorized, "Unauthorized")
+	userID, ok := middleware.RequireUserID(c, "Unauthorized")
+	if !ok {
 		return
 	}
 	var raw map[string]json.RawMessage

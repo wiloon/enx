@@ -63,9 +63,8 @@ type definitionJSON struct {
 // words and writes no lookup event and no query count, so it may be
 // retried.
 func (h *Handler) Entries(c *gin.Context) {
-	userID := middleware.GetUserIDFromContext(c)
-	if userID == "" {
-		httpjson.Fail(c, http.StatusUnauthorized, "Invalid session")
+	userID, ok := middleware.RequireUserID(c, "Invalid session")
+	if !ok {
 		return
 	}
 	// RFC 10008: fail a request whose Content-Type is missing or does not
