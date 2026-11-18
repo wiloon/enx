@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-11-17
 related: adr-045（AI 兜底；本 ADR 修订其 Decision 6「分数不够：展示给当事用户，不入库」那一支，并撤销其 Options B1 的否决理由）、adr-030（最早的 `ai_definitions` 候选表设计，已被 045 取代，本 ADR 以新的形态部分恢复）、adr-021（管理员词典维护页，审核入口放在那里）、adr-018（`Resolve` 是唯一查词入口）
 ---
