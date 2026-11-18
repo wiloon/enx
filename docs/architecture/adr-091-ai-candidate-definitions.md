@@ -9,6 +9,7 @@ related: adr-045（AI 兜底；本 ADR 修订其 Decision 6「分数不够：展
 | 修订 | 内容 |
 | --- | --- |
 | 2026-11-17（issue #993 规格评审） | 加「与 ADR-045 的关系」；Decision 6「通过」设 `admin_edited_at`，并规定 `words` 已有同名行时的处理；新增 Decision 8（结果计数）与 Decision 9（并发与失败）。 |
+| 2026-11-17（issue #993 规格评审第 2 轮） | Decision 9 加「写入 `words` 也要服从候选表」：高分结果写入 `words` 与候选状态在一个事务里判断，调用期间被拒绝的词不会绕过拒绝进入 `words`；`pending` 候选随写入删除。 |
 
 ADR-045 规定：AI 兜底得到的释义，只有 `quality ≥ ai-word.min-quality`（默认 8）**并且**用户当天写入 `words` 的次数没用完，才写入 `words`；否则只给当事用户看一次，哪里都不存。结果有两个问题。一是这些释义直接丢了：AI 已经调用、积分已经扣了，同一个词下次被任何人查到，都要再调一次 AI、再扣一次积分。二是其中有些词其实有价值（例如 `mind-set-changing`），只是模型没把握，管理员却没有机会看到它们。
 
@@ -59,10 +60,11 @@ ADR-045 Options B1 当初否决「进候选表等管理员处理」，理由是�
      - 候选行已不存在（被另一次通过抢先处理）：404，什么都不改。
    - **拒绝**：状态改为 `rejected`，行保留，见 Decision 3。在列表里可以撤销拒绝（改回 `pending`）。对不存在的候选行拒绝或撤销拒绝：404。
 7. **不自动重新查询。** 提示词版本变了，旧候选也不自动重新调 AI。候选一旦存在，后来的查询都从它命中，模型不会再有机会给出 8 分以上的答案；只能靠管理员通过。
-8. **结果计数（ADR-040、ADR-045 Decision 13）。** 新增计数器 `enx_ai_word_fallback_total{outcome}`，每次 `DefineWithAI` 结束时记一次，`outcome` 只取以下固定值：`known`（`words` 或 ECDICT 命中）、`candidate_hit`、`rejected_hit`、`stored`（写入 `words`）、`candidate_stored`（写入候选表）、`unstored`（是词但既没进 `words` 也没进候选表，即写入失败）、`not_a_word`、`invalid_reply`、`refused`（无资格、限流、余额不足、试用额度）、`failed`（调用失败或依赖出错）。只有 `dictionary.Service` 分得清候选命中和新的 AI 结果、已拒绝和 `is_word = false`（HTTP 响应相同），所以由它通过注入的记录接口报告结果，`metrics` 包实现这个接口；未注入时不记。ADR-040 的 `enx_dictionary_lookup_duration_seconds{source}` 不变，它只记普通查词。
+8. **结果计数（ADR-040、ADR-045 Decision 13）。** 新增计数器 `enx_ai_word_fallback_total{outcome}`，每次 `DefineWithAI` 结束时记一次，`outcome` 只取以下固定值：`known`（`words` 或 ECDICT 命中）、`candidate_hit`、`rejected_hit`、`stored`（写入 `words`）、`candidate_stored`（写入候选表）、`unstored`（是词但既没进 `words` 也没新建或命中候选行：写入失败，或因候选已被拒绝而不写 `words`，见 Decision 9）、`not_a_word`、`invalid_reply`、`refused`（无资格、限流、余额不足、试用额度）、`failed`（调用失败或依赖出错）。只有 `dictionary.Service` 分得清候选命中和新的 AI 结果、已拒绝和 `is_word = false`（HTTP 响应相同），所以由它通过注入的记录接口报告结果，`metrics` 包实现这个接口；未注入时不记。ADR-040 的 `enx_dictionary_lookup_duration_seconds{source}` 不变，它只记普通查词。
 9. **并发与失败。** 查候选表和 AI 调用之间有时间差（AI 调用可能持续数秒），期间别的请求或管理员可能改动同一个词：
    - **命中计数**用一条原子语句（`hit_count = hit_count + 1`，同时更新最近被查时间），不先读后写。计数失败只记日志，照常回答。
    - **写入候选**用一条语句：已有同名候选行（不论 `pending` 还是 `rejected`）时**不改它的状态和释义**，只把命中次数 +1、更新最近被查时间；所以 AI 调用期间被管理员拒绝的词保持 `rejected`，两个并发的未命中只留下一行、命中次数为 2。`words` 已有这个词的有效行时不写候选（AI 调用期间被管理员通过的词不会再出现在队列里）。
+   - **写入 `words`**（分数达标且写入限额没用完）也要服从候选表，在一个事务里完成：同名候选行是 `rejected` 时**不写 `words`**，用户照常拿到已付费的释义（没有词 ID），结果记 `unstored`；同名候选行是 `pending` 时写入 `words` 并删除这条候选行（词已进词典，不必再审）；没有候选行时照常写入。所以 AI 调用期间被管理员拒绝的词，不会因为这次调用的高分结果绕过拒绝进入 `words`；管理员的拒绝要么在这个事务之前提交（不写 `words`），要么在之后（候选行已删除，拒绝得到 404）。`words` 已有有效行（例如调用期间管理员通过了候选）时，与今天写入冲突一样：只记日志，用户拿到没有词 ID 的释义，`words` 里那一行不变。
    - **写入候选失败**与 ADR-045 写入 `words` 失败相同：只记日志，用户照常拿到已付费的释义（没有词 ID）。**读候选表失败**与读 `words` 失败相同：请求失败，不调 AI、不扣费。
    - **通过**在一个事务里完成；任何一步失败则整体回滚，候选行保持 `pending`，`words` 不变，管理员看到错误。
 
