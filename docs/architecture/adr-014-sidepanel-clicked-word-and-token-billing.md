@@ -6,7 +6,7 @@
 | **日期** | 2026-09-03 |
 | **关联 Spec** | [`../tasks/TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md`](../tasks/TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md) §3.10（本 ADR 的实现依据写在那里的新小节） |
 | **关联 ADR** | [`adr-007-drag-select-sentence-translation.md`](adr-007-drag-select-sentence-translation.md)（`Translator` 接口起点）、[`adr-006-page-word-lookup-in-sidepanel.md`](adr-006-page-word-lookup-in-sidepanel.md)（Side Panel 生词卡运行列表）、[`adr-009-billing-stripe-subscription-and-ai-credits.md`](adr-009-billing-stripe-subscription-and-ai-credits.md)（**本 ADR 推翻其 Decision 4 中「翻译按固定成本计费」的部分**——翻译改按 token）、[`adr-012-enx-ui-idiomatic-rephrasing.md`](adr-012-enx-ui-idiomatic-rephrasing.md)（**本 ADR 推翻其 Decision 1「不改动现有 `Translator` 接口 / `/translate/*` 计费键 / `Consume` 语义」**——把 rephrase 当试点铺的 token 计费基础设施，现在推广到整个 `aitranslate`；复用其 `credit.Balance/Settle` 原语与 `TokenPricing` 公式） |
-| **关联配置** | `config.toml` `[stripe.costs.translate]`（新增一组 token 权重，取代 `[stripe.costs]` 的固定 `translate-sentence` / `translate-word-in-context`）；部署侧环境变量 `STRIPE_COSTS_TRANSLATE_SENTENCE` / `_TRANSLATE_WORD_IN_CONTEXT` **作废**，换成 `STRIPE_COSTS_TRANSLATE_WEIGHT_IN` / `_WEIGHT_OUT` / `_DIVISOR`。`w10n-config` 里 homelab / k8s 的部署清单需同步（不在本仓库改）。 |
+| **关联配置** | `config.toml` `[stripe.costs.translate]`（新增一组 token 权重，取代 `[stripe.costs]` 的固定 `translate-sentence` / `translate-word-in-context`）；部署侧环境变量 `STRIPE_COSTS_TRANSLATE_SENTENCE` / `_TRANSLATE_WORD_IN_CONTEXT` **作废**，换成 `STRIPE_COSTS_TRANSLATE_WEIGHT_IN` / `_WEIGHT_OUT` / `_DIVISOR`。`w10n-config` 里 homelab / k8s 的部署清单需同步（不在本仓库改）。2026-11-17（#960）起改为共享的 `[stripe.costs.default]`（`STRIPE_COSTS_DEFAULT_*`），各功能的块只在需要单独定价时设置，见 Decisions「默认 token 价格与按功能覆盖」。 |
 
 ---
 
@@ -46,7 +46,20 @@
 - **`Translator` 接口**：三方法都改返回 `(..., Usage, error)`；新增 `TranslateSentenceWithWord(ctx, sentence, word) (sentenceword.Result, Usage, error)`。三 provider（kimi / minimax / bedrock）各补实现（新文件 `sentenceword.go`，对齐现有 `rephrase.go` 拆分）；bedrock 的 `converse` 从 `(string, error)` 改为带出 `Usage`。
 - **`Handler`**：删 `CreditLedger`（Consume/Refund）、`credit_ledger.go`、`costTranslate*` 字段。改持有 `ledger TokenLedger`（= ADR-012 的 `RephraseLedger` 重命名，Balance/Settle，rephrase handler 一并改用）+ 一个共享 `credit.TokenPricing`。三个 handler 方法统一走私有 `billedCall(c, feature, fn)`：translator 配置检查 → `pricing.Priced()` → `Balance < 1` 则 402 → 调 `fn` 拿 `Usage` → `Settle`（失败仅日志）。`translate_sentence_with_word` 成功响应 `{success, chinese, wordChinese}`（`wordChinese` 可能是空串）。
 - **路由**：`authGroup` + `apiGroup` 各加 `POST /translate/sentence-with-word`。
-- **配置**：`config.toml` 用 `[stripe.costs.translate]` weight-in/out/divisor（占位 `1/3/3000`）取代固定 `translate-sentence=1` / `translate-word-in-context=1`；`viper.go` 同步 `SetDefault(0)` + `BindEnv`。
+- **配置**：`config.toml` 用 `[stripe.costs.translate]` weight-in/out/divisor（占位 `1/3/3000`）取代固定 `translate-sentence=1` / `translate-word-in-context=1`；`viper.go` 同步 `SetDefault(0)` + `BindEnv`。（2026-11-17 起由下面「默认 token 价格」取代：加载库已换成 koanf（ADR-065），config.toml 里只留 `[stripe.costs.default]`。）
+
+### 默认 token 价格与按功能覆盖（2026-11-17，issue #960）
+
+所有 AI 功能（`translate` / `rephrase` / `define-word`，以及以后新增的）共用一组默认 token 价格 `[stripe.costs.default]`（`weight-in` / `weight-out` / `divisor`，环境变量 `STRIPE_COSTS_DEFAULT_WEIGHT_IN` / `_WEIGHT_OUT` / `_DIVISOR`）。某个功能仍可单独定价，单独定价优先。
+
+1. **按功能整体解析，不按字段**：「设置」指 config.toml 或环境变量里**出现**了这个键（空环境变量算没设，ADR-065 Decision 2；`defaults()` 里不再给各功能的 token 键填 0，否则无法区分）。优先级照旧 `defaults()` → config.toml → 环境变量（ADR-065）。
+2. **功能的三个键全设了** → 用它自己的三个值，完全不看默认值。三个值中显式写 0 的权重照样有效（例如 `weight-in=0, weight-out=3, divisor=3000` 是一个合法的已定价价格）；显式 `0/0/0` → 未定价、功能不运行，即使默认值已设——这是单独关掉一个功能的办法。
+3. **功能只设了部分键（1 或 2 个）** → 该功能**未定价**（解析结果为 `0/0/0`），不和默认值混合，也不拿已设的键去凑价格。原因：只看 ADR-012 Decision 5 的数值判定 `Priced()`（`divisor > 0` 且至少一个权重非 0），「缺的键补 0」在 `weight-out` + `divisor` 已设时会得到一个**已定价**的价格，和 owner 确认的「部分设置即未定价」相反。所以「是否完整」是在 `Priced()` 之前的一道存在性判断：不完整 → `0/0/0` → `Priced()` 为 false。启动时不报错、不告警（owner 2026-11-17：功能会逐步统一到一个价格，#961）。
+4. **功能一个键都没设** → 用默认值的三个值（默认值本身同样按存在性判断：只设了部分键也视为 `0/0/0`，不补全）。
+5. **默认值和功能都没设** → 未定价（fail closed，同今天）。
+6. 校验：默认值和每个功能的三个值都保持非负检查。
+
+取舍：设了默认值后，新的 AI 功能无需改部署就按默认价运行——这是本意。fail closed 只对完全没设默认值的部署成立。
 
 ### 前端（enx-chrome）
 
@@ -70,3 +83,7 @@
 - `sentence-with-word` 的结构化输出可靠性：如果线上 `wordChinese` 空串（降级）比例偏高，考虑给 prompt 加 few-shot，或对小模型回退到两次调用。
 - `[stripe.costs.translate]` 权重是占位值，待整体定价复核（同 rephrase）——从 usage 日志的 `cost=` 字段校准。
 - 若将来 content 层能传「点击的是第几个同形词」，高亮可收窄到那一个。
+
+## 修订记录
+
+- 2026-11-17（issue #960）：新增「默认 token 价格与按功能覆盖」——`[stripe.costs.default]` 供所有 AI 功能默认使用，功能单独定价按整体（三个键都设）覆盖，部分设置即未定价。原因：每个新 AI 功能都要在每个部署上补三个环境变量，生产漏了 define-word，AI 查词兜底一直没开（wiloon/w10n-config#429）。
