@@ -289,16 +289,22 @@ describe('the one-time notice', () => {
     expect(screen.queryByTestId('word-popover-ai-notice')).toBeNull()
   })
 
-  it('says only the word was sent', () => {
-    renderPopover({ current: aiWord, notice: { show: true, offerStop: false } })
+  it.each([false, true])(
+    'explains the one-time notice and later controls with offerStop=%s',
+    offerStop => {
+      renderPopover({ current: aiWord, notice: { show: true, offerStop } })
 
-    expect(screen.getByTestId('word-popover-ai-notice')).toHaveTextContent(
-      'Only this word was sent to an AI provider, never the sentence or the page.'
-    )
-    expect(screen.queryByTestId('word-popover-ai-notice-stop')).toBeNull()
-  })
+      expect(screen.getByTestId('word-popover-ai-notice')).toHaveTextContent(
+        "Looked up with AI. Only this word was sent to an AI provider, never the sentence or the page. You'll only see this note once. To stop automatic AI lookup later, click the AI tag. To turn it on or off, open the extension options."
+      )
+      expect(screen.queryByTestId('word-popover-ai-notice-stop') !== null).toBe(
+        offerStop
+      )
+    }
+  )
 
-  it('offers to stop when the lookup ran by itself, and confirms', async () => {
+  it('confirms stopping with the same re-enabling guidance as the badge menu', async () => {
+    fetchPrefs.mockResolvedValue(prefsResult(true))
     stop.mockResolvedValue(true)
     renderPopover({ current: aiWord, notice: { show: true, offerStop: true } })
 
@@ -307,7 +313,20 @@ describe('the one-time notice', () => {
     await waitFor(() =>
       expect(screen.queryByTestId('word-popover-ai-notice-stop')).toBeNull()
     )
-    expect(screen.getByText('Automatic AI lookup is off.')).toBeInTheDocument()
+    const confirmation =
+      'Automatic AI lookup is off. You can turn it back on in the extension options or on the Catglish website.'
+    const noticeConfirmation = screen.getByText(confirmation)
+    expect(noticeConfirmation).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('word-popover-ai-badge'))
+    fireEvent.click(await screen.findByTestId('word-popover-ai-stop'))
+
+    await waitFor(() =>
+      expect(screen.getAllByText(confirmation)).toHaveLength(2)
+    )
+    expect(screen.getByTestId('word-popover-ai-menu')).toHaveTextContent(
+      noticeConfirmation.textContent!
+    )
   })
 
   it('keeps the offer when stopping did not work', async () => {

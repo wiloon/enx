@@ -137,6 +137,9 @@ function errorMessage(
 
 type AutoState = 'loading' | 'on' | 'off' | 'unknown' | 'stopped'
 
+const automaticAiStoppedMessage =
+  'Automatic AI lookup is off. You can turn it back on in the extension options or on the Catglish website.'
+
 // Marks a definition a model wrote, so the user knows it did not come from the
 // dictionary. It is also the permanent way to switch automatic AI lookup off,
 // so that is one click from the result and nobody has to find a settings page.
@@ -195,12 +198,7 @@ export function AiBadge() {
             </button>
           )}
           {auto === 'off' && <p>Automatic AI lookup is off.</p>}
-          {auto === 'stopped' && (
-            <p>
-              Automatic AI lookup is off. You can turn it back on in the
-              extension options or on the Catglish website.
-            </p>
-          )}
+          {auto === 'stopped' && <p>{automaticAiStoppedMessage}</p>}
           {auto === 'unknown' && (
             <p>Couldn&apos;t reach your AI setting. Try again in a moment.</p>
           )}
@@ -224,7 +222,9 @@ export function AiNotice() {
     >
       <p>
         Looked up with AI. Only this word was sent to an AI provider, never the
-        sentence or the page.
+        sentence or the page. You&apos;ll only see this note once. To stop
+        automatic AI lookup later, click the <strong>AI</strong> tag. To turn it
+        on or off, open the extension options.
       </p>
       {offerStop && !stopped && (
         <button
@@ -238,7 +238,7 @@ export function AiNotice() {
           Stop using AI automatically
         </button>
       )}
-      {stopped && <p className="mt-1">Automatic AI lookup is off.</p>}
+      {stopped && <p className="mt-1">{automaticAiStoppedMessage}</p>}
     </div>
   )
 }
