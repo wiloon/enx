@@ -8,6 +8,7 @@ import { totalCredits, trialSummary } from '@/lib/credits'
 import { subscriptionStatusLabel } from '@/lib/plans'
 import { SITE } from '@/lib/site'
 import { tileClass } from './tile'
+import { unwrap } from '@/lib/apiResult'
 
 // Plan + credit balance (ADR-027 decision 10). The remaining free-lookup
 // allowance belongs on this card too, but it only becomes computable for
@@ -17,8 +18,7 @@ export default function PlanCard() {
     queryKey: ['billing-me'],
     queryFn: async () => {
       const resp = await apiService.getBillingMe()
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load billing')
+      return unwrap(resp, 'Failed to load billing')
     },
   })
 

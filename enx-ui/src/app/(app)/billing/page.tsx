@@ -30,6 +30,7 @@ import {
 import BillingSupportForm from '@/components/app/BillingSupportForm'
 import PlanChangeButton from '@/components/app/PlanChangeButton'
 import PageHeader from '@/components/app/PageHeader'
+import { unwrap } from '@/lib/apiResult'
 
 type BillingTab = 'subscription' | 'topup'
 
@@ -52,8 +53,7 @@ export default function BillingPage() {
     queryKey: ['billing-me'],
     queryFn: async () => {
       const resp = await apiService.getBillingMe()
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load billing status')
+      return unwrap(resp, 'Failed to load billing status')
     },
   })
 

@@ -19,6 +19,7 @@ import type {
   FeedbackKind,
   FeedbackStatus,
 } from '@/types'
+import { unwrap } from '@/lib/apiResult'
 
 const PAGE_SIZE = 100
 
@@ -180,8 +181,7 @@ function FeedbackRecords({
         limit: PAGE_SIZE,
         offset,
       })
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load feedback')
+      return unwrap(resp, 'Failed to load feedback')
     },
   })
 
@@ -256,8 +256,7 @@ function ArticleChoiceGroups({
         limit: PAGE_SIZE,
         offset,
       })
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load article choices')
+      return unwrap(resp, 'Failed to load article choices')
     },
   })
 

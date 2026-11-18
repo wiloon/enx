@@ -15,6 +15,7 @@ import {
 } from '@/lib/statsWindow'
 import type { StatsPeriod, StatsPoint } from '@/types'
 import PageHeader from '@/components/app/PageHeader'
+import { unwrap } from '@/lib/apiResult'
 
 // Reading Stats (ADR-028 Decision 6/7). One chart, two switches above it:
 // the bucket size (day / week / month / year) and the measure. It used to be
@@ -99,8 +100,7 @@ export default function ReadingStatsPage() {
     queryKey: ['stats-series', period, from, to],
     queryFn: async () => {
       const resp = await apiService.getStatsSeries(period, from, to)
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load statistics')
+      return unwrap(resp, 'Failed to load statistics')
     },
   })
 

@@ -13,6 +13,7 @@ import CreditBalance from '@/components/admin/CreditBalance'
 import { utcDate } from '@/lib/adminUsers'
 import { apiService } from '@/services/api'
 import type { AdminUserDetail, CreditDirection } from '@/types'
+import { unwrap } from '@/lib/apiResult'
 
 // One user's account, usage and credit ledger (ADR-049 Decision 11), with
 // the admin grant and deduction forms (Decisions 2-3) and the account
@@ -24,8 +25,7 @@ export default function AdminUserPage() {
     queryKey: ['admin-user', id],
     queryFn: async () => {
       const resp = await apiService.adminGetUser(id)
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load user')
+      return unwrap(resp, 'Failed to load user')
     },
   })
 
@@ -210,8 +210,7 @@ function Ledger({ userId }: { userId: string }) {
       before,
       direction
     )
-    if (resp.success && resp.data) return resp.data
-    throw new Error(resp.error || 'Failed to load the ledger')
+    return unwrap(resp, 'Failed to load the ledger')
   }
 
   return (

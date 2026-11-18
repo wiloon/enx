@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { useAuth } from '@/hooks/useAuth'
 import { emailMatches } from '@/lib/account'
 import { apiService } from '@/services/api'
+import { unwrap } from '@/lib/apiResult'
 
 // Self-serve account deletion (ADR-062 Decision 2): a hard delete, confirmed
 // by typing the account's email. A refusal (an active subscription) comes
@@ -23,8 +24,7 @@ export default function DeleteAccountCard() {
     queryKey: ['me'],
     queryFn: async () => {
       const resp = await apiService.getMe()
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load account')
+      return unwrap(resp, 'Failed to load account')
     },
   })
 

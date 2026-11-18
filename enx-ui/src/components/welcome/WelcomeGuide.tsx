@@ -38,6 +38,7 @@ import { ENHANCED_PROTECTION_NOTE } from '@/lib/help'
 import SampleArticle from '@/components/reader/SampleArticle'
 import BrandMark from '@/components/site/BrandMark'
 import { Button } from '@/components/ui/button'
+import { unwrap } from '@/lib/apiResult'
 
 // How often /welcome asks the extension for its status and re-reads the
 // user's lookups while waiting on a step (ADR-047 Decision 2).
@@ -86,8 +87,7 @@ export default function WelcomeGuide({
     queryKey: ['preferences'],
     queryFn: async () => {
       const resp = await apiService.getPreferences()
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load preferences')
+      return unwrap(resp, 'Failed to load preferences')
     },
     enabled: signedIn === true,
   })
@@ -98,8 +98,7 @@ export default function WelcomeGuide({
     queryKey: ['stats-overview'],
     queryFn: async () => {
       const resp = await apiService.getStatsOverview()
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load statistics')
+      return unwrap(resp, 'Failed to load statistics')
     },
     enabled: signedIn === true,
     // Only a user still on the guide is waiting for their first lookup.

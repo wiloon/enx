@@ -13,6 +13,7 @@ import {
 } from '@/lib/referral'
 import { SITE } from '@/lib/site'
 import { apiService } from '@/services/api'
+import { unwrap } from '@/lib/apiResult'
 
 // The /invite/<code> landing page (ADR-051 Decision 2 and 8): keeps the code
 // for the claim after sign-in (ReferralClaimer makes it) and pitches the
@@ -29,8 +30,7 @@ export default function InviteLanding({ code }: { code: string }) {
     queryKey: ['referral-offer'],
     queryFn: async () => {
       const resp = await apiService.getReferralOffer()
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load the offer')
+      return unwrap(resp, 'Failed to load the offer')
     },
   })
 

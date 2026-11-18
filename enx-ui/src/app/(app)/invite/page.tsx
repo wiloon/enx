@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import PageHeader from '@/components/app/PageHeader'
 import { pendingRewardLabel } from '@/lib/referral'
 import { apiService } from '@/services/api'
+import { unwrap } from '@/lib/apiResult'
 
 // The user's invite link and how their invites are doing (ADR-051 Decision
 // 8). Rewards wait out the friend's refund window, so the pending ones are
@@ -20,8 +21,7 @@ export default function InvitePage() {
     queryKey: ['referral-me'],
     queryFn: async () => {
       const resp = await apiService.getReferralMe()
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load your invites')
+      return unwrap(resp, 'Failed to load your invites')
     },
   })
 

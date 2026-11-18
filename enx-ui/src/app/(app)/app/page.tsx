@@ -12,6 +12,7 @@ import OnboardingChecklist from '@/components/app/home/OnboardingChecklist'
 import PlanCard from '@/components/app/home/PlanCard'
 import StatStrip from '@/components/app/home/StatStrip'
 import PageHeader from '@/components/app/PageHeader'
+import { unwrap } from '@/lib/apiResult'
 
 // App home (ADR-027): a status-driven workbench, not a directory of features
 // -- the sidebar already navigates. Two forms, picked by whether this user
@@ -39,8 +40,7 @@ export default function AppHome() {
     queryKey: ['stats-overview'],
     queryFn: async () => {
       const resp = await apiService.getStatsOverview()
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load statistics')
+      return unwrap(resp, 'Failed to load statistics')
     },
   })
 
@@ -49,8 +49,7 @@ export default function AppHome() {
     queryKey: ['preferences'],
     queryFn: async () => {
       const resp = await apiService.getPreferences()
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load preferences')
+      return unwrap(resp, 'Failed to load preferences')
     },
     enabled: !isLoading && !isError && !hasData,
   })

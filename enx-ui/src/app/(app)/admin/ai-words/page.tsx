@@ -8,6 +8,7 @@ import WordEditor from '@/components/admin/WordEditor'
 import { apiService } from '@/services/api'
 import type { AdminWordRow } from '@/types'
 import PageHeader from '@/components/app/PageHeader'
+import { unwrap } from '@/lib/apiResult'
 
 const PAGE_SIZE = 25
 
@@ -27,8 +28,7 @@ export default function AdminAiWordsPage() {
         PAGE_SIZE,
         page * PAGE_SIZE
       )
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load AI definitions')
+      return unwrap(resp, 'Failed to load AI definitions')
     },
   })
 

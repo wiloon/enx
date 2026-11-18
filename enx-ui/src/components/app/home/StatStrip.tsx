@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ChevronRight } from 'lucide-react'
 import { apiService } from '@/services/api'
 import { approximateWords } from '@/lib/statsWindow'
+import { unwrap } from '@/lib/apiResult'
 
 // Home's status strip (ADR-027 Decision 1, contract from ADR-028 Decision 6).
 // What replaced "Continue reading": the question Home should answer on open
@@ -25,8 +26,7 @@ export default function StatStrip() {
     queryKey: ['stats-overview'],
     queryFn: async () => {
       const resp = await apiService.getStatsOverview()
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to load statistics')
+      return unwrap(resp, 'Failed to load statistics')
     },
   })
 

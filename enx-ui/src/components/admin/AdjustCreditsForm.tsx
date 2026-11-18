@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { deductWarning, parseAdjustment } from '@/lib/adminUsers'
 import { apiService } from '@/services/api'
+import { unwrap } from '@/lib/apiResult'
 
 type Direction = 'grant' | 'deduct'
 
@@ -42,8 +43,7 @@ export default function AdjustCreditsForm({
         amount: vars.amount,
         reason: vars.reason,
       })
-      if (resp.success && resp.data) return resp.data
-      throw new Error(resp.error || 'Failed to update credits')
+      return unwrap(resp, 'Failed to update credits')
     },
     onSuccess: (data, vars) => {
       const verb = vars.direction === 'grant' ? 'Granted' : 'Deducted'
