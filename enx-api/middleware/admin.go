@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"enx-api/platform/httpjson"
 	"net/http"
 	"strings"
 
@@ -43,7 +44,7 @@ func (a AdminAllowlist) Contains(clerkUserID string) bool {
 func (a AdminAllowlist) Require() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !a.Contains(c.GetString("clerk_user_id")) {
-			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "admin access required"})
+			httpjson.Fail(c, http.StatusForbidden, "admin access required")
 			c.Abort()
 			return
 		}

@@ -9,6 +9,7 @@ import (
 
 	"enx-api/billing/eventadmin"
 	"enx-api/middleware"
+	"enx-api/platform/httpjson"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
@@ -40,13 +41,13 @@ func (h *WebhookEventAdminHandler) List(c *gin.Context) {
 	limit, okLimit := wholeQuery(c, "limit")
 	offset, okOffset := wholeQuery(c, "offset")
 	if !okLimit || !okOffset {
-		conflictFailure(c, http.StatusBadRequest, "limit and offset must be whole numbers")
+		httpjson.Fail(c, http.StatusBadRequest, "limit and offset must be whole numbers")
 		return
 	}
 	events, err := h.events.List(c.Request.Context(), c.Query("status"), limit, offset)
 	switch {
 	case errors.Is(err, eventadmin.ErrInvalidStatus):
-		conflictFailure(c, http.StatusBadRequest, "status must be pending, processing, waiting_dependency, processed, needs_attention or ignored")
+		httpjson.Fail(c, http.StatusBadRequest, "status must be pending, processing, waiting_dependency, processed, needs_attention or ignored")
 		return
 	case err != nil:
 		webhookEventsUnavailable(c, "list", err)
@@ -67,7 +68,7 @@ func (h *WebhookEventAdminHandler) Detail(c *gin.Context) {
 	d, err := h.events.Detail(c.Request.Context(), id)
 	switch {
 	case errors.Is(err, eventadmin.ErrNotFound):
-		conflictFailure(c, http.StatusNotFound, "no webhook event with that ID")
+		httpjson.Fail(c, http.StatusNotFound, "no webhook event with that ID")
 		return
 	case err != nil:
 		webhookEventsUnavailable(c, "detail "+id, err)
@@ -90,10 +91,10 @@ func (h *WebhookEventAdminHandler) Retry(c *gin.Context) {
 	e, err := h.events.Retry(c.Request.Context(), id)
 	switch {
 	case errors.Is(err, eventadmin.ErrNotFound):
-		conflictFailure(c, http.StatusNotFound, "no webhook event with that ID")
+		httpjson.Fail(c, http.StatusNotFound, "no webhook event with that ID")
 		return
 	case errors.Is(err, eventadmin.ErrNotRetryable):
-		conflictFailure(c, http.StatusConflict, "only an event that needs attention can be retried")
+		httpjson.Fail(c, http.StatusConflict, "only an event that needs attention can be retried")
 		return
 	case err != nil:
 		webhookEventsUnavailable(c, "retry "+id, err)
@@ -144,5 +145,5 @@ func optionalRFC3339(t time.Time) any {
 
 func webhookEventsUnavailable(c *gin.Context, action string, err error) {
 	logger.Errorf("admin webhook events: %s: %v", action, err)
-	conflictFailure(c, http.StatusServiceUnavailable, "webhook events are unavailable right now; try again later")
+	httpjson.Fail(c, http.StatusServiceUnavailable, "webhook events are unavailable right now; try again later")
 }

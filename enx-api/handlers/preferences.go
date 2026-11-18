@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"enx-api/middleware"
+	"enx-api/platform/httpjson"
 	"enx-api/preferences"
 	"enx-api/utils/logger"
 
@@ -49,13 +50,13 @@ func preferencesBody(views map[preferences.Key]preferences.View) map[string]pref
 func (h *PreferencesHandler) Get(c *gin.Context) {
 	userID := middleware.GetUserIDFromContext(c)
 	if userID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Unauthorized"})
+		httpjson.Fail(c, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 	views, err := h.svc.Get(c.Request.Context(), userID)
 	if err != nil {
 		logger.Errorf("❌ preferences: read failed for user %s: %v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Preferences are temporarily unavailable."})
+		httpjson.Fail(c, http.StatusInternalServerError, "Preferences are temporarily unavailable.")
 		return
 	}
 	c.JSON(http.StatusOK, preferencesBody(views))
@@ -67,7 +68,7 @@ func (h *PreferencesHandler) Get(c *gin.Context) {
 func (h *PreferencesHandler) Update(c *gin.Context) {
 	userID := middleware.GetUserIDFromContext(c)
 	if userID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Unauthorized"})
+		httpjson.Fail(c, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 	var raw map[string]json.RawMessage
@@ -95,7 +96,7 @@ func (h *PreferencesHandler) Update(c *gin.Context) {
 		return
 	default:
 		logger.Errorf("❌ preferences: update failed for user %s: %v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Preferences are temporarily unavailable."})
+		httpjson.Fail(c, http.StatusInternalServerError, "Preferences are temporarily unavailable.")
 		return
 	}
 

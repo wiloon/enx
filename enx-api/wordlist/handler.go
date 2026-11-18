@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"enx-api/middleware"
+	"enx-api/platform/httpjson"
 	"enx-api/utils/logger"
 )
 
@@ -29,22 +30,22 @@ type entryResponse struct {
 func ListHandler(c *gin.Context) {
 	status, err := ParseStatus(c.Query("status"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "status must be all, learning or known"})
+		httpjson.Fail(c, http.StatusBadRequest, "status must be all, learning or known")
 		return
 	}
 	sort, err := ParseSort(c.Query("sort"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "sort must be recent or lookups"})
+		httpjson.Fail(c, http.StatusBadRequest, "sort must be recent or lookups")
 		return
 	}
 	limit, err := intParam(c, "limit")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "limit must be a whole number"})
+		httpjson.Fail(c, http.StatusBadRequest, "limit must be a whole number")
 		return
 	}
 	offset, err := intParam(c, "offset")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "offset must be a whole number"})
+		httpjson.Fail(c, http.StatusBadRequest, "offset must be a whole number")
 		return
 	}
 
@@ -58,7 +59,7 @@ func ListHandler(c *gin.Context) {
 	})
 	if err != nil {
 		logger.Errorf("wordlist: list failed for user %s: %v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not load your word list"})
+		httpjson.Fail(c, http.StatusInternalServerError, "could not load your word list")
 		return
 	}
 
@@ -99,7 +100,7 @@ func RemoveHandler(c *gin.Context) {
 	english := c.Param("english")
 	if err := Remove(c.Request.Context(), userID, english); err != nil {
 		logger.Errorf("wordlist: remove %q failed for user %s: %v", english, userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not remove the word"})
+		httpjson.Fail(c, http.StatusInternalServerError, "could not remove the word")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true})

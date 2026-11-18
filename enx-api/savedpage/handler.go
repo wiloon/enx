@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"enx-api/middleware"
+	"enx-api/platform/httpjson"
 	"enx-api/utils/logger"
 )
 
@@ -52,7 +53,7 @@ type saveRequest struct {
 func SaveHandler(c *gin.Context) {
 	var req saveRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid request body"})
+		httpjson.Fail(c, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
@@ -64,15 +65,15 @@ func SaveHandler(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, errInvalidURL):
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": invalidURLMessage(err)})
+			httpjson.Fail(c, http.StatusBadRequest, invalidURLMessage(err))
 		case errors.Is(err, ErrLimitReached):
-			c.JSON(http.StatusUnprocessableEntity, gin.H{
-				"success": false,
-				"message": fmt.Sprintf("You can save up to %d pages. Delete some to save more.", MaxPerUser),
-			})
+			httpjson.Fail(c, http.StatusUnprocessableEntity,
+
+				fmt.Sprintf("You can save up to %d pages. Delete some to save more.", MaxPerUser))
+
 		default:
 			logger.Errorf("savedpage: save failed for user %s: %v", userID, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not save the page"})
+			httpjson.Fail(c, http.StatusInternalServerError, "could not save the page")
 		}
 		return
 	}
@@ -92,7 +93,7 @@ func ListHandler(c *gin.Context) {
 	pages, err := List(c.Request.Context(), userID)
 	if err != nil {
 		logger.Errorf("savedpage: list failed for user %s: %v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not load saved pages"})
+		httpjson.Fail(c, http.StatusInternalServerError, "could not load saved pages")
 		return
 	}
 
@@ -115,11 +116,11 @@ type updateRequest struct {
 func UpdateHandler(c *gin.Context) {
 	var req updateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid request body"})
+		httpjson.Fail(c, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if req.URL == nil && req.Title == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "nothing to change: send a url or a title"})
+		httpjson.Fail(c, http.StatusBadRequest, "nothing to change: send a url or a title")
 		return
 	}
 
@@ -128,14 +129,14 @@ func UpdateHandler(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrNotFound):
-			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "saved page not found"})
+			httpjson.Fail(c, http.StatusNotFound, "saved page not found")
 		case errors.Is(err, ErrDuplicate):
-			c.JSON(http.StatusConflict, gin.H{"success": false, "message": "you have already saved a page with that address"})
+			httpjson.Fail(c, http.StatusConflict, "you have already saved a page with that address")
 		case errors.Is(err, errInvalidURL):
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": invalidURLMessage(err)})
+			httpjson.Fail(c, http.StatusBadRequest, invalidURLMessage(err))
 		default:
 			logger.Errorf("savedpage: update failed for user %s: %v", userID, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not update the page"})
+			httpjson.Fail(c, http.StatusInternalServerError, "could not update the page")
 		}
 		return
 	}
@@ -147,11 +148,11 @@ func DeleteHandler(c *gin.Context) {
 	userID := middleware.GetUserIDFromContext(c)
 	if err := Delete(c.Request.Context(), userID, c.Param("id")); err != nil {
 		if errors.Is(err, ErrNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "saved page not found"})
+			httpjson.Fail(c, http.StatusNotFound, "saved page not found")
 			return
 		}
 		logger.Errorf("savedpage: delete failed for user %s: %v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not delete the page"})
+		httpjson.Fail(c, http.StatusInternalServerError, "could not delete the page")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true})
@@ -163,7 +164,7 @@ func DeleteAllHandler(c *gin.Context) {
 	deleted, err := DeleteAll(c.Request.Context(), userID)
 	if err != nil {
 		logger.Errorf("savedpage: delete all failed for user %s: %v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not delete your saved pages"})
+		httpjson.Fail(c, http.StatusInternalServerError, "could not delete your saved pages")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "deleted": deleted})
@@ -183,7 +184,7 @@ func ExportHandler(c *gin.Context) {
 	pages, err := List(c.Request.Context(), userID)
 	if err != nil {
 		logger.Errorf("savedpage: export failed for user %s: %v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not export your saved pages"})
+		httpjson.Fail(c, http.StatusInternalServerError, "could not export your saved pages")
 		return
 	}
 

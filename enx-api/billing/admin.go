@@ -10,6 +10,7 @@ import (
 
 	"enx-api/billing/credit"
 	"enx-api/enx"
+	"enx-api/platform/httpjson"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
@@ -42,7 +43,7 @@ func adjustCredits(c *gin.Context, name, verb string, apply func(ctx context.Con
 	req.Reason = strings.TrimSpace(req.Reason)
 	if err != nil || req.Reason == "" || (req.UserID == "") == (req.Email == "") ||
 		(req.Email != "" && !validEmail(req.Email)) {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "exactly one of userId or a valid email, a positive amount and a reason are required"})
+		httpjson.Fail(c, http.StatusBadRequest, "exactly one of userId or a valid email, a positive amount and a reason are required")
 		return
 	}
 
@@ -59,18 +60,18 @@ func adjustCredits(c *gin.Context, name, verb string, apply func(ctx context.Con
 			return
 		}
 		if errors.Is(err, credit.ErrNoUser) {
-			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "no user with that id"})
+			httpjson.Fail(c, http.StatusNotFound, "no user with that id")
 			return
 		}
 		logger.Errorf("admin %s(user=%s amount=%d) failed: %v", name, user.Id, req.Amount, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to update credits"})
+		httpjson.Fail(c, http.StatusInternalServerError, "failed to update credits")
 		return
 	}
 
 	balance, err := credit.Balance(ctx, user.Id)
 	if err != nil {
 		logger.Errorf("admin %s: Balance(user=%s) failed: %v", name, user.Id, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "credits updated, but failed to read new balance"})
+		httpjson.Fail(c, http.StatusInternalServerError, "credits updated, but failed to read new balance")
 		return
 	}
 
@@ -95,7 +96,7 @@ func adjustTarget(c *gin.Context, req adjustCreditsRequest) (*enx.User, bool) {
 	if req.UserID != "" {
 		user := enx.GetUserByID(req.UserID)
 		if user.Id == "" {
-			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "no user with that id"})
+			httpjson.Fail(c, http.StatusNotFound, "no user with that id")
 			return nil, false
 		}
 		return user, true
@@ -104,12 +105,12 @@ func adjustTarget(c *gin.Context, req adjustCreditsRequest) (*enx.User, bool) {
 	users, err := enx.GetUsersByEmail(req.Email)
 	if err != nil {
 		logger.Errorf("admin credits: look up users by email: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to look up the user"})
+		httpjson.Fail(c, http.StatusInternalServerError, "failed to look up the user")
 		return nil, false
 	}
 	switch len(users) {
 	case 0:
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "no user with that email (they must sign in at least once first)"})
+		httpjson.Fail(c, http.StatusNotFound, "no user with that email (they must sign in at least once first)")
 		return nil, false
 	case 1:
 		return &users[0], true

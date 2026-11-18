@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"enx-api/platform/httpjson"
 	"enx-api/utils/logger"
 )
 
@@ -59,7 +60,7 @@ func (h *DailyHandler) Serve(c *gin.Context) {
 		return
 	}
 	if !h.authorized(c.GetHeader("Authorization")) {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "invalid or missing token"})
+		httpjson.Fail(c, http.StatusUnauthorized, "invalid or missing token")
 		return
 	}
 
@@ -67,11 +68,11 @@ func (h *DailyHandler) Serve(c *gin.Context) {
 	days, err := h.daily(c.Request.Context(), from, to)
 	if err != nil {
 		if errors.Is(err, ErrBadRange) {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+			httpjson.Fail(c, http.StatusBadRequest, err.Error())
 			return
 		}
 		logger.Errorf("userstats: daily %s..%s failed: %v", from, to, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not load user statistics"})
+		httpjson.Fail(c, http.StatusInternalServerError, "could not load user statistics")
 		return
 	}
 	if days == nil {

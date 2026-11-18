@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"enx-api/ecdict"
+	"enx-api/platform/httpjson"
 	"enx-api/repo"
 	"enx-api/utils/logger"
 
@@ -85,7 +86,7 @@ type adminEcdictRow struct {
 func AdminGetWord(c *gin.Context) {
 	word := strings.TrimSpace(c.Param("word"))
 	if word == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "word is required"})
+		httpjson.Fail(c, http.StatusBadRequest, "word is required")
 		return
 	}
 	row, found := repo.AdminGetWord(word)
@@ -106,11 +107,11 @@ func AdminGetWord(c *gin.Context) {
 func AdminGetEcdict(c *gin.Context) {
 	word := strings.TrimSpace(c.Param("word"))
 	if word == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "word is required"})
+		httpjson.Fail(c, http.StatusBadRequest, "word is required")
 		return
 	}
 	if !ecdict.IsAvailable() {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": ecdict.UnavailableMessage()})
+		httpjson.Fail(c, http.StatusServiceUnavailable, ecdict.UnavailableMessage())
 		return
 	}
 	row, matchedBy, found := ecdict.LookupRaw(c.Request.Context(), word)
@@ -136,17 +137,17 @@ func AdminGetEcdict(c *gin.Context) {
 func AdminSyncWordFromEcdict(c *gin.Context) {
 	word := strings.TrimSpace(c.Param("word"))
 	if word == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "word is required"})
+		httpjson.Fail(c, http.StatusBadRequest, "word is required")
 		return
 	}
 	if !ecdict.IsAvailable() {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": ecdict.UnavailableMessage()})
+		httpjson.Fail(c, http.StatusServiceUnavailable, ecdict.UnavailableMessage())
 		return
 	}
 
 	eRow, matchedBy, found := ecdict.LookupRaw(c.Request.Context(), word)
 	if !found {
-		c.JSON(http.StatusConflict, gin.H{"success": false, "message": "no ECDICT entry to sync from"})
+		httpjson.Fail(c, http.StatusConflict, "no ECDICT entry to sync from")
 		return
 	}
 
@@ -154,7 +155,7 @@ func AdminSyncWordFromEcdict(c *gin.Context) {
 	after, err := repo.AdminSyncWordFromEcdict(word, eRow.Translation, eRow.Phonetic)
 	if err != nil {
 		logger.Errorf("AdminSyncWordFromEcdict: word=%q: %v", word, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to update word"})
+		httpjson.Fail(c, http.StatusInternalServerError, "failed to update word")
 		return
 	}
 
@@ -188,7 +189,7 @@ func AdminListAIWords(c *gin.Context) {
 	if raw := c.Query("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 1 || n > adminAIWordsMaxLimit {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "limit must be between 1 and 200"})
+			httpjson.Fail(c, http.StatusBadRequest, "limit must be between 1 and 200")
 			return
 		}
 		limit = n
@@ -197,7 +198,7 @@ func AdminListAIWords(c *gin.Context) {
 	if raw := c.Query("offset"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "offset must be 0 or more"})
+			httpjson.Fail(c, http.StatusBadRequest, "offset must be 0 or more")
 			return
 		}
 		offset = n
@@ -206,7 +207,7 @@ func AdminListAIWords(c *gin.Context) {
 	rows, total, err := repo.AdminListAIWords(reviewed, limit, offset)
 	if err != nil {
 		logger.Errorf("AdminListAIWords: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to list AI definitions"})
+		httpjson.Fail(c, http.StatusInternalServerError, "failed to list AI definitions")
 		return
 	}
 	words := make([]adminWordRow, 0, len(rows))
@@ -239,22 +240,22 @@ type adminEditWordRequest struct {
 func AdminEditWord(c *gin.Context) {
 	word := strings.TrimSpace(c.Param("word"))
 	if word == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "word is required"})
+		httpjson.Fail(c, http.StatusBadRequest, "word is required")
 		return
 	}
 	var req adminEditWordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "chinese and pronunciation are required"})
+		httpjson.Fail(c, http.StatusBadRequest, "chinese and pronunciation are required")
 		return
 	}
 	req.Chinese = strings.TrimSpace(req.Chinese)
 	req.Pronunciation = strings.TrimSpace(req.Pronunciation)
 	if req.Chinese == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "chinese must not be empty"})
+		httpjson.Fail(c, http.StatusBadRequest, "chinese must not be empty")
 		return
 	}
 	if utf8.RuneCountInString(req.Chinese) > adminEditChineseMax || utf8.RuneCountInString(req.Pronunciation) > adminEditPronunciationMax {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "chinese or pronunciation is too long"})
+		httpjson.Fail(c, http.StatusBadRequest, "chinese or pronunciation is too long")
 		return
 	}
 
@@ -262,11 +263,11 @@ func AdminEditWord(c *gin.Context) {
 	after, err := repo.AdminEditWord(word, req.Chinese, req.Pronunciation)
 	switch {
 	case errors.Is(err, repo.ErrWordNotFound):
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "word not found"})
+		httpjson.Fail(c, http.StatusNotFound, "word not found")
 		return
 	case err != nil:
 		logger.Errorf("AdminEditWord: word=%q: %v", word, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to update word"})
+		httpjson.Fail(c, http.StatusInternalServerError, "failed to update word")
 		return
 	}
 
@@ -283,13 +284,13 @@ func AdminEditWord(c *gin.Context) {
 func AdminDeleteWord(c *gin.Context) {
 	word := strings.TrimSpace(c.Param("word"))
 	if word == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "word is required"})
+		httpjson.Fail(c, http.StatusBadRequest, "word is required")
 		return
 	}
 	deleted, err := repo.AdminDeleteWord(word)
 	if err != nil {
 		logger.Errorf("AdminDeleteWord: word=%q: %v", word, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to delete word"})
+		httpjson.Fail(c, http.StatusInternalServerError, "failed to delete word")
 		return
 	}
 	logger.Infof("admin AdminDeleteWord: %s deleted word=%q (existed=%v)", c.GetString("clerk_user_id"), word, deleted)

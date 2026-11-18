@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"enx-api/middleware"
+	"enx-api/platform/httpjson"
 	"enx-api/utils/logger"
 )
 
@@ -36,14 +37,14 @@ type submitRequest struct {
 func (h *Handler) Submit(c *gin.Context) {
 	var req submitRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid request body"})
+		httpjson.Fail(c, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	userID := middleware.GetUserIDFromContext(c)
 	recorded, err := h.svc.Submit(c.Request.Context(), userID, Submission(req))
 	switch {
 	case errors.Is(err, ErrInvalid):
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		httpjson.Fail(c, http.StatusBadRequest, err.Error())
 	case errors.Is(err, ErrDailyLimit):
 		c.JSON(http.StatusTooManyRequests, gin.H{
 			"success": false,
@@ -52,7 +53,7 @@ func (h *Handler) Submit(c *gin.Context) {
 		})
 	case err != nil:
 		logger.Errorf("feedback: submit failed for user %s: %v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Could not send the feedback. Please try again."})
+		httpjson.Fail(c, http.StatusInternalServerError, "Could not send the feedback. Please try again.")
 	default:
 		c.JSON(http.StatusOK, gin.H{"success": true, "recorded": recorded})
 	}
@@ -64,19 +65,19 @@ func (h *Handler) List(c *gin.Context) {
 	limit, okLimit := intQuery(c, "limit", DefaultListLimit)
 	offset, okOffset := intQuery(c, "offset", 0)
 	if !okLimit || !okOffset {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "limit and offset must be whole numbers"})
+		httpjson.Fail(c, http.StatusBadRequest, "limit and offset must be whole numbers")
 		return
 	}
 	page, err := h.svc.List(c.Request.Context(), ListQuery{
 		Kind: Kind(c.Query("kind")), Status: Status(c.Query("status")), Limit: limit, Offset: offset,
 	})
 	if errors.Is(err, ErrInvalid) {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		httpjson.Fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
 	if err != nil {
 		logger.Errorf("feedback: list failed: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not list feedback"})
+		httpjson.Fail(c, http.StatusInternalServerError, "could not list feedback")
 		return
 	}
 	items := make([]gin.H, len(page.Records))
@@ -96,17 +97,17 @@ func (h *Handler) Resolve(c *gin.Context) {
 		Status Status `json:"status"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.Status != StatusResolved {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": `status must be "resolved"`})
+		httpjson.Fail(c, http.StatusBadRequest, `status must be "resolved"`)
 		return
 	}
 	err := h.svc.Resolve(c.Request.Context(), c.Param("id"))
 	if errors.Is(err, ErrNotFound) {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "no such feedback"})
+		httpjson.Fail(c, http.StatusNotFound, "no such feedback")
 		return
 	}
 	if err != nil {
 		logger.Errorf("feedback: resolve %s: %v", c.Param("id"), err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not resolve the feedback"})
+		httpjson.Fail(c, http.StatusInternalServerError, "could not resolve the feedback")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true})
@@ -119,19 +120,19 @@ func (h *Handler) ListArticleChoiceGroups(c *gin.Context) {
 	limit, okLimit := intQuery(c, "limit", DefaultListLimit)
 	offset, okOffset := intQuery(c, "offset", 0)
 	if !okLimit || !okOffset {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "limit and offset must be whole numbers"})
+		httpjson.Fail(c, http.StatusBadRequest, "limit and offset must be whole numbers")
 		return
 	}
 	page, err := h.svc.ListArticleChoiceGroups(c.Request.Context(), GroupQuery{
 		Status: Status(c.Query("status")), Limit: limit, Offset: offset,
 	})
 	if errors.Is(err, ErrInvalid) {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		httpjson.Fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
 	if err != nil {
 		logger.Errorf("feedback: list article choice groups failed: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not list article choices"})
+		httpjson.Fail(c, http.StatusInternalServerError, "could not list article choices")
 		return
 	}
 	groups := make([]gin.H, len(page.Groups))
@@ -152,18 +153,18 @@ func (h *Handler) ResolveArticleChoiceGroup(c *gin.Context) {
 		Selector string `json:"selector"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid request body"})
+		httpjson.Fail(c, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	n, err := h.svc.ResolveArticleChoiceGroup(c.Request.Context(), req.Host, req.Selector)
 	switch {
 	case errors.Is(err, ErrInvalid):
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		httpjson.Fail(c, http.StatusBadRequest, err.Error())
 	case errors.Is(err, ErrNotFound):
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "no such article choice group"})
+		httpjson.Fail(c, http.StatusNotFound, "no such article choice group")
 	case err != nil:
 		logger.Errorf("feedback: resolve article choice group: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "could not resolve the article choices"})
+		httpjson.Fail(c, http.StatusInternalServerError, "could not resolve the article choices")
 	default:
 		c.JSON(http.StatusOK, gin.H{"success": true, "resolved": n})
 	}

@@ -8,6 +8,7 @@ import (
 
 	"enx-api/dictionary"
 	"enx-api/middleware"
+	"enx-api/platform/httpjson"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
@@ -64,38 +65,38 @@ type definitionJSON struct {
 func (h *Handler) Entries(c *gin.Context) {
 	userID := middleware.GetUserIDFromContext(c)
 	if userID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Invalid session"})
+		httpjson.Fail(c, http.StatusUnauthorized, "Invalid session")
 		return
 	}
 	// RFC 10008: fail a request whose Content-Type is missing or does not
 	// match its content.
 	if c.ContentType() != "application/json" {
-		c.JSON(http.StatusUnsupportedMediaType, gin.H{
-			"success": false,
-			"message": "Content-Type must be application/json",
-		})
+		httpjson.Fail(c, http.StatusUnsupportedMediaType,
+
+			"Content-Type must be application/json")
+
 		return
 	}
 	var req entriesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid request body"})
+		httpjson.Fail(c, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
 	results, err := h.entries.Lookup(c.Request.Context(), userID, req.Words)
 	switch {
 	case errors.Is(err, dictionary.ErrInvalidBatch):
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Send 1 to 100 single words in \"words\".",
-		})
+		httpjson.Fail(c, http.StatusBadRequest,
+
+			"Send 1 to 100 single words in \"words\".")
+
 		return
 	case errors.Is(err, dictionary.ErrQuotaExceeded):
 		RespondQuotaExceededWithSubscriptions(c, userID, h.subscriptions)
 		return
 	case err != nil:
 		logger.Errorf("dictionary entries for %s: %v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Dictionary lookup failed"})
+		httpjson.Fail(c, http.StatusInternalServerError, "Dictionary lookup failed")
 		return
 	}
 

@@ -9,6 +9,7 @@ import (
 
 	"enx-api/billing/conflict"
 	"enx-api/middleware"
+	"enx-api/platform/httpjson"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
@@ -42,24 +43,24 @@ type supportRequest struct {
 func (h *SupportHandler) Submit(c *gin.Context) {
 	var req supportRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		supportFailure(c, http.StatusBadRequest, "A subscription ID and a message are required.")
+		httpjson.Fail(c, http.StatusBadRequest, "A subscription ID and a message are required.")
 		return
 	}
 	userID := middleware.GetUserIDFromContext(c)
 	support, err := h.requests.Request(c.Request.Context(), userID, req.SubscriptionID, req.Message)
 	switch {
 	case errors.Is(err, conflict.ErrNotOwnedConflict):
-		supportFailure(c, http.StatusNotFound, "No subscription issue was found for your account.")
+		httpjson.Fail(c, http.StatusNotFound, "No subscription issue was found for your account.")
 		return
 	case errors.Is(err, conflict.ErrBlankMessage):
-		supportFailure(c, http.StatusBadRequest, "Please enter a message.")
+		httpjson.Fail(c, http.StatusBadRequest, "Please enter a message.")
 		return
 	case errors.Is(err, conflict.ErrMessageTooLong):
-		supportFailure(c, http.StatusBadRequest, fmt.Sprintf("Your message must be at most %d characters.", conflict.MaxSupportMessageLength))
+		httpjson.Fail(c, http.StatusBadRequest, fmt.Sprintf("Your message must be at most %d characters.", conflict.MaxSupportMessageLength))
 		return
 	case err != nil:
 		logger.Errorf("billing: support request on %s by %s failed: %v", req.SubscriptionID, userID, err)
-		supportFailure(c, http.StatusServiceUnavailable, "Your message could not be sent right now. Please try again later.")
+		httpjson.Fail(c, http.StatusServiceUnavailable, "Your message could not be sent right now. Please try again later.")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -70,8 +71,4 @@ func (h *SupportHandler) Submit(c *gin.Context) {
 			"sentAt":  support.At.UTC().Format(time.RFC3339),
 		},
 	})
-}
-
-func supportFailure(c *gin.Context, status int, message string) {
-	c.JSON(status, gin.H{"success": false, "message": message})
 }

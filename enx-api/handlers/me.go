@@ -6,6 +6,7 @@ import (
 
 	"enx-api/enx"
 	"enx-api/middleware"
+	"enx-api/platform/httpjson"
 
 	"github.com/gin-gonic/gin"
 )
@@ -21,12 +22,12 @@ func GetMe(admins middleware.AdminAllowlist) gin.HandlerFunc {
 func serveMe(c *gin.Context, admins middleware.AdminAllowlist) {
 	userID := middleware.GetUserIDFromContext(c)
 	if userID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Unauthorized"})
+		httpjson.Fail(c, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 	user := enx.GetUserByID(userID)
 	if user.Id == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "User not found"})
+		httpjson.Fail(c, http.StatusUnauthorized, "User not found")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{

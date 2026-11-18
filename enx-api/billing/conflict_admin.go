@@ -10,6 +10,7 @@ import (
 	"enx-api/billing/conflict"
 	"enx-api/billing/conflictadmin"
 	"enx-api/middleware"
+	"enx-api/platform/httpjson"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
@@ -41,13 +42,13 @@ func (h *ConflictAdminHandler) List(c *gin.Context) {
 	limit, okLimit := wholeQuery(c, "limit")
 	offset, okOffset := wholeQuery(c, "offset")
 	if !okLimit || !okOffset {
-		conflictFailure(c, http.StatusBadRequest, "limit and offset must be whole numbers")
+		httpjson.Fail(c, http.StatusBadRequest, "limit and offset must be whole numbers")
 		return
 	}
 	conflicts, err := h.conflicts.List(c.Request.Context(), c.Query("status"), limit, offset)
 	switch {
 	case errors.Is(err, conflict.ErrInvalidStatus):
-		conflictFailure(c, http.StatusBadRequest, "status must be open or resolved")
+		httpjson.Fail(c, http.StatusBadRequest, "status must be open or resolved")
 		return
 	case err != nil:
 		conflictUnavailable(c, "list", err)
@@ -66,7 +67,7 @@ func (h *ConflictAdminHandler) Detail(c *gin.Context) {
 	d, err := h.conflicts.Detail(c.Request.Context(), c.Param("id"))
 	switch {
 	case errors.Is(err, conflictadmin.ErrNotFound):
-		conflictFailure(c, http.StatusNotFound, "no subscription conflict with that ID")
+		httpjson.Fail(c, http.StatusNotFound, "no subscription conflict with that ID")
 		return
 	case err != nil:
 		conflictUnavailable(c, "detail "+c.Param("id"), err)
@@ -97,7 +98,7 @@ type resolveConflictRequest struct {
 func (h *ConflictAdminHandler) Resolve(c *gin.Context) {
 	var req resolveConflictRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		conflictFailure(c, http.StatusBadRequest, "status and notes are required")
+		httpjson.Fail(c, http.StatusBadRequest, "status and notes are required")
 		return
 	}
 	id := c.Param("id")
@@ -105,16 +106,16 @@ func (h *ConflictAdminHandler) Resolve(c *gin.Context) {
 	res, err := h.conflicts.Resolve(c.Request.Context(), operatorID, id, conflict.ResolveRequest{Status: req.Status, Notes: req.Notes})
 	switch {
 	case errors.Is(err, conflictadmin.ErrNotFound):
-		conflictFailure(c, http.StatusNotFound, "no subscription conflict with that ID")
+		httpjson.Fail(c, http.StatusNotFound, "no subscription conflict with that ID")
 		return
 	case errors.Is(err, conflict.ErrInvalidStatus):
-		conflictFailure(c, http.StatusBadRequest, "status must be resolved")
+		httpjson.Fail(c, http.StatusBadRequest, "status must be resolved")
 		return
 	case errors.Is(err, conflict.ErrBlankNotes):
-		conflictFailure(c, http.StatusBadRequest, "notes are required")
+		httpjson.Fail(c, http.StatusBadRequest, "notes are required")
 		return
 	case errors.Is(err, conflict.ErrResolutionDiffers):
-		conflictFailure(c, http.StatusConflict, "the conflict is already resolved with different notes")
+		httpjson.Fail(c, http.StatusConflict, "the conflict is already resolved with different notes")
 		return
 	case err != nil:
 		conflictUnavailable(c, "resolve "+id, err)
@@ -166,9 +167,5 @@ func wholeQuery(c *gin.Context, name string) (int, bool) {
 
 func conflictUnavailable(c *gin.Context, action string, err error) {
 	logger.Errorf("admin subscription conflicts: %s: %v", action, err)
-	conflictFailure(c, http.StatusServiceUnavailable, "subscription conflicts are unavailable right now; try again later")
-}
-
-func conflictFailure(c *gin.Context, status int, message string) {
-	c.JSON(status, gin.H{"success": false, "message": message})
+	httpjson.Fail(c, http.StatusServiceUnavailable, "subscription conflicts are unavailable right now; try again later")
 }

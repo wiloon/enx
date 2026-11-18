@@ -3,6 +3,7 @@ package billing
 
 import (
 	"enx-api/config"
+	"enx-api/platform/httpjson"
 	"errors"
 	"net/http"
 
@@ -38,7 +39,7 @@ func NewHandler(sc *stripeSDK.Client, frontendBaseURL string, prices config.Stri
 
 func (h *Handler) checkoutCustomer(c *gin.Context, userID, tier string) (string, bool) {
 	if h.checkout == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "Billing is temporarily unavailable. Please retry."})
+		httpjson.Fail(c, http.StatusServiceUnavailable, "Billing is temporarily unavailable. Please retry.")
 		return "", false
 	}
 	customer, err := h.checkout.Prepare(c.Request.Context(), userID, tier)
@@ -53,7 +54,7 @@ func (h *Handler) checkoutCustomer(c *gin.Context, userID, tier string) (string,
 		return "", false
 	}
 	if errors.Is(err, checkout.ErrRefused) {
-		c.JSON(http.StatusConflict, gin.H{"success": false, "message": "You already have a subscription. Manage it from the billing portal."})
+		httpjson.Fail(c, http.StatusConflict, "You already have a subscription. Manage it from the billing portal.")
 		return "", false
 	}
 	if err != nil {
@@ -62,7 +63,7 @@ func (h *Handler) checkoutCustomer(c *gin.Context, userID, tier string) (string,
 			mode = "topup"
 		}
 		logger.Errorf("billing: prepare %s checkout for %s: %v", mode, userID, err)
-		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "Billing is temporarily unavailable. Please retry."})
+		httpjson.Fail(c, http.StatusServiceUnavailable, "Billing is temporarily unavailable. Please retry.")
 		return "", false
 	}
 	return customer, true
@@ -79,20 +80,20 @@ type checkoutTopupRequest struct {
 // CheckoutSubscription handles POST /billing/checkout/subscription.
 func (h *Handler) CheckoutSubscription(c *gin.Context) {
 	if h.sc == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "billing is not configured"})
+		httpjson.Fail(c, http.StatusServiceUnavailable, "billing is not configured")
 		return
 	}
 
 	var req checkoutSubscriptionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": `plan must be "pro", "pro-plus", or "max"`})
+		httpjson.Fail(c, http.StatusBadRequest, `plan must be "pro", "pro-plus", or "max"`)
 		return
 	}
 
 	userID := middleware.GetUserIDFromContext(c)
 	user := enx.GetUserByID(userID)
 	if user.Id == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "user not found"})
+		httpjson.Fail(c, http.StatusUnauthorized, "user not found")
 		return
 	}
 
@@ -115,7 +116,7 @@ func (h *Handler) CheckoutSubscription(c *gin.Context) {
 	})
 	if err != nil {
 		logger.Errorf("billing: create subscription checkout session failed: %v", err)
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "failed to create checkout session"})
+		httpjson.Fail(c, http.StatusBadGateway, "failed to create checkout session")
 		return
 	}
 
@@ -125,20 +126,20 @@ func (h *Handler) CheckoutSubscription(c *gin.Context) {
 // CheckoutTopup handles POST /billing/checkout/topup.
 func (h *Handler) CheckoutTopup(c *gin.Context) {
 	if h.sc == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "billing is not configured"})
+		httpjson.Fail(c, http.StatusServiceUnavailable, "billing is not configured")
 		return
 	}
 
 	var req checkoutTopupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": `tier must be "small", "medium", or "large"`})
+		httpjson.Fail(c, http.StatusBadRequest, `tier must be "small", "medium", or "large"`)
 		return
 	}
 
 	userID := middleware.GetUserIDFromContext(c)
 	user := enx.GetUserByID(userID)
 	if user.Id == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "user not found"})
+		httpjson.Fail(c, http.StatusUnauthorized, "user not found")
 		return
 	}
 
@@ -162,7 +163,7 @@ func (h *Handler) CheckoutTopup(c *gin.Context) {
 	})
 	if err != nil {
 		logger.Errorf("billing: create topup checkout session failed: %v", err)
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "failed to create checkout session"})
+		httpjson.Fail(c, http.StatusBadGateway, "failed to create checkout session")
 		return
 	}
 
@@ -192,11 +193,11 @@ func (h *Handler) Me(c *gin.Context) {
 		var err error
 		sub, err = h.subscriptions.Subscription(c.Request.Context(), userID)
 		if err != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "Billing information is unavailable right now. Please try again later."})
+			httpjson.Fail(c, http.StatusServiceUnavailable, "Billing information is unavailable right now. Please try again later.")
 			return
 		}
 	} else {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "Billing information is unavailable right now. Please try again later."})
+		httpjson.Fail(c, http.StatusServiceUnavailable, "Billing information is unavailable right now. Please try again later.")
 		return
 	}
 	status := sub.Status

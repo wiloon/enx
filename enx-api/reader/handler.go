@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"enx-api/middleware"
+	"enx-api/platform/httpjson"
 	"enx-api/reader/saving"
 
 	"github.com/gin-gonic/gin"
@@ -22,14 +23,14 @@ type createDocumentRequest struct {
 func CreateDocumentHandler(c *gin.Context) {
 	var req createDocumentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid request body"})
+		httpjson.Fail(c, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	userID := middleware.GetUserIDFromContext(c)
 	doc, err := CreateDocument(c.Request.Context(), userID, req.Content, time.Now())
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		httpjson.Fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -48,7 +49,7 @@ func ListDocumentsHandler(c *gin.Context) {
 	userID := middleware.GetUserIDFromContext(c)
 	docs, err := ListDocuments(c.Request.Context(), userID, time.Now())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to list documents"})
+		httpjson.Fail(c, http.StatusInternalServerError, "failed to list documents")
 		return
 	}
 
@@ -70,11 +71,11 @@ func GetDocumentHandler(c *gin.Context) {
 	userID := middleware.GetUserIDFromContext(c)
 	doc, err := GetDocument(c.Request.Context(), userID, c.Param("id"), time.Now())
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "document not found"})
+		httpjson.Fail(c, http.StatusNotFound, "document not found")
 		return
 	}
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to get document"})
+		httpjson.Fail(c, http.StatusInternalServerError, "failed to get document")
 		return
 	}
 
@@ -92,7 +93,7 @@ func GetDocumentHandler(c *gin.Context) {
 func UpdateDocumentHandler(c *gin.Context) {
 	var req createDocumentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid request body"})
+		httpjson.Fail(c, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
@@ -103,16 +104,16 @@ func legacyUpdateDocument(c *gin.Context, content string) {
 	userID := middleware.GetUserIDFromContext(c)
 	doc, err := UpdateDocument(c.Request.Context(), userID, c.Param("id"), content, time.Now())
 	if errors.Is(err, saving.ErrVersionConflict) {
-		c.JSON(http.StatusConflict, gin.H{"success": false, "message": readerConflictMessage})
+		httpjson.Fail(c, http.StatusConflict, readerConflictMessage)
 		return
 	}
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "document not found"})
+		httpjson.Fail(c, http.StatusNotFound, "document not found")
 		return
 	}
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		httpjson.Fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -130,7 +131,7 @@ func legacyUpdateDocument(c *gin.Context, content string) {
 func DeleteDocumentHandler(c *gin.Context) {
 	userID := middleware.GetUserIDFromContext(c)
 	if err := DeleteDocument(c.Request.Context(), userID, c.Param("id")); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to delete document"})
+		httpjson.Fail(c, http.StatusInternalServerError, "failed to delete document")
 		return
 	}
 
@@ -146,7 +147,7 @@ func NewSaveDocumentHandler(service *saving.SaveService) gin.HandlerFunc {
 			Version *int64 `json:"version"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid request body"})
+			httpjson.Fail(c, http.StatusBadRequest, "invalid request body")
 			return
 		}
 		if req.Version == nil {
@@ -169,7 +170,7 @@ func NewSaveDocumentHandler(service *saving.SaveService) gin.HandlerFunc {
 				status = http.StatusBadRequest
 				message = err.Error()
 			}
-			c.JSON(status, gin.H{"success": false, "message": message})
+			httpjson.Fail(c, status, message)
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"success": true, "id": doc.ID, "version": doc.Version})

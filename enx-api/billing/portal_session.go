@@ -8,6 +8,7 @@ import (
 	"enx-api/billing/eligibility"
 	"enx-api/billing/portalsession"
 	"enx-api/middleware"
+	"enx-api/platform/httpjson"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
@@ -61,7 +62,7 @@ func (h *PortalSessionHandler) Home(c *gin.Context) {
 func (h *PortalSessionHandler) PlanChange(c *gin.Context) {
 	var req planChangeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": unknownTierMessage})
+		httpjson.Fail(c, http.StatusBadRequest, unknownTierMessage)
 		return
 	}
 	userID := middleware.GetUserIDFromContext(c)
@@ -92,12 +93,12 @@ func portalSessionFailure(c *gin.Context, action, userID string, err error) {
 		logger.Errorf("billing: portal %s for %s refused: %v", action, userID, err)
 		planChangeRefused(c, "subscription_needs_attention", "Your subscription can't be changed online right now. Contact billing support.")
 	case errors.Is(err, portalsession.ErrUnknownTier):
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": unknownTierMessage})
+		httpjson.Fail(c, http.StatusBadRequest, unknownTierMessage)
 	case errors.Is(err, portalsession.ErrNoCustomer):
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "no billing account yet"})
+		httpjson.Fail(c, http.StatusNotFound, "no billing account yet")
 	default:
 		logger.Errorf("billing: portal %s for %s failed: %v", action, userID, err)
-		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": portalUnavailableMessage})
+		httpjson.Fail(c, http.StatusServiceUnavailable, portalUnavailableMessage)
 	}
 }
 

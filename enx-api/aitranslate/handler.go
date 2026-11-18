@@ -11,6 +11,7 @@ import (
 	"enx-api/billing/credit"
 	"enx-api/dictsample"
 	"enx-api/middleware"
+	"enx-api/platform/httpjson"
 	"enx-api/utils/logger"
 
 	"github.com/gin-gonic/gin"
@@ -104,12 +105,12 @@ func NewHandler(translator Translator, ledger TokenLedger, pricing credit.TokenP
 // (ADR-014, same convention as rephrase).
 func (h *Handler) billedCall(c *gin.Context, feature string, fn func(ctx context.Context) (Usage, error)) bool {
 	if h.translator == nil {
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "sentence translation is not configured"})
+		httpjson.Fail(c, http.StatusBadGateway, "sentence translation is not configured")
 		return false
 	}
 	if !h.pricing.Priced() {
 		logger.Errorf("aitranslate: %s is unpriced (%+v)", feature, h.pricing)
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "translation service unavailable"})
+		httpjson.Fail(c, http.StatusBadGateway, "translation service unavailable")
 		return false
 	}
 
@@ -118,11 +119,11 @@ func (h *Handler) billedCall(c *gin.Context, feature string, fn func(ctx context
 	balance, err := h.ledger.Balance(c.Request.Context(), userID)
 	if err != nil {
 		logger.Errorf("aitranslate: %s balance check failed: %v", feature, err)
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "translation service unavailable"})
+		httpjson.Fail(c, http.StatusBadGateway, "translation service unavailable")
 		return false
 	}
 	if balance < 1 {
-		c.JSON(http.StatusPaymentRequired, gin.H{"success": false, "message": "Insufficient credit. Please add credit or subscribe."})
+		httpjson.Fail(c, http.StatusPaymentRequired, "Insufficient credit. Please add credit or subscribe.")
 		return false
 	}
 	if refuseOverTrialLimit(c, h.trialGate, userID) {
@@ -132,7 +133,7 @@ func (h *Handler) billedCall(c *gin.Context, feature string, fn func(ctx context
 	usage, err := fn(c.Request.Context())
 	if err != nil {
 		logger.Errorf("aitranslate: %s failed: %v", feature, err)
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "translation service unavailable"})
+		httpjson.Fail(c, http.StatusBadGateway, "translation service unavailable")
 		return false
 	}
 
@@ -150,7 +151,7 @@ func (h *Handler) billedCall(c *gin.Context, feature string, fn func(ctx context
 func (h *Handler) TranslateSentence(c *gin.Context) {
 	var req sentenceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "sentence is required"})
+		httpjson.Fail(c, http.StatusBadRequest, "sentence is required")
 		return
 	}
 
@@ -174,7 +175,7 @@ func (h *Handler) TranslateSentence(c *gin.Context) {
 func (h *Handler) TranslateWordInContext(c *gin.Context) {
 	var req wordInContextRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "sentence and word are required"})
+		httpjson.Fail(c, http.StatusBadRequest, "sentence and word are required")
 		return
 	}
 
@@ -208,7 +209,7 @@ func (h *Handler) TranslateWordInContext(c *gin.Context) {
 func (h *Handler) TranslateSentenceWithWord(c *gin.Context) {
 	var req sentenceWithWordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "sentence and word are required"})
+		httpjson.Fail(c, http.StatusBadRequest, "sentence and word are required")
 		return
 	}
 
