@@ -117,10 +117,10 @@ function renderIn(client: QueryClient, ui: React.ReactElement) {
   return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>)
 }
 
-async function warmList(client: QueryClient) {
+async function mountLoadedList(client: QueryClient) {
   const list = renderIn(client, <AdminUsersPage />)
   await screen.findByText('2 users')
-  list.unmount()
+  return list
 }
 
 async function deleteThroughDetail(client: QueryClient) {
@@ -156,9 +156,16 @@ async function expectAdjusted() {
   const row = (
     await screen.findByRole('link', { name: 'u1@example.com' })
   ).closest('tr')!
-  await waitFor(() => expect(within(row).getByText('550')).toBeInTheDocument())
-  expect(within(row).getByText('50')).toBeInTheDocument()
-  expect(within(row).getByText('900')).toBeInTheDocument()
+  const table = within(screen.getByRole('table'))
+  const headers = table.getAllByRole('columnheader')
+  const cells = within(row).getAllByRole('cell')
+  const cellUnder = (name: string) =>
+    cells[headers.indexOf(table.getByRole('columnheader', { name }))]
+  await waitFor(() => {
+    expect(cellUnder('Balance')).toHaveTextContent(/^550$/)
+    expect(cellUnder('Paid')).toHaveTextContent(/^900$/)
+    expect(cellUnder('Gifted')).toHaveTextContent(/^50$/)
+  })
 }
 
 beforeEach(() => {
@@ -179,7 +186,8 @@ beforeEach(() => {
 
 it('drops a deleted user and updates the count when the list is reopened', async () => {
   const client = newClient()
-  await warmList(client)
+  const list = await mountLoadedList(client)
+  list.unmount()
   await deleteThroughDetail(client)
 
   mockList.mockResolvedValue(page(rowsAfterDelete))
@@ -191,7 +199,8 @@ it('drops a deleted user and updates the count when the list is reopened', async
 
 it('shows the new balance and gifted total after an adjustment', async () => {
   const client = newClient()
-  await warmList(client)
+  const list = await mountLoadedList(client)
+  list.unmount()
   await adjustThroughDetail(client)
 
   mockList.mockResolvedValue(page(rowsAfterAdjust))
@@ -202,12 +211,13 @@ it('shows the new balance and gifted total after an adjustment', async () => {
 
 it('keeps a list request started before the delete from freshening the old rows', async () => {
   const client = newClient()
-  await warmList(client)
+  const list = await mountLoadedList(client)
 
   const held = deferred<ReturnType<typeof page>>()
   mockList.mockReturnValueOnce(held.promise)
   void client.refetchQueries({ queryKey: ['admin-users'] })
   await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2))
+  list.unmount()
 
   await deleteThroughDetail(client)
   await act(async () => {
@@ -223,12 +233,13 @@ it('keeps a list request started before the delete from freshening the old rows'
 
 it('keeps a list request started before an adjustment from freshening the old rows', async () => {
   const client = newClient()
-  await warmList(client)
+  const list = await mountLoadedList(client)
 
   const held = deferred<ReturnType<typeof page>>()
   mockList.mockReturnValueOnce(held.promise)
   void client.refetchQueries({ queryKey: ['admin-users'] })
   await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2))
+  list.unmount()
 
   await adjustThroughDetail(client)
   await act(async () => {
