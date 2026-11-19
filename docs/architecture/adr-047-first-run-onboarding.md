@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-10-03
-revised: 2026-11-12
+revised: 2026-11-19
 related: adr-046（角标状态）、adr-027（Home 的 OnboardingChecklist，本 ADR 与它共用步骤模型）、adr-019 / adr-020（网页 → 扩展通道与登录回跳，本 ADR 加一个消息类型）、adr-039（站点自动启用）、adr-044（服务端偏好，存 `onboardingCompleted`）、adr-048（免费用户试用 AI 积分）
 ---
 
@@ -19,6 +19,13 @@ related: adr-046（角标状态）、adr-027（Home 的 OnboardingChecklist，�
 adr-046 去掉了正文里的「Article processed • Click words for translation」，学习模式的状态只靠扩展图标角标表达。这要求用户在第一次使用时**把图标固定到工具栏**（否则角标看不见、也找不到启用入口）。此外新用户还得完成登录，并**亲手**启用一次学习模式、点一次词——在真实网站上每次都要点图标启用，这是用户必须学会的唯一习惯。
 
 现状：adr-027 在 Home 上给零阅读的用户显示三步清单（安装扩展 → 打开英文页启用 → 读完第一篇），但这只覆盖「先到网站」的用户，且第 2、3 步无法自动勾选；从 Chrome Web Store 直接安装的用户，`runtime.onInstalled` 只初始化了 storage，什么页面都不打开。
+
+## 2026-11-19 修订（#1016，说明创建账号的用途）
+
+- 问题：「Free to start.」重复标题里的「free」，没有说明账号能用来做什么；只有一句说明和一个小按钮，当前步骤显得空。重装扩展或换电脑的老用户也看不到明确的登录入口。
+- 登录为当前步骤时，保留标题「Create your free account」，展开用途说明「Look up words and translate sentences as you read.」和试用积分说明。积分数额、有效期和领取条件见 adr-048 与 adr-062 Decision 3。
+- 主操作为默认尺寸的品牌按钮「Create free account」，下方提供文字链接「Already have an account? Sign in」。两个入口都使用 Decision 2 第 2 步的 Clerk 登录地址和回跳规则。沿用 #868 验证过的 OAuth transfer，新用户可以从该页创建账号，老用户可以登录。按钮文案独立于登录提供方。若以后启用邮箱密码登录，再评估两个入口的目的地。
+- 修订记录（#1016）：更新 Decision 2 第 2 步，取代 #868 的单一「Continue」按钮和「Free to start.」，让新用户知道创建账号的用途，也让老用户能找到登录入口。
 
 ## 2026-11-17 修订（#911，启用步骤显示实际快捷键）
 
@@ -134,7 +141,7 @@ A、B 的区别只是「进来时扩展装没装」，页面能直接探测到�
 2. **步骤**（全部按真实状态显示勾选，不按顺序锁定；文案全英文）：
    0. **安装扩展**（`/welcome` 上始终在列表里：未安装时为当前步骤，已安装时显示为已完成的「Catglish extension installed」；Home 清单只在未安装时出现。2026-11-12 修订，#846）：「Add to Chrome」按钮在新标签页打开 Chrome Web Store。链接取现有的运行时配置 `ENX_EXTENSION_WEB_STORE_URL`；扩展上架前它为空，按钮显示为不可点的「Coming soon to the Chrome Web Store」（与 `OnboardingChecklist` 现有的空链接处理一致），上架后填上配置即可，不改代码。页面可见时每 2 秒发一次 `enx:status`，探测到安装后自动勾上（同时扩展会把用户切回这个标签页，见 Decision 1）。非 Chromium 浏览器给出「Catglish needs Chrome」说明。安装操作由商店页面完成；**2026-11-05 修订（#559，owner 确认）**：Enhanced protection 用户可能遇到额外警告，因此公开帮助中心 `/help` 提供商店搜索安装、ZIP 手动安装与首次使用手册，正文先上线并预留截图位置，不加视频。商店搜索说明按上线时 Public 发布编写，保留正式条目直达链接。`/welcome` 的安装步骤在商店按钮下解释该警告，并提供新标签页打开的 ZIP 安装帮助链接；检测到已安装后随安装步骤的说明一起隐藏（步骤本身变为已完成）。警告文案与商店安装手册共用一处定义，经 #560 实测确认警告消失后移除。帮助页从官网与 App 的 Help 菜单进入，免登录；安装后的状态判断与实际操作仍在 `/welcome`。产品名和仓库地址使用站点配置，离线包名示例从仓库名派生，并兼容旧发布使用产品名的附件。产品演示视频已在官网首页。
    1. **固定图标**（可跳过；2026-11-12 修订，#852：排在登录之前）：一张示意图，展示「点拼图图标 → 点 Catglish 旁的图钉」（静态图片，用本地构建的扩展截取，放在 enx-ui 的 `public/` 下；第一版先用手绘示意图 `public/onboarding/pin-icon.svg`，截图后替换）。页面在这一步可见、且未跳过时每 2 秒经 `enx:status` 查询 `isOnToolbar`，固定后自动勾上；进来时已固定（包括被 Chrome 自动固定的用户）则直接是勾上的。点「Skip」直接进入下一步；跳过的人之后由 adr-046 Decision 6 的固定提示最多再提醒两次，本 ADR 不另做计数。
-   2. **登录**：已登录则勾上；未登录时标题为「Create your free account」，只给一个「Continue」按钮去 `/sign-in`（2026-11-12 修订，#868：原为 Sign in / Sign up 两个按钮），登录回跳回到 `/welcome`（用 Clerk 的 `redirect_url`，保留 `?src=install`；不用 adr-020 的 `src=extension`，它会把用户送到 `/extension/connected`）。
+   2. **登录**：已登录则勾上；未登录时标题为「Create your free account」。当前步骤展开用途、试用积分说明及两个账号入口（见 #1016 修订）。两个入口都去 `/sign-in`，用 Clerk 的 `redirect_url` 回到 `/welcome`，保留原有的 `?src=install`。adr-020 的 `src=extension` 回跳至 `/extension/connected`，供扩展发起的登录使用。
    3. **在示例文章上试一次**：`/welcome` 页内直接渲染示例文章（与 `/reader/sample` 同一份 `SAMPLE_ARTICLE`，容器同为 `#enx-reader-article`），**不调用 `requestReaderMode()`**。两个小项：
       - **启用**：提示「Click the Catglish icon in your toolbar, then *Read with Catglish*」（2026-11-12 修订，#862：标题改为「Turn on Catglish」，这句移到当前步骤展开的说明里；点词同样展开一句指向文章的说明）。扩展启用学习模式后在 `<html>` 上写 `data-enx-learning="on"`（Decision 4a），页面观察到即勾上，提示换成下一项。
       - **点一个词**：提示「Click any word in the article」。累计查词数 > 0 即勾上（现有 stats 接口 `/api/stats/overview` 的 `vocab.total`，即词表条目数，与 Home 同一信号；用户删过词时会少算。页面可见时每几秒重查一次，直到勾上）。
