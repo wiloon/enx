@@ -2,10 +2,17 @@ package main
 
 import (
 	"context"
+	"enx-api/utils/logger"
+	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"testing"
 	"time"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func TestPeriodicWorkStartsImmediatelyAndStopsWhenIdle(t *testing.T) {
@@ -99,6 +106,33 @@ func TestBackgroundShutdownHasDeadline(t *testing.T) {
 	}
 }
 
+func TestBackgroundTaskDuplicateNamePanics(t *testing.T) {
+	work := &backgroundTasks{}
+	release := make(chan struct{})
+	defer closeIfOpen(release)
+	work.start("same name", func() { <-release })
+
+	duplicateRan := make(chan struct{})
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("start with a running name did not panic")
+			}
+		}()
+		work.start("same name", func() { close(duplicateRan) })
+	}()
+
+	close(release)
+	if !work.wait(time.Second) {
+		t.Fatal("background tasks did not stop after release")
+	}
+	select {
+	case <-duplicateRan:
+		t.Error("start ran the duplicate callback")
+	default:
+	}
+}
+
 func TestMetricsShutdownDrainsActiveRequest(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -143,6 +177,39 @@ func TestMetricsShutdownDrainsActiveRequest(t *testing.T) {
 	case <-served:
 	case <-time.After(time.Second):
 		t.Fatal("metrics shutdown did not return after the request drained")
+	}
+}
+
+// A SQLite statement interrupted by shutdown fails with "interrupted (9)",
+// which does not wrap context.Canceled (see TestSQLiteExecCancellation), so
+// the job's own context decides whether the failure is the shutdown.
+func TestLogJobFailureClassifiesShutdownByContext(t *testing.T) {
+	interrupted := errors.New("interrupted (9)")
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	tests := []struct {
+		name      string
+		ctx       context.Context
+		err       error
+		wantLevel zapcore.Level
+	}{
+		{"cancelled ctx, error without Canceled", cancelled, interrupted, zapcore.InfoLevel},
+		{"live ctx, same error", context.Background(), interrupted, zapcore.ErrorLevel},
+		{"live ctx, wrapped Canceled", context.Background(), fmt.Errorf("x: %w", context.Canceled), zapcore.InfoLevel},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			core, logs := observer.New(zapcore.DebugLevel)
+			t.Cleanup(logger.Swap(zap.New(core).Sugar()))
+
+			logJobFailure(tc.ctx, "job", tc.err)
+
+			entries := logs.All()
+			if len(entries) != 1 || entries[0].Level != tc.wantLevel {
+				t.Fatalf("entries = %v, want one at %s", entries, tc.wantLevel)
+			}
+		})
 	}
 }
 

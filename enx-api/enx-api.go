@@ -32,16 +32,16 @@ import (
 )
 
 const (
-	// shutdownGrace bounds how long the process gives its long-lived workers
-	// to stop once the API server stops, so a SIGTERM cannot leave the
-	// process exiting with work in flight. It is one budget for the whole
-	// drain: the metrics listener spends metricsShutdownGrace of it, and the
-	// join that follows keeps the rest.
+	// shutdownGrace gives background workers up to five seconds to finish
+	// after application.Serve returns. Inside Serve, application context
+	// cancellation or a listener return starts a separate API drain deadline
+	// of srv.WriteTimeout + shutdownGraceMargin.
 	shutdownGrace = 5 * time.Second
 
-	// metricsShutdownGrace is the part of shutdownGrace the metrics listener
-	// may spend draining. It is shorter than the join so a scrape that runs
-	// to its own deadline cannot make the join report a false timeout.
+	// metricsShutdownGrace gives the metrics listener up to three seconds to
+	// drain when it observes application context cancellation. On an API
+	// listener error, serveUntilStopped cancels that context after Serve
+	// returns, so the metrics drain can overlap the background join.
 	metricsShutdownGrace = 3 * time.Second
 )
 
@@ -151,7 +151,7 @@ func runReaderDocumentCleanup(ctx context.Context) {
 	purge := func(ctx context.Context) {
 		deleted, err := reader.PurgeExpired(ctx, time.Now())
 		if err != nil {
-			logJobFailure("reader: purge expired documents", err)
+			logJobFailure(ctx, "reader: purge expired documents", err)
 			return
 		}
 		if deleted > 0 {
@@ -180,7 +180,7 @@ func runStatsIngestLogCleanup(ctx context.Context, ttl time.Duration, lookupEven
 func runStatsJobs(ctx context.Context, now time.Time, ingestLogTTL time.Duration, lookupEventRetentionDays int, activeUsers *userstats.Service) {
 	deleted, err := stats.PurgeIngestLog(ctx, now, ingestLogTTL)
 	if err != nil {
-		logJobFailure("stats: purge ingest log", err)
+		logJobFailure(ctx, "stats: purge ingest log", err)
 	} else if deleted > 0 {
 		logger.Infof("stats: purged %d expired ingest-log row(s)", deleted)
 	}
@@ -189,7 +189,7 @@ func runStatsJobs(ctx context.Context, now time.Time, ingestLogTTL time.Duration
 
 	deleted, err = dictadapters.QuotaUsage{}.DeleteOutsideRetention(ctx, now, lookupEventRetentionDays)
 	if err != nil {
-		logJobFailure("dictionary: lookup quota usage cleanup", err)
+		logJobFailure(ctx, "dictionary: lookup quota usage cleanup", err)
 	} else if deleted > 0 {
 		logger.Infof("dictionary: deleted %d lookup quota usage row(s) past retention", deleted)
 	}
@@ -202,7 +202,7 @@ func runStatsJobs(ctx context.Context, now time.Time, ingestLogTTL time.Duration
 // it has been counted.
 func runLookupEventJob(ctx context.Context, now time.Time, retentionDays int, activeUsers *userstats.Service) {
 	if days, err := activeUsers.Rollup(ctx, retentionDays); err != nil {
-		logJobFailure("userstats: active users rollup, lookup events kept", err)
+		logJobFailure(ctx, "userstats: active users rollup, lookup events kept", err)
 		return
 	} else if days > 0 {
 		logger.Infof("userstats: rolled up active users for %d day(s)", days)
@@ -210,7 +210,7 @@ func runLookupEventJob(ctx context.Context, now time.Time, retentionDays int, ac
 
 	deleted, err := stats.RollupLookupEvents(ctx, now, retentionDays)
 	if err != nil {
-		logJobFailure("stats: lookup event rollup", err)
+		logJobFailure(ctx, "stats: lookup event rollup", err)
 	} else if deleted > 0 {
 		logger.Infof("stats: deleted %d lookup event(s) past retention", deleted)
 	}
@@ -245,7 +245,7 @@ func runReferralRewards(ctx context.Context, svc *referral.Service) {
 	settle := func(ctx context.Context) {
 		run, err := svc.PayDueRewards(ctx)
 		if err != nil {
-			logJobFailure("referral: pay due rewards", err)
+			logJobFailure(ctx, "referral: pay due rewards", err)
 			return
 		}
 		for _, err := range run.Errors {
@@ -267,7 +267,7 @@ func runTrialExpiry(ctx context.Context) {
 	sweep := func(ctx context.Context) {
 		run, err := credit.ExpireTrials(ctx)
 		if err != nil {
-			logJobFailure("credit: expire trials", err)
+			logJobFailure(ctx, "credit: expire trials", err)
 			return
 		}
 		for _, err := range run.Errors {
@@ -284,8 +284,11 @@ func runTrialExpiry(ctx context.Context) {
 // logJobFailure reports a periodic job's failure. A cancellation is the
 // shutdown signal doing its job, not an error: logging it at Error level
 // would make every normal SIGTERM look like a fault.
-func logJobFailure(what string, err error) {
-	if errors.Is(err, context.Canceled) {
+//
+// SQLite can report "interrupted (9)" for a cancelled DELETE without wrapping
+// context.Canceled, so the job's own ctx counts too.
+func logJobFailure(ctx context.Context, what string, err error) {
+	if errors.Is(err, context.Canceled) || ctx.Err() != nil {
 		logger.Infof("%s: cancelled by shutdown", what)
 		return
 	}
@@ -366,11 +369,17 @@ type backgroundTasks struct {
 }
 
 // start runs work in its own goroutine, keeping name so a shutdown timeout
-// can say which worker had not returned.
+// can say which worker had not returned. Names are hard-coded, so starting a
+// name that is already running is a programming error and panics before
+// anything is registered or launched.
 func (t *backgroundTasks) start(name string, work func()) {
 	t.mu.Lock()
 	if t.running == nil {
 		t.running = make(map[string]struct{})
+	}
+	if _, dup := t.running[name]; dup {
+		t.mu.Unlock()
+		panic(fmt.Sprintf("backgroundTasks: %q is already running", name))
 	}
 	t.running[name] = struct{}{}
 	t.mu.Unlock()
