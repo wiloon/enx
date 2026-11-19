@@ -97,9 +97,9 @@ enx-api 根目录下现在有 42 个目录，其中 33 个是 Go 包（另有 `c
 - **本 ADR 合并时**，AGENTS.md §enx-api 的「SQL lives in `repo/`」改为「新 SQL 写进领域的 `adapters/`（CRUD 包写在包内）；`repo/`、`handlers/`、`enx/` 是遗留，只减不增」，`docs/agents/enx-api-design.md` 的分层说明同步更新。这样迁移期间新代码就不会继续流进这三个目录。拆空 `repo/` 的那个 PR 再删掉「遗留」的说法。
 - 已接受的 ADR 里出现的旧路径（如 ADR-029、ADR-048 的 `utils/sqlitex/billing_models.go`、ADR-061 的 `handlers/word_lookup.go`）不改，它们是历史记录。
 - **depguard 规则逐包提前开，不留到最后：**
-  - 第 1 阶段：`account`、`referral`、`preferences`、`entitlement` 的核心已经不 import gin / gorm，立即开规则，防止回退。
+  - 第 1 阶段：为 `account`、`referral`、`preferences`、`entitlement` 顶层的非测试 Go 文件开启规则。禁用 gin、gorm、`database/sql`、`net/http`、`github.com/glebarez/` 下的 SQLite 驱动、`enx-api/utils/sqlitex` 和遗留 I/O 包 `enx-api/enx`、`enx-api/repo`。
   - 之后每搬完一个领域的 HTTP 和 SQL，就把它加进规则的 `files` 列表（第 9 条的例外除外）。
-  - 第 3 阶段改名为 `platform/` 时，同时开「`platform/**` 不得 import 领域包」。
+  - 第 3 阶段改名为 `platform/` 时，把核心的禁用项 `enx-api/utils/sqlitex` 改为 `enx-api/platform/sqlitex`，同时开「`platform/**` 不得 import 领域包」。
   - 写法照 `.golangci.yml` 里已有的 `koanf-only-in-config`。
 - **测试：** 只移动文件、改 import 和 package 声明的阶段，由编译器和现有测试保证，不补特征测试。代码形状有变化的地方要先补测试、看它在旧代码上绿、搬完仍绿：`Word` 从 active-record 改成注入的适配器（第 5 阶段），`sqlitex` 拆出 `schema/`（第 3 阶段），各 `httpapi` 的 `Register` 替换 `server/router.go` 里的路由（第 4 阶段，用现有的 `server` 集成测试覆盖路由表）。
 - **搬迁 PR 的纪律：** 只移动文件，改 import、package 声明和测试里读 fixture 的相对路径（如 `repo/subscription_conflicts_test.go` 的 `../testdata/...`、`utils/sqlitex/billing_schema_check_test.go` 的 `../../testdata/...`，搬家后层级会变），不夹带任何其他修改，保证 `git log --follow` 能跟上；开 PR 前确认 `ready-for-agent` 队列里没有碰同一个领域的 issue；当天开、当天合，避免和无人值守 agent 的改动反复 rebase。
@@ -116,3 +116,7 @@ enx-api 根目录下现在有 42 个目录，其中 33 个是 Go 包（另有 `c
 6. **拆 `repo/`**：按领域分批，`billing/adapters` 单独成一个或多个 PR。拆空后删除 `repo/`，并删掉 AGENTS.md 里「遗留」的说法。
 
 每个领域搬完，就把它加进 depguard 规则。
+
+## 修订记录
+
+- 2026-11-19，issue #801：明确第 1 阶段 depguard 的文件范围和禁用项，并要求第 3 阶段同步更新 `sqlitex` 路径。原因是落实决定 1 的依赖方向，防止核心经 SQLite 驱动或遗留包引入 I/O，并在改名后继续拦截对 `sqlitex` 的导入。
