@@ -430,10 +430,29 @@ function StepDetail({
       const redirect = encodeURIComponent(returnTo)
       return (
         <div className="space-y-2">
-          <p className="text-muted-foreground">Free to start.</p>
-          <Button asChild variant="brand" size="sm">
-            <Link href={`/sign-in?redirect_url=${redirect}`}>Continue</Link>
+          <p className="text-muted-foreground">
+            Look up words and translate sentences as you read.
+          </p>
+          {/* Remove this line when the trial is turned off
+              (CREDITS_TRIAL_AMOUNT=0); ADR-047 #1016 revision. No amount or
+              duration here: trial terms come from CREDITS_TRIAL_*. */}
+          <p className="text-muted-foreground">
+            Free AI credits included to get you started.
+          </p>
+          <Button asChild variant="brand">
+            <Link href={`/sign-up?redirect_url=${redirect}`}>
+              Create free account
+            </Link>
           </Button>
+          <p className="text-muted-foreground">
+            Already have an account?{' '}
+            <Link
+              href={`/sign-in?redirect_url=${redirect}`}
+              className="font-medium text-brand underline underline-offset-4"
+            >
+              Sign in
+            </Link>
+          </p>
         </div>
       )
     }

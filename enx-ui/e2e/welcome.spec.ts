@@ -62,7 +62,10 @@ test.describe('/welcome (signed out)', () => {
       page.getByRole('link', { name: 'Add to Chrome' })
     ).toBeVisible()
     await expect(
-      page.getByRole('link', { name: 'Continue', exact: true })
+      page.getByRole('link', { name: 'Create free account', exact: true })
+    ).toHaveCount(0)
+    await expect(
+      page.getByRole('link', { name: 'Sign in', exact: true })
     ).toHaveCount(0)
     await expect(
       page.getByRole('region', { name: 'Sample article' })
@@ -87,7 +90,7 @@ test.describe('/welcome (signed out)', () => {
     await expect(page).toHaveURL(/\/$/)
   })
 
-  test('asks a pinned installer to create a free account with one Continue', async ({
+  test('asks a pinned installer to create a free account or sign in', async ({
     page,
   }) => {
     await page.addInitScript(() => {
@@ -110,15 +113,24 @@ test.describe('/welcome (signed out)', () => {
     await expect(current.locator('p').first()).toHaveText(
       'Create your free account'
     )
-    await expect(current.getByText('Free to start.')).toBeVisible()
-    await expect(current.getByRole('link')).toHaveCount(1)
     await expect(
-      current.getByRole('link', { name: 'Continue', exact: true })
-    ).toHaveAttribute(
-      'href',
-      `/sign-in?redirect_url=${encodeURIComponent('/welcome?src=install')}`
-    )
-    await expect(page.getByRole('link', { name: /sign up/i })).toHaveCount(0)
+      current.getByText('Look up words and translate sentences as you read.')
+    ).toBeVisible()
+    await expect(
+      current.getByText('Free AI credits included to get you started.')
+    ).toBeVisible()
+    await expect(current.getByText('Free to start.')).toHaveCount(0)
+    await expect(current.getByRole('link')).toHaveCount(2)
+    const returnTo = encodeURIComponent('/welcome?src=install')
+    await expect(
+      current.getByRole('link', { name: 'Create free account', exact: true })
+    ).toHaveAttribute('href', `/sign-up?redirect_url=${returnTo}`)
+    await expect(
+      current.getByRole('link', { name: 'Sign in', exact: true })
+    ).toHaveAttribute('href', `/sign-in?redirect_url=${returnTo}`)
+    await expect(
+      page.getByRole('link', { name: 'Continue', exact: true })
+    ).toHaveCount(0)
   })
 })
 
@@ -660,7 +672,10 @@ test('shows the checking state until the extension answers, and updates after in
   const skipPin = current.getByRole('button', { name: 'Skip', exact: true })
   await expect(skipPin).toBeVisible()
   await expect(
-    page.getByRole('link', { name: 'Continue', exact: true })
+    page.getByRole('link', { name: 'Create free account', exact: true })
+  ).toHaveCount(0)
+  await expect(
+    page.getByRole('link', { name: 'Sign in', exact: true })
   ).toHaveCount(0)
   const styles = await page.locator('ol > li > div > p').evaluateAll((titles) =>
     titles.map((title) => ({
@@ -695,16 +710,16 @@ test('shows the checking state until the extension answers, and updates after in
   })
   await skipPin.click()
   await expect(current.getByLabel('Skipped')).toBeVisible()
+  const account = page.locator('ol > li').nth(2)
   await expect(
-    page
-      .locator('ol > li')
-      .nth(2)
-      .getByRole('link', { name: 'Continue', exact: true })
+    account.getByRole('link', { name: 'Create free account', exact: true })
   ).toBeVisible()
-  await expect(page.getByRole('link', { name: /sign up/i })).toHaveCount(0)
+  await expect(
+    account.getByRole('link', { name: 'Sign in', exact: true })
+  ).toBeVisible()
   await expect(skipPin).toHaveCount(0)
   await expect(
-    page.getByRole('link', { name: 'Continue', exact: true })
+    page.getByRole('link', { name: 'Create free account', exact: true })
   ).toBeInViewport()
   await page.screenshot({
     animations: 'disabled',
