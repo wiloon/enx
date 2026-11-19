@@ -61,7 +61,7 @@
 | 配置轴 | 海外版 | 国内版 | 说明 |
 |---|---|---|---|
 | 运营主体 / 法律页 | 海外版运营方 | 国内版运营方 | `enx-ui/src/lib/legal.ts` 的 operator、AI provider、sub-processor 列表要变成**按版本的配置**，不能只有一份常量。`legal.test.tsx` 目前断言页面里不得出现「有限公司」——那是海外版的约束，要改成只对海外版生效 |
-| 身份认证 | Clerk（Google / GitHub） | 自托管 Logto（微信扫码 / 手机号） | 见 [`adr-036`](./adr-036-china-edition-authentication-logto.md) |
+| 身份认证 | Clerk（Google / GitHub） | 自托管 Logto（第一版只有微信扫码，不收集手机号） | 见 [`adr-036`](./adr-036-china-edition-authentication-logto.md) |
 | 收款 | Stripe | 微信支付 / 支付宝 | 另起 ADR；ADR-009 的积分 / 订阅领域模型（键在本地 `users.Id`）原则上复用，只换支付通道 |
 | AI provider | Bedrock（Claude） | **已完成大模型备案**的国内模型 API（如 DeepSeek / Kimi / MiniMax） | `aitranslate/` 已有这几个 provider 的实现，本来就是给境内部署留的 |
 | 托管 | AWS 东京 EC2 | 阿里云华东1（杭州） | 必须能办 ICP 备案；见「修订记录 2026-11-19」 |

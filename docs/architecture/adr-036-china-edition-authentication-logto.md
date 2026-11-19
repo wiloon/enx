@@ -1,105 +1,172 @@
-# ADR-036：国内版身份认证 —— 自托管 Logto（微信扫码 + 手机号），身份认证抽成可配置 seam
+# ADR-036：国内版身份认证 —— 自托管 Logto，第一版只做微信扫码登录；身份认证抽成按部署配置的 seam
 
 | 字段 | 值 |
 |---|---|
-| **状态** | Proposed |
-| **日期** | 2026-09-24 |
+| **状态** | Accepted（2026-11-19） |
+| **日期** | 2026-09-24 起草；2026-11-19 修订并接受 |
 | **决策者** | wiloon |
-| **前提** | [`adr-035`](./adr-035-global-and-china-editions-dual-deployment.md)（海外版 / 国内版双部署）。本 ADR 只在 ADR-035 被接受后才有意义 |
-| **修订** | [`adr-015`](./adr-015-cognito-to-clerk-auth-migration.md) **Rationale 第 7 点**（`users.clerk_user_id` 用 provider 命名的单列）—— 见本 ADR Decision 4。ADR-015 其余内容（海外版用 Clerk）不变 |
-| **相关** | [`adr-020`](./adr-020-extension-sign-in-return-flow.md)（扩展登录回跳）、[`adr-019`](./adr-019-enx-ui-paste-text-reader-web-to-extension-enable.md)（网页 → 扩展通道） |
+| **前提** | [`adr-035`](./adr-035-global-and-china-editions-dual-deployment.md)（海外版 / 国内版双部署，版本差异只允许以部署配置存在） |
+| **修订** | [`adr-015`](./adr-015-cognito-to-clerk-auth-migration.md) **Rationale 第 7 点**（`users.clerk_user_id` 用 provider 命名的单列）—— 见 Decision 5；[`adr-062`](./adr-062-account-deletion-and-disable.md) **Decision 3**（试用发放记录只按邮箱）—— 只对国内版，见 Decision 7；ADR-062 **Decision 2 的自助注销确认方式**（输入邮箱）—— **两个版本**都改为输入 `DELETE`，见 Decision 8。两份 ADR 的其余内容不变 |
+| **相关** | [`adr-020`](./adr-020-extension-sign-in-return-flow.md)（扩展登录回跳）、[`adr-048`](./adr-048-free-trial-ai-credits.md)（试用积分）、[`adr-051`](./adr-051-referral-credits.md)（邀请积分）、#1023（可选绑定手机号） |
 
 ---
 
 ## Context
 
-ADR-035 决定国内版独立部署、数据只在境内。国内版的登录需求：
+ADR-035 决定国内版独立部署、数据只在境内，版本之间的差异只能是部署配置，不 fork 代码。国内版要解决「用户怎么登录」：
 
-- **微信扫码登录**（PC 网站）—— 大陆用户的主力身份。
-- **手机号 + 短信验证码** —— 不用微信的用户需要一条退路，而且未来可能需要实名相关能力。
-- 支付宝登录：可选。
-- **不需要** Google / GitHub。
-
-约束：
-
-- 身份数据不能出境 → **Clerk 出局**（美国 SaaS；且 Clerk 没有微信登录，它的自定义 OAuth 要求 OIDC 兼容，而微信 OAuth 不是标准 OIDC —— 用 `appid` 而不是 `client_id`，返回 `openid` / `unionid`，要接只能自己写代理）。
-- 扩展是核心使用场景（ADR-015 Rationale 2），国内版扩展要发到 Edge 商店，Edge 支持 `chrome.identity.launchWebAuthFlow`。
+- 大陆用户的主力身份是微信。Google 打不开，GitHub 不稳定，海外版的 Clerk（Google / GitHub）用不了。
+- 身份数据不能出境 → **Clerk 出局**：它是美国 SaaS；它也没有微信登录，自定义 OAuth 要求 OIDC 兼容，而微信 OAuth 不是标准 OIDC（用 `appid` 而不是 `client_id`，返回 `openid` / `unionid`）。
+- 扩展是核心使用场景（ADR-015 Rationale 2），国内版扩展发到 Edge 商店，Edge 支持 `chrome.identity.launchWebAuthFlow`。
 - 独立开发者，运维时间有限。
-- 海外版继续用 Clerk，所以 enx-api / enx-ui / enx-chrome 必须**同时支持两种 IdP**，按部署选择。
+- 海外版继续用 Clerk，enx-api / enx-ui / enx-chrome 必须**同时支持两种 IdP**，按部署选择。
+
+2026-09-24 的初稿计划「微信扫码 + 手机号短信」，后来又加了「微信登录后强制绑定手机号」。2026-11-19 重新调研后改为**第一版只做微信扫码，不收集手机号**，理由见 Decision 2。
+
+### 微信扫码登录的四种做法（2026-11 调研）
+
+| 做法 | 主体 | 费用 | 体验 | 谁在用 |
+|---|---|---|---|---|
+| **开放平台「网站应用」** | 企业（开发者资质认证 + 已 ICP 备案的域名） | 认证约 300 元/年 | 网页直接出二维码，扫码确认，最顺 | 有公司的产品 |
+| 公众号扫码关注登录 | 企业（已认证服务号） | 约 300 元/年 | 要先关注公众号 | 想顺便涨粉的产品 |
+| 小程序扫码登录 | 个人也可以 | 免费 | 扫小程序码，网页轮询结果 | 个人开发者，为了省认证费 |
+| 第三方桥接服务 | 无 | 免费或低价 | 依赖别人的服务，停服难迁移 | 个人小站 |
+
+国内版有企业主体、要正式收费 → 用**开放平台网站应用**。小程序和桥接方案主要是给拿不到企业资质的个人用的，有资料明确说不适合合规要求高的商业场景。
 
 ## Options Considered
 
+### IdP
+
 | 方案 | 做法 | 优点 | 缺点 |
 |---|---|---|---|
-| **A. Clerk + 自建微信桥** | enx-api 自己走微信 OAuth，再调 Clerk `sign_in_tokens` 签一次性 ticket | 不改前端、不改验签 | 数据出境（直接违反 ADR-035 Decision 2）；Clerk 在大陆的可访问性无保证；手机号短信也走 Clerk（境外） |
-| **B. 自托管 Logto** | 部署在国内版服务器上；官方的微信（网站）/ 支付宝（网站）/ 阿里云短信等 connector | MPL-2.0 开源，自托管**无用户数上限、无功能开关、无 license key**；数据在自己的 Postgres；标准 OIDC / OAuth 2.1；有官方 `@logto/chrome-extension` SDK；本来就是 ADR-015 预留的迁出目标 | 要多运维一个服务 + 一个 PostgreSQL；登录走托管页跳转（不是内嵌组件）；没有 Clerk `syncHost` 那样现成的「网站登录 → 扩展自动登录」 |
-| **C. Authing（国内 IDaaS SaaS）** | 用 Authing 公有云用户池 | 国内厂商，微信生态支持最全（PC 扫码、服务号、小程序扫码可拿手机号等）；免运维 | **免费版只能接 1 个社交登录**（B2C 8,000 MAU），要微信 + 短信得上基础版 ¥139/月起；又一次闭源供应商锁定；私有化部署只在企业版作为加购项；没有扩展 SDK（走通用 OIDC）；小厂商的长期存续风险 |
-| **D. enx-api 自己当 IdP** | 自己接微信 OAuth + 短信 + 签发 session JWT | 零第三方依赖 | 就是 ADR-015 否决过的方案 B：session 签发 / 轮换 / 吊销 / JWKS / 短信防刷全部自己写，而且涉及安全 |
+| A. Clerk + 自建微信桥 | enx-api 自己走微信 OAuth，再调 Clerk `sign_in_tokens` 签一次性 ticket | 不改前端、不改验签 | 数据出境（违反 ADR-035）；Clerk 在大陆的可访问性无保证 |
+| **B. 自托管 Logto** | 部署在国内版服务器上，用官方微信（网站）connector | MPL-2.0 开源，自托管无用户数上限；数据在自己的 PostgreSQL；标准 OIDC / OAuth 2.1；官方 `@logto/chrome-extension` SDK；本来就是 ADR-015 预留的迁出目标 | 多运维一个服务 + 一个 PostgreSQL；登录走托管页跳转；没有 Clerk `syncHost` 那样现成的「网站登录 → 扩展自动登录」；**没有 headless API**，做不了小程序一键登录 |
+| C. 自托管 Casdoor | Casbin 团队的开源 IdP，Go，Apache-2.0 | 和 enx-api 同为 Go；数据库可选 SQLite / MySQL / PostgreSQL，运维更轻；内置微信和国内短信 | 没有扩展 SDK，要自己写 OIDC + PKCE；国内资料多是**企业微信**而不是个人微信扫码；有过微信接口改版后没跟上、用户名变成随机串的反馈；OIDC 细节和文档弱于 Logto |
+| D. Logto Cloud / Casdoor Cloud | 厂商托管 | 免运维 | Logto Cloud 只有欧、美、澳、日机房，**没有大陆**；数据出境；备案域名不能 CNAME 到境外服务；大陆访问不稳 |
+| E. Authing（国内 IDaaS SaaS） | 用 Authing 公有云用户池 | 数据在境内；微信生态支持最全（含小程序扫码拿手机号）；免运维 | 免费版只能接 1 个社交登录，多种登录方式要上基础版（约 ¥139/月起）；闭源，又一次供应商锁定；没有扩展 SDK |
+| F. enx-api 自己当 IdP | 自己接微信 OAuth + 签发 session JWT | 零第三方依赖 | 就是 ADR-015 否决过的方案 B：session 签发 / 轮换 / 吊销 / JWKS 全部自己写，涉及安全 |
+
+### 要不要手机号
+
+| 方案 | 说明 |
+|---|---|
+| a. 微信登录后强制绑定手机号（短信） | 2026-09 的计划。要短信签名和模板审核、短信费，还要防短信轰炸和刷试用（国内可用的验证码方案和 Logto 的集成未知） |
+| b. 小程序授权手机号 | 不发短信，但要认证小程序、每次约 0.03 元，而且 Logto 没有 headless API，对接不顺 |
+| **c. 不收集手机号** | 只要微信登录。见 Decision 2 |
+
+网站应用的微信登录**拿不到手机号**，只有小程序能拿，所以「要手机号」只能走 a 或 b。
 
 ## Decision
 
 ### 1. 国内版用自托管 Logto
 
-Logto 与国内版的 enx-api / enx-ui 部署在同一环境（境内），使用独立的 PostgreSQL。开启的登录方式：
+Logto 与国内版的 enx-api / enx-ui 部署在同一个境内环境，使用独立的 PostgreSQL。登录方式只开**微信（网站）connector**（PC 扫码）。它需要微信开放平台的企业开发者资质认证，以及已 ICP 备案的域名（ADR-035）。
 
-- **微信（网站）connector** —— PC 扫码。需要微信开放平台企业资质认证 + 已备案域名（ADR-035 Decision 5）。
-- **手机号 + 短信验证码** —— 阿里云短信或腾讯云短信 connector（需要短信签名和模板审核，同样挂企业主体）。
-- 支付宝（网站）connector —— 暂不开启，按需再开。
+选 Logto 而不选其他方案：
 
-### 2. 为什么选 Logto 而不是 Authing
+1. **数据归属**：自托管，身份数据在自己的库里，隐私政策不用再加一个身份 sub-processor。D、E 都是第三方处理者，D 还出境。
+2. **扩展**：扩展是核心场景，Logto 有官方 `@logto/chrome-extension`（后台 service worker + `chrome.identity`）；Casdoor 和 Authing 都要自己写。
+3. **不重复锁定**：ADR-015 已经把 Logto 定为「Clerk 变贵 / MAU 到量」时海外版的迁出目标。国内版先用，等于提前验证这条退路。
+4. **成本曲线**：自托管不按用户数收费。Authing 要多种登录方式就得付费。
+5. Casdoor 运维更轻（SQLite、Go），但它的个人微信扫码缺少实际使用反馈，扩展登录要自己写；这两项的风险比多维护一个 PostgreSQL 大。
 
-1. **数据归属**：自托管意味着身份数据在自己的库里，隐私政策里不需要再加一个身份 sub-processor；Authing 是第三方处理者。
-2. **成本曲线**：Logto 自托管没有 MAU 上限、不按用户数收费；Authing 免费版只能接 1 个社交登录，我们至少要微信 + 短信。
-3. **不重复锁定**：ADR-015 已经把 Logto 定为「Clerk 变贵 / MAU 到量」时的迁出目标。国内版先用 Logto，等于**提前验证了那条退路**；将来海外版如果要迁，接口和运维经验都是现成的。
-4. **扩展**：ADR-015 当时记录「Logto 无专用扩展 SDK」，**已经过时** —— 现在有官方的 `@logto/chrome-extension`（后台 service worker + `chrome.identity`）。
-5. Authing 的独有优势（小程序扫码拿手机号、服务号生态）对一个 PC 阅读工具不是必需的。
+### 2. 第一版只做微信扫码登录，不收集手机号、不发短信
 
-### 3. 身份认证抽成一个 seam，IdP 按部署配置选择
+- **实名条款大概率不适用**：《网络安全法》第 24 条和网信办《互联网用户账号信息管理规定》（2022）第 9 条要求实名的，是提供「信息发布、即时通讯等服务」的平台。ENX 是阅读、查词和 AI 释义工具，用户不能公开发布内容，也没有即时通讯；反馈只发给管理员。
+- **强制收集反而有风险**：工信部和网信办要求个人信息收集遵循「必要」原则，用户拒绝提供非必需信息时不能影响基本功能。网信办 2026-04 的通报里有 App 因为「收集与服务无关的个人信息」被点名。
+- 其他 App 在微信登录后要求绑定手机号，多数出于业务原因：有发布功能要实名、怕第三方登录断掉、合并多种第三方登录的账号、营销。对 ENX 只有「怕微信登录断掉」成立，由 #1023 的**可选**绑定手机号解决。
+- 不发短信，省掉了短信签名和模板审核、短信费，以及最难的一项：短信防刷。
 
-- **enx-api**：`middleware/clerk_auth.go` 泛化为「验 OIDC / JWT」的 middleware，配置项是 issuer、JWKS URL、受众 / authorized party，以及「从哪个 claim 取 subject / email / name」。Clerk 和 Logto 都发 RS256 JWT + 公开 JWKS，验签路径（`keyfunc` + `golang-jwt`）不变，差异只在 claim 的校验与映射。Logto 用 API resource 签发的 access token，校验 `aud` = 该 resource indicator。
-- **enx-ui**：`useAuth` / `ApiAuthBridge` / 登录页 / `middleware.ts` / root layout 的 provider 收拢到一个 auth adapter 后面，运行期按 `AUTH_PROVIDER=clerk|logto` 选择（和 ADR-031 的运行期配置一致；两个 SDK 同时打进包里，可以接受）。
-- **enx-chrome**：同样收拢到一个 adapter，但按**构建期 target** 选择（`targets.ts` 里 `clerkPublishableKey` / `clerkSyncHost` 改为按 provider 区分的 auth 配置），国内版 target 只打包 Logto SDK。
+法规里的「等」字让边界不算绝对清楚，上线前向备案初审员或通管局口头确认一次。
 
-### 4. `users` 表：一列、不带 provider 名
+### 3. 身份认证是一个 seam，IdP 由部署配置选择
 
-`clerk_user_id` 改名为 **`auth_subject`**（IdP 的 `sub`），依然是单列唯一索引，**不加 `auth_provider` 列**。
+遵循 ADR-035 第 1、3、4 条：两个版本跑同一份代码，差异只在部署配置。**业务规则不知道用户是用哪个 IdP 登录的**：生词本、配额、积分、试用、注销都只认本地用户身份，IdP 的差异只在 adapter 里。
 
-这是对 ADR-015 Rationale 7 的修订，但保留了它的核心判断：**每个部署只有一个 IdP**，所以 `(issuer, sub)` 里的 issuer 由部署决定，不需要存进每一行 —— 加 `auth_provider` 仍然是死列。改的只是名字：同一份 schema 现在要在 Clerk 和 Logto 两种部署下运行，provider 命名的列名在国内版里是错的。
+- **enx-api**：`middleware/clerk_auth.go` 泛化为「验 OIDC / JWT」的 middleware，配置项是 issuer、JWKS URL、受众 / authorized party，以及「从哪个 claim 取 subject 和资料」。Clerk 和 Logto 都发 RS256 JWT + 公开 JWKS，验签路径（`keyfunc` + `golang-jwt`）不变，差异只在 claim 的校验和映射。Logto 用 API resource 签发的 access token，校验 `aud` = 该 resource indicator。注销时删除外部认证身份（ADR-062）也走同一个 seam：Clerk Backend API 或 Logto Management API。
+- **enx-ui**：`useAuth` / `ApiAuthBridge` / 登录页 / `middleware.ts` / root layout 的 provider 收拢到一个 auth adapter 后面，运行期按 `AUTH_PROVIDER=clerk|logto` 选择（和 ADR-031 的运行期配置一致；两个 SDK 同时打进包里可以接受）。
+- **enx-chrome**：同样收拢到一个 adapter，但按**构建期 target** 选择（`targets.ts` 里的 `clerkPublishableKey` / `clerkSyncHost` 改为按 provider 区分的 auth 配置），国内版 target 只打包 Logto SDK。
+- **改造顺序**：先抽接口、海外版行为不变，单独合并上线；再加 Logto 实现。每一步都由测试护住。
+
+### 4. 用 `unionid` 识别微信用户
+
+Logto 的微信 connector 有 `unionid` 时用它作为社交身份 ID，没有才退回 `openid`（connector 源码）。网站应用本来就挂在开放平台账号下，正常都会返回 `unionid`。以后接公众号或小程序时，同一个人还是同一个 `unionid`，不会变成多个账号。上线前用真实 AppID 确认一次。
+
+### 5. `users` 表：一列、不带 provider 名
+
+`clerk_user_id` 改名为 **`auth_subject`**（IdP 的 `sub`），仍然是单列唯一索引，**不加 `auth_provider` 列**。
+
+这是对 ADR-015 Rationale 7 的修订，但保留了它的核心判断：**每个部署只有一个 IdP**，所以 `(issuer, sub)` 里的 issuer 由部署决定，不用存进每一行，加 `auth_provider` 仍然是死列。改的只是名字：同一份 schema 要在 Clerk 和 Logto 两种部署下运行，provider 命名的列名在国内版里是错的。
 
 同理：`ADMIN_CLERK_USER_IDS` → `ADMIN_AUTH_SUBJECTS`；`GetOrCreateByClerkUserID` → `GetOrCreateByAuthSubject`。海外版已有数据是纯列改名的 migration，值不变。
 
-### 5. 首次开通不依赖邮箱
+### 6. 国内版用户没有邮箱
 
-微信和手机号登录都**没有邮箱**。`GetOrCreateByClerkUserID` 已经允许 email 为空（此时用 `user-<sub 前 8 位>` 作为名字），这个行为要保留并有测试覆盖。凡是假设「用户一定有邮箱」的地方（通知、账单收据、法律页联系方式）在国内版要换成手机号或站内消息。
+微信登录**没有邮箱，也没有手机号**。
 
-### 6. 扩展登录
+- 首次开通：`GetOrCreateByClerkUserID` 已经允许 email 为空，名字取 token 里的微信昵称，没有就用 `user-<sub 前 8 位>`。这个行为保留并有测试覆盖。
+- 凡是假设「用户一定有邮箱」的地方（通知、账单收据、退款通知、法律页联系方式）在国内版改为站内消息，或者不发。具体随国内版收款 ADR 一起定。
 
-国内版扩展走 `@logto/chrome-extension`：由后台 service worker 调 `launchWebAuthFlow` 打开 Logto 托管登录页。如果用户已经在国内版网站登录过、Logto 的会话 cookie 还在，这次授权**可能**会自动完成、不需要再扫码 —— **需要在 Chrome 和 Edge 上实测**，因为这决定了能否接近 Clerk `syncHost` 的体验。如果不行，退路是沿用 ADR-020 的「网页登录后回跳扩展」流程。
+### 7. 国内版的试用发放记录按微信 `unionid` 记
+
+ADR-062 Decision 3 按邮箱 HMAC 记录试用发放，保证一个邮箱只领一次试用；邮箱为空时不发试用（fail closed）。国内版没有邮箱，照搬就是**国内版用户永远领不到试用**。
+
+- 国内版改用 **`unionid` 的 HMAC** 作为试用发放记录的键，HMAC 方法和密钥规则与 ADR-062 相同。
+- enx-api 从 access token 里取 `unionid`：用 Logto 的自定义 JWT claim 把微信社交身份的 ID 带出来（开源版支持自定义 JWT，2025 年起）。不额外调用 Logto API。
+- 场景：用户注销后用同一个微信重新登录。Logto 里是一个新用户（新的 `sub`），但 `unionid` 不变 → 命中记录，不发试用；认领邀请码时双方都不发奖励（ADR-051 / ADR-062 的规则照旧）。
+- 记录的键在代码里叫「试用身份键」，按版本取：海外版 = 邮箱，国内版 = `unionid`。表的列名在实现时去掉 `email` 字样。
+- 刷试用的成本从「换一个邮箱」变为「换一个微信号」。
+
+### 8. 自助注销统一输入 `DELETE` 确认（两个版本）
+
+ADR-062 要求用户在 `/settings` 输入自己的邮箱来确认注销，enx-api 的 `account.Service.DeleteOwn` 在服务端比对邮箱。国内版没有邮箱，这一步做不了。
+
+所有者 2026-11-19 决定**两个版本统一**：用户输入大写英文 **`DELETE`** 来确认，不再输入邮箱。
+
+- 确认词由 enx-api 在服务端校验，大小写敏感、去掉首尾空格后必须等于 `DELETE`；不匹配时拒绝删除，和现在邮箱不匹配时一样。只在前端校验不够，接口可能被直接调用。
+- `DELETE /api/me` 的请求体从邮箱改为确认词，enx-ui `/settings` 同步改。
+- 确认文案的其余要求不变：作废积分、注销本身不退款、重新注册不再有试用和邀请奖励。其中「同一邮箱」在国内版写成「同一微信」。
+- 这一条对海外版也是改动，不依赖国内版的其他工作，可以先做。
+
+### 9. 扩展登录
+
+国内版扩展用 `@logto/chrome-extension`：由后台 service worker 调 `launchWebAuthFlow` 打开 Logto 托管登录页。如果用户已经在国内版网站登录过、Logto 的会话 cookie 还在，这次授权**可能**自动完成、不用再扫码。这决定了能否接近海外版「会话同步」的体验，**需要在 Chrome 和 Edge 上实测**。不行的话，退路是沿用 ADR-020「网页登录后回跳扩展」的流程。
+
+## 已确认（2026-11-19 调研）
+
+- [x] **自定义 claim**：Logto 开源版支持自定义 access token claim（Console > Custom JWT，`getCustomJwtClaims` 脚本），这功能以前只有 Logto Cloud 有。注意自托管下脚本以 Logto 进程的权限运行。
+- [x] **`unionid`**：微信 connector 有 `unionid` 时优先用它（Decision 4）。
+- [x] **微信开放平台资质**：网站应用的微信登录要求开发者资质认证（企业，约 300 元/年），创建网站应用要填 ICP 备案号。
+- [x] **拿不到手机号**：网站应用和公众号网页授权都不返回手机号，只有小程序能拿。
+
+## 需要在编码前验证（原型）
+
+- [ ] `@logto/chrome-extension` 在 **Chrome 和 Edge** 上的登录流程，能否复用网站的 Logto 会话（Decision 9）。
+- [ ] Logto 登录页是否加载了大陆访问不到的外部资源（字体、CDN）。
+- [ ] Logto 的容器部署和数据库初始化（有人反映要手动跑初始化脚本，文档没写清）。
+- [ ] 自定义 JWT 脚本里能否读到微信社交身份的 `unionid`（Decision 7）。原型没有 AppID 时用 Logto 自带的用户名密码登录代替微信，先把「网站 → 托管登录页 → JWT → enx-api 验签」和扩展登录跑通；拿到 AppID 后再确认这一项。
 
 ## Consequences
 
 **好的**
 
 - 国内版的身份数据完全在境内、在自己手里。
-- 微信、手机号、支付宝都是 Logto 后台的 connector 开关，不用自己写 OAuth 代码。
+- 第一版没有短信：不用短信签名和模板审核，没有短信费，也没有短信轰炸的风险。
 - 身份认证变成可配置的 seam 以后，海外版将来要从 Clerk 迁走的成本也下降了。
 
 **要接受的**
 
+- **只依赖微信**：开放平台账号被封、或资质认证过期忘了年审，所有国内版用户都登录不了。认证年审要做提醒；#1023 的可选手机号是用户自己的退路。
+- **没有微信的人用不了国内版**。在大陆用户里这类人很少。
 - **多一个有状态服务**：Logto + PostgreSQL（enx-api 仍然是 SQLite）。升级、备份、安全补丁都归自己。
 - 国内版的登录是托管页跳转，没有 Clerk 内嵌组件那么顺滑；可以用 Logto 的品牌定制缓解。
-- **短信有成本，也有被刷的风险**：短信轰炸、刷量会直接花钱。上线前必须有防刷手段（图形验证码 / 频率限制）。注意很多验证码服务（reCAPTCHA、Cloudflare Turnstile）在大陆不可用，要选大陆可用的方案。
-- seam 改造会动三端约 40 个文件，而且同时影响海外版 —— 要按「先抽接口、行为不变，再加 Logto 实现」两步走，每一步都有测试护住。
-
-## 需要在编码前验证
-
-- [ ] Logto 自托管版是否支持在 access token 里加自定义 claim（`name` / `phone`）；如果不支持，enx-api 首次开通时改为调 userinfo。
-- [ ] `@logto/chrome-extension` 在 **Edge** 上的 `launchWebAuthFlow` 行为，以及能否复用网站的会话（Decision 6）。
-- [ ] 微信（网站）connector 取的是 `unionid` 还是 `openid`。只要以后可能接服务号 / 小程序，就必须用 `unionid`，否则同一个人会变成多个账号。
-- [ ] Logto 登录页本身是否加载了大陆访问不到的外部资源（字体、CDN）。
+- seam 改造会动三端约 40 个文件，而且同时影响海外版，要按 Decision 3 的顺序两步走。
 
 ## Revisit Triggers
 
+- **ENX 加了公开发布内容的功能**（评论、分享笔记、社区）：实名条款开始适用，必须补手机号绑定或其他实名方式，Decision 2 作废。
+- **要做微信小程序**：Logto 没有 headless API，做不了小程序一键登录。到时重新评估 Authing，或者自己写桥接。
+- 主管部门要求国内版收集手机号。
 - Logto 停止维护自托管版，或改变开源许可。
-- 国内版需要 Authing 独有的微信生态能力（例如小程序扫码直接拿手机号）且这变成核心需求。
-- 运维 Logto + PostgreSQL 的负担明显超出预期 → 重新评估 Authing（SaaS）。
+- 运维 Logto + PostgreSQL 的负担明显超出预期 → 重新评估 Casdoor（自托管）或 Authing（SaaS）。
