@@ -6,6 +6,12 @@ AI 辅助英语阅读工具。用户在网页上阅读英文时，ENX 标注生�
 
 ## Language
 
+### 版本（跨组件）
+
+**海外版（global edition）/ 国内版（cn edition）**：
+ENX 的两个部署，跑同一份代码，差异只在部署配置：身份服务、收款、AI provider、托管、运营方都按版本配置。两个版本的账号和数据完全隔离，同一个人在两边是两个互不相关的账号。见 adr-035。
+_Avoid_: 中国版、国际版、fork、分支版本
+
 ### 身份与账户（跨组件）
 
 **本地用户身份（local user identity / `users.Id`）**：
@@ -13,7 +19,7 @@ ENX 自己的用户主键，UUID。生词本、复习、`stripe_customer` / `cre
 _Avoid_: user id（单说时含糊）、账号、login id
 
 **外部认证身份（external auth identity）**：
-第三方身份服务里的用户标识（当前是 Clerk 的 `user_xxx`）。ENX 只用它认出「登录的是谁」并映射到某个本地用户身份，不用它键任何业务数据。`users` 表存一列做这个映射。见 adr-015（此前是 Cognito 的 `sub`，见 adr-004）。
+第三方身份服务里的用户标识：海外版是 Clerk 的 `user_xxx`（adr-015），国内版是自托管 Logto 的 `sub`（adr-036）。每个部署只有一个身份服务。ENX 只用它认出「登录的是谁」并映射到某个本地用户身份，不用它键任何业务数据。`users` 表存一列做这个映射。（更早是 Cognito 的 `sub`，见 adr-004。）
 _Avoid_: sub、cognito sub、clerk id（口头）
 
 **注销账号（account deletion）**：
@@ -25,7 +31,7 @@ _Avoid_: 软删除、停用（那是禁用）
 _Avoid_: 封号、拉黑、ban（口头可以，代码里用 disabled）
 
 **试用发放记录（trial grant record）**：
-某个邮箱领取过试用积分的记录，按邮箱的 HMAC 存储，不随账号注销而删除，用来保证一个邮箱只领一次试用；已有记录的邮箱重新注册后认领邀请码，邀请人和被邀请人都不得奖励。见 adr-062。
+某个试用身份键领取过试用积分的记录，按键的 HMAC 存储，不随账号注销而删除，用来保证同一个人只领一次试用；已有记录的人重新注册后认领邀请码，邀请人和被邀请人都不得奖励。试用身份键按版本取：海外版是邮箱，国内版是微信 `unionid`。见 adr-062、adr-036。
 _Avoid_: trial claim（「认领」专指 adr-051 的邀请码认领）
 
 **会话同步（session sync）**：
