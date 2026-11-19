@@ -71,7 +71,7 @@ When steps 3–5 find nothing on the default adapter, `resolveLookupArea()` trie
 
 1. **Gate:** a `script[type="application/ld+json"]` holds an entity whose `@type` (a string or an array) ends in `Article`, or is `BlogPosting`, `LiveBlogPosting` or `APIReference`. Entities are read at the top level, in arrays, and under `@graph`, `mainEntity` and `mainEntityOfPage`; other keys (e.g. a listing's `hasPart`) are not followed. Malformed JSON-LD is skipped. No match: whole page, and Readability is not loaded.
 2. **Node:** Readability runs on a clone of the document whose elements carry their page index; the lowest common ancestor of the page elements in its output is the node. No output, or the node is `body` or `html`: whole page.
-3. **Node conditions:** without `script`, `style` and `noscript`, whitespace collapsed, the node has at least 500 characters and link density (text of outermost links / all text) at most 0.2. Otherwise whole page.
+3. **Node conditions:** without `script`, `style` and `noscript`, whitespace collapsed, the node has at least 500 characters and link density (text of outermost `a[href]` links / all text) at most 0.2. An `<a>` without `href` is an in-page jump target, not a link, and its text counts as body text. Otherwise whole page.
 
 A node that passes is the article, with source `article` and `fallback: 'json-ld-readability'` on the `LookupArea`. Readability is its own chunk, loaded by dynamic `import()` from `src/content/loadReadability.ts` only once the gate passes; it is never in the always-loaded content script. If the chunk fails to load, learning mode opens on the whole page. A user choice (step 2) still wins. The shared article choice report sends a layer 6 result as `autoSource: 'article'` with no selector.
 

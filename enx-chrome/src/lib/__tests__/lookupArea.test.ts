@@ -142,6 +142,38 @@ describe('resolveLookupArea layer 6 (ADR-077)', () => {
       expect(await resolve()).toEqual(WHOLE_PAGE())
     })
 
+    it('does not count text inside <a> without href as link text', async () => {
+      const anchors = Array.from(
+        { length: 12 },
+        (_, i) => `<p><a id="note-${i}">${prose(60)}</a></p>`
+      ).join('')
+      document.head.innerHTML = article
+      document.body.innerHTML = `
+        <div class="site-nav"><a href="/a">Home</a></div>
+        <div id="story">${paragraphs(4, 400)}${anchors}</div>`
+
+      expect((await resolve()).nodes).toEqual([
+        document.getElementById('story'),
+      ])
+    })
+
+    it('counts a link nested inside another link once', async () => {
+      document.head.innerHTML = article
+      document.body.innerHTML = `
+        <div class="site-nav"><a href="/a">Home</a></div>
+        <div id="story">${paragraphs(4, 400)}<p><a href="/outer" id="outer">${prose(150)}</a></p></div>`
+      // innerHTML cannot nest anchors (the parser closes the outer one), so
+      // build the nesting the DOM way.
+      const inner = document.createElement('a')
+      inner.setAttribute('href', '/inner')
+      inner.textContent = prose(150)
+      document.getElementById('outer')!.appendChild(inner)
+
+      expect((await resolve()).nodes).toEqual([
+        document.getElementById('story'),
+      ])
+    })
+
     it('takes a node at link density 0.2 or below', async () => {
       const linkList = Array.from(
         { length: 4 },

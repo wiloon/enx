@@ -87,14 +87,16 @@ const MAX_LINK_DENSITY = 0.2
 const collapse = (text: string | null) => (text ?? '').replace(/\s+/g, ' ').trim()
 
 // Text length and link density measured as ADR-077 measured them: without
-// script, style and noscript, whitespace collapsed.
+// script, style and noscript, whitespace collapsed. Links are `a[href]`: an
+// anchor without href targets an in-page jump and wraps body text, not link
+// text (#975).
 function measure(node: Element): { length: number; linkDensity: number } {
   const copy = node.cloneNode(true) as Element
   copy.querySelectorAll('script, style, noscript').forEach(el => el.remove())
   const length = collapse(copy.textContent).length
   let linkLength = 0
-  copy.querySelectorAll('a').forEach(link => {
-    if (!link.parentElement?.closest('a')) {
+  copy.querySelectorAll('a[href]').forEach(link => {
+    if (!link.parentElement?.closest('a[href]')) {
       linkLength += collapse(link.textContent).length
     }
   })
